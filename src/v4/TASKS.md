@@ -936,11 +936,15 @@ integer widths are implementation-defined (LP64 / ILP32 / …), so the
 width fact is not a constant of the language but of the target ABI.
 **Disposition — SCHEDULED (operator ruling 2026-05-17; no fork).** Schedule
 an `extdeps` ABI / target-data-model slice that the `cpp.dag` fact-bundles
-parameterize over (LP64 / ILP32 / …). Low-dependency: it needs only T-3's
-machine / width vocabulary, otherwise a leaf — pure parallel fill,
-schedulable as soon as T-3's `machine` lands. It is a **prerequisite of
-T-4's cpp slice**: the cpp fact-bundle cannot ground implementation-defined
-integer widths without it (hence the `T-4 [needs … T-29]` edge).
+parameterize over (LP64 / ILP32 / …). Low-dependency — it needs only T-3's
+machine / width vocabulary, otherwise a leaf — but it is **NOT parallel
+fill**: T-29 is a **side-branch feeder of T-4** (a hard prerequisite of
+T-4's cpp slice — the cpp fact-bundle cannot ground implementation-defined
+integer widths without it; hence the `T-4 [needs … T-29]` edge). It is a
+**watch item** — schedulable the instant T-3's `machine` lands, and it
+*should* be scheduled then, because if it slips the `{P1-KEYSTONE, T-30,
+T-29, T-25-core} → T-4 → T-9` side branch goes critical. Low-dependency
+≠ low-priority.
 
 ### T-30 — std/ structural fact-density / hollow-alias gate  [SCHEDULED]
 **Operator ruling 2026-05-17 (codex 13403, via the D2-reversal Phase-1
