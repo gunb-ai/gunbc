@@ -7,7 +7,7 @@ below preserve prior in-file commentary for the named substrates.
 > `.dag` comment text (including historical identifiers where they appeared).
 
 
-## `verilog.dag` — preamble modeling notes (former lines ~84–278)
+## `verilog.dag` — preamble modeling notes
 
 ```
 // ─────────────────────────────────────────────────────────────────────
@@ -207,7 +207,7 @@ below preserve prior in-file commentary for the named substrates.
 // diagnostic.dag / ptx Dim3 precedent.
 ```
 
-## `verilog.dag` — header Stress / Clear win / Status detail (former lines ~9–18 and ~32–57)
+## `verilog.dag` — header Stress / Clear win / Status detail
 
 ```
 // Stress (T-4.9 — a B2-OMNI falsification probe): hardware CONCURRENCY vs
@@ -249,7 +249,7 @@ below preserve prior in-file commentary for the named substrates.
 //   ratification (substrate extension = stop signal).
 ```
 
-## `verilog.dag` — import deferral note (former lines ~63–80)
+## `verilog.dag` — import deferral note
 
 ```
 // std/node.dag is imported: it makes the K-1 opaque `Symbol` (the
@@ -272,7 +272,7 @@ below preserve prior in-file commentary for the named substrates.
 // kernel-ambient per STRUCTURE.md §"Kernel-ambient types" — no import.
 ```
 
-## `llvm_ir.dag` — modeling notes (former lines ~62–167)
+## `llvm_ir.dag` — modeling notes
 
 ```
 // ─────────────────────────────────────────────────────────────────────
@@ -383,7 +383,7 @@ below preserve prior in-file commentary for the named substrates.
 // visible, ratified edit, never a silent `Other`/`...`).
 ```
 
-## `llvm_ir.dag` — header Stress / C5 / narrative (former lines ~9–20)
+## `llvm_ir.dag` — header Stress / C5 / narrative
 
 ```
 // Stress (T-4.12 — a B2-OMNI falsification probe): does the Node
@@ -400,7 +400,7 @@ below preserve prior in-file commentary for the named substrates.
 //   comments/formatting by intent.
 ```
 
-## `llvm_ir.dag` — import deferral note (former lines ~49–58)
+## `llvm_ir.dag` — import deferral note
 
 ```
 // std/node.dag is imported: it makes the K-1 opaque `Symbol` (the
@@ -415,7 +415,7 @@ below preserve prior in-file commentary for the named substrates.
 // per-file `<Algebra><Concrete>` form P2 single-authority forbids.
 ```
 
-## `ptx.dag` — modeling notes (former lines ~115–236)
+## `ptx.dag` — modeling notes
 
 ```
 // Modeling notes (read before validating against the anchor)
@@ -542,7 +542,7 @@ below preserve prior in-file commentary for the named substrates.
 // `Extent.ByteRange` precedent.
 ```
 
-## `ptx.dag` — header IN-B headline / Owned-elsewhere detail (former lines ~4–103)
+## `ptx.dag` — header IN-B headline / Owned-elsewhere detail
 
 ```
 //        (forced by DECISIONS.md L-3 — PTX is the SIMT *IR*; CUDA-C++ is
@@ -647,7 +647,7 @@ below preserve prior in-file commentary for the named substrates.
 //   pass; this is not worker-settled.)
 ```
 
-## `integer.dag` — former header authority block (~29–64) + modeling notes (~100–148)
+## `integer.dag` — header authority + modeling notes
 
 ```
 // D2 (operator-ratified 2026-05-16; see DECISIONS.md D2) — this file is
@@ -738,7 +738,7 @@ below preserve prior in-file commentary for the named substrates.
 // names in the produced Diagnostic.
 ```
 
-## `float.dag` — former header blocks (~13–77) + modeling notes (~104–160)
+## `float.dag` — header + modeling notes
 
 ```
 // Owns:
