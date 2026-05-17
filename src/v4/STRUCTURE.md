@@ -32,8 +32,9 @@ src/v4/
     verification.dag     # TestClaim schema (imported from v3)
     report.dag           # advisory carrier (NOT fail-closed Diagnostic); used by synthesis lens
 
-  extdeps/               # external system contracts (20 files)
+  extdeps/               # external system contracts (21 files)
     languages/           # language models (direction-agnostic — emit AND ingest)
+      resolver.dag       # shared D2-resolver registry (GroundingMap); D4
       rust.dag
       python.dag
       go.dag
@@ -109,10 +110,11 @@ src/v4/
     fixture/             # canonical input programs
 ```
 
-**Total: 64 .dag files + 5 docs + 5 .gitkeep = 74 files.** (Per invariant
+**Total: 65 .dag files + 5 docs + 5 .gitkeep = 75 files.** (Per invariant
 #1 the enumeration above — not the count — is authoritative; the count is
 a checksum, updated on every operator-ratified file addition/removal.
-−5 .dag 2026-05-15: work-direction meta-layer cut, operator-ratified.)
+−5 .dag 2026-05-15: work-direction meta-layer cut, operator-ratified.
++1 .dag 2026-05-17: extdeps/languages/resolver.dag, operator-ratified D4.)
 
 ## Scalar/numeric concept decomposition
 

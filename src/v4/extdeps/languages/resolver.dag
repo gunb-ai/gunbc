@@ -1,0 +1,85 @@
+// src/v4/extdeps/languages/resolver.dag
+//
+// Scope: the SHARED registry for D2-resolver types — types used by every
+//        extdeps/languages/* file that are STRUCTURALLY LANGUAGE-INVARIANT
+//        (their structure provably cannot vary across the modeled language
+//        specs). These are convergence carriers: one declaration, imported
+//        by each language file, never re-declared.
+// Anchor: src/v4/DECISIONS.md row D4 (operator-ratified 2026-05-16) — the
+//         governing decision that homes the shared resolver types here.
+//         D4 completes D2 (the extdeps resolver shape): D2 specified the
+//         per-primitive three-thin-facts shape; D4 pins WHERE D2's shared
+//         types live so the five language files import rather than
+//         re-declare (parallel-declaration P2 forbids).
+//
+// Admission rule (STRICT — per D4):
+//   resolver.dag hosts ONLY structurally-language-INVARIANT resolver
+//   types. The admission test is a proof obligation: can you prove the
+//   type's structure is invariant across the modeled language specs?
+//   - GroundingMap<IRCarrier> { spelling: String } PASSES — every modeled
+//     language grounds an IR carrier to exactly one surface spelling
+//     string; the record shape does not vary.
+//   - Spec-VARYING types STAY per-language and are NOT admitted here:
+//     OverflowDisposition (Rust panic-or-wrap vs Go wrap vs C/C++ UB vs
+//     Python arbitrary-precision — the variant set itself varies),
+//     NaN/Inf handling carriers, language-grammar facts. Those are D2.5 /
+//     L-2 per-language facts; homing them here would re-import the
+//     parallel-taxonomy anti-pattern this file exists to prevent.
+//   Future structurally-invariant shared resolver types (e.g. a
+//   C5-fidelity Modeled | Declared-normalized | Fail-closed disposition
+//   classifier) land here without a fresh placement decision — D4 is the
+//   standing ratification for this file's purpose.
+//
+// Owns:
+//   - GroundingMap<IRCarrier> { spelling: String } — the per-primitive
+//     surface-spelling carrier (D2's D2a(2) "grounding map"). IRCarrier is
+//     a phantom type parameter naming the IR carrier this grounding maps
+//     (RustI32, PyInt, GoInt64, ...); each language file declares
+//     per-primitive instances `data <lang>_<prim>_grounding:
+//     GroundingMap<<AliasCarrier>> = GroundingMap { spelling: "<token>" }`.
+//     `spelling` is a String boundary value — the canonical source text
+//     for emit / ingest, living at the source-syntax boundary, not in
+//     kernel/lens code.
+//
+// Consumes:
+//   - (none) — String is kernel-ambient (STRUCTURE.md:147-148); no import
+//     is required. resolver.dag is a zero-import leaf of the .dag tree.
+//
+// Status: T-4 D4 — file created 2026-05-17 (keen-gull-671), the
+//   encoding-half of operator-ratified D4 (DECISIONS.md, PR #3216).
+//   Created in parallel with #3216; lands after #3216 merges the D4/D5
+//   rows to main. The per-language `import … resolver { GroundingMap }`
+//   lines + per-primitive `data <lang>_<prim>_grounding` instances are a
+//   separate fan-out (canonical rust.dag first, then python/go/cpp/ts) —
+//   NOT this file's scope. rust.dag's current provisional GroundingMap
+//   declaration (the 🟡 TRACKED-SCAFFOLD at rust.dag:1718) relocates here
+//   in that fan-out; this file is its pinned home.
+//
+// Closed-tree extension (per D4 + INVARIANTS #1): this file is a
+//   ratified addition to the closed .dag tree. STRUCTURE.md's enumeration
+//   gains the resolver.dag line; the checksum count is bumped to match.
+//   The enumeration — not the count — is authoritative.
+//
+// Brief: this file's I/O contract is the immutable contract for the
+//   worker. Splitting this file requires explicit operator ratification
+//   (substrate extension = stop signal).
+
+
+// ─────────────────────────────────────────────────────────────────────
+// GroundingMap<IRCarrier> — the per-primitive surface-spelling carrier.
+//
+// A Conj record (no Practice-4 ledger — a single-field product, not an
+// enumeration). IRCarrier is a phantom type parameter: it does not appear
+// in the body; it names — at the type level — which IR carrier a given
+// grounding instance maps, so `GroundingMap<RustI32>` and
+// `GroundingMap<PyInt>` are distinct facts (P1/P2 fidelity).
+//
+// The structure is provably language-INVARIANT: every modeled language
+// spec grounds each IR carrier to exactly one canonical surface spelling.
+// What VARIES across languages is the spelling VALUE (`i32` vs `int` vs
+// `int64`) — carried by per-language `data` instances — never the record
+// SHAPE. This is exactly the D4 admission test, and is why GroundingMap
+// is the first resident here rather than re-declared five times.
+type GroundingMap<IRCarrier> {
+  spelling: String
+}
