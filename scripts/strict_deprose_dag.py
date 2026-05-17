@@ -71,14 +71,14 @@ def main() -> None:
             "src/v4/extdeps/languages/verilog.dag",
             "// Scope: IEEE 1364-2005 Verilog structural carriers (T-4.9).",
             "// Anchor: https://ieeexplore.ieee.org/document/9576818",
-            "// Consumes: std/node.dag, std/algebra.dag, std/primitive.dag, extdeps/coordination.dag",
+            "// Consumes: std/node.dag",
             "// Status: T-4.9 PASS (IN-B); import v4.std.node Symbol only.",
         ),
         (
             "src/v4/extdeps/languages/llvm_ir.dag",
             "// Scope: LLVM 18 LangRef IR structural vocabulary (T-4.12).",
             "// Anchor: https://releases.llvm.org/18.1.8/docs/LangRef.html",
-            "// Consumes: std/node.dag, std/algebra.dag, std/primitive.dag",
+            "// Consumes: std/node.dag",
             "// Status: T-4.12 PASS (B2-OMNI); import v4.std.node Symbol only.",
         ),
         (

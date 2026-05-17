@@ -46,7 +46,7 @@
 //   LlvmModule
 //   FidelityDisposition
 //   FidelityFeature
-// Consumes: std/node.dag, std/algebra.dag, std/primitive.dag
+// Consumes: std/node.dag
 // Status: T-4.12 PASS (B2-OMNI); import v4.std.node Symbol only.
 
 module v4.extdeps.languages.llvm_ir
