@@ -118,11 +118,7 @@ mod tests {
         }
     }
 
-    fn site(
-        bare: bool,
-        subj: ModeledSubject,
-        evidence: bool,
-    ) -> HollowDeclarationSite {
+    fn site(bare: bool, subj: ModeledSubject, evidence: bool) -> HollowDeclarationSite {
         HollowDeclarationSite {
             bare_alias_or_empty_wrapper: bare,
             modeled_subject: subj,
@@ -132,51 +128,31 @@ mod tests {
 
     #[test]
     fn rejects_bare_external_primitive_without_evidence() {
-        let hollow = decl(site(
-            true,
-            ModeledSubject::ExternalSpecPrimitive,
-            false,
-        ));
+        let hollow = decl(site(true, ModeledSubject::ExternalSpecPrimitive, false));
         assert_eq!(hollow_alias_gate(&hollow), HollowAliasGateOutcome::Rejected);
     }
 
     #[test]
     fn accepts_when_not_bare_alias() {
-        let ok = decl(site(
-            false,
-            ModeledSubject::ExternalSpecPrimitive,
-            false,
-        ));
+        let ok = decl(site(false, ModeledSubject::ExternalSpecPrimitive, false));
         assert_eq!(hollow_alias_gate(&ok), HollowAliasGateOutcome::Produced);
     }
 
     #[test]
     fn accepts_bare_external_with_coincidence_evidence() {
-        let ok = decl(site(
-            true,
-            ModeledSubject::ExternalSpecPrimitive,
-            true,
-        ));
+        let ok = decl(site(true, ModeledSubject::ExternalSpecPrimitive, true));
         assert_eq!(hollow_alias_gate(&ok), HollowAliasGateOutcome::Produced);
     }
 
     #[test]
     fn accepts_bare_kernel_ambient_without_evidence() {
-        let ok = decl(site(
-            true,
-            ModeledSubject::KernelAmbientAtom,
-            false,
-        ));
+        let ok = decl(site(true, ModeledSubject::KernelAmbientAtom, false));
         assert_eq!(hollow_alias_gate(&ok), HollowAliasGateOutcome::Produced);
     }
 
     #[test]
     fn accepts_bare_internal_std_without_evidence() {
-        let ok = decl(site(
-            true,
-            ModeledSubject::InternalStdCarrier,
-            false,
-        ));
+        let ok = decl(site(true, ModeledSubject::InternalStdCarrier, false));
         assert_eq!(hollow_alias_gate(&ok), HollowAliasGateOutcome::Produced);
     }
 
