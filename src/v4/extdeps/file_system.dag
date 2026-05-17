@@ -98,50 +98,6 @@ import v4.std.machine { Byte }
 
 
 // ─────────────────────────────────────────────────────────────────────
-// Modeling notes (read before validating against the anchor)
-//
-// POSIX-FACING CARRIERS, NOT A PATH STRING. A path is structurally a
-// sequence of filename components with an absolute/relative root fact.
-// Modeling it as a readable `String` would force every consumer to
-// rediscover root-ness, component boundaries, slash exclusion, and null
-// exclusion by string inspection. The `Path` sum below is the single
-// authority: consumers pattern-match the root fact and walk components.
-//
-// VALUE-REFINEMENT SCAFFOLDS. POSIX path name components are byte
-// strings that exclude slash and NUL; portable filenames further restrict
-// the byte set. `.` and `..` are structural components below, not ordinary
-// byte strings. v4's settled dependency path has `Byte` and
-// `FreeMonoid<Byte>` but not a machine-readable predicate/refinement
-// substrate for "non-empty byte string with no slash or NUL and not
-// dot/dotdot". `NamedPathComponent` is therefore the honest named-spelling
-// carrier with bridge properties:
-//   (a) scaffold doc — THIS note; the current carrier is an unrefined
-//       byte string, not the terminal POSIX filename refinement.
-//   (b) bounds on use — producers must construct non-empty named
-//       components that contain no slash, no NUL byte, and are not `.`
-//       or `..`; use `CurrentComponent` / `ParentComponent` for those
-//       POSIX components.
-//   (c) dissolution trigger — when v4 lands value refinements over
-//       `FreeMonoid<Byte>` predicates, replace `NamedPathComponent.bytes`
-//       with the refined non-empty no-slash no-NUL non-dot carrier.
-//
-// OPERATION SEAM. The scaffold header's `Result<..., Diagnostic>` prose
-// denotes std/diagnostic.dag's ratified `Outcome<T>` carrier
-// (DECISIONS.md I). Per lens/effect.dag B3/B-5, type signatures are the
-// single effect authority: effects are explicit parameters. Reads take
-// the Filesystem as input and return derived values; writes return the
-// modified Filesystem.
-//
-// FILE CONTENT IS BYTES AT THE POSIX BOUNDARY. `read_file` /
-// `write_file` return and accept raw `FreeMonoid<Byte>` streams because
-// POSIX read/write operate on byte buffers. Text decoding/encoding for
-// `.dag`, generated source, and derived workflow artifacts belongs in a
-// later fallible encoding-aware projection. Permissions, timestamps,
-// memory mapping, and locks remain outside this v4 file's immutable
-// scope.
-
-
-// ─────────────────────────────────────────────────────────────────────
 // PathComponent — one pathname component.
 // Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/V1_chap03.html#tag_03_241
 //
@@ -149,7 +105,8 @@ import v4.std.machine { Byte }
 // `PosixByteString` excluding slash and NUL and not equal to `.` or `..`,
 // with any portable-filename policy expressed as an explicit profile.
 // Current carrier: unrefined bytes with the tracked refinement scaffold
-// above.
+// (bounds: no slash/NUL/dot/dotdot; dissolution: byte-string value
+// refinements replace `NamedPathComponent.bytes`).
 //
 // Coproduct dissolution (Practice 4 / INVARIANTS P1) — classification:
 // 🟡 YELLOW, first-consumer-confirmed. POSIX gives `.` and `..`
@@ -347,14 +304,10 @@ type FileKindResolutionPolicy
 // effect fact is read from each signature.
 type Filesystem
 
-// Each `*Request` is a pure data description of the host operation. File
-// operations consume AbsolutePath only; RelativePath is a structural path
-// carrier for parsing/modeling, but resolution requires an explicit base
-// directory before reaching this POSIX boundary. The result seam is the
-// shared `Outcome<T>` carrier named in this file's header/prose. The
-// `FileSystemOperations` record is the declared callable boundary a future
-// host realization must inhabit; it is intentionally only a signature
-// bundle here, not an effect resolver.
+// Requests are operation data. File operations consume AbsolutePath only;
+// RelativePath requires explicit base-directory resolution before this
+// boundary. Results use `Outcome<T>`; `FileSystemOperations` is the
+// signature bundle a future host realization must inhabit.
 type FileBody = FreeMonoid<Byte>
 
 type ReadFileRequest {

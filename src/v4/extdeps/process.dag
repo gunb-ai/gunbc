@@ -122,81 +122,13 @@ import v4.std.machine { Byte }
 
 
 // ─────────────────────────────────────────────────────────────────────
-// Modeling notes (read before validating against the anchor)
-//
-// HOST-PROCESS BOUNDARY IS TYPED. This file is the v4 carrier for the
-// INVARIANTS.md P2 host-process boundary discipline: command execution
-// returns structural outcomes, not string probes over shared stderr.
-// Setup/spawn failure is `Outcome.Rejected { diagnostic }`; a logical
-// child that ran and terminated returns an advanced `TerminatedProcess`
-// whose `state` carries the terminal fact. The two facts are not
-// collapsed, so a wrapper failure cannot be mistaken for a child exit
-// and a signal death cannot be fabricated as an exit code.
-//
-// TERMINATION IS THE SINGLE AUTHORITY. The terminal-status facts
-// (`Exited` vs `Signaled`) live only in `Termination`, reached through
-// the shared `TerminatedProcessState` carrier. wait returns
-// `WaitedTerminatedProcess`, capture returns `TerminatedProcess`, and
-// neither result can carry `Running` or a sibling `exit_code` field.
-//
-// VALUE-REFINEMENT SCAFFOLDS. POSIX PIDs are positive integers, exit
-// status values are non-negative and conventionally bounded to 8 bits
-// for shell observation, and signal numbers are positive members of the
-// platform signal table. v4 currently has `Int` / `UInt` but not the
-// refined numeric subset machinery in this dependency path. The aliases
-// below are tracked scaffolds with bridge properties:
-//   (a) scaffold doc — THIS note; the aliases name the parent numeric
-//       carrier but do not yet type-enforce POSIX bounds.
-//   (b) bounds on use — producers must construct positive PIDs,
-//       non-negative exit codes, and platform-valid signal numbers.
-//       Violating those predicates is a producer bug against the model.
-//   (c) dissolution trigger — when v4 lands numeric value refinements /
-//       bounded subsets over integer carriers, replace these aliases
-//       with refined carriers and keep the surrounding sums unchanged.
-//
-// COMMAND IS DATA, NOT A SHELL STRING. `Command.program` is an
-// `AbsolutePath`; argv and env are structured byte-string carriers. This
-// prevents shell quoting, PATH lookup, env splitting, text decoding, and
-// diagnostic text from becoming hidden authorities. A separate
-// shell-language extdep can model shell parsing when the program
-// intentionally invokes a shell; this process model does not smuggle one
-// in.
-//
-// OPERATION SEAM. The scaffold header's `Result<..., Diagnostic>` prose
-// denotes std/diagnostic.dag's ratified `Outcome<T>` carrier
-// (DECISIONS.md I). Per lens/effect.dag B3/B-5, type signatures are the
-// single effect authority: effects are explicit parameters, and the
-// effect lens reads returned-modified-resource as write and
-// returned-derived-value as read. The external realization layer
-// performs fork/exec/wait/capture and returns through these carriers.
-//
-// CAPTURE OUTPUT IS BYTES. POSIX pipes carry byte streams; decoding
-// stdout/stderr to text requires an encoding choice and a fallible error
-// carrier that this file does not own. `capture` therefore returns raw
-// `FreeMonoid<Byte>` streams. Text projection belongs in a later
-// encoding-aware seam.
-//
-// CAPTURE OUTPUT SOURCE IS STRUCTURAL. `CapturedOutputPipes` is an
-// opaque handle to the stdout/stderr pipe arrangement established for a
-// spawned process. It is deliberately not a file-descriptor model: fd
-// numbering, open/close/dup, and general pipe operations are outside this
-// frozen subset. RunningProcess owns the handle so returned bytes have a
-// declared source tied to the specific live child.
-//
-// SPAWN SUCCESS IS LIVE. A successful spawn cannot return a terminal
-// child observation. `RunningProcess` is the live postcondition carrier
-// for spawn and the input carrier for wait/capture; it carries the
-// captured-output pipe source for that child. `WaitedTerminatedProcess`
-// carries the same pipe source after wait; `TerminatedProcess` is the
-// terminal postcondition carrier after capture has consumed the source.
-// `CaptureSource` is the capture input authority: either the pre-wait
-// SpawnedProcess pair, or the post-wait WaitedProcess pair.
-
-
-// ─────────────────────────────────────────────────────────────────────
 // POSIX numeric carriers.
 // Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/sys_types.h.html
 // Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/signal.h.html
+//
+// Tracked refinement scaffold: ProcessId is positive; ExitCode is
+// non-negative; SignalNum is platform-valid. Bounds are producer
+// obligations until numeric value refinements replace these aliases.
 type ProcessId = Int
 type ExitCode = Int
 type SignalNum = Int
@@ -367,15 +299,10 @@ type CaptureSource
 // effect fact is read from each signature.
 type ProcessTable
 
-// Spawn failure, wait failure, and capture failure return `Rejected`
-// with a typed `Diagnostic`; a successfully observed child termination
-// returns the advanced `TerminatedProcess` whose terminal status is
-// structurally present. stdout/stderr are captured as separate raw byte
-// streams so harness/setup diagnostics cannot be
-// blended into the logical child's output channel. The
-// `ProcessOperations` record is the declared callable boundary a future
-// host realization must inhabit; it is intentionally only a signature
-// bundle here, not an effect resolver.
+// Operation failures return `Outcome.Rejected`; successful child
+// observations carry lifecycle-specific process carriers. stdout/stderr
+// are separate raw byte streams. `ProcessOperations` is the signature
+// bundle a future host realization must inhabit.
 type CapturedByteStream = FreeMonoid<Byte>
 
 type CapturedOutputPipes
