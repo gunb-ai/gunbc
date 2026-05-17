@@ -1,7 +1,7 @@
 // src/v4/compiler/03_resolve.dag
 //
 // Scope: Stage 3b — NormalizedTree→ResolvedTree; K-1 Atom use→def.
-// Owns: ResolvedTree; Namespace; Scope; ResolveResult; ResolveChildrenResult; resolve; Symbol reasons.
+// Owns: ResolvedTree; Namespace; Scope; BindEdgeAcc; ResolveResult; ResolveChildrenResult; resolve; Symbol reasons.
 // Consumes: std/node.dag, std/diagnostic.dag, std/collection.dag, compiler/03_normalize.dag, extdeps/languages/dag.dag.
 // Status: scaffold — TASKS T-8.
 // Anchor: https://en.wikipedia.org/wiki/Name_resolution_(programming_languages)
@@ -11,10 +11,8 @@ module v4.compiler.resolve
 
 import v4.compiler.normalize { NormalizedTree }
 import v4.extdeps.languages.dag {
-  dag_c3_surface_sugar_fn,
-  dag_c3_surface_sugar_operation,
-  dag_c3_surface_sugar_service,
-  dag_c3_surface_sugar_type
+  dag_language_model_canonical_symbols,
+  dag_language_model_wave1_void
 }
 import v4.std.collection { Set }
 import v4.std.diagnostic {
@@ -70,6 +68,10 @@ type EdgeResolveAcc
   = EdgeResolveAccMk { have_seen_first: Bool, acc: ResolveChildrenResult }
 
 
+type BindEdgeAcc
+  = BindEdgeAccMk { idx: Int, acc: ResolveChildrenResult }
+
+
 fn empty_namespace() -> Namespace {
   Namespace {
     bindings: empty_map(),
@@ -84,23 +86,6 @@ fn empty_canonical_symbol_set() -> Set<Symbol> {
       false
     }
   }
-}
-
-
-fn language_model_prelude_canonical_set() -> Set<Symbol> {
-  Set {
-    member: fn(sym) {
-      prelude_symbol_member(sym: sym)
-    }
-  }
-}
-
-
-fn prelude_symbol_member(sym: Symbol) -> Bool {
-  sym == dag_c3_surface_sugar_service ||
-    sym == dag_c3_surface_sugar_fn ||
-    sym == dag_c3_surface_sugar_type ||
-    sym == dag_c3_surface_sugar_operation
 }
 
 
@@ -174,7 +159,9 @@ fn add_bind_atom_binder(n: Node, acc: Map<Symbol, Symbol>) -> Map<Symbol, Symbol
 fn build_program_namespace(tree: NormalizedTree) -> Namespace {
   Namespace {
     bindings: add_module_named_exports(root: tree, acc: empty_map()),
-    canonical_symbols: language_model_prelude_canonical_set()
+    canonical_symbols: dag_language_model_canonical_symbols(
+      lm: dag_language_model_wave1_void()
+    )
   }
 }
 
@@ -277,23 +264,7 @@ fn resolve_node(n: Node, scope: Scope) -> ResolveResult {
           }
       }
     ComputationNode { behavior: Bind } =>
-      match resolve_edges_first_outer_then_inner(
-        edges: n.children,
-        scope_outer: scope,
-        scope_inner: ScopeFrame {
-          locals: add_bind_atom_binder(n: n, acc: empty_map()),
-          outer: scope
-        }
-      ) {
-        ResolveChildrenRejected { diagnostic: d } => ResolveRejected { diagnostic: d }
-        ResolvedChildren { children: resolved_children } =>
-          ResolvedNode {
-            node: Node {
-              kind: n.kind,
-              children: resolved_children
-            }
-          }
-      }
+      resolve_bind_node(n: n, scope: scope)
     TypeNode { connective: _ } =>
       resolve_children_homogeneous_scope(n: n, scope: scope)
     ComputationNode { behavior: _ } =>

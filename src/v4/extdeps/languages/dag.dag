@@ -1,14 +1,15 @@
 // src/v4/extdeps/languages/dag.dag
 //
 // Scope: gunbc `.dag` LanguageModel (lex + grammar Node; Shape A).
-// Owns: DagLanguageModel; dag_c3_surface_sugar_*; dag_wave1_*; dag_language_model_wave1_void.
-// Consumes: std/node.dag.
+// Owns: DagLanguageModel; dag_c3_surface_sugar_*; dag_wave1_*; dag_language_model_wave1_void; dag_language_model_wave1_void_canonical_symbols.
+// Consumes: std/node.dag, std/collection.dag.
 // Status: scaffold — TASKS T-4/T-6/T-7.
 // Anchor: https://github.com/gunb-ai/gunbc/blob/main/docs/v3-spec.md
 
 module v4.extdeps.languages.dag
 
 
+import v4.std.collection { Set }
 import v4.std.node { Conj, Node, Symbol, TypeNode }
 
 
@@ -49,4 +50,24 @@ fn dag_language_model_wave1_void() -> DagLanguageModel {
     lex: dag_wave1_e0_void_lex(),
     grammar: dag_wave1_g0_void_grammar()
   }
+}
+
+
+// Self-canonical `Atom` identities for resolve (no binder row). Mint list is
+// substrate-declared in this module; `03_resolve` wires `Namespace` through
+// `dag_language_model_canonical_symbols(dag_language_model_wave1_void())`.
+fn dag_language_model_wave1_void_canonical_symbols() -> Set<Symbol> {
+  Set {
+    member: fn(sym) {
+      sym == dag_c3_surface_sugar_service ||
+        sym == dag_c3_surface_sugar_fn ||
+        sym == dag_c3_surface_sugar_type ||
+        sym == dag_c3_surface_sugar_operation
+    }
+  }
+}
+
+
+fn dag_language_model_canonical_symbols(lm: DagLanguageModel) -> Set<Symbol> {
+  dag_language_model_wave1_void_canonical_symbols()
 }
