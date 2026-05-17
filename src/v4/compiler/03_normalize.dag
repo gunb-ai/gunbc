@@ -37,6 +37,8 @@ type NormalizedTree = Node
 
 
 data normalize_reason_malformed_sugar: Symbol = normalize_reason_malformed_sugar
+data normalize_reason_post_normalize_not_well_formed: Symbol =
+  normalize_reason_post_normalize_not_well_formed
 
 
 // 🟡 coproduct dissolution — DECISIONS.md CP-1b item 4 (SurfaceSugarKind)
@@ -82,6 +84,15 @@ fn classify_sugar(n: Node) -> SugarClassification {
 fn malformed_sugar_diagnostic(n: Node) -> Diagnostic {
   Diagnostic {
     reason: normalize_reason_malformed_sugar,
+    at: NodeLocus { node: n },
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+
+fn post_normalize_not_well_formed_diagnostic(n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: normalize_reason_post_normalize_not_well_formed,
     at: NodeLocus { node: n },
     correction: Unavailable { reason: UserInputBoundary }
   }
@@ -224,11 +235,7 @@ fn normalize(parse_tree: ParseTree) -> Outcome<NormalizedTree> {
         Produced { value: normalized }
       } else {
         Rejected {
-          diagnostic: Diagnostic {
-            reason: normalize_reason_malformed_sugar,
-            at: NodeLocus { node: normalized },
-            correction: Unavailable { reason: UserInputBoundary }
-          }
+          diagnostic: post_normalize_not_well_formed_diagnostic(n: normalized)
         }
       }
   }
