@@ -66,6 +66,9 @@ const COMPLEXITY_LENS_AUTHORITY_FILE: &str = "src/v3/lenses/complexity.dag";
 const PARALLELISM_LENS_AUTHORITY_DAG: &str = include_str!("../../lenses/parallelism.dag");
 const PARALLELISM_LENS_AUTHORITY_FILE: &str = "src/v3/lenses/parallelism.dag";
 
+const V4_STD_NODE_AUTHORITY_DAG: &str = include_str!("../../../v4/std/node.dag");
+const V4_STD_NODE_AUTHORITY_FILE: &str = "src/v4/std/node.dag";
+
 fn append_complexity_lens_authority(dag: &mut Dag) {
     let tokens = crate::tokenize::tokenize(
         COMPLEXITY_LENS_AUTHORITY_DAG,

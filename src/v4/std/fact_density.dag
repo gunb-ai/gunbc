@@ -9,17 +9,17 @@
 //        (carrier + meaning as `Node`). INVARIANTS P1 / P2.
 //
 // Owns:
-//   - SourceSpecReadFact — nominal witness that a declaration **anchors** a
-//     spec read (opaque `Symbol` read-site identity per `std/node.dag` K-1 —
-//     not arithmetic, not an unconstrained product of independent fields).
-//     **Intended richer witness:** `Node` subtree (carrier + meaning on the
-//     same object). Standalone `compile_to_dag` still rejects `body: Node` in
-//     this module’s record fields (`unresolved type identifier Node`); migrate
-//     when the resolver accepts `Node` in this position.
+//   - SourceSpecReadFact — witness that a declaration **reads** structured
+//     spec content: `body` carries the decoded spec subtree as `Node`
+//     (bounded-kernel recursive substrate — not a numeric stand-in).
 //
 // Consumes:
-//   - std/node.dag: Symbol (K-1 opaque identity — same import pattern as
-//     `std/integer.dag` angle-parameter carriers).
+//   - std/node.dag: Node
+//
+// Standalone `compile_to_dag`:
+//   Lowering prepends `src/v4/std/node.dag` when this import is present
+//   (`lower_compile_module` — same authority-prepend pattern as lens carriers),
+//   so `Node` resolves in record fields here.
 //
 // Implementation split (M1(2.8)):
 //   The mechanical **declaration-tree → Outcome** check is mirrored in Rust
@@ -33,9 +33,9 @@
 module v4.std.fact_density
 
 
-import v4.std.node { Symbol }
+import v4.std.node { Node }
 
 
 type SourceSpecReadFact {
-  read_site: Symbol
+  body: Node
 }
