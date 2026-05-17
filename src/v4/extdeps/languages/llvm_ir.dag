@@ -1081,29 +1081,61 @@ type AtomicRmwOrdering
 // xchg/add/and/or/xor/max/min trace to the `iN` ring/lattice instances,
 // "grounded THERE"). Under the post-#3200 consumer-INDEPENDENT rule
 // this is 🟡 YELLOW because a namable richer source EXISTS:
-//   Richer source: LANDED std/algebra.dag carriers (verified at
-//     std/algebra.dag:139/145/166/183/195/255/271/289) —
-//       Monoid<iN-under-second-projection> (xchg — last-write
-//         identity on the second argument);
-//       Semiring<iN> (add — `iN`'s additive monoid + multiplicative
-//         identity);
-//       Ring<iN> (sub — additive inverse, which Semiring lacks);
-//       BooleanAlgebra<iN-bitwise> (and/or/xor; nand is the De-Morgan
-//         derived op over the same carrier — not a fresh algebra);
-//       Lattice<iN> with signed-vs-unsigned ordering inhabitances
-//         (max/min and umax/umin — the join/meet on the two distinct
-//         Ord inhabitances of `iN`; std/algebra.dag has not yet split
-//         Lattice into Join/Meet halves, so the unified Lattice carrier
-//         is the present authority);
-//       ApproximateField<float-N> (fadd/fsub/fmax/fmin via
-//         std/float.dag:255 `ApproximateField` instance).
-//     uinc_wrap/udec_wrap have NO landed carrier yet — they name a
-//     future std/integer.dag bounded-counter authority (wrap-on-bound,
-//     compare-and-conditionally-{inc,dec}); flagged here as a NAMED
-//     MISSING CARRIER, with the trigger below carrying its obligation.
-//     Each LangRef sub-op names ONE landed algebra operation on the
-//     operand-type's std/ inhabitance (or, for uinc_wrap/udec_wrap,
-//     the named-missing future carrier).
+//   Richer source: each LLVM atomicrmw sub-op names ONE algebra
+//     operation on the operand-type's inhabitance. The richer source
+//     SPLITS into two distinct facts per M9/INVARIANTS P1 — (a) the
+//     landed std/algebra.dag STRUCTURE ONTOLOGY the sub-op would
+//     inhabit, and (b) the per-(type, op) WITNESS, which may or may
+//     not yet be landed at the inhabitant. Conflating the two is the
+//     trap (briansrls + codex BLOCKING caught it).
+//     (a) LANDED ONTOLOGY (the structure types exist on origin/main):
+//       - RmwAdd → Semiring (std/algebra.dag:185); ontology landed,
+//         witness rides `int_ordered_ring: OrderedRing<Int>` (std/
+//         integer.dag:244) for abstract Int — per-iN per-width
+//         witnesses deferred to D2 fan-out.
+//       - RmwSub → Ring (std/algebra.dag:197 — additive inverse,
+//         which Semiring lacks); witness rides the same
+//         `int_ordered_ring`. Per-iN per-width witnesses deferred to
+//         D2 fan-out.
+//       - RmwAnd / RmwOr / RmwXor / RmwNand → BooleanAlgebra (std/
+//         algebra.dag:291); nand is De-Morgan over the same carrier
+//         (NOT a fresh algebra). Landed data witness on origin/main =
+//         `bool_boolean_algebra: BooleanAlgebra<Bool>` (std/logic.dag:
+//         120). Per-iN-bitwise inhabitance deferred to D2 fan-out.
+//       - RmwFAdd / RmwFSub → ApproximateField (std/algebra.dag:257);
+//         machine-readable per-Float witness EXPLICITLY WITHHELD on
+//         origin/main per std/float.dag DECISIONS.md D3 / INVARIANTS
+//         P1/P3 (std/float.dag:136). The ontology binding holds; the
+//         witness lands in a later std/float.dag phase.
+//     (b) NAMED-MISSING CARRIERS (no landed std/algebra.dag ontology
+//     match — future authority + trigger named here):
+//       - RmwXchg → atomic-swap-with-prior-value-return primitive.
+//         NOT a Monoid (second-projection has no identity element —
+//         there is no `e` such that `swap(x, e) == x`; a "last write
+//         wins" framing is not a two-sided identity Monoid op).
+//         MISSING future authority = std/concurrency.dag atomic-swap
+//         primitive (carries the prior-value-return semantics);
+//         trigger = first consumer of atomic-swap MEANING.
+//       - RmwMax / RmwMin (signed-Ord) and RmwUMax / RmwUMin
+//         (unsigned-Ord) → integer max/min over the corresponding Ord
+//         inhabitance. std/algebra.dag has Lattice (271), but a
+//         Lattice on iN-as-numbers (not iN-as-bitwise-BoolN) needs
+//         the signed-vs-unsigned Ord inhabitance to derive
+//         meet=min/join=max — that derivation is a future bridge.
+//         MISSING future authority = std/integer.dag (signed-Ord-max /
+//         unsigned-Ord-min) Lattice instance; trigger = first consumer
+//         of integer-max/min MEANING.
+//       - RmwFMax / RmwFMin → IEEE-754 float max/min with NaN policy.
+//         ApproximateField has NO lattice operation, AND the NaN-
+//         propagation policy is a IEEE-754-specific semantic distinct
+//         from algebraic max/min. MISSING future authority = std/
+//         float.dag IEEE-754-max/min op (with documented NaN policy);
+//         trigger = first consumer of float-max/min MEANING.
+//       - RmwUIncWrap / RmwUDecWrap → bounded-counter primitive
+//         (wrap-on-bound, compare-and-conditionally-{inc,dec}). No
+//         landed carrier. MISSING future authority = std/integer.dag
+//         bounded-counter carrier; trigger = first consumer of
+//         wrap-counter MEANING.
 //   Trigger: first consumer of atomicrmw MEANING (effect lens / cost
 //     model / inhabitance dispatch — D2 pathway).
 //   Obligation: the first meaning-consumer owes the (algebra-carrier,
