@@ -1,6 +1,6 @@
 // src/v4/lens/affected_set.dag
 // Scope: canonical affected-set authority for CI/incremental re-execution; fail-closed B-4/B-5 node frontier.
-// Owns: Dag, AffectedDimension, ReExecNode, ExclusionKey, ExclusionReceipt, ReExecFrontier, AffectedSetRead.
+// Owns: Dag, AffectedDimension, ReExecNode, ExclusionKey, ExclusionProof, ExclusionReceipt, ReExecFrontier, AffectedSetRead.
 // Consumes: Map, Diff, Node, Path, Symbol, Witness; B-4 resolve/infer facts; B-5 effect facts.
 // Status: scaffold; dissolves when T-21 read body, CI use, and .dag TestClaims land.
 
@@ -29,8 +29,14 @@ type ExclusionKey {
 }
 
 
+type ExclusionProof
+  = EmptyDimensionDelta { subject: Path }
+  | DimensionNotRead { producer: Path }
+
+
 type ExclusionReceipt {
   node: Node
+  proof: ExclusionProof
 }
 
 
