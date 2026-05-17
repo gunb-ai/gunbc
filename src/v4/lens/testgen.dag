@@ -16,9 +16,14 @@
 //     `kind` is one of std/verification.dag's CLOSED AssertKind
 //     (Equals | Diagnostic | Compiles | RoundTrips) — testgen names the
 //     AssertKind, it does NOT coin parallel claim vocabulary:
-//     - type_construction(Atom | Conj | Disj | Arrow | Cardinality
-//       | Instantiation) -> Set<Compiles TestClaim>
-//       (the complete closed 6-connective kernel — no "...")
+//     - type_construction(
+//         (Atom | Conj | Disj | Arrow | Cardinality | Instantiation)
+//         — six-connective kernel — OR
+//         L1 `Value` **behavior** construction — bounded behavior slice
+//       ) -> Set<Compiles TestClaim>
+//       (kernel + behavior are ONE `type_construction` fold via internal
+//       `TypeConstructionSubject` sum — see subject carriers below; not a
+//       sixth top-level testgen category)
 //     - algebra_law(Algebra × Inhabitant × Law) -> Set<Equals TestClaim>
 //     - diagnostic_exhaustiveness(NamedReason variant) -> Set<Diagnostic TestClaim>
 //     - lens_applicability(Lens × Program) -> Set<Equals TestClaim>
@@ -114,7 +119,30 @@
 // derived corpus instead of hand-authoring.
 //
 // ─── Subject carriers (fold once M2 loads v4 std in one compilation unit) ───
-// type TypeConstructionSubject { connective: Connective }
+// type TypeConstructionSubject
+//   = ConnectiveKernel { connective: Connective }
+//   | BehaviorValueSubject {
+//       // L1 `Value` behavior — typed substrate scheduling (not slug-only).
+//       // Manual anchor `t19.type_construction.behavior_value` maps HERE:
+//       // same `TestgenConcept::TypeConstruction` arm as connective rows,
+//       // distinct variant payload (P2 facts-flow-forward).
+//       behavior: Symbol
+//     }
+//
+// Coproduct dissolution (Practice 4) — **internal** sum under the single
+// `type_construction` arm of `TestgenConcept`; classification: 🟢 GREEN.
+// Ledger — five patterns on **forward** `TypeConstructionSubject`:
+//   1. Fact placement — N/A: both variants schedule through the one
+//      `type_construction` fold — not a sixth **top-level** testgen category
+//      (TASKS.md T-19: 6th top-level = operator STOP).
+//   2. Variant-is-data — FAILS: `ConnectiveKernel` vs `BehaviorValueSubject`
+//      have structurally distinct payloads (Connective vs Symbol).
+//   3. Algebraic form — N/A: not a single richer std/algebra carrier.
+//   4. Dimensional — FAILS: one unit picks **one** of kernel vs behavior
+//      slice for this category (mutually exclusive).
+//   5. Parameterized family — FAILS: behavior slice is not `F<Connective>`
+//      nor an enumerated copy of the six-connective set (Practice 7).
+//
 // type AlgebraLawSubject { algebra: Symbol, inhabitant: Symbol, law: Symbol }
 // type DiagnosticExhaustivenessSubject { reason: Symbol }
 // type LensApplicabilitySubject { lens: Symbol, program: Node }
@@ -135,11 +163,13 @@
 //      lens/coverage.dag (T-18 completeness) both dispatch on the
 //      category axis; it is the shared testgen-discriminant for the five
 //      substrate folds, not a per-consumer scattered fact.
-//   2. Variant-is-data — FAILS: the five arms carry STRUCTURALLY DISTINCT
-//      payloads (`TypeConstructionSubject` vs `AlgebraLawSubject` vs …);
-//      collapsing to `{ kind: Int, blob: … }` reintroduces illegal states
-//      and an open `kind` axis — violates P2 + closed-set discipline.
-//      The five-variant sum IS the faithful discriminant.
+//   2. Variant-is-data — FAILS: the five **top-level** arms carry STRUCTURALLY
+//      DISTINCT payloads (`TypeConstructionSubject` vs `AlgebraLawSubject`
+//      vs …); `TypeConstructionSubject` is itself a documented internal sum
+//      (`ConnectiveKernel` | `BehaviorValueSubject` — see above), still
+//      ONE arm here. Collapsing to `{ kind: Int, blob: … }` reintroduces
+//      illegal states and an open `kind` axis — violates P2 + closed-set
+//      discipline. The five-variant top-level sum IS the faithful discriminant.
 //   3. Algebraic form — N/A: a testgen **category** is not an algebra
 //      carrier; categories do not trace to a single richer std/algebra.dag
 //      construction to dissolve into (algebra-law testgen *reads*
