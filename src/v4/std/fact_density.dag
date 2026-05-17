@@ -1,40 +1,45 @@
 // src/v4/std/fact_density.dag
 //
 // Scope: T-30 — structural fact-density / hollow-alias gate (operator 2026-05-17,
-//        DECISIONS.md "D2 REVERSAL + FACT-BUNDLE RESEED", TASKS.md T-30).
-// Anchor: DECISIONS.md §"hollow alias is invisible to every structural gate" +
-//        INVARIANTS P1 (modeling faithfulness) + THESIS substrate spine
+//        DECISIONS.md D2 reversal, TASKS.md T-30).
+// Anchor: docs/modeling/grounding-worked-examples.md (carrier + meaning;
+//        grounding demonstrates decomposition into shared `std/` vocabulary
+//        as `Node`) + docs/modeling-discipline.md (Practice 6 — API-level /
+//        structural enforcement) + INVARIANTS P1.
 //
 // Owns:
-//   - SourceSpecReadFact — positive witness that a subtree carries at least
-//     one spec-sourced structural fact (the fact-bundle discipline).
+//   - SourceSpecReadFact — obligates a non-empty **meaning** subtree
+//     (`body: Node`): machine-readable evidence that the model reads at
+//     least one fact from the source spec into the substrate (NOT the
+//     superseded mid-layer "axes bundle" prose — the bar is grounded
+//     structure per the canonical grounding doc).
 //   - hollow_alias_gate : Node -> Outcome<Bool> — pure whole-tree check;
 //     Produced { value: true } when no hollow pattern is found; Rejected
-//     with a typed Diagnostic on the first violation (fail-closed).
+//     with a typed Diagnostic on violation (fail-closed).
 //
 // Consumes:
 //   - std/node.dag: Node, NodeKind, TypeNode, ComputationNode, Edge,
 //     EdgeLabel (Named / Positional), Connective patterns (Atom,
 //     Instantiation, Disj), all_edges_positional, count, fold
-//   - std/diagnostic.dag: Outcome, Produced, Rejected, Diagnostic, Locus,
-//     NodeLocus, PortLocus, Correction, Unavailable, UserInputBoundary
+//   - std/diagnostic.dag: Outcome, Produced, Rejected, Diagnostic, NodeLocus,
+//     Unavailable, UserInputBoundary
 //
-// Modeling status — T-30 structural tier (ratified prerequisite of T-4):
-//   A *hollow alias* (D2 error) is a carrier that asserts identity to a
-//   std/ vocabulary type while reading **zero** spec-sourced facts from
-//   the external language's own model. The positive witness
-//   `SourceSpecReadFact` is the structural atom the gate counts: every
-//   extdeps primitive bundle MUST embed ≥1 subtree rooted at this sum
-//   (or a future strict superset agreed with T-4 normalize). Until
-//   language files migrate, the gate additionally closes on a **tight
-//   structural proxy**: an `Instantiation` with exactly two positional
-//   children whose targets are both bare `Atom` type nodes and whose
-//   combined subtree carries **no** `SourceSpecReadFact` witness — the
-//   mechanical shape of `type LangX = StdY` with no authored spec reads.
-//   Known ambiguity: a parametric std instantiation with two atom children
-//   (e.g. `List<T>` at the type-application site) matches the same spine
-//   until T-8 resolver / normalize distinguishes language-alias sites;
-//   the witness-first discipline is the authoritative escape hatch.
+// Modeling — T-30 structural tier (prerequisite of T-4):
+//   **Hollow alias** (D2 anti-pattern, operator-reversed 2026-05-17): a
+//   carrier that asserts **identity** to a `std/` vocabulary type while
+//   contributing **zero** machine-readable grounding from the external
+//   spec — the carrier-isolation extreme (`type RustI32 = Int32` and its
+//   kind: identity spine only, no demonstrated decode / no `SourceSpecReadFact`).
+//   **Positive witness:** extdeps models MUST embed ≥1 `SourceSpecReadFact`
+//   subtree on each primitive bundle so the gate has structural material
+//   to count (Practice 3 — facts flow forward into the checkable graph).
+//   **Proxy (until T-8 normalize distinguishes alias sites):** an
+//   `Instantiation` with exactly two positional children, both bare type
+//   `Atom`s, and no `SourceSpecReadFact` anywhere under that node — the
+//   mechanical spine of bare Lang→Std identity with no spec read. Known
+//   ambiguity: innocent two-atom `Instantiation` shapes (e.g. some generic
+//   applications) share the spine; **embedding the witness** is the
+//   authoritative escape hatch (same doc-set rubric the gate mechanizes).
 //
 // Status: T-30 modeled (warm-dove-632).
 // Brief: see BRIEF_TEMPLATE.md; splitting this file requires explicit
@@ -71,10 +76,10 @@ import v4.std.node {
 
 
 // ─────────────────────────────────────────────────────────────────────
-// SourceSpecReadFact — structural witness that a subtree authors a
-// spec-sourced fact (D2-reversal fact-bundle discipline). Language /
-// format carriers embed this sum as a real child of their primitive
-// bundle; the hollow-alias gate counts its presence.
+// SourceSpecReadFact — obligates a non-empty `body: Node` (meaning decode).
+// Extdeps / format carriers embed this sum on each primitive bundle; the
+// hollow-alias gate counts its presence (grounding-worked-examples: carrier
+// + demonstrated meaning; Practice 3 facts-flow-forward).
 //
 // Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
 // classification: 🟢 GREEN (terminal). Ledger — five patterns attempted:
@@ -91,8 +96,6 @@ type SourceSpecReadFact
 
 // Symbol identities owned by this dimension (diagnostic.dag schema).
 data hollow_alias_gate_reason: Symbol = hollow_alias_gate_reason
-
-data hollow_alias_gate_port: Symbol = hollow_alias_gate_port
 
 // The `SourceSpecRead` variant label on `SourceSpecReadFact`'s Disj spine.
 data source_spec_read_variant: Symbol = source_spec_read_variant
@@ -111,7 +114,7 @@ fn edge_target_is_type_atom(e: Edge) -> Bool {
 // positional_atom_targets_count — how many positional children resolve to
 // bare type Atoms (used with arity + discipline guards).
 fn positional_atom_targets_count(children: List<Edge>) -> Int {
-  fold(children, 0, f: fn(acc, e) {
+  fold(children, init: 0, f: fn(acc, e) {
     match e.label {
       Positional =>
         if edge_target_is_type_atom(e: e) {

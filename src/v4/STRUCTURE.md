@@ -16,12 +16,13 @@ src/v4/
   TASKS.md               # the XL task plan (count drift-proof; see T-15)
   DECISIONS.md           # design-decisions ledger (RATIFIED + record)
 
-  std/                   # substrate primitives (14 files)
+  std/                   # substrate primitives (15 files)
     node.dag             # 6 type connectives + 5 L1 behaviors (substrate root)
     algebra.dag          # Magma/Monoid/BoolAlgebra/FreeMonoid (structures only)
     cardinality.dag      # cardinality refinement, P4 decidability
     witness.dag          # Witness<C> — fail-closed lens reads, no Option::None
     diagnostic.dag       # structural Diagnostic { reason, at, correction }
+    fact_density.dag     # T-30 hollow-alias gate; SourceSpecReadFact witness + hollow_alias_gate
     logic.dag            # Bool — classical two-valued logic (Boolean algebra)
     nat.dag              # Nat — natural numbers (Peano); numeric-tower base
     machine.dag          # Byte/Word*/MachineWidth/PointerWidth — machine repr
