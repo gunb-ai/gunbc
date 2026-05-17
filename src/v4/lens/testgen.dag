@@ -122,11 +122,13 @@
 // type TypeConstructionSubject
 //   = ConnectiveKernel { connective: Connective }
 //   | BehaviorValueSubject {
-//       // L1 `Value` behavior — typed substrate scheduling (not slug-only).
-//       // Manual anchor `t19.type_construction.behavior_value` maps HERE:
-//       // same `TestgenConcept::TypeConstruction` arm as connective rows,
-//       // distinct variant payload (P2 facts-flow-forward).
-//       behavior: Symbol
+//       // L1 computation substrate: **closed** `Behavior` from
+//       // `std/node.dag` (C1 — Value | Transform | Branch | Loop | Bind).
+//       // Manual anchor `t19.type_construction.behavior_value` schedules the
+//       // **Value** unit arm only — a typed substrate fact (P2 / API-level
+//       // enforcement), not a K-1 `Symbol` name-ref as the behavioral
+//       // classifier. Slug remains a stable manifest key (K-1 elsewhere).
+//       behavior: Behavior
 //     }
 //
 // Coproduct dissolution (Practice 4) — **internal** sum under the single
@@ -136,7 +138,8 @@
 //      `type_construction` fold — not a sixth **top-level** testgen category
 //      (TASKS.md T-19: 6th top-level = operator STOP).
 //   2. Variant-is-data — FAILS: `ConnectiveKernel` vs `BehaviorValueSubject`
-//      have structurally distinct payloads (Connective vs Symbol).
+//      have structurally distinct payloads (`Connective` vs `Behavior` from
+//      `std/node.dag` — both closed C1 classifiers, not a free-name axis).
 //   3. Algebraic form — N/A: not a single richer std/algebra carrier.
 //   4. Dimensional — FAILS: one unit picks **one** of kernel vs behavior
 //      slice for this category (mutually exclusive).

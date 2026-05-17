@@ -21,8 +21,8 @@
 //       (9)   diagnostic-exhaustiveness — Diagnostic tier
 //       (10)  lens-applicability — Equals tier
 //       (11)  bidirectional-roundtrip — RoundTrips tier / Boundary layer
-//       (12)  type-construction — L1 `Value` behavior (`BehaviorValueSubject`
-//             arm of `TypeConstructionSubject` in lens/testgen.dag)
+//       (12)  type-construction — L1 `Value` via closed **`Behavior`** payload
+//             (`BehaviorValueSubject` in `lens/testgen.dag`; `Value` unit)
 //
 // Consumes:
 //   - (none — self-contained until M2 module graph links std/)
@@ -142,9 +142,11 @@ data manual_anchor_roundtrip_boundary: ManualTestgenAnchor = {
 }
 
 
-// Row (12): L1 `Value` behavior — forward-maps to `BehaviorValueSubject` in
-//         `lens/testgen.dag` (internal arm of `TypeConstructionSubject`;
-//         testgen_category=0 stays correct; P2 substrate fact, not slug-only).
+// Row (12): L1 `Value` **behavior** — `BehaviorValueSubject { behavior: Behavior }`
+//         with `behavior` pinned to the **`Value`** unit of `std/node.dag`'s
+//         closed `Behavior` sum (not `Symbol`); see `lens/testgen.dag` subject
+//         carriers. `testgen_category=0` unchanged (internal arm of
+//         `TypeConstructionSubject`).
 data manual_anchor_tc_behavior_value: ManualTestgenAnchor = {
   slug: "t19.type_construction.behavior_value",
   tier: 0,
