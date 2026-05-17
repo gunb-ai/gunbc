@@ -8,6 +8,7 @@ module v4.lens.coverage
 
 
 import v4.std.node { Connective, Behavior }
+import v4.std.verification { ImpossibleBugClass }
 import v4.lens.testgen { TestgenConcept, AlgebraLawSubject }
 
 
@@ -26,7 +27,7 @@ type L7CoverageKey = AlgebraLawSubject
 
 
 type ImpossibleBugCoverageKey {
-  bug_class: String
+  bug_class: ImpossibleBugClass
 }
 
 
