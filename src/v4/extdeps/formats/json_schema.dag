@@ -4,7 +4,7 @@
 // Anchor: https://json-schema.org/draft/2020-12/json-schema-core (JSON Schema Draft 2020-12 Core — fixed edition)
 //
 // Owns:
-//   - JsonSchema { type, properties, required, items, ... }
+//   - JsonSchema { type, properties/required/items presence slots, ... }
 //   - Validation: validate(JsonValue, JsonSchema) -> Result<(), Diagnostic>
 //   - Type derivation: schema_to_type(JsonSchema) -> Result<Node (TypeNode), Diagnostic>
 //     (this is the load-bearing capability — given a schema, generate corresponding .dag types)
@@ -65,8 +65,9 @@ import v4.std.collection { Set }
 // `JsonValue` wrappers, so schema composition stays explicitly typed.
 //
 // RECURSION (node.dag A1). `JsonSchema` references itself through
-// `Map<String, JsonSchema>` (`properties`) and `JsonSchemaItemsSlot`
-// (`items`) — regular recursion ⇒ admissible; termination for walks is
+// **`JsonSchemaPropertiesPresent.properties`** (`Map<String, JsonSchema>`)
+// and **`JsonSchemaItemsSchema.item_schema`** — regular recursion ⇒
+// admissible; termination for walks is
 // the implicit JSON value / schema tree descent (same class as `JsonValue`).
 //
 // `JsonValue` is the validation SUBJECT and the carrier for keyword values
@@ -147,6 +148,36 @@ type JsonSchemaTypeSlot
 type JsonSchemaItemsSlot
   = JsonSchemaItemsAbsent
   | JsonSchemaItemsSchema { item_schema: JsonSchema }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// JsonSchemaPropertiesSlot — the `"properties"` keyword (Core applicator).
+// **P2 optional-keyword presence:** distinguishes **keyword absent** from
+// **keyword present with `{}`** at the JSON surface (same discipline as
+// `JsonSchemaTypeSlot` / `JsonSchemaItemsSlot` — no empty-map collapse).
+//
+// Anchor: https://json-schema.org/draft/2020-12/json-schema-core#section-10.3.2
+//
+// Coproduct dissolution (Practice 4) — 🟢 GREEN (terminal). Ledger: same
+// scan as `JsonSchemaTypeSlot` (absent vs nested object map).
+type JsonSchemaPropertiesSlot
+  = JsonSchemaPropertiesAbsent
+  | JsonSchemaPropertiesPresent { properties: Map<String, JsonSchema> }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// JsonSchemaRequiredSlot — the `"required"` keyword (Validation §6.5.3).
+// **P2 optional-keyword presence:** distinguishes **keyword absent** from
+// **keyword present** (including **`[]`** at the JSON wire — element
+// uniqueness is structural via **`Set<String>`** in the Present variant).
+//
+// Anchor: https://json-schema.org/draft/2020-12/json-schema-validation#section-6.5.3
+//
+// Coproduct dissolution (Practice 4) — 🟢 GREEN (terminal). Ledger: absent
+// vs present-with-set (not conflated with “no constraint”).
+type JsonSchemaRequiredSlot
+  = JsonSchemaRequiredAbsent
+  | JsonSchemaRequiredPresent { required: Set<String> }
 
 
 // ─────────────────────────────────────────────────────────────────────
