@@ -15,6 +15,12 @@
 //! user declaration range (`lower.rs` — `reject_user_unparsed_scaffolds`), so the
 //! gate logic is mirrored here as a **pure** harness until those bodies ship in `.dag`.
 //!
+//! **Practice-4 🟢/🟡 lines below:** harness-side §4 color receipts on this **P5(b)** path
+//! (`INVARIANTS.md` §P5(b) names the file). The repo has **no** CI step today that blindly
+//! greps these emojis across `src/v3/compiler/src/**/*.rs` as if every hit were a user `.dag`
+//! coproduct tag; if such automation is added, **exclude** paths with an explicit P5(b) row so
+//! interim hand-Rust mirrors are not misclassified.
+//!
 //! ## Interim-floor hollow predicate (three prongs + exemption)
 //!
 //! A declaration is **hollow** when **all three** hold on the harness projection (fail
