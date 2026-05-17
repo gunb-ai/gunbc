@@ -39,8 +39,9 @@ closing at T-15.
   T-8   compiler/03_normalize.dag + 03_resolve.dag   [needs T-7; T-28 module-graph substrate is bundled here]
   T-9   compiler/04_infer.dag            [needs T-8, T-2, T-3, and T-4 — T-4 enters from the side branch below, not the spine]
   T-10  compiler/05_emit.dag + 00_compile.dag       [needs T-9, T-4]
-  T-11  emit per-target specialization (extends T-10 across all 5 Shape A targets)
+  T-11  emit per-target specialization (extends T-10 across all 5 Shape A targets)   [needs T-10]
   T-16  Full-stack omni-emission demo: ONE .dag → Rust+C++ backend
+        + SQL DDL schema (Shape-B, via T-4.6 sql.dag — Theme-A #4)
         + React/TS frontend + OpenAPI wire contract
         [needs T-4, T-4.5, T-4.6, T-4.7, T-4.8, T-10, T-11]
         (T-4.8 coordination.dag is load-bearing — T-16 uses it for
