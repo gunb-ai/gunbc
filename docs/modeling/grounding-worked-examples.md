@@ -146,7 +146,8 @@ facts; it is related to `Real`, not identical to it.
 **Step-by-step coercion — `SpiceVoltage ↔ Rust f64`:**
 1. `SpiceVoltage` grounds to `Real` (continuous, uncountable);
    `f64` grounds to IEEE-754 binary64 (finite — 2⁶⁴ values —
-   approximating `Real`; `std/float.dag` `ApproximateField`).
+   approximating `Real`; `dsl/std/float.dag` / `src/v4/std/float.dag`
+   `ApproximateField`).
 2. catamorphism: exact physical `Real` vs `ApproximateField(binary64)` —
    related but not equal.
 3. finite `f64 → SPICE`: **exact** (each finite binary64 value denotes a
