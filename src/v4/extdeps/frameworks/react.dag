@@ -305,7 +305,11 @@ type ReactHookSite
 
 // ═════════════════════════════════════════════════════════════════════
 // ReactPropsSite
-// Anchor: https://react.dev/learn/passing-props-to-a-component
+// Anchor: https://react.dev/learn/passing-props-to-a-component — props bag for the
+//         `props` argument to `createElement` / component receives; **`key` and
+//         `ref`** passed there are lifted to **`element.key` / `element.ref`** on the
+//         element object (not modeled inside this record — see `ReactHostElement` /
+//         `ReactCompositeElement` / `Fragment` / `Text` arms).
 type ReactPropsSite {
   props_type_ref: ReactCrossDeclRef
   props_value_ref: ReactCrossDeclRef
@@ -324,9 +328,15 @@ type ReactFunctionComponent {
 
 // ═════════════════════════════════════════════════════════════════════
 // ReactHostElement
-// Anchor: https://react.dev/reference/react-dom/components
+// Anchor: https://react.dev/reference/react-dom/components +
+//         https://react.dev/reference/react/createElement — `key` / `ref` passed in
+//         the `props` argument are **not** retained on `element.props`; they appear as
+//         `element.key` / `element.ref` on the returned element object (react.dev
+//         Parameters / Returns).
 type ReactHostElement {
   tag_ref: ReactCrossDeclRef
+  key: ReactOptRef
+  ref: ReactOptRef
   props: ReactPropsSite
   child_refs: List<ReactCrossDeclRef>
 }
@@ -334,9 +344,12 @@ type ReactHostElement {
 
 // ═════════════════════════════════════════════════════════════════════
 // ReactCompositeElement
-// Anchor: https://react.dev/reference/react/createElement
+// Anchor: https://react.dev/reference/react/createElement — same `key` / `ref`
+//         extraction as host elements (`element.key` / `element.ref`, not `props`).
 type ReactCompositeElement {
   component_ref: ReactCrossDeclRef
+  key: ReactOptRef
+  ref: ReactOptRef
   props: ReactPropsSite
   child_refs: List<ReactCrossDeclRef>
 }
@@ -358,8 +371,10 @@ type ReactCompositeElement {
 type ReactElement
   = Host { host: ReactHostElement }
   | Composite { composite: ReactCompositeElement }
-  | Fragment { child_refs: List<ReactCrossDeclRef> }
-  | Text { text_value_ref: ReactCrossDeclRef }
+  // Anchor: https://react.dev/reference/react/Fragment — keyed fragments carry
+  //         `key` on the element object (same createElement extraction as host/composite).
+  | Fragment { key: ReactOptRef, child_refs: List<ReactCrossDeclRef> }
+  | Text { key: ReactOptRef, text_value_ref: ReactCrossDeclRef }
 
 
 // ═════════════════════════════════════════════════════════════════════

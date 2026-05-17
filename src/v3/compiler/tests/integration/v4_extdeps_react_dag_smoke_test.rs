@@ -50,6 +50,35 @@ fn assert_use_memo_dependencies_field_is_inline_deps_argument(dag: &v3_compiler:
     );
 }
 
+/// createElement lifts `key` / `ref` out of `props` onto the element object (`element.key`,
+/// `element.ref` per react.dev); host elements must carry them as fields, not only inside `props`.
+fn assert_react_host_element_has_key_and_ref_fields(dag: &v3_compiler::Dag) {
+    let host_el = dag
+        .declaration_by_name("ReactHostElement")
+        .expect("ReactHostElement should exist after compiling react.dag");
+    let TypeConnective::Conj { children } = &host_el.connective else {
+        panic!(
+            "ReactHostElement: expected record (Conj), got {:?}",
+            host_el.connective
+        );
+    };
+    let opt_ref = dag
+        .declaration_by_name("ReactOptRef")
+        .expect("ReactOptRef should exist in this module");
+    for label in ["key", "ref"] {
+        let field = children
+            .iter()
+            .find(|f| f.label == label)
+            .unwrap_or_else(|| panic!("ReactHostElement should declare `{label}` (createElement lift)"));
+        let ty = dag.declaration(field.ty);
+        assert_eq!(
+            ty.id, opt_ref.id,
+            "ReactHostElement.{label} must be `ReactOptRef`, got {:?}",
+            ty.name
+        );
+    }
+}
+
 #[test]
 fn v4_extdeps_react_dag_compiles() {
     match compile_to_dag(REACT_DAG, REACT_PATH) {
@@ -60,6 +89,7 @@ fn v4_extdeps_react_dag_compiles() {
                 dag.diagnostics().iter().collect::<Vec<_>>()
             );
             assert_use_memo_dependencies_field_is_inline_deps_argument(&dag);
+            assert_react_host_element_has_key_and_ref_fields(&dag);
         }
         Err(CompileError::Semantic(dag)) => panic!(
             "{REACT_PATH}: semantic errors: {:?}",
