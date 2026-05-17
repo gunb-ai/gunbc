@@ -80,9 +80,15 @@ discovered only when the seed fails. It is modeled:
   carrier (or formally fixing "a model IS a `Node`") is **new substrate
   T-32 Phase 1 must land before the frozen sub-model can be declared** —
   it is not an existing authority to point at.
-- **`footprint(snapshot)`** — a **fold over the snapshot's `Node`
-  tree** collecting every construct it uses. A pure lens.
-- **The gate** — `Witness< footprint(snapshot) ⊆ seed_capability >`:
+- **`footprint`** — a **fold over the seed's projection inputs**
+  `{snapshot, target_model, runtime_model}` (§3) collecting every
+  construct the seed must consume: the source-language constructs the
+  snapshot uses, *and* the lowering/runtime constructs its emission
+  toward `target_model` / `runtime_model` touches. A pure lens. Folding
+  over the snapshot alone undercounts — `seed_capability` includes "the
+  lowering the seed performs" (bullet above), so `footprint` must span
+  that same closure for the gate's `==` to be honest.
+- **The gate** — `Witness< footprint ⊆ seed_capability >`:
   a decidable subset relation over two finite sets of declared
   constructs. It runs *without running the seed*, and on failure names
   the *specific construct* that escaped the subset.
@@ -97,9 +103,9 @@ This answers two otherwise-opaque questions structurally:
   extending the frozen sub-model (a seed change).
 
 **Minimum seed** is then measurable: the minimum frozen subset *is*
-`footprint(snapshot)` — the seed must comprehend exactly what the
-snapshot uses, nothing more. "Is the seed minimal?" = "is
-`seed_capability == footprint(snapshot)`?" — checkable. The seed shrinks
+`footprint` — the seed must comprehend exactly the constructs its three
+projection inputs use, nothing more. "Is the seed minimal?" = "is
+`seed_capability == footprint`?" — checkable. The seed shrinks
 by writing the v4 compiler frugally; the footprint fold measures it.
 
 ## 5. The bootstrap circularity, modeled
