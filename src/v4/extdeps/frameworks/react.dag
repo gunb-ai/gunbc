@@ -7,6 +7,14 @@
 //   https://github.com/facebook/react/releases/tag/v19.2.0 . Rolling API index
 //   https://react.dev/reference/react (partition + hook list C1-tracked against
 //   the semver pin; site-only drift without a matching pin edit = STOP).
+// Pin call-signature fidelity (`dsl/extdeps/extdeps.md`): each `ReactHookSite` arm
+// carries an explicit **react.dev** anchor for the **react@19.2.0** call shape modeled
+// there; `ReactOptRef` / `ReactHookInlineDependenciesArgument` are used **only** where
+// the pinned docs mark an operand optional or admit omit-vs-present deps. Required
+// operands (e.g. `createContext(defaultValue)`, `useMemo` deps) are plain
+// `ReactCrossDeclRef` fields — `null` defaults are still declaration-backed refs, not
+// “missing fields”. **semver / hooks-index bump** = mandatory re-audit of **every** arm
+// against that tag’s react.dev surface (STOP on silent drift).
 // Anchor: composition mental model — https://react.dev/learn
 // Unifies: (per THESIS:188) framework spec = transport spec = interpreter
 //         runtime where applicable. ONE substrate carrier set per React slice;
