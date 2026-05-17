@@ -7,7 +7,9 @@
 module v4.lens.coverage
 
 
+import v4.std.node { Symbol }
 import v4.std.verification { ImpossibleBugClass }
+import v4.extdeps.languages.dag { dag_language_model_surface_id }
 import v4.lens.testgen { TestgenConcept, AlgebraLawSubject, TypeConstructionSubject }
 
 
@@ -16,7 +18,10 @@ type Coverage<C> {
 }
 
 
-type L6CoverageKey = TypeConstructionSubject
+type L6CoverageKey {
+  subject: TypeConstructionSubject
+  language: Symbol
+}
 
 
 type L7CoverageKey = AlgebraLawSubject

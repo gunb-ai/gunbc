@@ -54,7 +54,12 @@
 module v4.extdeps.languages.dag
 
 
-import v4.std.node { Conj, Node, NodeKind, TypeNode }
+import v4.std.node { Conj, Node, NodeKind, TypeNode, Symbol }
+
+
+// K-1 opaque identity for this LanguageModel — pairs with `lens/coverage.dag`
+// `L6CoverageKey.language` (THESIS L6 form×target; TASKS T-18).
+data dag_language_model_surface_id: Symbol = dag_language_model_surface_id
 
 
 // ─────────────────────────────────────────────────────────────────────
