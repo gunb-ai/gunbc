@@ -114,6 +114,10 @@ src/v4/
 **Total: 66 .dag files + 5 docs + 5 .gitkeep = 76 files.** (Per invariant
 #1 the enumeration above — not the count — is authoritative; the count is
 a checksum, updated on every operator-ratified file addition/removal.
+Count scope = the substrate tree enumerated above plus the `test/claim/
+impossible_bug/` fixtures; it excludes the `test/claim/manual/` Phase-1.5
+hand-authored anti-regression anchors (a raw `src/v4/**/*.dag` filesystem
+count therefore reads higher by the manual-anchor file count).
 +1 .dag 2026-05-16: `extdeps/languages/dag.dag` — operator-ratified C1 closed-tree
 extension (Option A, relay merry-ibex-337). +1 .dag 2026-05-17:
 `extdeps/languages/resolver.dag` — operator-ratified D4. −5 .dag 2026-05-15:
