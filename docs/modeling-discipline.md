@@ -421,8 +421,10 @@ four things — nothing else survives:
 3. **A per-carrier anchor** — at most one `// Anchor: <spec URL>` line.
 4. **A one-line concept tag** — at most one per type, and *only* where
    the concept is genuinely non-obvious from the name + structure (e.g.
-   `// coproduct dissolution`). Not a description of the type; not a
-   `Practice N: ...` rationale line.
+   `// coproduct dissolution`), *or* a one-line cite to a `DECISIONS.md`
+   entry (e.g. `// coincides: <DECISIONS.md ref>` — the Practice-8
+   coincidence cite). Not a description of the type; not a
+   `Practice N: ...` rationale line, not a `see docs/X` pointer.
 
 Everything else is **removed**: per-type descriptions, all Practice-N
 rationale, all multi-line rationale, `Seams`/`Brief`/process-meta
