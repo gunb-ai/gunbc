@@ -304,6 +304,23 @@ type WaitedTerminatedProcess {
   parent: ProcessId
 }
 
+// Coproduct dissolution (Practice 4 / INVARIANTS P1) — classification:
+// 🟡 YELLOW, first-consumer-confirmed. Capture can drain output from a
+// still-running child or from a child whose lifecycle was already waited
+// while preserving pipe authority. The first capture realization
+// consumer must confirm both paths use the same pipe source carrier and
+// do not route through an ambient process table side channel. Named
+// trigger: T-4.5 effect/resolver seam lands capture realization.
+// Ledger:
+//   1. Fact placement — FAILS: capture source state is consumed
+//      uniformly by capture, not per-consumer metadata.
+//   2. Variant-is-data — FAILS: each variant carries the lifecycle
+//      carrier that owns CapturedOutputPipes for that state.
+//   3. Algebraic form — N/A: capture source is not an algebra carrier.
+//   4. Dimensional — FAILS: one capture request uses either live or
+//      post-wait authority, not both.
+//   5. Parameterized family — FAILS: the variants are different
+//      lifecycle carriers, not a projection over identical payloads.
 type CaptureSource
   = Live { process: RunningProcess }
   | Waited { process: WaitedTerminatedProcess }

@@ -125,6 +125,23 @@ import v4.std.text { Char }
 // excluding slash and null and not equal to `.` or `..`, with any
 // portable-filename policy expressed as an explicit profile. Current
 // carrier: `String` with the tracked refinement scaffold above.
+//
+// Coproduct dissolution (Practice 4 / INVARIANTS P1) — classification:
+// 🟡 YELLOW, first-consumer-confirmed. POSIX gives `.` and `..`
+// component semantics distinct from ordinary filename spellings; the
+// first path-realization consumer must confirm it maps these variants
+// without string sentinels or normalization side channels. Named trigger:
+// T-4.5 filesystem realization seam lands path parsing/resolution.
+// Ledger:
+//   1. Fact placement — FAILS: dot/dotdot/name is consumed uniformly by
+//      path resolution, not per-operation metadata.
+//   2. Variant-is-data — FAILS: CurrentComponent and ParentComponent are
+//      semantic component facts; NamedComponent carries the only spelling.
+//   3. Algebraic form — N/A: component kind is not an algebra carrier.
+//   4. Dimensional — FAILS: one pathname component is exactly one of
+//      current, parent, or named.
+//   5. Parameterized family — FAILS: the variants are not the same
+//      payload shape projected over an enumerable set.
 type PathComponent
   = CurrentComponent
   | ParentComponent
@@ -160,6 +177,23 @@ type AbsolutePath {
 type RelativePath
   = CurrentDirectory
   | RelativeDescendant { first: PathComponent, rest: List<PathComponent> }
+
+// Coproduct dissolution (Practice 4 / INVARIANTS P1) — classification:
+// 🟡 YELLOW, first-consumer-confirmed. Relative current directory and a
+// non-empty relative descendant are distinct POSIX path facts; the first
+// path-realization consumer must confirm empty relative text is rejected
+// or normalized into CurrentDirectory explicitly. Named trigger: T-4.5
+// filesystem realization seam lands path parsing/resolution.
+// Ledger:
+//   1. Fact placement — FAILS: current-directory vs descendant is
+//      consumed uniformly by all path operations.
+//   2. Variant-is-data — FAILS: RelativeDescendant carries first/rest to
+//      make non-emptiness structural; CurrentDirectory is nullary.
+//   3. Algebraic form — N/A: relative path kind is not an algebra.
+//   4. Dimensional — FAILS: a relative path is current directory OR a
+//      descendant path, not both.
+//   5. Parameterized family — FAILS: the variants are not the same
+//      payload shape projected over an enumerable set.
 
 // Coproduct dissolution (Practice 4 / INVARIANTS P1) — classification:
 // 🟡 YELLOW, first-consumer-confirmed. The POSIX absolute-vs-relative split
@@ -219,6 +253,22 @@ type FileKind
 // `FileKindResolutionPolicy` is the POSIX stat-vs-lstat choice. Follow
 // symlinks for resolved target kind (`stat`-like), or do not follow and
 // observe the link itself (`lstat`-like).
+//
+// Coproduct dissolution (Practice 4 / INVARIANTS P1) — classification:
+// 🟡 YELLOW, first-consumer-confirmed. POSIX exposes both stat-like
+// symlink-following and lstat-like no-follow observations; the first
+// file_kind realization consumer must confirm the resolver dispatches on
+// this carrier and never hides the policy in prose or path spelling.
+// Named trigger: T-4.5 filesystem realization seam lands file_kind.
+// Ledger:
+//   1. Fact placement — FAILS: resolution policy is a boundary fact of
+//      the file_kind operation, not per-result metadata.
+//   2. Variant-is-data — FAILS: each variant is a distinct observation
+//      mode, with no shared payload.
+//   3. Algebraic form — N/A: resolution policy is not an algebra.
+//   4. Dimensional — FAILS: one request follows symlinks OR does not.
+//   5. Parameterized family — FAILS: the variants are not a projection
+//      over an independently modeled payload family.
 type FileKindResolutionPolicy
   = FollowSymlinks
   | DoNotFollowSymlinks
