@@ -13,7 +13,8 @@
 // Consumes:
 //   - std/node.dag, std/diagnostic.dag, std/witness.dag
 //   - std/collection.dag: `Set<T>` (alias `PointwisePower<T>` — uniqueness
-//     for `"type"` array form per Validation §6.1.1; lane-wide authority)
+//     for `"type"` array form per Validation §6.1.1 and for **`required`**
+//     property names per §6.5.3; lane-wide authority)
 //   - extdeps/formats/json.dag: JsonValue (subject of validation)
 //
 // Status: scaffold — fill per TASKS.md T-4.6
@@ -155,7 +156,7 @@ type JsonSchemaItemsSlot
 // Anchor: https://json-schema.org/draft/2020-12/json-schema-core#section-4.3
 //
 // Coproduct dissolution (Practice 4 / INVARIANTS P1) — 🟢 GREEN (terminal).
-// Ledger — five patterns attempted:
+// Ledger — six patterns attempted:
 //   1. Fact placement — FAILS: schema kind is uniform across validation,
 //      emit, and OpenAPI `components.schemas` ingestion.
 //   2. Variant-is-data — FAILS: boolean schemas are nullary; object schemas
@@ -167,13 +168,16 @@ type JsonSchemaItemsSlot
 //      object form at the JSON value grammar level for this subset.
 //   5. Parameterized family — FAILS: variants are heterogeneous, not `F<X>`
 //      over one enumerable index set.
+//   6. `JsonSchemaInstance.required` uses **`Set<String>`** — Validation
+//      §6.5.3: elements MUST be strings and **unique**; structural via
+//      **std/collection.dag** `Set` (same carrier as `"type"` array uniqueness).
 type JsonSchema
   = JsonSchemaTrue
   | JsonSchemaFalse
   | JsonSchemaInstance {
       instance_type: JsonSchemaTypeSlot,
       properties: Map<String, JsonSchema>,
-      required: List<String>,
+      required: Set<String>,
       items: JsonSchemaItemsSlot,
       additional_keywords: Map<String, JsonValue>,
     }
@@ -191,7 +195,10 @@ type JsonSchema
 //   operation (json.dag seam #3); a structurally constructible but spec-
 //   invalid `JsonSchemaInstance` (e.g. contradictory `type` vs payload,
 //   **empty `JsonSchemaTypeUnion.types`** encoding **`[]`** at the JSON surface
-//   per Validation §6.1.1 — duplicates are structurally excluded via `Set<…>`)
+//   per Validation §6.1.1 — duplicates structurally excluded via `Set<…>`;
+//   **`required` names absent from `properties`** or other §6.5.3 / object
+//   consistency failures — duplicate strings in `required` excluded via
+//   **`Set<String>`**)
 //   validates/derives `Rejected`, never a fabricated success.
 //     (a) scaffold doc — THIS note.
 //     (b) bounds on use — no symbols exported yet; consumers wait.
