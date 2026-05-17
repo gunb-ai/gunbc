@@ -714,14 +714,24 @@ type LlvmSsaValue<T> = Conj {
 ```
 
 **Step-by-step coercion shape — `LlvmSsaValue<i32> -> Outcome<IR Int32>`:**
-1. LLVM `i32` grounds to 32 bits interpreted by the consuming operation.
-2. an integer operation such as `add i32` supplies two's-complement integer
-   meaning for the same 32 bits.
-3. the coercion fold compares the use-site integer meaning
-   to IR `Int32`.
-4. when the consuming operation fixes integer meaning, return `Produced`;
-   without that use-site meaning, raw `i32` is only a bit-vector, so return
-   `Rejected { diagnostic: Diagnostic }` instead of inventing integer meaning.
+1. LLVM `i32` grounds to **32 bits** — a width fact only. LLVM integer
+   types are **sign-agnostic**; `i32` itself carries no signedness.
+2. the consuming operation supplies arithmetic meaning — but not always
+   signedness. `add i32` is **signedness-neutral**: two's-complement
+   `add` is the *identical* operation for signed and unsigned operands,
+   so `add` grounds a 32-bit two's-complement integer, **not** a signed
+   one. LLVM carries signedness only in the operations where it differs —
+   `sdiv`/`udiv`, `srem`/`urem`, `sext`/`zext`, etc.
+3. IR `Int32` is **signed** (`Compose<Int, MachineWidth<Word32>>` — `Int`
+   is the signed carrier). So the coercion fold needs a signedness fact
+   the source must actually carry.
+4. a **signedness-bearing** use-site (`sdiv i32`, `sext`, a typed
+   parameter, …) supplies that fact → return `Produced`. `add i32` alone,
+   or raw `i32` with no signedness-bearing use, returns
+   `Rejected { diagnostic: Diagnostic }` — reading *signed* `Int32` out of
+   a sign-neutral operation is fact fabrication. (A sign-agnostic 32-bit
+   two's-complement integer is itself a faithful target; only the
+   **signed** `IR Int32` needs the extra fact.)
 
 SSA identity grounds as the DAG definition edge. Mutability is not modeled
 because LLVM SSA values are not mutable cells.
