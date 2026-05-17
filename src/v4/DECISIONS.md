@@ -363,9 +363,11 @@ Operator-stated principle (2026-05-17), governing the reseed:
 - **Phase 2 — rework the entire T-## program** around fact-bundle
   modeling, first-class, plus the `std/` substrate axes the model needs
   that do not exist yet: signedness, representation, and an
-  **exact-real / physical-quantity carrier** — surfaced by the SPICE
-  worked example, where a node voltage is an exact rational that the
-  approximate `f64` carrier cannot ground without declared loss. Phase 2
+  **exact-real carrier plus a physical-quantity carrier** — surfaced by
+  the SPICE worked example, where a node voltage is an exact real value
+  carrying a physical quantity (volts) that the approximate `f64` carrier
+  cannot ground without declared loss. (Rational is at most a narrower
+  inhabitant of the exact-real carrier, not the carrier itself.) Phase 2
   also owns the structural fact-density / hollow-alias gate deferred from
   Phase 1.
 - **Phase 3 — execution.** Per-task / per-language / per-compiler-layer

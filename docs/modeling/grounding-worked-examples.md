@@ -31,10 +31,13 @@ compare directly. It is not an *engine* — per `DECISIONS.md` U1 it makes
 no decisions and runs no search.
 
 **Coincidence is mechanical structural equality.** Two groundings
-*coincide* when their canonical `Node` forms are equal — which `node.dag`
-already decides: `content_hash = merkle_fold ∘ canonical` (B1-CANON).
-Comparing groundings *is* comparing content-hashes of canonical `Node`s;
-decidable, not free-form semantic equivalence.
+*coincide* when their canonical `Node` forms are equal — the equality
+`node.dag`'s B1-CANON *contract* defines: `content_hash = merkle_fold ∘
+canonical`. Comparing groundings *is* comparing content-hashes of
+canonical `Node`s; decidable, not free-form semantic equivalence. (B1-CANON
+is the operator-ratified *specification* of that fold; `node.dag` does not
+yet carry a realized `canonical` / `content_hash` function body — see
+**Design status** below.)
 
 **The shared vocabulary keeps the fold mechanical.** Facts are *sourced*
 independently — each type grounded from *its own* spec — but must be
@@ -45,11 +48,16 @@ vocabulary (`bit_count` vs `width`), their `Node` trees would differ
 would wrongly say "not equal." Shared vocabulary is load-bearing: it is
 what makes the fold both mechanical *and* complete.
 
-**Design status.** The hard half already exists: `node.dag` has the
-canonical-form fold + content-hash, and `DECISIONS.md` T-9/C1 specifies
-the comparison as *decidable by construction* (structural recursion over
-the closed declared candidate set). What is not yet wired is the parallel
-walk — mechanical, not research. The genuine hard work is the **modeling
+**Design status — specified, not yet realized.** The hard half is
+*designed and ratified*, not *built*: `node.dag`'s B1-CANON ratifies the
+canonical-form + content-hash **contract** (`content_hash = merkle_fold ∘
+canonical`), and `DECISIONS.md` T-9/C1 specifies the comparison as
+*decidable by construction* (structural recursion over the closed declared
+candidate set). But neither the canonical fold nor the coercion zip-fold
+is a realized `.dag` function body yet — `node.dag` carries the contract,
+not an implementation. What stays true is that this is *mechanical
+design*, not a research problem: the parallel walk is determined by the
+contract, not invented. The genuine hard work is the **modeling
 discipline**: forcing every spec fact into the shared vocabulary so the
 fold can see identity — Phase 1's job. One compile-time residue stays
 deferred: refinement subsumption (`p ⟹ q`) is not a pure tree-walk and
