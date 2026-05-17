@@ -141,57 +141,25 @@ import v4.std.node { Diff, Node, Path }
 import v4.std.witness { Witness }
 
 
-// Dag — the graph-state parameter for this lens. This is an alias to
-// Node, not a second graph substrate: v4's universal pivot is the one
-// recursive Node tree (std/node.dag A1), and IR-1 likewise keeps
-// InferredTree as Node + flat inferred facts rather than a second
-// recursive carrier. The alias only names the affected-set lens's input
-// role so the declared read surface matches the T-21 `(Dag, Diff)`
-// contract without creating parallel authority.
+// Role alias only: graph authority remains std/node.dag Node.
 type Dag = Node
 
 
-// ReExecNode — one affected occurrence in the Dag. `at` carries the D1
-// Path identity forward from the Diff seed / graph traversal; consumers
-// must not rediscover the occurrence for a bare Node value. `node` is the
-// subtree to re-execute or project from. The pair preserves P2 facts-flow-
-// forward while staying finite via the enclosing List.
+// Affected node occurrence. `at` is the D1 Path; `node` is that subtree.
 type ReExecNode {
   at: Path
   node: Node
 }
 
 
-// ReExecFrontier — the finite node-occurrence frontier that must
-// re-execute after a structural Diff. This is a List<ReExecNode>, not
-// Set<Node>: collection.dag's bare Set<T> intentionally denotes arbitrary
-// subsets and does not encode finiteness, while a frontier over a finite
-// Dag must be finite; a bare Node would also drop the occurrence/path
-// identity D1 already provides. The eventual read emits each Path at most
-// once in deterministic traversal order; that uniqueness/minimality proof
-// belongs to the read fold, not to a bare Set carrier. File/module
-// affectedness remains a later projection over these node occurrences,
-// never a second tier. Cache reuse is the complement read through B1
-// content_hash and the same Dag, so it is not duplicated as another field
-// here.
+// Finite node-occurrence frontier; file/module affectedness is projection.
 type ReExecFrontier {
   rerun: List<ReExecNode>
 }
 
 
-// AffectedSetRead — machine-readable shape of the T-21 lens read.
-//
-// The actual `read` implementation must be a fold over already-declared
-// authorities:
-//   - Diff seed paths from std/node.dag D1
-//   - unchanged detection from std/node.dag B1 content_hash
-//   - use->def traversal from compiler/03_resolve.dag Symbol equality,
-//     preserved by compiler/04_infer.dag B-4
-//   - per-Arrow effect granularity from lens/effect.dag B-5
-//
-// Those folds are not re-declared here. This file owns the affected-set
-// lens surface and frontier carrier; the named upstream files own the
-// facts the eventual read consumes.
+// T-21 read surface. Fold inputs stay upstream-owned:
+// D1 Diff/Path, B1 content_hash, B-4 Symbol equality, B-5 Arrow effects.
 type AffectedSetRead {
   read: fn(Dag, Diff) -> Witness<ReExecFrontier>
 }
