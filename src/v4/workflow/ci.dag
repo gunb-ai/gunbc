@@ -164,12 +164,23 @@
 // these `Symbol` edges exactly as lens/affected_set.dag derives its
 // graph by `Symbol`-equality traversal.
 //
-// WHY `command` is an opaque `String`. A job's command line is a leaf
-// lexeme the deferred CI interpreter (extdeps/process.dag) executes —
-// modeled like yaml.dag's scalar `lexeme: String` (the structural cache
-// key + process spawn are the deferred operation, not a stored field).
-// It is job DATA, not a string sentinel: nothing branches on its
-// contents within this substrate.
+// WHY `command` is a NON-EXECUTABLE faithful `String` (INVARIANTS P1 —
+// no fabrication of process facts; codex BLOCKING 2026-05-17). It is
+// NOT "the command line the interpreter runs": there is no interpreter
+// (the process carrier extdeps/process.dag is T-4.5 SCAFFOLD), and a
+// single `String` cannot faithfully carry a GHA job (the live gate is a
+// multi-step shell script PLUS a prerequisite `cargo build -p
+// v2-compiler --release` step). So `command` is DOCUMENTATION DATA: it
+// stores the EXACT primary gate invocation VERBATIM (not a lossy
+// paraphrase — the codex finding), and is explicitly NON-EXECUTABLE
+// until the process carrier lands. Nothing in this substrate executes
+// or branches on it. The faithful FULL step (the `set -euo pipefail` /
+// `rm` / `mkdir` / `echo` wrapper + the `cargo build` prerequisite) and
+// actual process spawn are the deferred operation carried by
+// extdeps/process.dag (T-4.5) + the interpreter (T-22) — TRACKED
+// SCAFFOLD (3); they are NOT fabricated into this `String`. Modeled
+// like yaml.dag's scalar `lexeme: String` (faithful inert leaf, not a
+// sentinel).
 //
 // TRACKED SCAFFOLD (🟡) — operations deferred with owner + trigger, per
 // the operator-ratified declarative-now / operations-deferred discipline
@@ -230,7 +241,11 @@ import v4.std.node { Symbol }
 // ─────────────────────────────────────────────────────────────────────
 // CiJob — one CI job. `id` is its opaque identity; `needs` are the job
 // ids it depends on (the job DAG, traversed by `Symbol` equality);
-// `command` is the leaf command line the deferred interpreter runs.
+// `command` is a NON-EXECUTABLE faithful record of the exact primary
+// gate invocation (documentation data — NOT executed here; the full
+// step + process spawn are deferred to extdeps/process.dag, TRACKED
+// SCAFFOLD (3); see "WHY `command` is a NON-EXECUTABLE faithful
+// `String`" above).
 type CiJob {
   id: Symbol
   command: String
@@ -274,12 +289,18 @@ data structural_v2_compile: Symbol = structural_v2_compile
 // ─────────────────────────────────────────────────────────────────────
 // The structural v2-compile gate — the existing day-1 CI gate modeled
 // concretely: v2 indexes/compiles src/v4 (the parse-viability step that
-// keeps the .dag corpus v2-bridge-clean). This is the ONLY job
-// exercised today; the executable test/eval lane is TRACKED SCAFFOLD
-// (3), deferred to T-22.
+// keeps the .dag corpus v2-bridge-clean). `command` is the EXACT
+// primary gate invocation from .github/workflows/ci.yml, VERBATIM (not
+// a paraphrase — codex BLOCKING 2026-05-17); it is NON-EXECUTABLE
+// documentation data here. The faithful FULL step (`set -euo pipefail`
+// / `rm -rf /tmp/v4-stage1` / `mkdir -p` / `echo` wrapper) and its
+// prerequisite `cargo build -p v2-compiler --release` are carried by
+// the deferred process carrier (extdeps/process.dag T-4.5 + T-22),
+// TRACKED SCAFFOLD (3) — NOT fabricated into this String. This is the
+// ONLY job modeled today; the executable lane is deferred.
 data v2_compile_gate_job: CiJob = CiJob {
   id: v2_compile_src_v4,
-  command: "v2-compiler compile --source-root src/v4",
+  command: "target/release/v2-compiler compile --source-root src/v4 --output-dir /tmp/v4-stage1 --target dag",
   needs: []
 }
 
