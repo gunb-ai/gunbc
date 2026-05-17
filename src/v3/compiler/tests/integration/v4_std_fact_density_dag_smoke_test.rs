@@ -3,8 +3,9 @@
 //! Smoke `compile_to_dag` on `src/v4/std/fact_density.dag` — P5(b) **interim**
 //! witness file: must lower+infer with **zero** module diagnostics (same bar as
 //! `v4_extdeps_typescript_dag_smoke_test`). The Practice-8 **structural**
-//! predicate lives in the handwritten mirror `v3_compiler::v4_hollow_alias_gate`
-//! until the generated `.dag` checker replaces it (`INVARIANTS.md` §P5(b)
+//! predicate lives in the handwritten mirror `src/v3/compiler/src/v4_hollow_alias_gate.rs`
+//! (`pub(crate)` inside `v3_compiler` — not a stabilized public import path) until the
+//! generated `.dag` checker replaces it (`INVARIANTS.md` §P5(b)
 //! dissolution on that path). **Interim-floor authority** is
 //! `docs/modeling-discipline.md` Practice 8 (landed on `main`: **#3226** `77b9e7d72`;
 //! Practice 9 **#3234** `125fc88c8`).
