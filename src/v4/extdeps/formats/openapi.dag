@@ -81,8 +81,7 @@ import v4.extdeps.formats.json_schema { JsonSchema }
 // DECLARATIVE-NOW / OPERATIONS-DEFERRED-WITH-OWNER — modeled carriers for
 // the document root, **Info Object (OAS-fixed fields + `info_extensions`)**,
 // **`OpenApiPathsSlot`** (root `paths` omit vs present) + **Paths Object
-// (`OpenApiPaths`: `routes` + `paths_extensions`)**, path
-// items, operations, **Responses Object (`OpenApiResponses`)**, media types,
+// (`OpenApiPaths`: `routes` + `paths_extensions`)**, path items, operations, **Responses Object (`OpenApiResponses`)**, media types,
 // and component schemas; **$ref** resolution, parameter objects, callbacks,
 // security schemes, servers, and the full Components object beyond `schemas`
 // are 🟡 deferred with named triggers — not silently omitted without a
