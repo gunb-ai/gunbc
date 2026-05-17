@@ -63,6 +63,10 @@
 // BLOCKING): Command carries caller-supplied argv0 explicitly. POSIX
 // exec does not derive argv[0] from the program path; fabricating it
 // would collapse distinct command invocations.
+// HEADER RECONCILE (2026-05-17, #3209, keen-wren-663 + briansrls
+// BLOCKING): ProcessTable is an opaque resource carrier, not a readable
+// String-labeled identity. The effect/resource authority is the threaded
+// carrier position in operation signatures, not a label field.
 
 
 module v4.extdeps.process
@@ -231,12 +235,11 @@ type TerminatedProcess {
 // Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/functions/exec.html
 // Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/functions/waitpid.html
 //
-// `ProcessTable` is the explicit resource parameter for this extdep's
-// process-table effects. It is a nominal handle, not an effect taxonomy:
-// the effect fact is read from each operation signature.
-type ProcessTable {
-  label: String
-}
+// `ProcessTable` is the explicit opaque resource parameter for this
+// extdep's process-table effects. It has no readable payload: resource
+// identity is threaded structurally through operation signatures, and the
+// effect fact is read from each signature.
+type ProcessTable
 
 // Spawn failure, wait failure, and capture failure return `Rejected`
 // with a typed `Diagnostic`; a successfully observed child termination

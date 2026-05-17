@@ -48,6 +48,10 @@
 // from stat/lstat mode bits; link target comes from readlink, which is
 // outside this frozen file_system subset. Do not attach target Path to
 // FileKind.
+// HEADER RECONCILE (2026-05-17, #3209, keen-wren-663 + briansrls
+// BLOCKING): Filesystem is an opaque resource carrier, not a readable
+// String-labeled identity. The effect/resource authority is the threaded
+// carrier position in operation signatures, not a label field.
 
 
 module v4.extdeps.file_system
@@ -199,12 +203,11 @@ type FileKind
 // Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/functions/write.html
 // Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/functions/readdir.html
 //
-// `Filesystem` is the explicit resource parameter for this extdep's
-// file-system effects. It is a nominal handle, not an effect taxonomy:
-// the effect fact is read from each operation signature.
-type Filesystem {
-  label: String
-}
+// `Filesystem` is the explicit opaque resource parameter for this
+// extdep's file-system effects. It has no readable payload: resource
+// identity is threaded structurally through operation signatures, and the
+// effect fact is read from each signature.
+type Filesystem
 
 // Each `*Request` is a pure data description of the host operation. The
 // result seam is the shared `Outcome<T>` carrier named in this file's
