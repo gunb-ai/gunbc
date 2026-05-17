@@ -338,6 +338,37 @@ Operator-stated principle (2026-05-17), governing the reseed:
   `RustSignedness` separate until Rust's spec is checked is honest
   modeling, not a duplicate-authority violation.
 
+### "Coincide" — defined once
+
+Two models **coincide** when their **canonical `Node` groundings are
+structurally equal** — equal under `node.dag`'s B1-CANON contract
+`content_hash = merkle_fold ∘ canonical`. This is the *single* definition
+of the word across v4: the U1 homomorphism, the T-9 coercion fold, and the
+`docs/modeling/grounding-worked-examples.md` companion all use exactly it.
+Three consequences pin it down:
+
+- **Mechanical, not free-form semantic equivalence.** Coincidence is
+  decided by a zip-fold over two groundings plus a content-hash compare —
+  decidable by construction (U1 no-engine discipline, T-9 / C1 Find is
+  decidable over the closed declared candidate set). It is never a
+  judgement that two things "mean the same"; it is structural equality of
+  canonical `Node`s.
+- **Requires a shared vocabulary.** Two groundings are comparable only if
+  both are expressed in the *same* `std/` primitive vocabulary (authority:
+  `std/algebra.dag` plus the T-3 shared-fact vocabulary — signedness,
+  representation, the numeric stack). Facts are *sourced* independently —
+  each from its own spec — but must be *expressed* in one vocabulary, or
+  two structurally-different `Node` trees would denote the same fact and
+  the mechanical compare would wrongly report "not equal." The shared
+  vocabulary is what makes the fold both mechanical *and* complete.
+- **Proven coincidence is the ONLY licence to deduplicate.** A fact-bundle
+  collapses to a `std/` carrier only where coincidence is *proven*; a bare
+  alias asserts coincidence without proving it — the D2 error.
+
+This definition *reconciles* the existing U1 and T-9 decision rows rather
+than rewriting them: both already mandate the no-engine, decidable form;
+"coincide" is now the named term for the structural equality they assume.
+
 ### The phased plan
 
 - **Phase 0 — stop the bleeding. DONE 2026-05-17.** `#3219`
