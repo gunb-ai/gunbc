@@ -60,19 +60,20 @@ closing at T-15.
           that model (composition, not a new subsystem).
 ```
 
-### Side branch — `P1-KEYSTONE → T-4 → T-9` (watch item)
+### Side branch — `{P1-KEYSTONE, T-30} → T-4 → T-9` (watch item)
 
 ```
-P1-KEYSTONE → T-4 → T-9
+{P1-KEYSTONE, T-30} → T-4 → T-9
 ```
 
 T-9 needs T-4 (the language fact-bundles) in addition to T-8. This branch
 carries slack against the `T-6→T-7→T-8` pipeline branch **only if
-P1-KEYSTONE starts immediately**. The D2 reversal CHANGED T-4's
+P1-KEYSTONE and T-30 start immediately**. The D2 reversal CHANGED T-4's
 dependency set — the old alias model needed almost nothing; fact-bundle
 modeling needs the shared vocabulary (T-3-extended), the modeling
-discipline (P1-KEYSTONE), and the C++ ABI model (T-29). T-4 is no longer
-a schedule-anytime leaf — see T-4.
+discipline (P1-KEYSTONE), the structural fact-density gate (T-30), and
+the C++ ABI model (T-29). T-4 is no longer a schedule-anytime leaf —
+see T-4.
 
 ```
   P1-KEYSTONE   the Phase-1 doc keystone — NOT a T-## task. The
@@ -83,8 +84,14 @@ a schedule-anytime leaf — see T-4.
                 Phase 1). It is the rubric every fact-bundle task is
                 authored and reviewed against; T-4 cannot start before
                 it lands.
+  T-30  std/ structural fact-density / hollow-alias gate — a generated
+                checker that fails closed on a hollow alias (a carrier
+                that reads zero spec facts). A hard prerequisite of T-4:
+                the per-language fact-bundle rework does not begin under
+                convention-tier-only enforcement — convention is what let
+                D2 through. Sibling of P1-KEYSTONE; see T-30 detail.
   T-4   extdeps/languages/{rust,python,go,cpp,typescript}.dag
-        [needs T-3-extended, P1-KEYSTONE, T-29 — see T-4]
+        [needs T-3-extended, P1-KEYSTONE, T-29, T-30 — see T-4]
 ```
 
 ### Parallel fill — schedule the instant deps clear
@@ -248,7 +255,7 @@ flat — dispatch in waves):
 **File**: 5 files in `src/v4/extdeps/languages/` (operator-ratified 2026-05-15: cpp + typescript added; cpp subsumes C subset; Go retained)
 **Why bundled**: identical structural shape per language; the SHAPE is the work. Each file declares the language MODEL (grammar + types + semantics) — direction-agnostic; emit AND ingest are operations against the same model.
 
-**Dependencies — re-gated by the D2 reversal (operator-ratified 2026-05-17).** T-4 is no longer a schedule-anytime Phase-1 leaf: `[needs T-3-extended, P1-KEYSTONE, T-29]`. The old alias model needed almost nothing — a bare alias reads no facts. Fact-bundle modeling needs T-3's shared-fact vocabulary (signedness/representation/numeric stack), the `P1-KEYSTONE` modeling-discipline rubric (the doc against which every bundle is authored and reviewed), and — for the cpp slice — the T-29 C++ ABI / target data-model. T-4 sits on the `P1-KEYSTONE → T-4 → T-9` side branch; see the execution graph. The D2 reversal *changing this dependency set* is the single most consequential planning edit of the reseed.
+**Dependencies — re-gated by the D2 reversal (operator-ratified 2026-05-17).** T-4 is no longer a schedule-anytime Phase-1 leaf: `[needs T-3-extended, P1-KEYSTONE, T-29, T-30]`. The old alias model needed almost nothing — a bare alias reads no facts. Fact-bundle modeling needs T-3's shared-fact vocabulary (signedness/representation/numeric stack), the `P1-KEYSTONE` modeling-discipline rubric (the doc against which every bundle is authored and reviewed), the `T-30` structural fact-density / hollow-alias gate (the per-language rework does not run under convention-tier-only enforcement — see T-30), and — for the cpp slice — the T-29 C++ ABI / target data-model. T-4 sits on the `{P1-KEYSTONE, T-30} → T-4 → T-9` side branch; see the execution graph. The D2 reversal *changing this dependency set* is the single most consequential planning edit of the reseed.
 
 **Authoring contract (operator-ratified 2026-05-15; D2 bullet superseded 2026-05-17):**
 - **Model the SPECIFICATION, not libraries (L-2).** Model the versioned upstream spec (Rust Reference, ECMAScript/TS Handbook, IEEE 1364, …) — the anchor IS that spec. Do NOT model std/crates/packages: a library is just a program in the modeled language = `Node`. Modeling libraries is infinite, non-general, the wrong layer.
@@ -911,6 +918,32 @@ machine / width vocabulary, otherwise a leaf — pure parallel fill,
 schedulable as soon as T-3's `machine` lands. It is a **prerequisite of
 T-4's cpp slice**: the cpp fact-bundle cannot ground implementation-defined
 integer widths without it (hence the `T-4 [needs … T-29]` edge).
+
+### T-30 — std/ structural fact-density / hollow-alias gate  [SCHEDULED]
+**Operator ruling 2026-05-17 (codex 13403, via the D2-reversal Phase-1
+resolution).** A generated structural checker — a pure function
+`Node -> Outcome` — that **fails closed on a hollow alias**: a carrier
+that reads zero facts from its source spec (`type RustI32 = Int32` and
+its kind). It is the *structural* enforcement tier the D2-reversal root
+cause named missing — "a hollow alias is invisible to every structural
+gate" — and it makes the hollow alias *impossible*, not merely
+review-discouraged.
+**Why a task, and where it sits.** T-30 is its own foundation task — a
+sibling of `P1-KEYSTONE`, **not** folded into `docs/modeling-discipline.md`
+(that doc carries the *convention*-tier bad-example; T-30 is the
+*structural* tier). It is a **hard prerequisite of T-4**: `T-30 → T-4`.
+The per-language fact-bundle rework does **not** begin under
+convention-tier-only enforcement — convention is exactly what let D2
+through, and reworking every per-language file that way would re-expose
+the same surface. The `docs/modeling-discipline.md` bad-example is the
+*interim floor* only; T-30 is the enforcement the reseed actually runs
+under. Sequenced by the dependency edge, not by phase number (see
+`DECISIONS.md` "D2 REVERSAL + FACT-BUNDLE RESEED", Phase 1).
+**Modeling decisions:** what counts as a *fact* (the carrier decomposes
+into ≥1 spec-read fact beyond a bare std alias); how the gate reads
+fact-density off a `Node` carrier; the kernel-ambient exemption (`Bool`
+and the other kernel-ambient atoms are legitimately atomic — not hollow);
+the Diagnostic shape on a fail-closed hollow alias.
 
 **Scope / clarification dispositions:**
 - **#4 — T-16 SQL DDL.** T-16's demo lists a SQL DDL artifact; no
