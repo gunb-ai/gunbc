@@ -352,11 +352,12 @@ Operator-stated principle (2026-05-17), governing the reseed:
   alias); since the api-review rubric reads that doc, a documented
   bad-example arms every review against the hollow alias. That is the
   *first* enforcement tier — but it is reviewer-applied, i.e.
-  convention-level until a structural/API gate exists. Phase 1 therefore
-  must either ship a
-  *structural* check — a generated fact-density / hollow-alias gate — or
-  explicitly defer that gate by naming the ROADMAP / task row that owns
-  the deferral; the documented example is the floor, not the ceiling.
+  convention-level until a structural/API gate exists. Phase 1 ships that
+  documented bad-example: the convention-tier enforcement that the
+  `docs/modeling-discipline.md` api-review practice checks. The stronger
+  *structural* tier — a generated fact-density / hollow-alias gate — is
+  explicitly deferred to and owned by Phase 2 of this reseed plan; the
+  documented example is the floor, not the ceiling.
   Reverse the D2/D4 rows. Rewrite the
   `TASKS.md` T-4 authoring contract.
 - **Phase 2 — rework the entire T-## program** around fact-bundle
