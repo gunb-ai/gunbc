@@ -42,9 +42,16 @@
 //   (P) Under any `TypeNode { Arrow }`, the domain (first positional child)
 //       MAY be a `Conj` of formal parameters; each `Named` key there is a
 //       parameter binder Symbol (fn / Pi domain discipline).
-//   (B) `ComputationNode { Bind }` with arity 3: first child target
-//       `TypeNode { Atom { identity } }` introduces a let-binder for the
-//       third child subtree (pattern is Atom-only in this wave).
+//   (B) `ComputationNode { Bind }` with arity 3: the first child's target
+//       `TypeNode { Atom { identity: b } }` is the let-binder name (Atom
+//       pattern only in this wave). **Wave-1 / CP-1b gather semantics:** (B)
+//       binders are recorded in the **same** program-level `bindings` map as
+//       (M) and (P) — `gather_bindings_walk` unions every discovered binder
+//       into one flat `Map<Symbol, Symbol>` (identity entries today), and
+//       `resolve_node` threads a **single** `Scope` for the entire tree. This
+//       is **within-file flat resolution**, not subtree-scoped lexical extent
+//       for the Bind's third child; true nested let/shadowing is an explicit
+//       future wave — document in B-4 / affected_set receipts when it lands.
 // Cross-file / import / module-loading edges are OUT OF SCOPE here — STOP
 // escalate to operator with that exact dependency if a change needs them.
 // Unbound Atoms (no `bindings` entry, not listed in `canonical_symbols`)
@@ -96,9 +103,10 @@ data resolve_reason_unbound_symbol: Symbol = resolve_reason_unbound_symbol
 
 
 // Namespace is the explicit binding authority for this stage: use-site
-// Symbol -> canonical declaration Symbol (B-4). `bindings` is populated
-// by `build_program_namespace` for within-file/module/parameter/let
-// discipline; `canonical_symbols` lists extern symbols that are already
+// Symbol -> canonical declaration Symbol (B-4). `bindings` is the **wave-1
+// flat union** built by `gather_bindings_walk` (module exports, Arrow-domain
+// formals, Bind Atom patterns — one map, no lexical stack yet).
+// `canonical_symbols` lists extern symbols that are already
 // canonical without a map entry (imports / std — module-loading TBD).
 type Namespace {
   bindings: Map<Symbol, Symbol>
@@ -145,6 +153,9 @@ fn empty_canonical_symbol_set() -> Set<Symbol> {
 }
 
 
+// Wave-1: each binder maps to itself (identity row). `map_insert` on duplicate
+// keys is not separately diagnosed here — same (sym, sym) is idempotent;
+// conflicting duplicate binders for one name remain STOP / a later wave.
 fn merge_binding_self(m: Map<Symbol, Symbol>, sym: Symbol) -> Map<Symbol, Symbol> {
   map_insert(m, sym, sym)
 }
@@ -215,6 +226,8 @@ fn add_bind_atom_binder(n: Node, acc: Map<Symbol, Symbol>) -> Map<Symbol, Symbol
 }
 
 
+// Pre-order union of (M)/(P)/(B) binders into one flat table — matches the
+// single `Scope` passed through `resolve_node` (no push/pop per subtree yet).
 fn gather_bindings_walk(n: Node, acc: Map<Symbol, Symbol>, is_root: Bool) -> Map<Symbol, Symbol> {
   let acc = if is_root {
     add_module_named_exports(root: n, acc: acc)
