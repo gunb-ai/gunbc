@@ -374,8 +374,7 @@ fn resolve_edges_first_outer_then_inner(
 }
 
 
-// Bind=let (arity-3): slot-0 binder is a declaration site (not a use), slot-1
-// initializer resolves without the new binder, slot-2+ body under `ScopeFrame`.
+// DECISIONS.md §CP-1b (item 3).
 fn resolve_bind_binder_target(t: Node) -> ResolveResult {
   match t.kind {
     TypeNode { connective: Atom { identity: id } } =>

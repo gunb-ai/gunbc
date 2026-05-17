@@ -53,8 +53,7 @@ fn dag_language_model_wave1_void() -> DagLanguageModel {
 }
 
 
-// Self-canonical `Atom` identities for resolve (no binder row). Mint list is
-// substrate-declared in this module for the wave-1 void LM **shape** only.
+// DECISIONS.md §CP-1b (item 1).
 fn dag_language_model_wave1_void_canonical_symbols() -> Set<Symbol> {
   Set {
     member: fn(sym) {
@@ -75,9 +74,7 @@ fn dag_node_is_empty_conj_root(n: Node) -> Bool {
 }
 
 
-// Structural discriminator so `dag_language_model_canonical_symbols` uses `lm`
-// (B2-OMNI: canonical Atom authority is keyed off the passed LanguageModel value,
-// not a silent void singleton inside `03_resolve`).
+// DECISIONS.md §CP-1b (item 2).
 fn dag_language_model_is_wave1_void_shape(lm: DagLanguageModel) -> Bool {
   dag_node_is_empty_conj_root(n: lm.lex) &&
     dag_node_is_empty_conj_root(n: lm.grammar)
