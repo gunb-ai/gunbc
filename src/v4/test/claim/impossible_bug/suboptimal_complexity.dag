@@ -33,6 +33,7 @@
 //   - std/verification.dag, std/diagnostic.dag, std/algebra.dag, lens/complexity.dag
 //
 // Status: scaffold — fill per TASKS.md T-14
+// Brief: see BRIEF_TEMPLATE.md.
 
 module v4.test.claim.impossible_bug.suboptimal_complexity
 

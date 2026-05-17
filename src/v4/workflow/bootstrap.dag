@@ -78,6 +78,7 @@
 // Status: scaffold — fill per TASKS.md T-20 (scaffold early; full self-host
 // content lands incrementally as the pipeline matures; T-15 consumes this
 // for fixed-point validation)
+// Brief: see BRIEF_TEMPLATE.md.
 
 module v4.workflow.bootstrap
 

@@ -38,5 +38,6 @@
 //   - compiler/00_compile.dag (the `ingest` boundary — B2-OMNI)
 //
 // Status: scaffold — fill per TASKS.md T-4.11
+// Brief: see BRIEF_TEMPLATE.md.
 
 module v4.test.claim.boundary.english_ingest_fail_closed

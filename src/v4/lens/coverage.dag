@@ -18,6 +18,7 @@
 //   - extdeps/languages/*.dag (for L6 emit rule reading)
 //
 // Status: scaffold — fill per TASKS.md T-18
+// Brief: see BRIEF_TEMPLATE.md.
 
 module v4.lens.coverage
 

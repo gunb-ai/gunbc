@@ -129,6 +129,9 @@
 //     over-firing.
 //
 // Status: scaffold — fill per TASKS.md T-21
+// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
+// contract for the worker. Splitting this file requires explicit operator
+// ratification (substrate extension = stop signal).
 
 module v4.lens.affected_set
 

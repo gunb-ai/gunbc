@@ -52,5 +52,8 @@
 // Status: scaffold — fill per TASKS.md PROOF-1 (T-15). Coq is NOT in
 // the file tree (deferred second-prover probe — a future
 // operator-ratified extension, never a silent TODO).
+// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the
+// immutable contract for the worker. Splitting this file requires
+// explicit operator ratification (substrate extension = stop signal).
 
 module v4.extdeps.languages.lean

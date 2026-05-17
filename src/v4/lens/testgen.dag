@@ -99,9 +99,11 @@
 //   - extdeps/languages/*.dag (bidirectional roundtrip testgen)
 //   - extdeps/coordination.dag (WireContract/Effect — simulator-generation arm)
 //
-// Status: scaffold — fill per TASKS.md T-19. T-19 starts after std/*
-// substrate (T-1/T-2/T-3) lands and before compiler stages (T-6+).
-// Later tasks consume a testgen-derived corpus instead of hand-authored
-// cases.
+// Status: scaffold — fill per TASKS.md T-19
+// Brief: see BRIEF_TEMPLATE.md. T-19 is Phase 1.5 — right after std/*
+// substrate (T-1/T-2/T-3) lands, BEFORE compiler stages (T-6+) start.
+// This buys test evidence early — every Phase 2+ task gets a testgen-
+// derived corpus instead of hand-authoring.
 
 module v4.lens.testgen
+

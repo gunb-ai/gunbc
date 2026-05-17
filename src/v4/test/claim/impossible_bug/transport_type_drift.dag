@@ -15,6 +15,7 @@
 //   - std/verification.dag, std/diagnostic.dag, extdeps/coordination.dag, extdeps/languages/*
 //
 // Status: scaffold — fill per TASKS.md T-14
+// Brief: see BRIEF_TEMPLATE.md.
 
 module v4.test.claim.impossible_bug.transport_type_drift
 

@@ -12,6 +12,9 @@
 //   - std/node.dag, std/algebra.dag, std/witness.dag
 //
 // Status: scaffold — fill per TASKS.md T-13
+// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
+// contract for the worker. Splitting this file requires explicit operator
+// ratification (substrate extension = stop signal).
 
 
 module v4.lens.idempotency
