@@ -91,7 +91,7 @@ see T-4.
                 convention-tier-only enforcement — convention is what let
                 D2 through. Sibling of P1-KEYSTONE; see T-30 detail.
   T-4   extdeps/languages/{rust,python,go,cpp,typescript}.dag
-        [needs T-3-extended, P1-KEYSTONE, T-29, T-30 — see T-4]
+        [needs T-3-extended, P1-KEYSTONE, T-29, T-30, T-25-core — see T-4]
 ```
 
 ### Parallel fill — schedule the instant deps clear
@@ -102,8 +102,8 @@ prioritized over the critical path.
 
 ```
 Substrate / extdeps fan-out:
-  T-4.5 extdeps/{process,file_system}.dag                      [needs T-3]
-  T-4.6 extdeps/formats/* (7 files: json/yaml/csv/toml/json_schema/openapi/sql)
+  T-4.5 extdeps/{process,file_system}.dag                      [needs T-3, T-25-core]
+  T-4.6 extdeps/formats/* (7 files: json/yaml/csv/toml/json_schema/openapi/sql)  [needs T-25-core]
   T-4.7 extdeps/frameworks/react.dag    [needs T-4 (typescript)]
   T-4.8 extdeps/coordination.dag         [needs T-4, T-4.7]
   T-4.9  extdeps/languages/verilog.dag   [needs T-1, T-2; B2-OMNI falsification probe — concurrency vs the 5 behaviors]
@@ -255,7 +255,7 @@ flat — dispatch in waves):
 **File**: 5 files in `src/v4/extdeps/languages/` (operator-ratified 2026-05-15: cpp + typescript added; cpp subsumes C subset; Go retained)
 **Why bundled**: identical structural shape per language; the SHAPE is the work. Each file declares the language MODEL (grammar + types + semantics) — direction-agnostic; emit AND ingest are operations against the same model.
 
-**Dependencies — re-gated by the D2 reversal (operator-ratified 2026-05-17).** T-4 is no longer a schedule-anytime Phase-1 leaf: `[needs T-3-extended, P1-KEYSTONE, T-29, T-30]`. The old alias model needed almost nothing — a bare alias reads no facts. Fact-bundle modeling needs T-3's shared-fact vocabulary (signedness/representation/numeric stack), the `P1-KEYSTONE` modeling-discipline rubric (the doc against which every bundle is authored and reviewed), the `T-30` structural fact-density / hollow-alias gate (the per-language rework does not run under convention-tier-only enforcement — see T-30), and — for the cpp slice — the T-29 C++ ABI / target data-model. T-4 sits on the `{P1-KEYSTONE, T-30} → T-4 → T-9` side branch; see the execution graph. The D2 reversal *changing this dependency set* is the single most consequential planning edit of the reseed.
+**Dependencies — re-gated by the D2 reversal (operator-ratified 2026-05-17).** T-4 is no longer a schedule-anytime Phase-1 leaf: `[needs T-3-extended, P1-KEYSTONE, T-29, T-30, T-25-core]`. The old alias model needed almost nothing — a bare alias reads no facts. Fact-bundle modeling needs T-3's shared-fact vocabulary (signedness/representation/numeric stack), the `P1-KEYSTONE` modeling-discipline rubric (the doc against which every bundle is authored and reviewed), the `T-30` structural fact-density / hollow-alias gate (the per-language rework does not run under convention-tier-only enforcement — see T-30), `T-25-core` (the refinement substrate — a language fact-bundle that grounds a refinement-bearing carrier needs the base-type + fail-closed-validation shape), and — for the cpp slice — the T-29 C++ ABI / target data-model. T-4 sits on the `{P1-KEYSTONE, T-30} → T-4 → T-9` side branch; see the execution graph. The D2 reversal *changing this dependency set* is the single most consequential planning edit of the reseed.
 
 **Authoring contract (operator-ratified 2026-05-15; D2 bullet superseded 2026-05-17):**
 - **Model the SPECIFICATION, not libraries (L-2).** Model the versioned upstream spec (Rust Reference, ECMAScript/TS Handbook, IEEE 1364, …) — the anchor IS that spec. Do NOT model std/crates/packages: a library is just a program in the modeled language = `Node`. Modeling libraries is infinite, non-general, the wrong layer.
@@ -362,8 +362,8 @@ substrate imported them, so the cut is a pure scope reduction.
 
 **Modeling decisions**:
 - **The coercion fold** (rescoped 2026-05-17, D2-reversal — supersedes "algebra-homomorphism search algorithm"). Coercion is a **mechanical zip-fold** (a catamorphism) over two groundings — not a search, not research. It walks both canonical `Node` groundings in parallel and compares; `node.dag`'s B1-CANON contract `content_hash = merkle_fold ∘ canonical` already specifies the hard half (the canonical-form fold). Per `DECISIONS.md` U1 / C1 / T-9 the Find is **decidable by construction** over the closed declared candidate set — empty ⇒ Diagnostic, never a fabricated coercion. Name it the *coercion fold*; never an "engine" or "search algorithm".
-- **The coercion quality tag** — every coercion the fold derives carries one of a closed set: `Identity` (groundings coincide) | `Exact` (related, total, lossless) | `Lossy` (related, with a *declared* accepted-loss) | `FailClosed` (unrelated, or relation unprovable ⇒ Diagnostic). `FailClosed` is the audit's missing fourth outcome — "can't prove ⇒ fail-closed" — made first-class.
-- **The composition rule** — when two coercions compose, their quality tags compose by a closed lattice (`Identity` is the unit; `Lossy ∘ anything = Lossy`; `FailClosed` absorbs). This is the audit's missing composition lattice; it lives here in T-9, not in a new task.
+- **The coercion quality tag** — the coercion result is the ratified `Outcome` carrier (`std/diagnostic.dag`), and **quality and outcome are distinct axes**. A *successful* coercion is `Outcome::Produced` carrying the coerced value **plus a closed quality tag**: `Identity` (groundings coincide) | `Exact` (related, total, lossless) | `Lossy` (related, with a *declared* accepted-loss). A coercion that cannot be derived is `Outcome::Rejected { diagnostic }` — the audit's missing fourth *outcome*, "can't prove ⇒ fail-closed". Fail-closed is **not** a fourth quality value: it is the `Rejected` branch of `Outcome`. The quality tag attaches only to `Produced`; never collapse the success-quality axis and the success/failure axis into one flat enum.
+- **The composition rule** — when two *successful* coercions compose, their quality tags compose by a closed lattice (`Identity` is the unit; `Lossy` absorbs `Exact` and `Identity`; `Exact ∘ Exact = Exact`). If either coercion is `Rejected`, the composition is `Rejected` — `Outcome` short-circuits on the failure branch (the standard bind), so the failure axis needs no lattice entry. This is the audit's missing composition lattice; it lives here in T-9, not in a new task.
 - `type AlgebraRef = Symbol` — `04_infer.dag`'s IR-1 `InferredFacts.inhabits` names `AlgebraRef`; it is a `Symbol` name-reference to the algebra inhabitance (the `Diagnostic.reason` cross-declaration idiom, K-1), not a type `std/algebra.dag` declares. Declared here (Theme-A audit #2).
 - Cardinality propagation
 - Diagnostic precision when inference fails
@@ -850,11 +850,16 @@ exists (`integer.dag` explicitly states "no `where`-clause").
   validation obligation**: a refined value is its base carrier plus a
   named validation that must discharge at a constructor boundary, failing
   closed (Diagnostic) when it cannot. This IS the audit's missing fourth
-  coercion outcome — "can't prove ⇒ fail-closed" (T-9's `FailClosed`
-  quality tag). `docs/coercion-design.md` Category 6 already designed this
-  shape: chain to the base carrier + a validation at a named constructor
-  boundary. T-25-core sits **near T-3** (the cardinality area); the
-  per-language fact-bundles and the format models depend on it.
+  coercion *outcome* — "can't prove ⇒ fail-closed" (T-9's `Outcome::Rejected`
+  branch — the failure outcome, not a quality tag). `docs/coercion-design.md`
+  Category 6 already designed this shape: chain to the base carrier + a
+  validation at a named constructor boundary. T-25-core sits **near T-3**
+  (the cardinality area) and is a **hard prerequisite** of the extdeps
+  tasks that ground refinement-bearing carriers — **T-4** (the per-language
+  fact-bundles, e.g. rust.dag), **T-4.5** (process/file_system — `PositiveInt`
+  PID, `NonNegativeInt` exit code, `NonEmptyList` `AbsolutePath`), and
+  **T-4.6** (the format models — non-empty json/toml keys). Those tasks
+  carry T-25-core in their `[needs]`.
 - **T-25-tail** — the **predicate prover** that *erases* a refinement once
   its predicate is proven (a pure optimization: a proven refinement need
   not re-validate downstream). Placed **after T-9**; never dropped.
