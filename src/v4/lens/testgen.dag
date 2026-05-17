@@ -12,6 +12,7 @@ import v4.std.node { Node, Connective, Symbol }
 
 
 type TypeConstructionSubject
+// 🟡 coproduct dissolution — DECISIONS.md LB-P4-3212
   = ConnectiveKernel { connective: Connective }
   | BehaviorValueSubject
 
@@ -29,6 +30,7 @@ type BidirectionalRoundtripSubject { language: Symbol, production: Symbol }
 
 
 type TestgenConcept
+// 🟡 coproduct dissolution — DECISIONS.md LB-P4-3212
   = TypeConstruction { subject: TypeConstructionSubject }
   | AlgebraLaw { subject: AlgebraLawSubject }
   | DiagnosticExhaustiveness { subject: DiagnosticExhaustivenessSubject }

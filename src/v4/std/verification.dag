@@ -12,6 +12,7 @@ import v4.std.diagnostic { Outcome }
 
 
 type AssertKind
+// 🟢 coproduct dissolution — DECISIONS.md LB-P4-3212
   = Equals
   | Diagnostic
   | Compiles
@@ -19,12 +20,14 @@ type AssertKind
 
 
 type TestgenTier
+// 🟢 coproduct dissolution — DECISIONS.md LB-P4-3212
   = Tier1
   | Tier2
   | Tier3
 
 
 type TestgenLayer
+// 🟢 coproduct dissolution — DECISIONS.md LB-P4-3212
   = Unit
   | Integration
   | Boundary
@@ -37,6 +40,7 @@ type TestClassification {
 
 
 type ImpossibleBugClass
+// 🟢 coproduct dissolution — DECISIONS.md LB-P4-3212
   = SuboptimalComplexity
   | IdempotencyContract
   | TransportTypeDrift
