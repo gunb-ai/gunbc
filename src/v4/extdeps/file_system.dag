@@ -5,7 +5,7 @@
 //
 // Owns:
 //   - Path = AbsolutePath | RelativePath
-//   - AbsolutePath { components: List<PathComponent> }  // 🟡 non-empty intent deferred → std/collection Wave-A2 / T-25 NonEmptyList refinement
+//   - AbsolutePath { components: List<PathComponent> }  // root is empty components; PathComponent refinement deferred
 //   - RelativePath { components: List<PathComponent> }
 //   - PathComponent (NonEmptyStr, no slashes, no nulls — per POSIX portable filename charset)
 //   - FileKind = RegularFile | Directory | Symlink(target: Path)
@@ -41,8 +41,7 @@
 // HEADER RECONCILE (2026-05-17, #3209, keen-wren-663 + merry-ibex-337
 // ruling): the frozen header cited phantom std/collection.dag
 // `NonEmptyList`; header Owns/Consumes now cite the real importable
-// `List` carrier and keep non-empty path intent as a 🟡 Wave-A2 / T-25
-// refinement trigger. Body already used List<PathComponent>; no body
+// `List` carrier. Body already used List<PathComponent>; no body
 // carrier change and no worker-minted NonEmptyList.
 
 
@@ -114,16 +113,17 @@ type PathComponent = String
 // Empty absolute components denotes the POSIX root directory. Empty
 // relative components denotes the current directory.
 //
-// 🟡 TRACKED-SCAFFOLD (project_v4_nonemptylist_deferred_refinement):
+// 🟡 TRACKED-SCAFFOLD (project_v4_path_component_refinement):
 // the frozen scaffold header previously named
 // `NonEmptyList<PathComponent>`; reconciled 2026-05-17 (#3209 — see
-// HEADER RECONCILE) to cite the importable `List<T>` carrier with
-// non-empty intent tracked as the Wave-A2/T-25 deferral. Do not
-// worker-mint `NonEmptyList<T>` here. The
-// intended non-empty refinement for absolute paths dissolves when
-// std/collection.dag Wave-A2 lands the canonical NonEmptyList/FiniteSet
-// refinement substrate; until then this body uses `List<PathComponent>`
-// with the POSIX root/current-directory semantics above.
+// HEADER RECONCILE) to cite the importable `List<T>` carrier. Do not
+// worker-mint `NonEmptyList<T>` here: POSIX root is represented by
+// empty absolute components, so a NonEmptyList target for
+// `AbsolutePath.components` would be unfaithful. The remaining
+// refinement target is per-component validity: each PathComponent is
+// non-empty and excludes slash/null once v4 lands string/char value
+// refinements. Until then this body uses `List<PathComponent>` with the
+// POSIX root/current-directory semantics above.
 type AbsolutePath {
   components: List<PathComponent>
 }
