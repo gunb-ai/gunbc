@@ -53,6 +53,7 @@ data ci_pipeline: CiPipeline = CiPipeline {
 
 
 data ci_duplicate_job_id: Symbol = ci_duplicate_job_id
+data ci_duplicate_gate_id: Symbol = ci_duplicate_gate_id
 data ci_dangling_reference: Symbol = ci_dangling_reference
 data ci_dependency_cycle: Symbol = ci_dependency_cycle
 data ci_workflow_file: Symbol = ci_workflow_file
@@ -86,6 +87,18 @@ fn ci_member(s: Symbol, ids: List<Symbol>) -> Bool {
 fn ci_all_job_ids_unique(jobs: List<CiJob>) -> Bool {
   fold(jobs, init: true, f: fn(acc, j) {
     acc && (ci_id_occurrences(id: j.id, jobs: jobs) == 1)
+  })
+}
+
+fn ci_gate_id_occurrences(id: Symbol, gates: List<CiGate>) -> Int {
+  fold(gates, init: 0, f: fn(acc, g) {
+    if g.id == id { acc + 1 } else { acc }
+  })
+}
+
+fn ci_all_gate_ids_unique(gates: List<CiGate>) -> Bool {
+  fold(gates, init: true, f: fn(acc, g) {
+    acc && (ci_gate_id_occurrences(id: g.id, gates: gates) == 1)
   })
 }
 
@@ -137,18 +150,22 @@ fn ci_acyclic(jobs: List<CiJob>) -> Bool {
 
 fn ci_pipeline_well_formed(p: CiPipeline) -> Outcome<CiPipeline> {
   if ci_all_job_ids_unique(jobs: p.jobs) {
-    if ci_all_needs_resolve(jobs: p.jobs) {
-      if ci_all_gate_jobs_resolve(gates: p.gates, jobs: p.jobs) {
-        if ci_acyclic(jobs: p.jobs) {
-          Produced { value: p }
+    if ci_all_gate_ids_unique(gates: p.gates) {
+      if ci_all_needs_resolve(jobs: p.jobs) {
+        if ci_all_gate_jobs_resolve(gates: p.gates, jobs: p.jobs) {
+          if ci_acyclic(jobs: p.jobs) {
+            Produced { value: p }
+          } else {
+            Rejected { diagnostic: ci_diagnostic(reason: ci_dependency_cycle) }
+          }
         } else {
-          Rejected { diagnostic: ci_diagnostic(reason: ci_dependency_cycle) }
+          Rejected { diagnostic: ci_diagnostic(reason: ci_dangling_reference) }
         }
       } else {
         Rejected { diagnostic: ci_diagnostic(reason: ci_dangling_reference) }
       }
     } else {
-      Rejected { diagnostic: ci_diagnostic(reason: ci_dangling_reference) }
+      Rejected { diagnostic: ci_diagnostic(reason: ci_duplicate_gate_id) }
     }
   } else {
     Rejected { diagnostic: ci_diagnostic(reason: ci_duplicate_job_id) }
