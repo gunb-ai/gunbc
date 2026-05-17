@@ -1,63 +1,34 @@
 // src/v4/compiler/03_resolve.dag
 //
-// Scope: pipeline stage 3b — symbol resolution. Identifier to declaration binding.
+// Scope: stage 3b — NormalizedTree → ResolvedTree; K-1 `Atom` use→def binding.
 // Anchor: https://en.wikipedia.org/wiki/Name_resolution_(programming_languages)
+//
+// B-4: **authority** for use→def (T-21 affected_set); carrier = opaque `Symbol` on
+// `Atom` (not `04_infer` type slot). Binding = `Symbol` equality; node-precise;
+// `04_infer` preserves `Symbol` (see 04_infer.dag B-4, lens/affected_set.dag).
 //
 // Owns:
 //   - ResolvedTree type
 //   - resolve: NormalizedTree -> Result<ResolvedTree, Diagnostic>
 //   - identifier binding to declarations
 //
-// B-4 (side-session 2026-05-16) — this stage is the AUTHORITY for the
-//   use→def fact affected_set R2 traverses (T-21). The named forward
-//   carrier is the opaque `Symbol` (K-1) on the name-reference `Atom`,
-//   NOT 04_infer's `resolved_type` (that is the node's type — lossy
-//   for binding identity; the P2/Practice-3 review point). Contract:
-//   - resolve canonicalizes a use-site `Atom`'s `Symbol` to be
-//     IDENTICAL to its binder declaration's `Symbol`, so binding =
-//     `Symbol` equality (the one K-1-granted op; node.dag
-//     `name_occurrences`; "resolved through the namespace", A1/K-1).
-//   - binding is NODE-PRECISE: the canonical `Symbol` identifies the
-//     EXACT declaration, never merely its module/scope. Coarse binding
-//     ⇒ affected_set correct but maximally over-fires (the dominant R2
-//     minimality gate). 04_infer must PRESERVE this `Symbol` unchanged
-//     (preserve-only; no 5th InferredFacts field). See 04_infer.dag
-//     B-4 + lens/affected_set.dag.
-//
 // Consumes:
 //   - std/node.dag, std/diagnostic.dag
 //   - compiler/03_normalize.dag: NormalizedTree
 //
-// Status: T-8 modeled 2026-05-16 (bright-seal-437). Resolution owns
-// scope/env/lookup/name binding for the front-end, including method-name
-// lookup through the same canonical Symbol boundary.
+// Namespace (CP-1b / #3211): public `resolve` builds `Namespace` by
+// `NormalizedTree` walk (no external producer). Rules: (M) root `Conj` `Named`
+// keys = module decls; (P) Arrow-domain `Conj` `Named` = formals; (B) Bind
+// arity-3 Atom slot-0 = binder. **Wave-1:** flat `bindings` union + single `Scope`
+// (not subtree-lexical `Bind` body yet). Cross-file/import = STOP/escalate.
+// Unbound `Atom` ⇒ `Rejected`. `canonical_symbols` = explicit extern/pre-bound
+// path only.
 //
-// Binding construction (CP-1b operator ruling, #3211): public `resolve`
-// builds a `Namespace` by walking the `NormalizedTree` — no external
-// namespace producer. Within-file rules (B-4 node precision, K-1-only):
-//   (M) At the program root `TypeNode { Conj }`, each `EdgeLabel.Named`
-//       child key is a module-level declaration Symbol (the module table
-//       uses Named as the declaration address — distinct from using Named
-//       inside arbitrary inner Conj record sugar as an implicit binder).
-//   (P) Under any `TypeNode { Arrow }`, the domain (first positional child)
-//       MAY be a `Conj` of formal parameters; each `Named` key there is a
-//       parameter binder Symbol (fn / Pi domain discipline).
-//   (B) `ComputationNode { Bind }` with arity 3: the first child's target
-//       `TypeNode { Atom { identity: b } }` is the let-binder name (Atom
-//       pattern only in this wave). **Wave-1 / CP-1b gather semantics:** (B)
-//       binders are recorded in the **same** program-level `bindings` map as
-//       (M) and (P) — `gather_bindings_walk` unions every discovered binder
-//       into one flat `Map<Symbol, Symbol>` (identity entries today), and
-//       `resolve_node` threads a **single** `Scope` for the entire tree. This
-//       is **within-file flat resolution**, not subtree-scoped lexical extent
-//       for the Bind's third child; true nested let/shadowing is an explicit
-//       future wave — document in B-4 / affected_set receipts when it lands.
-// Cross-file / import / module-loading edges are OUT OF SCOPE here — STOP
-// escalate to operator with that exact dependency if a change needs them.
-// Unbound Atoms (no `bindings` entry, not listed in `canonical_symbols`)
-// fail closed. `canonical_symbols` remains for explicit extern/std/import
-// producers that attach canonical identities without a use→def rewrite.
-// 04_infer preserves resolved Symbols and owns type inference, Find, cost.
+// Status: T-8 CP-1b (bright-seal-437).
+// GATED: verbatim TASKS T-8 alignment with merged #3232 (operator HOLD).
+// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
+// contract for the worker. Splitting this file requires explicit operator
+// ratification (substrate extension = stop signal).
 // Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
 // contract for the worker. Splitting this file requires explicit operator
 // ratification (substrate extension = stop signal).
