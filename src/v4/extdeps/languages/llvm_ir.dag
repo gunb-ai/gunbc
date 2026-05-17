@@ -637,7 +637,7 @@ type BinaryOpcode
 // source EXISTS:
 //   Richer source: a three-axis classifier {source-domain ∈
 //     std/integer.dag (signed/unsigned bounded-Int) | std/float.dag |
-//     std/ptr.dag, target-domain ∈ same, kind ∈ sign-extend |
+//     <pointer-authority>, target-domain ∈ same, kind ∈ sign-extend |
 //     zero-extend | truncate | reinterpret-no-op | fp-narrow |
 //     fp-widen | fp↔int | ptr↔int | address-space-cast}, where the
 //     fp↔int axis ADDITIONALLY discriminates {int-signedness ∈ signed |
@@ -649,6 +649,25 @@ type BinaryOpcode
 //     cast opcodes are the discriminant-projection of (src-domain,
 //     dst-domain, kind, int-signedness) onto LangRef's enumerated
 //     names.
+//   NAMED MISSING — pointer source-domain authority. The pointer
+//     source-domain cited above (`<pointer-authority>` placeholder;
+//     consumed by OpPtrToInt / OpIntToPtr / OpBitCast on pointer
+//     operands / OpAddrSpaceCast) has NO landed std/ authority on
+//     origin/main — `git ls-tree origin/main -- src/v4/std/ptr.dag`
+//     returns no blob. Prior addendum versions cited `std/ptr.dag` as
+//     if landed; that was a phantom-authority cite (briansrls +
+//     codex BLOCKING). MISSING future authority = the pointer /
+//     address-space / pointee-type carrier that will eventually live
+//     in std/ (provisional `std/ptr.dag` — actual name + shape are
+//     the future-authority's to set, not pre-committed here);
+//     trigger = first consumer of pointer-conversion MEANING (the
+//     same D2 pathway the rest of this addendum names). Until that
+//     authority lands, the pointer-domain story for ptr↔int /
+//     address-space-cast opcodes rides the LangRef surface name on
+//     this enum, NOT a std/ authority — mirroring the named-missing
+//     discipline already applied on this same PR to integer
+//     Euclidean-division, bit-shifts, and IEEE-754 frem in the
+//     BinaryOpcode addendum.
 //   Single opcode-shape disposition fact retained here: fptoui /
 //     fptosi out-of-range produce POISON per LangRef "Conversion
 //     Operations". The FULL invalid-input disposition surface
