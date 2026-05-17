@@ -166,16 +166,27 @@ type ByteOrder
 // Coproduct dissolution — 🟢 GREEN (terminal). Ledger:
 //   1. Fact placement — FAILS: tokenization/decoding consumes this at
 //      the instruction boundary.
-//   2. Variant-is-data — FAILS: `Fixed` carries a width while
-//      `Variable` carries a bounded prefix; flattening makes illegal
-//      combinations representable.
+//   2. Variant-is-data — FAILS: `Fixed` carries a word width while
+//      `Variable` carries an ISA-scoped byte-limit reference; flattening
+//      makes illegal combinations representable.
 //   3. Algebraic form — N/A: encoding-shape fact from the ISA spec.
 //   4. Dimensional — FAILS: an instruction stream uses exactly one
 //      length discipline at a decode point.
 //   5. Parameterized family — FAILS: heterogeneous payloads.
 type InstructionLength
   = FixedLength { width: InstructionWord }
-  | VariableLength { max_bytes: InstructionWord }
+  | VariableLength { max_bytes: InstructionByteLimitRef }
+
+
+// InstructionByteLimitRef — opaque reference to an ISA-declared maximum
+// encoded-instruction byte length. This covers non-word-sized limits such
+// as x86's 15-byte maximum without inventing a local Nat authority.
+// Anchor: Intel SDM 2025 instruction format; RISC-V Unprivileged ISA
+// 20240411 instruction-length encoding.
+type InstructionByteLimitRef {
+  isa: Isa,
+  limit: Symbol
+}
 
 
 // InstructionWord — admissible instruction-word / maximum-length width
@@ -303,14 +314,15 @@ type OperandBinding {
 }
 
 
-// EncodedInstruction — one decoded instruction with its raw byte witness.
+// DecodedInstruction — one decoded instruction in structural form.
 // The production reference is the authority for opcode and operand-slot
 // legality; operand bindings instantiate that production rather than
-// forming a free opcode/list pair.
-type EncodedInstruction {
+// forming a free opcode/list pair. Raw bytes are realized by the
+// encoding/decoding operations, not stored here as a second peer
+// representation that can drift from the structural instruction.
+type DecodedInstruction {
   production: InstructionProductionRef
   operands: List<OperandBinding>
-  encoding: ByteSequence
 }
 
 
