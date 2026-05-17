@@ -13,6 +13,11 @@ Every worker brief has this shape. It is the structural commitment that prevents
 TASK ID: T-N
 FILE: src/v4/<path/to/file>.dag
 
+WHY THIS MATTERS:
+  Every modeled fact protects the derived homomorphism — a correct,
+  complete, honest target model is what makes the compiler-derived
+  cross-target translation sound (THESIS: The derived homomorphism).
+
 SCOPE (immutable — declared in the file's header):
   Input:  <type>
   Output: <type>
