@@ -48,7 +48,8 @@ import v4.std.collection { Set }
 //
 // DECLARATIVE-NOW / OPERATIONS-DEFERRED-WITH-OWNER. Modeled NOW: the
 // closed recursive **`JsonSchema`** sum + typed carriers for the highest-
-// traffic Core vocabulary slice (`type`, `properties`, `required`, `items`)
+// traffic Core vocabulary slice (`type`, **`properties` / `required`**
+// presence slots, `items`)
 // + an `additional_keywords` map for spec-faithful extension without
 // inventing a closed keyword enum that would rot on every Core appendix
 // change (MODELING.md M3: extdeps model specs — the keyword set is
@@ -156,7 +157,7 @@ type JsonSchemaItemsSlot
 // **keyword present with `{}`** at the JSON surface (same discipline as
 // `JsonSchemaTypeSlot` / `JsonSchemaItemsSlot` — no empty-map collapse).
 //
-// Anchor: https://json-schema.org/draft/2020-12/json-schema-core#section-10.3.2
+// Anchor: https://json-schema.org/draft/2020-12/json-schema-core#section-10.3.2.1
 //
 // Coproduct dissolution (Practice 4) — 🟢 GREEN (terminal). Ledger: same
 // scan as `JsonSchemaTypeSlot` (absent vs nested object map).
@@ -199,16 +200,17 @@ type JsonSchemaRequiredSlot
 //      object form at the JSON value grammar level for this subset.
 //   5. Parameterized family — FAILS: variants are heterogeneous, not `F<X>`
 //      over one enumerable index set.
-//   6. `JsonSchemaInstance.required` uses **`Set<String>`** — Validation
-//      §6.5.3: elements MUST be strings and **unique**; structural via
-//      **std/collection.dag** `Set` (same carrier as `"type"` array uniqueness).
+//   6. `JsonSchemaRequiredPresent.required` uses **`Set<String>`** —
+//      Validation §6.5.3: elements MUST be strings and **unique**; structural
+//      via **std/collection.dag** `Set` (same carrier as `"type"` array
+//      uniqueness).
 type JsonSchema
   = JsonSchemaTrue
   | JsonSchemaFalse
   | JsonSchemaInstance {
       instance_type: JsonSchemaTypeSlot,
-      properties: Map<String, JsonSchema>,
-      required: Set<String>,
+      properties: JsonSchemaPropertiesSlot,
+      required: JsonSchemaRequiredSlot,
       items: JsonSchemaItemsSlot,
       additional_keywords: Map<String, JsonValue>,
     }
