@@ -4,7 +4,9 @@
 // Anchor: https://spec.openapis.org/oas/v3.1.0 (OpenAPI Specification v3.1.0)
 //
 // Owns:
-//   - OpenApiSpec { info, servers, paths, components, ... }
+//   - OpenApiSpec { info, servers, paths slot, components, ... }
+//   - Root **`paths`** — **`OpenApiPathsSlot`** (omit vs present, incl. empty
+//     **`OpenApiPaths`**)
 //   - Paths Object (`OpenApiPaths`: route map + **`paths_extensions`**)
 //   - Path { operations: Map<HttpMethod, Operation> }
 //   - Operation { …, Responses Object (`OpenApiResponses`: status map +
@@ -78,7 +80,8 @@ import v4.extdeps.formats.json_schema { JsonSchema }
 //
 // DECLARATIVE-NOW / OPERATIONS-DEFERRED-WITH-OWNER — modeled carriers for
 // the document root, **Info Object (OAS-fixed fields + `info_extensions`)**,
-// **Paths Object (`OpenApiPaths`: `routes` + `paths_extensions`)**, path
+// **`OpenApiPathsSlot`** (root `paths` omit vs present) + **Paths Object
+// (`OpenApiPaths`: `routes` + `paths_extensions`)**, path
 // items, operations, **Responses Object (`OpenApiResponses`)**, media types,
 // and component schemas; **$ref** resolution, parameter objects, callbacks,
 // security schemes, servers, and the full Components object beyond `schemas`
@@ -334,6 +337,27 @@ type OpenApiPaths {
 
 
 // ─────────────────────────────────────────────────────────────────────
+// OpenApiPathsSlot — root OpenAPI Object **`paths`** field (OAS 3.1.0
+// §4.8.1). Only **`openapi`** and **`info`** are individually REQUIRED; **`paths`**
+// is not — per **§3.1** a valid document MUST contain **at least one** of
+// `paths`, `components`, or `webhooks`, so **`paths` MAY be absent** on the wire
+// while another root arm carries the document. When present, the value is an
+// **`OpenApiPaths`** (including **present-empty** `{}` per §4.8.8 — Paths MAY be
+// empty for ACL). **`OpenApiPathsAbsent`** vs **`OpenApiPathsPresent { paths }`**
+// preserves omit-wire vs present-empty without P2 collapse.
+//
+// Anchor: https://spec.openapis.org/oas/v3.1.0#openapi-object
+//
+// Coproduct dissolution (Practice 4) — 🟢 GREEN (terminal). Ledger: absent
+// vs present `paths` are distinct shapes; a nullable `OpenApiPaths?` would
+// conflate absent with present-empty and fabricate paths for valid omit-wire
+// documents (P2 / Practice-7).
+type OpenApiPathsSlot
+  = OpenApiPathsPresent { paths: OpenApiPaths }
+  | OpenApiPathsAbsent
+
+
+// ─────────────────────────────────────────────────────────────────────
 // OpenApiComponents — Components Object `schemas` map (JSON Schema values).
 // Other component keys (`responses`, `parameters`, …) stay in
 // `components_extras` as faithful `JsonValue` until a pinned decomposition
@@ -364,8 +388,9 @@ type OpenApiComponentsSlot
 
 // ─────────────────────────────────────────────────────────────────────
 // OpenApiDocument — OpenAPI 3.1 root document (semantic carrier). **`paths`**
-// is an **`OpenApiPaths`** (Paths Object routes + `paths_extensions`). `servers`
-// / `webhooks` / `security` / `tags` / `externalDocs` remain in
+// is **`OpenApiPathsSlot`** — wire **omit** vs **`OpenApiPathsPresent`** (incl.
+// **present-empty** Paths Object) per §3.1 / §4.8.1 / §4.8.8. `servers` /
+// `webhooks` / `security` / `tags` / `externalDocs` remain in
 // `root_extensions` as JSON until decomposed (🟡). `jsonSchemaDialect` is
 // modeled verbatim when present as a string (OAS 3.1 feature) — absence is
 // explicit.
@@ -377,7 +402,7 @@ type OpenApiDocument {
   openapi_version_lexeme: String,
   json_schema_dialect: OpenApiOptionalString,
   info: OpenApiInfo,
-  paths: OpenApiPaths,
+  paths: OpenApiPathsSlot,
   components: OpenApiComponentsSlot,
   root_extensions: Map<String, JsonValue>,
 }
@@ -392,7 +417,9 @@ type OpenApiDocument {
 //   dag + the json/yaml parse bodies. Fail-closed `Outcome<OpenApiDocument>`
 //   / `Outcome<String>` (seam #3). **Dissolution trigger:** std/text.dag
 //   lands + yaml/json parse operations land + operator pins reference
-//   substrate. Structural validation **includes** `OpenApiResponses.by_status`
+//   substrate. Structural validation **includes** §3.1 **at-least-one-of**
+//   (`paths` present / `components` present / `webhooks` in `root_extensions`
+//   parse lane — exact `webhooks` decomposition 🟡) and `OpenApiResponses.by_status`
 //   map keys (three-digit status strings, `default`, and OAS wildcard buckets
 //   **`1XX`/`2XX`/`3XX`/`4XX`/`5XX`** — uppercase **`XX`** per spec, not
 //   lowercase `xx` spellings): the carrier uses **`String` lexemes** today
