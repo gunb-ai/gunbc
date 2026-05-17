@@ -238,6 +238,10 @@ jobs:
         mkdir -p /tmp/v4-stage1
         target/release/v2-compiler compile --source-root src/v4 --output-dir /tmp/v4-stage1 --target dag
         echo "Bootstrap viability OK — v2 indexed and resolved all v4 modules."
+    - name: 'INTERIM (T-24 bridge) — v4 v2-run-preflight notice (run gate deferred T-22)'
+      env:
+        V2_PREFLIGHT_SKIP_COMPILE: "1"
+      run: bash scripts/v2-run-preflight.sh
   # v3 — FROZEN 2026-05-15 pending v4 program. Runs only when src/v3/ or dsl/
   # is affected (or on push-to-main for trunk verification). v3 is no longer
   # the active compiler; v4 program supersedes it (see PR #3147).
