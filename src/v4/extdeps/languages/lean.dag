@@ -3,7 +3,7 @@
 // Owns: LeanDeclarationKind, LeanName, LeanLevel, LeanTermForm, LeanDefinitionTermination, LeanProofArtifact, LeanFidelityFeature, LeanProofCheckSemantics.
 // Consumes: Int, UInt8, UInt16, UInt32, UInt64, UIntPlatform, List, Bool, Nat, Symbol.
 // Status: D2-hard-held; fact-bundle rework gated.
-// Anchor: Lean 4.20.0 Reference Manual:
+// Anchor: https://lean-lang.org/doc/reference/4.20.0/
 
 module v4.extdeps.languages.lean
 
@@ -22,7 +22,7 @@ import v4.std.nat { Nat }
 import v4.std.node { Symbol }
 
 
-// Anchor: Lean 4.20.0 Reference Manual, "Definitions", "Theorems",
+// Anchor: https://lean-lang.org/doc/reference/4.20.0/
 type LeanDeclarationKind
   = LeanDef
   | LeanTheorem
@@ -31,14 +31,14 @@ type LeanDeclarationKind
   | LeanAxiom
 
 
-// Anchor: Lean 4.20.0 Reference Manual, identifiers and namespaces:
+// Anchor: https://lean-lang.org/doc/reference/4.20.0/Basic-Types/Identifiers/
 type LeanName {
   namespace: List<Symbol>
   local: Symbol
 }
 
 
-// Anchor: Lean 4.20.0 Reference Manual, universe levels:
+// Anchor: https://lean-lang.org/doc/reference/4.20.0/The-Type-System/Universes/
 type LeanLevel
   = LeanLevelZero
   | LeanLevelSucc { predecessor: LeanLevelRef }
@@ -58,7 +58,7 @@ type LeanLevelNode {
 }
 
 
-// Anchor: Lean 4.20.0 Reference Manual, function binders:
+// Anchor: https://lean-lang.org/doc/reference/4.20.0/Terms/Functions/
 type LeanBinderInfo
   = ExplicitBinder
   | ImplicitBinder
@@ -73,7 +73,7 @@ type LeanBinder {
 }
 
 
-// Anchor: Lean 4.20.0 Reference Manual, terms / expressions:
+// Anchor: https://lean-lang.org/doc/reference/4.20.0/
 type LeanTermRef {
   name: LeanName
 }
@@ -103,14 +103,14 @@ type LeanMatchAlternative {
 }
 
 
-// Anchor: Lean 4.20.0 Reference Manual, termination checking /
+// Anchor: https://lean-lang.org/doc/reference/4.20.0/Definitions/Recursive-Definitions/
 type LeanTerminationMeasure {
   subject: LeanName
   measure: LeanTermRef
 }
 
 
-// Anchor: Lean 4.20.0 Reference Manual, termination_by clauses:
+// Anchor: https://lean-lang.org/doc/reference/4.20.0/Definitions/Recursive-Definitions/
 type LeanTerminationBy
   = LeanStructuralTermination { decreasing_parameter: LeanName }
   | LeanWellFoundedTermination { measure: LeanTerminationMeasure }
@@ -126,7 +126,7 @@ type LeanTerminationClause
   | LeanDecreasingBy { proof: LeanDecreasingProof }
 
 
-// Anchor: Lean 4.20.0 Reference Manual, Definitions; termination_by and
+// Anchor: https://lean-lang.org/doc/reference/4.20.0/Definitions/Recursive-Definitions/
 type LeanDefinitionTermination
   = LeanNoExplicitTermination
   | LeanTerminationByOnly { termination: LeanTerminationBy }
@@ -151,7 +151,7 @@ type LeanProofArtifact
     }
 
 
-// Anchor: Lean 4.20.0 Reference Manual, elaboration and kernel checking:
+// Anchor: https://lean-lang.org/doc/reference/4.20.0/
 type LeanFidelityFeature
   = LeanKernelTerm
   | LeanPrettyNameSpelling
@@ -181,7 +181,7 @@ fn lean_feature_disposition(f: LeanFidelityFeature) -> LeanFidelityDisposition {
 }
 
 
-// Anchor: Lean 4.20.0 Reference Manual, reduction and opaque constants:
+// Anchor: https://lean-lang.org/doc/reference/4.20.0/
 type LeanProofCheckSemantics<IRCarrier> {
   kernel_definitional_reduction: Bool
   opaque_axiom_boundary: Bool
@@ -189,7 +189,7 @@ type LeanProofCheckSemantics<IRCarrier> {
 }
 
 
-// Anchor: Lean 4.20.0 Reference Manual, built-in propositions and numeric
+// Anchor: https://lean-lang.org/doc/reference/4.20.0/Basic-Types/Fixed-Precision-Integers/
 type LeanBool = Bool
 type LeanNat = Nat
 type LeanInt = Int

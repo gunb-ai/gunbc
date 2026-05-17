@@ -3,7 +3,7 @@
 // Owns: IsaFamily, Isa, InstructionLength, InstructionWord, RegisterRef, AddressingMode, Operand, InstructionProduction, DecodedInstruction, MachineFidelityFeature, MachineIntegerOperationSemantics.
 // Consumes: Int8, Int16, Int32, Int64, Int128, UInt8, UInt16, UInt32, UInt64, UInt128, List, Byte, Symbol.
 // Status: D2-hard-held; fact-bundle rework gated.
-// Anchor: Intel 64 & IA-32 Architectures Software Developer's Manual
+// Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
 
 module v4.extdeps.languages.machine_code
 
@@ -25,47 +25,47 @@ import v4.std.machine { Byte }
 import v4.std.node { Symbol }
 
 
-// Anchor: Intel 64 and IA-32 Architectures Software Developer's Manual
+// Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
 type IsaFamily
   = X86_64Isa
   | Aarch64Isa
   | RiscV64Isa
 
 
-// Anchor: same version-pinned ISA manuals named on `IsaFamily`.
+// Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
 type Isa {
   family: IsaFamily
   revision: Symbol
 }
 
 
-// Anchor: Intel SDM 2025 instruction encoding; Arm ARM 2025-03 memory
+// Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
 type ByteOrder
   = LittleEndian
   | BigEndian
 
 
-// Anchor: Intel SDM 2025 instruction format; Arm ARM 2025-03 instruction
+// Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
 type InstructionLength
   = FixedLength { width: InstructionWord }
   | VariableLength { max_bytes: InstructionByteLimitRef }
 
 
-// Anchor: Intel SDM 2025 instruction format; RISC-V Unprivileged ISA
+// Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
 type InstructionByteLimitRef {
   isa: Isa,
   limit: Symbol
 }
 
 
-// Anchor: RISC-V Unprivileged ISA Specification 20240411, Chapter 1
+// Anchor: https://github.com/riscv/riscv-isa-manual/releases/tag/20240411
 type OperandFieldWidthRef {
   isa: Isa,
   width: Symbol
 }
 
 
-// Anchor: Intel SDM 2025 instruction format; Arm ARM 2025-03 instruction
+// Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
 type InstructionWord
   = Instr16
   | Instr32
@@ -73,7 +73,7 @@ type InstructionWord
   | Instr128
 
 
-// Anchor: Intel SDM 2025 registers chapter; Arm ARM 2025-03 register
+// Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
 type RegisterClass
   = GeneralPurposeRegister
   | FloatingPointRegister
@@ -88,7 +88,7 @@ type RegisterRef {
 }
 
 
-// Anchor: Intel SDM 2025 addressing modes; Arm ARM 2025-03 load/store
+// Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
 type IndexScale
   = Scale1
   | Scale2
@@ -96,7 +96,7 @@ type IndexScale
   | Scale8
 
 
-// Anchor: Intel SDM 2025 addressing modes; Arm ARM 2025-03 load/store
+// Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
 type AddressingMode
   = AbsoluteAddress { displacement: MachineI64 }
   | RegisterIndirect { base: RegisterRef }
@@ -105,7 +105,7 @@ type AddressingMode
   | PcRelative { displacement: MachineI32 }
 
 
-// Anchor: version-pinned ISA instruction-format sections named above.
+// Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
 type Operand
   = RegisterOperand { register: RegisterRef }
   | ImmediateOperand { bytes: ByteSequence, order: ByteOrder }
@@ -138,7 +138,7 @@ type MemoryOperandSlotRef {
 }
 
 
-// Anchor: RISC-V Unprivileged ISA Specification 20240411, Chapter 1
+// Anchor: https://github.com/riscv/riscv-isa-manual/releases/tag/20240411
 type ImmediateOperandTarget
   = LiteralImmediate
   | PcRelativeImmediate
@@ -152,7 +152,7 @@ type ImmediateOperandConstraint {
 }
 
 
-// Anchor: Intel SDM 2025 addressing modes; Arm ARM 2025-03 load/store
+// Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
 type MemoryOperandConstraint
   = AbsoluteAddressSlot { displacement_width: OperandFieldWidthRef }
   | RegisterIndirectSlot { allowed_bases: List<RegisterRef> }
@@ -169,7 +169,7 @@ type MemoryOperandConstraint
   | PcRelativeSlot { displacement_width: OperandFieldWidthRef }
 
 
-// Anchor: RISC-V Unprivileged ISA Specification 20240411, Chapter 1
+// Anchor: https://github.com/riscv/riscv-isa-manual/releases/tag/20240411
 type InstructionOperandSlot
   = RegisterInstructionSlot {
       name: RegisterOperandSlotRef,
@@ -212,7 +212,7 @@ type DecodedInstruction {
 }
 
 
-// Anchor: version-pinned ISA instruction decoding / reserved-encoding
+// Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
 type MachineFidelityFeature
   = ValidInstructionEncoding
   | InstructionAliasSpelling
@@ -242,7 +242,7 @@ fn machine_feature_disposition(f: MachineFidelityFeature) -> MachineFidelityDisp
 }
 
 
-// Anchor: Intel SDM 2025 arithmetic instruction semantics; Arm ARM
+// Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
 type MachineIntegerOverflowBehavior
   = WrapModuloWidth
   | TrapOnOverflow
@@ -261,7 +261,7 @@ type FlagWriteDisposition
   | WritesPredicateRegister
 
 
-// Anchor: version-pinned ISA integer operand width definitions named
+// Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
 type MachineI8 = Int8
 type MachineI16 = Int16
 type MachineI32 = Int32
