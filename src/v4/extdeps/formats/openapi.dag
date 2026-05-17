@@ -119,12 +119,9 @@ type OpenApiLicense {
 }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// OpenApiLicenseSlot — optional `license` on the Info Object.
-//
+// OpenApiLicenseSlot — optional `license` on Info.
 // Anchor: https://spec.openapis.org/oas/v3.1.0#info-object
-//
-// Coproduct dissolution (Practice 4) — 🟢 GREEN (terminal).
+// Practice 4: GREEN (terminal).
 type OpenApiLicenseSlot
   = OpenApiLicensePresent { license: OpenApiLicense }
   | OpenApiLicenseAbsent
