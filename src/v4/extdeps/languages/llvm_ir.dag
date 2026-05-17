@@ -532,12 +532,19 @@ type LlvmValue
 // inhabitance was "Owned ELSEWHERE" / not-yet-landed in pattern 3).
 // Under the post-#3200 consumer-INDEPENDENT rule this is 🟡 YELLOW
 // because a namable richer source EXISTS:
-//   Richer source: std/algebra.dag carriers (Semiring/Ring/OrderedRing
-//     for the integer cases; std/float.dag ApproximateField for the fp
-//     cases; lattice/bitwise for and/or/xor/shifts). Each LangRef opcode
-//     names ONE algebra operation on the operand-type's std/ inhabitance
-//     (e.g. OpAdd ↦ Semiring.add, OpFMul ↦ ApproximateField.mul,
-//     OpXor ↦ BooleanRing/bitwise-xor on iN).
+//   Richer source: LANDED std/algebra.dag carriers (verified at
+//     std/algebra.dag:183/195/209/255/271/289) — Semiring<iN>
+//     (OpAdd / OpMul), Ring<iN> (OpSub — additive inverse), OrderedRing
+//     <iN> with signed/unsigned ordering inhabitances (OpSDiv/OpUDiv,
+//     OpSRem/OpURem — quotient/remainder over the corresponding signed
+//     or unsigned Ord), BooleanAlgebra<iN-bitwise> (OpAnd/OpOr/OpXor —
+//     bitwise across `iN` as a Boolean algebra over its bits), Lattice
+//     <iN-shift-action> (OpShl/OpLShr/OpAShr — bounded shift actions;
+//     OpAShr selects the signed-Ord arithmetic-shift inhabitance,
+//     OpLShr the unsigned), and ApproximateField<floatN> via
+//     std/float.dag:255 (OpFAdd/OpFSub/OpFMul/OpFDiv/OpFRem). Each
+//     LangRef opcode names ONE landed algebra operation on the
+//     operand-type's std/ inhabitance.
 //   Trigger: first consumer of binary-op MEANING (cost model / algebraic
 //     simplification / inhabitance dispatch — D2 pathway).
 //   Obligation: the first meaning-consumer owes the structural opcode →
@@ -577,17 +584,28 @@ type BinaryOpcode
 // rule this projection set was correctly GREEN. Under the post-#3200
 // consumer-INDEPENDENT rule this is 🟡 YELLOW because a namable richer
 // source EXISTS:
-//   Richer source: a two-axis lattice {source-domain, target-domain} ×
-//     {sign-extend, zero-extend, truncate, reinterpret, fp-narrow,
-//     fp-widen, fp↔int-ub-on-overflow, address-space-cast} over std/
-//     integer.dag, std/float.dag, std/ptr.dag domains. (LangRef
-//     fptoui/fptosi/uitofp/sitofp are UB-on-out-of-range per
-//     "Conversion Operations"; the saturating fp↔int forms are the
-//     `llvm.fptoui.sat` / `llvm.fptosi.sat` intrinsics — distinct
-//     declarations modeled outside this opcode set, never reachable via
-//     this enum.) The 13 LangRef cast opcodes are the discriminant-
-//     projection of (src-domain, dst-domain, kind) onto LangRef's
-//     enumerated names.
+//   Richer source: a three-axis classifier {source-domain ∈
+//     std/integer.dag (signed/unsigned bounded-Int) | std/float.dag |
+//     std/ptr.dag, target-domain ∈ same, kind ∈ sign-extend |
+//     zero-extend | truncate | reinterpret-no-op | fp-narrow |
+//     fp-widen | fp↔int | ptr↔int | address-space-cast}, where the
+//     fp↔int axis ADDITIONALLY discriminates {int-signedness ∈ signed |
+//     unsigned} (LangRef separates sitofp from uitofp and fptosi from
+//     fptoui precisely on this signedness). LangRef invalid-input
+//     disposition is NOT carried by these opcodes — fptoui/fptosi/
+//     uitofp/sitofp on out-of-range inputs are UB per LangRef
+//     "Conversion Operations" (the saturating fp↔int forms are the
+//     `llvm.fptoui.sat` / `llvm.fptosi.sat` intrinsics, distinct
+//     declarations outside this opcode set; reachable only via
+//     `LlvmIntrinsicCall`, NEVER via this enum). The 13 LangRef cast
+//     opcodes are the discriminant-projection of (src-domain,
+//     dst-domain, kind, int-signedness) onto LangRef's enumerated
+//     names.
+//   Invalid-input-disposition deferral: out-of-range / NaN
+//     disposition on fp↔int is EXPLICITLY deferred to the first D2
+//     meaning-consumer (it pairs with the existing FidelityDisposition
+//     machinery; the opcode-level decomposition above carries shape,
+//     not disposition).
 //   Trigger: first consumer of conversion MEANING (cost model /
 //     numeric-precision lens / inhabitance dispatch — D2 pathway).
 //   Obligation: the first meaning-consumer owes the (src-domain,
@@ -1025,14 +1043,29 @@ type AtomicRmwOrdering
 // xchg/add/and/or/xor/max/min trace to the `iN` ring/lattice instances,
 // "grounded THERE"). Under the post-#3200 consumer-INDEPENDENT rule
 // this is 🟡 YELLOW because a namable richer source EXISTS:
-//   Richer source: std/algebra.dag carriers — Semigroup/Monoid (xchg
-//     as the last-write identity-on-second-arg), Semiring (add — `iN`
-//     additive monoid), Ring (sub — needs the additive inverse Semiring
-//     lacks), BooleanRing/lattice (and/or/xor/nand), JoinSemilattice
-//     and MeetSemilattice (max/min, signed and unsigned variants),
-//     ApproximateField (fadd/fsub/fmax/fmin via std/float.dag), and
-//     wrap-counter (uinc_wrap/udec_wrap). Each LangRef sub-op names
-//     ONE algebra operation on the operand-type's std/ inhabitance.
+//   Richer source: LANDED std/algebra.dag carriers (verified at
+//     std/algebra.dag:139/145/166/183/195/255/271/289) —
+//       Monoid<iN-under-second-projection> (xchg — last-write
+//         identity on the second argument);
+//       Semiring<iN> (add — `iN`'s additive monoid + multiplicative
+//         identity);
+//       Ring<iN> (sub — additive inverse, which Semiring lacks);
+//       BooleanAlgebra<iN-bitwise> (and/or/xor; nand is the De-Morgan
+//         derived op over the same carrier — not a fresh algebra);
+//       Lattice<iN> with signed-vs-unsigned ordering inhabitances
+//         (max/min and umax/umin — the join/meet on the two distinct
+//         Ord inhabitances of `iN`; std/algebra.dag has not yet split
+//         Lattice into Join/Meet halves, so the unified Lattice carrier
+//         is the present authority);
+//       ApproximateField<float-N> (fadd/fsub/fmax/fmin via
+//         std/float.dag:255 `ApproximateField` instance).
+//     uinc_wrap/udec_wrap have NO landed carrier yet — they name a
+//     future std/integer.dag bounded-counter authority (wrap-on-bound,
+//     compare-and-conditionally-{inc,dec}); flagged here as a NAMED
+//     MISSING CARRIER, with the trigger below carrying its obligation.
+//     Each LangRef sub-op names ONE landed algebra operation on the
+//     operand-type's std/ inhabitance (or, for uinc_wrap/udec_wrap,
+//     the named-missing future carrier).
 //   Trigger: first consumer of atomicrmw MEANING (effect lens / cost
 //     model / inhabitance dispatch — D2 pathway).
 //   Obligation: the first meaning-consumer owes the (algebra-carrier,
