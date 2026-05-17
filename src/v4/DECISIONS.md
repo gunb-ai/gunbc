@@ -63,11 +63,11 @@ authority location(s) and moves to Part 1.
 
 ---
 
-## De-Prosed Substrate Receipts
+## De-Prosed Substrate — Coproduct & Scaffold Classification Ledgers
 
-These receipts were relocated from local `.dag` comments during T-31(b).
-The terse `.dag` headers remain boundary indexes; this table carries the
-checkable scaffold/coproduct receipt until the named substrate support lands.
+These classification ledgers are the authoritative coproduct/scaffold entries
+for the de-prosed `.dag` files touched by T-31(b). The terse `.dag` headers
+remain boundary indexes until the named substrate support lands.
 
 | File | Declaration(s) | Class | Receipt |
 |------|----------------|-------|---------|
