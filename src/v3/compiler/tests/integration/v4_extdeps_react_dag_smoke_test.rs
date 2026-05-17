@@ -5,7 +5,8 @@
 //! diagnostics (same 0-diag gate as `v4_extdeps_typescript_dag_smoke_test`).
 //!
 //! **Shape:** `v4_extdeps_react_dag_compiles` is the single **0-diag** gate; sibling
-//! `#[test]`s each assert one structural receipt on a fresh compile (TESTING.md §4).
+//! `#[test]`s each assert one structural receipt on a fresh compile (TESTING.md §4),
+//! including the pinned **20-arm `ReactHookSite`** label roster.
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::TypeConnective;
