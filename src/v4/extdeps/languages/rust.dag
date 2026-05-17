@@ -33,64 +33,12 @@
 
 
 // ─────────────────────────────────────────────────────────────────────
-// RustIntKind — the closed Rust signed-vs-unsigned integer kind. The
-// Rust Reference §3.4 numeric-types-integer-types declares exactly
-// two integer kinds: signed (i*) and unsigned (u*). Each integer
-// scalar in Rust's spec is one of these.
-// Spec: https://doc.rust-lang.org/reference/types/numeric.html
-//
-//   - Signed   — `i8` / `i16` / `i32` / `i64` / `i128` / `isize`
-//                (two's-complement signed integers)
-//   - Unsigned — `u8` / `u16` / `u32` / `u64` / `u128` / `usize`
-//                (unsigned modular integers)
-//
-// CLOSED (C1 stop-signal). A third integer kind (e.g. a saturating-
-// integer family distinct from the existing wrapping `Wrapping<T>`
-// library type) is an edit to THIS declaration routed to operator
-// ratification under the L-2 pin discipline (a future Reference
-// revision modifying the integer kind partition is a visible diff,
-// never a silent extension). The `Wrapping<T>` / `Saturating<T>`
-// library types are LIBRARIES (per L-2, a library is just a program
-// in the modeled language = Node), NOT additional integer kinds.
-//
-// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — five patterns attempted:
-//   1. Fact placement — FAILS: every integer-scalar consumer (the
-//      Rust `LanguageModel` grammar's integer-literal production,
-//      the per-target cost-realization for integer ops, the
-//      eventual inhabitance walk for Semiring-vs-OrderedRing
-//      dispatch) reads the kind tag uniformly; shared classifier,
-//      not a per-consumer scattered fact.
-//   2. Variant-is-data — FAILS: nullary tags from a closed
-//      Reference-defined set. A `{ signed: Bool }` proxy replaces a
-//      closed 2-valued exhaustive sum with an unbounded Bool — and
-//      while Bool is 2-valued, the Bool proxy ALSO admits the read
-//      "is the integer kind 'true' or 'false'?" — exactly the M4
-//      "closed sets are enums, not numeric/boolean proxies" smell.
-//      The enum IS the faithful form.
-//   3. Algebraic form — PARTIAL: each kind grounds in a std/algebra
-//      structure (Signed → OrderedRing, Unsigned → Semiring — minus
-//      negate). That grounding IS the inhabitance walk owned by
-//      std/integer.dag per P2 (and rides D2 + T-3 per "Owned
-//      ELSEWHERE"); the kind enum itself stays a closed classifier.
-//      The "kind → algebra" map is the future inhabitance walk, not
-//      a richer std/ source to collapse this enum INTO.
-//   4. Dimensional — FAILS: a single Rust integer type has EXACTLY
-//      ONE kind; `i32` is signed, `u32` is unsigned, the Reference
-//      admits no "both" type. Mutually-exclusive alternatives, not
-//      simultaneous coordinates. (Kind × Width is the Cartesian
-//      product on RustIntScalar's IntScalar variant — that is the
-//      dimensional model.)
-//   5. Parameterized family — FAILS: Signed and Unsigned are the
-//      Rust Reference's integer-kind partition; they are NOT one
-//      generic `F<X>` / projection over a separately-declared source
-//      set (Practice 7). One could attempt `IntKind<algebra:
-//      AlgebraStructure>` parameterized over a 2-element algebra
-//      subset, but the partition is the spec's irreducible
-//      kind-distinction, not a mechanical copy of a richer set.
-// Terminal: the closed two-way Rust integer-kind partition; a 3rd is
-// the C1 stop-signal (a visible ratified edit to this declaration,
-// STRUCTURE.md commitment #1).
+// RustIntKind
+// Anchor: https://doc.rust-lang.org/reference/types/numeric.html
+// 🟢 terminal: signed/unsigned.
+// Rust integer primitives are partitioned by kind: signed `i*` or
+// unsigned `u*`. A third kind is a C1 stop signal. Library wrappers
+// such as `Wrapping<T>` do not extend this classifier.
 type RustIntKind
   = Signed
   | Unsigned
