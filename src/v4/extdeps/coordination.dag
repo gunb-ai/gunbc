@@ -1,6 +1,6 @@
 // src/v4/extdeps/coordination.dag
 // Scope: Multi-program coordination as effect-typed Bind composition.
-// Owns: NetworkAddress, CoordinationBoundary, LanguageRef, FrameworkRef, FrameworkBinding, EndpointRef, Endpoint, SettleBound, ConvergeBound, ExchangePattern, SettlementGuarantee, ConsistencyGuarantee, HttpEffect, QueueEffect, StreamEffect, PubSubEffect, BindRef, HttpBind, QueueBind, StreamBind, PubSubBind, WireContract, DeploymentUnit.
+// Owns: NetworkAddress, CoordinationBoundary, LanguageRef, FrameworkRef, FrameworkBinding, EndpointRef, Endpoint, SettleBound, ConvergeBound, ExchangePattern, SettlementGuarantee, ConsistencyGuarantee, HttpEffect, QueueEffect, StreamEffect, PubSubEffect, BindRef, HttpBind, QueueBind, StreamBind, PubSubBind, WireContractFacts, WireContract, DeploymentUnit.
 // Consumes: std/node.dag, std/diagnostic.dag, std/collection.dag, std/nat.dag.
 // Status: T-4.8 Lane C modeled; held for operator audit.
 
@@ -102,14 +102,21 @@ type PubSubBind {
   effect: PubSubEffect
 }
 
-// Anchor: https://en.wikipedia.org/wiki/Inter-process_communication
-type WireContract {
+type WireContractFacts {
   from: EndpointRef,
   to: EndpointRef,
   exchange: ExchangePattern,
   settlement: SettlementGuarantee,
   consistency: ConsistencyGuarantee
 }
+
+// Anchor: https://en.wikipedia.org/wiki/Inter-process_communication
+// 🟢 coproduct dissolution — DECISIONS.md#coordination-coproduct-ledgers
+type WireContract
+  = HttpWireContract { facts: WireContractFacts, bind: HttpBind }
+  | QueueWireContract { facts: WireContractFacts, bind: QueueBind }
+  | StreamWireContract { facts: WireContractFacts, bind: StreamBind }
+  | PubSubWireContract { facts: WireContractFacts, bind: PubSubBind }
 
 // Anchor: https://en.wikipedia.org/wiki/Distributed_computing
 type DeploymentUnit {
