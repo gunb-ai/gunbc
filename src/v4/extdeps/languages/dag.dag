@@ -9,7 +9,7 @@
 module v4.extdeps.languages.dag
 
 
-import v4.std.node { Conj, Node, NodeKind, Symbol, TypeNode }
+import v4.std.node { Conj, Node, Symbol, TypeNode }
 
 
 data dag_c3_surface_sugar_service: Symbol = dag_c3_surface_sugar_service
