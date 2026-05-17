@@ -50,9 +50,9 @@
 //   - ReactPropsSite (props type + value sites — `ReactCrossDeclRef` edges)
 //   - ReactHostElement / ReactCompositeElement / ReactElement (narrowed **element object**
 //     partition per `createElement` return: host + composite + keyed `Fragment`;
-//     `key`/`ref` lift per react.dev) + `ReactNode` (**child** superset: wrapped
-//     `ReactElement` vs primitive `Text` — strings/numbers are nodes, not returned
-//     element objects)
+//     `key`/`ref` lift per react.dev) + `ReactNode` (🟡 YELLOW — **partial** `children`
+//     slice: `Element` | `Text` only; full react.dev / JSX child lattice **Owned ELSEWHERE**;
+//     dissolution trigger in-file at `ReactNode` ledger)
 //   - ReactContextBinding (`createContext(defaultValue)` site — context object + default)
 //   - ReactHookSite — closed hook **call-site** coproduct under the react@19.2.0 pin
 //     + `CustomHook` (🟡 YELLOW Practice‑4 carrier per design-r4 §12 HookKind; canvas
@@ -297,7 +297,7 @@ type ReactHookSite
 //         `ref`** passed there are lifted to **`element.key` / `element.ref`** on the
 //         returned element object (not modeled inside this record — see `ReactHostElement` /
 //         `ReactCompositeElement`; `Fragment` for keyed fragments; primitive text children
-//         are `ReactNode::Text`, not `ReactElement` — no `element.key` on that arm).
+//         are `ReactNode::Text` (🟡 partial slice — see `ReactNode` ledger), not `ReactElement`).
 type ReactPropsSite {
   props_type_ref: ReactCrossDeclRef
   props_value_ref: ReactCrossDeclRef
@@ -379,13 +379,25 @@ type ReactElement
 // by `createElement` (modeled as `ReactElement` above — not duplicated here as a flat
 // host/composite/fragment repeat).
 //
-// Coproduct dissolution (Practice 4) — 🟢 GREEN (terminal). Ledger — five patterns:
-//   1. Fact placement — FAILS: primitive text folded under `ReactElement` with wrong `key`.
-//   2. Variant-is-data — FAILS: Bool `is_text` admits illegal node union.
-//   3. Algebraic form — N/A: full JSX node roster lowers in `Node` / grammar elsewhere.
-//   4. Dimensional — FAILS: exactly one node kind at this forward-modeled site.
-//   5. Parameterized family — FAILS: not Practice-7 copy over the full children lattice.
-// Terminal: minimal **child** partition (wrapped element vs text) for pin fidelity.
+// Coproduct dissolution (Practice 4) — 🟡 YELLOW (T‑4.7 forward-modeled carrier; **not**
+// 🟢 terminal). react.dev’s `children` contract is **broader** than this two-arm sum
+// (arrays, portals, `null` / booleans for conditional rendering, numbers as nodes,
+// iterables, …). That **richer lattice** is **Owned ELSEWHERE** (see header: JSX/TSX
+// grammar → `Node` lowering). Per **modeling-discipline.md**, a namable richer source
+// outside this closed pair forbids claiming 🟢 GREEN “Terminal” here until absorbed or
+// proven equivalent under a named authority. **Dissolution trigger** = operator-ratified
+// PR that either **(a)** extends this coproduct to cover the remaining **pinned** child
+// kinds and re‑audits this ledger, or **(b)** retires this sum in favor of a JSX/TSX
+// extdeps slice that owns the full node algebra (T‑16 / grammar milestone). **React
+// semver / hooks-index bump alone** does **not** dissolve this YELLOW — child-kind churn
+// is grammar/lowering ownership unless react.dev materially narrows the children contract.
+// Ledger — five patterns:
+//   1. Fact placement — FAILS: portal/array/null children folded into `Text`.
+//   2. Variant-is-data — FAILS: Bool `is_text` admits impossible union with portals.
+//   3. Algebraic form — PARTIAL: full node algebra lives in `Node` / JSX until dissolution.
+//   4. Dimensional — FAILS: exactly one **modeled** child kind per inhabitant **within this slice**.
+//   5. Parameterized family — FAILS: not `ReactNode<Width>` Practice‑7 ladder yet.
+// Partial slice under the pin: **Element | Text** only until a dissolution PR above.
 type ReactNode
   = Element { element: ReactElement }
   | Text { text_value_ref: ReactCrossDeclRef }
