@@ -70,7 +70,7 @@ T-9 needs T-4 (the language fact-bundles) in addition to T-8. This branch
 carries slack against the `T-6→T-7→T-8` pipeline branch **only if its
 feeders start immediately**. The D2 reversal CHANGED T-4's dependency set
 — the old alias model needed almost nothing; fact-bundle modeling needs
-the shared vocabulary (`T-3-extended`, itself on the critical path) plus
+the shared vocabulary (`T-3`, itself on the critical path) plus
 **four feeders that are not on the critical path and gate `T-4 → T-9`**:
 P1-KEYSTONE, T-30, T-29, T-25-core. Those four are **watch items**, not
 slack-having parallel fill — if any slips, the side branch goes critical.
@@ -101,7 +101,7 @@ T-4 is no longer a schedule-anytime leaf — see T-4.
                 T-25. (T-25-tail, the predicate prover, is post-T-9
                 parallel fill, not a feeder.)
   T-4   extdeps/languages/{rust,python,go,cpp,typescript}.dag
-        [needs T-3-extended, P1-KEYSTONE, T-29, T-30, T-25-core — see T-4]
+        [needs T-3, P1-KEYSTONE, T-29, T-30, T-25-core — see T-4]
 ```
 
 ### Parallel fill — schedule the instant deps clear
@@ -272,7 +272,7 @@ flat — dispatch in waves):
 **File**: 5 files in `src/v4/extdeps/languages/` (operator-ratified 2026-05-15: cpp + typescript added; cpp subsumes C subset; Go retained)
 **Why bundled**: identical structural shape per language; the SHAPE is the work. Each file declares the language MODEL (grammar + types + semantics) — direction-agnostic; emit AND ingest are operations against the same model.
 
-**Dependencies — re-gated by the D2 reversal (operator-ratified 2026-05-17).** T-4 is no longer a schedule-anytime Phase-1 leaf: `[needs T-3-extended, P1-KEYSTONE, T-29, T-30, T-25-core]`. The old alias model needed almost nothing — a bare alias reads no facts. Fact-bundle modeling needs T-3's shared-fact vocabulary (signedness/representation/numeric stack), the `P1-KEYSTONE` modeling-discipline rubric (the doc against which every bundle is authored and reviewed), the `T-30` structural fact-density / hollow-alias gate (the per-language rework does not run under convention-tier-only enforcement — see T-30), `T-25-core` (the refinement substrate — a language fact-bundle that grounds a refinement-bearing carrier needs the base-type + fail-closed-validation shape), and — for the cpp slice — the T-29 C++ ABI / target data-model. T-4 sits on the `{P1-KEYSTONE, T-30, T-29, T-25-core} → T-4 → T-9` side branch — its four feeders are watch items, not slack-having parallel fill; see the execution graph. The D2 reversal *changing this dependency set* is the single most consequential planning edit of the reseed.
+**Dependencies — re-gated by the D2 reversal (operator-ratified 2026-05-17).** T-4 is no longer a schedule-anytime Phase-1 leaf: `[needs T-3, P1-KEYSTONE, T-29, T-30, T-25-core]`. The old alias model needed almost nothing — a bare alias reads no facts. Fact-bundle modeling needs T-3's shared-fact vocabulary (signedness/representation/numeric stack), the `P1-KEYSTONE` modeling-discipline rubric (the doc against which every bundle is authored and reviewed), the `T-30` structural fact-density / hollow-alias gate (the per-language rework does not run under convention-tier-only enforcement — see T-30), `T-25-core` (the refinement substrate — a language fact-bundle that grounds a refinement-bearing carrier needs the base-type + fail-closed-validation shape), and — for the cpp slice — the T-29 C++ ABI / target data-model. T-4 sits on the `{P1-KEYSTONE, T-30, T-29, T-25-core} → T-4 → T-9` side branch — its four feeders are watch items, not slack-having parallel fill; see the execution graph. The D2 reversal *changing this dependency set* is the single most consequential planning edit of the reseed.
 
 **Authoring contract (operator-ratified 2026-05-15; D2 bullet superseded 2026-05-17):**
 - **Model the SPECIFICATION, not libraries (L-2).** Model the versioned upstream spec (Rust Reference, ECMAScript/TS Handbook, IEEE 1364, …) — the anchor IS that spec. Do NOT model std/crates/packages: a library is just a program in the modeled language = `Node`. Modeling libraries is infinite, non-general, the wrong layer.
