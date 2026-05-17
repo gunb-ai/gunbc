@@ -9,31 +9,31 @@ module v4.extdeps.frameworks.react
 type ReactCrossDeclRef
 
 // Anchor: https://react.dev/reference/react/useEffect
-// Practice-4: DECISIONS.md#react-p4-optref
+// 🟢 coproduct dissolution — DECISIONS.md#react-p4-optref
 type ReactOptRef
   = RefPresent { ref: ReactCrossDeclRef }
   | RefAbsent
 
 // Anchor: https://react.dev/reference/react/useEffect
-// Practice-4: DECISIONS.md#react-p4-effect-cleanup-site
+// 🟢 coproduct dissolution — DECISIONS.md#react-p4-effect-cleanup-site
 type ReactEffectCleanupSite
   = NoCleanup
   | CleanupBody { cleanup_body_ref: ReactCrossDeclRef }
 
 // Anchor: https://react.dev/reference/react/useEffect
-// Practice-4: DECISIONS.md#react-p4-hook-inline-deps
+// 🟢 coproduct dissolution — DECISIONS.md#react-p4-hook-inline-deps
 type ReactHookInlineDependenciesArgument
   = DependenciesArgOmitted
   | DependenciesArgPresent { dependency_refs: List<ReactCrossDeclRef> }
 
 // Anchor: https://react.dev/reference/rsc/server-components
-// Practice-4: DECISIONS.md#react-p4-module-surface
+// 🟢 coproduct dissolution — DECISIONS.md#react-p4-module-surface
 type ReactModuleSurface
   = ReactClientModule
   | ReactServerComponentsModule
 
 // Anchor: https://react.dev/reference/react/hooks
-// Practice-4: DECISIONS.md#react-p4-hook-site
+// 🟡 coproduct dissolution — DECISIONS.md#react-p4-hook-site
 type ReactHookSite
   = UseState { initial_ref: ReactCrossDeclRef }
   | UseReducer {
@@ -93,7 +93,6 @@ type ReactHookSite
   | CustomHook { implementation_ref: ReactCrossDeclRef }
 
 // Anchor: https://react.dev/reference/react/use
-// Practice-4: DECISIONS.md#react-p4-use-call-site
 type ReactUseCallSite
   = UseResource { resource_ref: ReactCrossDeclRef }
 
@@ -129,7 +128,7 @@ type ReactCompositeElement {
 }
 
 // Anchor: https://react.dev/reference/react/createElement
-// Practice-4: DECISIONS.md#react-p4-element
+// 🟢 coproduct dissolution — DECISIONS.md#react-p4-element
 type ReactElement
   = Host { host: ReactHostElement }
   | Composite { composite: ReactCompositeElement }
