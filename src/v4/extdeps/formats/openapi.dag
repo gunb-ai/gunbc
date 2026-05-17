@@ -10,7 +10,8 @@
 //   - Paths Object (`OpenApiPaths`: route map + **`paths_extensions`**)
 //   - Path { operations: Map<HttpMethod, Operation> }
 //   - Operation { …, Responses Object (`OpenApiResponses`: status map +
-//     **`responses_object_extensions`**) }
+//     **`responses_object_extensions`**) }; nested **Response Object**
+//     (`OpenApiResponse`: **`content` / `headers` / `links`** slots vs **`extensions`**)
 //   - parse(String) -> Result<OpenApiSpec, Diagnostic>  (YAML or JSON input)
 //   - emit(OpenApiSpec) -> String  (typically YAML)
 //   - Type derivation from components.schemas (delegates to json_schema.dag)
@@ -81,7 +82,7 @@ import v4.extdeps.formats.json_schema { JsonSchema }
 // DECLARATIVE-NOW / OPERATIONS-DEFERRED-WITH-OWNER — modeled carriers for
 // the document root, **Info Object (OAS-fixed fields + `info_extensions`)**,
 // **`OpenApiPathsSlot`** (root `paths` omit vs present) + **Paths Object
-// (`OpenApiPaths`: `routes` + `paths_extensions`)**, path items, operations, **Responses Object (`OpenApiResponses`)**, media types,
+// (`OpenApiPaths`: `routes` + `paths_extensions`)**, path items, operations, **Responses Object (`OpenApiResponses`)** + **Response Object fixed-field slots** (`content` / `headers` / `links` vs `extensions`), media types,
 // and component schemas; **$ref** resolution, parameter objects, callbacks,
 // security schemes, servers, and the full Components object beyond `schemas`
 // are 🟡 deferred with named triggers — not silently omitted without a
@@ -254,12 +255,68 @@ type OpenApiMediaTypeSchemaSlot
 
 
 // ─────────────────────────────────────────────────────────────────────
-// OpenApiResponse — Response Object (description required at JSON surface).
+// OpenApiResponseContentSlot — OAS 3.1.0 Response Object **`content`** field
+// (map of media type → Media Type Object). Optional at the JSON surface —
+// **omit** vs **present** (including **present-empty** `{}`) are distinct wire
+// facts (P2).
 //
 // Anchor: https://spec.openapis.org/oas/v3.1.0#response-object
+//
+// Coproduct dissolution (Practice 4) — 🟢 GREEN (terminal). Ledger: present
+// vs absent `content` are genuine alternatives; a flat optional map would
+// conflate “field omitted” with “empty map” unless paired with a separate
+// presence bit (illegal paired states).
+type OpenApiResponseContentSlot
+  = OpenApiResponseContentAbsent
+  | OpenApiResponseContentPresent { content: Map<String, OpenApiMediaType> }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// OpenApiHeadersSlot — OAS 3.1.0 Response Object **`headers`** map (Header
+// Object | Reference Object values). Typed **`OpenApiHeader`** decomposition
+// is 🟡 deferred (Trigger (1)); wire **faithfulness** today uses **`JsonValue`**
+// payloads per map entry — **not** folded into **`extensions`**, which is
+// reserved for **Specification Extensions** (`^x-`) only on this object (M5 /
+// P2 single field authority per OAS fixed-field name).
+//
+// Anchor: https://spec.openapis.org/oas/v3.1.0#response-object
+//
+// Coproduct dissolution (Practice 4) — 🟢 GREEN (terminal).
+type OpenApiHeadersSlot
+  = OpenApiHeadersAbsent
+  | OpenApiHeadersPresent { headers: Map<String, JsonValue> }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// OpenApiLinksSlot — OAS 3.1.0 Response Object **`links`** map (Link Object |
+// Reference Object values). Typed **`OpenApiLink`** decomposition is 🟡
+// deferred (Trigger (1)); wire payloads captured as **`JsonValue`** (bounded
+// fixed-field path — not `extensions`).
+//
+// Anchor: https://spec.openapis.org/oas/v3.1.0#response-object
+//
+// Coproduct dissolution (Practice 4) — 🟢 GREEN (terminal).
+type OpenApiLinksSlot
+  = OpenApiLinksAbsent
+  | OpenApiLinksPresent { links: Map<String, JsonValue> }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// OpenApiResponse — OAS 3.1.0 **Response Object**. **`description`** is REQUIRED
+// at the JSON surface; **`content`**, **`headers`**, and **`links`** are optional
+// fixed fields with explicit **present/absent** slots (omit vs present-empty).
+// **`extensions`** carries only **Specification Extensions** (`^x-`) on this
+// object — not a dumping ground for `headers` / `links` / `content` wire.
+//
+// Anchor: https://spec.openapis.org/oas/v3.1.0#response-object
+//
+// Coproduct dissolution (Practice 4) — N/A (`Conj` record) for the outer record;
+// nested slots supply the Response-object-level ledger splits.
 type OpenApiResponse {
   description: String,
-  content: Map<String, OpenApiMediaType>,
+  content: OpenApiResponseContentSlot,
+  headers: OpenApiHeadersSlot,
+  links: OpenApiLinksSlot,
   extensions: Map<String, JsonValue>,
 }
 
@@ -270,7 +327,8 @@ type OpenApiResponse {
 // — uppercase **`XX`** per the Responses Object key grammar, not HTTP “class”
 // shorthand) plus **object-level** Specification
 // Extensions (`^x-`) as siblings of those keys — distinct from each
-// `OpenApiResponse.extensions` on the nested Response Object.
+// `OpenApiResponse.extensions` on the nested Response Object vs
+// **`responses_object_extensions`** on the Responses Object.
 //
 // Anchor: https://spec.openapis.org/oas/v3.1.0#responses-object
 //
@@ -424,7 +482,10 @@ type OpenApiDocument {
 //   lowercase `xx` spellings): the carrier uses **`String` lexemes** today
 //   for faithful wire capture; lifting to a closed-ish sum (vs silent string
 //   abuse) rides the **same** parse/validation operation — not a parallel
-//   authority.
+//   authority. **`OpenApiHeadersSlot` / `OpenApiLinksSlot`** carry **`JsonValue`**
+//   per map entry until Header Object / Link Object carriers land (same trigger);
+//   **`OpenApiResponseContentSlot`** defers Media Type Object value validation to
+//   the same parse lane.
 //
 // (2) `openapi_version_lexeme` refinement — patch-level policy + numeric
 //   comparison against supported spec revisions; trigger = operator version
