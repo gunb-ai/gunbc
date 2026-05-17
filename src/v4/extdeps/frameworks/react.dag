@@ -102,7 +102,7 @@ type ReactPropsSite {
   props_value_ref: ReactCrossDeclRef
 }
 
-// Anchor: https://react.dev/reference/react/function-components
+// Anchor: https://react.dev/reference/react/components
 type ReactFunctionComponent {
   surface: ReactModuleSurface
   props: ReactPropsSite
