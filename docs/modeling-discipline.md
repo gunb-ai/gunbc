@@ -11,7 +11,7 @@
 > Full derivations, worked examples, and the background modeling analysis
 > live in [v3-modeling-analysis.md](v3-modeling-analysis.md).
 
-## Seven Modeling Practices
+## Eight Modeling Practices
 
 Each practice implements one of the five invariant principles from
 INVARIANTS.md. A reviewer works from the five principles; the practices
@@ -27,6 +27,7 @@ Mapping:
 - Practice 5 (Single-authority metadata) — implements **P2: Boundary Discipline**
 - Practice 6 (API-level enforcement over convention) — implements **P2: Boundary Discipline**
 - Practice 7 (Projection over enumeration) — implements **P1: Modeling Faithfulness**
+- Practice 8 (Fact-bundle modeling) — implements **P1: Modeling Faithfulness**
 
 A reviewer should name specifically whether the diff satisfies each
 relevant practice, where it could be violated, and whether the existing
@@ -276,6 +277,116 @@ enumerated siblings. "Operations fall out of inhabitance" (THESIS,
 epistemic stacking) is precisely this practice: the operations are
 projected from the algebra, not enumerated on the type.
 
+### 8. Fact-bundle modeling
+
+To model a thing is to assert its *facts*. A type either **invents** a
+fact-bundle for its subject — a `Conj` / record whose fields are the
+specific facts the source actually states — or **reuses** an existing
+`std/` carrier. There is no third option. A **bare alias**
+(`type RustI32 = Int32`) does neither: it asserts an identity it has not
+proven while modeling nothing of its own. It is *hollow* — the shape
+that looks like modeling and isn't.
+
+Modeling is mandatory; deduplication is conditional. You MUST model the
+facts. You may collapse your model onto a `std/` carrier ONLY when you
+have **proven** the two coincide — and *coincide* has a precise meaning
+(see DECISIONS.md): both groundings, reduced to canonical `Node`s, are
+structurally equal, expressed in shared `std/` vocabulary. Identity is
+an evidenced claim, never an assumed default. "These are obviously the
+same" is not evidence.
+
+**Same rule, opposite default — the default tracks what we *know*:**
+
+- **extdeps** (`extdeps/languages/*`, `extdeps/formats/*`,
+  `extdeps/frameworks/*`) — we did not write these systems and do not
+  fully know them. **Default SEPARATE:** model each primitive's facts
+  honestly from its own spec and let the model accumulate. Reuse a
+  `std/` carrier *only* with cited coincidence evidence. Keeping
+  `RustSignedness` a separate carrier until Rust's reference is checked
+  is *honest modeling*, not a dual-authority (Practice 5) violation —
+  the two are not yet proven to coincide.
+- **internal** (the compiler layers, our own substrate) — we wrote both
+  sides; identity is usually *known*. **Default REUSE `std/`** — but
+  still name the evidence. A known coincidence left un-cited is still an
+  un-modeled claim.
+
+**What to check:** For every external primitive a `.dag` file models,
+does the file *state the facts the spec gives* — width, signedness,
+representation, range, encoding, lifetime, … — as a structured carrier?
+Or does it write `type Foo = Bar` and stop? A bare alias of a spec
+primitive whose spec carries facts is **under-modeled** — flag it.
+
+**Example violation:** `type CppInt = Int`. C++'s `int` is *not* the
+abstract integer. The standard states facts the alias discards: an
+implementation-defined width of *at least* 16 bits, a signed
+representation, an `int`-specific range. `type CppInt = Int` asserts
+`CppInt` *is* `std/` `Int` — an identity that is false (C++ `int` is
+finite-width and platform-varying; `Int` is not).
+
+**Fix:** invent the facts C++ adds, reuse `std/` for the part that
+genuinely coincides:
+`CppInt = Conj { base: Int, width: Nat, width_proof: Witness<width >= 16>, representation: Representation }`.
+The `base: Int` reuse is licensed because C++ integers *are* integers —
+a coincidence on the algebra, cited. The `width` / `representation`
+fields are invented because they are facts C++ states that `std/` `Int`
+does not carry.
+
+**Why hollow aliases survive review (and why this practice exists).** A
+bare alias is *structurally minimal* — it passes every structural gate
+precisely because there is nothing there to be wrong. The hollowness is
+invisible to a shape-checker: the gate sees a valid `type` declaration.
+MODELING.md M1 ("types decompose into facts") already said modeling
+means asserting facts; the gap was *enforcement*. This practice, the
+worked examples it points at, and the structural fact-density gate below
+are that enforcement. A reviewer fails a hollow alias *against this
+documented bad example*.
+
+**No string-templating (the emit-side hollow alias).** Emission goes
+through grounded format / language models — **never** string templates
+or fill-in-the-holes artifacts. A string-templated artifact (e.g. an
+`InhabitantDecl.template: "Vec<{0}>"` field) produces output the
+compiler cannot ground and cannot coercion-check; it drifts silently,
+exactly as the bare alias does. It is the *emit-side* equivalent of the
+hollow alias — the same failure, on the way out. The canonical
+non-templated form is **grammar-as-declarative-bidirectional-data**: the
+production data *is* the relation concrete-syntax ⟷ `Node`, checked in
+both directions, never a procedural recognizer or a print template. Any
+emit artifact that cannot be grounded is a STOP.
+
+**Worked examples.** The good-vs-bad fact-bundle forms for each external
+target — Rust, C++, LLVM, Verilog, SPICE, PTX, Go, JSON, TOML,
+OpenAPI, … — are worked in full in
+[modeling/grounding-worked-examples.md](modeling/grounding-worked-examples.md).
+That document is the companion rubric to this practice; consult it for
+the concrete shape of a faithful fact-bundle per target.
+
+#### The structural fact-density gate (T-30)
+
+This practice is enforced mechanically by the **structural fact-density
+gate** (TASKS.md T-30) — and, until that checker lands, by reviewers
+applying the same discriminator by hand.
+
+A declaration is **hollow** when *all three* hold:
+
+1. It is a **bare alias** (`type X = Y`) or a single-field wrapper that
+   adds no field of its own; **and**
+2. its subject is an **external spec primitive** — something a
+   language / format / framework specification names and states facts
+   about; **and**
+3. it carries **no coincidence-evidence comment** — no cited proof that
+   `X` and `Y` coincide in the DECISIONS.md sense.
+
+A hollow declaration **blocks review**. The fix is one of: invent the
+fact-bundle (now `X` carries ≥ 1 fact of its own), or supply the
+coincidence evidence (now the reuse is licensed and cited).
+
+**Exempt:** kernel-ambient atoms — `Bool`, `Char`, and the other
+irreducible substrate atoms — are *legitimately* atomic. They state no
+further facts because there are none to state; an alias onto them, or
+their use as a terminal, is not hollow. The gate's discriminator is
+"does the *spec* carry facts this declaration drops?" — for a true atom
+the answer is no.
+
 ## Calibration: Blocking vs Non-blocking
 
 A finding is **BLOCKING** if fixing it in a later PR would be meaningfully
@@ -323,8 +434,15 @@ For each relevant principle and its implementing practices:
 5. For any new family of declarations (enum or not): verify it is a
    projection over its source set (Practice 7), not a hand-enumeration —
    the cost-of-change test is adding one element to the source set.
-6. For cross-stage boundaries: verify facts flow forward.
-7. Classify every finding as BLOCKING or NON-BLOCKING per the calibration
+6. For any type modeling an external spec primitive (Practice 8): verify
+   it is a fact-bundle (invents the facts the spec states) or a *cited*
+   coincidence reuse of a `std/` carrier — not a bare alias. Apply the
+   structural fact-density gate: a bare alias of a spec primitive with
+   no coincidence-evidence comment is hollow and blocks. For any emit
+   artifact: verify it is grounded grammar-as-data, not a string
+   template.
+7. For cross-stage boundaries: verify facts flow forward.
+8. Classify every finding as BLOCKING or NON-BLOCKING per the calibration
    above.
 
 This document is the distilled version of modeling principles. For the
