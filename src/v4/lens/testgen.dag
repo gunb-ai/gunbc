@@ -203,10 +203,12 @@ module v4.lens.testgen
 // Modeling notes (read before validating against the anchor)
 //
 // PRODUCER LENS. This file owns the GENERIC CARRIER and the Tier×Layer
-// cross-cut shared with lens/coverage.dag (T-18). std/verification.dag
-// owns TestClaim SHAPE (T-3). The five testgen categories map INTO the
-// closed four AssertKinds (Equals | Diagnostic | Compiles | RoundTrips)
-// — never a parallel claim vocabulary.
+// cross-cut shared with lens/coverage.dag (T-18). **`src/v4/std/verification.dag`**
+// (`module v4.std.verification`) owns TestClaim SHAPE (T-3). The five testgen categories map INTO the
+// closed four **`v4.std.verification.AssertKind`** variants (`Equals` |
+// `Diagnostic` | `Compiles` | `RoundTrips` in **`src/v4/std/verification.dag`**)
+// — never a parallel claim vocabulary; manual `assert_kind` Int codes are
+// the same four-way projection (not dsl/v3 Assert* / `TestPredicate` surfaces).
 //
 // `compile_to_dag` today lowers a single module without following
 // `import v4.std.*` to on-disk peers (M2 module graph). The subject
