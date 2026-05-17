@@ -531,3 +531,8 @@ fn v4_extdeps_react_dag_create_element_child_text_has_no_element_key() {
 fn v4_extdeps_react_dag_create_element_child_element_arm_wraps_react_element() {
     assert_react_create_element_child_element_arm_wraps_react_element(&react_extdeps_dag_or_panic());
 }
+
+#[test]
+fn v4_extdeps_react_dag_context_binding_matches_create_context_surface() {
+    assert_react_context_binding_fields_match_create_context_surface(&react_extdeps_dag_or_panic());
+}
