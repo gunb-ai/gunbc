@@ -4,7 +4,7 @@
 // Consumes: std/node.dag; Int kernel-ambient.
 // Status: T-4.9 PASS (IN-B); import v4.std.node Symbol only.
 // Anchor: https://standards.ieee.org/ieee/1364/3641/
-// Ledger: DECISIONS.md Part 6 (PR #3229): CP-3229-GREEN-TERMINAL, SL-3229-VERILOG-COST, SL-3229-VERILOG-D3200, SL-3229-VERILOG-VECTOR-RANGE.
+// Ledger: DECISIONS.md Part 6 (PR #3229): CP-3229-GREEN-TERMINAL, SL-3229-VERILOG-COST, SL-3229-VERILOG-D3200, SL-3229-VERILOG-NONEMPTY, SL-3229-VERILOG-VECTOR-RANGE.
 
 module v4.extdeps.languages.verilog
 

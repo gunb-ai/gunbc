@@ -13,6 +13,11 @@ is replaced so `--check` cannot pass on stale pointers.
 `type`, `data`, and `fn` binding in the `.dag` body (deduped by name), not only headline
 carriers—so regenerated headers stay aligned with actual exports.
 
+`// Ledger:` lists **Part 6 slugs for the live substrate**: one Part-6 ref per live
+sum coproduct (from the merge-base tag map) plus **EXTRA** non-coproduct scaffolds
+(`EXTRA_PART6_SLUGS_BY_REL`). A live coproduct name absent from the merge-base map is
+a hard failure (Practice 4 fail-closed).
+
 Run with `--check` to verify allowlisted files already match merge-base-derived output
 without writing (exit 1 on drift).
 """
@@ -29,6 +34,8 @@ ROOT = Path(__file__).resolve().parents[1]
 DECISIONS_REL = "src/v4/DECISIONS.md"
 
 MERGE_BASE = "92cb26402eeb21471acb6ac47559cbae3b52afdb"
+# Audit recovery: `coproduct_tag_from_merge_base` uses `git show MERGE_BASE:path`.
+# CI and local dev assume a full object DB (not a shallow clone missing this commit).
 
 # Lines of merge-base text above a `type` row to resolve Practice-4 face when the
 # immediate authority tail is empty (e.g. sibling LLVM ordering carriers after a
@@ -51,6 +58,7 @@ EXTRA_PART6_SLUGS_BY_REL: dict[str, frozenset[str]] = {
         {
             "SL-3229-VERILOG-VECTOR-RANGE",
             "SL-3229-VERILOG-COST",
+            "SL-3229-VERILOG-NONEMPTY",
         }
     ),
     "src/v4/extdeps/languages/ptx.dag": frozenset(
@@ -244,14 +252,47 @@ def part6_slugs_in_decisions(decisions_text: str) -> set[str]:
     return out
 
 
-def required_ledger_slugs(rel: str, tag_map: dict[str, tuple[str, str]]) -> set[str]:
-    refs = {ref for _em, ref in tag_map.values()}
+def module_body_line_list(path: Path) -> list[str]:
+    lines = path.read_text().splitlines()
+    for i, ln in enumerate(lines):
+        if ln.startswith("module "):
+            return lines[i + 1 :]
+    raise SystemExit(f"{path}: no `module` line found")
+
+
+def coproduct_type_names_in_path(path: Path) -> set[str]:
+    """Every live N≥2 sum `type` in the substrate body (Practice-4 coproduct set)."""
+    bl = module_body_line_list(path)
+    out: set[str] = set()
+    for i in range(len(bl)):
+        nm = is_coproduct(bl, i)
+        if nm:
+            out.add(nm)
+    return out
+
+
+def required_ledger_slugs(
+    rel: str, tag_map: dict[str, tuple[str, str]], live_coproducts: set[str]
+) -> set[str]:
+    """Part-6 slug inventory for the live `// Ledger:` line: current coproduct refs + EXTRA scaffolds."""
+    unknown = live_coproducts - tag_map.keys()
+    if unknown:
+        print(
+            f"FAIL: {rel} live sum coproduct(s) missing from merge-base {MERGE_BASE} tag map "
+            f"(add Practice-4 authority to merge-base or extend coproduct_tag_from_merge_base): "
+            + ", ".join(sorted(unknown)),
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    refs = {tag_map[nm][1] for nm in live_coproducts}
     refs |= set(EXTRA_PART6_SLUGS_BY_REL.get(rel, frozenset()))
     return refs
 
 
-def format_ledger_line(rel: str, tag_map: dict[str, tuple[str, str]]) -> str:
-    slugs = ", ".join(sorted(required_ledger_slugs(rel, tag_map)))
+def format_ledger_line(
+    rel: str, tag_map: dict[str, tuple[str, str]], live_coproducts: set[str]
+) -> str:
+    slugs = ", ".join(sorted(required_ledger_slugs(rel, tag_map, live_coproducts)))
     return f"// Ledger: DECISIONS.md Part 6 (PR #3229): {slugs}.\n"
 
 
@@ -270,13 +311,19 @@ def format_coproduct_tag(emoji: str, ref: str) -> str:
     return f"// {emoji} coproduct dissolution — DECISIONS.md Part 6 · {ref}."
 
 
-def inject_coproduct_tags(body: str, _rel: str, tag_map: dict[str, tuple[str, str]]) -> str:
+def inject_coproduct_tags(body: str, rel: str, tag_map: dict[str, tuple[str, str]]) -> str:
     bl = body.splitlines()
     out_lines: list[str] = []
     j = 0
     while j < len(bl):
         nm = is_coproduct(bl, j)
-        if nm and nm in tag_map:
+        if nm:
+            if nm not in tag_map:
+                print(
+                    f"FAIL: {rel} sum coproduct {nm!r} missing from merge-base {MERGE_BASE} tag map.",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
             em, ref = tag_map[nm]
             expected = format_coproduct_tag(em, ref)
             prev = bl[j - 1] if j > 0 else ""
@@ -366,13 +413,17 @@ def run_check(specs: list[tuple[str, str, str, str, str]]) -> None:
     decisions_text = decisions_path.read_text()
     union_required: set[str] = set()
     for rel, *_rest in specs:
-        union_required |= required_ledger_slugs(rel, coproduct_tag_from_merge_base(rel))
+        path = ROOT / rel
+        tag_map = coproduct_tag_from_merge_base(rel)
+        live = coproduct_type_names_in_path(path)
+        union_required |= required_ledger_slugs(rel, tag_map, live)
     assert_part6_inventory(decisions_text, union_required)
 
     drift: list[str] = []
     for rel, scope, anchor, consumes, status in specs:
         path = ROOT / rel
         tag_map = coproduct_tag_from_merge_base(rel)
+        live = coproduct_type_names_in_path(path)
         names = carrier_names(path)
         owns_line = "// Owns: " + ", ".join(names)
         first = path.read_text().splitlines()[0]
@@ -385,7 +436,7 @@ def run_check(specs: list[tuple[str, str, str, str, str]]) -> None:
             f"{consumes}\n"
             f"{status}\n"
             f"{anchor}\n"
-            f"{format_ledger_line(rel, tag_map)}"
+            f"{format_ledger_line(rel, tag_map, live)}"
             f"\n"
         )
         expected = materialize_deprose_text(path, rel, tag_map, header)
@@ -447,7 +498,10 @@ def main() -> None:
     decisions_text = decisions_path.read_text()
     union_required: set[str] = set()
     for rel, *_rest in specs:
-        union_required |= required_ledger_slugs(rel, coproduct_tag_from_merge_base(rel))
+        path = ROOT / rel
+        tag_map = coproduct_tag_from_merge_base(rel)
+        live = coproduct_type_names_in_path(path)
+        union_required |= required_ledger_slugs(rel, tag_map, live)
     assert_part6_inventory(decisions_text, union_required)
 
     if check_only:
@@ -458,6 +512,7 @@ def main() -> None:
     for rel, scope, anchor, consumes, status in specs:
         path = ROOT / rel
         tag_map = coproduct_tag_from_merge_base(rel)
+        live = coproduct_type_names_in_path(path)
         names = carrier_names(path)
         owns_line = "// Owns: " + ", ".join(names)
         first = path.read_text().splitlines()[0]
@@ -470,7 +525,7 @@ def main() -> None:
             f"{consumes}\n"
             f"{status}\n"
             f"{anchor}\n"
-            f"{format_ledger_line(rel, tag_map)}"
+            f"{format_ledger_line(rel, tag_map, live)}"
             f"\n"
         )
         rewrite(path, header, rel, tag_map)

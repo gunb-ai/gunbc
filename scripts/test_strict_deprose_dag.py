@@ -1,9 +1,14 @@
 #!/usr/bin/env python3
-"""Hermetic checks for `strict_deprose_dag.py` (run: `python3 scripts/test_strict_deprose_dag.py`)."""
+"""Small unit checks for `strict_deprose_dag.py` (run: `python3 scripts/test_strict_deprose_dag.py`).
+
+Inputs are declared in-process strings only (TESTING.md §1 hermetic discipline for new tests).
+"""
 
 from __future__ import annotations
 
 import sys
+from contextlib import redirect_stderr
+from io import StringIO
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -25,19 +30,46 @@ def test_inject_rewrites_stale_verilog_slug() -> None:
     assert "SL-3229-VERILOG-NONEMPTY" not in out, out
 
 
-def test_verilog_yellow_ref_sees_post_terminal_footer() -> None:
-    mb = s.git_merge_base_lines("src/v4/extdeps/languages/verilog.dag")
-    for i, ln in enumerate(mb):
-        if s.is_coproduct(mb, i) == "NonTriregNetKind":
-            tail = s.practice4_tail_for_face(mb, i)
-            assert s.verilog_yellow_ref(tail) == "SL-3229-VERILOG-D3200", tail[:500]
-            return
-    raise AssertionError("NonTriregNetKind not found in merge-base verilog.dag")
+def test_verilog_yellow_ref_post_terminal_footer_inline() -> None:
+    # Merge-base places `#3200 RE-SCOPE` after `// Terminal:`; classifier must still see it.
+    tail = (
+        "// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —\n"
+        "// 🟡 YELLOW (deferred-on-consumer; re-scoped under #3200 rule-change\n"
+        "// Terminal: closed classifier.\n"
+        "//\n"
+        "// #3200 RE-SCOPE (rule-change 2026-05-16): post-terminal footer.\n"
+    )
+    assert s.verilog_yellow_ref(tail) == "SL-3229-VERILOG-D3200"
+
+
+def test_inject_fails_when_coproduct_missing_from_tag_map() -> None:
+    body = "type FreshCoproduct\n  = A\n  | B\n"
+    buf = StringIO()
+    with redirect_stderr(buf):
+        try:
+            s.inject_coproduct_tags(body, "src/v4/extdeps/languages/verilog.dag", {})
+        except SystemExit as e:
+            assert e.code == 1
+        else:
+            raise AssertionError("expected SystemExit")
+
+
+def test_required_ledger_fails_on_unknown_live_coproduct() -> None:
+    buf = StringIO()
+    with redirect_stderr(buf):
+        try:
+            s.required_ledger_slugs("x.dag", {}, {"NotInManifest"})
+        except SystemExit as e:
+            assert e.code == 1
+        else:
+            raise AssertionError("expected SystemExit")
 
 
 def main() -> None:
     test_inject_rewrites_stale_verilog_slug()
-    test_verilog_yellow_ref_sees_post_terminal_footer()
+    test_verilog_yellow_ref_post_terminal_footer_inline()
+    test_inject_fails_when_coproduct_missing_from_tag_map()
+    test_required_ledger_fails_on_unknown_live_coproduct()
     print("OK: scripts/test_strict_deprose_dag.py")
 
 
