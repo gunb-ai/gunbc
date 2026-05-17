@@ -73,9 +73,9 @@ than type-enforced.
 
 Every piece of structured information produced at one stage of the
 compiler must be either consumed by the next stage, carried forward as
-a field on downstream data structures, or explicitly discarded with a
-comment explaining why the information is no longer needed. Silent
-drops are violations.
+a field on downstream data structures, or explicitly discarded — with
+the justification recorded in `src/v4/DECISIONS.md` (Practice 9), not as
+in-file prose. Silent drops are violations.
 
 **What to check:** For each cross-stage boundary touched in the diff
 (parse→lower, lower→infer, infer→lens, lens→emit), enumerate the fields
@@ -159,10 +159,13 @@ terminal:
    *shape*, not parameterized mechanical repetition; that is exactly why
    this pattern exists.
 
-**What to check:** Any new Rust enum with N ≥ 2 variants must have a
-checkpoint comment naming its classification (🟢/🟡/🔴), with a ledger
-entry if GREEN or a named trigger if YELLOW. Enums without any of these
-are unfinished modeling and block review.
+**What to check:** Any new Rust enum with N ≥ 2 variants must be
+classified (🟢/🟡/🔴), with a ledger entry if GREEN or a named trigger
+if YELLOW. Per Practice 9 the classification, the ledger, and the
+trigger live in `src/v4/DECISIONS.md` — *not* an in-file `Practice 4:
+...` block; the `.dag` file carries at most the one-line
+`// coproduct dissolution` concept tag. An enum with no `DECISIONS.md`
+classification entry is unfinished modeling and blocks review.
 
 **The lookup smell (the consumer-trigger backstop).** A `match` over a
 foreign-label coproduct, written *inside a consumer* — a lens, a
@@ -383,8 +386,9 @@ A declaration is **hollow** when *all three* hold:
 2. its subject is an **external spec primitive** — something a
    language / format / framework specification names and states facts
    about; **and**
-3. it carries **no coincidence-evidence comment** — no cited proof that
-   `X` and `Y` coincide in the DECISIONS.md sense.
+3. it carries **no coincidence evidence** — no `src/v4/DECISIONS.md`
+   entry proving `X` and `Y` coincide, cited from the file by at most a
+   one-line tag (Practice 9).
 
 A hollow declaration **blocks review**. The fix is one of: invent the
 fact-bundle (now `X` carries ≥ 1 fact of its own), or supply the
@@ -433,13 +437,38 @@ nominal, not real. (A file audited at 58% comment lines *after* a
 "de-prose" pass is a failed pass; verify the percentage, do not accept a
 nominal pass.) Load-bearing files keep the terse four-line header
 contract — but that header *is* the whole of item 2, not a license for
-more.
+more. The <20% figure is a **heuristic** for prose bloat, not a hard
+floor: a small carrier file (under ~25 lines) whose mandated four-line
+header alone exceeds 20% is compliant if that header is all the comments
+are. Never pad a file to lower the percentage — content-compliance
+(comments are *only* the four allowed things) is the real bar.
 
 **Why:** prose in the file is a second authority. It drifts from the
 structure it narrates and from `DECISIONS.md`; it is the
 documentation-side hollow alias (Practice 8) — it looks like modeling
 and isn't. The structure *is* the model; the terse header is the single
 machine-readable boundary contract; everything else is removed.
+
+**Supersession — Practice 9 governs every in-file artifact.** Several
+earlier Practices were written when an in-file comment *was* the
+enforcement mechanism: a discard justification (Practice 3), a coproduct
+classification + ledger/trigger (Practice 4), a coincidence-evidence
+proof (Practice 8). Practice 9 supersedes all of them, under one uniform
+rule:
+
+- the **record relocates** — an architectural decision, a classification,
+  a ledger, a discard justification, a coincidence proof all move to
+  `src/v4/DECISIONS.md`; a process receipt (`HEADER RECONCILE`, "per
+  directive X", a de-prose note) moves to the **commit message**;
+- the `.dag` file keeps **at most a one-line concept tag** (item 4) —
+  e.g. `// coproduct dissolution`, or a one-line cite
+  `// coincides: <DECISIONS.md ref>`.
+
+Wherever an earlier Practice says "record X in a comment," read it as
+"record X in `DECISIONS.md`; the file keeps the one-line tag." The same
+applies to `DECISIONS.md` rules that mandated an in-file block — D5's
+`HEADER RECONCILE` receipt moves to the commit message. There is no
+in-file artifact mandate anywhere that Practice 9 does not override.
 
 ## Calibration: Blocking vs Non-blocking
 
@@ -478,7 +507,9 @@ For each relevant principle and its implementing practices:
 2. If violated, cite the exact file and line.
 3. State whether the existing check is structural (type system enforced)
    or merely behavioral (convention).
-4. For new enums: verify the 🟢/🟡/🔴 classification annotation, and
+4. For new enums: verify the 🟢/🟡/🔴 classification has a `DECISIONS.md`
+   entry (Practice 9 — the classification + ledger/trigger live there,
+   not as an in-file annotation), and
    that Practice 4 pattern 5 (parameterized family) was applied — an
    enum that is `F<X>` per variant is an enumerated copy, not a
    coproduct. Verify GREEN is consumer-**independent**: a namable richer
@@ -492,7 +523,7 @@ For each relevant principle and its implementing practices:
    it is a fact-bundle (invents the facts the spec states) or a *cited*
    coincidence reuse of a `std/` carrier — not a bare alias. Apply the
    structural fact-density gate: a bare alias of a spec primitive with
-   no coincidence-evidence comment is hollow and blocks. For any emit
+   no coincidence-evidence `DECISIONS.md` entry is hollow and blocks. For any emit
    artifact: verify it is grounded grammar-as-data, not a string
    template.
 7. For any `.dag` file in the diff (Practice 9): count `comment-lines /
