@@ -8,8 +8,37 @@
 > This document supplements, rather than parallels, INVARIANTS.md's
 > taxonomy. Each practice names the invariant principle it serves.
 >
+> **Why these Practices exist.** Every modeling rule below serves one
+> thing: making each target's model correct, complete, and honest enough
+> that the compiler-**derived homomorphism** between targets is sound.
+> Read any Practice as: *this protects the homomorphism.* (THESIS.md →
+> "The derived homomorphism"; [the-derived-homomorphism.md](thesis/the-derived-homomorphism.md).)
+>
 > Full derivations, worked examples, and the background modeling analysis
 > live in [v3-modeling-analysis.md](v3-modeling-analysis.md).
+
+## The three facets — a cross-reference convention
+
+**Fact modeling**, **coercion**, and **translation** are not three
+separate topics — they are three facets of the one **derived
+homomorphism** ([THESIS.md](../THESIS.md) → "The derived homomorphism";
+[the-derived-homomorphism.md](thesis/the-derived-homomorphism.md)):
+
+- **fact modeling** — *produces the homomorphism's inputs.* You model
+  each target's facts so the compiler can derive the structure-preserving
+  map; the modeling discipline exists to make those inputs correct.
+- **coercion** — *the verification facet.* The mechanical fold that
+  checks a candidate map preserves structure (coercion ⊂ the
+  homomorphism).
+- **translation** — *the homomorphism applied.* "Translation" between
+  two targets **is** the derived homomorphism.
+
+**Convention.** Wherever a doc *discusses* one of these three as a
+topic — at its defining mention / discussion-point, **section-level, not
+every token** — frame it as a facet of the derived homomorphism and
+cross-ref the THESIS section. The connection should always be one click
+away from where the concept is taught; a parenthetical on every
+occurrence is noise.
 
 ## Nine Modeling Practices
 
@@ -188,8 +217,11 @@ machine-checked meta-lens detects fired triggers, this review smell *is*
 the enforcement.
 
 **Scaffold exception:** early-milestone code (marked `// scaffold:
-<sunset-milestone>`) can skip the classification annotation until the
-sunset milestone. Scaffolds must be revisited before sunset.
+<sunset-milestone>`) can defer its `DECISIONS.md` classification *ledger*
+until the sunset milestone. The exception covers the ledger only — the
+required one-line 🟢/🟡/🔴 tag on the coproduct itself is **not**
+waived (a scaffold coproduct still carries it, typically `// 🟡 scaffold
+— sunset <milestone>`). Scaffolds must be revisited before sunset.
 
 **Worked example (v2 retrospective):** `v2::ExprData` had 22 variants.
 Failed pattern 1 (every consumer dispatches on all 22), pattern 2
@@ -487,8 +519,12 @@ rule:
 Wherever an earlier Practice says "record X in a comment," read it as
 "record X in `DECISIONS.md`; the file keeps the one-line tag." The same
 applies to `DECISIONS.md` rules that mandated an in-file block — D5's
-`HEADER RECONCILE` receipt moves to the commit message. There is no
-in-file artifact mandate anywhere that Practice 9 does not override.
+`HEADER RECONCILE` receipt moves to the commit message. No earlier
+in-file *artifact mandate* survives un-superseded by Practice 9. This
+does not mean the file carries no comments at all: Practice 9 itself
+*authorizes* the four allowed classes — including the **required**
+one-line 🟢/🟡/🔴 coproduct tag (item 4). Practice 9 relocates the
+ledger/rationale/receipt prose; it authorizes the terse one-line tag.
 
 ## Calibration: Blocking vs Non-blocking
 
