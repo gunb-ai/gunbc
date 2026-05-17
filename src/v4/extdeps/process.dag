@@ -30,11 +30,13 @@
 //   - spawn(pt, cmd) -> Result<{table: ProcessTable, process: Process}, Diagnostic>
 //   - wait(pt, p)    -> Result<{table: ProcessTable, process: TerminatedProcess}, Diagnostic>
 //     (blocks until terminated)
-//   - capture(pt, p) -> Result<{stdout, stderr, table: ProcessTable, process: TerminatedProcess}, Diagnostic>
+//   - capture(pt, p) -> Result<{stdout, stderr: FreeMonoid<Byte>, table: ProcessTable, process: TerminatedProcess}, Diagnostic>
 //
 // Consumes:
 //   - std/diagnostic.dag: Diagnostic
 //   - std/integer.dag: Int (and its Tier-2 totalizations); String kernel-ambient
+//   - std/machine.dag: Byte
+//   - std/algebra.dag: FreeMonoid
 //   - std/collection.dag: List, Map
 //   - extdeps/file_system.dag: AbsolutePath (for Command.program)
 //
@@ -67,13 +69,19 @@
 // BLOCKING): ProcessTable is an opaque resource carrier, not a readable
 // String-labeled identity. The effect/resource authority is the threaded
 // carrier position in operation signatures, not a label field.
+// HEADER RECONCILE (2026-05-17, #3209, keen-wren-663 + codex BLOCKING):
+// capture returns raw byte streams (`FreeMonoid<Byte>`), not decoded
+// `String`. Text decoding is a separate fallible projection once v4 owns
+// encoding/error carriers.
 
 
 module v4.extdeps.process
 
 
 import v4.extdeps.file_system { AbsolutePath }
+import v4.std.algebra { FreeMonoid }
 import v4.std.diagnostic { Outcome }
+import v4.std.machine { Byte }
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -125,6 +133,12 @@ import v4.std.diagnostic { Outcome }
 // effect lens reads returned-modified-resource as write and
 // returned-derived-value as read. The external realization layer
 // performs fork/exec/wait/capture and returns through these carriers.
+//
+// CAPTURE OUTPUT IS BYTES. POSIX pipes carry byte streams; decoding
+// stdout/stderr to text requires an encoding choice and a fallible error
+// carrier that this file does not own. `capture` therefore returns raw
+// `FreeMonoid<Byte>` streams. Text projection belongs in a later
+// encoding-aware seam.
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -244,12 +258,14 @@ type ProcessTable
 // Spawn failure, wait failure, and capture failure return `Rejected`
 // with a typed `Diagnostic`; a successfully observed child termination
 // returns the advanced `TerminatedProcess` whose terminal status is
-// structurally present. stdout/stderr are captured as separate
-// byte-decoded text streams so harness/setup diagnostics cannot be
+// structurally present. stdout/stderr are captured as separate raw byte
+// streams so harness/setup diagnostics cannot be
 // blended into the logical child's output channel. The
 // `ProcessOperations` record is the declared callable boundary a future
 // host realization must inhabit; it is intentionally only a signature
 // bundle here, not an effect resolver.
+type CapturedByteStream = FreeMonoid<Byte>
+
 type SpawnProcessRequest {
   table: ProcessTable
   command: Command
@@ -275,8 +291,8 @@ type WaitedProcess {
 type WaitProcessResult = Outcome<WaitedProcess>
 
 type CapturedProcessOutput {
-  stdout: String
-  stderr: String
+  stdout: CapturedByteStream
+  stderr: CapturedByteStream
   table: ProcessTable
   process: TerminatedProcess
 }
