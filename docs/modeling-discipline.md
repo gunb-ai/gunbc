@@ -8,6 +8,12 @@
 > This document supplements, rather than parallels, INVARIANTS.md's
 > taxonomy. Each practice names the invariant principle it serves.
 >
+> **Why these Practices exist.** Every modeling rule below serves one
+> thing: making each target's model correct, complete, and honest enough
+> that the compiler-**derived homomorphism** between targets is sound.
+> Read any Practice as: *this protects the homomorphism.* (THESIS.md →
+> "The derived homomorphism"; [the-derived-homomorphism.md](thesis/the-derived-homomorphism.md).)
+>
 > Full derivations, worked examples, and the background modeling analysis
 > live in [v3-modeling-analysis.md](v3-modeling-analysis.md).
 
