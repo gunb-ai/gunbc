@@ -760,13 +760,21 @@ out) — so it is NOT gated on this ratification. It is routed standalone
 to the `file_system.dag` owner (T-4.5 / PR #3209) to correct the header;
 the dangling `Consumes` stands on the PR-head tree until that PR lands.
 
-### T-26 — extdeps shared boundary carriers (net-address / URL / HttpMethod)  [PROPOSED]
-**Gap:** `NetworkAddress` appears only in `coordination.dag` prose;
-`HttpMethod` only in `openapi.dag`; no single authority — duplicating
-either across consumers is the P2 parallel-authority violation.
-**Disposition:** one ratified shared `extdeps` file declaring the
-boundary carriers, `Consume`d by `coordination.dag` + `openapi.dag` (+
-the T-16 wire contract). Closed-tree extension — operator C1.
+### T-26 — std/ boundary carriers (net-address / URL / HttpMethod)  [PROPOSED]
+**Gap:** `HttpMethod` and `URL` already have a single authority in the
+reference tree — `dsl/std/types.dag` (`HttpMethod` = the RFC 9110 enum;
+`Url` = a `String` refinement). They are not yet ported to v4 `std/`, so
+v4 consumers (`openapi.dag` references `HttpMethod`; the T-16 wire
+contract) have no carrier to `Consume`. `NetworkAddress` appears only in
+`coordination.dag` prose — DFS the concept DAG (M9) for an existing
+authority before minting.
+**Disposition:** **port** `HttpMethod` / `Url` into v4 `std/` from the
+`dsl/std/types.dag` authority — RFC 9110 / the URL spec are genuine
+shared facts, so the home is `std/`, not a new `extdeps` file; **create**
+a spec-grounded `NetworkAddress` carrier in `std/` if M9 finds none.
+Consumers (`openapi.dag`, `coordination.dag`, T-16) `Consume` the single
+`std/` authority. Minting a parallel `extdeps` carrier would be the very
+P2 violation this task names (INVARIANTS P2 / M9).
 
 ### T-27 — extdeps version / semver / edition lattice  [PROPOSED]
 **Gap:** no `std`/`extdeps` version carrier; rust.dag anchors and format
