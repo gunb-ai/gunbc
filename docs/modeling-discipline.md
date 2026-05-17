@@ -11,7 +11,7 @@
 > Full derivations, worked examples, and the background modeling analysis
 > live in [v3-modeling-analysis.md](v3-modeling-analysis.md).
 
-## Seven Modeling Practices
+## Nine Modeling Practices
 
 Each practice implements one of the five invariant principles from
 INVARIANTS.md. A reviewer works from the five principles; the practices
@@ -27,6 +27,8 @@ Mapping:
 - Practice 5 (Single-authority metadata) — implements **P2: Boundary Discipline**
 - Practice 6 (API-level enforcement over convention) — implements **P2: Boundary Discipline**
 - Practice 7 (Projection over enumeration) — implements **P1: Modeling Faithfulness**
+- Practice 8 (Fact-bundle modeling) — implements **P1: Modeling Faithfulness**
+- Practice 9 (No-prose discipline) — implements **P2: Boundary Discipline**
 
 A reviewer should name specifically whether the diff satisfies each
 relevant practice, where it could be violated, and whether the existing
@@ -71,9 +73,9 @@ than type-enforced.
 
 Every piece of structured information produced at one stage of the
 compiler must be either consumed by the next stage, carried forward as
-a field on downstream data structures, or explicitly discarded with a
-comment explaining why the information is no longer needed. Silent
-drops are violations.
+a field on downstream data structures, or explicitly discarded — with
+the justification recorded in `src/v4/DECISIONS.md` (Practice 9), not as
+in-file prose. Silent drops are violations.
 
 **What to check:** For each cross-stage boundary touched in the diff
 (parse→lower, lower→infer, infer→lens, lens→emit), enumerate the fields
@@ -157,10 +159,13 @@ terminal:
    *shape*, not parameterized mechanical repetition; that is exactly why
    this pattern exists.
 
-**What to check:** Any new Rust enum with N ≥ 2 variants must have a
-checkpoint comment naming its classification (🟢/🟡/🔴), with a ledger
-entry if GREEN or a named trigger if YELLOW. Enums without any of these
-are unfinished modeling and block review.
+**What to check:** Any new Rust enum with N ≥ 2 variants must be
+classified (🟢/🟡/🔴), with a ledger entry if GREEN or a named trigger
+if YELLOW. Per Practice 9 the classification, the ledger, and the
+trigger live in `src/v4/DECISIONS.md` — *not* an in-file `Practice 4:
+...` block; the `.dag` file carries at most the one-line
+`// coproduct dissolution` concept tag. An enum with no `DECISIONS.md`
+classification entry is unfinished modeling and blocks review.
 
 **The lookup smell (the consumer-trigger backstop).** A `match` over a
 foreign-label coproduct, written *inside a consumer* — a lens, a
@@ -276,6 +281,197 @@ enumerated siblings. "Operations fall out of inhabitance" (THESIS,
 epistemic stacking) is precisely this practice: the operations are
 projected from the algebra, not enumerated on the type.
 
+### 8. Fact-bundle modeling
+
+To model a thing is to assert its *facts*. A type either **invents** a
+fact-bundle for its subject — a `Conj` / record whose fields are the
+specific facts the source actually states — or **reuses** an existing
+`std/` carrier. There is no third option. A **bare alias**
+(`type RustI32 = Int32`) does neither: it asserts an identity it has not
+proven while modeling nothing of its own. It is *hollow* — the shape
+that looks like modeling and isn't.
+
+Modeling is mandatory; deduplication is conditional. You MUST model the
+facts. You may collapse your model onto a `std/` carrier ONLY when you
+have **proven** the two coincide — and *coincide* has a precise meaning
+(see DECISIONS.md): both groundings, reduced to canonical `Node`s, are
+structurally equal, expressed in shared `std/` vocabulary. Identity is
+an evidenced claim, never an assumed default. "These are obviously the
+same" is not evidence.
+
+**Same rule, opposite default — the default tracks what we *know*:**
+
+- **extdeps** (`extdeps/languages/*`, `extdeps/formats/*`,
+  `extdeps/frameworks/*`) — we did not write these systems and do not
+  fully know them. **Default SEPARATE:** model each primitive's facts
+  honestly from its own spec and let the model accumulate. Reuse a
+  `std/` carrier *only* with cited coincidence evidence. Keeping
+  `RustSignedness` a separate carrier until Rust's reference is checked
+  is *honest modeling*, not a dual-authority (Practice 5) violation —
+  the two are not yet proven to coincide.
+- **internal** (the compiler layers, our own substrate) — we wrote both
+  sides; identity is usually *known*. **Default REUSE `std/`** — but
+  still name the evidence. A known coincidence left un-cited is still an
+  un-modeled claim.
+
+**What to check:** For every external primitive a `.dag` file models,
+does the file *state the facts the spec gives* — width, signedness,
+representation, range, encoding, lifetime, … — as a structured carrier?
+Or does it write `type Foo = Bar` and stop? A bare alias of a spec
+primitive whose spec carries facts is **under-modeled** — flag it.
+
+**Example violation:** `type CppInt = Int`. C++'s `int` is *not* the
+abstract integer. The standard states facts the alias discards: an
+implementation-defined width of *at least* 16 bits, a signed
+representation, an `int`-specific range. `type CppInt = Int` asserts
+`CppInt` *is* `std/` `Int` — an identity that is false (C++ `int` is
+finite-width and platform-varying; `Int` is not).
+
+**Fix:** invent the facts C++ adds, reuse `std/` for the part that
+genuinely coincides:
+`CppInt = Conj { base: Int, width: Nat, width_proof: Witness<width >= 16>, representation: Representation }`.
+The `base: Int` reuse is licensed because C++ integers *are* integers —
+a coincidence on the algebra, cited. The `width` / `representation`
+fields are invented because they are facts C++ states that `std/` `Int`
+does not carry.
+
+**Why hollow aliases survive review (and why this practice exists).** A
+bare alias is *structurally minimal* — it passes every structural gate
+precisely because there is nothing there to be wrong. The hollowness is
+invisible to a shape-checker: the gate sees a valid `type` declaration.
+MODELING.md M1 ("types decompose into facts") already said modeling
+means asserting facts; the gap was *enforcement*. This practice, the
+worked examples it points at, and the structural fact-density gate below
+are that enforcement. A reviewer fails a hollow alias *against this
+documented bad example*.
+
+**No string-templating (the emit-side hollow alias).** Emission goes
+through grounded format / language models — **never** string templates
+or fill-in-the-holes artifacts. A string-templated artifact (e.g. an
+`InhabitantDecl.template: "Vec<{0}>"` field) produces output the
+compiler cannot ground and cannot coercion-check; it drifts silently,
+exactly as the bare alias does. It is the *emit-side* equivalent of the
+hollow alias — the same failure, on the way out. The canonical
+non-templated form is **grammar-as-declarative-bidirectional-data**: the
+production data *is* the relation concrete-syntax ⟷ `Node`, checked in
+both directions, never a procedural recognizer or a print template. Any
+emit artifact that cannot be grounded is a STOP.
+
+**Worked examples.** The good-vs-bad fact-bundle forms for each external
+target — Rust, C++, LLVM, Verilog, SPICE, PTX, Go, JSON, TOML,
+OpenAPI, … — are worked in full in
+[modeling/grounding-worked-examples.md](modeling/grounding-worked-examples.md).
+That document is the companion rubric to this practice; consult it for
+the concrete shape of a faithful fact-bundle per target.
+
+#### Interim floor: the hollow-alias discriminator
+
+Enforcement of this practice is **two-tier**. The *structural* tier — a
+generated checker (`Node -> Outcome`) that makes a hollow alias
+*impossible to construct*, not merely review-discouraged — is its own
+task, **TASKS.md T-30**, a hard prerequisite of the per-language rework
+(T-4). It is deliberately *not* this document: convention is exactly
+what let D2 through, so the reseed runs under the structural gate, not a
+doc.
+
+What follows is the **interim floor** — the discriminator a *reviewer*
+applies by hand until T-30's checker lands, and the spec T-30 then
+implements. It is not the structural tier; it is the convention-tier
+bad-example, written so a review can fail a hollow alias against it.
+
+A declaration is **hollow** when *all three* hold:
+
+1. It is a **bare alias** (`type X = Y`) or a single-field wrapper that
+   adds no field of its own; **and**
+2. its subject is an **external spec primitive** — something a
+   language / format / framework specification names and states facts
+   about; **and**
+3. it carries **no coincidence evidence** — no `src/v4/DECISIONS.md`
+   entry proving `X` and `Y` coincide, cited from the file by at most a
+   one-line tag (Practice 9).
+
+A hollow declaration **blocks review**. The fix is one of: invent the
+fact-bundle (now `X` carries ≥ 1 fact of its own), or supply the
+coincidence evidence (now the reuse is licensed and cited).
+
+**Exempt:** kernel-ambient atoms — `Bool`, `Char`, and the other
+irreducible substrate atoms — are *legitimately* atomic. They state no
+further facts because there are none to state; an alias onto them, or
+their use as a terminal, is not hollow. The gate's discriminator is
+"does the *spec* carry facts this declaration drops?" — for a true atom
+the answer is no.
+
+### 9. No-prose discipline
+
+A `.dag` file's comments are **not a parallel prose authority**. After
+modeling, a file's comments carry only what a mechanical consumer or a
+reviewer needs *to use the file* — never rationale, never narration,
+never a record of the work done. Rationale lives in `src/v4/DECISIONS.md`
+(single authority); process notes live in the commit message. A comment
+that records that the file was de-prosed is itself the prose to remove.
+
+**The spec.** After de-prose, a `.dag` file's comments are ONLY these
+four things — nothing else survives:
+
+1. **Line 1** — the file-path line.
+2. **A terse header** — exactly four lines: `Scope:` (one line),
+   `Owns:` (carrier *names* only, no rationale), `Consumes:` (one line),
+   `Status:` (one line). Nothing else: no `Brief:`, no `Seams:`, no
+   `HEADER RECONCILE`, no `Deferred (N)` rationale, no multi-line block.
+3. **A per-carrier anchor** — at most one `// Anchor: <spec URL>` line.
+4. **A one-line concept tag** — at most one per type, and *only* where
+   the concept is genuinely non-obvious from the name + structure (e.g.
+   `// coproduct dissolution`), *or* a one-line cite to a `DECISIONS.md`
+   entry (e.g. `// coincides: <DECISIONS.md ref>` — the Practice-8
+   coincidence cite). Not a description of the type; not a
+   `Practice N: ...` rationale line, not a `see docs/X` pointer.
+
+Everything else is **removed**: per-type descriptions, all Practice-N
+rationale, all multi-line rationale, `Seams`/`Brief`/process-meta
+blocks. Architectural decisions move to `src/v4/DECISIONS.md`; process
+notes — de-prose receipts, "HEADER RECONCILE", "per directive X" — move
+to the **commit message**, never the file.
+
+**What to check:** count `comment-lines / total-lines`. The hard target
+is that a modeled `.dag` file is roughly **under 20% comment lines**. A
+file substantially above 20% has not been de-prosed — the pass is
+nominal, not real. (A file audited at 58% comment lines *after* a
+"de-prose" pass is a failed pass; verify the percentage, do not accept a
+nominal pass.) Load-bearing files keep the terse four-line header
+contract — but that header *is* the whole of item 2, not a license for
+more. The <20% figure is a **heuristic** for prose bloat, not a hard
+floor: a small carrier file (under ~25 lines) whose mandated four-line
+header alone exceeds 20% is compliant if that header is all the comments
+are. Never pad a file to lower the percentage — content-compliance
+(comments are *only* the four allowed things) is the real bar.
+
+**Why:** prose in the file is a second authority. It drifts from the
+structure it narrates and from `DECISIONS.md`; it is the
+documentation-side hollow alias (Practice 8) — it looks like modeling
+and isn't. The structure *is* the model; the terse header is the single
+machine-readable boundary contract; everything else is removed.
+
+**Supersession — Practice 9 governs every in-file artifact.** Several
+earlier Practices were written when an in-file comment *was* the
+enforcement mechanism: a discard justification (Practice 3), a coproduct
+classification + ledger/trigger (Practice 4), a coincidence-evidence
+proof (Practice 8). Practice 9 supersedes all of them, under one uniform
+rule:
+
+- the **record relocates** — an architectural decision, a classification,
+  a ledger, a discard justification, a coincidence proof all move to
+  `src/v4/DECISIONS.md`; a process receipt (`HEADER RECONCILE`, "per
+  directive X", a de-prose note) moves to the **commit message**;
+- the `.dag` file keeps **at most a one-line concept tag** (item 4) —
+  e.g. `// coproduct dissolution`, or a one-line cite
+  `// coincides: <DECISIONS.md ref>`.
+
+Wherever an earlier Practice says "record X in a comment," read it as
+"record X in `DECISIONS.md`; the file keeps the one-line tag." The same
+applies to `DECISIONS.md` rules that mandated an in-file block — D5's
+`HEADER RECONCILE` receipt moves to the commit message. There is no
+in-file artifact mandate anywhere that Practice 9 does not override.
+
 ## Calibration: Blocking vs Non-blocking
 
 A finding is **BLOCKING** if fixing it in a later PR would be meaningfully
@@ -303,8 +499,8 @@ milestones before anyone notices.
 ## For Reviewers
 
 A review applies the **five invariant principles from
-[INVARIANTS.md](../INVARIANTS.md)**. The seven modeling practices above
-are the concrete patterns that inform each check — consult them when a
+[INVARIANTS.md](../INVARIANTS.md)**. The nine modeling practices in this
+document are the concrete patterns that inform each check — consult them when a
 principle's abstract statement needs a recognizable failure shape.
 
 For each relevant principle and its implementing practices:
@@ -313,7 +509,9 @@ For each relevant principle and its implementing practices:
 2. If violated, cite the exact file and line.
 3. State whether the existing check is structural (type system enforced)
    or merely behavioral (convention).
-4. For new enums: verify the 🟢/🟡/🔴 classification annotation, and
+4. For new enums: verify the 🟢/🟡/🔴 classification has a `DECISIONS.md`
+   entry (Practice 9 — the classification + ledger/trigger live there,
+   not as an in-file annotation), and
    that Practice 4 pattern 5 (parameterized family) was applied — an
    enum that is `F<X>` per variant is an enumerated copy, not a
    coproduct. Verify GREEN is consumer-**independent**: a namable richer
@@ -323,8 +521,21 @@ For each relevant principle and its implementing practices:
 5. For any new family of declarations (enum or not): verify it is a
    projection over its source set (Practice 7), not a hand-enumeration —
    the cost-of-change test is adding one element to the source set.
-6. For cross-stage boundaries: verify facts flow forward.
-7. Classify every finding as BLOCKING or NON-BLOCKING per the calibration
+6. For any type modeling an external spec primitive (Practice 8): verify
+   it is a fact-bundle (invents the facts the spec states) or a *cited*
+   coincidence reuse of a `std/` carrier — not a bare alias. Apply the
+   structural fact-density gate: a bare alias of a spec primitive with
+   no coincidence-evidence `DECISIONS.md` entry is hollow and blocks. For any emit
+   artifact: verify it is grounded grammar-as-data, not a string
+   template.
+7. For any `.dag` file in the diff (Practice 9): count `comment-lines /
+   total-lines`. A modeled file substantially above ~20% comment lines
+   has not been de-prosed — the comments must reduce to the four allowed
+   things (file-path line, terse four-line header, per-carrier anchor,
+   optional one-line concept tag). Process-meta prose in the file
+   (`HEADER RECONCILE`, de-prose receipts) is itself a finding.
+8. For cross-stage boundaries: verify facts flow forward.
+9. Classify every finding as BLOCKING or NON-BLOCKING per the calibration
    above.
 
 This document is the distilled version of modeling principles. For the
