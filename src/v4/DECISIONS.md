@@ -100,6 +100,20 @@ remain boundary indexes until the named substrate support lands.
 
 3. **`resolve_bind_*` (arity-3 `Bind`):** Slot-0 binder is a **declaration** handle (bare `Atom` → `canonical_atom`, not `resolve_atom`). Slot-1 initializer resolves in the **outer** scope only (binder not visible). Slot-2+ resolve under `ScopeFrame` locals carrying the binder.
 
+**Coproduct ledger (Practice 4):** New `N≥2` sum types in `compiler/03_normalize.dag` / `compiler/03_resolve.dag` carry the required in-file 🟡 tag; classification / dissolution pattern / named triggers are recorded here (not in the `.dag` body prose).
+
+4. **`SurfaceSugarKind` (`compiler/03_normalize.dag`):** **Classification — 🟡 YELLOW (scaffold):** T-8 normalize seam; not a terminal substrate primitive while the stage is scaffold. **Dissolution pattern — enumerated axis (closed N=4):** names the four C3 surface-sugar connectives aligned with the `data dag_c3_surface_sugar_*` identities in `extdeps/languages/dag.dag` (THESIS/C3; not a foreign-label consumer coproduct). **Named triggers:** `classify_sugar`; feeds `normalize_node` / `malformed_sugar_diagnostic`.
+
+5. **`SugarClassification` (`compiler/03_normalize.dag`):** **Classification — 🟡 YELLOW (scaffold).** **Dissolution pattern — partition:** `Sugar` vs `NotSugar` splits the normalize walk between C3-shaped sugar and pass-through `Node` kinds. **Named triggers:** `classify_sugar`; `normalize_node`; `normalize_edge`.
+
+6. **`NormalizeChildrenResult` (`compiler/03_normalize.dag`):** **Classification — 🟡 YELLOW (scaffold).** **Dissolution pattern — success-or-Diagnostic carrier:** `NormalizedChildren` vs `NormalizeChildrenRejected` threads child recursion fail-closed without a second authority. **Named triggers:** `normalize_children`; `normalize_edge` / `normalize_node` folds.
+
+7. **`Scope` (`compiler/03_resolve.dag`):** **Classification — 🟡 YELLOW (scaffold).** **Dissolution pattern — structured lexical environment:** `ScopeRoot` (module `Namespace`) vs `ScopeFrame` (locals + outer) for K-1 use→def binding (B-4; Part 1 **B-4** row). **Named triggers:** `resolve_node`; `resolve_atom`; `resolve_bind_*` family.
+
+8. **`ResolveResult` (`compiler/03_resolve.dag`):** **Classification — 🟡 YELLOW (scaffold).** **Dissolution pattern — success-or-Diagnostic:** `ResolvedNode` vs `ResolveRejected` on single-node resolution. **Named triggers:** `resolve_node`; `resolve_atom`.
+
+9. **`ResolveChildrenResult` (`compiler/03_resolve.dag`):** **Classification — 🟡 YELLOW (scaffold).** **Dissolution pattern — success-or-Diagnostic:** `ResolvedChildren` vs `ResolveChildrenRejected` on edge-list resolution. **Named triggers:** `resolve_children`; `resolve_arrow_domain_named_params`; folds using `EdgeResolveAcc` / `BindEdgeAcc`.
+
 ---
 
 ## Part 2 — RATIFIED 2026-05-15 (cascade-closures — now in Part 1)

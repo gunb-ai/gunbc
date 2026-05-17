@@ -39,6 +39,7 @@ type NormalizedTree = Node
 data normalize_reason_malformed_sugar: Symbol = normalize_reason_malformed_sugar
 
 
+// 🟡 coproduct dissolution — DECISIONS.md CP-1b item 4 (SurfaceSugarKind)
 type SurfaceSugarKind
   = ServiceSugar
   | FnSugar
@@ -46,6 +47,7 @@ type SurfaceSugarKind
   | OperationSugar
 
 
+// 🟡 coproduct dissolution — DECISIONS.md CP-1b item 5 (SugarClassification)
 type SugarClassification
   = Sugar { kind: SurfaceSugarKind }
   | NotSugar
@@ -113,6 +115,7 @@ fn normalize_edge(e: Edge) -> Outcome<Edge> {
 }
 
 
+// 🟡 coproduct dissolution — DECISIONS.md CP-1b item 6 (NormalizeChildrenResult)
 type NormalizeChildrenResult
   = NormalizedChildren { children: List<Edge> }
   | NormalizeChildrenRejected { diagnostic: Diagnostic }

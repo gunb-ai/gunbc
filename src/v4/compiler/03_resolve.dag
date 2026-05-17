@@ -48,16 +48,19 @@ type Namespace {
 }
 
 
+// 🟡 coproduct dissolution — DECISIONS.md CP-1b item 7 (Scope)
 type Scope
   = ScopeRoot { module: Namespace }
   | ScopeFrame { locals: Map<Symbol, Symbol>, outer: Scope }
 
 
+// 🟡 coproduct dissolution — DECISIONS.md CP-1b item 8 (ResolveResult)
 type ResolveResult
   = ResolvedNode { node: Node }
   | ResolveRejected { diagnostic: Diagnostic }
 
 
+// 🟡 coproduct dissolution — DECISIONS.md CP-1b item 9 (ResolveChildrenResult)
 type ResolveChildrenResult
   = ResolvedChildren { children: List<Edge> }
   | ResolveChildrenRejected { diagnostic: Diagnostic }
