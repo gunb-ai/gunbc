@@ -5,15 +5,17 @@
 //        uses the same well-formed type-node stub as other manual claims —
 //        the law itself is carried in the label until T-22 can evaluate
 //        program-shaped `input` nodes (dissolution: T-22 eval lands).
-// **Equals** law anchors use **`TestgenTier::Tier3` + `Integration`** per
-// `t19_manual_anchor_manifest.dag` algebra-law rubric (THESIS L7 / manifest
-// §Owns 7–8) — not `Tier2` from the unrelated `AssertKind` “Tier2 = Equals”
-// shorthand in `verification.dag`.
+// **All** rows in this module are **algebra-law** anchors (testgen category
+// `algebra_law` / manifest §Owns 7–8): stamp **`TestgenTier::Tier3` +
+// `Integration`** on every claim — THESIS L7 verification slice — even when
+// `kind` is **`Compiles`** (M1 stub bodies until T-22 fills real law-shaped
+// `input`/`expected`). Do not use **`Tier1`/`Unit`** here; that band is for
+// type-construction connective smoke in `connective_anchors.dag`, not this file.
 // Anchor: src/v4/std/nat.dag + TASKS.md T-14
 
 module v4.test.claim.manual.nat_law_anchors
 
-import v4.std.verification { TestClaim, Compiles, Equals, TestClassification, Tier1, Tier3, Unit, Integration }
+import v4.std.verification { TestClaim, Compiles, Equals, TestClassification, Tier3, Integration }
 import v4.std.diagnostic { Produced }
 import v4.test.claim.manual.connective_anchors { stub_empty_conj }
 
@@ -23,7 +25,7 @@ data claim_nat_add_left_identity: TestClaim = TestClaim {
   label: "manual/nat: monoid left identity nat_add(Zero,a)=a (law; eval T-22)",
   input: stub_empty_conj,
   expected: Produced { value: stub_empty_conj },
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: TestClassification { tier: Tier3, layer: Integration }
 }
 
 
@@ -32,7 +34,7 @@ data claim_nat_add_right_identity: TestClaim = TestClaim {
   label: "manual/nat: monoid right identity nat_add(a,Zero)=a (law; eval T-22)",
   input: stub_empty_conj,
   expected: Produced { value: stub_empty_conj },
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: TestClassification { tier: Tier3, layer: Integration }
 }
 
 
@@ -41,7 +43,7 @@ data claim_nat_add_associativity: TestClaim = TestClaim {
   label: "manual/nat: monoid associativity nat_add(nat_add(a,b),c)=nat_add(a,nat_add(b,c)) (law; eval T-22)",
   input: stub_empty_conj,
   expected: Produced { value: stub_empty_conj },
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: TestClassification { tier: Tier3, layer: Integration }
 }
 
 
@@ -50,7 +52,7 @@ data claim_nat_mul_left_identity: TestClaim = TestClaim {
   label: "manual/nat: multiplicative monoid identity nat_mul(one,a)=a where one is Succ-of-Zero (law; eval T-22)",
   input: stub_empty_conj,
   expected: Produced { value: stub_empty_conj },
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: TestClassification { tier: Tier3, layer: Integration }
 }
 
 
@@ -59,7 +61,7 @@ data claim_nat_mul_annihilator: TestClaim = TestClaim {
   label: "manual/nat: semiring zero annihilator nat_mul(Zero,a)=Zero (law; eval T-22)",
   input: stub_empty_conj,
   expected: Produced { value: stub_empty_conj },
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: TestClassification { tier: Tier3, layer: Integration }
 }
 
 
