@@ -318,7 +318,7 @@ a named YELLOW trigger in this ledger (Practice 9 — not in `Scope:`).
 
 | ID | Carrier / slice | Disposition | YELLOW trigger (omit if GREEN) | Encoded in |
 |----|------------------|-------------|--------------------------------|------------|
-| **T-4.6-CSV** | RFC 4180 document carriers: **`CsvDocument`** / **`CsvListMatching`** / **`CsvListMatchingForWidth`** / **`CsvRow`** / spines + **`CsvRfc4180*`** product witnesses | 🟡 | **Document-level** width coupling (first data row + optional header) is structural; **`CsvLFWS`** column peel does **not** type-parameterize `remainder` to `template_tail` — **`leading_column` spine depth vs `CsvZRowSpine` row count** is **parse/Diagnostic** (T-4 brief) until a Peano-coupled column bundle lands. RFC / MIME churn extends **`CsvRfc4180*`** + amends **T-4.6-CSV**. | `extdeps/formats/csv.dag` |
+| **T-4.6-CSV** | RFC 4180 row/document carriers (`CsvRow` Peano depth = per-row field arity) + **`CsvRfc4180*` product witness records** (comma / DQUOTE / line-break / header / UTF-8 / `text/csv` facts — no new coproducts) | 🟡 | Cross-row/header-vs-body arity mesh is **operator-pending** until a ruling + substrate hook (TASKS.md T-4.6); until then validation may fail-closed without a claimed total mesh. | `extdeps/formats/csv.dag` |
 | **T-4.6-JSK** | `JsonSchemaAdditionalKeywordKey` — closed sum for Draft 2020-12 Core vocabulary keywords exercised by this slice | 🟡 | Ratified spec adds/renames/removes a modeled Core keyword such that this enum must change — extend the coproduct **and** amend this row in the same change-set. | `extdeps/formats/json_schema.dag` |
 | **T-4.6-OAS** | OpenAPI 3.1 document/object carriers in `openapi.dag` | 🟡 | Upstream OAS 3.1 normative or meta-schema change forces a modeled fixed field, deferred-key family, or path-template wire rule to migrate — ship with operator-visible reconcile (D5). | `extdeps/formats/openapi.dag` |
 
@@ -331,12 +331,8 @@ the in-file `// <emoji> coproduct dissolution — DECISIONS.md <ID>` tag
 
 | ID | Coproduct | Disp | Ledger (dissolution / trigger) |
 |----|-----------|------|--------------------------------|
-| **T-4.6-P4-CsvDocument** | `CsvDocument` | 🟡 | Optional header row vs body-only file; with-header arm ties **`records`** to **`header`** width via **`CsvListMatchingForWidth`** (**T-4.6-CSV**). |
-| **T-4.6-P4-CsvListMatching** | `CsvListMatching` | 🟡 | Rectangular grid spine: all-`CsvRowZ` rows vs first row sets width for **`CsvListMatchingForWidth`** tail (**T-4.6-CSV**). |
-| **T-4.6-P4-CsvListMatchingForWidth** | `CsvListMatchingForWidth` | 🟡 | Inductive column peel under **`CsvRow`** width template; **`CsvLFWS`** pairing of **`leading_column`** / **`remainder`** row block is **parse/Diagnostic** (T-4 brief) — see **T-4.6-CSV**. |
-| **T-4.6-P4-CsvStrSpine** | `CsvStrSpine` | 🟡 | One CSV column as a spine of cells (pairs with **`CsvZRowSpine`** row counts in **`CsvListMatchingForWidth`**). |
-| **T-4.6-P4-CsvZRowSpine** | `CsvZRowSpine` | 🟡 | Row-count spine for all-`CsvRowZ` record blocks inside **`CsvListMatching` / `CsvListMatchingForWidth`**. |
-| **T-4.6-P4-CsvRow** | `CsvRow` | 🟡 | Peano spine = one row’s field cells; width template for **`CsvListMatchingForWidth`** / first row of **`CsvListMatching`** (**T-4.6-CSV**). |
+| **T-4.6-P4-CsvHeaderPresence** | `CsvHeaderPresence` | 🟡 | Header present vs absent; cross-row arity couples to **T-4.6-CSV** mesh (operator-pending). |
+| **T-4.6-P4-CsvRow** | `CsvRow` | 🟡 | Peano spine = per-row field count; mesh with **T-4.6-CSV** / **T-4.6-P4-CsvHeaderPresence**. |
 | **T-4.6-P4-JsonSchemaCoreTypeName** | `JsonSchemaCoreTypeName` | 🟡 | Draft 2020-12 `type` keyword closed vocabulary for this slice; spec keyword churn extends the sum + amends this row. |
 | **T-4.6-P4-JsonSchemaTypeSlot** | `JsonSchemaTypeSlot` | 🟡 | Optional / single / union type shapes over **T-4.6-P4-JsonSchemaCoreTypeName**; union cardinality vs Core rules is slice-bounded (T-4 brief). |
 | **T-4.6-P4-JsonSchemaItemsSlot** | `JsonSchemaItemsSlot` | 🟡 | `items` absent vs schema subtree; validation/type-derivation for `items` keywords deferred (T-4.6 header). |

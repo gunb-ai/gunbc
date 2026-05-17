@@ -8,8 +8,6 @@
 module v4.extdeps.formats.csv
 
 
-import v4.std.collection { List }
-
 type CsvDialect
   = CsvDialectRfc4180 {}
 
