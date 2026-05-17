@@ -67,8 +67,10 @@ import v4.extdeps.formats.json_schema { JsonSchema }
 // closed OAS Path Item Object operation set (get/put/post/delete/options/
 // head/patch/trace) — M4 closed set as a sum, not strings. **Extension
 // verbs** (`x-` object members and non-OAS methods) remain in
-// **`paths_extensions`** (Paths Object), `path_extensions` (Path Item Object),
-// and `operation_extensions` as `JsonValue` until an operator-pinned extension
+// **`paths_extensions`** (Paths Object), **`path_deferred_members`** /
+// **`path_specification_extensions`** (Path Item Object), and
+// **`operation_deferred_members`** / **`operation_specification_extensions`**
+// as `JsonValue` until an operator-pinned extension
 // policy lands (🟡 (3)).
 //
 // CANONICAL-MIRROR — `Outcome<T>` seam for parse/emit (json.dag #3184
@@ -87,8 +89,10 @@ import v4.extdeps.formats.json_schema { JsonSchema }
 // security schemes, servers, and the full Components object beyond `schemas`
 // are 🟡 deferred with named triggers — not silently omitted without a
 // receipt: overflow lives in `components_extras` / **`paths_extensions`**
-// (Paths Object) / `path_extensions` (Path Item Object) /
-// **`responses_object_extensions`** (Responses Object) / `operation_extensions` /
+// (Paths Object) / **`path_deferred_members`** + **`path_specification_extensions`**
+// (Path Item Object) /
+// **`responses_object_extensions`** (Responses Object) /
+// **`operation_deferred_members`** + **`operation_specification_extensions`** /
 // `info_extensions` / **`contact_extensions` (nested under `OpenApiContact`)** /
 // **`root_specification_extensions`** (`^x-` on the OpenAPI Object) vs
 // **`root_deferred_members`** (undecomposed **fixed** root fields —
@@ -215,7 +219,7 @@ type OpenApiLicenseSlot
 // (with its own **`contact_extensions`**) / `license`, plus **`info_extensions`**
 // for Specification Extension members (`^x-`) and any future spec-added Info
 // keywords until a pinned decomposition lands (M5 — same discipline as
-// `operation_extensions` / `components_extras`; no silent drop of wire facts).
+// **`operation_deferred_members`** / `components_extras`; no silent drop of wire facts).
 //
 // Anchor: https://spec.openapis.org/oas/v3.1.0#info-object
 //
@@ -352,8 +356,12 @@ type OpenApiResponses {
 // `responses` (**`OpenApiResponses`** — status map + Responses Object
 // `responses_object_extensions`; required-by-OAS rules once the operation
 // exists — empty `by_status` may be structurally representable; OAS-level
-// validity is 🟡 deferred parse authority). Parameters, requestBody,
-// callbacks, security live in `operation_extensions` until decomposed.
+// validity is 🟡 deferred parse authority). Undecomposed **fixed** Operation
+// fields (`parameters`, `requestBody`, `callbacks`, `security`, `deprecated`,
+// `tags`, `externalDocs`, …) round-trip under **`operation_deferred_members`**
+// as **`JsonValue`** until decomposed (🟡 Deferred (1)) — **not** under
+// **`operation_specification_extensions`**, which is reserved for **Specification
+// Extensions** (`^x-`) on the Operation Object only (P2 / M5).
 //
 // Anchor: https://spec.openapis.org/oas/v3.1.0#operation-object
 //
@@ -361,31 +369,37 @@ type OpenApiResponses {
 type OpenApiOperation {
   operation_id: OpenApiOptionalString,
   responses: OpenApiResponses,
-  operation_extensions: Map<String, JsonValue>,
+  operation_deferred_members: Map<String, JsonValue>,
+  operation_specification_extensions: Map<String, JsonValue>,
 }
 
 
 // ─────────────────────────────────────────────────────────────────────
 // OpenApiPathItem — Path Item Object: concrete path (`routes` map) with
-// faithful extension capture. **`$ref` sibling form** (Path Item Object
+// split **fixed-field deferrals** vs **Specification Extensions**. Undecomposed
+// **fixed** Path Item members (`$ref`, `summary`, `description`, `servers`,
+// `parameters`, …) round-trip under **`path_deferred_members`** as **`JsonValue`**
+// (🟡 Deferred (1)) — **not** under **`path_specification_extensions`**, which
+// is reserved for **`^x-`** only. **`$ref` sibling form** (Path Item Object
 // reference) is deferred 🟡 (1): until `$ref` substrate lands, a path item
 // that is ONLY a reference round-trips its JSON shape through
-// `path_extensions` / operator follow-up — not silently normalized.
+// **`path_deferred_members`** / operator follow-up — not silently normalized.
 //
 // Anchor: https://spec.openapis.org/oas/v3.1.0#path-item-object
 //
 // Coproduct dissolution (Practice 4) — N/A (`Conj` record).
 type OpenApiPathItem {
   routes: Map<OpenApiHttpMethod, OpenApiOperation>,
-  path_extensions: Map<String, JsonValue>,
+  path_deferred_members: Map<String, JsonValue>,
+  path_specification_extensions: Map<String, JsonValue>,
 }
 
 
 // ─────────────────────────────────────────────────────────────────────
 // OpenApiPaths — OAS 3.1.0 **Paths Object**: path-template → Path Item
 // entries plus **object-level** Specification Extensions (`^x-`) as siblings
-// of those keys — distinct from each `OpenApiPathItem.path_extensions` on
-// the Path Item Object.
+// of those keys — distinct from each **`OpenApiPathItem.path_specification_extensions`**
+// (and **`path_deferred_members`**) on the Path Item Object.
 //
 // Anchor: https://spec.openapis.org/oas/v3.1.0#paths-object
 //
@@ -510,6 +524,7 @@ type OpenApiDocument {
 //     `identifier` at the carrier layer; JSON surface repair for malformed
 //     both-present objects is parse authority, not silent coercion here.
 //     **`contact_extensions`** / **`paths_extensions`** /
+//     **`path_specification_extensions`** / **`operation_specification_extensions`** /
 //     **`responses_object_extensions`** / **`root_specification_extensions`**
 //     keys are carried structurally —
 //     validation of extension-member shapes vs `^x-` patterns remains 🟡 with
