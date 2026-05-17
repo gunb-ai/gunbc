@@ -783,6 +783,7 @@ All 5 artifacts share ONE Node tree (per gate #28 omni_layers_share_one_node_tre
 - Bounded-execution enforcement (INVARIANTS P4 — no unbounded loops; how does the evaluator structurally refuse non-termination?)
 - The shared substrate three consumers compose over: `workflow/bootstrap.dag` (interpreted, not compiled), TestClaim evaluation, lens dry-run
 - Concept-unification (THESIS:188): interpreter runtime = language spec = transport spec — eval reads the same `extdeps/languages/*.dag` carriers emit does
+- **`BehaviorValueSubject` naming vs eval slice (T-19 → T-22):** The identifier anchors the T-19 **L1 `Value`** placement under `type_construction` (T-19 Phase-1.5); the payload is still the **closed** `Behavior` sum (all five behaviors—not Value-only structurally). When T-22 binds testgen/type-construction to execution, re-audit the name with the real consumer: either keep it as the Value-slice carrier of `Behavior` facts or rename (e.g. to `BehaviorSubject`) if the eval path is behavior-wide with no residual Value reading; fold the decision into the T-22 close gate so names cannot silently drift from semantics.
 
 **Scope**: XL (extra-large — THE primary execution path; bootstrap + tests + dry-run all depend on it)
 
