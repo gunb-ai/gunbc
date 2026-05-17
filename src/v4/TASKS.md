@@ -976,6 +976,21 @@ fact-density off a `Node` carrier; the kernel-ambient exemption (`Bool`
 and the other kernel-ambient atoms are legitimately atomic — not hollow);
 the Diagnostic shape on a fail-closed hollow alias.
 
+**Interim bootstrap mirror (not the final generated checker).** The north
+star remains a **generated** structural `Node → Outcome` gate in v4
+`.dag` authority. While the v4→v3 `compile_to_dag` bootstrap cannot yet
+prepend `std/node.dag` without name collisions (see `DECISIONS.md` T-30
+`fact_density.dag` encoding note), the Practice-8 predicate lands as the
+**P5(b) bounded triple**: a **hand Rust mirror**
+(`src/v3/compiler/src/v4_hollow_alias_gate.rs` + hermetic unit tests), a
+**body-less nominal witness** in `src/v4/std/fact_density.dag`, and a
+**`compile_to_dag` smoke** harness — each with matching SG-0 literals and
+`INVARIANTS.md` §P5(b) rows naming the **dissolution** trigger (retire the
+mirror when the `.dag`-generated checker is the authority). This slice is
+**sequencing**, not semantic deferral of the gate's *definition* (the
+three-part rule + kernel-ambient exemption is already pinned in tests and
+docs).
+
 **Scope / clarification dispositions:**
 - **#4 — T-16 SQL DDL — RESOLVED (operator 2026-05-17): fork (a).** SQL is
   modeled as a **checked `extdeps` Shape-B format** — a sibling of

@@ -1,9 +1,11 @@
 //! **Layer:** integration
 //!
-//! Smoke `compile_to_dag` on `src/v4/std/fact_density.dag` — T-30 substrate must
-//! lower+infer with **zero** module diagnostics (same bar as
-//! `v4_extdeps_typescript_dag_smoke_test`). Practice-8 structural mirror:
-//! `v3_compiler::v4_hollow_alias_gate`.
+//! Smoke `compile_to_dag` on `src/v4/std/fact_density.dag` — P5(b) **interim**
+//! witness file: must lower+infer with **zero** module diagnostics (same bar as
+//! `v4_extdeps_typescript_dag_smoke_test`). The Practice-8 **structural**
+//! predicate lives in the handwritten mirror `v3_compiler::v4_hollow_alias_gate`
+//! until the generated `.dag` checker replaces it (`INVARIANTS.md` §P5(b)
+//! dissolution on that path).
 //!
 //! **INVARIANTS §P5 Dispatch-Discipline Mechanism (b):** this path’s SG-0 census
 //! line + matching `INVARIANTS.md` table row land in the same PR as the harness
