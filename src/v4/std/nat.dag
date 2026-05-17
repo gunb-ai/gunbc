@@ -8,6 +8,7 @@
 
 module v4.std.nat
 import v4.std.algebra { Magma, Semigroup, Monoid, CommutativeMonoid, Semiring, CommutativeSemiring }
+// 🟢 coproduct dissolution — DECISIONS.md De-Prosed Substrate Receipts: Nat.
 type Nat
   = Zero
   | Succ { prev: Nat }
