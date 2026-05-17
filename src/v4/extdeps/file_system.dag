@@ -34,11 +34,10 @@
 // contract for the worker. Splitting this file requires explicit operator
 // ratification (substrate extension = stop signal).
 //
-// HEADER RECONCILE (2026-05-16, follow-up to #3209, keen-wren-663 +
-// operator ruling): filesystem operations take an explicit Filesystem
-// resource parameter per ratified lens/effect.dag B3/B-5. `write_file`
-// returns the modified Filesystem resource; read/list/kind return
-// derived values.
+// HEADER RECONCILE (2026-05-16, #3209, keen-wren-663 + operator ruling):
+// filesystem operations take an explicit Filesystem resource parameter
+// per ratified lens/effect.dag B3/B-5. `write_file` returns the
+// modified Filesystem resource; read/list/kind return derived values.
 
 
 module v4.extdeps.file_system
