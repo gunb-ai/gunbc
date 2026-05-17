@@ -35,6 +35,53 @@ This is *not* the reversed D2 alias. D2 *asserted* `type RustI32 = Int32`.
 Here every type is grounded independently from its own spec; any identity
 is a *claim to be discharged* by comparing groundings, never an assertion.
 
+## What the "IR" is — it is `Node`
+
+The examples below write "↔ IR `Int32`", "IR record", etc. There is no
+separate "IR" artifact. **The IR is `Node`** — `std/node.dag`'s single
+recursive type: the 6 connectives `Atom | Conj | Disj | Arrow |
+Cardinality | Instantiation`. `core` produces `InferredTree` = `Node` +
+the frozen flat `InferredFacts` coordinate (IR-1) — still not a separate
+type. Per `compiler/00_compile.dag` the pipeline is the **OMNI pivot**:
+
+```
+ingest : (Source, LanguageModel)    -> Outcome<Node>
+core   : Node                        -> Outcome<InferredTree>
+emit   : (InferredTree, TargetModel) -> Outcome<Source>
+```
+
+Two corrections this forces on the examples' wording:
+
+1. **Source is not "translated to" an IR.** There is one representation.
+   `ingest` *builds* a `Node` that represents the source; `emit` *reads*
+   a `Node` to produce target text. Source is parsed *into* the `Node` —
+   which **is** the program. There is no python-IR / rust-IR pair.
+2. **std types are vocabulary, not "IR types."** `Int32`, `List<T>` are
+   `std/` vocabulary that *grounds into* `Node` connectives; the `Node`
+   *represents* a construct using that vocabulary. "↔ IR `List<Int32>`"
+   means: the `Node` represents the sequence with std `List` vocabulary;
+   the *target model* — not the IR — decides how `List` realizes in Rust.
+
+**Node-tree vs program-DAG.** The `Node` *type* is a finite tree (A1:
+recursion lives solely in the children list). Program-level sharing and
+cycles — def-use, loops — are by-reference via `Symbol` `Atom`s, never by
+inlining. So the realized program IR is a **`Symbol`-linked DAG of
+`Node`**, distinct from the finite `Node` tree.
+
+**One mechanic, N+M ways.** The compiler is not a pile of special-case
+stages. It has ONE mechanic: a **causal transform** = projection (read
+facts off `Node`) + coercion (the `Outcome`-typed map). `infer`, `lower`,
+the lenses, `emit` are all instances of it; tokenize/parse/emit are
+"special" only in that text I/O is a common case packaged as a module —
+the machinery is identical, and the tokenize/parse legs are the
+`Transform` L1 behavior (one of `node.dag`'s 5: `Value | Transform |
+Branch | Loop | Bind`). So the worked examples below are not a
+coercion-verdict catalog — they are evidence of **one mechanic applied
+N+M ways**: you author N ingest models + M emit models (authoring cost
+N+M), and every ingest composes with every emit through the one `Node`
+pivot (capability N×M). N+M authored → N×M capabilities, because the
+mechanic is pivot-shaped.
+
 ## Spectrum
 
 These examples are chosen to span the full range deliberately —
@@ -82,6 +129,22 @@ That `Rejected` is a constructed `Diagnostic` with a `Locus` — "named,
 never silent" is *shown*, by built code. Richer `.dag` tokenization (real
 keywords, programs) is declarative grammar-data **not yet realized** —
 `[MODELED]` from here up. Both built functions already return `Outcome<T>`.
+
+**The round-trip — one `Node`, two directions.** The same void chain run
+forward and back:
+
+```
+""  → tokenize → parse → ParseTree   [BUILT]    — ingest builds the Node
+    → emit → ""                      [MODELED]  — emit reads the Node back
+```
+
+`tokenize` / `parse` are causal transforms — the `Transform` L1 behavior
+— each projecting facts off its input and coercing to its output; they
+are not special-case stages. `emit` is the *same mechanic* run the other
+direction (`05_emit.dag` is a `T-10` scaffold, so the emit leg is
+`[MODELED]` — the mechanic-identity claim is structural, not a runtime
+claim). This *shows* "emit is a section of ingest": one `Node`, ingest
+constructs it, emit projects it back — not two hand-built stages.
 
 ### B. The modeled spine — `python int → IR → rust i32` `[MODELED]`
 
