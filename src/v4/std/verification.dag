@@ -52,6 +52,7 @@ type ImpossibleBugClass
 type TestClaim {
   kind: AssertKind
   label: String
+  anchor_slug: String
   input: Node
   expected: Outcome<Node>
   classification: TestClassification

@@ -2,7 +2,7 @@
 // Scope: Stable slug keys for the twelve live manual TestClaims (connective_anchors ∪ nat_law_anchors).
 // Owns: ManualTestgenAnchor twelve data rows (slug only — no duplicate tier/layer/kind metadata)
 // Consumes: (none)
-// Status: P2 join table; `TestClaim.kind` + `TestClaim.classification` are sole authority for those axes.
+// Status: P2 join — `ManualTestgenAnchor.slug` = `TestClaim.anchor_slug` on the paired claim literal (no name/order convention).
 
 module v4.test.claim.manual.t19_manual_anchor_manifest
 
