@@ -7,6 +7,13 @@ authored in-body commentary; scoped to the pinned allowlist for that reason.
 Coproduct one-liners (`// 🟢|🟡|🔴 coproduct dissolution — DECISIONS.md Part 6 · …`) are
 preserved and (re)injected from merge-base `92cb26402` Practice-4 / SL-3229 state
 (operator directive 2026-05-17, PR #3234 modeling-discipline alignment).
+
+`// Owns:` is a **manifest of top-level module symbols** in **file order**: every
+`type`, `data`, and `fn` binding in the `.dag` body (deduped by name), not only headline
+carriers—so regenerated headers stay aligned with actual exports.
+
+Run with `--check` to verify allowlisted files already match merge-base-derived output
+without writing (exit 1 on drift).
 """
 
 from __future__ import annotations
@@ -24,6 +31,7 @@ MERGE_BASE = "92cb26402eeb21471acb6ac47559cbae3b52afdb"
 
 TYPE_RE = re.compile(r"^type\s+([A-Za-z_][A-Za-z0-9_]*)\b")
 DATA_RE = re.compile(r"^data\s+([A-Za-z_][A-Za-z0-9_]*)\b")
+FN_RE = re.compile(r"^fn\s+([A-Za-z_][A-Za-z0-9_]*)\b")
 COPRODUCT_TAG_RE = re.compile(
     r"^\s*//\s*[🟢🟡🔴]\s+coproduct dissolution\b",
 )
@@ -258,7 +266,7 @@ def inject_coproduct_tags(body: str, _rel: str, tag_map: dict[str, tuple[str, st
 
 
 def carrier_names(path: Path) -> list[str]:
-    """Declaration-order carrier names: `type` rows first, then `data` rows (deduped)."""
+    """Top-level `type`, `data`, and `fn` names in file order (deduped)."""
     seen: set[str] = set()
     out: list[str] = []
     for line in path.read_text().splitlines():
@@ -271,6 +279,13 @@ def carrier_names(path: Path) -> list[str]:
                 out.append(name)
             continue
         m = DATA_RE.match(s)
+        if m:
+            name = m.group(1)
+            if name not in seen:
+                seen.add(name)
+                out.append(name)
+            continue
+        m = FN_RE.match(s)
         if m:
             name = m.group(1)
             if name not in seen:
@@ -295,7 +310,8 @@ def strip_body_comments(after_module: str) -> str:
     return "".join(out_lines)
 
 
-def rewrite(path: Path, header: str, rel: str, tag_map: dict[str, tuple[str, str]]) -> None:
+def materialize_deprose_text(path: Path, rel: str, tag_map: dict[str, tuple[str, str]], header: str) -> str:
+    """Return full file text after strip + coproduct reinjection (no disk write)."""
     text = path.read_text()
     lines = text.splitlines(keepends=True)
     idx = next(i for i, ln in enumerate(lines) if ln.startswith("module "))
@@ -303,10 +319,58 @@ def rewrite(path: Path, header: str, rel: str, tag_map: dict[str, tuple[str, str
     body = "".join(lines[idx + 1 :])
     new_body = strip_body_comments(body)
     new_body = inject_coproduct_tags(new_body, rel, tag_map)
-    path.write_text(header + module_line + new_body)
+    return header + module_line + new_body
+
+
+def rewrite(path: Path, header: str, rel: str, tag_map: dict[str, tuple[str, str]]) -> None:
+    path.write_text(materialize_deprose_text(path, rel, tag_map, header))
+
+
+def run_check(specs: list[tuple[str, str, str, str, str]]) -> None:
+    """Exit 0 only if each allowlisted file already matches merge-base-derived output."""
+    decisions_path = ROOT / DECISIONS_REL
+    decisions_text = decisions_path.read_text()
+    union_required: set[str] = set()
+    for rel, *_rest in specs:
+        union_required |= required_ledger_slugs(rel, coproduct_tag_from_merge_base(rel))
+    assert_part6_inventory(decisions_text, union_required)
+
+    drift: list[str] = []
+    for rel, scope, anchor, consumes, status in specs:
+        path = ROOT / rel
+        tag_map = coproduct_tag_from_merge_base(rel)
+        names = carrier_names(path)
+        owns_line = "// Owns: " + ", ".join(names)
+        first = path.read_text().splitlines()[0]
+        if not first.startswith("// src/"):
+            raise SystemExit(f"{rel}: expected line 1 // src/…, got {first!r}")
+        header = (
+            f"{first}\n"
+            f"{scope}\n"
+            f"{anchor}\n"
+            f"{owns_line}\n"
+            f"{consumes}\n"
+            f"{status}\n"
+            f"{format_ledger_line(rel, tag_map)}"
+            f"\n"
+        )
+        expected = materialize_deprose_text(path, rel, tag_map, header)
+        actual = path.read_text()
+        if expected != actual:
+            drift.append(rel)
+
+    if drift:
+        print("FAIL: --check drift on: " + ", ".join(drift), file=sys.stderr)
+        sys.exit(1)
+    print("OK: strict_deprose_dag --check (all allowlisted files match).")
 
 
 def main() -> None:
+    argv = sys.argv[1:]
+    if argv not in ([], ["--check"]):
+        raise SystemExit("usage: strict_deprose_dag.py [--check]")
+    check_only = argv == ["--check"]
+
     specs: list[tuple[str, str, str, str, str]] = [
         (
             "src/v4/extdeps/languages/verilog.dag",
@@ -351,6 +415,10 @@ def main() -> None:
     for rel, *_rest in specs:
         union_required |= required_ledger_slugs(rel, coproduct_tag_from_merge_base(rel))
     assert_part6_inventory(decisions_text, union_required)
+
+    if check_only:
+        run_check(specs)
+        return
 
     report: list[tuple[str, float]] = []
     for rel, scope, anchor, consumes, status in specs:
