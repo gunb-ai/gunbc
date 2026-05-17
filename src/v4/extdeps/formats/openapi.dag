@@ -15,7 +15,8 @@
 //     (`OpenApiResponse`: **`content` / `headers` / `links`** slots vs **`extensions`**)
 //   - parse(String) -> Result<OpenApiSpec, Diagnostic>  (YAML or JSON input)
 //   - emit(OpenApiSpec) -> String  (typically YAML)
-//   - Type derivation from components.schemas (delegates to json_schema.dag)
+//   - Type derivation from `components.schemas` **`.core`** values delegates to
+//     json_schema.dag's future `schema_to_type` — not re-declared here.
 //
 // Consumes:
 //   - std/node.dag, std/diagnostic.dag, std/collection.dag
@@ -55,11 +56,15 @@ import v4.extdeps.formats.json_schema { JsonSchema }
 // no `import` edge is required until an operation body closes the loop
 // (unused import = 0-diagnostics failure) — same json.dag pattern.
 //
-// JSON SCHEMA ALIGNMENT (OAS 3.1). `components.schemas` values are JSON
-// Schemas per the OAS 3.1 spec; this file **imports** `JsonSchema` from
-// json_schema.dag (single authority — INVARIANTS P2). Schema-to-type
-// derivation delegates to json_schema.dag's future `schema_to_type` —
-// not re-declared here.
+// JSON SCHEMA ALIGNMENT (OAS 3.1). OpenAPI **Schema Object** is a **JSON Schema
+// applicator** **plus** OpenAPI-specific members on the same object — modeled here
+// as **`OpenApiSchema`** wrapping **`JsonSchema`** (`core`) for Draft **2020-12**
+// facts (**single JSON Schema vocabulary authority** — INVARIANTS P2) with
+// separate **`openapi_schema_members`** (OAS fixed fields outside the shared
+// `JsonSchemaInstance` typed slice today) and **`openapi_schema_specification_extensions`**
+// (`^x-` only). **`components.schemas`** and Media Type **`schema`** use **`OpenApiSchema`**,
+// not a bare **`JsonSchema`** alias, so OAS schema wire does not collapse into
+// `JsonSchemaInstance.additional_keywords` without an explicit OpenAPI home.
 //
 // HTTP METHOD MAP (immutable header `Map<HttpMethod, Operation>`). The v4
 // kernel does not yet host a shared transport-level `HttpMethod` enum in
@@ -100,6 +105,31 @@ import v4.extdeps.formats.json_schema { JsonSchema }
 // **`root_deferred_members`** (undecomposed **fixed** root fields —
 // `servers` / `webhooks` / `security` / `tags` / `externalDocs` — as bounded
 // `JsonValue` wire, not mixed into the extension map) (M5 / P2).
+
+
+// ─────────────────────────────────────────────────────────────────────
+// OpenApiSchema — OAS 3.1.0 **Schema Object** (JSON Schema application **plus**
+// OpenAPI-specific **fixed** members and **Specification Extensions** on the
+// same JSON object — **not** a bare alias of `JsonSchema`).
+//
+// **`core`** carries Draft **2020-12** schema facts using **`JsonSchema`**
+// (single **JSON Schema** vocabulary authority — INVARIANTS P2). **`openapi_schema_members`**
+// holds OAS Schema Object members **outside** the shared typed `JsonSchemaInstance`
+// slice modeled in `json_schema.dag` today (`discriminator`, `xml`, `externalDocs`, …)
+// as bounded **`JsonValue`** until decomposed (🟡 Deferred (1)). **`openapi_schema_specification_extensions`**
+// is **`^x-`** only on the Schema Object (M5 — same split as `media_type_*` maps).
+//
+// Anchor: https://spec.openapis.org/oas/v3.1.0#schema-object
+//
+// Coproduct dissolution (Practice 4) — N/A (`Conj` record). Ledger: wrapper vs
+// raw `JsonSchema` prevents OAS-only keywords from being normalized into
+// `JsonSchemaInstance.additional_keywords` without an explicit OpenAPI field
+// authority (P2 / Practice-5 single-home metadata).
+type OpenApiSchema {
+  core: JsonSchema,
+  openapi_schema_members: Map<String, JsonValue>,
+  openapi_schema_specification_extensions: Map<String, JsonValue>,
+}
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -239,9 +269,10 @@ type OpenApiInfo {
 
 
 // ─────────────────────────────────────────────────────────────────────
-// OpenApiMediaType — Media Type Object (OAS 3.1.0). `schema` is JSON Schema
-// (single authority: json_schema.dag). Undecomposed **fixed** Media Type fields
-// (`example`, `examples`, `encoding`, …) round-trip under **`media_type_deferred_members`**
+// OpenApiMediaType — Media Type Object (OAS 3.1.0). **`schema_shape`** carries an
+// optional **`OpenApiSchema`** (OAS Schema Object — **not** bare `JsonSchema`).
+// Undecomposed **fixed** Media Type fields (`example`, `examples`, `encoding`, …)
+// round-trip under **`media_type_deferred_members`**
 // as **`JsonValue`** until decomposed (🟡 Deferred (1)) — **not** under
 // **`media_type_specification_extensions`**, reserved for **Specification
 // Extensions** (`^x-`) only on this object (P2 / M5).
@@ -263,7 +294,7 @@ type OpenApiMediaType {
 // vs absent schema are genuine alternatives; flat Bool+optional record would
 // admit illegal paired states (P2 violation).
 type OpenApiMediaTypeSchemaSlot
-  = OpenApiMediaSchemaPresent { schema: JsonSchema }
+  = OpenApiMediaSchemaPresent { schema: OpenApiSchema }
   | OpenApiMediaSchemaAbsent
 
 
@@ -462,8 +493,8 @@ type OpenApiPathsSlot
 
 
 // ─────────────────────────────────────────────────────────────────────
-// OpenApiComponents — Components Object `schemas` map (JSON Schema values).
-// Other **fixed** component map keys (`responses`, `parameters`, `requestBodies`, …)
+// OpenApiComponents — Components Object `schemas` map (**`OpenApiSchema`** values —
+// OAS Schema Object, not bare `JsonSchema`). Other **fixed** component map keys (`responses`, `parameters`, `requestBodies`, …)
 // round-trip under **`components_deferred_members`** as **`JsonValue`** until a
 // pinned decomposition lands (MODELING.md M10 — proper homes before variant
 // explosion) — **not** under **`components_specification_extensions`**, reserved
@@ -473,7 +504,7 @@ type OpenApiPathsSlot
 //
 // Coproduct dissolution (Practice 4) — N/A (`Conj` record).
 type OpenApiComponents {
-  schemas: Map<String, JsonSchema>,
+  schemas: Map<String, OpenApiSchema>,
   components_deferred_members: Map<String, JsonValue>,
   components_specification_extensions: Map<String, JsonValue>,
 }
@@ -541,7 +572,12 @@ type OpenApiDocument {
 //   **`OpenApiResponseContentSlot`** defers Media Type Object value validation to
 //   the same parse lane. **`OpenApiResponseOrReference`**: **`OpenApiResponseReference`**
 //   wire payloads validate as Reference Objects and resolve under the **same**
-//   `$ref` graph trigger — not a parallel authority.
+//   `$ref` graph trigger — not a parallel authority. **`OpenApiSchema`**: parse
+//   partitions Schema Object wire between **`core`** (`JsonSchema` — JSON Schema
+//   vocabulary only), **`openapi_schema_members`** (OAS fixed fields outside the
+//   typed `JsonSchemaInstance` slice), and **`openapi_schema_specification_extensions`**
+//   (`^x-`); OAS-only keys MUST NOT be normalized into **`JsonSchemaInstance.additional_keywords`**
+//   without an explicit **`OpenApiSchema`** home (same trigger).
 //
 // (2) `openapi_version_lexeme` refinement — patch-level policy + numeric
 //   comparison against supported spec revisions; trigger = operator version
@@ -560,7 +596,8 @@ type OpenApiDocument {
 //     both-present objects is parse authority, not silent coercion here.
 //     **`contact_extensions`** / **`paths_extensions`** /
 //     **`path_specification_extensions`** / **`operation_specification_extensions`** /
-//     **`media_type_specification_extensions`** / **`components_specification_extensions`** /
+//     **`media_type_specification_extensions`** / **`openapi_schema_specification_extensions`** /
+//     **`components_specification_extensions`** /
 //     **`responses_object_extensions`** / **`root_specification_extensions`**
 //     keys are carried structurally —
 //     validation of extension-member shapes vs `^x-` patterns remains 🟡 with
