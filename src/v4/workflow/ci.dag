@@ -210,14 +210,23 @@
 //       Then additionally needs extdeps/formats/yaml.dag `yaml_emit`
 //       (T-4.6, the `YamlStatic` serialization) + compiler/05_emit.dag
 //       (T-10) Shape-B emission.
-//   (2) `select_jobs : (CiPipeline, Diff) -> List<CiJob>` — affected-set
-//       job selection, consuming lens/affected_set.dag's `affected_set :
-//       (Dag, Diff) -> Witness<ReExecFrontier>` (this is IB-2 / what
-//       dissolves scripts/detect-affected-components.sh). lens/
-//       affected_set.dag is T-21 SCAFFOLD (zero declarations today) — no
-//       `affected_set` / `ReExecFrontier` symbol exists to consume yet,
-//       so the selection body is not authored (scaffold-header drift
-//       discipline: reference the seam, defer the body).
+//   (2) `select_jobs : (CiPipeline, Diff) -> Outcome<List<CiJob>>` —
+//       affected-set job selection AND the fail-closed WELL-FORMEDNESS
+//       boundary (see WELL-FORMEDNESS above). It consumes
+//       lens/affected_set.dag's `affected_set : (Dag, Diff) ->
+//       Witness<ReExecFrontier>` (this is IB-2 / what dissolves
+//       scripts/detect-affected-components.sh). As the
+//       `apply_diff`-analogous all-or-nothing fold over the `Symbol`
+//       job/gate graph it is the single point where a missing target /
+//       duplicate id / `needs` cycle becomes one fail-closed
+//       `Diagnostic` (`Outcome<T>`, std/diagnostic.dag) — decidable
+//       (visited-set traversal, P4), never a type-level invariant nor
+//       an eager predicate (node.dag `Diff` #3162). lens/
+//       affected_set.dag is T-21 SCAFFOLD (zero declarations today) —
+//       no `affected_set` / `ReExecFrontier` symbol exists to consume
+//       yet, so the fold body is not authored (scaffold-header drift
+//       discipline: reference the seam, defer the body); the BOUNDARY
+//       is named/owned here NOW, only its body is deferred.
 //       OWNER/TRIGGER: dissolves when lens/affected_set.dag (T-21) lands.
 //   (3) The executable per-job evaluation (running fmt/clippy/test jobs,
 //       structural cache restore/store keyed by `content_hash` B1) rides
@@ -272,6 +281,29 @@ type CiGate {
 // whose v4 counterpart is missing substrate (TRACKED SCAFFOLD (1) +
 // HONEST SCOPE OF THE C4 CLAIM above). Affected-set selection over
 // `jobs` is TRACKED SCAFFOLD (2).
+//
+// WELL-FORMEDNESS — fail-closed at the consume fold, NOT a type-level
+// invariant and deliberately NO eager predicate (INVARIANTS P2/P4; the
+// canonical node.dag `Diff` #3162 ratification, applied). Exactly as
+// `Diff` is "ANY `List<Edit>` is a valid rewrite program ... no
+// external well-formedness predicate exists to recover one (the prior
+// `diff_well_formed` shape was exactly the illegal-states-representable
+// anti-pattern); a non-resolving Path ⇒ a fail-closed Diagnostic at
+// apply time, NOT a type-level illegal state": ANY `jobs`/`gates`
+// lists are valid `CiPipeline` DATA. A missing `needs`/`job` target, a
+// duplicate job id, or a `needs` cycle is NOT a representable
+// type-level illegal state and there is deliberately NO
+// `ci_pipeline_well_formed` predicate (authoring one would re-introduce
+// the exact #3162 anti-pattern). These are fail-closed `Diagnostic`s at
+// the CONSUME boundary — the deferred `select_jobs` graph fold (TRACKED
+// SCAFFOLD (2)), the `apply_diff`-analogous all-or-nothing fold:
+// unresolved/duplicate/cyclic ⇒ the whole result is that one
+// Diagnostic (legitimate operational behavior). P4: that fold is
+// decidable — `Symbol`-set traversal with a visited set; a cycle
+// terminates as a fail-closed Diagnostic, never a non-terminating
+// walk. The boundary is therefore NAMED and OWNED now (not silently
+// deferred): it is `select_jobs` / lens/affected_set.dag (T-21), the
+// same single authority that traverses these `Symbol` edges.
 type CiPipeline {
   jobs: List<CiJob>
   gates: List<CiGate>
