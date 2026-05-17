@@ -12,6 +12,8 @@
 //
 // Consumes:
 //   - std/node.dag, std/diagnostic.dag, std/witness.dag
+//   - std/collection.dag: `Set<T>` (alias `PointwisePower<T>` — uniqueness
+//     for `"type"` array form per Validation §6.1.1; lane-wide authority)
 //   - extdeps/formats/json.dag: JsonValue (subject of validation)
 //
 // Status: scaffold — fill per TASKS.md T-4.6
@@ -23,6 +25,7 @@ module v4.extdeps.formats.json_schema
 
 
 import v4.extdeps.formats.json { JsonValue }
+import v4.std.collection { Set }
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -106,22 +109,28 @@ type JsonSchemaCoreTypeName
 // JSON Schema permits either **one** core type name **or** a JSON **array**
 // of distinct core type names; absent keyword is its own variant (not a
 // fabricated default). Single-name and array forms use **`JsonSchemaCoreTypeName`**
-// (closed seven-set — M4); **array uniqueness and non-emptiness** are not
-// structurally enforced by `List` — spec-invalid duplicates / empty arrays
-// remain **🟡 validation authority** for `json_schema_validate` (Deferred (1);
-// INVARIANTS §2 honesty — no false structural guarantee).
+// (closed seven-set — M4). **Uniqueness** in the array form is **structural**:
+// `JsonSchemaTypeUnion.types` is **`Set<JsonSchemaCoreTypeName>`** (imported
+// `Set` = `PointwisePower<T>` from **std/collection.dag** — lane-wide carrier,
+// not a per-file mint). **Non-emptiness** of that set (encoding `[]` at the
+// JSON surface) and **finite positive cardinality** for JSON’s finite array
+// witness are **not** carried by bare `Set<T>` (see collection.dag Wave-A2
+// **FiniteSet** / cardinality–enumerability substrate — same standing
+// discipline class as **NonEmptyList**); those remain **🟡** under
+// `json_schema_validate` + **Deferred (1)** until Wave-A2 refines the carrier
+// substrate — INVARIANTS §2 honesty (no false “non-empty finite subset” claim).
 //
 // Anchor: https://json-schema.org/draft/2020-12/json-schema-validation#section-6.1.1
 //
 // Coproduct dissolution (Practice 4 / INVARIANTS P1) — 🟢 GREEN (terminal).
 // Ledger — five patterns: (1) fact placement FAILS — uniform classifier for
 // type-keyword shape; (2) variant-is-data FAILS — absent vs one core vs
-// core-list are distinct shapes; (3) algebraic N/A; (4) dimensional FAILS —
+// core-set union are distinct shapes; (3) algebraic N/A; (4) dimensional FAILS —
 // exactly one alternative; (5) parameterized family FAILS — not `F<X>`.
 type JsonSchemaTypeSlot
   = JsonSchemaTypeAbsent
   | JsonSchemaTypeSingle { core_type: JsonSchemaCoreTypeName }
-  | JsonSchemaTypeUnion { types: List<JsonSchemaCoreTypeName> }
+  | JsonSchemaTypeUnion { types: Set<JsonSchemaCoreTypeName> }
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -181,7 +190,8 @@ type JsonSchema
 //   signatures here. When authored: **fail-closed `Outcome<…>`** on every
 //   operation (json.dag seam #3); a structurally constructible but spec-
 //   invalid `JsonSchemaInstance` (e.g. contradictory `type` vs payload,
-//   **duplicate or empty `JsonSchemaTypeUnion.types` per Validation §6.1.1**)
+//   **empty `JsonSchemaTypeUnion.types`** encoding **`[]`** at the JSON surface
+//   per Validation §6.1.1 — duplicates are structurally excluded via `Set<…>`)
 //   validates/derives `Rejected`, never a fabricated success.
 //     (a) scaffold doc — THIS note.
 //     (b) bounds on use — no symbols exported yet; consumers wait.
