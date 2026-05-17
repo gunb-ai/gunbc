@@ -1083,3 +1083,50 @@ block the T-4 gates and is not blocked by them. It cites
 that doc lands, but need not block on it: the KEEP/REMOVE/RELOCATE
 classification is settled. The rider (a) starts with the first rework
 PR; the mop-up (b) dispatches immediately as parallel fill.
+
+### T-32 — minimum never-hand-edited bootstrap seed  [SCHEDULED]
+**Operator directive 2026-05-17 (briansrls).** Reduce the bootstrap seed
+to the absolute minimum, in a form that never needs a hand-edit, ever.
+
+**The success metric — two bars, both must hold:**
+- **Seed size** — the seed is the smallest it can be.
+- **Zero ongoing hand-edits** — once frozen, the seed is never
+  hand-edited again, for any v4 language change.
+
+A bloated seed that is never hand-edited still **fails**; a tiny seed
+that needs an edit on every language change still **fails**. The metric
+is size **and** no-hand-edit, together — not either alone.
+
+**This is NOT "retire v2".** "Off v2" is a *gameable* success metric —
+v3 proved it: v3 retired v2, cleared "off v2", and was no better,
+because v3's own Rust seed stayed bloated. v2-retirement is at most an
+incidental outcome of hitting the real metric, never the goal. Frame
+every milestone of this task by seed-size + no-hand-edit, never by
+"v2 removed".
+
+**Phase 1 — DEFINITION (design-first; operator-reviewed; gates all
+reduction work).** Before any reduction, produce an operator-reviewed
+definition of exactly what "minimum never-hand-edited seed" means. The
+open design question — posed in `src/v3/SELF_HOSTING.md` ("how small can
+the seed parser be?") and never resolved:
+
+- The seed's only job is to bootstrap v4 once from source.
+- "Never hand-edit, ever" requires the seed **decoupled from v4's
+  evolving language surface** — v4's `.dag` grows arbitrarily; the seed
+  never changes.
+- That holds if the seed compiles a **frozen, pinned bootstrap
+  snapshot**: seed → frozen-snapshot → stage-N → live v4, the seed and
+  the snapshot both pinned forever.
+- Tension — **language drift**: if live v4 outgrows the snapshot's
+  compiler, the chain needs intermediate stages walking the language
+  forward, *or* the snapshot's frozen language subset must stay inside
+  what the seed handles.
+- So: minimum seed = the smallest compiler for the snapshot's **frozen
+  language subset**; never-hand-edited = that subset is frozen so the
+  seed never grows. **The real question Phase 1 must answer: what IS
+  that frozen subset, and how small can it be.**
+
+**Sequencing.** Design-first — do **not** dispatch any seed-reduction
+work until the operator reviews and ratifies the Phase-1 definition.
+Parallel fill — adjacent to T-15 (self-host fixed-point gate) and T-20
+(`workflow/bootstrap.dag`); **not** on the pipeline critical path.
