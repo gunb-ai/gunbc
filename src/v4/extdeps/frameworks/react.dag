@@ -79,7 +79,8 @@ type ReactCrossDeclRef
 //
 // Optional operand at a hook call site (e.g. optional `getServerSnapshot`,
 // optional `useDebugValue` formatter, optional `useActionState` permalink,
-// optional `useReducer` `init`) — encodes arity holes in the **pinned** API surface.
+// optional `useReducer` `init`, optional `useDeferredValue` `initialValue`) —
+// encodes arity holes in the **pinned** API surface.
 //
 // Coproduct dissolution (Practice 4) — 🟢 GREEN (terminal). Ledger — five patterns:
 //   1. Fact placement — FAILS: optional slot duplicated on unrelated hooks.
@@ -252,13 +253,21 @@ type ReactHookSite
   // Anchor: https://react.dev/reference/react/useMemo — second arg **required** on
   //         the pin; model as `Present` only (no `Omitted` inhabitant at grammar).
   | UseMemo { factory_ref: ReactCrossDeclRef, dependency_refs: List<ReactCrossDeclRef> }
-  // Anchor: https://react.dev/reference/react/useCallback — optional deps array.
+  // Anchor: https://react.dev/reference/react/useCallback — `dependencies` may be
+  //         **omitted** (react.dev “Troubleshooting”: forgetting the array is legal
+  //         arity but yields a **new function every render**). When passed, model as
+  //         `DependenciesArgPresent` (including explicit `[]`).
   | UseCallback {
       callback_ref: ReactCrossDeclRef
       dependencies: ReactHookInlineDependenciesArgument
     }
   | UseTransition
-  | UseDeferredValue { value_ref: ReactCrossDeclRef }
+  // Anchor: https://react.dev/reference/react/useDeferredValue — `useDeferredValue(value,
+  //         initialValue?)`; optional `initialValue` for the initial render per react.dev.
+  | UseDeferredValue {
+      value_ref: ReactCrossDeclRef
+      initial_value: ReactOptRef
+    }
   | UseId
   | UseSyncExternalStore {
       subscribe_ref: ReactCrossDeclRef
