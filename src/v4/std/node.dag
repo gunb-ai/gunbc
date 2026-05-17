@@ -9,6 +9,7 @@
 module v4.std.node
 type Symbol
 type Hash
+// 🟢 coproduct dissolution — DECISIONS.md De-Prosed Substrate Receipts: Connective.
 type Connective
   = Atom { identity: Symbol }
   | Conj
@@ -16,15 +17,18 @@ type Connective
   | Arrow
   | Cardinality
   | Instantiation
+// 🟢 coproduct dissolution — DECISIONS.md De-Prosed Substrate Receipts: Behavior.
 type Behavior
   = Value
   | Transform
   | Branch
   | Loop
   | Bind
+// 🟢 coproduct dissolution — DECISIONS.md De-Prosed Substrate Receipts: NodeKind.
 type NodeKind
   = TypeNode { connective: Connective }
   | ComputationNode { behavior: Behavior }
+// 🟢 coproduct dissolution — DECISIONS.md De-Prosed Substrate Receipts: EdgeLabel.
 type EdgeLabel
   = Named { name: Symbol }
   | Positional
@@ -36,6 +40,7 @@ type Node {
   kind: NodeKind
   children: List<Edge>
 }
+// 🟢 coproduct dissolution — DECISIONS.md De-Prosed Substrate Receipts: EdgeDiscipline.
 type EdgeDiscipline
   = NoEdges
   | LabeledEdges

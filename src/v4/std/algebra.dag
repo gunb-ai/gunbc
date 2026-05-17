@@ -69,6 +69,7 @@ type BooleanAlgebra<T> {
   bounded_lattice: BoundedLattice<T>
   complement: fn(T) -> T
 }
+// 🟢 coproduct dissolution — DECISIONS.md De-Prosed Substrate Receipts: FreeMonoid<T>.
 type FreeMonoid<T>
   = Empty
   | Cons { head: T, tail: FreeMonoid<T> }
@@ -89,6 +90,7 @@ fn free_monoid_length<T>(xs: FreeMonoid<T>) -> Int {
 type PointwisePower<T> {
   member: fn(T) -> Bool
 }
+// 🟢 coproduct dissolution — DECISIONS.md De-Prosed Substrate Receipts: Ordering.
 type Ordering
   = Less
   | Equal
