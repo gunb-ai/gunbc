@@ -1,116 +1,8 @@
 // src/v4/extdeps/process.dag
-//
-// Scope: process model — child process invocation, lifecycle, exit codes, signals.
-// Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/ (POSIX.1-2024 / IEEE Std 1003.1-2024)
-//
-// Owns:
-//   - RunningProcess / WaitedTerminatedProcess / TerminatedProcess
-//     (NO broad lifecycle Process carrier and NO separate exit_code
-//     field — each operation boundary uses the lifecycle-specific
-//     process carrier that makes impossible states unrepresentable.
-//     Shared id/command/parent facts live in ProcessIdentity and flow
-//     forward through lifecycle carriers rather than being re-authored.
-//     Terminal status lives ONLY inside TerminatedProcessState {
-//     termination: Termination }, reached through
-//     WaitedTerminatedProcess.state or TerminatedProcess.state.)
-//   - ProcessId (PID, PositiveInt — never zero per POSIX)
-//   - Termination = Exited(ExitCode) | Signaled(SignalNum)
-//     (the ONLY two ways a process ends per POSIX. wait/capture return
-//     terminal process carriers whose state carries THIS, never a bare
-//     ExitCode: a signal-killed process has no exit code; fabricating one
-//     or flattening signal death into a Diagnostic loses the SignalNum.
-//     `Running` is structurally excluded from all terminal carriers.)
-//   - ExitCode = NonNegativeInt (per POSIX — 0 success, 1-255 conventional)
-//   - SignalNum (per POSIX signal table)
-//   - Command { program: AbsolutePath, argv0: PosixArgument, args: List<PosixArgument>, env: Map<PosixEnvironmentName,PosixEnvironmentValue> }
-//   - spawn(pt, cmd) -> Result<{table: ProcessTable, process: RunningProcess}, Diagnostic>
-//   - wait(spawned)  -> Result<{table: ProcessTable, process: WaitedTerminatedProcess}, Diagnostic>
-//     (blocks until terminated)
-//   - capture(source) -> Result<{stdout, stderr: FreeMonoid<Byte>, table: ProcessTable, process: TerminatedProcess}, Diagnostic>
-//
-// Consumes:
-//   - std/diagnostic.dag: Diagnostic
-//   - std/integer.dag: Int (and its Tier-2 totalizations)
-//   - std/machine.dag: Byte
-//   - std/algebra.dag: FreeMonoid
-//   - std/collection.dag: List, Map
-//   - extdeps/file_system.dag: AbsolutePath (for Command.program), PosixByteString
-//
-// Status: T-4.5 modeled 2026-05-16 (keen-wren-663). Operation bodies
-//   are external realizations owned by the realization/pipeline layer;
-//   this file owns the typed carriers and fail-closed operation
-//   signatures only.
-// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
-// contract for the worker. Splitting this file requires explicit operator
-// ratification (substrate extension = stop signal).
-//
-// HEADER RECONCILE (2026-05-16, #3209, keen-wren-663 + operator ruling):
-// wait/capture return an advanced TerminatedProcess (single-authority
-// terminal fact with Running unrepresentable), reconciling the frozen
-// wait/capture contract per the operator P2/§2-floor BLOCKING.
-// Follow-up effect-resource reconcile: process
-// operations also take an explicit ProcessTable resource parameter per
-// ratified lens/effect.dag B3/B-5; spawn/wait/capture return the
-// modified ProcessTable alongside the advanced process. D5 also
-// reconciles the stale ProcessState::Exited rationale prose above,
-// which the same operator-sanctioned terminal-carrier refactor made
-// stale. The terminal postcondition reconcile factors terminal process
-// state through TerminatedProcessState, so all terminal operation
-// carriers reuse the same terminal-state carrier.
-// HEADER RECONCILE (2026-05-17, #3209, keen-wren-663 + briansrls
-// BLOCKING): Command carries caller-supplied argv0 explicitly. POSIX
-// exec does not derive argv[0] from the program path; fabricating it
-// would collapse distinct command invocations.
-// HEADER RECONCILE (2026-05-17, #3209, keen-wren-663 + briansrls
-// BLOCKING): ProcessTable is an opaque resource carrier, not a readable
-// String-labeled identity. The effect/resource authority is the threaded
-// carrier position in operation signatures, not a label field.
-// HEADER RECONCILE (2026-05-17, #3209, keen-wren-663 + codex BLOCKING):
-// capture returns raw byte streams (`FreeMonoid<Byte>`), not decoded
-// `String`. Text decoding is a separate fallible projection once v4 owns
-// encoding/error carriers.
-// HEADER RECONCILE (2026-05-17, #3209, keen-wren-663 + codex BLOCKING):
-// spawn returns an opaque CapturedOutputPipes source and capture consumes
-// it, so stdout/stderr bytes flow from a declared pipe authority rather
-// than appearing from Process alone.
-// HEADER RECONCILE (2026-05-17, #3209, keen-wren-663 + codex BLOCKING):
-// spawn returns a RunningProcess, not the broader lifecycle Process, so a
-// successful spawn cannot structurally return an already-terminated
-// child. wait/capture consume that live carrier and return
-// TerminatedProcess.
-// HEADER RECONCILE (2026-05-17, #3209, keen-wren-663 + briansrls
-// BLOCKING): RunningProcess carries CapturedOutputPipes inside the live
-// process carrier, so capture cannot pair one process with another
-// spawn's pipe source or silently omit the pipe authority.
-// HEADER RECONCILE (2026-05-17, #3209, keen-wren-663 + briansrls
-// BLOCKING): wait preserves the captured-output pipe authority in
-// WaitedTerminatedProcess. Waiting reaps lifecycle/table state; it does
-// not by itself drain or close stdout/stderr pipes.
-// HEADER RECONCILE (2026-05-17, #3209, keen-wren-663 + codex BLOCKING):
-// capture consumes a CaptureSource sum, so it can drain pipe authority
-// before wait from RunningProcess or after wait from
-// WaitedTerminatedProcess. The preserved post-wait pipe authority has a
-// declared consumer and does not require an ad hoc side path.
-// Follow-up reconcile: wait/capture consume the paired SpawnedProcess /
-// WaitedProcess operation carriers instead of dissolving the ProcessTable
-// and process handle into parallel request fields.
-// HEADER RECONCILE (2026-05-17, #3209, keen-wren-663 + codex BLOCKING):
-// the unused broad Process carrier was removed after operation-specific
-// lifecycle carriers landed. RunningProcess, WaitedTerminatedProcess,
-// and TerminatedProcess are now the only process lifecycle boundary
-// carriers in this substrate file.
-// Follow-up reconcile: the dead ProcessState sum was also removed; no
-// declared lifecycle carrier remains without a structural consumer.
-// HEADER RECONCILE (2026-05-17, #3209, keen-wren-663 + openai-pro
-// BLOCKING): process identity is factored into ProcessIdentity and
-// threaded through RunningProcess / WaitedTerminatedProcess /
-// TerminatedProcess. Lifecycle carriers no longer re-list id/command/
-// parent as parallel process-identity authorities.
-// HEADER RECONCILE (2026-05-17, #3209, keen-wren-663 + codex BLOCKING):
-// POSIX argv and environment spellings use byte-string carriers
-// (`PosixByteString` wrappers), not v4 text `String`. Text decoding is a
-// later fallible projection; env names additionally exclude `=`.
-
+// Scope: process substrate — command invocation, lifecycle, wait/capture.
+// Owns: ProcessId, ExitCode, SignalNum, PosixArgument, PosixEnvironmentName, PosixEnvironmentValue, Command, Termination, TerminatedProcessState, ProcessIdentity, RunningProcess, TerminatedProcess, WaitedTerminatedProcess, CaptureSource, ProcessTable, CapturedByteStream, CapturedOutputPipes, process request/result/operation carriers.
+// Consumes: AbsolutePath, PosixByteString, Diagnostic, Outcome, Byte, FreeMonoid, Int, List, Map.
+// Status: T-4.5 modeled 2026-05-16; de-prosed 2026-05-17.
 
 module v4.extdeps.process
 
@@ -121,44 +13,15 @@ import v4.std.diagnostic { Outcome }
 import v4.std.machine { Byte }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// POSIX numeric carriers.
 // Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/sys_types.h.html
 // Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/signal.h.html
-//
-// Tracked refinement scaffold: ProcessId is positive; ExitCode is
-// non-negative; SignalNum is platform-valid. Bounds are producer
-// obligations until numeric value refinements replace these aliases.
 type ProcessId = Int
 type ExitCode = Int
 type SignalNum = Int
 
 
-// ─────────────────────────────────────────────────────────────────────
-// Command — the exec-family invocation surface v4 needs.
 // Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/functions/exec.html
-//
-// `program` is an absolute filesystem path from extdeps/file_system.dag,
-// not a shell string or PATH-search policy.
-// `argv0` is caller-supplied POSIX argv[0], not derived from `program`.
-// `args` are the remaining argv entries after argv[0]. POSIX argv entries
-// and environment strings are byte strings at this boundary; producers
-// must construct NUL-free arguments and NUL-free environment names/values.
-// Environment names also exclude `=` because the external `name=value`
-// spelling uses it as the separator. `env` is a map from variable name to
-// value; duplicate variable names are structurally unrepresentable.
-//
-// VALUE-REFINEMENT SCAFFOLDS. v4 has the raw `PosixByteString` carrier in
-// this dependency path, but not machine-readable byte-string refinements
-// for "NUL-free" or "NUL-free and no equals". Bridge properties:
-//   (a) scaffold doc — THIS note; argv/env carriers are unrefined byte
-//       strings, not terminal POSIX exec-string refinements.
-//   (b) bounds on use — producers must construct NUL-free arguments and
-//       environment values; environment names must be NUL-free and must
-//       not contain `=`.
-//   (c) dissolution trigger — when v4 lands byte-string value
-//       refinements, replace the wrapper `bytes` fields below with the
-//       refined POSIX argv/env carriers.
+// tag: POSIX exec byte strings.
 type PosixArgument {
   bytes: PosixByteString
 }
@@ -179,33 +42,8 @@ type Command {
 }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// Termination.
 // Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/functions/waitpid.html
 // Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/sys_wait.h.html
-//
-// `Termination` carries the POSIX terminal-status partition consumed by
-// wait/capture. Live state is represented by the separate
-// `RunningProcess` carrier; terminal operation outputs carry
-// `TerminatedProcessState`, which wraps this sum.
-//
-// Coproduct dissolution (Practice 4 / INVARIANTS P1) — classification:
-// 🟡 YELLOW, first-consumer-confirmed. The POSIX wait-status partition is
-// structurally grounded here, but the first effect/resolver consumer
-// must prove the mapping from raw wait status into `Exited` vs
-// `Signaled` without string or integer sentinels. Named trigger:
-// T-4.5 effect/resolver seam lands fork/exec/wait realization; that PR
-// must either confirm this partition or amend this carrier under review.
-// Ledger:
-//   1. Fact placement — FAILS: terminal status is consumed uniformly by
-//      wait/capture terminal carriers; not per-consumer metadata.
-//   2. Variant-is-data — FAILS: Exited carries ExitCode and Signaled
-//      carries SignalNum; a flat record admits impossible combinations.
-//   3. Algebraic form — N/A: terminal status is not an algebra carrier.
-//   4. Dimensional — FAILS: a terminal process ended by exit OR signal,
-//      not both.
-//   5. Parameterized family — FAILS: the variants are not the same
-//      payload shape projected over an enumerable set.
 type Termination
   = Exited { code: ExitCode }
   | Signaled { signal: SignalNum }
@@ -214,27 +52,8 @@ type TerminatedProcessState {
   termination: Termination
 }
 
-// `TerminatedProcessState` is the single terminal-state carrier.
-// wait/capture success carriers reference it directly, so terminal
-// operation results cannot disagree about the terminal status by
-// construction.
 
-
-// ─────────────────────────────────────────────────────────────────────
-// Process lifecycle carriers — a spawned child process as known to the parent.
 // Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/functions/fork.html
-//
-// `ProcessIdentity` is the single carrier for the child process identity
-// facts this file owns. `parent` is the parent process identifier in the
-// bounded spawned-child model named by the frozen scaffold. Process
-// groups, sessions, orphan reparenting, and general process-table
-// observation are outside this file's scope unless a future scaffold
-// amends it.
-// `RunningProcess` is the spawn success and wait/capture input carrier.
-// Its lifecycle state is fixed by the carrier itself: a successful spawn
-// cannot be already terminated. The captured-output pipe source is
-// inside this carrier, so it cannot be separated from the live child it
-// belongs to.
 type ProcessIdentity {
   id: ProcessId
   command: Command
@@ -246,65 +65,28 @@ type RunningProcess {
   output: CapturedOutputPipes
 }
 
-// `TerminatedProcess` is the capture success carrier. Its state is the
-// shared terminal-state carrier, so `Running` is structurally impossible
-// in successful capture results.
 type TerminatedProcess {
   identity: ProcessIdentity
   state: TerminatedProcessState
 }
 
-// `WaitedTerminatedProcess` is the wait success carrier. It is terminal
-// like `TerminatedProcess`, but preserves the captured-output pipe source
-// that was established at spawn. Waiting alone observes/reaps process
-// state; it does not drain or close captured stdout/stderr.
 type WaitedTerminatedProcess {
   identity: ProcessIdentity
   state: TerminatedProcessState
   output: CapturedOutputPipes
 }
 
-// Coproduct dissolution (Practice 4 / INVARIANTS P1) — classification:
-// 🟡 YELLOW, first-consumer-confirmed. Capture can drain output from a
-// still-running spawned child or from a child whose lifecycle was already
-// waited while preserving pipe authority. The first capture realization
-// consumer must confirm both paths use the paired operation carrier and
-// do not route through an ambient process table side channel. Named
-// trigger: T-4.5 effect/resolver seam lands capture realization.
-// Ledger:
-//   1. Fact placement — FAILS: capture source state is consumed
-//      uniformly by capture, not per-consumer metadata.
-//   2. Variant-is-data — FAILS: each variant carries the lifecycle
-//      operation carrier that owns ProcessTable plus CapturedOutputPipes
-//      for that state.
-//   3. Algebraic form — N/A: capture source is not an algebra carrier.
-//   4. Dimensional — FAILS: one capture request uses either live or
-//      post-wait authority, not both.
-//   5. Parameterized family — FAILS: the variants are different
-//      lifecycle carriers, not a projection over identical payloads.
 type CaptureSource
   = Live { spawned: SpawnedProcess }
   | Waited { waited: WaitedProcess }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// Operation contract carriers.
 // Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/functions/fork.html
 // Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/functions/exec.html
 // Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/functions/waitpid.html
-//
-// `ProcessTable` is the explicit opaque resource parameter for this
-// extdep's process-table effects. It has no readable payload: resource
-// identity is threaded structurally through operation signatures, and the
-// effect fact is read from each signature.
 type ProcessTable
 
-// Operation failures return `Outcome.Rejected`; successful child
-// observations carry lifecycle-specific process carriers. stdout/stderr
-// are separate raw byte streams. `ProcessOperations` is the signature
-// bundle a future host realization must inhabit.
-// `CapturedByteStream = FreeMonoid<Byte>` coincides with POSIX pipe output
-// as a finite byte sequence; decoding belongs to a later projection.
+// coincides: finite POSIX pipe byte sequence.
 type CapturedByteStream = FreeMonoid<Byte>
 
 type CapturedOutputPipes
