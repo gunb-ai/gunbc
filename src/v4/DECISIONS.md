@@ -496,7 +496,7 @@ D2-reversal as ratified is therefore correct, not premature.
 
 ## T-4.7 — `extdeps/frameworks/react.dag` Practice 4 / INVARIANTS P1 receipts
 
-**Binding:** `docs/modeling-discipline.md` Practice 9 — coproduct **classification** (🟢 / 🟡 / N/A per carrier), five-pattern **ledger**, and named **triggers** live in this file, not as multi-line prose in `react.dag`. The substrate carries **one** `// Anchor:` + **one** `// 🟢|🟡 coproduct dissolution — DECISIONS.md#…` one-liner per **N≥2** coproduct (T‑4 operator directive — Practice 9 item 4 + Supersession in that doc). **Opaque** owned carriers (no sum) carry **`// Anchor:`** + **one** boundary-cite line (**`// 🟡 authority fork — DECISIONS.md#…`** here) so every `Owns:` name in the header has a per-declaration contract. **TASKS authority:** `src/v4/TASKS.md` T-4.7 (incl. `ReactNode` partial-slice posture).
+**Binding:** `docs/modeling-discipline.md` Practice 9 — coproduct **classification** (🟢 / 🟡 / N/A per carrier), five-pattern **ledger**, and named **triggers** live in this file, not as multi-line prose in `react.dag`. The substrate carries **one** `// Anchor:` + **one** `// 🟢|🟡 coproduct dissolution — DECISIONS.md#…` one-liner per **N≥2** coproduct (T‑4 operator directive — Practice 9 item 4 + Supersession in that doc). **Opaque** owned carriers (no sum) carry **`// Anchor:`** + **one** boundary-cite line (**`// 🟡 authority fork — DECISIONS.md#…`** here) so every `Owns:` name in the header has a per-declaration contract. **TASKS authority:** `src/v4/TASKS.md` T-4.7 (incl. **`ReactCreateElementChild`** partial-slice posture — **not** the TS / react.dev `ReactNode` lattice name).
 
 ### react-p4-cross-decl-ref
 
@@ -636,13 +636,26 @@ Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-discipline.md §4) 
 
 ### react-p4-node
 
-**Carrier:** `ReactNode`.
+**Carrier:** `ReactCreateElementChild` (stable subsection id **`react-p4-node`** — ledger anchor unchanged).
 
-Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-discipline.md §4) — **🟡 YELLOW (scaffold).** T-4.7 **partial** `createElement` children slice (`Element` | `Text` only). Full JSX / react.dev child lattice is **owned elsewhere** — see `src/v4/TASKS.md` T-4.7 “ReactNode (Practice‑4 🟡)” + `docs/design-r4-phase-1-5-hookkind-custom-react-substrate-canvas.md` (not exhaustive for “all React children”).
+Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-discipline.md §4) — **🟡 YELLOW (scaffold).** T-4.7 **partial** `createElement` **children** slice only: `Element { … } | Text { … }` — **not** numbers, arrays, portals, `null`, iterables, etc. ([react.dev `createElement`](https://react.dev/reference/react/createElement) admits a wider child lattice than this sum.)
+
+**P1 / Practice 8 receipt (naming):** The substrate **does not** publish the identifier **`ReactNode`**. That name is the library / TypeScript lattice authority; a two-arm partial sum under it would be an **authoritative-but-incomplete** representation (the codex #3206 finding). **`ReactCreateElementChild`** names the bounded slice explicitly; full lattice promotion remains **owned elsewhere** — see `src/v4/TASKS.md` T-4.7 + `docs/design-r4-phase-1-5-hookkind-custom-react-substrate-canvas.md`.
 
 **Trigger + obligation:** **Dissolution = operator-ratified PR** extending or retiring this sum; consumers must not treat the Disj as terminal closure of React child modeling.
 
 **Five-pattern note:** Patterns 1–5 do not justify closing the full child lattice inside this substrate file; deferral is explicit **task authority** (TASKS T-4.7), not consumer-independent GREEN.
+
+### react-p4-context-binding
+
+**Carrier:** `ReactContextBinding` (record; `createContext` anchor).
+
+**P1 / Practice 5 receipt:** [`createContext(defaultValue)`](https://react.dev/reference/react/createContext) returns **one context object** (the react.dev surface — `Provider` / legacy `Consumer` live on that object; it is **not** modeled here as a separate “pair” substrate). Fields:
+
+- `context_ref` — the **single** returned context object from `createContext` (opaque `ReactCrossDeclRef` edge; decomposition into Provider/Consumer is **not** authored at this substrate layer).
+- `default_value_ref` — the `defaultValue` argument fact at the binding site.
+
+**Practice 4:** N/A — not an N≥2 coproduct; the ledger exists for the P1/P5 boundary cite in `react.dag` (`// 🟢 — DECISIONS.md#react-p4-context-binding`).
 
 ---
 

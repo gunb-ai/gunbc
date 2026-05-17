@@ -367,7 +367,7 @@ fn assert_react_element_partition_is_create_element_return_only(dag: &v3_compile
     }
     assert!(
         !variants.iter().any(|v| v.label == "Text"),
-        "primitive `Text` must not be a `ReactElement` arm — use `ReactNode::Text`"
+        "primitive `Text` must not be a `ReactElement` arm — use `ReactCreateElementChild::Text`"
     );
     assert_eq!(
         variants.len(),
@@ -376,20 +376,20 @@ fn assert_react_element_partition_is_create_element_return_only(dag: &v3_compile
     );
 }
 
-fn assert_react_node_text_child_has_no_element_key_field(dag: &v3_compiler::Dag) {
-    let react_node = dag
-        .declaration_by_name("ReactNode")
-        .expect("ReactNode should exist after compiling react.dag");
-    let TypeConnective::Disj { variants } = &react_node.connective else {
+fn assert_react_create_element_child_text_has_no_element_key_field(dag: &v3_compiler::Dag) {
+    let create_element_child = dag
+        .declaration_by_name("ReactCreateElementChild")
+        .expect("ReactCreateElementChild should exist after compiling react.dag");
+    let TypeConnective::Disj { variants } = &create_element_child.connective else {
         panic!(
-            "ReactNode: expected coproduct (Disj), got {:?}",
-            react_node.connective
+            "ReactCreateElementChild: expected coproduct (Disj), got {:?}",
+            create_element_child.connective
         );
     };
     let text = variants
         .iter()
         .find(|v| v.label == "Text")
-        .expect("ReactNode should include a Text arm for primitive child values");
+        .expect("ReactCreateElementChild should include a Text arm for primitive child values");
     let payload = dag.declaration(text.ty);
     let TypeConnective::Conj { children } = &payload.connective else {
         panic!(
@@ -399,7 +399,7 @@ fn assert_react_node_text_child_has_no_element_key_field(dag: &v3_compiler::Dag)
     };
     assert!(
         !children.iter().any(|f| f.label == "key"),
-        "ReactNode::Text must not declare `key` — primitive text is not a createElement-returned element object"
+        "ReactCreateElementChild::Text must not declare `key` — primitive text is not a createElement-returned element object"
     );
     let value = children
         .iter()
