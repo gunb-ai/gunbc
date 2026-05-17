@@ -472,7 +472,7 @@ fn assert_react_context_binding_fields_match_create_context_surface(dag: &v3_com
         "ReactContextBinding must declare `default_value_ref`; got {labels:?}"
     );
     assert!(
-        !labels.iter().any(|l| *l == "context_pair_ref"),
+        !labels.contains(&"context_pair_ref"),
         "ReactContextBinding must not declare invented `context_pair_ref`; got {labels:?}"
     );
 }
