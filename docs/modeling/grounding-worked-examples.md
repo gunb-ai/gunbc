@@ -145,14 +145,6 @@ overflow at the emit boundary.
 
 ## Per-target carrier groundings
 
-> The sections below predate the `Outcome`-typed coercion correction
-> above. Their **carrier + meaning** groundings stand as written; their
-> *coercion prose* ("identity / derived map / fail-closed") is pending a
-> re-touch to the `A -> Outcome<B>` shape (a breadth fan-out). Read them
-> for the groundings; read §A/§B above for the coercion mechanism. One
-> exception is corrected inline below: `RustI32` grounds as
-> `Compose<Int, MachineWidth<Word32>>`, never a `{32×Bool}` bit-carrier.
-
 ## 1. Rust — `Vec<T>` (generics, compound coercion)
 
 **Model** — grounded from the Rust Reference / `std` docs:
@@ -171,20 +163,19 @@ type RustVec<T> = List<T>          // parametric: grounds to List<grounding(T)>
 grounds as `Compose<Int, MachineWidth<Word32>>` (§B — the substrate's
 fixed-width discipline, `std/integer.dag`; not a `{32×Bool}` bit-carrier).
 
-**Step-by-step coercion — `RustVec<RustI32>` ↔ IR `List<Int32>`:**
+**Step-by-step coercion shape — `RustVec<RustI32> -> Outcome<IR List<Int32>>`:**
 1. groundings: `List<Compose<Int,MachineWidth<Word32>>>` on both sides.
-2. catamorphism: outer `List` vs `List` → match; recurse into element.
+2. Phase-1/2 `derive_coercion` design compares outer `List` vs `List`,
+   then recurses into the element grounding.
 3. element `grounding(RustI32)` vs `grounding(Int32)` → coincide.
-4. both levels coincide → coercion = **identity**. No `Vec`-coercion was
-   authored — `List` matched structurally and the element matched;
-   `Vec<i32>` fell out by the catamorphism recursing. Compound coercion,
-   free.
+4. both levels coincide → `Produced { value: IR List<Int32> }`. No
+   `Vec`-coercion is authored; the compound result follows from the
+   structural comparison.
 
-**Cross-language — `RustVec<i32>` ↔ `PythonList[int]`:** outer `List`
-matches; element `{32-bit two's-complement}` vs `{arbitrary-precision}`
-does **not** coincide. Derived element map is asymmetric — Rust→Python
-exact (lossless widening), Python→Rust **fail-closed** on any value
-outside `−2³¹..2³¹−1`. Read off the groundings, never authored.
+**Cross-language shape — `PythonList[int] -> Outcome<RustVec<i32>>`:**
+outer `List` matches, but each element must pass `IR_Int -> Outcome<RustI32>`
+as in §B. In-range values produce the Rust vector; any element outside the
+`MachineWidth<Word32>` predicate returns `Rejected { diagnostic: Diagnostic }`.
 
 ---
 
@@ -206,10 +197,11 @@ type Reg64 = List<Bool>            // |bits| = 64
 This is the spectrum's trivial endpoint — `machine_code` *is* bits, so
 the grounding is direct, no decode.
 
-**Coercion:** `Reg64 ↔ List<Bool>` is identity; when an instruction
-consumes the register, the register coerces to whichever IR carrier
-that instruction's grounding selects. There is no "register type"
-mismatch to catch — the bits are the bits.
+**Coercion shape — `Reg64 -> Outcome<List<Bool>>`:** the direct carrier
+match returns `Produced { value: bits }`. Instruction-specific reads are
+separate coercions: the consumer supplies the meaning (`Int64`, address,
+binary64, ...), and an unsupported or missing meaning returns
+`Rejected { diagnostic: Diagnostic }` rather than inventing one.
 
 ---
 
@@ -233,14 +225,17 @@ type VReg32 = List<VBit>                     // |bits| = 32
 connective. It does **not** ground as `Bool`: Verilog's primitive is
 richer. `Bool` is exactly the `{Zero, One}` sub-part of `VBit`.
 
-**Step-by-step coercion — `VReg32 ↔ IR Int32`:**
+**Step-by-step coercion shape — `VReg32 -> Outcome<IR Int32>`:**
 1. IR `Int32` grounds to `32×Bool` (2-valued); `VReg32` to `32×VBit`
    (4-valued).
-2. catamorphism, element-wise: `Bool` vs `VBit` — `Bool ⊊ VBit`.
-3. IR → Verilog: **exact** (every `Bool` is a `VBit`).
-4. Verilog → IR: **partial** — a `VReg32` whose 32 bits are all in
-   `{Zero, One}` coerces; any bit `= Unknown/HighZ` → **fail-closed**
-   (x/z is not an integer state).
+2. Phase-1/2 `derive_coercion` design compares element-wise:
+   `Bool` vs `VBit` — `Bool ⊊ VBit`.
+3. `IR Int32 -> Outcome<VReg32>` is total over this relation: every
+   `Bool` embeds as `Zero` or `One`, so the result is `Produced`.
+4. `VReg32 -> Outcome<IR Int32>` is partial: all `{Zero, One}` bits
+   return `Produced { value: IR Int32 }`; any `Unknown`/`HighZ` bit
+   returns `Rejected { diagnostic: Diagnostic }` because x/z is not an
+   integer state.
 
 This is "speaks a *subset*" made precise: Verilog and the IR share the
 `{0,1}` subset; the `x/z` states are Verilog-only and honestly
@@ -267,18 +262,20 @@ a finite bit-vector. `Volt` is a `Dimension`. IEEE-754 `f64` grounds
 separately as an `ApproximateField` carrier with rounding and special-value
 facts; it is related to `Real`, not identical to it.
 
-**Step-by-step coercion — `SpiceVoltage ↔ Rust f64`:**
+**Step-by-step coercion shape — `Rust f64 -> Outcome<SpiceVoltage>`:**
 1. `SpiceVoltage` grounds to `Real` (continuous, uncountable);
    `f64` grounds to IEEE-754 binary64 (finite — 2⁶⁴ values —
    approximating `Real`; `dsl/std/float.dag` / `src/v4/std/float.dag`
    `ApproximateField`).
-2. catamorphism: exact physical `Real` vs `ApproximateField(binary64)` —
-   related but not equal.
-3. finite `f64 → SPICE`: **exact** (each finite binary64 value denotes a
-   specific real); `NaN` / `±∞` are IEEE-754 special values, not real
-   voltages, so they **fail-closed** rather than being erased.
-4. `SPICE → f64`: **lossy** — rounding; most reals are not
-   representable. A *declared* loss, surfaced, not silent.
+2. Phase-1/2 `derive_coercion` design compares exact physical `Real` vs
+   `ApproximateField(binary64)` — related but not equal.
+3. finite `f64 -> Outcome<SpiceVoltage>` returns `Produced`: each finite
+   binary64 value denotes a specific real voltage.
+4. `NaN` / `±∞` return `Rejected { diagnostic: Diagnostic }` because they
+   are IEEE-754 special values, not real voltages. The reverse
+   `SpiceVoltage -> Outcome<Rust f64>` is lossy and returns `Produced`
+   only with an explicit rounding/loss fact; an unaccepted loss policy
+   returns `Rejected`.
 
 The continuous endpoint, and the middle coercion case: neither identity
 nor fail-closed but a **declared-lossy** derived map.
@@ -293,10 +290,10 @@ length `n` is part of the type itself.
 **Model:**
 
 ```
-// CARRIER + WITNESS — the dependent index n is a Nat; the type-level
+// CARRIER + WITNESS — the dependent index n is an explicit Nat; the type-level
 // constraint "length = n" grounds as a Witness (see src/v3/std/dimensions.dag),
 // the substrate's proof-carrier.
-type LeanVector<A> = Conj {
+type LeanVector<A, n: Nat> = Conj {
   elements:     List<A>,
   length_proof: Witness< |elements| = n >     // n : Nat, lifted into the type
 }
@@ -304,13 +301,13 @@ type LeanVector<A> = Conj {
 
 A dependent type = carrier + a `Witness` pinning the dependent value.
 
-**Step-by-step coercion — `LeanVector<Int>(n=3) ↔ IR List<Int>`:**
+**Step-by-step coercion shape — `IR List<Int> -> Outcome<LeanVector<Int, 3>>`:**
 1. grounds to `List<grounding(Int)>` + `Witness(length = 3)`.
-2. an IR `List<Int>` of statically-known length 3 → the `Witness`
-   holds → coercion = **identity**.
-3. an IR `List<Int>` of unknown / other length → the `Witness` cannot
-   be discharged → **fail-closed** (you cannot claim `Vector Int 3`
-   without the length proof).
+2. an IR `List<Int>` of statically-known length 3 discharges the witness
+   and returns `Produced { value: LeanVector<Int, 3> }`.
+3. an IR `List<Int>` of unknown or other length cannot discharge the
+   witness and returns `Rejected { diagnostic: Diagnostic }`; you cannot
+   claim `Vector Int 3` without the length proof.
 
 Dependent types ground via the `Witness` substrate — the type's proof
 obligation becomes a `Witness` the coercion must discharge.
