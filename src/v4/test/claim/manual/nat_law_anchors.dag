@@ -6,7 +6,7 @@
 
 module v4.test.claim.manual.nat_law_anchors
 
-import v4.std.verification { TestClaim, Compiles, Equals, TestClassification, Tier1, Tier3, Unit, Integration }
+import v4.std.verification { TestClaim, Compiles, Equals, TestClassification, Tier1, Unit }
 import v4.std.diagnostic { Produced }
 import v4.test.claim.manual.connective_anchors { stub_empty_conj }
 
@@ -61,5 +61,5 @@ data claim_nat_mul_associativity: TestClaim = TestClaim {
   label: "manual/nat: multiplicative monoid associativity (anchor; eval T-22)",
   input: stub_empty_conj,
   expected: Produced { value: stub_empty_conj },
-  classification: TestClassification { tier: Tier3, layer: Integration }
+  classification: TestClassification { tier: Tier1, layer: Unit }
 }
