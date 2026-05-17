@@ -65,7 +65,6 @@ authority location(s) and moves to Part 1.
 
 ---
 
-<<<<<<< HEAD
 ## De-Prosed Substrate — Coproduct & Scaffold Classification Ledgers
 
 These classification ledgers are the authoritative coproduct/scaffold entries
@@ -93,7 +92,7 @@ remain boundary indexes until the named substrate support lands.
 | `std/witness.dag` | `Witness<C>` | Green coproduct | Closed fail-closed proof/read carrier: `Holds { value } | Violates { diagnostic }`. Terminal because every read either carries the witnessed value or a diagnostic explaining the failed witness. |
 
 ---
-=======
+
 ## OS-1 — #3209 Coproduct Dissolution And Scaffold Record
 
 This section preserves the Practice-4 ledger content moved out of
@@ -116,24 +115,26 @@ more specific trigger is stated.
   a component is exactly current, parent, or named; parameterized family
   fails because variants are not identical payloads over an enumerable
   set.
-- `RelativePathHead`: relative descendants can begin with parent
-  traversal or named component, but not current directory. Trigger:
-  filesystem path parsing / resolution realization. Ledger: fact
-  placement fails because first-component admissibility is consumed by
-  relative path resolution; variant-is-data fails because parent
-  traversal and named payload are different facts; algebraic form is not
-  applicable; dimensional fails because a relative descendant head is
-  parent or named; parameterized family fails because variants are not
-  identical payloads over an enumerable set.
-- `RelativePath`: current directory and non-empty relative descendant
-  are distinct POSIX path facts. Trigger: filesystem path parsing /
-  resolution realization. Ledger: fact placement fails because the
-  partition is consumed uniformly by path operations; variant-is-data
-  fails because descendant carries non-current first/rest while current
-  is nullary; algebraic form is not applicable; dimensional fails
-  because a relative path is current directory or descendant;
+- `RelativePathHead`: non-current relative descendants can begin with
+  parent traversal or named component. Trigger: filesystem path parsing /
+  resolution realization. Ledger: fact placement fails because
+  first-component admissibility is consumed by relative path resolution;
+  variant-is-data fails because parent traversal and named payload are
+  different facts; algebraic form is not applicable; dimensional fails
+  because a non-current relative descendant head is parent or named;
   parameterized family fails because variants are not identical payloads
   over an enumerable set.
+- `RelativePath`: current directory, current-prefixed descendant, and
+  non-current relative descendant are distinct POSIX relative-path facts.
+  Trigger: filesystem path parsing / resolution realization. Ledger:
+  fact placement fails because the partition is consumed uniformly by
+  path operations; variant-is-data fails because current-prefixed and
+  non-current descendants carry different structural facts while
+  current directory is nullary; algebraic form is not applicable;
+  dimensional fails because a relative path is current directory,
+  current-prefixed descendant, or non-current descendant; parameterized
+  family fails because variants are not identical payloads over an
+  enumerable set.
 - `Path`: absolute-vs-relative is a POSIX root fact. Trigger:
   filesystem path parsing / resolution realization. Ledger: fact
   placement fails because root-ness is consumed by path resolution and
@@ -186,7 +187,7 @@ carriers: `ProcessId = Int`, `ExitCode = Int`, `SignalNum = Int`,
 **T-25-core refinement substrate / T-30 fact-density gate**. Expanding
 them now would be fact-bundle-rework-class work, outside the NOT-D2-held
 de-prose scope.
->>>>>>> 2fc9bc22d (Record OS extdep coproduct ledgers)
+
 
 ## Part 2 — RATIFIED 2026-05-15 (cascade-closures — now in Part 1)
 
