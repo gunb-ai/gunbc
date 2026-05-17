@@ -282,6 +282,7 @@
 //   nothing — this is the substrate root
 //
 // Status: T-1 modeled 2026-05-15 (cool-boar-275).
+// Substrate-extension rule: see src/v4/STRUCTURE.md closed-tree discipline.
 
 
 module v4.std.node

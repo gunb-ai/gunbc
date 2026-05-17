@@ -16,6 +16,7 @@
 //   - std/algebra.dag: BooleanAlgebra
 //
 // Status: T-3 logic modeled 2026-05-16 (still-fox-366).
+// Substrate-extension rule: see src/v4/STRUCTURE.md closed-tree discipline.
 
 
 module v4.std.logic
