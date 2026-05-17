@@ -416,20 +416,20 @@ fn assert_react_create_element_child_text_has_no_element_key_field(dag: &v3_comp
     );
 }
 
-fn assert_react_node_element_arm_wraps_react_element(dag: &v3_compiler::Dag) {
-    let react_node = dag
-        .declaration_by_name("ReactNode")
-        .expect("ReactNode should exist after compiling react.dag");
-    let TypeConnective::Disj { variants } = &react_node.connective else {
+fn assert_react_create_element_child_element_arm_wraps_react_element(dag: &v3_compiler::Dag) {
+    let create_element_child = dag
+        .declaration_by_name("ReactCreateElementChild")
+        .expect("ReactCreateElementChild should exist after compiling react.dag");
+    let TypeConnective::Disj { variants } = &create_element_child.connective else {
         panic!(
-            "ReactNode: expected coproduct (Disj), got {:?}",
-            react_node.connective
+            "ReactCreateElementChild: expected coproduct (Disj), got {:?}",
+            create_element_child.connective
         );
     };
     let element_arm = variants
         .iter()
         .find(|v| v.label == "Element")
-        .expect("ReactNode should include an Element arm wrapping `ReactElement`");
+        .expect("ReactCreateElementChild should include an Element arm wrapping `ReactElement`");
     let payload = dag.declaration(element_arm.ty);
     let TypeConnective::Conj { children } = &payload.connective else {
         panic!(
@@ -447,7 +447,7 @@ fn assert_react_node_element_arm_wraps_react_element(dag: &v3_compiler::Dag) {
         .expect("ReactElement should exist after compiling react.dag");
     assert_eq!(
         element_ty.id, react_element_decl.id,
-        "ReactNode::Element.element must name `ReactElement`, got {:?}",
+        "ReactCreateElementChild::Element.element must name `ReactElement`, got {:?}",
         element_ty.name
     );
 }
@@ -498,11 +498,11 @@ fn v4_extdeps_react_dag_react_element_partition_excludes_primitive_text() {
 }
 
 #[test]
-fn v4_extdeps_react_dag_react_node_text_child_has_no_element_key() {
-    assert_react_node_text_child_has_no_element_key_field(&react_extdeps_dag_or_panic());
+fn v4_extdeps_react_dag_create_element_child_text_has_no_element_key() {
+    assert_react_create_element_child_text_has_no_element_key_field(&react_extdeps_dag_or_panic());
 }
 
 #[test]
-fn v4_extdeps_react_dag_react_node_element_arm_wraps_react_element() {
-    assert_react_node_element_arm_wraps_react_element(&react_extdeps_dag_or_panic());
+fn v4_extdeps_react_dag_create_element_child_element_arm_wraps_react_element() {
+    assert_react_create_element_child_element_arm_wraps_react_element(&react_extdeps_dag_or_panic());
 }
