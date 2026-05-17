@@ -11,9 +11,9 @@
 // carries an explicit **react.dev** anchor for the **react@19.2.0** call shape modeled
 // there; `ReactOptRef` / `ReactHookInlineDependenciesArgument` are used **only** where
 // the pinned docs mark an operand optional or admit omit-vs-present deps. Required
-// operands (e.g. `createContext(defaultValue)`, `useMemo` deps) are plain
-// `ReactCrossDeclRef` fields — `null` defaults are still declaration-backed refs, not
-// “missing fields”. **semver / hooks-index bump** = mandatory re-audit of **every** arm
+// operands that are **not** dependency-array arity (e.g. `createContext(defaultValue)`)
+// are plain `ReactCrossDeclRef` fields — `null` defaults are still declaration-backed
+// refs, not “missing fields”. **semver / hooks-index bump** = mandatory re-audit of **every** arm
 // against that tag’s react.dev surface (STOP on silent drift).
 // Anchor: composition mental model — https://react.dev/learn
 // Unifies: (per THESIS:188) framework spec = transport spec = interpreter
@@ -260,9 +260,14 @@ type ReactHookSite
   // Anchor: https://react.dev/reference/react/useEffectEvent — ships **React 19.2**
   //         (https://react.dev/blog/2025/10/01/react-19-2); included because pin ≥19.2.
   | UseEffectEvent { callback_ref: ReactCrossDeclRef }
-  // Anchor: https://react.dev/reference/react/useMemo — second arg **required** on
-  //         the pin; model as `Present` only (no `Omitted` inhabitant at grammar).
-  | UseMemo { factory_ref: ReactCrossDeclRef, dependency_refs: List<ReactCrossDeclRef> }
+  // Anchor: https://react.dev/reference/react/useMemo — react.dev prose lists
+  //         `dependencies` as the second operand; **JavaScript arity** still allows
+  //         omitting it (distinct from explicit `[]`; same omit-vs-present story as
+  //         `useCallback` troubleshooting). Model via `ReactHookInlineDependenciesArgument`.
+  | UseMemo {
+      factory_ref: ReactCrossDeclRef
+      dependencies: ReactHookInlineDependenciesArgument
+    }
   // Anchor: https://react.dev/reference/react/useCallback — `dependencies` may be
   //         **omitted** (react.dev “Troubleshooting”: forgetting the array is legal
   //         arity but yields a **new function every render**). When passed, model as

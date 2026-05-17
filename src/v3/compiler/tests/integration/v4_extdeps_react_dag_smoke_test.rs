@@ -10,8 +10,21 @@ use v3_compiler::CompileError;
 const REACT_DAG: &str = include_str!("../../../../v4/extdeps/frameworks/react.dag");
 const REACT_PATH: &str = "src/v4/extdeps/frameworks/react.dag";
 
+/// Receipt: `useMemo` deps use omit-vs-present (`ReactHookInlineDependenciesArgument`),
+/// not a bare `List<…>` that would conflate omitted second arg with explicit `[]`.
+const USE_MEMO_DEPS_FIELD_SHAPE: &str = concat!(
+    "| UseMemo {\n",
+    "      factory_ref: ReactCrossDeclRef\n",
+    "      dependencies: ReactHookInlineDependenciesArgument\n",
+    "    }"
+);
+
 #[test]
 fn v4_extdeps_react_dag_compiles() {
+    assert!(
+        REACT_DAG.contains(USE_MEMO_DEPS_FIELD_SHAPE),
+        "{REACT_PATH}: expected UseMemo {{ … dependencies: ReactHookInlineDependenciesArgument … }}"
+    );
     match compile_to_dag(REACT_DAG, REACT_PATH) {
         Ok(dag) => assert!(
             dag.diagnostics().is_empty(),
