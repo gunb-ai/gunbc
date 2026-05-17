@@ -195,8 +195,9 @@ obligation becomes a `Witness` the coercion must discharge.
 ## 6. English — noun phrases (the fail-closed endpoint, and composite grounding)
 
 English has no type system. What we model is the **groundable fragment** —
-and that fragment is not only leaf values: English has words for the
-**connectives**, so it can ground *composite structure*.
+and that fragment is not only leaf values: English can *express* the
+**connectives** (though not via a simple word-mapping — see below), so it
+can ground *composite structure*.
 
 ### Leaves — number words → `Nat`
 
@@ -217,50 +218,55 @@ decode. "negative forty-two" decodes to the math integer `−42`, which
 coincides with IR `Int` value `−42` → coercion = **identity**. A number
 can be ingested from English text into the IR.
 
-### Connectives — English grounds *composite* structure
+### Connectives — English can ground composite structure, but the word is *not* the connective
 
-English has words for the substrate connectives, used in their
-*structural* sense — so it reaches composite types, not only scalars:
+English can express the substrate connectives — but **the surface word
+does not determine which connective it is.** The decode reads the
+construction's *meaning*; the word is a weak, often-misleading hint. The
+modeling here is genuinely non-trivial.
 
-| English (structural sense) | Primitive | Grounds to |
-|---|---|---|
-| "and" (enumerative) | `Conj` | "a customer **and** a total" → `Conj{ customer, total }` |
-| "or" / "either…or" | `Disj` | "cash **or** card" → `Disj{ Cash, Card }` |
-| "not" / "no" | `Bool` negation | "**not** empty" → `Not(Empty)` |
-| "a … **of** …" | `Instantiation` | "a list **of** customers" → `List<Customer>` |
-| plural / "three" / "every" | `Cardinality` | "**three** retries" → `Cardinality(3, Retry)` |
-| "for each X, a Y" | `Arrow` | "**for each** request, a response" → `Arrow(Request, Response)` |
+**`Conj` vs `Disj` — "and" does not pick.**
+- "an order has a customer **and** a total" — both-present coordinates
+  → `Conj{ customer, total }`.
+- "we accept cash **and** card" — a *menu of alternatives*, one is
+  chosen → `Disj{ Cash, Card }`. The same word "and", a different
+  connective.
 
-They nest — the grounding is built by the same `Node` catamorphism:
+**`Disj` is exclusive — and English does not mark that with a bare word.**
+A substrate `Disj` (a sum) is a value that is *exactly one* variant.
+- "**either** soup **or** salad" — the *either…or* construction marks
+  the exclusivity → exclusive `Disj`.
+- a bare "milk **or** sugar?" is often *inclusive* (both allowed) — and
+  inclusive-or is **not a `Disj` at all** (it is closer to a `Conj` of
+  optionals / a non-empty subset).
 
-> "a list of orders, each with a customer **or** a guest"
-> → `List< Conj{ …, party: Disj{ Customer, Guest } } >`
+So a faithful decode must establish (a) conjunction-of-coordinates vs
+choice-among-alternatives, and (b) if a choice, exclusive vs inclusive —
+and the surface word reliably tells you *none* of it. The same
+under-determination holds for "of" (`Instantiation` vs the possessive
+"a friend **of** mine"), plurals (`Cardinality` vs idiom), and "for
+each". A construction whose connective cannot be determined →
+**fail-closed**.
 
-So the groundable subset of English is the **structural vocabulary**
-(connectives + leaves), and it can describe a whole composite type — not
-just a scalar.
+### The fail-closed boundary — words under-determine structure
 
-### The fail-closed half — every structural word is polysemous
+This is why English's groundable subset is an *island* and the
+fail-closed boundary is large — **not** because the connective words are
+missing, but because the words **under-determine** the structure.
+"this and that" may be a `Conj` or a `Disj`; "or" may be exclusive or
+inclusive; the word alone cannot say. Leaf phrases fail the same way —
+"forty-two-ish", "about forty-two" have no deterministic decode;
+"ship it when the build feels solid" grounds nowhere.
 
-`"and"` grounds to `Conj` **only in the enumerative sense**. It does not
-in: "she arrived **and** left" (temporal sequence — a different
-primitive, not `Conj`); "**try and** stop me" (idiom); "the build broke
-**and** so we reverted" (consequence). The decode checks the *sense* —
-the structural reading grounds; the others **fail-closed**, or ground to
-the connective they actually mean. The same holds for "or" (inclusive /
-exclusive / "or else") and "a … of" ("a friend **of** mine" is not
-`Instantiation`).
-
-Leaf phrases fail the same way: "forty-two-ish", "about forty-two" have
-no deterministic decode → **fail-closed**; "ship it when the build feels
-solid" grounds nowhere → the whole sentence fail-closes.
-
-English "speaks our primitives" on the structural vocabulary used in its
-structural sense — a genuine, useful island that reaches *composite*
-structure — and honestly fail-closes the large polysemous remainder.
-(This is the `english_ingest_fail_closed.dag` boundary-honesty probe v4
-already plans.) English is not a degenerate case; it is a full language
-with a large fail-closed boundary.
+When the construction *is* unambiguous — a disciplined, controlled
+English written to a fixed structural convention — English grounds
+composite structure honestly, recursively, by the same `Node`
+catamorphism. Free prose under-determines and fail-closes. Model what
+determinately grounds; fail-close the rest. (This is the
+`english_ingest_fail_closed.dag` boundary-honesty probe v4 already
+plans.) English is not a degenerate case; it is a full language whose
+words under-determine structure, hence a large, honest fail-closed
+boundary.
 
 ---
 
