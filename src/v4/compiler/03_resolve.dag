@@ -2,7 +2,7 @@
 //
 // Scope: Stage 3b — NormalizedTree→ResolvedTree; K-1 Atom use→def.
 // Owns: ResolvedTree; Namespace; Scope; ResolveResult; ResolveChildrenResult; resolve; Symbol reasons.
-// Consumes: std/node.dag, std/diagnostic.dag, std/collection.dag, compiler/03_normalize.dag.
+// Consumes: std/node.dag, std/diagnostic.dag, std/collection.dag, compiler/03_normalize.dag, extdeps/languages/dag.dag.
 // Status: scaffold — TASKS T-8.
 // Anchor: https://en.wikipedia.org/wiki/Name_resolution_(programming_languages)
 
@@ -10,6 +10,12 @@ module v4.compiler.resolve
 
 
 import v4.compiler.normalize { NormalizedTree }
+import v4.extdeps.languages.dag {
+  dag_c3_surface_sugar_fn,
+  dag_c3_surface_sugar_operation,
+  dag_c3_surface_sugar_service,
+  dag_c3_surface_sugar_type
+}
 import v4.std.collection { Set }
 import v4.std.diagnostic {
   AmbiguousIntent,
@@ -45,9 +51,9 @@ type Namespace {
 }
 
 
-type Scope {
-  namespace: Namespace
-}
+type Scope
+  = ScopeRoot { module: Namespace }
+  | ScopeFrame { locals: Map<Symbol, Symbol>, outer: Scope }
 
 
 type ResolveResult
@@ -74,6 +80,23 @@ fn empty_canonical_symbol_set() -> Set<Symbol> {
       false
     }
   }
+}
+
+
+fn language_model_prelude_canonical_set() -> Set<Symbol> {
+  Set {
+    member: fn(sym) {
+      prelude_symbol_member(sym: sym)
+    }
+  }
+}
+
+
+fn prelude_symbol_member(sym: Symbol) -> Bool {
+  sym == dag_c3_surface_sugar_service ||
+    sym == dag_c3_surface_sugar_fn ||
+    sym == dag_c3_surface_sugar_type ||
+    sym == dag_c3_surface_sugar_operation
 }
 
 
@@ -144,30 +167,36 @@ fn add_bind_atom_binder(n: Node, acc: Map<Symbol, Symbol>) -> Map<Symbol, Symbol
 }
 
 
-fn gather_bindings_walk(n: Node, acc: Map<Symbol, Symbol>, is_root: Bool) -> Map<Symbol, Symbol> {
-  let acc = if is_root {
-    add_module_named_exports(root: n, acc: acc)
-  } else {
-    acc
-  }
-  let acc = add_arrow_domain_named_params(n: n, acc: acc)
-  let acc = add_bind_atom_binder(n: n, acc: acc)
-  fold(n.children, init: acc, f: fn(acc2, e) {
-    gather_bindings_walk(n: e.target, acc: acc2, is_root: false)
-  })
-}
-
-
 fn build_program_namespace(tree: NormalizedTree) -> Namespace {
   Namespace {
-    bindings: gather_bindings_walk(n: tree, acc: empty_map(), is_root: true),
-    canonical_symbols: empty_canonical_symbol_set()
+    bindings: add_module_named_exports(root: tree, acc: empty_map()),
+    canonical_symbols: language_model_prelude_canonical_set()
   }
 }
 
 
 fn scope_from_namespace(namespace: Namespace) -> Scope {
-  Scope { namespace: namespace }
+  ScopeRoot { module: namespace }
+}
+
+
+fn scope_root_module(s: Scope) -> Namespace {
+  match s {
+    ScopeFrame { outer: o, locals: _ } => scope_root_module(s: o)
+    ScopeRoot { module: m } => m
+  }
+}
+
+
+fn lookup_chain(s: Scope, name: Symbol) -> Symbol? {
+  match s {
+    ScopeFrame { locals: m, outer: o } =>
+      match map_get(m, name) {
+        Some { value: v } => Some { value: v }
+        None => lookup_chain(s: o, name: name)
+      }
+    ScopeRoot { module: mod } => map_get(mod.bindings, name)
+  }
 }
 
 
@@ -189,11 +218,6 @@ fn unbound_symbol_diagnostic(n: Node) -> Diagnostic {
 }
 
 
-fn lookup_binding(scope: Scope, name: Symbol) -> Symbol? {
-  map_get(scope.namespace.bindings, name)
-}
-
-
 fn namespace_has_canonical_symbol(namespace: Namespace, name: Symbol) -> Bool {
   namespace.canonical_symbols.member(name)
 }
@@ -208,13 +232,16 @@ fn canonical_atom(identity: Symbol) -> Node {
 
 
 fn resolve_atom(n: Node, scope: Scope, identity: Symbol) -> ResolveResult {
-  match lookup_binding(scope: scope, name: identity) {
+  match lookup_chain(s: scope, name: identity) {
     Some { value: canonical } =>
       ResolvedNode {
         node: canonical_atom(identity: canonical)
       }
     None =>
-      if namespace_has_canonical_symbol(namespace: scope.namespace, name: identity) {
+      if namespace_has_canonical_symbol(
+        namespace: scope_root_module(s: scope),
+        name: identity
+      ) {
         ResolvedNode { node: canonical_atom(identity: identity) }
       } else {
         ResolveRejected { diagnostic: unbound_symbol_diagnostic(n: n) }
@@ -223,8 +250,103 @@ fn resolve_atom(n: Node, scope: Scope, identity: Symbol) -> ResolveResult {
 }
 
 
+type ResolveEdgeAcc {
+  have_seen_first: Bool
+  acc: ResolveChildrenResult
+}
+
+
+fn resolve_edges_first_outer_then_inner(
+  edges: List<Edge>,
+  scope_outer: Scope,
+  scope_inner: Scope
+) -> ResolveChildrenResult {
+  match fold(
+    edges,
+    init: ResolveEdgeAcc {
+      have_seen_first: false,
+      acc: ResolvedChildren { children: [] }
+    },
+    f: fn(state, e) {
+      match state {
+        ResolveEdgeAcc { have_seen_first: seen, acc: acc_state } =>
+          match acc_state {
+            ResolveChildrenRejected { diagnostic: d } =>
+              ResolveEdgeAcc {
+                have_seen_first: true,
+                acc: ResolveChildrenRejected { diagnostic: d }
+              }
+            ResolvedChildren { children: done } =>
+              if seen {
+                match resolve_node(n: e.target, scope: scope_inner) {
+                  ResolveRejected { diagnostic: d } =>
+                    ResolveEdgeAcc {
+                      have_seen_first: true,
+                      acc: ResolveChildrenRejected { diagnostic: d }
+                    }
+                  ResolvedNode { node: resolved_target } =>
+                    ResolveEdgeAcc {
+                      have_seen_first: true,
+                      acc: ResolvedChildren {
+                        children: list_push(
+                          done,
+                          Edge {
+                            label: e.label,
+                            target: resolved_target
+                          }
+                        )
+                      }
+                    }
+                }
+              } else {
+                match resolve_node(n: e.target, scope: scope_outer) {
+                  ResolveRejected { diagnostic: d } =>
+                    ResolveEdgeAcc {
+                      have_seen_first: true,
+                      acc: ResolveChildrenRejected { diagnostic: d }
+                    }
+                  ResolvedNode { node: resolved_target } =>
+                    ResolveEdgeAcc {
+                      have_seen_first: true,
+                      acc: ResolvedChildren {
+                        children: list_push(
+                          done,
+                          Edge {
+                            label: e.label,
+                            target: resolved_target
+                          }
+                        )
+                      }
+                    }
+                }
+              }
+          }
+      }
+    }
+  ) {
+    ResolveEdgeAcc { acc: acc_state, have_seen_first: _ } => acc_state
+  }
+}
+
+
 fn resolve_node(n: Node, scope: Scope) -> ResolveResult {
   let resolved_children_result = match n.kind {
+    TypeNode { connective: Arrow } =>
+      let dom_map = add_arrow_domain_named_params(n: n, acc: empty_map())
+      let inner = ScopeFrame { locals: dom_map, outer: scope }
+      resolve_edges_first_outer_then_inner(
+        edges: n.children,
+        scope_outer: scope,
+        scope_inner: inner
+      )
+    ComputationNode { behavior: Bind } =>
+      let bind_map = add_bind_atom_binder(n: n, acc: empty_map())
+      let inner = ScopeFrame { locals: bind_map, outer: scope }
+      resolve_edges_first_outer_then_inner(
+        edges: n.children,
+        scope_outer: scope,
+        scope_inner: inner
+      )
     TypeNode { connective: Atom { identity: _ } } =>
       ResolvedChildren { children: [] }
     TypeNode { connective: _ } =>
