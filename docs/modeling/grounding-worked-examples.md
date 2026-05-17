@@ -128,7 +128,8 @@ discipline is identical for all of them.
 
 It does **not** claim every target is a compiler render-target.
 `THESIS.md` locks a distinction the worked examples must not blur
-(THESIS:217-218; ROADMAP Track 16):
+(THESIS.md §"Omni-emission" — the Shape A vs Shape B bullets; ROADMAP
+Track 16):
 
 - **Shape A — compiler language targets**: programming languages and HDLs
   — `rust`, `python`, `go`, `cpp`, `typescript`, `verilog` (and the
@@ -224,8 +225,10 @@ constructs it, emit projects it back — not two hand-built stages.
 
 There is **no** Python or Rust parser (`extdeps/languages/python.dag`
 models Python's type *surface*, not a parser). The whole chain is
-`[MODELED]`. **IR is the explicit hub**, and the chain has two coercions
-with *different totality*:
+`[MODELED]`. **`Node` is the explicit hub** — "IR" and the `IR_*` names
+below are *not* a distinct IR type plane; per the "What the IR is" section
+above, `IR_Int` etc. are the shared `std/` vocabulary carried *as* `Node`.
+The chain has two coercions with *different totality*:
 
 **Ingest — `python int → IR Int` (total).**
 
@@ -302,16 +305,23 @@ length witness, and `RustI32` grounds as `Compose<Int,
 MachineWidth<Word32>>` (§B — the substrate's fixed-width discipline,
 `std/integer.dag`; not a `{32×Bool}` bit-carrier).
 
-**Step-by-step coercion shape — `RustArray<RustI32, 3> -> Outcome<IR List<Int32>>`:**
+**Step-by-step coercion shape — `RustArray<RustI32, 3> -> Outcome<IR Conj{ elements: List<Int32>, length_proof: Witness<|elements| = 3> }>`:**
 1. groundings: `List<Compose<Int,MachineWidth<Word32>>>` plus
-   `Witness(length = 3)` on the Rust side; `List<Int32>` on the IR side.
+   `Witness(length = 3)` on the Rust side. The IR target is the
+   **length-witnessed** form — `List<Int32>` carried *with* its
+   `Witness(length = 3)` (in `Node` terms, the `Cardinality` connective) —
+   **not** a plain unbounded `List`. The length is a source fact, so it
+   must appear in the target carrier.
 2. the coercion fold compares outer `List` vs `List`,
    then recurses into the element grounding.
 3. element `grounding(RustI32)` vs `grounding(Int32)` → coincide.
-4. coincident element groundings return `Produced { value: IR List<Int32> }`;
-   the array length witness is preserved as a target fact. No array
-   coercion is authored; the compound result follows from the structural
-   comparison.
+4. coincident element groundings return `Produced { value }` where the
+   value is the IR length-witnessed list — `elements: List<Int32>` **and**
+   `length_proof: Witness<|elements| = 3>`. The length-3 fact **flows
+   forward into the output carrier** (P2 facts-flow-forward); it is not
+   dropped to a plain `List`, and no accepted-loss is needed because
+   nothing is lost. No array coercion is authored; the compound result,
+   length witness included, follows from the structural comparison.
 
 **Cross-language shape — `PythonList[int] -> Outcome<RustArray<i32, 3>>`:**
 outer `List` matches, but each element must pass `IR_Int -> Outcome<RustI32>`
@@ -345,11 +355,17 @@ type Reg64 = Conj {
 This is the spectrum's trivial endpoint — `machine_code` *is* bits, so
 the grounding is direct, no decode.
 
-**Coercion shape — `Reg64 -> Outcome<List<Bool>>`:** the fold projects the
-`bits` field and the `length_proof` witness discharges to the target —
-returning `Produced { value: bits }`. Instruction-specific reads are
-separate coercions: the consumer supplies the meaning (`Int64`, address,
-binary64, ...), and an unsupported or missing meaning returns
+**Coercion shape — `Reg64 -> Outcome<Conj{ bits: List<Bool>, length_proof: Witness<|bits| = 64> }>`:**
+the coercion is **identity-quality** — `Reg64` *is already* the
+length-witnessed bit-list, so the target carrier is the same shape, not a
+bare `List<Bool>`. Projecting to a bare `List<Bool>` would silently drop
+the width-64 witness — the facts-flow-forward violation §1 (the Rust
+array) warns against; the width-64 fact must flow forward into the target
+carrier (or be an *explicit* accepted-loss, which a "pure-bits endpoint"
+identity coercion has no reason to be). Returns `Produced { value }`
+carrying **both** `bits` and `length_proof`. Instruction-specific reads
+are separate coercions: the consumer supplies the meaning (`Int64`,
+address, binary64, ...), and an unsupported or missing meaning returns
 `Rejected { diagnostic: Diagnostic }` rather than inventing one.
 
 ---
@@ -370,8 +386,12 @@ type VReg32 = Conj {
   length_proof: Witness< |bits| = 32 >
 }
 
-// MEANING — the 32 four-state bits; when used as a number, two's-
-// complement over the {0,1} bits, undefined if any bit is x/z.
+// MEANING — the 32 four-state bits. A plain `reg [31:0]` is UNSIGNED in
+// Verilog; signedness is NOT a fact of this carrier — it requires the
+// explicit `signed` modifier (`reg signed [31:0]`). Read as a number the
+// {0,1} bits are a 32-bit two's-complement BIT PATTERN; the
+// signed-vs-unsigned interpretation is supplied by the declaration, not
+// by the vector. Undefined if any bit is x/z.
 ```
 
 `VBit` grounds — as a closed sum over the substrate's coproduct
@@ -386,15 +406,24 @@ richer. `Bool` is exactly the `{Zero, One}` sub-part of `VBit`.
    `Bool` vs `VBit` — `Bool ⊊ VBit`.
 3. `IR Int32 -> Outcome<VReg32>` is total over this relation: every
    `Bool` embeds as `Zero` or `One`, so the result is `Produced`.
-4. `VReg32 -> Outcome<IR Int32>` is partial: all `{Zero, One}` bits
-   return `Produced { value: IR Int32 }`; any `Unknown`/`HighZ` bit
-   returns `Rejected { diagnostic: Diagnostic }` because x/z is not an
-   integer state.
+4. `VReg32 -> Outcome<IR Int32>` is partial on **two** axes. (i) Any
+   `Unknown`/`HighZ` bit returns `Rejected { diagnostic: Diagnostic }` —
+   x/z is not an integer state. (ii) For all-`{Zero, One}` bits the 32-bit
+   pattern is well-defined, **but a plain `reg [31:0]` is unsigned** — it
+   carries no signedness fact, and IR `Int32` is *signed*
+   (`Compose<Int, …>`). Producing signed `Int32` from a plain `reg [31:0]`
+   would fabricate the signedness fact — the same hazard as the LLVM
+   `add i32` case (§10). The honest coercion: a plain `reg [31:0]` lands
+   an **unsigned** 32-bit carrier; signed `IR Int32` is `Produced` only
+   when the source is `reg signed [31:0]` — the signedness-bearing
+   declaration — otherwise `Rejected`.
 
 This is "speaks a *subset*" made precise: Verilog and the IR share the
 `{0,1}` subset; the `x/z` states are Verilog-only and honestly
-fail-closed. The model handles a target whose primitive is richer than
-ours without distortion.
+fail-closed; and signedness, absent from a plain vector, is required as
+an explicit declaration fact rather than fabricated. The model handles a
+target whose primitive is richer than ours without distortion — and
+without inventing facts the carrier never modeled.
 
 ---
 
@@ -422,14 +451,27 @@ rounding and special-value facts. An ideal SPICE voltage that requires an
 exact mathematical continuum is therefore a named fail-closed gap:
 `SpiceExactVoltageMissingExactRealCarrier`, not a silent reuse of `Real`.
 
-**Step-by-step coercion shape — `Rust f64 -> Outcome<SpiceApproxVoltage>`:**
-1. `SpiceApproxVoltage` grounds to
-   `ApproximateField<FieldOfFractions<Int>>` plus `Volt`; `f64` grounds to
-   IEEE-754 binary64 (`dsl/std/float.dag` / `src/v4/std/float.dag`).
-2. the coercion fold compares two approximate-field
-   carriers with different width/policy facts — related but not identical.
-3. finite `f64 -> Outcome<SpiceApproxVoltage>` returns `Produced` only when
-   the approximation policy is explicitly accepted and recorded.
+**Step-by-step — coercing a `Rust f64` toward `SpiceApproxVoltage` (the unit must be supplied, not fabricated):**
+1. `SpiceApproxVoltage` grounds to `ApproximateField<FieldOfFractions<Int>>`
+   **plus a `Volt` unit fact**; `f64` grounds to IEEE-754 binary64 — a
+   **unitless** approximate magnitude (`dsl/std/float.dag` /
+   `src/v4/std/float.dag`).
+2. the coercion fold compares the groundings: the approximate-field
+   *magnitude* carriers are related (different width/policy facts) — but
+   `SpiceApproxVoltage` carries a `Volt` coordinate the `f64` grounding
+   **does not have**.
+3. Because the `Volt` fact is absent from the source, a bare
+   `f64 -> SpiceApproxVoltage` **cannot be `Produced`** — conjuring the
+   unit coordinate would fabricate a fact, the exact violation this doc
+   models against (the emit-side dual of a hollow alias). The unit must be
+   **supplied**: the honest coercion is
+   `(f64, unit: Volt) -> Outcome<SpiceApproxVoltage>`, the `Volt` an
+   explicit boundary input (the SPICE context asserts "this number is
+   volts"). The f64-only coercion lands only the magnitude —
+   `f64 -> Outcome<ApproximateField<…>>` — returning `Produced` (quality
+   `Lossy`) when the approximation policy is explicitly accepted and
+   recorded; the consumer that has the `Volt` fact constructs the full
+   `SpiceApproxVoltage`.
 4. `NaN` / `±∞` return `Rejected { diagnostic: Diagnostic }` because they
    are IEEE-754 special values, not voltage magnitudes. A requested
    `Rust f64 -> Outcome<SpiceExactVoltage>` returns
@@ -437,9 +479,11 @@ exact mathematical continuum is therefore a named fail-closed gap:
    SpiceExactVoltageMissingExactRealCarrier, ... } }` until an exact carrier
    is modeled.
 
-The endpoint here is no longer mislabeled as exact. The approximate path is
-a **declared-lossy** derived map; the exact-voltage path is a named
-fail-closed gap.
+The endpoint here is no longer mislabeled as exact, and the unit is
+**supplied, never fabricated**. The approximate path is a
+**declared-lossy** derived map over the *magnitude*; the `Volt`
+coordinate enters only as an explicit boundary fact; the exact-voltage
+path is a named fail-closed gap.
 
 ---
 
@@ -564,16 +608,26 @@ Go channels are typed FIFO communication endpoints. Their value model is not
 **Model:**
 
 ```
-// CARRIER — a channel value is an endpoint over a FIFO stream of T.
-// Direction is a closed target fact: send-only, receive-only, or bidirectional.
+// CARRIER — the channel TYPE `chan T`. Per the Go spec, a channel type
+// is EXACTLY element type + direction — two channel types are identical
+// iff same element type and same direction. Nothing else is a type fact.
 type GoChan<T> = Conj {
   element:   TypeGrounding<T>,
-  direction: SendOnly | ReceiveOnly | Bidirectional,
-  capacity:  Nat
+  direction: SendOnly | ReceiveOnly | Bidirectional
 }
+// SCOPE — this carrier models the channel TYPE, not a channel VALUE.
+// `capacity` is NOT a type fact: it is a value-construction argument to
+// `make(chan T, n)` — two `chan int` types are identical regardless of
+// the capacity their values were made with. Capacity, and the runtime
+// value-state — open/closed, live buffer occupancy, queued contents,
+// nil-ness — all belong to the channel VALUE / `make` / eval layer,
+// explicitly outside this type carrier.
 
-// MEANING — ordered communication of T values, with blocking behavior derived
-// from capacity and direction. Scheduling is an effect fact, not a payload fact.
+// MEANING — the channel type's communication contract: ordered FIFO
+// transfer of T values, with `direction` the static type fact. Blocking
+// behavior is a RUNTIME fact — it depends on the make-time capacity and
+// the live buffer occupancy / open/closed-ness, none of which the static
+// type determines — so it is not claimed by this carrier.
 ```
 
 **Step-by-step coercion shape — `GoChan<int32> -> Outcome<IR Stream<Int32>>`:**
@@ -581,40 +635,66 @@ type GoChan<T> = Conj {
 2. the coercion fold compares endpoint vs endpoint,
    then recurses into the element grounding.
 3. `int32` vs `Int32` coincide when both decode as 32-bit two's-complement.
-4. matching payload plus direction/capacity facts return `Produced`.
-   Missing direction/capacity facts return `Rejected { diagnostic:
-   Diagnostic }` rather than defaulting to bidirectional or unbuffered.
+4. matching element grounding plus the `direction` type fact return
+   `Produced`. A missing `direction` returns `Rejected { diagnostic:
+   Diagnostic }` rather than defaulting to bidirectional. `capacity` is
+   *not* a type fact, so its absence is **not** a rejection criterion for
+   the channel type — rejecting a `chan T` type for "missing capacity"
+   would itself be an unfaithful model (a plain `chan T` type genuinely
+   has no capacity).
 
-The concurrency semantics are not annotations. They are grounded target facts
-attached to the endpoint and consumed by effect/scheduling lenses.
+The channel type fact is `direction` (with the element type) — a grounded
+target fact, not an annotation. Capacity (a `make`-time value-construction
+argument) and the runtime scheduling state — live buffer occupancy,
+open/closed-ness — are a separate channel-value / eval-layer concern, not
+part of this type grounding.
 
 ---
 
 ## 8. C++ — `int` (implementation-defined primitive width)
 
-C++ `int` is a language primitive, but its width and representation are
-implementation-defined target facts. LP64 and ILP32 commonly choose 32 bits,
-but the language model must read that from the target/ABI binding instead of
-asserting it.
+C++ `int` is a language primitive. Per **C++20** (ISO/IEC 14882:2020,
+§[basic.fundamental]) — the edition that **fixed** signed integer
+representation — its **signed value representation is two's complement**;
+only its **width** is implementation-defined (16+ bits; LP64 / ILP32
+commonly pick 32). That fixity carries forward unchanged to the current
+edition, C++23 (ISO/IEC 14882:2024). The model reads width from the
+target/ABI binding (T-29) and treats representation as a fixed *spec*
+fact, not an implementation-defined axis. (Pre-C++20, signed
+representation was itself implementation-defined — modeling that would
+require pinning an older edition; this example is anchored to C++20, the
+edition where the fact became fixed.)
 
 **Model:**
 
 ```
-// CARRIER — a signed integer whose width/representation come from the
-// concrete C++ implementation/ABI model.
-type CppInt = Compose<Int, CppImplementationInt {
-  width: Nat,
-  representation: SignedIntegerRepresentation
+// Anchor: ISO/IEC 14882:2020 (C++20) §[basic.fundamental]
+// CARRIER — a C++ `int` fact-bundle: the signed-integer base plus the
+// width and representation facts. `Compose` is BINARY in std/
+// (`Compose<carrier, dimension>`, integer.dag) — a multi-fact bundle is
+// a `Conj` of facts, not a variadic `Compose`. PLAN-ONLY note: the
+// `Representation` axis is Phase-2 std/ substrate (T-3-extended —
+// signedness/representation do not exist in std/ yet); it is shown here
+// as the intended fact, marked future-substrate, not a live carrier.
+type CppInt = Conj {
+  base:           Int,                       // signed-integer carrier (live std/)
+  width:          Nat,                       // implementation-defined
+  width_proof:    Witness< width >= 16 >,    // C++ guarantees int is >= 16 bits
+  representation: Representation              // = TwosComplement, C++20-fixed;
+                                             // Representation axis is Phase-2
+                                             // substrate (T-3-extended), not live
 }
 
-// MEANING — integer value within the implementation-defined range.
+// MEANING — integer value within the range fixed by width under
+// two's-complement.
 ```
 
 **Step-by-step coercion shape — `CppInt -> Outcome<IR Int>`:**
-1. `CppInt` grounds to `Int` plus implementation facts: width,
-   signedness/range, and representation.
+1. `CppInt` grounds to `Int` plus a **fixed** two's-complement
+   representation fact plus **one** implementation-defined fact — `width`
+   (the genuine per-ABI variable; range is derived from width).
 2. the coercion fold compares the abstract integer value to
-   IR `Int`; the implementation facts stay attached as target facts.
+   IR `Int`; the width fact stays attached as a target fact.
 3. `CppInt -> Outcome<IR Int>` returns `Produced` because every inhabited
    C++ `int` denotes an integer value.
 4. `IR Int -> Outcome<CppInt>` is partial: it returns `Produced` only when
@@ -622,8 +702,9 @@ type CppInt = Compose<Int, CppImplementationInt {
    `Rejected { diagnostic: Diagnostic }`.
 
 This contrasts Rust `i32`: Rust fixes the width in the type name; C++ `int`
-requires the target model to carry the ABI facts. If the binding cannot
-provide them, the coercion fails closed instead of assuming LP64/ILP32.
+requires the target/ABI model to carry the implementation-defined **width**
+fact. If the binding cannot provide it, the coercion fails closed instead
+of assuming LP64/ILP32.
 
 ---
 
@@ -685,14 +766,27 @@ type LlvmSsaValue<T> = Conj {
 ```
 
 **Step-by-step coercion shape — `LlvmSsaValue<i32> -> Outcome<IR Int32>`:**
-1. LLVM `i32` grounds to 32 bits interpreted by the consuming operation.
-2. an integer operation such as `add i32` supplies two's-complement integer
-   meaning for the same 32 bits.
-3. the coercion fold compares the use-site integer meaning
-   to IR `Int32`.
-4. when the consuming operation fixes integer meaning, return `Produced`;
-   without that use-site meaning, raw `i32` is only a bit-vector, so return
-   `Rejected { diagnostic: Diagnostic }` instead of inventing integer meaning.
+1. LLVM `i32` grounds to **32 bits** — a width fact only. LLVM integer
+   types are **sign-agnostic**; `i32` itself carries no signedness.
+2. the consuming operation supplies arithmetic meaning — but not always
+   signedness. `add i32` is **signedness-neutral**: two's-complement
+   `add` is the *identical* operation for signed and unsigned operands,
+   so `add` grounds a 32-bit two's-complement integer, **not** a signed
+   one. LLVM carries signedness only in the operations where it differs —
+   `sdiv`/`udiv`, `srem`/`urem`, `sext`/`zext`, etc.
+3. IR `Int32` is **signed** (`Compose<Int, MachineWidth<Word32>>` — `Int`
+   is the signed carrier). So the coercion fold needs a signedness fact
+   the source must actually carry.
+4. a **signedness-bearing** source supplies that fact → return `Produced`.
+   The genuine signedness-bearing sources are: a **signed instruction**
+   (`sdiv`/`srem`/`sext`/`ashr`, …) or **signedness metadata** (a
+   `signext`/`zeroext` parameter attribute, or `!range` metadata) — NOT a
+   bare typed parameter, which is itself sign-agnostic. `add i32` alone,
+   or raw `i32` with no signedness-bearing source, returns
+   `Rejected { diagnostic: Diagnostic }` — reading *signed* `Int32` out of
+   a sign-neutral operation is fact fabrication. (A sign-agnostic 32-bit
+   two's-complement integer is itself a faithful target; only the
+   **signed** `IR Int32` needs the extra fact.)
 
 SSA identity grounds as the DAG definition edge. Mutability is not modeled
 because LLVM SSA values are not mutable cells.
@@ -707,25 +801,29 @@ execution context. The lane coordinate is part of the fact.
 **Model:**
 
 ```
-// CARRIER — one classical truth value per active lane.
-type PtxPredicate = Conj {
-  lanes:       List<Bool>,
-  active_mask: List<Bool>
-}
+// CARRIER — one per-lane record per lane: the lane's truth value and
+// whether the lane is within the current execution mask. A SINGLE list
+// of per-lane records — value and active flag co-index by construction,
+// so a mismatched-length mask is structurally unrepresentable (P2). Two
+// independent List<Bool> (lanes / active_mask) would admit a length
+// mismatch — an illegal state — and is rejected for that reason.
+type PtxLane      = Conj { value: Bool, active: Bool }
+type PtxPredicate = List<PtxLane>
 
 // MEANING — a lane-indexed condition; inactive lanes do not assert false,
 // they are outside the current execution mask.
 ```
 
 **Step-by-step coercion shape — `PtxPredicate -> Outcome<IR List<Bool>>`:**
-1. predicate grounds to `{ lanes: List<Bool>, active_mask: List<Bool> }`.
+1. predicate grounds to `List<PtxLane>` — each element a `{ value, active }`
+   record; value and mask co-index by construction.
 2. IR `List<Bool>` grounds only to lane truth values.
-3. the coercion fold finds related but non-identical
-   groundings: the mask coordinate exists in PTX but not in the plain list.
+3. the coercion fold finds related but non-identical groundings: the
+   per-lane `active` flag exists in PTX but not in the plain list.
 4. PTX to plain list returns `Produced` only if an explicit accepted-loss
-   policy drops the mask, or if the IR target also carries it. Plain list to
-   PTX requires a supplied active mask; otherwise it returns
-   `Rejected { diagnostic: Diagnostic }`.
+   policy drops the `active` flags, or if the IR target also carries them.
+   Plain list to PTX requires the `active` flags supplied per lane;
+   otherwise it returns `Rejected { diagnostic: Diagnostic }`.
 
 The model prevents treating inactive lanes as false values. That distinction is
 a structural coordinate, not a convention.
@@ -774,7 +872,12 @@ is serialization syntax, not object meaning.
 
 ```
 // CARRIER — finite map from string keys to recursively grounded JSON values.
-type JsonValue  = Null | Bool | Number | String | Array<JsonValue> | Object
+// Each recursive-container arm carries its payload, so `JsonValue` is the
+// single authority for a JSON value's content (no label-only variant whose
+// payload lives in a separate type).
+type JsonValue  = Null | Bool | Number | String
+                | Array<List<JsonValue>>
+                | Object<JsonObject>
 type JsonObject = Map<String, JsonValue>
 
 // MEANING — the map. Duplicate source keys are a parse-boundary diagnostic,
@@ -866,8 +969,12 @@ strings, integers, floats, booleans, dates/times, arrays, and tables.
 **Model:**
 
 ```
-// CARRIER — finite map from dotted keys to closed TOML values.
-type TomlValue = String | Integer | Float | Bool | DateTime | Array<TomlValue> | Table
+// CARRIER — finite map from dotted keys to closed TOML values. Each
+// recursive-container arm carries its payload, so `TomlValue` is the
+// single authority for a TOML value's content.
+type TomlValue = String | Integer | Float | Bool | DateTime
+               | Array<List<TomlValue>>
+               | Table<TomlTable>
 type TomlTable = Map<KeyPath, TomlValue>
 
 // MEANING — a hierarchical record assembled from key paths.
@@ -899,7 +1006,11 @@ over JSON values, encoded in JSON syntax.
 type JsonSchemaObject = Conj {
   type_keyword: Optional<JsonTypeSet>,
   properties:   Map<String, JsonSchema>,
-  required:     List<String>
+  required:     Conj {
+    names:        List<String>,
+    unique_proof: Witness< all_distinct(names) >   // JSON Schema: the `required`
+                                                   // array elements MUST be unique
+  }
 }
 
 // MEANING — a predicate: JsonValue -> Bool, plus witnesses for accepted values.
@@ -930,16 +1041,25 @@ operation is not an endpoint implementation; it is a typed boundary declaration.
 
 ```
 // CARRIER — method/path plus parameter, request-body, response, and status facts.
+// `content` (OpenAPI Request Body / Response Object) is a MEDIA-TYPE MAP —
+// one schema per media type, with multiple alternatives (e.g. application/json
+// AND application/xml) — never a single schema.
+type ContentMap = Map<MediaType, Schema>
 type OpenApiOperation = Conj {
   method:      HttpMethod,
   path:        PathTemplate,
-  parameters:  List<Parameter>,
-  request:     Optional<MediaTypedSchema>,
-  responses:   Map<HttpStatus, MediaTypedSchema>
+  parameters:  Conj {
+    items:        List<Parameter>,
+    unique_proof: Witness< all_distinct_by(items, name_and_location) >
+                  // OpenAPI: parameters MUST be unique by (name, `in`) location
+  },
+  request:     Optional<ContentMap>,
+  responses:   Map<HttpStatus, ContentMap>   // status → content map; the keys
+                                             // at both levels unique by Map
 }
 
 // MEANING — a partial function from grounded HTTP requests to grounded HTTP
-// responses, indexed by status code and media type.
+// responses, indexed by status code and then by media type.
 ```
 
 **Step-by-step coercion shape — `OpenApiOperation -> Outcome<IR ServiceArrow>`:**
