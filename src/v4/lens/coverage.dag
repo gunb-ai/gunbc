@@ -13,7 +13,9 @@
 //   - Each missing-coverage entry emits a Diagnostic per fail-closed discipline (INVARIANTS C-8)
 //
 // Consumes:
-//   - std/node.dag, std/witness.dag, std/diagnostic.dag, std/verification.dag (TestClaim)
+//   - std/node.dag, std/witness.dag, std/diagnostic.dag, std/verification.dag
+//     (`TestClaim` **including** `classification: TestClassification` per
+//     STRUCTURE.md §248 — testgen coverage reads Tier×Layer from claims)
 //   - std/algebra.dag (for L7 inhabitance reading)
 //   - extdeps/languages/*.dag (for L6 emit rule reading)
 //

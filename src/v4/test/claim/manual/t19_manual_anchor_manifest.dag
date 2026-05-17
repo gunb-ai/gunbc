@@ -4,10 +4,10 @@
 //        still-lark-213 hand-off: one row per bootstrap claim testgen must
 //        eventually subsume (produced corpus ⊇ manual). Integer codes keep
 //        `data` bodies structurally valid under M1(2.8) until record+sum
-//        literals validate together; map to enums in lens/testgen.dag:
+//        literals validate together; map to enums in **`src/v4/std/verification.dag`**
+//        (`TestgenTier`, `TestgenLayer`, `AssertKind`):
 //          tier: 0=Tier1, 1=Tier2, 2=Tier3
 //          layer: 0=Unit, 1=Integration, 2=Boundary
-//          testgen_category: 0 type_construction … 4 bidirectional_roundtrip
 //          assert_kind: Int projection onto **`v4.std.verification.AssertKind`**
 //            in **`src/v4/std/verification.dag`** — 0 Equals, 1 Diagnostic,
 //            2 Compiles, 3 RoundTrips (the closed four at `AssertKind` there).
