@@ -12,16 +12,12 @@
 //     termination: Termination }, reached through
 //     WaitedTerminatedProcess.state or TerminatedProcess.state.)
 //   - ProcessId (PID, PositiveInt — never zero per POSIX)
-//   - ProcessState = Running | Terminated(TerminatedProcessState)
 //   - Termination = Exited(ExitCode) | Signaled(SignalNum)
-//     (the terminal status nested inside ProcessState — the ONLY two ways
-//     a process ends per POSIX. wait/capture return an advanced
-//     TerminatedProcess whose state carries THIS, never a bare ExitCode:
-//     a signal-killed process has no exit code; fabricating one (or
-//     flattening signal death into a Diagnostic) loses the SignalNum and
-//     makes an illegal state representable. `Running` is structurally
-//     excluded from
-//     Termination — wait cannot return a non-terminal state.)
+//     (the ONLY two ways a process ends per POSIX. wait/capture return
+//     terminal process carriers whose state carries THIS, never a bare
+//     ExitCode: a signal-killed process has no exit code; fabricating one
+//     or flattening signal death into a Diagnostic loses the SignalNum.
+//     `Running` is structurally excluded from all terminal carriers.)
 //   - ExitCode = NonNegativeInt (per POSIX — 0 success, 1-255 conventional)
 //   - SignalNum (per POSIX signal table)
 //   - Command { program: AbsolutePath, argv0: String, args: List<String>, env: Map<String,String> }
@@ -55,10 +51,10 @@
 // ratified lens/effect.dag B3/B-5; spawn/wait/capture return the
 // modified ProcessTable alongside the advanced process. D5 also
 // reconciles the stale ProcessState::Exited rationale prose above,
-// which the same operator-sanctioned ProcessState refactor made stale.
-// The terminal postcondition reconcile factors terminal process state
-// through TerminatedProcessState, so ProcessState::Terminated and
-// TerminatedProcess reuse the same terminal-state carrier.
+// which the same operator-sanctioned terminal-carrier refactor made
+// stale. The terminal postcondition reconcile factors terminal process
+// state through TerminatedProcessState, so all terminal operation
+// carriers reuse the same terminal-state carrier.
 // HEADER RECONCILE (2026-05-17, #3209, keen-wren-663 + briansrls
 // BLOCKING): Command carries caller-supplied argv0 explicitly. POSIX
 // exec does not derive argv[0] from the program path; fabricating it
@@ -98,6 +94,8 @@
 // lifecycle carriers landed. RunningProcess, WaitedTerminatedProcess,
 // and TerminatedProcess are now the only process lifecycle boundary
 // carriers in this substrate file.
+// Follow-up reconcile: the dead ProcessState sum was also removed; no
+// declared lifecycle carrier remains without a structural consumer.
 
 
 module v4.extdeps.process
@@ -208,14 +206,14 @@ type Command {
 
 
 // ─────────────────────────────────────────────────────────────────────
-// ProcessState / Termination.
+// Termination.
 // Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/functions/waitpid.html
 // Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/sys_wait.h.html
 //
-// `Running` is a live state. `Terminated` carries the single terminal
-// state authority consumed by wait/capture, so those operations cannot
-// return a still-running process and cannot flatten signal death into an
-// exit code.
+// `Termination` carries the POSIX terminal-status partition consumed by
+// wait/capture. Live state is represented by the separate
+// `RunningProcess` carrier; terminal operation outputs carry
+// `TerminatedProcessState`, which wraps this sum.
 //
 // Coproduct dissolution (Practice 4 / INVARIANTS P1) — classification:
 // 🟡 YELLOW, first-consumer-confirmed. The POSIX wait-status partition is
@@ -225,21 +223,15 @@ type Command {
 // T-4.5 effect/resolver seam lands fork/exec/wait realization; that PR
 // must either confirm this partition or amend this carrier under review.
 // Ledger:
-//   1. Fact placement — FAILS: lifecycle state is consumed uniformly by
-//      wait/capture/process inspection; not per-consumer metadata.
-//   2. Variant-is-data — FAILS: `Terminated` carries
-//      `TerminatedProcessState`, and `Running` is nullary; a flat record
-//      admits running-with-terminal-state and terminal-with-running
-//      states.
-//   3. Algebraic form — N/A: lifecycle state is not an algebra carrier.
-//   4. Dimensional — FAILS: a process is exactly one lifecycle state at
-//      a time, not all states as coordinates.
+//   1. Fact placement — FAILS: terminal status is consumed uniformly by
+//      wait/capture terminal carriers; not per-consumer metadata.
+//   2. Variant-is-data — FAILS: Exited carries ExitCode and Signaled
+//      carries SignalNum; a flat record admits impossible combinations.
+//   3. Algebraic form — N/A: terminal status is not an algebra carrier.
+//   4. Dimensional — FAILS: a terminal process ended by exit OR signal,
+//      not both.
 //   5. Parameterized family — FAILS: the variants are not the same
 //      payload shape projected over an enumerable set.
-type ProcessState
-  = Running
-  | Terminated { state: TerminatedProcessState }
-
 type Termination
   = Exited { code: ExitCode }
   | Signaled { signal: SignalNum }
@@ -249,9 +241,8 @@ type TerminatedProcessState {
 }
 
 // `TerminatedProcessState` is the single terminal-state carrier.
-// `ProcessState` references it from the `Terminated` arm, and
-// wait/capture success carriers reference it directly, so Process.state
-// and wait/capture cannot disagree about the terminal status by
+// wait/capture success carriers reference it directly, so terminal
+// operation results cannot disagree about the terminal status by
 // construction.
 
 
