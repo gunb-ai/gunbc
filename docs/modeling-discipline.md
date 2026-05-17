@@ -17,6 +17,29 @@
 > Full derivations, worked examples, and the background modeling analysis
 > live in [v3-modeling-analysis.md](v3-modeling-analysis.md).
 
+## The three facets — a cross-reference convention
+
+**Fact modeling**, **coercion**, and **translation** are not three
+separate topics — they are three facets of the one **derived
+homomorphism** ([THESIS.md](../THESIS.md) → "The derived homomorphism";
+[the-derived-homomorphism.md](thesis/the-derived-homomorphism.md)):
+
+- **fact modeling** — *produces the homomorphism's inputs.* You model
+  each target's facts so the compiler can derive the structure-preserving
+  map; the modeling discipline exists to make those inputs correct.
+- **coercion** — *the verification facet.* The mechanical fold that
+  checks a candidate map preserves structure (coercion ⊂ the
+  homomorphism).
+- **translation** — *the homomorphism applied.* "Translation" between
+  two targets **is** the derived homomorphism.
+
+**Convention.** Wherever a doc *discusses* one of these three as a
+topic — at its defining mention / discussion-point, **section-level, not
+every token** — frame it as a facet of the derived homomorphism and
+cross-ref the THESIS section. The connection should always be one click
+away from where the concept is taught; a parenthetical on every
+occurrence is noise.
+
 ## Nine Modeling Practices
 
 Each practice implements one of the five invariant principles from

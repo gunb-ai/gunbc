@@ -118,6 +118,8 @@ See [docs/modeling/layering.md](docs/modeling/layering.md).
 
 Types decompose into smaller types that each assert one fact.
 
+> Fact modeling is the **inputs facet** of the derived homomorphism: the facts a type asserts are what the compiler derives the cross-target map *from* (see [docs/modeling-discipline.md](docs/modeling-discipline.md) "The three facets").
+
 ### M2: No duplicate type authorities
 
 Every type is defined in exactly one place.

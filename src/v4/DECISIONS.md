@@ -379,6 +379,10 @@ structurally equal** — equal under `node.dag`'s B1-CANON contract
 `content_hash = merkle_fold ∘ canonical`. This is the *single* definition
 of the word across v4: the U1 homomorphism, the T-9 coercion fold, and the
 `docs/modeling/grounding-worked-examples.md` companion all use exactly it.
+(The T-9 coercion fold is the **verification facet** of the derived
+homomorphism — the fold that checks a candidate map preserves structure;
+see `docs/modeling-discipline.md` "The three facets" and
+`docs/thesis/the-derived-homomorphism.md`.)
 Three consequences pin it down:
 
 - **Mechanical, not free-form semantic equivalence.** Coincidence is
