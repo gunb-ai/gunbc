@@ -130,6 +130,35 @@ type LeanName {
 }
 
 
+// LeanLevel — universe-level expression at the kernel-term boundary.
+// Level names are opaque Symbol references; arithmetic over levels remains
+// Lean-specific syntax/validation, not std/nat inhabitance.
+// Anchor: Lean 4.20.0 Reference Manual, universe levels:
+// https://lean-lang.org/doc/reference/4.20.0/The-Type-System/Universes/
+//
+// Coproduct dissolution — 🟢 GREEN (terminal). Ledger:
+//   1. Fact placement — FAILS: sort terms, constants, and universe
+//      validation all share this level-expression carrier.
+//   2. Variant-is-data — FAILS: variants have heterogeneous payloads; a
+//      Symbol-only or Nat-only carrier collapses level expressions.
+//   3. Algebraic form — N/A: Lean universe syntax is the external source.
+//   4. Dimensional — FAILS: one universe level is zero, succ, max, imax,
+//      param, or metavariable.
+//   5. Parameterized family — FAILS: heterogeneous constructors, not F<X>.
+type LeanLevel
+  = LeanLevelZero
+  | LeanLevelSucc { predecessor: LeanLevelRef }
+  | LeanLevelMax { left: LeanLevelRef, right: LeanLevelRef }
+  | LeanLevelIMax { left: LeanLevelRef, right: LeanLevelRef }
+  | LeanLevelParam { name: Symbol }
+  | LeanLevelMVar { name: Symbol }
+
+
+type LeanLevelRef {
+  name: LeanName
+}
+
+
 // LeanBinderInfo — binder visibility in Lean term syntax.
 // Anchor: Lean 4.20.0 Reference Manual, function binders:
 // https://lean-lang.org/doc/reference/4.20.0/
@@ -190,8 +219,8 @@ type LeanTermNode {
 
 
 type LeanTermForm
-  = LeanSort { level: Symbol }
-  | LeanConst { name: LeanName }
+  = LeanSort { level: LeanLevelRef }
+  | LeanConst { name: LeanName, levels: List<LeanLevelRef> }
   | LeanVar { name: LeanName }
   | LeanApp { function: LeanTermRef, argument: LeanTermRef }
   | LeanLambda { binder: LeanBinder, body: LeanTermRef }
