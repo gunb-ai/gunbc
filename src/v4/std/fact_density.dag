@@ -9,18 +9,17 @@
 //        (carrier + meaning as `Node`). INVARIANTS P1 / P2.
 //
 // Owns:
-//   - SourceSpecReadFact — witness that a declaration **reads** spec-grounded
-//     material. The carrier is **`Hash`** (opaque content-address digest from
-//     `std/node.dag` — B1 `content_hash : Node → Hash`): it names the **merkle
-//     fingerprint** of the decoded spec subtree, not a numeric stand-in.
+//   - SourceSpecReadFact — nominal witness that a declaration **anchors** a
+//     spec read (opaque `Symbol` read-site identity per `std/node.dag` K-1 —
+//     not arithmetic, not an unconstrained product of independent fields).
 //     **Intended richer witness:** `Node` subtree (carrier + meaning on the
-//     same object per grounding-worked-examples). Standalone `compile_to_dag`
-//     on this module still surfaces `unresolved type identifier Node` in
-//     record field position (resolver staging); when that path lands, migrate
-//     `digest` → `body: Node` (or add both: body + redundant digest).
+//     same object). Standalone `compile_to_dag` still rejects `body: Node` in
+//     this module’s record fields (`unresolved type identifier Node`); migrate
+//     when the resolver accepts `Node` in this position.
 //
 // Consumes:
-//   - std/node.dag: Hash
+//   - std/node.dag: Symbol (K-1 opaque identity — same import pattern as
+//     `std/integer.dag` angle-parameter carriers).
 //
 // Implementation split (M1(2.8)):
 //   The mechanical **declaration-tree → Outcome** check is mirrored in Rust
@@ -34,9 +33,9 @@
 module v4.std.fact_density
 
 
-import v4.std.node { Hash }
+import v4.std.node { Symbol }
 
 
 type SourceSpecReadFact {
-  digest: Hash
+  read_site: Symbol
 }
