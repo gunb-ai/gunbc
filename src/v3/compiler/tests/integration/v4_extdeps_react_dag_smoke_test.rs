@@ -14,6 +14,31 @@ use v3_compiler::CompileError;
 const REACT_DAG: &str = include_str!("../../../../v4/extdeps/frameworks/react.dag");
 const REACT_PATH: &str = "src/v4/extdeps/frameworks/react.dag";
 
+/// Pinned `react@19.2.0` `ReactHookSite` roster per `react.dag` header — **19** built-in
+/// APIs (hooks index + `UseResource` for `use(resource)`) + **`CustomHook`** (= **20** arms).
+const EXPECTED_REACT_HOOK_SITE_ARMS: &[&str] = &[
+    "UseState",
+    "UseReducer",
+    "UseContext",
+    "UseRef",
+    "UseImperativeHandle",
+    "UseEffect",
+    "UseLayoutEffect",
+    "UseInsertionEffect",
+    "UseEffectEvent",
+    "UseMemo",
+    "UseCallback",
+    "UseTransition",
+    "UseDeferredValue",
+    "UseId",
+    "UseSyncExternalStore",
+    "UseDebugValue",
+    "UseActionState",
+    "UseOptimistic",
+    "UseResource",
+    "CustomHook",
+];
+
 /// Panics unless `react.dag` compiles with **zero** module diagnostics.
 fn react_extdeps_dag_or_panic() -> v3_compiler::Dag {
     match compile_to_dag(REACT_DAG, REACT_PATH) {
@@ -110,6 +135,31 @@ fn assert_effect_hook_arms_require_setup_ref(dag: &v3_compiler::Dag) {
             setup_ty.id, cross_decl.id,
             "{arm}.setup_ref must be `ReactCrossDeclRef`, got {:?}",
             setup_ty.name
+        );
+    }
+}
+
+fn assert_react_hook_site_roster_matches_pin(dag: &v3_compiler::Dag) {
+    let hook_site = dag
+        .declaration_by_name("ReactHookSite")
+        .expect("ReactHookSite should exist after compiling react.dag");
+    let TypeConnective::Disj { variants } = &hook_site.connective else {
+        panic!(
+            "ReactHookSite: expected coproduct (Disj), got {:?}",
+            hook_site.connective
+        );
+    };
+    assert_eq!(
+        variants.len(),
+        EXPECTED_REACT_HOOK_SITE_ARMS.len(),
+        "ReactHookSite must have exactly {} arms under the react@19.2.0 pin",
+        EXPECTED_REACT_HOOK_SITE_ARMS.len()
+    );
+    for arm in EXPECTED_REACT_HOOK_SITE_ARMS {
+        let n = variants.iter().filter(|v| v.label == *arm).count();
+        assert_eq!(
+            n, 1,
+            "ReactHookSite must declare exactly one `{arm}` arm (pin fidelity); matched {n}"
         );
     }
 }
@@ -326,6 +376,11 @@ fn v4_extdeps_react_dag_use_memo_dependencies_use_inline_dependencies_argument()
 #[test]
 fn v4_extdeps_react_dag_effect_hooks_require_setup_ref() {
     assert_effect_hook_arms_require_setup_ref(&react_extdeps_dag_or_panic());
+}
+
+#[test]
+fn v4_extdeps_react_dag_react_hook_site_roster_matches_pin() {
+    assert_react_hook_site_roster_matches_pin(&react_extdeps_dag_or_panic());
 }
 
 #[test]
