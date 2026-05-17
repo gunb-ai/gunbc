@@ -991,6 +991,23 @@ the Diagnostic shape on a fail-closed hollow alias.
   Scheduled by **extending T-4.6** — `extdeps/formats/sql.dag` joins the
   formats bundle as a 7th file. (Not a standalone task: SQL DDL is a
   format sibling of the other six; bundling matches how they are scoped.)
+
+  **Single SQL authority — `sql.dag` is a PORT, not a second authority**
+  (briansrls + codex blocking review, #3224, 2026-05-17). A v3 SQL
+  authority already exists: `dsl/extdeps/sql/migration.dag` models
+  migration-script shape + ordering constraints (`SqlMigrationOperationKind`,
+  `SqlMigrationStep`/`Script`/`EmissionTarget`), and `dsl/extdeps/
+  transports/sql.dag` carries the transport execution config. v4
+  `extdeps/formats/sql.dag` **ports / consumes / reconciles** that
+  existing SQL split — into the v4 checked-Shape-B-format shape — it is
+  **not** a freshly-authored parallel SQL model. Authoring a second
+  generated-SQL authority beside `migration.dag` violates INVARIANTS P2
+  (single authority) and extdeps fidelity (the spec already has a modeled
+  home). T-4.6's `sql.dag` brief states the port explicitly: every SQL
+  fact the v3 files already model is carried forward, not re-invented;
+  net-new modeling is only what the v3 contract did not cover, and the v3
+  files are retired into the v4 one (no dual representation left
+  standing).
 - **#9 — `LanguageModel` / `TargetModel` named type.** `00_compile.dag`
   prose (B2-OMNI) is parameterized over "declarative LanguageModels" but
   no `type LanguageModel` is declared. Disposition: T-6/T-10 either
