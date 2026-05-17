@@ -369,3 +369,140 @@ data ci_pipeline: CiPipeline = CiPipeline {
   ]
 }
 
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Well-formedness reasons — Symbol name-references owned by this file
+// (std/integer.dag reason-symbol precedent: `data x: Symbol = x`).
+data ci_duplicate_job_id: Symbol = ci_duplicate_job_id
+data ci_dangling_reference: Symbol = ci_dangling_reference
+data ci_dependency_cycle: Symbol = ci_dependency_cycle
+data ci_workflow_file: Symbol = ci_workflow_file
+
+
+// One Diagnostic shape for every malformed-pipeline reason: a malformed
+// pipeline has many valid repairs and the compiler will not pick one
+// (`AmbiguousIntent` — the no-engine STOP; integer.dag precedent). The
+// locus is the whole ci.dag authority file.
+fn ci_diagnostic(reason: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: Textual { file: ci_workflow_file, extent: WholeFile },
+    correction: Unavailable { reason: AmbiguousIntent }
+  }
+}
+
+
+// How many declared jobs carry `id` (the node.dag `name_occurrences`
+// idiom; `Symbol` equality is the one K-1 operation).
+fn ci_id_occurrences(id: Symbol, jobs: List<CiJob>) -> Int {
+  fold(jobs, init: 0, f: fn(acc, j) {
+    if j.id == id { acc + 1 } else { acc }
+  })
+}
+
+fn ci_symbol_resolves(s: Symbol, jobs: List<CiJob>) -> Bool {
+  fold(jobs, init: false, f: fn(acc, j) {
+    acc || (j.id == s)
+  })
+}
+
+fn ci_member(s: Symbol, ids: List<Symbol>) -> Bool {
+  fold(ids, init: false, f: fn(acc, x) {
+    acc || (x == s)
+  })
+}
+
+// All job ids distinct — the node.dag `all_names_distinct` precedent
+// (CHECK-enforced uniqueness, node.dag:513).
+fn ci_all_job_ids_unique(jobs: List<CiJob>) -> Bool {
+  fold(jobs, init: true, f: fn(acc, j) {
+    acc && (ci_id_occurrences(id: j.id, jobs: jobs) == 1)
+  })
+}
+
+// Every `needs` symbol resolves to a declared job id.
+fn ci_all_needs_resolve(jobs: List<CiJob>) -> Bool {
+  fold(jobs, init: true, f: fn(acc, j) {
+    acc && fold(j.needs, init: true, f: fn(acc2, n) {
+      acc2 && ci_symbol_resolves(s: n, jobs: jobs)
+    })
+  })
+}
+
+// Every gate's target job resolves to a declared job id.
+fn ci_all_gate_jobs_resolve(gates: List<CiGate>, jobs: List<CiJob>) -> Bool {
+  fold(gates, init: true, f: fn(acc, g) {
+    acc && ci_symbol_resolves(s: g.job, jobs: jobs)
+  })
+}
+
+// The `needs` list of the job named `id` (empty if absent — id
+// uniqueness/resolution are separately checked).
+fn ci_job_needs(id: Symbol, jobs: List<CiJob>) -> List<Symbol> {
+  fold(jobs, init: [], f: fn(acc, j) {
+    if j.id == id { j.needs } else { acc }
+  })
+}
+
+// Does job `id` still have a `needs` edge into `remaining`?
+fn ci_blocked(id: Symbol, remaining: List<Symbol>, jobs: List<CiJob>) -> Bool {
+  fold(ci_job_needs(id: id, jobs: jobs), init: false, f: fn(acc, n) {
+    acc || ci_member(s: n, ids: remaining)
+  })
+}
+
+// One Kahn pass: keep only ids still blocked (pointing into
+// `remaining`); sinks (no edge into remaining) are eliminated.
+fn ci_eliminate_pass(remaining: List<Symbol>, jobs: List<CiJob>) -> List<Symbol> {
+  fold(remaining, init: [], f: fn(acc, id) {
+    if ci_blocked(id: id, remaining: remaining, jobs: jobs) {
+      concat([id], acc)
+    } else {
+      acc
+    }
+  })
+}
+
+// Run `count(jobs)` elimination passes — the proven sufficient bound
+// for Kahn termination. Expressed as a `fold` over the finite `jobs`
+// list (A2 IMPLICIT — descent on a finite List; the element is an
+// unused bounded counter), so the whole check terminates (INVARIANTS
+// P4) and is never an unbounded walk.
+fn ci_kahn_fixpoint(jobs: List<CiJob>) -> List<Symbol> {
+  fold(jobs, init: map(jobs, fn(j) { j.id }), f: fn(remaining, counter) {
+    ci_eliminate_pass(remaining: remaining, jobs: jobs)
+  })
+}
+
+// Acyclic iff Kahn elimination empties the remaining set.
+fn ci_acyclic(jobs: List<CiJob>) -> Bool {
+  count(ci_kahn_fixpoint(jobs: jobs)) == 0
+}
+
+
+// ci_pipeline_well_formed — the EAGER fail-closed well-formedness
+// boundary (see the WELL-FORMEDNESS header block). Authored NOW; the
+// single authority a (deferred) `select_jobs` consumes. All three
+// intrinsic, statically-decidable properties are checked here; any
+// violation is one fail-closed `Diagnostic` (no fabrication, no
+// repair-guess — `AmbiguousIntent`).
+fn ci_pipeline_well_formed(p: CiPipeline) -> Outcome<CiPipeline> {
+  if ci_all_job_ids_unique(jobs: p.jobs) {
+    if ci_all_needs_resolve(jobs: p.jobs) {
+      if ci_all_gate_jobs_resolve(gates: p.gates, jobs: p.jobs) {
+        if ci_acyclic(jobs: p.jobs) {
+          Produced { value: p }
+        } else {
+          Rejected { diagnostic: ci_diagnostic(reason: ci_dependency_cycle) }
+        }
+      } else {
+        Rejected { diagnostic: ci_diagnostic(reason: ci_dangling_reference) }
+      }
+    } else {
+      Rejected { diagnostic: ci_diagnostic(reason: ci_dangling_reference) }
+    }
+  } else {
+    Rejected { diagnostic: ci_diagnostic(reason: ci_duplicate_job_id) }
+  }
+}
