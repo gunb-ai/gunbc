@@ -2,7 +2,7 @@
 // Scope: cardinality and descent-evidence substrate.
 // Anchor: https://en.wikipedia.org/wiki/Cardinality
 // Owns: DescentEvidence, RankingDimension, TerminationProof, Multiplicity.
-// Consumes: std node.
+// Consumes: std collection, std node.
 // Status: T-3 modeled.
 
 
