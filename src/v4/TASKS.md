@@ -1132,7 +1132,11 @@ The Phase-1 definition is worked out in that design doc: the layer model
 model, the seed as a *projection* `emit(snapshot, target, runtime)`),
 the comprehension boundary modeled as a frozen sub-model + a `footprint`
 fold + a `⊆`-`Witness` gate, the bootstrap circularity as a fixed point
-with a path-independent witness, and the one permanent physical axiom.
+whose bit-identical witness proves *reproduction* — not seed honesty;
+path-independence holds only for benign entry paths (§5) — and the **two**
+honest floors it bottoms out at: the permanent physical axiom and the
+seed-honesty axiom, the latter *discharged* by diverse double-compilation
+rather than dissolved (§6).
 **Phase 1's deliverable is the operator-ratified layer model in that
 doc**; the seed-reduction work (Phase 2+) is dispatched against it. A
 worker picking up T-32 Phase 1 reads `docs/design-bootstrap-fact-model.md`
