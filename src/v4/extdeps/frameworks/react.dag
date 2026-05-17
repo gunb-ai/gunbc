@@ -30,9 +30,12 @@
 //   - **No** standalone lifecycle / “effect trigger” coproduct: mount / update /
 //     unmount / cleanup-only obligations are read from `UseEffect` /
 //     `UseLayoutEffect` / `UseInsertionEffect` arm payloads
-//     (`ReactHookInlineDependenciesArgument`, `NoEffectBody` vs `EffectBody`,
+//     (`ReactHookInlineDependenciesArgument`, **required `setup_ref`** setup function +
 //     `NoCleanup` vs `CleanupBody`) per §4 dissolution receipt — INVARIANTS P1/P2
-//     (anti-pattern §11 #12).
+//     (anti-pattern §11 #12). **No** `NoEffectBody` call-site shorthand: react.dev
+//     requires the effect **setup** function; cleanup-only / unmount semantics are
+//     derived inside that setup’s return value in lowered `Node`, not as an absent
+//     setup at the hook call-site grammar.
 //   - `CustomHook` + R4‑Phase‑1.5 Practice‑4 canvas:
 //     docs/design-r4-phase-1-5-hookkind-custom-react-substrate-canvas.md
 //
@@ -46,7 +49,8 @@
 //     `v4.std.node` merge under M1(2.7) import no-op — bundle time aligns carriers.)
 //   - ReactPropsSite (props type + value sites — `ReactCrossDeclRef` edges)
 //   - ReactHostElement / ReactCompositeElement / ReactElement (host + composite +
-//     fragment + text partition)
+//     fragment + text partition; `createElement` lifts `key`/`ref` onto host/composite
+//     element objects)
 //   - ReactContextBinding (`createContext(defaultValue)` site — context object + default)
 //   - ReactHookSite — closed hook **call-site** coproduct under the react@19.2.0 pin
 //     + `CustomHook` (🟡 YELLOW Practice‑4 carrier per design-r4 §12 HookKind; canvas
