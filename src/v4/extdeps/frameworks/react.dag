@@ -217,10 +217,11 @@ type ReactModuleSurface
 //   3. Algebraic form — PARTIAL: per-hook algebras live std/ elsewhere.
 //   4. Dimensional — FAILS: exactly one hook arm per call site.
 //   5. Parameterized family — FAILS: not `F<X>` Practice-7 over a width set.
-// Closed **under the pin**: twenty-way `react@19.2.0` **call-site** partition —
-// nineteen stable exports from the hooks index + `use` API + `CustomHook` boundary
-// arm (P1 names track react.dev; effect lifecycle is carried ONLY on the three
-// effect arms).
+// Closed **under the pin**: **20-arm** `react@19.2.0` **call-site** partition — **19**
+// built-in hook APIs from the pinned react.dev surface (hooks index + `use(resource)`
+// as `UseResource`) + the **`CustomHook`** user-input boundary arm (= 20 `ReactHookSite`
+// variants below; `use` is **not** a twenty-first bucket). P1 names track react.dev;
+// effect lifecycle is carried ONLY on the three effect arms.
 type ReactHookSite
   = UseState { initial_ref: ReactCrossDeclRef }
   // Anchor: https://react.dev/reference/react/useReducer — `useReducer(reducer,
