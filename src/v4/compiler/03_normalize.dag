@@ -1,34 +1,10 @@
 // src/v4/compiler/03_normalize.dag
 //
-// Scope: stage 3a — ParseTree → NormalizedTree (C3 sugar dissolution).
+// Scope: Stage 3a — ParseTree→NormalizedTree; C3 sugar to Node.
+// Owns: NormalizedTree; SurfaceSugarKind; SugarClassification; normalize; stage Symbol reasons.
+// Consumes: std/node.dag, std/diagnostic.dag, compiler/02_parse.dag, extdeps/languages/dag.dag.
+// Status: scaffold — TASKS T-8.
 // Anchor: https://en.wikipedia.org/wiki/Abstract_syntax_tree
-//
-// C3: exactly {service, fn, type, operation} → `Node`; no 5th sugar (substrate STOP).
-//
-// Architecture (`00_compile` **core**): first `core` step after `ingest`
-// (`core = normalize ∘ resolve ∘ infer`). C3 sugar `Symbol`s are **single-mint**
-// in `extdeps/languages/dag.dag` (LanguageModel grammar-as-data); this stage
-// **consumes** that mint — `classify_sugar` compares **identity only**; no
-// parallel sugar authority (Codex #1 / Practice 5).
-//
-// Owns:
-//   - NormalizedTree type
-//   - normalize: ParseTree -> Result<NormalizedTree, Diagnostic>
-//   - dissolves the 4 sugar forms { service, fn, type, operation } -> Node
-//     tree (per MODELING.md composition layer); exactly 4, closed
-//
-// Consumes:
-//   - std/node.dag, std/diagnostic.dag
-//   - compiler/02_parse.dag: ParseTree
-//   - extdeps/languages/dag.dag: `dag_c3_surface_sugar_*` (single mint)
-//
-// Status: T-8 CP-1b (bright-seal-437); ParseTree seam = 02_parse authority.
-// GATED: verbatim TASKS T-8 narrative alignment with merged #3232 (operator HOLD);
-//        substance above is authoritative for this PR.
-// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
-// contract for the worker. Splitting this file requires explicit operator
-// ratification (substrate extension = stop signal).
-
 
 module v4.compiler.normalize
 
@@ -66,21 +42,13 @@ import v4.std.node {
 }
 
 
-// NormalizedTree is the post-C3 Node domain. Sugar is gone; the result is
-// directly consumable by 03_resolve and by the B1-CANON post-normalize
-// content-hash domain.
 type NormalizedTree = Node
 
 
-// Stage-owned Diagnostic reason symbols (K-1 opaque identities; not readable text).
-// C3 surface-sugar Atom identities live in `extdeps/languages/dag.dag`; this stage
-// imports them and compares by identity in `classify_sugar` — no parallel sugar mint.
 data normalize_reason_malformed_sugar: Symbol = normalize_reason_malformed_sugar
 data normalize_port_surface_sugar: Symbol = normalize_port_surface_sugar
 
 
-// SurfaceSugarKind is exactly C3's closed set. It is a local classifier for
-// the normalizer fold, not a substrate extension and not a fifth sugar hook.
 type SurfaceSugarKind
   = ServiceSugar
   | FnSugar
@@ -88,8 +56,6 @@ type SurfaceSugarKind
   | OperationSugar
 
 
-// Some parsed Nodes are sugar wrappers. Everything else is already in the
-// kernel domain and is recursively normalized as-is.
 type SugarClassification
   = Sugar { kind: SurfaceSugarKind }
   | NotSugar
@@ -265,7 +231,6 @@ fn normalize_node(n: Node) -> Outcome<Node> {
 }
 
 
-// Entry point for T-8 stage 3a — consumes v4.compiler.parse::ParseTree.
 fn normalize(parse_tree: ParseTree) -> Outcome<NormalizedTree> {
   match normalize_node(n: parse_tree) {
     Rejected { diagnostic: d } => Rejected { diagnostic: d }

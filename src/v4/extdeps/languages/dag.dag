@@ -1,26 +1,10 @@
 // src/v4/extdeps/languages/dag.dag
 //
-// Scope: Language #1 `LanguageModel` (B2-OMNI); same `Node` data for ingest + emit.
-// Anchor: L-2 — `docs/v3-spec.md` + v4 `STRUCTURE.md`, `TASKS.md` T-6/T-7,
-//         `compiler/01_tokenize.dag` / `02_parse.dag`, `DECISIONS.md` (B2-OMNI, PARSE-1, L-5).
-//
-// B2-OMNI: `.dag` never hardcoded in generic tokenizer/parser — `lex`/`grammar` `Node`
-// trees are sole lexical/syntactic authority. PARSE-1: bodiless `fn` = grammar data
-// (see `02_parse.dag`).
-//
-// Owns:
-//   - `DagLanguageModel` — `lex: Node` + `grammar: Node` (LexRules/Grammar roles)
-//   - Wave follow-on: production tables, C5 dispositions, resolver facts (Owns/ELSEWHERE)
-//
-// Consumes:
-//   - std/node.dag: Node
-//   - cross-ref: `docs/v3-spec.md`, `STRUCTURE.md`, `TASKS.md` T-4/T-6/T-7,
-//     `DECISIONS.md` L-5 + B2-OMNI + PARSE-1 + L-2
-//
-// Status: C1 admitted; scaffold per T-4 + T-6/T-7.
-// GATED: full TASKS bidirectional narrative with merged #3232 (operator HOLD).
-// Brief: see BRIEF_TEMPLATE.md; splitting = operator ratification.
-
+// Scope: gunbc `.dag` LanguageModel (lex + grammar Node; Shape A).
+// Owns: DagLanguageModel; dag_c3_surface_sugar_*; dag_wave1_*; dag_language_model_wave1_void.
+// Consumes: std/node.dag.
+// Status: scaffold — TASKS T-4/T-6/T-7.
+// Anchor: https://github.com/gunb-ai/gunbc/blob/main/docs/v3-spec.md
 
 module v4.extdeps.languages.dag
 
