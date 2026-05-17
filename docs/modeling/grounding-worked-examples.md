@@ -643,7 +643,8 @@ edition where the fact became fixed.)
 // (two's complement, C++20); width is the ONLY implementation-defined
 // fact, supplied by the target/ABI model (T-29).
 type CppInt = Compose<Int, TwosComplement, CppImplementationInt {
-  width: Nat
+  width:       Nat,
+  width_proof: Witness< width >= 16 >   // C++ guarantees int is >= 16 bits
 }>
 
 // MEANING — integer value within the range fixed by width under
