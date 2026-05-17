@@ -20,11 +20,11 @@ pub mod complexity_lattice;
 pub mod dag;
 pub mod diagnostics;
 mod enforced_lens_application;
-// T-30 Practice-8 harness mirror — not a supported public API surface (same posture as
-// `enforced_lens_application` helpers above): `pub` avoids `dead_code` under `-D warnings`
-// while nothing in-crate calls it yet; `#[doc(hidden)]` keeps it out of rustdoc.
-#[doc(hidden)]
-pub mod v4_hollow_alias_gate;
+// T-30 **P5(b)** interim Practice-8 mirror — **private** `mod` (not crate public API; INVARIANTS
+// P2 / Practice 6). `dead_code` is suppressed **only** inside `v4_hollow_alias_gate.rs` until a
+// production consumer exists — dissolution when the generated `.dag` gate is authority
+// (`INVARIANTS.md` §P5(b)).
+mod v4_hollow_alias_gate;
 pub use enforced_lens_application::check_enforced_lens_applications;
 pub use enforced_lens_application::parallelism_iteration_opt_in_enforcement_violates;
 // Gate #58 integration receipts (`tests/integration/t_gate_58_apply_lens_self_application_test.rs`)

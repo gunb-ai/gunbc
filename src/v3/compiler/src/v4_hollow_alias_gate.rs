@@ -43,6 +43,10 @@
 //! substrate atoms (`src/v4/STRUCTURE.md` §Kernel-ambient types) — are legitimately atomic.
 //! [`ModeledSubject::KernelAmbientAtom`] short-circuits before the three-part `AND`.
 
+#![cfg_attr(not(test), allow(dead_code))]
+// T-30 P5(b): no in-crate production consumer yet — `allow(dead_code)` dissolves with the
+// generated `.dag` gate per `INVARIANTS.md` §P5(b) on this path.
+
 // Practice 4 (coproduct checkpoint, `docs/modeling-discipline.md` §4):
 // 🟢 GREEN — terminal two-variant harness mirror of `std/diagnostic.dag` `Outcome<Bool>`
 // pass/fail tokens (`Produced` / `Rejected`); no third semantic axis at this boundary.

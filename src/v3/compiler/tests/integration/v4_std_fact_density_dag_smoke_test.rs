@@ -4,9 +4,9 @@
 //! for the nominal `SourceSpecReadFact` carrier only (`compile_to_dag`, empty diagnostics) — it
 //! does **not** claim a **generated** substrate consumer for that type (INVARIANTS §P2: declaration
 //! without generated consumer = staging). The Practice-8 hollow predicate’s authority remains the
-//! handwritten mirror `src/v3/compiler/src/v4_hollow_alias_gate.rs`
-//! (`#[doc(hidden)] pub mod` in `v3_compiler` — reachable for `dead_code` policy, not a
-//! supported stable import path) until the generated `.dag` checker replaces it (`INVARIANTS.md`
+//! handwritten mirror `src/v3/compiler/src/v4_hollow_alias_gate.rs` (**private** `mod` in
+//! `v3_compiler`, not `pub` API; `#[cfg_attr(not(test), allow(dead_code))]` in that file until a
+//! production consumer exists) until the generated `.dag` checker replaces it (`INVARIANTS.md`
 //! §P5(b)
 //! dissolution on that path). **Interim-floor authority** is
 //! `docs/modeling-discipline.md` Practice 8 (landed on `main`: **#3226** `77b9e7d72`;

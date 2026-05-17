@@ -31,7 +31,7 @@ src/v4/
     collection.dag       # bounded containers
     verification.dag     # TestClaim schema (imported from v3)
     report.dag           # advisory carrier (NOT fail-closed Diagnostic); used by synthesis lens
-    fact_density.dag     # P2-staging only (INVARIANTS §P2): T-30 `compile_to_dag` parse witness — **not** a landed std primitive until a **generated** `.dag` consumer reads `SourceSpecReadFact`; hollow-alias authority today is the Rust mirror (`v3_compiler` `v4_hollow_alias_gate`). See `DECISIONS.md` T-30 encoding note + `TASKS.md` T-30.
+    fact_density.dag     # P2-staging only (INVARIANTS §P2): T-30 `compile_to_dag` parse witness — **not** a landed std primitive until a **generated** `.dag` consumer reads `SourceSpecReadFact`; hollow-alias authority today is the private Rust mirror module `v4_hollow_alias_gate` in `v3-compiler`. See `DECISIONS.md` T-30 encoding note + `TASKS.md` T-30.
 
   extdeps/               # external system contracts (21 files)
     languages/           # language models (direction-agnostic — emit AND ingest)
