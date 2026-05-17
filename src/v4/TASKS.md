@@ -22,7 +22,7 @@ worker.
 ### Critical path — sets time-to-done
 
 ```
-T-1 → T-2 → T-3 → T-6 → T-7 → T-8 → T-9 → T-10 → T-11 / T-16 → T-15
+T-1 → T-2 → T-3 → T-6 → T-7 → T-8 → T-9 → T-10 → T-11 → T-16 → T-15
 ```
 
 `T-1 → T-2 → T-3` is serial and unavoidable — the substrate foundation.
