@@ -17,11 +17,12 @@
 //   - ProcessState = Running | Terminated(TerminatedProcessState)
 //   - Termination = Exited(ExitCode) | Signaled(SignalNum)
 //     (the terminal status nested inside ProcessState — the ONLY two ways
-//     a process ends per POSIX. wait/capture return an advanced Process
-//     whose state carries THIS, never a bare ExitCode: a signal-killed
-//     process has no exit code; fabricating one (or flattening signal
-//     death into a Diagnostic) loses the SignalNum and makes an illegal
-//     state representable. `Running` is structurally excluded from
+//     a process ends per POSIX. wait/capture return an advanced
+//     TerminatedProcess whose state carries THIS, never a bare ExitCode:
+//     a signal-killed process has no exit code; fabricating one (or
+//     flattening signal death into a Diagnostic) loses the SignalNum and
+//     makes an illegal state representable. `Running` is structurally
+//     excluded from
 //     Termination — wait cannot return a non-terminal state.)
 //   - ExitCode = NonNegativeInt (per POSIX — 0 success, 1-255 conventional)
 //   - SignalNum (per POSIX signal table)
