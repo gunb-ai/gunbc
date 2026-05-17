@@ -1,30 +1,27 @@
 // src/v4/std/fact_density.dag
 //
-// Scope: T-30 — structural fact-density / hollow-alias gate (operator 2026-05-17,
-//        DECISIONS.md D2 reversal, TASKS.md T-30).
-// Anchor: docs/modeling/grounding-worked-examples.md + docs/modeling-discipline.md
-//        + INVARIANTS P1.
+// Scope: T-30 — structural hollow-alias gate substrate (TASKS.md T-30;
+//        DECISIONS.md D2-REV / fact-bundle modeling).
+// Anchor: docs/modeling-discipline.md **Practice 8** — *Fact-bundle modeling*
+//        + *Interim floor: the hollow-alias discriminator* (authoritative
+//        text on PR **#3226** until merged; **sync** if Practice 8 shifts
+//        during review). Companion: docs/modeling/grounding-worked-examples.md
+//        (carrier + meaning as `Node`). INVARIANTS P1 / P2.
 //
 // Owns:
-//   - SourceSpecReadFact — nominal witness carrier (see implementation split).
+//   - SourceSpecReadFact — witness that a declaration **reads** structured
+//     spec content (the `Node` subtree is the decoded spec-grounded body;
+//     not a numeric carrier).
 //
 // Consumes:
-//   - std/nat.dag: Nat (nominal staging carrier — see NOTE below).
+//   - std/node.dag: Node (recursive substrate root — illegal “any Nat is a
+//     witness” states are not representable here).
 //
-// Implementation split (M1(2.8) / standalone `compile_to_dag`):
-//   The mechanical **Node → Outcome** gate is mirrored in Rust as
-//   `v3_compiler::v4_hollow_alias_gate` (hermetic unit tests there).
-//
-// NOTE — nominal staging (resolver edge, not semantic content):
-//   The intended witness is `SourceSpecRead { body: Node }` (grounding-worked-
-//   examples: carrier + **meaning** as `Node`). Importing `v4.std.node` and
-//   naming `Node` in this module's top-level type position currently surfaces
-//   `unresolved type identifier Node` under standalone `compile_to_dag` (same
-//   staging class as other v4 sum-payload edges). Until that path lands, this
-//   file carries a **distinct nominal alias** to `Nat` so the module stays a
-//   first-class `v4.std.*` citizen in STRUCTURE.md + CI smoke. **Do not** read
-//   arithmetic meaning into `Nat` here — it is only a nominal marker; migrate
-//   to the `Node` payload sum when lowering accepts it.
+// Implementation split (M1(2.8)):
+//   The mechanical **declaration-tree → Outcome** check is mirrored in Rust
+//   as `v3_compiler::v4_hollow_alias_gate` (hermetic unit tests there),
+//   projecting Practice 8’s three-part discriminator until the gate ships in
+//   generated `.dag` form (T-30 acceptance).
 //
 // Status: T-30 modeled (warm-dove-632).
 
@@ -32,7 +29,9 @@
 module v4.std.fact_density
 
 
-import v4.std.nat { Nat }
+import v4.std.node { Node }
 
 
-type SourceSpecReadFact = Nat
+type SourceSpecReadFact {
+  body: Node
+}

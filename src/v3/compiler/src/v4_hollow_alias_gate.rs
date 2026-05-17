@@ -1,18 +1,32 @@
-//! T-30 — hollow-alias / fact-density structural gate (bootstrap mirror).
+//! T-30 — hollow-alias structural gate (bootstrap mirror).
 //!
-//! Substrate authority for the **nominal witness type** lives in
-//! `src/v4/std/fact_density.dag` (`SourceSpecReadFact`, currently staged as a
-//! nominal alias per that file's resolver NOTE — migrate to `Node` payload).
-//! M1(2.8) currently rejects block-bodied `.dag` functions that walk `Node` with `match` in the
-//! user declaration range (`lower.rs` — `reject_user_unparsed_scaffolds`).
-//! This module is the hermetic **pure** mirror of the intended gate until
-//! those bodies can ship in `.dag` form.
+//! **Spec:** `docs/modeling-discipline.md` **Practice 8** — *Interim floor: the
+//! hollow-alias discriminator* (PR **#3226** until merged; **sync** if the
+//! discriminator text moves during review). This module is **not** the integer
+//! width/signedness worked example; that is one motivating instance only
+//! (manager brief T-30 / CORE).
 //!
-//! Contract (lockstep with `fact_density.dag` header):
-//! - **Hollow:** a type `Instantiation` spine with exactly two **bare Atom**
-//!   positional children and **no** `SourceSpecReadFact` witness anywhere in
-//!   that subtree (D2 bare `type LangX = StdY` anti-pattern).
-//! - **Pass:** anything else, including trees that carry a witness root.
+//! Substrate witness carrier: `src/v4/std/fact_density.dag` (`SourceSpecReadFact
+//! { body: Node }` — carrier + meaning per `docs/modeling/grounding-worked-examples.md`).
+//! M1(2.8) rejects block-bodied `.dag` functions that walk `Node` with `match` in the
+//! user declaration range (`lower.rs` — `reject_user_unparsed_scaffolds`), so the
+//! gate logic is mirrored here as a **pure** harness until those bodies ship in `.dag`.
+//!
+//! ## Structural projection of Practice 8 (three-part + kernel exemption)
+//!
+//! A declaration site is **hollow** iff **all** of the following hold on the
+//! harness projection (fail closed ⇒ [`HollowAliasGateOutcome::Rejected`]):
+//!
+//! 1. **Bare alias / no-own-field wrapper** — `bare_alias_or_empty_wrapper`.
+//! 2. **External spec primitive** — the declaration claims to model a subject
+//!    that a language / format / framework **spec** names and states facts about
+//!    ([`ModeledSubject::ExternalSpecPrimitive`]).
+//! 3. **No coincidence-evidence** — no cited proof that reuse is licensed in the
+//!    DECISIONS.md sense ([`HollowDeclarationSite::coincidence_evidence`] is false).
+//!
+//! **Kernel-ambient exemption** (Practice 8 “Exempt”; `src/v4/STRUCTURE.md` §Kernel-ambient
+//! types): [`ModeledSubject::KernelAmbientAtom`] never yields a hollow site (aliases onto
+//! those terminals are structurally exempt).
 
 /// Fail-closed outcome analogue to `std/diagnostic.dag`'s `Outcome<Bool>`
 /// success token (`Produced { value: true }` in the `.dag` spelling).
@@ -22,21 +36,35 @@ pub enum HollowAliasGateOutcome {
     Rejected,
 }
 
-/// Classifier for the **minimal** structural slice the T-30 proxy inspects.
-///
-/// This is not the full v4 `Node` substrate; it is an isomorphic test /
-/// integration harness carrier. Mapping from real `Node` trees is a T-1 /
-/// normalize concern.
+/// Classification of **what** the declaration models for condition (2).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ModeledSubject {
+    /// Kernel-ambient atom (`String`, `Int`, `Bool`, `Char`, `List`, `Map`) — exempt.
+    KernelAmbientAtom,
+    /// Internal `std` / compiler substrate — not an external spec primitive for (2).
+    InternalStdCarrier,
+    /// External spec names a primitive with its own facts (Practice 8 (2)).
+    ExternalSpecPrimitive,
+}
+
+/// One declaration site’s Practice-8 predicate inputs (structural carrier).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HollowDeclarationSite {
+    /// Condition (1): bare `type X = Y` or single-field wrapper that adds no own field.
+    pub bare_alias_or_empty_wrapper: bool,
+    /// Condition (2): what the declaration claims to model.
+    pub modeled_subject: ModeledSubject,
+    /// Condition (3): cited coincidence / grounding evidence is present.
+    pub coincidence_evidence: bool,
+}
+
+/// Classifier for the **minimal** tree the T-30 harness walks.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HollowGateKind {
-    /// `TypeNode` + `Atom`.
-    TypeAtom,
-    /// `TypeNode` + `Instantiation` (children are positional targets in order).
-    TypeInstantiation,
-    /// A subtree rooted at a `SourceSpecReadFact` / `SourceSpecRead` Disj witness.
-    SourceSpecReadWitnessRoot,
-    /// Any other type or computation node — does not participate in the proxy spine.
-    Other,
+    /// A type/alias declaration site carrying Practice-8 inputs.
+    Declaration(HollowDeclarationSite),
+    /// Transparent grouping node (module, section) — recurse into [`HollowGateNode::children`].
+    Group,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -45,7 +73,7 @@ pub struct HollowGateNode {
     pub children: Vec<HollowGateNode>,
 }
 
-/// Pure gate entry — the T-30 `Node → Outcome` contract (test / harness IR).
+/// Pure gate entry — Practice 8 structural `Node` analogue (test / harness IR).
 pub fn hollow_alias_gate(root: &HollowGateNode) -> HollowAliasGateOutcome {
     if hollow_alias_violation_present(root) {
         HollowAliasGateOutcome::Rejected
@@ -55,99 +83,110 @@ pub fn hollow_alias_gate(root: &HollowGateNode) -> HollowAliasGateOutcome {
 }
 
 fn hollow_alias_violation_present(n: &HollowGateNode) -> bool {
-    if is_hollow_instantiation_candidate(n) {
-        return true;
+    if let HollowGateKind::Declaration(site) = &n.kind {
+        if declaration_site_is_hollow(site) {
+            return true;
+        }
     }
     n.children.iter().any(hollow_alias_violation_present)
 }
 
-fn is_hollow_instantiation_candidate(n: &HollowGateNode) -> bool {
-    if n.kind != HollowGateKind::TypeInstantiation {
+fn declaration_site_is_hollow(site: &HollowDeclarationSite) -> bool {
+    if matches!(site.modeled_subject, ModeledSubject::KernelAmbientAtom) {
         return false;
     }
-    if n.children.len() != 2 {
-        return false;
-    }
-    if !n
-        .children
-        .iter()
-        .all(|c| c.kind == HollowGateKind::TypeAtom)
-    {
-        return false;
-    }
-    if subtree_contains_spec_read_fact(n) {
-        return false;
-    }
-    true
-}
-
-fn subtree_contains_spec_read_fact(n: &HollowGateNode) -> bool {
-    if node_roots_source_spec_read_fact(n) {
-        return true;
-    }
-    n.children.iter().any(subtree_contains_spec_read_fact)
-}
-
-fn node_roots_source_spec_read_fact(n: &HollowGateNode) -> bool {
-    n.kind == HollowGateKind::SourceSpecReadWitnessRoot
+    site.bare_alias_or_empty_wrapper
+        && matches!(site.modeled_subject, ModeledSubject::ExternalSpecPrimitive)
+        && !site.coincidence_evidence
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn atom() -> HollowGateNode {
+    fn decl(site: HollowDeclarationSite) -> HollowGateNode {
         HollowGateNode {
-            kind: HollowGateKind::TypeAtom,
+            kind: HollowGateKind::Declaration(site),
             children: Vec::new(),
         }
     }
 
-    fn inst(children: Vec<HollowGateNode>) -> HollowGateNode {
+    fn group(children: Vec<HollowGateNode>) -> HollowGateNode {
         HollowGateNode {
-            kind: HollowGateKind::TypeInstantiation,
+            kind: HollowGateKind::Group,
             children,
         }
     }
 
-    fn witness() -> HollowGateNode {
-        HollowGateNode {
-            kind: HollowGateKind::SourceSpecReadWitnessRoot,
-            children: vec![atom()],
+    fn site(
+        bare: bool,
+        subj: ModeledSubject,
+        evidence: bool,
+    ) -> HollowDeclarationSite {
+        HollowDeclarationSite {
+            bare_alias_or_empty_wrapper: bare,
+            modeled_subject: subj,
+            coincidence_evidence: evidence,
         }
     }
 
     #[test]
-    fn rejects_two_atom_instantiation_without_witness() {
-        let hollow = inst(vec![atom(), atom()]);
+    fn rejects_bare_external_primitive_without_evidence() {
+        let hollow = decl(site(
+            true,
+            ModeledSubject::ExternalSpecPrimitive,
+            false,
+        ));
         assert_eq!(hollow_alias_gate(&hollow), HollowAliasGateOutcome::Rejected);
     }
 
     #[test]
-    fn accepts_when_subtree_contains_witness() {
-        let ok = inst(vec![atom(), witness()]);
+    fn accepts_when_not_bare_alias() {
+        let ok = decl(site(
+            false,
+            ModeledSubject::ExternalSpecPrimitive,
+            false,
+        ));
         assert_eq!(hollow_alias_gate(&ok), HollowAliasGateOutcome::Produced);
     }
 
     #[test]
-    fn accepts_instantiation_when_inner_spine_is_not_hollow() {
-        let inner_ok = inst(vec![atom(), witness()]);
-        let ok = inst(vec![atom(), inner_ok]);
+    fn accepts_bare_external_with_coincidence_evidence() {
+        let ok = decl(site(
+            true,
+            ModeledSubject::ExternalSpecPrimitive,
+            true,
+        ));
         assert_eq!(hollow_alias_gate(&ok), HollowAliasGateOutcome::Produced);
     }
 
     #[test]
-    fn accepts_atom_only() {
-        let ok = atom();
+    fn accepts_bare_kernel_ambient_without_evidence() {
+        let ok = decl(site(
+            true,
+            ModeledSubject::KernelAmbientAtom,
+            false,
+        ));
         assert_eq!(hollow_alias_gate(&ok), HollowAliasGateOutcome::Produced);
     }
 
     #[test]
-    fn rejects_nested_hollow_under_wrapper() {
-        let root = HollowGateNode {
-            kind: HollowGateKind::Other,
-            children: vec![inst(vec![atom(), atom()])],
-        };
+    fn accepts_bare_internal_std_without_evidence() {
+        let ok = decl(site(
+            true,
+            ModeledSubject::InternalStdCarrier,
+            false,
+        ));
+        assert_eq!(hollow_alias_gate(&ok), HollowAliasGateOutcome::Produced);
+    }
+
+    #[test]
+    fn rejects_nested_hollow_under_group() {
+        let root = group(vec![decl(site(
+            true,
+            ModeledSubject::ExternalSpecPrimitive,
+            false,
+        ))]);
         assert_eq!(hollow_alias_gate(&root), HollowAliasGateOutcome::Rejected);
     }
 }
