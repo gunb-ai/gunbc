@@ -355,20 +355,25 @@ Operator-stated principle (2026-05-17), governing the reseed:
   convention-level until a structural/API gate exists. Phase 1 ships that
   documented bad-example: the convention-tier enforcement that the
   `docs/modeling-discipline.md` api-review practice checks. The stronger
-  *structural* tier — a generated fact-density / hollow-alias gate — is
-  explicitly deferred to and owned by Phase 2 of this reseed plan; the
-  documented example is the floor, not the ceiling.
-  Phase 1's convention tier is **not** the tier that failed. D2 slipped
-  through *two* failures (see root cause above): an **inverted** `P1:42`
-  — misread as *licensing* the alias — and the **absence** of any
-  bad-example for review to fail against. Phase 1 corrects both: it
-  re-points `P1:42` and adds the bad-example, so api-review now has a
-  named anti-pattern it never had. That is net-new enforcement, not a
-  repeat of a failed convention. The structural fact-density gate
-  (Phase 2) is the *additional* belt-and-suspenders and is a **close-gate
-  requirement** of the reseed — not an optional follow-up; the reseed is
-  not "done" until it lands. Sequencing it to Phase 2 reflects that it is
-  a larger build (a generated checker), not a softening of intent.
+  *structural* tier — a generated **fact-density / hollow-alias gate** —
+  is **its own foundation task, `T-30`** (a sibling of P1-KEYSTONE, NOT
+  folded into `docs/modeling-discipline.md`), and it is a **hard
+  prerequisite of T-4**: the per-language fact-bundle rework does not
+  begin until the structural gate exists.
+  This resolves a real gap by a dependency edge, not a phase argument. D2
+  slipped through *two* failures (see root cause above): an **inverted**
+  `P1:42` — misread as *licensing* the alias — and the **absence** of any
+  bad-example for review to fail against. Phase 1 corrects both — it
+  re-points `P1:42` and adds the bad-example, net-new versus the pre-D2
+  state. But a documented bad-example is *convention* enforcement, and
+  convention is exactly what let D2 through; reworking every per-language
+  file under convention-tier-only enforcement would re-expose that
+  surface. So the structural gate is **not** a loose follow-up and **not**
+  sequenced by phase number — it is `T-30`, with a hard edge `T-30 → T-4`,
+  landing *before* the per-language reseed by construction. The documented
+  bad-example is the **interim floor only**: it holds the line until
+  `T-30` lands; it is explicitly *not* the enforcement the per-language
+  rework runs under.
   Reverse the D2/D4 rows. Rewrite the
   `TASKS.md` T-4 authoring contract.
 - **Phase 2 — rework the entire T-## program** around fact-bundle
@@ -378,9 +383,9 @@ Operator-stated principle (2026-05-17), governing the reseed:
   the SPICE worked example, where a node voltage is an exact real value
   carrying a physical quantity (volts) that the approximate `f64` carrier
   cannot ground without declared loss. (Rational is at most a narrower
-  inhabitant of the exact-real carrier, not the carrier itself.) Phase 2
-  also owns the structural fact-density / hollow-alias gate deferred from
-  Phase 1.
+  inhabitant of the exact-real carrier, not the carrier itself.) The
+  structural fact-density / hollow-alias gate is **not** a Phase-2 item —
+  it is `T-30`, a hard prerequisite of T-4 (see Phase 1).
 - **Phase 3 — execution.** Per-task / per-language / per-compiler-layer
   modeling rework, Rust exemplar first, under the Phase-1 rubric.
 
