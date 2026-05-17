@@ -1,28 +1,10 @@
 // src/v4/std/fact_density.dag
-//
-// Scope: T-30 hollow-alias / fact-density substrate (TASKS.md T-30; DECISIONS.md D2-REV).
-// Anchor: INVARIANTS.md P1/P2; docs/modeling-discipline.md Practice 8 (PR #3226 until merged — sync on shift).
-//
-// Owns:
-//   - SourceSpecReadFact — body-less nominal witness for spec-read anchoring (not a numeric alias).
-//
+// Scope: T-30 hollow-alias gate substrate.
+// Owns: SourceSpecReadFact
+// Anchor: https://github.com/gunb-ai/gunbc/blob/main/INVARIANTS.md
 // Consumes:
-//   - (none — standalone compile_to_dag smoke stays hermetic.)
-//
-// Status: T-30 substrate modeled.
-// Brief: see BRIEF_TEMPLATE.md; splitting requires operator ratification (substrate extension = stop signal).
-
+// Status: drafted.
 
 module v4.std.fact_density
-
-
-// ─────────────────────────────────────────────────────────────────────
-// Modeling notes (read before validating against the anchor)
-//
-// Practice 8 hollow-alias gate (PR #3226): structural mirror `v3_compiler::v4_hollow_alias_gate`
-// until generated `.dag` checker. `Node` payload deferred — prepending `v4/std/node.dag` into
-// `compile_to_dag`'s v3 bootstrap collides on top-level names (`Behavior`, `Path`, …).
-// Dissolution: v4-isolated bootstrap or resolver bridge; add `body: Node` in that same change.
-
 
 type SourceSpecReadFact
