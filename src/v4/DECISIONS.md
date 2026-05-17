@@ -369,12 +369,14 @@ the in-file `// <emoji> coproduct dissolution — DECISIONS.md <ID>` tag
 | **T-4.6-P4-OpenApiStatusDigit** | `OpenApiStatusDigit` | 🟢 | Decimal digit spine for explicit HTTP status codes (0–9). |
 | **T-4.6-P4-OpenApiStatusHundreds** | `OpenApiStatusHundreds` | 🟢 | Hundreds class spine (`1xx`…`5xx`) for explicit status codes. |
 | **T-4.6-P4-OpenApiResponseKeyWildcardKind** | `OpenApiResponseKeyWildcardKind` | 🟢 | OAS wildcard response key buckets `1XX`…`5XX` (uppercase `X` wire discipline in model). |
-| **T-4.6-P4-OpenApiResponseKey** | `OpenApiResponseKey` | 🟡 | `default` / explicit / wildcard key forms + overlaps per Responses Object (**T-4.6-OAS**). **`OpenApiResponses.by_status`** is a **`Map`**: duplicate response keys are **not** structurally representable. |
+| **T-4.6-P4-OpenApiResponseKey** | `OpenApiResponseKey` | 🟡 | `default` / explicit / wildcard key forms + overlaps per Responses Object (**T-4.6-OAS**). **`OpenApiResponses`:** `Map` forbids duplicates **within** `additional_by_status`; **`primary_response.status_key` ∉ keys(`additional_by_status`)** is **parse/Diagnostic** (T-4 brief). |
 | **T-4.6-P4-OpenApiPathsSlot** | `OpenApiPathsSlot` | 🟡 | Root `paths` present vs absent channel (**T-4.6-OAS**); empty vs missing distinguished structurally. |
 | **T-4.6-P4-OpenApiComponentsSchemasSlot** | `OpenApiComponentsSchemasSlot` | 🟡 | `components.schemas` map present vs absent; schema registry churn (**T-4.6-OAS**). |
 | **T-4.6-P4-OpenApiComponentsPathItemsSlot** | `OpenApiComponentsPathItemsSlot` | 🟡 | OAS 3.1 **`components.pathItems`** present vs absent; values are **T-4.6-P4-OpenApiPathItemOrReference** (**T-4.6-OAS**). |
 | **T-4.6-P4-OpenApiComponentsSlot** | `OpenApiComponentsSlot` | 🟡 | `components` subtree present vs absent at document root coordinate (**T-4.6-OAS**). |
 | **T-4.6-P4-OpenApiWebhooksSlot** | `OpenApiWebhooksSlot` | 🟡 | `webhooks` map present vs absent at document root coordinate (**T-4.6-OAS**). |
+| **T-4.6-P4-OpenApiDocumentRoot** | `OpenApiDocumentRoot` | 🟡 | OAS §3.1: document **MUST** expose at least one of **`paths`**, **`components`**, or **`webhooks`** — encoded as three mutually exclusive obligation-first carriers + optional sibling slots (**T-4.6-OAS**). |
+| **T-4.6-P4-OpenApiSchemaOasMemberKey** | `OpenApiSchemaOasMemberKey` | 🟡 | OAS Schema Object fixed members **outside** the **`core: JsonSchema`** authority carried here — extend sum + row when OAS adds a modeled OAS-only schema field (**T-4.6-OAS**). |
 | **T-4.6-P4-OpenApiOpenapiField3_1** | `OpenApiOpenapiField3_1` | 🟢 | OAS `openapi` field version token for this slice: singleton `OpenApi310` (= `3.1.0` wire). YELLOW if OAS normative vocabulary for this anchor gains a token this model must enumerate — extend the sum + amend this row (same change-set). |
 
 `JsonSchemaAdditionalKeywordKey` uses row **T-4.6-JSK** (same coproduct).

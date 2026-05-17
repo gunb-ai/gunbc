@@ -1,51 +1,27 @@
 // src/v4/extdeps/formats/csv.dag
 // Scope: RFC 4180 CSV; Lane C format slice (TASKS.md T-4.6).
-// Owns: CsvDialect, CsvDocument, CsvListMatching, CsvListMatchingForWidth, CsvRow, CsvStrSpine, CsvZRowSpine, CsvRfc4180CommaFieldSep, CsvRfc4180DoubleQuoteEnclosure, CsvRfc4180EscapeDoubledQuote, CsvRfc4180RecordLineBreak, CsvRfc4180LastRecordTrailingDelimiterOptional, CsvRfc4180HeaderRowOptional, CsvRfc4180NewlineInsideQuotedFieldOnly, CsvRfc4180SpacesOutsideQuotesSignificant, CsvRfc4180EmptyFieldBetweenCommas, CsvRfc4180Utf8Charset, CsvRfc4180RegisteredTextCsvMime
+// Owns: CsvDialect, CsvHeaderPresence, CsvRow, CsvDocument, CsvRfc4180CommaFieldSep, CsvRfc4180DoubleQuoteEnclosure, CsvRfc4180EscapeDoubledQuote, CsvRfc4180RecordLineBreak, CsvRfc4180LastRecordTrailingDelimiterOptional, CsvRfc4180HeaderRowOptional, CsvRfc4180NewlineInsideQuotedFieldOnly, CsvRfc4180SpacesOutsideQuotesSignificant, CsvRfc4180EmptyFieldBetweenCommas, CsvRfc4180Utf8Charset, CsvRfc4180RegisteredTextCsvMime
 // Consumes: std/node.dag, std/diagnostic.dag, std/collection.dag, std/text.dag
 // Status: scaffold — TASKS.md T-4.6
 // Anchor: https://datatracker.ietf.org/doc/html/rfc4180
 
 module v4.extdeps.formats.csv
 
+
+import v4.std.collection { List }
+
 type CsvDialect
   = CsvDialectRfc4180 {}
+
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-CsvHeaderPresence
+type CsvHeaderPresence
+  = HeaderPresent { row: CsvRow }
+  | HeaderAbsent
 
 // 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-CsvRow
 type CsvRow
   = CsvRowZ
   | CsvRowS { field: String, tail: CsvRow }
-
-// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-CsvZRowSpine
-type CsvZRowSpine
-  = CsvZRS0 {}
-  | CsvZRSS { below: CsvZRowSpine }
-
-// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-CsvStrSpine
-type CsvStrSpine
-  = CsvStrZ {}
-  | CsvStrS { cell: String, tail: CsvStrSpine }
-
-// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-CsvListMatchingForWidth
-type CsvListMatchingForWidth
-  = CsvLFWZ { rows: CsvZRowSpine }
-  | CsvLFWS {
-      template_tail: CsvRow,
-      leading_column: CsvStrSpine,
-      remainder: CsvListMatchingForWidth,
-    }
-
-// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-CsvListMatching
-type CsvListMatching
-  = CsvLMZ { rows: CsvZRowSpine }
-  | CsvLMS {
-      width_and_first_row: CsvRow,
-      other_rows: CsvListMatchingForWidth,
-    }
-
-// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-CsvDocument
-type CsvDocument
-  = CsvDocNoHeader { records: CsvListMatching }
-  | CsvDocWithHeader { header: CsvRow, records: CsvListMatchingForWidth }
 
 type CsvRfc4180CommaFieldSep {
   fields_separated_by_comma_u002c: Bool,
@@ -92,4 +68,9 @@ type CsvRfc4180Utf8Charset {
 
 type CsvRfc4180RegisteredTextCsvMime {
   media_type_text_csv_registered_semantics: Bool,
+}
+
+type CsvDocument {
+  header: CsvHeaderPresence,
+  records: List<CsvRow>,
 }
