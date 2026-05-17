@@ -455,8 +455,10 @@ language/format targets fan out against the same template.
 ### T-30 — `std/fact_density.dag` encoding note (2026-05-17)
 
 - **Header discipline (PR #3227):** the on-disk file keeps a terse machine
-  header only (path line, then `Scope:` / `Owns:` / `Consumes:` /
-  `Status:`, plus at most one `Anchor:` URL line per owned carrier).
+  header only: path line; then **contiguous** `Scope:` / `Owns:` /
+  `Consumes:` / `Status:` (Practice 9 four-line header); **then** at most
+  one `Anchor:` URL line per owned carrier (anchor **after** that block,
+  not between `Owns:` and `Consumes:`).
   Process receipts, Practice pointers, and bootstrap-collision narrative
   live in commit messages, this ledger, or `TASKS.md` — not in the `.dag`
   comments.

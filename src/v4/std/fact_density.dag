@@ -1,40 +1,10 @@
 // src/v4/std/fact_density.dag
 // Scope: T-30 hollow-alias gate substrate.
 // Owns: SourceSpecReadFact
-// Anchor: https://github.com/gunb-ai/gunbc/blob/main/INVARIANTS.md
 // Consumes:
 // Status: drafted.
+// Anchor: https://github.com/gunb-ai/gunbc/blob/main/INVARIANTS.md
 
 module v4.std.fact_density
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 type SourceSpecReadFact
