@@ -73,32 +73,17 @@ type OpenApiHttpMethod
   | OpenApiTrace
 
 
-// ─────────────────────────────────────────────────────────────────────
-// OpenApiOptionalString — optional descriptive string fields (summary,
-// description slices) without using bare `Option<String>` (diagnostic.dag
-// P2 discipline class — prefer explicit sums for semantic optionality).
-//
+// OpenApiOptionalString — optional string fields (P2 explicit sum).
 // Anchor: https://spec.openapis.org/oas/v3.1.0#info-object
-//
-// Coproduct dissolution (Practice 4) — 🟢 GREEN (terminal). Ledger: same
-// five-pattern scan as other two-variant present/absent sums (two
-// distinct shapes; no illegal mixed state in a flat record).
+// Practice 4: GREEN (terminal).
 type OpenApiOptionalString
   = OpenApiStringPresent { value: String }
   | OpenApiStringAbsent
 
 
-// ─────────────────────────────────────────────────────────────────────
-// OpenApiContact — OAS Contact Object (every member optional at the JSON
-// surface; empty `{}` is structurally admissible — OAS-level tightening is
-// 🟡 deferred to `openapi_parse` alongside URI/email shape checks). Includes
-// **`contact_extensions`** for Contact Object Specification Extensions (`^x-`)
-// and faithful overflow (M5 / P2 — same class as **`info_specification_extensions`**
-// on `OpenApiInfo`; no silent drop of nested `contact.*` wire facts).
-//
+// OpenApiContact — Contact Object + `contact_extensions` (`^x-`); URI/email tightening 🟡 parse (Deferred (1)).
 // Anchor: https://spec.openapis.org/oas/v3.1.0#contact-object
-//
-// Coproduct dissolution (Practice 4) — N/A (`Conj` record).
+// Practice 4: N/A (Conj).
 type OpenApiContact {
   name: OpenApiOptionalString,
   url: OpenApiOptionalString,
@@ -107,44 +92,26 @@ type OpenApiContact {
 }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// OpenApiContactSlot — optional `contact` on the Info Object.
-//
+// OpenApiContactSlot — optional `contact` on Info.
 // Anchor: https://spec.openapis.org/oas/v3.1.0#info-object
-//
-// Coproduct dissolution (Practice 4) — 🟢 GREEN (terminal). Ledger: present
-// vs absent `contact` are distinct shapes; no nullable single-field collapse.
+// Practice 4: GREEN (terminal).
 type OpenApiContactSlot
   = OpenApiContactPresent { contact: OpenApiContact }
   | OpenApiContactAbsent
 
 
-// ─────────────────────────────────────────────────────────────────────
-// OpenApiLicenseUrlOrIdentifierSlot — OAS 3.1.0 License Object: `url` and
-// `identifier` are **mutually exclusive** fixed fields; neither is required
-// (`name`-only license is valid wire). Third arm = neither present.
-//
+// OpenApiLicenseUrlOrIdentifierSlot — License `url` XOR `identifier` (or neither); not two independent Options.
 // Anchor: https://spec.openapis.org/oas/v3.1.0#license-object
-//
-// Coproduct dissolution (Practice 4) — 🟢 GREEN (terminal). Ledger: URL path,
-// SPDX identifier path, and neither are three disjoint carrier shapes — not
-// two independent `Option`s admitting illegal both-present states (P2).
+// Practice 4: GREEN (terminal).
 type OpenApiLicenseUrlOrIdentifierSlot
   = OpenApiLicenseUrlPresent { url: String }
   | OpenApiLicenseIdentifierPresent { identifier: String }
   | OpenApiLicenseUrlOrIdentifierNeither
 
 
-// ─────────────────────────────────────────────────────────────────────
-// OpenApiLicense — OAS 3.1.0 License Object: **`name` REQUIRED**; optional
-// **`identifier`** (SPDX expression) **XOR** optional **`url`** (mutually
-// exclusive per spec — see `OpenApiLicenseUrlOrIdentifierSlot`); plus
-// **`license_extensions`** for Specification Extensions (`^x-`) and faithful
-// overflow (M5 / P2 — same class as **`info_specification_extensions`** on `OpenApiInfo`).
-//
+// OpenApiLicense — License Object: required `name`; `url`/`identifier` via slot; `license_extensions` (`^x-`).
 // Anchor: https://spec.openapis.org/oas/v3.1.0#license-object
-//
-// Coproduct dissolution (Practice 4) — N/A (`Conj` record).
+// Practice 4: N/A (Conj).
 type OpenApiLicense {
   name: String,
   url_or_identifier: OpenApiLicenseUrlOrIdentifierSlot,
