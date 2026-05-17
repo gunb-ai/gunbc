@@ -475,3 +475,14 @@ forks; B1's "where it lives" is the one pick I most need from you.
 
 Nothing here is encoded into substrate until you ratify it. This file
 PROPOSES; it does not decide.
+
+## Part 6 — Practice-4 coproduct classification ledger
+
+Per `docs/modeling-discipline.md` Practice 4 / Practice 9: each v4
+coproduct's 🟢/🟡/🔴 classification ledger + named trigger lives here;
+the coproduct carries only the one-line in-file tag. Rows are
+PR-scoped, worker-authored provisional, operator-ratified on audit.
+
+| ID | Coproduct / classification / dissolution-patterns-tried / trigger | Home |
+|---|---|---|
+| **LB-P4-3213** | `CiCommand` (`LintCommand \| TestCommand \| IgnoredTestCommand{test_name} \| ShellCommand{command:String}`) — faithful PORT of v3 `dsl/gunbc/ci.dag` `CICommand` (still-hawk-102 fork-2 directive; not imported). **🟡 YELLOW (scaffold).** Richer source EXISTS and is nameable: the typed process-command carrier `Command{program,args,env}` for `extdeps/process.dag` (T-4.5, currently 0-decl scaffold) + v3's own ROADMAP-F12 "broader typed command-record carrier"; `ShellCommand{command:String}` is the bounded interim escape. **Named trigger:** when `extdeps/process.dag` (T-4.5) lands a typed `Command`/argv carrier, `CiCommand` migrates — `ShellCommand`'s `String` dissolves into typed `program/args/env`; the first consumer of the *meaning* (deferred ci.yml projection / `select_jobs` / T-22 eval) owes the decomposition, not a local parse. **5 dissolution patterns tried:** (1) fact-placement FAILS (uniform command consumer, not scattered); (2) variant-is-data FAILS (heterogeneous payloads — `test_name` vs raw `command`; collapsing loses structural-intent-vs-raw-shell, the carrier's point); (3) algebraic N/A (not an algebra carrier); (4) dimensional FAILS (exactly-one-intent, not orthogonal axes); (5) parameterized-family FAILS (not `F<X>` over a declared set). Terminal-as-coproduct but 🟡 (not 🟢) because the richer source is nameable (T-4.5 `Command` / v3-F12). | `src/v4/workflow/ci.dag` (`type CiCommand`) |

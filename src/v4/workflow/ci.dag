@@ -18,7 +18,7 @@ import v4.std.diagnostic {
 }
 
 
-// 🟡 coproduct dissolution — DECISIONS.md CICMD-1
+// 🟡 coproduct dissolution — DECISIONS.md LB-P4-3213
 type CiCommand
   = LintCommand
   | TestCommand
