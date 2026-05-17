@@ -18,6 +18,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
+DECISIONS_REL = "src/v4/DECISIONS.md"
+
 MERGE_BASE = "92cb26402eeb21471acb6ac47559cbae3b52afdb"
 
 TYPE_RE = re.compile(r"^type\s+([A-Za-z_][A-Za-z0-9_]*)\b")
@@ -25,6 +27,38 @@ DATA_RE = re.compile(r"^data\s+([A-Za-z_][A-Za-z0-9_]*)\b")
 COPRODUCT_TAG_RE = re.compile(
     r"^\s*//\s*[🟢🟡🔴]\s+coproduct dissolution\b",
 )
+
+PART6_SLUG_HEAD_RE = re.compile(r"^### (SL-3229-[A-Z0-9-]+|CP-3229-[A-Z0-9-]+)\b")
+
+# Non-coproduct merge-base receipts (strict de-prose strips their `//` bodies) that
+# must still have a Part 6 row + appear on the live `// Ledger:` line for inventory.
+EXTRA_PART6_SLUGS_BY_REL: dict[str, frozenset[str]] = {
+    "src/v4/extdeps/languages/verilog.dag": frozenset(
+        {
+            "SL-3229-VERILOG-VECTOR-RANGE",
+            "SL-3229-VERILOG-COST",
+        }
+    ),
+    "src/v4/extdeps/languages/ptx.dag": frozenset(
+        {
+            "SL-3229-PTX-DIM3",
+            "SL-3229-PTX-COST",
+        }
+    ),
+    "src/v4/extdeps/languages/llvm_ir.dag": frozenset(
+        {
+            "SL-3229-LLVM-WIDTH",
+            "SL-3229-LLVM-OPS",
+        }
+    ),
+    "src/v4/std/integer.dag": frozenset(
+        {
+            "CP-3229-VERIFY",
+            "SL-3229-INTEGER-GROUP-COMPLETION",
+        }
+    ),
+    "src/v4/std/float.dag": frozenset({"SL-3229-FLOAT-NOMINAL"}),
+}
 
 
 def git_merge_base_lines(rel: str) -> list[str]:
@@ -66,6 +100,72 @@ def is_coproduct(lines: list[str], i: int) -> str | None:
     return None
 
 
+def authority_block(lines: list[str], i: int) -> str:
+    """Contiguous `//` lines above a `type` row plus `//` lines between `type` and `=`/`|`."""
+    parts: list[str] = []
+    k = i - 1
+    while k >= 0 and lines[k].lstrip().startswith("//"):
+        parts.insert(0, lines[k])
+        k -= 1
+    above = "\n".join(parts)
+    j = i + 1
+    between: list[str] = []
+    while j < len(lines):
+        t = lines[j].strip()
+        if t.startswith("//"):
+            between.append(lines[j])
+            j += 1
+            continue
+        if not t:
+            j += 1
+            continue
+        if t.startswith("=") or t.startswith("|"):
+            break
+        break
+    mid = "\n".join(between)
+    return above + ("\n" + mid if mid else "")
+
+
+def practice4_face(block: str) -> str | None:
+    """Return 'green', 'yellow', 'red', or None from the Practice-4 coproduct header."""
+    key = "Coproduct dissolution (Practice 4 / modeling-discipline.md §4)"
+    pos = block.rfind(key)
+    if pos < 0:
+        pos = block.rfind("Coproduct dissolution (Practice 4")
+    tail = block[pos:] if pos >= 0 else block
+    header = tail.split("// Terminal:")[0][:8000]
+    if re.search(r"🟡\s*YELLOW", header):
+        return "yellow"
+    if "🔴" in header:
+        return "red"
+    if re.search(r"🟢\s*GREEN", header):
+        return "green"
+    return None
+
+
+def verilog_yellow_ref(block: str) -> str:
+    """Split Verilog 🟡 coproducts: #3200 first-consumer matrix vs Wave-A2 list-non-empty."""
+    key = "Coproduct dissolution (Practice 4 / modeling-discipline.md §4)"
+    pos = block.rfind(key)
+    if pos < 0:
+        pos = block.rfind("Coproduct dissolution (Practice 4")
+    tail = block[pos:] if pos >= 0 else block
+    ledger_header = tail.split("// Terminal:")[0]
+    if (
+        "#3200" in ledger_header
+        or "first meaning-consumer" in ledger_header
+        or "first consumer of" in ledger_header
+    ):
+        return "SL-3229-VERILOG-D3200"
+    if (
+        "TRACKED-SCAFFOLD: spec-non-empty" in block
+        or "Twenty-six sites" in block
+        or ("RQ-3" in block and "Wave-A2" in block)
+    ):
+        return "SL-3229-VERILOG-NONEMPTY"
+    return "SL-3229-VERILOG-D3200"
+
+
 def coproduct_tag_from_merge_base(rel: str) -> dict[str, tuple[str, str]]:
     """Map coproduct `type` name -> (emoji, Part-6 ref slug) from merge-base authority."""
     lines = git_merge_base_lines(rel)
@@ -74,45 +174,63 @@ def coproduct_tag_from_merge_base(rel: str) -> dict[str, tuple[str, str]]:
         nm = is_coproduct(lines, i)
         if not nm:
             continue
-        lo = max(0, i - 160)
-        window = "\n".join(lines[lo:i])
-        if rel.endswith("llvm_ir.dag") and nm == "LlvmType" and "RAW-Int WIDTH RESIDUAL" in window:
+        block = authority_block(lines, i)
+        if rel.endswith("llvm_ir.dag") and nm == "LlvmType" and "RAW-Int WIDTH RESIDUAL" in block:
             out[nm] = ("🟡", "SL-3229-LLVM-WIDTH")
             continue
-        last_class: str | None = None
-        for k in range(i - 1, lo - 1, -1):
-            ln = lines[k]
-            if not ln.lstrip().startswith("//"):
-                continue
-            if "classification:" in ln:
-                last_class = ln
-                break
-            if "🟡 YELLOW" in ln and (
-                "deferred-on-consumer" in ln
-                or "re-scoped" in ln
-                or "namable richer" in ln
-            ):
-                last_class = ln
-                break
-        if last_class:
-            if "🟢 GREEN" in last_class:
-                out[nm] = ("🟢", "CP-3229-GREEN-TERMINAL")
-            elif "🔴" in last_class:
-                out[nm] = ("🔴", "CP-3229-GREEN-TERMINAL")
-            elif "🟡" in last_class or "YELLOW" in last_class:
-                if "verilog" in rel:
-                    out[nm] = ("🟡", "SL-3229-VERILOG-NONEMPTY")
-                elif "ptx" in rel:
-                    out[nm] = ("🟡", "SL-3229-PTX-DIM3")
-                elif "float" in rel:
-                    out[nm] = ("🟡", "SL-3229-FLOAT-NOMINAL")
-                else:
-                    out[nm] = ("🟡", "CP-3229-GREEN-TERMINAL")
+        face = practice4_face(block)
+        if face == "green":
+            out[nm] = ("🟢", "CP-3229-GREEN-TERMINAL")
+        elif face == "red":
+            out[nm] = ("🔴", "CP-3229-RED-PRACTICE4")
+        elif face == "yellow":
+            if "verilog" in rel:
+                out[nm] = ("🟡", verilog_yellow_ref(block))
+            elif "ptx" in rel:
+                out[nm] = ("🟡", "SL-3229-PTX-DIM3")
+            elif "float" in rel:
+                out[nm] = ("🟡", "SL-3229-FLOAT-NOMINAL")
             else:
-                out[nm] = ("🟢", "CP-3229-GREEN-TERMINAL")
+                out[nm] = ("🟡", "CP-3229-GREEN-TERMINAL")
         else:
             out[nm] = ("🟢", "CP-3229-GREEN-TERMINAL")
     return out
+
+
+def part6_slugs_in_decisions(decisions_text: str) -> set[str]:
+    if "## Part 6" not in decisions_text:
+        return set()
+    chunk = decisions_text.split("## Part 6", 1)[1]
+    out: set[str] = set()
+    for ln in chunk.splitlines():
+        if ln.startswith("## ") and "Part 6" not in ln:
+            break
+        m = PART6_SLUG_HEAD_RE.match(ln)
+        if m:
+            out.add(m.group(1))
+    return out
+
+
+def required_ledger_slugs(rel: str, tag_map: dict[str, tuple[str, str]]) -> set[str]:
+    refs = {ref for _em, ref in tag_map.values()}
+    refs |= set(EXTRA_PART6_SLUGS_BY_REL.get(rel, frozenset()))
+    return refs
+
+
+def format_ledger_line(rel: str, tag_map: dict[str, tuple[str, str]]) -> str:
+    slugs = ", ".join(sorted(required_ledger_slugs(rel, tag_map)))
+    return f"// Ledger: DECISIONS.md Part 6 (PR #3229): {slugs}.\n"
+
+
+def assert_part6_inventory(decisions_text: str, all_required: set[str]) -> None:
+    present = part6_slugs_in_decisions(decisions_text)
+    missing = sorted(all_required - present)
+    if missing:
+        print(
+            "FAIL: Part 6 missing authoritative rows for: " + ", ".join(missing),
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
 
 def format_coproduct_tag(emoji: str, ref: str) -> str:
@@ -227,6 +345,13 @@ def main() -> None:
         ),
     ]
 
+    decisions_path = ROOT / DECISIONS_REL
+    decisions_text = decisions_path.read_text()
+    union_required: set[str] = set()
+    for rel, *_rest in specs:
+        union_required |= required_ledger_slugs(rel, coproduct_tag_from_merge_base(rel))
+    assert_part6_inventory(decisions_text, union_required)
+
     report: list[tuple[str, float]] = []
     for rel, scope, anchor, consumes, status in specs:
         path = ROOT / rel
@@ -243,7 +368,7 @@ def main() -> None:
             f"{owns_line}\n"
             f"{consumes}\n"
             f"{status}\n"
-            f"// Ledger: DECISIONS.md Part 6 (PR #3229).\n"
+            f"{format_ledger_line(rel, tag_map)}"
             f"\n"
         )
         rewrite(path, header, rel, tag_map)
