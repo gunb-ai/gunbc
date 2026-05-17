@@ -950,8 +950,12 @@ strings, integers, floats, booleans, dates/times, arrays, and tables.
 **Model:**
 
 ```
-// CARRIER — finite map from dotted keys to closed TOML values.
-type TomlValue = String | Integer | Float | Bool | DateTime | Array<TomlValue> | Table
+// CARRIER — finite map from dotted keys to closed TOML values. Each
+// recursive-container arm carries its payload, so `TomlValue` is the
+// single authority for a TOML value's content.
+type TomlValue = String | Integer | Float | Bool | DateTime
+               | Array<List<TomlValue>>
+               | Table<TomlTable>
 type TomlTable = Map<KeyPath, TomlValue>
 
 // MEANING — a hierarchical record assembled from key paths.
