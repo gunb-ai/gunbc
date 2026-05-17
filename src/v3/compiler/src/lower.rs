@@ -66,9 +66,6 @@ const COMPLEXITY_LENS_AUTHORITY_FILE: &str = "src/v3/lenses/complexity.dag";
 const PARALLELISM_LENS_AUTHORITY_DAG: &str = include_str!("../../lenses/parallelism.dag");
 const PARALLELISM_LENS_AUTHORITY_FILE: &str = "src/v3/lenses/parallelism.dag";
 
-const V4_STD_NODE_AUTHORITY_DAG: &str = include_str!("../../../v4/std/node.dag");
-const V4_STD_NODE_AUTHORITY_FILE: &str = "src/v4/std/node.dag";
-
 fn append_complexity_lens_authority(dag: &mut Dag) {
     let tokens = crate::tokenize::tokenize(
         COMPLEXITY_LENS_AUTHORITY_DAG,
@@ -104,6 +101,17 @@ fn append_parallelism_lens_authority(dag: &mut Dag) {
                 "parallelism lens authority must parse ({PARALLELISM_LENS_AUTHORITY_FILE}): {diag:?}"
             )
         });
+    lower_into(dag, &module);
+}
+
+fn append_v4_std_node_authority(dag: &mut Dag) {
+    let tokens = crate::tokenize::tokenize(V4_STD_NODE_AUTHORITY_DAG, V4_STD_NODE_AUTHORITY_FILE)
+        .unwrap_or_else(|diag| {
+            panic!("v4 std/node authority must tokenize ({V4_STD_NODE_AUTHORITY_FILE}): {diag:?}")
+        });
+    let module = crate::parse::parse(&tokens, V4_STD_NODE_AUTHORITY_FILE).unwrap_or_else(|diag| {
+        panic!("v4 std/node authority must parse ({V4_STD_NODE_AUTHORITY_FILE}): {diag:?}")
+    });
     lower_into(dag, &module);
 }
 
@@ -203,7 +211,7 @@ struct LambdaLoweringContext<'a> {
 }
 
 pub fn lower(module: &SurfaceModule) -> Dag {
-    lower_compile_module(module, false, false)
+    lower_compile_module(module, false, false, false)
 }
 
 /// Prepends lens authority subgraphs requested by surfaced imports (`lenses.complexity`,

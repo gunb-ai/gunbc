@@ -5,27 +5,25 @@
 // Anchor: docs/modeling-discipline.md **Practice 8** — *Fact-bundle modeling*
 //        + *Interim floor: the hollow-alias discriminator* (authoritative
 //        text on PR **#3226** until merged; **sync** if Practice 8 shifts
-//        during review). Companion: docs/modeling/grounding-worked-examples.md
-//        (carrier + meaning as `Node`). INVARIANTS P1 / P2.
+//        during review). INVARIANTS P1 / P2.
 //
 // Owns:
-//   - SourceSpecReadFact — witness that a declaration **reads** structured
-//     spec content: `body` carries the decoded spec subtree as `Node`
-//     (bounded-kernel recursive substrate — not a numeric stand-in).
+//   - SourceSpecReadFact — **body-less nominal witness** (same discipline as
+//     `std/node.dag` `Symbol` / `Hash`): marks “spec read witnessed” without
+//     admitting a parallel numeric carrier. It is NOT inhabited by arithmetic
+//     structure (contrast Practice 2 violation of `= Nat`). **Intended richer
+//     witness:** `Node` subtree per `docs/modeling/grounding-worked-examples.md`
+//     — blocked on standalone `compile_to_dag` loading `v4.std.node` without
+//     colliding on duplicate top-level names against the v3 bootstrap fixture
+//     (`Behavior`, `Path`, …). Dissolution: land a v4-isolated bootstrap slice
+//     or resolver bridge, then carry `body: Node` here in the same change.
 //
 // Consumes:
-//   - std/node.dag: Node
-//
-// Standalone `compile_to_dag`:
-//   Lowering prepends `src/v4/std/node.dag` when this import is present
-//   (`lower_compile_module` — same authority-prepend pattern as lens carriers),
-//   so `Node` resolves in record fields here.
+//   - (none — intentional; keeps standalone `compile_to_dag` smoke hermetic.)
 //
 // Implementation split (M1(2.8)):
-//   The mechanical **declaration-tree → Outcome** check is mirrored in Rust
-//   as `v3_compiler::v4_hollow_alias_gate` (hermetic unit tests there),
-//   projecting Practice 8’s three-part discriminator until the gate ships in
-//   generated `.dag` form (T-30 acceptance).
+//   Practice-8 structural gate: `v3_compiler::v4_hollow_alias_gate` (hermetic
+//   unit tests). This file remains the v4 std authority row in STRUCTURE.md.
 //
 // Status: T-30 modeled (warm-dove-632).
 
@@ -33,9 +31,4 @@
 module v4.std.fact_density
 
 
-import v4.std.node { Node }
-
-
-type SourceSpecReadFact {
-  body: Node
-}
+type SourceSpecReadFact
