@@ -1,5 +1,5 @@
 // src/v4/extdeps/formats/openapi.dag
-// Scope: OpenAPI 3.1.0 document model (OAS slice).
+// Scope: OpenAPI 3.1.0 (https://spec.openapis.org/oas/v3.1.0) document model (OAS slice).
 // Owns: OpenApiSchema, OpenApiHttpMethod, OpenApiOptionalString, OpenApiContact, OpenApiContactSlot, OpenApiLicenseUrlOrIdentifierSlot, OpenApiLicense, OpenApiLicenseSlot, OpenApiInfo, OpenApiMediaType, OpenApiMediaTypeSchemaSlot, OpenApiResponseContentSlot, OpenApiHeadersSlot, OpenApiLinksSlot, OpenApiResponse, OpenApiResponseKey, OpenApiResponseKeyWildcardKind, OpenApiStatusDigit, OpenApiStatusHundreds, OpenApiResponseOrReference, OpenApiResponses, OpenApiOperation, OpenApiPathItem, OpenApiPaths, OpenApiPathsSlot, OpenApiComponentsSchemasSlot, OpenApiComponents, OpenApiComponentsSlot, OpenApiWebhooks, OpenApiDocumentRoot, OpenApiOpenapiField3_1, OpenApiDocument
 // Consumes: std/node.dag, std/diagnostic.dag, std/collection.dag, extdeps/formats/json_schema.dag, extdeps/formats/json.dag, extdeps/formats/yaml.dag
 // Status: scaffold — TASKS.md T-4.6
