@@ -92,50 +92,57 @@ evidence that it is universal.
 
 ---
 
-## Modeled vs built (P0)
+## Live-state tags (P0)
 
-One stage below is genuinely **built**; the rest is **modeled** design.
-The line is drawn explicitly and every stage is tagged:
+Every stage below is tagged for its honest live-state on `origin/main`:
 
-- **`[BUILT]`** — exists and runs today on `origin/main`.
-- **`[MODELED]`** — the modeling shape; not yet built.
+- **`[DAG-REALIZED]`** — the `.dag` has a real function body for this
+  path (not a stub) — but the v4 compiler is not yet bootstrapped into
+  an executing pipeline; nothing *runs* it today.
+- **`[MODELED]`** — the modeling shape only; no `.dag` body yet.
 
-Nothing here pretends a modeled stage is built.
+There is deliberately **no `[BUILT]`/runs-today tag**: v4's compiler is
+itself `.dag`, Wave-1, not bootstrapped into an executing binary. The
+strongest claim any stage can honestly make here is `[DAG-REALIZED]` —
+and the doc never claims more.
 
-## The end-to-end shape — one real chain, one modeled spine
+## The end-to-end shape — one grounded chain, one modeled spine
 
-### A. The genuinely-real chain — the `.dag` self-hosting frontend `[BUILT]`
+### A. The most-grounded chain — the `.dag` self-hosting frontend `[DAG-REALIZED]`
 
-The v4 frontend is real but **Wave-1**: `01_tokenize.dag` realizes only
-the **E0 void-lexical** path and `02_parse.dag` only the **G0
-void-grammar** path. So the one end-to-end chain that actually runs is the
-empty/void one:
+The v4 frontend is **Wave-1** and `.dag`-realized, not executing:
+`01_tokenize.dag` has a real function body for the **E0 void-lexical**
+path and `02_parse.dag` for the **G0 void-grammar** path. So the
+most-grounded end-to-end chain — real `.dag` function bodies, though
+nothing executes them as a pipeline yet — is the empty/void one:
 
 ```
 ""  (empty .dag source)
   → tokenize("", file, LexRules=E0)            : (String,Symbol,LexRules) -> Outcome<TokenStream>
-  → Produced(empty TokenStream)                                              [BUILT]
+  → Produced(empty TokenStream)                                       [DAG-REALIZED]
   → parse(emptyTokenStream, Grammar=G0)         : (TokenStream,Grammar) -> Outcome<ParseTree>
-  → Produced(degenerate ParseTree)              // ParseTree = Node           [BUILT]
+  → Produced(degenerate ParseTree)              // ParseTree = Node    [DAG-REALIZED]
 ```
 
-The fail-closed direction is real too — non-empty source against E0:
+The fail-closed direction is `.dag`-realized too — non-empty source
+against E0:
 
 ```
-"x"  → tokenize  → Rejected { Diagnostic { reason, at: Locus = WholeFile } }  [BUILT]
+"x"  → tokenize  → Rejected { Diagnostic { reason, at: Locus = WholeFile } }  [DAG-REALIZED]
 ```
 
 That `Rejected` is a constructed `Diagnostic` with a `Locus` — "named,
-never silent" is *shown*, by built code. Richer `.dag` tokenization (real
-keywords, programs) is declarative grammar-data **not yet realized** —
-`[MODELED]` from here up. Both built functions already return `Outcome<T>`.
+never silent" is *shown* in the realized `.dag` body, not asserted in
+prose. Richer `.dag` tokenization (real keywords, programs) is
+declarative grammar-data **not yet realized** — `[MODELED]` from here
+up. Both realized functions already return `Outcome<T>`.
 
 **The round-trip — one `Node`, two directions.** The same void chain run
 forward and back:
 
 ```
-""  → tokenize → parse → ParseTree   [BUILT]    — ingest builds the Node
-    → emit → ""                      [MODELED]  — emit reads the Node back
+""  → tokenize → parse → ParseTree   [DAG-REALIZED]  — ingest builds the Node
+    → emit → ""                      [MODELED]       — emit reads the Node back
 ```
 
 `tokenize` / `parse` are causal transforms — the `Transform` L1 behavior
