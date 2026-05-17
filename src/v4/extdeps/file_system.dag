@@ -7,7 +7,8 @@
 //   - Path = AbsolutePath | RelativePath
 //   - AbsolutePath { components: List<PathComponent> }  // root is empty components; PathComponent refinement deferred
 //   - RelativePath = CurrentDirectory | RelativeDescendant { first: RelativePathHead, rest: List<PathComponent> }
-//   - PathComponent = CurrentComponent | ParentComponent | NamedComponent(String)
+//   - NamedPathComponent { name: String }
+//   - PathComponent = CurrentComponent | ParentComponent | NamedComponent(NamedPathComponent)
 //   - FileKind = RegularFile | Directory | Symlink
 //   - read_file(fs, p)        -> Result<FreeMonoid<Char>, Diagnostic>
 //   - write_file(fs, p, body) -> Result<Filesystem, Diagnostic>
@@ -65,6 +66,9 @@
 // Follow-up reconcile: RelativeDescendant.first uses RelativePathHead,
 // which excludes CurrentComponent, so `./` cannot be a second structural
 // representation of CurrentDirectory.
+// Follow-up reconcile: RelativePathHead reuses NamedPathComponent for
+// named heads, so the named filename spelling/refinement target has one
+// carrier instead of parallel raw String payloads.
 // HEADER RECONCILE (2026-05-17, #3209, keen-wren-663 + codex BLOCKING):
 // FileKindRequest carries a FileKindResolutionPolicy so callers choose
 // stat-like symlink-following or lstat-like no-follow observation
@@ -94,8 +98,8 @@ import v4.std.text { Char }
 // and `..` are structural components below, not ordinary strings. v4's
 // settled dependency path has `String`/`Char` but not a machine-readable
 // predicate/refinement substrate for "non-empty string with no slash or
-// null and not dot/dotdot". `NamedComponent` is therefore the honest
-// carrier with bridge properties:
+// null and not dot/dotdot". `NamedPathComponent` is therefore the honest
+// named-spelling carrier with bridge properties:
 //   (a) scaffold doc — THIS note; the current carrier is an unrefined
 //       `String`, not the terminal POSIX filename refinement.
 //   (b) bounds on use — producers must construct non-empty named
@@ -103,7 +107,7 @@ import v4.std.text { Char }
 //       or `..`; use `CurrentComponent` / `ParentComponent` for those
 //       POSIX components.
 //   (c) dissolution trigger — when v4 lands value refinements over
-//       `String` / `Char` predicates, replace `NamedComponent.name`
+//       `String` / `Char` predicates, replace `NamedPathComponent.name`
 //       with the refined non-empty no-slash no-null non-dot carrier.
 //
 // OPERATION SEAM. The scaffold header's `Result<..., Diagnostic>` prose
@@ -124,7 +128,7 @@ import v4.std.text { Char }
 // PathComponent — one pathname component.
 // Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/V1_chap03.html#tag_03_241
 //
-// Terminal target for `NamedComponent.name`: a non-empty `String`
+// Terminal target for `NamedPathComponent.name`: a non-empty `String`
 // excluding slash and null and not equal to `.` or `..`, with any
 // portable-filename policy expressed as an explicit profile. Current
 // carrier: `String` with the tracked refinement scaffold above.
@@ -139,16 +143,21 @@ import v4.std.text { Char }
 //   1. Fact placement — FAILS: dot/dotdot/name is consumed uniformly by
 //      path resolution, not per-operation metadata.
 //   2. Variant-is-data — FAILS: CurrentComponent and ParentComponent are
-//      semantic component facts; NamedComponent carries the only spelling.
+//      semantic component facts; NamedPathComponent carries the only
+//      named spelling.
 //   3. Algebraic form — N/A: component kind is not an algebra carrier.
 //   4. Dimensional — FAILS: one pathname component is exactly one of
 //      current, parent, or named.
 //   5. Parameterized family — FAILS: the variants are not the same
 //      payload shape projected over an enumerable set.
+type NamedPathComponent {
+  name: String
+}
+
 type PathComponent
   = CurrentComponent
   | ParentComponent
-  | NamedComponent { name: String }
+  | NamedComponent { component: NamedPathComponent }
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -181,12 +190,14 @@ type AbsolutePath {
 
 type RelativePathHead
   = ParentHead
-  | NamedHead { name: String }
+  | NamedHead { component: NamedPathComponent }
 
 // Coproduct dissolution (Practice 4 / INVARIANTS P1) — classification:
 // 🟡 YELLOW, first-consumer-confirmed. A relative descendant can begin
 // with parent-directory traversal or a named component, but not current
-// directory. The first path-realization consumer must confirm `.`
+// directory. NamedHead reuses NamedPathComponent, so first-component
+// admissibility is not a second filename spelling authority. The first
+// path-realization consumer must confirm `.`
 // prefixes normalize to CurrentDirectory/descendant rules rather than
 // constructing RelativePathHead. Named trigger: T-4.5 filesystem
 // realization seam lands path parsing/resolution.
@@ -194,7 +205,7 @@ type RelativePathHead
 //   1. Fact placement — FAILS: first-component admissibility is consumed
 //      uniformly by relative path resolution.
 //   2. Variant-is-data — FAILS: ParentHead is structural traversal;
-//      NamedHead carries the only spelling payload.
+//      NamedHead carries the shared named-component payload.
 //   3. Algebraic form — N/A: head kind is not an algebra carrier.
 //   4. Dimensional — FAILS: a relative descendant head is parent OR
 //      named, not both.
