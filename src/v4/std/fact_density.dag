@@ -1,34 +1,28 @@
 // src/v4/std/fact_density.dag
 //
-// Scope: T-30 — structural hollow-alias gate substrate (TASKS.md T-30;
-//        DECISIONS.md D2-REV / fact-bundle modeling).
-// Anchor: docs/modeling-discipline.md **Practice 8** — *Fact-bundle modeling*
-//        + *Interim floor: the hollow-alias discriminator* (authoritative
-//        text on PR **#3226** until merged; **sync** if Practice 8 shifts
-//        during review). INVARIANTS P1 / P2.
+// Scope: T-30 hollow-alias / fact-density substrate (TASKS.md T-30; DECISIONS.md D2-REV).
+// Anchor: INVARIANTS.md P1/P2; docs/modeling-discipline.md Practice 8 (PR #3226 until merged — sync on shift).
 //
 // Owns:
-//   - SourceSpecReadFact — **body-less nominal witness** (same discipline as
-//     `std/node.dag` `Symbol` / `Hash`): marks “spec read witnessed” without
-//     admitting a parallel numeric carrier. It is NOT inhabited by arithmetic
-//     structure (contrast Practice 2 violation of `= Nat`). **Intended richer
-//     witness:** `Node` subtree per `docs/modeling/grounding-worked-examples.md`
-//     — blocked on standalone `compile_to_dag` loading `v4.std.node` without
-//     colliding on duplicate top-level names against the v3 bootstrap fixture
-//     (`Behavior`, `Path`, …). Dissolution: land a v4-isolated bootstrap slice
-//     or resolver bridge, then carry `body: Node` here in the same change.
+//   - SourceSpecReadFact — body-less nominal witness for spec-read anchoring (not a numeric alias).
 //
 // Consumes:
-//   - (none — intentional; keeps standalone `compile_to_dag` smoke hermetic.)
+//   - (none — standalone compile_to_dag smoke stays hermetic.)
 //
-// Implementation split (M1(2.8)):
-//   Practice-8 structural gate: `v3_compiler::v4_hollow_alias_gate` (hermetic
-//   unit tests). This file remains the v4 std authority row in STRUCTURE.md.
-//
-// Status: T-30 modeled (warm-dove-632).
+// Status: T-30 substrate modeled.
+// Brief: see BRIEF_TEMPLATE.md; splitting requires operator ratification (substrate extension = stop signal).
 
 
 module v4.std.fact_density
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Modeling notes (read before validating against the anchor)
+//
+// Practice 8 hollow-alias gate (PR #3226): structural mirror `v3_compiler::v4_hollow_alias_gate`
+// until generated `.dag` checker. `Node` payload deferred — prepending `v4/std/node.dag` into
+// `compile_to_dag`'s v3 bootstrap collides on top-level names (`Behavior`, `Path`, …).
+// Dissolution: v4-isolated bootstrap or resolver bridge; add `body: Node` in that same change.
 
 
 type SourceSpecReadFact
