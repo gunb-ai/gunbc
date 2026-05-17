@@ -379,14 +379,16 @@ fn resolve_edges_first_outer_then_inner(
 
 // Bind=let (arity-3): slot-0 binder is a declaration site (not a use), slot-1
 // initializer resolves without the new binder, slot-2+ body under `ScopeFrame`.
-fn resolve_bind_binder_target(t: Node, scope_outer: Scope) -> ResolveResult {
+fn resolve_bind_binder_target(t: Node) -> ResolveResult {
   match t.kind {
     TypeNode { connective: Atom { identity: id } } =>
       ResolvedNode {
         node: canonical_atom(identity: id)
       }
     _ =>
-      resolve_node(n: t, scope: scope_outer)
+      ResolveRejected {
+        diagnostic: malformed_tree_diagnostic(n: t)
+      }
   }
 }
 
@@ -413,7 +415,7 @@ fn resolve_bind_edges(
               }
             ResolvedChildren { children: done } =>
               if i == 0 {
-                match resolve_bind_binder_target(t: e.target, scope_outer: scope_outer) {
+                match resolve_bind_binder_target(t: e.target) {
                   ResolveRejected { diagnostic: d } =>
                     BindEdgeAccMk {
                       idx: i + 1,
@@ -507,7 +509,9 @@ fn resolve_bind_node(n: Node, scope: Scope) -> ResolveResult {
         }
     }
   } else {
-    resolve_children_homogeneous_scope(n: n, scope: scope)
+    ResolveRejected {
+      diagnostic: malformed_tree_diagnostic(n: n)
+    }
   }
 }
 
