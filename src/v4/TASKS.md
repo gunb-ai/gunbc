@@ -981,15 +981,21 @@ star remains a **generated** structural `Node → Outcome` gate in v4
 `.dag` authority. While the v4→v3 `compile_to_dag` bootstrap cannot yet
 prepend `std/node.dag` without name collisions (see `DECISIONS.md` T-30
 `fact_density.dag` encoding note), the Practice-8 predicate lands as the
-**P5(b) bounded triple**: a **hand Rust mirror**
-(`src/v3/compiler/src/v4_hollow_alias_gate.rs` + hermetic unit tests), a
-**body-less nominal witness** in `src/v4/std/fact_density.dag`, and a
-**`compile_to_dag` smoke** harness — each with matching SG-0 literals and
-`INVARIANTS.md` §P5(b) rows naming the **dissolution** trigger (retire the
-mirror when the `.dag`-generated checker is the authority). This slice is
-**sequencing**, not semantic deferral of the gate's *definition* (the
-three-part rule + kernel-ambient exemption is already pinned in tests and
-docs).
+**P5(b) bounded triple**: (1) a **hand Rust mirror**
+(`src/v3/compiler/src/v4_hollow_alias_gate.rs` + hermetic unit tests), (2)
+a **body-less nominal witness** in `src/v4/std/fact_density.dag`, and (3)
+the **`compile_to_dag` smoke** harness
+(`src/v3/compiler/tests/integration/v4_std_fact_density_dag_smoke_test.rs`).
+The **two Rust paths (1)+(3)** each carry an **SG-0**
+`EXPECTED_HAND_AUTHORED_{NON_TEST,TEST}` literal plus a matching
+**`INVARIANTS.md` §P5(b)** row under **T-PB-A** / **T-PB-B** naming the
+**dissolution** trigger when the generated checker is the authority. The
+**`.dag` witness (2)** is **substrate** tracked in **`STRUCTURE.md` /
+`fact_density.dag`** and is **named as the substrate witness in those same
+§P5(b) rows** (and `DECISIONS.md`) — it is **not** a third **SG-0 hand-Rust**
+census path (SG-0 inventories **Rust** only). This slice is **sequencing**,
+not semantic deferral of the gate's *definition* (the three-part rule +
+kernel-ambient exemption is already pinned in tests and docs).
 
 **Scope / clarification dispositions:**
 - **#4 — T-16 SQL DDL — RESOLVED (operator 2026-05-17): fork (a).** SQL is
