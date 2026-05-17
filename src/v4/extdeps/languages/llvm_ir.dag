@@ -642,21 +642,21 @@ type BinaryOpcode
 //     fp-widen | fp↔int | ptr↔int | address-space-cast}, where the
 //     fp↔int axis ADDITIONALLY discriminates {int-signedness ∈ signed |
 //     unsigned} (LangRef separates sitofp from uitofp and fptosi from
-//     fptoui precisely on this signedness). LangRef invalid-input
-//     disposition is NOT carried by these opcodes — fptoui/fptosi/
-//     uitofp/sitofp on out-of-range inputs are UB per LangRef
-//     "Conversion Operations" (the saturating fp↔int forms are the
-//     `llvm.fptoui.sat` / `llvm.fptosi.sat` intrinsics, distinct
-//     declarations outside this opcode set; reachable only via
-//     `LlvmIntrinsicCall`, NEVER via this enum). The 13 LangRef cast
-//     opcodes are the discriminant-projection of (src-domain,
+//     fptoui precisely on this signedness). Saturating fp↔int forms
+//     are the `llvm.fptoui.sat` / `llvm.fptosi.sat` intrinsics —
+//     distinct declarations outside this opcode set, reachable only
+//     via `LlvmIntrinsicCall`, NEVER via this enum. The 13 LangRef
+//     cast opcodes are the discriminant-projection of (src-domain,
 //     dst-domain, kind, int-signedness) onto LangRef's enumerated
 //     names.
-//   Invalid-input-disposition deferral: out-of-range / NaN
-//     disposition on fp↔int is EXPLICITLY deferred to the first D2
-//     meaning-consumer (it pairs with the existing FidelityDisposition
-//     machinery; the opcode-level decomposition above carries shape,
-//     not disposition).
+//   Single opcode-shape disposition fact retained here: fptoui /
+//     fptosi out-of-range produce POISON per LangRef "Conversion
+//     Operations". The FULL invalid-input disposition surface
+//     (uitofp/sitofp inexact-rounding semantics; fptoui/fptosi NaN
+//     behavior; all per-target rounding modes) is EXPLICITLY DEFERRED
+//     to the first D2 meaning-consumer's fidelity carrier (it pairs
+//     with the existing FidelityDisposition machinery; opcode-level
+//     decomposition above carries shape, not the disposition surface).
 //   Trigger: first consumer of conversion MEANING (cost model /
 //     numeric-precision lens / inhabitance dispatch — D2 pathway).
 //   Obligation: the first meaning-consumer owes the (src-domain,
