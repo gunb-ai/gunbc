@@ -6,7 +6,7 @@
 // Owns:
 //   - Path = AbsolutePath | RelativePath
 //   - AbsolutePath { components: List<PathComponent> }  // root is empty components; PathComponent refinement deferred
-//   - RelativePath = CurrentDirectory | RelativeDescendant { first: PathComponent, rest: List<PathComponent> }
+//   - RelativePath = CurrentDirectory | RelativeDescendant { first: RelativePathHead, rest: List<PathComponent> }
 //   - PathComponent = CurrentComponent | ParentComponent | NamedComponent(String)
 //   - FileKind = RegularFile | Directory | Symlink
 //   - read_file(fs, p)        -> Result<FreeMonoid<Char>, Diagnostic>
@@ -62,6 +62,9 @@
 // descendants, and PathComponent carries dot/dotdot/name cases
 // structurally. This avoids mixing normalized path identity with raw
 // POSIX pathname components.
+// Follow-up reconcile: RelativeDescendant.first uses RelativePathHead,
+// which excludes CurrentComponent, so `./` cannot be a second structural
+// representation of CurrentDirectory.
 // HEADER RECONCILE (2026-05-17, #3209, keen-wren-663 + codex BLOCKING):
 // FileKindRequest carries a FileKindResolutionPolicy so callers choose
 // stat-like symlink-following or lstat-like no-follow observation
@@ -155,7 +158,8 @@ type PathComponent
 // `AbsolutePath` carries the root fact by variant, not by a leading
 // slash in text. Empty absolute components denotes the POSIX root
 // directory. Relative current-directory is a `CurrentDirectory` variant;
-// non-empty relative descendants carry a first component and rest list.
+// non-empty relative descendants carry a first non-current component and
+// rest list.
 //
 // 🟡 TRACKED-SCAFFOLD (project_v4_path_component_refinement):
 // the frozen scaffold header previously named
@@ -168,27 +172,53 @@ type PathComponent
 // non-empty and excludes slash/null once v4 lands string/char value
 // refinements. Until then absolute paths use `List<PathComponent>` to
 // preserve POSIX root-as-empty semantics; relative paths use the
-// `CurrentDirectory | RelativeDescendant` sum so empty relative
-// components are not a second current-directory authority.
+// `CurrentDirectory | RelativeDescendant` sum and a non-current head so
+// empty relative components or `./` are not second current-directory
+// authorities.
 type AbsolutePath {
   components: List<PathComponent>
 }
 
+type RelativePathHead
+  = ParentHead
+  | NamedHead { name: String }
+
+// Coproduct dissolution (Practice 4 / INVARIANTS P1) — classification:
+// 🟡 YELLOW, first-consumer-confirmed. A relative descendant can begin
+// with parent-directory traversal or a named component, but not current
+// directory. The first path-realization consumer must confirm `.`
+// prefixes normalize to CurrentDirectory/descendant rules rather than
+// constructing RelativePathHead. Named trigger: T-4.5 filesystem
+// realization seam lands path parsing/resolution.
+// Ledger:
+//   1. Fact placement — FAILS: first-component admissibility is consumed
+//      uniformly by relative path resolution.
+//   2. Variant-is-data — FAILS: ParentHead is structural traversal;
+//      NamedHead carries the only spelling payload.
+//   3. Algebraic form — N/A: head kind is not an algebra carrier.
+//   4. Dimensional — FAILS: a relative descendant head is parent OR
+//      named, not both.
+//   5. Parameterized family — FAILS: the variants are not identical
+//      payloads projected over an enumerable set.
+
 type RelativePath
   = CurrentDirectory
-  | RelativeDescendant { first: PathComponent, rest: List<PathComponent> }
+  | RelativeDescendant { first: RelativePathHead, rest: List<PathComponent> }
 
 // Coproduct dissolution (Practice 4 / INVARIANTS P1) — classification:
 // 🟡 YELLOW, first-consumer-confirmed. Relative current directory and a
-// non-empty relative descendant are distinct POSIX path facts; the first
-// path-realization consumer must confirm empty relative text is rejected
-// or normalized into CurrentDirectory explicitly. Named trigger: T-4.5
-// filesystem realization seam lands path parsing/resolution.
+// non-empty relative descendant are distinct POSIX path facts.
+// RelativeDescendant.first excludes CurrentComponent, so current
+// directory has exactly one structural representation. The first
+// path-realization consumer must confirm empty or `.` relative text is
+// rejected or normalized into CurrentDirectory explicitly. Named trigger:
+// T-4.5 filesystem realization seam lands path parsing/resolution.
 // Ledger:
 //   1. Fact placement — FAILS: current-directory vs descendant is
 //      consumed uniformly by all path operations.
-//   2. Variant-is-data — FAILS: RelativeDescendant carries first/rest to
-//      make non-emptiness structural; CurrentDirectory is nullary.
+//   2. Variant-is-data — FAILS: RelativeDescendant carries a
+//      non-current first/rest to make non-emptiness and non-currentness
+//      structural; CurrentDirectory is nullary.
 //   3. Algebraic form — N/A: relative path kind is not an algebra.
 //   4. Dimensional — FAILS: a relative path is current directory OR a
 //      descendant path, not both.
