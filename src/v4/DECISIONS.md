@@ -315,7 +315,7 @@ missing. Two failures let the alias through:
 2. **A hollow alias is invisible to every structural gate.**
    `type RustX = StdX` is structurally minimal — nothing for a reviewer
    or checker to flag. The api-review rubric (`INVARIANTS.md` +
-   `modeling-discipline.md`) checks duplicate authority and coproduct
+   `docs/modeling-discipline.md`) checks duplicate authority and coproduct
    dissolution; it has no **fact-density** check. Aliasing passes review
    *because* it is hollow.
 
