@@ -68,6 +68,7 @@ type OpenApiMediaTypeDeferredKey
   | OpenApiMediaDeferredEncoding
 
 
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiHeaderDeferredKey
 type OpenApiHeaderDeferredKey
   = OpenApiHeaderDeferredAllowEmptyValue
   | OpenApiHeaderDeferredStyle
@@ -77,6 +78,7 @@ type OpenApiHeaderDeferredKey
   | OpenApiHeaderDeferredContent
 
 
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiLinkDeferredKey
 type OpenApiLinkDeferredKey
   = OpenApiLinkDeferredParameters
   | OpenApiLinkDeferredRequestBody
@@ -90,6 +92,7 @@ type OpenApiSchema {
 }
 
 
+// 🟢 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiHttpMethod
 type OpenApiHttpMethod
   = OpenApiGet
   | OpenApiPut
@@ -101,6 +104,7 @@ type OpenApiHttpMethod
   | OpenApiTrace
 
 
+// 🟢 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiOptionalString
 type OpenApiOptionalString
   = OpenApiStringPresent { value: String }
   | OpenApiStringAbsent
@@ -113,11 +117,13 @@ type OpenApiReferenceObject {
 }
 
 
+// 🟢 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiHeaderRequiredSlot
 type OpenApiHeaderRequiredSlot
   = OpenApiHeaderRequiredAbsent
   | OpenApiHeaderRequiredPresent { value: Bool }
 
 
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiHeaderSchemaSlot
 type OpenApiHeaderSchemaSlot
   = OpenApiHeaderSchemaPresent { schema: OpenApiSchema }
   | OpenApiHeaderSchemaAbsent
@@ -132,6 +138,7 @@ type OpenApiHeaderObject {
 }
 
 
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiHeaderOrReference
 type OpenApiHeaderOrReference
   = OpenApiHeaderInline { header: OpenApiHeaderObject }
   | OpenApiHeaderReference { reference: OpenApiReferenceObject }
@@ -146,6 +153,7 @@ type OpenApiLinkObject {
 }
 
 
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiLinkOrReference
 type OpenApiLinkOrReference
   = OpenApiLinkInline { link: OpenApiLinkObject }
   | OpenApiLinkReference { reference: OpenApiReferenceObject }
@@ -159,11 +167,13 @@ type OpenApiContact {
 }
 
 
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiContactSlot
 type OpenApiContactSlot
   = OpenApiContactPresent { contact: OpenApiContact }
   | OpenApiContactAbsent
 
 
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiLicenseUrlOrIdentifierSlot
 type OpenApiLicenseUrlOrIdentifierSlot
   = OpenApiLicenseUrlPresent { url: String }
   | OpenApiLicenseIdentifierPresent { identifier: String }
@@ -177,6 +187,7 @@ type OpenApiLicense {
 }
 
 
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiLicenseSlot
 type OpenApiLicenseSlot
   = OpenApiLicensePresent { license: OpenApiLicense }
   | OpenApiLicenseAbsent
@@ -201,6 +212,7 @@ type OpenApiMediaType {
 }
 
 
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiMediaTypeSchemaSlot
 type OpenApiMediaTypeSchemaSlot
   = OpenApiMediaSchemaPresent { schema: OpenApiSchema }
   | OpenApiMediaSchemaAbsent
