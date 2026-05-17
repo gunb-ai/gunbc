@@ -109,11 +109,45 @@ the lenses, `emit` are all instances of it; tokenize/parse/emit are
 the machinery is identical, and the tokenize/parse legs are the
 `Transform` L1 behavior (one of `node.dag`'s 5: `Value | Transform |
 Branch | Loop | Bind`). So the worked examples below are not a
-coercion-verdict catalog — they are evidence of **one mechanic applied
-N+M ways**: you author N ingest models + M emit models (authoring cost
-N+M), and every ingest composes with every emit through the one `Node`
-pivot (capability N×M). N+M authored → N×M capabilities, because the
-mechanic is pivot-shaped.
+coercion-verdict catalog — they are evidence of **one grounding mechanic
+applied N+M ways**: you author N ingest models + M emit models (authoring
+cost N+M), and every ingest composes with every emit through the one
+`Node` pivot (capability N×M). N+M authored → N×M capabilities, because
+the mechanic is pivot-shaped. The N×M *compiler-emit* capability claim is
+scoped to **Shape A** targets — see the next section; Shape-B artifacts
+are emitted by `.dag` user programs, not by the compiler.
+
+### Shape A vs Shape B — what this catalog does and does not claim
+
+This catalog demonstrates **grounding** — that each target's types
+decompose into the shared `Node` / `std` vocabulary — and the **coercion
+shape** between groundings. Grounding is **universal and shape-agnostic**:
+a Rust type, a JSON Schema object, an OpenAPI operation, a SPICE voltage,
+an English noun phrase all ground the same way, and the fact-bundle
+discipline is identical for all of them.
+
+It does **not** claim every target is a compiler render-target.
+`THESIS.md` locks a distinction the worked examples must not blur
+(THESIS:217-218; ROADMAP Track 16):
+
+- **Shape A — compiler language targets**: programming languages and HDLs
+  — `rust`, `python`, `go`, `cpp`, `typescript`, `verilog` (and the
+  low-level / IR targets `llvm_ir`, `ptx`, `machine_code`, likewise
+  modeled in `extdeps/languages/`). The compiler emits these **directly**
+  via `emit(TargetModel)` against a language spec. The N+M / N×M
+  *compiler-emit* capability claim above is about these.
+- **Shape B — user-program artifacts**: `openapi`, `json_schema`, `yaml`,
+  `json`, `csv`, `toml`, `spice` netlists, English docs. These are **NOT**
+  compiler render-targets — they are emitted by `.dag` **user programs**
+  walking typed values (`concat` / `fold` / `match`). Adding a Shape-B
+  target is writing one reusable `.dag` emitter program, not a compiler
+  change.
+
+So a Shape-B entry in this catalog is a **grounding / data-model
+example** — it shows how that format's types ground and how a coercion
+against them is shaped. It is **never** an instruction to implement the
+format as a compiler `emit(TargetModel)` render path. The grounding
+discipline is shared across both shapes; the *emission mechanism* is not.
 
 ## Spectrum
 
