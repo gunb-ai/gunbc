@@ -259,13 +259,16 @@ Self-hosting is not one capability; it's four. All four are targets.
 
 4. **Recursive-flex / self-application** (NEW 2026-05-04; **narrowed
    2026-05-15, operator-ratified**). gunbc applies its own correctness/
-   cost/parallelism/timing lenses to its own **build/CI pipeline**, which
+   cost/parallelism lenses to its own **build/CI pipeline**, which
    is modeled as `.dag` data (`workflow/bootstrap.dag`,
    `workflow/ci.dag`). The same lens framework users get for their own
    programs applies recursively to gunbc's own build/CI behavior —
-   typed lenses for cost / complexity / parallelism / timing over the
-   pipeline that produces gunbc itself. This distinguishes gunbc from
-   compilers that don't validate their own production pipeline.
+   typed lenses for cost / complexity / parallelism over the
+   pipeline that produces gunbc itself. (Timing is a projection of the
+   **cost** lens — cost is the time/complexity dimension, U2 — not a
+   separate lens; Theme-A planning audit, 2026-05-17.) This
+   distinguishes gunbc from compilers that don't validate their own
+   production pipeline.
 
    **Retracted (2026-05-15, operator-ratified):** the original
    "T-Workflow-As-Data substrate" sub-claim — modeling gunbc's *own
