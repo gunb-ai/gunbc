@@ -21,11 +21,11 @@
 //   - std/node.dag, std/diagnostic.dag
 //   - compiler/02_parse.dag: ParseTree
 //
-// Status: T-8 modeled 2026-05-16 (bright-seal-437). This file keeps the
-// parse seam frozen by treating ParseTree as the incoming Node-shaped
-// surface tree produced by 02_parse.dag's generic grammar walker; it does
-// not declare a second ParseTree authority. The only authored classifier
-// here is the closed four-case SurfaceSugarKind that C3 already ratifies.
+// Status: T-8 modeled 2026-05-16 (bright-seal-437). ParseTree is the
+// single authority in v4.compiler.parse (02_parse.dag); this stage imports
+// it and consumes ParseTree on the public normalize entry — no local alias.
+// The only authored classifier here is the closed four-case
+// SurfaceSugarKind that C3 already ratifies.
 // Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
 // contract for the worker. Splitting this file requires explicit operator
 // ratification (substrate extension = stop signal).
@@ -34,12 +34,17 @@
 module v4.compiler.normalize
 
 
+import v4.compiler.parse { ParseTree }
 import v4.std.diagnostic {
+  AmbiguousIntent,
   Correction,
   Diagnostic,
   Locus,
   NoCorrectionReason,
-  Outcome
+  NodeLocus,
+  Outcome,
+  PortLocus,
+  UserInputBoundary
 }
 import v4.std.node {
   Behavior,
@@ -258,9 +263,8 @@ fn normalize_node(n: Node) -> Outcome<Node> {
 }
 
 
-// Entry point for T-8 stage 3a. The input is the frozen 02_parse seam's
-// Node-shaped ParseTree; CP-1b does not author ParseTree itself.
-fn normalize(parse_tree: Node) -> Outcome<NormalizedTree> {
+// Entry point for T-8 stage 3a — consumes v4.compiler.parse::ParseTree.
+fn normalize(parse_tree: ParseTree) -> Outcome<NormalizedTree> {
   match normalize_node(n: parse_tree) {
     Rejected { diagnostic: d } => Rejected { diagnostic: d }
     Produced { value: normalized } =>
