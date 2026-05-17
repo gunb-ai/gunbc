@@ -6,7 +6,8 @@
 //!
 //! **Shape:** `v4_extdeps_react_dag_compiles` is the single **0-diag** gate; sibling
 //! `#[test]`s each assert one structural receipt on a fresh compile (TESTING.md §4),
-//! including the pinned **20-arm `ReactHookSite`** label roster.
+//! including the pinned **19-arm `ReactHookSite`** label roster plus separate
+//! **`ReactUseCallSite`** for `use(resource)` (not a Hook — react.dev/use).
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::TypeConnective;
@@ -15,8 +16,9 @@ use v3_compiler::CompileError;
 const REACT_DAG: &str = include_str!("../../../../v4/extdeps/frameworks/react.dag");
 const REACT_PATH: &str = "src/v4/extdeps/frameworks/react.dag";
 
-/// Pinned `react@19.2.0` `ReactHookSite` roster per `react.dag` — **19** built-in
-/// APIs (hooks index + `UseResource` for `use(resource)`) + **`CustomHook`** (= **20** arms).
+/// Pinned `react@19.2.0` **Hooks index** roster in `ReactHookSite`: **18** built-in
+/// `use*` APIs + **`CustomHook`** (= **19** arms). `use(resource)` is **not** modeled here
+/// — see `ReactUseCallSite` (react.dev/use: not a Hook; placement rules differ).
 const EXPECTED_REACT_HOOK_SITE_ARMS: &[&str] = &[
     "UseState",
     "UseReducer",
@@ -36,7 +38,6 @@ const EXPECTED_REACT_HOOK_SITE_ARMS: &[&str] = &[
     "UseDebugValue",
     "UseActionState",
     "UseOptimistic",
-    "UseResource",
     "CustomHook",
 ];
 
@@ -166,6 +167,47 @@ fn assert_effect_hook_arms_require_setup_ref(dag: &v3_compiler::Dag) {
             setup_ty.name
         );
     }
+}
+
+/// `use(resource)` is the separate **`use` API** (react.dev/reference/react/use), not a
+/// Hooks-index hook: unlike Hooks, it may appear in loops/conditionals. Substrate must not
+/// fold it into `ReactHookSite` (Rules-of-Hooks / P2 placement).
+fn assert_use_resource_is_react_use_call_site_not_hook_site(dag: &v3_compiler::Dag) {
+    let hook_site = dag
+        .declaration_by_name("ReactHookSite")
+        .expect("ReactHookSite should exist after compiling react.dag");
+    let TypeConnective::Disj { variants } = &hook_site.connective else {
+        panic!(
+            "ReactHookSite: expected coproduct (Disj), got {:?}",
+            hook_site.connective
+        );
+    };
+    assert!(
+        !variants.iter().any(|v| v.label == "UseResource"),
+        "UseResource must not be a `ReactHookSite` arm — it is the `use` API, not a Hooks-index hook"
+    );
+
+    let use_call_site = dag
+        .declaration_by_name("ReactUseCallSite")
+        .expect("ReactUseCallSite should exist after compiling react.dag");
+    let TypeConnective::Disj {
+        variants: use_variants,
+    } = &use_call_site.connective
+    else {
+        panic!(
+            "ReactUseCallSite: expected coproduct (Disj), got {:?}",
+            use_call_site.connective
+        );
+    };
+    assert_eq!(
+        use_variants.len(),
+        1,
+        "ReactUseCallSite should be a single-variant carrier for `use(resource)` in this slice"
+    );
+    assert_eq!(
+        use_variants[0].label, "UseResource",
+        "ReactUseCallSite should carry `UseResource` as the `use(resource)` arm"
+    );
 }
 
 fn assert_react_hook_site_roster_matches_pin(dag: &v3_compiler::Dag) {
@@ -410,6 +452,11 @@ fn v4_extdeps_react_dag_effect_hooks_require_setup_ref() {
 #[test]
 fn v4_extdeps_react_dag_react_hook_site_roster_matches_pin() {
     assert_react_hook_site_roster_matches_pin(&react_extdeps_dag_or_panic());
+}
+
+#[test]
+fn v4_extdeps_react_dag_use_resource_is_react_use_call_site_not_hook_site() {
+    assert_use_resource_is_react_use_call_site_not_hook_site(&react_extdeps_dag_or_panic());
 }
 
 #[test]

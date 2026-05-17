@@ -1,6 +1,6 @@
 // src/v4/extdeps/frameworks/react.dag
 // Scope: React 19.2 framework extdeps — components, elements, props, hooks, context, cross-decl refs, optional refs, dependency-array and cleanup sites.
-// Owns: ReactCrossDeclRef, ReactOptRef, ReactEffectCleanupSite, ReactHookInlineDependenciesArgument, ReactModuleSurface, ReactHookSite, ReactPropsSite, ReactFunctionComponent, ReactHostElement, ReactCompositeElement, ReactElement, ReactNode, ReactContextBinding
+// Owns: ReactCrossDeclRef, ReactOptRef, ReactEffectCleanupSite, ReactHookInlineDependenciesArgument, ReactModuleSurface, ReactHookSite, ReactUseCallSite, ReactPropsSite, ReactFunctionComponent, ReactHostElement, ReactCompositeElement, ReactElement, ReactNode, ReactContextBinding
 // Consumes: v4.std.collection.List, v4.std.diagnostic.Outcome
 // Status: T-4.7
 
@@ -85,8 +85,11 @@ type ReactHookSite
       permalink: ReactOptRef
     }
   | UseOptimistic { value_ref: ReactCrossDeclRef, reducer: ReactOptRef }
-  | UseResource { resource_ref: ReactCrossDeclRef }
   | CustomHook { implementation_ref: ReactCrossDeclRef }
+
+// Anchor: https://react.dev/reference/react/use
+type ReactUseCallSite
+  = UseResource { resource_ref: ReactCrossDeclRef }
 
 // Anchor: https://react.dev/reference/react/createElement
 type ReactPropsSite {
