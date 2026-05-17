@@ -353,10 +353,11 @@ Operator-stated principle (2026-05-17), governing the reseed:
   bad-example arms every review against the hollow alias. That is the
   *first* enforcement tier — but it is reviewer-applied, i.e.
   convention-level until a structural/API gate exists. Phase 1 therefore
-  also evaluates a
-  *structural* check — a generated fact-density / hollow-alias gate —
-  and adds it where the cost is cheap; the documented example is the
-  floor, not the ceiling. Reverse the D2/D4 rows. Rewrite the
+  must either ship a
+  *structural* check — a generated fact-density / hollow-alias gate — or
+  explicitly defer that gate by naming the ROADMAP / task row that owns
+  the deferral; the documented example is the floor, not the ceiling.
+  Reverse the D2/D4 rows. Rewrite the
   `TASKS.md` T-4 authoring contract.
 - **Phase 2 — rework the entire T-## program** around fact-bundle
   modeling, first-class, plus the `std/` substrate axes the model needs
