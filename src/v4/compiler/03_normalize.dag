@@ -1,25 +1,15 @@
 // src/v4/compiler/03_normalize.dag
 //
-// Scope: pipeline stage 3a — ParseTree to NormalizedTree. Surface sugar dissolution.
+// Scope: stage 3a — ParseTree → NormalizedTree (C3 sugar dissolution).
 // Anchor: https://en.wikipedia.org/wiki/Abstract_syntax_tree
 //
-// C3 (operator-ratified 2026-05-15): normalize dissolves EXACTLY the 4
-// bounded surface-sugar forms THESIS:198-203 names — `service`, `fn`,
-// `type`, `operation` — into Node trees. It is NOT identity and NOT
-// open-ended. There is no 5th sugar form; a new one is a substrate
-// extension = STOP, not an inline add. (This closes the "what does
-// normalize do in a no-sugar language" tension — there IS bounded sugar,
-// exactly these 4; cascade-closure of A1.)
+// C3: exactly {service, fn, type, operation} → `Node`; no 5th sugar (substrate STOP).
 //
-// Architecture (`compiler/00_compile.dag` **core**): normalize is the first
-// transform in `core` after `ingest` (`core = normalize ∘ resolve ∘ infer`).
-// The four C3 sugar **Atom identities** (`dag_c3_surface_sugar_*`) are minted
-// in the **LanguageModel** bundle (`extdeps/languages/dag.dag`) as **grammar-as-data**
-// — the same declarative corpus `ingest`/`parse` walks (B2-OMNI: one bidirectional
-// relation, not a normalize-local naming table). This stage **consumes** that
-// mint: `classify_sugar` compares parse output **only** by identity against those
-// authorities; dissolution rewrites `Node` shape. A parallel sugar Symbol here
-// would be a second authority (the Codex finding #1 defect) — forbidden.
+// Architecture (`00_compile` **core**): first `core` step after `ingest`
+// (`core = normalize ∘ resolve ∘ infer`). C3 sugar `Symbol`s are **single-mint**
+// in `extdeps/languages/dag.dag` (LanguageModel grammar-as-data); this stage
+// **consumes** that mint — `classify_sugar` compares **identity only**; no
+// parallel sugar authority (Codex #1 / Practice 5).
 //
 // Owns:
 //   - NormalizedTree type
@@ -30,14 +20,11 @@
 // Consumes:
 //   - std/node.dag, std/diagnostic.dag
 //   - compiler/02_parse.dag: ParseTree
-//   - extdeps/languages/dag.dag: `dag_c3_surface_sugar_*` Atom identities (single
-//     mint for C3 sugar; classify compares parse output against these authorities)
+//   - extdeps/languages/dag.dag: `dag_c3_surface_sugar_*` (single mint)
 //
-// Status: T-8 modeled 2026-05-16 (bright-seal-437). ParseTree is the
-// single authority in v4.compiler.parse (02_parse.dag); this stage imports
-// it and consumes ParseTree on the public normalize entry — no local alias.
-// The only authored classifier here is the closed four-case
-// SurfaceSugarKind that C3 already ratifies.
+// Status: T-8 CP-1b (bright-seal-437); ParseTree seam = 02_parse authority.
+// GATED: verbatim TASKS T-8 narrative alignment with merged #3232 (operator HOLD);
+//        substance above is authoritative for this PR.
 // Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
 // contract for the worker. Splitting this file requires explicit operator
 // ratification (substrate extension = stop signal).
