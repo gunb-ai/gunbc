@@ -355,11 +355,17 @@ type Reg64 = Conj {
 This is the spectrum's trivial endpoint — `machine_code` *is* bits, so
 the grounding is direct, no decode.
 
-**Coercion shape — `Reg64 -> Outcome<List<Bool>>`:** the fold projects the
-`bits` field and the `length_proof` witness discharges to the target —
-returning `Produced { value: bits }`. Instruction-specific reads are
-separate coercions: the consumer supplies the meaning (`Int64`, address,
-binary64, ...), and an unsupported or missing meaning returns
+**Coercion shape — `Reg64 -> Outcome<Conj{ bits: List<Bool>, length_proof: Witness<|bits| = 64> }>`:**
+the coercion is **identity-quality** — `Reg64` *is already* the
+length-witnessed bit-list, so the target carrier is the same shape, not a
+bare `List<Bool>`. Projecting to a bare `List<Bool>` would silently drop
+the width-64 witness — the facts-flow-forward violation §1 (the Rust
+array) warns against; the width-64 fact must flow forward into the target
+carrier (or be an *explicit* accepted-loss, which a "pure-bits endpoint"
+identity coercion has no reason to be). Returns `Produced { value }`
+carrying **both** `bits` and `length_proof`. Instruction-specific reads
+are separate coercions: the consumer supplies the meaning (`Int64`,
+address, binary64, ...), and an unsupported or missing meaning returns
 `Rejected { diagnostic: Diagnostic }` rather than inventing one.
 
 ---
