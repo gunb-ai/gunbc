@@ -54,7 +54,22 @@
 module v4.extdeps.languages.dag
 
 
-import v4.std.node { Conj, Node, NodeKind, TypeNode }
+import v4.std.node { Conj, Node, NodeKind, Symbol, TypeNode }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// C3 surface-sugar Atom identities (THESIS:198-203, DECISIONS C3).
+//
+// Ratified `.dag` language sugar is exactly { service, fn, type, operation }.
+// These `Symbol` authorities are the SINGLE mint for parse/grammar data and
+// for `compiler/03_normalize.dag` dissolution — normalize MUST NOT declare
+// parallel sugar_* Symbols (K-1 opaque identity; equality only matches the
+// same authority). Wave-1 grammar data is not yet populated; when T-7/T-8
+// grammar productions land, they import these same declarations.
+data dag_c3_surface_sugar_service: Symbol = dag_c3_surface_sugar_service
+data dag_c3_surface_sugar_fn: Symbol = dag_c3_surface_sugar_fn
+data dag_c3_surface_sugar_type: Symbol = dag_c3_surface_sugar_type
+data dag_c3_surface_sugar_operation: Symbol = dag_c3_surface_sugar_operation
 
 
 // ─────────────────────────────────────────────────────────────────────

@@ -35,6 +35,12 @@ module v4.compiler.normalize
 
 
 import v4.compiler.parse { ParseTree }
+import v4.extdeps.languages.dag {
+  dag_c3_surface_sugar_fn,
+  dag_c3_surface_sugar_operation,
+  dag_c3_surface_sugar_service,
+  dag_c3_surface_sugar_type
+}
 import v4.std.diagnostic {
   AmbiguousIntent,
   Correction,
@@ -71,10 +77,6 @@ type NormalizedTree = Node
 // name-references owned by normalize.dag; they are not readable strings.
 data normalize_reason_malformed_sugar: Symbol = normalize_reason_malformed_sugar
 data normalize_port_surface_sugar: Symbol = normalize_port_surface_sugar
-data sugar_service: Symbol = sugar_service
-data sugar_fn: Symbol = sugar_fn
-data sugar_type: Symbol = sugar_type
-data sugar_operation: Symbol = sugar_operation
 
 
 // SurfaceSugarKind is exactly C3's closed set. It is a local classifier for
@@ -96,16 +98,16 @@ type SugarClassification
 fn classify_sugar(n: Node) -> SugarClassification {
   match n.kind {
     TypeNode { connective: Atom { identity: id } } =>
-      if id == sugar_service {
+      if id == dag_c3_surface_sugar_service {
         Sugar { kind: ServiceSugar }
       } else {
-        if id == sugar_fn {
+        if id == dag_c3_surface_sugar_fn {
           Sugar { kind: FnSugar }
         } else {
-          if id == sugar_type {
+          if id == dag_c3_surface_sugar_type {
             Sugar { kind: TypeSugar }
           } else {
-            if id == sugar_operation {
+            if id == dag_c3_surface_sugar_operation {
               Sugar { kind: OperationSugar }
             } else {
               NotSugar
