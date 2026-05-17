@@ -49,14 +49,14 @@
 //     `v4.std.node` merge under M1(2.7) import no-op — bundle time aligns carriers.)
 //   - ReactPropsSite (props type + value sites — `ReactCrossDeclRef` edges)
 //   - ReactHostElement / ReactCompositeElement / ReactElement (host + composite +
-//     fragment + text partition; `createElement` lifts `key`/`ref` onto host/composite
-//     element objects)
+//     fragment + **text child value** partition; `createElement` lifts `key`/`ref` onto
+//     host/composite **returned element objects** and `key` onto keyed `Fragment` —
+//     not onto primitive string/number children, which have no `element.key`)
 //   - ReactContextBinding (`createContext(defaultValue)` site — context object + default)
 //   - ReactHookSite — closed hook **call-site** coproduct under the react@19.2.0 pin
 //     + `CustomHook` (🟡 YELLOW Practice‑4 carrier per design-r4 §12 HookKind; canvas
 //     in-repo — dissolution trigger = new built-in at pin bump; see block ledger)
-//   - ReactHookInlineDependenciesArgument, ReactOptRef, ReactOptionalEffectBody,
-//     ReactEffectCleanupSite — supporting **substrate sums** (each carries its own
+//   - ReactHookInlineDependenciesArgument, ReactOptRef, ReactEffectCleanupSite — supporting **substrate sums** (each carries its own
 //     Practice‑4 🟢 ledger below; they are not un-owned implementation details).
 //
 // Consumes (traceability):
@@ -105,25 +105,6 @@ type ReactCrossDeclRef
 type ReactOptRef
   = RefPresent { ref: ReactCrossDeclRef }
   | RefAbsent
-
-
-// ═════════════════════════════════════════════════════════════════════
-// ReactOptionalEffectBody
-//
-// `useEffect` / `useLayoutEffect` / `useInsertionEffect` may be cleanup-only
-// (design-r4 §4: body absent, cleanup present ⇒ unmount-style obligation reads
-// off the arm — not a parallel `OnUnmount` sum).
-//
-// Coproduct dissolution (Practice 4) — 🟢 GREEN (terminal). Ledger — five patterns:
-//   1. Fact placement — FAILS: setup body folded into unrelated hook arms.
-//   2. Variant-is-data — FAILS: Bool “has body” admits illegal partial facts.
-//   3. Algebraic form — N/A: grammar proof for setup lives in lowered `Node`.
-//   4. Dimensional — FAILS: XOR at one effect-body site.
-//   5. Parameterized family — FAILS: not Practice-7 copy over hook roster.
-// Terminal: body-present vs cleanup-only effect setup partition.
-type ReactOptionalEffectBody
-  = EffectBody { effect_body_ref: ReactCrossDeclRef }
-  | NoEffectBody
 
 
 // ═════════════════════════════════════════════════════════════════════
@@ -211,9 +192,9 @@ type ReactModuleSurface
 // built-in (re‑ratify `ReactHookSite` arms on that PR). **Already dissolved here
 // (structural facts, §4 Q2 / canvas:76):** per-arm call signatures (no uniform
 // phantom `dependency_refs` on every hook); `ReactHookInlineDependenciesArgument`
-// where the pinned API admits **omit vs present** deps; effect lifecycle only on
-// `UseEffect` / `UseLayoutEffect` / `UseInsertionEffect` payloads — no parallel
-// lifecycle sum. **This canvas does not “close” the §12 YELLOW** — it only
+// where the pinned API admits **omit vs present** deps; effect arms carry a
+// **required** `setup_ref` (react.dev `useEffect(setup, …)` — setup is mandatory)
+// plus `ReactEffectCleanupSite` — no parallel lifecycle sum. **This canvas does not “close” the §12 YELLOW** — it only
 // authorizes Custom **shape** evolution; roster closure remains pin/index edits.
 // Ledger — five patterns:
 //   1. Fact placement — FAILS: shared hook-site tag for resolver/emit.
@@ -243,21 +224,22 @@ type ReactHookSite
       factory_ref: ReactCrossDeclRef
       dependencies: ReactHookInlineDependenciesArgument
     }
-  // Anchor: https://react.dev/reference/react/useEffect — deps + cleanup on-arm.
+  // Anchor: https://react.dev/reference/react/useEffect — `setup` is **required**;
+  //         optional deps + optional cleanup returned from setup (modeled on-arm).
   | UseEffect {
-      body: ReactOptionalEffectBody
+      setup_ref: ReactCrossDeclRef
       dependencies: ReactHookInlineDependenciesArgument
       cleanup: ReactEffectCleanupSite
     }
-  // Anchor: https://react.dev/reference/react/useLayoutEffect
+  // Anchor: https://react.dev/reference/react/useLayoutEffect — same required setup.
   | UseLayoutEffect {
-      body: ReactOptionalEffectBody
+      setup_ref: ReactCrossDeclRef
       dependencies: ReactHookInlineDependenciesArgument
       cleanup: ReactEffectCleanupSite
     }
-  // Anchor: https://react.dev/reference/react/useInsertionEffect
+  // Anchor: https://react.dev/reference/react/useInsertionEffect — same required setup.
   | UseInsertionEffect {
-      body: ReactOptionalEffectBody
+      setup_ref: ReactCrossDeclRef
       dependencies: ReactHookInlineDependenciesArgument
       cleanup: ReactEffectCleanupSite
     }
@@ -312,8 +294,9 @@ type ReactHookSite
 // Anchor: https://react.dev/learn/passing-props-to-a-component — props bag for the
 //         `props` argument to `createElement` / component receives; **`key` and
 //         `ref`** passed there are lifted to **`element.key` / `element.ref`** on the
-//         element object (not modeled inside this record — see `ReactHostElement` /
-//         `ReactCompositeElement` / `Fragment` / `Text` arms).
+//         returned element object (not modeled inside this record — see `ReactHostElement` /
+//         `ReactCompositeElement`; `Fragment` for keyed fragments; `Text` is primitive child
+//         value only, not an element object with those fields).
 type ReactPropsSite {
   props_type_ref: ReactCrossDeclRef
   props_value_ref: ReactCrossDeclRef
@@ -378,7 +361,10 @@ type ReactElement
   // Anchor: https://react.dev/reference/react/Fragment — keyed fragments carry
   //         `key` on the element object (same createElement extraction as host/composite).
   | Fragment { key: ReactOptRef, child_refs: List<ReactCrossDeclRef> }
-  | Text { key: ReactOptRef, text_value_ref: ReactCrossDeclRef }
+  // Anchor: https://react.dev/reference/react/createElement — string/number **children**
+  //         are React nodes, not returned element objects; there is no `element.key` on
+  //         primitive text (contrast host/composite/Fragment arms above).
+  | Text { text_value_ref: ReactCrossDeclRef }
 
 
 // ═════════════════════════════════════════════════════════════════════

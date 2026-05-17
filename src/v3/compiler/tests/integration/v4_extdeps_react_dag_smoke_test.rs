@@ -50,6 +50,46 @@ fn assert_use_memo_dependencies_field_is_inline_deps_argument(dag: &v3_compiler:
     );
 }
 
+/// react.dev `useEffect(setup, …)` / `useLayoutEffect` / `useInsertionEffect` — **setup** is required;
+/// cleanup is optional and modeled separately on-arm (`ReactEffectCleanupSite`).
+fn assert_effect_hook_arms_require_setup_ref(dag: &v3_compiler::Dag) {
+    let react_hook_site = dag
+        .declaration_by_name("ReactHookSite")
+        .expect("ReactHookSite should exist after compiling react.dag");
+    let TypeConnective::Disj { variants } = &react_hook_site.connective else {
+        panic!(
+            "ReactHookSite: expected coproduct (Disj), got {:?}",
+            react_hook_site.connective
+        );
+    };
+    let cross_decl = dag
+        .declaration_by_name("ReactCrossDeclRef")
+        .expect("ReactCrossDeclRef should exist in this module");
+    for arm in ["UseEffect", "UseLayoutEffect", "UseInsertionEffect"] {
+        let v = variants
+            .iter()
+            .find(|v| v.label == arm)
+            .unwrap_or_else(|| panic!("ReactHookSite should include {arm}"));
+        let payload = dag.declaration(v.ty);
+        let TypeConnective::Conj { children } = &payload.connective else {
+            panic!(
+                "{arm} arm: expected record (Conj) payload, got {:?}",
+                payload.connective
+            );
+        };
+        let setup = children.iter().find(|f| f.label == "setup_ref").unwrap_or_else(|| {
+            panic!("{arm} payload should declare `setup_ref` (required setup function)")
+        });
+        let setup_ty = dag.declaration(setup.ty);
+        assert_eq!(
+            setup_ty.id,
+            cross_decl.id,
+            "{arm}.setup_ref must be `ReactCrossDeclRef`, got {:?}",
+            setup_ty.name
+        );
+    }
+}
+
 /// createElement lifts `key` / `ref` out of `props` onto the element object (`element.key`,
 /// `element.ref` per react.dev); host elements must carry them as fields, not only inside `props`.
 fn assert_react_host_element_has_key_and_ref_fields(dag: &v3_compiler::Dag) {
@@ -146,7 +186,7 @@ fn assert_react_element_fragment_has_key_field(dag: &v3_compiler::Dag) {
     );
 }
 
-fn assert_react_element_text_has_key_field(dag: &v3_compiler::Dag) {
+fn assert_react_element_text_has_no_element_key_field(dag: &v3_compiler::Dag) {
     let react_element = dag
         .declaration_by_name("ReactElement")
         .expect("ReactElement should exist after compiling react.dag");
@@ -167,18 +207,22 @@ fn assert_react_element_text_has_key_field(dag: &v3_compiler::Dag) {
             payload.connective
         );
     };
-    let key_field = children
+    assert!(
+        !children.iter().any(|f| f.label == "key"),
+        "Text arm must not declare `key` — primitive text children are not createElement-returned element objects"
+    );
+    let value = children
         .iter()
-        .find(|f| f.label == "key")
-        .expect("Text payload should declare `key`");
-    let key_ty = dag.declaration(key_field.ty);
-    let opt_ref = dag
-        .declaration_by_name("ReactOptRef")
-        .expect("ReactOptRef should exist in this module");
+        .find(|f| f.label == "text_value_ref")
+        .expect("Text payload should declare `text_value_ref`");
+    let value_ty = dag.declaration(value.ty);
+    let cross_decl = dag
+        .declaration_by_name("ReactCrossDeclRef")
+        .expect("ReactCrossDeclRef should exist in this module");
     assert_eq!(
-        key_ty.id, opt_ref.id,
-        "Text.key must be `ReactOptRef`, got {:?}",
-        key_ty.name
+        value_ty.id, cross_decl.id,
+        "Text.text_value_ref must be `ReactCrossDeclRef`, got {:?}",
+        value_ty.name
     );
 }
 
@@ -192,10 +236,11 @@ fn v4_extdeps_react_dag_compiles() {
                 dag.diagnostics().iter().collect::<Vec<_>>()
             );
             assert_use_memo_dependencies_field_is_inline_deps_argument(&dag);
+            assert_effect_hook_arms_require_setup_ref(&dag);
             assert_react_host_element_has_key_and_ref_fields(&dag);
             assert_react_composite_element_has_key_and_ref_fields(&dag);
             assert_react_element_fragment_has_key_field(&dag);
-            assert_react_element_text_has_key_field(&dag);
+            assert_react_element_text_has_no_element_key_field(&dag);
         }
         Err(CompileError::Semantic(dag)) => panic!(
             "{REACT_PATH}: semantic errors: {:?}",
