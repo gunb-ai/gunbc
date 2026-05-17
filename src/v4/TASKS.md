@@ -809,12 +809,15 @@ or a doc promises what the tree lacks. Per the operator framing — at this
 stage the only debt v4 can introduce is *missed-planning* debt
 (worker-discretion debt is foreclosed by STOP + settled contracts) — this
 section closes that debt: every row below now points somewhere. The
-disposition forks were **RATIFIED by the operator 2026-05-17** as part of
-the D2-reversal Phase-1 execution: zero planning-level deferrals — every
-"(b) rule out-of-v4" escape was killed and the schedule fork taken. T-25
-(decomposed core + prover tail), T-26, T-28 (bundled into T-8), and T-29
-are **SCHEDULED** and join T-15's close-gate plan; **T-27 was DROPPED**
-(ruled orthogonal to v4). See each task entry below.
+**new-PROPOSED-task forks (T-25…T-29) were RATIFIED by the operator
+2026-05-17** as part of the D2-reversal Phase-1 execution: zero
+planning-level deferrals — every "(b) rule out-of-v4" escape was killed
+and the schedule fork taken. T-25 (decomposed core + prover tail), T-26,
+T-28 (bundled into T-8), and T-29 are **SCHEDULED** and join T-15's
+close-gate plan; **T-27 was DROPPED** (ruled orthogonal to v4). One fork
+remains **OPEN**: the `#4 — T-16 SQL DDL` scope fork (below) was not in
+the Phase-1 brief and still awaits an operator disposition — it is *not*
+yet covered by the 2026-05-17 ratification.
 
 **Dissolved (no new substrate — wording/clarification):**
 - **#1 `BitIdentical`** — = `Equals` over B1 `content_hash`; no 5th
@@ -911,10 +914,16 @@ integer widths without it (hence the `T-4 [needs … T-29]` edge).
 
 **Scope / clarification dispositions:**
 - **#4 — T-16 SQL DDL.** T-16's demo lists a SQL DDL artifact; no
-  `extdeps` SQL model exists. **Fork:** (a) schedule an operator-ratified
-  `extdeps` SQL/relational model (SQL has a versioned spec — L-2
-  admissible); or (b) narrow T-16 to a Shape-B *string* DDL artifact and
-  explicitly rule typed SQL out-of-v4.
+  `extdeps` SQL model exists. **Fork — STILL OPEN; awaits an operator
+  disposition.** This fork was *not* in the D2-reversal Phase-1 brief, so
+  the 2026-05-17 ratification does not cover it; it is the one Theme-A row
+  still carrying an unresolved fork. **Fork:** (a) schedule an
+  operator-ratified `extdeps` SQL/relational model (SQL has a versioned
+  spec — L-2 admissible); or (b) narrow T-16 to a Shape-B *string* DDL
+  artifact and explicitly rule typed SQL out-of-v4. (Note: SQL schemas are
+  Shape-B per `THESIS.md`:217 — fork (b) is the THESIS-consistent default;
+  fork (a) would make typed SQL a modeled `extdeps` format. The operator
+  owns this scope call.)
 - **#9 — `LanguageModel` / `TargetModel` named type.** `00_compile.dag`
   prose (B2-OMNI) is parameterized over "declarative LanguageModels" but
   no `type LanguageModel` is declared. Disposition: T-6/T-10 either
@@ -940,6 +949,9 @@ integer widths without it (hence the `T-4 [needs … T-29]` edge).
   TASKS.md T-4 scopes the v4 languages. No edit; confirmed.
 
 Net: every Theme-A row now points to a scheduled task, a wording fix, a
-scope ruling, or a confirmed non-gap. The operator ratified the
-disposition forks 2026-05-17 (D2-reversal Phase-1 execution) — Theme-A
-missed-planning debt is **closed**.
+scope ruling, a confirmed non-gap, or (the `#4 — T-16 SQL DDL` row) an
+open fork explicitly flagged for an operator disposition. The operator
+ratified the T-25…T-29 disposition forks 2026-05-17 (D2-reversal Phase-1
+execution); Theme-A missed-planning debt is closed **except** the one
+`#4` SQL-DDL scope fork, which is named and tracked open rather than
+silently deferred.
