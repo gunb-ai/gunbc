@@ -5,6 +5,8 @@ Long-form modeling narrative for operators and reviewers. The corresponding
 Owns / Consumes / Status) and point here for essay-length rationale removed
 in the de-prose pass (operator directive via parent session).
 
+**2026-05-17 strict strip:** `verilog.dag`, `llvm_ir.dag`, `ptx.dag`, `std/integer.dag`, and `std/float.dag` no longer carry body comments (Practice ledgers, per-type anchors, import rationale). Operator-facing process receipts for that pass live in the git commit message, not the substrate files.
+
 > **Editorial note:** The fenced bodies below are a verbatim relocation of `.dag` comment text captured during the de-prose pass (including historical identifiers like `D2` where they appeared in std/ headers). The live `.dag` headers now point here instead of repeating this volume inline.
 
 

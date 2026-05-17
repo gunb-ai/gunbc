@@ -1,223 +1,41 @@
 // src/v4/extdeps/languages/ptx.dag
-//
-// Scope: PTX ISA layer (DECISIONS.md L-3) — SIMT grid/block/thread, memory hierarchy, kernels, barriers.
-// Anchor: NVIDIA PTX ISA 8.5 (HTML + PDF pinned in prior header text; full URLs in docs/v4-dag-rationale.md).
-//
+// Scope: NVIDIA PTX ISA 8.5 SIMT structural classifiers (T-4.14).
+// Anchor: https://docs.nvidia.com/cuda/parallel-thread-execution/index.html
 // Owns:
-//   - PTX coordinate classifiers as closed structural carriers:
-//     StateSpace (memory hierarchy — ParamScope / SharedScope enforced per ISA),
-//     BarrierScope, ThreadAxis, ThreadCoordSource,
-//     BitsWidth / IntegerWidth / FloatWidth, RegisterScalarKind
-//   - PTX value shapes: RegisterScalar; Dim3 / ThreadCoord; ThreadHierarchyShape
-//   - PTX cost-realization carrier: PtxCost
-//   - IN-B mapping narrative (relocated): docs/v4-dag-rationale.md
-//
-// Owned ELSEWHERE (do not duplicate here):
-//   - LanguageModel substrate (T-4 bundle)
-//   - PTX scalar algebra instance-values (std/integer.dag / std/machine.dag / std/float.dag — T-3 A3)
-//   - SIMT effect-typed Bind carrier (extdeps/coordination.dag — T-4.8)
-//
-// Consumes:
-//   - nothing — closed enums + Conj records only; `Int` kernel-ambient.
-//
-// Status: T-4.14 PASS (no 6th behavior). Header contract + long rationale: docs/v4-dag-rationale.md.
-//
-//
+//   ParamScope
+//   SharedScope
+//   StateSpace
+//   BarrierScope
+//   ThreadAxis
+//   ThreadCoordSource
+//   BitsWidth
+//   IntegerWidth
+//   FloatWidth
+//   RegisterScalarKind
+//   RegisterStateSpace
+//   RegisterScalar
+//   Dim3
+//   ThreadHierarchyShape
+//   ThreadCoord
+//   PtxCost
+// Consumes: (none; Int kernel-ambient).
+// Status: T-4.14 PASS (IN-B).
+
 module v4.extdeps.languages.ptx
 
 
-// Relocated modeling notes: docs/v4-dag-rationale.md.
 
 
-// ─────────────────────────────────────────────────────────────────────
-// ParamScope — the closed PTX `.param` state-space sub-qualifier.
-// PTX ISA 8.5 §5.1.7 / §6 distinguishes two `.param` sub-spaces in
-// the memory-operand grammar (`ld.param::entry` vs `ld.param::func`):
-//
-//   - ParamEntry — `.param::entry`  kernel-entry parameter memory
-//                                   (the parameter buffer at the
-//                                   kernel-launch boundary; staged
-//                                   by the host launch site, read-
-//                                   only inside the kernel)
-//   - ParamFunc  — `.param::func`   function-call parameter memory
-//                                   (parameters at PTX device-function
-//                                   call sites, distinct from the
-//                                   kernel-entry parameter buffer)
-//
-// CLOSED (C1 stop-signal). A third `.param` sub-qualifier is an edit
-// to THIS declaration under the L-2 pin discipline.
-//
-// Spec: https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#parameter-state-space
-//
-// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — five patterns attempted:
-//   1. Fact placement — FAILS: every `.param` operand consumer reads
-//      the scope (an `ld.param::entry` is at the kernel boundary; an
-//      `ld.param::func` is at a function call site — distinct
-//      emission paths); shared classifier, not scattered.
-//   2. Variant-is-data — FAILS: a `{ name: Symbol }` proxy reopens
-//      the readable-string heuristic surface K-1 forecloses. Same
-//      argument as StateSpace's nullary-tag form.
-//   3. Algebraic form — N/A by construction: the two are the PTX-
-//      spec param-sub-qualifier partition; no richer std/ structure.
-//   4. Dimensional — FAILS: a `.param` operand has EXACTLY ONE
-//      sub-qualifier; `.param::entry::func` is not a PTX construct.
-//   5. Parameterized family — FAILS: the two are structurally
-//      distinct parameter-boundary roles (kernel-entry boundary vs
-//      function-call boundary) — NOT one generic `F<X>` / projection
-//      over a separately-declared source set (Practice 7).
-// Terminal: the closed two-way `.param` sub-qualifier partition.
 type ParamScope
   = ParamEntry
   | ParamFunc
 
 
-// ─────────────────────────────────────────────────────────────────────
-// SharedScope — the closed PTX `.shared` state-space sub-qualifier.
-// PTX ISA 8.5 §5.1.8 / §6 distinguishes two `.shared` sub-spaces in
-// the memory-operand grammar (`ld.shared::cta` vs `ld.shared::cluster`,
-// the latter being distributed shared memory across cluster CTAs;
-// PTX 7.8+ / Hopper / CUDA 9.0):
-//
-//   - SharedCta     — `.shared::cta`     CTA-scoped shared memory
-//                                        (the legacy per-CTA shared
-//                                        region; the default when
-//                                        sub-qualifier is omitted in
-//                                        pre-cluster code)
-//   - SharedCluster — `.shared::cluster` cluster-scoped distributed
-//                                        shared memory (DSMEM —
-//                                        addressable across the
-//                                        CTAs of a cluster; PTX 7.8+,
-//                                        Hopper / CUDA 9.0 — the
-//                                        same cluster surface
-//                                        BarrierScope.Cluster and
-//                                        ThreadHierarchyShape's
-//                                        ClusterLaunch variant
-//                                        compose with)
-//
-// CLOSED (C1 stop-signal). A third `.shared` sub-qualifier is an
-// edit to THIS declaration under the L-2 pin discipline.
-//
-// Spec: https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#shared-state-space
-//
-// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — five patterns attempted:
-//   1. Fact placement — FAILS: every `.shared` operand consumer
-//      reads the scope (`ld.shared::cta` is intra-CTA; `ld.shared
-//      ::cluster` is cluster-wide — distinct emission paths and
-//      distinct memory-consistency rules per the pinned spec);
-//      shared classifier, not scattered.
-//   2. Variant-is-data — FAILS: a `{ cluster_wide: Bool }` proxy
-//      replaces a closed 2-valued exhaustive sum with an unbounded
-//      Bool (the same M4 smell as RustIntKind's signed-vs-unsigned).
-//   3. Algebraic form — N/A by construction: the two are the PTX-
-//      spec shared-sub-qualifier partition; no richer std/
-//      structure. The containment SharedCta ⊑ SharedCluster (a
-//      cluster-wide address is reachable from any CTA in the
-//      cluster) is derived FROM the closed enum, not a richer
-//      source (same parallel-rep smell as BarrierScope's
-//      Cta ⊑ Cluster ⊑ Gpu ⊑ System lattice).
-//   4. Dimensional — FAILS: a `.shared` operand has EXACTLY ONE
-//      sub-qualifier; `.shared::cta::cluster` is not a PTX
-//      construct.
-//   5. Parameterized family — FAILS: the two are structurally
-//      distinct shared-scope partitions (intra-CTA vs cluster-wide
-//      distributed) — NOT one generic `F<X>` / projection over a
-//      separately-declared source set (Practice 7).
-// Terminal: the closed two-way `.shared` sub-qualifier partition.
 type SharedScope
   = SharedCta
   | SharedCluster
 
 
-// ─────────────────────────────────────────────────────────────────────
-// StateSpace — the closed PTX memory-hierarchy classifier. PTX ISA
-// 8.5 §5.1 admits eight top-level state spaces; `.param` and
-// `.shared` carry sub-qualifiers in the memory-operand grammar
-// (§5.1.7 / §5.1.8 / §6 — `.param::{entry,func}` and
-// `.shared::{cta,cluster}`), making this enum a Disj-with-mixed-
-// arity-variants rather than a flat 8-way enum: nullary tags for
-// state spaces with no sub-qualifier, named-field payloads for
-// `Param` and `Shared` to carry their sub-qualifiers structurally.
-// Illegal "Shared without scope" or "Param without entry/func
-// distinction" are unrepresentable (the INVARIANTS P2 illegal-
-// states-unrepresentable shape; the same Disj-with-payloads design
-// rust.dag's RustScalar took for kind×width admissibility and
-// ptx.dag's RegisterScalar took for kind × admissible-width).
-//
-// (Refactored 2026-05-16 per operator BLOCKING review on PR #3170:
-// the prior flat 8-way enum collapsed PTX 8.5 sub-qualifier facts
-// — `.param::entry` vs `.param::func`, `.shared::cta` vs
-// `.shared::cluster` — into the bare Param/Shared tags. INVARIANTS
-// P2 spec-fidelity violated: facts the spec's memory-operand
-// grammar distinguishes were dropped before consumers could
-// enforce them.)
-//
-//   - Reg       — `.reg`     virtual register (per-thread; the
-//                            register-allocated value's home)
-//   - SReg      — `.sreg`    special register (read-only thread-
-//                            coord and warp/lane intrinsics; per-
-//                            thread)
-//   - Const     — `.const`   constant memory (read-only; per-grid)
-//   - Global    — `.global`  global memory (read-write; per-grid)
-//   - Local     — `.local`   local memory (per-thread spill region)
-//   - Param     — `.param::{entry,func}` parameter memory,
-//                            sub-qualified by ParamScope (the
-//                            kernel-entry boundary vs the function-
-//                            call boundary)
-//   - Shared    — `.shared::{cta,cluster}` shared memory,
-//                            sub-qualified by SharedScope (CTA-
-//                            scoped vs cluster-distributed)
-//   - Tex       — `.tex`     texture memory (read-only; per-grid)
-//
-// CLOSED (C1 stop-signal). A ninth state space is an edit to THIS
-// declaration — a visible diff routed to operator ratification. The
-// PTX spec adds state spaces across releases (e.g. recent additions
-// for cooperative-group memory); the pin discipline (L-2 versioned
-// fidelity authority) means each release-version model EDITS this
-// declaration explicitly, never silently extends it.
-//
-// Spec: https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#state-spaces
-//
-// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — five patterns attempted:
-//   1. Fact placement — FAILS: every memory-op Transform branches on
-//      the operand's StateSpace (`ld.global` vs `ld.shared::cta`
-//      vs `ld.shared::cluster` are distinct ops with distinct
-//      emission syntax and memory-consistency rules); shared
-//      classifier, not a per-consumer scattered fact.
-//   2. Variant-is-data — FAILS: collapsing the variants to a
-//      uniform record `{ kind: StateSpaceKind, param_scope:
-//      Option<…>, shared_scope: Option<…> }` reintroduces the
-//      illegal states "Param with shared_scope set" and "Global
-//      with param_scope set" the Disj-with-payloads exists to
-//      forbid — same argument as RegisterScalar's variant-is-data
-//      ledger entry. The enum IS the faithful form.
-//   3. Algebraic form — N/A by construction: PTX state spaces are
-//      the PTX spec's primitive memory-region taxonomy; they do
-//      not trace to a richer std/ algebraic structure (no Lattice
-//      / no Field on the eight tags — read-only vs read-write is
-//      a separate per-state-space property, not a partial order
-//      over them).
-//   4. Dimensional — FAILS: a PTX value lives in EXACTLY ONE state
-//      space; the directive `.global .shared` is a syntax error in
-//      PTX itself. The variants' INTERNAL structure differs (the
-//      sub-qualified variants carry a scope payload; the others
-//      don't) — they cannot be coordinates of a single record
-//      without the illegal-state smell.
-//   5. Parameterized family — FAILS: the eight have structurally
-//      distinct semantic roles (per-thread vs per-CTA vs per-grid;
-//      readable vs read-only; addressable vs intrinsic-only; with
-//      vs without sub-qualifiers) — NOT one generic `F<X>` /
-//      projection over a source set (Practice 7). The variants
-//      carry structurally-distinct payload shapes (Reg / SReg /
-//      Const / Global / Local / Tex are bare; Param carries
-//      ParamScope; Shared carries SharedScope) — not projection-
-//      uniform.
-// Terminal: the closed eight-way PTX memory-hierarchy classifier
-// with structural sub-qualifier enforcement on `.param` and
-// `.shared`; a 9th state space is the C1 stop-signal (a visible
-// ratified edit to this declaration, STRUCTURE.md commitment #1).
 type StateSpace
   = Reg
   | SReg
@@ -229,59 +47,6 @@ type StateSpace
   | Tex
 
 
-// ─────────────────────────────────────────────────────────────────────
-// BarrierScope — the closed PTX synchronization scope classifier. The
-// scope at which a Bind-as-barrier synchronizes (`bar.sync` / `membar`
-// / `fence` directives carry exactly one of four scopes per the
-// pinned PTX ISA 8.5 §8.5 memory-consistency model).
-//
-//   - Cta      — `.cta`      within-CTA (within-block) synchronization
-//                            (`bar.sync 0;` is `.cta`-scoped by default;
-//                            `membar.cta` / `fence.acq_rel.cta`)
-//   - Cluster  — `.cluster`  thread-block-cluster scope (PTX 7.8+,
-//                            Hopper / CUDA 9.0 thread block clusters;
-//                            `membar.cluster` / `fence.*.cluster` — a
-//                            cluster groups multiple CTAs that share
-//                            distributed shared memory)
-//   - Gpu      — `.gpu` (alias `.gl`)
-//                            device-wide (within-GPU) memory ordering
-//                            (`membar.gl` / `fence.*.gpu`)
-//   - System   — `.sys`      system-wide (across host/device) ordering
-//                            (`membar.sys` / `fence.*.sys`)
-//
-// CLOSED (C1 stop-signal). A fifth scope is an edit to THIS
-// declaration routed to operator ratification under the L-2 pin
-// discipline (the pinned PTX ISA version is the fidelity authority
-// — a future ISA release introducing a fifth scope is a visible diff
-// to this enum, never a silent extension).
-//
-// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — five patterns attempted:
-//   1. Fact placement — FAILS: every Bind-as-barrier reads the scope
-//      uniformly (the synchronization radius is the same datum every
-//      consumer needs); shared classifier, not scattered.
-//   2. Variant-is-data — FAILS: nullary tags from a closed PTX-defined
-//      set. A `{ radius: Int }` proxy (1=cta, 2=cluster, 3=gpu,
-//      4=sys) replaces a closed 4-valued exhaustive sum with an
-//      unbounded Int (radius=42 representable) — violates P2 + M4
-//      (closed sets are enums, not numeric proxies). Same shape as
-//      algebra.dag's `Ordering` ledger.
-//   3. Algebraic form — N/A by construction: the four scopes are the
-//      PTX memory-fence primitive radii; they do not trace to a
-//      richer std/ algebraic structure (a `BoundedLattice<Scope>`
-//      with Cta ⊑ Cluster ⊑ Gpu ⊑ System would be a parallel
-//      representation of "stronger fence subsumes weaker" — a derived
-//      property of the tags, not a richer source).
-//   4. Dimensional — FAILS: a single barrier directive carries
-//      EXACTLY ONE scope; `membar.cta.gl` is not a PTX construct.
-//      Mutually-exclusive alternatives, not coordinates.
-//   5. Parameterized family — FAILS: the four are distinct
-//      synchronization-radius primitives — NOT one generic `F<X>` /
-//      projection over a source set (Practice 7). The four radii are
-//      the PTX spec's irreducible scope partition for the pinned ISA
-//      version.
-// Terminal: the closed four-way synchronization scope for the pinned
-// PTX ISA 8.5 §8.5 spec.
 type BarrierScope
   = Cta
   | Cluster
@@ -289,108 +54,12 @@ type BarrierScope
   | System
 
 
-// ─────────────────────────────────────────────────────────────────────
-// ThreadAxis — the closed PTX coordinate axis classifier. PTX exposes
-// thread / block indices as 3-vectors (`%tid.x/.y/.z`, `%ctaid.x/.y/.z`);
-// ThreadAxis is the axis SELECTOR for one of those components.
-//
-//   - X — the x-axis component (the SIMT-fast axis: lanes within a
-//         warp vary along x first; the layout convention threadIdx.x
-//         carries)
-//   - Y — the y-axis component
-//   - Z — the z-axis component
-//
-// CLOSED (C1 stop-signal). PTX has fixed 3-D thread/block addressing
-// across all current versions; a fourth axis would be a substantive
-// ISA change routed to operator ratification.
-//
-// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — five patterns attempted:
-//   1. Fact placement — FAILS: every ThreadCoord consumer that reads
-//      a specific axis (e.g. emission of `%tid.x`) branches on the
-//      axis tag; shared classifier, not scattered.
-//   2. Variant-is-data — FAILS: a `{ component: Int }` proxy (0/1/2)
-//      replaces a closed 3-valued exhaustive sum with an unbounded
-//      Int (component=42 representable) — violates P2 + M4 the same
-//      way `Ordering` does (algebra.dag:332). The enum IS the
-//      faithful form.
-//   3. Algebraic form — N/A by construction: X/Y/Z are the basis
-//      labels of a 3-D coordinate vector; they do not trace to a
-//      richer std/ structure (no algebra over the labels themselves;
-//      the algebra is on the bounded-Int dim values, separately).
-//   4. Dimensional — FAILS: a `.x` / `.y` / `.z` axis selector picks
-//      EXACTLY ONE axis; mutually-exclusive, not simultaneous
-//      coordinates. (`%tid` as a whole vector is the Dim3 record,
-//      separate from the per-axis selector.)
-//   5. Parameterized family — FAILS: X/Y/Z are positional labels of
-//      a fixed 3-D vector — NOT one generic `F<X>` / projection over
-//      a source set (Practice 7). They are the closed three-axis
-//      basis, not a copy of any enumerable set.
-// Terminal: the closed three-way axis selector of PTX's 3-D
-// coordinate addressing.
 type ThreadAxis
   = X
   | Y
   | Z
 
 
-// ─────────────────────────────────────────────────────────────────────
-// ThreadCoordSource — the closed PTX thread-coordinate hierarchy
-// classifier. PTX ISA 8.5 §5.4 / §11 exposes FOUR structural levels of
-// thread coordinate (three legacy + one cluster intrinsic family that
-// landed in PTX 7.8 for Hopper / CUDA 9.0 thread block clusters and
-// is present in the pinned 8.5 spec). Warp / lane / SM intrinsics
-// (`%warpid`, `%laneid`, `%smid`) are scope-negative for T-4.14 (see
-// header SCOPE NEGATIVE) — they are realizations of the SIMT schedule,
-// not a coordinate axis the model admits as substrate.
-//
-//   - ThreadInCta    — `%tid.{x,y,z}`           thread position within
-//                                               the CTA (block)
-//   - CtaInCluster   — `%cluster_ctaid.{x,y,z}` CTA position within the
-//                                               cluster (PTX 7.8+,
-//                                               Hopper / CUDA 9.0)
-//   - ClusterInGrid  — `%clusterid.{x,y,z}`     cluster position within
-//                                               the grid (PTX 7.8+)
-//   - CtaInGrid      — `%ctaid.{x,y,z}`         CTA position within the
-//                                               grid (the cluster-
-//                                               independent flat
-//                                               coordinate; remains a
-//                                               first-class intrinsic
-//                                               in PTX 8.5 alongside
-//                                               the cluster reads)
-//
-// CLOSED (C1 stop-signal). A fifth hierarchy level is an edit to THIS
-// declaration routed to operator ratification under the L-2 pin
-// discipline (pinned PTX ISA 8.5).
-//
-// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — five patterns attempted:
-//   1. Fact placement — FAILS: every ThreadCoord consumer reads the
-//      source uniformly to know which intrinsic register family it
-//      emits; shared classifier, not scattered.
-//   2. Variant-is-data — FAILS: a `{ level: Int }` (0=thread,
-//      1=cta-in-cluster, 2=cluster, 3=cta-in-grid) replaces a closed
-//      4-valued exhaustive sum with an unbounded Int — violates
-//      P2 + M4 (algebra.dag:332 `Ordering` precedent).
-//   3. Algebraic form — N/A by construction: the four hierarchy
-//      levels are the PTX coordinate-space partition; they do not
-//      trace to a richer std/ structure (one could attempt a
-//      `PartialOrder<ThreadCoordSource>` containment along Thread ⊑
-//      Cta ⊑ Cluster ⊑ Grid, but that would be a parallel
-//      representation of what is already a structural containment
-//      — feedback_no_engine parallel-rep smell).
-//   4. Dimensional — FAILS: a single coordinate read picks EXACTLY
-//      ONE intrinsic family; mutually-exclusive alternatives, not
-//      simultaneous coordinates. (A kernel that uses several
-//      addresses each through a separate read; it does not co-locate
-//      them.)
-//   5. Parameterized family — FAILS: the four are distinct
-//      coordinate-space partitions — NOT one generic `F<X>` /
-//      projection over a source set (Practice 7). They are the PTX
-//      8.5 spec's irreducible coordinate-intrinsic partition for
-//      the cluster-aware hierarchy.
-// Terminal: the closed four-way thread-coordinate hierarchy at the
-// SIMT-substrate layer the probe models, pinned to PTX ISA 8.5.
 type ThreadCoordSource
   = ThreadInCta
   | CtaInCluster
@@ -398,42 +67,6 @@ type ThreadCoordSource
   | CtaInGrid
 
 
-// ─────────────────────────────────────────────────────────────────────
-// BitsWidth — the closed PTX untyped-bits-vector width classifier.
-// The PTX ISA 8.5 §5.2 fundamental-types section admits exactly five
-// untyped `.b{n}` widths (a `.b1` form does NOT exist; the 1-bit
-// register is `.pred` only).
-//
-//   - Bits8    — `.b8`
-//   - Bits16   — `.b16`
-//   - Bits32   — `.b32`
-//   - Bits64   — `.b64`
-//   - Bits128  — `.b128`    (untyped 128-bit value used by `mov.b128`
-//                            and vector load/store instructions)
-//
-// CLOSED (C1 stop-signal). A `.b256` / `.b512` is an edit to THIS
-// declaration under the L-2 pin discipline.
-//
-// Spec: https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#fundamental-types
-//
-// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — five patterns attempted:
-//   1. Fact placement — FAILS: every `BitsScalar` consumer reads the
-//      width to size the value; shared classifier, not scattered.
-//   2. Variant-is-data — FAILS: a `{ bits: Int }` proxy (8/16/32/
-//      64/128) replaces a closed 5-valued exhaustive sum with an
-//      unbounded Int (bits=42 representable) — violates P2 + M4.
-//   3. Algebraic form — partially N/A: the bit-counts form an
-//      ordered set, but the ORDER is derived FROM the closed enum
-//      (algebra.dag U1 engine-debt smell — same argument as
-//      rust.dag's RustIntWidth).
-//   4. Dimensional — FAILS: a single typed bits-vector has EXACTLY
-//      ONE width; mutually-exclusive alternatives.
-//   5. Parameterized family — FAILS: the five widths are the PTX-
-//      admitted bit-counts; they are NOT one generic `F<X>` /
-//      projection over a separately-declared source set (Practice
-//      7).
-// Terminal: the closed five-way PTX untyped-bits-width classifier.
 type BitsWidth
   = Bits8
   | Bits16
@@ -442,48 +75,6 @@ type BitsWidth
   | Bits128
 
 
-// ─────────────────────────────────────────────────────────────────────
-// IntegerWidth — the closed PTX typed-integer (signed / unsigned)
-// width classifier. The PTX ISA 8.5 §5.2 fundamental-types section
-// admits exactly four typed-integer widths: `.u8/.u16/.u32/.u64` and
-// `.s8/.s16/.s32/.s64`. A `.u128` / `.s128` form does NOT exist (the
-// 128-bit width is `.b128`-only — untyped); a `.u1` / `.s1` form does
-// NOT exist (the 1-bit register is `.pred` only).
-//
-//   - Bits8   — `.u8`  / `.s8`
-//   - Bits16  — `.u16` / `.s16`
-//   - Bits32  — `.u32` / `.s32`
-//   - Bits64  — `.u64` / `.s64`
-//
-// CLOSED (C1 stop-signal). A `.u128` / `.s128` (currently NOT in PTX
-// 8.5) is an edit to THIS declaration under the L-2 pin discipline.
-//
-// Spec: https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#fundamental-types
-//
-// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — five patterns attempted:
-//   1. Fact placement — FAILS: every `UnsignedScalar` / `SignedScalar`
-//      consumer reads the width to size the integer; shared
-//      classifier, not scattered.
-//   2. Variant-is-data — FAILS: a `{ bits: Int }` proxy (8/16/32/64)
-//      replaces a closed 4-valued exhaustive sum with an unbounded
-//      Int (bits=42 representable; bits=1 / bits=128 would also be
-//      admitted, but PTX 8.5 doesn't define `.u1` / `.s1` / `.u128`
-//      / `.s128`) — violates P2 + M4.
-//   3. Algebraic form — partially N/A: the bit-counts form an
-//      ordered set, but the ORDER is derived FROM the closed enum
-//      (same argument as BitsWidth).
-//   4. Dimensional — FAILS: a single typed integer has EXACTLY ONE
-//      width.
-//   5. Parameterized family — FAILS: the four widths are the PTX-
-//      admitted typed-integer bit-counts; they are NOT one generic
-//      `F<X>` / projection over a separately-declared source set
-//      (Practice 7). One could attempt a projection from BitsWidth's
-//      five-element set by removing Bits128, but the partition is
-//      defined by the PTX spec's choice of which widths to admit
-//      for typed-integer interpretation — that choice IS the
-//      discriminant, not a mechanical projection.
-// Terminal: the closed four-way PTX typed-integer-width classifier.
 type IntegerWidth
   = Bits8
   | Bits16
@@ -491,133 +82,12 @@ type IntegerWidth
   | Bits64
 
 
-// ─────────────────────────────────────────────────────────────────────
-// FloatWidth — the closed PTX typed-float width classifier. The PTX
-// ISA 8.5 §5.2 fundamental-types section admits exactly three typed-
-// float widths: `.f16` (IEEE-754 binary16 half-precision), `.f32`
-// (IEEE-754 binary32 single-precision), and `.f64` (IEEE-754 binary64
-// double-precision). `.bf16` (brain-float-16) is a SEPARATE kind in
-// PTX 8.5 (not a width of `.f`); it is scope-negative for this slice
-// pending the bf16-kind declaration (see header SCOPE NEGATIVE).
-// `.f8` / `.f128` do NOT exist in PTX 8.5.
-//
-//   - Bits16  — `.f16`    (IEEE-754 binary16 half-precision)
-//   - Bits32  — `.f32`    (IEEE-754 binary32 single-precision)
-//   - Bits64  — `.f64`    (IEEE-754 binary64 double-precision)
-//
-// CLOSED (C1 stop-signal). An `.f128` / `.f256` (currently NOT in
-// PTX 8.5) is an edit to THIS declaration under the L-2 pin
-// discipline.
-//
-// Spec: https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#fundamental-types
-//
-// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — five patterns attempted:
-//   1. Fact placement — FAILS: every `FloatScalar` consumer reads
-//      the width to size the float; shared classifier, not scattered.
-//   2. Variant-is-data — FAILS: a `{ bits: Int }` proxy (16/32/64)
-//      replaces a closed 3-valued exhaustive sum with an unbounded
-//      Int — violates P2 + M4.
-//   3. Algebraic form — N/A by construction: the three widths
-//      structurally inhabit the SAME algebra (ApproximateField per
-//      std/float.dag scaffold's anchor); they do not partition into
-//      distinct algebraic structures (.f16 / .f32 / .f64 are all
-//      ApproximateFields, only the precision differs).
-//   4. Dimensional — FAILS: a single typed float has EXACTLY ONE
-//      width.
-//   5. Parameterized family — FAILS: the three widths are the PTX-
-//      admitted typed-float bit-counts (the IEEE-754 binary-format
-//      subset PTX 8.5 stabilizes); they are NOT one generic `F<X>` /
-//      projection over a separately-declared source set (Practice
-//      7). The richer IEEE-754 source (binary16/32/64/128) is the
-//      spec's universe, but PTX admits the binary16/32/64 subset
-//      typed — the choice of "which widths PTX stabilizes as `.f`"
-//      is the partition discriminant.
-// Terminal: the closed three-way PTX typed-float-width classifier.
 type FloatWidth
   = Bits16
   | Bits32
   | Bits64
 
 
-// ─────────────────────────────────────────────────────────────────────
-// RegisterScalarKind — the closed PTX scalar-type kind classifier.
-// PTX scalar types partition into exactly five kinds per the PTX ISA
-// 8.5 §5.2 fundamental-types section:
-//
-//   - Bits      — `.b{w}`   untyped bit-vector (width-only, no
-//                           arithmetic semantics; admissible widths
-//                           BitsWidth = {8/16/32/64/128})
-//   - Unsigned  — `.u{w}`   unsigned modular integer (Semiring;
-//                           admissible widths IntegerWidth =
-//                           {8/16/32/64})
-//   - Signed    — `.s{w}`   signed two's-complement integer
-//                           (OrderedRing; admissible widths
-//                           IntegerWidth = {8/16/32/64})
-//   - Float     — `.f{w}`   IEEE-754 floating-point (ApproximateField;
-//                           admissible widths FloatWidth =
-//                           {16/32/64})
-//   - Predicate — `.pred`   1-bit boolean (BooleanAlgebra; width is
-//                           always 1, no width payload — the kind
-//                           alone determines the value's shape)
-//
-// THIS ENUM IS A META-CLASSIFIER (Owns the K-dimension partition only,
-// not the cross-product); the kind × admissible-width admissibility
-// is STRUCTURALLY ENFORCED by the `RegisterScalar` Disj-with-payloads
-// declaration below — each Disj variant carries EXACTLY its kind-
-// admissible width sub-enum (or no width payload, for `Predicate`),
-// so illegal kind × width pairs like `Predicate + Bits64` or `Float +
-// Bits8` are unrepresentable (the INVARIANTS P2 illegal-states-
-// unrepresentable shape; the same design choice rust.dag #3174 took
-// with RustScalar's Disj-with-payloads, and the operator review on
-// PR #3170 that drove this refactor: the prior Conj-record
-// `RegisterScalar { kind, width, state_space }` made illegal combos
-// CONSTRUCTIBLE pending a "future check" — exactly the v3 fail-open
-// failure mode INVARIANTS P2 + Practice 2/6 + the
-// `feedback_dissolve_then_check` discipline forbid).
-//
-// CLOSED (C1 stop-signal). A sixth kind (e.g. brain-float `bf` as a
-// kind distinct from Float — PTX 8.5 does have `.bf16` as a separate
-// type, scope-negative for this slice; see header SCOPE NEGATIVE) is
-// an edit to THIS declaration under the L-2 pin discipline.
-//
-// Spec: https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#fundamental-types
-//
-// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — five patterns attempted:
-//   1. Fact placement — FAILS: every RegisterScalar consumer reads
-//      the kind via the Disj-variant tag to dispatch (which algebra
-//      instance applies; which width sub-enum is admissible); shared
-//      classifier, not scattered.
-//   2. Variant-is-data — FAILS: a `{ name: Symbol }` proxy reopens
-//      the readable-string heuristic surface K-1 forecloses (a
-//      `match name { "u32" => … }` smell). The enum IS the faithful
-//      form.
-//   3. Algebraic form — PARTIAL: each kind grounds in a std/algebra
-//      structure (Unsigned→Semiring, Signed→OrderedRing,
-//      Float→ApproximateField, Predicate→BooleanAlgebra, Bits→no
-//      arithmetic algebra by design). That grounding is an
-//      INHABITANCE relation — owned by the inhabiting carrier file
-//      (std/integer.dag for Unsigned/Signed, std/float.dag for
-//      Float, std/logic.dag for Predicate) per P2. The kind enum
-//      itself stays a closed classifier.
-//   4. Dimensional — FAILS: a single scalar register has EXACTLY
-//      ONE kind; mutually-exclusive alternatives. (Kind × width is
-//      the Cartesian product on `RegisterScalar`, but the cross-
-//      product is HETEROGENEOUS by kind — each kind admits a
-//      DIFFERENT width sub-enum, so the product is NOT a flat
-//      grid; it is the Disj-with-payloads below.)
-//   5. Parameterized family — FAILS: the five kinds are the PTX-
-//      spec kind partition; they are NOT one generic `F<X>` /
-//      projection over a separately-declared source set (Practice
-//      7). One could attempt `Kind<algebra: AlgebraStructure>`
-//      parameterized over an algebra-structure set, but only four
-//      of the five ground in algebra (Bits has no arithmetic
-//      algebra by design); the partition does not project from a
-//      single source set.
-// Terminal: the closed five-way PTX scalar-kind classifier; this
-// enum is the meta-tag the RegisterScalar Disj's variants are
-// projections of, not a separate axis.
 type RegisterScalarKind
   = Bits
   | Unsigned
@@ -626,86 +96,6 @@ type RegisterScalarKind
   | Predicate
 
 
-// ─────────────────────────────────────────────────────────────────────
-// RegisterStateSpace — the closed PTX user-declarable typed-scalar-
-// resident state-space sub-classifier. PTX ISA 8.5 §5.1 lists 8
-// state spaces; TWO are excluded from the user-declarable typed-
-// scalar residence set:
-//
-//   - `.tex` (§5.1.10) is for TEXTURE/SAMPLER/SURFACE DESCRIPTORS —
-//     opaque types `texref` / `sampref` / `surfref`, NOT typed
-//     scalar storage. A typed scalar value cannot reside in `.tex`.
-//   - `.sreg` (§5.1.2) is for PREDEFINED SPECIAL REGISTERS —
-//     system-provided intrinsics like `%tid`, `%ctaid`, `%clusterid`,
-//     `%cluster_ctaid`, `%smid`, `%clock`, etc. These have
-//     SPEC-FIXED types (typically `.u32` or `.v4.u32` per intrinsic);
-//     user code CANNOT declare arbitrary typed scalars in `.sreg`
-//     (`.sreg .f32 my_var;` is not a legal PTX construct). The
-//     ThreadCoord carrier (declared above) is how this model
-//     handles `.sreg`-resident intrinsic reads structurally — the
-//     intrinsic identity (source × axis) determines the type
-//     downstream, not a user-chosen kind × width.
-//
-// So the user-declarable typed-scalar-residence admissibility set
-// is the 6-variant subset of StateSpace excluding both `Tex` and
-// `SReg`.
-//
-// (Refactored 2026-05-16 per operator BLOCKING review on PR #3170:
-// the prior 7-variant form admitted `FloatScalar { state_space:
-// ResSReg }` and similar illegal kind × `.sreg` combinations —
-// INVARIANTS P1 modeling-faithfulness violated against PTX 8.5
-// §5.1.2's spec-fixed intrinsic typing. The exclusion of `.sreg`
-// mirrors the prior `.tex` exclusion — both for residence-
-// admissibility reasons specific to each state space, not a
-// generic "exclude state spaces" pattern.)
-//
-// CLOSED (C1 stop-signal). If a future PTX revision adds a user-
-// declarable typed-scalar-resident state space, both this enum AND
-// StateSpace get coordinated edits.
-//
-// Spec: https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#state-spaces
-//       (Reference §5.1; the `.tex` exclusion is grounded in §5.1.10
-//       texture, sampler, and surface descriptor variables — opaque
-//       types, not typed-scalar storage; the `.sreg` exclusion is
-//       grounded in §5.1.2 — predefined special registers with
-//       spec-fixed intrinsic typing, not user-declarable typed-
-//       scalar storage).
-//
-// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — five patterns attempted:
-//   1. Fact placement — FAILS: every RegisterScalar consumer reads
-//      the residence to dispatch to the right memory-operation
-//      family (`ld.global` / `ld.shared::cta` / `ld.const` etc.);
-//      shared classifier, not scattered.
-//   2. Variant-is-data — FAILS: collapsing to `StateSpace`
-//      reintroduces the `.tex`-residence AND `.sreg`-residence
-//      illegal states this enum exists to forbid (a typed scalar
-//      cannot live in `.tex` per §5.1.10; user code cannot declare
-//      arbitrary typed scalars in `.sreg` per §5.1.2); the sub-
-//      classifier IS the dissolved form (same admissibility-sub-
-//      enum pattern as BitsWidth / IntegerWidth / FloatWidth
-//      relative to a hypothetical AllPtxWidths meta-enum).
-//   3. Algebraic form — N/A by construction: these are the spec's
-//      user-declarable typed-scalar-resident state spaces (StateSpace
-//      minus `.tex` and `.sreg`); no richer std/ structure.
-//   4. Dimensional — FAILS: a single typed scalar lives in EXACTLY
-//      ONE residence; mutually-exclusive alternatives.
-//   5. Parameterized family — FAILS: the six variants are
-//      structurally distinct (per-thread vs per-CTA vs per-grid;
-//      readable vs read-only; with vs without sub-qualifiers —
-//      Param and Shared carry payloads) — NOT projection-uniform
-//      over any richer source. The variants are the PTX-spec
-//      user-declarable typed-scalar-resident partition, restricted
-//      from the full StateSpace partition by exclusion of `.tex`
-//      (opaque descriptors, not typed scalars) AND `.sreg`
-//      (predefined-intrinsic residence with spec-fixed typing, not
-//      user-declarable typed-scalar storage).
-// Terminal: the closed six-way PTX user-declarable typed-scalar-
-// resident state-space sub-classifier; a typed scalar in `.tex`
-// (per §5.1.10) OR in `.sreg` (per §5.1.2) is structurally
-// unrepresentable. Intrinsic-register reads (the `.sreg` residents
-// like `%tid`) are modeled by the ThreadCoord carrier above, NOT by
-// this enum.
 type RegisterStateSpace
   = ResReg
   | ResConst
@@ -715,135 +105,6 @@ type RegisterStateSpace
   | ResShared { scope: SharedScope }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// RegisterScalar — the typed PTX scalar register carrier: kind ×
-// (kind-admissible width) × (kind-admissible residence). Disj-with-
-// named-field-variant-payloads so that BOTH kind × width AND kind ×
-// residence admissibility are STRUCTURALLY ENFORCED — illegal pairs
-// like `Predicate + Bits64`, `Float + Bits8`, `Unsigned + Bits128`,
-// `Bits + Bits1`, `Predicate + Global` (or any non-.reg state space
-// — `.pred` is reg-only per PTX 8.5 §5.1.1), or any-scalar + `.tex`
-// (per §5.1.10 `.tex` is for opaque descriptors not typed scalars)
-// are unrepresentable (not "rejected by a check" — UNREPRESENTABLE;
-// the INVARIANTS P2 illegal-states-unrepresentable shape, same
-// design choice rust.dag #3174 took for RustScalar).
-//
-// Per-variant residence admissibility (refactored 2026-05-16 per
-// operator REQUEST_CHANGES on PR #3170, openai-pro/gpt-5.5-pro
-// review: the prior `state_space: StateSpace` on every variant
-// admitted PTX-invalid combinations — `PredicateScalar { state_space
-// : Global }` was constructible despite §5.1.1 saying `.pred` is
-// reg-only, and any-scalar-in-`.tex` was constructible despite
-// §5.1.10 reserving `.tex` for opaque descriptors):
-//   - Bits / Unsigned / Signed / Float scalars carry `state_space:
-//     RegisterStateSpace` (the 6-variant `.tex`-and-`.sreg`-
-//     excluding sub-
-//     classifier above); .tex residence is unrepresentable for
-//     typed scalars.
-//   - PredicateScalar carries NO state_space field — predicates are
-//     virtual predicate registers (`.reg .pred` per §5.1.1) with no
-//     memory load/store path; residence is implicit `.reg`, NOT a
-//     freely-chosen field. `PredicateScalar { state_space: Global }`
-//     was the canonical illegal state this refactor forecloses.
-//
-//   - BitsScalar      — { width: BitsWidth, state_space:
-//                          RegisterStateSpace }
-//                       e.g. `.b32` in `.global` is BitsScalar
-//                       { width: Bits32, state_space: ResGlobal }
-//   - UnsignedScalar  — { width: IntegerWidth, state_space:
-//                          RegisterStateSpace }
-//                       e.g. `.u32` in `.reg` is UnsignedScalar
-//                       { width: Bits32, state_space: ResReg }
-//   - SignedScalar    — { width: IntegerWidth, state_space:
-//                          RegisterStateSpace }
-//                       e.g. `.s64` in `.shared::cta` is
-//                       SignedScalar { width: Bits64, state_space:
-//                       ResShared { scope: SharedCta } }
-//   - FloatScalar     — { width: FloatWidth, state_space:
-//                          RegisterStateSpace }
-//                       e.g. `.f32` in `.const` is FloatScalar
-//                       { width: Bits32, state_space: ResConst }
-//   - PredicateScalar — bare variant (no state_space field; implicit
-//                       `.reg`). Predicate is intrinsically 1-bit
-//                       per PTX 8.5 §5.1.1 and lives only in virtual
-//                       predicate registers; no memory residence
-//                       is admitted by the spec.
-//
-// `.bf16` is DELIBERATELY NOT a variant of this Disj: PTX 8.5 §5.2
-// treats `.bf16` as a separate kind distinct from `.f`, and modeling
-// it requires a sixth `BitsBrain` / `BFloat` kind variant — scope-
-// negative for this slice (header SCOPE NEGATIVE; a future C1 edit
-// when the bf16 surface lands).
-//
-// Texture/sampler/surface descriptors (`.tex` opaque types `texref`
-// / `sampref` / `surfref` per §5.1.10) are also DELIBERATELY NOT
-// modeled as variants of this Disj — they are opaque descriptor
-// types, not typed scalars; modeling them needs a separate
-// `TextureReference` / `SamplerReference` / `SurfaceReference`
-// carrier (scope-negative for this slice; lands when the texture-
-// op surface needs modeling).
-//
-// The state_space FIELD on the typed-scalar variants is the
-// structural surface of the IN-B claim "state space is an effect-
-// typed parameter, intrinsic to the type signature, NOT an
-// annotation layer" (THESIS:396, scaffold header IN-B note).
-// Memory-op Transforms read this field directly from operand types;
-// there is no separate state-space-annotation layer.
-//
-// SEAM (where scalar inhabitance plugs in). When the operator ratifies
-// the inhabitance-instance form, per-variant inhabitance rows land in
-// this file with these typed variants as their carriers —
-// UnsignedScalar { width: Bits32, ... } is the carrier for PTX `.u32`
-// inhabitance into Semiring (or its v4-equivalent per the ratified std/
-// row); FloatScalar { width: Bits32, ... } is the carrier for `.f32` →
-// ApproximateField; PredicateScalar is the carrier for `.pred` →
-// BooleanAlgebra. The seam itself is the typed variant; the inhabitance
-// value is the deferred row.
-//
-// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — five patterns attempted:
-//   1. Fact placement — FAILS: every PTX-typed register consumer
-//      (operand typing for instructions, emission of `.b32` /
-//      `.u32` / `.f32` / `.pred` syntax, cost-realization, eventual
-//      inhabitance dispatch) reads the scalar's kind + kind-
-//      admissible width + kind-admissible residence through this
-//      carrier; shared, not scattered.
-//   2. Variant-is-data — FAILS: collapsing the variants to a
-//      uniform record `{ kind: RegisterScalarKind, width:
-//      Option<…>, state_space: Option<RegisterStateSpace> }`
-//      reintroduces exactly the illegal states this Disj-with-
-//      payloads design exists to forbid (Predicate-with-state-
-//      space, Float-with-Bits8, Unsigned-with-Bits128, etc.). The
-//      5-variant Disj IS the dissolved form (P2 + Practice 2/6 +
-//      M4).
-//   3. Algebraic form — PARTIAL: each variant grounds in a std/
-//      algebra structure (Unsigned → Semiring; Signed →
-//      OrderedRing; Float → ApproximateField; Predicate →
-//      BooleanAlgebra; Bits → no arithmetic algebra by design).
-//      That grounding IS the inhabitance walk owned ELSEWHERE per
-//      P2; the Disj structure here is the closed surface, not a
-//      collapsing target.
-//   4. Dimensional — FAILS: a single typed PTX scalar IS EXACTLY
-//      ONE variant of this Disj; mutually-exclusive alternatives.
-//      The shapes differ across variants (PredicateScalar has NO
-//      payload — bare; the typed variants each carry their kind-
-//      admissible width sub-enum + RegisterStateSpace residence) —
-//      they cannot be coordinates of a single record without the
-//      illegal-state smell.
-//   5. Parameterized family — FAILS: the five variants are the PTX
-//      spec's primitive-kind partition; they are NOT one generic
-//      `F<X>` / projection over a separately-declared source set
-//      (Practice 7). The variants correspond to STRUCTURALLY
-//      DISTINCT admissible-width sub-enums (BitsWidth /
-//      IntegerWidth / FloatWidth / no-width-no-residence for
-//      Predicate) and structurally distinct algebraic groundings —
-//      they are not projection-uniform over any richer source. The
-//      rust.dag #3174 precedent established this Disj-with-
-//      heterogeneous-payloads form for exactly this reason.
-// Terminal: the closed five-variant PTX scalar-register typed-value
-// sum with kind × admissible-width AND kind × admissible-residence
-// admissibility STRUCTURALLY enforced; illegal pairs are
-// unrepresentable by construction.
 type RegisterScalar
   = BitsScalar { width: BitsWidth, state_space: RegisterStateSpace }
   | UnsignedScalar { width: IntegerWidth, state_space: RegisterStateSpace }
@@ -852,35 +113,6 @@ type RegisterScalar
   | PredicateScalar
 
 
-// ─────────────────────────────────────────────────────────────────────
-// Dim3 — the PTX 3-D dimension/index carrier: an x/y/z triple of
-// kernel-launch dimensions or coordinate indices. Conj record (no
-// Practice-4 ledger — only coproducts dissolve).
-//
-//   - x, y, z       the three-axis components
-//
-// 🟡 SCAFFOLD (same bridge as std/diagnostic.dag's `Extent.ByteRange`).
-// With only kernel-ambient `Int` available at the T-4.14 phase,
-// `{ x: Int, y: Int, z: Int }` STRUCTURALLY ADMITS illegal states
-// (negative dims; zero dims; dims exceeding the PTX max per axis —
-// 65535 for x of gridDim, 1024 for thread count of blockDim, etc.).
-// modeling-discipline.md §2 (illegal-states-unrepresentable) forbids
-// admitting them; no bounded-Cardinality refinement substrate exists
-// yet to exclude them. It is a TRACKED scaffold, declared with the
-// three bridge properties (the precedent diagnostic.dag established
-// 2026-05-15):
-//   (a) scaffold doc — THIS note; the carrier is provisional, not
-//       the terminal bounded-axis shape.
-//   (b) bounds on use — a producer MUST construct only valid PTX
-//       dimensions per the pinned PTX-ISA version's per-axis limits.
-//       Until the substrate enforces it the invariant is producer-
-//       side; a Dim3 violating it is a producer bug, not a legal
-//       value.
-//   (c) dissolution trigger — when std/cardinality.dag's refinement
-//       substrate lands (T-3, P4 decidability), `x` / `y` / `z`
-//       become refined bounded-positive-Int axes (positive and
-//       within the PTX-version-pinned per-axis maxima), and this
-//       scaffold dissolves.
 type Dim3 {
   x: Int
   y: Int
@@ -888,221 +120,18 @@ type Dim3 {
 }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// ThreadHierarchyShape — a PTX kernel launch's structural shape. PTX
-// ISA 8.5 §11 admits TWO structurally distinct launch shapes — the
-// THREE structurally distinct launch states per PTX ISA 8.5
-// §11 + the `%is_explicit_cluster` intrinsic semantics:
-//
-//   (1) FlatLaunch — legacy pre-cluster launch (kernels targeting
-//       `.target` < sm_90 / pre-PTX 7.8). Cluster intrinsics are NOT
-//       readable; the kernel has only the flat (grid, block)
-//       hierarchy.
-//   (2) ImplicitClusterLaunch — cluster-capable kernel (`.target`
-//       ≥ sm_90 / PTX 7.8+) launched WITHOUT explicit cluster dims.
-//       Each CTA is its own implicit 1×1×1 cluster; cluster
-//       intrinsics ARE readable but return the degenerate values
-//       (`%cluster_nctaid` = 1×1×1; `%clusterid` = the CTA's own
-//       grid position); `%is_explicit_cluster` returns 0.
-//   (3) ExplicitClusterLaunch — cluster-capable kernel launched
-//       WITH explicit cluster dims (the launch site sets
-//       `cluster_dim`). `%cluster_nctaid` = the explicit
-//       cluster_dim; `%nclusterid` = grid_in_clusters dimensions;
-//       `%is_explicit_cluster` returns 1.
-//
-// Each shape exposes a structurally DIFFERENT dimensional carrier
-// set + a different `%is_explicit_cluster` reading; encoding the
-// launch shape as a Disj-with-payloads makes the carrier
-// admissibility AND the explicit-cluster-fact STRUCTURALLY
-// ENFORCED — a flat launch does not carry cluster dims, an
-// implicit-cluster launch has the implicit (1,1,1) cluster
-// (degenerate, no explicit cluster_dim payload), and an explicit-
-// cluster launch carries the hierarchical decomposition. "A flat
-// launch with cluster_dim=(1,1,1)" or "an explicit cluster launch
-// without cluster_dim" are unrepresentable as category-mistakes.
-// (Refactored 2026-05-16 per operator BLOCKING review on PR
-// #3170:
-//   - First pass landed FlatLaunch | ClusterLaunch (commit
-//     7eb66acc1): addressed the prior Conj-record's missing
-//     `%cluster_nctaid` / `%nclusterid` carriers.
-//   - Second pass landed the implicit-vs-explicit cluster
-//     distinction (this commit): the prior 2-variant model
-//     collapsed PTX 8.5's `%is_explicit_cluster` partition
-//     (implicit 1×1×1 default vs explicit cluster decomposition);
-//     INVARIANTS P1 modeling-faithfulness / P2 spec-fidelity
-//     violated at the launch-shape boundary.)
-//
-//   - FlatLaunch              — legacy pre-cluster launch shape:
-//                                grid_dim   number of CTAs along
-//                                           x/y/z in the grid
-//                                           (`%nctaid.{x,y,z}` /
-//                                           `gridDim.{x,y,z}`)
-//                                block_dim  number of threads along
-//                                           x/y/z within each CTA
-//                                           (`%ntid.{x,y,z}` /
-//                                           `blockDim.{x,y,z}`)
-//                                Cluster intrinsics NOT readable;
-//                                `%is_explicit_cluster` does NOT
-//                                exist at the pre-sm_90 target.
-//   - ImplicitClusterLaunch   — cluster-capable kernel launched
-//                                without explicit cluster dims;
-//                                each CTA is its own implicit
-//                                1×1×1 cluster. Carries only the
-//                                flat (grid_dim, block_dim) since
-//                                the cluster decomposition is
-//                                structurally degenerate:
-//                                grid_dim   number of CTAs along
-//                                           x/y/z (`%nctaid`)
-//                                block_dim  number of threads
-//                                           (`%ntid`)
-//                                `%is_explicit_cluster` returns
-//                                0; `%cluster_nctaid` reads
-//                                (1,1,1) degenerately;
-//                                `%clusterid` reads the CTA's own
-//                                grid position; `%nclusterid` =
-//                                `%nctaid`.
-//   - ExplicitClusterLaunch   — cluster-capable kernel launched
-//                                WITH explicit cluster dims:
-//                                cluster_grid_dim  number of
-//                                                  clusters along
-//                                                  x/y/z
-//                                                  (`%nclusterid
-//                                                  .{x,y,z}`)
-//                                cluster_dim       number of CTAs
-//                                                  along x/y/z
-//                                                  within each
-//                                                  cluster
-//                                                  (`%cluster_nctaid
-//                                                  .{x,y,z}`)
-//                                block_dim         number of threads
-//                                                  along x/y/z
-//                                                  (`%ntid.{x,y,z}`)
-//                                `%is_explicit_cluster` returns 1.
-//                                The flat grid-CTA count
-//                                `%nctaid` remains readable and
-//                                equals `cluster_grid_dim ×
-//                                cluster_dim` (element-wise); the
-//                                model RECONSTRUCTS the flat
-//                                coordinate from the hierarchical
-//                                carriers rather than redundantly
-//                                carrying it (P2 single-authority
-//                                — `%nctaid` is the cluster-grid
-//                                product, not an independent
-//                                fact).
-//
-// The product `(grid_dim × block_dim)` for FlatLaunch /
-// ImplicitClusterLaunch — or `(cluster_grid_dim × cluster_dim ×
-// block_dim)` for ExplicitClusterLaunch — is the BOUNDED
-// CARDINALITY of the thread-grid Loop per the IN-B mapping (kernel
-// iteration runs over this finite set — the A2 boundedness that
-// lets the Loop be total-by-construction).
-//
-// Spec: https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#thread-hierarchy
-//       + §11 (Cluster of Cooperative Thread Arrays) +
-//       `%is_explicit_cluster` special-register definition.
-//
-// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — five patterns attempted:
-//   1. Fact placement — FAILS: every kernel-launch consumer reads
-//      the shape to bound the thread-grid Loop's cardinality, to
-//      wire the coordinate-intrinsic reads (`%tid` / `%ctaid` /
-//      `%cluster_ctaid` / `%clusterid`) to their respective
-//      bounds, AND to know whether `%is_explicit_cluster` reads
-//      0 or 1; shared classifier, not scattered.
-//   2. Variant-is-data — FAILS: collapsing the three variants to
-//      a single record `{ grid_dim, cluster_dim?,
-//      cluster_grid_dim?, block_dim, is_explicit_cluster?: Bool }`
-//      reintroduces the illegal states this Disj-with-payloads
-//      exists to forbid (a "flat launch with cluster dims set", a
-//      "cluster launch whose explicit grid_dim disagrees with
-//      cluster_grid_dim × cluster_dim", a "flat launch with
-//      is_explicit_cluster = true"). P2 single-authority
-//      restored.
-//   3. Algebraic form — N/A by construction: the three launch
-//      shapes are the PTX-spec launch-mode partition; they do
-//      not trace to a richer std/ algebraic structure (a
-//      containment order FlatLaunch ⊑ ImplicitClusterLaunch ⊑
-//      ExplicitClusterLaunch — each successive shape strictly
-//      adds carrier facts — is derived FROM the closed enum,
-//      not a richer source, same parallel-rep argument as
-//      BarrierScope's Cta ⊑ Cluster ⊑ Gpu ⊑ System).
-//   4. Dimensional — FAILS: a single launch IS EXACTLY ONE shape
-//      per the launch-site directive's interaction with the
-//      `.target` arch. Mutually-exclusive alternatives.
-//   5. Parameterized family — FAILS: the three variants are NOT
-//      one generic `F<X>` / projection over a separately-declared
-//      source set (Practice 7). The variants carry structurally
-//      distinct dimensional-carrier sets (FlatLaunch has 2 Dim3s;
-//      ImplicitClusterLaunch has 2 Dim3s with different cluster
-//      semantics; ExplicitClusterLaunch has 3 Dim3s) AND
-//      structurally distinct `%is_explicit_cluster` semantics
-//      (intrinsic unreadable / reads 0 / reads 1) — not
-//      projection-uniform over any richer source. Same shape as
-//      rust.dag's RustScalar Disj-with-heterogeneous-payloads.
-// Terminal: the closed three-variant PTX-launch-shape sum; the
-// explicit-cluster-launch path carries `%cluster_nctaid` /
-// `%nclusterid` bounds in single authority; the implicit-vs-
-// explicit distinction is structurally enforced (
-// `%is_explicit_cluster` reading is determined by variant
-// identity, not a field). A fourth launch shape is the C1 stop-
-// signal (a visible ratified edit to this declaration under the
-// L-2 pin discipline).
 type ThreadHierarchyShape
   = FlatLaunch { grid_dim: Dim3, block_dim: Dim3 }
   | ImplicitClusterLaunch { grid_dim: Dim3, block_dim: Dim3 }
   | ExplicitClusterLaunch { cluster_grid_dim: Dim3, cluster_dim: Dim3, block_dim: Dim3 }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// ThreadCoord — a typed thread-coordinate read: a specific axis
-// component of a specific hierarchy level. Conj record (no Practice-4
-// ledger).
-//
-//   - source        which hierarchy level — one of the four
-//                   `ThreadCoordSource` variants per PTX ISA 8.5:
-//                   ThreadInCta (`%tid`) / CtaInCluster
-//                   (`%cluster_ctaid`) / ClusterInGrid (`%clusterid`)
-//                   / CtaInGrid (`%ctaid`); warp / lane / SM are
-//                   scope-negative for T-4.14
-//   - axis          which 3-D axis component (X / Y / Z)
-//
-// Concretely: `ThreadCoord { source: ThreadInCta, axis: X }` is the
-// `%tid.x` intrinsic; `{ source: CtaInGrid, axis: Z }` is `%ctaid.z`;
-// `{ source: CtaInCluster, axis: Y }` is `%cluster_ctaid.y`;
-// `{ source: ClusterInGrid, axis: X }` is `%clusterid.x`.
 type ThreadCoord {
   source: ThreadCoordSource
   axis: ThreadAxis
 }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// PtxCost — the per-target cost-realization carrier shape for the
-// PTX `LanguageModel`. Conj record (no Practice-4 ledger).
-//
-// This declares the SHAPE the U1 spine reads when computing PTX-side
-// realization cost — both components per the scaffold header's
-// "per-instruction + occupancy cost on a PTX target" claim:
-//
-//   - instruction_cost   per-instruction throughput cost (the U1
-//                        per-target-op cost projection — the `map`
-//                        side of `Homomorphism<…, …, PtxScalar>`
-//                        carries this; cost is read FROM the map's
-//                        structure, never stored as a parallel field
-//                        per algebra.dag's U1 no-engine discipline)
-//   - occupancy_cost     per-kernel occupancy cost (registers-per-
-//                        thread × threads-per-block, shared-memory-
-//                        per-block) — the SIMT-specific cost
-//                        contribution beyond per-instruction; how
-//                        many warps the SM can co-schedule
-//
-// Both Int carriers are scaffold (same 🟡 bridge as Dim3): cost is a
-// non-negative quantity, but without std/cardinality.dag refinement
-// negative-cost is structurally representable. Producer-side
-// invariant pending the cardinality substrate landing. PTX-ISA-
-// version-specific cost tables (e.g. SASS instruction latencies per
-// release) sit in the inhabitance walk that T-4's LanguageModel
-// shape parameterizes, not in this carrier itself.
 type PtxCost {
   instruction_cost: Int
   occupancy_cost: Int
