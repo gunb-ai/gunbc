@@ -1,159 +1,16 @@
 // src/v4/workflow/bootstrap.dag
-//
-// Scope: bootstrap orchestration AS DATA — the seed-once → self-host →
-//        fixed-point chain expressed as a .dag workflow, NOT a build.rs
-//        or shell script. v2's interpreter (`v2-compiler run`) executes
-//        this workflow; every step is data, so the bootstrap orchestration
-//        carries zero editable Rust authority.
-// Anchor: THESIS:223-226 (meta-process: "Bootstrap, CI, build orchestration
-//         ... modeled as .dag workflows") + docs/design-pure-bootstrap-zero.md
-//         §"N=0 runtime boundary" (seed is external-to-v4; here in-repo as
-//         frozen src/v2/, not in src/v4/)
-//
-// Owns:
-//   - BootstrapPlan: the ordered step sequence
-//     - Step seed:   v2-compiler compile --source-root src/v4 → emit Rust
-//                    to build-dir → rustc → v4-stage0 binary  (v2 = seed,
-//                    touched EXACTLY ONCE; v2's Rust lives in src/v2/,
-//                    outside src/v4/, and is frozen/CI-gated)
-//     - Step self0:  v4-stage0 compile src/v4 → emit Rust (v4's OWN
-//                    emission style) → rustc → v4-stage1
-//     - Step self1:  v4-stage1 compile src/v4 → emit Rust → rustc → v4-stage2
-//     - Step fixpt:  assert stage1-emitted == stage2-emitted (BitIdentical);
-//                    fixed point is stage1==stage2 (NOT stage0==stage1 —
-//                    stage0 is v2-emission-style, stage1+ is v4-style)
-//   - artifact pinning: v4-stage-final binary is content-addressed; its
-//     hash is the anti-regression anchor (T-15 BitIdentical TestClaim)
-//
-// A3 (operator-ratified 2026-05-15) — the retirement predicate, honestly:
-//   - `retired` is NOT a count of hand-Rust files (v3's gameable proxy —
-//     defeated by paper-shrink: template-relocation, module-relocation).
-//     It is a REPRODUCTION: rebuild from (.dag + frozen-pinned seed) ONLY
-//     reproduces the pinned hash AND the seed's own hash matches its pin.
-//     `HandResidual` = the Rust the .dag-rebuild cannot reproduce —
-//     empty BY REPRODUCTION, never BY COUNT.
-//   - This is NOT un-gameable (no structural mechanism is — Trusting-Trust;
-//     the pin/CI/seed are all editable by whoever commits). Its job is
-//     EARLY, LOUD SURFACING: run per-PR on the affected set (T-21/T-24) so
-//     a gaming attempt (un-pin/edit seed, relocate Rust authority, add a
-//     7th connective) is un-missable and routes to operator ratification
-//     the same commit — not silent drift found months later.
-//   - Seed trust is a NAMED AXIOM (built in the open, pinned at a known-
-//     good point), not a proof — stated honestly per feedback_no_engine.
-//     Any edit to / growth of src/v2/ is the maximally-conspicuous signal
-//     = STOP (INVARIANTS:136 bounded seed), routed to the operator.
-//   - Actual enforcement = operator-ratification spine + STOP-and-escalate
-//     culture + no proxy ratchet to game. Structure makes defection
-//     conspicuous, not impossible.
-//   - A4 corollary: a 7th connective / 6th behavior is the SAME machine —
-//     it changes the reproduction → conspicuous signal → STOP → human
-//     judgment. Not "the substrate refuses by construction."
-//   - PROOF-1 (operator-ratified 2026-05-15) — the EXTERNAL trust-
-//     discharge: gunbc's structural evidence (A2 descent, the algebra-
-//     homomorphism chain, cost, effects) is emitted as a machine-
-//     checkable proof term an external Lean/Coq KERNEL checks. Converts
-//     the seed-trust NAMED AXIOM above into an INTERSUBJECTIVE check
-//     against an anchor gunbc does not own — does NOT make it
-//     un-gameable (the external kernel + evidence-faithfulness are the
-//     new named axioms; trust MOVED, not eliminated). The lens exports
-//     witnesses already held; the prover only kernel-checks, never
-//     searches (no-engine + A2). Full framing: STRUCTURE.md §7 +
-//     DECISIONS.md PROOF-1.
-//
-// Discipline:
-//   - This file is the ONLY bootstrap authority. No build.rs, no bootstrap.sh.
-//     A worker reaching for shell/build.rs orchestration has reintroduced
-//     editable Rust authority = STOP signal (the v3 regression door).
-//   - v2 interprets this (`v2-compiler run workflow/bootstrap.dag`) — v2 is
-//     never compiled INTO v4; it is the external frozen seed.
-//   - Emitted Rust is transient (build-dir; option (a)); never committed,
-//     never editable authority. .dag is sole authority.
-//
-// Consumes:
-//   - extdeps/process.dag: spawn v2-compiler / rustc / v4-stage-N subprocesses
-//   - extdeps/file_system.dag: read src/v4/*.dag, write build-dir Rust
-//   - std/diagnostic.dag: fail-closed on any step
-//   - std/verification.dag: BitIdentical TestClaim for the fixed-point assert
-//
-// Status: filled (declarative core — T-20 incremental scaffold-early
-// slice). The BootstrapPlan DATA + the four-step seed→self0→self1→fixpt
-// sequence are present and v2-compile-clean (the structural gate). The
-// INTERPRETATION of the plan (spawning v2-compiler/rustc/v4-stage-N via
-// extdeps/process.dag, reading/writing build-dir via
-// extdeps/file_system.dag) and the executable bit-identical fixed-point
-// TestClaim (std/verification.dag `kind: RoundTrips`) are DEFERRED —
-// see the TRACKED SCAFFOLD note below.
-// Brief: see BRIEF_TEMPLATE.md.
-//
-// ─────────────────────────────────────────────────────────────────────
-// Modeling notes
-//
-// DATA, not a runner: a fixed `BootstrapPlan` record of four named
-// singleton edge-identity slots that v2's `run` interpreter walks. No
-// orchestration body here — build.rs/shell would be the v3 regression
-// door (editable Rust authority).
-//
-// Each slot type is an empty-record SINGLETON whose edge IS its
-// identity, so `BootstrapPlan` has exactly ONE inhabitant — reorder /
-// duplicate / missing / mis-wire is unconstructible (P1/P2, structural;
-// resolves the openai-pro/operator P2 finding). Supersedes the original
-// `steps: List<BootstrapStep>` (node.dag `Diff` #3162 over-general-list
-// anti-pattern) and the interim free-field `CompileStep`/`FixedPointStep`
-// (still admitted mis-wiring). All declarations are records / empty-
-// record singletons — no coproduct, so no Practice-4 ledger applies
-// (the prior `Stage`/`BootstrapStep` coproducts + ledgers were removed
-// with the types; the ledger finding is mooted by dissolution).
-//
-// The pinned fixed-point `Hash` (B1) is NOT stored: it is produced by
-// `content_hash` at interpret time (a hand-written hash = the editable
-// proxy A3 rejects). The `FixptStage1Stage2` slot declares the
-// bit-identical stage1==stage2 equality; the executable assertion is
-// T-15's `RoundTrips` TestClaim (std/verification.dag), not here.
-//
-// TRACKED SCAFFOLD (🟡) — deferred operations with owner+trigger
-// (declarative-now discipline; not bodiless `fn`, DECISIONS PARSE-1):
-//   (1) `interpret(BootstrapPlan) -> Outcome<Hash>` — spawns
-//       v2-compiler/rustc (extdeps/process.dag) + build-dir IO
-//       (extdeps/file_system.dag); fail-closed per step.
-//       OWNER/TRIGGER: compiler/05_eval.dag (T-22) +
-//       extdeps/{process,file_system}.dag (T-4.5) land.
-//   (2) the executable fixed-point assertion is T-15's `RoundTrips`
-//       TestClaim. OWNER/TRIGGER: T-15.
-//   Today the only gate this file rides is structural (v2-compiles as
-//   well-formed data).
+// Scope: bootstrap chain (seed→stage0→stage1→stage2→fixpt) AS DATA; v2 `run` interprets it.
+// Owns: SeedToStage0, Stage0ToStage1, Stage1ToStage2, FixptStage1Stage2, BootstrapPlan, bootstrap_plan
+// Consumes: (none; interpret + fixed-point deferred)
+// Status: filled — declarative core; structural v2 gate only.
 
 module v4.workflow.bootstrap
 
-
-// The four chain positions — each an empty-record SINGLETON whose edge
-// IS its identity (no free stage fields; `BootstrapPlan` has exactly
-// one inhabitant). Stage vocabulary is embedded in the names; no
-// separate `Stage` enum. A unit type, not a coproduct — no ledger.
-
-// Seed-once compile: the frozen external v2 seed (src/v2/, touched
-// EXACTLY ONCE) compiles src/v4/*.dag → the v4-stage0 binary (v2
-// emission style). THE seed boundary.
 type SeedToStage0 {}
-
-// Self-host compile: v4-stage0 compiles src/v4/*.dag → v4-stage1
-// (v4's OWN emission style — the first self-host product).
 type Stage0ToStage1 {}
-
-// Self-host compile: v4-stage1 compiles src/v4/*.dag → v4-stage2.
 type Stage1ToStage2 {}
-
-// Fixed-point assertion: v4-stage1-emitted == v4-stage2-emitted,
-// bit-identical. The self-host fixed point is stage1==stage2 — NOT
-// stage0==stage1 (stage0 is v2-emission-style, stage1+ is v4-style).
-// The executable assertion is T-15's `RoundTrips` TestClaim consuming
-// this step (deferred — TRACKED SCAFFOLD (2) above).
 type FixptStage1Stage2 {}
 
-
-// BootstrapPlan — the bootstrap chain AS DATA: a fixed record of the
-// four singleton slots, so the seed→stage0→stage1→stage2→fixed-point
-// sequence IS the type (exactly one inhabitant). Pinned hash is not
-// stored (produced by `content_hash` at interpret, asserted by T-15).
 type BootstrapPlan {
   seed: SeedToStage0
   self0: Stage0ToStage1
@@ -161,13 +18,9 @@ type BootstrapPlan {
   fixpt: FixptStage1Stage2
 }
 
-
-// The canonical (and only constructible) bootstrap plan — the sole
-// bootstrap authority; v2's `run` interpreter walks THIS.
 data bootstrap_plan: BootstrapPlan = BootstrapPlan {
   seed: SeedToStage0 {},
   self0: Stage0ToStage1 {},
   self1: Stage1ToStage2 {},
   fixpt: FixptStage1Stage2 {}
 }
-
