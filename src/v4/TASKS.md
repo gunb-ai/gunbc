@@ -497,10 +497,13 @@ Failure modes the probe MUST catch (each enumerable, each testable):
 Once T-15 lands and stays green, all four failure modes are impossible-by-construction. A CI gate runs `cargo test t_15_self_host_fixed_point` per-PR on the v4 affected-set.
 
 **Definition of v4-done**:
-- **Every other task in this plan complete** — all of T-1..T-24 plus
-  T-4.5/4.6/4.7/4.8, i.e. every task except T-15 itself. (Drift-proof
-  phrasing: NOT a hardcoded count — the close gate requires the whole
-  plan, never a stale number that omits in-scope work.)
+- **Every other scheduled task in this plan complete** — *every* task
+  this plan schedules, T-15 itself excepted. This is deliberately **not
+  an enumeration**: an explicit list goes stale — T-25 / T-26 / T-28 /
+  T-29 / T-30 were scheduled after an earlier draft of this gate, and
+  T-27 was dropped. The close gate is "the whole plan minus T-15",
+  resolved against the plan as it stands at close time — never a
+  hardcoded list or count that can omit in-scope work.
 - v4 compiles `src/v4/compiler/*.dag` end-to-end
 - v4 emits Rust source that compiles to a binary
 - That binary, run on `src/v4/compiler/*.dag`, produces bit-identical output
