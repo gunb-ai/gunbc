@@ -88,7 +88,8 @@ import v4.extdeps.formats.json_schema { JsonSchema }
 // and component schemas; **$ref** resolution, parameter objects, callbacks,
 // security schemes, servers, and the full Components object beyond `schemas`
 // are 🟡 deferred with named triggers — not silently omitted without a
-// receipt: overflow lives in `components_extras` / **`paths_extensions`**
+// receipt: overflow lives in **`components_deferred_members`** +
+// **`components_specification_extensions`** / **`paths_extensions`**
 // (Paths Object) / **`path_deferred_members`** + **`path_specification_extensions`**
 // (Path Item Object) /
 // **`responses_object_extensions`** (Responses Object) /
@@ -219,7 +220,7 @@ type OpenApiLicenseSlot
 // (with its own **`contact_extensions`**) / `license`, plus **`info_extensions`**
 // for Specification Extension members (`^x-`) and any future spec-added Info
 // keywords until a pinned decomposition lands (M5 — same discipline as
-// **`operation_deferred_members`** / `components_extras`; no silent drop of wire facts).
+// **`operation_deferred_members`** / **`components_deferred_members`**; no silent drop of wire facts).
 //
 // Anchor: https://spec.openapis.org/oas/v3.1.0#info-object
 //
@@ -238,13 +239,17 @@ type OpenApiInfo {
 
 // ─────────────────────────────────────────────────────────────────────
 // OpenApiMediaType — Media Type Object (OAS 3.1.0). `schema` is JSON Schema
-// (single authority: json_schema.dag). `examples`/`example` overflow and
-// encoding objects stay as JSON in `extras` until decomposed (🟡 Deferred).
+// (single authority: json_schema.dag). Undecomposed **fixed** Media Type fields
+// (`example`, `examples`, `encoding`, …) round-trip under **`media_type_deferred_members`**
+// as **`JsonValue`** until decomposed (🟡 Deferred (1)) — **not** under
+// **`media_type_specification_extensions`**, reserved for **Specification
+// Extensions** (`^x-`) only on this object (P2 / M5).
 //
 // Anchor: https://spec.openapis.org/oas/v3.1.0#media-type-object
 type OpenApiMediaType {
   schema_shape: OpenApiMediaTypeSchemaSlot,
-  extras: Map<String, JsonValue>,
+  media_type_deferred_members: Map<String, JsonValue>,
+  media_type_specification_extensions: Map<String, JsonValue>,
 }
 
 
@@ -433,16 +438,19 @@ type OpenApiPathsSlot
 
 // ─────────────────────────────────────────────────────────────────────
 // OpenApiComponents — Components Object `schemas` map (JSON Schema values).
-// Other component keys (`responses`, `parameters`, …) stay in
-// `components_extras` as faithful `JsonValue` until a pinned decomposition
-// lands (MODELING.md M10 — proper homes before variant explosion).
+// Other **fixed** component map keys (`responses`, `parameters`, `requestBodies`, …)
+// round-trip under **`components_deferred_members`** as **`JsonValue`** until a
+// pinned decomposition lands (MODELING.md M10 — proper homes before variant
+// explosion) — **not** under **`components_specification_extensions`**, reserved
+// for **Specification Extensions** (`^x-`) on the Components Object only (P2 / M5).
 //
 // Anchor: https://spec.openapis.org/oas/v3.1.0#components-object
 //
 // Coproduct dissolution (Practice 4) — N/A (`Conj` record).
 type OpenApiComponents {
   schemas: Map<String, JsonSchema>,
-  components_extras: Map<String, JsonValue>,
+  components_deferred_members: Map<String, JsonValue>,
+  components_specification_extensions: Map<String, JsonValue>,
 }
 
 
@@ -525,6 +533,7 @@ type OpenApiDocument {
 //     both-present objects is parse authority, not silent coercion here.
 //     **`contact_extensions`** / **`paths_extensions`** /
 //     **`path_specification_extensions`** / **`operation_specification_extensions`** /
+//     **`media_type_specification_extensions`** / **`components_specification_extensions`** /
 //     **`responses_object_extensions`** / **`root_specification_extensions`**
 //     keys are carried structurally —
 //     validation of extension-member shapes vs `^x-` patterns remains 🟡 with
