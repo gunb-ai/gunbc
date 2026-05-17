@@ -16,7 +16,6 @@ import v4.extdeps.languages.dag {
 }
 import v4.std.collection { Set }
 import v4.std.diagnostic {
-  AmbiguousIntent,
   Diagnostic,
   NodeLocus,
   Outcome,
@@ -193,7 +192,7 @@ fn malformed_tree_diagnostic(n: Node) -> Diagnostic {
   Diagnostic {
     reason: resolve_reason_malformed_tree,
     at: NodeLocus { node: n },
-    correction: Unavailable { reason: AmbiguousIntent }
+    correction: Unavailable { reason: UserInputBoundary }
   }
 }
 
