@@ -59,7 +59,14 @@
 module v4.extdeps.languages.lean
 
 
-import v4.std.integer { Int, UInt }
+import v4.std.integer {
+  Int,
+  UInt8,
+  UInt16,
+  UInt32,
+  UInt64,
+  UIntPlatform
+}
 import v4.std.collection { List }
 import v4.std.logic { Bool }
 import v4.std.nat { Nat }
@@ -408,12 +415,16 @@ type LeanProofCheckSemantics<IRCarrier> {
 // names resolved to existing std/ carriers; the algebra flows through
 // std/, not through this file.
 // Anchor: Lean 4.20.0 Reference Manual, built-in propositions and numeric
-// types:
-// https://lean-lang.org/doc/reference/4.20.0/
+// types; fixed-precision integers:
+// https://lean-lang.org/doc/reference/4.20.0/Basic-Types/Fixed-Precision-Integers/
 type LeanBool = Bool
 type LeanNat = Nat
 type LeanInt = Int
-type LeanUInt = UInt
+type LeanUSize = UIntPlatform
+type LeanUInt8 = UInt8
+type LeanUInt16 = UInt16
+type LeanUInt32 = UInt32
+type LeanUInt64 = UInt64
 
 
 // 🟡 TRACKED-SCAFFOLD — D2a(2) grounding maps and D2a(3) data rows.
