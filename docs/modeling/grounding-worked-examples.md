@@ -336,9 +336,10 @@ type EnglishInteger = List<NumberWord>
 ```
 
 An English integer literal **grounds** — closed carrier + deterministic
-decode. "negative forty-two" decodes to the math integer `−42`, which
-coincides with IR `Int` value `−42` → coercion = **identity**. A number
-can be ingested from English text into the IR.
+decode. `EnglishInteger -> Outcome<IR_Int>` returns `Produced` when the
+grammar deterministically decodes the phrase: "negative forty-two" maps
+to the IR `Int` value `−42`. A qualifier such as "about" or "-ish" has
+no deterministic decode and returns `Rejected { diagnostic: Diagnostic }`.
 
 ### Connectives — English can ground composite structure, but the word is *not* the connective
 
@@ -367,27 +368,28 @@ choice-among-alternatives, and (b) if a choice, exclusive vs inclusive —
 and the surface word reliably tells you *none* of it. The same
 under-determination holds for "of" (`Instantiation` vs the possessive
 "a friend **of** mine"), plurals (`Cardinality` vs idiom), and "for
-each". A construction whose connective cannot be determined →
-**fail-closed**.
+each". A construction whose connective cannot be determined returns
+`Rejected { diagnostic: Diagnostic }`.
 
-### The fail-closed boundary — words under-determine structure
+### The `Outcome` boundary — words under-determine structure
 
 This is why English's groundable subset is an *island* and the
 fail-closed boundary is large — **not** because the connective words are
 missing, but because the words **under-determine** the structure.
 "this and that" may be a `Conj` or a `Disj`; "or" may be exclusive or
-inclusive; the word alone cannot say. Leaf phrases fail the same way —
-"forty-two-ish", "about forty-two" have no deterministic decode;
-"ship it when the build feels solid" grounds nowhere.
+inclusive; the word alone cannot say. Leaf phrases reject the same way:
+`EnglishPhrase -> Outcome<Node>` returns `Rejected { diagnostic:
+Diagnostic }` for "forty-two-ish", "about forty-two", or "ship it when
+the build feels solid".
 
 When the construction *is* unambiguous — a disciplined, controlled
 English written to a fixed structural convention — English grounds
-composite structure honestly, recursively, by the same `Node`
-catamorphism. Free prose under-determines and fail-closes. Model what
-determinately grounds; fail-close the rest. (This is the
+composite structure honestly, recursively, as a `Node` decode. Free prose
+under-determines and rejects. Model what determinately grounds; reject the
+rest. (This is the
 `english_ingest_fail_closed.dag` boundary-honesty probe v4 already
 plans.) English is not a degenerate case; it is a full language whose
-words under-determine structure, hence a large, honest fail-closed
+words under-determine structure, hence a large, honest `Rejected`
 boundary.
 
 ---
@@ -413,13 +415,14 @@ type GoChan<T> = Conj {
 // from capacity and direction. Scheduling is an effect fact, not a payload fact.
 ```
 
-**Step-by-step coercion — `chan int32` ↔ IR `Stream<Int32>` endpoint:**
+**Step-by-step coercion shape — `GoChan<int32> -> Outcome<IR Stream<Int32>>`:**
 1. `chan int32` grounds to endpoint facts plus `grounding(int32)`.
-2. catamorphism: endpoint vs endpoint → match; recurse into element.
+2. Phase-1/2 `derive_coercion` design compares endpoint vs endpoint,
+   then recurses into the element grounding.
 3. `int32` vs `Int32` coincide when both decode as 32-bit two's-complement.
-4. payload coercion is **identity**; endpoint coercion requires the IR endpoint
-   to carry the same direction and capacity facts. Missing direction/capacity
-   facts fail-closed rather than defaulting to bidirectional or unbuffered.
+4. matching payload plus direction/capacity facts return `Produced`.
+   Missing direction/capacity facts return `Rejected { diagnostic:
+   Diagnostic }` rather than defaulting to bidirectional or unbuffered.
 
 The concurrency semantics are not annotations. They are grounded target facts
 attached to the endpoint and consumed by effect/scheduling lenses.
@@ -445,47 +448,56 @@ type CppVector<T> = Conj {
 // MEANING — identity on elements; allocator grounds allocation behavior.
 ```
 
-**Step-by-step coercion — `std::vector<int32_t>` ↔ IR `List<Int32>`:**
+**Step-by-step coercion shape — `std::vector<int32_t> -> Outcome<IR List<Int32>>`:**
 1. outer carrier grounds to `List<grounding(int32_t)>` plus allocator facts.
-2. catamorphism matches `List` against `List`; allocator has no IR value role.
+2. Phase-1/2 `derive_coercion` design matches `List` against `List`;
+   allocator has no IR value role.
 3. `int32_t` vs `Int32` coincide only when the target model proves width and
    representation from the C++ implementation/spec binding.
-4. value coercion is **identity** when the element grounding coincides; allocator
-   facts remain target realization facts, not hidden list semantics.
+4. coincident element groundings return `Produced { value: IR List<Int32> }`;
+   allocator facts remain target realization facts, not hidden list semantics.
 
 If the target model cannot prove `int32_t` width for a platform binding, the
-coercion fails closed. It does not silently assume 32 bits.
+coercion returns `Rejected { diagnostic: Diagnostic }`. It does not silently
+assume 32 bits.
 
 ---
 
-## 9. TypeScript — `A | B` (structural union)
+## 9. TypeScript — `number | string` (structural union with disjoint primitive arms)
 
-TypeScript unions are closed alternatives at a use site, checked against the
-structural shapes of their members.
+TypeScript unions are structural acceptance sets. Generic `A | B` is not
+automatically an exclusive substrate `Disj` because structural members can
+overlap. This example uses disjoint primitive arms (`number | string`) so the
+accepted value has a unique arm after the target's own type classification.
 
 **Model:**
 
 ```
-// CARRIER — a value inhabits exactly one member grounding that accepts it.
-type TsUnion<A, B> = Disj {
-  left:  A,
-  right: B
+// CARRIER — membership in one of two disjoint primitive acceptance sets.
+type TsNumberOrString = StructuralUnion {
+  members: Set { TsNumber, TsString },
+  disjointness: Witness<Disjoint<TsNumber, TsString>>
 }
 
-// MEANING — the member's own meaning, tagged by the successful alternative.
+// MEANING — the accepted member's own meaning. Generic unions require
+// overlap/narrowing facts before they can be treated as a Disj.
 ```
 
-**Step-by-step coercion — `number | string` ↔ IR `Float64 | String`:**
-1. TypeScript `number` grounds to IEEE-754 binary64; `string` grounds to a
-   Unicode scalar sequence.
+**Step-by-step coercion shape — `TsNumberOrString -> Outcome<IR (Float64 | String)>`:**
+1. TypeScript `number` grounds to IEEE-754 binary64; ECMAScript `string`
+   grounds to a sequence of UTF-16 code units, including possible ill-formed
+   surrogate subsequences.
 2. IR alternatives ground independently: `Float64`, `String`.
-3. catamorphism matches outer `Disj`; then compares each alternative.
-4. `number` ↔ `Float64` is **identity**; `string` ↔ `String` is identity only
-   if the string models share Unicode normalization facts. Otherwise that arm is
-   a named lossy or fail-closed gap.
+3. Phase-1/2 `derive_coercion` design first uses the disjoint primitive
+   membership witness to choose the arm, then compares that arm's grounding.
+4. `number` to `Float64` returns `Produced`. `string` to IR `String`
+   returns `Produced` only if the IR string model is UTF-16-code-unit-shaped
+   or a validated decode from UTF-16 code units to scalar values succeeds;
+   otherwise it returns `Rejected { diagnostic: Diagnostic }` or a
+   `Produced` value with an explicit accepted-loss fact.
 
-The union coercion is derived from its arms. No target-specific "union bridge"
-is authored.
+The generic union case stays a structural membership/acceptance fact until
+overlap or discriminant evidence proves an exclusive `Disj`.
 
 ---
 
@@ -508,14 +520,15 @@ type LlvmSsaValue<T> = Conj {
 // llvm_type. Single-assignment is a graph invariant over definition.
 ```
 
-**Step-by-step coercion — `i32 %x` ↔ IR `Int32`:**
+**Step-by-step coercion shape — `LlvmSsaValue<i32> -> Outcome<IR Int32>`:**
 1. LLVM `i32` grounds to 32 bits interpreted by the consuming operation.
 2. an integer operation such as `add i32` supplies two's-complement integer
    meaning for the same 32 bits.
-3. catamorphism compares `32×Bool + integer decode` to IR `Int32`.
-4. when the consuming operation fixes integer meaning, coercion is **identity**;
-   without that use-site meaning, raw `i32` is only a bit-vector and integer
-   coercion is not silently invented.
+3. Phase-1/2 `derive_coercion` design compares the use-site integer meaning
+   to IR `Int32`.
+4. when the consuming operation fixes integer meaning, return `Produced`;
+   without that use-site meaning, raw `i32` is only a bit-vector, so return
+   `Rejected { diagnostic: Diagnostic }` instead of inventing integer meaning.
 
 SSA identity grounds as the DAG definition edge. Mutability is not modeled
 because LLVM SSA values are not mutable cells.
@@ -540,13 +553,15 @@ type PtxPredicate = Conj {
 // they are outside the current execution mask.
 ```
 
-**Step-by-step coercion — `PtxPredicate` ↔ IR `List<Bool>`:**
+**Step-by-step coercion shape — `PtxPredicate -> Outcome<IR List<Bool>>`:**
 1. predicate grounds to `{ lanes: List<Bool>, active_mask: List<Bool> }`.
 2. IR `List<Bool>` grounds only to lane truth values.
-3. catamorphism finds related but non-identical groundings: the mask coordinate
-   exists in PTX but not in the plain list.
-4. PTX → plain list is **lossy** unless the IR target also carries the mask;
-   plain list → PTX requires a supplied active mask, otherwise fail-closed.
+3. Phase-1/2 `derive_coercion` design finds related but non-identical
+   groundings: the mask coordinate exists in PTX but not in the plain list.
+4. PTX to plain list returns `Produced` only if an explicit accepted-loss
+   policy drops the mask, or if the IR target also carries it. Plain list to
+   PTX requires a supplied active mask; otherwise it returns
+   `Rejected { diagnostic: Diagnostic }`.
 
 The model prevents treating inactive lanes as false values. That distinction is
 a structural coordinate, not a convention.
@@ -572,12 +587,14 @@ type DagArrow = Conj {
 // checked by the body or named external realization.
 ```
 
-**Step-by-step coercion — `.dag Arrow<Int32 -> Int32>` ↔ IR function type:**
+**Step-by-step coercion shape — `DagArrow<Int32 -> Int32> -> Outcome<IR FunctionType>`:**
 1. params and result ground as type nodes in the shared substrate.
-2. catamorphism matches `Arrow` against function type structure.
+2. Phase-1/2 `derive_coercion` design matches `Arrow` against function type
+   structure.
 3. parameter/result types recurse; `Int32` coincides with itself.
-4. the signature coercion is **identity**; body coercion is not a type alias. It
-   is valid only when the body or external realization is the declared authority.
+4. the signature comparison returns `Produced`; body coercion is not a type
+   alias. It returns `Produced` only when the body or external realization is
+   the declared authority, otherwise `Rejected { diagnostic: Diagnostic }`.
 
 This is self-grounding without circularity: the carrier is substrate data, and
 the meaning is checked through the same structural rules as user code.
@@ -600,13 +617,14 @@ type JsonObject = Map<String, JsonValue>
 // not two object fields.
 ```
 
-**Step-by-step coercion — JSON object ↔ IR record `{ name: String, age: Nat }`:**
+**Step-by-step coercion shape — `JsonObject -> Outcome<IR { name: String, age: Nat }>`:**
 1. JSON object grounds to `Map<String, JsonValue>`.
 2. IR record grounds to a closed `Conj` with required fields.
-3. catamorphism compares map entries to field coordinates by key.
-4. coercion succeeds only when every required key exists and each value
-   recursively coerces; missing keys, duplicate keys, or non-natural `age`
-   fail-closed.
+3. Phase-1/2 `derive_coercion` design compares map entries to field
+   coordinates by key.
+4. every required key plus recursively produced values return `Produced`.
+   Missing keys, duplicate keys, or non-natural `age` return
+   `Rejected { diagnostic: Diagnostic }`.
 
 Object member order never participates in the coercion. If a consumer needs
 source order, that is a separate syntax/provenance fact.
@@ -632,12 +650,14 @@ type YamlNode =
 // provenance unless the target asks for graph identity.
 ```
 
-**Step-by-step coercion — YAML mapping ↔ IR record:**
-1. resolve aliases through the declared anchor map; unresolved aliases fail.
+**Step-by-step coercion shape — `YamlMapping -> Outcome<IR Record>`:**
+1. resolve aliases through the declared anchor map; unresolved aliases return
+   `Rejected { diagnostic: Diagnostic }`.
 2. mapping grounds to a finite map of key/value node groundings.
 3. IR record grounds to named coordinates.
-4. coercion succeeds when keys are scalar strings matching field names and
-   values recursively coerce; non-scalar keys or unresolved aliases fail-closed.
+4. scalar-string keys matching field names plus recursively produced values
+   return `Produced`; non-scalar keys or unresolved aliases return
+   `Rejected { diagnostic: Diagnostic }`.
 
 The model does not pretend YAML is JSON. Anchors are grounded syntax facts with
 a declared resolution step.
@@ -661,15 +681,16 @@ type CsvRow<S> = Conj {
 // MEANING — a record only after schema/header facts decode positions.
 ```
 
-**Step-by-step coercion — CSV row ↔ IR record `{ id: Nat, name: String }`:**
+**Step-by-step coercion shape — `CsvRow<S> -> Outcome<IR { id: Nat, name: String }>`:**
 1. row grounds to `List<String>`; schema grounds to field names and decoders.
-2. catamorphism aligns positions to record coordinates through the schema.
+2. Phase-1/2 `derive_coercion` design aligns positions to record coordinates
+   through the schema.
 3. `id` string decodes through `Nat` grammar; `name` remains string.
-4. coercion succeeds when arity matches and every decoder succeeds; extra,
-   missing, or undecodable fields fail-closed.
+4. matching arity plus successful decoders return `Produced`; extra, missing,
+   or undecodable fields return `Rejected { diagnostic: Diagnostic }`.
 
 Without the schema, a CSV row cannot coerce to a named record. It remains an
-ordered string list.
+ordered string list; an attempted record coercion returns `Rejected`.
 
 ---
 
@@ -688,13 +709,14 @@ type TomlTable = Map<KeyPath, TomlValue>
 // MEANING — a hierarchical record assembled from key paths.
 ```
 
-**Step-by-step coercion — TOML table ↔ IR config record:**
+**Step-by-step coercion shape — `TomlTable -> Outcome<IR ConfigRecord>`:**
 1. table grounds to a map of key paths to closed value variants.
 2. IR config grounds to record coordinates with expected types.
-3. catamorphism aligns dotted key paths to nested record fields.
-4. coercion succeeds when each required path exists and each TOML variant
-   recursively matches; duplicate paths, conflicting table/value paths, and
-   missing required values fail-closed.
+3. Phase-1/2 `derive_coercion` design aligns dotted key paths to nested
+   record fields.
+4. existing required paths plus recursively produced TOML variants return
+   `Produced`; duplicate paths, conflicting table/value paths, and missing
+   required values return `Rejected { diagnostic: Diagnostic }`.
 
 TOML's value variants are a closed sum. Modeling them as strings would erase the
 target's typed facts.
@@ -719,15 +741,16 @@ type JsonSchemaObject = Conj {
 // MEANING — a predicate: JsonValue -> Bool, plus witnesses for accepted values.
 ```
 
-**Step-by-step coercion — JSON Schema object ↔ IR record type:**
+**Step-by-step coercion shape — `JsonSchemaObject -> Outcome<IR RecordType>`:**
 1. schema grounds to constraints: allowed JSON kind, property schemas, required
    property names.
 2. IR record type grounds to required coordinates and their value groundings.
-3. catamorphism compares required properties to record fields and recurses into
-   property schemas.
-4. coercion to an IR record type succeeds only for the closed fragment whose
-   constraints exactly determine the record shape; open `additionalProperties`
-   or unconstrained fields remain predicate facts, not record coordinates.
+3. Phase-1/2 `derive_coercion` design compares required properties to record
+   fields and recurses into property schemas.
+4. the closed fragment whose constraints exactly determine the record shape
+   returns `Produced`; open `additionalProperties` or unconstrained fields
+   return `Rejected { diagnostic: Diagnostic }` for record-type coercion and
+   remain predicate facts.
 
 The schema is not the data. Its meaning is validation, so coercion produces type
 facts only when the predicate is structurally precise enough.
@@ -755,14 +778,15 @@ type OpenApiOperation = Conj {
 // responses, indexed by status code and media type.
 ```
 
-**Step-by-step coercion — OpenAPI operation ↔ IR service arrow:**
+**Step-by-step coercion shape — `OpenApiOperation -> Outcome<IR ServiceArrow>`:**
 1. method/path ground to HTTP target facts; parameters ground through location
    facts (`path`, `query`, `header`, `cookie`).
 2. request and response schemas ground through their JSON Schema meanings.
-3. catamorphism compares the request side to the IR arrow input record and the
-   response map to the IR result sum.
-4. coercion succeeds when every parameter/body/response schema grounds to the
-   corresponding IR type. Missing status cases or ungrounded schemas fail-closed.
+3. Phase-1/2 `derive_coercion` design compares the request side to the IR
+   arrow input record and the response map to the IR result sum.
+4. every parameter/body/response schema grounding to the corresponding IR type
+   returns `Produced`; missing status cases or ungrounded schemas return
+   `Rejected { diagnostic: Diagnostic }`.
 
 This keeps OpenAPI as a boundary contract. The implementation body remains a
 separate authority, connected only after the contract groundings line up.
