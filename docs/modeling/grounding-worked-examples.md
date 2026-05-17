@@ -425,14 +425,27 @@ rounding and special-value facts. An ideal SPICE voltage that requires an
 exact mathematical continuum is therefore a named fail-closed gap:
 `SpiceExactVoltageMissingExactRealCarrier`, not a silent reuse of `Real`.
 
-**Step-by-step coercion shape — `Rust f64 -> Outcome<SpiceApproxVoltage>`:**
-1. `SpiceApproxVoltage` grounds to
-   `ApproximateField<FieldOfFractions<Int>>` plus `Volt`; `f64` grounds to
-   IEEE-754 binary64 (`dsl/std/float.dag` / `src/v4/std/float.dag`).
-2. the coercion fold compares two approximate-field
-   carriers with different width/policy facts — related but not identical.
-3. finite `f64 -> Outcome<SpiceApproxVoltage>` returns `Produced` only when
-   the approximation policy is explicitly accepted and recorded.
+**Step-by-step coercion shape — `Rust f64 → SpiceApproxVoltage`:**
+1. `SpiceApproxVoltage` grounds to `ApproximateField<FieldOfFractions<Int>>`
+   **plus a `Volt` unit fact**; `f64` grounds to IEEE-754 binary64 — a
+   **unitless** approximate magnitude (`dsl/std/float.dag` /
+   `src/v4/std/float.dag`).
+2. the coercion fold compares the groundings: the approximate-field
+   *magnitude* carriers are related (different width/policy facts) — but
+   `SpiceApproxVoltage` carries a `Volt` coordinate the `f64` grounding
+   **does not have**.
+3. Because the `Volt` fact is absent from the source, a bare
+   `f64 -> SpiceApproxVoltage` **cannot be `Produced`** — conjuring the
+   unit coordinate would fabricate a fact, the exact violation this doc
+   models against (the emit-side dual of a hollow alias). The unit must be
+   **supplied**: the honest coercion is
+   `(f64, unit: Volt) -> Outcome<SpiceApproxVoltage>`, the `Volt` an
+   explicit boundary input (the SPICE context asserts "this number is
+   volts"). The f64-only coercion lands only the magnitude —
+   `f64 -> Outcome<ApproximateField<…>>` — returning `Produced` (quality
+   `Lossy`) when the approximation policy is explicitly accepted and
+   recorded; the consumer that has the `Volt` fact constructs the full
+   `SpiceApproxVoltage`.
 4. `NaN` / `±∞` return `Rejected { diagnostic: Diagnostic }` because they
    are IEEE-754 special values, not voltage magnitudes. A requested
    `Rust f64 -> Outcome<SpiceExactVoltage>` returns
@@ -440,9 +453,11 @@ exact mathematical continuum is therefore a named fail-closed gap:
    SpiceExactVoltageMissingExactRealCarrier, ... } }` until an exact carrier
    is modeled.
 
-The endpoint here is no longer mislabeled as exact. The approximate path is
-a **declared-lossy** derived map; the exact-voltage path is a named
-fail-closed gap.
+The endpoint here is no longer mislabeled as exact, and the unit is
+**supplied, never fabricated**. The approximate path is a
+**declared-lossy** derived map over the *magnitude*; the `Volt`
+coordinate enters only as an explicit boundary fact; the exact-voltage
+path is a named fail-closed gap.
 
 ---
 
