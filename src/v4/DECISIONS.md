@@ -350,7 +350,13 @@ Operator-stated principle (2026-05-17), governing the reseed:
   Practice to `docs/modeling-discipline.md` — "model facts, not aliases"
   — with a worked good example (fact-bundle) and bad example (bare
   alias); since the api-review rubric reads that doc, a documented
-  bad-example *is* the enforcement. Reverse the D2/D4 rows. Rewrite the
+  bad-example arms every review against the hollow alias. That is the
+  *first* enforcement tier — but it is reviewer-applied, i.e.
+  convention-level (`modeling-discipline.md` Practice 6: API-level
+  enforcement over convention). Phase 1 therefore also evaluates a
+  *structural* check — a generated fact-density / hollow-alias gate —
+  and adds it where the cost is cheap; the documented example is the
+  floor, not the ceiling. Reverse the D2/D4 rows. Rewrite the
   `TASKS.md` T-4 authoring contract.
 - **Phase 2 — rework the entire T-## program** around fact-bundle
   modeling, first-class, plus the `std/` substrate axes the model needs
