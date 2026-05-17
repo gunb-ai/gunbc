@@ -295,60 +295,39 @@ fn resolve_node(n: Node, scope: Scope) -> ResolveResult {
           }
       }
     TypeNode { connective: _ } =>
-      match fold(n.children, init: ResolvedChildren { children: [] }, f: fn(acc, e) {
-        match acc {
-          ResolveChildrenRejected { diagnostic: d } =>
-            ResolveChildrenRejected { diagnostic: d }
-          ResolvedChildren { children: done } =>
-            match resolve_node(n: e.target, scope: scope) {
-              ResolveRejected { diagnostic: d } =>
-                ResolveChildrenRejected { diagnostic: d }
-              ResolvedNode { node: resolved_target } =>
-                ResolvedChildren {
-                  children: list_push(done, Edge {
-                    label: e.label,
-                    target: resolved_target
-                  })
-                }
-            }
-        }
-      }) {
-        ResolveChildrenRejected { diagnostic: d } => ResolveRejected { diagnostic: d }
-        ResolvedChildren { children: resolved_children } =>
-          ResolvedNode {
-            node: Node {
-              kind: n.kind,
-              children: resolved_children
-            }
-          }
-      }
+      resolve_children_homogeneous_scope(n: n, scope: scope)
     ComputationNode { behavior: _ } =>
-      match fold(n.children, init: ResolvedChildren { children: [] }, f: fn(acc, e) {
-        match acc {
-          ResolveChildrenRejected { diagnostic: d } =>
+      resolve_children_homogeneous_scope(n: n, scope: scope)
+  }
+}
+
+
+fn resolve_children_homogeneous_scope(n: Node, scope: Scope) -> ResolveResult {
+  match fold(n.children, init: ResolvedChildren { children: [] }, f: fn(acc, e) {
+    match acc {
+      ResolveChildrenRejected { diagnostic: d } =>
+        ResolveChildrenRejected { diagnostic: d }
+      ResolvedChildren { children: done } =>
+        match resolve_node(n: e.target, scope: scope) {
+          ResolveRejected { diagnostic: d } =>
             ResolveChildrenRejected { diagnostic: d }
-          ResolvedChildren { children: done } =>
-            match resolve_node(n: e.target, scope: scope) {
-              ResolveRejected { diagnostic: d } =>
-                ResolveChildrenRejected { diagnostic: d }
-              ResolvedNode { node: resolved_target } =>
-                ResolvedChildren {
-                  children: list_push(done, Edge {
-                    label: e.label,
-                    target: resolved_target
-                  })
-                }
+          ResolvedNode { node: resolved_target } =>
+            ResolvedChildren {
+              children: list_push(done, Edge {
+                label: e.label,
+                target: resolved_target
+              })
             }
         }
-      }) {
-        ResolveChildrenRejected { diagnostic: d } => ResolveRejected { diagnostic: d }
-        ResolvedChildren { children: resolved_children } =>
-          ResolvedNode {
-            node: Node {
-              kind: n.kind,
-              children: resolved_children
-            }
-          }
+    }
+  }) {
+    ResolveChildrenRejected { diagnostic: d } => ResolveRejected { diagnostic: d }
+    ResolvedChildren { children: resolved_children } =>
+      ResolvedNode {
+        node: Node {
+          kind: n.kind,
+          children: resolved_children
+        }
       }
   }
 }

@@ -25,7 +25,6 @@ import v4.std.diagnostic {
   UserInputBoundary
 }
 import v4.std.node {
-  Behavior,
   Connective,
   Edge,
   Node,
@@ -144,14 +143,6 @@ fn normalize_children(children: List<Edge>) -> NormalizeChildrenResult {
 fn type_node(connective: Connective, children: List<Edge>) -> Node {
   Node {
     kind: TypeNode { connective: connective },
-    children: children
-  }
-}
-
-
-fn computation_node(behavior: Behavior, children: List<Edge>) -> Node {
-  Node {
-    kind: ComputationNode { behavior: behavior },
     children: children
   }
 }
