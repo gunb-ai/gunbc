@@ -225,14 +225,22 @@ type JsonSchema
 //   collection). All require std/text.dag stream substrate + std/node.dag
 //   `TypeNode` facts for derivation — T-3 / T-6 pipeline work, not bodiless
 //   signatures here. When authored: **fail-closed `Outcome<…>`** on every
-//   operation (json.dag seam #3); a structurally constructible but spec-
-//   invalid `JsonSchemaInstance` (e.g. contradictory `type` vs payload,
-//   **empty `JsonSchemaTypeUnion.types`** encoding **`[]`** at the JSON surface
-//   per Validation §6.1.1 — core-type duplicates structurally excluded via
-//   `Set<…>`; **duplicate strings in the JSON `required` array** at the wire
-//   surface — structurally excluded via **`Set<String>`** per Validation §6.5.3
-//   uniqueness)
-//   validates/derives `Rejected`, never a fabricated success. **§6.5.3 / P1:**
+//   operation (json.dag seam #3). **Schema document vs instance:** reject
+//   **illegal schema keyword shapes / values** once validation closes (e.g.
+//   **empty `JsonSchemaTypeUnion.types`** encoding **`"type": []`** at the JSON
+//   wire per Validation §6.1.1 — non-emptiness still 🟡 on the bare `Set` carrier;
+//   **duplicate `required` strings** on the wire — structurally excluded via
+//   **`Set<String>`** here; malformed payloads for other keywords when modeled).
+//   **`json_schema_validate`** on a parsed schema + instance MUST follow Draft
+//   **2020-12 applicability** — keywords evaluate per the normative instance rules
+//   (e.g. union **`type`** alongside other applicators such as **`maxLength`** is
+//   ordinary composition; **do not** treat “`type` vs sibling keywords *look*
+//   contradictory at the object layer” as automatic schema-self-**`Rejected`**
+//   without a normative violation). **`schema_to_type`** /
+//   **`json_schema_emit_from_type_node`** may still **`Rejected`** / unsupported
+//   for **derivation-only** limits — **not** conflated with **`json_schema_validate`**
+//   invalidity (same lane split as §6.5.3 / `properties` below). Never fabricate
+//   success on a true spec failure. **§6.5.3 / P1:**
 //   `required` constrains **instances**, not a sibling-schema rule that each name
 //   must appear under `properties`; a future **`schema_to_type`** closed-record
 //   carve-out from `properties` alone is a **derivation** concern (name it
