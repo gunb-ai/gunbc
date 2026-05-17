@@ -62,7 +62,7 @@ def rewrite(path: Path, header: str) -> None:
 
 
 def main() -> None:
-    specs: list[tuple[str, str, str, str]] = [
+    specs: list[tuple[str, str, str, str, str]] = [
         (
             "src/v4/extdeps/languages/verilog.dag",
             "// Scope: IEEE 1364-2005 Verilog structural carriers (T-4.9).",
