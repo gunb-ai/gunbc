@@ -1,6 +1,6 @@
 // src/v4/extdeps/frameworks/react.dag
 // Scope: React 19.2 framework extdeps — components, elements, props, hooks, context, cross-decl refs, optional ref handles, optional keys, optional hook value operands, dependency-array and cleanup sites.
-// Owns: ReactCrossDeclRef, ReactOptRef, ReactOptKey, ReactOptValue, ReactEffectCleanupSite, ReactHookInlineDependenciesArgument, ReactModuleSurface, ReactHookSite, ReactUseCallSite, ReactPropsSite, ReactFunctionComponent, ReactHostElement, ReactCompositeElement, ReactElement, ReactNode, ReactContextBinding
+// Owns: ReactCrossDeclRef, ReactOptRef, ReactOptKey, ReactOptValue, ReactEffectCleanupSite, ReactHookInlineDependenciesArgument, ReactModuleSurface, ReactHookSite, ReactUseCallSite, ReactPropsSite, ReactFunctionComponent, ReactHostElement, ReactCompositeElement, ReactElement, ReactCreateElementChild, ReactContextBinding
 // Consumes: v4.std.collection.List
 // Status: T-4.7
 
@@ -150,12 +150,13 @@ type ReactElement
 
 // Anchor: https://react.dev/reference/react/createElement
 // 🟡 coproduct dissolution — DECISIONS.md#react-p4-node
-type ReactNode
+type ReactCreateElementChild
   = Element { element: ReactElement }
   | Text { text_value_ref: ReactCrossDeclRef }
 
 // Anchor: https://react.dev/reference/react/createContext
+// 🟢 — DECISIONS.md#react-p4-context-binding
 type ReactContextBinding {
-  context_pair_ref: ReactCrossDeclRef
+  context_ref: ReactCrossDeclRef
   default_value_ref: ReactCrossDeclRef
 }
