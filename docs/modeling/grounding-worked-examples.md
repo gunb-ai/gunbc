@@ -226,7 +226,8 @@ connective. It does **not** ground as `Bool`: Verilog's primitive is
 richer. `Bool` is exactly the `{Zero, One}` sub-part of `VBit`.
 
 **Step-by-step coercion shape — `VReg32 -> Outcome<IR Int32>`:**
-1. IR `Int32` grounds to `32×Bool` (2-valued); `VReg32` to `32×VBit`
+1. IR `Int32` grounds to `Compose<Int, MachineWidth<Word32>>` (the
+   fixed-width integer discipline from §B); `VReg32` grounds to `32×VBit`
    (4-valued).
 2. Phase-1/2 `derive_coercion` design compares element-wise:
    `Bool` vs `VBit` — `Bool ⊊ VBit`.
