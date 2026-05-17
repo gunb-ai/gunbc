@@ -5,14 +5,16 @@
 //! `v4_extdeps_typescript_dag_smoke_test`). The Practice-8 **structural**
 //! predicate lives in the handwritten mirror `v3_compiler::v4_hollow_alias_gate`
 //! until the generated `.dag` checker replaces it (`INVARIANTS.md` §P5(b)
-//! dissolution on that path).
+//! dissolution on that path). **Interim-floor authority** is
+//! `docs/modeling-discipline.md` Practice 8 (landed on `main`: **#3226** `77b9e7d72`;
+//! Practice 9 **#3234** `125fc88c8`).
 //!
 //! **INVARIANTS §P5 Dispatch-Discipline Mechanism (b):** this path’s SG-0 census
 //! line + matching `INVARIANTS.md` table row land in the same PR as the harness
 //! (home-of-record for the hand-Rust receipt).
 
-use v3_compiler::compile_to_dag;
 use v3_compiler::CompileError;
+use v3_compiler::compile_to_dag;
 
 const FACT_DENSITY_DAG: &str = include_str!("../../../../v4/std/fact_density.dag");
 const FACT_DENSITY_PATH: &str = "src/v4/std/fact_density.dag";

@@ -1,10 +1,11 @@
 //! T-30 — hollow-alias structural gate (bootstrap mirror).
 //!
-//! **Spec:** `docs/modeling-discipline.md` **Practice 8** — *Interim floor: the
-//! hollow-alias discriminator* (PR **#3226** until merged; **sync** if the
-//! discriminator text moves during review). This module is **not** the integer
-//! width/signedness worked example; that is one motivating instance only
-//! (manager brief T-30 / CORE).
+//! **Authority:** `docs/modeling-discipline.md` — **Practice 8 — Fact-bundle
+//! modeling**, #### *Interim floor: the hollow-alias discriminator* (landed on
+//! `main` with **#3226** / `77b9e7d72`; Practice 9 tightened with **#3234** /
+//! `125fc88c8` — **diff `origin/main:docs/modeling-discipline.md` if this mirror
+//! drifts**). This module is **not** the integer width/signedness worked example;
+//! that is one motivating instance only (manager brief T-30 / CORE).
 //!
 //! Substrate witness carrier: `src/v4/std/fact_density.dag` — `SourceSpecReadFact`
 //! is a **body-less nominal** (same discipline as `Symbol` / `Hash` in `std/node.dag`):
@@ -14,21 +15,24 @@
 //! user declaration range (`lower.rs` — `reject_user_unparsed_scaffolds`), so the
 //! gate logic is mirrored here as a **pure** harness until those bodies ship in `.dag`.
 //!
-//! ## Structural projection of Practice 8 (three-part + kernel exemption)
+//! ## Interim-floor hollow predicate (three prongs + exemption)
 //!
-//! A declaration site is **hollow** iff **all** of the following hold on the
-//! harness projection (fail closed ⇒ [`HollowAliasGateOutcome::Rejected`]):
+//! A declaration is **hollow** when **all three** hold on the harness projection (fail
+//! closed ⇒ [`HollowAliasGateOutcome::Rejected`]), matching the numbered list in
+//! `modeling-discipline.md` (~lines 389–399):
 //!
-//! 1. **Bare alias / no-own-field wrapper** — `bare_alias_or_empty_wrapper`.
-//! 2. **External spec primitive** — the declaration claims to model a subject
-//!    that a language / format / framework **spec** names and states facts about
-//!    ([`ModeledSubject::ExternalSpecPrimitive`]).
-//! 3. **No coincidence-evidence** — no cited proof that reuse is licensed in the
-//!    DECISIONS.md sense ([`HollowDeclarationSite::coincidence_evidence`] is false).
+//! 1. **Bare alias** (`type X = Y`) or a single-field wrapper that adds no field of its own
+//!    — [`HollowDeclarationSite::bare_alias_or_empty_wrapper`].
+//! 2. **External spec primitive** — a language / format / framework **spec** names the
+//!    subject and states facts about it — [`ModeledSubject::ExternalSpecPrimitive`].
+//! 3. **No coincidence evidence** — no `src/v4/DECISIONS.md` entry proving the alias
+//!    endpoints coincide, cited from the modeling file by at most a **one-line tag**
+//!    (Practice 9). The harness field [`HollowDeclarationSite::coincidence_evidence`]
+//!    is the **structural projection** of that prong for test IR (evidence present vs absent).
 //!
-//! **Kernel-ambient exemption** (Practice 8 “Exempt”; `src/v4/STRUCTURE.md` §Kernel-ambient
-//! types): [`ModeledSubject::KernelAmbientAtom`] never yields a hollow site (aliases onto
-//! those terminals are structurally exempt).
+//! **Exempt:** kernel-ambient atoms — `Bool`, `Char`, and the other **irreducible**
+//! substrate atoms (`src/v4/STRUCTURE.md` §Kernel-ambient types) — are legitimately atomic.
+//! [`ModeledSubject::KernelAmbientAtom`] short-circuits before the three-part `AND`.
 
 // Practice 4 (coproduct checkpoint, `docs/modeling-discipline.md` §4):
 // 🟢 GREEN — terminal two-variant harness mirror of `std/diagnostic.dag` `Outcome<Bool>`
@@ -65,7 +69,8 @@ pub struct HollowDeclarationSite {
     pub bare_alias_or_empty_wrapper: bool,
     /// Condition (2): what the declaration claims to model.
     pub modeled_subject: ModeledSubject,
-    /// Condition (3): cited coincidence / grounding evidence is present.
+    /// Prong (3): **true** when coincidence evidence is in scope (a `src/v4/DECISIONS.md`
+    /// proof of coincide, cited per Practice 9); **false** supplies the third conjunct for hollow.
     pub coincidence_evidence: bool,
 }
 
