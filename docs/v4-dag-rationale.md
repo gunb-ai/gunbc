@@ -1,10 +1,12 @@
-# v4 substrate rationale (relocated from `.dag` headers)
+# v4 substrate rationale (historical archive)
 
-Long-form modeling narrative for operators and reviewers. Fenced sections
-below preserve prior in-file commentary for the named substrates.
+**Non-authoritative.** Canonical modeling lives in the **live** `src/v4/**/*.dag`
+substrate, `DECISIONS.md`, `INVARIANTS.md`, and `MODELING.md`. This file is an
+**archaeological appendix** only: fenced text preserves superseded in-file
+commentary captured around #3229. **Do not cite it as ratified operator text.**
 
-> **Editorial note:** The fenced bodies are verbatim relocations of former
-> `.dag` comment text (including historical identifiers where they appeared).
+> For integer/float inhabitance, alias discipline, and IEEE primitive resolution,
+> read `DECISIONS.md` and the current `std/*.dag` / `extdeps/languages/*.dag` headers.
 
 
 ## `verilog.dag` — preamble modeling notes
@@ -647,221 +649,22 @@ below preserve prior in-file commentary for the named substrates.
 //   pass; this is not worker-settled.)
 ```
 
-## `integer.dag` — header authority + modeling notes
+## `integer.dag` — superseded commentary (archive)
 
 ```
-// D2 (operator-ratified 2026-05-16; see DECISIONS.md D2) — this file is
-//   the SINGLE authority for integer algebra inhabitance. `Int` inhabits
-//   `OrderedRing` / `AbelianGroup` here, ONCE. That inhabitance is filled
-//   by the construction chain — Peano `Nat` (std/nat.dag) →
-//   `GroupCompletion` → `AbelianGroup`, and `Compose<MachineWidth>` for
-//   the fixed-width projections — so its operation `Arrow` bodies are
-//   sub-DAGs of L1 behaviors (THESIS:203's user-function case), never
-//   `extdeps/` primitive realizations: the integer chain is fully
-//   constructive (contrast std/float.dag's D2b, where IEEE-754 ops ARE
-//   primitives — `Arrow` bodies that are `extdeps/` realizations per
-//   THESIS:203).
-//   A language/format `extdeps` file does NOT re-declare an integer
-//   algebra inhabitance: per INVARIANTS P1:42 (`numeric_aliases_align_
-//   to_refinements`) a per-language `OrderedRing<<lang>Int, …>` is the
-//   forbidden parallel substrate. A language carrier instead ALIAS-
-//   IDENTIFIES to the `Int8 … Int128` / `UInt8 … UInt128` declared here
-//   (`type RustI32 = Int32`); the algebra flows through the alias.
-//   Overflow / UB / arbitrary-precision are DISTINCT carriers here (the
-//   wrapping ring, the partial/totalized op, unbounded `Int`); a language
-//   selects one via its alias target plus a sibling `OverflowDisposition`
-//   carrier declared in its own `extdeps` file.
-//
-// Status: T-3 modeled 2026-05-16 (jolly-gull-889). Replaces part of the
-//   deleted std/primitive.dag; see src/v4/STRUCTURE.md §"scalar/numeric
-//   concept decomposition".
-// HEADER RECONCILE (2026-05-16, #3190, smart-fox-602 + operator reason
-// ruling):
-//   the frozen scaffold header understated delivered imports and remained
-//   marked scaffold after the model landed. Consumes now names the actual
-//   machine-width, algebra-witness, diagnostic, and Symbol dependencies.
-//   The operator reason ruling also fixes integer-owned diagnostic reasons
-//   as Symbol name-references declared in this file, not caller-supplied
-//   values.
-// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
-// contract for the worker. Splitting this file requires explicit operator
-// ratification (substrate extension = stop signal).
-
-// ─────────────────────────────────────────────────────────────────────
-// Modeling notes (read before validating against the anchor)
-//
-// V4 SPLITS CARRIER FROM WITNESS. The v3 spelling
-// `Int = AbelianGroup<GroupCompletion<Nat>>` named the construction chain
-// compactly, but v4's scalar files use instance-values for inhabitance
-// (see nat.dag / logic.dag): the concrete carrier is named first, then
-// the algebra value over that carrier is declared here. Consequently:
-//   - `GroupCompletion<M>` is the derived carrier construction.
-//   - `Int = GroupCompletion<Nat>` is the abstract signed-integer carrier.
-//   - `data int_abelian_group` and `data int_ordered_ring` are the
-//     machine-readable inhabitance edges.
-//
-// GROUP-COMPLETION IS LOCAL TO THIS CONCEPT FILE. std/algebra.dag's v4
-// scope is "structures only" and deliberately omits construction
-// carriers except FreeMonoid<T>, whose carrier shape is itself the root
-// free construction. `GroupCompletion<M>` exists here because this file
-// is the sole v4 consumer in the closed tree: the construction is needed
-// to model integers from Nat, and exporting it from algebra.dag would
-// widen the T-2 structures file after its brief. The carrier is opaque
-// here so the quotient relation is not represented as a raw `{positive,
-// negative}` record that would make non-canonical aliases observable.
-//
-// CONSTRAINED-INHABITANCE GAP (tracked scaffold). Denotationally the
-// Grothendieck group completion requires a commutative monoid. v4 does
-// not yet have a parametric where-clause syntax such as
-// `<M> where M : CommutativeMonoid<_>`. The only authored use here is
-// `GroupCompletion<Nat>`, and nat.dag already declares Nat's additive
-// `CommutativeMonoid<Nat>` instance, so the mathematical precondition
-// holds for the actual construction. Dissolution trigger: when v4 lands
-// constrained generic parameters / inhabitance bounds, tighten
-// `GroupCompletion<M>` to require the commutative-monoid witness.
-//
-// FIXED-WIDTH INTEGERS ARE WIDTH PROJECTIONS. A machine integer is not a
-// sibling algebra authority beside abstract `Int` / `UInt`; it is the
-// abstract carrier composed with the independent machine-width axis
-// (`Compose<Int, MachineWidth<Word64>>`, etc.). This preserves the D2
-// fact-flow shape from INVARIANTS P1: width rows alias the abstract
-// carrier plus a width refinement, and no fixed-width row declares a
-// separate OrderedRing/Semiring instance in this file.
-//
-// TIER-2 TOTALIZATION. Integer division and modulo are partial at divisor
-// zero. Per STRUCTURE.md commitment #2, the totalized operations live
-// here and return std/diagnostic.dag's ratified `Outcome<Int>` carrier
-// (DECISIONS.md I), not a new Result type. The source location is call-
-// site context (`at: Locus`), but the failure reason is intrinsic to the
-// integer dimension: integer.dag declares the Symbol name-references
-// `integer_div_by_zero` and `integer_modulo_by_zero`, then uses those
-// names in the produced Diagnostic.
+// Historical capture only. Canonical: src/v4/std/integer.dag + DECISIONS.md + INVARIANTS P1:42.
+// Single std/ authority for integer algebra inhabitance; Nat → GroupCompletion<Int>;
+// fixed widths as Compose with std/machine widths; Tier-2 divide/modulo via Outcome;
+// intrinsic Symbol rows for divide-by-zero diagnostics; per-language extdeps aliases
+// to Int8…UInt128 — no parallel numeric ring substrate in std/.
 ```
 
-## `float.dag` — header + modeling notes
+## `float.dag` — superseded commentary (archive)
 
 ```
-// Owns:
-//   - Float — IEEE-754 binary floating-point (Float32 / Float64). Its
-//     STRUCTURE decomposes: a sign / exponent / mantissa bit-record over
-//     std/machine.dag, with the non-finite values (NaN, ±Inf, signed
-//     zero) modeled as explicit structure. Every part is reachable —
-//     nothing opaque.
-//   - inhabitance: Float is **typed** to inhabit the rounding-aware
-//     `ApproximateField` structure owned by std/algebra.dag (ontology +
-//     TASKS.md T-3), **not** an exact `Field` (rounding is non-associative).
-//     The std/extdeps typescript.dag header already anticipates this shape;
-//     algebra.dag (T-2) owns its exact name and definition. A **machine-
-//     readable** `data …: ApproximateField<Float>` inhabitance is **not**
-//     published in this file until IEEE primitive ops and identity (`one`)
-//     are non-fabricating facts (INVARIANTS P1/P3; DECISIONS.md **D3**;
-//     codex REQUEST_CHANGES on PR #3191): v2-bridge constructive bodies here
-//     cannot honestly realize finite `+`/`*` or bias-1023 `one` on the Peano
-//     exponent carrier without known-wrong stubs.
-//   - Tier-2 totalization for the partial / non-total operations
-//     (NaN-producing ops; ordering in the presence of NaN) — STRUCTURE.md
-//     commitment #2
-//
-// Consumes:
-//   - std/node.dag: Conj / Disj shapes; opaque `Symbol` for Tier-2 `Rejected`
-//     (`data …: Symbol = …` intrinsic identities — D2 cross-declaration idiom)
-//   - std/machine.dag: bit-width interchange authorities (`Bit`, `Word32` /
-//     `Word64`) for `Float*` nominal widths
-//   - std/algebra.dag: `Ordering` + `ApproximateField` ontology (no
-//     monomorphic `ApproximateField<Float>` **data** witness in this file yet)
-//   - std/diagnostic.dag: `Outcome` / `Diagnostic` / `PortLocus` — Tier-2
-//     fail-closed compare API (NaN / unavailable inputs)
-//   - std/logic.dag: `Bool` (finite sign bit and other carrier-local uses)
-//   - std/nat.dag: `Nat` for Peano exponent / significand fields on
-//     `FloatBody.Finite` (carrier-local `nat_compare` only; no duplicate
-//     numeric authority vs interchange + Grounding)
-//
-// D2b (operator-ratified 2026-05-16; see DECISIONS.md D2) — Float's
-//   algebra inhabitance is NOT constructive the way the integer chain is
-//   (there, Peano `Nat` → GroupCompletion → … fills `Int`'s operation
-//   `Arrow` bodies with sub-DAGs of L1 behaviors). IEEE-754 round-to-
-//   nearest arithmetic is a genuine SPEC PRIMITIVE — irreducible, an
-//   open-system fact gunbc consumes (the open-system case INVARIANTS P1
-//   explicitly names; not a heuristic).
-//   A primitive operation uses the SAME single external-primitive path
-//   THESIS:203 already defines — NOT a new one. A primitive op is an
-//   `Arrow` reached canonically via `Transform → FunctionRef → Arrow`;
-//   the `Arrow`'s `body` is *a realization declaration in `extdeps/`*
-//   (THESIS:203's primitive case — contrast the L1-sub-DAG body of a
-//   constructive op). A future **grounded** `ApproximateField<Float>` data
-//   witness will hold `FunctionRef`s to those op `Arrow` signatures; the
-//   realizations — anchored to the exact IEEE-754 § — are the per-target
-//   `extdeps/languages/*` resolvers (the D2.2 resolver). This file does
-//   NOT home a separate `Symbol`+`Anchor` primitive carrier referenced
-//   directly by the inhabitance — that would be the second external-
-//   primitive path P2 forbids. The `Arrow` HAS a body (the `extdeps/`
-//   realization), so it is not a bodiless `fn` (PARSE-1 untriggered),
-//   and it is NOT a kernel/A1 extension (no new connective or behavior).
-//   A language `extdeps` file alias-identifies its `f32` / `f64` to
-//   `Float32` / `Float64` here, supplies those `Arrow`-body realizations,
-//   and adds its own operation-semantics siblings (NaN/Inf handling); it
-//   does NOT re-declare the `ApproximateField` inhabitance.
-//
-// Status: T-3 modeled — float carrier + Tier-2 ordered compare; grounded
-//   `ApproximateField<Float>` **data** witness deferred per D3/P1/P3. IEEE
-//   primitive **executable** semantics route through T-4 `extdeps/languages/*`
-//   per D2b (this file does not ship fabricating primitive `fn` bodies).
-
-// ─────────────────────────────────────────────────────────────────────
-// Modeling notes (read before validating against the anchor)
-//
-// WIDTH NOMINALS — `Float32` / `Float64` are distinct nominal wrappers
-// around ONE shared semantic carrier `FloatBody` (IEEE-754 *semantic*
-// classification: finite sign + biased exponent + trailing significand
-// as Peano `Nat`, vs non-finite tags). Binary32/binary64 **bit layout**
-// (interchange formats) remain the authority of `Word32` / `Word64` in
-// std/machine.dag — Grounding maps `Float*` ↔ interchange words; this
-// file does not duplicate width-correct bit lists (same 🟡 list-length
-// scaffold class as machine.dag's `Word*` fields).
-//
-// P2 NOMINAL WRAPPERS — `Float32` / `Float64` add **no** fields beyond
-// `body: FloatBody` and therefore attach **no** structural witness tying
-// `Finite.biased_exponent` / `Finite.trailing_significand` to binary32
-// (8+23) vs binary64 (11+52) bit counts. A `Float32` value whose `body` is
-// `Finite { … }` with exponent/significand magnitudes that could not decode
-// from any `Word32` interchange pattern is **still representable** here —
-// that hole is the same honest deferral class as **std/machine.dag**'s
-// `Word*` / `Byte` list-length vs nominal-width **"LIST FIELD LENGTH vs
-// NOMINAL WIDTH — TRACKED SCAFFOLD (🟡)"** block (single P2 authority for
-// interchange bit-vectors: `Word32` / `Word64`, not a shadow width engine
-// re-authored inside float.dag). Producer-side discipline + bounded
-// refinement / dissolution named there close the gap.
-//
-// NAT FIELDS — `biased_exponent` / `trailing_significand` are honest
-// unrefined `Nat` carriers: nominal IEEE field *widths* (8+23 binary32,
-// 11+52 binary64) are NOT type-enforced here — the same honest deferral
-// pattern as machine.dag's `List<Bit>` width scaffold. Producers must
-// respect nominal widths; the dissolution trigger is the same bounded
-// refinement substrate named in machine.dag's modeling notes.
-//
-// APPROXIMATEFIELD INHABITANCE — DECISIONS.md **D3**: a machine-readable
-// `data …: ApproximateField<Float>` witness is **not** encoded in this file.
-// Shipping left-operand `add`/`mul`, a non–bias-1023 `one`, or wiring those
-// into inhabitance data would publish INVARIANTS P1/P3-violating substrate
-// authority (codex REQUEST_CHANGES, PR #3191). Re-introduce the data row only
-// when T-4 `extdeps/languages/*` supplies grounded Arrow bodies and/or v4
-// admits bodiless primitive signatures (**PARSE-1**). Tier-2 compare and
-// carrier-local `float_body_compare_semantic_total` remain honest scaffolds,
-// not interchange-grounded IEEE `totalOrder`.
-//
-// D2 — intrinsic Tier-2 diagnostic identities (operator 2026-05-16): the
-// `Rejected` nan path uses **this file's** `data …: Symbol = …` name-reference
-// carriers for `Diagnostic.reason` and `PortLocus.port` (diagnostic.dag header
-// lines 42–51; node.dag K-1 cross-declaration idiom). **Not** caller-supplied
-// `Symbol` parameters (integer totalizer parity).
-//
-// INTERCHANGE TYPE ALIASES — machine-readable consumption of machine.dag's
-// interchange authorities for Grounding edges (P2 single place for words).
-//
-// IMPORT CLOSURE — `float.dag` imports `v4.std.diagnostic`, `nat`, `logic`,
-// `machine`, `node`, `algebra` only as **declared** std carriers. On the merge
-// base (`main`), those modules are **fully modeled** substrate (e.g.
-// `diagnostic.dag` owns `Outcome`/`Diagnostic`/`PortLocus` — not a header stub);
-// float does not advance ahead of ghost dependencies or duplicate their authority
-// (INVARIANTS P1/P2).
+// Historical capture only. Canonical: src/v4/std/float.dag + DECISIONS.md D3 + INVARIANTS P1/P3.
+// Float32/64 nominal wrappers over FloatBody; ApproximateField<Float> data witness
+// deferred until grounded primitive bodies exist; IEEE primitive ops realized under
+// extdeps/languages/* per THESIS:203 open-system path; Tier-2 NaN compare uses
+// intrinsic Symbol rows (diagnostic.dag / node.dag K-1 name-reference idiom).
 ```
