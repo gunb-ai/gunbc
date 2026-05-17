@@ -1041,6 +1041,10 @@ operation is not an endpoint implementation; it is a typed boundary declaration.
 
 ```
 // CARRIER — method/path plus parameter, request-body, response, and status facts.
+// `content` (OpenAPI Request Body / Response Object) is a MEDIA-TYPE MAP —
+// one schema per media type, with multiple alternatives (e.g. application/json
+// AND application/xml) — never a single schema.
+type ContentMap = Map<MediaType, Schema>
 type OpenApiOperation = Conj {
   method:      HttpMethod,
   path:        PathTemplate,
@@ -1049,12 +1053,13 @@ type OpenApiOperation = Conj {
     unique_proof: Witness< all_distinct_by(items, name_and_location) >
                   // OpenAPI: parameters MUST be unique by (name, `in`) location
   },
-  request:     Optional<MediaTypedSchema>,
-  responses:   Map<HttpStatus, MediaTypedSchema>   // Map keys unique by construction
+  request:     Optional<ContentMap>,
+  responses:   Map<HttpStatus, ContentMap>   // status → content map; the keys
+                                             // at both levels unique by Map
 }
 
 // MEANING — a partial function from grounded HTTP requests to grounded HTTP
-// responses, indexed by status code and media type.
+// responses, indexed by status code and then by media type.
 ```
 
 **Step-by-step coercion shape — `OpenApiOperation -> Outcome<IR ServiceArrow>`:**
