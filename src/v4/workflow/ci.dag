@@ -1,6 +1,6 @@
 // src/v4/workflow/ci.dag
 // Scope: CI pipeline AS DATA; gunbc job/gate DAG + eager well-formedness; ci.yml projection deferred.
-// Owns: CiJob, CiGate, CiPipeline, ci_pipeline_well_formed, ci_pipeline, v2_compile_gate_job
+// Owns: CiCommand, CiJob, CiGate, CiPipeline, ci_pipeline_well_formed, ci_pipeline, v2_compile_gate_job
 // Consumes: v4.std.node, v4.std.diagnostic
 // Status: filled — declarative core + eager well-formedness; structural v2 gate only.
 
