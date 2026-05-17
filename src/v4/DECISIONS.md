@@ -352,8 +352,8 @@ Operator-stated principle (2026-05-17), governing the reseed:
   alias); since the api-review rubric reads that doc, a documented
   bad-example arms every review against the hollow alias. That is the
   *first* enforcement tier — but it is reviewer-applied, i.e.
-  convention-level (`modeling-discipline.md` Practice 6: API-level
-  enforcement over convention). Phase 1 therefore also evaluates a
+  convention-level until a structural/API gate exists. Phase 1 therefore
+  also evaluates a
   *structural* check — a generated fact-density / hollow-alias gate —
   and adds it where the cost is cheap; the documented example is the
   floor, not the ceiling. Reverse the D2/D4 rows. Rewrite the
