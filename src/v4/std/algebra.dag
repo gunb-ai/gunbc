@@ -1,259 +1,53 @@
 // src/v4/std/algebra.dag
-//
-// Scope: algebraic primitives that ground every concrete type via inhabitance.
-// Anchor: https://en.wikipedia.org/wiki/Algebraic_structure (Magma, Monoid, Group, FreeMonoid<T>)
-//         + https://en.wikipedia.org/wiki/Power_set (PointwisePower<T>)
-//
-// Owns:
-//   - the algebra-STRUCTURE hierarchy — the THESIS roots AND the derived
-//     structures the substrate's concrete types inhabit:
-//       * Magma (closure) → Semigroup → Monoid → Group → AbelianGroup
-//       * Semiring → Ring → OrderedRing → Field
-//       * ApproximateField — the rounding-aware weakening of Field that
-//         std/float.dag inhabits (IEEE-754 rounding breaks
-//         associativity/distributivity, so Float is NOT an exact Field;
-//         see std/float.dag + DECISIONS.md C5-fidelity)
-//       * BooleanAlgebra (classical logic)
-//       * FreeMonoid<T> (free constructions) + structural boundary
-//         queries (`free_monoid_is_empty`, `free_monoid_length`) over
-//         its declared Empty|Cons carrier
-//       * PointwisePower<T> (power-set / characteristic-function carrier
-//         whose BooleanAlgebra structure is inherited pointwise from Bool)
-//     The "roots" (Magma/Monoid/BooleanAlgebra/FreeMonoid) are where the
-//     ontology bottoms out; the derived structures are compositions of
-//     them — but ALL are declared here, because the scalar files
-//     reference them by name (nat→Monoid/Semiring, integer→OrderedRing/
-//     AbelianGroup, float→ApproximateField, logic→BooleanAlgebra,
-//     text→FreeMonoid). A scalar's grounding is represented, not
-//     deferred, iff this file owns the structure it names.
-//   - STRUCTURES + CANONICAL CARRIER CONSTRUCTIONS ONLY. A concrete type
-//     declares its OWN inhabitance in its own file (std/integer.dag,
-//     std/logic.dag, …); algebra.dag owns what gets inhabited or aliased,
-//     never the concrete instances (P2).
-//
-// U1 (operator-ratified 2026-05-15) — the single homomorphism carrier:
-//   - ONE carrier: a structure-preserving map between algebras, WITH its
-//     realization cost. THESIS:185-186 identities make this one object:
-//     coercion = emission; coercion cost = complexity. The back half of
-//     the plan is FIVE PHASES over this one carrier, never five engines:
-//       Find    = compiler/04_infer.dag (T-9)
-//       Realize = compiler/05_emit.dag + 05_eval.dag (T-10/11/22)
-//       Measure = lens/cost.dag → lens/complexity.dag (T-12; one
-//                 mechanism, two projections — complexity CONSUMES cost,
-//                 never re-derives it)
-//       Compare = lens/synthesis.dag (T-17)
-//   - NO ENGINE discipline (operator 2026-05-15, THESIS no-fallback):
-//     every phase is a FAIL-CLOSED lens-read over this carrier. A search
-//     that comes up empty (no homomorphism / no inhabitance / no
-//     lower-bound model) is a STRUCTURAL ERROR surfaced as a *helpful*
-//     Diagnostic (reason + at + Correction) — NEVER fabricated, defaulted,
-//     or filled by a fallback. "An engine returns a result when it should
-//     return an error" — v4 has lenses, not engines. A standalone cost
-//     engine / emit IR / equivalence engine disjoint from this carrier is
-//     parallel-representation debt = STOP.
-//
-// Consumes:
-//   - std/node.dag: Conj, Disj, Arrow for algebraic structure
-//   (the U1 no-engine "empty search → helpful Diagnostic" is surfaced by
-//   the consuming lens in its own file — algebra.dag declares structures
-//   only and references no Diagnostic)
-//
-// Status: T-2 modeled; D1 header reconcile 2026-05-16 adds
-//   PointwisePower<T> per the operator D1-D ruling (alias-identity
-//   power BooleanAlgebra construction for Set<T>).
-// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
-// contract for the worker. Splitting this file requires explicit operator
-// ratification (substrate extension = stop signal).
+// Scope: algebraic structures and canonical carrier constructions.
+// Anchor: https://en.wikipedia.org/wiki/Algebraic_structure
+// Owns: Magma, Semigroup, Monoid, CommutativeMonoid, Group, AbelianGroup, Semiring, CommutativeSemiring, Ring, CommutativeRing, OrderedRing, Field, ApproximateField, Lattice, BoundedLattice, BooleanAlgebra, FreeMonoid, free_monoid_is_empty, free_monoid_length, PointwisePower, Ordering, Homomorphism.
+// Consumes: none.
+// Status: T-2 modeled.
 
 
 module v4.std.algebra
-
-
-// ─────────────────────────────────────────────────────────────────────
-// Modeling notes (read before validating against the anchor)
-//
-// SCOPE (operator-ratified 2026-05-15): this file owns algebra
-// STRUCTURES and canonical algebraic constructions only. Inhabitance —
-// which concrete type grounds in which algebra — is NOT here; the
-// inhabiting type owns its own grounding in its own concept file. There
-// is no per-concrete-type instance and no concrete-type reference.
-// `FreeMonoid<T>` and `PointwisePower<T>` are the two canonical carrier
-// constructions this file owns because the construction itself is the
-// algebraic fact other concrete types alias onto. This file consumes
-// std/node.dag ONLY (every `type` below is surface sugar over node.dag's
-// Conj/Disj/Arrow; `Bool` is kernel-ambient and not imported from
-// std/logic.dag, avoiding an algebra↔logic cycle).
-//
-// REFINEMENT IS STRUCTURAL NESTING, not field duplication. A stronger
-// algebra CONTAINS the weaker one as a child (Conj composition):
-// `Monoid` carries a `semigroup: Semigroup<T>` child plus the
-// `identity` it adds — exactly "Monoid<T> is Magma plus an identity
-// child" (docs/thesis/epistemic-stacking.md). One authority per
-// operation (INVARIANTS P2); changing `op`'s shape touches `Magma`
-// alone (cost-of-change = 1). This is the deliberate v4 departure from
-// v3's flat re-listing of `op` in every record.
-//
-// The coherent pattern, stated once: nesting applies along a
-// REFINEMENT CHAIN (a structure strengthens a weaker one — Semigroup→
-// Monoid→Group…, so it nests that weaker carrier). A ROOT structure has
-// no weaker structure to nest, so it declares its primitive operations
-// directly as fields: `Magma { op }`, `Lattice { meet, join }`. Lattice
-// is a root (meet/join are its two primitive operations, not a
-// refinement of anything), which is why it is bare — same rule as
-// `Magma`, not an exception. Ring-like structures are the third shape:
-// a composition of TWO sub-algebras (`add`/`mul`), each itself nesting
-// its own refinement chain.
-//
-// LAWS ARE GROUNDED DEFINITIONS, NOT FIELDS OR FLAGS. Associativity,
-// identity, commutativity, distributivity ARE the definitions of the
-// named structures (anchor: Wikipedia "Algebraic structure") — math
-// consensus, cited per structure below. They are not stored as a flag
-// (feedback_no_annotations) and not hand-built equation ASTs here (the
-// expression substrate is pipeline-built; a Node data literal would
-// need a Symbol the declaration layer cannot mint). The L7 algebra-law
-// surface (lens/coverage.dag T-18 + lens/testgen.dag T-19) derives the
-// per-axiom TestClaim corpus from each structure's cited definition —
-// that derivation is those lenses' concern, not a parallel table here.
-//
-// NO ENGINE / NO BRIDGE (U1 header discipline). v3's
-// `kernel_algebra_profile: Map<String, AlgebraProfile>` and the
-// `AlgebraProfile` / `AlgebraFieldTemplate` template tables were a
-// string-keyed parallel representation of these structures. They are
-// deliberately absent: a name-keyed lookup disjoint from the structure
-// it mirrors is exactly the engine debt U1 forbids
-// (docs/v4-close-interrogation.md:161 — "not a name-keyed table
-// lookup").
-
-
-// ─────────────────────────────────────────────────────────────────────
-// Magma — a carrier with one closed binary operation. The weakest
-// structure; the only axiom is closure (the `op` signature returning T
-// IS the closure statement — there is nothing to assert separately).
-// Anchor: Wikipedia "Magma (algebra)".
 type Magma<T> {
   op: fn(T, T) -> T
 }
-
-// Semigroup — an associative Magma. Adds the associativity axiom
-// (op(op(a,b),c) == op(a,op(b,c))); it adds no operation, so it is
-// structurally a Magma. The distinct type carries the proven-associative
-// concept (Wikipedia "Semigroup").
 type Semigroup<T> {
   magma: Magma<T>
 }
-
-// Monoid — a Semigroup with a two-sided identity element.
-// Anchor: Wikipedia "Monoid".
 type Monoid<T> {
   semigroup: Semigroup<T>
   identity: T
 }
-
-// CommutativeMonoid — a Monoid whose op commutes (op(a,b)==op(b,a)).
-// Adds only the commutativity axiom (Wikipedia "Monoid#Commutative
-// monoid").
 type CommutativeMonoid<T> {
   monoid: Monoid<T>
 }
-
-// Group — a Monoid in which every element has a two-sided inverse.
-// Anchor: Wikipedia "Group (mathematics)".
 type Group<T> {
   monoid: Monoid<T>
   inverse: fn(T) -> T
 }
-
-// AbelianGroup — a commutative Group. Adds the commutativity axiom
-// (Wikipedia "Abelian group").
 type AbelianGroup<T> {
   group: Group<T>
 }
-
-
-// ─────────────────────────────────────────────────────────────────────
-// Ring-like structures: two interacting operations (additive +
-// multiplicative) joined by distributivity + annihilation axioms.
-// Modeled as the textbook two-sub-algebra composition (Wikipedia
-// "Ring (mathematics)" / "Semiring"): `add` and `mul` are named child
-// algebras, so `add.identity` is the zero and `mul.identity` is the
-// one — no separate zero/one fields to keep in sync.
-
-// Semiring — additive CommutativeMonoid + multiplicative Monoid, with
-// mul distributing over add and the additive identity annihilating
-// (distributivity + annihilation are the defining axioms; Wikipedia
-// "Semiring").
 type Semiring<T> {
   add: CommutativeMonoid<T>
   mul: Monoid<T>
 }
-
-// CommutativeSemiring — a Semiring whose multiplication commutes.
 type CommutativeSemiring<T> {
   semiring: Semiring<T>
 }
-
-// Ring — a Semiring whose additive structure is an AbelianGroup (i.e.
-// addition has inverses; `add.group.inverse` is negation).
 type Ring<T> {
   add: AbelianGroup<T>
   mul: Monoid<T>
 }
-
-// CommutativeRing — a Ring whose multiplication commutes.
 type CommutativeRing<T> {
   ring: Ring<T>
 }
-
-// OrderedRing — a Ring with a total order compatible with its
-// operations. `compare` is the total-order witness; the
-// order-compatibility axioms are the definition (Wikipedia "Ordered
-// ring").
 type OrderedRing<T> {
   ring: Ring<T>
   compare: fn(T, T) -> Ordering
 }
-
-// Field — a CommutativeRing in which every nonzero element has a
-// multiplicative inverse. That invertibility is the defining AXIOM,
-// carried as a grounded definition the same way Semigroup carries
-// associativity and CommutativeRing carries commutativity — NOT as a
-// stored operation field. There is deliberately no `reciprocal:
-// fn(T) -> T`: reciprocal is PARTIAL (undefined at the additive
-// identity), so a total `fn(T) -> T` signature would assert a totality
-// the operation does not have — the fail-open shape INVARIANTS P3 +
-// modeling-discipline.md Practice 2/6 forbid (the illegal state
-// "reciprocal(0)" must not be representable at this boundary). The
-// reciprocal operation falls out of the axiom; its realization carries
-// the nonzero precondition / Tier-2 totalization (Result / Witness /
-// refinement-precondition) at the inhabitant per STRUCTURE.md
-// architectural commitment #2 — that totalization substrate
-// (witness/cardinality) is not consumable from this node.dag-only
-// structures file, which is exactly why it is the inhabitant's, not a
-// mendacious total field here. Anchor: Wikipedia "Field (mathematics)".
 type Field<T> {
   commutative_ring: CommutativeRing<T>
 }
-
-// ApproximateField — the rounding-aware structure IEEE-754 floating-
-// point inhabits. Same operation surface as a field, but its axioms
-// hold only UP TO ROUNDING: floating-point `+` is NOT associative,
-// distributivity is approximate, and there is no exact multiplicative
-// inverse. It is therefore deliberately NOT `Field` and does NOT nest
-// the exact-law tower — nesting `CommutativeRing`/`Field` would assert
-// exact ring/field axioms `Float` does not satisfy (the same fail-open
-// fabrication smell INVARIANTS P3 forbids, and the reason `Field`
-// omits a total `reciprocal`). It is a ROOT-like structure (it does
-// not refine the exact numeric tower), so per the nesting-vs-root
-// modeling note above it declares its primitive operations directly.
-// The rounding-approximate axioms — including multiplicative-inverse-
-// on-nonzero — are the grounded definition; `reciprocal`/division
-// realization + its Tier-2 totalization is the inhabitant's
-// (std/float.dag) per STRUCTURE.md architectural commitment #2, so
-// there is no total `reciprocal` field here (exactly as `Field`).
-// `Float` inhabits THIS; that grounding flows through the U1 spine as
-// `Homomorphism<ApproximateField, …>` (THESIS grounding-completeness,
-// INVARIANTS P2). Anchor: https://en.wikipedia.org/wiki/IEEE_754
-// (floating-point arithmetic is not exactly associative/distributive).
 type ApproximateField<T> {
   add: fn(T, T) -> T
   zero: T
@@ -262,85 +56,23 @@ type ApproximateField<T> {
   one: T
   compare: fn(T, T) -> Ordering
 }
-
-
-// ─────────────────────────────────────────────────────────────────────
-// Lattice structures: two idempotent, commutative, associative
-// operations linked by absorption. Anchor: Wikipedia "Lattice (order)".
-
-// Lattice — meet and join with the absorption axioms
-// (meet(a,join(a,b))==a, join(a,meet(a,b))==a).
 type Lattice<T> {
   meet: fn(T, T) -> T
   join: fn(T, T) -> T
 }
-
-// BoundedLattice — a Lattice with greatest (top) and least (bottom)
-// elements (identities for meet and join respectively).
 type BoundedLattice<T> {
   lattice: Lattice<T>
   top: T
   bottom: T
 }
-
-// BooleanAlgebra — a complemented distributive BoundedLattice. Adds
-// `complement` with the complement axioms (meet(a,complement(a))==
-// bottom, join(a,complement(a))==top) plus distributivity. This is the
-// algebra classical-logic carriers inhabit (Wikipedia "Boolean
-// algebra (structure)").
 type BooleanAlgebra<T> {
   bounded_lattice: BoundedLattice<T>
   complement: fn(T) -> T
 }
-
-
-// ─────────────────────────────────────────────────────────────────────
-// FreeMonoid<T> — the free monoid over T: finite sequences of T under
-// concatenation, with no relations beyond the monoid axioms. Unlike the
-// structures above (operation-records imposed on an existing carrier),
-// a free construction IS a canonical carrier — THESIS:194 names it a
-// root primitive precisely for this reason, so it is declared directly
-// as its recursive shape rather than derived from Monoid. Concrete
-// sequence types ground by aliasing onto it (e.g. a text type onto
-// FreeMonoid over a char type) — that aliasing is the inhabitant's
-// concern, not this file's. Anchor: Wikipedia "Free monoid".
-//
-// Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
-// discipline.md §4) — classification: 🟢 GREEN (terminal). The two
-// variants are the constructors of an inductive type (base + cons),
-// not compressed structure. Ledger — five patterns attempted:
-//   1. Fact placement — FAILS: Empty/Cons are not per-consumer facts;
-//      every structural fold over a FreeMonoid handles BOTH (induction
-//      base + step). No consumer uses only one.
-//   2. Variant-is-data — FAILS: the variants have DIFFERENT shapes
-//      (Empty nullary; Cons {head, tail}). Collapsing to {kind, head?,
-//      tail?} makes "Cons with no head" representable — the inverse of
-//      P2 (illegal states unrepresentable).
-//   3. Algebraic form — N/A: this declaration IS the std/ algebraic
-//      source other types ground in (THESIS:194 root primitive;
-//      epistemic-stacking.md). There is no richer source to point at —
-//      pointing it elsewhere is circular.
-//   4. Dimensional — FAILS: a sequence is EITHER empty OR head+tail;
-//      genuine alternatives (recursion base vs inductive case), never
-//      simultaneous coordinates. No value is "both".
-//   5. Parameterized family — FAILS: Empty/Cons are the base/step
-//      constructors of an inductive type (Peano-shaped), NOT N
-//      mechanically-repeated variants that are one generic `F<X>` /
-//      projection over a source set (Practice 7) — there is no source
-//      set to project from; this IS the canonical free construction.
-// Terminal: irreducible inductive definition of the free monoid; a
-// root primitive grounded in monoid theory.
+// 🟢 coproduct dissolution — DECISIONS.md classification ledger: FreeMonoid<T>.
 type FreeMonoid<T>
   = Empty
   | Cons { head: T, tail: FreeMonoid<T> }
-
-
-// ─────────────────────────────────────────────────────────────────────
-// FreeMonoid boundary queries (M9/P2).
-//
-// Declared structural reads over the terminal Empty|Cons carrier. Every
-// consumer (e.g. std/text.dag for `String = FreeMonoid<Char>`) imports
-// these instead of re-encoding the spine in a downstream module.
 fn free_monoid_is_empty<T>(xs: FreeMonoid<T>) -> Bool {
   match xs {
     Empty => true
@@ -355,122 +87,14 @@ fn free_monoid_length<T>(xs: FreeMonoid<T>) -> Int {
     Cons { head: _, tail: t } => 1 + free_monoid_length(xs: t)
   }
 }
-
-
-// ─────────────────────────────────────────────────────────────────────
-// PointwisePower<T> — the power-set / characteristic-function carrier
-// over T. A value is a predicate T → Bool; BooleanAlgebra operations are
-// inherited POINTWISE from Bool's BooleanAlgebra:
-//   join(a,b).member(x)       = bool.join(a.member(x), b.member(x))
-//   meet(a,b).member(x)       = bool.meet(a.member(x), b.member(x))
-//   complement(a).member(x)   = bool.complement(a.member(x))
-//   top.member(_)             = True
-//   bottom.member(_)          = False
-//
-// Like FreeMonoid<T>, this is a canonical algebraic construction rather
-// than a per-concrete-type instance. Concrete set-like types ground by
-// aliasing onto it (`Set<T> = PointwisePower<T>` in collection.dag);
-// that alias edge is machine-readable identity, so consumers do not need
-// a prose-only `BooleanAlgebra<Set<T>>` side table. The construction is
-// the single authority for the carrier shape; Bool's own
-// `BooleanAlgebra<Bool>` instance remains the single authority for the
-// truth operations being lifted.
-//
-// Cardinality is deliberately absent: the power carrier denotes
-// arbitrary subsets, including universe and complements, so finiteness
-// requires a refinement layer with enumerability evidence on T.
-//
-// Coproduct dissolution: N/A — this is a Conj record (one field), not a
-// sum type. Anchor: Wikipedia "Algebra of sets" / "Power set".
 type PointwisePower<T> {
   member: fn(T) -> Bool
 }
-
-
-// ─────────────────────────────────────────────────────────────────────
-// Ordering — the result of a total-order comparison. Consumed by
-// OrderedRing.compare. Anchor: order theory (trichotomy: exactly one
-// of <, =, > holds).
-//
-// Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
-// discipline.md §4) — classification: 🟢 GREEN (terminal). Ledger —
-// five patterns attempted:
-//   1. Fact placement — FAILS: a comparison result is consumed
-//      uniformly (every `compare` consumer branches on all three); not
-//      a scattered per-consumer fact.
-//   2. Variant-is-data — FAILS: promoting to `{ sign: Int }` (-1/0/+1)
-//      replaces a closed 3-valued exhaustive sum with an unbounded Int
-//      (sign=42 representable) — violates P2 + M4 (closed sets are
-//      enums, not numeric proxies). The enum IS the faithful form.
-//   3. Algebraic form — N/A: Less/Equal/Greater do not trace to
-//      distinct std/ structures; they ARE the codomain of the order
-//      relation (trichotomy). No richer std/ source.
-//   4. Dimensional — FAILS: a comparison yields EXACTLY ONE of three
-//      (total-order trichotomy: exactly one of a<b, a=b, a>b holds) —
-//      mutually-exclusive alternatives, not simultaneous coordinates.
-//   5. Parameterized family — FAILS: Less/Equal/Greater are the fixed
-//      trichotomy outcomes, NOT one generic `F<X>` / projection over a
-//      source set (Practice 7); there is no X to project from — it is
-//      the irreducible 3-valued comparison codomain.
-// Terminal: irreducible trichotomy codomain of a total order.
+// 🟢 coproduct dissolution — DECISIONS.md classification ledger: Ordering.
 type Ordering
   = Less
   | Equal
   | Greater
-
-
-// ─────────────────────────────────────────────────────────────────────
-// Homomorphism<C, Source, Target> — THE single carrier (U1, header).
-//
-// A structure-preserving map between two algebras OF THE SAME CLASS.
-// ONE generic record, not an enumerated mirror of the algebra set. `C`
-// is the algebra structure (Magma, Monoid, Ring, …); `source: C<Source>`
-// and `target: C<Target>` share the SAME `C`, so same-class is
-// structural and FREE — a cross-class pair (Ring source / Lattice
-// target) is unrepresentable because there is only one `C` (INVARIANTS
-// P2 + modeling-discipline.md Practice 2/6). Cost-of-change = 1: adding
-// an algebra adds its declaration and edits NOTHING here (the prior
-// 15-variant per-class enum was a parallel representation of the
-// algebra-structure set — cost-of-change 2, an ungrounded enumerated
-// mirror; it did not attach to its M9 parent "algebra structure". This
-// is the dissolution of that smell).
-//
-// `C` is a higher-kinded parameter — a type *constructor* (a
-// parameterized declaration) instantiated at `Source`/`Target`. This is
-// "just Node underlying" per node.dag A1: the `Instantiation` connective
-// + a name-reference Node resolved through the namespace. (Earlier work
-// wrongly dismissed this as needing dependent typing; higher-kinded is
-// strictly weaker. The v2-seed admissibility of `C<Source>` is verified
-// by the bootstrap gate below — if the frozen seed cannot resolve a
-// higher-kinded parameter this declaration would fail 0-diagnostics,
-// which is the honest empirical test, not an assumption.)
-//
-// Homomorphism is no longer a coproduct, so it carries no Practice-4
-// 🟢/🟡/🔴 ledger — there are no variants to dissolve; the dissolution
-// already happened (15 → 1).
-//
-// `map` is the carrier-level function. "Structure-preserving" is the
-// LAW it asserts (every operation/constant of `C` preserved), verified
-// by the L7 algebra-law surface against `source`/`target`, never a flag
-// (feedback_no_annotations). The preserved-algebra fact flows forward
-// intact via `source`/`target` (P2 facts-flow-forward — witness.dag
-// "Holds CARRIES the proven fact"). Find (compiler/04_infer.dag T-9)
-// binds `C`; Realize/Measure/L7 read it.
-//
-// FreeMonoid: a free monoid is a monoid; its structure-preserving maps
-// are monoid homomorphisms (`C = Monoid` over the free monoid's
-// carrier). Generator↔carrier binding is an inhabitance concern,
-// struck from T-2 — kept out of this structures-only file (faithful to
-// category Mon).
-//
-// "WITH its realization cost" (U1): this is the ONE carrier all five
-// phases read — Find binds it, Realize projects it, Measure folds its
-// cost FROM `map`'s own structure, Compare (lens/synthesis) reads that.
-// There is deliberately NO cost field: a stored cost would be a
-// representation parallel to the map it measures — the engine debt U1
-// forbids (THESIS:185-186 coercion = emission, coercion cost =
-// complexity: one object, many lens projections). Anchor: Wikipedia
-// "Homomorphism".
 type Homomorphism<C, Source, Target> {
   source: C<Source>
   target: C<Target>
