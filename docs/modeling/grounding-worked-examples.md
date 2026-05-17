@@ -128,7 +128,8 @@ discipline is identical for all of them.
 
 It does **not** claim every target is a compiler render-target.
 `THESIS.md` locks a distinction the worked examples must not blur
-(THESIS:217-218; ROADMAP Track 16):
+(THESIS.md §"Omni-emission" — the Shape A vs Shape B bullets; ROADMAP
+Track 16):
 
 - **Shape A — compiler language targets**: programming languages and HDLs
   — `rust`, `python`, `go`, `cpp`, `typescript`, `verilog` (and the
@@ -224,8 +225,10 @@ constructs it, emit projects it back — not two hand-built stages.
 
 There is **no** Python or Rust parser (`extdeps/languages/python.dag`
 models Python's type *surface*, not a parser). The whole chain is
-`[MODELED]`. **IR is the explicit hub**, and the chain has two coercions
-with *different totality*:
+`[MODELED]`. **`Node` is the explicit hub** — "IR" and the `IR_*` names
+below are *not* a distinct IR type plane; per the "What the IR is" section
+above, `IR_Int` etc. are the shared `std/` vocabulary carried *as* `Node`.
+The chain has two coercions with *different totality*:
 
 **Ingest — `python int → IR Int` (total).**
 
