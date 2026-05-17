@@ -1,7 +1,7 @@
 // src/v4/extdeps/languages/dag.dag
 //
 // Scope: gunbc `.dag` LanguageModel (lex + grammar Node; Shape A).
-// Owns: DagLanguageModel; dag_c3_surface_sugar_*; dag_wave1_*; dag_language_model_wave1_void; dag_language_model_canonical_symbols; dag_language_model_wave1_void_canonical_symbols.
+// Owns: DagLanguageModel; dag_c3_surface_sugar_*; dag_wave1_*; dag_language_model_wave1_void; dag_language_model_canonical_symbols; dag_language_model_wave1_void_canonical_symbols; dag_node_is_empty_conj_root; dag_language_model_is_wave1_void_shape; dag_language_model_empty_canonical_symbol_set.
 // Consumes: std/node.dag, std/collection.dag.
 // Status: scaffold — TASKS T-4/T-6/T-7.
 // Anchor: https://github.com/gunb-ai/gunbc/blob/main/docs/v3-spec.md
@@ -54,8 +54,7 @@ fn dag_language_model_wave1_void() -> DagLanguageModel {
 
 
 // Self-canonical `Atom` identities for resolve (no binder row). Mint list is
-// substrate-declared in this module; `03_resolve` wires `Namespace` through
-// `dag_language_model_canonical_symbols(dag_language_model_wave1_void())`.
+// substrate-declared in this module for the wave-1 void LM **shape** only.
 fn dag_language_model_wave1_void_canonical_symbols() -> Set<Symbol> {
   Set {
     member: fn(sym) {
@@ -68,6 +67,36 @@ fn dag_language_model_wave1_void_canonical_symbols() -> Set<Symbol> {
 }
 
 
+fn dag_node_is_empty_conj_root(n: Node) -> Bool {
+  match n.kind {
+    TypeNode { connective: Conj } => count(n.children) == 0
+    _ => false
+  }
+}
+
+
+// Structural discriminator so `dag_language_model_canonical_symbols` uses `lm`
+// (B2-OMNI: canonical Atom authority is keyed off the passed LanguageModel value,
+// not a silent void singleton inside `03_resolve`).
+fn dag_language_model_is_wave1_void_shape(lm: DagLanguageModel) -> Bool {
+  dag_node_is_empty_conj_root(n: lm.lex) &&
+    dag_node_is_empty_conj_root(n: lm.grammar)
+}
+
+
+fn dag_language_model_empty_canonical_symbol_set() -> Set<Symbol> {
+  Set {
+    member: fn(_) {
+      false
+    }
+  }
+}
+
+
 fn dag_language_model_canonical_symbols(lm: DagLanguageModel) -> Set<Symbol> {
-  dag_language_model_wave1_void_canonical_symbols()
+  if dag_language_model_is_wave1_void_shape(lm: lm) {
+    dag_language_model_wave1_void_canonical_symbols()
+  } else {
+    dag_language_model_empty_canonical_symbol_set()
+  }
 }

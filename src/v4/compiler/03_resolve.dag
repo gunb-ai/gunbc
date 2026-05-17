@@ -2,7 +2,7 @@
 //
 // Scope: Stage 3b — NormalizedTree→ResolvedTree; K-1 Atom use→def.
 // Owns: ResolvedTree; Namespace; Scope; BindEdgeAcc; ResolveResult; ResolveChildrenResult; resolve; Symbol reasons.
-// Consumes: std/node.dag, std/diagnostic.dag, std/collection.dag, compiler/03_normalize.dag, extdeps/languages/dag.dag.
+// Consumes: std/node.dag, std/diagnostic.dag, std/collection.dag, compiler/03_normalize.dag, extdeps/languages/dag.dag (DagLanguageModel for canonical_symbols).
 // Status: scaffold — TASKS T-8.
 // Anchor: https://en.wikipedia.org/wiki/Name_resolution_(programming_languages)
 
@@ -11,8 +11,8 @@ module v4.compiler.resolve
 
 import v4.compiler.normalize { NormalizedTree }
 import v4.extdeps.languages.dag {
-  dag_language_model_canonical_symbols,
-  dag_language_model_wave1_void
+  DagLanguageModel,
+  dag_language_model_canonical_symbols
 }
 import v4.std.collection { Set }
 import v4.std.diagnostic {
@@ -156,12 +156,10 @@ fn add_bind_atom_binder(n: Node, acc: Map<Symbol, Symbol>) -> Map<Symbol, Symbol
 }
 
 
-fn build_program_namespace(tree: NormalizedTree) -> Namespace {
+fn build_program_namespace(tree: NormalizedTree, lm: DagLanguageModel) -> Namespace {
   Namespace {
     bindings: add_module_named_exports(root: tree, acc: empty_map()),
-    canonical_symbols: dag_language_model_canonical_symbols(
-      lm: dag_language_model_wave1_void()
-    )
+    canonical_symbols: dag_language_model_canonical_symbols(lm: lm)
   }
 }
 
@@ -516,10 +514,10 @@ fn resolve_bind_node(n: Node, scope: Scope) -> ResolveResult {
 }
 
 
-fn resolve(tree: NormalizedTree) -> Outcome<ResolvedTree> {
+fn resolve(tree: NormalizedTree, lm: DagLanguageModel) -> Outcome<ResolvedTree> {
   resolve_with_namespace(
     tree: tree,
-    namespace: build_program_namespace(tree: tree)
+    namespace: build_program_namespace(tree: tree, lm: lm)
   )
 }
 
