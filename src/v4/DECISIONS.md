@@ -55,10 +55,11 @@ through — and moves to Part 1.
 | **C5-3** | **F = the spec-provable meaning core; spec silence ⇒ out of F** (operator-ratified 2026-05-16; conservative/fail-safe). If the language spec does not *unambiguously* place a feature on the meaning side, it is NOT in F — Declared-normalized (emit canonicalizes; recorded per-feature) or Fail-closed (ingest needs semantics it lacks ⇒ Diagnostic, never a guess). The **spec decides; the modeler has no discretion**. Consequence: a language's lossless core may be strictly smaller than its spec (e.g. C++ most-vexing-parse → out, Fail-closed), declared per-feature **up front** in the C5-fidelity disposition table, never discovered at round-trip-test time. Sharpens the pre-existing C5 / C5-fidelity rows | `lens/testgen.dag` C5-1/C5-3 block + `extdeps/languages/*` C5-fidelity dispositions |
 | **AGENT-1** | The **non-text agent surface** (operator-ratified 2026-05-15 — *include & design early; explicitly NOT the north star*; "a very important/exclusive feature" but a NATURAL CONSEQUENCE, not a new subsystem). A non-text client (LLM/agent) interacts with the program **as data, never files**: READ = `apply_lens` at `SectionRef` + `affected_set(dag,diff)` (the affected lens replaces file-reading exploration); WRITE = the **D1** `apply_diff:(Node,Diff)->Result<Node,Diagnostic>` (the ratified D1 operation — NOT a total `->Node`; an agent-supplied Diff is external/possibly-stale input ⇒ FAIL-CLOSED typed Diagnostic, all-or-nothing, INVARIANTS P3 — AGENT-1 uses D1's op, does not restate a total one) entering the B2-OMNI pipeline at **`core`** (a SIBLING of `ingest`, NOT an ingest — the change is already Node: no source text, no LanguageModel, no parse), content-addressed (B1), not a text patch; BACK = the `affected_set` lens read in whatever shape T-21/`lens/affected_set.dag` DECLARES — AGENT-1 is a CLIENT, defers to that single authority (P2) and coins NO return noun (`Witness<ReExecFrontier>` was an ungrounded AGENT-1 noun, P1/P2 — removed) + a faithful re-emit (C5-1 node-level hash-checked + C5-2 emit-locality + C4 committed==emit); GATE = `apply_lens(_,Enforce)` fail-closed (agent earns no special trust). It is a **CLIENT** of application.dag + affected_set + B2-OMNI + C5/C4 — NO new authority/noun/query subsystem (QRY-1 + feedback_closed_system_design). Owned by T-23 so it is a contract, not an accident; realized only when T-23 composes T-21 + B2-OMNI + C5/C4 (scaffold today — nothing runs yet) | `lens/application.dag` header (AGENT-SURFACE block) + `compiler/00_compile.dag` B2-OMNI back-ref + `TASKS.md` T-23 note |
 | **I** | **Fail-closed success/failure beside `Diagnostic` (M6 / P2).** v4's **single** substrate coproduct for "produced value vs fail-closed reject carrying gunbc's `Diagnostic`" is **`Outcome<ok>`** with variants `Produced { value: ok }` and `Rejected { diagnostic: Diagnostic }` in `std/diagnostic.dag` (operator-ratified 2026-05-16). `TASKS.md` / `STRUCTURE.md` **`Result<…, Diagnostic>` prose** names the **same semantic surface** — it **denotes `Outcome<…>`**, not a second parallel `.dag` `Result<ok, err>` type. v4 **does not** declare a generic `Result<ok, err>` in `std/` alongside `Outcome`; introducing one would duplicate M6's authority unless this ledger is amended. Variant/field names are **binding** for downstream mirrors. A future *different* error payload (non-`Diagnostic`) is a new substrate decision (STOP), not an unratified shadow carrier. | `std/diagnostic.dag` (`Outcome<T>`) + this row; `TASKS.md` / `STRUCTURE.md` (prose only) |
-| **D2** | **Primitive-inhabitance FORM — the `extdeps` resolver shape** (operator-ratified 2026-05-16; resolves the loyal-koi-702 STOP-2/STOP-3 escalated via the T-4 mgr). A language/format `extdeps` file is a **resolver** for the abstract `std/` carriers — the `infra(abstract)→gcloud/aws(concrete)` pattern (operator-cited prior art: gunb.ai `tools/extdeps/cloud_extdeps`, where the abstract `InfraScopeType` is declared ONCE and each provider supplies a translation, never a re-declaration). **D2a — three thin per-primitive declarations, NO re-declared algebra inhabitance:** (1) **alias-identity** to the `std/` carrier (`type RustI32 = Int32`) — the machine-readable-inhabitance form (`List<T> = FreeMonoid<T>` precedent); the algebra inhabitance flows through the alias, so "see through the labels" is literal `Node` identity; (2) a **grounding map** (surface spelling — `i32`); (3) **operation-semantics carriers** (`OverflowDisposition`, NaN/Inf handling) — genuine per-language facts, siblings to the alias. A per-language `data <lang>_<prim>: OrderedRing<<lang>Prim,…>` inhabitance is the parallel `OrderedRing<Word*>` substrate **INVARIANTS P1:42 forbids** (`numeric_aliases_align_to_refinements`) — superseded; #3174's `RustScalar` Disj registry + `IrToRust<>` carrier dissolve into this shape. **D2b — fn-value form:** the integer chain is fully CONSTRUCTIVE (Peano `Nat` → `GroupCompletion` → `AbelianGroup` → `Compose<MachineWidth>`) — its operation `Arrow` bodies are sub-DAGs of L1 behaviors (THESIS:203, the user-function case), so D2b's primitive question never fires for `integer.dag`. A genuinely-irreducible spec primitive (IEEE-754 float arithmetic) flows through the SAME single external-primitive path THESIS:203 already defines — `Transform → FunctionRef → Arrow`, where the `Arrow`'s `body` is *a realization declaration in `extdeps/`* (THESIS:203's primitive case). D2b coins **NO new carrier**: no `Symbol`+`Anchor` data node referenced directly by the inhabitance — that would be the second external-primitive path P2 forbids. The `ApproximateField` inhabitance holds `FunctionRef`s to the op `Arrow`s; for an IEEE-754 primitive the `Arrow`'s `body` realization (anchored to the spec §) is the per-target `extdeps/languages/*` resolver (the D2.2 resolver), not a std-homed carrier. The `Arrow` HAS a body (the `extdeps/` realization), so it is not a bodiless `fn` and PARSE-1 is untriggered; NOT a kernel/A1 extension (no new connective/behavior). **D2.2 — coercion** = the U1 homomorphism realized by the generic B2-OMNI emit fold reading the resolver data; NOT a hand table (the `IrToRust<>` per-target string table INVARIANTS P1 forbids), NOT a per-language emit lens (B2-OMNI/B4: one generic emit, target-specificity is declarative T-11 data). **D2.3** — compound/generic coercion composes for FREE via the `Node` catamorphism (A1's single recursive type; `List<Int32>` = `Instantiation` recursed); no per-instantiation rows, not blocked on the Functor hierarchy (a cost/algebra-lens concern). **D2.4** — the round-trip guarantee is structural-on-F per **C5-1**; TestClaims document it, never establish it. **D2.5** — overflow/UB/arbitrary-precision are DISTINCT `std/` carriers selected by the alias target + the per-language `OverflowDisposition` carrier, never a re-declared semantics. **Scope — D2 covers per-primitive inhabitance form ONLY:** it does NOT decide LanguageModel-grammar facts (C++ most-vexing-parse, TypeScript structural typing, etc.) — those are owned by C5-3 / B2-OMNI / B4 per their own cascade; a grammar-slice worker must not import D2 reasoning into them. | `std/integer.dag` + `std/float.dag` headers (D2 blocks) + `TASKS.md` T-4 brief amendment + `extdeps/languages/*` headers (workers encode the resolver shape); cross-ref INVARIANTS P1 / A1 / B2-OMNI / U1 / C5-1 / IR-1 |
+| **D2** | **[SUPERSEDED by D2-REV — see the D2-REV row below + the "D2 REVERSAL" section]** **Primitive-inhabitance FORM — the `extdeps` resolver shape** (operator-ratified 2026-05-16; resolves the loyal-koi-702 STOP-2/STOP-3 escalated via the T-4 mgr). A language/format `extdeps` file is a **resolver** for the abstract `std/` carriers — the `infra(abstract)→gcloud/aws(concrete)` pattern (operator-cited prior art: gunb.ai `tools/extdeps/cloud_extdeps`, where the abstract `InfraScopeType` is declared ONCE and each provider supplies a translation, never a re-declaration). **D2a — three thin per-primitive declarations, NO re-declared algebra inhabitance:** (1) **alias-identity** to the `std/` carrier (`type RustI32 = Int32`) — the machine-readable-inhabitance form (`List<T> = FreeMonoid<T>` precedent); the algebra inhabitance flows through the alias, so "see through the labels" is literal `Node` identity; (2) a **grounding map** (surface spelling — `i32`); (3) **operation-semantics carriers** (`OverflowDisposition`, NaN/Inf handling) — genuine per-language facts, siblings to the alias. A per-language `data <lang>_<prim>: OrderedRing<<lang>Prim,…>` inhabitance is the parallel `OrderedRing<Word*>` substrate **INVARIANTS P1:42 forbids** (`numeric_aliases_align_to_refinements`) — superseded; #3174's `RustScalar` Disj registry + `IrToRust<>` carrier dissolve into this shape. **D2b — fn-value form:** the integer chain is fully CONSTRUCTIVE (Peano `Nat` → `GroupCompletion` → `AbelianGroup` → `Compose<MachineWidth>`) — its operation `Arrow` bodies are sub-DAGs of L1 behaviors (THESIS:203, the user-function case), so D2b's primitive question never fires for `integer.dag`. A genuinely-irreducible spec primitive (IEEE-754 float arithmetic) flows through the SAME single external-primitive path THESIS:203 already defines — `Transform → FunctionRef → Arrow`, where the `Arrow`'s `body` is *a realization declaration in `extdeps/`* (THESIS:203's primitive case). D2b coins **NO new carrier**: no `Symbol`+`Anchor` data node referenced directly by the inhabitance — that would be the second external-primitive path P2 forbids. The `ApproximateField` inhabitance holds `FunctionRef`s to the op `Arrow`s; for an IEEE-754 primitive the `Arrow`'s `body` realization (anchored to the spec §) is the per-target `extdeps/languages/*` resolver (the D2.2 resolver), not a std-homed carrier. The `Arrow` HAS a body (the `extdeps/` realization), so it is not a bodiless `fn` and PARSE-1 is untriggered; NOT a kernel/A1 extension (no new connective/behavior). **D2.2 — coercion** = the U1 homomorphism realized by the generic B2-OMNI emit fold reading the resolver data; NOT a hand table (the `IrToRust<>` per-target string table INVARIANTS P1 forbids), NOT a per-language emit lens (B2-OMNI/B4: one generic emit, target-specificity is declarative T-11 data). **D2.3** — compound/generic coercion composes for FREE via the `Node` catamorphism (A1's single recursive type; `List<Int32>` = `Instantiation` recursed); no per-instantiation rows, not blocked on the Functor hierarchy (a cost/algebra-lens concern). **D2.4** — the round-trip guarantee is structural-on-F per **C5-1**; TestClaims document it, never establish it. **D2.5** — overflow/UB/arbitrary-precision are DISTINCT `std/` carriers selected by the alias target + the per-language `OverflowDisposition` carrier, never a re-declared semantics. **Scope — D2 covers per-primitive inhabitance form ONLY:** it does NOT decide LanguageModel-grammar facts (C++ most-vexing-parse, TypeScript structural typing, etc.) — those are owned by C5-3 / B2-OMNI / B4 per their own cascade; a grammar-slice worker must not import D2 reasoning into them. | `std/integer.dag` + `std/float.dag` headers (D2 blocks) + `TASKS.md` T-4 brief amendment + `extdeps/languages/*` headers (workers encode the resolver shape); cross-ref INVARIANTS P1 / A1 / B2-OMNI / U1 / C5-1 / IR-1 |
 | **D3** | **ApproximateField<Float> machine-readable witness — encoding deferred (INVARIANTS P1/P3)** (operator spine 2026-05-16 for float algebra **shape** via **D2b** + Tier-2 **D2** intrinsic `Symbol` nan identities; **amended** after codex REQUEST_CHANGES on **PR #3191**). `std/float.dag` **does not** publish `data float_approximate_field: ApproximateField<Float>` while v2-bridge constructive `fn` bodies at this site would fabricate IEEE finite `+`/`*` or binary64 `one` (left-operand hooks or wrong-bias `Succ` on the Peano exponent carrier = known-wrong machine-readable authority — INVARIANTS P1 modeling faithfulness + P3 fail-closed honesty). Re-introduce the data row when **T-4 `extdeps/languages/*`** supplies grounded THESIS:203 **Arrow** bodies **and/or** v4 admits bodiless primitive signatures (**PARSE-1**). **Does ship:** `Float` carrier + Tier-2 `Outcome` ordered compare + intrinsic `data <id>: Symbol = <id>` for nan rejection (cross-ref **D2**, **I**, **PARSE-1**). | `std/float.dag` (carrier + Tier-2 compare + `Symbol` data; **no** `data float_approximate_field` until grounded) + this row |
-| **D4** | **GroundingMap-home — the shared `extdeps/languages/resolver.dag` registry** (operator-ratified 2026-05-16; co-drafted; completes **D2**). The D2 resolver's *shared* types live in ONE new file `extdeps/languages/resolver.dag` — NOT re-declared per language (parallel-declaration P2 forbids; `feedback_import_not_redeclare_carriers`) and NOT homed in `rust.dag` (which would make one language file a substrate authority for the other four, and balloon as future shared resolver types land). `type GroundingMap<IRCarrier> { spelling: String }` is its first resident. **Admission rule (STRICT):** `resolver.dag` hosts ONLY *structurally-language-INVARIANT* resolver types — a type whose structure provably cannot vary across the modeled language specs (a convergence carrier). Spec-varying types stay per-language (`OverflowDisposition` etc. — D2.5 / L-2). Test before admitting: can you prove the structure invariant across the specs? Future shared resolver types (e.g. the C5-fidelity `Modeled \| Declared-normalized \| Fail-closed` disposition classifier) land here without a fresh placement decision. Closed-tree extension: `STRUCTURE.md` `.dag` count +1. Per-language files each add a one-line `import … resolver { GroundingMap }` + their per-primitive `data <lang>_<prim>_grounding` instances (the grounding-row fan-out — canonical `rust.dag` first, then the 4 others). | new `extdeps/languages/resolver.dag` + `STRUCTURE.md` count/enumeration + `extdeps/languages/*` import lines + grounding instances; this row; cross-ref **D2** |
+| **D4** | **[SUPERSEDED by D2-REV — see the D2-REV row below + the "D2 REVERSAL" section]** **GroundingMap-home — the shared `extdeps/languages/resolver.dag` registry** (operator-ratified 2026-05-16; co-drafted; completes **D2**). The D2 resolver's *shared* types live in ONE new file `extdeps/languages/resolver.dag` — NOT re-declared per language (parallel-declaration P2 forbids; `feedback_import_not_redeclare_carriers`) and NOT homed in `rust.dag` (which would make one language file a substrate authority for the other four, and balloon as future shared resolver types land). `type GroundingMap<IRCarrier> { spelling: String }` is its first resident. **Admission rule (STRICT):** `resolver.dag` hosts ONLY *structurally-language-INVARIANT* resolver types — a type whose structure provably cannot vary across the modeled language specs (a convergence carrier). Spec-varying types stay per-language (`OverflowDisposition` etc. — D2.5 / L-2). Test before admitting: can you prove the structure invariant across the specs? Future shared resolver types (e.g. the C5-fidelity `Modeled \| Declared-normalized \| Fail-closed` disposition classifier) land here without a fresh placement decision. Closed-tree extension: `STRUCTURE.md` `.dag` count +1. Per-language files each add a one-line `import … resolver { GroundingMap }` + their per-primitive `data <lang>_<prim>_grounding` instances (the grounding-row fan-out — canonical `rust.dag` first, then the 4 others). | new `extdeps/languages/resolver.dag` + `STRUCTURE.md` count/enumeration + `extdeps/languages/*` import lines + grounding instances; this row; cross-ref **D2** |
 | **D5** | **Operator-driven frozen-header / frozen-contract reconcile is sanctioned in-PR** (operator-ratified 2026-05-16). "Preserve-verbatim" on a frozen scaffold header forbids *unsanctioned worker contract-drift* — it does NOT forbid *sanctioned reconciliation*. When an operator-tier action (a BLOCKING finding, an operator ruling) legitimately moves a worker's body past its frozen header or I/O contract, the header/contract is **reconciled to match in the SAME PR**, flagged with a `HEADER RECONCILE` block citing the driving operator action. **Discriminator:** an operator-tier action drove the body change ⇒ reconcile the header/contract in-PR, flagged; NO operator action drove it ⇒ the body must conform to the frozen header (preserve-verbatim holds, the worker cannot move the contract). Covers BOTH header-doc drift (stale `Owns`/`Consumes` bullets after a sanctioned refactor) AND frozen-contract changes (operator BLOCKS an I/O contract as P2/§2-insufficient). Already operating: `integer.dag` #3190 (`Consumes` reconciled), #3209 finding 2 (`WaitProcessResult`). Does NOT permit free worker header edits — operator-driven only. | this row + the `HEADER RECONCILE` block convention in affected file headers (`integer.dag` #3190 precedent form); refines the frozen-scaffold-header / preserve-verbatim discipline |
+| **D2-REV** | **D2 / D4 REVERSED — fact-bundle modeling supersedes alias-identity** (operator-ratified 2026-05-17, **out-of-band** — the verbatim operator-quote provenance is in the "D2 REVERSAL" section below). An `extdeps` primitive is modeled as a fact-bundle grounded from its own spec, never a bare `std/` alias; deduplicate to a `std/` carrier only on *proven* coincidence; the structural fact-density / hollow-alias gate is `T-30`, a hard prerequisite of T-4. This is a one-line index pointer — the full record (root cause, phased plan, impact map, "coincide" definition) is the **"D2 REVERSAL + FACT-BUNDLE RESEED"** section below, which is the authority. Supersedes the **D2** and **D4** rows above. | the **"D2 REVERSAL + FACT-BUNDLE RESEED"** section of this file (authority); `#3224` executes Phase 1; `docs/modeling/grounding-worked-examples.md` companion |
 
 ---
 
@@ -278,6 +279,157 @@ or defer to the task.
     bridge contracts stay comment-prose; the fail-closed parse-class
     gate over `src/v4` is safe. Residual T-20 surface = the `run`
     opcode/eval audit (unchanged), not the parser.
+
+---
+
+## D2 REVERSAL + FACT-BUNDLE RESEED — RATIFIED (2026-05-17)
+
+> Operator-declared and **RATIFIED 2026-05-17**. This section
+> **supersedes D2** (and its downstream D4). The operator declared D2
+> wrong, ratified the fact-bundle principle, and dispatched the Phase-1
+> execution (PR #3224) — so the decision is ratified, not awaiting a
+> merge vote. This PR (#3223) is the ledger encoding of that ratified
+> decision; #3224 executes Phase 1 against it.
+
+### What reversed
+
+D2 ratified the **alias-identity inhabitance form**: a language `extdeps`
+file declares each primitive as `type <Lang>X = StdX` (e.g.
+`type RustI32 = Int32`), the algebra "flowing through the alias." D4
+homed the shared D2-resolver type (`GroundingMap`) in
+`extdeps/languages/resolver.dag`.
+
+The operator declared D2 **wrong** (verbatim: *"D2 is wrong — i was
+misunderstanding the purpose of this alias"*). A bare alias is not
+modeling: it asserts an *unproven* identity between our carrier and an
+external language's, while reading **zero facts** from that language's
+spec. `type RustI32 = Int32` models nothing about Rust.
+
+### Root cause — an enforcement gap, not a missing principle
+
+`MODELING.md` **M1** ("types decompose into facts") and **M3** ("extdeps
+model specs") already mandate fact-modeling. The principle was not
+missing. Two failures let the alias through:
+
+1. **`INVARIANTS.md` P1:42** (`numeric_aliases_align_to_refinements`)
+   forbids a *parallel `OrderedRing<Word*>` substrate* — do not
+   re-declare the algebra per language. D2 read this as "therefore
+   bare-alias the whole carrier," conflating *algebra duplication*
+   (correctly forbidden) with *carrier fact-modeling* (wrongly dropped).
+2. **A hollow alias is invisible to every structural gate.**
+   `type RustX = StdX` is structurally minimal — nothing for a reviewer
+   or checker to flag. The api-review rubric (`INVARIANTS.md` +
+   `docs/modeling-discipline.md`) checks duplicate authority and coproduct
+   dissolution; it has no **fact-density** check. Aliasing passes review
+   *because* it is hollow.
+
+### The replacement — fact-bundle modeling
+
+Operator-stated principle (2026-05-17), governing the reseed:
+
+- **Model the facts. Always.** Deduplicate two models into one **only**
+  when their identity is **proven** — identity is an evidenced claim,
+  never an assumed default.
+- **Invent or reuse — a bare alias is neither.** To model an external
+  primitive you either *invent* a fact for it (read from that system's
+  spec) or *reuse* a `std/` fact (with cited evidence of identity).
+- **External defaults to separate; internal defaults to reuse.**
+  `extdeps/` models systems we do not control and do not fully know →
+  default to separate, honest, accumulated modeling; reuse `std/` only
+  on evidenced identity. Internal code (compiler layers, our own
+  substrate) → we control both sides, identity is usually *known* →
+  default to reuse `std/`, still naming the evidence. Keeping
+  `RustSignedness` separate until Rust's spec is checked is honest
+  modeling, not a duplicate-authority violation.
+
+### The phased plan
+
+- **Phase 0 — stop the bleeding. DONE 2026-05-17.** `#3219`
+  (`resolver.dag`, the D2-resolver encoding-half) closed; `#3208`
+  (lean/machine_code, D2-resolver-shaped) held. Forward-fix, not revert.
+- **Phase 1 — the doc keystone (rubric + enforcement).** Amend
+  `INVARIANTS.md` P1:42 so "aligns to refinements" means *the language
+  carrier is a fact-bundle coinciding with the std carrier*, not a bare
+  alias. Promote `MODELING.md` M1 to a named first-class rule. Add a new
+  Practice to `docs/modeling-discipline.md` — "model facts, not aliases"
+  — with a worked good example (fact-bundle) and bad example (bare
+  alias); since the api-review rubric reads that doc, a documented
+  bad-example arms every review against the hollow alias. That is the
+  *first* enforcement tier — but it is reviewer-applied, i.e.
+  convention-level until a structural/API gate exists. Phase 1 ships that
+  documented bad-example: the convention-tier enforcement that the
+  `docs/modeling-discipline.md` api-review practice checks. The stronger
+  *structural* tier — a generated **fact-density / hollow-alias gate** —
+  is **its own foundation task, `T-30`** (a sibling of P1-KEYSTONE, NOT
+  folded into `docs/modeling-discipline.md`), and it is a **hard
+  prerequisite of T-4**: the per-language fact-bundle rework does not
+  begin until the structural gate exists.
+  This resolves a real gap by a dependency edge, not a phase argument. D2
+  slipped through *two* failures (see root cause above): an **inverted**
+  `P1:42` — misread as *licensing* the alias — and the **absence** of any
+  bad-example for review to fail against. Phase 1 corrects both — it
+  re-points `P1:42` and adds the bad-example, net-new versus the pre-D2
+  state. But a documented bad-example is *convention* enforcement, and
+  convention is exactly what let D2 through; reworking every per-language
+  file under convention-tier-only enforcement would re-expose that
+  surface. So the structural gate is **not** a loose follow-up and **not**
+  sequenced by phase number — it is `T-30`, with a hard edge `T-30 → T-4`,
+  landing *before* the per-language reseed by construction. The documented
+  bad-example is the **interim floor only**: it holds the line until
+  `T-30` lands; it is explicitly *not* the enforcement the per-language
+  rework runs under.
+  Reverse the D2/D4 rows. Rewrite the
+  `TASKS.md` T-4 authoring contract.
+- **Phase 2 — rework the entire T-## program** around fact-bundle
+  modeling, first-class, plus the `std/` substrate axes the model needs
+  that do not exist yet: signedness, representation, and an
+  **exact-real carrier plus a physical-quantity carrier** — surfaced by
+  the SPICE worked example, where a node voltage is an exact real value
+  carrying a physical quantity (volts) that the approximate `f64` carrier
+  cannot ground without declared loss. (Rational is at most a narrower
+  inhabitant of the exact-real carrier, not the carrier itself.) The
+  structural fact-density / hollow-alias gate is **not** a Phase-2 item —
+  it is `T-30`, a hard prerequisite of T-4 (see Phase 1).
+- **Phase 3 — execution.** Per-task / per-language / per-compiler-layer
+  modeling rework, Rust exemplar first, under the Phase-1 rubric.
+
+### Impact-map disposition (the close/revert/rework list)
+
+`extdeps/languages` files and the merged D2 commits were classified
+(grep-verified). The unwind is **forward-fix / supersession**, never
+`git revert` of the merged commits (#3195 D2, #3216 D4/D5) — that would
+clobber surviving language vocabulary and the `std/` numeric core.
+
+- **Orthogonal — untouched:** the `std/` numeric core
+  (`Int`/`UInt`/`Compose`/algebra witnesses/`Float`), `llvm_ir`/`ptx`
+  carriers, the format models, `react`, `coordination`,
+  `process`/`file_system`.
+- **D2-encoding — rework (vocabulary preserved):** the 5 merged language
+  files (`rust`/`python`/`go`/`cpp`/`typescript`); `verilog`/`llvm_ir`/
+  `ptx` prose-only; `INVARIANTS.md` P1:42 (the doc root); `DECISIONS.md`
+  D2/D4; `TASKS.md` T-4 contract; the `std/integer.dag` /
+  `std/float.dag` D2 header prose (NOT the core).
+- **Active PRs:** `#3219` closed; `#3208` held.
+
+### Worked examples
+
+`docs/modeling/grounding-worked-examples.md` (this PR) demonstrates the
+fact-bundle/grounding model on one complex type per target — spanning
+`machine_code` (pure bits) → `rust` → `verilog` (4-valued logic) →
+`spice` (continuous) → `lean` (dependent types) → `english` (natural
+language, mostly fail-closed). Each: the model (carrier + meaning) and
+step-by-step coercion. Plan-only; the remaining mainstream
+language/format targets fan out against the same template.
+
+### Status
+
+**RATIFIED 2026-05-17** (operator, out-of-band — the operator declared D2
+wrong [the verbatim operator quote is in *What reversed* above, this same
+section], ratified the fact-bundle principle, and dispatched the Phase-1
+execution). Phase 1 is executing now as **PR #3224** (TASKS.md +
+DECISIONS.md re-sequencing). This PR (#3223) encodes the ratified
+decision into the ledger; #3224 is stacked on it. TASKS.md consuming the
+D2-reversal as ratified is therefore correct, not premature.
 
 ---
 
