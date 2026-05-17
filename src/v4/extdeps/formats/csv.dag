@@ -1,5 +1,7 @@
 // src/v4/extdeps/formats/csv.dag
-// Scope: CSV RFC 4180 (https://datatracker.ietf.org/doc/html/rfc4180); per-row field-count is Peano-spine depth on `CsvRow` (not `List<String>`); cross-row/header-vs-body arity mesh operator-pending (dissolves: operator ruling + substrate per T-4 brief).
+//
+// Scope: RFC 4180 CSV; Lane C format slice (TASKS.md T-4.6).
+// Anchor: https://datatracker.ietf.org/doc/html/rfc4180
 // Owns: CsvDialect, CsvHeaderPresence, CsvRow, CsvDocument
 // Consumes: std/node.dag, std/diagnostic.dag, std/collection.dag, std/text.dag
 // Status: scaffold — TASKS.md T-4.6

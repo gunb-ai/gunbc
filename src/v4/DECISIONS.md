@@ -280,6 +280,18 @@ or defer to the task.
     gate over `src/v4` is safe. Residual T-20 surface = the `run`
     opcode/eval audit (unchanged), not the parser.
 
+### T-4.6 — Practice-4 closed sums on external vocabularies (Lane C formats)
+
+Rubric (`docs/modeling-discipline.md` “For reviewers” §4): large closed
+sums keyed to an external spec carry an explicit 🟢/🟡/🔴 disposition and
+a named YELLOW trigger in this ledger (Practice 9 — not in `Scope:`).
+
+| ID | Carrier / slice | Disposition | YELLOW trigger (omit if GREEN) | Encoded in |
+|----|------------------|-------------|--------------------------------|------------|
+| **T-4.6-CSV** | RFC 4180 row/document carriers (`CsvRow` Peano depth = per-row field arity) | 🟡 | Cross-row/header-vs-body arity mesh is **operator-pending** until a ruling + substrate hook (TASKS.md T-4.6); until then validation may fail-closed without a claimed total mesh. | `extdeps/formats/csv.dag` |
+| **T-4.6-JSK** | `JsonSchemaAdditionalKeywordKey` — closed sum for Draft 2020-12 Core vocabulary keywords exercised by this slice | 🟡 | Ratified spec adds/renames/removes a modeled Core keyword such that this enum must change — extend the coproduct **and** amend this row in the same change-set. | `extdeps/formats/json_schema.dag` |
+| **T-4.6-OAS** | OpenAPI 3.1 document/object carriers in `openapi.dag` | 🟡 | Upstream OAS 3.1 normative or meta-schema change forces a modeled fixed field, deferred-key family, or path-template wire rule to migrate — ship with operator-visible reconcile (D5). | `extdeps/formats/openapi.dag` |
+
 ---
 
 ## D2 REVERSAL + FACT-BUNDLE RESEED — RATIFIED (2026-05-17)
