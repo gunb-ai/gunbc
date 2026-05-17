@@ -5,7 +5,7 @@
 //
 // Owns:
 //   - Path = AbsolutePath | RelativePath
-//   - AbsolutePath { components: NonEmptyList<PathComponent> }
+//   - AbsolutePath { components: List<PathComponent> }  // 🟡 non-empty intent deferred → std/collection Wave-A2 / T-25 NonEmptyList refinement
 //   - RelativePath { components: List<PathComponent> }
 //   - PathComponent (NonEmptyStr, no slashes, no nulls — per POSIX portable filename charset)
 //   - FileKind = RegularFile | Directory | Symlink(target: Path)
@@ -24,7 +24,7 @@
 //   - std/diagnostic.dag: Diagnostic
 //   - std/text.dag: Char, String (and their Tier-2 totalizations)
 //   - std/algebra.dag: FreeMonoid<Char>
-//   - std/collection.dag: List, NonEmptyList
+//   - std/collection.dag: List
 //
 // Status: T-4.5 modeled 2026-05-16 (keen-wren-663). Operation bodies
 //   are external realizations owned by the realization/pipeline layer;
@@ -38,6 +38,12 @@
 // filesystem operations take an explicit Filesystem resource parameter
 // per ratified lens/effect.dag B3/B-5. `write_file` returns the
 // modified Filesystem resource; read/list/kind return derived values.
+// HEADER RECONCILE (2026-05-17, #3209, keen-wren-663 + merry-ibex-337
+// ruling): the frozen header cited phantom std/collection.dag
+// `NonEmptyList`; header Owns/Consumes now cite the real importable
+// `List` carrier and keep non-empty path intent as a 🟡 Wave-A2 / T-25
+// refinement trigger. Body already used List<PathComponent>; no body
+// carrier change and no worker-minted NonEmptyList.
 
 
 module v4.extdeps.file_system
