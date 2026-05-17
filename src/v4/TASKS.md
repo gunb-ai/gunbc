@@ -60,20 +60,21 @@ closing at T-15.
           that model (composition, not a new subsystem).
 ```
 
-### Side branch — `{P1-KEYSTONE, T-30} → T-4 → T-9` (watch item)
+### Side branch — `{P1-KEYSTONE, T-30, T-29, T-25-core} → T-4 → T-9` (watch item)
 
 ```
-{P1-KEYSTONE, T-30} → T-4 → T-9
+{P1-KEYSTONE, T-30, T-29, T-25-core} → T-4 → T-9
 ```
 
 T-9 needs T-4 (the language fact-bundles) in addition to T-8. This branch
-carries slack against the `T-6→T-7→T-8` pipeline branch **only if
-P1-KEYSTONE and T-30 start immediately**. The D2 reversal CHANGED T-4's
-dependency set — the old alias model needed almost nothing; fact-bundle
-modeling needs the shared vocabulary (T-3-extended), the modeling
-discipline (P1-KEYSTONE), the structural fact-density gate (T-30), and
-the C++ ABI model (T-29). T-4 is no longer a schedule-anytime leaf —
-see T-4.
+carries slack against the `T-6→T-7→T-8` pipeline branch **only if its
+feeders start immediately**. The D2 reversal CHANGED T-4's dependency set
+— the old alias model needed almost nothing; fact-bundle modeling needs
+the shared vocabulary (`T-3-extended`, itself on the critical path) plus
+**four feeders that are not on the critical path and gate `T-4 → T-9`**:
+P1-KEYSTONE, T-30, T-29, T-25-core. Those four are **watch items**, not
+slack-having parallel fill — if any slips, the side branch goes critical.
+T-4 is no longer a schedule-anytime leaf — see T-4.
 
 ```
   P1-KEYSTONE   the Phase-1 doc keystone — NOT a T-## task. The
@@ -90,20 +91,33 @@ see T-4.
                 the per-language fact-bundle rework does not begin under
                 convention-tier-only enforcement — convention is what let
                 D2 through. Sibling of P1-KEYSTONE; see T-30 detail.
+  T-29  extdeps C++ ABI / target data-model — C++ integer widths are
+                implementation-defined; the cpp fact-bundle cannot ground
+                them without it. Low-dependency (needs only T-3
+                machine/width) but a hard T-4 prerequisite — see T-29.
+  T-25-core  std/ value-predicate refinement substrate (the core half) —
+                base type + fail-closed validation obligation; T-4's
+                refinement-bearing carriers need it. Sits near T-3 — see
+                T-25. (T-25-tail, the predicate prover, is post-T-9
+                parallel fill, not a feeder.)
   T-4   extdeps/languages/{rust,python,go,cpp,typescript}.dag
         [needs T-3-extended, P1-KEYSTONE, T-29, T-30, T-25-core — see T-4]
 ```
 
 ### Parallel fill — schedule the instant deps clear
 
-These set no time-to-done of their own. Schedule each as soon as its
-dependencies are met, on any free worker — schedulable, never
-prioritized over the critical path.
+These have **slack** against the critical path: schedule each as soon as
+its dependencies clear, on any free worker; as long as it finishes before
+its consumer needs it, it adds nothing to time-to-done. (The per-task
+`[needs]` contracts are the **authoritative** dependency record; this
+critical-path / side-branch / parallel-fill grouping is the *derived*
+scheduling view of those same edges — one authority, two views, never a
+second set of facts.)
 
 ```
 Substrate / extdeps fan-out:
   T-4.5 extdeps/{process,file_system}.dag                      [needs T-3, T-25-core]
-  T-4.6 extdeps/formats/* (7 files: json/yaml/csv/toml/json_schema/openapi/sql)  [needs T-25-core]
+  T-4.6 extdeps/formats/* (7 files: json/yaml/csv/toml/json_schema/openapi/sql)  [needs T-25-core, T-26]
   T-4.7 extdeps/frameworks/react.dag    [needs T-4 (typescript)]
   T-4.8 extdeps/coordination.dag         [needs T-4, T-4.7]
   T-4.9  extdeps/languages/verilog.dag   [needs T-1, T-2; B2-OMNI falsification probe — concurrency vs the 5 behaviors]
@@ -166,16 +180,19 @@ Interpreter + lens dimensions (each needs T-9):
            AGENT-1; lens/application.dag header).
                                                     [needs T-1, lens framework]
 
-Close-the-loop + Theme-A substrate gaps:
+Close-the-loop + late substrate:
   T-14  test/claim/* + test/fixture/* (port load-bearing TestClaims from v3)
-  T-25  std/ value-predicate refinement substrate — core near T-3, prover
-        tail after T-9 [see T-25]
+  T-25-tail  the T-25 predicate prover — erases proven refinements (a pure
+        optimization); after T-9. (T-25-core is NOT here — it is a
+        side-branch feeder of T-4; see the side branch above.)
   T-26  std/ boundary carriers (HttpMethod / URL / NetworkAddress port)
-        [needs T-3]
-  T-28  std/ module-graph substrate — bundled into T-8 [see T-28]
-  T-29  extdeps C++ ABI / target data-model [needs T-3 machine/width
-        vocabulary; prerequisite of T-4's cpp slice — see T-29]
-  (T-27 versioning/edition lattice — DROPPED, ruled orthogonal to v4;
+        [needs T-3] — feeds T-4.6 (openapi's HttpMethod/Url) and the T-16
+        wire contract; genuine slack (T-4.6 itself has slack).
+  (T-28 module-graph substrate is bundled into T-8 — it is critical-path
+   work inside T-8, not a standalone parallel-fill item; see T-28. T-29
+   and T-25-core are side-branch feeders of T-4, listed in the side
+   branch above, not here. T-27 versioning/edition lattice — DROPPED,
+   ruled orthogonal to v4;
    see T-27 tombstone.)
 ```
 
@@ -255,7 +272,7 @@ flat — dispatch in waves):
 **File**: 5 files in `src/v4/extdeps/languages/` (operator-ratified 2026-05-15: cpp + typescript added; cpp subsumes C subset; Go retained)
 **Why bundled**: identical structural shape per language; the SHAPE is the work. Each file declares the language MODEL (grammar + types + semantics) — direction-agnostic; emit AND ingest are operations against the same model.
 
-**Dependencies — re-gated by the D2 reversal (operator-ratified 2026-05-17).** T-4 is no longer a schedule-anytime Phase-1 leaf: `[needs T-3-extended, P1-KEYSTONE, T-29, T-30, T-25-core]`. The old alias model needed almost nothing — a bare alias reads no facts. Fact-bundle modeling needs T-3's shared-fact vocabulary (signedness/representation/numeric stack), the `P1-KEYSTONE` modeling-discipline rubric (the doc against which every bundle is authored and reviewed), the `T-30` structural fact-density / hollow-alias gate (the per-language rework does not run under convention-tier-only enforcement — see T-30), `T-25-core` (the refinement substrate — a language fact-bundle that grounds a refinement-bearing carrier needs the base-type + fail-closed-validation shape), and — for the cpp slice — the T-29 C++ ABI / target data-model. T-4 sits on the `{P1-KEYSTONE, T-30} → T-4 → T-9` side branch; see the execution graph. The D2 reversal *changing this dependency set* is the single most consequential planning edit of the reseed.
+**Dependencies — re-gated by the D2 reversal (operator-ratified 2026-05-17).** T-4 is no longer a schedule-anytime Phase-1 leaf: `[needs T-3-extended, P1-KEYSTONE, T-29, T-30, T-25-core]`. The old alias model needed almost nothing — a bare alias reads no facts. Fact-bundle modeling needs T-3's shared-fact vocabulary (signedness/representation/numeric stack), the `P1-KEYSTONE` modeling-discipline rubric (the doc against which every bundle is authored and reviewed), the `T-30` structural fact-density / hollow-alias gate (the per-language rework does not run under convention-tier-only enforcement — see T-30), `T-25-core` (the refinement substrate — a language fact-bundle that grounds a refinement-bearing carrier needs the base-type + fail-closed-validation shape), and — for the cpp slice — the T-29 C++ ABI / target data-model. T-4 sits on the `{P1-KEYSTONE, T-30, T-29, T-25-core} → T-4 → T-9` side branch — its four feeders are watch items, not slack-having parallel fill; see the execution graph. The D2 reversal *changing this dependency set* is the single most consequential planning edit of the reseed.
 
 **Authoring contract (operator-ratified 2026-05-15; D2 bullet superseded 2026-05-17):**
 - **Model the SPECIFICATION, not libraries (L-2).** Model the versioned upstream spec (Rust Reference, ECMAScript/TS Handbook, IEEE 1364, …) — the anchor IS that spec. Do NOT model std/crates/packages: a library is just a program in the modeled language = `Node`. Modeling libraries is infinite, non-general, the wrong layer.
