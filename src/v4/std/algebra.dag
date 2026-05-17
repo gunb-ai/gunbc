@@ -14,7 +14,9 @@
 //         associativity/distributivity, so Float is NOT an exact Field;
 //         see std/float.dag + DECISIONS.md C5-fidelity)
 //       * BooleanAlgebra (classical logic)
-//       * FreeMonoid<T> (free constructions)
+//       * FreeMonoid<T> (free constructions) + structural boundary
+//         queries (`free_monoid_is_empty`, `free_monoid_length`) over
+//         its declared Empty|Cons carrier
 //       * PointwisePower<T> (power-set / characteristic-function carrier
 //         whose BooleanAlgebra structure is inherited pointwise from Bool)
 //     The "roots" (Magma/Monoid/BooleanAlgebra/FreeMonoid) are where the
@@ -331,6 +333,28 @@ type BooleanAlgebra<T> {
 type FreeMonoid<T>
   = Empty
   | Cons { head: T, tail: FreeMonoid<T> }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// FreeMonoid boundary queries (M9/P2).
+//
+// Declared structural reads over the terminal Empty|Cons carrier. Every
+// consumer (e.g. std/text.dag for `String = FreeMonoid<Char>`) imports
+// these instead of re-encoding the spine in a downstream module.
+fn free_monoid_is_empty<T>(xs: FreeMonoid<T>) -> Bool {
+  match xs {
+    Empty => true
+    Cons { head: _, tail: _ } => false
+  }
+}
+
+
+fn free_monoid_length<T>(xs: FreeMonoid<T>) -> Int {
+  match xs {
+    Empty => 0
+    Cons { head: _, tail: t } => 1 + free_monoid_length(xs: t)
+  }
+}
 
 
 // ─────────────────────────────────────────────────────────────────────
