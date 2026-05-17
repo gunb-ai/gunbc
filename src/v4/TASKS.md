@@ -1126,6 +1126,18 @@ the seed parser be?") and never resolved:
   seed never grows. **The real question Phase 1 must answer: what IS
   that frozen subset, and how small can it be.**
 
+**Phase-1 design content — [`docs/design-bootstrap-fact-model.md`](../../docs/design-bootstrap-fact-model.md).**
+The Phase-1 definition is worked out in that design doc: the layer model
+(every layer — compiler / seed / snapshot / target / runtime — a fact
+model, the seed as a *projection* `emit(snapshot, target, runtime)`),
+the comprehension boundary modeled as a frozen sub-model + a `footprint`
+fold + a `⊆`-`Witness` gate, the bootstrap circularity as a fixed point
+with a path-independent witness, and the one permanent physical axiom.
+**Phase 1's deliverable is the operator-ratified layer model in that
+doc**; the seed-reduction work (Phase 2+) is dispatched against it. A
+worker picking up T-32 Phase 1 reads `docs/design-bootstrap-fact-model.md`
+as the brief.
+
 **Sequencing.** Design-first — do **not** dispatch any seed-reduction
 work until the operator reviews and ratifies the Phase-1 definition.
 Parallel fill — adjacent to T-15 (self-host fixed-point gate) and T-20
