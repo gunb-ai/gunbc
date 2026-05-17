@@ -8,6 +8,8 @@
 //        (`TestgenTier`, `TestgenLayer`, `AssertKind`):
 //          tier: 0=Tier1, 1=Tier2, 2=Tier3
 //          layer: 0=Unit, 1=Integration, 2=Boundary
+//          testgen_category: 0 type_construction … 4 bidirectional_roundtrip
+//            (order = five top-level scheduling arms in `lens/testgen.dag` header)
 //          assert_kind: Int projection onto **`v4.std.verification.AssertKind`**
 //            in **`src/v4/std/verification.dag`** — 0 Equals, 1 Diagnostic,
 //            2 Compiles, 3 RoundTrips (the closed four at `AssertKind` there).
@@ -15,6 +17,17 @@
 //            src/v3/std/verification.dag `TestPredicate` names — v4 verification
 //            is a fresh substrate (see that file's header L3–6: studied v3/dsl,
 //            not lifted). P1/P2 binding is to the **v4** authority only.
+//
+// Int / single-authority guard (INVARIANTS P2): `tier` / `layer` / `assert_kind`
+// Int literals mirror **declaration order** of `TestgenTier`, `TestgenLayer`,
+// and `AssertKind` in `src/v4/std/verification.dag` — same numeric spine as
+// typed `TestClaim.classification` + `kind`. `testgen_category` mirrors the
+// five category names in the `lens/testgen.dag` file header (type_construction …
+// bidirectional_roundtrip). Any substrate PR that **reorders or inserts**
+// variants in those sums **must** update this header map **and** all twelve
+// `data …: ManualTestgenAnchor` rows in the **same** change set; tracker-only
+// drift is STOP. Retirement = M2 loader + literal validation band in TASKS
+// §T-19 Phase-1.5 (replace Int fields with the real sums / `AssertKind`).
 // Anchor: src/v4/TASKS.md §T-19 "Phase-1.5 scaffolding — forward dissolution"
 //         (Int field retirement + Symbol slugs + uncomment carriers) +
 //         lens/testgen.dag bootstrap path + K-1 (slugs are stable string keys
