@@ -66,6 +66,10 @@ type ResolveChildrenResult
   | ResolveChildrenRejected { diagnostic: Diagnostic }
 
 
+type EdgeResolveAcc
+  = EdgeResolveAccMk { have_seen_first: Bool, acc: ResolveChildrenResult }
+
+
 fn empty_namespace() -> Namespace {
   Namespace {
     bindings: empty_map(),
@@ -250,9 +254,103 @@ fn resolve_atom(n: Node, scope: Scope, identity: Symbol) -> ResolveResult {
 }
 
 
-type ResolveEdgeAcc {
-  have_seen_first: Bool
-  acc: ResolveChildrenResult
+fn resolve_node(n: Node, scope: Scope) -> ResolveResult {
+  match n.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      resolve_atom(n: n, scope: scope, identity: id)
+    TypeNode { connective: Arrow } =>
+      match resolve_edges_first_outer_then_inner(
+        edges: n.children,
+        scope_outer: scope,
+        scope_inner: ScopeFrame {
+          locals: add_arrow_domain_named_params(n: n, acc: empty_map()),
+          outer: scope
+        }
+      ) {
+        ResolveChildrenRejected { diagnostic: d } => ResolveRejected { diagnostic: d }
+        ResolvedChildren { children: resolved_children } =>
+          ResolvedNode {
+            node: Node {
+              kind: n.kind,
+              children: resolved_children
+            }
+          }
+      }
+    ComputationNode { behavior: Bind } =>
+      match resolve_edges_first_outer_then_inner(
+        edges: n.children,
+        scope_outer: scope,
+        scope_inner: ScopeFrame {
+          locals: add_bind_atom_binder(n: n, acc: empty_map()),
+          outer: scope
+        }
+      ) {
+        ResolveChildrenRejected { diagnostic: d } => ResolveRejected { diagnostic: d }
+        ResolvedChildren { children: resolved_children } =>
+          ResolvedNode {
+            node: Node {
+              kind: n.kind,
+              children: resolved_children
+            }
+          }
+      }
+    TypeNode { connective: _ } =>
+      match fold(n.children, init: ResolvedChildren { children: [] }, f: fn(acc, e) {
+        match acc {
+          ResolveChildrenRejected { diagnostic: d } =>
+            ResolveChildrenRejected { diagnostic: d }
+          ResolvedChildren { children: done } =>
+            match resolve_node(n: e.target, scope: scope) {
+              ResolveRejected { diagnostic: d } =>
+                ResolveChildrenRejected { diagnostic: d }
+              ResolvedNode { node: resolved_target } =>
+                ResolvedChildren {
+                  children: list_push(done, Edge {
+                    label: e.label,
+                    target: resolved_target
+                  })
+                }
+            }
+        }
+      }) {
+        ResolveChildrenRejected { diagnostic: d } => ResolveRejected { diagnostic: d }
+        ResolvedChildren { children: resolved_children } =>
+          ResolvedNode {
+            node: Node {
+              kind: n.kind,
+              children: resolved_children
+            }
+          }
+      }
+    ComputationNode { behavior: _ } =>
+      match fold(n.children, init: ResolvedChildren { children: [] }, f: fn(acc, e) {
+        match acc {
+          ResolveChildrenRejected { diagnostic: d } =>
+            ResolveChildrenRejected { diagnostic: d }
+          ResolvedChildren { children: done } =>
+            match resolve_node(n: e.target, scope: scope) {
+              ResolveRejected { diagnostic: d } =>
+                ResolveChildrenRejected { diagnostic: d }
+              ResolvedNode { node: resolved_target } =>
+                ResolvedChildren {
+                  children: list_push(done, Edge {
+                    label: e.label,
+                    target: resolved_target
+                  })
+                }
+            }
+        }
+      }) {
+        ResolveChildrenRejected { diagnostic: d } => ResolveRejected { diagnostic: d }
+        ResolvedChildren { children: resolved_children } =>
+          ResolvedNode {
+            node: Node {
+              kind: n.kind,
+              children: resolved_children
+            }
+          }
+      }
+  }
 }
 
 
@@ -263,16 +361,16 @@ fn resolve_edges_first_outer_then_inner(
 ) -> ResolveChildrenResult {
   match fold(
     edges,
-    init: ResolveEdgeAcc {
+    init: EdgeResolveAccMk
       have_seen_first: false,
       acc: ResolvedChildren { children: [] }
     },
     f: fn(state, e) {
       match state {
-        ResolveEdgeAcc { have_seen_first: seen, acc: acc_state } =>
+        EdgeResolveAccMk have_seen_first: seen, acc: acc_state } =>
           match acc_state {
             ResolveChildrenRejected { diagnostic: d } =>
-              ResolveEdgeAcc {
+              EdgeResolveAccMk
                 have_seen_first: true,
                 acc: ResolveChildrenRejected { diagnostic: d }
               }
@@ -280,12 +378,12 @@ fn resolve_edges_first_outer_then_inner(
               if seen {
                 match resolve_node(n: e.target, scope: scope_inner) {
                   ResolveRejected { diagnostic: d } =>
-                    ResolveEdgeAcc {
+                    EdgeResolveAccMk
                       have_seen_first: true,
                       acc: ResolveChildrenRejected { diagnostic: d }
                     }
                   ResolvedNode { node: resolved_target } =>
-                    ResolveEdgeAcc {
+                    EdgeResolveAccMk
                       have_seen_first: true,
                       acc: ResolvedChildren {
                         children: list_push(
@@ -301,12 +399,12 @@ fn resolve_edges_first_outer_then_inner(
               } else {
                 match resolve_node(n: e.target, scope: scope_outer) {
                   ResolveRejected { diagnostic: d } =>
-                    ResolveEdgeAcc {
+                    EdgeResolveAccMk
                       have_seen_first: true,
                       acc: ResolveChildrenRejected { diagnostic: d }
                     }
                   ResolvedNode { node: resolved_target } =>
-                    ResolveEdgeAcc {
+                    EdgeResolveAccMk
                       have_seen_first: true,
                       acc: ResolvedChildren {
                         children: list_push(
@@ -324,95 +422,7 @@ fn resolve_edges_first_outer_then_inner(
       }
     }
   ) {
-    ResolveEdgeAcc { acc: acc_state, have_seen_first: _ } => acc_state
-  }
-}
-
-
-fn resolve_node(n: Node, scope: Scope) -> ResolveResult {
-  let resolved_children_result = match n.kind {
-    TypeNode { connective: Arrow } =>
-      let dom_map = add_arrow_domain_named_params(n: n, acc: empty_map())
-      let inner = ScopeFrame { locals: dom_map, outer: scope }
-      resolve_edges_first_outer_then_inner(
-        edges: n.children,
-        scope_outer: scope,
-        scope_inner: inner
-      )
-    ComputationNode { behavior: Bind } =>
-      let bind_map = add_bind_atom_binder(n: n, acc: empty_map())
-      let inner = ScopeFrame { locals: bind_map, outer: scope }
-      resolve_edges_first_outer_then_inner(
-        edges: n.children,
-        scope_outer: scope,
-        scope_inner: inner
-      )
-    TypeNode { connective: Atom { identity: _ } } =>
-      ResolvedChildren { children: [] }
-    TypeNode { connective: _ } =>
-      fold(n.children, init: ResolvedChildren { children: [] }, f: fn(acc, e) {
-        match acc {
-          ResolveChildrenRejected { diagnostic: d } =>
-            ResolveChildrenRejected { diagnostic: d }
-          ResolvedChildren { children: done } =>
-            match resolve_node(n: e.target, scope: scope) {
-              ResolveRejected { diagnostic: d } =>
-                ResolveChildrenRejected { diagnostic: d }
-              ResolvedNode { node: resolved_target } =>
-                ResolvedChildren {
-                  children: list_push(done, Edge {
-                    label: e.label,
-                    target: resolved_target
-                  })
-                }
-            }
-        }
-      })
-    ComputationNode { behavior: _ } =>
-      fold(n.children, init: ResolvedChildren { children: [] }, f: fn(acc, e) {
-        match acc {
-          ResolveChildrenRejected { diagnostic: d } =>
-            ResolveChildrenRejected { diagnostic: d }
-          ResolvedChildren { children: done } =>
-            match resolve_node(n: e.target, scope: scope) {
-              ResolveRejected { diagnostic: d } =>
-                ResolveChildrenRejected { diagnostic: d }
-              ResolvedNode { node: resolved_target } =>
-                ResolvedChildren {
-                  children: list_push(done, Edge {
-                    label: e.label,
-                    target: resolved_target
-                  })
-                }
-            }
-        }
-      })
-  }
-  match n.kind {
-    TypeNode { connective: Atom { identity: id } } =>
-      resolve_atom(n: n, scope: scope, identity: id)
-    TypeNode { connective: _ } =>
-      match resolved_children_result {
-        ResolveChildrenRejected { diagnostic: d } => ResolveRejected { diagnostic: d }
-        ResolvedChildren { children: resolved_children } =>
-          ResolvedNode {
-            node: Node {
-              kind: n.kind,
-              children: resolved_children
-            }
-          }
-      }
-    ComputationNode { behavior: _ } =>
-      match resolved_children_result {
-        ResolveChildrenRejected { diagnostic: d } => ResolveRejected { diagnostic: d }
-        ResolvedChildren { children: resolved_children } =>
-          ResolvedNode {
-            node: Node {
-              kind: n.kind,
-              children: resolved_children
-            }
-          }
-      }
+    EdgeResolveAccMk acc: acc_state, have_seen_first: _ } => acc_state
   }
 }
 
