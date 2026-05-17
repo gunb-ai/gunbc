@@ -52,8 +52,6 @@ type CsvRfc4180NewlineInsideQuotedFieldOnly {
   line_break_inside_field_only_when_field_is_quoted: Bool,
 }
 
-// RFC 4180 §2: TEXTDATA = %x20-21 / %x23-2B / %x2D-7E — SP is field data outside
-// quotes; HTAB is **not** TEXTDATA (do not conflate with “insignificant whitespace”).
 type CsvRfc4180UnquotedFieldTextdataVsTab {
   ascii_sp_u0020_outside_unquoted_field_is_textdata_field_char: Bool,
   horizontal_tab_u0009_outside_unquoted_field_is_rejected_not_textdata: Bool,

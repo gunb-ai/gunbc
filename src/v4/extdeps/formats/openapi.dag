@@ -17,8 +17,6 @@ type OpenApiSpecificationExtensionKey {
 }
 
 
-// OAS 3.1 Components Object: fixed-field map keys MUST match `^[a-zA-Z0-9\.\-_]+$`.
-// Wire gate is **parse/Diagnostic** (T-4 brief); nominal key avoids conflating with arbitrary strings.
 type OpenApiComponentsMapKey {
   name: String,
 }
@@ -214,7 +212,6 @@ type OpenApiMediaType {
 }
 
 
-// OAS 3.1 Header/Parameter `content`: exactly one media-type entry (not an arbitrary map).
 type OpenApiHeaderContentSingle {
   media_type: String,
   media: OpenApiMediaType,
