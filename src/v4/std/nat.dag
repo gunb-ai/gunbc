@@ -1,7 +1,7 @@
 // src/v4/std/nat.dag
 // Scope: natural numbers.
 // Anchor: https://en.wikipedia.org/wiki/Natural_number
-// Owns: Nat, nat_monoid, nat_semiring.
+// Owns: Nat, nat_add, nat_mul, nat_additive_commutative_monoid, nat_semiring.
 // Consumes: std algebra.
 // Status: T-3 modeled.
 

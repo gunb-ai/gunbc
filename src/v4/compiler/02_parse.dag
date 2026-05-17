@@ -1,7 +1,7 @@
 // src/v4/compiler/02_parse.dag
 // Scope: generic parsing over language grammar rules.
 // Anchor: https://en.wikipedia.org/wiki/Parsing
-// Owns: Grammar, ParseTree, parse, grammar_node_is_conj_empty_root.
+// Owns: Grammar, ParseTree, parse_stage_locus_port, parse_walk_not_realized, parse_grammar_not_well_formed, parse_g0_tokens_remain, parse_walk_not_realized_diagnostic, parse_grammar_not_well_formed_diagnostic, parse_g0_tokens_remain_diagnostic, grammar_node_is_conj_empty_root, parse.
 // Consumes: std collection, std diagnostic, std node, compiler tokenize.
 // Status: Wave-1 void-grammar path realized.
 

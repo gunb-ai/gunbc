@@ -1,7 +1,7 @@
 // src/v4/compiler/01_tokenize.dag
 // Scope: generic tokenization over language lex rules.
 // Anchor: https://en.wikipedia.org/wiki/Lexical_analysis
-// Owns: LexRules, Token, TokenStream, tokenize, lex_rules_node_is_conj_empty_root.
+// Owns: LexRules, Token, TokenStream, tokenize_lexical_walk_not_realized, tokenize_lex_rules_not_well_formed, tokenize_lex_e0_source_not_exhausted, tokenize_lexical_walk_not_realized_diagnostic, tokenize_lex_rules_not_well_formed_diagnostic, tokenize_lex_e0_source_not_exhausted_diagnostic, lex_rules_node_is_conj_empty_root, tokenize.
 // Consumes: std collection, std diagnostic, std node, std text.
 // Status: Wave-1 void-lex path realized.
 
