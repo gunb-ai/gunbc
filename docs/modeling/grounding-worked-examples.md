@@ -3,22 +3,37 @@
 > Companion to the **D2 reversal + fact-bundle reseed plan** (`src/v4/DECISIONS.md`).
 > PLAN-ONLY: these demonstrate the modeling *shape*; no substrate is edited.
 
-## The model, in one paragraph
+## The model
 
 An `extdeps` target model is a **demonstration** that each of the target's
 types **grounds** — decomposes, via the concept DAG, into a subset of the
 universal substrate primitives (`Bool`, `Nat`, the connectives, `Node`). A
-type is two things: a **carrier** (the data) and a **meaning** (a `Node`
-decode of what the data denotes). Coercion between any two types is
-**derived, not authored**: the `Node` catamorphism compares their
-groundings — coincide → identity; related → the derived map (exact or
-lossy); unrelated → fail-closed. A type that cannot be grounded is a
-*named* fail-closed gap, never a silent one.
+type is a **carrier** (the data) and a **meaning** (a `Node` decode of what
+the data denotes).
+
+A coercion between two types can fail, so it is a function into the
+ratified `Outcome` carrier:
+
+```
+coerce : A -> Outcome<B>
+// Outcome<T> = Produced { value: T } | Rejected { diagnostic: Diagnostic }
+//   — std/diagnostic.dag:369, already used by int_div / int_mod.
+```
+
+`Produced` carries the coerced value; `Rejected` carries a `Diagnostic` —
+a **named, located** failure (it has a `Locus`), never a silent drop.
+
+**Design status — read this.** The intent is that a coercion is *derived*
+by comparing the two groundings, not hand-authored. That deriver —
+`derive_coercion(groundingA, groundingB) -> Outcome<Coercion>` — is
+**Phase-1/2 design, not built substrate**: `node.dag` today has only the
+content-hash fold (`merkle_fold ∘ canonical`); no grounding-comparison
+mechanism exists yet. This doc shows the *shape* a derived coercion must
+have; it does **not** claim the deriver is built.
 
 This is *not* the reversed D2 alias. D2 *asserted* `type RustI32 = Int32`.
-Here every type is grounded *independently* from its own spec, and any
-identity is **discovered** by comparing groundings — and discovered to be
-true only because both genuinely decode the same way.
+Here every type is grounded independently from its own spec; any identity
+is a *claim to be discharged* by comparing groundings, never an assertion.
 
 ## Spectrum
 
@@ -29,6 +44,114 @@ These examples are chosen to span the full range deliberately —
 evidence that it is universal.
 
 ---
+
+## Modeled vs built (P0)
+
+One stage below is genuinely **built**; the rest is **modeled** design.
+The line is drawn explicitly and every stage is tagged:
+
+- **`[BUILT]`** — exists and runs today on `origin/main`.
+- **`[MODELED]`** — the modeling shape; not yet built.
+
+Nothing here pretends a modeled stage is built.
+
+## The end-to-end shape — one real chain, one modeled spine
+
+### A. The genuinely-real chain — the `.dag` self-hosting frontend `[BUILT]`
+
+The v4 frontend is real but **Wave-1**: `01_tokenize.dag` realizes only
+the **E0 void-lexical** path and `02_parse.dag` only the **G0
+void-grammar** path. So the one end-to-end chain that actually runs is the
+empty/void one:
+
+```
+""  (empty .dag source)
+  → tokenize("", file, LexRules=E0)            : (String,Symbol,LexRules) -> Outcome<TokenStream>
+  → Produced(empty TokenStream)                                              [BUILT]
+  → parse(emptyTokenStream, Grammar=G0)         : (TokenStream,Grammar) -> Outcome<ParseTree>
+  → Produced(degenerate ParseTree)              // ParseTree = Node           [BUILT]
+```
+
+The fail-closed direction is real too — non-empty source against E0:
+
+```
+"x"  → tokenize  → Rejected { Diagnostic { reason, at: Locus = WholeFile } }  [BUILT]
+```
+
+That `Rejected` is a constructed `Diagnostic` with a `Locus` — "named,
+never silent" is *shown*, by built code. Richer `.dag` tokenization (real
+keywords, programs) is declarative grammar-data **not yet realized** —
+`[MODELED]` from here up. Both built functions already return `Outcome<T>`.
+
+### B. The modeled spine — `python int → IR → rust i32` `[MODELED]`
+
+There is **no** Python or Rust parser (`extdeps/languages/python.dag`
+models Python's type *surface*, not a parser). The whole chain is
+`[MODELED]`. **IR is the explicit hub**, and the chain has two coercions
+with *different totality*:
+
+**Ingest — `python int → IR Int` (total).**
+
+```
+ingest_int : PythonInt -> Outcome<IR_Int>                                    [MODELED]
+```
+
+`IR_Int` is `GroupCompletion<Nat>` — unbounded. Every Python `int`
+(arbitrary-precision) grounds to an `IR_Int`; ingest is **total** — always
+`Produced`. No overflow exists at the IR: the IR integer has no width.
+
+**Emit — `IR Int → rust i32` (partial — overflow lives here).**
+
+```
+emit_i32 : IR_Int -> Outcome<RustI32>                                        [MODELED]
+// Spec: models rust core::convert::TryFrom for i32 — the fallible
+//       conversion. NOT `as` (wraps/truncates), NOT `From` (widening-only).
+
+emit_i32(ir) =
+  if  −2³¹ ≤ value(ir) ≤ 2³¹−1  → Produced( rust i32 )
+  else                          → Rejected { Diagnostic {
+                                     reason: integer_out_of_range, at: Locus } }
+```
+
+`RustI32` grounds as `Compose<Int, MachineWidth<Word32>>` — the abstract
+`Int` carrier refined by an independent machine-width axis (per
+`std/integer.dag`; **not** a parallel bit-carrier — `integer.dag` forbids
+that). The `−2³¹..2³¹−1` bound is the `MachineWidth<Word32>` refinement
+predicate, not catamorphism output.
+
+So Python `10**100` ingests fine (`Produced` an `IR_Int`) and **fails
+closed at emit** (`Rejected`, a real `Diagnostic`). Overflow is an
+**emit-boundary** fact — localized, typed, named.
+
+### A worked operation
+
+Operations live on the IR, where integers are unbounded — so
+`int_add : (IR_Int, IR_Int) -> IR_Int` is **total** (no overflow in the
+IR; cf. `std/integer.dag` `int_add`). Overflow appears only when the
+*result* is emitted: `emit_i32(int_add(a, b))` is the partial step. "`a + b`
+too big" is therefore **not** a property of `+` — it is a property of
+*emitting `+`'s result to a fixed-width target*.
+
+### Emit is a section of ingest, not a bijection
+
+`ingest` and `emit` are the **two directions of one grounding map**, not
+inverses. `ingest` is lossy on text (comments, whitespace, sugar collapse
+to the same `Node`); `emit` picks one canonical text. `emit ∘ ingest` ≈
+identity *on meaning*, never on text. At the carrier level above, ingest
+is additionally *total* and emit *partial* — the asymmetry that localizes
+overflow at the emit boundary.
+
+---
+
+## Per-target carrier groundings
+
+> The sections below predate the `Outcome`-typed coercion correction
+> above. Their **carrier + meaning** groundings stand as written; their
+> *coercion prose* ("identity / derived map / fail-closed") is pending a
+> re-touch to the `A -> Outcome<B>` shape (a breadth fan-out). Read them
+> for the groundings; read §A/§B above for the coercion mechanism. One
+> exception is corrected inline below: `RustI32` grounds as
+> `Compose<Int, MachineWidth<Word32>>`, never a `{32×Bool}` bit-carrier.
 
 ## 1. Rust — `Vec<T>` (generics, compound coercion)
 
@@ -44,11 +167,12 @@ type RustVec<T> = List<T>          // parametric: grounds to List<grounding(T)>
 // MEANING — identity on the element sequence.
 ```
 
-`RustVec<RustI32>` grounds to `List<{ 32×Bool + twos_complement_decode }>`
-— fully primitive, recursively.
+`RustVec<RustI32>` grounds to `List<grounding(RustI32)>`, and `RustI32`
+grounds as `Compose<Int, MachineWidth<Word32>>` (§B — the substrate's
+fixed-width discipline, `std/integer.dag`; not a `{32×Bool}` bit-carrier).
 
 **Step-by-step coercion — `RustVec<RustI32>` ↔ IR `List<Int32>`:**
-1. groundings: `List<{32×Bool, decode}>` vs `List<{32×Bool, decode}>`.
+1. groundings: `List<Compose<Int,MachineWidth<Word32>>>` on both sides.
 2. catamorphism: outer `List` vs `List` → match; recurse into element.
 3. element `grounding(RustI32)` vs `grounding(Int32)` → coincide.
 4. both levels coincide → coercion = **identity**. No `Vec`-coercion was
