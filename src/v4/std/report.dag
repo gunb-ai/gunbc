@@ -1,45 +1,8 @@
 // src/v4/std/report.dag
-//
-// Scope: advisory carrier — non-fail-closed information channel for programmer.
-//        Distinct from std/diagnostic.dag's Diagnostic (which is fail-closed
-//        per INVARIANTS P3 / C-8). Report is design-tier advisory output where
-//        the programmer makes the choice. Used by lens/synthesis.dag (cross-
-//        algorithm complexity) and any future advisory-tier lens.
-// Anchor: docs/r4-carve-out-routing.md C7 design discrimination — "advisory
-//         suggestions ... route through a separate introspection/report
-//         carrier (NOT DiagnosticSeverity)"; INVARIANTS C-8 contrast (lens
-//         enforcement is Error or it isn't — Report is the IS NOT branch)
-//
-// Owns:
-//   - Report { reason: ReportReason, at: Locus, suggestion: ReportSuggestion }
-//   - ReportReason (closed enum of advisory categories — DISJOINT from
-//     Diagnostic's NamedReason; advisory-class vs error-class)
-//   - ReportSuggestion (typed alternative the report points to; structurally
-//     parallel to Diagnostic.suggested_correction but with non-blocking
-//     semantics)
-//
-// Discipline (Witness separation — per INVARIANTS P3/C-8):
-//   - Report NEVER routes through Witness<C>. Witness is STRICTLY the
-//     fail-closed carrier: Holds | Violates(reason), where Violates is
-//     blocking. Overloading Witness with advisory-non-blocking semantics
-//     would break the fail-closed guarantee P3/C-8 depends on.
-//   - Advisory lenses return `Set<Report>` DIRECTLY: empty set = no
-//     advisory observation; non-empty = advisory observations present
-//     (informational, never blocking on its own). No Witness wrapper.
-//   - The ONLY advisory→blocking path is explicit user opt-in: a
-//     `apply_lens(<lens>, Enforce { ... })` declaration converts the
-//     advisory Set<Report> into fail-closed Diagnostics per the user's
-//     policy choice (THESIS:307-321 opt-in depth). That conversion is
-//     the single, explicit, user-authored bridge — never implicit.
-//
-// Consumes:
-//   - std/node.dag  (String for messages is kernel-ambient — no import)
-//   - std/diagnostic.dag: Locus (shared structural reference for "where in
-//     the program"; Report and Diagnostic share Locus but diverge on
-//     reason/severity semantics)
-//
-// Status: scaffold — fill per TASKS.md T-17
-// Brief: see BRIEF_TEMPLATE.md.
+// Scope: advisory report carrier.
+// Anchor: docs/r4-carve-out-routing.md C7.
+// Owns: Report, ReportReason, ReportSuggestion.
+// Consumes: std diagnostic, std node.
+// Status: scaffold for T-17; advisory discipline in DECISIONS.md C7-REPORT.
 
 module v4.std.report
-
