@@ -373,8 +373,12 @@ type VReg32 = Conj {
   length_proof: Witness< |bits| = 32 >
 }
 
-// MEANING — the 32 four-state bits; when used as a number, two's-
-// complement over the {0,1} bits, undefined if any bit is x/z.
+// MEANING — the 32 four-state bits. A plain `reg [31:0]` is UNSIGNED in
+// Verilog; signedness is NOT a fact of this carrier — it requires the
+// explicit `signed` modifier (`reg signed [31:0]`). Read as a number the
+// {0,1} bits are a 32-bit two's-complement BIT PATTERN; the
+// signed-vs-unsigned interpretation is supplied by the declaration, not
+// by the vector. Undefined if any bit is x/z.
 ```
 
 `VBit` grounds — as a closed sum over the substrate's coproduct
@@ -389,15 +393,24 @@ richer. `Bool` is exactly the `{Zero, One}` sub-part of `VBit`.
    `Bool` vs `VBit` — `Bool ⊊ VBit`.
 3. `IR Int32 -> Outcome<VReg32>` is total over this relation: every
    `Bool` embeds as `Zero` or `One`, so the result is `Produced`.
-4. `VReg32 -> Outcome<IR Int32>` is partial: all `{Zero, One}` bits
-   return `Produced { value: IR Int32 }`; any `Unknown`/`HighZ` bit
-   returns `Rejected { diagnostic: Diagnostic }` because x/z is not an
-   integer state.
+4. `VReg32 -> Outcome<IR Int32>` is partial on **two** axes. (i) Any
+   `Unknown`/`HighZ` bit returns `Rejected { diagnostic: Diagnostic }` —
+   x/z is not an integer state. (ii) For all-`{Zero, One}` bits the 32-bit
+   pattern is well-defined, **but a plain `reg [31:0]` is unsigned** — it
+   carries no signedness fact, and IR `Int32` is *signed*
+   (`Compose<Int, …>`). Producing signed `Int32` from a plain `reg [31:0]`
+   would fabricate the signedness fact — the same hazard as the LLVM
+   `add i32` case (§10). The honest coercion: a plain `reg [31:0]` lands
+   an **unsigned** 32-bit carrier; signed `IR Int32` is `Produced` only
+   when the source is `reg signed [31:0]` — the signedness-bearing
+   declaration — otherwise `Rejected`.
 
 This is "speaks a *subset*" made precise: Verilog and the IR share the
 `{0,1}` subset; the `x/z` states are Verilog-only and honestly
-fail-closed. The model handles a target whose primitive is richer than
-ours without distortion.
+fail-closed; and signedness, absent from a plain vector, is required as
+an explicit declaration fact rather than fabricated. The model handles a
+target whose primitive is richer than ours without distortion — and
+without inventing facts the carrier never modeled.
 
 ---
 
