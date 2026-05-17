@@ -452,6 +452,20 @@ language, mostly fail-closed). Each: the model (carrier + meaning) and
 step-by-step coercion. Plan-only; the remaining mainstream
 language/format targets fan out against the same template.
 
+### T-30 — `std/fact_density.dag` encoding note (2026-05-17)
+
+- **Header discipline (PR #3227):** the on-disk file keeps a terse machine
+  header only (path line, then `Scope:` / `Owns:` / `Consumes:` /
+  `Status:`, plus at most one `Anchor:` URL line per owned carrier).
+  Process receipts, Practice pointers, and bootstrap-collision narrative
+  live in commit messages, this ledger, or `TASKS.md` — not in the `.dag`
+  comments.
+- **Nominal witness:** `SourceSpecReadFact` is a body-less nominal marker
+  for spec-read anchoring (not a numeric alias). A richer `Node` payload
+  is deferred until `compile_to_dag` can prepend `std/node.dag` without
+  colliding on v3-bootstrap top-level names; dissolution ships in the
+  same change set as that bridge.
+
 ### Status
 
 **RATIFIED 2026-05-17** (operator, out-of-band — the operator declared D2
