@@ -179,13 +179,11 @@ type ReactElement
 
 // Anchor: https://react.dev/reference/react/createElement
 // Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Abbreviated five-pattern ledger:
-//   1 Fact placement — FAILS: node wrapper is shared across tree-shaped React consumers.
-//   2 Variant-is-data — FAILS: Element vs Text are different structural carriers.
-//   3 Algebraic form — N/A: child node kinds are not std/algebra re-exports.
-//   4 Dimensional — FAILS: exclusive element subtree vs text child reference per child slot.
-//   5 Parameterized family — FAILS: not one F<ChildKind> over a separately modeled set.
-// Terminal: irreducible element subtree (`ReactElement`) vs primitive text child (`text_value_ref`).
+// 🟡 YELLOW (scaffold): T-4.7 **partial** `createElement` children slice (`Element`|`Text`
+//     only); full JSX / react.dev child lattice **owned elsewhere** — see `src/v4/TASKS.md`
+//     T-4.7 “ReactNode (Practice‑4 🟡)” + Phase‑1.5 canvas doc (not exhaustive “all children”).
+// Trigger + obligation: **Dissolution = operator-ratified PR** extending or retiring this sum;
+//     consumers must not treat the Disj as terminal closure of React child modeling.
 type ReactNode
   = Element { element: ReactElement }
   | Text { text_value_ref: ReactCrossDeclRef }
