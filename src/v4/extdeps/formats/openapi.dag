@@ -423,9 +423,6 @@ type OpenApiWebhooksSlot
 
 
 // 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiDocumentRoot
-// OAS §3.1: an OpenAPI document MUST contain at least one of `paths`,
-// `components`, or `webhooks` — encoded as mutually exclusive “which
-// obligation is discharged first”; other two remain optional slots.
 type OpenApiDocumentRoot
   = OpenApiDocumentRootPathsPresent {
       paths: OpenApiPaths,
