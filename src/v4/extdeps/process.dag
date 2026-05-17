@@ -28,7 +28,7 @@
 //   - SignalNum (per POSIX signal table)
 //   - Command { program: AbsolutePath, argv0: String, args: List<String>, env: Map<String,String> }
 //   - spawn(pt, cmd) -> Result<{table: ProcessTable, process: RunningProcess}, Diagnostic>
-//   - wait(pt, p)    -> Result<{table: ProcessTable, process: TerminatedProcess}, Diagnostic>
+//   - wait(pt, p)    -> Result<{table: ProcessTable, process: WaitedTerminatedProcess}, Diagnostic>
 //     (blocks until terminated)
 //   - capture(pt, p) -> Result<{stdout, stderr: FreeMonoid<Byte>, table: ProcessTable, process: TerminatedProcess}, Diagnostic>
 //
@@ -86,6 +86,10 @@
 // BLOCKING): RunningProcess carries CapturedOutputPipes inside the live
 // process carrier, so capture cannot pair one process with another
 // spawn's pipe source or silently omit the pipe authority.
+// HEADER RECONCILE (2026-05-17, #3209, keen-wren-663 + briansrls
+// BLOCKING): wait preserves the captured-output pipe authority in
+// WaitedTerminatedProcess. Waiting reaps lifecycle/table state; it does
+// not by itself drain or close stdout/stderr pipes.
 
 
 module v4.extdeps.process
@@ -163,8 +167,9 @@ import v4.std.machine { Byte }
 // SPAWN SUCCESS IS LIVE. A successful spawn cannot return a terminal
 // child observation. `RunningProcess` is the live postcondition carrier
 // for spawn and the input carrier for wait/capture; it carries the
-// captured-output pipe source for that child. `TerminatedProcess` is the
-// terminal postcondition carrier for wait/capture.
+// captured-output pipe source for that child. `WaitedTerminatedProcess`
+// carries the same pipe source after wait; `TerminatedProcess` is the
+// terminal postcondition carrier after capture has consumed the source.
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -280,6 +285,18 @@ type TerminatedProcess {
   parent: ProcessId
 }
 
+// `WaitedTerminatedProcess` is the wait success carrier. It is terminal
+// like `TerminatedProcess`, but preserves the captured-output pipe source
+// that was established at spawn. Waiting alone observes/reaps process
+// state; it does not drain or close captured stdout/stderr.
+type WaitedTerminatedProcess {
+  id: ProcessId
+  command: Command
+  state: TerminatedProcessState
+  output: CapturedOutputPipes
+  parent: ProcessId
+}
+
 
 // ─────────────────────────────────────────────────────────────────────
 // Operation contract carriers.
@@ -325,7 +342,7 @@ type WaitProcessRequest {
 
 type WaitedProcess {
   table: ProcessTable
-  process: TerminatedProcess
+  process: WaitedTerminatedProcess
 }
 
 type WaitProcessResult = Outcome<WaitedProcess>

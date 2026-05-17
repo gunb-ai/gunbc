@@ -9,10 +9,10 @@
 //   - RelativePath { components: List<PathComponent> }
 //   - PathComponent (NonEmptyStr, no slashes, no nulls — per POSIX portable filename charset)
 //   - FileKind = RegularFile | Directory | Symlink
-//   - read_file(fs, p)        -> Result<{filesystem: Filesystem, body: FreeMonoid<Char>}, Diagnostic>
+//   - read_file(fs, p)        -> Result<FreeMonoid<Char>, Diagnostic>
 //   - write_file(fs, p, body) -> Result<Filesystem, Diagnostic>
-//   - list_dir(fs, p)         -> Result<{filesystem: Filesystem, entries: List<PathComponent>}, Diagnostic>
-//   - file_kind(fs, p)        -> Result<{filesystem: Filesystem, kind: FileKind}, Diagnostic>
+//   - list_dir(fs, p)         -> Result<List<PathComponent>, Diagnostic>
+//   - file_kind(fs, p)        -> Result<FileKind, Diagnostic>
 //
 // Scope NOT included in v4 (subset for compiler self-hosting needs):
 //   - Permissions (mode bits) — out of scope; v4 compiler reads/writes own files
@@ -53,9 +53,10 @@
 // String-labeled identity. The effect/resource authority is the threaded
 // carrier position in operation signatures, not a label field.
 // HEADER RECONCILE (2026-05-17, #3209, keen-wren-663 + codex BLOCKING):
-// read/list/kind return the threaded Filesystem resource alongside the
-// derived value, so resource involvement is structural in both input and
-// output shapes.
+// read/list/kind take the Filesystem resource as an explicit parameter
+// and return only derived values. Only write_file returns Filesystem,
+// preserving lens/effect.dag B3's returned-modified-resource = write vs
+// returned-derived-value = read distinction.
 
 
 module v4.extdeps.file_system
@@ -95,9 +96,9 @@ import v4.std.text { Char }
 // OPERATION SEAM. The scaffold header's `Result<..., Diagnostic>` prose
 // denotes std/diagnostic.dag's ratified `Outcome<T>` carrier
 // (DECISIONS.md I). Per lens/effect.dag B3/B-5, type signatures are the
-// single effect authority: effects are explicit parameters. Reads thread
-// the Filesystem through and return a derived value beside it; writes
-// return the modified Filesystem.
+// single effect authority: effects are explicit parameters. Reads take
+// the Filesystem as input and return derived values; writes return the
+// modified Filesystem.
 //
 // FILE CONTENT IS TEXT IN V4. `read_file` / `write_file` are scoped to
 // the compiler self-hosting need: reading and writing text `.dag`,
@@ -225,12 +226,7 @@ type ReadFileRequest {
   path: Path
 }
 
-type ReadFileOutput {
-  filesystem: Filesystem
-  body: FileBody
-}
-
-type ReadFileResult = Outcome<ReadFileOutput>
+type ReadFileResult = Outcome<FileBody>
 
 type WriteFileRequest {
   filesystem: Filesystem
@@ -245,24 +241,14 @@ type ListDirRequest {
   path: Path
 }
 
-type ListedDirectory {
-  filesystem: Filesystem
-  entries: List<PathComponent>
-}
-
-type ListDirResult = Outcome<ListedDirectory>
+type ListDirResult = Outcome<List<PathComponent>>
 
 type FileKindRequest {
   filesystem: Filesystem
   path: Path
 }
 
-type ObservedFileKind {
-  filesystem: Filesystem
-  kind: FileKind
-}
-
-type FileKindResult = Outcome<ObservedFileKind>
+type FileKindResult = Outcome<FileKind>
 
 type FileSystemOperations {
   read_file: fn(ReadFileRequest) -> ReadFileResult
