@@ -40,6 +40,18 @@
 //
 // Status: landed 2026-05-16 (still-deer-194). Keep slugs stable; coverage
 //         lens (T-18) keys off them when comparing testgen output.
+//
+// Completeness vs hand `TestClaim` data: these twelve slugs are the stable
+// **regression key set** for “produced corpus ⊇ manual” at T-18 — not a claim
+// that twelve `TestClaim` `data` values exist today with identical names in
+// `connective_anchors.dag` / `nat_law_anchors.dag`. Live hand claims currently
+// cover the five **Compiles** connective stubs + one **Equals** anchor (see
+// `connective_anchors.dag` header: **no** Atom `TestClaim` under K-1) plus six
+// Nat law stubs that back the algebra-law **category** without 1:1 slug match.
+// Rows for **atom**, **diagnostic / lens-applicability / roundtrip**, and
+// **behavior_value** remain **named forward anchors** in the same dissolution
+// band as the Int-coded fields (TASKS §T-19); closing ⊇ is follow-up once those
+// substrates or claims land — not a silent assumption in this file.
 // Brief: see BRIEF_TEMPLATE.md.
 
 module v4.test.claim.manual.t19_manual_anchor_manifest
