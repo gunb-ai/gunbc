@@ -1,0 +1,103 @@
+// src/v4/test/claim/manual/connective_anchors.dag
+//
+// Scope: hand-authored TestClaim regression anchors for the six type
+//        connectives (Atom excluded — K-1 forbids minting a Symbol value
+//        in data literals; Atom-shaped claims wait on T-22 / boundary
+//        table). v2 `compile` indexes this module today; v2 `run` claim
+//        execution is deferred per MOVE1_COVERAGE.txt until T-22.
+//        The five L1 *behaviors* (Value/Transform/Branch/Loop/Bind) are
+//        carried on computation `Node`s; authoring representative
+//        computation-node claims without pipeline-produced graphs is the
+//        same Atom/Symbol gap — tracked in MOVE1_COVERAGE.txt, not papered
+//        over here.
+// Anchor: src/v4/TASKS.md T-14 + std/node.dag + std/verification.dag
+
+module v4.test.claim.manual.connective_anchors
+
+import v4.std.verification { TestClaim, Compiles, Equals }
+import v4.std.diagnostic { Produced }
+import v4.std.node { Node, TypeNode, Conj, Disj, Arrow, Cardinality, Instantiation, Edge }
+
+
+// Shared stub: empty labeled Conj (no Symbol / Atom).
+data stub_empty_conj: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: []
+}
+
+
+// Arrow domain/codomain: two positional edges to duplicate stubs (no Atom).
+data stub_arrow_pair: Node = Node {
+  kind: TypeNode { connective: Arrow },
+  children: [
+    Edge { label: Positional, target: stub_empty_conj },
+    Edge { label: Positional, target: stub_empty_conj }
+  ]
+}
+
+
+data stub_empty_disj: Node = Node {
+  kind: TypeNode { connective: Disj },
+  children: []
+}
+
+
+data stub_empty_cardinality: Node = Node {
+  kind: TypeNode { connective: Cardinality },
+  children: []
+}
+
+
+data stub_empty_instantiation: Node = Node {
+  kind: TypeNode { connective: Instantiation },
+  children: []
+}
+
+
+data claim_conj_empty_compiles: TestClaim = TestClaim {
+  kind: Compiles,
+  label: "manual/connective: empty Conj type-node is structurally inhabitable",
+  input: stub_empty_conj,
+  expected: Produced { value: stub_empty_conj }
+}
+
+
+data claim_disj_empty_compiles: TestClaim = TestClaim {
+  kind: Compiles,
+  label: "manual/connective: empty Disj type-node is structurally inhabitable",
+  input: stub_empty_disj,
+  expected: Produced { value: stub_empty_disj }
+}
+
+
+data claim_arrow_two_conj_compiles: TestClaim = TestClaim {
+  kind: Compiles,
+  label: "manual/connective: Arrow with two positional Conj leaves (no Atom)",
+  input: stub_arrow_pair,
+  expected: Produced { value: stub_arrow_pair }
+}
+
+
+data claim_cardinality_empty_compiles: TestClaim = TestClaim {
+  kind: Compiles,
+  label: "manual/connective: Cardinality connective with zero positional children",
+  input: stub_empty_cardinality,
+  expected: Produced { value: stub_empty_cardinality }
+}
+
+
+data claim_instantiation_empty_compiles: TestClaim = TestClaim {
+  kind: Compiles,
+  label: "manual/connective: Instantiation connective with zero positional children",
+  input: stub_empty_instantiation,
+  expected: Produced { value: stub_empty_instantiation }
+}
+
+
+// Reflexive Equals on identical stub (structural identity anchor for T-22).
+data claim_conj_equals_refl: TestClaim = TestClaim {
+  kind: Equals,
+  label: "manual/connective: Equals reflexivity on empty Conj stub",
+  input: stub_empty_conj,
+  expected: Produced { value: stub_empty_conj }
+}
