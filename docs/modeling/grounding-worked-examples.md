@@ -607,8 +607,15 @@ Go channels are typed FIFO communication endpoints. Their value model is not
 type GoChan<T> = Conj {
   element:   TypeGrounding<T>,
   direction: SendOnly | ReceiveOnly | Bidirectional,
-  capacity:  Nat
+  capacity:  Nat,
+  state:     Open | Closed
 }
+// `state` is the channel VALUE-state — closed-ness is a runtime fact the
+// effect/scheduling lenses read (a send on a closed channel panics; a
+// receive yields the zero value). It is distinct from the type facts
+// (element/direction/capacity). A nil `chan T` is the ABSENCE of a
+// GoChan value (`Optional<GoChan<T>>` at the variable level), not a
+// GoChan state — so this carrier models the non-nil channel.
 
 // MEANING — ordered communication of T values, with blocking behavior derived
 // from capacity and direction. Scheduling is an effect fact, not a payload fact.
@@ -846,7 +853,12 @@ is serialization syntax, not object meaning.
 
 ```
 // CARRIER — finite map from string keys to recursively grounded JSON values.
-type JsonValue  = Null | Bool | Number | String | Array<JsonValue> | Object
+// Each recursive-container arm carries its payload, so `JsonValue` is the
+// single authority for a JSON value's content (no label-only variant whose
+// payload lives in a separate type).
+type JsonValue  = Null | Bool | Number | String
+                | Array<List<JsonValue>>
+                | Object<JsonObject>
 type JsonObject = Map<String, JsonValue>
 
 // MEANING — the map. Duplicate source keys are a parse-boundary diagnostic,
