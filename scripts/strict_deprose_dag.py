@@ -70,7 +70,7 @@ def main() -> None:
         (
             "src/v4/extdeps/languages/verilog.dag",
             "// Scope: IEEE 1364-2005 Verilog structural carriers (T-4.9).",
-            "// Anchor: https://ieeexplore.ieee.org/document/9576818",
+            "// Anchor: https://standards.ieee.org/ieee/1364/3641/",
             "// Consumes: std/node.dag; Int kernel-ambient.",
             "// Status: T-4.9 PASS (IN-B); import v4.std.node Symbol only.",
         ),
