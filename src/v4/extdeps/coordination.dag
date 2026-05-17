@@ -6,49 +6,35 @@
 
 module v4.extdeps.coordination
 
-
 import v4.std.collection { List }
 import v4.std.diagnostic { Outcome }
 import v4.std.nat { Nat }
 import v4.std.node { Symbol }
-
 
 // Anchor: RFC 3986, January 2005, https://www.rfc-editor.org/rfc/rfc3986
 type NetworkAddress {
   identity: Symbol
 }
 
-
-// Anchor: src/v4/std/diagnostic.dag Outcome<T>, D1 ratified 2026-05-16.
 type CoordinationBoundary<T> = Outcome<T>
 
-
-// Anchor: THESIS.md v4 supersession 2026-05-15, Shape A language targets.
 type LanguageRef {
   identity: Symbol
 }
 
-
-// Anchor: src/v4/STRUCTURE.md v4 supersession 2026-05-15, extdeps/frameworks.
 type FrameworkRef {
   identity: Symbol
 }
 
-
-// Anchor: INVARIANTS.md P2/P3 boundary discipline.
 // 🟢 coproduct dissolution — DECISIONS.md#coordination-coproduct-ledgers
 type FrameworkBinding
   = HostedByFramework { framework: FrameworkRef }
   | NoFramework
 
-
-// Anchor: src/v4/std/node.dag K-1, operator-ratified 2026-05-15.
 type EndpointRef {
   identity: Symbol
 }
 
-
-// Anchor: THESIS.md v4 supersession 2026-05-15, omni-emission.
 type Endpoint {
   identity: EndpointRef,
   address: NetworkAddress,
@@ -56,18 +42,13 @@ type Endpoint {
   framework: FrameworkBinding
 }
 
-
-// Anchor: INVARIANTS.md P3/P4 deterministic structural bounds.
 type SettleBound {
   steps: Nat
 }
 
-
-// Anchor: https://en.wikipedia.org/wiki/Eventual_consistency
 type ConvergeBound {
   steps: Nat
 }
-
 
 // Anchor: https://en.wikipedia.org/wiki/Messaging_pattern
 // 🟢 coproduct dissolution — DECISIONS.md#coordination-coproduct-ledgers
@@ -77,13 +58,10 @@ type ExchangePattern
   | StreamExchange
   | PublishSubscribe
 
-
-// Anchor: INVARIANTS.md P3 fail-closed structural bounds.
 // 🟢 coproduct dissolution — DECISIONS.md#coordination-coproduct-ledgers
 type SettlementGuarantee
   = ImmediateSettlement
   | SettlesWithin { bound: SettleBound }
-
 
 // Anchor: https://en.wikipedia.org/wiki/Eventual_consistency
 // 🟢 coproduct dissolution — DECISIONS.md#coordination-coproduct-ledgers
@@ -91,56 +69,38 @@ type ConsistencyGuarantee
   = NoReplicaConvergence
   | EventuallyConsistent { bound: ConvergeBound }
 
-
-// Anchor: HTTP Semantics RFC 9110, June 2022, https://www.rfc-editor.org/rfc/rfc9110
 type HttpEffect {}
 
-
-// Anchor: https://en.wikipedia.org/wiki/Message_queue
 type QueueEffect {}
 
-
-// Anchor: https://en.wikipedia.org/wiki/Pipeline_(Unix)
 type StreamEffect {}
 
-
-// Anchor: https://en.wikipedia.org/wiki/Publish%E2%80%93subscribe_pattern
 type PubSubEffect {}
-
 
 // Anchor: src/v4/std/node.dag A1/K-1, operator-ratified 2026-05-15.
 type BindRef {
   identity: Symbol
 }
 
-
-// Anchor: src/v4/DECISIONS.md B3/B-5, operator-ratified 2026-05-15.
 type HttpBind {
   bind: BindRef,
   effect: HttpEffect
 }
 
-
-// Anchor: src/v4/DECISIONS.md B3/B-5, operator-ratified 2026-05-15.
 type QueueBind {
   bind: BindRef,
   effect: QueueEffect
 }
 
-
-// Anchor: src/v4/DECISIONS.md B3/B-5, operator-ratified 2026-05-15.
 type StreamBind {
   bind: BindRef,
   effect: StreamEffect
 }
 
-
-// Anchor: src/v4/DECISIONS.md B3/B-5, operator-ratified 2026-05-15.
 type PubSubBind {
   bind: BindRef,
   effect: PubSubEffect
 }
-
 
 // Anchor: https://en.wikipedia.org/wiki/Inter-process_communication
 type WireContract {
@@ -150,7 +110,6 @@ type WireContract {
   settlement: SettlementGuarantee,
   consistency: ConsistencyGuarantee
 }
-
 
 // Anchor: https://en.wikipedia.org/wiki/Distributed_computing
 type DeploymentUnit {
