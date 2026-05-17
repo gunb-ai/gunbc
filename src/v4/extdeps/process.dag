@@ -1,13 +1,13 @@
 // src/v4/extdeps/process.dag
 // Scope: process substrate — command invocation, lifecycle, wait/capture.
 // Owns: ProcessId, ExitCode, SignalNum, PosixArgument, PosixEnvironmentName, PosixEnvironmentValue, Command, Termination, TerminatedProcessState, ProcessIdentity, RunningProcess, TerminatedProcess, WaitedTerminatedProcess, CaptureSource, ProcessTable, CapturedByteStream, CapturedOutputPipes, process request/result/operation carriers.
-// Consumes: AbsolutePath, PosixByteString, Diagnostic, Outcome, Byte, FreeMonoid, Int, List, Map.
+// Consumes: AbsolutePath, Filesystem, PosixByteString, Diagnostic, Outcome, Byte, FreeMonoid, Int, List, Map.
 // Status: T-4.5 modeled 2026-05-16; de-prosed 2026-05-17.
 
 module v4.extdeps.process
 
 
-import v4.extdeps.file_system { AbsolutePath, PosixByteString }
+import v4.extdeps.file_system { AbsolutePath, Filesystem, PosixByteString }
 import v4.std.algebra { FreeMonoid }
 import v4.std.diagnostic { Outcome }
 import v4.std.machine { Byte }
@@ -95,6 +95,7 @@ type CapturedOutputPipes
 
 type SpawnProcessRequest {
   table: ProcessTable
+  filesystem: Filesystem
   command: Command
 }
 
