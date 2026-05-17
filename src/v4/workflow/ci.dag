@@ -211,22 +211,20 @@
 //       (T-4.6, the `YamlStatic` serialization) + compiler/05_emit.dag
 //       (T-10) Shape-B emission.
 //   (2) `select_jobs : (CiPipeline, Diff) -> Outcome<List<CiJob>>` —
-//       affected-set job selection AND the fail-closed WELL-FORMEDNESS
-//       boundary (see WELL-FORMEDNESS above). It consumes
-//       lens/affected_set.dag's `affected_set : (Dag, Diff) ->
+//       affected-set job selection ONLY. Well-formedness is NO LONGER
+//       part of this deferral: it is eagerly enforced NOW by
+//       `ci_pipeline_well_formed` (see WELL-FORMEDNESS above), so
+//       `select_jobs` consumes an already-validated pipeline and only
+//       computes the affected frontier. It consumes lens/
+//       affected_set.dag's `affected_set : (Dag, Diff) ->
 //       Witness<ReExecFrontier>` (this is IB-2 / what dissolves
-//       scripts/detect-affected-components.sh). As the
-//       `apply_diff`-analogous all-or-nothing fold over the `Symbol`
-//       job/gate graph it is the single point where a missing target /
-//       duplicate id / `needs` cycle becomes one fail-closed
-//       `Diagnostic` (`Outcome<T>`, std/diagnostic.dag) — decidable
-//       (visited-set traversal, P4), never a type-level invariant nor
-//       an eager predicate (node.dag `Diff` #3162). lens/
-//       affected_set.dag is T-21 SCAFFOLD (zero declarations today) —
-//       no `affected_set` / `ReExecFrontier` symbol exists to consume
-//       yet, so the fold body is not authored (scaffold-header drift
-//       discipline: reference the seam, defer the body); the BOUNDARY
-//       is named/owned here NOW, only its body is deferred.
+//       scripts/detect-affected-components.sh). lens/affected_set.dag
+//       is T-21 SCAFFOLD (zero declarations today) — no `affected_set`
+//       / `ReExecFrontier` symbol exists to consume yet, so the
+//       selection body is not authored (scaffold-header drift
+//       discipline: reference the seam, defer the body). The
+//       well-formedness BOUNDARY is authored here now; only the
+//       affected-set SELECTION body is deferred.
 //       OWNER/TRIGGER: dissolves when lens/affected_set.dag (T-21) lands.
 //   (3) The executable per-job evaluation (running fmt/clippy/test jobs,
 //       structural cache restore/store keyed by `content_hash` B1) rides
@@ -245,6 +243,14 @@ module v4.workflow.ci
 
 
 import v4.std.node { Symbol }
+import v4.std.diagnostic {
+  Correction,
+  Diagnostic,
+  Extent,
+  Locus,
+  NoCorrectionReason,
+  Outcome
+}
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -282,28 +288,48 @@ type CiGate {
 // HONEST SCOPE OF THE C4 CLAIM above). Affected-set selection over
 // `jobs` is TRACKED SCAFFOLD (2).
 //
-// WELL-FORMEDNESS — fail-closed at the consume fold, NOT a type-level
-// invariant and deliberately NO eager predicate (INVARIANTS P2/P4; the
-// canonical node.dag `Diff` #3162 ratification, applied). Exactly as
-// `Diff` is "ANY `List<Edit>` is a valid rewrite program ... no
-// external well-formedness predicate exists to recover one (the prior
-// `diff_well_formed` shape was exactly the illegal-states-representable
-// anti-pattern); a non-resolving Path ⇒ a fail-closed Diagnostic at
-// apply time, NOT a type-level illegal state": ANY `jobs`/`gates`
-// lists are valid `CiPipeline` DATA. A missing `needs`/`job` target, a
-// duplicate job id, or a `needs` cycle is NOT a representable
-// type-level illegal state and there is deliberately NO
-// `ci_pipeline_well_formed` predicate (authoring one would re-introduce
-// the exact #3162 anti-pattern). These are fail-closed `Diagnostic`s at
-// the CONSUME boundary — the deferred `select_jobs` graph fold (TRACKED
-// SCAFFOLD (2)), the `apply_diff`-analogous all-or-nothing fold:
-// unresolved/duplicate/cyclic ⇒ the whole result is that one
-// Diagnostic (legitimate operational behavior). P4: that fold is
-// decidable — `Symbol`-set traversal with a visited set; a cycle
-// terminates as a fail-closed Diagnostic, never a non-terminating
-// walk. The boundary is therefore NAMED and OWNED now (not silently
-// deferred): it is `select_jobs` / lens/affected_set.dag (T-21), the
-// same single authority that traverses these `Symbol` edges.
+// WELL-FORMEDNESS — an EAGER fail-closed boundary, present NOW
+// (INVARIANTS P2/P4; still-hawk-102 operator adjudication 2026-05-17,
+// relayed via Lane B). #3162 (`Diff`) does NOT govern `CiPipeline`:
+// #3162's precondition is that the carrier has NO intrinsic
+// well-formedness (ANY `List<Edit>` is a valid rewrite program; the
+// only failure is genuinely apply-time). That precondition is FALSE
+// here — a job/gate DAG has INTRINSIC, statically-decidable
+// well-formedness (unique job ids, no `needs` cycle, resolving edge
+// references); a pipeline with two `build` jobs or an A→B→A cycle is
+// malformed INDEPENDENT of any consumer. Patterns do not auto-extend;
+// per-instance the precondition must hold and here it does not.
+// Applying #3162 here was itself the illegal-states-representable
+// anti-pattern (modeling-discipline Practice 2). The operator's
+// "structural OR fail-closed well-formedness boundary BEFORE consumers
+// land" rules out deferring this to `select_jobs` (a consumer).
+//
+// SHAPE (picked by feasibility, per the adjudication). PREFERRED was
+// structural (e.g. `jobs: Map<Symbol, CiJob>` so duplicate ids are
+// unrepresentable). INFEASIBLE here: v4's `Map<K,V>` (collection.dag)
+// is `{ lookup: fn(K) -> Witness<V> }` — LOOKUP-ONLY, NO key
+// enumeration — so a `Map` jobs field cannot be traversed for the
+// REQUIRED acyclicity / reference-resolution checks (those need the
+// full job set). So jobs/gates stay `List` (traversable via `fold`)
+// and well-formedness is the ACCEPTABLE eager fail-closed predicate
+// `ci_pipeline_well_formed : CiPipeline -> Outcome<CiPipeline>`
+// (below), covering all three intrinsic properties:
+//   - unique job ids — duplicate ⇒ `Rejected`. (Uniqueness as a
+//     CHECK-enforced invariant is itself a ratified v4 pattern: the
+//     node.dag `all_names_distinct` precedent, explicitly "CHECK-
+//     enforced, not type-unrepresentable", node.dag:513.)
+//   - reference resolution — every `CiJob.needs` symbol and every
+//     `CiGate.job` resolves to a declared job id, else `Rejected`.
+//   - acyclicity — no cycle in the `needs` graph, else `Rejected`.
+//     Decidable / terminating (INVARIANTS P4 / A2): Kahn-style sink
+//     elimination bounded by `count(jobs)` passes, expressed as a
+//     `fold` over the finite `jobs` list (A2 IMPLICIT — descent on a
+//     finite List, the node.dag fold idiom), never a non-terminating
+//     walk. NOT a #3162 exception (#3162 never governed this carrier).
+// This is the single well-formedness authority — like node.dag's
+// `node_well_formed`, it is authored NOW and consumed by the (still
+// deferred) `select_jobs`; the BOUNDARY is no longer deferred, only a
+// downstream consumer is.
 type CiPipeline {
   jobs: List<CiJob>
   gates: List<CiGate>
