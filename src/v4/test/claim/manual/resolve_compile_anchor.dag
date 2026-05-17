@@ -1,22 +1,10 @@
 // src/v4/test/claim/manual/resolve_compile_anchor.dag
 //
-// Scope: Tier-1 (compile-time) anchor for `compiler/03_resolve.dag` +
-//   `extdeps/languages/dag.dag` wave-1 `DagLanguageModel` + canonical `Set`
-//   wiring consumed by `resolve` / `resolve_atom` (DECISIONS §CP-1b items 1–2).
-//   Ratchets codex #13724 “no test/claim coverage” gap without pretending
-//   `v2-compiler run` executes these probes yet — see
-//   `test/v2_run_preflight/MOVE1_COVERAGE.txt` (deferred until T-22).
-//
-// Behavior pinned (when a claim runner exists): wave-1 void LM lists the
-// four `dag_c3_surface_sugar_*` identities in `canonical_symbols`; a lone
-// `Atom` carrying `dag_c3_surface_sugar_service` resolves via that set even
-// when no module binding row exists.
-//
-// Consumes:
-//   - compiler/03_resolve.dag
-//   - extdeps/languages/dag.dag
-//
-// Status: manual compile anchor — extend with `TestClaim` execution when T-22 lands.
+// Scope: Tier-1 v2-bootstrap compile anchor for `resolve` + wave-1 LM `canonical_symbols` (ledger: DECISIONS CP-1b item 10).
+// Owns: anchor_resolve_wave1_service_atom_via_canonical_symbols.
+// Consumes: compiler/03_resolve.dag, extdeps/languages/dag.dag, std/diagnostic.dag, std/node.dag.
+// Status: scaffold — compile-only until T-22; `v2 run` TestClaims per MOVE1_COVERAGE.txt.
+// Anchor: https://en.wikipedia.org/wiki/Name_resolution_(programming_languages)
 
 module v4.test.claim.manual.resolve_compile_anchor
 
