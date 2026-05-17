@@ -610,14 +610,17 @@ attached to the endpoint and consumed by effect/scheduling lenses.
 
 ## 8. C++ — `int` (implementation-defined primitive width)
 
-C++ `int` is a language primitive. Per the current standard (C++20,
-ISO/IEC 14882:2020, §[basic.fundamental]) its **signed value representation
-is fixed — two's complement**; only its **width** is implementation-defined
-(16+ bits; LP64 / ILP32 commonly pick 32). The model reads width from the
-target/ABI binding (T-29) and treats representation as a fixed *spec* fact,
-not an implementation-defined axis. (Pre-C++20, signed representation was
-itself implementation-defined — modeling that would require pinning an
-older edition; this example is anchored to C++20.)
+C++ `int` is a language primitive. Per **C++20** (ISO/IEC 14882:2020,
+§[basic.fundamental]) — the edition that **fixed** signed integer
+representation — its **signed value representation is two's complement**;
+only its **width** is implementation-defined (16+ bits; LP64 / ILP32
+commonly pick 32). That fixity carries forward unchanged to the current
+edition, C++23 (ISO/IEC 14882:2024). The model reads width from the
+target/ABI binding (T-29) and treats representation as a fixed *spec*
+fact, not an implementation-defined axis. (Pre-C++20, signed
+representation was itself implementation-defined — modeling that would
+require pinning an older edition; this example is anchored to C++20, the
+edition where the fact became fixed.)
 
 **Model:**
 
