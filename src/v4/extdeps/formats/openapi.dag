@@ -90,7 +90,10 @@ import v4.extdeps.formats.json_schema { JsonSchema }
 // (Paths Object) / `path_extensions` (Path Item Object) /
 // **`responses_object_extensions`** (Responses Object) / `operation_extensions` /
 // `info_extensions` / **`contact_extensions` (nested under `OpenApiContact`)** /
-// `root_extensions` as faithful `JsonValue` maps (M5).
+// **`root_specification_extensions`** (`^x-` on the OpenAPI Object) vs
+// **`root_deferred_members`** (undecomposed **fixed** root fields —
+// `servers` / `webhooks` / `security` / `tags` / `externalDocs` — as bounded
+// `JsonValue` wire, not mixed into the extension map) (M5 / P2).
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -446,11 +449,14 @@ type OpenApiComponentsSlot
 // ─────────────────────────────────────────────────────────────────────
 // OpenApiDocument — OpenAPI 3.1 root document (semantic carrier). **`paths`**
 // is **`OpenApiPathsSlot`** — wire **omit** vs **`OpenApiPathsPresent`** (incl.
-// **present-empty** Paths Object) per §3.1 / §4.8.1 / §4.8.8. `servers` /
-// `webhooks` / `security` / `tags` / `externalDocs` remain in
-// `root_extensions` as JSON until decomposed (🟡). `jsonSchemaDialect` is
-// modeled verbatim when present as a string (OAS 3.1 feature) — absence is
-// explicit.
+// **present-empty** Paths Object) per §3.1 / §4.8.1 / §4.8.8. Fixed root members
+// **`servers`**, **`webhooks`**, **`security`**, **`tags`**, **`externalDocs`**
+// that are not yet given typed carriers round-trip under **`root_deferred_members`**
+// as **`JsonValue`** (🟡 Deferred (1)) — **not** folded into
+// **`root_specification_extensions`**, which is reserved for **Specification
+// Extensions** (`^x-`) on the OpenAPI Object only (P2 single field authority).
+// `jsonSchemaDialect` is modeled verbatim when present as a string (OAS 3.1
+// feature) — absence is explicit.
 //
 // Anchor: https://spec.openapis.org/oas/v3.1.0#openapi-object
 //
@@ -461,7 +467,8 @@ type OpenApiDocument {
   info: OpenApiInfo,
   paths: OpenApiPathsSlot,
   components: OpenApiComponentsSlot,
-  root_extensions: Map<String, JsonValue>,
+  root_deferred_members: Map<String, JsonValue>,
+  root_specification_extensions: Map<String, JsonValue>,
 }
 
 
@@ -475,7 +482,7 @@ type OpenApiDocument {
 //   / `Outcome<String>` (seam #3). **Dissolution trigger:** std/text.dag
 //   lands + yaml/json parse operations land + operator pins reference
 //   substrate. Structural validation **includes** §3.1 **at-least-one-of**
-//   (`paths` present / `components` present / `webhooks` in `root_extensions`
+//   (`paths` present / `components` present / `webhooks` in `root_deferred_members`
 //   parse lane — exact `webhooks` decomposition 🟡) and `OpenApiResponses.by_status`
 //   map keys (three-digit status strings, `default`, and OAS wildcard buckets
 //   **`1XX`/`2XX`/`3XX`/`4XX`/`5XX`** — uppercase **`XX`** per spec, not
@@ -503,6 +510,7 @@ type OpenApiDocument {
 //     `identifier` at the carrier layer; JSON surface repair for malformed
 //     both-present objects is parse authority, not silent coercion here.
 //     **`contact_extensions`** / **`paths_extensions`** /
-//     **`responses_object_extensions`** keys are carried structurally —
+//     **`responses_object_extensions`** / **`root_specification_extensions`**
+//     keys are carried structurally —
 //     validation of extension-member shapes vs `^x-` patterns remains 🟡 with
 //     trigger (1).
