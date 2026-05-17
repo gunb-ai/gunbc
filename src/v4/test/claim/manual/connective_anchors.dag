@@ -11,10 +11,18 @@
 //        same Atom/Symbol gap — tracked in MOVE1_COVERAGE.txt, not papered
 //        over here.
 // Anchor: src/v4/TASKS.md T-14 + std/node.dag + std/verification.dag
+//
+// `TestgenTier` / `TestgenLayer` on each claim follow **THESIS / TESTING**
+// axes (`STRUCTURE.md` §248), not the **`AssertKind` prose shorthand** in
+// `verification.dag` (“Tier2 = Equals” names an assertion *form*, not
+// `TestgenTier::Tier2`). Structural connective anchors (incl. reflexive
+// **Equals** on the empty Conj stub) sit with the **Compiles** stubs:
+// **Tier1 + Unit** (compile-time / structural slice — same band as rows
+// (1–6) in `t19_manual_anchor_manifest.dag`).
 
 module v4.test.claim.manual.connective_anchors
 
-import v4.std.verification { TestClaim, Compiles, Equals, TestClassification, Tier1, Tier2, Unit }
+import v4.std.verification { TestClaim, Compiles, Equals, TestClassification, Tier1, Unit }
 import v4.std.diagnostic { Produced }
 import v4.std.node { Node, TypeNode, Conj, Disj, Arrow, Cardinality, Instantiation, Edge }
 
@@ -105,5 +113,5 @@ data claim_conj_equals_refl: TestClaim = TestClaim {
   label: "manual/connective: Equals reflexivity on empty Conj stub",
   input: stub_empty_conj,
   expected: Produced { value: stub_empty_conj },
-  classification: TestClassification { tier: Tier2, layer: Unit }
+  classification: TestClassification { tier: Tier1, layer: Unit }
 }
