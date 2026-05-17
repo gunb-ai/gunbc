@@ -114,9 +114,10 @@ src/v4/
 **Total: 68 .dag files + 5 docs + 5 .gitkeep = 78 files.** (Per invariant
 #1 the enumeration above — not the count — is authoritative; the count is
 a checksum, updated on every operator-ratified file addition/removal.
-+1 .dag 2026-05-17: `test/claim/manual/resolve_compile_anchor.dag` — compile-only
-resolve / wave-1 canonical-symbol contract anchor (codex #13724 / TESTING.md
-Tier-1 ratchet; `v2-compiler run` still deferred per MOVE1_COVERAGE.txt until T-22).
+**Reconciliation (2026-05-17, PR #3225 / review #13750):** the prior printed
+total (`65`) lagged the live tree at **67** `.dag` files — the line had not
+yet absorbed the 2026-05-16 `extdeps/languages/dag.dag` +1 (and other
+intervening operator-ratified edits). This PR lands **`test/claim/manual/resolve_compile_anchor.dag`** (+1) → **68**, matching `find src/v4 -name '*.dag'`.
 +1 .dag 2026-05-16: `extdeps/languages/dag.dag` — operator-ratified C1 closed-tree
 extension (Option A, relay merry-ibex-337). −5 .dag 2026-05-15: work-direction
 meta-layer cut, operator-ratified.)
