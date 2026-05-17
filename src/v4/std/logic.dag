@@ -15,10 +15,7 @@
 //   - std/node.dag: Disj
 //   - std/algebra.dag: BooleanAlgebra
 //
-// Status: T-3 logic modeled 2026-05-16 (still-fox-366). The I/O contract
-//   in this header is immutable for downstream workers. Splitting this
-//   file requires explicit operator ratification (substrate extension =
-//   stop signal).
+// Status: T-3 logic modeled 2026-05-16 (still-fox-366).
 
 
 module v4.std.logic

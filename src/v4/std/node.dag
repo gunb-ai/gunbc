@@ -281,10 +281,7 @@
 // Consumes:
 //   nothing — this is the substrate root
 //
-// Status: T-1 modeled 2026-05-15 (cool-boar-275). The I/O contract in
-// this header is immutable for downstream workers. Splitting this file
-// requires explicit operator ratification (substrate extension = stop
-// signal).
+// Status: T-1 modeled 2026-05-15 (cool-boar-275).
 
 
 module v4.std.node

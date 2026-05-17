@@ -60,9 +60,7 @@
 //
 // Status: T-3 modeled 2026-05-15 (smart-eagle-570); `reason` + `Locus`
 // revised per PR #3161 review (three BLOCKING findings — see modeling
-// notes). This header is the I/O contract downstream workers build to;
-// revising it is a modeling decision surfaced in review, not a
-// unilateral worker edit.
+// notes).
 
 
 module v4.std.diagnostic

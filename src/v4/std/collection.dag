@@ -130,9 +130,7 @@
 //
 // Status: T-3 Wave-A1 modeled 2026-05-16 (witty-dove-121); header
 // reconciled to operator-ratified b2 + Option A in the same round.
-// Wave-A2 Map<K,V> (PR #3187) after witness.dag merge. Splitting this
-// file requires explicit operator ratification (substrate extension =
-// stop signal).
+// Wave-A2 Map<K,V> (PR #3187) after witness.dag merge.
 
 
 module v4.std.collection
