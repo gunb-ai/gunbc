@@ -466,7 +466,7 @@ D2-reversal as ratified is therefore correct, not premature.
 
 ## T-4.7 — `extdeps/frameworks/react.dag` Practice 4 / INVARIANTS P1 receipts
 
-**Binding:** `docs/modeling-discipline.md` Practice 9 — coproduct **classification**, five-pattern **ledger**, and **YELLOW** triggers live in this file, not as multi-line prose in `react.dag`. The substrate carries **one** `// Anchor:` + **one** `// Practice-4: DECISIONS.md#…` cite per coproduct. **TASKS authority:** `src/v4/TASKS.md` T-4.7 (incl. `ReactNode` partial-slice posture).
+**Binding:** `docs/modeling-discipline.md` Practice 9 — coproduct **classification** (🟢 / 🟡 / N/A per carrier), five-pattern **ledger**, and named **triggers** live in this file, not as multi-line prose in `react.dag`. The substrate carries **one** `// Anchor:` + **one** `// Practice-4: DECISIONS.md#…` cite per coproduct. **TASKS authority:** `src/v4/TASKS.md` T-4.7 (incl. `ReactNode` partial-slice posture).
 
 ### react-p4-optref
 
@@ -526,17 +526,21 @@ Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-discipline.md §4) 
 
 ### react-p4-hook-site
 
-**Carrier:** `ReactHookSite`.
+**Carrier:** `ReactHookSite` in `src/v4/extdeps/frameworks/react.dag`.
 
-Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-discipline.md §4) — **🟢 GREEN (terminal).** Abbreviated five-pattern ledger:
+**Classification (home of record — design-r4 §12 + Phase‑1.5):** **🟡 YELLOW (scaffold / deferred-on-custom-promotion).** Per `docs/design-r4-phase-1-5-hookkind-custom-react-substrate-canvas.md` §2.1, **`ReactHookSite` including `CustomHook` stays 🟡** until operator-ratified promotion — the Phase‑1.5 canvas names **how** `CustomHook` may gain fields without parallel lifecycle sums and **explicitly does not** “close” the carrier to 🟢. **Dissolution** still flows through semver / hooks-index substrate edits and/or extending `CustomHook` in the **same PR** as consumer proof (see that canvas §3).
+
+**Practice 4 / INVARIANTS P1 — five-pattern ledger (abbreviated):** why the react.dev **Hooks-index built-in arms** are not cheaply **🔴 RED**-dissolvable here; **not** a second authority that overrides §12 **🟡** on the **whole** sum:
 
 1. Fact placement — FAILS: roster is the shared substrate discriminant for hook consumers.
-2. Variant-is-data — FAILS: each arm carries a distinct per-API record (not one tag×payload).
+2. Variant-is-data — FAILS: each **built-in** arm carries a distinct per-API record (not one tag×payload).
 3. Algebraic form — N/A: built-in hooks are not copies of std/algebra intro forms here.
-4. Dimensional — FAILS: exactly one hook API (or CustomHook) per modeled call site.
+4. Dimensional — FAILS: exactly one hook API (or `CustomHook`) per modeled call site.
 5. Parameterized family — FAILS: heterogeneous payloads — not one F<HookId> projection.
 
-**Terminal:** closed react.dev Hooks index + CustomHook (T-4.7); `use` API → `ReactUseCallSite`.
+**Pinned slice:** **18** react.dev **Hooks**-index `use*` arms + boundary **`CustomHook { implementation_ref }`** (= **19** `ReactHookSite` arms, T‑4.7). The **`use(resource)`** API is **`ReactUseCallSite`**, not folded into `ReactHookSite` (react.dev: **use** is not a Hook).
+
+**Why the whole `Disj` remains 🟡:** `CustomHook` is **opaque** at this layer by default (canvas §2); §12 binds the **entire** coproduct until promotion closes the custom boundary.
 
 ### react-p4-use-call-site
 

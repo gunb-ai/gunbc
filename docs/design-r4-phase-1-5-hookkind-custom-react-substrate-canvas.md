@@ -16,6 +16,8 @@ Treat **every** custom hook call site as **opaque at this layer**: only `impleme
 
 `ReactHookSite` (including `CustomHook`) remains **🟡 YELLOW** Practice‑4 per `docs/design-r4-full-stack-omni-emission-canvas.md` §12 — this Phase‑1.5 canvas **does not** “close” that carrier to 🟢. It only ratifies **how** `CustomHook` may gain fields **without** parallel lifecycle sums. **Dissolution** of the built‑in roster + Custom boundary still requires the **semver / hooks‑index** edit path on the substrate PR.
 
+**Single authority with Practice 9:** the abbreviated five-pattern dissolution **ledger** for the pinned Hooks-index call-shape substrate lives in **`src/v4/DECISIONS.md` §T-4.7 (`react-p4-hook-site`)** — that entry is **aligned** with this paragraph (whole `ReactHookSite` sum **🟡** per §12); it records dissolution *attempts* on the built-in slice and **does not** assert a 🟢 terminal closure that contradicts §12 or this canvas.
+
 ## 3. Promotion trigger (Practice‑4)
 
 If a **concrete** emit or lens pipeline needs to branch on structural classes of custom hooks **before** lowering to `Node`, open a follow‑up that **extends** the `CustomHook` arm with additional fields (or a nested coproduct owned in this same file) in the **same PR** as the consumer proof — never a parallel `CustomHookEffect` / lifecycle sum. Effect **lifecycle** facts remain on the three effect built‑in arms only (`UseEffect` / `UseLayoutEffect` / `UseInsertionEffect` payload shape per design‑r4 §4).
