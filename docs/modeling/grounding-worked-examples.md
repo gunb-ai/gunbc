@@ -23,17 +23,42 @@ coerce : A -> Outcome<B>
 `Produced` carries the coerced value; `Rejected` carries a `Diagnostic` —
 a **named, located** failure (it has a `Locus`), never a silent drop.
 
-**Design status — read this.** The intent is that a coercion is *derived*
-by comparing the two groundings, not hand-authored. That deriver —
-`derive_coercion(groundingA, groundingB) -> Outcome<Coercion>` — is
-**Phase-1/2 design, not built substrate**: `node.dag` today has only the
-content-hash fold (`merkle_fold ∘ canonical`); no grounding-comparison
-mechanism exists yet. This doc shows the *shape* a derived coercion must
-have; it does **not** claim the deriver is built.
+**How a coercion is derived — read this.** A coercion is *derived* by
+comparing two groundings, not hand-authored. The deriver is a **mechanical
+zip-fold** (a catamorphism): it walks both groundings in parallel — `List`
+against `List` recurses, `Conj` against `Conj` compares field-wise, leaves
+compare directly. It is not an *engine* — per `DECISIONS.md` U1 it makes
+no decisions and runs no search.
+
+**Coincidence is mechanical structural equality.** Two groundings
+*coincide* when their canonical `Node` forms are equal — which `node.dag`
+already decides: `content_hash = merkle_fold ∘ canonical` (B1-CANON).
+Comparing groundings *is* comparing content-hashes of canonical `Node`s;
+decidable, not free-form semantic equivalence.
+
+**The shared vocabulary keeps the fold mechanical.** Facts are *sourced*
+independently — each type grounded from *its own* spec — but must be
+*expressed* in one shared vocabulary: the `std/` primitives, authority
+`std/algebra.dag`. Were `RustI32` and `Int32` grounded in different
+vocabulary (`bit_count` vs `width`), their `Node` trees would differ
+*structurally* though they mean the same — and the mechanical compare
+would wrongly say "not equal." Shared vocabulary is load-bearing: it is
+what makes the fold both mechanical *and* complete.
+
+**Design status.** The hard half already exists: `node.dag` has the
+canonical-form fold + content-hash, and `DECISIONS.md` T-9/C1 specifies
+the comparison as *decidable by construction* (structural recursion over
+the closed declared candidate set). What is not yet wired is the parallel
+walk — mechanical, not research. The genuine hard work is the **modeling
+discipline**: forcing every spec fact into the shared vocabulary so the
+fold can see identity — Phase 1's job. One compile-time residue stays
+deferred: refinement subsumption (`p ⟹ q`) is not a pure tree-walk and
+fail-closes (substrate T-25).
 
 This is *not* the reversed D2 alias. D2 *asserted* `type RustI32 = Int32`.
-Here every type is grounded independently from its own spec; any identity
-is a *claim to be discharged* by comparing groundings, never an assertion.
+Here every type is grounded from its own spec and expressed in the shared
+std vocabulary; any identity is a *claim discharged by the fold*, never an
+assertion.
 
 ## What the "IR" is — it is `Node`
 
@@ -238,7 +263,7 @@ MachineWidth<Word32>>` (§B — the substrate's fixed-width discipline,
 **Step-by-step coercion shape — `RustArray<RustI32, 3> -> Outcome<IR List<Int32>>`:**
 1. groundings: `List<Compose<Int,MachineWidth<Word32>>>` plus
    `Witness(length = 3)` on the Rust side; `List<Int32>` on the IR side.
-2. Phase-1/2 `derive_coercion` design compares outer `List` vs `List`,
+2. the coercion fold compares outer `List` vs `List`,
    then recurses into the element grounding.
 3. element `grounding(RustI32)` vs `grounding(Int32)` → coincide.
 4. coincident element groundings return `Produced { value: IR List<Int32> }`;
@@ -305,7 +330,7 @@ richer. `Bool` is exactly the `{Zero, One}` sub-part of `VBit`.
 1. IR `Int32` grounds to `Compose<Int, MachineWidth<Word32>>` (the
    fixed-width integer discipline from §B); `VReg32` grounds to `32×VBit`
    (4-valued).
-2. Phase-1/2 `derive_coercion` design compares element-wise:
+2. the coercion fold compares element-wise:
    `Bool` vs `VBit` — `Bool ⊊ VBit`.
 3. `IR Int32 -> Outcome<VReg32>` is total over this relation: every
    `Bool` embeds as `Zero` or `One`, so the result is `Produced`.
@@ -349,7 +374,7 @@ exact mathematical continuum is therefore a named fail-closed gap:
 1. `SpiceApproxVoltage` grounds to
    `ApproximateField<FieldOfFractions<Int>>` plus `Volt`; `f64` grounds to
    IEEE-754 binary64 (`dsl/std/float.dag` / `src/v4/std/float.dag`).
-2. Phase-1/2 `derive_coercion` design compares two approximate-field
+2. the coercion fold compares two approximate-field
    carriers with different width/policy facts — related but not identical.
 3. finite `f64 -> Outcome<SpiceApproxVoltage>` returns `Produced` only when
    the approximation policy is explicitly accepted and recorded.
@@ -501,7 +526,7 @@ type GoChan<T> = Conj {
 
 **Step-by-step coercion shape — `GoChan<int32> -> Outcome<IR Stream<Int32>>`:**
 1. `chan int32` grounds to endpoint facts plus `grounding(int32)`.
-2. Phase-1/2 `derive_coercion` design compares endpoint vs endpoint,
+2. the coercion fold compares endpoint vs endpoint,
    then recurses into the element grounding.
 3. `int32` vs `Int32` coincide when both decode as 32-bit two's-complement.
 4. matching payload plus direction/capacity facts return `Produced`.
@@ -536,7 +561,7 @@ type CppInt = Compose<Int, CppImplementationInt {
 **Step-by-step coercion shape — `CppInt -> Outcome<IR Int>`:**
 1. `CppInt` grounds to `Int` plus implementation facts: width,
    signedness/range, and representation.
-2. Phase-1/2 `derive_coercion` design compares the abstract integer value to
+2. the coercion fold compares the abstract integer value to
    IR `Int`; the implementation facts stay attached as target facts.
 3. `CppInt -> Outcome<IR Int>` returns `Produced` because every inhabited
    C++ `int` denotes an integer value.
@@ -575,7 +600,7 @@ type TsNumberOrString = StructuralUnion {
    grounds to a sequence of UTF-16 code units, including possible ill-formed
    surrogate subsequences.
 2. IR alternatives ground independently: `Float64`, `String`.
-3. Phase-1/2 `derive_coercion` design first uses the disjoint primitive
+3. the coercion fold first uses the disjoint primitive
    membership witness to choose the arm, then compares that arm's grounding.
 4. `number` to `Float64` returns `Produced`. `string` to IR `String`
    returns `Produced` only if the IR string model is UTF-16-code-unit-shaped
@@ -611,7 +636,7 @@ type LlvmSsaValue<T> = Conj {
 1. LLVM `i32` grounds to 32 bits interpreted by the consuming operation.
 2. an integer operation such as `add i32` supplies two's-complement integer
    meaning for the same 32 bits.
-3. Phase-1/2 `derive_coercion` design compares the use-site integer meaning
+3. the coercion fold compares the use-site integer meaning
    to IR `Int32`.
 4. when the consuming operation fixes integer meaning, return `Produced`;
    without that use-site meaning, raw `i32` is only a bit-vector, so return
@@ -643,7 +668,7 @@ type PtxPredicate = Conj {
 **Step-by-step coercion shape — `PtxPredicate -> Outcome<IR List<Bool>>`:**
 1. predicate grounds to `{ lanes: List<Bool>, active_mask: List<Bool> }`.
 2. IR `List<Bool>` grounds only to lane truth values.
-3. Phase-1/2 `derive_coercion` design finds related but non-identical
+3. the coercion fold finds related but non-identical
    groundings: the mask coordinate exists in PTX but not in the plain list.
 4. PTX to plain list returns `Produced` only if an explicit accepted-loss
    policy drops the mask, or if the IR target also carries it. Plain list to
@@ -676,7 +701,7 @@ type DagArrow = Conj {
 
 **Step-by-step coercion shape — `DagArrow<Int32 -> Int32> -> Outcome<IR FunctionType>`:**
 1. params and result ground as type nodes in the shared substrate.
-2. Phase-1/2 `derive_coercion` design matches `Arrow` against function type
+2. the coercion fold matches `Arrow` against function type
    structure.
 3. parameter/result types recurse; `Int32` coincides with itself.
 4. the signature comparison returns `Produced`; body coercion is not a type
@@ -707,7 +732,7 @@ type JsonObject = Map<String, JsonValue>
 **Step-by-step coercion shape — `JsonObject -> Outcome<IR { name: String, age: Nat }>`:**
 1. JSON object grounds to `Map<String, JsonValue>`.
 2. IR record grounds to a closed `Conj` with required fields.
-3. Phase-1/2 `derive_coercion` design compares map entries to field
+3. the coercion fold compares map entries to field
    coordinates by key.
 4. every required key plus recursively produced values return `Produced`.
    Missing keys, duplicate keys, or non-natural `age` return
@@ -770,7 +795,7 @@ type CsvRow<S> = Conj {
 
 **Step-by-step coercion shape — `CsvRow<S> -> Outcome<IR { id: Nat, name: String }>`:**
 1. row grounds to `List<String>`; schema grounds to field names and decoders.
-2. Phase-1/2 `derive_coercion` design aligns positions to record coordinates
+2. the coercion fold aligns positions to record coordinates
    through the schema.
 3. `id` string decodes through `Nat` grammar; `name` remains string.
 4. matching arity plus successful decoders return `Produced`; extra, missing,
@@ -799,7 +824,7 @@ type TomlTable = Map<KeyPath, TomlValue>
 **Step-by-step coercion shape — `TomlTable -> Outcome<IR ConfigRecord>`:**
 1. table grounds to a map of key paths to closed value variants.
 2. IR config grounds to record coordinates with expected types.
-3. Phase-1/2 `derive_coercion` design aligns dotted key paths to nested
+3. the coercion fold aligns dotted key paths to nested
    record fields.
 4. existing required paths plus recursively produced TOML variants return
    `Produced`; duplicate paths, conflicting table/value paths, and missing
@@ -832,7 +857,7 @@ type JsonSchemaObject = Conj {
 1. schema grounds to constraints: allowed JSON kind, property schemas, required
    property names.
 2. IR record type grounds to required coordinates and their value groundings.
-3. Phase-1/2 `derive_coercion` design compares required properties to record
+3. the coercion fold compares required properties to record
    fields and recurses into property schemas.
 4. the closed fragment whose constraints exactly determine the record shape
    returns `Produced`; open `additionalProperties` or unconstrained fields
@@ -869,7 +894,7 @@ type OpenApiOperation = Conj {
 1. method/path ground to HTTP target facts; parameters ground through location
    facts (`path`, `query`, `header`, `cookie`).
 2. request and response schemas ground through their JSON Schema meanings.
-3. Phase-1/2 `derive_coercion` design compares the request side to the IR
+3. the coercion fold compares the request side to the IR
    arrow input record and the response map to the IR result sum.
 4. every parameter/body/response schema grounding to the corresponding IR type
    returns `Produced`; missing status cases or ungrounded schemas return
