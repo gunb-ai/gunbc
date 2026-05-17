@@ -1,6 +1,6 @@
 // src/v4/extdeps/formats/openapi.dag
-// Scope: OpenAPI 3.1.0 (https://spec.openapis.org/oas/v3.1.0) document model (OAS slice); Responses: non-empty via `first_key`/`first_response` plus `additional_by_status` `Map` (OAS ≥1 code; tail keys Map-unique per std/collection.dag; `first_key` vs tail overlap parse-normalized T-4 brief); Paths Object keys `/`-prefixed via `OpenApiPathTemplateKey` (wire `"/" ++ after_slash`; path suffix lexical + `{param}` template canonicalization beyond that prefix operator-pending — dissolves: operator ruling + substrate per T-4 brief); `root_deferred_members` / object `*_deferred_members` use closed key sums excluding modeled fixed fields; `*_specification_extensions` use `OpenApiSpecificationExtensionKey` (`x-` + vendor_suffix); Response `headers`/`links` values are Header|Reference / Link|Reference carriers; `$ref` via `OpenApiReferenceObject`.
-// Owns: OpenApiComponents, OpenApiComponentsDeferredKey, OpenApiComponentsSchemasSlot, OpenApiComponentsSlot, OpenApiContact, OpenApiContactSlot, OpenApiDocument, OpenApiDocumentRoot, OpenApiHeaderDeferredKey, OpenApiHeaderObject, OpenApiHeaderOrReference, OpenApiHeaderRequiredSlot, OpenApiHeaderSchemaSlot, OpenApiHeadersSlot, OpenApiHttpMethod, OpenApiInfo, OpenApiLicense, OpenApiLicenseSlot, OpenApiLicenseUrlOrIdentifierSlot, OpenApiLinkDeferredKey, OpenApiLinkObject, OpenApiLinkOrReference, OpenApiMediaType, OpenApiMediaTypeDeferredKey, OpenApiMediaTypeSchemaSlot, OpenApiOpenapiField3_1, OpenApiOpenapiObjectDeferredKey, OpenApiOperation, OpenApiOperationDeferredKey, OpenApiOptionalString, OpenApiPathItem, OpenApiPathItemDeferredKey, OpenApiPathTemplateKey, OpenApiPaths, OpenApiPathsSlot, OpenApiReferenceObject, OpenApiResponse, OpenApiResponseContentSlot, OpenApiResponseKey, OpenApiResponseKeyWildcardKind, OpenApiResponseOrReference, OpenApiResponses, OpenApiSchema, OpenApiSpecificationExtensionKey, OpenApiStatusDigit, OpenApiStatusHundreds, OpenApiWebhooks
+// Scope: OpenAPI 3.1.0 (https://spec.openapis.org/oas/v3.1.0) document model (OAS slice); OpenAPI Object root: coordinate `paths`/`components`/`webhooks` `*Slot`s (OAS ≥1 channel Present — parse/Diagnostic T-4 brief); Responses: non-empty via `first_key`/`first_response` plus `additional_by_status` `Map` (OAS ≥1 code; tail keys Map-unique per std/collection.dag; `first_key` vs tail overlap parse-normalized T-4 brief); Paths Object keys `/`-prefixed via `OpenApiPathTemplateKey` (wire `"/" ++ after_slash`; path suffix lexical + `{param}` template canonicalization beyond that prefix operator-pending — dissolves: operator ruling + substrate per T-4 brief); `root_deferred_members` / object `*_deferred_members` use closed key sums excluding modeled fixed fields; `*_specification_extensions` use `OpenApiSpecificationExtensionKey` (`x-` + vendor_suffix); Response `headers`/`links` values are Header|Reference / Link|Reference carriers; `$ref` via `OpenApiReferenceObject`.
+// Owns: OpenApiComponents, OpenApiComponentsDeferredKey, OpenApiComponentsSchemasSlot, OpenApiComponentsSlot, OpenApiContact, OpenApiContactSlot, OpenApiDocument, OpenApiDocumentRoot, OpenApiHeaderDeferredKey, OpenApiHeaderObject, OpenApiHeaderOrReference, OpenApiHeaderRequiredSlot, OpenApiHeaderSchemaSlot, OpenApiHeadersSlot, OpenApiHttpMethod, OpenApiInfo, OpenApiLicense, OpenApiLicenseSlot, OpenApiLicenseUrlOrIdentifierSlot, OpenApiLinkDeferredKey, OpenApiLinkObject, OpenApiLinkOrReference, OpenApiMediaType, OpenApiMediaTypeDeferredKey, OpenApiMediaTypeSchemaSlot, OpenApiOpenapiField3_1, OpenApiOpenapiObjectDeferredKey, OpenApiOperation, OpenApiOperationDeferredKey, OpenApiOptionalString, OpenApiPathItem, OpenApiPathItemDeferredKey, OpenApiPathTemplateKey, OpenApiPaths, OpenApiPathsSlot, OpenApiReferenceObject, OpenApiResponse, OpenApiResponseContentSlot, OpenApiResponseKey, OpenApiResponseKeyWildcardKind, OpenApiResponseOrReference, OpenApiResponses, OpenApiSchema, OpenApiSpecificationExtensionKey, OpenApiStatusDigit, OpenApiStatusHundreds, OpenApiWebhooks, OpenApiWebhooksSlot
 // Consumes: std/node.dag, std/diagnostic.dag, std/collection.dag, extdeps/formats/json_schema.dag, extdeps/formats/json.dag, extdeps/formats/yaml.dag
 // Status: scaffold — TASKS.md T-4.6
 
@@ -325,14 +325,16 @@ type OpenApiWebhooks {
 }
 
 
-type OpenApiDocumentRoot
-  = OpenApiRootPathsOnly { paths: OpenApiPaths }
-  | OpenApiRootComponentsOnly { components: OpenApiComponents }
-  | OpenApiRootWebhooksOnly { webhooks: OpenApiWebhooks }
-  | OpenApiRootPathsComponents { paths: OpenApiPaths, components: OpenApiComponents }
-  | OpenApiRootPathsWebhooks { paths: OpenApiPaths, webhooks: OpenApiWebhooks }
-  | OpenApiRootComponentsWebhooks { components: OpenApiComponents, webhooks: OpenApiWebhooks }
-  | OpenApiRootPathsComponentsWebhooks { paths: OpenApiPaths, components: OpenApiComponents, webhooks: OpenApiWebhooks }
+type OpenApiWebhooksSlot
+  = OpenApiWebhooksPresent { webhooks: OpenApiWebhooks }
+  | OpenApiWebhooksAbsent
+
+
+type OpenApiDocumentRoot {
+  paths: OpenApiPathsSlot,
+  components: OpenApiComponentsSlot,
+  webhooks: OpenApiWebhooksSlot,
+}
 
 
 type OpenApiOpenapiField3_1
