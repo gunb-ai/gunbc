@@ -127,22 +127,9 @@ type OpenApiLicenseSlot
   | OpenApiLicenseAbsent
 
 
-// ─────────────────────────────────────────────────────────────────────
-// OpenApiInfo — OAS 3.1.0 Info Object: required `title` + `version`, optional
-// `summary` / `description` / `termsOfService`, optional nested `contact`
-// (with its own **`contact_extensions`**) / `license`, plus **`info_specification_extensions`**
-// for **Specification Extensions** (`^x-`) only on the Info Object (M5 / P2).
-// **Every** OAS **3.1.0** fixed Info Object member at this anchor is already modeled
-// in the fields above — there is **no** remaining honest “deferred fixed-field” map
-// here; **unknown non-`^x-` top-level keys** at this pin are **`Rejected`** under
-// **`openapi_parse`** (Deferred (1)), not admitted as silent wire (P1 fail-closed).
-// Future normative OpenAPI revisions extend this carrier under an **explicit** C5
-// anchor migration (🟡 Deferred (2)), not via an unbounded non-extension overflow
-// map on the **3.1.0**-pinned type.
-//
+// OpenApiInfo — Info Object (OAS 3.1.0 fixed fields + `info_specification_extensions` `^x-` only); unknown non-`^x-` keys → `Rejected` at parse (Deferred (1)); C5 migration for future normative fields (Deferred (2)).
 // Anchor: https://spec.openapis.org/oas/v3.1.0#info-object
-//
-// Coproduct dissolution (Practice 4) — N/A (`Conj` record).
+// Practice 4: N/A (Conj).
 type OpenApiInfo {
   title: String,
   summary: OpenApiOptionalString,
