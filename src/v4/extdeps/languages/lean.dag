@@ -1,60 +1,21 @@
 // src/v4/extdeps/languages/lean.dag
 //
-// Scope: Lean 4 model — direction-agnostic language spec. The PROOF-1
-//        prover target: gunbc's structural evidence (A2 termination
-//        descent, the U1 algebra-homomorphism chain, cost, effects) is
-//        EMITTED as a Lean proof term; Lean's small independently-
-//        audited KERNEL checks it (the external trust-discharge for A3).
-// Anchor: Lean 4 — the versioned upstream language reference
-//         (https://leanprover.github.io/lean4/doc/ ; def / theorem /
-//         inductive / termination_by / decreasing_by). The spec is the
-//         fidelity authority the worker models against. Per L-2 the
-//         SPEC is modeled, NOT Mathlib/the library — a Lean library is
-//         just a program in the modeled language = `Node`.
-// Why (B-2, side-session 2026-05-15 — operator-ratified): PROOF-1
-//   (#3158, merged) framed the capability "no new file" and deferred
-//   its prover model to "realized when a lean/coq model lands". THIS
-//   is that model. B2-OMNI structurally REQUIRES a LanguageModel file
-//   to emit to any target, so PROOF-1's "emit to a lean model" needs
-//   exactly this file; adding it is the closed-tree extension the
-//   operator ratified (STRUCTURE.md invariant #1). ONE prover first —
-//   Lean — scoped to the first theorem class: TERMINATION (A2
-//   structural descent ≈ Lean well-founded recursion /
-//   `termination_by`/`decreasing_by`). Coq is the DEFERRED
-//   second-prover falsification probe ("does the model generalize
-//   across provers?") — O(1) per B2-OMNI, added only when a theorem
-//   class needs it, same probe posture as L-1/L-3; a future
-//   operator-ratified extension, never a silent TODO.
+// Scope: Lean 4 language model for PROOF-1 termination export. Lean checks
+//        emitted proof terms; this file does not model proof search.
+// Anchor: Lean 4.20.0 Reference Manual:
+//         https://lean-lang.org/doc/reference/4.20.0/
 //
 // Owns:
-//   - Lean 4 grammar (def / theorem / inductive / structure /
-//     termination_by / decreasing_by / by-tactic blocks) as
-//     declarative production DATA (B2-OMNI generic walker, not
-//     per-language procedural code)
-//   - the proof-term EMIT direction for PROOF-1: a gunbc evidence
-//     `Node` → a Lean term the Lean kernel checks. EXPORT only — the
-//     prover kernel-checks, NEVER searches (no-engine + A2 "checker
-//     not discoverer"); ungroundable evidence ⇒ fail-closed Diagnostic
-//     (inherits gunbc's honesty boundary, never papered over)
-//   - first theorem class: termination (A2 DescentEvidence → Lean
-//     well-founded recursion). Algebra-law (L7) / cost classes are
-//     LATER compositions over the same one U1 carrier, not new
-//     subsystems
-//   - per-feature C5-fidelity disposition in-model (L-2): proof-
-//     irrelevant surface is Declared-normalized, never silently lost
+//   - Lean declaration / term / termination carriers for the first
+//     PROOF-1 theorem class.
+//   - Lean C5 fidelity disposition data.
 //
 // Consumes:
-//   - std/node.dag, std/algebra.dag (the U1 homomorphism evidence
-//     PROOF-1 exports), std/diagnostic.dag (the fail-closed boundary)
-//   - cross-ref: DECISIONS.md PROOF-1 (A3 trust-discharge, merged
-//     #3158) + L-4 + STRUCTURE.md §7 + L-2 + B2-OMNI
+//   - std/node.dag name-reference discipline.
+//   - std/integer.dag, std/nat.dag, std/logic.dag primitive carriers.
 //
-// Status: scaffold — fill per TASKS.md PROOF-1 (T-15). Coq is NOT in
-// the file tree (deferred second-prover probe — a future
-// operator-ratified extension, never a silent TODO).
-// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the
-// immutable contract for the worker. Splitting this file requires
-// explicit operator ratification (substrate extension = stop signal).
+// Scope-negative: Mathlib, Coq, SMT-LIB, Lake metadata, editor UX, and
+// general proof search are out of scope.
 
 module v4.extdeps.languages.lean
 
@@ -71,35 +32,6 @@ import v4.std.collection { List }
 import v4.std.logic { Bool }
 import v4.std.nat { Nat }
 import v4.std.node { Symbol }
-
-
-// ─────────────────────────────────────────────────────────────────────
-// Modeling notes
-//
-// SPEC, NOT MATHLIB (L-2). The carriers below model Lean 4's language
-// surface and kernel-checkable proof artifacts: declarations, terms,
-// inductives, theorem/proof boundaries, and termination clauses. Mathlib
-// declarations are ordinary programs in the modeled language, not
-// extdeps vocabulary.
-//
-// CHECKER, NOT SEARCH ENGINE. PROOF-1 exports gunbc evidence to Lean
-// terms; Lean checks those terms. This file does not model tactic search
-// as an engine and does not add a theorem-prover subsystem. A tactic
-// block that cannot be represented as a kernel-checkable term is outside
-// F and must fail closed at the B2-OMNI boundary.
-//
-// D2 RESOLVER SHAPE. Lean primitive aliases below are D2a(1)
-// alias-identity rows to std/ carriers. Algebra inhabitance remains owned
-// by std/integer.dag / std/nat.dag / std/logic.dag. D2a(2) grounding-map
-// rows are deferred until the shared `GroundingMap` home is pinned. D2a(3)
-// operation-semantics rows are Lean-specific only where the spec supplies
-// a fact distinct from the std carrier, such as proof irrelevance,
-// reduction/checking mode, or theorem export normalization.
-//
-// SCOPE NEGATIVE. This file is the Lean LanguageModel/prover target for
-// the first theorem class, termination. It does not model Coq, SMT-LIB,
-// Mathlib APIs, Lake package metadata, editor elaborator UX, or a general
-// proof search strategy.
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -423,11 +355,7 @@ fn lean_feature_disposition(f: LeanFidelityFeature) -> LeanFidelityDisposition {
 
 
 // ─────────────────────────────────────────────────────────────────────
-// D2a(3) Lean operation/proof-checking semantics. These are genuine Lean
-// resolver facts; they are not algebra-inhabitance rows. The checker facts
-// are simultaneous coordinates, not alternatives: Lean can have
-// definitional reduction, opaque boundaries, and proof irrelevance in the
-// same proof-checking environment.
+// Lean operation/proof-checking semantics.
 // Anchor: Lean 4.20.0 Reference Manual, reduction and opaque constants:
 // https://lean-lang.org/doc/reference/4.20.0/
 type LeanProofCheckSemantics<IRCarrier> {
@@ -438,9 +366,7 @@ type LeanProofCheckSemantics<IRCarrier> {
 
 
 // ─────────────────────────────────────────────────────────────────────
-// D2a(1) alias-identity rows. These are Lean's language-level primitive
-// names resolved to existing std/ carriers; the algebra flows through
-// std/, not through this file.
+// Lean primitive aliases.
 // Anchor: Lean 4.20.0 Reference Manual, built-in propositions and numeric
 // types; fixed-precision integers:
 // https://lean-lang.org/doc/reference/4.20.0/Basic-Types/Fixed-Precision-Integers/
@@ -454,14 +380,6 @@ type LeanUInt32 = UInt32
 type LeanUInt64 = UInt64
 
 
-// 🟡 TRACKED-SCAFFOLD — D2a(2) grounding maps and D2a(3) data rows.
-//
-// D2a(2): `data lean_bool_grounding: GroundingMap<LeanBool> = ...` and
-// peers are deferred until the shared `GroundingMap` type has a single
-// pinned home. This file must not declare `GroundingMap` locally.
-//
-// D2a(3): top-level data rows selecting `LeanProofCheckSemantics` for
-// specific exported primitives / theorem artifacts are deferred until the
-// shared operation-realization path can validate those rows uniformly.
-// The carrier shape above is canonical; individual rows belong to the
-// Lean LanguageModel resolver data, not to std/algebra.dag.
+// 🟡 TRACKED-SCAFFOLD — grounding maps and operation rows.
+// Trigger: shared GroundingMap home + shared operation-realization row
+// validation path land.

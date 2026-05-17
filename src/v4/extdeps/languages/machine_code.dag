@@ -1,53 +1,20 @@
 // src/v4/extdeps/languages/machine_code.dag
 //
-// Scope: machine code model — direction-agnostic, the BOTTOM of the
-//        abstraction stack. emit: Node -> encoded instructions; ingest:
-//        bytes -> Node (disassembly). PARAMETERIZED BY AN ISA model:
-//        one machine_code model, the ISA is the parameter, exactly as
-//        `LanguageModel` parameterizes the B2-OMNI boundary
-//        (fractal/consistent; O(N+M), not one file per ISA).
-// Anchor: the ISA specification is the (parameterized) versioned fidelity
-//         authority (L-2) — Intel 64 & IA-32 Architectures SDM /
-//         Arm Architecture Reference Manual (Arm ARM); pin a revision.
-// Stress (T-4.13 — a B2-OMNI falsification probe): the extreme of every
-//   boundary. (a) No cosmetic surface at all — F is purely instruction
-//   encoding; the strongest test that C5-fidelity holds at the limit.
-//   (b) Disassembly is ingest-is-harder taken to the extreme: MOST byte
-//   sequences are not valid/meaningful instructions → the fail-closed
-//   boundary is enormous. A disassembler that "guesses" is the no-engine
-//   violation made visible — this probe forces fail-closed honesty.
-// Clear win: `.dag → machine code` (we don't *necessarily* output a
-//   binary — we CAN), and `bytes → Node` disassembly, both via one
-//   ISA-parameterized model.
-//
-// Shape (operator-ratified L-3): ONE `machine_code.dag` parameterized by
-//   an `Isa` model. Per-ISA files (`x86_64.dag`, `arm64.dag`, …) would
-//   reintroduce the N×M trap B2-OMNI forbids.
+// Scope: machine-code language model parameterized by `Isa`. One file
+//        models the common boundary; per-ISA files are out of scope.
+// Anchor: Intel 64 & IA-32 Architectures Software Developer's Manual
+//         2025 edition; Arm ARM 2025-03; RISC-V Unprivileged ISA 20240411.
 //
 // Owns:
-//   - machine_code grammar parameterized by `Isa` (declarative,
-//     bidirectional): instruction encoding/decoding, registers, operands
-//   - disassembly ingest is fail-closed: a byte run that does not decode
-//     to a valid instruction is a Diagnostic, NEVER a fabricated/"best
-//     effort" instruction (no-engine, C5)
-//   - Cost realization: per-instruction cost on the parameterized ISA
+//   - ISA-family, instruction, register, operand, and C5 boundary carriers.
+//   - machine-code-specific operation-semantics carriers.
 //
 // Consumes:
-//   - std/node.dag: Node pivot + behavior substrate
-//   - std/diagnostic.dag: fail-closed ingest/disassembly diagnostics
-//   - std/machine.dag: Byte, Word*, MachineWidth, PointerWidth
-//   - extdeps/languages/* canonical LanguageModel shape from T-4
+//   - std/machine.dag `Byte`.
+//   - std/integer.dag fixed-width integer carriers.
 //
-// Prerequisite correction (T-4.13): this file is NOT fillable after T-1
-// alone. The worker must wait for std/machine.dag (T-3 scalar/numeric
-// stack: logic + nat -> machine) and T-4's canonical LanguageModel-as-data
-// shape. Do not invent local Byte/Word carriers or a private language model
-// schema here.
-//
-// Status: scaffold — fill per TASKS.md T-4.13
-// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
-// contract for the worker. Splitting this file requires explicit operator
-// ratification (substrate extension = stop signal).
+// Scope-negative: assembler macros, object files, relocation/linking, ABI
+// calling conventions, and source-language type systems are out of scope.
 
 module v4.extdeps.languages.machine_code
 
@@ -67,40 +34,6 @@ import v4.std.integer {
 import v4.std.collection { List }
 import v4.std.machine { Byte }
 import v4.std.node { Symbol }
-
-
-// ─────────────────────────────────────────────────────────────────────
-// Modeling notes
-//
-// SPEC, NOT FAMILY OF FILES (L-2 + L-3). This file models machine code
-// as the common language-model boundary parameterized by an ISA. The ISA
-// pin is a field (`revision`) on `Isa`, not a split into x86_64.dag /
-// arm64.dag / riscv64.dag. Per DECISIONS.md L-3, a per-ISA file tree is
-// the N×M trap B2-OMNI forbids.
-//
-// DECLARATIVE MODEL, NOT DISASSEMBLER CODE. The carriers below are the
-// instruction-encoding vocabulary and the C5 fidelity boundary as data.
-// `bytes -> Node` disassembly and `Node -> bytes` emission remain the
-// generic B2-OMNI walker reading this data; this file declares no
-// disassembler/emitter procedure and no local Result/Diagnostic type.
-// The one pure projection below (`machine_feature_disposition`) is the C5
-// disposition map the walker reads. Ill-formed byte runs are represented
-// by `MachineFidelityDisposition.MachineFailClosed` feature classes that
-// the walker turns into diagnostics.
-//
-// D2 RESOLVER SHAPE. This file is an extdeps resolver, not an algebra
-// inhabitance site. The `Machine*` aliases below are D2a(1) alias-
-// identity rows to std/integer.dag's fixed-width carriers. Algebra flows
-// through those aliases. D2a(2) grounding-map rows are deferred wholesale
-// until the shared `GroundingMap` home is pinned. D2a(3) operation
-// semantics live here only as machine-code-specific facts such as
-// overflow, trap, and flag-write disposition. There are no
-// `OrderedRing<MachineI32>` / `Semiring<MachineU32>` rows here.
-//
-// SCOPE NEGATIVE. ISA instruction-set grammar facts are in scope; source-
-// language type systems, assembler macro languages, object-file formats,
-// relocation/linker semantics, and ABI calling conventions are not
-// modeled here. Those are separate LanguageModel / format / ABI layers.
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -544,8 +477,7 @@ fn machine_feature_disposition(f: MachineFidelityFeature) -> MachineFidelityDisp
 
 
 // ─────────────────────────────────────────────────────────────────────
-// D2a(3) operation semantics for machine integer instructions. This is
-// per-target operational fact, not algebra inhabitance.
+// Machine integer instruction operation semantics.
 // Anchor: Intel SDM 2025 arithmetic instruction semantics; Arm ARM
 // 2025-03 integer instruction pseudocode; RISC-V Unprivileged ISA
 // 20240411 integer computational instructions.
@@ -595,8 +527,7 @@ type FlagWriteDisposition
 
 
 // ─────────────────────────────────────────────────────────────────────
-// D2a(1) alias-identity rows to std/integer.dag. These are the only
-// primitive grounding rows that can land before shared `GroundingMap`.
+// Machine integer primitive aliases.
 // Anchor: version-pinned ISA integer operand width definitions named
 // above.
 type MachineI8 = Int8
@@ -612,15 +543,6 @@ type MachineU64 = UInt64
 type MachineU128 = UInt128
 
 
-// 🟡 TRACKED-SCAFFOLD — D2a(2) grounding maps and D2a(3) instance rows.
-//
-// D2a(2): `data machine_<prim>_grounding: GroundingMap<Machine*> = ...`
-// is deferred wholesale until the single shared `GroundingMap` home is
-// operator-pinned. This file must import that type when it lands; it must
-// not declare a local `GroundingMap`.
-//
-// D2a(3): per-instruction operation-semantics instance rows such as
-// `add_i32_wraps`, `add_i32_traps`, or `add_i32_sets_flags` are deferred
-// until top-level sum-variant data bodies / shared operation-realization
-// rows can be validated uniformly. The carrier shape above is canonical;
-// individual rows are ISA-production data, not hand-written algebra.
+// 🟡 TRACKED-SCAFFOLD — grounding maps and operation rows.
+// Trigger: shared GroundingMap home + shared operation-realization row
+// validation path land.
