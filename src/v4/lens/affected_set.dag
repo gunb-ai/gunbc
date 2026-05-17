@@ -1,7 +1,7 @@
 // src/v4/lens/affected_set.dag
-// Scope: affected-set lens read surface for structural re-execution frontier.
+// Scope: canonical affected-set authority for CI/incremental re-execution; fail-closed B-4/B-5 node frontier.
 // Owns: Dag, ReExecNode, ReExecFrontier, AffectedSetRead.
-// Consumes: List, Diff, Node, Path, Witness.
+// Consumes: List, Diff, Node, Path, Witness; B-4 resolve/infer facts; B-5 effect facts.
 // Status: scaffold, T-21.
 
 module v4.lens.affected_set
