@@ -30,7 +30,7 @@ Each layer is a fact model (declared `.dag` data), not code:
 
 | Layer | Fact model | Status |
 |-------|-----------|--------|
-| v4 source language | the `LanguageModel` / grammar-as-data (`src/v4/extdeps/languages/dag.dag`) | modeled |
+| v4 source language | the grammar-as-data for `.dag` (`src/v4/extdeps/languages/dag.dag`). The `LanguageModel` *carrier type* it instances is **not yet a declared authority** — an open substrate item (Theme-A #9: `00_compile.dag` is parameterized over "declarative LanguageModels" but no `type LanguageModel` is declared; T-6/T-10 either declare the carrier or formally state "a model IS a `Node`"). | grammar-as-data present; `LanguageModel` carrier = open (Theme-A #9) |
 | The v4 compiler | the `src/v4/compiler/*.dag` pipeline (tokenize…emit) | modeled |
 | The seed's comprehension boundary | the **frozen sub-model** — a subset of the `LanguageModel` (§4) | T-32 |
 | The snapshot | the v4 compiler pinned at version N, expressed in the frozen subset | T-32 |
@@ -75,6 +75,11 @@ discovered only when the seed fails. It is modeled:
   the **generic walker over that sub-model** (the B2-OMNI principle —
   not a hand-written parser). "What the seed comprehends" *is* the
   sub-model, by construction — readable data, not code-archaeology.
+  *Prerequisite:* this presumes the `LanguageModel` carrier itself is a
+  declared authority — it is not yet (Theme-A #9, §2). Pinning that
+  carrier (or formally fixing "a model IS a `Node`") is **new substrate
+  T-32 Phase 1 must land before the frozen sub-model can be declared** —
+  it is not an existing authority to point at.
 - **`footprint(snapshot)`** — a **fold over the snapshot's `Node`
   tree** collecting every construct it uses. A pure lens.
 - **The gate** — `Witness< footprint(snapshot) ⊆ seed_capability >`:
@@ -133,25 +138,38 @@ stage1 → stage2` chain in prose; the T-20 expansion (in flight on
 that shape; it is not yet all carried as `.dag` data on `main`. The
 check `Cn(S_C) == Cn` is the **witness** that the fixed point is reached.
 
-**Path-independence — the key fact.** The fixed point `C*` is a
-mathematical object. *How you first stepped onto the ladder does not
-matter.* Once `compile_{Cn}(S_C) == Cn` holds bit-identically, you *are*
-`C*`, and `C*` validates itself — it is the compiler whose own source
-compiles to it. The seed is merely the *entry point* onto the ladder; it
-need not be `C*`, only close enough to converge to it.
+**What the bit-identical witness proves — and what it does not.**
+`compile_{Cn}(S_C) == Cn` proves the fixed point is **reached**: the
+compiler *reproduces itself*, stable under self-compilation. The seed is
+the *entry point* onto the ladder — it need not be `C*`, only close
+enough to converge. Two separate facts must not be conflated here:
+
+- **Reproduction (what the witness proves).** Path-independence holds —
+  *for benign entry paths*: two **honest** seeds, entering differently,
+  converge to the same `C*` (`S_C` deterministically specifies the
+  compiler, so any correct compiler compiling it yields the same
+  output). Which honest path you took does not matter.
+- **Honesty (what the witness does NOT prove).** Bit-identical
+  reproduction is **not** evidence the seed was honest. A compromised
+  seed — Thompson's "trusting trust" — reaches a *compromised* fixed
+  point: a backdoor that re-inserts itself on every self-compile makes
+  `compile_{Cn}(S_C) == Cn` hold bit-identically *with the backdoor
+  intact*. The source `S_C` is clean; the backdoor lives in the compile
+  step. The witness proves reproduction, never honesty.
 
 The modeled circularity therefore has four declared parts:
 
 1. **the fixed-point equation** `C* = compile_{C*}(S_C)` — the self-hosting fact;
 2. **the convergence ladder** `seed → C0 → … → Cn` — the staged chain (`src/v4/workflow/bootstrap.dag`);
 3. **the seed as entry point** — `emit(snapshot, …)`, §3;
-4. **the bit-identical witness** — `Cn(S_C) == Cn`, the proof the fixed point is reached.
+4. **the bit-identical witness** — `Cn(S_C) == Cn`, the proof the fixed point is *reached* (reproduction). The *honesty* of the seed is a separate fact — §6.
 
 ## 6. The honest floors
 
 A modeled system always bottoms out somewhere. Naming the floors
-precisely *is* the comfort: there are exactly two, and only one is
-permanent.
+precisely *is* the comfort: there are **two** — the physical axiom
+(permanent and irreducible) and the seed-honesty axiom (a real trust
+assumption — *discharged* by an independent witness, not dissolved).
 
 **The physical axiom (permanent).** At the very bottom, a real CPU
 executes real bits. You can model down through ISA → ABI → syscall
@@ -163,19 +181,38 @@ intersubjective artifact available, exactly the grounding INVARIANTS P1
 asks for. The system does not trust nothing; it pushes trust down to one
 well-specified physical fact and models everything above it.
 
-**The origin "axiom" (dissolves).** The *first* seed was produced by
-something outside the modeled system — historically the v2 compiler /
-hand-bootstrap. This looks like a second axiom, but **path-independence
-(§5) dissolves it**: once the fixed point is witnessed, how the ladder
-was first entered is irrelevant — the fixed point is self-validating.
-The origin is a *historical fact* (a specific commit produced the first
-seed), not a *permanent axiom*. It is precisely the v2 / ambient code
-that "shrinks toward zero": once v4 can emit its own seed and the
-fixed-point witness holds, v2 is deleted and the system has no
-un-modeled component except the physical axiom.
+**The seed-honesty axiom (real — discharged, not dissolved).** The
+*first* seed entered the ladder from outside the modeled system —
+historically the v2 compiler / hand-bootstrap. This is a **genuine
+second floor**, not a dissolving one. §5 is the reason: the bit-identical
+fixed-point witness proves *reproduction*, not *honesty* — a compromised
+seed reaches a compromised, self-consistent fixed point that passes the
+witness. So "the seed that bootstrapped the chain was honest" is a real
+trust assumption; path-independence does **not** erase it (path-
+independence covers only benign entry paths converging — it says nothing
+about a malicious one).
+
+Two ways to handle it, and the model should prefer the second:
+
+- *(a)* accept seed-honesty as a second permanent axiom alongside the
+  physical one; or
+- *(b)* **discharge it** with an independent witness — **diverse
+  double-compilation** (Wheeler, 2005): compile `S_C` with two
+  independently-derived compilers; if both reach a bit-identical `C*`, a
+  backdoor would have to exist *identically* in both independent
+  toolchains — vanishingly unlikely. (b) converts seed-honesty from
+  *trust* to a *checked fact*.
+
+v2 still "shrinks toward zero" as ambient *code* — but the seed-honesty
+*question* does not vanish when v2 is deleted; it is discharged by the
+diverse-double-compilation witness, not by v2's removal.
 
 So the end state is: the fact models, the projections from them, and
-**one** permanent axiom — the silicon matches the machine model.
+**two floors** — the **physical axiom** (permanent, irreducible — the
+silicon executes the machine model) and the **seed-honesty axiom** (a
+real trust assumption, discharged by diverse double-compilation rather
+than dissolved). Naming both honestly is the point — the system claims
+exactly one irreducible axiom and one *checkable* one, not zero.
 
 ## 7. What this means for T-32
 
