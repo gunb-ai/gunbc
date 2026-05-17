@@ -2,7 +2,7 @@
 // Scope: canonical affected-set authority for CI/incremental re-execution; fail-closed B-4/B-5 node frontier.
 // Owns: Dag, ReExecNode, ReExecFrontier, AffectedSetRead.
 // Consumes: List, Diff, Node, Path, Witness; B-4 resolve/infer facts; B-5 effect facts.
-// Status: scaffold, T-21.
+// Status: scaffold; dissolves when T-21 read body, CI use, and .dag TestClaims land.
 
 module v4.lens.affected_set
 
