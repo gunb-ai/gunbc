@@ -69,7 +69,9 @@ fn assert_react_host_element_has_key_and_ref_fields(dag: &v3_compiler::Dag) {
         let field = children
             .iter()
             .find(|f| f.label == label)
-            .unwrap_or_else(|| panic!("ReactHostElement should declare `{label}` (createElement lift)"));
+            .unwrap_or_else(|| {
+                panic!("ReactHostElement should declare `{label}` (createElement lift)")
+            });
         let ty = dag.declaration(field.ty);
         assert_eq!(
             ty.id, opt_ref.id,
@@ -77,6 +79,107 @@ fn assert_react_host_element_has_key_and_ref_fields(dag: &v3_compiler::Dag) {
             ty.name
         );
     }
+}
+
+fn assert_react_composite_element_has_key_and_ref_fields(dag: &v3_compiler::Dag) {
+    let composite = dag
+        .declaration_by_name("ReactCompositeElement")
+        .expect("ReactCompositeElement should exist after compiling react.dag");
+    let TypeConnective::Conj { children } = &composite.connective else {
+        panic!(
+            "ReactCompositeElement: expected record (Conj), got {:?}",
+            composite.connective
+        );
+    };
+    let opt_ref = dag
+        .declaration_by_name("ReactOptRef")
+        .expect("ReactOptRef should exist in this module");
+    for label in ["key", "ref"] {
+        let field = children
+            .iter()
+            .find(|f| f.label == label)
+            .unwrap_or_else(|| {
+                panic!("ReactCompositeElement should declare `{label}` (createElement lift)")
+            });
+        let ty = dag.declaration(field.ty);
+        assert_eq!(
+            ty.id, opt_ref.id,
+            "ReactCompositeElement.{label} must be `ReactOptRef`, got {:?}",
+            ty.name
+        );
+    }
+}
+
+fn assert_react_element_fragment_has_key_field(dag: &v3_compiler::Dag) {
+    let react_element = dag
+        .declaration_by_name("ReactElement")
+        .expect("ReactElement should exist after compiling react.dag");
+    let TypeConnective::Disj { variants } = &react_element.connective else {
+        panic!(
+            "ReactElement: expected coproduct (Disj), got {:?}",
+            react_element.connective
+        );
+    };
+    let fragment = variants
+        .iter()
+        .find(|v| v.label == "Fragment")
+        .expect("ReactElement should include a Fragment arm");
+    let payload = dag.declaration(fragment.ty);
+    let TypeConnective::Conj { children } = &payload.connective else {
+        panic!(
+            "Fragment arm: expected record (Conj) payload, got {:?}",
+            payload.connective
+        );
+    };
+    let key_field = children
+        .iter()
+        .find(|f| f.label == "key")
+        .expect("Fragment payload should declare `key` (keyed fragments)");
+    let key_ty = dag.declaration(key_field.ty);
+    let opt_ref = dag
+        .declaration_by_name("ReactOptRef")
+        .expect("ReactOptRef should exist in this module");
+    assert_eq!(
+        key_ty.id, opt_ref.id,
+        "Fragment.key must be `ReactOptRef`, got {:?}",
+        key_ty.name
+    );
+}
+
+fn assert_react_element_text_has_key_field(dag: &v3_compiler::Dag) {
+    let react_element = dag
+        .declaration_by_name("ReactElement")
+        .expect("ReactElement should exist after compiling react.dag");
+    let TypeConnective::Disj { variants } = &react_element.connective else {
+        panic!(
+            "ReactElement: expected coproduct (Disj), got {:?}",
+            react_element.connective
+        );
+    };
+    let text = variants
+        .iter()
+        .find(|v| v.label == "Text")
+        .expect("ReactElement should include a Text arm");
+    let payload = dag.declaration(text.ty);
+    let TypeConnective::Conj { children } = &payload.connective else {
+        panic!(
+            "Text arm: expected record (Conj) payload, got {:?}",
+            payload.connective
+        );
+    };
+    let key_field = children
+        .iter()
+        .find(|f| f.label == "key")
+        .expect("Text payload should declare `key`");
+    let key_ty = dag.declaration(key_field.ty);
+    let opt_ref = dag
+        .declaration_by_name("ReactOptRef")
+        .expect("ReactOptRef should exist in this module");
+    assert_eq!(
+        key_ty.id, opt_ref.id,
+        "Text.key must be `ReactOptRef`, got {:?}",
+        key_ty.name
+    );
 }
 
 #[test]
@@ -90,6 +193,9 @@ fn v4_extdeps_react_dag_compiles() {
             );
             assert_use_memo_dependencies_field_is_inline_deps_argument(&dag);
             assert_react_host_element_has_key_and_ref_fields(&dag);
+            assert_react_composite_element_has_key_and_ref_fields(&dag);
+            assert_react_element_fragment_has_key_field(&dag);
+            assert_react_element_text_has_key_field(&dag);
         }
         Err(CompileError::Semantic(dag)) => panic!(
             "{REACT_PATH}: semantic errors: {:?}",
