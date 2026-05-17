@@ -115,9 +115,11 @@ type PathComponent = String
 // relative components denotes the current directory.
 //
 // 🟡 TRACKED-SCAFFOLD (project_v4_nonemptylist_deferred_refinement):
-// the frozen scaffold header names `NonEmptyList<PathComponent>`, but
-// std/collection.dag currently exposes only `List<T>` as an importable
-// sequence carrier. Do not worker-mint `NonEmptyList<T>` here. The
+// the frozen scaffold header previously named
+// `NonEmptyList<PathComponent>`; reconciled 2026-05-17 (#3209 — see
+// HEADER RECONCILE) to cite the importable `List<T>` carrier with
+// non-empty intent tracked as the Wave-A2/T-25 deferral. Do not
+// worker-mint `NonEmptyList<T>` here. The
 // intended non-empty refinement for absolute paths dissolves when
 // std/collection.dag Wave-A2 lands the canonical NonEmptyList/FiniteSet
 // refinement substrate; until then this body uses `List<PathComponent>`
