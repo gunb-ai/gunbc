@@ -15,7 +15,7 @@ use v3_compiler::CompileError;
 const REACT_DAG: &str = include_str!("../../../../v4/extdeps/frameworks/react.dag");
 const REACT_PATH: &str = "src/v4/extdeps/frameworks/react.dag";
 
-/// Pinned `react@19.2.0` `ReactHookSite` roster per `react.dag` header — **19** built-in
+/// Pinned `react@19.2.0` `ReactHookSite` roster per `react.dag` — **19** built-in
 /// APIs (hooks index + `UseResource` for `use(resource)`) + **`CustomHook`** (= **20** arms).
 const EXPECTED_REACT_HOOK_SITE_ARMS: &[&str] = &[
     "UseState",
