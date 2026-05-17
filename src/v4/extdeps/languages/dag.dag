@@ -12,32 +12,18 @@ module v4.extdeps.languages.dag
 import v4.std.node { Conj, Node, NodeKind, Symbol, TypeNode }
 
 
-// C3 sugar Atom identities (THESIS:198-203, DECISIONS C3). Single mint for
-// parse/normalize; no parallel `Symbol` authorities (K-1).
 data dag_c3_surface_sugar_service: Symbol = dag_c3_surface_sugar_service
 data dag_c3_surface_sugar_fn: Symbol = dag_c3_surface_sugar_fn
 data dag_c3_surface_sugar_type: Symbol = dag_c3_surface_sugar_type
 data dag_c3_surface_sugar_operation: Symbol = dag_c3_surface_sugar_operation
 
 
-// ─────────────────────────────────────────────────────────────────────
-// DagLanguageModel — gunbc `.dag` as a first-class Shape-A LanguageModel
-// (B2-OMNI language #1). `lex` / `grammar` are the lexical and syntactic rule
-// forests consumed by the generic pipeline stages; both are finite `Node`
-// trees (A1), never procedural recognizers in `compiler/*`.
 type DagLanguageModel {
   lex: Node
   grammar: Node
 }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// Wave-1 **E0 / G0** canonical roots — zero-production `Conj` leaves.
-//
-// These are the **data** instances `compiler/01_tokenize.dag` and
-// `compiler/02_parse.dag` recognize structurally (empty `TypeNode{Conj}`
-// child list). They are not special-cased in the walkers beyond that
-// shared shape; any LanguageModel may reuse E0/G0 for empty fragments.
 fn dag_wave1_e0_void_lex() -> Node {
   Node {
     kind: TypeNode {
