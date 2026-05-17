@@ -101,6 +101,9 @@ import v4.std.machine { Byte }
 // PathComponent — one pathname component.
 // Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/V1_chap03.html#tag_03_241
 //
+// Coincidence evidence for `PosixByteString = FreeMonoid<Byte>`:
+// POSIX pathnames/file contents at this boundary are finite byte
+// sequences; `FreeMonoid<Byte>` is v4's finite byte-sequence carrier.
 // Terminal target for `NamedPathComponent.bytes`: a non-empty
 // `PosixByteString` excluding slash and NUL and not equal to `.` or `..`,
 // with any portable-filename policy expressed as an explicit profile.
@@ -308,6 +311,8 @@ type Filesystem
 // RelativePath requires explicit base-directory resolution before this
 // boundary. Results use `Outcome<T>`; `FileSystemOperations` is the
 // signature bundle a future host realization must inhabit.
+// `FileBody = FreeMonoid<Byte>` reuses the same POSIX finite-byte-sequence
+// coincidence as `PosixByteString`.
 type FileBody = FreeMonoid<Byte>
 
 type ReadFileRequest {

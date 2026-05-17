@@ -303,6 +303,8 @@ type ProcessTable
 // observations carry lifecycle-specific process carriers. stdout/stderr
 // are separate raw byte streams. `ProcessOperations` is the signature
 // bundle a future host realization must inhabit.
+// `CapturedByteStream = FreeMonoid<Byte>` coincides with POSIX pipe output
+// as a finite byte sequence; decoding belongs to a later projection.
 type CapturedByteStream = FreeMonoid<Byte>
 
 type CapturedOutputPipes
