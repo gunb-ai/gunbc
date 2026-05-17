@@ -3,7 +3,7 @@
 //! Substrate authority for the **nominal witness type** lives in
 //! `src/v4/std/fact_density.dag` (`SourceSpecReadFact`, currently staged as a
 //! nominal alias per that file's resolver NOTE — migrate to `Node` payload).
-//! rejects block-bodied `.dag` functions that walk `Node` with `match` in the
+//! M1(2.8) currently rejects block-bodied `.dag` functions that walk `Node` with `match` in the
 //! user declaration range (`lower.rs` — `reject_user_unparsed_scaffolds`).
 //! This module is the hermetic **pure** mirror of the intended gate until
 //! those bodies can ship in `.dag` form.
