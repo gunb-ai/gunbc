@@ -285,23 +285,32 @@ fn assert_react_composite_element_has_key_and_ref_fields(dag: &v3_compiler::Dag)
             composite.connective
         );
     };
+    let opt_key = dag
+        .declaration_by_name("ReactOptKey")
+        .expect("ReactOptKey should exist in this module");
     let opt_ref = dag
         .declaration_by_name("ReactOptRef")
         .expect("ReactOptRef should exist in this module");
-    for label in ["key", "ref"] {
-        let field = children
-            .iter()
-            .find(|f| f.label == label)
-            .unwrap_or_else(|| {
-                panic!("ReactCompositeElement should declare `{label}` (createElement lift)")
-            });
-        let ty = dag.declaration(field.ty);
-        assert_eq!(
-            ty.id, opt_ref.id,
-            "ReactCompositeElement.{label} must be `ReactOptRef`, got {:?}",
-            ty.name
-        );
-    }
+    let key_field = children
+        .iter()
+        .find(|f| f.label == "key")
+        .expect("ReactCompositeElement should declare `key` (createElement lift)");
+    assert_eq!(
+        dag.declaration(key_field.ty).id,
+        opt_key.id,
+        "ReactCompositeElement.key must be `ReactOptKey`, got {:?}",
+        dag.declaration(key_field.ty).name
+    );
+    let ref_field = children
+        .iter()
+        .find(|f| f.label == "ref")
+        .expect("ReactCompositeElement should declare `ref` (createElement lift)");
+    assert_eq!(
+        dag.declaration(ref_field.ty).id,
+        opt_ref.id,
+        "ReactCompositeElement.ref must be `ReactOptRef`, got {:?}",
+        dag.declaration(ref_field.ty).name
+    );
 }
 
 fn assert_react_element_fragment_has_key_field(dag: &v3_compiler::Dag) {
@@ -330,12 +339,12 @@ fn assert_react_element_fragment_has_key_field(dag: &v3_compiler::Dag) {
         .find(|f| f.label == "key")
         .expect("Fragment payload should declare `key` (keyed fragments)");
     let key_ty = dag.declaration(key_field.ty);
-    let opt_ref = dag
-        .declaration_by_name("ReactOptRef")
-        .expect("ReactOptRef should exist in this module");
+    let opt_key = dag
+        .declaration_by_name("ReactOptKey")
+        .expect("ReactOptKey should exist in this module");
     assert_eq!(
-        key_ty.id, opt_ref.id,
-        "Fragment.key must be `ReactOptRef`, got {:?}",
+        key_ty.id, opt_key.id,
+        "Fragment.key must be `ReactOptKey`, got {:?}",
         key_ty.name
     );
 }
