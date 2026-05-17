@@ -88,8 +88,25 @@ type RegisterClass
   | ControlRegister
 
 
-type RegisterRef {
-  register: Symbol
+// 🟢 coproduct dissolution — DECISIONS.md P4-3208
+type RegisterRef
+  = GeneralPurposeRegisterRef { register: Symbol }
+  | FloatingPointRegisterRef { register: Symbol }
+  | VectorRegisterRef { register: Symbol }
+  | PredicateRegisterRef { register: Symbol }
+  | FlagsRegisterRef { register: Symbol }
+  | ControlRegisterRef { register: Symbol }
+
+
+fn register_class(r: RegisterRef) -> RegisterClass {
+  match r {
+    GeneralPurposeRegisterRef { register } => GeneralPurposeRegister
+    FloatingPointRegisterRef { register } => FloatingPointRegister
+    VectorRegisterRef { register } => VectorRegister
+    PredicateRegisterRef { register } => PredicateRegister
+    FlagsRegisterRef { register } => FlagsRegister
+    ControlRegisterRef { register } => ControlRegister
+  }
 }
 
 
@@ -289,4 +306,3 @@ type MachineU16 = UInt16
 type MachineU32 = UInt32
 type MachineU64 = UInt64
 type MachineU128 = UInt128
-
