@@ -78,6 +78,11 @@
 // BLOCKING): read_file/write_file carry raw byte streams
 // (`FreeMonoid<Byte>`), not decoded text. POSIX read/write operate on
 // byte buffers; text decoding/encoding is a separate fallible projection.
+// HEADER RECONCILE (2026-05-17, #3209, keen-wren-663 + briansrls
+// BLOCKING): file operations consume AbsolutePath, not the broader Path
+// sum. RelativePath needs an explicit base-directory fact before POSIX
+// resolution; this extdep does not read ambient current-working-directory
+// state from outside the declared boundary.
 
 
 module v4.extdeps.file_system
@@ -334,23 +339,26 @@ type FileKindResolutionPolicy
 // effect fact is read from each signature.
 type Filesystem
 
-// Each `*Request` is a pure data description of the host operation. The
-// result seam is the shared `Outcome<T>` carrier named in this file's
-// header/prose. The `FileSystemOperations` record is the declared
-// callable boundary a future host realization must inhabit; it is
-// intentionally only a signature bundle here, not an effect resolver.
+// Each `*Request` is a pure data description of the host operation. File
+// operations consume AbsolutePath only; RelativePath is a structural path
+// carrier for parsing/modeling, but resolution requires an explicit base
+// directory before reaching this POSIX boundary. The result seam is the
+// shared `Outcome<T>` carrier named in this file's header/prose. The
+// `FileSystemOperations` record is the declared callable boundary a future
+// host realization must inhabit; it is intentionally only a signature
+// bundle here, not an effect resolver.
 type FileBody = FreeMonoid<Byte>
 
 type ReadFileRequest {
   filesystem: Filesystem
-  path: Path
+  path: AbsolutePath
 }
 
 type ReadFileResult = Outcome<FileBody>
 
 type WriteFileRequest {
   filesystem: Filesystem
-  path: Path
+  path: AbsolutePath
   body: FileBody
 }
 
@@ -358,14 +366,14 @@ type WriteFileResult = Outcome<Filesystem>
 
 type ListDirRequest {
   filesystem: Filesystem
-  path: Path
+  path: AbsolutePath
 }
 
 type ListDirResult = Outcome<List<PathComponent>>
 
 type FileKindRequest {
   filesystem: Filesystem
-  path: Path
+  path: AbsolutePath
   resolution: FileKindResolutionPolicy
 }
 
