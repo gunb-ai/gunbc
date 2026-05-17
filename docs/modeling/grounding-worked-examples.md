@@ -305,16 +305,23 @@ length witness, and `RustI32` grounds as `Compose<Int,
 MachineWidth<Word32>>` (§B — the substrate's fixed-width discipline,
 `std/integer.dag`; not a `{32×Bool}` bit-carrier).
 
-**Step-by-step coercion shape — `RustArray<RustI32, 3> -> Outcome<IR List<Int32>>`:**
+**Step-by-step coercion shape — `RustArray<RustI32, 3> -> Outcome<IR Conj{ elements: List<Int32>, length_proof: Witness<|elements| = 3> }>`:**
 1. groundings: `List<Compose<Int,MachineWidth<Word32>>>` plus
-   `Witness(length = 3)` on the Rust side; `List<Int32>` on the IR side.
+   `Witness(length = 3)` on the Rust side. The IR target is the
+   **length-witnessed** form — `List<Int32>` carried *with* its
+   `Witness(length = 3)` (in `Node` terms, the `Cardinality` connective) —
+   **not** a plain unbounded `List`. The length is a source fact, so it
+   must appear in the target carrier.
 2. the coercion fold compares outer `List` vs `List`,
    then recurses into the element grounding.
 3. element `grounding(RustI32)` vs `grounding(Int32)` → coincide.
-4. coincident element groundings return `Produced { value: IR List<Int32> }`;
-   the array length witness is preserved as a target fact. No array
-   coercion is authored; the compound result follows from the structural
-   comparison.
+4. coincident element groundings return `Produced { value }` where the
+   value is the IR length-witnessed list — `elements: List<Int32>` **and**
+   `length_proof: Witness<|elements| = 3>`. The length-3 fact **flows
+   forward into the output carrier** (P2 facts-flow-forward); it is not
+   dropped to a plain `List`, and no accepted-loss is needed because
+   nothing is lost. No array coercion is authored; the compound result,
+   length witness included, follows from the structural comparison.
 
 **Cross-language shape — `PythonList[int] -> Outcome<RustArray<i32, 3>>`:**
 outer `List` matches, but each element must pass `IR_Int -> Outcome<RustI32>`
