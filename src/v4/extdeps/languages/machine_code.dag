@@ -342,6 +342,62 @@ type MemoryOperandSlotRef {
 }
 
 
+// ImmediateOperandTarget — semantic target class for an immediate field.
+// Anchor: RISC-V Unprivileged ISA Specification 20240411, Chapter 1
+// instruction formats; Intel SDM Vol. 2A §3.1 instruction format.
+//
+// Coproduct dissolution — 🟢 GREEN (terminal). Ledger:
+//   1. Fact placement — FAILS: decode, branch-target analysis, and emit
+//      all distinguish literal immediates from relative targets.
+//   2. Variant-is-data — FAILS: Bool/Symbol would erase the target role.
+//   3. Algebraic form — N/A: ISA operand-field role.
+//   4. Dimensional — FAILS: one immediate slot has one target class.
+//   5. Parameterized family — FAILS: closed nullary alternatives.
+type ImmediateOperandTarget
+  = LiteralImmediate
+  | PcRelativeImmediate
+  | AbsoluteAddressImmediate
+
+
+type ImmediateOperandConstraint {
+  width: InstructionByteLimitRef
+  order: ByteOrder
+  target: ImmediateOperandTarget
+}
+
+
+// MemoryOperandConstraint — ISA grammar constraint for a memory operand
+// slot. This is the slot schema; `AddressingMode` remains the decoded
+// operand value that instantiates one compatible schema.
+// Anchor: Intel SDM 2025 addressing modes; Arm ARM 2025-03 load/store
+// addressing modes; RISC-V Unprivileged ISA 20240411 load/store formats.
+//
+// Coproduct dissolution — 🟢 GREEN (terminal). Ledger:
+//   1. Fact placement — FAILS: decode, emit, and memory-effect analysis
+//      read the same addressing-form constraint.
+//   2. Variant-is-data — FAILS: each form carries different register and
+//      displacement constraints; a flat record would admit impossible
+//      mixtures.
+//   3. Algebraic form — N/A: ISA addressing grammar fact.
+//   4. Dimensional — FAILS: one memory slot constrains one addressing
+//      form.
+//   5. Parameterized family — FAILS: heterogeneous payloads.
+type MemoryOperandConstraint
+  = AbsoluteAddressSlot { displacement_width: InstructionByteLimitRef }
+  | RegisterIndirectSlot { allowed_bases: List<RegisterRef> }
+  | BaseDisplacementSlot {
+      allowed_bases: List<RegisterRef>,
+      displacement_width: InstructionByteLimitRef
+    }
+  | BaseIndexScaleSlot {
+      allowed_bases: List<RegisterRef>,
+      allowed_indexes: List<RegisterRef>,
+      scale: IndexScale,
+      displacement_width: InstructionByteLimitRef
+    }
+  | PcRelativeSlot { displacement_width: InstructionByteLimitRef }
+
+
 // InstructionOperandSlot — operand-category authority for a declared
 // production slot. This is not an operand value; it is the ISA grammar
 // row's slot and constraint classifier consumed by decoded operand
@@ -367,11 +423,11 @@ type InstructionOperandSlot
     }
   | ImmediateInstructionSlot {
       name: ImmediateOperandSlotRef,
-      order: ByteOrder
+      constraint: ImmediateOperandConstraint
     }
   | MemoryInstructionSlot {
       name: MemoryOperandSlotRef,
-      mode: AddressingMode
+      constraint: MemoryOperandConstraint
     }
 
 

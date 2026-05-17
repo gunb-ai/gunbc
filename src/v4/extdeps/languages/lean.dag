@@ -261,6 +261,26 @@ type LeanTerminationMeasure {
 }
 
 
+// LeanTerminationBy — Lean accepts both structural-recursion and
+// well-founded-recursion termination hints. The well-founded form carries
+// an explicit measure term; structural recursion has no measure payload.
+// Anchor: Lean 4.20.0 Reference Manual, termination_by clauses:
+// https://lean-lang.org/doc/reference/4.20.0/Definitions/Definitions/
+//
+// Coproduct dissolution — 🟢 GREEN (terminal). Ledger:
+//   1. Fact placement — FAILS: proof export, termination checking, and
+//      emitter all distinguish structural and well-founded hints.
+//   2. Variant-is-data — FAILS: the well-founded form carries a measure
+//      payload while structural recursion does not.
+//   3. Algebraic form — N/A: Lean termination syntax/checking fact.
+//   4. Dimensional — FAILS: one `termination_by` hint is structural OR
+//      well-founded.
+//   5. Parameterized family — FAILS: heterogeneous payloads.
+type LeanTerminationBy
+  = LeanStructuralTermination
+  | LeanWellFoundedTermination { measure: LeanTerminationMeasure }
+
+
 type LeanDecreasingProof {
   proof: LeanTermRef
 }
@@ -283,7 +303,7 @@ type LeanDecreasingProof {
 //   5. Parameterized family — FAILS: not one F<X>; distinct clause
 //      payloads with different checker roles.
 type LeanTerminationClause
-  = LeanTerminationBy { measure: LeanTerminationMeasure }
+  = LeanTerminationByClause { termination: LeanTerminationBy }
   | LeanDecreasingBy { proof: LeanDecreasingProof }
 
 
@@ -308,10 +328,10 @@ type LeanTerminationClause
 //   5. Parameterized family — FAILS: heterogeneous payload combinations.
 type LeanDefinitionTermination
   = LeanNoExplicitTermination
-  | LeanTerminationByOnly { measure: LeanTerminationMeasure }
+  | LeanTerminationByOnly { termination: LeanTerminationBy }
   | LeanDecreasingByOnly { proof: LeanDecreasingProof }
   | LeanTerminationByWithDecreasingBy {
-      measure: LeanTerminationMeasure,
+      termination: LeanTerminationBy,
       proof: LeanDecreasingProof
     }
 
