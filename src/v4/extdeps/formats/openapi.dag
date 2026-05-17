@@ -201,6 +201,27 @@ type OpenApiMediaType {
 }
 
 
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiHeaderPayloadSlot
+type OpenApiHeaderPayloadSlot
+  = OpenApiHeaderPayloadSchema { schema: OpenApiSchema }
+  | OpenApiHeaderPayloadContent { content: Map<String, OpenApiMediaType> }
+
+
+type OpenApiHeaderObject {
+  description: OpenApiOptionalString,
+  required: OpenApiHeaderRequiredSlot,
+  payload: OpenApiHeaderPayloadSlot,
+  header_deferred_members: Map<OpenApiHeaderDeferredKey, JsonValue>,
+  header_specification_extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,
+}
+
+
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiHeaderOrReference
+type OpenApiHeaderOrReference
+  = OpenApiHeaderInline { header: OpenApiHeaderObject }
+  | OpenApiHeaderReference { reference: OpenApiReferenceObject }
+
+
 // 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiMediaTypeSchemaSlot
 type OpenApiMediaTypeSchemaSlot
   = OpenApiMediaSchemaPresent { schema: OpenApiSchema }
