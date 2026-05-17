@@ -59,9 +59,11 @@ fn react_extdeps_dag_or_panic() -> v3_compiler::Dag {
     }
 }
 
-/// Compiler-visible receipt: `UseMemo` carries `dependencies: ReactHookInlineDependenciesArgument`
-/// (omit-vs-present), not a bare `List<ReactCrossDeclRef>` that would conflate omitted arity with `[]`.
-fn assert_use_memo_dependencies_field_is_inline_deps_argument(dag: &v3_compiler::Dag) {
+/// Compiler-visible receipt: `UseMemo` / `UseCallback` carry **required**
+/// `dependencies: List<ReactCrossDeclRef>` (design-r4 canvas; pinned call shape).
+/// Omitted-deps arity is **not** constructible on those arms — only hooks that use
+/// `ReactHookInlineDependenciesArgument` admit omit-vs-present (`useEffect`, …).
+fn assert_use_memo_use_callback_dependencies_are_required_lists(dag: &v3_compiler::Dag) {
     let react_hook_site = dag
         .declaration_by_name("ReactHookSite")
         .expect("ReactHookSite should exist after compiling react.dag");
@@ -71,31 +73,57 @@ fn assert_use_memo_dependencies_field_is_inline_deps_argument(dag: &v3_compiler:
             react_hook_site.connective
         );
     };
-    let use_memo = variants
-        .iter()
-        .find(|v| v.label == "UseMemo")
-        .expect("ReactHookSite should include a UseMemo arm");
-    let payload = dag.declaration(use_memo.ty);
-    let TypeConnective::Conj { children } = &payload.connective else {
-        panic!(
-            "UseMemo arm: expected record (Conj) payload, got {:?}",
-            payload.connective
+    let list_decl = dag
+        .declaration_by_name("List")
+        .expect("List should resolve for `List<ReactCrossDeclRef>` fields");
+    let cross_decl = dag
+        .declaration_by_name("ReactCrossDeclRef")
+        .expect("ReactCrossDeclRef should exist in this module");
+    for arm in ["UseMemo", "UseCallback"] {
+        let v = variants
+            .iter()
+            .find(|v| v.label == arm)
+            .unwrap_or_else(|| panic!("ReactHookSite should include {arm}"));
+        let payload = dag.declaration(v.ty);
+        let TypeConnective::Conj { children } = &payload.connective else {
+            panic!(
+                "{arm} arm: expected record (Conj) payload, got {:?}",
+                payload.connective
+            );
+        };
+        let deps_field = children
+            .iter()
+            .find(|f| f.label == "dependencies")
+            .unwrap_or_else(|| {
+                panic!("{arm} payload should declare `dependencies`");
+            });
+        let deps_ty = dag.declaration(deps_field.ty);
+        let TypeConnective::Instantiation {
+            template,
+            arguments,
+        } = &deps_ty.connective
+        else {
+            panic!(
+                "{arm}.dependencies must be `List<ReactCrossDeclRef>` (Instantiation), got {:?}",
+                deps_ty.connective
+            );
+        };
+        assert_eq!(
+            *template,
+            list_decl.id,
+            "{arm}.dependencies must instantiate `List`, got template decl {:?}",
+            dag.declaration(*template).name
         );
-    };
-    let deps_field = children
-        .iter()
-        .find(|f| f.label == "dependencies")
-        .expect("UseMemo payload should declare a `dependencies` field");
-    let deps_ty = dag.declaration(deps_field.ty);
-    let inline_arg = dag
-        .declaration_by_name("ReactHookInlineDependenciesArgument")
-        .expect("ReactHookInlineDependenciesArgument should exist in this module");
-    assert_eq!(
-        deps_ty.id, inline_arg.id,
-        "UseMemo.dependencies must name `ReactHookInlineDependenciesArgument` (same DeclarationId \
-         as the top-level sum), got decl name={:?} id={:?} vs inline_arg id={:?}",
-        deps_ty.name, deps_ty.id, inline_arg.id
-    );
+        assert_eq!(
+            arguments.len(),
+            1,
+            "{arm}.dependencies must be unary List<…>"
+        );
+        assert_eq!(
+            arguments[0].value, cross_decl.id,
+            "{arm}.dependencies must be `List<ReactCrossDeclRef>`"
+        );
+    }
 }
 
 /// react.dev `useEffect(setup, …)` / `useLayoutEffect` / `useInsertionEffect` — **setup** is required;
@@ -370,8 +398,8 @@ fn v4_extdeps_react_dag_compiles() {
 }
 
 #[test]
-fn v4_extdeps_react_dag_use_memo_dependencies_use_inline_dependencies_argument() {
-    assert_use_memo_dependencies_field_is_inline_deps_argument(&react_extdeps_dag_or_panic());
+fn v4_extdeps_react_dag_use_memo_use_callback_dependencies_are_required_lists() {
+    assert_use_memo_use_callback_dependencies_are_required_lists(&react_extdeps_dag_or_panic());
 }
 
 #[test]
