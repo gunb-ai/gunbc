@@ -77,7 +77,7 @@
 //   ModuleKeyword
 //   VerilogModule
 //   VerilogCost
-// Consumes: std/node.dag
+// Consumes: std/node.dag; Int kernel-ambient.
 // Status: T-4.9 PASS (IN-B); import v4.std.node Symbol only.
 
 module v4.extdeps.languages.verilog
