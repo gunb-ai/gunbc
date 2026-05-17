@@ -22,7 +22,7 @@
 //     `Running` is structurally excluded from all terminal carriers.)
 //   - ExitCode = NonNegativeInt (per POSIX — 0 success, 1-255 conventional)
 //   - SignalNum (per POSIX signal table)
-//   - Command { program: AbsolutePath, argv0: String, args: List<String>, env: Map<String,String> }
+//   - Command { program: AbsolutePath, argv0: PosixArgument, args: List<PosixArgument>, env: Map<PosixEnvironmentName,PosixEnvironmentValue> }
 //   - spawn(pt, cmd) -> Result<{table: ProcessTable, process: RunningProcess}, Diagnostic>
 //   - wait(spawned)  -> Result<{table: ProcessTable, process: WaitedTerminatedProcess}, Diagnostic>
 //     (blocks until terminated)
@@ -30,11 +30,11 @@
 //
 // Consumes:
 //   - std/diagnostic.dag: Diagnostic
-//   - std/integer.dag: Int (and its Tier-2 totalizations); String kernel-ambient
+//   - std/integer.dag: Int (and its Tier-2 totalizations)
 //   - std/machine.dag: Byte
 //   - std/algebra.dag: FreeMonoid
 //   - std/collection.dag: List, Map
-//   - extdeps/file_system.dag: AbsolutePath (for Command.program)
+//   - extdeps/file_system.dag: AbsolutePath (for Command.program), PosixByteString
 //
 // Status: T-4.5 modeled 2026-05-16 (keen-wren-663). Operation bodies
 //   are external realizations owned by the realization/pipeline layer;
@@ -106,12 +106,16 @@
 // threaded through RunningProcess / WaitedTerminatedProcess /
 // TerminatedProcess. Lifecycle carriers no longer re-list id/command/
 // parent as parallel process-identity authorities.
+// HEADER RECONCILE (2026-05-17, #3209, keen-wren-663 + codex BLOCKING):
+// POSIX argv and environment spellings use byte-string carriers
+// (`PosixByteString` wrappers), not v4 text `String`. Text decoding is a
+// later fallible projection; env names additionally exclude `=`.
 
 
 module v4.extdeps.process
 
 
-import v4.extdeps.file_system { AbsolutePath }
+import v4.extdeps.file_system { AbsolutePath, PosixByteString }
 import v4.std.algebra { FreeMonoid }
 import v4.std.diagnostic { Outcome }
 import v4.std.machine { Byte }
@@ -151,11 +155,12 @@ import v4.std.machine { Byte }
 //       with refined carriers and keep the surrounding sums unchanged.
 //
 // COMMAND IS DATA, NOT A SHELL STRING. `Command.program` is an
-// `AbsolutePath`; argv and env are structured carriers. This prevents
-// shell quoting, PATH lookup, env splitting, and diagnostic text from
-// becoming hidden authorities. A separate shell-language extdep can
-// model shell parsing when the program intentionally invokes a shell;
-// this process model does not smuggle one in.
+// `AbsolutePath`; argv and env are structured byte-string carriers. This
+// prevents shell quoting, PATH lookup, env splitting, text decoding, and
+// diagnostic text from becoming hidden authorities. A separate
+// shell-language extdep can model shell parsing when the program
+// intentionally invokes a shell; this process model does not smuggle one
+// in.
 //
 // OPERATION SEAM. The scaffold header's `Result<..., Diagnostic>` prose
 // denotes std/diagnostic.dag's ratified `Outcome<T>` carrier
@@ -204,14 +209,41 @@ type SignalNum = Int
 // `program` is an absolute filesystem path from extdeps/file_system.dag,
 // not a shell string or PATH-search policy.
 // `argv0` is caller-supplied POSIX argv[0], not derived from `program`.
-// `args` are the remaining argv entries after argv[0]. `env` is a map
-// from variable name to value; duplicate variable names are structurally
-// unrepresentable.
+// `args` are the remaining argv entries after argv[0]. POSIX argv entries
+// and environment strings are byte strings at this boundary; producers
+// must construct NUL-free arguments and NUL-free environment names/values.
+// Environment names also exclude `=` because the external `name=value`
+// spelling uses it as the separator. `env` is a map from variable name to
+// value; duplicate variable names are structurally unrepresentable.
+//
+// VALUE-REFINEMENT SCAFFOLDS. v4 has the raw `PosixByteString` carrier in
+// this dependency path, but not machine-readable byte-string refinements
+// for "NUL-free" or "NUL-free and no equals". Bridge properties:
+//   (a) scaffold doc — THIS note; argv/env carriers are unrefined byte
+//       strings, not terminal POSIX exec-string refinements.
+//   (b) bounds on use — producers must construct NUL-free arguments and
+//       environment values; environment names must be NUL-free and must
+//       not contain `=`.
+//   (c) dissolution trigger — when v4 lands byte-string value
+//       refinements, replace the wrapper `bytes` fields below with the
+//       refined POSIX argv/env carriers.
+type PosixArgument {
+  bytes: PosixByteString
+}
+
+type PosixEnvironmentName {
+  bytes: PosixByteString
+}
+
+type PosixEnvironmentValue {
+  bytes: PosixByteString
+}
+
 type Command {
   program: AbsolutePath
-  argv0: String
-  args: List<String>
-  env: Map<String, String>
+  argv0: PosixArgument
+  args: List<PosixArgument>
+  env: Map<PosixEnvironmentName, PosixEnvironmentValue>
 }
 
 

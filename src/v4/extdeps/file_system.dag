@@ -7,7 +7,8 @@
 //   - Path = AbsolutePath | RelativePath
 //   - AbsolutePath { components: List<PathComponent> }  // root is empty components; PathComponent refinement deferred
 //   - RelativePath = CurrentDirectory | RelativeDescendant { first: RelativePathHead, rest: List<PathComponent> }
-//   - NamedPathComponent { name: String }
+//   - PosixByteString = FreeMonoid<Byte>
+//   - NamedPathComponent { bytes: PosixByteString }
 //   - PathComponent = CurrentComponent | ParentComponent | NamedComponent(NamedPathComponent)
 //   - FileKind = RegularFile | Directory | Symlink
 //   - read_file(fs, p)        -> Result<FreeMonoid<Byte>, Diagnostic>
@@ -23,7 +24,6 @@
 //
 // Consumes:
 //   - std/diagnostic.dag: Diagnostic
-//   - std/text.dag: String (and its Tier-2 totalizations)
 //   - std/machine.dag: Byte
 //   - std/algebra.dag: FreeMonoid
 //   - std/collection.dag: List
@@ -83,6 +83,10 @@
 // sum. RelativePath needs an explicit base-directory fact before POSIX
 // resolution; this extdep does not read ambient current-working-directory
 // state from outside the declared boundary.
+// HEADER RECONCILE (2026-05-17, #3209, keen-wren-663 + codex BLOCKING):
+// POSIX-facing path component spelling is a byte string carrier
+// (`PosixByteString`), not v4 text `String`. Text decoding is a separate
+// fallible projection outside this raw OS boundary.
 
 
 module v4.extdeps.file_system
@@ -103,22 +107,23 @@ import v4.std.machine { Byte }
 // exclusion by string inspection. The `Path` sum below is the single
 // authority: consumers pattern-match the root fact and walk components.
 //
-// VALUE-REFINEMENT SCAFFOLDS. POSIX path name components exclude slash
-// and null; portable filenames further restrict the character set. `.`
-// and `..` are structural components below, not ordinary strings. v4's
-// settled dependency path has `String`/`Char` but not a machine-readable
-// predicate/refinement substrate for "non-empty string with no slash or
-// null and not dot/dotdot". `NamedPathComponent` is therefore the honest
-// named-spelling carrier with bridge properties:
+// VALUE-REFINEMENT SCAFFOLDS. POSIX path name components are byte
+// strings that exclude slash and NUL; portable filenames further restrict
+// the byte set. `.` and `..` are structural components below, not ordinary
+// byte strings. v4's settled dependency path has `Byte` and
+// `FreeMonoid<Byte>` but not a machine-readable predicate/refinement
+// substrate for "non-empty byte string with no slash or NUL and not
+// dot/dotdot". `NamedPathComponent` is therefore the honest named-spelling
+// carrier with bridge properties:
 //   (a) scaffold doc — THIS note; the current carrier is an unrefined
-//       `String`, not the terminal POSIX filename refinement.
+//       byte string, not the terminal POSIX filename refinement.
 //   (b) bounds on use — producers must construct non-empty named
-//       components that contain no slash, no null byte, and are not `.`
+//       components that contain no slash, no NUL byte, and are not `.`
 //       or `..`; use `CurrentComponent` / `ParentComponent` for those
 //       POSIX components.
 //   (c) dissolution trigger — when v4 lands value refinements over
-//       `String` / `Char` predicates, replace `NamedPathComponent.name`
-//       with the refined non-empty no-slash no-null non-dot carrier.
+//       `FreeMonoid<Byte>` predicates, replace `NamedPathComponent.bytes`
+//       with the refined non-empty no-slash no-NUL non-dot carrier.
 //
 // OPERATION SEAM. The scaffold header's `Result<..., Diagnostic>` prose
 // denotes std/diagnostic.dag's ratified `Outcome<T>` carrier
@@ -140,10 +145,11 @@ import v4.std.machine { Byte }
 // PathComponent — one pathname component.
 // Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/V1_chap03.html#tag_03_241
 //
-// Terminal target for `NamedPathComponent.name`: a non-empty `String`
-// excluding slash and null and not equal to `.` or `..`, with any
-// portable-filename policy expressed as an explicit profile. Current
-// carrier: `String` with the tracked refinement scaffold above.
+// Terminal target for `NamedPathComponent.bytes`: a non-empty
+// `PosixByteString` excluding slash and NUL and not equal to `.` or `..`,
+// with any portable-filename policy expressed as an explicit profile.
+// Current carrier: unrefined bytes with the tracked refinement scaffold
+// above.
 //
 // Coproduct dissolution (Practice 4 / INVARIANTS P1) — classification:
 // 🟡 YELLOW, first-consumer-confirmed. POSIX gives `.` and `..`
@@ -162,8 +168,10 @@ import v4.std.machine { Byte }
 //      current, parent, or named.
 //   5. Parameterized family — FAILS: the variants are not the same
 //      payload shape projected over an enumerable set.
+type PosixByteString = FreeMonoid<Byte>
+
 type NamedPathComponent {
-  name: String
+  bytes: PosixByteString
 }
 
 type PathComponent
