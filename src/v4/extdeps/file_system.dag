@@ -107,6 +107,15 @@ type PathComponent = String
 // shape as `RelativePath`; absolute-vs-relative is the only extra fact.
 // Empty absolute components denotes the POSIX root directory. Empty
 // relative components denotes the current directory.
+//
+// 🟡 TRACKED-SCAFFOLD (project_v4_nonemptylist_deferred_refinement):
+// the frozen scaffold header names `NonEmptyList<PathComponent>`, but
+// std/collection.dag currently exposes only `List<T>` as an importable
+// sequence carrier. Do not worker-mint `NonEmptyList<T>` here. The
+// intended non-empty refinement for absolute paths dissolves when
+// std/collection.dag Wave-A2 lands the canonical NonEmptyList/FiniteSet
+// refinement substrate; until then this body uses `List<PathComponent>`
+// with the POSIX root/current-directory semantics above.
 type AbsolutePath {
   components: List<PathComponent>
 }

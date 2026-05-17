@@ -25,9 +25,9 @@
 //   - SignalNum (per POSIX signal table)
 //   - Command { program: AbsolutePath, args: List<String>, env: Map<String,String> }
 //   - spawn(pt, cmd) -> Result<{table: ProcessTable, process: Process}, Diagnostic>
-//   - wait(pt, p)    -> Result<{table: ProcessTable, process: Process}, Diagnostic>
+//   - wait(pt, p)    -> Result<{table: ProcessTable, process: TerminatedProcess}, Diagnostic>
 //     (blocks until terminated)
-//   - capture(pt, p) -> Result<{stdout, stderr, table: ProcessTable, process: Process}, Diagnostic>
+//   - capture(pt, p) -> Result<{stdout, stderr, table: ProcessTable, process: TerminatedProcess}, Diagnostic>
 //
 // Consumes:
 //   - std/diagnostic.dag: Diagnostic
@@ -44,12 +44,13 @@
 // ratification (substrate extension = stop signal).
 //
 // HEADER RECONCILE (2026-05-16, #3209, keen-wren-663 + operator ruling):
-// wait/capture return the advanced Process (single-authority terminal
-// fact), reconciling the frozen wait/capture contract per the operator
-// P2/§2-floor BLOCKING. Follow-up effect-resource reconcile: process
+// wait/capture return an advanced TerminatedProcess (single-authority
+// terminal fact with Running unrepresentable), reconciling the frozen
+// wait/capture contract per the operator P2/§2-floor BLOCKING.
+// Follow-up effect-resource reconcile: process
 // operations also take an explicit ProcessTable resource parameter per
 // ratified lens/effect.dag B3/B-5; spawn/wait/capture return the
-// modified ProcessTable alongside the advanced Process. D5 also
+// modified ProcessTable alongside the advanced process. D5 also
 // reconciles the stale ProcessState::Exited rationale prose above,
 // which the same operator-sanctioned ProcessState refactor made stale.
 
@@ -68,17 +69,17 @@ import v4.std.diagnostic { Outcome }
 // INVARIANTS.md P2 host-process boundary discipline: command execution
 // returns structural outcomes, not string probes over shared stderr.
 // Setup/spawn failure is `Outcome.Rejected { diagnostic }`; a logical
-// child that ran and terminated returns an advanced `Process` whose
-// state carries `Termination`. The two facts are not collapsed, so a
-// wrapper failure cannot be mistaken for a child exit and a signal death
-// cannot be fabricated as an exit code.
+// child that ran and terminated returns an advanced `TerminatedProcess`
+// whose `termination` carries the terminal fact. The two facts are not
+// collapsed, so a wrapper failure cannot be mistaken for a child exit
+// and a signal death cannot be fabricated as an exit code.
 //
 // TERMINATION IS THE SINGLE AUTHORITY. `ProcessState` is either
 // `Running` or `Terminated { status: Termination }`. The terminal-status
 // facts (`Exited` vs `Signaled`) live only in `Termination`, and all
-// wait/capture results return that same carrier, never a bare `ExitCode`.
-// There is no sibling `exit_code` field on `Process`; consumers
-// pattern-match the state.
+// wait/capture results return a `TerminatedProcess` that carries that
+// same terminal carrier, never a bare `ExitCode`. There is no sibling
+// `exit_code` field on `Process`; consumers pattern-match the state.
 //
 // VALUE-REFINEMENT SCAFFOLDS. POSIX PIDs are positive integers, exit
 // status values are non-negative and conventionally bounded to 8 bits
@@ -194,6 +195,17 @@ type Process {
   parent: ProcessId
 }
 
+// `TerminatedProcess` is the wait/capture success carrier. It keeps the
+// same child identity facts as `Process`, but its terminal status is the
+// single `Termination` carrier, so `Running` is structurally impossible
+// in successful wait/capture results.
+type TerminatedProcess {
+  id: ProcessId
+  command: Command
+  termination: Termination
+  parent: ProcessId
+}
+
 
 // ─────────────────────────────────────────────────────────────────────
 // Operation contract carriers.
@@ -210,10 +222,10 @@ type ProcessTable {
 
 // Spawn failure, wait failure, and capture failure return `Rejected`
 // with a typed `Diagnostic`; a successfully observed child termination
-// returns the advanced `Process` whose `state` is
-// `Terminated { status: Termination }`. stdout/stderr are captured as
-// separate byte-decoded text streams so harness/setup diagnostics cannot
-// be blended into the logical child's output channel. The
+// returns the advanced `TerminatedProcess` whose terminal status is
+// structurally present. stdout/stderr are captured as separate
+// byte-decoded text streams so harness/setup diagnostics cannot be
+// blended into the logical child's output channel. The
 // `ProcessOperations` record is the declared callable boundary a future
 // host realization must inhabit; it is intentionally only a signature
 // bundle here, not an effect resolver.
@@ -236,7 +248,7 @@ type WaitProcessRequest {
 
 type WaitedProcess {
   table: ProcessTable
-  process: Process
+  process: TerminatedProcess
 }
 
 type WaitProcessResult = Outcome<WaitedProcess>
@@ -245,7 +257,7 @@ type CapturedProcessOutput {
   stdout: String
   stderr: String
   table: ProcessTable
-  process: Process
+  process: TerminatedProcess
 }
 
 type CaptureProcessRequest {
