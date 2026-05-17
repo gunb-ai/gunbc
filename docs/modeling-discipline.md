@@ -397,6 +397,50 @@ their use as a terminal, is not hollow. The gate's discriminator is
 "does the *spec* carry facts this declaration drops?" — for a true atom
 the answer is no.
 
+### 9. No-prose discipline
+
+A `.dag` file's comments are **not a parallel prose authority**. After
+modeling, a file's comments carry only what a mechanical consumer or a
+reviewer needs *to use the file* — never rationale, never narration,
+never a record of the work done. Rationale lives in `src/v4/DECISIONS.md`
+(single authority); process notes live in the commit message. A comment
+that records that the file was de-prosed is itself the prose to remove.
+
+**The spec.** After de-prose, a `.dag` file's comments are ONLY these
+four things — nothing else survives:
+
+1. **Line 1** — the file-path line.
+2. **A terse header** — exactly four lines: `Scope:` (one line),
+   `Owns:` (carrier *names* only, no rationale), `Consumes:` (one line),
+   `Status:` (one line). Nothing else: no `Brief:`, no `Seams:`, no
+   `HEADER RECONCILE`, no `Deferred (N)` rationale, no multi-line block.
+3. **A per-carrier anchor** — at most one `// Anchor: <spec URL>` line.
+4. **A one-line concept tag** — at most one per type, and *only* where
+   the concept is genuinely non-obvious from the name + structure (e.g.
+   `// coproduct dissolution`). Not a description of the type; not a
+   `Practice N: ...` rationale line.
+
+Everything else is **removed**: per-type descriptions, all Practice-N
+rationale, all multi-line rationale, `Seams`/`Brief`/process-meta
+blocks. Architectural decisions move to `src/v4/DECISIONS.md`; process
+notes — de-prose receipts, "HEADER RECONCILE", "per directive X" — move
+to the **commit message**, never the file.
+
+**What to check:** count `comment-lines / total-lines`. The hard target
+is that a modeled `.dag` file is roughly **under 20% comment lines**. A
+file substantially above 20% has not been de-prosed — the pass is
+nominal, not real. (A file audited at 58% comment lines *after* a
+"de-prose" pass is a failed pass; verify the percentage, do not accept a
+nominal pass.) Load-bearing files keep the terse four-line header
+contract — but that header *is* the whole of item 2, not a license for
+more.
+
+**Why:** prose in the file is a second authority. It drifts from the
+structure it narrates and from `DECISIONS.md`; it is the
+documentation-side hollow alias (Practice 8) — it looks like modeling
+and isn't. The structure *is* the model; the terse header is the single
+machine-readable boundary contract; everything else is removed.
+
 ## Calibration: Blocking vs Non-blocking
 
 A finding is **BLOCKING** if fixing it in a later PR would be meaningfully
@@ -451,8 +495,14 @@ For each relevant principle and its implementing practices:
    no coincidence-evidence comment is hollow and blocks. For any emit
    artifact: verify it is grounded grammar-as-data, not a string
    template.
-7. For cross-stage boundaries: verify facts flow forward.
-8. Classify every finding as BLOCKING or NON-BLOCKING per the calibration
+7. For any `.dag` file in the diff (Practice 9): count `comment-lines /
+   total-lines`. A modeled file substantially above ~20% comment lines
+   has not been de-prosed — the comments must reduce to the four allowed
+   things (file-path line, terse four-line header, per-carrier anchor,
+   optional one-line concept tag). Process-meta prose in the file
+   (`HEADER RECONCILE`, de-prose receipts) is itself a finding.
+8. For cross-stage boundaries: verify facts flow forward.
+9. Classify every finding as BLOCKING or NON-BLOCKING per the calibration
    above.
 
 This document is the distilled version of modeling principles. For the
