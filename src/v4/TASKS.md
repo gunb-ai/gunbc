@@ -394,14 +394,19 @@ substrate imported them, so the cut is a pure scope reduction.
 
 ### T-10: compiler/05_emit.dag + compiler/00_compile.dag — emission + orchestrator
 
-**I/O**:
-- `emit: (InferredTree, TargetSpec) -> Result<TargetSource, Diagnostic>`
-- `compile: (Source, TargetSpec) -> Result<TargetSource, Diagnostic>` (orchestrator)
+**Architecture (`00_compile.dag`, `05_emit.dag`):** `compile = emit ∘ core ∘ ingest`. **Emit** is the **parameterized emit boundary** — the **inverse direction of `ingest` on the SAME bidirectional model** (C5 / B2-OMNI). **`TargetModel`** (declarative data from `extdeps/languages/*`, Shape A only) drives realization; **`InferredTree` IS the target-agnostic IR** (IR-1 — not a separate IR type). The orchestrator threads `Outcome` fail-closed across the chain.
 
-**Modeling decisions**:
-- Target-agnostic IR shape
-- How target spec drives concrete emission (interpreter vs codegen)
-- Orchestrator: monadic `Result` chaining vs early-return pattern
+**Task definition:** Implement **`emit : (InferredTree, TargetModel) -> Result<TargetSource, Diagnostic>`** plus **`ingest` / `compile` / `run`** entries per `00_compile.dag` — as **appliers of the one bidirectional relation** (projection + bounded context per C5-2), not bespoke per-target string pipelines.
+
+**No-templating (operator 2026-05-17) — owned here:** Concrete-syntax realization MUST be **grammar-as-data** (declarative **concrete-syntax ⟷ `Node`** — see T-4 “Grammar encoding” and T-11). **String-template emit is an emit-side hollow alias** the compiler cannot ground; STOP if a rule cannot be expressed as declarative grammar data. T-11 **inherits** this rule; it does not relax it.
+
+**Modeling decisions:** Epistemic-chain projection (THESIS:196 receipt in `05_emit.dag`); how `TargetModel` tables attach per target without `if target == …` special-casing in emit (special case ⇒ upstream grounding gap — STOP).
+
+**Operator discussion (STEP 4 pipeline-branch dispatch — please comment on this PR):** Whether each stage should eventually be modeled **explicitly** as a **causal-transform instance** (typed projection + coercion in the `Outcome` discipline) so “compiler = one mechanic” is a **substrate-visible** fact — **in addition to** the architecture headers (`00_compile`, `05_emit`, `02_parse`, `04_infer`) we already treat as correct.
+
+**I/O**:
+- `emit: (InferredTree, TargetModel) -> Result<TargetSource, Diagnostic>`
+- `compile: (Source, TargetModel) -> Result<TargetSource, Diagnostic>` (orchestrator; parameter is `TargetModel`, not a colloquial “spec” string)
 
 **Reference**:
 - v2: `src/v2/05_emit.dag`, `src/v2/compile.dag`
@@ -411,10 +416,10 @@ substrate imported them, so the cut is a pure scope reduction.
 
 ### T-11: emit per-target specialization
 
-**Why separate from T-10**: T-10 is the orchestrator; T-11 is the per-target translation tables that populate emit's behavior across **all five Shape-A targets — rust/python/go/cpp/typescript** (matching T-4's language set and the execution-graph critical-path line; T-16 depends on the full set).
+**Why separate from T-10**: T-10 owns emit orchestration + the **no-templating / grammar-as-data** rule above; T-11 is the **per-target translation data** that **populates** `emit` across **all five Shape-A targets — rust/python/go/cpp/typescript** (matching T-4's language set and the execution-graph critical-path line; T-16 depends on the full set).
 
 **Modeling decisions**:
-- Per-target translation rules — **as grammar-as-data, never string templates** (no-templating principle, operator 2026-05-17). The per-target "translation tables" are the declarative bidirectional grammar relation (concrete-syntax ⟷ `Node`, the canonical non-templated form — see T-4 "Grammar encoding"), NOT fill-in-the-holes string templates. A string-template emit path is the emit-side D2 hollow alias: an artifact the compiler cannot ground and check. STOP if a translation rule cannot be expressed as grammar-data.
+- Per-target translation rules — **grammar-as-data only**, per **T-10** (declarative bidirectional relation; never fill-in-hole templates). STOP if a rule cannot be grounded as grammar data.
 - Target-specific optimizations (or absence thereof)
 
 ---
