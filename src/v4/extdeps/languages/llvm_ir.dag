@@ -50,12 +50,12 @@ module v4.extdeps.languages.llvm_ir
 // name-reference identity used pervasively in the grammar — block
 // labels, SSA/parameter/global names) resolvable through this file's
 // import closure. std/algebra.dag is NOT imported: this file's declared
-// `Consumes` of it is its INHABITANCE, which is DEFERRED to the
-// operator-pending D2 STOP (see the Inhabitance section). The algebra
-// import + the ratified instance-value form are added only once D2
-// lands; importing algebra now while unused would be dead code, and
-// improvising the instances now would be the exact per-file
-// `<Algebra><Concrete>` form D2 forbids.
+// `Consumes` of it is its INHABITANCE, which is DEFERRED until the std/
+// scalar owner ratifies inhabitance instance rows (see the Inhabitance
+// section). The algebra import + the ratified instance-value form are
+// added only at that owner; importing algebra now while unused would
+// be dead code, and improvising the instances now would be the exact
+// per-file `<Algebra><Concrete>` form P2 single-authority forbids.
 import v4.std.node { Symbol }
 
 
@@ -148,12 +148,12 @@ import v4.std.node { Symbol }
 // ELSEWHERE" section near the end. This file declares only the LLVM
 // type/value/instruction VOCABULARY; WHICH algebra a scalar grounds in
 // is owned by the std/ scalar wave (std/integer.dag/float.dag/logic.dag,
-// T-3) + the operator-pending D2 FORM decision, by P2 single-authority.
-// This file does NOT declare, assert, or restate that grounding (an
-// extdeps language file restating it is a second-authority P2
-// violation).
-// Faithful observations for that owner / the D2 decision (NOT this
-// file's authority): LLVM `iN` arithmetic wraps mod 2^N ⇒ a finite ring
+// T-3) + the operator-pending inhabitance-instance form, by P2 single-
+// authority. This file does NOT declare, assert, or restate that
+// grounding (an extdeps language file restating it is a second-authority
+// P2 violation).
+// Faithful observations for that std/ scalar owner (NOT this file's
+// authority): LLVM `iN` arithmetic wraps mod 2^N ⇒ a finite ring
 // that is NOT order-compatible (the algebra.dag Float≠Field analog);
 // `fcmp` is NaN-unordered; pointers have no total numeric algebra.
 //
@@ -408,8 +408,9 @@ type VarArg
 //      A flat record makes "a NoneToken with elements" representable —
 //      the inverse of P2.
 //   3. Algebraic form — the NUMERIC constants' algebra grounding is
-//      OWNED ELSEWHERE (std/ scalar wave + pending D2, P2 — see the
-//      Inhabitance section; not declared here) — and the SUM itself is
+//      OWNED ELSEWHERE (std/ scalar wave + pending inhabitance rows, P2
+//      — see the Inhabitance section; not declared here) — and the SUM
+//      itself is
 //      the LangRef constant taxonomy, not one algebra carrier; N/A as a
 //      whole-sum dissolution.
 //   4. Dimensional — FAILS: a constant is EXACTLY ONE form; never
@@ -511,8 +512,9 @@ type LlvmValue
 //      form, not a coproduct awaiting promotion.
 //   3. Algebraic form — PARTIAL and DELIBERATELY NOT TAKEN as the
 //      carrier: add/sub/mul DO trace to the abstract algebra, but that
-//      grounding is OWNED ELSEWHERE (std/ scalar wave + pending D2, P2 —
-//      see the Inhabitance section; not declared here). The *instruction
+//      grounding is OWNED ELSEWHERE (std/ scalar wave + pending
+//      inhabitance rows, P2 — see the Inhabitance section; not declared
+//      here). The *instruction
 //      opcode* is the concrete-syntax token the bidirectional grammar
 //      needs — the LangRef surface, faithfully named; its algebra
 //      grounding is the std/ owner's authority, NOT restated here (two
@@ -617,7 +619,7 @@ type FloatPredicate
 //      `ConstantExpr` (Practice-2 applied).
 //   3. Algebraic form — N/A: a constexpr opcode is the LangRef surface;
 //      its numeric cases' algebra grounding is owned elsewhere (std/
-//      scalar wave + pending D2, P2 — not declared here).
+//      scalar wave + pending inhabitance rows, P2 — not declared here).
 //   4. Dimensional — FAILS: a constexpr has EXACTLY ONE opcode.
 //   5. Parameterized family — APPLIED: the closed source set
 //      `ConstantExpr` projects over (Practice 7); the dissolution target.
@@ -951,7 +953,8 @@ type AtomicRmwOp
 //      representable — the inverse of P2. Cannot fully fold.
 //   3. Algebraic form — arithmetic opcodes DO trace to the abstract
 //      algebra, but that grounding is OWNED ELSEWHERE (std/ scalar wave
-//      + pending D2, P2 — not declared here); the instruction is the
+//      + pending inhabitance rows, P2 — not declared here); the
+//      instruction is the
 //      bidirectional grammar surface the model needs — two faithful
 //      facts in two owners, not duplication.
 //   4. Dimensional — FAILS: an instruction is EXACTLY ONE kind; never a
@@ -1807,37 +1810,37 @@ fn feature_disposition(f: FidelityFeature) -> FidelityDisposition {
 //     prose — is a SECOND authority that forecloses that owner (the
 //     exact P2 violation).
 //   - The instance-value FORM (per-target `<Algebra><Concrete>` vs
-//     abstract; the fn-body convention for spec-primitive ops) is the
-//     OPEN, OPERATOR-PENDING **D2 STOP**: TASKS.md T-4 "i32 →
-//     OrderedRing" DIRECTLY CONTRADICTS INVARIANTS P1 (~:42 — "operator
-//     dispatch consumes abstract algebra facts, NOT a parallel
-//     `OrderedRing<Word*>` substrate per width class"; R3 gate #19);
-//     D2b's fn-body form (name-ref Atom / relaxed / new C1 carrier) is
-//     one of three resolutions a worker may NOT pick.
+//     abstract; the fn-body convention for spec-primitive ops) is
+//     OPEN, OPERATOR-PENDING: TASKS.md T-4 "i32 → OrderedRing" DIRECTLY
+//     CONTRADICTS INVARIANTS P1 (~:42 — "operator dispatch consumes
+//     abstract algebra facts, NOT a parallel `OrderedRing<Word*>`
+//     substrate per width class"; R3 gate #19); the ratified per-target
+//     primitive-op body convention (name-ref Atom / relaxed / new C1
+//     carrier) is one of three resolutions a worker may NOT pick.
 //
 // Per-file `data llvm_*: <Algebra><LlvmValue> = …` inhabitance
-// instances are deliberately ABSENT: they ARE the D2-gated surface
-// (P2 + INVARIANTS P1:42), and an operator-pending substrate-design
-// decision is a HOLD/defer, never a 🟡-track-and-ship (🟡 is "richer
-// source exists, substrate not ready", NOT "ship past an active
+// instances are deliberately ABSENT: they are the inhabitance-gated
+// surface (P2 + INVARIANTS P1:42), and an operator-pending substrate-
+// design decision is a HOLD/defer, never a 🟡-track-and-ship (🟡 is
+// "richer source exists, substrate not ready", NOT "ship past an active
 // escalation"). The no-6th-behavior probe result stands on the
 // declarative model ALONE and does not need them.
 //
-// When D2 lands AND the std/ scalar owner declares the grounding, the
-// connection (per-target SPELLING of the abstract algebra, not a
-// re-inhabitance) is added at the ratified owner per the ratified form —
-// CONSUMED here, never authored here. Empirical datum handed to the D2b
-// decision (NOT a green-light): the deep nested-constructor + lambda-
+// When the std/ scalar owner ratifies the grounding and the operator
+// ratifies the connection form (per-target SPELLING of the abstract
+// algebra, not a re-inhabitance), the row is added at the ratified owner
+// — CONSUMED here, never authored here. Empirical datum handed to that
+// form decision (NOT a green-light): the deep nested-constructor + lambda-
 // field `data`-instance form parses 0-diag under the frozen v2 seed
-// (verified while probing) — so D2b is a FORM-authority decision, not a
-// v2-admissibility blocker. Faithful grounding OBSERVATIONS for that
-// owner (LLVM `iN` wraps ⇒ a finite ring, NOT order-compatible — the
-// Float≠Field analog; `fcmp` NaN-unordered; pointers have no total
-// numeric algebra) are carried to D2 / the std/ owner, NOT asserted as
-// this file's authority.
+// (verified while probing) — so the choice among body conventions is a
+// FORM-authority decision, not a v2-admissibility blocker. Faithful
+// grounding OBSERVATIONS for that owner (LLVM `iN` wraps ⇒ a finite ring,
+// NOT order-compatible — the Float≠Field analog; `fcmp` NaN-unordered;
+// pointers have no total numeric algebra) are carried to the std/ scalar
+// owner, NOT asserted as this file's authority.
 //
 // Scaffold "Owns: Inhabitance" is satisfied by this principled
-// deferral-to-owner — NOT by improvising the D2-contested instance
+// deferral-to-owner — NOT by improvising the form-contested instance
 // ahead of ratification (that improvisation IS the v3 cross-layer-drift
 // failure mode v4 exists to kill — the STOP is the contribution).
 

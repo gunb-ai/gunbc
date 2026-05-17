@@ -65,10 +65,11 @@ module v4.extdeps.languages.verilog
 // module names, port names, signal names, instance names) resolvable
 // through this file's import closure. std/algebra.dag is NOT imported:
 // this file's scaffold-declared `Inhabitance: bit-vectors per
-// std/algebra.dag` is DEFERRED to the operator-pending D2 STOP (see the
-// Inhabitance section in modeling notes); declaring per-target
-// OrderedRing/Semiring instance-values now would be the per-file
-// `<Algebra><Concrete>` improvisation D2 forbids (#3171 worker
+// std/algebra.dag` is DEFERRED to operator-pending scalar inhabitance
+// in the std/ carriers (see the Inhabitance section in modeling notes);
+// declaring per-target OrderedRing/Semiring instance-values here would
+// be the per-file `<Algebra><Concrete>` improvisation that P2
+// single-authority forbids (#3171 worker
 // vivid-crab-154 / snappy-badger-570 held precedent). std/diagnostic.dag
 // is NOT imported: this declarative LanguageModel declares no
 // parse/emit body — those ride the operator-pending D1 Outcome<T>
@@ -224,19 +225,20 @@ import v4.std.node { Symbol }
 // surface — and it surfaces here on the SUCCESS side, not the STOP
 // side.
 //
-// INHABITANCE (DEFERRED to D2). The scaffold-declared "Inhabitance:
-// bit-vectors (wire/reg [N:0]) per std/algebra.dag" is DEFERRED to
-// the operator-pending D2 STOP. Conceptually, an N-bit unsigned
-// signal grounds in `Semiring<UInt<N>>` (or `OrderedRing<Int<N>>`
-// for signed-as-twos-complement reg/integer arithmetic) — but
-// declaring a `data verilog_wire_n_semiring: Semiring<UInt<N>> = …`
-// instance-value at this layer would be the per-file
-// `<Algebra><Concrete>` improvisation D2 was authored to hold
-// (PR #3171's hold precedent). The instance-value form lands when
-// std/integer.dag / std/logic.dag inhabitance walks land plus the
-// ratified D2 instance-value shape; the algebra import + the
-// instance-value declarations are added in ONE pass, not improvised
-// per language.
+// INHABITANCE (DEFERRED — std/ owner, not this file). The scaffold-
+// declared "Inhabitance: bit-vectors (wire/reg [N:0]) per
+// std/algebra.dag" is DEFERRED until the std/ scalar wave declares the
+// ratified instance-value shape in its own carriers. Conceptually, an
+// N-bit unsigned signal grounds in `Semiring<UInt<N>>` (or
+// `OrderedRing<Int<N>>` for signed-as-twos-complement reg/integer
+// arithmetic) — but declaring a `data verilog_wire_n_semiring:
+// Semiring<UInt<N>> = …` instance-value at this layer would be the
+// per-file `<Algebra><Concrete>` improvisation PR #3171 held as
+// precedent against. The instance-value form lands when std/integer.dag
+// / std/logic.dag inhabitance walks land and the operator ratifies how
+// those rows attach to language surfaces; the algebra import + the
+// instance-value declarations are added in ONE pass at that owner, not
+// improvised per language file.
 //
 // PROBE LIMITS (honest framing — what this file does NOT validate).
 // The IN-B finding covers the STRUCTURAL fit of Verilog HW concurrency
@@ -777,9 +779,9 @@ type NetVectoredPacking
 //   3. Algebraic form — PARTIAL: each variant grounds in a different
 //      std/algebra structure (Signed → OrderedRing on the underlying
 //      bit-vector width; Unsigned → Semiring). That grounding is
-//      the inhabitance walk DEFERRED to D2 per the file's "Owned
-//      ELSEWHERE" framing; the signedness enum itself stays a closed
-//      classifier.
+//      the inhabitance walk DEFERRED per this file's "Owned ELSEWHERE"
+//      framing (std/ scalar wave + P2); the signedness enum itself
+//      stays a closed classifier.
 //   4. Dimensional — FAILS: a net/reg declaration is EXACTLY ONE
 //      signedness; `wire signed signed x;` is a syntax error.
 //      Mutually-exclusive alternatives.
@@ -1370,8 +1372,9 @@ type NetIdentifierDeclarator {
 //      RealTimeVariable → `ApproximateField<Float>`; TimeVariable
 //      → `Semiring<UInt<64>>`). That grounding is INHABITANCE —
 //      owned by the inhabiting carrier file (std/integer.dag,
-//      std/float.dag) per P2, and DEFERRED to the operator-pending
-//      D2 STOP. The variant set itself stays a closed classifier.
+//      std/float.dag) per P2, and DEFERRED until that owner ratifies
+//      instance rows (operator-pending form). The variant set itself
+//      stays a closed classifier.
 //   4. Dimensional — FAILS: a single variable declaration IS
 //      EXACTLY ONE variant; mutually-exclusive alternatives. The
 //      shapes differ across variants (RegVariable carries packing
@@ -1392,8 +1395,8 @@ type NetIdentifierDeclarator {
 //
 // #3200 RE-SCOPE (rule-change 2026-05-16, docs/modeling-discipline.md
 // merged on origin/main): under the pre-#3200 consumer-DEPENDENT
-// GREEN rule this Disj was correctly GREEN (D2 inhabitance not yet
-// landed). Under the post-#3200 consumer-INDEPENDENT rule this is
+// GREEN rule this Disj was correctly GREEN (std/ scalar inhabitance not
+// yet landed). Under the post-#3200 consumer-INDEPENDENT rule this is
 // 🟡 YELLOW because a namable richer source EXISTS:
 //   Axes: {storage-class, width, signedness, algebra-grounding}
 //     RegVariable: storage=mutable-bit-vector; width=packing-payload;
@@ -1409,8 +1412,8 @@ type NetIdentifierDeclarator {
 //       (parse∘emit preserves the keyword); same algebra-grounding
 //       as RealVariable
 //   Trigger: first consumer of variable-storage / algebra semantics
-//     (algebra inhabitance lens — D2 pathway).
-//   Obligation: the first meaning-consumer (D2 inhabitance work) owes
+//     (algebra inhabitance lens — std/ grounding pathway).
+//   Obligation: the first meaning-consumer (scalar inhabitance work) owes
 //     structural decomposition into a {storage-class, width,
 //     signedness, algebra} record AT that consumer — NOT a local
 //     match-over-kind lookup in this carrier.
@@ -1553,8 +1556,8 @@ type VariableDeclarator
 //      algebra structure (OutputAnsiNetType / OutputAnsiRegType →
 //      Semiring or OrderedRing per packing × signedness;
 //      OutputAnsiIntegerType → OrderedRing<Int<32>>;
-//      OutputAnsiTimeType → Semiring<UInt<64>>). D2-deferred per
-//      "Owned ELSEWHERE".
+//      OutputAnsiTimeType → Semiring<UInt<64>>). Deferred per
+//      "Owned ELSEWHERE" (std/ scalar inhabitance).
 //   4. Dimensional — FAILS: an ANSI output port has EXACTLY ONE
 //      type/kind; mutually-exclusive alternatives.
 //   5. Parameterized family — FAILS: the four variants are
@@ -1666,7 +1669,7 @@ type OutputPortAnsiNetTypeKind
 //   3. Algebraic form — PARTIAL: each variant grounds in std/
 //      algebra (Reg→Semiring/OrderedRing per packing×signedness;
 //      Integer→OrderedRing<Int<32>>; Time→Semiring<UInt<64>>);
-//      D2-deferred per Owned ELSEWHERE.
+//      deferred per Owned ELSEWHERE (std/ scalar inhabitance).
 //   4. Dimensional — FAILS: exactly one form per output port.
 //   5. Parameterized family — FAILS: structurally heterogeneous
 //      payloads + algebraic groundings (Practice 7).
@@ -1685,7 +1688,7 @@ type OutputPortAnsiNetTypeKind
 //     OutputAnsiIntegerType: same as IntegerVariable
 //     OutputAnsiTimeType: same as TimeVariable
 //   Trigger: first consumer of variable-storage / algebra semantics
-//     (D2 inhabitance pathway — shared with VariableDeclaration
+//     (scalar inhabitance pathway — shared with VariableDeclaration
 //     consumer).
 //   Obligation: the first meaning-consumer owes structural
 //     decomposition into the same {storage-class, width, signedness,
@@ -1839,8 +1842,8 @@ type NonAnsiPort
 //      uniform record would collapse the future-extension axis a
 //      Disj preserves.
 //   3. Algebraic form — N/A by construction: net types are the spec's
-//      primitive resolution-function set per §3.7.1; D2-deferred per
-//      "Owned ELSEWHERE".
+//      primitive resolution-function set per §3.7.1; deferred per
+//      "Owned ELSEWHERE" (std/ scalar inhabitance).
 //   4. Dimensional — FAILS: an input/inout ANSI port has EXACTLY ONE
 //      net-type payload; the variant is the dispatcher.
 //   5. Parameterized family — FAILS: the single variant's payload is
@@ -2113,7 +2116,7 @@ type AnsiOutputPortDeclarator {
 //      default-value's inferred type; IntegerParameter →
 //      OrderedRing<Int<32>>; RealParameter / RealTimeParameter →
 //      ApproximateField<Float>; TimeParameter → Semiring<UInt<64>>).
-//      D2-deferred per "Owned ELSEWHERE".
+//      Deferred per "Owned ELSEWHERE" (std/ scalar inhabitance).
 //   4. Dimensional — FAILS: a single parameter has EXACTLY ONE
 //      type kind; mutually-exclusive alternatives.
 //   5. Parameterized family — FAILS: heterogeneous payload-presence
@@ -2139,7 +2142,7 @@ type AnsiOutputPortDeclarator {
 //     TimeParameter: same as TimeVariable
 //     RealTimeParameter: same as RealTimeVariable (aliased to Real)
 //   Trigger: first consumer of parameter-storage / algebra semantics
-//     (D2 inhabitance pathway — shared with the
+//     (scalar inhabitance pathway — shared with the
 //     VariableDeclaration / OutputPortAnsiVariableTypeKind family).
 //   Obligation: the first meaning-consumer owes structural
 //     decomposition into the same storage-class matrix used for
