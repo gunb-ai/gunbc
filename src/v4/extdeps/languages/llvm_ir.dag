@@ -653,10 +653,15 @@ type BinaryOpcode
 //     fptosi out-of-range produce POISON per LangRef "Conversion
 //     Operations". The FULL invalid-input disposition surface
 //     (uitofp/sitofp inexact-rounding semantics; fptoui/fptosi NaN
-//     behavior; all per-target rounding modes) is EXPLICITLY DEFERRED
-//     to the first D2 meaning-consumer's fidelity carrier (it pairs
-//     with the existing FidelityDisposition machinery; opcode-level
-//     decomposition above carries shape, not the disposition surface).
+//     behavior; all per-target rounding modes) is EXPLICITLY DEFERRED.
+//     Owner = TBD: the disposition carrier lives at whatever
+//     meaning-consumer the extdeps fact-modeling rework lands as the
+//     fidelity authority (the prior D2-meaning-consumer /
+//     FidelityDisposition framing is being reworked by the operator;
+//     this deferral does NOT cement that mechanism as the owner —
+//     it stays trigger-named and owner-TBD until the rework
+//     settles). Opcode-level decomposition above carries shape, not
+//     the disposition surface.
 //   Trigger: first consumer of conversion MEANING (cost model /
 //     numeric-precision lens / inhabitance dispatch — D2 pathway).
 //   Obligation: the first meaning-consumer owes the (src-domain,
