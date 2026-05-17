@@ -464,6 +464,112 @@ D2-reversal as ratified is therefore correct, not premature.
 
 ---
 
+## T-4.7 — `extdeps/frameworks/react.dag` Practice 4 / INVARIANTS P1 receipts
+
+**Binding:** `docs/modeling-discipline.md` Practice 9 — coproduct **classification**, five-pattern **ledger**, and **YELLOW** triggers live in this file, not as multi-line prose in `react.dag`. The substrate carries **one** `// Anchor:` + **one** `// Practice-4: DECISIONS.md#…` cite per coproduct. **TASKS authority:** `src/v4/TASKS.md` T-4.7 (incl. `ReactNode` partial-slice posture).
+
+### react-p4-optref
+
+**Carrier:** `ReactOptRef` in `src/v4/extdeps/frameworks/react.dag`.
+
+Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-discipline.md §4) — **🟢 GREEN (terminal).** Abbreviated five-pattern ledger:
+
+1. Fact placement — FAILS: shared optional-ref discriminant across hooks/elements.
+2. Variant-is-data — FAILS: nullary absent vs record-present differ structurally.
+3. Algebraic form — N/A: not a std/algebra decomposition target at this boundary.
+4. Dimensional — FAILS: mutually exclusive ref-present vs ref-absent at call site.
+5. Parameterized family — FAILS: not one generic F<X> over a separate hook-id set.
+
+**Terminal:** irreducible optional ref handle arity pinned to react.dev call signatures.
+
+### react-p4-effect-cleanup-site
+
+**Carrier:** `ReactEffectCleanupSite`.
+
+Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-discipline.md §4) — **🟢 GREEN (terminal).** Abbreviated five-pattern ledger:
+
+1. Fact placement — FAILS: shared cleanup-shape classifier for all effect hooks.
+2. Variant-is-data — FAILS: NoCleanup vs CleanupBody carry different structure.
+3. Algebraic form — N/A: cleanup arity is API-surface, not an algebra carrier here.
+4. Dimensional — FAILS: exclusive “no cleanup return” vs “cleanup function ref”.
+5. Parameterized family — FAILS: not mechanical F<X> over an external enumerated set.
+
+**Terminal:** irreducible react.dev effect cleanup return shape (omit vs present function).
+
+### react-p4-hook-inline-deps
+
+**Carrier:** `ReactHookInlineDependenciesArgument`.
+
+Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-discipline.md §4) — **🟢 GREEN (terminal).** Abbreviated five-pattern ledger:
+
+1. Fact placement — FAILS: deps arity is a shared inline classifier for several hooks.
+2. Variant-is-data — FAILS: omitted vs present-list are different input shapes.
+3. Algebraic form — N/A: dependency array is not a std/algebra re-export.
+4. Dimensional — FAILS: exclusive omit-deps vs explicit dependency list at call site.
+5. Parameterized family — FAILS: not one F<DepsSite> copy of a separate closed set.
+
+**Terminal:** irreducible optional dependency-array arity (react.dev useEffect family, …).
+
+### react-p4-module-surface
+
+**Carrier:** `ReactModuleSurface`.
+
+Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-discipline.md §4) — **🟢 GREEN (terminal).** Abbreviated five-pattern ledger:
+
+1. Fact placement — FAILS: module surface is shared metadata on function components.
+2. Variant-is-data — FAILS: client vs RSC are distinct authoring/runtime surfaces.
+3. Algebraic form — N/A: module kind is boundary classification, not std/algebra.
+4. Dimensional — FAILS: exclusive client module vs RSC module per pinned react.dev split.
+5. Parameterized family — FAILS: two named surfaces, not F<ModuleKind> over a larger set.
+
+**Terminal:** irreducible react.dev / RSC module-surface partition for components.
+
+### react-p4-hook-site
+
+**Carrier:** `ReactHookSite`.
+
+Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-discipline.md §4) — **🟢 GREEN (terminal).** Abbreviated five-pattern ledger:
+
+1. Fact placement — FAILS: roster is the shared substrate discriminant for hook consumers.
+2. Variant-is-data — FAILS: each arm carries a distinct per-API record (not one tag×payload).
+3. Algebraic form — N/A: built-in hooks are not copies of std/algebra intro forms here.
+4. Dimensional — FAILS: exactly one hook API (or CustomHook) per modeled call site.
+5. Parameterized family — FAILS: heterogeneous payloads — not one F<HookId> projection.
+
+**Terminal:** closed react.dev Hooks index + CustomHook (T-4.7); `use` API → `ReactUseCallSite`.
+
+### react-p4-use-call-site
+
+**Carrier:** `ReactUseCallSite` (single-arm sum).
+
+**Practice 4 §4:** N/A — single-arm coproduct (`UseResource` only); the §4 checkpoint applies to coproducts with **N ≥ 2** variants (`docs/modeling-discipline.md` §4 / INVARIANTS P1).
+
+### react-p4-element
+
+**Carrier:** `ReactElement`.
+
+Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-discipline.md §4) — **🟢 GREEN (terminal).** Abbreviated five-pattern ledger:
+
+1. Fact placement — FAILS: element-kind is shared across render-tree consumers.
+2. Variant-is-data — FAILS: Host vs Composite vs Fragment carry different record shapes.
+3. Algebraic form — N/A: not decomposable into std/algebra carriers at this boundary.
+4. Dimensional — FAILS: exactly one createElement/fragment partition per value.
+5. Parameterized family — FAILS: three structurally distinct carriers, not F<ElementKind>.
+
+**Terminal:** irreducible react.dev element partition (host / composite / fragment children).
+
+### react-p4-node
+
+**Carrier:** `ReactNode`.
+
+Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-discipline.md §4) — **🟡 YELLOW (scaffold).** T-4.7 **partial** `createElement` children slice (`Element` | `Text` only). Full JSX / react.dev child lattice is **owned elsewhere** — see `src/v4/TASKS.md` T-4.7 “ReactNode (Practice‑4 🟡)” + `docs/design-r4-phase-1-5-hookkind-custom-react-substrate-canvas.md` (not exhaustive for “all React children”).
+
+**Trigger + obligation:** **Dissolution = operator-ratified PR** extending or retiring this sum; consumers must not treat the Disj as terminal closure of React child modeling.
+
+**Five-pattern note:** Patterns 1–5 do not justify closing the full child lattice inside this substrate file; deferral is explicit **task authority** (TASKS T-4.7), not consumer-independent GREEN.
+
+---
+
 ## Part 5 — Ratification flow
 
 For each PROPOSED item: ratify (👍 / "confirm") or redirect ("instead,

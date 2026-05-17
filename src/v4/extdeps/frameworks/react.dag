@@ -9,66 +9,31 @@ module v4.extdeps.frameworks.react
 type ReactCrossDeclRef
 
 // Anchor: https://react.dev/reference/react/useEffect
-// Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Abbreviated five-pattern ledger:
-//   1 Fact placement — FAILS: shared optional-ref discriminant across hooks/elements.
-//   2 Variant-is-data — FAILS: nullary absent vs record-present differ structurally.
-//   3 Algebraic form — N/A: not a std/algebra decomposition target at this boundary.
-//   4 Dimensional — FAILS: mutually exclusive ref-present vs ref-absent at call site.
-//   5 Parameterized family — FAILS: not one generic F<X> over a separate hook-id set.
-// Terminal: irreducible optional ref handle arity pinned to react.dev call signatures.
+// Practice-4: DECISIONS.md#react-p4-optref
 type ReactOptRef
   = RefPresent { ref: ReactCrossDeclRef }
   | RefAbsent
 
 // Anchor: https://react.dev/reference/react/useEffect
-// Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Abbreviated five-pattern ledger:
-//   1 Fact placement — FAILS: shared cleanup-shape classifier for all effect hooks.
-//   2 Variant-is-data — FAILS: NoCleanup vs CleanupBody carry different structure.
-//   3 Algebraic form — N/A: cleanup arity is API-surface, not an algebra carrier here.
-//   4 Dimensional — FAILS: exclusive “no cleanup return” vs “cleanup function ref”.
-//   5 Parameterized family — FAILS: not mechanical F<X> over an external enumerated set.
-// Terminal: irreducible react.dev effect cleanup return shape (omit vs present function).
+// Practice-4: DECISIONS.md#react-p4-effect-cleanup-site
 type ReactEffectCleanupSite
   = NoCleanup
   | CleanupBody { cleanup_body_ref: ReactCrossDeclRef }
 
 // Anchor: https://react.dev/reference/react/useEffect
-// Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Abbreviated five-pattern ledger:
-//   1 Fact placement — FAILS: deps arity is a shared inline classifier for several hooks.
-//   2 Variant-is-data — FAILS: omitted vs present-list are different input shapes.
-//   3 Algebraic form — N/A: dependency array is not a std/algebra re-export.
-//   4 Dimensional — FAILS: exclusive omit-deps vs explicit dependency list at call site.
-//   5 Parameterized family — FAILS: not one F<DepsSite> copy of a separate closed set.
-// Terminal: irreducible optional dependency-array arity (react.dev useEffect family, …).
+// Practice-4: DECISIONS.md#react-p4-hook-inline-deps
 type ReactHookInlineDependenciesArgument
   = DependenciesArgOmitted
   | DependenciesArgPresent { dependency_refs: List<ReactCrossDeclRef> }
 
 // Anchor: https://react.dev/reference/rsc/server-components
-// Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Abbreviated five-pattern ledger:
-//   1 Fact placement — FAILS: module surface is shared metadata on function components.
-//   2 Variant-is-data — FAILS: client vs RSC are distinct authoring/runtime surfaces.
-//   3 Algebraic form — N/A: module kind is boundary classification, not std/algebra.
-//   4 Dimensional — FAILS: exclusive client module vs RSC module per pinned react.dev split.
-//   5 Parameterized family — FAILS: two named surfaces, not F<ModuleKind> over a larger set.
-// Terminal: irreducible react.dev / RSC module-surface partition for components.
+// Practice-4: DECISIONS.md#react-p4-module-surface
 type ReactModuleSurface
   = ReactClientModule
   | ReactServerComponentsModule
 
 // Anchor: https://react.dev/reference/react/hooks
-// Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Abbreviated five-pattern ledger:
-//   1 Fact placement — FAILS: roster is the shared substrate discriminant for hook consumers.
-//   2 Variant-is-data — FAILS: each arm carries a distinct per-API record (not one tag×payload).
-//   3 Algebraic form — N/A: built-in hooks are not copies of std/algebra intro forms here.
-//   4 Dimensional — FAILS: exactly one hook API (or CustomHook) per modeled call site.
-//   5 Parameterized family — FAILS: heterogeneous payloads — not one F<HookId> projection.
-// Terminal: closed react.dev Hooks index + CustomHook (T-4.7); `use` → `ReactUseCallSite`.
+// Practice-4: DECISIONS.md#react-p4-hook-site
 type ReactHookSite
   = UseState { initial_ref: ReactCrossDeclRef }
   | UseReducer {
@@ -128,7 +93,7 @@ type ReactHookSite
   | CustomHook { implementation_ref: ReactCrossDeclRef }
 
 // Anchor: https://react.dev/reference/react/use
-// Practice-4: N/A — single-arm sum (`UseResource` only); §4 checkpoint targets N≥2 variants.
+// Practice-4: DECISIONS.md#react-p4-use-call-site
 type ReactUseCallSite
   = UseResource { resource_ref: ReactCrossDeclRef }
 
@@ -164,26 +129,14 @@ type ReactCompositeElement {
 }
 
 // Anchor: https://react.dev/reference/react/createElement
-// Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Abbreviated five-pattern ledger:
-//   1 Fact placement — FAILS: element-kind is shared across render-tree consumers.
-//   2 Variant-is-data — FAILS: Host vs Composite vs Fragment carry different record shapes.
-//   3 Algebraic form — N/A: not decomposable into std/algebra carriers at this boundary.
-//   4 Dimensional — FAILS: exactly one createElement/fragment partition per value.
-//   5 Parameterized family — FAILS: three structurally distinct carriers, not F<ElementKind>.
-// Terminal: irreducible react.dev element partition (host / composite / fragment children).
+// Practice-4: DECISIONS.md#react-p4-element
 type ReactElement
   = Host { host: ReactHostElement }
   | Composite { composite: ReactCompositeElement }
   | Fragment { key: ReactOptRef, child_refs: List<ReactCrossDeclRef> }
 
 // Anchor: https://react.dev/reference/react/createElement
-// Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-discipline.md §4) —
-// 🟡 YELLOW (scaffold): T-4.7 **partial** `createElement` children slice (`Element`|`Text`
-//     only); full JSX / react.dev child lattice **owned elsewhere** — see `src/v4/TASKS.md`
-//     T-4.7 “ReactNode (Practice‑4 🟡)” + Phase‑1.5 canvas doc (not exhaustive “all children”).
-// Trigger + obligation: **Dissolution = operator-ratified PR** extending or retiring this sum;
-//     consumers must not treat the Disj as terminal closure of React child modeling.
+// Practice-4: DECISIONS.md#react-p4-node
 type ReactNode
   = Element { element: ReactElement }
   | Text { text_value_ref: ReactCrossDeclRef }
