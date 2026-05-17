@@ -137,20 +137,23 @@
 // owner (TRACKED SCAFFOLD (1)), not a property claimed of the present
 // `{ jobs, gates }` data.
 //
-// HEADER TENSION — SURFACED, not silently reinterpreted. The immutable
-// scaffold header (Owns / C4) binds BOTH the `CiPipeline { jobs,
-// gates }` shape AND "committed == emit(CiPipeline) CHECKED
-// PROJECTION" of `.github/workflows/ci.yml`. Those two are in tension:
+// HEADER TENSION — RECONCILED in-PR (D5). The immutable scaffold
+// header (Owns / C4) originally bound BOTH the `CiPipeline { jobs,
+// gates }` shape AND a direct "committed == emit(CiPipeline) CHECKED
+// PROJECTION" of `.github/workflows/ci.yml`. Those two were in tension:
 // the projection cannot be faithful over jobs/gates alone (above).
-// Resolving it needs either the v4 counterpart of the ratified
+// Resolving it needs the v4 counterpart of the ratified
 // `extdeps.github.actions { Workflow }` carrier + `ci_emission.dag`
 // `project_github_actions`/`WorkflowRuntime` seam (new file,
-// operator-tier) feeding the projection, or an operator decision to
-// narrow the C4-over-CiPipeline header claim. Per the
-// frozen-scaffold-header ratification discipline this worker does NOT
-// edit the immutable Owns/C4 lines; the tension is flagged on the PR
-// for conscious operator confirmation. This note is the honest
-// tracked statement of the gap, not a convention papering it.
+// operator-tier) feeding the projection. Per the DECISIONS.md D5 /
+// #3216 standing rule, the operator-tier BLOCKING review actions on
+// this PR sanctioned reconciling the frozen header IN-PR: the `Owns`
+// "emission target" + C4 lines were reconciled to the single-authority
+// `Workflow`-carrier projection with C4 gated on that missing v4
+// substrate, and a `HEADER RECONCILE` block (below the Status line)
+// cites the actions. C4 operator-ratified intent is preserved; only
+// the projection mechanism/source was corrected. This is the honest
+// tracked record of that reconcile, not a silent reinterpretation.
 //
 // WHY job/gate edges are `Symbol`, not inlined sub-nodes. `CiJob.needs`
 // and `CiGate.job` are post-resolution opaque `Symbol` references
