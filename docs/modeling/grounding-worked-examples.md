@@ -608,23 +608,26 @@ Go channels are typed FIFO communication endpoints. Their value model is not
 **Model:**
 
 ```
-// CARRIER — a channel value is an endpoint over a FIFO stream of T.
-// Direction is a closed target fact: send-only, receive-only, or bidirectional.
+// CARRIER — the channel TYPE `chan T`: the static type facts only —
+// element type, direction (send-only / receive-only / bidirectional),
+// and declared buffer capacity.
 type GoChan<T> = Conj {
   element:   TypeGrounding<T>,
   direction: SendOnly | ReceiveOnly | Bidirectional,
-  capacity:  Nat,
-  state:     Open | Closed
+  capacity:  Nat
 }
-// `state` is the channel VALUE-state — closed-ness is a runtime fact the
-// effect/scheduling lenses read (a send on a closed channel panics; a
-// receive yields the zero value). It is distinct from the type facts
-// (element/direction/capacity). A nil `chan T` is the ABSENCE of a
-// GoChan value (`Optional<GoChan<T>>` at the variable level), not a
-// GoChan state — so this carrier models the non-nil channel.
+// SCOPE — this carrier models the channel TYPE, not a channel VALUE. The
+// runtime value-state — open/closed, live buffer occupancy, queued
+// contents, nil-ness — is NOT a type-grounding fact; it is runtime state
+// the eval / effect layer carries, explicitly outside this type carrier.
+// Modeling part of that state here (e.g. open/closed without occupancy)
+// would be a half-model — so the type carrier carries none of it.
 
-// MEANING — ordered communication of T values, with blocking behavior derived
-// from capacity and direction. Scheduling is an effect fact, not a payload fact.
+// MEANING — the channel type's communication contract: ordered FIFO
+// transfer of T values, with `direction` and `capacity` the static type
+// facts. Blocking behavior is a RUNTIME fact — it depends on the live
+// buffer occupancy and open/closed-ness, which the static type does NOT
+// determine — so it is not claimed by this carrier.
 ```
 
 **Step-by-step coercion shape — `GoChan<int32> -> Outcome<IR Stream<Int32>>`:**
@@ -636,8 +639,10 @@ type GoChan<T> = Conj {
    Missing direction/capacity facts return `Rejected { diagnostic:
    Diagnostic }` rather than defaulting to bidirectional or unbuffered.
 
-The concurrency semantics are not annotations. They are grounded target facts
-attached to the endpoint and consumed by effect/scheduling lenses.
+The static concurrency type facts (`direction`, `capacity`) are grounded
+target facts, not annotations. The runtime scheduling state — live buffer
+occupancy, open/closed-ness — is a separate eval / effect-layer concern,
+not part of this type grounding.
 
 ---
 
@@ -767,9 +772,12 @@ type LlvmSsaValue<T> = Conj {
 3. IR `Int32` is **signed** (`Compose<Int, MachineWidth<Word32>>` — `Int`
    is the signed carrier). So the coercion fold needs a signedness fact
    the source must actually carry.
-4. a **signedness-bearing** use-site (`sdiv i32`, `sext`, a typed
-   parameter, …) supplies that fact → return `Produced`. `add i32` alone,
-   or raw `i32` with no signedness-bearing use, returns
+4. a **signedness-bearing** source supplies that fact → return `Produced`.
+   The genuine signedness-bearing sources are: a **signed instruction**
+   (`sdiv`/`srem`/`sext`/`ashr`, …) or **signedness metadata** (a
+   `signext`/`zeroext` parameter attribute, or `!range` metadata) — NOT a
+   bare typed parameter, which is itself sign-agnostic. `add i32` alone,
+   or raw `i32` with no signedness-bearing source, returns
    `Rejected { diagnostic: Diagnostic }` — reading *signed* `Int32` out of
    a sign-neutral operation is fact fabrication. (A sign-agnostic 32-bit
    two's-complement integer is itself a faithful target; only the
