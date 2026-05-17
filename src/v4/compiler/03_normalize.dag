@@ -20,6 +20,8 @@
 // Consumes:
 //   - std/node.dag, std/diagnostic.dag
 //   - compiler/02_parse.dag: ParseTree
+//   - extdeps/languages/dag.dag: `dag_c3_surface_sugar_*` Atom identities (single
+//     mint for C3 sugar; classify compares parse output against these authorities)
 //
 // Status: T-8 modeled 2026-05-16 (bright-seal-437). ParseTree is the
 // single authority in v4.compiler.parse (02_parse.dag); this stage imports
@@ -73,8 +75,9 @@ import v4.std.node {
 type NormalizedTree = Node
 
 
-// The four ratified surface-sugar identities. These are Symbol
-// name-references owned by normalize.dag; they are not readable strings.
+// Stage-owned Diagnostic reason symbols (K-1 opaque identities; not readable text).
+// C3 surface-sugar Atom identities live in `extdeps/languages/dag.dag`; this stage
+// imports them and compares by identity in `classify_sugar` — no parallel sugar mint.
 data normalize_reason_malformed_sugar: Symbol = normalize_reason_malformed_sugar
 data normalize_port_surface_sugar: Symbol = normalize_port_surface_sugar
 
