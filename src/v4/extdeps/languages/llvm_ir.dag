@@ -410,9 +410,8 @@ type VarArg
 //   3. Algebraic form — the NUMERIC constants' algebra grounding is
 //      OWNED ELSEWHERE (std/ scalar wave + pending inhabitance rows, P2
 //      — see the Inhabitance section; not declared here) — and the SUM
-//      itself is
-//      the LangRef constant taxonomy, not one algebra carrier; N/A as a
-//      whole-sum dissolution.
+//      itself is the LangRef constant taxonomy, not one algebra carrier;
+//      N/A as a whole-sum dissolution.
 //   4. Dimensional — FAILS: a constant is EXACTLY ONE form; never
 //      several simultaneously.
 //   5. Parameterized family — FAILS: the forms are heterogeneous (scalar
@@ -515,10 +514,9 @@ type LlvmValue
 //      grounding is OWNED ELSEWHERE (std/ scalar wave + pending
 //      inhabitance rows, P2 — see the Inhabitance section; not declared
 //      here). The *instruction opcode* is the concrete-syntax token the
-//      bidirectional grammar
-//      needs — the LangRef surface, faithfully named; its algebra
-//      grounding is the std/ owner's authority, NOT restated here (two
-//      faithful facts in two owners, never a duplicate authority).
+//      bidirectional grammar needs — the LangRef surface, faithfully named;
+//      its algebra grounding is the std/ owner's authority, NOT restated
+//      here (two faithful facts in two owners, never a duplicate authority).
 //   4. Dimensional — FAILS: a binary instruction has EXACTLY ONE opcode.
 //   5. Parameterized family — APPLIED: this enum IS the closed source
 //      set the single `Binary` shape projects over (Practice 7); it is
