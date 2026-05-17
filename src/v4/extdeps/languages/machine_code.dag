@@ -327,13 +327,87 @@ type InstructionProductionRef {
 }
 
 
-// OperandBinding — decoded operand value tied to a named slot in the
-// instruction production. Slot names are opaque Symbols resolved through
-// `production`, not independent readable labels.
-type OperandBinding {
+type RegisterOperandSlotRef {
   slot: Symbol
-  value: Operand
 }
+
+
+type ImmediateOperandSlotRef {
+  slot: Symbol
+}
+
+
+type MemoryOperandSlotRef {
+  slot: Symbol
+}
+
+
+// InstructionOperandSlot — operand-category authority for a declared
+// production slot. This is not an operand value; it is the ISA grammar
+// row's slot and constraint classifier consumed by decoded operand
+// bindings. Category-specific slot refs keep decoded operands tied to a
+// compatible production slot instead of a free Symbol.
+// Anchor: RISC-V Unprivileged ISA Specification 20240411, Chapter 1
+// instruction formats; Intel SDM Vol. 2A §3.1 instruction format.
+//
+// Coproduct dissolution — 🟢 GREEN (terminal). Ledger:
+//   1. Fact placement — FAILS: decode, emit, and operand legality all
+//      read the same production-slot classifier.
+//   2. Variant-is-data — FAILS: slots carry category-specific
+//      constraints; a flat record would admit register+immediate+memory
+//      mixtures or optional holes.
+//   3. Algebraic form — N/A: ISA grammar production fact.
+//   4. Dimensional — FAILS: one production slot accepts one operand
+//      category in this L-2 model.
+//   5. Parameterized family — FAILS: heterogeneous payloads.
+type InstructionOperandSlot
+  = RegisterInstructionSlot {
+      name: RegisterOperandSlotRef,
+      allowed_registers: List<RegisterRef>
+    }
+  | ImmediateInstructionSlot {
+      name: ImmediateOperandSlotRef,
+      order: ByteOrder
+    }
+  | MemoryInstructionSlot {
+      name: MemoryOperandSlotRef,
+      mode: AddressingMode
+    }
+
+
+type InstructionProduction {
+  reference: InstructionProductionRef
+  slots: List<InstructionOperandSlot>
+}
+
+
+// OperandBinding — decoded operand value tied to a category-specific slot
+// in the instruction production. Slot refs are resolved through
+// `production`, not independent readable labels; the variant keeps the
+// operand value category aligned with the declared slot category.
+//
+// Coproduct dissolution — 🟢 GREEN (terminal). Ledger:
+//   1. Fact placement — FAILS: decode, emit, and operand legality all
+//      consume the same category-specific binding.
+//   2. Variant-is-data — FAILS: variants carry different slot refs and
+//      payloads; a flat record would admit category mismatches.
+//   3. Algebraic form — N/A: ISA grammar operand binding fact.
+//   4. Dimensional — FAILS: one decoded operand is register OR immediate
+//      OR memory.
+//   5. Parameterized family — FAILS: heterogeneous payloads.
+type OperandBinding
+  = RegisterOperandBinding {
+      slot: RegisterOperandSlotRef,
+      register: RegisterRef
+    }
+  | ImmediateOperandBinding {
+      slot: ImmediateOperandSlotRef,
+      bytes: ByteSequence
+    }
+  | MemoryOperandBinding {
+      slot: MemoryOperandSlotRef,
+      mode: AddressingMode
+    }
 
 
 // DecodedInstruction — one decoded instruction in structural form.
