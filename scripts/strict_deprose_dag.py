@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Strict de-prose pass: keep only line-1 path + terse header + strip all other // lines."""
+"""Strict de-prose pass: keep only line-1 path + terse header + strip all other // lines.
+
+Warning: every `//` line after `module` is deleted—non-idempotent if a target file gains
+authored in-body commentary; scoped to the pinned allowlist for that reason.
+"""
 
 from __future__ import annotations
 
