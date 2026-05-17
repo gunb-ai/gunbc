@@ -210,7 +210,7 @@ fn assert_react_element_fragment_has_key_field(dag: &v3_compiler::Dag) {
     );
 }
 
-fn assert_react_element_text_has_no_element_key_field(dag: &v3_compiler::Dag) {
+fn assert_react_element_partition_is_create_element_return_only(dag: &v3_compiler::Dag) {
     let react_element = dag
         .declaration_by_name("ReactElement")
         .expect("ReactElement should exist after compiling react.dag");
@@ -220,10 +220,37 @@ fn assert_react_element_text_has_no_element_key_field(dag: &v3_compiler::Dag) {
             react_element.connective
         );
     };
+    for expected in ["Host", "Composite", "Fragment"] {
+        assert!(
+            variants.iter().any(|v| v.label == expected),
+            "ReactElement should include `{expected}` (createElement-returned object partition)"
+        );
+    }
+    assert!(
+        !variants.iter().any(|v| v.label == "Text"),
+        "primitive `Text` must not be a `ReactElement` arm — use `ReactNode::Text`"
+    );
+    assert_eq!(
+        variants.len(),
+        3,
+        "ReactElement should carry exactly Host | Composite | Fragment at this substrate layer"
+    );
+}
+
+fn assert_react_node_text_child_has_no_element_key_field(dag: &v3_compiler::Dag) {
+    let react_node = dag
+        .declaration_by_name("ReactNode")
+        .expect("ReactNode should exist after compiling react.dag");
+    let TypeConnective::Disj { variants } = &react_node.connective else {
+        panic!(
+            "ReactNode: expected coproduct (Disj), got {:?}",
+            react_node.connective
+        );
+    };
     let text = variants
         .iter()
         .find(|v| v.label == "Text")
-        .expect("ReactElement should include a Text arm");
+        .expect("ReactNode should include a Text arm for primitive child values");
     let payload = dag.declaration(text.ty);
     let TypeConnective::Conj { children } = &payload.connective else {
         panic!(
@@ -233,7 +260,7 @@ fn assert_react_element_text_has_no_element_key_field(dag: &v3_compiler::Dag) {
     };
     assert!(
         !children.iter().any(|f| f.label == "key"),
-        "Text arm must not declare `key` — primitive text children are not createElement-returned element objects"
+        "ReactNode::Text must not declare `key` — primitive text is not a createElement-returned element object"
     );
     let value = children
         .iter()
@@ -247,6 +274,42 @@ fn assert_react_element_text_has_no_element_key_field(dag: &v3_compiler::Dag) {
         value_ty.id, cross_decl.id,
         "Text.text_value_ref must be `ReactCrossDeclRef`, got {:?}",
         value_ty.name
+    );
+}
+
+fn assert_react_node_element_arm_wraps_react_element(dag: &v3_compiler::Dag) {
+    let react_node = dag
+        .declaration_by_name("ReactNode")
+        .expect("ReactNode should exist after compiling react.dag");
+    let TypeConnective::Disj { variants } = &react_node.connective else {
+        panic!(
+            "ReactNode: expected coproduct (Disj), got {:?}",
+            react_node.connective
+        );
+    };
+    let element_arm = variants
+        .iter()
+        .find(|v| v.label == "Element")
+        .expect("ReactNode should include an Element arm wrapping `ReactElement`");
+    let payload = dag.declaration(element_arm.ty);
+    let TypeConnective::Conj { children } = &payload.connective else {
+        panic!(
+            "Element arm: expected record (Conj) payload, got {:?}",
+            payload.connective
+        );
+    };
+    let element_field = children
+        .iter()
+        .find(|f| f.label == "element")
+        .expect("Element payload should declare `element`");
+    let element_ty = dag.declaration(element_field.ty);
+    let react_element_decl = dag
+        .declaration_by_name("ReactElement")
+        .expect("ReactElement should exist after compiling react.dag");
+    assert_eq!(
+        element_ty.id, react_element_decl.id,
+        "ReactNode::Element.element must name `ReactElement`, got {:?}",
+        element_ty.name
     );
 }
 
@@ -281,6 +344,16 @@ fn v4_extdeps_react_dag_fragment_arm_declares_key() {
 }
 
 #[test]
-fn v4_extdeps_react_dag_text_arm_has_no_element_key() {
-    assert_react_element_text_has_no_element_key_field(&react_extdeps_dag_or_panic());
+fn v4_extdeps_react_dag_react_element_partition_excludes_primitive_text() {
+    assert_react_element_partition_is_create_element_return_only(&react_extdeps_dag_or_panic());
+}
+
+#[test]
+fn v4_extdeps_react_dag_react_node_text_child_has_no_element_key() {
+    assert_react_node_text_child_has_no_element_key_field(&react_extdeps_dag_or_panic());
+}
+
+#[test]
+fn v4_extdeps_react_dag_react_node_element_arm_wraps_react_element() {
+    assert_react_node_element_arm_wraps_react_element(&react_extdeps_dag_or_panic());
 }
