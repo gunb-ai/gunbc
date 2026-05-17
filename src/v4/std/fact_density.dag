@@ -173,8 +173,15 @@ fn subtree_contains_spec_read_fact(n: Node) -> Bool {
 fn is_hollow_instantiation_candidate(n: Node) -> Bool {
   match n.kind {
     TypeNode { connective: Instantiation } =>
-      hollow_instantiation_two_positional_atoms(children: n.children)
-        && !subtree_contains_spec_read_fact(n: n)
+      if hollow_instantiation_two_positional_atoms(children: n.children) {
+        if subtree_contains_spec_read_fact(n: n) {
+          false
+        } else {
+          true
+        }
+      } else {
+        false
+      }
     ComputationNode { behavior: _ } => false
     TypeNode { connective: _ } => false
   }
