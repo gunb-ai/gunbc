@@ -361,16 +361,16 @@ fn resolve_edges_first_outer_then_inner(
 ) -> ResolveChildrenResult {
   match fold(
     edges,
-    init: EdgeResolveAccMk
+    init: EdgeResolveAccMk {
       have_seen_first: false,
       acc: ResolvedChildren { children: [] }
     },
     f: fn(state, e) {
       match state {
-        EdgeResolveAccMk have_seen_first: seen, acc: acc_state } =>
+        EdgeResolveAccMk { have_seen_first: seen, acc: acc_state } =>
           match acc_state {
             ResolveChildrenRejected { diagnostic: d } =>
-              EdgeResolveAccMk
+              EdgeResolveAccMk {
                 have_seen_first: true,
                 acc: ResolveChildrenRejected { diagnostic: d }
               }
@@ -378,12 +378,12 @@ fn resolve_edges_first_outer_then_inner(
               if seen {
                 match resolve_node(n: e.target, scope: scope_inner) {
                   ResolveRejected { diagnostic: d } =>
-                    EdgeResolveAccMk
+                    EdgeResolveAccMk {
                       have_seen_first: true,
                       acc: ResolveChildrenRejected { diagnostic: d }
                     }
                   ResolvedNode { node: resolved_target } =>
-                    EdgeResolveAccMk
+                    EdgeResolveAccMk {
                       have_seen_first: true,
                       acc: ResolvedChildren {
                         children: list_push(
@@ -399,12 +399,12 @@ fn resolve_edges_first_outer_then_inner(
               } else {
                 match resolve_node(n: e.target, scope: scope_outer) {
                   ResolveRejected { diagnostic: d } =>
-                    EdgeResolveAccMk
+                    EdgeResolveAccMk {
                       have_seen_first: true,
                       acc: ResolveChildrenRejected { diagnostic: d }
                     }
                   ResolvedNode { node: resolved_target } =>
-                    EdgeResolveAccMk
+                    EdgeResolveAccMk {
                       have_seen_first: true,
                       acc: ResolvedChildren {
                         children: list_push(
@@ -422,7 +422,7 @@ fn resolve_edges_first_outer_then_inner(
       }
     }
   ) {
-    EdgeResolveAccMk acc: acc_state, have_seen_first: _ } => acc_state
+    EdgeResolveAccMk { acc: acc_state, have_seen_first: _ } => acc_state
   }
 }
 
