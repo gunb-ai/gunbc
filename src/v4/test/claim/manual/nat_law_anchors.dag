@@ -9,7 +9,7 @@
 
 module v4.test.claim.manual.nat_law_anchors
 
-import v4.std.verification { TestClaim, Compiles, Equals }
+import v4.std.verification { TestClaim, Compiles, Equals, TestClassification, Tier1, Tier2, Unit }
 import v4.std.diagnostic { Produced }
 import v4.test.claim.manual.connective_anchors { stub_empty_conj }
 
@@ -18,7 +18,8 @@ data claim_nat_add_left_identity: TestClaim = TestClaim {
   kind: Compiles,
   label: "manual/nat: monoid left identity nat_add(Zero,a)=a (law; eval T-22)",
   input: stub_empty_conj,
-  expected: Produced { value: stub_empty_conj }
+  expected: Produced { value: stub_empty_conj },
+  classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
 
@@ -26,7 +27,8 @@ data claim_nat_add_right_identity: TestClaim = TestClaim {
   kind: Compiles,
   label: "manual/nat: monoid right identity nat_add(a,Zero)=a (law; eval T-22)",
   input: stub_empty_conj,
-  expected: Produced { value: stub_empty_conj }
+  expected: Produced { value: stub_empty_conj },
+  classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
 
@@ -34,7 +36,8 @@ data claim_nat_add_associativity: TestClaim = TestClaim {
   kind: Compiles,
   label: "manual/nat: monoid associativity nat_add(nat_add(a,b),c)=nat_add(a,nat_add(b,c)) (law; eval T-22)",
   input: stub_empty_conj,
-  expected: Produced { value: stub_empty_conj }
+  expected: Produced { value: stub_empty_conj },
+  classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
 
@@ -42,7 +45,8 @@ data claim_nat_mul_left_identity: TestClaim = TestClaim {
   kind: Compiles,
   label: "manual/nat: multiplicative monoid identity nat_mul(one,a)=a where one is Succ-of-Zero (law; eval T-22)",
   input: stub_empty_conj,
-  expected: Produced { value: stub_empty_conj }
+  expected: Produced { value: stub_empty_conj },
+  classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
 
@@ -50,7 +54,8 @@ data claim_nat_mul_annihilator: TestClaim = TestClaim {
   kind: Compiles,
   label: "manual/nat: semiring zero annihilator nat_mul(Zero,a)=Zero (law; eval T-22)",
   input: stub_empty_conj,
-  expected: Produced { value: stub_empty_conj }
+  expected: Produced { value: stub_empty_conj },
+  classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
 
@@ -58,5 +63,6 @@ data claim_nat_mul_associativity: TestClaim = TestClaim {
   kind: Equals,
   label: "manual/nat: multiplicative monoid associativity (anchor; eval T-22)",
   input: stub_empty_conj,
-  expected: Produced { value: stub_empty_conj }
+  expected: Produced { value: stub_empty_conj },
+  classification: TestClassification { tier: Tier2, layer: Unit }
 }

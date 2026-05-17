@@ -94,7 +94,8 @@ data claim_instantiation_empty_compiles: TestClaim = TestClaim {
   kind: Compiles,
   label: "manual/connective: Instantiation connective with zero positional children",
   input: stub_empty_instantiation,
-  expected: Produced { value: stub_empty_instantiation }
+  expected: Produced { value: stub_empty_instantiation },
+  classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
 
@@ -103,5 +104,6 @@ data claim_conj_equals_refl: TestClaim = TestClaim {
   kind: Equals,
   label: "manual/connective: Equals reflexivity on empty Conj stub",
   input: stub_empty_conj,
-  expected: Produced { value: stub_empty_conj }
+  expected: Produced { value: stub_empty_conj },
+  classification: TestClassification { tier: Tier2, layer: Unit }
 }
