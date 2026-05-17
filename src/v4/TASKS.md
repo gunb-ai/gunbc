@@ -990,10 +990,7 @@ The **two Rust paths (1)+(3)** each carry an **SG-0**
 `EXPECTED_HAND_AUTHORED_{NON_TEST,TEST}` literal plus a matching
 **`INVARIANTS.md` §P5(b)** row under **T-PB-A** / **T-PB-B** naming the
 **dissolution** trigger when the generated checker is the authority. The
-**`.dag` witness (2)** is **substrate** tracked in **`STRUCTURE.md` /
-`fact_density.dag`** and is **named as the substrate witness in those same
-§P5(b) rows** (and `DECISIONS.md`) — it is **not** a third **SG-0 hand-Rust**
-census path (SG-0 inventories **Rust** only). This slice is **sequencing**,
+**`.dag` witness (2)** is a **P2-staging nominal** at `src/v4/std/fact_density.dag` (INVARIANTS §P2 / Practice 5: **parse/compile proof only** — **no** generated `.dag` consumer yet; **not** a landed substrate primitive alongside `node.dag` / `diagnostic.dag`). It is **enumerated honestly** in **`STRUCTURE.md`** (separate from the 14 landed `std/` primitives) and is **named** in the same **§P5(b) rows** (and `DECISIONS.md`) as the T-30 witness file — it is **not** a third **SG-0 hand-Rust** census path (SG-0 inventories **Rust** only). This slice is **sequencing**,
 not semantic deferral of the gate's *definition* (the three-part rule +
 kernel-ambient exemption is already pinned in tests and docs).
 

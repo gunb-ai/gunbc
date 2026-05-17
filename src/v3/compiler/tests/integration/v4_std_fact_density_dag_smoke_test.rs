@@ -1,9 +1,10 @@
 //! **Layer:** integration
 //!
-//! Smoke `compile_to_dag` on `src/v4/std/fact_density.dag` — P5(b) **interim**
-//! witness file: must lower+infer with **zero** module diagnostics (same bar as
-//! `v4_extdeps_typescript_dag_smoke_test`). The Practice-8 **structural**
-//! predicate lives in the handwritten mirror `src/v3/compiler/src/v4_hollow_alias_gate.rs`
+//! **P2 / Practice 5 (single authority):** This harness proves **parse + inference cleanliness**
+//! for the nominal `SourceSpecReadFact` carrier only (`compile_to_dag`, empty diagnostics) — it
+//! does **not** claim a **generated** substrate consumer for that type (INVARIANTS §P2: declaration
+//! without generated consumer = staging). The Practice-8 hollow predicate’s authority remains the
+//! handwritten mirror `src/v3/compiler/src/v4_hollow_alias_gate.rs`
 //! (`#[doc(hidden)] pub mod` in `v3_compiler` — reachable for `dead_code` policy, not a
 //! supported stable import path) until the generated `.dag` checker replaces it (`INVARIANTS.md`
 //! §P5(b)

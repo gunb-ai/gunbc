@@ -1,5 +1,8 @@
 // src/v4/std/fact_density.dag
-// Scope: T-30 hollow-alias gate substrate.
+// Scope: T-30 — P2-staging witness only (INVARIANTS §P2): `compile_to_dag` parse probe; **no**
+// generated `.dag`/std consumer reads this module yet. Hollow-alias **authority** today:
+// `src/v3/compiler/src/v4_hollow_alias_gate.rs`. Do **not** treat `SourceSpecReadFact` as a landed
+// substrate primitive in docs until INVARIANTS §P2 “generated consumer proof” exists.
 // Owns: SourceSpecReadFact
 // Consumes:
 // Status: drafted.
