@@ -1,8 +1,8 @@
 // src/v4/workflow/bootstrap.dag
-// Scope: v4-owned bootstrap orchestration AS DATA — four stages (seed→stage0→stage1→stage2, fixpt stage1==stage2); v2 pipeline is the initial executor, per-stage v4-executor migration deferred.
+// Scope: v4-owned bootstrap orchestration AS DATA — four stages (seed→stage0→stage1→stage2, fixpt stage1==stage2). compiled_by = stage compiler-of-record: seed←v2 (seed used once), self0←stage0, self1←stage1; v2 is never in the loop again (STRUCTURE.md "Seed used once" :404-405, SELF_HOSTING.md §meta-circular).
 // Owns: CompileStage, FixptStage1Stage2, BootstrapPlan, bootstrap_plan_well_formed, bootstrap_plan
 // Consumes: v4.std.node, v4.std.diagnostic
-// Status: filled — orchestration defined as data (v2-delegating bodies); structural v2 gate only.
+// Status: filled — compiler-of-record is the self-hosting structural fact; structural gate only.
 
 module v4.workflow.bootstrap
 
@@ -26,7 +26,8 @@ data bit_identical_check: Symbol = bit_identical_check
 type CompileStage {
   consumes: List<Symbol>
   produces: Symbol
-  via: Symbol
+  // compiler-of-record: which binary IS the compiler for this stage (self-hosting identity), NOT who executes it
+  compiled_by: Symbol
 }
 
 type FixptStage1Stage2 {
@@ -73,13 +74,13 @@ fn bs_list_eq(a: List<Symbol>, b: List<Symbol>) -> Bool {
 fn bootstrap_plan_well_formed(p: BootstrapPlan) -> Outcome<BootstrapPlan> {
   if bs_list_eq(a: p.seed.consumes, b: [v4_dag_source])
        && (p.seed.produces == v4_stage0_binary)
-       && (p.seed.via == v2_pipeline)
+       && (p.seed.compiled_by == v2_pipeline)
        && bs_list_eq(a: p.self0.consumes, b: [v4_dag_source, v4_stage0_binary])
        && (p.self0.produces == v4_stage1_binary)
-       && (p.self0.via == v2_pipeline)
+       && (p.self0.compiled_by == v4_stage0_binary)
        && bs_list_eq(a: p.self1.consumes, b: [v4_dag_source, v4_stage1_binary])
        && (p.self1.produces == v4_stage2_binary)
-       && (p.self1.via == v2_pipeline)
+       && (p.self1.compiled_by == v4_stage1_binary)
        && (p.fixpt.left == v4_stage1_binary)
        && (p.fixpt.right == v4_stage2_binary)
        && (p.fixpt.via == bit_identical_check) {
@@ -93,17 +94,17 @@ data bootstrap_plan: Outcome<BootstrapPlan> = bootstrap_plan_well_formed(p: Boot
   seed: CompileStage {
     consumes: [v4_dag_source],
     produces: v4_stage0_binary,
-    via: v2_pipeline
+    compiled_by: v2_pipeline
   },
   self0: CompileStage {
     consumes: [v4_dag_source, v4_stage0_binary],
     produces: v4_stage1_binary,
-    via: v2_pipeline
+    compiled_by: v4_stage0_binary
   },
   self1: CompileStage {
     consumes: [v4_dag_source, v4_stage1_binary],
     produces: v4_stage2_binary,
-    via: v2_pipeline
+    compiled_by: v4_stage1_binary
   },
   fixpt: FixptStage1Stage2 {
     left: v4_stage1_binary,
