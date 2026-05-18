@@ -235,10 +235,15 @@ exactly one irreducible axiom and one *checkable* one, not zero.
 T-32 is larger than "minimize the seed." Its Phase-1 deliverable is the
 **layer model** itself — name every layer, every fact-model, every
 projection edge, the comprehension gate, the modeled circularity, and
-the named physical axiom. "Minimum never-hand-edited seed" then *falls
-out*: minimum, because the projection is no larger than the snapshot's
-footprint allows (§4); never-hand-edited, because it is a *projection at
-all* — you edit facts, and the seed re-emits.
+**both honest floors of §6**: the physical axiom *and* the seed-honesty
+axiom together with its diverse-double-compilation discharge witness.
+Both floors are load-bearing deliverables — naming only the physical
+axiom would let the trust-discharge witness fall out of T-32, which §6
+forbids (seed honesty is discharged, never dissolved). "Minimum
+never-hand-edited seed" then *falls out*: minimum, because the
+projection is no larger than the snapshot's footprint allows (§4);
+never-hand-edited, because it is a *projection at all* — you edit facts,
+and the seed re-emits.
 
 The `.dag` modeling extends from here: the frozen sub-model + the
 `footprint` lens + the `⊆`-`Witness` (§4) are new substrate; the
