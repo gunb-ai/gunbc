@@ -749,6 +749,10 @@ All 5 artifacts share ONE Node tree (per gate #28 omni_layers_share_one_node_tre
 - **TestClaim.classification** (`TestClassification`: Tier×Layer) on every produced claim — canonical field in `std/verification.dag` (STRUCTURE §248); testgen stamps the same axes on each emitted claim as on its scheduling `Generator<C>`. Tier1/2/3 (correctness) × Unit/Integration/Boundary (test layer)
 - Bootstrap path: hand-authored TestClaims in `test/claim/manual/` are the contract testgen must satisfy; coverage lens (T-18) enforces produced ⊇ manual
 
+**Incremental Re-Test requirement set — held (IRT-2, IRT-3; see T-21 for the full IRT-1..4 set + rationale).**
+- **IRT-2.** testgen MUST be incremental: on a change, fold only the affected subgraph and regenerate TestClaims for affected nodes — never re-fold the whole corpus.
+- **IRT-3 (with T-22).** Preserve arbitrary-node TestClaim-input granularity: a TestClaim's `input: Node` may bind ANY node subgraph (incl. `program ∘ generated-input`); testgen must not restrict generated inputs to whole-function / whole-module units.
+
 **Scope**: L (large — substrate-traversal across every concept; cross-cutting consumption)
 
 **Bootstrap pragma** (per operator: "manual authoring is fine as well"):
@@ -826,6 +830,14 @@ All 5 artifacts share ONE Node tree (per gate #28 omni_layers_share_one_node_tre
 - Composition with `compiler/05_eval.dag` (skip) and `workflow/ci.dag` (job selection)
 - Structural caching is the **dual** of the affected set — the same mechanism. A build/exec artifact's cache key is `content_hash` (B1) of its input subgraph: the affected set names what re-runs, a cache restores what doesn't. Caching is not a separate system. The cache backend (GHA `actions/cache`, a remote build cache, a local memo table) is just an emission target of the hash.
 
+**Incremental Re-Test requirement set — IRT-1..4 (operator directive, briansrls, 2026-05-17; held at author + review time).** The architecture supports precise, proven, fast incremental re-testing — a change re-runs only the proven-affected TestClaims, in parallel, the rest from cache. A naive scaffold-fill silently loses this. Four held requirements, anchored across T-19/T-21/T-22, cross-referencing each other:
+- **IRT-1 (affected_set — this task).** The `read` body MUST prune at unchanged/pure boundaries so cost is O(affected-region), never O(whole-program); reuse cached `content_hash`es (O(1) change-check per subgraph); be a parallel frontier-expansion (a pure fold over the DAG). Analysis cost scales with the *change* size, not the program size.
+- **IRT-2 (testgen — T-19).** Incremental: fold the affected subgraph, regenerate TestClaims only for affected nodes; never re-fold the whole corpus on a change.
+- **IRT-3 (TestClaim input granularity — T-22 + T-19).** Arbitrary-node granularity preserved: `eval` must evaluate ANY node subgraph bound into a TestClaim's `input: Node` (incl. `program ∘ generated-input`); never silently restrict to whole-function / whole-module units.
+- **IRT-4 (result caching — this task + T-24).** A TestClaim's result is cached keyed by the `content_hash` of the **whole TestClaim node** — its complete evaluation subgraph, which transitively includes the `input` field AND the oracle (predicate/`AssertKind`/`expected`), evaluator, resources, and extdeps. Keying by the `input` subgraph alone violates P2 Boundary Discipline — the cache-key boundary must carry every fact the result depends on — and would reuse a stale result when the oracle changes while the input is unchanged. Because B1 `content_hash` is a merkle fold over the canonical `Node`, hashing the TestClaim node naturally covers all of it. Unaffected TestClaims' results are REUSED, not recomputed — the concrete form of "caching is the dual of the affected set" (modeling decision above).
+
+*Rationale.* These four are what make "affected-set + node-level TestClaim + content-hash caching ⇒ a one-line change re-runs only the handful of proven-downstream-affected tests, in parallel" real. The minimality is *proven* — excluded tests carry `ExclusionReceipt`s — so "affected tests pass ⇒ the change is coherent downstream" is sound, not heuristic.
+
 **Scope**: L (large — load-bearing for incremental execution + CI dissolution)
 
 **Reference**: THESIS §205-210 free consequences (incremental cross-run) + v4-close-interrogation.md §2.5.F + memory: feedback_no_textual_enforcement_bridges
@@ -843,6 +855,9 @@ All 5 artifacts share ONE Node tree (per gate #28 omni_layers_share_one_node_tre
 - The shared substrate three consumers compose over: `workflow/bootstrap.dag` (interpreted, not compiled), TestClaim evaluation, lens dry-run
 - Concept-unification (THESIS:188): interpreter runtime = language spec = transport spec — eval reads the same `extdeps/languages/*.dag` carriers emit does
 - **`BehaviorValueSubject` naming vs eval slice (T-19 → T-22):** The identifier anchors the T-19 **L1 `Value`** placement under `type_construction` (T-19 Phase-1.5); the payload is still the **closed** `Behavior` sum (all five behaviors—not Value-only structurally). When T-22 binds testgen/type-construction to execution, re-audit the name with the real consumer: either keep it as the Value-slice carrier of `Behavior` facts or rename (e.g. to `BehaviorSubject`) if the eval path is behavior-wide with no residual Value reading; fold the decision into the T-22 close gate so names cannot silently drift from semantics.
+
+**Incremental Re-Test requirement set — held (IRT-3; see T-21 for the full IRT-1..4 set + rationale).**
+- **IRT-3 (with T-19).** `eval` MUST evaluate ANY node subgraph bound into a TestClaim's `input: Node` — including a `program ∘ generated-input` composite — at arbitrary-node granularity; it must never silently restrict TestClaim evaluation to whole-function / whole-module units. Node-level evaluability is what lets the affected set (T-21) name re-runs at node precision.
 
 **Scope**: XL (extra-large — THE primary execution path; bootstrap + tests + dry-run all depend on it)
 
