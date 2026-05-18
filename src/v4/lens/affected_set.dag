@@ -1,6 +1,6 @@
 // src/v4/lens/affected_set.dag
 // Scope: canonical affected-set authority for CI/incremental re-execution; fail-closed B-4/B-5 node frontier.
-// Owns: Dag, AffectedDimension, ReExecNode, ExclusionKey, ExclusionProof, ExclusionReceipt, FrontierDecision, ReExecFrontier, AffectedSetRead.
+// Owns: Dag, AffectedDimension, ExclusionKey, ExclusionProof, FrontierDecision, ReExecFrontier, AffectedSetRead.
 // Consumes: Map, Diff, Node, Path, Symbol, Witness; B-4 resolved Symbol equality; B-5 per-Arrow signature effects.
 // Status: scaffold; dissolves when T-21 read body, CI use, and .dag TestClaims land.
 
@@ -18,11 +18,6 @@ type Dag = Node
 type AffectedDimension = Symbol
 
 
-type ReExecNode {
-  node: Node
-}
-
-
 type ExclusionKey {
   at: Path
   dimension: AffectedDimension
@@ -35,16 +30,10 @@ type ExclusionProof
   | DimensionNotRead { producer: Path }
 
 
-type ExclusionReceipt {
-  node: Node
-  proof: ExclusionProof
-}
-
-
 // 🟢 coproduct dissolution — DECISIONS.md #3153-subsumed
 type FrontierDecision
-  = Rerun { node: ReExecNode }
-  | Excluded { receipt: ExclusionReceipt }
+  = Rerun
+  | Excluded { proof: ExclusionProof }
 
 
 type ReExecFrontier {
