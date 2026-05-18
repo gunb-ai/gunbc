@@ -1,8 +1,8 @@
 // src/v4/extdeps/languages/typescript.dag
-// Scope: TypeScript 5.9 + ECMA-262 ES2025 primitive D2 resolver slice.
+// Scope: TypeScript 5.9 + ECMA-262 ES2025 primitive scaffold.
 // Owns: TsEcma262NumericPrimitiveKind, TsBoolean, TsEcma262PrimitiveOperationSemantics.
-// Consumes: kernel-ambient Bool; std numeric/text carriers are gated.
-// Status: D2a(1) Bool landed; D2a(2) GroundingMap deferred; D2a(3) type surface landed.
+// Consumes: kernel-ambient Bool; std numeric/text carriers are fact-bundle-gated.
+// Status: 🟡 gated — feature: T-4 fact-bundle Phase-3 rework after T-3/T-29/T-30/T-25-core.
 
 module v4.extdeps.languages.typescript
 

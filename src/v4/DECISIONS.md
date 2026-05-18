@@ -84,6 +84,9 @@ remain boundary indexes until the named substrate support lands.
 | `std/cardinality.dag` | `Never` | Green atomic | Uninhabited type — zero inhabitants; grounds empty / bottom types in external language specs (e.g. Rust `!`) on a single std/ authority. |
 | `std/cardinality.dag` | `Unit` | Green atomic | Singleton type — exactly one inhabitant; shared cardinality-1 authority for unit-shaped facts (opaque `type Unit` in the v2-bootstrap-compatible surface; same semantic role as a nominal unit value). |
 | `std/cardinality.dag` | `TerminationProof` | Green proof record | Encodes lexicographic descent by structure: `non_increasing: List<RankingDimension>` plus mandatory `strict: RankingDimension`; no stored `DescentEvidence` field may stand in for the strict witness. |
+| `std/cardinality.dag` | `Never`, `Unit` | Green opaque atoms | Canonical 0- and 1-inhabitance anchors in shared vocabulary: `Never` (empty), `Unit` (singleton). Rust `!` / `()` name **external** encodings of those facts, not identities proved in this row. **D2-REV:** per-language never/unit primitives (e.g. `NeverScalar`) remain **spec fact-bundles** in `extdeps/`; this ledger does **not** assert a bare alias into `std/`—deduplication to these carriers only on **structurally evidenced coincidence** authored elsewhere. Opaque atoms carry no fields; `std/` must not mint a parallel second empty/unit authority. |
+| `std/cardinality.dag` | `NonZeroNat` | Green proof record | Structural strictly-positive natural: `prev: Nat` denotes `Succ { prev }` (same witness field name as `Nat`’s successor case) — excludes `Zero` by construction (no separate ordering predicate). Use for positive counts/widths (e.g. “at least one”) without kernel-ambient `Int` width payloads. |
+| `std/cardinality.dag` | `UpperBoundedNat` | Yellow value-refinement scaffold | Both fields are honest Peano `Nat` spines; the substrate cannot yet express `value ≤ inclusive_max` structurally (total order / compare witness on `Nat` is not a `cardinality.dag` citizen yet). Bounded use: producers MUST validate the ordering relation before treating the pair as a bound witness (LLVM bit-width, non-negative dimension ceilings). Trigger: `Nat` ordering witness + structural proof, or merge with T-25-core constructor validation at the refinement boundary. |
 | `std/collection.dag` | `Set<T>` finite-cardinality refinement | Yellow refinement scaffold | Documented: bare `Set<T> = PointwisePower<T>` is an arbitrary subset/characteristic-function carrier and does not encode finiteness. Bounded use: consumers needing finite subsets must wait on the refinement, not infer finiteness from `Set<T>`. Trigger: cardinality/enumerability substrate (`Multiplicity` plus an enumerability `Witness`) lands and adds `FiniteSet<T>` or equivalent. |
 | `std/diagnostic.dag` | `Extent.ByteRange` | Yellow value-refinement scaffold | Documented: `ByteRange { start: Int, end: Int }` is an honest bridge carrier because current substrate syntax cannot exclude negative offsets or `start > end`. Bounded use: producers must validate textual spans before constructing diagnostics that rely on byte-range validity. Trigger: bounded/non-negative ordered span carrier or equivalent substrate refinement. |
 | `std/diagnostic.dag` | `Extent`, `Locus`, `NoCorrectionReason`, `Correction`, `Outcome<T>` | Green coproducts | `Extent` is terminal as whole-file vs byte-range, with the raw-offset gap isolated in the ByteRange yellow row. `Locus` is the closed set of diagnostic pointing sites. `NoCorrectionReason` is the exhaustive no-fix partition. `Correction` is the typed show-correct-code sum, not `Option<Node>`. `Outcome<T>` is the two-case produced vs fail-closed rejected carrier beside `Diagnostic`. |
@@ -206,7 +209,7 @@ consumes that derived fact.
 
 11. **`compiler/01_tokenize.dag` — `LexRules` / wave-1 E0 (T-6 / B2-OMNI; PR #3284):** `LexRules = Node`: lexical authority is structural (`NodeKind`, `Connective`, edge discipline on children), not ad-hoc `Symbol` tables inside the generic stage. Wave-1 E0 void lex = empty-root `Conj` (`std/node.dag` `is_empty_conj_root`). Future rows = `EdgeLabel.Named` under a `Conj` root; until the walk lands, a non-empty `Conj` root closes `Outcome::Rejected` with `tokenize_lexical_walk_not_realized` (fail-closed). Rationale lives here per Practice 9; `01_tokenize.dag` keeps only the mandated header.
 
-12. **`std/node.dag` — `is_empty_conj_root` (P5 / INVARIANTS §Progress Is Dissolution; codex PR #3284):** **Not a net-new `is_*` verifier** — this is the **landed R1 receipt** from `docs/audit/dissolution-inventory.md` §1.0: one structural query replaces three literal duplicate predicates (`compiler/01_tokenize.dag`, `compiler/02_parse.dag`, `extdeps/languages/dag.dag`). **Interim steady-state:** shared empty-`Conj`-root shape leg for wave-1 void LM / E0–G0 stubs until T-6/T-7 generic walks consume grammar-as-data without re-deriving this `match`. **Forward dissolution (named triggers):** (a) `feature: std/node.dag fold_node` (dissolution-inventory **P5**) — fold this discriminant into the canonical `Node` catamorphism / query surface when `fold_node` lands; and/or (b) `feature: compiler pipeline-stage lex-walk + parse-walk substrate` (inventory **P3**, TASKS T-6/T-7) — grammar-as-data carries void-book as constructor-shaped facts so consumers discriminate on `NodeKind` / carriers instead of calling `is_empty_conj_root`. **Audit anchor:** inventory §1.0 row **R1** (status = landed PR #3284).
+12. **`std/node.dag` — `is_empty_conj_root` (P5 / INVARIANTS §Progress Is Dissolution; codex PR #3284):** **Not a net-new `is_*` verifier** — this is the **landed R1 receipt** from `docs/audit/dissolution-inventory.md` §1.0: one structural query replaces three literal duplicate predicates (`compiler/01_tokenize.dag`, `compiler/02_parse.dag`, `extdeps/languages/dag.dag`). **Interim steady-state:** shared empty-`Conj`-root shape leg for wave-1 void LM / E0–G0 stubs until T-6/T-7 generic walks consume grammar-as-data without re-deriving this `match`. **Forward dissolution (named triggers):** (a) `feature: std/node.dag fold_node` (dissolution-inventory **P5**) — fold this discriminant into the canonical `Node` catamorphism / query surface when `fold_node` lands; and/or (b) `feature: compiler pipeline-stage lex-walk + parse-walk substrate` (inventory **P3**, TASKS T-6/T-7) — grammar-as-data carries void-book as constructor-shaped facts so consumers discriminate on `NodeKind` / carriers instead of calling `is_empty_conj_root`. **Audit anchor:** inventory §1.0 row **R1** (status = landed PR #3284). **Api-review receipt (PR #3274):** duplicate-collapse / modeling-discipline Practice 5 single authority — not a parallel verification predicate. **INVARIANTS §P5 Mechanism (b)** SG-0 `EXPECTED_HAND_AUTHORED_*` census gates **new** `src/v3/compiler/tests/**` hand-Rust paths; they do **not** apply to this v4-only substrate `fn`. **Exhaustiveness:** `NodeKind` is the closed `TypeNode | ComputationNode` pair today; a third top-level variant would require updating every `match n.kind` in `std/node.dag`, including this helper, in the same substrate edit that extends `NodeKind`.
 
 ---
 
@@ -912,6 +915,22 @@ PROPOSES; it does not decide.
 
 **PR receipt:** gunbc **#3255** (P7) + on-thread **#3244** disposition history.
 
+### SL-P6-FREEMONOID-IS-EMPTY-VPRED — `std/algebra.dag` `free_monoid_is_empty` (predicate-dissolution interim)
+
+**Authority:** PR #3249 cursor review artifact #14097 plus Practice 10's post-#3258 blocking disposition rule.
+
+**Disposition:** **🟡 gated** — `fn free_monoid_is_empty` is a **Practice 10 predicate-dissolution** interim: hand `match` derives the `FreeMonoid<T> = Empty | Cons { … }` **variant discriminant** (`Empty => true; Cons => false`) where the canonical surface is a **substrate-derived `Empty`-variant projection** once the discriminant-predicate machinery exists. **Not 🟢 terminal** while a named dissolve target exists.
+
+**`feature:` gate:** coproduct **variant-discriminant predicate** substrate (generated / compiler-owned discriminant API — canonical `is_<Ctor>` / projection family).
+
+**Plan bind:** internal work node **`node://adhoc-2145db6b-69a`** (same substrate bucket as `SL-P7-NAT-IS-ZERO-VPRED`).
+
+**Dissolve-on-arrival:** replace `free_monoid_is_empty`'s **body** with the substrate-derived **Empty discriminant** when **`node://adhoc-2145db6b-69a`** closes. **Explicitly forbidden interim “fix”:** rewriting into a **`free_monoid_fold`** / generic fold carrier as **fold laundering**; under strict evaluation that also turns a discriminant query into a full-spine walk.
+
+**Live substrate tag:** one-line **`// 🟡 gated — …`** immediately precedes `fn free_monoid_is_empty` in `src/v4/std/algebra.dag`; header **`// Ledger: … SL-P6-FREEMONOID-IS-EMPTY-VPRED`**.
+
+**PR receipt:** gunbc **#3249** rework after review artifact **#14097**.
+
 ### SL-3229-INTEGER-GROUP-COMPLETION — `GroupCompletion<M>` constrained-inhabitance gap
 
 Verbatim `//` lines from merge-base `integer.dag` (lines **124–132**):
@@ -1471,53 +1490,39 @@ Verbatim `//` lines from merge-base `float.dag` (lines **104–144** — modelin
 
 **Roll-up:** **`TASKS.md` T-3** + **T-4.6**; **orthogonal** to dissolution-inventory **P1** cardinality-width family (`SL-3229-LLVM-WIDTH`, `SL-3229-PTX-COST`, …).
 
-### SL-3229-T4-FORMAT-YAML-3213-MAPKEY — YAML 1.2.2 §3.2.1.3 mapping canonical key equality
+### SL-3229-JSON-UNIQUE-NAMES — JSON object unique-name profile
 
-**Gate (live cite, Practice 9):** `🟡 gated — feature: YAML §3.2.1.3 canonical mapping-key equality (tag-resolved; beyond lexeme equality)`
+**Gate (live cite, Practice 9):** `🟡 gated — feature: JSON unique-name object profile parse/emit validation`
 
-**Named arrival:** `YamlMapping { entries: Map<YamlValue, YamlValue> }` merges keys that are **already identical** `YamlValue` trees. **Canonically equal** mapping keys (same tag-resolution / core-schema path, distinct surface spellings) are **not** collapsed by the `Map` carrier alone — §3.2.1.3 duplicate detection after canonicalization is **parse-body** work on the **T-6/T-7** format pipeline (**`SL-3229-T4-FORMAT-T6T7`**), not a silent second authority in the value sum.
+**Named arrival:** `JsonObject { members: Map<String, JsonValue> }` intentionally models a **unique-name JSON object profile**, not the full RFC 8259 §4 byte-stream space where duplicate names are permitted but receiver behavior is unpredictable. The profile is grounded in RFC 8259 §4's unique-name recommendation plus RFC 7493 (I-JSON) §2.3; a duplicate-name input must be rejected by the T-4.6 parser instead of silently last-wins collapsing into the `Map`.
 
-**Dissolution trigger:** `yaml_parse` (T-4.6 consumer, after **P3** parse substrate) applies canonical key equality before insertion; canonically-equal duplicate keys → fail-closed `Rejected`; behavior is **authored + cited** from `yaml.dag` (Practice-9 one-liner). This row closes with that wiring.
+**Dissolution trigger:** T-4.6 wires `json_parse : String -> Outcome<JsonValue>` so duplicate object member names are a typed `Rejected { diagnostic }`, and `json_emit : JsonValue -> Outcome<String>` continues to emit only the unique-name profile represented by `Map<String, JsonValue>`.
 
-### SL-3229-T4-FORMAT-JSON-IJSON-UNIQUENESS — JSON object member uniqueness (named profile)
+**Bounded use:** consumers may treat produced `JsonObject` values as duplicate-free by construction, but must not claim this carrier represents all RFC 8259 duplicate-name byte streams.
 
-**Gate (live cite, Practice 9):** `🟡 gated — feature: JSON object duplicate-name rejection under ratified unique-names profile (stricter than bare RFC 8259 §4)`
+### SL-3229-TOML-TABLE-SYNTAX — inline-table vs table construction syntax
 
-**Named arrival:** `JsonObject { members: Map<String, JsonValue> }` is the **I‑JSON / RFC 7493**-aligned **unique-names** object profile: bare RFC 8259 §4 only **SHOULD**-unique with unpredictable behavior if violated; this model **fail-closes** duplicate names at **parse time** under the ratified stricter boundary — **not** the full RFC 8259 §4 duplicate-name value space. Policy authority lives **here**; realization is **`json_parse`** on **T-6/T-7** (**`SL-3229-T4-FORMAT-T6T7`**).
+**Gate (live cite, Practice 9):** `🟡 gated — feature: TOML inline-table/table construction syntax collapse`
 
-**Dissolution trigger:** `json_parse` wires duplicate-name rejection under this profile (same **P3** arrival train as **`SL-3229-T4-FORMAT-T6T7`**); `json.dag` header + Ledger cite this row; closes when parse body lands.
+**Named arrival:** TOML inline table syntax and standard table syntax can denote the same TOML logical table value. `TomlInlineTable` and `TomlTable` currently have the same payload shape because the frozen scaffold named both; that same-payload discriminant is not terminal value substrate. It is a tracked construction-syntax distinction pending the operator header/contract reconcile that collapses value-level table representation to one table carrier while leaving parse/emit free to preserve or choose surface syntax.
 
-### CP-3229-GREEN-FORMAT-VALUES — T-4.6 `JsonValue` / `YamlValue` / `TomlValue` 🟢 terminal receipts (strict-de-prose)
+**Dissolution trigger:** T-4.6 reconciles the TOML value model so inline-vs-standard table syntax is handled by parser/emitter construction facts, not by two value variants with identical `Map<String, TomlValue>` payloads. Until then, consumers must not infer semantic value difference from the two variants.
 
-Merge-base `92cb26402` **Practice-4** `// Coproduct dissolution … 🟢 GREEN (terminal). Ledger — five patterns attempted:` blocks for the **closed format value sums** (verbatim per-carrier text **only** in the merge-base object — **not** the `extdeps/languages/*` + `std/float.dag` bulk set in **`CP-3229-GREEN-TERMINAL`** below):
+**Bounded use:** `TomlInlineTable` / `TomlTable` are acceptable only as scaffold-bound syntax provenance; no downstream model may treat them as two TOML value kinds.
 
-| File | GREEN ledger blocks (merge-base `rg` count) |
-|------|-----------------------------------------------|
-| `src/v4/extdeps/formats/json.dag` | 1 |
-| `src/v4/extdeps/formats/yaml.dag` | 1 |
-| `src/v4/extdeps/formats/toml.dag` | 1 |
+### SL-3229-YAML-CANONICAL-KEYS — YAML mapping key canonical uniqueness
 
-**Recovery:**
+**Gate (live cite, Practice 9):** `🟡 gated — feature: YAML §3.2.1.3 canonical mapping-key uniqueness`
 
-```bash
-git show 92cb26402eeb21471acb6ac47559cbae3b52afdb:src/v4/extdeps/formats/json.dag
-git show 92cb26402eeb21471acb6ac47559cbae3b52afdb:src/v4/extdeps/formats/yaml.dag
-git show 92cb26402eeb21471acb6ac47559cbae3b52afdb:src/v4/extdeps/formats/toml.dag
-```
+**Named arrival:** YAML 1.2.2 §3.2.1.3 defines mapping-key uniqueness by tag plus canonical content. `YamlMapping { entries: Map<YamlValue, YamlValue> }` only deduplicates by the current `YamlValue` structural representation, and `YamlInt` / `YamlFloat` preserve lexemes while numeric canonicalization is deferred. Therefore same-tag, canonically equal scalar keys with distinct lexemes remain representable in the carrier until parser-side canonical-key validation lands.
 
-**Ratification:** strict de-prose removed in-file `//` ledger bodies from these three files; **`type`/`data` sums unchanged**. Live substrate one-line tags use **`// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-FORMAT-VALUES.`**
+**Dissolution trigger:** T-4.6 parser work resolves tags, canonicalizes scalar keys using the text/numeric substrate, and rejects same-tag canonical duplicates as typed diagnostics before producing `YamlValue`; a later structural normalization may make the canonical key relation carrier-enforced.
 
-### SL-3229-T4-FORMAT-TOML-TABLE-SPLIT — `TomlInlineTable` vs `TomlTable` (construction syntax)
-
-**Gate (live cite, Practice 9):** `🟡 gated — feature: TOML §Inline Table vs §Table surface syntax (dual carrier arms; same Map payload shape)`
-
-**Named arrival:** Merge-base **five-pattern GREEN** adjudication: both arms carry `Map<String, TomlValue>` — **inline vs standard** is **surface construction / parse-emit positioning**, not two competing substrate authorities for the same logical table. The sum **keeps both variants** for faithful AST shape until `toml_parse` / `toml_emit` (**`SL-3229-T4-FORMAT-T6T7`**) canonicalizes presentation; this row is the **checkable receipt** that the split is **temporary syntax policy**, not undocumented terminal drift (INVARIANTS P1/P5).
-
-**Dissolution trigger:** operator-ratified single-arm collapse **or** authored `toml_parse`/`toml_emit` behavior that pins inline-vs-standard round-trip per TOML v1.0.0 with **no** silent carrier change — until then the 🟡 tag + this row stand.
+**Bounded use:** consumers may not assume `YamlMapping` is YAML §3.2.1.3 duplicate-free from the `Map<YamlValue, YamlValue>` type alone; that guarantee belongs to the deferred parser/canonicalization gate.
 
 ### CP-3229-GREEN-TERMINAL — 🟢 GREEN five-pattern ledgers (bulk)
 
-Merge-base `92cb26402` **Practice-4** `// Coproduct dissolution … 🟢 GREEN (terminal). Ledger — five patterns attempted:` blocks were adjacent to carriers (verbatim per-carrier text **only** in the merge-base object). **Scope:** **`extdeps/languages/*` + `std/float.dag` only** — T-4.6 format value sums are indexed under **`CP-3229-GREEN-FORMAT-VALUES`**, not this row.
+Merge-base `92cb26402` **Practice-4** `// Coproduct dissolution … 🟢 GREEN (terminal). Ledger — five patterns attempted:` blocks were adjacent to carriers (verbatim per-carrier text **only** in the merge-base object):
 
 | File | GREEN ledger blocks (merge-base `rg` count) |
 |------|-----------------------------------------------|
@@ -1527,6 +1532,8 @@ Merge-base `92cb26402` **Practice-4** `// Coproduct dissolution … 🟢 GREEN (
 | `src/v4/extdeps/languages/go.dag` | 10 |
 | `src/v4/extdeps/languages/python.dag` | 3 |
 | `src/v4/extdeps/languages/rust.dag` | 8 |
+| `src/v4/extdeps/formats/json.dag` | 1 |
+| `src/v4/extdeps/formats/yaml.dag` | 1 |
 | `src/v4/std/float.dag` | 2 |
 
 **Recovery:**
@@ -1538,10 +1545,12 @@ git show 92cb26402eeb21471acb6ac47559cbae3b52afdb:src/v4/extdeps/languages/ptx.d
 git show 92cb26402eeb21471acb6ac47559cbae3b52afdb:src/v4/extdeps/languages/go.dag
 git show 92cb26402eeb21471acb6ac47559cbae3b52afdb:src/v4/extdeps/languages/python.dag
 git show 92cb26402eeb21471acb6ac47559cbae3b52afdb:src/v4/extdeps/languages/rust.dag
+git show 92cb26402eeb21471acb6ac47559cbae3b52afdb:src/v4/extdeps/formats/json.dag
+git show 92cb26402eeb21471acb6ac47559cbae3b52afdb:src/v4/extdeps/formats/yaml.dag
 git show 92cb26402eeb21471acb6ac47559cbae3b52afdb:src/v4/std/float.dag
 ```
 
-**Ratification:** strict de-prose did not alter `type`/`data` shapes; it removed `//` ledger text only. This subsection **re-anchors** the merge-base 🟢 GREEN classifications until a future ratified edit changes them.
+**Ratification:** strict de-prose did not alter `type`/`data` shapes; it removed `//` ledger text only. This subsection **re-anchors** the merge-base 🟢 GREEN classifications until a future ratified edit changes them. The format entries above are the authoritative recovery home for the live one-line `JsonValue` / `YamlValue` coproduct tags in `extdeps/formats/{json,yaml}.dag`; `TomlValue` is intentionally excluded because `SL-3229-TOML-TABLE-SYNTAX` supersedes its old green receipt with a 🟡 table-syntax collapse gate.
 
 ### CP-3229-RED-PRACTICE4 — 🔴 Practice-4 coproduct dissolution (allowlist)
 
