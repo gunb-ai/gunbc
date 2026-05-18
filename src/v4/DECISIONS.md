@@ -930,7 +930,6 @@ PROPOSES; it does not decide.
 
 **Verified:** merge-base `92cb26402:src/v4/std/integer.dag` contains **no** `Coproduct dissolution` / `TRACKED 🟡` / `🟢 GREEN` Practice-4 checkpoint blocks on sum coproducts (search-empty). Removed body `//` text was **D2 / modeling prose** already superseded at the ledger level by **DECISIONS.md `D2-REV`**. **`GroupCompletion<M>` constrained-inhabitance** is **not** a coproduct dissolution receipt; verbatim merge-base text is relocated at **`SL-3229-INTEGER-GROUP-COMPLETION`** below (not omitted).
 
-<<<<<<< HEAD
 ### CP-3229-NAT-LE-WITNESS — `std/cardinality.dag` `NatLeWitness` (Practice-4 terminal sum)
 
 **Authority:** PR #3310 P1 cardinality refinement (api-review codex blocking receipt, 2026-05-18).
@@ -948,7 +947,7 @@ PROPOSES; it does not decide.
 **Live substrate tag:** `// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-NAT-LE-WITNESS.` immediately precedes `type NatLeWitness` in `src/v4/std/cardinality.dag`.
 
 **Cross-ref:** Part 1 table row `NatLeWitness` / `UpperBoundedNat`; **`§PR-3252-cardinality-std`** for `Never` / `Unit` inhabitance context. **Not** part of merge-base **`### CP-3229-GREEN-TERMINAL`** bulk table (that table enumerates strict-de-prose merge-base files only); this subsection is the **reachable** Practice-4 receipt for `NatLeWitness`.
-=======
+
 ### SL-PREFIX-DISSOLUTION-LENS-KEY — `lens/coverage.dag` `DissolutionLensKey`
 
 **Authority:** PREFIX lens acceptance batch (d), PR #3318.
@@ -960,7 +959,6 @@ PROPOSES; it does not decide.
 **Why not 🟡:** no richer upstream carrier is currently landed that would generate this key set. The future dissolution is mechanical replacement, not a blocked known model: when the v4 coverage lens can enumerate registered dissolution-lens declarations directly, the hand-authored key list and the host parse ratchet retire together.
 
 **Live substrate tag:** one-line `// 🟢 coproduct dissolution — DECISIONS.md Part 6 · SL-PREFIX-DISSOLUTION-LENS-KEY.` immediately precedes `type DissolutionLensKey` in `src/v4/lens/coverage.dag`.
->>>>>>> e9c95903e (Receipt PREFIX dissolution lens key ledger)
 
 ### SL-P7-NAT-IS-ZERO-VPRED — `std/nat.dag` `nat_is_zero` (predicate-dissolution interim)
 
