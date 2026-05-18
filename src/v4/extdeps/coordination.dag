@@ -34,7 +34,7 @@
 //   - Effect types per coordination kind (HttpEffect / QueueEffect / StreamEffect / etc.)
 //
 // Consumes:
-//   - std/node.dag, std/diagnostic.dag, std/collection.dag
+//   - std/node.dag, std/diagnostic.dag, std/collection.dag, std/network.dag
 //   - extdeps/languages/*.dag (per-endpoint language)
 //   - extdeps/frameworks/*.dag (per-endpoint framework, optional)
 //
@@ -45,3 +45,5 @@
 
 module v4.extdeps.coordination
 
+
+import v4.std.network { NetworkAddress }

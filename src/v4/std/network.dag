@@ -1,0 +1,34 @@
+// src/v4/std/network.dag
+// Scope: network boundary carriers shared by transport, format, and coordination models.
+// Anchor: RFC 9110 HTTP Semantics + RFC 5789 PATCH Method + RFC 3986 URI Generic Syntax
+// Owns: HttpMethod, Url, NetworkAddress.
+// Consumes: std text.
+// Status: T-26 modeled.
+
+
+module v4.std.network
+
+
+import v4.std.text { String }
+
+
+// RFC 9110 Section 9 method carrier, ported from dsl/std/types.dag.
+type HttpMethod
+  = GET
+  | POST
+  | PUT
+  | PATCH
+  | DELETE
+  | HEAD
+  | OPTIONS
+  | TRACE
+
+
+// Url: String refinement. Restore URI/URL parse predicate when the v4
+// refinement predicate substrate has a concrete pattern/format carrier.
+type Url = String
+
+
+type NetworkAddress {
+  url: Url,
+}

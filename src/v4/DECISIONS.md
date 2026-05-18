@@ -477,7 +477,7 @@ the in-file `// <emoji> coproduct dissolution — DECISIONS.md <ID>` tag
 | **T-4.6-P4-OpenApiHeaderDeferredKey** | `OpenApiHeaderDeferredKey` | 🟡 | Header Object deferred members (style / explode / example / examples); excludes query-only **`allowEmptyValue`**; **`deprecated`** is **`OpenApiHeaderDeprecatedSlot`** on **`OpenApiHeaderObject`**; **`content`** is first-class on **`OpenApiHeaderPayloadSlot`** (XOR with **`schema`**). OAS Header churn on these deferrals ⇒ extend sum + row. |
 | **T-4.6-P4-OpenApiLinkDeferredKey** | `OpenApiLinkDeferredKey` | 🟡 | Link Object deferred members; Link spec churn ⇒ extend sum + row. |
 | **T-4.6-P4-OpenApiLinkTarget** | `OpenApiLinkTarget` | 🟡 | OAS Link Object **`operationId` XOR `operationRef`** — exactly one target identity; carried as `OpenApiLinkObject.target` (**T-4.6-OAS**). |
-| **T-4.6-P4-OpenApiHttpMethod** | `OpenApiHttpMethod` | 🟢 | Closed eight-verb Operation map key set (OAS Path Item `get`…`trace`). |
+| **T-4.6-P4-OpenApiHttpMethod** | `HttpMethod` from `std/network.dag` | 🟢 | Closed eight-verb Operation map key set (OAS Path Item `get`…`trace`) now consumes the shared T-26 carrier rather than a parallel OpenAPI enum. |
 | **T-4.6-P4-OpenApiOptionalString** | `OpenApiOptionalString` | 🟢 | Present/absent optional string field idiom over OAS optional strings. |
 | **T-4.6-P4-OpenApiHeaderRequiredSlot** | `OpenApiHeaderRequiredSlot` | 🟢 | Required boolean slot on Header Object (spec-bounded two-way). |
 | **T-4.6-P4-OpenApiHeaderDeprecatedSlot** | `OpenApiHeaderDeprecatedSlot` | 🟢 | Header Object **`deprecated`** optional boolean (Parameter-parity fixed field on **`OpenApiHeaderObject`**, **T-4.6-OAS**). |

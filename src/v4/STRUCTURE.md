@@ -16,7 +16,7 @@ src/v4/
   TASKS.md               # the XL task plan (count drift-proof; see T-15)
   DECISIONS.md           # design-decisions ledger (RATIFIED + record)
 
-  std/                   # substrate primitives (14 files)
+  std/                   # substrate primitives (15 files)
     node.dag             # 6 type connectives + 5 L1 behaviors (substrate root)
     algebra.dag          # Magma/Monoid/BoolAlgebra/FreeMonoid (structures only)
     cardinality.dag      # cardinality refinement, P4 decidability
@@ -28,6 +28,7 @@ src/v4/
     integer.dag          # Int + fixed-width ints (Nat projected onto a width)
     float.dag            # Float — IEEE-754 floating-point (rounding-aware algebra, not exact Field)
     text.dag             # Char (Unicode code point) + String (FreeMonoid<Char>)
+    network.dag          # HttpMethod / Url / NetworkAddress boundary carriers
     collection.dag       # bounded containers
     verification.dag     # TestClaim schema + Tier×Layer classification (v4-fresh; studied v3/dsl)
     report.dag           # advisory carrier (NOT fail-closed Diagnostic); used by synthesis lens
@@ -120,7 +121,7 @@ src/v4/
     fixture/             # canonical input programs
 ```
 
-**Total: 69 .dag files + 5 docs + 5 .gitkeep = 79 files.** (Per invariant
+**Total: 70 .dag files + 5 docs + 5 .gitkeep = 80 files.** (Per invariant
 #1 the enumeration above — not the count — is authoritative; the count is
 a checksum, updated on every operator-ratified file addition/removal.
 **Reconciliation (2026-05-17, PR #3225 / review #13750):** the prior printed
@@ -132,6 +133,9 @@ intervening operator-ratified edits). **#3225** adds **`test/claim/manual/resolv
 extension (Option A, relay merry-ibex-337). −5 .dag 2026-05-15: work-direction
 meta-layer cut, operator-ratified. **2026-05-17 (PR #3212):** enumerate
 `test/claim/manual/*` (4) + `test/claim/impossible_bug/*` (6); checksum **65→69** `.dag`.)
+**2026-05-18 (T-26):** add `std/network.dag` for shared
+`HttpMethod` / `Url` / `NetworkAddress` boundary carriers; checksum
+**69→70** `.dag`.
 
 ## Scalar/numeric concept decomposition
 
@@ -151,6 +155,8 @@ by six concept-located files, each anchored to a real external concept
   inhabiting a rounding-aware algebra — *not* an exact `Field`, and *not*
   opaque: fully grounded, only its algebra is weakened)
 - `std/text.dag` — `Char` (Unicode code point) + `String` (`FreeMonoid<Char>`)
+- `std/network.dag` — network boundary carriers (`HttpMethod`, `Url`,
+  `NetworkAddress`) shared by OpenAPI / coordination / wire contracts
 
 Each declares its own inhabitance (the inhabiting type owns its grounding —
 INVARIANTS P2); `algebra.dag` owns the algebra *structures* only.
