@@ -283,16 +283,37 @@ data fermi_lattice: Lattice<FermiDepth> = { meet: fermi_meet, join: fermi_join }
 > `src/v4/std/algebra.dag`). Mechanizes MODELING M9 (DFS the concept
 > DAG).
 
-- *Signature:* a `fn f(x: T, ...) -> ...` where every argument's type is
-  declared in file `X`, but `f` lives in file `Y`, and `Y` imports `X`
-  (i.e. `X` is upstream of `Y`). Also: a `data` declaration whose primary
-  key-type lives upstream of its file.
-- *Decidable:* yes — the import graph and argument-type ownership are
-  both queryable from the parsed model.
+- *Signature:* the lens derives the function's **primary concept** —
+  the single type the function is "about" — and requires the function
+  to live in that type's home file. The primary concept is selected
+  structurally, in priority order:
+  1. **Declared witness target.** If `f` appears as a field of a
+     `data ... : Algebra<T> = { ... f: ... }` witness, the primary
+     concept is `T` (the algebra's type parameter). `f`'s home is `T`'s
+     home file, regardless of what its arguments look like.
+  2. **Same-type closure.** If `f`'s argument types and return type are
+     all the same type `T` (the `fn(T, T) -> T` / `fn(T) -> T` /
+     `fn(T, T) -> Bool` closure shape), the primary concept is `T`.
+  3. **Upstream argument convergence.** Otherwise, if every argument
+     type and the return type are declared in a single file `X`, and
+     `f`'s current file `Y` imports `X`, the primary concept is the
+     type in `X` and the home is `X`.
+  4. **No primary concept (cross-cutting).** If none of (1)–(3) selects
+     a single owning type, the function is genuinely cross-cutting and
+     the lens does not fire.
+  The lens fires when (1), (2), or (3) selects a primary-concept home
+  `X` and `f` lives in `Y ≠ X`. Symmetric rule for `data` declarations:
+  primary concept comes from the declared algebra's type parameter
+  first, then key/payload type.
+- *Decidable:* yes — witness-field membership, argument/return type
+  uniformity, and the import graph are all queryable from the parsed
+  model. The four-rule selector is a closed structural cascade with no
+  judgment calls.
 - *Verdict:* hard error in `std/` and `extdeps/`.
-- *Escape:* operations whose argument types span multiple files with no
-  single upstream owner (genuinely cross-cutting) — operator-confirm with
-  an `// Anchor: cross-cutting` marker.
+- *Escape:* (4) genuinely cross-cutting functions pass without
+  annotation. (3) admits an `// Anchor: cross-cutting { because: <token> }`
+  override where the token is drawn from a closed vocabulary
+  (`bridge`, `coercion`, `display`) — operator-confirm.
 
 **Concrete match — F5 (`src/v4/std/float.dag:52-62`):**
 ```dag
@@ -433,16 +454,30 @@ fn derive_effect_shape(...) -> Outcome<EffectShape> {
 > (`extdeps/languages/resolver.dag` is referenced as the planned home
 > while a provisional `GroundingMap` sits in `extdeps/languages/rust.dag`).
 
-- *Signature:* a type name `T` declared in two `.dag` files where neither
-  carries an `// Authority: canonical` / `// Authority: historical`
-  header marker. Or: a type name referenced via an import path under a
-  file that does not exist (planned-but-absent home — the degenerate
-  case of duplication).
-- *Decidable:* yes — name uniqueness across the corpus + header marker
-  check + import-target existence check.
+- *Signature:* a type name `T` introduced by `type T = ...` in two
+  different `.dag` files. Or: a type name referenced via an import path
+  under a file that does not exist (planned-but-absent home — the
+  degenerate case of duplication).
+- *Decidable:* yes — name uniqueness across the corpus and
+  import-target existence are both queryable from the parsed model. No
+  comment/prose inspection.
 - *Verdict:* hard error.
-- *Escape:* one file carries `// Authority: canonical`, the other
-  carries `// Authority: historical { dissolves_when: <trigger> }`.
+- *Escape (structural — applies the same rule L1.7 enforces against
+  itself):* the lens does **not** accept a comment marker as authority,
+  because prose-as-authority is exactly the shape L1.7 kills. The only
+  passing shapes are themselves structural:
+  1. **Alias / re-export.** The non-canonical file does not redeclare
+     `type T`; it `import`s the canonical declaration and exposes it via
+     a `type T = <canonical-module>.T` alias-identity edge.
+  2. **Structural retirement record.** A `data` row in a designated
+     retirement ledger names the historical declaration and a
+     dissolution trigger, e.g.
+     `data bool_dsl_std_retired: HistoricalDeclaration = { type: dsl.std.types.Bool, dissolves_when: <trigger> }`.
+     The lens reads the ledger as data, not as prose.
+  3. **Deletion / migration.** The historical declaration is removed in
+     the same change and consumers are repointed at the canonical home.
+  Comment markers — including a `// Authority: canonical` header — do
+  not satisfy the escape, by construction.
 
 **Concrete match — F9 (`dsl/std/types.dag:173` and `src/v4/std/logic.dag:14`):**
 ```dag
@@ -455,13 +490,11 @@ type Bool = True | False
 type Bool = True | False
 ```
 
-Both declarations *are* annotated, but neither annotation answers the
-question this lens asks. The existing tags classify the *finding shape*
-(dissolution status, scanner anchor) — neither names this file as the
-canonical home or the other as historical. L1.12's required form is a
-designator (`// Authority: canonical` / `// Authority: historical
-{ dissolves_when: <trigger> }`) that picks a winner between the two
-parallel declarations.
+Both declarations *are* annotated, but neither annotation discharges
+the lens — comment markers never do, by construction (see the
+*Escape* clause). The existing tags classify the finding shape
+(dissolution status, scanner anchor); none of them is a structural
+alias edge, retirement-ledger row, or deletion.
 
 **Concrete match — D2-resolver (provisional + planned-absent):**
 ```dag
@@ -472,9 +505,25 @@ data GroundingMap = { ... }               // ← provisional home
 // other language files defer to a file that isn't there
 ```
 
-**Clean shape:** mark one file canonical, the other historical with a
-dissolution trigger; or land the planned resolver and migrate the
-provisional copy.
+**Clean shape (structural, not prose):**
+```dag
+// src/v4/std/logic.dag  — canonical declaration
+type Bool = True | False
+
+// dsl/std/types.dag  — alias-identity edge, no redeclaration
+import v4.std.logic as canonical_logic
+type Bool = canonical_logic.Bool
+
+// OR: a structural retirement record (read as data, not prose)
+// some/retirement_ledger.dag
+data bool_dsl_std_retired: HistoricalDeclaration = {
+  type:            dsl.std.types.Bool,
+  dissolves_when:  <substrate-trigger>,
+}
+```
+For D2-resolver: land the planned `extdeps/languages/resolver.dag`
+canonically and rewrite `rust.dag`'s `GroundingMap` declaration into an
+import/alias of the resolver's authoritative shape.
 
 ## 6. The discriminant / catamorphism distinction
 
