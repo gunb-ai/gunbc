@@ -68,9 +68,9 @@ exists, parallelizable) · `IFACE` (needs a contract frozen first) · `DESIGN` �
 | T-4.7 | frameworks/react | SCAFFOLD | T-4 (ts) | CP1 (LanguageModel) | T-4 mgr |
 | T-4.8 | coordination | SCAFFOLD | T-4, T-4.7 | IFACE | T-4 mgr |
 | T-4.9 | languages/verilog | NOT STARTED | T-1,T-2 | OP (IN-B probe) | T-4 mgr |
-| T-4.10 | formats/spice | NOT STARTED | T-1 | **READY** | T-4 mgr |
+| T-4.10 | formats/spice | **LANDED** (#3168 merged) — *pre-D2-reversal canonical path; see rework-obligation note* | T-1 | LANDED | T-4 mgr |
 | T-4.11 | claim/english_ingest | SCAFFOLD | T-3/verification.dag | IFACE (AssertKind) | Lane B |
-| T-4.12 | languages/llvm_ir | NOT STARTED | T-1,T-2 | **READY** | T-4 mgr |
+| T-4.12 | languages/llvm_ir | **LANDED** (#3171 merged; +#3229 de-prose +#3300 cost-move on main) — *pre-D2-reversal canonical path; see rework-obligation note* | T-1,T-2 | LANDED | T-4 mgr |
 | T-4.13 | languages/machine_code | NOT STARTED | T-3, T-4 LanguageModel | CP1 | T-4 mgr |
 | T-4.14 | languages/ptx | NOT STARTED | T-1,T-2 | OP (IN-B probe) | T-4 mgr |
 | **T-9** | compiler/04_infer | SCAFFOLD | T-8/CP-1b-close (∥) + T-4 | IMPL (T-4 keystone; CP-1b-close parallel, not keystone-gated) | Lane A |
@@ -93,7 +93,7 @@ exists, parallelizable) · `IFACE` (needs a contract frozen first) · `DESIGN` �
 | T-25-tail | refinement prover (erase) | SCHEDULED | T-9 | IMPL (optim) | Lane A |
 | T-26 | std/ boundary carriers (URL/HttpMethod) | SCHEDULED | T-3 | **READY** | std/ = canonical home; Lane A may run 1st PR as conduit |
 | T-28 | std/ module-graph | SCHEDULED (bundled→T-8) | T-3 | IMPL (in T-8) | Lane A |
-| T-29 | extdeps C++ ABI feeder | SCHEDULED | T-3/machine | **READY** | T-4 mgr |
+| T-29 | extdeps C++ ABI feeder | **LANDED** — core #3267 merged (cpp_abi.dag on main); residual #3277 (cpp GAP) OPEN/in-flight | T-3/machine | LANDED (residual #3277 in-flight) | #3277 worker — **NOT in T-4-mgr subtree; attribution open (reparent or correct)** |
 | T-30 | hollow-alias / fact-density gate | SCHEDULED — interim P5(b) mirror already on main (Rust gate + fact_density.dag witness + smoke) | — (none) | IMPL+OP (generated checker + operator closure remain) | Dissolution |
 | T-31 | de-prose/de-template backward sweep | SCHEDULED (indep. of T-4 gates, TASKS.md:1197-1199) | — | **READY** | Dissolution |
 | T-32 | minimum never-hand-edited bootstrap seed | SCHEDULED | — | DESIGN (doc) | Lane B / OP |
@@ -106,6 +106,19 @@ exists, parallelizable) · `IFACE` (needs a contract frozen first) · `DESIGN` �
   parallel-fill backward sweep (Wave-0-dispatchable, independent of T-4 gates).
 - **Lens footnote:** the PREFIX driver/corpus gate is **T-23 + driver**, not
   T-12 alone; T-12/T-13/T-17/T-18/T-23 rows match the running lens fan-out.
+- **T-4-mgr staleness correction (verified vs main):** T-29 core (#3267),
+  T-4.10 (#3168), T-4.12 (#3171) are **already LANDED** — the original
+  "Wave-0 dispatch NOW = T-29/T-4.10/T-4.12" column for T-4-mgr is **empty in
+  reality**. Wave-0 parallel count drops **≈14 → ≈11**.
+- **NEW keystone-scope finding (decision-relevant):** the early-canonical-path
+  language/format files modelled **pre-D2-reversal** (spice #3168, llvm_ir
+  #3171, and any sibling pre-#3240 models) likely carry a **fact-bundle REWORK
+  obligation that is itself Practice-10/#3240-keystone-gated** — the *same*
+  class as T-4 ×5 and #3280 A-vs-B. "LANDED" ≠ "done": ratifying #3240 also
+  scopes their rework. This **widens the keystone's blast radius** (see §3).
+- **Coord flag:** T-29 residual #3277's worker (quick-bat-761) is **not in the
+  T-4-mgr subtree** (absent from the graph). §2 attribution corrected to
+  "open"; reparent/attribution routes via the owning manager, not assumed.
 
 ---
 
@@ -116,7 +129,14 @@ exists, parallelizable) · `IFACE` (needs a contract frozen first) · `DESIGN` �
 | **P1-KEYSTONE / Practice-10 / #3240** | **OPERATOR ratification** | T-4 → T-9 → T-10 → T-11 → T-16; **also #3313 Wave-2 lenses; also the principled basis for #3280 A-vs-B** | **Operator** |
 | **T-25-core** | **DESIGN direction (operator review)** | T-4 refinement-bearers, T-4.5, T-4.6 | **Operator** + std |
 | T-30 hollow-alias gate | IMPL+OP — interim P5(b) mirror on main; generated checker + operator closure remain | T-4 fact-bundle integrity | Dissolution |
-| T-29 C++ ABI | IMPL (READY, low fan-out) | T-4 cpp slice only | T-4 mgr |
+| ~~T-29 C++ ABI~~ | **LANDED (#3267)** — no longer a keystone; residual #3277 in-flight | (was: T-4 cpp slice) | #3277 worker |
+
+**Keystone blast radius (widened — T-4-mgr finding):** Practice-10/#3240 does
+not only gate T-4 ×5 forward — it also scopes the **rework obligation on the
+already-LANDED pre-D2-reversal files** (spice #3168, llvm_ir #3171, siblings).
+Ratifying #3240 is therefore *higher-leverage than first stated*: it unblocks
+the forward spine **and** defines the backward-rework set in one ruling. "Landed
+pre-#3240" is not "done."
 
 **One decision, three threads:** ratifying Practice-10/#3240 simultaneously
 unblocks the critical-path spine (via T-4), the #3313 dissolution-lens Wave 2,
@@ -130,8 +150,9 @@ problems; they are one keystone.
 
 - **Wave 0 (dispatch NOW — no keystone needed):** T-19, T-20, T-21, T-22
   (Lane B Priority-1) · T-12, T-13, T-23 lens fan-out (Lane A — *already in
-  flight*) · T-29, T-4.10, T-4.12 (T-4 mgr) · T-26, T-25-tail (std) · T-31
-  (Dissolution). **≈14 parallel.**
+  flight*) · T-26, T-25-tail (std) · T-31(b) mop-up (Dissolution). **≈11
+  parallel.** *(T-29/T-4.10/T-4.12 removed — already LANDED, not fresh
+  dispatch; their pre-#3240 rework is keystone-gated, not Wave-0.)*
 - **Wave 1 (P1-KEYSTONE + T-25-core + T-30 land):** T-4 ×5 languages, T-4.5,
   T-4.6 unblock (T-4 mgr).
 - **Wave 2 (T-4 lands):** T-9, T-4.7, T-4.8, T-4.13, T-18.
