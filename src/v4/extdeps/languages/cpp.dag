@@ -6,7 +6,7 @@
 
 module v4.extdeps.languages.cpp
 
-// 🟢 coproduct dissolution — DECISIONS.md T29-ABI + D2-REV.
+// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
 type CppIntegerOverflowDisposition
   = RepresentableResultRequired
   | UnsignedModuloArithmetic
