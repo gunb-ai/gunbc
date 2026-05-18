@@ -1174,18 +1174,16 @@ Verbatim `//` lines from merge-base `llvm_ir.dag` (lines **1117–1170**):
 ### SL-3229-PTX-DIM3 — `Dim3` kernel-ambient `Int` axis scaffold
 
 **Authority / closure:** PR #3310 P1 cardinality refinement plus follow-up
-receipt PR (2026-05-18); **zero-axis closure** — live `ptx.dag` `Dim3` axes
-use `v4.std.cardinality.NonZeroNat` (strictly positive Peano naturals).
+receipt PR (2026-05-18).
 
 **Disposition:** **🟢 GREEN terminal for the merge-base raw `Int` axis
-payload class.** Live `ptx.dag` uses `NonZeroNat` for `Dim3.x` / `y` / `z`, so
-negative dimension or **zero** dimension axes are no longer representable by
-this carrier. **Residual remains 🟡:** PTX-version-specific per-axis maxima
-are not yet type-encoded (no pinned-upper-bound witness on each axis), so
-`SL-3229-PTX-DIM3` remains a live ledger slug on `ptx.dag` for the **bounded-
-axis refinement** slice only. Named trigger: a checkable `std/cardinality.dag`
-(or ISA-parameterized consumer) witness for per-axis maxima before this row
-can close fully.
+payload class.** Live `ptx.dag` uses `Nat` for `Dim3.x` / `y` / `z`, so
+negative dimension or coordinate axes are no longer representable by this
+carrier. **Residual remains 🟡:** `Nat` still admits zero and does not encode
+PTX-version-specific per-axis maxima, so `SL-3229-PTX-DIM3` remains a live
+ledger slug on `ptx.dag` for the positive / bounded-axis refinement. Named
+trigger: the same T-3 bounded-natural refinement substrate must supply a
+positive bounded-axis witness before this row can close fully.
 
 Verbatim `//` lines from merge-base `ptx.dag` (lines **1059–1090** — section header + 🟡 three-bridge note):
 
@@ -1225,11 +1223,10 @@ Verbatim `//` lines from merge-base `ptx.dag` (lines **1059–1090** — section
 //       scaffold dissolves.
 ```
 
-**Dissolution result:** P1's `Nat` carrier landing closed the merge-base
-negative-axis illegal state; **`NonZeroNat` axis payloads** close the
-zero-axis illegal state structurally. PTX-pinned-maximum illegal states
-remain live under `SL-3229-PTX-DIM3` until the named per-axis upper-bound
-witness lands.
+**Dissolution result:** P1's `Nat` carrier landing closes only the
+merge-base negative-axis illegal state. The zero-axis and
+PTX-pinned-maximum illegal states remain live under `SL-3229-PTX-DIM3`
+until the named positive bounded-axis witness lands.
 
 ### SL-3229-PTX-COST — raw-`Int` PTX cost axes (`PtxCost`)
 
