@@ -1,12 +1,13 @@
 // src/v4/extdeps/languages/lean.dag
 // Scope: Lean 4 language model for PROOF-1 termination export.
-// Owns: LeanDeclarationKind, LeanName, LeanLevel, LeanLevelRef, LeanLevelNode, LeanBinderInfo, LeanBinder, LeanTermRef, LeanTermNode, LeanTermForm, LeanMatchAlternative, LeanTerminationMeasure, LeanTerminationBy, LeanDecreasingProof, LeanTerminationClause, LeanDefinitionTermination, LeanProofArtifact, LeanFidelityFeature, LeanFidelityDisposition, LeanProofCheckSemantics, LeanKernelInductiveBoolWitness, LeanNatMathematicalUnboundedWitness, LeanIntMathematicalUnboundedWitness, LeanPointerSizedNaturalPerTargetWitness, LeanUnsignedFixedWidthModularWitness, LeanUInt8Width8Witness, LeanUInt16Width16Witness, LeanUInt32Width32Witness, LeanUInt64Width64Witness, LeanBool, LeanNat, LeanInt, LeanUSize, LeanUInt8, LeanUInt16, LeanUInt32, LeanUInt64.
-// Consumes: Int, UInt8, UInt16, UInt32, UInt64, UIntPlatform, List, Bool, Nat, Symbol.
-// Status: D2-REV — Lean 4 kernel / fixed-precision primitives as fact-bundles (DECISIONS.md P4-3208 / #3208).
+// Owns: LeanDeclarationKind, LeanName, LeanLevel, LeanLevelRef, LeanLevelNode, LeanBinderInfo, LeanBinder, LeanTermRef, LeanTermNode, LeanTermForm, LeanMatchAlternative, LeanTerminationMeasure, LeanTerminationBy, LeanDecreasingProof, LeanTerminationClause, LeanDefinitionTermination, LeanProofArtifact, LeanFidelityFeature, LeanFidelityDisposition, LeanProofCheckSemantics, LeanIntKind, LeanIntWidth, LeanScalar, LeanBool, lean_bool_grounding, LeanNat, lean_nat_grounding, LeanInt, lean_int_grounding, LeanUSize, lean_usize_grounding, LeanUInt8, lean_uint8_grounding, LeanUInt16, lean_uint16_grounding, LeanUInt32, lean_uint32_grounding, LeanUInt64, lean_uint64_grounding.
+// Consumes: Int, UInt8, UInt16, UInt32, UInt64, UIntPlatform, List, Bool, Nat, Symbol, String; v4.extdeps.languages.rust (GroundingMap).
+// Status: D2-REV / Practice 8 — scalar ladder `LeanScalar` + std coincidence via `GroundingMap` (rust.dag template; P4-3208 / #3208).
 
 module v4.extdeps.languages.lean
 
 
+import v4.extdeps.languages.rust { GroundingMap }
 import v4.std.integer {
   Int,
   UInt8,
@@ -19,6 +20,7 @@ import v4.std.collection { List }
 import v4.std.logic { Bool }
 import v4.std.nat { Nat }
 import v4.std.node { Symbol }
+import v4.std.text { String }
 
 
 // Anchor: https://lean-lang.org/doc/reference/4.20.0/
@@ -198,67 +200,89 @@ type LeanProofCheckSemantics<IRCarrier> {
 }
 
 
-// Ledger: DECISIONS.md D2-REV + P4-3208 — Lean 4 kernel / fixed-precision
-// numeric carriers as fact-bundles (spec witnesses + std `canon`), not bare aliases.
 // Anchor: https://lean-lang.org/doc/reference/4.20.0/Basic-Types/Fixed-Precision-Integers/
-type LeanKernelInductiveBoolWitness {}
+// 🟢 coproduct dissolution — DECISIONS.md P4-3208
+type LeanIntKind
+  = Signed
+  | Unsigned
 
-type LeanBool {
-  canon: Bool
-  kernel_form: LeanKernelInductiveBoolWitness
+
+// Anchor: https://lean-lang.org/doc/reference/4.20.0/Basic-Types/Fixed-Precision-Integers/
+// 🟢 coproduct dissolution — DECISIONS.md P4-3208
+type LeanIntWidth
+  = Bits8
+  | Bits16
+  | Bits32
+  | Bits64
+  | Pointer
+
+
+// Anchor: https://lean-lang.org/doc/reference/4.20.0/Basic-Types/Fixed-Precision-Integers/
+// 🟢 coproduct dissolution — DECISIONS.md P4-3208
+type LeanScalar
+  = IntScalar { kind: LeanIntKind, width: LeanIntWidth }
+  | BoolScalar
+
+
+// Anchor: https://lean-lang.org/doc/reference/4.20.0/Basic-Types/Fixed-Precision-Integers/
+type LeanBool = Bool
+
+data lean_bool_grounding: GroundingMap<LeanBool> = GroundingMap {
+  spelling: "Bool"
 }
 
-type LeanNatMathematicalUnboundedWitness {}
 
-type LeanNat {
-  canon: Nat
-  specification: LeanNatMathematicalUnboundedWitness
+// Anchor: https://lean-lang.org/doc/reference/4.20.0/
+type LeanNat = Nat
+
+data lean_nat_grounding: GroundingMap<LeanNat> = GroundingMap {
+  spelling: "Nat"
 }
 
-type LeanIntMathematicalUnboundedWitness {}
 
-type LeanInt {
-  canon: Int
-  specification: LeanIntMathematicalUnboundedWitness
+// Anchor: https://lean-lang.org/doc/reference/4.20.0/
+type LeanInt = Int
+
+data lean_int_grounding: GroundingMap<LeanInt> = GroundingMap {
+  spelling: "Int"
 }
 
-type LeanPointerSizedNaturalPerTargetWitness {}
 
-type LeanUSize {
-  canon: UIntPlatform
-  specification: LeanPointerSizedNaturalPerTargetWitness
+// Anchor: https://lean-lang.org/doc/reference/4.20.0/Basic-Types/Fixed-Precision-Integers/
+type LeanUSize = UIntPlatform
+
+data lean_usize_grounding: GroundingMap<LeanUSize> = GroundingMap {
+  spelling: "USize"
 }
 
-type LeanUnsignedFixedWidthModularWitness {}
 
-type LeanUInt8Width8Witness {}
+// Anchor: https://lean-lang.org/doc/reference/4.20.0/Basic-Types/Fixed-Precision-Integers/
+type LeanUInt8 = UInt8
 
-type LeanUInt8 {
-  modular_semantics: LeanUnsignedFixedWidthModularWitness
-  width: LeanUInt8Width8Witness
-  canon: UInt8
+data lean_uint8_grounding: GroundingMap<LeanUInt8> = GroundingMap {
+  spelling: "UInt8"
 }
 
-type LeanUInt16Width16Witness {}
 
-type LeanUInt16 {
-  modular_semantics: LeanUnsignedFixedWidthModularWitness
-  width: LeanUInt16Width16Witness
-  canon: UInt16
+// Anchor: https://lean-lang.org/doc/reference/4.20.0/Basic-Types/Fixed-Precision-Integers/
+type LeanUInt16 = UInt16
+
+data lean_uint16_grounding: GroundingMap<LeanUInt16> = GroundingMap {
+  spelling: "UInt16"
 }
 
-type LeanUInt32Width32Witness {}
 
-type LeanUInt32 {
-  modular_semantics: LeanUnsignedFixedWidthModularWitness
-  width: LeanUInt32Width32Witness
-  canon: UInt32
+// Anchor: https://lean-lang.org/doc/reference/4.20.0/Basic-Types/Fixed-Precision-Integers/
+type LeanUInt32 = UInt32
+
+data lean_uint32_grounding: GroundingMap<LeanUInt32> = GroundingMap {
+  spelling: "UInt32"
 }
 
-type LeanUInt64Width64Witness {}
 
-type LeanUInt64 {
-  modular_semantics: LeanUnsignedFixedWidthModularWitness
-  width: LeanUInt64Width64Witness
-  canon: UInt64
+// Anchor: https://lean-lang.org/doc/reference/4.20.0/Basic-Types/Fixed-Precision-Integers/
+type LeanUInt64 = UInt64
+
+data lean_uint64_grounding: GroundingMap<LeanUInt64> = GroundingMap {
+  spelling: "UInt64"
 }

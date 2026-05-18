@@ -241,6 +241,9 @@ checked against the Practice-4 five-pattern ledger:
 | `LeanProofArtifact` | 🟢 GREEN terminal | All five dissolution patterns fail: proof exporter/emitter share the classifier; theorem and terminating-definition artifacts carry different required fields; not algebra; one artifact is theorem proof or terminating-definition proof; payloads are heterogeneous. |
 | `LeanFidelityFeature` | 🟢 GREEN terminal | All five dissolution patterns fail: C5 boundary and generic walker share feature classes; `Symbol` would make the boundary open; not algebra; one boundary decision names one feature; feature classes are heterogeneous. |
 | `LeanFidelityDisposition` | 🟢 GREEN terminal | All five dissolution patterns fail: modeled/normalized/fail-closed is the shared C5 disposition; non-modeled variants carry feature payloads and a flat record admits impossible combinations; not algebra; one feature has one disposition; payloads are heterogeneous. |
+| `LeanIntKind` | 🟢 GREEN terminal | Same dissolution posture as `RustIntKind` (`rust.dag`, DECISIONS.md Part 6 / CP-3229): signed vs unsigned is a closed external alternative for fixed-precision scalars, not a hideable coordinate; not algebra; not one `F<X>` family over identical payloads. |
+| `LeanIntWidth` | 🟢 GREEN terminal | Same dissolution posture as `RustIntWidth` (`rust.dag`): closed width ladder for fixed-precision scalars; `Pointer` names platform-sized facts separately from fixed bit widths; not algebra; not a `Symbol` tag. |
+| `LeanScalar` | 🟢 GREEN terminal | Same dissolution posture as `RustScalar` `IntScalar` / `BoolScalar` (`rust.dag`): kind×width bundles fixed-precision facts; `BoolScalar` parallels the Rust scalar bundle while kernel `LeanBool = Bool` + `lean_bool_grounding` cites std coincidence for the kernel bool spelling. |
 
 ### `src/v4/extdeps/languages/machine_code.dag`
 
@@ -262,6 +265,9 @@ checked against the Practice-4 five-pattern ledger:
 | `MachineFidelityDisposition` | 🟢 GREEN terminal | All five dissolution patterns fail: modeled/normalized/fail-closed is the shared C5 disposition; non-modeled variants carry feature payloads and a flat record admits impossible combinations; not algebra; one feature has one disposition; payloads are heterogeneous. |
 | `MachineIntegerOverflowBehavior` | 🟢 GREEN terminal | All five dissolution patterns fail: integer operation semantics/lowering read overflow behavior; `Bool` cannot distinguish wrap/trap/undefined; wrapping relates to fixed-width carrier behavior but trap/undefined are target operation semantics; overflow is separate from flag writes; alternatives are closed. |
 | `FlagWriteDisposition` | 🟢 GREEN terminal | All five dissolution patterns fail: condition-code dependency consumers read this coordinate; `Bool` cannot distinguish architectural flags vs predicate-register writes; not algebra; one instruction has one flag-write disposition; alternatives are closed. |
+| `MachineIntKind` | 🟢 GREEN terminal | Same dissolution posture as `RustIntKind` / `LeanIntKind`: ISA-modeled signed vs unsigned is a closed alternative for fixed-width machine integers, not a coordinate; not algebra; consumers branch uniformly. |
+| `MachineIntWidth` | 🟢 GREEN terminal | Same dissolution posture as `RustIntWidth` / `LeanIntWidth` with `Bits128` extension: closed width ladder for ISA fixed-width integers through 128-bit class; not algebra; not a `Symbol` width tag. |
+| `MachineScalar` | 🟢 GREEN terminal | Same dissolution posture as `RustScalar` `IntScalar` (`rust.dag`): kind×width bundles ISA scalar facts; per-width `MachineI*` / `MachineU*` aliases + `machine_*_grounding` rows cite std ladder coincidence separately (Practice 8). |
 
 ## OS-1 — #3209 Coproduct Dissolution And Scaffold Record
 

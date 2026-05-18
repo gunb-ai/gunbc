@@ -1,12 +1,13 @@
 // src/v4/extdeps/languages/machine_code.dag
 // Scope: machine-code language model parameterized by Isa.
-// Owns: Isa, ByteOrder, InstructionLength, InstructionByteLimitRef, OperandFieldWidthRef, MachineIsaSignedTwoComplementFixedWidthWitness, MachineSignedWordWidth8Witness, MachineSignedWordWidth16Witness, MachineSignedWordWidth32Witness, MachineSignedWordWidth64Witness, MachineSignedWordWidth128Witness, MachineIsaUnsignedModuloTwoPowWidthWitness, MachineUnsignedWordWidth8Witness, MachineUnsignedWordWidth16Witness, MachineUnsignedWordWidth32Witness, MachineUnsignedWordWidth64Witness, MachineUnsignedWordWidth128Witness, MachineI8, MachineI16, MachineI32, MachineI64, MachineI128, MachineU8, MachineU16, MachineU32, MachineU64, MachineU128, InstructionWord, RegisterClass, RegisterDeclaration, RegisterRef, IndexScale, AddressingMode, Operand, ByteSequence, InstructionProductionRef, RegisterOperandSlotRef, ImmediateOperandSlotRef, MemoryOperandSlotRef, ImmediateOperandTarget, ImmediateOperandConstraint, MemoryOperandConstraint, InstructionOperandSlot, InstructionProduction, OperandBinding, DecodedInstruction, MachineFidelityFeature, MachineFidelityDisposition, MachineIntegerOverflowBehavior, MachineIntegerOperationSemantics, FlagWriteDisposition.
-// Consumes: Int8, Int16, Int32, Int64, Int128, UInt8, UInt16, UInt32, UInt64, UInt128, List, Byte, Symbol.
-// Status: D2-REV — ISA primitive integers as fact-bundles (DECISIONS.md P4-3208 / #3208).
+// Owns: Isa, ByteOrder, InstructionLength, InstructionByteLimitRef, OperandFieldWidthRef, MachineIntKind, MachineIntWidth, MachineScalar, MachineI8, machine_i8_grounding, MachineI16, machine_i16_grounding, MachineI32, machine_i32_grounding, MachineI64, machine_i64_grounding, MachineI128, machine_i128_grounding, MachineU8, machine_u8_grounding, MachineU16, machine_u16_grounding, MachineU32, machine_u32_grounding, MachineU64, machine_u64_grounding, MachineU128, machine_u128_grounding, InstructionWord, RegisterClass, RegisterDeclaration, RegisterRef, IndexScale, AddressingMode, Operand, ByteSequence, InstructionProductionRef, RegisterOperandSlotRef, ImmediateOperandSlotRef, MemoryOperandSlotRef, ImmediateOperandTarget, ImmediateOperandConstraint, MemoryOperandConstraint, InstructionOperandSlot, InstructionProduction, OperandBinding, DecodedInstruction, MachineFidelityFeature, MachineFidelityDisposition, MachineIntegerOverflowBehavior, MachineIntegerOperationSemantics, FlagWriteDisposition.
+// Consumes: Int8, Int16, Int32, Int64, Int128, UInt8, UInt16, UInt32, UInt64, UInt128, List, Byte, Symbol, String; v4.extdeps.languages.rust (GroundingMap).
+// Status: D2-REV / Practice 8 — `MachineScalar` kind×width bundle + std coincidence via `GroundingMap` (rust.dag template; P4-3208 / #3208).
 
 module v4.extdeps.languages.machine_code
 
 
+import v4.extdeps.languages.rust { GroundingMap }
 import v4.std.integer {
   Int8,
   Int16,
@@ -22,6 +23,7 @@ import v4.std.integer {
 import v4.std.collection { List }
 import v4.std.machine { Byte }
 import v4.std.node { Symbol }
+import v4.std.text { String }
 
 
 // Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
@@ -60,92 +62,97 @@ type OperandFieldWidthRef {
 }
 
 
-// Ledger: DECISIONS.md D2-REV + P4-3208 — ISA-modeled fixed-width integers as
-// fact-bundles (width + representation + std `canon`), not bare std aliases.
-// Anchor: Intel SDM (two's-complement fixed-width general-purpose integer reads);
-// Arm A-profile Architecture Reference Manual; RISC-V ISA manual (two's complement).
-type MachineIsaSignedTwoComplementFixedWidthWitness {}
+// Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
+// 🟢 coproduct dissolution — DECISIONS.md P4-3208
+type MachineIntKind
+  = Signed
+  | Unsigned
 
-type MachineSignedWordWidth8Witness {}
 
-type MachineSignedWordWidth16Witness {}
+// Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
+// 🟢 coproduct dissolution — DECISIONS.md P4-3208
+type MachineIntWidth
+  = Bits8
+  | Bits16
+  | Bits32
+  | Bits64
+  | Bits128
 
-type MachineSignedWordWidth32Witness {}
 
-type MachineSignedWordWidth64Witness {}
+// Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
+// 🟢 coproduct dissolution — DECISIONS.md P4-3208
+type MachineScalar
+  = IntScalar { kind: MachineIntKind, width: MachineIntWidth }
 
-type MachineSignedWordWidth128Witness {}
 
-type MachineIsaUnsignedModuloTwoPowWidthWitness {}
+// Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
+type MachineI8 = Int8
 
-type MachineUnsignedWordWidth8Witness {}
-
-type MachineUnsignedWordWidth16Witness {}
-
-type MachineUnsignedWordWidth32Witness {}
-
-type MachineUnsignedWordWidth64Witness {}
-
-type MachineUnsignedWordWidth128Witness {}
-
-type MachineI8 {
-  representation: MachineIsaSignedTwoComplementFixedWidthWitness
-  width: MachineSignedWordWidth8Witness
-  canon: Int8
+data machine_i8_grounding: GroundingMap<MachineI8> = GroundingMap {
+  spelling: "i8"
 }
 
-type MachineI16 {
-  representation: MachineIsaSignedTwoComplementFixedWidthWitness
-  width: MachineSignedWordWidth16Witness
-  canon: Int16
+
+type MachineI16 = Int16
+
+data machine_i16_grounding: GroundingMap<MachineI16> = GroundingMap {
+  spelling: "i16"
 }
 
-type MachineI32 {
-  representation: MachineIsaSignedTwoComplementFixedWidthWitness
-  width: MachineSignedWordWidth32Witness
-  canon: Int32
+
+type MachineI32 = Int32
+
+data machine_i32_grounding: GroundingMap<MachineI32> = GroundingMap {
+  spelling: "i32"
 }
 
-type MachineI64 {
-  representation: MachineIsaSignedTwoComplementFixedWidthWitness
-  width: MachineSignedWordWidth64Witness
-  canon: Int64
+
+type MachineI64 = Int64
+
+data machine_i64_grounding: GroundingMap<MachineI64> = GroundingMap {
+  spelling: "i64"
 }
 
-type MachineI128 {
-  representation: MachineIsaSignedTwoComplementFixedWidthWitness
-  width: MachineSignedWordWidth128Witness
-  canon: Int128
+
+type MachineI128 = Int128
+
+data machine_i128_grounding: GroundingMap<MachineI128> = GroundingMap {
+  spelling: "i128"
 }
 
-type MachineU8 {
-  representation: MachineIsaUnsignedModuloTwoPowWidthWitness
-  width: MachineUnsignedWordWidth8Witness
-  canon: UInt8
+
+type MachineU8 = UInt8
+
+data machine_u8_grounding: GroundingMap<MachineU8> = GroundingMap {
+  spelling: "u8"
 }
 
-type MachineU16 {
-  representation: MachineIsaUnsignedModuloTwoPowWidthWitness
-  width: MachineUnsignedWordWidth16Witness
-  canon: UInt16
+
+type MachineU16 = UInt16
+
+data machine_u16_grounding: GroundingMap<MachineU16> = GroundingMap {
+  spelling: "u16"
 }
 
-type MachineU32 {
-  representation: MachineIsaUnsignedModuloTwoPowWidthWitness
-  width: MachineUnsignedWordWidth32Witness
-  canon: UInt32
+
+type MachineU32 = UInt32
+
+data machine_u32_grounding: GroundingMap<MachineU32> = GroundingMap {
+  spelling: "u32"
 }
 
-type MachineU64 {
-  representation: MachineIsaUnsignedModuloTwoPowWidthWitness
-  width: MachineUnsignedWordWidth64Witness
-  canon: UInt64
+
+type MachineU64 = UInt64
+
+data machine_u64_grounding: GroundingMap<MachineU64> = GroundingMap {
+  spelling: "u64"
 }
 
-type MachineU128 {
-  representation: MachineIsaUnsignedModuloTwoPowWidthWitness
-  width: MachineUnsignedWordWidth128Witness
-  canon: UInt128
+
+type MachineU128 = UInt128
+
+data machine_u128_grounding: GroundingMap<MachineU128> = GroundingMap {
+  spelling: "u128"
 }
 
 
