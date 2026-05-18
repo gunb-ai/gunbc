@@ -63,6 +63,7 @@ authority location(s) and moves to Part 1.
 | **D4** | **[SUPERSEDED by D2-REV — see the D2-REV row below + the "D2 REVERSAL" section]** **GroundingMap-home — the shared `extdeps/languages/resolver.dag` registry** (operator-ratified 2026-05-16; co-drafted; completes **D2**). The D2 resolver's *shared* types live in ONE new file `extdeps/languages/resolver.dag` — NOT re-declared per language (parallel-declaration P2 forbids; `feedback_import_not_redeclare_carriers`) and NOT homed in `rust.dag` (which would make one language file a substrate authority for the other four, and balloon as future shared resolver types land). `type GroundingMap<IRCarrier> { spelling: String }` is its first resident. **Admission rule (STRICT):** `resolver.dag` hosts ONLY *structurally-language-INVARIANT* resolver types — a type whose structure provably cannot vary across the modeled language specs (a convergence carrier). Spec-varying types stay per-language (`OverflowDisposition` etc. — D2.5 / L-2). Test before admitting: can you prove the structure invariant across the specs? Future shared resolver types (e.g. the C5-fidelity `Modeled \| Declared-normalized \| Fail-closed` disposition classifier) land here without a fresh placement decision. Closed-tree extension: `STRUCTURE.md` `.dag` count +1. Per-language files each add a one-line `import … resolver { GroundingMap }` + their per-primitive `data <lang>_<prim>_grounding` instances (the grounding-row fan-out — canonical `rust.dag` first, then the 4 others). | new `extdeps/languages/resolver.dag` + `STRUCTURE.md` count/enumeration + `extdeps/languages/*` import lines + grounding instances; this row; cross-ref **D2** |
 | **D5** | **Operator-driven frozen-header / frozen-contract reconcile is sanctioned in-PR** (operator-ratified 2026-05-16). "Preserve-verbatim" on a frozen scaffold header forbids *unsanctioned worker contract-drift* — it does NOT forbid *sanctioned reconciliation*. When an operator-tier action (a BLOCKING finding, an operator ruling) legitimately moves a worker's body past its frozen header or I/O contract, the header/contract is **reconciled to match in the SAME PR**, with the reconcile receipt — citing the driving operator action — recorded in the **commit message**. **Amended 2026-05-17 (operator-ratified):** the receipt is a commit-message entry, *not* an in-file `HEADER RECONCILE` block — the in-file-block form is superseded by the no-prose directive / `docs/modeling-discipline.md` Practice 9. D5's intent — a conscious, reviewer-visible reconcile receipt — is preserved: it lives in the commit message + `git blame`. **Discriminator:** an operator-tier action drove the body change ⇒ reconcile the header/contract in-PR, flagged; NO operator action drove it ⇒ the body must conform to the frozen header (preserve-verbatim holds, the worker cannot move the contract). Covers BOTH header-doc drift (stale `Owns`/`Consumes` bullets after a sanctioned refactor) AND frozen-contract changes (operator BLOCKS an I/O contract as P2/§2-insufficient). Already operating: `integer.dag` #3190 (`Consumes` reconciled), #3209 finding 2 (`WaitProcessResult`). Does NOT permit free worker header edits — operator-driven only. | this row + the reconcile receipt recorded in the **commit message** (the in-file `HEADER RECONCILE` block form — `integer.dag` #3190 precedent — is retired by Practice 9, 2026-05-17); refines the frozen-scaffold-header / preserve-verbatim discipline |
 | **D2-REV** | **D2 / D4 REVERSED — fact-bundle modeling supersedes alias-identity** (operator-ratified 2026-05-17, **out-of-band** — the verbatim operator-quote provenance is in the "D2 REVERSAL" section below). An `extdeps` primitive is modeled as a fact-bundle grounded from its own spec, never a bare `std/` alias; deduplicate to a `std/` carrier only on *proven* coincidence; the structural fact-density / hollow-alias gate is `T-30`, a hard prerequisite of T-4. This is a one-line index pointer — the full record (root cause, phased plan, impact map, "coincide" definition) is the **"D2 REVERSAL + FACT-BUNDLE RESEED"** section below, which is the authority. Supersedes the **D2** and **D4** rows above. | the **"D2 REVERSAL + FACT-BUNDLE RESEED"** section of this file (authority); `#3224` executes Phase 1; `docs/modeling/grounding-worked-examples.md` companion |
+| **OS-1** | **OS extdep coproduct ledgers and refinement-scaffold disposition for #3209** (operator-audit regime, 2026-05-17). Practice-4 dissolution ledgers for `file_system.dag` / `process.dag` are architectural decision records, not source comments; the `.dag` files keep only terse tags/anchors. POSIX numeric and byte-string refinement gaps remain tracked scaffolds in #3209, not expanded fact bundles; named trigger is **T-25-core refinement substrate / T-30 fact-density gate**. | this row + "OS-1 — #3209 coproduct dissolution and scaffold record" below; terse tags in `extdeps/file_system.dag` and `extdeps/process.dag` |
 
 ---
 
@@ -119,6 +120,102 @@ remain boundary indexes until the named substrate support lands.
 10. **`test/claim/manual/resolve_compile_anchor.dag` (Tier-1 compile anchor):** **Why:** codex #13724 — keep `resolve` / `dag_language_model_canonical_symbols` / wave-1 `DagLanguageModel` on the v2 `compile --source-root src/v4` graph so resolver/LM edges cannot silently rot pre-T-22. **What:** imports `resolve` + `dag_language_model_wave1_void` / `dag_c3_surface_sugar_service`; `anchor_resolve_wave1_service_atom_via_canonical_symbols` builds minimal `Conj` → `Atom(service)` and calls `resolve` (exercises CP-1b items 1–2 + `resolve_atom` canonical-set fallback, including **`language_identity == dag_language_model_surface_id`** per codex #13790). **Runtime:** `v2-compiler run` on v4 `TestClaim`s remains **deferred until T-22** (`test/v2_run_preflight/MOVE1_COVERAGE.txt`); follow-up — promote to a real `TestClaim` asserting `Produced` on the resolved `Atom`, then add `Bind` / multi-edge cases.
 
 ---
+
+## OS-1 — #3209 Coproduct Dissolution And Scaffold Record
+
+This section preserves the Practice-4 ledger content moved out of
+`src/v4/extdeps/file_system.dag` and `src/v4/extdeps/process.dag` during
+the strict de-prose pass. The source files keep only path/scope/owns/
+consumes/status, anchor lines, and terse concept/scaffold tags.
+
+### Coproduct Classifications
+
+All listed coproducts are **YELLOW, first-consumer-confirmed**. The
+named first-consumer trigger is the T-4.5 OS realization seam unless a
+more specific trigger is stated.
+
+- `PathComponent`: POSIX `.` and `..` component semantics are distinct
+  from ordinary filename spellings. Trigger: filesystem path parsing /
+  resolution realization. Ledger: fact placement fails because component
+  kind is consumed uniformly by path resolution; variant-is-data fails
+  because current/parent are semantic facts and named spelling is
+  payload; algebraic form is not applicable; dimensional fails because
+  a component is exactly current, parent, or named; parameterized family
+  fails because variants are not identical payloads over an enumerable
+  set.
+- `RelativePathHead`: non-current relative descendants can begin with
+  parent traversal or named component. Trigger: filesystem path parsing /
+  resolution realization. Ledger: fact placement fails because
+  first-component admissibility is consumed by relative path resolution;
+  variant-is-data fails because parent traversal and named payload are
+  different facts; algebraic form is not applicable; dimensional fails
+  because a non-current relative descendant head is parent or named;
+  parameterized family fails because variants are not identical payloads
+  over an enumerable set.
+- `RelativePath`: current directory, current-prefixed descendant with a
+  non-current continuation, and non-current relative descendant are
+  distinct POSIX relative-path facts. Trigger: filesystem path parsing /
+  resolution realization. Ledger: fact placement fails because the
+  partition is consumed uniformly by path operations; variant-is-data
+  fails because current-prefixed and non-current descendants carry
+  different leading facts while sharing the non-current continuation
+  head; algebraic form is not applicable; dimensional fails because a
+  relative path is current directory, current-prefixed descendant, or
+  non-current descendant; parameterized family fails because variants
+  are not identical payloads over an enumerable set.
+- `Path`: absolute-vs-relative is a POSIX root fact. Trigger:
+  filesystem path parsing / resolution realization. Ledger: fact
+  placement fails because root-ness is consumed by path resolution and
+  operation realization; variant-is-data fails because a flat
+  `absolute: Bool` duplicates the partition as a flag; algebraic form
+  is not applicable; dimensional fails because a path is absolute or
+  relative; parameterized family fails because variants are not projected
+  over a separate payload family.
+- `FileKind`: v4's bounded filesystem subset observes regular file,
+  directory, or symlink. Trigger: first `file_kind` realization. Ledger:
+  fact placement fails because file kind is consumed uniformly by
+  readers/listing/link handling; variant-is-data fails because the
+  variant is the file-kind fact and readlink target is a separate POSIX
+  observation; algebraic form is not applicable; dimensional fails
+  because one directory entry has one kind in this subset; parameterized
+  family fails because variants are not mechanically identical payloads.
+- `FileKindResolutionPolicy`: the boundary declares stat-like follow or
+  lstat-like no-follow symlink observation. Trigger: `file_kind`
+  realization. Ledger: fact placement fails because resolution policy is
+  a request-boundary fact; variant-is-data fails because each variant is
+  a distinct observation mode without shared payload; algebraic form is
+  not applicable; dimensional fails because one request follows symlinks
+  or does not; parameterized family fails because variants are not a
+  projection over an independently modeled payload family.
+- `Termination`: POSIX wait status is exit or signal. Trigger:
+  fork/exec/wait realization. Ledger: fact placement fails because
+  terminal status is consumed uniformly by wait/capture carriers;
+  variant-is-data fails because exit and signal carry different payloads
+  and a flat record admits impossible combinations; algebraic form is
+  not applicable; dimensional fails because a terminal process ended by
+  exit or signal; parameterized family fails because variants are not
+  identical payloads.
+- `CaptureSource`: capture can drain from a live spawned child or a
+  waited child whose pipe authority was preserved. Trigger: capture
+  realization. Ledger: fact placement fails because capture source state
+  is consumed uniformly by capture; variant-is-data fails because each
+  variant carries the lifecycle process authority and current or waited
+  resource authority; algebraic form is not
+  applicable; dimensional fails because one request uses live or
+  post-wait authority; parameterized family fails because variants carry
+  different lifecycle carriers.
+
+### Refinement Scaffold Disposition
+
+The following are intentionally tracked as YELLOW refinement scaffolds in
+#3209 rather than expanded into structural value-refinement or witness
+carriers: `ProcessId = Int`, `ExitCode = Int`, `SignalNum = Int`,
+`NamedPathComponent { bytes: PosixByteString }`, `PosixArgument`,
+`PosixEnvironmentName`, and `PosixEnvironmentValue`. The named trigger is
+**T-25-core refinement substrate / T-30 fact-density gate**. Expanding
+them now would be fact-bundle-rework-class work, outside the NOT-D2-held
+de-prose scope.
+
 
 ## Part 2 — RATIFIED 2026-05-15 (cascade-closures — now in Part 1)
 
