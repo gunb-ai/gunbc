@@ -7,13 +7,26 @@
 module v4.extdeps.languages.typescript
 
 
+
+
+
 type TsEcma262NumericPrimitiveKind
   // 🟢 coproduct dissolution — DECISIONS.md TS-D2
   = TsNumberPrimitive
   | TsBigIntPrimitive
 
 
+
+
+
+
+
 type TsBoolean = Bool
+
+
+
+
+
 
 
 type TsEcma262PrimitiveOperationSemantics
