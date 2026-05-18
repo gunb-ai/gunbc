@@ -1,14 +1,31 @@
 // src/v4/extdeps/languages/cpp.dag
 // Scope: C++ language primitive resolver facts.
-// Owns: CppIntegerOverflowDisposition, CppBool.
-// Consumes: kernel-ambient Bool; CppTargetProfile/CppTargetDataModel via T29-ABI follow-up rows.
-// Status: D2-REV-compatible C++ resolver slice; grounding rows and non-Bool scalar aliases deferred to pinned shared carriers.
+// Owns: CppIntegerOverflowDisposition, CppBool, GroundingMap, cpp_bool_grounding.
+// Consumes: Bool, String (explicit imports); CppTargetProfile/CppTargetDataModel via T29-ABI follow-up rows.
+// Status: D2-REV resolver slice; 🟡 feature:t4-cpp-scalar-ladder — DECISIONS.md P4-3208 + T29-ABI.
 
 module v4.extdeps.languages.cpp
+
+
+import v4.std.logic { Bool }
+import v4.std.text { String }
+
+
+// Twin of `rust.dag` `GroundingMap` pending `resolver.dag` (DECISIONS.md D4; INVARIANTS P2).
+type GroundingMap<IRCarrier> {
+  spelling: String
+}
+
 
 // 🟢 coproduct dissolution — DECISIONS.md T29-ABI + D2-REV.
 type CppIntegerOverflowDisposition
   = RepresentableResultRequired
   | UnsignedModuloArithmetic
 
+
+// Anchor: https://eel.is/c++draft/lex.key
 type CppBool = Bool
+
+data cpp_bool_grounding: GroundingMap<CppBool> = {
+  spelling: "bool"
+}
