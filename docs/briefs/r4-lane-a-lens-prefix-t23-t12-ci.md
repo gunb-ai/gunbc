@@ -8,7 +8,7 @@
 |--------|--------|
 | **Brief ID** | `PREFIX-LENS-CI-1` |
 | **Owner / manager lane** | `witty-cat-59` (successor root); Lane A execution historically `fierce-cat-31` |
-| **STATUS** | **`DISPATCH_HOLD`** — **lifts only when the operator signs the PREFIX Acceptance PR** (`docs/briefs/r4-lane-a-lens-prefix-acceptance.md` on the same lane / linked PR). **No** `dashboard-ops work-items create` for PREFIX **implementation** until that signature event. **Fork B** (L1.7–L1.12 dissolution lenses **#3313** / `jolly-ibex`, gated **#3240/#3244**) and **Fork C** are **resolved in brief body below** — hold is **not** waiting on further fork text from witty-cat; it is **witness-first / acceptance-before-dispatch**. |
+| **STATUS** | **`DISPATCH_HOLD`** — PREFIX **implementation** dispatches **only** after the operator signs the **Acceptance PR for that batch** (see **§Acceptance-PR batches** — ~**5–6** coherent PRs, not one-per-lens micro-PRs). **Authoring prep** (witness bodies + issue-class text) may proceed **in parallel** per operator acceleration (**msg_58b537be-3d58-490f-aaac-a4685cbd3bef**); **do not** spawn the parallel authoring **fan-out** until operator **go**. **Fork B** / **Fork C** resolved in body below. |
 | **Parallel spine** | **T-8** (**`eager-ant-519`**, PR **#3311**) — **unchanged**; manager keeps **P3 walk fail-close** review discipline (**witty-cat-59** directive). |
 
 ---
@@ -49,16 +49,56 @@ Dissolution lens wave remains **`jolly-ibex`** / **#3313** / **#3240** — track
 
 ---
 
+## Interface-Freeze keystone (**minimal delta — prefix of the prefix**)
+
+**Current state:** `src/v4/lens/application.dag` already carries the **ratified design contract in the file header** (`SectionRef`, `EnforcedApplication` / `IntrospectApplication`, `apply_lens` Enforce vs Introspect, **D1** `subterm_at` / `apply_diff`, QRY-1, AGENT-1 composition, advisory→fail-closed bridge). The **module body is still empty** beyond `module v4.lens.application` — **TASKS.md T-23** fill is pending.
+
+**The keystone delta** (everything else parallelizes around this **small** freeze):
+
+1. **Header ↔ design authority ratification:** align the header’s older two-parameter sketch (`EnforcedApplication<Output, Budget>` in comments) with **`docs/design-lens-application-surface.md` §2** — canonical **`EnforcedApplication<Output, Budget, Projected>`**, **`IntrospectApplication<Output>`**, **`LensEnforcement` / `EnforceableLens`** bundle discipline (same single-authority story as v3 `lens_application.dag`, ported to v4 naming).
+2. **Minimal parseable `.dag` declarations** in `application.dag` (names + parameters stable; bodies may stay `...` / stub where honest): imports from declared std peers; **`SectionRef`** disjoint sum; the **two carriers**; enough **`apply_lens` / config** surface to discriminate **Enforce** vs **Introspect** with the span/severity fields the design doc already specifies — **not** full fold implementation, not AGENT-1 runtime, not per-lens completeness.
+3. **Frozen driver/registry I/O pin** (sibling to (1)–(2), still “keystone”): one **normative** description of **argv / flags / stdin-stdout** (or single subcommand) + **stable lens-id table** the whole-corpus step and harnesses pin to — **one-line runnable-AC slot-in** per Acceptance batch after this lands.
+
+**Explicitly not the keystone:** CP-1 front-end, full cost lattice, full complexity behavioral completeness, dissolution L1.x bodies — those ship in **parallel** or **later batches** once the interface string is frozen.
+
+---
+
+## Acceptance-PR batches (**coherent — operator value order ~5–6 signatures**)
+
+| Order | Batch | Acceptance artifact scope (high level) |
+|------:|--------|------------------------------------------|
+| **1** | **Interface-Freeze** | §Interface-Freeze keystone landed + ratified header; driver I/O pin doc committed. |
+| **2** | **PREFIX driver / registry + corpus gate** | Slices A–C runnable AC, whole-corpus contract, delete-dated v3 step labels — evolves `r4-lane-a-lens-prefix-acceptance.md` / linked PR. |
+| **3** | **Cost + complexity (shared `SymbolicCost` algebra)** | **Wave-1 #1 = complexity** (operator elevation); **cost** remains PREFIX **reference** / algebra root complexity composes on. One shared Acceptance PR for both. |
+| **4** | **Wave-1 remainder** | **parallelism**, **effect_enumeration**, **idempotency** + pure structural readers **provenance**, **unused_parameters**, **structural_resolution** — **single** batched Acceptance PR (not six micro-PRs). |
+| **5–6** | **Wave-2 dissolution L1.1–L1.12** | Coherent **sub-batches** (operator splits); **`design-dissolution-lens.md` §8** slipped-by ledger + v4 CP-1 gating unchanged. |
+
+**Implementation dispatch:** **per batch** — workers touch impl only after **that** batch’s Acceptance PR is **signed**; witnesses **immutable** except red→green under operator amendment. **T-8 / #3311** — **P3 fail-close unchanged** (`eager-ant-519`).
+
+---
+
+## Witness parallelism vs Interface-Freeze (**dependency claim — lane view**)
+
+**True without driver / CP-1 / registry code:** Acceptance **substance** that is only **(a)** issue-class prose tied to **existing** v3 lens `.dag` bodies + design docs, **(b)** failing `.dag` snippet + clean counterexample, **(c)** `design-dissolution-lens.md` **§8** slipped-by ledger rows for dissolution classes — is **authorable in parallel now**. Those witnesses **do not** need the v4 `application.dag` body to exist; they anchor on **today’s** behavioral authorities.
+
+**Needs Interface-Freeze (or an explicit interim pin) before “final”:** **(i)** any row that asserts **v4 parse-tree / field-name** shape for `EnforcedApplication` / `SectionRef` in **checked-in v4 source**; **(ii)** harness code that **type-checks** witness snippets **as v4** `lens.application` types; **(iii)** the **canonical `driver …` one-liner** in runnable AC tables (until the CLI pin in §Interface-Freeze lands, use an explicit **`TBD — slot after keystone`** placeholder **or** interim **`v2-compiler compile` / v3 fold** invocation per Fork A — do **not** pretend the CLI is already frozen).
+
+**Net:** parallel authoring is safe for **witness + issue-class bulk**; only the **runnable invocation column** and **v4 structural AST assertions** serialize on the **keystone** — typically **one replacable line** per batch once (3) is frozen.
+
+---
+
 ## WHY THIS MATTERS
 
 CI today has **no** real “fold registered lenses over programs, fail-closed on `Witness`/`DimensionFail`” gate. This PREFIX lands **v4-authoritative** driver/registry + **T-12 cost** as first real registration, with **one whole-corpus** fail-closed step, while a **delete-dated** v3 invocation provides **interim** behavioral coverage without inventing parallel design.
+
+**Operator synthesis lever (complexity):** per **`docs/design-lens-application-surface.md` §5.1**, the lens fold **synthesizes** default **`IntrospectApplication<ComplexitySummary>`** for every function — **always-on** complexity introspection **with zero per-function authoring**, feeding downstream lens composition + debug surfaces. **Wave-1 #1** is **complexity**; **cost** stays the **algebraic reference** dimension complexity composes against — both ride **Acceptance batch 3** together.
 
 ---
 
 ## SCOPE (immutable — three slices)
 
 1. **Slice A — T-23 registry + driver skeleton (v4-home):** deterministic **registry** + **one** Rust driver entrypoint; runs selected lens over **any** in-corpus `.dag` input path supplied by CI glob expansion; **fail-closed** on internal errors. **P5 / SG-0:** any **new or expanded** hand-Rust under `src/v3/` (including new `src/v3/compiler/tests/**` integration files) follows **§P5 — hand-Rust surface** below — no silent census debt.
-2. **Slice B — T-12 cost lens (first REAL registration):** enough of **`lens/cost.dag`** to register and prove Slice A — **honest-scaffold** where lattice fill remains gated; **no** hand-rolled walkers; **P3**-gated walks stay **Rejected / not-realized** pending substrate.
+2. **Slice B — T-12 cost lens (first REAL registration):** enough of **`lens/cost.dag`** to register and prove Slice A — **honest-scaffold** where lattice fill remains gated; **no** hand-rolled walkers; **P3**-gated walks stay **Rejected / not-realized** pending substrate. **Acceptance:** batched with **complexity** (batch **3** — operator: complexity **Wave-1 #1**, cost = compositional root).
 3. **Slice C — CI gate (whole corpus):** **one** workflow step: invoke driver over **all** `.dag` files (whole-tree glob carrier); **merge-gate** outcomes (**exit 0 vs non-zero**) are **only** those enumerated as **corpus / aggregate** checks in **`r4-lane-a-lens-prefix-acceptance.md`** (see **§TEST SURFACE** — **never** use this step to “prove” a **red witness**; red witnesses are **harness-asserted** `DimensionFail` / `Violates` with **passing tests**). **Delete-dated** v3 fold step runs **alongside** as **supplementary non-authoritative** coverage until v4 parity.
 
 **Out of scope:** full **T-24** `ci.yml` emitter (align only); **Wave 2** dissolution lenses until PREFIX+CP-1+#3240/#3244 gates clear.
@@ -80,7 +120,7 @@ PREFIX implementation that touches **`src/v3/compiler/**`** hand-authored Rust (
 
 ### Wave 1 (~7) — v4-native compositional lenses
 
-Port from **v3 behaviorally-complete** instances, **independent**, **one lens / one PR**: complexity, parallelism, effect_enumeration, idempotency, provenance, unused_parameters, structural_resolution (exact set ratified with operator). **Each** Wave-1 implementation PR requires its **own signed Acceptance PR** (same red→green immutable discipline) before dispatch.
+Port from **v3 behaviorally-complete** instances. **Operator batching:** **complexity + cost** = **Acceptance batch 3** (complexity **first priority**); **parallelism + effect_enumeration + idempotency + provenance + unused_parameters + structural_resolution** = **Acceptance batch 4** (one coherent PR). **Implementation** still **one lens / one PR** where useful, but **Acceptance signatures** follow the **two** Wave-1 batches above — not seven micro-Acceptance PRs.
 
 ### Wave 2 (~12) — dissolution lenses **L1.1–L1.12**
 
