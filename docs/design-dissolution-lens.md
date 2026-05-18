@@ -126,6 +126,42 @@ non-finding).
   `free_monoid_is_empty`-via-fold (#3249), the `float_body_is_nan` /
   `edge_is_named` saturation class.
 
+**Concrete match — the basic shape (`nat_is_zero` (#3255)):**
+```dag
+type Nat = Zero | Succ { prev: Nat }
+
+fn nat_is_zero(n: Nat) -> Bool {
+  match n {
+    Zero               => true   // ← literal Bool per variant
+    Succ { prev: _ }   => false
+  }
+}
+```
+The function's behavior is entirely determined by `n`'s top constructor.
+The compiler already knows the variant from the parsed `match` — the
+function is re-deriving the discriminant the substrate could expose for
+free.
+
+**Concrete match — the laundered shape (`free_monoid_is_empty` (#3249)):**
+```dag
+fn free_monoid_is_empty(m: FreeMonoid<T>) -> Bool {
+  free_monoid_fold(
+    m:    m,
+    init: true,
+    step: fn(_acc: Bool, _elem: T) -> Bool { false }   // ← acc never read
+  )
+}
+```
+A fold whose algebra ignores its recursive/accumulator argument is not
+a catamorphism — it's a discriminant in disguise. The constant-algebra
+tell is L0.2 (unused-parameter) applied to the fold's `step`. Without
+this extension L1.1 would miss it.
+
+**Clean shape:** delete the function; consume the substrate-derived
+discriminant directly. The `match n { Zero => ..., Succ => ... }` form
+already gives the caller what they need — `nat_is_zero` was an extra
+layer they didn't need to write.
+
 ### L1.2 Degenerate-type lens — kills *nominalization*
 
 - *Signature:* (a) a struct whose **every field is function-typed** with
@@ -137,6 +173,39 @@ non-finding).
   multiple `data` inhabitants (`Monoid`) — does not match.
 - *Kills:* #3256's 26 `type ListMap { apply: fn }` wrappers; the
   `{ spelling: String }` ×N degenerate-wrapper class.
+
+**Concrete match — (a) struct-of-functions (`ListMap` wrappers (#3256)):**
+```dag
+type ListMap<A, B> {
+  apply: fn(List<A>) -> List<B>      // ← every field is function-typed
+}
+// no `data foo: ListMap<...> = ...`  ← no instance gives it algebraic content
+```
+`ListMap<A, B>` *is* `fn(List<A>) -> List<B>` wearing a name. The wrapper
+adds no structure: there's no second field, no constructor laws, no
+multiple inhabitants. It's an operation nominalized as a type.
+
+**Concrete match — (b) N near-identical single-field structs:**
+```dag
+type Keyword    { spelling: String }
+type Identifier { spelling: String }
+type Symbol     { spelling: String }
+// three "types" with structurally identical shape, distinguished only
+// by the name — the closed set is doing coproduct's job
+```
+
+**Clean shape:**
+```dag
+// (a) — let the operation be a function, not a type
+fn list_map<A, B>(xs: List<A>, f: fn(A) -> B) -> List<B> { ... }
+
+// (b) — model the closed set as a coproduct, factor the shared field
+type LexicalKind = Keyword | Identifier | Symbol
+type LexicalToken { kind: LexicalKind, spelling: String }
+```
+Genuine algebraic structures (a `Monoid<T>` with `unit` + `combine` and
+multiple `data` inhabitants like `additive_monoid_int`, `string_monoid`)
+do not match — they have non-function content and real multiplicity.
 
 ### L1.3 Hollow-type lens — kills *hollow declarations* (Practice 8's hollow-alias finding, at the type level)
 
