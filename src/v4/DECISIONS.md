@@ -197,8 +197,8 @@ more specific trigger is stated.
   waited child whose pipe authority was preserved. Trigger: capture
   realization. Ledger: fact placement fails because capture source state
   is consumed uniformly by capture; variant-is-data fails because each
-  variant carries the lifecycle operation carrier that owns
-  `ProcessTable` plus `CapturedOutputPipes`; algebraic form is not
+  variant carries the lifecycle process authority and current or waited
+  resource authority; algebraic form is not
   applicable; dimensional fails because one request uses live or
   post-wait authority; parameterized family fails because variants carry
   different lifecycle carriers.
