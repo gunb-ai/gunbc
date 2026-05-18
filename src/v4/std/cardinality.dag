@@ -1,7 +1,7 @@
 // src/v4/std/cardinality.dag
 // Scope: cardinality and descent-evidence substrate.
 // Anchor: https://en.wikipedia.org/wiki/Cardinality
-// Owns: DescentEvidence, RankingDimension, TerminationProof, Multiplicity.
+// Owns: DescentEvidence, RankingDimension, TerminationProof, Multiplicity, Never, Unit.
 // Consumes: std collection, std node.
 // Status: T-3 modeled.
 
@@ -10,6 +10,9 @@ module v4.std.cardinality
 
 import v4.std.collection { List }
 import v4.std.node { Symbol }
+// 🟢 DECISIONS.md Part 1 Never/Unit + §PR-3252-cardinality-std (Practice 9).
+type Never
+type Unit
 // 🟢 coproduct dissolution — DECISIONS.md classification ledger: DescentEvidence.
 type DescentEvidence
   = Strict
