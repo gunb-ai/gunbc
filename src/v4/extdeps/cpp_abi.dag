@@ -1,18 +1,18 @@
 // src/v4/extdeps/cpp_abi.dag
 // Scope: C++ ABI / target data-model facts for implementation-defined fundamental widths.
-// Owns: CppMachineWidth8/16/32/64, CppIntegerWidth, CppCoreIntegerWidthModel, CppPlainCharSignedness, CppDataModelFamily, CppAbiModel, CppTargetDataModel, CppTargetProfile, Cpp{ILP32,LP64,LLP64,ILP64}DataModel.
+// Anchor: ISO/IEC 14882:2024 [basic.fundamental] + Itanium C++ ABI revision 1.86.
+// Owns: CppMachineWidth8/16/32/64, CppIntegerWidth, CppCoreIntegerWidthModel, CppPlainCharSignedness, CppDataModelFamily, CppAbiModel, CppTargetDataModel, CppTargetProfile, Cpp{ILP32,LP64,LLP64,ILP64}DataModel<plain_char_signedness>.
 // Consumes: std/machine.dag vocabulary by coincidence index only: MachineWidth<Word8/16/32/64>.
 // Status: T-29 modeled 2026-05-18.
 
 module v4.extdeps.cpp_abi
 
-// Anchor: ISO/IEC 14882:2024 [basic.fundamental]; coincides with T-3 MachineWidth<WordN>.
+// tag: coincides with T-3 MachineWidth<WordN>.
 type CppMachineWidth8
 type CppMachineWidth16
 type CppMachineWidth32
 type CppMachineWidth64
 
-// Anchor: ISO/IEC 14882:2024 [basic.fundamental].
 // 🟢 coproduct dissolution — DECISIONS.md T29-ABI.
 type CppIntegerWidth
   = CppWidth8 { width: CppMachineWidth8 }
@@ -22,7 +22,6 @@ type CppIntegerWidth
 
 type CppCoreIntegerWidthModel<char_width, short_width, int_width, long_width, long_long_width, pointer_width, wchar_t_width>
 
-// Anchor: ISO/IEC 14882:2024 [basic.fundamental].
 // 🟢 coproduct dissolution — DECISIONS.md T29-ABI.
 type CppPlainCharSignedness
   = PlainCharSigned { tag: CppPlainCharSigned }
@@ -31,7 +30,6 @@ type CppPlainCharSignedness
 type CppPlainCharSigned
 type CppPlainCharUnsigned
 
-// Anchor: Itanium C++ ABI revision 1.86 §1.2 and named platform data-model conventions.
 // 🟢 coproduct dissolution — DECISIONS.md T29-ABI.
 type CppDataModelFamily
   = ILP32 { tag: CppDataModelFamilyILP32 }
@@ -44,7 +42,6 @@ type CppDataModelFamilyLP64
 type CppDataModelFamilyLLP64
 type CppDataModelFamilyILP64
 
-// Anchor: Itanium C++ ABI revision 1.86 §1.4 and §2.
 // 🟢 coproduct dissolution — DECISIONS.md T29-ABI.
 type CppAbiModel
   = ItaniumCxxAbi186 { tag: CppAbiModelItaniumCxxAbi186 }
@@ -62,13 +59,13 @@ type CppIntegerWidth32 = CppWidth32 { width: CppMachineWidth32 }
 type CppIntegerWidth64 = CppWidth64 { width: CppMachineWidth64 }
 
 type CppILP32IntegerWidths = CppCoreIntegerWidthModel<CppIntegerWidth8, CppIntegerWidth16, CppIntegerWidth32, CppIntegerWidth32, CppIntegerWidth64, CppIntegerWidth32, CppIntegerWidth32>
-type CppILP32DataModel = CppTargetDataModel<CppDataModelFamilyILP32, CppILP32IntegerWidths, CppPlainCharSigned>
+type CppILP32DataModel<plain_char_signedness> = CppTargetDataModel<CppDataModelFamilyILP32, CppILP32IntegerWidths, plain_char_signedness>
 
 type CppLP64IntegerWidths = CppCoreIntegerWidthModel<CppIntegerWidth8, CppIntegerWidth16, CppIntegerWidth32, CppIntegerWidth64, CppIntegerWidth64, CppIntegerWidth64, CppIntegerWidth32>
-type CppLP64DataModel = CppTargetDataModel<CppDataModelFamilyLP64, CppLP64IntegerWidths, CppPlainCharSigned>
+type CppLP64DataModel<plain_char_signedness> = CppTargetDataModel<CppDataModelFamilyLP64, CppLP64IntegerWidths, plain_char_signedness>
 
 type CppLLP64IntegerWidths = CppCoreIntegerWidthModel<CppIntegerWidth8, CppIntegerWidth16, CppIntegerWidth32, CppIntegerWidth32, CppIntegerWidth64, CppIntegerWidth64, CppIntegerWidth16>
-type CppLLP64DataModel = CppTargetDataModel<CppDataModelFamilyLLP64, CppLLP64IntegerWidths, CppPlainCharSigned>
+type CppLLP64DataModel<plain_char_signedness> = CppTargetDataModel<CppDataModelFamilyLLP64, CppLLP64IntegerWidths, plain_char_signedness>
 
 type CppILP64IntegerWidths = CppCoreIntegerWidthModel<CppIntegerWidth8, CppIntegerWidth16, CppIntegerWidth64, CppIntegerWidth64, CppIntegerWidth64, CppIntegerWidth64, CppIntegerWidth32>
-type CppILP64DataModel = CppTargetDataModel<CppDataModelFamilyILP64, CppILP64IntegerWidths, CppPlainCharSigned>
+type CppILP64DataModel<plain_char_signedness> = CppTargetDataModel<CppDataModelFamilyILP64, CppILP64IntegerWidths, plain_char_signedness>

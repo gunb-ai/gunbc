@@ -45,9 +45,6 @@
 module v4.extdeps.languages.cpp
 
 
-import v4.extdeps.cpp_abi { CppTargetProfile }
-
-
 // ─────────────────────────────────────────────────────────────────────
 // Modeling notes
 //
@@ -220,10 +217,6 @@ type CppIntegerOverflowDisposition
 // Per-primitive alias-identity declarations.
 //
 // LANDABLE NOW — grounded against current origin/main carriers:
-
-type CppPrimitiveResolutionContext {
-  target_profile: CppTargetProfile
-}
 
 // C++ `bool` ↔ std/logic.dag's `Bool`.
 // Anchor: C++ draft [basic.fundamental], boolean type:
