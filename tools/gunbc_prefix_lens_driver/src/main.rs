@@ -196,8 +196,12 @@ fn classify_path(rel: &str) -> PathBucket {
             reason: "v3 compiler pipeline/regen — bootstrap + integration tests; not compile_to_dag-isolated",
         };
     }
-    if rel.starts_with("src/v3/compiler/tests/")
-        || rel.starts_with("src/v3/compiler/tokenize.dag")
+    if rel.starts_with("src/v3/compiler/tests/") {
+        return PathBucket::SkipDslOrV2 {
+            reason: "v3 compiler tests/fixtures — compile_to_dag receipts are per-test harness",
+        };
+    }
+    if rel.starts_with("src/v3/compiler/tokenize.dag")
         || rel.starts_with("src/v3/compiler/parse_tables.dag")
     {
         return PathBucket::V3CompileToDag;
@@ -358,6 +362,12 @@ mod tests {
         assert!(matches!(
             classify_path("src/v3/compiler/parse_tables.dag"),
             PathBucket::V3CompileToDag
+        ));
+        assert!(matches!(
+            classify_path(
+                "src/v3/compiler/tests/fixtures/t_gate_58_timing_enforcement_budget_violation.dag"
+            ),
+            PathBucket::SkipDslOrV2 { .. }
         ));
         assert!(matches!(
             classify_path("src/v3/compiler/regen.dag"),
