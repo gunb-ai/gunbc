@@ -139,7 +139,7 @@ the audit anchors.
 | **P2** | `std/collection.dag` Wave-A2: `List<T> where non_empty` refinement **plus** the List combinator algebra (`forall` / `count_where` / `unique` over `FreeMonoid<T>`) | std / T-3 Wave-A2 (coercion-design.md RQ-3) | **5 named + 29 sites** | Section 2: `std/node.dag` × 4 traverses (`all_edges_named`, `all_edges_positional`, `name_occurrences`, `all_names_distinct`). DECISIONS.md: `SL-3229-VERILOG-NONEMPTY` (one row, 29 verilog.dag back-pointer sites after P8). |
 | **P3** | Compiler pipeline-stage substrate (lex-walk + parse-walk) | compiler / T-6, T-7 | **2 + ~7 in-file** | Section 2: `compiler/01_tokenize.dag tokenize`, `compiler/02_parse.dag parse`. In-file: the parser-side VAGUE prose blocks in `json.dag` / `yaml.dag` / `toml.dag` that concretize to T-6/T-7 (the operations-side family separate from P1). |
 | **P4** | T-4 fact-bundle Phase-3 rework (post-D2-reversal model) | extdeps/languages / T-4 manager `vivid-carp-207` (5-feeder gate; keystone #3226 merged @`77b9e7d72`; 4 feeders open: T-3, T-29, T-30, T-25-core) | **4 + 1 row + 1 fn** | In-file: `typescript.dag` × 4 INVALID-GATE blocks (re-gate against this arrival, not pre-reversal D2). DECISIONS.md: `SL-3229-VERILOG-D3200` (if re-gated as `feature: T-4 fact-bundle Phase-3 rework` rather than `consumer:` form — see Section 3). Section 2: `extdeps/languages/dag.dag dag_language_model_wave1_void_canonical_symbols` (added in CP-1b #3225 — canonical_symbols set is a fact on DagLanguageModel/language-identity, not a hand-rolled function). |
-| **P5** | `std/node.dag` `fold_node` — Node catamorphism (substrate-extension under T-1) | std / T-1 | **1 + 3 walker callers** | `fold_node` + the `std/node.dag node_well_formed` migration landed in the burn-down closeout. Remaining: `compiler/03_resolve.dag merge_binding_self` (94, the codex #3225 "sym↦sym module harvest" finding) — together with its three named-harvest walker callers (`add_module_named_exports` at 99, `add_arrow_domain_named_params` at 113, `add_bind_atom_binder` at 140) that fold over `Node.children` with constructor-discriminated recursion. These dissolve to `fold_node(root, ⟨binding-harvest algebra⟩)` only when the scoped harvest algebra lands without changing resolver scope semantics. |
+| **P5** | `std/node.dag` `fold_node` — Node catamorphism (substrate-extension under T-1) | std / T-1 | **1 + 3 (03_resolve cascade only)** | **Substrate LANDED PR #3297:** `NodeFold<R>` + `fold_node` in `src/v4/std/node.dag`; `node_well_formed` consumes the shared `NodeFold<Bool>` algebra (burn-down closeout + #3297). **Cascade (open):** `compiler/03_resolve.dag merge_binding_self` (94, codex #3225) plus `add_module_named_exports` (99), `add_arrow_domain_named_params` (113), `add_bind_atom_binder` (140). These dissolve to `fold_node(root, ⟨binding-harvest algebra⟩)` only when a scoped harvest algebra lands without changing resolver scope semantics. |
 | **P6** | `std/algebra.dag` / `std/nat.dag` `fold` / `cata` over `FreeMonoid<T>` and `Nat` (Wave-A2) | std / T-3 Wave-A2 | **2** | Section 2: `std/algebra.dag free_monoid_length`, `std/float.dag nat_compare`. (Sibling to P2's combinator algebra; could land in the same PR — kept separate because the underlying primitive is the catamorphism, distinct from `forall`/`count_where` which are derived from it.) |
 | **P7** | `std/nat.dag nat_is_zero : Nat -> Bool` (Wave-A2) | std / T-3 Wave-A2 | **1** | Section 2: `std/float.dag float_finite_magnitude_zero`. |
 | **P8** | `extdeps/languages/verilog.dag` bundled T-4 LanguageModel `constant_expression` sub-grammar | extdeps/languages / T-4 Verilog Phase-3 | **0** | Landed: `VectorRange` carries `ConstantExpression` endpoints; DECISIONS.md row `SL-3229-VERILOG-VECTOR-RANGE` is closed. |
@@ -169,7 +169,7 @@ INVALID-GATE-once-re-gated):
 | P2 lands | 5 named (+ 29 verilog sites converge in one sweep) | `std/collection.dag` Wave-A2 | ~11 named |
 | P3 lands | 2 named (+ ~7 in-file) | T-6 + T-7 pipeline substrate | ~9 named |
 | P4 lands | 4 + 1 row + 1 fn (`dag.dag canonical_symbols` #3225) | T-4 fact-bundle Phase-3 | ~3 named |
-| P5 lands | 1 named (+ 3 walker callers cascade in `03_resolve.dag` #3225) | `std/node.dag fold_node` | ~1 |
+| P5 cascade lands | 1 named (+ 3 walker sites in `03_resolve.dag` #3225) | scoped binding-harvest `fold_node` algebra (substrate: **#3297**) | ~1 |
 | P6 lands | 2 | FreeMonoid/Nat catamorphism | ~0 |
 | P7 lands | 1 | `nat_is_zero` | ~0 |
 | P9 landed | 0 | `lens/cost.dag` T-12 | ~0 |
@@ -229,31 +229,31 @@ needed no absent substrate.
 ### 2.2 `src/v4/std/`
 
 **`std/node.dag`**
-- `node_well_formed` (113) — ✓ **walker dissolved** —
+- `node_well_formed` (122) — ✓ **walker dissolved** —
   `fold_node` landed in `std/node.dag` and this function now consumes the
   shared `NodeFold<Bool>` algebra instead of hand-rolling recursive descent.
-- `all_edges_named` (71), `all_edges_positional` (77) — 🟡 **traverse** —
+- `all_edges_named` (80), `all_edges_positional` (86) — 🟡 **traverse** —
   `feature: forall over FreeMonoid<T> in std/collection.dag (Wave-A2)`.
   `fold` body is `acc && pred(e)`; dissolves to
   `forall(children, pred)` on arrival.
-- `name_occurrences` (82), `all_names_distinct` (90) — 🟡 **traverse** —
+- `name_occurrences` (91), `all_names_distinct` (99) — 🟡 **traverse** —
   `feature: count_where + unique over FreeMonoid<T> in std/collection.dag (Wave-A2)`.
   Dissolves to `count_where(children, pred)` / `unique(children)` on
   arrival.
-- `connective_edge_discipline` (48) — 🟡 **predicate** (property
+- `connective_edge_discipline` (57) — 🟡 **predicate** (property
   projection, registry row 7) —
   `feature: per-Connective discipline fact on std/node.dag Connective (substrate-extension under T-1)`.
   Six-arm `match`-to-derive of an `EdgeDiscipline` per `Connective`;
   the discipline IS a fact on `Connective`. Dissolves to
   `c.discipline` on arrival (paired-construction at the type).
-- `edge_is_named` (58), `edge_is_positional` (64) — 🟢 — naked
+- `edge_is_named` (67), `edge_is_positional` (73) — 🟢 — naked
   constructor inspection of `EdgeLabel`; reading the model fact rather
   than deriving anything (a consumer's `match e.label` is the canonical
   form).
-- `edges_conform` (98) — 🟢 — each `EdgeDiscipline` arm does
+- `edges_conform` (107) — 🟢 — each `EdgeDiscipline` arm does
   structurally distinct work (count check / labelling rule / position
   check); irregularity escape hatch.
-- `node_locally_well_formed` (106) — 🟢 — composes the above with a
+- `node_locally_well_formed` (115) — 🟢 — composes the above with a
   `NodeKind` constructor split that does distinct work per arm.
 
 **`std/algebra.dag`**
@@ -336,12 +336,14 @@ captured here as the audit anchor for the rest:
   is the symbolic-merge primitive used inside three named-harvest
   walkers (`add_module_named_exports` at 99, `add_arrow_domain_named_params`
   at 113, `add_bind_atom_binder` at 140) — all three are `fold` over
-  `Node.children` doing constructor-discriminated recursion. Same
-  feature gate as `std/node.dag node_well_formed`:
-  `feature: std/node.dag fold_node — Node catamorphism (substrate-extension under T-1)` —
-  rolls under **P5**. Dissolves to `fold_node(root, ⟨algebra⟩)` over
-  the binding-harvest algebra; eliminates the three harvest walkers
-  plus the implicit recursion in `merge_binding_self`'s callers.
+  `Node.children` doing constructor-discriminated recursion.
+  **Substrate dependency satisfied (PR #3297):** `fold_node` exists in
+  `std/node.dag`. These four sites are the **P5 cascade** — they still
+  need a scoped binding-harvest `NodeFold<Map<Symbol, Symbol>>` (or
+  equivalent) that preserves resolver scope semantics; not a repeat
+  T-1 substrate-extension PR. Dissolves to `fold_node(root, ⟨algebra⟩)`
+  over that algebra; eliminates the three harvest walkers plus the
+  implicit recursion in `merge_binding_self`'s callers.
 
 - The other 22 fns in 03_resolve.dag (`empty_namespace`,
   `empty_canonical_symbol_set`, `build_program_namespace`,
@@ -727,7 +729,7 @@ fixes are downstream lane work, not C1's** — C1 marks and flags.
 
 | class | 🔴 dissolve-now | 🟡 gated (named feature: / consumer:) | 🟢 terminal |
 |---|---|---|---|
-| walker | — | 3 (`std/node.dag node_well_formed` → `fold_node`; `std/algebra.dag free_monoid_length` → `fold FreeMonoid`; `std/float.dag nat_compare` → `fold Nat`) | rest |
+| walker | — | 2 (`std/algebra.dag free_monoid_length` → `fold FreeMonoid`; `std/float.dag nat_compare` → `fold Nat`) + **P5 cascade** (`compiler/03_resolve.dag` binding-harvest sites → scoped `fold_node` algebra; substrate **#3297**) | rest |
 | traverse | — | 4 (`std/node.dag` × 4: → `forall` / `count_where` / `unique` over `FreeMonoid<T>` in `std/collection.dag` Wave-A2) | rest |
 | predicate | empty-`Conj` R1 predicate **landed** PR #3284 (`std/node.dag` `is_empty_conj_root`, `DECISIONS.md` §CP-1b item 12); LLVM R2 predicate **landed** PR #3245 (`terminator_is_catchswitch` deleted; `block_well_formed` consumes `CatchSwitch` directly) | 3 (`std/node.dag connective_edge_discipline` → per-`Connective` discipline fact; `std/float.dag float_finite_magnitude_zero` → `nat_is_zero`; `extdeps/languages/llvm_ir.dag feature_disposition` → per-feature disposition fact (T-4 fact-bundle)); `llvm_instruction_cost` **landed** under `lens/cost.dag`. | rest |
 | carrier | — | — | lane-wide |
@@ -737,8 +739,8 @@ fixes are downstream lane work, not C1's** — C1 marks and flags.
 `feature:` arrivals — the conditions for landing each 🟡 per #3244's
 dissolve-on-arrival rule):
 
-1. `fold_node` — `Node` catamorphism in `std/node.dag` (substrate-extension
-   under T-1).
+1. ~~`fold_node` — `Node` catamorphism in `std/node.dag` (substrate-extension
+   under T-1).~~ **LANDED PR #3297** (`NodeFold<R>`, `fold_node`; `node_well_formed` is a consumer). **P5 cascade** (binding-harvest in `03_resolve.dag`) remains open under a scoped algebra, not absent substrate.
 2. `fold` / `cata` over `FreeMonoid<T>` and `Nat` in `std/algebra.dag` /
    `std/nat.dag` (Wave-A2).
 3. `forall`, `count_where`, `unique` over `FreeMonoid<T>` in
