@@ -414,12 +414,22 @@ fn derive_effect_shape(...) -> Outcome<EffectShape> {
 
 **Concrete match — F9 (`dsl/std/types.dag:173` and `src/v4/std/logic.dag:14`):**
 ```dag
-// dsl/std/types.dag
-type Bool = True | False                  // ← no authority marker
+// dsl/std/types.dag:163-173   (legacy-scanner anchor, no authority designator)
+// v3 Path A (Lane 1e-2b): `Bool` still parses here for the legacy scanner ...
+type Bool = True | False
 
-// src/v4/std/logic.dag
-type Bool = True | False                  // ← no authority marker either
+// src/v4/std/logic.dag:13-14   (dissolution classification, no authority designator)
+// 🟢 coproduct dissolution — DECISIONS.md classification ledger: Bool.
+type Bool = True | False
 ```
+
+Both declarations *are* annotated, but neither annotation answers the
+question this lens asks. The existing tags classify the *finding shape*
+(dissolution status, scanner anchor) — neither names this file as the
+canonical home or the other as historical. L1.12's required form is a
+designator (`// Authority: canonical` / `// Authority: historical
+{ dissolves_when: <trigger> }`) that picks a winner between the two
+parallel declarations.
 
 **Concrete match — D2-resolver (provisional + planned-absent):**
 ```dag
