@@ -59,6 +59,11 @@ EXTRA_PART6_SLUGS_BY_REL: dict[str, frozenset[str]] = {
             "SL-3229-VERILOG-NONEMPTY",
         }
     ),
+    "src/v4/extdeps/languages/ptx.dag": frozenset(
+        {
+            "SL-3229-PTX-DIM3",
+        }
+    ),
     "src/v4/extdeps/languages/llvm_ir.dag": frozenset(
         {
             "SL-3229-LLVM-WIDTH",

@@ -1172,9 +1172,11 @@ receipt PR (2026-05-18).
 **Disposition:** **🟢 GREEN terminal for the merge-base raw `Int` axis
 payload class.** Live `ptx.dag` uses `Nat` for `Dim3.x` / `y` / `z`, so
 negative dimension or coordinate axes are no longer representable by this
-carrier. **Bounded use:** PTX-version-specific positive launch-dimension
-maxima remain producer-side until a more specific per-axis bound witness is
-scheduled; the closed class here is the P1 raw signed payload scaffold.
+carrier. **Residual remains 🟡:** `Nat` still admits zero and does not encode
+PTX-version-specific per-axis maxima, so `SL-3229-PTX-DIM3` remains a live
+ledger slug on `ptx.dag` for the positive / bounded-axis refinement. Named
+trigger: the same T-3 bounded-natural refinement substrate must supply a
+positive bounded-axis witness before this row can close fully.
 
 Verbatim `//` lines from merge-base `ptx.dag` (lines **1059–1090** — section header + 🟡 three-bridge note):
 
@@ -1214,9 +1216,10 @@ Verbatim `//` lines from merge-base `ptx.dag` (lines **1059–1090** — section
 //       scaffold dissolves.
 ```
 
-**Dissolution result:** P1's `Nat` carrier landing closes the merge-base
-negative-axis illegal state. Any stronger PTX pinned-maximum witness is a
-separate future refinement, not this raw-`Int` scaffold.
+**Dissolution result:** P1's `Nat` carrier landing closes only the
+merge-base negative-axis illegal state. The zero-axis and
+PTX-pinned-maximum illegal states remain live under `SL-3229-PTX-DIM3`
+until the named positive bounded-axis witness lands.
 
 ### SL-3229-PTX-COST — raw-`Int` PTX cost axes (`PtxCost`)
 
