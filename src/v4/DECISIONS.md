@@ -336,6 +336,80 @@ or defer to the task.
     gate over `src/v4` is safe. Residual T-20 surface = the `run`
     opcode/eval audit (unchanged), not the parser.
 
+### T-4.6 — Practice-4 closed sums on external vocabularies (Lane C formats)
+
+Rubric (`docs/modeling-discipline.md` “For reviewers” §4): large closed
+sums keyed to an external spec carry an explicit 🟢/🟡/🔴 disposition and
+a named YELLOW trigger in this ledger (Practice 9 — not in `Scope:`).
+
+| ID | Carrier / slice | Disposition | YELLOW trigger (omit if GREEN) | Encoded in |
+|----|------------------|-------------|--------------------------------|------------|
+| **T-4.6-CSV** | RFC 4180 row/document carriers (`CsvRow` Peano depth = per-row field arity) + **`CsvRfc4180*` product witness records** (comma / DQUOTE / **CRLF record separator** / **TEXTDATA vs HTAB** outside unquoted fields / header / `text/csv` registration anchor — no new coproducts; witnesses state **normative CRLF** between records, not LF-as-record-boundary tolerance; **MIME `charset` is transport-layer** — not an RFC 4180 §2 witness in this slice) | 🟡 | Cross-row/header-vs-body arity mesh is **operator-pending** until a ruling + substrate hook (TASKS.md T-4.6); until then validation may fail-closed without a claimed total mesh. | `extdeps/formats/csv.dag` |
+| **T-4.6-JSK** | `JsonSchemaAdditionalKeywordKey` — closed sum for Draft **2020-12** keywords exercised by this slice, grounded in the **default dialect meta-schema** (`https://json-schema.org/draft/2020-12/schema`), which composes the Core, Applicator, Unevaluated, Validation, meta-data, format-annotation, and content vocabularies (see `$vocabulary` therein). Typed `instance_*` slots intentionally favor **Core**-shaped modeling; the sum carries applicator/validation/meta/content keywords from that same meta-schema bundle, including Appendix A transitional **`definitions`** / **`dependencies`**. | 🟡 | Any ratified draft-2020-12 vocabulary or meta-schema change adds/renames/removes a keyword this enum carries ⇒ extend **JsonSchemaAdditionalKeywordKey** + amend **T-4.6-JSK** in the same change-set. | `extdeps/formats/json_schema.dag` |
+| **T-4.6-OAS** | OpenAPI 3.1 document/object carriers in `openapi.dag` | 🟡 | Upstream OAS 3.1 normative or meta-schema change forces a modeled fixed field, deferred-key family, or path-template wire rule to migrate — ship with operator-visible reconcile (D5). | `extdeps/formats/openapi.dag` |
+
+#### T-4.6-P4 — Per-coproduct classification ledger (PR #3205)
+
+Authoritative Practice-4 ledger rows: dissolution stance + named YELLOW
+trigger (if YELLOW). Each coproduct in the cited `.dag` carries **only**
+the in-file `// <emoji> coproduct dissolution — DECISIONS.md <ID>` tag
+(operator directive 2026-05-17, vivid-carp-207).
+
+| ID | Coproduct | Disp | Ledger (dissolution / trigger) |
+|----|-----------|------|--------------------------------|
+| **T-4.6-P4-CsvHeaderPresence** | `CsvHeaderPresence` | 🟡 | Header present vs absent; cross-row arity couples to **T-4.6-CSV** mesh (operator-pending). |
+| **T-4.6-P4-CsvRow** | `CsvRow` | 🟡 | Peano spine = per-row field count; mesh with **T-4.6-CSV** / **T-4.6-P4-CsvHeaderPresence**. |
+| **T-4.6-P4-JsonSchemaCoreTypeName** | `JsonSchemaCoreTypeName` | 🟡 | Draft 2020-12 `type` keyword closed vocabulary for this slice; spec keyword churn extends the sum + amends this row. |
+| **T-4.6-P4-JsonSchemaTypeSlot** | `JsonSchemaTypeSlot` | 🟡 | Optional / single / union type shapes over **T-4.6-P4-JsonSchemaCoreTypeName**; **`JsonSchemaTypeUnion`** uses **`first` + `rest:Set`** so the Draft 2020-12 `type` array is **non-empty** by construction. **`first` ∈ `rest`** or duplicate wire members ⇒ **parse/Diagnostic** (T-4 brief). |
+| **T-4.6-P4-JsonSchemaItemsSlot** | `JsonSchemaItemsSlot` | 🟡 | `items` absent vs schema subtree; validation/type-derivation for `items` keywords deferred (T-4.6 header). |
+| **T-4.6-P4-JsonSchemaPropertiesSlot** | `JsonSchemaPropertiesSlot` | 🟡 | `properties` absent vs map; key uniqueness is `Map` + parse/Diagnostic (collection.dag). |
+| **T-4.6-P4-JsonSchemaRequiredSlot** | `JsonSchemaRequiredSlot` | 🟡 | `required` absent vs `Set<String>`; set semantics vs instance `properties` keys validated at ingest (T-4 brief). |
+| **T-4.6-P4-JsonSchema** | `JsonSchema` | 🟡 | `true` / `false` / instance shell; instance keyword surface split across fixed fields + **T-4.6-JSK** map — full validation deferred (T-4.6). |
+| **T-4.6-P4-OpenApiOpenapiObjectDeferredKey** | `OpenApiOpenapiObjectDeferredKey` | 🟡 | Fixed-field deferrals on root OpenAPI Object; new OAS fixed field ⇒ extend sum + **T-4.6-OAS**. |
+| **T-4.6-P4-OpenApiOperationDeferredKey** | `OpenApiOperationDeferredKey` | 🟡 | Operation Object deferred members; OAS adds/reorders modeled deferrals ⇒ extend sum + row. |
+| **T-4.6-P4-OpenApiPathItemDeferredKey** | `OpenApiPathItemDeferredKey` | 🟡 | Path Item deferred members + `$ref` slot; OAS Path Item churn ⇒ extend sum + row. |
+| **T-4.6-P4-OpenApiPathItemOrReference** | `OpenApiPathItemOrReference` | 🟡 | Path Item inline vs **`$ref`**; used for **`webhooks`** map values and **`components.pathItems`** — **not** for root **`paths`** patterned map (**Paths** values are **`OpenApiPathItem`**; Path Item **`$ref`** is **`OpenApiPathItemDeferredKey`**, **T-4.6-OAS**). |
+| **T-4.6-P4-OpenApiComponentsDeferredKey** | `OpenApiComponentsDeferredKey` | 🟡 | Components deferred map keys (fixed fields **not** modeled here — e.g. **`pathItems`** lives on **`OpenApiComponents.path_items`** / **T-4.6-P4-OpenApiComponentsPathItemsSlot**); Components object spec churn on *these* keys ⇒ extend sum + row. |
+| **T-4.6-P4-OpenApiComponentsMapKey** | `OpenApiComponentsMapKey` | 🟡 | Nominal key for **`components.schemas`** / **`components.pathItems`** map entries; OAS Components fixed-field key regexp `^[a-zA-Z0-9\.\-_]+$` is **parse/Diagnostic** (**T-4.6-OAS**). |
+| **T-4.6-P4-OpenApiMediaTypeDeferredKey** | `OpenApiMediaTypeDeferredKey` | 🟡 | Media Type deferred members; encoding/example surface churn ⇒ extend sum + row. |
+| **T-4.6-P4-OpenApiHeaderDeferredKey** | `OpenApiHeaderDeferredKey` | 🟡 | Header Object deferred members (style / explode / example / examples); excludes query-only **`allowEmptyValue`**; **`deprecated`** is **`OpenApiHeaderDeprecatedSlot`** on **`OpenApiHeaderObject`**; **`content`** is first-class on **`OpenApiHeaderPayloadSlot`** (XOR with **`schema`**). OAS Header churn on these deferrals ⇒ extend sum + row. |
+| **T-4.6-P4-OpenApiLinkDeferredKey** | `OpenApiLinkDeferredKey` | 🟡 | Link Object deferred members; Link spec churn ⇒ extend sum + row. |
+| **T-4.6-P4-OpenApiLinkTarget** | `OpenApiLinkTarget` | 🟡 | OAS Link Object **`operationId` XOR `operationRef`** — exactly one target identity; carried as `OpenApiLinkObject.target` (**T-4.6-OAS**). |
+| **T-4.6-P4-OpenApiHttpMethod** | `OpenApiHttpMethod` | 🟢 | Closed eight-verb Operation map key set (OAS Path Item `get`…`trace`). |
+| **T-4.6-P4-OpenApiOptionalString** | `OpenApiOptionalString` | 🟢 | Present/absent optional string field idiom over OAS optional strings. |
+| **T-4.6-P4-OpenApiHeaderRequiredSlot** | `OpenApiHeaderRequiredSlot` | 🟢 | Required boolean slot on Header Object (spec-bounded two-way). |
+| **T-4.6-P4-OpenApiHeaderDeprecatedSlot** | `OpenApiHeaderDeprecatedSlot` | 🟢 | Header Object **`deprecated`** optional boolean (Parameter-parity fixed field on **`OpenApiHeaderObject`**, **T-4.6-OAS**). |
+| **T-4.6-P4-OpenApiHeaderPayloadSlot** | `OpenApiHeaderPayloadSlot` | 🟡 | Header Object **`schema` XOR `content`** (OAS 3.1 mutual exclusion); **`content`** arm carries exactly one media-type entry via **`OpenApiHeaderContentSingle`** (**T-4.6-OAS**). |
+| **T-4.6-P4-OpenApiHeaderOrReference** | `OpenApiHeaderOrReference` | 🟡 | Inline Header vs `$ref`; reference resolution + Reference Object parity triggers **T-4.6-OAS**. |
+| **T-4.6-P4-OpenApiLinkOrReference** | `OpenApiLinkOrReference` | 🟡 | Inline Link vs `$ref`; same reference substrate as **T-4.6-P4-OpenApiHeaderOrReference**. |
+| **T-4.6-P4-OpenApiContactSlot** | `OpenApiContactSlot` | 🟡 | Info Object `contact` optional subtree; OAS Contact Object churn ⇒ extend Contact fields + reconcile row. |
+| **T-4.6-P4-OpenApiLicenseUrlOrIdentifierSlot** | `OpenApiLicenseUrlOrIdentifierSlot` | 🟡 | License Object `url` XOR `identifier` (+ neither) — mutual exclusion modeled; OAS License churn ⇒ amend row. |
+| **T-4.6-P4-OpenApiLicenseSlot** | `OpenApiLicenseSlot` | 🟡 | Info `license` optional subtree; couples to **T-4.6-P4-OpenApiLicenseUrlOrIdentifierSlot**. |
+| **T-4.6-P4-OpenApiMediaTypeSchemaSlot** | `OpenApiMediaTypeSchemaSlot` | 🟡 | Media Type `schema` present vs absent; couples to `OpenApiSchema`. |
+| **T-4.6-P4-OpenApiResponseContentSlot** | `OpenApiResponseContentSlot` | 🟡 | Response `content` optional map; media-type map churn ⇒ amend modeling + row. |
+| **T-4.6-P4-OpenApiHeadersSlot** | `OpenApiHeadersSlot` | 🟡 | Response `headers` optional map of **T-4.6-P4-OpenApiHeaderOrReference**. |
+| **T-4.6-P4-OpenApiLinksSlot** | `OpenApiLinksSlot` | 🟡 | Response `links` optional map of **T-4.6-P4-OpenApiLinkOrReference**. |
+| **T-4.6-P4-OpenApiResponseOrReference** | `OpenApiResponseOrReference` | 🟡 | Inline Response vs `$ref`; Responses object value shape (**T-4.6-OAS**). |
+| **T-4.6-P4-OpenApiStatusDigit** | `OpenApiStatusDigit` | 🟢 | Decimal digit spine for explicit HTTP status codes (0–9). |
+| **T-4.6-P4-OpenApiStatusHundreds** | `OpenApiStatusHundreds` | 🟢 | Hundreds class spine (`1xx`…`5xx`) for explicit status codes. |
+| **T-4.6-P4-OpenApiResponseKeyWildcardKind** | `OpenApiResponseKeyWildcardKind` | 🟢 | OAS wildcard response key buckets `1XX`…`5XX` (uppercase `X` wire discipline in model). |
+| **T-4.6-P4-OpenApiResponseKeyNonDefault** | `OpenApiResponseKeyNonDefault` | 🟡 | Explicit HTTP status vs wildcard response keys (excludes wire key **`default`**); used for **`OpenApiResponses.primary_response.status_key`** and **`additional_by_status`** map keys (**T-4.6-OAS**). OAS Responses key grammar churn ⇒ extend sum + row. |
+| **T-4.6-P4-OpenApiResponsesDefaultSlot** | `OpenApiResponsesDefaultSlot` | 🟡 | Optional **`default`** response arm split out from **`OpenApiResponses.primary_response`** / **`additional_by_status`** (**T-4.6-OAS**); spec churn ⇒ extend sum + row. |
+| **T-4.6-P4-OpenApiResponseKey** | `OpenApiResponseKey` | 🟡 | `default` / explicit / wildcard key forms + overlaps per Responses Object (**T-4.6-OAS**). **`OpenApiResponses`:** `Map` forbids duplicates **within** `additional_by_status`; **`primary_response.status_key` ∉ keys(`additional_by_status`)** is **parse/Diagnostic** (T-4 brief). |
+| **T-4.6-P4-OpenApiPathsSlot** | `OpenApiPathsSlot` | 🟡 | Root `paths` present vs absent channel (**T-4.6-OAS**); empty vs missing distinguished structurally. |
+| **T-4.6-P4-OpenApiComponentsSchemasSlot** | `OpenApiComponentsSchemasSlot` | 🟡 | `components.schemas` map present vs absent; keys are **T-4.6-P4-OpenApiComponentsMapKey**; schema registry churn (**T-4.6-OAS**). |
+| **T-4.6-P4-OpenApiComponentsPathItemsSlot** | `OpenApiComponentsPathItemsSlot` | 🟡 | OAS 3.1 **`components.pathItems`** present vs absent; keys are **T-4.6-P4-OpenApiComponentsMapKey**; values are **T-4.6-P4-OpenApiPathItemOrReference** (**T-4.6-OAS**). |
+| **T-4.6-P4-OpenApiComponentsSlot** | `OpenApiComponentsSlot` | 🟡 | `components` subtree present vs absent at document root coordinate (**T-4.6-OAS**). |
+| **T-4.6-P4-OpenApiWebhooksSlot** | `OpenApiWebhooksSlot` | 🟡 | `webhooks` map present vs absent at document root coordinate (**T-4.6-OAS**). |
+| **T-4.6-P4-OpenApiDocumentRoot** | `OpenApiDocumentRoot` | 🟡 | OAS §3.1: document **MUST** expose at least one of **`paths`**, **`components`**, or **`webhooks`** — encoded as three mutually exclusive obligation-first carriers + optional sibling slots (**T-4.6-OAS**). |
+| **T-4.6-P4-OpenApiSchemaOasMemberKey** | `OpenApiSchemaOasMemberKey` | 🟡 | OAS Schema Object fixed members **outside** the **`core: JsonSchema`** authority carried here — extend sum + row when OAS adds a modeled OAS-only schema field (**T-4.6-OAS**). |
+| **T-4.6-P4-OpenApiSpecificationExtensionKey** | `OpenApiSpecificationExtensionKey` | 🟡 | OAS Specification Extensions: wire keys **MUST** begin **`x-`**; reserved **`x-oai-`** / **`x-oas-`** families are **disjoint arms** vs generic vendor keys (**T-4.6-OAS**). Keys not starting **`x-`**, or **`OpenApiSpecExtensionVendor`** with **`after_x_hyphen`** whose **`x-` +** form still prefixes **`x-oai-` / `x-oas-`** (mis-route) ⇒ **parse/Diagnostic** (T-4 brief). |
+| **T-4.6-P4-OpenApiSchema** | `OpenApiSchema` | 🟡 | Schema Object wire surface = **`core: JsonSchema`** + **`openapi_schema_oas_members`** + **`openapi_schema_specification_extensions`** (keys = **T-4.6-P4-OpenApiSpecificationExtensionKey**) + **`openapi_schema_deferred_keyword_members`** (`Map<String, JsonValue>`) for **custom vocabularies**, unenumerated JSON Schema keywords, and forward-compatible keys **not** absorbed by the first three partitions (**T-4.6-OAS**). Duplicate keys across partitions or reserved-wire mis-routing ⇒ **parse/Diagnostic** (T-4 brief). |
+| **T-4.6-P4-OpenApiOpenapiField3_1** | `OpenApiOpenapiField3_1` | 🟡 | OAS §4.1 `openapi` semver for the **3.1 feature line**: **`OpenApiOpenapi31Patch { patch: Nat }`** encodes wire **`3.1.{patch}`** (any patch this `Nat` can spell — aligns with “tooling SHOULD accept all **`3.1.*`**”). New **`3.2.*`** / major lines ⇒ extend this sum + **T-4.6-OAS** row (same change-set). |
+
+`JsonSchemaAdditionalKeywordKey` uses row **T-4.6-JSK** (same coproduct).
+**`OpenApiOpenapiField3_1`:** optional Practice-9 item-4 **DECISIONS cite** on the `type` line in `openapi.dag`; **N ≥ 2** coproducts still require the emoji dissolution tag + matching **§T-4.6-P4** row.
+
 ---
 
 ## D2 REVERSAL + FACT-BUNDLE RESEED — RATIFIED (2026-05-17)
