@@ -25,11 +25,24 @@
 //   - std/node.dag, std/witness.dag, std/algebra.dag
 //   - extdeps/languages/*.dag: per-target realization cost
 //
-// Status: scaffold — fill per TASKS.md T-12
+// Status: scaffold — SymbolicCost carrier seeded (P9, #3243 §1.1);
+// lens read + full lattice fill per TASKS.md T-12 [needs T-9].
 // Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
 // contract for the worker. Splitting this file requires explicit operator
 // ratification (substrate extension = stop signal).
 
 
 module v4.lens.cost
+
+
+import v4.std.nat { Nat }
+
+
+// SymbolicCost — single U1 kernel cost carrier. P9 seed (#3243 §1.1);
+// remaining lattice arms + axioms fill at T-12. See DECISIONS.md
+// classification ledger: SymbolicCost.
+// 🟢 coproduct dissolution — DECISIONS.md classification ledger: SymbolicCost.
+type SymbolicCost
+  = Constant { units: Nat }
+  | UnknownCost
 
