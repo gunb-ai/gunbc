@@ -9,7 +9,7 @@ use std::collections::BTreeSet;
 use v3_compiler::parse_for_test;
 use v3_compiler::parse_surface::{
     SurfaceExpr, SurfaceField, SurfaceItem, SurfaceModule, SurfaceRecordField, SurfaceType,
-    SurfaceVariant, TypeAngleArg, VariantPayload,
+    SurfaceVariant, TypeAngleArg,
 };
 use v3_compiler::tokenize_for_test;
 
@@ -44,7 +44,7 @@ fn t19_testgen_concept_surface_stays_closed_and_classified() {
     );
     assert_eq!(
         record_field_type_names(type_record(&module, "Generator")),
-        vec![("classification", "TestClassification"), ("slot", "C")],
+        expected_field_type_names(&[("classification", "TestClassification"), ("slot", "C")]),
         "Generator<C> must carry TestClassification and the parameterized slot"
     );
 }
@@ -58,7 +58,11 @@ fn t19_manual_manifest_matches_claim_anchor_discriminants() {
     let manifest_keys = manifest_anchor_values(&manifest);
     let claim_keys = claim_anchor_values(&[&connective, &nat_laws]);
 
-    assert_eq!(manifest_keys.len(), 12, "T-19 manifest is the twelve live anchors");
+    assert_eq!(
+        manifest_keys.len(),
+        12,
+        "T-19 manifest is the twelve live anchors"
+    );
     assert_eq!(
         claim_keys, manifest_keys,
         "manual TestClaim.t19_anchor values must join to the manifest by the same T19ManualAnchorKey discriminants"
@@ -75,21 +79,21 @@ fn t20_bootstrap_plan_keeps_self_hosting_chain_as_data() {
 
     assert_eq!(
         record_field_type_names(type_record(&module, "CompileStage")),
-        vec![
+        expected_field_type_names(&[
             ("consumes", "List<Symbol>"),
             ("produces", "Symbol"),
             ("compiled_by", "Symbol"),
-        ],
+        ]),
         "CompileStage must keep the compiler-of-record as a structural field"
     );
     assert_eq!(
         record_field_type_names(type_record(&module, "BootstrapPlan")),
-        vec![
+        expected_field_type_names(&[
             ("seed", "CompileStage"),
             ("self0", "CompileStage"),
             ("self1", "CompileStage"),
             ("fixpt", "FixptStage1Stage2"),
-        ],
+        ]),
         "BootstrapPlan must stay the seed/self0/self1/fixpt chain"
     );
 
@@ -101,8 +105,16 @@ fn t20_bootstrap_plan_keeps_self_hosting_chain_as_data() {
         }
         other => panic!("bootstrap_plan must call bootstrap_plan_well_formed, got {other:?}"),
     };
-    assert_eq!(call_args.len(), 1, "bootstrap_plan_well_formed takes one plan");
-    let bootstrap_plan_fields = match &call_args[0] {
+    assert_eq!(
+        call_args.len(),
+        1,
+        "bootstrap_plan_well_formed takes one plan"
+    );
+    let bootstrap_plan_arg = match &call_args[0] {
+        SurfaceExpr::Record { fields, .. } => record_field_expr(fields, "p"),
+        other => other,
+    };
+    let bootstrap_plan_fields = match bootstrap_plan_arg {
         SurfaceExpr::VariantRecord { target, fields, .. } => {
             assert_eq!(target, "BootstrapPlan");
             fields
@@ -201,6 +213,15 @@ fn record_field_type_names(fields: &[SurfaceField]) -> Vec<(&str, String)> {
         .collect()
 }
 
+fn expected_field_type_names(
+    fields: &[(&'static str, &'static str)],
+) -> Vec<(&'static str, String)> {
+    fields
+        .iter()
+        .map(|(name, ty)| (*name, (*ty).to_string()))
+        .collect()
+}
+
 fn surface_type_name(ty: &SurfaceType) -> String {
     match ty {
         SurfaceType::Named { name, .. } => name.clone(),
@@ -249,7 +270,9 @@ fn claim_anchor_values<'a>(modules: &[&'a SurfaceModule]) -> BTreeSet<&'a str> {
             } if matches!(ty, SurfaceType::Named { name, .. } if name == "TestClaim") => {
                 match record_field_expr(fields, "t19_anchor") {
                     SurfaceExpr::Var { name, .. } => Some(name.as_str()),
-                    other => panic!("TestClaim.t19_anchor must be a discriminant var, got {other:?}"),
+                    other => {
+                        panic!("TestClaim.t19_anchor must be a discriminant var, got {other:?}")
+                    }
                 }
             }
             _ => None,
