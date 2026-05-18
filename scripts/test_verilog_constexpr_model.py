@@ -24,7 +24,7 @@ def test_constant_function_call_carries_attributes() -> None:
     assert "arguments: List<ConstantExpression>" in body
 
 
-def test_constant_system_function_call_carries_nonempty_arguments_site() -> None:
+def test_constant_system_function_call_carries_optional_arguments_list() -> None:
     body = block(VERILOG.read_text(encoding="utf-8"), "ConstantSystemFunctionCall")
     assert "system_function_name: Symbol" in body
     assert "arguments: List<ConstantExpression>" in body
@@ -101,7 +101,7 @@ def test_vector_range_uses_constant_expression_endpoints() -> None:
 
 if __name__ == "__main__":
     test_constant_function_call_carries_attributes()
-    test_constant_system_function_call_carries_nonempty_arguments_site()
+    test_constant_system_function_call_carries_optional_arguments_list()
     test_xnor_operator_spelling_variants_are_preserved()
     test_constant_range_expression_carries_plain_expression_alternative()
     test_unary_constant_expression_takes_constant_primary()
