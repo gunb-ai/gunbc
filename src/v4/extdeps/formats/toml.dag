@@ -33,19 +33,19 @@ module v4.extdeps.formats.toml
 // Outcome<TomlValue>` AND `toml_emit : TomlValue -> Outcome<String>`
 // (the ONE operator-ratified D1 carrier `Outcome<T>`, std/diagnostic.dag
 // DECISIONS item **I** — NOT a per-file sum); operations deferred-with-
-// named-owner. (Single authority = the Deferred (1) block below; this
+// named-owner. (Single authority = DECISIONS.md Part 6 · SL-3229-T4-FORMAT-T6T7 + SL-3229-LLVM-WIDTH; this
 // summary states it, the block specifies it — no divergence.) Same
 // discipline, TOML-anchored facts.
 //
-// DECLARATIVE-NOW / OPERATIONS-DEFERRED-WITH-OWNER. Modeled NOW: the
-// `TomlValue` data model. Deferred parse/emit —
+// DECLARATIVE-NOW / OPERATIONS-DEFERRED-WITH-OWNER (#3169/#3184).
+// Modeled: TomlValue. Deferred parse/emit —
 // 🟡 gated — feature: T-6/T-7 parse pipeline-stage substrate — DECISIONS.md Part 6 · SL-3229-T4-FORMAT-T6T7.
 // Deferred numeric + datetime lexemes + non-empty key refinement —
 // 🟡 gated — feature: std/cardinality.dag bounded-natural refinement (T-3 Wave-A2) — DECISIONS.md Part 6 · SL-3229-LLVM-WIDTH.
 //
 // CARRIER SEAM (NOT a per-file sum) — the ratified corrected seam #3,
-// fail-closed BOTH directions (single authority = the Deferred (1)
-// block below; this is the summary, not a second authority — no
+// fail-closed BOTH directions (single authority = DECISIONS.md Part 6 · SL-3229-T4-FORMAT-T6T7 + SL-3229-LLVM-WIDTH;
+// this is the summary, not a second authority — no
 // divergence):
 //   - `toml_parse : String -> Outcome<TomlValue>`
 //   - `toml_emit  : TomlValue -> Outcome<String>`  (NOT a total
@@ -59,7 +59,7 @@ module v4.extdeps.formats.toml
 // `Outcome<TomlValue>`; its `emit(TomlValue) -> String` line is the
 // total-emit shape superseded by this ratified fail-closed seam — the
 // literal header-line edit is the operator-tier batched header-reconcile
-// (csv-class; tracked-not-silent, see the Deferred (1) block). No
+// (csv-class; tracked-not-silent, see DECISIONS.md Part 6 · SL-3229-T4-FORMAT-T6T7). No
 // parallel `Result<ok, err>` in std/. The SAME fail-closed-both-
 // directions carrier all six T-4.6 formats consume.
 //
@@ -80,7 +80,7 @@ module v4.extdeps.formats.toml
 //     no `NonEmptyStr` (it is a String refinement; the refinement
 //     substrate is not landed — std/text.dag is T-3 scaffold). The
 //     carrier here is kernel `Map<String, TomlValue>`; the non-empty-key
-//     refinement is deferred 🟡 (block below). NOTE (surfaced, not
+//     refinement is deferred (🟡 gated — feature: std/cardinality.dag bounded-natural refinement (T-3 Wave-A2) — DECISIONS.md Part 6 · SL-3229-LLVM-WIDTH). NOTE (surfaced, not
 //     silently encoded): TOML v1.0.0 §Keys permits an EMPTY QUOTED key
 //     (`"" = "v"` is valid, though discouraged) — so a literal
 //     `NonEmptyStr` key type would be STRICTER than TOML 1.0. The
@@ -90,7 +90,7 @@ module v4.extdeps.formats.toml
 //   - `Datetime` — v4 has no temporal substrate; `TomlDatetime` carries
 //     the verbatim RFC 3339 lexeme (the json.dag `JsonNumber`
 //     lexeme-preserving decision applied to time), temporal
-//     interpretation deferred 🟡.
+//     interpretation deferred (🟡 gated — feature: std/cardinality.dag bounded-natural refinement (T-3 Wave-A2) — DECISIONS.md Part 6 · SL-3229-LLVM-WIDTH).
 //
 // `Bool`/`String` are kernel-ambient (v2 seed; STRUCTURE.md "Kernel-
 // ambient types"); `List<T>`/`Map<K,V>` are kernel container types
@@ -120,7 +120,7 @@ module v4.extdeps.formats.toml
 //                      scaffold, so collapsing now fabricates a
 //                      range/precision decision (no-fabrication) and
 //                      breaks B-6 round-trip. Numeric interpretation
-//                      deferred (🟡 below).
+//                      deferred (🟡 gated — feature: std/cardinality.dag bounded-natural refinement (T-3 Wave-A2) — DECISIONS.md Part 6 · SL-3229-LLVM-WIDTH).
 //   - TomlFloat     — §Float (incl. `inf`/`nan`). Verbatim `lexeme`
 //                      for the same reason; faithful carrier
 //                      std/float.dag is scaffold (IEEE-754 collapse =
@@ -138,7 +138,7 @@ module v4.extdeps.formats.toml
 //                      sub-kinds are a tag-resolution distinction the
 //                      deferred parser draws over the lexeme; the
 //                      temporal interpretation is a deferred read
-//                      (🟡 below).
+//                      (🟡 gated — feature: std/cardinality.dag bounded-natural refinement (T-3 Wave-A2) — DECISIONS.md Part 6 · SL-3229-LLVM-WIDTH).
 //   - TomlArray     — §Array. Ordered; carrier is the kernel
 //                      `List<TomlValue>` (order is the list order —
 //                      single authority, canonical per CULTURE §8).
@@ -175,7 +175,7 @@ module v4.extdeps.formats.toml
 //                      redefined as a non-array-of-tables; no append
 //                      after an inline definition) are PARSE-TIME
 //                      key-binding constraints — enforced fail-closed by
-//                      the deferred parser (🟡 (1) below), the SAME
+//                      the deferred parser (🟡 gated — feature: T-6/T-7 parse pipeline-stage substrate — DECISIONS.md Part 6 · SL-3229-T4-FORMAT-T6T7), the SAME
 //                      discipline as duplicate-key rejection, never a
 //                      value-model type invariant. Which surface syntax
 //                      to render (`[[x]]` vs inline `x = [{…},{…}]`) for
@@ -217,7 +217,7 @@ module v4.extdeps.formats.toml
 //                      tracked-not-silent here, exactly like the #3184
 //                      `emit -> Outcome<String>` header/note divergence.
 //                      (Key non-emptiness/charset is the deferred §Keys
-//                      refinement, 🟡 below; toml-LOCAL — json/yaml have
+//                      refinement, 🟡 gated — feature: std/cardinality.dag bounded-natural refinement (T-3 Wave-A2) — DECISIONS.md Part 6 · SL-3229-LLVM-WIDTH; toml-LOCAL — json/yaml have
 //                      no inline/standard split, canonical seam
 //                      unaffected.)
 //
@@ -309,122 +309,9 @@ type TomlValue
 
 
 // ─────────────────────────────────────────────────────────────────────
-// Deferred — TRACKED SCAFFOLD (🟡). The operations + refinements ride
-// substrate that is scaffold today. Per the operator-ratified
-// declarative-now / operations-deferred-with-owner discipline (verified
-// on std/collection.dag #3169 + canonical json.dag #3184) these are NOT
-// authored here — not improvised, not bodiless `fn` (the frozen v2 seed
-// rejects bodiless `fn`, DECISIONS PARSE-1). Each carries the three
-// bridge properties (scaffold doc / bounds on use / dissolution
-// trigger).
-//
-// (1) `toml_parse` / `toml_emit` — the parse and emit operation bodies.
-//   A TOML parser is a Char-STREAM structural walk over the TOML v1.0.0
-//   grammar and emit builds a String from structure; both require
-//   std/text.dag's `Char` + a `String` ↔ sequence-of-`Char`
-//   decomposition — std/text.dag is T-3 SCAFFOLD. RATIFIED parse
-//   strategy (mirrors json.dag): RECURSIVE-DESCENT single self-recursive
-//   structural walk over the input Char-sequence spine; termination is
-//   the A2 IMPLICIT case (descent on a proper sub-sequence).
-//     (a) scaffold doc — THIS note; `toml_parse`/`toml_emit` are
-//         intentionally absent from toml.dag today.
-//     (b) bounds on use — no consumer reads `toml_parse`/`toml_emit`
-//         from toml.dag in this PR. The carrier seam is fixed and
-//         fail-closed in BOTH directions (the T-4 seam-gate-ratified
-//         corrected seam #3 — propagated from canonical json.dag
-//         #3184): when authored, `toml_parse : String ->
-//         Outcome<TomlValue>` AND **`toml_emit : TomlValue ->
-//         Outcome<String>`** — NOT a total `TomlValue -> String`.
-//         `Outcome<T>` is the operator-ratified D1 carrier
-//         (std/diagnostic.dag, DECISIONS item **I**). WHY EMIT IS ALSO
-//         FAIL-CLOSED (not total): `TomlInt`/`TomlFloat`/`TomlDatetime`
-//         carry a raw `String` lexeme and the type-level
-//         §Integer/§Float/§Date-Time conformance is deferred (numeric
-//         (2)/(3) + key-refinement (4)) — so a `TomlValue` carrying a
-//         non-conformant scalar/datetime lexeme is type-constructible
-//         OUTSIDE the parser. A total `TomlValue -> String` emit would
-//         have no typed channel to reject it and would FABRICATE an
-//         invalid TOML artifact — an INVARIANTS P3 / no-fabrication
-//         violation (the canonical json.dag #3184 finding, propagated
-//         here as the ratified seam #3). So emit returns
-//         `Outcome<String>`: a structurally-representable but
-//         spec-invalid `TomlValue` emits `Rejected { diagnostic }`,
-//         never a fabricated string. Every non-conforming input,
-//         duplicate key, invalid datetime (parse) AND every
-//         spec-invalid value (emit) is `Rejected { diagnostic }`,
-//         never partial/defaulted/fabricated. The other five T-4.6
-//         formats mirror THIS fail-closed-both-directions seam.
-//         IMMUTABLE-HEADER RECONCILE REQUIRED (surfaced, not silently
-//         diverged — the std/collection.dag #3169 / std/witness.dag /
-//         csv-class precedent): the immutable scaffold header line
-//         "`emit(TomlValue) -> String`" documents a TOTAL emit. The
-//         T-4 seam-gate ratified the fail-closed `-> Outcome<String>`
-//         seam (correctness-tightening of seam #3, INVARIANTS P3); the
-//         literal immutable-header line edit is operator-tier (worker
-//         may not edit the immutable header — csv-class authority),
-//         batched into the operator header-reconcile (flagged by the
-//         T-4 mgr). This note is the fail-closed authority pending that
-//         reconcile; the header/note divergence is tracked-not-silent
-//         here.
-//     (c) dissolution trigger — when std/text.dag (T-3) lands its
-//         `Char` + `String` ↔ `List<Char>` decomposition, a follow-up
-//         PR adds `toml_parse : … -> Outcome<TomlValue>` /
-//         `toml_emit : … -> Outcome<String>`. The emit body MUST
-//         validate any non-parser-constructed value fail-closed (a
-//         non-conformant scalar/datetime lexeme, pending the
-//         refined-lexeme substrate, is a `Rejected`, never emitted) —
-//         the trigger is NOT satisfied by a total `-> String` emit
-//         even once std/text.dag lands; the fail-closed
-//         `Outcome<String>` contract is part of THIS ratified seam #3,
-//         so the invalid-lexeme emission hole cannot survive the
-//         dissolution. The T-4 directive's "operations deferred-with-
-//         named-owner" + TASKS.md T-4.6 record the same dependency.
-//
-// (2) Numeric interpretation of `TomlInt.lexeme` / `TomlFloat.lexeme` —
-//   the integer tower (std/integer.dag) + IEEE-754 `Float`
-//   (std/float.dag) are scaffold (T-3).
-//     (a) scaffold doc — THIS note; the lexeme is not a numeric value.
-//     (b) bounds on use — a consumer needing the numeric value waits on
-//         the interpretation read; the lexeme is round-trip-exact (B-6).
-//     (c) dissolution trigger — when std/integer.dag + std/float.dag
-//         land, a follow-up adds `toml_int_value`/`toml_float_value :
-//         … -> Outcome<…>`; this note dissolves.
-//
-// (3) Temporal interpretation of `TomlDatetime.lexeme` — TOML v1.0.0
-//   §Date-Time is an RFC 3339 subset with four sub-kinds (offset
-//   date-time / local date-time / local date / local time). v4 has NO
-//   temporal substrate; collapsing the lexeme to a structured instant
-//   would fabricate a calendar/offset interpretation.
-//     (a) scaffold doc — THIS note; `TomlDatetime` carries the verbatim
-//         RFC 3339 lexeme; no temporal interpretation is claimed.
-//     (b) bounds on use — a consumer needing the instant / sub-kind
-//         waits on the temporal substrate; the lexeme round-trips (B-6)
-//         exactly and the deferred parser validates RFC-3339-subset
-//         conformance fail-closed.
-//     (c) dissolution trigger — when a v4 temporal substrate lands
-//         (no owner today — its absence is itself surfaced to T-4 mgr;
-//         a new std/ temporal concept is a substrate-extension STOP,
-//         not a worker decision), a follow-up adds
-//         `toml_datetime_value : TomlDatetime -> Outcome<…>` over the
-//         four sub-kinds; this note dissolves.
-//
-// (4) Non-empty / charset key refinement on `TomlTable` /
-//   `TomlInlineTable` — the immutable scaffold header's
-//   `Map<NonEmptyStr, TomlValue>`. v4 has no `NonEmptyStr` (a String
-//   refinement; std/text.dag refinement substrate is T-3 scaffold).
-//   The carrier here is kernel `Map<String, TomlValue>`; TOML §Keys
-//   conformance (bare-key charset; quoted keys — incl. the spec-
-//   permitted EMPTY quoted key, so the refined type must NOT be a
-//   blanket non-empty) is enforced fail-closed by the deferred parser.
-//     (a) scaffold doc — THIS note + the header reconciliation block;
-//         the `String` key is unrefined here by design.
-//     (b) bounds on use — no consumer relies on a key-refinement type
-//         from toml.dag in this PR; the parser is the §Keys authority
-//         meanwhile.
-//     (c) dissolution trigger — when std/text.dag's String-refinement
-//         substrate lands, a follow-up refines the key type to a
-//         TOML-§Keys-faithful refinement (bare/quoted rules, NOT a
-//         blanket non-empty — the spec permits empty quoted keys);
-//         this note dissolves. The header/spec strictness discrepancy
-//         is flagged to T-4 mgr (surfaced, not silently encoded).
+// Deferred scaffold bridges (DECISIONS.md Part 6 — not second authorities).
+// toml_parse/toml_emit + §Keys/§AoT parse-time checks + RFC-3339-subset parse —
+// 🟡 gated — feature: T-6/T-7 parse pipeline-stage substrate — DECISIONS.md Part 6 · SL-3229-T4-FORMAT-T6T7.
+// Numeric + datetime VALUE reads + String key refinement (pairs with (1)) —
+// 🟡 gated — feature: std/cardinality.dag refinement + std/float.dag / std/integer.dag (T-3 Wave-A2) — DECISIONS.md Part 6 · SL-3229-LLVM-WIDTH.
 
