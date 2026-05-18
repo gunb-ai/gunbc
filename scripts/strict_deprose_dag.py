@@ -210,7 +210,10 @@ def coproduct_tag_from_merge_base(rel: str) -> dict[str, tuple[str, str]]:
             continue
         block = authority_block(lines, i)
         if rel.endswith("llvm_ir.dag") and nm == "LlvmType" and "RAW-Int WIDTH RESIDUAL" in block:
-            out[nm] = ("🟡", "SL-3229-LLVM-WIDTH")
+            # Merge-base still carries the historical RAW-Int banner; live substrate
+            # closed SL-3229-LLVM-WIDTH via std/cardinality.dag `NonZeroNat` + `Nat`
+            # (PR #3310 P1 cardinality refinement — operator receipt 2026-05-18).
+            out[nm] = ("🟢", "CP-3229-GREEN-TERMINAL")
             continue
         tail = practice4_tail_for_face(lines, i)
         face = practice4_face(tail)
