@@ -65,6 +65,7 @@ authority location(s) and moves to Part 1.
 | **D2-REV** | **D2 / D4 REVERSED — fact-bundle modeling supersedes alias-identity** (operator-ratified 2026-05-17, **out-of-band** — the verbatim operator-quote provenance is in the "D2 REVERSAL" section below). An `extdeps` primitive is modeled as a fact-bundle grounded from its own spec, never a bare `std/` alias; deduplicate to a `std/` carrier only on *proven* coincidence; the structural fact-density / hollow-alias gate is `T-30`, a hard prerequisite of T-4. This is a one-line index pointer — the full record (root cause, phased plan, impact map, "coincide" definition) is the **"D2 REVERSAL + FACT-BUNDLE RESEED"** section below, which is the authority. Supersedes the **D2** and **D4** rows above. | the **"D2 REVERSAL + FACT-BUNDLE RESEED"** section of this file (authority); `#3224` executes Phase 1; `docs/modeling/grounding-worked-examples.md` companion |
 | **P4-3208** | **Practice-4 ledger home for #3208 Lean/machine-code model coproducts** (operator-directed strict de-prose 2026-05-17). `.dag` files keep only terse anchors/tags; detailed dissolution ledgers live here until modeling-discipline reconciles Practice-4 vs Practice-9. See the "P4-3208 coproduct ledger" section below. | this row + "P4-3208 coproduct ledger"; `extdeps/languages/{lean,machine_code}.dag` keeps terse carrier declarations only |
 | **OS-1** | **OS extdep coproduct ledgers and refinement-scaffold disposition for #3209** (operator-audit regime, 2026-05-17). Practice-4 dissolution ledgers for `file_system.dag` / `process.dag` are architectural decision records, not source comments; the `.dag` files keep only terse tags/anchors. POSIX numeric and byte-string refinement gaps remain tracked scaffolds in #3209, not expanded fact bundles; named trigger is **T-25-core refinement substrate / T-30 fact-density gate**. | this row + "OS-1 — #3209 coproduct dissolution and scaffold record" below; terse tags in `extdeps/file_system.dag` and `extdeps/process.dag` |
+| **T29-ABI** | **C++ ABI / target data-model slice** (T-29, operator-ratified 2026-05-17; manager brief 2026-05-18). `extdeps/cpp_abi.dag` is the single authority for C++ implementation-defined fundamental-width choices consumed by `cpp.dag`; C++ primitive fact-bundles parameterize over `CppTargetProfile<abi_model,data_model>` instead of guessing LP64/ILP32 constants. `CppIntegerWidth`, `CppPlainCharSignedness`, `CppDataModelFamily`, and `CppAbiModel` remain closed coproducts: each is an externally named alternative, not simultaneous coordinates. Common ILP32/LP64/LLP64/ILP64 rows are type-level data-model facts parameterized by `plain_char_signedness`; the data-model family never defaults that independent implementation-defined fact. | `extdeps/cpp_abi.dag`, `extdeps/languages/cpp.dag`, `STRUCTURE.md`; cross-ref T-29 in `TASKS.md` |
 
 ---
 
@@ -816,6 +817,23 @@ fact-bundle/grounding model on one complex type per target — spanning
 language, mostly fail-closed). Each: the model (carrier + meaning) and
 step-by-step coercion. Plan-only; the remaining mainstream
 language/format targets fan out against the same template.
+
+### T-30 — `std/fact_density.dag` encoding note (2026-05-17)
+
+- **Header discipline (PR #3227):** the on-disk file keeps a terse machine
+  header only: path line; then **contiguous** `Scope:` / `Owns:` /
+  `Consumes:` / `Status:` (Practice 9 four-line header); **then** at most
+  one `Anchor:` URL line per owned carrier (anchor **after** that block,
+  not between `Owns:` and `Consumes:`).
+  Process receipts, Practice pointers, and bootstrap-collision narrative
+  live in commit messages, this ledger, or `TASKS.md` — not in the `.dag`
+  comments.
+- **P2 / Practice 5 (single authority):** Until a **generated** `.dag` (or emitted) consumer reads `SourceSpecReadFact`, this module does **not** satisfy INVARIANTS §P2 “**When a boundary counts as landed**” — the hollow-alias predicate’s interim authority remains the Rust mirror (`src/v3/compiler/src/v4_hollow_alias_gate.rs`). `STRUCTURE.md` lists `fact_density.dag` as **P2-staging**, not co-equal with landed `std/` primitives. The on-disk file is intentionally a **Practice-9 terse header** only: the `Scope:` line is one machine line; this bullet carries the former multi-line header narrative (no generated `.dag`/std consumer yet; do **not** treat `SourceSpecReadFact` as a landed substrate primitive in docs until INVARIANTS §P2’s generated-consumer proof exists).
+- **Nominal witness:** `SourceSpecReadFact` is a body-less nominal marker
+  for spec-read anchoring (not a numeric alias). A richer `Node` payload
+  is deferred until `compile_to_dag` can prepend `std/node.dag` without
+  colliding on v3-bootstrap top-level names; dissolution ships in the
+  same change set as that bridge.
 
 ### Status
 
