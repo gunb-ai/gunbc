@@ -23,6 +23,7 @@ import v4.std.diagnostic {
 import v4.std.node { Node, Symbol, is_empty_conj_root, node_well_formed }
 import v4.std.text { String, string_is_empty }
 type LexRules = Node
+// 🟡 coproduct dissolution — DECISIONS.md CP-1b item 13 (LexRules)
 type Token {
   class: Symbol
   lexeme: String
