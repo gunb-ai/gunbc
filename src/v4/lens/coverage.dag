@@ -1,24 +1,34 @@
 // src/v4/lens/coverage.dag
-//
-// Scope: meta-lens — reads substrate to derive expected test coverage; verifies actual TestClaim corpus matches expected; fails closed on gaps. Subjects: L6 form × target completeness, L7 algebra-law per-axiom, impossible-bug class enumeration, testgen coverage discipline. Per TESTING.md hermetic discipline: derived not hand-authored — no 150-fixture matrices.
-// Anchor: TESTING.md ("hermetic + behavior-driven; heavy integration tests are exception") + THESIS.md L6 §181 + L7 §182 + impossible-bug enumeration §370-413 + memory: feedback_no_textual_enforcement_bridges (coverage is structural, not grep-enforced)
-//
-// Owns:
-//   - Coverage<C> generic carrier (parameterized over coverage concern)
-//   - L6 coverage: read extdeps/languages/*.dag emit rules × structural-form space (6 connectives × 5 behaviors)
-//   - L7 coverage: read std/algebra.dag declarations × declared law set × inhabited types
-//   - Impossible-bug coverage: read THESIS enumeration × test/claim/impossible_bug/* contents
-//   - Testgen coverage: read std/* type declarations × required inhabitant test count
-//   - lens read: () -> Witness<CoverageReport>  (Holds = complete; Violates = missing items enumerated)
-//   - Each missing-coverage entry emits a Diagnostic per fail-closed discipline (INVARIANTS C-8)
-//
-// Consumes:
-//   - std/node.dag, std/witness.dag, std/diagnostic.dag, std/verification.dag (TestClaim)
-//   - std/algebra.dag (for L7 inhabitance reading)
-//   - extdeps/languages/*.dag (for L6 emit rule reading)
-//
-// Status: scaffold — fill per TASKS.md T-18
-// Brief: see BRIEF_TEMPLATE.md.
+// Scope: T-18 meta-lens — expected vs actual TestClaim coverage over substrate slices.
+// Owns: Coverage<C> L6CoverageKey L7CoverageKey ImpossibleBugCoverageKey TestgenCoverageKey
+// Consumes: std/node std/witness std/diagnostic std/verification std/algebra extdeps/languages lens/testgen
+// Status: scaffold — fill per TASKS T-18.
 
 module v4.lens.coverage
 
+
+import v4.std.node { Symbol }
+import v4.std.verification { ImpossibleBugClass }
+import v4.lens.testgen { TestgenConcept, AlgebraLawSubject, TypeConstructionSubject }
+
+
+type Coverage<C> {
+  concern: C
+}
+
+
+type L6CoverageKey {
+  subject: TypeConstructionSubject
+  language: Symbol
+}
+
+
+type L7CoverageKey = AlgebraLawSubject
+
+
+type ImpossibleBugCoverageKey {
+  bug_class: ImpossibleBugClass
+}
+
+
+type TestgenCoverageKey = TestgenConcept
