@@ -1,6 +1,6 @@
 #![allow(clippy::disallowed_macros)]
 
-//! `gunbc-prefix-lens-driver` — PREFIX / T-23 v0 registry + whole-corpus dispatch stub.
+//! `gunbc-prefix-lens-driver` — PREFIX / T-23 v0 registry + `--whole-corpus` argv (bucketed compile dispatch).
 //!
 //! Invocation template (frozen): `gunbc-prefix-lens-driver v0 <LENS_ID> --path <FILE.dag>` or
 //! `gunbc-prefix-lens-driver v0 <LENS_ID> --whole-corpus` — see

@@ -244,7 +244,7 @@ jobs:
         echo "Bootstrap viability OK — v2 indexed and resolved all v4 modules."
     - name: Build PREFIX lens driver (gunbc-prefix-lens-driver v0)
       run: cargo build -p gunbc_prefix_lens_driver --release
-    - name: PREFIX whole-corpus gate (SUPPLEMENTARY DELETE-DATED per PREFIX-LENS-CI-1 Fork A)
+    - name: 'PREFIX v0 compile bucket (--whole-corpus argv; INTERIM per PREFIX-LENS-CI-1 Fork A)'
       run: |
         set -euo pipefail
         target/release/gunbc-prefix-lens-driver v0 complexity --whole-corpus
@@ -341,7 +341,7 @@ jobs:
           echo "::error::cargo test (lib+bins) failed (exit=$status)"
           exit "$status"
         fi
-    - name: PREFIX whole-corpus gate v3 bucket (SUPPLEMENTARY DELETE-DATED; skip v4 v2 aggregate)
+    - name: 'PREFIX v0 compile bucket, v3 tree only (PREFIX_DRIVER_SKIP_V4; INTERIM)'
       env:
         PREFIX_DRIVER_SKIP_V4: "1"
       run: |
