@@ -193,6 +193,25 @@ keystone-fold (a), explicitly confirm A-vs-B=B (b), decide T-25-core (c).
 - **Wave 1 (P1-KEYSTONE + T-25-core + T-30 land):** T-4 ×5 languages, T-4.5,
   T-4.6 unblock (T-4 mgr).
 - **Wave 2 (T-4 lands):** T-9, T-4.7, T-4.8, T-4.13, T-18.
+
+> **Wave-2 dissolution-lens PREREQUISITES — cross-lane (sunny-wolf-435,
+> #3313 author, folded; reinforces the batch-(d) hold — Wave-2 cannot fan
+> out until these land + #3313 stabilizes + keystone ratifies):**
+> 1. **New std/ carriers the L1.x lenses *read*** — `canonical_observations`
+>    (L1.8), `CanonicalConcept` (L1.12), and the `WrongHomeExemption` /
+>    `VacuousArmExemption` / `CanonicalCarrier.Exemption` structural-escape
+>    registries (replaced comment-anchor escapes post-codex-BLOCKING).
+>    **T-25-core-class substrate prerequisites** (consumers read them); owner
+>    = substrate / Fresh Compiler-Pipeline lane; **not yet on the §2 table,
+>    no owning T-# — needs assignment** (same gap-shape as P10).
+> 2. **Three derived lens-stages** — `match_arm_shape` (reused
+>    L1.1/L1.9/L1.11/L0.7/L0.13), `closed_vocab_scan` (L1.7), `concept_home`
+>    (L1.8); home `src/v4/lens/` beside complexity/cost/affected_set =
+>    **Fresh Compiler-Pipeline+Lens lane**, NOT Dissolution-lane.
+>
+> **Cross-lane edge (was missing in §5):** Compiler-Pipeline+Lens builds
+> (1)+(2) → Dissolution-lane Wave-2 *consumes* them. Wave-2 lens authoring
+> (batch d) stays held until both land.
 - **Wave 3 (T-9):** T-10, T-12/T-13 refine to real, T-17, T-22 refine.
 - **Wave 4 (T-10):** T-11, T-16, T-14, T-24.
 - **Wave 5 (T-16):** T-15 (self-host fixed-point — the terminal anti-regression
@@ -217,7 +236,7 @@ sessions are *not* folded in — see exceptions.
 | **Fresh: Compiler-Pipeline (+Lens, gated)** | **Pipeline scope (active on Wave-0 go):** T-3 tail, T-6–T-8 CP-1b close, T-9, T-10, T-11, T-16, T-25-tail, T-28; **T-26 = std-authoritative, conduit-only**. **Lens scope (T-12/13/17/18/23) — GATED on the `fierce-cat-31` lens fan-out CLOSEOUT** (one lens owner at a time — see exception 2; no P2 parallel-authority drift) | Pipeline-scope only (no lens until fan-out closes) | T-9 (post-T-4), T-10, T-11, T-16; **lens scope post-`fierce-cat-31`-closeout** |
 | **Fresh: Test/Bootstrap-Infra** | T-19, T-20, T-21, T-22, T-24, T-14, T-15, T-4.11, T-32 | **T-19, T-20, T-21** (full) · **T-22** (`READY*` scaffold scope) | T-24 (post-20/21), T-14, T-15 (terminal) |
 | **Fresh: extdeps/T-4** | T-4 ×5, T-4.5–T-4.14 | **— (T-29/T-4.10/T-4.12 LANDED; T-4 ×5 HELD on keystone)** | T-4 (post-keystone), T-4.5–4.8 |
-| **Fresh: Dissolution** | T-30, T-31, Wave-2 lenses, 🟡 burn-down | **T-31(b) mop-up; T-30 generated-checker** | Wave-2 lenses (post #3240) |
+| **Fresh: Dissolution** | T-30, T-31, Wave-2 lenses, 🟡 burn-down | **T-31(b) mop-up; T-30 generated-checker** | Wave-2 lenses — *consumes* the §4 cross-lane prereqs (new std/ carriers + 3 derived lens-stages built by Compiler-Pipeline+Lens) — post #3240 |
 | **Operator** | Keystone rulings | **see §7 decision sheet** | — |
 
 **Exceptions (NOT migrated — improvising around these is forbidden):**
