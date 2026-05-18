@@ -50,7 +50,7 @@ type ImpossibleBugClass
 
 
 type T19ManualAnchorKey
-// 🟢 coproduct dissolution — DECISIONS.md LB-P4-3212
+// 🟡 coproduct dissolution — DECISIONS.md LB-P4-3212
   = T19ManualTcConjEmpty
   | T19ManualTcDisjEmpty
   | T19ManualTcArrowTwoConj
