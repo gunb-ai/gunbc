@@ -43,10 +43,10 @@ workers touch impl only after that batch's Acceptance PR is operator-signed.
 - **One interface pin.** Any row asserting v4 parse-tree / field-name shape
   for `EnforcedApplication` / `SectionRef` cites
   `r4-lane-a-lens-interface-freeze-pin.md` §1 — no batch re-specs carriers.
-- **Runnable-AC column.** Until the driver binary lands, runnable AC uses
-  `TBD — gunbc-prefix-lens-driver v0 …` or the interim
-  `v2-compiler compile --source-root src/v4` invocation per source brief
-  Fork A. No batch claims the CLI is live without a receipt.
+- **Runnable-AC column.** The pre-driver-binary convention is owned by
+  `r4-lane-a-lens-interface-freeze-pin.md` §3 (and the source brief's
+  §Witness-parallelism / Fork A). This index defers to it verbatim and
+  restates no part of it: no batch claims the CLI is live without a receipt.
 - **Witness immutability.** Red/green witness blocks and expectation rows in
   `r4-lane-a-lens-prefix-acceptance.md` are immutable except red→green
   transitions with an operator-signed amendment. Implementation workers do
