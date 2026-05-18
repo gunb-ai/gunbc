@@ -118,7 +118,6 @@ def coproduct_names_in_module(text: str) -> set[str]:
             continue
         nm = m.group(1)
         j = i
-        chunk: list[str] = []
         while j < len(lines):
             t = lines[j].strip()
             if j > i and t.startswith("type "):
@@ -131,7 +130,6 @@ def coproduct_names_in_module(text: str) -> set[str]:
                 break
             if j > i and t.startswith("module "):
                 break
-            chunk.append(lines[j])
             if "|" in lines[j] and "=" in lines[j]:
                 names.add(nm)
                 break
@@ -252,58 +250,7 @@ def iter_fn_blocks(s: str) -> list[tuple[str, list[tuple[str, str]], str, str, i
 
 
 def scan_match_arms_rhs(inner: str) -> list[str] | None:
-    """Return list of RHS strings for each arm; None if parse fails."""
-    i = skip_ws(inner, 0)
-    rhs_list: list[str] = []
-    while i < len(inner):
-        i = skip_ws(inner, i)
-        if i >= len(inner):
-            break
-        depth = 0
-        pat_start = i
-        while i < len(inner):
-            if s.startswith("=>", i) and depth == 0:
-                break
-            c = inner[i]
-            if c in "({[":
-                depth += 1
-            elif c in ")}]":
-                depth -= 1
-            i += 1
-        if i >= len(inner) or not inner.startswith("=>", i):
-            return None
-        i += 2
-        expr_start = skip_ws(inner, i)
-        ed = 0
-        i = expr_start
-        while i < len(inner):
-            c = inner[i]
-            if c in "({[":
-                ed += 1
-            elif c in ")}]":
-                ed -= 1
-                if ed < 0:
-                    return None
-            if ed == 0 and c == "\n":
-                rhs = inner[expr_start:i].strip()
-                rhs_list.append(rhs)
-                i += 1
-                nxt = skip_ws(inner, i)
-                if nxt < len(inner) and inner[nxt] == "}":
-                    return rhs_list
-                i = nxt
-                break
-            if ed == 0 and c == "}":
-                rhs_list.append(inner[expr_start:i].strip())
-                return rhs_list
-            i += 1
-        else:
-            return None
-    return rhs_list
-
-
-# fix typo: used `s` instead of `inner` in scan_match_arms_rhs
-def _scan_match_arms_rhs_fixed(inner: str) -> list[str] | None:
+    """Return each match arm's RHS text; None if the block does not parse as line-broken arms."""
     i = skip_ws(inner, 0)
     rhs_list: list[str] = []
     while i < len(inner):
@@ -352,17 +299,13 @@ def _scan_match_arms_rhs_fixed(inner: str) -> list[str] | None:
     return rhs_list
 
 
-# Replace broken function with fixed
-scan_match_arms_rhs = _scan_match_arms_rhs_fixed  # noqa: PLW1641
-
-
 def is_literal_bool_atom(expr: str) -> bool:
     e = expr.strip()
     return e == "true" or e == "false"
 
 
 def direct_l1_1_finding(
-    fn_name: str,
+    _fn_name: str,
     params: list[tuple[str, str]],
     ret_ty: str,
     body_inner: str,
@@ -415,52 +358,57 @@ def fold_laundered_in_body(body_inner: str) -> str | None:
                 pos = hit + len(keyword) + 1
                 continue
             open_paren = hit + len(keyword)
+            if open_paren >= len(src) or src[open_paren] != "(":
+                pos = hit + 1
+                continue
             try:
                 inside, after = balanced_paren_content(src, open_paren)
             except ValueError:
                 pos = hit + len(keyword) + 1
                 continue
             args = split_top_level_commas(inside)
+            found: str | None = None
             for arg in args:
                 a = arg.strip()
                 if not a.startswith("f:"):
                     continue
-                rest = skip_ws(a, len("f:"))
+                rest = a[skip_ws(a, len("f:")) :]
                 if not rest.startswith("fn"):
                     continue
-                m = re.match(r"^fn\s*\(([^)]*)\)\s*\{", rest)
-                if not m:
-                    continue
-                param_blob = m.group(1)
                 brace_pos = rest.find("{")
+                if brace_pos < 0:
+                    continue
+                if not re.match(r"^fn\s*\([^)]*\)\s*\{", rest[: brace_pos + 1]):
+                    continue
+                param_m = re.match(r"^fn\s*\(([^)]*)\)\s*\{", rest)
+                if not param_m:
+                    continue
+                param_blob = param_m.group(1)
                 try:
                     lam_inner, _ = balanced_brace_block(rest, brace_pos)
-                except ValueValueError:
-                    continue
                 except ValueError:
                     continue
                 lam_body = lam_inner.strip()
                 if not is_literal_bool_atom(lam_body):
                     continue
                 names = [p.strip() for p in param_blob.split(",") if p.strip()]
-                usable = []
+                usable: list[str] = []
                 for n in names:
                     if n == "_":
                         continue
-                    if re.fullmatch(r"_\w*", n):
+                    if re.fullmatch(r"_\w+", n):
                         continue
                     usable.append(n)
-                bad = False
-                for n in usable:
-                    if re.search(rf"\b{re.escape(n)}\b", lam_body):
-                        bad = True
-                        break
-                if bad:
+                if any(re.search(rf"\b{re.escape(n)}\b", lam_body) for n in usable):
                     continue
-                return f"`{keyword}(…, f: fn … {{ {lam_body} }})` constant Bool step (fold-laundered discriminant shape)"
-            pos = after
-
-        return None
+                found = (
+                    f"`{keyword}(…, f: fn … {{ {lam_body} }})` constant Bool step "
+                    "(fold-laundered discriminant shape)"
+                )
+                break
+            if found:
+                return found
+            pos = max(after, pos + 1)
 
     for kw in ("fold", "cata"):
         d = scan_calls(kw, body_inner)
