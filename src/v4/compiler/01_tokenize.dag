@@ -4,7 +4,6 @@
 // Owns: LexRules, Token, TokenStream, tokenize_lexical_walk_not_realized, tokenize_lex_rules_not_well_formed, tokenize_lex_e0_source_not_exhausted, tokenize_lexical_walk_not_realized_diagnostic, tokenize_lex_rules_not_well_formed_diagnostic, tokenize_lex_e0_source_not_exhausted_diagnostic, tokenize.
 // Consumes: std collection, std diagnostic, std node, std text.
 // Status: Wave-1 void-lex path realized.
-// 🟡 TRACKING: LexRules becomes a declared coproduct-first lex-rule type when lex rules expand beyond void; derived Node view only if self-hosting requires it.
 
 
 module v4.compiler.tokenize
@@ -24,6 +23,7 @@ import v4.std.diagnostic {
 import v4.std.node { Node, Symbol, is_empty_conj_root, node_well_formed }
 import v4.std.text { String, string_is_empty }
 type LexRules = Node
+// 🟡 coproduct dissolution — DECISIONS.md CP-1b item 13 (LexRules)
 type Token {
   class: Symbol
   lexeme: String
