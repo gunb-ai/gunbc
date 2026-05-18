@@ -70,8 +70,11 @@ fn bs_list_eq(a: List<Symbol>, b: List<Symbol>) -> Bool {
        })
 }
 
-fn bootstrap_stage_output(s: Symbol) -> Bool {
-  (s == v4_stage0_binary) || (s == v4_stage1_binary) || (s == v4_stage2_binary)
+fn bootstrap_stage_output(plan: Outcome<BootstrapPlan>, s: Symbol) -> Bool {
+  match plan {
+    Produced { value: bp } => (s == bp.seed.produces) || (s == bp.self0.produces) || (s == bp.self1.produces)
+    Rejected { diagnostic: _ } => false
+  }
 }
 
 fn bootstrap_plan_well_formed(p: BootstrapPlan) -> Outcome<BootstrapPlan> {

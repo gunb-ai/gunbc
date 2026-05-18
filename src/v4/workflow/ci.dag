@@ -16,7 +16,7 @@ import v4.std.diagnostic {
   NoCorrectionReason,
   Outcome
 }
-import v4.workflow.bootstrap { v4_stage0_binary, bootstrap_stage_output }
+import v4.workflow.bootstrap { v4_stage0_binary, bootstrap_plan, bootstrap_stage_output }
 
 
 // 🟡 coproduct dissolution — DECISIONS.md LB-P4-3213
@@ -165,7 +165,7 @@ fn ci_command_authority_ok(c: CiCommand) -> Bool {
     LintCommand => true
     TestCommand => true
     IgnoredTestCommand { test_name: _ } => true
-    BootstrapStageCompile { produces: pr } => bootstrap_stage_output(s: pr)
+    BootstrapStageCompile { produces: pr } => bootstrap_stage_output(plan: bootstrap_plan, s: pr)
     ShellCommand { command: _ } => true
   }
 }
