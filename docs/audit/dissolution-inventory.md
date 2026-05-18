@@ -135,7 +135,7 @@ the audit anchor.
 | # | substrate PR (`feature:` arrival) | owner / owning task | 🟡-count | unblocks |
 |---|---|---|---|---|
 | **P1** | `std/cardinality.dag` bounded-natural / refinement substrate | std / T-3 Wave-A2 | **~22** | DECISIONS.md: `SL-3229-LLVM-WIDTH`, `SL-3229-LLVM-OPS`, `SL-3229-PTX-DIM3`, `SL-3229-PTX-COST`, `SL-3229-VERILOG-COST` (+ `SL-3229-FLOAT-NOMINAL` once re-gated under this canonical owner). In-file: `llvm_ir.dag:28` + the ~16 VAGUE prose blocks in `json.dag` / `yaml.dag` / `toml.dag` that concretize to this arrival (refinement-side family). |
-| **P2** | `std/collection.dag` Wave-A2: `List<T> where non_empty` refinement **plus** the List combinator algebra (`forall` / `count_where` / `unique` over `FreeMonoid<T>`) | std / T-3 Wave-A2 (coercion-design.md RQ-3) | **5 named + 28 sites** | Section 2: `std/node.dag` × 4 traverses (`all_edges_named`, `all_edges_positional`, `name_occurrences`, `all_names_distinct`). DECISIONS.md: `SL-3229-VERILOG-NONEMPTY` (one row, 28 verilog.dag back-pointer sites after P8). |
+| **P2** | `std/collection.dag` Wave-A2: `List<T> where non_empty` refinement **plus** the List combinator algebra (`forall` / `count_where` / `unique` over `FreeMonoid<T>`) | std / T-3 Wave-A2 (coercion-design.md RQ-3) | **5 named + 29 sites** | Section 2: `std/node.dag` × 4 traverses (`all_edges_named`, `all_edges_positional`, `name_occurrences`, `all_names_distinct`). DECISIONS.md: `SL-3229-VERILOG-NONEMPTY` (one row, 29 verilog.dag back-pointer sites after P8). |
 | **P3** | Compiler pipeline-stage substrate (lex-walk + parse-walk) | compiler / T-6, T-7 | **2 + ~7 in-file** | Section 2: `compiler/01_tokenize.dag tokenize`, `compiler/02_parse.dag parse`. In-file: the parser-side VAGUE prose blocks in `json.dag` / `yaml.dag` / `toml.dag` that concretize to T-6/T-7 (the operations-side family separate from P1). |
 | **P4** | T-4 fact-bundle Phase-3 rework (post-D2-reversal model) | extdeps/languages / T-4 manager `vivid-carp-207` (5-feeder gate; keystone #3226 merged @`77b9e7d72`; 4 feeders open: T-3, T-29, T-30, T-25-core) | **4 + 1 row + 1 fn** | In-file: `typescript.dag` × 4 INVALID-GATE blocks (re-gate against this arrival, not pre-reversal D2). DECISIONS.md: `SL-3229-VERILOG-D3200` (if re-gated as `feature: T-4 fact-bundle Phase-3 rework` rather than `consumer:` form — see Section 3). Section 2: `extdeps/languages/dag.dag dag_language_model_wave1_void_canonical_symbols` (added in CP-1b #3225 — canonical_symbols set is a fact on DagLanguageModel/language-identity, not a hand-rolled function). |
 | **P5** | `std/node.dag` `fold_node` — Node catamorphism (substrate-extension under T-1) | std / T-1 | **1 + 3 walker callers** | `fold_node` + the `std/node.dag node_well_formed` migration landed in the burn-down closeout. Remaining: `compiler/03_resolve.dag merge_binding_self` (94, the codex #3225 "sym↦sym module harvest" finding) — together with its three named-harvest walker callers (`add_module_named_exports` at 99, `add_arrow_domain_named_params` at 113, `add_bind_atom_binder` at 140) that fold over `Node.children` with constructor-discriminated recursion. These dissolve to `fold_node(root, ⟨binding-harvest algebra⟩)` only when the scoped harvest algebra lands without changing resolver scope semantics. |
@@ -165,7 +165,7 @@ INVALID-GATE-once-re-gated):
 |---|---|---|---|
 | (baseline) | **~38** | — | — |
 | P1 lands | ~22 | `std/cardinality.dag` refinement | ~16 |
-| P2 lands | 5 named (+ 28 verilog sites converge in one sweep) | `std/collection.dag` Wave-A2 | ~11 named |
+| P2 lands | 5 named (+ 29 verilog sites converge in one sweep) | `std/collection.dag` Wave-A2 | ~11 named |
 | P3 lands | 2 named (+ ~7 in-file) | T-6 + T-7 pipeline substrate | ~9 named |
 | P4 lands | 4 + 1 row + 1 fn (`dag.dag canonical_symbols` #3225) | T-4 fact-bundle Phase-3 | ~3 named |
 | P5 lands | 1 named (+ 3 walker callers cascade in `03_resolve.dag` #3225) | `std/node.dag fold_node` | ~1 |
@@ -532,7 +532,7 @@ arrival: cardinality refinement (T-3).
 - **#3244 re-expression:** `🟡 gated — feature: bounded-non-negative-Int refinement in std/cardinality.dag (T-3 Wave-A2)`.
 
 **`SL-3229-VERILOG-NONEMPTY`** — shared `List<T>` spec-non-empty
-Wave-A2 deferral (28 sites after P8). Named arrival: `std/collection.dag`
+Wave-A2 deferral (29 sites after P8). Named arrival: `std/collection.dag`
 Wave-A2 `List<T> where non_empty`. Verified `std/collection.dag` on
 main: `type List<T> = FreeMonoid<T>` alias only — no `where non_empty`
 refinement landed.
