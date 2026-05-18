@@ -1,7 +1,7 @@
 // src/v4/std/collection.dag
 // Scope: container carriers grounded in algebraic constructions.
 // Anchor: https://en.wikipedia.org/wiki/Free_monoid
-// Owns: List, NonEmptyList, non_empty, Set, Map.
+// Owns: List, non_empty, Set, Map.
 // Consumes: std algebra, std witness.
 // Status: T-3 modeled; substrate-extension rule in src/v4/STRUCTURE.md.
 
@@ -15,7 +15,6 @@ type List<T> = FreeMonoid<T>
 fn non_empty<T>(xs: List<T>) -> Bool {
   free_monoid_non_empty(xs: xs)
 }
-type NonEmptyList<T> = List<T> where non_empty
 type Set<T> = PointwisePower<T>
 type Map<K, V> {
   lookup: fn(K) -> Witness<V>
