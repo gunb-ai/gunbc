@@ -47,6 +47,29 @@ const EXPECTED_ACCEPTANCE_ROWS: &[(&str, &str)] = &[
 #[test]
 fn v4_lens_coverage_names_all_l1_acceptance_keys() {
     let module = parse_module(COVERAGE_DAG, COVERAGE_PATH);
+    let observed_variants = module
+        .items
+        .iter()
+        .find_map(|item| match item {
+            SurfaceItem::TypeSum { name, variants, .. } if name == "DissolutionLensKey" => Some(
+                variants
+                    .iter()
+                    .map(|variant| variant.name.as_str())
+                    .collect::<BTreeSet<_>>(),
+            ),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("{COVERAGE_PATH}: missing DissolutionLensKey coproduct"));
+    let expected_variants = EXPECTED_ACCEPTANCE_ROWS
+        .iter()
+        .map(|(_, variant)| *variant)
+        .collect::<BTreeSet<_>>();
+
+    assert_eq!(
+        observed_variants, expected_variants,
+        "{COVERAGE_PATH}: DissolutionLensKey variants must exactly match L1.1-L1.12 keys"
+    );
+
     let observed = module
         .items
         .iter()
