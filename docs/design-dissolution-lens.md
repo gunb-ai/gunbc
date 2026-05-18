@@ -510,37 +510,63 @@ data fermi_lattice: Lattice<FermiDepth> = { meet: fermi_meet, join: fermi_join }
 > `src/v4/std/algebra.dag`). Mechanizes MODELING M9 (DFS the concept
 > DAG).
 
-- *Signature:* the lens derives the function's **primary concept** —
-  the single type the function is "about" — and requires the function
-  to live in that type's home file. The primary concept is selected
-  structurally, in priority order:
+- *Signature:* the lens derives the function's **primary (domain)
+  concept** — the unique receiver type the function operates over —
+  and requires the function to live in that type's home file.
+  Observation codomains (Bool, Ordering, comparison results) are
+  *results of* the receiver concept, not peer home signals, and are
+  classified structurally via a substrate registry:
+  ```dag
+  // canonical observation carriers — substrate data, not a hardcoded list
+  data canonical_observations: Set<CanonicalObservation> = {
+    CanonicalObservation { type: Bool,     role: predicate-result   },
+    CanonicalObservation { type: Ordering, role: comparison-result  },
+    CanonicalObservation { type: Unit,     role: side-effect-result },
+    ...
+  }
+  ```
+  The primary concept is selected by this priority cascade, all
+  structurally decidable from the parsed model:
   1. **Declared witness target.** If `f` appears as a field of a
      `data ... : Algebra<T> = { ... f: ... }` witness, the primary
      concept is `T` (the algebra's type parameter). `f`'s home is `T`'s
-     home file, regardless of what its arguments look like.
-  2. **Same-type closure.** If `f`'s argument types and return type are
-     all the same type `T` (the `fn(T, T) -> T` / `fn(T) -> T` /
-     `fn(T, T) -> Bool` closure shape), the primary concept is `T`.
-  3. **Upstream argument convergence.** Otherwise, if every argument
-     type and the return type are declared in a single file `X`, and
-     `f`'s current file `Y` imports `X`, the primary concept is the
-     type in `X` and the home is `X`.
-  4. **No primary concept (cross-cutting).** If none of (1)–(3) selects
-     a single owning type, the function is genuinely cross-cutting and
-     the lens does not fire.
+     home file, regardless of what its arguments or return look like.
+  2. **Domain-typed function.** Strip observation codomains and look at
+     the remaining argument/return types. If the **non-observation
+     types** are all the same type `T` (the function operates over `T`
+     and returns either `T` or an observation of `T`), the primary
+     concept is `T`. `fn(Nat, Nat) -> Ordering` selects Nat; `fn(Nat) -> Nat`
+     selects Nat; `fn(Nat, Nat) -> Bool` selects Nat.
+  3. **Upstream argument convergence.** Otherwise, if every
+     non-observation type in the signature is declared in a single
+     file `X`, and `f`'s current file `Y` imports `X`, the primary
+     concept is the type in `X` and the home is `X`.
+  4. **No primary concept (cross-cutting).** If none of (1)–(3)
+     selects a single owning type, the function is genuinely
+     cross-cutting and the lens does not fire.
   The lens fires when (1), (2), or (3) selects a primary-concept home
-  `X` and `f` lives in `Y ≠ X`. Symmetric rule for `data` declarations:
-  primary concept comes from the declared algebra's type parameter
-  first, then key/payload type.
-- *Decidable:* yes — witness-field membership, argument/return type
-  uniformity, and the import graph are all queryable from the parsed
-  model. The four-rule selector is a closed structural cascade with no
-  judgment calls.
+  `X` and `f` lives in `Y ≠ X`. Symmetric rule for `data` declarations.
+- *Decidable:* yes — `canonical_observations` registry membership,
+  witness-field membership, non-observation-type uniformity, and the
+  import graph are all structural facts in the parsed model. The
+  four-rule selector is a closed structural cascade.
 - *Verdict:* hard error in `std/` and `extdeps/`.
-- *Escape:* (4) genuinely cross-cutting functions pass without
-  annotation. (3) admits an `// Anchor: cross-cutting { because: <token> }`
-  override where the token is drawn from a closed vocabulary
-  (`bridge`, `coercion`, `display`) — operator-confirm.
+- *Escape (structural — no comment anchors):* (4) cross-cutting
+  functions pass via rule (4) without an exemption. For rule
+  (1)/(2)/(3) cases where the lens fires but the function legitimately
+  belongs in its current file, the exemption is itself a substrate
+  data row read by the lens:
+  ```dag
+  data foo_wrong_home_exemption: WrongHomeExemption = {
+    function: foo_fn,
+    because:  bridge,                  // closed vocabulary
+                                       // (bridge / coercion / display)
+  }
+  ```
+  Comment anchors do not satisfy the escape, by construction. The
+  vocabulary token set (`bridge`, `coercion`, `display`) is itself a
+  closed coproduct declared structurally — extending it is a data
+  edit, not a doc edit.
 
 **Concrete match — F5 (`src/v4/std/float.dag:52-62`):**
 ```dag
@@ -586,10 +612,21 @@ fn nat_compare(a: Nat, b: Nat) -> Ordering {
 - *Decidable:* yes — arm-body shape (literal-vs-call/recursion/ctor) is
   a structural property of the parsed match. No name inspection.
 - *Verdict:* hard error in substrate files.
-- *Escape:* the trivial arm carries an `// Anchor: trivially-true { because: <token> }`
-  pinning the justification (`{ because: variant-has-no-children }`,
-  `{ because: identity-on-Unit }`, etc.) drawn from a closed vocabulary
-  — operator-confirm.
+- *Escape (structural — no comment anchors):* the exemption is itself
+  a substrate data row read by the lens:
+  ```dag
+  data unit_is_unit_vacuous_arm_exemption: VacuousArmExemption = {
+    function:   unit_is_unit,
+    at_variant: Unit,
+    because:    variant-has-no-children,   // closed vocabulary
+                                           // (variant-has-no-children /
+                                           //  identity-on-Unit /
+                                           //  proven-unreachable)
+  }
+  ```
+  Comment anchors do not satisfy the escape, by construction. The
+  `because` vocabulary is itself a closed coproduct declared
+  structurally — extending it is a data edit.
 
 **Concrete match — F1 (`src/v4/std/node.dag:115-120`):**
 ```dag
@@ -784,22 +821,34 @@ fn derive_effect_shape(...) -> Outcome<EffectShape> {
 > "Cross-reference — D2-resolver" note below for why the dangling-import
 > shape is a separate finding.
 
-- *Signature:* a type name `T` introduced by **any `type T` declaration
-  form** in two different `.dag` files. The form is irrelevant — sum /
-  alias (`type T = A | B`), record (`type T { f1: ..., f2: ... }`),
-  unit (`type T`), and generic (`type T<X> = ...`) all count as
-  introductions of the name `T`. The lens fires on the *name* being
-  introduced twice, not on a specific syntactic form. (Scope
-  clarification — the *planned-but-absent home* case is a different
-  finding shape: an unresolved-reference / fail-closed P3 violation,
-  not a duplicate-authority one. The lens that catches it is L0.8
-  unbound-name extended to dangling import paths — separately
-  classified so root-cause precision is preserved. L1.12 is
-  duplicate-declaration only, and it covers `Bool = True | False`,
-  `Word64 { bytes: List<Byte> }`, `Url { scheme: ..., ... }`, and any
-  other type-introduction form on equal footing.)
-- *Decidable:* yes — name uniqueness across the corpus is queryable
-  from the parsed model. No comment/prose inspection.
+- *Signature (resolved concept identity, not lexical spelling):* two
+  `type T1` and `type T2` declarations in different files are
+  duplicates IFF they **resolve to the same canonical concept
+  identity** AND neither is a structural alias of the other. The lens
+  does **not** key on lexical name equality — `network.Result` and
+  `compiler.normalize.Result` are different concepts in different
+  namespaces and are not duplicates; what makes two declarations a
+  duplicate is shared canonical-concept membership, declared
+  structurally:
+  ```dag
+  data bool_concept: CanonicalConcept = {
+    canonical_home: v4.std.logic.Bool,
+    members:        { dsl.std.types.Bool },   // historical mirrors
+  }
+  ```
+  The lens fires when two type declarations claim membership in the
+  same `CanonicalConcept` row without one being a structural alias /
+  retirement / migration of the other. Same lexical name in
+  different concepts does not fire. All declaration forms count —
+  sum / alias (`type T = A | B`), record (`type T { ... }`), unit
+  (`type T`), generic (`type T<X> = ...`) — the form is irrelevant
+  once concept identity is established. (Scope clarification — the
+  *planned-but-absent home* case is a different finding shape:
+  unresolved reference / fail-closed P3, caught by L0.8 extended to
+  dangling import paths, deliberately not L1.12.)
+- *Decidable:* yes — `CanonicalConcept` registry membership and
+  structural-alias edges are queryable from the parsed model. No
+  lexical name equality, no comment/prose inspection.
 - *Verdict:* hard error.
 - *Escape (structural — applies the same rule L1.7 enforces against
   itself):* the lens does **not** accept a comment marker as authority,
@@ -820,20 +869,25 @@ fn derive_effect_shape(...) -> Outcome<EffectShape> {
 
 **Concrete match — F9 (`dsl/std/types.dag:173` and `src/v4/std/logic.dag:14`):**
 ```dag
-// dsl/std/types.dag:163-173   (legacy-scanner anchor, no authority designator)
-// v3 Path A (Lane 1e-2b): `Bool` still parses here for the legacy scanner ...
+// dsl/std/types.dag:163-173
 type Bool = True | False
 
-// src/v4/std/logic.dag:13-14   (dissolution classification, no authority designator)
-// 🟢 coproduct dissolution — DECISIONS.md classification ledger: Bool.
+// src/v4/std/logic.dag:13-14
 type Bool = True | False
+
+// Some substrate-owned ontology file:
+data bool_concept: CanonicalConcept = {
+  canonical_home: v4.std.logic.Bool,
+  members:        { dsl.std.types.Bool },
+}
 ```
 
-Both declarations *are* annotated, but neither annotation discharges
-the lens — comment markers never do, by construction (see the
-*Escape* clause). The existing tags classify the finding shape
-(dissolution status, scanner anchor); none of them is a structural
-alias edge, retirement-ledger row, or deletion.
+The `bool_concept` row asserts both declarations are the same
+canonical concept; the lens fires because the `dsl.std.types.Bool`
+declaration is not a structural alias of `v4.std.logic.Bool`. A
+hypothetical `network.Result` and `compiler.normalize.Result` would
+*not* fire — they are not co-members of any `CanonicalConcept` row,
+and the lens does not equate lexical spelling with concept identity.
 
 **Cross-reference — D2-resolver:** the D2-resolver gap is a mix of
 shapes that **do not collapse into L1.12**:
