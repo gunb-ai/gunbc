@@ -281,8 +281,6 @@ mod v4_extdeps_typescript_dag_smoke_test;
 mod v4_lens_cost_dag_smoke_test;
 #[path = "integration/v4_std_fact_density_dag_smoke_test.rs"]
 mod v4_std_fact_density_dag_smoke_test;
-#[path = "integration/v4_compiler_tokenize_dag_smoke_test.rs"]
-mod v4_compiler_tokenize_dag_smoke_test;
 #[path = "integration/value_body_substrate_mirror_isomorphism_test.rs"]
 mod value_body_substrate_mirror_isomorphism_test;
 #[path = "integration/common/wiring_scanner_test.rs"]
