@@ -1303,7 +1303,7 @@ and `ConstantConcatenation.expressions` (IEEE 1364-2005 §A.8.1
 They ride the same Wave-A2 `List<T> where non_empty` deferral; no
 Verilog-local non-empty carrier is introduced.
 
-**Dissolution trigger:** `std/collection.dag` Wave-A2 `List<T> where non_empty` (merge-base enumeration of 26 sites + PR #3272 sites 27-29).
+**Dissolution trigger:** `std/collection.dag` Wave-A2 `List<T> where non_empty` (29 total sites after PR #3272: merge-base sites 1-26 plus PR #3272 sites 27-29).
 
 ### SL-3229-VERILOG-D3200 — #3200 consumer-independent 🟡 coproducts (first-consumer decomposition)
 
