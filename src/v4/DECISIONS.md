@@ -63,7 +63,9 @@ authority location(s) and moves to Part 1.
 | **D4** | **[SUPERSEDED by D2-REV — see the D2-REV row below + the "D2 REVERSAL" section]** **GroundingMap-home — the shared `extdeps/languages/resolver.dag` registry** (operator-ratified 2026-05-16; co-drafted; completes **D2**). The D2 resolver's *shared* types live in ONE new file `extdeps/languages/resolver.dag` — NOT re-declared per language (parallel-declaration P2 forbids; `feedback_import_not_redeclare_carriers`) and NOT homed in `rust.dag` (which would make one language file a substrate authority for the other four, and balloon as future shared resolver types land). `type GroundingMap<IRCarrier> { spelling: String }` is its first resident. **Admission rule (STRICT):** `resolver.dag` hosts ONLY *structurally-language-INVARIANT* resolver types — a type whose structure provably cannot vary across the modeled language specs (a convergence carrier). Spec-varying types stay per-language (`OverflowDisposition` etc. — D2.5 / L-2). Test before admitting: can you prove the structure invariant across the specs? Future shared resolver types (e.g. the C5-fidelity `Modeled \| Declared-normalized \| Fail-closed` disposition classifier) land here without a fresh placement decision. Closed-tree extension: `STRUCTURE.md` `.dag` count +1. Per-language files each add a one-line `import … resolver { GroundingMap }` + their per-primitive `data <lang>_<prim>_grounding` instances (the grounding-row fan-out — canonical `rust.dag` first, then the 4 others). | new `extdeps/languages/resolver.dag` + `STRUCTURE.md` count/enumeration + `extdeps/languages/*` import lines + grounding instances; this row; cross-ref **D2** |
 | **D5** | **Operator-driven frozen-header / frozen-contract reconcile is sanctioned in-PR** (operator-ratified 2026-05-16). "Preserve-verbatim" on a frozen scaffold header forbids *unsanctioned worker contract-drift* — it does NOT forbid *sanctioned reconciliation*. When an operator-tier action (a BLOCKING finding, an operator ruling) legitimately moves a worker's body past its frozen header or I/O contract, the header/contract is **reconciled to match in the SAME PR**, with the reconcile receipt — citing the driving operator action — recorded in the **commit message**. **Amended 2026-05-17 (operator-ratified):** the receipt is a commit-message entry, *not* an in-file `HEADER RECONCILE` block — the in-file-block form is superseded by the no-prose directive / `docs/modeling-discipline.md` Practice 9. D5's intent — a conscious, reviewer-visible reconcile receipt — is preserved: it lives in the commit message + `git blame`. **Discriminator:** an operator-tier action drove the body change ⇒ reconcile the header/contract in-PR, flagged; NO operator action drove it ⇒ the body must conform to the frozen header (preserve-verbatim holds, the worker cannot move the contract). Covers BOTH header-doc drift (stale `Owns`/`Consumes` bullets after a sanctioned refactor) AND frozen-contract changes (operator BLOCKS an I/O contract as P2/§2-insufficient). Already operating: `integer.dag` #3190 (`Consumes` reconciled), #3209 finding 2 (`WaitProcessResult`). Does NOT permit free worker header edits — operator-driven only. | this row + the reconcile receipt recorded in the **commit message** (the in-file `HEADER RECONCILE` block form — `integer.dag` #3190 precedent — is retired by Practice 9, 2026-05-17); refines the frozen-scaffold-header / preserve-verbatim discipline |
 | **D2-REV** | **D2 / D4 REVERSED — fact-bundle modeling supersedes alias-identity** (operator-ratified 2026-05-17, **out-of-band** — the verbatim operator-quote provenance is in the "D2 REVERSAL" section below). An `extdeps` primitive is modeled as a fact-bundle grounded from its own spec, never a bare `std/` alias; deduplicate to a `std/` carrier only on *proven* coincidence; the structural fact-density / hollow-alias gate is `T-30`, a hard prerequisite of T-4. This is a one-line index pointer — the full record (root cause, phased plan, impact map, "coincide" definition) is the **"D2 REVERSAL + FACT-BUNDLE RESEED"** section below, which is the authority. Supersedes the **D2** and **D4** rows above. | the **"D2 REVERSAL + FACT-BUNDLE RESEED"** section of this file (authority); `#3224` executes Phase 1; `docs/modeling/grounding-worked-examples.md` companion |
+| **P4-3208** | **Practice-4 ledger home for #3208 Lean/machine-code model coproducts** (operator-directed strict de-prose 2026-05-17). `.dag` files keep only terse anchors/tags; detailed dissolution ledgers live here until modeling-discipline reconciles Practice-4 vs Practice-9. See the "P4-3208 coproduct ledger" section below. | this row + "P4-3208 coproduct ledger"; `extdeps/languages/{lean,machine_code}.dag` keeps terse carrier declarations only |
 | **OS-1** | **OS extdep coproduct ledgers and refinement-scaffold disposition for #3209** (operator-audit regime, 2026-05-17). Practice-4 dissolution ledgers for `file_system.dag` / `process.dag` are architectural decision records, not source comments; the `.dag` files keep only terse tags/anchors. POSIX numeric and byte-string refinement gaps remain tracked scaffolds in #3209, not expanded fact bundles; named trigger is **T-25-core refinement substrate / T-30 fact-density gate**. | this row + "OS-1 — #3209 coproduct dissolution and scaffold record" below; terse tags in `extdeps/file_system.dag` and `extdeps/process.dag` |
+| **T29-ABI** | **C++ ABI / target data-model slice** (T-29, operator-ratified 2026-05-17; manager brief 2026-05-18). `extdeps/cpp_abi.dag` is the single authority for C++ implementation-defined fundamental-width choices consumed by `cpp.dag`; C++ primitive fact-bundles parameterize over `CppTargetProfile<abi_model,data_model>` instead of guessing LP64/ILP32 constants. `CppIntegerWidth`, `CppPlainCharSignedness`, `CppDataModelFamily`, and `CppAbiModel` remain closed coproducts: each is an externally named alternative, not simultaneous coordinates. Common ILP32/LP64/LLP64/ILP64 rows are type-level data-model facts parameterized by `plain_char_signedness`; the data-model family never defaults that independent implementation-defined fact. | `extdeps/cpp_abi.dag`, `extdeps/languages/cpp.dag`, `STRUCTURE.md`; cross-ref T-29 in `TASKS.md` |
 
 ---
 
@@ -89,6 +91,13 @@ remain boundary indexes until the named substrate support lands.
 | `std/logic.dag` | `Bool` | Green coproduct | Closed two-valued logic carrier: `True | False`. Terminal as the irreducible Boolean partition; Boolean algebra data is a structure over this carrier, not a second carrier. |
 | `std/text.dag` | `Char` | Yellow value-refinement scaffold | Documented: `Char = Nat` is an honest bridge carrier for Unicode scalar values because current substrate syntax cannot express `0..=0x10FFFF` excluding surrogate range `0xD800..=0xDFFF`. Bounded use: producers/ingesters must validate scalar-value membership. Trigger: bounded non-contiguous value refinement or equivalent character scalar carrier. |
 | `std/machine.dag` | `Byte`, `Word8`, `Word16`, `Word32`, `Word64`, `Word128` | Yellow fixed-cardinality scaffold | Documented: `bits: List<Bit>` and `bytes: List<Byte>` fields are intentionally unrefined list carriers. Bounded use: no consumer may treat list length as proven width without an explicit validator, witness, or grounding-side check. Trigger: fixed-cardinality list/field refinement substrate. |
+| `std/network.dag` | `HttpMethod` (`T-26-HttpMethod`) | Green coproduct | RFC 9110 method token set plus RFC 5789 `PATCH`; closed boundary carrier consumed by OpenAPI / coordination / wire-contract models. |
+| `std/network.dag` | `Rfc3986AbnfProduction`, `UriScheme`, `UriUserInfo`, `UriUserInfoSlot`, `UriHost`, `UriPort`, `UriPortSlot`, `UriAuthority`, `UriPath`, `UriHierPart`, `UriQuery`, `UriQuerySlot`, `UriFragment`, `UriFragmentSlot`, `Url`, `UriRelativePart`, `UriRelativeReference`, `UriReference`, `NetworkAddress` | Green modeled facts | RFC 3986 §3/§4.1/§4.2 carriers model current-substrate facts now: `Url` is scheme + hier-part + optional query/fragment; `UriAuthority` decomposes to optional userinfo + host + optional port; `UriPort` carries `Nat`; `UriScheme` carries a normalized spelling; every component carries its ABNF production data; `UriReference` includes absolute and relative references for consumers such as OpenAPI URL fields. |
+| `std/network.dag` | `UriUserInfoSlot`, `UriPortSlot`, `UriQuerySlot`, `UriFragmentSlot` (`T-26-UriComponentPresence`) | Green coproducts | RFC 3986 optional component presence is modeled structurally: userinfo, port, query, and fragment are present/absent slots, so constructors do not fabricate empty component values. |
+| `std/network.dag` | `UriHierPart` (`T-26-UriHierPart`) | Green coproduct | RFC 3986 §3 hier-part alternatives are modeled as the closed choice among authority path, absolute path, rootless path, and empty path. |
+| `std/network.dag` | `UriRelativePart` (`T-26-UriRelativePart`) | Green coproduct | RFC 3986 §4.2 relative-part alternatives are modeled as the closed choice among authority path, absolute path, no-scheme path, and empty path. |
+| `std/network.dag` | `UriReference` (`T-26-UriReference`) | Green coproduct | RFC 3986 §4.1 URI-reference is the closed choice between an absolute URI and a relative reference; OpenAPI URL fields consume this carrier where relative references are permitted. |
+| `std/network.dag` | RFC 3986 validated component refinements | Yellow `feature:T-25-core` scaffold | Residual only: fail-closed validation that a component spelling satisfies its carried ABNF production. Bounded use: constructors/ingesters must validate before constructing component values. Trigger: T-25-core base-type plus fail-closed validation shape and T-30 structural checker; dissolve under #3244 plan-binding by replacing producer-side convention with checked refinement witnesses. |
 | `std/nat.dag` | `Nat` | Green coproduct | Closed Peano inductive natural number carrier: `Zero | Succ { prev: Nat }`. Terminal because the recursive structure is the natural-number definition; arithmetic data rows are structures over it. |
 | `std/node.dag` | `Connective`, `Behavior`, `NodeKind`, `EdgeLabel`, `EdgeDiscipline` | Green coproducts | `Connective` is the closed set of six type connectives; additions are substrate-extension stops. `Behavior` is the closed set of five L1 computation behaviors. `NodeKind` is the binary type/computation split. `EdgeLabel` is named vs positional child addressing. `EdgeDiscipline` is the closed classifier derived from connectives. |
 | `std/node.dag` | `Path` prior step sum | Green dissolved-away receipt | Positional path steps are deliberately dissolved: `Path` is `List<Symbol>` over named edges only. The removed path-step sum is not retained; positional addressing is subsumed by replacing the enclosing named subtree until a future ratified extension changes that shape. |
@@ -186,6 +195,56 @@ consumes that derived fact.
 
 ---
 
+## P4-3208 coproduct ledger
+
+For #3208's `lean.dag` and `machine_code.dag`, each listed coproduct was
+checked against the Practice-4 five-pattern ledger:
+
+1. **Fact placement** — can this distinction move to one consumer instead
+   of substrate?
+2. **Variant-is-data** — can this be a product/record with data fields?
+3. **Algebraic form** — is this already an algebraic inhabitance/law fact?
+4. **Dimensional** — is this one coordinate that should be a field, not a
+   sum?
+5. **Parameterized family** — is this one `F<X>` family rather than a
+   closed coproduct?
+
+### `src/v4/extdeps/languages/lean.dag`
+
+| Carrier | Classification | Ledger result |
+|---------|----------------|---------------|
+| `LeanDeclarationKind` | 🟢 GREEN terminal | All five dissolution patterns fail: declaration kind is shared by grammar/emit/proof export; `Symbol` would be stringly; not algebra; one declaration has one kind; payload/validation rules are heterogeneous. |
+| `LeanLevel` | 🟢 GREEN terminal | All five dissolution patterns fail: sort/constant/universe validation share the carrier; payloads are heterogeneous; Lean universe syntax is the external fact; one resolved level is zero/succ/max/imax/param; constructors are not one `F<X>`. Unresolved metavariables fail closed outside this carrier. |
+| `LeanBinderInfo` | 🟢 GREEN terminal | All five dissolution patterns fail: parser/emitter/elaboration consume binder visibility; `Bool` cannot encode the four visibilities; not algebra; one binder has one visibility; closed nullary alternatives are not one family. |
+| `LeanTermForm` | 🟢 GREEN terminal | All five dissolution patterns fail: type checking/emission/proof export share the classifier; payloads are heterogeneous and a flat record admits invalid mixtures; Lean term grammar is external; one term has one form; constructors are heterogeneous. |
+| `LeanTerminationBy` | 🟢 GREEN terminal | All five dissolution patterns fail: proof export/termination checking/emission distinguish structural vs well-founded hints; structural carries a decreasing parameter while well-founded carries a measure; not algebra; one hint is structural or well-founded; payloads are heterogeneous. |
+| `LeanTerminationClause` | 🟢 GREEN terminal | All five dissolution patterns fail: termination export/parser/emitter distinguish `termination_by` vs `decreasing_by`; payloads are heterogeneous; Lean clause syntax is external; one clause occurrence has one form; roles differ. |
+| `LeanDefinitionTermination` | 🟢 GREEN terminal | All five dissolution patterns fail: declaration-level clause cardinality is shared; `List<LeanTerminationClause>` admits duplicates/order drift and a flat record admits optional holes; syntax cardinality is external; one declaration has one of four presence states; payload combinations are heterogeneous. |
+| `LeanProofArtifact` | 🟢 GREEN terminal | All five dissolution patterns fail: proof exporter/emitter share the classifier; theorem and terminating-definition artifacts carry different required fields; not algebra; one artifact is theorem proof or terminating-definition proof; payloads are heterogeneous. |
+| `LeanFidelityFeature` | 🟢 GREEN terminal | All five dissolution patterns fail: C5 boundary and generic walker share feature classes; `Symbol` would make the boundary open; not algebra; one boundary decision names one feature; feature classes are heterogeneous. |
+| `LeanFidelityDisposition` | 🟢 GREEN terminal | All five dissolution patterns fail: modeled/normalized/fail-closed is the shared C5 disposition; non-modeled variants carry feature payloads and a flat record admits impossible combinations; not algebra; one feature has one disposition; payloads are heterogeneous. |
+
+### `src/v4/extdeps/languages/machine_code.dag`
+
+| Carrier | Classification | Ledger result |
+|---------|----------------|---------------|
+| `Isa` | 🟢 GREEN terminal | All five dissolution patterns fail: encoding/register/operand rules dispatch on ISA; `Symbol` would make the closed spec set stringly; not algebra; one ISA value has one versioned spec authority; ISA authorities are not one width-indexed carrier. Version authorities: `X86_64Isa.revision` names the Intel SDM revision, `Aarch64Isa.revision` names the Arm A-profile Architecture Reference Manual revision (`https://developer.arm.com/architectures/cpu-architecture/a-profile/docs`), and `RiscV64Isa.revision` names the RISC-V ISA manual release (`https://github.com/riscv/riscv-isa-manual/releases`). |
+| `ByteOrder` | 🟢 GREEN terminal | All five dissolution patterns fail: decode/emit reads byte order uniformly; `Bool`/`Symbol` erases order meaning; not algebra; one field has one order; two alternatives are not one `F<X>`. |
+| `InstructionLength` | 🟢 GREEN terminal | All five dissolution patterns fail: tokenization/decoding consumes the instruction boundary; fixed and variable forms carry different payloads; not algebra; one decode point has one length discipline; payloads are heterogeneous. |
+| `InstructionWord` | 🟡 TRACKED scaffold (`feature:fixed-cardinality-width-carrier`) | Fact placement fails; variant-is-data is partial because the bounded byte-count / Nat-indexed instruction-width primitive is missing. Named arrival: TASKS.md T-3 scalar/numeric stack lands the fixed-cardinality width carrier in `std/machine.dag` or `std/cardinality.dag`. Dissolve-on-arrival follow-up: replace this enum with that carrier and update the P4-3208 tag/row to 🟢, or remove it if no coproduct remains. |
+| `RegisterClass` | 🟢 GREEN terminal | All five dissolution patterns fail: operand legality/cost/register consumers share register class; width alone cannot distinguish classes; integer/float aliases ground elsewhere but register class is ISA surface; one occurrence has one class; register semantics are heterogeneous. |
+| `IndexScale` | 🟢 GREEN terminal | All five dissolution patterns fail: decode/emit/address calculation share scale legality; `MachineU8` admits invalid factors; not algebra; one scaled index has one factor; closed factors are not one family. |
+| `AddressingMode` | 🟢 GREEN terminal | All five dissolution patterns fail: operand decode and memory-effect lenses share the classifier; variants have different required fields and a flat record admits invalid mixtures; not algebra; one operand occurrence has one address form; payloads are heterogeneous. |
+| `Operand` | 🟢 GREEN terminal | All five dissolution patterns fail: decode/emit/operand legality branch on operand shape; payloads are heterogeneous; instruction operand syntax is ISA surface; one operand is register/immediate/memory; payloads differ by category. |
+| `ImmediateOperandTarget` | 🟢 GREEN terminal | All five dissolution patterns fail: decode/branch-target analysis/emit distinguish literal and target immediates; `Bool`/`Symbol` erases target role; not algebra; one immediate slot has one target class; alternatives are closed. |
+| `MemoryOperandConstraint` | 🟢 GREEN terminal | All five dissolution patterns fail: decode/emit/memory effects share addressing-form constraints; each form carries different register/displacement constraints and a flat record admits impossible mixtures; not algebra; one memory slot constrains one form; payloads are heterogeneous. |
+| `InstructionOperandSlot` | 🟢 GREEN terminal | All five dissolution patterns fail: decode/emit/operand legality read production-slot classifier; slots carry category-specific constraints; not algebra; one slot accepts one operand category in this L-2 model; payloads are heterogeneous. |
+| `OperandBinding` | 🟢 GREEN terminal | All five dissolution patterns fail: decode/emit/operand legality consume category-specific binding; variants carry different slot refs and payloads; not algebra; one decoded operand is register/immediate/memory; payloads are heterogeneous. |
+| `MachineFidelityFeature` | 🟢 GREEN terminal | All five dissolution patterns fail: disassembly/emit/C5 diagnostics read feature classes; `Symbol` would make the boundary open; not algebra; one boundary decision names one class; feature classes are heterogeneous. |
+| `MachineFidelityDisposition` | 🟢 GREEN terminal | All five dissolution patterns fail: modeled/normalized/fail-closed is the shared C5 disposition; non-modeled variants carry feature payloads and a flat record admits impossible combinations; not algebra; one feature has one disposition; payloads are heterogeneous. |
+| `MachineIntegerOverflowBehavior` | 🟢 GREEN terminal | All five dissolution patterns fail: integer operation semantics/lowering read overflow behavior; `Bool` cannot distinguish wrap/trap/undefined; wrapping relates to fixed-width carrier behavior but trap/undefined are target operation semantics; overflow is separate from flag writes; alternatives are closed. |
+| `FlagWriteDisposition` | 🟢 GREEN terminal | All five dissolution patterns fail: condition-code dependency consumers read this coordinate; `Bool` cannot distinguish architectural flags vs predicate-register writes; not algebra; one instruction has one flag-write disposition; alternatives are closed. |
+
 ## OS-1 — #3209 Coproduct Dissolution And Scaffold Record
 
 This section preserves the Practice-4 ledger content moved out of
@@ -280,7 +339,6 @@ carriers: `ProcessId = Int`, `ExitCode = Int`, `SignalNum = Int`,
 **T-25-core refinement substrate / T-30 fact-density gate**. Expanding
 them now would be fact-bundle-rework-class work, outside the NOT-D2-held
 de-prose scope.
-
 
 ## Part 2 — RATIFIED 2026-05-15 (cascade-closures — now in Part 1)
 
@@ -540,7 +598,7 @@ the in-file `// <emoji> coproduct dissolution — DECISIONS.md <ID>` tag
 | **T-4.6-P4-OpenApiHeaderDeferredKey** | `OpenApiHeaderDeferredKey` | 🟡 | Header Object deferred members (style / explode / example / examples); excludes query-only **`allowEmptyValue`**; **`deprecated`** is **`OpenApiHeaderDeprecatedSlot`** on **`OpenApiHeaderObject`**; **`content`** is first-class on **`OpenApiHeaderPayloadSlot`** (XOR with **`schema`**). OAS Header churn on these deferrals ⇒ extend sum + row. |
 | **T-4.6-P4-OpenApiLinkDeferredKey** | `OpenApiLinkDeferredKey` | 🟡 | Link Object deferred members; Link spec churn ⇒ extend sum + row. |
 | **T-4.6-P4-OpenApiLinkTarget** | `OpenApiLinkTarget` | 🟡 | OAS Link Object **`operationId` XOR `operationRef`** — exactly one target identity; carried as `OpenApiLinkObject.target` (**T-4.6-OAS**). |
-| **T-4.6-P4-OpenApiHttpMethod** | `OpenApiHttpMethod` | 🟢 | Closed eight-verb Operation map key set (OAS Path Item `get`…`trace`). |
+| **T-4.6-P4-OpenApiHttpMethod** | `OpenApiHttpMethod` | 🟢 | OAS Path Item operation field key set is the closed eight verbs `get`…`trace`; it intentionally excludes HTTP `CONNECT` even though shared `std/network.dag` `HttpMethod` includes it. |
 | **T-4.6-P4-OpenApiOptionalString** | `OpenApiOptionalString` | 🟢 | Present/absent optional string field idiom over OAS optional strings. |
 | **T-4.6-P4-OpenApiHeaderRequiredSlot** | `OpenApiHeaderRequiredSlot` | 🟢 | Required boolean slot on Header Object (spec-bounded two-way). |
 | **T-4.6-P4-OpenApiHeaderDeprecatedSlot** | `OpenApiHeaderDeprecatedSlot` | 🟢 | Header Object **`deprecated`** optional boolean (Parameter-parity fixed field on **`OpenApiHeaderObject`**, **T-4.6-OAS**). |
@@ -548,7 +606,7 @@ the in-file `// <emoji> coproduct dissolution — DECISIONS.md <ID>` tag
 | **T-4.6-P4-OpenApiHeaderOrReference** | `OpenApiHeaderOrReference` | 🟡 | Inline Header vs `$ref`; reference resolution + Reference Object parity triggers **T-4.6-OAS**. |
 | **T-4.6-P4-OpenApiLinkOrReference** | `OpenApiLinkOrReference` | 🟡 | Inline Link vs `$ref`; same reference substrate as **T-4.6-P4-OpenApiHeaderOrReference**. |
 | **T-4.6-P4-OpenApiContactSlot** | `OpenApiContactSlot` | 🟡 | Info Object `contact` optional subtree; OAS Contact Object churn ⇒ extend Contact fields + reconcile row. |
-| **T-4.6-P4-OpenApiLicenseUrlOrIdentifierSlot** | `OpenApiLicenseUrlOrIdentifierSlot` | 🟡 | License Object `url` XOR `identifier` (+ neither) — mutual exclusion modeled; OAS License churn ⇒ amend row. |
+| **T-4.6-P4-OpenApiLicenseUrlOrIdentifierSlot** | `OpenApiLicenseUrlOrIdentifierSlot` | 🟡 | License Object `url` XOR `identifier` (+ neither) — mutual exclusion modeled; `url` consumes `UriReference` because OAS URL fields admit relative references unless a field overrides that rule. OAS License churn ⇒ amend row. |
 | **T-4.6-P4-OpenApiLicenseSlot** | `OpenApiLicenseSlot` | 🟡 | Info `license` optional subtree; couples to **T-4.6-P4-OpenApiLicenseUrlOrIdentifierSlot**. |
 | **T-4.6-P4-OpenApiMediaTypeSchemaSlot** | `OpenApiMediaTypeSchemaSlot` | 🟡 | Media Type `schema` present vs absent; couples to `OpenApiSchema`. |
 | **T-4.6-P4-OpenApiResponseContentSlot** | `OpenApiResponseContentSlot` | 🟡 | Response `content` optional map; media-type map churn ⇒ amend modeling + row. |
@@ -741,6 +799,22 @@ clobber surviving language vocabulary and the `std/` numeric core.
   the historical D2 row in this file (NOT the core).
 - **Active PRs:** `#3219` closed; `#3208` held.
 
+#### #3208 held dissolution dispositions
+
+- **Primitive alias rows:** 🟡 bound to the post-D2-REV fact-bundle
+  rework. Trigger: the T-4 fact-bundle rework executes after T-30 and
+  the remaining T-4 feeders clear.
+- **Shared C5 fidelity disposition carrier and disposition rows:** 🟡
+  bound to the same post-D2-REV shared-C5-fidelity / fact-bundle rework.
+  This covers `LeanFidelityDisposition` / `MachineFidelityDisposition`
+  consolidation and the `lean_feature_disposition` /
+  `machine_feature_disposition` predicate/data-row dissolution. Trigger:
+  the T-4 fact-bundle rework executes after T-30 and the remaining T-4
+  feeders clear.
+- **Phantom `IRCarrier` parameters:** 🟢 not a dissolution-class finding;
+  dead-generic-parameter polish only, with no walker, predicate, carrier,
+  or emit-template obligation.
+
 ### P4-TS-REGATE — `typescript.dag` D2→fact-bundle regate disposition (2026-05-18)
 
 Disposition **established 2026-05-18** (pending/tracked — not a landed
@@ -790,6 +864,23 @@ fact-bundle/grounding model on one complex type per target — spanning
 language, mostly fail-closed). Each: the model (carrier + meaning) and
 step-by-step coercion. Plan-only; the remaining mainstream
 language/format targets fan out against the same template.
+
+### T-30 — `std/fact_density.dag` encoding note (2026-05-17)
+
+- **Header discipline (PR #3227):** the on-disk file keeps a terse machine
+  header only: path line; then **contiguous** `Scope:` / `Owns:` /
+  `Consumes:` / `Status:` (Practice 9 four-line header); **then** at most
+  one `Anchor:` URL line per owned carrier (anchor **after** that block,
+  not between `Owns:` and `Consumes:`).
+  Process receipts, Practice pointers, and bootstrap-collision narrative
+  live in commit messages, this ledger, or `TASKS.md` — not in the `.dag`
+  comments.
+- **P2 / Practice 5 (single authority):** Until a **generated** `.dag` (or emitted) consumer reads `SourceSpecReadFact`, this module does **not** satisfy INVARIANTS §P2 “**When a boundary counts as landed**” — the hollow-alias predicate’s interim authority remains the Rust mirror (`src/v3/compiler/src/v4_hollow_alias_gate.rs`). `STRUCTURE.md` lists `fact_density.dag` as **P2-staging**, not co-equal with landed `std/` primitives. The on-disk file is intentionally a **Practice-9 terse header** only: the `Scope:` line is one machine line; this bullet carries the former multi-line header narrative (no generated `.dag`/std consumer yet; do **not** treat `SourceSpecReadFact` as a landed substrate primitive in docs until INVARIANTS §P2’s generated-consumer proof exists).
+- **Nominal witness:** `SourceSpecReadFact` is a body-less nominal marker
+  for spec-read anchoring (not a numeric alias). A richer `Node` payload
+  is deferred until `compile_to_dag` can prepend `std/node.dag` without
+  colliding on v3-bootstrap top-level names; dissolution ships in the
+  same change set as that bridge.
 
 ### Status
 
