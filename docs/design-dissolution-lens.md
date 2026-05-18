@@ -183,6 +183,257 @@ non-finding).
   string *data* that is not an emitter template, passes.
 - *Kills:* string-templated emitters (`template: "Vec<{0}>"`).
 
+### L1.7 Off-substrate-fact lens — kills *prose-asserted facts* (proposed)
+
+> **Status: proposed.** Derived from the 2026-05-18 ingest of findings F3
+> (hand-rolled lattice merges with prose-only inhabitance), F4 (fixed
+> widths carried by identifier, not structure), F11 (`ResourceHandle`
+> opacity claimed in a comment over a freely-constructible record).
+> Generalizes the standing "machine-readable inhabitance is the bar"
+> ruling.
+
+- *Signature:* a `.dag` declaration whose header comment or identifier
+  contains a fact-bearing token from a closed vocabulary
+  (`inhabits <Algebra>`, `opaque`, `non-empty`, `Word<N>`, `Float<N>`,
+  `bounded`, `non-forgeable`) **without a matching structural artifact**:
+  - claimed algebra inhabitance → no `data ... : Algebra<T>` row in scope;
+  - claimed cardinality / width → no refinement clause on the carrier
+    (the `List<T> where len(_) == N` shape);
+  - claimed opacity / non-forgeability → no constructor restriction
+    (the type is a record whose fields are all freely constructible from
+    user-reachable substrate values).
+- *Decidable:* yes — the claim vocabulary is a closed set; the structural
+  counterpart is locatable (data table, refinement clause, constructor
+  visibility).
+- *Verdict:* hard error on `std/` and substrate files.
+- *Escape:* prose without fact-bearing tokens (rationale, anchors,
+  examples) passes. A claim *with* the structural counterpart present
+  passes.
+- *Kills:* the lattice-without-witness shape, the width-in-the-name
+  shape, the opacity-in-the-comment shape.
+
+**Concrete match — F3 (`dsl/std/fermi.dag`):**
+```dag
+// FermiDepth inhabits Lattice<FermiDepth>.   ← claim
+fn fermi_meet(lhs: FermiDepth, rhs: FermiDepth) -> FermiDepth { ... }
+fn fermi_join(lhs: FermiDepth, rhs: FermiDepth) -> FermiDepth { ... }
+// no `data fermi_lattice: Lattice<FermiDepth> = { meet: fermi_meet, ... }`
+```
+
+**Concrete match — F4 (`src/v4/std/machine.dag`):**
+```dag
+type Word64 { bytes: List<Byte> }   // `64` only in the name
+type Byte   { bits:  List<Bit>  }   // any length representable
+```
+
+**Concrete match — F11 (`dsl/std/resources.dag`):**
+```dag
+// Opaque proof of resource acquisition. Only the compiler's acquire
+// nodes can mint these -- user code cannot construct handles directly.
+type ResourceHandle {                 // ← claim says opaque
+  type: String                        // ← record, all fields constructible
+  resource_id: String
+  key: String
+  cap: Secret
+}
+```
+
+**Clean shape (the cure):**
+```dag
+type Word64 { bytes: List<Byte> where len(_) == 8 }
+data fermi_lattice: Lattice<FermiDepth> = { meet: fermi_meet, join: fermi_join }
+```
+
+### L1.8 Wrong-home lens — kills *orphan operations* (proposed)
+
+> **Status: proposed.** Derived from finding F5 (`nat_compare` defined in
+> `src/v4/std/float.dag` rather than `src/v4/std/nat.dag` or
+> `src/v4/std/algebra.dag`). Mechanizes MODELING M9 (DFS the concept
+> DAG).
+
+- *Signature:* a `fn f(x: T, ...) -> ...` where every argument's type is
+  declared in file `X`, but `f` lives in file `Y`, and `Y` imports `X`
+  (i.e. `X` is upstream of `Y`). Also: a `data` declaration whose primary
+  key-type lives upstream of its file.
+- *Decidable:* yes — the import graph and argument-type ownership are
+  both queryable from the parsed model.
+- *Verdict:* hard error in `std/` and `extdeps/`.
+- *Escape:* operations whose argument types span multiple files with no
+  single upstream owner (genuinely cross-cutting) — operator-confirm with
+  an `// Anchor: cross-cutting` marker.
+
+**Concrete match — F5 (`src/v4/std/float.dag:52-62`):**
+```dag
+// in float.dag, but every argument lives in nat.dag
+fn nat_compare(a: Nat, b: Nat) -> Ordering {
+  match a {
+    Zero => match b { Zero => Equal, Succ { prev: _ } => Less }
+    Succ { prev: ap } => match b {
+      Zero => Greater
+      Succ { prev: bp } => nat_compare(a: ap, b: bp)
+    }
+  }
+}
+```
+
+**Clean shape:** move `nat_compare` into `src/v4/std/nat.dag` (or
+`std/algebra.dag` as a `TotalOrder<Nat>` witness); `float.dag` imports it.
+
+### L1.9 Vacuous-arm lens — kills *exhaustive-but-empty match* (proposed)
+
+> **Status: proposed.** Derived from finding F1
+> (`node_locally_well_formed` discharges every `ComputationNode { behavior: _ }`
+> with `=> true`). Distinct from L0.12 (non-exhaustive match): the arm is
+> present, but its body does no work. The closed set is *named* but not
+> actually *checked*.
+
+- *Signature:* a `match` on a coproduct where one arm's RHS is a trivial
+  literal (`true`, `false`, `Unit`, the input itself, `None`) AND the
+  function's name implies a predicate / validation / discipline
+  (`*_well_formed`, `*_valid`, `*_locally_*`, `validates_*`, `is_legal_*`).
+- *Decidable:* yes — arm body shape + function-name suffix vocabulary.
+- *Verdict:* hard error in substrate files (where validation discipline
+  must be uniform across a closed set).
+- *Escape:* the trivial arm is genuinely the correct answer (e.g.
+  `Unit => true` for a unit-typed thing), accompanied by an
+  `// Anchor: trivially-true` marker pinning the justification.
+
+**Concrete match — F1 (`src/v4/std/node.dag:115-120`):**
+```dag
+fn node_locally_well_formed(n: Node) -> Bool {
+  match n.kind {
+    TypeNode { connective: c } =>
+      edges_conform(children: n.children, d: connective_edge_discipline(c: c))
+    ComputationNode { behavior: _ } => true   // ← arm exists, body vacuous
+  }
+}
+```
+
+**Clean shape:** introduce a sibling `behavior_edge_discipline(Behavior)`
+in `std/node.dag` and dispatch both arms uniformly.
+
+### L1.10 String-escape-hatch lens — kills *typed-model bypass via String* (proposed, generalizes L1.6)
+
+> **Status: proposed.** Derived from finding F6
+> (`CiCommand::ShellCommand { command: String }` while
+> `extdeps/process.dag` already models a typed
+> `Command { program, argv0, args, env }`). L1.6 catches string templates
+> as emitters; L1.10 catches strings as *carriers* for domains that have
+> a typed model in scope.
+
+- *Signature:* a record or variant field of type `String` whose field
+  name (or surrounding variant name) matches a type declared in `std/` or
+  `extdeps/` (closed name table: `command` → `process.Command`, `path` →
+  `Path` / `AbsolutePath`, `url` → `Url`, `method` → `HttpMethod`, etc.).
+- *Decidable:* yes — field-name to canonical-type-name lookup.
+- *Verdict:* hard error.
+- *Escape:* the field is named generically (`name`, `id`, `key`) without
+  colliding with the canonical-name set, OR the typed model legitimately
+  does not fit (operator-confirm).
+
+**Concrete match — F6 (`src/v4/workflow/ci.dag:23-28`):**
+```dag
+type CiCommand
+  = LintCommand
+  | TestCommand
+  | IgnoredTestCommand { test_name: String }
+  | BootstrapStageCompile { produces: Symbol }
+  | ShellCommand { command: String }    // ← `command` matches process.Command
+```
+
+**Clean shape:**
+```dag
+import v4.extdeps.process as process
+type CiCommand = ... | ShellCommand { command: process.Command }
+```
+
+### L1.11 Plausible-fallback lens — kills *fabricated-sibling fallthrough* (proposed)
+
+> **Status: proposed.** Derived from finding F10
+> (`derive_effect_shape`'s `None => CreateEffect` arm for DELETE/PUT/PATCH
+> when no path key exists). Sibling rule to P3 (fail-closed): the
+> function returns a typed enum and the missing-info case returns a
+> *different valid constructor* of that enum — a plausible guess —
+> instead of escalating through `Outcome::Rejected`.
+
+- *Signature:* a `match` arm of shape `None => Ctor` / `Empty => Ctor` /
+  `[] => Ctor` where `Ctor` is a constructor of the function's return
+  type AND the function's return type is **not** `Outcome<_>` (does not
+  carry a diagnostic variant).
+- *Decidable:* yes — return-type shape + arm-RHS constructor membership +
+  matched-sub-pattern is a "nothing-here" variant.
+- *Verdict:* hard error. The fix is to lift the return type to
+  `Outcome<T>` and return `Rejected { diagnostic: DerivationUnknown }`.
+- *Escape:* the missing-info case has a *uniquely correct* answer (e.g.
+  `or_default(opt: Option<Nat>, default: Nat)` style helpers where
+  `None => default` is the function's definition) — operator-confirm.
+
+**Concrete match — F10 (`dsl/std/effects.dag:268-282`):**
+```dag
+DELETE =>
+  match last_path_param(template: path) {
+    Some { value: p } => DeleteEffect { key_source: PathParam { param: p } }
+    None              => CreateEffect          // ← fabricated sibling
+  }
+PUT =>
+  match last_path_param(template: path) {
+    Some { value: p } => UpsertEffect { key_source: PathParam { param: p } }
+    None              => CreateEffect          // ← same pattern
+  }
+```
+
+**Clean shape:**
+```dag
+fn derive_effect_shape(...) -> Outcome<EffectShape> {
+  DELETE =>
+    match last_path_param(template: path) {
+      Some { value: p } => Produced { value: DeleteEffect { ... } }
+      None              => Rejected { diagnostic: DerivationUnknown { ... } }
+    }
+}
+```
+
+### L1.12 Parallel-authority lens — kills *unmarked duplicate concept homes* (proposed)
+
+> **Status: proposed.** Derived from finding F9 (`Bool`, `Char`, `Url`,
+> machine words declared in both `dsl/std/` and `src/v4/std/` with no
+> marker indicating which is canonical) and the D2-resolver gap
+> (`extdeps/languages/resolver.dag` is referenced as the planned home
+> while a provisional `GroundingMap` sits in `extdeps/languages/rust.dag`).
+
+- *Signature:* a type name `T` declared in two `.dag` files where neither
+  carries an `// Authority: canonical` / `// Authority: historical`
+  header marker. Or: a type name referenced via an import path under a
+  file that does not exist (planned-but-absent home — the degenerate
+  case of duplication).
+- *Decidable:* yes — name uniqueness across the corpus + header marker
+  check + import-target existence check.
+- *Verdict:* hard error.
+- *Escape:* one file carries `// Authority: canonical`, the other
+  carries `// Authority: historical { dissolves_when: <trigger> }`.
+
+**Concrete match — F9 (`dsl/std/types.dag:173` and `src/v4/std/logic.dag:14`):**
+```dag
+// dsl/std/types.dag
+type Bool = True | False                  // ← no authority marker
+
+// src/v4/std/logic.dag
+type Bool = True | False                  // ← no authority marker either
+```
+
+**Concrete match — D2-resolver (provisional + planned-absent):**
+```dag
+// src/v4/extdeps/languages/rust.dag
+data GroundingMap = { ... }               // ← provisional home
+
+// (src/v4/extdeps/languages/resolver.dag does not exist)
+// other language files defer to a file that isn't there
+```
+
+**Clean shape:** mark one file canonical, the other historical with a
+dissolution trigger; or land the planned resolver and migrate the
+provisional copy.
+
 ## 6. The discriminant / catamorphism distinction
 
 L1.1 and L1.5 enforce one algebraic fact worth stating directly: a
@@ -248,6 +499,14 @@ from real evidence, not speculation.
 | 2026-05-18 | #3255 | `nat_is_zero` hand-rolled discriminant | same | L1.1 |
 | 2026-05-18 | #3256 | 26 combinators nominalized into single-field wrapper types | an operation is a function, not a type | L1.2 |
 | 2026-05-18 | #3249 | `free_monoid_is_empty` laundered through a fold | discriminant ≠ catamorphism; do not conflate | L1.1 (extended) |
+| 2026-05-18 | ingest | `node_locally_well_formed` discharges every `ComputationNode { behavior: _ } => true` (`src/v4/std/node.dag:115-120`) | exhaustive-in-shape, vacuous-in-content; closed-set named but not checked | L1.9 (proposed) |
+| 2026-05-18 | ingest | `merge_evidence` / `encoding_meet` / `fermi_meet` hand-rolled while inhabitance claimed in a `// ` comment, no `data ... : Lattice<T>` row (`dsl/std/{termination,encoding,fermi}.dag`) | algebra inhabitance is a typed witness, not prose | L1.7 (proposed) |
+| 2026-05-18 | ingest | `Word64 { bytes: List<Byte> }`, `Float32`/`Float64` share unconstrained `FloatBody` (`src/v4/std/{machine,float}.dag`) | cardinality / width is a refinement, not a name | L1.7 (proposed) |
+| 2026-05-18 | ingest | `ResourceHandle` is a freely-constructible record under prose claiming opacity (`dsl/std/resources.dag:17-25`) | non-forgeability is a constructor restriction, not a comment | L1.7 (proposed) |
+| 2026-05-18 | ingest | `nat_compare(Nat, Nat)` defined in `src/v4/std/float.dag:52-62` while `nat.dag` and `algebra.dag` exist | an operation lives in its argument-type's home (M9 / DFS the concept DAG) | L1.8 (proposed) |
+| 2026-05-18 | ingest | `CiCommand::ShellCommand { command: String }` while `extdeps/process.dag` models a typed `Command` (`src/v4/workflow/ci.dag:23-28`) | String escape hatch for a domain that has a typed model in scope | L1.10 (proposed) |
+| 2026-05-18 | ingest | `derive_effect_shape` `DELETE/PUT/PATCH None => CreateEffect` (`dsl/std/effects.dag:268-282`) | missing info must escalate through `Outcome::Rejected`, not return a different valid sibling | L1.11 (proposed) |
+| 2026-05-18 | ingest | `Bool`, `Char`, `Url`, machine words declared in both `dsl/std/` and `src/v4/std/` with no authority marker; `extdeps/languages/resolver.dag` referenced but absent | parallel concept homes must be marked canonical / historical, or one must be retired | L1.12 (proposed) |
 
 Pattern across the ledger: all four are burn-down *substrate* PRs — the
 lane built to remove dissolution debt produced it. Each was *mostly*
