@@ -24,7 +24,6 @@ type CiCommand
   = LintCommand
   | TestCommand
   | IgnoredTestCommand { test_name: String }
-  // 🟢 single-authority — DECISIONS.md LB-P4-3213
   | BootstrapStageCompile { produces: Symbol }
   | ShellCommand { command: String }
 
