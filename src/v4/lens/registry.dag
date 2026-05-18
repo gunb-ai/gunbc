@@ -46,10 +46,10 @@ data lens_registry_v0_provenance: LensRegistryEntryV0 = {
 
 data lens_registry_v0_unused_parameters: LensRegistryEntryV0 = {
   lens_id: "unused_parameters"
-  module_path: "TBD"
+  module_path: "__PREFIX_V0_UNBOUND__"
 }
 
 data lens_registry_v0_structural_resolution: LensRegistryEntryV0 = {
   lens_id: "structural_resolution"
-  module_path: "TBD"
+  module_path: "__PREFIX_V0_UNBOUND__"
 }
