@@ -1,32 +1,35 @@
 // src/v4/test/claim/manual/connective_anchors.dag
-//
-// Scope: hand-authored TestClaim regression anchors for the six type
-//        connectives (Atom excluded — K-1 forbids minting a Symbol value
-//        in data literals; Atom-shaped claims wait on T-22 / boundary
-//        table). v2 `compile` indexes this module today; v2 `run` claim
-//        execution is deferred per MOVE1_COVERAGE.txt until T-22.
-//        The five L1 *behaviors* (Value/Transform/Branch/Loop/Bind) are
-//        carried on computation `Node`s; authoring representative
-//        computation-node claims without pipeline-produced graphs is the
-//        same Atom/Symbol gap — tracked in MOVE1_COVERAGE.txt, not papered
-//        over here.
-// Anchor: src/v4/TASKS.md T-14 + std/node.dag + std/verification.dag
+// Scope: Manual TestClaim anchors for non-Atom connective stubs (K-1; Atom deferred).
+// Owns: stub_empty_conj stub_arrow_pair stub_empty_* claim_* TestClaim data
+// Consumes: v4.std.verification v4.std.diagnostic v4.std.node
+// Status: v2 compile; claim execution deferred (T-22).
 
 module v4.test.claim.manual.connective_anchors
 
-import v4.std.verification { TestClaim, Compiles, Equals }
+import v4.std.verification {
+  TestClaim,
+  Compiles,
+  Equals,
+  TestClassification,
+  Tier1,
+  Unit,
+  T19ManualTcConjEmpty,
+  T19ManualTcDisjEmpty,
+  T19ManualTcArrowTwoConj,
+  T19ManualTcCardinalityEmpty,
+  T19ManualTcInstantiationEmpty,
+  T19ManualTcConjEqualsRefl
+}
 import v4.std.diagnostic { Produced }
 import v4.std.node { Node, TypeNode, Conj, Disj, Arrow, Cardinality, Instantiation, Edge }
 
 
-// Shared stub: empty labeled Conj (no Symbol / Atom).
 data stub_empty_conj: Node = Node {
   kind: TypeNode { connective: Conj },
   children: []
 }
 
 
-// Arrow domain/codomain: two positional edges to duplicate stubs (no Atom).
 data stub_arrow_pair: Node = Node {
   kind: TypeNode { connective: Arrow },
   children: [
@@ -57,47 +60,58 @@ data stub_empty_instantiation: Node = Node {
 data claim_conj_empty_compiles: TestClaim = TestClaim {
   kind: Compiles,
   label: "manual/connective: empty Conj type-node is structurally inhabitable",
+  t19_anchor: T19ManualTcConjEmpty,
   input: stub_empty_conj,
-  expected: Produced { value: stub_empty_conj }
+  expected: Produced { value: stub_empty_conj },
+  classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
 
 data claim_disj_empty_compiles: TestClaim = TestClaim {
   kind: Compiles,
   label: "manual/connective: empty Disj type-node is structurally inhabitable",
+  t19_anchor: T19ManualTcDisjEmpty,
   input: stub_empty_disj,
-  expected: Produced { value: stub_empty_disj }
+  expected: Produced { value: stub_empty_disj },
+  classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
 
 data claim_arrow_two_conj_compiles: TestClaim = TestClaim {
   kind: Compiles,
   label: "manual/connective: Arrow with two positional Conj leaves (no Atom)",
+  t19_anchor: T19ManualTcArrowTwoConj,
   input: stub_arrow_pair,
-  expected: Produced { value: stub_arrow_pair }
+  expected: Produced { value: stub_arrow_pair },
+  classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
 
 data claim_cardinality_empty_compiles: TestClaim = TestClaim {
   kind: Compiles,
   label: "manual/connective: Cardinality connective with zero positional children",
+  t19_anchor: T19ManualTcCardinalityEmpty,
   input: stub_empty_cardinality,
-  expected: Produced { value: stub_empty_cardinality }
+  expected: Produced { value: stub_empty_cardinality },
+  classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
 
 data claim_instantiation_empty_compiles: TestClaim = TestClaim {
   kind: Compiles,
   label: "manual/connective: Instantiation connective with zero positional children",
+  t19_anchor: T19ManualTcInstantiationEmpty,
   input: stub_empty_instantiation,
-  expected: Produced { value: stub_empty_instantiation }
+  expected: Produced { value: stub_empty_instantiation },
+  classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
 
-// Reflexive Equals on identical stub (structural identity anchor for T-22).
 data claim_conj_equals_refl: TestClaim = TestClaim {
   kind: Equals,
   label: "manual/connective: Equals reflexivity on empty Conj stub",
+  t19_anchor: T19ManualTcConjEqualsRefl,
   input: stub_empty_conj,
-  expected: Produced { value: stub_empty_conj }
+  expected: Produced { value: stub_empty_conj },
+  classification: TestClassification { tier: Tier1, layer: Unit }
 }
