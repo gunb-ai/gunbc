@@ -26,8 +26,7 @@ import v4.std.nat { Nat }
 import v4.std.text { String }
 
 
-// Twin of `v4.std.node.Symbol` / `rust.dag` authority: M1(2.7) compile_to_dag does not lower
-// `import v4.std.node { Symbol }` into declarations; local atom preserves L-2 naming until import lowering lands.
+// Twin of `v4.std.node.Symbol` — M1(2.7) compile_to_dag import lowering; local L-2 atom until `v4.std.node` import lowering lands (DECISIONS.md / P2).
 type Symbol
 
 
