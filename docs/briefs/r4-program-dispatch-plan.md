@@ -24,12 +24,12 @@ engineering.
 
 ```
                  ┌─ P1-KEYSTONE (Practice-10 / #3240)  ─┐
-                 ├─ T-25-core (refinement substrate)    ─┤
-   keystone ─────┼─ T-30 (hollow-alias gate)            ─┼──▶ T-4 ──▶ T-9 ──▶ T-10 ──▶ T-11 ──▶ T-16 ──▶ T-15
-   cluster       └─ T-29 (C++ ABI; cpp slice only)      ─┘  (5 langs)  infer    emit    per-tgt  omni    self-host
+   keystone ─────┼─ T-25-core (refinement substrate)    ─┼──▶ T-4 ──▶ T-9 ──▶ T-10 ──▶ T-11 ──▶ T-16 ──▶ T-15
+   cluster (×3)  └─ T-30 (hollow-alias gate)            ─┘  (5 langs)  infer    emit    per-tgt  omni    self-host
                                                                                                           fixed-point
                                                                                                           (anti-regress)
    T-1..T-8  =  LANDED  (front-end in CP-1b reconciliation tail; not the bottleneck)
+   T-29 (C++ ABI)  =  LANDED (#3267) — NOT a keystone; residual #3277 in-flight
 ```
 
 Everything else parallel-fills around that spine.
