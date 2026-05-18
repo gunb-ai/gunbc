@@ -1,7 +1,7 @@
 // src/v4/std/network.dag
 // Scope: network boundary carriers.
-// Owns: HttpMethod, UriScheme, UriUserInfo, UriHost, UriPort, UriAuthority, UriPath, UriQuery, UriFragment, Url, NetworkAddress.
-// Consumes: std text.
+// Owns: HttpMethod, Rfc3986AbnfProduction, UriScheme, UriUserInfo, UriHost, UriPort, UriAuthority, UriPath, UriQuery, UriFragment, Url, NetworkAddress.
+// Consumes: std text, std nat.
 // Status: T-26 modeled.
 
 
@@ -9,6 +9,7 @@ module v4.std.network
 
 
 import v4.std.text { String }
+import v4.std.nat { Nat }
 
 
 // Anchor: https://www.rfc-editor.org/rfc/rfc9110.html#name-methods + https://www.rfc-editor.org/rfc/rfc5789.html
@@ -21,22 +22,67 @@ type HttpMethod
   | DELETE
   | HEAD
   | OPTIONS
+  | CONNECT
   | TRACE
 
+type Rfc3986AbnfProduction {
+  name: String,
+  expression: String,
+}
+
+data rfc3986_scheme_abnf: Rfc3986AbnfProduction = Rfc3986AbnfProduction {
+  name: "scheme",
+  expression: "ALPHA *( ALPHA / DIGIT / plus / hyphen / dot )",
+}
+
+data rfc3986_userinfo_abnf: Rfc3986AbnfProduction = Rfc3986AbnfProduction {
+  name: "userinfo",
+  expression: "*( unreserved / pct-encoded / sub-delims / colon )",
+}
+
+data rfc3986_host_abnf: Rfc3986AbnfProduction = Rfc3986AbnfProduction {
+  name: "host",
+  expression: "IP-literal / IPv4address / reg-name",
+}
+
+data rfc3986_port_abnf: Rfc3986AbnfProduction = Rfc3986AbnfProduction {
+  name: "port",
+  expression: "*DIGIT",
+}
+
+data rfc3986_path_abnf: Rfc3986AbnfProduction = Rfc3986AbnfProduction {
+  name: "path",
+  expression: "path-abempty / path-absolute / path-noscheme / path-rootless / path-empty",
+}
+
+data rfc3986_query_abnf: Rfc3986AbnfProduction = Rfc3986AbnfProduction {
+  name: "query",
+  expression: "*( pchar / slash / question )",
+}
+
+data rfc3986_fragment_abnf: Rfc3986AbnfProduction = Rfc3986AbnfProduction {
+  name: "fragment",
+  expression: "*( pchar / slash / question )",
+}
+
 type UriScheme {
-  spelling: String,
+  normalized: String,
+  grammar: Rfc3986AbnfProduction,
 }
 
 type UriUserInfo {
   spelling: String,
+  grammar: Rfc3986AbnfProduction,
 }
 
 type UriHost {
   spelling: String,
+  grammar: Rfc3986AbnfProduction,
 }
 
 type UriPort {
-  spelling: String,
+  value: Nat,
+  grammar: Rfc3986AbnfProduction,
 }
 
 type UriAuthority {
@@ -47,14 +93,17 @@ type UriAuthority {
 
 type UriPath {
   spelling: String,
+  grammar: Rfc3986AbnfProduction,
 }
 
 type UriQuery {
   spelling: String,
+  grammar: Rfc3986AbnfProduction,
 }
 
 type UriFragment {
   spelling: String,
+  grammar: Rfc3986AbnfProduction,
 }
 
 // Anchor: https://www.rfc-editor.org/rfc/rfc3986.html#section-3

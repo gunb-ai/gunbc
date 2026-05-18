@@ -1,6 +1,6 @@
 // src/v4/extdeps/formats/openapi.dag
 // Scope: OpenAPI 3.1.0 document slice; Lane C (TASKS.md T-4.6).
-// Owns: OpenApiComponents, OpenApiComponentsDeferredKey, OpenApiComponentsMapKey, OpenApiComponentsPathItemsSlot, OpenApiComponentsSchemasSlot, OpenApiComponentsSlot, OpenApiContact, OpenApiContactSlot, OpenApiDocument, OpenApiDocumentRoot, OpenApiHeaderContentSingle, OpenApiHeaderDeferredKey, OpenApiHeaderDeprecatedSlot, OpenApiHeaderObject, OpenApiHeaderOrReference, OpenApiHeaderPayloadSlot, OpenApiHeaderRequiredSlot, OpenApiHeadersSlot, OpenApiInfo, OpenApiLicense, OpenApiLicenseSlot, OpenApiLicenseUrlOrIdentifierSlot, OpenApiLinkDeferredKey, OpenApiLinkObject, OpenApiLinkOrReference, OpenApiLinkTarget, OpenApiMediaType, OpenApiMediaTypeDeferredKey, OpenApiMediaTypeSchemaSlot, OpenApiOpenapiField3_1, OpenApiOpenapiObjectDeferredKey, OpenApiOperation, OpenApiOperationDeferredKey, OpenApiOptionalString, OpenApiPathItem, OpenApiPathItemDeferredKey, OpenApiPathItemOrReference, OpenApiPathTemplateKey, OpenApiPaths, OpenApiPathsSlot, OpenApiReferenceObject, OpenApiResponse, OpenApiResponseContentSlot, OpenApiResponseKey, OpenApiResponseKeyNonDefault, OpenApiResponseKeyWildcardKind, OpenApiResponseOrReference, OpenApiResponses, OpenApiResponsesDefaultSlot, OpenApiResponsesPrimaryEntry, OpenApiSchema, OpenApiSchemaOasMemberKey, OpenApiSpecificationExtensionKey, OpenApiStatusDigit, OpenApiStatusHundreds, OpenApiWebhooks, OpenApiWebhooksSlot
+// Owns: OpenApiComponents, OpenApiComponentsDeferredKey, OpenApiComponentsMapKey, OpenApiComponentsPathItemsSlot, OpenApiComponentsSchemasSlot, OpenApiComponentsSlot, OpenApiContact, OpenApiContactSlot, OpenApiDocument, OpenApiDocumentRoot, OpenApiHeaderContentSingle, OpenApiHeaderDeferredKey, OpenApiHeaderDeprecatedSlot, OpenApiHeaderObject, OpenApiHeaderOrReference, OpenApiHeaderPayloadSlot, OpenApiHeaderRequiredSlot, OpenApiHeadersSlot, OpenApiHttpMethod, OpenApiInfo, OpenApiLicense, OpenApiLicenseSlot, OpenApiLicenseUrlOrIdentifierSlot, OpenApiLinkDeferredKey, OpenApiLinkObject, OpenApiLinkOrReference, OpenApiLinkTarget, OpenApiMediaType, OpenApiMediaTypeDeferredKey, OpenApiMediaTypeSchemaSlot, OpenApiOpenapiField3_1, OpenApiOpenapiObjectDeferredKey, OpenApiOperation, OpenApiOperationDeferredKey, OpenApiOptionalString, OpenApiPathItem, OpenApiPathItemDeferredKey, OpenApiPathItemOrReference, OpenApiPathTemplateKey, OpenApiPaths, OpenApiPathsSlot, OpenApiReferenceObject, OpenApiResponse, OpenApiResponseContentSlot, OpenApiResponseKey, OpenApiResponseKeyNonDefault, OpenApiResponseKeyWildcardKind, OpenApiResponseOrReference, OpenApiResponses, OpenApiResponsesDefaultSlot, OpenApiResponsesPrimaryEntry, OpenApiSchema, OpenApiSchemaOasMemberKey, OpenApiSpecificationExtensionKey, OpenApiStatusDigit, OpenApiStatusHundreds, OpenApiWebhooks, OpenApiWebhooksSlot
 // Consumes: std/node.dag, std/diagnostic.dag, std/collection.dag, std/nat.dag, std/network.dag, extdeps/formats/json_schema.dag, extdeps/formats/json.dag, extdeps/formats/yaml.dag
 // Status: scaffold — TASKS.md T-4.6
 // Anchor: https://spec.openapis.org/oas/v3.1.0
@@ -10,7 +10,7 @@ module v4.extdeps.formats.openapi
 
 import v4.extdeps.formats.json { JsonValue }
 import v4.extdeps.formats.json_schema { JsonSchema }
-import v4.std.network { HttpMethod, Url }
+import v4.std.network { Url }
 import v4.std.nat { Nat }
 
 
@@ -105,6 +105,18 @@ type OpenApiSchema {
   openapi_schema_specification_extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,
   openapi_schema_deferred_keyword_members: Map<String, JsonValue>,
 }
+
+
+// 🟢 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiHttpMethod
+type OpenApiHttpMethod
+  = OpenApiGet
+  | OpenApiPut
+  | OpenApiPost
+  | OpenApiDelete
+  | OpenApiOptions
+  | OpenApiHead
+  | OpenApiPatch
+  | OpenApiTrace
 
 
 // 🟢 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiOptionalString
@@ -345,7 +357,7 @@ type OpenApiOperation {
 
 
 type OpenApiPathItem {
-  routes: Map<HttpMethod, OpenApiOperation>,
+  routes: Map<OpenApiHttpMethod, OpenApiOperation>,
   path_deferred_members: Map<OpenApiPathItemDeferredKey, JsonValue>,
   path_specification_extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,
 }
