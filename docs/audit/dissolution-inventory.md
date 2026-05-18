@@ -138,7 +138,7 @@ the audit anchor.
 | **P2** | `std/collection.dag` Wave-A2: `List<T> where non_empty` refinement **plus** the List combinator algebra (`forall` / `count_where` / `unique` over `FreeMonoid<T>`) | std / T-3 Wave-A2 (coercion-design.md RQ-3) | **5 named + 26 sites** | Section 2: `std/node.dag` × 4 traverses (`all_edges_named`, `all_edges_positional`, `name_occurrences`, `all_names_distinct`). DECISIONS.md: `SL-3229-VERILOG-NONEMPTY` (one row, 26 verilog.dag back-pointer sites). |
 | **P3** | Compiler pipeline-stage substrate (lex-walk + parse-walk) | compiler / T-6, T-7 | **2 + ~7 in-file** | Section 2: `compiler/01_tokenize.dag tokenize`, `compiler/02_parse.dag parse`. In-file: the parser-side VAGUE prose blocks in `json.dag` / `yaml.dag` / `toml.dag` that concretize to T-6/T-7 (the operations-side family separate from P1). |
 | **P4** | T-4 fact-bundle Phase-3 rework (post-D2-reversal model) | extdeps/languages / T-4 manager `vivid-carp-207` (5-feeder gate; keystone #3226 merged @`77b9e7d72`; 4 feeders open: T-3, T-29, T-30, T-25-core) | **4 + 1 row + 1 fn** | In-file: `typescript.dag` × 4 INVALID-GATE blocks (re-gate against this arrival, not pre-reversal D2). DECISIONS.md: `SL-3229-VERILOG-D3200` (if re-gated as `feature: T-4 fact-bundle Phase-3 rework` rather than `consumer:` form — see Section 3). Section 2: `extdeps/languages/dag.dag dag_language_model_wave1_void_canonical_symbols` (added in CP-1b #3225 — canonical_symbols set is a fact on DagLanguageModel/language-identity, not a hand-rolled function). |
-| **P5** | `std/node.dag` `fold_node` — Node catamorphism (substrate-extension under T-1) | std / T-1 | **2 + 3 walker callers** | Section 2: `std/node.dag node_well_formed`; `compiler/03_resolve.dag merge_binding_self` (94, the codex #3225 "sym↦sym module harvest" finding) — together with its three named-harvest walker callers (`add_module_named_exports` at 99, `add_arrow_domain_named_params` at 113, `add_bind_atom_binder` at 140) that fold over `Node.children` with constructor-discriminated recursion. All four dissolve to `fold_node(root, ⟨binding-harvest algebra⟩)` on P5 landing. |
+| **P5** | `std/node.dag` `fold_node` — Node catamorphism (substrate-extension under T-1) | std / T-1 | **1 + 3 walker callers** | **PR #3253 receipt:** `std/node.dag node_well_formed` now consumes `fold_node`. Remaining: `compiler/03_resolve.dag merge_binding_self` (94, the codex #3225 "sym↦sym module harvest" finding) — together with its three named-harvest walker callers (`add_module_named_exports` at 99, `add_arrow_domain_named_params` at 113, `add_bind_atom_binder` at 140) that fold over `Node.children` with constructor-discriminated recursion. Those dissolve to `fold_node(root, ⟨binding-harvest algebra⟩)` in the follow-on compiler/resolve lane. |
 | **P6** | `std/algebra.dag` / `std/nat.dag` `fold` / `cata` over `FreeMonoid<T>` and `Nat` (Wave-A2) | std / T-3 Wave-A2 | **2** | Section 2: `std/algebra.dag free_monoid_length`, `std/float.dag nat_compare`. (Sibling to P2's combinator algebra; could land in the same PR — kept separate because the underlying primitive is the catamorphism, distinct from `forall`/`count_where` which are derived from it.) |
 | **P7** | `std/nat.dag nat_is_zero : Nat -> Bool` (Wave-A2) | std / T-3 Wave-A2 | **1** | Section 2: `std/float.dag float_finite_magnitude_zero`. |
 | **P8** | `extdeps/languages/verilog.dag` bundled T-4 LanguageModel `constant_expression` sub-grammar | extdeps/languages / T-4 Verilog Phase-3 | **1** | DECISIONS.md: `SL-3229-VERILOG-VECTOR-RANGE` (lexeme-pair bridge). |
@@ -168,7 +168,7 @@ INVALID-GATE-once-re-gated):
 | P2 lands | 5 named (+ 26 verilog sites converge in one sweep) | `std/collection.dag` Wave-A2 | ~11 named |
 | P3 lands | 2 named (+ ~7 in-file) | T-6 + T-7 pipeline substrate | ~9 named |
 | P4 lands | 4 + 1 row + 1 fn (`dag.dag canonical_symbols` #3225) | T-4 fact-bundle Phase-3 | ~3 named |
-| P5 lands | 2 named (+ 3 walker callers cascade in `03_resolve.dag` #3225) | `std/node.dag fold_node` | ~1 |
+| P5 lands | 1 named (+ 3 walker callers cascade in `03_resolve.dag` #3225) | `std/node.dag fold_node` (`node_well_formed` paid in PR #3253) | ~1 |
 | P6 lands | 2 | FreeMonoid/Nat catamorphism | ~0 |
 | P7 lands | 1 | `nat_is_zero` | ~0 |
 | P8 lands | 1 | Verilog constant_expression | ~0 |
@@ -228,11 +228,10 @@ substrate PRs since it needs no absent substrate.
 ### 2.2 `src/v4/std/`
 
 **`std/node.dag`**
-- `node_well_formed` (113) — 🟡 **walker** —
-  `feature: fold_node (std/node.dag Node catamorphism — substrate-extension under T-1)`.
-  Hand-rolled structural recursion via
-  `fold(n.children, …, fn(acc, e) { … node_well_formed(e.target) })`;
-  dissolves to `fold_node(n, …)` on arrival.
+- `node_well_formed` (113) — 🟢 **P5 paid in PR #3253** —
+  `fold_node` landed in `std/node.dag` and `node_well_formed` now runs
+  through the `NodeFoldAlgebra<Bool>` catamorphism rather than recursing
+  over `Node.children` directly.
 - `all_edges_named` (71), `all_edges_positional` (77) — 🟡 **traverse** —
   `feature: forall over FreeMonoid<T> in std/collection.dag (Wave-A2)`.
   `fold` body is `acc && pred(e)`; dissolves to
@@ -739,7 +738,8 @@ fixes are downstream lane work, not C1's** — C1 marks and flags.
 dissolve-on-arrival rule):
 
 1. `fold_node` — `Node` catamorphism in `std/node.dag` (substrate-extension
-   under T-1).
+   under T-1; landed in PR #3253 for `node_well_formed`, with the
+   `compiler/03_resolve.dag` binding-harvest walkers still queued).
 2. `fold` / `cata` over `FreeMonoid<T>` and `Nat` in `std/algebra.dag` /
    `std/nat.dag` (Wave-A2).
 3. `forall`, `count_where`, `unique` over `FreeMonoid<T>` in
