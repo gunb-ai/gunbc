@@ -135,7 +135,7 @@ the audit anchors.
 
 | # | substrate PR (`feature:` arrival) | owner / owning task | 🟡-count | unblocks |
 |---|---|---|---|---|
-| **P1** | `std/cardinality.dag` bounded-natural / refinement substrate | std / T-3 Wave-A2 | **~22** | DECISIONS.md: `SL-3229-LLVM-WIDTH`, `SL-3229-LLVM-OPS`, `SL-3229-PTX-DIM3`, `SL-3229-PTX-COST`, `SL-3229-VERILOG-COST` (+ `SL-3229-FLOAT-NOMINAL` once re-gated under this canonical owner). In-file: `llvm_ir.dag:28` + the ~16 VAGUE prose blocks in `json.dag` / `yaml.dag` / `toml.dag` that concretize to this arrival (refinement-side family). **Receipt (PR #3310 / 2026-05-18):** `LlvmType` raw-width payload scaffold **closed** (live `NonZeroNat` / `Nat`); three format carriers drop the erroneous `SL-3229-LLVM-WIDTH` Practice-9 cite (DECISIONS.md §SL-3229-T4-FORMAT-T6T7 operator note — cite P1 separately from float/integer). |
+| **P1** | `std/cardinality.dag` bounded-natural / refinement substrate | std / T-3 Wave-A2 | **~22** | DECISIONS.md: `SL-3229-LLVM-WIDTH`, `SL-3229-LLVM-OPS`, `SL-3229-PTX-DIM3`, `SL-3229-PTX-COST`, `SL-3229-VERILOG-COST` (+ `SL-3229-FLOAT-NOMINAL` once re-gated under this canonical owner). In-file: `llvm_ir.dag:28` + the ~16 VAGUE prose blocks in `json.dag` / `yaml.dag` / `toml.dag` that concretize to this arrival (refinement-side family). **Receipt (PR #3310 / 2026-05-18 + follow-up receipt):** `LlvmType` raw-width payload scaffold **closed** (live `NonZeroNat` / `Nat`); `PtxCost`, `VerilogCost`, and `Dim3` raw signed-`Int` payload scaffolds **closed** where live carriers now use `Nat`; three format carriers drop the erroneous `SL-3229-LLVM-WIDTH` Practice-9 cite (DECISIONS.md §SL-3229-T4-FORMAT-T6T7 operator note — cite P1 separately from float/integer). Remaining P1-family debt is operand-relation / stronger-bound refinement, not raw non-negative payload scaffolding. |
 | **P2** | `std/collection.dag` Wave-A2: `List<T> where non_empty` refinement **plus** the List combinator algebra (`forall` / `count_where` / `unique` over `FreeMonoid<T>`) | std / T-3 Wave-A2 (coercion-design.md RQ-3) | **5 named + 29 sites** | Section 2: `std/node.dag` × 4 traverses (`all_edges_named`, `all_edges_positional`, `name_occurrences`, `all_names_distinct`). DECISIONS.md: `SL-3229-VERILOG-NONEMPTY` (one row, 29 verilog.dag back-pointer sites after P8). |
 | **P3** | Compiler pipeline-stage substrate (lex-walk + parse-walk) | compiler / T-6, T-7 | **2 + ~7 in-file** | Section 2: `compiler/01_tokenize.dag tokenize`, `compiler/02_parse.dag parse`. In-file: the parser-side VAGUE prose blocks in `json.dag` / `yaml.dag` / `toml.dag` that concretize to T-6/T-7 (the operations-side family separate from P1). |
 | **P4** | T-4 fact-bundle Phase-3 rework (post-D2-reversal model) | extdeps/languages / T-4 manager `vivid-carp-207` (5-feeder gate; keystone #3226 merged @`77b9e7d72`; 4 feeders open: T-3, T-29, T-30, T-25-core) | **4 + 1 row + 1 fn** | In-file: `typescript.dag` × 4 INVALID-GATE blocks (re-gate against this arrival, not pre-reversal D2). DECISIONS.md: `SL-3229-VERILOG-D3200` (if re-gated as `feature: T-4 fact-bundle Phase-3 rework` rather than `consumer:` form — see Section 3). Section 2: `extdeps/languages/dag.dag dag_language_model_wave1_void_canonical_symbols` (added in CP-1b #3225 — canonical_symbols set is a fact on DagLanguageModel/language-identity, not a hand-rolled function). |
@@ -525,13 +525,16 @@ relation refinement).
 
 **`SL-3229-PTX-DIM3`** — `Dim3` kernel-ambient `Int` axis scaffold.
 Named arrival: same cardinality-refinement family (T-3).
-- **Triage: VALID.**
-- **#3244 re-expression:** `🟡 gated — feature: bounded-positive-Int refinement in std/cardinality.dag (T-3 Wave-A2)`.
+- **Triage: CLOSED for raw signed-axis payload.**
+- **Closure receipt:** live `ptx.dag` uses `Nat` for `Dim3.x` / `y` / `z`.
+  Stronger PTX pinned-maximum / positive launch-dimension witnesses remain
+  future producer-side refinements, not this raw-`Int` scaffold.
 
 **`SL-3229-PTX-COST`** — raw-`Int` PTX cost axes (`PtxCost`). Named
 arrival: cardinality refinement (T-3).
-- **Triage: VALID.**
-- **#3244 re-expression:** `🟡 gated — feature: bounded-non-negative-Int refinement in std/cardinality.dag (T-3 Wave-A2)`.
+- **Triage: CLOSED.**
+- **Closure receipt:** live `ptx.dag` uses `Nat` for `PtxCost` axes, so
+  negative cost is no longer representable.
 
 **`SL-3229-VERILOG-NONEMPTY`** — shared `List<T>` spec-non-empty
 Wave-A2 deferral (29 sites after P8). Named arrival: `std/collection.dag`
@@ -573,8 +576,9 @@ and rewired `VectorRange` endpoints to `ConstantExpression`.
 
 **`SL-3229-VERILOG-COST`** — raw-`Int` Verilog cost axes
 (`VerilogCost`). Named arrival: cardinality refinement (T-3).
-- **Triage: VALID.**
-- **#3244 re-expression:** `🟡 gated — feature: bounded-non-negative-Int refinement in std/cardinality.dag (T-3 Wave-A2)` (same family as the four LLVM/PTX cost/width gates above).
+- **Triage: CLOSED.**
+- **Closure receipt:** live `verilog.dag` uses `Nat` for `VerilogCost`
+  axes, so negative cost is no longer representable.
 
 **`SL-3229-FLOAT-NOMINAL`** — nominal width / interchange list-length
 scaffold. Named arrival: "bounded refinement substrate in
@@ -676,12 +680,12 @@ refinement-side gates.
 | SL-3229-INTEGER-GROUP-COMPLETION | DECISIONS.md row | feature | partial (feature named, owning task TBD) | yes | **VAGUE** (no owning task → not bound to a named substrate PR; tightened bar) |
 | SL-3229-LLVM-WIDTH | DECISIONS.md row | feature | yes (cardinality.dag T-3) | yes | VALID |
 | SL-3229-LLVM-OPS | DECISIONS.md row | feature | yes (cardinality.dag T-3) | yes | VALID |
-| SL-3229-PTX-DIM3 | DECISIONS.md row | feature | yes (cardinality.dag T-3) | yes | VALID |
-| SL-3229-PTX-COST | DECISIONS.md row | feature | yes (cardinality.dag T-3) | yes | VALID |
+| SL-3229-PTX-DIM3 | DECISIONS.md row | feature | yes (cardinality.dag T-3) | yes | CLOSED |
+| SL-3229-PTX-COST | DECISIONS.md row | feature | yes (cardinality.dag T-3) | yes | CLOSED |
 | SL-3229-VERILOG-NONEMPTY | DECISIONS.md row | feature | yes (collection.dag Wave-A2) | yes | VALID |
 | SL-3229-VERILOG-D3200 | DECISIONS.md row | consumer | **no** (class, not one name) | yes | **VAGUE** |
 | SL-3229-VERILOG-VECTOR-RANGE | DECISIONS.md row | feature | yes (T-4 Verilog constant_expression) | yes | CLOSED |
-| SL-3229-VERILOG-COST | DECISIONS.md row | feature | yes (cardinality.dag T-3) | yes | VALID |
+| SL-3229-VERILOG-COST | DECISIONS.md row | feature | yes (cardinality.dag T-3) | yes | CLOSED |
 | SL-3229-FLOAT-NOMINAL | DECISIONS.md row | feature | **partial** (straddles machine.dag + cardinality.dag) | yes | **VAGUE** |
 | verilog.dag × 5 in-file cite-sites | one-liner | (inherits SL-3229-VERILOG-D3200) | — | — | **VAGUE** (inherits) |
 | llvm_ir.dag:28 in-file cite-site | one-liner | feature | yes (inherits SL-3229-LLVM-WIDTH) | yes | VALID |
