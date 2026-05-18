@@ -91,5 +91,4 @@ type CorpusLensDriveResult<C> = Outcome<List<C>>
 type CorpusLensDriver<C> {
   enumerator: CorpusEnumerator
   reader: CorpusLensReader<C>
-  drive: fn(CorpusEnumerationRequest) -> CorpusLensDriveResult<C>
 }
