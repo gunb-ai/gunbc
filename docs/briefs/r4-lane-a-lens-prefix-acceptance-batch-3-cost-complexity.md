@@ -58,7 +58,7 @@ The acceptance table below distinguishes the **two structurally distinct failure
 
 - **Fixture id:** `_TODO_OPERATOR_` (candidate: `complexity_inhabits_O_log_n_binary_search`)
 - **Snippet / path:** `_TODO_OPERATOR_` (candidate: a binary-search function on a sorted `List<T>` whose `ComplexitySummary` projects to `AsymptoticClass::O_log_n`; same `Enforce { budget: AsymptoticClass::O_log_n }`)
-- **Asserted outcome (§2):** per-Behavior reads return `Witness::Inhabits(<step ComplexityBound>)`; fold composes a **`ComplexitySummary`** whose projection is `AsymptoticClass::O_log_n`; `complexity_enforcement.violates(summary, AsymptoticClass::O_log_n) == false` ⇒ **zero** enforcement `Diagnostic`s; aggregate is **`DimensionReport<ComplexitySummary>::DimensionOk { dimension_name: "complexity", composed: <ComplexitySummary>, witnesses: [...per-step Inhabits...] }`**.
+- **Asserted outcome (§2):** per-Behavior reads return `Witness::Inhabits(<per-Behavior ComplexitySummary>)` (single-carrier `C = ComplexitySummary`); fold composes via `Monoid<ComplexitySummary>` to `composed: ComplexitySummary` whose `enforcement.project(summary) == AsymptoticClass::O_log_n`; `complexity_enforcement.violates(summary, AsymptoticClass::O_log_n) == false` ⇒ **zero** enforcement `Diagnostic`s; aggregate is **`DimensionReport<ComplexitySummary>::DimensionOk { dimension_name: "complexity", composed: <ComplexitySummary>, witnesses: List<Witness<ComplexitySummary>> }`**.
 
 ### Complexity — near-miss (sibling-not-caught) witness
 
