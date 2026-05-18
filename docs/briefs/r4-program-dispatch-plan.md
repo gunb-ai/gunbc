@@ -148,11 +148,30 @@ Ratifying #3240 is therefore *higher-leverage than first stated*: it unblocks
 the forward spine **and** defines the backward-rework set in one ruling. "Landed
 pre-#3240" is not "done."
 
-**One decision, three threads:** ratifying Practice-10/#3240 simultaneously
-unblocks the critical-path spine (via T-4), the #3313 dissolution-lens Wave 2,
-and gives `vivid-carp-207` the principled basis to resolve **#3280 A-vs-B**
-(fact-bundle-vs-bare-alias *is* the D2/Practice-10 question). These are not four
-problems; they are one keystone.
+**Related cluster — 2–3 distinct operator items, NOT "one decision"**
+(still-hawk-102 review, folded — the earlier "one keystone" headline
+overstated collapsibility):
+
+- **(a) The keystone-fold edit PR — does not exist yet.** **#3240 is a
+  CLOSED / SUPERSEDED rework *tracker*, not a ratifiable artifact.** The
+  ratifiable thing is a *not-yet-drafted* `docs/modeling-discipline.md`
+  keystone-fold edit PR (Practice-10 reconciled with Practices 4/7/8 +
+  emit/template finding 6). **`still-hawk-102` owns drafting it**
+  (dissolution-findings audit obligation). The operator ratifies *that
+  drafted PR*; right now the operator can only **authorize still-hawk to
+  draft it now**. (Calling this "ratify #3240" was the
+  don't-make-the-operator-QA-an-incomplete-directive anti-pattern on the
+  single most load-bearing decision — corrected.)
+- **(b) A-vs-B = B is *implied by* (a), not identical to it.** Ratifying
+  the keystone-fold ⇒ A-vs-B = B *because* D2-REV / machine-readable
+  inhabitance is the primitive-case application of Practice-10. State and
+  confirm the implication explicitly — do **not** let the narrower A-vs-B
+  ruling ride (a) unscrutinized.
+- **(c) T-25-core is a genuine separate design fork** ("needs you" —
+  §7 #3b). It is not collapsed by (a).
+
+So the long pole is **2–3 operator items**, not one line: draft+ratify the
+keystone-fold (a), explicitly confirm A-vs-B=B (b), decide T-25-core (c).
 
 ---
 
