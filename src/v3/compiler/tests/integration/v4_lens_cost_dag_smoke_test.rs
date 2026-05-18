@@ -58,7 +58,9 @@ fn function_count(module: &v3_compiler::parse_surface::SurfaceModule, name: &str
         .items
         .iter()
         .filter(|item| match item {
-            SurfaceItem::Fn { name: item_name, .. }
+            SurfaceItem::Fn {
+                name: item_name, ..
+            }
             | SurfaceItem::FnExternalBody {
                 name: item_name, ..
             } => item_name == name,
