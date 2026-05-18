@@ -171,28 +171,31 @@ should not wait.
 
 | Lane / manager | Owns | Wave-0 dispatch NOW | Gated (later waves) |
 |---|---|---|---|
-| **Lane A** `fierce-cat-31` (compiler pipeline + lens program) | T-3 tail, T-6–T-8 CP-1b close, T-9, T-10, T-11, T-16, lens T-12/13/17/18/23, T-25-tail, T-26, T-28 | lens fan-out (running), CP-1b close, T-26 | T-9 (post-T-4), T-10, T-11, T-16 |
+| **Lane A** `fierce-cat-31` (compiler pipeline + lens program) | T-3 tail, T-6–T-8 CP-1b close, T-9, T-10, T-11, T-16, lens T-12/13/17/18/23, T-25-tail; **T-26 = std-authoritative, Lane A execution-OK (conduit, not 2nd home)**; T-28 | lens fan-out (running), CP-1b close, T-26 (conduit) | T-9 (post-T-4), T-10, T-11, T-16 |
 | **Lane B** `swift-ram-178` (test/bootstrap infra) | T-19, T-20, T-21, T-22, T-24, T-14, T-15, T-4.11, T-32 | **T-19, T-20, T-21, T-22** (Priority-1) | T-24 (post-20/21), T-14, T-15 (terminal) |
-| **T-4 mgr** `vivid-carp-207` | T-4 ×5, T-4.5–T-4.14, T-29 | T-29, T-4.10, T-4.12 | T-4 (post-keystone), T-4.5–4.8 |
-| **Dissolution** `jolly-ibex-599` | T-30, T-31, Wave-2 lenses, 🟡 burn-down | T-31, T-30 bootstrap mirror | Wave-2 lenses (post #3240) |
+| **T-4 mgr** `vivid-carp-207` | T-4 ×5, T-4.5–T-4.14 | **— (T-29/T-4.10/T-4.12 already LANDED; T-29 residual #3277 in-flight, attribution open; T-4 ×5 HELD on keystone)** | T-4 (post-keystone), T-4.5–4.8 |
+| **Dissolution** `jolly-ibex-599` | T-30, T-31, Wave-2 lenses, 🟡 burn-down | **T-31(b) mop-up; T-30 generated-checker** (interim P5(b) mirror already on main) | Wave-2 lenses (post #3240) |
 | **Operator** | Keystone rulings | **Practice-10/#3240 ratification; T-25-core direction; IN-B probes (T-4.9/T-4.14); #3280 A-vs-B** | — |
 
 ---
 
-## 6. Review asks (per reviewer)
+## 6. Review status (per reviewer)
 
-1. **`fierce-cat-31`** — confirm/correct Lane A rows; is CP-1b close on the
-   T-9 critical edge, or independent? Is T-26 better under std or Lane A?
-2. **`swift-ram-178`** — confirm Lane B owns T-19/20/21/22 and can take all
-   four Wave-0 in parallel; IRT-1..4 honored in T-21/T-22 scope; T-15 terminal
-   ownership.
-3. **`vivid-carp-207`** — confirm T-4 stays HELD on the keystone cluster (not
-   dispatchable pre-ratification); T-29/T-4.10/T-4.12 are genuinely READY now.
-4. **`jolly-ibex-599`** — confirm T-30 mirror status + T-31 independence; Wave-2
-   lens coordination.
-5. **Operator** — the §3 keystone package: ratify Practice-10/#3240 + give a
-   T-25-core direction. That one pass collapses the long pole *and* unjams
-   #3280 + #3313.
+1. **`fierce-cat-31`** — ✅ RATIFIED. CP-1b is on the **T-8→T-9** leg
+   (parallel to T-4, off the keystone edge); T-26 = std-authoritative /
+   Lane A execution-OK; lens rows match the running fan-out. Folded.
+2. **`swift-ram-178`** — ✅ RATIFIED. Owns + can parallel T-19/20/21/22;
+   IRT-1..4 binding in T-21/T-22; T-15 terminal. Correction folded: T-20
+   materially advanced via merged #3213.
+3. **`vivid-carp-207`** — ✅ RATIFIED. T-4 ×5 stays HELD on the keystone
+   cluster. Material correction folded: **T-29/T-4.10/T-4.12 already
+   LANDED** (not Wave-0); new keystone-scope finding (pre-#3240
+   backward-rework) folded into §3.
+4. **`jolly-ibex-599`** — ✅ RATIFIED. T-30 interim P5(b) mirror on main;
+   T-31 (a)rider/(b)mop-up split; Wave-2 post-#3240 coordination. Folded.
+5. **Operator** — ⏳ OPEN: the §3 keystone package — ratify Practice-10/#3240
+   + a T-25-core direction. That one pass collapses the long pole *and*
+   unjams #3280 + #3313, **and** scopes the pre-#3240 backward-rework set.
 
 > Nothing in Wave 0 waits on this PR's merge — it documents what's already
 > dispatchable and the gated remainder. Merge = lane managers have ratified
