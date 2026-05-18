@@ -105,7 +105,7 @@ first) · `DESIGN` · `OP` (operator ruling) · `CP1` (needs v4 front-end output
 | T-22 | compiler/05_eval interpreter (PRIMARY exec) | SCAFFOLD | T-9 (refine) | **`READY*`** — bounded scope: interpreter scaffold + IRT-3 eval-shape. *T-9 trigger:* eval over inferred types → Wave-3 | Lane B |
 | T-23 | lens/application | **IFACE FROZEN** | lens fwk | IMPL (in flight) | Lane A (lens) |
 | T-24 | workflow/ci AS DATA | SCAFFOLD (T-20/T-24-adjacent slice landed via #3213) | T-20, T-21 | IMPL | Lane B |
-| T-25-core | refinement base + fail-closed validate | SCHEDULED | — | **DESIGN (OP)** | std / OP |
+| T-25-core | refinement base + fail-closed validate | SCHEDULED | — | **AUTHORIZE — shape operator-ratified (TASKS.md §962+ / coercion-design.md Cat-6); NOT a design fork** | std (build) + OP (authorize stamp) |
 | T-25-tail | refinement prover (erase) | SCHEDULED | T-9 | IMPL (optim) | Lane A |
 | T-26 | std/ boundary carriers (URL/HttpMethod) | SCHEDULED | T-3 | **READY** | std/ = canonical home; Lane A may run 1st PR as conduit |
 | T-28 | std/ module-graph | SCHEDULED (bundled→T-8) | T-3 | IMPL (in T-8) | Lane A |
@@ -148,7 +148,7 @@ first) · `DESIGN` · `OP` (operator ruling) · `CP1` (needs v4 front-end output
 | Keystone | Kind | Unblocks | Owner |
 |---|---|---|---|
 | **P1-KEYSTONE / Practice-10 A1 invariant** (the live gate; #3240 = closed tracker) | **OPERATOR ratification** | T-4 → T-9 → T-10 → T-11 → T-16; **also #3313 Wave-2 lenses; also the principled basis for #3280 A-vs-B** | **Operator** |
-| **T-25-core** | **DESIGN direction (operator review)** | T-4 refinement-bearers, T-4.5, T-4.6 | **Operator** + std |
+| **T-25-core** | **AUTHORIZE-to-build — shape operator-ratified (TASKS.md §962+ / coercion-design.md Category 6: base type + fail-closed validation at a named constructor boundary). NOT a design fork — earlier "design direction" framing overstated; corrected per §7 #3b** | T-4 refinement-bearers, T-4.5, T-4.6 | std (build) + **Operator** (authorize stamp) |
 | T-30 hollow-alias gate | IMPL+OP — interim P5(b) mirror on main; generated checker + operator closure remain | T-4 fact-bundle integrity | Dissolution |
 | **T-29 C++ ABI** | **STILL a keystone-cluster feeder** (TASKS.md:64/:286/:1035 declares it a hard T-4-cpp-slice prereq) — core #3267 merged, residual #3277 OPEN; NOT "landed/removed" | T-4 cpp slice | #3277 worker (attribution open) |
 
@@ -198,12 +198,18 @@ overstated collapsibility):
   inhabitance is the primitive-case application of Practice-10. State and
   confirm the implication explicitly — do **not** let the narrower A-vs-B
   ruling ride (a) unscrutinized.
-- **(c) T-25-core is a genuine separate design fork** ("needs you" —
-  §7 #3b). It is not collapsed by (a).
+- **(c) T-25-core is a separate operator item — but an *authorize-to-build
+  stamp*, NOT a design fork.** The shape is **operator-ratified**
+  (TASKS.md §962+ / coercion-design.md Category 6: base type + fail-closed
+  validation at a named constructor boundary); the earlier "genuine design
+  fork / needs you" framing was **overstated** and is corrected in §7 #3b.
+  It is a distinct one-line authorize (+ blessing the 2 Wave-2-prereq T#s),
+  not collapsed by (a), and not a design decision.
 
 So the long pole is **2–3 operator items**, not one line: ratify the
 verbatim invariant text (a — exists today, small), explicitly confirm
-A-vs-B=B (b), decide T-25-core (c).
+A-vs-B=B (b), authorize T-25-core (c — ratified shape, a stamp not a
+design call).
 
 ---
 
@@ -342,7 +348,8 @@ sessions are *not* folded in — see exceptions.
 5. **Operator** — ⏳ OPEN: the §3 cluster — **ratify the verbatim invariant
    blockquote at `modeling-discipline.md` ~§594–600** (exists on main; #3240
    is a closed tracker, not it; `still-hawk-102` then lands+de-hedges —
-   small), confirm **A-vs-B=B**, and give a T-25-core direction. That
+   small), confirm **A-vs-B=B**, and **authorize T-25-core** (shape already
+   ratified — TASKS.md §962+/Cat-6; a stamp, not a direction). That
    sequence collapses the long pole *and*
    unjams #3280 + #3313, **and** scopes the pre-#3240 backward-rework set.
 
@@ -389,8 +396,11 @@ Everything else **follows from or is independent of** that root call:
 an equivalence — #1 must not ride #3a unscrutinized). #2 falls out of #1
 (forward-only, no revert). #3a is **ratify-exact-text-today** (the invariant
 blockquote exists on main; still-hawk then does a small mechanical land +
-de-hedge), NOT a drafting effort. #3b (T-25-core) is a genuine separate
-design fork. #4/#5/#6 are independent and low-risk; **#7 still needs you**;
+de-hedge), NOT a drafting effort. #3b (T-25-core) is a separate
+**authorize-to-build stamp** (shape operator-ratified — TASKS.md §962+ /
+coercion-design.md Category 6; NOT a design fork — earlier framing
+overstated). #4/#5/#6 are independent and low-risk; **#7 still needs you**;
 **#8 is resolved (B2)**. Honest count: the long pole is **2–3 operator
 items** — (a) ratify the verbatim invariant text, (b) confirm A-vs-B=B,
-(c) decide T-25-core — plus the low-risk independents.
+(c) authorize T-25-core (ratified shape — a stamp, not a design call) —
+plus the low-risk independents.
