@@ -234,10 +234,15 @@ Close-the-loop + late substrate:
 
 ### T-3: std/* supporting (cardinality, witness, diagnostic, collection, verification + the scalar/numeric stack)
 
-**File**: 11 files in `src/v4/std/` — `cardinality`, `witness`, `diagnostic`,
+**File**: 11 files in `src/v4/std/` today — `cardinality`, `witness`, `diagnostic`,
 `collection`, `verification`, plus the **scalar/numeric stack** (`logic`,
 `nat`, `machine`, `integer`, `float`, `text`) that replaced the deleted
 `primitive.dag` — see `STRUCTURE.md` §"Scalar/numeric concept decomposition".
+**Scheduled (named carrier home, checkable arrival):** **`src/v4/std/datetime.dag`**
+(module `v4.std.datetime` once authored) — RFC 3339 / clock-calendar instant
+facts for format-layer consumers; **absent from the tree until** the Wave-A2+
+landing PR; dissolution paired with `DECISIONS.md` Part 6 ·
+`SL-3229-T4-FORMAT-TOML-DATETIME` (T-4.6 `toml.dag` wires ops against this file).
 **Why bundled**: smaller individually, all interrelated, foundation for everything.
 
 **Shared-fact vocabulary — T-3 owns it (D2-reversal scope, operator-ratified
@@ -249,7 +254,12 @@ language model coincides against. A per-language fact-bundle (T-4) cannot be
 authored until this vocabulary exists — so T-3 is on the **critical path** and
 every T-4 slice blocks on it. The exact-real / physical-quantity carriers (the
 SPICE gap — see `DECISIONS.md` "D2 REVERSAL + FACT-BUNDLE RESEED", Phase 2) are
-part of this vocabulary. Each axis is a real modeled fact, placed in the
+part of this vocabulary. **Temporal / RFC 3339 structured instants** (format
+lexemes → clock facts; T-4.6 consumers — `DECISIONS.md` Part 6 ·
+`SL-3229-T4-FORMAT-TOML-DATETIME`) are **T-3-owned `std/` vocabulary** with the
+**concrete scheduled home** `src/v4/std/datetime.dag` (see **File** above), same
+scheduling envelope as other Wave-A2+ shared facts. Each **numeric /
+physical-quantity** axis is a real modeled fact, placed in the
 appropriate scalar/numeric file (`machine`, `integer`, `float`) by DFS to its
 concept-DAG home (M9) — never minted per-language.
 
@@ -573,6 +583,12 @@ Once T-15 lands and stays green, all four failure modes are impossible-by-constr
 
 **File**: 7 files in `src/v4/extdeps/formats/` (operator-ratified 2026-05-15: arbitrary ingestion via direction-agnostic format models; `sql.dag` added 2026-05-17 — Theme-A #4 fork (a))
 **Why bundled**: identical structural shape per format; each file declares the format MODEL (data structure + parse/emit operations).
+
+**Substrate cross-locks (checkable, not prose-only):** `toml.dag` **TomlDatetime**
+value semantics (RFC 3339 / TOML §Date-Time four sub-kinds) dissolve on
+**`src/v4/std/datetime.dag`** landing under **T-3** + typed ops wired on **T-4.6**
+(`toml_datetime_value`, …) — authority `DECISIONS.md` Part 6 ·
+`SL-3229-T4-FORMAT-TOML-DATETIME`.
 
 **Modeling decisions**:
 - Recursive vs iterative parsing strategy (per-format)
