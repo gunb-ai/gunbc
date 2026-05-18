@@ -1,14 +1,16 @@
 // src/v4/extdeps/languages/llvm_ir.dag
 // Scope: LLVM 18 LangRef IR structural vocabulary (T-4.12).
 // Owns: FloatKind, LlvmType, VectorScaling, StructPacking, VarArg, LlvmConstant, LlvmValue, BinaryOpcode, ConversionOpcode, IntPredicate, FloatPredicate, ConstExprOpcode, PhiIncoming, PhiNode, SwitchCase, CallArgument, CallResult, LandingPadCleanup, LandingClause, AtomicOrdering, CmpXchgSuccessOrdering, CmpXchgFailureOrdering, FenceOrdering, AtomicRmwOrdering, AtomicRmwOp, LlvmInstruction, LoadOrdering, StoreOrdering, LoadAtomicity, StoreAtomicity, Terminator, UnwindDest, BasicBlock, Linkage, FunctionBody, FunctionParameter, LlvmFunction, GlobalMutability, GlobalInitializer, LlvmGlobal, NamedStructDef, LlvmModule, unwind_successors, block_successors, block_well_formed, FidelityDisposition, FidelityFeature, feature_disposition
-// Consumes: std/node.dag; Int kernel-ambient.
-// Status: T-4.12 PASS (B2-OMNI); import v4.std.node Symbol only.
+// Consumes: std/node.dag (Symbol); std/nat.dag (Nat); std/cardinality.dag (NonZeroNat); Int kernel-ambient.
+// Status: T-4.12 PASS (B2-OMNI); import v4.std.node Symbol; import v4.std.nat Nat; import v4.std.cardinality NonZeroNat.
 // Anchor: https://releases.llvm.org/18.1.8/docs/LangRef.html
 // Ledger: DECISIONS.md Part 6 (PR #3229): CP-3229-GREEN-TERMINAL, SL-3229-LLVM-OPS, SL-3229-LLVM-WIDTH.
 
 module v4.extdeps.languages.llvm_ir
 
 
+import v4.std.cardinality { NonZeroNat }
+import v4.std.nat { Nat }
 import v4.std.node { Symbol }
 
 
@@ -25,17 +27,17 @@ type FloatKind
   | PpcFp128Float
 
 
-// 🟡 coproduct dissolution — DECISIONS.md Part 6 · SL-3229-LLVM-WIDTH.
+// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
 type LlvmType
   = VoidType
   | LabelType
   | TokenType
   | MetadataType
-  | IntegerType { bits: Int }
+  | IntegerType { bits: NonZeroNat }
   | FloatingType { kind: FloatKind }
-  | PointerType { address_space: Int }
-  | VectorType { element: LlvmType, count: Int, scalable: VectorScaling }
-  | ArrayType { element: LlvmType, count: Int }
+  | PointerType { address_space: Nat }
+  | VectorType { element: LlvmType, count: NonZeroNat, scalable: VectorScaling }
+  | ArrayType { element: LlvmType, count: Nat }
   | StructType { fields: List<LlvmType>, packed: StructPacking }
   | FunctionType { result: LlvmType, params: List<LlvmType>, var_arg: VarArg }
   | NamedType { name: Symbol }

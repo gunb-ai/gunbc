@@ -1,7 +1,7 @@
 // src/v4/std/cardinality.dag
 // Scope: cardinality, inhabitance, bounded-natural refinement, descent evidence.
 // Anchor: https://en.wikipedia.org/wiki/Cardinality
-// Owns: Never, Unit, NonZeroNat, UpperBoundedNat, DescentEvidence, RankingDimension, TerminationProof, Multiplicity.
+// Owns: Never, Unit, NonZeroNat, NatLeWitness, UpperBoundedNat, nat_le_witness_lower, nat_le_witness_upper, nat_le_witness_well_formed, upper_bounded_nat_value, upper_bounded_nat_inclusive_max, upper_bounded_nat_well_formed, DescentEvidence, RankingDimension, TerminationProof, Multiplicity.
 // Consumes: std collection, std nat, std node.
 // Status: T-3 modeled; Wave-A2 inhabitance + bounded-natural refinement carriers.
 
@@ -17,9 +17,39 @@ type Unit
 type NonZeroNat {
   prev: Nat
 }
+// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-NAT-LE-WITNESS.
+type NatLeWitness
+  = LeqZero { upper: Nat }
+  | LeqSucc { inner: NatLeWitness }
 type UpperBoundedNat {
-  inclusive_max: Nat
-  value: Nat
+  le: NatLeWitness
+}
+fn nat_le_witness_lower(w: NatLeWitness) -> Nat {
+  match w {
+    LeqZero { upper: _ } => Zero
+    LeqSucc { inner } => Succ { prev: nat_le_witness_lower(w: inner) }
+  }
+}
+fn nat_le_witness_upper(w: NatLeWitness) -> Nat {
+  match w {
+    LeqZero { upper } => upper
+    LeqSucc { inner } => Succ { prev: nat_le_witness_upper(w: inner) }
+  }
+}
+fn upper_bounded_nat_value(b: UpperBoundedNat) -> Nat {
+  nat_le_witness_lower(w: b.le)
+}
+fn upper_bounded_nat_inclusive_max(b: UpperBoundedNat) -> Nat {
+  nat_le_witness_upper(w: b.le)
+}
+fn nat_le_witness_well_formed(w: NatLeWitness) -> Bool {
+  match w {
+    LeqZero { upper: _ } => true
+    LeqSucc { inner } => nat_le_witness_well_formed(w: inner)
+  }
+}
+fn upper_bounded_nat_well_formed(b: UpperBoundedNat) -> Bool {
+  nat_le_witness_well_formed(w: b.le)
 }
 // 🟢 coproduct dissolution — DECISIONS.md classification ledger: DescentEvidence.
 type DescentEvidence
