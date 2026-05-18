@@ -1,6 +1,6 @@
 # Lane A PREFIX — **Interface-Freeze pin** (T-23 keystone — operator go 2026-05-18)
 
-> **Broadcast point:** parallel Acceptance authoring + driver/registry work pins **here** until superseded by operator-signed amendment. **Authority:** `docs/design-lens-application-surface.md` §2 (carriers), §5.1 (default `IntrospectApplication<ComplexitySummary>` synthesis), `src/v4/lens/application.dag` header (D1 ops + advisory→fail-closed bridge).
+> **Broadcast point:** parallel Acceptance authoring + driver/registry work pins **here** until superseded by operator-signed amendment. **Authority:** `docs/design-lens-application-surface.md` §2 (carriers), §5.1 (default `IntrospectApplication<ComplexitySummary>` synthesis), `src/v4/lens/application.dag` header (D1 ops + advisory→fail-closed bridge). **Modeled cite:** `src/v4/DECISIONS.md` Part 4 **T-23-PIN** (this file is the pin body; `application.dag` points at the ledger row only).
 
 ## 1. Frozen carrier shapes (normative digest — do not drift)
 

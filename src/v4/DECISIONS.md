@@ -250,6 +250,12 @@ parent. Each is confirm-or-redirect, not a fresh fork.
 Recommended defaults; not blocking T-1 or the spine. Confirm in passing
 or defer to the task.
 
+- **T-23-PIN** — PREFIX lens **interface-freeze** ledger (carrier digest,
+  driver CLI v0 template, `LENS_ID` registry, §5.1 synthesis anchor):
+  `docs/briefs/r4-lane-a-lens-interface-freeze-pin.md`. **`lens/application.dag`**
+  cites **this bullet** only (`// See DECISIONS.md (T-23-PIN).`) — not a
+  second `docs/briefs/` pointer in the modeled header.
+
 - **T-4.6 JSON number model** — recommend **arbitrary-precision by
   default, opt-in IEEE-754** (preserves big-int roundtrip; RoundTrips is
   load-bearing per C5).

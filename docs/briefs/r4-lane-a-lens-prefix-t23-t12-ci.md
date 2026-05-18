@@ -52,7 +52,7 @@ Dissolution lens wave remains **`jolly-ibex`** / **#3313** / **#3240** — track
 
 ## Interface-Freeze keystone (**minimal delta — prefix of the prefix**)
 
-**Current state:** `src/v4/lens/application.dag` carries the **ratified design contract in the file header** (three-parameter `EnforcedApplication` reconciled to **`docs/design-lens-application-surface.md` §2**, 2026-05-18) plus **INTERFACE-FREEZE PIN** pointer to **`docs/briefs/r4-lane-a-lens-interface-freeze-pin.md`** (carrier digest + **CLI v0** + **`LENS_ID`** registry). The **module body is still empty** beyond `module v4.lens.application` — **TASKS.md T-23** mechanical port (parseable carriers + `Lens<C>` / id nominals — see pin §4) is pending.
+**Current state:** `src/v4/lens/application.dag` carries the **ratified design contract in the file header** (three-parameter `EnforcedApplication` reconciled to **`docs/design-lens-application-surface.md` §2**, 2026-05-18) plus a **one-line** ledger cite **`DECISIONS.md` (T-23-PIN)**; the **pin body** is **`docs/briefs/r4-lane-a-lens-interface-freeze-pin.md`** (carrier digest + **CLI v0** + **`LENS_ID`** registry). The **module body is still empty** beyond `module v4.lens.application` — **TASKS.md T-23** mechanical port (parseable carriers + `Lens<C>` / id nominals — see pin §4) is pending.
 
 **The keystone delta** (everything else parallelizes around this **small** freeze):
 
