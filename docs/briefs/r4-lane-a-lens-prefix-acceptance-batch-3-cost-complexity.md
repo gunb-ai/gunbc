@@ -96,8 +96,11 @@ Any **new** `src/v3/compiler/tests/**` integration file added to support AC-2 / 
 
 ## DISPATCH_HOLD lift conditions (this artifact only — applies on operator sign, not on draft-PR merge)
 
-1. Operator signs each `_TODO_OPERATOR_` slot (fixture ids + snippet paths + asserted outcomes) — or accepts the candidate substance verbatim.
-2. Operator pins **Green corpus** for AC-1.
-3. Operator confirms `<TBD>` runnable cell in AC-1 with either (a) live `driver …` argv once batch (a) Interface-Freeze lands, or (b) explicit v3-fold-fallback invocation per Fork A delete-dated supplementary step.
+**All of the following must hold conjointly** (no subset suffices — this is the single authoritative gate definition for batch (b), reconciled with the DRAFT framing in the header):
 
-Once signed, `PREFIX-LENS-CI-1` **`DISPATCH_HOLD`** lifts for **complexity** + **cost** implementation; T-12 fill proceeds per worker brief Slice B (cost first as PREFIX reference / algebra root; complexity composes on as **Wave-1 #1**).
+1. **Sibling-PR landing prerequisite (carries forward the header constraint):** the controlling brief and batch (a) acceptance artifact are live on `main` — i.e. **PR #3315** (introduces `r4-lane-a-lens-prefix-t23-t12-ci.md` + `r4-lane-a-lens-prefix-acceptance.md`) is squash-merged, **PR #3316** (T-23 Interface-Freeze keystone) is squash-merged, **PR #3321** (driver/registry — batch (a) impl) is squash-merged, and **PR #3319** (umbrella index) is squash-merged. Until those land, the sister/brief references in this artifact's header point at absent paths and the document is **not consumable as a standalone gate** (per the header DRAFT clause).
+2. Operator signs each `_TODO_OPERATOR_` slot (fixture ids + snippet paths + asserted outcomes) — or accepts the candidate substance verbatim — via an amendment commit on this artifact.
+3. Operator pins **Green corpus** for AC-1 in the same amendment.
+4. Operator confirms the `<TBD>` runnable cell in AC-1 with either (a) live `driver …` argv once batch (a) Interface-Freeze (#3316) + batch (a) driver (#3321) are live on `main` (prerequisite #1), or (b) explicit v3-fold-fallback invocation per Fork A delete-dated supplementary step.
+
+Only when **(1) AND (2) AND (3) AND (4)** all hold does `PREFIX-LENS-CI-1` **`DISPATCH_HOLD`** lift for **complexity** + **cost** implementation. T-12 fill then proceeds per worker brief Slice B (cost first as PREFIX reference / algebra root; complexity composes on as **Wave-1 #1**). Satisfying operator-sign bullets (2)–(4) **alone**, without prerequisite (1), does **not** lift the hold — this is the same constraint the header DRAFT clause asserts, restated here so the gate definition is single-authoritative rather than split across two sections.
