@@ -78,7 +78,7 @@ first) · `DESIGN` · `OP` (operator ruling) · `CP1` (needs v4 front-end output
 | T-6 | compiler/01_tokenize | LANDED | T-3 | LANDED (CP-1b tail) | Lane A |
 | T-7 | compiler/02_parse | LANDED | T-6 | LANDED (CP-1b tail) | Lane A |
 | T-8 | 03_normalize + 03_resolve (+T-28 bundled) | LANDED (seam scaffold until CP-1b closes) | T-7 | IMPL (CP-1b close) | Lane A |
-| **T-4** | extdeps/languages ×5 fact-bundles | WIP, **HELD** | T-3, **P1-KEYSTONE (= Practice-10 **A1-invariant** ratification — NOT the closed #3240 tracker, NOT the merged numeric #3226)**, T-25-core, T-30 | **OP + DESIGN** | T-4 mgr |
+| **T-4** | extdeps/languages ×5 fact-bundles | WIP, **HELD** | T-3 (landed) + the **TASKS.md:286/:64 exact feeder set `{P1-KEYSTONE, T-30, T-29, T-25-core}`** — **P1-KEYSTONE** (= Practice-10 **A1-invariant** ratification — NOT the closed #3240 tracker, NOT the merged numeric #3226), **T-30**, **T-29** (cpp-slice; #3277 OPEN), **T-25-core**. Never a partial subset — all four gate T-4. | **OP + DESIGN** | T-4 mgr |
 | T-4.5 | extdeps/process + file_system | SCAFFOLD | T-3, T-25-core | IMPL | T-4 mgr |
 | T-4.6 | extdeps/formats ×7 | SCAFFOLD | T-25-core, T-26 | IMPL | T-4 mgr |
 | T-4.7 | frameworks/react | SCAFFOLD | T-4 (ts) | CP1 (LanguageModel) | T-4 mgr |
@@ -236,7 +236,9 @@ design call).
     keystone-cluster T-4-cpp feeder (core #3267 merged, residual #3277 OPEN);
     T-4.10/T-4.12 already LANDED; pre-#3240 rework keystone-gated; **T-25-tail**
     — depends T-9, Wave-3 IMPL-optim, never Wave-0.)*
-- **Wave 1 (P1-KEYSTONE + T-25-core + T-30 land):** T-4 ×5 languages, T-4.5,
+- **Wave 1 (the keystone-cluster ×4 land — TASKS.md:64/:286 exact set
+  `{P1-KEYSTONE + T-30 + T-29 + T-25-core}`; T-29 is NOT dropped — core
+  #3267 merged but residual #3277 still gates the T-4 cpp slice):** T-4 ×5 languages, T-4.5,
   T-4.6 unblock (T-4 mgr). **+ lens-pipeline-derivations T-#** (`match_arm_shape`
   / `closed_vocab_scan` / `concept_home`) **+ Layer-0 lens stage plug-in**
   (Fresh CP+Lens lane) → **Layer-0 hygiene CI HARD-GATE bites here** —
@@ -312,7 +314,7 @@ sessions are *not* folded in — see exceptions.
 |---|---|---|---|
 | **Fresh: Compiler-Pipeline (+Lens, gated)** | **Pipeline scope (active on Wave-0 go):** T-3 tail, T-6–T-8 CP-1b close, T-9, T-10, T-11, T-16, T-25-tail, T-28; **T-26 = std-authoritative, conduit-only**. **Lens scope (T-12/13/17/18/23) — GATED on the `fierce-cat-31` lens fan-out CLOSEOUT** (one lens owner at a time — see exception 2; no P2 parallel-authority drift) | Wave-0: T-3 tail / CP-1b / T-26 only | **Mirrors §4 topology (strict, codex BLOCKING):** W2 T-9 → W3 T-10 (+T-4.8, +T-12/13 refine) → W4 T-11 (+T-17, +T-18 — lens-scope, also post-closeout) → W5 **T-16** → W6 T-15 handoff. Lens scope (T-12/13/17/18/23) additionally post-`fierce-cat-31`-closeout. |
 | **Fresh: Test/Bootstrap-Infra** | T-19, T-20, T-21, T-22, T-24, T-14, T-15, T-4.11, T-32 | **T-19, T-20, T-21** (full) · **T-22** (`READY*` scaffold scope) | §4-mirrored: T-24 W4 (post T-20/T-21), T-14 W4 (post T-19), **T-15 W6** (terminal, post T-16) |
-| **Fresh: extdeps/T-4** | T-4 ×5, T-4.5–T-4.14 | **— (T-4.10/T-4.12 LANDED; T-29 core #3267 merged but **residual #3277 OPEN & still a TASKS.md-declared T-4-cpp feeder**; T-4 ×5 HELD on keystone)** | T-4 (post-keystone+T-29 #3277), T-4.5–4.8 |
+| **Fresh: extdeps/T-4** | T-4 ×5, T-4.5–T-4.14 | **— (T-4.10/T-4.12 LANDED; T-29 core #3267 merged but **residual #3277 OPEN & still a TASKS.md-declared T-4-cpp feeder**; T-4 ×5 HELD on keystone)** | T-4 (post the **full TASKS.md:286 feeder set `{P1-KEYSTONE + T-30 + T-29 #3277 + T-25-core}`** — not "keystone + T-29" alone; T-25-core and T-30 are hard T-4 prerequisites too), T-4.5–4.8 |
 | **Fresh: Dissolution** | T-30, T-31, Wave-2 lenses, 🟡 burn-down | **T-31(b) mop-up; T-30 generated-checker** | Wave-2 lenses — *consumes* the §4 cross-lane prereqs (new std/ carriers + 3 derived lens-stages built by Compiler-Pipeline+Lens) — post A1-ratification |
 | **Operator** | Keystone rulings | **see §7 decision sheet** | — |
 
