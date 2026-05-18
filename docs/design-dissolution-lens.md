@@ -340,16 +340,29 @@ fn nat_compare(a: Nat, b: Nat) -> Ordering {
 > present, but its body does no work. The closed set is *named* but not
 > actually *checked*.
 
-- *Signature:* a `match` on a coproduct where one arm's RHS is a trivial
-  literal (`true`, `false`, `Unit`, the input itself, `None`) AND the
-  function's name implies a predicate / validation / discipline
-  (`*_well_formed`, `*_valid`, `*_locally_*`, `validates_*`, `is_legal_*`).
-- *Decidable:* yes — arm body shape + function-name suffix vocabulary.
-- *Verdict:* hard error in substrate files (where validation discipline
-  must be uniform across a closed set).
-- *Escape:* the trivial arm is genuinely the correct answer (e.g.
-  `Unit => true` for a unit-typed thing), accompanied by an
-  `// Anchor: trivially-true` marker pinning the justification.
+- *Signature (structural, no name-suffix vocabulary):* a single `match`
+  on a coproduct whose arms are **asymmetric in body shape**:
+  - **at least one arm's RHS is a trivial literal** of the function's
+    return type (`true`, `false`, `Unit`, the matched input itself,
+    `None` / `Empty`); and
+  - **at least one sibling arm's RHS does non-trivial structural work**
+    (calls another function, recurses, constructs a typed value with
+    fields derived from the input).
+  The finding is the asymmetry *within a single match* over a closed
+  coproduct — not the function's name. A match where *every* arm is
+  trivial is a different shape (likely L0.7 dead/constant branch or a
+  genuinely-constant function) and is out of scope; a match where every
+  arm does real work passes. The discipline-role of the function is
+  inferred from the structural fact that *the author already wrote real
+  work for some variants*, which is what makes the trivial siblings a
+  vacuum rather than an honest constant.
+- *Decidable:* yes — arm-body shape (literal-vs-call/recursion/ctor) is
+  a structural property of the parsed match. No name inspection.
+- *Verdict:* hard error in substrate files.
+- *Escape:* the trivial arm carries an `// Anchor: trivially-true { because: <token> }`
+  pinning the justification (`{ because: variant-has-no-children }`,
+  `{ because: identity-on-Unit }`, etc.) drawn from a closed vocabulary
+  — operator-confirm.
 
 **Concrete match — F1 (`src/v4/std/node.dag:115-120`):**
 ```dag
@@ -374,15 +387,31 @@ in `std/node.dag` and dispatch both arms uniformly.
 > as emitters; L1.10 catches strings as *carriers* for domains that have
 > a typed model in scope.
 
-- *Signature:* a record or variant field of type `String` whose field
-  name (or surrounding variant name) matches a type declared in `std/` or
-  `extdeps/` (closed name table: `command` → `process.Command`, `path` →
-  `Path` / `AbsolutePath`, `url` → `Url`, `method` → `HttpMethod`, etc.).
-- *Decidable:* yes — field-name to canonical-type-name lookup.
+- *Signature (substrate-declared registry, not hardcoded table):* the
+  lens reads a **canonical-carrier registry** authored as data in the
+  substrate, not a name table baked into the lens. A typed carrier
+  declares itself as the authoritative shape for a domain via a
+  structural witness:
+  ```dag
+  // in src/v4/extdeps/process.dag
+  data process_command_canonical: CanonicalCarrier<process.Command> = {
+    supersedes_string: { in_role: command_role }
+  }
+  data command_role: StringRole = ...    // the role tag, itself a typed value
+  ```
+  The lens fires on a field of type `String` carrying a `: <role-tag>`
+  refinement that appears in any registered `CanonicalCarrier::supersedes_string.in_role`
+  row whose target type is in scope. No field-name string equality, no
+  hardcoded `command`/`path`/`url` list — the *substrate* names which
+  String roles have a typed canonical home, and the lens reads that fact.
+- *Decidable:* yes — `CanonicalCarrier` registry membership and the
+  role-tag refinement on the offending field are both structural facts
+  in the parsed model.
 - *Verdict:* hard error.
-- *Escape:* the field is named generically (`name`, `id`, `key`) without
-  colliding with the canonical-name set, OR the typed model legitimately
-  does not fit (operator-confirm).
+- *Escape:* a `String` field with no role-tag refinement, or a role tag
+  with no `CanonicalCarrier` row in scope, passes. Adding a new typed
+  carrier is a `data` row in `extdeps/`, not an edit to the lens
+  definition.
 
 **Concrete match — F6 (`src/v4/workflow/ci.dag:23-28`):**
 ```dag
@@ -391,10 +420,14 @@ type CiCommand
   | TestCommand
   | IgnoredTestCommand { test_name: String }
   | BootstrapStageCompile { produces: Symbol }
-  | ShellCommand { command: String }    // ← `command` matches process.Command
+  | ShellCommand { command: String : command_role }    // ← role-tag claims canonical home
 ```
+With `data process_command_canonical: CanonicalCarrier<process.Command> = { supersedes_string: { in_role: command_role } }`
+in `extdeps/process.dag`, the lens reads the registry, sees that
+`command_role`-tagged `String` has a typed canonical home
+(`process.Command`), and fires.
 
-**Clean shape:**
+**Clean shape:** consume the typed carrier directly.
 ```dag
 import v4.extdeps.process as process
 type CiCommand = ... | ShellCommand { command: process.Command }
@@ -450,17 +483,20 @@ fn derive_effect_shape(...) -> Outcome<EffectShape> {
 
 > **Status: proposed.** Derived from finding F9 (`Bool`, `Char`, `Url`,
 > machine words declared in both `dsl/std/` and `src/v4/std/` with no
-> marker indicating which is canonical) and the D2-resolver gap
-> (`extdeps/languages/resolver.dag` is referenced as the planned home
-> while a provisional `GroundingMap` sits in `extdeps/languages/rust.dag`).
+> marker indicating which is canonical). The D2-resolver gap is
+> related but **deliberately not collapsed into this lens** — see the
+> "Cross-reference — D2-resolver" note below for why the dangling-import
+> shape is a separate finding.
 
 - *Signature:* a type name `T` introduced by `type T = ...` in two
-  different `.dag` files. Or: a type name referenced via an import path
-  under a file that does not exist (planned-but-absent home — the
-  degenerate case of duplication).
-- *Decidable:* yes — name uniqueness across the corpus and
-  import-target existence are both queryable from the parsed model. No
-  comment/prose inspection.
+  different `.dag` files. (Scope clarification — the *planned-but-absent
+  home* case is a different finding shape: an unresolved-reference /
+  fail-closed P3 violation, not a duplicate-authority one. The lens
+  that catches it is L0.8 unbound-name extended to dangling import
+  paths — separately classified so root-cause precision is preserved.
+  L1.12 is duplicate-declaration only.)
+- *Decidable:* yes — name uniqueness across the corpus is queryable
+  from the parsed model. No comment/prose inspection.
 - *Verdict:* hard error.
 - *Escape (structural — applies the same rule L1.7 enforces against
   itself):* the lens does **not** accept a comment marker as authority,
@@ -496,14 +532,19 @@ the lens — comment markers never do, by construction (see the
 (dissolution status, scanner anchor); none of them is a structural
 alias edge, retirement-ledger row, or deletion.
 
-**Concrete match — D2-resolver (provisional + planned-absent):**
-```dag
-// src/v4/extdeps/languages/rust.dag
-data GroundingMap = { ... }               // ← provisional home
+**Cross-reference — D2-resolver:** the D2-resolver gap is a mix of
+shapes that **do not collapse into L1.12**:
+- The *planned-but-absent* `extdeps/languages/resolver.dag` is an
+  unresolved-reference / dangling-import finding (L0.8 extended), not a
+  duplicate-declaration one. Reporting it as a duplicate-authority
+  finding would name the wrong root cause.
+- If, separately, `GroundingMap` were declared in two language files
+  (e.g. both `rust.dag` and `python.dag` redeclared `type GroundingMap`),
+  *that* would be an L1.12 match in its own right.
 
-// (src/v4/extdeps/languages/resolver.dag does not exist)
-// other language files defer to a file that isn't there
-```
+The fix sequence for D2-resolver is therefore: first resolve the
+dangling-import finding by landing the canonical home; only then is
+L1.12 the right lens for any residual duplicate declarations.
 
 **Clean shape (structural, not prose):**
 ```dag
@@ -597,7 +638,8 @@ from real evidence, not speculation.
 | 2026-05-18 | ingest | `nat_compare(Nat, Nat)` defined in `src/v4/std/float.dag:52-62` while `nat.dag` and `algebra.dag` exist | an operation lives in its argument-type's home (M9 / DFS the concept DAG) | L1.8 (proposed) |
 | 2026-05-18 | ingest | `CiCommand::ShellCommand { command: String }` while `extdeps/process.dag` models a typed `Command` (`src/v4/workflow/ci.dag:23-28`) | String escape hatch for a domain that has a typed model in scope | L1.10 (proposed) |
 | 2026-05-18 | ingest | `derive_effect_shape` `DELETE/PUT/PATCH None => CreateEffect` (`dsl/std/effects.dag:268-282`) | missing info must escalate through `Outcome::Rejected`, not return a different valid sibling | L1.11 (proposed) |
-| 2026-05-18 | ingest | `Bool`, `Char`, `Url`, machine words declared in both `dsl/std/` and `src/v4/std/` with no authority marker; `extdeps/languages/resolver.dag` referenced but absent | parallel concept homes must be marked canonical / historical, or one must be retired | L1.12 (proposed) |
+| 2026-05-18 | ingest | `Bool`, `Char`, `Url`, machine words declared in both `dsl/std/` and `src/v4/std/` (`type T = ...` redeclared, no structural alias/retirement/migration) | one concept must have one home (structural alias, retirement-ledger row, or migration) | L1.12 (proposed) |
+| 2026-05-18 | ingest | `extdeps/languages/resolver.dag` referenced via imports but file does not exist; provisional `GroundingMap` lives in `extdeps/languages/rust.dag` | unresolved reference / dangling import — fail-closed P3, distinct root cause from duplicate authority | L0.8-extended (planned-but-absent home; deliberately not L1.12) |
 
 Pattern across the ledger: all four are burn-down *substrate* PRs — the
 lane built to remove dissolution debt produced it. Each was *mostly*
