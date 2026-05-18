@@ -1,47 +1,104 @@
 // src/v4/extdeps/coordination.dag
-//
-// Scope: Multi-program coordination — distributed deployment + sync/async/stream/pubsub semantics.
-// Anchor: https://en.wikipedia.org/wiki/Distributed_computing +
-//         https://en.wikipedia.org/wiki/Messaging_pattern (request-reply = sync;
-//         fire-and-forget = async; publish-subscribe = pubsub; stream = pipe)
-//         + https://en.wikipedia.org/wiki/Inter-process_communication
-// Design note (NOT the anchor): coordination is effect-typed not behavior-typed
-//   (IN-B decision; no 6th L1 behavior) — see memory feedback_construction_over_ratchets
-//   + THESIS:215-221 omni-emission. The anchor above is the external-spec
-//   authority per STRUCTURE.md extdeps anchor convention; this line is rationale.
-//
-// Owns:
-//   - Endpoint { address: NetworkAddress, language: LanguageRef, framework: Option<FrameworkRef> }
-//   - DeploymentUnit { endpoints: List<Endpoint>, wire_contracts: List<WireContract> }
-//   - WireContract { from: Endpoint, to: Endpoint, semantics: CoordinationSemantics }
-//   - CoordinationSemantics = Sync | Async(SettleBound) | Stream | PubSub
-//     | EventuallyConsistent(ConvergeBound)   (closed enum)
-//     The non-immediate-settlement variants carry their bound as a
-//     STRUCTURAL field on the carrier (operator-ratified 2026-05-15):
-//     "eventually" / "async-settled" is substrate the generated simulator
-//     READS to evaluate deterministically (lens/testgen.dag
-//     simulator-generation arm) — never a wall-clock harness parameter.
-//     A WireContract that cannot express its bound is a substrate STOP,
-//     not a silently-unbounded simulation. (SettleBound vs ConvergeBound
-//     are distinct semantic quantities — fire-and-forget ack vs replica
-//     agreement — kept separate, not prematurely unified. Bound's internal
-//     representation is T-4.8 fill detail, gated by the STOP rule.)
-//   - These are TYPED CARRIERS over existing 5 L1 behaviors (per IN-B decision);
-//     NO 6th behavior introduced — coordination is Bind composition over
-//     effect-TYPED operations (effects intrinsic to the type signature, NOT
-//     an annotation layer — same stance as unenumerated_effects.dag; consistent
-//     with this file's line 8 "effect-typed not behavior-typed")
-//   - Effect types per coordination kind (HttpEffect / QueueEffect / StreamEffect / etc.)
-//
-// Consumes:
-//   - std/node.dag, std/diagnostic.dag, std/collection.dag
-//   - extdeps/languages/*.dag (per-endpoint language)
-//   - extdeps/frameworks/*.dag (per-endpoint framework, optional)
-//
-// Status: scaffold — fill per TASKS.md T-4.8
-// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
-// contract for the worker. Splitting this file requires explicit operator
-// ratification (substrate extension = stop signal).
+// Scope: Multi-program coordination as effect-typed Bind composition.
+// Owns: NetworkAddress, LanguageRef, FrameworkRef, FrameworkBinding, EndpointRef, Endpoint, SettleBound, ConvergeBound, ExchangePattern, SettlementGuarantee, ConsistencyGuarantee, CoordinationEffectKind, BindRef, CoordinationBind, WireContractFacts, WireContract, DeploymentUnit.
+// Consumes: std/node.dag, std/collection.dag, std/nat.dag.
+// Status: Modeled with tracked scaffolds.
 
 module v4.extdeps.coordination
 
+import v4.std.collection { List }
+import v4.std.nat { Nat }
+import v4.std.node { Symbol }
+
+// Anchor: RFC 3986, January 2005, https://www.rfc-editor.org/rfc/rfc3986
+type NetworkAddress {
+  identity: Symbol
+}
+
+type LanguageRef {
+  identity: Symbol
+}
+
+type FrameworkRef {
+  identity: Symbol
+}
+
+// 🟢 coproduct dissolution — DECISIONS.md#coordination-coproduct-ledgers
+type FrameworkBinding
+  = HostedByFramework { framework: FrameworkRef }
+  | NoFramework
+
+type EndpointRef {
+  identity: Symbol
+}
+
+type Endpoint {
+  identity: EndpointRef,
+  address: NetworkAddress,
+  language: LanguageRef,
+  framework: FrameworkBinding
+}
+
+type SettleBound {
+  steps: Nat
+}
+
+type ConvergeBound {
+  steps: Nat
+}
+
+// Anchor: https://en.wikipedia.org/wiki/Messaging_pattern
+// 🟢 coproduct dissolution — DECISIONS.md#coordination-coproduct-ledgers
+type ExchangePattern
+  = RequestReply
+  | FireAndForget
+  | StreamExchange
+  | PublishSubscribe
+
+// 🟢 coproduct dissolution — DECISIONS.md#coordination-coproduct-ledgers
+type SettlementGuarantee
+  = ImmediateSettlement
+  | SettlesWithin { bound: SettleBound }
+
+// Anchor: https://en.wikipedia.org/wiki/Eventual_consistency
+// 🟢 coproduct dissolution — DECISIONS.md#coordination-coproduct-ledgers
+type ConsistencyGuarantee
+  = NoReplicaConvergence
+  | EventuallyConsistent { bound: ConvergeBound }
+
+// 🟡 coproduct dissolution — DECISIONS.md#coordination-coproduct-ledgers
+type CoordinationEffectKind
+  = Http
+  | Queue
+  | Stream
+  | PubSub
+
+// coincides: src/v4/std/node.dag A1/K-1, operator-ratified 2026-05-15.
+type BindRef {
+  identity: Symbol
+}
+
+type CoordinationBind {
+  bind: BindRef,
+  effect: CoordinationEffectKind
+}
+
+type WireContractFacts {
+  from: EndpointRef,
+  to: EndpointRef,
+  exchange: ExchangePattern,
+  settlement: SettlementGuarantee,
+  consistency: ConsistencyGuarantee
+}
+
+// Anchor: https://en.wikipedia.org/wiki/Inter-process_communication
+type WireContract {
+  facts: WireContractFacts,
+  bind: CoordinationBind
+}
+
+// Anchor: https://en.wikipedia.org/wiki/Distributed_computing
+type DeploymentUnit {
+  endpoints: List<Endpoint>,
+  wire_contracts: List<WireContract>
+}
