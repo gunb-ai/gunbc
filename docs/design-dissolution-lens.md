@@ -138,7 +138,7 @@ non-finding).
 - *Kills:* #3256's 26 `type ListMap { apply: fn }` wrappers; the
   `{ spelling: String }` ×N degenerate-wrapper class.
 
-### L1.3 Hollow-type lens — kills *hollow declarations*
+### L1.3 Hollow-type lens — kills *hollow declarations* (Practice 8's hollow-alias finding, at the type level)
 
 - *Signature:* a declared type **nothing inhabits** — no `data` instance,
   no `fn` returning it, no alias-identity to a substrate type. (This is
@@ -169,6 +169,19 @@ non-finding).
   genuinely-irregular recursion (call graph ≠ data graph) → clean 🟢.
 - *Kills:* `ci.dag`'s hand-rolled `List` combinators (#3213); the
   resolve/normalize walkers (#3225).
+
+### L1.6 Emit/template lens — kills *emit/template dissolution*
+
+- *Signature:* a field or value that is a **template string literal** — a
+  string literal carrying positional placeholders (`{0}`, `{1}`, …) used
+  as an emitter, where grammar-as-declarative-bidirectional-data belongs.
+- *Decidable:* yes — a literal string with interpolation placeholders is a
+  structural match (the keystone decidability table already classifies it
+  "structural — a literal template-string field").
+- *Verdict:* hard error on the literal-template shape.
+- *Escape:* a plain string constant with no placeholders, or genuine
+  string *data* that is not an emitter template, passes.
+- *Kills:* string-templated emitters (`template: "Vec<{0}>"`).
 
 ## 6. The discriminant / catamorphism distinction
 
@@ -202,12 +215,23 @@ scope.
 | **scaffold** | early-milestone code marked `// scaffold:` | Layer 0 only |
 
 Rules:
-- **Layer 0 is on in every profile.** "Lens-shaped" does not mean
-  "optional"; selectivity governs Layer-1 strictness only.
-- **A profile is assigned by scope, not chosen by a file.** A file cannot
-  dial its own lens set down — that turns "selectively applied" into
-  "selectively ignored." Downgrading a scope's profile is a visible,
-  reviewable decision. Strict-by-default; loosen only deliberately.
+- **Layer 0 is on in every profile**, scaffold included. "Lens-shaped"
+  does not mean "optional"; selectivity governs Layer-1 strictness only.
+- **A profile downgrade is never silent and never self-service.** A file
+  cannot quietly dial its own lens set down — that turns "selectively
+  applied" into "selectively ignored." The `// scaffold:` marker is
+  permitted, but it is the *in-file record of a reviewer-approved,
+  scope-level decision*, not a worker's self-applied dial: it is
+  **ratchet-only** — it may not be added to a file to dodge a lens that
+  currently fires. Strict-by-default; loosen only deliberately and
+  visibly.
+- **Turning Layer 1 off does not turn the *discipline* off.** A
+  dissolution finding in scaffold code still carries its 🟡 disposition
+  tag with a bound plan — the keystone's universal "every 🟡 binds a
+  dissolution plan" mandate is profile-independent. The scaffold profile
+  suppresses the *CI hard-error*, never the *modeling obligation*.
+  Otherwise `// scaffold:` becomes lens-off + no-tag = invisible debt —
+  exactly the escape hatch this section forbids.
 - The compiler runs the **substrate** profile on its own
   `src/v4/**/*.dag`. The compiler does not exempt itself from the
   discipline it enforces — that is the example others follow.
