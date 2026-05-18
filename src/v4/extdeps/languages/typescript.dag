@@ -1,6 +1,6 @@
 // src/v4/extdeps/languages/typescript.dag
 // Scope: TypeScript 5.9 + ECMA-262 ES2025 scalar fact-bundle scaffold.
-// Owns: TsEcma262SectionRef, TsScalarTowerSectionRefs, TsNumberKind, TsBigIntKind, TsNumberWidth, TsBigIntWidth, TsScalar, TsEcma262PrimitiveOperationSemantics.
+// Owns: TsEcma262SectionRef, TsScalarTowerSectionRefs, TsScalar, TsEcma262PrimitiveOperationSemantics.
 // Consumes: kernel-ambient String; std numeric/text/bool aliases and grounding rows are fact-bundle-gated.
 // Status: 🟡 gated — scalar tower fact-bundle slice landed; per-primitive bool alias/grounding rows held pending operator A-vs-B ruling.
 // Anchor: https://tc39.es/ecma262/
@@ -23,22 +23,10 @@ type TsScalarTowerSectionRefs {
   numeric_semantics: TsEcma262SectionRef
 }
 
-type TsNumberKind {}
-
-type TsBigIntKind {}
-
-// 🟢 coproduct dissolution — DECISIONS.md TS-SCALAR-PHASE3.
-type TsNumberWidth
-  = Ieee754Binary64
-  | ToInt32
-  | ToUint32
-
-type TsBigIntWidth {}
-
 // 🟢 coproduct dissolution — DECISIONS.md TS-SCALAR-PHASE3.
 type TsScalar
-  = NumberScalar { kind: TsNumberKind, width: TsNumberWidth }
-  | BigIntScalar { kind: TsBigIntKind, width: TsBigIntWidth }
+  = NumberScalar
+  | BigIntScalar
   | BooleanScalar
   | StringScalar
   | SymbolScalar
