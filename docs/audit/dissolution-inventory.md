@@ -13,55 +13,142 @@ as the consolidated authority for both halves of the dissolution-debt
 directive; if #3244 changes a clause materially, the affected marks are
 re-expressed in one follow-up commit.
 
-Scope on `main` at `88ae56d2a` (plus the workflow sub-sweep added per
-still-hawk-102 brief correction 2026-05-18 — `src/v4/workflow/*.dag`):
+**This inventory is a dissolution PLAN, not a catalog.** Per operator
+directive (#3244 commit `9b896f36d`, 2026-05-18): "I don't want these
+comments to start piling up and never get dissolved." A 🟡 is transient
+— a committed surface→dissolve loop with an exit to 🟢, never an
+indefinite tracked comment. The plan in **Section 1** rolls every 🟡
+up by the *missing primitive* it waits on, ranks substrate PRs by
+🟡-count (highest first), and lists every finding each substrate PR
+unblocks. The per-file catalog (Section 2) and the pre-existing-tracker
+triage (Section 3) are the audit-traceability backing for the plan.
 
-- **Part A** — sweep findings: `src/v4/compiler/*.dag`,
-  `src/v4/std/*.dag`, `src/v4/extdeps/**/*.dag`, **`src/v4/workflow/*.dag`**,
-  classified across the five dissolution-finding classes
-  (walker / traverse / predicate / carrier / emit-template). Coproduct
-  dissolution is out of scope — already enforced via the per-coproduct
-  emoji + `DECISIONS.md` ledger.
-- **Part B** — triage of pre-existing trackers: the 10 active
-  `SL-3229-*` entries in `src/v4/DECISIONS.md` Part 6 + the 13 in-file
-  🟡 cite-sites across `verilog`, `llvm_ir`, `json`, `yaml`, `toml`,
-  `typescript`. Triage uses **four** dispositions:
-  - **VALID-🟡** — stays 🟡, re-expressed in #3244 form (`feature:` /
-    `consumer:` gate + concrete named arrival + dissolve-on-arrival
-    obligation).
-  - **STALE → 🔴** — the named arrival has *already landed*; the 🟡 is
-    debt that should already be paid.
-  - **VAGUE** — gate present but not concrete (a class of arrivals
-    rather than one named owner+task; "later substrate"; "the parse
-    body's job").
-  - **INVALID-GATE** — the gate's named arrival was *cancelled or
-    reshaped by a design reversal*; the thing referenced will not
-    arrive as named. Distinct from VAGUE (gate too loose to check) and
-    STALE (gate opened): the gate is well-formed but its target no
-    longer exists in the form the entry promised. Needs re-gating
-    against the post-reversal model.
+**This is also the requirements inventory for the rework-tracker #3240
+S1 substrate track** (loyal-wren). Each substrate PR row in Section 1 is
+a self-contained spec for one substrate-PR's `feature:` arrival, with
+the count and concrete sites it unblocks; S1 consumes directly.
 
-**C1's role is mark + flag, not fix.** This inventory reports the
-disposition of each entry; the actual re-gating of VAGUE /
-INVALID-GATE entries, and the dissolve-now PRs for 🔴 findings, are
-**downstream lane work** — each owned by the lane that owns the file
-named, triggered by the operator's audit of this inventory. C1 does
-*not* edit `DECISIONS.md` rows, *not* rewrite in-file 🟡 blocks, and
-*not* land the dissolve-now fixes. Marks live in this artifact only
-(Practice 10: the in-file `.dag` tag rewrite lands with each migration
-PR, not retro-applied here).
+Scope on `main` at `88ae56d2a` — **every `src/v4/**/*.dag`** (67 files
+total) per still-hawk-102 scope-widening 2026-05-18: compiler/ + std/ +
+extdeps/ + workflow/ + lens/ + bin/ + test/claim/. Sweep frame is
+`main`, not in-flight branches — PR #3213 (workflow T-20 + T-24) is
+HELD with its own dissolution pass; its helpers reach `main` only when
+#3213 merges, and are covered by their own pass until then (no
+double-counting).
 
-**Sweep frame is `main`, not in-flight branches.** PR #3213 (workflow
-T-20 + T-24) is HELD with its own dissolution pass in progress; its
-helpers reach `main` only when #3213 merges. If #3213 merges before C1
-ships, C1 picks them up from `main` at that point; if not, #3213's
-helpers are covered by its own pass — no double-counting.
+**Dispositions** — the four #3244 vocabulary symbols:
+
+- **🔴 dissolve-now** — substrate primitive exists; mechanical fix
+  jumps the queue, lands in a follow-up PR.
+- **🟡 gated** — substrate primitive does not exist yet; carries
+  `feature:<primitive + owning task>` or `consumer:<named consumer>`
+  + dissolve-on-arrival obligation. A 🟡 is a *committed*
+  surface→dissolve loop, not a parking spot.
+- **🟢 terminal** — audited and not a dissolution finding.
+
+**Pre-existing-tracker triage** (Section 3) adds two derived
+dispositions:
+
+- **STALE → 🔴** — the named arrival has *already landed*; the 🟡 is
+  debt that should already be paid.
+- **VAGUE** — gate present but not concrete (a class of arrivals
+  rather than one named owner+task).
+- **INVALID-GATE** — the gate's named arrival was *cancelled or
+  reshaped by a design reversal*; the thing referenced will not arrive
+  as named. Distinct from VAGUE (gate too loose) and STALE (gate
+  opened).
+
+**Status — DRAFT marks pending #3244 merge.** Marks already use the
+#3244 form. When #3244 lands, this artifact ships as the consolidated
+authority; if #3244 changes a clause materially, the affected marks are
+re-expressed in one follow-up commit.
+
+**C1's role is mark + flag + plan, not fix.** This inventory reports
+the disposition of each entry and rolls them into a substrate-PR plan;
+the actual re-gating of VAGUE / INVALID-GATE entries, the dissolve-now
+PRs for 🔴 findings, and the substrate-PR work itself are **downstream
+lane work** — each owned by the lane that owns the file or the S1
+substrate track. C1 does *not* edit `DECISIONS.md` rows, *not* rewrite
+in-file 🟡 blocks, and *not* land the dissolve-now fixes.
 
 ---
 
-## Part A — sweep findings (new)
+## Section 1 — Dissolution plan (rolled up by missing primitive)
 
-### A.1 Lane-wide
+Every 🟡 in this inventory waits on one of ten named arrivals. Each row
+below is **one substrate PR**, ranked by 🟡-count (highest first); the
+"Unblocks" column lists every finding that flips 🟡→🟢 on that PR's
+landing. **Dissolution follow-ups dispatch immediately** on each
+substrate PR landing — the surface→dissolve loop is what makes 🟡
+transient.
+
+### 1.1 Ranked substrate-PR queue
+
+| # | substrate PR (`feature:` arrival) | owner / owning task | 🟡-count | unblocks |
+|---|---|---|---|---|
+| **P1** | `std/cardinality.dag` bounded-natural / refinement substrate | std / T-3 Wave-A2 | **~22** | DECISIONS.md: `SL-3229-LLVM-WIDTH`, `SL-3229-LLVM-OPS`, `SL-3229-PTX-DIM3`, `SL-3229-PTX-COST`, `SL-3229-VERILOG-COST` (+ `SL-3229-FLOAT-NOMINAL` once re-gated under this canonical owner). In-file: `llvm_ir.dag:28` + the ~16 VAGUE prose blocks in `json.dag` / `yaml.dag` / `toml.dag` that concretize to this arrival (refinement-side family). |
+| **P2** | `std/collection.dag` Wave-A2: `List<T> where non_empty` refinement **plus** the List combinator algebra (`forall` / `count_where` / `unique` over `FreeMonoid<T>`) | std / T-3 Wave-A2 (coercion-design.md RQ-3) | **5 named + 26 sites** | Section 2: `std/node.dag` × 4 traverses (`all_edges_named`, `all_edges_positional`, `name_occurrences`, `all_names_distinct`). DECISIONS.md: `SL-3229-VERILOG-NONEMPTY` (one row, 26 verilog.dag back-pointer sites). |
+| **P3** | Compiler pipeline-stage substrate (lex-walk + parse-walk) | compiler / T-6, T-7 | **2 + ~7 in-file** | Section 2: `compiler/01_tokenize.dag tokenize`, `compiler/02_parse.dag parse`. In-file: the parser-side VAGUE prose blocks in `json.dag` / `yaml.dag` / `toml.dag` that concretize to T-6/T-7 (the operations-side family separate from P1). |
+| **P4** | T-4 fact-bundle Phase-3 rework (post-D2-reversal model) | extdeps/languages / T-4 manager `vivid-carp-207` (5-feeder gate; keystone #3226 merged @`77b9e7d72`; 4 feeders open: T-3, T-29, T-30, T-25-core) | **4 + 1 row** | In-file: `typescript.dag` × 4 INVALID-GATE blocks (re-gate against this arrival, not pre-reversal D2). DECISIONS.md: `SL-3229-VERILOG-D3200` (if re-gated as `feature: T-4 fact-bundle Phase-3 rework` rather than `consumer:` form — see Section 3). |
+| **P5** | `std/node.dag` `fold_node` — Node catamorphism (substrate-extension under T-1) | std / T-1 | **1** | Section 2: `std/node.dag node_well_formed`. |
+| **P6** | `std/algebra.dag` / `std/nat.dag` `fold` / `cata` over `FreeMonoid<T>` and `Nat` (Wave-A2) | std / T-3 Wave-A2 | **2** | Section 2: `std/algebra.dag free_monoid_length`, `std/float.dag nat_compare`. (Sibling to P2's combinator algebra; could land in the same PR — kept separate because the underlying primitive is the catamorphism, distinct from `forall`/`count_where` which are derived from it.) |
+| **P7** | `std/nat.dag nat_is_zero : Nat -> Bool` (Wave-A2) | std / T-3 Wave-A2 | **1** | Section 2: `std/float.dag float_finite_magnitude_zero`. |
+| **P8** | `extdeps/languages/verilog.dag` bundled T-4 LanguageModel `constant_expression` sub-grammar | extdeps/languages / T-4 Verilog Phase-3 | **1** | DECISIONS.md: `SL-3229-VERILOG-VECTOR-RANGE` (lexeme-pair bridge). |
+| **P9** | `lens/cost.dag` cost-of-instruction model fact / lens | lens / T-12 | **1** | Section 2: `extdeps/languages/llvm_ir.dag llvm_instruction_cost` (the 22-arm `LlvmInstruction -> Int` cost table). |
+| **P10** | Constrained generic parameters / inhabitance-bound syntax (`<M> where M : CommutativeMonoid<_>`) | substrate extension; **no owning task yet** | **1** | DECISIONS.md: `SL-3229-INTEGER-GROUP-COMPLETION` (`GroupCompletion<M>`). Sub-flag: this is the only row whose `feature:` gate has no owning task; an owning T-# must be assigned (Section 3.1). |
+
+Plus property-projection model facts (Practice 10 row 7) that do not
+roll up into a shared substrate PR — each is a per-type fact-bundle
+extension under its own owner; named in Section 2 but not ranked here
+because they don't amortize across multiple findings. The two such
+findings are `std/node.dag connective_edge_discipline` (T-1) and
+`extdeps/languages/llvm_ir.dag feature_disposition` (T-4 fact-bundle —
+rolls into **P4** as a separate fact within that rework). The third —
+`llvm_ir.dag block_well_formed` — is not really a substrate gap; it
+cascades off the `terminator_is_catchswitch` dissolve-now and closes
+without waiting on substrate.
+
+### 1.2 🟡 → 🟢 burn-down
+
+Total 🟡 in the v4 substrate today (Section 2 + Section 3 VALID-🟡 +
+INVALID-GATE-once-re-gated):
+
+| primitive PR | 🟡 today | landing event | 🟡 after landing |
+|---|---|---|---|
+| (baseline) | **~37** | — | — |
+| P1 lands | -22 | `std/cardinality.dag` refinement | 15 |
+| P2 lands | -5 named (-26 verilog sites) | `std/collection.dag` Wave-A2 | 10 named (verilog sites converge in single sweep) |
+| P3 lands | -2 named (-7 in-file) | T-6 + T-7 pipeline substrate | 8 named |
+| P4 lands | -4 in-file (-1 row if re-gated) | T-4 fact-bundle Phase-3 | 7 named |
+| P5 lands | -1 | `std/node.dag fold_node` | 6 |
+| P6 lands | -2 | FreeMonoid/Nat catamorphism | 4 |
+| P7 lands | -1 | `nat_is_zero` | 3 |
+| P8 lands | -1 | Verilog constant_expression | 2 |
+| P9 lands | -1 | `lens/cost.dag` T-12 | 1 |
+| P10 lands | -1 | constrained-generics syntax | **0** |
+
+Caveat: "🟡 today" mixes Section 2 findings (audited fresh against the
+#3244 form) with Section 3 VALID-🟡 (existing trackers re-expressed in
+#3244 form). The Section 3 VAGUE rows that concretize **into P1 or P3**
+*on re-gate* are counted in the relevant primitive's unblock list; an
+INVALID-GATE row counted in P4 is the re-gate result, not the original
+shape. The plan assumes each Section 3 row will be re-gated by its owning
+lane before the corresponding substrate PR lands (a Section 3
+prerequisite, not a Section 1 deliverable).
+
+**P1 is the headline.** Landing the `std/cardinality.dag` refinement
+substrate dissolves roughly 60% of the v4 substrate's outstanding 🟡
+debt in a single sweep — by 🟡-count it dominates every other
+substrate PR by 4× or more. The S1 substrate track should prioritize
+P1 ahead of P2-P10.
+
+---
+
+---
+
+## Section 2 — Per-file sweep findings (the catalog backing Section 1)
+
+### 2.1 Lane-wide
 
 - **Carrier dissolution** — 🟢 lane-wide. No local
   `... { value: T } | ... { diagnostic: Diagnostic }` clone of
@@ -72,7 +159,7 @@ helpers are covered by its own pass — no double-counting.
   grammar-as-data (`extdeps/languages/*.dag` LanguageModel +
   `compiler/05_emit.dag`).
 
-### A.2 `src/v4/std/`
+### 2.2 `src/v4/std/`
 
 **`std/node.dag`**
 - `node_well_formed` (113) — 🟡 **walker** —
@@ -155,7 +242,7 @@ helpers are covered by its own pass — no double-counting.
 **`std/verification.dag`**, **`std/report.dag`** — schema only / scaffold.
 🟢.
 
-### A.3 `src/v4/compiler/`
+### 2.3 `src/v4/compiler/`
 
 **`compiler/01_tokenize.dag`**
 - `lex_rules_node_is_conj_empty_root` (76) — 🔴 **predicate** —
@@ -180,7 +267,7 @@ helpers are covered by its own pass — no double-counting.
 **`04_infer.dag`**, **`05_emit.dag`**, **`05_eval.dag`** — scaffolds (no
 fns). 🟢.
 
-### A.4 `src/v4/extdeps/`
+### 2.4 `src/v4/extdeps/`
 
 **`extdeps/languages/llvm_ir.dag`**
 - `terminator_is_catchswitch` (526) — 🔴 **predicate** —
@@ -219,7 +306,7 @@ lane-wide).
 **`extdeps/file_system.dag`**, **`extdeps/process.dag`** — zero `fn`
 bodies. 🟢.
 
-### A.5 `src/v4/workflow/`
+### 2.5 `src/v4/workflow/`
 
 Sweep frame `main` @ `88ae56d2a`. (PR #3213 fills both files with
 helper logic; that work is on the #3213 branch only, not in this sweep
@@ -231,13 +318,58 @@ zero `data`, zero `fn`). 🟢 across all five finding classes.
 **`workflow/ci.dag`** — scaffold on `main` (43 lines; same shape).
 🟢 across all five finding classes.
 
-Carrier and emit-template covered by lane-wide 🟢 (A.1).
+Carrier and emit-template covered by lane-wide 🟢 (2.1).
+
+### 2.6 `src/v4/lens/`
+
+11 files (`affected_set.dag`, `application.dag`, `complexity.dag`,
+`cost.dag`, `coverage.dag`, `effect.dag`, `idempotency.dag`,
+`ownership.dag`, `parallelism.dag`, `synthesis.dag`, `testgen.dag`)
+— **every one a scaffold on `main`** (each carries a
+`Status: scaffold — fill per TASKS.md T-##` line, header prose, and a
+`module v4.lens.<name>` declaration). **Zero `type`, zero `data`, zero
+`fn` bodies.** 🟢 across all five finding classes.
+
+`parallelism.dag:83` carries a prose mention of `fold(xs,…)` inside a
+comment ("Fold parallelizability is an ALGEBRA fact"); not an
+implementation. 🟢.
+
+When each lens fills (T-12 cost/complexity, T-13 effect/idempotency/
+ownership/parallelism, T-17 synthesis, T-18 coverage, T-19 testgen,
+T-21 affected_set, T-23 application), the dissolution audit applies
+per the same Section 1 plan — the lenses will likely be major
+consumers of the P1 (cardinality refinement) and P5 (`fold_node`)
+substrate PRs.
+
+### 2.7 `src/v4/bin/`
+
+**`bin/main.dag`** — 21-line scaffold (T-15). Zero `type`/`data`/`fn`.
+🟢.
+
+### 2.8 `src/v4/test/claim/`
+
+9 files: 2 `manual/` (`connective_anchors.dag`, `nat_law_anchors.dag`)
++ 1 `boundary/` (`english_ingest_fail_closed.dag`) + 6 `impossible_bug/`
+(`idempotency_contract.dag`, `nested_optional_flatten.dag`,
+`suboptimal_complexity.dag`, `transport_type_drift.dag`,
+`unenumerated_effects.dag`, `unhandled_diagnostic_paths.dag`).
+
+The `manual/*` pair carries `data` declarations only — pure
+`TestClaim` literal values (e.g.
+`data claim_nat_add_left_identity: TestClaim = TestClaim { … }`). Zero
+`fn` bodies. By construction TestClaim instances cannot host
+dissolution findings — they are the data that *gets fed into* the
+compiler/lens stages whose dissolutions live elsewhere. 🟢.
+
+All `boundary/*` and `impossible_bug/*` files are scaffolds (each
+carries `Status: scaffold — fill per TASKS.md T-##`; zero `type` /
+`data` / `fn`). 🟢.
 
 ---
 
-## Part B — triage of pre-existing trackers
+## Section 3 — Pre-existing-tracker triage (the audit backing Section 1)
 
-### B.1 `DECISIONS.md` Part 6 SL-3229-* triggers
+### 3.1 `DECISIONS.md` Part 6 SL-3229-* triggers
 
 Each row reports: the existing tracker's named arrival → triage result
 (VALID / STALE / VAGUE) → re-expression in #3244 vocabulary (if VALID
@@ -335,7 +467,7 @@ scaffold. Named arrival: "bounded refinement substrate in
   width/cost/nominal-field family (6 entries: LLVM-WIDTH, LLVM-OPS,
   PTX-DIM3, PTX-COST, VERILOG-COST, FLOAT-NOMINAL).
 
-### B.2 In-file 🟡 cite-sites
+### 3.2 In-file 🟡 cite-sites
 
 Result of `grep -n "🟡" src/v4/**/*.dag` (excluding `verification.dag:128`,
 which is descriptive prose about the 🟢/🟡/🔴 convention itself).
@@ -343,13 +475,13 @@ which is descriptive prose about the 🟢/🟡/🔴 convention itself).
 **`extdeps/languages/verilog.dag` × 5 cite-sites** (lines 24, 174, 207,
 264, 473) — all read `// 🟡 coproduct dissolution — DECISIONS.md Part 6 ·
 SL-3229-VERILOG-D3200.`
-- **Triage: inherits VAGUE from `SL-3229-VERILOG-D3200` (B.1).**
+- **Triage: inherits VAGUE from `SL-3229-VERILOG-D3200` (Section 3.1).**
 - **Action queued:** when the SL-3229-VERILOG-D3200 entry is
   re-concretized, all 5 cite-sites update to the new gate text.
 
 **`extdeps/languages/llvm_ir.dag:28`** — `// 🟡 coproduct dissolution —
 DECISIONS.md Part 6 · SL-3229-LLVM-WIDTH.`
-- **Triage: VALID** (inherits from B.1 SL-3229-LLVM-WIDTH VALID).
+- **Triage: VALID** (inherits from 3.1 SL-3229-LLVM-WIDTH VALID).
 - **#3244 re-expression at cite-site:** can stay as-is (the ledger row
   itself is the authority; the in-file one-liner is a pointer). If the
   operator-mandated form requires the gate kind on the cite-site too,
@@ -414,7 +546,7 @@ refinement-side gates.
   `extdeps/languages/typescript.dag` (Lane C / T-4 manager
   vivid-carp-207); the standing T-4-rework-PR HOLD directive applies.
 
-### B.3 Summary table
+### 3.3 Summary table
 
 | tracker | shape | gate-kind | concrete-arrival? | dissolve-on-arrival obligation? | triage |
 |---|---|---|---|---|---|
@@ -459,7 +591,7 @@ fixes are downstream lane work, not C1's** — C1 marks and flags.
 
 ---
 
-## Part A summary
+## Section 2 summary (per-class roll-up)
 
 | class | 🔴 dissolve-now | 🟡 gated (named feature: / consumer:) | 🟢 terminal |
 |---|---|---|---|
