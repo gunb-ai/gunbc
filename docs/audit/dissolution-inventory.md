@@ -39,11 +39,14 @@ double-counting).
 **Dispositions** — the four #3244 vocabulary symbols:
 
 - **🔴 dissolve-now** — substrate primitive exists; mechanical fix
-  jumps the queue, lands in a follow-up PR.
+  jumps the queue, lands in a follow-up PR. **Count: 3 findings, 2
+  distinct fixes** (R1 + R2 in § 1.0). Checked, not omitted.
 - **🟡 gated** — substrate primitive does not exist yet; carries
   `feature:<primitive + owning task>` or `consumer:<named consumer>`
   + dissolve-on-arrival obligation. A 🟡 is a *committed*
-  surface→dissolve loop, not a parking spot.
+  surface→dissolve loop, not a parking spot. **Count today: ~37
+  bound to P1-P10 in § 1.1, plus ~23 pre-plan backlog (Section 3
+  VAGUE+INVALID-GATE) not yet rollable.**
 - **🟢 terminal** — audited and not a dissolution finding.
 
 **Pre-existing-tracker triage** (Section 3) adds two derived
@@ -75,12 +78,45 @@ in-file 🟡 blocks, and *not* land the dissolve-now fixes.
 
 ## Section 1 — Dissolution plan (rolled up by missing primitive)
 
-Every 🟡 in this inventory waits on one of ten named arrivals. Each row
-below is **one substrate PR**, ranked by 🟡-count (highest first); the
-"Unblocks" column lists every finding that flips 🟡→🟢 on that PR's
-landing. **Dissolution follow-ups dispatch immediately** on each
-substrate PR landing — the surface→dissolve loop is what makes 🟡
-transient.
+**How this plan partitions the v4 dissolution surface:**
+
+- **§ 1.0** — **🔴 dissolve-now (jumps queue, no substrate gap).**
+  Hand-rolled constructs whose substrate primitive *already exists* on
+  `main`. Land immediately, ahead of P1. (Per Practice 10 / #3244: 🔴
+  is a directive, never a standing state.)
+- **§ 1.1** — **Ranked substrate-PR queue (P1-P10, 🟡 plan).** Every
+  🟡 in this inventory waits on one of ten named arrivals; each row =
+  one substrate PR, ranked by 🟡-count (highest first), with the
+  finding list it unblocks. **Dissolution follow-ups dispatch
+  immediately** on each substrate PR's landing — the surface→dissolve
+  loop is what makes 🟡 transient.
+- **§ 1.2** — 🟡 → 🟢 burn-down view.
+- **Pre-plan concretization backlog** — Section 3's ~19 VAGUE + 4
+  INVALID-GATE entries. **These are NOT in the P1-P10 plan**, because
+  a VAGUE entry names no concrete primitive (cannot be rolled under
+  any P#) and an INVALID-GATE entry's named arrival was cancelled by
+  a design reversal (likewise unrollable). They are a **pre-plan
+  backlog the burn-down lane drives first**: each gets re-concretized
+  (then rolls under a P#) or is dissolved / re-dispositioned. They
+  cannot enter the burn-down dependency DAG until concretized. P10
+  has the same flag (named primitive but no owning task — see §
+  1.1).
+
+### 1.0 🔴 dissolve-now (jumps queue, lands ahead of P1)
+
+Three findings; two distinct follow-up PRs. Each substrate primitive
+needed for the fix *already exists* on `main` @ `88ae56d2a` — no
+upstream substrate work blocks these.
+
+| # | finding | distinct fix | substrate available? |
+|---|---|---|---|
+| **R1** | `compiler/01_tokenize.dag lex_rules_node_is_conj_empty_root` (76) **+** `compiler/02_parse.dag grammar_node_is_conj_empty_root` (73) — literal duplicates | Extract `is_empty_conj_root : Node -> Bool` into `std/node.dag`; replace both compiler-stage duplicates. | ✓ — pure composition over existing `std/node.dag` primitives (`Node`, `NodeKind`, `TypeNode`, `Conj`, `count`); all on main. |
+| **R2** | `extdeps/languages/llvm_ir.dag terminator_is_catchswitch` (526) — naked `match … _ => false` discriminator | Inline the `match` into the sole consumer `block_well_formed` (533); delete the discriminator predicate. | ✓ — pure pattern match on `Terminator` (already declared in `llvm_ir.dag`); no new substrate. |
+
+These two follow-up PRs are owned by their respective lanes
+(`compiler/` for R1, `extdeps/languages/llvm_ir.dag` for R2). Per
+"C1 marks + flags + plans, does not fix," C1 does not author either
+PR; it surfaces them with R1/R2 as the audit anchor.
 
 ### 1.1 Ranked substrate-PR queue
 
@@ -95,7 +131,7 @@ transient.
 | **P7** | `std/nat.dag nat_is_zero : Nat -> Bool` (Wave-A2) | std / T-3 Wave-A2 | **1** | Section 2: `std/float.dag float_finite_magnitude_zero`. |
 | **P8** | `extdeps/languages/verilog.dag` bundled T-4 LanguageModel `constant_expression` sub-grammar | extdeps/languages / T-4 Verilog Phase-3 | **1** | DECISIONS.md: `SL-3229-VERILOG-VECTOR-RANGE` (lexeme-pair bridge). |
 | **P9** | `lens/cost.dag` cost-of-instruction model fact / lens | lens / T-12 | **1** | Section 2: `extdeps/languages/llvm_ir.dag llvm_instruction_cost` (the 22-arm `LlvmInstruction -> Int` cost table). |
-| **P10** | Constrained generic parameters / inhabitance-bound syntax (`<M> where M : CommutativeMonoid<_>`) | substrate extension; **no owning task yet** | **1** | DECISIONS.md: `SL-3229-INTEGER-GROUP-COMPLETION` (`GroupCompletion<M>`). Sub-flag: this is the only row whose `feature:` gate has no owning task; an owning T-# must be assigned (Section 3.1). |
+| **P10 ⛔ needs-concretization** | Constrained generic parameters / inhabitance-bound syntax (`<M> where M : CommutativeMonoid<_>`) | substrate extension; **no owning task yet** | **1** | DECISIONS.md: `SL-3229-INTEGER-GROUP-COMPLETION` (`GroupCompletion<M>`). **P10 does NOT enter the burn-down DAG as a normal upstream node until concretized** — under #3244 a 🟡 whose substrate primitive has no committed PR/task is not a valid 🟡 (the comment-graveyard case). The single finding under P10 (`SL-3229-INTEGER-GROUP-COMPLETION`) is reclassified VAGUE in Section 3.1 until an owning T-# is assigned. Action owner: substrate / operator-or-S1 assignment. |
 
 Plus property-projection model facts (Practice 10 row 7) that do not
 roll up into a shared substrate PR — each is a per-type fact-bundle
@@ -125,22 +161,35 @@ INVALID-GATE-once-re-gated):
 | P7 lands | -1 | `nat_is_zero` | 3 |
 | P8 lands | -1 | Verilog constant_expression | 2 |
 | P9 lands | -1 | `lens/cost.dag` T-12 | 1 |
-| P10 lands | -1 | constrained-generics syntax | **0** |
+| P10 lands | -1 (after concretization) | constrained-generics syntax | **0** |
 
-Caveat: "🟡 today" mixes Section 2 findings (audited fresh against the
-#3244 form) with Section 3 VALID-🟡 (existing trackers re-expressed in
-#3244 form). The Section 3 VAGUE rows that concretize **into P1 or P3**
-*on re-gate* are counted in the relevant primitive's unblock list; an
-INVALID-GATE row counted in P4 is the re-gate result, not the original
-shape. The plan assumes each Section 3 row will be re-gated by its owning
-lane before the corresponding substrate PR lands (a Section 3
-prerequisite, not a Section 1 deliverable).
+(R1+R2 in § 1.0 are not counted in the 🟡 burn-down — they are 🔴,
+land immediately, and dissolve outside the substrate-gap queue.)
+
+Caveats:
+
+1. **"🟡 today" counts only entries already bound to a P# in the
+   plan.** Section 2's fresh findings + Section 3's 7 VALID-🟡 are
+   counted; **Section 3's ~19 VAGUE + 4 INVALID-GATE are NOT** —
+   they are pre-plan backlog (no concrete primitive to roll under
+   yet). The burn-down lane drives the backlog first; once a VAGUE/
+   INVALID entry is re-concretized to a `feature:` arrival that
+   matches an existing P#, it rolls in and the corresponding row's
+   🟡-count grows. The numbers above project the post-concretization
+   landing impact under the assumption that the pre-plan backlog
+   concretizes uniformly to the canonical owners named in Section 3
+   (e.g. refinement-side VAGUE → P1; parser-side VAGUE → P3).
+2. **P10 lands** requires the owning task be assigned first; the
+   "🟡 → 🟢 sweep for P10" only fires after concretization. The
+   `⛔ needs-concretization` flag on P10 in § 1.1 is structurally
+   blocking that row's DAG entry.
 
 **P1 is the headline.** Landing the `std/cardinality.dag` refinement
 substrate dissolves roughly 60% of the v4 substrate's outstanding 🟡
 debt in a single sweep — by 🟡-count it dominates every other
 substrate PR by 4× or more. The S1 substrate track should prioritize
-P1 ahead of P2-P10.
+P1 ahead of P2-P10. R1 and R2 (§ 1.0) jump the queue ahead of all
+substrate PRs since neither needs absent substrate.
 
 ---
 
