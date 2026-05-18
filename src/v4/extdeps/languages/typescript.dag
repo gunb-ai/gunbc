@@ -1,212 +1,36 @@
 // src/v4/extdeps/languages/typescript.dag
-//
-// Scope: TypeScript language model — direction-agnostic. Includes ES
-//         (ECMAScript) base.
-// Anchor (version pins — checkable L-2; extdeps declaration discipline):
-//   TypeScript **5.9**: Handbook slice https://www.typescriptlang.org/docs/handbook/2/everyday-types.html ;
-//   release stake https://www.typescriptlang.org/docs/handbook/release-notes/typescript-5-9.html
-//   ECMA-262 **16th edition / ES2025**: fixed edition HTML (not rolling `/ecma262/` HEAD)
-//   https://tc39.es/ecma262/2025/multipage/ — spec drift = visible C1 edit to this header.
-// Unifies: (per THESIS:188) language spec = transport spec = interpreter
-//         runtime. ONE substrate carrier for all three roles. Different
-//         lenses read different facts from the same data (emission reads
-//         syntax; transport reads serialization; interpreter reads
-//         execution semantics). A worker needing transport or runtime
-//         extends this file, not a new "transport spec" file.
-//
-// HEADER-ENCODING (fact-bundle reseed): Owns/Consumes/Status below are
-//   amended for the TypeScript primitive scaffold only; frozen scaffold
-//   Scope/Anchor/Unifies lines are preserved verbatim above. 🟡 gated —
-//   feature: T-4 fact-bundle Phase-3 rework (post-D2-reversal), after
-//   T-3, T-29, T-30, and T-25-core. Dissolve this D2-shaped scaffold when
-//   that rework authors TypeScript primitive fact-bundles.
-//
-// Owns (T-4 typescript — pre-rework primitive scaffold; **TS spec
-//   partition**, not a literal rust type-copy):
-//
-//   - TypeScript primitive rows are a 🟡 gated D2-shaped scaffold, not the
-//     terminal model: feature T-4 fact-bundle Phase-3 rework replaces bare
-//     alias / grounding-map rows with spec-read fact-bundles and proven
-//     coincidence evidence where reuse is licensed. Until then, do not add
-//     local `GroundingMap` rows or new alias-identity fan-out.
-//   - D2a(3) **TypeScript-native** operation-semantics — one closed `Disj`
-//     (`TsEcma262PrimitiveOperationSemantics`) whose variants are the
-//     three ECMA-262 primitive-semantics tracks (IEEE-754 `Number`
-//     arithmetic; `Number` bitwise ToInt32/ToUint32 mod 2³²; exact
-//     unbounded `BigInt`). **No** Rust `OverflowAction` /
-//     `OverflowDisposition` superset. One 🟢 Practice-4 ledger on that
-//     coproduct (v2-compiler: a unary `type T = V` is parsed as a type
-//     alias — `Disj` carriers need `|` between ≥2 variants).
-//   - Minimal **numeric primitive vocabulary** — ECMAScript's `number` vs
-//     `bigint` partition (Handbook "Everyday Types" + ECMA-262 language
-//     types), distinct from Rust's fixed-width `i*` / `u*` ladder.
-//   - TypeScript grammar, structural typing, generics, interfaces,
-//     classes, cost realization — **Owned ELSEWHERE** (bundled T-4
-//     LanguageModel; C5-3 / B2-OMNI / B4); primitive scaffolds do not
-//     decide structural-typing facts.
-//
-// Owned ELSEWHERE:
-//   - Bidirectional `LanguageModel`, emit/ingest ops, `Outcome<T>` seam.
-//   - IEEE-754 `Arrow` bodies for `number` — grammar bundle + std/
-//     float.dag ApproximateField attachment.
-//
-// Consumes (traceability — kernel-ambient `Bool` needs no import):
-//   - std/logic.dag: sole modeling authority for `Bool` (the D2a(1) row
-//     `type TsBoolean = Bool` is alias-identity to that authority).
-//
-// Status: T-4 TypeScript scaffold — D2-shaped bool alias retained only as
-//   a pre-rework bridge; ECMA-262-native semantics + numeric-kind
-//   vocabulary landed. 🟡 gated — feature: T-4 fact-bundle Phase-3 rework
-//   replaces numeric/string/symbol/nullability alias scaffolds with
-//   TypeScript primitive fact-bundles.
-// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
-// contract for the worker. Splitting this file requires explicit operator
-// ratification (substrate extension = stop signal).
-
+// Scope: TypeScript 5.9 + ECMA-262 ES2025 primitive scaffold.
+// Owns: TsEcma262NumericPrimitiveKind, TsBoolean, TsEcma262PrimitiveOperationSemantics.
+// Consumes: kernel-ambient Bool; std numeric/text carriers are fact-bundle-gated.
+// Status: 🟡 gated — feature: T-4 fact-bundle Phase-3 rework after T-3/T-29/T-30/T-25-core.
 
 module v4.extdeps.languages.typescript
 
 
-// `Bool` is kernel-ambient (STRUCTURE.md:147). `type TsBoolean = Bool`
-// references std/logic.dag's `Bool` without an `import` — correct alias-
-// identity, not hollow.
 
 
-// ─────────────────────────────────────────────────────────────────────
-// Modeling notes (D2 slice)
-//
-// ECMAScript partitions `number` (IEEE-754 binary64) and `bigint`
-// (exact integers, unbounded) as DISTINCT primitives — not Rust's `i32`
-// fixed-width ladder. Structural typing, excess property checks, and
-// conditional types are **out of D2** (DECISIONS.md D2 scope guard).
 
-
-// ═════════════════════════════════════════════════════════════════════
-// Pre-rework grounding rows (🟡 gated — feature: T-4 fact-bundle Phase-3)
-//
-// D2's `GroundingMap` arrival was cancelled by the 2026-05-17 D2
-// reversal. Do not declare a local `GroundingMap` or `data ts_*_grounding`
-// row here. The terminal replacement is the TypeScript primitive
-// fact-bundle set authored by the T-4 Phase-3 rework after T-3, T-29,
-// T-30, and T-25-core land.
-
-
-// ═════════════════════════════════════════════════════════════════════
-// Primitive vocabulary — ECMAScript numeric surface (Handbook + ECMA-262)
-//
-// TypeScript inherits ECMAScript's two numeric primitives: `number` and
-// `bigint` (distinct from Rust's signed/unsigned fixed-width family).
-//
-// Spec: https://www.typescriptlang.org/docs/handbook/2/everyday-types.html
-//       (sections on `number`, `bigint`)
-//       https://tc39.es/ecma262/#sec-ecmascript-language-types-number-type
-//       https://tc39.es/ecma262/#sec-ecmascript-language-types-bigint-type
-//
-// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — five patterns attempted:
-//   1. Fact placement — FAILS: both kinds are shared classifiers for every
-//      consumer that dispatches on numeric primitive kind.
-//   2. Variant-is-data — FAILS: nullary tags from a closed ECMA-262
-//      partition; a `Bool` proxy would be the M4 numeric/boolean-proxy smell.
-//   3. Algebraic form — PARTIAL: each kind's algebra is std/ (float vs
-//      integer chains) reached via **future** D2a(1) aliases, not by
-//      collapsing this enum into those carriers.
-//   4. Dimensional — FAILS: a value is exactly ONE numeric primitive kind.
-//   5. Parameterized family — FAILS: `number` and `bigint` are distinct
-//      ECMA primitives, not one indexed family (Practice 7).
 type TsEcma262NumericPrimitiveKind
+  // 🟢 coproduct dissolution — DECISIONS.md TS-D2
   = TsNumberPrimitive
   | TsBigIntPrimitive
 
 
-// ═════════════════════════════════════════════════════════════════════
-// Pre-rework alias bridge (kernel-ambient `Bool`)
 
 
-// ECMAScript / TypeScript `boolean` ↔ std/logic.dag `Bool`.
-// Spec: https://www.typescriptlang.org/docs/handbook/2/everyday-types.html
-//       https://tc39.es/ecma262/#sec-ecmascript-language-types-boolean-type
+
+
+
 type TsBoolean = Bool
 
 
-// Operation-semantics row omitted for `boolean`: no ECMA-262 event
-// distinct from `BooleanAlgebra<Bool>` (std/logic.dag); no parallel
-// overflow / NaN carrier.
 
 
-// ═════════════════════════════════════════════════════════════════════
-// ECMA-262 primitive operation-semantics (TS-native; NOT Rust int
-// overflow)
-//
-// ECMA-262 exposes three **distinct** primitive-semantics obligations the
-// resolver must not conflate:
-//   (1) `Number` — additive / multiplicative / division / remainder follows
-//       IEEE-754 binary64 (NaN / ±∞ propagation), not fixed-width int wrap.
-//       Spec: https://tc39.es/ecma262/#sec-numeric-types-number-type
-//   (2) `Number` — bitwise operators use ToInt32 / ToUint32; results are
-//       integers mod 2³² (a different spec surface from (1)).
-//       Spec: https://tc39.es/ecma262/#sec-numberbitwiseop
-//   (3) `BigInt` — exact unbounded integers; invalid ops throw per ECMA-262,
-//       not silent modular wrap on a Rust-style fixed width.
-//       Spec: https://tc39.es/ecma262/#sec-ecmascript-language-types-bigint-type
-//
-// v2-compiler parses `type T = V` (no `|`) as a **type alias** to an
-// existing type `V`. A `Disj` therefore needs ≥2 variants joined by `|`.
-// The three obligations above are one closed coproduct (not Rust's
-// Panic|Wrap axis).
-//
-// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — five patterns attempted:
-//   1. Fact placement — FAILS: every numeric / emit consumer reads the same
-//      three-way partition when dispatching ECMA primitive semantics.
-//   2. Variant-is-data — FAILS: nullary tags from a closed ECMA-262
-//      obligation set; no Bool / numeric proxy.
-//   3. Algebraic form — PARTIAL: IEEE-754 / `Int` bodies land in std/
-//      (float.dag / integer.dag) + D2b `Arrow` realizations; this `Disj`
-//      names which ECMA track applies at the resolver boundary.
-//   4. Dimensional — FAILS: a resolver row selects exactly ONE semantics
-//      track per modeled obligation site (mutually exclusive classifier
-//      rows, not simultaneous coordinates on one value).
-//   5. Parameterized family — FAILS: the three are not `Semantics<Width>` /
-//      Practice-7 projection over a declared width set.
+
+
+
 type TsEcma262PrimitiveOperationSemantics
+  // 🟢 coproduct dissolution — DECISIONS.md TS-D2
   = TsNumberIeee754Binary64Semantics
   | TsNumberBitwiseInt32Uint32Semantics
   | TsBigIntExactUnboundedSemantics
-
-
-// (No per-primitive INSTANCE `data` rows here — M1(2.8) opaque-body: **TOP-LEVEL**
-// nullary **sum-variant literal** bodies are what the v3 lowerer rejects per
-// ROADMAP.md:418 (→ `ValueBody::Unparsed` until structural validation exists).
-// **Record-structural** bodies (→ `ValueBody::Structural`) **do** lower clean —
-// they are **not** part of this gap. TS per-primitive D2a(3) instances would be
-// top-level nullary-sum-variant literals (`data ts_*: TsEcma262PrimitiveOperationSemantics
-// = TsNumberIeee754Binary64Semantics`), hence this deferral. Operation
-// disposition rows expressed as **record-structural** bodies (variant tags
-// only at **field** positions inside `Rec { … }`) are likewise class-5-SAFE.
-// Fact-bundle grounding rows are **class-5-SAFE** when expressed as
-// records; their absence is gated by the T-4 Phase-3 fact-bundle rework,
-// not by `GroundingMap` home selection. **Deferred** operation instance
-// rows remain gated by Class-5-Gap-3 / top-level-`ValueBody` substrate work
-// (R2/R3 lane, ROADMAP.md:416/#418; #920 / #1017 / #1068). **Trigger** =
-// that gap closes. The operation-semantics **TYPES** / classifiers +
-// Practice-4 ledgers above are canonical regardless; instance rows
-// land when the substrate can structurally validate **top-level** sum-variant
-// `data` bodies.)
-
-
-// 🟡 gated — feature: T-4 fact-bundle Phase-3 rework
-//
-// Phase-3 replaces these D2-shaped alias sketches with spec-read bundles:
-// `number` (binary64 + NaN/Infinity/disposition facts), `bigint` (exact
-// unbounded integer facts), `string` (UTF-16 code-unit facts), and
-// `symbol` / `null` / `undefined` (nominal/runtime facts). Any reuse of
-// std/float.dag, std/integer.dag, or std/text.dag must cite proven
-// coincidence evidence.
-
-
-// ═════════════════════════════════════════════════════════════════════
-// IEEE-754 `number` operation realizations (`Transform → FunctionRef →
-// Arrow` bodies). 🟡 gated — feature: T-4 fact-bundle Phase-3 rework,
-// paired with the bundled grammar + std/float.dag ApproximateField
-// attachment.
