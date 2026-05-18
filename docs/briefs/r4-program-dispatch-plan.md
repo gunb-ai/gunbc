@@ -183,15 +183,31 @@ should not wait.
 
 ---
 
-## 5. Proposed lane/manager dispatch (the thing to discuss)
+## 5. Proposed lane/manager dispatch — **FRESH lanes under `witty-cat-59`**
 
-| Lane / manager | Owns | Wave-0 dispatch NOW | Gated (later waves) |
+Operator directive 2026-05-18: **do not reuse the existing managers.** Each lane
+below is a **new composite manager session** spun under `witty-cat-59`
+(`dashboard-ops work-items create --shape composite "<title>"`), with **no
+inherited subtree or held-state**. Spawned on the Wave-0 go. Two existing
+sessions are *not* folded in — see exceptions.
+
+| Fresh lane (new composite) | Owns | Wave-0 dispatch NOW | Gated (later waves) |
 |---|---|---|---|
-| **Lane A** `fierce-cat-31` (compiler pipeline + lens program) | T-3 tail, T-6–T-8 CP-1b close, T-9, T-10, T-11, T-16, lens T-12/13/17/18/23, T-25-tail; **T-26 = std-authoritative, Lane A execution-OK (conduit, not 2nd home)**; T-28 | lens fan-out (running), CP-1b close, T-26 (conduit) | T-9 (post-T-4), T-10, T-11, T-16 |
-| **Lane B** `swift-ram-178` (test/bootstrap infra) | T-19, T-20, T-21, T-22, T-24, T-14, T-15, T-4.11, T-32 | **T-19, T-20, T-21, T-22** (Priority-1) | T-24 (post-20/21), T-14, T-15 (terminal) |
-| **T-4 mgr** `vivid-carp-207` | T-4 ×5, T-4.5–T-4.14 | **— (T-29/T-4.10/T-4.12 already LANDED; T-29 residual #3277 in-flight, attribution open; T-4 ×5 HELD on keystone)** | T-4 (post-keystone), T-4.5–4.8 |
-| **Dissolution** `jolly-ibex-599` | T-30, T-31, Wave-2 lenses, 🟡 burn-down | **T-31(b) mop-up; T-30 generated-checker** (interim P5(b) mirror already on main) | Wave-2 lenses (post #3240) |
-| **Operator** | Keystone rulings | **Practice-10/#3240 ratification; T-25-core direction; IN-B probes (T-4.9/T-4.14); #3280 A-vs-B** | — |
+| **Fresh: Compiler-Pipeline + Lens** | T-3 tail, T-6–T-8 CP-1b close, T-9, T-10, T-11, T-16, lens T-12/13/17/18/23, T-25-tail; **T-26 = std-authoritative, conduit-only**; T-28 | T-23 contract; T-12/T-13 lens `READY*` bounded scope | T-9 (post-T-4), T-10, T-11, T-16 |
+| **Fresh: Test/Bootstrap-Infra** | T-19, T-20, T-21, T-22, T-24, T-14, T-15, T-4.11, T-32 | **T-19, T-20, T-21** (full) · **T-22** (`READY*` scaffold scope) | T-24 (post-20/21), T-14, T-15 (terminal) |
+| **Fresh: extdeps/T-4** | T-4 ×5, T-4.5–T-4.14 | **— (T-29/T-4.10/T-4.12 LANDED; T-4 ×5 HELD on keystone)** | T-4 (post-keystone), T-4.5–4.8 |
+| **Fresh: Dissolution** | T-30, T-31, Wave-2 lenses, 🟡 burn-down | **T-31(b) mop-up; T-30 generated-checker** | Wave-2 lenses (post #3240) |
+| **Operator** | Keystone rulings | **see §7 decision sheet** | — |
+
+**Exceptions (NOT migrated — improvising around these is forbidden):**
+1. **`vivid-carp-207`** stays *solely* as the **#3280 CORE-freeze custodian**
+   (#3308/#3309 + audit-trail pins frozen, no new work) until the operator
+   A-vs-B ruling resolves and archives it. The Fresh extdeps/T-4 lane owns all
+   *forward* T-4 work; it does **not** inherit the freeze.
+2. **`fierce-cat-31`** keeps the **in-flight lens fan-out** (~6 active
+   Acceptance-PR children) to **closeout only** — it archives when that fan-out
+   completes; the Fresh Compiler-Pipeline+Lens lane owns all *new* work.
+   Mid-flight migration is rejected as pure churn.
 
 ---
 
@@ -216,3 +232,40 @@ should not wait.
 > Nothing in Wave 0 waits on this PR's merge — it documents what's already
 > dispatchable and the gated remainder. Merge = lane managers have ratified
 > their rows and the operator has the keystone package.
+
+---
+
+## 7. Operator decision sheet (every blocking question)
+
+**Root decision — the A-vs-B modeling ruling.** Under **D2-REV**
+(operator-ratified 2026-05-17: *fact-bundle modeling supersedes alias-identity*),
+how is each language's per-primitive scalar (e.g. Python `bool`/`int`/`float`)
+modeled?
+
+- **Option A — keep the cheap form:** `type PyBool = Bool` (bare alias) +
+  `data py_bool_grounding: GroundingMap { spelling: "bool" }`. Fast, ~no rework.
+  *But this is the shape your own #3280 merge message called "D2-reversal-wrong
+  … expected it fixed," and it re-introduces the bare alias D2-REV exists to
+  kill.*
+- **Option B — fact-bundle:** eliminate the bare alias / require each primitive
+  to carry **real proven-coincidence facts** grounded from its own spec;
+  deduplicate to a `std/` carrier only on machine-readable proven coincidence.
+  More work; it *is* the D2-REV / Practice-10 principle already ratified.
+- **Recommendation: B.** A contradicts the reversal you already ratified and is
+  the hollow-alias T-30 exists to gate.
+
+Everything else **follows from or is independent of** that root call:
+
+| # | Blocking question | Choice / tradeoff | Rec |
+|---|---|---|---|
+| 1 | **A-vs-B** (above) | A = cheap, contradicts D2-REV · B = principled, more rework | **B** |
+| 2 | **#3280 disposition** (follows #1) | If **B**: #3308/#3309 stay held; rework obligation on `862bbde6e`, owner = **Fresh extdeps/T-4 lane**; archive `vivid-carp-207` freeze after. If **A**: unblock #3308/#3309, apply landed shape, archive freeze. | **B-path** |
+| 3a | **Ratify Practice-10 / #3240?** | Same call as A-vs-B=B (it formalizes D2-REV enforcement). Yes = collapses long pole + unjams #3280 + #3313 + scopes pre-#3240 backward-rework. | **Ratify** |
+| 3b | **T-25-core direction** | Genuine design fork (refinement-substrate shape). Needs your design intent — I can lay options if useful. | *needs you* |
+| 4 | **Wave-0 go** | Go = ~6 full + ~3 bounded work-fronts start now (keystone-independent). Wait = nothing moves. | **Go** |
+| 5 | **Fresh-lane exceptions** | Default: `vivid-carp-207` = sole #3280 freeze custodian; `fierce-cat-31` = lens-fan-out closeout only. Alt: hard-cut (churn/risk). | **Defaults** |
+| 6 | **De-prose Python removal** | You directionally said "kill the de-prose py." Now = delete `strict_deprose_dag.py` + test + 2 CI steps (brief gap until lens enforcement lands) · Sequence = no gap, ratchet lingers. | **Delete now** |
+| 7 | **#3313** (L1.7–L1.12 design) | Post my review as a formal GitHub review now; advance to 2-approval bar **sequenced behind #3240** (gated on it regardless). | **Post + sequence** |
+
+One sentence per row resolves the program. #1/#3a are the same philosophical
+call; #2 falls out of #1; #4/#5/#6/#7 are independent and low-risk.
