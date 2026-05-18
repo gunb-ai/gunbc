@@ -78,10 +78,10 @@ type FreeMonoidUniqueState<T> {
   seen: FreeMonoid<T>
   unique: Bool
 }
-fn free_monoid_fold<T, A>(xs: FreeMonoid<T>, empty: A, cons: fn(T, A) -> A) -> A {
+fn free_monoid_fold<T, A>(xs: FreeMonoid<T>, empty: A, cons: fn(A, T) -> A) -> A {
   match xs {
     Empty => empty
-    Cons { head: h, tail: t } => cons(h, free_monoid_fold(xs: t, empty: empty, cons: cons))
+    Cons { head: h, tail: t } => free_monoid_fold(xs: t, empty: cons(empty, h), cons: cons)
   }
 }
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: coproduct variant-discriminant predicate substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived Empty-variant discriminant projection; forbidden: free_monoid_fold laundering.
@@ -102,12 +102,12 @@ fn free_monoid_non_empty<T>(xs: FreeMonoid<T>) -> Bool {
 
 
 fn free_monoid_length<T>(xs: FreeMonoid<T>) -> Int {
-  free_monoid_fold(xs: xs, empty: 0, cons: fn(_, acc) { acc + 1 })
+  free_monoid_fold(xs: xs, empty: 0, cons: fn(count, _) { count + 1 })
 }
 
 
 fn free_monoid_forall<T>(xs: FreeMonoid<T>, predicate: fn(T) -> Bool) -> Bool {
-  free_monoid_fold(xs: xs, empty: true, cons: fn(item, acc) {
+  free_monoid_fold(xs: xs, empty: true, cons: fn(acc, item) {
     match acc {
       true => predicate(item)
       false => false
@@ -117,7 +117,7 @@ fn free_monoid_forall<T>(xs: FreeMonoid<T>, predicate: fn(T) -> Bool) -> Bool {
 
 
 fn free_monoid_count_where<T>(xs: FreeMonoid<T>, predicate: fn(T) -> Bool) -> Int {
-  free_monoid_fold(xs: xs, empty: 0, cons: fn(item, count) {
+  free_monoid_fold(xs: xs, empty: 0, cons: fn(count, item) {
     match predicate(item) {
       true => count + 1
       false => count
@@ -132,7 +132,7 @@ fn free_monoid_count_equal<T>(xs: FreeMonoid<T>, item: T, eq: fn(T, T) -> Bool) 
 
 
 fn free_monoid_unique<T>(xs: FreeMonoid<T>, eq: fn(T, T) -> Bool) -> Bool {
-  let state = free_monoid_fold(xs: xs, empty: FreeMonoidUniqueState { seen: Empty, unique: true }, cons: fn(item, acc) {
+  let state = free_monoid_fold(xs: xs, empty: FreeMonoidUniqueState { seen: Empty, unique: true }, cons: fn(acc, item) {
     match acc.unique {
       true => match free_monoid_count_equal(xs: acc.seen, item: item, eq: eq) {
         0 => FreeMonoidUniqueState { seen: Cons { head: item, tail: acc.seen }, unique: true }
