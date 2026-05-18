@@ -951,6 +951,8 @@ Verbatim `//` lines from merge-base `integer.dag` (lines **124–132**):
 
 **Dissolution trigger:** v4 lands constrained generic parameters / inhabitance bounds tightening `GroupCompletion<M>` (merge-base text).
 
+**#3244 disposition (concretized gate, still pre-burn-down):** **🟡 gated — `feature:`** constrained generic parameters / inhabitance-bound syntax tightening `GroupCompletion<M>` to require the commutative-monoid witness structurally. **Roll-up:** dissolution-inventory **§1.1 P10** (constrained-generics substrate row). **⛔ Owning `TASKS.md` T-# not assigned yet** — under merged #3244 a 🟡 without a committed substrate PR / owning task is not merge-valid as a standing gate; this row stays **outside the P1–P9 burn-down DAG** until the operator / S1 substrate track binds an owning task to the P10 row. **Dissolve-on-arrival:** tighten `GroupCompletion<M>` + retire merge-base verbatim block when syntax lands.
+
 ### SL-3229-LLVM-WIDTH — raw-`Int` width payload scaffold (`LlvmType` family)
 
 Verbatim `//` lines from merge-base `llvm_ir.dag` (lines **276–297**), immediately preceding `type LlvmType`:
@@ -1303,7 +1305,9 @@ Merge-base `verilog.dag` Practice-4 headers marked **🟡 YELLOW** under the **#
 
 **Live coproduct one-liners cite this slug:** `NonTriregNetKind`, `VariableDeclaration`, `OutputPortAnsiVariableTypeKind`, `ParameterTypeKind`, `PrimitiveGateKind` (merge-base `92cb26402` — verbatim five-pattern ledgers + `#3200 RE-SCOPE` footers recoverable via `git show 92cb26402eeb21471acb6ac47559cbae3b52afdb:src/v4/extdeps/languages/verilog.dag`).
 
-**Dissolution trigger:** first meaning-consumer owes the structural decomposition named in each carrier’s merge-base footer (D2 / synthesis / elaboration consumers — not a verilog-local mint).
+**Dissolution trigger (superseded 2026-05-18 — #3244 / dissolution-inventory §3.1):** the merge-base “first consumer” / D2-shaped class was **not** a single checkable `consumer:<name>` gate and referenced modelling cancelled by the **D2-reversal** (fact-bundle program). **Re-concretized** as a **`feature:`** arrival below.
+
+**#3244 disposition (concretized):** **🟡 gated — `feature:`** **T-4 fact-bundle Phase-3 rework** for `extdeps/languages` (canonical program owner **T-4** / manager lane **vivid-carp-207**). On landing, each of the five coproducts dissolves by **pushing structural facts into the bundle + `LanguageModel` carriers** (Practice 4 / 8 / 10), not by the pre-reversal alias-identity path. **Roll-up:** dissolution-inventory **§1.1 P4**. **Dissolve-on-arrival:** per-carrier five-pattern + disposition update in the **T-4 Verilog** lane; live `verilog.dag` one-liners stay `DECISIONS.md Part 6 · SL-3229-VERILOG-D3200` (strict de-prose canonical form) — authority is this row’s **`feature:`** text.
 
 ### SL-3229-VERILOG-VECTOR-RANGE — `VectorRange` lexeme-pair bridge (constant_expression)
 
@@ -1459,6 +1463,8 @@ Verbatim `//` lines from merge-base `float.dag` (lines **104–144** — modelin
 ```
 
 **Dissolution trigger:** bounded refinement substrate in `std/machine.dag` notes / Wave-A2 (merge-base cross-ref).
+
+**#3244 disposition (concretized):** **🟡 gated — `feature:`** **bounded-natural / numeric refinement substrate in `std/cardinality.dag`** (T-3 Wave-A2) — the **checkable** arrival for nominal width, interchange list-length honesty, and `Nat` field-width scaffolds named in merge-base notes (same dissolution **family** as **SL-3229-LLVM-WIDTH**, **SL-3229-VERILOG-COST**, **SL-3229-PTX-COST**). `std/machine.dag` `Word*` / interchange documentation remains a **cross-reference** only; it is **not** a second parallel `feature:` owner. **Roll-up:** dissolution-inventory **§1.1 P1**. **Dissolve-on-arrival:** apply float.dag modeling-note obligations when cardinality refinement + dependent numeric carriers land.
 
 ### PR-3252-extdeps-deferrals — Practice‑9 prose home (cardinality P1 slice)
 
