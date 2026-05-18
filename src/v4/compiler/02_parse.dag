@@ -17,7 +17,7 @@ import v4.std.diagnostic {
   Locus,
   Outcome,
   PortLocus,
-  UserInputBoundary,
+  UserInputBoundary
 }
 import v4.std.node { Node, Symbol, is_empty_conj_root, node_well_formed }
 
@@ -67,23 +67,25 @@ fn parse(tokens: TokenStream, grammar: Grammar) -> Outcome<ParseTree> {
     port: parse_stage_locus_port
   }
   let ntok = count(tokens.tokens)
-  if !node_well_formed(n: grammar) {
-    Rejected {
-      diagnostic: parse_grammar_not_well_formed_diagnostic(at: at)
-    }
-  } else if is_empty_conj_root(n: grammar) {
-    if ntok == 0 {
-      Produced {
-        value: grammar
+  if node_well_formed(n: grammar) {
+    if is_empty_conj_root(n: grammar) {
+      if ntok == 0 {
+        Produced {
+          value: grammar
+        }
+      } else {
+        Rejected {
+          diagnostic: parse_g0_tokens_remain_diagnostic(at: at)
+        }
       }
     } else {
       Rejected {
-        diagnostic: parse_g0_tokens_remain_diagnostic(at: at)
+        diagnostic: parse_walk_not_realized_diagnostic(at: at)
       }
     }
   } else {
     Rejected {
-      diagnostic: parse_walk_not_realized_diagnostic(at: at)
+      diagnostic: parse_grammar_not_well_formed_diagnostic(at: at)
     }
   }
 }
