@@ -841,6 +841,10 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // `llvm_instruction_cost` moving from LLVM IR shape model to v4 cost lens.
     // SG-0 + INVARIANTS §P5(b) receipt.
     "src/v3/compiler/tests/integration/v4_lens_cost_dag_smoke_test.rs",
+    // PREFIX dissolution lens acceptance batch (d): parse-level ratchet for the
+    // `src/v4/lens/coverage.dag` L1.1-L1.12 acceptance data rows. Dissolves when
+    // the v4 coverage lens runs as `.dag` and no hand-Rust row-presence ratchet is needed.
+    "src/v3/compiler/tests/integration/v4_lens_coverage_dag_smoke_test.rs",
     // T-30: `compile_to_dag` smoke on `src/v4/std/fact_density.dag` (Practice 8
     // structural mirror in `v4_hollow_alias_gate`). SG-0 + INVARIANTS §P5(b) receipt.
     "src/v3/compiler/tests/integration/v4_std_fact_density_dag_smoke_test.rs",
