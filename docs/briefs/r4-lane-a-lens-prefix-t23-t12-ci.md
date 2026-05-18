@@ -57,11 +57,22 @@ CI today has **no** real “fold registered lenses over programs, fail-closed on
 
 ## SCOPE (immutable — three slices)
 
-1. **Slice A — T-23 registry + driver skeleton (v4-home):** deterministic **registry** + **one** Rust driver entrypoint; runs selected lens over **any** in-corpus `.dag` input path supplied by CI glob expansion; **fail-closed** on internal errors.
+1. **Slice A — T-23 registry + driver skeleton (v4-home):** deterministic **registry** + **one** Rust driver entrypoint; runs selected lens over **any** in-corpus `.dag` input path supplied by CI glob expansion; **fail-closed** on internal errors. **P5 / SG-0:** any **new or expanded** hand-Rust under `src/v3/` (including new `src/v3/compiler/tests/**` integration files) follows **§P5 — hand-Rust surface** below — no silent census debt.
 2. **Slice B — T-12 cost lens (first REAL registration):** enough of **`lens/cost.dag`** to register and prove Slice A — **honest-scaffold** where lattice fill remains gated; **no** hand-rolled walkers; **P3**-gated walks stay **Rejected / not-realized** pending substrate.
-3. **Slice C — CI gate (whole corpus):** **one** workflow step: invoke driver over **all** `.dag` files (whole-tree glob carrier), **fail-closed** on **`DimensionFail` / `Violates` / enforcement** per **`docs/design-lens-framework.md` §2** mapping. **Delete-dated** v3 fold step runs **alongside** as **supplementary non-authoritative** coverage until v4 parity.
+3. **Slice C — CI gate (whole corpus):** **one** workflow step: invoke driver over **all** `.dag` files (whole-tree glob carrier); **merge-gate** outcomes (**exit 0 vs non-zero**) are **only** those enumerated as **corpus / aggregate** checks in **`r4-lane-a-lens-prefix-acceptance.md`** (see **§TEST SURFACE** — **never** use this step to “prove” a **red witness**; red witnesses are **harness-asserted** `DimensionFail` / `Violates` with **passing tests**). **Delete-dated** v3 fold step runs **alongside** as **supplementary non-authoritative** coverage until v4 parity.
 
 **Out of scope:** full **T-24** `ci.yml` emitter (align only); **Wave 2** dissolution lenses until PREFIX+CP-1+#3240/#3244 gates clear.
+
+---
+
+## P5 / SG-0 — hand-Rust surface (**binding — INVARIANTS P5 Mechanism (b)**)
+
+PREFIX implementation that touches **`src/v3/compiler/**`** hand-authored Rust (non-generated) MUST satisfy **one** of:
+
+1. **Receipted expansion (default):** the PR adds **exactly one** checkable **P5 Mechanism (b)** receipt per **INVARIANTS.md** §P5 / **SG-0** table row, **in the same PR** as any new `EXPECTED_HAND_AUTHORED_NON_TEST` / `EXPECTED_HAND_AUTHORED_TEST` / fragment census line in `src/v3/compiler/tests/integration/sg0_census_test.rs`, and names the adjacent **`ROADMAP.md` § Nine lanes** row explicitly — **`T-PB-A`** / `pb_hand_rust_at_shim_floor` (non-test surface) or **`T-PB-B`** / `pb_rust_tests_outside_residual_zero` (test surface), matching the census partition the change lands in.
+2. **No new v3 hand-Rust:** the observable driver + gates ship **only** through **`.dag` authorities**, **`v2-compiler`**, and/or **generated** surfaces already covered by existing census — **STOP** and escalate if the only apparent path is ad-hoc host Rust outside those receipts.
+
+**Anti-pattern (forbidden):** a “diagnostic fixture” implemented as **“the CI workflow step must exit non-zero to prove we emit `Diagnostic`”** — that is **not** a dissolution receipt; it is an **unmergeable CI posture** that contradicts mergeable acceptance (see **TEST SURFACE**).
 
 ---
 
@@ -83,11 +94,12 @@ Unchanged intent from prior brief revision: **whitelist** v4 lens + std imports 
 
 ---
 
-## TEST SURFACE / RUNNABLE ACCEPTANCE (**split: corpus vs witnesses**)
+## TEST SURFACE / RUNNABLE ACCEPTANCE (**split: corpus CI vs typed negative witnesses**)
 
 1. **`v2-compiler compile --source-root src/v4`** — **0 diagnostics** (unchanged spine bar).
-2. **Whole-corpus driver (Slice C)** — must execute on **all** `.dag` paths from the glob carrier; failures aggregate per **`DimensionFail`** / `Witness.Violates` policy (**design-lens-framework.md §2**).
-3. **PREFIX Acceptance PR** (`r4-lane-a-lens-prefix-acceptance.md`) — holds **immutable** red/green **witness snippets** + **enumerated** `TestClaim` / driver expectation table (**DB-15**). **Implementation workers may not edit** witness blocks except **red→green** with **operator-signed** amendment to Acceptance PR (**anti-fabrication**).
+2. **Whole-corpus driver (Slice C) — mergeable CI step:** the workflow job that runs the driver over **all** `.dag` paths from the glob carrier **exits 0** when acceptance criteria are met (aggregate policy per **`r4-lane-a-lens-prefix-acceptance.md`** — e.g. zero **unexpected** `Violates` / `DimensionFail` escapes against the enumerated contract). This step **never** doubles as a “prove diagnostics by failing the job” harness.
+3. **Typed negative / diagnostic witnesses — harness only:** red snippets and **`DimensionFail` / `Violates` / typed `Diagnostic`** expectations are asserted under **`cargo test`** (or the repo’s equivalent **DB-15** `TestClaim` runner path) so that **expected failure is a passing test** (asserted structured outcome). **CI stays green** when those tests pass. **Do not** specify witness proof as a non-zero exit from the whole-corpus job — that conflates “driver correctly reports violation” with “branch is unmergeable,” which contradicts “all acceptance criteria pass in CI.”
+4. **PREFIX Acceptance PR** (`r4-lane-a-lens-prefix-acceptance.md`) — holds **immutable** red/green **witness snippets** + **enumerated** `TestClaim` / driver expectation table (**DB-15**), including explicit rows mapping runnable checks to **`Witness<C>`** / **`DimensionOk` / `DimensionFail`** (**`docs/design-lens-framework.md` §2**). **Implementation workers may not edit** witness blocks except **red→green** with **operator-signed** amendment to Acceptance PR (**anti-fabrication**).
 
 ---
 
