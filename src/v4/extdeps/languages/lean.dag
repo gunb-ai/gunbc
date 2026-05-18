@@ -3,7 +3,6 @@
 // Owns: LeanDeclarationKind, LeanName, LeanLevel, LeanLevelRef, LeanLevelNode, LeanBinderInfo, LeanBinder, LeanTermRef, LeanTermNode, LeanTermForm, LeanMatchAlternative, LeanTerminationMeasure, LeanTerminationBy, LeanDecreasingProof, LeanTerminationClause, LeanDefinitionTermination, LeanProofArtifact, LeanFidelityFeature, LeanFidelityDisposition, LeanProofCheckSemantics, LeanBool, LeanNat, LeanInt, LeanUSize, LeanUInt8, LeanUInt16, LeanUInt32, LeanUInt64.
 // Consumes: Int, UInt8, UInt16, UInt32, UInt64, UIntPlatform, List, Bool, Nat, Symbol.
 // Status: D2-hard-held; fact-bundle rework gated.
-// Anchor: https://lean-lang.org/doc/reference/4.20.0/
 
 module v4.extdeps.languages.lean
 

@@ -3,7 +3,6 @@
 // Owns: Isa, ByteOrder, InstructionLength, InstructionByteLimitRef, OperandFieldWidthRef, InstructionWord, RegisterClass, RegisterDeclaration, RegisterRef, IndexScale, AddressingMode, Operand, ByteSequence, InstructionProductionRef, RegisterOperandSlotRef, ImmediateOperandSlotRef, MemoryOperandSlotRef, ImmediateOperandTarget, ImmediateOperandConstraint, MemoryOperandConstraint, InstructionOperandSlot, InstructionProduction, OperandBinding, DecodedInstruction, MachineFidelityFeature, MachineFidelityDisposition, MachineIntegerOverflowBehavior, MachineIntegerOperationSemantics, FlagWriteDisposition, MachineI8, MachineI16, MachineI32, MachineI64, MachineI128, MachineU8, MachineU16, MachineU32, MachineU64, MachineU128.
 // Consumes: Int8, Int16, Int32, Int64, Int128, UInt8, UInt16, UInt32, UInt64, UInt128, List, Byte, Symbol.
 // Status: D2-hard-held; fact-bundle rework gated.
-// Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
 
 module v4.extdeps.languages.machine_code
 
