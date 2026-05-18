@@ -126,11 +126,35 @@ fn node_locally_well_formed(n: Node) -> Bool {
     ComputationNode { behavior: _ } => true
   }
 }
+fn folded_children_well_formed(children: List<FoldedEdge<Bool>>) -> Bool {
+  fold(children, init: true, f: fn(acc, e) {
+    acc && e.target
+  })
+}
+fn node_well_formed_reduce(kind: NodeKind, children: List<FoldedEdge<Bool>>) -> Bool {
+  let local = match kind {
+    TypeNode { connective: c } =>
+      edges_conform(
+        children: fold(children, init: [], f: fn(acc, e) {
+          list_push(acc, Edge {
+            label: e.label,
+            target: Node {
+              kind: kind,
+              children: []
+            }
+          })
+        }),
+        d: connective_edge_discipline(c: c)
+      )
+    ComputationNode { behavior: _ } => true
+  }
+  local && folded_children_well_formed(children: children)
+}
+data node_well_formed_algebra: NodeFoldAlgebra<Bool> = {
+  reduce: node_well_formed_reduce
+}
 fn node_well_formed(n: Node) -> Bool {
-  node_locally_well_formed(n: n)
-    && fold(n.children, init: true, f: fn(acc, e) {
-         acc && node_well_formed(n: e.target)
-       })
+  fold_node(n: n, algebra: node_well_formed_algebra)
 }
 // 🟢 predicate dissolution — DECISIONS.md §CP-1b item 12; docs/audit/dissolution-inventory.md §1.0 R1 (PR #3284).
 fn is_empty_conj_root(n: Node) -> Bool {
