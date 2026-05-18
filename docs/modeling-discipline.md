@@ -642,9 +642,14 @@ vocabulary:
   rather than to do structurally distinct work. The property is a fact
   the model should carry and the code should *read*. Canonical shape: a
   coproduct discriminant — `free_monoid_non_empty` hand-rolling `match xs
-  { Empty => false ; Cons => true }` derives "which variant" by hand
-  where the coproduct already carries it. On a substrate / `std/` /
-  reusable algebraic helper this is unconditionally blocking.
+  { Empty => false ; Cons => true }`, or `nat_is_zero` hand-rolling
+  `Zero => true ; Succ => false`, derives "which variant" by hand where
+  the coproduct already carries it. Mechanical trigger: any new `is_*`,
+  `has_*`, `*_is_*`, `*_has_*`, `non_empty`, `is_empty`, or similar
+  `Bool` helper over a coproduct that `match`es the value and returns
+  `true` for one variant and `false` for another is predicate
+  dissolution until proven otherwise. On a substrate / `std/` / reusable
+  algebraic helper this is unconditionally blocking.
 - **walker dissolution** *(new)* — Practice 7 lifted from
   declaration-families to *traversal*: a function that hand-rolls
   recursion over a structural type (`Node`, AST) — per-node-kind `match`
@@ -722,40 +727,54 @@ the *shape* of a modeled type rather than by logic unique to this call
 site? If yes, it is a candidate dissolution finding — identify the
 registry row, then mark the disposition (🔴 dissolve-now / 🟡 gated /
 🟢 clean).
+For predicates, verification helpers, and structural walkers, look for
+direct matches on lower-layer representation (`Empty`/`Cons`, enum
+variants, field conventions, ad hoc list traversal) when a canonical
+fold, accessor, query, or substrate fact already exists or should exist.
+Do several functions repeat the same recursion? Does the PR call the
+helper a "refinement predicate", "short-circuiting primitive", or
+"matches sibling style" without explaining why that requires a separate
+walker? Those are not sufficient answers: preserve semantic requirements
+such as short-circuiting in the canonical surface, and treat existing
+sibling helpers with the same shape as accumulated debt, not precedent.
+A coproduct's 🟢/🟡/🔴 tag does not disposition a predicate over that
+coproduct; predicate dissolution lives on the consumer function and
+needs its own disposition.
 **Not when** the recursion or `match` is genuinely irregular — the call
 graph is not the data graph, the branches do genuinely distinct work.
 Irregularity is the honest escape hatch: a derived operation is one whose
 shape *is* the data's shape.
 
-## Calibration: Blocking vs Non-blocking
+## Calibration: Blocking vs Omit
 
 A finding is **BLOCKING** if fixing it in a later PR would be meaningfully
 harder than fixing it now — i.e., if merging this PR commits the project
 to a shape that is expensive to change.
 
-A finding is **NON-BLOCKING** if it's a cleanup that can land later at
-roughly the same cost.
+Do not use a nit/advisory finding as a third category. If a concern is
+valid and PR-relevant, request changes. If it is not serious enough to
+require action, omit it from the review.
 
 **Substrate-level issues are almost always BLOCKING** because the
 substrate sets patterns that get copied. Once a bad shape propagates
 through three consumers, changing it means changing all three plus the
 substrate.
 
-**Performance issues are almost always NON-BLOCKING** because they can
-be optimized later without changing interfaces.
+**Performance issues are usually omitted** unless they change interfaces,
+make a bound false, or create a concrete invariant violation.
 
 **Test coverage gaps depend:** gap in a high-risk invariant → BLOCKING;
-gap in a low-risk area → NON-BLOCKING.
+gap in a low-risk area → omit.
 
 **When in doubt, prefer BLOCKING.** It is better to ask for a small
 rework now than to accept a substrate bug that propagates through three
 milestones before anyone notices.
 
-**Dissolution findings (Practice 10) are an always-BLOCKING class.** The
-NON-BLOCKING tier above does not apply to them: a dissolution finding —
-walker / traverse / predicate / carrier / emit-template — is resolved
-only by a 🔴 / tracked-🟡 / substantiated-🟢 disposition (Practice 10),
-never graded NON-BLOCKING and never waved off as a cleanup.
+**Dissolution findings (Practice 10) are an always-BLOCKING class.** A
+dissolution finding — walker / traverse / predicate / carrier /
+emit-template — is resolved only by a 🔴 / tracked-🟡 / substantiated-🟢
+disposition (Practice 10), never graded advisory and never waved off as
+a cleanup or by free-text "intentional, no code change."
 
 ## For Reviewers
 
@@ -816,8 +835,11 @@ For each relevant principle and its implementing practices:
    the Calibration section). A hand-rolled registry row 3 (translation) or 4 (coercion)
    carries **no** numbered finding — it is a whole-architecture
    escalation, not a function-scale review finding (per Practice 10's
-   rows-3/4 carve-out).
-10. Classify every finding as BLOCKING or NON-BLOCKING per the calibration
+   rows-3/4 carve-out). For any `is_*`, `has_*`, `*_is_*`, `*_has_*`,
+   `non_empty`, `is_empty`, or similar `Bool` helper over a coproduct,
+   verify the function itself has a 🔴/🟡/🟢 disposition; the coproduct's
+   tag alone is not enough.
+10. Classify every finding as BLOCKING or omit it per the calibration
     above.
 
 This document is the distilled version of modeling principles. For the
