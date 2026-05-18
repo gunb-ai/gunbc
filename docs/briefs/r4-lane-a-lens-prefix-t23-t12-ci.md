@@ -40,7 +40,7 @@ Dissolution lens wave remains **`jolly-ibex`** / **#3313** / **#3240** — track
 | Authority | Role |
 |-----------|------|
 | `src/v4/lens/application.dag` | **Immutable header** — `SectionRef`, `EnforcedApplication` / `IntrospectApplication`, `apply_lens`, **D1** `subterm_at` / `apply_diff`, AGENT-1 composition notes, advisory→fail-closed bridge discipline. Status: **scaffold — fill per TASKS.md T-23**. |
-| `src/v4/TASKS.md` §**T-23** (~L886+) | Modeling obligations for the application surface. |
+| `src/v4/TASKS.md` §**T-23** (~L674) | Modeling obligations for the application surface (**three-parameter** `EnforcedApplication` / `EnforceableLens` — aligned with **`DECISIONS.md` T-23-PIN** + **`docs/design-lens-application-surface.md` §2**). |
 | `src/v4/DECISIONS.md` | **C7 / report / synthesis** rows citing **T-23** — ledger receipts; Practice **4 / 9**. |
 | `src/v4/lens/cost.dag` | **T-12** home — **scaffold — fill per T-12**; lattice fill may remain gated honestly. |
 | `docs/design-lens-application-surface.md` | **Whole-tree glob + O(1)-applications** feasibility for Slice C (`§5` ~L355–L362). **§5.1** default `IntrospectApplication<ComplexitySummary>` synthesis (operator dev-speed lever). |
