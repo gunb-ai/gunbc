@@ -108,9 +108,19 @@ fn bootstrap_tier1_unit_classification() -> TestClassification {
 
 fn assert_kind_for_manual_anchor(key: T19ManualAnchorKey) -> AssertKind {
   match key {
+    T19ManualTcConjEmpty => Compiles
+    T19ManualTcDisjEmpty => Compiles
+    T19ManualTcArrowTwoConj => Compiles
+    T19ManualTcCardinalityEmpty => Compiles
+    T19ManualTcInstantiationEmpty => Compiles
     T19ManualTcConjEqualsRefl => Equals
+    T19ManualNatAddLeftIdentity => Compiles
+    T19ManualNatAddRightIdentity => Compiles
+    T19ManualNatAddAssociativity => Compiles
+    T19ManualNatMulLeftIdentity => Compiles
+    T19ManualNatMulAnnihilator => Compiles
     T19ManualNatMulAssociativity => Equals
-    _ => Compiles
+    T19ManualAnchorAbsent => Compiles
   }
 }
 
