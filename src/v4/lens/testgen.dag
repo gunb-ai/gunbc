@@ -12,10 +12,11 @@ import v4.std.verification {
   Tier1,
   Unit,
   AssertKind,
-  assert_kind_for_manual_anchor,
+  Compiles,
+  Equals,
   t19_present_manual_anchor_key,
   T19ManualAnchorKey,
-  T19PresentManualAnchorKey,
+  T19ManualAnchorAbsent,
   T19ManualTcConjEmpty,
   T19ManualTcDisjEmpty,
   T19ManualTcArrowTwoConj,
@@ -82,7 +83,7 @@ type TestgenConcept
 type Generator<C> {
   classification: TestClassification
   kind: AssertKind
-  t19_anchor: T19PresentManualAnchorKey
+  t19_anchor: T19ManualAnchorKey
   slot: C
 }
 
@@ -131,8 +132,30 @@ fn bootstrap_tier1_unit_classification() -> TestClassification {
 }
 
 
-fn testgen_concept_for_manual_anchor(key: T19PresentManualAnchorKey) -> Outcome<TestgenConcept> {
+fn bootstrap_assert_kind_for_manual_anchor(key: T19ManualAnchorKey) -> Outcome<AssertKind> {
   match key {
+    T19ManualAnchorAbsent =>
+      Rejected { diagnostic: t19_manual_anchor_absent_bootstrap_diagnostic() }
+    T19ManualTcConjEmpty => Produced { value: Compiles }
+    T19ManualTcDisjEmpty => Produced { value: Compiles }
+    T19ManualTcArrowTwoConj => Produced { value: Compiles }
+    T19ManualTcCardinalityEmpty => Produced { value: Compiles }
+    T19ManualTcInstantiationEmpty => Produced { value: Compiles }
+    T19ManualTcConjEqualsRefl => Produced { value: Equals }
+    T19ManualNatAddLeftIdentity => Produced { value: Compiles }
+    T19ManualNatAddRightIdentity => Produced { value: Compiles }
+    T19ManualNatAddAssociativity => Produced { value: Compiles }
+    T19ManualNatMulLeftIdentity => Produced { value: Compiles }
+    T19ManualNatMulAnnihilator => Produced { value: Compiles }
+    T19ManualNatMulAssociativity => Produced { value: Equals }
+  }
+}
+
+
+fn testgen_concept_for_manual_anchor(key: T19ManualAnchorKey) -> Outcome<TestgenConcept> {
+  match key {
+    T19ManualAnchorAbsent =>
+      Rejected { diagnostic: t19_manual_anchor_absent_bootstrap_diagnostic() }
     T19ManualTcConjEmpty =>
       Produced {
         value: TypeConstruction {
@@ -239,7 +262,7 @@ fn bootstrap_claim_generator_for_manual_anchor(
   match t19_present_manual_anchor_key(key: key) {
     Rejected { diagnostic: d } => Rejected { diagnostic: d }
     Produced { value: present } =>
-      match assert_kind_for_manual_anchor(key: present) {
+      match bootstrap_assert_kind_for_manual_anchor(key: present) {
         Rejected { diagnostic: d } => Rejected { diagnostic: d }
         Produced { value: kind } =>
           match testgen_concept_for_manual_anchor(key: present) {
