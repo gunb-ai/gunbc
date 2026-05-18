@@ -81,6 +81,8 @@ remain boundary indexes until the named substrate support lands.
 | `std/algebra.dag` | `FreeMonoid<T>` | Green coproduct | Closed inductive finite-sequence carrier: `Empty | Cons { head, tail }`. Terminal because finiteness is structural in the spine, not a side fact or length field. |
 | `std/algebra.dag` | `Ordering` | Green coproduct | Closed total-order trichotomy: `Less | Equal | Greater`. Terminal because exactly one comparison result holds; numeric ranks may be derived projections, not the carrier. |
 | `std/cardinality.dag` | `DescentEvidence`, `Multiplicity` | Green coproducts | `DescentEvidence` is the closed per-edge descent observation sum. `Multiplicity = Bounded | Unbounded { step: TerminationProof }` keeps the bounded/unbounded distinction closed. |
+| `std/cardinality.dag` | `Never` | Green atomic | Uninhabited type — zero inhabitants; grounds empty / bottom types in external language specs (e.g. Rust `!`) on a single std/ authority. |
+| `std/cardinality.dag` | `Unit` | Green atomic | Singleton type — exactly one inhabitant; shared cardinality-1 authority for unit-shaped facts (opaque `type Unit` in the v2-bootstrap-compatible surface; same semantic role as a nominal unit value). |
 | `std/cardinality.dag` | `TerminationProof` | Green proof record | Encodes lexicographic descent by structure: `non_increasing: List<RankingDimension>` plus mandatory `strict: RankingDimension`; no stored `DescentEvidence` field may stand in for the strict witness. |
 | `std/collection.dag` | `Set<T>` finite-cardinality refinement | Yellow refinement scaffold | Documented: bare `Set<T> = PointwisePower<T>` is an arbitrary subset/characteristic-function carrier and does not encode finiteness. Bounded use: consumers needing finite subsets must wait on the refinement, not infer finiteness from `Set<T>`. Trigger: cardinality/enumerability substrate (`Multiplicity` plus an enumerability `Witness`) lands and adds `FiniteSet<T>` or equivalent. |
 | `std/diagnostic.dag` | `Extent.ByteRange` | Yellow value-refinement scaffold | Documented: `ByteRange { start: Int, end: Int }` is an honest bridge carrier because current substrate syntax cannot exclude negative offsets or `start > end`. Bounded use: producers must validate textual spans before constructing diagnostics that rely on byte-range validity. Trigger: bounded/non-negative ordered span carrier or equivalent substrate refinement. |
@@ -167,6 +169,14 @@ wrappers were a B3 parallel taxonomy and #3273 nominalization issue. Named
 trigger: `feature:T-13-effect-lens-coordination-signature`; dissolve when
 T-13 reads HTTP/queue/stream/pubsub kind from the type signature and T-16
 consumes that derived fact.
+
+### PR-3252-cardinality-std — `std/cardinality.dag` `Never` / `Unit` (Practice 9 receipt)
+
+**Cross-ref:** Part 1 de-prosed substrate table rows for `Never` / `Unit`; **`§PR-3252-extdeps-deferrals`** for `go.dag` / `python.dag` / `rust.dag` pointer discipline.
+
+- **P1 inhabitance:** `Never` (zero inhabitants) and `Unit` (cardinality-1 authority) are the shared std facts for external empty / unit types. **Do not conflate** with bounded non-negative **numeric** refinement (cost axes, LLVM width payloads, tuple-`()` substrate, etc.) — those remain on **T-25-core + `nat`/`integer`** and the **SL-3229** dissolution family already indexed in this file.
+
+- **`Unit` opaque (not `= MkUnit`):** v2 v4-bootstrap (`v2-compiler compile --source-root src/v4 --target dag`) does **not** resolve `MkUnit` as a type name for a single-variant `|` sum; **`type Unit`** opaque stays within the v2-compat subset without changing semantic authority.
 
 ## CP-1b — `03_resolve` / `extdeps/languages/dag` scaffold (Practice 9)
 
@@ -1430,6 +1440,16 @@ Verbatim `//` lines from merge-base `float.dag` (lines **104–144** — modelin
 ```
 
 **Dissolution trigger:** bounded refinement substrate in `std/machine.dag` notes / Wave-A2 (merge-base cross-ref).
+
+### PR-3252-extdeps-deferrals — Practice‑9 prose home (cardinality P1 slice)
+
+**Authority:** still-hawk-102 / operator (2026‑05‑18) — live `extdeps/languages/*.dag` pointers only; rationale here.
+
+- **`go.dag` / `GoNever`:** `std/cardinality.dag` `Never` is landed. This slice’s `GoScalar` is the six‑variant go1.26 predeclared scalar partition; there is **no** modeled bottom primitive in that closed set, so **no** `type GoNever = Never` D2a row. A row lands only after an operator‑ratified `GoScalar` extension (or an explicit encoding that bottom is control‑flow‑only without a scalar carrier).
+
+- **`python.dag` / singletons:** `Unit` lands the shared cardinality‑1 authority for the three spec singleton kinds. Per‑singleton D2a(1)/(2) alias + grounding rows remain **deferred** on the shared `GroundingMap` home (D2 row) plus integer/text ladder work — not expanded inline in `python.dag`.
+
+- **`rust.dag` / `RustNever`:** D2a(1) `type RustNever = Never` is in‑file. D2a(2) `rust_never_grounding` and **numeric** cost/width refinement (distinct from inhabitance `Never`/`Unit`) stay on the existing **GroundingMap** + **T‑25 / nat / integer** triggers already named in TASKS / SL‑3229 ledger rows.
 
 ### CP-3229-GREEN-TERMINAL — 🟢 GREEN five-pattern ledgers (bulk)
 
