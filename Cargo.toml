@@ -14,7 +14,7 @@ members = [
     "src/v3/compiler",
     # T-WAD Slice 4 — regenerate `dsl/gunbc/ci_github_actions_workflow.dag` from `.github/workflows/ci.yml`
     "tools/gen_gunbc_ci_workflow_dag",
-    # PREFIX / T-23 v0 — `gunbc-prefix-lens-driver` (registry + whole-corpus gate; `PREFIX-LENS-CI-1`)
+    # PREFIX / T-23 v0 — `gunbc-prefix-lens-driver` (registry + `--whole-corpus` bucket gate; `PREFIX-LENS-CI-1`)
     "tools/gunbc_prefix_lens_driver",
     # T-Ground-Pilot probe — bounded inhabitance-search routing pilot
     # for the Rust target. Sibling crate so the probe lifecycle is
