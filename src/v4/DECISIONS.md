@@ -1472,13 +1472,13 @@ Verbatim `//` lines from merge-base `float.dag` (lines **104–144** — modelin
 
 ### SL-3309-PYTHON-SCALAR-RESEED — `extdeps/languages/python.dag` scalar-tower fact-bundle reseed
 
-**Authority:** v4 T-4 Phase-3 fact-bundle rework (DECISIONS.md `D2-REV`); manager `vivid-carp-207` corrected brief 2026-05-18; CORE ratchet ruling — single-owner `strict_deprose_dag.py` per-rel post-reseed registry work-item `node://adhoc-00aabd0d-fcb`.
+**Authority:** v4 T-4 Phase-3 fact-bundle rework (DECISIONS.md `D2-REV`); manager `vivid-carp-207` corrected brief 2026-05-18; CORE ratchet ruling — single-owner `strict_deprose_dag.py` per-rel post-reseed registry work-item `node://adhoc-a9948898-4ff`.
 
 **Disposition:** **🟢 terminal** — `PythonScalar` is reseeded from the pre-reseed `Numeric { tower: PythonNumericTower } | Singleton { kind }` form into a flat coproduct `IntScalar | FloatScalar | ComplexScalar | BoolScalar | Singleton { kind: PythonSingletonKind }`. This dissolves two merge-base hollow defects: the single-field `Numeric { tower }` wrapper (Practice-8 hollow prong — a wrapper adding no field of its own) and the bare `PythonNumericTower` enum (a classifier reading zero spec facts). The flat coproduct mirrors `rust.dag` `RustScalar`'s *structure* (a flat scalar coproduct with nullary variants), not its facts.
 
 **Why the numeric variants are nullary (Python ≠ Rust).** `RustScalar` carries `kind` / `width` sub-carriers because Rust's integer/float primitives genuinely range over signedness and width (`i8`…`u128`, `f32`/`f64`). Python's numeric tower has **zero intra-kind variance**: exactly one `int` (arbitrary precision), one `float` (IEEE-754 binary64), one `complex` (pair of binary64) — Python Language Reference §3.2 (the standard type hierarchy). Per the CORE standing instruction — `rust.dag` is a *shape* reference, never a fact-template; a byte-symmetric copy asserting a non-fact is wrong — Python's numeric variants carry no fabricated `kind` / `width` carrier. A single-inhabitant carrier is also ungrammatical in v4 (`type X = Y` parses as an alias), and a free `kind × width` product over-generates invalid combinations (`Integral × FixedBinary64`, `Real × Unbounded`).
 
-**Ratchet authority:** this `###` row is the post-reseed Practice-4 authority for the live `PythonScalar` coproduct; the merge-base `92cb26402` tag map predates the reseed and classifies the now-dissolved pre-reseed shape. `strict_deprose_dag.py`'s per-rel post-reseed registry (`node://adhoc-00aabd0d-fcb`) sources `PythonScalar`'s tag from this row. `PythonSingletonKind` is unchanged from merge-base and retains `CP-3229-GREEN-TERMINAL`.
+**Ratchet authority:** this `###` row is the post-reseed Practice-4 authority for the live `PythonScalar` coproduct; the merge-base `92cb26402` tag map predates the reseed and classifies the now-dissolved pre-reseed shape. `strict_deprose_dag.py`'s per-rel post-reseed registry (`node://adhoc-a9948898-4ff`) sources `PythonScalar`'s tag from this row. `PythonSingletonKind` is unchanged from merge-base and retains `CP-3229-GREEN-TERMINAL`.
 
 **PR receipt:** gunbc **#3309**.
 
