@@ -31,7 +31,7 @@
 
 ### Fork B — **unchanged queueing (fan-out), not a PREFIX dispatch gate**
 
-Dissolution lens wave remains **`jolly-ibex`** / **#3313** / **#3240** — tracked in fan-out section; **does not** extend `DISPATCH_HOLD` once Acceptance PR is signed.
+Dissolution lens wave remains **`jolly-ibex`** / **#3313** / **#3240** — tracked in fan-out section; **does not** extend `DISPATCH_HOLD` beyond the **batch** discipline in **§Acceptance-PR batches** once the operator signs the relevant Acceptance PRs.
 
 ---
 
@@ -159,4 +159,4 @@ Per **`BRIEF_TEMPLATE.md`** + **no editing Acceptance witnesses** without operat
 
 ## REPORT-BACK
 
-**Brief updated** (this file) + **Acceptance artifact** (`r4-lane-a-lens-prefix-acceptance.md`) — report SHA + PR # to **`witty-cat-59`** after push.
+**Brief updated** (this file — **§Interface-Freeze keystone**, **§Acceptance-PR batches**, **§Witness parallelism vs Interface-Freeze**) + **Acceptance artifact** (`r4-lane-a-lens-prefix-acceptance.md`) — report SHA + PR # to **`witty-cat-59`** after push.
