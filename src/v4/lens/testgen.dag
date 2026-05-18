@@ -8,7 +8,7 @@ module v4.lens.testgen
 
 
 import v4.std.verification { TestClassification }
-import v4.std.node { Node, Connective, Behavior, Symbol }
+import v4.std.node { Corpus, Connective, Behavior, Symbol }
 
 
 type TypeConstructionSubject
@@ -23,7 +23,10 @@ type AlgebraLawSubject { algebra: Symbol, inhabitant: Symbol, law: Symbol }
 type DiagnosticExhaustivenessSubject { reason: Symbol }
 
 
-type LensApplicabilitySubject { lens: Symbol, program: Node }
+type LensApplicabilitySubject {
+  lens: Symbol
+  corpus: Corpus
+}
 
 
 type BidirectionalRoundtripSubject { language: Symbol, production: Symbol }
