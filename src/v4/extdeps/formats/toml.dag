@@ -20,31 +20,11 @@ type TomlValue
   | TomlTable { entries: Map<String, TomlValue> }
 
 
-<<<<<<< HEAD
 // 🟡 gated — feature: T-6/T-7 parse + T-10 emit pipeline substrate — DECISIONS.md Part 6 · SL-3229-T4-FORMAT-T6T7.
 // 🟡 gated — feature: std/cardinality.dag refinement + std/float.dag / std/integer.dag (T-3 Wave-A2) — DECISIONS.md Part 6 · SL-3229-LLVM-WIDTH.
 // 🟡 gated — feature: v4 temporal substrate for RFC 3339 datetime value interpretation (TOML §Date-Time) — DECISIONS.md Part 6 · SL-3229-T4-FORMAT-TOML-DATETIME.
 // 🟡 gated — feature: TOML inline-table/table construction syntax collapse — DECISIONS.md Part 6 · SL-3229-TOML-TABLE-SYNTAX.
-=======
-// ─────────────────────────────────────────────────────────────────────
-// Deferred — TRACKED SCAFFOLD (🟡). The operations + refinements ride
-// substrate that is scaffold today. Per the operator-ratified
-// declarative-now / operations-deferred-with-owner discipline (verified
-// on std/collection.dag #3169 + canonical json.dag #3184) these are NOT
-// authored here — not improvised, not bodiless `fn` (the frozen v2 seed
-// rejects bodiless `fn`, DECISIONS PARSE-1). Each carries the three
-// bridge properties (scaffold doc / bounds on use / dissolution
-// trigger).
-//
-// #3244 plan anchor (dissolution-inventory §3.2; authoritative text:
-// DECISIONS.md Part 6 + docs/audit/dissolution-inventory.md): same P3
-// + P1 split as canonical json.dag — parse/emit + table/inline-table
-// construction rules → **P3** (compiler tokenize + parse substrate,
-// T-6/T-7); numeric / datetime / key refinements → **P1** + std/text.dag
-// String-refinement paths (T-3 Wave-A2 family; see DECISIONS rows).
-//
-// (1) `toml_parse` / `toml_emit` — the parse and emit operation bodies.
-//   A TOML parser is a Char-STREAM structural walk over the TOML v1.0.0
+
 //   grammar and emit builds a String from structure; both require
 //   std/text.dag's `Char` + a `String` ↔ sequence-of-`Char`
 //   decomposition — std/text.dag is T-3 SCAFFOLD. RATIFIED parse
