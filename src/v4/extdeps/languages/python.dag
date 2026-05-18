@@ -1,18 +1,21 @@
 // src/v4/extdeps/languages/python.dag
-// Scope: Python 3.14 Reference surface (numeric tower, singleton kinds, scalar sum, cost shape, partial D2 resolver).
-// Owns: PythonNumericTower, PythonSingletonKind, PythonScalar, PythonCost, PyBool.
+// Scope: Python 3.14 Reference surface (scalar fact-bundle coproduct, singleton kinds, cost shape, partial D2 resolver).
+// Owns: PythonIntegerPrecision, PythonFloatFormat, PythonSingletonKind, PythonScalar, PythonCost, PyBool.
 // Consumes: Kernel-ambient Bool, Int; std/integer, std/float, std/cardinality when T-3 alias rows land (DECISIONS.md D2-REV).
-// Status: extdeps python slice; numeric overflow and resolver deferrals per DECISIONS.md D2-REV + Part 6 (PR #3229 · CP-3229-GREEN-TERMINAL); principal int unbounded—no overflow carrier in-file.
-// Anchor: https://docs.python.org/3.14/reference/
+// Status: extdeps python slice; D2-REV fact-bundle rework — scalar tower reseeded as kind×width coproduct; per-primitive bool-alias/grounding-row HELD-PROVISIONAL 🟡 (operator A-vs-B ruling pending); principal int unbounded—no overflow carrier in-file.
+// Anchor: https://docs.python.org/3.14/reference/datamodel.html#the-standard-type-hierarchy
 
 module v4.extdeps.languages.python
 
-// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
-type PythonNumericTower
-  = BoolLevel
-  | IntegralLevel
-  | RealLevel
-  | ComplexLevel
+// 🟢 spec fact-bundle — Python int has unlimited range, bounded only by
+// available memory (ref §3.2); the inverse of a fixed machine width.
+type PythonIntegerPrecision
+  = ArbitraryPrecision
+
+// 🟢 spec fact-bundle — Python float / complex components are machine
+// double-precision IEEE-754 binary64 (ref §3.2); DECISIONS.md D2-REV.
+type PythonFloatFormat
+  = Ieee754Binary64
 
 // 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
 type PythonSingletonKind
@@ -20,9 +23,15 @@ type PythonSingletonKind
   | NotImplementedT
   | EllipsisT
 
-// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
+// 🟢 fact-bundle coproduct — DECISIONS.md D2-REV; each numeric variant
+// carries the precision/format fact its Python 3.14 spec entry states.
+// BoolScalar's fact-bundle (subtype-of-int, two inhabitants) is held with
+// the per-primitive bool-alias 🟡 on the operator A-vs-B ruling.
 type PythonScalar
-  = Numeric { tower: PythonNumericTower }
+  = IntScalar { precision: PythonIntegerPrecision }
+  | FloatScalar { format: PythonFloatFormat }
+  | ComplexScalar { component_format: PythonFloatFormat }
+  | BoolScalar
   | Singleton { kind: PythonSingletonKind }
 
 type PythonCost {
