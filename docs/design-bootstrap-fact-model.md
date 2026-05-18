@@ -34,13 +34,17 @@ Each layer is a fact model (declared `.dag` data), not code:
 | The v4 compiler | the `src/v4/compiler/*.dag` pipeline (tokenize…emit) | front-end modeled (`01_tokenize.dag` / `02_parse.dag`, CP-1a #3214); `00_compile` / `03_normalize` / `03_resolve` / `04_infer` / `05_emit` / `05_eval` are T-8/T-9/T-10/T-22 scaffolds |
 | The seed's comprehension boundary | the **frozen sub-model** — a subset of the `LanguageModel` (§4) | T-32 |
 | The snapshot | the v4 compiler pinned at version N, expressed in the frozen subset | T-32 |
-| The target language | `src/v4/extdeps/languages/rust.dag`; lower, `src/v4/extdeps/languages/machine_code.dag` | modeled |
-| The runtime | the execution substrate — syscall surface, memory model, ABI; `src/v4/extdeps/process.dag` + `src/v4/extdeps/file_system.dag` are its start | partial |
+| The target language | `src/v4/extdeps/languages/rust.dag`; lower, `src/v4/extdeps/languages/machine_code.dag` | `rust.dag` modeled (T-4 rust-slice); `machine_code.dag` is a T-4.13 scaffold |
+| The runtime | the execution substrate — syscall surface, memory model, ABI; `src/v4/extdeps/process.dag` + `src/v4/extdeps/file_system.dag` are its start | both T-4.5 scaffolds (module declaration only) |
 | The bootstrap orchestration | `src/v4/workflow/bootstrap.dag` — the staged chain | T-20 scaffold on `main`; staged-chain expansion in flight (#3213) |
 
-The layer models needed already exist individually (`rust.dag`,
-`machine_code.dag`, `process.dag`, `file_system.dag`). What T-32 adds is
-**composing** them so the seed is their joint projection.
+Of the layer models the seed projects from, only `rust.dag` is modeled
+today (the T-4 rust-slice); `machine_code.dag`, `process.dag`, and
+`file_system.dag` are scaffolds (T-4.13 / T-4.5). T-32's deliverable is
+two-fold: the *layer model* — the composition itself, the projection
+edges, the gate — and a precondition that those three scaffold files
+reach modeled state. The seed is their joint projection; T-32 specifies
+the joint, and depends on the per-file modeling landing.
 
 ## 3. The seed is a projection
 
