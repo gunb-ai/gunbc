@@ -132,11 +132,7 @@ fn node_well_formed(n: Node) -> Bool {
     }
   )
 }
-<<<<<<< HEAD
 // 🟢 predicate dissolution — DECISIONS.md §CP-1b item 12; docs/audit/dissolution-inventory.md §1.0 R1 (PR #3284); api-review P5 receipt PR #3274 (SG-0 census N/A for v4-only substrate).
-=======
-// 🟢 predicate dissolution — DECISIONS.md §CP-1b item 12; docs/audit/dissolution-inventory.md §1.0 R1 (PR #3284).
->>>>>>> 589f6d370 (WIP: Lane A T-6 E1+ — 01_tokenize.dag: lexical grammar-as-data encodings + fa)
 fn is_empty_conj_root(n: Node) -> Bool {
   match n.kind {
     TypeNode { connective: Conj } => count(n.children) == 0
