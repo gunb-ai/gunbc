@@ -10,8 +10,8 @@ module v4.extdeps.languages.dag
 
 
 import v4.std.collection { Set }
-import v4.compiler.parse { Grammar, VoidGrammar }
-import v4.compiler.tokenize { LexRules, VoidLexRules }
+import v4.compiler.parse { Grammar, ModeledGrammar, VoidGrammar }
+import v4.compiler.tokenize { LexRules, ModeledLexRules, VoidLexRules }
 import v4.std.node { Symbol }
 
 
