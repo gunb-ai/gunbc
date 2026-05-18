@@ -1,9 +1,9 @@
 // src/v4/compiler/02_parse.dag
 // Scope: generic parsing over language grammar rules.
 // Anchor: https://en.wikipedia.org/wiki/Parsing
-// Owns: Grammar, ParseTree, grammar_* production-data symbols, parse_stage_locus_port, parse_walk_not_realized, parse_grammar_not_well_formed, parse_g0_tokens_remain, parse_walk_not_realized_diagnostic, parse_grammar_not_well_formed_diagnostic, parse_g0_tokens_remain_diagnostic, grammar_node_is_conj_empty_root, grammar_node_well_formed, grammar_node_is_syntactic_data_root, parse.
-// Consumes: std collection, std diagnostic, std node, compiler tokenize.
-// Status: Wave-1 void-grammar path realized.
+// Owns: Grammar, GrammarExpr, GrammarProduction, GrammarRoot, ParseTree, grammar_*_node_projection symbols, parse_stage_locus_port, parse_walk_not_realized, parse_grammar_not_well_formed, parse_g0_tokens_remain, parse_walk_not_realized_diagnostic, parse_grammar_not_well_formed_diagnostic, parse_g0_tokens_remain_diagnostic, grammar_atom, grammar_named_edge, grammar_empty_node, grammar_expr_to_node, grammar_production_to_node, grammar_root_to_node, grammar_to_node, parse.
+// Consumes: std diagnostic, std node, compiler tokenize.
+// Status: Wave-1 void-grammar path realized; syntactic grammar data is typed, Node is projection only.
 
 
 module v4.compiler.parse
@@ -17,48 +17,56 @@ import v4.std.diagnostic {
   Locus,
   Outcome,
   PortLocus,
-  UserInputBoundary,
+  UserInputBoundary
 }
-import v4.std.node {
-  Atom,
-  ComputationNode,
-  Conj,
-  Edge,
-  Named,
-  Node,
-  NodeKind,
-  Positional,
-  Symbol,
-  TypeNode,
-  name_occurrences,
-  node_well_formed,
+import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, node_well_formed }
+
+
+type GrammarExpr
+// 🟡 coproduct dissolution — DECISIONS.md CP-1b/T-7 grammar-as-data; typed production alternatives, Node projection only.
+  = Terminal { token_class: Symbol }
+  | Nonterminal { name: Symbol }
+  | Sequence { left: GrammarExpr, right: GrammarExpr }
+  | Choice { left: GrammarExpr, right: GrammarExpr }
+  | Optional { element: GrammarExpr }
+  | Repeat { element: GrammarExpr }
+
+
+type GrammarProduction {
+  name: Symbol
+  expression: GrammarExpr
+  emitted: Node
 }
 
 
-type Grammar = Node
+type GrammarRoot {
+  start: Symbol
+  production: GrammarProduction
+}
+
+
+type Grammar
+// 🟡 coproduct dissolution — DECISIONS.md CP-1b/T-7 wave-1 void grammar plus modeled grammar root.
+  = VoidGrammar
+  | ModeledGrammar { root: GrammarRoot }
 
 
 type ParseTree = Node
 
 
-data grammar_root: Symbol = grammar_root
-data grammar_production: Symbol = grammar_production
-data grammar_terminal: Symbol = grammar_terminal
-data grammar_nonterminal: Symbol = grammar_nonterminal
-data grammar_sequence: Symbol = grammar_sequence
-data grammar_choice: Symbol = grammar_choice
-data grammar_optional: Symbol = grammar_optional
-data grammar_repeat: Symbol = grammar_repeat
-data grammar_emit_node: Symbol = grammar_emit_node
-data grammar_kind: Symbol = grammar_kind
-data grammar_token_class: Symbol = grammar_token_class
-data grammar_name: Symbol = grammar_name
-data grammar_element: Symbol = grammar_element
-data grammar_left: Symbol = grammar_left
-data grammar_right: Symbol = grammar_right
-data grammar_expression: Symbol = grammar_expression
-data grammar_emitted: Symbol = grammar_emitted
-data grammar_start: Symbol = grammar_start
+data grammar_terminal_token_class_node_projection: Symbol = grammar_terminal_token_class_node_projection
+data grammar_nonterminal_name_node_projection: Symbol = grammar_nonterminal_name_node_projection
+data grammar_sequence_left_node_projection: Symbol = grammar_sequence_left_node_projection
+data grammar_sequence_right_node_projection: Symbol = grammar_sequence_right_node_projection
+data grammar_choice_left_node_projection: Symbol = grammar_choice_left_node_projection
+data grammar_choice_right_node_projection: Symbol = grammar_choice_right_node_projection
+data grammar_optional_element_node_projection: Symbol = grammar_optional_element_node_projection
+data grammar_repeat_element_node_projection: Symbol = grammar_repeat_element_node_projection
+data grammar_production_name_node_projection: Symbol = grammar_production_name_node_projection
+data grammar_production_expression_node_projection: Symbol = grammar_production_expression_node_projection
+data grammar_production_emitted_node_projection: Symbol = grammar_production_emitted_node_projection
+data grammar_root_start_node_projection: Symbol = grammar_root_start_node_projection
+data grammar_root_production_node_projection: Symbol = grammar_root_production_node_projection
 
 data parse_stage_locus_port: Symbol = parse_stage_locus_port
 
@@ -94,13 +102,8 @@ fn parse_g0_tokens_remain_diagnostic(at: Locus) -> Diagnostic {
     correction: Unavailable { reason: UserInputBoundary }
   }
 }
-fn grammar_node_is_conj_empty_root(g: Node) -> Bool {
-  match g.kind {
-    TypeNode { connective: Conj } => count(g.children) == 0
-    TypeNode { connective: _ } => false
-    ComputationNode { behavior: _ } => false
-  }
-}
+
+
 fn grammar_atom(identity: Symbol) -> Node {
   Node {
     kind: TypeNode {
@@ -109,273 +112,149 @@ fn grammar_atom(identity: Symbol) -> Node {
     children: []
   }
 }
+
+
 fn grammar_named_edge(name: Symbol, target: Node) -> Edge {
   Edge {
     label: Named { name: name },
     target: target
   }
 }
-fn grammar_terminal_node(token_class: Symbol) -> Node {
+
+
+fn grammar_empty_node() -> Node {
   Node {
     kind: TypeNode {
       connective: Conj
     },
-    children: [
-      grammar_named_edge(name: grammar_kind, target: grammar_atom(identity: grammar_terminal)),
-      grammar_named_edge(name: grammar_token_class, target: grammar_atom(identity: token_class))
-    ]
+    children: []
   }
 }
-fn grammar_nonterminal_node(name: Symbol) -> Node {
-  Node {
-    kind: TypeNode {
-      connective: Conj
-    },
-    children: [
-      grammar_named_edge(name: grammar_kind, target: grammar_atom(identity: grammar_nonterminal)),
-      grammar_named_edge(name: grammar_name, target: grammar_atom(identity: name))
-    ]
-  }
-}
-fn grammar_unary_node(kind: Symbol, element: Node) -> Node {
-  Node {
-    kind: TypeNode {
-      connective: Conj
-    },
-    children: [
-      grammar_named_edge(name: grammar_kind, target: grammar_atom(identity: kind)),
-      grammar_named_edge(name: grammar_element, target: element)
-    ]
-  }
-}
-fn grammar_binary_node(kind: Symbol, left: Node, right: Node) -> Node {
-  Node {
-    kind: TypeNode {
-      connective: Conj
-    },
-    children: [
-      grammar_named_edge(name: grammar_kind, target: grammar_atom(identity: kind)),
-      grammar_named_edge(name: grammar_left, target: left),
-      grammar_named_edge(name: grammar_right, target: right)
-    ]
-  }
-}
-fn grammar_sequence_node(left: Node, right: Node) -> Node {
-  grammar_binary_node(kind: grammar_sequence, left: left, right: right)
-}
-fn grammar_choice_node(left: Node, right: Node) -> Node {
-  grammar_binary_node(kind: grammar_choice, left: left, right: right)
-}
-fn grammar_optional_node(element: Node) -> Node {
-  grammar_unary_node(kind: grammar_optional, element: element)
-}
-fn grammar_repeat_node(element: Node) -> Node {
-  grammar_unary_node(kind: grammar_repeat, element: element)
-}
-fn grammar_production_node(name: Symbol, expression: Node, emitted: Node) -> Node {
-  Node {
-    kind: TypeNode {
-      connective: Conj
-    },
-    children: [
-      grammar_named_edge(name: grammar_kind, target: grammar_atom(identity: grammar_production)),
-      grammar_named_edge(name: grammar_name, target: grammar_atom(identity: name)),
-      grammar_named_edge(name: grammar_expression, target: expression),
-      grammar_named_edge(name: grammar_emitted, target: grammar_unary_node(kind: grammar_emit_node, element: emitted))
-    ]
-  }
-}
-fn grammar_root_node(start: Symbol, production: Node) -> Node {
-  Node {
-    kind: TypeNode {
-      connective: Conj
-    },
-    children: [
-      grammar_named_edge(name: grammar_kind, target: grammar_atom(identity: grammar_root)),
-      grammar_named_edge(name: grammar_start, target: grammar_atom(identity: start)),
-      grammar_named_edge(name: grammar_production, target: production)
-    ]
-  }
-}
-fn grammar_node_is_atom(n: Node) -> Bool {
-  match n.kind {
-    TypeNode { connective: Atom { identity: _ } } => count(n.children) == 0
-    TypeNode { connective: _ } => false
-    ComputationNode { behavior: _ } => false
-  }
-}
-fn grammar_node_is_atom_identity(n: Node, identity: Symbol) -> Bool {
-  match n.kind {
-    TypeNode { connective: Atom { identity: id } } =>
-      id == identity && count(n.children) == 0
-    TypeNode { connective: _ } => false
-    ComputationNode { behavior: _ } => false
-  }
-}
-fn grammar_has_atom_field(n: Node, field: Symbol) -> Bool {
-  name_occurrences(name: field, children: n.children) == 1 &&
-    fold(n.children, init: false, f: fn(acc, e) {
-      match e.label {
-        Named { name: edge_name } =>
-          acc || (edge_name == field && grammar_node_is_atom(n: e.target))
-        Positional => acc
+
+
+fn grammar_expr_to_node(expr: GrammarExpr) -> Node {
+  match expr {
+    Terminal { token_class: token_class } =>
+      Node {
+        kind: TypeNode {
+          connective: Conj
+        },
+        children: [
+          grammar_named_edge(name: grammar_terminal_token_class_node_projection, target: grammar_atom(identity: token_class))
+        ]
       }
-    })
-}
-fn grammar_has_atom_field_identity(n: Node, field: Symbol, identity: Symbol) -> Bool {
-  name_occurrences(name: field, children: n.children) == 1 &&
-    fold(n.children, init: false, f: fn(acc, e) {
-      match e.label {
-        Named { name: edge_name } =>
-          acc || (edge_name == field && grammar_node_is_atom_identity(n: e.target, identity: identity))
-        Positional => acc
+    Nonterminal { name: name } =>
+      Node {
+        kind: TypeNode {
+          connective: Conj
+        },
+        children: [
+          grammar_named_edge(name: grammar_nonterminal_name_node_projection, target: grammar_atom(identity: name))
+        ]
       }
-    })
-}
-fn grammar_has_expression_field(n: Node, field: Symbol) -> Bool {
-  name_occurrences(name: field, children: n.children) == 1 &&
-    fold(n.children, init: false, f: fn(acc, e) {
-      match e.label {
-        Named { name: edge_name } =>
-          acc || (edge_name == field && grammar_expression_well_formed(g: e.target))
-        Positional => acc
+    Sequence { left: left, right: right } =>
+      Node {
+        kind: TypeNode {
+          connective: Conj
+        },
+        children: [
+          grammar_named_edge(name: grammar_sequence_left_node_projection, target: grammar_expr_to_node(expr: left)),
+          grammar_named_edge(name: grammar_sequence_right_node_projection, target: grammar_expr_to_node(expr: right))
+        ]
       }
-    })
-}
-fn grammar_has_emit_field(n: Node, field: Symbol) -> Bool {
-  name_occurrences(name: field, children: n.children) == 1 &&
-    fold(n.children, init: false, f: fn(acc, e) {
-      match e.label {
-        Named { name: edge_name } =>
-          acc || (edge_name == field && grammar_emit_node_well_formed(g: e.target))
-        Positional => acc
+    Choice { left: left, right: right } =>
+      Node {
+        kind: TypeNode {
+          connective: Conj
+        },
+        children: [
+          grammar_named_edge(name: grammar_choice_left_node_projection, target: grammar_expr_to_node(expr: left)),
+          grammar_named_edge(name: grammar_choice_right_node_projection, target: grammar_expr_to_node(expr: right))
+        ]
       }
-    })
-}
-fn grammar_has_production_field(n: Node, field: Symbol) -> Bool {
-  name_occurrences(name: field, children: n.children) == 1 &&
-    fold(n.children, init: false, f: fn(acc, e) {
-      match e.label {
-        Named { name: edge_name } =>
-          acc || (edge_name == field && grammar_production_well_formed(g: e.target))
-        Positional => acc
+    Optional { element: element } =>
+      Node {
+        kind: TypeNode {
+          connective: Conj
+        },
+        children: [
+          grammar_named_edge(name: grammar_optional_element_node_projection, target: grammar_expr_to_node(expr: element))
+        ]
       }
-    })
-}
-fn grammar_record_well_formed(g: Node) -> Bool {
-  match g.kind {
-    TypeNode { connective: Conj } =>
-      grammar_expression_well_formed(g: g) ||
-      grammar_emit_node_well_formed(g: g) ||
-      grammar_production_well_formed(g: g) ||
-      grammar_root_well_formed(g: g)
-    TypeNode { connective: _ } => false
-    ComputationNode { behavior: _ } => false
+    Repeat { element: element } =>
+      Node {
+        kind: TypeNode {
+          connective: Conj
+        },
+        children: [
+          grammar_named_edge(name: grammar_repeat_element_node_projection, target: grammar_expr_to_node(expr: element))
+        ]
+      }
   }
 }
-fn grammar_expression_well_formed(g: Node) -> Bool {
-  match g.kind {
-    TypeNode { connective: Conj } =>
-      (count(g.children) == 2 &&
-        grammar_has_atom_field_identity(n: g, field: grammar_kind, identity: grammar_terminal) &&
-        grammar_has_atom_field(n: g, field: grammar_token_class)) ||
-      (count(g.children) == 2 &&
-        grammar_has_atom_field_identity(n: g, field: grammar_kind, identity: grammar_nonterminal) &&
-        grammar_has_atom_field(n: g, field: grammar_name)) ||
-      (count(g.children) == 3 &&
-        grammar_has_atom_field_identity(n: g, field: grammar_kind, identity: grammar_sequence) &&
-        grammar_has_expression_field(n: g, field: grammar_left) &&
-        grammar_has_expression_field(n: g, field: grammar_right)) ||
-      (count(g.children) == 3 &&
-        grammar_has_atom_field_identity(n: g, field: grammar_kind, identity: grammar_choice) &&
-        grammar_has_expression_field(n: g, field: grammar_left) &&
-        grammar_has_expression_field(n: g, field: grammar_right)) ||
-      (count(g.children) == 2 &&
-        grammar_has_atom_field_identity(n: g, field: grammar_kind, identity: grammar_optional) &&
-        grammar_has_expression_field(n: g, field: grammar_element)) ||
-      (count(g.children) == 2 &&
-        grammar_has_atom_field_identity(n: g, field: grammar_kind, identity: grammar_repeat) &&
-        grammar_has_expression_field(n: g, field: grammar_element))
-    TypeNode { connective: _ } => false
-    ComputationNode { behavior: _ } => false
+
+
+fn grammar_production_to_node(production: GrammarProduction) -> Node {
+  Node {
+    kind: TypeNode {
+      connective: Conj
+    },
+    children: [
+      grammar_named_edge(name: grammar_production_name_node_projection, target: grammar_atom(identity: production.name)),
+      grammar_named_edge(name: grammar_production_expression_node_projection, target: grammar_expr_to_node(expr: production.expression)),
+      grammar_named_edge(name: grammar_production_emitted_node_projection, target: production.emitted)
+    ]
   }
 }
-fn grammar_emit_node_well_formed(g: Node) -> Bool {
-  match g.kind {
-    TypeNode { connective: Conj } =>
-      count(g.children) == 2 &&
-        grammar_has_atom_field_identity(n: g, field: grammar_kind, identity: grammar_emit_node) &&
-        name_occurrences(name: grammar_element, children: g.children) == 1 &&
-        fold(g.children, init: false, f: fn(acc, e) {
-          match e.label {
-            Named { name: edge_name } =>
-              acc || (edge_name == grammar_element && node_well_formed(n: e.target))
-            Positional => acc
-          }
-        })
-    TypeNode { connective: _ } => false
-    ComputationNode { behavior: _ } => false
+
+
+fn grammar_root_to_node(root: GrammarRoot) -> Node {
+  Node {
+    kind: TypeNode {
+      connective: Conj
+    },
+    children: [
+      grammar_named_edge(name: grammar_root_start_node_projection, target: grammar_atom(identity: root.start)),
+      grammar_named_edge(name: grammar_root_production_node_projection, target: grammar_production_to_node(production: root.production))
+    ]
   }
 }
-fn grammar_production_well_formed(g: Node) -> Bool {
-  match g.kind {
-    TypeNode { connective: Conj } =>
-      count(g.children) == 4 &&
-        grammar_has_atom_field_identity(n: g, field: grammar_kind, identity: grammar_production) &&
-        grammar_has_atom_field(n: g, field: grammar_name) &&
-        grammar_has_expression_field(n: g, field: grammar_expression) &&
-        grammar_has_emit_field(n: g, field: grammar_emitted)
-    TypeNode { connective: _ } => false
-    ComputationNode { behavior: _ } => false
+
+
+fn grammar_to_node(grammar: Grammar) -> Node {
+  match grammar {
+    VoidGrammar => grammar_empty_node()
+    ModeledGrammar { root: root } => grammar_root_to_node(root: root)
   }
 }
-fn grammar_root_well_formed(g: Node) -> Bool {
-  match g.kind {
-    TypeNode { connective: Conj } =>
-      count(g.children) == 3 &&
-        grammar_has_atom_field_identity(n: g, field: grammar_kind, identity: grammar_root) &&
-        grammar_has_atom_field(n: g, field: grammar_start) &&
-        grammar_has_production_field(n: g, field: grammar_production)
-    TypeNode { connective: _ } => false
-    ComputationNode { behavior: _ } => false
-  }
-}
-fn grammar_node_well_formed(g: Node) -> Bool {
-  grammar_node_is_conj_empty_root(g: g) || grammar_root_well_formed(g: g)
-}
-fn grammar_node_is_syntactic_data_root(g: Node) -> Bool {
-  match g.kind {
-    TypeNode { connective: Conj } => count(g.children) > 0
-    TypeNode { connective: _ } => false
-    ComputationNode { behavior: _ } => false
-  }
-}
+
+
 fn parse(tokens: TokenStream, grammar: Grammar) -> Outcome<ParseTree> {
   let at = PortLocus {
     port: parse_stage_locus_port
   }
   let ntok = count(tokens.tokens)
-  if !node_well_formed(n: grammar) || !grammar_node_well_formed(g: grammar) {
+  let grammar_node = grammar_to_node(grammar: grammar)
+  if !node_well_formed(n: grammar_node) {
     Rejected {
       diagnostic: parse_grammar_not_well_formed_diagnostic(at: at)
     }
-  } else if grammar_node_is_conj_empty_root(g: grammar) {
-    if ntok == 0 {
-      Produced {
-        value: grammar
-      }
-    } else {
-      Rejected {
-        diagnostic: parse_g0_tokens_remain_diagnostic(at: at)
-      }
-    }
-  } else if grammar_node_is_syntactic_data_root(g: grammar) {
-    Rejected {
-      diagnostic: parse_walk_not_realized_diagnostic(at: at)
-    }
   } else {
-    Rejected {
-      diagnostic: parse_walk_not_realized_diagnostic(at: at)
+    match grammar {
+      VoidGrammar =>
+        if ntok == 0 {
+          Produced {
+            value: grammar_node
+          }
+        } else {
+          Rejected {
+            diagnostic: parse_g0_tokens_remain_diagnostic(at: at)
+          }
+        }
+      ModeledGrammar { root: _ } =>
+        Rejected {
+          diagnostic: parse_walk_not_realized_diagnostic(at: at)
+        }
     }
   }
 }
