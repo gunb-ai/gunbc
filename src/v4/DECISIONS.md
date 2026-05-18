@@ -1295,13 +1295,15 @@ Verbatim `//` lines from merge-base `verilog.dag` (lines **2156–2311**):
 //
 ```
 
-**PR #3272 extension:** P8's constant-expression carrier adds site 27:
-`ConstantConcatenation.expressions` (IEEE 1364-2005 §A.8.1
+**PR #3272 extension:** P8's constant-expression carrier adds sites 27-29:
+`ConstantFunctionCall.arguments` (§A.8.2 `constant_function_call`),
+`ConstantSystemFunctionCall.arguments` (§A.8.2 `constant_system_function_call`),
+and `ConstantConcatenation.expressions` (IEEE 1364-2005 §A.8.1
 `constant_concatenation ::= { constant_expression { , constant_expression } }`).
-It rides the same Wave-A2 `List<T> where non_empty` deferral; no
+They ride the same Wave-A2 `List<T> where non_empty` deferral; no
 Verilog-local non-empty carrier is introduced.
 
-**Dissolution trigger:** `std/collection.dag` Wave-A2 `List<T> where non_empty` (merge-base enumeration of 26 sites + PR #3272 site 27).
+**Dissolution trigger:** `std/collection.dag` Wave-A2 `List<T> where non_empty` (merge-base enumeration of 26 sites + PR #3272 sites 27-29).
 
 ### SL-3229-VERILOG-D3200 — #3200 consumer-independent 🟡 coproducts (first-consumer decomposition)
 
