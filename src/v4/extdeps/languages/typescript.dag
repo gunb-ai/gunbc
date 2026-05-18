@@ -39,8 +39,7 @@ type TsScalar
 // 🟢 coproduct dissolution — DECISIONS.md TS-SCALAR-PHASE3.
 type TsEcma262PrimitiveOperationSemantics
   = TsNumberIeee754Binary64Semantics
-  | TsNumberBitwiseInt32Semantics
-  | TsNumberBitwiseUint32Semantics
+  | TsNumberBitwiseInt32Uint32Semantics
   | TsBigIntExactUnboundedSemantics
 
 // 🟡 per-primitive D2-fix shape pending operator A-vs-B ruling — NOT modeled until ruled.
