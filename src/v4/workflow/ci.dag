@@ -1,7 +1,7 @@
 // src/v4/workflow/ci.dag
 // Scope: CI pipeline AS DATA; gunbc job/gate DAG + eager well-formedness; ci.yml projection deferred.
 // Owns: CiCommand, CiJob, CiGate, CiPipeline, ci_pipeline_well_formed, ci_pipeline
-// Consumes: v4.std.node, v4.std.diagnostic, v4.workflow.bootstrap (BootstrapPlan stage authority — CI reads the bootstrap seed, never restates it)
+// Consumes: v4.std.node, v4.std.diagnostic, v4.workflow.bootstrap
 // Status: filled — declarative core + eager well-formedness; structural v2 gate only.
 
 module v4.workflow.ci
@@ -24,7 +24,7 @@ type CiCommand
   = LintCommand
   | TestCommand
   | IgnoredTestCommand { test_name: String }
-  // typed reference into the v4.workflow.bootstrap authority — `produces` is the stage's binary identity; CI reads the bootstrap seed, never restates its argv (single-authority, P2/Practice 5)
+  // 🟢 single-authority — DECISIONS.md LB-P4-3213
   | BootstrapStageCompile { produces: Symbol }
   | ShellCommand { command: String }
 
