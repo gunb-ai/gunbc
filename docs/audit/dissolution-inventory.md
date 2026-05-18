@@ -89,10 +89,11 @@ in-file 🟡 blocks, and *not* land the dissolve-now fixes.
 
 **How this plan partitions the v4 dissolution surface:**
 
-- **§ 1.0** — **🔴 dissolve-now (jumps queue, no substrate gap).**
+- **§ 1.0** — **🔴 dissolve-now receipts (jumped queue, no substrate gap).**
   Hand-rolled constructs whose substrate primitive *already exists* on
-  `main`. Land immediately, ahead of P1. (Per Practice 10 / #3244: 🔴
-  is a directive, never a standing state.)
+  `main`; when found, they land immediately ahead of P1. Both current
+  entries have landed. (Per Practice 10 / #3244: 🔴 is a directive,
+  never a standing state.)
 - **§ 1.1** — **Ranked substrate-PR queue (P1-P10, 🟡 plan).** Every
   🟡 in this inventory waits on one of ten named arrivals; each row =
   one substrate PR, ranked by 🟡-count (highest first), with the
@@ -111,7 +112,7 @@ in-file 🟡 blocks, and *not* land the dissolve-now fixes.
   has the same flag (named primitive but no owning task — see §
   1.1).
 
-### 1.0 🔴 dissolve-now (jumps queue, lands ahead of P1)
+### 1.0 🔴 dissolve-now receipts (jumped queue, landed ahead of P1)
 
 **R1 (empty-`Conj`-root duplicate predicates)** — **LANDED PR #3284**
 (`src/v4/std/node.dag` `is_empty_conj_root`; disposition
@@ -181,8 +182,8 @@ entries that concretize to a P# only enter their column on re-gate.
 The cumulative endpoint after all P1-P10 land is 0; the column shows
 qualitative trajectory, not strict arithmetic.)
 
-(R1 **landed** PR #3284; **R2** in § 1.0 is not counted in the 🟡 burn-down
-— it is 🔴, lands immediately, and dissolves outside the substrate-gap queue.)
+(R1 **landed** PR #3284; R2 **landed** PR #3245. These are not counted in
+the 🟡 burn-down because they dissolved outside the substrate-gap queue.)
 
 Caveats:
 
@@ -206,8 +207,8 @@ Caveats:
 substrate dissolves roughly 60% of the v4 substrate's outstanding 🟡
 debt in a single sweep — by 🟡-count it dominates every other
 substrate PR by 4× or more. The S1 substrate track should prioritize
-P1 ahead of P2-P10. **R2** (§ 1.0) jumps the queue ahead of all
-substrate PRs since it needs no absent substrate.
+P1 ahead of P2-P10. R2 already jumped that queue and landed because it
+needed no absent substrate.
 
 ---
 
