@@ -1,10 +1,10 @@
 // src/v4/extdeps/formats/json.dag
-// Scope: JSON value grammar (RFC 8259 / ECMA-404) — declarative model only; parse/emit deferred.
+// Scope: JSON value grammar (RFC 8259 / ECMA-404) + ratified unique-object-names profile (not full RFC 8259 §4 duplicate-name space) — declarative only; parse/emit deferred.
 // Owns: JsonValue.
 // Consumes: std/node.dag; std/diagnostic.dag; std/collection.dag; std/algebra.dag (FreeMonoid).
 // Status: T-4.6 scaffold — parse/emit + numeric lexeme axes per DECISIONS.md Part 6.
 // Anchor: https://datatracker.ietf.org/doc/html/rfc8259 + https://ecma-international.org/publications-and-standards/standards/ecma-404/
-// Ledger: DECISIONS.md Part 6: CP-3229-GREEN-TERMINAL, SL-3229-T4-FORMAT-T6T7, SL-3229-LLVM-WIDTH.
+// Ledger: DECISIONS.md Part 6: CP-3229-GREEN-TERMINAL, SL-3229-T4-FORMAT-T6T7, SL-3229-LLVM-WIDTH, SL-3229-T4-FORMAT-JSON-IJSON-UNIQUENESS.
 
 module v4.extdeps.formats.json
 
@@ -21,3 +21,4 @@ type JsonValue
 
 // 🟡 gated — feature: T-6/T-7 parse + T-10 emit pipeline substrate — DECISIONS.md Part 6 · SL-3229-T4-FORMAT-T6T7.
 // 🟡 gated — feature: std/cardinality.dag refinement + std/float.dag / std/integer.dag (T-3 Wave-A2) — DECISIONS.md Part 6 · SL-3229-LLVM-WIDTH.
+// 🟡 gated — feature: JSON object duplicate-name rejection (I-JSON / stricter-than-RFC8259§4 profile) — DECISIONS.md Part 6 · SL-3229-T4-FORMAT-JSON-IJSON-UNIQUENESS.

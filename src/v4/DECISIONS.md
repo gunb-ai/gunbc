@@ -1471,6 +1471,22 @@ Verbatim `//` lines from merge-base `float.dag` (lines **104–144** — modelin
 
 **Roll-up:** **`TASKS.md` T-3** + **T-4.6**; **orthogonal** to dissolution-inventory **P1** cardinality-width family (`SL-3229-LLVM-WIDTH`, `SL-3229-PTX-COST`, …).
 
+### SL-3229-T4-FORMAT-YAML-3213-MAPKEY — YAML 1.2.2 §3.2.1.3 mapping canonical key equality
+
+**Gate (live cite, Practice 9):** `🟡 gated — feature: YAML §3.2.1.3 canonical mapping-key equality (tag-resolved; beyond lexeme equality)`
+
+**Named arrival:** `YamlMapping { entries: Map<YamlValue, YamlValue> }` merges keys that are **already identical** `YamlValue` trees. **Canonically equal** mapping keys (same tag-resolution / core-schema path, distinct surface spellings) are **not** collapsed by the `Map` carrier alone — §3.2.1.3 duplicate detection after canonicalization is **parse-body** work on the **T-6/T-7** format pipeline (**`SL-3229-T4-FORMAT-T6T7`**), not a silent second authority in the value sum.
+
+**Dissolution trigger:** `yaml_parse` (T-4.6 consumer, after **P3** parse substrate) applies canonical key equality before insertion; canonically-equal duplicate keys → fail-closed `Rejected`; behavior is **authored + cited** from `yaml.dag` (Practice-9 one-liner). This row closes with that wiring.
+
+### SL-3229-T4-FORMAT-JSON-IJSON-UNIQUENESS — JSON object member uniqueness (named profile)
+
+**Gate (live cite, Practice 9):** `🟡 gated — feature: JSON object duplicate-name rejection under ratified unique-names profile (stricter than bare RFC 8259 §4)`
+
+**Named arrival:** `JsonObject { members: Map<String, JsonValue> }` is the **I‑JSON / RFC 7493**-aligned **unique-names** object profile: bare RFC 8259 §4 only **SHOULD**-unique with unpredictable behavior if violated; this model **fail-closes** duplicate names at **parse time** under the ratified stricter boundary — **not** the full RFC 8259 §4 duplicate-name value space. Policy authority lives **here**; realization is **`json_parse`** on **T-6/T-7** (**`SL-3229-T4-FORMAT-T6T7`**).
+
+**Dissolution trigger:** `json_parse` wires duplicate-name rejection under this profile (same **P3** arrival train as **`SL-3229-T4-FORMAT-T6T7`**); `json.dag` header + Ledger cite this row; closes when parse body lands.
+
 ### CP-3229-GREEN-TERMINAL — 🟢 GREEN five-pattern ledgers (bulk)
 
 Merge-base `92cb26402` **Practice-4** `// Coproduct dissolution … 🟢 GREEN (terminal). Ledger — five patterns attempted:` blocks were adjacent to carriers (verbatim per-carrier text **only** in the merge-base object):
