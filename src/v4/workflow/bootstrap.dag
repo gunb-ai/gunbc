@@ -53,6 +53,7 @@ fn bs_diagnostic(reason: Symbol) -> Diagnostic {
   }
 }
 
+// 🟡 List-op dissolution (Practice 10) — DECISIONS.md LB-P10-3213
 fn bs_member(s: Symbol, xs: List<Symbol>) -> Bool {
   fold(xs, init: false, f: fn(acc, x) {
     acc || (x == s)

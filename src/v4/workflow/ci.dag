@@ -75,6 +75,7 @@ fn ci_diagnostic(reason: Symbol) -> Diagnostic {
   }
 }
 
+// 🟡 List-op dissolution (Practice 10) — DECISIONS.md LB-P10-3213
 fn ci_id_occurrences(id: Symbol, jobs: List<CiJob>) -> Int {
   fold(jobs, init: 0, f: fn(acc, j) {
     if j.id == id { acc + 1 } else { acc }
