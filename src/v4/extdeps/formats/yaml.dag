@@ -4,7 +4,6 @@
 // Consumes: std/node.dag; std/diagnostic.dag; std/collection.dag.
 // Status: T-4.6 scaffold — parse/emit, numeric lexeme, canonical key axes per DECISIONS.md Part 6.
 // Anchor: https://yaml.org/spec/1.2.2/
-// Ledger: DECISIONS.md Part 6: CP-3229-GREEN-TERMINAL, SL-3229-T4-FORMAT-T6T7, SL-3229-LLVM-WIDTH, SL-3229-YAML-CANONICAL-KEYS.
 
 module v4.extdeps.formats.yaml
 

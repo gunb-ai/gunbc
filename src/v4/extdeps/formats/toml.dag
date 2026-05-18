@@ -4,12 +4,11 @@
 // Consumes: std/node.dag; std/diagnostic.dag; std/collection.dag.
 // Status: T-4.6 scaffold — parse/emit, numeric/datetime, table-syntax axes per DECISIONS.md Part 6.
 // Anchor: https://toml.io/en/v1.0.0
-// Ledger: DECISIONS.md Part 6: CP-3229-GREEN-TERMINAL, SL-3229-T4-FORMAT-T6T7, SL-3229-LLVM-WIDTH, SL-3229-T4-FORMAT-TOML-DATETIME, SL-3229-TOML-TABLE-SYNTAX.
 
 module v4.extdeps.formats.toml
 
 
-// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
+// 🟡 coproduct dissolution — DECISIONS.md Part 6 · SL-3229-TOML-TABLE-SYNTAX.
 type TomlValue
   = TomlString { value: String }
   | TomlInt { lexeme: String }
