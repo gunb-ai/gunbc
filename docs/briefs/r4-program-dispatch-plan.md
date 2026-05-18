@@ -170,9 +170,12 @@ overstated collapsibility):
   ~30–60 lines, mostly deleting hedge-parentheticals + mirroring one
   invariant block; additive, low-risk (INVARIANTS.md is load-bearing →
   mechanical/exact). It is **ratify-exact-text-today**, not a drafting
-  effort. **What it kicks off downstream** (the real effort, separate &
-  larger, gated on this landing): still-hawk's **retroactive v4
-  dissolution audit sweep** (#3240 C1) → substrate-gap inventory.
+  effort. **It kicks off NOTHING larger** — verified: #3241 (the fold) +
+  #3242 (the 🟡-disposition legend) are BOTH already merged to main; the
+  retroactive v4 dissolution audit sweep (#3240 C1) was gated on **#3242**
+  (now merged), **not** on this A1 invariant, so C1 is **already in motion
+  independently**. Authorizing A1 ⇒ only the small placement PR. Maximally
+  low-stakes.
 - **(b) A-vs-B = B is *implied by* (a), not identical to it.** Ratifying
   the keystone-fold ⇒ A-vs-B = B *because* D2-REV / machine-readable
   inhabitance is the primitive-case application of Practice-10. State and
@@ -207,21 +210,29 @@ A-vs-B=B (b), decide T-25-core (c).
 > **Wave-2 dissolution-lens PREREQUISITES — cross-lane (sunny-wolf-435,
 > #3313 author, folded; reinforces the batch-(d) hold — Wave-2 cannot fan
 > out until these land + #3313 stabilizes + keystone ratifies):**
-> 1. **New std/ carriers the L1.x lenses *read*** — `canonical_observations`
->    (L1.8), `CanonicalConcept` (L1.12), and the `WrongHomeExemption` /
->    `VacuousArmExemption` / `CanonicalCarrier.Exemption` structural-escape
->    registries (replaced comment-anchor escapes post-codex-BLOCKING).
->    **T-25-core-class substrate prerequisites** (consumers read them); owner
->    = substrate / Fresh Compiler-Pipeline lane; **not yet on the §2 table,
->    no owning T-# — needs assignment** (same gap-shape as P10).
-> 2. **Three derived lens-stages** — `match_arm_shape` (reused
->    L1.1/L1.9/L1.11/L0.7/L0.13), `closed_vocab_scan` (L1.7), `concept_home`
->    (L1.8); home `src/v4/lens/` beside complexity/cost/affected_set =
->    **Fresh Compiler-Pipeline+Lens lane**, NOT Dissolution-lane.
+> **Classification (sunny-wolf-435, #3313 author — verified: NONE fold under
+> T-25-core; T-25-core is type-shape/refinement substrate, these are lens-read
+> metadata registries — different ratification surface):**
+> - **(1a) Cross-cutting concept registries → NEW own T-#** (proposed
+>   *"T-26-adjacent: lens-supporting concept registries"*, sibling to T-26,
+>   std-authoritative, Lane A conduit-OK): `canonical_observations` (L1.8;
+>   shared "domain-concept vs observation" fact), `CanonicalConcept`
+>   (L1.12; cross-file concept identity). Land **before** Wave-2 consumers.
+> - **(1b) Per-lens exemption registries → fold into each lens's own task,
+>   NO separate T-#:** `WrongHomeExemption` (L1.8) / `VacuousArmExemption`
+>   (L1.9) / `CanonicalCarrier.Exemption` (L1.10.b) — each consumed by
+>   exactly one lens; carrier lands in that lens's `.dag`.
+> - **(2) Three derived lens-stages → NEW shared T-#** (proposed
+>   *"Wave-2-prereq lens-pipeline derivations"*): `match_arm_shape` (reused
+>   L1.1/L1.9/L1.11/L0.7/L0.13), `closed_vocab_scan` (L1.7), `concept_home`
+>   (L1.8); home `src/v4/lens/` beside complexity/cost/affected_set =
+>   **Fresh Compiler-Pipeline+Lens lane**, NOT Dissolution-lane.
 >
+> **Two new owning-T#s to assign** (operator/substrate, P10-shape gap): (1a)
+> concept registries + (2) lens-pipeline derivations. (1b) needs none.
 > **Cross-lane edge (was missing in §5):** Compiler-Pipeline+Lens builds
-> (1)+(2) → Dissolution-lane Wave-2 *consumes* them. Wave-2 lens authoring
-> (batch d) stays held until both land.
+> (1a)+(2) → Dissolution-lane Wave-2 *consumes*; (1b) is in-lens. Batch (d)
+> held until (1a)+(2) land + #3313 stabilizes + A1 ratified.
 - **Wave 3 (T-9):** T-10, T-12/T-13 refine to real, T-17, T-22 refine.
 - **Wave 4 (T-10):** T-11, T-16, T-14, T-24.
 - **Wave 5 (T-16):** T-15 (self-host fixed-point — the terminal anti-regression
@@ -313,7 +324,7 @@ Everything else **follows from or is independent of** that root call:
 |---|---|---|---|
 | 1 | **A-vs-B** (above) | A = cheap, contradicts D2-REV · B = principled, more rework | **B** |
 | 2 | **#3280 disposition** (follows #1) | If **B**: #3308/#3309 stay held; rework obligation on `862bbde6e`, owner = **Fresh extdeps/T-4 lane**; archive `vivid-carp-207` freeze after. If **A**: unblock #3308/#3309, apply landed shape, archive freeze. **NO REVERT of `862bbde6e`** — the operator's manual merge stands; rework **rides forward** only; a downstream worker must not improvise a destructive revert (standing #3280 do-not-revert). | **B-path, forward-only** |
-| 3a | **Ratify the verbatim invariant blockquote at `docs/modeling-discipline.md` ~§594–600** (*"Do not hand-roll a derived operation. …"* — already on main, flagged proposed/#3240-A1). The fold §581–763 is ALREADY on main; #3240 is a closed tracker (not it). On ratify → `still-hawk-102` (ready, no blockers) lands the block into INVARIANTS.md+MODELING.md + de-hedges L61/L591–592/L718,746,750 — **SMALL** (3 files ~30–60 ln, mechanical, low-risk). Ratify-exact-text-today, NOT a drafting effort. Kicks off downstream: still-hawk's retroactive v4 audit sweep (#3240 C1). | **Ratify the text** |
+| 3a | **Ratify the verbatim invariant blockquote at `docs/modeling-discipline.md` ~§594–600** (*"Do not hand-roll a derived operation. …"* — already on main, flagged proposed/#3240-A1). The fold §581–763 is ALREADY on main; #3240 is a closed tracker (not it). On ratify → `still-hawk-102` (ready, no blockers) lands the block into INVARIANTS.md+MODELING.md + de-hedges L61/L591–592/L718,746,750 — **SMALL** (3 files ~30–60 ln, mechanical, low-risk). Ratify-exact-text-today, NOT a drafting effort. Kicks off NOTHING larger — #3241+#3242 already merged; the v4 audit sweep (#3240 C1) was gated on merged #3242, not A1, already in motion independently. Maximally low-stakes. | **Ratify the text** |
 | 3b | **T-25-core direction** | Genuine design fork (refinement-substrate shape). Needs your design intent — I can lay options if useful. | *needs you* |
 | 4 | **Wave-0 go** | Go = ~6 full + ~3 bounded work-fronts start now (keystone-independent). Wait = nothing moves. | **Go** |
 | 5 | **Fresh-lane exceptions** | Default: `vivid-carp-207` = sole #3280 freeze custodian; `fierce-cat-31` = lens-fan-out closeout only. Alt: hard-cut (churn/risk). | **Defaults** |
