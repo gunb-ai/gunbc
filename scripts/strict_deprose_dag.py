@@ -56,15 +56,12 @@ PART6_SLUG_HEAD_RE = re.compile(r"^### (SL-3229-[A-Z0-9-]+|CP-3229-[A-Z0-9-]+)\b
 EXTRA_PART6_SLUGS_BY_REL: dict[str, frozenset[str]] = {
     "src/v4/extdeps/languages/verilog.dag": frozenset(
         {
-            "SL-3229-VERILOG-VECTOR-RANGE",
-            "SL-3229-VERILOG-COST",
             "SL-3229-VERILOG-NONEMPTY",
         }
     ),
     "src/v4/extdeps/languages/ptx.dag": frozenset(
         {
             "SL-3229-PTX-DIM3",
-            "SL-3229-PTX-COST",
         }
     ),
     "src/v4/extdeps/languages/llvm_ir.dag": frozenset(
@@ -211,7 +208,10 @@ def coproduct_tag_from_merge_base(rel: str) -> dict[str, tuple[str, str]]:
             continue
         block = authority_block(lines, i)
         if rel.endswith("llvm_ir.dag") and nm == "LlvmType" and "RAW-Int WIDTH RESIDUAL" in block:
-            out[nm] = ("🟡", "SL-3229-LLVM-WIDTH")
+            # Merge-base still carries the historical RAW-Int banner; live substrate
+            # closed SL-3229-LLVM-WIDTH via std/cardinality.dag `NonZeroNat` + `Nat`
+            # (PR #3310 P1 cardinality refinement — operator receipt 2026-05-18).
+            out[nm] = ("🟢", "CP-3229-GREEN-TERMINAL")
             continue
         tail = practice4_tail_for_face(lines, i)
         face = practice4_face(tail)
@@ -222,8 +222,6 @@ def coproduct_tag_from_merge_base(rel: str) -> dict[str, tuple[str, str]]:
         elif face == "yellow":
             if "verilog" in rel:
                 out[nm] = ("🟡", verilog_yellow_ref(tail))
-            elif "ptx" in rel:
-                out[nm] = ("🟡", "SL-3229-PTX-DIM3")
             elif "float" in rel:
                 out[nm] = ("🟡", "SL-3229-FLOAT-NOMINAL")
             else:
@@ -235,6 +233,16 @@ def coproduct_tag_from_merge_base(rel: str) -> dict[str, tuple[str, str]]:
                 file=sys.stderr,
             )
             sys.exit(1)
+    if rel == "src/v4/extdeps/languages/verilog.dag":
+        for nm in (
+            "ConstantUnaryOperator",
+            "ConstantBinaryOperator",
+            "ConstantRangeExpression",
+            "ConstantSelect",
+            "ConstantPrimary",
+            "ConstantExpression",
+        ):
+            out[nm] = ("🟢", "CP-3229-VERILOG-CONSTEXPR-TERMINAL")
     return out
 
 
@@ -461,7 +469,7 @@ def main() -> None:
             "src/v4/extdeps/languages/verilog.dag",
             "// Scope: IEEE 1364-2005 Verilog structural carriers (T-4.9).",
             "// Anchor: https://standards.ieee.org/ieee/1364/3641/",
-            "// Consumes: std/node.dag; std/nat.dag (Nat); Int kernel-ambient.",
+            "// Consumes: std/node.dag; std/nat.dag (Nat).",
             "// Status: T-4.9 PASS (IN-B); import v4.std.node Symbol; import v4.std.nat Nat.",
         ),
         (
@@ -475,7 +483,7 @@ def main() -> None:
             "src/v4/extdeps/languages/ptx.dag",
             "// Scope: NVIDIA PTX ISA 8.5 SIMT structural classifiers (T-4.14).",
             "// Anchor: https://docs.nvidia.com/cuda/pdf/ptx_isa_8.5.pdf — TOC https://docs.nvidia.com/cuda/parallel-thread-execution/index.html",
-            "// Consumes: std/nat.dag (Nat); Int kernel-ambient.",
+            "// Consumes: std/nat.dag (Nat).",
             "// Status: T-4.14 PASS (IN-B).",
         ),
         (

@@ -13,8 +13,25 @@ signature or it does not. Run as a hard CI gate, a lens catches a finding
 
 ## 1. The core invariant
 
-Every dissolution finding violates one invariant, in one of two
-directions:
+This doc operationalizes `modeling-discipline.md` Practice 10 — it does
+not introduce a parallel rulebook. The invariants below are enforcement
+scaffolding for Practice 10's rule, not a competing source of authority.
+
+> **A0 — Every semantic fact must resolve to exactly one canonical
+> structural witness path in the model.** A fact may be *derived* from
+> a canonical carrier's shape (discriminant, catamorphism, traverse),
+> *witnessed* by typed data (`data ... : Algebra<T>`, refinement clause,
+> constructor restriction, alias-identity edge, canonical-carrier
+> registry row), or *rejected as unknown* through diagnostic flow
+> (`Outcome::Rejected`). Multiple structural artifacts pointing at one
+> canonical authority (alias / re-export, retirement-ledger row, derived
+> operation reading the same witness) are not multiplicities — they are
+> the path. It may not be re-derived locally, asserted in prose / name /
+> string form, duplicated as a competing authority, or guessed through
+> a plausible default.
+
+A0 is the umbrella. A1 is the operation-specific specialization that
+originally seeded the lens suite:
 
 > **A1 — Do not hand-roll a derived operation.** If a function's behavior
 > is fixed entirely by the shape of a modeled type, it is re-deriving
@@ -22,9 +39,9 @@ directions:
 > operation as a type — an operation is a function, not a domain
 > structure.
 
-A1 is proposed, pending operator ratification (rework-tracker task A1).
-Ratifying it makes "this violates A1" a citable hard rule. The lens suite
-is how A1 is enforced *mechanically*.
+A0/A1 are proposed, pending operator ratification (rework-tracker task
+A1). Once ratified into Practice 10, A0/A1 become citable hard rules;
+this doc remains the enforcement mechanism.
 
 ## 2. Two tracks
 
@@ -38,10 +55,16 @@ The lens is not the cure — it is the net.
   (the discriminant-predicate node; `fold_node` / catamorphism nodes)
   are Track 2.
 
-Every dissolution finding is a symptom of one substrate gap: **the
-substrate lets you *declare* an algebraic type but does not *derive its
-canonical operations*** — so workers hand-roll them. Track 1 holds the
-line until Track 2 closes that gap.
+The original seed findings exposed one substrate gap: the substrate
+lets you *declare* an algebraic type but does not *derive its canonical
+operations*, so workers hand-roll discriminants and catamorphisms.
+
+The broader Layer-1 suite generalizes that lesson: when the substrate
+lacks a canonical derived operation, witness table, authority map,
+refinement edge, or diagnostic-flow carrier, workers encode the missing
+fact locally — in prose, names, strings, duplicate homes, or plausible
+defaults. Track 1 holds the line until Track 2 makes those witnesses
+derivable or required.
 
 ## 3. Methodology — how a lens is derived
 
@@ -111,6 +134,47 @@ The gunbc-specific modeling-honesty checks. Each: the finding it kills,
 its `.dag` signature, decidability, and the escape valve (the legitimate
 non-finding).
 
+### 5.0 Three levels — invariant, theme, lens
+
+The design has three explicit levels. Each plays a different role and
+they are not interchangeable:
+
+| level | example | role |
+|---|---|---|
+| **Invariant** | A0 / A1 (§1) | *the reason* a finding is wrong; citable hard rule |
+| **Theme** | derive / witness / canonical-home / fail-closed | *the recurring pattern* a finding belongs to; explanatory tag |
+| **Lens** | L1.x (this section) | *the mechanical detector* — structural signature, decidable, with test corpus and escape valve |
+
+> Themes are explanatory tags only. They do not define CI gates,
+> test-corpus boundaries, or implementation passes. The mechanically
+> enforced unit remains the L1.x lens signature. Two lenses that share
+> a theme do not share machinery — they are distinct detectors with
+> distinct signatures, decidability arguments, and escape valves, and
+> they remain distinct precisely because the §3 methodology says each
+> lens's signature must be the smallest structural pattern that catches
+> its finding's class with zero false positives.
+
+**Lens → theme catalog:**
+
+| lens | theme(s) |
+|---|---|
+| L1.1 Discriminant-predicate | derive |
+| L1.2 Degenerate-type | witness |
+| L1.3 Hollow-type | witness |
+| L1.4 Carrier-clone | canonical-home / witness |
+| L1.5 Catamorphism | derive |
+| L1.6 *(merged into L1.10 — Textual-bypass)* | — |
+| L1.7 Off-substrate-fact | witness |
+| L1.8 Wrong-home | canonical-home |
+| L1.9 Vacuous-arm | fail-closed / witness |
+| L1.10 Textual-bypass *(lens family — see §5.0 exception)*: L1.10.a `TemplateHole`, L1.10.b `CanonicalCarrier` | witness / canonical-home |
+| L1.11 Plausible-fallback | fail-closed |
+| L1.12 Parallel-authority | canonical-home |
+
+The only mechanical merge in this layout is **L1.6 → L1.10** — the
+prior doc already stated that L1.10 generalizes L1.6, so the two were
+sibling labels for one consolidated signature space.
+
 ### L1.1 Discriminant-predicate lens — kills *predicate dissolution*
 
 - *Signature:* a `Bool`-returning `fn` over a coproduct whose body is a
@@ -127,6 +191,42 @@ non-finding).
   `free_monoid_is_empty`-via-fold (#3249), the `float_body_is_nan` /
   `edge_is_named` saturation class.
 
+**Concrete match — the basic shape (`nat_is_zero` (#3255)):**
+```dag
+type Nat = Zero | Succ { prev: Nat }
+
+fn nat_is_zero(n: Nat) -> Bool {
+  match n {
+    Zero               => true   // ← literal Bool per variant
+    Succ { prev: _ }   => false
+  }
+}
+```
+The function's behavior is entirely determined by `n`'s top constructor.
+The compiler already knows the variant from the parsed `match` — the
+function is re-deriving the discriminant the substrate could expose for
+free.
+
+**Concrete match — the laundered shape (`free_monoid_is_empty` (#3249)):**
+```dag
+fn free_monoid_is_empty(m: FreeMonoid<T>) -> Bool {
+  free_monoid_fold(
+    m:    m,
+    init: true,
+    step: fn(_acc: Bool, _elem: T) -> Bool { false }   // ← acc never read
+  )
+}
+```
+A fold whose algebra ignores its recursive/accumulator argument is not
+a catamorphism — it's a discriminant in disguise. The constant-algebra
+tell is L0.2 (unused-parameter) applied to the fold's `step`. Without
+this extension L1.1 would miss it.
+
+**Clean shape:** delete the function; consume the substrate-derived
+discriminant directly. The `match n { Zero => ..., Succ => ... }` form
+already gives the caller what they need — `nat_is_zero` was an extra
+layer they didn't need to write.
+
 ### L1.2 Degenerate-type lens — kills *nominalization*
 
 - *Signature:* (a) a struct whose **every field is function-typed** with
@@ -139,6 +239,39 @@ non-finding).
 - *Kills:* #3256's 26 `type ListMap { apply: fn }` wrappers; the
   `{ spelling: String }` ×N degenerate-wrapper class.
 
+**Concrete match — (a) struct-of-functions (`ListMap` wrappers (#3256)):**
+```dag
+type ListMap<A, B> {
+  apply: fn(List<A>) -> List<B>      // ← every field is function-typed
+}
+// no `data foo: ListMap<...> = ...`  ← no instance gives it algebraic content
+```
+`ListMap<A, B>` *is* `fn(List<A>) -> List<B>` wearing a name. The wrapper
+adds no structure: there's no second field, no constructor laws, no
+multiple inhabitants. It's an operation nominalized as a type.
+
+**Concrete match — (b) N near-identical single-field structs:**
+```dag
+type Keyword    { spelling: String }
+type Identifier { spelling: String }
+type Symbol     { spelling: String }
+// three "types" with structurally identical shape, distinguished only
+// by the name — the closed set is doing coproduct's job
+```
+
+**Clean shape:**
+```dag
+// (a) — let the operation be a function, not a type
+fn list_map<A, B>(xs: List<A>, f: fn(A) -> B) -> List<B> { ... }
+
+// (b) — model the closed set as a coproduct, factor the shared field
+type LexicalKind = Keyword | Identifier | Symbol
+type LexicalToken { kind: LexicalKind, spelling: String }
+```
+Genuine algebraic structures (a `Monoid<T>` with `unit` + `combine` and
+multiple `data` inhabitants like `additive_monoid_int`, `string_monoid`)
+do not match — they have non-function content and real multiplicity.
+
 ### L1.3 Hollow-type lens — kills *hollow declarations* (Practice 8's hollow-alias finding, at the type level)
 
 - *Signature:* a declared type **nothing inhabits** — no `data` instance,
@@ -149,6 +282,32 @@ non-finding).
 - *Escape:* a type that *is* constructed, or aliases a substrate carrier,
   passes.
 
+**Concrete match — declared, never inhabited:**
+```dag
+type ParseError {
+  message: String
+  span:    SourceSpan
+}
+// no `fn ... -> ParseError`, no `data ... : ParseError = ...`,
+// no `type T = ParseError` alias, no record field of type ParseError.
+// The type is a name with no edges into the rest of the model.
+```
+The author intended `ParseError` to mean something, but no code path
+produces a value of it. From the substrate's perspective the type is
+inert — it asserts an intention without committing structurally.
+
+**Clean shape:** either delete the declaration (if it was speculative)
+or make at least one inhabitance edge real:
+```dag
+fn parse(s: String) -> Outcome<Ast> {
+  Rejected { diagnostic: ParseError { message: ..., span: ... } }   // ← inhabitance
+}
+```
+Aliasing a substrate carrier also discharges the lens:
+```dag
+type ParseError = Diagnostic   // ← alias-identity is a structural edge
+```
+
 ### L1.4 Carrier-clone lens — kills *carrier dissolution*
 
 - *Signature:* a locally-declared coproduct **structurally isomorphic to
@@ -158,6 +317,29 @@ non-finding).
 - *Verdict:* hard error.
 - *Escape:* a coproduct carrying a payload the std carrier genuinely
   cannot express passes.
+
+**Concrete match — `Outcome<T>` clone (the F2 / `NormalizeChildrenResult` shape):**
+```dag
+// in src/v4/compiler/03_normalize.dag
+type NormalizeChildrenResult
+  = NormalizedChildren        { children: List<Edge> }   // ← Produced
+  | NormalizeChildrenRejected { diagnostic: Diagnostic } // ← Rejected
+```
+Structurally identical to `Outcome<List<Edge>>` — same two-variant
+shape, same payload kinds, just renamed. The local coproduct adds no
+information the canonical `Outcome<T>` can't express.
+
+**Clean shape:**
+```dag
+// in src/v4/std/diagnostic.dag (canonical)
+type Outcome<T> = Produced { value: T } | Rejected { diagnostic: Diagnostic }
+
+// in src/v4/compiler/03_normalize.dag
+fn normalize_children(...) -> Outcome<List<Edge>> { ... }
+```
+A coproduct that genuinely *can't* be expressed by the std carrier
+passes — e.g. a three-variant `Cached | Produced | Rejected` where
+`Cached` carries information `Outcome<T>` doesn't model.
 
 ### L1.5 Catamorphism lens — kills *walker / traverse dissolution*
 
@@ -171,109 +353,576 @@ non-finding).
 - *Kills:* `ci.dag`'s hand-rolled `List` combinators (#3213); the
   resolve/normalize walkers (#3225).
 
-### L1.6 Emit/template lens — kills *emit/template dissolution*
+**Concrete match — clean recursion mirrors the data shape (`ci.dag` `member` (#3213)):**
+```dag
+// in src/v4/workflow/ci.dag
+fn ci_member(s: Symbol, xs: List<Symbol>) -> Bool {
+  match xs {
+    Nil                       => false
+    Cons { head: h, tail: t } =>
+      match symbol_eq(a: s, b: h) {
+        True  => true
+        False => ci_member(s: s, xs: t)   // ← recurse on the sub-structure
+      }
+  }
+}
+```
+The function recurses by matching `List`'s variants (`Nil` / `Cons`)
+and self-calling on `tail`. That recursion *is* the catamorphism over
+`List` — the substrate's `fold` would discharge it. Same shape for
+`any`, `all`, `count_if`, `find`: each is a fold-with-a-different-algebra.
 
-- *Signature:* a field or value that is a **template string literal** — a
-  string literal carrying positional placeholders (`{0}`, `{1}`, …) used
-  as an emitter, where grammar-as-declarative-bidirectional-data belongs.
-- *Decidable:* yes — a literal string with interpolation placeholders is a
-  structural match (the keystone decidability table already classifies it
-  "structural — a literal template-string field").
+**Concrete match — short-circuit fold ladder (resolve/normalize walkers (#3225)):**
+```dag
+fn resolve_children(...) -> Outcome<List<Node>> {
+  match resolve(head) {
+    Rejected { diagnostic: d } => Rejected { diagnostic: d }   // ← propagate
+    Produced { value: h }      => match resolve_children(tail) {
+      Rejected { diagnostic: d } => Rejected { diagnostic: d } // ← propagate
+      Produced { value: t }      => Produced { value: cons(h, t) }
+    }
+  }
+}
+```
+The `match acc { Rejected => propagate ; Ok => continue }` ladder is
+`Outcome`'s monadic traverse over `List` — also a substrate-derivable
+shape.
+
+**Clean shape:** consume the substrate-derived combinator instead.
+```dag
+fn ci_member(s: Symbol, xs: List<Symbol>) -> Bool =
+  list_any(xs, fn(h) { symbol_eq(a: s, b: h) })
+
+fn resolve_children(xs: List<Node>) -> Outcome<List<Node>> =
+  traverse_outcome(xs, resolve)
+```
+Genuinely-irregular recursion — the call graph does *not* mirror the
+data graph, e.g. a graph walker that revisits visited nodes via a
+side-table — falls under *reviewer-confirm* rather than hard-error.
+
+### L1.6 Deprecated alias — see L1.10.a `TemplateHole`
+
+L1.6 is retained as a deprecated alias to keep prior test names,
+slipped-by ledger references, and external citations traceable. The
+original L1.6 "Emit/template lens" — catching string literals carrying
+positional placeholders (`{0}`, `{1}`, …) used as emitters — is now
+[L1.10.a `TemplateHole`](#l110-textual-bypass-lens--kills-typed-model-bypass-via-string-proposed-merged-l16),
+a sub-signature of the L1.10 Textual-bypass lens family. The
+`TemplateHole` sub-signature preserves L1.6's registry-free
+decidability for placeholder literals.
+
+### L1.7 Off-substrate-fact lens — kills *prose-asserted facts* (proposed)
+
+> **Status: proposed.** Derived from the 2026-05-18 ingest of findings F3
+> (hand-rolled lattice merges with prose-only inhabitance), F4 (fixed
+> widths carried by identifier, not structure), F11 (`ResourceHandle`
+> opacity claimed in a comment over a freely-constructible record).
+> Generalizes the standing "machine-readable inhabitance is the bar"
+> ruling.
+
+- *Signature:* a `.dag` declaration whose header comment or identifier
+  contains a fact-bearing token from a closed vocabulary
+  (`inhabits <Algebra>`, `opaque`, `non-empty`, `Word<N>`, `Float<N>`,
+  `bounded`, `non-forgeable`) **without a matching structural artifact**:
+  - claimed algebra inhabitance → no `data ... : Algebra<T>` row in scope;
+  - claimed cardinality / width → **no recursively-discharged refinement
+    chain** on the carrier. A name-encoded width fact must be witnessed
+    all the way down: `Word64` requires `bytes: List<Byte> where len(_) == 8`
+    AND every `Byte` reachable from a `Word64` carries
+    `bits: List<Bit> where len(_) == 8`. A single outer refinement that
+    bottoms out at an unconstrained carrier (`List<Byte>` whose `Byte`
+    has `List<Bit>` with no length clause) does not discharge `Word64`'s
+    64-bit claim; an arbitrary-bit-count `Byte` still inhabits the
+    "well-formed" `Word64`. Same recursion for `Float32`/`Float64`: the
+    width fact must distinguish the two structurally (different
+    exponent/significand width refinements), not by reusing one
+    unconstrained `FloatBody`;
+  - claimed opacity / non-forgeability → no constructor restriction
+    (the type is a record whose fields are all freely constructible from
+    user-reachable substrate values).
+- *Decidable:* yes — the claim vocabulary is a closed set; the structural
+  counterpart is locatable (data table, refinement clause, constructor
+  visibility). Width-claim discharge is decidable by **recursive descent
+  through the carrier**: walk every field whose type is a substrate
+  collection, require a length refinement at each level until the
+  recursion bottoms out at a fixed-cardinality leaf or a primitive bit.
+- *Verdict:* hard error on `std/` and substrate files.
+- *Escape:* prose without fact-bearing tokens (rationale, anchors,
+  examples) passes. A claim *with* the structural counterpart present
+  passes.
+- *Kills:* the lattice-without-witness shape, the width-in-the-name
+  shape, the opacity-in-the-comment shape.
+
+**Concrete match — F3 (`dsl/std/fermi.dag`):**
+```dag
+// FermiDepth inhabits Lattice<FermiDepth>.   ← claim
+fn fermi_meet(lhs: FermiDepth, rhs: FermiDepth) -> FermiDepth { ... }
+fn fermi_join(lhs: FermiDepth, rhs: FermiDepth) -> FermiDepth { ... }
+// no `data fermi_lattice: Lattice<FermiDepth> = { meet: fermi_meet, ... }`
+```
+
+**Concrete match — F4 (`src/v4/std/machine.dag`):**
+```dag
+type Word64 { bytes: List<Byte> }   // `64` only in the name
+type Byte   { bits:  List<Bit>  }   // any length representable
+```
+
+**Concrete match — F11 (`dsl/std/resources.dag`):**
+```dag
+// Opaque proof of resource acquisition. Only the compiler's acquire
+// nodes can mint these -- user code cannot construct handles directly.
+type ResourceHandle {                 // ← claim says opaque
+  type: String                        // ← record, all fields constructible
+  resource_id: String
+  key: String
+  cap: Secret
+}
+```
+
+**Clean shape (the cure):** width refinements discharge recursively;
+`Float32` and `Float64` are distinguished by their refinement clauses,
+not by sharing one carrier.
+```dag
+// machine.dag — recursive refinement chain
+type Bit
+type Byte   { bits:  List<Bit>  where len(_) == 8 }
+type Word64 { bytes: List<Byte> where len(_) == 8 }   // 8 × 8 = 64 ✓
+
+// float.dag — structurally distinct float widths
+type Float32 {
+  sign:                  Bit
+  biased_exponent:       List<Bit> where len(_) == 8
+  trailing_significand:  List<Bit> where len(_) == 23
+}
+type Float64 {
+  sign:                  Bit
+  biased_exponent:       List<Bit> where len(_) == 11
+  trailing_significand:  List<Bit> where len(_) == 52
+}
+
+// fermi.dag — algebra membership as a typed witness, not prose
+data fermi_lattice: Lattice<FermiDepth> = { meet: fermi_meet, join: fermi_join }
+```
+
+### L1.8 Wrong-home lens — kills *orphan operations* (proposed)
+
+> **Status: proposed.** Derived from finding F5 (`nat_compare` defined in
+> `src/v4/std/float.dag` rather than `src/v4/std/nat.dag` or
+> `src/v4/std/algebra.dag`). Mechanizes MODELING M9 (DFS the concept
+> DAG).
+
+- *Signature:* the lens derives the function's **primary (domain)
+  concept** — the unique receiver type the function operates over —
+  and requires the function to live in that type's home file.
+  Observation codomains (Bool, Ordering, comparison results) are
+  *results of* the receiver concept, not peer home signals, and are
+  classified structurally via a substrate registry:
+  ```dag
+  // canonical observation carriers — substrate data, not a hardcoded list
+  data canonical_observations: Set<CanonicalObservation> = {
+    CanonicalObservation { type: Bool,     role: predicate-result   },
+    CanonicalObservation { type: Ordering, role: comparison-result  },
+    CanonicalObservation { type: Unit,     role: side-effect-result },
+    ...
+  }
+  ```
+  The primary concept is selected by this priority cascade, all
+  structurally decidable from the parsed model:
+  1. **Declared witness target.** If `f` appears as a field of a
+     `data ... : Algebra<T> = { ... f: ... }` witness, the primary
+     concept is `T` (the algebra's type parameter). `f`'s home is `T`'s
+     home file, regardless of what its arguments or return look like.
+  2. **Domain-typed function.** Strip observation codomains and look at
+     the remaining argument/return types. If the **non-observation
+     types** are all the same type `T` (the function operates over `T`
+     and returns either `T` or an observation of `T`), the primary
+     concept is `T`. `fn(Nat, Nat) -> Ordering` selects Nat; `fn(Nat) -> Nat`
+     selects Nat; `fn(Nat, Nat) -> Bool` selects Nat.
+  3. **Upstream argument convergence.** Otherwise, if every
+     non-observation type in the signature is declared in a single
+     file `X`, and `f`'s current file `Y` imports `X`, the primary
+     concept is the type in `X` and the home is `X`.
+  4. **No primary concept (cross-cutting).** If none of (1)–(3)
+     selects a single owning type, the function is genuinely
+     cross-cutting and the lens does not fire.
+  The lens fires when (1), (2), or (3) selects a primary-concept home
+  `X` and `f` lives in `Y ≠ X`. Symmetric rule for `data` declarations.
+- *Decidable:* yes — `canonical_observations` registry membership,
+  witness-field membership, non-observation-type uniformity, and the
+  import graph are all structural facts in the parsed model. The
+  four-rule selector is a closed structural cascade.
+- *Verdict:* hard error in `std/` and `extdeps/`.
+- *Escape (structural — no comment anchors):* (4) cross-cutting
+  functions pass via rule (4) without an exemption. For rule
+  (1)/(2)/(3) cases where the lens fires but the function legitimately
+  belongs in its current file, the exemption is itself a substrate
+  data row read by the lens:
+  ```dag
+  data foo_wrong_home_exemption: WrongHomeExemption = {
+    function: foo_fn,
+    because:  bridge,                  // closed vocabulary
+                                       // (bridge / coercion / display)
+  }
+  ```
+  Comment anchors do not satisfy the escape, by construction. The
+  vocabulary token set (`bridge`, `coercion`, `display`) is itself a
+  closed coproduct declared structurally — extending it is a data
+  edit, not a doc edit.
+
+**Concrete match — F5 (`src/v4/std/float.dag:52-62`):**
+```dag
+// in float.dag, but every argument lives in nat.dag
+fn nat_compare(a: Nat, b: Nat) -> Ordering {
+  match a {
+    Zero => match b { Zero => Equal, Succ { prev: _ } => Less }
+    Succ { prev: ap } => match b {
+      Zero => Greater
+      Succ { prev: bp } => nat_compare(a: ap, b: bp)
+    }
+  }
+}
+```
+
+**Clean shape:** move `nat_compare` into `src/v4/std/nat.dag` (or
+`std/algebra.dag` as a `TotalOrder<Nat>` witness); `float.dag` imports it.
+
+### L1.9 Vacuous-arm lens — kills *exhaustive-but-empty match* (proposed)
+
+> **Status: proposed.** Derived from finding F1
+> (`node_locally_well_formed` discharges every `ComputationNode { behavior: _ }`
+> with `=> true`). Distinct from L0.12 (non-exhaustive match): the arm is
+> present, but its body does no work. The closed set is *named* but not
+> actually *checked*.
+
+- *Signature (structural, no name-suffix vocabulary):* a single `match`
+  on a coproduct whose arms are **asymmetric in body shape**:
+  - **at least one arm's RHS is a trivial literal** of the function's
+    return type (`true`, `false`, `Unit`, the matched input itself,
+    `None` / `Empty`); and
+  - **at least one sibling arm's RHS does non-trivial structural work**
+    (calls another function, recurses, constructs a typed value with
+    fields derived from the input).
+  The finding is the asymmetry *within a single match* over a closed
+  coproduct — not the function's name. A match where *every* arm is
+  trivial is a different shape (likely L0.7 dead/constant branch or a
+  genuinely-constant function) and is out of scope; a match where every
+  arm does real work passes. The discipline-role of the function is
+  inferred from the structural fact that *the author already wrote real
+  work for some variants*, which is what makes the trivial siblings a
+  vacuum rather than an honest constant.
+- *Decidable:* yes — arm-body shape (literal-vs-call/recursion/ctor) is
+  a structural property of the parsed match. No name inspection.
+- *Verdict:* hard error in substrate files.
+- *Escape (structural — no comment anchors):* the exemption is itself
+  a substrate data row read by the lens:
+  ```dag
+  data unit_is_unit_vacuous_arm_exemption: VacuousArmExemption = {
+    function:   unit_is_unit,
+    at_variant: Unit,
+    because:    variant-has-no-children,   // closed vocabulary
+                                           // (variant-has-no-children /
+                                           //  identity-on-Unit /
+                                           //  proven-unreachable)
+  }
+  ```
+  Comment anchors do not satisfy the escape, by construction. The
+  `because` vocabulary is itself a closed coproduct declared
+  structurally — extending it is a data edit.
+
+**Concrete match — F1 (`src/v4/std/node.dag:115-120`):**
+```dag
+fn node_locally_well_formed(n: Node) -> Bool {
+  match n.kind {
+    TypeNode { connective: c } =>
+      edges_conform(children: n.children, d: connective_edge_discipline(c: c))
+    ComputationNode { behavior: _ } => true   // ← arm exists, body vacuous
+  }
+}
+```
+
+**Clean shape:** introduce a sibling `behavior_edge_discipline(Behavior)`
+in `std/node.dag` and dispatch both arms uniformly.
+
+### L1.10 Textual-bypass lens family — kills *typed-model bypass via String* (proposed, merged L1.6)
+
+> **Status: proposed.** Derived from findings F6
+> (`CiCommand::ShellCommand { command: String }` while
+> `extdeps/process.dag` already models a typed
+> `Command { program, argv0, args, env }`) and F8 (string-template
+> emitters such as `list_template: "Vec<{0}>"` in
+> `dsl/std/languages.dag`). Absorbs the original L1.6 as a
+> sub-signature. The two cases are different mechanical detectors but
+> share one structural finding: **a string-valued artifact is carrying
+> a typed fact that has, or should have, a model carrier.**
+
+> **Exception to §5.0:** L1.10 is a *lens family*, not a single lens.
+> Its mechanically enforced units are L1.10.a `TemplateHole` and L1.10.b
+> `CanonicalCarrier`; they share a finding family and reporting label,
+> but keep separate signatures, decidability arguments, escape valves,
+> and test corpora — exactly the per-lens discipline §5.0 requires.
+
+#### L1.10.a `TemplateHole` (registry-free)
+
+- *Signature:* a field or value that is a **template string literal** —
+  a string literal carrying positional placeholders (`{0}`, `{1}`, …)
+  used as an emitter, where grammar-as-declarative-bidirectional-data
+  belongs.
+- *Decidable:* yes — a literal string with interpolation placeholders
+  is a structural match (the keystone decidability table already
+  classifies it "structural — a literal template-string field"). No
+  registry required.
 - *Verdict:* hard error on the literal-template shape.
 - *Escape:* a plain string constant with no placeholders, or genuine
   string *data* that is not an emitter template, passes.
-- *Kills:* string-templated emitters (`template: "Vec<{0}>"`).
 
-### L1.7 Off-substrate-fact lens — kills *prose-asserted facts*
+**Concrete match — F8 type-construction templates (`dsl/std/languages.dag`):**
+```dag
+type TypeMapping {
+  string:            String
+  int:               String
+  list_template:     String   // ← positional placeholders inside
+  optional_template: String
+  map_template:      String
+}
 
-- *Signature:* a declaration whose name or comment claims a closed-set
-  structural fact (`inhabits <Algebra>`, `opaque`, `non-empty`, `Word<N>`,
-  `Float<N>`, `bounded`, `non-forgeable`) without the corresponding
-  machine-readable artifact: algebra witness data, recursive cardinality
-  refinement, or constructor restriction.
-- *Decidable:* yes — claim vocabulary is closed, and each required
-  counterpart is a parsed-model fact. Width claims require recursive
-  discharge through the carrier chain (`Word64` needs `Byte` and `Bit`
-  cardinality, not only an outer field name).
-- *Verdict:* hard error on `std/` / substrate files.
-- *Escape:* rationale comments without fact-bearing tokens pass; a claim
-  with the structural counterpart present passes.
-- *Kills:* prose-only algebra inhabitance, width-in-the-name, and
-  opacity-in-the-comment shapes.
+data rust_type_mapping: TypeMapping = {
+  string:            "String",
+  int:               "i64",
+  list_template:     "Vec<{0}>",          // ← {0} is an emission hole
+  optional_template: "Option<{0}>",
+  map_template:      "HashMap<{0}, {1}>", // ← {0}, {1} are emission holes
+}
+```
+Emission is happening — but it's a fill-in-the-hole string substitution
+the lens can't structurally validate. The placeholder vocabulary
+(`{0}`, `{1}`) is parallel to the model rather than part of it.
 
-### L1.8 Wrong-home lens — kills *orphan operations*
+**Clean shape:** grammar-as-declarative-bidirectional-data — the target
+type's construction is modeled, and emit is a fold over the model:
+```dag
+type RustTypeRealization
+  = RustGeneric { ctor: RustIdent, args: List<RustTypeRealization> }
+  | RustAtom    { ident: RustIdent }
 
-- *Signature:* a function or data declaration whose primary concept is
-  structurally owned by another file. Primary concept is selected by:
-  witness target first; same-type closure second; upstream argument and
-  return convergence third. If no single primary concept is selected, the
-  declaration is cross-cutting and the lens does not fire.
-- *Decidable:* yes — witness membership, argument and return types, and
-  import graph are parsed-model facts.
-- *Verdict:* hard error in `std/` and `extdeps/`.
-- *Escape:* genuinely cross-cutting bridge / coercion / display functions
-  pass only through a closed-token operator-confirmed marker.
-- *Kills:* operations such as `nat_compare(Nat, Nat)` living outside the
-  `Nat` or algebra home.
+data rust_list_realization: TypeRealization<List> = fn(elem) {
+  RustGeneric { ctor: "Vec", args: [elem] }
+}
+```
+Plain string constants without placeholders (e.g. a fixed `"i64"`
+atom) pass — they're data, not a templated emitter.
 
-### L1.9 Vacuous-arm lens — kills *exhaustive-but-empty match*
+#### L1.10.b `CanonicalCarrier` (substrate-declared registry)
 
-- *Signature:* a `match` on a coproduct where at least one arm returns a
-  trivial literal of the function's return type while a sibling arm does
-  structural work. The finding is asymmetric work over a closed set: the
-  author named every variant but left one branch content-free.
-- *Decidable:* yes — arm RHS shape is structural.
-- *Verdict:* hard error in substrate files.
-- *Escape:* a trivial arm may pass only with a closed-token structural
-  justification (`variant-has-no-children`, `identity-on-Unit`, etc.).
-- *Kills:* `node_locally_well_formed`-style arms that discharge an entire
-  sibling variant as `true` while other siblings are actually checked.
-
-### L1.10 String-escape-hatch lens — kills *typed-model bypass via String*
-
-- *Signature:* a `String` field carrying a structural role tag whose role
-  is registered by a `CanonicalCarrier<T>` row as superseded by a typed
-  carrier in scope. This generalizes L1.6 from emitter templates to domain
-  strings. `CanonicalCarrier<T>` is not introduced as a new standalone
-  authority here; it names the future derived view over the existing substrate
-  homes for role-bearing carriers, including `extdeps/process.dag` `Command`
-  for command text.
-- *Decidable:* yes — registry membership and role-tag refinements are
-  parsed-model facts once that derived view exists. Until then, L1.10 is gated
-  on the role-carrier registry task and must not be implemented by a hardcoded
-  `command` / `path` / `url` name table.
+- *Signature (substrate-declared registry, no opt-in tag):* the lens
+  reads a **canonical-carrier registry** authored as data in the
+  substrate. A typed carrier declares its coverage — the set of field
+  names it claims authority over — as a structural witness:
+  ```dag
+  // in src/v4/extdeps/process.dag
+  data process_command_canonical: CanonicalCarrier<process.Command> = {
+    supersedes_string_at_field_named: { command, shell_command, invocation }
+  }
+  ```
+  The lens fires on **any** field of type `String` whose field name
+  appears in any registered `CanonicalCarrier::supersedes_string_at_field_named`
+  set, whenever that carrier's target type is in scope. The trigger is
+  not author-controlled — the author cannot bypass by omitting a tag,
+  because the registry-declared field-name set drives the gate
+  unconditionally. The name set lives in substrate `data`, not in the
+  lens body, so adding a new typed carrier is a registry edit, not a
+  lens edit.
+- *Decidable:* yes — `CanonicalCarrier` registry membership, the
+  registry's `supersedes_string_at_field_named` set, the offending
+  field's declared name, and the target carrier's in-scope status are
+  all structural facts in the parsed model.
 - *Verdict:* hard error.
-- *Escape:* untagged strings, or role tags with no canonical carrier row
-  in scope, pass.
-- *Kills:* `ShellCommand { command: String : command_role }` when
-  `process.Command` is declared as the canonical command carrier.
+- *Escape (structural, registered exemption):* a `String` field whose
+  name *does not* appear in any in-scope registry entry passes
+  naturally. For fields whose name happens to collide with a registry
+  entry but whose value is legitimately raw (e.g. an opaque ID), the
+  carrier author can add a structural exemption row to the same
+  registry, e.g.
+  `data raw_command_exempt: CanonicalCarrier.Exemption = { at_field: command, in_carrier: opaque_log_record, because: opaque-id }`,
+  read as data, not as comment. Author-side opt-out via comment marker
+  or omitted tag does not pass.
 
-### L1.11 Plausible-fallback lens — kills *fabricated sibling fallthrough*
+**Concrete match — F6 (`src/v4/workflow/ci.dag:23-28`):**
+```dag
+type CiCommand
+  = LintCommand
+  | TestCommand
+  | IgnoredTestCommand { test_name: String }
+  | BootstrapStageCompile { produces: Symbol }
+  | ShellCommand { command: String }    // ← unannotated; field name = `command`
+```
+With `data process_command_canonical: CanonicalCarrier<process.Command> = { supersedes_string_at_field_named: { command, ... } }`
+in `extdeps/process.dag`, the lens reads the registry, sees that any
+`String` field named `command` has a typed canonical home in scope
+(`process.Command`), and fires — independent of whether the author
+opted in to any annotation.
 
-- *Signature:* a missing-info arm (`None => Ctor`, `Empty => Ctor`,
-  `[] => Ctor`) where `Ctor` is a constructor of the function's return
-  type and the return type is not `Outcome<_>`.
-- *Decidable:* yes — return type, constructor membership, and
-  missing-info pattern are structural.
-- *Verdict:* hard error. The fix is to return `Outcome<T>` and route the
-  missing fact to `Rejected { diagnostic: ... }`.
-- *Escape:* total defaulting helpers whose definition is exactly
-  `None => default` require operator confirmation.
-- *Kills:* "safe-looking" default constructors for unknown DELETE/PUT/PATCH
-  effect shape derivations.
+**Clean shape:** consume the typed carrier directly.
+```dag
+import v4.extdeps.process as process
+type CiCommand = ... | ShellCommand { command: process.Command }
+```
 
-### L1.12 Parallel-authority lens — kills *duplicate concept homes*
+### L1.11 Plausible-fallback lens — kills *fabricated-sibling fallthrough* (proposed)
 
-- *Signature:* the same type name `T` introduced by `type T = ...` in two
-  different `.dag` files without a structural alias / re-export,
-  retirement-ledger row, or same-change migration deleting one home.
-- *Decidable:* yes — duplicate declarations and structural alias/ledger
-  rows are parsed-model facts. Comment markers do not count as authority.
+> **Status: proposed.** Derived from finding F10
+> (`derive_effect_shape`'s `None => CreateEffect` arm for DELETE/PUT/PATCH
+> when no path key exists). Sibling rule to P3 (fail-closed): the
+> function returns a typed enum and the missing-info case returns a
+> *different valid constructor* of that enum — a plausible guess —
+> instead of escalating through `Outcome::Rejected`.
+
+- *Signature:* a `match` arm of shape `None => Ctor` / `Empty => Ctor` /
+  `[] => Ctor` where `Ctor` is a constructor of the function's return
+  type AND the function's return type is **not** `Outcome<_>` (does not
+  carry a diagnostic variant).
+- *Decidable:* yes — return-type shape + arm-RHS constructor membership +
+  matched-sub-pattern is a "nothing-here" variant.
+- *Verdict:* hard error. The fix is to lift the return type to
+  `Outcome<T>` and return `Rejected { diagnostic: DerivationUnknown }`.
+- *Escape:* the missing-info case has a *uniquely correct* answer (e.g.
+  `or_default(opt: Option<Nat>, default: Nat)` style helpers where
+  `None => default` is the function's definition) — operator-confirm.
+
+**Concrete match — F10 (`dsl/std/effects.dag:268-282`):**
+```dag
+DELETE =>
+  match last_path_param(template: path) {
+    Some { value: p } => DeleteEffect { key_source: PathParam { param: p } }
+    None              => CreateEffect          // ← fabricated sibling
+  }
+PUT =>
+  match last_path_param(template: path) {
+    Some { value: p } => UpsertEffect { key_source: PathParam { param: p } }
+    None              => CreateEffect          // ← same pattern
+  }
+```
+
+**Clean shape:**
+```dag
+fn derive_effect_shape(...) -> Outcome<EffectShape> {
+  DELETE =>
+    match last_path_param(template: path) {
+      Some { value: p } => Produced { value: DeleteEffect { ... } }
+      None              => Rejected { diagnostic: DerivationUnknown { ... } }
+    }
+}
+```
+
+### L1.12 Parallel-authority lens — kills *unmarked duplicate concept homes* (proposed)
+
+> **Status: proposed.** Derived from finding F9 (`Bool`, `Char`, `Url`,
+> machine words declared in both `dsl/std/` and `src/v4/std/` with no
+> marker indicating which is canonical). The D2-resolver gap is
+> related but **deliberately not collapsed into this lens** — see the
+> "Cross-reference — D2-resolver" note below for why the dangling-import
+> shape is a separate finding.
+
+- *Signature (resolved concept identity, not lexical spelling):* two
+  `type T1` and `type T2` declarations in different files are
+  duplicates IFF they **resolve to the same canonical concept
+  identity** AND neither is a structural alias of the other. The lens
+  does **not** key on lexical name equality — `network.Result` and
+  `compiler.normalize.Result` are different concepts in different
+  namespaces and are not duplicates; what makes two declarations a
+  duplicate is shared canonical-concept membership, declared
+  structurally:
+  ```dag
+  data bool_concept: CanonicalConcept = {
+    canonical_home: v4.std.logic.Bool,
+    members:        { dsl.std.types.Bool },   // historical mirrors
+  }
+  ```
+  The lens fires when two type declarations claim membership in the
+  same `CanonicalConcept` row without one being a structural alias /
+  retirement / migration of the other. Same lexical name in
+  different concepts does not fire. All declaration forms count —
+  sum / alias (`type T = A | B`), record (`type T { ... }`), unit
+  (`type T`), generic (`type T<X> = ...`) — the form is irrelevant
+  once concept identity is established. (Scope clarification — the
+  *planned-but-absent home* case is a different finding shape:
+  unresolved reference / fail-closed P3, caught by L0.8 extended to
+  dangling import paths, deliberately not L1.12.)
+- *Decidable:* yes — `CanonicalConcept` registry membership and
+  structural-alias edges are queryable from the parsed model. No
+  lexical name equality, no comment/prose inspection.
 - *Verdict:* hard error.
-- *Escape:* structural alias / re-export, structural retirement record,
-  or deletion plus consumer migration.
-- *Kills:* duplicated `Bool`, `Char`, `Url`, and machine-word concept
-  homes with no machine-readable canonical authority.
+- *Escape (structural — applies the same rule L1.7 enforces against
+  itself):* the lens does **not** accept a comment marker as authority,
+  because prose-as-authority is exactly the shape L1.7 kills. The only
+  passing shapes are themselves structural:
+  1. **Alias / re-export.** The non-canonical file does not redeclare
+     `type T`; it `import`s the canonical declaration and exposes it via
+     a `type T = <canonical-module>.T` alias-identity edge.
+  2. **Structural retirement record.** A `data` row in a designated
+     retirement ledger names the historical declaration and a
+     dissolution trigger, e.g.
+     `data bool_dsl_std_retired: HistoricalDeclaration = { type: dsl.std.types.Bool, dissolves_when: <trigger> }`.
+     The lens reads the ledger as data, not as prose.
+  3. **Deletion / migration.** The historical declaration is removed in
+     the same change and consumers are repointed at the canonical home.
+  Comment markers — including a `// Authority: canonical` header — do
+  not satisfy the escape, by construction.
+
+**Concrete match — F9 (`dsl/std/types.dag:173` and `src/v4/std/logic.dag:14`):**
+```dag
+// dsl/std/types.dag:163-173
+type Bool = True | False
+
+// src/v4/std/logic.dag:13-14
+type Bool = True | False
+
+// Some substrate-owned ontology file:
+data bool_concept: CanonicalConcept = {
+  canonical_home: v4.std.logic.Bool,
+  members:        { dsl.std.types.Bool },
+}
+```
+
+The `bool_concept` row asserts both declarations are the same
+canonical concept; the lens fires because the `dsl.std.types.Bool`
+declaration is not a structural alias of `v4.std.logic.Bool`. A
+hypothetical `network.Result` and `compiler.normalize.Result` would
+*not* fire — they are not co-members of any `CanonicalConcept` row,
+and the lens does not equate lexical spelling with concept identity.
+
+**Cross-reference — D2-resolver:** the D2-resolver gap is a mix of
+shapes that **do not collapse into L1.12**:
+- The *planned-but-absent* `extdeps/languages/resolver.dag` is an
+  unresolved-reference / dangling-import finding (L0.8 extended), not a
+  duplicate-declaration one. Reporting it as a duplicate-authority
+  finding would name the wrong root cause.
+- If, separately, `GroundingMap` were declared in two language files
+  (e.g. both `rust.dag` and `python.dag` redeclared `type GroundingMap`),
+  *that* would be an L1.12 match in its own right.
+
+The fix sequence for D2-resolver is therefore: first resolve the
+dangling-import finding by landing the canonical home; only then is
+L1.12 the right lens for any residual duplicate declarations.
+
+**Clean shape (structural, not prose):**
+```dag
+// src/v4/std/logic.dag  — canonical declaration
+type Bool = True | False
+
+// dsl/std/types.dag  — alias-identity edge, no redeclaration
+import v4.std.logic as canonical_logic
+type Bool = canonical_logic.Bool
+
+// OR: a structural retirement record (read as data, not prose)
+// some/retirement_ledger.dag
+data bool_dsl_std_retired: HistoricalDeclaration = {
+  type:            dsl.std.types.Bool,
+  dissolves_when:  <substrate-trigger>,
+}
+```
+For D2-resolver: land the planned `extdeps/languages/resolver.dag`
+canonically and rewrite `rust.dag`'s `GroundingMap` declaration into an
+import/alias of the resolver's authoritative shape.
 
 ## 6. The discriminant / catamorphism distinction
 
@@ -340,6 +989,7 @@ from real evidence, not speculation.
 | 2026-05-18 | #3255 | `nat_is_zero` hand-rolled discriminant | same | L1.1 |
 | 2026-05-18 | #3256 | 26 combinators nominalized into single-field wrapper types | an operation is a function, not a type | L1.2 |
 | 2026-05-18 | #3249 | `free_monoid_is_empty` laundered through a fold | discriminant ≠ catamorphism; do not conflate | L1.1 (extended) |
+<<<<<<< HEAD
 | 2026-05-18 | `src/v4/DECISIONS.md` Part 6 `SL-3229-LLVM-WIDTH` / `SL-3229-FLOAT-NOMINAL`; `docs/audit/dissolution-inventory.md` P1 | raw width / nominal-width facts carried by names or comments instead of bounded cardinality structure | facts live in substrate structure, not comments or names | L1.7 |
 | 2026-05-18 | `src/v4/DECISIONS.md` `SL-P7-NAT-COMPARE-VPRED`; `docs/audit/dissolution-inventory.md` P6 | `nat_compare` originally homed under `std/float.dag` while the primary concept is `Nat` | operations live with their primary concept | L1.8 |
 | 2026-05-18 | codex review on design commit `cfbc247c0`, resolved by `3fb3e4dfc`; live home: compiler-side local well-formedness predicates until migrated into `.dag`; dissolve trigger: reject or require closed-token justification for asymmetric trivial match arms in substrate files | exhaustive shape is not evidence of actual validation | L1.9 |
@@ -354,6 +1004,29 @@ classes before the full registry-backed lens runner exists. #3249's was
 invisible to reviewers because the fold-laundering hid it. This is why the
 lens suite (mechanical, every time) and the burn-down pre-gate (catch at
 the source) both exist.
+=======
+| 2026-05-18 | ingest | `node_locally_well_formed` discharges every `ComputationNode { behavior: _ } => true` (`src/v4/std/node.dag:115-120`) | exhaustive-in-shape, vacuous-in-content; closed-set named but not checked | L1.9 (proposed) |
+| 2026-05-18 | ingest | `merge_evidence` / `encoding_meet` / `fermi_meet` hand-rolled while inhabitance claimed in a `// ` comment, no `data ... : Lattice<T>` row (`dsl/std/{termination,encoding,fermi}.dag`) | algebra inhabitance is a typed witness, not prose | L1.7 (proposed) |
+| 2026-05-18 | ingest | `Word64 { bytes: List<Byte> }`, `Float32`/`Float64` share unconstrained `FloatBody` (`src/v4/std/{machine,float}.dag`) | cardinality / width is a refinement, not a name | L1.7 (proposed) |
+| 2026-05-18 | ingest | `ResourceHandle` is a freely-constructible record under prose claiming opacity (`dsl/std/resources.dag:17-25`) | non-forgeability is a constructor restriction, not a comment | L1.7 (proposed) |
+| 2026-05-18 | ingest | `nat_compare(Nat, Nat)` defined in `src/v4/std/float.dag:52-62` while `nat.dag` and `algebra.dag` exist | an operation lives in its argument-type's home (M9 / DFS the concept DAG) | L1.8 (proposed) |
+| 2026-05-18 | ingest | `CiCommand::ShellCommand { command: String }` while `extdeps/process.dag` models a typed `Command` (`src/v4/workflow/ci.dag:23-28`) | String escape hatch for a domain that has a typed model in scope | L1.10.b `CanonicalCarrier` (proposed) |
+| 2026-05-18 | ingest | `list_template: "Vec<{0}>"`, `optional_template: "Option<{0}>"`, `map_template: "HashMap<{0}, {1}>"` etc. in `dsl/std/languages.dag` + per-language emit tables | string literal with positional placeholders used as emitter; grammar-as-bidirectional-data belongs | L1.10.a `TemplateHole` (proposed; absorbs original L1.6) |
+| 2026-05-18 | ingest | `derive_effect_shape` `DELETE/PUT/PATCH None => CreateEffect` (`dsl/std/effects.dag:268-282`) | missing info must escalate through `Outcome::Rejected`, not return a different valid sibling | L1.11 (proposed) |
+| 2026-05-18 | ingest | `Bool`, `Char`, `Url`, machine words declared in both `dsl/std/` and `src/v4/std/` (`type T = ...` redeclared, no structural alias/retirement/migration) | one concept must have one home (structural alias, retirement-ledger row, or migration) | L1.12 (proposed) |
+| 2026-05-18 | ingest | `extdeps/languages/resolver.dag` referenced via imports but file does not exist; provisional `GroundingMap` lives in `extdeps/languages/rust.dag` | unresolved reference / dangling import — fail-closed P3, distinct root cause from duplicate authority | L0.8-extended (planned-but-absent home; deliberately not L1.12) |
+
+Pattern from the seed PR rows: the original four are burn-down
+*substrate* PRs — the lane built to remove dissolution debt produced
+it. Each was *mostly* correct with one dissolution defect; #3249's was
+invisible to reviewers because the fold-laundering hid it. This is why
+the lens suite (mechanical, every time) and the burn-down pre-gate
+(catch at the source) both exist. The later `ingest` rows extend the
+ledger to A0's broader territory (prose / name / string / canonical-home /
+plausible-fallback findings); they are not all derived-operation
+defects but share the same root-cause pattern — a missing structural
+witness that workers backfill locally.
+>>>>>>> origin/main
 
 ## 9. Build path — model-derived only
 
@@ -375,7 +1048,116 @@ CP-1's timeline.
 Build order once the machinery exists: Layer 0 first (Layer 1 composes
 its primitives — L0.2 → L1.1, L0.4 → L1.3), then Layer 1.
 
-## 10. Open — audit of current coverage
+## 10. Dependency model — lenses are pipeline stages
+
+The lens framework is **not separate infrastructure**. There is no
+"lens engine" with its own dependency model. Lenses are `.dag` stages
+in the existing compiler pipeline, and they participate in the same
+`consumes:` / `produces:` machinery every other stage uses. A second
+dependency system would itself be the L1.12-class parallel-authority
+hazard the lens suite exists to kill — self-application: the lens
+framework cannot violate the discipline it enforces.
+
+### 10.1 Shared indices come from existing pipeline stages
+
+Each compiler stage already produces structural facts as outputs. The
+shared indices the lenses need are not a new layer — they're outputs
+of stages that run anyway for typecheck / normalize / resolve / infer.
+A lens consumes them via the same edges any other downstream stage
+uses.
+
+| Shared index | Produced by (existing stage) | Lenses that consume |
+|---|---|---|
+| AST + spans | `v4.compiler.02_parse` | universal |
+| Symbol resolution (name → declaration site) | `v4.compiler.03_resolve` | L0.8, L1.8, L1.12, plus most L1.x |
+| Coproduct variant list (type → variants) | `v4.compiler.02_parse` / `03_resolve` | L1.1, L1.5, L1.9, L0.12, L0.13 |
+| Inhabitance edge set (type → {ctors, returns, fields, aliases}) | `v4.compiler.03_resolve` / `04_infer` | L1.2, L1.3, L1.4 |
+| Witness / registry index (`data ... : Algebra<T>`, `CanonicalCarrier`, `HistoricalDeclaration`, `CanonicalConcept`, `canonical_observations`) | `v4.compiler.03_resolve` | L1.7, L1.8, L1.10.b, L1.12 |
+| Refinement-clause index (type → length / domain refinements) | `v4.compiler.04_infer` | L1.7 |
+| Import graph + target existence | `v4.compiler.02_parse` | L0.8, L1.8 |
+| Return-type → fail-closed-carrier? | `v4.compiler.03_resolve` | L0.14, L1.11 |
+
+### 10.2 Three small derived stages cover what the pipeline doesn't already expose
+
+These are themselves `.dag` stages — small folds with declared
+`consumes:` edges — and they're reusable across multiple lenses:
+
+```dag
+module v4.lens.match_arm_shape
+consumes: v4.compiler.02_parse
+produces: Map<MatchArmId, ArmShape>     // {trivial-literal | structural-work | identity-passthrough}
+// reusable by: L1.1, L1.9, L1.11, L0.7, L0.13
+
+module v4.lens.closed_vocab_scan
+consumes: v4.compiler.02_parse
+produces: Map<DeclId, Set<ClaimToken>>  // fact-bearing tokens in comments/identifiers
+// reusable by: L1.7
+
+module v4.lens.concept_home
+consumes: v4.compiler.03_resolve, v4.lens.canonical_observations_index
+produces: Map<FnId, File>               // each fn's primary-concept home file
+// reusable by: L1.8
+```
+
+Each is a single deterministic fold. Once landed, multiple lenses
+share the result — landing `match_arm_shape` unblocks five lenses,
+not one.
+
+### 10.3 A lens is a stage with declared dependencies
+
+```dag
+module v4.lens.dissolution
+consumes:
+  v4.compiler.02_parse
+  v4.compiler.03_resolve
+  v4.compiler.04_infer
+  v4.lens.match_arm_shape
+  v4.lens.closed_vocab_scan
+  v4.lens.concept_home
+produces:
+  Set<Diagnostic>
+```
+
+The compiler's existing stage-ordering — same machinery that ensures
+`04_infer` runs after `03_resolve` — automatically schedules the lens
+stage after its dependencies. **Adding a new lens = land a `.dag`
+stage with its own `consumes:` declaration; pipeline ordering and
+parallelism are derived, not configured.**
+
+### 10.4 Parallelism falls out of the dependency graph
+
+By §5.0's design, every lens is a deterministic structural projection
+with no cross-lens mutable state. That gives two natural parallelism
+axes derived directly from the dependency graph:
+
+- **Per file.** Each `.dag` file's parse/resolve/infer state is
+  independent of every other file's; the lens-stage fan-out is
+  embarrassingly parallel — one task per file in scope.
+- **Per lens within a file.** Two lenses reading the same shared
+  indices have no contention (indices are read-only by the time
+  lenses run); they fan out at the predicate-evaluation level.
+
+Combined with `v4.lens.affected_set` (already in the pipeline; only
+re-lens files whose downstream closure has changed), CI cost scales
+with PR size, not with corpus size.
+
+### 10.5 What this gives you
+
+- **One dependency model** for the whole compiler — pipeline stages
+  and lenses live in the same graph.
+- **Adding a lens** is a `.dag` stage land, not a framework
+  extension.
+- **Adding an index** (when a new lens needs facts current stages
+  don't expose) is a small derivation stage between an existing
+  producer and the lens — and reusable by any future lens that
+  shares the same dependency.
+- **No "lens framework"** — there's just the pipeline, and lenses
+  are stages in it.
+- **Self-application is clean**: the pipeline is `.dag`-modeled,
+  the lens stage participates as a peer, and the compiler enforces
+  the discipline it follows.
+
+## 11. Open — audit of current coverage
 
 To be filled: an audit of which Layer-0 checks the v4 compiler enforces
 today vs. the gap. The v4 compiler is early-stage (the pipeline is still
