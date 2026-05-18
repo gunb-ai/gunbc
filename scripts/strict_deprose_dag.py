@@ -216,7 +216,11 @@ def coproduct_tag_from_merge_base(rel: str) -> dict[str, tuple[str, str]]:
         tail = practice4_tail_for_face(lines, i)
         face = practice4_face(tail)
         if face == "green":
-            out[nm] = ("🟢", "CP-3229-GREEN-TERMINAL")
+            rel_norm = rel.replace("\\", "/")
+            if "/extdeps/formats/" in rel_norm:
+                out[nm] = ("🟢", "CP-3229-GREEN-FORMAT-VALUES")
+            else:
+                out[nm] = ("🟢", "CP-3229-GREEN-TERMINAL")
         elif face == "red":
             out[nm] = ("🔴", "CP-3229-RED-PRACTICE4")
         elif face == "yellow":
