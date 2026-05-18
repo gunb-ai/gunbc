@@ -1,5 +1,5 @@
 // src/v4/std/fact_density.dag
-// Scope: T-30 hollow-alias gate — P2-staging witness (parse probe; rationale `DECISIONS.md` T-30).
+// Scope: P2-staging substrate witness.
 // Owns: SourceSpecReadFact
 // Consumes:
 // Status: drafted.
