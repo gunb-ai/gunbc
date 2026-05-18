@@ -14,9 +14,6 @@ import v4.std.nat { Nat }
 
 
 // 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiSpecificationExtensionKey
-// OAS 3.1 Specification Extensions: wire keys MUST begin with `x-`; `x-oai-` / `x-oas-` are reserved (OAS authority).
-// Wire recon: `OpenApiSpecExtensionOaiReserved` → `"x-oai-" ++ remainder`; `OpenApiSpecExtensionOasReserved` → `"x-oas-" ++ remainder`;
-// `OpenApiSpecExtensionVendor` → `"x-" ++ after_x_hyphen` where the full key does **not** start with `x-oai-` or `x-oas-` (else parse/Diagnostic).
 type OpenApiSpecificationExtensionKey
   = OpenApiSpecExtensionOaiReserved { remainder: String }
   | OpenApiSpecExtensionOasReserved { remainder: String }
@@ -101,9 +98,6 @@ type OpenApiSchemaOasMemberKey
   | OpenApiSchemaOasExample
 
 
-// OAS 3.1 Schema Object — JSON Schema + OAS-only members + `x-*` + string-keyed wire deferrals
-// (https://spec.openapis.org/oas/v3.1.0.html#schema-object); `openapi_schema_deferred_keyword_members`
-// holds keys outside `core` / `openapi_schema_oas_members` / `openapi_schema_specification_extensions`.
 type OpenApiSchema {
   core: JsonSchema,
   openapi_schema_oas_members: Map<OpenApiSchemaOasMemberKey, JsonValue>,
@@ -445,8 +439,6 @@ type OpenApiDocumentRoot
     }
 
 // 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiOpenapiField3_1
-// OAS §4.1 Versions: major.minor fixed to **3.1** in this slice; `patch` is the semver patch (wire `3.1.{patch}` for any `Nat`).
-// Tooling SHOULD ignore patch deltas within `3.1.*` — the carrier still **records** patch for round-trip / diagnostics.
 type OpenApiOpenapiField3_1
   = OpenApiOpenapi31Patch { patch: Nat }
 
