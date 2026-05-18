@@ -1461,6 +1461,16 @@ Verbatim `//` lines from merge-base `float.dag` (lines **104–144** — modelin
 
 **Roll-up:** `docs/audit/dissolution-inventory.md` §1.1 row **P3** (`compiler/01_tokenize.dag tokenize`, `compiler/02_parse.dag parse`, plus the parser-side in-file backlog this row concretizes).
 
+### SL-3229-T4-FORMAT-TOML-DATETIME — `TomlDatetime` temporal interpretation (substrate gap)
+
+**Gate (live cite, Practice 9):** `🟡 gated — feature: v4 temporal substrate for RFC 3339 datetime value interpretation (TOML §Date-Time four sub-kinds)`
+
+**Named arrival:** `TomlDatetime` in `toml.dag` carries a verbatim RFC 3339 **lexeme**; **structured clock/calendar instant** interpretation requires a v4 **`std/` temporal carrier + operations** not landed yet (historical in-file note: no committed owning T-# on the substrate PR queue — operator / T-4 lane tracks surfacing). **This gate is NOT `SL-3229-LLVM-WIDTH`:** that row documents **LLVM LangRef raw-`Int` width payloads** on `LlvmType`; citing it for datetime was **wrong gate attribution** (Practice 4 accurate `feature:` naming, Practice 5 single authority).
+
+**Dissolution trigger:** ratified temporal substrate + typed interpretation operation(s) (e.g. `toml_datetime_value : TomlDatetime -> Outcome<…>` over the four sub-kinds); this row closes.
+
+**Roll-up:** T-4.6 format lane; **orthogonal** to dissolution-inventory **P1** cardinality-width family (`SL-3229-LLVM-WIDTH`, `SL-3229-PTX-COST`, …).
+
 ### CP-3229-GREEN-TERMINAL — 🟢 GREEN five-pattern ledgers (bulk)
 
 Merge-base `92cb26402` **Practice-4** `// Coproduct dissolution … 🟢 GREEN (terminal). Ledger — five patterns attempted:` blocks were adjacent to carriers (verbatim per-carrier text **only** in the merge-base object):

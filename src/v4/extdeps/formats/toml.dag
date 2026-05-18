@@ -33,18 +33,20 @@ module v4.extdeps.formats.toml
 // Outcome<TomlValue>` AND `toml_emit : TomlValue -> Outcome<String>`
 // (the ONE operator-ratified D1 carrier `Outcome<T>`, std/diagnostic.dag
 // DECISIONS item **I** — NOT a per-file sum); operations deferred-with-
-// named-owner. (Single authority = DECISIONS.md Part 6 · SL-3229-T4-FORMAT-T6T7 + SL-3229-LLVM-WIDTH; this
+// named-owner. (Single authority = DECISIONS.md Part 6 · SL-3229-T4-FORMAT-T6T7 + SL-3229-LLVM-WIDTH + SL-3229-T4-FORMAT-TOML-DATETIME; this
 // summary states it, Part 6 specifies it — no divergence.) Same
 // discipline, TOML-anchored facts.
 //
 // DECLARATIVE-NOW / OPERATIONS-DEFERRED-WITH-OWNER (#3169/#3184).
 // Modeled: TomlValue. Deferred parse/emit —
 // 🟡 gated — feature: T-6/T-7 parse pipeline-stage substrate — DECISIONS.md Part 6 · SL-3229-T4-FORMAT-T6T7.
-// Deferred numeric + datetime lexemes + non-empty key refinement —
+// Deferred int/float numeric VALUE + §Keys key-shape refinements —
 // 🟡 gated — feature: std/cardinality.dag bounded-natural refinement (T-3 Wave-A2) — DECISIONS.md Part 6 · SL-3229-LLVM-WIDTH.
+// Deferred TomlDatetime temporal interpretation (RFC 3339 four sub-kinds; no std/ instant carrier yet) —
+// 🟡 gated — feature: v4 temporal substrate for RFC 3339 datetime value interpretation — DECISIONS.md Part 6 · SL-3229-T4-FORMAT-TOML-DATETIME.
 //
 // CARRIER SEAM (NOT a per-file sum) — the ratified corrected seam #3,
-// fail-closed BOTH directions (single authority = DECISIONS.md Part 6 · SL-3229-T4-FORMAT-T6T7 + SL-3229-LLVM-WIDTH;
+// fail-closed BOTH directions (single authority = DECISIONS.md Part 6 · SL-3229-T4-FORMAT-T6T7 + SL-3229-LLVM-WIDTH + SL-3229-T4-FORMAT-TOML-DATETIME;
 // this is the summary, not a second authority — no
 // divergence):
 //   - `toml_parse : String -> Outcome<TomlValue>`
@@ -90,7 +92,7 @@ module v4.extdeps.formats.toml
 //   - `Datetime` — v4 has no temporal substrate; `TomlDatetime` carries
 //     the verbatim RFC 3339 lexeme (the json.dag `JsonNumber`
 //     lexeme-preserving decision applied to time), temporal
-//     interpretation deferred (🟡 gated — feature: std/cardinality.dag bounded-natural refinement (T-3 Wave-A2) — DECISIONS.md Part 6 · SL-3229-LLVM-WIDTH).
+//     interpretation deferred (🟡 gated — feature: v4 temporal substrate for RFC 3339 datetime value interpretation — DECISIONS.md Part 6 · SL-3229-T4-FORMAT-TOML-DATETIME).
 //
 // `Bool`/`String` are kernel-ambient (v2 seed; STRUCTURE.md "Kernel-
 // ambient types"); `List<T>`/`Map<K,V>` are kernel container types
@@ -138,7 +140,7 @@ module v4.extdeps.formats.toml
 //                      sub-kinds are a tag-resolution distinction the
 //                      deferred parser draws over the lexeme; the
 //                      temporal interpretation is a deferred read
-//                      (🟡 gated — feature: std/cardinality.dag bounded-natural refinement (T-3 Wave-A2) — DECISIONS.md Part 6 · SL-3229-LLVM-WIDTH).
+//                      (🟡 gated — feature: v4 temporal substrate for RFC 3339 datetime value interpretation — DECISIONS.md Part 6 · SL-3229-T4-FORMAT-TOML-DATETIME).
 //   - TomlArray     — §Array. Ordered; carrier is the kernel
 //                      `List<TomlValue>` (order is the list order —
 //                      single authority, canonical per CULTURE §8).
@@ -312,6 +314,8 @@ type TomlValue
 // Deferred scaffold bridges (DECISIONS.md Part 6 — not second authorities).
 // toml_parse/toml_emit + §Keys/§AoT parse-time checks + RFC-3339-subset parse —
 // 🟡 gated — feature: T-6/T-7 parse pipeline-stage substrate — DECISIONS.md Part 6 · SL-3229-T4-FORMAT-T6T7.
-// Numeric + datetime VALUE reads + String key refinement (pairs with (1)) —
+// Int/float numeric VALUE reads + String key refinement —
 // 🟡 gated — feature: std/cardinality.dag refinement + std/float.dag / std/integer.dag (T-3 Wave-A2) — DECISIONS.md Part 6 · SL-3229-LLVM-WIDTH.
+// TomlDatetime temporal interpretation (RFC 3339 four sub-kinds) —
+// 🟡 gated — feature: v4 temporal substrate for RFC 3339 datetime value interpretation — DECISIONS.md Part 6 · SL-3229-T4-FORMAT-TOML-DATETIME.
 
