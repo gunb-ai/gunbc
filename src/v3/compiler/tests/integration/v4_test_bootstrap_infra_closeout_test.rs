@@ -4,7 +4,7 @@
 //! checks stay at the parse-surface boundary: they prove the structural
 //! authorities exist and remain joined without claiming T-22 execution.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use v3_compiler::parse_for_test;
 use v3_compiler::parse_surface::{
@@ -32,19 +32,19 @@ fn t19_testgen_concept_surface_stays_closed_and_classified() {
     let module = parse_module(TESTGEN_DAG, TESTGEN_PATH);
 
     assert_eq!(
-        variant_names(type_sum(&module, "TestgenConcept")),
-        vec![
+        variant_name_set(type_sum(&module, "TestgenConcept")),
+        expected_name_set(&[
             "TypeConstruction",
             "AlgebraLaw",
             "DiagnosticExhaustiveness",
             "LensApplicability",
             "BidirectionalRoundtrip",
-        ],
+        ]),
         "T-19 scheduling arms must stay the closed five-way set from TASKS.md"
     );
     assert_eq!(
-        record_field_type_names(type_record(&module, "Generator")),
-        expected_field_type_names(&[("classification", "TestClassification"), ("slot", "C")]),
+        record_field_type_map(type_record(&module, "Generator")),
+        expected_field_type_map(&[("classification", "TestClassification"), ("slot", "C")]),
         "Generator<C> must carry TestClassification and the parameterized slot"
     );
 }
@@ -78,8 +78,8 @@ fn t20_bootstrap_plan_keeps_self_hosting_chain_as_data() {
     let module = parse_module(BOOTSTRAP_DAG, BOOTSTRAP_PATH);
 
     assert_eq!(
-        record_field_type_names(type_record(&module, "CompileStage")),
-        expected_field_type_names(&[
+        record_field_type_map(type_record(&module, "CompileStage")),
+        expected_field_type_map(&[
             ("consumes", "List<Symbol>"),
             ("produces", "Symbol"),
             ("compiled_by", "Symbol"),
@@ -87,8 +87,8 @@ fn t20_bootstrap_plan_keeps_self_hosting_chain_as_data() {
         "CompileStage must keep the compiler-of-record as a structural field"
     );
     assert_eq!(
-        record_field_type_names(type_record(&module, "BootstrapPlan")),
-        expected_field_type_names(&[
+        record_field_type_map(type_record(&module, "BootstrapPlan")),
+        expected_field_type_map(&[
             ("seed", "CompileStage"),
             ("self0", "CompileStage"),
             ("self1", "CompileStage"),
@@ -199,23 +199,27 @@ fn data_expr<'a>(module: &'a SurfaceModule, name: &str) -> &'a SurfaceExpr {
         .unwrap_or_else(|| panic!("missing data {name}"))
 }
 
-fn variant_names(variants: &[SurfaceVariant]) -> Vec<&str> {
+fn variant_name_set(variants: &[SurfaceVariant]) -> BTreeSet<&str> {
     variants
         .iter()
         .map(|variant| variant.name.as_str())
         .collect()
 }
 
-fn record_field_type_names(fields: &[SurfaceField]) -> Vec<(&str, String)> {
+fn expected_name_set(names: &[&'static str]) -> BTreeSet<&'static str> {
+    names.iter().copied().collect()
+}
+
+fn record_field_type_map(fields: &[SurfaceField]) -> BTreeMap<&str, String> {
     fields
         .iter()
         .map(|field| (field.name.as_str(), surface_type_name(&field.ty)))
         .collect()
 }
 
-fn expected_field_type_names(
+fn expected_field_type_map(
     fields: &[(&'static str, &'static str)],
-) -> Vec<(&'static str, String)> {
+) -> BTreeMap<&'static str, String> {
     fields
         .iter()
         .map(|(name, ty)| (*name, (*ty).to_string()))
