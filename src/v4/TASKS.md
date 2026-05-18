@@ -745,8 +745,8 @@ All 5 artifacts share ONE Node tree (per gate #28 omni_layers_share_one_node_tre
 
 **Modeling decisions**:
 - Generator<C> generic carrier shape — one lens, parameterized over substrate concept type
-- Per-substrate-kind testgen rules (see file header for the 5 categories: type-construction / algebra-law / diagnostic-exhaustiveness / lens-applicability / bidirectional-roundtrip)
-- TestClassification = (Tier, Layer) on every produced claim — Tier1/2/3 (correctness) × Unit/Integration/Boundary (test layer)
+- Per-substrate-kind testgen rules — closed five-way **`TestgenConcept`** in `lens/testgen.dag` (variants `TypeConstruction` / `AlgebraLaw` / `DiagnosticExhaustiveness` / `LensApplicability` / `BidirectionalRoundtrip`; names align with the type-construction / algebra-law / diagnostic-exhaustiveness / lens-applicability / bidirectional-roundtrip scheduling arms)
+- **TestClaim.classification** (`TestClassification`: Tier×Layer) on every produced claim — canonical field in `std/verification.dag` (STRUCTURE §248); testgen stamps the same axes on each emitted claim as on its scheduling `Generator<C>`. Tier1/2/3 (correctness) × Unit/Integration/Boundary (test layer)
 - Bootstrap path: hand-authored TestClaims in `test/claim/manual/` are the contract testgen must satisfy; coverage lens (T-18) enforces produced ⊇ manual
 
 **Incremental Re-Test requirement set — held (IRT-2, IRT-3; see T-21 for the full IRT-1..4 set + rationale).**
@@ -759,6 +759,12 @@ All 5 artifacts share ONE Node tree (per gate #28 omni_layers_share_one_node_tre
 - After T-1 (`std/node.dag`) lands: hand-author 5-10 TestClaims in `test/claim/manual/` covering type-construction for the 6 connectives + 5 behaviors. Validates schema + shape immediately.
 - After T-2 (`std/algebra.dag`) lands: hand-author algebra-law TestClaims for at least Magma/Monoid.
 - After T-19 implementation: testgen produces same set programmatically; manual claims become regression anchors.
+
+**Phase-1.5 scaffolding — forward dissolution (INVARIANTS P2)**:
+- **`t19_manual_anchor_manifest.dag` — P2 join (single authority):** `T19ManualAnchorKey` is defined **once** in `std/verification.dag` (closed 12 live anchors + **`T19ManualAnchorAbsent`** for claims outside this set). Manifest rows and manual **`TestClaim`** literals use the **same discriminant values** — mechanical join is **tag equality** on `T19ManualAnchorKey` (no parallel `String` slug tables). **`TestClaim.classification`** and **`TestClaim.kind`** remain sole authority for tier×layer and assert form. Testgen scheduling arm (`type_construction` vs `algebra_law` …) is implied by variant name prefix until M2 can read claims or carry a single non-duplicated discriminant if needed.
+- **`BehaviorValueSubject` (L1 `Value` in `type_construction`):** `BehaviorValueSubject { behavior: Behavior }` in `lens/testgen.dag` — carries the **five-behavior** axis structurally (pairs with `ConnectiveKernel { connective: Connective }` for the **six connectives** per bootstrap pragma above). **No** live manual `TestClaim` yet ⇒ **no** manifest row until one lands (same P2 bijection rule).
+- **Retirement (same band as M2 unblock):** fold manifest membership into reflection / `Symbol` spellings once M2 cross-file loading + literal validation land; never reintroduce parallel `Int` encodings of axes already on `TestClaim`. **`T19ManualAnchorAbsent`:** use on **`TestClaim`** rows not in the twelve-anchor manifest until a broader substrate generalizes membership.
+- **`lens/testgen.dag` — M2 materialization band:** subject folds / eval wiring land with cross-file M2 load; first change set that enables peer imports must keep declarations consistent with this file's live `type` carriers.
 
 **Reference**:
 - TESTING.md §141 "Test layers (target ratios)" — Unit ~75% / Integration ~15% / Boundary ~10%
@@ -797,6 +803,7 @@ All 5 artifacts share ONE Node tree (per gate #28 omni_layers_share_one_node_tre
 
 **Modeling decisions**:
 - Coverage<C> generic carrier shape — one lens, parameterized over coverage concern (L6 form×target / L7 algebra×law×inhabitant / impossible-bug class enum / testgen type×inhabitant)
+- **L6 (THESIS L6 / §181):** `L6CoverageKey` is **`{ subject: TypeConstructionSubject, language: Symbol }`** — form × **target language identity** (not form-only). Canonical **gunbc `.dag`** surface token: **`dag_language_model_surface_id`** in `extdeps/languages/dag.dag` (K-1); other `extdeps/languages/*` models add their own `Symbol` anchors when L6 expands past language #1.
 - Substrate read for each concern: derive EXPECTED set from substrate authority (not hand-enumerated)
 - Comparison shape: actual TestClaim corpus vs expected derived set; emit Diagnostic per missing
 - Composition with testgen: testgen produces TestClaims; coverage lens checks they cover the expected combinatorics
@@ -847,6 +854,7 @@ All 5 artifacts share ONE Node tree (per gate #28 omni_layers_share_one_node_tre
 - Bounded-execution enforcement (INVARIANTS P4 — no unbounded loops; how does the evaluator structurally refuse non-termination?)
 - The shared substrate three consumers compose over: `workflow/bootstrap.dag` (interpreted, not compiled), TestClaim evaluation, lens dry-run
 - Concept-unification (THESIS:188): interpreter runtime = language spec = transport spec — eval reads the same `extdeps/languages/*.dag` carriers emit does
+- **`BehaviorValueSubject` naming vs eval slice (T-19 → T-22):** The identifier anchors the T-19 **L1 `Value`** placement under `type_construction` (T-19 Phase-1.5); the payload is still the **closed** `Behavior` sum (all five behaviors—not Value-only structurally). When T-22 binds testgen/type-construction to execution, re-audit the name with the real consumer: either keep it as the Value-slice carrier of `Behavior` facts or rename (e.g. to `BehaviorSubject`) if the eval path is behavior-wide with no residual Value reading; fold the decision into the T-22 close gate so names cannot silently drift from semantics.
 
 **Incremental Re-Test requirement set — held (IRT-3; see T-21 for the full IRT-1..4 set + rationale).**
 - **IRT-3 (with T-19).** `eval` MUST evaluate ANY node subgraph bound into a TestClaim's `input: Node` — including a `program ∘ generated-input` composite — at arbitrary-node granularity; it must never silently restrict TestClaim evaluation to whole-function / whole-module units. Node-level evaluability is what lets the affected set (T-21) name re-runs at node precision.
