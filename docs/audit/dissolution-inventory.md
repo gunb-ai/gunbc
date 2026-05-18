@@ -189,13 +189,8 @@ the 🟡 burn-down because they dissolved outside the substrate-gap queue.)
 Caveats:
 
 1. **"🟡 today" counts only entries already bound to a P# in the
-<<<<<<< HEAD
-   plan.** Section 2's fresh findings + Section 3's VALID-🟡 are
+   plan.** Section 2's fresh findings + Section 3's 6 VALID-🟡 are
    counted; **Section 3's ~14 VAGUE + 4 INVALID-GATE are NOT** —
-=======
-   plan.** Section 2's fresh findings + Section 3's 5 VALID-🟡 are
-   counted; **Section 3's ~19 VAGUE + 4 INVALID-GATE are NOT** —
->>>>>>> origin/main
    they are pre-plan backlog (no concrete primitive to roll under
    yet). The burn-down lane drives the backlog first; once a VAGUE/
    INVALID entry is re-concretized to a `feature:` arrival that
@@ -680,15 +675,9 @@ refinement-side gates.
 | SL-3229-PTX-DIM3 | DECISIONS.md row | feature | yes (cardinality.dag T-3) | yes | VALID |
 | SL-3229-PTX-COST | DECISIONS.md row | feature | yes (cardinality.dag T-3) | yes | CLOSED |
 | SL-3229-VERILOG-NONEMPTY | DECISIONS.md row | feature | yes (collection.dag Wave-A2) | yes | VALID |
-<<<<<<< HEAD
 | SL-3229-VERILOG-D3200 | DECISIONS.md row | feature | yes (TASKS.md T-4.9 Verilog LanguageModel-axis rework) | yes | VALID |
 | SL-3229-VERILOG-VECTOR-RANGE | DECISIONS.md row | feature | yes (T-4.9 Verilog constant_expression) | yes | CLOSED |
-| SL-3229-VERILOG-COST | DECISIONS.md row | feature | yes (cardinality.dag T-3) | yes | VALID |
-=======
-| SL-3229-VERILOG-D3200 | DECISIONS.md row | consumer | **no** (class, not one name) | yes | **VAGUE** |
-| SL-3229-VERILOG-VECTOR-RANGE | DECISIONS.md row | feature | yes (T-4 Verilog constant_expression) | yes | CLOSED |
 | SL-3229-VERILOG-COST | DECISIONS.md row | feature | yes (cardinality.dag T-3) | yes | CLOSED |
->>>>>>> origin/main
 | SL-3229-FLOAT-NOMINAL | DECISIONS.md row | feature | **partial** (straddles machine.dag + cardinality.dag) | yes | **VAGUE** |
 | verilog.dag × 5 in-file cite-sites | one-liner | feature | yes (inherits TASKS.md T-4.9 Verilog LanguageModel-axis rework) | yes | VALID |
 | llvm_ir.dag:28 in-file cite-site | one-liner | feature | yes (inherits SL-3229-LLVM-WIDTH) | yes | VALID |
@@ -701,24 +690,13 @@ Counts (under the still-hawk-102 tightened bar 2026-05-18 — VALID-🟡
 requires concrete gate AND binding to a named primitive+owning-task
 substrate PR in Section 1):
 
-<<<<<<< HEAD
-- **8 VALID-🟡 row groups** (7 DECISIONS.md rows: LLVM-WIDTH, LLVM-OPS,
-  PTX-DIM3, PTX-COST, VERILOG-NONEMPTY, VERILOG-D3200,
-  VERILOG-COST bound to P1/P2/P4 + 1 in-file cite-site
-  `llvm_ir.dag:28` bound to P1; VERILOG-D3200 also carries five
-  now-concrete Verilog cite-sites).
-  P8 closed `VERILOG-VECTOR-RANGE`; the row remains in DECISIONS.md as
-  an audit receipt, not a live 🟡.
+- **6 VALID-🟡 row groups** (5 DECISIONS.md rows: LLVM-WIDTH, LLVM-OPS,
+  PTX-DIM3, VERILOG-NONEMPTY, VERILOG-D3200 bound to P1/P2/P4 + 1
+  in-file cite-site `llvm_ir.dag:28` bound to P1; VERILOG-D3200 also
+  carries five now-concrete Verilog cite-sites). P8 closed
+  `VERILOG-VECTOR-RANGE`; main closed `PTX-COST` and `VERILOG-COST`;
+  those rows remain in DECISIONS.md as audit receipts, not live 🟡.
 - **2 VAGUE DECISIONS.md rows** — `SL-3229-FLOAT-NOMINAL` (straddles two owners) +
-=======
-- **5 VALID-🟡** (4 DECISIONS.md rows: LLVM-WIDTH, LLVM-OPS, PTX-DIM3,
-  VERILOG-NONEMPTY bound to P1/P2 + 1 in-file cite-site `llvm_ir.dag:28`
-  bound to P1). P8 closed `VERILOG-VECTOR-RANGE`; this PR closes
-  `PTX-COST` and `VERILOG-COST`; those rows remain in DECISIONS.md as audit
-  receipts, not live 🟡.
-- **3 VAGUE DECISIONS.md rows** — `SL-3229-VERILOG-D3200` (consumer-class
-  not named) + `SL-3229-FLOAT-NOMINAL` (straddles two owners) +
->>>>>>> origin/main
   **`SL-3229-INTEGER-GROUP-COMPLETION`** (no owning task — reclassified
   under the tightened bar; P10 in Section 1 carries this flag).
 - **~14 VAGUE in-file prose blocks** across `json.dag`, `yaml.dag`,
