@@ -13,8 +13,21 @@ signature or it does not. Run as a hard CI gate, a lens catches a finding
 
 ## 1. The core invariant
 
-Every dissolution finding violates one invariant, in one of two
-directions:
+This doc operationalizes `modeling-discipline.md` Practice 10 — it does
+not introduce a parallel rulebook. The invariants below are enforcement
+scaffolding for Practice 10's rule, not a competing source of authority.
+
+> **A0 — Every semantic fact must have exactly one structural witness in
+> the model.** A fact may be *derived* from a canonical carrier's shape
+> (discriminant, catamorphism, traverse), *witnessed* by typed data
+> (`data ... : Algebra<T>`, refinement clause, constructor restriction,
+> alias-identity edge, canonical-carrier registry row), or *rejected as
+> unknown* through diagnostic flow (`Outcome::Rejected`). It may not be
+> re-derived locally, asserted in prose / name / string form, duplicated
+> in another home, or guessed through a plausible default.
+
+A0 is the umbrella. A1 is the operation-specific specialization that
+originally seeded the lens suite:
 
 > **A1 — Do not hand-roll a derived operation.** If a function's behavior
 > is fixed entirely by the shape of a modeled type, it is re-deriving
@@ -22,9 +35,9 @@ directions:
 > operation as a type — an operation is a function, not a domain
 > structure.
 
-A1 is proposed, pending operator ratification (rework-tracker task A1).
-Ratifying it makes "this violates A1" a citable hard rule. The lens suite
-is how A1 is enforced *mechanically*.
+A0/A1 are proposed, pending operator ratification (rework-tracker task
+A1). Ratifying them makes "this violates A0/A1" a citable hard rule.
+The lens suite is how they are enforced *mechanically*.
 
 ## 2. Two tracks
 
@@ -109,6 +122,47 @@ a mechanical lens.
 The gunbc-specific modeling-honesty checks. Each: the finding it kills,
 its `.dag` signature, decidability, and the escape valve (the legitimate
 non-finding).
+
+### 5.0 Three levels — invariant, theme, lens
+
+The design has three explicit levels. Each plays a different role and
+they are not interchangeable:
+
+| level | example | role |
+|---|---|---|
+| **Invariant** | A0 / A1 (§1) | *the reason* a finding is wrong; citable hard rule |
+| **Theme** | derive / witness / canonical-home / fail-closed | *the recurring pattern* a finding belongs to; explanatory tag |
+| **Lens** | L1.x (this section) | *the mechanical detector* — structural signature, decidable, with test corpus and escape valve |
+
+> Themes are explanatory tags only. They do not define CI gates,
+> test-corpus boundaries, or implementation passes. The mechanically
+> enforced unit remains the L1.x lens signature. Two lenses that share
+> a theme do not share machinery — they are distinct detectors with
+> distinct signatures, decidability arguments, and escape valves, and
+> they remain distinct precisely because the §3 methodology says each
+> lens's signature must be the smallest structural pattern that catches
+> its finding's class with zero false positives.
+
+**Lens → theme catalog:**
+
+| lens | theme(s) |
+|---|---|
+| L1.1 Discriminant-predicate | derive |
+| L1.2 Degenerate-type | witness |
+| L1.3 Hollow-type | witness |
+| L1.4 Carrier-clone | canonical-home / witness |
+| L1.5 Catamorphism | derive |
+| L1.6 *(merged into L1.10 — Textual-bypass)* | — |
+| L1.7 Off-substrate-fact | witness |
+| L1.8 Wrong-home | canonical-home |
+| L1.9 Vacuous-arm | fail-closed / witness |
+| L1.10 Textual-bypass (sub-signatures: `TemplateHole`, `CanonicalCarrier`) | witness / canonical-home |
+| L1.11 Plausible-fallback | fail-closed |
+| L1.12 Parallel-authority | canonical-home |
+
+The only mechanical merge in this layout is **L1.6 → L1.10** — the
+prior doc already stated that L1.10 generalizes L1.6, so the two were
+sibling labels for one consolidated signature space.
 
 ### L1.1 Discriminant-predicate lens — kills *predicate dissolution*
 
@@ -335,54 +389,15 @@ Genuinely-irregular recursion — the call graph does *not* mirror the
 data graph, e.g. a graph walker that revisits visited nodes via a
 side-table — falls under *reviewer-confirm* rather than hard-error.
 
-### L1.6 Emit/template lens — kills *emit/template dissolution*
+### L1.6 *(merged into L1.10 — see Textual-bypass lens)*
 
-- *Signature:* a field or value that is a **template string literal** — a
-  string literal carrying positional placeholders (`{0}`, `{1}`, …) used
-  as an emitter, where grammar-as-declarative-bidirectional-data belongs.
-- *Decidable:* yes — a literal string with interpolation placeholders is a
-  structural match (the keystone decidability table already classifies it
-  "structural — a literal template-string field").
-- *Verdict:* hard error on the literal-template shape.
-- *Escape:* a plain string constant with no placeholders, or genuine
-  string *data* that is not an emitter template, passes.
-- *Kills:* string-templated emitters (`template: "Vec<{0}>"`).
-
-**Concrete match — type-construction templates (`dsl/std/languages.dag`):**
-```dag
-type TypeMapping {
-  string:            String
-  int:               String
-  list_template:     String   // ← positional placeholders inside
-  optional_template: String
-  map_template:      String
-}
-
-data rust_type_mapping: TypeMapping = {
-  string:            "String",
-  int:               "i64",
-  list_template:     "Vec<{0}>",          // ← {0} is an emission hole
-  optional_template: "Option<{0}>",
-  map_template:      "HashMap<{0}, {1}>", // ← {0}, {1} are emission holes
-}
-```
-Emission is happening — but it's a fill-in-the-hole string substitution
-the lens can't structurally validate. The placeholder vocabulary
-(`{0}`, `{1}`) is parallel to the model rather than part of it.
-
-**Clean shape:** grammar-as-declarative-bidirectional-data — the target
-type's construction is modeled, and emit is a fold over the model:
-```dag
-type RustTypeRealization
-  = RustGeneric { ctor: RustIdent, args: List<RustTypeRealization> }
-  | RustAtom    { ident: RustIdent }
-
-data rust_list_realization: TypeRealization<List> = fn(elem) {
-  RustGeneric { ctor: "Vec", args: [elem] }
-}
-```
-Plain string constants without placeholders (e.g. a fixed `"i64"`
-atom) pass — they're data, not a templated emitter.
+The original L1.6 "Emit/template lens" — catching string literals
+carrying positional placeholders (`{0}`, `{1}`, …) used as emitters —
+is now a sub-signature (`TemplateHole`) of L1.10 Textual-bypass. The
+prior doc already noted that L1.10 generalizes L1.6; the merge makes
+the relationship explicit. The `TemplateHole` sub-signature preserves
+L1.6's registry-free decidability for placeholder literals — see
+[L1.10 Textual-bypass](#l110-textual-bypass-lens--kills-typed-model-bypass-via-string-proposed-merged-l16).
 
 ### L1.7 Off-substrate-fact lens — kills *prose-asserted facts* (proposed)
 
