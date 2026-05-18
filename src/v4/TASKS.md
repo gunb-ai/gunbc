@@ -417,14 +417,21 @@ substrate imported them, so the cut is a pure scope reduction.
 
 **emit is `ingest` inverted, not a codegen backend.** emit is the **emit
 boundary** of the OMNI pivot — `ingest = emit⁻¹` over the **same**
-bidirectional relation (00_compile.dag C5). It is parameterized by a
-**`TargetModel`** (the merged 00_compile.dag / 05_emit.dag name —
-*not* "TargetSpec"): emission *applies the target language's declarative
-grammar in the inverse direction* (`Node` → concrete syntax). The
-orchestrator `compile = emit ∘ core ∘ ingest` composes the three; `run =
-eval ∘ core ∘ ingest` is the sibling execution path. The IR is the
-universal `InferredTree` — there is no "target-agnostic IR shape"
-decision, the pivot already is target-agnostic.
+bidirectional relation (00_compile.dag C5). **`TargetModel`** is the
+Shape-A emit parameter in **`00_compile.dag`** and in **`05_emit.dag`
+`Owns` / B2-OMNI** (`emit: (InferredTree, TargetModel) -> …`). **P2
+boundary honesty:** **`05_emit.dag` is not yet internally consistent** — the
+frozen scope line still says "target spec" and **`Consumes` still lists
+`TargetSpec`**, while the **`Owns` / B2-OMNI / signature** spelling already
+moved to **`TargetModel`**. That is **one carrier, dual names in-flight** on
+the T-10 scaffold — not a second authority; reconcile the scope prose +
+**`Consumes`** line in the same CP-1b/T-10 close-out train that touches
+`05_emit.dag`. TASKS tracks the **typed `Owns` I/O** here. Emission *applies
+the target language's declarative grammar in the inverse direction* (`Node`
+→ concrete syntax). The orchestrator `compile = emit ∘ core ∘ ingest`
+composes the three; `run = eval ∘ core ∘ ingest` is the sibling execution
+path. The IR is the universal `InferredTree` — there is no "target-agnostic
+IR shape" decision, the pivot already is target-agnostic.
 
 **No-templating constraint (operator 2026-05-17).** emit goes **through**
 the grounded `TargetModel`'s grammar-as-data, run inverted — **never** a
@@ -436,8 +443,8 @@ if any emission step cannot be expressed as inverse grammar-data.)
 
 **I/O**:
 - `emit: (InferredTree, TargetModel) -> Result<TargetSource, Diagnostic>` — the emit
-  boundary, the U1 Realize phase, inverse of `ingest` (matches `00_compile.dag` /
-  `05_emit.dag` headers).
+  boundary, the U1 Realize phase, inverse of `ingest` (matches `00_compile.dag` and
+  `05_emit.dag` **`Owns`** contract headers; see the `TargetSpec` / scope-line caveat above).
 - `compile: (Source, TargetModel) -> Result<TargetSource, Diagnostic>` — the orchestrator,
   `emit ∘ core ∘ ingest`.
 
