@@ -101,7 +101,8 @@ type ConstantBinaryOperator
 
 // 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-VERILOG-CONSTEXPR-TERMINAL.
 type ConstantRangeExpression
-  = ConstantRange { msb: ConstantExpression, lsb: ConstantExpression }
+  = ConstantRangeSingle { expression: ConstantExpression }
+  | ConstantRange { msb: ConstantExpression, lsb: ConstantExpression }
   | ConstantIndexedRangePlus { base: ConstantExpression, width: ConstantExpression }
   | ConstantIndexedRangeMinus { base: ConstantExpression, width: ConstantExpression }
 
