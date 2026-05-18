@@ -1,7 +1,7 @@
 // src/v4/std/node.dag
 // Scope: v4 substrate root for type and computation nodes.
 // Anchor: THESIS.md "Substrate shape" + MODELING.md.
-// Owns: Symbol, Hash, Connective, Behavior, NodeKind, EdgeLabel, Edge, Node, FoldedEdge<T>, NodeFoldAlgebra<T>, fold_node, EdgeDiscipline, connective_edge_discipline, edge_is_named, edge_is_positional, all_edges_named, all_edges_positional, name_occurrences, all_names_distinct, edges_conform, node_locally_well_formed, node_well_formed, is_empty_conj_root, Path, Edit, Diff.
+// Owns: Symbol, Hash, Connective, Behavior, NodeKind, EdgeLabel, Edge, Node, FoldedEdge<T>, NodeFoldAlgebra<T>, fold_node, EdgeDiscipline, connective_edge_discipline, label_is_named, label_is_positional, edge_is_named, edge_is_positional, all_edge_labels_named, all_edge_labels_positional, label_name_occurrences, all_label_names_distinct, edge_labels_conform, all_edges_named, all_edges_positional, name_occurrences, all_names_distinct, edges_conform, node_locally_well_formed, node_well_formed, is_empty_conj_root, Path, Edit, Diff.
 // Consumes: none.
 // Status: T-1 modeled; substrate-extension rule in src/v4/STRUCTURE.md.
 
@@ -71,53 +71,84 @@ fn connective_edge_discipline(c: Connective) -> EdgeDiscipline {
     Instantiation => PositionalEdges
   }
 }
-fn edge_is_named(e: Edge) -> Bool {
-  match e.label {
+fn label_is_named(label: EdgeLabel) -> Bool {
+  match label {
     Named { name: _ } => true
     Positional => false
   }
 }
-fn edge_is_positional(e: Edge) -> Bool {
-  match e.label {
+fn label_is_positional(label: EdgeLabel) -> Bool {
+  match label {
     Named { name: _ } => false
     Positional => true
   }
 }
-
-fn all_edges_named(children: List<Edge>) -> Bool {
-  fold(children, init: true, f: fn(acc, e) {
-    acc && edge_is_named(e: e)
-  })
+fn edge_is_named(e: Edge) -> Bool {
+  label_is_named(label: e.label)
+}
+fn edge_is_positional(e: Edge) -> Bool {
+  label_is_positional(label: e.label)
 }
 
-fn all_edges_positional(children: List<Edge>) -> Bool {
-  fold(children, init: true, f: fn(acc, e) {
-    acc && edge_is_positional(e: e)
+fn all_edge_labels_named(labels: List<EdgeLabel>) -> Bool {
+  fold(labels, init: true, f: fn(acc, label) {
+    acc && label_is_named(label: label)
   })
 }
-fn name_occurrences(name: Symbol, children: List<Edge>) -> Int {
-  fold(children, init: 0, f: fn(acc, e) {
-    match e.label {
+fn all_edge_labels_positional(labels: List<EdgeLabel>) -> Bool {
+  fold(labels, init: true, f: fn(acc, label) {
+    acc && label_is_positional(label: label)
+  })
+}
+fn label_name_occurrences(name: Symbol, labels: List<EdgeLabel>) -> Int {
+  fold(labels, init: 0, f: fn(acc, label) {
+    match label {
       Named { name: n } => if n == name { acc + 1 } else { acc }
       Positional => acc
     }
   })
 }
-fn all_names_distinct(children: List<Edge>) -> Bool {
-  fold(children, init: true, f: fn(acc, e) {
-    match e.label {
-      Named { name: n } => acc && (name_occurrences(name: n, children: children) == 1)
+fn all_label_names_distinct(labels: List<EdgeLabel>) -> Bool {
+  fold(labels, init: true, f: fn(acc, label) {
+    match label {
+      Named { name: n } => acc && (label_name_occurrences(name: n, labels: labels) == 1)
       Positional => acc
     }
   })
 }
-fn edges_conform(children: List<Edge>, d: EdgeDiscipline) -> Bool {
+fn edge_labels_conform(labels: List<EdgeLabel>, d: EdgeDiscipline) -> Bool {
   match d {
-    NoEdges => count(children) == 0
+    NoEdges => count(labels) == 0
     LabeledEdges =>
-      all_edges_named(children: children) && all_names_distinct(children: children)
-    PositionalEdges => all_edges_positional(children: children)
+      all_edge_labels_named(labels: labels) && all_label_names_distinct(labels: labels)
+    PositionalEdges => all_edge_labels_positional(labels: labels)
   }
+}
+fn edge_labels(children: List<Edge>) -> List<EdgeLabel> {
+  fold(children, init: [], f: fn(acc, e) {
+    list_push(acc, e.label)
+  })
+}
+fn folded_edge_labels(children: List<FoldedEdge<Bool>>) -> List<EdgeLabel> {
+  fold(children, init: [], f: fn(acc, e) {
+    list_push(acc, e.label)
+  })
+}
+fn all_edges_named(children: List<Edge>) -> Bool {
+  all_edge_labels_named(labels: edge_labels(children: children))
+}
+
+fn all_edges_positional(children: List<Edge>) -> Bool {
+  all_edge_labels_positional(labels: edge_labels(children: children))
+}
+fn name_occurrences(name: Symbol, children: List<Edge>) -> Int {
+  label_name_occurrences(name: name, labels: edge_labels(children: children))
+}
+fn all_names_distinct(children: List<Edge>) -> Bool {
+  all_label_names_distinct(labels: edge_labels(children: children))
+}
+fn edges_conform(children: List<Edge>, d: EdgeDiscipline) -> Bool {
+  edge_labels_conform(labels: edge_labels(children: children), d: d)
 }
 fn node_locally_well_formed(n: Node) -> Bool {
   match n.kind {
@@ -134,16 +165,8 @@ fn folded_children_well_formed(children: List<FoldedEdge<Bool>>) -> Bool {
 fn node_well_formed_reduce(kind: NodeKind, children: List<FoldedEdge<Bool>>) -> Bool {
   let local = match kind {
     TypeNode { connective: c } =>
-      edges_conform(
-        children: fold(children, init: [], f: fn(acc, e) {
-          list_push(acc, Edge {
-            label: e.label,
-            target: Node {
-              kind: kind,
-              children: []
-            }
-          })
-        }),
+      edge_labels_conform(
+        labels: folded_edge_labels(children: children),
         d: connective_edge_discipline(c: c)
       )
     ComputationNode { behavior: _ } => true
