@@ -80,15 +80,15 @@ first) · `DESIGN` · `OP` (operator ruling) · `CP1` (needs v4 front-end output
 | T-8 | 03_normalize + 03_resolve (+T-28 bundled) | LANDED (seam scaffold until CP-1b closes) | T-7 | IMPL (CP-1b close) | Lane A |
 | **T-4** | extdeps/languages ×5 fact-bundles | WIP, **HELD** | T-3, **P1-KEYSTONE (= Practice-10 **A1-invariant** ratification — NOT the closed #3240 tracker, NOT the merged numeric #3226)**, T-25-core, T-30 | **OP + DESIGN** | T-4 mgr |
 | T-4.5 | extdeps/process + file_system | SCAFFOLD | T-3, T-25-core | IMPL | T-4 mgr |
-| T-4.6 | extdeps/formats ×7 | SCAFFOLD | T-25-core, T-26 | IMPL | T-4 mgr |
+| T-4.6 | extdeps/formats ×7 (**current tree census:** csv/json/json_schema/openapi/spice/toml/yaml; TASKS still schedules sql.dag port) | SCAFFOLD | T-25-core, T-26 | IMPL (sql.dag not yet present in `src/v4/extdeps/formats/`) | T-4 mgr |
 | T-4.7 | frameworks/react | SCAFFOLD | T-4 (ts) | CP1 (LanguageModel) | T-4 mgr |
 | T-4.8 | coordination | SCAFFOLD | T-4, T-4.7 | IFACE | T-4 mgr |
-| T-4.9 | languages/verilog | NOT STARTED | T-1,T-2 | OP (IN-B probe) | T-4 mgr |
+| T-4.9 | languages/verilog | **PASS (IN-B)** per file header | T-1,T-2 | LANDED | T-4 mgr |
 | T-4.10 | formats/spice | **LANDED** (#3168 merged) — *pre-D2-reversal canonical path; see rework-obligation note* | T-1 | LANDED | T-4 mgr |
 | T-4.11 | claim/english_ingest | SCAFFOLD | T-3/verification.dag | IFACE (AssertKind) | Lane B |
 | T-4.12 | languages/llvm_ir | **LANDED** (#3171 merged; +#3229 de-prose +#3300 cost-move on main) — *pre-D2-reversal canonical path; see rework-obligation note* | T-1,T-2 | LANDED | T-4 mgr |
-| T-4.13 | languages/machine_code | NOT STARTED | T-3, T-4 LanguageModel | CP1 | T-4 mgr |
-| T-4.14 | languages/ptx | NOT STARTED | T-1,T-2 | OP (IN-B probe) | T-4 mgr |
+| T-4.13 | languages/machine_code | **D2-REV** per file header; zero-diagnostic smoke landed | T-3, T-4 LanguageModel | LANDED (smoke/model row; T-4 LanguageModel refinement remains TASKS authority) | T-4 mgr |
+| T-4.14 | languages/ptx | **PASS (IN-B)** per file header | T-1,T-2 | LANDED | T-4 mgr |
 | **T-9** | compiler/04_infer | SCAFFOLD | T-8/CP-1b-close (∥) + T-4 | IMPL (T-4 keystone; CP-1b-close parallel, not keystone-gated) | Lane A |
 | **T-10** | 05_emit + 00_compile | SCAFFOLD | T-9, T-4 | IMPL+IFACE | Lane A |
 | **T-11** | emit per-target ×5 | NOT STARTED | T-10 | IMPL | Lane A |
@@ -123,12 +123,23 @@ first) · `DESIGN` · `OP` (operator ruling) · `CP1` (needs v4 front-end output
 - **Lens footnote:** the PREFIX driver/corpus gate is **T-23 + driver**, not
   T-12 alone; T-12/T-13/T-17/T-18/T-23 rows match the running lens fan-out.
 - **T-4-mgr staleness correction (verified vs main):** T-4.10 (#3168),
-  T-4.12 (#3171) are **already LANDED**. **T-29 is NOT landed-and-removed**
+  T-4.12 (#3171) are **already LANDED**. T-4.9 (`verilog.dag`) and T-4.14
+  (`ptx.dag`) now carry **PASS (IN-B)** in their file headers, and T-4.13
+  (`machine_code.dag`) carries **D2-REV** with a zero-diagnostic
+  `compile_to_dag` smoke; §2 table rows are updated as table-accuracy only,
+  without changing TASKS.md's remaining LanguageModel/refinement authority.
+  **T-29 is NOT landed-and-removed**
   (codex REQUEST_CHANGES, TASKS.md authority): core #3267 merged but #3277
   OPEN and TASKS.md:64/:286/:1035 still declares T-29 a hard T-4-cpp-slice
   feeder — it **stays in the keystone cluster**, never was Wave-0. Wave-0
   parallel count ≈14 → ≈11 (driven by T-4.10/T-4.12 + the READY* re-tier,
   not by mis-dropping T-29).
+- **T-4.6 / SQL table-accuracy note:** TASKS.md schedules SQL DDL by extending
+  T-4.6 with `src/v4/extdeps/formats/sql.dag`, but the current
+  `src/v4/extdeps/formats/` census is seven files **including `spice.dag` and
+  excluding `sql.dag`** (`csv`, `json`, `json_schema`, `openapi`, `spice`,
+  `toml`, `yaml`). The §2 row preserves the TASKS decision while making the
+  live-tree absence explicit.
 - **NEW keystone-scope finding (decision-relevant):** the early-canonical-path
   language/format files modelled **pre-D2-reversal** (spice #3168, llvm_ir
   #3171, and any sibling pre-#3240 models) likely carry a **fact-bundle REWORK
