@@ -34,12 +34,12 @@ engineering.
 
 Everything else parallel-fills around that spine.
 
-> **Review status (2026-05-18):** 3/4 lanes ratified — Lane A (`fierce-cat-31`),
-> Lane B (`swift-ram-178`), Dissolution (`jolly-ibex-599`) — corrections folded
-> below. T-4-mgr (`vivid-carp-207`) rows encode its standing #3280/A-vs-B hold
-> (already confirmed elsewhere); explicit #3322 ack pending (low-priority — that
-> manager is correctly heads-down on the CORE-held reconcile). Will amend if it
-> diverges.
+> **Review status (2026-05-18):** **4/4 lanes ratified** — Lane A
+> (`fierce-cat-31`), Lane B (`swift-ram-178`), Dissolution (`jolly-ibex-599`),
+> T-4-mgr (`vivid-carp-207`) — all corrections folded below. T-4-mgr CONFIRMED
+> the T-4 keystone HOLD and supplied **material staleness corrections** (T-29 /
+> T-4.10 / T-4.12 already **LANDED**, not Wave-0; see Folded clarifications) plus
+> a new keystone-scope finding (early-canonical files' rework obligation).
 >
 > **Lane-A clarification (folded):** CP-1b close sits on the **T-8→T-9** leg, a
 > T-9 prerequisite running **parallel wall-clock to the T-4 keystone wait** —
@@ -62,7 +62,7 @@ exists, parallelizable) · `IFACE` (needs a contract frozen first) · `DESIGN` �
 | T-6 | compiler/01_tokenize | LANDED | T-3 | LANDED (CP-1b tail) | Lane A |
 | T-7 | compiler/02_parse | LANDED | T-6 | LANDED (CP-1b tail) | Lane A |
 | T-8 | 03_normalize + 03_resolve (+T-28 bundled) | LANDED (seam scaffold until CP-1b closes) | T-7 | IMPL (CP-1b close) | Lane A |
-| **T-4** | extdeps/languages ×5 fact-bundles | WIP, **HELD** | T-3, P1-KEYSTONE, T-25-core, T-30, T-29 | **OP + DESIGN** | T-4 mgr |
+| **T-4** | extdeps/languages ×5 fact-bundles | WIP, **HELD** | T-3, **P1-KEYSTONE (= Practice-10/#3240 *ratification* — NOT the already-merged numeric #3226)**, T-25-core, T-30 | **OP + DESIGN** | T-4 mgr |
 | T-4.5 | extdeps/process + file_system | SCAFFOLD | T-3, T-25-core | IMPL | T-4 mgr |
 | T-4.6 | extdeps/formats ×7 | SCAFFOLD | T-25-core, T-26 | IMPL | T-4 mgr |
 | T-4.7 | frameworks/react | SCAFFOLD | T-4 (ts) | CP1 (LanguageModel) | T-4 mgr |
