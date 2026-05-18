@@ -52,13 +52,13 @@ Dissolution lens wave remains **`jolly-ibex`** / **#3313** / **#3240** — track
 
 ## Interface-Freeze keystone (**minimal delta — prefix of the prefix**)
 
-**Current state:** `src/v4/lens/application.dag` already carries the **ratified design contract in the file header** (`SectionRef`, `EnforcedApplication` / `IntrospectApplication`, `apply_lens` Enforce vs Introspect, **D1** `subterm_at` / `apply_diff`, QRY-1, AGENT-1 composition, advisory→fail-closed bridge). The **module body is still empty** beyond `module v4.lens.application` — **TASKS.md T-23** fill is pending.
+**Current state:** `src/v4/lens/application.dag` carries the **ratified design contract in the file header** (three-parameter `EnforcedApplication` reconciled to **`docs/design-lens-application-surface.md` §2**, 2026-05-18) plus **INTERFACE-FREEZE PIN** pointer to **`docs/briefs/r4-lane-a-lens-interface-freeze-pin.md`** (carrier digest + **CLI v0** + **`LENS_ID`** registry). The **module body is still empty** beyond `module v4.lens.application` — **TASKS.md T-23** mechanical port (parseable carriers + `Lens<C>` / id nominals — see pin §4) is pending.
 
 **The keystone delta** (everything else parallelizes around this **small** freeze):
 
-1. **Header ↔ design authority ratification:** align the header’s older two-parameter sketch (`EnforcedApplication<Output, Budget>` in comments) with **`docs/design-lens-application-surface.md` §2** — canonical **`EnforcedApplication<Output, Budget, Projected>`**, **`IntrospectApplication<Output>`**, **`LensEnforcement` / `EnforceableLens`** bundle discipline (same single-authority story as v3 `lens_application.dag`, ported to v4 naming).
-2. **Minimal parseable `.dag` declarations** in `application.dag` (names + parameters stable; bodies may stay `...` / stub where honest): imports from declared std peers; **`SectionRef`** disjoint sum; the **two carriers**; enough **`apply_lens` / config** surface to discriminate **Enforce** vs **Introspect** with the span/severity fields the design doc already specifies — **not** full fold implementation, not AGENT-1 runtime, not per-lens completeness.
-3. **Frozen driver/registry I/O pin** (sibling to (1)–(2), still “keystone”): one **normative** description of **argv / flags / stdin-stdout** (or single subcommand) + **stable lens-id table** the whole-corpus step and harnesses pin to — **one-line runnable-AC slot-in** per Acceptance batch after this lands.
+1. ~~**Header ↔ design authority ratification:**~~ **Done in header + pin doc** — canonical **`EnforcedApplication<Output, Budget, Projected>`**, **`IntrospectApplication<Output>`**, **`LensEnforcement` / `EnforceableLens`** bundle discipline.
+2. **Minimal parseable `.dag` declarations** in `application.dag` (names + parameters stable; bodies may stay `...` / stub where honest): imports from declared std peers; **`SectionRef`** disjoint sum; the **two carriers**; enough **`apply_lens` / config** surface to discriminate **Enforce** vs **Introspect** with the span/severity fields the design doc already specifies — **not** full fold implementation, not AGENT-1 runtime, not per-lens completeness. **Blocked on** v4 `std` **`Lens<Output>`** + id nominals — see **pin §4** (does **not** block witness authoring).
+3. ~~**Frozen driver/registry I/O pin**~~ **Parked** in **`r4-lane-a-lens-interface-freeze-pin.md` §3** — **one-line runnable-AC slot-in** per Acceptance batch; swap `TBD` for live argv when the binary lands.
 
 **Explicitly not the keystone:** CP-1 front-end, full cost lattice, full complexity behavioral completeness, dissolution L1.x bodies — those ship in **parallel** or **later batches** once the interface string is frozen.
 
@@ -68,7 +68,7 @@ Dissolution lens wave remains **`jolly-ibex`** / **#3313** / **#3240** — track
 
 | Order | Batch | Acceptance artifact scope (high level) |
 |------:|--------|------------------------------------------|
-| **1** | **Interface-Freeze** | §Interface-Freeze keystone landed + ratified header; driver I/O pin doc committed. |
+| **1** | **Interface-Freeze** | Pin doc **`r4-lane-a-lens-interface-freeze-pin.md`** + **`application.dag`** header ratified + CLI/registry §3; parseable body remains §4 backlog. |
 | **2** | **PREFIX driver / registry + corpus gate** | Slices A–C runnable AC, whole-corpus contract, delete-dated v3 step labels — evolves `r4-lane-a-lens-prefix-acceptance.md` / linked PR. |
 | **3** | **Cost + complexity (shared `SymbolicCost` algebra)** | **Wave-1 #1 = complexity** (operator elevation); **cost** remains PREFIX **reference** / algebra root complexity composes on. One shared Acceptance PR for both. |
 | **4** | **Wave-1 remainder** | **parallelism**, **effect_enumeration**, **idempotency** + pure structural readers **provenance**, **unused_parameters**, **structural_resolution** — **single** batched Acceptance PR (not six micro-PRs). |
