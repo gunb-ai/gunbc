@@ -75,7 +75,7 @@ src/v4/
     05_eval.dag          # InferredTree + Inputs -> Value (THE PRIMARY execution path,
                          # THESIS:225; sibling of emit — eval executes, emit projects)
 
-  lens/                  # dimensions (11 files, parallel after compiler)
+  lens/                  # dimensions (12 files, parallel after compiler)
     complexity.dag
     cost.dag             # Tier 1 + Tier 2 textbook (α(n)/log*/log log/sub-exp); UnknownCost floor
     parallelism.dag
@@ -87,6 +87,7 @@ src/v4/
     testgen.dag          # producer side — reads substrate, emits TestClaim corpus (Phase 1.5)
     affected_set.dag     # incremental re-exec frontier; replaces detect-affected shell (Phase 1.5)
     application.dag      # apply_lens surface — opt-in depth + ONLY advisory→fail-closed bridge
+    registry.dag         # PREFIX v0 `LENS_ID` → v4 module rows (operator pin §3 twin)
 
   workflow/              # meta-process as data (2 files; the v3-derived
                          # work-direction substrate — brief/worker_output/
@@ -123,7 +124,7 @@ src/v4/
     fixture/             # canonical input programs
 ```
 
-**Total: 72 .dag files + 5 docs + 5 .gitkeep = 82 files.** (Per invariant
+**Total: 73 .dag files + 5 docs + 5 .gitkeep = 83 files.** (Per invariant
 #1 the enumeration above — not the count — is authoritative; the count is
 a checksum, updated on every operator-ratified file addition/removal.
 **Reconciliation (2026-05-17, PR #3225 / review #13750):** the prior printed
@@ -142,6 +143,8 @@ meta-layer cut, operator-ratified. **2026-05-17 (PR #3212):** enumerate
 C++ ABI / target data-model feeder; checksum **70→71** `.dag`.
 **2026-05-18 (T-30):** add `std/fact_density.dag` P2-staging parse witness;
 checksum **71→72** `.dag`.
+**2026-05-18 (PREFIX / T-23 v0):** add `lens/registry.dag` (`LENS_ID` registry twin of
+`docs/briefs/r4-lane-a-lens-interface-freeze-pin.md` §3); checksum **72→73** `.dag`.
 
 ## Scalar/numeric concept decomposition
 

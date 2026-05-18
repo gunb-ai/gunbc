@@ -19,8 +19,8 @@
 #                    (v3 is FROZEN — workspace dep changes do NOT trigger v3 CI;
 #                    we don't care if v3 incidentally breaks because v3 is abandoned;
 #                    if v3 is ever revived, the first src/v3/ PR catches latent breakage)
-#   v4=true|false  — true if src/v4/ or workspace deps changed
-#                    (triggers v2→v4 bootstrap viability test)
+#   v4=true|false  — true if src/v4/ or tools/gunbc_prefix_lens_driver/ or workspace deps changed
+#                    (triggers v2→v4 bootstrap viability test + PREFIX driver build)
 #
 # Why this lives in a script (not inline in ci.yml):
 # Gate #103 (`ci_uses_affected_set_selection`) policy forbids path-selection
