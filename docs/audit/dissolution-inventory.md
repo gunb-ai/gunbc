@@ -380,13 +380,17 @@ constrained-inhabitance gap. Named arrival: "v4 lands constrained
 generic parameters / inhabitance bounds." Verified against
 `std/nat.dag` / `std/algebra.dag` on main: no
 `<M> where M : CommutativeMonoid<_>` syntax landed.
-- **Triage: VALID.**
-- **#3244 re-expression:** `🟡 gated — feature: constrained generic parameters / inhabitance-bound syntax (substrate extension; no owning task yet — needs an owning T-#)`.
-- **Sub-flag:** the *owning task* is not enumerated; the gate names the
-  feature but not the task. Under #3244 the missing-owning-task half
-  makes this VAGUE-on-the-task — a minor concretize-required follow-up
-  on this entry (a feature-gated 🟡 with no owning task is not yet a
-  pre-committed obligation).
+- **Triage: VAGUE** (per still-hawk-102 tightened bar 2026-05-18 — a
+  final VALID-🟡 requires a concrete gate AND binding to a named
+  primitive + owning-task substrate PR in Section 1. This entry maps
+  to P10, but P10 has no owning task; the substrate PR is not fully
+  named).
+- **What's missing for VALID:** owning T-# assignment for the
+  constrained-generics substrate extension. Until assigned, this is a
+  feature-gated 🟡 without a pre-committed obligation under #3244.
+- **#3244 re-expression (after concretizing):** `🟡 gated — feature: constrained generic parameters / inhabitance-bound syntax — owning task <T-#>` (to be assigned).
+- **Owning lane (concretize action — out of C1 scope):** substrate
+  extension; needs operator / S1-track assignment of an owning T-#.
 
 **`SL-3229-LLVM-WIDTH`** — raw-`Int` width payload scaffold
 (`LlvmType` family). Named arrival: "std/cardinality.dag refinement
@@ -550,7 +554,7 @@ refinement-side gates.
 
 | tracker | shape | gate-kind | concrete-arrival? | dissolve-on-arrival obligation? | triage |
 |---|---|---|---|---|---|
-| SL-3229-INTEGER-GROUP-COMPLETION | DECISIONS.md row | feature | partial (feature named, owning task TBD) | yes | VALID (concretize owning task) |
+| SL-3229-INTEGER-GROUP-COMPLETION | DECISIONS.md row | feature | partial (feature named, owning task TBD) | yes | **VAGUE** (no owning task → not bound to a named substrate PR; tightened bar) |
 | SL-3229-LLVM-WIDTH | DECISIONS.md row | feature | yes (cardinality.dag T-3) | yes | VALID |
 | SL-3229-LLVM-OPS | DECISIONS.md row | feature | yes (cardinality.dag T-3) | yes | VALID |
 | SL-3229-PTX-DIM3 | DECISIONS.md row | feature | yes (cardinality.dag T-3) | yes | VALID |
@@ -567,13 +571,22 @@ refinement-side gates.
 | toml.dag × 7+ in-file blocks | prose | mixed | **no** (class) | yes | **VAGUE** |
 | typescript.dag × 4 in-file blocks | prose | feature (D2-shaped) | **named arrival cancelled by D2-reversal** | yes | **INVALID-GATE** (re-gate post-reversal) |
 
-Counts: **8 VALID-🟡** (7 DECISIONS.md rows + 1 in-file cite-site —
-`llvm_ir.dag:28`). **2 VAGUE DECISIONS.md rows** (`SL-3229-VERILOG-D3200`,
-`SL-3229-FLOAT-NOMINAL`) + **~16 VAGUE in-file prose blocks** across
-`json.dag`, `yaml.dag`, `toml.dag`, and the 5 `verilog.dag` cite-sites
-inheriting VERILOG-D3200 ≈ **~18 VAGUE total**. **4 INVALID-GATE**
-(typescript.dag D2-shaped gates). **0 STALE → 🔴** — no named arrival
-has already landed.
+Counts (under the still-hawk-102 tightened bar 2026-05-18 — VALID-🟡
+requires concrete gate AND binding to a named primitive+owning-task
+substrate PR in Section 1):
+
+- **7 VALID-🟡** (6 DECISIONS.md rows: LLVM-WIDTH, LLVM-OPS, PTX-DIM3,
+  PTX-COST, VERILOG-NONEMPTY, VERILOG-COST, VERILOG-VECTOR-RANGE bound
+  to P1/P2/P8 + 1 in-file cite-site `llvm_ir.dag:28` bound to P1).
+- **3 VAGUE DECISIONS.md rows** — `SL-3229-VERILOG-D3200` (consumer-class
+  not named) + `SL-3229-FLOAT-NOMINAL` (straddles two owners) +
+  **`SL-3229-INTEGER-GROUP-COMPLETION`** (no owning task — reclassified
+  under the tightened bar; P10 in Section 1 carries this flag).
+- **~16 VAGUE in-file prose blocks** across `json.dag`, `yaml.dag`,
+  `toml.dag`, and 5 `verilog.dag` cite-sites inheriting VERILOG-D3200
+  ≈ **~19 VAGUE total**.
+- **4 INVALID-GATE** (typescript.dag D2-shaped gates).
+- **0 STALE → 🔴** — no named arrival has already landed.
 
 **Headline finding:** no pre-existing tracker is STALE — the
 cardinality-refinement / collection Wave-A2 / constrained-generics
