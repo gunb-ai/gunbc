@@ -667,6 +667,32 @@ vocabulary:
   (`template: "Vec<{0}>"`) where grammar-as-declarative-bidirectional-data
   belongs. The emit-side mirror of walker dissolution.
 
+**The inverse direction — nominalization.** Every finding above detects
+*under-modeling*: a hand-rolled construct that should be modeled or
+derived. **Nominalization** is the opposite error — *over-modeling*: an
+operation declared as a *type*. It is camouflaged precisely because it
+*looks* like good modeling — it is *more* type declaration, not less —
+so a reviewer scanning for "is this modeled enough?" reads it as
+compliant, even exemplary. The rubric checks **both** directions; the
+over-modeling direction must be looked for on purpose.
+
+- **nominalization** *(new)* — an operation (a function), or a derived
+  operation, declared as a *type*. The tell is a struct whose only
+  field(s) are functions and which has no `data` instances —
+  `type ListMap<T, U> { apply: fn(List<T>, fn(T) -> U) -> List<U> }`.
+  **Discriminant: does the type have more than one meaningful
+  inhabitant?** A genuine algebraic *structure* does — `Monoid<T>` has
+  the additive monoid, the multiplicative monoid, … — so it is a
+  legitimate type. A combinator does not: there is exactly one
+  list-`map`. *A type with exactly one meaningful inhabitant is an
+  operation in disguise — it must be a `fn`* with a real body, or a
+  derived operation. The degenerate single-field `{ field: T }` wrapper
+  repeated across N near-identical subjects (e.g. `{ spelling: String }`
+  across the seven URI components) is the same finding — N hollow
+  wrappers standing where modeled facts belong. Disposition: normally
+  🔴 — rewrite as a `fn`; 🟡 only if it should be a *derived* operation
+  and the derivation primitive is absent.
+
 **Disposition — per the shared Dissolution dispositions (Practice 4).**
 Every dissolution finding — and every audited function that turns out
 *not* to be one — carries one of the three dispositions 🔴/🟡/🟢. Naming
@@ -711,6 +737,7 @@ would:
 | walker dissolution | structural on the clean shape (recursion mirrors a modeled type) | **blocking** — hard error on the clean shape; genuinely-irregular recursion (call graph ≠ data graph) is a clean 🟢, not an advisory |
 | traverse dissolution | structural on the clean shape (a `fold` body that is a carrier short-circuit ladder) | **hard error** on the clean shape |
 | emit/template dissolution | structural — a literal template-string field | **hard error** on the literal-template shape |
+| nominalization | structural — a struct whose only fields are functions with no `data` instances, or N near-identical single-field wrappers | **hard error** on the wrapper shape |
 | predicate dissolution | judgment — a `match` *may* be genuinely distinct work, not a derived property | **blocking** — a reviewer who identifies it blocks the PR; a `match` that is genuinely distinct work is a clean 🟢. No advisory / candidate tier. |
 | coproduct dissolution | already enforced — per-coproduct 🟢/🟡/🔴 tag + `DECISIONS.md` ledger (Practices 4 / 9) | already enforced |
 
