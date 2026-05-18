@@ -387,31 +387,38 @@ in `std/node.dag` and dispatch both arms uniformly.
 > as emitters; L1.10 catches strings as *carriers* for domains that have
 > a typed model in scope.
 
-- *Signature (substrate-declared registry, not hardcoded table):* the
-  lens reads a **canonical-carrier registry** authored as data in the
-  substrate, not a name table baked into the lens. A typed carrier
-  declares itself as the authoritative shape for a domain via a
-  structural witness:
+- *Signature (substrate-declared registry, no opt-in tag):* the lens
+  reads a **canonical-carrier registry** authored as data in the
+  substrate. A typed carrier declares its coverage — the set of field
+  names it claims authority over — as a structural witness:
   ```dag
   // in src/v4/extdeps/process.dag
   data process_command_canonical: CanonicalCarrier<process.Command> = {
-    supersedes_string: { in_role: command_role }
+    supersedes_string_at_field_named: { command, shell_command, invocation }
   }
-  data command_role: StringRole = ...    // the role tag, itself a typed value
   ```
-  The lens fires on a field of type `String` carrying a `: <role-tag>`
-  refinement that appears in any registered `CanonicalCarrier::supersedes_string.in_role`
-  row whose target type is in scope. No field-name string equality, no
-  hardcoded `command`/`path`/`url` list — the *substrate* names which
-  String roles have a typed canonical home, and the lens reads that fact.
-- *Decidable:* yes — `CanonicalCarrier` registry membership and the
-  role-tag refinement on the offending field are both structural facts
-  in the parsed model.
+  The lens fires on **any** field of type `String` whose field name
+  appears in any registered `CanonicalCarrier::supersedes_string_at_field_named`
+  set, whenever that carrier's target type is in scope. The trigger is
+  not author-controlled — the author cannot bypass by omitting a role
+  tag, because the registry-declared field-name set drives the gate
+  unconditionally. The name set lives in substrate `data`, not in the
+  lens body, so adding a new typed carrier is a registry edit, not a
+  lens edit.
+- *Decidable:* yes — `CanonicalCarrier` registry membership, the
+  registry's `supersedes_string_at_field_named` set, the offending
+  field's declared name, and the target carrier's in-scope status are
+  all structural facts in the parsed model.
 - *Verdict:* hard error.
-- *Escape:* a `String` field with no role-tag refinement, or a role tag
-  with no `CanonicalCarrier` row in scope, passes. Adding a new typed
-  carrier is a `data` row in `extdeps/`, not an edit to the lens
-  definition.
+- *Escape (structural, registered exemption):* a `String` field whose
+  name *does not* appear in any in-scope registry entry passes
+  naturally. For fields whose name happens to collide with a registry
+  entry but whose value is legitimately raw (e.g. an opaque ID), the
+  carrier author can add a structural exemption row to the same
+  registry, e.g.
+  `data raw_command_exempt: CanonicalCarrier.Exemption = { at_field: command, in_carrier: opaque_log_record, because: opaque-id }`,
+  read as data, not as comment. Author-side opt-out via comment marker
+  or omitted tag does not pass.
 
 **Concrete match — F6 (`src/v4/workflow/ci.dag:23-28`):**
 ```dag
@@ -420,12 +427,13 @@ type CiCommand
   | TestCommand
   | IgnoredTestCommand { test_name: String }
   | BootstrapStageCompile { produces: Symbol }
-  | ShellCommand { command: String : command_role }    // ← role-tag claims canonical home
+  | ShellCommand { command: String }    // ← unannotated; field name = `command`
 ```
-With `data process_command_canonical: CanonicalCarrier<process.Command> = { supersedes_string: { in_role: command_role } }`
-in `extdeps/process.dag`, the lens reads the registry, sees that
-`command_role`-tagged `String` has a typed canonical home
-(`process.Command`), and fires.
+With `data process_command_canonical: CanonicalCarrier<process.Command> = { supersedes_string_at_field_named: { command, ... } }`
+in `extdeps/process.dag`, the lens reads the registry, sees that any
+`String` field named `command` has a typed canonical home in scope
+(`process.Command`), and fires — independent of whether the author
+opted in to any annotation.
 
 **Clean shape:** consume the typed carrier directly.
 ```dag
