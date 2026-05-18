@@ -815,45 +815,55 @@ clobber surviving language vocabulary and the `std/` numeric core.
   dead-generic-parameter polish only, with no walker, predicate, carrier,
   or emit-template obligation.
 
-### P4-TS-REGATE — `typescript.dag` D2→fact-bundle regate disposition (2026-05-18)
+### TS-D2 — `typescript.dag` D2→fact-bundle dissolution disposition
 
-Disposition **established 2026-05-18** (pending/tracked — not a landed
-state). Per-language accountability row for the `typescript` entry of the
-**D2-encoding — rework** list above. `typescript.dag` is the 5th merged
-D2 language file; on `main` it **currently still carries** its D2-shaped
-scaffold (the regate is in-flight, not landed — see in-file carrier).
+Authoritative ledger entry cited by the in-file coproduct-dissolution
+one-liners in `extdeps/languages/typescript.dag` on `main`
+(`// 🟢 coproduct dissolution — DECISIONS.md TS-D2`). Per-language
+accountability row for the `typescript` entry of the **D2-encoding —
+rework** list above (the 5th merged D2 language file). Row established
+2026-05-18; describes current `origin/main` state.
 
-- **Disposition: 🟡 gated (pending).** `extdeps/languages/typescript.dag`
-  on `main` carries a D2-shaped scaffold — the kernel-ambient
-  `type TsBoolean = Bool` alias bridge, the cancelled `GroundingMap`
-  facet (D2's `GroundingMap` arrival was voided by D2-REV), and the
-  `number` / `bigint` / `string` / `symbol` / `null` / `undefined` alias
-  sketches. None are terminal models; all are bridges to be held until
-  the Phase-3 rework.
-- **In-file carrier:** PR **#3251** (`session/crisp-crab-858`,
-  **OPEN — not yet merged**) — *will* re-gate the `typescript.dag` header
-  (Owns/Status/grounding/operation-semantics blocks → `🟡 gated —
-  feature: T-4 fact-bundle Phase-3 rework`) and the two
-  smoke-test/census labels. No terminal fact-bundles are authored there;
-  #3251 makes no `DECISIONS.md` edit (this row is the ledger slice).
+- **In-file carrier — LANDED.** PR **#3251**
+  (`23061e284 typescript: regate D2 scaffolds to fact bundles (#3251)`,
+  ancestor of `origin/main`) strict-de-prosed and re-gated
+  `typescript.dag`. On `main` the file is now a terse 36-line scaffold:
+  header `Status: 🟡 gated — feature: T-4 fact-bundle Phase-3 rework
+  after T-3/T-29/T-30/T-25-core`; the D2 `GroundingMap` facet and the
+  heavy D2 header prose are gone. #3251 authored **no** fact-bundles and
+  made **no** `DECISIONS.md` edit — it added the two in-file `TS-D2`
+  pointers that this row resolves.
+- **🟢 dissolved (terminal) — the two coproducts.**
+  `TsEcma262NumericPrimitiveKind` (variants `TsNumberPrimitive`,
+  `TsBigIntPrimitive`) and `TsEcma262PrimitiveOperationSemantics`
+  (variants `TsNumberIeee754Binary64Semantics`,
+  `TsNumberBitwiseInt32Uint32Semantics`,
+  `TsBigIntExactUnboundedSemantics`) are **TypeScript-native
+  ECMA-262 vocabulary** — closed enumerations sourced from the ES2025
+  spec, not `std/` alias re-declarations and not a parallel
+  `OrderedRing` algebra (INVARIANTS P1:42). They are terminal: nothing
+  dissolves further, hence the in-file `🟢`.
+- **🟡 gated (remaining D2→fact-bundle debt).** `type TsBoolean = Bool`
+  (kernel-ambient alias bridge) plus the still-unmodeled `number` /
+  `string` / `symbol` / `null` / `undefined` primitive facts (the
+  numeric/text `std/` carriers the header marks "fact-bundle-gated").
+  These are **not yet fact-modeled**; they remain D2-shaped bridges.
 - **Named trigger / dissolve-on-arrival:** upstream P4 node
   `node://adhoc-71ec74f4-080` ("T-4 fact-bundle Phase-3 rework
-  `extdeps/languages`", `crisp-crab-858`) is to author the TypeScript
-  primitive fact-bundles — `number` (binary64 + NaN/Infinity/disposition
-  facts), `bigint` (exact unbounded integer facts), `string` (UTF-16
-  code-unit facts), `symbol` / `null` / `undefined` (nominal/runtime
-  facts). Any reuse of `std/float.dag` / `std/integer.dag` /
-  `std/text.dag` must cite **proven coincidence** evidence ("Coincide —
-  defined once", above), never a bare alias.
+  `extdeps/languages`", `crisp-crab-858`) is to author the remaining
+  TypeScript primitive fact-bundles — `number` (binary64 +
+  NaN/Infinity/disposition facts), `string` (UTF-16 code-unit facts),
+  `symbol` / `null` / `undefined` (nominal/runtime facts). Any reuse of
+  `std/float.dag` / `std/integer.dag` / `std/text.dag` must cite
+  **proven coincidence** evidence ("Coincide — defined once", above),
+  never a bare alias.
 - **Feeder gates (hard T-4 prereqs, per Phase 1 / `TASKS.md` T-4):**
   T-3, **P1-KEYSTONE — CLEARED** (`#3226` merged @`77b9e7d72`), T-29,
   T-30, T-25-core. The Phase-3 reseed does **not** begin until all clear.
-- **Dissolution:** this row is removed (or replaced by a
+- **Dissolution:** the 🟡 clause is removed (or replaced by a
   coincidence-evidenced bundle reference) when node `…71ec74f4-080`
-  lands and the TypeScript fact-bundles merge. The in-file ≤1-line
-  pointer is carried by #3251's gated header text; aligning it to a
-  slug-style pointer is a post-#3251-merge follow-up (out of scope here
-  to avoid a parallel edit to `typescript.dag`).
+  lands and the TypeScript primitive fact-bundles merge; the 🟢 clause
+  and the in-file pointers persist as the terminal record.
 
 ### Worked examples
 
