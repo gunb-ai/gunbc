@@ -24,6 +24,7 @@ type TsScalarTowerSectionRefs {
   null_kind: TsEcma262SectionRef
   undefined_kind: TsEcma262SectionRef
   numeric_semantics: TsEcma262SectionRef
+  bitwise_operator_semantics: TsEcma262SectionRef
 }
 
 // 🟢 coproduct dissolution — DECISIONS.md TS-SCALAR-PHASE3.
