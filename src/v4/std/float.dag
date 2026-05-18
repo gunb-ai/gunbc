@@ -21,7 +21,7 @@ import v4.std.diagnostic {
 }
 import v4.std.logic { Bool }
 import v4.std.machine { Bit, Word32, Word64 }
-import v4.std.nat { Nat }
+import v4.std.nat { Nat, nat_is_zero }
 import v4.std.node { Symbol }
 type Float32Interchange = Word32
 type Float64Interchange = Word64
@@ -107,13 +107,7 @@ fn float_body_is_nan(x: FloatBody) -> Bool {
   }
 }
 fn float_finite_magnitude_zero(e: Nat, f: Nat) -> Bool {
-  match e {
-    Zero => match f {
-      Zero => true
-      Succ { prev: _ } => false
-    }
-    Succ { prev: _ } => false
-  }
+  nat_is_zero(e) && nat_is_zero(f)
 }
 fn float_body_compare_semantic_total(a: FloatBody, b: FloatBody) -> Ordering {
   match a {
