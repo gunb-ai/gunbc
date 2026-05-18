@@ -1,31 +1,237 @@
 // src/v4/compiler/03_normalize.dag
 //
-// Scope: pipeline stage 3a — ParseTree to NormalizedTree. Surface sugar dissolution.
+// Scope: Stage 3a — ParseTree→NormalizedTree; C3 sugar to Node.
+// Owns: NormalizedTree; SurfaceSugarKind; SugarClassification; normalize; stage Symbol reasons.
+// Consumes: std/node.dag, std/diagnostic.dag, compiler/02_parse.dag, extdeps/languages/dag.dag.
+// Status: scaffold — TASKS T-8.
 // Anchor: https://en.wikipedia.org/wiki/Abstract_syntax_tree
-//
-// C3 (operator-ratified 2026-05-15): normalize dissolves EXACTLY the 4
-// bounded surface-sugar forms THESIS:198-203 names — `service`, `fn`,
-// `type`, `operation` — into Node trees. It is NOT identity and NOT
-// open-ended. There is no 5th sugar form; a new one is a substrate
-// extension = STOP, not an inline add. (This closes the "what does
-// normalize do in a no-sugar language" tension — there IS bounded sugar,
-// exactly these 4; cascade-closure of A1.)
-//
-// Owns:
-//   - NormalizedTree type
-//   - normalize: ParseTree -> Result<NormalizedTree, Diagnostic>
-//   - dissolves the 4 sugar forms { service, fn, type, operation } -> Node
-//     tree (per MODELING.md composition layer); exactly 4, closed
-//
-// Consumes:
-//   - std/node.dag, std/diagnostic.dag
-//   - compiler/02_parse.dag: ParseTree
-//
-// Status: scaffold — fill per TASKS.md T-8
-// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
-// contract for the worker. Splitting this file requires explicit operator
-// ratification (substrate extension = stop signal).
-
 
 module v4.compiler.normalize
 
+
+import v4.compiler.parse { ParseTree }
+import v4.extdeps.languages.dag {
+  dag_c3_surface_sugar_fn,
+  dag_c3_surface_sugar_operation,
+  dag_c3_surface_sugar_service,
+  dag_c3_surface_sugar_type
+}
+import v4.std.diagnostic {
+  Diagnostic,
+  NodeLocus,
+  Outcome,
+  UserInputBoundary
+}
+import v4.std.node {
+  Connective,
+  Edge,
+  Node,
+  Symbol,
+  edge_is_named,
+  edge_is_positional,
+  node_well_formed
+}
+
+
+type NormalizedTree = Node
+
+
+data normalize_reason_malformed_sugar: Symbol = normalize_reason_malformed_sugar
+data normalize_reason_post_normalize_not_well_formed: Symbol = normalize_reason_post_normalize_not_well_formed
+
+
+// 🟡 coproduct dissolution — DECISIONS.md CP-1b item 4 (SurfaceSugarKind)
+type SurfaceSugarKind
+  = ServiceSugar
+  | FnSugar
+  | TypeSugar
+  | OperationSugar
+
+
+// 🟡 coproduct dissolution — DECISIONS.md CP-1b item 5 (SugarClassification)
+type SugarClassification
+  = Sugar { kind: SurfaceSugarKind }
+  | NotSugar
+
+
+fn classify_sugar(n: Node) -> SugarClassification {
+  match n.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      if id == dag_c3_surface_sugar_service {
+        Sugar { kind: ServiceSugar }
+      } else {
+        if id == dag_c3_surface_sugar_fn {
+          Sugar { kind: FnSugar }
+        } else {
+          if id == dag_c3_surface_sugar_type {
+            Sugar { kind: TypeSugar }
+          } else {
+            if id == dag_c3_surface_sugar_operation {
+              Sugar { kind: OperationSugar }
+            } else {
+              NotSugar
+            }
+          }
+        }
+      }
+    TypeNode { connective: _ } => NotSugar
+    ComputationNode { behavior: _ } => NotSugar
+  }
+}
+
+
+fn malformed_sugar_diagnostic(n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: normalize_reason_malformed_sugar,
+    at: NodeLocus { node: n },
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+
+fn post_normalize_not_well_formed_diagnostic(n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: normalize_reason_post_normalize_not_well_formed,
+    at: NodeLocus { node: n },
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+
+fn exactly_one_child(children: List<Edge>) -> Bool {
+  count(children) == 1
+}
+
+
+fn normalize_edge(e: Edge) -> Outcome<Edge> {
+  match normalize_node(n: e.target) {
+    Produced { value: normalized_target } =>
+      Produced {
+        value: Edge {
+          label: e.label,
+          target: normalized_target
+        }
+      }
+    Rejected { diagnostic: d } => Rejected { diagnostic: d }
+  }
+}
+
+
+// 🟡 coproduct dissolution — DECISIONS.md CP-1b item 6 (NormalizeChildrenResult)
+type NormalizeChildrenResult
+  = NormalizedChildren { children: List<Edge> }
+  | NormalizeChildrenRejected { diagnostic: Diagnostic }
+
+
+fn normalize_children(children: List<Edge>) -> NormalizeChildrenResult {
+  fold(children, init: NormalizedChildren { children: [] }, f: fn(acc, e) {
+    match acc {
+      NormalizeChildrenRejected { diagnostic: d } =>
+        NormalizeChildrenRejected { diagnostic: d }
+      NormalizedChildren { children: done } =>
+        match normalize_edge(e: e) {
+          Produced { value: normalized_edge } =>
+            NormalizedChildren {
+              children: list_push(done, normalized_edge)
+            }
+          Rejected { diagnostic: d } =>
+            NormalizeChildrenRejected { diagnostic: d }
+        }
+    }
+  })
+}
+
+
+fn type_node(connective: Connective, children: List<Edge>) -> Node {
+  Node {
+    kind: TypeNode { connective: connective },
+    children: children
+  }
+}
+
+
+fn all_children_named(children: List<Edge>) -> Bool {
+  fold(children, init: true, f: fn(acc, e) {
+    acc && edge_is_named(e: e)
+  })
+}
+
+
+fn all_children_positional(children: List<Edge>) -> Bool {
+  fold(children, init: true, f: fn(acc, e) {
+    acc && edge_is_positional(e: e)
+  })
+}
+
+
+fn normalize_sugar(kind: SurfaceSugarKind, n: Node, children: List<Edge>) -> Outcome<Node> {
+  match kind {
+    ServiceSugar =>
+      if all_children_named(children: children) {
+        Produced { value: type_node(connective: Conj, children: children) }
+      } else {
+        Rejected { diagnostic: malformed_sugar_diagnostic(n: n) }
+      }
+    FnSugar =>
+      if all_children_positional(children: children) {
+        Produced { value: type_node(connective: Arrow, children: children) }
+      } else {
+        Rejected { diagnostic: malformed_sugar_diagnostic(n: n) }
+      }
+    TypeSugar =>
+      if exactly_one_child(children: children) {
+        match children |> first {
+          Some { value: e0 } =>
+            if edge_is_positional(e: e0) {
+              Produced { value: e0.target }
+            } else {
+              Rejected { diagnostic: malformed_sugar_diagnostic(n: n) }
+            }
+          None =>
+            Rejected { diagnostic: malformed_sugar_diagnostic(n: n) }
+        }
+      } else {
+        Rejected { diagnostic: malformed_sugar_diagnostic(n: n) }
+      }
+    OperationSugar =>
+      if all_children_positional(children: children) {
+        Produced { value: type_node(connective: Arrow, children: children) }
+      } else {
+        Rejected { diagnostic: malformed_sugar_diagnostic(n: n) }
+      }
+  }
+}
+
+
+fn normalize_node(n: Node) -> Outcome<Node> {
+  match normalize_children(children: n.children) {
+    NormalizeChildrenRejected { diagnostic: d } => Rejected { diagnostic: d }
+    NormalizedChildren { children: normalized_children } =>
+      match classify_sugar(n: n) {
+        Sugar { kind: kind } =>
+          normalize_sugar(kind: kind, n: n, children: normalized_children)
+        NotSugar =>
+          Produced {
+            value: Node {
+              kind: n.kind,
+              children: normalized_children
+            }
+          }
+      }
+  }
+}
+
+
+fn normalize(parse_tree: ParseTree) -> Outcome<NormalizedTree> {
+  match normalize_node(n: parse_tree) {
+    Rejected { diagnostic: d } => Rejected { diagnostic: d }
+    Produced { value: normalized } =>
+      if node_well_formed(n: normalized) {
+        Produced { value: normalized }
+      } else {
+        Rejected {
+          diagnostic: post_normalize_not_well_formed_diagnostic(n: normalized)
+        }
+      }
+  }
+}
