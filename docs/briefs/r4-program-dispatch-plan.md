@@ -200,6 +200,15 @@ A-vs-B=B (b), decide T-25-core (c).
 
 ## 4. Wavefront — maximal parallel shape
 
+> **Wave-ordering convention (read before flagging dep-violations):** a Wave
+> is **set membership, not intra-wave sequence**. Within a wave, `§2
+> Depends-on` still orders dispatch (e.g. T-4.8 after T-4.7; T-17 after T-12;
+> T-16 after T-11) — same-wave = "unblocked in this epoch," not "simultaneous."
+> **Cross-wave**, an input must be in an *earlier or same* wave as its
+> consumer; a consumer appearing in a wave **before** its input is a real
+> Facts-Flow-Forward violation (e.g. the T-18 fix below — T-18 was wrongly in
+> Wave 2 while its T-12/T-13 inputs only become real in Wave 3).
+
 - **Wave 0 (dispatch NOW — no keystone needed):**
   - *Full-scope `READY` (no T-9 dep):* T-19, T-20, T-21 (Lane B Priority-1) ·
     T-23 IFACE-frozen lens contract (Lane A) · T-26 (std-authoritative) ·
