@@ -182,12 +182,23 @@ fn classify_path(rel: &str) -> PathBucket {
     if rel.starts_with("src/v3/lenses/") {
         return PathBucket::V3CompileToDag;
     }
+    // `operators.dag` is load-bearing authority for `operators_generated.rs`, but it
+    // does not compile in isolation under `compile_to_dag` (semantic bundle over
+    // `dsl/std/*`). Coverage lives in v3-compiler integration tests / regen — not
+    // this interim whole-corpus receipt.
+    if rel == "src/v3/compiler/operators.dag" {
+        return PathBucket::SkipDslOrV2 {
+            reason: "v3 operators.dag — not compile_to_dag-isolated; see operators_generated.rs + sg2c1 tests",
+        };
+    }
+    if rel == "src/v3/compiler/pipeline.dag" || rel == "src/v3/compiler/regen.dag" {
+        return PathBucket::SkipDslOrV2 {
+            reason: "v3 compiler pipeline/regen — bootstrap + integration tests; not compile_to_dag-isolated",
+        };
+    }
     if rel.starts_with("src/v3/compiler/tests/")
         || rel.starts_with("src/v3/compiler/tokenize.dag")
-        || rel.starts_with("src/v3/compiler/operators.dag")
         || rel.starts_with("src/v3/compiler/parse_tables.dag")
-        || rel.starts_with("src/v3/compiler/pipeline.dag")
-        || rel.starts_with("src/v3/compiler/regen.dag")
     {
         return PathBucket::V3CompileToDag;
     }
@@ -345,8 +356,20 @@ mod tests {
             PathBucket::SkipV3StdBootstrap
         ));
         assert!(matches!(
-            classify_path("src/v3/compiler/regen.dag"),
+            classify_path("src/v3/compiler/parse_tables.dag"),
             PathBucket::V3CompileToDag
+        ));
+        assert!(matches!(
+            classify_path("src/v3/compiler/regen.dag"),
+            PathBucket::SkipDslOrV2 { .. }
+        ));
+        assert!(matches!(
+            classify_path("src/v3/compiler/operators.dag"),
+            PathBucket::SkipDslOrV2 { .. }
+        ));
+        assert!(matches!(
+            classify_path("src/v3/compiler/pipeline.dag"),
+            PathBucket::SkipDslOrV2 { .. }
         ));
         assert!(matches!(
             classify_path("dsl/std/algebra.dag"),
