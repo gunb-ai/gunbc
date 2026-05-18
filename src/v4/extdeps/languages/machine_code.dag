@@ -1,37 +1,18 @@
 // src/v4/extdeps/languages/machine_code.dag
 // Scope: machine-code language model parameterized by Isa.
-// Owns: Isa, ByteOrder, InstructionLength, InstructionByteLimitRef, OperandFieldWidthRef, Symbol, GroundingMap, MachineIntKind, MachineIntWidth, MachineScalar, MachineI8, machine_i8_grounding, MachineI16, machine_i16_grounding, MachineI32, machine_i32_grounding, MachineI64, machine_i64_grounding, MachineI128, machine_i128_grounding, MachineU8, machine_u8_grounding, MachineU16, machine_u16_grounding, MachineU32, machine_u32_grounding, MachineU64, machine_u64_grounding, MachineU128, machine_u128_grounding, InstructionWord, RegisterClass, RegisterDeclaration, RegisterRef, IndexScale, AddressingMode, Operand, ByteSequence, InstructionProductionRef, RegisterOperandSlotRef, ImmediateOperandSlotRef, MemoryOperandSlotRef, ImmediateOperandTarget, ImmediateOperandConstraint, MemoryOperandConstraint, InstructionOperandSlot, InstructionProduction, OperandBinding, DecodedInstruction, MachineFidelityFeature, MachineFidelityDisposition, MachineIntegerOverflowBehavior, MachineIntegerOperationSemantics, FlagWriteDisposition.
-// Consumes: Int8, Int16, Int32, Int64, Int128, UInt8, UInt16, UInt32, UInt64, UInt128, List, Byte, String.
-// Status: D2-REV / Practice 8 — `MachineScalar` kind×width bundle + std coincidence via `GroundingMap` (rust.dag template; P4-3208 / #3208).
+// Owns: Isa, ByteOrder, InstructionLength, InstructionByteLimitRef, OperandFieldWidthRef, Symbol, MachineIntKind, MachineIntWidth, MachineScalar, MachineSignedDisplacement32, MachineSignedDisplacement64, InstructionWord, RegisterClass, RegisterDeclaration, RegisterRef, IndexScale, AddressingMode, Operand, ByteSequence, InstructionProductionRef, RegisterOperandSlotRef, ImmediateOperandSlotRef, MemoryOperandSlotRef, ImmediateOperandTarget, ImmediateOperandConstraint, MemoryOperandConstraint, InstructionOperandSlot, InstructionProduction, OperandBinding, DecodedInstruction, MachineFidelityFeature, MachineFidelityDisposition, MachineIntegerOverflowBehavior, MachineIntegerOperationSemantics, FlagWriteDisposition.
+// Consumes: List, Byte.
+// Status: D2-REV / Practice 8 — ISA scalar facts in `MachineScalar` only; addressing displacements use explicit `MachineSignedDisplacement{32,64}` fact records (DECISIONS.md §D2 REVERSAL). No bare std integer aliases or spelling-only `GroundingMap` rows (P4-3208 / #3208).
 
 module v4.extdeps.languages.machine_code
 
 
-import v4.std.integer {
-  Int8,
-  Int16,
-  Int32,
-  Int64,
-  Int128,
-  UInt8,
-  UInt16,
-  UInt32,
-  UInt64,
-  UInt128
-}
 import v4.std.collection { List }
 import v4.std.machine { Byte }
-import v4.std.text { String }
 
 
 // Twin of `v4.std.node.Symbol` — M1(2.7) compile_to_dag import lowering; see lean.dag.
 type Symbol
-
-
-// Twin of `rust.dag` `GroundingMap` pending shared `resolver.dag` home (DECISIONS.md D4; cpp.dag P2 note).
-type GroundingMap<IRCarrier> {
-  spelling: String
-}
 
 
 // Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
@@ -93,74 +74,22 @@ type MachineScalar
   = IntScalar { kind: MachineIntKind, width: MachineIntWidth }
 
 
+// D2-REV (DECISIONS.md §D2 REVERSAL): displacement operands carry ISA signedness + width facts as
+// an explicit product — not `type MachineI32 = Int32` hollow aliases. Coincidence with std
+// fixed-width carriers is a separate proved obligation (U1 / T-9), not `GroundingMap { spelling: … }`.
+
+
 // Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
-type MachineI8 = Int8
-
-data machine_i8_grounding: GroundingMap<MachineI8> = {
-  spelling: "i8"
+type MachineSignedDisplacement32 {
+  kind: MachineIntKind
+  width: MachineIntWidth
 }
 
 
-type MachineI16 = Int16
-
-data machine_i16_grounding: GroundingMap<MachineI16> = {
-  spelling: "i16"
-}
-
-
-type MachineI32 = Int32
-
-data machine_i32_grounding: GroundingMap<MachineI32> = {
-  spelling: "i32"
-}
-
-
-type MachineI64 = Int64
-
-data machine_i64_grounding: GroundingMap<MachineI64> = {
-  spelling: "i64"
-}
-
-
-type MachineI128 = Int128
-
-data machine_i128_grounding: GroundingMap<MachineI128> = {
-  spelling: "i128"
-}
-
-
-type MachineU8 = UInt8
-
-data machine_u8_grounding: GroundingMap<MachineU8> = {
-  spelling: "u8"
-}
-
-
-type MachineU16 = UInt16
-
-data machine_u16_grounding: GroundingMap<MachineU16> = {
-  spelling: "u16"
-}
-
-
-type MachineU32 = UInt32
-
-data machine_u32_grounding: GroundingMap<MachineU32> = {
-  spelling: "u32"
-}
-
-
-type MachineU64 = UInt64
-
-data machine_u64_grounding: GroundingMap<MachineU64> = {
-  spelling: "u64"
-}
-
-
-type MachineU128 = UInt128
-
-data machine_u128_grounding: GroundingMap<MachineU128> = {
-  spelling: "u128"
+// Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
+type MachineSignedDisplacement64 {
+  kind: MachineIntKind
+  width: MachineIntWidth
 }
 
 
@@ -208,11 +137,16 @@ type IndexScale
 // Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
 // 🟢 coproduct dissolution — DECISIONS.md P4-3208
 type AddressingMode
-  = AbsoluteAddress { displacement: MachineI64 }
+  = AbsoluteAddress { displacement: MachineSignedDisplacement64 }
   | RegisterIndirect { base: RegisterRef }
-  | BaseDisplacement { base: RegisterRef, displacement: MachineI32 }
-  | BaseIndexScale { base: RegisterRef, index: RegisterRef, scale: IndexScale, displacement: MachineI32 }
-  | PcRelative { displacement: MachineI32 }
+  | BaseDisplacement { base: RegisterRef, displacement: MachineSignedDisplacement32 }
+  | BaseIndexScale {
+      base: RegisterRef,
+      index: RegisterRef,
+      scale: IndexScale,
+      displacement: MachineSignedDisplacement32
+    }
+  | PcRelative { displacement: MachineSignedDisplacement32 }
 
 
 // Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
