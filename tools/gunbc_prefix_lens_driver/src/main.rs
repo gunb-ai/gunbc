@@ -17,15 +17,12 @@ use std::process::Command;
 use clap::{Parser, Subcommand};
 use v3_compiler::compile_to_dag;
 
-/// Known `LENS_ID` values — mirror `docs/briefs/r4-lane-a-lens-interface-freeze-pin.md` §3.
-const VALID_LENS_IDS: &[&str] = &[
-    "complexity",
-    "cost",
-    "parallelism",
-    "effect_enumeration",
-    "idempotency",
-    "provenance",
-];
+mod lens_registry_ids {
+    #![allow(missing_docs)]
+    include!(concat!(env!("OUT_DIR"), "/generated_valid_lens_ids.rs"));
+}
+
+use lens_registry_ids::VALID_LENS_IDS;
 
 #[derive(Parser)]
 #[command(name = "gunbc-prefix-lens-driver")]

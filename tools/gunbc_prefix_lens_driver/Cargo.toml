@@ -3,6 +3,7 @@ name = "gunbc_prefix_lens_driver"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+build = "build.rs"
 
 [[bin]]
 name = "gunbc-prefix-lens-driver"
