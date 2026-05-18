@@ -13,12 +13,9 @@ import v4.std.diagnostic {
   Produced,
   Rejected,
   Diagnostic,
-  Correction,
   Unavailable,
   UserInputBoundary,
-  Locus,
   Textual,
-  Extent,
   WholeFile
 }
 
