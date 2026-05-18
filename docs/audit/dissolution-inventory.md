@@ -608,57 +608,35 @@ on-coproduct one-liners). Block at 47 cites "the three bridge
 properties exactly the diagnostic.dag Locus(🟢)/ByteRange(🟡)
 precedent"; block at 143 cites "the numeric substrate"; block at 236
 cites "the operations ride substrate that is scaffold today."
-- **Triage: VAGUE.**
-- **Why:** named arrival is a class ("the numeric substrate" /
-  "the operations ride substrate that is scaffold today") rather than
-  one concrete owner+task. The numeric-substrate gate is concretizable
-  to the same canonical
-  `feature: std/cardinality.dag refinement (T-3 Wave-A2)` arrival; the
-  operations-side gate concretizes to `feature: T-6/T-7 parse/emit
-  pipeline-stage substrate`.
-- **Action queued:** re-state each of the three in-file blocks against
-  one concrete arrival.
+- **Triage: CONCRETIZED (PR #3299).** Prose blocks unchanged; a
+  **#3244 plan anchor** immediately after the Deferred-section header
+  states the canonical **P3** (parse/emit / compiler pipeline substrate)
+  + **P1** (cardinality refinement + dependent numeric carriers) split
+  with file paths — rolls the former "class of arrivals" into the §1.1
+  plan.
 
 **`extdeps/formats/yaml.dag` × 6 in-file blocks** (lines 44, 85, 122,
 163, 245, 279) — pre-#3234 prose-form 🟡 blocks ("named owner +
 dissolution trigger, NEVER improvised"). Mix of parser-side
 (parse body's job) and refinement-substrate gates.
-- **Triage: mostly VALID-in-intent / VAGUE-in-form.**
-- **Why:** each cite-site names a class of arrival ("the parse body's
-  job", "deferred parser", "canonical-key / refined-lexeme substrate")
-  but not a concrete owner+task. The arrivals concretize to
-  `feature: T-6/T-7 parse pipeline-stage substrate` (parser-side gates)
-  and `feature: std/cardinality.dag refinement (T-3 Wave-A2)`
-  (refinement gates).
-- **Action queued:** re-state each block against one concrete arrival.
+- **Triage: CONCRETIZED (PR #3299).** Same **#3244 plan anchor** pattern
+  as `json.dag` (Deferred section).
 
 **`extdeps/formats/toml.dag` × 7 in-file blocks** (lines 41, 79, 86,
 96, 126, 144, 181, 223, 315) — same pre-#3234 prose form as yaml.dag.
 "DEFERRED (🟡, named owner + dissolution trigger)", "deferred parser
 (🟡 (1) below)", "refinement, 🟡 below". Same shape: parser-side +
 refinement-side gates.
-- **Triage: same as yaml.dag — VALID-in-intent / VAGUE-in-form.**
-- **Action queued:** same as yaml.dag.
+- **Triage: CONCRETIZED (PR #3299).** Same **#3244 plan anchor** pattern
+  as `json.dag` (Deferred section).
 
-**`extdeps/languages/typescript.dag` × 4 in-file blocks** (lines 21,
-34, 67, 69) — `D2a(2) grounding-map facet is 🟡 operator-pending` /
-`alias rows 🟡 TRACKED-SCAFFOLD per std/ ladders + refinement policy`.
-- **Triage: INVALID-GATE.**
-- **Why:** the named arrival ("D2a(2) grounding-map facet", "alias
-  rows per std/ ladders") references the **D2 alias-identity model**.
-  Per the operator's 2026-05-17 D2-reversal directive, D2 alias-identity
-  was REJECTED in favor of the **fact-bundle model** — the named
-  arrival as written *will not arrive*. This is not STALE (the gate
-  has not "already opened") and not VAGUE (the gate is concretely
-  named); it is **INVALID-GATE** — the gate's target was cancelled by
-  the design reversal. Per #3244, an INVALID-GATE entry must be
-  re-gated against the post-reversal model (the T-4 fact-bundle
-  Phase-3 rework — keystone PR #3226 merged @`77b9e7d72`; Phase-3 is
-  5-feeder-gated, four feeders open: T-3, T-29, T-30, T-25-core).
-- **Owning lane (re-gate action — out of C1 scope per "C1 marks and
-  flags, does not fix"):** the lane owning
-  `extdeps/languages/typescript.dag` (Lane C / T-4 manager
-  vivid-carp-207); the standing T-4-rework-PR HOLD directive applies.
+**`extdeps/languages/typescript.dag` (historical §3.2 cite)** — prior
+audit referenced ×4 INVALID-GATE prose blocks on **cancelled** D2
+alias-identity arrivals (lines 21, 34, 67, 69 on old `main` snapshots).
+- **Triage: RESOLVED on PR #3299 branch.** Live file is **37 lines**;
+  sum coproducts carry **🟢** `DECISIONS.md TS-D2` one-liners; header
+  points at **T-4 fact-bundle program** / D2-REV. Remaining bundle work
+  rolls under **§1.1 P4** via normal T-4 gates — not INVALID-GATE debt.
 
 ### 3.3 Summary table
 
