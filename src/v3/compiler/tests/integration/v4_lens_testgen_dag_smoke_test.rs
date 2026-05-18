@@ -2,9 +2,10 @@
 //!
 //! T-19 Wave-0: `src/v4/lens/testgen.dag` parses and exposes manual-anchor-key-driven
 //! `Generator` wiring (`kind` + `t19_anchor` + `classification` + `slot: TestgenConcept`).
-//! `Generator.t19_anchor` is `T19PresentManualAnchorKey` (manifest-present rows only; `T19ManualAnchorAbsent` stays on `TestClaim` / full-key lookup paths).
-//! `AssertKind` selection for anchors lives in `v4.std.verification` (`assert_kind_for_manual_anchor`)
-//! as the single substrate authority next to `TestClaim.kind`.
+//! `Generator.t19_anchor` is `T19ManualAnchorKey` (same discriminant as `TestClaim.t19_anchor`;
+//! `T19ManualAnchorAbsent` is fail-closed on bootstrap via `Outcome` and `t19_present_manual_anchor_key`).
+//! Wave-0 `AssertKind` for bootstrap lives in `v4.lens.testgen` (`bootstrap_assert_kind_for_manual_anchor`)
+//! aligned with manual `TestClaim.kind` rows; `v4.std.verification` keeps only the present-key gate.
 //! **Note:** `compile_to_dag` on this module alone does not resolve `import v4.std.*` peers
 //! (Import lowering is still M2-scoped); full merge compile lands with cross-file M2 per TASKS T-19.
 
@@ -37,22 +38,27 @@ fn v4_lens_testgen_wave0_substrate_parses() {
         function_count(&testgen, "testgen_concept_for_manual_anchor"),
         1
     );
+    assert_eq!(
+        function_count(&testgen, "bootstrap_assert_kind_for_manual_anchor"),
+        1,
+        "T-19 Wave-0: AssertKind bootstrap mapping should remain v4.lens.testgen"
+    );
 
     assert_eq!(
         module_paths(&verification),
         vec![vec!["v4", "std", "verification"]],
-        "`assert_kind_for_manual_anchor` substrate authority should remain v4.std.verification"
+        "`t19_present_manual_anchor_key` gate should remain v4.std.verification"
     );
 
     assert_eq!(
-        function_count(&verification, "assert_kind_for_manual_anchor"),
-        1,
-        "T-19 manual-anchor AssertKind authority should remain `v4.std.verification`"
-    );
-    assert_eq!(
         function_count(&verification, "t19_present_manual_anchor_key"),
         1,
-        "T-19 present-anchor gate should remain `v4.std.verification`"
+        "T-19 present-key gate should remain `v4.std.verification`"
+    );
+    assert_eq!(
+        function_count(&verification, "assert_kind_for_manual_anchor"),
+        0,
+        "AssertKind bootstrap mapping must not live in verification (single `T19ManualAnchorKey` axis)"
     );
 
     let anchor_ty =
@@ -60,16 +66,23 @@ fn v4_lens_testgen_wave0_substrate_parses() {
     assert!(
         matches!(
             anchor_ty,
-            SurfaceType::Named { name: n, .. } if n == "T19PresentManualAnchorKey"
+            SurfaceType::Named { name: n, .. } if n == "T19ManualAnchorKey"
         ),
-        "Generator.t19_anchor must be `T19PresentManualAnchorKey` (illegal states unrepresentable); got {anchor_ty:?}"
+        "Generator.t19_anchor must be `T19ManualAnchorKey` (no parallel present-only coproduct); got {anchor_ty:?}"
     );
 
-    let assert_kind_rt = fn_return_type(&verification, "assert_kind_for_manual_anchor")
-        .expect("assert_kind_for_manual_anchor should have an explicit return type");
+    let present_key_rt = fn_return_type(&verification, "t19_present_manual_anchor_key")
+        .expect("t19_present_manual_anchor_key should have an explicit return type");
     assert!(
-        type_is_outcome_named(assert_kind_rt, "AssertKind"),
-        "manual-anchor `AssertKind` projection must return `Outcome<AssertKind>`; got {assert_kind_rt:?}"
+        type_is_outcome_named(present_key_rt, "T19ManualAnchorKey"),
+        "`t19_present_manual_anchor_key` must return `Outcome<T19ManualAnchorKey>`; got {present_key_rt:?}"
+    );
+
+    let bootstrap_kind_rt = fn_return_type(&testgen, "bootstrap_assert_kind_for_manual_anchor")
+        .expect("bootstrap_assert_kind_for_manual_anchor should have an explicit return type");
+    assert!(
+        type_is_outcome_named(bootstrap_kind_rt, "AssertKind"),
+        "bootstrap `AssertKind` projection must return `Outcome<AssertKind>`; got {bootstrap_kind_rt:?}"
     );
 
     let concept_rt = fn_return_type(&testgen, "testgen_concept_for_manual_anchor")

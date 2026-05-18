@@ -1,6 +1,6 @@
 // src/v4/lens/testgen.dag
 // Scope: T-19 testgen — P2 manual-anchor join; Generator carries kind + anchor + classification + subject slot.
-// Owns: Generator TestgenConcept TypeConstructionSubject AlgebraLawSubject DiagnosticExhaustivenessSubject LensApplicabilitySubject BidirectionalRoundtripSubject
+// Owns: Generator TestgenConcept bootstrap_assert_kind_for_manual_anchor TypeConstructionSubject AlgebraLawSubject DiagnosticExhaustivenessSubject LensApplicabilitySubject BidirectionalRoundtripSubject
 // Consumes: v4.std.node v4.std.verification
 // Status: Wave-0 modeled; M2 merge compile + eval T-22.
 
