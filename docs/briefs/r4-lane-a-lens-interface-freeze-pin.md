@@ -27,12 +27,13 @@
 
 Per **`docs/design-lens-application-surface.md` §5.1**: for **unannotated** function declarations, the compiler **synthesizes** implicit **`IntrospectApplication<ComplexitySummary>`** during the lens fold (not stored in source). **Never** auto-synthesizes `Enforce` for unannotated functions. Acceptance batches that touch complexity **must** cite §5.1 when stating “always-on introspection.”
 
-## 3. Driver / registry CLI — **v0 slot** (stub until binary lands)
+## 3. Driver / registry CLI — **v0** (binary live; evaluation path still scaffold)
 
 **Invocation template (frozen string for Acceptance tables):**
 
 ```text
 gunbc-prefix-lens-driver v0 <LENS_ID> --path <FILE.dag> [--mode enforce|introspect]
+gunbc-prefix-lens-driver v0 <LENS_ID> --whole-corpus
 ```
 
 **`LENS_ID` registry (v0 — extend only via operator-signed pin amend):**
@@ -48,7 +49,7 @@ gunbc-prefix-lens-driver v0 <LENS_ID> --path <FILE.dag> [--mode enforce|introspe
 | `unused_parameters` | *(TBD v4 module)* | placeholder — ratify module path before impl. |
 | `structural_resolution` | *(TBD v4 module)* | placeholder — ratify module path before impl. |
 
-**Runnable-AC column:** until the Rust binary exists, use **`TBD — gunbc-prefix-lens-driver v0 …`** or interim **`v2-compiler compile --source-root src/v4`** + v3 fold per worker brief Fork A — **do not** claim CLI is live without receipt.
+**Runnable-AC column:** **`gunbc-prefix-lens-driver` v0** is a live **compile-only / registry + whole-corpus** receipt (CI runs `target/release/gunbc-prefix-lens-driver`; see `PREFIX-LENS-CI-1` Fork A / `tools/gunbc_prefix_lens_driver`). Use that argv for rows that mean **tracked `.dag` compile + `LENS_ID` registry validation** only. Rows that assert **lens evaluation** (`Witness` / `DimensionOk` / `DimensionFail` on applied v4 `Lens<Output>` with **`--mode enforce|introspect`**) stay **`TBD …`** until the evaluation dispatch lands — do not treat the v0 compile gate as a substitute receipt for those claims.
 
 ## 4. Mechanical port backlog (explicit — not blocking witness authoring)
 
