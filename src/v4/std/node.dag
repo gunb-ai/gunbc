@@ -116,6 +116,7 @@ fn node_well_formed(n: Node) -> Bool {
          acc && node_well_formed(n: e.target)
        })
 }
+// 🟢 predicate dissolution — DECISIONS.md §CP-1b item 12; docs/audit/dissolution-inventory.md §1.0 R1 (PR #3284).
 fn is_empty_conj_root(n: Node) -> Bool {
   match n.kind {
     TypeNode { connective: Conj } => count(n.children) == 0

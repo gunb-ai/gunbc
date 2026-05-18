@@ -195,6 +195,8 @@ consumes that derived fact.
 
 11. **`compiler/01_tokenize.dag` — `LexRules` / wave-1 E0 (T-6 / B2-OMNI; PR #3284):** `LexRules = Node`: lexical authority is structural (`NodeKind`, `Connective`, edge discipline on children), not ad-hoc `Symbol` tables inside the generic stage. Wave-1 E0 void lex = empty-root `Conj` (`std/node.dag` `is_empty_conj_root`). Future rows = `EdgeLabel.Named` under a `Conj` root; until the walk lands, a non-empty `Conj` root closes `Outcome::Rejected` with `tokenize_lexical_walk_not_realized` (fail-closed). Rationale lives here per Practice 9; `01_tokenize.dag` keeps only the mandated header.
 
+12. **`std/node.dag` — `is_empty_conj_root` (P5 / INVARIANTS §Progress Is Dissolution; codex PR #3284):** **Not a net-new `is_*` verifier** — this is the **landed R1 receipt** from `docs/audit/dissolution-inventory.md` §1.0: one structural query replaces three literal duplicate predicates (`compiler/01_tokenize.dag`, `compiler/02_parse.dag`, `extdeps/languages/dag.dag`). **Interim steady-state:** shared empty-`Conj`-root shape leg for wave-1 void LM / E0–G0 stubs until T-6/T-7 generic walks consume grammar-as-data without re-deriving this `match`. **Forward dissolution (named triggers):** (a) `feature: std/node.dag fold_node` (dissolution-inventory **P5**) — fold this discriminant into the canonical `Node` catamorphism / query surface when `fold_node` lands; and/or (b) `feature: compiler pipeline-stage lex-walk + parse-walk substrate` (inventory **P3**, TASKS T-6/T-7) — grammar-as-data carries void-book as constructor-shaped facts so consumers discriminate on `NodeKind` / carriers instead of calling `is_empty_conj_root`. **Audit anchor:** inventory §1.0 row **R1** (status = landed PR #3284).
+
 ---
 
 ## P4-3208 coproduct ledger
