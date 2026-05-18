@@ -69,8 +69,23 @@ data cementing_band_c_v2_complete_receipts: List<CementingBandCReceipt> = [
     kind: DagHarness
   },
   {
+    registry_name: "provenance"
+    module_stem: "t_r3_gate_87_cementing_regen_provenance"
+    kind: DagHarness
+  },
+  {
     registry_name: "structural_resolution"
     module_stem: "t_r3_gate_87_cementing_regen_structural_resolution"
+    kind: DagHarness
+  },
+  {
+    registry_name: "unused_parameters"
+    module_stem: "t_r3_gate_87_cementing_regen_unused_parameters"
+    kind: DagHarness
+  },
+  {
+    registry_name: "variant_payload"
+    module_stem: "t_r3_gate_87_cementing_regen_variant_payload"
     kind: DagHarness
   }
 ]

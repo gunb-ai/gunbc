@@ -264,10 +264,31 @@ fn expected_cementing_receipt_triples(
                     "dag".to_string(),
                 ));
             }
+            ("provenance", "provenance.dag") => {
+                out.insert((
+                    name.clone(),
+                    "t_r3_gate_87_cementing_regen_provenance".to_string(),
+                    "dag".to_string(),
+                ));
+            }
             ("structural_resolution", "structural_resolution.dag") => {
                 out.insert((
                     name.clone(),
                     "t_r3_gate_87_cementing_regen_structural_resolution".to_string(),
+                    "dag".to_string(),
+                ));
+            }
+            ("unused_parameters", "unused_parameters.dag") => {
+                out.insert((
+                    name.clone(),
+                    "t_r3_gate_87_cementing_regen_unused_parameters".to_string(),
+                    "dag".to_string(),
+                ));
+            }
+            ("variant_payload", "variant_payload.dag") => {
+                out.insert((
+                    name.clone(),
+                    "t_r3_gate_87_cementing_regen_variant_payload".to_string(),
                     "dag".to_string(),
                 ));
             }
@@ -355,6 +376,11 @@ fn v2_cementing_basenames_from_capability_rows(
 /// Band-C dispatch projection: `LensCapabilityBehavioralComplete` plus either
 /// `LensCapabilityV2RealV2` (v2-oracle cementing) or `LensCapabilityV2NoneV3Native`
 /// (v3-native gate-#87 `.dag` harness receipts).
+///
+/// **P2 invariant:** every `LensRegistryEntry` whose `lens_file` basename lands in this
+/// set must have a matching `(registry_name, module_stem, kind)` expansion in
+/// `expected_cementing_receipt_triples` and rows in `cementing_dispatch.dag` — including
+/// *all* behaviorally complete v3-native lenses in `regen.dag` (not only a PREFIX subset).
 fn band_c_cementing_basenames_from_capability_rows(
     dag: &Dag,
     capability_rows: &[FieldValue],
