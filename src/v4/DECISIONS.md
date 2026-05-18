@@ -838,8 +838,9 @@ clobber surviving language vocabulary and the `std/` numeric core.
 - **Shared C5 fidelity disposition carrier and disposition rows:** 🟡
   bound to the same post-D2-REV shared-C5-fidelity / fact-bundle rework.
   This covers `LeanFidelityDisposition` / `MachineFidelityDisposition`
-  consolidation and the `lean_feature_disposition` /
-  `machine_feature_disposition` predicate/data-row dissolution. Trigger:
+  consolidation and replacing the removed M1(2.8)-opaque `fn lean_feature_disposition` /
+  `fn machine_feature_disposition` maps with **structural** per-feature disposition
+  authority (data rows or shared carrier) once the shared C5 substrate lands. Trigger:
   the T-4 fact-bundle rework executes after T-30 and the remaining T-4
   feeders clear.
 - **Phantom `IRCarrier` parameters:** 🟢 not a dissolution-class finding;
