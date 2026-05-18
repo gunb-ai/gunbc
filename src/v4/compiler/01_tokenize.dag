@@ -1,7 +1,7 @@
 // src/v4/compiler/01_tokenize.dag
 // Scope: generic tokenization over language lex rules.
 // Anchor: https://en.wikipedia.org/wiki/Lexical_analysis
-// Owns: LexRule, LexRuleSet, LexRules, Token, TokenStream, tokenize_lexical_walk_not_realized, tokenize_lex_rules_not_well_formed, tokenize_lex_e0_source_not_exhausted, tokenize_lexical_walk_not_realized_diagnostic, tokenize_lex_rules_not_well_formed_diagnostic, tokenize_lex_e0_source_not_exhausted_diagnostic, empty_lex_rules_node, lex_rules_to_node, lex_rules_well_formed, tokenize.
+// Owns: LexRule, LexRuleSet, LexRules, Token, TokenStream, tokenize_lexical_walk_not_realized, tokenize_lex_rules_not_well_formed, tokenize_lex_e0_source_not_exhausted, tokenize_lexical_walk_not_realized_diagnostic, tokenize_lex_rules_not_well_formed_diagnostic, tokenize_lex_e0_source_not_exhausted_diagnostic, lex_rules_well_formed, tokenize.
 // Consumes: std collection, std diagnostic, std node, std text.
 // Status: Wave-1 void-lex path realized.
 
@@ -20,7 +20,7 @@ import v4.std.diagnostic {
   UserInputBoundary,
   WholeFile
 }
-import v4.std.node { Conj, Edge, Node, Symbol, TypeNode, node_well_formed }
+import v4.std.node { Node, Symbol, node_well_formed }
 import v4.std.text { String, string_is_empty }
 
 // 🟡 coproduct dissolution — DECISIONS.md CP-1b item 13 (LexRules).
@@ -82,16 +82,6 @@ fn tokenize_lex_e0_source_not_exhausted_diagnostic(at: Locus) -> Diagnostic {
 }
 
 
-fn empty_lex_rules_node() -> Node {
-  Node {
-    kind: TypeNode {
-      connective: Conj
-    },
-    children: []
-  }
-}
-
-
 fn lex_rule_well_formed(rule: LexRule) -> Bool {
   match rule {
     TokenRule { token_class: _, pattern: pattern } => node_well_formed(n: pattern)
@@ -106,19 +96,11 @@ fn lex_rule_set_well_formed(root: LexRuleSet) -> Bool {
 }
 
 
-fn lex_rules_to_node(rules: LexRules) -> Node {
-  match rules {
-    VoidLexRules => empty_lex_rules_node()
-    ModeledLexRules { root: _ } => empty_lex_rules_node()
-  }
-}
-
-
 fn lex_rules_well_formed(rules: LexRules) -> Bool {
   match rules {
     VoidLexRules => true
     ModeledLexRules { root: root } =>
-      lex_rule_set_well_formed(root: root) && node_well_formed(n: lex_rules_to_node(rules: rules))
+      lex_rule_set_well_formed(root: root)
   }
 }
 
