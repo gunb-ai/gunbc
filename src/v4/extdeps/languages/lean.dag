@@ -1,59 +1,209 @@
 // src/v4/extdeps/languages/lean.dag
-//
-// Scope: Lean 4 model — direction-agnostic language spec. The PROOF-1
-//        prover target: gunbc's structural evidence (A2 termination
-//        descent, the U1 algebra-homomorphism chain, cost, effects) is
-//        EMITTED as a Lean proof term; Lean's small independently-
-//        audited KERNEL checks it (the external trust-discharge for A3).
-// Anchor: Lean 4 — the versioned upstream language reference
-//         (https://leanprover.github.io/lean4/doc/ ; def / theorem /
-//         inductive / termination_by / decreasing_by). The spec is the
-//         fidelity authority the worker models against. Per L-2 the
-//         SPEC is modeled, NOT Mathlib/the library — a Lean library is
-//         just a program in the modeled language = `Node`.
-// Why (B-2, side-session 2026-05-15 — operator-ratified): PROOF-1
-//   (#3158, merged) framed the capability "no new file" and deferred
-//   its prover model to "realized when a lean/coq model lands". THIS
-//   is that model. B2-OMNI structurally REQUIRES a LanguageModel file
-//   to emit to any target, so PROOF-1's "emit to a lean model" needs
-//   exactly this file; adding it is the closed-tree extension the
-//   operator ratified (STRUCTURE.md invariant #1). ONE prover first —
-//   Lean — scoped to the first theorem class: TERMINATION (A2
-//   structural descent ≈ Lean well-founded recursion /
-//   `termination_by`/`decreasing_by`). Coq is the DEFERRED
-//   second-prover falsification probe ("does the model generalize
-//   across provers?") — O(1) per B2-OMNI, added only when a theorem
-//   class needs it, same probe posture as L-1/L-3; a future
-//   operator-ratified extension, never a silent TODO.
-//
-// Owns:
-//   - Lean 4 grammar (def / theorem / inductive / structure /
-//     termination_by / decreasing_by / by-tactic blocks) as
-//     declarative production DATA (B2-OMNI generic walker, not
-//     per-language procedural code)
-//   - the proof-term EMIT direction for PROOF-1: a gunbc evidence
-//     `Node` → a Lean term the Lean kernel checks. EXPORT only — the
-//     prover kernel-checks, NEVER searches (no-engine + A2 "checker
-//     not discoverer"); ungroundable evidence ⇒ fail-closed Diagnostic
-//     (inherits gunbc's honesty boundary, never papered over)
-//   - first theorem class: termination (A2 DescentEvidence → Lean
-//     well-founded recursion). Algebra-law (L7) / cost classes are
-//     LATER compositions over the same one U1 carrier, not new
-//     subsystems
-//   - per-feature C5-fidelity disposition in-model (L-2): proof-
-//     irrelevant surface is Declared-normalized, never silently lost
-//
-// Consumes:
-//   - std/node.dag, std/algebra.dag (the U1 homomorphism evidence
-//     PROOF-1 exports), std/diagnostic.dag (the fail-closed boundary)
-//   - cross-ref: DECISIONS.md PROOF-1 (A3 trust-discharge, merged
-//     #3158) + L-4 + STRUCTURE.md §7 + L-2 + B2-OMNI
-//
-// Status: scaffold — fill per TASKS.md PROOF-1 (T-15). Coq is NOT in
-// the file tree (deferred second-prover probe — a future
-// operator-ratified extension, never a silent TODO).
-// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the
-// immutable contract for the worker. Splitting this file requires
-// explicit operator ratification (substrate extension = stop signal).
+// Scope: Lean 4 language model for PROOF-1 termination export.
+// Owns: LeanDeclarationKind, LeanName, LeanLevel, LeanLevelRef, LeanLevelNode, LeanBinderInfo, LeanBinder, LeanTermRef, LeanTermNode, LeanTermForm, LeanMatchAlternative, LeanTerminationMeasure, LeanTerminationBy, LeanDecreasingProof, LeanTerminationClause, LeanDefinitionTermination, LeanProofArtifact, LeanFidelityFeature, LeanFidelityDisposition, LeanProofCheckSemantics, LeanBool, LeanNat, LeanInt, LeanUSize, LeanUInt8, LeanUInt16, LeanUInt32, LeanUInt64.
+// Consumes: Int, UInt8, UInt16, UInt32, UInt64, UIntPlatform, List, Bool, Nat, Symbol.
+// Status: D2-hard-held; fact-bundle rework gated.
 
 module v4.extdeps.languages.lean
+
+
+import v4.std.integer {
+  Int,
+  UInt8,
+  UInt16,
+  UInt32,
+  UInt64,
+  UIntPlatform
+}
+import v4.std.collection { List }
+import v4.std.logic { Bool }
+import v4.std.nat { Nat }
+import v4.std.node { Symbol }
+
+
+// Anchor: https://lean-lang.org/doc/reference/4.20.0/
+// 🟢 coproduct dissolution — DECISIONS.md P4-3208
+type LeanDeclarationKind
+  = LeanDef
+  | LeanTheorem
+  | LeanInductive
+  | LeanStructure
+  | LeanAxiom
+
+
+// Anchor: https://lean-lang.org/doc/reference/4.20.0/Basic-Types/Identifiers/
+type LeanName {
+  namespace: List<Symbol>
+  local: Symbol
+}
+
+
+// Anchor: https://lean-lang.org/doc/reference/4.20.0/The-Type-System/Universes/
+// 🟢 coproduct dissolution — DECISIONS.md P4-3208
+type LeanLevel
+  = LeanLevelZero
+  | LeanLevelSucc { predecessor: LeanLevelRef }
+  | LeanLevelMax { left: LeanLevelRef, right: LeanLevelRef }
+  | LeanLevelIMax { left: LeanLevelRef, right: LeanLevelRef }
+  | LeanLevelParam { name: Symbol }
+
+
+type LeanLevelRef {
+  name: LeanName
+}
+
+
+type LeanLevelNode {
+  name: LeanName
+  level: LeanLevel
+}
+
+
+// Anchor: https://lean-lang.org/doc/reference/4.20.0/Terms/Functions/
+// 🟢 coproduct dissolution — DECISIONS.md P4-3208
+type LeanBinderInfo
+  = ExplicitBinder
+  | ImplicitBinder
+  | StrictImplicitBinder
+  | InstanceImplicitBinder
+
+
+type LeanBinder {
+  name: LeanName
+  type: LeanTermRef
+  info: LeanBinderInfo
+}
+
+
+// Anchor: https://lean-lang.org/doc/reference/4.20.0/
+type LeanTermRef {
+  name: LeanName
+}
+
+
+type LeanTermNode {
+  name: LeanName
+  form: LeanTermForm
+}
+
+
+// 🟢 coproduct dissolution — DECISIONS.md P4-3208
+type LeanTermForm
+  = LeanSort { level: LeanLevelRef }
+  | LeanConst { name: LeanName, levels: List<LeanLevelRef> }
+  | LeanVar { name: LeanName }
+  | LeanApp { function: LeanTermRef, argument: LeanTermRef }
+  | LeanLambda { binder: LeanBinder, body: LeanTermRef }
+  | LeanForall { binder: LeanBinder, body: LeanTermRef }
+  | LeanLet { binder: LeanBinder, value: LeanTermRef, body: LeanTermRef }
+  | LeanMatch { scrutinee: LeanTermRef, alternatives: List<LeanMatchAlternative> }
+
+
+type LeanMatchAlternative {
+  constructor: LeanName
+  binders: List<LeanBinder>
+  body: LeanTermRef
+}
+
+
+// Anchor: https://lean-lang.org/doc/reference/4.20.0/Definitions/Recursive-Definitions/
+type LeanTerminationMeasure {
+  subject: LeanName
+  measure: LeanTermRef
+}
+
+
+// Anchor: https://lean-lang.org/doc/reference/4.20.0/Definitions/Recursive-Definitions/
+// 🟢 coproduct dissolution — DECISIONS.md P4-3208
+type LeanTerminationBy
+  = LeanStructuralTermination { decreasing_parameter: LeanName }
+  | LeanWellFoundedTermination { measure: LeanTerminationMeasure }
+
+
+type LeanDecreasingProof {
+  proof: LeanTermRef
+}
+
+
+// 🟢 coproduct dissolution — DECISIONS.md P4-3208
+type LeanTerminationClause
+  = LeanTerminationByClause { termination: LeanTerminationBy }
+  | LeanDecreasingBy { proof: LeanDecreasingProof }
+
+
+// Anchor: https://lean-lang.org/doc/reference/4.20.0/Definitions/Recursive-Definitions/
+// 🟢 coproduct dissolution — DECISIONS.md P4-3208
+type LeanDefinitionTermination
+  = LeanNoExplicitTermination
+  | LeanTerminationByOnly { termination: LeanTerminationBy }
+  | LeanDecreasingByOnly { proof: LeanDecreasingProof }
+  | LeanTerminationByWithDecreasingBy {
+      termination: LeanTerminationBy,
+      proof: LeanDecreasingProof
+    }
+
+
+// 🟢 coproduct dissolution — DECISIONS.md P4-3208
+type LeanProofArtifact
+  = LeanTheoremProofArtifact {
+      name: LeanName,
+      type: LeanTermRef,
+      proof: LeanTermRef
+    }
+  | LeanDefinitionTerminationArtifact {
+      name: LeanName,
+      type: LeanTermRef,
+      body: LeanTermRef,
+      termination: LeanDefinitionTermination
+    }
+
+
+// Anchor: https://lean-lang.org/doc/reference/4.20.0/
+// 🟢 coproduct dissolution — DECISIONS.md P4-3208
+type LeanFidelityFeature
+  = LeanKernelTerm
+  | LeanPrettyNameSpelling
+  | LeanWhitespaceAndLayout
+  | LeanTacticScript
+  | LeanElaboratorOnlySyntax
+  | LeanUnresolvedUniverseLevel
+  | LeanUnsupportedTheoremClass
+
+
+// 🟢 coproduct dissolution — DECISIONS.md P4-3208
+type LeanFidelityDisposition
+  = LeanModeled
+  | LeanDeclaredNormalized { feature: LeanFidelityFeature }
+  | LeanFailClosed { feature: LeanFidelityFeature }
+
+
+fn lean_feature_disposition(f: LeanFidelityFeature) -> LeanFidelityDisposition {
+  match f {
+    LeanKernelTerm => LeanModeled
+    LeanPrettyNameSpelling => LeanDeclaredNormalized { feature: LeanPrettyNameSpelling }
+    LeanWhitespaceAndLayout => LeanDeclaredNormalized { feature: LeanWhitespaceAndLayout }
+    LeanTacticScript => LeanFailClosed { feature: LeanTacticScript }
+    LeanElaboratorOnlySyntax => LeanFailClosed { feature: LeanElaboratorOnlySyntax }
+    LeanUnresolvedUniverseLevel => LeanFailClosed { feature: LeanUnresolvedUniverseLevel }
+    LeanUnsupportedTheoremClass => LeanFailClosed { feature: LeanUnsupportedTheoremClass }
+  }
+}
+
+
+// Anchor: https://lean-lang.org/doc/reference/4.20.0/
+type LeanProofCheckSemantics<IRCarrier> {
+  kernel_definitional_reduction: Bool
+  opaque_axiom_boundary: Bool
+  proof_irrelevance_for_propositions: Bool
+}
+
+
+// Anchor: https://lean-lang.org/doc/reference/4.20.0/Basic-Types/Fixed-Precision-Integers/
+type LeanBool = Bool
+type LeanNat = Nat
+type LeanInt = Int
+type LeanUSize = UIntPlatform
+type LeanUInt8 = UInt8
+type LeanUInt16 = UInt16
+type LeanUInt32 = UInt32
+type LeanUInt64 = UInt64
