@@ -642,6 +642,8 @@ Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-discipline.md §4) 
 
 **P1 / Practice 8 receipt (naming):** The substrate **does not** publish the identifier **`ReactNode`**. That name is the library / TypeScript lattice authority; a two-arm partial sum under it would be an **authoritative-but-incomplete** representation (the codex #3206 finding). **`ReactCreateElementChild`** names the bounded slice explicitly; full lattice promotion remains **owned elsewhere** — see `src/v4/TASKS.md` T-4.7 + `docs/design-r4-phase-1-5-hookkind-custom-react-substrate-canvas.md`.
 
+**P2 / Practice 3 receipt (children wiring):** `ReactHostElement`, `ReactCompositeElement`, and the **`Fragment`** arm payload carry **`children: List<ReactCreateElementChild>`** — child kind (nested element object vs primitive text) is materialized **at the element boundary**, not as a parallel **`List<ReactCrossDeclRef>`** that would force consumers to re-derive discriminant facts from opaque refs alone (codex **REQUEST_CHANGES** `#13836`).
+
 **Trigger + obligation:** **Dissolution = operator-ratified PR** extending or retiring this sum; consumers must not treat the Disj as terminal closure of React child modeling.
 
 **Five-pattern note:** Patterns 1–5 do not justify closing the full child lattice inside this substrate file; deferral is explicit **task authority** (TASKS T-4.7), not consumer-independent GREEN.

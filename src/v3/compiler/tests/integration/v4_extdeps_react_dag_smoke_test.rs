@@ -349,6 +349,89 @@ fn assert_react_element_fragment_has_key_field(dag: &v3_compiler::Dag) {
     );
 }
 
+fn assert_children_field_is_list_create_element_child(
+    dag: &v3_compiler::Dag,
+    record_name: &str,
+    conj_children: &[v3_compiler::dag::Field],
+) {
+    let list_decl = dag
+        .declaration_by_name("List")
+        .expect("List should resolve for `List<ReactCreateElementChild>` fields");
+    let create_element_child = dag
+        .declaration_by_name("ReactCreateElementChild")
+        .expect("ReactCreateElementChild should exist in this module");
+    let ch_field = conj_children
+        .iter()
+        .find(|f| f.label == "children")
+        .unwrap_or_else(|| panic!("{record_name} should declare `children` (createElement child list)"));
+    let ch_ty = dag.declaration(ch_field.ty);
+    let TypeConnective::Instantiation {
+        template,
+        arguments,
+    } = &ch_ty.connective
+    else {
+        panic!(
+            "{record_name}.children must be `List<ReactCreateElementChild>` (Instantiation), got {:?}",
+            ch_ty.connective
+        );
+    };
+    assert_eq!(
+        *template,
+        list_decl.id,
+        "{record_name}.children must instantiate `List`, got template decl {:?}",
+        dag.declaration(*template).name
+    );
+    assert_eq!(
+        arguments.len(),
+        1,
+        "{record_name}.children must be unary List<…>"
+    );
+    assert_eq!(
+        arguments[0].value, create_element_child.id,
+        "{record_name}.children must be `List<ReactCreateElementChild>`"
+    );
+}
+
+fn assert_react_element_records_children_are_create_element_child_lists(dag: &v3_compiler::Dag) {
+    for (record_name, preview) in [
+        ("ReactHostElement", "host"),
+        ("ReactCompositeElement", "composite"),
+    ] {
+        let decl = dag
+            .declaration_by_name(record_name)
+            .unwrap_or_else(|| panic!("{record_name} should exist after compiling react.dag"));
+        let TypeConnective::Conj { children } = &decl.connective else {
+            panic!(
+                "{record_name}: expected record (Conj), got {:?} ({preview})",
+                decl.connective
+            );
+        };
+        assert_children_field_is_list_create_element_child(dag, record_name, children);
+    }
+
+    let react_element = dag
+        .declaration_by_name("ReactElement")
+        .expect("ReactElement should exist after compiling react.dag");
+    let TypeConnective::Disj { variants } = &react_element.connective else {
+        panic!(
+            "ReactElement: expected coproduct (Disj), got {:?}",
+            react_element.connective
+        );
+    };
+    let fragment = variants
+        .iter()
+        .find(|v| v.label == "Fragment")
+        .expect("ReactElement should include a Fragment arm");
+    let payload = dag.declaration(fragment.ty);
+    let TypeConnective::Conj { children } = &payload.connective else {
+        panic!(
+            "Fragment arm: expected record (Conj) payload, got {:?}",
+            payload.connective
+        );
+    };
+    assert_children_field_is_list_create_element_child(dag, "Fragment", children);
+}
+
 fn assert_react_element_partition_is_create_element_return_only(dag: &v3_compiler::Dag) {
     let react_element = dag
         .declaration_by_name("ReactElement")
@@ -515,6 +598,11 @@ fn v4_extdeps_react_dag_composite_element_declares_key_and_ref() {
 #[test]
 fn v4_extdeps_react_dag_fragment_arm_declares_key() {
     assert_react_element_fragment_has_key_field(&react_extdeps_dag_or_panic());
+}
+
+#[test]
+fn v4_extdeps_react_dag_element_children_are_list_create_element_child() {
+    assert_react_element_records_children_are_create_element_child_lists(&react_extdeps_dag_or_panic());
 }
 
 #[test]
