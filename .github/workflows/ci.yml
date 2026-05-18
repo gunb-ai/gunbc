@@ -242,12 +242,6 @@ jobs:
         mkdir -p /tmp/v4-stage1
         target/release/v2-compiler compile --source-root src/v4 --output-dir /tmp/v4-stage1 --target dag
         echo "Bootstrap viability OK — v2 indexed and resolved all v4 modules."
-    - name: Build PREFIX lens driver (gunbc-prefix-lens-driver v0)
-      run: cargo build -p gunbc_prefix_lens_driver --release
-    - name: 'PREFIX v0 compile bucket (--whole-corpus argv; INTERIM per PREFIX-LENS-CI-1 Fork A)'
-      run: |
-        set -euo pipefail
-        target/release/gunbc-prefix-lens-driver v0 complexity --whole-corpus
     - name: 'INTERIM (T-24 bridge) — v4 v2-run-preflight notice (run gate deferred T-22)'
       env:
         V2_PREFLIGHT_SKIP_COMPILE: "1"
@@ -341,13 +335,6 @@ jobs:
           echo "::error::cargo test (lib+bins) failed (exit=$status)"
           exit "$status"
         fi
-    - name: 'PREFIX v0 compile bucket, v3 tree only (PREFIX_DRIVER_SKIP_V4; INTERIM)'
-      env:
-        PREFIX_DRIVER_SKIP_V4: "1"
-      run: |
-        set -euo pipefail
-        cargo build -p gunbc_prefix_lens_driver --release
-        target/release/gunbc-prefix-lens-driver v0 complexity --whole-corpus
     - name: v3 tests (full suite determinism harness, timings part 2/4)
       env:
         CARGO_TERM_COLOR: never
