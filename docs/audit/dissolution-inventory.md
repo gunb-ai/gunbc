@@ -23,11 +23,16 @@ an owning task (the comment-graveyard case is P10, flagged
 **concretized** in authoritative `src/v4/DECISIONS.md` Part 6 rows
 (`SL-3229-VERILOG-D3200`, `SL-3229-FLOAT-NOMINAL`, and
 `SL-3229-INTEGER-GROUP-COMPLETION` as a **named `feature:`** on **P10**
-with **⛔ owning `TASKS.md` T-# still TBD**) plus one-line **#3244 plan
-anchors** in `extdeps/formats/{json,yaml,toml}.dag` Deferred sections.
-Section 3 triage + §1.1 rollup language below reflects this amendment;
-live **`feature:`** obligations are always the **DECISIONS.md** row
-text when the two sources differ.
+with **⛔ owning `TASKS.md` T-# still TBD**). The three T-4.6 format
+carriers (`extdeps/formats/{json,yaml,toml}.dag`) record the matching
+**#3244 / Practice-4** obligations as **terse `// 🟡 gated — feature: … —
+DECISIONS.md Part 6 · <SL-3229-*>` lines** immediately **after** each
+file's closed value coproduct — **no** separate `Deferred` / long-form
+narrative block on current `main` + #3299; **single** authority path is
+**DECISIONS.md Part 6** + those one-liners (Practice 5). Section 3
+triage + §1.1 rollup language below reflects this amendment; live
+**`feature:`** obligations are always the **DECISIONS.md** row text when
+the two sources differ.
 
 **This inventory is a dissolution PLAN, not a catalog.** Per operator
 directive (#3244 commit `9b896f36d`, 2026-05-18): "I don't want these
@@ -600,41 +605,42 @@ DECISIONS.md Part 6 · SL-3229-LLVM-WIDTH.`
   cite-site becomes `// 🟡 coproduct dissolution — feature:
   std/cardinality.dag refinement (T-3) — DECISIONS.md Part 6 · SL-3229-LLVM-WIDTH.`
 
-**`extdeps/formats/json.dag` × 3 in-file blocks** (lines 47, 143, 236)
-— pre-#3234 prose-form `// 🟡 TRACKED-SCAFFOLD` blocks (not
-on-coproduct one-liners). Block at 47 cites "the three bridge
-properties exactly the diagnostic.dag Locus(🟢)/ByteRange(🟡)
-precedent"; block at 143 cites "the numeric substrate"; block at 236
-cites "the operations ride substrate that is scaffold today."
-- **Triage: CONCRETIZED (PR #3299).** Prose blocks unchanged; a
-  **#3244 plan anchor** immediately after the Deferred-section header
-  states the canonical **P3** (parse/emit / compiler pipeline substrate)
-  + **P1** (cardinality refinement + dependent numeric carriers) split
-  with file paths — rolls the former "class of arrivals" into the §1.1
-  plan.
+**`extdeps/formats/json.dag`** — **Live (post–strict-deprose / #3299):**
+**23 lines** total. After `JsonValue` (lines 12–18), **lines 21–22** are
+exactly **two** terse `// 🟡 gated — feature: … — DECISIONS.md Part 6 ·
+SL-3229-T4-FORMAT-T6T7` / `… SL-3229-LLVM-WIDTH` gates (parse/emit → **P3**
+family + cardinality / numeric carriers → **P1**). The historical C1
+sweep cited **multi-hundred-line** `// 🟡 TRACKED-SCAFFOLD` prose blocks
+at old line numbers — **retired** on `main`; they are **not** present
+unchanged on HEAD.
+- **Triage: CONCRETIZED (PR #3299 + main de-prose).** Obligations are
+  carried only as the **Part 6–slug one-liners** above — same story as
+  §1.1 **P3** / **P1** rows.
 
-**`extdeps/formats/yaml.dag` × 6 in-file blocks** (lines 44, 85, 122,
-163, 245, 279) — pre-#3234 prose-form 🟡 blocks ("named owner +
-dissolution trigger, NEVER improvised"). Mix of parser-side
-(parse body's job) and refinement-substrate gates.
-- **Triage: CONCRETIZED (PR #3299).** Same **#3244 plan anchor** pattern
-  as `json.dag` (Deferred section).
+**`extdeps/formats/yaml.dag`** — **Live:** **25 lines**. After `YamlValue`
+(lines 12–19), **lines 22–24** are **three** terse `// 🟡 gated — feature:`
+lines (`SL-3229-T4-FORMAT-T6T7`, `SL-3229-LLVM-WIDTH`,
+`SL-3229-YAML-CANONICAL-KEYS`). No `Deferred` section.
+- **Triage: CONCRETIZED (PR #3299 + main de-prose).** Same authority
+  pattern as `json.dag`.
 
-**`extdeps/formats/toml.dag` × 7 in-file blocks** (lines 41, 79, 86,
-96, 126, 144, 181, 223, 315) — same pre-#3234 prose form as yaml.dag.
-"DEFERRED (🟡, named owner + dissolution trigger)", "deferred parser
-(🟡 (1) below)", "refinement, 🟡 below". Same shape: parser-side +
-refinement-side gates.
-- **Triage: CONCRETIZED (PR #3299).** Same **#3244 plan anchor** pattern
-  as `json.dag` (Deferred section).
+**`extdeps/formats/toml.dag`** — **Live:** **27 lines**. `TomlValue` is
+preceded by `// 🟡 coproduct dissolution — … SL-3229-TOML-TABLE-SYNTAX`
+(line 11); after the sum (lines 12–20), **lines 23–26** are **four**
+terse `// 🟡 gated — feature:` lines (`SL-3229-T4-FORMAT-T6T7`,
+`SL-3229-LLVM-WIDTH`, `SL-3229-T4-FORMAT-TOML-DATETIME`,
+`SL-3229-TOML-TABLE-SYNTAX`). No `Deferred` section.
+- **Triage: CONCRETIZED (PR #3299 + main de-prose).** Same authority
+  pattern as `json.dag`.
 
 **`extdeps/languages/typescript.dag` (historical §3.2 cite)** — prior
 audit referenced ×4 INVALID-GATE prose blocks on **cancelled** D2
 alias-identity arrivals (lines 21, 34, 67, 69 on old `main` snapshots).
 - **Triage: RESOLVED on PR #3299 branch.** Live file is **37 lines**;
-  sum coproducts carry **🟢** `DECISIONS.md TS-D2` one-liners; header
-  points at **T-4 fact-bundle program** / D2-REV. Remaining bundle work
-  rolls under **§1.1 P4** via normal T-4 gates — not INVALID-GATE debt.
+  sum coproducts carry **🟢** `DECISIONS.md TS-D2` one-liners; the file
+  header carries a **single-line** `Status:` **🟡 gated — feature: T-4
+  fact-bundle Phase-3 …** gate (terse header discipline). Remaining
+  bundle work rolls under **§1.1 P4** — not INVALID-GATE debt.
 
 ### 3.3 Summary table
 
