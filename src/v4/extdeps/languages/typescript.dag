@@ -1,38 +1,42 @@
 // src/v4/extdeps/languages/typescript.dag
 // Scope: TypeScript 5.9 + ECMA-262 ES2025 scalar fact-bundle scaffold.
-// Owns: TsNumberWidth, TsBigIntWidth, TsScalar, TsEcma262PrimitiveOperationSemantics.
+// Owns: TsNumberKind, TsBigIntKind, TsNumberWidth, TsBigIntWidth, TsScalar, TsEcma262PrimitiveOperationSemantics.
 // Consumes: kernel-ambient String; std numeric/text/bool aliases and grounding rows are fact-bundle-gated.
 // Status: 🟡 gated — scalar tower fact-bundle slice landed; per-primitive bool alias/grounding rows held pending operator A-vs-B ruling.
 // Anchor: https://tc39.es/ecma262/
 
 module v4.extdeps.languages.typescript
 
-// 🟢 coproduct dissolution — `number` has binary64 storage plus ToInt32/ToUint32
-// coercion widths for bitwise operators; these are spec facts, not std aliases.
+type TsNumberKind
+  = NumberPrimitive
+
+type TsBigIntKind
+  = BigIntPrimitive
+
+// 🟢 coproduct dissolution — DECISIONS.md TS-SCALAR-PHASE3.
 type TsNumberWidth
   = Ieee754Binary64
   | ToInt32
   | ToUint32
 
-// 🟢 coproduct dissolution — `bigint` is exact and unbounded in the spec model.
 type TsBigIntWidth
   = Unbounded
 
-// 🟢 scalar fact-bundle coproduct — RustScalar-shaped: variant selects the
-// scalar family; payload carries the spec-read coordinates for that family.
+// 🟢 coproduct dissolution — DECISIONS.md TS-SCALAR-PHASE3.
 type TsScalar
-  = NumberScalar { width: TsNumberWidth }
-  | BigIntScalar { width: TsBigIntWidth }
+  = NumberScalar { kind: TsNumberKind, width: TsNumberWidth }
+  | BigIntScalar { kind: TsBigIntKind, width: TsBigIntWidth }
   | BooleanScalar
   | StringScalar
   | SymbolScalar
   | NullScalar
   | UndefinedScalar
 
-// 🟢 coproduct dissolution — resolver rows choose one ECMA primitive-semantics
-// track among binary64 Number, bitwise Number coercion, and exact BigInt.
+// 🟢 coproduct dissolution — DECISIONS.md TS-SCALAR-PHASE3.
 type TsEcma262PrimitiveOperationSemantics
   = TsNumberIeee754Binary64Semantics
   | TsNumberBitwiseInt32Semantics
   | TsNumberBitwiseUint32Semantics
   | TsBigIntExactUnboundedSemantics
+
+// 🟡 per-primitive D2-fix shape pending operator A-vs-B ruling — NOT modeled until ruled.
