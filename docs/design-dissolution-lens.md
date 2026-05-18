@@ -342,11 +342,13 @@ from real evidence, not speculation.
 | 2026-05-18 | `docs/design-effect-enumeration-resource-threading.md` §2.4 / §8.1; `docs/design-transport-taxonomy.md` `derive_effect_shape` migration | `None => CreateEffect`-style fabricated sibling fallback in effect-shape derivation | missing facts reject; they do not guess a plausible variant | L1.11 |
 | 2026-05-18 | `src/v4/DECISIONS.md` D2 / D2-REV; `docs/briefs/t-ground-languagespec.md` parallel-authority dissolution | duplicated type homes without alias / retirement / migration | one concept has one structural authority | L1.12 |
 
-Pattern across the ledger: all four are burn-down *substrate* PRs — the
-lane built to remove dissolution debt produced it. Each was *mostly*
-correct with one dissolution defect; #3249's was invisible to reviewers
-because the fold-laundering hid it. This is why the lens suite (mechanical,
-every time) and the burn-down pre-gate (catch at the source) both exist.
+Pattern across the ledger: the first four receipts are burn-down
+*substrate* PRs — the lane built to remove dissolution debt produced it.
+Later rows are checkable review / audit receipts for the same failure
+classes before the full registry-backed lens runner exists. #3249's was
+invisible to reviewers because the fold-laundering hid it. This is why the
+lens suite (mechanical, every time) and the burn-down pre-gate (catch at
+the source) both exist.
 
 ## 9. Build path — model-derived only
 
