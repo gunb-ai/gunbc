@@ -18,5 +18,144 @@ type JsonValue
   | JsonObject { members: Map<String, JsonValue> }
 
 
+<<<<<<< HEAD
 // 🟡 gated — feature: T-6/T-7 parse + T-10 emit pipeline substrate — DECISIONS.md Part 6 · SL-3229-T4-FORMAT-T6T7.
 // 🟡 gated — feature: std/cardinality.dag refinement + std/float.dag / std/integer.dag (T-3 Wave-A2) — DECISIONS.md Part 6 · SL-3229-LLVM-WIDTH.
+=======
+// ─────────────────────────────────────────────────────────────────────
+// Deferred — TRACKED SCAFFOLD (🟡). The operations ride substrate that
+// is scaffold today. Per the operator-ratified declarative-now /
+// operations-deferred-with-owner discipline (verified on std/collection.
+// dag #3169) these are NOT authored here — not as improvised bodies,
+// not as bodiless `fn` signatures (the frozen v2 seed rejects bodiless
+// `fn`, DECISIONS PARSE-1: "expected LBrace"). Each carries the three
+// bridge properties (scaffold doc / bounds on use / dissolution
+// trigger).
+//
+// #3244 plan anchor (dissolution-inventory §3.2; authoritative text:
+// DECISIONS.md Part 6 + docs/audit/dissolution-inventory.md): deferred
+// parse/emit + Char-stream walk → **P3** — feature:
+// compiler/01_tokenize.dag tokenize + compiler/02_parse.dag parse
+// substrate (T-6/T-7, TASKS.md). Numeric lexeme/value + refinements →
+// **P1** — feature: std/cardinality.dag bounded-natural/refinement
+// (T-3 Wave-A2), plus dependent std/float.dag + std/integer.dag carriers.
+//
+// (1) `json_parse` / `json_emit` — the parse and emit operation bodies.
+//   RFC 8259 §2: a JSON text is a sequence of Unicode code points; a
+//   JSON parser is fundamentally a Char-STREAM structural walk and emit
+//   builds a String from structure. Both require std/text.dag's `Char`
+//   + a `String` ↔ sequence-of-`Char` decomposition — std/text.dag is
+//   T-3 SCAFFOLD (unmerged). RATIFIED parse strategy (the brief §C
+//   "recursive vs iterative" decision, settled here as the canonical
+//   seam): RECURSIVE-DESCENT — a single self-recursive structural walk
+//   descending on the input Char-sequence spine (RFC 8259's grammar is
+//   LL(1)), mirroring `JsonValue`'s own recursion; termination is the
+//   A2 IMPLICIT case (descent on a proper sub-sequence of the input
+//   list — the std/node.dag `node_well_formed` shape), no ranking
+//   measure needed.
+//     (a) scaffold doc — THIS note; `json_parse`/`json_emit` are
+//         intentionally absent from json.dag today.
+//     (b) bounds on use — no consumer reads `json_parse`/`json_emit`
+//         from json.dag in this PR. The carrier-shaped seam IS ratified
+//         here, and it is fail-closed on BOTH directions: when authored,
+//         `json_parse : String -> Outcome<JsonValue>` and
+//         **`json_emit : JsonValue -> Outcome<String>`** — NOT a total
+//         `JsonValue -> String`. `Outcome<T>` is the operator-ratified
+//         D1 carrier (std/diagnostic.dag, DECISIONS item **I**).
+//         WHY EMIT IS ALSO FAIL-CLOSED (not total): `JsonNumber`'s
+//         `lexeme` is a raw `String` and the type-level §6 guarantee is
+//         deferred (2c) — so a `JsonValue` carrying a non-§6 lexeme
+//         (`JsonNumber { lexeme: "xyz" }`) is type-constructible OUTSIDE
+//         the parser. A total `JsonValue -> String` emit would have no
+//         typed channel to reject it and would FABRICATE an invalid
+//         JSON artifact — an INVARIANTS P3 / no-fabrication violation,
+//         and (since this is the canonical seam the other five formats
+//         mirror) it would propagate that hole seam-wide. So emit
+//         returns `Outcome<String>`: a structurally-representable but
+//         spec-invalid `JsonValue` (non-§6 lexeme, or any future
+//         analogue) emits `Rejected { diagnostic }`, never a fabricated
+//         string. Every non-conforming input (parse) AND every
+//         spec-invalid value (emit) is `Rejected { diagnostic }`, never
+//         a partial/defaulted/fabricated value (brief §C binding STOP;
+//         INVARIANTS P3). The other five T-4.6 formats mirror THIS
+//         fail-closed-both-directions seam (one carrier, not a per-file
+//         sum, not a total emit).
+//         IMMUTABLE-HEADER RECONCILE REQUIRED (surfaced, not silently
+//         diverged — the std/collection.dag #3169 / std/witness.dag /
+//         csv-class precedent): the immutable scaffold header line
+//         "`emit(JsonValue) -> String`" documents a TOTAL emit. Unlike
+//         the header's "`parse(String) -> Result<JsonValue,
+//         Diagnostic>`" (whose `…, Diagnostic` notation *denotes*
+//         `Outcome<…>` per DECISIONS item I), the emit line carries NO
+//         failure notation — it literally documents `-> String`, the
+//         not-fail-closed shape this finding correctly flags. This
+//         modeling note ratifies the fail-closed `-> Outcome<String>`
+//         seam (INVARIANTS P3); the immutable header's `-> String`
+//         therefore needs an operator/seam-gate HEADER RECONCILE (the
+//         worker may not edit the immutable header; superseding it is
+//         seam-gate/operator-tier, the csv-class authority
+//         distinction). Flagged to the T-4 seam-gate; this note is the
+//         fail-closed authority pending that reconcile, the header/note
+//         divergence tracked-not-silent here.
+//     (c) dissolution trigger — when std/text.dag (T-3) lands its
+//         `Char` + `String` ↔ `List<Char>` decomposition, a follow-up
+//         PR adds `json_parse : … -> Outcome<JsonValue>` /
+//         `json_emit : … -> Outcome<String>` as single self-recursive
+//         structural walks. The emit body MUST validate any non-parser-
+//         constructed value fail-closed (a non-§6 `JsonNumber.lexeme`,
+//         pending the 2c refined-lexeme type, is a `Rejected`, never
+//         emitted) — the trigger is NOT satisfied by a total
+//         `-> String` emit even once std/text.dag lands; the
+//         fail-closed `Outcome<String>` contract is part of THIS
+//         ratified seam, so the invalid-lexeme emission hole cannot
+//         survive the dissolution. The T-4 directive's "operations
+//         deferred-with-
+//         named-owner" + TASKS.md T-4.6 record the same dependency.
+//
+// (2) `JsonNumber.lexeme` — THREE DISTINCT concerns with THREE DISTINCT
+//   triggers (not one bundled deferral). RFC 8259 §6 separates the
+//   number TOKEN from its numeric VALUE; faithful modeling separates a
+//   third axis (a refined token TYPE):
+//   (2a) §6 token WELL-FORMEDNESS (is the lexeme a valid §6 `number`:
+//        `[minus] int [frac] [exp]`) — this is a PARSE-time check,
+//        owned by the deferred parse body (deferral (1)): a lexeme that
+//        is not §6-conformant is a fail-closed `Rejected` at parse,
+//        never stored as a `JsonNumber`. Trigger = deferral (1)'s
+//        std/text.dag (the parser validates §6 while constructing the
+//        node). NOT bundled with numeric interpretation.
+//   (2b) numeric VALUE interpretation (the lexeme → an actual number) —
+//        the spec leaves range/precision implementation-defined; the
+//        faithful numeric carriers are scaffold: IEEE-754 `Float`
+//        (std/float.dag) + the integer tower (std/integer.dag), T-3.
+//        The header's "IEEE-754 default + BigDecimal opt-in" is the
+//        eventual interpretation POLICY, authored once those land, not
+//        fabricated here. Trigger = std/float.dag + std/integer.dag.
+//   (2c) a refined §6-conformant lexeme TYPE (a `JsonNumberLexeme`
+//        String-refinement that makes a non-§6 lexeme structurally
+//        unrepresentable, so (2a) becomes type-enforced rather than
+//        parser-enforced) — requires the String-refinement substrate,
+//        which is UNLANDED (std/text.dag refinement, T-3 scaffold —
+//        the same deferred-refinement class as toml.dag's
+//        `NonEmptyStr` key). Authoring it now is impossible (no
+//        substrate) and would alter the ratified lexeme-preserving
+//        seam (decision #2); it is future refinement-substrate work,
+//        named here, NOT a now-fix. Trigger = the String-refinement
+//        substrate landing.
+//     (a) scaffold doc — THIS note; `JsonNumber` carries the raw
+//         `String` lexeme; §6-validity is parser-enforced (2a), the
+//         numeric value (2b) and a refined lexeme type (2c) are
+//         separately triggered; no interpretation is claimed here.
+//     (b) bounds on use — a consumer needing the numeric value waits
+//         on (2b); a consumer needing a type-level §6 guarantee waits
+//         on (2c); until then the parser (2a) is the §6 authority. The
+//         lexeme is round-trip-exact (B-6): emit reproduces the source
+//         token with zero precision loss, which a premature IEEE-754
+//         collapse could not.
+//     (c) dissolution trigger — (2a) dissolves with deferral (1)'s
+//         parser; (2b) when std/float.dag + std/integer.dag land
+//         (`json_number_value : JsonNumber -> Outcome<…>` per the
+//         header policy); (2c) when the String-refinement substrate
+//         lands (`lexeme` refines to a §6-conformant token type).
+//         Three independent dissolutions, tracked separately.
+
+>>>>>>> 1ec572ab3 (WIP: Dissolution pre-plan backlog — §3 VAGUE+INVALID-GATE not rollable under)
