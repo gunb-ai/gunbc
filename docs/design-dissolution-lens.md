@@ -896,56 +896,67 @@ fn derive_effect_shape(...) -> Outcome<EffectShape> {
   the same simple name — is the **trigger** for the lens. The
   trigger by itself does not finalize the verdict; it demands a
   *structural resolution* from the substrate. The lens then checks
-  for one of four outcomes — three passing resolutions plus a
-  fail-closed silence case:
+  for one of **five mechanically-distinct outcomes** — three passing
+  and two firing — and the decision table is closed (no escape
+  outside this enumeration):
   1. **Same-concept-with-alias.** A `CanonicalConcept` row claims
      the two declarations as co-members AND the non-canonical
      declaration is a structural alias (`import` + `type T =
-     <canonical-module>.T`) of the canonical home. → passes.
-  2. **Same-concept-without-alias.** A `CanonicalConcept` row
-     claims co-membership but the non-canonical declaration
-     redeclares (no alias edge) → fires (this is the "duplicate
-     authority" case the lens originally caught).
+     <canonical-module>.T`) of the canonical home. → **passes.**
+  2. **Same-concept-with-retirement-record.** A `CanonicalConcept`
+     row claims co-membership AND a `HistoricalDeclaration` row
+     names the non-canonical declaration as retired with a
+     `dissolves_when` trigger:
+     ```dag
+     data bool_dsl_std_retired: HistoricalDeclaration = {
+       type:           dsl.std.types.Bool,
+       dissolves_when: <trigger>,
+     }
+     ```
+     The retirement ledger is substrate data read by the lens, not
+     prose. → **passes.**
   3. **Distinct concepts.** A `ConceptDisambiguation` row names
      the two declarations as legitimately distinct concepts in
-     different namespaces → passes.
+     different namespaces:
      ```dag
      data network_vs_normalize_result: ConceptDisambiguation = {
        names:   { network.Result, compiler.normalize.Result },
        because: distinct-domain-concepts,
      }
      ```
-  4. **Silence (no row in either registry).** No `CanonicalConcept`
-     row, no `ConceptDisambiguation` row → **fires as
-     unresolved-duplicate**. The substrate must take a position.
+     → **passes.**
+  4. **Same-concept-without-alias-or-retirement.** A `CanonicalConcept`
+     row claims co-membership but the non-canonical declaration is
+     neither structurally aliased nor in the retirement ledger →
+     **fires** (the original duplicate-authority case).
+  5. **Silence.** No `CanonicalConcept` row, no
+     `ConceptDisambiguation` row, no `HistoricalDeclaration` row →
+     **fires as unresolved-duplicate.** The substrate must take a
+     position.
+  Note: **deletion / migration** (removing the redeclaration in the
+  same change so only one `type T` remains across the corpus) is
+  not a fifth resolution — it removes the trigger condition (the
+  lexical collision) entirely, so the lens never engages.
   The lexical collision is the trigger, not the conclusion;
   unresolved-silence fails closed. Same lexical name in different
   concepts passes via (3); the F9 motivating case (Bool in two
-  files with no rows anywhere) fires via (4) until either (1) or
-  (3) lands.
+  files with no rows anywhere) fires via (5) until one of (1),
+  (2), or (3) lands.
 - *Decidable:* yes — lexical-name uniqueness, `CanonicalConcept`
   registry membership, structural-alias edges, and
   `ConceptDisambiguation` registry membership are all structural
   facts in the parsed model. No comment/prose inspection.
 - *Verdict:* hard error.
 - *Escape (structural — same rule L1.7 enforces against itself):*
-  the passing shapes are paths (1) and (3) above — alias edge or
-  ConceptDisambiguation row — both substrate data read by the
-  lens. The historical retirement ledger from the previous
-  formulation remains a valid (1) variant:
-  ```dag
-  data bool_dsl_std_retired: HistoricalDeclaration = {
-    type:           dsl.std.types.Bool,
-    dissolves_when: <trigger>,
-  }
-  ```
-  Deletion/migration in the same change is also valid (the
-  redeclaration is removed). Comment markers — including a
-  `// Authority: canonical` header — do not satisfy the escape, by
-  construction. (Scope clarification — the *planned-but-absent
-  home* case is a different finding shape: unresolved reference /
-  fail-closed P3, caught by L0.8 extended to dangling import
-  paths, deliberately not L1.12.)
+  the passing shapes are outcomes (1), (2), and (3) in the
+  decision table above — alias edge, retirement-ledger row, or
+  ConceptDisambiguation row — all substrate data read by the
+  lens. Comment markers — including a `// Authority: canonical`
+  header — do not satisfy the escape, by construction. (Scope
+  clarification — the *planned-but-absent home* case is a
+  different finding shape: unresolved reference / fail-closed P3,
+  caught by L0.8 extended to dangling import paths, deliberately
+  not L1.12.)
 
 **Concrete match — F9 (`dsl/std/types.dag:173` and `src/v4/std/logic.dag:14`):**
 ```dag
