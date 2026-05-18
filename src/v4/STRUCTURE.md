@@ -113,7 +113,7 @@ src/v4/
       manual/            # hand-authored anti-regression anchors (Phase 1.5)
         connective_anchors.dag
         nat_law_anchors.dag
-        t19_manual_anchor_manifest.dag  # T-19 manifest ↔ TestClaim.anchor_slug (P2)
+        t19_manual_anchor_manifest.dag  # T-19 manifest — `T19ManualAnchorKey` membership rows
       boundary/          # boundary-honesty probes
         english_ingest_fail_closed.dag  # T-4.11 — fail-closed ingest, no fabrication
     fixture/             # canonical input programs

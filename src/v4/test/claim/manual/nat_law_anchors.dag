@@ -77,7 +77,7 @@ data claim_nat_mul_annihilator: TestClaim = TestClaim {
 data claim_nat_mul_associativity: TestClaim = TestClaim {
   kind: Equals,
   label: "manual/nat: multiplicative monoid associativity (anchor; eval T-22)",
-  anchor_slug: "t19.algebra_law.nat_mul_associativity",
+  t19_anchor: T19ManualNatMulAssociativity,
   input: stub_empty_conj,
   expected: Produced { value: stub_empty_conj },
   classification: TestClassification { tier: Tier1, layer: Unit }
