@@ -5,13 +5,19 @@ registry and dissolution-findings family) **and** the unified
 Dissolution dispositions vocabulary in PR #3244 (Practice 4 head, used
 by Practices 4 / 8 / 10). Rework-tracker PR #3240 task C1.
 
-**Status — DRAFT marks pending #3244 merge.** Symbol assignments below
-already use the #3244 form (`🔴 dissolve-now` / `🟢 terminal` / `🟡 gated`
-with `feature:`/`consumer:` gate kind, concrete named arrival, and
-dissolve-on-arrival obligation). When #3244 lands, this artifact ships
-as the consolidated authority for both halves of the dissolution-debt
-directive; if #3244 changes a clause materially, the affected marks are
-re-expressed in one follow-up commit.
+**Status — FINAL** (DRAFT→final flip 2026-05-18). PR #3244 (the
+unified dissolution-disposition vocabulary used by Practices 4 / 8 /
+10) squash-merged to `main` at commit `16191651a`. All symbol
+assignments below are now expressed against the merged form — `🔴
+dissolve-now` (substrate-exists, jumps queue) / `🟢 terminal` (nothing
+to dissolve into) / `🟡 gated` (carrying gate kind `feature:` /
+`consumer:`, the concrete named arrival including primitive + owning
+task, and the dissolve-on-arrival obligation). The #3244 amendment
+that **every 🟡 must bind a dissolution PLAN** — not merely a gate —
+is supplied by Section 1's per-primitive substrate-PR rollup: a 🟡 is
+valid only when it is rolled under a named P# whose substrate PR has
+an owning task (the comment-graveyard case is P10, flagged
+⛔ needs-concretization in § 1.1).
 
 **This inventory is a dissolution PLAN, not a catalog.** Per operator
 directive (#3244 commit `9b896f36d`, 2026-05-18): "I don't want these
@@ -63,10 +69,10 @@ dispositions:
   as named. Distinct from VAGUE (gate too loose) and STALE (gate
   opened).
 
-**Status — DRAFT marks pending #3244 merge.** Marks already use the
-#3244 form. When #3244 lands, this artifact ships as the consolidated
-authority; if #3244 changes a clause materially, the affected marks are
-re-expressed in one follow-up commit.
+**Status — FINAL.** PR #3244 merged at `16191651a` (2026-05-18). Marks
+re-confirmed against the merged form; no clause changes from DRAFT
+required this commit (marks already tracked the merged form per
+still-hawk-102's vocabulary previews).
 
 **C1's role is mark + flag + plan, not fix.** This inventory reports
 the disposition of each entry and rolls them into a substrate-PR plan;
