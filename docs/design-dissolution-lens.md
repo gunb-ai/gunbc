@@ -183,6 +183,92 @@ non-finding).
   string *data* that is not an emitter template, passes.
 - *Kills:* string-templated emitters (`template: "Vec<{0}>"`).
 
+### L1.7 Off-substrate-fact lens — kills *prose-asserted facts*
+
+- *Signature:* a declaration whose name or comment claims a closed-set
+  structural fact (`inhabits <Algebra>`, `opaque`, `non-empty`, `Word<N>`,
+  `Float<N>`, `bounded`, `non-forgeable`) without the corresponding
+  machine-readable artifact: algebra witness data, recursive cardinality
+  refinement, or constructor restriction.
+- *Decidable:* yes — claim vocabulary is closed, and each required
+  counterpart is a parsed-model fact. Width claims require recursive
+  discharge through the carrier chain (`Word64` needs `Byte` and `Bit`
+  cardinality, not only an outer field name).
+- *Verdict:* hard error on `std/` / substrate files.
+- *Escape:* rationale comments without fact-bearing tokens pass; a claim
+  with the structural counterpart present passes.
+- *Kills:* prose-only algebra inhabitance, width-in-the-name, and
+  opacity-in-the-comment shapes.
+
+### L1.8 Wrong-home lens — kills *orphan operations*
+
+- *Signature:* a function or data declaration whose primary concept is
+  structurally owned by another file. Primary concept is selected by:
+  witness target first; same-type closure second; upstream argument and
+  return convergence third. If no single primary concept is selected, the
+  declaration is cross-cutting and the lens does not fire.
+- *Decidable:* yes — witness membership, argument and return types, and
+  import graph are parsed-model facts.
+- *Verdict:* hard error in `std/` and `extdeps/`.
+- *Escape:* genuinely cross-cutting bridge / coercion / display functions
+  pass only through a closed-token operator-confirmed marker.
+- *Kills:* operations such as `nat_compare(Nat, Nat)` living outside the
+  `Nat` or algebra home.
+
+### L1.9 Vacuous-arm lens — kills *exhaustive-but-empty match*
+
+- *Signature:* a `match` on a coproduct where at least one arm returns a
+  trivial literal of the function's return type while a sibling arm does
+  structural work. The finding is asymmetric work over a closed set: the
+  author named every variant but left one branch content-free.
+- *Decidable:* yes — arm RHS shape is structural.
+- *Verdict:* hard error in substrate files.
+- *Escape:* a trivial arm may pass only with a closed-token structural
+  justification (`variant-has-no-children`, `identity-on-Unit`, etc.).
+- *Kills:* `node_locally_well_formed`-style arms that discharge an entire
+  sibling variant as `true` while other siblings are actually checked.
+
+### L1.10 String-escape-hatch lens — kills *typed-model bypass via String*
+
+- *Signature:* a `String` field carrying a structural role tag whose role
+  is registered by a `CanonicalCarrier<T>` row as superseded by a typed
+  carrier in scope. This generalizes L1.6 from emitter templates to domain
+  strings.
+- *Decidable:* yes — registry membership and role-tag refinements are
+  parsed-model facts. No hardcoded `command` / `path` / `url` name table.
+- *Verdict:* hard error.
+- *Escape:* untagged strings, or role tags with no canonical carrier row
+  in scope, pass.
+- *Kills:* `ShellCommand { command: String : command_role }` when
+  `process.Command` is declared as the canonical command carrier.
+
+### L1.11 Plausible-fallback lens — kills *fabricated sibling fallthrough*
+
+- *Signature:* a missing-info arm (`None => Ctor`, `Empty => Ctor`,
+  `[] => Ctor`) where `Ctor` is a constructor of the function's return
+  type and the return type is not `Outcome<_>`.
+- *Decidable:* yes — return type, constructor membership, and
+  missing-info pattern are structural.
+- *Verdict:* hard error. The fix is to return `Outcome<T>` and route the
+  missing fact to `Rejected { diagnostic: ... }`.
+- *Escape:* total defaulting helpers whose definition is exactly
+  `None => default` require operator confirmation.
+- *Kills:* "safe-looking" default constructors for unknown DELETE/PUT/PATCH
+  effect shape derivations.
+
+### L1.12 Parallel-authority lens — kills *duplicate concept homes*
+
+- *Signature:* the same type name `T` introduced by `type T = ...` in two
+  different `.dag` files without a structural alias / re-export,
+  retirement-ledger row, or same-change migration deleting one home.
+- *Decidable:* yes — duplicate declarations and structural alias/ledger
+  rows are parsed-model facts. Comment markers do not count as authority.
+- *Verdict:* hard error.
+- *Escape:* structural alias / re-export, structural retirement record,
+  or deletion plus consumer migration.
+- *Kills:* duplicated `Bool`, `Char`, `Url`, and machine-word concept
+  homes with no machine-readable canonical authority.
+
 ## 6. The discriminant / catamorphism distinction
 
 L1.1 and L1.5 enforce one algebraic fact worth stating directly: a
@@ -248,6 +334,12 @@ from real evidence, not speculation.
 | 2026-05-18 | #3255 | `nat_is_zero` hand-rolled discriminant | same | L1.1 |
 | 2026-05-18 | #3256 | 26 combinators nominalized into single-field wrapper types | an operation is a function, not a type | L1.2 |
 | 2026-05-18 | #3249 | `free_monoid_is_empty` laundered through a fold | discriminant ≠ catamorphism; do not conflate | L1.1 (extended) |
+| 2026-05-18 | ingest | prose-only algebra/width/opacity facts | facts live in substrate structure, not comments or names | L1.7 |
+| 2026-05-18 | ingest | orphan operation such as `nat_compare` outside its concept home | operations live with their primary concept | L1.8 |
+| 2026-05-18 | ingest | exhaustive match arm that returns `true` while sibling arms perform checks | exhaustive shape is not evidence of actual validation | L1.9 |
+| 2026-05-18 | ingest | role-tagged `String` field where a canonical typed carrier exists | typed domain facts must not tunnel through strings | L1.10 |
+| 2026-05-18 | ingest | `None => CreateEffect`-style fabricated sibling fallback | missing facts reject; they do not guess a plausible variant | L1.11 |
+| 2026-05-18 | ingest | duplicated type homes without alias / retirement / migration | one concept has one structural authority | L1.12 |
 
 Pattern across the ledger: all four are burn-down *substrate* PRs — the
 lane built to remove dissolution debt produced it. Each was *mostly*
