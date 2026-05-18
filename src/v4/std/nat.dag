@@ -1,14 +1,25 @@
 // src/v4/std/nat.dag
 // Scope: natural numbers.
 // Anchor: https://en.wikipedia.org/wiki/Natural_number
-// Owns: Nat, nat_cata, nat_add, nat_mul, nat_is_zero, nat_additive_commutative_monoid, nat_semiring.
+// Owns: Nat, nat_cata, nat_add, nat_mul, nat_compare, nat_is_zero, nat_additive_commutative_monoid, nat_semiring.
 // Consumes: std algebra.
 // Status: T-3 modeled.
 // Ledger: DECISIONS.md Part 6 — SL-P7-NAT-IS-ZERO-VPRED.
 
 
 module v4.std.nat
-import v4.std.algebra { Magma, Semigroup, Monoid, CommutativeMonoid, Semiring, CommutativeSemiring }
+import v4.std.algebra {
+  Magma,
+  Semigroup,
+  Monoid,
+  CommutativeMonoid,
+  Semiring,
+  CommutativeSemiring,
+  Ordering,
+  Less,
+  Equal,
+  Greater,
+}
 // 🟢 coproduct dissolution — DECISIONS.md classification ledger: Nat.
 type Nat
   = Zero
@@ -24,6 +35,18 @@ fn nat_add(a: Nat, b: Nat) -> Nat {
 }
 fn nat_mul(a: Nat, b: Nat) -> Nat {
   nat_cata(n: a, zero: Zero, succ: fn(acc) { nat_add(a: b, b: acc) })
+}
+fn nat_compare(a: Nat, b: Nat) -> Ordering {
+  match a {
+    Zero => match b {
+      Zero => Equal
+      Succ { prev: _ } => Less
+    }
+    Succ { prev: ap } => match b {
+      Zero => Greater
+      Succ { prev: bp } => nat_compare(a: ap, b: bp)
+    }
+  }
 }
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: coproduct variant-discriminant predicate substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived Zero-variant discriminant projection; forbidden: nat_cata / fold launder (operator CORE 2026-05-18).
 fn nat_is_zero(n: Nat) -> Bool {
