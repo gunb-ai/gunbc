@@ -238,6 +238,7 @@ def coproduct_tag_from_merge_base(rel: str) -> dict[str, tuple[str, str]]:
         for nm in (
             "ConstantUnaryOperator",
             "ConstantBinaryOperator",
+            "ConstantRangeExpression",
             "ConstantSelect",
             "ConstantPrimary",
             "ConstantExpression",

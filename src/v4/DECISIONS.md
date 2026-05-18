@@ -1549,11 +1549,12 @@ Merge-base `92cb26402` **Practice-4** `// Coproduct dissolution … 🟢 GREEN (
 
 ### CP-3229-VERILOG-CONSTEXPR-TERMINAL — 🟢 Verilog P8 constant-expression coproducts
 
-PR #3272 adds five Verilog constant-expression sum carriers not present in
+PR #3272 adds Verilog constant-expression sum carriers not present in
 merge-base `92cb26402`: `ConstantUnaryOperator`, `ConstantBinaryOperator`,
-`ConstantSelect`, `ConstantPrimary`, and `ConstantExpression`.
+`ConstantRangeExpression`, `ConstantSelect`, `ConstantPrimary`, and
+`ConstantExpression`.
 
-Practice-4 terminal ledger: all five are closed, spec-grounded enumerations
+Practice-4 terminal ledger: all of these are closed, spec-grounded enumerations
 from IEEE 1364-2005 §A.8.3 / §A.8.4. They are not user-extensible vocabulary,
 not coordinates of a product, and not consumer-local policy. Their variants
 partition the standard's constant-expression grammar operators, selectable
