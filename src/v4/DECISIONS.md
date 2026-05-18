@@ -1358,7 +1358,22 @@ Verbatim `//` lines from merge-base `verilog.dag` (lines **2156–2311**):
 //
 ```
 
-**Dissolution trigger:** partially landed upstream as the canonical `std/collection.dag` Wave-A2 predicate substrate (`non_empty` backed by `free_monoid_non_empty`), but the `NonEmptyList<T> = List<T> where non_empty` alias is not exported and consumer rewrites remain blocked until `src/v3/compiler/src/lower.rs` synthesizes/enforces the registered `non_empty` predicate for `List` carriers through the landed FreeMonoid predicate. Until then, the merge-base `List<T>` sites stay producer-side invariants rather than API-enforced refinements.
+**PR #3272 extension:** P8's constant-expression carrier adds sites 27-29:
+`ConstantFunctionCall.arguments` (§A.8.2 `constant_function_call`),
+`ConstantSystemFunctionCall.arguments` (§A.8.2 `constant_system_function_call`),
+and `ConstantConcatenation.expressions` (IEEE 1364-2005 §A.8.1
+`constant_concatenation ::= { constant_expression { , constant_expression } }`).
+They ride the same Wave-A2 `List<T> where non_empty` deferral; no
+Verilog-local non-empty carrier is introduced.
+
+**Dissolution trigger:** `std/collection.dag` Wave-A2 `List<T> where non_empty` (29 total sites after PR #3272: merge-base sites 1-26 plus PR #3272 sites 27-29).
+Upstream has partially landed the canonical predicate substrate (`non_empty`
+backed by `free_monoid_non_empty`), but the `NonEmptyList<T> = List<T> where
+non_empty` alias is not exported and consumer rewrites remain blocked until
+`src/v3/compiler/src/lower.rs` synthesizes/enforces the registered `non_empty`
+predicate for `List` carriers through the landed FreeMonoid predicate. Until
+then, the merge-base `List<T>` sites and PR #3272 sites 27-29 stay producer-side
+invariants rather than API-enforced refinements.
 
 ### SL-3229-VERILOG-D3200 — #3200 consumer-independent 🟡 coproducts (first-consumer decomposition)
 
@@ -1368,9 +1383,13 @@ Merge-base `verilog.dag` Practice-4 headers marked **🟡 YELLOW** under the **#
 
 **Dissolution trigger:** first meaning-consumer owes the structural decomposition named in each carrier’s merge-base footer (D2 / synthesis / elaboration consumers — not a verilog-local mint).
 
-### SL-3229-VERILOG-VECTOR-RANGE — `VectorRange` lexeme-pair bridge (constant_expression)
+### SL-3229-VERILOG-VECTOR-RANGE — CLOSED: `VectorRange` constant_expression endpoints
 
-Verbatim `//` lines from merge-base `verilog.dag` (lines **585–627** — `VectorRange` + 🟡 three-bridge note):
+Closed by the P8 Verilog sub-grammar landing: `src/v4/extdeps/languages/verilog.dag`
+now declares `ConstantExpression` and supporting constant-expression carriers,
+and `VectorRange` stores `msb: ConstantExpression` / `lsb: ConstantExpression`
+instead of raw lexeme strings. Historical merge-base context (lines **585–627**)
+is retained below for auditability:
 
 ```text
 
@@ -1427,7 +1446,8 @@ type VectorRange {
 
 ```
 
-**Dissolution trigger:** bundled T-4 LanguageModel `constant_expression` productions land; lexeme pair parses to AST (merge-base text).
+**Dissolution result:** P8 landed; no live `SL-3229-VERILOG-VECTOR-RANGE`
+slug remains on `verilog.dag`'s `// Ledger:` line.
 
 ### SL-3229-VERILOG-COST — raw-`Int` Verilog cost axes (`VerilogCost`)
 
@@ -1598,6 +1618,25 @@ Merge-base `92cb26402` **Practice-4** `// Coproduct dissolution … 🟢 GREEN (
 | `src/v4/extdeps/formats/json.dag` | 1 |
 | `src/v4/extdeps/formats/yaml.dag` | 1 |
 | `src/v4/std/float.dag` | 2 |
+
+### CP-3229-VERILOG-CONSTEXPR-TERMINAL — 🟢 Verilog P8 constant-expression coproducts
+
+PR #3272 adds Verilog constant-expression sum carriers not present in
+merge-base `92cb26402`: `ConstantUnaryOperator`, `ConstantBinaryOperator`,
+`ConstantRangeExpression`, `ConstantSelect`, `ConstantPrimary`, and
+`ConstantExpression`.
+
+Practice-4 terminal ledger: all of these are closed, spec-grounded enumerations
+from IEEE 1364-2005 §A.8.3 / §A.8.4. They are not user-extensible vocabulary,
+not coordinates of a product, and not consumer-local policy. Their variants
+partition the standard's constant-expression grammar operators, selectable
+constant-primary references, primary forms, and recursive expression forms.
+The expression recursion is the grammar's own recursion; it does not add a
+new substrate behavior or a second expression authority. Non-coproduct
+records introduced with them (`ConstantFunctionCall`,
+`ConstantSystemFunctionCall`, `ConstantConcatenation`,
+`ConstantMultipleConcatenation`, `VectorRange`) are structural payload records,
+not Practice-4 sums.
 
 **Recovery:**
 
