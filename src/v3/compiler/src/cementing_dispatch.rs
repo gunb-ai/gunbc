@@ -364,8 +364,7 @@ fn band_c_cementing_basenames_from_capability_rows(
         let (lens_basename, _structural_label, behavioral_label, v2_label) =
             parse_capability_register_row(dag, row)?;
         let band_c_complete = behavioral_label == "LensCapabilityBehavioralComplete"
-            && (v2_label == "LensCapabilityV2RealV2"
-                || v2_label == "LensCapabilityV2NoneV3Native");
+            && (v2_label == "LensCapabilityV2RealV2" || v2_label == "LensCapabilityV2NoneV3Native");
         if band_c_complete {
             basenames.insert(lens_basename);
         }

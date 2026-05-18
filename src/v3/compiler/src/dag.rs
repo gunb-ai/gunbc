@@ -344,11 +344,11 @@ pub(crate) use effects::{
 };
 
 pub use effects::{
-    lane2_workflow_idempotency_report, operation_effect_shape,
-    report_unsupported_workflow_variant, BranchArm, BreakingShape, CallableRef, CompositionVerdict,
-    CreateCause, EffectShape, HttpMethodScalar, IdempotencyUnsupportedDetail, IdempotentShape,
-    InputField, KeySource, Operation, ParallelismUnsupportedDetail, ParallelismUnsupportedKind,
-    PathTemplate, RestEndpointBinding, UrlPathToken, WorkflowEffect, WorkflowIdempotencyReport,
+    lane2_workflow_idempotency_report, operation_effect_shape, report_unsupported_workflow_variant,
+    BranchArm, BreakingShape, CallableRef, CompositionVerdict, CreateCause, EffectShape,
+    HttpMethodScalar, IdempotencyUnsupportedDetail, IdempotentShape, InputField, KeySource,
+    Operation, ParallelismUnsupportedDetail, ParallelismUnsupportedKind, PathTemplate,
+    RestEndpointBinding, UrlPathToken, WorkflowEffect, WorkflowIdempotencyReport,
     WorkflowParallelismReport,
 };
 pub use ports::{
