@@ -20,8 +20,18 @@ import v4.std.diagnostic {
   UserInputBoundary,
   WholeFile
 }
+<<<<<<< HEAD
 import v4.std.node { Node, Symbol, is_empty_conj_root, node_well_formed }
 import v4.std.text { String, string_is_empty }
+=======
+import v4.std.node {
+  Node,
+  Symbol,
+  is_empty_conj_root,
+  node_well_formed,
+}
+import v4.std.text { Char, String, string_is_empty }
+>>>>>>> 5e0478917 (Dedupe empty Conj root predicate)
 type LexRules = Node
 type Token {
   class: Symbol
@@ -70,6 +80,7 @@ fn tokenize(text: String, file: Symbol, rules: LexRules) -> Outcome<TokenStream>
     file: file,
     extent: WholeFile
   }
+<<<<<<< HEAD
   if node_well_formed(n: rules) {
     if is_empty_conj_root(n: rules) {
       if string_is_empty(s: text) {
@@ -81,6 +92,17 @@ fn tokenize(text: String, file: Symbol, rules: LexRules) -> Outcome<TokenStream>
       } else {
         Rejected {
           diagnostic: tokenize_lex_e0_source_not_exhausted_diagnostic(at: at)
+=======
+  if !node_well_formed(n: rules) {
+    Rejected {
+      diagnostic: tokenize_lex_rules_not_well_formed_diagnostic(at: at)
+    }
+  } else if is_empty_conj_root(n: rules) {
+    if string_is_empty(s: text) {
+      Produced {
+        value: TokenStream {
+          tokens: []
+>>>>>>> 5e0478917 (Dedupe empty Conj root predicate)
         }
       }
     } else {
