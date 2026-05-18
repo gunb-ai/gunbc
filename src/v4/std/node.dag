@@ -1,7 +1,11 @@
 // src/v4/std/node.dag
 // Scope: v4 substrate root for type and computation nodes.
 // Anchor: THESIS.md "Substrate shape" + MODELING.md.
+<<<<<<< HEAD
 // Owns: Symbol, Hash, Connective, Behavior, NodeKind, EdgeLabel, Edge, Node, EdgeDiscipline, connective_edge_discipline, edge_is_named, edge_is_positional, all_edges_named, all_edges_positional, name_occurrences, all_names_distinct, edges_conform, node_locally_well_formed, node_well_formed, is_empty_conj_root, Path, Edit, Diff.
+=======
+// Owns: Symbol, Hash, Connective, Behavior, NodeKind, EdgeLabel, Edge, Node, EdgeDiscipline, connective_edge_discipline, edge_is_named, edge_is_positional, all_edges_named, all_edges_positional, name_occurrences, all_names_distinct, edges_conform, node_locally_well_formed, node_well_formed, FoldedEdge, NodeCataAlgebra, fold_list_right, fold_node, fold_node_cata, Path, Edit, Diff.
+>>>>>>> 916f1c1c7 (WIP: Dissolution upstream P5 — std/node.dag fold_node catamorphism (T-1 subst)
 // Consumes: none.
 // Status: T-1 modeled; substrate-extension rule in src/v4/STRUCTURE.md.
 
@@ -116,6 +120,7 @@ fn node_well_formed(n: Node) -> Bool {
          acc && node_well_formed(n: e.target)
        })
 }
+<<<<<<< HEAD
 // 🟢 predicate dissolution — DECISIONS.md §CP-1b item 12; docs/audit/dissolution-inventory.md §1.0 R1 (PR #3284).
 fn is_empty_conj_root(n: Node) -> Bool {
   match n.kind {
@@ -123,6 +128,57 @@ fn is_empty_conj_root(n: Node) -> Bool {
     _ => false
   }
 }
+=======
+
+// ---------------------------------------------------------------------------
+// Structural catamorphism over `Node` (derived-ops registry row 1 —
+// docs/modeling-discipline.md §10; dissolution P5 / #3243 §1.1).
+//
+// `fold_node` folds every `Edge.target` before combining at the parent:
+// child results are carried as `FoldedEdge<A>` (edge label + folded child).
+// Child order matches `n.children` (Freemonoid Cons head-to-tail order).
+//
+// Supply the F-algebra as `algebra` (or bundle it in `NodeCataAlgebra` and
+// call `fold_node_cata`). Use `fold_node(..., algebra: alg.reduce)` to thread
+// a record field; do not write `alg.reduce(...)` — call-on-field through a
+// parameter is not lowered (Prereq-X1.b).
+// ---------------------------------------------------------------------------
+
+type FoldedEdge<A> {
+  label: EdgeLabel
+  child: A
+}
+
+type NodeCataAlgebra<A> {
+  reduce: fn(NodeKind, List<FoldedEdge<A>>) -> A
+}
+
+fn fold_list_right<T, U>(list: List<T>, init: U, f: fn(T, U) -> U) -> U {
+  match list {
+    Empty => init
+    Cons { head: h, tail: t } => f(h, fold_list_right(list: t, init: init, f: f))
+  }
+}
+
+fn fold_node<A>(n: Node, algebra: fn(NodeKind, List<FoldedEdge<A>>) -> A) -> A {
+  let folded_edges = fold_list_right(
+    list: n.children,
+    init: Empty,
+    f: fn(e: Edge, acc: List<FoldedEdge<A>>) {
+      Cons {
+        head: FoldedEdge { label: e.label, child: fold_node(n: e.target, algebra: algebra) },
+        tail: acc
+      }
+    }
+  )
+  algebra(n.kind, folded_edges)
+}
+
+fn fold_node_cata<A>(n: Node, alg: NodeCataAlgebra<A>) -> A {
+  fold_node(n: n, algebra: alg.reduce)
+}
+
+>>>>>>> 916f1c1c7 (WIP: Dissolution upstream P5 — std/node.dag fold_node catamorphism (T-1 subst)
 type Path {
   steps: List<Symbol>
 }
