@@ -844,6 +844,11 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // T-30: `compile_to_dag` smoke on `src/v4/std/fact_density.dag` (Practice 8
     // structural mirror in `v4_hollow_alias_gate`). SG-0 + INVARIANTS §P5(b) receipt.
     "src/v3/compiler/tests/integration/v4_std_fact_density_dag_smoke_test.rs",
+    // Wave-0 test/bootstrap lane: parse-surface ratchet for T-19 `lens/testgen.dag`, T-20
+    // `workflow/bootstrap.dag`, and the #3213 CI -> bootstrap authority import. This is an
+    // interim SG-0 receipt only; it dissolves when the same shape is covered by `.dag`
+    // TestClaims / generated testgen coverage.
+    "src/v3/compiler/tests/integration/v4_test_bootstrap_wave0_smoke_test.rs",
     // §1.8 gate #96 (`value_body_substrate_mirror_isomorphism_executable`):
     // CI-visible generated Rust `ValueBody` mirror vs `substrate.dag`
     // constructor isomorphism. Dissolves when `ValueBody` no longer has a
