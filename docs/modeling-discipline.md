@@ -125,37 +125,66 @@ variants) are compressed references to richer structure. In a closed
 system where we own all the definitions, most coproducts are unfinished
 modeling — the richer structure exists, we just haven't written it down.
 
-Every enum with N ≥ 2 variants must be classified as one of:
+**Dissolution dispositions — the universal rule.** Every coproduct,
+every type modeling a spec primitive (Practice 8), and every function
+that could hand-roll a derived operation (Practice 10) is held to one
+question — **can this dissolve now? if not, why not?** The answer is
+exactly one of three dispositions, the shared 🔴/🟡/🟢 vocabulary used by
+Practices 4, 8, and 10. There is no fourth: an unclassified item is
+unfinished modeling and blocks merge.
 
-- **🟢 GREEN (terminal)** — no richer source exists. The variants trace
-  to irreducible distinctions at the user-input boundary (literals,
-  keywords, source locations). Requires a **ledger entry**: a written
-  record of which dissolution patterns were attempted and why they
-  failed. **GREEN is consumer-independent.** "No consumer needs the
-  decomposition yet" is *not* a basis for GREEN — only "no richer source
-  *exists*" is. The test: if you can *name* the richer structure the
-  variants project over — the axes, the source set — then a richer
-  source exists, and the coproduct is **not** GREEN, regardless of
-  whether anything consumes that structure today. A faithful enumeration
-  of a spec's surface labels whose meaning decomposes into namable axes
-  (e.g. a net-kind enum that is `{resolution, default, drivers}`) is
-  YELLOW, not GREEN — see the next bullet.
+- **🔴 dissolve-now** — it *can* dissolve and nothing blocks it, so it
+  **must**. 🔴 is a directive, never a standing state. Dissolution is
+  debt, and debt is paid before new work — a 🔴 **jumps the queue**,
+  scheduled ahead of feature work in its lane. Fix it in this PR; a 🔴
+  the audit finds on merged code is the next thing done.
+- **🟢 terminal** — the question is answered by *there is nothing to
+  dissolve into*: genuinely irreducible, no richer source exists.
+  **Consumer-independent** — a *namable* richer source means it is not
+  🟢, regardless of whether anything consumes it today.
+- **🟡 gated** — it cannot dissolve now, and the *only* legitimate
+  reason is a **named arrival** it waits on. A 🟡 is **transient** — a
+  committed surface→dissolve loop, never an indefinite tracked comment.
+  Every 🟡 MUST bind a **dissolution plan**, as a **merge requirement**:
+  1. **gate kind** — `feature` (a substrate primitive or capability that
+     does not exist yet) or `consumer` (the first consumer of the
+     decomposed meaning is not here yet);
+  2. **the bound dissolution plan** — not merely a name, a *committed
+     path to 🟢*: the named missing primitive (or consumer), **the
+     substrate PR or task that will land it**, and **the dissolution
+     follow-up that converts this 🟡 to 🟢** once it lands. A 🟡 with no
+     bound dissolution PR is **not a valid 🟡** — that is the
+     comment-graveyard failure mode, and it blocks merge;
+  3. **dissolve-on-arrival** — the follow-up dispatches *immediately*
+     when the substrate PR lands; the 🟡→🟢 conversion is mandatory, not
+     optional. A 🟡 is a pre-committed obligation with a committed exit,
+     never a parking spot. Dissolution debt is *burned down*, not banked
+     — INVARIANTS P5, "Progress Is Dissolution".
 
-- **🟡 YELLOW (scaffold)** — a richer source exists but the
-  decomposition is deferred. Requires a **named trigger**: the specific
-  condition that un-defers it. The trigger is *either* (a) substrate
-  work that isn't ready yet, *or* (b) **the first consumer of the
-  *meaning***. Decomposition is correctly bounded by consumers — do not
-  model meaning nothing reads — so an enumeration whose decomposition is
-  *known* but not yet *needed* is YELLOW-deferred-on-consumer, never
-  GREEN (the richer source exists; only the work is deferred). A
-  consumer-triggered YELLOW entry must **pre-assign the obligation**: it
-  states explicitly that the first consumer of the meaning owes the
-  structural decomposition — *not* a local lookup. Firing that trigger
-  is the sanctioned, expected path, not a reopening of settled work.
+  `feature`- and `consumer`-gating are one dimension, not two — both are
+  *waiting on an arrival*; a consumer is itself a kind of feature, the
+  awaited thing being the consumer's existence. The label records only
+  *what* arrives. A bare 🟡 ("deferred") is the overloaded form this
+  rule retires: every 🟡 carries `feature:<name>` or `consumer:<name>` so
+  a reader sees at a glance *that* it is gated and *on what*, and the
+  audit can check whether the gate has already opened (⇒ the 🟡 is stale
+  and flips to 🔴).
 
-- **🔴 RED (dissolvable-now)** — richer source exists and extraction
-  is cheap. Do it immediately, before the next consumer is added.
+Applied to a **coproduct** (any `type X = A | B | …` with N ≥ 2
+variants), the three dispositions are:
+
+- **🟢 terminal** — the variants are irreducible distinctions at the
+  user-input boundary (literals, keywords, source locations); no richer
+  structure can be named. Requires a **ledger entry** recording which
+  dissolution patterns were tried and why each failed.
+- **🟡 gated** — a richer source exists but decomposition waits on a
+  named arrival (`feature:` substrate not ready, or `consumer:` no
+  consumer reads the meaning yet). A `consumer`-gated entry **pre-assigns
+  the obligation**: the first consumer of the meaning owes the
+  structural decomposition, not a local lookup. Firing the gate is the
+  sanctioned, expected path, not a reopening of settled work.
+- **🔴 dissolve-now** — a richer source exists and extraction is cheap;
+  do it now, before the next consumer is added.
 
 **Five dissolution patterns to try in order** before classifying as
 terminal:
@@ -191,14 +220,16 @@ terminal:
 
 **What to check:** Any new coproduct with N ≥ 2 variants (a Rust enum,
 or a `.dag` `type X = A | B | …`) must be classified (🟢/🟡/🔴), with a
-ledger entry if GREEN or a named trigger if YELLOW. Per Practice 9 the
+ledger entry if 🟢, or the gate kind + concrete named arrival
+(`feature:<name>` / `consumer:<name>`) + dissolve-on-arrival obligation
+if 🟡. Per Practice 9 the
 classification *ledger* and the *trigger* live in `src/v4/DECISIONS.md`
 — *not* an in-file `Practice 4: ...` block. **But the coproduct itself
 keeps a required one-line classification tag carrying the 🟢/🟡/🔴
 emoji** (operator directive 2026-05-17) — e.g. `// 🟡 coproduct
 dissolution — DECISIONS.md OS-1`. The emoji stays *on the coproduct* so
 a reader sees the classification at the type; the decision-making (the
-ledger, the dissolution patterns tried, the named trigger) lives in
+ledger, the dissolution patterns tried, the 🟡 gate) lives in
 `DECISIONS.md`. A coproduct with no in-file 🟢/🟡/🔴 tag, or no
 `DECISIONS.md` classification entry, is unfinished modeling and blocks
 review.
@@ -209,8 +240,9 @@ transform, any file that is not the type's own — to recover a structural
 fact, **is the decomposition written in the wrong place.** The match
 arms *are* the axis: `Wor => OR, Wand => AND, …` is literally the
 `resolution` axis of the net-kind decomposition. The fix is never to
-keep the lookup; it is to push that structure into the type — fire the
-YELLOW trigger and decompose. A reviewer who sees such a match flags it:
+keep the lookup; it is to push that structure into the type — the
+`match` in the consumer *is* the first consumer of the meaning, so it
+opens a `consumer:` gate: fire it and decompose. A reviewer who sees such a match flags it:
 structural content discovered in a consumer belongs in the type, not the
 consumer. This is the same channel K-1 closes for `Symbol` — a `match`
 on opaque labels is exactly where heuristics smuggle in. Until a
@@ -221,8 +253,9 @@ the enforcement.
 <sunset-milestone>`) can defer its `DECISIONS.md` classification *ledger*
 until the sunset milestone. The exception covers the ledger only — the
 required one-line 🟢/🟡/🔴 tag on the coproduct itself is **not**
-waived (a scaffold coproduct still carries it, typically `// 🟡 scaffold
-— sunset <milestone>`). Scaffolds must be revisited before sunset.
+waived (a scaffold coproduct still carries it, typically
+`// 🟡 feature:<sunset-milestone> — DECISIONS.md …`, the milestone being
+the gate). Scaffolds must be revisited before sunset.
 
 **Worked example (v2 retrospective):** `v2::ExprData` had 22 variants.
 Failed pattern 1 (every consumer dispatches on all 22), pattern 2
@@ -433,6 +466,15 @@ A hollow declaration **blocks review**. The fix is one of: invent the
 fact-bundle (now `X` carries ≥ 1 fact of its own), or supply the
 coincidence evidence (now the reuse is licensed and cited).
 
+A type that is *under-modeled but legitimately deferred* — the spec
+facts are known but a substrate carrier or a consumer is not yet here —
+is not hollow; it is **🟡 gated** under the shared Dissolution
+dispositions (Practice 4). It carries the gate kind (`feature:` /
+`consumer:`), the concrete named arrival, and the dissolve-on-arrival
+obligation, exactly as a 🟡 coproduct does. "Hollow" is the *unjustified*
+under-model; "🟡 gated" is the *justified, tracked* one — the
+discriminator between them is whether a concrete, valid gate is named.
+
 **Exempt:** kernel-ambient atoms — `Bool`, `Char`, and the other
 irreducible substrate atoms — are *legitimately* atomic. They state no
 further facts because there are none to state; an alias onto them, or
@@ -515,7 +557,7 @@ rule:
   `// 🟡 coproduct dissolution — DECISIONS.md OS-1`); optionally one
   further concept tag or a one-line `// coincides: <DECISIONS.md ref>`
   cite. The classification *emoji* stays on the coproduct; only the
-  *ledger / patterns-tried / named trigger* relocate.
+  *ledger / patterns-tried / 🟡 gate* relocate.
 
 Wherever an earlier Practice says "record X in a comment," read it as
 "record X in `DECISIONS.md`; the file keeps the one-line tag." The same
@@ -607,34 +649,27 @@ vocabulary:
   (`template: "Vec<{0}>"`) where grammar-as-declarative-bidirectional-data
   belongs. The emit-side mirror of walker dissolution.
 
-**Disposition symbols — the fix-now / substrate-sequencing discriminant.**
-Every dissolution finding — and every audited item that turns out *not*
-to be one — carries one of three disposition symbols, the same 🟢/🟡/🔴
-convention as coproduct dissolution (Practice 4). Naming the disposition
-is what stops a reviewer from wrongly demanding the impossible:
+**Disposition — per the shared Dissolution dispositions (Practice 4).**
+Every dissolution finding — and every audited function that turns out
+*not* to be one — carries one of the three dispositions 🔴/🟡/🟢. Naming
+it is what stops a reviewer from wrongly demanding the impossible:
 
-- **🔴 fix-now** — the substrate primitive the construct should use
+- **🔴 dissolve-now** — the substrate primitive the construct should use
   *already exists* (e.g. `Outcome<T>` in `std/diagnostic.dag`). The fix
-  is mechanical and belongs in this PR.
-- **🟡 substrate-sequencing** — the substrate primitive does *not* exist
-  yet (e.g. `fold_node` / a fail-closed `traverse` are not yet in
-  `std/`). The finding is then "name the missing primitive"; the
-  hand-rolled construct is **not** accepted as the end state. A 🟡 is
-  dispositioned exactly like a Practice-4 YELLOW coproduct: deferral is
-  sanctioned **only when tracked**. A 🟡 finding is **BLOCKING unless the
-  gap is recorded as a tracked, named upstream obligation** — the missing
-  primitive named, with an owning task or escalation, and the PR a
-  *declared* honest scaffold. When that record exists, re-blocking the
-  scaffold PR is pointless churn — blocking it cannot land an absent
-  primitive — so a tracked 🟡 lands. An **untracked** 🟡 — a hand-rolled
-  derived operation with no recorded substrate-gap obligation — is silent
-  dissolution debt and **blocks**: this is the Calibration section's
-  "substrate-level issues are almost always BLOCKING" and INVARIANTS P5
-  ("Progress Is Dissolution"). The carve-out is narrow and
-  self-justifying — *can't-fix-here* — never advisory-only debt.
-- **🟢 clean** — audited and *not* a dissolution finding: the recursion
-  or `match` is genuinely irregular (the call graph is not the data
-  graph), or the construct already uses the derived operation.
+  is mechanical, belongs in this PR, and jumps the queue.
+- **🟡 gated** — the substrate primitive does *not* exist yet (e.g.
+  `fold_node` / a fail-closed `traverse`). A derived-operation 🟡 is
+  almost always `feature`-gated: the gate names the missing primitive
+  *and its owning task*, and the 🟡 carries the dissolve-on-arrival
+  obligation (shared rule, Practice 4). It is **BLOCKING unless** that
+  gate is recorded as a tracked, named upstream obligation on a declared
+  honest scaffold — an untracked 🟡 is silent dissolution debt and blocks
+  (Calibration section; INVARIANTS P5 "Progress Is Dissolution").
+  Re-blocking a *tracked* 🟡 is pointless churn — blocking cannot land an
+  absent primitive.
+- **🟢 clean / terminal** — audited and *not* a dissolution finding: the
+  recursion or `match` is genuinely irregular (the call graph is not the
+  data graph), or the construct already uses the derived operation.
 
 The retroactive v4 dissolution audit (rework-tracker PR #3240 task C1)
 applies this legend per-file, per-finding — a symbol-marked inventory,
@@ -666,8 +701,8 @@ in [modeling/grounding-worked-examples.md](modeling/grounding-worked-examples.md
 **What to check.** For any function in the diff: is its behavior fixed by
 the *shape* of a modeled type rather than by logic unique to this call
 site? If yes, it is a candidate dissolution finding — identify the
-registry row, then mark the disposition (🔴 fix-now / 🟡
-substrate-sequencing / 🟢 clean).
+registry row, then mark the disposition (🔴 dissolve-now / 🟡 gated /
+🟢 clean).
 **Not when** the recursion or `match` is genuinely irregular — the call
 graph is not the data graph, the branches do genuinely distinct work.
 Irregularity is the honest escape hatch: a derived operation is one whose
@@ -713,14 +748,19 @@ For each relevant principle and its implementing practices:
 4. For new coproducts: verify the coproduct carries its required
    one-line 🟢/🟡/🔴 classification tag *in the file* (Practice 4 /
    Practice 9 item 4) **and** has a `DECISIONS.md` entry for the ledger /
-   patterns-tried / named trigger — the emoji on the type, the
-   decision-making in `DECISIONS.md`. Also verify
-   that Practice 4 pattern 5 (parameterized family) was applied — an
+   patterns-tried / gate. **Merge requirement — every 🟡 binds a
+   dissolution plan:** the gate kind (`feature:`/`consumer:`), the named
+   missing primitive/consumer, the substrate PR or task that will land
+   it, and the dissolution follow-up that converts the 🟡 to 🟢. A 🟡
+   with a vague gate ("deferred", "later substrate") **or no bound
+   dissolution PR** blocks merge — an indefinite 🟡 is the comment
+   graveyard. A 🟡 whose gate has *already* opened (the feature landed /
+   the consumer exists) is stale — it is 🔴, dissolve now. Also
+   verify Practice 4 pattern 5 (parameterized family) was applied — an
    enum that is `F<X>` per variant is an enumerated copy, not a
-   coproduct. Verify GREEN is consumer-**independent**: a namable richer
-   source ⇒ YELLOW (with a consumer trigger + pre-assigned obligation),
-   never GREEN. Flag any `match` over a foreign-label coproduct inside a
-   *consumer* as a misplaced decomposition (the lookup smell).
+   coproduct. Verify 🟢 is consumer-**independent**: a namable richer
+   source ⇒ 🟡, never 🟢. Flag any `match` over a foreign-label coproduct
+   inside a *consumer* as a misplaced decomposition (the lookup smell).
 5. For any new family of declarations (enum or not): verify it is a
    projection over its source set (Practice 7), not a hand-enumeration —
    the cost-of-change test is adding one element to the source set.
@@ -743,12 +783,12 @@ For each relevant principle and its implementing practices:
    (Practice 10): identify the derived-operations registry row it
    hand-rolls. For a row that carries a numbered dissolution finding
    (rows 1 / 2 / 5 / 6 / 7), name the finding and mark its disposition
-   (🔴 fix-now / 🟡 substrate-sequencing / 🟢 clean); a 🟡 finding names
-   the missing `std/` primitive and is **BLOCKING unless** it is recorded
-   as a tracked, named upstream obligation (owning task or escalation) on
-   a declared honest scaffold — an untracked 🟡 is silent substrate debt
-   and blocks (see Practice 10's disposition legend and the Calibration
-   section). A hand-rolled registry row 3 (translation) or 4 (coercion)
+   (🔴 dissolve-now / 🟡 gated / 🟢 clean); a 🟡 finding names its
+   `feature:` gate — the missing `std/` primitive + owning task — and is
+   **BLOCKING unless** that gate is recorded as a tracked, named upstream
+   obligation on a declared honest scaffold; an untracked 🟡 is silent
+   substrate debt and blocks (see Practice 10's disposition legend and
+   the Calibration section). A hand-rolled registry row 3 (translation) or 4 (coercion)
    carries **no** numbered finding — it is a whole-architecture
    escalation, not a function-scale review finding (per Practice 10's
    rows-3/4 carve-out).
