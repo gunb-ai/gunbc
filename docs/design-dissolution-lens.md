@@ -17,14 +17,18 @@ This doc operationalizes `modeling-discipline.md` Practice 10 — it does
 not introduce a parallel rulebook. The invariants below are enforcement
 scaffolding for Practice 10's rule, not a competing source of authority.
 
-> **A0 — Every semantic fact must have exactly one structural witness in
-> the model.** A fact may be *derived* from a canonical carrier's shape
-> (discriminant, catamorphism, traverse), *witnessed* by typed data
-> (`data ... : Algebra<T>`, refinement clause, constructor restriction,
-> alias-identity edge, canonical-carrier registry row), or *rejected as
-> unknown* through diagnostic flow (`Outcome::Rejected`). It may not be
-> re-derived locally, asserted in prose / name / string form, duplicated
-> in another home, or guessed through a plausible default.
+> **A0 — Every semantic fact must resolve to exactly one canonical
+> structural witness path in the model.** A fact may be *derived* from
+> a canonical carrier's shape (discriminant, catamorphism, traverse),
+> *witnessed* by typed data (`data ... : Algebra<T>`, refinement clause,
+> constructor restriction, alias-identity edge, canonical-carrier
+> registry row), or *rejected as unknown* through diagnostic flow
+> (`Outcome::Rejected`). Multiple structural artifacts pointing at one
+> canonical authority (alias / re-export, retirement-ledger row, derived
+> operation reading the same witness) are not multiplicities — they are
+> the path. It may not be re-derived locally, asserted in prose / name /
+> string form, duplicated as a competing authority, or guessed through
+> a plausible default.
 
 A0 is the umbrella. A1 is the operation-specific specialization that
 originally seeded the lens suite:
@@ -36,8 +40,8 @@ originally seeded the lens suite:
 > structure.
 
 A0/A1 are proposed, pending operator ratification (rework-tracker task
-A1). Ratifying them makes "this violates A0/A1" a citable hard rule.
-The lens suite is how they are enforced *mechanically*.
+A1). Once ratified into Practice 10, A0/A1 become citable hard rules;
+this doc remains the enforcement mechanism.
 
 ## 2. Two tracks
 
@@ -51,10 +55,16 @@ The lens is not the cure — it is the net.
   (the discriminant-predicate node; `fold_node` / catamorphism nodes)
   are Track 2.
 
-Every dissolution finding is a symptom of one substrate gap: **the
-substrate lets you *declare* an algebraic type but does not *derive its
-canonical operations*** — so workers hand-roll them. Track 1 holds the
-line until Track 2 closes that gap.
+The original seed findings exposed one substrate gap: the substrate
+lets you *declare* an algebraic type but does not *derive its canonical
+operations*, so workers hand-roll discriminants and catamorphisms.
+
+The broader Layer-1 suite generalizes that lesson: when the substrate
+lacks a canonical derived operation, witness table, authority map,
+refinement edge, or diagnostic-flow carrier, workers encode the missing
+fact locally — in prose, names, strings, duplicate homes, or plausible
+defaults. Track 1 holds the line until Track 2 makes those witnesses
+derivable or required.
 
 ## 3. Methodology — how a lens is derived
 
@@ -156,7 +166,7 @@ they are not interchangeable:
 | L1.7 Off-substrate-fact | witness |
 | L1.8 Wrong-home | canonical-home |
 | L1.9 Vacuous-arm | fail-closed / witness |
-| L1.10 Textual-bypass (sub-signatures: `TemplateHole`, `CanonicalCarrier`) | witness / canonical-home |
+| L1.10 Textual-bypass *(lens family — see §5.0 exception)*: L1.10.a `TemplateHole`, L1.10.b `CanonicalCarrier` | witness / canonical-home |
 | L1.11 Plausible-fallback | fail-closed |
 | L1.12 Parallel-authority | canonical-home |
 
@@ -389,15 +399,16 @@ Genuinely-irregular recursion — the call graph does *not* mirror the
 data graph, e.g. a graph walker that revisits visited nodes via a
 side-table — falls under *reviewer-confirm* rather than hard-error.
 
-### L1.6 *(merged into L1.10 — see Textual-bypass lens)*
+### L1.6 Deprecated alias — see L1.10.a `TemplateHole`
 
-The original L1.6 "Emit/template lens" — catching string literals
-carrying positional placeholders (`{0}`, `{1}`, …) used as emitters —
-is now a sub-signature (`TemplateHole`) of L1.10 Textual-bypass. The
-prior doc already noted that L1.10 generalizes L1.6; the merge makes
-the relationship explicit. The `TemplateHole` sub-signature preserves
-L1.6's registry-free decidability for placeholder literals — see
-[L1.10 Textual-bypass](#l110-textual-bypass-lens--kills-typed-model-bypass-via-string-proposed-merged-l16).
+L1.6 is retained as a deprecated alias to keep prior test names,
+slipped-by ledger references, and external citations traceable. The
+original L1.6 "Emit/template lens" — catching string literals carrying
+positional placeholders (`{0}`, `{1}`, …) used as emitters — is now
+[L1.10.a `TemplateHole`](#l110-textual-bypass-lens--kills-typed-model-bypass-via-string-proposed-merged-l16),
+a sub-signature of the L1.10 Textual-bypass lens family. The
+`TemplateHole` sub-signature preserves L1.6's registry-free
+decidability for placeholder literals.
 
 ### L1.7 Off-substrate-fact lens — kills *prose-asserted facts* (proposed)
 
@@ -594,7 +605,7 @@ fn node_locally_well_formed(n: Node) -> Bool {
 **Clean shape:** introduce a sibling `behavior_edge_discipline(Behavior)`
 in `std/node.dag` and dispatch both arms uniformly.
 
-### L1.10 Textual-bypass lens — kills *typed-model bypass via String* (proposed, merged L1.6)
+### L1.10 Textual-bypass lens family — kills *typed-model bypass via String* (proposed, merged L1.6)
 
 > **Status: proposed.** Derived from findings F6
 > (`CiCommand::ShellCommand { command: String }` while
@@ -606,9 +617,11 @@ in `std/node.dag` and dispatch both arms uniformly.
 > share one structural finding: **a string-valued artifact is carrying
 > a typed fact that has, or should have, a model carrier.**
 
-The lens has two sub-signatures. They are distinct detectors with
-distinct decidability arguments and distinct escape valves, surfaced
-under one lens because they share the underlying finding.
+> **Exception to §5.0:** L1.10 is a *lens family*, not a single lens.
+> Its mechanically enforced units are L1.10.a `TemplateHole` and L1.10.b
+> `CanonicalCarrier`; they share a finding family and reporting label,
+> but keep separate signatures, decidability arguments, escape valves,
+> and test corpora — exactly the per-lens discipline §5.0 requires.
 
 #### L1.10.a `TemplateHole` (registry-free)
 
@@ -932,11 +945,16 @@ from real evidence, not speculation.
 | 2026-05-18 | ingest | `Bool`, `Char`, `Url`, machine words declared in both `dsl/std/` and `src/v4/std/` (`type T = ...` redeclared, no structural alias/retirement/migration) | one concept must have one home (structural alias, retirement-ledger row, or migration) | L1.12 (proposed) |
 | 2026-05-18 | ingest | `extdeps/languages/resolver.dag` referenced via imports but file does not exist; provisional `GroundingMap` lives in `extdeps/languages/rust.dag` | unresolved reference / dangling import — fail-closed P3, distinct root cause from duplicate authority | L0.8-extended (planned-but-absent home; deliberately not L1.12) |
 
-Pattern across the ledger: all four are burn-down *substrate* PRs — the
-lane built to remove dissolution debt produced it. Each was *mostly*
-correct with one dissolution defect; #3249's was invisible to reviewers
-because the fold-laundering hid it. This is why the lens suite (mechanical,
-every time) and the burn-down pre-gate (catch at the source) both exist.
+Pattern from the seed PR rows: the original four are burn-down
+*substrate* PRs — the lane built to remove dissolution debt produced
+it. Each was *mostly* correct with one dissolution defect; #3249's was
+invisible to reviewers because the fold-laundering hid it. This is why
+the lens suite (mechanical, every time) and the burn-down pre-gate
+(catch at the source) both exist. The later `ingest` rows extend the
+ledger to A0's broader territory (prose / name / string / canonical-home /
+plausible-fallback findings); they are not all derived-operation
+defects but share the same root-cause pattern — a missing structural
+witness that workers backfill locally.
 
 ## 9. Build path — model-derived only
 
