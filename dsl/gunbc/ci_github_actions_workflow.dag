@@ -102,7 +102,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
         }],
       needs: [],
       env: none,
-      outputs: { "v2": "${{ steps.detect.outputs.v2 }}", "v3": "${{ steps.detect.outputs.v3 }}", "v4": "${{ steps.detect.outputs.v4 }}" },
+      outputs: { "v2": "${{ steps.detect.outputs.v2 }}", "v3": "${{ steps.detect.outputs.v3 }}", "v4": "${{ steps.detect.outputs.v4 }}", "workflow_policy": "${{ steps.detect.outputs.workflow_policy }}" },
       if_condition: Some { value: "github.event.pull_request.draft != true" },
       strategy: none,
       timeout_minutes: Some { value: 5 },
@@ -296,7 +296,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           shell: Bash,
           env: none,
           working_directory: none,
-          if_condition: Some { value: "needs.affected.outputs.v3 == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')" },
+          if_condition: Some { value: "needs.affected.outputs.workflow_policy == 'true' || needs.affected.outputs.v3 == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')" },
           continue_on_error: false,
           timeout_minutes: none
         }, RunStep {
@@ -306,7 +306,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           shell: Bash,
           env: none,
           working_directory: none,
-          if_condition: Some { value: "needs.affected.outputs.v3 == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')" },
+          if_condition: Some { value: "needs.affected.outputs.workflow_policy == 'true' || needs.affected.outputs.v3 == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')" },
           continue_on_error: false,
           timeout_minutes: none
         }],
