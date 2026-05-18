@@ -16,7 +16,7 @@ src/v4/
   TASKS.md               # the XL task plan (count drift-proof; see T-15)
   DECISIONS.md           # design-decisions ledger (RATIFIED + record)
 
-  std/                   # substrate primitives (14 files)
+  std/                   # substrate primitives (14 landed + 1 P2-staging witness; see note on `fact_density.dag`)
     node.dag             # 6 type connectives + 5 L1 behaviors (substrate root)
     algebra.dag          # Magma/Monoid/BoolAlgebra/FreeMonoid (structures only)
     cardinality.dag      # cardinality refinement, P4 decidability
@@ -31,6 +31,7 @@ src/v4/
     collection.dag       # bounded containers
     verification.dag     # TestClaim schema + Tier×Layer classification (v4-fresh; studied v3/dsl)
     report.dag           # advisory carrier (NOT fail-closed Diagnostic); used by synthesis lens
+    fact_density.dag     # P2-staging only (INVARIANTS §P2): T-30 `compile_to_dag` parse witness — **not** a landed std primitive until a **generated** `.dag` consumer reads `SourceSpecReadFact`; hollow-alias authority today is the private Rust mirror module `v4_hollow_alias_gate` in `v3-compiler`. See `DECISIONS.md` T-30 encoding note + `TASKS.md` T-30.
 
   extdeps/               # external system contracts (23 files)
     cpp_abi.dag          # C++ ABI / target data-model (LP64/LLP64/ILP32/ILP64)

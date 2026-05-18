@@ -1057,6 +1057,24 @@ fact-density off a `Node` carrier; the kernel-ambient exemption (`Bool`
 and the other kernel-ambient atoms are legitimately atomic — not hollow);
 the Diagnostic shape on a fail-closed hollow alias.
 
+**Interim bootstrap mirror (not the final generated checker).** The north
+star remains a **generated** structural `Node → Outcome` gate in v4
+`.dag` authority. While the v4→v3 `compile_to_dag` bootstrap cannot yet
+prepend `std/node.dag` without name collisions (see `DECISIONS.md` T-30
+`fact_density.dag` encoding note), the Practice-8 predicate lands as the
+**P5(b) bounded triple**: (1) a **hand Rust mirror**
+(`src/v3/compiler/src/v4_hollow_alias_gate.rs` + hermetic unit tests), (2)
+a **body-less nominal witness** in `src/v4/std/fact_density.dag`, and (3)
+the **`compile_to_dag` smoke** harness
+(`src/v3/compiler/tests/integration/v4_std_fact_density_dag_smoke_test.rs`).
+The **two Rust paths (1)+(3)** each carry an **SG-0**
+`EXPECTED_HAND_AUTHORED_{NON_TEST,TEST}` literal plus a matching
+**`INVARIANTS.md` §P5(b)** row under **T-PB-A** / **T-PB-B** naming the
+**dissolution** trigger when the generated checker is the authority. The
+**`.dag` witness (2)** is a **P2-staging nominal** at `src/v4/std/fact_density.dag` (INVARIANTS §P2 / Practice 5: **parse/compile proof only** — **no** generated `.dag` consumer yet; **not** a landed substrate primitive alongside `node.dag` / `diagnostic.dag`). It is **enumerated honestly** in **`STRUCTURE.md`** (separate from the 14 landed `std/` primitives) and is **named** in the same **§P5(b) rows** (and `DECISIONS.md`) as the T-30 witness file — it is **not** a third **SG-0 hand-Rust** census path (SG-0 inventories **Rust** only). This slice is **sequencing**,
+not semantic deferral of the gate's *definition* (the three-part rule +
+kernel-ambient exemption is already pinned in tests and docs).
+
 **Scope / clarification dispositions:**
 - **#4 — T-16 SQL DDL — RESOLVED (operator 2026-05-17): fork (a).** SQL is
   modeled as a **checked `extdeps` Shape-B format** — a sibling of

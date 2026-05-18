@@ -356,6 +356,7 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/regen_tokenize.rs",
     "src/v3/compiler/src/self_host_receipt_p0.rs",
     "src/v3/compiler/src/test_runner.rs",
+    "src/v3/compiler/src/v4_hollow_alias_gate.rs",
     "src/v3/compiler/src/wall_clock_ratchet_manifest.rs",
 ];
 
@@ -832,6 +833,9 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // SG-0 ratchet per INVARIANTS §P5(b) + `extdeps_sql_transport_test` precedent.
     "src/v3/compiler/tests/integration/v4_extdeps_cpp_abi_dag_smoke_test.rs",
     "src/v3/compiler/tests/integration/v4_extdeps_typescript_dag_smoke_test.rs",
+    // T-30: `compile_to_dag` smoke on `src/v4/std/fact_density.dag` (Practice 8
+    // structural mirror in `v4_hollow_alias_gate`). SG-0 + INVARIANTS §P5(b) receipt.
+    "src/v3/compiler/tests/integration/v4_std_fact_density_dag_smoke_test.rs",
     // §1.8 gate #96 (`value_body_substrate_mirror_isomorphism_executable`):
     // CI-visible generated Rust `ValueBody` mirror vs `substrate.dag`
     // constructor isomorphism. Dissolves when `ValueBody` no longer has a
