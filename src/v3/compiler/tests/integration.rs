@@ -275,6 +275,8 @@ mod timing_lens_substrate_carrier_test;
 mod v2_oracle_no_remaining_test_consumers_test;
 #[path = "integration/v4_extdeps_cpp_abi_dag_smoke_test.rs"]
 mod v4_extdeps_cpp_abi_dag_smoke_test;
+#[path = "integration/v4_extdeps_cpp_dag_smoke_test.rs"]
+mod v4_extdeps_cpp_dag_smoke_test;
 #[path = "integration/v4_extdeps_lean_dag_smoke_test.rs"]
 mod v4_extdeps_lean_dag_smoke_test;
 #[path = "integration/v4_extdeps_machine_code_dag_smoke_test.rs"]

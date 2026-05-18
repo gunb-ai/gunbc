@@ -1,7 +1,7 @@
 // src/v4/extdeps/languages/lean.dag
 // Scope: Lean 4 language model for PROOF-1 termination export.
-// Owns: LeanDeclarationKind, LeanName, LeanLevel, LeanLevelRef, LeanLevelNode, LeanBinderInfo, LeanBinder, LeanTermRef, LeanTermNode, LeanTermForm, LeanMatchAlternative, LeanTerminationMeasure, LeanTerminationBy, LeanDecreasingProof, LeanTerminationClause, LeanDefinitionTermination, LeanProofArtifact, LeanFidelityFeature, LeanFidelityDisposition, LeanProofCheckSemantics, GroundingMap, LeanIntKind, LeanIntWidth, LeanScalar, LeanBool, lean_bool_grounding, LeanNat, lean_nat_grounding, LeanInt, lean_int_grounding, LeanUSize, lean_usize_grounding, LeanUInt8, lean_uint8_grounding, LeanUInt16, lean_uint16_grounding, LeanUInt32, lean_uint32_grounding, LeanUInt64, lean_uint64_grounding.
-// Consumes: Int, UInt8, UInt16, UInt32, UInt64, UIntPlatform, List, Bool, Nat, Symbol, String.
+// Owns: LeanDeclarationKind, LeanName, LeanLevel, LeanLevelRef, LeanLevelNode, LeanBinderInfo, LeanBinder, LeanTermRef, LeanTermNode, LeanTermForm, LeanMatchAlternative, LeanTerminationMeasure, LeanTerminationBy, LeanDecreasingProof, LeanTerminationClause, LeanDefinitionTermination, LeanProofArtifact, LeanFidelityFeature, LeanFidelityDisposition, LeanProofCheckSemantics, Symbol, GroundingMap, LeanIntKind, LeanIntWidth, LeanScalar, LeanBool, lean_bool_grounding, LeanNat, lean_nat_grounding, LeanInt, lean_int_grounding, LeanUSize, lean_usize_grounding, LeanUInt8, lean_uint8_grounding, LeanUInt16, lean_uint16_grounding, LeanUInt32, lean_uint32_grounding, LeanUInt64, lean_uint64_grounding.
+// Consumes: Int, UInt8, UInt16, UInt32, UInt64, UIntPlatform, List, Bool, Nat, String.
 // Status: D2-REV / Practice 8 — scalar ladder `LeanScalar` + std coincidence via `GroundingMap` (rust.dag template; P4-3208 / #3208).
 
 module v4.extdeps.languages.lean

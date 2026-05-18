@@ -829,6 +829,7 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // source ratchet — no `v2-compiler` crate references outside `src/v2/`.
     "src/v3/compiler/tests/integration/v2_oracle_no_remaining_test_consumers_test.rs",
     "src/v3/compiler/tests/integration/v4_extdeps_cpp_abi_dag_smoke_test.rs",
+    "src/v3/compiler/tests/integration/v4_extdeps_cpp_dag_smoke_test.rs",
     // T-4 TypeScript primitive scaffold: `compile_to_dag` smoke on
     // `src/v4/extdeps/languages/typescript.dag` (zero module diagnostics).
     // SG-0 ratchet per INVARIANTS §P5(b) + `extdeps_sql_transport_test` precedent.
