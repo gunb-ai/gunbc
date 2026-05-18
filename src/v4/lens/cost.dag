@@ -22,7 +22,7 @@
 //   - composes algebra+realization end-to-end
 //
 // Consumes:
-//   - std/node.dag, std/witness.dag, std/algebra.dag
+//   - std/node.dag, std/witness.dag, std/algebra.dag, std/nat.dag
 //   - extdeps/languages/*.dag: per-target realization cost
 //
 // Status: scaffold — SymbolicCost carrier seeded (P9, #3243 §1.1);
