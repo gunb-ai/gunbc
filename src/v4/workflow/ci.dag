@@ -16,7 +16,7 @@ import v4.std.diagnostic {
   NoCorrectionReason,
   Outcome
 }
-import v4.workflow.bootstrap { v4_stage0_binary }
+import v4.workflow.bootstrap { v4_stage0_binary, bootstrap_stage_output }
 
 
 // 🟡 coproduct dissolution — DECISIONS.md LB-P4-3213
@@ -66,6 +66,7 @@ data ci_duplicate_job_id: Symbol = ci_duplicate_job_id
 data ci_duplicate_gate_id: Symbol = ci_duplicate_gate_id
 data ci_dangling_reference: Symbol = ci_dangling_reference
 data ci_dependency_cycle: Symbol = ci_dependency_cycle
+data ci_bootstrap_authority_violation: Symbol = ci_bootstrap_authority_violation
 data ci_workflow_file: Symbol = ci_workflow_file
 
 fn ci_diagnostic(reason: Symbol) -> Diagnostic {
@@ -159,13 +160,33 @@ fn ci_acyclic(jobs: List<CiJob>) -> Bool {
   count(ci_kahn_fixpoint(jobs: jobs)) == 0
 }
 
+fn ci_command_authority_ok(c: CiCommand) -> Bool {
+  match c {
+    LintCommand => true
+    TestCommand => true
+    IgnoredTestCommand { test_name: _ } => true
+    BootstrapStageCompile { produces: pr } => bootstrap_stage_output(s: pr)
+    ShellCommand { command: _ } => true
+  }
+}
+
+fn ci_all_commands_authority_ok(jobs: List<CiJob>) -> Bool {
+  fold(jobs, init: true, f: fn(acc, j) {
+    acc && ci_command_authority_ok(c: j.command)
+  })
+}
+
 fn ci_pipeline_well_formed(p: CiPipeline) -> Outcome<CiPipeline> {
   if ci_all_job_ids_unique(jobs: p.jobs) {
     if ci_all_gate_ids_unique(gates: p.gates) {
       if ci_all_needs_resolve(jobs: p.jobs) {
         if ci_all_gate_jobs_resolve(gates: p.gates, jobs: p.jobs) {
           if ci_acyclic(jobs: p.jobs) {
-            Produced { value: p }
+            if ci_all_commands_authority_ok(jobs: p.jobs) {
+              Produced { value: p }
+            } else {
+              Rejected { diagnostic: ci_diagnostic(reason: ci_bootstrap_authority_violation) }
+            }
           } else {
             Rejected { diagnostic: ci_diagnostic(reason: ci_dependency_cycle) }
           }
