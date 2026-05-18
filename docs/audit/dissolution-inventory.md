@@ -13,24 +13,49 @@ as the consolidated authority for both halves of the dissolution-debt
 directive; if #3244 changes a clause materially, the affected marks are
 re-expressed in one follow-up commit.
 
-Scope at `88ae56d2a` plus the survey of pre-existing trackers:
+Scope on `main` at `88ae56d2a` (plus the workflow sub-sweep added per
+still-hawk-102 brief correction 2026-05-18 — `src/v4/workflow/*.dag`):
 
 - **Part A** — sweep findings: `src/v4/compiler/*.dag`,
-  `src/v4/std/*.dag`, `src/v4/extdeps/**/*.dag`, classified across the
-  five dissolution-finding classes (walker / traverse / predicate /
-  carrier / emit-template). Coproduct dissolution is out of scope —
-  already enforced via the per-coproduct emoji + `DECISIONS.md` ledger.
+  `src/v4/std/*.dag`, `src/v4/extdeps/**/*.dag`, **`src/v4/workflow/*.dag`**,
+  classified across the five dissolution-finding classes
+  (walker / traverse / predicate / carrier / emit-template). Coproduct
+  dissolution is out of scope — already enforced via the per-coproduct
+  emoji + `DECISIONS.md` ledger.
 - **Part B** — triage of pre-existing trackers: the 10 active
   `SL-3229-*` entries in `src/v4/DECISIONS.md` Part 6 + the 13 in-file
   🟡 cite-sites across `verilog`, `llvm_ir`, `json`, `yaml`, `toml`,
-  `typescript`. Triage = **VALID** (stays 🟡, re-expressed in #3244
-  form) / **STALE** (gate already opened — promote to 🔴) / **VAGUE**
-  (gate present but not concrete — must be made concrete or dissolved).
+  `typescript`. Triage uses **four** dispositions:
+  - **VALID-🟡** — stays 🟡, re-expressed in #3244 form (`feature:` /
+    `consumer:` gate + concrete named arrival + dissolve-on-arrival
+    obligation).
+  - **STALE → 🔴** — the named arrival has *already landed*; the 🟡 is
+    debt that should already be paid.
+  - **VAGUE** — gate present but not concrete (a class of arrivals
+    rather than one named owner+task; "later substrate"; "the parse
+    body's job").
+  - **INVALID-GATE** — the gate's named arrival was *cancelled or
+    reshaped by a design reversal*; the thing referenced will not
+    arrive as named. Distinct from VAGUE (gate too loose to check) and
+    STALE (gate opened): the gate is well-formed but its target no
+    longer exists in the form the entry promised. Needs re-gating
+    against the post-reversal model.
 
-Marks live in this artifact only — no in-file `.dag` tags lands here
-(Practice 10: the tag lands with the fix, per migration PR). The triage
-in Part B reports the *shape* of each existing tracker; rewriting the
-existing tags into the #3244 form is the follow-up work, not this PR.
+**C1's role is mark + flag, not fix.** This inventory reports the
+disposition of each entry; the actual re-gating of VAGUE /
+INVALID-GATE entries, and the dissolve-now PRs for 🔴 findings, are
+**downstream lane work** — each owned by the lane that owns the file
+named, triggered by the operator's audit of this inventory. C1 does
+*not* edit `DECISIONS.md` rows, *not* rewrite in-file 🟡 blocks, and
+*not* land the dissolve-now fixes. Marks live in this artifact only
+(Practice 10: the in-file `.dag` tag rewrite lands with each migration
+PR, not retro-applied here).
+
+**Sweep frame is `main`, not in-flight branches.** PR #3213 (workflow
+T-20 + T-24) is HELD with its own dissolution pass in progress; its
+helpers reach `main` only when #3213 merges. If #3213 merges before C1
+ships, C1 picks them up from `main` at that point; if not, #3213's
+helpers are covered by its own pass — no double-counting.
 
 ---
 
@@ -193,6 +218,20 @@ lane-wide).
 **`extdeps/frameworks/react.dag`**, **`extdeps/coordination.dag`**,
 **`extdeps/file_system.dag`**, **`extdeps/process.dag`** — zero `fn`
 bodies. 🟢.
+
+### A.5 `src/v4/workflow/`
+
+Sweep frame `main` @ `88ae56d2a`. (PR #3213 fills both files with
+helper logic; that work is on the #3213 branch only, not in this sweep
+— covered by #3213's own dissolution pass.)
+
+**`workflow/bootstrap.dag`** — scaffold on `main` (84 lines, all
+header prose + `module v4.workflow.bootstrap` declaration; zero `type`,
+zero `data`, zero `fn`). 🟢 across all five finding classes.
+**`workflow/ci.dag`** — scaffold on `main` (43 lines; same shape).
+🟢 across all five finding classes.
+
+Carrier and emit-template covered by lane-wide 🟢 (A.1).
 
 ---
 
@@ -358,23 +397,22 @@ refinement-side gates.
 **`extdeps/languages/typescript.dag` × 4 in-file blocks** (lines 21,
 34, 67, 69) — `D2a(2) grounding-map facet is 🟡 operator-pending` /
 `alias rows 🟡 TRACKED-SCAFFOLD per std/ ladders + refinement policy`.
-- **Triage: STALE-SHAPED.**
+- **Triage: INVALID-GATE.**
 - **Why:** the named arrival ("D2a(2) grounding-map facet", "alias
-  rows per std/ ladders") references the D2 alias-identity model. Per
-  the operator's 2026-05-17 D2-reversal directive, D2 alias-identity
-  was REJECTED in favor of the fact-bundle model. The named arrival as
-  written cannot land — it points at a model the operator overturned.
-  This is the brief's STALE category, with the wrinkle that the gate is
-  not "already opened" but "the named arrival no longer exists." Per
-  #3244 a stale gate's residual is 🔴-flavoured: the entry must be
+  rows per std/ ladders") references the **D2 alias-identity model**.
+  Per the operator's 2026-05-17 D2-reversal directive, D2 alias-identity
+  was REJECTED in favor of the **fact-bundle model** — the named
+  arrival as written *will not arrive*. This is not STALE (the gate
+  has not "already opened") and not VAGUE (the gate is concretely
+  named); it is **INVALID-GATE** — the gate's target was cancelled by
+  the design reversal. Per #3244, an INVALID-GATE entry must be
   re-gated against the post-reversal model (the T-4 fact-bundle
-  Phase-3 rework — keystone PR #3226 merged @77b9e7d72; Phase-3 is
-  5-feeder-gated, 4 feeders open).
-- **Action queued:** rewrite the 4 typescript.dag in-file blocks against
-  `feature: T-4 fact-bundle Phase-3 rework (post-keystone; 5-feeder
-  gate — T-3, T-29, T-30, T-25-core remaining)`. Per the standing
-  T-4-rework-PR HOLD directive, the rewrite itself is operator-audit
-  gated.
+  Phase-3 rework — keystone PR #3226 merged @`77b9e7d72`; Phase-3 is
+  5-feeder-gated, four feeders open: T-3, T-29, T-30, T-25-core).
+- **Owning lane (re-gate action — out of C1 scope per "C1 marks and
+  flags, does not fix"):** the lane owning
+  `extdeps/languages/typescript.dag` (Lane C / T-4 manager
+  vivid-carp-207); the standing T-4-rework-PR HOLD directive applies.
 
 ### B.3 Summary table
 
@@ -395,24 +433,29 @@ refinement-side gates.
 | json.dag × 3 in-file blocks | prose | mixed | **no** (class) | yes | **VAGUE** |
 | yaml.dag × 6 in-file blocks | prose | mixed | **no** (class) | yes | **VAGUE** |
 | toml.dag × 7+ in-file blocks | prose | mixed | **no** (class) | yes | **VAGUE** |
-| typescript.dag × 4 in-file blocks | prose | feature (D2-shaped) | **named arrival no longer exists** | yes | **STALE-SHAPED** (re-gate post-D2-reversal) |
+| typescript.dag × 4 in-file blocks | prose | feature (D2-shaped) | **named arrival cancelled by D2-reversal** | yes | **INVALID-GATE** (re-gate post-reversal) |
 
-Counts: 7 VALID (DECISIONS.md rows) + 1 VALID (in-file cite) = 8.
-2 VAGUE (DECISIONS.md rows) + 16+ VAGUE (in-file prose blocks across
-verilog cite-sites, json, yaml, toml) = ~18 VAGUE. 4 STALE-SHAPED
-(typescript.dag D2-shaped gates). 0 outright STALE (no named arrival
-has already landed).
+Counts: **8 VALID-🟡** (7 DECISIONS.md rows + 1 in-file cite-site —
+`llvm_ir.dag:28`). **2 VAGUE DECISIONS.md rows** (`SL-3229-VERILOG-D3200`,
+`SL-3229-FLOAT-NOMINAL`) + **~16 VAGUE in-file prose blocks** across
+`json.dag`, `yaml.dag`, `toml.dag`, and the 5 `verilog.dag` cite-sites
+inheriting VERILOG-D3200 ≈ **~18 VAGUE total**. **4 INVALID-GATE**
+(typescript.dag D2-shaped gates). **0 STALE → 🔴** — no named arrival
+has already landed.
 
-**Headline finding:** no pre-existing tracker is "stale because its
-gate already opened" — the cardinality-refinement / collection
-Wave-A2 / constrained-generics arrivals are uniformly still ahead of
-us. The pre-existing-tracker debt is overwhelmingly **VAGUE / prose-form
-gates that #3244 retires** — concretizing the in-file prose blocks
-under one canonical
+**Headline finding:** no pre-existing tracker is STALE — the
+cardinality-refinement / collection Wave-A2 / constrained-generics
+arrivals are uniformly still ahead of us, verified against
+`std/cardinality.dag`, `std/collection.dag`, `std/nat.dag`,
+`std/algebra.dag` on `main` @ `88ae56d2a`. The pre-existing-tracker
+debt is **overwhelmingly VAGUE prose-form gates that #3244 retires** —
+concretizing the in-file prose blocks under one canonical
 `feature: std/cardinality.dag refinement (T-3 Wave-A2)` (and a smaller
-parser-side family) collapses much of the VAGUE list to VALID. The
-typescript.dag D2-shaped gates need a substantive re-gate against the
-post-D2-reversal fact-bundle model.
+parser-side family `feature: T-6/T-7 parse/emit pipeline-stage
+substrate`) collapses much of the VAGUE list to VALID. The 4
+typescript.dag INVALID-GATE entries need substantive re-gating against
+the post-D2-reversal fact-bundle model. **All re-gates and dissolve-now
+fixes are downstream lane work, not C1's** — C1 marks and flags.
 
 ---
 
