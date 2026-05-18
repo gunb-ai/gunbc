@@ -55,7 +55,7 @@ double-counting).
   surface→dissolve loop, not a parking spot. **Count today: ~38
   bound to P1-P10 in § 1.1 (including the two #3225-merged findings
   added at final-ready — see § 1.1 P4 and P5 unblocks columns), plus
-  ~23 pre-plan backlog (Section 3 VAGUE+INVALID-GATE) not yet
+  ~18 pre-plan backlog (Section 3 VAGUE+INVALID-GATE) not yet
   rollable.**
 - **🟢 terminal** — audited and not a dissolution finding.
 
@@ -102,7 +102,7 @@ in-file 🟡 blocks, and *not* land the dissolve-now fixes.
   immediately** on each substrate PR's landing — the surface→dissolve
   loop is what makes 🟡 transient.
 - **§ 1.2** — 🟡 → 🟢 burn-down view.
-- **Pre-plan concretization backlog** — Section 3's ~19 VAGUE + 4
+- **Pre-plan concretization backlog** — Section 3's ~14 VAGUE + 4
   INVALID-GATE entries. **These are NOT in the P1-P10 plan**, because
   a VAGUE entry names no concrete primitive (cannot be rolled under
   any P#) and an INVALID-GATE entry's named arrival was cancelled by
@@ -138,7 +138,7 @@ the audit anchors.
 | **P1** | `std/cardinality.dag` bounded-natural / refinement substrate | std / T-3 Wave-A2 | **~22** | DECISIONS.md: `SL-3229-LLVM-WIDTH`, `SL-3229-LLVM-OPS`, `SL-3229-PTX-DIM3`, `SL-3229-PTX-COST`, `SL-3229-VERILOG-COST` (+ `SL-3229-FLOAT-NOMINAL` once re-gated under this canonical owner). In-file: `llvm_ir.dag:28` + the ~16 VAGUE prose blocks in `json.dag` / `yaml.dag` / `toml.dag` that concretize to this arrival (refinement-side family). **Receipt (PR #3310 / 2026-05-18):** `LlvmType` raw-width payload scaffold **closed** (live `NonZeroNat` / `Nat`); three format carriers drop the erroneous `SL-3229-LLVM-WIDTH` Practice-9 cite (DECISIONS.md §SL-3229-T4-FORMAT-T6T7 operator note — cite P1 separately from float/integer). |
 | **P2** | `std/collection.dag` Wave-A2: `List<T> where non_empty` refinement **plus** the List combinator algebra (`forall` / `count_where` / `unique` over `FreeMonoid<T>`) | std / T-3 Wave-A2 (coercion-design.md RQ-3) | **5 named + 29 sites** | Section 2: `std/node.dag` × 4 traverses (`all_edges_named`, `all_edges_positional`, `name_occurrences`, `all_names_distinct`). DECISIONS.md: `SL-3229-VERILOG-NONEMPTY` (one row, 29 verilog.dag back-pointer sites after P8). |
 | **P3** | Compiler pipeline-stage substrate (lex-walk + parse-walk) | compiler / T-6, T-7 | **2 + ~7 in-file** | Section 2: `compiler/01_tokenize.dag tokenize`, `compiler/02_parse.dag parse`. In-file: the parser-side VAGUE prose blocks in `json.dag` / `yaml.dag` / `toml.dag` that concretize to T-6/T-7 (the operations-side family separate from P1). |
-| **P4** | T-4 fact-bundle Phase-3 rework (post-D2-reversal model) | extdeps/languages / T-4 manager `vivid-carp-207` (5-feeder gate; keystone #3226 merged @`77b9e7d72`; 4 feeders open: T-3, T-29, T-30, T-25-core) | **4 + 1 row + 1 fn** | In-file: `typescript.dag` × 4 INVALID-GATE blocks (re-gate against this arrival, not pre-reversal D2). DECISIONS.md: `SL-3229-VERILOG-D3200` (if re-gated as `feature: T-4 fact-bundle Phase-3 rework` rather than `consumer:` form — see Section 3). Section 2: `extdeps/languages/dag.dag dag_language_model_wave1_void_canonical_symbols` (added in CP-1b #3225 — canonical_symbols set is a fact on DagLanguageModel/language-identity, not a hand-rolled function). |
+| **P4** | T-4 fact-bundle Phase-3 rework (post-D2-reversal model) | extdeps/languages / T-4 manager `vivid-carp-207` (5-feeder gate; keystone #3226 merged @`77b9e7d72`; 4 feeders open: T-3, T-29, T-30, T-25-core) | **4 + 1 row + 5 sites + 1 fn** | In-file: `typescript.dag` × 4 INVALID-GATE blocks (re-gate against this arrival, not pre-reversal D2). DECISIONS.md + in-file: `SL-3229-VERILOG-D3200` + five `verilog.dag` cite-sites now gate on T-4 Verilog fact-bundle Phase-3. Section 2: `extdeps/languages/dag.dag dag_language_model_wave1_void_canonical_symbols` (added in CP-1b #3225 — canonical_symbols set is a fact on DagLanguageModel/language-identity, not a hand-rolled function). |
 | **P5** | `std/node.dag` `fold_node` — Node catamorphism (substrate-extension under T-1) | std / T-1 | **1 + 3 (03_resolve cascade only)** | **Substrate LANDED PR #3297:** `NodeFold<R>` + `fold_node` in `src/v4/std/node.dag`; `node_well_formed` consumes the shared `NodeFold<Bool>` algebra (burn-down closeout + #3297). **Cascade (open):** `compiler/03_resolve.dag merge_binding_self` (94, codex #3225) plus `add_module_named_exports` (99), `add_arrow_domain_named_params` (113), `add_bind_atom_binder` (140). These dissolve to `fold_node(root, ⟨binding-harvest algebra⟩)` only when a scoped harvest algebra lands without changing resolver scope semantics. |
 | **P6** | `std/algebra.dag` / `std/nat.dag` `fold` / `cata` over `FreeMonoid<T>` and `Nat` (Wave-A2) | std / T-3 Wave-A2 | **2** | Section 2: `std/algebra.dag free_monoid_length`, `std/float.dag nat_compare`. (Sibling to P2's combinator algebra; could land in the same PR — kept separate because the underlying primitive is the catamorphism, distinct from `forall`/`count_where` which are derived from it.) |
 | **P7** | `std/nat.dag nat_is_zero : Nat -> Bool` (Wave-A2) | std / T-3 Wave-A2 | **1** | Section 2: `std/float.dag float_finite_magnitude_zero`. |
@@ -168,7 +168,7 @@ INVALID-GATE-once-re-gated):
 | P1 lands | ~22 | `std/cardinality.dag` refinement | ~16 |
 | P2 lands | 5 named (+ 29 verilog sites converge in one sweep) | `std/collection.dag` Wave-A2 | ~11 named |
 | P3 lands | 2 named (+ ~7 in-file) | T-6 + T-7 pipeline substrate | ~9 named |
-| P4 lands | 4 + 1 row + 1 fn (`dag.dag canonical_symbols` #3225) | T-4 fact-bundle Phase-3 | ~3 named |
+| P4 lands | 4 + 1 row + 5 sites + 1 fn (`dag.dag canonical_symbols` #3225) | T-4 fact-bundle Phase-3 | ~3 named |
 | P5 cascade lands | 1 named (+ 3 walker sites in `03_resolve.dag` #3225) | scoped binding-harvest `fold_node` algebra (substrate: **#3297**) | ~1 |
 | P6 lands | 2 | FreeMonoid/Nat catamorphism | ~0 |
 | P7 lands | 1 | `nat_is_zero` | ~0 |
@@ -189,8 +189,8 @@ the 🟡 burn-down because they dissolved outside the substrate-gap queue.)
 Caveats:
 
 1. **"🟡 today" counts only entries already bound to a P# in the
-   plan.** Section 2's fresh findings + Section 3's 8 VALID-🟡 are
-   counted; **Section 3's ~19 VAGUE + 4 INVALID-GATE are NOT** —
+   plan.** Section 2's fresh findings + Section 3's VALID-🟡 are
+   counted; **Section 3's ~14 VAGUE + 4 INVALID-GATE are NOT** —
    they are pre-plan backlog (no concrete primitive to roll under
    yet). The burn-down lane drives the backlog first; once a VAGUE/
    INVALID entry is re-concretized to a `feature:` arrival that
@@ -542,25 +542,17 @@ refinement landed.
 - **#3244 re-expression:** `🟡 gated — feature: List<T> where non_empty refinement in std/collection.dag (Wave-A2 — coercion-design.md RQ-3)`.
 
 **`SL-3229-VERILOG-D3200`** — #3200 consumer-independent 🟡 coproducts
-(first-consumer decomposition; 5 carriers: `NonTriregNetKind`,
+(T-4 fact-bundle Phase-3 gate; 5 carriers: `NonTriregNetKind`,
 `VariableDeclaration`, `OutputPortAnsiVariableTypeKind`,
 `ParameterTypeKind`, `PrimitiveGateKind`). Named arrival:
-"first meaning-consumer owes the structural decomposition" — D2 /
-synthesis / elaboration consumers (a class, not a single named
-consumer).
-- **Triage: VAGUE.**
-- **Why:** #3244 mandates `consumer:<named consumer>` (a single concrete
-  name a reader and audit can check) — not a class of three potential
-  consumers. Compounded by D2-reversal: the named consumer ("D2") was
-  reshaped to the fact-bundle model — the original-form arrival no
-  longer exists. Per the operator's D2-reversal directive plus
-  #3244's "vague gate blocks merge", this entry must be
-  re-concretized — either name *one* consumer with an owning task (and
-  the other 4 carriers re-cite to that owner), or re-gate as a
-  `feature:` (e.g. T-4 fact-bundle Phase-3 rework landing) and update
-  the 5 in-file cite sites in `verilog.dag` to match.
-- **Action queued (not in this PR):** a follow-up edit to
-  `DECISIONS.md` Part 6 + the 5 in-file cite sites in `verilog.dag`.
+`feature: T-4 Verilog fact-bundle Phase-3 rework (post-D2-reversal
+LanguageModel axes; owner: extdeps/languages / T-4 manager
+vivid-carp-207)`.
+- **Triage: VALID.**
+- **#3244 re-expression:** `🟡 gated — feature: T-4 Verilog fact-bundle
+  Phase-3 rework`. Dissolve on arrival by decomposing each carrier
+  against the structural axis named in its merge-base footer inside the
+  Verilog fact-bundle model; no Verilog-local parallel carrier.
 
 **`SL-3229-VERILOG-VECTOR-RANGE`** — `VectorRange` lexeme-pair bridge.
 Named arrival: "bundled T-4 LanguageModel `constant_expression`
@@ -595,12 +587,11 @@ scaffold. Named arrival: "bounded refinement substrate in
 Result of `grep -n "🟡" src/v4/**/*.dag` (excluding `verification.dag:128`,
 which is descriptive prose about the 🟢/🟡/🔴 convention itself).
 
-**`extdeps/languages/verilog.dag` × 5 cite-sites** (lines 24, 174, 207,
-264, 473) — all read `// 🟡 coproduct dissolution — DECISIONS.md Part 6 ·
-SL-3229-VERILOG-D3200.`
-- **Triage: inherits VAGUE from `SL-3229-VERILOG-D3200` (Section 3.1).**
-- **Action queued:** when the SL-3229-VERILOG-D3200 entry is
-  re-concretized, all 5 cite-sites update to the new gate text.
+**`extdeps/languages/verilog.dag` × 5 cite-sites** (lines 25, 279, 312,
+369, 578) — all read `// 🟡 gated — feature:T-4 Verilog fact-bundle
+Phase-3 — DECISIONS.md Part 6 · SL-3229-VERILOG-D3200.`
+- **Triage: VALID** (inherits the concretized T-4 Verilog fact-bundle
+  Phase-3 gate from `SL-3229-VERILOG-D3200`, Section 3.1).
 
 **`extdeps/languages/llvm_ir.dag:28`** — `// 🟡 coproduct dissolution —
 DECISIONS.md Part 6 · SL-3229-LLVM-WIDTH.`
@@ -679,11 +670,11 @@ refinement-side gates.
 | SL-3229-PTX-DIM3 | DECISIONS.md row | feature | yes (cardinality.dag T-3) | yes | VALID |
 | SL-3229-PTX-COST | DECISIONS.md row | feature | yes (cardinality.dag T-3) | yes | VALID |
 | SL-3229-VERILOG-NONEMPTY | DECISIONS.md row | feature | yes (collection.dag Wave-A2) | yes | VALID |
-| SL-3229-VERILOG-D3200 | DECISIONS.md row | consumer | **no** (class, not one name) | yes | **VAGUE** |
+| SL-3229-VERILOG-D3200 | DECISIONS.md row | feature | yes (T-4 Verilog fact-bundle Phase-3) | yes | VALID |
 | SL-3229-VERILOG-VECTOR-RANGE | DECISIONS.md row | feature | yes (T-4 Verilog constant_expression) | yes | CLOSED |
 | SL-3229-VERILOG-COST | DECISIONS.md row | feature | yes (cardinality.dag T-3) | yes | VALID |
 | SL-3229-FLOAT-NOMINAL | DECISIONS.md row | feature | **partial** (straddles machine.dag + cardinality.dag) | yes | **VAGUE** |
-| verilog.dag × 5 in-file cite-sites | one-liner | (inherits SL-3229-VERILOG-D3200) | — | — | **VAGUE** (inherits) |
+| verilog.dag × 5 in-file cite-sites | one-liner | feature | yes (inherits T-4 Verilog fact-bundle Phase-3) | yes | VALID |
 | llvm_ir.dag:28 in-file cite-site | one-liner | feature | yes (inherits SL-3229-LLVM-WIDTH) | yes | VALID |
 | json.dag × 3 in-file blocks | prose | mixed | **no** (class) | yes | **VAGUE** |
 | yaml.dag × 6 in-file blocks | prose | mixed | **no** (class) | yes | **VAGUE** |
@@ -694,18 +685,19 @@ Counts (under the still-hawk-102 tightened bar 2026-05-18 — VALID-🟡
 requires concrete gate AND binding to a named primitive+owning-task
 substrate PR in Section 1):
 
-- **7 VALID-🟡** (6 DECISIONS.md rows: LLVM-WIDTH, LLVM-OPS, PTX-DIM3,
-  PTX-COST, VERILOG-NONEMPTY, VERILOG-COST bound
-  to P1/P2 + 1 in-file cite-site `llvm_ir.dag:28` bound to P1).
+- **8 VALID-🟡 row groups** (7 DECISIONS.md rows: LLVM-WIDTH, LLVM-OPS,
+  PTX-DIM3, PTX-COST, VERILOG-NONEMPTY, VERILOG-D3200,
+  VERILOG-COST bound to P1/P2/P4 + 1 in-file cite-site
+  `llvm_ir.dag:28` bound to P1; VERILOG-D3200 also carries five
+  now-concrete Verilog cite-sites).
   P8 closed `VERILOG-VECTOR-RANGE`; the row remains in DECISIONS.md as
   an audit receipt, not a live 🟡.
-- **3 VAGUE DECISIONS.md rows** — `SL-3229-VERILOG-D3200` (consumer-class
-  not named) + `SL-3229-FLOAT-NOMINAL` (straddles two owners) +
+- **2 VAGUE DECISIONS.md rows** — `SL-3229-FLOAT-NOMINAL` (straddles two owners) +
   **`SL-3229-INTEGER-GROUP-COMPLETION`** (no owning task — reclassified
   under the tightened bar; P10 in Section 1 carries this flag).
-- **~16 VAGUE in-file prose blocks** across `json.dag`, `yaml.dag`,
-  `toml.dag`, and 5 `verilog.dag` cite-sites inheriting VERILOG-D3200
-  ≈ **~19 VAGUE total**.
+- **~14 VAGUE in-file prose blocks** across `json.dag`, `yaml.dag`,
+  and `toml.dag`; the 5 `verilog.dag` cite-sites now inherit the
+  concrete P4 gate.
 - **4 INVALID-GATE** (typescript.dag D2-shaped gates).
 - **0 STALE → 🔴** — no named arrival has already landed.
 

@@ -22,7 +22,7 @@ type PortDirection
   | Inout
 
 
-// 🟡 coproduct dissolution — DECISIONS.md Part 6 · SL-3229-VERILOG-D3200.
+// 🟡 gated — feature:T-4 Verilog fact-bundle Phase-3 — DECISIONS.md Part 6 · SL-3229-VERILOG-D3200.
 type NonTriregNetKind
   = Wire
   | Tri
@@ -276,7 +276,7 @@ type NetIdentifierDeclarator {
 }
 
 
-// 🟡 coproduct dissolution — DECISIONS.md Part 6 · SL-3229-VERILOG-D3200.
+// 🟡 gated — feature:T-4 Verilog fact-bundle Phase-3 — DECISIONS.md Part 6 · SL-3229-VERILOG-D3200.
 type VariableDeclaration
   = RegVariable { packing: PackingShape, signedness: Signedness, declarators: List<VariableDeclarator> }
   | IntegerVariable { declarators: List<VariableDeclarator> }
@@ -309,7 +309,7 @@ type OutputPortAnsiNetTypeKind
   | OutputAnsiNoNetType { packing: PackingShape, signedness: Signedness }
 
 
-// 🟡 coproduct dissolution — DECISIONS.md Part 6 · SL-3229-VERILOG-D3200.
+// 🟡 gated — feature:T-4 Verilog fact-bundle Phase-3 — DECISIONS.md Part 6 · SL-3229-VERILOG-D3200.
 type OutputPortAnsiVariableTypeKind
   = OutputAnsiRegType { packing: PackingShape, signedness: Signedness }
   | OutputAnsiIntegerType
@@ -366,7 +366,7 @@ type AnsiOutputPortDeclarator {
 
 
 
-// 🟡 coproduct dissolution — DECISIONS.md Part 6 · SL-3229-VERILOG-D3200.
+// 🟡 gated — feature:T-4 Verilog fact-bundle Phase-3 — DECISIONS.md Part 6 · SL-3229-VERILOG-D3200.
 type ParameterTypeKind
   = UntypedParameter { packing: PackingShape, signedness: Signedness }
   | IntegerParameter
@@ -575,7 +575,7 @@ type LocalParameterDeclaration {
 }
 
 
-// 🟡 coproduct dissolution — DECISIONS.md Part 6 · SL-3229-VERILOG-D3200.
+// 🟡 gated — feature:T-4 Verilog fact-bundle Phase-3 — DECISIONS.md Part 6 · SL-3229-VERILOG-D3200.
 type PrimitiveGateKind
   = GateAnd
   | GateNand
