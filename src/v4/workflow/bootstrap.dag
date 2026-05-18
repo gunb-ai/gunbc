@@ -26,7 +26,6 @@ data bit_identical_check: Symbol = bit_identical_check
 type CompileStage {
   consumes: List<Symbol>
   produces: Symbol
-  // stage compiler-of-record (self-hosting identity), not executor
   compiled_by: Symbol
 }
 
