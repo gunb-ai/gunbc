@@ -1,8 +1,8 @@
 // src/v4/extdeps/languages/llvm_ir.dag
 // Scope: LLVM 18 LangRef IR structural vocabulary (T-4.12).
 // Owns: FloatKind, LlvmType, VectorScaling, StructPacking, VarArg, LlvmConstant, LlvmValue, BinaryOpcode, ConversionOpcode, IntPredicate, FloatPredicate, ConstExprOpcode, PhiIncoming, PhiNode, SwitchCase, CallArgument, CallResult, LandingPadCleanup, LandingClause, AtomicOrdering, CmpXchgSuccessOrdering, CmpXchgFailureOrdering, FenceOrdering, AtomicRmwOrdering, AtomicRmwOp, LlvmInstruction, LoadOrdering, StoreOrdering, LoadAtomicity, StoreAtomicity, Terminator, UnwindDest, BasicBlock, Linkage, FunctionBody, FunctionParameter, LlvmFunction, GlobalMutability, GlobalInitializer, LlvmGlobal, NamedStructDef, LlvmModule, unwind_successors, block_successors, block_well_formed, FidelityDisposition, FidelityFeature, feature_disposition
-// Consumes: std/node.dag; Int kernel-ambient.
-// Status: T-4.12 PASS (B2-OMNI); import v4.std.node Symbol only.
+// Consumes: std/node.dag (Symbol); std/nat.dag (Nat); std/cardinality.dag (NonZeroNat); Int kernel-ambient.
+// Status: T-4.12 PASS (B2-OMNI); import v4.std.node Symbol; import v4.std.nat Nat; import v4.std.cardinality NonZeroNat.
 // Anchor: https://releases.llvm.org/18.1.8/docs/LangRef.html
 // Ledger: DECISIONS.md Part 6 (PR #3229): CP-3229-GREEN-TERMINAL, SL-3229-LLVM-OPS, SL-3229-LLVM-WIDTH.
 
