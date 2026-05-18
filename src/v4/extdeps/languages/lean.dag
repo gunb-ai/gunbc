@@ -1,13 +1,17 @@
 // src/v4/extdeps/languages/lean.dag
 // Scope: Lean 4 language model for PROOF-1 termination export.
-// Owns: LeanDeclarationKind, LeanName, LeanLevel, LeanLevelRef, LeanLevelNode, LeanBinderInfo, LeanBinder, LeanTermRef, LeanTermNode, LeanTermForm, LeanMatchAlternative, LeanTerminationMeasure, LeanTerminationBy, LeanDecreasingProof, LeanTerminationClause, LeanDefinitionTermination, LeanProofArtifact, LeanFidelityFeature, LeanFidelityDisposition, LeanProofCheckSemantics, LeanIntKind, LeanIntWidth, LeanScalar, LeanBool, lean_bool_grounding, LeanNat, lean_nat_grounding, LeanInt, lean_int_grounding, LeanUSize, lean_usize_grounding, LeanUInt8, lean_uint8_grounding, LeanUInt16, lean_uint16_grounding, LeanUInt32, lean_uint32_grounding, LeanUInt64, lean_uint64_grounding.
-// Consumes: Int, UInt8, UInt16, UInt32, UInt64, UIntPlatform, List, Bool, Nat, Symbol, String; v4.extdeps.languages.rust (GroundingMap).
+// Owns: LeanDeclarationKind, LeanName, LeanLevel, LeanLevelRef, LeanLevelNode, LeanBinderInfo, LeanBinder, LeanTermRef, LeanTermNode, LeanTermForm, LeanMatchAlternative, LeanTerminationMeasure, LeanTerminationBy, LeanDecreasingProof, LeanTerminationClause, LeanDefinitionTermination, LeanProofArtifact, LeanFidelityFeature, LeanFidelityDisposition, LeanProofCheckSemantics, GroundingMap, LeanIntKind, LeanIntWidth, LeanScalar, LeanBool, lean_bool_grounding, LeanNat, lean_nat_grounding, LeanInt, lean_int_grounding, LeanUSize, lean_usize_grounding, LeanUInt8, lean_uint8_grounding, LeanUInt16, lean_uint16_grounding, LeanUInt32, lean_uint32_grounding, LeanUInt64, lean_uint64_grounding.
+// Consumes: Int, UInt8, UInt16, UInt32, UInt64, UIntPlatform, List, Bool, Nat, Symbol, String.
 // Status: D2-REV / Practice 8 — scalar ladder `LeanScalar` + std coincidence via `GroundingMap` (rust.dag template; P4-3208 / #3208).
 
 module v4.extdeps.languages.lean
 
 
-import v4.extdeps.languages.rust { GroundingMap }
+// Twin of `rust.dag` `GroundingMap` pending shared `resolver.dag` home (DECISIONS.md D4; cpp.dag P2 note).
+type GroundingMap<IRCarrier> {
+  spelling: String
+}
+
 import v4.std.integer {
   Int,
   UInt8,
@@ -179,19 +183,6 @@ type LeanFidelityDisposition
   | LeanFailClosed { feature: LeanFidelityFeature }
 
 
-fn lean_feature_disposition(f: LeanFidelityFeature) -> LeanFidelityDisposition {
-  match f {
-    LeanKernelTerm => LeanModeled
-    LeanPrettyNameSpelling => LeanDeclaredNormalized { feature: LeanPrettyNameSpelling }
-    LeanWhitespaceAndLayout => LeanDeclaredNormalized { feature: LeanWhitespaceAndLayout }
-    LeanTacticScript => LeanFailClosed { feature: LeanTacticScript }
-    LeanElaboratorOnlySyntax => LeanFailClosed { feature: LeanElaboratorOnlySyntax }
-    LeanUnresolvedUniverseLevel => LeanFailClosed { feature: LeanUnresolvedUniverseLevel }
-    LeanUnsupportedTheoremClass => LeanFailClosed { feature: LeanUnsupportedTheoremClass }
-  }
-}
-
-
 // Anchor: https://lean-lang.org/doc/reference/4.20.0/
 type LeanProofCheckSemantics<IRCarrier> {
   kernel_definitional_reduction: Bool
@@ -227,7 +218,7 @@ type LeanScalar
 // Anchor: https://lean-lang.org/doc/reference/4.20.0/Basic-Types/Fixed-Precision-Integers/
 type LeanBool = Bool
 
-data lean_bool_grounding: GroundingMap<LeanBool> = GroundingMap {
+data lean_bool_grounding: GroundingMap<LeanBool> = {
   spelling: "Bool"
 }
 
@@ -235,7 +226,7 @@ data lean_bool_grounding: GroundingMap<LeanBool> = GroundingMap {
 // Anchor: https://lean-lang.org/doc/reference/4.20.0/
 type LeanNat = Nat
 
-data lean_nat_grounding: GroundingMap<LeanNat> = GroundingMap {
+data lean_nat_grounding: GroundingMap<LeanNat> = {
   spelling: "Nat"
 }
 
@@ -243,7 +234,7 @@ data lean_nat_grounding: GroundingMap<LeanNat> = GroundingMap {
 // Anchor: https://lean-lang.org/doc/reference/4.20.0/
 type LeanInt = Int
 
-data lean_int_grounding: GroundingMap<LeanInt> = GroundingMap {
+data lean_int_grounding: GroundingMap<LeanInt> = {
   spelling: "Int"
 }
 
@@ -251,7 +242,7 @@ data lean_int_grounding: GroundingMap<LeanInt> = GroundingMap {
 // Anchor: https://lean-lang.org/doc/reference/4.20.0/Basic-Types/Fixed-Precision-Integers/
 type LeanUSize = UIntPlatform
 
-data lean_usize_grounding: GroundingMap<LeanUSize> = GroundingMap {
+data lean_usize_grounding: GroundingMap<LeanUSize> = {
   spelling: "USize"
 }
 
@@ -259,7 +250,7 @@ data lean_usize_grounding: GroundingMap<LeanUSize> = GroundingMap {
 // Anchor: https://lean-lang.org/doc/reference/4.20.0/Basic-Types/Fixed-Precision-Integers/
 type LeanUInt8 = UInt8
 
-data lean_uint8_grounding: GroundingMap<LeanUInt8> = GroundingMap {
+data lean_uint8_grounding: GroundingMap<LeanUInt8> = {
   spelling: "UInt8"
 }
 
@@ -267,7 +258,7 @@ data lean_uint8_grounding: GroundingMap<LeanUInt8> = GroundingMap {
 // Anchor: https://lean-lang.org/doc/reference/4.20.0/Basic-Types/Fixed-Precision-Integers/
 type LeanUInt16 = UInt16
 
-data lean_uint16_grounding: GroundingMap<LeanUInt16> = GroundingMap {
+data lean_uint16_grounding: GroundingMap<LeanUInt16> = {
   spelling: "UInt16"
 }
 
@@ -275,7 +266,7 @@ data lean_uint16_grounding: GroundingMap<LeanUInt16> = GroundingMap {
 // Anchor: https://lean-lang.org/doc/reference/4.20.0/Basic-Types/Fixed-Precision-Integers/
 type LeanUInt32 = UInt32
 
-data lean_uint32_grounding: GroundingMap<LeanUInt32> = GroundingMap {
+data lean_uint32_grounding: GroundingMap<LeanUInt32> = {
   spelling: "UInt32"
 }
 
@@ -283,6 +274,6 @@ data lean_uint32_grounding: GroundingMap<LeanUInt32> = GroundingMap {
 // Anchor: https://lean-lang.org/doc/reference/4.20.0/Basic-Types/Fixed-Precision-Integers/
 type LeanUInt64 = UInt64
 
-data lean_uint64_grounding: GroundingMap<LeanUInt64> = GroundingMap {
+data lean_uint64_grounding: GroundingMap<LeanUInt64> = {
   spelling: "UInt64"
 }
