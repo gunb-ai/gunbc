@@ -3,7 +3,6 @@
 // Owns: CompileStage, FixptStage1Stage2, BootstrapPlan, bootstrap_stage_output, bootstrap_plan_well_formed, bootstrap_plan
 // Consumes: v4.std.node, v4.std.diagnostic
 // Status: filled — compiler-of-record is the self-hosting structural fact; structural gate only.
-// Ledger: design-pure-bootstrap-zero.md (A3, PROOF-1, Discipline rail); STRUCTURE.md:385-388 (C4 ci.yml-as-checked-projection).
 
 module v4.workflow.bootstrap
 

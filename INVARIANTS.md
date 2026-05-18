@@ -18,6 +18,8 @@ Two load-bearing headings from the previous organization map directly into these
 
 Each principle below carries: the rule, why it stands alone, problem/solution shapes for pattern-matching, a historical dissolution receipt, and a cross-reference to the related rule IDs that elaborate it. Per-rule long-form rationale lives in subdocs under [`docs/invariants/`](docs/invariants/), [`docs/design-*.md`](docs/), and [`docs/debt/`](docs/debt/); the appendix below names the exact subdoc per ID and each numbered rule has a stable `#id` anchor for in-file citation (e.g., `INVARIANTS.md#c-8`, `INVARIANTS.md#e-9`).
 
+**v4 load-bearing workflow pair (Practice 5 registry).** `src/v4/workflow/bootstrap.dag` and `src/v4/workflow/ci.dag` are named data authorities for bootstrap + CI pipeline modeling; governing rails live in `docs/design-pure-bootstrap-zero.md` and `src/v4/STRUCTURE.md` (**C4**) — authority flows doc → files, not per-file `see docs/…` pointers in `.dag` headers per `docs/modeling-discipline.md`.
+
 ---
 
 ## P1: Modeling Faithfulness
