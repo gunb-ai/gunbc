@@ -1,6 +1,6 @@
 // src/v4/workflow/bootstrap.dag
 // Scope: v4-owned bootstrap orchestration AS DATA — four stages (seed→stage0→stage1→stage2, fixpt stage1==stage2); v2 pipeline is the initial executor, per-stage v4-executor migration deferred.
-// Owns: CompileStage, FixptStage1Stage2, BootstrapPlan, bootstrap_plan_well_formed, bootstrap_plan_unchecked, bootstrap_plan
+// Owns: CompileStage, FixptStage1Stage2, BootstrapPlan, bootstrap_plan_well_formed, bootstrap_plan
 // Consumes: v4.std.node, v4.std.diagnostic
 // Status: filled — orchestration defined as data (v2-delegating bodies); structural v2 gate only.
 
@@ -40,29 +40,6 @@ type BootstrapPlan {
   self0: CompileStage
   self1: CompileStage
   fixpt: FixptStage1Stage2
-}
-
-data bootstrap_plan_unchecked: BootstrapPlan = BootstrapPlan {
-  seed: CompileStage {
-    consumes: [v4_dag_source],
-    produces: v4_stage0_binary,
-    via: v2_pipeline
-  },
-  self0: CompileStage {
-    consumes: [v4_dag_source, v4_stage0_binary],
-    produces: v4_stage1_binary,
-    via: v2_pipeline
-  },
-  self1: CompileStage {
-    consumes: [v4_dag_source, v4_stage1_binary],
-    produces: v4_stage2_binary,
-    via: v2_pipeline
-  },
-  fixpt: FixptStage1Stage2 {
-    left: v4_stage1_binary,
-    right: v4_stage2_binary,
-    via: bit_identical_check
-  }
 }
 
 data bootstrap_mis_wired: Symbol = bootstrap_mis_wired
@@ -111,4 +88,25 @@ fn bootstrap_plan_well_formed(p: BootstrapPlan) -> Outcome<BootstrapPlan> {
   }
 }
 
-data bootstrap_plan: Outcome<BootstrapPlan> = bootstrap_plan_well_formed(p: bootstrap_plan_unchecked)
+data bootstrap_plan: Outcome<BootstrapPlan> = bootstrap_plan_well_formed(p: BootstrapPlan {
+  seed: CompileStage {
+    consumes: [v4_dag_source],
+    produces: v4_stage0_binary,
+    via: v2_pipeline
+  },
+  self0: CompileStage {
+    consumes: [v4_dag_source, v4_stage0_binary],
+    produces: v4_stage1_binary,
+    via: v2_pipeline
+  },
+  self1: CompileStage {
+    consumes: [v4_dag_source, v4_stage1_binary],
+    produces: v4_stage2_binary,
+    via: v2_pipeline
+  },
+  fixpt: FixptStage1Stage2 {
+    left: v4_stage1_binary,
+    right: v4_stage2_binary,
+    via: bit_identical_check
+  }
+})
