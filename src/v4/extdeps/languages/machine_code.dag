@@ -1,27 +1,18 @@
 // src/v4/extdeps/languages/machine_code.dag
 // Scope: machine-code language model parameterized by Isa.
-// Owns: Isa, ByteOrder, InstructionLength, InstructionByteLimitRef, OperandFieldWidthRef, InstructionWord, RegisterClass, RegisterDeclaration, RegisterRef, IndexScale, AddressingMode, Operand, ByteSequence, InstructionProductionRef, RegisterOperandSlotRef, ImmediateOperandSlotRef, MemoryOperandSlotRef, ImmediateOperandTarget, ImmediateOperandConstraint, MemoryOperandConstraint, InstructionOperandSlot, InstructionProduction, OperandBinding, DecodedInstruction, MachineFidelityFeature, MachineFidelityDisposition, MachineIntegerOverflowBehavior, MachineIntegerOperationSemantics, FlagWriteDisposition, MachineI8, MachineI16, MachineI32, MachineI64, MachineI128, MachineU8, MachineU16, MachineU32, MachineU64, MachineU128.
-// Consumes: Int8, Int16, Int32, Int64, Int128, UInt8, UInt16, UInt32, UInt64, UInt128, List, Byte, Symbol.
-// Status: D2-hard-held; fact-bundle rework gated.
+// Owns: Isa, ByteOrder, InstructionLength, InstructionByteLimitRef, OperandFieldWidthRef, Symbol, MachineIntKind, MachineIntWidth, MachineScalar, MachineDisplacement32WidthClass, MachineDisplacement64WidthClass, MachineSignedDisplacement32, MachineSignedDisplacement64, InstructionWord, RegisterClass, RegisterDeclaration, RegisterRef, IndexScale, AddressingMode, Operand, ByteSequence, InstructionProductionRef, RegisterOperandSlotRef, ImmediateOperandSlotRef, MemoryOperandSlotRef, ImmediateOperandTarget, ImmediateOperandConstraint, MemoryOperandConstraint, InstructionOperandSlot, InstructionProduction, OperandBinding, DecodedInstruction, MachineFidelityFeature, MachineFidelityDisposition, MachineIntegerOverflowBehavior, MachineIntegerOperationSemantics, FlagWriteDisposition.
+// Consumes: List, Byte.
+// Status: D2-REV; 🟢 P4-3208 — DECISIONS.md (machine_code scalar + displacement + ledger).
 
 module v4.extdeps.languages.machine_code
 
 
-import v4.std.integer {
-  Int8,
-  Int16,
-  Int32,
-  Int64,
-  Int128,
-  UInt8,
-  UInt16,
-  UInt32,
-  UInt64,
-  UInt128
-}
 import v4.std.collection { List }
 import v4.std.machine { Byte }
-import v4.std.node { Symbol }
+
+
+// Twin of `v4.std.node.Symbol` — M1(2.7) compile_to_dag import lowering; see lean.dag.
+type Symbol
 
 
 // Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
@@ -57,6 +48,53 @@ type InstructionByteLimitRef {
 type OperandFieldWidthRef {
   isa: Isa,
   width: Symbol
+}
+
+
+// Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
+// 🟢 coproduct dissolution — DECISIONS.md P4-3208
+type MachineIntKind
+  = Signed
+  | Unsigned
+
+
+// Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
+// 🟢 coproduct dissolution — DECISIONS.md P4-3208
+type MachineIntWidth
+  = Bits8
+  | Bits16
+  | Bits32
+  | Bits64
+  | Bits128
+
+
+// Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
+// 🟢 coproduct dissolution — DECISIONS.md P4-3208
+type MachineScalar
+  = IntScalar { kind: MachineIntKind, width: MachineIntWidth }
+
+
+// Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
+// 🟢 coproduct dissolution — DECISIONS.md P4-3208
+type MachineDisplacement32WidthClass
+  = DisplacementEncodingBits32 {}
+
+
+// Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
+// 🟢 coproduct dissolution — DECISIONS.md P4-3208
+type MachineDisplacement64WidthClass
+  = DisplacementEncodingBits64 {}
+
+
+// Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
+type MachineSignedDisplacement32 {
+  width: MachineDisplacement32WidthClass
+}
+
+
+// Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
+type MachineSignedDisplacement64 {
+  width: MachineDisplacement64WidthClass
 }
 
 
@@ -104,11 +142,16 @@ type IndexScale
 // Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
 // 🟢 coproduct dissolution — DECISIONS.md P4-3208
 type AddressingMode
-  = AbsoluteAddress { displacement: MachineI64 }
+  = AbsoluteAddress { displacement: MachineSignedDisplacement64 }
   | RegisterIndirect { base: RegisterRef }
-  | BaseDisplacement { base: RegisterRef, displacement: MachineI32 }
-  | BaseIndexScale { base: RegisterRef, index: RegisterRef, scale: IndexScale, displacement: MachineI32 }
-  | PcRelative { displacement: MachineI32 }
+  | BaseDisplacement { base: RegisterRef, displacement: MachineSignedDisplacement32 }
+  | BaseIndexScale {
+      base: RegisterRef,
+      index: RegisterRef,
+      scale: IndexScale,
+      displacement: MachineSignedDisplacement32
+    }
+  | PcRelative { displacement: MachineSignedDisplacement32 }
 
 
 // Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
@@ -242,19 +285,6 @@ type MachineFidelityDisposition
   | MachineFailClosed { feature: MachineFidelityFeature }
 
 
-fn machine_feature_disposition(f: MachineFidelityFeature) -> MachineFidelityDisposition {
-  match f {
-    ValidInstructionEncoding => MachineModeled
-    InstructionAliasSpelling => MachineDeclaredNormalized { feature: InstructionAliasSpelling }
-    PaddingByteRun => MachineDeclaredNormalized { feature: PaddingByteRun }
-    UndecodableByteRun => MachineFailClosed { feature: UndecodableByteRun }
-    PrivilegedOrUndefinedEncoding => MachineFailClosed { feature: PrivilegedOrUndefinedEncoding }
-    IsaRevisionMismatch => MachineFailClosed { feature: IsaRevisionMismatch }
-    AmbiguousDecode => MachineFailClosed { feature: AmbiguousDecode }
-  }
-}
-
-
 // Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
 // 🟢 coproduct dissolution — DECISIONS.md P4-3208
 type MachineIntegerOverflowBehavior
@@ -275,16 +305,3 @@ type FlagWriteDisposition
   | WritesArchitecturalFlags
   | WritesPredicateRegister
 
-
-// Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
-type MachineI8 = Int8
-type MachineI16 = Int16
-type MachineI32 = Int32
-type MachineI64 = Int64
-type MachineI128 = Int128
-
-type MachineU8 = UInt8
-type MachineU16 = UInt16
-type MachineU32 = UInt32
-type MachineU64 = UInt64
-type MachineU128 = UInt128
