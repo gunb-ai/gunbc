@@ -158,15 +158,14 @@ PR #3245 without waiting on substrate.
 
 ### 1.2 🟡 → 🟢 burn-down
 
-Total 🟡 in the v4 substrate today (Section 2 + Section 3 VALID-🟡 +
-INVALID-GATE-once-re-gated):
+Total 🟡 in the v4 substrate today (Section 2 + Section 3 VALID-🟡):
 
 | primitive PR | 🟡 today | landing event | 🟡 after landing |
 |---|---|---|---|
 | (baseline) | **~36** | — | — |
-| P1 lands | ~20 | `std/cardinality.dag` refinement | ~16 |
+| P1 lands | 3 row groups + 1 cite | `std/cardinality.dag` refinement | ~16 |
 | P2 lands | 5 named (+ 29 verilog sites converge in one sweep) | `std/collection.dag` Wave-A2 | ~11 named |
-| P3 lands | 2 named (+ ~7 in-file) | T-6 + T-7 pipeline substrate | ~9 named |
+| P3 lands | 2 named (+ 3 format parse cites) | T-6 + T-7 pipeline substrate | ~9 named |
 | P4 lands | 1 TypeScript status gate + 1 row + 5 sites + 1 fn (`dag.dag canonical_symbols` #3225) | LanguageModel-axis rework family (T-4 + T-4.9) | ~3 named |
 | P5 cascade lands | 1 named (+ 3 walker sites in `03_resolve.dag` #3225) | scoped binding-harvest `fold_node` algebra (substrate: **#3297**) | ~1 |
 | P6 lands | 2 | FreeMonoid/Nat catamorphism | ~0 |
@@ -606,63 +605,38 @@ DECISIONS.md Part 6 · SL-3229-LLVM-WIDTH.`
   cite-site becomes `// 🟡 coproduct dissolution — feature:
   std/cardinality.dag refinement (T-3) — DECISIONS.md Part 6 · SL-3229-LLVM-WIDTH.`
 
-**`extdeps/formats/json.dag` × 3 in-file blocks** (lines 47, 143, 236)
-— pre-#3234 prose-form `// 🟡 TRACKED-SCAFFOLD` blocks (not
-on-coproduct one-liners). Block at 47 cites "the three bridge
-properties exactly the diagnostic.dag Locus(🟢)/ByteRange(🟡)
-precedent"; block at 143 cites "the numeric substrate"; block at 236
-cites "the operations ride substrate that is scaffold today."
-- **Triage: VAGUE.**
-- **Why:** named arrival is a class ("the numeric substrate" /
-  "the operations ride substrate that is scaffold today") rather than
-  one concrete owner+task. The numeric-substrate gate is concretizable
-  to the same canonical
-  `feature: std/cardinality.dag refinement (T-3 Wave-A2)` arrival; the
-  operations-side gate concretizes to `feature: T-6/T-7 parse/emit
-  pipeline-stage substrate`.
-- **Action queued:** re-state each of the three in-file blocks against
-  one concrete arrival.
+**`extdeps/formats/json.dag` × 2 concrete cite-sites** (lines 21-22)
+— both are one-line `🟡 gated — feature:` cites:
+T-6/T-7 parse substrate (`SL-3229-T4-FORMAT-T6T7`, parse half) and
+T-10 emit substrate (`SL-3229-T4-FORMAT-T6T7`, emit half).
+- **Triage: VALID.**
+- **Why:** each cite names a concrete feature arrival plus owning task;
+  no pre-#3234 prose-form VAGUE blocks remain in PR head.
 
-**`extdeps/formats/yaml.dag` × 6 in-file blocks** (lines 44, 85, 122,
-163, 245, 279) — pre-#3234 prose-form 🟡 blocks ("named owner +
-dissolution trigger, NEVER improvised"). Mix of parser-side
-(parse body's job) and refinement-substrate gates.
-- **Triage: mostly VALID-in-intent / VAGUE-in-form.**
-- **Why:** each cite-site names a class of arrival ("the parse body's
-  job", "deferred parser", "canonical-key / refined-lexeme substrate")
-  but not a concrete owner+task. The arrivals concretize to
-  `feature: T-6/T-7 parse pipeline-stage substrate` (parser-side gates)
-  and `feature: std/cardinality.dag refinement (T-3 Wave-A2)`
-  (refinement gates).
-- **Action queued:** re-state each block against one concrete arrival.
+**`extdeps/formats/yaml.dag` × 3 concrete cite-sites** (lines 22-24)
+— one-line `🟡 gated — feature:` cites for T-6/T-7 parse substrate,
+T-10 emit substrate, and YAML canonical mapping-key uniqueness
+(`SL-3229-YAML-CANONICAL-KEYS`).
+- **Triage: VALID.**
+- **Why:** each cite names a concrete feature arrival; no prose-form
+  VAGUE blocks remain in PR head.
 
-**`extdeps/formats/toml.dag` × 7 in-file blocks** (lines 41, 79, 86,
-96, 126, 144, 181, 223, 315) — same pre-#3234 prose form as yaml.dag.
-"DEFERRED (🟡, named owner + dissolution trigger)", "deferred parser
-(🟡 (1) below)", "refinement, 🟡 below". Same shape: parser-side +
-refinement-side gates.
-- **Triage: same as yaml.dag — VALID-in-intent / VAGUE-in-form.**
-- **Action queued:** same as yaml.dag.
+**`extdeps/formats/toml.dag` × 5 concrete cite-sites** (lines 11, 23-26)
+— the `TomlValue` coproduct points to `SL-3229-TOML-TABLE-SYNTAX`;
+the adjacent one-line `🟡 gated — feature:` cites name T-6/T-7 parse,
+T-10 emit, v4 temporal substrate for RFC 3339 datetime interpretation,
+and TOML inline-table/table syntax collapse.
+- **Triage: VALID.**
+- **Why:** each cite names a concrete ledger row or feature arrival;
+  no prose-form VAGUE blocks remain in PR head.
 
-**`extdeps/languages/typescript.dag` × 4 in-file blocks** (lines 21,
-34, 67, 69) — `D2a(2) grounding-map facet is 🟡 operator-pending` /
-`alias rows 🟡 TRACKED-SCAFFOLD per std/ ladders + refinement policy`.
-- **Triage: INVALID-GATE.**
-- **Why:** the named arrival ("D2a(2) grounding-map facet", "alias
-  rows per std/ ladders") references the **D2 alias-identity model**.
-  Per the operator's 2026-05-17 D2-reversal directive, D2 alias-identity
-  was REJECTED in favor of the **fact-bundle model** — the named
-  arrival as written *will not arrive*. This is not STALE (the gate
-  has not "already opened") and not VAGUE (the gate is concretely
-  named); it is **INVALID-GATE** — the gate's target was cancelled by
-  the design reversal. Per #3244, an INVALID-GATE entry must be
-  re-gated against the post-reversal model (the T-4 fact-bundle
-  Phase-3 rework — keystone PR #3226 merged @`77b9e7d72`; Phase-3 is
-  5-feeder-gated, four feeders open: T-3, T-29, T-30, T-25-core).
-- **Owning lane (re-gate action — out of C1 scope per "C1 marks and
-  flags, does not fix"):** the lane owning
-  `extdeps/languages/typescript.dag` (Lane C / T-4 manager
-  vivid-carp-207); the standing T-4-rework-PR HOLD directive applies.
+**`extdeps/languages/typescript.dag` × 1 file-level status gate** (line 5)
+— `// Status: 🟡 gated — feature: T-4 fact-bundle Phase-3 rework after
+T-3/T-29/T-30/T-25-core.`
+- **Triage: VALID.**
+- **Why:** the old D2-shaped yellow blocks are gone on PR head. The
+  remaining TypeScript gate is the post-D2-reversal T-4 fact-bundle
+  Phase-3 arrival and is concrete enough to roll under P4.
 
 ### 3.3 Summary table
 
@@ -680,28 +654,32 @@ refinement-side gates.
 | SL-3229-FLOAT-NOMINAL | DECISIONS.md row | feature | **partial** (straddles machine.dag + cardinality.dag) | yes | **VAGUE** |
 | verilog.dag × 5 in-file cite-sites | one-liner | feature | yes (inherits TASKS.md T-4.9 Verilog LanguageModel-axis rework) | yes | VALID |
 | llvm_ir.dag:28 in-file cite-site | one-liner | feature | yes (inherits SL-3229-LLVM-WIDTH) | yes | VALID |
-| json.dag × 3 in-file blocks | prose | mixed | **no** (class) | yes | **VAGUE** |
-| yaml.dag × 6 in-file blocks | prose | mixed | **no** (class) | yes | **VAGUE** |
-| toml.dag × 7+ in-file blocks | prose | mixed | **no** (class) | yes | **VAGUE** |
-| typescript.dag × 4 in-file blocks | prose | feature (D2-shaped) | **named arrival cancelled by D2-reversal** | yes | **INVALID-GATE** (re-gate post-reversal) |
+| json.dag × 2 in-file cite-sites | one-liner | feature | yes (T-6/T-7 parse; T-10 emit) | yes | VALID |
+| yaml.dag × 3 in-file cite-sites | one-liner | feature | yes (T-6/T-7 parse; T-10 emit; YAML canonical keys) | yes | VALID |
+| toml.dag × 5 in-file cite-sites | one-liner | feature | yes (T-6/T-7 parse; T-10 emit; datetime; table syntax) | yes | VALID |
+| typescript.dag × 1 file-level status gate | one-liner | feature | yes (T-4 fact-bundle Phase-3 after named feeders) | yes | VALID |
 
 Counts (under the still-hawk-102 tightened bar 2026-05-18 — VALID-🟡
 requires concrete gate AND binding to a named primitive+owning-task
 substrate PR in Section 1):
 
-- **6 VALID-🟡 row groups** (5 DECISIONS.md rows: LLVM-WIDTH, LLVM-OPS,
+- **10 VALID-🟡 row groups** (5 DECISIONS.md rows: LLVM-WIDTH, LLVM-OPS,
   PTX-DIM3, VERILOG-NONEMPTY, VERILOG-D3200 bound to P1/P2/P4 + 1
   in-file cite-site `llvm_ir.dag:28` bound to P1; VERILOG-D3200 also
-  carries five now-concrete Verilog cite-sites). P8 closed
+  carries five now-concrete Verilog cite-sites; the format files now
+  contribute concrete json/yaml/toml cite-site groups; TypeScript now
+  contributes one concrete T-4 status gate). P8 closed
   `VERILOG-VECTOR-RANGE`; main closed `PTX-COST` and `VERILOG-COST`;
   those rows remain in DECISIONS.md as audit receipts, not live 🟡.
 - **2 VAGUE DECISIONS.md rows** — `SL-3229-FLOAT-NOMINAL` (straddles two owners) +
   **`SL-3229-INTEGER-GROUP-COMPLETION`** (no owning task — reclassified
   under the tightened bar; P10 in Section 1 carries this flag).
-- **~14 VAGUE in-file prose blocks** across `json.dag`, `yaml.dag`,
-  and `toml.dag`; the 5 `verilog.dag` cite-sites now inherit the
-  concrete P4 gate.
-- **4 INVALID-GATE** (typescript.dag D2-shaped gates).
+- **0 VAGUE in-file prose blocks** across `json.dag`, `yaml.dag`,
+  and `toml.dag`; all PR-head format cite-sites are concrete one-line
+  gates.
+- **0 INVALID-GATE** — the old `typescript.dag` D2-shaped gates are
+  gone on PR head and replaced by one concrete T-4 fact-bundle status
+  gate.
 - **0 STALE → 🔴** — no named arrival has already landed.
 
 **Headline finding:** no pre-existing tracker is STALE — the remaining
@@ -710,14 +688,10 @@ arrivals are still ahead of us, while the raw non-negative cost rows closed
 once their live carriers moved to `Nat`. Verified against
 `std/cardinality.dag`, `std/collection.dag`, `std/nat.dag`,
 `std/algebra.dag` on `main` @ `ce0241039`. The pre-existing-tracker
-debt is **overwhelmingly VAGUE prose-form gates that #3244 retires** —
-concretizing the in-file prose blocks under one canonical
-`feature: std/cardinality.dag refinement (T-3 Wave-A2)` (and a smaller
-parser-side family `feature: T-6/T-7 parse/emit pipeline-stage
-substrate`) collapses much of the VAGUE list to VALID. The 4
-typescript.dag INVALID-GATE entries need substantive re-gating against
-the post-D2-reversal fact-bundle model. **All re-gates and dissolve-now
-fixes are downstream lane work, not C1's** — C1 marks and flags.
+debt is now down to the two VAGUE DECISIONS.md rows above; PR-head
+format and TypeScript cite-sites are already concrete one-line gates.
+**All remaining re-gates and dissolve-now fixes are downstream lane
+work, not C1's** — C1 marks and flags.
 
 ---
 
