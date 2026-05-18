@@ -1,24 +1,25 @@
 // src/v4/extdeps/languages/lean.dag
 // Scope: Lean 4 language model for PROOF-1 termination export.
-// Owns: LeanDeclarationKind, LeanName, LeanLevel, LeanLevelRef, LeanLevelNode, LeanBinderInfo, LeanBinder, LeanTermRef, LeanTermNode, LeanTermForm, LeanMatchAlternative, LeanTerminationMeasure, LeanTerminationBy, LeanDecreasingProof, LeanTerminationClause, LeanDefinitionTermination, LeanProofArtifact, LeanFidelityFeature, LeanFidelityDisposition, LeanProofCheckSemantics, LeanBool, LeanNat, LeanInt, LeanUSize, LeanUInt8, LeanUInt16, LeanUInt32, LeanUInt64.
-// Consumes: Int, UInt8, UInt16, UInt32, UInt64, UIntPlatform, List, Bool, Nat, Symbol.
-// Status: D2-hard-held; fact-bundle rework gated.
+// Owns: LeanDeclarationKind, LeanName, LeanLevel, LeanLevelRef, LeanLevelNode, LeanBinderInfo, LeanBinder, LeanTermRef, LeanTermNode, LeanTermForm, LeanMatchAlternative, LeanTerminationMeasure, LeanTerminationBy, LeanDecreasingProof, LeanTerminationClause, LeanDefinitionTermination, LeanProofArtifact, LeanFidelityFeature, LeanFidelityDisposition, LeanProofCheckSemantics, Symbol, GroundingMap, LeanIntKind, LeanIntWidth, LeanScalar, LeanBool, lean_bool_grounding.
+// Consumes: List, Bool, String.
+// Status: D2-REV; 🟢 P4-3208 — DECISIONS.md (lean scalar + ledger).
 
 module v4.extdeps.languages.lean
 
 
-import v4.std.integer {
-  Int,
-  UInt8,
-  UInt16,
-  UInt32,
-  UInt64,
-  UIntPlatform
-}
 import v4.std.collection { List }
 import v4.std.logic { Bool }
-import v4.std.nat { Nat }
-import v4.std.node { Symbol }
+import v4.std.text { String }
+
+
+// Twin of `v4.std.node.Symbol` — M1(2.7) compile_to_dag import lowering; local L-2 atom until `v4.std.node` import lowering lands (DECISIONS.md / P2).
+type Symbol
+
+
+// Twin of `rust.dag` `GroundingMap` pending shared `resolver.dag` home (DECISIONS.md D4; cpp.dag P2 note).
+type GroundingMap<IRCarrier> {
+  spelling: String
+}
 
 
 // Anchor: https://lean-lang.org/doc/reference/4.20.0/
@@ -177,19 +178,6 @@ type LeanFidelityDisposition
   | LeanFailClosed { feature: LeanFidelityFeature }
 
 
-fn lean_feature_disposition(f: LeanFidelityFeature) -> LeanFidelityDisposition {
-  match f {
-    LeanKernelTerm => LeanModeled
-    LeanPrettyNameSpelling => LeanDeclaredNormalized { feature: LeanPrettyNameSpelling }
-    LeanWhitespaceAndLayout => LeanDeclaredNormalized { feature: LeanWhitespaceAndLayout }
-    LeanTacticScript => LeanFailClosed { feature: LeanTacticScript }
-    LeanElaboratorOnlySyntax => LeanFailClosed { feature: LeanElaboratorOnlySyntax }
-    LeanUnresolvedUniverseLevel => LeanFailClosed { feature: LeanUnresolvedUniverseLevel }
-    LeanUnsupportedTheoremClass => LeanFailClosed { feature: LeanUnsupportedTheoremClass }
-  }
-}
-
-
 // Anchor: https://lean-lang.org/doc/reference/4.20.0/
 type LeanProofCheckSemantics<IRCarrier> {
   kernel_definitional_reduction: Bool
@@ -199,11 +187,32 @@ type LeanProofCheckSemantics<IRCarrier> {
 
 
 // Anchor: https://lean-lang.org/doc/reference/4.20.0/Basic-Types/Fixed-Precision-Integers/
+// 🟢 coproduct dissolution — DECISIONS.md P4-3208
+type LeanIntKind
+  = Signed
+  | Unsigned
+
+
+// Anchor: https://lean-lang.org/doc/reference/4.20.0/Basic-Types/Fixed-Precision-Integers/
+// 🟢 coproduct dissolution — DECISIONS.md P4-3208
+type LeanIntWidth
+  = Bits8
+  | Bits16
+  | Bits32
+  | Bits64
+  | Pointer
+
+
+// Anchor: https://lean-lang.org/doc/reference/4.20.0/Basic-Types/Fixed-Precision-Integers/
+// 🟢 coproduct dissolution — DECISIONS.md P4-3208
+type LeanScalar
+  = IntScalar { kind: LeanIntKind, width: LeanIntWidth }
+  | BoolScalar
+
+
+// Anchor: https://lean-lang.org/doc/reference/4.20.0/Basic-Types/Fixed-Precision-Integers/
 type LeanBool = Bool
-type LeanNat = Nat
-type LeanInt = Int
-type LeanUSize = UIntPlatform
-type LeanUInt8 = UInt8
-type LeanUInt16 = UInt16
-type LeanUInt32 = UInt32
-type LeanUInt64 = UInt64
+
+data lean_bool_grounding: GroundingMap<LeanBool> = {
+  spelling: "Bool"
+}

@@ -36,9 +36,6 @@ module v4.lens.cost
 import v4.extdeps.languages.llvm_ir { LlvmInstruction }
 
 
-// P9 dissolution receipt: the LLVM instruction cost table is a cost-lens
-// model fact, not an `llvm_ir.dag` property projection. Keep the table here
-// until T-12 fills the total `Node -> Witness<SymbolicCost>` fold.
 fn llvm_instruction_cost(i: LlvmInstruction) -> Int {
   match i {
     Binary { result: _, result_type: _, op: _, lhs: _, rhs: _ } => 1
