@@ -50,9 +50,34 @@ def test_constant_primary_carries_parenthesized_single_expression() -> None:
     ) in body
 
 
+def test_constant_select_shapes_match_parameter_and_specparam_grammar() -> None:
+    select = block(VERILOG.read_text(encoding="utf-8"), "ConstantSelect")
+    assert "bit_selects: List<ConstantExpression>" in select
+    assert "range: ConstantSelectRangeClause" in select
+
+    select_range = block(
+        VERILOG.read_text(encoding="utf-8"), "ConstantSelectRangeClause"
+    )
+    assert "= NoConstantSelectRange" in select_range
+    assert "| ConstantSelectRange { range: ConstantRangeExpression }" in select_range
+
+    specparam = block(VERILOG.read_text(encoding="utf-8"), "ConstantSpecparamSelect")
+    assert "= NoConstantSpecparamSelect" in specparam
+    assert (
+        "| ConstantSpecparamSelectRange { range: ConstantRangeExpression }"
+    ) in specparam
+
+    primary = block(VERILOG.read_text(encoding="utf-8"), "ConstantPrimary")
+    assert "| ConstantParameterReference { name: Symbol, select: ConstantSelect }" in primary
+    assert (
+        "| ConstantSpecparamReference { name: Symbol, select: ConstantSpecparamSelect }"
+    ) in primary
+
+
 if __name__ == "__main__":
     test_constant_function_call_carries_attributes()
     test_constant_system_function_call_carries_nonempty_arguments_site()
     test_unary_constant_expression_takes_constant_primary()
     test_constant_primary_carries_parenthesized_single_expression()
+    test_constant_select_shapes_match_parameter_and_specparam_grammar()
     print("OK: scripts/test_verilog_constexpr_model.py")
