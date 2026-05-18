@@ -1,14 +1,22 @@
 // src/v4/lens/testgen.dag
-// Scope: T-19 testgen — substrate folds emit TestClaim; five scheduling categories + Generator<C>.
-// Owns: Generator<C> TypeConstructionSubject AlgebraLawSubject DiagnosticExhaustivenessSubject LensApplicabilitySubject BidirectionalRoundtripSubject TestgenConcept
-// Consumes: v4.std.node v4.std.verification (algebra/diagnostic/lens/extdeps at materialization — TASKS T-19)
+// Scope: T-19 testgen — substrate folds emit TestClaim; five scheduling categories + Generator<C>; filesystem-backed whole-corpus lens driver primitive.
+// Owns: Generator<C> TypeConstructionSubject AlgebraLawSubject DiagnosticExhaustivenessSubject LensApplicabilitySubject BidirectionalRoundtripSubject TestgenConcept CorpusEntry CorpusEnumerationRequest CorpusEnumerationResult CorpusEnumerator CorpusLensReader<C> CorpusLensDriver<C>
+// Consumes: v4.std.node v4.std.verification v4.std.diagnostic v4.extdeps.file_system (algebra/lens/extdeps at materialization — TASKS T-19)
 // Status: M1 — live types + Generator<C>; eval wiring T-22.
 
 module v4.lens.testgen
 
 
 import v4.std.verification { TestClassification }
-import v4.std.node { Corpus, Connective, Behavior, Symbol }
+import v4.std.diagnostic { Outcome }
+import v4.std.node { Connective, Behavior, Symbol }
+import v4.extdeps.file_system {
+  AbsolutePath,
+  FileBody,
+  FileKindResolutionPolicy,
+  FileSystemOperations,
+  Filesystem
+}
 
 
 type TypeConstructionSubject
@@ -25,7 +33,7 @@ type DiagnosticExhaustivenessSubject { reason: Symbol }
 
 type LensApplicabilitySubject {
   lens: Symbol
-  corpus: Corpus
+  corpus_root: AbsolutePath
 }
 
 
@@ -44,4 +52,44 @@ type TestgenConcept
 type Generator<C> {
   classification: TestClassification
   slot: C
+}
+
+
+type CorpusEntry {
+  path: AbsolutePath
+  body: FileBody
+}
+
+
+type CorpusEnumerationRequest {
+  filesystem: Filesystem
+  root: AbsolutePath
+  operations: FileSystemOperations
+  resolution: FileKindResolutionPolicy
+}
+
+
+type CorpusEnumerationResult = Outcome<List<CorpusEntry>>
+
+
+type CorpusEnumerator {
+  enumerate: fn(CorpusEnumerationRequest) -> CorpusEnumerationResult
+}
+
+
+type CorpusLensReadResult<C> = Outcome<C>
+
+
+type CorpusLensReader<C> {
+  read: fn(CorpusEntry) -> CorpusLensReadResult<C>
+}
+
+
+type CorpusLensDriveResult<C> = Outcome<List<C>>
+
+
+type CorpusLensDriver<C> {
+  enumerator: CorpusEnumerator
+  reader: CorpusLensReader<C>
+  drive: fn(CorpusEnumerationRequest) -> CorpusLensDriveResult<C>
 }
