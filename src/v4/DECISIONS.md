@@ -211,6 +211,10 @@ consumes that derived fact.
 
 12. **`std/node.dag` — `is_empty_conj_root` (P5 / INVARIANTS §Progress Is Dissolution; codex PR #3284):** **Not a net-new `is_*` verifier** — this is the **landed R1 receipt** from `docs/audit/dissolution-inventory.md` §1.0: one structural query replaces three literal duplicate predicates (`compiler/01_tokenize.dag`, `compiler/02_parse.dag`, `extdeps/languages/dag.dag`). **Interim steady-state:** shared empty-`Conj`-root shape leg for wave-1 void LM / E0–G0 stubs until T-6/T-7 generic walks consume grammar-as-data without re-deriving this `match`. **Forward dissolution (named triggers):** (a) `feature: std/node.dag fold_node` (dissolution-inventory **P5**) — fold this discriminant into the canonical `Node` catamorphism / query surface when `fold_node` lands; and/or (b) `feature: compiler pipeline-stage lex-walk + parse-walk substrate` (inventory **P3**, TASKS T-6/T-7) — grammar-as-data carries void-book as constructor-shaped facts so consumers discriminate on `NodeKind` / carriers instead of calling `is_empty_conj_root`. **Audit anchor:** inventory §1.0 row **R1** (status = landed PR #3284).
 
+### P9-COST — LLVM Instruction Cost Table Authority
+
+`src/v4/lens/cost.dag` owns `llvm_instruction_cost(LlvmInstruction) -> Int` as the P9 cost-of-instruction model fact from `docs/audit/dissolution-inventory.md`; `src/v4/extdeps/languages/llvm_ir.dag` owns the LLVM instruction shape only. This preserves one cost authority while T-12 fills the total `Node -> Witness<SymbolicCost>` fold.
+
 ---
 
 ## P4-3208 coproduct ledger
