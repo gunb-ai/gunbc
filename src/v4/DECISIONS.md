@@ -1453,11 +1453,11 @@ Verbatim `//` lines from merge-base `float.dag` (lines **104–144** — modelin
 
 ### SL-3229-T4-FORMAT-T6T7 — T-4.6 format parse/emit bodies (compiler pipeline P3)
 
-**Gate (live cite, Practice 9):** `🟡 gated — feature: T-6/T-7 parse pipeline-stage substrate`
+**Gate (live cite, Practice 9):** `🟡 gated — feature: T-6/T-7 parse + T-10 emit pipeline-stage substrate`
 
-**Named arrival:** B2-OMNI generic `tokenize` / `parse` over declarative `LanguageModel` lex + grammar `Node` data (`compiler/01_tokenize.dag`, `compiler/02_parse.dag`; TASKS.md **T-6**, **T-7**; L-5 `extdeps/languages/dag.dag`). The T-4.6 format files (`json.dag`, `yaml.dag`, `toml.dag`, …) **do not** host hand-rolled Char-stream parsers or emitters: `json_parse`/`json_emit` (and mirrors) land as **structural walks** composed on that pipeline substrate once realized beyond Wave-1 E0/G0 stubs. Emit stays fail-closed `Outcome<String>` (corrected seam #3, PR #3184 / msg_c7704bd6, INVARIANTS P3); inverse projection mates **`compiler/05_emit.dag` (T-10)** as the grammar-directed emit half of the same bidirectional seam — not a parallel string-templated “backend.”
+**Named arrival:** B2-OMNI generic `tokenize` / `parse` over declarative `LanguageModel` lex + grammar `Node` data (`compiler/01_tokenize.dag`, `compiler/02_parse.dag`; TASKS.md **T-6**, **T-7**; L-5 `extdeps/languages/dag.dag`). The T-4.6 format files (`json.dag`, `yaml.dag`, `toml.dag`, …) **do not** host hand-rolled Char-stream parsers or emitters: `json_parse`/`json_emit` (and mirrors) land as **structural walks** composed on that pipeline substrate once realized beyond Wave-1 E0/G0 stubs. Emit stays fail-closed `Outcome<String>` (corrected seam #3, PR #3184 / msg_c7704bd6, INVARIANTS P3); inverse projection mates **`compiler/05_emit.dag` (TASKS.md T-10)** as the grammar-directed emit half of the same bidirectional seam — not a parallel string-templated “backend.”
 
-**Dissolution trigger:** T-6 and T-7 carry realized lex-walk + parse-walk bodies for grammar-as-data (dissolution-inventory §1.1 **P3**); follow-up PR wires format parse/emit as consumers. `std/text.dag` `Char` / `String` ↔ `List<Char>` decomposition (T-3) remains upstream **text** substrate for the walk’s stream spine — cite **P1** rows separately where the backlog conflated “numeric / refinement” deferrals (`SL-3229-LLVM-WIDTH` family), not mixed into vague “operations scaffold” prose.
+**Dissolution trigger:** **Parse half:** T-6 and T-7 carry realized lex-walk + parse-walk bodies for grammar-as-data (dissolution-inventory §1.1 **P3**). **Emit half:** `compiler/05_emit.dag` is realized under **TASKS.md T-10** (grammar-directed inverse projection). Follow-up PR wires format **parse** bodies only after the **parse** trigger is satisfied; wires format **emit** bodies only after the **emit** trigger is satisfied — a parse-only landing does **not** dissolve the emit half (and vice versa). `std/text.dag` `Char` / `String` ↔ `List<Char>` decomposition (T-3) remains upstream **text** substrate for the walk’s stream spine — cite **P1** rows separately where the backlog conflated “numeric / refinement” deferrals (`SL-3229-LLVM-WIDTH` family), not mixed into vague “operations scaffold” prose.
 
 **Roll-up:** `docs/audit/dissolution-inventory.md` §1.1 row **P3** (`compiler/01_tokenize.dag tokenize`, `compiler/02_parse.dag parse`, plus the parser-side in-file backlog this row concretizes).
 
@@ -1465,11 +1465,11 @@ Verbatim `//` lines from merge-base `float.dag` (lines **104–144** — modelin
 
 **Gate (live cite, Practice 9):** `🟡 gated — feature: v4 temporal substrate for RFC 3339 datetime value interpretation (TOML §Date-Time four sub-kinds)`
 
-**Named arrival:** `TomlDatetime` in `toml.dag` carries a verbatim RFC 3339 **lexeme**; **structured clock/calendar instant** interpretation requires a v4 **`std/` temporal carrier + operations** not landed yet (historical in-file note: no committed owning T-# on the substrate PR queue — operator / T-4 lane tracks surfacing). **This gate is NOT `SL-3229-LLVM-WIDTH`:** that row documents **LLVM LangRef raw-`Int` width payloads** on `LlvmType`; citing it for datetime was **wrong gate attribution** (Practice 4 accurate `feature:` naming, Practice 5 single authority).
+**Named arrival:** `TomlDatetime` in `toml.dag` carries a verbatim RFC 3339 **lexeme**; **structured clock/calendar instant** interpretation requires v4 **`std/` temporal carrier + operations** landed under **`TASKS.md` T-3** (substrate / `std/` expansion — tracked arrival, not parking-lot prose). **Consumer / wiring owner:** **`TASKS.md` T-4.6** (`extdeps/formats/*`, including `toml.dag` operation(s) that consume the temporal facts). **This gate is NOT `SL-3229-LLVM-WIDTH`:** that row documents **LLVM LangRef raw-`Int` width payloads** on `LlvmType`; citing it for datetime was **wrong gate attribution** (Practice 4 accurate `feature:` naming, Practice 5 single authority).
 
-**Dissolution trigger:** ratified temporal substrate + typed interpretation operation(s) (e.g. `toml_datetime_value : TomlDatetime -> Outcome<…>` over the four sub-kinds); this row closes.
+**Dissolution trigger:** ratified **T-3** temporal substrate + typed interpretation operation(s) on **T-4.6** (e.g. `toml_datetime_value : TomlDatetime -> Outcome<…>` over the four sub-kinds); this row closes.
 
-**Roll-up:** T-4.6 format lane; **orthogonal** to dissolution-inventory **P1** cardinality-width family (`SL-3229-LLVM-WIDTH`, `SL-3229-PTX-COST`, …).
+**Roll-up:** **`TASKS.md` T-3** + **T-4.6**; **orthogonal** to dissolution-inventory **P1** cardinality-width family (`SL-3229-LLVM-WIDTH`, `SL-3229-PTX-COST`, …).
 
 ### CP-3229-GREEN-TERMINAL — 🟢 GREEN five-pattern ledgers (bulk)
 

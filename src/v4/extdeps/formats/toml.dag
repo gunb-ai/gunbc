@@ -39,7 +39,7 @@ module v4.extdeps.formats.toml
 //
 // DECLARATIVE-NOW / OPERATIONS-DEFERRED-WITH-OWNER (#3169/#3184).
 // Modeled: TomlValue. Deferred parse/emit —
-// 🟡 gated — feature: T-6/T-7 parse pipeline-stage substrate — DECISIONS.md Part 6 · SL-3229-T4-FORMAT-T6T7.
+// 🟡 gated — feature: T-6/T-7 parse + T-10 emit pipeline substrate — DECISIONS.md Part 6 · SL-3229-T4-FORMAT-T6T7.
 // Deferred int/float numeric VALUE + §Keys key-shape refinements —
 // 🟡 gated — feature: std/cardinality.dag bounded-natural refinement (T-3 Wave-A2) — DECISIONS.md Part 6 · SL-3229-LLVM-WIDTH.
 // Deferred TomlDatetime temporal interpretation (RFC 3339 four sub-kinds; no std/ instant carrier yet) —
@@ -177,7 +177,7 @@ module v4.extdeps.formats.toml
 //                      redefined as a non-array-of-tables; no append
 //                      after an inline definition) are PARSE-TIME
 //                      key-binding constraints — enforced fail-closed by
-//                      the deferred parser (🟡 gated — feature: T-6/T-7 parse pipeline-stage substrate — DECISIONS.md Part 6 · SL-3229-T4-FORMAT-T6T7), the SAME
+//                      the deferred parser (🟡 gated — feature: T-6/T-7 parse + T-10 emit pipeline substrate — DECISIONS.md Part 6 · SL-3229-T4-FORMAT-T6T7), the SAME
 //                      discipline as duplicate-key rejection, never a
 //                      value-model type invariant. Which surface syntax
 //                      to render (`[[x]]` vs inline `x = [{…},{…}]`) for
@@ -313,7 +313,7 @@ type TomlValue
 // ─────────────────────────────────────────────────────────────────────
 // Deferred scaffold bridges (DECISIONS.md Part 6 — not second authorities).
 // toml_parse/toml_emit + §Keys/§AoT parse-time checks + RFC-3339-subset parse —
-// 🟡 gated — feature: T-6/T-7 parse pipeline-stage substrate — DECISIONS.md Part 6 · SL-3229-T4-FORMAT-T6T7.
+// 🟡 gated — feature: T-6/T-7 parse + T-10 emit pipeline substrate — DECISIONS.md Part 6 · SL-3229-T4-FORMAT-T6T7.
 // Int/float numeric VALUE reads + String key refinement —
 // 🟡 gated — feature: std/cardinality.dag refinement + std/float.dag / std/integer.dag (T-3 Wave-A2) — DECISIONS.md Part 6 · SL-3229-LLVM-WIDTH.
 // TomlDatetime temporal interpretation (RFC 3339 four sub-kinds) —

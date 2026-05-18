@@ -37,7 +37,7 @@ module v4.extdeps.formats.json
 // DECLARATIVE-NOW / OPERATIONS-DEFERRED-WITH-OWNER (#3169/#3184).
 // Modeled: JsonValue. Deferred parse/emit bodies (Char-stream structural
 // walk + emit inverse) —
-// 🟡 gated — feature: T-6/T-7 parse pipeline-stage substrate — DECISIONS.md Part 6 · SL-3229-T4-FORMAT-T6T7.
+// 🟡 gated — feature: T-6/T-7 parse + T-10 emit pipeline substrate — DECISIONS.md Part 6 · SL-3229-T4-FORMAT-T6T7.
 // Deferred numeric lexeme interpretation —
 // 🟡 gated — feature: std/cardinality.dag bounded-natural refinement (T-3 Wave-A2) — DECISIONS.md Part 6 · SL-3229-LLVM-WIDTH.
 //
@@ -231,7 +231,7 @@ type JsonValue
 // ─────────────────────────────────────────────────────────────────────
 // Deferred scaffold bridges (DECISIONS.md Part 6 — not second authorities).
 // Parse/emit + §6 parse-time well-formedness (recursive-descent seam #3) —
-// 🟡 gated — feature: T-6/T-7 parse pipeline-stage substrate — DECISIONS.md Part 6 · SL-3229-T4-FORMAT-T6T7.
+// 🟡 gated — feature: T-6/T-7 parse + T-10 emit pipeline substrate — DECISIONS.md Part 6 · SL-3229-T4-FORMAT-T6T7.
 // JsonNumber axes (§6 token vs numeric value vs refined lexeme type) —
 // 🟡 gated — feature: std/cardinality.dag refinement + std/float.dag / std/integer.dag (T-3 Wave-A2) — DECISIONS.md Part 6 · SL-3229-LLVM-WIDTH.
 

@@ -41,7 +41,7 @@ module v4.extdeps.formats.yaml
 //
 // DECLARATIVE-NOW / OPERATIONS-DEFERRED-WITH-OWNER (#3169/#3184).
 // Modeled: YamlValue. Deferred parse/emit (incl. anchor/alias + tag) —
-// 🟡 gated — feature: T-6/T-7 parse pipeline-stage substrate — DECISIONS.md Part 6 · SL-3229-T4-FORMAT-T6T7.
+// 🟡 gated — feature: T-6/T-7 parse + T-10 emit pipeline substrate — DECISIONS.md Part 6 · SL-3229-T4-FORMAT-T6T7.
 // Deferred numeric int/float lexemes —
 // 🟡 gated — feature: std/cardinality.dag bounded-natural refinement (T-3 Wave-A2) — DECISIONS.md Part 6 · SL-3229-LLVM-WIDTH.
 //
@@ -81,7 +81,7 @@ module v4.extdeps.formats.yaml
 //     (a cyclic YAML graph is not a finite `YamlValue` — surfacing it
 //     is the no-engine honesty, never a non-terminating walk or a
 //     fabricated truncation). The resolution itself is the deferred
-//     parse body's job (🟡 gated — feature: T-6/T-7 parse pipeline-stage substrate — DECISIONS.md Part 6 · SL-3229-T4-FORMAT-T6T7); the data model needs no alias variant.
+//     parse body's job (🟡 gated — feature: T-6/T-7 parse + T-10 emit pipeline substrate — DECISIONS.md Part 6 · SL-3229-T4-FORMAT-T6T7); the data model needs no alias variant.
 //   - TAG RESOLUTION (YAML 1.2.2 §10.3 core schema): which scalar
 //     variant a plain node resolves to (null/bool/int/float/str) is the
 //     core-schema tag-resolution rule, applied in the deferred parser;
@@ -159,7 +159,7 @@ module v4.extdeps.formats.yaml
 //                        uniqueness (canonicalize each key by its
 //                        resolved tag, reject canonically-equal
 //                        duplicates as a fail-closed `Rejected`) is a
-//                        DEFERRED-PARSER invariant — 🟡 gated — feature: T-6/T-7 parse pipeline-stage substrate — DECISIONS.md Part 6 · SL-3229-T4-FORMAT-T6T7 — not
+//                        DEFERRED-PARSER invariant — 🟡 gated — feature: T-6/T-7 parse + T-10 emit pipeline substrate — DECISIONS.md Part 6 · SL-3229-T4-FORMAT-T6T7 — not
 //                        a structural carrier guarantee; honestly
 //                        scoped here per the std/collection.dag #3169
 //                        "do not over-claim what the carrier provides"
@@ -243,7 +243,7 @@ type YamlValue
 // ─────────────────────────────────────────────────────────────────────
 // Deferred scaffold bridges (DECISIONS.md Part 6 — not second authorities).
 // yaml_parse/yaml_emit + anchor/alias + tag walk + §3.2.1.3 parse-time checks —
-// 🟡 gated — feature: T-6/T-7 parse pipeline-stage substrate — DECISIONS.md Part 6 · SL-3229-T4-FORMAT-T6T7.
+// 🟡 gated — feature: T-6/T-7 parse + T-10 emit pipeline substrate — DECISIONS.md Part 6 · SL-3229-T4-FORMAT-T6T7.
 // Numeric scalar VALUE + canonical key material (pairs with (1)) —
 // 🟡 gated — feature: std/cardinality.dag refinement + std/float.dag / std/integer.dag (T-3 Wave-A2) — DECISIONS.md Part 6 · SL-3229-LLVM-WIDTH.
 
