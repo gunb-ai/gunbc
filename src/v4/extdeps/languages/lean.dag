@@ -7,11 +7,6 @@
 module v4.extdeps.languages.lean
 
 
-// Twin of `rust.dag` `GroundingMap` pending shared `resolver.dag` home (DECISIONS.md D4; cpp.dag P2 note).
-type GroundingMap<IRCarrier> {
-  spelling: String
-}
-
 import v4.std.integer {
   Int,
   UInt8,
@@ -23,8 +18,18 @@ import v4.std.integer {
 import v4.std.collection { List }
 import v4.std.logic { Bool }
 import v4.std.nat { Nat }
-import v4.std.node { Symbol }
 import v4.std.text { String }
+
+
+// Twin of `v4.std.node.Symbol` / `rust.dag` authority: M1(2.7) compile_to_dag does not lower
+// `import v4.std.node { Symbol }` into declarations; local atom preserves L-2 naming until import lowering lands.
+type Symbol
+
+
+// Twin of `rust.dag` `GroundingMap` pending shared `resolver.dag` home (DECISIONS.md D4; cpp.dag P2 note).
+type GroundingMap<IRCarrier> {
+  spelling: String
+}
 
 
 // Anchor: https://lean-lang.org/doc/reference/4.20.0/
