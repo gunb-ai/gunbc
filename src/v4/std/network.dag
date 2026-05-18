@@ -1,6 +1,6 @@
 // src/v4/std/network.dag
 // Scope: network boundary carriers.
-// Owns: HttpMethod, Rfc3986AbnfProduction, UriScheme, UriUserInfo, UriHost, UriPort, UriAuthority, UriPath, UriQuery, UriFragment, Url, NetworkAddress.
+// Owns: HttpMethod, Rfc3986AbnfProduction, UriScheme, UriUserInfo, UriUserInfoSlot, UriHost, UriPort, UriPortSlot, UriAuthority, UriPath, UriHierPart, UriQuery, UriQuerySlot, UriFragment, UriFragmentSlot, Url, UriRelativePart, UriRelativeReference, UriReference, NetworkAddress.
 // Consumes: std text, std nat.
 // Status: T-26 modeled.
 
@@ -75,6 +75,11 @@ type UriUserInfo {
   grammar: Rfc3986AbnfProduction,
 }
 
+// 🟢 coproduct dissolution — DECISIONS.md T-26-UriComponentPresence
+type UriUserInfoSlot
+  = UriUserInfoAbsent
+  | UriUserInfoPresent { userinfo: UriUserInfo }
+
 type UriHost {
   spelling: String,
   grammar: Rfc3986AbnfProduction,
@@ -85,10 +90,15 @@ type UriPort {
   grammar: Rfc3986AbnfProduction,
 }
 
+// 🟢 coproduct dissolution — DECISIONS.md T-26-UriComponentPresence
+type UriPortSlot
+  = UriPortAbsent
+  | UriPortPresent { port: UriPort }
+
 type UriAuthority {
-  userinfo: UriUserInfo,
+  userinfo: UriUserInfoSlot,
   host: UriHost,
-  port: UriPort,
+  port: UriPortSlot,
 }
 
 type UriPath {
@@ -96,24 +106,59 @@ type UriPath {
   grammar: Rfc3986AbnfProduction,
 }
 
+// 🟢 coproduct dissolution — DECISIONS.md T-26-UriHierPart
+type UriHierPart
+  = UriHierAuthorityPath { authority: UriAuthority, path: UriPath }
+  | UriHierPathAbsolute { path: UriPath }
+  | UriHierPathRootless { path: UriPath }
+  | UriHierPathEmpty
+
 type UriQuery {
   spelling: String,
   grammar: Rfc3986AbnfProduction,
 }
+
+// 🟢 coproduct dissolution — DECISIONS.md T-26-UriComponentPresence
+type UriQuerySlot
+  = UriQueryAbsent
+  | UriQueryPresent { query: UriQuery }
 
 type UriFragment {
   spelling: String,
   grammar: Rfc3986AbnfProduction,
 }
 
+// 🟢 coproduct dissolution — DECISIONS.md T-26-UriComponentPresence
+type UriFragmentSlot
+  = UriFragmentAbsent
+  | UriFragmentPresent { fragment: UriFragment }
+
 // Anchor: https://www.rfc-editor.org/rfc/rfc3986.html#section-3
 type Url {
   scheme: UriScheme,
-  authority: UriAuthority,
-  path: UriPath,
-  query: UriQuery,
-  fragment: UriFragment,
+  hier_part: UriHierPart,
+  query: UriQuerySlot,
+  fragment: UriFragmentSlot,
 }
+
+// Anchor: https://www.rfc-editor.org/rfc/rfc3986.html#section-4.2
+// 🟢 coproduct dissolution — DECISIONS.md T-26-UriRelativePart
+type UriRelativePart
+  = UriRelativeAuthorityPath { authority: UriAuthority, path: UriPath }
+  | UriRelativePathAbsolute { path: UriPath }
+  | UriRelativePathNoScheme { path: UriPath }
+  | UriRelativePathEmpty
+
+type UriRelativeReference {
+  relative_part: UriRelativePart,
+  query: UriQuerySlot,
+  fragment: UriFragmentSlot,
+}
+
+// 🟢 coproduct dissolution — DECISIONS.md T-26-UriReference
+type UriReference
+  = UriReferenceAbsolute { uri: Url }
+  | UriReferenceRelative { relative: UriRelativeReference }
 
 
 // Anchor: https://www.rfc-editor.org/rfc/rfc3986.html#section-3.2
