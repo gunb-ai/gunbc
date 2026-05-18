@@ -1,6 +1,6 @@
 // src/v4/extdeps/languages/verilog.dag
 // Scope: IEEE 1364-2005 Verilog structural carriers (T-4.9).
-// Owns: PortDirection, NonTriregNetKind, NetType, EdgeTrigger, ProceduralAssignKind, ConstantUnaryOperator, ConstantBinaryOperator, ConstantRangeExpression, ConstantSelect, ConstantSelectRangeClause, ConstantSpecparamSelect, ConstantPrimary, ConstantFunctionCall, ConstantSystemFunctionCall, ConstantConcatenation, ConstantMultipleConcatenation, ConstantExpression, VectorRange, PackingShape, NetVectoredPacking, Signedness, DriveStrengthClause, ChargeStrengthClause, DelayClause, AttributeInstanceClause, VectorednessClause, UnpackedDimensionsClause, VariableInitializerClause, NetDeclaration, NetAssignmentDeclarator, NetIdentifierDeclarator, VariableDeclaration, VariableDeclarator, OutputPortAnsiNetTypeKind, OutputPortAnsiVariableTypeKind, NonAnsiPort, AnsiNetPortType, AnsiPortDeclaration, AnsiHeaderPort, AnsiOutputPortDeclarator, ParameterTypeKind, ParameterAssignment, ParameterDeclaration, SensitivityItem, NetAssignment, ContinuousAssign, AlwaysBlock, AlwaysBlockSensitivity, InitialBlock, PortConnectionActual, OrderedPortConnection, NamedPortConnection, PortConnections, ParameterOverrideActual, NamedParameterOverride, ParameterOverrides, InstanceRangeClause, ModuleInstance, ModuleInstantiation, DefparamAssignment, DefparamDeclaration, GenerateRegion, LoopGenerateConstruct, ConditionalGenerateConstruct, SpecifyBlock, LifetimeClause, FunctionReturnTypeClause, TaskDeclaration, FunctionDeclaration, EventDeclarator, EventDeclaration, GenvarDeclaration, LocalParameterDeclaration, PrimitiveGateKind, GateInstantiation, UdpInstanceName, UdpInstance, UdpInstantiation, UdpDefinition, SpecparamAssignment, SpecparamDeclaration, AnsiModuleItem, NonAnsiModuleItem, ModuleParameterPortList, ModuleKeyword, VerilogModule, VerilogCost
+// Owns: PortDirection, NonTriregNetKind, NetType, EdgeTrigger, ProceduralAssignKind, ConstantUnaryOperator, ConstantBinaryOperator, ConstantRangeExpression, ConstantSelect, ConstantPrimary, ConstantFunctionCall, ConstantSystemFunctionCall, ConstantConcatenation, ConstantMultipleConcatenation, ConstantExpression, VectorRange, PackingShape, NetVectoredPacking, Signedness, DriveStrengthClause, ChargeStrengthClause, DelayClause, AttributeInstanceClause, VectorednessClause, UnpackedDimensionsClause, VariableInitializerClause, NetDeclaration, NetAssignmentDeclarator, NetIdentifierDeclarator, VariableDeclaration, VariableDeclarator, OutputPortAnsiNetTypeKind, OutputPortAnsiVariableTypeKind, NonAnsiPort, AnsiNetPortType, AnsiPortDeclaration, AnsiHeaderPort, AnsiOutputPortDeclarator, ParameterTypeKind, ParameterAssignment, ParameterDeclaration, SensitivityItem, NetAssignment, ContinuousAssign, AlwaysBlock, AlwaysBlockSensitivity, InitialBlock, PortConnectionActual, OrderedPortConnection, NamedPortConnection, PortConnections, ParameterOverrideActual, NamedParameterOverride, ParameterOverrides, InstanceRangeClause, ModuleInstance, ModuleInstantiation, DefparamAssignment, DefparamDeclaration, GenerateRegion, LoopGenerateConstruct, ConditionalGenerateConstruct, SpecifyBlock, LifetimeClause, FunctionDeclaration, EventDeclarator, EventDeclaration, GenvarDeclaration, LocalParameterDeclaration, PrimitiveGateKind, GateInstantiation, UdpInstanceName, UdpInstance, UdpInstantiation, UdpDefinition, SpecparamAssignment, SpecparamDeclaration, AnsiModuleItem, NonAnsiModuleItem, ModuleParameterPortList, ModuleKeyword, VerilogModule, VerilogCost
 // Consumes: std/node.dag; Int kernel-ambient.
 // Status: T-4.9 PASS (IN-B); import v4.std.node Symbol only.
 // Anchor: https://standards.ieee.org/ieee/1364/3641/
@@ -107,29 +107,17 @@ type ConstantRangeExpression
   | ConstantIndexedRangeMinus { base: ConstantExpression, width: ConstantExpression }
 
 
-type ConstantSelect {
-  bit_selects: List<ConstantExpression>
-  range: ConstantSelectRangeClause
-}
-
-
 // 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-VERILOG-CONSTEXPR-TERMINAL.
-type ConstantSelectRangeClause
-  = NoConstantSelectRange
+type ConstantSelect
+  = NoConstantSelect
   | ConstantSelectRange { range: ConstantRangeExpression }
-
-
-// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-VERILOG-CONSTEXPR-TERMINAL.
-type ConstantSpecparamSelect
-  = NoConstantSpecparamSelect
-  | ConstantSpecparamSelectRange { range: ConstantRangeExpression }
 
 
 // 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-VERILOG-CONSTEXPR-TERMINAL.
 type ConstantPrimary
   = ConstantNumber { lexeme: String }
   | ConstantParameterReference { name: Symbol, select: ConstantSelect }
-  | ConstantSpecparamReference { name: Symbol, select: ConstantSpecparamSelect }
+  | ConstantSpecparamReference { name: Symbol, select: ConstantSelect }
   | ConstantFunctionCallPrimary { call: ConstantFunctionCall }
   | ConstantSystemFunctionCallPrimary { call: ConstantSystemFunctionCall }
   | ConstantConcatenationPrimary { concatenation: ConstantConcatenation }
