@@ -277,6 +277,8 @@ mod v2_oracle_no_remaining_test_consumers_test;
 mod v4_extdeps_cpp_abi_dag_smoke_test;
 #[path = "integration/v4_extdeps_typescript_dag_smoke_test.rs"]
 mod v4_extdeps_typescript_dag_smoke_test;
+#[path = "integration/v4_lens_cost_dag_smoke_test.rs"]
+mod v4_lens_cost_dag_smoke_test;
 #[path = "integration/v4_std_fact_density_dag_smoke_test.rs"]
 mod v4_std_fact_density_dag_smoke_test;
 #[path = "integration/value_body_substrate_mirror_isomorphism_test.rs"]

@@ -255,18 +255,25 @@ correct with one dissolution defect; #3249's was invisible to reviewers
 because the fold-laundering hid it. This is why the lens suite (mechanical,
 every time) and the burn-down pre-gate (catch at the source) both exist.
 
-## 9. Build path
+## 9. Build path — model-derived only
 
-1. **Layer 0 first** — a checker over parsed `.dag`, a sibling of the
-   `scripts/check-*` discipline checkers. Table stakes; Layer 1 composes
-   its primitives (L0.2 → L1.1; L0.4 → L1.3).
-2. **Layer 1** — the dissolution lenses, on the Layer-0 base.
-3. **The real lens** — a derived projection over the v4 model, once the
-   front-end parses `.dag` for real.
+The lens is **compiler-integral**: a modeled `src/v4/lens/` projection
+(joining `complexity.dag` et al.) that the compiler itself runs and
+rejects on. There is **no interim hand-written-script form.** A
+`scripts/check-*` script that text-scans `.dag` is itself a hand-rolled
+`.dag`-walker — the exact anti-pattern this lens exists to remove. The
+dissolution lens cannot be hand-rolled either; it is a `fold` over the
+*parsed* model, a consumer of the substrate-first sequence.
 
-The dissolution lens is itself a `fold` over parsed `.dag` — it cannot be
-hand-rolled either. It is a *consumer* of the substrate-first sequence,
-not a precursor to it.
+Consequence: the lens is **gated on the v4 front-end** (CP-1) being able
+to parse `.dag` into a model, plus the v4 lens stage that runs
+projections over it. Until then there is no *mechanical* dissolution
+enforcement — the interim net is the reviewer prompts and the burn-down
+pre-gate (human/agent, reactive), not a script. The lens's timeline is
+CP-1's timeline.
+
+Build order once the machinery exists: Layer 0 first (Layer 1 composes
+its primitives — L0.2 → L1.1, L0.4 → L1.3), then Layer 1.
 
 ## 10. Open — audit of current coverage
 
