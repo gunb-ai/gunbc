@@ -6,6 +6,9 @@
 > before anything fans out. Derived from `src/v4/TASKS.md` (1265 lines, verified
 > 2026-05-18); statuses marked *derived* are first-articulation and explicitly
 > open to lane-manager correction in review.
+> **Anchor convention:** every `TASKS.md:NNN` line anchor below refers to
+> this file — `src/v4/TASKS.md`. There is no root-level `TASKS.md`; do not
+> hunt for one.
 >
 > Authoring session: `witty-cat-59` (root). Lanes referenced: `fierce-cat-31`
 > (Lane A — compiler pipeline), `swift-ram-178` (Lane B — test/bootstrap infra),
