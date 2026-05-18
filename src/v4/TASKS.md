@@ -888,6 +888,12 @@ All 5 artifacts share ONE Node tree (per gate #28 omni_layers_share_one_node_tre
 **File**: `src/v4/lens/application.dag` (closes prior-audit BLOCKING GAP 1)
 **Why load-bearing**: `apply_lens(<lens>, Enforce { ... })` is referenced by `report.dag`, `synthesis.dag`, and the C7 advisory→blocking bridge — but had no substrate home until now. It is simultaneously: §1.5 user-defined-dimensions surface, §6.2 audience-duality opt-in-depth mechanism, and the ONLY advisory→fail-closed path.
 
+**Interface-freeze pin**: `docs/v4-t23-interface-freeze.md` is the stable
+consumer contract for T-23 while `src/v4/lens/application.dag` remains
+scaffolded. Downstream tasks may consume only that pinned surface plus the
+`application.dag` header; any additional field/name/default is a T-23
+interface change and must be operator-ratified first.
+
 **Modeling decisions**:
 - `EnforcedApplication<Output, Budget>` vs `IntrospectApplication<Output>` carrier shapes (v3 T-Lens-Application-Surface precedent: two separate carriers, NOT a sum — per r3-structure.md:40)
 - `SectionRef = DeclarationScope | NodeScope` (where a lens attaches)
