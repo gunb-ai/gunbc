@@ -143,18 +143,23 @@ unfinished modeling and blocks merge.
   **Consumer-independent** — a *namable* richer source means it is not
   🟢, regardless of whether anything consumes it today.
 - **🟡 gated** — it cannot dissolve now, and the *only* legitimate
-  reason is a **named arrival** it waits on. Every 🟡 MUST declare three
-  things, as a **merge requirement**:
+  reason is a **named arrival** it waits on. A 🟡 is **transient** — a
+  committed surface→dissolve loop, never an indefinite tracked comment.
+  Every 🟡 MUST bind a **dissolution plan**, as a **merge requirement**:
   1. **gate kind** — `feature` (a substrate primitive or capability that
      does not exist yet) or `consumer` (the first consumer of the
      decomposed meaning is not here yet);
-  2. **the concrete named thing** — the specific primitive *and its
-     owning task*, or the specific named consumer; never "later" — a
-     name a reader and the audit can check;
-  3. **the dissolve-on-arrival obligation** — when that named thing
-     arrives, this 🟡 **must dissolve or shrink**. The arrival *is* the
-     trigger; dissolution then is mandatory. A 🟡 is a pre-committed
-     obligation, not a parking spot.
+  2. **the bound dissolution plan** — not merely a name, a *committed
+     path to 🟢*: the named missing primitive (or consumer), **the
+     substrate PR or task that will land it**, and **the dissolution
+     follow-up that converts this 🟡 to 🟢** once it lands. A 🟡 with no
+     bound dissolution PR is **not a valid 🟡** — that is the
+     comment-graveyard failure mode, and it blocks merge;
+  3. **dissolve-on-arrival** — the follow-up dispatches *immediately*
+     when the substrate PR lands; the 🟡→🟢 conversion is mandatory, not
+     optional. A 🟡 is a pre-committed obligation with a committed exit,
+     never a parking spot. Dissolution debt is *burned down*, not banked
+     — INVARIANTS P5, "Progress Is Dissolution".
 
   `feature`- and `consumer`-gating are one dimension, not two — both are
   *waiting on an arrival*; a consumer is itself a kind of feature, the
@@ -743,12 +748,14 @@ For each relevant principle and its implementing practices:
 4. For new coproducts: verify the coproduct carries its required
    one-line 🟢/🟡/🔴 classification tag *in the file* (Practice 4 /
    Practice 9 item 4) **and** has a `DECISIONS.md` entry for the ledger /
-   patterns-tried / gate. **Merge requirement — every 🟡 names a
-   concrete, valid gate:** the gate kind (`feature:<primitive + owning
-   task>` or `consumer:<named consumer>`) and the dissolve-on-arrival
-   obligation. A 🟡 with a vague gate ("deferred", "later substrate")
-   blocks merge; a 🟡 whose gate has *already* opened (the feature
-   landed / the consumer exists) is stale — it is 🔴, dissolve now. Also
+   patterns-tried / gate. **Merge requirement — every 🟡 binds a
+   dissolution plan:** the gate kind (`feature:`/`consumer:`), the named
+   missing primitive/consumer, the substrate PR or task that will land
+   it, and the dissolution follow-up that converts the 🟡 to 🟢. A 🟡
+   with a vague gate ("deferred", "later substrate") **or no bound
+   dissolution PR** blocks merge — an indefinite 🟡 is the comment
+   graveyard. A 🟡 whose gate has *already* opened (the feature landed /
+   the consumer exists) is stale — it is 🔴, dissolve now. Also
    verify Practice 4 pattern 5 (parameterized family) was applied — an
    enum that is `F<X>` per variant is an enumerated copy, not a
    coproduct. Verify 🟢 is consumer-**independent**: a namable richer
