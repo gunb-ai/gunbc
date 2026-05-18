@@ -1553,8 +1553,8 @@ Merge-base `92cb26402` **Practice-4** `// Coproduct dissolution … 🟢 GREEN (
 
 PR #3272 adds Verilog constant-expression sum carriers not present in
 merge-base `92cb26402`: `ConstantUnaryOperator`, `ConstantBinaryOperator`,
-`ConstantRangeExpression`, `ConstantSelectRangeClause`,
-`ConstantSpecparamSelect`, `ConstantPrimary`, and `ConstantExpression`.
+`ConstantRangeExpression`, `ConstantSelect`, `ConstantPrimary`, and
+`ConstantExpression`.
 
 Practice-4 terminal ledger: all of these are closed, spec-grounded enumerations
 from IEEE 1364-2005 §A.8.3 / §A.8.4. They are not user-extensible vocabulary,
@@ -1565,8 +1565,8 @@ The expression recursion is the grammar's own recursion; it does not add a
 new substrate behavior or a second expression authority. Non-coproduct
 records introduced with them (`ConstantFunctionCall`,
 `ConstantSystemFunctionCall`, `ConstantConcatenation`,
-`ConstantMultipleConcatenation`, `ConstantSelect`, `VectorRange`) are
-structural payload records, not Practice-4 sums.
+`ConstantMultipleConcatenation`, `VectorRange`) are structural payload records,
+not Practice-4 sums.
 
 **Recovery:**
 

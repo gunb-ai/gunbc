@@ -66,25 +66,14 @@ def test_constant_primary_carries_parenthesized_single_expression() -> None:
 
 def test_constant_select_shapes_match_parameter_and_specparam_grammar() -> None:
     select = block(VERILOG.read_text(encoding="utf-8"), "ConstantSelect")
-    assert "bit_selects: List<ConstantExpression>" in select
-    assert "range: ConstantSelectRangeClause" in select
-
-    select_range = block(
-        VERILOG.read_text(encoding="utf-8"), "ConstantSelectRangeClause"
-    )
-    assert "= NoConstantSelectRange" in select_range
-    assert "| ConstantSelectRange { range: ConstantRangeExpression }" in select_range
-
-    specparam = block(VERILOG.read_text(encoding="utf-8"), "ConstantSpecparamSelect")
-    assert "= NoConstantSpecparamSelect" in specparam
-    assert (
-        "| ConstantSpecparamSelectRange { range: ConstantRangeExpression }"
-    ) in specparam
+    assert "= NoConstantSelect" in select
+    assert "| ConstantSelectRange { range: ConstantRangeExpression }" in select
+    assert "bit_selects: List<ConstantExpression>" not in select
 
     primary = block(VERILOG.read_text(encoding="utf-8"), "ConstantPrimary")
     assert "| ConstantParameterReference { name: Symbol, select: ConstantSelect }" in primary
     assert (
-        "| ConstantSpecparamReference { name: Symbol, select: ConstantSpecparamSelect }"
+        "| ConstantSpecparamReference { name: Symbol, select: ConstantSelect }"
     ) in primary
 
 
