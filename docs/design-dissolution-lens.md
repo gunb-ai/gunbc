@@ -896,7 +896,8 @@ fn derive_effect_shape(...) -> Outcome<EffectShape> {
   the same simple name — is the **trigger** for the lens. The
   trigger by itself does not finalize the verdict; it demands a
   *structural resolution* from the substrate. The lens then checks
-  for exactly one of three resolutions:
+  for one of four outcomes — three passing resolutions plus a
+  fail-closed silence case:
   1. **Same-concept-with-alias.** A `CanonicalConcept` row claims
      the two declarations as co-members AND the non-canonical
      declaration is a structural alias (`import` + `type T =
