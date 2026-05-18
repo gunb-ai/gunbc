@@ -77,7 +77,7 @@ type StreamEffect {}
 
 type PubSubEffect {}
 
-// Anchor: src/v4/std/node.dag A1/K-1, operator-ratified 2026-05-15.
+// coincides: src/v4/std/node.dag A1/K-1, operator-ratified 2026-05-15.
 type BindRef {
   identity: Symbol
 }
