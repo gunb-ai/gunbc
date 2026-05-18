@@ -174,6 +174,7 @@ fn testgen_concept_for_connective_slot(slot: ConnectiveBootstrapSlot) -> Testgen
 fn generator_for_connective_bootstrap_slot(
   slot: ConnectiveBootstrapSlot
 ) -> Generator<TypeConstructionSubject> {
+  let _expected_kind = connective_bootstrap_assert_kind(slot: slot)
   Generator {
     classification: bootstrap_tier1_unit_classification(),
     slot: type_construction_subject_for_connective_slot(slot: slot),
@@ -230,6 +231,7 @@ fn testgen_concept_for_nat_law_slot(slot: NatLawBootstrapSlot) -> TestgenConcept
 fn generator_for_nat_law_bootstrap_slot(
   slot: NatLawBootstrapSlot
 ) -> Generator<AlgebraLawSubject> {
+  let _expected_kind = nat_law_bootstrap_assert_kind(slot: slot)
   Generator {
     classification: bootstrap_tier1_unit_classification(),
     slot: algebra_law_subject_for_nat_slot(slot: slot),
