@@ -55,7 +55,7 @@ double-counting).
   surface→dissolve loop, not a parking spot. **Count today: ~36
   bound to P1-P10 in § 1.1 (including the two #3225-merged findings
   added at final-ready — see § 1.1 P4 and P5 unblocks columns), plus
-  ~20 pre-plan backlog (Section 3 VAGUE+INVALID-GATE) not yet
+  ~2 pre-plan backlog (Section 3 VAGUE) not yet
   rollable.**
 - **🟢 terminal** — audited and not a dissolution finding.
 
@@ -102,11 +102,10 @@ in-file 🟡 blocks, and *not* land the dissolve-now fixes.
   immediately** on each substrate PR's landing — the surface→dissolve
   loop is what makes 🟡 transient.
 - **§ 1.2** — 🟡 → 🟢 burn-down view.
-- **Pre-plan concretization backlog** — Section 3's ~16 VAGUE + 4
-  INVALID-GATE entries. **These are NOT in the P1-P10 plan**, because
+- **Pre-plan concretization backlog** — Section 3's 2 VAGUE
+  DECISIONS.md rows. **These are NOT in the P1-P10 plan**, because
   a VAGUE entry names no concrete primitive (cannot be rolled under
-  any P#) and an INVALID-GATE entry's named arrival was cancelled by
-  a design reversal (likewise unrollable). They are a **pre-plan
+  any P#). They are a **pre-plan
   backlog the burn-down lane drives first**: each gets re-concretized
   (then rolls under a P#) or is dissolved / re-dispositioned. They
   cannot enter the burn-down dependency DAG until concretized. P10
@@ -135,10 +134,10 @@ the audit anchors.
 
 | # | substrate PR (`feature:` arrival) | owner / owning task | 🟡-count | unblocks |
 |---|---|---|---|---|
-| **P1** | `std/cardinality.dag` bounded-natural / refinement substrate | std / T-3 Wave-A2 | **~20 live (+2 closed receipts)** | DECISIONS.md: `SL-3229-LLVM-WIDTH`, `SL-3229-LLVM-OPS`, `SL-3229-PTX-DIM3`, `SL-3229-PTX-COST`, `SL-3229-VERILOG-COST` (+ `SL-3229-FLOAT-NOMINAL` once re-gated under this canonical owner). In-file: `llvm_ir.dag:28` + the ~16 VAGUE prose blocks in `json.dag` / `yaml.dag` / `toml.dag` that concretize to this arrival (refinement-side family). **Receipt (PR #3310 / 2026-05-18 + follow-up receipt):** `LlvmType` raw-width payload scaffold **closed** (live `NonZeroNat` / `Nat`); `PtxCost` and `VerilogCost` raw signed-`Int` payload scaffolds **closed** where live carriers now use `Nat`; `Dim3` closes only its negative-axis illegal state and remains 🟡 for positive / per-axis-maximum refinement; three format carriers drop the erroneous `SL-3229-LLVM-WIDTH` Practice-9 cite (DECISIONS.md §SL-3229-T4-FORMAT-T6T7 operator note — cite P1 separately from float/integer). Remaining P1-family debt is operand-relation / stronger-bound refinement, not raw non-negative cost payload scaffolding. |
+| **P1** | `std/cardinality.dag` bounded-natural / refinement substrate | std / T-3 Wave-A2 | **3 row groups + 1 cite (+2 closed receipts)** | DECISIONS.md: `SL-3229-LLVM-WIDTH`, `SL-3229-LLVM-OPS`, `SL-3229-PTX-DIM3`, `SL-3229-PTX-COST`, `SL-3229-VERILOG-COST` (+ `SL-3229-FLOAT-NOMINAL` once re-gated under this canonical owner). In-file: `llvm_ir.dag:28`. **Receipt (PR #3310 / 2026-05-18 + follow-up receipt):** `LlvmType` raw-width payload scaffold **closed** (live `NonZeroNat` / `Nat`); `PtxCost` and `VerilogCost` raw signed-`Int` payload scaffolds **closed** where live carriers now use `Nat`; `Dim3` closes only its negative-axis illegal state and remains 🟡 for positive / per-axis-maximum refinement; three format carriers drop the erroneous `SL-3229-LLVM-WIDTH` Practice-9 cite (DECISIONS.md §SL-3229-T4-FORMAT-T6T7 operator note — cite P1 separately from float/integer). Remaining P1-family debt is operand-relation / stronger-bound refinement, not raw non-negative cost payload scaffolding. |
 | **P2** | `std/collection.dag` Wave-A2: `List<T> where non_empty` refinement **plus** the List combinator algebra (`forall` / `count_where` / `unique` over `FreeMonoid<T>`) | std / T-3 Wave-A2 (coercion-design.md RQ-3) | **5 named + 29 sites** | Section 2: `std/node.dag` × 4 traverses (`all_edges_named`, `all_edges_positional`, `name_occurrences`, `all_names_distinct`). DECISIONS.md: `SL-3229-VERILOG-NONEMPTY` (one row, 29 verilog.dag back-pointer sites after P8). |
-| **P3** | Compiler pipeline-stage substrate (lex-walk + parse-walk) | compiler / T-6, T-7 | **2 + ~7 in-file** | Section 2: `compiler/01_tokenize.dag tokenize`, `compiler/02_parse.dag parse`. In-file: the parser-side VAGUE prose blocks in `json.dag` / `yaml.dag` / `toml.dag` that concretize to T-6/T-7 (the operations-side family separate from P1). |
-| **P4** | LanguageModel-axis rework family (post-D2-reversal model) | extdeps/languages (`typescript.dag` under T-4; Verilog D3200 under TASKS.md T-4.9) | **4 + 1 row + 5 sites + 1 fn** | In-file: `typescript.dag` × 4 INVALID-GATE blocks (re-gate against the T-4 fact-bundle arrival, not pre-reversal D2). DECISIONS.md: `SL-3229-VERILOG-D3200` now gates on the T-4.9 Verilog `LanguageModel` axis rework named in `TASKS.md`; its five `verilog.dag` cite-sites remain strict-deprose one-line pointers to that row. Section 2: `extdeps/languages/dag.dag dag_language_model_wave1_void_canonical_symbols` (added in CP-1b #3225 — canonical_symbols set is a fact on DagLanguageModel/language-identity, not a hand-rolled function). |
+| **P3** | Compiler pipeline-stage substrate (lex-walk + parse-walk) | compiler / T-6, T-7 | **2 + 3 format parse cites** | Section 2: `compiler/01_tokenize.dag tokenize`, `compiler/02_parse.dag parse`. In-file: the concrete parse-half cites in `json.dag`, `yaml.dag`, and `toml.dag` gate on T-6/T-7 directly. |
+| **P4** | LanguageModel-axis rework family (post-D2-reversal model) | extdeps/languages (`typescript.dag` under T-4; Verilog D3200 under TASKS.md T-4.9) | **1 TypeScript status gate + 1 row + 5 sites + 1 fn** | In-file: `typescript.dag` now carries one file-level concrete status gate (`feature: T-4 fact-bundle Phase-3 rework after T-3/T-29/T-30/T-25-core`); no D2-shaped yellow blocks remain on PR head. DECISIONS.md: `SL-3229-VERILOG-D3200` now gates on the T-4.9 Verilog `LanguageModel` axis rework named in `TASKS.md`; its five `verilog.dag` cite-sites remain strict-deprose one-line pointers to that row. Section 2: `extdeps/languages/dag.dag dag_language_model_wave1_void_canonical_symbols` (added in CP-1b #3225 — canonical_symbols set is a fact on DagLanguageModel/language-identity, not a hand-rolled function). |
 | **P5** | `std/node.dag` `fold_node` — Node catamorphism (substrate-extension under T-1) | std / T-1 | **1 + 3 (03_resolve cascade only)** | **Substrate LANDED PR #3297:** `NodeFold<R>` + `fold_node` in `src/v4/std/node.dag`; `node_well_formed` consumes the shared `NodeFold<Bool>` algebra (burn-down closeout + #3297). **Cascade (open):** `compiler/03_resolve.dag merge_binding_self` (94, codex #3225) plus `add_module_named_exports` (99), `add_arrow_domain_named_params` (113), `add_bind_atom_binder` (140). These dissolve to `fold_node(root, ⟨binding-harvest algebra⟩)` only when a scoped harvest algebra lands without changing resolver scope semantics. |
 | **P6** | `std/algebra.dag` / `std/nat.dag` `fold` / `cata` over `FreeMonoid<T>` and `Nat` (Wave-A2) | std / T-3 Wave-A2 | **2** | Section 2: `std/algebra.dag free_monoid_length`, `std/float.dag nat_compare`. (Sibling to P2's combinator algebra; could land in the same PR — kept separate because the underlying primitive is the catamorphism, distinct from `forall`/`count_where` which are derived from it.) |
 | **P7** | `std/nat.dag nat_is_zero : Nat -> Bool` (Wave-A2) | std / T-3 Wave-A2 | **1** | Section 2: `std/float.dag float_finite_magnitude_zero`. |
@@ -168,7 +167,7 @@ INVALID-GATE-once-re-gated):
 | P1 lands | ~20 | `std/cardinality.dag` refinement | ~16 |
 | P2 lands | 5 named (+ 29 verilog sites converge in one sweep) | `std/collection.dag` Wave-A2 | ~11 named |
 | P3 lands | 2 named (+ ~7 in-file) | T-6 + T-7 pipeline substrate | ~9 named |
-| P4 lands | 4 + 1 row + 5 sites + 1 fn (`dag.dag canonical_symbols` #3225) | LanguageModel-axis rework family (T-4 + T-4.9) | ~3 named |
+| P4 lands | 1 TypeScript status gate + 1 row + 5 sites + 1 fn (`dag.dag canonical_symbols` #3225) | LanguageModel-axis rework family (T-4 + T-4.9) | ~3 named |
 | P5 cascade lands | 1 named (+ 3 walker sites in `03_resolve.dag` #3225) | scoped binding-harvest `fold_node` algebra (substrate: **#3297**) | ~1 |
 | P6 lands | 2 | FreeMonoid/Nat catamorphism | ~0 |
 | P7 lands | 1 | `nat_is_zero` | ~0 |
@@ -189,8 +188,8 @@ the 🟡 burn-down because they dissolved outside the substrate-gap queue.)
 Caveats:
 
 1. **"🟡 today" counts only entries already bound to a P# in the
-   plan.** Section 2's fresh findings + Section 3's 6 VALID-🟡 are
-   counted; **Section 3's ~16 VAGUE + 4 INVALID-GATE are NOT** —
+   plan.** Section 2's fresh findings + Section 3's VALID-🟡 are
+   counted; **Section 3's 2 VAGUE DECISIONS.md rows are NOT** —
    they are pre-plan backlog (no concrete primitive to roll under
    yet). The burn-down lane drives the backlog first; once a VAGUE/
    INVALID entry is re-concretized to a `feature:` arrival that
