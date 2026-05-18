@@ -20,7 +20,137 @@ type TomlValue
   | TomlTable { entries: Map<String, TomlValue> }
 
 
+<<<<<<< HEAD
 // 🟡 gated — feature: T-6/T-7 parse + T-10 emit pipeline substrate — DECISIONS.md Part 6 · SL-3229-T4-FORMAT-T6T7.
 // 🟡 gated — feature: std/cardinality.dag refinement + std/float.dag / std/integer.dag (T-3 Wave-A2) — DECISIONS.md Part 6 · SL-3229-LLVM-WIDTH.
 // 🟡 gated — feature: v4 temporal substrate for RFC 3339 datetime value interpretation (TOML §Date-Time) — DECISIONS.md Part 6 · SL-3229-T4-FORMAT-TOML-DATETIME.
 // 🟡 gated — feature: TOML inline-table/table construction syntax collapse — DECISIONS.md Part 6 · SL-3229-TOML-TABLE-SYNTAX.
+=======
+// ─────────────────────────────────────────────────────────────────────
+// Deferred — TRACKED SCAFFOLD (🟡). The operations + refinements ride
+// substrate that is scaffold today. Per the operator-ratified
+// declarative-now / operations-deferred-with-owner discipline (verified
+// on std/collection.dag #3169 + canonical json.dag #3184) these are NOT
+// authored here — not improvised, not bodiless `fn` (the frozen v2 seed
+// rejects bodiless `fn`, DECISIONS PARSE-1). Each carries the three
+// bridge properties (scaffold doc / bounds on use / dissolution
+// trigger).
+//
+// #3244 plan anchor (dissolution-inventory §3.2; authoritative text:
+// DECISIONS.md Part 6 + docs/audit/dissolution-inventory.md): same P3
+// + P1 split as canonical json.dag — parse/emit + table/inline-table
+// construction rules → **P3** (compiler tokenize + parse substrate,
+// T-6/T-7); numeric / datetime / key refinements → **P1** + std/text.dag
+// String-refinement paths (T-3 Wave-A2 family; see DECISIONS rows).
+//
+// (1) `toml_parse` / `toml_emit` — the parse and emit operation bodies.
+//   A TOML parser is a Char-STREAM structural walk over the TOML v1.0.0
+//   grammar and emit builds a String from structure; both require
+//   std/text.dag's `Char` + a `String` ↔ sequence-of-`Char`
+//   decomposition — std/text.dag is T-3 SCAFFOLD. RATIFIED parse
+//   strategy (mirrors json.dag): RECURSIVE-DESCENT single self-recursive
+//   structural walk over the input Char-sequence spine; termination is
+//   the A2 IMPLICIT case (descent on a proper sub-sequence).
+//     (a) scaffold doc — THIS note; `toml_parse`/`toml_emit` are
+//         intentionally absent from toml.dag today.
+//     (b) bounds on use — no consumer reads `toml_parse`/`toml_emit`
+//         from toml.dag in this PR. The carrier seam is fixed and
+//         fail-closed in BOTH directions (the T-4 seam-gate-ratified
+//         corrected seam #3 — propagated from canonical json.dag
+//         #3184): when authored, `toml_parse : String ->
+//         Outcome<TomlValue>` AND **`toml_emit : TomlValue ->
+//         Outcome<String>`** — NOT a total `TomlValue -> String`.
+//         `Outcome<T>` is the operator-ratified D1 carrier
+//         (std/diagnostic.dag, DECISIONS item **I**). WHY EMIT IS ALSO
+//         FAIL-CLOSED (not total): `TomlInt`/`TomlFloat`/`TomlDatetime`
+//         carry a raw `String` lexeme and the type-level
+//         §Integer/§Float/§Date-Time conformance is deferred (numeric
+//         (2)/(3) + key-refinement (4)) — so a `TomlValue` carrying a
+//         non-conformant scalar/datetime lexeme is type-constructible
+//         OUTSIDE the parser. A total `TomlValue -> String` emit would
+//         have no typed channel to reject it and would FABRICATE an
+//         invalid TOML artifact — an INVARIANTS P3 / no-fabrication
+//         violation (the canonical json.dag #3184 finding, propagated
+//         here as the ratified seam #3). So emit returns
+//         `Outcome<String>`: a structurally-representable but
+//         spec-invalid `TomlValue` emits `Rejected { diagnostic }`,
+//         never a fabricated string. Every non-conforming input,
+//         duplicate key, invalid datetime (parse) AND every
+//         spec-invalid value (emit) is `Rejected { diagnostic }`,
+//         never partial/defaulted/fabricated. The other five T-4.6
+//         formats mirror THIS fail-closed-both-directions seam.
+//         IMMUTABLE-HEADER RECONCILE REQUIRED (surfaced, not silently
+//         diverged — the std/collection.dag #3169 / std/witness.dag /
+//         csv-class precedent): the immutable scaffold header line
+//         "`emit(TomlValue) -> String`" documents a TOTAL emit. The
+//         T-4 seam-gate ratified the fail-closed `-> Outcome<String>`
+//         seam (correctness-tightening of seam #3, INVARIANTS P3); the
+//         literal immutable-header line edit is operator-tier (worker
+//         may not edit the immutable header — csv-class authority),
+//         batched into the operator header-reconcile (flagged by the
+//         T-4 mgr). This note is the fail-closed authority pending that
+//         reconcile; the header/note divergence is tracked-not-silent
+//         here.
+//     (c) dissolution trigger — when std/text.dag (T-3) lands its
+//         `Char` + `String` ↔ `List<Char>` decomposition, a follow-up
+//         PR adds `toml_parse : … -> Outcome<TomlValue>` /
+//         `toml_emit : … -> Outcome<String>`. The emit body MUST
+//         validate any non-parser-constructed value fail-closed (a
+//         non-conformant scalar/datetime lexeme, pending the
+//         refined-lexeme substrate, is a `Rejected`, never emitted) —
+//         the trigger is NOT satisfied by a total `-> String` emit
+//         even once std/text.dag lands; the fail-closed
+//         `Outcome<String>` contract is part of THIS ratified seam #3,
+//         so the invalid-lexeme emission hole cannot survive the
+//         dissolution. The T-4 directive's "operations deferred-with-
+//         named-owner" + TASKS.md T-4.6 record the same dependency.
+//
+// (2) Numeric interpretation of `TomlInt.lexeme` / `TomlFloat.lexeme` —
+//   the integer tower (std/integer.dag) + IEEE-754 `Float`
+//   (std/float.dag) are scaffold (T-3).
+//     (a) scaffold doc — THIS note; the lexeme is not a numeric value.
+//     (b) bounds on use — a consumer needing the numeric value waits on
+//         the interpretation read; the lexeme is round-trip-exact (B-6).
+//     (c) dissolution trigger — when std/integer.dag + std/float.dag
+//         land, a follow-up adds `toml_int_value`/`toml_float_value :
+//         … -> Outcome<…>`; this note dissolves.
+//
+// (3) Temporal interpretation of `TomlDatetime.lexeme` — TOML v1.0.0
+//   §Date-Time is an RFC 3339 subset with four sub-kinds (offset
+//   date-time / local date-time / local date / local time). v4 has NO
+//   temporal substrate; collapsing the lexeme to a structured instant
+//   would fabricate a calendar/offset interpretation.
+//     (a) scaffold doc — THIS note; `TomlDatetime` carries the verbatim
+//         RFC 3339 lexeme; no temporal interpretation is claimed.
+//     (b) bounds on use — a consumer needing the instant / sub-kind
+//         waits on the temporal substrate; the lexeme round-trips (B-6)
+//         exactly and the deferred parser validates RFC-3339-subset
+//         conformance fail-closed.
+//     (c) dissolution trigger — when a v4 temporal substrate lands
+//         (no owner today — its absence is itself surfaced to T-4 mgr;
+//         a new std/ temporal concept is a substrate-extension STOP,
+//         not a worker decision), a follow-up adds
+//         `toml_datetime_value : TomlDatetime -> Outcome<…>` over the
+//         four sub-kinds; this note dissolves.
+//
+// (4) Non-empty / charset key refinement on `TomlTable` /
+//   `TomlInlineTable` — the immutable scaffold header's
+//   `Map<NonEmptyStr, TomlValue>`. v4 has no `NonEmptyStr` (a String
+//   refinement; std/text.dag refinement substrate is T-3 scaffold).
+//   The carrier here is kernel `Map<String, TomlValue>`; TOML §Keys
+//   conformance (bare-key charset; quoted keys — incl. the spec-
+//   permitted EMPTY quoted key, so the refined type must NOT be a
+//   blanket non-empty) is enforced fail-closed by the deferred parser.
+//     (a) scaffold doc — THIS note + the header reconciliation block;
+//         the `String` key is unrefined here by design.
+//     (b) bounds on use — no consumer relies on a key-refinement type
+//         from toml.dag in this PR; the parser is the §Keys authority
+//         meanwhile.
+//     (c) dissolution trigger — when std/text.dag's String-refinement
+//         substrate lands, a follow-up refines the key type to a
+//         TOML-§Keys-faithful refinement (bare/quoted rules, NOT a
+//         blanket non-empty — the spec permits empty quoted keys);
+//         this note dissolves. The header/spec strictness discrepancy
+//         is flagged to T-4 mgr (surfaced, not silently encoded).
+
+>>>>>>> 115dc7f65 (WIP: Dissolution pre-plan backlog — §3 VAGUE+INVALID-GATE not rollable under)

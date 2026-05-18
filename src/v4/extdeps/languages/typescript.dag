@@ -1,8 +1,16 @@
 // src/v4/extdeps/languages/typescript.dag
+<<<<<<< HEAD
 // Scope: TypeScript 5.9 + ECMA-262 ES2025 primitive scaffold.
 // Owns: TsEcma262NumericPrimitiveKind, TsBoolean, TsEcma262PrimitiveOperationSemantics.
 // Consumes: kernel-ambient Bool; std numeric/text carriers are fact-bundle-gated.
 // Status: 🟡 gated — feature: T-4 fact-bundle Phase-3 rework after T-3/T-29/T-30/T-25-core.
+=======
+// Scope: TypeScript 5.9 + ECMA-262 ES2025 primitives (T-4 fact-bundle program; DECISIONS.md TS-D2 / D2-REV).
+// Owns: TsEcma262NumericPrimitiveKind, TsBoolean, TsEcma262PrimitiveOperationSemantics.
+// Consumes: kernel-ambient Bool; std numeric/text carriers are gated.
+// Status: sum carriers terminal 🟢 per DECISIONS.md TS-D2; bundle fill
+// remains on T-4 Phase-3 gates (vivid-carp-207).
+>>>>>>> 115dc7f65 (WIP: Dissolution pre-plan backlog — §3 VAGUE+INVALID-GATE not rollable under)
 
 module v4.extdeps.languages.typescript
 
