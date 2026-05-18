@@ -9,6 +9,8 @@ use v3_compiler::parse_for_test;
 use v3_compiler::parse_surface::SurfaceItem;
 use v3_compiler::tokenize_for_test;
 
+use std::collections::BTreeSet;
+
 const COVERAGE_DAG: &str = include_str!("../../../../v4/lens/coverage.dag");
 const COVERAGE_PATH: &str = "src/v4/lens/coverage.dag";
 
@@ -30,21 +32,25 @@ const EXPECTED_ACCEPTANCE_ROWS: &[&str] = &[
 #[test]
 fn v4_lens_coverage_names_all_l1_acceptance_rows() {
     let module = parse_module(COVERAGE_DAG, COVERAGE_PATH);
-    let data_names = module
+    let observed = module
         .items
         .iter()
         .filter_map(|item| match item {
-            SurfaceItem::Data { name, .. } => Some(name.as_str()),
+            SurfaceItem::Data { name, .. } if name.starts_with("dissolution_l1_") => {
+                Some(name.as_str())
+            }
             _ => None,
         })
-        .collect::<Vec<_>>();
+        .collect::<BTreeSet<_>>();
+    let expected = EXPECTED_ACCEPTANCE_ROWS
+        .iter()
+        .copied()
+        .collect::<BTreeSet<_>>();
 
-    for expected in EXPECTED_ACCEPTANCE_ROWS {
-        assert!(
-            data_names.contains(expected),
-            "{COVERAGE_PATH}: missing PREFIX dissolution acceptance row `{expected}`"
-        );
-    }
+    assert_eq!(
+        observed, expected,
+        "{COVERAGE_PATH}: PREFIX dissolution acceptance rows must exactly match L1.1-L1.12"
+    );
 }
 
 fn parse_module(source: &str, file: &str) -> v3_compiler::parse_surface::SurfaceModule {
