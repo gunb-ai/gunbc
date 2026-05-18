@@ -90,6 +90,9 @@ remain boundary indexes until the named substrate support lands.
 | `std/node.dag` | `Connective`, `Behavior`, `NodeKind`, `EdgeLabel`, `EdgeDiscipline` | Green coproducts | `Connective` is the closed set of six type connectives; additions are substrate-extension stops. `Behavior` is the closed set of five L1 computation behaviors. `NodeKind` is the binary type/computation split. `EdgeLabel` is named vs positional child addressing. `EdgeDiscipline` is the closed classifier derived from connectives. |
 | `std/node.dag` | `Path` prior step sum | Green dissolved-away receipt | Positional path steps are deliberately dissolved: `Path` is `List<Symbol>` over named edges only. The removed path-step sum is not retained; positional addressing is subsumed by replacing the enclosing named subtree until a future ratified extension changes that shape. |
 | `std/witness.dag` | `Witness<C>` | Green coproduct | Closed fail-closed proof/read carrier: `Holds { value } | Violates { diagnostic }`. Terminal because every read either carries the witnessed value or a diagnostic explaining the failed witness. |
+| `extdeps/languages/go.dag` | (Practice-4 sum carriers + D2 partial) | Green coproduct family / records | Per merge-base `92cb26402` 🟢 blocks (see **Part 6 · CP-3229-GREEN-TERMINAL**). De-prose 2026-05-18: in-file prose removed; `GoCost` / `GoIntegerOverflowDisposition` / D2 deferrals indexed here, not in body comments. |
+| `extdeps/languages/python.dag` | (Practice-4 sum carriers + cost record) | Green coproduct family / records | Same as go row; merge-base had three 🟢 sum ledgers. **Comment-ratio note:** the live file is carrier-minimal (few non-comment lines); Practice-9 content compliance holds while `comment-lines/total-lines` can sit modestly above the ~20% heuristic until more substrate rows land. |
+| `extdeps/languages/rust.dag` | (Practice-4 sum carriers + D2 resolver) | Green coproduct family / records | Same bulk **CP-3229-GREEN-TERMINAL** receipt; `PubInPath` semantic scaffold and `RustCost` raw-`Int` bridge remain producer obligations per Part 6 / substrate tables, not narration in the `.dag` body. |
 
 ## CP-1b — `03_resolve` / `extdeps/languages/dag` scaffold (Practice 9)
 
@@ -1260,6 +1263,9 @@ Merge-base `92cb26402` **Practice-4** `// Coproduct dissolution … 🟢 GREEN (
 | `src/v4/extdeps/languages/llvm_ir.dag` | 29 |
 | `src/v4/extdeps/languages/verilog.dag` | 41 |
 | `src/v4/extdeps/languages/ptx.dag` | 13 |
+| `src/v4/extdeps/languages/go.dag` | 10 |
+| `src/v4/extdeps/languages/python.dag` | 3 |
+| `src/v4/extdeps/languages/rust.dag` | 8 |
 | `src/v4/std/float.dag` | 2 |
 
 **Recovery:**
@@ -1268,6 +1274,9 @@ Merge-base `92cb26402` **Practice-4** `// Coproduct dissolution … 🟢 GREEN (
 git show 92cb26402eeb21471acb6ac47559cbae3b52afdb:src/v4/extdeps/languages/llvm_ir.dag
 git show 92cb26402eeb21471acb6ac47559cbae3b52afdb:src/v4/extdeps/languages/verilog.dag
 git show 92cb26402eeb21471acb6ac47559cbae3b52afdb:src/v4/extdeps/languages/ptx.dag
+git show 92cb26402eeb21471acb6ac47559cbae3b52afdb:src/v4/extdeps/languages/go.dag
+git show 92cb26402eeb21471acb6ac47559cbae3b52afdb:src/v4/extdeps/languages/python.dag
+git show 92cb26402eeb21471acb6ac47559cbae3b52afdb:src/v4/extdeps/languages/rust.dag
 git show 92cb26402eeb21471acb6ac47559cbae3b52afdb:src/v4/std/float.dag
 ```
 
