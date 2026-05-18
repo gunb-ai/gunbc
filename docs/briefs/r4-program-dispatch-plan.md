@@ -265,7 +265,7 @@ Everything else **follows from or is independent of** that root call:
 | 4 | **Wave-0 go** | Go = ~6 full + ~3 bounded work-fronts start now (keystone-independent). Wait = nothing moves. | **Go** |
 | 5 | **Fresh-lane exceptions** | Default: `vivid-carp-207` = sole #3280 freeze custodian; `fierce-cat-31` = lens-fan-out closeout only. Alt: hard-cut (churn/risk). | **Defaults** |
 | 6 | **De-prose Python removal** | You directionally said "kill the de-prose py." Now = delete `strict_deprose_dag.py` + test + 2 CI steps (brief gap until lens enforcement lands) · Sequence = no gap, ratchet lingers. | **Delete now** |
-| 7 | **#3313** (L1.7–L1.12 design) | Post my review as a formal GitHub review now; advance to 2-approval bar **sequenced behind #3240** (gated on it regardless). | **Post + sequence** |
+| 7 | **#3313** (dissolution-lens design — **in active rework**: taxonomy shifted, L1.6 retired→L1.10 family {a TemplateHole, b CanonicalCarrier}, new A0/A1 umbrella, pre-Practice-10-ratification) | Post my review of the design-in-progress; advancement waits on **#3313 stabilizing AND #3240**. Wave-2 batch (d) (warm-koi-304/#3318) **held at track-not-finalize** so witnesses aren't authored against the moving taxonomy; batches a/b/c unaffected. | **Post + sequence; batch (d) hold** |
 
 One sentence per row resolves the program. #1/#3a are the same philosophical
 call; #2 falls out of #1; #4/#5/#6/#7 are independent and low-risk.
