@@ -4,6 +4,7 @@
 // Owns: Nat, nat_add, nat_mul, nat_is_zero, nat_additive_commutative_monoid, nat_semiring.
 // Consumes: std algebra.
 // Status: T-3 modeled.
+// Ledger: DECISIONS.md Part 6 — SL-P7-NAT-IS-ZERO-VPRED.
 
 
 module v4.std.nat
@@ -24,6 +25,7 @@ fn nat_mul(a: Nat, b: Nat) -> Nat {
     Succ { prev: p } => nat_add(a: b, b: nat_mul(a: p, b: b))
   }
 }
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: coproduct variant-discriminant predicate substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived Zero-variant discriminant projection; forbidden: nat_cata / fold launder (operator CORE 2026-05-18).
 fn nat_is_zero(n: Nat) -> Bool {
   match n {
     Zero => true
