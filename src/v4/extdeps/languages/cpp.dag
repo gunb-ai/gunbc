@@ -29,6 +29,8 @@
 //   - the std/ scalar files (integer/float/text) when their C++ alias
 //     targets land. No std/algebra.dag import in this slice because
 //     D2 forbids per-language algebra re-declaration.
+//   - extdeps/cpp_abi.dag: CppTargetProfile / CppTargetDataModel for
+//     implementation-defined integer and character widths.
 //
 // Status: T-4 cpp D2-resolver modeled 2026-05-16 (sunny-cat-482).
 //   Mirrors the canonical rust.dag D2-resolver DISCIPLINE from PR
@@ -41,6 +43,9 @@
 // ratification (substrate extension = stop signal).
 
 module v4.extdeps.languages.cpp
+
+
+import v4.extdeps.cpp_abi { CppTargetProfile }
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -64,12 +69,11 @@ module v4.extdeps.languages.cpp
 // C++ IMPLEMENTATION-DEFINED WIDTHS. Unlike Rust, C++'s core integer
 // types (`short`, `int`, `long`, `long long`, `wchar_t`) are specified
 // by constraints and implementation-defined representation choices, not
-// by fixed source-level bit widths. This file therefore cannot land
-// aliases such as `type CppInt = Int32` without a target ABI / data-model
-// resolver fact. The correct D2 shape is still alias identity, but the
-// alias target must be selected by a declared implementation model
-// (LP64/LLP64/ILP32 or a future more precise target-data carrier), not
-// guessed in cpp.dag.
+// by fixed source-level bit widths. The single authority for those
+// choices is `v4.extdeps.cpp_abi.CppTargetProfile`: this file's future
+// integer fact-bundles parameterize over that target profile and select
+// the alias target from `CppTargetDataModel.integer_widths`, not from a
+// guessed constant in cpp.dag.
 //
 // GRAMMAR FACTS OWNED ELSEWHERE. D2 covers per-primitive inhabitance
 // form only. It does not settle C++ grammar ambiguity or bidirectional
@@ -217,6 +221,10 @@ type CppIntegerOverflowDisposition
 //
 // LANDABLE NOW — grounded against current origin/main carriers:
 
+type CppPrimitiveResolutionContext {
+  target: CppTargetProfile
+}
+
 // C++ `bool` ↔ std/logic.dag's `Bool`.
 // Anchor: C++ draft [basic.fundamental], boolean type:
 //   https://eel.is/c++draft/basic.fundamental
@@ -250,27 +258,27 @@ type CppBool = Bool
 //
 // C++ signed core integers — short int / int / long int / long long int
 //   - target form        alias to the std signed integer carrier selected
-//                        by the declared C++ implementation data model,
+//                        by `CppTargetProfile.data_model.integer_widths`,
 //                        plus a future shared grounding row and
 //                        `RepresentableResultRequired` overflow/range
 //                        disposition.
 //   - named owner        std/integer.dag for the Int/IntN ladder;
-//                        target implementation model for source type →
-//                        width mapping (LP64/LLP64/ILP32 or successor).
+//                        extdeps/cpp_abi.dag for source type → width
+//                        mapping (LP64/LLP64/ILP32/ILP64 or successor).
 //   - dissolution trigger
 //                        when std/integer.dag lands the signed ladder
-//                        AND the C++ target data-model resolver can pick
-//                        the width without guessing.
+//                        and T-4 binds each C++ spelling to the
+//                        CppTargetProfile-selected width.
 //
 // C++ unsigned core integers — unsigned short int / unsigned int /
 //                              unsigned long int / unsigned long long int
 //   - target form        alias to the std unsigned integer carrier
-//                        selected by the declared implementation model,
+//                        selected by `CppTargetProfile.data_model`,
 //                        plus a future shared grounding row and
 //                        `UnsignedModuloArithmetic` overflow/range
 //                        disposition.
 //   - named owner        std/integer.dag for the UInt/UIntN ladder;
-//                        target implementation model for widths.
+//                        extdeps/cpp_abi.dag for widths.
 //   - dissolution trigger
 //                        same as signed, with unsigned carrier targets.
 //

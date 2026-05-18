@@ -32,7 +32,8 @@ src/v4/
     verification.dag     # TestClaim schema + Tier×Layer classification (v4-fresh; studied v3/dsl)
     report.dag           # advisory carrier (NOT fail-closed Diagnostic); used by synthesis lens
 
-  extdeps/               # external system contracts (22 files)
+  extdeps/               # external system contracts (23 files)
+    cpp_abi.dag          # C++ ABI / target data-model (LP64/LLP64/ILP32/ILP64)
     languages/           # language models (direction-agnostic — emit AND ingest)
       dag.dag            # gunbc `.dag` — B2-OMNI language #1 (C1 extension 2026-05-16; relay merry-ibex-337)
       rust.dag
@@ -120,7 +121,7 @@ src/v4/
     fixture/             # canonical input programs
 ```
 
-**Total: 69 .dag files + 5 docs + 5 .gitkeep = 79 files.** (Per invariant
+**Total: 70 .dag files + 5 docs + 5 .gitkeep = 80 files.** (Per invariant
 #1 the enumeration above — not the count — is authoritative; the count is
 a checksum, updated on every operator-ratified file addition/removal.
 **Reconciliation (2026-05-17, PR #3225 / review #13750):** the prior printed
@@ -132,6 +133,8 @@ intervening operator-ratified edits). **#3225** adds **`test/claim/manual/resolv
 extension (Option A, relay merry-ibex-337). −5 .dag 2026-05-15: work-direction
 meta-layer cut, operator-ratified. **2026-05-17 (PR #3212):** enumerate
 `test/claim/manual/*` (4) + `test/claim/impossible_bug/*` (6); checksum **65→69** `.dag`.)
+**2026-05-18 (T-29):** add `extdeps/cpp_abi.dag` for the operator-ratified
+C++ ABI / target data-model feeder; checksum **69→70** `.dag`.
 
 ## Scalar/numeric concept decomposition
 
