@@ -1,12 +1,16 @@
-# Lane A PREFIX — Acceptance artifact (b): cost + complexity (Wave-1 #1 complexity + §5.1 synthesis) — **operator-signed gate for `DISPATCH_HOLD`**
+# Lane A PREFIX — Acceptance artifact (b): cost + complexity (Wave-1 #1 complexity + §5.1 synthesis) — **DRAFT pending operator signature**
 
-> **Sister artifacts:** `docs/briefs/r4-lane-a-lens-prefix-acceptance.md` (batch (a) — driver/registry + whole-corpus gate). **Brief:** `docs/briefs/r4-lane-a-lens-prefix-t23-t12-ci.md` (`PREFIX-LENS-CI-1`) — **Acceptance-PR batches §** row **3**. **Authority:** `docs/design-lens-framework.md` §2 (`Witness<C>`, `DimensionOk` / `DimensionFail`, `DimensionReport`); `docs/design-lens-application-surface.md` §4.1 (complexity-contract compile error) + §4.2/§4.3 (cost basis worked examples) + **§5.1 default-application synthesis** (operator dev-speed lever — Wave-1 #1 complexity rides this).
+> **Status (this PR head):** **DRAFT** — this document **becomes** the operator-signed `DISPATCH_HOLD` gate for cost + complexity implementation **on operator signature** (`_TODO_OPERATOR_` witness slot fill + `<TBD>` runnable-AC pin resolution + PR amend by the operator). Until then, it is the **committed proposal** for that gate; merging this PR does **not** by itself lift `DISPATCH_HOLD`.
+>
+> **Sister-artifact landing dependency (PRs, not yet on `origin/main`):** the controlling brief (`PREFIX-LENS-CI-1` — `docs/briefs/r4-lane-a-lens-prefix-t23-t12-ci.md`) and the batch (a) acceptance artifact (`docs/briefs/r4-lane-a-lens-prefix-acceptance.md`) are introduced by **PR #3315** (Lane A manager / `fierce-cat-31`); the **T-23 Interface-Freeze keystone** lands via **PR #3316** (`swift-crane-263`); the **driver/registry** lands via **PR #3321** (`crisp-carp-224`); the umbrella index lands via **PR #3319** (`witty-eagle-676`). This artifact's authority claims (sister/brief references) **resolve** when those PRs squash-merge to `main`; coordinated landing order is tracked under the umbrella. The artifact is **not** consumable as a standalone gate until that coordinated landing completes (per `INVARIANTS.md` P2 — describes live state once siblings exist on `main`).
+>
+> **Authority pins (in-tree at this PR head — already live on `main`):** `docs/design-lens-framework.md` §2 (`Witness<C>`, `DimensionOk` / `DimensionFail`, `DimensionReport`); `docs/design-lens-application-surface.md` §4.1 (complexity-contract compile error) + §4.2/§4.3 (cost basis worked examples) + **§5.1 default-application synthesis** (operator dev-speed lever — Wave-1 #1 complexity rides this); `src/v4/lens/complexity.dag` (U2 header — complexity = asymptotic projection of `SymbolicCost`); `src/v4/lens/cost.dag` (U2 — total `SymbolicCost` lattice over the closed kernel); `src/v4/TASKS.md` **T-12**.
 
 ## Purpose
 
-Immutable **witness + runnable acceptance table** for the **cost + complexity** PREFIX-lens batch (one shared Acceptance PR for both per **`PREFIX-LENS-CI-1` §Acceptance-PR batches** row 3). **`DISPATCH_HOLD`** on the worker brief lifts for **complexity** + **cost** implementation when this document is **committed on the Acceptance PR branch** and **signed by the operator** (per witty-cat methodology).
+**Proposed** immutable **witness + runnable acceptance table** for the **cost + complexity** PREFIX-lens batch (one shared Acceptance PR for both per **`PREFIX-LENS-CI-1` §Acceptance-PR batches** row 3 — see brief landing pointer above). **`DISPATCH_HOLD`** on **complexity** + **cost** implementation lifts when this document is **operator-signed** (witness slots filled, runnable cell pinned, operator amendment commit) — not on this draft PR merging in isolation.
 
-**Immutability:** implementation workers **do not** edit witness blocks or expectation rows except **red→green** transitions accompanied by an **operator-signed** amendment to **this** file on the Acceptance PR.
+**Immutability on sign:** once operator-signed, implementation workers **do not** edit witness blocks or expectation rows except **red→green** transitions accompanied by an **operator-signed** amendment to **this** file. Prior to operator sign, the document remains the open proposal under review.
 
 **Why this batch is one PR, not two:** complexity is the **asymptotic projection** of cost's `SymbolicCost` (`src/v4/lens/complexity.dag` U2 header, operator-ratified 2026-05-15); the two lenses share one substrate algebra, one fold-pass, and one `LensEnforcement` family. Splitting their Acceptance signatures would re-litigate `cost ↔ complexity` authority. The shared substrate is the **`SymbolicCost` lattice** declared in `src/v4/lens/cost.dag` (U2: total over the closed kernel — Constant / Linear / Polynomial / PolyLog / Exponential / Factorial / Log / Sum / Product / `UnknownCost`-as-top).
 
@@ -90,7 +94,7 @@ Any **new** `src/v3/compiler/tests/**` integration file added to support AC-2 / 
 - **C7 / report / synthesis** rows in `src/v4/DECISIONS.md` citing **T-12** carry the closure-gate receipts for `complexity_violation_compile_error_demonstrated` / `crdt_cost_basis_demonstrated` / `memory_peak_cost_basis_demonstrated` (Verification-Manager-owned per `design-lens-application-surface.md` §6).
 - **§5.1 synthesizer** receipt — when AC-4 lands green, `DECISIONS.md` records the default-synthesis-Introspect-only ratification (operator dev-speed lever per **`PREFIX-LENS-CI-1` §WHY THIS MATTERS**).
 
-## DISPATCH_HOLD lift conditions (this artifact only)
+## DISPATCH_HOLD lift conditions (this artifact only — applies on operator sign, not on draft-PR merge)
 
 1. Operator signs each `_TODO_OPERATOR_` slot (fixture ids + snippet paths + asserted outcomes) — or accepts the candidate substance verbatim.
 2. Operator pins **Green corpus** for AC-1.
