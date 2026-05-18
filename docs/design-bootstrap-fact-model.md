@@ -22,6 +22,12 @@ This is the self-hosting thesis followed all the way down. "The Rust
 seed shrinks toward zero" does not only mean "less hand-Rust over time";
 its end state is that **even the seed is a projection**, not hand-code.
 
+This is `modeling-discipline.md` **Practice 10 ("Don't hand-roll a
+derived operation")** applied at bootstrap scale: the seed is produced by
+*translation* and *emission* — derived operations (registry rows 3 and
+6) — so a hand-written seed is the bootstrap-scale walker/template
+dissolution finding. T-32 is the standing instance of that Practice.
+
 ## 2. The layer stack
 
 Each layer is a fact model (declared `.dag` data), not code:
