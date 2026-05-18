@@ -58,7 +58,7 @@ Mapping:
 - Practice 7 (Projection over enumeration) — implements **P1: Modeling Faithfulness**
 - Practice 8 (Fact-bundle modeling) — implements **P1: Modeling Faithfulness**
 - Practice 9 (No-prose discipline) — implements **P2: Boundary Discipline**
-- Practice 10 (Don't hand-roll a derived operation) — implements **P1: Modeling Faithfulness** (and the proposed *Do not hand-roll a derived operation* invariant — pending operator ratification, rework-tracker PR #3240 task A1)
+- Practice 10 (Don't hand-roll a derived operation) — implements **P1: Modeling Faithfulness** and the *Do not hand-roll a derived operation* invariant.
 
 A reviewer should name specifically whether the diff satisfies each
 relevant practice, where it could be violated, and whether the existing
@@ -588,10 +588,8 @@ the code. The fix is never to polish the hand-rolled construct — it is to
 model the missing fact, or name the missing substrate primitive, and let
 the operation be derived.
 
-**The invariant this implements** (proposed — pending operator
-ratification, rework-tracker PR #3240 task A1; on ratification it lands
-in [INVARIANTS.md](../INVARIANTS.md) / [MODELING.md](../MODELING.md), and
-this Practice cites it directly):
+**The invariant this implements** (see [INVARIANTS.md](../INVARIANTS.md)
+P1 and [MODELING.md](../MODELING.md) M1):
 
 > **Do not hand-roll a derived operation.** If a function's behavior is
 > determined entirely by the shape of a modeled type, it is re-deriving
@@ -715,11 +713,11 @@ it is what stops a reviewer from wrongly demanding the impossible:
   recursion or `match` is genuinely irregular (the call graph is not the
   data graph), or the construct already uses the derived operation.
 
-The retroactive v4 dissolution audit (rework-tracker PR #3240 task C1)
-applies this legend per-file, per-finding — a symbol-marked inventory,
-not prose. The symbol records a finding's *disposition*; the matching
-in-file `.dag` tag lands with the fix, per migration PR — it is not
-retro-applied across all v4 files at once.
+The retroactive v4 dissolution audit applies this legend per-file,
+per-finding — a symbol-marked inventory, not prose. The symbol records a
+finding's *disposition*; the matching in-file `.dag` tag lands with the
+fix, per migration PR — it is not retro-applied across all v4 files at
+once.
 
 **Decidability — checker-flaggable vs reviewer-judgment.** Every
 dissolution finding is **blocking** — there is no advisory tier and no
@@ -742,12 +740,11 @@ would:
 | coproduct dissolution | already enforced — per-coproduct 🟢/🟡/🔴 tag + `DECISIONS.md` ledger (Practices 4 / 9) | already enforced |
 
 The *enforcement mechanism* — the checker-script build path and the
-eventual dissolution lens — is design work, specified in the planned
-`docs/design-dissolution-lens.md` (rework-tracker PR #3240 task B1). This
-Practice carries only the classification, which is discipline a reviewer
-applies by hand. Worked examples — the #3225 dissolution inventory — land
-in [modeling/grounding-worked-examples.md](modeling/grounding-worked-examples.md)
-(PR #3240 task B2).
+eventual dissolution lens — is design work, specified in
+`docs/design-dissolution-lens.md`. This Practice carries only the
+classification, which is discipline a reviewer applies by hand. Worked
+examples from the #3225 dissolution inventory live in
+[modeling/grounding-worked-examples.md](modeling/grounding-worked-examples.md).
 
 **What to check.** For any function in the diff: is its behavior fixed by
 the *shape* of a modeled type rather than by logic unique to this call
