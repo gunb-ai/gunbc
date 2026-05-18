@@ -1,47 +1,9 @@
 // src/v4/compiler/01_tokenize.dag
-//
-// Scope: pipeline stage 1 — Source string to TokenStream. Pure function.
+// Scope: generic tokenization over language lex rules.
 // Anchor: https://en.wikipedia.org/wiki/Lexical_analysis
-//
-// B2-OMNI (operator-ratified 2026-05-15): tokenize is the first half of
-// the GENERIC ingest walker (with 02_parse), driven by a `LanguageModel`'s
-// declarative lexical rules — NOT .dag-specific. `.dag` is language #1.
-// A .dag-only character class hardcoded here reintroduces the N×M trap =
-// STOP. See 00_compile.dag B2-OMNI for the pivot.
-//
-// Wave-1 **encoding contract** (grammar-as-data over `Node`, not prose):
-//   **E0 — void lexical fragment**: `LexRules` root is a **type** `Node`
-//   whose connective is **`Conj` with zero children** — exactly zero
-//   lexical productions. The walker recognizes this shape **structurally**
-//   (discriminant + `count(children)==0`), never by `Symbol` spelling.
-//   E0 + empty `String` (`std/text.dag` `string_is_empty`) ⇒ `Produced` empty
-//   `TokenStream`. E0 + non-empty source ⇒ `Rejected` (source not exhausted
-//   — fail-closed; no fabricated tokens).
-//   Further encodings (E1+, keywords, …) land as additional **data**
-//   shapes ratified with the LanguageModel carrier; the walker grows by
-//   `match` on those shapes, not by hardcoding `.dag` surface spellings.
-//
-// Owns:
-//   - Token, TokenStream carriers
-//   - LexRules — declarative lexical authority as a finite `Node` tree
-//   - tokenize: (String, file: Symbol, LexRules) -> Outcome<TokenStream>
-//
-// Consumes:
-//   - std/text.dag: String, string_is_empty (= FreeMonoid<Char> boundary;
-//     see std/algebra.dag `free_monoid_is_empty`)
-//   - std/node.dag: Node, NodeKind, TypeNode, ComputationNode, Conj,
-//     Symbol, node_well_formed
-//   - std/collection.dag: List<T>
-//   - std/diagnostic.dag: Diagnostic, Outcome, Locus, Textual, WholeFile,
-//     Correction, ExternalContractUnknown, UserInputBoundary
-//   - extdeps/languages/dag.dag: language-#1 model binds E0 instances (see
-//     `dag_wave1_e0_void_lex`); this file stays encoding-generic.
-//
-// Status: Wave-1 — E0 void-lex path is **realized** (`Produced`); richer
-// encodings ⇒ honest `Rejected { … walk_not_realized }` until ratified.
-// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
-// contract for the worker. Splitting this file requires explicit operator
-// ratification (substrate extension = stop signal).
+// Owns: LexCharClass, LexPattern, LexRule, LexRuleSet, LexRules, Token, TokenStream, tokenize_lexical_walk_not_realized, tokenize_lex_e0_source_not_exhausted, tokenize_lexical_walk_not_realized_diagnostic, tokenize_lex_e0_source_not_exhausted_diagnostic, tokenize.
+// Consumes: std collection, std diagnostic, std node, std text.
+// Status: Wave-1 void-lex path realized.
 
 
 module v4.compiler.tokenize
@@ -56,28 +18,47 @@ import v4.std.diagnostic {
   Outcome,
   Textual,
   UserInputBoundary,
-  WholeFile,
+  WholeFile
 }
-import v4.std.node {
-  ComputationNode,
-  Conj,
-  Node,
-  NodeKind,
-  Symbol,
-  TypeNode,
-  node_well_formed,
-}
+import v4.std.node { Symbol }
 import v4.std.text { Char, String, string_is_empty }
 
+// 🟡 coproduct dissolution — DECISIONS.md CP-1b item 13a (LexCharClass).
+type LexCharClass
+  = WhitespaceChar
+  | DigitChar
+  | IdentStartChar
+  | IdentContinueChar
 
-// ─────────────────────────────────────────────────────────────────────
-// LexRules — declarative lexical specification as a finite `Node` tree
-// (B2-OMNI grammar-as-data).
-type LexRules = Node
+
+// 🟡 coproduct dissolution — DECISIONS.md CP-1b item 13b (LexPattern).
+type LexPattern
+  = EmptyPattern
+  | LiteralPattern { text: String }
+  | CharPattern { char: Char }
+  | CharClassPattern { class: LexCharClass }
+  | SequencePattern { left: LexPattern, right: LexPattern }
+  | ChoicePattern { left: LexPattern, right: LexPattern }
+  | OptionalPattern { element: LexPattern }
+  | RepeatPattern { element: LexPattern }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// Token — one classified lexeme in source order.
+// 🟡 coproduct dissolution — DECISIONS.md CP-1b item 13c (LexRule).
+type LexRule
+  = TokenRule { token_class: Symbol, pattern: LexPattern }
+
+
+type LexRuleSet {
+  rules: List<LexRule>
+}
+
+
+// 🟡 coproduct dissolution — DECISIONS.md CP-1b item 13d (LexRules).
+type LexRules
+  = VoidLexRules
+  | ModeledLexRules { root: LexRuleSet }
+
+
 type Token {
   class: Symbol
   lexeme: String
@@ -85,20 +66,10 @@ type Token {
   start: Int
   end: Int
 }
-
-
-// ─────────────────────────────────────────────────────────────────────
-// TokenStream — ordered output of stage 1.
 type TokenStream {
   tokens: List<Token>
 }
-
-
-// ─────────────────────────────────────────────────────────────────────
-// Reason symbols — owned by this dimension (diagnostic.dag owns schema).
 data tokenize_lexical_walk_not_realized: Symbol = tokenize_lexical_walk_not_realized
-
-data tokenize_lex_rules_not_well_formed: Symbol = tokenize_lex_rules_not_well_formed
 
 data tokenize_lex_e0_source_not_exhausted: Symbol = tokenize_lex_e0_source_not_exhausted
 
@@ -106,15 +77,6 @@ data tokenize_lex_e0_source_not_exhausted: Symbol = tokenize_lex_e0_source_not_e
 fn tokenize_lexical_walk_not_realized_diagnostic(at: Locus) -> Diagnostic {
   Diagnostic {
     reason: tokenize_lexical_walk_not_realized,
-    at: at,
-    correction: Unavailable { reason: ExternalContractUnknown }
-  }
-}
-
-
-fn tokenize_lex_rules_not_well_formed_diagnostic(at: Locus) -> Diagnostic {
-  Diagnostic {
-    reason: tokenize_lex_rules_not_well_formed,
     at: at,
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -130,46 +92,27 @@ fn tokenize_lex_e0_source_not_exhausted_diagnostic(at: Locus) -> Diagnostic {
 }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// lex_rules_node_is_conj_empty_root — structural E0 predicate (Wave-1).
-fn lex_rules_node_is_conj_empty_root(rules: Node) -> Bool {
-  match rules.kind {
-    TypeNode { connective: Conj } => count(rules.children) == 0
-    TypeNode { connective: _ } => false
-    ComputationNode { behavior: _ } => false
-  }
-}
-
-
-// ─────────────────────────────────────────────────────────────────────
-// tokenize — GENERIC lexical ingest (B2-OMNI).
-//
-// Discriminates on **declared** `LexRules` shape; only E0 is realized in
-// Wave-1. No `file` or `text` content branches on language identity.
 fn tokenize(text: String, file: Symbol, rules: LexRules) -> Outcome<TokenStream> {
   let at = Textual {
     file: file,
     extent: WholeFile
   }
-  if !node_well_formed(n: rules) {
-    Rejected {
-      diagnostic: tokenize_lex_rules_not_well_formed_diagnostic(at: at)
-    }
-  } else if lex_rules_node_is_conj_empty_root(rules: rules) {
-    if string_is_empty(s: text) {
-      Produced {
-        value: TokenStream {
-          tokens: []
+  match rules {
+    VoidLexRules =>
+      if string_is_empty(s: text) {
+        Produced {
+          value: TokenStream {
+            tokens: []
+          }
+        }
+      } else {
+        Rejected {
+          diagnostic: tokenize_lex_e0_source_not_exhausted_diagnostic(at: at)
         }
       }
-    } else {
+    ModeledLexRules { root: _ } =>
       Rejected {
-        diagnostic: tokenize_lex_e0_source_not_exhausted_diagnostic(at: at)
+        diagnostic: tokenize_lexical_walk_not_realized_diagnostic(at: at)
       }
-    }
-  } else {
-    Rejected {
-      diagnostic: tokenize_lexical_walk_not_realized_diagnostic(at: at)
-    }
   }
 }

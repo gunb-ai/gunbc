@@ -12,6 +12,8 @@ Read this file for the active modeling rules and principle names. Read `docs/mod
 
 Every node in a `.dag` model should be either an axiom grounded in an external source or a derivation composed from those axioms.
 
+> **Purpose.** This modeling philosophy serves the project's core theme: the **derived homomorphism**. The compiler derives cross-target translation from correctly-modeled facts (N+M models, not N×M adapters) — so a faithful model is what the derivation rests on. See [THESIS.md](THESIS.md) → "The derived homomorphism" and [docs/thesis/the-derived-homomorphism.md](docs/thesis/the-derived-homomorphism.md).
+
 This codebase treats modeling as a deductive system, not a preference document. See [docs/modeling/core-principle-shared-facts-not-preferences.md](docs/modeling/core-principle-shared-facts-not-preferences.md).
 
 ### No meta-language on top
@@ -115,6 +117,8 @@ See [docs/modeling/layering.md](docs/modeling/layering.md).
 ### M1: Types are compositional facts
 
 Types decompose into smaller types that each assert one fact.
+
+> Fact modeling is the **inputs facet** of the derived homomorphism: the facts a type asserts are what the compiler derives the cross-target map *from* (see [docs/modeling-discipline.md](docs/modeling-discipline.md) "The three facets").
 
 ### M2: No duplicate type authorities
 

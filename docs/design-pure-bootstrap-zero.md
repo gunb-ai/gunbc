@@ -4,6 +4,8 @@
 
 > **v4 supersession (2026-05-15).** The 0-floor target articulated in this doc now applies to **v4** ([`src/v4/`](../src/v4/)) as the operational instantiation. v2 binary serves as v4's stage minus one (per [`src/v4/STRUCTURE.md`](../src/v4/STRUCTURE.md) "Bootstrap chain"); v4's compiler emits its own Rust trampoline (`bin/main.dag`) to satisfy 0-floor without needing the runtime-resolution choices (shipped binary / runtime crate / rustc-macro) described below. v3 references throughout this doc describe the v2→v3 transition that v4 supersedes; v3 is frozen pending v4 ship.
 
+**v4 workflow authorities (registry).** Load-bearing workflow models: [`src/v4/workflow/bootstrap.dag`](../src/v4/workflow/bootstrap.dag) (bootstrap orchestration as data) and [`src/v4/workflow/ci.dag`](../src/v4/workflow/ci.dag) (CI pipeline as data). This doc governs their Pure Bootstrap / N=0 discipline (A3, PROOF-1, and the STOP rail: only bootstrap-modeled authority in those surfaces). **C4** (committed `ci.yml` as checked projection from `.dag`) is ratified in [`src/v4/STRUCTURE.md`](../src/v4/STRUCTURE.md).
+
 **Promotion evidence chain (cited in cascade promotion PR body):**
 - D1 audit: PRs #769 + #771 + #775 + #777 + #779 (audit doc with substrate-generation already proven; 23 generated files + 24 REGEN_OUTPUTS entries; 38-type substrate.dag coverage survey)
 - D2 PB-1 brief amendment: PR #770 (non-goals revised under 0-floor)
