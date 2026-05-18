@@ -1,7 +1,7 @@
 // src/v4/extdeps/languages/ptx.dag
 // Scope: NVIDIA PTX ISA 8.5 SIMT structural classifiers (T-4.14).
 // Owns: ParamScope, SharedScope, StateSpace, BarrierScope, ThreadAxis, ThreadCoordSource, BitsWidth, IntegerWidth, FloatWidth, RegisterScalarKind, RegisterStateSpace, RegisterScalar, Dim3, ThreadHierarchyShape, ThreadCoord, PtxCost
-// Consumes: std/nat.dag (Nat).
+// Consumes: std/nat.dag (Nat); std/cardinality.dag (NonZeroNat).
 // Status: T-4.14 PASS (IN-B).
 // Anchor: https://docs.nvidia.com/cuda/pdf/ptx_isa_8.5.pdf — TOC https://docs.nvidia.com/cuda/parallel-thread-execution/index.html
 // Ledger: DECISIONS.md Part 6 (PR #3229): CP-3229-GREEN-TERMINAL, SL-3229-PTX-DIM3.
@@ -11,6 +11,7 @@ module v4.extdeps.languages.ptx
 
 
 
+import v4.std.cardinality { NonZeroNat }
 import v4.std.nat { Nat }
 
 
@@ -116,9 +117,9 @@ type RegisterScalar
 
 
 type Dim3 {
-  x: Nat
-  y: Nat
-  z: Nat
+  x: NonZeroNat
+  y: NonZeroNat
+  z: NonZeroNat
 }
 
 
