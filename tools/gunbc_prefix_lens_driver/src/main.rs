@@ -108,7 +108,10 @@ fn run_single_path(lens_id: &str, path: &Path) {
 
 fn run_whole_corpus(lens_id: &str) {
     let repo = repo_root();
-    eprintln!("prefix-lens-driver v0: whole-corpus lens_id={lens_id} repo={}", repo.display());
+    eprintln!(
+        "prefix-lens-driver v0: whole-corpus lens_id={lens_id} repo={}",
+        repo.display()
+    );
 
     let mut paths = git_ls_files_dag(&repo);
     paths.sort();
@@ -158,7 +161,9 @@ enum PathBucket {
     V3CompileToDag,
     /// Covered by one aggregated `v2-compiler compile --source-root src/v4`.
     V4V2Compile,
-    SkipDslOrV2 { reason: &'static str },
+    SkipDslOrV2 {
+        reason: &'static str,
+    },
     SkipV3StdBootstrap,
     Unclassified,
 }
@@ -205,7 +210,10 @@ fn compile_v3_dag_or_exit(repo: &Path, rel: &str) {
     match compile_to_dag(&source, rel) {
         Ok(d) => {
             if !d.diagnostics().is_empty() {
-                eprintln!("error: `{rel}` compiled with diagnostics: {:?}", d.diagnostics());
+                eprintln!(
+                    "error: `{rel}` compiled with diagnostics: {:?}",
+                    d.diagnostics()
+                );
                 std::process::exit(5);
             }
         }
@@ -260,7 +268,10 @@ fn run_v2_v4_compile_once(repo: &Path) {
         eprintln!("error: v2-compiler compile --source-root src/v4 failed: {status}");
         std::process::exit(6);
     }
-    eprintln!("notice: v2→v4 aggregated compile OK (output at {})", out.display());
+    eprintln!(
+        "notice: v2→v4 aggregated compile OK (output at {})",
+        out.display()
+    );
 }
 
 fn v2_compiler_bin() -> PathBuf {
