@@ -122,6 +122,7 @@ type ConstantPrimary
   | ConstantSystemFunctionCallPrimary { call: ConstantSystemFunctionCall }
   | ConstantConcatenationPrimary { concatenation: ConstantConcatenation }
   | ConstantMultipleConcatenationPrimary { multiple: ConstantMultipleConcatenation }
+  | ConstantParenthesizedExpressionPrimary { expression: ConstantExpression }
   | ConstantMinTypMaxPrimary { min: ConstantExpression, typ: ConstantExpression, max: ConstantExpression }
   | ConstantString { lexeme: String }
 

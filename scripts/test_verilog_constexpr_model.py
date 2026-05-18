@@ -33,7 +33,19 @@ def test_unary_constant_expression_takes_constant_primary() -> None:
     assert "operand: ConstantExpression" not in body
 
 
+def test_constant_primary_carries_parenthesized_single_expression() -> None:
+    body = block(VERILOG.read_text(encoding="utf-8"), "ConstantPrimary")
+    assert (
+        "| ConstantParenthesizedExpressionPrimary { expression: ConstantExpression }"
+    ) in body
+    assert (
+        "| ConstantMinTypMaxPrimary { min: ConstantExpression, "
+        "typ: ConstantExpression, max: ConstantExpression }"
+    ) in body
+
+
 if __name__ == "__main__":
     test_constant_function_call_carries_attributes()
     test_unary_constant_expression_takes_constant_primary()
+    test_constant_primary_carries_parenthesized_single_expression()
     print("OK: scripts/test_verilog_constexpr_model.py")
