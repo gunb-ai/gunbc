@@ -99,6 +99,7 @@ type SpawnProcessRequest {
 
 type SpawnedProcess {
   table: ProcessTable
+  filesystem: Filesystem
   process: RunningProcess
 }
 
@@ -110,6 +111,7 @@ type WaitProcessRequest {
 
 type WaitedProcess {
   table: ProcessTable
+  filesystem: Filesystem
   process: WaitedTerminatedProcess
 }
 
@@ -119,6 +121,7 @@ type CapturedProcessOutput {
   stdout: CapturedByteStream
   stderr: CapturedByteStream
   table: ProcessTable
+  filesystem: Filesystem
   process: TerminatedProcess
 }
 
