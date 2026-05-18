@@ -29,7 +29,7 @@ authority location(s) and moves to Part 1.
 | **U2** | `complexity.dag` *consumes* `cost.dag`'s `SymbolicCost`, never re-derives; **cost is TOTAL over the closed kernel** — no per-feature opt-in, so a future addition cannot bypass cost (the no-eternal-maintenance property) | `lens/cost.dag` + `lens/complexity.dag` headers |
 | **C3** | `normalize` dissolves exactly the 4 bounded sugar forms (`service/fn/type/operation`) into Node; not identity, not open-ended; new sugar = STOP | `compiler/03_normalize.dag` + `TASKS.md` T-8 |
 | **C1** | `infer` is the bounded *Find* phase — bounded structural unification over the finite (A1/A2) space; empty ⇒ Diagnostic, never fabricated coercion | this row; `compiler/04_infer.dag` is a boundary index only |
-| **B3** | The type signature is the single effect authority; the effect lens reads it; coordination effect-types are carriers over it, not a parallel taxonomy | `lens/effect.dag` + `extdeps/coordination.dag` |
+| **B3** | The type signature is the single effect authority; the effect lens reads it; coordination effect kind must be derived from the signature. Until the T-13 effect lens can read coordination effects from signatures, `extdeps/coordination.dag` may carry one explicitly yellow `CoordinationEffectKind` scaffold; effect kind must never be selected by a family of wrapper types or empty marker carriers. | `lens/effect.dag` + `extdeps/coordination.dag` |
 | **C4** | On-disk emitted artifacts (`ci.yml`, trampoline) are committed==emit(source) checked projections, not editable authority (same machine as A3) | `workflow/ci.dag` + `STRUCTURE.md` + `workflow/bootstrap.dag` |
 | **C5** | Ingest = emit⁻¹ on each model's lossless core; outside ⇒ fail-closed Diagnostic. Guaranteed ASAP via testgen `bidirectional_roundtrip` (Phase-1.5, gated per-PR via the B1 hash from first language-model commit) | `extdeps/languages/*` + `lens/testgen.dag` + C5 note |
 | **C5-fidelity** | Round-trip fidelity is **parameterized by the model, not a fixed "trivia" category** (operator-corrected 2026-05-15). Each surface feature, per language, has an explicit disposition in the model: **Modeled** (∈ F → Node-bearing; both `ingest∘emit=id` and `emit∘ingest=id` for that feature — e.g. Python indentation IS block structure; comments IF modeled) \| **Declared-normalized** (deliberately not in F; `emit∘ingest` canonicalizes it — Go/C++ insignificant whitespace; a *declared* loss, reviewable, never silent) \| **Fail-closed** (encountered but neither → Diagnostic, no-engine). `emit∘ingest=id` holds restricted to F; "lossless core" ≡ F; round-trip fidelity = model completeness, boundary declared not assumed. F is drawn from the spec's own meaning-vs-lexical distinction (see L-2) | `extdeps/languages/*` headers + `TASKS.md` T-4 + C5 |
@@ -97,7 +97,7 @@ remain boundary indexes until the named substrate support lands.
 | `extdeps/coordination.dag` | `ExchangePattern` | Green coproduct | Closed messaging-pattern coordinate: request-reply, fire-and-forget, stream, and publish-subscribe are mutually exclusive exchange topologies at the wire-contract layer. Settlement and replica convergence are separate coordinates, so async pubsub and streaming-with-convergence remain representable. |
 | `extdeps/coordination.dag` | `SettlementGuarantee` | Green coproduct | Closed settlement coordinate: a contract either settles immediately or carries a structural `SettleBound`. Terminal because an optional bound would allow boundedness to be skipped, while making settlement a coordinate avoids compressing it into exchange topology. |
 | `extdeps/coordination.dag` | `ConsistencyGuarantee` | Green coproduct | Closed replica-convergence coordinate: a contract either has no replica-convergence obligation at this layer or carries a structural `ConvergeBound`. Terminal because consistency is independent of exchange topology and settlement timing. |
-| `extdeps/coordination.dag` | `WireContract` | Green coproduct | Closed typed-bind contract family: every wire contract carries shared `WireContractFacts` plus exactly one concrete effect-typed bind (`HttpBind`, `QueueBind`, `StreamBind`, or `PubSubBind`). Terminal because the typed bind must flow through the contract boundary; a separate effect enum or optional bind field would reintroduce a second authority or allow missing effect evidence. |
+| `extdeps/coordination.dag` | `CoordinationEffectKind` | Yellow effect-kind scaffold | Documented: coordination effect kind is currently one explicit coproduct fact on `CoordinationBind` because `lens/effect.dag` cannot yet derive HTTP/queue/stream/pubsub kind from the bound node's type signature. Bounded use: producers must set `CoordinationEffectKind` to match the bound signature; consumers must treat it as provisional and may not introduce parallel wrapper families or empty effect marker carriers. Gate: `feature:T-13-effect-lens-coordination-signature` plus `consumer:T-16-deployment-endpoint-partition` (`src/v4/TASKS.md` T-13/T-16). Dissolve-on-arrival: when T-13 effect-lens substrate reads coordination effect kind from the type signature, remove `CoordinationEffectKind` and have coordination consumers derive effect kind from the signature authority. |
 | `extdeps/coordination.dag` | `NetworkAddress` | Yellow value-refinement scaffold | Documented: `NetworkAddress { identity: Symbol }` is an opaque boundary identity until the single std boundary-carrier authority lands. Bounded use: consumers may compare identity only and producers must intern deployment-boundary addresses. Gate: `feature:T-26-std-network-address` (`src/v4/TASKS.md` T-26 std boundary carriers; PR/task: T-26). Dissolve-on-arrival: when T-26 lands the spec-grounded `std` `NetworkAddress`/URI authority, update `coordination.dag` to consume/alias that carrier and retire this local identity wrapper. |
 | `extdeps/coordination.dag` | `WireContractFacts.from/to` endpoint membership | Yellow deployment-membership scaffold | Documented: `WireContractFacts` carries `EndpointRef` values while `DeploymentUnit` owns `endpoints: List<Endpoint>`; current syntax does not encode a scoped membership-and-uniqueness witness tying those refs to exactly one endpoint in that list. Bounded use: producers must only emit contracts whose `from` and `to` refs each resolve to exactly one endpoint in the enclosing `DeploymentUnit.endpoints`; consumers that require closed-world endpoint membership must validate presence and uniqueness before treating the contract as deployment-complete. Gate: `consumer:T-16-deployment-endpoint-partition` plus `feature:T-25-core-validation-boundary` (`src/v4/TASKS.md` T-16/T-25-core). Dissolve-on-arrival: when the T-16 coordination consumer is implemented on the T-25-core fail-closed validation substrate, replace this row with a constructor-validated `WireContractFacts` or deployment-scoped membership/uniqueness witness so absent or multiply-owned endpoint targets are unrepresentable. |
 | `extdeps/coordination.dag` | `LanguageRef` / `FrameworkRef` membership | Yellow registry-membership scaffold | Documented: `LanguageRef { identity: Symbol }` and `FrameworkRef { identity: Symbol }` are opaque refs embedded in `Endpoint.language` and `FrameworkBinding.HostedByFramework`, while current syntax does not encode a scoped membership-and-uniqueness witness tying those refs to declared language/framework models. Bounded use: producers must intern refs against declared T-4 language models and T-4.7 framework models; consumers may compare identity only and must validate presence and uniqueness before treating endpoint language/framework resolution as complete. Gate: `consumer:T-16-language-framework-reference-resolution` plus `feature:T-4-language-model-registry`, `feature:T-4.7-framework-model-registry`, and `feature:T-25-core-validation-boundary` (`src/v4/TASKS.md` T-16/T-4/T-4.7/T-25-core). Dissolve-on-arrival: when the T-16 coordination consumer is implemented on the T-4/T-4.7 registries and T-25-core fail-closed validation substrate, replace this row with resolved/validated language and framework references or scoped membership/uniqueness witnesses so dangling or multiply-owned refs are unrepresentable. |
@@ -144,17 +144,18 @@ been performed: convergence is orthogonal to exchange and settlement.
 Parameterized-family reduction fails because the no-convergence and
 bounded-convergence arms have different payload shapes.
 
-`WireContract` is 🟢 GREEN. Fact placement fails because contract consumers
-must read the same endpoint, topology, settlement, consistency, and typed Bind
-facts. Variant-is-data fails because a record with optional bind slots would
-permit missing or multiple effect-typed binds. Algebraic form is not applicable;
-the variants are boundary carriers for concrete effect-typed signatures, not
-operations in an algebra. Dimensional decomposition has already been performed:
-shared endpoint/topology/timing facts live in `WireContractFacts`, while the
-remaining exclusive coordinate is which concrete typed bind inhabits the
-contract. Parameterized-family reduction fails in current v4 syntax because the
-effect parameter cannot be constrained to the closed coordination-effect
-carrier set without reopening the `EffectTypedBind<E>` illegal-state hole.
+`CoordinationEffectKind` is 🟡 YELLOW. Fact placement fails because the
+effect lens cannot yet read coordination effect kind from the bound node's
+signature. Variant-is-data fails as a terminal claim: the four arms are a
+provisional effect-kind partition, not independent booleans or payload facts.
+Algebraic form is not applicable; this is an effect-kind read, not an operation
+algebra. Dimensional decomposition fails because the temporary coordinate is
+exactly the effect kind. Parameterized-family reduction failed in the prior
+wrapper-family shape: four empty marker carriers and four near-identical bind
+wrappers were a B3 parallel taxonomy and #3273 nominalization issue. Named
+trigger: `feature:T-13-effect-lens-coordination-signature`; dissolve when
+T-13 reads HTTP/queue/stream/pubsub kind from the type signature and T-16
+consumes that derived fact.
 
 ## CP-1b — `03_resolve` / `extdeps/languages/dag` scaffold (Practice 9)
 
@@ -403,9 +404,10 @@ parent. Each is confirm-or-redirect, not a fresh fork.
 - **Tension:** effects appear in three places (the effect lens T-13,
   coordination effect-types T-4.8, `unenumerated_effects.dag`).
 - **Recommended:** the **type signature is the one effect authority**.
-  The effect lens *reads* effects from the signature; coordination's
-  `HttpEffect`/`QueueEffect` are typed carriers *over* that, not a
-  parallel effect taxonomy/enum.
+  The effect lens *reads* effects from the signature. Coordination effect
+  kind is either derived from that signature or, until T-13 can read it,
+  a single yellow scaffold fact; it is never a family of empty marker
+  carriers or wrapper-selected effect types.
 - **Tradeoff:** requires coordination's effect-types to be expressed as
   signature facts the lens reads, not a standalone enum — slightly more
   modeling, but it's the single-authority discipline (same class as the
@@ -475,11 +477,11 @@ or defer to the task.
   structural distinction** (consistent with B3; SC/CC differ by effect).
 - **T-4.8 effect-type-set** — **the question dissolves under B3
   (correction, 3248138059).** B3 made the type signature the *single*
-  effect authority; a closed `HttpEffect | QueueEffect | …` enum would be
-  exactly the parallel effect taxonomy B3 forbids (P2). So there is NO
-  effect-type enum to "close": `HttpEffect`/`QueueEffect` are typed
-  CARRIERS read from the signature by `lens/effect.dag`, not an
-  enumerated axis. Non-default; resolved by B3.
+  effect authority; a terminal HTTP/queue/stream/pubsub enum would be
+  exactly the parallel effect taxonomy B3 forbids (P2). So there is no
+  terminal effect-type enum to close: `CoordinationEffectKind` is only a
+  yellow scaffold until `lens/effect.dag` reads the effect kind from the
+  signature. Non-default; resolved by B3.
 - **T-18 bounded-coverage** — coverage is over the **finite substrate
   cross-product**; infinite inhabitant domains are sampled by declared
   generators, never enumerated (keeps coverage decidable).

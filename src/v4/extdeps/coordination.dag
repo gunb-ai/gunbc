@@ -1,6 +1,6 @@
 // src/v4/extdeps/coordination.dag
 // Scope: Multi-program coordination as effect-typed Bind composition.
-// Owns: NetworkAddress, CoordinationBoundary, LanguageRef, FrameworkRef, FrameworkBinding, EndpointRef, Endpoint, SettleBound, ConvergeBound, ExchangePattern, SettlementGuarantee, ConsistencyGuarantee, HttpEffect, QueueEffect, StreamEffect, PubSubEffect, BindRef, HttpBind, QueueBind, StreamBind, PubSubBind, WireContractFacts, WireContract, DeploymentUnit.
+// Owns: NetworkAddress, CoordinationBoundary, LanguageRef, FrameworkRef, FrameworkBinding, EndpointRef, Endpoint, SettleBound, ConvergeBound, ExchangePattern, SettlementGuarantee, ConsistencyGuarantee, CoordinationEffectKind, BindRef, CoordinationBind, WireContractFacts, WireContract, DeploymentUnit.
 // Consumes: std/node.dag, std/diagnostic.dag, std/collection.dag, std/nat.dag.
 // Status: Modeled with tracked scaffolds.
 
@@ -69,37 +69,21 @@ type ConsistencyGuarantee
   = NoReplicaConvergence
   | EventuallyConsistent { bound: ConvergeBound }
 
-type HttpEffect {}
-
-type QueueEffect {}
-
-type StreamEffect {}
-
-type PubSubEffect {}
+// 🟡 coproduct dissolution — DECISIONS.md#coordination-coproduct-ledgers
+type CoordinationEffectKind
+  = Http
+  | Queue
+  | Stream
+  | PubSub
 
 // coincides: src/v4/std/node.dag A1/K-1, operator-ratified 2026-05-15.
 type BindRef {
   identity: Symbol
 }
 
-type HttpBind {
+type CoordinationBind {
   bind: BindRef,
-  effect: HttpEffect
-}
-
-type QueueBind {
-  bind: BindRef,
-  effect: QueueEffect
-}
-
-type StreamBind {
-  bind: BindRef,
-  effect: StreamEffect
-}
-
-type PubSubBind {
-  bind: BindRef,
-  effect: PubSubEffect
+  effect: CoordinationEffectKind
 }
 
 type WireContractFacts {
@@ -111,12 +95,10 @@ type WireContractFacts {
 }
 
 // Anchor: https://en.wikipedia.org/wiki/Inter-process_communication
-// 🟢 coproduct dissolution — DECISIONS.md#coordination-coproduct-ledgers
-type WireContract
-  = HttpWireContract { facts: WireContractFacts, bind: HttpBind }
-  | QueueWireContract { facts: WireContractFacts, bind: QueueBind }
-  | StreamWireContract { facts: WireContractFacts, bind: StreamBind }
-  | PubSubWireContract { facts: WireContractFacts, bind: PubSubBind }
+type WireContract {
+  facts: WireContractFacts,
+  bind: CoordinationBind
+}
 
 // Anchor: https://en.wikipedia.org/wiki/Distributed_computing
 type DeploymentUnit {
