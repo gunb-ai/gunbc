@@ -43,7 +43,8 @@ Dissolution lens wave remains **`jolly-ibex`** / **#3313** / **#3240** — track
 | `src/v4/TASKS.md` §**T-23** (~L886+) | Modeling obligations for the application surface. |
 | `src/v4/DECISIONS.md` | **C7 / report / synthesis** rows citing **T-23** — ledger receipts; Practice **4 / 9**. |
 | `src/v4/lens/cost.dag` | **T-12** home — **scaffold — fill per T-12**; lattice fill may remain gated honestly. |
-| `docs/design-lens-application-surface.md` | **Whole-tree glob + O(1)-applications** feasibility for Slice C (`§5` ~L355–L362). |
+| `docs/design-lens-application-surface.md` | **Whole-tree glob + O(1)-applications** feasibility for Slice C (`§5` ~L355–L362). **§5.1** default `IntrospectApplication<ComplexitySummary>` synthesis (operator dev-speed lever). |
+| `docs/briefs/r4-lane-a-lens-interface-freeze-pin.md` | **T-23 Interface-Freeze broadcast** — frozen carrier digest, **CLI v0** template, **`LENS_ID`** registry; amend only operator-signed. |
 | `docs/design-lens-framework.md` §2 | **`Witness<C> = Inhabits \| Violates`** and `DimensionReport` / `DimensionOk` / `DimensionFail` — **acceptance PR maps runnable AC here** (DB-15 enumerated `TestClaim` discipline). |
 | `.github/workflows/ci.yml` **L-7 / L-8** | **Supplementary** static ratchets — **remain** until **T-24**. |
 

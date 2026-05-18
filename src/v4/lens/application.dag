@@ -4,7 +4,9 @@
 // Anchor: THESIS:95-101 (user-defined dimensions) + THESIS:307-321 (audience duality / opt-in depth) + r3-structure.md:40 (v3 T-Lens-Application-Surface precedent)
 //
 // Owns:
-//   - EnforcedApplication<Output, Budget> (lens, section, budget, severity, span)
+//   - EnforcedApplication<Output, Budget, Projected> (enforceable_lens bundle,
+//     section, budget, diagnostic_severity, span) — three type parameters per
+//     docs/design-lens-application-surface.md §2 (header reconciled 2026-05-18).
 //   - IntrospectApplication<Output> (lens, section, span; no Budget — advisory)
 //   - SectionRef = DeclarationScope | NodeScope (disjoint sum; where the lens attaches)
 //   - apply_lens(lens, section, config) — the user-facing surface
@@ -124,6 +126,12 @@
 // Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
 // contract for the worker. Splitting this file requires explicit operator
 // ratification (substrate extension = stop signal).
+//
+// INTERFACE-FREEZE PIN (operator GO 2026-05-18, msg_210b21ad / msg_2389641e):
+// Normative carrier digest + driver CLI v0 + LENS_ID registry live in
+// docs/briefs/r4-lane-a-lens-interface-freeze-pin.md. Parseable .dag body
+// for these carriers waits on v4 std Lens<C> + id nominals (pin §4); witness
+// Acceptance substance is not blocked.
 
 module v4.lens.application
 
