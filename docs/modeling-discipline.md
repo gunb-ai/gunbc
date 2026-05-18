@@ -607,20 +607,31 @@ vocabulary:
   (`template: "Vec<{0}>"`) where grammar-as-declarative-bidirectional-data
   belongs. The emit-side mirror of walker dissolution.
 
-**Two outcomes — the discriminant that gives a reviewer confidence.** A
-dissolution finding resolves to exactly one of two outcomes; naming which
+**Disposition symbols — the fix-now / substrate-sequencing discriminant.**
+Every dissolution finding — and every audited item that turns out *not*
+to be one — carries one of three disposition symbols, the same 🟢/🟡/🔴
+convention as coproduct dissolution (Practice 4). Naming the disposition
 is what stops a reviewer from wrongly demanding the impossible:
 
-- **fix-now** — the substrate primitive the construct should use
+- **🔴 fix-now** — the substrate primitive the construct should use
   *already exists* (e.g. `Outcome<T>` in `std/diagnostic.dag`). The fix
   is mechanical and belongs in this PR.
-- **substrate-sequencing finding** — the substrate primitive does *not*
-  exist yet (e.g. `fold_node` / a fail-closed `traverse` are not yet in
+- **🟡 substrate-sequencing** — the substrate primitive does *not* exist
+  yet (e.g. `fold_node` / a fail-closed `traverse` are not yet in
   `std/`). The finding is then "name the missing primitive"; the
   hand-rolled construct is **not** accepted as the end state, but the fix
-  is upstream, not in this PR. Per the Calibration section below, a
-  substrate-sequencing finding is **not** a BLOCKING request-changes on
-  an honest scaffold PR — it is a tracked upstream obligation.
+  is upstream, not in this PR. Per the Calibration section below, a 🟡
+  finding is **not** a BLOCKING request-changes on an honest scaffold PR
+  — it is a tracked upstream obligation.
+- **🟢 clean** — audited and *not* a dissolution finding: the recursion
+  or `match` is genuinely irregular (the call graph is not the data
+  graph), or the construct already uses the derived operation.
+
+The retroactive v4 dissolution audit (rework-tracker PR #3240 task C1)
+applies this legend per-file, per-finding — a symbol-marked inventory,
+not prose. The symbol records a finding's *disposition*; the matching
+in-file `.dag` tag lands with the fix, per migration PR — it is not
+retro-applied across all v4 files at once.
 
 **Decidability — hard error vs advisory.** Findings differ in how
 mechanically a checker can decide them; this sets whether a finding is a
@@ -646,7 +657,8 @@ in [modeling/grounding-worked-examples.md](modeling/grounding-worked-examples.md
 **What to check.** For any function in the diff: is its behavior fixed by
 the *shape* of a modeled type rather than by logic unique to this call
 site? If yes, it is a candidate dissolution finding — identify the
-registry row, then resolve the outcome (fix-now vs substrate-sequencing).
+registry row, then mark the disposition (🔴 fix-now / 🟡
+substrate-sequencing / 🟢 clean).
 **Not when** the recursion or `match` is genuinely irregular — the call
 graph is not the data graph, the branches do genuinely distinct work.
 Irregularity is the honest escape hatch: a derived operation is one whose
@@ -720,10 +732,10 @@ For each relevant principle and its implementing practices:
 8. For cross-stage boundaries: verify facts flow forward.
 9. For any function whose behavior is fixed by a modeled type's shape
    (Practice 10): identify the derived-operations registry row it
-   hand-rolls, name the dissolution finding, and resolve it to fix-now or
-   substrate-sequencing. A substrate-sequencing finding names the missing
-   `std/` primitive — it is a tracked upstream obligation, not a BLOCKING
-   request-changes on an honest scaffold.
+   hand-rolls, name the dissolution finding, and mark its disposition
+   (🔴 fix-now / 🟡 substrate-sequencing / 🟢 clean). A 🟡 finding names
+   the missing `std/` primitive — it is a tracked upstream obligation,
+   not a BLOCKING request-changes on an honest scaffold.
 10. Classify every finding as BLOCKING or NON-BLOCKING per the calibration
     above.
 
