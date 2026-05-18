@@ -1,0 +1,22 @@
+// src/v4/std/http.dag
+// Scope: HTTP request methods.
+// Anchor: https://datatracker.ietf.org/doc/html/rfc9110#section-9.3
+// Owns: HttpMethod.
+// Consumes: none.
+// Status: T-26 modeled.
+
+
+module v4.std.http
+
+
+// 🟢 coproduct dissolution — DECISIONS.md BC-1
+type HttpMethod
+  = HttpGet
+  | HttpHead
+  | HttpPost
+  | HttpPut
+  | HttpDelete
+  | HttpConnect
+  | HttpOptions
+  | HttpTrace
+  | HttpPatch

@@ -1,0 +1,57 @@
+// src/v4/std/network.dag
+// Scope: network endpoint addressing.
+// Anchor: https://datatracker.ietf.org/doc/html/rfc3986#section-3.2.2
+// Owns: Ipv4Address, Ipv6Address, DnsName, Host, Port, NetworkAddress.
+// Consumes: std text, std integer.
+// Status: T-26 modeled.
+
+
+module v4.std.network
+
+
+import v4.std.text { String }
+import v4.std.integer { UInt8, UInt16 }
+
+
+// Anchor: https://datatracker.ietf.org/doc/html/rfc791#section-3.1
+type Ipv4Address {
+  octet_0: UInt8
+  octet_1: UInt8
+  octet_2: UInt8
+  octet_3: UInt8
+}
+
+// Anchor: https://datatracker.ietf.org/doc/html/rfc4291#section-2.2
+type Ipv6Address {
+  group_0: UInt16
+  group_1: UInt16
+  group_2: UInt16
+  group_3: UInt16
+  group_4: UInt16
+  group_5: UInt16
+  group_6: UInt16
+  group_7: UInt16
+}
+
+// Anchor: https://datatracker.ietf.org/doc/html/rfc1035#section-2.3.1
+// scaffold: DNS label grammar (LDH, ≤63 octet labels, ≤253 octet name); trigger T-25-core/T-30.
+type DnsName {
+  text: String
+}
+
+// Anchor: https://datatracker.ietf.org/doc/html/rfc3986#section-3.2.2
+// 🟢 coproduct dissolution — DECISIONS.md BC-1
+type Host
+  = HostIpv4 { address: Ipv4Address }
+  | HostIpv6 { address: Ipv6Address }
+  | HostDns { name: DnsName }
+
+// Anchor: https://www.iana.org/assignments/service-names-port-numbers/service-names-port-numbers.xhtml
+// scaffold: 16-bit port; reserve 0 / range 1..=65535 refinement; trigger T-25-core/T-30.
+type Port = UInt16
+
+// Anchor: https://datatracker.ietf.org/doc/html/rfc3986#section-3.2
+type NetworkAddress {
+  host: Host
+  port: Port
+}
