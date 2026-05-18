@@ -261,7 +261,7 @@ checked against the Practice-4 five-pattern ledger:
 | `LeanFidelityDisposition` | 🟢 GREEN terminal | All five dissolution patterns fail: modeled/normalized/fail-closed is the shared C5 disposition; non-modeled variants carry feature payloads and a flat record admits impossible combinations; not algebra; one feature has one disposition; payloads are heterogeneous. |
 | `LeanIntKind` | 🟢 GREEN terminal | Same dissolution posture as `RustIntKind` (`rust.dag`, DECISIONS.md Part 6 / CP-3229): signed vs unsigned is a closed external alternative for fixed-precision scalars, not a hideable coordinate; not algebra; not one `F<X>` family over identical payloads. |
 | `LeanIntWidth` | 🟢 GREEN terminal | Same dissolution posture as `RustIntWidth` (`rust.dag`): closed width ladder for fixed-precision scalars; `Pointer` names platform-sized facts separately from fixed bit widths; not algebra; not a `Symbol` tag. |
-| `LeanScalar` | 🟢 GREEN terminal | Same dissolution posture as `RustScalar` `IntScalar` / `BoolScalar` (`rust.dag`): kind×width bundles fixed-precision facts read from the Lean 4.20 anchor; `BoolScalar` parallels the Rust scalar bundle while kernel `LeanBool = Bool` + `lean_bool_grounding` cites std coincidence for the kernel bool spelling only (**D2-REV**). **Signed** fixed-precision surface types from the anchor (`Int8`…`Int64`, `ISize`) inhabit `IntScalar { kind: Signed, width: … }` (use the `Pointer` width arm for `ISize` per anchor); **unsigned** (`UInt8`…`UInt64`, `USize`) inhabit `IntScalar { kind: Unsigned, width: … }`. Per-name std aliases + spelling-only `GroundingMap` rows are **omitted** (reversed-D2 hollow); unbounded `Nat`/`Int` are deferred until explicit fact-bundles. |
+| `LeanScalar` | 🟢 GREEN terminal | Same dissolution posture as `RustScalar` `IntScalar` / `BoolScalar` (`rust.dag`): kind×width bundles fixed-precision facts read from the Lean 4.20 anchor. **A-vs-B = B (ruled-B):** the prior kernel `LeanBool = Bool` + `lean_bool_grounding` (spelling/coincidence assertion) is **retired** — a bare D2 alias asserts identity instead of demonstrating it (the hollow form the machine-readable-inhabitance bar forecloses). Lean `Bool`'s **classifier fact** is the `LeanScalar.BoolScalar` variant; the *machine-readable grounding edge* that demonstrates coincidence with std `Bool` is **not** the bare classifier variant — it is the open, build-it-first canonical-B call (`docs/modeling/grounding-worked-examples.md` §0). `lean.dag`'s per-file `GroundingMap` twin is retired with it (no spelling-only resolver rows post-D2-REV; cf. `machine_code.dag` / INVARIANTS §P2). **Signed** fixed-precision surface types from the anchor (`Int8`…`Int64`, `ISize`) inhabit `IntScalar { kind: Signed, width: … }` (use the `Pointer` width arm for `ISize` per anchor); **unsigned** (`UInt8`…`UInt64`, `USize`) inhabit `IntScalar { kind: Unsigned, width: … }`. Per-name std aliases + spelling-only `GroundingMap` rows are **omitted** (reversed-D2 hollow); unbounded `Nat`/`Int` are deferred until explicit fact-bundles. |
 
 ### `src/v4/extdeps/languages/machine_code.dag`
 
@@ -899,11 +899,16 @@ rework** list above (the 5th merged D2 language file). Row established
   spec, not `std/` alias re-declarations and not a parallel
   `OrderedRing` algebra (INVARIANTS P1:42). They are terminal: nothing
   dissolves further, hence the in-file `🟢`.
-- **🟡 gated (remaining D2→fact-bundle debt).** `type TsBoolean = Bool`
-  (kernel-ambient alias bridge) plus the still-unmodeled `number` /
-  `string` / `symbol` / `null` / `undefined` primitive facts (the
-  numeric/text `std/` carriers the header marks "fact-bundle-gated").
-  These are **not yet fact-modeled**; they remain D2-shaped bridges.
+- **A-vs-B = B (ruled-B): `TsBoolean = Bool` retired.** The prior
+  `type TsBoolean = Bool` kernel-ambient alias bridge is **removed** — a
+  bare D2 alias asserts identity instead of demonstrating it (the hollow
+  form the machine-readable-inhabitance bar forecloses). TypeScript
+  `boolean`'s machine-readable grounding edge is the open, build-it-first
+  canonical-B call (`docs/modeling/grounding-worked-examples.md` §0), not
+  the bare alias. The still-unmodeled `number` / `string` / `symbol` /
+  `null` / `undefined` primitive facts (the numeric/text `std/` carriers
+  the header marks "fact-bundle-gated") remain **🟡 gated D2→fact-bundle
+  debt** — not yet fact-modeled — and are unaffected by this row.
 - **Named trigger / dissolve-on-arrival:** upstream P4 node
   `node://adhoc-71ec74f4-080` ("T-4 fact-bundle Phase-3 rework
   `extdeps/languages`", `crisp-crab-858`) is to author the remaining
