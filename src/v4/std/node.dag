@@ -116,6 +116,7 @@ fn node_well_formed(n: Node) -> Bool {
          acc && node_well_formed(n: e.target)
        })
 }
+// 🟢 predicate dissolution terminal — canonical empty-Conj-root query; composes existing node primitives (NodeKind/Connective discriminant + count), no recursion, no absent feature (audit dissolution-inventory.md R1).
 fn node_is_empty_conj_root(n: Node) -> Bool {
   match n.kind {
     TypeNode { connective: Conj } => count(n.children) == 0
