@@ -32,7 +32,10 @@ fn v4_lens_testgen_wave0_substrate_parses() {
         1,
         "T-19 Wave-0: single generator entrypoint keyed by T19ManualAnchorKey"
     );
-    assert_eq!(function_count(&testgen, "testgen_concept_for_manual_anchor"), 1);
+    assert_eq!(
+        function_count(&testgen, "testgen_concept_for_manual_anchor"),
+        1
+    );
 
     assert_eq!(
         module_paths(&verification),
