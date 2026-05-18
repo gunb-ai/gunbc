@@ -7,6 +7,7 @@ Run: `python3 scripts/test_l1_1_discriminant_predicate.py`
 from __future__ import annotations
 
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -113,12 +114,38 @@ def test_fold_using_accumulator_not_flagged() -> None:
     assert fs == [], fs
 
 
+def test_scan_files_outside_repo_relpath_fallback() -> None:
+    """`scan_files` must not rely on Path.is_relative_to (3.9+); use relative_to + ValueError."""
+    body = """module t.o
+
+type A
+  = X
+  | Y
+
+fn f(x: A) -> Bool {
+  match x {
+    X => true
+    Y => false
+  }
+}
+"""
+    with tempfile.TemporaryDirectory() as d:
+        p = Path(d) / "orphan.dag"
+        p.write_text(body, encoding="utf-8")
+        fs = l1.scan_files([p])
+    assert len(fs) == 1
+    assert fs[0].rel == str(p)
+    assert fs[0].fn_name == "f"
+    assert fs[0].kind == "direct"
+
+
 def main() -> None:
     test_flags_direct_discriminant_match()
     test_flags_fold_laundered_constant_algebra()
     test_computed_predicate_not_flagged()
     test_genuine_catamorphism_not_flagged()
     test_fold_using_accumulator_not_flagged()
+    test_scan_files_outside_repo_relpath_fallback()
     print("OK: scripts/test_l1_1_discriminant_predicate.py")
 
 

@@ -1,0 +1,7 @@
+# L1.1 discriminant-predicate dissolution — substrate baseline ratchet.
+# One finding per line: rel<TAB>fn_name<TAB>kind (direct|fold-laundered).
+# New lines = new violations (CI fail). Remove a line only with the burn-down that clears it.
+# Regenerate from live scan: python3 scripts/l1_1_discriminant_predicate.py --write-baseline
+
+src/v4/std/algebra.dag	free_monoid_is_empty	direct
+src/v4/std/float.dag	float_body_is_nan	direct

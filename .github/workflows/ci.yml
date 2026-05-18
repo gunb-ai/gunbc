@@ -101,6 +101,8 @@ jobs:
       run: python3 scripts/test_strict_deprose_dag.py
     - name: L1.1 discriminant-predicate dissolution checker self-test (Python)
       run: python3 scripts/test_l1_1_discriminant_predicate.py
+    - name: L1.1 discriminant-predicate baseline ratchet (--check)
+      run: python3 scripts/l1_1_discriminant_predicate.py --check
     - name: v4 strict-deprose allowlist (--check; merge-base + Part 6 inventory)
       run: python3 scripts/strict_deprose_dag.py --check
     - name: Release-doc authority check (P2 single-authority discipline)

@@ -14,9 +14,14 @@ Scans `.dag` text for two structural findings:
 Default scan roots match the substrate profile in docs/design-dissolution-lens.md §7:
 `src/v4/std/` and `src/v4/compiler/`.
 
-Exit status: 0 when clean, 1 when any finding is reported (stderr). Intended to be
-CI-gate-able once the live substrate is clean; until then, rely on
-`scripts/test_l1_1_discriminant_predicate.py` in CI.
+Modes:
+  * Default: print all findings to stderr; exit 1 if any (human / local audit).
+  * `--check`: compare live scan to `scripts/l1_1_discriminant_predicate_baseline.txt`
+    (same ratchet idea as `strict_deprose_dag.py --check`): exit 0 only if the finding
+    set matches the baseline exactly — new keys fail CI; removed keys fail until the
+    baseline file is pruned in the same burn-down PR.
+  * `--write-baseline`: rewrite the baseline file from the current scan (operator /
+    intentional ratchet update only).
 """
 
 from __future__ import annotations
@@ -41,6 +46,10 @@ class Finding:
     fn_name: str
     kind: str  # "direct" | "fold-laundered"
     detail: str
+
+
+def finding_baseline_line(f: Finding) -> str:
+    return f"{f.rel}\t{f.fn_name}\t{f.kind}"
 
 
 def strip_line_comments(text: str) -> str:
@@ -449,14 +458,90 @@ def collect_dag_files(roots: list[Path]) -> list[Path]:
 def scan_files(paths: list[Path]) -> list[Finding]:
     all_findings: list[Finding] = []
     for p in paths:
-        rel = str(p.relative_to(ROOT)) if p.is_relative_to(ROOT) else str(p)
+        try:
+            rel = str(p.relative_to(ROOT))
+        except ValueError:
+            rel = str(p)
         text = p.read_text(encoding="utf-8")
         all_findings.extend(findings_in_text(rel, text))
     return all_findings
 
 
+DEFAULT_BASELINE_PATH = ROOT / "scripts" / "l1_1_discriminant_predicate_baseline.txt"
+
+
+def load_baseline(path: Path) -> set[str]:
+    if not path.is_file():
+        print(f"FAIL: baseline file missing: {path}", file=sys.stderr)
+        raise SystemExit(1)
+    out: set[str] = set()
+    for line in path.read_text(encoding="utf-8").splitlines():
+        s = line.strip()
+        if not s or s.startswith("#"):
+            continue
+        parts = s.split("\t")
+        if len(parts) != 3:
+            print(f"FAIL: malformed baseline line (need rel<TAB>fn<TAB>kind): {line!r}", file=sys.stderr)
+            raise SystemExit(1)
+        out.add("\t".join(parts))
+    return out
+
+
+def write_baseline(path: Path, findings: list[Finding]) -> None:
+    keys = sorted({finding_baseline_line(f) for f in findings})
+    header = (
+        "# L1.1 discriminant-predicate dissolution — substrate baseline ratchet.\n"
+        "# One finding per line: rel<TAB>fn_name<TAB>kind (direct|fold-laundered).\n"
+        "# New lines = new violations (CI fail). Remove a line only with the burn-down that clears it.\n"
+        "# Regenerate from live scan: python3 scripts/l1_1_discriminant_predicate.py --write-baseline\n"
+        "\n"
+    )
+    body = "\n".join(keys)
+    path.write_text(header + body + ("\n" if body else ""), encoding="utf-8")
+
+
+def run_baseline_check(baseline_path: Path, files: list[Path]) -> int:
+    expected = load_baseline(baseline_path)
+    findings = scan_files(files)
+    actual = {finding_baseline_line(f) for f in findings}
+    if actual == expected:
+        print("OK: l1_1_discriminant_predicate --check (baseline matches substrate scan).")
+        return 0
+    extra = sorted(actual - expected)
+    missing = sorted(expected - actual)
+    if extra:
+        print("FAIL: new L1.1 findings not in baseline (add only via intentional ratchet update):", file=sys.stderr)
+        for e in extra:
+            print(f"  + {e}", file=sys.stderr)
+    if missing:
+        print(
+            "FAIL: baseline lists findings absent from scan "
+            "(remove these lines in the PR that clears them):",
+            file=sys.stderr,
+        )
+        for e in missing:
+            print(f"  - {e}", file=sys.stderr)
+    return 1
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Compare substrate scan to the baseline file (CI gate).",
+    )
+    parser.add_argument(
+        "--write-baseline",
+        action="store_true",
+        help="Rewrite the baseline file from the current scan (operator use).",
+    )
+    parser.add_argument(
+        "--baseline",
+        type=Path,
+        default=DEFAULT_BASELINE_PATH,
+        help=f"Baseline inventory path (default: {DEFAULT_BASELINE_PATH.relative_to(ROOT)}).",
+    )
     parser.add_argument(
         "paths",
         nargs="*",
@@ -464,11 +549,25 @@ def main(argv: list[str]) -> int:
         help="Optional `.dag` files or directories to scan (default: substrate roots).",
     )
     args = parser.parse_args(argv)
+    if args.check and args.write_baseline:
+        print("FAIL: specify only one of --check and --write-baseline.", file=sys.stderr)
+        return 1
     if args.paths:
         scan_paths = [ROOT / p if not p.is_absolute() else p for p in args.paths]
     else:
         scan_paths = list(DEFAULT_SCAN_ROOTS)
     files = collect_dag_files(scan_paths)
+
+    if args.write_baseline:
+        findings = scan_files(files)
+        baseline_path = args.baseline if args.baseline.is_absolute() else ROOT / args.baseline
+        write_baseline(baseline_path, findings)
+        print(f"Wrote {len(findings)} finding(s) to {baseline_path}.")
+        return 0
+    if args.check:
+        baseline_path = args.baseline if args.baseline.is_absolute() else ROOT / args.baseline
+        return run_baseline_check(baseline_path, files)
+
     findings = scan_files(files)
     for f in findings:
         print(f"{f.rel}: fn {f.fn_name}: L1.1 {f.kind}: {f.detail}", file=sys.stderr)
