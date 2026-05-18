@@ -845,9 +845,12 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // structural mirror in `v4_hollow_alias_gate`). SG-0 + INVARIANTS §P5(b) receipt.
     "src/v3/compiler/tests/integration/v4_std_fact_density_dag_smoke_test.rs",
     // Wave-0 test/bootstrap lane: parse-surface ratchet for T-19 `lens/testgen.dag`, T-20
-    // `workflow/bootstrap.dag`, and the #3213 CI -> bootstrap authority import. This is an
-    // interim SG-0 receipt only; it dissolves when the same shape is covered by `.dag`
-    // TestClaims / generated testgen coverage.
+    // `workflow/bootstrap.dag`, and the #3213 CI -> bootstrap authority import. **P5 explicit
+    // deferral receipt:** ROADMAP.md § "Nine lanes" row `T-PB-B` / tests-as-data dissolution
+    // (`pb_rust_tests_outside_residual_zero`) plus ROADMAP.md § "SG-0 PR-window net-shrink
+    // discipline"; PR-body class-(c) pairing tracks this path under gunbc#3330. Dissolves when
+    // `.dag` `TestClaim` / generated testgen coverage asserts the same v4 Wave-0 surface with no
+    // hand-authored Rust harness.
     "src/v3/compiler/tests/integration/v4_test_bootstrap_wave0_smoke_test.rs",
     // §1.8 gate #96 (`value_body_substrate_mirror_isomorphism_executable`):
     // CI-visible generated Rust `ValueBody` mirror vs `substrate.dag`
