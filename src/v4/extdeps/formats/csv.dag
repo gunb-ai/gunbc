@@ -1,29 +1,75 @@
 // src/v4/extdeps/formats/csv.dag
-//
-// Scope: CSV (Comma-Separated Values) data format model — direction-agnostic.
-// Anchor: https://datatracker.ietf.org/doc/html/rfc4180 (RFC 4180)
-//
-// Owns:
-//   - CsvDocument { width: PositiveInt, header: Option<Row>, records: List<Row> }
-//   - Row = a field sequence whose length is STRUCTURALLY == width
-//     (rectangularity is an invariant of the type, not a convention —
-//     RFC 4180 §1: "each line should contain the same number of fields".
-//     `List<List<String>>` is rejected: it admits ragged records and
-//     header-width drift, an illegal state. Ragged input is a parse
-//     Diagnostic, never a representable CsvDocument — fail-closed.)
-//   - parse(String, Dialect) -> Result<CsvDocument, Diagnostic>
-//     (width fixed by header if present, else by the first record; any
-//     record whose arity != width is a Diagnostic, not a truncation/pad)
-//   - emit(CsvDocument, Dialect) -> String
-//   - Dialect { delimiter: Char, quote: Char, escape: Option<Char>, line_terminator: String }
-//
-// Consumes:
-//   - std/node.dag, std/diagnostic.dag, std/collection.dag, std/text.dag
-//
-// Status: scaffold — fill per TASKS.md T-4.6
-// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
-// contract for the worker. Splitting this file requires explicit operator
-// ratification (substrate extension = stop signal).
+// Scope: RFC 4180 CSV; Lane C format slice (TASKS.md T-4.6).
+// Owns: CsvDialect, CsvHeaderPresence, CsvRow, CsvDocument, CsvRfc4180CommaFieldSep, CsvRfc4180DoubleQuoteEnclosure, CsvRfc4180EscapeDoubledQuote, CsvRfc4180RecordLineBreak, CsvRfc4180LastRecordEndingLineBreakOptional, CsvRfc4180HeaderRowOptional, CsvRfc4180NewlineInsideQuotedFieldOnly, CsvRfc4180UnquotedFieldTextdataVsTab, CsvRfc4180EmptyFieldBetweenCommas, CsvRfc4180RegisteredTextCsvMime
+// Consumes: std/node.dag, std/diagnostic.dag, std/collection.dag, std/text.dag
+// Status: scaffold — TASKS.md T-4.6
+// Anchor: https://datatracker.ietf.org/doc/html/rfc4180
 
 module v4.extdeps.formats.csv
 
+
+type CsvDialect
+  = CsvDialectRfc4180 {}
+
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-CsvHeaderPresence
+type CsvHeaderPresence
+  = HeaderPresent { row: CsvRow }
+  | HeaderAbsent
+
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-CsvRow
+type CsvRow
+  = CsvRowZ
+  | CsvRowS { field: String, tail: CsvRow }
+
+type CsvRfc4180FieldsSeparatedByCommaU002cWitness {}
+
+type CsvRfc4180HorizontalTabRejectedAsFieldSeparatorWitness {}
+
+type CsvRfc4180CommaFieldSep {
+  fields_separated_by_comma_u002c: CsvRfc4180FieldsSeparatedByCommaU002cWitness,
+  horizontal_tab_is_rejected_separator_for_this_slice: CsvRfc4180HorizontalTabRejectedAsFieldSeparatorWitness,
+}
+
+type CsvRfc4180DquoteMayEncloseEntireFieldWitness {}
+
+type CsvRfc4180EnclosedFieldMayContainCommaCrlfOrLfWitness {}
+
+type CsvRfc4180DoubleQuoteEnclosure {
+  dquote_u0022_may_enclose_entire_field: CsvRfc4180DquoteMayEncloseEntireFieldWitness,
+  enclosed_field_may_contain_comma_crlf_or_lf: CsvRfc4180EnclosedFieldMayContainCommaCrlfOrLfWitness,
+}
+
+type CsvRfc4180EscapeDoubledQuote {}
+
+type CsvRfc4180RecordsSeparatedByAsciiCrlfPerRfc4180Witness {}
+
+type CsvRfc4180GeneratorEmitsCrlfBetweenRecordsWitness {}
+
+type CsvRfc4180RecordLineBreak {
+  records_separated_by_ascii_crlf_u000d_u000a_per_rfc4180: CsvRfc4180RecordsSeparatedByAsciiCrlfPerRfc4180Witness,
+  generator_should_emit_crlf_between_records_per_rfc4180: CsvRfc4180GeneratorEmitsCrlfBetweenRecordsWitness,
+}
+
+type CsvRfc4180LastRecordEndingLineBreakOptional {}
+
+type CsvRfc4180HeaderRowOptional {}
+
+type CsvRfc4180NewlineInsideQuotedFieldOnly {}
+
+type CsvRfc4180SpU0020TextdataOutsideUnquotedFieldWitness {}
+
+type CsvRfc4180TabRejectedOutsideUnquotedFieldWitness {}
+
+type CsvRfc4180UnquotedFieldTextdataVsTab {
+  ascii_sp_u0020_outside_unquoted_field_is_textdata_field_char: CsvRfc4180SpU0020TextdataOutsideUnquotedFieldWitness,
+  horizontal_tab_u0009_outside_unquoted_field_is_rejected_not_textdata: CsvRfc4180TabRejectedOutsideUnquotedFieldWitness,
+}
+
+type CsvRfc4180EmptyFieldBetweenCommas {}
+
+type CsvRfc4180RegisteredTextCsvMime {}
+
+type CsvDocument {
+  header: CsvHeaderPresence,
+  records: List<CsvRow>,
+}

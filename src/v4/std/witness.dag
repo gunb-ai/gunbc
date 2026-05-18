@@ -1,126 +1,16 @@
 // src/v4/std/witness.dag
-//
-// Scope: fail-closed read discipline — no Option::None in lens reads.
-// Anchor: THESIS fail-closed discipline + INVARIANTS P3 (no Option::None in lens reads)
-//
-// Owns:
-//   - Witness<C> = Holds(C) | Violates(diagnostic: Diagnostic)
-//     (Holds CARRIES the proven fact C; Violates CARRIES the full
-//     Diagnostic. A successful read must compose its result forward — a
-//     payload-less success variant would silently drop the fact it
-//     proved, violating facts-flow-forward / INVARIANTS P2 and re-
-//     importing the Option::None hole this type exists to close. The
-//     failure arm is symmetric: a bare reason tag would drop the `at`
-//     locus and `correction` the failing read already knows — so
-//     Violates carries the whole Diagnostic, not a name-reference.)
-//   - replaces Option::None at lens read channels
-//
-// Consumes:
-//   - std/node.dag: Disj for sum
-//   - std/diagnostic.dag: Diagnostic (the Violates payload)
-//
-// Status: T-3 modeled 2026-05-16 (quiet-deer-32).
-// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
-// contract for the worker. Splitting this file requires explicit operator
-// ratification (substrate extension = stop signal).
-//
-// HEADER RECONCILE (operator-ratified Option A, 2026-05-16). The original
-// scaffold header declared `Violates(reason: NamedReason)`, consuming
-// `std/diagnostic.dag: NamedReason`. PR #3161 deleted `NamedReason` from
-// diagnostic.dag — its `reason` is now an opaque `Symbol` name-reference,
-// and the diagnostic.dag fail-closed error type is `Diagnostic`. This
-// session STOP'd on the dangling contract; the operator ratified Option
-// A — `Violates` carries the full `Diagnostic` (reason + at + correction),
-// not a bare reason tag. The `Owns` and `Consumes` lines above reflect
-// that ratified reconcile; no other scaffold-header content changed.
+// Scope: fail-closed proof/read carrier.
+// Anchor: INVARIANTS.md P3.
+// Owns: Witness.
+// Consumes: std diagnostic.
+// Status: T-3 modeled.
 
 
 module v4.std.witness
 
 
 import v4.std.diagnostic { Diagnostic }
-
-
-// ─────────────────────────────────────────────────────────────────────
-// Modeling notes (read before validating against the anchor)
-//
-// SCHEMA FILE. witness.dag declares one type — the fail-closed proof
-// carrier `Witness<C>`. Like std/diagnostic.dag it owns no producer
-// logic: the lenses (T-12 cost … T-21 affected-set) and every other
-// fallible structural read CONSTRUCT `Witness<C>` values; this file is
-// the shape they construct to. There is deliberately no `witness_holds`
-// predicate and no unwrap helper — a consumer reads a `Witness` by
-// `match`, handling BOTH arms (INVARIANTS P3); a helper that returned
-// the held `C` alone would re-open the silent-drop path this type
-// exists to close.
-//
-// WHY A WITNESS AND NOT `Option<C>`. A fallible read either proves a
-// fact or it does not. `Option<C>` collapses "proved nothing" and
-// "failed to prove" into one `None` and carries no reason — the exact
-// INVARIANTS P3 violation (no Option::None in lens reads). `Witness<C>`
-// splits the two: `Holds` carries the proven `C` forward (facts-flow-
-// forward), and `Violates` carries a full `Diagnostic` — reason + locus
-// + correction — so a failed read is a *helpful* failure (CULTURE §5
-// no-engine), never a bare absence.
-//
-// The coproduct below carries the full Practice-4 🟢/🟡/🔴
-// classification + the five-pattern dissolution ledger (modeling-
-// discipline.md §4 — operator-ratified binding 2026-05-15; the doc
-// enumerates FIVE patterns, the fifth being Parameterized-family).
-
-
-// ─────────────────────────────────────────────────────────────────────
-// Witness<C> — the fail-closed proof carrier (THESIS fail-closed
-// discipline, INVARIANTS P3). The result of every structural read that
-// can fail: it either HOLDS the proven fact or REPORTS a violation.
-// There is no "probably fine" — CULTURE §2.
-//
-//   - Holds carries the proven fact `C` itself. A read that succeeded
-//     KNOWS something, and that knowledge must compose forward (facts-
-//     flow-forward / INVARIANTS P2). A payload-less `Holds` would
-//     silently drop the proven fact — re-importing the Option::None
-//     hole this type exists to close.
-//   - Violates carries a full `Diagnostic` (reason + `at` locus +
-//     `correction`). The failure arm is symmetric to `Holds`: the read
-//     that failed also KNOWS something — where it failed, and often the
-//     fix — and that must flow forward too. A bare reason tag would
-//     drop the locus and correction, the failure-side facts-drop. Per
-//     operator-ratified Option A (2026-05-16) the payload is the whole
-//     `Diagnostic`, std/diagnostic.dag's fail-closed error type.
-//
-// Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
-// discipline.md §4) — classification: 🟢 GREEN (terminal). Ledger —
-// five patterns attempted:
-//   1. Fact placement — FAILS: every witness consumer (every fallible
-//      lens read site) handles BOTH arms — compose the proven `C`
-//      forward, or surface the `Diagnostic`. It is the shared read-
-//      channel result, not a per-consumer scattered fact.
-//   2. Variant-is-data — FAILS: the arms carry DIFFERENT shapes (the
-//      proven fact `C`; a `Diagnostic`). Collapsing to a flat
-//      `{ held: Bool, value?: C, diagnostic?: Diagnostic }` record
-//      makes `held: true` with no `value` (and `held: false` with no
-//      `diagnostic`) representable — that IS the Option::None hole this
-//      type exists to close (the inverse of P2).
-//   3. Algebraic form — N/A by construction: `Witness<C>` is the fail-
-//      closed read-channel primitive itself; it is not the carrier of a
-//      richer std/algebra.dag structure (there is no Monoid/Group it
-//      inhabits), and the held/violated dichotomy traces to no richer
-//      std/ source.
-//   4. Dimensional — FAILS: a read EITHER held a proof OR reported a
-//      violation — mutually-exclusive outcomes, never simultaneous
-//      coordinates. No witness is "both held and violated".
-//   5. Parameterized family — FAILS: the two variants are not `F<X>`
-//      over a declared set. `Holds` carries the type parameter `C` (the
-//      proven fact); `Violates` carries a `Diagnostic` — structurally
-//      distinct payloads, not a mechanical copy of an enumerable set
-//      (not a Practice-7 projection). `Witness<C>`'s own genericity
-//      over `C` is the genuine proven-fact parameter, not an
-//      enumerated-copy smell.
-// Terminal: the irreducible two-case fail-closed proof carrier — held
-// proof vs reported violation, the success/failure dichotomy at every
-// fallible read channel. The sum IS the dissolved form of the
-// "boolean + two optionals" shape pattern 2 rejects.
+// 🟢 coproduct dissolution — DECISIONS.md classification ledger: Witness<C>.
 type Witness<C>
   = Holds { value: C }
   | Violates { diagnostic: Diagnostic }
-

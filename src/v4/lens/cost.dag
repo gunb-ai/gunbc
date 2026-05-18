@@ -33,3 +33,35 @@
 
 module v4.lens.cost
 
+import v4.extdeps.languages.llvm_ir { LlvmInstruction }
+
+
+fn llvm_instruction_cost(i: LlvmInstruction) -> Int {
+  match i {
+    Binary { result: _, result_type: _, op: _, lhs: _, rhs: _ } => 1
+    Conversion { result: _, result_type: _, op: OpBitCast, value: _ } => 0
+    Conversion { result: _, result_type: _, op: _, value: _ } => 1
+    IntCompare { result: _, predicate: _, lhs: _, rhs: _ } => 1
+    FloatCompare { result: _, predicate: _, lhs: _, rhs: _ } => 1
+    Alloca { result: _, allocated_type: _, element_count: _ } => 1
+    Load { result: _, result_type: _, pointer: _, ordering: _ } => 4
+    Store { value: _, pointer: _, ordering: _ } => 4
+    GetElementPtr { result: _, source_type: _, base: _, indices: _ } => 1
+    AtomicRmw { result: _, op: _, pointer: _, operand: _, ordering: _ } => 8
+    CmpXchg { result: _, pointer: _, compare_value: _, new_value: _, success_ordering: _, failure_ordering: _ } => 8
+    Fence { ordering: _ } => 4
+    ExtractValue { result: _, aggregate: _, indices: _ } => 0
+    InsertValue { result: _, aggregate: _, element: _, indices: _ } => 1
+    ExtractElement { result: _, vector: _, index: _ } => 1
+    InsertElement { result: _, vector: _, element: _, index: _ } => 1
+    ShuffleVector { result: _, first: _, second: _, mask: _ } => 1
+    Select { result: _, condition: _, if_true: _, if_false: _ } => 1
+    Call { callee: _, arguments: _, result: _ } => 5
+    Freeze { result: _, value: _ } => 0
+    FNeg { result: _, result_type: _, operand: _ } => 1
+    VaArg { result: _, result_type: _, va_list: _, arg_type: _ } => 2
+    LandingPad { result: _, result_type: _, is_cleanup: _, clauses: _ } => 1
+    CatchPad { result: _, catch_switch: _, args: _ } => 1
+    CleanupPad { result: _, parent_pad: _, args: _ } => 1
+  }
+}

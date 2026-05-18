@@ -8,10 +8,39 @@
 > This document supplements, rather than parallels, INVARIANTS.md's
 > taxonomy. Each practice names the invariant principle it serves.
 >
+> **Why these Practices exist.** Every modeling rule below serves one
+> thing: making each target's model correct, complete, and honest enough
+> that the compiler-**derived homomorphism** between targets is sound.
+> Read any Practice as: *this protects the homomorphism.* (THESIS.md →
+> "The derived homomorphism"; [the-derived-homomorphism.md](thesis/the-derived-homomorphism.md).)
+>
 > Full derivations, worked examples, and the background modeling analysis
 > live in [v3-modeling-analysis.md](v3-modeling-analysis.md).
 
-## Seven Modeling Practices
+## The three facets — a cross-reference convention
+
+**Fact modeling**, **coercion**, and **translation** are not three
+separate topics — they are three facets of the one **derived
+homomorphism** ([THESIS.md](../THESIS.md) → "The derived homomorphism";
+[the-derived-homomorphism.md](thesis/the-derived-homomorphism.md)):
+
+- **fact modeling** — *produces the homomorphism's inputs.* You model
+  each target's facts so the compiler can derive the structure-preserving
+  map; the modeling discipline exists to make those inputs correct.
+- **coercion** — *the verification facet.* The mechanical fold that
+  checks a candidate map preserves structure (coercion ⊂ the
+  homomorphism).
+- **translation** — *the homomorphism applied.* "Translation" between
+  two targets **is** the derived homomorphism.
+
+**Convention.** Wherever a doc *discusses* one of these three as a
+topic — at its defining mention / discussion-point, **section-level, not
+every token** — frame it as a facet of the derived homomorphism and
+cross-ref the THESIS section. The connection should always be one click
+away from where the concept is taught; a parenthetical on every
+occurrence is noise.
+
+## Ten Modeling Practices
 
 Each practice implements one of the five invariant principles from
 INVARIANTS.md. A reviewer works from the five principles; the practices
@@ -27,6 +56,9 @@ Mapping:
 - Practice 5 (Single-authority metadata) — implements **P2: Boundary Discipline**
 - Practice 6 (API-level enforcement over convention) — implements **P2: Boundary Discipline**
 - Practice 7 (Projection over enumeration) — implements **P1: Modeling Faithfulness**
+- Practice 8 (Fact-bundle modeling) — implements **P1: Modeling Faithfulness**
+- Practice 9 (No-prose discipline) — implements **P2: Boundary Discipline**
+- Practice 10 (Don't hand-roll a derived operation) — implements **P1: Modeling Faithfulness** (and the proposed *Do not hand-roll a derived operation* invariant — pending operator ratification, rework-tracker PR #3240 task A1)
 
 A reviewer should name specifically whether the diff satisfies each
 relevant practice, where it could be violated, and whether the existing
@@ -71,9 +103,9 @@ than type-enforced.
 
 Every piece of structured information produced at one stage of the
 compiler must be either consumed by the next stage, carried forward as
-a field on downstream data structures, or explicitly discarded with a
-comment explaining why the information is no longer needed. Silent
-drops are violations.
+a field on downstream data structures, or explicitly discarded — with
+the justification recorded in `src/v4/DECISIONS.md` (Practice 9), not as
+in-file prose. Silent drops are violations.
 
 **What to check:** For each cross-stage boundary touched in the diff
 (parse→lower, lower→infer, infer→lens, lens→emit), enumerate the fields
@@ -93,37 +125,66 @@ variants) are compressed references to richer structure. In a closed
 system where we own all the definitions, most coproducts are unfinished
 modeling — the richer structure exists, we just haven't written it down.
 
-Every enum with N ≥ 2 variants must be classified as one of:
+**Dissolution dispositions — the universal rule.** Every coproduct,
+every type modeling a spec primitive (Practice 8), and every function
+that could hand-roll a derived operation (Practice 10) is held to one
+question — **can this dissolve now? if not, why not?** The answer is
+exactly one of three dispositions, the shared 🔴/🟡/🟢 vocabulary used by
+Practices 4, 8, and 10. There is no fourth: an unclassified item is
+unfinished modeling and blocks merge.
 
-- **🟢 GREEN (terminal)** — no richer source exists. The variants trace
-  to irreducible distinctions at the user-input boundary (literals,
-  keywords, source locations). Requires a **ledger entry**: a written
-  record of which dissolution patterns were attempted and why they
-  failed. **GREEN is consumer-independent.** "No consumer needs the
-  decomposition yet" is *not* a basis for GREEN — only "no richer source
-  *exists*" is. The test: if you can *name* the richer structure the
-  variants project over — the axes, the source set — then a richer
-  source exists, and the coproduct is **not** GREEN, regardless of
-  whether anything consumes that structure today. A faithful enumeration
-  of a spec's surface labels whose meaning decomposes into namable axes
-  (e.g. a net-kind enum that is `{resolution, default, drivers}`) is
-  YELLOW, not GREEN — see the next bullet.
+- **🔴 dissolve-now** — it *can* dissolve and nothing blocks it, so it
+  **must**. 🔴 is a directive, never a standing state. Dissolution is
+  debt, and debt is paid before new work — a 🔴 **jumps the queue**,
+  scheduled ahead of feature work in its lane. Fix it in this PR; a 🔴
+  the audit finds on merged code is the next thing done.
+- **🟢 terminal** — the question is answered by *there is nothing to
+  dissolve into*: genuinely irreducible, no richer source exists.
+  **Consumer-independent** — a *namable* richer source means it is not
+  🟢, regardless of whether anything consumes it today.
+- **🟡 gated** — it cannot dissolve now, and the *only* legitimate
+  reason is a **named arrival** it waits on. A 🟡 is **transient** — a
+  committed surface→dissolve loop, never an indefinite tracked comment.
+  Every 🟡 MUST bind a **dissolution plan**, as a **merge requirement**:
+  1. **gate kind** — `feature` (a substrate primitive or capability that
+     does not exist yet) or `consumer` (the first consumer of the
+     decomposed meaning is not here yet);
+  2. **the bound dissolution plan** — not merely a name, a *committed
+     path to 🟢*: the named missing primitive (or consumer), **the
+     substrate PR or task that will land it**, and **the dissolution
+     follow-up that converts this 🟡 to 🟢** once it lands. A 🟡 with no
+     bound dissolution PR is **not a valid 🟡** — that is the
+     comment-graveyard failure mode, and it blocks merge;
+  3. **dissolve-on-arrival** — the follow-up dispatches *immediately*
+     when the substrate PR lands; the 🟡→🟢 conversion is mandatory, not
+     optional. A 🟡 is a pre-committed obligation with a committed exit,
+     never a parking spot. Dissolution debt is *burned down*, not banked
+     — INVARIANTS P5, "Progress Is Dissolution".
 
-- **🟡 YELLOW (scaffold)** — a richer source exists but the
-  decomposition is deferred. Requires a **named trigger**: the specific
-  condition that un-defers it. The trigger is *either* (a) substrate
-  work that isn't ready yet, *or* (b) **the first consumer of the
-  *meaning***. Decomposition is correctly bounded by consumers — do not
-  model meaning nothing reads — so an enumeration whose decomposition is
-  *known* but not yet *needed* is YELLOW-deferred-on-consumer, never
-  GREEN (the richer source exists; only the work is deferred). A
-  consumer-triggered YELLOW entry must **pre-assign the obligation**: it
-  states explicitly that the first consumer of the meaning owes the
-  structural decomposition — *not* a local lookup. Firing that trigger
-  is the sanctioned, expected path, not a reopening of settled work.
+  `feature`- and `consumer`-gating are one dimension, not two — both are
+  *waiting on an arrival*; a consumer is itself a kind of feature, the
+  awaited thing being the consumer's existence. The label records only
+  *what* arrives. A bare 🟡 ("deferred") is the overloaded form this
+  rule retires: every 🟡 carries `feature:<name>` or `consumer:<name>` so
+  a reader sees at a glance *that* it is gated and *on what*, and the
+  audit can check whether the gate has already opened (⇒ the 🟡 is stale
+  and flips to 🔴).
 
-- **🔴 RED (dissolvable-now)** — richer source exists and extraction
-  is cheap. Do it immediately, before the next consumer is added.
+Applied to a **coproduct** (any `type X = A | B | …` with N ≥ 2
+variants), the three dispositions are:
+
+- **🟢 terminal** — the variants are irreducible distinctions at the
+  user-input boundary (literals, keywords, source locations); no richer
+  structure can be named. Requires a **ledger entry** recording which
+  dissolution patterns were tried and why each failed.
+- **🟡 gated** — a richer source exists but decomposition waits on a
+  named arrival (`feature:` substrate not ready, or `consumer:` no
+  consumer reads the meaning yet). A `consumer`-gated entry **pre-assigns
+  the obligation**: the first consumer of the meaning owes the
+  structural decomposition, not a local lookup. Firing the gate is the
+  sanctioned, expected path, not a reopening of settled work.
+- **🔴 dissolve-now** — a richer source exists and extraction is cheap;
+  do it now, before the next consumer is added.
 
 **Five dissolution patterns to try in order** before classifying as
 terminal:
@@ -157,10 +218,21 @@ terminal:
    *shape*, not parameterized mechanical repetition; that is exactly why
    this pattern exists.
 
-**What to check:** Any new Rust enum with N ≥ 2 variants must have a
-checkpoint comment naming its classification (🟢/🟡/🔴), with a ledger
-entry if GREEN or a named trigger if YELLOW. Enums without any of these
-are unfinished modeling and block review.
+**What to check:** Any new coproduct with N ≥ 2 variants (a Rust enum,
+or a `.dag` `type X = A | B | …`) must be classified (🟢/🟡/🔴), with a
+ledger entry if 🟢, or the gate kind + concrete named arrival
+(`feature:<name>` / `consumer:<name>`) + dissolve-on-arrival obligation
+if 🟡. Per Practice 9 the
+classification *ledger* and the *trigger* live in `src/v4/DECISIONS.md`
+— *not* an in-file `Practice 4: ...` block. **But the coproduct itself
+keeps a required one-line classification tag carrying the 🟢/🟡/🔴
+emoji** (operator directive 2026-05-17) — e.g. `// 🟡 coproduct
+dissolution — DECISIONS.md OS-1`. The emoji stays *on the coproduct* so
+a reader sees the classification at the type; the decision-making (the
+ledger, the dissolution patterns tried, the 🟡 gate) lives in
+`DECISIONS.md`. A coproduct with no in-file 🟢/🟡/🔴 tag, or no
+`DECISIONS.md` classification entry, is unfinished modeling and blocks
+review.
 
 **The lookup smell (the consumer-trigger backstop).** A `match` over a
 foreign-label coproduct, written *inside a consumer* — a lens, a
@@ -168,8 +240,9 @@ transform, any file that is not the type's own — to recover a structural
 fact, **is the decomposition written in the wrong place.** The match
 arms *are* the axis: `Wor => OR, Wand => AND, …` is literally the
 `resolution` axis of the net-kind decomposition. The fix is never to
-keep the lookup; it is to push that structure into the type — fire the
-YELLOW trigger and decompose. A reviewer who sees such a match flags it:
+keep the lookup; it is to push that structure into the type — the
+`match` in the consumer *is* the first consumer of the meaning, so it
+opens a `consumer:` gate: fire it and decompose. A reviewer who sees such a match flags it:
 structural content discovered in a consumer belongs in the type, not the
 consumer. This is the same channel K-1 closes for `Symbol` — a `match`
 on opaque labels is exactly where heuristics smuggle in. Until a
@@ -177,8 +250,21 @@ machine-checked meta-lens detects fired triggers, this review smell *is*
 the enforcement.
 
 **Scaffold exception:** early-milestone code (marked `// scaffold:
-<sunset-milestone>`) can skip the classification annotation until the
-sunset milestone. Scaffolds must be revisited before sunset.
+<sunset-milestone>`) can defer only the *verbose* part of its
+`DECISIONS.md` classification ledger — the dissolution-patterns-tried
+analysis — until the sunset milestone. The exception covers that
+analysis **only**. It does **not** waive: (a) the required one-line
+🟢/🟡/🔴 tag on the coproduct; nor (b) — for a 🟡 — the **bound
+dissolution plan** (the named missing primitive/consumer, its owning
+substrate PR or task, and the dissolve-on-arrival follow-up). A 🟡's
+plan-binding is the minimum that makes it a *valid* 🟡 (see the 🟡
+disposition above) — it is recorded in `DECISIONS.md` even when the
+fuller patterns-tried analysis defers. The gate names the **concrete
+missing primitive**, e.g. `// 🟡 feature:<missing-primitive> —
+DECISIONS.md <entry>` — a bare `<sunset-milestone>` is **not** a valid
+gate (a milestone-only gate leaves the dissolution path non-checkable);
+the sunset milestone records *when* the scaffold is revisited, not
+*what* it waits on. Scaffolds must be revisited before sunset.
 
 **Worked example (v2 retrospective):** `v2::ExprData` had 22 variants.
 Failed pattern 1 (every consumer dispatches on all 22), pattern 2
@@ -276,35 +362,452 @@ enumerated siblings. "Operations fall out of inhabitance" (THESIS,
 epistemic stacking) is precisely this practice: the operations are
 projected from the algebra, not enumerated on the type.
 
-## Calibration: Blocking vs Non-blocking
+### 8. Fact-bundle modeling
+
+To model a thing is to assert its *facts*. A type either **invents** a
+fact-bundle for its subject — a `Conj` / record whose fields are the
+specific facts the source actually states — or **reuses** an existing
+`std/` carrier. There is no third option. A **bare alias**
+(`type RustI32 = Int32`) does neither: it asserts an identity it has not
+proven while modeling nothing of its own. It is *hollow* — the shape
+that looks like modeling and isn't.
+
+Modeling is mandatory; deduplication is conditional. You MUST model the
+facts. You may collapse your model onto a `std/` carrier ONLY when you
+have **proven** the two coincide — and *coincide* has a precise meaning
+(see DECISIONS.md): both groundings, reduced to canonical `Node`s, are
+structurally equal, expressed in shared `std/` vocabulary. Identity is
+an evidenced claim, never an assumed default. "These are obviously the
+same" is not evidence.
+
+**Same rule, opposite default — the default tracks what we *know*:**
+
+- **extdeps** (`extdeps/languages/*`, `extdeps/formats/*`,
+  `extdeps/frameworks/*`) — we did not write these systems and do not
+  fully know them. **Default SEPARATE:** model each primitive's facts
+  honestly from its own spec and let the model accumulate. Reuse a
+  `std/` carrier *only* with cited coincidence evidence. Keeping
+  `RustSignedness` a separate carrier until Rust's reference is checked
+  is *honest modeling*, not a dual-authority (Practice 5) violation —
+  the two are not yet proven to coincide.
+- **internal** (the compiler layers, our own substrate) — we wrote both
+  sides; identity is usually *known*. **Default REUSE `std/`** — but
+  still name the evidence. A known coincidence left un-cited is still an
+  un-modeled claim.
+
+**What to check:** For every external primitive a `.dag` file models,
+does the file *state the facts the spec gives* — width, signedness,
+representation, range, encoding, lifetime, … — as a structured carrier?
+Or does it write `type Foo = Bar` and stop? A bare alias of a spec
+primitive whose spec carries facts is **under-modeled** — flag it.
+
+**Example violation:** `type CppInt = Int`. C++'s `int` is *not* the
+abstract integer. The standard states facts the alias discards: an
+implementation-defined width of *at least* 16 bits, a signed
+representation, an `int`-specific range. `type CppInt = Int` asserts
+`CppInt` *is* `std/` `Int` — an identity that is false (C++ `int` is
+finite-width and platform-varying; `Int` is not).
+
+**Fix:** invent the facts C++ adds, reuse `std/` for the part that
+genuinely coincides:
+`CppInt = Conj { base: Int, width: Nat, width_proof: Witness<width >= 16>, representation: Representation }`.
+The `base: Int` reuse is licensed because C++ integers *are* integers —
+a coincidence on the algebra, cited. The `width` / `representation`
+fields are invented because they are facts C++ states that `std/` `Int`
+does not carry.
+
+**Why hollow aliases survive review (and why this practice exists).** A
+bare alias is *structurally minimal* — it passes every structural gate
+precisely because there is nothing there to be wrong. The hollowness is
+invisible to a shape-checker: the gate sees a valid `type` declaration.
+MODELING.md M1 ("types decompose into facts") already said modeling
+means asserting facts; the gap was *enforcement*. This practice, the
+worked examples it points at, and the structural fact-density gate below
+are that enforcement. A reviewer fails a hollow alias *against this
+documented bad example*.
+
+**No string-templating (the emit-side hollow alias).** Emission goes
+through grounded format / language models — **never** string templates
+or fill-in-the-holes artifacts. A string-templated artifact (e.g. an
+`InhabitantDecl.template: "Vec<{0}>"` field) produces output the
+compiler cannot ground and cannot coercion-check; it drifts silently,
+exactly as the bare alias does. It is the *emit-side* equivalent of the
+hollow alias — the same failure, on the way out. The canonical
+non-templated form is **grammar-as-declarative-bidirectional-data**: the
+production data *is* the relation concrete-syntax ⟷ `Node`, checked in
+both directions, never a procedural recognizer or a print template. Any
+emit artifact that cannot be grounded is a STOP.
+
+**Worked examples.** The good-vs-bad fact-bundle forms for each external
+target — Rust, C++, LLVM, Verilog, SPICE, PTX, Go, JSON, TOML,
+OpenAPI, … — are worked in full in
+[modeling/grounding-worked-examples.md](modeling/grounding-worked-examples.md).
+That document is the companion rubric to this practice; consult it for
+the concrete shape of a faithful fact-bundle per target.
+
+#### Interim floor: the hollow-alias discriminator
+
+Enforcement of this practice is **two-tier**. The *structural* tier — a
+generated checker (`Node -> Outcome`) that makes a hollow alias
+*impossible to construct*, not merely review-discouraged — is its own
+task, **TASKS.md T-30**, a hard prerequisite of the per-language rework
+(T-4). It is deliberately *not* this document: convention is exactly
+what let D2 through, so the reseed runs under the structural gate, not a
+doc.
+
+What follows is the **interim floor** — the discriminator a *reviewer*
+applies by hand until T-30's checker lands, and the spec T-30 then
+implements. It is not the structural tier; it is the convention-tier
+bad-example, written so a review can fail a hollow alias against it.
+
+A declaration is **hollow** when *all three* hold:
+
+1. It is a **bare alias** (`type X = Y`) or a single-field wrapper that
+   adds no field of its own; **and**
+2. its subject is an **external spec primitive** — something a
+   language / format / framework specification names and states facts
+   about; **and**
+3. it carries **no coincidence evidence** — no `src/v4/DECISIONS.md`
+   entry proving `X` and `Y` coincide, cited from the file by at most a
+   one-line tag (Practice 9).
+
+A hollow declaration **blocks review**. The fix is one of: invent the
+fact-bundle (now `X` carries ≥ 1 fact of its own), or supply the
+coincidence evidence (now the reuse is licensed and cited).
+
+A type that is *under-modeled but legitimately deferred* — the spec
+facts are known but a substrate carrier or a consumer is not yet here —
+is not hollow; it is **🟡 gated** under the shared Dissolution
+dispositions (Practice 4). It carries the gate kind (`feature:` /
+`consumer:`), the concrete named arrival, and the dissolve-on-arrival
+obligation, exactly as a 🟡 coproduct does. "Hollow" is the *unjustified*
+under-model; "🟡 gated" is the *justified, tracked* one — the
+discriminator between them is whether a concrete, valid gate is named.
+
+**Exempt:** kernel-ambient atoms — `Bool`, `Char`, and the other
+irreducible substrate atoms — are *legitimately* atomic. They state no
+further facts because there are none to state; an alias onto them, or
+their use as a terminal, is not hollow. The gate's discriminator is
+"does the *spec* carry facts this declaration drops?" — for a true atom
+the answer is no.
+
+### 9. No-prose discipline
+
+A `.dag` file's comments are **not a parallel prose authority**. After
+modeling, a file's comments carry only what a mechanical consumer or a
+reviewer needs *to use the file* — never rationale, never narration,
+never a record of the work done. Rationale lives in `src/v4/DECISIONS.md`
+(single authority); process notes live in the commit message. A comment
+that records that the file was de-prosed is itself the prose to remove.
+
+**The spec.** After de-prose, a `.dag` file's comments are ONLY these
+four things — nothing else survives:
+
+1. **Line 1** — the file-path line.
+2. **A terse header** — exactly four lines: `Scope:` (one line),
+   `Owns:` (carrier *names* only, no rationale), `Consumes:` (one line),
+   `Status:` (one line). Nothing else: no `Brief:`, no `Seams:`, no
+   `HEADER RECONCILE`, no `Deferred (N)` rationale, no multi-line block.
+3. **A per-carrier anchor** — at most one `// Anchor: <spec URL>` line.
+4. **A one-line tag.** Two cases:
+   - **Required — coproduct classification tag.** Every coproduct (a
+     `type` with N ≥ 2 variants) carries a one-line tag with its
+     🟢/🟡/🔴 classification emoji (operator directive 2026-05-17), e.g.
+     `// 🟡 coproduct dissolution — DECISIONS.md OS-1`. The emoji stays
+     *on the coproduct*; the ledger / dissolution patterns / named
+     trigger live in `DECISIONS.md` (Practice 4). This is not optional —
+     a coproduct with no in-file 🟢/🟡/🔴 tag blocks review.
+   - **Optional — concept tag / cite.** For any type, at most one
+     further one-liner where genuinely useful: a concept tag where the
+     concept is non-obvious from name + structure, *or* a one-line cite
+     to a `DECISIONS.md` entry (e.g. `// coincides: <DECISIONS.md ref>`
+     — the Practice-8 coincidence cite).
+   Never a description of the type; never a `Practice N: ...` rationale
+   line; never a `see docs/X` pointer.
+
+Everything else is **removed**: per-type descriptions, all Practice-N
+rationale, all multi-line rationale, `Seams`/`Brief`/process-meta
+blocks. Architectural decisions move to `src/v4/DECISIONS.md`; process
+notes — de-prose receipts, "HEADER RECONCILE", "per directive X" — move
+to the **commit message**, never the file.
+
+**What to check:** count `comment-lines / total-lines`. The hard target
+is that a modeled `.dag` file is roughly **under 20% comment lines**. A
+file substantially above 20% has not been de-prosed — the pass is
+nominal, not real. (A file audited at 58% comment lines *after* a
+"de-prose" pass is a failed pass; verify the percentage, do not accept a
+nominal pass.) Load-bearing files keep the terse four-line header
+contract — but that header *is* the whole of item 2, not a license for
+more. The <20% figure is a **heuristic** for prose bloat, not a hard
+floor: a small carrier file (under ~25 lines) whose mandated four-line
+header alone exceeds 20% is compliant if that header is all the comments
+are. Never pad a file to lower the percentage — content-compliance
+(comments are *only* the four allowed things) is the real bar.
+
+**Why:** prose in the file is a second authority. It drifts from the
+structure it narrates and from `DECISIONS.md`; it is the
+documentation-side hollow alias (Practice 8) — it looks like modeling
+and isn't. The structure *is* the model; the terse header is the single
+machine-readable boundary contract; everything else is removed.
+
+**Supersession — Practice 9 governs every in-file artifact.** Several
+earlier Practices were written when an in-file comment *was* the
+enforcement mechanism: a discard justification (Practice 3), a coproduct
+classification + ledger/trigger (Practice 4), a coincidence-evidence
+proof (Practice 8). Practice 9 supersedes all of them, under one uniform
+rule:
+
+- the **record relocates** — an architectural decision, a classification
+  *ledger*, a discard justification, a coincidence proof all move to
+  `src/v4/DECISIONS.md`; a process receipt (`HEADER RECONCILE`, "per
+  directive X", a de-prose note) moves to the **commit message**;
+- the `.dag` file keeps the **item-4 one-line tag** — for a coproduct, a
+  *required* 🟢/🟡/🔴 classification tag (e.g.
+  `// 🟡 coproduct dissolution — DECISIONS.md OS-1`); optionally one
+  further concept tag or a one-line `// coincides: <DECISIONS.md ref>`
+  cite. The classification *emoji* stays on the coproduct; only the
+  *ledger / patterns-tried / 🟡 gate* relocate.
+
+Wherever an earlier Practice says "record X in a comment," read it as
+"record X in `DECISIONS.md`; the file keeps the one-line tag." The same
+applies to `DECISIONS.md` rules that mandated an in-file block — D5's
+`HEADER RECONCILE` receipt moves to the commit message. No earlier
+in-file *artifact mandate* survives un-superseded by Practice 9. This
+does not mean the file carries no comments at all: Practice 9 itself
+*authorizes* the four allowed classes — including the **required**
+one-line 🟢/🟡/🔴 coproduct tag (item 4). Practice 9 relocates the
+ledger/rationale/receipt prose; it authorizes the terse one-line tag.
+
+### 10. Don't hand-roll a derived operation
+
+The compiler's job is to **derive** operations from a model — that is the
+derived homomorphism (top of this doc; THESIS.md). There is a *finite*
+set of such derived operations. Hand-rolling one re-derives what the
+compiler already derives once: the deficiency is in the **model**, not
+the code. The fix is never to polish the hand-rolled construct — it is to
+model the missing fact, or name the missing substrate primitive, and let
+the operation be derived.
+
+**The invariant this implements** (proposed — pending operator
+ratification, rework-tracker PR #3240 task A1; on ratification it lands
+in [INVARIANTS.md](../INVARIANTS.md) / [MODELING.md](../MODELING.md), and
+this Practice cites it directly):
+
+> **Do not hand-roll a derived operation.** If a function's behavior is
+> determined entirely by the shape of a modeled type, it is re-deriving
+> something the compiler already derives. The deficiency is in the model,
+> not the code — model the missing fact; do not hand-roll the operation.
+
+**The derived-operations registry.** The registry is what makes "you
+should be modeling, not coding this" an *objective* call rather than a
+reviewer's taste — a hand-rolled instance of any row is a finding:
+
+| # | derived operation | derived from | hand-rolled form → finding | substrate primitive |
+|---|---|---|---|---|
+| 1 | structural recursion (catamorphism) | a type's structure | walker dissolution | `fold_node` |
+| 2 | effect traversal | carrier + collection | traverse dissolution | `traverse` / `sequence` |
+| 3 | translation (target → target) | two target models — *this is the derived homomorphism* | hand-written emitter / lowerer | the compiler itself |
+| 4 | coercion | the structure-preservation fold — the homomorphism's verification facet | hand-written coercion check | the compiler itself |
+| 5 | identity / hashing | a Merkle catamorphism | hand-written hash / equality | `content_hash` |
+| 6 | emission + parsing | grammar-as-bidirectional-data | string-templated emitter → emit/template dissolution | the grammar model |
+| 7 | property projection | reading a fact off the model | `match`-to-derive → predicate dissolution | a model fact |
+
+**Rows 3 and 4 carry no numbered dissolution finding — on purpose.**
+Translation **is** the derived homomorphism; coercion **is** its
+verification facet (the three facets, top of this doc). Hand-writing a
+cross-target translator or a coercion checker is not a function-scale
+review smell a reviewer flags in one diff — it is "you re-wrote the
+compiler," a whole-architecture failure caught at architecture review.
+The numbered findings below are all *function-scale*: visible in a single
+diff. Rows 3/4 are named in the registry for completeness, not as a
+reviewer finding.
+
+**Dissolution findings.** A *dissolution finding* names a hand-rolled
+construct that re-derives what the model should provide; its fix always
+has the same shape — the construct **dissolves** into *(a substrate
+primitive) + (model data)*. Most members are the detection-rubric for a
+smell another Practice already names — this is **not** a parallel
+vocabulary:
+
+- **coproduct dissolution** — *is* Practice 4, the established finding.
+- **carrier dissolution** — a sharpened Practice 4 sub-case: a local
+  coproduct that clones an existing `std/` carrier (a `Foo { value } |
+  FooRejected { diagnostic }` that *is* `Outcome<T>`). Before classifying
+  a coproduct for dissolution, check it against the `std/` carrier set —
+  a match makes the finding the sharper, mechanical "delete it, use the
+  std carrier," not generic "model this as facts."
+- **predicate dissolution** — Practice 8 / Practice 7 at the level of a
+  *code predicate*: a `match`/`if` on kind or symbol whose purpose is to
+  *derive a property* ("is this a binder?", "which sugar is this?")
+  rather than to do structurally distinct work. The property is a fact
+  the model should carry and the code should *read*. Canonical shape: a
+  coproduct discriminant — `free_monoid_non_empty` hand-rolling `match xs
+  { Empty => false ; Cons => true }`, or `nat_is_zero` hand-rolling
+  `Zero => true ; Succ => false`, derives "which variant" by hand where
+  the coproduct already carries it. Mechanical trigger: any new `is_*`,
+  `has_*`, `*_is_*`, `*_has_*`, `non_empty`, `is_empty`, or similar
+  `Bool` helper over a coproduct that `match`es the value and returns
+  `true` for one variant and `false` for another is predicate
+  dissolution until proven otherwise. On a substrate / `std/` / reusable
+  algebraic helper this is unconditionally blocking.
+- **walker dissolution** *(new)* — Practice 7 lifted from
+  declaration-families to *traversal*: a function that hand-rolls
+  recursion over a structural type (`Node`, AST) — per-node-kind `match`
+  arms each re-walking children. The same homomorphism re-implemented per
+  stage instead of derived once; the faithful form is a std catamorphism
+  (`fold_node`) + a supplied algebra.
+- **traverse dissolution** *(new)* — a `fold` whose body is a `match acc
+  { Rejected => propagate ; Ok => continue }` ladder: effect-threading
+  (failure, short-circuit, accumulation) hand-inlined where `traverse` /
+  `sequence` over the effect carrier belongs. Almost always co-occurs
+  with walker dissolution — the fold body both recurses *and* threads the
+  effect.
+- **emit/template dissolution** — the *finding* form of Practice 8's "no
+  string-templating" rule: a string-templated emitter
+  (`template: "Vec<{0}>"`) where grammar-as-declarative-bidirectional-data
+  belongs. The emit-side mirror of walker dissolution.
+
+**The inverse direction — nominalization.** Every finding above detects
+*under-modeling*: a hand-rolled construct that should be modeled or
+derived. **Nominalization** is the opposite error — *over-modeling*: an
+operation declared as a *type*. It is camouflaged precisely because it
+*looks* like good modeling — it is *more* type declaration, not less —
+so a reviewer scanning for "is this modeled enough?" reads it as
+compliant, even exemplary. The rubric checks **both** directions; the
+over-modeling direction must be looked for on purpose.
+
+- **nominalization** *(new)* — an operation (a function), or a derived
+  operation, declared as a *type*. The tell is a struct whose only
+  field(s) are functions and which has no `data` instances —
+  `type ListMap<T, U> { apply: fn(List<T>, fn(T) -> U) -> List<U> }`.
+  **Discriminant: does the type have more than one meaningful
+  inhabitant?** A genuine algebraic *structure* does — `Monoid<T>` has
+  the additive monoid, the multiplicative monoid, … — so it is a
+  legitimate type. A combinator does not: there is exactly one
+  list-`map`. *A type with exactly one meaningful inhabitant is an
+  operation in disguise — it must be a `fn`* with a real body, or a
+  derived operation. The degenerate single-field `{ field: T }` wrapper
+  repeated across N near-identical subjects (e.g. `{ spelling: String }`
+  across the seven URI components) is the same finding — N hollow
+  wrappers standing where modeled facts belong. Disposition: normally
+  🔴 — rewrite as a `fn`; 🟡 only if it should be a *derived* operation
+  and the derivation primitive is absent.
+
+**Disposition — per the shared Dissolution dispositions (Practice 4).**
+Every dissolution finding — and every audited function that turns out
+*not* to be one — carries one of the three dispositions 🔴/🟡/🟢. Naming
+it is what stops a reviewer from wrongly demanding the impossible:
+
+- **🔴 dissolve-now** — the substrate primitive the construct should use
+  *already exists* (e.g. `Outcome<T>` in `std/diagnostic.dag`). The fix
+  is mechanical, belongs in this PR, and jumps the queue.
+- **🟡 gated** — the substrate primitive does *not* exist yet (e.g.
+  `fold_node` / a fail-closed `traverse`). A derived-operation 🟡 is
+  almost always `feature`-gated: the gate names the missing primitive
+  *and its owning task*, and the 🟡 carries the dissolve-on-arrival
+  obligation (shared rule, Practice 4). It is **BLOCKING unless** that
+  gate is recorded as a tracked, named upstream obligation on a declared
+  honest scaffold — an untracked 🟡 is silent dissolution debt and blocks
+  (Calibration section; INVARIANTS P5 "Progress Is Dissolution").
+  Re-blocking a *tracked* 🟡 is pointless churn — blocking cannot land an
+  absent primitive.
+- **🟢 clean / terminal** — audited and *not* a dissolution finding: the
+  recursion or `match` is genuinely irregular (the call graph is not the
+  data graph), or the construct already uses the derived operation.
+
+The retroactive v4 dissolution audit (rework-tracker PR #3240 task C1)
+applies this legend per-file, per-finding — a symbol-marked inventory,
+not prose. The symbol records a finding's *disposition*; the matching
+in-file `.dag` tag lands with the fix, per migration PR — it is not
+retro-applied across all v4 files at once.
+
+**Decidability — checker-flaggable vs reviewer-judgment.** Every
+dissolution finding is **blocking** — there is no advisory tier and no
+nit channel. A finding is resolved only by 🔴 dissolve-now, a tracked
+🟡, or a substantiated 🟢; it is never resolved by a free-text
+"intentional" / "short-circuiting" dismissal. The column below records
+only *who* flags a finding — a checker can mechanically hard-error the
+structural ones, the judgment ones a reviewer must decide — but a
+reviewer who identifies a finding blocks the PR exactly as a checker
+would:
+
+| finding | decidable? | enforcement |
+|---|---|---|
+| carrier dissolution | structural — type-shape match vs the `std/` carrier set | **hard error** |
+| walker dissolution | structural on the clean shape (recursion mirrors a modeled type) | **blocking** — hard error on the clean shape; genuinely-irregular recursion (call graph ≠ data graph) is a clean 🟢, not an advisory |
+| traverse dissolution | structural on the clean shape (a `fold` body that is a carrier short-circuit ladder) | **hard error** on the clean shape |
+| emit/template dissolution | structural — a literal template-string field | **hard error** on the literal-template shape |
+| nominalization | structural — a struct whose only fields are functions with no `data` instances, or N near-identical single-field wrappers | **hard error** on the wrapper shape |
+| predicate dissolution | judgment — a `match` *may* be genuinely distinct work, not a derived property | **blocking** — a reviewer who identifies it blocks the PR; a `match` that is genuinely distinct work is a clean 🟢. No advisory / candidate tier. |
+| coproduct dissolution | already enforced — per-coproduct 🟢/🟡/🔴 tag + `DECISIONS.md` ledger (Practices 4 / 9) | already enforced |
+
+The *enforcement mechanism* — the checker-script build path and the
+eventual dissolution lens — is design work, specified in the planned
+`docs/design-dissolution-lens.md` (rework-tracker PR #3240 task B1). This
+Practice carries only the classification, which is discipline a reviewer
+applies by hand. Worked examples — the #3225 dissolution inventory — land
+in [modeling/grounding-worked-examples.md](modeling/grounding-worked-examples.md)
+(PR #3240 task B2).
+
+**What to check.** For any function in the diff: is its behavior fixed by
+the *shape* of a modeled type rather than by logic unique to this call
+site? If yes, it is a candidate dissolution finding — identify the
+registry row, then mark the disposition (🔴 dissolve-now / 🟡 gated /
+🟢 clean).
+For predicates, verification helpers, and structural walkers, look for
+direct matches on lower-layer representation (`Empty`/`Cons`, enum
+variants, field conventions, ad hoc list traversal) when a canonical
+fold, accessor, query, or substrate fact already exists or should exist.
+Do several functions repeat the same recursion? Does the PR call the
+helper a "refinement predicate", "short-circuiting primitive", or
+"matches sibling style" without explaining why that requires a separate
+walker? Those are not sufficient answers: preserve semantic requirements
+such as short-circuiting in the canonical surface, and treat existing
+sibling helpers with the same shape as accumulated debt, not precedent.
+A coproduct's 🟢/🟡/🔴 tag does not disposition a predicate over that
+coproduct; predicate dissolution lives on the consumer function and
+needs its own disposition.
+**Not when** the recursion or `match` is genuinely irregular — the call
+graph is not the data graph, the branches do genuinely distinct work.
+Irregularity is the honest escape hatch: a derived operation is one whose
+shape *is* the data's shape.
+
+## Calibration: Blocking vs Omit
 
 A finding is **BLOCKING** if fixing it in a later PR would be meaningfully
 harder than fixing it now — i.e., if merging this PR commits the project
 to a shape that is expensive to change.
 
-A finding is **NON-BLOCKING** if it's a cleanup that can land later at
-roughly the same cost.
+Do not use a nit/advisory finding as a third category. If a concern is
+valid and PR-relevant, request changes. If it is not serious enough to
+require action, omit it from the review.
 
 **Substrate-level issues are almost always BLOCKING** because the
 substrate sets patterns that get copied. Once a bad shape propagates
 through three consumers, changing it means changing all three plus the
 substrate.
 
-**Performance issues are almost always NON-BLOCKING** because they can
-be optimized later without changing interfaces.
+**Performance issues are usually omitted** unless they change interfaces,
+make a bound false, or create a concrete invariant violation.
 
 **Test coverage gaps depend:** gap in a high-risk invariant → BLOCKING;
-gap in a low-risk area → NON-BLOCKING.
+gap in a low-risk area → omit.
 
 **When in doubt, prefer BLOCKING.** It is better to ask for a small
 rework now than to accept a substrate bug that propagates through three
 milestones before anyone notices.
 
+**Dissolution findings (Practice 10) are an always-BLOCKING class.** A
+dissolution finding — walker / traverse / predicate / carrier /
+emit-template — is resolved only by a 🔴 / tracked-🟡 / substantiated-🟢
+disposition (Practice 10), never graded advisory and never waved off as
+a cleanup or by free-text "intentional, no code change."
+
 ## For Reviewers
 
 A review applies the **five invariant principles from
-[INVARIANTS.md](../INVARIANTS.md)**. The seven modeling practices above
-are the concrete patterns that inform each check — consult them when a
+[INVARIANTS.md](../INVARIANTS.md)**. The ten modeling practices in this
+document are the concrete patterns that inform each check — consult them when a
 principle's abstract statement needs a recognizable failure shape.
 
 For each relevant principle and its implementing practices:
@@ -313,19 +816,58 @@ For each relevant principle and its implementing practices:
 2. If violated, cite the exact file and line.
 3. State whether the existing check is structural (type system enforced)
    or merely behavioral (convention).
-4. For new enums: verify the 🟢/🟡/🔴 classification annotation, and
-   that Practice 4 pattern 5 (parameterized family) was applied — an
+4. For new coproducts: verify the coproduct carries its required
+   one-line 🟢/🟡/🔴 classification tag *in the file* (Practice 4 /
+   Practice 9 item 4) **and** has a `DECISIONS.md` entry for the ledger /
+   patterns-tried / gate. **Merge requirement — every 🟡 binds a
+   dissolution plan:** the gate kind (`feature:`/`consumer:`), the named
+   missing primitive/consumer, the substrate PR or task that will land
+   it, and the dissolution follow-up that converts the 🟡 to 🟢. A 🟡
+   with a vague gate ("deferred", "later substrate") **or no bound
+   dissolution PR** blocks merge — an indefinite 🟡 is the comment
+   graveyard. A 🟡 whose gate has *already* opened (the feature landed /
+   the consumer exists) is stale — it is 🔴, dissolve now. Also
+   verify Practice 4 pattern 5 (parameterized family) was applied — an
    enum that is `F<X>` per variant is an enumerated copy, not a
-   coproduct. Verify GREEN is consumer-**independent**: a namable richer
-   source ⇒ YELLOW (with a consumer trigger + pre-assigned obligation),
-   never GREEN. Flag any `match` over a foreign-label coproduct inside a
-   *consumer* as a misplaced decomposition (the lookup smell).
+   coproduct. Verify 🟢 is consumer-**independent**: a namable richer
+   source ⇒ 🟡, never 🟢. Flag any `match` over a foreign-label coproduct
+   inside a *consumer* as a misplaced decomposition (the lookup smell).
 5. For any new family of declarations (enum or not): verify it is a
    projection over its source set (Practice 7), not a hand-enumeration —
    the cost-of-change test is adding one element to the source set.
-6. For cross-stage boundaries: verify facts flow forward.
-7. Classify every finding as BLOCKING or NON-BLOCKING per the calibration
-   above.
+6. For any type modeling an external spec primitive (Practice 8): verify
+   it is a fact-bundle (invents the facts the spec states) or a *cited*
+   coincidence reuse of a `std/` carrier — not a bare alias. Apply the
+   structural fact-density gate: a bare alias of a spec primitive with
+   no coincidence-evidence `DECISIONS.md` entry is hollow and blocks. For any emit
+   artifact: verify it is grounded grammar-as-data, not a string
+   template.
+7. For any `.dag` file in the diff (Practice 9): count `comment-lines /
+   total-lines`. A modeled file substantially above ~20% comment lines
+   has not been de-prosed — the comments must reduce to the four allowed
+   things (file-path line, terse four-line header, per-carrier anchor,
+   one-line tag: the required 🟢/🟡/🔴 tag on each coproduct plus an
+   optional concept tag / `DECISIONS.md` cite). Process-meta prose in the file
+   (`HEADER RECONCILE`, de-prose receipts) is itself a finding.
+8. For cross-stage boundaries: verify facts flow forward.
+9. For any function whose behavior is fixed by a modeled type's shape
+   (Practice 10): identify the derived-operations registry row it
+   hand-rolls. For a row that carries a numbered dissolution finding
+   (rows 1 / 2 / 5 / 6 / 7), name the finding and mark its disposition
+   (🔴 dissolve-now / 🟡 gated / 🟢 clean); a 🟡 finding names its
+   `feature:` gate — the missing `std/` primitive + owning task — and is
+   **BLOCKING unless** that gate is recorded as a tracked, named upstream
+   obligation on a declared honest scaffold; an untracked 🟡 is silent
+   substrate debt and blocks (see Practice 10's disposition legend and
+   the Calibration section). A hand-rolled registry row 3 (translation) or 4 (coercion)
+   carries **no** numbered finding — it is a whole-architecture
+   escalation, not a function-scale review finding (per Practice 10's
+   rows-3/4 carve-out). For any `is_*`, `has_*`, `*_is_*`, `*_has_*`,
+   `non_empty`, `is_empty`, or similar `Bool` helper over a coproduct,
+   verify the function itself has a 🔴/🟡/🟢 disposition; the coproduct's
+   tag alone is not enough.
+10. Classify every finding as BLOCKING or omit it per the calibration
+    above.
 
 This document is the distilled version of modeling principles. For the
 full analysis and additional worked examples, see

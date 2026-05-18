@@ -1,37 +1,109 @@
 // src/v4/extdeps/file_system.dag
-//
-// Scope: file system model — paths, file kinds, read/write/list operations.
-// Anchor: https://en.wikipedia.org/wiki/File_system
-//         + https://pubs.opengroup.org/onlinepubs/9699919799/ (POSIX File and Directory Operations)
-//
-// Owns:
-//   - Path = AbsolutePath | RelativePath
-//   - AbsolutePath { components: NonEmptyList<PathComponent> }
-//   - RelativePath { components: List<PathComponent> }
-//   - PathComponent (NonEmptyStr, no slashes, no nulls — per POSIX portable filename charset)
-//   - FileKind = RegularFile | Directory | Symlink(target: Path)
-//   - read_file(p)        -> Result<FreeMonoid<Char>, Diagnostic>
-//   - write_file(p, body) -> Result<Unit, Diagnostic>
-//   - list_dir(p)         -> Result<List<PathComponent>, Diagnostic>
-//   - file_kind(p)        -> Result<FileKind, Diagnostic>
-//
-// Scope NOT included in v4 (subset for compiler self-hosting needs):
-//   - Permissions (mode bits) — out of scope; v4 compiler reads/writes own files
-//   - Timestamps (atime/mtime/ctime) — out of scope; not needed for emission
-//   - Memory mapping — out of scope; v4 reads files into memory wholesale
-//   - File locking — out of scope; v4 is single-process
-//
-// Consumes:
-//   - std/diagnostic.dag: Diagnostic
-//   - std/text.dag: Char, String (and their Tier-2 totalizations)
-//   - std/algebra.dag: FreeMonoid<Char>
-//   - std/collection.dag: List, NonEmptyList
-//
-// Status: scaffold — fill per TASKS.md T-4.5
-// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
-// contract for the worker. Splitting this file requires explicit operator
-// ratification (substrate extension = stop signal).
-
+// Scope: file system substrate — paths, file kinds, read/write/list/kind operations.
+// Owns: PosixByteString, NamedPathComponent, PathComponent, AbsolutePath, RelativePathHead, RelativePath, Path, FileKind, FileKindResolutionPolicy, Filesystem, FileBody, file-system request/result/operation carriers.
+// Consumes: Diagnostic, Outcome, Byte, FreeMonoid, List.
+// Status: T-4.5 modeled 2026-05-16.
 
 module v4.extdeps.file_system
 
+
+import v4.std.algebra { FreeMonoid }
+import v4.std.diagnostic { Outcome }
+import v4.std.machine { Byte }
+
+
+// Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/V1_chap03.html#tag_03_241
+// coincides: finite POSIX byte sequence.
+type PosixByteString = FreeMonoid<Byte>
+
+// tag: named pathname component spelling.
+// scaffold: POSIX byte refinements; trigger T-25-core/T-30.
+type NamedPathComponent {
+  bytes: PosixByteString
+}
+
+// 🟡 coproduct dissolution — DECISIONS.md OS-1
+type PathComponent
+  = CurrentComponent
+  | ParentComponent
+  | NamedComponent { component: NamedPathComponent }
+
+
+// Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/V1_chap03.html#tag_03_271
+type AbsolutePath {
+  components: List<PathComponent>
+}
+
+// 🟡 coproduct dissolution — DECISIONS.md OS-1
+type RelativePathHead
+  = ParentHead
+  | NamedHead { component: NamedPathComponent }
+
+// 🟡 coproduct dissolution — DECISIONS.md OS-1
+type RelativePath
+  = CurrentDirectory
+  | CurrentDescendant { first: RelativePathHead, rest: List<PathComponent> }
+  | RelativeDescendant { first: RelativePathHead, rest: List<PathComponent> }
+
+// 🟡 coproduct dissolution — DECISIONS.md OS-1
+type Path
+  = Absolute { path: AbsolutePath }
+  | Relative { path: RelativePath }
+
+
+// Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/sys_stat.h.html
+// 🟡 coproduct dissolution — DECISIONS.md OS-1
+type FileKind
+  = RegularFile
+  | Directory
+  | Symlink
+
+// tag: stat/lstat symlink policy.
+// 🟡 coproduct dissolution — DECISIONS.md OS-1
+type FileKindResolutionPolicy
+  = FollowSymlinks
+  | DoNotFollowSymlinks
+
+
+// Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/functions/read.html + https://pubs.opengroup.org/onlinepubs/9799919799/functions/write.html + https://pubs.opengroup.org/onlinepubs/9799919799/functions/readdir.html
+type Filesystem
+
+// coincides: finite POSIX byte sequence.
+type FileBody = FreeMonoid<Byte>
+
+type ReadFileRequest {
+  filesystem: Filesystem
+  path: AbsolutePath
+}
+
+type ReadFileResult = Outcome<FileBody>
+
+type WriteFileRequest {
+  filesystem: Filesystem
+  path: AbsolutePath
+  body: FileBody
+}
+
+type WriteFileResult = Outcome<Filesystem>
+
+type ListDirRequest {
+  filesystem: Filesystem
+  path: AbsolutePath
+}
+
+type ListDirResult = Outcome<List<PathComponent>>
+
+type FileKindRequest {
+  filesystem: Filesystem
+  path: AbsolutePath
+  resolution: FileKindResolutionPolicy
+}
+
+type FileKindResult = Outcome<FileKind>
+
+type FileSystemOperations {
+  read_file: fn(ReadFileRequest) -> ReadFileResult
+  write_file: fn(WriteFileRequest) -> WriteFileResult
+  list_dir: fn(ListDirRequest) -> ListDirResult
+  file_kind: fn(FileKindRequest) -> FileKindResult
+}

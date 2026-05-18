@@ -1,103 +1,95 @@
 // src/v4/extdeps/languages/dag.dag
 //
-// Scope: gunbc `.dag` surface — the native **LanguageModel** for language #1
-//        (B2-OMNI). Direction-agnostic: the same declarative data authorizes
-//        ingest (`01_tokenize` ∘ `02_parse` over `lex` + `grammar`) and emit
-//        (downstream `05_emit` / targets), per THESIS:188 unification.
-// Anchor: **Repo-owned specification** (L-2 spec-first without an external
-//         standards URL): `docs/v3-spec.md` (v3 language surface + arch
-//         context carried forward as the checkable authority for the
-//         bridge-era subset) **plus** the v4 closed tree itself (`STRUCTURE.md`,
-//         `TASKS.md` T-6/T-7, `compiler/01_tokenize.dag` /
-//         `compiler/02_parse.dag` contracts, `DECISIONS.md` B2-OMNI /
-//         PARSE-1). Grammar obligations ratified in-repo supersede prose;
-//         drift = visible C1 edits to those artifacts, never silent extension.
-// Unifies: (per THESIS:188) language spec = transport spec = interpreter
-//         runtime. ONE substrate carrier for all three roles. Different
-//         lenses read different facts from the same data (emission reads
-//         syntax; transport reads serialization; interpreter reads execution
-//         semantics). A worker needing transport or runtime extends this file,
-//         not a new "transport spec" file.
-//
-// B2-OMNI (operator-ratified 2026-05-15): `.dag` is **language #1**, never
-// hardcoded into the generic tokenizer/parser walkers — those stages consume
-// **this** model's `lex` / `grammar` `Node` trees as the only lexical and
-// syntactic authority (O(N+M) pivot; same pattern as other `extdeps/languages/*`).
-//
-// PARSE-1: bodiless `fn` signature declarations are a **first-class grammar
-// production** encoded as **data** in `grammar` (v4-self-parse era). The generic
-// `02_parse` walker does not special-case them; v2-bridge preflight remains
-// safe (frozen v2 never parses bodiless `fn`). See `compiler/02_parse.dag`
-// header.
-//
-// Owns:
-//   - `DagLanguageModel` — bundles declarative `lex: Node` + `grammar: Node`
-//     (the `LexRules` / `Grammar` roles named in `compiler/01_tokenize.dag` /
-//     `compiler/02_parse.dag`; carrier = `Node` per A1)
-//   - (bundled / Wave follow-on) lexical + syntactic production tables,
-//     C5-fidelity dispositions, D2 resolver facts — same Owns/ELSEWHERE split
-//     discipline as `rust.dag` / `go.dag`; this slice lands the **admission +
-//     bundle head** only
-//
-// Consumes:
-//   - std/node.dag: Node (the grammar-as-data substrate)
-//   - cross-ref: `docs/v3-spec.md`, `STRUCTURE.md`, `TASKS.md` T-4/T-6/T-7,
-//     `DECISIONS.md` **L-5** + B2-OMNI + PARSE-1 + L-2
-//
-// Status: operator-ratified C1 closed-tree extension 2026-05-16 (Option **A**,
-// relay merry-ibex-337) — **admitted**; scaffold — fill per TASKS.md T-4 + T-6/T-7.
-// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
-// contract for the worker. Splitting this file requires explicit operator
-// ratification (substrate extension = stop signal).
-
+// Scope: gunbc `.dag` LanguageModel (typed lex + grammar model; Shape A).
+// Owns: DagLanguageModel; dag_c3_surface_sugar_*; dag_language_model_surface_id; dag_wave1_*; dag_language_model_wave1_void; dag_language_model_canonical_symbols; dag_language_model_wave1_void_canonical_symbols; dag_language_model_is_wave1_void_shape; dag_language_model_empty_canonical_symbol_set.
+// Consumes: compiler/tokenize.dag, compiler/parse.dag, std/collection.dag, std/node.dag.
+// Status: scaffold — TASKS T-4/T-6/T-7.
+// Anchor: docs/v3-spec.md
 
 module v4.extdeps.languages.dag
 
 
-import v4.std.node { Conj, Node, NodeKind, TypeNode }
+import v4.std.collection { Set }
+import v4.compiler.parse { Grammar, ModeledGrammar, VoidGrammar }
+import v4.compiler.tokenize { LexRules, ModeledLexRules, VoidLexRules }
+import v4.std.node { Symbol }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// DagLanguageModel — gunbc `.dag` as a first-class Shape-A LanguageModel
-// (B2-OMNI language #1). `lex` / `grammar` are the lexical and syntactic rule
-// forests consumed by the generic pipeline stages; both are finite `Node`
-// trees (A1), never procedural recognizers in `compiler/*`.
+data dag_c3_surface_sugar_service: Symbol = dag_c3_surface_sugar_service
+data dag_c3_surface_sugar_fn: Symbol = dag_c3_surface_sugar_fn
+data dag_c3_surface_sugar_type: Symbol = dag_c3_surface_sugar_type
+data dag_c3_surface_sugar_operation: Symbol = dag_c3_surface_sugar_operation
+
+
+data dag_language_model_surface_id: Symbol = dag_language_model_surface_id
+
+
 type DagLanguageModel {
-  lex: Node
-  grammar: Node
+  lex: LexRules
+  grammar: Grammar
+  language_identity: Symbol
 }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// Wave-1 **E0 / G0** canonical roots — zero-production `Conj` leaves.
-//
-// These are the **data** instances `compiler/01_tokenize.dag` and
-// `compiler/02_parse.dag` recognize structurally (empty `TypeNode{Conj}`
-// child list). They are not special-cased in the walkers beyond that
-// shared shape; any LanguageModel may reuse E0/G0 for empty fragments.
-fn dag_wave1_e0_void_lex() -> Node {
-  Node {
-    kind: TypeNode {
-      connective: Conj
-    },
-    children: []
-  }
+fn dag_wave1_e0_void_lex() -> LexRules {
+  VoidLexRules
 }
 
 
-fn dag_wave1_g0_void_grammar() -> Node {
-  Node {
-    kind: TypeNode {
-      connective: Conj
-    },
-    children: []
-  }
+fn dag_wave1_g0_void_grammar() -> Grammar {
+  VoidGrammar
 }
 
 
 fn dag_language_model_wave1_void() -> DagLanguageModel {
   DagLanguageModel {
     lex: dag_wave1_e0_void_lex(),
-    grammar: dag_wave1_g0_void_grammar()
+    grammar: dag_wave1_g0_void_grammar(),
+    language_identity: dag_language_model_surface_id
+  }
+}
+
+
+// DECISIONS.md §CP-1b (item 1).
+fn dag_language_model_wave1_void_canonical_symbols() -> Set<Symbol> {
+  Set {
+    member: fn(sym) {
+      sym == dag_c3_surface_sugar_service ||
+        sym == dag_c3_surface_sugar_fn ||
+        sym == dag_c3_surface_sugar_type ||
+        sym == dag_c3_surface_sugar_operation
+    }
+  }
+}
+
+
+// 🟡 predicate dissolution — DECISIONS.md §CP-1b item 2.
+fn dag_language_model_is_wave1_void_shape(lm: DagLanguageModel) -> Bool {
+  match lm.lex {
+    VoidLexRules =>
+      match lm.grammar {
+        VoidGrammar => true
+        ModeledGrammar { root: _ } => false
+      }
+    ModeledLexRules { root: _ } => false
+  }
+}
+
+
+fn dag_language_model_empty_canonical_symbol_set() -> Set<Symbol> {
+  Set {
+    member: fn(_) {
+      false
+    }
+  }
+}
+
+
+fn dag_language_model_canonical_symbols(lm: DagLanguageModel) -> Set<Symbol> {
+  if dag_language_model_is_wave1_void_shape(lm: lm) &&
+    lm.language_identity == dag_language_model_surface_id {
+    dag_language_model_wave1_void_canonical_symbols()
+  } else {
+    dag_language_model_empty_canonical_symbol_set()
   }
 }
