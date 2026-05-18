@@ -1,5 +1,5 @@
 // src/v4/std/verification.dag
-// Scope: Closed TestClaim schema — AssertKind, TestgenTier/Layer, TestClassification, ImpossibleBugClass, T19ManualAnchorKey, TestClaim fields.
+// Scope: Closed TestClaim schema — AssertKind, TestgenTier/Layer, TestClassification, ImpossibleBugClass, T19ManualAnchorKey, T19PresentManualAnchorKey, TestClaim fields.
 // Owns: AssertKind TestgenTier TestgenLayer TestClassification ImpossibleBugClass T19ManualAnchorKey T19PresentManualAnchorKey TestClaim assert_kind_for_manual_anchor t19_present_manual_anchor_key
 // Consumes: v4.std.node v4.std.diagnostic
 // Status: T-3 modeled; substrate extension or file split = operator STOP.

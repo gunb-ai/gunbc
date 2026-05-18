@@ -2,6 +2,7 @@
 //!
 //! T-19 Wave-0: `src/v4/lens/testgen.dag` parses and exposes manual-anchor-key-driven
 //! `Generator` wiring (`kind` + `t19_anchor` + `classification` + `slot: TestgenConcept`).
+//! `Generator.t19_anchor` is `T19PresentManualAnchorKey` (manifest-present rows only; `T19ManualAnchorAbsent` stays on `TestClaim` / full-key lookup paths).
 //! `AssertKind` selection for anchors lives in `v4.std.verification` (`assert_kind_for_manual_anchor`)
 //! as the single substrate authority next to `TestClaim.kind`.
 //! **Note:** `compile_to_dag` on this module alone does not resolve `import v4.std.*` peers
@@ -54,7 +55,8 @@ fn v4_lens_testgen_wave0_substrate_parses() {
         "T-19 present-anchor gate should remain `v4.std.verification`"
     );
 
-    let anchor_ty = generator_t19_anchor_field_ty(&testgen).expect("Generator should declare `t19_anchor`");
+    let anchor_ty =
+        generator_t19_anchor_field_ty(&testgen).expect("Generator should declare `t19_anchor`");
     assert!(
         matches!(
             anchor_ty,
@@ -94,22 +96,26 @@ fn parse_module(source: &str, file: &str) -> v3_compiler::parse_surface::Surface
 fn generator_t19_anchor_field_ty(
     module: &v3_compiler::parse_surface::SurfaceModule,
 ) -> Option<&SurfaceType> {
-    module.items.iter().find_map(|item| match item {
-        SurfaceItem::TypeRecord {
+    for item in &module.items {
+        let SurfaceItem::TypeRecord {
             name,
             fields,
             type_params,
             ..
-        } => {
-            (name == "Generator" && type_params.len() == 1).then(|| {
-                fields
-                    .iter()
-                    .find(|f| f.name == "t19_anchor")
-                    .map(|f| &f.ty)
-            })?
+        } = item
+        else {
+            continue;
+        };
+        if name != "Generator" || type_params.len() != 1 {
+            continue;
         }
-        _ => None,
-    })
+        for field in fields {
+            if field.name == "t19_anchor" {
+                return Some(&field.ty);
+            }
+        }
+    }
+    None
 }
 
 fn module_paths(module: &v3_compiler::parse_surface::SurfaceModule) -> Vec<Vec<&str>> {
