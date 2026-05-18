@@ -1,10 +1,10 @@
 // src/v4/extdeps/languages/verilog.dag
 // Scope: IEEE 1364-2005 Verilog structural carriers (T-4.9).
-// Owns: PortDirection, NonTriregNetKind, NetType, EdgeTrigger, ProceduralAssignKind, ConstantUnaryOperator, ConstantBinaryOperator, ConstantPrimary, ConstantFunctionCall, ConstantConcatenation, ConstantMultipleConcatenation, ConstantExpression, VectorRange, PackingShape, NetVectoredPacking, Signedness, DriveStrengthClause, ChargeStrengthClause, DelayClause, AttributeInstanceClause, VectorednessClause, UnpackedDimensionsClause, VariableInitializerClause, NetDeclaration, NetAssignmentDeclarator, NetIdentifierDeclarator, VariableDeclaration, VariableDeclarator, OutputPortAnsiNetTypeKind, OutputPortAnsiVariableTypeKind, NonAnsiPort, AnsiNetPortType, AnsiPortDeclaration, AnsiHeaderPort, AnsiOutputPortDeclarator, ParameterTypeKind, ParameterAssignment, ParameterDeclaration, SensitivityItem, NetAssignment, ContinuousAssign, AlwaysBlock, AlwaysBlockSensitivity, InitialBlock, PortConnectionActual, OrderedPortConnection, NamedPortConnection, PortConnections, ParameterOverrideActual, NamedParameterOverride, ParameterOverrides, InstanceRangeClause, ModuleInstance, ModuleInstantiation, DefparamAssignment, DefparamDeclaration, GenerateRegion, LoopGenerateConstruct, ConditionalGenerateConstruct, SpecifyBlock, LifetimeClause, FunctionReturnTypeClause, TaskDeclaration, FunctionDeclaration, EventDeclarator, EventDeclaration, GenvarDeclaration, LocalParameterDeclaration, PrimitiveGateKind, GateInstantiation, UdpInstanceName, UdpInstance, UdpInstantiation, UdpDefinition, SpecparamAssignment, SpecparamDeclaration, AnsiModuleItem, NonAnsiModuleItem, ModuleParameterPortList, ModuleKeyword, VerilogModule, VerilogCost
+// Owns: PortDirection, NonTriregNetKind, NetType, EdgeTrigger, ProceduralAssignKind, ConstantUnaryOperator, ConstantBinaryOperator, ConstantSelect, ConstantPrimary, ConstantFunctionCall, ConstantSystemFunctionCall, ConstantConcatenation, ConstantMultipleConcatenation, ConstantExpression, VectorRange, PackingShape, NetVectoredPacking, Signedness, DriveStrengthClause, ChargeStrengthClause, DelayClause, AttributeInstanceClause, VectorednessClause, UnpackedDimensionsClause, VariableInitializerClause, NetDeclaration, NetAssignmentDeclarator, NetIdentifierDeclarator, VariableDeclaration, VariableDeclarator, OutputPortAnsiNetTypeKind, OutputPortAnsiVariableTypeKind, NonAnsiPort, AnsiNetPortType, AnsiPortDeclaration, AnsiHeaderPort, AnsiOutputPortDeclarator, ParameterTypeKind, ParameterAssignment, ParameterDeclaration, SensitivityItem, NetAssignment, ContinuousAssign, AlwaysBlock, AlwaysBlockSensitivity, InitialBlock, PortConnectionActual, OrderedPortConnection, NamedPortConnection, PortConnections, ParameterOverrideActual, ParameterOverridePrimary, NamedParameterOverride, ParameterOverrides, InstanceRangeClause, ModuleInstance, ModuleInstantiation, DefparamAssignment, DefparamDeclaration, GenerateRegion, LoopGenerateConstruct, ConditionalGenerateConstruct, SpecifyBlock, LifetimeClause, FunctionReturnTypeClause, TaskDeclaration, FunctionDeclaration, EventDeclarator, EventDeclaration, GenvarDeclaration, LocalParameterDeclaration, PrimitiveGateKind, GateInstantiation, UdpInstanceName, UdpInstance, UdpInstantiation, UdpDefinition, SpecparamAssignment, SpecparamDeclaration, AnsiModuleItem, NonAnsiModuleItem, ModuleParameterPortList, ModuleKeyword, VerilogModule, VerilogCost
 // Consumes: std/node.dag; Int kernel-ambient.
 // Status: T-4.9 PASS (IN-B); import v4.std.node Symbol only.
 // Anchor: https://standards.ieee.org/ieee/1364/3641/
-// Ledger: DECISIONS.md Part 6 (PR #3229): CP-3229-GREEN-TERMINAL, SL-3229-VERILOG-COST, SL-3229-VERILOG-D3200, SL-3229-VERILOG-NONEMPTY.
+// Ledger: DECISIONS.md Part 6 (PR #3229): CP-3229-GREEN-TERMINAL, CP-3229-VERILOG-CONSTEXPR-TERMINAL, SL-3229-VERILOG-COST, SL-3229-VERILOG-D3200, SL-3229-VERILOG-NONEMPTY.
 
 module v4.extdeps.languages.verilog
 
@@ -57,7 +57,7 @@ type ProceduralAssignKind
   | NonBlocking
 
 
-// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-VERILOG-CONSTEXPR-TERMINAL.
 type ConstantUnaryOperator
   = ConstUnaryPlus
   | ConstUnaryMinus
@@ -71,7 +71,7 @@ type ConstantUnaryOperator
   | ConstUnaryReductionXnor
 
 
-// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-VERILOG-CONSTEXPR-TERMINAL.
 type ConstantBinaryOperator
   = ConstBinaryAdd
   | ConstBinarySub
@@ -99,19 +99,36 @@ type ConstantBinaryOperator
   | ConstBinaryArithmeticShiftRight
 
 
-// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-VERILOG-CONSTEXPR-TERMINAL.
+type ConstantSelect
+  = NoConstantSelect
+  | ConstantBitSelect { index: ConstantExpression }
+  | ConstantPartSelect { msb: ConstantExpression, lsb: ConstantExpression }
+
+
+// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-VERILOG-CONSTEXPR-TERMINAL.
 type ConstantPrimary
   = ConstantNumber { lexeme: String }
-  | ConstantIdentifier { name: Symbol }
-  | ConstantHierarchicalIdentifier { path: List<Symbol> }
+  | ConstantParameterReference { name: Symbol, select: ConstantSelect }
+  | ConstantSpecparamReference { name: Symbol, select: ConstantSelect }
+  | ConstantGenvarReference { name: Symbol }
+  | ConstantHierarchicalReference { path: List<Symbol>, select: ConstantSelect }
   | ConstantFunctionCallPrimary { call: ConstantFunctionCall }
+  | ConstantSystemFunctionCallPrimary { call: ConstantSystemFunctionCall }
   | ConstantConcatenationPrimary { concatenation: ConstantConcatenation }
   | ConstantMultipleConcatenationPrimary { multiple: ConstantMultipleConcatenation }
   | ConstantMinTypMaxPrimary { min: ConstantExpression, typ: ConstantExpression, max: ConstantExpression }
+  | ConstantString { lexeme: String }
 
 
 type ConstantFunctionCall {
   function_name: Symbol
+  arguments: List<ConstantExpression>
+}
+
+
+type ConstantSystemFunctionCall {
+  system_function_name: Symbol
   arguments: List<ConstantExpression>
 }
 
@@ -127,7 +144,7 @@ type ConstantMultipleConcatenation {
 }
 
 
-// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-VERILOG-CONSTEXPR-TERMINAL.
 type ConstantExpression
   = ConstantPrimaryExpression { primary: ConstantPrimary }
   | ConstantUnaryExpression { op: ConstantUnaryOperator, operand: ConstantExpression }
