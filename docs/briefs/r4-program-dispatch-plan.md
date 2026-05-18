@@ -170,12 +170,14 @@ overstated collapsibility):
   ~30–60 lines, mostly deleting hedge-parentheticals + mirroring one
   invariant block; additive, low-risk (INVARIANTS.md is load-bearing →
   mechanical/exact). It is **ratify-exact-text-today**, not a drafting
-  effort. **It kicks off NOTHING larger** — verified: #3241 (the fold) +
-  #3242 (the 🟡-disposition legend) are BOTH already merged to main; the
-  retroactive v4 dissolution audit sweep (#3240 C1) was gated on **#3242**
-  (now merged), **not** on this A1 invariant, so C1 is **already in motion
-  independently**. Authorizing A1 ⇒ only the small placement PR. Maximally
-  low-stakes.
+  effort. **It kicks off NOTHING larger** — verified end-to-end vs
+  origin/main: #3241 (fold, 01:04Z) + #3242 (🟡-legend, 01:36Z) +
+  **#3243 (the retroactive v4 dissolution audit sweep, C1) MERGED
+  03:18Z** are ALL on main. C1 is **DONE**, was never A1-gated, and has
+  **no live downstream dependency** to track (its C1 manager delivered
+  #3243 and archived). Authorizing A1 ⇒ only the small placement PR. The
+  one ongoing thing is the standing autonomous 🟡 burn-down lane (seeded
+  by C1's inventory; also not A1-gated). Maximally low-stakes.
 - **(b) A-vs-B = B is *implied by* (a), not identical to it.** Ratifying
   the keystone-fold ⇒ A-vs-B = B *because* D2-REV / machine-readable
   inhabitance is the primitive-case application of Practice-10. State and
@@ -324,7 +326,7 @@ Everything else **follows from or is independent of** that root call:
 |---|---|---|---|
 | 1 | **A-vs-B** (above) | A = cheap, contradicts D2-REV · B = principled, more rework | **B** |
 | 2 | **#3280 disposition** (follows #1) | If **B**: #3308/#3309 stay held; rework obligation on `862bbde6e`, owner = **Fresh extdeps/T-4 lane**; archive `vivid-carp-207` freeze after. If **A**: unblock #3308/#3309, apply landed shape, archive freeze. **NO REVERT of `862bbde6e`** — the operator's manual merge stands; rework **rides forward** only; a downstream worker must not improvise a destructive revert (standing #3280 do-not-revert). | **B-path, forward-only** |
-| 3a | **Ratify the verbatim invariant blockquote at `docs/modeling-discipline.md` ~§594–600** (*"Do not hand-roll a derived operation. …"* — already on main, flagged proposed/#3240-A1). The fold §581–763 is ALREADY on main; #3240 is a closed tracker (not it). On ratify → `still-hawk-102` (ready, no blockers) lands the block into INVARIANTS.md+MODELING.md + de-hedges L61/L591–592/L718,746,750 — **SMALL** (3 files ~30–60 ln, mechanical, low-risk). Ratify-exact-text-today, NOT a drafting effort. Kicks off NOTHING larger — #3241+#3242 already merged; the v4 audit sweep (#3240 C1) was gated on merged #3242, not A1, already in motion independently. Maximally low-stakes. | **Ratify the text** |
+| 3a | **Ratify the verbatim invariant blockquote at `docs/modeling-discipline.md` ~§594–600** (*"Do not hand-roll a derived operation. …"* — already on main, flagged proposed/#3240-A1). The fold §581–763 is ALREADY on main; #3240 is a closed tracker (not it). On ratify → `still-hawk-102` (ready, no blockers) lands the block into INVARIANTS.md+MODELING.md + de-hedges L61/L591–592/L718,746,750 — **SMALL** (3 files ~30–60 ln, mechanical, low-risk). Ratify-exact-text-today, NOT a drafting effort. Kicks off NOTHING larger — verified end-to-end: #3241 (fold 01:04Z) + #3242 (legend 01:36Z) + **#3243 (C1 v4-audit sweep) MERGED 03:18Z** all on main; C1 is DONE, never A1-gated; no live downstream dependency. A1 ⇒ only the small placement PR. Maximally low-stakes. | **Ratify the text** |
 | 3b | **T-25-core direction** | Genuine design fork (refinement-substrate shape). Needs your design intent — I can lay options if useful. | *needs you* |
 | 4 | **Wave-0 go** | Go = ~6 full + ~3 bounded work-fronts start now (keystone-independent). Wait = nothing moves. | **Go** |
 | 5 | **Fresh-lane exceptions** | Default: `vivid-carp-207` = sole #3280 freeze custodian; `fierce-cat-31` = lens-fan-out closeout only. Alt: hard-cut (churn/risk). | **Defaults** |
