@@ -5,11 +5,11 @@
 //
 // B3 (operator-ratified 2026-05-15): the TYPE SIGNATURE is the single
 // effect authority. This lens READS effects from the signature shape; it
-// does not own a taxonomy. `coordination.dag`'s HttpEffect/QueueEffect/…
-// are typed CARRIERS over the signature, NOT a parallel effect
-// taxonomy/enum — a worker tempted to enumerate effects here or there
-// has created a second authority = STOP (same single-authority class as
-// the AssertKind/testgen reconciliation). One authority: the signature.
+// does not own a taxonomy. `coordination.dag` may carry only one tracked
+// yellow effect-kind scaffold until this lens derives that fact from the
+// signature; empty marker carriers or wrapper-selected effect families
+// are a second authority = STOP (same single-authority class as the
+// AssertKind/testgen reconciliation). One authority: the signature.
 //
 // B-5 (side-session 2026-05-15) — effect GRANULARITY is the
 // affected_set R1 usefulness contract (= #3153 Ex.R1, now encoded):
@@ -69,4 +69,3 @@
 
 
 module v4.lens.effect
-
