@@ -1,6 +1,6 @@
 // src/v4/extdeps/process.dag
 // Scope: process substrate — command invocation, lifecycle, wait/capture.
-// Owns: ProcessId, ExitCode, SignalNum, PosixArgument, PosixEnvironmentName, PosixEnvironmentValue, Command, Termination, TerminatedProcessState, ProcessIdentity, RunningProcess, TerminatedProcess, WaitedTerminatedProcess, CaptureSource, ProcessTable, CapturedByteStream, CapturedOutputPipes, process request/result/operation carriers.
+// Owns: ProcessId, ExitCode, SignalNum, PosixArgument, PosixEnvironmentName, PosixEnvironmentValue, Command, Termination, TerminatedProcessState, ProcessIdentity, RunningProcess, TerminatedProcess, WaitedTerminatedProcess, CaptureSource, ProcessTable, ProcessResources, CapturedByteStream, CapturedOutputPipes, process request/result/operation carriers.
 // Consumes: AbsolutePath, Filesystem, PosixByteString, Diagnostic, Outcome, Byte, FreeMonoid, Int, List, Map.
 // Status: T-4.5 modeled 2026-05-16.
 
@@ -79,12 +79,17 @@ type WaitedTerminatedProcess {
 
 // 🟡 coproduct dissolution — DECISIONS.md OS-1
 type CaptureSource
-  = Live { spawned: SpawnedProcess }
+  = Live { resources: ProcessResources, process: RunningProcess }
   | Waited { waited: WaitedProcess }
 
 
 // Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/functions/fork.html + https://pubs.opengroup.org/onlinepubs/9799919799/functions/exec.html + https://pubs.opengroup.org/onlinepubs/9799919799/functions/waitpid.html
 type ProcessTable
+
+type ProcessResources {
+  table: ProcessTable
+  filesystem: Filesystem
+}
 
 // coincides: finite POSIX pipe byte sequence.
 type CapturedByteStream = FreeMonoid<Byte>
@@ -92,26 +97,24 @@ type CapturedByteStream = FreeMonoid<Byte>
 type CapturedOutputPipes
 
 type SpawnProcessRequest {
-  table: ProcessTable
-  filesystem: Filesystem
+  resources: ProcessResources
   command: Command
 }
 
 type SpawnedProcess {
-  table: ProcessTable
-  filesystem: Filesystem
+  resources: ProcessResources
   process: RunningProcess
 }
 
 type SpawnProcessResult = Outcome<SpawnedProcess>
 
 type WaitProcessRequest {
-  spawned: SpawnedProcess
+  resources: ProcessResources
+  process: RunningProcess
 }
 
 type WaitedProcess {
-  table: ProcessTable
-  filesystem: Filesystem
+  resources: ProcessResources
   process: WaitedTerminatedProcess
 }
 
@@ -120,8 +123,7 @@ type WaitProcessResult = Outcome<WaitedProcess>
 type CapturedProcessOutput {
   stdout: CapturedByteStream
   stderr: CapturedByteStream
-  table: ProcessTable
-  filesystem: Filesystem
+  resources: ProcessResources
   process: TerminatedProcess
 }
 
