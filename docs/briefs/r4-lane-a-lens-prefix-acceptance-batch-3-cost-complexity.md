@@ -48,17 +48,17 @@ The acceptance table below distinguishes the **two structurally distinct failure
 
 ## Witnesses (**≥1 red + ≥1 green** per AC pair — operator fills snippets; candidate-authored substance per `PREFIX-LENS-CI-1` §Witness parallelism)
 
-### Complexity — red witness (expected `DimensionFail` / `Violates`)
+### Complexity — red witness (expected enforcement `Diagnostic` in `DimensionFail.violations`)
 
 - **Fixture id:** `_TODO_OPERATOR_` (candidate: `complexity_violation_O_n_squared_exceeds_O_log_n`)
 - **Snippet / path:** `_TODO_OPERATOR_` (candidate: a 2-arg `.dag` function performing a nested `fold` over a `List<List<T>>` with `apply_lens(complexity, fn, Enforce { budget: O_log_n, diagnostic_severity: Error })` — the nested fold composes to `SymbolicCost::Product(Linear, Linear)` ⇒ asymptotic projection `ComplexityBound::O_n_squared` ≻ declared `O_log_n`)
-- **Asserted outcome (§2):** `Witness::Violates { reason: "asymptotic class O(n²) exceeds declared budget O(log n)", at: <behavior of nested-fold node> }` ⇒ `DimensionFail.violations` carries a typed `Diagnostic` naming both the application span and the offending node
+- **Asserted outcome (§2):** per-Behavior `read` returns `Witness::Inhabits(<step cost>)` at every leaf (no missing facts); fold composes `ComplexityBound::O_n_squared`; the `EnforcedApplication` walk evaluates `complexity_enforcement.violates(O_n_squared, O_log_n) == true` and the fold-pass emits a typed **`Diagnostic`** with `reason: "complexity bound O(n²) exceeds declared budget O(log n)"` and `span` covering both the application site and the offending nested-fold node; that `Diagnostic` is accumulated into `DimensionFail.violations: List<Diagnostic>` per `design-lens-framework.md` §2. **Carrier is enforcement `Diagnostic`, NOT `Witness::Violates`** (the latter is reserved for missing per-Behavior facts).
 
-### Complexity — green witness (expected `DimensionOk` / `Inhabits`)
+### Complexity — green witness (expected `DimensionOk` + zero enforcement Diagnostics)
 
 - **Fixture id:** `_TODO_OPERATOR_` (candidate: `complexity_inhabits_O_log_n_binary_search`)
 - **Snippet / path:** `_TODO_OPERATOR_` (candidate: a binary-search function on a sorted `List<T>` whose `SymbolicCost` composes to `Log`; same `Enforce { budget: O_log_n }`)
-- **Asserted outcome (§2):** `Witness::Inhabits(ComplexityBound::O_log_n)` ⇒ `DimensionOk { dimension_name: "complexity", composed: O_log_n, witnesses: [...per-step Inhabits...] }`
+- **Asserted outcome (§2):** per-Behavior reads return `Witness::Inhabits(<step cost>)`; fold composes `ComplexityBound::O_log_n`; `complexity_enforcement.violates(O_log_n, O_log_n) == false` ⇒ **zero** enforcement `Diagnostic`s; aggregate is `DimensionOk { dimension_name: "complexity", composed: O_log_n, witnesses: [...per-step Inhabits...] }`.
 
 ### Complexity — near-miss (sibling-not-caught) witness
 
@@ -66,17 +66,17 @@ The acceptance table below distinguishes the **two structurally distinct failure
 - **Snippet / path:** `_TODO_OPERATOR_` (candidate: same green binary-search but the program *also* contains an `apply_lens(parallelism, other_loop, Enforce { … })`)
 - **Asserted outcome (§2):** complexity walk produces exactly the binary-search `Inhabits` witness; **zero** complexity-walk diagnostics attributable to the parallelism application (two-separate-walks per **§5**)
 
-### Cost — red witness (expected `DimensionFail` / `Violates`)
+### Cost — red witness (expected enforcement `Diagnostic` in `DimensionFail.violations`)
 
 - **Fixture id:** `_TODO_OPERATOR_` (candidate: `cost_crdt_per_write_exceeds_O_log_replicas`)
 - **Snippet / path:** `_TODO_OPERATOR_` (candidate: a CRDT field whose per-write cost basis declares `O_n` while `apply_lens(cost, my_crdt_field, Enforce { budget: SymbolicCost { per_op: O_log_replicas }, … })`; **§4.2**)
-- **Asserted outcome (§2):** `Witness::Violates { reason: "per-write cost O(n) exceeds declared budget O(log replicas)", at: <behavior of write site> }` ⇒ `DimensionFail` with typed `Diagnostic` per closure gate `crdt_cost_basis_demonstrated`
+- **Asserted outcome (§2):** per-Behavior `read` returns `Witness::Inhabits(<step SymbolicCost>)` at every leaf (no missing facts); fold composes `SymbolicCost { per_op: O_n }`; `cost_enforcement.violates(<composed>, <budget>) == true` ⇒ fold-pass emits a typed **`Diagnostic`** with `reason: "per-write cost O(n) exceeds declared budget O(log replicas)"` naming the offending `SymbolicCost` lattice element + write-site span; `Diagnostic` accumulated into `DimensionFail.violations: List<Diagnostic>` per closure gate `crdt_cost_basis_demonstrated`. **Carrier is enforcement `Diagnostic`, NOT `Witness::Violates`.**
 
-### Cost — green witness (expected `DimensionOk` / `Inhabits`)
+### Cost — green witness (expected `DimensionOk` + zero enforcement Diagnostics)
 
 - **Fixture id:** `_TODO_OPERATOR_` (candidate: `cost_crdt_per_write_inhabits_O_log_replicas`)
 - **Snippet / path:** `_TODO_OPERATOR_` (candidate: same CRDT shape with declared `PerWrite(O_log_replicas)` matching the budget)
-- **Asserted outcome (§2):** `Witness::Inhabits(SymbolicCost { per_op: O_log_replicas })` ⇒ `DimensionOk`
+- **Asserted outcome (§2):** per-Behavior reads return `Witness::Inhabits(...)`; composed `SymbolicCost { per_op: O_log_replicas } ⊑ <budget>`; `cost_enforcement.violates(...) == false` ⇒ **zero** enforcement `Diagnostic`s; aggregate is `DimensionOk { dimension_name: "cost", composed: SymbolicCost { per_op: O_log_replicas }, witnesses: [...] }`.
 
 ### §5.1 default-application synthesis witness
 
@@ -86,7 +86,7 @@ The acceptance table below distinguishes the **two structurally distinct failure
 
 ## Green corpus pin (for AC-1)
 
-Operator enumerates which `.dag` paths the **whole-corpus job** treats as **must-pass** for the cost+complexity walks specifically; until filled, reference **`design-lens-application-surface.md` §1 / §3** whole-tree glob carrier and **§5** O(applications) feasibility. Candidate default (operator-overridable): `src/v4/**/*.dag` minus `src/v4/test/fixture/**` (fixture corpus may carry intentional red snippets), aggregate policy = **zero unexpected `Violates`**, where "expected" = anything enumerated in §Witnesses red rows of this artifact or sister batch (a) acceptance artifact.
+Operator enumerates which `.dag` paths the **whole-corpus job** treats as **must-pass** for the cost+complexity walks specifically; until filled, reference **`design-lens-application-surface.md` §1 / §3** whole-tree glob carrier and **§5** O(applications) feasibility. Candidate default (operator-overridable): `src/v4/**/*.dag` minus `src/v4/test/fixture/**` (fixture corpus may carry intentional red snippets), aggregate policy = **zero unexpected enforcement `Diagnostic`s (from `LensEnforcement.violates == true`) AND zero unexpected missing-fact `Witness::Violates` reads**, where "expected" = anything enumerated in §Witnesses red rows of this artifact or sister batch (a) acceptance artifact.
 
 ## Interface-Freeze interaction (per `PREFIX-LENS-CI-1` §Witness parallelism vs Interface-Freeze)
 
