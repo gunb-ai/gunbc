@@ -69,7 +69,7 @@ type OperandFieldWidthRef {
 
 
 // Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
-// 🟡 coproduct dissolution — DECISIONS.md P4-3208
+// 🟡 feature:fixed-cardinality-width-carrier — DECISIONS.md P4-3208
 type InstructionWord
   = Instr16
   | Instr32
