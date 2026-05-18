@@ -222,7 +222,7 @@ type CppIntegerOverflowDisposition
 // LANDABLE NOW — grounded against current origin/main carriers:
 
 type CppPrimitiveResolutionContext {
-  target: CppTargetProfile
+  target_profile: CppTargetProfile
 }
 
 // C++ `bool` ↔ std/logic.dag's `Bool`.

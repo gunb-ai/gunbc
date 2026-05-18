@@ -1,116 +1,74 @@
 // src/v4/extdeps/cpp_abi.dag
-// Scope: C++ ABI / target data-model facts that parameterize the C++
-//        language model's implementation-defined fundamental widths.
-// Anchor: ISO/IEC 14882 C++ standard [basic.fundamental] for the
-//         implementation-defined width surface, plus the named ABI data
-//         models (LP64, LLP64, ILP32, ILP64) as target-environment facts.
-// Owns: CppMachineWidth8/16/32/64, CppIntegerWidth,
-//       CppCoreIntegerWidthModel, CppPlainCharSignedness,
-//       CppDataModelFamily, CppTargetDataModel, CppTargetProfile, and
-//       the common LP64/LLP64/ILP32/ILP64 type-level fact rows.
-// Consumes: std/machine.dag conceptually: these widths coincide with
-//           MachineWidth<Word8/16/32/64>. The direct aliases wait for the
-//           v4 importer to compile dependency closures in smoke tests.
+// Scope: C++ ABI / target data-model facts for implementation-defined fundamental widths.
+// Owns: CppMachineWidth8/16/32/64, CppIntegerWidth, CppCoreIntegerWidthModel, CppPlainCharSignedness, CppDataModelFamily, CppAbiModel, CppTargetDataModel, CppTargetProfile, Cpp{ILP32,LP64,LLP64,ILP64}DataModel.
+// Consumes: std/machine.dag vocabulary by coincidence index only: MachineWidth<Word8/16/32/64>.
 // Status: T-29 modeled 2026-05-18.
 
 module v4.extdeps.cpp_abi
 
-
-// C++ source-level integer widths are implementation-defined facts of the
-// target environment, not facts of `cpp.dag` itself. This file is the single
-// authority for those ABI data-model facts; C++ primitive fact-bundles consume
-// `CppTargetProfile.data_model` and then alias to the corresponding std/
-// signed or unsigned fixed-width carrier.
-//
-// The width labels below are the T-29 ABI-facing names for T-3's machine
-// vocabulary:
-//   CppMachineWidth8  coincides with MachineWidth<Word8>
-//   CppMachineWidth16 coincides with MachineWidth<Word16>
-//   CppMachineWidth32 coincides with MachineWidth<Word32>
-//   CppMachineWidth64 coincides with MachineWidth<Word64>
-// A future target whose C++ implementation uses a width outside this set must
-// extend std/machine first or fail closed.
+// Anchor: ISO/IEC 14882:2024 [basic.fundamental]; coincides with T-3 MachineWidth<WordN>.
 type CppMachineWidth8
 type CppMachineWidth16
 type CppMachineWidth32
 type CppMachineWidth64
 
+// Anchor: ISO/IEC 14882:2024 [basic.fundamental].
+// 🟢 coproduct dissolution — DECISIONS.md T29-ABI.
 type CppIntegerWidth
   = CppWidth8 { width: CppMachineWidth8 }
   | CppWidth16 { width: CppMachineWidth16 }
   | CppWidth32 { width: CppMachineWidth32 }
   | CppWidth64 { width: CppMachineWidth64 }
 
-
-// Anchor: C++ [basic.fundamental] integer type relative-size requirements:
-// `sizeof(char) <= sizeof(short) <= sizeof(int) <= sizeof(long) <=
-// sizeof(long long)`, and `long long` has at least 64 bits.
-//
-// This carrier records the target's chosen widths. It deliberately does not
-// carry signedness: signed and unsigned variants of each spelling share the
-// same width, while `char` signedness is a separate implementation-defined
-// coordinate.
 type CppCoreIntegerWidthModel<char_width, short_width, int_width, long_width, long_long_width, pointer_width, wchar_t_width>
 
-
-// Anchor: C++ [basic.fundamental] ordinary character types: plain `char` is a
-// distinct type from `signed char` and `unsigned char`; its signedness is
-// implementation-defined.
+// Anchor: ISO/IEC 14882:2024 [basic.fundamental].
+// 🟢 coproduct dissolution — DECISIONS.md T29-ABI.
 type CppPlainCharSignedness
-  = PlainCharSigned
-  | PlainCharUnsigned
+  = PlainCharSigned { tag: CppPlainCharSigned }
+  | PlainCharUnsigned { tag: CppPlainCharUnsigned }
 
-type CppPlainCharSigned = PlainCharSigned
-type CppPlainCharUnsigned = PlainCharUnsigned
+type CppPlainCharSigned
+type CppPlainCharUnsigned
 
-
-// Data-model family is a label for externally named target-environment
-// conventions. The authoritative widths are still the coordinates in
-// `CppCoreIntegerWidthModel`; consumers must not dispatch from this tag alone.
+// Anchor: Itanium C++ ABI revision 1.86 §1.2 and named platform data-model conventions.
+// 🟢 coproduct dissolution — DECISIONS.md T29-ABI.
 type CppDataModelFamily
-  = ILP32
-  | LP64
-  | LLP64
-  | ILP64
+  = ILP32 { tag: CppDataModelFamilyILP32 }
+  | LP64 { tag: CppDataModelFamilyLP64 }
+  | LLP64 { tag: CppDataModelFamilyLLP64 }
+  | ILP64 { tag: CppDataModelFamilyILP64 }
 
-type CppDataModelFamilyILP32 = ILP32
-type CppDataModelFamilyLP64 = LP64
-type CppDataModelFamilyLLP64 = LLP64
-type CppDataModelFamilyILP64 = ILP64
+type CppDataModelFamilyILP32
+type CppDataModelFamilyLP64
+type CppDataModelFamilyLLP64
+type CppDataModelFamilyILP64
 
+// Anchor: Itanium C++ ABI revision 1.86 §1.4 and §2.
+// 🟢 coproduct dissolution — DECISIONS.md T29-ABI.
+type CppAbiModel
+  = ItaniumCxxAbi186 { tag: CppAbiModelItaniumCxxAbi186 }
+  | PlatformCxxAbi { tag: CppAbiModelPlatformCxxAbi }
+
+type CppAbiModelItaniumCxxAbi186
+type CppAbiModelPlatformCxxAbi
 
 type CppTargetDataModel<family, integer_widths, plain_char_signedness>
+type CppTargetProfile<abi_model, data_model>
 
+type CppIntegerWidth8 = CppWidth8 { width: CppMachineWidth8 }
+type CppIntegerWidth16 = CppWidth16 { width: CppMachineWidth16 }
+type CppIntegerWidth32 = CppWidth32 { width: CppMachineWidth32 }
+type CppIntegerWidth64 = CppWidth64 { width: CppMachineWidth64 }
 
-// A full C++ target profile is intentionally one layer above the bare data
-// model. ABI name, object layout, calling convention, and floating-format facts
-// can attach here when the C++ operation-realization and grammar slices need
-// them. T-29 only lands the integer-width axis required by the C++ primitive
-// fact-bundles.
-type CppTargetProfile<data_model>
-
-
-type CppWidth8 = CppWidth8 { width: CppMachineWidth8 }
-type CppWidth16 = CppWidth16 { width: CppMachineWidth16 }
-type CppWidth32 = CppWidth32 { width: CppMachineWidth32 }
-type CppWidth64 = CppWidth64 { width: CppMachineWidth64 }
-
-
-// ILP32: int, long, and pointer are 32-bit; long long remains 64-bit.
-type CppILP32IntegerWidths = CppCoreIntegerWidthModel<CppWidth8, CppWidth16, CppWidth32, CppWidth32, CppWidth64, CppWidth32, CppWidth32>
+type CppILP32IntegerWidths = CppCoreIntegerWidthModel<CppIntegerWidth8, CppIntegerWidth16, CppIntegerWidth32, CppIntegerWidth32, CppIntegerWidth64, CppIntegerWidth32, CppIntegerWidth32>
 type CppILP32DataModel = CppTargetDataModel<CppDataModelFamilyILP32, CppILP32IntegerWidths, CppPlainCharSigned>
 
-
-// LP64: long and pointer are 64-bit; int remains 32-bit.
-type CppLP64IntegerWidths = CppCoreIntegerWidthModel<CppWidth8, CppWidth16, CppWidth32, CppWidth64, CppWidth64, CppWidth64, CppWidth32>
+type CppLP64IntegerWidths = CppCoreIntegerWidthModel<CppIntegerWidth8, CppIntegerWidth16, CppIntegerWidth32, CppIntegerWidth64, CppIntegerWidth64, CppIntegerWidth64, CppIntegerWidth32>
 type CppLP64DataModel = CppTargetDataModel<CppDataModelFamilyLP64, CppLP64IntegerWidths, CppPlainCharSigned>
 
-
-// LLP64: long remains 32-bit while long long and pointer are 64-bit.
-type CppLLP64IntegerWidths = CppCoreIntegerWidthModel<CppWidth8, CppWidth16, CppWidth32, CppWidth32, CppWidth64, CppWidth64, CppWidth16>
+type CppLLP64IntegerWidths = CppCoreIntegerWidthModel<CppIntegerWidth8, CppIntegerWidth16, CppIntegerWidth32, CppIntegerWidth32, CppIntegerWidth64, CppIntegerWidth64, CppIntegerWidth16>
 type CppLLP64DataModel = CppTargetDataModel<CppDataModelFamilyLLP64, CppLLP64IntegerWidths, CppPlainCharSigned>
 
-
-// ILP64: int, long, long long, and pointer are 64-bit.
-type CppILP64IntegerWidths = CppCoreIntegerWidthModel<CppWidth8, CppWidth16, CppWidth64, CppWidth64, CppWidth64, CppWidth64, CppWidth32>
+type CppILP64IntegerWidths = CppCoreIntegerWidthModel<CppIntegerWidth8, CppIntegerWidth16, CppIntegerWidth64, CppIntegerWidth64, CppIntegerWidth64, CppIntegerWidth64, CppIntegerWidth32>
 type CppILP64DataModel = CppTargetDataModel<CppDataModelFamilyILP64, CppILP64IntegerWidths, CppPlainCharSigned>

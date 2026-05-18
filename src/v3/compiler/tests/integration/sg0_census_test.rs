@@ -830,6 +830,7 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // T-4 typescript D2-resolver slice: `compile_to_dag` smoke on
     // `src/v4/extdeps/languages/typescript.dag` (zero module diagnostics).
     // SG-0 ratchet per INVARIANTS §P5(b) + `extdeps_sql_transport_test` precedent.
+    "src/v3/compiler/tests/integration/v4_extdeps_cpp_abi_dag_smoke_test.rs",
     "src/v3/compiler/tests/integration/v4_extdeps_typescript_dag_smoke_test.rs",
     // §1.8 gate #96 (`value_body_substrate_mirror_isomorphism_executable`):
     // CI-visible generated Rust `ValueBody` mirror vs `substrate.dag`
