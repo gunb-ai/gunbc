@@ -619,10 +619,19 @@ is what stops a reviewer from wrongly demanding the impossible:
 - **🟡 substrate-sequencing** — the substrate primitive does *not* exist
   yet (e.g. `fold_node` / a fail-closed `traverse` are not yet in
   `std/`). The finding is then "name the missing primitive"; the
-  hand-rolled construct is **not** accepted as the end state, but the fix
-  is upstream, not in this PR. Per the Calibration section below, a 🟡
-  finding is **not** a BLOCKING request-changes on an honest scaffold PR
-  — it is a tracked upstream obligation.
+  hand-rolled construct is **not** accepted as the end state. A 🟡 is
+  dispositioned exactly like a Practice-4 YELLOW coproduct: deferral is
+  sanctioned **only when tracked**. A 🟡 finding is **BLOCKING unless the
+  gap is recorded as a tracked, named upstream obligation** — the missing
+  primitive named, with an owning task or escalation, and the PR a
+  *declared* honest scaffold. When that record exists, re-blocking the
+  scaffold PR is pointless churn — blocking it cannot land an absent
+  primitive — so a tracked 🟡 lands. An **untracked** 🟡 — a hand-rolled
+  derived operation with no recorded substrate-gap obligation — is silent
+  dissolution debt and **blocks**: this is the Calibration section's
+  "substrate-level issues are almost always BLOCKING" and INVARIANTS P5
+  ("Progress Is Dissolution"). The carve-out is narrow and
+  self-justifying — *can't-fix-here* — never advisory-only debt.
 - **🟢 clean** — audited and *not* a dissolution finding: the recursion
   or `match` is genuinely irregular (the call graph is not the data
   graph), or the construct already uses the derived operation.
@@ -735,11 +744,14 @@ For each relevant principle and its implementing practices:
    hand-rolls. For a row that carries a numbered dissolution finding
    (rows 1 / 2 / 5 / 6 / 7), name the finding and mark its disposition
    (🔴 fix-now / 🟡 substrate-sequencing / 🟢 clean); a 🟡 finding names
-   the missing `std/` primitive — a tracked upstream obligation, not a
-   BLOCKING request-changes on an honest scaffold. A hand-rolled registry
-   row 3 (translation) or 4 (coercion) carries **no** numbered finding —
-   it is a whole-architecture escalation, not a function-scale review
-   finding (per Practice 10's rows-3/4 carve-out).
+   the missing `std/` primitive and is **BLOCKING unless** it is recorded
+   as a tracked, named upstream obligation (owning task or escalation) on
+   a declared honest scaffold — an untracked 🟡 is silent substrate debt
+   and blocks (see Practice 10's disposition legend and the Calibration
+   section). A hand-rolled registry row 3 (translation) or 4 (coercion)
+   carries **no** numbered finding — it is a whole-architecture
+   escalation, not a function-scale review finding (per Practice 10's
+   rows-3/4 carve-out).
 10. Classify every finding as BLOCKING or NON-BLOCKING per the calibration
     above.
 
