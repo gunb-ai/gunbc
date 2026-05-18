@@ -23,7 +23,7 @@ engineering.
 **Irreducible serial spine (remaining):**
 
 ```
-                 ┌─ P1-KEYSTONE (Practice-10 / #3240)  ─┐
+                 ┌─ P1-KEYSTONE (Practice-10 A1 invariant) ─┐
    keystone ─────┼─ T-25-core (refinement substrate)    ─┼──▶ T-4 ──▶ T-9 ──▶ T-10 ──▶ T-11 ──▶ T-16 ──▶ T-15
    cluster (×3)  └─ T-30 (hollow-alias gate)            ─┘  (5 langs)  infer    emit    per-tgt  omni    self-host
                                                                                                           fixed-point
@@ -72,7 +72,7 @@ first) · `DESIGN` · `OP` (operator ruling) · `CP1` (needs v4 front-end output
 | T-6 | compiler/01_tokenize | LANDED | T-3 | LANDED (CP-1b tail) | Lane A |
 | T-7 | compiler/02_parse | LANDED | T-6 | LANDED (CP-1b tail) | Lane A |
 | T-8 | 03_normalize + 03_resolve (+T-28 bundled) | LANDED (seam scaffold until CP-1b closes) | T-7 | IMPL (CP-1b close) | Lane A |
-| **T-4** | extdeps/languages ×5 fact-bundles | WIP, **HELD** | T-3, **P1-KEYSTONE (= Practice-10/#3240 *ratification* — NOT the already-merged numeric #3226)**, T-25-core, T-30 | **OP + DESIGN** | T-4 mgr |
+| **T-4** | extdeps/languages ×5 fact-bundles | WIP, **HELD** | T-3, **P1-KEYSTONE (= Practice-10 **A1-invariant** ratification — NOT the closed #3240 tracker, NOT the merged numeric #3226)**, T-25-core, T-30 | **OP + DESIGN** | T-4 mgr |
 | T-4.5 | extdeps/process + file_system | SCAFFOLD | T-3, T-25-core | IMPL | T-4 mgr |
 | T-4.6 | extdeps/formats ×7 | SCAFFOLD | T-25-core, T-26 | IMPL | T-4 mgr |
 | T-4.7 | frameworks/react | SCAFFOLD | T-4 (ts) | CP1 (LanguageModel) | T-4 mgr |
@@ -138,7 +138,7 @@ first) · `DESIGN` · `OP` (operator ruling) · `CP1` (needs v4 front-end output
 
 | Keystone | Kind | Unblocks | Owner |
 |---|---|---|---|
-| **P1-KEYSTONE / Practice-10 / #3240** | **OPERATOR ratification** | T-4 → T-9 → T-10 → T-11 → T-16; **also #3313 Wave-2 lenses; also the principled basis for #3280 A-vs-B** | **Operator** |
+| **P1-KEYSTONE / Practice-10 A1 invariant** (the live gate; #3240 = closed tracker) | **OPERATOR ratification** | T-4 → T-9 → T-10 → T-11 → T-16; **also #3313 Wave-2 lenses; also the principled basis for #3280 A-vs-B** | **Operator** |
 | **T-25-core** | **DESIGN direction (operator review)** | T-4 refinement-bearers, T-4.5, T-4.6 | **Operator** + std |
 | T-30 hollow-alias gate | IMPL+OP — interim P5(b) mirror on main; generated checker + operator closure remain | T-4 fact-bundle integrity | Dissolution |
 | ~~T-29 C++ ABI~~ | **LANDED (#3267)** — no longer a keystone; residual #3277 in-flight | (was: T-4 cpp slice) | #3277 worker |
@@ -146,9 +146,15 @@ first) · `DESIGN` · `OP` (operator ruling) · `CP1` (needs v4 front-end output
 **Keystone blast radius (widened — T-4-mgr finding):** Practice-10/#3240 does
 not only gate T-4 ×5 forward — it also scopes the **rework obligation on the
 already-LANDED pre-D2-reversal files** (spice #3168, llvm_ir #3171, siblings).
-Ratifying #3240 is therefore *higher-leverage than first stated*: it unblocks
-the forward spine **and** defines the backward-rework set in one ruling. "Landed
-pre-#3240" is not "done."
+Ratifying the **Practice-10 A1 invariant** is therefore *higher-leverage than
+first stated*: it unblocks the forward spine **and** defines the backward-rework
+set in one ruling. "Landed pre-A1" is not "done."
+
+> **Naming convention (cursor review, folded):** herein **"#3240"** refers
+> ONLY to the **CLOSED/SUPERSEDED rework tracker** (and its historical task
+> IDs A1/B1/B2/C1) — it is *not* a live PR to act on. The live operator gate
+> is the **Practice-10 A1-invariant ratification** (the verbatim blockquote,
+> §7 #3a). Any "#3240" below is a historical/tracker reference.
 
 **Related cluster — 2–3 distinct operator items, NOT "one decision"**
 (still-hawk-102 review, folded — the earlier "one keystone" headline
@@ -259,7 +265,7 @@ sessions are *not* folded in — see exceptions.
 | **Fresh: Compiler-Pipeline (+Lens, gated)** | **Pipeline scope (active on Wave-0 go):** T-3 tail, T-6–T-8 CP-1b close, T-9, T-10, T-11, T-16, T-25-tail, T-28; **T-26 = std-authoritative, conduit-only**. **Lens scope (T-12/13/17/18/23) — GATED on the `fierce-cat-31` lens fan-out CLOSEOUT** (one lens owner at a time — see exception 2; no P2 parallel-authority drift) | Pipeline-scope only (no lens until fan-out closes) | T-9 (post-T-4), T-10, T-11, T-16; **lens scope post-`fierce-cat-31`-closeout** |
 | **Fresh: Test/Bootstrap-Infra** | T-19, T-20, T-21, T-22, T-24, T-14, T-15, T-4.11, T-32 | **T-19, T-20, T-21** (full) · **T-22** (`READY*` scaffold scope) | T-24 (post-20/21), T-14, T-15 (terminal) |
 | **Fresh: extdeps/T-4** | T-4 ×5, T-4.5–T-4.14 | **— (T-29/T-4.10/T-4.12 LANDED; T-4 ×5 HELD on keystone)** | T-4 (post-keystone), T-4.5–4.8 |
-| **Fresh: Dissolution** | T-30, T-31, Wave-2 lenses, 🟡 burn-down | **T-31(b) mop-up; T-30 generated-checker** | Wave-2 lenses — *consumes* the §4 cross-lane prereqs (new std/ carriers + 3 derived lens-stages built by Compiler-Pipeline+Lens) — post #3240 |
+| **Fresh: Dissolution** | T-30, T-31, Wave-2 lenses, 🟡 burn-down | **T-31(b) mop-up; T-30 generated-checker** | Wave-2 lenses — *consumes* the §4 cross-lane prereqs (new std/ carriers + 3 derived lens-stages built by Compiler-Pipeline+Lens) — post A1-ratification |
 | **Operator** | Keystone rulings | **see §7 decision sheet** | — |
 
 **Exceptions (NOT migrated — improvising around these is forbidden):**
@@ -331,7 +337,7 @@ Everything else **follows from or is independent of** that root call:
 | 4 | **Wave-0 go** | Go = ~6 full + ~3 bounded work-fronts start now (keystone-independent). Wait = nothing moves. | **Go** |
 | 5 | **Fresh-lane exceptions** | Default: `vivid-carp-207` = sole #3280 freeze custodian; `fierce-cat-31` = lens-fan-out closeout only. Alt: hard-cut (churn/risk). | **Defaults** |
 | 6 | **De-prose Python removal** | You directionally said "kill the de-prose py." Now = delete `strict_deprose_dag.py` + test + 2 CI steps (brief gap until lens enforcement lands) · Sequence = no gap, ratchet lingers. | **Delete now** |
-| 7 | **#3313** (dissolution-lens design — **in active rework**: taxonomy shifted, L1.6 retired→L1.10 family {a TemplateHole, b CanonicalCarrier}, new A0/A1 umbrella, pre-Practice-10-ratification) | Post my review of the design-in-progress; advancement waits on **#3313 stabilizing AND #3240**. Wave-2 batch (d) (warm-koi-304/#3318) **held at track-not-finalize** so witnesses aren't authored against the moving taxonomy; batches a/b/c unaffected. | **Post + sequence; batch (d) hold** |
+| 7 | **#3313** (dissolution-lens design — **in active rework**: taxonomy shifted, L1.6 retired→L1.10 family {a TemplateHole, b CanonicalCarrier}, new A0/A1 umbrella, pre-Practice-10-ratification) | Post my review of the design-in-progress; advancement waits on **#3313 stabilizing AND the Practice-10 A1-invariant ratification** (the live gate — *not* the closed #3240 tracker). Wave-2 batch (d) (warm-koi-304/#3318) **held at track-not-finalize** so witnesses aren't authored against the moving taxonomy; batches a/b/c unaffected. | **Post + sequence; batch (d) hold** |
 | 8 | **#3321 driver shape** — ✅ **RESOLVED (operator 2026-05-18): B2 substrate-native.** | `registry.dag` split out → own clean `.dag` PR (lands now, no gate). `tools/gunbc_prefix_lens_driver/` Rust crate (~467 LOC) **dropped entirely**; B1 also rejected — **no interim out-of-substrate enforcement shell, Python OR Rust** (same thesis ruling as the de-prose-py kill). Whole-corpus gate re-scoped to the **v2 filesystem-walk / corpus-enumeration substrate primitive** = the **T-21/T-24 corpus-drive capability** (built once, PREFIX gate is first consumer). **Operator-accepted consequence:** the CI lens gate lands when that primitive lands, not before. | **Done — B2** |
 
 **Not "one line."** #3a **implies** #1=B (state+confirm the implication; not
