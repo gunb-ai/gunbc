@@ -165,7 +165,7 @@ INVALID-GATE-once-re-gated):
 |---|---|---|---|
 | (baseline) | **~38** | — | — |
 | P1 lands | ~22 | `std/cardinality.dag` refinement | ~16 |
-| P2 lands | 5 named (+ 29 verilog sites converge in one sweep) | `std/collection.dag` Wave-A2 | ~11 named |
+| P2 lands | 5 named (+ 28 verilog sites converge in one sweep) | `std/collection.dag` Wave-A2 | ~11 named |
 | P3 lands | 2 named (+ ~7 in-file) | T-6 + T-7 pipeline substrate | ~9 named |
 | P4 lands | 4 + 1 row + 1 fn (`dag.dag canonical_symbols` #3225) | T-4 fact-bundle Phase-3 | ~3 named |
 | P5 lands | 1 named (+ 3 walker callers cascade in `03_resolve.dag` #3225) | `std/node.dag fold_node` | ~1 |
