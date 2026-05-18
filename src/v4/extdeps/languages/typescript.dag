@@ -14,29 +14,21 @@
 //         execution semantics). A worker needing transport or runtime
 //         extends this file, not a new "transport spec" file.
 //
-// HEADER-ENCODING (mgr brief msg_6d3a3eb2; DECISIONS.md D2 "Encoded in"
-//   column — `extdeps/languages/*` headers; workers encode the resolver
-//   shape): Owns/Consumes/Status below are amended for the D2 resolver
-//   slice only; frozen scaffold Scope/Anchor/Unifies lines are preserved
-//   verbatim above. **D2a(2) grounding-map facet is 🟡 operator-pending**
-//   (shared `GroundingMap` type has no pinned P2 home — do not declare a
-//   local `GroundingMap` here; defer type + all `*_grounding` data rows
-//   until the operator pins the shared carrier).
+// HEADER-ENCODING (fact-bundle reseed): Owns/Consumes/Status below are
+//   amended for the TypeScript primitive scaffold only; frozen scaffold
+//   Scope/Anchor/Unifies lines are preserved verbatim above. 🟡 gated —
+//   feature: T-4 fact-bundle Phase-3 rework (post-D2-reversal), after
+//   T-3, T-29, T-30, and T-25-core. Dissolve this D2-shaped scaffold when
+//   that rework authors TypeScript primitive fact-bundles.
 //
-// Owns (T-4 typescript — D2 resolver slice; discipline from rust.dag PR
-//   #3174 @ 0328bee9 + encoded DECISIONS.md D2 row @ 44a37ad46; **TS spec
+// Owns (T-4 typescript — pre-rework primitive scaffold; **TS spec
 //   partition**, not a literal rust type-copy):
 //
-//   - D2a(1) alias-identity rows to std/ where kernel-ambient resolution
-//     suffices (STRUCTURE.md:147 — `Bool` / `String` / `Int` / `Char` /
-//     `List` / `Map` traceability: Consumes lists modeled authority when
-//     the file depends on that type's facts, not raw kernel spelling).
-//     NON-kernel-ambient std/ targets: explicit `import` + 🟡 TRACKED-
-//     SCAFFOLD until T-3 Wave-A3 ladder lands (named owner + trigger).
-//     Never mint std/ carriers locally (INVARIANTS P2 single-authority).
-//   - D2a(2) **entire facet DEFERRED** — no `GroundingMap` type, no
-//     `data ts_*_grounding` rows (operator escalation: pin shared
-//     `GroundingMap` home before fan-out repeats N declarations).
+//   - TypeScript primitive rows are a 🟡 gated D2-shaped scaffold, not the
+//     terminal model: feature T-4 fact-bundle Phase-3 rework replaces bare
+//     alias / grounding-map rows with spec-read fact-bundles and proven
+//     coincidence evidence where reuse is licensed. Until then, do not add
+//     local `GroundingMap` rows or new alias-identity fan-out.
 //   - D2a(3) **TypeScript-native** operation-semantics — one closed `Disj`
 //     (`TsEcma262PrimitiveOperationSemantics`) whose variants are the
 //     three ECMA-262 primitive-semantics tracks (IEEE-754 `Number`
@@ -50,23 +42,23 @@
 //     types), distinct from Rust's fixed-width `i*` / `u*` ladder.
 //   - TypeScript grammar, structural typing, generics, interfaces,
 //     classes, cost realization — **Owned ELSEWHERE** (bundled T-4
-//     LanguageModel; C5-3 / B2-OMNI / B4); D2 scope guard: do not import D2
-//     into structural-typing facts.
+//     LanguageModel; C5-3 / B2-OMNI / B4); primitive scaffolds do not
+//     decide structural-typing facts.
 //
 // Owned ELSEWHERE:
-//   - Bidirectional `LanguageModel`, emit/ingest ops, `Outcome<T>` seam —
-//     same framing as rust.dag #3174 (D1 lands in std/diagnostic.dag).
-//   - D2b IEEE-754 `Arrow` bodies for `number` — grammar bundle + std/
-//     float.dag ApproximateField attachment (DECISIONS D2b).
+//   - Bidirectional `LanguageModel`, emit/ingest ops, `Outcome<T>` seam.
+//   - IEEE-754 `Arrow` bodies for `number` — grammar bundle + std/
+//     float.dag ApproximateField attachment.
 //
 // Consumes (traceability — kernel-ambient `Bool` needs no import):
 //   - std/logic.dag: sole modeling authority for `Bool` (the D2a(1) row
 //     `type TsBoolean = Bool` is alias-identity to that authority).
 //
-// Status: T-4 typescript D2-resolver slice — D2a(1) bool landed; D2a(2)
-//   grounding 🟡 operator-pending; D2a(3) ECMA-262-native semantics +
-//   numeric-kind vocabulary landed; numeric/string/symbol/nullability
-//   alias rows 🟡 TRACKED-SCAFFOLD per std/ ladders + refinement policy.
+// Status: T-4 TypeScript scaffold — D2-shaped bool alias retained only as
+//   a pre-rework bridge; ECMA-262-native semantics + numeric-kind
+//   vocabulary landed. 🟡 gated — feature: T-4 fact-bundle Phase-3 rework
+//   replaces numeric/string/symbol/nullability alias scaffolds with
+//   TypeScript primitive fact-bundles.
 // Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
 // contract for the worker. Splitting this file requires explicit operator
 // ratification (substrate extension = stop signal).
@@ -90,14 +82,13 @@ module v4.extdeps.languages.typescript
 
 
 // ═════════════════════════════════════════════════════════════════════
-// D2a(2) — GROUNDING MAP (🟡 ENTIRE FACET DEFERRED — operator-pending)
+// Pre-rework grounding rows (🟡 gated — feature: T-4 fact-bundle Phase-3)
 //
-// Per mgr brief msg_6d3a3eb2: `GroundingMap` is SHARED with no pinned P2
-// home yet. Declaring a local `GroundingMap` in each language file would
-// be N parallel declarations — forbidden. **Defer** the carrier type AND
-// every `data ts_*_grounding` instance row until the operator pins the
-// shared `GroundingMap` authority (escalation path). Includes deferred
-// `boolean` / `number` / `bigint` keyword grounding data.
+// D2's `GroundingMap` arrival was cancelled by the 2026-05-17 D2
+// reversal. Do not declare a local `GroundingMap` or `data ts_*_grounding`
+// row here. The terminal replacement is the TypeScript primitive
+// fact-bundle set authored by the T-4 Phase-3 rework after T-3, T-29,
+// T-30, and T-25-core land.
 
 
 // ═════════════════════════════════════════════════════════════════════
@@ -129,7 +120,7 @@ type TsEcma262NumericPrimitiveKind
 
 
 // ═════════════════════════════════════════════════════════════════════
-// D2a(1) — alias-identity (kernel-ambient `Bool`)
+// Pre-rework alias bridge (kernel-ambient `Bool`)
 
 
 // ECMAScript / TypeScript `boolean` ↔ std/logic.dag `Bool`.
@@ -138,13 +129,13 @@ type TsEcma262NumericPrimitiveKind
 type TsBoolean = Bool
 
 
-// D2a(3) — **omitted** for `boolean`: no ECMA-262 operation-semantics event
+// Operation-semantics row omitted for `boolean`: no ECMA-262 event
 // distinct from `BooleanAlgebra<Bool>` (std/logic.dag); no parallel
 // overflow / NaN carrier.
 
 
 // ═════════════════════════════════════════════════════════════════════
-// D2a(3) — ECMA-262 primitive operation-semantics (TS-native; NOT Rust int
+// ECMA-262 primitive operation-semantics (TS-native; NOT Rust int
 // overflow)
 //
 // ECMA-262 exposes three **distinct** primitive-semantics obligations the
@@ -190,37 +181,32 @@ type TsEcma262PrimitiveOperationSemantics
 // **Record-structural** bodies (→ `ValueBody::Structural`) **do** lower clean —
 // they are **not** part of this gap. TS per-primitive D2a(3) instances would be
 // top-level nullary-sum-variant literals (`data ts_*: TsEcma262PrimitiveOperationSemantics
-// = TsNumberIeee754Binary64Semantics`), hence this deferral. **D2a(3)**
+// = TsNumberIeee754Binary64Semantics`), hence this deferral. Operation
 // disposition rows expressed as **record-structural** bodies (variant tags
 // only at **field** positions inside `Rec { … }`) are likewise class-5-SAFE.
-// **D2a(2) grounding**
-// instance rows (`GroundingMap { … }` record bodies; field-level scalars /
-// variants lower via `lower_structural_field_value`) are **class-5-SAFE** and
-// are **not** deferred on Class-5-Gap-3 — only on the orthogonal
-// `GroundingMap`-home operator-pending decision. **Deferred** to Class-5-Gap-3 /
-// top-level-`ValueBody` substrate work (R2/R3 lane, ROADMAP.md:416/#418;
-// #920 / #1017 / #1068). **Trigger** = that gap closes. The D2a(3) **TYPES** /
-// classifiers + Practice-4 ledgers above are canonical regardless; instance rows
+// Fact-bundle grounding rows are **class-5-SAFE** when expressed as
+// records; their absence is gated by the T-4 Phase-3 fact-bundle rework,
+// not by `GroundingMap` home selection. **Deferred** operation instance
+// rows remain gated by Class-5-Gap-3 / top-level-`ValueBody` substrate work
+// (R2/R3 lane, ROADMAP.md:416/#418; #920 / #1017 / #1068). **Trigger** =
+// that gap closes. The operation-semantics **TYPES** / classifiers +
+// Practice-4 ledgers above are canonical regardless; instance rows
 // land when the substrate can structurally validate **top-level** sum-variant
 // `data` bodies.)
 
 
-// 🟡 TRACKED-SCAFFOLD — D2a(1) alias rows (no D2a(2) until operator pins
-// `GroundingMap` home)
+// 🟡 gated — feature: T-4 fact-bundle Phase-3 rework
 //
-//   - `type TsNumber = Float64` — owner: std/float.dag; trigger: Float64 +
-//     ApproximateField inhabitance on main.
-//   - `type TsBigInt = Int` (or ratified target) — owner: std/integer.dag;
-//     trigger: unbounded `Int` ladder + BigInt alignment decision.
-//   - `type TsString = String` — UTF-16 code units vs std/text `String`
-//     refinement — owner: std/text.dag + disposition policy (rust char/str
-//     precedent).
-//   - `symbol` / `null` / `undefined` — LanguageModel + nominal/runtime
-//     substrate; outside this D2 slice.
+// Phase-3 replaces these D2-shaped alias sketches with spec-read bundles:
+// `number` (binary64 + NaN/Infinity/disposition facts), `bigint` (exact
+// unbounded integer facts), `string` (UTF-16 code-unit facts), and
+// `symbol` / `null` / `undefined` (nominal/runtime facts). Any reuse of
+// std/float.dag, std/integer.dag, or std/text.dag must cite proven
+// coincidence evidence.
 
 
 // ═════════════════════════════════════════════════════════════════════
-// D2b — IEEE-754 `number` operation realizations (`Transform →
-// FunctionRef → Arrow` bodies). DEFERRED to bundled T-4 grammar + std/
-// float.dag ApproximateField attachment (DECISIONS D2b; same deferral
-// posture as rust.dag #3174).
+// IEEE-754 `number` operation realizations (`Transform → FunctionRef →
+// Arrow` bodies). 🟡 gated — feature: T-4 fact-bundle Phase-3 rework,
+// paired with the bundled grammar + std/float.dag ApproximateField
+// attachment.

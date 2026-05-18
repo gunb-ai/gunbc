@@ -1,8 +1,8 @@
 //! **Layer:** integration
 //!
 //! Smoke `compile_to_dag` on `src/v4/extdeps/languages/typescript.dag` —
-//! T-4 D2-resolver slice must lower+infer with **zero** module diagnostics
-//! (mgr brief: v2/v3 surface 0-diag gate).
+//! T-4 TypeScript primitive scaffold must lower+infer with **zero** module
+//! diagnostics while the fact-bundle Phase-3 rework is gated.
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::CompileError;
