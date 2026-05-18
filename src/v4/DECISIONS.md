@@ -92,9 +92,67 @@ remain boundary indexes until the named substrate support lands.
 | `std/node.dag` | `Connective`, `Behavior`, `NodeKind`, `EdgeLabel`, `EdgeDiscipline` | Green coproducts | `Connective` is the closed set of six type connectives; additions are substrate-extension stops. `Behavior` is the closed set of five L1 computation behaviors. `NodeKind` is the binary type/computation split. `EdgeLabel` is named vs positional child addressing. `EdgeDiscipline` is the closed classifier derived from connectives. |
 | `std/node.dag` | `Path` prior step sum | Green dissolved-away receipt | Positional path steps are deliberately dissolved: `Path` is `List<Symbol>` over named edges only. The removed path-step sum is not retained; positional addressing is subsumed by replacing the enclosing named subtree until a future ratified extension changes that shape. |
 | `std/witness.dag` | `Witness<C>` | Green coproduct | Closed fail-closed proof/read carrier: `Holds { value } | Violates { diagnostic }`. Terminal because every read either carries the witnessed value or a diagnostic explaining the failed witness. |
+| `extdeps/coordination.dag` | `FrameworkBinding` | Green coproduct | Closed endpoint framework coordinate: an endpoint is either hosted by a named framework or not framework-hosted. Terminal because a bare optional would hide absence, and a flat record would make missing-present combinations representable. |
+| `extdeps/coordination.dag` | `ExchangePattern` | Green coproduct | Closed messaging-pattern coordinate: request-reply, fire-and-forget, stream, and publish-subscribe are mutually exclusive exchange topologies at the wire-contract layer. Settlement and replica convergence are separate coordinates, so async pubsub and streaming-with-convergence remain representable. |
+| `extdeps/coordination.dag` | `SettlementGuarantee` | Green coproduct | Closed settlement coordinate: a contract either settles immediately or carries a structural `SettleBound`. Terminal because an optional bound would allow boundedness to be skipped, while making settlement a coordinate avoids compressing it into exchange topology. |
+| `extdeps/coordination.dag` | `ConsistencyGuarantee` | Green coproduct | Closed replica-convergence coordinate: a contract either has no replica-convergence obligation at this layer or carries a structural `ConvergeBound`. Terminal because consistency is independent of exchange topology and settlement timing. |
+| `extdeps/coordination.dag` | `WireContract` | Green coproduct | Closed typed-bind contract family: every wire contract carries shared `WireContractFacts` plus exactly one concrete effect-typed bind (`HttpBind`, `QueueBind`, `StreamBind`, or `PubSubBind`). Terminal because the typed bind must flow through the contract boundary; a separate effect enum or optional bind field would reintroduce a second authority or allow missing effect evidence. |
+| `extdeps/coordination.dag` | `NetworkAddress` | Yellow value-refinement scaffold | Documented: `NetworkAddress { identity: Symbol }` is an opaque boundary identity until the single std boundary-carrier authority lands. Bounded use: consumers may compare identity only and producers must intern deployment-boundary addresses. Gate: `feature:T-26-std-network-address` (`src/v4/TASKS.md` T-26 std boundary carriers; PR/task: T-26). Dissolve-on-arrival: when T-26 lands the spec-grounded `std` `NetworkAddress`/URI authority, update `coordination.dag` to consume/alias that carrier and retire this local identity wrapper. |
+| `extdeps/coordination.dag` | `WireContractFacts.from/to` endpoint membership | Yellow deployment-membership scaffold | Documented: `WireContractFacts` carries `EndpointRef` values while `DeploymentUnit` owns `endpoints: List<Endpoint>`; current syntax does not encode a scoped membership-and-uniqueness witness tying those refs to exactly one endpoint in that list. Bounded use: producers must only emit contracts whose `from` and `to` refs each resolve to exactly one endpoint in the enclosing `DeploymentUnit.endpoints`; consumers that require closed-world endpoint membership must validate presence and uniqueness before treating the contract as deployment-complete. Gate: `consumer:T-16-deployment-endpoint-partition` plus `feature:T-25-core-validation-boundary` (`src/v4/TASKS.md` T-16/T-25-core). Dissolve-on-arrival: when the T-16 coordination consumer is implemented on the T-25-core fail-closed validation substrate, replace this row with a constructor-validated `WireContractFacts` or deployment-scoped membership/uniqueness witness so absent or multiply-owned endpoint targets are unrepresentable. |
 | `extdeps/languages/go.dag` | (Practice-4 sum carriers + D2 partial) | Green coproduct family / records | Per merge-base `92cb26402` 🟢 blocks (see **Part 6 · CP-3229-GREEN-TERMINAL**). De-prose 2026-05-18: in-file prose removed; `GoCost` / `GoIntegerOverflowDisposition` / D2 deferrals indexed here, not in body comments. |
 | `extdeps/languages/python.dag` | (Practice-4 sum carriers + cost record) | Green coproduct family / records | Same as go row; merge-base had three 🟢 sum ledgers. **Comment-ratio note:** the live file is carrier-minimal (few non-comment lines); Practice-9 content compliance holds while `comment-lines/total-lines` can sit modestly above the ~20% heuristic until more substrate rows land. |
 | `extdeps/languages/rust.dag` | (Practice-4 sum carriers + D2 resolver) | Green coproduct family / records | Same bulk **CP-3229-GREEN-TERMINAL** receipt; `PubInPath` semantic scaffold and `RustCost` raw-`Int` bridge remain producer obligations per Part 6 / substrate tables, not narration in the `.dag` body. |
+
+### Coordination coproduct receipts
+
+`FrameworkBinding` is 🟢 GREEN. Fact placement fails because every endpoint
+consumer needs the hosting coordinate. Variant-is-data fails because a boolean
+plus optional framework would make present-without-framework and hidden absence
+representable. Algebraic form is not applicable; framework hosting is not an
+algebra carrier. Dimensional decomposition fails because hosted vs unhosted is
+exclusive at one endpoint. Parameterized-family reduction fails because the
+hosted arm carries `FrameworkRef` and the unhosted arm is nullary.
+
+`ExchangePattern` is 🟢 GREEN. Fact placement fails because emitter,
+simulator, and verification consumers all read the same exchange topology.
+Variant-is-data fails because independent booleans would permit contradictory
+topologies. Algebraic form is not applicable; the variants are messaging
+patterns, not algebraic operations. Dimensional decomposition has already been
+performed: settlement and consistency are separate carriers, while the exchange
+topology itself remains one-of. Parameterized-family reduction fails because
+the four variants are named topology alternatives, not copies over a declared
+index family.
+
+`SettlementGuarantee` is 🟢 GREEN. Fact placement fails because bounded
+settlement is shared by simulator and verification consumers. Variant-is-data
+fails because an optional bound would allow a bounded claim with no bound.
+Algebraic form is not applicable; settlement timing is not a richer algebra
+carrier. Dimensional decomposition has already been performed: settlement is
+orthogonal to exchange topology and replica convergence. Parameterized-family
+reduction fails because immediate settlement and bounded settlement have
+different payload shapes.
+
+`ConsistencyGuarantee` is 🟢 GREEN. Fact placement fails because convergence
+obligations are shared by distributed simulation and verification consumers.
+Variant-is-data fails because an optional convergence bound would permit a
+convergence claim without evidence. Algebraic form is not applicable here;
+future CRDT or replica algebras may refine implementations, but this carrier is
+the wire-contract convergence obligation. Dimensional decomposition has already
+been performed: convergence is orthogonal to exchange and settlement.
+Parameterized-family reduction fails because the no-convergence and
+bounded-convergence arms have different payload shapes.
+
+`WireContract` is 🟢 GREEN. Fact placement fails because contract consumers
+must read the same endpoint, topology, settlement, consistency, and typed Bind
+facts. Variant-is-data fails because a record with optional bind slots would
+permit missing or multiple effect-typed binds. Algebraic form is not applicable;
+the variants are boundary carriers for concrete effect-typed signatures, not
+operations in an algebra. Dimensional decomposition has already been performed:
+shared endpoint/topology/timing facts live in `WireContractFacts`, while the
+remaining exclusive coordinate is which concrete typed bind inhabits the
+contract. Parameterized-family reduction fails in current v4 syntax because the
+effect parameter cannot be constrained to the closed coordination-effect
+carrier set without reopening the `EffectTypedBind<E>` illegal-state hole.
 
 ## CP-1b — `03_resolve` / `extdeps/languages/dag` scaffold (Practice 9)
 

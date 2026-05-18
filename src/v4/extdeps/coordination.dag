@@ -1,49 +1,8 @@
 // src/v4/extdeps/coordination.dag
-//
-// Scope: Multi-program coordination — distributed deployment + sync/async/stream/pubsub semantics.
-// Anchor: https://en.wikipedia.org/wiki/Distributed_computing +
-//         https://en.wikipedia.org/wiki/Messaging_pattern (request-reply = sync;
-//         fire-and-forget = async; publish-subscribe = pubsub; stream = pipe)
-//         + https://en.wikipedia.org/wiki/Inter-process_communication
-// Design note (NOT the anchor): coordination is effect-typed not behavior-typed
-//   (IN-B decision; no 6th L1 behavior) — see memory feedback_construction_over_ratchets
-//   + THESIS:215-221 omni-emission. The anchor above is the external-spec
-//   authority per STRUCTURE.md extdeps anchor convention; this line is rationale.
-//
-// Owns:
-//   - Endpoint { address: NetworkAddress, language: LanguageRef, framework: FrameworkBinding }
-//   - DeploymentUnit { endpoints: List<Endpoint>, wire_contracts: List<WireContract> }
-//   - WireContract { from: Endpoint, to: Endpoint, semantics: CoordinationSemantics }
-//   - CoordinationSemantics = Sync | Async(SettleBound) | Stream | PubSub
-//     | EventuallyConsistent(ConvergeBound)   (closed enum)
-//     The non-immediate-settlement variants carry their bound as a
-//     STRUCTURAL field on the carrier (operator-ratified 2026-05-15):
-//     "eventually" / "async-settled" is substrate the generated simulator
-//     READS to evaluate deterministically (lens/testgen.dag
-//     simulator-generation arm) — never a wall-clock harness parameter.
-//     A WireContract that cannot express its bound is a substrate STOP,
-//     not a silently-unbounded simulation. (SettleBound vs ConvergeBound
-//     are distinct semantic quantities — fire-and-forget ack vs replica
-//     agreement — kept separate, not prematurely unified. Bound's internal
-//     representation is T-4.8 fill detail, gated by the STOP rule.)
-//   - These are TYPED CARRIERS over existing 5 L1 behaviors (per IN-B decision);
-//     NO 6th behavior introduced — coordination is Bind composition over
-//     effect-TYPED operations (effects intrinsic to the type signature, NOT
-//     an annotation layer — same stance as unenumerated_effects.dag; consistent
-//     with this file's line 8 "effect-typed not behavior-typed")
-//   - Effect types per coordination kind (HttpEffect / QueueEffect / StreamEffect / PubSubEffect)
-//
-// Consumes:
-//   - std/node.dag, std/diagnostic.dag, std/collection.dag, std/nat.dag
-//   - extdeps/languages/*.dag (per-endpoint language)
-//   - extdeps/frameworks/*.dag (per-endpoint framework, optional)
-//
-// Status: T-4.8 Lane C modeled 2026-05-16 (quiet-newt-73) — IN-B Bind
-//   composition + effect typing; resolver-instance seam intentionally
-//   deferred until a named consumer asks for concrete endpoint resolution.
-// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
-// contract for the worker. Splitting this file requires explicit operator
-// ratification (substrate extension = stop signal).
+// Scope: Multi-program coordination as effect-typed Bind composition.
+// Owns: NetworkAddress, CoordinationBoundary, LanguageRef, FrameworkRef, FrameworkBinding, EndpointRef, Endpoint, SettleBound, ConvergeBound, ExchangePattern, SettlementGuarantee, ConsistencyGuarantee, HttpEffect, QueueEffect, StreamEffect, PubSubEffect, BindRef, HttpBind, QueueBind, StreamBind, PubSubBind, WireContract, DeploymentUnit.
+// Consumes: std/node.dag, std/diagnostic.dag, std/collection.dag, std/nat.dag.
+// Status: T-4.8 Lane C modeled; held for operator audit.
 
 module v4.extdeps.coordination
 
@@ -51,303 +10,150 @@ module v4.extdeps.coordination
 import v4.std.collection { List }
 import v4.std.diagnostic { Outcome }
 import v4.std.nat { Nat }
-import v4.std.node { Node }
+import v4.std.node { Symbol }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// Modeling notes (T-4.8 Lane C)
-//
-// DATA-ONLY COORDINATION SURFACE. This file declares the vocabulary that
-// distributed programs and simulator/testgen consumers read: endpoints,
-// deployment units, wire contracts, coordination semantics, and the
-// effect-typed Bind carrier. It deliberately does not resolve concrete
-// endpoint instances, open sockets, spawn runtimes, or lower to any
-// transport. Those are consumers of this model, not alternate authorities.
-// Anchor: THESIS.md "Core abstraction: dependency modeling" (v4 supersession
-// 2026-05-15) + src/v3/SELF_HOSTING.md §2 L2.5 domain modeling.
-//
-// IN-B: BIND COMPOSITION + EFFECT TYPING, NO SIXTH BEHAVIOR. A coordinated
-// step is still a `Node` whose L1 behavior is Bind (std/node.dag). The
-// coordination fact is carried by the type of the Bind wrapper:
-// `EffectTypedBind<E>`. The `E` parameter is the effect type itself
-// (`HttpEffect`, `QueueEffect`, `StreamEffect`, `PubSubEffect`), so the
-// effect is part of the value's type signature, not an annotation side
-// table and not a behavior variant.
-// Anchor: THESIS.md "Substrate shape" bullets for five L1 behaviors
-// (v4 supersession 2026-05-15) + src/v4/DECISIONS.md A1/A2.
-//
-// BOUNDS ARE STRUCTURAL. `SettleBound` and `ConvergeBound` use Peano
-// `Nat` steps: deterministic simulator ticks / acknowledgement rounds,
-// not wall-clock host timing. That keeps async-settlement and eventual-
-// consistency checks replayable by a generated simulator. If a producer
-// cannot express the bound, the producer returns `Outcome.Rejected` with
-// a Diagnostic; it must not fabricate an unbounded/default value.
-// Anchor: INVARIANTS.md P3 Fail-Closed + src/v4/DECISIONS.md D1
-// Outcome<T> landed 2026-05-16.
-//
-// REFERENCES ARE OPAQUE SYMBOLS. `LanguageRef`, `FrameworkRef`, and
-// `NetworkAddress` are local typed carriers over kernel-ambient `Symbol`.
-// They are name references into extdeps/languages, extdeps/frameworks, and
-// the deployment boundary respectively. This is the same K-1 discipline as
-// std/node.dag: coordination consumers compare identity; human-readable
-// spellings stay at rendering / external-boundary layers.
-// Anchor: src/v4/std/node.dag K-1 opaque Symbol, operator-ratified
-// 2026-05-15.
-//
-// OPTIONAL FRAMEWORK WITHOUT `Option`. The frozen scaffold used the
-// phrase "optional FrameworkRef". The modeled carrier below is
-// `FrameworkBinding = HostedByFramework | NoFramework`. That preserves
-// the external fact while avoiding a bare optional slot whose absence
-// could be silently ignored. Consumers must match both arms.
-// Anchor: INVARIANTS.md P2 Boundary Discipline + P3 Fail-Closed.
-//
-// FALLIBLE BOUNDARY CONSTRUCTION. This file does not mint a local
-// `CoordinationResult`; `CoordinationBoundary<T>` is an alias-identity
-// onto `Outcome<T>` from std/diagnostic.dag. Any producer that validates
-// endpoint addresses, language/framework references, or wire-contract
-// compatibility returns this shared success|Diagnostic carrier.
-// Re-declaring success/failure payloads here would duplicate the
-// fail-closed carrier authority.
-// Anchor: src/v4/std/diagnostic.dag Outcome<T>, landed by D1 2026-05-16.
-
-
-// ─────────────────────────────────────────────────────────────────────
-// References and endpoint carrier
-// Anchor: src/v4/std/node.dag K-1 opaque Symbol, operator-ratified
-// 2026-05-15.
-
-
-// Anchor: RFC 3986 URI generic syntax + src/v4/std/node.dag K-1.
-// 🟡 TRACKED SCAFFOLD: `NetworkAddress` is currently an opaque boundary
-// identity because v4 has no shared URI/IP/socket-address carrier. Richer
-// source is namable (URI/IP address grammar), so this is not terminal
-// green. Bounds on use: producers must intern only deployment-boundary
-// network addresses and consumers may compare identity only. Named
-// dissolution trigger: when a shared network-address/URI carrier lands
-// under extdeps (owner: future T-4 network-address slice), replace this
-// wrapper's `identity: Symbol` with the shared carrier or alias to it.
+// Anchor: RFC 3986, January 2005, https://www.rfc-editor.org/rfc/rfc3986
 type NetworkAddress {
   identity: Symbol
 }
 
 
-// CoordinationBoundary<T> — namespace alias only. The result shape is
-// owned by std/diagnostic.dag's `Outcome<T>`.
-// Anchor: src/v4/std/diagnostic.dag Outcome<T>, D1 landed 2026-05-16.
+// Anchor: src/v4/std/diagnostic.dag Outcome<T>, D1 ratified 2026-05-16.
 type CoordinationBoundary<T> = Outcome<T>
 
 
-// Anchor: THESIS.md "Omni-emission" Shape A language targets +
-// src/v4/STRUCTURE.md extdeps/languages tree, v4 supersession 2026-05-15.
+// Anchor: THESIS.md v4 supersession 2026-05-15, Shape A language targets.
 type LanguageRef {
   identity: Symbol
 }
 
 
-// Anchor: src/v4/STRUCTURE.md extdeps/frameworks tree, v4 supersession
-// 2026-05-15.
+// Anchor: src/v4/STRUCTURE.md v4 supersession 2026-05-15, extdeps/frameworks.
 type FrameworkRef {
   identity: Symbol
 }
 
 
-// FrameworkBinding — the framework coordinate on an endpoint.
-//
-// Coproduct dissolution (Practice 4 / INVARIANTS P1) — 🟢 GREEN
-// (terminal). Ledger:
-//   1. Fact placement — FAILS: every endpoint consumer needs to know
-//      whether framework semantics apply.
-//   2. Variant-is-data — FAILS: a `Bool` or optional slot would hide the
-//      framework identity when present, or allow absence to be skipped.
-//   3. Algebraic form — N/A: framework hosting is not an algebra carrier.
-//   4. Dimensional — FAILS: an endpoint is either framework-hosted or
-//      not; the two cases are exclusive alternatives.
-//   5. Parameterized family — FAILS: the two arms are heterogeneous
-//      (one carries a FrameworkRef, one carries no payload).
-// Anchor: INVARIANTS.md P2/P3 optional-boundary discipline.
+// Anchor: INVARIANTS.md P2/P3 boundary discipline.
+// 🟢 coproduct dissolution — DECISIONS.md#coordination-coproduct-ledgers
 type FrameworkBinding
   = HostedByFramework { framework: FrameworkRef }
   | NoFramework
 
 
-// Anchor: distributed computing endpoint vocabulary, https://en.wikipedia.org/wiki/Distributed_computing
-// + THESIS.md "Omni-emission" multi-layer coherence.
+// Anchor: src/v4/std/node.dag K-1, operator-ratified 2026-05-15.
+type EndpointRef {
+  identity: Symbol
+}
+
+
+// Anchor: THESIS.md v4 supersession 2026-05-15, omni-emission.
 type Endpoint {
+  identity: EndpointRef,
   address: NetworkAddress,
   language: LanguageRef,
   framework: FrameworkBinding
 }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// Coordination semantics
-// Anchor: https://en.wikipedia.org/wiki/Messaging_pattern +
-// https://en.wikipedia.org/wiki/Eventual_consistency.
-
-
-// Anchor: INVARIANTS.md P3/P4 — deterministic structural bounds, not
-// wall-clock harness policy.
+// Anchor: INVARIANTS.md P3/P4 deterministic structural bounds.
 type SettleBound {
   steps: Nat
 }
 
 
-// Anchor: https://en.wikipedia.org/wiki/Eventual_consistency +
-// INVARIANTS.md P3/P4 deterministic structural bounds.
+// Anchor: https://en.wikipedia.org/wiki/Eventual_consistency
 type ConvergeBound {
   steps: Nat
 }
 
 
-// CoordinationSemantics — the closed messaging/coordination partition.
-//
-// Anchors: request-reply, fire-and-forget, publish-subscribe, stream/pipe,
-// and eventual consistency. The non-immediate variants carry their
-// deterministic simulator bound structurally.
-//
-// Coproduct dissolution (Practice 4 / INVARIANTS P1) — 🟢 GREEN
-// (terminal). Ledger:
-//   1. Fact placement — FAILS: the wire contract's coordination mode is
-//      shared by simulator, emitter, and verification consumers.
-//   2. Variant-is-data — FAILS: flattening to flags like
-//      `{ sync, async, stream, pubsub, bound? }` admits contradictory
-//      modes and missing bounds.
-//   3. Algebraic form — N/A: the modes are messaging-pattern
-//      alternatives, not projections from a richer algebra carrier.
-//   4. Dimensional — FAILS: one wire contract has exactly one
-//      coordination semantic at this layer; the modes are alternatives.
-//   5. Parameterized family — FAILS: the variants are not mechanical
-//      copies over a declared parameter set; two carry distinct bounds.
-// Anchor: https://en.wikipedia.org/wiki/Messaging_pattern (request-reply,
-// fire-and-forget, publish-subscribe, stream/pipe) +
-// https://en.wikipedia.org/wiki/Eventual_consistency.
-type CoordinationSemantics
-  = Sync
-  | Async { settle: SettleBound }
-  | Stream
-  | PubSub
-  | EventuallyConsistent { converge: ConvergeBound }
+// Anchor: https://en.wikipedia.org/wiki/Messaging_pattern
+// 🟢 coproduct dissolution — DECISIONS.md#coordination-coproduct-ledgers
+type ExchangePattern
+  = RequestReply
+  | FireAndForget
+  | StreamExchange
+  | PublishSubscribe
 
 
-// ─────────────────────────────────────────────────────────────────────
-// Effect typing for Bind composition
-// Anchor: THESIS.md "Substrate shape" Bind = let-binding over the five L1
-// behaviors + INVARIANTS.md worked example "effect algebra".
+// Anchor: INVARIANTS.md P3 fail-closed structural bounds.
+// 🟢 coproduct dissolution — DECISIONS.md#coordination-coproduct-ledgers
+type SettlementGuarantee
+  = ImmediateSettlement
+  | SettlesWithin { bound: SettleBound }
 
 
-// Anchor: HTTP request/response as a coordination effect family,
-// https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/Overview
+// Anchor: https://en.wikipedia.org/wiki/Eventual_consistency
+// 🟢 coproduct dissolution — DECISIONS.md#coordination-coproduct-ledgers
+type ConsistencyGuarantee
+  = NoReplicaConvergence
+  | EventuallyConsistent { bound: ConvergeBound }
+
+
+// Anchor: HTTP Semantics RFC 9110, June 2022, https://www.rfc-editor.org/rfc/rfc9110
 type HttpEffect {}
 
 
-// Anchor: fire-and-forget / message queue coordination family,
-// https://en.wikipedia.org/wiki/Message_queue
+// Anchor: https://en.wikipedia.org/wiki/Message_queue
 type QueueEffect {}
 
 
-// Anchor: stream/pipe coordination family,
-// https://en.wikipedia.org/wiki/Pipeline_(Unix)
+// Anchor: https://en.wikipedia.org/wiki/Pipeline_(Unix)
 type StreamEffect {}
 
 
-// Anchor: publish-subscribe messaging pattern,
-// https://en.wikipedia.org/wiki/Publish%E2%80%93subscribe_pattern
+// Anchor: https://en.wikipedia.org/wiki/Publish%E2%80%93subscribe_pattern
 type PubSubEffect {}
 
 
-// CoordinationEffect — the closed effect family accepted by
-// `EffectTypedBind<E>` in this file's scope. The individual variants are
-// also first-class types so a consumer can require exactly `HttpEffect`
-// or exactly `StreamEffect` at a boundary.
-//
-// Coproduct dissolution (Practice 4 / INVARIANTS P1) — 🟢 GREEN
-// (terminal). Ledger:
-//   1. Fact placement — FAILS: transport/effect family is a shared
-//      dispatch fact for Bind consumers.
-//   2. Variant-is-data — FAILS: a string or flag set would allow
-//      invalid combinations and would not carry typed payloads.
-//   3. Algebraic form — N/A: these are coordination effect families,
-//      not a richer std/algebra carrier.
-//   4. Dimensional — FAILS: one coordination effect inhabits exactly
-//      one family at this layer.
-//   5. Parameterized family — FAILS: the payload shapes are not a
-//      uniform `Effect<Kind>` projection over a declared closed set.
-// Anchor: INVARIANTS.md worked example "effect algebra" + THESIS.md
-// five L1 behavior substrate; effect family is typed data over Bind.
-type CoordinationEffect
-  = Http { effect: HttpEffect }
-  | Queue { effect: QueueEffect }
-  | Streamed { effect: StreamEffect }
-  | Published { effect: PubSubEffect }
-
-
-// Anchor: THESIS.md "Substrate shape" Bind behavior + src/v4/std/node.dag
-// A1 one recursive Node, no sixth behavior.
-type EffectTypedBind<E> {
-  bind: Node,
-  effect: E
+// Anchor: src/v4/std/node.dag A1/K-1, operator-ratified 2026-05-15.
+type BindRef {
+  identity: Symbol
 }
 
 
-type HttpBind = EffectTypedBind<HttpEffect>
-type QueueBind = EffectTypedBind<QueueEffect>
-type StreamBind = EffectTypedBind<StreamEffect>
-type PubSubBind = EffectTypedBind<PubSubEffect>
+// Anchor: src/v4/DECISIONS.md B3/B-5, operator-ratified 2026-05-15.
+type HttpBind {
+  bind: BindRef,
+  effect: HttpEffect
+}
 
 
-// EndpointEffectClass — idempotency evidence at the endpoint boundary.
-// It is partitioned, not a boolean, matching the v3 effects.dag
-// idempotent-vs-breaking shape. The evidence can be consumed by the
-// idempotency lens without recomputing the transport family from strings.
-// Anchor: INVARIANTS.md worked example "effect algebra (idempotency as
-// partitioned structure)".
-type EndpointEffectClass<E>
-  = EndpointIdempotent { effect: E }
-  | EndpointBreaking { effect: E }
+// Anchor: src/v4/DECISIONS.md B3/B-5, operator-ratified 2026-05-15.
+type QueueBind {
+  bind: BindRef,
+  effect: QueueEffect
+}
 
 
-// ─────────────────────────────────────────────────────────────────────
-// Wire contracts and deployment unit
-// Anchor: https://en.wikipedia.org/wiki/Inter-process_communication +
-// THESIS.md "Omni-emission" shared Node tree across layers.
+// Anchor: src/v4/DECISIONS.md B3/B-5, operator-ratified 2026-05-15.
+type StreamBind {
+  bind: BindRef,
+  effect: StreamEffect
+}
 
 
-// Anchor: https://en.wikipedia.org/wiki/Inter-process_communication +
-// https://en.wikipedia.org/wiki/Messaging_pattern.
+// Anchor: src/v4/DECISIONS.md B3/B-5, operator-ratified 2026-05-15.
+type PubSubBind {
+  bind: BindRef,
+  effect: PubSubEffect
+}
+
+
+// Anchor: https://en.wikipedia.org/wiki/Inter-process_communication
 type WireContract {
-  from: Endpoint,
-  to: Endpoint,
-  semantics: CoordinationSemantics
+  from: EndpointRef,
+  to: EndpointRef,
+  exchange: ExchangePattern,
+  settlement: SettlementGuarantee,
+  consistency: ConsistencyGuarantee
 }
 
 
-// Anchor: distributed deployment unit as endpoint graph,
-// https://en.wikipedia.org/wiki/Distributed_computing.
+// Anchor: https://en.wikipedia.org/wiki/Distributed_computing
 type DeploymentUnit {
   endpoints: List<Endpoint>,
   wire_contracts: List<WireContract>
 }
-
-
-// Boundary operation signatures stay comment-prose in the v2-bridge era
-// per DECISIONS.md PARSE-1: frozen v2 rejects bodiless `fn`, while v4's
-// future parser will admit checked signatures. Consumers that validate a
-// deployment or construct a typed Bind must use the shared fail-closed
-// carrier:
-//
-//   validate_deployment : DeploymentUnit -> Outcome<DeploymentUnit>
-//   type_http_bind      : (Node, HttpEffect) -> Outcome<HttpBind>
-//   type_queue_bind     : (Node, QueueEffect) -> Outcome<QueueBind>
-//   type_stream_bind    : (Node, StreamEffect) -> Outcome<StreamBind>
-//   type_pubsub_bind    : (Node, PubSubEffect) -> Outcome<PubSubBind>
-//
-// 🟡 DEFERRED RESOLVER-INSTANCE SEAM (named trigger, canonical-first).
-// Owner: future T-4.8 resolver-instance slice. Trigger: first consumer
-// that must resolve a concrete `EffectTypedBind<E>` into target-runtime
-// realization rows or endpoint-instance composition. Obligation: declare
-// the resolver rows in the single shared home chosen then; do not mint
-// per-language or per-framework local maps here. This mirrors the D2
-// GroundingMap-home deferral: canonical vocabulary first, instance rows
-// only once their P2 home and consumer are named.
-// Anchor: src/v4/DECISIONS.md D2 resolver shape + INVARIANTS.md P2
-// single-authority boundary discipline.
