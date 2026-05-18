@@ -4,7 +4,7 @@
 // Owns: Nat, nat_cata, nat_add, nat_mul, nat_compare, nat_is_zero, nat_additive_commutative_monoid, nat_semiring.
 // Consumes: std algebra.
 // Status: T-3 modeled.
-// Ledger: DECISIONS.md Part 6 — SL-P7-NAT-IS-ZERO-VPRED.
+// Ledger: DECISIONS.md Part 6 — SL-P7-NAT-IS-ZERO-VPRED, SL-P7-NAT-COMPARE-VPRED.
 
 
 module v4.std.nat
@@ -36,6 +36,7 @@ fn nat_add(a: Nat, b: Nat) -> Nat {
 fn nat_mul(a: Nat, b: Nat) -> Nat {
   nat_cata(n: a, zero: Zero, succ: fn(acc) { nat_add(a: b, b: acc) })
 }
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: coproduct variant-discriminant predicate substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived Nat total-order compare (binary query consumer); forbidden: nat_cata / fold launder (operator CORE 2026-05-18).
 fn nat_compare(a: Nat, b: Nat) -> Ordering {
   match a {
     Zero => match b {

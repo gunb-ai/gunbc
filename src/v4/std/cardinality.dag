@@ -17,7 +17,7 @@ type Unit
 type NonZeroNat {
   prev: Nat
 }
-// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-NAT-LE-WITNESS.
 type NatLeWitness
   = LeqZero { upper: Nat }
   | LeqSucc { inner: NatLeWitness }

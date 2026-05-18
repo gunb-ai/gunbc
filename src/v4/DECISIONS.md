@@ -906,6 +906,24 @@ PROPOSES; it does not decide.
 
 **Verified:** merge-base `92cb26402:src/v4/std/integer.dag` contains **no** `Coproduct dissolution` / `TRACKED 🟡` / `🟢 GREEN` Practice-4 checkpoint blocks on sum coproducts (search-empty). Removed body `//` text was **D2 / modeling prose** already superseded at the ledger level by **DECISIONS.md `D2-REV`**. **`GroupCompletion<M>` constrained-inhabitance** is **not** a coproduct dissolution receipt; verbatim merge-base text is relocated at **`SL-3229-INTEGER-GROUP-COMPLETION`** below (not omitted).
 
+### CP-3229-NAT-LE-WITNESS — `std/cardinality.dag` `NatLeWitness` (Practice-4 terminal sum)
+
+**Authority:** PR #3310 P1 cardinality refinement (api-review codex blocking receipt, 2026-05-18).
+
+**Disposition:** **🟢 GREEN terminal** — inductive witness `NatLeWitness = LeqZero { upper: Nat } | LeqSucc { inner: NatLeWitness}` encodes `a ≤ b` on Peano `Nat`; the impossible `Succ _ ≤ Zero` case is **structurally absent** (illegal states unrepresentable).
+
+**Five-pattern ledger (Practice 4):**
+
+1. **Fact placement** — FAILS: witness is shared `std/cardinality.dag` vocabulary, not a single downstream consumer projection.
+2. **Variant-is-data / flat record** — FAILS: `LeqSucc` is inductive structure, not a tagless product encoding of `≤`.
+3. **Algebraic law carrier** — FAILS: not an algebra table; principled via `Nat` + witness spine only.
+4. **Dimensional decomposition** — FAILS: one coproduct axis, not orthogonal coordinates.
+5. **Parameterized indexed family** — FAILS: closed two-variant sum, not `F<X>` over an open index.
+
+**Live substrate tag:** `// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-NAT-LE-WITNESS.` immediately precedes `type NatLeWitness` in `src/v4/std/cardinality.dag`.
+
+**Cross-ref:** Part 1 table row `NatLeWitness` / `UpperBoundedNat`; **`§PR-3252-cardinality-std`** for `Never` / `Unit` inhabitance context. **Not** part of merge-base **`### CP-3229-GREEN-TERMINAL`** bulk table (that table enumerates strict-de-prose merge-base files only); this subsection is the **reachable** Practice-4 receipt for `NatLeWitness`.
+
 ### SL-P7-NAT-IS-ZERO-VPRED — `std/nat.dag` `nat_is_zero` (predicate-dissolution interim)
 
 **Authority:** operator CORE relay (`still-hawk-102` → `jolly-ibex-599` → P7 lane, 2026-05-18).
@@ -921,6 +939,20 @@ PROPOSES; it does not decide.
 **Live substrate tag:** one-line **`// 🟡 gated — …`** immediately precedes `fn nat_is_zero` in `src/v4/std/nat.dag`; header **`// Ledger: … SL-P7-NAT-IS-ZERO-VPRED`**.
 
 **PR receipt:** gunbc **#3255** (P7) + on-thread **#3244** disposition history.
+
+### SL-P7-NAT-COMPARE-VPRED — `std/nat.dag` `nat_compare` (predicate-dissolution interim)
+
+**Authority:** PR #3310 (api-review codex blocking receipt, 2026-05-18) — binary `Nat` **total-order trichotomy** (`Ordering`) promoted from `float.dag` into `std/nat.dag` as shared substrate.
+
+**Disposition:** **🟡 gated** — `fn nat_compare` is a **Practice 10 predicate-dissolution** interim: hand `match` performs **paired Peano spine unwinding** for `Less | Equal | Greater` with **no** consumption yet of a substrate-declared **binary** fold / generated order query (distinct from unary `nat_cata`). **Not 🟢 terminal** while the discriminant / systematic-compare substrate bucket is open.
+
+**`feature:` gate:** coproduct **variant-discriminant predicate** substrate (**`node://adhoc-2145db6b-69a`**, same lane bucket as `SL-P7-NAT-IS-ZERO-VPRED`).
+
+**Dissolve-on-arrival:** replace `nat_compare`’s **body** with the substrate-owned **canonical Nat compare** (generated lex-compare / `OrderedSemiring<Nat>` witness consumer — whichever the `node://adhoc-2145db6b-69a` closure lands) **without** `nat_cata` / extra hand `match` **fold laundering** as stand-in authority (operator).
+
+**Live substrate tag:** one-line **`// 🟡 gated — …`** immediately precedes `fn nat_compare` in `src/v4/std/nat.dag` (parallel interim glyph to `nat_is_zero`, with **binary** `dissolve-on-arrival` text). File header **`// Ledger: … SL-P7-NAT-IS-ZERO-VPRED, SL-P7-NAT-COMPARE-VPRED`**.
+
+**PR receipt:** gunbc **#3310** (this PR).
 
 ### SL-P6-FREEMONOID-IS-EMPTY-VPRED — `std/algebra.dag` `free_monoid_is_empty` (predicate-dissolution interim)
 
