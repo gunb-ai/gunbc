@@ -7,8 +7,11 @@
 //! `docs/briefs/r4-lane-a-lens-interface-freeze-pin.md` §3 (`PREFIX-LENS-CI-1`).
 //!
 //! **SUPPLEMENTARY / DELETE-DATED:** the `whole-corpus` path uses the existing v3
-//! `compile_to_dag` surface over the v3 lens + fixture `.dag` buckets enumerated here,
-//! plus an aggregated `v2-compiler compile --source-root src/v4` gate when
+//! `compile_to_dag` surface over **`src/v3/lenses/**`** plus **`tokenize.dag`** /
+//! **`parse_tables.dag`** only; `src/v3/spec/**`, compiler fixtures, `operators.dag`,
+//! `pipeline.dag`, and `regen.dag` are **skipped** (their receipts live in v3-compiler
+//! integration / bootstrap targets — not isolated `compile_to_dag` here), plus an
+//! aggregated `v2-compiler compile --source-root src/v4` gate when
 //! `PREFIX_DRIVER_SKIP_V4` is unset — per `docs/briefs/r4-lane-a-lens-prefix-t23-t12-ci.md`
 //! Fork A (interim v3 fold; dissolves when the v4 driver reaches parity).
 
