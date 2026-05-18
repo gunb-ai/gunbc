@@ -13,7 +13,9 @@ import v4.std.verification {
   Unit,
   AssertKind,
   assert_kind_for_manual_anchor,
+  t19_present_manual_anchor_key,
   T19ManualAnchorKey,
+  T19PresentManualAnchorKey,
   T19ManualTcConjEmpty,
   T19ManualTcDisjEmpty,
   T19ManualTcArrowTwoConj,
@@ -25,8 +27,7 @@ import v4.std.verification {
   T19ManualNatAddAssociativity,
   T19ManualNatMulLeftIdentity,
   T19ManualNatMulAnnihilator,
-  T19ManualNatMulAssociativity,
-  T19ManualAnchorAbsent
+  T19ManualNatMulAssociativity
 }
 import v4.std.diagnostic {
   Outcome,
@@ -81,7 +82,7 @@ type TestgenConcept
 type Generator<C> {
   classification: TestClassification
   kind: AssertKind
-  t19_anchor: T19ManualAnchorKey
+  t19_anchor: T19PresentManualAnchorKey
   slot: C
 }
 
@@ -130,10 +131,8 @@ fn bootstrap_tier1_unit_classification() -> TestClassification {
 }
 
 
-fn testgen_concept_for_manual_anchor(key: T19ManualAnchorKey) -> Outcome<TestgenConcept> {
+fn testgen_concept_for_manual_anchor(key: T19PresentManualAnchorKey) -> Outcome<TestgenConcept> {
   match key {
-    T19ManualAnchorAbsent =>
-      Rejected { diagnostic: t19_manual_anchor_absent_bootstrap_diagnostic() }
     T19ManualTcConjEmpty =>
       Produced {
         value: TypeConstruction {
@@ -237,19 +236,23 @@ fn testgen_concept_for_manual_anchor(key: T19ManualAnchorKey) -> Outcome<Testgen
 fn bootstrap_claim_generator_for_manual_anchor(
   key: T19ManualAnchorKey
 ) -> Outcome<Generator<TestgenConcept>> {
-  match assert_kind_for_manual_anchor(key: key) {
+  match t19_present_manual_anchor_key(key: key) {
     Rejected { diagnostic: d } => Rejected { diagnostic: d }
-    Produced { value: kind } =>
-      match testgen_concept_for_manual_anchor(key: key) {
+    Produced { value: present } =>
+      match assert_kind_for_manual_anchor(key: present) {
         Rejected { diagnostic: d } => Rejected { diagnostic: d }
-        Produced { value: slot } =>
-          Produced {
-            value: Generator {
-              classification: bootstrap_tier1_unit_classification(),
-              kind: kind,
-              t19_anchor: key,
-              slot: slot,
-            }
+        Produced { value: kind } =>
+          match testgen_concept_for_manual_anchor(key: present) {
+            Rejected { diagnostic: d } => Rejected { diagnostic: d }
+            Produced { value: slot } =>
+              Produced {
+                value: Generator {
+                  classification: bootstrap_tier1_unit_classification(),
+                  kind: kind,
+                  t19_anchor: present,
+                  slot: slot,
+                }
+              }
           }
       }
   }

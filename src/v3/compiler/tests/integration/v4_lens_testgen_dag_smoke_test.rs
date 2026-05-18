@@ -48,19 +48,33 @@ fn v4_lens_testgen_wave0_substrate_parses() {
         1,
         "T-19 manual-anchor AssertKind authority should remain `v4.std.verification`"
     );
+    assert_eq!(
+        function_count(&verification, "t19_present_manual_anchor_key"),
+        1,
+        "T-19 present-anchor gate should remain `v4.std.verification`"
+    );
+
+    let anchor_ty = generator_t19_anchor_field_ty(&testgen).expect("Generator should declare `t19_anchor`");
+    assert!(
+        matches!(
+            anchor_ty,
+            SurfaceType::Named { name: n, .. } if n == "T19PresentManualAnchorKey"
+        ),
+        "Generator.t19_anchor must be `T19PresentManualAnchorKey` (illegal states unrepresentable); got {anchor_ty:?}"
+    );
 
     let assert_kind_rt = fn_return_type(&verification, "assert_kind_for_manual_anchor")
         .expect("assert_kind_for_manual_anchor should have an explicit return type");
     assert!(
         type_is_outcome_named(assert_kind_rt, "AssertKind"),
-        "manual-anchor `AssertKind` projection must fail-close `T19ManualAnchorAbsent` via `Outcome<AssertKind>`; got {assert_kind_rt:?}"
+        "manual-anchor `AssertKind` projection must return `Outcome<AssertKind>`; got {assert_kind_rt:?}"
     );
 
     let concept_rt = fn_return_type(&testgen, "testgen_concept_for_manual_anchor")
         .expect("testgen_concept_for_manual_anchor should have an explicit return type");
     assert!(
         type_is_outcome_named(concept_rt, "TestgenConcept"),
-        "manual-anchor `TestgenConcept` projection must fail-close `T19ManualAnchorAbsent` via `Outcome<TestgenConcept>`; got {concept_rt:?}"
+        "`TestgenConcept` scheduling projection must return `Outcome<TestgenConcept>`; got {concept_rt:?}"
     );
 
     let bootstrap_rt = fn_return_type(&testgen, "bootstrap_claim_generator_for_manual_anchor")
@@ -75,6 +89,27 @@ fn parse_module(source: &str, file: &str) -> v3_compiler::parse_surface::Surface
     let tokens = tokenize_for_test(source, file)
         .unwrap_or_else(|diag| panic!("{file}: tokenization failed: {diag:?}"));
     parse_for_test(&tokens, file).unwrap_or_else(|diag| panic!("{file}: parse failed: {diag:?}"))
+}
+
+fn generator_t19_anchor_field_ty(
+    module: &v3_compiler::parse_surface::SurfaceModule,
+) -> Option<&SurfaceType> {
+    module.items.iter().find_map(|item| match item {
+        SurfaceItem::TypeRecord {
+            name,
+            fields,
+            type_params,
+            ..
+        } => {
+            (name == "Generator" && type_params.len() == 1).then(|| {
+                fields
+                    .iter()
+                    .find(|f| f.name == "t19_anchor")
+                    .map(|f| &f.ty)
+            })?
+        }
+        _ => None,
+    })
 }
 
 fn module_paths(module: &v3_compiler::parse_surface::SurfaceModule) -> Vec<Vec<&str>> {
