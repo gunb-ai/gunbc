@@ -49,9 +49,8 @@ fn v4_lens_testgen_wave0_substrate_parses() {
         "T-19 manual-anchor AssertKind authority should remain `v4.std.verification`"
     );
 
-    let assert_kind_rt = fn_return_type(&verification, "assert_kind_for_manual_anchor").expect(
-        "assert_kind_for_manual_anchor should have an explicit return type",
-    );
+    let assert_kind_rt = fn_return_type(&verification, "assert_kind_for_manual_anchor")
+        .expect("assert_kind_for_manual_anchor should have an explicit return type");
     assert!(
         type_is_outcome_named(assert_kind_rt, "AssertKind"),
         "manual-anchor `AssertKind` projection must fail-close `T19ManualAnchorAbsent` via `Outcome<AssertKind>`; got {assert_kind_rt:?}"
