@@ -56,7 +56,6 @@ PART6_SLUG_HEAD_RE = re.compile(r"^### (SL-3229-[A-Z0-9-]+|CP-3229-[A-Z0-9-]+)\b
 EXTRA_PART6_SLUGS_BY_REL: dict[str, frozenset[str]] = {
     "src/v4/extdeps/languages/verilog.dag": frozenset(
         {
-            "SL-3229-VERILOG-VECTOR-RANGE",
             "SL-3229-VERILOG-COST",
             "SL-3229-VERILOG-NONEMPTY",
         }
@@ -235,6 +234,14 @@ def coproduct_tag_from_merge_base(rel: str) -> dict[str, tuple[str, str]]:
                 file=sys.stderr,
             )
             sys.exit(1)
+    if rel == "src/v4/extdeps/languages/verilog.dag":
+        for nm in (
+            "ConstantUnaryOperator",
+            "ConstantBinaryOperator",
+            "ConstantPrimary",
+            "ConstantExpression",
+        ):
+            out[nm] = ("🟢", "CP-3229-GREEN-TERMINAL")
     return out
 
 
