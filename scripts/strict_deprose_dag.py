@@ -217,8 +217,6 @@ def coproduct_tag_from_merge_base(rel: str) -> dict[str, tuple[str, str]]:
         elif face == "yellow":
             if "verilog" in rel:
                 out[nm] = ("🟡", verilog_yellow_ref(tail))
-            elif "ptx" in rel:
-                out[nm] = ("🟡", "SL-3229-PTX-DIM3")
             elif "float" in rel:
                 out[nm] = ("🟡", "SL-3229-FLOAT-NOMINAL")
             else:
