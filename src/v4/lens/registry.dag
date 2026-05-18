@@ -1,5 +1,5 @@
 // src/v4/lens/registry.dag
-// Scope: PREFIX / T-23 v0 LENS_ID → v4 module_path registry (frozen driver argv).
+// Scope: PREFIX / T-23 v0 LENS_ID → v4 module_path registry (operator pin §3).
 // Owns: LensRegistryEntryV0 data rows
 // Consumes: v4.std.text String
 // Status: v0 data-only

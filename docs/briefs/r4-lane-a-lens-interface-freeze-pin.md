@@ -27,14 +27,16 @@
 
 Per **`docs/design-lens-application-surface.md` §5.1**: for **unannotated** function declarations, the compiler **synthesizes** implicit **`IntrospectApplication<ComplexitySummary>`** during the lens fold (not stored in source). **Never** auto-synthesizes `Enforce` for unannotated functions. Acceptance batches that touch complexity **must** cite §5.1 when stating “always-on introspection.”
 
-## 3. Driver / registry CLI — **v0** (binary live; evaluation path still scaffold)
+## 3. Registry + frozen argv (v0 — **substrate receipt today**; **executable deferred B2**)
 
-**Invocation template (frozen string for Acceptance tables):**
+**Invocation template (frozen string for Acceptance tables — intent until an in-tree consumer lands):**
 
 ```text
 gunbc-prefix-lens-driver v0 <LENS_ID> --path <FILE.dag> [--mode enforce|introspect]
 gunbc-prefix-lens-driver v0 <LENS_ID> --whole-corpus
 ```
+
+**In-tree executable / interim Rust gate:** **None** — operator relay **2026-05-18** (*witty-cat-59* via *fierce-cat-31*, Lane A CP mgr): **no** standalone `tools/gunbc_prefix_lens_driver/` crate; **no** `gunbc_ci.rs` interim fold (**B1** off). **B2** only: a **shared v2 corpus-enumeration / filesystem-walk primitive** (**T-21/T-24**, owner coordination **#3322 §5**) consumed by **`.dag`**; PREFIX is the **first consumer**, not a second walker. **Accepted latency:** no CI step may claim a live `target/release/gunbc-prefix-lens-driver` receipt until that substrate ships.
 
 **`LENS_ID` registry (v0 — extend only via operator-signed pin amend):**
 
@@ -49,10 +51,9 @@ gunbc-prefix-lens-driver v0 <LENS_ID> --whole-corpus
 | `unused_parameters` | *(TBD v4 module)* | placeholder — ratify module path before impl. |
 | `structural_resolution` | *(TBD v4 module)* | placeholder — ratify module path before impl. |
 
-**Machine authority for argv `LENS_ID` enumeration:** `src/v4/lens/registry.dag` (`LensRegistryEntryV0` rows). `gunbc-prefix-lens-driver` emits `VALID_LENS_IDS` at compile time from every `lens_id: "…"` field in that file (`tools/gunbc_prefix_lens_driver/build.rs`). The §3 table remains a human mirror; amend the `.dag` first, then align this table on operator-signed pin revision.
+**Machine authority:** **`src/v4/lens/registry.dag`** exclusively — each `LensRegistryEntryV0` row’s `lens_id` / `module_path` strings. The §3 table is a **human mirror**; amend the `.dag` first, then align this table on operator-signed pin revision.
 
-**Runnable-AC column:** **`gunbc-prefix-lens-driver` v0** is a live **compile-only / registry** receipt with a **frozen `--whole-corpus` argv** (CI runs `target/release/gunbc-prefix-lens-driver`; see `PREFIX-LENS-CI-1` Fork A / `tools/gunbc_prefix_lens_driver`). The flag **enumerates** tracked `*.dag` paths for dispatch; it is **not** a claim that every tracked file is compiled by one uniform primitive. The v0 dispatch is **bucketed**: **`compile_to_dag`** runs for **`src/v3/lenses/**`** and **`src/v3/compiler/tokenize.dag`** / **`parse_tables.dag`** only; **`src/v4/**`** is covered by one aggregated **`v2-compiler compile --source-root src/v4`** step (skipped in the v3 CI job via **`PREFIX_DRIVER_SKIP_V4`**). Explicit **skips** (receipts elsewhere — v3 bootstrap / integration / other workflows): **`src/v3/spec/**`**, **`src/v3/compiler/tests/**`**, **`operators.dag`**, **`pipeline.dag`**, **`regen.dag`**, plus **`dsl/**`**, **`src/v2/**`**, **`wip/**`**, **`src/v3/std/**`** per the driver’s `classify_path`. Use this argv for rows that mean **`LENS_ID` registry validation** plus **this named compile bucket** — not “every `.dag` compiles in isolation under `compile_to_dag`.” Rows that assert **lens evaluation** (`Witness` / `DimensionOk` / `DimensionFail` on applied v4 `Lens<Output>` with **`--mode enforce|introspect`**) stay **`TBD …`** until the evaluation dispatch lands — do not treat the v0 compile gate as a substitute receipt for those claims.
-
+**Runnable-AC column (today):** Rows requiring **closed `LENS_ID` names** cite **`src/v4/lens/registry.dag`**. Rows requiring **v4 parse bootstrap** cite the existing **v2 → v4** job in **`.github/workflows/ci.yml`** (`v2-compiler compile --source-root src/v4 …`). Rows that assert a **live CLI `LENS_ID` / whole-corpus compile gate** are **deferred** until **B2** — do not substitute an interim binary receipt. **Lens evaluation** (`Witness` / `DimensionOk` / `DimensionFail` on applied v4 `Lens<Output>` with **`--mode enforce|introspect`**) stays **`TBD …`** until the evaluation dispatch lands — do not treat compile-only receipts as evaluation substitutes.
 ## 4. Mechanical port backlog (explicit — not blocking witness authoring)
 
 The following are **not** in this pin’s frozen **names** (they are **implementation debt** to wire carriers to a compiling `application.dag` body):
