@@ -42,9 +42,9 @@ module v4.extdeps.formats.json
 // 🟡 gated — feature: std/cardinality.dag bounded-natural refinement (T-3 Wave-A2) — DECISIONS.md Part 6 · SL-3229-LLVM-WIDTH.
 //
 // CARRIER SEAM (NOT a per-file sum) — the ratified corrected seam #3,
-// fail-closed BOTH directions (single authority = the Deferred (1)
-// block below; this is the summary, not a second authority — no
-// divergence):
+// fail-closed BOTH directions (single authority = DECISIONS.md Part 6 ·
+// SL-3229-T4-FORMAT-T6T7 + SL-3229-LLVM-WIDTH; this is the summary, not a
+// second authority — no divergence):
 //   - `json_parse : String -> Outcome<JsonValue>`
 //   - `json_emit  : JsonValue -> Outcome<String>`  (NOT a total
 //      `-> String`; a spec-invalid JsonValue — e.g. a non-§6
@@ -59,8 +59,8 @@ module v4.extdeps.formats.json
 // denotes `Outcome<JsonValue>`; its `emit(JsonValue) -> String` line is
 // the total-emit shape superseded by this ratified fail-closed seam —
 // the literal header-line edit is the operator-tier batched
-// header-reconcile (csv-class; tracked-not-silent, see the Deferred (1)
-// block). No parallel `Result<ok, err>` in std/. This is the cross-file
+// header-reconcile (csv-class; tracked-not-silent, see DECISIONS.md
+// Part 6 · SL-3229-T4-FORMAT-T6T7). No parallel `Result<ok, err>` in std/. This is the cross-file
 // seam the canonical-first directive ratifies on THIS file; the other
 // five formats consume the SAME fail-closed-both-directions carrier.
 //

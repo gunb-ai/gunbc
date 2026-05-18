@@ -34,7 +34,7 @@ module v4.extdeps.formats.toml
 // (the ONE operator-ratified D1 carrier `Outcome<T>`, std/diagnostic.dag
 // DECISIONS item **I** — NOT a per-file sum); operations deferred-with-
 // named-owner. (Single authority = DECISIONS.md Part 6 · SL-3229-T4-FORMAT-T6T7 + SL-3229-LLVM-WIDTH; this
-// summary states it, the block specifies it — no divergence.) Same
+// summary states it, Part 6 specifies it — no divergence.) Same
 // discipline, TOML-anchored facts.
 //
 // DECLARATIVE-NOW / OPERATIONS-DEFERRED-WITH-OWNER (#3169/#3184).
