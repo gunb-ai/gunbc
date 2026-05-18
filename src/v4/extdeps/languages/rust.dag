@@ -1,14 +1,17 @@
 // src/v4/extdeps/languages/rust.dag
 // Scope: Rust Reference surface (scalar/reference/visibility/cost carriers) plus ratified D2 resolver types homed here pending resolver.dag migration.
-// Owns: RustIntKind, RustIntWidth, RustFloatWidth, RustScalar, RustReferenceKind, NamedSegment, PubInPath, RustVisibility, RustReference, RustCost, OverflowAction, OverflowDisposition.
-// Consumes: v4.std.node.Node, Symbol; kernel-ambient Int, List.
-// Status: extdeps rust slice; PubInPath path semantics producer-obligation per DECISIONS.md Part 6 + D2-REV; D2b Arrow bodies deferred to bundled LanguageModel work.
+// Owns: RustIntKind, RustIntWidth, RustFloatWidth, RustScalar, RustReferenceKind, NamedSegment, PubInPath, RustVisibility, RustReference, RustCost, OverflowAction, OverflowDisposition, rust_bool_grounding, RustNever.
+// Consumes: v4.std.node.Node, Symbol; v4.std.logic.Bool, bool_boolean_algebra; v4.std.algebra.BooleanAlgebra; v4.std.cardinality.Never; kernel-ambient Int, List.
+// Status: extdeps rust slice; bool grounded (canonical-B, v2-verified): rust_bool_grounding references the single std BooleanAlgebra<Bool> authority — Rust Reference fixes bool as exactly {true,false} with standard ops, so this is the shared truth structure with no build-up. `!` grounds to the std Never primitive directly (uninhabited; nothing above the primitive to model). PubInPath path semantics producer-obligation per DECISIONS.md Part 6 + D2-REV; D2b Arrow bodies deferred to bundled LanguageModel work.
 // Anchor: https://doc.rust-lang.org/reference/
 // Ledger: DECISIONS.md Part 6 (PR #3229): CP-3229-GREEN-TERMINAL.
 
 module v4.extdeps.languages.rust
 
 import v4.std.node { Node, Symbol }
+import v4.std.logic { Bool, bool_boolean_algebra }
+import v4.std.algebra { BooleanAlgebra }
+import v4.std.cardinality { Never }
 
 // 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
 type RustIntKind
@@ -77,3 +80,18 @@ type OverflowAction
 type OverflowDisposition<IRCarrier>
   = MustPanicOnOverflow
   | MayPanicOrTwoComplementWrap
+
+// Anchor: https://doc.rust-lang.org/reference/types/boolean.html
+// Rust Reference: `bool` has exactly two values, `true` and `false`, with
+// the standard boolean operations. Read against the spec there is nothing
+// above the primitive to model — Rust bool *is* the shared 2-element
+// BooleanAlgebra. Grounded by referencing the single std authority
+// instance; coincidence is fold-discharged over shared vocabulary, not
+// asserted by a bare alias or a {spelling} label.
+data rust_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
+
+// Anchor: https://doc.rust-lang.org/reference/types/never.html
+// `!` is the uninhabited type: zero inhabitants, no operations — it *is*
+// the std `Never` primitive. Nothing above the primitive to model, so the
+// grounding is the direct primitive identity (the degenerate base case).
+type RustNever = Never
