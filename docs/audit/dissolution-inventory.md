@@ -607,10 +607,11 @@ DECISIONS.md Part 6 · SL-3229-LLVM-WIDTH.`
   std/cardinality.dag refinement (T-3) — DECISIONS.md Part 6 · SL-3229-LLVM-WIDTH.`
 
 **`extdeps/formats/json.dag`** — **Live (post–strict-deprose / #3299):**
-**23 lines** total. After `JsonValue` (lines 12–18), **lines 21–22** are
-exactly **two** terse `// 🟡 gated — feature: … — DECISIONS.md Part 6 ·
-SL-3229-T4-FORMAT-T6T7` / `… SL-3229-LLVM-WIDTH` gates (parse/emit → **P3**
-family + cardinality / numeric carriers → **P1**). The historical C1
+**24 lines** total. After `JsonValue` (lines 12–18), **lines 21–23** are
+exactly **three** terse `// 🟡 gated — feature: … — DECISIONS.md Part 6 ·
+SL-3229-T4-FORMAT-T6T7` / `… SL-3229-LLVM-WIDTH` / `… SL-3229-JSON-UNIQUE-NAMES`
+gates (parse/emit → **P3** family + cardinality / numeric carriers → **P1**
++ JSON object profile validation → **P3** / T-4.6). The historical C1
 sweep cited **multi-hundred-line** `// 🟡 TRACKED-SCAFFOLD` prose blocks
 at old line numbers — **retired** on `main`; they are **not** present
 unchanged on HEAD.
@@ -659,7 +660,7 @@ alias-identity arrivals (lines 21, 34, 67, 69 on old `main` snapshots).
 | SL-3229-FLOAT-NOMINAL | DECISIONS.md row | feature | yes (cardinality.dag T-3; machine.dag = cross-ref only) | yes | **VALID (PR #3299)** |
 | verilog.dag × 5 in-file cite-sites | one-liner | feature | yes (inherits SL-3229-VERILOG-D3200 / P4) | — | **VALID** |
 | llvm_ir.dag:28 in-file cite-site | one-liner | feature | yes (inherits SL-3229-LLVM-WIDTH) | yes | VALID |
-| json.dag gate one-liners (post-`JsonValue`) | gate one-liner | feature | yes (Part 6 slugs → P1+P3) | yes | **CONCRETIZED** |
+| json.dag gate one-liners (post-`JsonValue`) | gate one-liner | feature | yes (Part 6 slugs → P1+P3 + JSON unique-name profile) | yes | **CONCRETIZED** |
 | yaml.dag gate one-liners (post-`YamlValue`) | gate one-liner | feature | yes (Part 6 slugs → P1+P3 + YAML keys) | yes | **CONCRETIZED** |
 | toml.dag gate one-liners (+ table-syntax coproduct tag) | gate one-liner | feature | yes (Part 6 slugs → P1+P3 + datetime + table syntax) | yes | **CONCRETIZED** |
 | typescript.dag (historical cite) | header + coproduct one-liners | feature | yes (P4 / TS-D2) | yes | **RESOLVED** |
