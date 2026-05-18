@@ -333,8 +333,8 @@ substrate imported them, so the cut is a pure scope reduction.
 
 **Role:** Lexical half of generic `ingest` (00_compile B2-OMNI): walker over `LanguageModel` **lex** `Node` data — grammar-as-data, not hardcoded `.dag` classes (N×M STOP). Wave-2+ = extend **data**, not walker.
 
-**I/O**: `(Source, LanguageModel) -> Outcome<TokenStream>` — conceptual ingest half once `LanguageModel` is the named bundle in headers.
-*Merged `01_tokenize.dag` entry today:* `tokenize(text: String, file: Symbol, rules: LexRules) -> Outcome<TokenStream>` with `LexRules = Node`.
+**Merged `00_compile.dag` ingest (literal `Owns` today):** `ingest: (Source, LanguageModel) -> Result<Node, Diagnostic>` — authoritative composed ingest spelling on the orchestrator file (per DECISIONS.md item **I**: `Result<…, Diagnostic>` prose denotes the same fail-closed surface as `Outcome<…>` from `std/diagnostic.dag`; do not “fix” TASKS to one carrier spelling without changing **`00_compile.dag` in the same commit train**).
+**Merged `01_tokenize.dag` (literal `Owns` today):** `tokenize(text: String, file: Symbol, rules: LexRules) -> Outcome<TokenStream>` with `LexRules = Node` (`String` + `file: Symbol` is the concrete source slot inside `ingest` today; read `LexRules` as the lexical projection of the `LanguageModel` bundle per Theme-A #9 — not a second authority).
 *Theme-A #9:* Until `LanguageModel` is a **named** carrier (or merged `00_compile.dag` states formally that the model **IS** a `Node`), read **`LexRules` / `Grammar` as the model's lexical and syntax projections** on the same grammar-as-data — not a second authority beside the conceptual `(Source, LanguageModel)` spelling.
 
 **Modeling decisions**:
@@ -355,7 +355,8 @@ substrate imported them, so the cut is a pure scope reduction.
 
 **Role:** Syntactic half of `ingest`: walker over `Grammar` `Node`; grammar = bidirectional concrete-syntax ⟷ `Node`; parse forward, emit (T-10) inverse (`ingest = emit⁻¹`, C5). G0+ = **data** on model.
 
-**I/O**: `(TokenStream, Grammar) -> Outcome<ParseTree>` — `ParseTree = Node` (A1).
+**I/O**: `(TokenStream, Grammar) -> Outcome<ParseTree>` — `ParseTree = Node` (A1); matches **`compiler/02_parse.dag` `Owns`** (`parse: (TokenStream, Grammar) -> Outcome<ParseTree>`).
+*Ingest tie-in (`00_compile.dag` `Owns` today):* composed `ingest` still closes as **`Result<Node, Diagnostic>`** (see T-6); this stage keeps **`Outcome<ParseTree>`** in **`02_parse.dag`** until a ratified rename train retires the split spelling across **`00_compile.dag` + `01_tokenize` + `02_parse` together**.
 *Theme-A #9:* Same projection reading as T-6 — `Grammar` is the syntax-side parameter until the named `LanguageModel` bundles lex + grammar explicitly.
 
 **Modeling decisions**:
@@ -375,7 +376,7 @@ substrate imported them, so the cut is a pure scope reduction.
 
 **Role:** First two `core` transforms after `ingest` on `00_compile`: **normalize**, then **resolve** (`resolve ∘ normalize` under standard `∘`, matching the composite line below). T-9 **infer** follows on the resolved tree; the full `core` chain on parse output is `infer ∘ resolve ∘ normalize` (never `normalize ∘ resolve ∘ infer`). Causal `Node` transforms — C3 desugar; K-1 resolve; derived facts carried **once** on returned `Node`.
 
-**I/O (pivot truth):** `normalize : Node -> Outcome<Node>`, `resolve : Node -> Outcome<Node>`; composite `resolve ∘ normalize` — authoring discipline on the universal **`Node`** pivot (`ParseTree` / `NormalizedTree` / `ResolvedTree` = `Node`, A1).
+**I/O (pivot truth):** `ParseTree` / `NormalizedTree` / `ResolvedTree` are aliases on the universal **`Node`** pivot (A1); composite normalize→resolve is **`resolve ∘ normalize`** on that pivot (standard `∘`: normalize first, then resolve).
 *Merged seam (CP-1b, literal headers today):* `normalize: ParseTree -> Result<NormalizedTree, Diagnostic>`, `resolve: NormalizedTree -> Result<ResolvedTree, Diagnostic>` in `03_normalize.dag` / `03_resolve.dag`.
 *Do not drift:* **Carrier is `Node`; the seam types are parse→normalize scaffolding** — keep the header aliases and `Result<…, Diagnostic>` until CP-1b closes; do not delete or flatten signatures early chasing “purity.”
 
@@ -448,7 +449,7 @@ if any emission step cannot be expressed as inverse grammar-data.)
 - `compile: (Source, TargetModel) -> Result<TargetSource, Diagnostic>` — the orchestrator,
   `emit ∘ core ∘ ingest`.
 
-**`Result` vs `Outcome` (literal alignment, api-review):** `compiler/00_compile.dag` spells `ingest`, `core`, `emit`, `eval`, and the composed paths with **`Result<…, Diagnostic>`** — not `Outcome<…>` at the orchestrator boundary. TASKS matches that here for `emit` / `compile` (and pairs with `05_emit.dag`'s `Result<TargetSource, Diagnostic>`; `00_compile.dag` may still say `Result<Source, Diagnostic>` — same emitted-artifact role). Per-stage scaffolds may keep **`Outcome<…>`** where the merged stage file does (`std/diagnostic.dag`); do not “standardize” TASKS or `00_compile.dag` to `Outcome<Source>` **without** changing **`00_compile.dag` in the same commit train**.
+**`Result` vs `Outcome` (literal alignment, api-review):** **Ground in merged headers, not TASKS invention:** `compiler/00_compile.dag` **`Owns`** spells **`Result<…, Diagnostic>`** for `ingest` / `core` / `emit` / `eval` today; `compiler/01_tokenize.dag` and `compiler/02_parse.dag` **`Owns`** still spell **`Outcome<…>`** on `tokenize` / `parse`. Stage files **import** `Outcome` (and `Diagnostic`) from **`std/diagnostic.dag`**, which **`Owns`** the declared **`Outcome<T>`** carrier — there is no parallel `.dag` `Result<ok, err>` type (per DECISIONS.md item **I**). TASKS quotes **`Result`** here only where **`00_compile.dag` / `05_emit.dag` `Owns`** do (emit/compile bullets above); do not “standardize” orchestrator prose to `Outcome<Source>` **without** changing **`00_compile.dag` in the same commit train**.
 
 **Modeling decisions**:
 - How the `TargetModel`'s grammar drives emission **as the inverse walk**
