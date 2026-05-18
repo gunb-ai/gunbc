@@ -208,19 +208,85 @@ stages that need it — not worker error. #3225 is correct work given the
 substrate available; it should land as an honest scaffold, and the
 substrate-first followup migrates it.
 
+## The derived-operations registry
+
+The findings above are instances of *one* principle. The compiler's job
+is to **derive** operations from a model — that is the derived
+homomorphism. There is a finite set of such *derived operations*.
+Hand-rolling any of them is a dissolution finding; the registry is what
+makes "you should be modeling, not coding this" an **objective** call
+rather than a reviewer's taste.
+
+**Proposed invariant** (for operator ratification — if ratified, belongs
+in [INVARIANTS.md](../INVARIANTS.md) / [MODELING.md](../MODELING.md)):
+
+> **Do not hand-roll a derived operation.** If a function's behavior is
+> determined entirely by the shape of a modeled type, it is re-deriving
+> something the compiler already derives. The deficiency is in the
+> model, not the code — model the missing fact; do not hand-roll the
+> operation.
+
+| # | derived operation | derived from | hand-rolled form → finding | substrate primitive |
+|---|---|---|---|---|
+| 1 | structural recursion (catamorphism) | a type's structure | walker dissolution | `fold_node` |
+| 2 | effect traversal | carrier + collection | traverse dissolution | `traverse` / `sequence` |
+| 3 | **translation** (target → target) | two target models — *this is the derived homomorphism* | hand-written emitter / lowerer | the compiler itself |
+| 4 | **coercion** | the structure-preservation fold — the homomorphism's verification facet | hand-written coercion check | the compiler itself |
+| 5 | identity / hashing | a Merkle catamorphism | hand-written hash / equality | `content_hash` |
+| 6 | emission + parsing | grammar-as-bidirectional-data | string-templated emitter | the grammar model |
+| 7 | property projection | reading a fact off the model | `match`-to-derive → predicate dissolution | a model fact |
+
+Rows 3 and 4 are the compiler's *core* — translation **is** the derived
+homomorphism, coercion **is** its verification facet (the three facets in
+[modeling-discipline.md](modeling-discipline.md)). Hand-writing those is
+the gravest form of the finding.
+
+## Enforcement: the dissolution lens
+
+A *lens* — a derived projection over the v4 model — can catch these
+mechanically. Precision splits sharply: some findings are *structurally
+decidable* (a check with near-zero false positives → hard error); others
+need *judgment* (the lens produces candidates → advisory).
+
+| finding | lens verdict | enforcement |
+|---|---|---|
+| carrier dissolution | structural type-shape match against the std carrier set | **hard error** |
+| walker dissolution | recursion shape mirrors a modeled type's shape | **hard error** on the clean shape; advisory when recursion is irregular |
+| traverse dissolution | a `fold` whose body is a carrier short-circuit ladder | **hard error** on the clean shape |
+| predicate dissolution | a `match` on kind projecting a non-structural value | advisory — candidate only |
+| coproduct dissolution | an untagged coproduct | already enforced (per-coproduct tag + DECISIONS.md ledger) |
+
+**Build path:**
+
+1. *Interim* — a checker script over `.dag` (a sibling of
+   `scripts/strict_deprose_dag.py`) for the decidable findings (carrier,
+   clean catamorphism). Available now; matches the existing
+   `scripts/check-*` discipline-checker pattern.
+2. *Target* — a real lens, a derived projection over the v4 model, once
+   the front-end (#3225 CP-1) parses `.dag` for real.
+3. *The recursion* — the dissolution lens is **itself** a `fold_node`
+   over parsed `.dag`. It cannot be hand-rolled either: it is a
+   *consumer* of the substrate-first sequence, not a precursor to it.
+
 ## For the audit
 
 Requested of still-hawk-102:
 
 1. **Verify the family** — are findings 2–5 correctly distinguished? Is
    the recognize/confidence/recommend rubric sound?
-2. **Look for other patterns** — does the `dissolution finding` umbrella
-   have members this doc missed?
-3. **Integration decision** — fold findings 2–5 into
+2. **Verify the registry** — is the derived-operations registry complete
+   and correct? Is the decidability classification (hard error vs
+   advisory) right?
+3. **Look for other patterns** — does the `dissolution finding` umbrella,
+   or the derived-operations registry, have members this doc missed?
+4. **Integration decision** — fold findings 2–5 into
    `modeling-discipline.md` as named Practices, or keep this as a
    referenced companion? (still-hawk owns `modeling-discipline.md`.)
-4. **Retroactive v4 audit** — sweep landed and in-flight v4 work
+5. **Retroactive v4 audit** — sweep landed and in-flight v4 work
    (`src/v4/compiler/*`, `src/v4/extdeps/**`, `src/v4/std/**`) for
    dissolution findings, and decide what — if anything — needs
    retroactive correction versus what is correctly deferred to the
    substrate-first sequence.
+
+The **proposed invariant** above is for operator ratification, separately
+from still-hawk's audit.
