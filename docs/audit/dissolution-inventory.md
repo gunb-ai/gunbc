@@ -45,8 +45,9 @@ double-counting).
 **Dispositions** — the four #3244 vocabulary symbols:
 
 - **🔴 dissolve-now** — substrate primitive exists; mechanical fix
-  jumps the queue, lands in a follow-up PR. **Count: 3 findings, 2
-  distinct fixes** (R1 + R2 in § 1.0). Checked, not omitted.
+  jumps the queue, lands in a follow-up PR. **Count:** **R2 only**
+  (1 finding, 1 fix) in § 1.0 — **R1 landed PR #3284** (`is_empty_conj_root`).
+  Checked, not omitted.
 - **🟡 gated** — substrate primitive does not exist yet; carries
   `feature:<primitive + owning task>` or `consumer:<named consumer>`
   + dissolve-on-arrival obligation. A 🟡 is a *committed*
@@ -112,19 +113,22 @@ in-file 🟡 blocks, and *not* land the dissolve-now fixes.
 
 ### 1.0 🔴 dissolve-now (jumps queue, lands ahead of P1)
 
-Three findings; two distinct follow-up PRs. Each substrate primitive
-needed for the fix *already exists* on `main` @ `ce0241039` — no
-upstream substrate work blocks these.
+**R1 (empty-`Conj`-root duplicate predicates)** — **LANDED PR #3284**
+(`src/v4/std/node.dag` `is_empty_conj_root`; disposition
+`DECISIONS.md` §CP-1b item 12). **R2** below remains the sole open
+🔴 in this band — one distinct follow-up PR. Each substrate primitive
+needed for R2 *already exists* on `main` @ `ce0241039` — no upstream
+substrate work blocks it.
 
 | # | finding | distinct fix | substrate available? |
 |---|---|---|---|
-| **R1** | `compiler/01_tokenize.dag lex_rules_node_is_conj_empty_root` (76) **+** `compiler/02_parse.dag grammar_node_is_conj_empty_root` (73) **+** `extdeps/languages/dag.dag dag_node_is_empty_conj_root` (74; added in CP-1b #3225) — three literal duplicates | Extract `is_empty_conj_root : Node -> Bool` into `std/node.dag`; replace all three call-site duplicates. | ✓ — pure composition over existing `std/node.dag` primitives (`Node`, `NodeKind`, `TypeNode`, `Conj`, `count`); all on main. |
+| **R1** | WAS: `compiler/01_tokenize.dag lex_rules_node_is_conj_empty_root` **+** `compiler/02_parse.dag grammar_node_is_conj_empty_root` **+** `extdeps/languages/dag.dag dag_node_is_empty_conj_root` — three literal duplicates of the same empty-`Conj`-root shape query | **LANDED PR #3284:** `fn is_empty_conj_root` in `src/v4/std/node.dag`; all three sites import it (duplicate authority removed). **P5 / predicate disposition:** `src/v4/DECISIONS.md` §CP-1b item 12 — interim shared structural leg; forward dissolution under inventory §1.1 **P3** (T-6/T-7 walks) / **P5** (`fold_node`). | ✓ — pure composition over existing `std/node.dag` primitives (`Node`, `NodeKind`, `TypeNode`, `Conj`, `count`); all on main. |
 | **R2** | `extdeps/languages/llvm_ir.dag terminator_is_catchswitch` (526) — naked `match … _ => false` discriminator | Inline the `match` into the sole consumer `block_well_formed` (533); delete the discriminator predicate. | ✓ — pure pattern match on `Terminator` (already declared in `llvm_ir.dag`); no new substrate. |
 
-These two follow-up PRs are owned by their respective lanes
-(`compiler/` for R1, `extdeps/languages/llvm_ir.dag` for R2). Per
-"C1 marks + flags + plans, does not fix," C1 does not author either
-PR; it surfaces them with R1/R2 as the audit anchor.
+**R2** remains owned by the `extdeps/languages/llvm_ir.dag` lane. **R1**
+landed under the compiler/std lane (PR #3284). Per "C1 marks + flags +
+plans, does not fix," C1 does not author the R2 PR; it surfaces R2 as
+the audit anchor.
 
 ### 1.1 Ranked substrate-PR queue
 
@@ -178,8 +182,8 @@ entries that concretize to a P# only enter their column on re-gate.
 The cumulative endpoint after all P1-P10 land is 0; the column shows
 qualitative trajectory, not strict arithmetic.)
 
-(R1+R2 in § 1.0 are not counted in the 🟡 burn-down — they are 🔴,
-land immediately, and dissolve outside the substrate-gap queue.)
+(R1 **landed** PR #3284; **R2** in § 1.0 is not counted in the 🟡 burn-down
+— it is 🔴, lands immediately, and dissolves outside the substrate-gap queue.)
 
 Caveats:
 
@@ -203,10 +207,8 @@ Caveats:
 substrate dissolves roughly 60% of the v4 substrate's outstanding 🟡
 debt in a single sweep — by 🟡-count it dominates every other
 substrate PR by 4× or more. The S1 substrate track should prioritize
-P1 ahead of P2-P10. R1 and R2 (§ 1.0) jump the queue ahead of all
-substrate PRs since neither needs absent substrate.
-
----
+P1 ahead of P2-P10. **R2** (§ 1.0) jumps the queue ahead of all
+substrate PRs since it needs no absent substrate.
 
 ---
 
@@ -309,21 +311,16 @@ substrate PRs since neither needs absent substrate.
 ### 2.3 `src/v4/compiler/`
 
 **`compiler/01_tokenize.dag`**
-- `lex_rules_node_is_conj_empty_root` (76) — 🔴 **predicate** —
-  `match rules.kind { TypeNode{ Conj } => count(children)==0 ; … => false }`.
-  A naked discriminator-plus-empty check. **Duplicated** verbatim in
-  `compiler/02_parse.dag grammar_node_is_conj_empty_root` (73). The
-  model fact "this Node is an empty conj-rooted TypeNode" belongs once,
-  in `std/node.dag`. Dissolve now (substrate primitive
-  `is_empty_conj_root : Node -> Bool` does not require an absent
-  feature — it composes existing `std/node.dag` primitives).
+- Empty-`Conj`-root shape query — 🟢 **R1 landed (PR #3284)** — shared
+  `v4.std.node.is_empty_conj_root` (was `lex_rules_node_is_conj_empty_root`;
+  duplicate authority removed per inventory §1.0 R1). Disposition receipt:
+  `DECISIONS.md` §CP-1b item 12.
 - `tokenize` (83) — 🟡 — `feature: lexical-walk substrate (T-6 — TASKS.md)`.
   Three-arm Wave-1 scaffold cascade; full lexical walk unrealized.
 
 **`compiler/02_parse.dag`**
-- `grammar_node_is_conj_empty_root` (73) — 🔴 **predicate** — duplicate
-  of the tokenize finding; same dissolve-now (extract to
-  `std/node.dag`).
+- Empty-`Conj`-root shape query — 🟢 **R1 landed (PR #3284)** — same shared
+  `is_empty_conj_root` (was `grammar_node_is_conj_empty_root`).
 - `parse` (80) — 🟡 — `feature: parse-walk substrate (T-7 — TASKS.md)`.
   Mirror of `tokenize` scaffold.
 
@@ -406,10 +403,9 @@ captured here as the audit anchor for the rest:
   `feature: per-LanguageModel canonical_symbols : Set<Symbol> model
   fact carried on DagLanguageModel (T-4 fact-bundle Phase-3 — same
   family as feature_disposition on FidelityFeature)` —
-  rolls under **P4**. (`dag_node_is_empty_conj_root` at line 74 is
-  a candidate `R3` 🔴 — duplicate of the planned shared
-  `is_empty_conj_root : Node -> Bool` in R1; folds into R1's
-  extraction PR rather than its own fix.)
+  rolls under **P4**. (`dag_node_is_empty_conj_root` **retired** — R1
+  landed PR #3284: `dag_language_model_is_wave1_void_shape` imports
+  `v4.std.node.is_empty_conj_root`; see `DECISIONS.md` §CP-1b item 12.)
 - `dag_language_model_is_wave1_void_shape` (83),
   `dag_language_model_empty_canonical_symbol_set` (89),
   `dag_language_model_canonical_symbols` (98) — 🟢 — structurally
@@ -734,7 +730,7 @@ fixes are downstream lane work, not C1's** — C1 marks and flags.
 |---|---|---|---|
 | walker | — | 3 (`std/node.dag node_well_formed` → `fold_node`; `std/algebra.dag free_monoid_length` → `fold FreeMonoid`; `std/float.dag nat_compare` → `fold Nat`) | rest |
 | traverse | — | 4 (`std/node.dag` × 4: → `forall` / `count_where` / `unique` over `FreeMonoid<T>` in `std/collection.dag` Wave-A2) | rest |
-| predicate | 3 (`compiler/01_tokenize.dag` + `compiler/02_parse.dag` literal duplicate of `is_empty_conj_root`; `extdeps/languages/llvm_ir.dag terminator_is_catchswitch`) | 5 (`std/node.dag connective_edge_discipline` → per-`Connective` discipline fact; `std/float.dag float_finite_magnitude_zero` → `nat_is_zero`; `extdeps/languages/llvm_ir.dag` × 3: `block_well_formed` → cascade of dissolve-now; `feature_disposition` → per-feature disposition fact (T-4 fact-bundle); `llvm_instruction_cost` → `lens/cost.dag` T-12) | rest |
+| predicate | 1 (`extdeps/languages/llvm_ir.dag terminator_is_catchswitch`); empty-`Conj` R1 predicate **landed** PR #3284 (`std/node.dag` `is_empty_conj_root`, `DECISIONS.md` §CP-1b item 12) | 5 (`std/node.dag connective_edge_discipline` → per-`Connective` discipline fact; `std/float.dag float_finite_magnitude_zero` → `nat_is_zero`; `extdeps/languages/llvm_ir.dag` × 3: `block_well_formed` → cascade of dissolve-now; `feature_disposition` → per-feature disposition fact (T-4 fact-bundle); `llvm_instruction_cost` → `lens/cost.dag` T-12) | rest |
 | carrier | — | — | lane-wide |
 | emit/template | — | — | lane-wide |
 
@@ -755,13 +751,12 @@ dissolve-on-arrival rule):
    `Terminator` well-formedness (cascade of the LLVM
    `terminator_is_catchswitch` dissolve-now).
 
-**Dissolve-now (🔴) inventory** — three findings collapse to two
-distinct fixes:
+**Dissolve-now (🔴) inventory** — three findings: **one landed**, one
+open:
 
-1. `is_empty_conj_root : Node -> Bool` — extract into `std/node.dag`,
-   replace both `compiler/01_tokenize.dag` and `compiler/02_parse.dag`
-   duplicates. Pure composition over existing `std/node.dag` primitives,
-   no absent feature blocks the fix.
+1. ~~`is_empty_conj_root : Node -> Bool` — extract into `std/node.dag`~~
+   **DONE — PR #3284** (`src/v4/std/node.dag`; R1 receipt +
+   `DECISIONS.md` §CP-1b item 12).
 2. Inline `terminator_is_catchswitch` into `block_well_formed` in
    `extdeps/languages/llvm_ir.dag`; delete the discriminator predicate.
 
