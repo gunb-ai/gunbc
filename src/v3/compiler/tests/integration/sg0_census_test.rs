@@ -831,6 +831,7 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // T-4 typescript D2-resolver slice: `compile_to_dag` smoke on
     // `src/v4/extdeps/languages/typescript.dag` (zero module diagnostics).
     // SG-0 ratchet per INVARIANTS §P5(b) + `extdeps_sql_transport_test` precedent.
+    "src/v3/compiler/tests/integration/v4_extdeps_cpp_abi_dag_smoke_test.rs",
     "src/v3/compiler/tests/integration/v4_extdeps_typescript_dag_smoke_test.rs",
     // T-30: `compile_to_dag` smoke on `src/v4/std/fact_density.dag` (Practice 8
     // structural mirror in `v4_hollow_alias_gate`). SG-0 + INVARIANTS §P5(b) receipt.
