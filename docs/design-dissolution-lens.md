@@ -217,6 +217,32 @@ do not match — they have non-function content and real multiplicity.
 - *Escape:* a type that *is* constructed, or aliases a substrate carrier,
   passes.
 
+**Concrete match — declared, never inhabited:**
+```dag
+type ParseError {
+  message: String
+  span:    SourceSpan
+}
+// no `fn ... -> ParseError`, no `data ... : ParseError = ...`,
+// no `type T = ParseError` alias, no record field of type ParseError.
+// The type is a name with no edges into the rest of the model.
+```
+The author intended `ParseError` to mean something, but no code path
+produces a value of it. From the substrate's perspective the type is
+inert — it asserts an intention without committing structurally.
+
+**Clean shape:** either delete the declaration (if it was speculative)
+or make at least one inhabitance edge real:
+```dag
+fn parse(s: String) -> Outcome<Ast> {
+  Rejected { diagnostic: ParseError { message: ..., span: ... } }   // ← inhabitance
+}
+```
+Aliasing a substrate carrier also discharges the lens:
+```dag
+type ParseError = Diagnostic   // ← alias-identity is a structural edge
+```
+
 ### L1.4 Carrier-clone lens — kills *carrier dissolution*
 
 - *Signature:* a locally-declared coproduct **structurally isomorphic to
@@ -226,6 +252,29 @@ do not match — they have non-function content and real multiplicity.
 - *Verdict:* hard error.
 - *Escape:* a coproduct carrying a payload the std carrier genuinely
   cannot express passes.
+
+**Concrete match — `Outcome<T>` clone (the F2 / `NormalizeChildrenResult` shape):**
+```dag
+// in src/v4/compiler/03_normalize.dag
+type NormalizeChildrenResult
+  = NormalizedChildren        { children: List<Edge> }   // ← Produced
+  | NormalizeChildrenRejected { diagnostic: Diagnostic } // ← Rejected
+```
+Structurally identical to `Outcome<List<Edge>>` — same two-variant
+shape, same payload kinds, just renamed. The local coproduct adds no
+information the canonical `Outcome<T>` can't express.
+
+**Clean shape:**
+```dag
+// in src/v4/std/diagnostic.dag (canonical)
+type Outcome<T> = Produced { value: T } | Rejected { diagnostic: Diagnostic }
+
+// in src/v4/compiler/03_normalize.dag
+fn normalize_children(...) -> Outcome<List<Edge>> { ... }
+```
+A coproduct that genuinely *can't* be expressed by the std carrier
+passes — e.g. a three-variant `Cached | Produced | Rejected` where
+`Cached` carries information `Outcome<T>` doesn't model.
 
 ### L1.5 Catamorphism lens — kills *walker / traverse dissolution*
 
@@ -239,6 +288,53 @@ do not match — they have non-function content and real multiplicity.
 - *Kills:* `ci.dag`'s hand-rolled `List` combinators (#3213); the
   resolve/normalize walkers (#3225).
 
+**Concrete match — clean recursion mirrors the data shape (`ci.dag` `member` (#3213)):**
+```dag
+// in src/v4/workflow/ci.dag
+fn ci_member(s: Symbol, xs: List<Symbol>) -> Bool {
+  match xs {
+    Nil                       => false
+    Cons { head: h, tail: t } =>
+      match symbol_eq(a: s, b: h) {
+        True  => true
+        False => ci_member(s: s, xs: t)   // ← recurse on the sub-structure
+      }
+  }
+}
+```
+The function recurses by matching `List`'s variants (`Nil` / `Cons`)
+and self-calling on `tail`. That recursion *is* the catamorphism over
+`List` — the substrate's `fold` would discharge it. Same shape for
+`any`, `all`, `count_if`, `find`: each is a fold-with-a-different-algebra.
+
+**Concrete match — short-circuit fold ladder (resolve/normalize walkers (#3225)):**
+```dag
+fn resolve_children(...) -> Outcome<List<Node>> {
+  match resolve(head) {
+    Rejected { diagnostic: d } => Rejected { diagnostic: d }   // ← propagate
+    Produced { value: h }      => match resolve_children(tail) {
+      Rejected { diagnostic: d } => Rejected { diagnostic: d } // ← propagate
+      Produced { value: t }      => Produced { value: cons(h, t) }
+    }
+  }
+}
+```
+The `match acc { Rejected => propagate ; Ok => continue }` ladder is
+`Outcome`'s monadic traverse over `List` — also a substrate-derivable
+shape.
+
+**Clean shape:** consume the substrate-derived combinator instead.
+```dag
+fn ci_member(s: Symbol, xs: List<Symbol>) -> Bool =
+  list_any(xs, fn(h) { symbol_eq(a: s, b: h) })
+
+fn resolve_children(xs: List<Node>) -> Outcome<List<Node>> =
+  traverse_outcome(xs, resolve)
+```
+Genuinely-irregular recursion — the call graph does *not* mirror the
+data graph, e.g. a graph walker that revisits visited nodes via a
+side-table — falls under *reviewer-confirm* rather than hard-error.
+
 ### L1.6 Emit/template lens — kills *emit/template dissolution*
 
 - *Signature:* a field or value that is a **template string literal** — a
@@ -251,6 +347,42 @@ do not match — they have non-function content and real multiplicity.
 - *Escape:* a plain string constant with no placeholders, or genuine
   string *data* that is not an emitter template, passes.
 - *Kills:* string-templated emitters (`template: "Vec<{0}>"`).
+
+**Concrete match — type-construction templates (`dsl/std/languages.dag`):**
+```dag
+type TypeMapping {
+  string:            String
+  int:               String
+  list_template:     String   // ← positional placeholders inside
+  optional_template: String
+  map_template:      String
+}
+
+data rust_type_mapping: TypeMapping = {
+  string:            "String",
+  int:               "i64",
+  list_template:     "Vec<{0}>",          // ← {0} is an emission hole
+  optional_template: "Option<{0}>",
+  map_template:      "HashMap<{0}, {1}>", // ← {0}, {1} are emission holes
+}
+```
+Emission is happening — but it's a fill-in-the-hole string substitution
+the lens can't structurally validate. The placeholder vocabulary
+(`{0}`, `{1}`) is parallel to the model rather than part of it.
+
+**Clean shape:** grammar-as-declarative-bidirectional-data — the target
+type's construction is modeled, and emit is a fold over the model:
+```dag
+type RustTypeRealization
+  = RustGeneric { ctor: RustIdent, args: List<RustTypeRealization> }
+  | RustAtom    { ident: RustIdent }
+
+data rust_list_realization: TypeRealization<List> = fn(elem) {
+  RustGeneric { ctor: "Vec", args: [elem] }
+}
+```
+Plain string constants without placeholders (e.g. a fixed `"i64"`
+atom) pass — they're data, not a templated emitter.
 
 ### L1.7 Off-substrate-fact lens — kills *prose-asserted facts* (proposed)
 
