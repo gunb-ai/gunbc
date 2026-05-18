@@ -2,145 +2,109 @@
 
 > Read **`src/v4/CULTURE.md`** first, then this brief. Shape follows **`src/v4/BRIEF_TEMPLATE.md`** (structural commitment; sections below map to that template).
 
-## Dispatch posture
+## Dispatch posture (**methodology shift — operator 2026-05-18**)
 
 | Field | Value |
 |--------|--------|
 | **Brief ID** | `PREFIX-LENS-CI-1` |
 | **Owner / manager lane** | `witty-cat-59` (successor root); Lane A execution historically `fierce-cat-31` |
-| **STATUS** | **`DISPATCH_HOLD`** — brief is **authored and parked dispatch-ready**. **Do not** `dashboard-ops work-items create` for this PREFIX until **`witty-cat-59`** relays **operator ruling** on **Fork B** (L1.7–L1.12 dissolution lenses **#3313** sibling fan-out under `jolly-ibex`, gated **#3240**) and **Fork C** (v1 blast radius = fixed `.dag` fixture corpus fail-closed now vs affected-set Lane-B fast-follow). |
-| **Parallel spine** | **T-8** (**`eager-ant-519`**, PR **#3311**) is a **separate work node** — manager continues merge/review discipline there (P3 walk fail-close). |
+| **STATUS** | **`DISPATCH_HOLD`** — **lifts only when the operator signs the PREFIX Acceptance PR** (`docs/briefs/r4-lane-a-lens-prefix-acceptance.md` on the same lane / linked PR). **No** `dashboard-ops work-items create` for PREFIX **implementation** until that signature event. **Fork B** (L1.7–L1.12 dissolution lenses **#3313** / `jolly-ibex`, gated **#3240/#3244**) and **Fork C** are **resolved in brief body below** — hold is **not** waiting on further fork text from witty-cat; it is **witness-first / acceptance-before-dispatch**. |
+| **Parallel spine** | **T-8** (**`eager-ant-519`**, PR **#3311**) — **unchanged**; manager keeps **P3 walk fail-close** review discipline (**witty-cat-59** directive). |
 
 ---
 
-## Operator fork assumptions (binding for brief body)
+## Operator rulings consumed (**do not re-litigate here**)
 
-### Fork A — **converged recommended-default** (carry to operator)
+### Fork A — **RESOLVED (v4 authoritative)**
 
-- **v4 substrate home:** registry + CI driver align with **`src/v4/lens/application.dag` (T-23)** and long-term **`src/v4/workflow/ci.dag` (T-24)** (“CI as data”).
-- **Behavioral oracle:** first driver behavior is **seeded from v3** — `apply_lens_declaration` + **`src/v3/compiler/tests/integration*.rs`** patterns that already fold real lens machinery (study; do not cargo-cult).
-- **Not end state:** **v3-only CI forever** is **explicitly out of scope** — it repeats the hand-authored CI gap **T-24** exists to dissolve.
+- **v4 is the only design authority in CI.** v3 lenses are **compositional-only**; modeling-discipline / dissolution lenses (**L1.1–L1.12**) are **v4 CP-1–gated** by construction — **no v3 “design bridge”** exists for that class (operator-verified: `design-dissolution-lens.md` L1.x has **no** v3 form, gated on v4 CP-1).
+- **INTERIM — one delete-dated supplementary step:** **exactly ONE** CI step invokes the **existing** v3 fold over the **whole** `.dag` corpus using the **existing whole-source-tree file-glob carrier** (same family as `LensApplication` / whole-tree gates in `docs/design-lens-application-surface.md` §1 opening + §3 file-glob discipline). **Zero new v3 design** — invocation only.
+- **Labeling (binding):** that step is **`SUPPLEMENTARY` / `NON-AUTHORITATIVE` / `DELETE-DATED`** (deletion date set when v4 driver reaches parity), filed **alongside** **L-7 / L-8** (which remain supplementary grep ratchets until **T-24** emits CI from data). It is **not** a second lens authority.
 
-**Caveat (one-line override hook):** *If the operator overrides Fork A to “v3-direct CI home first,” flip this brief’s implementation spine to wire the driver under the v3 harness first, then port the sealed interface to v4 — **small edit**: replace “driver crate/home” pointers and DECISIONS receipt rows; **do not** rewrite the contract pins below.*
+**Removed:** the prior **“v3-direct CI override caveat”** — operator **rejected** that fork.
 
-### Fork B / Fork C
+### Fork C — **RESOLVED MAXIMAL (whole corpus, v1)**
 
-**Out of scope for PREFIX execution until ruled** — listed only so workers do not absorb ambiguity into scope creep.
+- **Slice C** runs the **v4-home driver** over **every** `.dag` file in the repo (whole-source-tree glob carrier — `docs/design-lens-application-surface.md` §1 / §3 whole-tree pattern), **fail-closed**, **v1**.
+- **Scaling / feasibility:** whole-corpus enforcement is **O(1) lens-applications per program**, not O(files²) re-derivation — see **`docs/design-lens-application-surface.md` §5** (~L355–L362): the lens-application integration step is structurally the same fold class as existing `Lens<C>` application; the incremental cost is **O(applications)** (typically tens–hundreds per project), **not** millions. **Cite that section** in any PR that touches Slice C so scaling is not re-litigated.
+- **Fixtures are NOT the blast-radius limiter:** **closed fixtures** exist **only** inside the **PREFIX Acceptance PR** as **immutable witness / acceptance contracts** (see `r4-lane-a-lens-prefix-acceptance.md`). They **never** cap CI corpus coverage.
+
+### Fork B — **unchanged queueing (fan-out), not a PREFIX dispatch gate**
+
+Dissolution lens wave remains **`jolly-ibex`** / **#3313** / **#3240** — tracked in fan-out section; **does not** extend `DISPATCH_HOLD` once Acceptance PR is signed.
 
 ---
 
 ## Immutable contract pins (**CONSUME — do not re-spec**)
 
-Workers **must** treat these as read-only authorities; the PREFIX **fills** them, it does not fork parallel “lens runner” nouns.
-
 | Authority | Role |
 |-----------|------|
 | `src/v4/lens/application.dag` | **Immutable header** — `SectionRef`, `EnforcedApplication` / `IntrospectApplication`, `apply_lens`, **D1** `subterm_at` / `apply_diff`, AGENT-1 composition notes, advisory→fail-closed bridge discipline. Status: **scaffold — fill per TASKS.md T-23**. |
-| `src/v4/TASKS.md` §**T-23** (~L886+) | Modeling obligations for the application surface (carriers, `SectionRef`, default Introspect-only synthesis policy, `Enforce` bridge). |
-| `src/v4/DECISIONS.md` | **C7 / report / synthesis** rows that **cite T-23** (e.g. **C7-REPORT** and related) — ledger text is the receipt plane; Practice **4 / 9** discipline applies. |
-| `src/v4/lens/cost.dag` | **T-12** home — Status: **scaffold — fill per T-12**; lattice / realization fill may remain **honestly gated** where the header already says so. |
-| `.github/workflows/ci.yml` **L-7 / L-8** | **SUPPLEMENTARY** grep ratchets on **v3** lens surfaces — **remain** until **T-24** emits CI from data; PREFIX adds a **real** driver gate **alongside**, not replacing, unless operator later collapses them. |
+| `src/v4/TASKS.md` §**T-23** (~L886+) | Modeling obligations for the application surface. |
+| `src/v4/DECISIONS.md` | **C7 / report / synthesis** rows citing **T-23** — ledger receipts; Practice **4 / 9**. |
+| `src/v4/lens/cost.dag` | **T-12** home — **scaffold — fill per T-12**; lattice fill may remain gated honestly. |
+| `docs/design-lens-application-surface.md` | **Whole-tree glob + O(1)-applications** feasibility for Slice C (`§5` ~L355–L362). |
+| `docs/design-lens-framework.md` §2 | **`Witness<C> = Inhabits \| Violates`** and `DimensionReport` / `DimensionOk` / `DimensionFail` — **acceptance PR maps runnable AC here** (DB-15 enumerated `TestClaim` discipline). |
+| `.github/workflows/ci.yml` **L-7 / L-8** | **Supplementary** static ratchets — **remain** until **T-24**. |
 
 ---
 
 ## WHY THIS MATTERS
 
-CI currently enforces lenses mostly via **static proxies** (L-7/L-8 grep), not by **running** registered lens machinery over a `.dag` program **fail-closed** on **`Witness` / enforcement** outcomes. That gap lets lens drift hide until late. This PREFIX makes the **first real** “enumerate → run → enforce” loop **true**, without inventing a parallel design: it **instantiates** the already-ratified **T-23** surface and proves it with **T-12 cost** as the reference lens.
+CI today has **no** real “fold registered lenses over programs, fail-closed on `Witness`/`DimensionFail`” gate. This PREFIX lands **v4-authoritative** driver/registry + **T-12 cost** as first real registration, with **one whole-corpus** fail-closed step, while a **delete-dated** v3 invocation provides **interim** behavioral coverage without inventing parallel design.
 
 ---
 
-## SCOPE (immutable — three slices, one program)
+## SCOPE (immutable — three slices)
 
-**In scope (PREFIX):**
+1. **Slice A — T-23 registry + driver skeleton (v4-home):** deterministic **registry** + **one** Rust driver entrypoint; runs selected lens over **any** in-corpus `.dag` input path supplied by CI glob expansion; **fail-closed** on internal errors.
+2. **Slice B — T-12 cost lens (first REAL registration):** enough of **`lens/cost.dag`** to register and prove Slice A — **honest-scaffold** where lattice fill remains gated; **no** hand-rolled walkers; **P3**-gated walks stay **Rejected / not-realized** pending substrate.
+3. **Slice C — CI gate (whole corpus):** **one** workflow step: invoke driver over **all** `.dag` files (whole-tree glob carrier), **fail-closed** on **`DimensionFail` / `Violates` / enforcement** per **`docs/design-lens-framework.md` §2** mapping. **Delete-dated** v3 fold step runs **alongside** as **supplementary non-authoritative** coverage until v4 parity.
 
-1. **Slice A — T-23 registry + driver skeleton (v4-home):** a **deterministic registry** of lens ids → entry metadata + a **single** Rust driver entrypoint that can run **one** selected lens over a **pinned** `.dag` fixture and return a **typed** pass/fail outcome (Diagnostics / Witness / Report per the lens), **fail-closed** on any internal error.
-2. **Slice B — T-12 cost lens (first REAL registration):** implement enough of **`lens/cost.dag`** to register as a **real** lens instance proving Slice A — **honest-scaffold** where full **SymbolicCost** lattice realization remains gated per existing header; **no** fake hand-rolled graph walker — **P3**-gated walks stay **fail-closed** pending substrate (same dissolution discipline as Lane A T-8).
-3. **Slice C — CI gate:** add **one** workflow step that invokes the **Rust driver** on a **closed fixture corpus** (versioned list), **fails the job** on any enforcement/`Witness` failure, and prints a **deterministic** summary for logs.
-
-**Out of scope (explicit):**
-
-- Implementing the full **T-24** emitter for `ci.yml` (derive-from-`workflow/ci.dag`) — **not** PREFIX-blocking; only **align** types/names so T-24 can absorb later.
-- **Fork B / Fork C** bodies — **hold** for operator.
-- Parallel fan-out of dissolution lenses (**#3313**) — **jolly-ibex** lane, gated per operator.
+**Out of scope:** full **T-24** `ci.yml` emitter (align only); **Wave 2** dissolution lenses until PREFIX+CP-1+#3240/#3244 gates clear.
 
 ---
 
-## SUBSTRATE YOU MAY USE (whitelist)
+## Fan-out (**do not dispatch from this brief**)
 
-- `src/v4/lens/application.dag`, `src/v4/lens/cost.dag`, adjacent `src/v4/lens/*.dag` **already referenced** by those headers as consumers (no new lens files unless operator ratifies substrate extension).
-- `src/v4/std/*.dag` already imported by the lens files above.
-- `src/v3/compiler/**` **as REFERENCE only** for `apply_lens_declaration` / integration test **oracle** behavior (Fork A default).
-- Existing **`v2-compiler`** / **`v3-compiler`** binaries and **`cargo`** test targets already in CI — prefer extending an **existing** harness binary over inventing a new top-level crate unless operator extends structure (**STOP** otherwise).
+### Wave 1 (~7) — v4-native compositional lenses
 
-## SUBSTRATE YOU MAY NOT USE
+Port from **v3 behaviorally-complete** instances, **independent**, **one lens / one PR**: complexity, parallelism, effect_enumeration, idempotency, provenance, unused_parameters, structural_resolution (exact set ratified with operator). **Each** Wave-1 implementation PR requires its **own signed Acceptance PR** (same red→green immutable discipline) before dispatch.
 
-- Any path outside the whitelist **without operator STOP resolution**.
-- New `std/*` concepts — **STOP**.
-- **Hand-Rust shims** that duplicate lens logic “for CI only” — forbidden; driver **calls** substrate, it does not re-derive lenses.
+### Wave 2 (~12) — dissolution lenses **L1.1–L1.12**
+
+**Parallel**, gated on **PREFIX + v4 CP-1 front-end + #3240/#3244**; **no root lens**; cost/complexity remain **independent**. **`jolly-ibex`** lane owns dissolution fan-out per operator.
 
 ---
 
-## DISCIPLINE (non-negotiable)
+## SUBSTRATE YOU MAY USE / NOT USE
 
-- **Pure / fail-closed / P4** per `INVARIANTS.md` + `CULTURE.md`.
-- **Practice 9:** no multi-line architectural narration in `.dag` bodies — receipts in **`DECISIONS.md`**.
-- **Practice 4 / 10:** dissolution-class diffs carry explicit **🔴 / 🟡 / 🟢** per **`docs/modeling-discipline.md`** + PR **#3244** bar; no hand-rolled **walkers** where a **named substrate primitive** is the plan-bound receipt (**P3** lex/parse walk is the Lane A parallel — do not “fake” lens walks either).
+Unchanged intent from prior brief revision: **whitelist** v4 lens + std imports declared by those files; **REFERENCE** v3 tests/oracle for **behavior only**; **STOP** on new std / unauthorized new files / hand-Rust shims that re-derive lens logic.
 
 ---
 
-## BURN-DOWN OUTPUT BAR
+## TEST SURFACE / RUNNABLE ACCEPTANCE (**split: corpus vs witnesses**)
 
-Same as **`BRIEF_TEMPLATE.md`** Practices **4, 7–10** + manager pre-gate — worker does not self-`gh pr ready` on dispositions alone.
-
----
-
-## TEST SURFACE / RUNNABLE ACCEPTANCE CRITERIA (binding)
-
-All must pass locally **and** in CI for the PREFIX PR(s):
-
-1. **`cargo run -p v2-compiler --release -- compile --source-root src/v4 --target dag --output-dir <tmp>`**  
-   - **0 diagnostics** on the v4 graph after PREFIX lands (same bar as Lane A spine work).
-2. **Driver self-test (new or extended integration target):**  
-   - `cargo test -p v3-compiler <PREFIX_DRIVER_TEST_FILTER>` **or** the operator-approved equivalent harness — runs the **registry driver** over at least **two** pinned `.dag` fixtures:  
-     - **Golden:** cost lens returns **expected** structured output (or expected **advisory** path if only Introspect is wired for slice-1 — **must be explicit in TestClaim**).  
-     - **Diagnostic:** fixture provokes a **typed** failure — job must **fail** and surface the **Diagnostic** / enforcement path **deterministically**.
-3. **CI workflow:** the new step **fails** when (2) would fail; **passes** when (2) passes; does not flake on unrelated matrix noise.
-
----
-
-## REFERENCE (study, do not copy)
-
-- `src/v3/compiler/tests/integration.rs` and referenced **`t_gate_58_apply_lens_self_application_test`** modules — real `apply_lens` / registry patterns.
-- `src/v4/TASKS.md` **T-23**, **T-12**, **T-24** (alignment only).
-- `.github/workflows/ci.yml` **L-7 / L-8** — supplementary discipline context.
+1. **`v2-compiler compile --source-root src/v4`** — **0 diagnostics** (unchanged spine bar).
+2. **Whole-corpus driver (Slice C)** — must execute on **all** `.dag` paths from the glob carrier; failures aggregate per **`DimensionFail`** / `Witness.Violates` policy (**design-lens-framework.md §2**).
+3. **PREFIX Acceptance PR** (`r4-lane-a-lens-prefix-acceptance.md`) — holds **immutable** red/green **witness snippets** + **enumerated** `TestClaim` / driver expectation table (**DB-15**). **Implementation workers may not edit** witness blocks except **red→green** with **operator-signed** amendment to Acceptance PR (**anti-fabrication**).
 
 ---
 
 ## DEFINITION OF DONE
 
-- **Slice A** merged: registry + driver callable from tests + CI.
-- **Slice B** merged: **cost** lens registered and exercised on at least one fixture without violating **`lens/cost.dag`** honest-scaffold gates.
-- **Slice C** merged: workflow step live, fail-closed semantics verified by a controlled failing fixture in CI (not only locally).
-- **DECISIONS.md** updated with **🟡/🟢** receipts for any interim deferrals (lattice fill, extra lenses) — **no bare 🟡**.
+- Acceptance PR **signed** by operator (**DISPATCH_HOLD** lifts).
+- Slices A–C merged per scope; **delete-dated** v3 step labeled and scheduled for removal at parity.
+- **DECISIONS.md** receipts for any 🟡 interim deferrals.
 
 ---
 
-## STOP TRIGGERS (binding)
+## STOP TRIGGERS
 
-Per **`BRIEF_TEMPLATE.md`** — especially: need for **new top-level crate**, **new std concept**, **splitting** `application.dag` without operator ratification, or temptation to **grep-only** “fake” the driver. **STOP** and escalate to **`witty-cat-59`**.
-
----
-
-## YOUR DECISIONS (pre-decided vs worker)
-
-| Decision | Disposition |
-|----------|-------------|
-| Fork A default (v4-home + v3 oracle) | **Pre-decided** — see caveat block for operator override. |
-| Fixture corpus size / selection | **Worker** proposes **minimal closed set** (≥2 files); manager ack in PR. |
-| Exact crate/test harness location | **Worker** proposes; **STOP** if it requires a forbidden new crate boundary. |
+Per **`BRIEF_TEMPLATE.md`** + **no editing Acceptance witnesses** without operator-signed acceptance amendment.
 
 ---
 
 ## REPORT-BACK
 
-When this file lands on `main` (or the operator-requested branch), **`fierce-cat-31`** pings **`witty-cat-59`**: “**PREFIX brief authored:** `docs/briefs/r4-lane-a-lens-prefix-t23-t12-ci.md` — **DISPATCH_HOLD** until Fork B/C ruling.”
+**Brief updated** (this file) + **Acceptance artifact** (`r4-lane-a-lens-prefix-acceptance.md`) — report SHA + PR # to **`witty-cat-59`** after push.
