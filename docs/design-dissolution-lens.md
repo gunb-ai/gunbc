@@ -1030,7 +1030,116 @@ CP-1's timeline.
 Build order once the machinery exists: Layer 0 first (Layer 1 composes
 its primitives — L0.2 → L1.1, L0.4 → L1.3), then Layer 1.
 
-## 10. Open — audit of current coverage
+## 10. Dependency model — lenses are pipeline stages
+
+The lens framework is **not separate infrastructure**. There is no
+"lens engine" with its own dependency model. Lenses are `.dag` stages
+in the existing compiler pipeline, and they participate in the same
+`consumes:` / `produces:` machinery every other stage uses. A second
+dependency system would itself be the L1.12-class parallel-authority
+hazard the lens suite exists to kill — self-application: the lens
+framework cannot violate the discipline it enforces.
+
+### 10.1 Shared indices come from existing pipeline stages
+
+Each compiler stage already produces structural facts as outputs. The
+shared indices the lenses need are not a new layer — they're outputs
+of stages that run anyway for typecheck / normalize / resolve / infer.
+A lens consumes them via the same edges any other downstream stage
+uses.
+
+| Shared index | Produced by (existing stage) | Lenses that consume |
+|---|---|---|
+| AST + spans | `v4.compiler.02_parse` | universal |
+| Symbol resolution (name → declaration site) | `v4.compiler.03_resolve` | L0.8, L1.8, L1.12, plus most L1.x |
+| Coproduct variant list (type → variants) | `v4.compiler.02_parse` / `03_resolve` | L1.1, L1.5, L1.9, L0.12, L0.13 |
+| Inhabitance edge set (type → {ctors, returns, fields, aliases}) | `v4.compiler.03_resolve` / `04_infer` | L1.2, L1.3, L1.4 |
+| Witness / registry index (`data ... : Algebra<T>`, `CanonicalCarrier`, `HistoricalDeclaration`, `CanonicalConcept`, `canonical_observations`) | `v4.compiler.03_resolve` | L1.7, L1.8, L1.10.b, L1.12 |
+| Refinement-clause index (type → length / domain refinements) | `v4.compiler.04_infer` | L1.7 |
+| Import graph + target existence | `v4.compiler.02_parse` | L0.8, L1.8 |
+| Return-type → fail-closed-carrier? | `v4.compiler.03_resolve` | L0.14, L1.11 |
+
+### 10.2 Three small derived stages cover what the pipeline doesn't already expose
+
+These are themselves `.dag` stages — small folds with declared
+`consumes:` edges — and they're reusable across multiple lenses:
+
+```dag
+module v4.lens.match_arm_shape
+consumes: v4.compiler.02_parse
+produces: Map<MatchArmId, ArmShape>     // {trivial-literal | structural-work | identity-passthrough}
+// reusable by: L1.1, L1.9, L1.11, L0.7, L0.13
+
+module v4.lens.closed_vocab_scan
+consumes: v4.compiler.02_parse
+produces: Map<DeclId, Set<ClaimToken>>  // fact-bearing tokens in comments/identifiers
+// reusable by: L1.7
+
+module v4.lens.concept_home
+consumes: v4.compiler.03_resolve, v4.lens.canonical_observations_index
+produces: Map<FnId, File>               // each fn's primary-concept home file
+// reusable by: L1.8
+```
+
+Each is a single deterministic fold. Once landed, multiple lenses
+share the result — landing `match_arm_shape` unblocks five lenses,
+not one.
+
+### 10.3 A lens is a stage with declared dependencies
+
+```dag
+module v4.lens.dissolution
+consumes:
+  v4.compiler.02_parse
+  v4.compiler.03_resolve
+  v4.compiler.04_infer
+  v4.lens.match_arm_shape
+  v4.lens.closed_vocab_scan
+  v4.lens.concept_home
+produces:
+  Set<Diagnostic>
+```
+
+The compiler's existing stage-ordering — same machinery that ensures
+`04_infer` runs after `03_resolve` — automatically schedules the lens
+stage after its dependencies. **Adding a new lens = land a `.dag`
+stage with its own `consumes:` declaration; pipeline ordering and
+parallelism are derived, not configured.**
+
+### 10.4 Parallelism falls out of the dependency graph
+
+By §5.0's design, every lens is a deterministic structural projection
+with no cross-lens mutable state. That gives two natural parallelism
+axes derived directly from the dependency graph:
+
+- **Per file.** Each `.dag` file's parse/resolve/infer state is
+  independent of every other file's; the lens-stage fan-out is
+  embarrassingly parallel — one task per file in scope.
+- **Per lens within a file.** Two lenses reading the same shared
+  indices have no contention (indices are read-only by the time
+  lenses run); they fan out at the predicate-evaluation level.
+
+Combined with `v4.lens.affected_set` (already in the pipeline; only
+re-lens files whose downstream closure has changed), CI cost scales
+with PR size, not with corpus size.
+
+### 10.5 What this gives you
+
+- **One dependency model** for the whole compiler — pipeline stages
+  and lenses live in the same graph.
+- **Adding a lens** is a `.dag` stage land, not a framework
+  extension.
+- **Adding an index** (when a new lens needs facts current stages
+  don't expose) is a small derivation stage between an existing
+  producer and the lens — and reusable by any future lens that
+  shares the same dependency.
+- **No "lens framework"** — there's just the pipeline, and lenses
+  are stages in it.
+- **Self-application is clean**: the pipeline is `.dag`-modeled,
+  the lens stage participates as a peer, and the compiler enforces
+  the discipline it follows.
+
+## 11. Open — audit of current coverage
 
 To be filled: an audit of which Layer-0 checks the v4 compiler enforces
 today vs. the gap. The v4 compiler is early-stage (the pipeline is still
