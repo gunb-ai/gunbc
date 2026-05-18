@@ -228,31 +228,31 @@ substrate PRs since it needs no absent substrate.
 ### 2.2 `src/v4/std/`
 
 **`std/node.dag`**
-- `node_well_formed` (113) — ✓ **walker dissolved** —
+- `node_well_formed` (122) — ✓ **walker dissolved** —
   `fold_node` landed in `std/node.dag` and this function now consumes the
   shared `NodeFold<Bool>` algebra instead of hand-rolling recursive descent.
-- `all_edges_named` (71), `all_edges_positional` (77) — 🟡 **traverse** —
+- `all_edges_named` (80), `all_edges_positional` (86) — 🟡 **traverse** —
   `feature: forall over FreeMonoid<T> in std/collection.dag (Wave-A2)`.
   `fold` body is `acc && pred(e)`; dissolves to
   `forall(children, pred)` on arrival.
-- `name_occurrences` (82), `all_names_distinct` (90) — 🟡 **traverse** —
+- `name_occurrences` (91), `all_names_distinct` (99) — 🟡 **traverse** —
   `feature: count_where + unique over FreeMonoid<T> in std/collection.dag (Wave-A2)`.
   Dissolves to `count_where(children, pred)` / `unique(children)` on
   arrival.
-- `connective_edge_discipline` (48) — 🟡 **predicate** (property
+- `connective_edge_discipline` (57) — 🟡 **predicate** (property
   projection, registry row 7) —
   `feature: per-Connective discipline fact on std/node.dag Connective (substrate-extension under T-1)`.
   Six-arm `match`-to-derive of an `EdgeDiscipline` per `Connective`;
   the discipline IS a fact on `Connective`. Dissolves to
   `c.discipline` on arrival (paired-construction at the type).
-- `edge_is_named` (58), `edge_is_positional` (64) — 🟢 — naked
+- `edge_is_named` (67), `edge_is_positional` (73) — 🟢 — naked
   constructor inspection of `EdgeLabel`; reading the model fact rather
   than deriving anything (a consumer's `match e.label` is the canonical
   form).
-- `edges_conform` (98) — 🟢 — each `EdgeDiscipline` arm does
+- `edges_conform` (107) — 🟢 — each `EdgeDiscipline` arm does
   structurally distinct work (count check / labelling rule / position
   check); irregularity escape hatch.
-- `node_locally_well_formed` (106) — 🟢 — composes the above with a
+- `node_locally_well_formed` (115) — 🟢 — composes the above with a
   `NodeKind` constructor split that does distinct work per arm.
 
 **`std/algebra.dag`**
