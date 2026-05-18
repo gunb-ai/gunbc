@@ -1,68 +1,8 @@
 // src/v4/std/verification.dag
-//
-// Scope: TestClaim schema — tests are data, not code. Modeled fresh
-//        against the v4 substrate (v3 dsl/std/verification.dag studied
-//        for design, not lifted — its TestClaim carried no input/expected
-//        and a different AssertKind set).
-// Anchor: THESIS.md "Tests are structural data" §348-368 + Self-hosting facet 3
-//
-// Owns:
-//   - TestClaim { kind: AssertKind, label: String, input: Node,
-//                 expected: Outcome<Node> }
-//   - AssertKind = Equals | Diagnostic | Compiles | RoundTrips   (closed —
-//     the complete assertion set. Tier1 = Compiles | Diagnostic; Tier2 =
-//     Equals; the self-host / format fixed point = RoundTrips. NO "..." —
-//     a 5th kind at fill-time is a substrate-extension STOP, not a silent
-//     open enum.)
-//   - Boundary/simulation does NOT add an AssertKind. A simulated external
-//     dependency is generated Node bound into `input` (program ∘ generated
-//     simulator) — see lens/testgen.dag simulator-generation arm. The
-//     assertion shape stays one of the closed 4; only `input` changes.
-//   - no hand-Rust tests; every test predicate IS a TestClaim instance
-//
-// Consumes:
-//   - std/node.dag: Node (`input`, and the `Produced` value carried by
-//     `expected`). Conj/Disj are the record/sum surface sugar.
-//   - std/diagnostic.dag: Outcome<T> (the `expected` carrier). The
-//     scaffold's "Diagnostic for failure mode" is reached THROUGH
-//     `Outcome.Rejected { diagnostic: Diagnostic }` — see HEADER
-//     RECONCILE below.
-//   (String for label is the kernel-ambient String — no import.)
-//
-// Status: T-3 modeled 2026-05-16 (cool-wren-237).
-// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
-// contract for the worker. Splitting this file requires explicit operator
-// ratification (substrate extension = stop signal).
-//
-// HEADER RECONCILE (operator decision I, 2026-05-16). The original
-// scaffold left `input` and `expected` DELIBERATELY UNTYPED while `kind`
-// and `label` were typed — the tell that their faithful type was a then-
-// pending substrate decision. That decision is the value-or-Diagnostic
-// carrier STOP (surfaced from T-4.6; this session independently
-// confirmed TestClaim.expected as a canonical consumer). The operator
-// ratified decision I: `Outcome<T> = Produced { value: T } | Rejected
-// { diagnostic: Diagnostic }`, landed in std/diagnostic.dag (#3181,
-// merged). The previously-untyped fields are now realized:
-//   - `input: Node` — per the scaffold's OWN "generated Node bound into
-//     `input`" framing (boundary-sim = program ∘ generated simulator).
-//     (Interpretation note: the dispatch read "type expected (and input)
-//     via Outcome<T>"; `input` is typed `Node`, not `Outcome<Node>` —
-//     the input is the program under test, not a produced outcome; the
-//     scaffold's "generated Node into `input`" is decisive. Surfaced for
-//     conscious confirmation, not silently chosen.)
-//   - `expected: Outcome<Node>` — the asserted result of running `input`;
-//     `kind` selects how it is compared (see AssertKind ledger).
-// `Outcome<T>` is CONSUMED from std/diagnostic.dag, never re-invented
-// here (the carrier-STOP's binding rule: one ratified spine, no per-file
-// shape). Consuming `Outcome` rather than bare `Diagnostic` fulfils the
-// scaffold's "Diagnostic for failure mode" — the failure mode is
-// `Outcome.Rejected`'s `Diagnostic`. `Node` + `Outcome` in Consumes are
-// the mechanical consequence of the ratified typing of the deferred
-// fields, not a scope expansion; no other scaffold-header content
-// changed. This realization is operator-ratified + dispatch-directed,
-// surfaced in review — not a unilateral worker edit (diagnostic.dag
-// #3161 / witness.dag #3178 reconcile precedent).
-
+// Scope: Closed TestClaim schema — AssertKind, TestgenTier/Layer, TestClassification, ImpossibleBugClass, T19ManualAnchorKey, TestClaim fields.
+// Owns: AssertKind TestgenTier TestgenLayer TestClassification ImpossibleBugClass T19ManualAnchorKey TestClaim
+// Consumes: v4.std.node { Node } v4.std.diagnostic { Outcome }
+// Status: T-3 modeled; substrate extension or file split = operator STOP.
 
 module v4.std.verification
 
@@ -71,141 +11,66 @@ import v4.std.node { Node }
 import v4.std.diagnostic { Outcome }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// Modeling notes (read before validating against the anchor)
-//
-// SCHEMA FILE. verification.dag declares the test-as-data shape — it
-// owns no producer logic. lens/testgen.dag (T-19) PRODUCES `TestClaim`
-// values from the substrate and compiler/05_eval.dag (T-22) EVALUATES
-// them; this file is the shape they construct to. There is deliberately
-// no `run_claim` / `assert` helper here — a consumer reads a `TestClaim`
-// by `match`ing `kind` and comparing the produced `Outcome<Node>`
-// against `expected` (THESIS §348-368 "tests are structural data").
-//
-// WHY `expected: Outcome<Node>` UNIFIES THE CLOSED 4. Running `input`
-// (a Node program, possibly program ∘ generated simulator) yields an
-// `Outcome<Node>` — `Produced { value }` or `Rejected { diagnostic }`.
-// The four assertion FORMS are not four payload types; they are four
-// comparison semantics over that ONE result type, selected by `kind`:
-//   - Equals      — assert `Produced { value }` and `value` structurally
-//                   equals `expected`'s produced value (Tier-2).
-//   - Diagnostic  — assert `Rejected { diagnostic }` and the diagnostic
-//                   matches `expected`'s rejected diagnostic (Tier-1).
-//   - Compiles    — assert the result is `Produced` at all; the produced
-//                   value is not compared (a unary success assertion —
-//                   `expected` carries the canonical `Produced` form,
-//                   `kind` says "only the Produced/Rejected discriminant
-//                   is load-bearing"). Tier-1.
-//   - RoundTrips  — assert `Produced { value }` and `value` structurally
-//                   equals `input` (emit∘ingest fixed point / self-host
-//                   bit-identity). `expected` carries that produced
-//                   `≈input` value.
-// KNOWN STRUCTURAL TENSION (api-review #3183, openai-pro — surfaced,
-// not claimed away). `kind` and `expected` are INDEPENDENT fields, so
-// the frozen scaffold shape `TestClaim { kind, label, input, expected }`
-// + payload-less closed-4 `AssertKind` DOES admit the kind×expected
-// cross-product: e.g. `kind: Diagnostic` with `expected: Produced{…}`,
-// or `kind: Compiles` with an arbitrary/`Rejected` expectation, is
-// representable. The kind↔expected-variant correspondence (Equals/
-// RoundTrips ⟹ `Produced`; Diagnostic ⟹ `Rejected`; Compiles ⟹
-// `Produced`-discriminant, value vestigial) is therefore an EVALUATOR-
-// ENFORCED semantic contract (compiler/05_eval.dag, T-22), NOT
-// structurally enforced at this schema boundary. This file does not
-// claim otherwise. The structurally-enforcing form folds the
-// expectation into a single assertion sum so malformed states are
-// unconstructable — but that (a) changes the FROZEN scaffold's
-// `TestClaim`/`AssertKind` shape (operator-tier; not a unilateral
-// worker edit — the header is the immutable contract), and (b) is
-// entangled with the carrier-STOP (a `Produced`/`Rejected`-shaped
-// per-variant expectation risks re-instantiating the value-or-
-// Diagnostic spine this file was explicitly required to consume, not
-// re-derive — prior api-review APPROVE blessed exactly the consume-
-// Outcome shape). The two api-reviews conflict on this exact point.
-// Resolution is escalated to the T-3 manager / operator; this note is
-// the honest tracked statement of the gap, not a silent convention.
-//
-// The one coproduct below (`AssertKind`) carries the full Practice-4
-// 🟢/🟡/🔴 classification + the five-pattern dissolution ledger
-// (modeling-discipline.md §4 — operator-ratified binding 2026-05-15;
-// the doc enumerates FIVE patterns, the fifth being Parameterized-
-// family). `TestClaim` is a Conj record — no ledger applies.
-
-
-// ─────────────────────────────────────────────────────────────────────
-// AssertKind — the closed set of structural-test assertion FORMS: HOW a
-// TestClaim asserts its produced `Outcome<Node>` relates to `expected`.
-// Four irreducible forms at the testing-discipline boundary (THESIS
-// §348-368): value-equality, expected-diagnostic, compilation-success,
-// round-trip fixed point. CLOSED — a 5th form at fill-time is a
-// substrate-extension STOP (scaffold header), routed to operator
-// ratification, never a silent open enum.
-//
-// Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
-// discipline.md §4) — classification: 🟢 GREEN (terminal). Ledger —
-// five patterns attempted:
-//   1. Fact placement — FAILS: the single consumer (the TestClaim
-//      evaluator, compiler/05_eval.dag) dispatches on ALL four to pick
-//      the comparison; it is the shared assertion-discriminant, not a
-//      per-consumer scattered fact.
-//   2. Variant-is-data — FAILS: the four are nullary form-tags whose
-//      payload already lives in `expected: Outcome<Node>`. Promoting to
-//      `{ form: Symbol }` replaces a closed exhaustive 4-set with an
-//      open opaque identity (`form` = an unmodelled spelling becomes
-//      representable) — violates P2 + the closed-set rule (a closed
-//      assertion set is an enum, not a Symbol proxy). The 4-variant
-//      enum IS the faithful form; the comparison semantics per form are
-//      genuinely distinct (value-eq vs diagnostic-match vs produced-
-//      discriminant vs input-fixedpoint), not one shape relabelled.
-//   3. Algebraic form — N/A: an assertion form is not an algebra
-//      carrier; the four do not trace to a richer std/algebra.dag
-//      structure (no Monoid/Order they inhabit). They ARE the
-//      irreducible partition of "ways a structural test asserts",
-//      grounded at the THESIS testing boundary — no richer std/ source.
-//   4. Dimensional — FAILS: a TestClaim asserts EXACTLY ONE form —
-//      value-equality OR expected-diagnostic OR compiles OR round-trips;
-//      mutually-exclusive author-chosen contracts, never simultaneous
-//      coordinates in a product of independent axes. No claim is "both
-//      Equals and RoundTrips".
-//   5. Parameterized family — FAILS: the four are not `F<X>` over a
-//      separately-declared enumerable set (Practice 7). They are the
-//      fixed assertion-form partition; there is no source set they are
-//      a mechanical copy of, and no generic / projection collapses them.
-//      (`Outcome<Node>`'s genericity is the RESULT carrier's, not an
-//      enumerated-copy of these forms.)
-// Terminal: the irreducible closed set of structural-test assertion
-// forms at the testing-discipline boundary; a 5th is a substrate-
-// extension STOP (scaffold header), not a worker addition.
 type AssertKind
+// 🟢 coproduct dissolution — DECISIONS.md LB-P4-3212
   = Equals
   | Diagnostic
   | Compiles
   | RoundTrips
 
 
-// ─────────────────────────────────────────────────────────────────────
-// TestClaim — one test, as data (THESIS §348-368). Not a record of a
-// test run; the test ITSELF. A consumer (compiler/05_eval.dag, T-22)
-// runs `input`, obtains an `Outcome<Node>`, and compares it to
-// `expected` under the semantics `kind` selects.
-//
-//   kind      — the assertion FORM (which comparison; see AssertKind).
-//   label     — human-readable description; surfaces as the failure
-//               message when the claim does not hold. Kernel-ambient
-//               `String` (scaffold header — not imported).
-//   input     — the Node program under test (boundary-sim composes a
-//               generated simulator Node into it: program ∘ simulator;
-//               the assertion shape is unchanged, only `input` differs).
-//   expected  — the asserted result of running `input`, as the operator-
-//               ratified `Outcome<Node>` carrier (Produced value vs
-//               Rejected diagnostic). Consumed from std/diagnostic.dag,
-//               never re-invented (carrier-STOP binding rule).
-//
-// This is a Conj record, not a coproduct — no Practice-4 ledger applies
-// (records do not dissolve to a richer source; the diagnostic.dag
-// `Diagnostic` precedent).
+type TestgenTier
+// 🟢 coproduct dissolution — DECISIONS.md LB-P4-3212
+  = Tier1
+  | Tier2
+  | Tier3
+
+
+type TestgenLayer
+// 🟢 coproduct dissolution — DECISIONS.md LB-P4-3212
+  = Unit
+  | Integration
+  | Boundary
+
+
+type TestClassification {
+  tier: TestgenTier
+  layer: TestgenLayer
+}
+
+
+type ImpossibleBugClass
+// 🟢 coproduct dissolution — DECISIONS.md LB-P4-3212
+  = SuboptimalComplexity
+  | IdempotencyContract
+  | TransportTypeDrift
+  | NestedOptionalFlatten
+  | UnenumeratedEffects
+  | UnhandledDiagnosticPaths
+
+
+type T19ManualAnchorKey
+// 🟡 coproduct dissolution — DECISIONS.md LB-P4-3212
+  = T19ManualTcConjEmpty
+  | T19ManualTcDisjEmpty
+  | T19ManualTcArrowTwoConj
+  | T19ManualTcCardinalityEmpty
+  | T19ManualTcInstantiationEmpty
+  | T19ManualTcConjEqualsRefl
+  | T19ManualNatAddLeftIdentity
+  | T19ManualNatAddRightIdentity
+  | T19ManualNatAddAssociativity
+  | T19ManualNatMulLeftIdentity
+  | T19ManualNatMulAnnihilator
+  | T19ManualNatMulAssociativity
+  | T19ManualAnchorAbsent
+
+
 type TestClaim {
   kind: AssertKind
   label: String
+  t19_anchor: T19ManualAnchorKey
   input: Node
   expected: Outcome<Node>
+  classification: TestClassification
 }
