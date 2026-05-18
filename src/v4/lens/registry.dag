@@ -9,47 +9,50 @@ module v4.lens.registry
 
 import v4.std.text { String }
 
+// 🟢 coproduct — module binding state (no sentinel string in `path`).
+type LensModulePathV0 = Bound { path: String } | Unbound
+
 type LensRegistryEntryV0 {
   lens_id: String
-  module_path: String
+  module_path: LensModulePathV0
 }
 
 data lens_registry_v0_complexity: LensRegistryEntryV0 = {
   lens_id: "complexity"
-  module_path: "v4.lens.complexity"
+  module_path: Bound { path: "v4.lens.complexity" }
 }
 
 data lens_registry_v0_cost: LensRegistryEntryV0 = {
   lens_id: "cost"
-  module_path: "v4.lens.cost"
+  module_path: Bound { path: "v4.lens.cost" }
 }
 
 data lens_registry_v0_parallelism: LensRegistryEntryV0 = {
   lens_id: "parallelism"
-  module_path: "v4.lens.parallelism"
+  module_path: Bound { path: "v4.lens.parallelism" }
 }
 
 data lens_registry_v0_effect_enumeration: LensRegistryEntryV0 = {
   lens_id: "effect_enumeration"
-  module_path: "v4.lens.effect"
+  module_path: Bound { path: "v4.lens.effect" }
 }
 
 data lens_registry_v0_idempotency: LensRegistryEntryV0 = {
   lens_id: "idempotency"
-  module_path: "v4.lens.idempotency"
+  module_path: Bound { path: "v4.lens.idempotency" }
 }
 
 data lens_registry_v0_provenance: LensRegistryEntryV0 = {
   lens_id: "provenance"
-  module_path: "v4.lens.ownership"
+  module_path: Bound { path: "v4.lens.ownership" }
 }
 
 data lens_registry_v0_unused_parameters: LensRegistryEntryV0 = {
   lens_id: "unused_parameters"
-  module_path: "__PREFIX_V0_UNBOUND__"
+  module_path: Unbound
 }
 
 data lens_registry_v0_structural_resolution: LensRegistryEntryV0 = {
   lens_id: "structural_resolution"
-  module_path: "__PREFIX_V0_UNBOUND__"
+  module_path: Unbound
 }
