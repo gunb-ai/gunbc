@@ -251,12 +251,10 @@ fn manifest_anchor_values(module: &SurfaceModule) -> BTreeSet<&str> {
         .iter()
         .filter_map(|item| match item {
             SurfaceItem::Data {
-                ty,
+                ty: SurfaceType::Named { name: ty_name, .. },
                 body: Some(SurfaceExpr::Var { name, .. }),
                 ..
-            } if matches!(ty, SurfaceType::Named { name: ty_name, .. } if ty_name == "T19ManualAnchorKey") => {
-                Some(name.as_str())
-            }
+            } if ty_name == "T19ManualAnchorKey" => Some(name.as_str()),
             _ => None,
         })
         .collect()
@@ -268,17 +266,15 @@ fn claim_anchor_values<'a>(modules: &[&'a SurfaceModule]) -> BTreeSet<&'a str> {
         .flat_map(|module| module.items.iter())
         .filter_map(|item| match item {
             SurfaceItem::Data {
-                ty,
+                ty: SurfaceType::Named { name: ty_name, .. },
                 body: Some(SurfaceExpr::VariantRecord { fields, .. }),
                 ..
-            } if matches!(ty, SurfaceType::Named { name, .. } if name == "TestClaim") => {
-                match record_field_expr(fields, "t19_anchor") {
-                    SurfaceExpr::Var { name, .. } => Some(name.as_str()),
-                    other => {
-                        panic!("TestClaim.t19_anchor must be a discriminant var, got {other:?}")
-                    }
+            } if ty_name == "TestClaim" => match record_field_expr(fields, "t19_anchor") {
+                SurfaceExpr::Var { name, .. } => Some(name.as_str()),
+                other => {
+                    panic!("TestClaim.t19_anchor must be a discriminant var, got {other:?}")
                 }
-            }
+            },
             _ => None,
         })
         .collect()
