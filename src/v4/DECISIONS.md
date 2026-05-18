@@ -193,6 +193,8 @@ consumes that derived fact.
 
 10. **`test/claim/manual/resolve_compile_anchor.dag` (Tier-1 compile anchor):** **Why:** codex #13724 — keep `resolve` / `dag_language_model_canonical_symbols` / wave-1 `DagLanguageModel` on the v2 `compile --source-root src/v4` graph so resolver/LM edges cannot silently rot pre-T-22. **What:** imports `resolve` + `dag_language_model_wave1_void` / `dag_c3_surface_sugar_service`; `anchor_resolve_wave1_service_atom_via_canonical_symbols` builds minimal `Conj` → `Atom(service)` and calls `resolve` (exercises CP-1b items 1–2 + `resolve_atom` canonical-set fallback, including **`language_identity == dag_language_model_surface_id`** per codex #13790). **Runtime:** `v2-compiler run` on v4 `TestClaim`s remains **deferred until T-22** (`test/v2_run_preflight/MOVE1_COVERAGE.txt`); follow-up — promote to a real `TestClaim` asserting `Produced` on the resolved `Atom`, then add `Bind` / multi-edge cases.
 
+11. **`compiler/01_tokenize.dag` — `LexRules` / wave-1 E0 (T-6 / B2-OMNI; PR #3284):** `LexRules = Node`: lexical authority is structural (`NodeKind`, `Connective`, edge discipline on children), not ad-hoc `Symbol` tables inside the generic stage. Wave-1 E0 void lex = empty-root `Conj` (`std/node.dag` `is_empty_conj_root`). Future rows = `EdgeLabel.Named` under a `Conj` root; until the walk lands, a non-empty `Conj` root closes `Outcome::Rejected` with `tokenize_lexical_walk_not_realized` (fail-closed). Rationale lives here per Practice 9; `01_tokenize.dag` keeps only the mandated header.
+
 ---
 
 ## P4-3208 coproduct ledger

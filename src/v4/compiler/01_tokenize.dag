@@ -22,14 +22,6 @@ import v4.std.diagnostic {
 }
 import v4.std.node { Node, Symbol, is_empty_conj_root, node_well_formed }
 import v4.std.text { String, string_is_empty }
-// LexRules grammar-as-data (T-6 / B2-OMNI): `LexRules` is a `Node`. The tokenizer
-// recognizes rules by structural shape (NodeKind, Connective, EdgeDiscipline on
-// children) — never by ad-hoc `Symbol` spellings inside the generic stage.
-// Wave-1 E0 void lex: canonical empty rule-book = `TypeNode { connective: Conj }`
-// with `children == []` (`is_empty_conj_root` on the root). Future lexical rows
-// attach as `EdgeLabel.Named` fields under a Conj root; until the lexical walk is
-// realized, any non-empty Conj root closes as `Outcome::Rejected` with
-// `tokenize_lexical_walk_not_realized` (fail-closed — no partial TokenStream).
 type LexRules = Node
 type Token {
   class: Symbol
