@@ -34,10 +34,7 @@ type ImpossibleBugCoverageKey {
 type TestgenCoverageKey = TestgenConcept
 
 
-// Acceptance surface for docs/design-dissolution-lens.md Layer 1. The
-// meta-lens keys are data, not a script: downstream coverage can ask whether
-// each required dissolution lens has a structural acceptance witness.
-// 🟢 coproduct dissolution — closed checklist for the current L1.1–L1.12 batch.
+// 🟢 coproduct dissolution — DECISIONS.md Part 6 · SL-PREFIX-DISSOLUTION-LENS-KEY.
 type DissolutionLensKey
   = L1_1DiscriminantPredicate
   | L1_2DegenerateType
