@@ -758,5 +758,6 @@ dissolve-on-arrival rule):
    `block_well_formed` now matches `CatchSwitch` directly).
 
 Per Practice 10, the matching in-file `.dag` tag lands with the fix
-(per migration PR), not retro-applied here. This inventory is the
-classification.
+where the target file allows body comments; strict-deprose allowlisted
+files carry the receipt in the ledger/audit instead. This inventory is
+the classification.
