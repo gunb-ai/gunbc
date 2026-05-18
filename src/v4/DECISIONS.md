@@ -1096,3 +1096,32 @@ Merge-base `92cb26402` **may** mark a sum coproduct **🔴** in the Practice-4 h
 | ID | Coproduct / classification / dissolution-patterns-tried / trigger | Home |
 |---|---|---|
 | **LB-P4-3213** | `CiCommand` (`LintCommand \| TestCommand \| IgnoredTestCommand{test_name} \| ShellCommand{command:String}`) — faithful PORT of v3 `dsl/gunbc/ci.dag` `CICommand` (still-hawk-102 fork-2 directive; not imported). **🟡 YELLOW (scaffold).** Richer source EXISTS and is nameable: the typed process-command carrier `Command{program,args,env}` for `extdeps/process.dag` (T-4.5, currently 0-decl scaffold) + v3's own ROADMAP-F12 "broader typed command-record carrier"; `ShellCommand{command:String}` is the bounded interim escape. **Named trigger:** when `extdeps/process.dag` (T-4.5) lands a typed `Command`/argv carrier, `CiCommand` migrates — `ShellCommand`'s `String` dissolves into typed `program/args/env`; the first consumer of the *meaning* (deferred ci.yml projection / `select_jobs` / T-22 eval) owes the decomposition, not a local parse. **5 dissolution patterns tried:** (1) fact-placement FAILS (uniform command consumer, not scattered); (2) variant-is-data FAILS (heterogeneous payloads — `test_name` vs raw `command`; collapsing loses structural-intent-vs-raw-shell, the carrier's point); (3) algebraic N/A (not an algebra carrier); (4) dimensional FAILS (exactly-one-intent, not orthogonal axes); (5) parameterized-family FAILS (not `F<X>` over a declared set). Terminal-as-coproduct but 🟡 (not 🟢) because the richer source is nameable (T-4.5 `Command` / v3-F12). | `src/v4/workflow/ci.dag` (`type CiCommand`) |
+
+### LB-P10-3213 — Practice-10 hand-rolled `List` operation dissolution ledger
+
+> Operator-flagged merge gate (still-hawk-102 via Lane B, 2026-05-18):
+> per-file hand-rolled `List` ops with duplicate-across-files are a
+> Practice-10 tell and must not merge as silent debt. Dispositions use
+> the **#3244 unified Dissolution dispositions** vocabulary (🔴
+> dissolve-now / 🟢 terminal / 🟡 gated `feature:`). Procedure result:
+> `std/collection.dag` (T-3; `git ls-tree` HEAD = 18 lines, only
+> `List`/`Set`/`Map` type aliases) declares **zero** derived `List`
+> operations ⇒ **zero 🔴** (nothing to dissolve into in-PR); every
+> generic primitive is **🟡 gated `feature:`**, owner **T-3
+> `std/collection.dag`** (the FreeMonoid-derived List-op surface;
+> `fold`/`map`/`count`/`concat` are language substrate primitives, used
+> directly — not hand-rolled, out of scope). In-file tag:
+> `// 🟡 List-op dissolution (Practice 10) — DECISIONS.md LB-P10-3213`.
+
+| ID | Helper(s) — *duplicate-across-files = Practice-10 tell* | Disposition | Missing `std/collection.dag` op (gate kind `feature:`, owner T-3) · dissolve-on-arrival obligation |
+|---|---|---|---|
+| **LB-P10-3213-MEMBER** | `bs_member` (bootstrap.dag) ∥ `ci_member` (ci.dag) — **duplicate** | 🟡 gated `feature:` | `member(x: T, xs: List<T>) -> Bool` (membership/contains). On arrival: replace both call-sites with the std op; **delete both hand-rolled helpers**. |
+| **LB-P10-3213-ANY** | `ci_symbol_resolves`, `ci_blocked` (ci.dag) | 🟡 gated `feature:` | `any(p: fn(T) -> Bool, xs: List<T>) -> Bool` (existential). On arrival: re-express as `any(...)`; delete the helpers. |
+| **LB-P10-3213-ALL** | `ci_all_job_ids_unique`, `ci_all_gate_ids_unique`, `ci_all_needs_resolve`, `ci_all_gate_jobs_resolve` (ci.dag) | 🟡 gated `feature:` | `all(p: fn(T) -> Bool, xs: List<T>) -> Bool` (universal). On arrival: the four predicates become `all(...)` compositions; delete the bespoke folds. |
+| **LB-P10-3213-COUNTIF** | `ci_id_occurrences` ∥ `ci_gate_id_occurrences` (ci.dag) — **duplicate** | 🟡 gated `feature:` | `count_if(p: fn(T) -> Bool, xs: List<T>) -> Int` (predicate count). On arrival: both occurrence-folds collapse to one `count_if`; delete both. |
+| **LB-P10-3213-SETEQ** | `bs_list_eq` (bootstrap.dag) | 🟡 gated `feature:` | `set_eq(a: List<T>, b: List<T>) -> Bool` (membership-symmetric / multiset equality). On arrival: replace with std `set_eq`; delete helper. |
+| **LB-P10-3213-FILTER** | `ci_eliminate_pass` (ci.dag) | 🟡 gated `feature:` | `filter(p: fn(T) -> Bool, xs: List<T>) -> List<T>`. On arrival: the keep-blocked pass becomes `filter(...)`; delete helper. |
+| **LB-P10-3213-FIND** | `ci_job_needs` (ci.dag) | 🟡 gated `feature:` | `find`/lookup-first — honest shape `find(p: fn(T) -> Bool, xs: List<T>) -> Witness<T>` (per TASKS.md:235 `Map`/`PartialFunction` honesty; gated also on `witness.dag`/Wave-A2). On arrival: replace lookup-fold; delete helper. |
+| **LB-P10-3213-KAHN** | `ci_kahn_fixpoint`, `ci_acyclic` (ci.dag) | 🟢 **terminal** | **Not** a reusable collection primitive: Kahn topological-elimination cycle-detection over the job graph — domain well-formedness model content, a *peer* of `ci_pipeline_well_formed` / `bootstrap_plan_well_formed` (which the gate does not ask to dissolve). Consumer-independent; no `std/collection.dag` op to dissolve into. (`fold`-as-bounded-counter is the P4 decidability idiom.) Its generic sub-primitives (`ci_member`/`ci_job_needs`/`ci_eliminate_pass`/`ci_blocked`) dissolve via the rows above; the Kahn *composition* stays. |
+
+**Note (out of dissolution scope, recorded for completeness):** `bs_diagnostic` / `ci_diagnostic` are `Diagnostic` constructors, not `List` operations. No 🔴 in this ledger — `std/collection.dag` currently has no derived-op surface to dissolve into; the gate opens when T-3 `std/collection.dag` lands the List-op surface, at which point every 🟡 row above is a dissolve-on-arrival merge obligation.
