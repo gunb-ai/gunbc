@@ -27,7 +27,7 @@ type FloatKind
   | PpcFp128Float
 
 
-// 🟡 coproduct dissolution — DECISIONS.md Part 6 · SL-3229-LLVM-WIDTH.
+// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
 type LlvmType
   = VoidType
   | LabelType

@@ -1066,6 +1066,10 @@ Verbatim `//` lines from merge-base `integer.dag` (lines **124–132**):
 
 ### SL-3229-LLVM-WIDTH — raw-`Int` width payload scaffold (`LlvmType` family)
 
+**Authority / closure:** PR #3310 P1 cardinality refinement (api-review codex receipt, 2026-05-18).
+
+**Disposition:** **🟢 GREEN terminal** for the merge-base **raw `Int` width payload** class on `LlvmType` — live `llvm_ir.dag` uses `v4.std.cardinality.NonZeroNat` for `IntegerType.bits` and `VectorType.count`, and `v4.std.nat.Nat` for `ArrayType.count` / `PointerType.address_space`, closing the signed / zero-bit illegal state the merge-base `Int` payloads admitted. **Bounded use:** LangRef-range tightness beyond “positive width / non-negative count” stays producer-side until any stronger witness the operator schedules separately.
+
 Verbatim `//` lines from merge-base `llvm_ir.dag` (lines **276–297**), immediately preceding `type LlvmType`:
 
 ```text
@@ -1094,7 +1098,7 @@ Verbatim `//` lines from merge-base `llvm_ir.dag` (lines **276–297**), immedia
 //       reclassifies 🟢 (the SUM is already 🟢; only the payload moves).
 ```
 
-**Dissolution trigger:** when `std/cardinality.dag` refinement substrate lands (T-3), bounded non-negative widths become type-enforced; residual reclassifies 🟢 per merge-base note.
+**Dissolution trigger (merge-base archive):** when `std/cardinality.dag` refinement substrate lands (T-3), bounded non-negative widths become type-enforced; residual reclassifies 🟢 per merge-base note. **Checkable landing (width payloads):** satisfied on `LlvmType` as documented in **Disposition** above; **`SL-3229-LLVM-OPS`** remains the separate operand-relation scaffold.
 
 ### SL-3229-LLVM-OPS — operation-specific operand constraints
 
