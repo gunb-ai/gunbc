@@ -1487,9 +1487,37 @@ Verbatim `//` lines from merge-base `float.dag` (lines **104–144** — modelin
 
 **Dissolution trigger:** `json_parse` wires duplicate-name rejection under this profile (same **P3** arrival train as **`SL-3229-T4-FORMAT-T6T7`**); `json.dag` header + Ledger cite this row; closes when parse body lands.
 
+### CP-3229-GREEN-FORMAT-VALUES — T-4.6 `JsonValue` / `YamlValue` / `TomlValue` 🟢 terminal receipts (strict-de-prose)
+
+Merge-base `92cb26402` **Practice-4** `// Coproduct dissolution … 🟢 GREEN (terminal). Ledger — five patterns attempted:` blocks for the **closed format value sums** (verbatim per-carrier text **only** in the merge-base object — **not** the `extdeps/languages/*` + `std/float.dag` bulk set in **`CP-3229-GREEN-TERMINAL`** below):
+
+| File | GREEN ledger blocks (merge-base `rg` count) |
+|------|-----------------------------------------------|
+| `src/v4/extdeps/formats/json.dag` | 1 |
+| `src/v4/extdeps/formats/yaml.dag` | 1 |
+| `src/v4/extdeps/formats/toml.dag` | 1 |
+
+**Recovery:**
+
+```bash
+git show 92cb26402eeb21471acb6ac47559cbae3b52afdb:src/v4/extdeps/formats/json.dag
+git show 92cb26402eeb21471acb6ac47559cbae3b52afdb:src/v4/extdeps/formats/yaml.dag
+git show 92cb26402eeb21471acb6ac47559cbae3b52afdb:src/v4/extdeps/formats/toml.dag
+```
+
+**Ratification:** strict de-prose removed in-file `//` ledger bodies from these three files; **`type`/`data` sums unchanged**. Live substrate one-line tags use **`// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-FORMAT-VALUES.`**
+
+### SL-3229-T4-FORMAT-TOML-TABLE-SPLIT — `TomlInlineTable` vs `TomlTable` (construction syntax)
+
+**Gate (live cite, Practice 9):** `🟡 gated — feature: TOML §Inline Table vs §Table surface syntax (dual carrier arms; same Map payload shape)`
+
+**Named arrival:** Merge-base **five-pattern GREEN** adjudication: both arms carry `Map<String, TomlValue>` — **inline vs standard** is **surface construction / parse-emit positioning**, not two competing substrate authorities for the same logical table. The sum **keeps both variants** for faithful AST shape until `toml_parse` / `toml_emit` (**`SL-3229-T4-FORMAT-T6T7`**) canonicalizes presentation; this row is the **checkable receipt** that the split is **temporary syntax policy**, not undocumented terminal drift (INVARIANTS P1/P5).
+
+**Dissolution trigger:** operator-ratified single-arm collapse **or** authored `toml_parse`/`toml_emit` behavior that pins inline-vs-standard round-trip per TOML v1.0.0 with **no** silent carrier change — until then the 🟡 tag + this row stand.
+
 ### CP-3229-GREEN-TERMINAL — 🟢 GREEN five-pattern ledgers (bulk)
 
-Merge-base `92cb26402` **Practice-4** `// Coproduct dissolution … 🟢 GREEN (terminal). Ledger — five patterns attempted:` blocks were adjacent to carriers (verbatim per-carrier text **only** in the merge-base object):
+Merge-base `92cb26402` **Practice-4** `// Coproduct dissolution … 🟢 GREEN (terminal). Ledger — five patterns attempted:` blocks were adjacent to carriers (verbatim per-carrier text **only** in the merge-base object). **Scope:** **`extdeps/languages/*` + `std/float.dag` only** — T-4.6 format value sums are indexed under **`CP-3229-GREEN-FORMAT-VALUES`**, not this row.
 
 | File | GREEN ledger blocks (merge-base `rg` count) |
 |------|-----------------------------------------------|
