@@ -2,6 +2,8 @@
 //!
 //! T-19 Wave-0: `src/v4/lens/testgen.dag` parses and exposes manual-anchor-key-driven
 //! `Generator` wiring (`kind` + `t19_anchor` + `classification` + `slot: TestgenConcept`).
+//! `AssertKind` selection for anchors lives in `v4.std.verification` (`assert_kind_for_manual_anchor`)
+//! as the single substrate authority next to `TestClaim.kind`.
 //! **Note:** `compile_to_dag` on this module alone does not resolve `import v4.std.*` peers
 //! (Import lowering is still M2-scoped); full merge compile lands with cross-file M2 per TASKS T-19.
 
@@ -11,25 +13,40 @@ use v3_compiler::tokenize_for_test;
 
 #[test]
 fn v4_lens_testgen_wave0_substrate_parses() {
-    let m = parse_module(
+    let testgen = parse_module(
         include_str!("../../../../v4/lens/testgen.dag"),
         "src/v4/lens/testgen.dag",
     );
+    let verification = parse_module(
+        include_str!("../../../../v4/std/verification.dag"),
+        "src/v4/std/verification.dag",
+    );
 
     assert_eq!(
-        module_paths(&m),
+        module_paths(&testgen),
         vec![vec!["v4", "lens", "testgen"]],
         "T-19 authority module should remain v4.lens.testgen"
     );
     assert_eq!(
-        function_count(&m, "bootstrap_claim_generator_for_manual_anchor"),
+        function_count(&testgen, "bootstrap_claim_generator_for_manual_anchor"),
         1,
         "T-19 Wave-0: single generator entrypoint keyed by T19ManualAnchorKey"
     );
-    assert_eq!(function_count(&m, "assert_kind_for_manual_anchor"), 1);
-    assert_eq!(function_count(&m, "testgen_concept_for_manual_anchor"), 1);
+    assert_eq!(function_count(&testgen, "testgen_concept_for_manual_anchor"), 1);
 
-    let bootstrap_rt = fn_return_type(&m, "bootstrap_claim_generator_for_manual_anchor")
+    assert_eq!(
+        module_paths(&verification),
+        vec![vec!["v4", "std", "verification"]],
+        "`assert_kind_for_manual_anchor` substrate authority should remain v4.std.verification"
+    );
+
+    assert_eq!(
+        function_count(&verification, "assert_kind_for_manual_anchor"),
+        1,
+        "T-19 manual-anchor AssertKind authority should remain `v4.std.verification`"
+    );
+
+    let bootstrap_rt = fn_return_type(&testgen, "bootstrap_claim_generator_for_manual_anchor")
         .expect("bootstrap_claim_generator_for_manual_anchor should have an explicit return type");
     assert!(
         type_is_outcome_generator_testgen_concept(bootstrap_rt),

@@ -12,8 +12,7 @@ import v4.std.verification {
   Tier1,
   Unit,
   AssertKind,
-  Compiles,
-  Equals,
+  assert_kind_for_manual_anchor,
   T19ManualAnchorKey,
   T19ManualTcConjEmpty,
   T19ManualTcDisjEmpty,
@@ -131,26 +130,6 @@ fn t19_manual_anchor_absent_bootstrap_diagnostic() -> Diagnostic {
 
 fn bootstrap_tier1_unit_classification() -> TestClassification {
   TestClassification { tier: Tier1, layer: Unit, }
-}
-
-
-// Wave-0: AssertKind mirrors manual `TestClaim.kind` in `nat_law_anchors` / `connective_anchors`; `TestgenConcept` is scheduling arm — M2 dissolves local table (TASKS T-19 P2).
-fn assert_kind_for_manual_anchor(key: T19ManualAnchorKey) -> AssertKind {
-  match key {
-    T19ManualTcConjEmpty => Compiles
-    T19ManualTcDisjEmpty => Compiles
-    T19ManualTcArrowTwoConj => Compiles
-    T19ManualTcCardinalityEmpty => Compiles
-    T19ManualTcInstantiationEmpty => Compiles
-    T19ManualTcConjEqualsRefl => Equals
-    T19ManualNatAddLeftIdentity => Compiles
-    T19ManualNatAddRightIdentity => Compiles
-    T19ManualNatAddAssociativity => Compiles
-    T19ManualNatMulLeftIdentity => Compiles
-    T19ManualNatMulAnnihilator => Compiles
-    T19ManualNatMulAssociativity => Equals
-    T19ManualAnchorAbsent => Compiles
-  }
 }
 
 

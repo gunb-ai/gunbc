@@ -1,6 +1,6 @@
 // src/v4/std/verification.dag
 // Scope: Closed TestClaim schema — AssertKind, TestgenTier/Layer, TestClassification, ImpossibleBugClass, T19ManualAnchorKey, TestClaim fields.
-// Owns: AssertKind TestgenTier TestgenLayer TestClassification ImpossibleBugClass T19ManualAnchorKey TestClaim
+// Owns: AssertKind TestgenTier TestgenLayer TestClassification ImpossibleBugClass T19ManualAnchorKey TestClaim assert_kind_for_manual_anchor
 // Consumes: v4.std.node { Node } v4.std.diagnostic { Outcome }
 // Status: T-3 modeled; substrate extension or file split = operator STOP.
 
@@ -73,4 +73,23 @@ type TestClaim {
   input: Node
   expected: Outcome<Node>
   classification: TestClassification
+}
+
+
+fn assert_kind_for_manual_anchor(key: T19ManualAnchorKey) -> AssertKind {
+  match key {
+    T19ManualTcConjEmpty => Compiles
+    T19ManualTcDisjEmpty => Compiles
+    T19ManualTcArrowTwoConj => Compiles
+    T19ManualTcCardinalityEmpty => Compiles
+    T19ManualTcInstantiationEmpty => Compiles
+    T19ManualTcConjEqualsRefl => Equals
+    T19ManualNatAddLeftIdentity => Compiles
+    T19ManualNatAddRightIdentity => Compiles
+    T19ManualNatAddAssociativity => Compiles
+    T19ManualNatMulLeftIdentity => Compiles
+    T19ManualNatMulAnnihilator => Compiles
+    T19ManualNatMulAssociativity => Equals
+    T19ManualAnchorAbsent => Compiles
+  }
 }
