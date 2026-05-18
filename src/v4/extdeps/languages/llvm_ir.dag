@@ -1,6 +1,6 @@
 // src/v4/extdeps/languages/llvm_ir.dag
 // Scope: LLVM 18 LangRef IR structural vocabulary (T-4.12).
-// Owns: FloatKind, LlvmType, VectorScaling, StructPacking, VarArg, LlvmConstant, LlvmValue, BinaryOpcode, ConversionOpcode, IntPredicate, FloatPredicate, ConstExprOpcode, PhiIncoming, PhiNode, SwitchCase, CallArgument, CallResult, LandingPadCleanup, LandingClause, AtomicOrdering, CmpXchgSuccessOrdering, CmpXchgFailureOrdering, FenceOrdering, AtomicRmwOrdering, AtomicRmwOp, LlvmInstruction, LoadOrdering, StoreOrdering, LoadAtomicity, StoreAtomicity, Terminator, UnwindDest, BasicBlock, Linkage, FunctionBody, FunctionParameter, LlvmFunction, GlobalMutability, GlobalInitializer, LlvmGlobal, NamedStructDef, LlvmModule, unwind_successors, block_successors, terminator_is_catchswitch, block_well_formed, FidelityDisposition, FidelityFeature, feature_disposition, llvm_instruction_cost
+// Owns: FloatKind, LlvmType, VectorScaling, StructPacking, VarArg, LlvmConstant, LlvmValue, BinaryOpcode, ConversionOpcode, IntPredicate, FloatPredicate, ConstExprOpcode, PhiIncoming, PhiNode, SwitchCase, CallArgument, CallResult, LandingPadCleanup, LandingClause, AtomicOrdering, CmpXchgSuccessOrdering, CmpXchgFailureOrdering, FenceOrdering, AtomicRmwOrdering, AtomicRmwOp, LlvmInstruction, LoadOrdering, StoreOrdering, LoadAtomicity, StoreAtomicity, Terminator, UnwindDest, BasicBlock, Linkage, FunctionBody, FunctionParameter, LlvmFunction, GlobalMutability, GlobalInitializer, LlvmGlobal, NamedStructDef, LlvmModule, unwind_successors, block_successors, block_well_formed, FidelityDisposition, FidelityFeature, feature_disposition, llvm_instruction_cost
 // Consumes: std/node.dag; Int kernel-ambient.
 // Status: T-4.12 PASS (B2-OMNI); import v4.std.node Symbol only.
 // Anchor: https://releases.llvm.org/18.1.8/docs/LangRef.html
@@ -523,18 +523,10 @@ fn block_successors(t: Terminator) -> List<Symbol> {
 }
 
 
-fn terminator_is_catchswitch(t: Terminator) -> Bool {
-  match t {
-    CatchSwitch { result: _, parent_pad: _, handlers: _, unwind: _ } => true
-    _ => false
-  }
-}
-
 fn block_well_formed(b: BasicBlock) -> Bool {
-  if terminator_is_catchswitch(t: b.terminator) {
-    count(b.body) == 0
-  } else {
-    true
+  match b.terminator {
+    CatchSwitch { result: _, parent_pad: _, handlers: _, unwind: _ } => count(b.body) == 0
+    _ => true
   }
 }
 
