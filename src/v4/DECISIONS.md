@@ -86,7 +86,7 @@ remain boundary indexes until the named substrate support lands.
 | `std/cardinality.dag` | `TerminationProof` | Green proof record | Encodes lexicographic descent by structure: `non_increasing: List<RankingDimension>` plus mandatory `strict: RankingDimension`; no stored `DescentEvidence` field may stand in for the strict witness. |
 | `std/cardinality.dag` | `Never`, `Unit` | Green opaque atoms | Canonical 0- and 1-inhabitance anchors in shared vocabulary: `Never` (empty), `Unit` (singleton). Rust `!` / `()` name **external** encodings of those facts, not identities proved in this row. **D2-REV:** per-language never/unit primitives (e.g. `NeverScalar`) remain **spec fact-bundles** in `extdeps/`; this ledger does **not** assert a bare alias into `std/`—deduplication to these carriers only on **structurally evidenced coincidence** authored elsewhere. Opaque atoms carry no fields; `std/` must not mint a parallel second empty/unit authority. |
 | `std/cardinality.dag` | `NonZeroNat` | Green proof record | Structural strictly-positive natural: `prev: Nat` denotes `Succ { prev }` (same witness field name as `Nat`’s successor case) — excludes `Zero` by construction (no separate ordering predicate). Use for positive counts/widths (e.g. “at least one”) without kernel-ambient `Int` width payloads. |
-| `std/cardinality.dag` | `UpperBoundedNat` | Yellow value-refinement scaffold | Both fields are honest Peano `Nat` spines; the substrate cannot yet express `value ≤ inclusive_max` structurally (total order / compare witness on `Nat` is not a `cardinality.dag` citizen yet). Bounded use: producers MUST validate the ordering relation before treating the pair as a bound witness (LLVM bit-width, non-negative dimension ceilings). Trigger: `Nat` ordering witness + structural proof, or merge with T-25-core constructor validation at the refinement boundary. |
+| `std/cardinality.dag` | `NatLeWitness`, `UpperBoundedNat` | Green proof bundle | Inductive witness for `value ≤ inclusive_max` on Peano `Nat`: `LeqZero { upper }` proves `Zero ≤ upper`; `LeqSucc { inner }` lifts `a ≤ b` to `Succ a ≤ Succ b`. `UpperBoundedNat` carries **only** `{ le: NatLeWitness }`; `nat_le_witness_lower` / `nat_le_witness_upper` derive the endpoints from the witness spine (no independent value/max fields that could disagree with `le`). `upper_bounded_nat_value` / `upper_bounded_nat_inclusive_max` project those derived endpoints. **`nat_le_witness_well_formed` / `upper_bounded_nat_well_formed` are vacuous on any inhabited witness** (always `true` by induction over the spine): uniform predicate hooks only—downstream must not treat them as substantive runtime validators that recover facts absent from the witness. |
 | `std/collection.dag` | `NonEmptyList<T>` | Yellow refinement scaffold | `NonEmptyList<T> = List<T> where non_empty` is the canonical future shared shape over the `List<T> = FreeMonoid<T>` carrier, not a second head/tail inhabitant family. It is not exported from `std/collection.dag` yet because `src/v3/compiler/src/lower.rs` lowers registered `non_empty` predicates through the placeholder path rather than a Bool body tied to `free_monoid_non_empty`. Bounded use: consumers must not rely on this alias to reject empty lists yet. Trigger: bootstrap lowerer synthesizes/enforces `non_empty` for `List` carriers through the landed FreeMonoid predicate, then `std/collection.dag` may publish `NonEmptyList<T>` and downstream non-empty-list sites may rewrite to it. |
 | `std/collection.dag` | `Set<T>` finite-cardinality refinement | Yellow refinement scaffold | Documented: bare `Set<T> = PointwisePower<T>` is an arbitrary subset/characteristic-function carrier and does not encode finiteness. Bounded use: consumers needing finite subsets must wait on the refinement, not infer finiteness from `Set<T>`. Trigger: cardinality/enumerability substrate (`Multiplicity` plus an enumerability `Witness`) lands and adds `FiniteSet<T>` or equivalent. |
 | `std/diagnostic.dag` | `Extent.ByteRange` | Yellow value-refinement scaffold | Documented: `ByteRange { start: Int, end: Int }` is an honest bridge carrier because current substrate syntax cannot exclude negative offsets or `start > end`. Bounded use: producers must validate textual spans before constructing diagnostics that rely on byte-range validity. Trigger: bounded/non-negative ordered span carrier or equivalent substrate refinement. |
@@ -210,7 +210,7 @@ consumes that derived fact.
 
 11. **`compiler/01_tokenize.dag` — `LexRules` / wave-1 E0 (T-6 / B2-OMNI; PR #3284 → T-8 spine update #3311):** lexical authority is the typed coproduct `LexRules = VoidLexRules | ModeledLexRules { root: LexRuleSet }`, with rule rows carried by `LexRule` payloads rather than ad-hoc `Node` variant tags. Each `TokenRule.pattern` is a bounded `LexPattern` regular-language carrier (`EmptyPattern`, literal/char/class atoms, sequence, choice, optional, repeat), not a raw `Node` bridge. Wave-1 E0 void lex is `VoidLexRules`. `ModeledLexRules` fail-closes with `tokenize_lexical_walk_not_realized` until the P3 lexical walk primitive lands; no hand-rolled walker is introduced. Rationale lives here per Practice 9; `01_tokenize.dag` carries no in-file rationale beyond the mandated terse header (path + Scope/Owns/Consumes/Status + optional `Anchor:`) and the one-line tags on the tokenize coproducts.
 
-12. **`std/node.dag` — `is_empty_conj_root` (P5 / INVARIANTS §Progress Is Dissolution; codex PR #3284):** **Not a net-new `is_*` verifier** — this is the **landed R1 receipt** from `docs/audit/dissolution-inventory.md` §1.0: one structural query replaces three literal duplicate predicates (`compiler/01_tokenize.dag`, `compiler/02_parse.dag`, `extdeps/languages/dag.dag`). **Interim steady-state:** shared empty-`Conj`-root shape leg for wave-1 void LM / E0–G0 stubs until T-6/T-7 generic walks consume grammar-as-data without re-deriving this `match`. **Forward dissolution (named triggers):** (a) `feature: std/node.dag fold_node` (dissolution-inventory **P5**) — fold this discriminant into the canonical `Node` catamorphism / query surface when `fold_node` lands; and/or (b) `feature: compiler pipeline-stage lex-walk + parse-walk substrate` (inventory **P3**, TASKS T-6/T-7) — grammar-as-data carries void-book as constructor-shaped facts so consumers discriminate on `NodeKind` / carriers instead of calling `is_empty_conj_root`. **Audit anchor:** inventory §1.0 row **R1** (status = landed PR #3284). **Api-review receipt (PR #3274):** duplicate-collapse / modeling-discipline Practice 5 single authority — not a parallel verification predicate. **INVARIANTS §P5 Mechanism (b)** SG-0 `EXPECTED_HAND_AUTHORED_*` census gates **new** `src/v3/compiler/tests/**` hand-Rust paths; they do **not** apply to this v4-only substrate `fn`. **Exhaustiveness:** `NodeKind` is the closed `TypeNode | ComputationNode` pair today; a third top-level variant would require updating every `match n.kind` in `std/node.dag`, including this helper, in the same substrate edit that extends `NodeKind`.
+12. **`std/node.dag` — `is_empty_conj_root` (P5 / INVARIANTS §Progress Is Dissolution; codex PR #3284):** **Not a net-new `is_*` verifier** — this is the **landed R1 receipt** from `docs/audit/dissolution-inventory.md` §1.0: one structural query replaces three literal duplicate predicates (`compiler/01_tokenize.dag`, `compiler/02_parse.dag`, `extdeps/languages/dag.dag`). **Interim steady-state:** shared empty-`Conj`-root shape leg for wave-1 void LM / E0–G0 stubs until T-6/T-7 generic walks consume grammar-as-data without re-deriving this `match`. **Forward dissolution (named triggers):** (a) `fold_node` / `NodeFold` in `std/node.dag` is **landed** (dissolution-inventory **P5** substrate — PR #3297; `node_well_formed` is already a consumer). Optional follow-up: fold this discriminant into that catamorphism / shared query surface if a ratified consumer wants to shed the dedicated `match`. Remaining **P5** debt is the **`compiler/03_resolve.dag` binding-harvest cascade** (inventory §2.3), not absent substrate. (b) `feature: compiler pipeline-stage lex-walk + parse-walk substrate` (inventory **P3**, TASKS T-6/T-7) — grammar-as-data carries void-book as constructor-shaped facts so consumers discriminate on `NodeKind` / carriers instead of calling `is_empty_conj_root`. **Audit anchor:** inventory §1.0 row **R1** (status = landed PR #3284). **Api-review receipt (PR #3274):** duplicate-collapse / modeling-discipline Practice 5 single authority — not a parallel verification predicate. **INVARIANTS.md §P5 — Dispatch-Discipline Mechanisms (b)** SG-0 `EXPECTED_HAND_AUTHORED_*` census gates **new** `src/v3/compiler/tests/**` hand-Rust paths; they do **not** apply to this v4-only substrate `fn`. **Exhaustiveness:** `NodeKind` is the closed `TypeNode | ComputationNode` pair today; a third top-level variant would require updating every `match n.kind` in `std/node.dag`, including this helper, in the same substrate edit that extends `NodeKind`.
 
 13a. **`LexCharClass` (`compiler/01_tokenize.dag`):** **Classification — 🟡 YELLOW (P3-gated declarative seam).** **Dissolution pattern — closed character-class vocabulary:** variants name the lexical character classes the future T-6 walk consumes. **Named triggers:** `feature:T-6`; consumed by `LexPattern.CharClassPattern`.
 
@@ -871,6 +871,56 @@ clobber surviving language vocabulary and the `std/` numeric core.
   dead-generic-parameter polish only, with no walker, predicate, carrier,
   or emit-template obligation.
 
+### TS-D2 — `typescript.dag` D2→fact-bundle dissolution disposition
+
+Authoritative ledger entry cited by the in-file coproduct-dissolution
+one-liners in `extdeps/languages/typescript.dag` on `main`
+(`// 🟢 coproduct dissolution — DECISIONS.md TS-D2`). Per-language
+accountability row for the `typescript` entry of the **D2-encoding —
+rework** list above (the 5th merged D2 language file). Row established
+2026-05-18; describes current `origin/main` state.
+
+- **In-file carrier — LANDED.** PR **#3251**
+  (`23061e284 typescript: regate D2 scaffolds to fact bundles (#3251)`,
+  ancestor of `origin/main`) strict-de-prosed and re-gated
+  `typescript.dag`. On `main` the file is now a terse 36-line scaffold:
+  header `Status: 🟡 gated — feature: T-4 fact-bundle Phase-3 rework
+  after T-3/T-29/T-30/T-25-core`; the D2 `GroundingMap` facet and the
+  heavy D2 header prose are gone. #3251 authored **no** fact-bundles and
+  made **no** `DECISIONS.md` edit — it added the two in-file `TS-D2`
+  pointers that this row resolves.
+- **🟢 dissolved (terminal) — the two coproducts.**
+  `TsEcma262NumericPrimitiveKind` (variants `TsNumberPrimitive`,
+  `TsBigIntPrimitive`) and `TsEcma262PrimitiveOperationSemantics`
+  (variants `TsNumberIeee754Binary64Semantics`,
+  `TsNumberBitwiseInt32Uint32Semantics`,
+  `TsBigIntExactUnboundedSemantics`) are **TypeScript-native
+  ECMA-262 vocabulary** — closed enumerations sourced from the ES2025
+  spec, not `std/` alias re-declarations and not a parallel
+  `OrderedRing` algebra (INVARIANTS P1:42). They are terminal: nothing
+  dissolves further, hence the in-file `🟢`.
+- **🟡 gated (remaining D2→fact-bundle debt).** `type TsBoolean = Bool`
+  (kernel-ambient alias bridge) plus the still-unmodeled `number` /
+  `string` / `symbol` / `null` / `undefined` primitive facts (the
+  numeric/text `std/` carriers the header marks "fact-bundle-gated").
+  These are **not yet fact-modeled**; they remain D2-shaped bridges.
+- **Named trigger / dissolve-on-arrival:** upstream P4 node
+  `node://adhoc-71ec74f4-080` ("T-4 fact-bundle Phase-3 rework
+  `extdeps/languages`", `crisp-crab-858`) is to author the remaining
+  TypeScript primitive fact-bundles — `number` (binary64 +
+  NaN/Infinity/disposition facts), `string` (UTF-16 code-unit facts),
+  `symbol` / `null` / `undefined` (nominal/runtime facts). Any reuse of
+  `std/float.dag` / `std/integer.dag` / `std/text.dag` must cite
+  **proven coincidence** evidence ("Coincide — defined once", above),
+  never a bare alias.
+- **Feeder gates (hard T-4 prereqs, per Phase 1 / `TASKS.md` T-4):**
+  T-3, **P1-KEYSTONE — CLEARED** (`#3226` merged @`77b9e7d72`), T-29,
+  T-30, T-25-core. The Phase-3 reseed does **not** begin until all clear.
+- **Dissolution:** the 🟡 clause is removed (or replaced by a
+  coincidence-evidenced bundle reference) when node `…71ec74f4-080`
+  lands and the TypeScript primitive fact-bundles merge; the 🟢 clause
+  and the in-file pointers persist as the terminal record.
+
 ### Worked examples
 
 `docs/modeling/grounding-worked-examples.md` (this PR) demonstrates the
@@ -937,6 +987,24 @@ PROPOSES; it does not decide.
 
 **Verified:** merge-base `92cb26402:src/v4/std/integer.dag` contains **no** `Coproduct dissolution` / `TRACKED 🟡` / `🟢 GREEN` Practice-4 checkpoint blocks on sum coproducts (search-empty). Removed body `//` text was **D2 / modeling prose** already superseded at the ledger level by **DECISIONS.md `D2-REV`**. **`GroupCompletion<M>` constrained-inhabitance** is **not** a coproduct dissolution receipt; verbatim merge-base text is relocated at **`SL-3229-INTEGER-GROUP-COMPLETION`** below (not omitted).
 
+### CP-3229-NAT-LE-WITNESS — `std/cardinality.dag` `NatLeWitness` (Practice-4 terminal sum)
+
+**Authority:** PR #3310 P1 cardinality refinement (api-review codex blocking receipt, 2026-05-18).
+
+**Disposition:** **🟢 GREEN terminal** — inductive witness `NatLeWitness = LeqZero { upper: Nat } | LeqSucc { inner: NatLeWitness}` encodes `a ≤ b` on Peano `Nat`; the impossible `Succ _ ≤ Zero` case is **structurally absent** (illegal states unrepresentable).
+
+**Five-pattern ledger (Practice 4):**
+
+1. **Fact placement** — FAILS: witness is shared `std/cardinality.dag` vocabulary, not a single downstream consumer projection.
+2. **Variant-is-data / flat record** — FAILS: `LeqSucc` is inductive structure, not a tagless product encoding of `≤`.
+3. **Algebraic law carrier** — FAILS: not an algebra table; principled via `Nat` + witness spine only.
+4. **Dimensional decomposition** — FAILS: one coproduct axis, not orthogonal coordinates.
+5. **Parameterized indexed family** — FAILS: closed two-variant sum, not `F<X>` over an open index.
+
+**Live substrate tag:** `// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-NAT-LE-WITNESS.` immediately precedes `type NatLeWitness` in `src/v4/std/cardinality.dag`.
+
+**Cross-ref:** Part 1 table row `NatLeWitness` / `UpperBoundedNat`; **`§PR-3252-cardinality-std`** for `Never` / `Unit` inhabitance context. **Not** part of merge-base **`### CP-3229-GREEN-TERMINAL`** bulk table (that table enumerates strict-de-prose merge-base files only); this subsection is the **reachable** Practice-4 receipt for `NatLeWitness`.
+
 ### SL-P7-NAT-IS-ZERO-VPRED — `std/nat.dag` `nat_is_zero` (predicate-dissolution interim)
 
 **Authority:** operator CORE relay (`still-hawk-102` → `jolly-ibex-599` → P7 lane, 2026-05-18).
@@ -952,6 +1020,20 @@ PROPOSES; it does not decide.
 **Live substrate tag:** one-line **`// 🟡 gated — …`** immediately precedes `fn nat_is_zero` in `src/v4/std/nat.dag`; header **`// Ledger: … SL-P7-NAT-IS-ZERO-VPRED`**.
 
 **PR receipt:** gunbc **#3255** (P7) + on-thread **#3244** disposition history.
+
+### SL-P7-NAT-COMPARE-VPRED — `std/nat.dag` `nat_compare` (predicate-dissolution interim)
+
+**Authority:** PR #3310 (api-review codex blocking receipt, 2026-05-18) — binary `Nat` **total-order trichotomy** (`Ordering`) promoted from `float.dag` into `std/nat.dag` as shared substrate.
+
+**Disposition:** **🟡 gated** — `fn nat_compare` is a **Practice 10 predicate-dissolution** interim: hand `match` performs **paired Peano spine unwinding** for `Less | Equal | Greater` with **no** consumption yet of a substrate-declared **binary** fold / generated order query (distinct from unary `nat_cata`). **Not 🟢 terminal** while the discriminant / systematic-compare substrate bucket is open.
+
+**`feature:` gate:** coproduct **variant-discriminant predicate** substrate (**`node://adhoc-2145db6b-69a`**, same lane bucket as `SL-P7-NAT-IS-ZERO-VPRED`).
+
+**Dissolve-on-arrival:** replace `nat_compare`’s **body** with the substrate-owned **canonical Nat compare** (generated lex-compare / `OrderedSemiring<Nat>` witness consumer — whichever the `node://adhoc-2145db6b-69a` closure lands) **without** `nat_cata` / extra hand `match` **fold laundering** as stand-in authority (operator).
+
+**Live substrate tag:** one-line **`// 🟡 gated — …`** immediately precedes `fn nat_compare` in `src/v4/std/nat.dag` (parallel interim glyph to `nat_is_zero`, with **binary** `dissolve-on-arrival` text). File header **`// Ledger: … SL-P7-NAT-IS-ZERO-VPRED, SL-P7-NAT-COMPARE-VPRED`**.
+
+**PR receipt:** gunbc **#3310** (this PR).
 
 ### SL-P6-FREEMONOID-IS-EMPTY-VPRED — `std/algebra.dag` `free_monoid_is_empty` (predicate-dissolution interim)
 
@@ -991,6 +1073,10 @@ Verbatim `//` lines from merge-base `integer.dag` (lines **124–132**):
 
 ### SL-3229-LLVM-WIDTH — raw-`Int` width payload scaffold (`LlvmType` family)
 
+**Authority / closure:** PR #3310 P1 cardinality refinement (api-review codex receipt, 2026-05-18).
+
+**Disposition:** **🟢 GREEN terminal** for the merge-base **raw `Int` width payload** class on `LlvmType` — live `llvm_ir.dag` uses `v4.std.cardinality.NonZeroNat` for `IntegerType.bits` and `VectorType.count`, and `v4.std.nat.Nat` for `ArrayType.count` / `PointerType.address_space`, closing the signed / zero-bit illegal state the merge-base `Int` payloads admitted. **Bounded use:** LangRef-range tightness beyond “positive width / non-negative count” stays producer-side until any stronger witness the operator schedules separately.
+
 Verbatim `//` lines from merge-base `llvm_ir.dag` (lines **276–297**), immediately preceding `type LlvmType`:
 
 ```text
@@ -1019,7 +1105,7 @@ Verbatim `//` lines from merge-base `llvm_ir.dag` (lines **276–297**), immedia
 //       reclassifies 🟢 (the SUM is already 🟢; only the payload moves).
 ```
 
-**Dissolution trigger:** when `std/cardinality.dag` refinement substrate lands (T-3), bounded non-negative widths become type-enforced; residual reclassifies 🟢 per merge-base note.
+**Dissolution trigger (merge-base archive):** when `std/cardinality.dag` refinement substrate lands (T-3), bounded non-negative widths become type-enforced; residual reclassifies 🟢 per merge-base note. **Checkable landing (width payloads):** satisfied on `LlvmType` as documented in **Disposition** above; **`SL-3229-LLVM-OPS`** remains the separate operand-relation scaffold.
 
 ### SL-3229-LLVM-OPS — operation-specific operand constraints
 
@@ -1333,7 +1419,22 @@ Verbatim `//` lines from merge-base `verilog.dag` (lines **2156–2311**):
 //
 ```
 
-**Dissolution trigger:** partially landed upstream as the canonical `std/collection.dag` Wave-A2 predicate substrate (`non_empty` backed by `free_monoid_non_empty`), but the `NonEmptyList<T> = List<T> where non_empty` alias is not exported and consumer rewrites remain blocked until `src/v3/compiler/src/lower.rs` synthesizes/enforces the registered `non_empty` predicate for `List` carriers through the landed FreeMonoid predicate. Until then, the merge-base `List<T>` sites stay producer-side invariants rather than API-enforced refinements.
+**PR #3272 extension:** P8's constant-expression carrier adds sites 27-29:
+`ConstantFunctionCall.arguments` (§A.8.2 `constant_function_call`),
+`ConstantSystemFunctionCall.arguments` (§A.8.2 `constant_system_function_call`),
+and `ConstantConcatenation.expressions` (IEEE 1364-2005 §A.8.1
+`constant_concatenation ::= { constant_expression { , constant_expression } }`).
+They ride the same Wave-A2 `List<T> where non_empty` deferral; no
+Verilog-local non-empty carrier is introduced.
+
+**Dissolution trigger:** `std/collection.dag` Wave-A2 `List<T> where non_empty` (29 total sites after PR #3272: merge-base sites 1-26 plus PR #3272 sites 27-29).
+Upstream has partially landed the canonical predicate substrate (`non_empty`
+backed by `free_monoid_non_empty`), but the `NonEmptyList<T> = List<T> where
+non_empty` alias is not exported and consumer rewrites remain blocked until
+`src/v3/compiler/src/lower.rs` synthesizes/enforces the registered `non_empty`
+predicate for `List` carriers through the landed FreeMonoid predicate. Until
+then, the merge-base `List<T>` sites and PR #3272 sites 27-29 stay producer-side
+invariants rather than API-enforced refinements.
 
 ### SL-3229-VERILOG-D3200 — #3200 consumer-independent 🟡 coproducts (first-consumer decomposition)
 
@@ -1343,9 +1444,13 @@ Merge-base `verilog.dag` Practice-4 headers marked **🟡 YELLOW** under the **#
 
 **Dissolution trigger:** first meaning-consumer owes the structural decomposition named in each carrier’s merge-base footer (D2 / synthesis / elaboration consumers — not a verilog-local mint).
 
-### SL-3229-VERILOG-VECTOR-RANGE — `VectorRange` lexeme-pair bridge (constant_expression)
+### SL-3229-VERILOG-VECTOR-RANGE — CLOSED: `VectorRange` constant_expression endpoints
 
-Verbatim `//` lines from merge-base `verilog.dag` (lines **585–627** — `VectorRange` + 🟡 three-bridge note):
+Closed by the P8 Verilog sub-grammar landing: `src/v4/extdeps/languages/verilog.dag`
+now declares `ConstantExpression` and supporting constant-expression carriers,
+and `VectorRange` stores `msb: ConstantExpression` / `lsb: ConstantExpression`
+instead of raw lexeme strings. Historical merge-base context (lines **585–627**)
+is retained below for auditability:
 
 ```text
 
@@ -1402,7 +1507,8 @@ type VectorRange {
 
 ```
 
-**Dissolution trigger:** bundled T-4 LanguageModel `constant_expression` productions land; lexeme pair parses to AST (merge-base text).
+**Dissolution result:** P8 landed; no live `SL-3229-VERILOG-VECTOR-RANGE`
+slug remains on `verilog.dag`'s `// Ledger:` line.
 
 ### SL-3229-VERILOG-COST — raw-`Int` Verilog cost axes (`VerilogCost`)
 
@@ -1510,7 +1616,10 @@ Verbatim `//` lines from merge-base `float.dag` (lines **104–144** — modelin
 
 ### SL-3229-T4-FORMAT-T6T7 — T-4.6 format parse/emit bodies (compiler pipeline P3)
 
-**Gate (live cite, Practice 9):** `🟡 gated — feature: T-6/T-7 parse + T-10 emit pipeline-stage substrate`
+**Gate (live cite, Practice 9):** two adjacent in-file cites on each T-4.6 format carrier (`json.dag` / `yaml.dag` / `toml.dag`, …) so the parse trigger (P3) and emit trigger (T-10) are independently auditable — parse-only work does not imply emit-half closure, and vice versa:
+
+- `🟡 gated — feature: dissolution-inventory §1.1 P3 — T-6 lexical-walk + T-7 parse-walk compiler pipeline-stage substrate (TASKS T-6/T-7) — DECISIONS.md Part 6 · SL-3229-T4-FORMAT-T6T7 (parse half).`
+- `🟡 gated — feature: T-10 emit pipeline-stage substrate (TASKS T-10) — DECISIONS.md Part 6 · SL-3229-T4-FORMAT-T6T7 (emit half).`
 
 **Named arrival:** B2-OMNI generic `tokenize` / `parse` over declarative `LanguageModel` lex + grammar `Node` data (`compiler/01_tokenize.dag`, `compiler/02_parse.dag`; TASKS.md **T-6**, **T-7**; L-5 `extdeps/languages/dag.dag`). The T-4.6 format files (`json.dag`, `yaml.dag`, `toml.dag`, …) **do not** host hand-rolled Char-stream parsers or emitters: `json_parse`/`json_emit` (and mirrors) land as **structural walks** composed on that pipeline substrate once realized beyond Wave-1 E0/G0 stubs. Emit stays fail-closed `Outcome<String>` (corrected seam #3, PR #3184 / msg_c7704bd6, INVARIANTS P3); inverse projection mates **`compiler/05_emit.dag` (TASKS.md T-10)** as the grammar-directed emit half of the same bidirectional seam — not a parallel string-templated “backend.”
 
@@ -1573,6 +1682,25 @@ Merge-base `92cb26402` **Practice-4** `// Coproduct dissolution … 🟢 GREEN (
 | `src/v4/extdeps/formats/json.dag` | 1 |
 | `src/v4/extdeps/formats/yaml.dag` | 1 |
 | `src/v4/std/float.dag` | 2 |
+
+### CP-3229-VERILOG-CONSTEXPR-TERMINAL — 🟢 Verilog P8 constant-expression coproducts
+
+PR #3272 adds Verilog constant-expression sum carriers not present in
+merge-base `92cb26402`: `ConstantUnaryOperator`, `ConstantBinaryOperator`,
+`ConstantRangeExpression`, `ConstantSelect`, `ConstantPrimary`, and
+`ConstantExpression`.
+
+Practice-4 terminal ledger: all of these are closed, spec-grounded enumerations
+from IEEE 1364-2005 §A.8.3 / §A.8.4. They are not user-extensible vocabulary,
+not coordinates of a product, and not consumer-local policy. Their variants
+partition the standard's constant-expression grammar operators, selectable
+constant-primary references, primary forms, and recursive expression forms.
+The expression recursion is the grammar's own recursion; it does not add a
+new substrate behavior or a second expression authority. Non-coproduct
+records introduced with them (`ConstantFunctionCall`,
+`ConstantSystemFunctionCall`, `ConstantConcatenation`,
+`ConstantMultipleConcatenation`, `VectorRange`) are structural payload records,
+not Practice-4 sums.
 
 **Recovery:**
 
