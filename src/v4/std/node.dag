@@ -135,12 +135,7 @@ type NodeCataAlgebra<A> {
   reduce: fn(NodeKind, List<FoldedEdge<A>>) -> A
 }
 
-<<<<<<< HEAD
 // 🟡 feature:reverse — DECISIONS.md **CP-3248-LIST-REV**
-=======
-// TRACKED — dissolves to shared std `reverse<T>` when `collection.dag` (or the
-// list kernel on the v3 lowering path) exposes it; v2 bootstrap keeps `fold`.
->>>>>>> 685587c5c (docs(v4): TRACKED breadcrumb for reverse_folded_edges)
 fn reverse_folded_edges<A>(xs: List<FoldedEdge<A>>) -> List<FoldedEdge<A>> {
   fold(xs, init: [], f: fn(acc, x) {
     concat([x], acc)
