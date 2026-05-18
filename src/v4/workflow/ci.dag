@@ -160,6 +160,7 @@ fn ci_acyclic(jobs: List<CiJob>) -> Bool {
   count(ci_kahn_fixpoint(jobs: jobs)) == 0
 }
 
+// 🟡 negative-coverage plan-bound (T-22) — DECISIONS.md LB-T22-3213
 fn ci_command_authority_ok(c: CiCommand) -> Bool {
   match c {
     LintCommand => true

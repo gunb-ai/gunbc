@@ -1333,3 +1333,17 @@ Merge-base `92cb26402` **may** mark a sum coproduct **🔴** in the Practice-4 h
 | **LB-P10-3213-KAHN** | `ci_kahn_fixpoint`, `ci_acyclic` (ci.dag) | 🟢 **terminal** | **Not** a reusable collection primitive: Kahn topological-elimination cycle-detection over the job graph — domain well-formedness model content, a *peer* of `ci_pipeline_well_formed` / `bootstrap_plan_well_formed` (which the gate does not ask to dissolve). Consumer-independent; no `std/collection.dag` op to dissolve into. (`fold`-as-bounded-counter is the P4 decidability idiom.) Its generic sub-primitives (`ci_member`/`ci_job_needs`/`ci_eliminate_pass`/`ci_blocked`) dissolve via the rows above; the Kahn *composition* stays. |
 
 **Note (out of dissolution scope, recorded for completeness):** `bs_diagnostic` / `ci_diagnostic` are `Diagnostic` constructors, not `List` operations. No 🔴 in this ledger — `std/collection.dag` currently has no derived-op surface to dissolve into; the gate opens when T-3 `std/collection.dag` lands the List-op surface, at which point every 🟡 row above is a dissolve-on-arrival merge obligation.
+
+### LB-T22-3213 — bootstrap-stage rejection-family negative-coverage plan-bound 🟡
+
+> CORE ruling (still-hawk-102, 2026-05-18, horn (i)): the
+> `BootstrapStageCompile` single-authority seam is **ADDRESSED-BY-CONSTRUCTION** —
+> `ci_pipeline_well_formed` is a pure structural predicate over the modeled
+> `CiPipeline`; an out-of-set `BootstrapStageCompile.produces` cannot satisfy
+> the gate (deterministically routes to `Rejected{ci_bootstrap_authority_violation}`,
+> a modeled `Outcome` variant — no imperative side-channel / stringly exception).
+> Verified in code by `bold-hawk-201` @ `6353d695e`. Horn (ii) — in-PR
+> executable negative harness — REJECTED (T-22-in-#3213 = brief violation;
+> hand-rolled harness = parallel test mechanism, anti-pattern).
+
+**🟡 plan-bound (NOT "no change needed" — anti-#3250).** The enforcement is structural and fail-closed *now*; what is deferred is the executable *demonstration*. **Arrival:** T-22's executable `TestClaim` runner lands (`compiler/05_eval.dag`; brief defers the executable TestClaim lane to the T-22 named trigger). **Follow-up (dissolves this 🟡):** add negative `TestClaim`(s) for the CI bootstrap-stage rejection family — dangling `BootstrapStageCompile.produces` + siblings (duplicate job/gate id, dangling `needs`, dangling gate job, dependency cycle) — exercising `ci_pipeline_well_formed`'s `Rejected` branches. **Bilateral binding:** the same obligation is recorded in `src/v4/TASKS.md` T-22 scope text (neither side is a vague "T-22 will cover"). In-file tag: `// 🟡 negative-coverage plan-bound (T-22) — DECISIONS.md LB-T22-3213`. | `src/v4/workflow/ci.dag` (`ci_pipeline_well_formed` rejection family) |
