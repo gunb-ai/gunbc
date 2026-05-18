@@ -111,7 +111,6 @@ type ConstantPrimary
   = ConstantNumber { lexeme: String }
   | ConstantParameterReference { name: Symbol, select: ConstantSelect }
   | ConstantSpecparamReference { name: Symbol, select: ConstantSelect }
-  | ConstantGenvarReference { name: Symbol }
   | ConstantHierarchicalReference { path: List<Symbol>, select: ConstantSelect }
   | ConstantFunctionCallPrimary { call: ConstantFunctionCall }
   | ConstantSystemFunctionCallPrimary { call: ConstantSystemFunctionCall }
@@ -147,9 +146,9 @@ type ConstantMultipleConcatenation {
 // 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-VERILOG-CONSTEXPR-TERMINAL.
 type ConstantExpression
   = ConstantPrimaryExpression { primary: ConstantPrimary }
-  | ConstantUnaryExpression { op: ConstantUnaryOperator, operand: ConstantExpression }
-  | ConstantBinaryExpression { lhs: ConstantExpression, op: ConstantBinaryOperator, rhs: ConstantExpression }
-  | ConstantConditionalExpression { condition: ConstantExpression, if_true: ConstantExpression, if_false: ConstantExpression }
+  | ConstantUnaryExpression { attributes: AttributeInstanceClause, op: ConstantUnaryOperator, operand: ConstantExpression }
+  | ConstantBinaryExpression { lhs: ConstantExpression, attributes: AttributeInstanceClause, op: ConstantBinaryOperator, rhs: ConstantExpression }
+  | ConstantConditionalExpression { condition: ConstantExpression, attributes: AttributeInstanceClause, if_true: ConstantExpression, if_false: ConstantExpression }
 
 
 type VectorRange {

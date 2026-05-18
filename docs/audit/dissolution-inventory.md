@@ -562,10 +562,12 @@ consumer).
 
 **`SL-3229-VERILOG-VECTOR-RANGE`** — `VectorRange` lexeme-pair bridge.
 Named arrival: "bundled T-4 LanguageModel `constant_expression`
-productions." Verified: T-4 Verilog `LanguageModel` constant_expression
-sub-grammar has not landed.
-- **Triage: VALID.**
-- **#3244 re-expression:** `🟡 gated — feature: constant_expression sub-grammar in extdeps/languages/verilog.dag bundled LanguageModel (T-4 Verilog fact-bundle Phase-3)`.
+productions." Verified: PR #3272 landed the Verilog
+`constant_expression` carrier family in `extdeps/languages/verilog.dag`
+and rewired `VectorRange` endpoints to `ConstantExpression`.
+- **Triage: CLOSED.**
+- **Closure receipt:** `VectorRange` no longer carries `msb_lexeme` /
+  `lsb_lexeme`; the Part 6 row remains as audit history, not live 🟡 debt.
 
 **`SL-3229-VERILOG-COST`** — raw-`Int` Verilog cost axes
 (`VerilogCost`). Named arrival: cardinality refinement (T-3).
