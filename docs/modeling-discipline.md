@@ -250,12 +250,21 @@ machine-checked meta-lens detects fired triggers, this review smell *is*
 the enforcement.
 
 **Scaffold exception:** early-milestone code (marked `// scaffold:
-<sunset-milestone>`) can defer its `DECISIONS.md` classification *ledger*
-until the sunset milestone. The exception covers the ledger only — the
-required one-line 🟢/🟡/🔴 tag on the coproduct itself is **not**
-waived (a scaffold coproduct still carries it, typically
-`// 🟡 feature:<sunset-milestone> — DECISIONS.md …`, the milestone being
-the gate). Scaffolds must be revisited before sunset.
+<sunset-milestone>`) can defer only the *verbose* part of its
+`DECISIONS.md` classification ledger — the dissolution-patterns-tried
+analysis — until the sunset milestone. The exception covers that
+analysis **only**. It does **not** waive: (a) the required one-line
+🟢/🟡/🔴 tag on the coproduct; nor (b) — for a 🟡 — the **bound
+dissolution plan** (the named missing primitive/consumer, its owning
+substrate PR or task, and the dissolve-on-arrival follow-up). A 🟡's
+plan-binding is the minimum that makes it a *valid* 🟡 (see the 🟡
+disposition above) — it is recorded in `DECISIONS.md` even when the
+fuller patterns-tried analysis defers. The gate names the **concrete
+missing primitive**, e.g. `// 🟡 feature:<missing-primitive> —
+DECISIONS.md <entry>` — a bare `<sunset-milestone>` is **not** a valid
+gate (a milestone-only gate leaves the dissolution path non-checkable);
+the sunset milestone records *when* the scaffold is revisited, not
+*what* it waits on. Scaffolds must be revisited before sunset.
 
 **Worked example (v2 retrospective):** `v2::ExprData` had 22 variants.
 Failed pattern 1 (every consumer dispatches on all 22), pattern 2
@@ -741,6 +750,12 @@ gap in a low-risk area → NON-BLOCKING.
 **When in doubt, prefer BLOCKING.** It is better to ask for a small
 rework now than to accept a substrate bug that propagates through three
 milestones before anyone notices.
+
+**Dissolution findings (Practice 10) are an always-BLOCKING class.** The
+NON-BLOCKING tier above does not apply to them: a dissolution finding —
+walker / traverse / predicate / carrier / emit-template — is resolved
+only by a 🔴 / tracked-🟡 / substantiated-🟢 disposition (Practice 10),
+never graded NON-BLOCKING and never waved off as a cleanup.
 
 ## For Reviewers
 
