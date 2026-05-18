@@ -10,6 +10,7 @@
 //! **`ReactUseCallSite`** for `use(resource)` (not a Hook — react.dev/use).
 
 use v3_compiler::compile_to_dag;
+use v3_compiler::dag::Field;
 use v3_compiler::dag::TypeConnective;
 use v3_compiler::CompileError;
 
@@ -352,7 +353,7 @@ fn assert_react_element_fragment_has_key_field(dag: &v3_compiler::Dag) {
 fn assert_children_field_is_list_create_element_child(
     dag: &v3_compiler::Dag,
     record_name: &str,
-    conj_children: &[v3_compiler::dag::Field],
+    conj_children: &[Field],
 ) {
     let list_decl = dag
         .declaration_by_name("List")
@@ -363,7 +364,9 @@ fn assert_children_field_is_list_create_element_child(
     let ch_field = conj_children
         .iter()
         .find(|f| f.label == "children")
-        .unwrap_or_else(|| panic!("{record_name} should declare `children` (createElement child list)"));
+        .unwrap_or_else(|| {
+            panic!("{record_name} should declare `children` (createElement child list)")
+        });
     let ch_ty = dag.declaration(ch_field.ty);
     let TypeConnective::Instantiation {
         template,
@@ -602,7 +605,9 @@ fn v4_extdeps_react_dag_fragment_arm_declares_key() {
 
 #[test]
 fn v4_extdeps_react_dag_element_children_are_list_create_element_child() {
-    assert_react_element_records_children_are_create_element_child_lists(&react_extdeps_dag_or_panic());
+    assert_react_element_records_children_are_create_element_child_lists(
+        &react_extdeps_dag_or_panic(),
+    );
 }
 
 #[test]
