@@ -274,6 +274,8 @@ checked against the Practice-4 five-pattern ledger:
 
 ### `src/v4/extdeps/languages/cpp.dag`
 
+Non-Bool C++ scalar ladder in this slice: **tracked** — 🟡 `feature:t4-cpp-scalar-ladder` (T-4 Phase-3 cpp-slice + T-25-core); dissolve on **gunbc#3244** arrival.
+
 | Carrier | Classification | Ledger result |
 |---------|----------------|---------------|
 | `CppBool` | 🟢 GREEN terminal | Same dissolution posture as `RustBool` (`rust.dag`): kernel `CppBool = Bool` + `cpp_bool_grounding` cites std coincidence for the C++ `bool` spelling (Practice 8 / D2-REV). |

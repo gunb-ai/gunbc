@@ -2,7 +2,7 @@
 // Scope: Lean 4 language model for PROOF-1 termination export.
 // Owns: LeanDeclarationKind, LeanName, LeanLevel, LeanLevelRef, LeanLevelNode, LeanBinderInfo, LeanBinder, LeanTermRef, LeanTermNode, LeanTermForm, LeanMatchAlternative, LeanTerminationMeasure, LeanTerminationBy, LeanDecreasingProof, LeanTerminationClause, LeanDefinitionTermination, LeanProofArtifact, LeanFidelityFeature, LeanFidelityDisposition, LeanProofCheckSemantics, Symbol, GroundingMap, LeanIntKind, LeanIntWidth, LeanScalar, LeanBool, lean_bool_grounding.
 // Consumes: List, Bool, String.
-// Status: D2-REV / Practice 8 — fixed-precision numeric facts live in `LeanScalar` `IntScalar { kind, width }` only (DECISIONS.md §D2 REVERSAL); kernel `LeanBool = Bool` + `lean_bool_grounding` only. No bare std integer aliases or spelling-only `GroundingMap` rows for ints (P4-3208 / #3208).
+// Status: D2-REV; 🟢 P4-3208 — DECISIONS.md (lean scalar + ledger).
 
 module v4.extdeps.languages.lean
 
@@ -216,10 +216,3 @@ type LeanBool = Bool
 data lean_bool_grounding: GroundingMap<LeanBool> = {
   spelling: "Bool"
 }
-
-
-// Unbounded `Nat` / `Int` and per-width fixed-precision spellings (`Int8`, …) from the Lean
-// reference are **not** modeled as `type LeanX = stdX` + `GroundingMap { spelling: … }` — that
-// shape is the reversed D2 hollow alias (DECISIONS.md §D2 REVERSAL; INVARIANTS.md P1 / Practice 8).
-// Wire names are not structural coincidence. Fixed-precision facts live only in `LeanScalar`
-// above; future unbounded / platform-width carriers land as explicit fact-bundles when needed.
