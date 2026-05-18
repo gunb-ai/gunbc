@@ -40,18 +40,20 @@ gunbc-prefix-lens-driver v0 <LENS_ID> --whole-corpus
 
 **`LENS_ID` registry (v0 — extend only via operator-signed pin amend):**
 
-| `LENS_ID` | Lens module (v4) | Notes |
-|-----------|------------------|--------|
-| `complexity` | `v4.lens.complexity` | Wave-1 **#1** (operator). |
-| `cost` | `v4.lens.cost` | PREFIX reference / SymbolicCost algebra. |
-| `parallelism` | `v4.lens.parallelism` | |
-| `effect_enumeration` | `v4.lens.effect` | |
-| `idempotency` | `v4.lens.idempotency` | |
-| `provenance` | `v4.lens.ownership` | structural-readers batch; module name = ownership.dag today. |
-| `unused_parameters` | *(TBD v4 module)* | placeholder — ratify module path before impl. |
-| `structural_resolution` | *(TBD v4 module)* | placeholder — ratify module path before impl. |
+Closed identifiers are **not** modeled as free `String` in substrate: **`LensIdV0`** in **`src/v4/lens/registry.dag`** is the closed sum (`Complexity` \| `Cost` \| … \| `StructuralResolution`) per **MODELING.md M4** (“Closed sets are enums, not strings”). The §3 table spells the same set in **argv / prose spelling** (what drivers and humans type); each row’s structural variant is the authoritative key inside `LensRegistryEntryV0 { lens_id: LensIdV0, module_path: LensModulePathV0 }`.
 
-**Substrate home-of-record (P2-staging — INVARIANTS §P2 / Practice 5):** **`src/v4/lens/registry.dag`** is the **canonical `.dag` surface** for closed `LENS_ID` rows (`lens_id` + `module_path: LensModulePathV0` as `Bound { path: … }` vs `Unbound`). A **landed** compiler **single authority** in the §P2 sense (declaration + realization + **generated** consumer) **does not exist yet** — same staging posture as `src/v4/std/fact_density.dag` until mechanical read; the paired **`v4_lens_registry_dag_smoke_test.rs`** receipt is **parse + inference cleanliness only** (see `STRUCTURE.md`). The §3 markdown table is a **human mirror**; amend the `.dag` first, then align this table on operator-signed pin revision. Rows whose ratified v4 module is not yet fixed use **`Unbound`** in the substrate (same intent as *(TBD v4 module)* in the table); **never** encode that state as a fake `v4.lens.*` string or other string sentinel inside `path`.
+| `LENS_ID` (argv / table) | `LensIdV0` variant | Lens module (v4) | Notes |
+|--------------------------|--------------------|------------------|--------|
+| `complexity` | `Complexity` | `v4.lens.complexity` | Wave-1 **#1** (operator). |
+| `cost` | `Cost` | `v4.lens.cost` | PREFIX reference / SymbolicCost algebra. |
+| `parallelism` | `Parallelism` | `v4.lens.parallelism` | |
+| `effect_enumeration` | `EffectEnumeration` | `v4.lens.effect` | |
+| `idempotency` | `Idempotency` | `v4.lens.idempotency` | |
+| `provenance` | `Provenance` | `v4.lens.ownership` | structural-readers batch; module name = ownership.dag today. |
+| `unused_parameters` | `UnusedParameters` | *(TBD v4 module)* | placeholder — ratify module path before impl. |
+| `structural_resolution` | `StructuralResolution` | *(TBD v4 module)* | placeholder — ratify module path before impl. |
+
+**Substrate home-of-record (P2-staging — INVARIANTS §P2 / Practice 5):** **`src/v4/lens/registry.dag`** is the **canonical `.dag` surface** for closed rows: **`lens_id: LensIdV0`** (M4 closed set) plus **`module_path: LensModulePathV0`** as `Bound { path: … }` vs `Unbound`. A **landed** compiler **single authority** in the §P2 sense (declaration + realization + **generated** consumer) **does not exist yet** — same staging posture as `src/v4/std/fact_density.dag` until mechanical read; the paired **`v4_lens_registry_dag_smoke_test.rs`** receipt is **parse + inference cleanliness only** (see `STRUCTURE.md`). The §3 markdown table is a **human mirror**; amend the `.dag` first, then align this table on operator-signed pin revision. Rows whose ratified v4 module is not yet fixed use **`Unbound`** in the substrate (same intent as *(TBD v4 module)* in the table); **never** encode that state as a fake `v4.lens.*` string or other string sentinel inside `path`.
 
 **Runnable-AC column (today):** Rows requiring **closed `LENS_ID` names** cite **`src/v4/lens/registry.dag`**. Rows requiring **v4 parse bootstrap** cite the existing **v2 → v4** job in **`.github/workflows/ci.yml`** (`v2-compiler compile --source-root src/v4 …`). Rows that assert a **live CLI `LENS_ID` / whole-corpus compile gate** are **deferred** until **B2** — do not substitute an interim binary receipt. **Lens evaluation** (`Witness` / `DimensionOk` / `DimensionFail` on applied v4 `Lens<Output>` with **`--mode enforce|introspect`**) stays **`TBD …`** until the evaluation dispatch lands — do not treat compile-only receipts as evaluation substitutes.
 

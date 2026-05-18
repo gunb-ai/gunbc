@@ -87,7 +87,7 @@ src/v4/
     testgen.dag          # producer side — reads substrate, emits TestClaim corpus (Phase 1.5)
     affected_set.dag     # incremental re-exec frontier; replaces detect-affected shell (Phase 1.5)
     application.dag      # apply_lens surface — opt-in depth + ONLY advisory→fail-closed bridge
-    registry.dag         # P2-staging only (INVARIANTS §P2): PREFIX T-23 v0 closed `LENS_ID` ↔ `LensModulePathV0` rows in `.dag` — **not** landed single authority until a **generated** consumer reads `LensRegistryEntryV0`; `v4_lens_registry_dag_smoke_test.rs` is **parse + inference cleanliness** only (same posture as `fact_density.dag`). Operator pin §3 human mirror; amend `.dag` first.
+    registry.dag         # P2-staging only (INVARIANTS §P2): PREFIX T-23 v0 `LensIdV0` × `LensModulePathV0` rows — **not** landed single authority until a **generated** consumer reads `LensRegistryEntryV0`; `v4_lens_registry_dag_smoke_test.rs` is **parse + inference cleanliness** only (same posture as `fact_density.dag`). Operator pin §3 human mirror; amend `.dag` first.
 
   workflow/              # meta-process as data (2 files; the v3-derived
                          # work-direction substrate — brief/worker_output/
@@ -143,7 +143,7 @@ meta-layer cut, operator-ratified. **2026-05-17 (PR #3212):** enumerate
 C++ ABI / target data-model feeder; checksum **70→71** `.dag`.
 **2026-05-18 (T-30):** add `std/fact_density.dag` P2-staging parse witness;
 checksum **71→72** `.dag`.
-**2026-05-18 (PREFIX / T-23 v0):** add `lens/registry.dag` (`LENS_ID` registry twin of
+**2026-05-18 (PREFIX / T-23 v0):** add `lens/registry.dag` (`LensIdV0` + `LensModulePathV0` registry twin of
 `docs/briefs/r4-lane-a-lens-interface-freeze-pin.md` §3); checksum **72→73** `.dag`.
 **P2-staging** (INVARIANTS §P2) until a generated consumer reads the rows — paired
 `v4_lens_registry_dag_smoke_test.rs` receipt (parse witness only; same discipline as `fact_density.dag`).

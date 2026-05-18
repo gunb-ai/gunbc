@@ -9,50 +9,53 @@ module v4.lens.registry
 
 import v4.std.text { String }
 
+// 🟢 closed set — MODELING.md M4 / DECISIONS.md PREFIX-T-23-registry (`LensIdV0`).
+type LensIdV0 = Complexity | Cost | Parallelism | EffectEnumeration | Idempotency | Provenance | UnusedParameters | StructuralResolution
+
 // 🟢 coproduct dissolution — DECISIONS.md PREFIX-T-23-registry (`LensModulePathV0`).
 type LensModulePathV0 = Bound { path: String } | Unbound
 
 type LensRegistryEntryV0 {
-  lens_id: String
+  lens_id: LensIdV0
   module_path: LensModulePathV0
 }
 
 data lens_registry_v0_complexity: LensRegistryEntryV0 = {
-  lens_id: "complexity"
+  lens_id: Complexity
   module_path: Bound { path: "v4.lens.complexity" }
 }
 
 data lens_registry_v0_cost: LensRegistryEntryV0 = {
-  lens_id: "cost"
+  lens_id: Cost
   module_path: Bound { path: "v4.lens.cost" }
 }
 
 data lens_registry_v0_parallelism: LensRegistryEntryV0 = {
-  lens_id: "parallelism"
+  lens_id: Parallelism
   module_path: Bound { path: "v4.lens.parallelism" }
 }
 
 data lens_registry_v0_effect_enumeration: LensRegistryEntryV0 = {
-  lens_id: "effect_enumeration"
+  lens_id: EffectEnumeration
   module_path: Bound { path: "v4.lens.effect" }
 }
 
 data lens_registry_v0_idempotency: LensRegistryEntryV0 = {
-  lens_id: "idempotency"
+  lens_id: Idempotency
   module_path: Bound { path: "v4.lens.idempotency" }
 }
 
 data lens_registry_v0_provenance: LensRegistryEntryV0 = {
-  lens_id: "provenance"
+  lens_id: Provenance
   module_path: Bound { path: "v4.lens.ownership" }
 }
 
 data lens_registry_v0_unused_parameters: LensRegistryEntryV0 = {
-  lens_id: "unused_parameters"
+  lens_id: UnusedParameters
   module_path: Unbound
 }
 
 data lens_registry_v0_structural_resolution: LensRegistryEntryV0 = {
-  lens_id: "structural_resolution"
+  lens_id: StructuralResolution
   module_path: Unbound
 }
