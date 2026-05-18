@@ -331,41 +331,63 @@ substrate imported them, so the cut is a pure scope reduction.
 
 ### T-6: compiler/01_tokenize.dag
 
-**I/O**: `FreeMonoid<Char> -> Result<TokenStream, Diagnostic>`
+**Role:** Lexical half of generic `ingest` (00_compile B2-OMNI): walker over `LanguageModel` **lex** `Node` data — grammar-as-data, not hardcoded `.dag` classes (N×M STOP). Wave-2+ = extend **data**, not walker.
+
+**Merged `00_compile.dag` ingest (literal `Owns` today):** `ingest: (Source, LanguageModel) -> Result<Node, Diagnostic>` — authoritative composed ingest spelling on the orchestrator file (per DECISIONS.md item **I**: `Result<…, Diagnostic>` prose denotes the same fail-closed surface as `Outcome<…>` from `std/diagnostic.dag`; do not “fix” TASKS to one carrier spelling without changing **`00_compile.dag` in the same commit train**).
+**Merged `01_tokenize.dag` (literal `Owns` today):** `tokenize(text: String, file: Symbol, rules: LexRules) -> Outcome<TokenStream>` with `LexRules = Node` (`String` + `file: Symbol` is the concrete source slot inside `ingest` today; read `LexRules` as the lexical projection of the `LanguageModel` bundle per Theme-A #9 — not a second authority).
+*Theme-A #9:* Until `LanguageModel` is a **named** carrier (or merged `00_compile.dag` states formally that the model **IS** a `Node`), read **`LexRules` / `Grammar` as the model's lexical and syntax projections** on the same grammar-as-data — not a second authority beside the conceptual `(Source, LanguageModel)` spelling.
 
 **Modeling decisions**:
-- Character class encoding (predicate fn vs enum vs charset)
-- Whitespace/comment handling (preserve vs discard)
-- Token boundary discipline
+- The lexical-rule **data schema** on the `LanguageModel` — what a
+  declarative lexical production is, as `Node` (the structural shape the
+  walker recognizes by discriminant + child structure, never by `Symbol`
+  spelling).
+- Whitespace/comment handling expressed *in that data*, not as walker logic.
+- The walker's structural recognition contract (E0 and successors).
 
 **Reference**:
-- v2: `src/v2/01_tokenize.dag`
+- merged: `src/v4/compiler/01_tokenize.dag` (B2-OMNI, E0 contract)
 - v3 L2.5 design: `docs/r3-path-b-tokenize-parse-brief-set.md` PB-2
 
 ---
 
 ### T-7: compiler/02_parse.dag
 
-**I/O**: `TokenStream -> Result<ParseTree, Diagnostic>`
+**Role:** Syntactic half of `ingest`: walker over `Grammar` `Node`; grammar = bidirectional concrete-syntax ⟷ `Node`; parse forward, emit (T-10) inverse (`ingest = emit⁻¹`, C5). G0+ = **data** on model.
+
+**I/O**: `(TokenStream, Grammar) -> Outcome<ParseTree>` — `ParseTree = Node` (A1); matches **`compiler/02_parse.dag` `Owns`** (`parse: (TokenStream, Grammar) -> Outcome<ParseTree>`).
+*Ingest tie-in (`00_compile.dag` `Owns` today):* composed `ingest` still closes as **`Result<Node, Diagnostic>`** (see T-6); this stage keeps **`Outcome<ParseTree>`** in **`02_parse.dag`** until a ratified rename train retires the split spelling across **`00_compile.dag` + `01_tokenize` + `02_parse` together**.
+*Theme-A #9:* Same projection reading as T-6 — `Grammar` is the syntax-side parameter until the named `LanguageModel` bundles lex + grammar explicitly.
 
 **Modeling decisions**:
-- Grammar productions as Node trees vs separate parser substrate
-- Error recovery (single Diagnostic vs continued)
-- ParseTree shape (layout-preserving?)
+- The grammar **production data schema** as `Node` — a declarative
+  production *is* one direction of the bidirectional relation; both
+  directions must be expressible from the same data.
+- Error recovery (single `Diagnostic` vs continued) — fail-closed.
+- That the walker stays generic — no per-language branch in-body.
 
 **Reference**:
-- v2: `src/v2/02_parse.dag`
+- merged: `src/v4/compiler/02_parse.dag` (B2-OMNI, G0 contract)
 - v3 L2.5 design: `docs/r3-path-b-tokenize-parse-brief-set.md` PB-3
 
 ---
 
 ### T-8: compiler/03_normalize.dag + 03_resolve.dag
 
-**I/O**: `ParseTree -> NormalizedTree -> ResolvedTree`
+**Role:** First two `core` transforms after `ingest` on `00_compile`: **normalize**, then **resolve** (`resolve ∘ normalize` under standard `∘`, matching the composite line below). T-9 **infer** follows on the resolved tree; the full `core` chain on parse output is `infer ∘ resolve ∘ normalize` (never `normalize ∘ resolve ∘ infer`). Causal `Node` transforms — C3 desugar; K-1 resolve; derived facts carried **once** on returned `Node`.
+
+**I/O (pivot truth):** `ParseTree` / `NormalizedTree` / `ResolvedTree` are aliases on the universal **`Node`** pivot (A1); composite normalize→resolve is **`resolve ∘ normalize`** on that pivot (standard `∘`: normalize first, then resolve).
+*Merged seam (CP-1b, literal headers today):* `normalize: ParseTree -> Result<NormalizedTree, Diagnostic>`, `resolve: NormalizedTree -> Result<ResolvedTree, Diagnostic>` in `03_normalize.dag` / `03_resolve.dag`.
+*Do not drift:* **Carrier is `Node`; the seam types are parse→normalize scaffolding** — keep the header aliases and `Result<…, Diagnostic>` until CP-1b closes; do not delete or flatten signatures early chasing “purity.”
 
 **Modeling decisions**:
-- Surface sugar dissolution rules (service/fn/type -> Node tree)
-- Identifier binding strategy (scope chain vs flat namespace)
+- The 4 sugar forms and their dissolution **as structural rewrites on
+  `Node`** (C3) — single-authority for the desugared form.
+- `Symbol` binding (K-1): the use→def fact is *derived and carried
+  forward at the resolve boundary itself*, not supplied out-of-band — the
+  resolve stage contract is "identifier binding to declarations".
+- The sugar-name authority is the `LanguageModel`'s, consumed — never
+  re-minted in this stage (single-authority, Practice 5).
 
 **Reference**:
 - v2: `src/v2/03_normalize.dag`, `src/v2/03_resolve.dag`
@@ -394,17 +416,53 @@ substrate imported them, so the cut is a pure scope reduction.
 
 ### T-10: compiler/05_emit.dag + compiler/00_compile.dag — emission + orchestrator
 
+**emit is `ingest` inverted, not a codegen backend.** emit is the **emit
+boundary** of the OMNI pivot — `ingest = emit⁻¹` over the **same**
+bidirectional relation (00_compile.dag C5). **`TargetModel`** is the
+Shape-A emit parameter in **`00_compile.dag`** and in **`05_emit.dag`
+`Owns` / B2-OMNI** (`emit: (InferredTree, TargetModel) -> …`). **P2
+boundary honesty:** **`05_emit.dag` is not yet internally consistent** — the
+frozen scope line still says "target spec" and **`Consumes` still lists
+`TargetSpec`**, while the **`Owns` / B2-OMNI / signature** spelling already
+moved to **`TargetModel`**. That is **one carrier, dual names in-flight** on
+the T-10 scaffold — not a second authority; reconcile the scope prose +
+**`Consumes`** line in the same CP-1b/T-10 close-out train that touches
+`05_emit.dag`. TASKS tracks the **typed `Owns` I/O** here. Emission *applies
+the target language's declarative grammar in the inverse direction* (`Node`
+→ concrete syntax). The orchestrator `compile = emit ∘ core ∘ ingest`
+composes the three; `run = eval ∘ core ∘ ingest` is the sibling execution
+path. The IR is the universal `InferredTree` — there is no "target-agnostic
+IR shape" decision, the pivot already is target-agnostic.
+
+**No-templating constraint (operator 2026-05-17).** emit goes **through**
+the grounded `TargetModel`'s grammar-as-data, run inverted — **never** a
+string template or print routine. A string-templated emit path is the
+emit-side D2 hollow alias: an artifact the compiler cannot ground and
+coercion-check. The grammar-as-data *is* the emitter. (This constraint
+governs T-10's emit boundary as well as T-11's per-target tables — STOP
+if any emission step cannot be expressed as inverse grammar-data.)
+
 **I/O**:
-- `emit: (InferredTree, TargetSpec) -> Result<TargetSource, Diagnostic>`
-- `compile: (Source, TargetSpec) -> Result<TargetSource, Diagnostic>` (orchestrator)
+- `emit: (InferredTree, TargetModel) -> Result<TargetSource, Diagnostic>` — the emit
+  boundary, the U1 Realize phase, inverse of `ingest` (matches `00_compile.dag` and
+  `05_emit.dag` **`Owns`** contract headers; see the `TargetSpec` / scope-line caveat above).
+- `compile: (Source, TargetModel) -> Result<TargetSource, Diagnostic>` — the orchestrator,
+  `emit ∘ core ∘ ingest`.
+
+**`Result` vs `Outcome` (literal alignment, api-review):** **Ground in merged headers, not TASKS invention:** `compiler/00_compile.dag` **`Owns`** spells **`Result<…, Diagnostic>`** for `ingest` / `core` / `emit` / `eval` today; `compiler/01_tokenize.dag` and `compiler/02_parse.dag` **`Owns`** still spell **`Outcome<…>`** on `tokenize` / `parse`. Stage files **import** `Outcome` (and `Diagnostic`) from **`std/diagnostic.dag`**, which **`Owns`** the declared **`Outcome<T>`** carrier — there is no parallel `.dag` `Result<ok, err>` type (per DECISIONS.md item **I**). TASKS quotes **`Result`** here only where **`00_compile.dag` / `05_emit.dag` `Owns`** do (emit/compile bullets above); do not “standardize” orchestrator prose to `Outcome<Source>` **without** changing **`00_compile.dag` in the same commit train**.
 
 **Modeling decisions**:
-- Target-agnostic IR shape
-- How target spec drives concrete emission (interpreter vs codegen)
-- Orchestrator: monadic `Result` chaining vs early-return pattern
+- How the `TargetModel`'s grammar drives emission **as the inverse walk**
+  of the same relation parse (T-7) applies forward — the bidirectional
+  relation is authored once, consumed in both directions.
+- The orchestrator as function composition (`emit ∘ core ∘ ingest`),
+  fail-closed error propagation on the `Result` / `Rejected` branch (same
+  discipline as `Outcome` in `std/diagnostic.dag`).
+- `00_compile.dag` `LanguageModel` / `TargetModel`: declare the carrier
+  type, or state formally "a model IS a `Node`" (Theme-A audit #9).
 
 **Reference**:
-- v2: `src/v2/05_emit.dag`, `src/v2/compile.dag`
+- merged: `src/v4/compiler/00_compile.dag` (B2-OMNI), `05_emit.dag` (C5)
 - v3 L2.5 design: PB-emit model (`docs/r3-retirement-modeling-emit-rs.md`)
 
 ---
