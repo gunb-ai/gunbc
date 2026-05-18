@@ -1173,6 +1173,18 @@ Verbatim `//` lines from merge-base `llvm_ir.dag` (lines **1117–1170**):
 
 ### SL-3229-PTX-DIM3 — `Dim3` kernel-ambient `Int` axis scaffold
 
+**Authority / closure:** PR #3310 P1 cardinality refinement plus follow-up
+receipt PR (2026-05-18).
+
+**Disposition:** **🟢 GREEN terminal for the merge-base raw `Int` axis
+payload class.** Live `ptx.dag` uses `Nat` for `Dim3.x` / `y` / `z`, so
+negative dimension or coordinate axes are no longer representable by this
+carrier. **Residual remains 🟡:** `Nat` still admits zero and does not encode
+PTX-version-specific per-axis maxima, so `SL-3229-PTX-DIM3` remains a live
+ledger slug on `ptx.dag` for the positive / bounded-axis refinement. Named
+trigger: the same T-3 bounded-natural refinement substrate must supply a
+positive bounded-axis witness before this row can close fully.
+
 Verbatim `//` lines from merge-base `ptx.dag` (lines **1059–1090** — section header + 🟡 three-bridge note):
 
 ```text
@@ -1211,9 +1223,20 @@ Verbatim `//` lines from merge-base `ptx.dag` (lines **1059–1090** — section
 //       scaffold dissolves.
 ```
 
-**Dissolution trigger:** `std/cardinality.dag` refinement lands (T-3); axes refine per PTX-pinned maxima (merge-base text).
+**Dissolution result:** P1's `Nat` carrier landing closes only the
+merge-base negative-axis illegal state. The zero-axis and
+PTX-pinned-maximum illegal states remain live under `SL-3229-PTX-DIM3`
+until the named positive bounded-axis witness lands.
 
 ### SL-3229-PTX-COST — raw-`Int` PTX cost axes (`PtxCost`)
+
+**Authority / closure:** PR #3310 P1 cardinality refinement plus follow-up
+receipt PR (2026-05-18).
+
+**Disposition:** **🟢 GREEN terminal for the merge-base raw `Int` cost
+payload class.** Live `ptx.dag` uses `Nat` for `PtxCost.instruction_cost`
+and `PtxCost.occupancy_cost`, so negative cost is structurally
+unrepresentable.
 
 Verbatim `//` lines from merge-base `ptx.dag` (lines **1287–1328** — `PtxCost` + 🟡 three-bridge note):
 
@@ -1253,7 +1276,9 @@ type PtxCost {
 
 ```
 
-**Dissolution trigger:** `std/cardinality.dag` refinement substrate lands (T-3); non-negative cost axes become type-enforced (same dissolution family as `SL-3229-PTX-DIM3` / `SL-3229-LLVM-WIDTH`).
+**Dissolution result:** P1's `Nat` carrier landing type-enforces
+non-negative cost axes; no live `SL-3229-PTX-COST` ledger slug remains in
+`ptx.dag`.
 
 ### SL-3229-VERILOG-NONEMPTY — shared `List<T>` spec-non-empty Wave-A2 deferral
 
@@ -1512,6 +1537,14 @@ slug remains on `verilog.dag`'s `// Ledger:` line.
 
 ### SL-3229-VERILOG-COST — raw-`Int` Verilog cost axes (`VerilogCost`)
 
+**Authority / closure:** PR #3310 P1 cardinality refinement plus follow-up
+receipt PR (2026-05-18).
+
+**Disposition:** **🟢 GREEN terminal for the merge-base raw `Int` cost
+payload class.** Live `verilog.dag` uses `Nat` for
+`VerilogCost.gate_cost` and `VerilogCost.area_cost`, so negative cost is
+structurally unrepresentable.
+
 Verbatim `//` lines from merge-base `verilog.dag` (lines **4423–4456** — `VerilogCost` + 🟡 cardinality / non-negative cost scaffold):
 
 ```text
@@ -1551,7 +1584,9 @@ type VerilogCost {
 
 ```
 
-**Dissolution trigger:** `std/cardinality.dag` refinement substrate lands (T-3); `gate_cost` / `area_cost` refine to bounded non-negative numeric axes type-enforced (same dissolution family as `SL-3229-PTX-COST`, `SL-3229-LLVM-WIDTH`, `SL-3229-PTX-DIM3` — Practice 9 substrate debt, not `docs/v4-dag-rationale.md`).
+**Dissolution result:** P1's `Nat` carrier landing type-enforces
+non-negative Verilog cost axes; no live `SL-3229-VERILOG-COST` ledger slug
+remains in `verilog.dag`.
 
 ### SL-3229-FLOAT-NOMINAL — nominal width / interchange list-length scaffold
 
