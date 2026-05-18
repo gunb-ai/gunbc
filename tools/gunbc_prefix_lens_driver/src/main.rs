@@ -182,6 +182,11 @@ fn classify_path(rel: &str) -> PathBucket {
     if rel.starts_with("src/v3/lenses/") {
         return PathBucket::V3CompileToDag;
     }
+    if rel.starts_with("src/v3/spec/") {
+        return PathBucket::SkipDslOrV2 {
+            reason: "v3 spec language models — exercised under v3-compiler integration matrix; not compile_to_dag whole-corpus",
+        };
+    }
     // `operators.dag` is load-bearing authority for `operators_generated.rs`, but it
     // does not compile in isolation under `compile_to_dag` (semantic bundle over
     // `dsl/std/*`). Coverage lives in v3-compiler integration tests / regen — not
@@ -204,9 +209,6 @@ fn classify_path(rel: &str) -> PathBucket {
     if rel.starts_with("src/v3/compiler/tokenize.dag")
         || rel.starts_with("src/v3/compiler/parse_tables.dag")
     {
-        return PathBucket::V3CompileToDag;
-    }
-    if rel.starts_with("src/v3/spec/") {
         return PathBucket::V3CompileToDag;
     }
     if rel.starts_with("src/v3/") {
@@ -354,6 +356,10 @@ mod tests {
         assert!(matches!(
             classify_path("src/v3/lenses/cost.dag"),
             PathBucket::V3CompileToDag
+        ));
+        assert!(matches!(
+            classify_path("src/v3/spec/go.dag"),
+            PathBucket::SkipDslOrV2 { .. }
         ));
         assert!(matches!(
             classify_path("src/v3/std/list.dag"),
