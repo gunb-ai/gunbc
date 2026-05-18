@@ -701,8 +701,8 @@ in [modeling/grounding-worked-examples.md](modeling/grounding-worked-examples.md
 **What to check.** For any function in the diff: is its behavior fixed by
 the *shape* of a modeled type rather than by logic unique to this call
 site? If yes, it is a candidate dissolution finding — identify the
-registry row, then mark the disposition (🔴 fix-now / 🟡
-substrate-sequencing / 🟢 clean).
+registry row, then mark the disposition (🔴 dissolve-now / 🟡 gated /
+🟢 clean).
 **Not when** the recursion or `match` is genuinely irregular — the call
 graph is not the data graph, the branches do genuinely distinct work.
 Irregularity is the honest escape hatch: a derived operation is one whose
