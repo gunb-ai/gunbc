@@ -1,7 +1,7 @@
 // src/v4/std/cardinality.dag
 // Scope: cardinality and descent-evidence substrate.
 // Anchor: https://en.wikipedia.org/wiki/Cardinality
-// Owns: DescentEvidence, RankingDimension, TerminationProof, Multiplicity.
+// Owns: DescentEvidence, RankingDimension, TerminationProof, Multiplicity, Never, Unit.
 // Consumes: std collection, std node.
 // Status: T-3 modeled.
 
@@ -10,6 +10,23 @@ module v4.std.cardinality
 
 import v4.std.collection { List }
 import v4.std.node { Symbol }
+// Inhabitance refinement substrate (P1 modeling faithfulness): shared
+// std/ carriers for type-theoretic cardinality-0 and cardinality-1
+// facts. External specs ground empty types (Rust `!`, C `void` in
+// param position idioms, …) on `Never` and unit / singleton sentinels
+// on `Unit` — not bare kernel aliases. Bounded non-negative numeric
+// axes (costs, LLVM bit widths, …) remain producer-side until a
+// separate numeric refinement story lands (T-25-core + nat/integer
+// carriers); this file does not conflate those with inhabitance-0/1.
+//
+// 🟢 classification ledger — DECISIONS.md de-prosed substrate table:
+// `Never` is the declared empty-inhabitance carrier (zero
+// inhabitants). `Unit` is the declared singleton carrier (exactly
+// one inhabitant, `MkUnit`).
+type Never
+// 🟢 coproduct dissolution — DECISIONS.md classification ledger: Unit.
+type Unit
+  = MkUnit
 // 🟢 coproduct dissolution — DECISIONS.md classification ledger: DescentEvidence.
 type DescentEvidence
   = Strict
