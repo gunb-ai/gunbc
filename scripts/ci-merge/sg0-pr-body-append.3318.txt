@@ -1,0 +1,3 @@
+SG-0 hand-path delta: +2
+
+SG-0 pairing: (c) Net add is two `EXPECTED_HAND_AUTHORED_TEST` rows for v4 lens ratchets (`v4_lens_cost_dag_smoke_test.rs` and `v4_lens_coverage_dag_smoke_test.rs`) plus matching `INVARIANTS.md` §P5(b) receipt rows. Dispatch posture: retire these host checks when the v4 cost/coverage lenses run as `.dag` / generated coverage per ROADMAP T-PB-B (`pb_rust_tests_outside_residual_zero`).
