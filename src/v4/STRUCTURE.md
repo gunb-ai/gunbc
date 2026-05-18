@@ -29,11 +29,11 @@ src/v4/
     float.dag            # Float — IEEE-754 floating-point (rounding-aware algebra, not exact Field)
     text.dag             # Char (Unicode code point) + String (FreeMonoid<Char>)
     collection.dag       # bounded containers
-    verification.dag     # TestClaim schema (imported from v3)
+    verification.dag     # TestClaim schema + Tier×Layer classification (v4-fresh; studied v3/dsl)
     report.dag           # advisory carrier (NOT fail-closed Diagnostic); used by synthesis lens
     fact_density.dag     # P2-staging only (INVARIANTS §P2): T-30 `compile_to_dag` parse witness — **not** a landed std primitive until a **generated** `.dag` consumer reads `SourceSpecReadFact`; hollow-alias authority today is the private Rust mirror module `v4_hollow_alias_gate` in `v3-compiler`. See `DECISIONS.md` T-30 encoding note + `TASKS.md` T-30.
 
-  extdeps/               # external system contracts (21 files)
+  extdeps/               # external system contracts (22 files)
     languages/           # language models (direction-agnostic — emit AND ingest)
       dag.dag            # gunbc `.dag` — B2-OMNI language #1 (C1 extension 2026-05-16; relay merry-ibex-337)
       rust.dag
@@ -103,26 +103,36 @@ src/v4/
   test/
     claim/               # TestClaim data — no hand-Rust tests
       impossible_bug/    # the R1+ impossible-bug class demos
+        idempotency_contract.dag
+        nested_optional_flatten.dag
+        suboptimal_complexity.dag
+        transport_type_drift.dag
+        unenumerated_effects.dag
+        unhandled_diagnostic_paths.dag
       diagnostic_correction/
       algebra_laws/
       manual/            # hand-authored anti-regression anchors (Phase 1.5)
+        connective_anchors.dag
+        nat_law_anchors.dag
+        t19_manual_anchor_manifest.dag  # T-19 manifest — `T19ManualAnchorKey` membership rows
         resolve_compile_anchor.dag  # resolve + wave-1 canonical `Set` compile anchor (#3225; T-22 defers `v2 run`)
       boundary/          # boundary-honesty probes
         english_ingest_fail_closed.dag  # T-4.11 — fail-closed ingest, no fabrication
     fixture/             # canonical input programs
 ```
 
-**Total: 68 .dag files + 5 docs + 5 .gitkeep = 78 files.** (Per invariant
+**Total: 69 .dag files + 5 docs + 5 .gitkeep = 79 files.** (Per invariant
 #1 the enumeration above — not the count — is authoritative; the count is
 a checksum, updated on every operator-ratified file addition/removal.
 **Reconciliation (2026-05-17, PR #3225 / review #13750):** the prior printed
 total (`65`) lagged the live tree at **67** `.dag` files — the line had not
 yet absorbed the 2026-05-16 `extdeps/languages/dag.dag` +1 (and other
-intervening operator-ratified edits). This PR lands **`test/claim/manual/resolve_compile_anchor.dag`** (+1) → **68**, matching `find src/v4 -name '*.dag'`.
+intervening operator-ratified edits). **#3225** adds **`test/claim/manual/resolve_compile_anchor.dag`**; **#3212** adds **`test/claim/manual/t19_manual_anchor_manifest.dag`**. **69** `.dag`, matching `find src/v4 -name '*.dag'`.
 **Earlier operator-ratified deltas already in the tree (audit trail only — not re-applied by #3225):**
 +1 .dag 2026-05-16: `extdeps/languages/dag.dag` — operator-ratified C1 closed-tree
 extension (Option A, relay merry-ibex-337). −5 .dag 2026-05-15: work-direction
-meta-layer cut, operator-ratified.)
+meta-layer cut, operator-ratified. **2026-05-17 (PR #3212):** enumerate
+`test/claim/manual/*` (4) + `test/claim/impossible_bug/*` (6); checksum **65→69** `.dag`.)
 
 ## Scalar/numeric concept decomposition
 
