@@ -9,7 +9,6 @@
 module v4.extdeps.languages.rust
 
 import v4.std.node { Node, Symbol }
-import v4.std.cardinality { Never }
 
 // 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
 type RustIntKind
@@ -69,10 +68,6 @@ type RustCost {
   allocation_cost: Int
 }
 
-type GroundingMap<IRCarrier> {
-  spelling: String
-}
-
 // 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
 type OverflowAction
   = PanicOnOverflow
@@ -82,12 +77,3 @@ type OverflowAction
 type OverflowDisposition<IRCarrier>
   = MustPanicOnOverflow
   | MayPanicOrTwoComplementWrap
-
-type RustBool = Bool
-
-data rust_bool_grounding: GroundingMap<RustBool> = GroundingMap {
-  spelling: "bool"
-}
-
-// 🟢 Rust `!` → `Never`; D2a(2) deferrals — DECISIONS.md §PR-3252-extdeps-deferrals (Practice 9).
-type RustNever = Never

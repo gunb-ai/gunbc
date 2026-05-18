@@ -1,7 +1,7 @@
 // src/v4/extdeps/languages/python.dag
 // Scope: Python 3.14 Reference surface (numeric tower, singleton kinds, scalar sum, cost shape, partial D2 resolver).
-// Owns: PythonNumericTower, PythonSingletonKind, PythonScalar, PythonCost, PyBool.
-// Consumes: Kernel-ambient Bool, Int; std/integer, std/float, std/cardinality when T-3 alias rows land (DECISIONS.md D2-REV).
+// Owns: PythonNumericTower, PythonSingletonKind, PythonScalar, PythonCost.
+// Consumes: Kernel-ambient Int; std/integer, std/float, std/cardinality when T-3 alias rows land (DECISIONS.md D2-REV).
 // Status: extdeps python slice; numeric overflow and resolver deferrals per DECISIONS.md D2-REV + Part 6 (PR #3229 · CP-3229-GREEN-TERMINAL); principal int unbounded—no overflow carrier in-file.
 // Anchor: https://docs.python.org/3.14/reference/
 
@@ -30,5 +30,4 @@ type PythonCost {
   allocation_cost: Int
 }
 
-type PyBool = Bool
 // 🟢 Singleton / `Unit` D2a slice — DECISIONS.md §PR-3252-extdeps-deferrals + §PR-3252-cardinality-std (Practice 9).

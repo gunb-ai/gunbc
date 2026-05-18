@@ -290,6 +290,99 @@ overflow at the emit boundary.
 
 ## Per-target carrier groundings
 
+## 0. Rust `bool` / `!` — the single-valued & uninhabited endpoints (the proven-coincidence shape)
+
+This is the cardinality-axis trivial endpoint, and the **canonical
+shape for proven coincidence when the carrier has no internal structure
+to decompose**. The compound examples (§1, §B) demonstrate the discipline
+where a carrier *decomposes*; this one demonstrates it where it cannot —
+the case where the temptation to **assert** an alias is strongest, and
+where the discipline is identical anyway.
+
+**The rejected shape (D2a, retired from `rust.dag`).** The pre-ruling
+form asserted identity by a label plus a spelling string:
+
+```
+type RustBool = Bool                                   // bare D2 assertion
+data rust_bool_grounding: GroundingMap<RustBool> = GroundingMap {
+  spelling: "bool"                                      // identity by a label string
+}
+type RustNever = Never                                  // bare D2 assertion
+```
+
+`"bool"` is prose: a checker cannot walk it, so the asserted coincidence
+is structurally invisible — the hollow-fact failure the
+machine-readable-inhabitance bar forecloses. `type RustBool = Bool` is a
+mechanically valid Node-identity edge, but as a *grounding shape* it is
+an **assertion**, and "identity is a claim discharged by the fold, never
+an assertion" (see "The model" above). The A-vs-B ruling = **B**.
+
+**Model — grounded from the Rust Reference, not asserted:**
+
+```
+// CARRIER — the Rust Reference fixes `bool` as exactly two values,
+// `true` and `false`. That fact is `std/logic.dag`'s single primitive
+// `Bool = True | False` — MODELING.md's foundational primitive. There is
+// no internal structure to decompose: the carrier *is* the 2-valued
+// truth type. `rust.dag` carries this fact STRUCTURALLY as the nullary
+// `BoolScalar` variant of `RustScalar` — no separate alias, no spelling.
+//
+// `!` (the never type) is, per the Rust Reference, an empty type with no
+// values. That fact is `std/cardinality.dag`'s uninhabited `Never` (zero
+// cardinality). `rust.dag` carries it as the nullary `NeverScalar`
+// variant of `RustScalar` — again no alias, no spelling.
+
+// MEANING — `bool`: the 2-valued truth structure itself (identity).
+//           `!`  : the unique map out of the empty type (ex falso); a
+//                  value of `!` cannot be constructed, so the decode is
+//                  vacuous, never a fabricated inhabitant.
+```
+
+The coincidence with std `Bool` / `Never` is **discharged by the fold**:
+`canonical(grounding(RustBool)) == canonical(std Bool)` because both
+*are* `True | False` — equal canonical `Node` forms, mechanically
+checkable. Nothing is asserted in the file; the structural scalar fact is
+all that is written, exactly as `machine_code.dag` / `ptx.dag` carry
+their scalars and (per INVARIANTS §P2 post-D2-REV) carry **no
+`GroundingMap` twin and no spelling-only resolver rows**.
+
+**Step-by-step coercion shape — `RustBool -> Outcome<IR Bool>`:**
+1. `RustBool` grounds to `Bool = True | False`; IR `Bool` grounds to the
+   same `std/logic.dag` primitive.
+2. the fold compares canonical `Node` forms leaf-to-leaf: `True`↔`True`,
+   `False`↔`False` — they coincide.
+3. identity-quality: the target carrier *is* the same 2-valued truth
+   structure, so it returns `Produced { value }` — no width, sign, or
+   unit fact exists to drop or fabricate (contrast §B/§10: `bool` has no
+   such coordinate, so the single-valued case is the clean endpoint).
+
+**Step-by-step — `RustNever` / `! `:**
+1. `Never` has **no inhabitants**. `T -> Outcome<RustNever>` is therefore
+   *uninhabited in its result*: it can only ever be `Rejected` (no value
+   of `!` can be `Produced`) — fail-closed by construction, not by a
+   diagnostic the model has to remember to write.
+2. `RustNever -> Outcome<T>` is the unique **empty map** (ex falso): it
+   is vacuously total because there is no input to handle. The fold needs
+   no per-case logic; the absurd elimination *is* the structure.
+
+`Never` is the cardinality-axis analogue of `machine_code` on the bit
+axis: the endpoint so trivial the grounding is direct, with the honest
+boundary falling out of the cardinality fact rather than being asserted.
+
+**Substrate-feature determination (the reserved call).** The faithful
+single-valued / uninhabited shape is the **absence** of the asserted
+alias + spelling-map: the fact already lives structurally in
+`RustScalar`'s nullary `BoolScalar` / `NeverScalar` variants, which are
+ordinary sum variants that lower today. The correct fix introduces **no
+`data` literal at all** — it *deletes* one — so it categorically does
+**not** depend on record/list/map literals inside `data X = { … }`
+bodies (the "Class-5 gap #3" top-level nullary-sum-variant `data`-body
+restriction). **No build-it-first prerequisite; expressible with the
+already-working shapes.** This is the general lesson for the single-
+valued case: when a carrier has no structure to decompose, the
+proven-coincidence shape is *less* structure than the asserted one, not
+more.
+
 ## 1. Rust — `[T; N]` (const generics, compound coercion)
 
 **Model** — grounded from the Rust Reference array type:

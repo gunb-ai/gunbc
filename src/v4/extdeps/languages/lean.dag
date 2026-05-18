@@ -1,25 +1,18 @@
 // src/v4/extdeps/languages/lean.dag
 // Scope: Lean 4 language model for PROOF-1 termination export.
-// Owns: LeanDeclarationKind, LeanName, LeanLevel, LeanLevelRef, LeanLevelNode, LeanBinderInfo, LeanBinder, LeanTermRef, LeanTermNode, LeanTermForm, LeanMatchAlternative, LeanTerminationMeasure, LeanTerminationBy, LeanDecreasingProof, LeanTerminationClause, LeanDefinitionTermination, LeanProofArtifact, LeanFidelityFeature, LeanFidelityDisposition, LeanProofCheckSemantics, Symbol, GroundingMap, LeanIntKind, LeanIntWidth, LeanScalar, LeanBool, lean_bool_grounding.
-// Consumes: List, Bool, String.
-// Status: D2-REV; 🟢 P4-3208 — DECISIONS.md (lean scalar + ledger).
+// Owns: LeanDeclarationKind, LeanName, LeanLevel, LeanLevelRef, LeanLevelNode, LeanBinderInfo, LeanBinder, LeanTermRef, LeanTermNode, LeanTermForm, LeanMatchAlternative, LeanTerminationMeasure, LeanTerminationBy, LeanDecreasingProof, LeanTerminationClause, LeanDefinitionTermination, LeanProofArtifact, LeanFidelityFeature, LeanFidelityDisposition, LeanProofCheckSemantics, Symbol, LeanIntKind, LeanIntWidth, LeanScalar.
+// Consumes: List, Bool.
+// Status: D2-REV; 🟢 P4-3208 — DECISIONS.md (lean scalar + ledger); bool grounded structurally via LeanScalar.BoolScalar (ruled-B: no bare alias / spelling-map).
 
 module v4.extdeps.languages.lean
 
 
 import v4.std.collection { List }
 import v4.std.logic { Bool }
-import v4.std.text { String }
 
 
 // Twin of `v4.std.node.Symbol` — M1(2.7) compile_to_dag import lowering; local L-2 atom until `v4.std.node` import lowering lands (DECISIONS.md / P2).
 type Symbol
-
-
-// Twin of `rust.dag` `GroundingMap` pending shared `resolver.dag` home (DECISIONS.md D4; cpp.dag P2 note).
-type GroundingMap<IRCarrier> {
-  spelling: String
-}
 
 
 // Anchor: https://lean-lang.org/doc/reference/4.20.0/
@@ -208,11 +201,3 @@ type LeanIntWidth
 type LeanScalar
   = IntScalar { kind: LeanIntKind, width: LeanIntWidth }
   | BoolScalar
-
-
-// Anchor: https://lean-lang.org/doc/reference/4.20.0/Basic-Types/Fixed-Precision-Integers/
-type LeanBool = Bool
-
-data lean_bool_grounding: GroundingMap<LeanBool> = {
-  spelling: "Bool"
-}

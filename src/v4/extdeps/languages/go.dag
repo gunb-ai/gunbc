@@ -1,8 +1,8 @@
 // src/v4/extdeps/languages/go.dag
 // Scope: Go language spec surface (scalar width/kind sums, channel direction, export, cost shape, partial D2 resolver); L-2 pin go1.26 via Anchor.
-// Owns: SignedIntWidth, UnsignedIntWidth, GoFloatWidth, GoComplexWidth, GoScalarKind, GoScalar, GoChannelDirection, GoExportLocus, GoExportStatus, GoChannel, GoCost, GoBuiltinIntegerArithmeticOverflow, GoIntegerOverflowDisposition, GoBool.
-// Consumes: v4.std.node.Symbol; kernel-ambient Bool, Int (STRUCTURE.md traceability).
-// Status: extdeps go slice; D2a(2) GroundingMap home + numeric D2a rows deferred per DECISIONS.md D2-REV and resolver.dag; no D1 ops in-file.
+// Owns: SignedIntWidth, UnsignedIntWidth, GoFloatWidth, GoComplexWidth, GoScalarKind, GoScalar, GoChannelDirection, GoExportLocus, GoExportStatus, GoChannel, GoCost, GoBuiltinIntegerArithmeticOverflow, GoIntegerOverflowDisposition.
+// Consumes: v4.std.node.Symbol; kernel-ambient Int (STRUCTURE.md traceability).
+// Status: extdeps go slice; bool grounded structurally via GoScalar.BoolScalar (ruled-B: no bare alias / spelling-map); numeric D2a rows deferred per DECISIONS.md D2-REV and resolver.dag; no D1 ops in-file.
 // Anchor: https://go.dev/ref/spec
 // Ledger: DECISIONS.md Part 6 (PR #3229): CP-3229-GREEN-TERMINAL.
 
@@ -91,5 +91,4 @@ type GoIntegerOverflowDisposition<IRCarrier> {
   release_default: GoBuiltinIntegerArithmeticOverflow
 }
 
-type GoBool = Bool
 // 🟢 GoNever / no GoScalar bottom — DECISIONS.md §PR-3252-extdeps-deferrals (Practice 9).

@@ -1,7 +1,7 @@
 // src/v4/extdeps/languages/typescript.dag
 // Scope: TypeScript 5.9 + ECMA-262 ES2025 primitive scaffold.
-// Owns: TsEcma262NumericPrimitiveKind, TsBoolean, TsEcma262PrimitiveOperationSemantics.
-// Consumes: kernel-ambient Bool; std numeric/text carriers are fact-bundle-gated.
+// Owns: TsEcma262NumericPrimitiveKind, TsEcma262PrimitiveOperationSemantics.
+// Consumes: std numeric/text carriers are fact-bundle-gated.
 // Status: 🟡 gated — feature: T-4 fact-bundle Phase-3 rework after T-3/T-29/T-30/T-25-core.
 
 module v4.extdeps.languages.typescript
@@ -19,9 +19,6 @@ type TsEcma262NumericPrimitiveKind
 
 
 
-
-
-type TsBoolean = Bool
 
 
 
