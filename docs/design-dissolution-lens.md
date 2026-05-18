@@ -496,13 +496,20 @@ fn derive_effect_shape(...) -> Outcome<EffectShape> {
 > "Cross-reference — D2-resolver" note below for why the dangling-import
 > shape is a separate finding.
 
-- *Signature:* a type name `T` introduced by `type T = ...` in two
-  different `.dag` files. (Scope clarification — the *planned-but-absent
-  home* case is a different finding shape: an unresolved-reference /
-  fail-closed P3 violation, not a duplicate-authority one. The lens
-  that catches it is L0.8 unbound-name extended to dangling import
-  paths — separately classified so root-cause precision is preserved.
-  L1.12 is duplicate-declaration only.)
+- *Signature:* a type name `T` introduced by **any `type T` declaration
+  form** in two different `.dag` files. The form is irrelevant — sum /
+  alias (`type T = A | B`), record (`type T { f1: ..., f2: ... }`),
+  unit (`type T`), and generic (`type T<X> = ...`) all count as
+  introductions of the name `T`. The lens fires on the *name* being
+  introduced twice, not on a specific syntactic form. (Scope
+  clarification — the *planned-but-absent home* case is a different
+  finding shape: an unresolved-reference / fail-closed P3 violation,
+  not a duplicate-authority one. The lens that catches it is L0.8
+  unbound-name extended to dangling import paths — separately
+  classified so root-cause precision is preserved. L1.12 is
+  duplicate-declaration only, and it covers `Bool = True | False`,
+  `Word64 { bytes: List<Byte> }`, `Url { scheme: ..., ... }`, and any
+  other type-introduction form on equal footing.)
 - *Decidable:* yes — name uniqueness across the corpus is queryable
   from the parsed model. No comment/prose inspection.
 - *Verdict:* hard error.
