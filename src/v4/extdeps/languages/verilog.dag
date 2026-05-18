@@ -68,7 +68,8 @@ type ConstantUnaryOperator
   | ConstUnaryReductionOr
   | ConstUnaryReductionNor
   | ConstUnaryReductionXor
-  | ConstUnaryReductionXnor
+  | ConstUnaryReductionXnorTildeCaret
+  | ConstUnaryReductionXnorCaretTilde
 
 
 // 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-VERILOG-CONSTEXPR-TERMINAL.
@@ -92,7 +93,8 @@ type ConstantBinaryOperator
   | ConstBinaryBitwiseAnd
   | ConstBinaryBitwiseOr
   | ConstBinaryBitwiseXor
-  | ConstBinaryBitwiseXnor
+  | ConstBinaryBitwiseXnorTildeCaret
+  | ConstBinaryBitwiseXnorCaretTilde
   | ConstBinaryLogicalShiftLeft
   | ConstBinaryLogicalShiftRight
   | ConstBinaryArithmeticShiftLeft
