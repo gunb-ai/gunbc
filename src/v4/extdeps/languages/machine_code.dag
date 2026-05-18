@@ -1,6 +1,6 @@
 // src/v4/extdeps/languages/machine_code.dag
 // Scope: machine-code language model parameterized by Isa.
-// Owns: Isa, ByteOrder, InstructionLength, InstructionByteLimitRef, OperandFieldWidthRef, Symbol, MachineIntKind, MachineIntWidth, MachineScalar, MachineSignedDisplacement32, MachineSignedDisplacement64, InstructionWord, RegisterClass, RegisterDeclaration, RegisterRef, IndexScale, AddressingMode, Operand, ByteSequence, InstructionProductionRef, RegisterOperandSlotRef, ImmediateOperandSlotRef, MemoryOperandSlotRef, ImmediateOperandTarget, ImmediateOperandConstraint, MemoryOperandConstraint, InstructionOperandSlot, InstructionProduction, OperandBinding, DecodedInstruction, MachineFidelityFeature, MachineFidelityDisposition, MachineIntegerOverflowBehavior, MachineIntegerOperationSemantics, FlagWriteDisposition.
+// Owns: Isa, ByteOrder, InstructionLength, InstructionByteLimitRef, OperandFieldWidthRef, Symbol, MachineIntKind, MachineIntWidth, MachineScalar, MachineDisplacement32WidthClass, MachineDisplacement64WidthClass, MachineSignedDisplacement32, MachineSignedDisplacement64, InstructionWord, RegisterClass, RegisterDeclaration, RegisterRef, IndexScale, AddressingMode, Operand, ByteSequence, InstructionProductionRef, RegisterOperandSlotRef, ImmediateOperandSlotRef, MemoryOperandSlotRef, ImmediateOperandTarget, ImmediateOperandConstraint, MemoryOperandConstraint, InstructionOperandSlot, InstructionProduction, OperandBinding, DecodedInstruction, MachineFidelityFeature, MachineFidelityDisposition, MachineIntegerOverflowBehavior, MachineIntegerOperationSemantics, FlagWriteDisposition.
 // Consumes: List, Byte.
 // Status: D2-REV; 🟢 P4-3208 — DECISIONS.md (machine_code scalar + displacement + ledger).
 
@@ -75,16 +75,28 @@ type MachineScalar
 
 
 // Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
+// 🟢 coproduct dissolution — DECISIONS.md P4-3208
+type MachineDisplacement32WidthClass
+  = Bits32
+
+
+// Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
+// 🟢 coproduct dissolution — DECISIONS.md P4-3208
+type MachineDisplacement64WidthClass
+  = Bits64
+
+
+// Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
 type MachineSignedDisplacement32 {
   kind: MachineIntKind
-  width: MachineIntWidth
+  width: MachineDisplacement32WidthClass
 }
 
 
 // Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
 type MachineSignedDisplacement64 {
   kind: MachineIntKind
-  width: MachineIntWidth
+  width: MachineDisplacement64WidthClass
 }
 
 
