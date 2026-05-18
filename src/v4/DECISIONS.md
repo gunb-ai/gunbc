@@ -1465,9 +1465,9 @@ Verbatim `//` lines from merge-base `float.dag` (lines **104–144** — modelin
 
 **Gate (live cite, Practice 9):** `🟡 gated — feature: v4 temporal substrate for RFC 3339 datetime value interpretation (TOML §Date-Time four sub-kinds)`
 
-**Named arrival:** `TomlDatetime` in `toml.dag` carries a verbatim RFC 3339 **lexeme**; **structured clock/calendar instant** interpretation requires v4 **`std/` temporal carrier + operations** landed under **`TASKS.md` T-3** (substrate / `std/` expansion — tracked arrival, not parking-lot prose). **Consumer / wiring owner:** **`TASKS.md` T-4.6** (`extdeps/formats/*`, including `toml.dag` operation(s) that consume the temporal facts). **This gate is NOT `SL-3229-LLVM-WIDTH`:** that row documents **LLVM LangRef raw-`Int` width payloads** on `LlvmType`; citing it for datetime was **wrong gate attribution** (Practice 4 accurate `feature:` naming, Practice 5 single authority).
+**Named arrival:** `TomlDatetime` in `toml.dag` carries a verbatim RFC 3339 **lexeme**; **structured clock/calendar instant** interpretation requires v4 **`std/` temporal carrier + operations** in the **named scheduled file** **`src/v4/std/datetime.dag`** (module `v4.std.datetime` once authored; see **`TASKS.md` T-3** roster — file absent until landing PR). **Consumer / wiring owner:** **`TASKS.md` T-4.6** (`extdeps/formats/*`, including `toml.dag` operation(s) that consume the temporal facts). **This gate is NOT `SL-3229-LLVM-WIDTH`:** that row documents **LLVM LangRef raw-`Int` width payloads** on `LlvmType`; citing it for datetime was **wrong gate attribution** (Practice 4 accurate `feature:` naming, Practice 5 single authority).
 
-**Dissolution trigger:** ratified **T-3** temporal substrate + typed interpretation operation(s) on **T-4.6** (e.g. `toml_datetime_value : TomlDatetime -> Outcome<…>` over the four sub-kinds); this row closes.
+**Dissolution trigger:** **`src/v4/std/datetime.dag`** is present in-tree with ratified temporal carriers + operations (**T-3**), and **T-4.6** wires typed interpretation (e.g. `toml_datetime_value : TomlDatetime -> Outcome<…>` over the four sub-kinds); this row closes.
 
 **Roll-up:** **`TASKS.md` T-3** + **T-4.6**; **orthogonal** to dissolution-inventory **P1** cardinality-width family (`SL-3229-LLVM-WIDTH`, `SL-3229-PTX-COST`, …).
 
