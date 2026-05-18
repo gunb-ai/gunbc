@@ -3,7 +3,7 @@
 // Owns: TsEcma262SectionRef, TsScalarTowerSectionRefs, TsScalar, TsEcma262PrimitiveOperationSemantics.
 // Consumes: kernel-ambient String; std numeric/text/bool aliases and grounding rows are fact-bundle-gated.
 // Status: 🟡 gated — scalar tower fact-bundle slice landed; per-primitive bool alias/grounding rows held pending operator A-vs-B ruling.
-// Anchor: https://tc39.es/ecma262/
+// Anchor: https://262.ecma-international.org/16.0/ ; https://www.typescriptlang.org/docs/handbook/release-notes/typescript-5-9.html
 
 module v4.extdeps.languages.typescript
 
