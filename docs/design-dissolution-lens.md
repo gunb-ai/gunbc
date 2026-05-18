@@ -972,19 +972,19 @@ type Bool = True | False
 
 This is the **unresolved-duplicate** case — the trigger fires (lexical
 collision across two files) and silence in both registries means the
-substrate has not taken a position. Resolution (4): the lens fires.
+substrate has not taken a position. Outcome (5): the lens fires.
 
 A `CanonicalConcept` row alone is not enough — it asserts co-membership
 but without a structural alias edge from `dsl.std.types.Bool` to
-`v4.std.logic.Bool`, resolution (2) "same-concept-without-alias" still
-fires:
+`v4.std.logic.Bool` and no `HistoricalDeclaration` retirement row,
+outcome (4) "same-concept-without-alias-or-retirement" still fires:
 ```dag
 data bool_concept: CanonicalConcept = {
   canonical_home: v4.std.logic.Bool,
   members:        { dsl.std.types.Bool },
 }
 // dsl.std.types still has `type Bool = True | False` (a redeclaration,
-// not an alias) → resolution (2) → fires.
+// not an alias, not retired) → outcome (4) → fires.
 ```
 
 To pass, the historical declaration must become an alias-identity edge
