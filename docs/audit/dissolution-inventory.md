@@ -45,8 +45,9 @@ double-counting).
 **Dispositions** — the four #3244 vocabulary symbols:
 
 - **🔴 dissolve-now** — substrate primitive exists; mechanical fix
-  jumps the queue, lands in a follow-up PR. **Count: 3 findings, 2
-  distinct fixes** (R1 + R2 in § 1.0). Checked, not omitted.
+  jumps the queue, lands in a follow-up PR. **Count:** **R2 only**
+  (1 finding, 1 fix) in § 1.0 — **R1 landed PR #3284** (`is_empty_conj_root`).
+  Checked, not omitted.
 - **🟡 gated** — substrate primitive does not exist yet; carries
   `feature:<primitive + owning task>` or `consumer:<named consumer>`
   + dissolve-on-arrival obligation. A 🟡 is a *committed*
@@ -206,10 +207,8 @@ Caveats:
 substrate dissolves roughly 60% of the v4 substrate's outstanding 🟡
 debt in a single sweep — by 🟡-count it dominates every other
 substrate PR by 4× or more. The S1 substrate track should prioritize
-P1 ahead of P2-P10. R1 and R2 (§ 1.0) jump the queue ahead of all
-substrate PRs since neither needs absent substrate.
-
----
+P1 ahead of P2-P10. **R2** (§ 1.0) jumps the queue ahead of all
+substrate PRs since it needs no absent substrate.
 
 ---
 
