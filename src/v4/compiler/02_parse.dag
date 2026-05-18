@@ -24,10 +24,9 @@ import v4.std.node {
   ComputationNode,
   Conj,
   Edge,
-  Instantiation,
+  Named,
   Node,
   NodeKind,
-  Positional,
   Symbol,
   TypeNode,
   node_well_formed,
@@ -49,6 +48,15 @@ data grammar_choice: Symbol = grammar_choice
 data grammar_optional: Symbol = grammar_optional
 data grammar_repeat: Symbol = grammar_repeat
 data grammar_emit_node: Symbol = grammar_emit_node
+data grammar_kind: Symbol = grammar_kind
+data grammar_token_class: Symbol = grammar_token_class
+data grammar_name: Symbol = grammar_name
+data grammar_element: Symbol = grammar_element
+data grammar_left: Symbol = grammar_left
+data grammar_right: Symbol = grammar_right
+data grammar_expression: Symbol = grammar_expression
+data grammar_emitted: Symbol = grammar_emitted
+data grammar_start: Symbol = grammar_start
 
 data parse_stage_locus_port: Symbol = parse_stage_locus_port
 
@@ -99,54 +107,54 @@ fn grammar_atom(identity: Symbol) -> Node {
     children: []
   }
 }
-fn grammar_positional_edge(target: Node) -> Edge {
+fn grammar_named_edge(name: Symbol, target: Node) -> Edge {
   Edge {
-    label: Positional,
+    label: Named { name: name },
     target: target
   }
 }
 fn grammar_terminal_node(token_class: Symbol) -> Node {
   Node {
     kind: TypeNode {
-      connective: Instantiation
+      connective: Conj
     },
     children: [
-      grammar_positional_edge(target: grammar_atom(identity: grammar_terminal)),
-      grammar_positional_edge(target: grammar_atom(identity: token_class))
+      grammar_named_edge(name: grammar_kind, target: grammar_atom(identity: grammar_terminal)),
+      grammar_named_edge(name: grammar_token_class, target: grammar_atom(identity: token_class))
     ]
   }
 }
 fn grammar_nonterminal_node(name: Symbol) -> Node {
   Node {
     kind: TypeNode {
-      connective: Instantiation
+      connective: Conj
     },
     children: [
-      grammar_positional_edge(target: grammar_atom(identity: grammar_nonterminal)),
-      grammar_positional_edge(target: grammar_atom(identity: name))
+      grammar_named_edge(name: grammar_kind, target: grammar_atom(identity: grammar_nonterminal)),
+      grammar_named_edge(name: grammar_name, target: grammar_atom(identity: name))
     ]
   }
 }
 fn grammar_unary_node(kind: Symbol, element: Node) -> Node {
   Node {
     kind: TypeNode {
-      connective: Instantiation
+      connective: Conj
     },
     children: [
-      grammar_positional_edge(target: grammar_atom(identity: kind)),
-      grammar_positional_edge(target: element)
+      grammar_named_edge(name: grammar_kind, target: grammar_atom(identity: kind)),
+      grammar_named_edge(name: grammar_element, target: element)
     ]
   }
 }
 fn grammar_binary_node(kind: Symbol, left: Node, right: Node) -> Node {
   Node {
     kind: TypeNode {
-      connective: Instantiation
+      connective: Conj
     },
     children: [
-      grammar_positional_edge(target: grammar_atom(identity: kind)),
-      grammar_positional_edge(target: left),
-      grammar_positional_edge(target: right)
+      grammar_named_edge(name: grammar_kind, target: grammar_atom(identity: kind)),
+      grammar_named_edge(name: grammar_left, target: left),
+      grammar_named_edge(name: grammar_right, target: right)
     ]
   }
 }
@@ -165,31 +173,30 @@ fn grammar_repeat_node(element: Node) -> Node {
 fn grammar_production_node(name: Symbol, expression: Node, emitted: Node) -> Node {
   Node {
     kind: TypeNode {
-      connective: Instantiation
+      connective: Conj
     },
     children: [
-      grammar_positional_edge(target: grammar_atom(identity: grammar_production)),
-      grammar_positional_edge(target: grammar_atom(identity: name)),
-      grammar_positional_edge(target: expression),
-      grammar_positional_edge(target: grammar_unary_node(kind: grammar_emit_node, element: emitted))
+      grammar_named_edge(name: grammar_kind, target: grammar_atom(identity: grammar_production)),
+      grammar_named_edge(name: grammar_name, target: grammar_atom(identity: name)),
+      grammar_named_edge(name: grammar_expression, target: expression),
+      grammar_named_edge(name: grammar_emitted, target: grammar_unary_node(kind: grammar_emit_node, element: emitted))
     ]
   }
 }
 fn grammar_root_node(start: Symbol, production: Node) -> Node {
   Node {
     kind: TypeNode {
-      connective: Instantiation
+      connective: Conj
     },
     children: [
-      grammar_positional_edge(target: grammar_atom(identity: grammar_root)),
-      grammar_positional_edge(target: grammar_atom(identity: start)),
-      grammar_positional_edge(target: production)
+      grammar_named_edge(name: grammar_kind, target: grammar_atom(identity: grammar_root)),
+      grammar_named_edge(name: grammar_start, target: grammar_atom(identity: start)),
+      grammar_named_edge(name: grammar_production, target: production)
     ]
   }
 }
 fn grammar_node_is_syntactic_data_root(g: Node) -> Bool {
   match g.kind {
-    TypeNode { connective: Instantiation } => count(g.children) > 0
     TypeNode { connective: Conj } => count(g.children) > 0
     TypeNode { connective: _ } => false
     ComputationNode { behavior: _ } => false
