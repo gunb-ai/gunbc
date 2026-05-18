@@ -943,7 +943,8 @@ fn derive_effect_shape(...) -> Outcome<EffectShape> {
   files with no rows anywhere) fires via (5) until one of (1),
   (2), or (3) lands.
 - *Decidable:* yes — lexical-name uniqueness, `CanonicalConcept`
-  registry membership, structural-alias edges, and
+  registry membership, structural-alias edges,
+  `HistoricalDeclaration` registry membership, and
   `ConceptDisambiguation` registry membership are all structural
   facts in the parsed model. No comment/prose inspection.
 - *Verdict:* hard error.
