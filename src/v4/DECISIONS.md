@@ -1321,6 +1321,16 @@ Verbatim `//` lines from merge-base `float.dag` (lines **104–144** — modelin
 
 **Dissolution trigger:** bounded refinement substrate in `std/machine.dag` notes / Wave-A2 (merge-base cross-ref).
 
+### PR-3252-extdeps-deferrals — Practice‑9 prose home (cardinality P1 slice)
+
+**Authority:** still-hawk-102 / operator (2026‑05‑18) — live `extdeps/languages/*.dag` pointers only; rationale here.
+
+- **`go.dag` / `GoNever`:** `std/cardinality.dag` `Never` is landed. This slice’s `GoScalar` is the six‑variant go1.26 predeclared scalar partition; there is **no** modeled bottom primitive in that closed set, so **no** `type GoNever = Never` D2a row. A row lands only after an operator‑ratified `GoScalar` extension (or an explicit encoding that bottom is control‑flow‑only without a scalar carrier).
+
+- **`python.dag` / singletons:** `Unit` lands the shared cardinality‑1 authority for the three spec singleton kinds. Per‑singleton D2a(1)/(2) alias + grounding rows remain **deferred** on the shared `GroundingMap` home (D2 row) plus integer/text ladder work — not expanded inline in `python.dag`.
+
+- **`rust.dag` / `RustNever`:** D2a(1) `type RustNever = Never` is in‑file. D2a(2) `rust_never_grounding` and **numeric** cost/width refinement (distinct from inhabitance `Never`/`Unit`) stay on the existing **GroundingMap** + **T‑25 / nat / integer** triggers already named in TASKS / SL‑3229 ledger rows.
+
 ### CP-3229-GREEN-TERMINAL — 🟢 GREEN five-pattern ledgers (bulk)
 
 Merge-base `92cb26402` **Practice-4** `// Coproduct dissolution … 🟢 GREEN (terminal). Ledger — five patterns attempted:` blocks were adjacent to carriers (verbatim per-carrier text **only** in the merge-base object):
