@@ -74,7 +74,7 @@ src/v4/
 
   lens/                  # dimensions (11 files, parallel after compiler)
     complexity.dag
-    cost.dag             # Tier 1 + Tier 2 textbook (α(n)/log*/log log/sub-exp); UnknownCost floor
+    cost.dag             # Tier 1 + Tier 2 textbook (α(n)/log*/log log/sub-exp); UnknownCost top
     parallelism.dag
     effect.dag
     ownership.dag
