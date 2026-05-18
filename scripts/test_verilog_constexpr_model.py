@@ -30,6 +30,20 @@ def test_constant_system_function_call_carries_nonempty_arguments_site() -> None
     assert "arguments: List<ConstantExpression>" in body
 
 
+def test_xnor_operator_spelling_variants_are_preserved() -> None:
+    source = VERILOG.read_text(encoding="utf-8")
+
+    unary = block(source, "ConstantUnaryOperator")
+    assert "| ConstUnaryReductionXnorTildeCaret" in unary
+    assert "| ConstUnaryReductionXnorCaretTilde" in unary
+    assert "| ConstUnaryReductionXnor\n" not in unary
+
+    binary = block(source, "ConstantBinaryOperator")
+    assert "| ConstBinaryBitwiseXnorTildeCaret" in binary
+    assert "| ConstBinaryBitwiseXnorCaretTilde" in binary
+    assert "| ConstBinaryBitwiseXnor\n" not in binary
+
+
 def test_constant_range_expression_carries_plain_expression_alternative() -> None:
     body = block(VERILOG.read_text(encoding="utf-8"), "ConstantRangeExpression")
     assert "= ConstantRangeSingle { expression: ConstantExpression }" in body
@@ -88,6 +102,7 @@ def test_vector_range_uses_constant_expression_endpoints() -> None:
 if __name__ == "__main__":
     test_constant_function_call_carries_attributes()
     test_constant_system_function_call_carries_nonempty_arguments_site()
+    test_xnor_operator_spelling_variants_are_preserved()
     test_constant_range_expression_carries_plain_expression_alternative()
     test_unary_constant_expression_takes_constant_primary()
     test_constant_primary_carries_parenthesized_single_expression()
