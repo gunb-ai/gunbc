@@ -142,7 +142,7 @@ the audit anchor.
 | **P6** | `std/algebra.dag` / `std/nat.dag` `fold` / `cata` over `FreeMonoid<T>` and `Nat` (Wave-A2) | std / T-3 Wave-A2 | **2** | Section 2: `std/algebra.dag free_monoid_length`, `std/float.dag nat_compare`. (Sibling to P2's combinator algebra; could land in the same PR — kept separate because the underlying primitive is the catamorphism, distinct from `forall`/`count_where` which are derived from it.) |
 | **P7** | `std/nat.dag nat_is_zero : Nat -> Bool` (Wave-A2) | std / T-3 Wave-A2 | **1** | Section 2: `std/float.dag float_finite_magnitude_zero`. |
 | **P8** | `extdeps/languages/verilog.dag` bundled T-4 LanguageModel `constant_expression` sub-grammar | extdeps/languages / T-4 Verilog Phase-3 | **1** | DECISIONS.md: `SL-3229-VERILOG-VECTOR-RANGE` (lexeme-pair bridge). |
-| **P9** | `lens/cost.dag` cost-of-instruction model fact / lens | lens / T-12 | **1** | Section 2: `extdeps/languages/llvm_ir.dag llvm_instruction_cost` (the 22-arm `LlvmInstruction -> Int` cost table). |
+| **P9** | `lens/cost.dag` cost-of-instruction model fact / lens | lens / T-12 | **0** | **LANDED:** `src/v4/lens/cost.dag` now owns `llvm_instruction_cost` (the 22-arm `LlvmInstruction -> Int` cost table); `extdeps/languages/llvm_ir.dag` owns only the LLVM instruction shape. |
 | **P10 ⛔ needs-concretization** | Constrained generic parameters / inhabitance-bound syntax (`<M> where M : CommutativeMonoid<_>`) | substrate extension; **no owning task yet** | **1** | DECISIONS.md: `SL-3229-INTEGER-GROUP-COMPLETION` (`GroupCompletion<M>`). **P10 does NOT enter the burn-down DAG as a normal upstream node until concretized** — under #3244 a 🟡 whose substrate primitive has no committed PR/task is not a valid 🟡 (the comment-graveyard case). The single finding under P10 (`SL-3229-INTEGER-GROUP-COMPLETION`) is reclassified VAGUE in Section 3.1 until an owning T-# is assigned. Action owner: substrate / operator-or-S1 assignment. |
 
 Plus property-projection model facts (Practice 10 row 7) that do not
@@ -172,7 +172,7 @@ INVALID-GATE-once-re-gated):
 | P6 lands | 2 | FreeMonoid/Nat catamorphism | ~0 |
 | P7 lands | 1 | `nat_is_zero` | ~0 |
 | P8 lands | 1 | Verilog constant_expression | ~0 |
-| P9 lands | 1 | `lens/cost.dag` T-12 | ~0 |
+| P9 landed | 0 | `lens/cost.dag` T-12 | ~0 |
 | P10 lands | 1 (after concretization) | constrained-generics syntax | **0** |
 
 (Residual column is illustrative — counts roll up imperfectly because
@@ -381,10 +381,10 @@ captured here as the audit anchor for the rest:
   `feature: per-FidelityFeature disposition fact on FidelityFeature itself (LLVM-substrate fact-bundle rework — T-4 fact-bundle program)`.
   12-arm `FidelityFeature -> FidelityDisposition` map; the disposition
   IS a fact per feature.
-- `llvm_instruction_cost` (584) — 🟡 **predicate** (property projection) —
-  `feature: cost-of-instruction model fact / lens in lens/cost.dag (T-12 — TASKS.md)`.
-  22-arm cost table; cost IS a fact per instruction. The named owner
-  `lens/cost.dag` exists as a scaffold today.
+- `llvm_instruction_cost` — 🟢 **moved to cost-lens authority** —
+  `src/v4/lens/cost.dag` owns the 22-arm `LlvmInstruction -> Int`
+  table as the P9 cost-of-instruction model fact; this file owns only
+  the LLVM instruction data shape.
 - `block_successors` (505), `unwind_successors` (498) — 🟢 — each arm
   reads its own constructor fields; constructor-driven projection, not
   a `match`-to-derive of a pre-existing fact.
@@ -730,7 +730,7 @@ fixes are downstream lane work, not C1's** — C1 marks and flags.
 |---|---|---|---|
 | walker | — | 3 (`std/node.dag node_well_formed` → `fold_node`; `std/algebra.dag free_monoid_length` → `fold FreeMonoid`; `std/float.dag nat_compare` → `fold Nat`) | rest |
 | traverse | — | 4 (`std/node.dag` × 4: → `forall` / `count_where` / `unique` over `FreeMonoid<T>` in `std/collection.dag` Wave-A2) | rest |
-| predicate | 1 (`extdeps/languages/llvm_ir.dag terminator_is_catchswitch`); empty-`Conj` R1 predicate **landed** PR #3284 (`std/node.dag` `is_empty_conj_root`, `DECISIONS.md` §CP-1b item 12) | 5 (`std/node.dag connective_edge_discipline` → per-`Connective` discipline fact; `std/float.dag float_finite_magnitude_zero` → `nat_is_zero`; `extdeps/languages/llvm_ir.dag` × 3: `block_well_formed` → cascade of dissolve-now; `feature_disposition` → per-feature disposition fact (T-4 fact-bundle); `llvm_instruction_cost` → `lens/cost.dag` T-12) | rest |
+| predicate | 1 (`extdeps/languages/llvm_ir.dag terminator_is_catchswitch`); empty-`Conj` R1 predicate **landed** PR #3284 (`std/node.dag` `is_empty_conj_root`, `DECISIONS.md` §CP-1b item 12) | 4 (`std/node.dag connective_edge_discipline` → per-`Connective` discipline fact; `std/float.dag float_finite_magnitude_zero` → `nat_is_zero`; `extdeps/languages/llvm_ir.dag` × 2: `block_well_formed` → cascade of dissolve-now; `feature_disposition` → per-feature disposition fact (T-4 fact-bundle)); `llvm_instruction_cost` **landed** under `lens/cost.dag`. | rest |
 | carrier | — | — | lane-wide |
 | emit/template | — | — | lane-wide |
 
@@ -747,8 +747,7 @@ dissolve-on-arrival rule):
 4. `nat_is_zero : Nat -> Bool` in `std/nat.dag` (Wave-A2).
 5. Property-projection model facts (Practice 10 registry row 7) on
    `Connective` (T-1 substrate-extension), `FidelityFeature` (T-4
-   fact-bundle), `LlvmInstruction` cost (lens/cost.dag T-12),
-   `Terminator` well-formedness (cascade of the LLVM
+   fact-bundle), `Terminator` well-formedness (cascade of the LLVM
    `terminator_is_catchswitch` dissolve-now).
 
 **Dissolve-now (🔴) inventory** — three findings: **one landed**, one
