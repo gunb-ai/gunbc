@@ -129,7 +129,7 @@ type ReactHostElement {
   key: ReactOptKey
   ref: ReactOptRef
   props: ReactPropsSite
-  child_refs: List<ReactCrossDeclRef>
+  children: List<ReactCreateElementChild>
 }
 
 // Anchor: https://react.dev/reference/react/createElement
@@ -138,7 +138,7 @@ type ReactCompositeElement {
   key: ReactOptKey
   ref: ReactOptRef
   props: ReactPropsSite
-  child_refs: List<ReactCrossDeclRef>
+  children: List<ReactCreateElementChild>
 }
 
 // Anchor: https://react.dev/reference/react/createElement
@@ -146,7 +146,7 @@ type ReactCompositeElement {
 type ReactElement
   = Host { host: ReactHostElement }
   | Composite { composite: ReactCompositeElement }
-  | Fragment { key: ReactOptKey, child_refs: List<ReactCrossDeclRef> }
+  | Fragment { key: ReactOptKey, children: List<ReactCreateElementChild> }
 
 // Anchor: https://react.dev/reference/react/createElement
 // 🟡 coproduct dissolution — DECISIONS.md#react-p4-node
