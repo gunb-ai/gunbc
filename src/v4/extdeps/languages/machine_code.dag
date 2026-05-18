@@ -77,13 +77,13 @@ type MachineScalar
 // Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
 // 🟢 coproduct dissolution — DECISIONS.md P4-3208
 type MachineDisplacement32WidthClass
-  = Bits32
+  = DisplacementEncodingBits32 {}
 
 
 // Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
 // 🟢 coproduct dissolution — DECISIONS.md P4-3208
 type MachineDisplacement64WidthClass
-  = Bits64
+  = DisplacementEncodingBits64 {}
 
 
 // Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
