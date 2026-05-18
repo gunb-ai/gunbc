@@ -133,96 +133,106 @@ fn bootstrap_tier1_unit_classification() -> TestClassification {
 }
 
 
-fn testgen_concept_for_manual_anchor(key: T19ManualAnchorKey) -> TestgenConcept {
+fn testgen_concept_for_manual_anchor(key: T19ManualAnchorKey) -> Outcome<TestgenConcept> {
   match key {
+    T19ManualAnchorAbsent =>
+      Rejected { diagnostic: t19_manual_anchor_absent_bootstrap_diagnostic() }
     T19ManualTcConjEmpty =>
-      TypeConstruction {
-        subject: ConnectiveKernel { connective: Conj },
+      Produced {
+        value: TypeConstruction {
+          subject: ConnectiveKernel { connective: Conj },
+        },
       }
     T19ManualTcDisjEmpty =>
-      TypeConstruction {
-        subject: ConnectiveKernel { connective: Disj },
+      Produced {
+        value: TypeConstruction {
+          subject: ConnectiveKernel { connective: Disj },
+        },
       }
     T19ManualTcArrowTwoConj =>
-      TypeConstruction {
-        subject: ConnectiveKernel { connective: Arrow },
+      Produced {
+        value: TypeConstruction {
+          subject: ConnectiveKernel { connective: Arrow },
+        },
       }
     T19ManualTcCardinalityEmpty =>
-      TypeConstruction {
-        subject: ConnectiveKernel { connective: Cardinality },
+      Produced {
+        value: TypeConstruction {
+          subject: ConnectiveKernel { connective: Cardinality },
+        },
       }
     T19ManualTcInstantiationEmpty =>
-      TypeConstruction {
-        subject: ConnectiveKernel { connective: Instantiation },
+      Produced {
+        value: TypeConstruction {
+          subject: ConnectiveKernel { connective: Instantiation },
+        },
       }
     T19ManualTcConjEqualsRefl =>
-      TypeConstruction {
-        subject: ConnectiveKernel { connective: Conj },
+      Produced {
+        value: TypeConstruction {
+          subject: ConnectiveKernel { connective: Conj },
+        },
       }
     T19ManualNatAddLeftIdentity =>
-      AlgebraLaw {
-        subject: AlgebraLawSubject {
-          algebra: t19_bootstrap_algebra,
-          inhabitant: t19_bootstrap_inhabitant,
-          law: t19_law_nat_add_left_identity,
+      Produced {
+        value: AlgebraLaw {
+          subject: AlgebraLawSubject {
+            algebra: t19_bootstrap_algebra,
+            inhabitant: t19_bootstrap_inhabitant,
+            law: t19_law_nat_add_left_identity,
+          },
         },
       }
     T19ManualNatAddRightIdentity =>
-      AlgebraLaw {
-        subject: AlgebraLawSubject {
-          algebra: t19_bootstrap_algebra,
-          inhabitant: t19_bootstrap_inhabitant,
-          law: t19_law_nat_add_right_identity,
+      Produced {
+        value: AlgebraLaw {
+          subject: AlgebraLawSubject {
+            algebra: t19_bootstrap_algebra,
+            inhabitant: t19_bootstrap_inhabitant,
+            law: t19_law_nat_add_right_identity,
+          },
         },
       }
     T19ManualNatAddAssociativity =>
-      AlgebraLaw {
-        subject: AlgebraLawSubject {
-          algebra: t19_bootstrap_algebra,
-          inhabitant: t19_bootstrap_inhabitant,
-          law: t19_law_nat_add_associativity,
+      Produced {
+        value: AlgebraLaw {
+          subject: AlgebraLawSubject {
+            algebra: t19_bootstrap_algebra,
+            inhabitant: t19_bootstrap_inhabitant,
+            law: t19_law_nat_add_associativity,
+          },
         },
       }
     T19ManualNatMulLeftIdentity =>
-      AlgebraLaw {
-        subject: AlgebraLawSubject {
-          algebra: t19_bootstrap_algebra,
-          inhabitant: t19_bootstrap_inhabitant,
-          law: t19_law_nat_mul_left_identity,
+      Produced {
+        value: AlgebraLaw {
+          subject: AlgebraLawSubject {
+            algebra: t19_bootstrap_algebra,
+            inhabitant: t19_bootstrap_inhabitant,
+            law: t19_law_nat_mul_left_identity,
+          },
         },
       }
     T19ManualNatMulAnnihilator =>
-      AlgebraLaw {
-        subject: AlgebraLawSubject {
-          algebra: t19_bootstrap_algebra,
-          inhabitant: t19_bootstrap_inhabitant,
-          law: t19_law_nat_mul_annihilator,
+      Produced {
+        value: AlgebraLaw {
+          subject: AlgebraLawSubject {
+            algebra: t19_bootstrap_algebra,
+            inhabitant: t19_bootstrap_inhabitant,
+            law: t19_law_nat_mul_annihilator,
+          },
         },
       }
     T19ManualNatMulAssociativity =>
-      AlgebraLaw {
-        subject: AlgebraLawSubject {
-          algebra: t19_bootstrap_algebra,
-          inhabitant: t19_bootstrap_inhabitant,
-          law: t19_law_nat_mul_associativity,
+      Produced {
+        value: AlgebraLaw {
+          subject: AlgebraLawSubject {
+            algebra: t19_bootstrap_algebra,
+            inhabitant: t19_bootstrap_inhabitant,
+            law: t19_law_nat_mul_associativity,
+          },
         },
       }
-    T19ManualAnchorAbsent =>
-      TypeConstruction {
-        subject: ConnectiveKernel { connective: Conj },
-      }
-  }
-}
-
-
-fn bootstrap_claim_generator_for_manual_anchor_body(
-  key: T19ManualAnchorKey
-) -> Generator<TestgenConcept> {
-  Generator {
-    classification: bootstrap_tier1_unit_classification(),
-    kind: assert_kind_for_manual_anchor(key: key),
-    t19_anchor: key,
-    slot: testgen_concept_for_manual_anchor(key: key),
   }
 }
 
@@ -230,32 +240,20 @@ fn bootstrap_claim_generator_for_manual_anchor_body(
 fn bootstrap_claim_generator_for_manual_anchor(
   key: T19ManualAnchorKey
 ) -> Outcome<Generator<TestgenConcept>> {
-  match key {
-    T19ManualAnchorAbsent =>
-      Rejected { diagnostic: t19_manual_anchor_absent_bootstrap_diagnostic() }
-    T19ManualTcConjEmpty =>
-      Produced { value: bootstrap_claim_generator_for_manual_anchor_body(key: T19ManualTcConjEmpty) }
-    T19ManualTcDisjEmpty =>
-      Produced { value: bootstrap_claim_generator_for_manual_anchor_body(key: T19ManualTcDisjEmpty) }
-    T19ManualTcArrowTwoConj =>
-      Produced { value: bootstrap_claim_generator_for_manual_anchor_body(key: T19ManualTcArrowTwoConj) }
-    T19ManualTcCardinalityEmpty =>
-      Produced { value: bootstrap_claim_generator_for_manual_anchor_body(key: T19ManualTcCardinalityEmpty) }
-    T19ManualTcInstantiationEmpty =>
-      Produced { value: bootstrap_claim_generator_for_manual_anchor_body(key: T19ManualTcInstantiationEmpty) }
-    T19ManualTcConjEqualsRefl =>
-      Produced { value: bootstrap_claim_generator_for_manual_anchor_body(key: T19ManualTcConjEqualsRefl) }
-    T19ManualNatAddLeftIdentity =>
-      Produced { value: bootstrap_claim_generator_for_manual_anchor_body(key: T19ManualNatAddLeftIdentity) }
-    T19ManualNatAddRightIdentity =>
-      Produced { value: bootstrap_claim_generator_for_manual_anchor_body(key: T19ManualNatAddRightIdentity) }
-    T19ManualNatAddAssociativity =>
-      Produced { value: bootstrap_claim_generator_for_manual_anchor_body(key: T19ManualNatAddAssociativity) }
-    T19ManualNatMulLeftIdentity =>
-      Produced { value: bootstrap_claim_generator_for_manual_anchor_body(key: T19ManualNatMulLeftIdentity) }
-    T19ManualNatMulAnnihilator =>
-      Produced { value: bootstrap_claim_generator_for_manual_anchor_body(key: T19ManualNatMulAnnihilator) }
-    T19ManualNatMulAssociativity =>
-      Produced { value: bootstrap_claim_generator_for_manual_anchor_body(key: T19ManualNatMulAssociativity) }
+  match assert_kind_for_manual_anchor(key: key) {
+    Rejected { diagnostic: d } => Rejected { diagnostic: d }
+    Produced { value: kind } =>
+      match testgen_concept_for_manual_anchor(key: key) {
+        Rejected { diagnostic: d } => Rejected { diagnostic: d }
+        Produced { value: slot } =>
+          Produced {
+            value: Generator {
+              classification: bootstrap_tier1_unit_classification(),
+              kind: kind,
+              t19_anchor: key,
+              slot: slot,
+            }
+          }
+      }
   }
 }

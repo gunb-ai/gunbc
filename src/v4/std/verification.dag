@@ -1,14 +1,26 @@
 // src/v4/std/verification.dag
 // Scope: Closed TestClaim schema — AssertKind, TestgenTier/Layer, TestClassification, ImpossibleBugClass, T19ManualAnchorKey, TestClaim fields.
 // Owns: AssertKind TestgenTier TestgenLayer TestClassification ImpossibleBugClass T19ManualAnchorKey TestClaim assert_kind_for_manual_anchor
-// Consumes: v4.std.node { Node } v4.std.diagnostic { Outcome }
+// Consumes: v4.std.node v4.std.diagnostic
 // Status: T-3 modeled; substrate extension or file split = operator STOP.
 
 module v4.std.verification
 
 
-import v4.std.node { Node }
-import v4.std.diagnostic { Outcome }
+import v4.std.node { Node, Symbol }
+import v4.std.diagnostic {
+  Outcome,
+  Produced,
+  Rejected,
+  Diagnostic,
+  Correction,
+  Unavailable,
+  UserInputBoundary,
+  Locus,
+  Textual,
+  Extent,
+  WholeFile
+}
 
 
 type AssertKind
@@ -76,20 +88,36 @@ type TestClaim {
 }
 
 
-fn assert_kind_for_manual_anchor(key: T19ManualAnchorKey) -> AssertKind {
+data t19_verification_schema_file: Symbol = t19_verification_schema_file
+
+
+data t19_manual_anchor_absent_assert_kind: Symbol = t19_manual_anchor_absent_assert_kind
+
+
+fn t19_manual_anchor_absent_assert_kind_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: t19_manual_anchor_absent_assert_kind,
+    at: Textual { file: t19_verification_schema_file, extent: WholeFile },
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+
+fn assert_kind_for_manual_anchor(key: T19ManualAnchorKey) -> Outcome<AssertKind> {
   match key {
-    T19ManualTcConjEmpty => Compiles
-    T19ManualTcDisjEmpty => Compiles
-    T19ManualTcArrowTwoConj => Compiles
-    T19ManualTcCardinalityEmpty => Compiles
-    T19ManualTcInstantiationEmpty => Compiles
-    T19ManualTcConjEqualsRefl => Equals
-    T19ManualNatAddLeftIdentity => Compiles
-    T19ManualNatAddRightIdentity => Compiles
-    T19ManualNatAddAssociativity => Compiles
-    T19ManualNatMulLeftIdentity => Compiles
-    T19ManualNatMulAnnihilator => Compiles
-    T19ManualNatMulAssociativity => Equals
-    T19ManualAnchorAbsent => Compiles
+    T19ManualAnchorAbsent =>
+      Rejected { diagnostic: t19_manual_anchor_absent_assert_kind_diagnostic() }
+    T19ManualTcConjEmpty => Produced { value: Compiles }
+    T19ManualTcDisjEmpty => Produced { value: Compiles }
+    T19ManualTcArrowTwoConj => Produced { value: Compiles }
+    T19ManualTcCardinalityEmpty => Produced { value: Compiles }
+    T19ManualTcInstantiationEmpty => Produced { value: Compiles }
+    T19ManualTcConjEqualsRefl => Produced { value: Equals }
+    T19ManualNatAddLeftIdentity => Produced { value: Compiles }
+    T19ManualNatAddRightIdentity => Produced { value: Compiles }
+    T19ManualNatAddAssociativity => Produced { value: Compiles }
+    T19ManualNatMulLeftIdentity => Produced { value: Compiles }
+    T19ManualNatMulAnnihilator => Produced { value: Compiles }
+    T19ManualNatMulAssociativity => Produced { value: Equals }
   }
 }

@@ -49,6 +49,21 @@ fn v4_lens_testgen_wave0_substrate_parses() {
         "T-19 manual-anchor AssertKind authority should remain `v4.std.verification`"
     );
 
+    let assert_kind_rt = fn_return_type(&verification, "assert_kind_for_manual_anchor").expect(
+        "assert_kind_for_manual_anchor should have an explicit return type",
+    );
+    assert!(
+        type_is_outcome_named(assert_kind_rt, "AssertKind"),
+        "manual-anchor `AssertKind` projection must fail-close `T19ManualAnchorAbsent` via `Outcome<AssertKind>`; got {assert_kind_rt:?}"
+    );
+
+    let concept_rt = fn_return_type(&testgen, "testgen_concept_for_manual_anchor")
+        .expect("testgen_concept_for_manual_anchor should have an explicit return type");
+    assert!(
+        type_is_outcome_named(concept_rt, "TestgenConcept"),
+        "manual-anchor `TestgenConcept` projection must fail-close `T19ManualAnchorAbsent` via `Outcome<TestgenConcept>`; got {concept_rt:?}"
+    );
+
     let bootstrap_rt = fn_return_type(&testgen, "bootstrap_claim_generator_for_manual_anchor")
         .expect("bootstrap_claim_generator_for_manual_anchor should have an explicit return type");
     assert!(
@@ -108,6 +123,22 @@ fn type_is_generator_testgen_concept(ty: &SurfaceType) -> bool {
     matches!(
         inner.as_ref(),
         SurfaceType::Named { name: slot, .. } if slot == "TestgenConcept"
+    )
+}
+
+fn type_is_outcome_named(ty: &SurfaceType, inner_name: &str) -> bool {
+    let SurfaceType::Parameterized { name, args, .. } = ty else {
+        return false;
+    };
+    if name != "Outcome" || args.len() != 1 {
+        return false;
+    }
+    let TypeAngleArg::TypeExpr { ty: inner } = &args[0] else {
+        return false;
+    };
+    matches!(
+        inner.as_ref(),
+        SurfaceType::Named { name: n, .. } if n == inner_name
     )
 }
 
