@@ -627,6 +627,22 @@ clobber surviving language vocabulary and the `std/` numeric core.
   the historical D2 row in this file (NOT the core).
 - **Active PRs:** `#3219` closed; `#3208` held.
 
+#### #3208 held dissolution dispositions
+
+- **Primitive alias rows:** 🟡 bound to the post-D2-REV fact-bundle
+  rework. Trigger: the T-4 fact-bundle rework executes after T-30 and
+  the remaining T-4 feeders clear.
+- **Shared C5 fidelity disposition carrier and disposition rows:** 🟡
+  bound to the same post-D2-REV shared-C5-fidelity / fact-bundle rework.
+  This covers `LeanFidelityDisposition` / `MachineFidelityDisposition`
+  consolidation and the `lean_feature_disposition` /
+  `machine_feature_disposition` predicate/data-row dissolution. Trigger:
+  the T-4 fact-bundle rework executes after T-30 and the remaining T-4
+  feeders clear.
+- **Phantom `IRCarrier` parameters:** 🟢 not a dissolution-class finding;
+  dead-generic-parameter polish only, with no walker, predicate, carrier,
+  or emit-template obligation.
+
 ### Worked examples
 
 `docs/modeling/grounding-worked-examples.md` (this PR) demonstrates the
