@@ -154,16 +154,25 @@ pre-#3240" is not "done."
 (still-hawk-102 review, folded — the earlier "one keystone" headline
 overstated collapsibility):
 
-- **(a) The keystone-fold edit PR — does not exist yet.** **#3240 is a
-  CLOSED / SUPERSEDED rework *tracker*, not a ratifiable artifact.** The
-  ratifiable thing is a *not-yet-drafted* `docs/modeling-discipline.md`
-  keystone-fold edit PR (Practice-10 reconciled with Practices 4/7/8 +
-  emit/template finding 6). **`still-hawk-102` owns drafting it**
-  (dissolution-findings audit obligation). The operator ratifies *that
-  drafted PR*; right now the operator can only **authorize still-hawk to
-  draft it now**. (Calling this "ratify #3240" was the
-  don't-make-the-operator-QA-an-incomplete-directive anti-pattern on the
-  single most load-bearing decision — corrected.)
+- **(a) Ratify a verbatim invariant that ALREADY EXISTS — small, today.**
+  (Corrected twice, now verified vs `origin/main`.) The keystone *fold* is
+  **already on main** — `docs/modeling-discipline.md` §581–763 (7-row
+  derived-operations registry, all findings, dispositions, §800
+  always-BLOCKING line, §854 checklist). #3240 is a CLOSED tracker; the
+  earlier "ratify #3240" and "not-yet-drafted PR / authorize a drafting
+  effort" framings were **both wrong**. What the operator ratifies is the
+  **verbatim invariant blockquote at `modeling-discipline.md` ~§594–600**
+  — *"Do not hand-roll a derived operation. …"* — currently flagged
+  *(proposed — pending operator ratification, #3240 A1)*. On ratification,
+  **`still-hawk-102`** (ready now, no blockers) lands that block into
+  `INVARIANTS.md` + `MODELING.md` and de-hedges `modeling-discipline.md`
+  at exactly L61 / L591–592 / L718,746,750. **Size: SMALL** — 3 files,
+  ~30–60 lines, mostly deleting hedge-parentheticals + mirroring one
+  invariant block; additive, low-risk (INVARIANTS.md is load-bearing →
+  mechanical/exact). It is **ratify-exact-text-today**, not a drafting
+  effort. **What it kicks off downstream** (the real effort, separate &
+  larger, gated on this landing): still-hawk's **retroactive v4
+  dissolution audit sweep** (#3240 C1) → substrate-gap inventory.
 - **(b) A-vs-B = B is *implied by* (a), not identical to it.** Ratifying
   the keystone-fold ⇒ A-vs-B = B *because* D2-REV / machine-readable
   inhabitance is the primitive-case application of Practice-10. State and
@@ -172,8 +181,9 @@ overstated collapsibility):
 - **(c) T-25-core is a genuine separate design fork** ("needs you" —
   §7 #3b). It is not collapsed by (a).
 
-So the long pole is **2–3 operator items**, not one line: draft+ratify the
-keystone-fold (a), explicitly confirm A-vs-B=B (b), decide T-25-core (c).
+So the long pole is **2–3 operator items**, not one line: ratify the
+verbatim invariant text (a — exists today, small), explicitly confirm
+A-vs-B=B (b), decide T-25-core (c).
 
 ---
 
@@ -265,9 +275,10 @@ sessions are *not* folded in — see exceptions.
    backward-rework) folded into §3.
 4. **`jolly-ibex-599`** — ✅ RATIFIED. T-30 interim P5(b) mirror on main;
    T-31 (a)rider/(b)mop-up split; Wave-2 post-#3240 coordination. Folded.
-5. **Operator** — ⏳ OPEN: the §3 cluster — **authorize `still-hawk-102` to
-   draft the keystone-fold edit PR** (#3240 is a closed tracker, not
-   ratifiable), confirm **A-vs-B=B**, and give a T-25-core direction. That
+5. **Operator** — ⏳ OPEN: the §3 cluster — **ratify the verbatim invariant
+   blockquote at `modeling-discipline.md` ~§594–600** (exists on main; #3240
+   is a closed tracker, not it; `still-hawk-102` then lands+de-hedges —
+   small), confirm **A-vs-B=B**, and give a T-25-core direction. That
    sequence collapses the long pole *and*
    unjams #3280 + #3313, **and** scopes the pre-#3240 backward-rework set.
 
@@ -302,7 +313,7 @@ Everything else **follows from or is independent of** that root call:
 |---|---|---|---|
 | 1 | **A-vs-B** (above) | A = cheap, contradicts D2-REV · B = principled, more rework | **B** |
 | 2 | **#3280 disposition** (follows #1) | If **B**: #3308/#3309 stay held; rework obligation on `862bbde6e`, owner = **Fresh extdeps/T-4 lane**; archive `vivid-carp-207` freeze after. If **A**: unblock #3308/#3309, apply landed shape, archive freeze. **NO REVERT of `862bbde6e`** — the operator's manual merge stands; rework **rides forward** only; a downstream worker must not improvise a destructive revert (standing #3280 do-not-revert). | **B-path, forward-only** |
-| 3a | **Authorize `still-hawk-102` to draft the keystone-fold edit PR now** (Practice-10 reconciled w/ Practices 4/7/8 + emit/template finding 6). **#3240 is a CLOSED/SUPERSEDED tracker — NOT ratifiable.** You ratify the *drafted* PR when it lands; today the decision is "draft it now." | **Authorize draft** |
+| 3a | **Ratify the verbatim invariant blockquote at `docs/modeling-discipline.md` ~§594–600** (*"Do not hand-roll a derived operation. …"* — already on main, flagged proposed/#3240-A1). The fold §581–763 is ALREADY on main; #3240 is a closed tracker (not it). On ratify → `still-hawk-102` (ready, no blockers) lands the block into INVARIANTS.md+MODELING.md + de-hedges L61/L591–592/L718,746,750 — **SMALL** (3 files ~30–60 ln, mechanical, low-risk). Ratify-exact-text-today, NOT a drafting effort. Kicks off downstream: still-hawk's retroactive v4 audit sweep (#3240 C1). | **Ratify the text** |
 | 3b | **T-25-core direction** | Genuine design fork (refinement-substrate shape). Needs your design intent — I can lay options if useful. | *needs you* |
 | 4 | **Wave-0 go** | Go = ~6 full + ~3 bounded work-fronts start now (keystone-independent). Wait = nothing moves. | **Go** |
 | 5 | **Fresh-lane exceptions** | Default: `vivid-carp-207` = sole #3280 freeze custodian; `fierce-cat-31` = lens-fan-out closeout only. Alt: hard-cut (churn/risk). | **Defaults** |
@@ -312,8 +323,10 @@ Everything else **follows from or is independent of** that root call:
 
 **Not "one line."** #3a **implies** #1=B (state+confirm the implication; not
 an equivalence — #1 must not ride #3a unscrutinized). #2 falls out of #1
-(forward-only, no revert). #3a is **draft-then-ratify**, not a one-shot. #3b
-(T-25-core) is a genuine separate design fork. #4/#5/#6 are independent and
-low-risk; **#7 still needs you**; **#8 is resolved (B2)**. Honest count: the
-long pole is **2–3 operator items** — (a) draft+ratify the keystone-fold,
-(b) confirm A-vs-B=B, (c) decide T-25-core — plus the low-risk independents.
+(forward-only, no revert). #3a is **ratify-exact-text-today** (the invariant
+blockquote exists on main; still-hawk then does a small mechanical land +
+de-hedge), NOT a drafting effort. #3b (T-25-core) is a genuine separate
+design fork. #4/#5/#6 are independent and low-risk; **#7 still needs you**;
+**#8 is resolved (B2)**. Honest count: the long pole is **2–3 operator
+items** — (a) ratify the verbatim invariant text, (b) confirm A-vs-B=B,
+(c) decide T-25-core — plus the low-risk independents.
