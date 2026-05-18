@@ -197,14 +197,27 @@ non-finding).
   (`inhabits <Algebra>`, `opaque`, `non-empty`, `Word<N>`, `Float<N>`,
   `bounded`, `non-forgeable`) **without a matching structural artifact**:
   - claimed algebra inhabitance → no `data ... : Algebra<T>` row in scope;
-  - claimed cardinality / width → no refinement clause on the carrier
-    (the `List<T> where len(_) == N` shape);
+  - claimed cardinality / width → **no recursively-discharged refinement
+    chain** on the carrier. A name-encoded width fact must be witnessed
+    all the way down: `Word64` requires `bytes: List<Byte> where len(_) == 8`
+    AND every `Byte` reachable from a `Word64` carries
+    `bits: List<Bit> where len(_) == 8`. A single outer refinement that
+    bottoms out at an unconstrained carrier (`List<Byte>` whose `Byte`
+    has `List<Bit>` with no length clause) does not discharge `Word64`'s
+    64-bit claim; an arbitrary-bit-count `Byte` still inhabits the
+    "well-formed" `Word64`. Same recursion for `Float32`/`Float64`: the
+    width fact must distinguish the two structurally (different
+    exponent/significand width refinements), not by reusing one
+    unconstrained `FloatBody`;
   - claimed opacity / non-forgeability → no constructor restriction
     (the type is a record whose fields are all freely constructible from
     user-reachable substrate values).
 - *Decidable:* yes — the claim vocabulary is a closed set; the structural
   counterpart is locatable (data table, refinement clause, constructor
-  visibility).
+  visibility). Width-claim discharge is decidable by **recursive descent
+  through the carrier**: walk every field whose type is a substrate
+  collection, require a length refinement at each level until the
+  recursion bottoms out at a fixed-cardinality leaf or a primitive bit.
 - *Verdict:* hard error on `std/` and substrate files.
 - *Escape:* prose without fact-bearing tokens (rationale, anchors,
   examples) passes. A claim *with* the structural counterpart present
@@ -238,9 +251,28 @@ type ResourceHandle {                 // ← claim says opaque
 }
 ```
 
-**Clean shape (the cure):**
+**Clean shape (the cure):** width refinements discharge recursively;
+`Float32` and `Float64` are distinguished by their refinement clauses,
+not by sharing one carrier.
 ```dag
-type Word64 { bytes: List<Byte> where len(_) == 8 }
+// machine.dag — recursive refinement chain
+type Bit
+type Byte   { bits:  List<Bit>  where len(_) == 8 }
+type Word64 { bytes: List<Byte> where len(_) == 8 }   // 8 × 8 = 64 ✓
+
+// float.dag — structurally distinct float widths
+type Float32 {
+  sign:                  Bit
+  biased_exponent:       List<Bit> where len(_) == 8
+  trailing_significand:  List<Bit> where len(_) == 23
+}
+type Float64 {
+  sign:                  Bit
+  biased_exponent:       List<Bit> where len(_) == 11
+  trailing_significand:  List<Bit> where len(_) == 52
+}
+
+// fermi.dag — algebra membership as a typed witness, not prose
 data fermi_lattice: Lattice<FermiDepth> = { meet: fermi_meet, join: fermi_join }
 ```
 
