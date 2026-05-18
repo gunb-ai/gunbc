@@ -45,9 +45,10 @@ double-counting).
 **Dispositions** — the four #3244 vocabulary symbols:
 
 - **🔴 dissolve-now** — substrate primitive exists; mechanical fix
-  jumps the queue, lands in a follow-up PR. **Count:** **R2 only**
-  (1 finding, 1 fix) in § 1.0 — **R1 landed PR #3284** (`is_empty_conj_root`).
-  Checked, not omitted.
+  jumps the queue and lands in a follow-up PR. **Count:** **0 open**.
+  § 1.0 records the two closed receipts: **R1 landed PR #3284**
+  (`is_empty_conj_root`); **R2 landed PR #3245**
+  (`terminator_is_catchswitch`).
 - **🟡 gated** — substrate primitive does not exist yet; carries
   `feature:<primitive + owning task>` or `consumer:<named consumer>`
   + dissolve-on-arrival obligation. A 🟡 is a *committed*
