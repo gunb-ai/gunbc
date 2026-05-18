@@ -49,6 +49,8 @@ gunbc-prefix-lens-driver v0 <LENS_ID> --whole-corpus
 | `unused_parameters` | *(TBD v4 module)* | placeholder — ratify module path before impl. |
 | `structural_resolution` | *(TBD v4 module)* | placeholder — ratify module path before impl. |
 
+**Machine authority for argv `LENS_ID` enumeration:** `src/v4/lens/registry.dag` (`LensRegistryEntryV0` rows). `gunbc-prefix-lens-driver` emits `VALID_LENS_IDS` at compile time from every `lens_id: "…"` field in that file (`tools/gunbc_prefix_lens_driver/build.rs`). The §3 table remains a human mirror; amend the `.dag` first, then align this table on operator-signed pin revision.
+
 **Runnable-AC column:** **`gunbc-prefix-lens-driver` v0** is a live **compile-only / registry + whole-corpus** receipt (CI runs `target/release/gunbc-prefix-lens-driver`; see `PREFIX-LENS-CI-1` Fork A / `tools/gunbc_prefix_lens_driver`). Use that argv for rows that mean **tracked `.dag` compile + `LENS_ID` registry validation** only. Rows that assert **lens evaluation** (`Witness` / `DimensionOk` / `DimensionFail` on applied v4 `Lens<Output>` with **`--mode enforce|introspect`**) stay **`TBD …`** until the evaluation dispatch lands — do not treat the v0 compile gate as a substitute receipt for those claims.
 
 ## 4. Mechanical port backlog (explicit — not blocking witness authoring)

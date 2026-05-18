@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_macros)]
+
 //! `gunbc-prefix-lens-driver` — PREFIX / T-23 v0 registry + whole-corpus dispatch stub.
 //!
 //! Invocation template (frozen): `gunbc-prefix-lens-driver v0 <LENS_ID> --path <FILE.dag>` or
@@ -58,7 +60,7 @@ fn main() {
     let cli = Cli::parse();
     match cli.command {
         Commands::V0 { lens_id, target } => {
-            if !VALID_LENS_IDS.iter().any(|id| *id == lens_id.as_str()) {
+            if !VALID_LENS_IDS.contains(&lens_id.as_str()) {
                 eprintln!(
                     "error: unknown LENS_ID `{lens_id}`; expected one of: {}",
                     VALID_LENS_IDS.join(", ")
@@ -292,7 +294,7 @@ fn normalize_repo_rel_path(repo: &Path, path: &Path) -> String {
         std::process::exit(4);
     });
     abs.strip_prefix(repo)
-        .unwrap_or_else(|| {
+        .unwrap_or_else(|_| {
             eprintln!(
                 "error: path {} is not under repo root {}",
                 abs.display(),
