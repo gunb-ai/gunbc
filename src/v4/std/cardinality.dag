@@ -10,23 +10,7 @@ module v4.std.cardinality
 
 import v4.std.collection { List }
 import v4.std.node { Symbol }
-// Inhabitance refinement substrate (P1 modeling faithfulness): shared
-// std/ carriers for type-theoretic cardinality-0 and cardinality-1
-// facts. External specs ground empty types (Rust `!`, C `void` in
-// param position idioms, …) on `Never` and unit / singleton sentinels
-// on `Unit` — not bare kernel aliases. Bounded non-negative numeric
-// axes (costs, LLVM bit widths, …) remain producer-side until a
-// separate numeric refinement story lands (T-25-core + nat/integer
-// carriers); this file does not conflate those with inhabitance-0/1.
-//
-// 🟢 classification ledger — DECISIONS.md de-prosed substrate table:
-// `Never` is the declared empty-inhabitance carrier (zero
-// inhabitants). `Unit` is the declared singleton carrier (exactly
-// one inhabitant), modeled as an opaque atomic type here — v2's
-// v4-bootstrap parse surface does not accept a single-variant `|`
-// sum (`MkUnit` is not a resolvable type name in that subset); a
-// future v4-native grammar may re-express `Unit` as `MkUnit | …`
-// without changing the semantic authority.
+// 🟢 DECISIONS.md Part 1 Never/Unit + §PR-3252-cardinality-std (Practice 9).
 type Never
 type Unit
 // 🟢 coproduct dissolution — DECISIONS.md classification ledger: DescentEvidence.

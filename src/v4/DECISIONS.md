@@ -160,6 +160,14 @@ trigger: `feature:T-13-effect-lens-coordination-signature`; dissolve when
 T-13 reads HTTP/queue/stream/pubsub kind from the type signature and T-16
 consumes that derived fact.
 
+### PR-3252-cardinality-std — `std/cardinality.dag` `Never` / `Unit` (Practice 9 receipt)
+
+**Cross-ref:** Part 1 de-prosed substrate table rows for `Never` / `Unit`; **`§PR-3252-extdeps-deferrals`** for `go.dag` / `python.dag` / `rust.dag` pointer discipline.
+
+- **P1 inhabitance:** `Never` (zero inhabitants) and `Unit` (cardinality-1 authority) are the shared std facts for external empty / unit types. **Do not conflate** with bounded non-negative **numeric** refinement (cost axes, LLVM width payloads, tuple-`()` substrate, etc.) — those remain on **T-25-core + `nat`/`integer`** and the **SL-3229** dissolution family already indexed in this file.
+
+- **`Unit` opaque (not `= MkUnit`):** v2 v4-bootstrap (`v2-compiler compile --source-root src/v4 --target dag`) does **not** resolve `MkUnit` as a type name for a single-variant `|` sum; **`type Unit`** opaque stays within the v2-compat subset without changing semantic authority.
+
 ## CP-1b — `03_resolve` / `extdeps/languages/dag` scaffold (Practice 9)
 
 **Receipt (2026-05-17):** Rationale that briefly lived in `.dag` body comments is indexed here per `docs/modeling-discipline.md` Practice 9 (substrate workers stay de-prosed).
