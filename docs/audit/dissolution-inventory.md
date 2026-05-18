@@ -138,11 +138,11 @@ the audit anchor.
 | **P2** | `std/collection.dag` Wave-A2: `List<T> where non_empty` refinement **plus** the List combinator algebra (`forall` / `count_where` / `unique` over `FreeMonoid<T>`) | std / T-3 Wave-A2 (coercion-design.md RQ-3) | **5 named + 26 sites** | Section 2: `std/node.dag` × 4 traverses (`all_edges_named`, `all_edges_positional`, `name_occurrences`, `all_names_distinct`). DECISIONS.md: `SL-3229-VERILOG-NONEMPTY` (one row, 26 verilog.dag back-pointer sites). |
 | **P3** | Compiler pipeline-stage substrate (lex-walk + parse-walk) | compiler / T-6, T-7 | **2 + ~7 in-file** | Section 2: `compiler/01_tokenize.dag tokenize`, `compiler/02_parse.dag parse`. In-file: the parser-side VAGUE prose blocks in `json.dag` / `yaml.dag` / `toml.dag` that concretize to T-6/T-7 (the operations-side family separate from P1). |
 | **P4** | T-4 fact-bundle Phase-3 rework (post-D2-reversal model) | extdeps/languages / T-4 manager `vivid-carp-207` (5-feeder gate; keystone #3226 merged @`77b9e7d72`; 4 feeders open: T-3, T-29, T-30, T-25-core) | **4 + 1 row + 1 fn** | In-file: `typescript.dag` × 4 INVALID-GATE blocks (re-gate against this arrival, not pre-reversal D2). DECISIONS.md: `SL-3229-VERILOG-D3200` (if re-gated as `feature: T-4 fact-bundle Phase-3 rework` rather than `consumer:` form — see Section 3). Section 2: `extdeps/languages/dag.dag dag_language_model_wave1_void_canonical_symbols` (added in CP-1b #3225 — canonical_symbols set is a fact on DagLanguageModel/language-identity, not a hand-rolled function). |
-| **P5** | `std/node.dag` `fold_node` — Node catamorphism (substrate-extension under T-1) | std / T-1 | **2 + 3 walker callers** | Section 2: `std/node.dag node_well_formed`; `compiler/03_resolve.dag merge_binding_self` (94, the codex #3225 "sym↦sym module harvest" finding) — together with its three named-harvest walker callers (`add_module_named_exports` at 99, `add_arrow_domain_named_params` at 113, `add_bind_atom_binder` at 140) that fold over `Node.children` with constructor-discriminated recursion. All four dissolve to `fold_node(root, ⟨binding-harvest algebra⟩)` on P5 landing. |
+| **P5** | `std/node.dag` `fold_node` — Node catamorphism (substrate-extension under T-1) | std / T-1 | **1 + 3 walker callers** | `fold_node` + the `std/node.dag node_well_formed` migration landed in the burn-down closeout. Remaining: `compiler/03_resolve.dag merge_binding_self` (94, the codex #3225 "sym↦sym module harvest" finding) — together with its three named-harvest walker callers (`add_module_named_exports` at 99, `add_arrow_domain_named_params` at 113, `add_bind_atom_binder` at 140) that fold over `Node.children` with constructor-discriminated recursion. These dissolve to `fold_node(root, ⟨binding-harvest algebra⟩)` only when the scoped harvest algebra lands without changing resolver scope semantics. |
 | **P6** | `std/algebra.dag` / `std/nat.dag` `fold` / `cata` over `FreeMonoid<T>` and `Nat` (Wave-A2) | std / T-3 Wave-A2 | **2** | Section 2: `std/algebra.dag free_monoid_length`, `std/float.dag nat_compare`. (Sibling to P2's combinator algebra; could land in the same PR — kept separate because the underlying primitive is the catamorphism, distinct from `forall`/`count_where` which are derived from it.) |
 | **P7** | `std/nat.dag nat_is_zero : Nat -> Bool` (Wave-A2) | std / T-3 Wave-A2 | **1** | Section 2: `std/float.dag float_finite_magnitude_zero`. |
 | **P8** | `extdeps/languages/verilog.dag` bundled T-4 LanguageModel `constant_expression` sub-grammar | extdeps/languages / T-4 Verilog Phase-3 | **1** | DECISIONS.md: `SL-3229-VERILOG-VECTOR-RANGE` (lexeme-pair bridge). |
-| **P9** | `lens/cost.dag` cost-of-instruction model fact / lens | lens / T-12 | **1** | Section 2: `extdeps/languages/llvm_ir.dag llvm_instruction_cost` (the 22-arm `LlvmInstruction -> Int` cost table). |
+| **P9** | `lens/cost.dag` cost-of-instruction model fact / lens | lens / T-12 | **0** | **LANDED:** `src/v4/lens/cost.dag` now owns `llvm_instruction_cost` (the 22-arm `LlvmInstruction -> Int` cost table); `extdeps/languages/llvm_ir.dag` owns only the LLVM instruction shape. |
 | **P10 ⛔ needs-concretization** | Constrained generic parameters / inhabitance-bound syntax (`<M> where M : CommutativeMonoid<_>`) | substrate extension; **no owning task yet** | **1** | DECISIONS.md: `SL-3229-INTEGER-GROUP-COMPLETION` (`GroupCompletion<M>`). **P10 does NOT enter the burn-down DAG as a normal upstream node until concretized** — under #3244 a 🟡 whose substrate primitive has no committed PR/task is not a valid 🟡 (the comment-graveyard case). The single finding under P10 (`SL-3229-INTEGER-GROUP-COMPLETION`) is reclassified VAGUE in Section 3.1 until an owning T-# is assigned. Action owner: substrate / operator-or-S1 assignment. |
 
 Plus property-projection model facts (Practice 10 row 7) that do not
@@ -168,11 +168,11 @@ INVALID-GATE-once-re-gated):
 | P2 lands | 5 named (+ 26 verilog sites converge in one sweep) | `std/collection.dag` Wave-A2 | ~11 named |
 | P3 lands | 2 named (+ ~7 in-file) | T-6 + T-7 pipeline substrate | ~9 named |
 | P4 lands | 4 + 1 row + 1 fn (`dag.dag canonical_symbols` #3225) | T-4 fact-bundle Phase-3 | ~3 named |
-| P5 lands | 2 named (+ 3 walker callers cascade in `03_resolve.dag` #3225) | `std/node.dag fold_node` | ~1 |
+| P5 lands | 1 named (+ 3 walker callers cascade in `03_resolve.dag` #3225) | `std/node.dag fold_node` | ~1 |
 | P6 lands | 2 | FreeMonoid/Nat catamorphism | ~0 |
 | P7 lands | 1 | `nat_is_zero` | ~0 |
 | P8 lands | 1 | Verilog constant_expression | ~0 |
-| P9 lands | 1 | `lens/cost.dag` T-12 | ~0 |
+| P9 landed | 0 | `lens/cost.dag` T-12 | ~0 |
 | P10 lands | 1 (after concretization) | constrained-generics syntax | **0** |
 
 (Residual column is illustrative — counts roll up imperfectly because
@@ -228,11 +228,9 @@ substrate PRs since it needs no absent substrate.
 ### 2.2 `src/v4/std/`
 
 **`std/node.dag`**
-- `node_well_formed` (113) — 🟡 **walker** —
-  `feature: fold_node (std/node.dag Node catamorphism — substrate-extension under T-1)`.
-  Hand-rolled structural recursion via
-  `fold(n.children, …, fn(acc, e) { … node_well_formed(e.target) })`;
-  dissolves to `fold_node(n, …)` on arrival.
+- `node_well_formed` (113) — ✓ **walker dissolved** —
+  `fold_node` landed in `std/node.dag` and this function now consumes the
+  shared `NodeFold<Bool>` algebra instead of hand-rolling recursive descent.
 - `all_edges_named` (71), `all_edges_positional` (77) — 🟡 **traverse** —
   `feature: forall over FreeMonoid<T> in std/collection.dag (Wave-A2)`.
   `fold` body is `acc && pred(e)`; dissolves to
@@ -381,10 +379,10 @@ captured here as the audit anchor for the rest:
   `feature: per-FidelityFeature disposition fact on FidelityFeature itself (LLVM-substrate fact-bundle rework — T-4 fact-bundle program)`.
   12-arm `FidelityFeature -> FidelityDisposition` map; the disposition
   IS a fact per feature.
-- `llvm_instruction_cost` (584) — 🟡 **predicate** (property projection) —
-  `feature: cost-of-instruction model fact / lens in lens/cost.dag (T-12 — TASKS.md)`.
-  22-arm cost table; cost IS a fact per instruction. The named owner
-  `lens/cost.dag` exists as a scaffold today.
+- `llvm_instruction_cost` — 🟢 **moved to cost-lens authority** —
+  `src/v4/lens/cost.dag` owns the 22-arm `LlvmInstruction -> Int`
+  table as the P9 cost-of-instruction model fact; this file owns only
+  the LLVM instruction data shape.
 - `block_successors` (505), `unwind_successors` (498) — 🟢 — each arm
   reads its own constructor fields; constructor-driven projection, not
   a `match`-to-derive of a pre-existing fact.
@@ -730,7 +728,7 @@ fixes are downstream lane work, not C1's** — C1 marks and flags.
 |---|---|---|---|
 | walker | — | 3 (`std/node.dag node_well_formed` → `fold_node`; `std/algebra.dag free_monoid_length` → `fold FreeMonoid`; `std/float.dag nat_compare` → `fold Nat`) | rest |
 | traverse | — | 4 (`std/node.dag` × 4: → `forall` / `count_where` / `unique` over `FreeMonoid<T>` in `std/collection.dag` Wave-A2) | rest |
-| predicate | 1 (`extdeps/languages/llvm_ir.dag terminator_is_catchswitch`); empty-`Conj` R1 predicate **landed** PR #3284 (`std/node.dag` `is_empty_conj_root`, `DECISIONS.md` §CP-1b item 12) | 5 (`std/node.dag connective_edge_discipline` → per-`Connective` discipline fact; `std/float.dag float_finite_magnitude_zero` → `nat_is_zero`; `extdeps/languages/llvm_ir.dag` × 3: `block_well_formed` → cascade of dissolve-now; `feature_disposition` → per-feature disposition fact (T-4 fact-bundle); `llvm_instruction_cost` → `lens/cost.dag` T-12) | rest |
+| predicate | 1 (`extdeps/languages/llvm_ir.dag terminator_is_catchswitch`); empty-`Conj` R1 predicate **landed** PR #3284 (`std/node.dag` `is_empty_conj_root`, `DECISIONS.md` §CP-1b item 12) | 4 (`std/node.dag connective_edge_discipline` → per-`Connective` discipline fact; `std/float.dag float_finite_magnitude_zero` → `nat_is_zero`; `extdeps/languages/llvm_ir.dag` × 2: `block_well_formed` → cascade of dissolve-now; `feature_disposition` → per-feature disposition fact (T-4 fact-bundle)); `llvm_instruction_cost` **landed** under `lens/cost.dag`. | rest |
 | carrier | — | — | lane-wide |
 | emit/template | — | — | lane-wide |
 
@@ -747,8 +745,7 @@ dissolve-on-arrival rule):
 4. `nat_is_zero : Nat -> Bool` in `std/nat.dag` (Wave-A2).
 5. Property-projection model facts (Practice 10 registry row 7) on
    `Connective` (T-1 substrate-extension), `FidelityFeature` (T-4
-   fact-bundle), `LlvmInstruction` cost (lens/cost.dag T-12),
-   `Terminator` well-formedness (cascade of the LLVM
+   fact-bundle), `Terminator` well-formedness (cascade of the LLVM
    `terminator_is_catchswitch` dissolve-now).
 
 **Dissolve-now (🔴) inventory** — three findings: **one landed**, one

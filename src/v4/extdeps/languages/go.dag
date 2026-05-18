@@ -92,3 +92,4 @@ type GoIntegerOverflowDisposition<IRCarrier> {
 }
 
 type GoBool = Bool
+// 🟢 GoNever / no GoScalar bottom — DECISIONS.md §PR-3252-extdeps-deferrals (Practice 9).
