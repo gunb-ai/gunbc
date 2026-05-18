@@ -1,7 +1,7 @@
 // src/v4/extdeps/languages/rust.dag
 // Scope: Rust Reference surface (scalar/reference/visibility/cost carriers) plus ratified D2 resolver types homed here pending resolver.dag migration.
-// Owns: RustIntKind, RustIntWidth, RustFloatWidth, RustScalar, RustReferenceKind, NamedSegment, PubInPath, RustVisibility, RustReference, RustCost, GroundingMap, OverflowAction, OverflowDisposition, RustBool, rust_bool_grounding.
-// Consumes: v4.std.node.Node, Symbol; kernel-ambient Bool, Int, List, String.
+// Owns: RustIntKind, RustIntWidth, RustFloatWidth, RustScalar, RustReferenceKind, NamedSegment, PubInPath, RustVisibility, RustReference, RustCost, GroundingMap, OverflowAction, OverflowDisposition, RustBool, RustNever, rust_bool_grounding.
+// Consumes: v4.std.node.Node, Symbol; v4.std.cardinality.Never; kernel-ambient Bool, Int, List, String.
 // Status: extdeps rust slice; PubInPath path semantics producer-obligation per DECISIONS.md Part 6 + D2-REV; D2b Arrow bodies deferred to bundled LanguageModel work.
 // Anchor: https://doc.rust-lang.org/reference/
 // Ledger: DECISIONS.md Part 6 (PR #3229): CP-3229-GREEN-TERMINAL.
@@ -9,6 +9,7 @@
 module v4.extdeps.languages.rust
 
 import v4.std.node { Node, Symbol }
+import v4.std.cardinality { Never }
 
 // 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
 type RustIntKind
@@ -87,3 +88,6 @@ type RustBool = Bool
 data rust_bool_grounding: GroundingMap<RustBool> = GroundingMap {
   spelling: "bool"
 }
+
+// 🟢 Rust `!` → `Never`; D2a(2) deferrals — DECISIONS.md §PR-3252-extdeps-deferrals (Practice 9).
+type RustNever = Never

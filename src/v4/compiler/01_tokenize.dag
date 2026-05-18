@@ -1,7 +1,7 @@
 // src/v4/compiler/01_tokenize.dag
 // Scope: generic tokenization over language lex rules.
 // Anchor: https://en.wikipedia.org/wiki/Lexical_analysis
-// Owns: LexRules, Token, TokenStream, tokenize_lexical_walk_not_realized, tokenize_lex_rules_not_well_formed, tokenize_lex_e0_source_not_exhausted, tokenize_lexical_walk_not_realized_diagnostic, tokenize_lex_rules_not_well_formed_diagnostic, tokenize_lex_e0_source_not_exhausted_diagnostic, lex_rules_node_is_conj_empty_root, tokenize.
+// Owns: LexRules, Token, TokenStream, tokenize_lexical_walk_not_realized, tokenize_lex_rules_not_well_formed, tokenize_lex_e0_source_not_exhausted, tokenize_lexical_walk_not_realized_diagnostic, tokenize_lex_rules_not_well_formed_diagnostic, tokenize_lex_e0_source_not_exhausted_diagnostic, tokenize.
 // Consumes: std collection, std diagnostic, std node, std text.
 // Status: Wave-1 void-lex path realized.
 
@@ -18,18 +18,10 @@ import v4.std.diagnostic {
   Outcome,
   Textual,
   UserInputBoundary,
-  WholeFile,
+  WholeFile
 }
-import v4.std.node {
-  ComputationNode,
-  Conj,
-  Node,
-  NodeKind,
-  Symbol,
-  TypeNode,
-  node_well_formed,
-}
-import v4.std.text { Char, String, string_is_empty }
+import v4.std.node { Node, Symbol, is_empty_conj_root, node_well_formed }
+import v4.std.text { String, string_is_empty }
 type LexRules = Node
 type Token {
   class: Symbol
@@ -73,37 +65,32 @@ fn tokenize_lex_e0_source_not_exhausted_diagnostic(at: Locus) -> Diagnostic {
     correction: Unavailable { reason: UserInputBoundary }
   }
 }
-fn lex_rules_node_is_conj_empty_root(rules: Node) -> Bool {
-  match rules.kind {
-    TypeNode { connective: Conj } => count(rules.children) == 0
-    TypeNode { connective: _ } => false
-    ComputationNode { behavior: _ } => false
-  }
-}
 fn tokenize(text: String, file: Symbol, rules: LexRules) -> Outcome<TokenStream> {
   let at = Textual {
     file: file,
     extent: WholeFile
   }
-  if !node_well_formed(n: rules) {
-    Rejected {
-      diagnostic: tokenize_lex_rules_not_well_formed_diagnostic(at: at)
-    }
-  } else if lex_rules_node_is_conj_empty_root(rules: rules) {
-    if string_is_empty(s: text) {
-      Produced {
-        value: TokenStream {
-          tokens: []
+  if node_well_formed(n: rules) {
+    if is_empty_conj_root(n: rules) {
+      if string_is_empty(s: text) {
+        Produced {
+          value: TokenStream {
+            tokens: []
+          }
+        }
+      } else {
+        Rejected {
+          diagnostic: tokenize_lex_e0_source_not_exhausted_diagnostic(at: at)
         }
       }
     } else {
       Rejected {
-        diagnostic: tokenize_lex_e0_source_not_exhausted_diagnostic(at: at)
+        diagnostic: tokenize_lexical_walk_not_realized_diagnostic(at: at)
       }
     }
   } else {
     Rejected {
-      diagnostic: tokenize_lexical_walk_not_realized_diagnostic(at: at)
+      diagnostic: tokenize_lex_rules_not_well_formed_diagnostic(at: at)
     }
   }
 }

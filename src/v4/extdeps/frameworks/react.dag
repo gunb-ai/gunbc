@@ -1,35 +1,6 @@
 // src/v4/extdeps/frameworks/react.dag
-//
-// Scope: React framework substrate — Component model, Hook semantics, Effect lifecycle.
-// Anchor: https://react.dev/reference/react (React official docs) + https://react.dev/learn (mental model)
-//
-// Owns:
-//   - Component { props, state, render: () -> Node }
-//   - Hook { kind: HookKind, dependencies: List<Node> }
-//   - HookKind = Builtin(BuiltinHook) | Custom(Node)
-//     (a custom hook is a composition of other hooks per Rules-of-Hooks —
-//     it is a Node, not a new kind; feedback_nodes_are_nodes. This keeps
-//     HookKind genuinely closed while still representing every React program:
-//     the built-in set is finite, custom hooks reduce to Node composition.)
-//   - BuiltinHook = UseState | UseReducer | UseContext | UseRef
-//     | UseImperativeHandle | UseEffect | UseLayoutEffect | UseInsertionEffect
-//     | UseMemo | UseCallback | UseTransition | UseDeferredValue | UseId
-//     | UseSyncExternalStore | UseDebugValue | UseActionState | UseOptimistic
-//     | Use   (closed — the complete built-in Hook set per the react.dev
-//     Anchor; NO "..." — a hook missing at fill-time is a substrate-extension
-//     STOP, not a silently-permitted open enum)
-//   - ComponentEffect { trigger: EffectTrigger, body: Behavior }
-//   - EffectTrigger = Mount | Unmount | DependencyChange | EveryRender (closed enum)
-//   - Rules-of-Hooks discipline (lens-checkable: no Hooks in conditionals)
-//
-// Consumes:
-//   - std/node.dag, std/diagnostic.dag
-//   - extdeps/languages/typescript.dag (React is hosted in TS)
-//
-// Status: scaffold — fill per TASKS.md T-4.7
-// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
-// contract for the worker. Splitting this file requires explicit operator
-// ratification (substrate extension = stop signal).
-
+// Scope: React framework substrate.
+// Owns: Component, Hook, HookKind, BuiltinHook, ComponentEffect, EffectTrigger, RulesOfHooks.
+// Consumes: std/node.dag, std/diagnostic.dag, extdeps/languages/typescript.dag.
+// Status: scaffold — fill per TASKS.md T-4.7.
 module v4.extdeps.frameworks.react
-
