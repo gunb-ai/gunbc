@@ -350,8 +350,11 @@ captured here as the audit anchor for the rest:
   `resolve_edges_first_outer_then_inner`, `resolve_bind_binder_target`,
   `resolve_bind_edges`, `resolve_bind_node`, `resolve`,
   `resolve_with_namespace`, …) are **not individually triaged here**
-  — the full sweep is a near-future re-pass owned by the CP-1b lane
-  itself (Lane A / `fierce-cat-31`). Many will likely roll under P5
+  — the full sweep is a **named follow-up for the burn-down lane**
+  (`jolly-ibex-599`), not a C1 expansion. C1 is one-shot; the 21-fn
+  re-pass is dispatched by the burn-down lane as a standing
+  re-sweep work-item alongside the per-primitive DAG. Many entries
+  will likely roll under P5
   (`fold_node`) as variations of the harvest-walker pattern; a few
   may surface new sub-classes that the burn-down lane folds into its
   DAG.
