@@ -2,7 +2,7 @@
 // Scope: Go language spec surface (scalar width/kind sums, channel direction, export, cost shape, partial D2 resolver); L-2 pin go1.26 via Anchor.
 // Owns: SignedIntWidth, UnsignedIntWidth, GoFloatWidth, GoComplexWidth, GoScalarKind, GoScalar, GoChannelDirection, GoExportLocus, GoExportStatus, GoChannel, GoCost, GoBuiltinIntegerArithmeticOverflow, GoIntegerOverflowDisposition.
 // Consumes: v4.std.node.Symbol; kernel-ambient Int (STRUCTURE.md traceability).
-// Status: extdeps go slice; bool grounded structurally via GoScalar.BoolScalar (ruled-B: no bare alias / spelling-map); numeric D2a rows deferred per DECISIONS.md D2-REV and resolver.dag; no D1 ops in-file.
+// Status: extdeps go slice; bool D2a bare-alias retired (ruled-B); classifier fact = GoScalar.BoolScalar; machine-readable grounding edge open per canonical-B (grounding-worked-examples.md §0); numeric D2a rows deferred per DECISIONS.md D2-REV and resolver.dag; no D1 ops in-file.
 // Anchor: https://go.dev/ref/spec
 // Ledger: DECISIONS.md Part 6 (PR #3229): CP-3229-GREEN-TERMINAL.
 

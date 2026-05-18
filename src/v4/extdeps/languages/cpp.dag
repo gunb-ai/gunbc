@@ -2,7 +2,7 @@
 // Scope: C++ language primitive resolver facts.
 // Owns: CppIntegerOverflowDisposition.
 // Consumes: CppTargetProfile/CppTargetDataModel via T29-ABI follow-up rows.
-// Status: D2-REV resolver slice; bool grounding folds into 🟡 feature:t4-cpp-scalar-ladder (lands as CppScalar.BoolScalar, ruled-B: no bare alias / spelling-map) — DECISIONS.md P4-3208 + T29-ABI.
+// Status: D2-REV resolver slice; bool D2a bare-alias + {spelling}-GroundingMap retired (ruled-B); no scalar carrier yet — folds into 🟡 feature:t4-cpp-scalar-ladder; machine-readable grounding edge open per canonical-B (grounding-worked-examples.md §0) — DECISIONS.md P4-3208 + T29-ABI.
 
 module v4.extdeps.languages.cpp
 
