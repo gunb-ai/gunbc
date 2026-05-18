@@ -1,21 +1,11 @@
 // src/v4/extdeps/languages/python.dag
 // Scope: Python 3.14 Reference surface (scalar fact-bundle coproduct, singleton kinds, cost shape, partial D2 resolver).
-// Owns: PythonIntegerPrecision, PythonFloatFormat, PythonSingletonKind, PythonScalar, PythonCost, PyBool.
-// Consumes: Kernel-ambient Bool, Int; std/integer, std/float, std/cardinality when T-3 alias rows land (DECISIONS.md D2-REV).
-// Status: extdeps python slice; D2-REV fact-bundle rework — scalar tower reseeded as kind×width coproduct; per-primitive bool-alias/grounding-row HELD-PROVISIONAL 🟡 (operator A-vs-B ruling pending); principal int unbounded—no overflow carrier in-file.
+// Owns: PythonSingletonKind, PythonScalar, PythonCost, PyBool.
+// Consumes: Kernel-ambient Bool, Int; std/integer, std/float, std/cardinality when per-primitive grounding rows land (DECISIONS.md D2-REV).
+// Status: extdeps python slice; D2-REV fact-bundle rework — scalar tower reseeded as flat kind coproduct (RustScalar shape), `Numeric { tower }` wrapper + bare `PythonNumericTower` enum dissolved; per-primitive bool-alias/grounding-row HELD-PROVISIONAL 🟡 (operator A-vs-B ruling pending); principal int unbounded—no overflow carrier in-file.
 // Anchor: https://docs.python.org/3.14/reference/datamodel.html#the-standard-type-hierarchy
 
 module v4.extdeps.languages.python
-
-// 🟢 spec fact-bundle — Python int has unlimited range, bounded only by
-// available memory (ref §3.2); the inverse of a fixed machine width.
-type PythonIntegerPrecision
-  = ArbitraryPrecision
-
-// 🟢 spec fact-bundle — Python float / complex components are machine
-// double-precision IEEE-754 binary64 (ref §3.2); DECISIONS.md D2-REV.
-type PythonFloatFormat
-  = Ieee754Binary64
 
 // 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
 type PythonSingletonKind
@@ -23,14 +13,18 @@ type PythonSingletonKind
   | NotImplementedT
   | EllipsisT
 
-// 🟢 fact-bundle coproduct — DECISIONS.md D2-REV; each numeric variant
-// carries the precision/format fact its Python 3.14 spec entry states.
-// BoolScalar's fact-bundle (subtype-of-int, two inhabitants) is held with
-// the per-primitive bool-alias 🟡 on the operator A-vs-B ruling.
+// 🟢 fact-bundle coproduct (RustScalar shape) — DECISIONS.md D2-REV.
+// The Python scalar tower flattened to one coproduct: the hollow
+// single-field `Numeric { tower }` wrapper and the bare `PythonNumericTower`
+// enum are dissolved into direct variants. Each variant's per-primitive
+// fact-bundle — int → arbitrary-precision integer, float/complex → IEEE-754
+// binary64, bool → subtype-of-int — grounds via per-primitive grounding
+// rows into std/integer + std/float (ref §3.2). Those rows, and the PyBool
+// alias below, are 🟡 HELD-PROVISIONAL on the operator A-vs-B ruling.
 type PythonScalar
-  = IntScalar { precision: PythonIntegerPrecision }
-  | FloatScalar { format: PythonFloatFormat }
-  | ComplexScalar { component_format: PythonFloatFormat }
+  = IntScalar
+  | FloatScalar
+  | ComplexScalar
   | BoolScalar
   | Singleton { kind: PythonSingletonKind }
 
