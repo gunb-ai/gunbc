@@ -52,9 +52,10 @@ same way:
 > mechanical lens.**
 
 A lens is added from *real evidence* — a finding that reached merge-ready
-despite being a defect (§8). The lens's signature is the smallest
-structural pattern that catches that finding's class with zero false
-positives on the clean shape.
+despite being a defect (§8), or a checkable review / audit receipt that
+names the same defect shape, its live substrate home, and its dissolve
+trigger. The lens's signature is the smallest structural pattern that
+catches that finding's class with zero false positives on the clean shape.
 
 ## 4. Layer 0 — standard compiler hygiene
 
@@ -328,18 +329,18 @@ A living record. Every finding that reaches merge-ready despite a defect
 is logged here, root-caused by the §3 methodology — so the lens set grows
 from real evidence, not speculation.
 
-| date | PR | finding | core invariant violated | lens |
+| date | receipt | finding | core invariant violated | lens |
 |---|---|---|---|---|
 | 2026-05-18 | #3250 | `free_monoid_non_empty` hand-rolled discriminant | A coproduct's variant-discriminant is a derived operation | L1.1 |
 | 2026-05-18 | #3255 | `nat_is_zero` hand-rolled discriminant | same | L1.1 |
 | 2026-05-18 | #3256 | 26 combinators nominalized into single-field wrapper types | an operation is a function, not a type | L1.2 |
 | 2026-05-18 | #3249 | `free_monoid_is_empty` laundered through a fold | discriminant ≠ catamorphism; do not conflate | L1.1 (extended) |
-| 2026-05-18 | ingest | prose-only algebra/width/opacity facts | facts live in substrate structure, not comments or names | L1.7 |
-| 2026-05-18 | ingest | orphan operation such as `nat_compare` outside its concept home | operations live with their primary concept | L1.8 |
-| 2026-05-18 | ingest | exhaustive match arm that returns `true` while sibling arms perform checks | exhaustive shape is not evidence of actual validation | L1.9 |
-| 2026-05-18 | ingest | role-tagged `String` field where a canonical typed carrier exists | typed domain facts must not tunnel through strings | L1.10 |
-| 2026-05-18 | ingest | `None => CreateEffect`-style fabricated sibling fallback | missing facts reject; they do not guess a plausible variant | L1.11 |
-| 2026-05-18 | ingest | duplicated type homes without alias / retirement / migration | one concept has one structural authority | L1.12 |
+| 2026-05-18 | `src/v4/DECISIONS.md` Part 6 `SL-3229-LLVM-WIDTH` / `SL-3229-FLOAT-NOMINAL`; `docs/audit/dissolution-inventory.md` P1 | raw width / nominal-width facts carried by names or comments instead of bounded cardinality structure | facts live in substrate structure, not comments or names | L1.7 |
+| 2026-05-18 | `src/v4/DECISIONS.md` `SL-P7-NAT-COMPARE-VPRED`; `docs/audit/dissolution-inventory.md` P6 | `nat_compare` originally homed under `std/float.dag` while the primary concept is `Nat` | operations live with their primary concept | L1.8 |
+| 2026-05-18 | codex review on design commit `cfbc247c0`, resolved by `3fb3e4dfc`; concrete shape: `node_locally_well_formed`-class asymmetric match arms | exhaustive shape is not evidence of actual validation | L1.9 |
+| 2026-05-18 | `src/v4/DECISIONS.md` `LB-P4-3213`; process `Command` target from #3209 | `CiCommand::ShellCommand { command: String }` while `extdeps/process.dag` models a typed `Command` | typed domain facts must not tunnel through strings | L1.10 |
+| 2026-05-18 | `docs/design-effect-enumeration-resource-threading.md` §2.4 / §8.1; `docs/design-transport-taxonomy.md` `derive_effect_shape` migration | `None => CreateEffect`-style fabricated sibling fallback in effect-shape derivation | missing facts reject; they do not guess a plausible variant | L1.11 |
+| 2026-05-18 | `src/v4/DECISIONS.md` D2 / D2-REV; `docs/briefs/t-ground-languagespec.md` parallel-authority dissolution | duplicated type homes without alias / retirement / migration | one concept has one structural authority | L1.12 |
 
 Pattern across the ledger: all four are burn-down *substrate* PRs — the
 lane built to remove dissolution debt produced it. Each was *mostly*
