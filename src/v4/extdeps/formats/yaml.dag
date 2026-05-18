@@ -42,8 +42,8 @@ module v4.extdeps.formats.yaml
 // DECLARATIVE-NOW / OPERATIONS-DEFERRED-WITH-OWNER (#3169/#3184).
 // Modeled: YamlValue. Deferred parse/emit (incl. anchor/alias + tag) —
 // 🟡 gated — feature: T-6/T-7 parse + T-10 emit pipeline substrate — DECISIONS.md Part 6 · SL-3229-T4-FORMAT-T6T7.
-// Deferred numeric int/float lexemes —
-// 🟡 gated — feature: std/cardinality.dag bounded-natural refinement (T-3 Wave-A2) — DECISIONS.md Part 6 · SL-3229-LLVM-WIDTH.
+// Numeric scalar VALUE + canonical key material (pairs with parse/emit gate above) —
+// 🟡 gated — feature: std/cardinality.dag refinement + std/float.dag / std/integer.dag (T-3 Wave-A2) — DECISIONS.md Part 6 · SL-3229-LLVM-WIDTH.
 //
 // CARRIER SEAM (NOT a per-file sum) — the ratified corrected seam #3,
 // fail-closed BOTH directions (single authority = DECISIONS.md Part 6 ·
@@ -118,7 +118,7 @@ module v4.extdeps.formats.yaml
 //                        scaffold, so collapsing now would fabricate a
 //                        range/precision decision (no-fabrication) and
 //                        lose round-trip (B-6) exactness. Numeric
-//                        interpretation is a deferred read (🟡 gated — feature: std/cardinality.dag bounded-natural refinement (T-3 Wave-A2) — DECISIONS.md Part 6 · SL-3229-LLVM-WIDTH).
+//                        interpretation is a deferred read (🟡 gated — feature: std/cardinality.dag refinement + std/float.dag / std/integer.dag (T-3 Wave-A2) — DECISIONS.md Part 6 · SL-3229-LLVM-WIDTH).
 //   - YamlFloat       — §10.3.2 `…:float` (incl. `.inf`/`.nan`). Carries
 //                        the verbatim `lexeme` for the same reason as
 //                        `YamlInt`; faithful carrier std/float.dag is

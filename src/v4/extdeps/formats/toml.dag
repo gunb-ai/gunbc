@@ -40,8 +40,8 @@ module v4.extdeps.formats.toml
 // DECLARATIVE-NOW / OPERATIONS-DEFERRED-WITH-OWNER (#3169/#3184).
 // Modeled: TomlValue. Deferred parse/emit —
 // 🟡 gated — feature: T-6/T-7 parse + T-10 emit pipeline substrate — DECISIONS.md Part 6 · SL-3229-T4-FORMAT-T6T7.
-// Deferred int/float numeric VALUE + §Keys key-shape refinements —
-// 🟡 gated — feature: std/cardinality.dag bounded-natural refinement (T-3 Wave-A2) — DECISIONS.md Part 6 · SL-3229-LLVM-WIDTH.
+// Deferred int/float numeric VALUE reads + §Keys / String key-shape refinements —
+// 🟡 gated — feature: std/cardinality.dag refinement + std/float.dag / std/integer.dag (T-3 Wave-A2) — DECISIONS.md Part 6 · SL-3229-LLVM-WIDTH.
 // Deferred TomlDatetime temporal interpretation (RFC 3339 four sub-kinds; no std/ instant carrier yet) —
 // 🟡 gated — feature: v4 temporal substrate for RFC 3339 datetime value interpretation — DECISIONS.md Part 6 · SL-3229-T4-FORMAT-TOML-DATETIME.
 //
@@ -82,7 +82,7 @@ module v4.extdeps.formats.toml
 //     no `NonEmptyStr` (it is a String refinement; the refinement
 //     substrate is not landed — std/text.dag is T-3 scaffold). The
 //     carrier here is kernel `Map<String, TomlValue>`; the non-empty-key
-//     refinement is deferred (🟡 gated — feature: std/cardinality.dag bounded-natural refinement (T-3 Wave-A2) — DECISIONS.md Part 6 · SL-3229-LLVM-WIDTH). NOTE (surfaced, not
+//     refinement is deferred (🟡 gated — feature: std/cardinality.dag refinement + std/float.dag / std/integer.dag (T-3 Wave-A2) — DECISIONS.md Part 6 · SL-3229-LLVM-WIDTH). NOTE (surfaced, not
 //     silently encoded): TOML v1.0.0 §Keys permits an EMPTY QUOTED key
 //     (`"" = "v"` is valid, though discouraged) — so a literal
 //     `NonEmptyStr` key type would be STRICTER than TOML 1.0. The
@@ -122,7 +122,7 @@ module v4.extdeps.formats.toml
 //                      scaffold, so collapsing now fabricates a
 //                      range/precision decision (no-fabrication) and
 //                      breaks B-6 round-trip. Numeric interpretation
-//                      deferred (🟡 gated — feature: std/cardinality.dag bounded-natural refinement (T-3 Wave-A2) — DECISIONS.md Part 6 · SL-3229-LLVM-WIDTH).
+//                      deferred (🟡 gated — feature: std/cardinality.dag refinement + std/float.dag / std/integer.dag (T-3 Wave-A2) — DECISIONS.md Part 6 · SL-3229-LLVM-WIDTH).
 //   - TomlFloat     — §Float (incl. `inf`/`nan`). Verbatim `lexeme`
 //                      for the same reason; faithful carrier
 //                      std/float.dag is scaffold (IEEE-754 collapse =
@@ -219,7 +219,7 @@ module v4.extdeps.formats.toml
 //                      tracked-not-silent here, exactly like the #3184
 //                      `emit -> Outcome<String>` header/note divergence.
 //                      (Key non-emptiness/charset is the deferred §Keys
-//                      refinement, 🟡 gated — feature: std/cardinality.dag bounded-natural refinement (T-3 Wave-A2) — DECISIONS.md Part 6 · SL-3229-LLVM-WIDTH; toml-LOCAL — json/yaml have
+//                      refinement, 🟡 gated — feature: std/cardinality.dag refinement + std/float.dag / std/integer.dag (T-3 Wave-A2) — DECISIONS.md Part 6 · SL-3229-LLVM-WIDTH; toml-LOCAL — json/yaml have
 //                      no inline/standard split, canonical seam
 //                      unaffected.)
 //
