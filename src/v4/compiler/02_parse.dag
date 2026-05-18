@@ -25,7 +25,6 @@ import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, node_well_
 type GrammarExpr
 // 🟡 coproduct dissolution — DECISIONS.md CP-1b/T-7 grammar-as-data; typed production alternatives, Node projection only.
   = Terminal { token_class: Symbol }
-  | Nonterminal { production: GrammarProduction }
   | Sequence { left: GrammarExpr, right: GrammarExpr }
   | Choice { left: GrammarExpr, right: GrammarExpr }
   | Optional { element: GrammarExpr }
@@ -54,7 +53,6 @@ type ParseTree = Node
 
 
 data grammar_terminal_token_class_node_projection: Symbol = grammar_terminal_token_class_node_projection
-data grammar_nonterminal_production_node_projection: Symbol = grammar_nonterminal_production_node_projection
 data grammar_sequence_left_node_projection: Symbol = grammar_sequence_left_node_projection
 data grammar_sequence_right_node_projection: Symbol = grammar_sequence_right_node_projection
 data grammar_choice_left_node_projection: Symbol = grammar_choice_left_node_projection
@@ -139,15 +137,6 @@ fn grammar_expr_to_node(expr: GrammarExpr) -> Node {
         },
         children: [
           grammar_named_edge(name: grammar_terminal_token_class_node_projection, target: grammar_atom(identity: token_class))
-        ]
-      }
-    Nonterminal { production: production } =>
-      Node {
-        kind: TypeNode {
-          connective: Conj
-        },
-        children: [
-          grammar_named_edge(name: grammar_nonterminal_production_node_projection, target: grammar_production_to_node(production: production))
         ]
       }
     Sequence { left: left, right: right } =>
