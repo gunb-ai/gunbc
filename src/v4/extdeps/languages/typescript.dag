@@ -1,36 +1,38 @@
 // src/v4/extdeps/languages/typescript.dag
-// Scope: TypeScript 5.9 + ECMA-262 ES2025 primitive scaffold.
-// Owns: TsEcma262NumericPrimitiveKind, TsBoolean, TsEcma262PrimitiveOperationSemantics.
-// Consumes: kernel-ambient Bool; std numeric/text carriers are fact-bundle-gated.
-// Status: 🟡 gated — feature: T-4 fact-bundle Phase-3 rework after T-3/T-29/T-30/T-25-core.
+// Scope: TypeScript 5.9 + ECMA-262 ES2025 scalar fact-bundle scaffold.
+// Owns: TsNumberWidth, TsBigIntWidth, TsScalar, TsEcma262PrimitiveOperationSemantics.
+// Consumes: kernel-ambient String; std numeric/text/bool aliases and grounding rows are fact-bundle-gated.
+// Status: 🟡 gated — scalar tower fact-bundle slice landed; per-primitive bool alias/grounding rows held pending operator A-vs-B ruling.
+// Anchor: https://tc39.es/ecma262/
 
 module v4.extdeps.languages.typescript
 
+// 🟢 coproduct dissolution — `number` has binary64 storage plus ToInt32/ToUint32
+// coercion widths for bitwise operators; these are spec facts, not std aliases.
+type TsNumberWidth
+  = Ieee754Binary64
+  | ToInt32
+  | ToUint32
 
+// 🟢 coproduct dissolution — `bigint` is exact and unbounded in the spec model.
+type TsBigIntWidth
+  = Unbounded
 
+// 🟢 scalar fact-bundle coproduct — RustScalar-shaped: variant selects the
+// scalar family; payload carries the spec-read coordinates for that family.
+type TsScalar
+  = NumberScalar { width: TsNumberWidth }
+  | BigIntScalar { width: TsBigIntWidth }
+  | BooleanScalar
+  | StringScalar
+  | SymbolScalar
+  | NullScalar
+  | UndefinedScalar
 
-
-type TsEcma262NumericPrimitiveKind
-  // 🟢 coproduct dissolution — DECISIONS.md TS-D2
-  = TsNumberPrimitive
-  | TsBigIntPrimitive
-
-
-
-
-
-
-
-type TsBoolean = Bool
-
-
-
-
-
-
-
+// 🟢 coproduct dissolution — resolver rows choose one ECMA primitive-semantics
+// track among binary64 Number, bitwise Number coercion, and exact BigInt.
 type TsEcma262PrimitiveOperationSemantics
-  // 🟢 coproduct dissolution — DECISIONS.md TS-D2
   = TsNumberIeee754Binary64Semantics
-  | TsNumberBitwiseInt32Uint32Semantics
+  | TsNumberBitwiseInt32Semantics
+  | TsNumberBitwiseUint32Semantics
   | TsBigIntExactUnboundedSemantics
