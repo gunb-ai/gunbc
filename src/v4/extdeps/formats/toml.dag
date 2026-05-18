@@ -38,13 +38,10 @@ module v4.extdeps.formats.toml
 // discipline, TOML-anchored facts.
 //
 // DECLARATIVE-NOW / OPERATIONS-DEFERRED-WITH-OWNER. Modeled NOW: the
-// `TomlValue` data model. DEFERRED (🟡, named owner + dissolution
-// trigger, NEVER improvised, NEVER a bodiless `fn` — the frozen v2 seed
-// rejects bodiless `fn`, DECISIONS PARSE-1): the parse/emit bodies, the
-// numeric interpretation of int/float lexemes, the temporal
-// interpretation of the datetime lexeme, and the non-empty-key
-// refinement. The operator-sanctioned pattern verified on
-// std/collection.dag #3169 + canonical json.dag #3184.
+// `TomlValue` data model. Deferred parse/emit —
+// 🟡 gated — feature: T-6/T-7 parse pipeline-stage substrate — DECISIONS.md Part 6 · SL-3229-T4-FORMAT-T6T7.
+// Deferred numeric + datetime lexemes + non-empty key refinement —
+// 🟡 gated — feature: std/cardinality.dag bounded-natural refinement (T-3 Wave-A2) — DECISIONS.md Part 6 · SL-3229-LLVM-WIDTH.
 //
 // CARRIER SEAM (NOT a per-file sum) — the ratified corrected seam #3,
 // fail-closed BOTH directions (single authority = the Deferred (1)
