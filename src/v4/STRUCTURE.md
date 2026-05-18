@@ -111,30 +111,27 @@ src/v4/
       diagnostic_correction/
       algebra_laws/
       manual/            # hand-authored anti-regression anchors (Phase 1.5)
-<<<<<<< HEAD
         connective_anchors.dag
         nat_law_anchors.dag
         t19_manual_anchor_manifest.dag  # T-19 manifest — `T19ManualAnchorKey` membership rows
-=======
         resolve_compile_anchor.dag  # resolve + wave-1 canonical `Set` compile anchor (#3225; T-22 defers `v2 run`)
->>>>>>> origin/main
       boundary/          # boundary-honesty probes
         english_ingest_fail_closed.dag  # T-4.11 — fail-closed ingest, no fabrication
     fixture/             # canonical input programs
 ```
 
-**Total: 68 .dag files + 5 docs + 5 .gitkeep = 78 files.** (Per invariant
+**Total: 69 .dag files + 5 docs + 5 .gitkeep = 79 files.** (Per invariant
 #1 the enumeration above — not the count — is authoritative; the count is
 a checksum, updated on every operator-ratified file addition/removal.
 **Reconciliation (2026-05-17, PR #3225 / review #13750):** the prior printed
 total (`65`) lagged the live tree at **67** `.dag` files — the line had not
 yet absorbed the 2026-05-16 `extdeps/languages/dag.dag` +1 (and other
-intervening operator-ratified edits). This PR lands **`test/claim/manual/resolve_compile_anchor.dag`** (+1) → **68**, matching `find src/v4 -name '*.dag'`.
+intervening operator-ratified edits). **#3225** adds **`test/claim/manual/resolve_compile_anchor.dag`**; **#3212** adds **`test/claim/manual/t19_manual_anchor_manifest.dag`**. **69** `.dag`, matching `find src/v4 -name '*.dag'`.
 **Earlier operator-ratified deltas already in the tree (audit trail only — not re-applied by #3225):**
 +1 .dag 2026-05-16: `extdeps/languages/dag.dag` — operator-ratified C1 closed-tree
 extension (Option A, relay merry-ibex-337). −5 .dag 2026-05-15: work-direction
 meta-layer cut, operator-ratified. **2026-05-17 (PR #3212):** enumerate
-`test/claim/manual/*` (3) + `test/claim/impossible_bug/*` (6); checksum **65→68** `.dag`.)
+`test/claim/manual/*` (4) + `test/claim/impossible_bug/*` (6); checksum **65→69** `.dag`.)
 
 ## Scalar/numeric concept decomposition
 
