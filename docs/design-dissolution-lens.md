@@ -594,14 +594,73 @@ fn node_locally_well_formed(n: Node) -> Bool {
 **Clean shape:** introduce a sibling `behavior_edge_discipline(Behavior)`
 in `std/node.dag` and dispatch both arms uniformly.
 
-### L1.10 String-escape-hatch lens — kills *typed-model bypass via String* (proposed, generalizes L1.6)
+### L1.10 Textual-bypass lens — kills *typed-model bypass via String* (proposed, merged L1.6)
 
-> **Status: proposed.** Derived from finding F6
+> **Status: proposed.** Derived from findings F6
 > (`CiCommand::ShellCommand { command: String }` while
 > `extdeps/process.dag` already models a typed
-> `Command { program, argv0, args, env }`). L1.6 catches string templates
-> as emitters; L1.10 catches strings as *carriers* for domains that have
-> a typed model in scope.
+> `Command { program, argv0, args, env }`) and F8 (string-template
+> emitters such as `list_template: "Vec<{0}>"` in
+> `dsl/std/languages.dag`). Absorbs the original L1.6 as a
+> sub-signature. The two cases are different mechanical detectors but
+> share one structural finding: **a string-valued artifact is carrying
+> a typed fact that has, or should have, a model carrier.**
+
+The lens has two sub-signatures. They are distinct detectors with
+distinct decidability arguments and distinct escape valves, surfaced
+under one lens because they share the underlying finding.
+
+#### L1.10.a `TemplateHole` (registry-free)
+
+- *Signature:* a field or value that is a **template string literal** —
+  a string literal carrying positional placeholders (`{0}`, `{1}`, …)
+  used as an emitter, where grammar-as-declarative-bidirectional-data
+  belongs.
+- *Decidable:* yes — a literal string with interpolation placeholders
+  is a structural match (the keystone decidability table already
+  classifies it "structural — a literal template-string field"). No
+  registry required.
+- *Verdict:* hard error on the literal-template shape.
+- *Escape:* a plain string constant with no placeholders, or genuine
+  string *data* that is not an emitter template, passes.
+
+**Concrete match — F8 type-construction templates (`dsl/std/languages.dag`):**
+```dag
+type TypeMapping {
+  string:            String
+  int:               String
+  list_template:     String   // ← positional placeholders inside
+  optional_template: String
+  map_template:      String
+}
+
+data rust_type_mapping: TypeMapping = {
+  string:            "String",
+  int:               "i64",
+  list_template:     "Vec<{0}>",          // ← {0} is an emission hole
+  optional_template: "Option<{0}>",
+  map_template:      "HashMap<{0}, {1}>", // ← {0}, {1} are emission holes
+}
+```
+Emission is happening — but it's a fill-in-the-hole string substitution
+the lens can't structurally validate. The placeholder vocabulary
+(`{0}`, `{1}`) is parallel to the model rather than part of it.
+
+**Clean shape:** grammar-as-declarative-bidirectional-data — the target
+type's construction is modeled, and emit is a fold over the model:
+```dag
+type RustTypeRealization
+  = RustGeneric { ctor: RustIdent, args: List<RustTypeRealization> }
+  | RustAtom    { ident: RustIdent }
+
+data rust_list_realization: TypeRealization<List> = fn(elem) {
+  RustGeneric { ctor: "Vec", args: [elem] }
+}
+```
+Plain string constants without placeholders (e.g. a fixed `"i64"`
+atom) pass — they're data, not a templated emitter.
+
+#### L1.10.b `CanonicalCarrier` (substrate-declared registry)
 
 - *Signature (substrate-declared registry, no opt-in tag):* the lens
   reads a **canonical-carrier registry** authored as data in the
@@ -616,8 +675,8 @@ in `std/node.dag` and dispatch both arms uniformly.
   The lens fires on **any** field of type `String` whose field name
   appears in any registered `CanonicalCarrier::supersedes_string_at_field_named`
   set, whenever that carrier's target type is in scope. The trigger is
-  not author-controlled — the author cannot bypass by omitting a role
-  tag, because the registry-declared field-name set drives the gate
+  not author-controlled — the author cannot bypass by omitting a tag,
+  because the registry-declared field-name set drives the gate
   unconditionally. The name set lives in substrate `data`, not in the
   lens body, so adding a new typed carrier is a registry edit, not a
   lens edit.
@@ -867,7 +926,8 @@ from real evidence, not speculation.
 | 2026-05-18 | ingest | `Word64 { bytes: List<Byte> }`, `Float32`/`Float64` share unconstrained `FloatBody` (`src/v4/std/{machine,float}.dag`) | cardinality / width is a refinement, not a name | L1.7 (proposed) |
 | 2026-05-18 | ingest | `ResourceHandle` is a freely-constructible record under prose claiming opacity (`dsl/std/resources.dag:17-25`) | non-forgeability is a constructor restriction, not a comment | L1.7 (proposed) |
 | 2026-05-18 | ingest | `nat_compare(Nat, Nat)` defined in `src/v4/std/float.dag:52-62` while `nat.dag` and `algebra.dag` exist | an operation lives in its argument-type's home (M9 / DFS the concept DAG) | L1.8 (proposed) |
-| 2026-05-18 | ingest | `CiCommand::ShellCommand { command: String }` while `extdeps/process.dag` models a typed `Command` (`src/v4/workflow/ci.dag:23-28`) | String escape hatch for a domain that has a typed model in scope | L1.10 (proposed) |
+| 2026-05-18 | ingest | `CiCommand::ShellCommand { command: String }` while `extdeps/process.dag` models a typed `Command` (`src/v4/workflow/ci.dag:23-28`) | String escape hatch for a domain that has a typed model in scope | L1.10.b `CanonicalCarrier` (proposed) |
+| 2026-05-18 | ingest | `list_template: "Vec<{0}>"`, `optional_template: "Option<{0}>"`, `map_template: "HashMap<{0}, {1}>"` etc. in `dsl/std/languages.dag` + per-language emit tables | string literal with positional placeholders used as emitter; grammar-as-bidirectional-data belongs | L1.10.a `TemplateHole` (proposed; absorbs original L1.6) |
 | 2026-05-18 | ingest | `derive_effect_shape` `DELETE/PUT/PATCH None => CreateEffect` (`dsl/std/effects.dag:268-282`) | missing info must escalate through `Outcome::Rejected`, not return a different valid sibling | L1.11 (proposed) |
 | 2026-05-18 | ingest | `Bool`, `Char`, `Url`, machine words declared in both `dsl/std/` and `src/v4/std/` (`type T = ...` redeclared, no structural alias/retirement/migration) | one concept must have one home (structural alias, retirement-ledger row, or migration) | L1.12 (proposed) |
 | 2026-05-18 | ingest | `extdeps/languages/resolver.dag` referenced via imports but file does not exist; provisional `GroundingMap` lives in `extdeps/languages/rust.dag` | unresolved reference / dangling import — fail-closed P3, distinct root cause from duplicate authority | L0.8-extended (planned-but-absent home; deliberately not L1.12) |
