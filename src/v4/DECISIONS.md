@@ -817,6 +817,23 @@ language, mostly fail-closed). Each: the model (carrier + meaning) and
 step-by-step coercion. Plan-only; the remaining mainstream
 language/format targets fan out against the same template.
 
+### T-30 — `std/fact_density.dag` encoding note (2026-05-17)
+
+- **Header discipline (PR #3227):** the on-disk file keeps a terse machine
+  header only: path line; then **contiguous** `Scope:` / `Owns:` /
+  `Consumes:` / `Status:` (Practice 9 four-line header); **then** at most
+  one `Anchor:` URL line per owned carrier (anchor **after** that block,
+  not between `Owns:` and `Consumes:`).
+  Process receipts, Practice pointers, and bootstrap-collision narrative
+  live in commit messages, this ledger, or `TASKS.md` — not in the `.dag`
+  comments.
+- **P2 / Practice 5 (single authority):** Until a **generated** `.dag` (or emitted) consumer reads `SourceSpecReadFact`, this module does **not** satisfy INVARIANTS §P2 “**When a boundary counts as landed**” — the hollow-alias predicate’s interim authority remains the Rust mirror (`src/v3/compiler/src/v4_hollow_alias_gate.rs`). `STRUCTURE.md` lists `fact_density.dag` as **P2-staging**, not co-equal with landed `std/` primitives. The on-disk file is intentionally a **Practice-9 terse header** only: the `Scope:` line is one machine line; this bullet carries the former multi-line header narrative (no generated `.dag`/std consumer yet; do **not** treat `SourceSpecReadFact` as a landed substrate primitive in docs until INVARIANTS §P2’s generated-consumer proof exists).
+- **Nominal witness:** `SourceSpecReadFact` is a body-less nominal marker
+  for spec-read anchoring (not a numeric alias). A richer `Node` payload
+  is deferred until `compile_to_dag` can prepend `std/node.dag` without
+  colliding on v3-bootstrap top-level names; dissolution ships in the
+  same change set as that bridge.
+
 ### Status
 
 **RATIFIED 2026-05-17** (operator, out-of-band — the operator declared D2
