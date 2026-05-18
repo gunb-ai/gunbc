@@ -1,9 +1,9 @@
 //! **Layer:** integration
 //!
-//! T-19 Wave-0: `src/v4/lens/testgen.dag` parses and exposes the bootstrap-slot →
-//! `T19ManualAnchorKey` / `TestgenConcept` / `Generator` wiring. **Note:** `compile_to_dag`
-//! on this module alone does not resolve `import v4.std.*` peers (Import lowering is still
-//! M2-scoped); full merge compile lands with cross-file M2 per TASKS T-19.
+//! T-19 Wave-0: `src/v4/lens/testgen.dag` parses and exposes manual-anchor-key-driven
+//! `Generator` wiring (`kind` + `t19_anchor` + `classification` + `slot: TestgenConcept`).
+//! **Note:** `compile_to_dag` on this module alone does not resolve `import v4.std.*` peers
+//! (Import lowering is still M2-scoped); full merge compile lands with cross-file M2 per TASKS T-19.
 
 use v3_compiler::parse_for_test;
 use v3_compiler::parse_surface::SurfaceItem;
@@ -22,21 +22,12 @@ fn v4_lens_testgen_wave0_substrate_parses() {
         "T-19 authority module should remain v4.lens.testgen"
     );
     assert_eq!(
-        function_count(&m, "connective_bootstrap_anchor"),
+        function_count(&m, "bootstrap_claim_generator_for_manual_anchor"),
         1,
-        "T-19 P2 join: connective bootstrap rows → T19ManualAnchorKey"
+        "T-19 Wave-0: single generator entrypoint keyed by T19ManualAnchorKey"
     );
-    assert_eq!(function_count(&m, "nat_law_bootstrap_anchor"), 1);
-    assert_eq!(
-        function_count(&m, "generator_for_connective_bootstrap_slot"),
-        1
-    );
-    assert_eq!(
-        function_count(&m, "generator_for_nat_law_bootstrap_slot"),
-        1
-    );
-    assert_eq!(function_count(&m, "testgen_concept_for_connective_slot"), 1);
-    assert_eq!(function_count(&m, "testgen_concept_for_nat_law_slot"), 1);
+    assert_eq!(function_count(&m, "assert_kind_for_manual_anchor"), 1);
+    assert_eq!(function_count(&m, "testgen_concept_for_manual_anchor"), 1);
 }
 
 fn parse_module(source: &str, file: &str) -> v3_compiler::parse_surface::SurfaceModule {

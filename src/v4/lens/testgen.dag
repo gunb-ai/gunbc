@@ -1,6 +1,6 @@
 // src/v4/lens/testgen.dag
-// Scope: T-19 testgen — bootstrap slots, P2 manual-anchor join, Generator subjects.
-// Owns: ConnectiveBootstrapSlot NatLawBootstrapSlot Generator TestgenConcept TypeConstructionSubject AlgebraLawSubject DiagnosticExhaustivenessSubject LensApplicabilitySubject BidirectionalRoundtripSubject
+// Scope: T-19 testgen — P2 manual-anchor join; Generator carries kind + anchor + classification + subject slot.
+// Owns: Generator TestgenConcept TypeConstructionSubject AlgebraLawSubject DiagnosticExhaustivenessSubject LensApplicabilitySubject BidirectionalRoundtripSubject
 // Consumes: v4.std.node v4.std.verification
 // Status: Wave-0 modeled; M2 merge compile + eval T-22.
 
@@ -26,7 +26,8 @@ import v4.std.verification {
   T19ManualNatAddAssociativity,
   T19ManualNatMulLeftIdentity,
   T19ManualNatMulAnnihilator,
-  T19ManualNatMulAssociativity
+  T19ManualNatMulAssociativity,
+  T19ManualAnchorAbsent
 }
 import v4.std.node {
   Node,
@@ -70,28 +71,10 @@ type TestgenConcept
 
 type Generator<C> {
   classification: TestClassification
+  kind: AssertKind
+  t19_anchor: T19ManualAnchorKey
   slot: C
 }
-
-
-type ConnectiveBootstrapSlot
-// 🟢 coproduct dissolution — DECISIONS.md LB-P4-3212
-  = ConjEmptyStub
-  | ConjEqualsReflStub
-  | DisjEmptyStub
-  | ArrowTwoConjStub
-  | CardinalityEmptyStub
-  | InstantiationEmptyStub
-
-
-type NatLawBootstrapSlot
-// 🟢 coproduct dissolution — DECISIONS.md LB-P4-3212
-  = NatAddLeftIdentityStub
-  | NatAddRightIdentityStub
-  | NatAddAssociativityStub
-  | NatMulLeftIdentityStub
-  | NatMulAnnihilatorStub
-  | NatMulAssociativityStub
 
 
 data t19_bootstrap_algebra: Symbol = t19_bootstrap_algebra
@@ -123,117 +106,104 @@ fn bootstrap_tier1_unit_classification() -> TestClassification {
 }
 
 
-fn connective_for_bootstrap_slot(slot: ConnectiveBootstrapSlot) -> Connective {
-  match slot {
-    ConjEmptyStub => Conj
-    ConjEqualsReflStub => Conj
-    DisjEmptyStub => Disj
-    ArrowTwoConjStub => Arrow
-    CardinalityEmptyStub => Cardinality
-    InstantiationEmptyStub => Instantiation
-  }
-}
-
-
-fn connective_bootstrap_assert_kind(slot: ConnectiveBootstrapSlot) -> AssertKind {
-  match slot {
-    ConjEqualsReflStub => Equals
+fn assert_kind_for_manual_anchor(key: T19ManualAnchorKey) -> AssertKind {
+  match key {
+    T19ManualTcConjEqualsRefl => Equals
+    T19ManualNatMulAssociativity => Equals
     _ => Compiles
   }
 }
 
 
-fn connective_bootstrap_anchor(slot: ConnectiveBootstrapSlot) -> T19ManualAnchorKey {
-  match slot {
-    ConjEmptyStub => T19ManualTcConjEmpty
-    ConjEqualsReflStub => T19ManualTcConjEqualsRefl
-    DisjEmptyStub => T19ManualTcDisjEmpty
-    ArrowTwoConjStub => T19ManualTcArrowTwoConj
-    CardinalityEmptyStub => T19ManualTcCardinalityEmpty
-    InstantiationEmptyStub => T19ManualTcInstantiationEmpty
+fn testgen_concept_for_manual_anchor(key: T19ManualAnchorKey) -> TestgenConcept {
+  match key {
+    T19ManualTcConjEmpty =>
+      TypeConstruction {
+        subject: ConnectiveKernel { connective: Conj },
+      }
+    T19ManualTcDisjEmpty =>
+      TypeConstruction {
+        subject: ConnectiveKernel { connective: Disj },
+      }
+    T19ManualTcArrowTwoConj =>
+      TypeConstruction {
+        subject: ConnectiveKernel { connective: Arrow },
+      }
+    T19ManualTcCardinalityEmpty =>
+      TypeConstruction {
+        subject: ConnectiveKernel { connective: Cardinality },
+      }
+    T19ManualTcInstantiationEmpty =>
+      TypeConstruction {
+        subject: ConnectiveKernel { connective: Instantiation },
+      }
+    T19ManualTcConjEqualsRefl =>
+      TypeConstruction {
+        subject: ConnectiveKernel { connective: Conj },
+      }
+    T19ManualNatAddLeftIdentity =>
+      AlgebraLaw {
+        subject: AlgebraLawSubject {
+          algebra: t19_bootstrap_algebra,
+          inhabitant: t19_bootstrap_inhabitant,
+          law: t19_law_nat_add_left_identity,
+        },
+      }
+    T19ManualNatAddRightIdentity =>
+      AlgebraLaw {
+        subject: AlgebraLawSubject {
+          algebra: t19_bootstrap_algebra,
+          inhabitant: t19_bootstrap_inhabitant,
+          law: t19_law_nat_add_right_identity,
+        },
+      }
+    T19ManualNatAddAssociativity =>
+      AlgebraLaw {
+        subject: AlgebraLawSubject {
+          algebra: t19_bootstrap_algebra,
+          inhabitant: t19_bootstrap_inhabitant,
+          law: t19_law_nat_add_associativity,
+        },
+      }
+    T19ManualNatMulLeftIdentity =>
+      AlgebraLaw {
+        subject: AlgebraLawSubject {
+          algebra: t19_bootstrap_algebra,
+          inhabitant: t19_bootstrap_inhabitant,
+          law: t19_law_nat_mul_left_identity,
+        },
+      }
+    T19ManualNatMulAnnihilator =>
+      AlgebraLaw {
+        subject: AlgebraLawSubject {
+          algebra: t19_bootstrap_algebra,
+          inhabitant: t19_bootstrap_inhabitant,
+          law: t19_law_nat_mul_annihilator,
+        },
+      }
+    T19ManualNatMulAssociativity =>
+      AlgebraLaw {
+        subject: AlgebraLawSubject {
+          algebra: t19_bootstrap_algebra,
+          inhabitant: t19_bootstrap_inhabitant,
+          law: t19_law_nat_mul_associativity,
+        },
+      }
+    T19ManualAnchorAbsent =>
+      TypeConstruction {
+        subject: ConnectiveKernel { connective: Conj },
+      }
   }
 }
 
 
-fn type_construction_subject_for_connective_slot(
-  slot: ConnectiveBootstrapSlot
-) -> TypeConstructionSubject {
-  ConnectiveKernel {
-    connective: connective_for_bootstrap_slot(slot: slot)
-  }
-}
-
-
-fn testgen_concept_for_connective_slot(slot: ConnectiveBootstrapSlot) -> TestgenConcept {
-  TypeConstruction {
-    subject: type_construction_subject_for_connective_slot(slot: slot)
-  }
-}
-
-
-fn generator_for_connective_bootstrap_slot(
-  slot: ConnectiveBootstrapSlot
-) -> Generator<TypeConstructionSubject> {
-  let _expected_kind = connective_bootstrap_assert_kind(slot: slot)
+fn bootstrap_claim_generator_for_manual_anchor(
+  key: T19ManualAnchorKey
+) -> Generator<TestgenConcept> {
   Generator {
     classification: bootstrap_tier1_unit_classification(),
-    slot: type_construction_subject_for_connective_slot(slot: slot),
-  }
-}
-
-
-fn nat_law_bootstrap_assert_kind(slot: NatLawBootstrapSlot) -> AssertKind {
-  match slot {
-    NatMulAssociativityStub => Equals
-    _ => Compiles
-  }
-}
-
-
-fn nat_law_bootstrap_anchor(slot: NatLawBootstrapSlot) -> T19ManualAnchorKey {
-  match slot {
-    NatAddLeftIdentityStub => T19ManualNatAddLeftIdentity
-    NatAddRightIdentityStub => T19ManualNatAddRightIdentity
-    NatAddAssociativityStub => T19ManualNatAddAssociativity
-    NatMulLeftIdentityStub => T19ManualNatMulLeftIdentity
-    NatMulAnnihilatorStub => T19ManualNatMulAnnihilator
-    NatMulAssociativityStub => T19ManualNatMulAssociativity
-  }
-}
-
-
-fn law_symbol_for_nat_slot(slot: NatLawBootstrapSlot) -> Symbol {
-  match slot {
-    NatAddLeftIdentityStub => t19_law_nat_add_left_identity
-    NatAddRightIdentityStub => t19_law_nat_add_right_identity
-    NatAddAssociativityStub => t19_law_nat_add_associativity
-    NatMulLeftIdentityStub => t19_law_nat_mul_left_identity
-    NatMulAnnihilatorStub => t19_law_nat_mul_annihilator
-    NatMulAssociativityStub => t19_law_nat_mul_associativity
-  }
-}
-
-
-fn algebra_law_subject_for_nat_slot(slot: NatLawBootstrapSlot) -> AlgebraLawSubject {
-  AlgebraLawSubject {
-    algebra: t19_bootstrap_algebra,
-    inhabitant: t19_bootstrap_inhabitant,
-    law: law_symbol_for_nat_slot(slot: slot),
-  }
-}
-
-
-fn testgen_concept_for_nat_law_slot(slot: NatLawBootstrapSlot) -> TestgenConcept {
-  AlgebraLaw { subject: algebra_law_subject_for_nat_slot(slot: slot) }
-}
-
-
-fn generator_for_nat_law_bootstrap_slot(
-  slot: NatLawBootstrapSlot
-) -> Generator<AlgebraLawSubject> {
-  let _expected_kind = nat_law_bootstrap_assert_kind(slot: slot)
-  Generator {
-    classification: bootstrap_tier1_unit_classification(),
-    slot: algebra_law_subject_for_nat_slot(slot: slot),
+    kind: assert_kind_for_manual_anchor(key: key),
+    t19_anchor: key,
+    slot: testgen_concept_for_manual_anchor(key: key),
   }
 }
