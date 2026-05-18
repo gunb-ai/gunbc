@@ -886,6 +886,22 @@ PROPOSES; it does not decide.
 
 **Verified:** merge-base `92cb26402:src/v4/std/integer.dag` contains **no** `Coproduct dissolution` / `TRACKED 🟡` / `🟢 GREEN` Practice-4 checkpoint blocks on sum coproducts (search-empty). Removed body `//` text was **D2 / modeling prose** already superseded at the ledger level by **DECISIONS.md `D2-REV`**. **`GroupCompletion<M>` constrained-inhabitance** is **not** a coproduct dissolution receipt; verbatim merge-base text is relocated at **`SL-3229-INTEGER-GROUP-COMPLETION`** below (not omitted).
 
+### SL-P7-NAT-IS-ZERO-VPRED — `std/nat.dag` `nat_is_zero` (predicate-dissolution interim)
+
+**Authority:** operator CORE relay (`still-hawk-102` → `jolly-ibex-599` → P7 lane, 2026-05-18).
+
+**Disposition:** **🟡 gated** — `fn nat_is_zero` is a **Practice 10 predicate-dissolution** interim: hand `match` derives the `Nat = Zero | Succ { … }` **variant discriminant** (`Zero => true; Succ => false`) where the canonical surface is a **substrate-derived `Zero`-variant projection** once the discriminant-predicate machinery exists. **Not 🟢 terminal** while a named dissolve target exists.
+
+**`feature:` gate:** coproduct **variant-discriminant predicate** substrate (generated / compiler-owned discriminant API — canonical `is_<Ctor>` / projection family).
+
+**Plan bind:** internal work node **`node://adhoc-2145db6b-69a`** (lane bucket for that substrate).
+
+**Dissolve-on-arrival:** replace `nat_is_zero`’s **body** with the substrate-derived **Zero discriminant** when **`node://adhoc-2145db6b-69a`** closes. **Explicitly forbidden interim “fix”:** rewriting into a **`nat_cata`** / generic fold carrier as **fold laundering** (operator).
+
+**Live substrate tag:** one-line **`// 🟡 gated — …`** immediately precedes `fn nat_is_zero` in `src/v4/std/nat.dag`; header **`// Ledger: … SL-P7-NAT-IS-ZERO-VPRED`**.
+
+**PR receipt:** gunbc **#3255** (P7) + on-thread **#3244** disposition history.
+
 ### SL-3229-INTEGER-GROUP-COMPLETION — `GroupCompletion<M>` constrained-inhabitance gap
 
 Verbatim `//` lines from merge-base `integer.dag` (lines **124–132**):
