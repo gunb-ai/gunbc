@@ -21,8 +21,6 @@ type CsvRow
   = CsvRowZ
   | CsvRowS { field: String, tail: CsvRow }
 
-// Singleton witnesses: normative RFC slice facts are **inhabitance-only** (no Bool negation).
-
 type CsvRfc4180FieldsSeparatedByCommaU002cWitness {}
 
 type CsvRfc4180HorizontalTabRejectedAsFieldSeparatorWitness {}
@@ -52,7 +50,6 @@ type CsvRfc4180RecordLineBreak {
   generator_should_emit_crlf_between_records_per_rfc4180: CsvRfc4180GeneratorEmitsCrlfBetweenRecordsWitness,
 }
 
-// RFC 4180 §2: last record may omit the ending line break; unrelated to COMMA after the last field (forbidden).
 type CsvRfc4180LastRecordEndingLineBreakOptional {}
 
 type CsvRfc4180HeaderRowOptional {}
