@@ -1,7 +1,11 @@
 // src/v4/std/node.dag
 // Scope: v4 substrate root for type and computation nodes.
 // Anchor: THESIS.md "Substrate shape" + MODELING.md.
+<<<<<<< HEAD
 // Owns: Symbol, Hash, Connective, Behavior, NodeKind, EdgeLabel, Edge, Node, NodeFold, fold_node, EdgeDiscipline, connective_edge_discipline, edge_is_named, edge_is_positional, all_edges_named, all_edges_positional, name_occurrences, all_names_distinct, edges_conform, node_locally_well_formed, node_well_formed, is_empty_conj_root, Path, Edit, Diff.
+=======
+// Owns: Symbol, Hash, Connective, Behavior, NodeKind, EdgeLabel, Edge, Node, EdgeDiscipline, connective_edge_discipline, edge_is_named, edge_is_positional, all_edges_named, all_edges_positional, name_occurrences, all_names_distinct, edges_conform, node_locally_well_formed, node_well_formed, is_empty_conj_root, Path, Edit, Diff.
+>>>>>>> 48e1de772 (WIP: Lane A T-6 E1+ — 01_tokenize.dag: lexical grammar-as-data encodings + fa)
 // Consumes: none.
 // Status: T-1 modeled; substrate-extension rule in src/v4/STRUCTURE.md.
 
@@ -133,6 +137,12 @@ fn node_well_formed(n: Node) -> Bool {
   )
 }
 // 🟢 predicate dissolution — DECISIONS.md §CP-1b item 12; docs/audit/dissolution-inventory.md §1.0 R1 (PR #3284); api-review P5 receipt PR #3274 (SG-0 census N/A for v4-only substrate).
+fn is_empty_conj_root(n: Node) -> Bool {
+  match n.kind {
+    TypeNode { connective: Conj } => count(n.children) == 0
+    _ => false
+  }
+}
 fn is_empty_conj_root(n: Node) -> Bool {
   match n.kind {
     TypeNode { connective: Conj } => count(n.children) == 0

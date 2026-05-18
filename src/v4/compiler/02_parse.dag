@@ -17,7 +17,11 @@ import v4.std.diagnostic {
   Locus,
   Outcome,
   PortLocus,
+<<<<<<< HEAD
   UserInputBoundary
+=======
+  UserInputBoundary,
+>>>>>>> 48e1de772 (WIP: Lane A T-6 E1+ — 01_tokenize.dag: lexical grammar-as-data encodings + fa)
 }
 import v4.std.node { Node, Symbol, is_empty_conj_root, node_well_formed }
 
@@ -67,6 +71,7 @@ fn parse(tokens: TokenStream, grammar: Grammar) -> Outcome<ParseTree> {
     port: parse_stage_locus_port
   }
   let ntok = count(tokens.tokens)
+<<<<<<< HEAD
   if node_well_formed(n: grammar) {
     if is_empty_conj_root(n: grammar) {
       if ntok == 0 {
@@ -77,6 +82,16 @@ fn parse(tokens: TokenStream, grammar: Grammar) -> Outcome<ParseTree> {
         Rejected {
           diagnostic: parse_g0_tokens_remain_diagnostic(at: at)
         }
+=======
+  if !node_well_formed(n: grammar) {
+    Rejected {
+      diagnostic: parse_grammar_not_well_formed_diagnostic(at: at)
+    }
+  } else if is_empty_conj_root(n: grammar) {
+    if ntok == 0 {
+      Produced {
+        value: grammar
+>>>>>>> 48e1de772 (WIP: Lane A T-6 E1+ — 01_tokenize.dag: lexical grammar-as-data encodings + fa)
       }
     } else {
       Rejected {
