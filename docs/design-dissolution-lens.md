@@ -234,9 +234,14 @@ non-finding).
 - *Signature:* a `String` field carrying a structural role tag whose role
   is registered by a `CanonicalCarrier<T>` row as superseded by a typed
   carrier in scope. This generalizes L1.6 from emitter templates to domain
-  strings.
+  strings. `CanonicalCarrier<T>` is not introduced as a new standalone
+  authority here; it names the future derived view over the existing substrate
+  homes for role-bearing carriers, including `extdeps/process.dag` `Command`
+  for command text.
 - *Decidable:* yes — registry membership and role-tag refinements are
-  parsed-model facts. No hardcoded `command` / `path` / `url` name table.
+  parsed-model facts once that derived view exists. Until then, L1.10 is gated
+  on the role-carrier registry task and must not be implemented by a hardcoded
+  `command` / `path` / `url` name table.
 - *Verdict:* hard error.
 - *Escape:* untagged strings, or role tags with no canonical carrier row
   in scope, pass.
@@ -337,7 +342,7 @@ from real evidence, not speculation.
 | 2026-05-18 | #3249 | `free_monoid_is_empty` laundered through a fold | discriminant ≠ catamorphism; do not conflate | L1.1 (extended) |
 | 2026-05-18 | `src/v4/DECISIONS.md` Part 6 `SL-3229-LLVM-WIDTH` / `SL-3229-FLOAT-NOMINAL`; `docs/audit/dissolution-inventory.md` P1 | raw width / nominal-width facts carried by names or comments instead of bounded cardinality structure | facts live in substrate structure, not comments or names | L1.7 |
 | 2026-05-18 | `src/v4/DECISIONS.md` `SL-P7-NAT-COMPARE-VPRED`; `docs/audit/dissolution-inventory.md` P6 | `nat_compare` originally homed under `std/float.dag` while the primary concept is `Nat` | operations live with their primary concept | L1.8 |
-| 2026-05-18 | codex review on design commit `cfbc247c0`, resolved by `3fb3e4dfc`; concrete shape: `node_locally_well_formed`-class asymmetric match arms | exhaustive shape is not evidence of actual validation | L1.9 |
+| 2026-05-18 | codex review on design commit `cfbc247c0`, resolved by `3fb3e4dfc`; live home: compiler-side local well-formedness predicates until migrated into `.dag`; dissolve trigger: reject or require closed-token justification for asymmetric trivial match arms in substrate files | exhaustive shape is not evidence of actual validation | L1.9 |
 | 2026-05-18 | `src/v4/DECISIONS.md` `LB-P4-3213`; process `Command` target from #3209 | `CiCommand::ShellCommand { command: String }` while `extdeps/process.dag` models a typed `Command` | typed domain facts must not tunnel through strings | L1.10 |
 | 2026-05-18 | `docs/design-effect-enumeration-resource-threading.md` §2.4 / §8.1; `docs/design-transport-taxonomy.md` `derive_effect_shape` migration | `None => CreateEffect`-style fabricated sibling fallback in effect-shape derivation | missing facts reject; they do not guess a plausible variant | L1.11 |
 | 2026-05-18 | `src/v4/DECISIONS.md` D2 / D2-REV; `docs/briefs/t-ground-languagespec.md` parallel-authority dissolution | duplicated type homes without alias / retirement / migration | one concept has one structural authority | L1.12 |
