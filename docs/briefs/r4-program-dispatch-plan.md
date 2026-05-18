@@ -125,9 +125,9 @@ first) · `DESIGN` · `OP` (operator ruling) · `CP1` (needs v4 front-end output
   #3171, and any sibling pre-#3240 models) likely carry a **fact-bundle REWORK
   obligation that is itself Practice-10/#3240-keystone-gated** — the *same*
   class as T-4 ×5 and #3280 A-vs-B. "LANDED" ≠ "done": ratifying the
-  **keystone-fold edit PR** (the not-yet-drafted modeling-discipline.md fold —
-  *not* the closed #3240 tracker) also scopes their rework. This **widens the
-  keystone's blast radius** (see §3).
+  **verbatim invariant** (`modeling-discipline.md` ~§594–600 — the fold is
+  already on main; *not* the closed #3240 tracker) also scopes their
+  rework. This **widens the keystone's blast radius** (see §3).
 - **Coord flag:** T-29 residual #3277's worker (quick-bat-761) is **not in the
   T-4-mgr subtree** (absent from the graph). §2 attribution corrected to
   "open"; reparent/attribution routes via the owning manager, not assumed.
