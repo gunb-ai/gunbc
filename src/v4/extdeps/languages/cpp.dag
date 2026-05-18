@@ -26,11 +26,14 @@
 //
 // Consumes:
 //   - std/logic.dag: Bool (kernel-ambient; alias-identity below)
+//   - extdeps/cpp_target_abi.dag: T-29 ABI width / data-model feeder (LP64 /
+//     LLP64 / ILP32 alias table + default omni pin — not guessed here).
 //   - the std/ scalar files (integer/float/text) when their C++ alias
 //     targets land. No std/algebra.dag import in this slice because
 //     D2 forbids per-language algebra re-declaration.
 //
-// Status: T-4 cpp D2-resolver modeled 2026-05-16 (sunny-cat-482).
+// Status: T-4 cpp D2-resolver modeled 2026-05-16 (sunny-cat-482). T-29
+//   `cpp_target_abi.dag` feeder seam 2026-05-18 (swift-lynx-410).
 //   Mirrors the canonical rust.dag D2-resolver DISCIPLINE from PR
 //   #3174 at 0328bee9: resolver facts only, no per-language algebra
 //   inhabitance, no IrToCpp string table, no grammar operation stub.
@@ -41,6 +44,13 @@
 // ratification (substrate extension = stop signal).
 
 module v4.extdeps.languages.cpp
+
+
+import v4.extdeps.cpp_target_abi { CppScalarDataModelTag }
+
+// Re-export receipt: cpp.dag consumers depend on this import edge for the
+// ABI tag vocabulary without re-declaring the T-29 sum (INVARIANTS P2).
+type CppScalarDataModel = CppScalarDataModelTag
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -258,9 +268,10 @@ type CppBool = Bool
 //                        target implementation model for source type →
 //                        width mapping (LP64/LLP64/ILP32 or successor).
 //   - dissolution trigger
-//                        when std/integer.dag lands the signed ladder
-//                        AND the C++ target data-model resolver can pick
-//                        the width without guessing.
+//                        when std/integer.dag ladder + T-29
+//                        `cpp_target_abi.dag` per-model rows (`Cpp_LP64_*`,
+//                        `Cpp_LLP64_*`, `Cpp_ILP32_*`) select each rank's
+//                        std carrier for the active `CppScalarDataModelTag`.
 //
 // C++ unsigned core integers — unsigned short int / unsigned int /
 //                              unsigned long int / unsigned long long int

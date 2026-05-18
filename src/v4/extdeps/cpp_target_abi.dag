@@ -1,0 +1,109 @@
+// src/v4/extdeps/cpp_target_abi.dag
+//
+// Scope: C++ **target / ABI scalar width** facts — named intersubjective data
+//        layouts (LP64, LLP64, ILP32) mapping C++ implementation-defined
+//        integer ranks (`short`, `int`, `long`, `long long`, `wchar_t`,
+//        `size_t`, `ptrdiff_t`, `signed char`, `unsigned char`) onto the
+//        std/ `Int*` / `UInt*` / platform-width ladder from T-3.
+// Anchor: ISO C++ ([basic.fundamental]) fixes ordering and minimum widths;
+//         **per-rank bit width** for `int` / `long` / pointer-sized types is
+//         not a language constant — it is the ABI documented here.
+//         LP64 / LLP64 / ILP32 names follow de-facto industry usage (System V
+//         AMD64 LP64; Windows x64 LLP64; 32-bit ILP32). `wchar_t` width is
+//         platform convention (UTF-16 code unit on Windows; 32-bit on common
+//         POSIX 32- and 64-bit Unix) and is authored as an explicit per-model
+//         row, not guessed inside `cpp.dag`.
+// Owns: `CppScalarDataModelTag`, default omni pin data, per-model D2a(1)
+//       alias-identity rows from each ABI-local name to `std/integer.dag`
+//       carriers (TASKS.md T-29 — side-branch feeder of T-4 cpp slice).
+// Consumes: v4.std.integer (fixed-width + platform-width ladder only).
+// Status: T-29 feeder landed — unblocks cpp.dag integer alias rows from the
+//         prior “width unknown” 🟡 scaffold (see `cpp.dag` dissolution notes).
+//
+// Ledger — Practice 4 (modeling-discipline.md): `CppScalarDataModelTag` is a
+// 🟢 GREEN terminal coproduct — LP64 / LLP64 / ILP32 are mutually exclusive
+// alternatives for one executable binding, not simultaneous coordinates.
+
+module v4.extdeps.cpp_target_abi
+
+
+import v4.std.integer {
+  Int8,
+  Int16,
+  Int32,
+  Int64,
+  UInt8,
+  UInt16,
+  UInt32,
+  UInt64,
+  IntPlatform,
+  UIntPlatform
+}
+
+
+// ═════════════════════════════════════════════════════════════════════
+// Closed tag for the version-pinned / checked multi-target binding.
+// Extend only with operator ratification (STRUCTURE.md closed tree).
+// ═════════════════════════════════════════════════════════════════════
+type CppScalarDataModelTag
+  = CppScalarDataModelLP64
+  | CppScalarDataModelLLP64
+  | CppScalarDataModelILP32
+
+// POSIX-shaped omni default (Linux / macOS class); Windows toolchains must
+// select `CppScalarDataModelLLP64` explicitly at bind time — not implied here.
+data cpp_scalar_data_model_posix_default: CppScalarDataModelTag = CppScalarDataModelLP64
+
+
+// ─────────────────────────────────────────────────────────────────────
+// LP64 — `int`=32, `long`=64, `long long`=64, pointer=64 (System V class).
+// ─────────────────────────────────────────────────────────────────────
+type Cpp_LP64_signed_short = Int16
+type Cpp_LP64_signed_int = Int32
+type Cpp_LP64_signed_long = Int64
+type Cpp_LP64_signed_long_long = Int64
+type Cpp_LP64_unsigned_short = UInt16
+type Cpp_LP64_unsigned_int = UInt32
+type Cpp_LP64_unsigned_long = UInt64
+type Cpp_LP64_unsigned_long_long = UInt64
+type Cpp_LP64_size_t = UIntPlatform
+type Cpp_LP64_ptrdiff_t = IntPlatform
+type Cpp_LP64_wchar_t = UInt32
+type Cpp_LP64_signed_char = Int8
+type Cpp_LP64_unsigned_char = UInt8
+
+
+// ─────────────────────────────────────────────────────────────────────
+// LLP64 — `int`=32, `long`=32, `long long`=64, pointer=64 (Windows x64).
+// ─────────────────────────────────────────────────────────────────────
+type Cpp_LLP64_signed_short = Int16
+type Cpp_LLP64_signed_int = Int32
+type Cpp_LLP64_signed_long = Int32
+type Cpp_LLP64_signed_long_long = Int64
+type Cpp_LLP64_unsigned_short = UInt16
+type Cpp_LLP64_unsigned_int = UInt32
+type Cpp_LLP64_unsigned_long = UInt32
+type Cpp_LLP64_unsigned_long_long = UInt64
+type Cpp_LLP64_size_t = UIntPlatform
+type Cpp_LLP64_ptrdiff_t = IntPlatform
+type Cpp_LLP64_wchar_t = UInt16
+type Cpp_LLP64_signed_char = Int8
+type Cpp_LLP64_unsigned_char = UInt8
+
+
+// ─────────────────────────────────────────────────────────────────────
+// ILP32 — `int`=32, `long`=32, `long long`=64, pointer=32 (32-bit class).
+// ─────────────────────────────────────────────────────────────────────
+type Cpp_ILP32_signed_short = Int16
+type Cpp_ILP32_signed_int = Int32
+type Cpp_ILP32_signed_long = Int32
+type Cpp_ILP32_signed_long_long = Int64
+type Cpp_ILP32_unsigned_short = UInt16
+type Cpp_ILP32_unsigned_int = UInt32
+type Cpp_ILP32_unsigned_long = UInt32
+type Cpp_ILP32_unsigned_long_long = UInt64
+type Cpp_ILP32_size_t = UIntPlatform
+type Cpp_ILP32_ptrdiff_t = IntPlatform
+type Cpp_ILP32_wchar_t = UInt32
+type Cpp_ILP32_signed_char = Int8
+type Cpp_ILP32_unsigned_char = UInt8
