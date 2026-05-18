@@ -280,7 +280,7 @@ Non-Bool C++ scalar ladder in this slice: **tracked** — 🟡 `feature:t4-cpp-s
 
 | Carrier | Classification | Ledger result |
 |---------|----------------|---------------|
-| `CppBool` | 🟢 GREEN terminal | Same dissolution posture as `RustBool` (`rust.dag`): kernel `CppBool = Bool` + `cpp_bool_grounding` cites std coincidence for the C++ `bool` spelling (Practice 8 / D2-REV). |
+| `CppBool` | 🟢 GREEN terminal | **C++ authority:** ISO C++ `bool` keyword / fundamental boolean type (`https://eel.is/c++draft/lex.key` — mirrored by `cpp.dag` `Anchor:`). `CppBool = Bool` + `cpp_bool_grounding { spelling: \"bool\" }` is the lexical spelling read for kernel-ambient `Bool` coincidence (Practice 8 / D2-REV). `rust.dag` `RustBool` is a sibling pattern only, not the C++ spec source. |
 
 ## OS-1 — #3209 Coproduct Dissolution And Scaffold Record
 

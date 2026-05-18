@@ -22,6 +22,8 @@ type CppIntegerOverflowDisposition
   = RepresentableResultRequired
   | UnsignedModuloArithmetic
 
+
+// Anchor: https://eel.is/c++draft/lex.key
 type CppBool = Bool
 
 data cpp_bool_grounding: GroundingMap<CppBool> = {
