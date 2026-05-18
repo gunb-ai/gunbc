@@ -1305,9 +1305,13 @@ Merge-base `verilog.dag` Practice-4 headers marked **🟡 YELLOW** under the **#
 
 **Dissolution trigger:** first meaning-consumer owes the structural decomposition named in each carrier’s merge-base footer (D2 / synthesis / elaboration consumers — not a verilog-local mint).
 
-### SL-3229-VERILOG-VECTOR-RANGE — `VectorRange` lexeme-pair bridge (constant_expression)
+### SL-3229-VERILOG-VECTOR-RANGE — CLOSED: `VectorRange` constant_expression endpoints
 
-Verbatim `//` lines from merge-base `verilog.dag` (lines **585–627** — `VectorRange` + 🟡 three-bridge note):
+Closed by the P8 Verilog sub-grammar landing: `src/v4/extdeps/languages/verilog.dag`
+now declares `ConstantExpression` and supporting constant-expression carriers,
+and `VectorRange` stores `msb: ConstantExpression` / `lsb: ConstantExpression`
+instead of raw lexeme strings. Historical merge-base context (lines **585–627**)
+is retained below for auditability:
 
 ```text
 
@@ -1364,7 +1368,8 @@ type VectorRange {
 
 ```
 
-**Dissolution trigger:** bundled T-4 LanguageModel `constant_expression` productions land; lexeme pair parses to AST (merge-base text).
+**Dissolution result:** P8 landed; no live `SL-3229-VERILOG-VECTOR-RANGE`
+slug remains on `verilog.dag`'s `// Ledger:` line.
 
 ### SL-3229-VERILOG-COST — raw-`Int` Verilog cost axes (`VerilogCost`)
 
@@ -1527,7 +1532,7 @@ Merge-base `92cb26402` **Practice-4** `// Coproduct dissolution … 🟢 GREEN (
 | File | GREEN ledger blocks (merge-base `rg` count) |
 |------|-----------------------------------------------|
 | `src/v4/extdeps/languages/llvm_ir.dag` | 29 |
-| `src/v4/extdeps/languages/verilog.dag` | 41 |
+| `src/v4/extdeps/languages/verilog.dag` | 45 |
 | `src/v4/extdeps/languages/ptx.dag` | 13 |
 | `src/v4/extdeps/languages/go.dag` | 10 |
 | `src/v4/extdeps/languages/python.dag` | 3 |

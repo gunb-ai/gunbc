@@ -1,10 +1,10 @@
 // src/v4/extdeps/languages/verilog.dag
 // Scope: IEEE 1364-2005 Verilog structural carriers (T-4.9).
-// Owns: PortDirection, NonTriregNetKind, NetType, EdgeTrigger, ProceduralAssignKind, VectorRange, PackingShape, NetVectoredPacking, Signedness, DriveStrengthClause, ChargeStrengthClause, DelayClause, AttributeInstanceClause, VectorednessClause, UnpackedDimensionsClause, VariableInitializerClause, NetDeclaration, NetAssignmentDeclarator, NetIdentifierDeclarator, VariableDeclaration, VariableDeclarator, OutputPortAnsiNetTypeKind, OutputPortAnsiVariableTypeKind, NonAnsiPort, AnsiNetPortType, AnsiPortDeclaration, AnsiHeaderPort, AnsiOutputPortDeclarator, ParameterTypeKind, ParameterAssignment, ParameterDeclaration, SensitivityItem, NetAssignment, ContinuousAssign, AlwaysBlock, AlwaysBlockSensitivity, InitialBlock, PortConnectionActual, OrderedPortConnection, NamedPortConnection, PortConnections, ParameterOverrideActual, NamedParameterOverride, ParameterOverrides, InstanceRangeClause, ModuleInstance, ModuleInstantiation, DefparamAssignment, DefparamDeclaration, GenerateRegion, LoopGenerateConstruct, ConditionalGenerateConstruct, SpecifyBlock, LifetimeClause, FunctionReturnTypeClause, TaskDeclaration, FunctionDeclaration, EventDeclarator, EventDeclaration, GenvarDeclaration, LocalParameterDeclaration, PrimitiveGateKind, GateInstantiation, UdpInstanceName, UdpInstance, UdpInstantiation, UdpDefinition, SpecparamAssignment, SpecparamDeclaration, AnsiModuleItem, NonAnsiModuleItem, ModuleParameterPortList, ModuleKeyword, VerilogModule, VerilogCost
+// Owns: PortDirection, NonTriregNetKind, NetType, EdgeTrigger, ProceduralAssignKind, ConstantUnaryOperator, ConstantBinaryOperator, ConstantPrimary, ConstantFunctionCall, ConstantConcatenation, ConstantMultipleConcatenation, ConstantExpression, VectorRange, PackingShape, NetVectoredPacking, Signedness, DriveStrengthClause, ChargeStrengthClause, DelayClause, AttributeInstanceClause, VectorednessClause, UnpackedDimensionsClause, VariableInitializerClause, NetDeclaration, NetAssignmentDeclarator, NetIdentifierDeclarator, VariableDeclaration, VariableDeclarator, OutputPortAnsiNetTypeKind, OutputPortAnsiVariableTypeKind, NonAnsiPort, AnsiNetPortType, AnsiPortDeclaration, AnsiHeaderPort, AnsiOutputPortDeclarator, ParameterTypeKind, ParameterAssignment, ParameterDeclaration, SensitivityItem, NetAssignment, ContinuousAssign, AlwaysBlock, AlwaysBlockSensitivity, InitialBlock, PortConnectionActual, OrderedPortConnection, NamedPortConnection, PortConnections, ParameterOverrideActual, NamedParameterOverride, ParameterOverrides, InstanceRangeClause, ModuleInstance, ModuleInstantiation, DefparamAssignment, DefparamDeclaration, GenerateRegion, LoopGenerateConstruct, ConditionalGenerateConstruct, SpecifyBlock, LifetimeClause, FunctionReturnTypeClause, TaskDeclaration, FunctionDeclaration, EventDeclarator, EventDeclaration, GenvarDeclaration, LocalParameterDeclaration, PrimitiveGateKind, GateInstantiation, UdpInstanceName, UdpInstance, UdpInstantiation, UdpDefinition, SpecparamAssignment, SpecparamDeclaration, AnsiModuleItem, NonAnsiModuleItem, ModuleParameterPortList, ModuleKeyword, VerilogModule, VerilogCost
 // Consumes: std/node.dag; Int kernel-ambient.
 // Status: T-4.9 PASS (IN-B); import v4.std.node Symbol only.
 // Anchor: https://standards.ieee.org/ieee/1364/3641/
-// Ledger: DECISIONS.md Part 6 (PR #3229): CP-3229-GREEN-TERMINAL, SL-3229-VERILOG-COST, SL-3229-VERILOG-D3200, SL-3229-VERILOG-NONEMPTY, SL-3229-VERILOG-VECTOR-RANGE.
+// Ledger: DECISIONS.md Part 6 (PR #3229): CP-3229-GREEN-TERMINAL, SL-3229-VERILOG-COST, SL-3229-VERILOG-D3200, SL-3229-VERILOG-NONEMPTY.
 
 module v4.extdeps.languages.verilog
 
@@ -57,9 +57,87 @@ type ProceduralAssignKind
   | NonBlocking
 
 
+// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
+type ConstantUnaryOperator
+  = ConstUnaryPlus
+  | ConstUnaryMinus
+  | ConstUnaryLogicalNot
+  | ConstUnaryBitwiseNot
+  | ConstUnaryReductionAnd
+  | ConstUnaryReductionNand
+  | ConstUnaryReductionOr
+  | ConstUnaryReductionNor
+  | ConstUnaryReductionXor
+  | ConstUnaryReductionXnor
+
+
+// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
+type ConstantBinaryOperator
+  = ConstBinaryAdd
+  | ConstBinarySub
+  | ConstBinaryMul
+  | ConstBinaryDiv
+  | ConstBinaryMod
+  | ConstBinaryEq
+  | ConstBinaryNe
+  | ConstBinaryCaseEq
+  | ConstBinaryCaseNe
+  | ConstBinaryLogicalAnd
+  | ConstBinaryLogicalOr
+  | ConstBinaryPower
+  | ConstBinaryLt
+  | ConstBinaryLe
+  | ConstBinaryGt
+  | ConstBinaryGe
+  | ConstBinaryBitwiseAnd
+  | ConstBinaryBitwiseOr
+  | ConstBinaryBitwiseXor
+  | ConstBinaryBitwiseXnor
+  | ConstBinaryLogicalShiftLeft
+  | ConstBinaryLogicalShiftRight
+  | ConstBinaryArithmeticShiftLeft
+  | ConstBinaryArithmeticShiftRight
+
+
+// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
+type ConstantPrimary
+  = ConstantNumber { lexeme: String }
+  | ConstantIdentifier { name: Symbol }
+  | ConstantHierarchicalIdentifier { path: List<Symbol> }
+  | ConstantFunctionCallPrimary { call: ConstantFunctionCall }
+  | ConstantConcatenationPrimary { concatenation: ConstantConcatenation }
+  | ConstantMultipleConcatenationPrimary { multiple: ConstantMultipleConcatenation }
+  | ConstantMinTypMaxPrimary { min: ConstantExpression, typ: ConstantExpression, max: ConstantExpression }
+
+
+type ConstantFunctionCall {
+  function_name: Symbol
+  arguments: List<ConstantExpression>
+}
+
+
+type ConstantConcatenation {
+  expressions: List<ConstantExpression>
+}
+
+
+type ConstantMultipleConcatenation {
+  repeat_count: ConstantExpression
+  concatenation: ConstantConcatenation
+}
+
+
+// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
+type ConstantExpression
+  = ConstantPrimaryExpression { primary: ConstantPrimary }
+  | ConstantUnaryExpression { op: ConstantUnaryOperator, operand: ConstantExpression }
+  | ConstantBinaryExpression { lhs: ConstantExpression, op: ConstantBinaryOperator, rhs: ConstantExpression }
+  | ConstantConditionalExpression { condition: ConstantExpression, if_true: ConstantExpression, if_false: ConstantExpression }
+
+
 type VectorRange {
-  msb_lexeme: String
-  lsb_lexeme: String
+  msb: ConstantExpression
+  lsb: ConstantExpression
 }
 
 
