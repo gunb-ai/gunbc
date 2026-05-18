@@ -1506,6 +1506,8 @@ Verbatim `//` lines from merge-base `float.dag` (lines **104–144** — modelin
 
 **Bounded use:** consumers may treat produced `JsonObject` values as duplicate-free by construction, but must not claim this carrier represents all RFC 8259 duplicate-name byte streams.
 
+**Roll-up:** `docs/audit/dissolution-inventory.md` §1.1 row **P3** (`json.dag` in-file gate; rolls with **`SL-3229-T4-FORMAT-T6T7`** on the compiler pipeline / **T-4.6** format backlog named in that row).
+
 ### SL-3229-TOML-TABLE-SYNTAX — inline-table vs table construction syntax
 
 **Gate (live cite, Practice 9):** `🟡 gated — feature: TOML inline-table/table construction syntax collapse`
