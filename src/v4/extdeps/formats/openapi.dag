@@ -1,25 +1,461 @@
 // src/v4/extdeps/formats/openapi.dag
-//
-// Scope: OpenAPI Specification model — REST API contract description. Direction-agnostic.
-// Anchor: https://spec.openapis.org/oas/v3.1.0 (OpenAPI Specification v3.1.0)
-//
-// Owns:
-//   - OpenApiSpec { info, servers, paths, components, ... }
-//   - Path { operations: Map<HttpMethod, Operation> }
-//   - Operation { parameters, request_body, responses, ... }
-//   - parse(String) -> Result<OpenApiSpec, Diagnostic>  (YAML or JSON input)
-//   - emit(OpenApiSpec) -> String  (typically YAML)
-//   - Type derivation from components.schemas (delegates to json_schema.dag)
-//
-// Consumes:
-//   - std/node.dag, std/diagnostic.dag, std/collection.dag
-//   - extdeps/formats/json_schema.dag: schema modeling
-//   - extdeps/formats/yaml.dag, extdeps/formats/json.dag: parse surface
-//
-// Status: scaffold — fill per TASKS.md T-4.6
-// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
-// contract for the worker. Splitting this file requires explicit operator
-// ratification (substrate extension = stop signal).
+// Scope: OpenAPI 3.1.0 document slice; Lane C (TASKS.md T-4.6).
+// Owns: OpenApiComponents, OpenApiComponentsDeferredKey, OpenApiComponentsMapKey, OpenApiComponentsPathItemsSlot, OpenApiComponentsSchemasSlot, OpenApiComponentsSlot, OpenApiContact, OpenApiContactSlot, OpenApiDocument, OpenApiDocumentRoot, OpenApiHeaderContentSingle, OpenApiHeaderDeferredKey, OpenApiHeaderDeprecatedSlot, OpenApiHeaderObject, OpenApiHeaderOrReference, OpenApiHeaderPayloadSlot, OpenApiHeaderRequiredSlot, OpenApiHeadersSlot, OpenApiHttpMethod, OpenApiInfo, OpenApiLicense, OpenApiLicenseSlot, OpenApiLicenseUrlOrIdentifierSlot, OpenApiLinkDeferredKey, OpenApiLinkObject, OpenApiLinkOrReference, OpenApiLinkTarget, OpenApiMediaType, OpenApiMediaTypeDeferredKey, OpenApiMediaTypeSchemaSlot, OpenApiOpenapiField3_1, OpenApiOpenapiObjectDeferredKey, OpenApiOperation, OpenApiOperationDeferredKey, OpenApiOptionalString, OpenApiPathItem, OpenApiPathItemDeferredKey, OpenApiPathItemOrReference, OpenApiPathTemplateKey, OpenApiPaths, OpenApiPathsSlot, OpenApiReferenceObject, OpenApiResponse, OpenApiResponseContentSlot, OpenApiResponseKey, OpenApiResponseKeyNonDefault, OpenApiResponseKeyWildcardKind, OpenApiResponseOrReference, OpenApiResponses, OpenApiResponsesDefaultSlot, OpenApiResponsesPrimaryEntry, OpenApiSchema, OpenApiSchemaOasMemberKey, OpenApiSpecificationExtensionKey, OpenApiStatusDigit, OpenApiStatusHundreds, OpenApiWebhooks, OpenApiWebhooksSlot
+// Consumes: std/node.dag, std/diagnostic.dag, std/collection.dag, std/nat.dag, extdeps/formats/json_schema.dag, extdeps/formats/json.dag, extdeps/formats/yaml.dag
+// Status: scaffold — TASKS.md T-4.6
+// Anchor: https://spec.openapis.org/oas/v3.1.0
 
 module v4.extdeps.formats.openapi
 
+
+import v4.extdeps.formats.json { JsonValue }
+import v4.extdeps.formats.json_schema { JsonSchema }
+import v4.std.nat { Nat }
+
+
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiSpecificationExtensionKey
+// OAS 3.1 Specification Extensions: wire keys MUST begin with `x-`; `x-oai-` / `x-oas-` are reserved (OAS authority).
+// Wire recon: `OpenApiSpecExtensionOaiReserved` → `"x-oai-" ++ remainder`; `OpenApiSpecExtensionOasReserved` → `"x-oas-" ++ remainder`;
+// `OpenApiSpecExtensionVendor` → `"x-" ++ after_x_hyphen` where the full key does **not** start with `x-oai-` or `x-oas-` (else parse/Diagnostic).
+type OpenApiSpecificationExtensionKey
+  = OpenApiSpecExtensionOaiReserved { remainder: String }
+  | OpenApiSpecExtensionOasReserved { remainder: String }
+  | OpenApiSpecExtensionVendor { after_x_hyphen: String }
+
+
+type OpenApiComponentsMapKey {
+  name: String,
+}
+
+
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiOpenapiObjectDeferredKey
+type OpenApiOpenapiObjectDeferredKey
+  = OpenApiOpenapiDeferredServers
+  | OpenApiOpenapiDeferredSecurity
+  | OpenApiOpenapiDeferredTags
+  | OpenApiOpenapiDeferredExternalDocs
+
+
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiOperationDeferredKey
+type OpenApiOperationDeferredKey
+  = OpenApiOpDeferredTags
+  | OpenApiOpDeferredSummary
+  | OpenApiOpDeferredDescription
+  | OpenApiOpDeferredExternalDocs
+  | OpenApiOpDeferredParameters
+  | OpenApiOpDeferredRequestBody
+  | OpenApiOpDeferredCallbacks
+  | OpenApiOpDeferredSecurity
+  | OpenApiOpDeferredServers
+  | OpenApiOpDeferredDeprecated
+
+
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiPathItemDeferredKey
+type OpenApiPathItemDeferredKey
+  = OpenApiPathDeferredDollarRef
+  | OpenApiPathDeferredSummary
+  | OpenApiPathDeferredDescription
+  | OpenApiPathDeferredServers
+  | OpenApiPathDeferredParameters
+
+
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiComponentsDeferredKey
+type OpenApiComponentsDeferredKey
+  = OpenApiComponentsDeferredResponses
+  | OpenApiComponentsDeferredParameters
+  | OpenApiComponentsDeferredRequestBodies
+  | OpenApiComponentsDeferredHeaders
+  | OpenApiComponentsDeferredSecuritySchemes
+  | OpenApiComponentsDeferredExamples
+  | OpenApiComponentsDeferredLinks
+  | OpenApiComponentsDeferredCallbacks
+
+
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiMediaTypeDeferredKey
+type OpenApiMediaTypeDeferredKey
+  = OpenApiMediaDeferredExample
+  | OpenApiMediaDeferredExamples
+  | OpenApiMediaDeferredEncoding
+
+
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiHeaderDeferredKey
+type OpenApiHeaderDeferredKey
+  = OpenApiHeaderDeferredStyle
+  | OpenApiHeaderDeferredExplode
+  | OpenApiHeaderDeferredExample
+  | OpenApiHeaderDeferredExamples
+
+
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiLinkDeferredKey
+type OpenApiLinkDeferredKey
+  = OpenApiLinkDeferredParameters
+  | OpenApiLinkDeferredRequestBody
+  | OpenApiLinkDeferredServer
+
+
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiSchemaOasMemberKey
+type OpenApiSchemaOasMemberKey
+  = OpenApiSchemaOasDiscriminator
+  | OpenApiSchemaOasXml
+  | OpenApiSchemaOasExternalDocs
+  | OpenApiSchemaOasExample
+
+
+// OAS 3.1 Schema Object — JSON Schema + OAS-only members + `x-*` + string-keyed wire deferrals
+// (https://spec.openapis.org/oas/v3.1.0.html#schema-object); `openapi_schema_deferred_keyword_members`
+// holds keys outside `core` / `openapi_schema_oas_members` / `openapi_schema_specification_extensions`.
+type OpenApiSchema {
+  core: JsonSchema,
+  openapi_schema_oas_members: Map<OpenApiSchemaOasMemberKey, JsonValue>,
+  openapi_schema_specification_extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,
+  openapi_schema_deferred_keyword_members: Map<String, JsonValue>,
+}
+
+
+// 🟢 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiHttpMethod
+type OpenApiHttpMethod
+  = OpenApiGet
+  | OpenApiPut
+  | OpenApiPost
+  | OpenApiDelete
+  | OpenApiOptions
+  | OpenApiHead
+  | OpenApiPatch
+  | OpenApiTrace
+
+
+// 🟢 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiOptionalString
+type OpenApiOptionalString
+  = OpenApiStringPresent { value: String }
+  | OpenApiStringAbsent
+
+
+type OpenApiReferenceObject {
+  dollar_ref: String,
+  summary: OpenApiOptionalString,
+  description: OpenApiOptionalString,
+}
+
+
+// 🟢 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiHeaderRequiredSlot
+type OpenApiHeaderRequiredSlot
+  = OpenApiHeaderRequiredAbsent
+  | OpenApiHeaderRequiredPresent { value: Bool }
+
+
+// 🟢 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiHeaderDeprecatedSlot
+type OpenApiHeaderDeprecatedSlot
+  = OpenApiHeaderDeprecatedAbsent
+  | OpenApiHeaderDeprecatedPresent { value: Bool }
+
+
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiLinkTarget
+type OpenApiLinkTarget
+  = OpenApiLinkTargetOperationId { operation_id: String }
+  | OpenApiLinkTargetOperationRef { operation_ref: String }
+
+
+type OpenApiLinkObject {
+  target: OpenApiLinkTarget,
+  description: OpenApiOptionalString,
+  link_deferred_members: Map<OpenApiLinkDeferredKey, JsonValue>,
+  link_specification_extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,
+}
+
+
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiLinkOrReference
+type OpenApiLinkOrReference
+  = OpenApiLinkInline { link: OpenApiLinkObject }
+  | OpenApiLinkReference { reference: OpenApiReferenceObject }
+
+
+type OpenApiContact {
+  name: OpenApiOptionalString,
+  url: OpenApiOptionalString,
+  email: OpenApiOptionalString,
+  contact_extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,
+}
+
+
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiContactSlot
+type OpenApiContactSlot
+  = OpenApiContactPresent { contact: OpenApiContact }
+  | OpenApiContactAbsent
+
+
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiLicenseUrlOrIdentifierSlot
+type OpenApiLicenseUrlOrIdentifierSlot
+  = OpenApiLicenseUrlPresent { url: String }
+  | OpenApiLicenseIdentifierPresent { identifier: String }
+  | OpenApiLicenseUrlOrIdentifierNeither
+
+
+type OpenApiLicense {
+  name: String,
+  url_or_identifier: OpenApiLicenseUrlOrIdentifierSlot,
+  license_extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,
+}
+
+
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiLicenseSlot
+type OpenApiLicenseSlot
+  = OpenApiLicensePresent { license: OpenApiLicense }
+  | OpenApiLicenseAbsent
+
+
+type OpenApiInfo {
+  title: String,
+  summary: OpenApiOptionalString,
+  description: OpenApiOptionalString,
+  terms_of_service: OpenApiOptionalString,
+  contact: OpenApiContactSlot,
+  license: OpenApiLicenseSlot,
+  version: String,
+  info_specification_extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,
+}
+
+
+type OpenApiMediaType {
+  schema_shape: OpenApiMediaTypeSchemaSlot,
+  media_type_deferred_members: Map<OpenApiMediaTypeDeferredKey, JsonValue>,
+  media_type_specification_extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,
+}
+
+
+type OpenApiHeaderContentSingle {
+  media_type: String,
+  media: OpenApiMediaType,
+}
+
+
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiHeaderPayloadSlot
+type OpenApiHeaderPayloadSlot
+  = OpenApiHeaderPayloadSchema { schema: OpenApiSchema }
+  | OpenApiHeaderPayloadContent { content: OpenApiHeaderContentSingle }
+
+
+type OpenApiHeaderObject {
+  description: OpenApiOptionalString,
+  required: OpenApiHeaderRequiredSlot,
+  deprecated: OpenApiHeaderDeprecatedSlot,
+  payload: OpenApiHeaderPayloadSlot,
+  header_deferred_members: Map<OpenApiHeaderDeferredKey, JsonValue>,
+  header_specification_extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,
+}
+
+
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiHeaderOrReference
+type OpenApiHeaderOrReference
+  = OpenApiHeaderInline { header: OpenApiHeaderObject }
+  | OpenApiHeaderReference { reference: OpenApiReferenceObject }
+
+
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiMediaTypeSchemaSlot
+type OpenApiMediaTypeSchemaSlot
+  = OpenApiMediaSchemaPresent { schema: OpenApiSchema }
+  | OpenApiMediaSchemaAbsent
+
+
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiResponseContentSlot
+type OpenApiResponseContentSlot
+  = OpenApiResponseContentAbsent
+  | OpenApiResponseContentPresent { content: Map<String, OpenApiMediaType> }
+
+
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiHeadersSlot
+type OpenApiHeadersSlot
+  = OpenApiHeadersAbsent
+  | OpenApiHeadersPresent { headers: Map<String, OpenApiHeaderOrReference> }
+
+
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiLinksSlot
+type OpenApiLinksSlot
+  = OpenApiLinksAbsent
+  | OpenApiLinksPresent { links: Map<String, OpenApiLinkOrReference> }
+
+
+type OpenApiResponse {
+  description: String,
+  content: OpenApiResponseContentSlot,
+  headers: OpenApiHeadersSlot,
+  links: OpenApiLinksSlot,
+  extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,
+}
+
+
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiResponseOrReference
+type OpenApiResponseOrReference
+  = OpenApiResponseInline { response: OpenApiResponse }
+  | OpenApiResponseReference { reference: OpenApiReferenceObject }
+
+
+// 🟢 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiStatusDigit
+type OpenApiStatusDigit
+  = OpenApiDigit0
+  | OpenApiDigit1
+  | OpenApiDigit2
+  | OpenApiDigit3
+  | OpenApiDigit4
+  | OpenApiDigit5
+  | OpenApiDigit6
+  | OpenApiDigit7
+  | OpenApiDigit8
+  | OpenApiDigit9
+
+
+// 🟢 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiStatusHundreds
+type OpenApiStatusHundreds
+  = OpenApiHundreds1
+  | OpenApiHundreds2
+  | OpenApiHundreds3
+  | OpenApiHundreds4
+  | OpenApiHundreds5
+
+
+// 🟢 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiResponseKeyWildcardKind
+type OpenApiResponseKeyWildcardKind
+  = OpenApiWildcard1xx
+  | OpenApiWildcard2xx
+  | OpenApiWildcard3xx
+  | OpenApiWildcard4xx
+  | OpenApiWildcard5xx
+
+
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiResponseKeyNonDefault
+type OpenApiResponseKeyNonDefault
+  = OpenApiResponseKeyExplicitHttpStatus { hundreds: OpenApiStatusHundreds, tens: OpenApiStatusDigit, ones: OpenApiStatusDigit }
+  | OpenApiResponseKeyWildcard { kind: OpenApiResponseKeyWildcardKind }
+
+
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiResponseKey
+type OpenApiResponseKey
+  = OpenApiResponseKeyDefault
+  | OpenApiResponseKeyOther { key: OpenApiResponseKeyNonDefault }
+
+
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiResponsesDefaultSlot
+type OpenApiResponsesDefaultSlot
+  = OpenApiResponsesDefaultAbsent
+  | OpenApiResponsesDefaultPresent { response: OpenApiResponseOrReference }
+
+
+type OpenApiResponsesPrimaryEntry {
+  status_key: OpenApiResponseKeyNonDefault,
+  response: OpenApiResponseOrReference,
+}
+
+
+type OpenApiResponses {
+  primary_response: OpenApiResponsesPrimaryEntry,
+  default_response: OpenApiResponsesDefaultSlot,
+  additional_by_status: Map<OpenApiResponseKeyNonDefault, OpenApiResponseOrReference>,
+  responses_object_extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,
+}
+
+
+type OpenApiOperation {
+  operation_id: OpenApiOptionalString,
+  responses: OpenApiResponses,
+  operation_deferred_members: Map<OpenApiOperationDeferredKey, JsonValue>,
+  operation_specification_extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,
+}
+
+
+type OpenApiPathItem {
+  routes: Map<OpenApiHttpMethod, OpenApiOperation>,
+  path_deferred_members: Map<OpenApiPathItemDeferredKey, JsonValue>,
+  path_specification_extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,
+}
+
+
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiPathItemOrReference
+type OpenApiPathItemOrReference
+  = OpenApiPathItemInline { path_item: OpenApiPathItem }
+  | OpenApiPathItemReference { reference: OpenApiReferenceObject }
+
+
+type OpenApiPathTemplateKey {
+  after_slash: String,
+}
+
+
+type OpenApiPaths {
+  routes: Map<OpenApiPathTemplateKey, OpenApiPathItem>,
+  paths_extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,
+}
+
+
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiPathsSlot
+type OpenApiPathsSlot
+  = OpenApiPathsPresent { paths: OpenApiPaths }
+  | OpenApiPathsAbsent
+
+
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiComponentsSchemasSlot
+type OpenApiComponentsSchemasSlot
+  = OpenApiComponentsSchemasAbsent
+  | OpenApiComponentsSchemasPresent { schemas: Map<OpenApiComponentsMapKey, OpenApiSchema> }
+
+
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiComponentsPathItemsSlot
+type OpenApiComponentsPathItemsSlot
+  = OpenApiComponentsPathItemsAbsent
+  | OpenApiComponentsPathItemsPresent { path_items: Map<OpenApiComponentsMapKey, OpenApiPathItemOrReference> }
+
+
+type OpenApiComponents {
+  schemas: OpenApiComponentsSchemasSlot,
+  path_items: OpenApiComponentsPathItemsSlot,
+  components_deferred_members: Map<OpenApiComponentsDeferredKey, JsonValue>,
+  components_specification_extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,
+}
+
+
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiComponentsSlot
+type OpenApiComponentsSlot
+  = OpenApiComponentsPresent { components: OpenApiComponents }
+  | OpenApiComponentsAbsent
+
+
+type OpenApiWebhooks {
+  routes: Map<String, OpenApiPathItemOrReference>,
+  webhooks_extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,
+}
+
+
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiWebhooksSlot
+type OpenApiWebhooksSlot
+  = OpenApiWebhooksPresent { webhooks: OpenApiWebhooks }
+  | OpenApiWebhooksAbsent
+
+
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiDocumentRoot
+type OpenApiDocumentRoot
+  = OpenApiDocumentRootPathsPresent {
+      paths: OpenApiPaths,
+      components: OpenApiComponentsSlot,
+      webhooks: OpenApiWebhooksSlot,
+    }
+  | OpenApiDocumentRootComponentsWithoutPaths {
+      components: OpenApiComponents,
+      webhooks: OpenApiWebhooksSlot,
+    }
+  | OpenApiDocumentRootWebhooksOnly {
+      webhooks: OpenApiWebhooks,
+    }
+
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiOpenapiField3_1
+// OAS §4.1 Versions: major.minor fixed to **3.1** in this slice; `patch` is the semver patch (wire `3.1.{patch}` for any `Nat`).
+// Tooling SHOULD ignore patch deltas within `3.1.*` — the carrier still **records** patch for round-trip / diagnostics.
+type OpenApiOpenapiField3_1
+  = OpenApiOpenapi31Patch { patch: Nat }
+
+
+type OpenApiDocument {
+  openapi: OpenApiOpenapiField3_1,
+  json_schema_dialect: OpenApiOptionalString,
+  info: OpenApiInfo,
+  root: OpenApiDocumentRoot,
+  root_deferred_members: Map<OpenApiOpenapiObjectDeferredKey, JsonValue>,
+  root_specification_extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,
+}
