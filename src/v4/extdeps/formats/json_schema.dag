@@ -1,23 +1,120 @@
 // src/v4/extdeps/formats/json_schema.dag
-//
-// Scope: JSON Schema model — schema-driven validation + type derivation. Direction-agnostic.
-// Anchor: https://json-schema.org/draft/2020-12/json-schema-core (JSON Schema Draft 2020-12)
-//
-// Owns:
-//   - JsonSchema { type, properties, required, items, ... }
-//   - Validation: validate(JsonValue, JsonSchema) -> Result<(), Diagnostic>
-//   - Type derivation: schema_to_type(JsonSchema) -> Result<Node (TypeNode), Diagnostic>
-//     (this is the load-bearing capability — given a schema, generate corresponding .dag types)
-//   - emit(Node (TypeNode)) -> JsonSchema (for emit direction)
-//
-// Consumes:
-//   - std/node.dag, std/diagnostic.dag, std/witness.dag
-//   - extdeps/formats/json.dag: JsonValue (subject of validation)
-//
-// Status: scaffold — fill per TASKS.md T-4.6
-// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
-// contract for the worker. Splitting this file requires explicit operator
-// ratification (substrate extension = stop signal).
+// Scope: JSON Schema Draft 2020-12 instance shell + default-dialect keyword bundle (Lane C T-4.6); typed slots favor Core-shaped surface; additional_keywords enumerates keywords authorized by the meta-schema anchor.
+// Owns: JsonSchemaCoreTypeName, JsonSchemaTypeSlot, JsonSchemaItemsSlot, JsonSchemaPropertiesSlot, JsonSchemaRequiredSlot, JsonSchemaAdditionalKeywordKey, JsonSchema
+// Consumes: std/node.dag, std/diagnostic.dag, std/witness.dag, std/collection.dag, extdeps/formats/json.dag
+// Status: scaffold — TASKS.md T-4.6
+// Anchor: https://json-schema.org/draft/2020-12/schema
 
 module v4.extdeps.formats.json_schema
 
+
+import v4.extdeps.formats.json { JsonValue }
+import v4.std.collection { Map, Set }
+
+
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-JsonSchemaCoreTypeName
+type JsonSchemaCoreTypeName
+  = JsonSchemaCoreTypeNull
+  | JsonSchemaCoreTypeBoolean
+  | JsonSchemaCoreTypeObject
+  | JsonSchemaCoreTypeArray
+  | JsonSchemaCoreTypeNumber
+  | JsonSchemaCoreTypeString
+  | JsonSchemaCoreTypeInteger
+
+
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-JsonSchemaTypeSlot
+type JsonSchemaTypeSlot
+  = JsonSchemaTypeAbsent
+  | JsonSchemaTypeSingle { core_type: JsonSchemaCoreTypeName }
+  | JsonSchemaTypeUnion { first: JsonSchemaCoreTypeName, rest: Set<JsonSchemaCoreTypeName> }
+
+
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-JsonSchemaItemsSlot
+type JsonSchemaItemsSlot
+  = JsonSchemaItemsAbsent
+  | JsonSchemaItemsSchema { item_schema: JsonSchema }
+
+
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-JsonSchemaPropertiesSlot
+type JsonSchemaPropertiesSlot
+  = JsonSchemaPropertiesAbsent
+  | JsonSchemaPropertiesPresent { properties: Map<String, JsonSchema> }
+
+
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-JsonSchemaRequiredSlot
+type JsonSchemaRequiredSlot
+  = JsonSchemaRequiredAbsent
+  | JsonSchemaRequiredPresent { required: Set<String> }
+
+
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-JSK
+type JsonSchemaAdditionalKeywordKey
+  = JsonSchemaKwAllOf
+  | JsonSchemaKwAnyOf
+  | JsonSchemaKwOneOf
+  | JsonSchemaKwNot
+  | JsonSchemaKwIf
+  | JsonSchemaKwThen
+  | JsonSchemaKwElse
+  | JsonSchemaKwDependentSchemas
+  | JsonSchemaKwPrefixItems
+  | JsonSchemaKwContains
+  | JsonSchemaKwAdditionalProperties
+  | JsonSchemaKwPatternProperties
+  | JsonSchemaKwPropertyNames
+  | JsonSchemaKwUnevaluatedItems
+  | JsonSchemaKwUnevaluatedProperties
+  | JsonSchemaKwEnum
+  | JsonSchemaKwConst
+  | JsonSchemaKwMultipleOf
+  | JsonSchemaKwMaximum
+  | JsonSchemaKwExclusiveMaximum
+  | JsonSchemaKwMinimum
+  | JsonSchemaKwExclusiveMinimum
+  | JsonSchemaKwMaxLength
+  | JsonSchemaKwMinLength
+  | JsonSchemaKwPattern
+  | JsonSchemaKwFormat
+  | JsonSchemaKwMaxItems
+  | JsonSchemaKwMinItems
+  | JsonSchemaKwUniqueItems
+  | JsonSchemaKwMaxContains
+  | JsonSchemaKwMinContains
+  | JsonSchemaKwMaxProperties
+  | JsonSchemaKwMinProperties
+  | JsonSchemaKwDependentRequired
+  | JsonSchemaKwTitle
+  | JsonSchemaKwDescription
+  | JsonSchemaKwDefault
+  | JsonSchemaKwDeprecated
+  | JsonSchemaKwReadOnly
+  | JsonSchemaKwWriteOnly
+  | JsonSchemaKwExamples
+  | JsonSchemaKwContentEncoding
+  | JsonSchemaKwContentMediaType
+  | JsonSchemaKwContentSchema
+  | JsonSchemaKwDollarSchema
+  | JsonSchemaKwDollarId
+  | JsonSchemaKwDollarAnchor
+  | JsonSchemaKwDollarDynamicAnchor
+  | JsonSchemaKwDollarRef
+  | JsonSchemaKwDollarDynamicRef
+  | JsonSchemaKwDollarDefs
+  | JsonSchemaKwDollarComment
+  | JsonSchemaKwDollarVocabulary
+  | JsonSchemaKwDefinitions
+  | JsonSchemaKwDependencies
+
+
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-JsonSchema
+type JsonSchema
+  = JsonSchemaTrue
+  | JsonSchemaFalse
+  | JsonSchemaInstance {
+      instance_type: JsonSchemaTypeSlot,
+      properties: JsonSchemaPropertiesSlot,
+      required: JsonSchemaRequiredSlot,
+      items: JsonSchemaItemsSlot,
+      additional_keywords: Map<JsonSchemaAdditionalKeywordKey, JsonValue>,
+    }
