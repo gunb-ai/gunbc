@@ -221,13 +221,28 @@ A-vs-B=B (b), decide T-25-core (c).
     already LANDED, pre-#3240 rework keystone-gated; **T-25-tail** — depends
     T-9, it is Wave-3 IMPL-optim, never Wave-0.)*
 - **Wave 1 (P1-KEYSTONE + T-25-core + T-30 land):** T-4 ×5 languages, T-4.5,
-  T-4.6 unblock (T-4 mgr).
+  T-4.6 unblock (T-4 mgr). **+ lens-pipeline-derivations T-#** (`match_arm_shape`
+  / `closed_vocab_scan` / `concept_home`) **+ Layer-0 lens stage plug-in**
+  (Fresh CP+Lens lane) → **Layer-0 hygiene CI HARD-GATE bites here** —
+  table-stakes (L0.1–L0.15 read parse+resolve only, both LANDED, **no T-9
+  dep**; #3313 §4/§9 "Layer 0 first, build-first, on in every profile").
+  **Maximum-utility-early (operator directive): the CI hygiene gate is live
+  by end-Wave-1 / early-Wave-2, well before the full L1.x suite.**
 - **Wave 2 (T-4 lands):** T-9, T-4.7, T-4.13. *(T-4.8 removed → Wave 3:
   deps T-4.7 which is fresh in Wave 2. T-18 removed → Wave 4: meta-lens
   over T-12/T-13 which only become real in Wave 3.)*
 
+> **L0/L1 ASYMMETRY (sunny-wolf-435, verified vs #3313 §4/§9/§10 — serves
+> the operator "max utility early" directive):** Layer-0 hygiene
+> (L0.1–L0.15) reads **parse+resolve only (both LANDED), NO T-9** → its CI
+> hard-gate goes live **end-Wave-1** once just (2) lens-pipeline-derivations
+> + the Layer-0 lens stage land. Layer-1 (L1.1–L1.12) needs **post-T-9
+> closure + (1a) concept registries** → Wave-3. So the dispatch plan
+> delivers the table-stakes CI hygiene gate *early* without compromising
+> standards; the L1.x fan-out (batch-d, still held) is the later Wave-3 set.
+>
 > **Wave-2 dissolution-lens PREREQUISITES — cross-lane (sunny-wolf-435,
-> #3313 author, folded; reinforces the batch-(d) hold — Wave-2 cannot fan
+> #3313 author, folded; reinforces the batch-(d) hold — L1.x cannot fan
 > out until these land + #3313 stabilizes + keystone ratifies):**
 > **Classification (sunny-wolf-435, #3313 author — verified: NONE fold under
 > T-25-core; T-25-core is type-shape/refinement substrate, these are lens-read
@@ -253,7 +268,9 @@ A-vs-B=B (b), decide T-25-core (c).
 > (1a)+(2) → Dissolution-lane Wave-2 *consumes*; (1b) is in-lens. Batch (d)
 > held until (1a)+(2) land + #3313 stabilizes + A1 ratified.
 - **Wave 3 (T-9):** T-10, T-12/T-13 refine to real, T-22 refine, **T-4.8**
-  (deps T-4.7 from Wave 2).
+  (deps T-4.7 from Wave 2). **+ Layer-1 (L1.1–L1.12) lens fan-out**
+  (Dissolution lane; needs post-T-9 closure + (1a) concept registries;
+  batch-d hold until #3313 stabilizes + A1).
 - **Wave 4 (T-10):** T-11, T-14, T-24, **T-17** (deps T-12 *real*, Wave 3),
   **T-18** (meta-lens over T-12/T-13 *real*, Wave 3).
 - **Wave 5 (T-11):** **T-16** (full-stack omni demo — deps T-11 Wave 4,
