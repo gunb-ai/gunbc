@@ -1441,7 +1441,6 @@ Verbatim `//` lines from merge-base `float.dag` (lines **104–144** — modelin
 
 **Dissolution trigger:** bounded refinement substrate in `std/machine.dag` notes / Wave-A2 (merge-base cross-ref).
 
-<<<<<<< HEAD
 ### PR-3252-extdeps-deferrals — Practice‑9 prose home (cardinality P1 slice)
 
 **Authority:** still-hawk-102 / operator (2026‑05‑18) — live `extdeps/languages/*.dag` pointers only; rationale here.
@@ -1451,7 +1450,7 @@ Verbatim `//` lines from merge-base `float.dag` (lines **104–144** — modelin
 - **`python.dag` / singletons:** `Unit` lands the shared cardinality‑1 authority for the three spec singleton kinds. Per‑singleton D2a(1)/(2) alias + grounding rows remain **deferred** on the shared `GroundingMap` home (D2 row) plus integer/text ladder work — not expanded inline in `python.dag`.
 
 - **`rust.dag` / `RustNever`:** D2a(1) `type RustNever = Never` is in‑file. D2a(2) `rust_never_grounding` and **numeric** cost/width refinement (distinct from inhabitance `Never`/`Unit`) stay on the existing **GroundingMap** + **T‑25 / nat / integer** triggers already named in TASKS / SL‑3229 ledger rows.
-=======
+
 ### SL-3229-T4-FORMAT-T6T7 — T-4.6 format parse/emit bodies (compiler pipeline P3)
 
 **Gate (live cite, Practice 9):** `🟡 gated — feature: T-6/T-7 parse pipeline-stage substrate`
@@ -1461,7 +1460,6 @@ Verbatim `//` lines from merge-base `float.dag` (lines **104–144** — modelin
 **Dissolution trigger:** T-6 and T-7 carry realized lex-walk + parse-walk bodies for grammar-as-data (dissolution-inventory §1.1 **P3**); follow-up PR wires format parse/emit as consumers. `std/text.dag` `Char` / `String` ↔ `List<Char>` decomposition (T-3) remains upstream **text** substrate for the walk’s stream spine — cite **P1** rows separately where the backlog conflated “numeric / refinement” deferrals (`SL-3229-LLVM-WIDTH` family), not mixed into vague “operations scaffold” prose.
 
 **Roll-up:** `docs/audit/dissolution-inventory.md` §1.1 row **P3** (`compiler/01_tokenize.dag tokenize`, `compiler/02_parse.dag parse`, plus the parser-side in-file backlog this row concretizes).
->>>>>>> 3e6cdc39a (WIP: Dissolution 🟡 gated bundle — P3 compiler parse/lex walks unblocks [MANU)
 
 ### CP-3229-GREEN-TERMINAL — 🟢 GREEN five-pattern ledgers (bulk)
 
