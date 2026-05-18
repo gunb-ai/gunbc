@@ -1295,15 +1295,18 @@ Verbatim `//` lines from merge-base `verilog.dag` (lines **2156–2311**):
 //
 ```
 
-**PR #3272 extension:** P8's constant-expression carrier adds sites 27-29:
+**PR #3272 extension:** P8's constant-expression carrier adds sites 27-28:
 `ConstantFunctionCall.arguments` (§A.8.2 `constant_function_call`),
-`ConstantSystemFunctionCall.arguments` (§A.8.2 `constant_system_function_call`),
 and `ConstantConcatenation.expressions` (IEEE 1364-2005 §A.8.1
 `constant_concatenation ::= { constant_expression { , constant_expression } }`).
 They ride the same Wave-A2 `List<T> where non_empty` deferral; no
 Verilog-local non-empty carrier is introduced.
+`ConstantSystemFunctionCall.arguments` is deliberately excluded: IEEE
+1364-2005 §A.8.2 constant system-function calls inherit the optional
+argument clause from system-function calls, so an empty `List<ConstantExpression>`
+is legal there.
 
-**Dissolution trigger:** `std/collection.dag` Wave-A2 `List<T> where non_empty` (29 total sites after PR #3272: merge-base sites 1-26 plus PR #3272 sites 27-29).
+**Dissolution trigger:** `std/collection.dag` Wave-A2 `List<T> where non_empty` (28 total sites after PR #3272: merge-base sites 1-26 plus PR #3272 sites 27-28).
 
 ### SL-3229-VERILOG-D3200 — #3200 consumer-independent 🟡 coproducts (first-consumer decomposition)
 
