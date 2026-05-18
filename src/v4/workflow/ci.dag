@@ -3,6 +3,7 @@
 // Owns: CiCommand, CiJob, CiGate, CiPipeline, ci_pipeline_well_formed, ci_pipeline
 // Consumes: v4.std.node, v4.std.diagnostic, v4.workflow.bootstrap
 // Status: filled — declarative core + eager well-formedness; structural v2 gate only.
+// Ledger: design-pure-bootstrap-zero.md (A3, PROOF-1, Discipline rail); STRUCTURE.md:385-388 (C4 ci.yml-as-checked-projection).
 
 module v4.workflow.ci
 
