@@ -8,10 +8,39 @@
 > This document supplements, rather than parallels, INVARIANTS.md's
 > taxonomy. Each practice names the invariant principle it serves.
 >
+> **Why these Practices exist.** Every modeling rule below serves one
+> thing: making each target's model correct, complete, and honest enough
+> that the compiler-**derived homomorphism** between targets is sound.
+> Read any Practice as: *this protects the homomorphism.* (THESIS.md →
+> "The derived homomorphism"; [the-derived-homomorphism.md](thesis/the-derived-homomorphism.md).)
+>
 > Full derivations, worked examples, and the background modeling analysis
 > live in [v3-modeling-analysis.md](v3-modeling-analysis.md).
 
-## Nine Modeling Practices
+## The three facets — a cross-reference convention
+
+**Fact modeling**, **coercion**, and **translation** are not three
+separate topics — they are three facets of the one **derived
+homomorphism** ([THESIS.md](../THESIS.md) → "The derived homomorphism";
+[the-derived-homomorphism.md](thesis/the-derived-homomorphism.md)):
+
+- **fact modeling** — *produces the homomorphism's inputs.* You model
+  each target's facts so the compiler can derive the structure-preserving
+  map; the modeling discipline exists to make those inputs correct.
+- **coercion** — *the verification facet.* The mechanical fold that
+  checks a candidate map preserves structure (coercion ⊂ the
+  homomorphism).
+- **translation** — *the homomorphism applied.* "Translation" between
+  two targets **is** the derived homomorphism.
+
+**Convention.** Wherever a doc *discusses* one of these three as a
+topic — at its defining mention / discussion-point, **section-level, not
+every token** — frame it as a facet of the derived homomorphism and
+cross-ref the THESIS section. The connection should always be one click
+away from where the concept is taught; a parenthetical on every
+occurrence is noise.
+
+## Ten Modeling Practices
 
 Each practice implements one of the five invariant principles from
 INVARIANTS.md. A reviewer works from the five principles; the practices
@@ -29,6 +58,7 @@ Mapping:
 - Practice 7 (Projection over enumeration) — implements **P1: Modeling Faithfulness**
 - Practice 8 (Fact-bundle modeling) — implements **P1: Modeling Faithfulness**
 - Practice 9 (No-prose discipline) — implements **P2: Boundary Discipline**
+- Practice 10 (Don't hand-roll a derived operation) — implements **P1: Modeling Faithfulness** (and the proposed *Do not hand-roll a derived operation* invariant — pending operator ratification, rework-tracker PR #3240 task A1)
 
 A reviewer should name specifically whether the diff satisfies each
 relevant practice, where it could be violated, and whether the existing
@@ -188,8 +218,11 @@ machine-checked meta-lens detects fired triggers, this review smell *is*
 the enforcement.
 
 **Scaffold exception:** early-milestone code (marked `// scaffold:
-<sunset-milestone>`) can skip the classification annotation until the
-sunset milestone. Scaffolds must be revisited before sunset.
+<sunset-milestone>`) can defer its `DECISIONS.md` classification *ledger*
+until the sunset milestone. The exception covers the ledger only — the
+required one-line 🟢/🟡/🔴 tag on the coproduct itself is **not**
+waived (a scaffold coproduct still carries it, typically `// 🟡 scaffold
+— sunset <milestone>`). Scaffolds must be revisited before sunset.
 
 **Worked example (v2 retrospective):** `v2::ExprData` had 22 variants.
 Failed pattern 1 (every consumer dispatches on all 22), pattern 2
@@ -487,8 +520,158 @@ rule:
 Wherever an earlier Practice says "record X in a comment," read it as
 "record X in `DECISIONS.md`; the file keeps the one-line tag." The same
 applies to `DECISIONS.md` rules that mandated an in-file block — D5's
-`HEADER RECONCILE` receipt moves to the commit message. There is no
-in-file artifact mandate anywhere that Practice 9 does not override.
+`HEADER RECONCILE` receipt moves to the commit message. No earlier
+in-file *artifact mandate* survives un-superseded by Practice 9. This
+does not mean the file carries no comments at all: Practice 9 itself
+*authorizes* the four allowed classes — including the **required**
+one-line 🟢/🟡/🔴 coproduct tag (item 4). Practice 9 relocates the
+ledger/rationale/receipt prose; it authorizes the terse one-line tag.
+
+### 10. Don't hand-roll a derived operation
+
+The compiler's job is to **derive** operations from a model — that is the
+derived homomorphism (top of this doc; THESIS.md). There is a *finite*
+set of such derived operations. Hand-rolling one re-derives what the
+compiler already derives once: the deficiency is in the **model**, not
+the code. The fix is never to polish the hand-rolled construct — it is to
+model the missing fact, or name the missing substrate primitive, and let
+the operation be derived.
+
+**The invariant this implements** (proposed — pending operator
+ratification, rework-tracker PR #3240 task A1; on ratification it lands
+in [INVARIANTS.md](../INVARIANTS.md) / [MODELING.md](../MODELING.md), and
+this Practice cites it directly):
+
+> **Do not hand-roll a derived operation.** If a function's behavior is
+> determined entirely by the shape of a modeled type, it is re-deriving
+> something the compiler already derives. The deficiency is in the model,
+> not the code — model the missing fact; do not hand-roll the operation.
+
+**The derived-operations registry.** The registry is what makes "you
+should be modeling, not coding this" an *objective* call rather than a
+reviewer's taste — a hand-rolled instance of any row is a finding:
+
+| # | derived operation | derived from | hand-rolled form → finding | substrate primitive |
+|---|---|---|---|---|
+| 1 | structural recursion (catamorphism) | a type's structure | walker dissolution | `fold_node` |
+| 2 | effect traversal | carrier + collection | traverse dissolution | `traverse` / `sequence` |
+| 3 | translation (target → target) | two target models — *this is the derived homomorphism* | hand-written emitter / lowerer | the compiler itself |
+| 4 | coercion | the structure-preservation fold — the homomorphism's verification facet | hand-written coercion check | the compiler itself |
+| 5 | identity / hashing | a Merkle catamorphism | hand-written hash / equality | `content_hash` |
+| 6 | emission + parsing | grammar-as-bidirectional-data | string-templated emitter → emit/template dissolution | the grammar model |
+| 7 | property projection | reading a fact off the model | `match`-to-derive → predicate dissolution | a model fact |
+
+**Rows 3 and 4 carry no numbered dissolution finding — on purpose.**
+Translation **is** the derived homomorphism; coercion **is** its
+verification facet (the three facets, top of this doc). Hand-writing a
+cross-target translator or a coercion checker is not a function-scale
+review smell a reviewer flags in one diff — it is "you re-wrote the
+compiler," a whole-architecture failure caught at architecture review.
+The numbered findings below are all *function-scale*: visible in a single
+diff. Rows 3/4 are named in the registry for completeness, not as a
+reviewer finding.
+
+**Dissolution findings.** A *dissolution finding* names a hand-rolled
+construct that re-derives what the model should provide; its fix always
+has the same shape — the construct **dissolves** into *(a substrate
+primitive) + (model data)*. Most members are the detection-rubric for a
+smell another Practice already names — this is **not** a parallel
+vocabulary:
+
+- **coproduct dissolution** — *is* Practice 4, the established finding.
+- **carrier dissolution** — a sharpened Practice 4 sub-case: a local
+  coproduct that clones an existing `std/` carrier (a `Foo { value } |
+  FooRejected { diagnostic }` that *is* `Outcome<T>`). Before classifying
+  a coproduct for dissolution, check it against the `std/` carrier set —
+  a match makes the finding the sharper, mechanical "delete it, use the
+  std carrier," not generic "model this as facts."
+- **predicate dissolution** — Practice 8 / Practice 7 at the level of a
+  *code predicate*: a `match`/`if` on kind or symbol whose purpose is to
+  *derive a property* ("is this a binder?", "which sugar is this?")
+  rather than to do structurally distinct work. The property is a fact
+  the model should carry and the code should *read*.
+- **walker dissolution** *(new)* — Practice 7 lifted from
+  declaration-families to *traversal*: a function that hand-rolls
+  recursion over a structural type (`Node`, AST) — per-node-kind `match`
+  arms each re-walking children. The same homomorphism re-implemented per
+  stage instead of derived once; the faithful form is a std catamorphism
+  (`fold_node`) + a supplied algebra.
+- **traverse dissolution** *(new)* — a `fold` whose body is a `match acc
+  { Rejected => propagate ; Ok => continue }` ladder: effect-threading
+  (failure, short-circuit, accumulation) hand-inlined where `traverse` /
+  `sequence` over the effect carrier belongs. Almost always co-occurs
+  with walker dissolution — the fold body both recurses *and* threads the
+  effect.
+- **emit/template dissolution** — the *finding* form of Practice 8's "no
+  string-templating" rule: a string-templated emitter
+  (`template: "Vec<{0}>"`) where grammar-as-declarative-bidirectional-data
+  belongs. The emit-side mirror of walker dissolution.
+
+**Disposition symbols — the fix-now / substrate-sequencing discriminant.**
+Every dissolution finding — and every audited item that turns out *not*
+to be one — carries one of three disposition symbols, the same 🟢/🟡/🔴
+convention as coproduct dissolution (Practice 4). Naming the disposition
+is what stops a reviewer from wrongly demanding the impossible:
+
+- **🔴 fix-now** — the substrate primitive the construct should use
+  *already exists* (e.g. `Outcome<T>` in `std/diagnostic.dag`). The fix
+  is mechanical and belongs in this PR.
+- **🟡 substrate-sequencing** — the substrate primitive does *not* exist
+  yet (e.g. `fold_node` / a fail-closed `traverse` are not yet in
+  `std/`). The finding is then "name the missing primitive"; the
+  hand-rolled construct is **not** accepted as the end state. A 🟡 is
+  dispositioned exactly like a Practice-4 YELLOW coproduct: deferral is
+  sanctioned **only when tracked**. A 🟡 finding is **BLOCKING unless the
+  gap is recorded as a tracked, named upstream obligation** — the missing
+  primitive named, with an owning task or escalation, and the PR a
+  *declared* honest scaffold. When that record exists, re-blocking the
+  scaffold PR is pointless churn — blocking it cannot land an absent
+  primitive — so a tracked 🟡 lands. An **untracked** 🟡 — a hand-rolled
+  derived operation with no recorded substrate-gap obligation — is silent
+  dissolution debt and **blocks**: this is the Calibration section's
+  "substrate-level issues are almost always BLOCKING" and INVARIANTS P5
+  ("Progress Is Dissolution"). The carve-out is narrow and
+  self-justifying — *can't-fix-here* — never advisory-only debt.
+- **🟢 clean** — audited and *not* a dissolution finding: the recursion
+  or `match` is genuinely irregular (the call graph is not the data
+  graph), or the construct already uses the derived operation.
+
+The retroactive v4 dissolution audit (rework-tracker PR #3240 task C1)
+applies this legend per-file, per-finding — a symbol-marked inventory,
+not prose. The symbol records a finding's *disposition*; the matching
+in-file `.dag` tag lands with the fix, per migration PR — it is not
+retro-applied across all v4 files at once.
+
+**Decidability — hard error vs advisory.** Findings differ in how
+mechanically a checker can decide them; this sets whether a finding is a
+hard error or a reviewer-judgment advisory:
+
+| finding | decidable? | enforcement |
+|---|---|---|
+| carrier dissolution | structural — type-shape match vs the `std/` carrier set | **hard error** |
+| walker dissolution | structural on the clean shape (recursion mirrors a modeled type) | **hard error** on the clean shape; **advisory** when the recursion is irregular |
+| traverse dissolution | structural on the clean shape (a `fold` body that is a carrier short-circuit ladder) | **hard error** on the clean shape |
+| emit/template dissolution | structural — a literal template-string field | **hard error** on the literal-template shape |
+| predicate dissolution | judgment — a `match` *may* be genuinely distinct work, not a derived property | **advisory** — candidate only |
+| coproduct dissolution | already enforced — per-coproduct 🟢/🟡/🔴 tag + `DECISIONS.md` ledger (Practices 4 / 9) | already enforced |
+
+The *enforcement mechanism* — the checker-script build path and the
+eventual dissolution lens — is design work, specified in the planned
+`docs/design-dissolution-lens.md` (rework-tracker PR #3240 task B1). This
+Practice carries only the classification, which is discipline a reviewer
+applies by hand. Worked examples — the #3225 dissolution inventory — land
+in [modeling/grounding-worked-examples.md](modeling/grounding-worked-examples.md)
+(PR #3240 task B2).
+
+**What to check.** For any function in the diff: is its behavior fixed by
+the *shape* of a modeled type rather than by logic unique to this call
+site? If yes, it is a candidate dissolution finding — identify the
+registry row, then mark the disposition (🔴 fix-now / 🟡
+substrate-sequencing / 🟢 clean).
+**Not when** the recursion or `match` is genuinely irregular — the call
+graph is not the data graph, the branches do genuinely distinct work.
+Irregularity is the honest escape hatch: a derived operation is one whose
+shape *is* the data's shape.
 
 ## Calibration: Blocking vs Non-blocking
 
@@ -517,7 +700,7 @@ milestones before anyone notices.
 ## For Reviewers
 
 A review applies the **five invariant principles from
-[INVARIANTS.md](../INVARIANTS.md)**. The nine modeling practices in this
+[INVARIANTS.md](../INVARIANTS.md)**. The ten modeling practices in this
 document are the concrete patterns that inform each check — consult them when a
 principle's abstract statement needs a recognizable failure shape.
 
@@ -556,8 +739,21 @@ For each relevant principle and its implementing practices:
    optional concept tag / `DECISIONS.md` cite). Process-meta prose in the file
    (`HEADER RECONCILE`, de-prose receipts) is itself a finding.
 8. For cross-stage boundaries: verify facts flow forward.
-9. Classify every finding as BLOCKING or NON-BLOCKING per the calibration
-   above.
+9. For any function whose behavior is fixed by a modeled type's shape
+   (Practice 10): identify the derived-operations registry row it
+   hand-rolls. For a row that carries a numbered dissolution finding
+   (rows 1 / 2 / 5 / 6 / 7), name the finding and mark its disposition
+   (🔴 fix-now / 🟡 substrate-sequencing / 🟢 clean); a 🟡 finding names
+   the missing `std/` primitive and is **BLOCKING unless** it is recorded
+   as a tracked, named upstream obligation (owning task or escalation) on
+   a declared honest scaffold — an untracked 🟡 is silent substrate debt
+   and blocks (see Practice 10's disposition legend and the Calibration
+   section). A hand-rolled registry row 3 (translation) or 4 (coercion)
+   carries **no** numbered finding — it is a whole-architecture
+   escalation, not a function-scale review finding (per Practice 10's
+   rows-3/4 carve-out).
+10. Classify every finding as BLOCKING or NON-BLOCKING per the calibration
+    above.
 
 This document is the distilled version of modeling principles. For the
 full analysis and additional worked examples, see
