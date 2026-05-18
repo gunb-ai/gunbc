@@ -373,7 +373,7 @@ substrate imported them, so the cut is a pure scope reduction.
 
 ### T-8: compiler/03_normalize.dag + 03_resolve.dag
 
-**Role:** First two `core` transforms (`normalize ∘ resolve ∘ infer` after `ingest` on 00_compile): causal `Node` transforms — C3 desugar; K-1 resolve; derived facts carried **once** on returned `Node`.
+**Role:** First two `core` transforms after `ingest` on `00_compile`: **normalize**, then **resolve** (`resolve ∘ normalize` under standard `∘`, matching the composite line below). T-9 **infer** follows on the resolved tree; the full `core` chain on parse output is `infer ∘ resolve ∘ normalize` (never `normalize ∘ resolve ∘ infer`). Causal `Node` transforms — C3 desugar; K-1 resolve; derived facts carried **once** on returned `Node`.
 
 **I/O (pivot truth):** `normalize : Node -> Outcome<Node>`, `resolve : Node -> Outcome<Node>`; composite `resolve ∘ normalize` — authoring discipline on the universal **`Node`** pivot (`ParseTree` / `NormalizedTree` / `ResolvedTree` = `Node`, A1).
 *Merged seam (CP-1b, literal headers today):* `normalize: ParseTree -> Result<NormalizedTree, Diagnostic>`, `resolve: NormalizedTree -> Result<ResolvedTree, Diagnostic>` in `03_normalize.dag` / `03_resolve.dag`.
