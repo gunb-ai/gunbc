@@ -1,14 +1,44 @@
 // src/v4/lens/testgen.dag
-// Scope: T-19 testgen — substrate folds emit TestClaim; five scheduling categories + Generator<C>.
-// Owns: Generator<C> TypeConstructionSubject AlgebraLawSubject DiagnosticExhaustivenessSubject LensApplicabilitySubject BidirectionalRoundtripSubject TestgenConcept
-// Consumes: v4.std.node v4.std.verification (algebra/diagnostic/lens/extdeps at materialization — TASKS T-19)
-// Status: M1 — live types + Generator<C>; eval wiring T-22.
+// Scope: T-19 testgen — bootstrap slots, P2 manual-anchor join, Generator subjects.
+// Owns: ConnectiveBootstrapSlot NatLawBootstrapSlot Generator TestgenConcept TypeConstructionSubject AlgebraLawSubject DiagnosticExhaustivenessSubject LensApplicabilitySubject BidirectionalRoundtripSubject
+// Consumes: v4.std.node v4.std.verification
+// Status: Wave-0 modeled; M2 merge compile + eval T-22.
 
 module v4.lens.testgen
 
 
-import v4.std.verification { TestClassification }
-import v4.std.node { Node, Connective, Behavior, Symbol }
+import v4.std.verification {
+  TestClassification,
+  Tier1,
+  Unit,
+  AssertKind,
+  Compiles,
+  Equals,
+  T19ManualAnchorKey,
+  T19ManualTcConjEmpty,
+  T19ManualTcDisjEmpty,
+  T19ManualTcArrowTwoConj,
+  T19ManualTcCardinalityEmpty,
+  T19ManualTcInstantiationEmpty,
+  T19ManualTcConjEqualsRefl,
+  T19ManualNatAddLeftIdentity,
+  T19ManualNatAddRightIdentity,
+  T19ManualNatAddAssociativity,
+  T19ManualNatMulLeftIdentity,
+  T19ManualNatMulAnnihilator,
+  T19ManualNatMulAssociativity
+}
+import v4.std.node {
+  Node,
+  Connective,
+  Conj,
+  Disj,
+  Arrow,
+  Cardinality,
+  Instantiation,
+  Behavior,
+  Symbol
+}
 
 
 type TypeConstructionSubject
@@ -41,4 +71,167 @@ type TestgenConcept
 type Generator<C> {
   classification: TestClassification
   slot: C
+}
+
+
+type ConnectiveBootstrapSlot
+// 🟢 coproduct dissolution — DECISIONS.md LB-P4-3212
+  = ConjEmptyStub
+  | ConjEqualsReflStub
+  | DisjEmptyStub
+  | ArrowTwoConjStub
+  | CardinalityEmptyStub
+  | InstantiationEmptyStub
+
+
+type NatLawBootstrapSlot
+// 🟢 coproduct dissolution — DECISIONS.md LB-P4-3212
+  = NatAddLeftIdentityStub
+  | NatAddRightIdentityStub
+  | NatAddAssociativityStub
+  | NatMulLeftIdentityStub
+  | NatMulAnnihilatorStub
+  | NatMulAssociativityStub
+
+
+data t19_bootstrap_algebra: Symbol = t19_bootstrap_algebra
+
+
+data t19_bootstrap_inhabitant: Symbol = t19_bootstrap_inhabitant
+
+
+data t19_law_nat_add_left_identity: Symbol = t19_law_nat_add_left_identity
+
+
+data t19_law_nat_add_right_identity: Symbol = t19_law_nat_add_right_identity
+
+
+data t19_law_nat_add_associativity: Symbol = t19_law_nat_add_associativity
+
+
+data t19_law_nat_mul_left_identity: Symbol = t19_law_nat_mul_left_identity
+
+
+data t19_law_nat_mul_annihilator: Symbol = t19_law_nat_mul_annihilator
+
+
+data t19_law_nat_mul_associativity: Symbol = t19_law_nat_mul_associativity
+
+
+fn bootstrap_tier1_unit_classification() -> TestClassification {
+  TestClassification { tier: Tier1, layer: Unit, }
+}
+
+
+fn connective_for_bootstrap_slot(slot: ConnectiveBootstrapSlot) -> Connective {
+  match slot {
+    ConjEmptyStub => Conj
+    ConjEqualsReflStub => Conj
+    DisjEmptyStub => Disj
+    ArrowTwoConjStub => Arrow
+    CardinalityEmptyStub => Cardinality
+    InstantiationEmptyStub => Instantiation
+  }
+}
+
+
+fn connective_bootstrap_assert_kind(slot: ConnectiveBootstrapSlot) -> AssertKind {
+  match slot {
+    ConjEqualsReflStub => Equals
+    _ => Compiles
+  }
+}
+
+
+fn connective_bootstrap_anchor(slot: ConnectiveBootstrapSlot) -> T19ManualAnchorKey {
+  match slot {
+    ConjEmptyStub => T19ManualTcConjEmpty
+    ConjEqualsReflStub => T19ManualTcConjEqualsRefl
+    DisjEmptyStub => T19ManualTcDisjEmpty
+    ArrowTwoConjStub => T19ManualTcArrowTwoConj
+    CardinalityEmptyStub => T19ManualTcCardinalityEmpty
+    InstantiationEmptyStub => T19ManualTcInstantiationEmpty
+  }
+}
+
+
+fn type_construction_subject_for_connective_slot(
+  slot: ConnectiveBootstrapSlot
+) -> TypeConstructionSubject {
+  ConnectiveKernel {
+    connective: connective_for_bootstrap_slot(slot: slot)
+  }
+}
+
+
+fn testgen_concept_for_connective_slot(slot: ConnectiveBootstrapSlot) -> TestgenConcept {
+  TypeConstruction {
+    subject: type_construction_subject_for_connective_slot(slot: slot)
+  }
+}
+
+
+fn generator_for_connective_bootstrap_slot(
+  slot: ConnectiveBootstrapSlot
+) -> Generator<TypeConstructionSubject> {
+  Generator {
+    classification: bootstrap_tier1_unit_classification(),
+    slot: type_construction_subject_for_connective_slot(slot: slot),
+  }
+}
+
+
+fn nat_law_bootstrap_assert_kind(slot: NatLawBootstrapSlot) -> AssertKind {
+  match slot {
+    NatMulAssociativityStub => Equals
+    _ => Compiles
+  }
+}
+
+
+fn nat_law_bootstrap_anchor(slot: NatLawBootstrapSlot) -> T19ManualAnchorKey {
+  match slot {
+    NatAddLeftIdentityStub => T19ManualNatAddLeftIdentity
+    NatAddRightIdentityStub => T19ManualNatAddRightIdentity
+    NatAddAssociativityStub => T19ManualNatAddAssociativity
+    NatMulLeftIdentityStub => T19ManualNatMulLeftIdentity
+    NatMulAnnihilatorStub => T19ManualNatMulAnnihilator
+    NatMulAssociativityStub => T19ManualNatMulAssociativity
+  }
+}
+
+
+fn law_symbol_for_nat_slot(slot: NatLawBootstrapSlot) -> Symbol {
+  match slot {
+    NatAddLeftIdentityStub => t19_law_nat_add_left_identity
+    NatAddRightIdentityStub => t19_law_nat_add_right_identity
+    NatAddAssociativityStub => t19_law_nat_add_associativity
+    NatMulLeftIdentityStub => t19_law_nat_mul_left_identity
+    NatMulAnnihilatorStub => t19_law_nat_mul_annihilator
+    NatMulAssociativityStub => t19_law_nat_mul_associativity
+  }
+}
+
+
+fn algebra_law_subject_for_nat_slot(slot: NatLawBootstrapSlot) -> AlgebraLawSubject {
+  AlgebraLawSubject {
+    algebra: t19_bootstrap_algebra,
+    inhabitant: t19_bootstrap_inhabitant,
+    law: law_symbol_for_nat_slot(slot: slot),
+  }
+}
+
+
+fn testgen_concept_for_nat_law_slot(slot: NatLawBootstrapSlot) -> TestgenConcept {
+  AlgebraLaw { subject: algebra_law_subject_for_nat_slot(slot: slot) }
+}
+
+
+fn generator_for_nat_law_bootstrap_slot(
+  slot: NatLawBootstrapSlot
+) -> Generator<AlgebraLawSubject> {
+  Generator {
+    classification: bootstrap_tier1_unit_classification(),
+    slot: algebra_law_subject_for_nat_slot(slot: slot),
+  }
 }
