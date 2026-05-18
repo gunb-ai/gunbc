@@ -147,7 +147,7 @@ fn ci_eliminate_pass(remaining: List<Symbol>, jobs: List<CiJob>) -> List<Symbol>
 }
 
 fn ci_kahn_fixpoint(jobs: List<CiJob>) -> List<Symbol> {
-  fold(jobs, init: map(jobs, fn(j) { j.id }), f: fn(remaining, counter) {
+  fold(jobs, init: map(jobs, fn(j) { j.id }), f: fn(remaining, job) {
     ci_eliminate_pass(remaining: remaining, jobs: jobs)
   })
 }
