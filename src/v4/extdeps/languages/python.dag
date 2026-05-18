@@ -12,33 +12,36 @@ module v4.extdeps.languages.python
 type PythonNumericTower
   =
   BoolLevel
+
   |
+
   IntegralLevel
+
   |
+
   RealLevel
+
   |
+
   ComplexLevel
 
 // 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
 type PythonSingletonKind
   =
   NoneT
+
   |
+
   NotImplementedT
+
   |
+
   EllipsisT
 
 // 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
 type PythonScalar
-  = Numeric
-    {
-      tower: PythonNumericTower
-    }
-  |
-  Singleton
-    {
-      kind: PythonSingletonKind
-    }
+  = Numeric { tower: PythonNumericTower }
+  | Singleton { kind: PythonSingletonKind }
 
 type PythonCost
 {
