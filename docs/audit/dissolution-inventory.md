@@ -197,16 +197,14 @@ qualitative trajectory, not strict arithmetic.)
 Caveats:
 
 1. **"🟡 today" counts only entries already bound to a P# in the
-   plan.** Section 2's fresh findings + Section 3's 8 VALID-🟡 are
-   counted; **Section 3's ~19 VAGUE + 4 INVALID-GATE are NOT** —
-   they are pre-plan backlog (no concrete primitive to roll under
-   yet). The burn-down lane drives the backlog first; once a VAGUE/
-   INVALID entry is re-concretized to a `feature:` arrival that
-   matches an existing P#, it rolls in and the corresponding row's
-   🟡-count grows. The numbers above project the post-concretization
-   landing impact under the assumption that the pre-plan backlog
-   concretizes uniformly to the canonical owners named in Section 3
-   (e.g. refinement-side VAGUE → P1; parser-side VAGUE → P3).
+   plan.** Section 2's fresh findings + Section 3 VALID-🟡 are counted.
+   **PR #3299** concretized the former §3 **VAGUE / INVALID-GATE**
+   bucket into **named `feature:`** rows (`DECISIONS.md` Part 6) +
+   format-file plan anchors — those entries **now roll** under **P1 /
+   P3 / P4** as amended in §1.1 + §3.3. **Only** **`SL-3229-INTEGER-GROUP-COMPLETION`**
+   remains structurally outside P1–P9 until an owning **T-#** binds
+   **P10**. The §1.2 illustrative 🟡-count column is still **qualitative**
+   (burn-down lane reconciles strict arithmetic).
 2. **P10 lands** requires the owning task be assigned first; the
    "🟡 → 🟢 sweep for P10" only fires after concretization. The
    `⛔ needs-concretization` flag on P10 in § 1.1 is structurally
@@ -642,55 +640,49 @@ alias-identity arrivals (lines 21, 34, 67, 69 on old `main` snapshots).
 
 | tracker | shape | gate-kind | concrete-arrival? | dissolve-on-arrival obligation? | triage |
 |---|---|---|---|---|---|
-| SL-3229-INTEGER-GROUP-COMPLETION | DECISIONS.md row | feature | partial (feature named, owning task TBD) | yes | **VAGUE** (no owning task → not bound to a named substrate PR; tightened bar) |
+| SL-3229-INTEGER-GROUP-COMPLETION | DECISIONS.md row | feature | partial (named `feature:` + P10 roll-up; **⛔** owning T-# TBD) | yes | **CONCRETIZED — P10 pending T-#** |
 | SL-3229-LLVM-WIDTH | DECISIONS.md row | feature | yes (cardinality.dag T-3) | yes | VALID |
 | SL-3229-LLVM-OPS | DECISIONS.md row | feature | yes (cardinality.dag T-3) | yes | VALID |
 | SL-3229-PTX-DIM3 | DECISIONS.md row | feature | yes (cardinality.dag T-3) | yes | VALID |
 | SL-3229-PTX-COST | DECISIONS.md row | feature | yes (cardinality.dag T-3) | yes | VALID |
 | SL-3229-VERILOG-NONEMPTY | DECISIONS.md row | feature | yes (collection.dag Wave-A2) | yes | VALID |
-| SL-3229-VERILOG-D3200 | DECISIONS.md row | consumer | **no** (class, not one name) | yes | **VAGUE** |
+| SL-3229-VERILOG-D3200 | DECISIONS.md row | feature | yes (T-4 Phase-3 rework) | yes | **VALID (PR #3299)** |
 | SL-3229-VERILOG-VECTOR-RANGE | DECISIONS.md row | feature | yes (T-4 Verilog constant_expression) | yes | VALID |
 | SL-3229-VERILOG-COST | DECISIONS.md row | feature | yes (cardinality.dag T-3) | yes | VALID |
-| SL-3229-FLOAT-NOMINAL | DECISIONS.md row | feature | **partial** (straddles machine.dag + cardinality.dag) | yes | **VAGUE** |
-| verilog.dag × 5 in-file cite-sites | one-liner | (inherits SL-3229-VERILOG-D3200) | — | — | **VAGUE** (inherits) |
+| SL-3229-FLOAT-NOMINAL | DECISIONS.md row | feature | yes (cardinality.dag T-3; machine.dag = cross-ref only) | yes | **VALID (PR #3299)** |
+| verilog.dag × 5 in-file cite-sites | one-liner | feature | yes (inherits SL-3229-VERILOG-D3200 / P4) | — | **VALID** |
 | llvm_ir.dag:28 in-file cite-site | one-liner | feature | yes (inherits SL-3229-LLVM-WIDTH) | yes | VALID |
-| json.dag × 3 in-file blocks | prose | mixed | **no** (class) | yes | **VAGUE** |
-| yaml.dag × 6 in-file blocks | prose | mixed | **no** (class) | yes | **VAGUE** |
-| toml.dag × 7+ in-file blocks | prose | mixed | **no** (class) | yes | **VAGUE** |
-| typescript.dag × 4 in-file blocks | prose | feature (D2-shaped) | **named arrival cancelled by D2-reversal** | yes | **INVALID-GATE** (re-gate post-reversal) |
+| json.dag × 3 in-file blocks | prose | mixed | yes (plan anchor → P1+P3) | yes | **CONCRETIZED** |
+| yaml.dag × 6 in-file blocks | prose | mixed | yes (plan anchor → P1+P3) | yes | **CONCRETIZED** |
+| toml.dag × 7 in-file blocks | prose | mixed | yes (plan anchor → P1+P3) | yes | **CONCRETIZED** |
+| typescript.dag (historical cite) | prose | feature | yes (P4 / TS-D2) | yes | **RESOLVED** |
 
-Counts (under the still-hawk-102 tightened bar 2026-05-18 — VALID-🟡
-requires concrete gate AND binding to a named primitive+owning-task
-substrate PR in Section 1):
+Counts (**post-PR #3299** amendment to Section 3 — authoritative gates
+in `DECISIONS.md` Part 6 when this inventory disagrees):
 
-- **8 VALID-🟡** (7 DECISIONS.md rows: LLVM-WIDTH, LLVM-OPS, PTX-DIM3,
-  PTX-COST, VERILOG-NONEMPTY, VERILOG-COST, VERILOG-VECTOR-RANGE bound
-  to P1/P2/P8 + 1 in-file cite-site `llvm_ir.dag:28` bound to P1).
-  (Corrected from "7 VALID-🟡 = 6 rows + 1 cite": the row enumeration
-  totals 7 not 6, so 7+1 = 8 per codex review on PR #3243 sha
-  `0cc5d95ae` 2026-05-18.)
-- **3 VAGUE DECISIONS.md rows** — `SL-3229-VERILOG-D3200` (consumer-class
-  not named) + `SL-3229-FLOAT-NOMINAL` (straddles two owners) +
-  **`SL-3229-INTEGER-GROUP-COMPLETION`** (no owning task — reclassified
-  under the tightened bar; P10 in Section 1 carries this flag).
-- **~16 VAGUE in-file prose blocks** across `json.dag`, `yaml.dag`,
-  `toml.dag`, and 5 `verilog.dag` cite-sites inheriting VERILOG-D3200
-  ≈ **~19 VAGUE total**.
-- **4 INVALID-GATE** (typescript.dag D2-shaped gates).
-- **0 STALE → 🔴** — no named arrival has already landed.
+- **11+ VALID-🟡 bound to §1.1** — prior **8** (§3.3 pre-amendment
+  footnote) **+** `SL-3229-VERILOG-D3200` + `SL-3229-FLOAT-NOMINAL` +
+  **5** `verilog.dag` cite-sites now inherit the **P4** / **P1**
+  roll-ups respectively (numeric reconciliation vs strict 🟡-count
+  table in §1.2 remains the burn-down lane's job).
+- **0 VAGUE DECISIONS.md rows** from the former §3.1 trio — D3200 and
+  FLOAT-NOMINAL are **VALID**; INTEGER is **CONCRETIZED** but **⛔**
+  pending **T-#** (not "VAGUE" — the `feature:` is named).
+- **0 VAGUE in-file backlog** from the former `json`/`yaml`/`toml` /
+  `verilog` §3.2 bucket — **CONCRETIZED** or **VALID** per above.
+- **0 INVALID-GATE** — `typescript.dag` historical INVALID-GATE prose
+  is **cleared** on the #3299 branch (🟢 coproducts + TS-D2).
+- **0 STALE → 🔴** — unchanged.
 
-**Headline finding:** no pre-existing tracker is STALE — the
-cardinality-refinement / collection Wave-A2 / constrained-generics
-arrivals are uniformly still ahead of us, verified against
-`std/cardinality.dag`, `std/collection.dag`, `std/nat.dag`,
-`std/algebra.dag` on `main` @ `ce0241039`. The pre-existing-tracker
-debt is **overwhelmingly VAGUE prose-form gates that #3244 retires** —
-concretizing the in-file prose blocks under one canonical
-`feature: std/cardinality.dag refinement (T-3 Wave-A2)` (and a smaller
-parser-side family `feature: T-6/T-7 parse/emit pipeline-stage
-substrate`) collapses much of the VAGUE list to VALID. The 4
-typescript.dag INVALID-GATE entries need substantive re-gating against
-the post-D2-reversal fact-bundle model. **All re-gates and dissolve-now
+**Headline finding (post-#3299):** the §3 **pre-plan** bucket that was
+**not rollable under P1–P10** is **cleared** except **`SL-3229-INTEGER-GROUP-COMPLETION`**
+awaiting an owning **T-#** for the **P10** row. Authoritative **`feature:`**
+text for D3200 / FLOAT-NOMINAL / INTEGER lives in **`DECISIONS.md` Part 6**;
+`extdeps/formats/{json,yaml,toml}.dag` carry **#3244 plan anchors** tying
+Deferred prose to **P1** + **P3**. Downstream lane work is execution
+(T-3/T-4/T-6/T-7 landings), not further §3 triage on these items.
+
+**All re-gates and dissolve-now
 fixes are downstream lane work, not C1's** — C1 marks and flags.
 
 ---
