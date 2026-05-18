@@ -210,19 +210,8 @@ def coproduct_tag_from_merge_base(rel: str) -> dict[str, tuple[str, str]]:
         if not nm:
             continue
         block = authority_block(lines, i)
-        if rel.endswith("llvm_ir.dag") and nm == "LlvmType":
-            live_text = (ROOT / rel).read_text()
-            width_refined = (
-                "IntegerType { bits: NonZeroNat }" in live_text
-                and "PointerType { address_space: Nat }" in live_text
-                and "VectorType { element: LlvmType, count: Nat, scalable: VectorScaling }"
-                in live_text
-                and "ArrayType { element: LlvmType, count: Nat }" in live_text
-            )
-            if width_refined:
-                out[nm] = ("🟢", "SL-3229-LLVM-WIDTH")
-            elif "RAW-Int WIDTH RESIDUAL" in block:
-                out[nm] = ("🟡", "SL-3229-LLVM-WIDTH")
+        if rel.endswith("llvm_ir.dag") and nm == "LlvmType" and "RAW-Int WIDTH RESIDUAL" in block:
+            out[nm] = ("🟡", "SL-3229-LLVM-WIDTH")
             continue
         tail = practice4_tail_for_face(lines, i)
         face = practice4_face(tail)

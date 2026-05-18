@@ -1,16 +1,15 @@
 // src/v4/std/cardinality.dag
 // Scope: cardinality, inhabitance, bounded-natural refinement, descent evidence.
 // Anchor: https://en.wikipedia.org/wiki/Cardinality
-// Owns: Never, Unit, NonZeroNat, NatLeWitness, UpperBoundedNat, nat_le_witness_well_formed, upper_bounded_nat_well_formed, DescentEvidence, RankingDimension, TerminationProof, Multiplicity.
-// Consumes: std algebra, std collection, std nat, std node.
+// Owns: Never, Unit, NonZeroNat, NatLeWitness, UpperBoundedNat, nat_le_witness_lower, nat_le_witness_upper, nat_le_witness_well_formed, upper_bounded_nat_value, upper_bounded_nat_inclusive_max, upper_bounded_nat_well_formed, DescentEvidence, RankingDimension, TerminationProof, Multiplicity.
+// Consumes: std collection, std nat, std node.
 // Status: T-3 modeled; Wave-A2 inhabitance + bounded-natural refinement carriers.
 
 
 module v4.std.cardinality
 
-import v4.std.algebra { Ordering, Less, Equal, Greater }
 import v4.std.collection { List }
-import v4.std.nat { Nat, nat_compare }
+import v4.std.nat { Nat }
 import v4.std.node { Symbol }
 // 🟢 DECISIONS.md Part 1 Never/Unit + §PR-3252-cardinality-std (Practice 9).
 type Never
@@ -23,35 +22,34 @@ type NatLeWitness
   = LeqZero { upper: Nat }
   | LeqSucc { inner: NatLeWitness }
 type UpperBoundedNat {
-  inclusive_max: Nat
-  value: Nat
   le: NatLeWitness
 }
-fn nat_le_witness_well_formed(value: Nat, inclusive_max: Nat, w: NatLeWitness) -> Bool {
+fn nat_le_witness_lower(w: NatLeWitness) -> Nat {
   match w {
-    LeqZero { upper } => match value {
-      Zero => match nat_compare(a: inclusive_max, b: upper) {
-        Equal => true
-        Less => false
-        Greater => false
-      }
-      Succ { prev: _ } => false
-    }
-    LeqSucc { inner } => match value {
-      Zero => false
-      Succ { prev: vp } => match inclusive_max {
-        Zero => false
-        Succ { prev: mp } => nat_le_witness_well_formed(value: vp, inclusive_max: mp, w: inner)
-      }
-    }
+    LeqZero { upper: _ } => Zero
+    LeqSucc { inner } => Succ { prev: nat_le_witness_lower(w: inner) }
+  }
+}
+fn nat_le_witness_upper(w: NatLeWitness) -> Nat {
+  match w {
+    LeqZero { upper } => upper
+    LeqSucc { inner } => Succ { prev: nat_le_witness_upper(w: inner) }
+  }
+}
+fn upper_bounded_nat_value(b: UpperBoundedNat) -> Nat {
+  nat_le_witness_lower(w: b.le)
+}
+fn upper_bounded_nat_inclusive_max(b: UpperBoundedNat) -> Nat {
+  nat_le_witness_upper(w: b.le)
+}
+fn nat_le_witness_well_formed(w: NatLeWitness) -> Bool {
+  match w {
+    LeqZero { upper: _ } => true
+    LeqSucc { inner } => nat_le_witness_well_formed(w: inner)
   }
 }
 fn upper_bounded_nat_well_formed(b: UpperBoundedNat) -> Bool {
-  nat_le_witness_well_formed(
-    value: b.value,
-    inclusive_max: b.inclusive_max,
-    w: b.le,
-  )
+  nat_le_witness_well_formed(w: b.le)
 }
 // 🟢 coproduct dissolution — DECISIONS.md classification ledger: DescentEvidence.
 type DescentEvidence

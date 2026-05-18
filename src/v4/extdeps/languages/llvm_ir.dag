@@ -27,7 +27,7 @@ type FloatKind
   | PpcFp128Float
 
 
-// 🟢 coproduct dissolution — DECISIONS.md Part 6 · SL-3229-LLVM-WIDTH.
+// 🟡 coproduct dissolution — DECISIONS.md Part 6 · SL-3229-LLVM-WIDTH.
 type LlvmType
   = VoidType
   | LabelType
@@ -36,7 +36,7 @@ type LlvmType
   | IntegerType { bits: NonZeroNat }
   | FloatingType { kind: FloatKind }
   | PointerType { address_space: Nat }
-  | VectorType { element: LlvmType, count: Nat, scalable: VectorScaling }
+  | VectorType { element: LlvmType, count: NonZeroNat, scalable: VectorScaling }
   | ArrayType { element: LlvmType, count: Nat }
   | StructType { fields: List<LlvmType>, packed: StructPacking }
   | FunctionType { result: LlvmType, params: List<LlvmType>, var_arg: VarArg }
