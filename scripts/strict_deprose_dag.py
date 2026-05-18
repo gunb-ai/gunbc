@@ -238,10 +238,11 @@ def coproduct_tag_from_merge_base(rel: str) -> dict[str, tuple[str, str]]:
         for nm in (
             "ConstantUnaryOperator",
             "ConstantBinaryOperator",
+            "ConstantSelect",
             "ConstantPrimary",
             "ConstantExpression",
         ):
-            out[nm] = ("🟢", "CP-3229-GREEN-TERMINAL")
+            out[nm] = ("🟢", "CP-3229-VERILOG-CONSTEXPR-TERMINAL")
     return out
 
 

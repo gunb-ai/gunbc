@@ -1295,7 +1295,13 @@ Verbatim `//` lines from merge-base `verilog.dag` (lines **2156–2311**):
 //
 ```
 
-**Dissolution trigger:** `std/collection.dag` Wave-A2 `List<T> where non_empty` (merge-base enumeration of 26 sites).
+**PR #3272 extension:** P8's constant-expression carrier adds site 27:
+`ConstantConcatenation.expressions` (IEEE 1364-2005 §A.8.1
+`constant_concatenation ::= { constant_expression { , constant_expression } }`).
+It rides the same Wave-A2 `List<T> where non_empty` deferral; no
+Verilog-local non-empty carrier is introduced.
+
+**Dissolution trigger:** `std/collection.dag` Wave-A2 `List<T> where non_empty` (merge-base enumeration of 26 sites + PR #3272 site 27).
 
 ### SL-3229-VERILOG-D3200 — #3200 consumer-independent 🟡 coproducts (first-consumer decomposition)
 
@@ -1532,7 +1538,7 @@ Merge-base `92cb26402` **Practice-4** `// Coproduct dissolution … 🟢 GREEN (
 | File | GREEN ledger blocks (merge-base `rg` count) |
 |------|-----------------------------------------------|
 | `src/v4/extdeps/languages/llvm_ir.dag` | 29 |
-| `src/v4/extdeps/languages/verilog.dag` | 45 |
+| `src/v4/extdeps/languages/verilog.dag` | 41 |
 | `src/v4/extdeps/languages/ptx.dag` | 13 |
 | `src/v4/extdeps/languages/go.dag` | 10 |
 | `src/v4/extdeps/languages/python.dag` | 3 |
@@ -1540,6 +1546,24 @@ Merge-base `92cb26402` **Practice-4** `// Coproduct dissolution … 🟢 GREEN (
 | `src/v4/extdeps/formats/json.dag` | 1 |
 | `src/v4/extdeps/formats/yaml.dag` | 1 |
 | `src/v4/std/float.dag` | 2 |
+
+### CP-3229-VERILOG-CONSTEXPR-TERMINAL — 🟢 Verilog P8 constant-expression coproducts
+
+PR #3272 adds five Verilog constant-expression sum carriers not present in
+merge-base `92cb26402`: `ConstantUnaryOperator`, `ConstantBinaryOperator`,
+`ConstantSelect`, `ConstantPrimary`, and `ConstantExpression`.
+
+Practice-4 terminal ledger: all five are closed, spec-grounded enumerations
+from IEEE 1364-2005 §A.8.3 / §A.8.4. They are not user-extensible vocabulary,
+not coordinates of a product, and not consumer-local policy. Their variants
+partition the standard's constant-expression grammar operators, selectable
+constant-primary references, primary forms, and recursive expression forms.
+The expression recursion is the grammar's own recursion; it does not add a
+new substrate behavior or a second expression authority. Non-coproduct
+records introduced with them (`ConstantFunctionCall`,
+`ConstantSystemFunctionCall`, `ConstantConcatenation`,
+`ConstantMultipleConcatenation`, `VectorRange`) are structural payload records,
+not Practice-4 sums.
 
 **Recovery:**
 
