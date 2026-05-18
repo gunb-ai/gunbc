@@ -85,7 +85,7 @@ fi
 # v4 affected: src/v4/ touched OR workspace deps changed (deps can break v2 build,
 # which v4 depends on for bootstrap). Triggers the bootstrap viability test:
 # v2 binary compiles every v4 .dag file (proves v4 stays in v2-syntax-compatible subset).
-if echo "$changed" | grep -qE '^src/v4/|^Cargo\.(toml|lock)$'; then
+if echo "$changed" | grep -qE '^src/v4/|^Cargo\.(toml|lock)$|^tools/gunbc_prefix_lens_driver/'; then
   v4_state="true"
   echo "v4 affected: yes (running v2→v4 bootstrap viability test)" >&2
 else
