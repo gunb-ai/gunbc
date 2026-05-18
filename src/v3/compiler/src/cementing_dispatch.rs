@@ -16,7 +16,9 @@
 //!
 //! **Interim projection bridge:** `expected_cementing_receipt_triples` is a fail-closed Rust match
 //! from `(registry_name, regen lens_file basename)` to the canonical receipt triples the
-//! `cementing_band_c_v2_complete_receipts` list must equal. Dissolution: move that expansion into
+//! `cementing_band_c_v2_complete_receipts` list must equal. The basename filter includes
+//! v2-oracle-complete rows **and** v3-native behaviorally complete rows (`LensCapabilityV2NoneV3Native`).
+//! Dissolution: move that expansion into
 //! `.dag` data (fixture or `std.verification`) so the predicate reads a single structural receipt
 //! roster keyed off the register ∩ `regen.dag` projection, with no parallel Rust roster.
 
@@ -241,6 +243,34 @@ fn expected_cementing_receipt_triples(
                     "temporary-rust".to_string(),
                 ));
             }
+            ("effect_enumeration", "effect_enumeration.dag") => {
+                out.insert((
+                    name.clone(),
+                    "t_r3_gate_87_cementing_regen_effect_enumeration".to_string(),
+                    "dag".to_string(),
+                ));
+            }
+            ("idempotency", "idempotency.dag") => {
+                out.insert((
+                    name.clone(),
+                    "t_r3_gate_87_cementing_regen_idempotency".to_string(),
+                    "dag".to_string(),
+                ));
+            }
+            ("parallelism", "parallelism.dag") => {
+                out.insert((
+                    name.clone(),
+                    "t_r3_gate_87_cementing_regen_parallelism".to_string(),
+                    "dag".to_string(),
+                ));
+            }
+            ("structural_resolution", "structural_resolution.dag") => {
+                out.insert((
+                    name.clone(),
+                    "t_r3_gate_87_cementing_regen_structural_resolution".to_string(),
+                    "dag".to_string(),
+                ));
+            }
             _ => {
                 return Err(format!(
                     "Band-C cementing projection includes `LensRegistryEntry` \
@@ -322,6 +352,27 @@ fn v2_cementing_basenames_from_capability_rows(
     Ok(basenames)
 }
 
+/// Band-C dispatch projection: `LensCapabilityBehavioralComplete` plus either
+/// `LensCapabilityV2RealV2` (v2-oracle cementing) or `LensCapabilityV2NoneV3Native`
+/// (v3-native gate-#87 `.dag` harness receipts).
+fn band_c_cementing_basenames_from_capability_rows(
+    dag: &Dag,
+    capability_rows: &[FieldValue],
+) -> Result<BTreeSet<String>, String> {
+    let mut basenames = BTreeSet::new();
+    for row in capability_rows {
+        let (lens_basename, _structural_label, behavioral_label, v2_label) =
+            parse_capability_register_row(dag, row)?;
+        let band_c_complete = behavioral_label == "LensCapabilityBehavioralComplete"
+            && (v2_label == "LensCapabilityV2RealV2"
+                || v2_label == "LensCapabilityV2NoneV3Native");
+        if band_c_complete {
+            basenames.insert(lens_basename);
+        }
+    }
+    Ok(basenames)
+}
+
 /// `lens_basename` → `LensCapabilityBehavioralStatus` variant label for every row in
 /// `std.verification` `lens_capability_register_rows`.
 ///
@@ -354,10 +405,12 @@ pub fn lens_capability_register_behavioral_label_by_basename(
     Ok(out)
 }
 
-/// Lens basenames that participate in Band-C cementing: `LensCapabilityBehavioralComplete`
-/// plus `LensCapabilityV2RealV2` in the canonical `std.verification`
-/// `lens_capability_register_rows` list (same projection `CementingDispatchMatchesProjection`
-/// uses before intersecting `regen.dag`).
+/// Lens basenames in the **markdown v2-oracle slice** ratchet: `LensCapabilityBehavioralComplete`
+/// plus `LensCapabilityV2RealV2` only (excludes v3-native Band-C harness rows).
+///
+/// `CementingDispatchMatchesProjection` uses the broader Band-C basename filter
+/// (behaviorally complete with `LensCapabilityV2RealV2` **or** `LensCapabilityV2NoneV3Native`)
+/// before intersecting `regen.dag`.
 ///
 /// Exposed for integration tests that mechanically ratchet the markdown capability table against
 /// this structural authority (`lens_register_correspondence_test`).
@@ -419,7 +472,7 @@ pub(crate) fn evaluate_cementing_dispatch_projection(
     let capability_rows = list_items_of_declaration(dag, reg_id, "capability_register")?;
     let receipt_rows = list_items_of_declaration(dag, recv_id, "cementing_receipts")?;
 
-    let basenames = v2_cementing_basenames_from_capability_rows(dag, &capability_rows)?;
+    let basenames = band_c_cementing_basenames_from_capability_rows(dag, &capability_rows)?;
 
     let registry_pairs = read_lens_registry_name_lens_file_pairs(dag)?;
 

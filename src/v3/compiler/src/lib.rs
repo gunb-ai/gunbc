@@ -5338,7 +5338,30 @@ pub(crate) mod lower_helpers {
 /// bridge collapsed to a single re-export. Keep the module name as an API alias
 /// until callers move to the crate-root `analyze_workflow` export.
 pub mod lens_idempotency {
-    pub use crate::dag::analyze_workflow;
+    #[allow(
+        dead_code,
+        unused_imports,
+        unused_parens,
+        unused_variables,
+        clippy::clone_on_copy,
+        clippy::collapsible_else_if
+    )]
+    mod generated {
+        use crate::dag::*;
+        use crate::diagnostics::*;
+        use crate::lens_t_las_carrier::OptionalDiagnostic;
+        use crate::Witness;
+
+        include!("lens_idempotency_generated.rs");
+    }
+
+    /// Stable `(Dag, NodeId)` surface for callers; the emitted regen module uses `&NodeId`.
+    pub fn analyze_workflow(
+        dag: &crate::dag::Dag,
+        workflow_root: crate::dag::NodeId,
+    ) -> crate::dag::WorkflowIdempotencyReport {
+        generated::analyze_workflow(dag, &workflow_root)
+    }
 }
 
 /// Lane 2 Stage 2e parallelism lens. Authority lives in
@@ -5600,7 +5623,7 @@ pub use cost_basis_declaration::{
 /// `operation_to_breaker` are **not** re-exported: naming and algebra authority
 /// live in `src/v3/std/effects.dag`, and the Rust bridge must not become a
 /// parallel public implementation surface beyond these std.effects mirrors.
-pub use dag::analyze_workflow;
+pub use lens_idempotency::analyze_workflow;
 pub use dag::{lane2_workflow_idempotency_report, report_unsupported_workflow_variant};
 pub use dag::{Dag, NodeId};
 pub use diagnostics::{Diagnostic, SourceSpan, LAYER1_DIAGNOSTIC_KIND_LABELS};
