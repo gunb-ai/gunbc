@@ -1,6 +1,6 @@
 // src/v4/workflow/ci.dag
 // Scope: CI pipeline AS DATA; gunbc job/gate DAG + eager well-formedness; ci.yml projection deferred.
-// Owns: CiCommand, CiJob, CiGate, CiPipeline, ci_pipeline_well_formed, ci_pipeline_unchecked, ci_pipeline, v2_compile_gate_job
+// Owns: CiCommand, CiJob, CiGate, CiPipeline, ci_pipeline_well_formed, ci_pipeline
 // Consumes: v4.std.node, v4.std.diagnostic
 // Status: filled — declarative core + eager well-formedness; structural v2 gate only.
 
@@ -45,20 +45,18 @@ type CiPipeline {
 data v2_compile_src_v4: Symbol = v2_compile_src_v4
 data structural_v2_compile: Symbol = structural_v2_compile
 
-data v2_compile_gate_job: CiJob = CiJob {
-  id: v2_compile_src_v4,
-  command: ShellCommand { command: "target/release/v2-compiler compile --source-root src/v4 --output-dir /tmp/v4-stage1 --target dag" },
-  needs: []
-}
-
-data ci_pipeline_unchecked: CiPipeline = CiPipeline {
-  jobs: [v2_compile_gate_job],
+data ci_pipeline: Outcome<CiPipeline> = ci_pipeline_well_formed(p: CiPipeline {
+  jobs: [
+    CiJob {
+      id: v2_compile_src_v4,
+      command: ShellCommand { command: "target/release/v2-compiler compile --source-root src/v4 --output-dir /tmp/v4-stage1 --target dag" },
+      needs: []
+    }
+  ],
   gates: [
     CiGate { id: structural_v2_compile, job: v2_compile_src_v4 }
   ]
-}
-
-data ci_pipeline: Outcome<CiPipeline> = ci_pipeline_well_formed(p: ci_pipeline_unchecked)
+})
 
 
 data ci_duplicate_job_id: Symbol = ci_duplicate_job_id
