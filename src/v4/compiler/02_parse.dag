@@ -1,7 +1,7 @@
 // src/v4/compiler/02_parse.dag
 // Scope: generic parsing over language grammar rules.
 // Anchor: https://en.wikipedia.org/wiki/Parsing
-// Owns: Grammar, ParseTree, parse_stage_locus_port, parse_walk_not_realized, parse_grammar_not_well_formed, parse_g0_tokens_remain, parse_walk_not_realized_diagnostic, parse_grammar_not_well_formed_diagnostic, parse_g0_tokens_remain_diagnostic, grammar_node_is_conj_empty_root, parse.
+// Owns: Grammar, ParseTree, parse_stage_locus_port, parse_walk_not_realized, parse_grammar_not_well_formed, parse_g0_tokens_remain, parse_walk_not_realized_diagnostic, parse_grammar_not_well_formed_diagnostic, parse_g0_tokens_remain_diagnostic, parse.
 // Consumes: std collection, std diagnostic, std node, compiler tokenize.
 // Status: Wave-1 void-grammar path realized.
 
@@ -17,17 +17,9 @@ import v4.std.diagnostic {
   Locus,
   Outcome,
   PortLocus,
-  UserInputBoundary,
+  UserInputBoundary
 }
-import v4.std.node {
-  ComputationNode,
-  Conj,
-  Node,
-  NodeKind,
-  Symbol,
-  TypeNode,
-  node_well_formed,
-}
+import v4.std.node { Node, Symbol, is_empty_conj_root, node_well_formed }
 
 
 type Grammar = Node
@@ -70,35 +62,30 @@ fn parse_g0_tokens_remain_diagnostic(at: Locus) -> Diagnostic {
     correction: Unavailable { reason: UserInputBoundary }
   }
 }
-fn grammar_node_is_conj_empty_root(g: Node) -> Bool {
-  match g.kind {
-    TypeNode { connective: Conj } => count(g.children) == 0
-    TypeNode { connective: _ } => false
-    ComputationNode { behavior: _ } => false
-  }
-}
 fn parse(tokens: TokenStream, grammar: Grammar) -> Outcome<ParseTree> {
   let at = PortLocus {
     port: parse_stage_locus_port
   }
   let ntok = count(tokens.tokens)
-  if !node_well_formed(n: grammar) {
-    Rejected {
-      diagnostic: parse_grammar_not_well_formed_diagnostic(at: at)
-    }
-  } else if grammar_node_is_conj_empty_root(g: grammar) {
-    if ntok == 0 {
-      Produced {
-        value: grammar
+  if node_well_formed(n: grammar) {
+    if is_empty_conj_root(n: grammar) {
+      if ntok == 0 {
+        Produced {
+          value: grammar
+        }
+      } else {
+        Rejected {
+          diagnostic: parse_g0_tokens_remain_diagnostic(at: at)
+        }
       }
     } else {
       Rejected {
-        diagnostic: parse_g0_tokens_remain_diagnostic(at: at)
+        diagnostic: parse_walk_not_realized_diagnostic(at: at)
       }
     }
   } else {
     Rejected {
-      diagnostic: parse_walk_not_realized_diagnostic(at: at)
+      diagnostic: parse_grammar_not_well_formed_diagnostic(at: at)
     }
   }
 }

@@ -31,3 +31,4 @@ type PythonCost {
 }
 
 type PyBool = Bool
+// 🟢 Singleton / `Unit` D2a slice — DECISIONS.md §PR-3252-extdeps-deferrals + §PR-3252-cardinality-std (Practice 9).
