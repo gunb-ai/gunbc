@@ -1,6 +1,6 @@
 // src/v4/extdeps/formats/csv.dag
 // Scope: RFC 4180 CSV; Lane C format slice (TASKS.md T-4.6).
-// Owns: CsvDialect, CsvHeaderPresence, CsvRow, CsvDocument, CsvRfc4180CommaFieldSep, CsvRfc4180DoubleQuoteEnclosure, CsvRfc4180EscapeDoubledQuote, CsvRfc4180RecordLineBreak, CsvRfc4180LastRecordTrailingDelimiterOptional, CsvRfc4180HeaderRowOptional, CsvRfc4180NewlineInsideQuotedFieldOnly, CsvRfc4180UnquotedFieldTextdataVsTab, CsvRfc4180EmptyFieldBetweenCommas, CsvRfc4180Utf8Charset, CsvRfc4180RegisteredTextCsvMime
+// Owns: CsvDialect, CsvHeaderPresence, CsvRow, CsvDocument, CsvRfc4180CommaFieldSep, CsvRfc4180DoubleQuoteEnclosure, CsvRfc4180EscapeDoubledQuote, CsvRfc4180RecordLineBreak, CsvRfc4180LastRecordEndingLineBreakOptional, CsvRfc4180HeaderRowOptional, CsvRfc4180NewlineInsideQuotedFieldOnly, CsvRfc4180UnquotedFieldTextdataVsTab, CsvRfc4180EmptyFieldBetweenCommas, CsvRfc4180Utf8Charset, CsvRfc4180RegisteredTextCsvMime
 // Consumes: std/node.dag, std/diagnostic.dag, std/collection.dag, std/text.dag
 // Status: scaffold — TASKS.md T-4.6
 // Anchor: https://datatracker.ietf.org/doc/html/rfc4180
@@ -52,7 +52,8 @@ type CsvRfc4180RecordLineBreak {
   generator_should_emit_crlf_between_records_per_rfc4180: CsvRfc4180GeneratorEmitsCrlfBetweenRecordsWitness,
 }
 
-type CsvRfc4180LastRecordTrailingDelimiterOptional {}
+// RFC 4180 §2: last record may omit the ending line break; unrelated to COMMA after the last field (forbidden).
+type CsvRfc4180LastRecordEndingLineBreakOptional {}
 
 type CsvRfc4180HeaderRowOptional {}
 
