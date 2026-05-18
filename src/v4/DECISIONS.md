@@ -1470,6 +1470,30 @@ Verbatim `//` lines from merge-base `float.dag` (lines **104–144** — modelin
 
 - **`rust.dag` / `RustNever`:** D2a(1) `type RustNever = Never` is in‑file. D2a(2) `rust_never_grounding` and **numeric** cost/width refinement (distinct from inhabitance `Never`/`Unit`) stay on the existing **GroundingMap** + **T‑25 / nat / integer** triggers already named in TASKS / SL‑3229 ledger rows.
 
+### SL-3309-PYTHON-SCALAR-RESEED — `extdeps/languages/python.dag` scalar-tower fact-bundle reseed
+
+**Authority:** v4 T-4 Phase-3 fact-bundle rework (DECISIONS.md `D2-REV`); manager `vivid-carp-207` corrected brief 2026-05-18; CORE ratchet ruling — single-owner `strict_deprose_dag.py` per-rel post-reseed registry work-item `node://adhoc-00aabd0d-fcb`.
+
+**Disposition:** **🟢 terminal** — `PythonScalar` is reseeded from the pre-reseed `Numeric { tower: PythonNumericTower } | Singleton { kind }` form into a flat coproduct `IntScalar | FloatScalar | ComplexScalar | BoolScalar | Singleton { kind: PythonSingletonKind }`. This dissolves two merge-base hollow defects: the single-field `Numeric { tower }` wrapper (Practice-8 hollow prong — a wrapper adding no field of its own) and the bare `PythonNumericTower` enum (a classifier reading zero spec facts). The flat coproduct mirrors `rust.dag` `RustScalar`'s *structure* (a flat scalar coproduct with nullary variants), not its facts.
+
+**Why the numeric variants are nullary (Python ≠ Rust).** `RustScalar` carries `kind` / `width` sub-carriers because Rust's integer/float primitives genuinely range over signedness and width (`i8`…`u128`, `f32`/`f64`). Python's numeric tower has **zero intra-kind variance**: exactly one `int` (arbitrary precision), one `float` (IEEE-754 binary64), one `complex` (pair of binary64) — Python Language Reference §3.2 (the standard type hierarchy). Per the CORE standing instruction — `rust.dag` is a *shape* reference, never a fact-template; a byte-symmetric copy asserting a non-fact is wrong — Python's numeric variants carry no fabricated `kind` / `width` carrier. A single-inhabitant carrier is also ungrammatical in v4 (`type X = Y` parses as an alias), and a free `kind × width` product over-generates invalid combinations (`Integral × FixedBinary64`, `Real × Unbounded`).
+
+**Ratchet authority:** this `###` row is the post-reseed Practice-4 authority for the live `PythonScalar` coproduct; the merge-base `92cb26402` tag map predates the reseed and classifies the now-dissolved pre-reseed shape. `strict_deprose_dag.py`'s per-rel post-reseed registry (`node://adhoc-00aabd0d-fcb`) sources `PythonScalar`'s tag from this row. `PythonSingletonKind` is unchanged from merge-base and retains `CP-3229-GREEN-TERMINAL`.
+
+**PR receipt:** gunbc **#3309**.
+
+### SL-3309-PYTHON-PER-PRIMITIVE-A-VS-B — `python.dag` per-primitive D2-fix shape (held-provisional)
+
+**Authority:** manager `vivid-carp-207` corrected brief 2026-05-18; operator A-vs-B ruling pending.
+
+**Disposition:** **🟡 held-provisional** — the per-primitive D2-fix shape for Python's scalar primitives (the `type PyBool = Bool` bare-alias plus a per-primitive `data <prim>_grounding: GroundingMap { spelling }` spelling-row form) is **not modeled in either direction** until the operator A-vs-B ruling decides whether bare-alias + `{ spelling: String }`-`GroundingMap` satisfies the D2-fix, or the bare alias must be eliminated / carry real coincidence facts. Python's genuine per-primitive facts (`int` = arbitrary-precision → `std/integer` `Int`; `float` / `complex` = IEEE-754 binary64 → `std/float` `Float64`) are exactly this held grounding — for Python the scalar-tower facts and the held per-primitive grounding are the same surface (cf. `SL-3309-PYTHON-SCALAR-RESEED`). The pre-existing `type PyBool = Bool` row is left in place as the unruled state; it is neither extended nor removed here.
+
+**Gate:** the operator A-vs-B ruling on the per-primitive D2-fix shape.
+
+**Dissolve-on-arrival:** when the A-vs-B ruling lands, model the per-primitive grounding rows in the ruled shape and close this row.
+
+**PR receipt:** gunbc **#3309**.
+
 ### SL-3229-T4-FORMAT-T6T7 — T-4.6 format parse/emit bodies (compiler pipeline P3)
 
 **Gate (live cite, Practice 9):** `🟡 gated — feature: T-6/T-7 parse + T-10 emit pipeline-stage substrate`

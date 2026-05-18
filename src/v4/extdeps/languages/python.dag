@@ -1,9 +1,10 @@
 // src/v4/extdeps/languages/python.dag
-// Scope: Python 3.14 Reference surface (scalar fact-bundle coproduct, singleton kinds, cost shape, partial D2 resolver).
+// Scope: Python 3.14 Reference surface (scalar fact-bundle coproduct, singleton kinds, cost shape).
 // Owns: PythonSingletonKind, PythonScalar, PythonCost, PyBool.
-// Consumes: Kernel-ambient Bool, Int; std/integer, std/float, std/cardinality when per-primitive grounding rows land (DECISIONS.md D2-REV).
-// Status: extdeps python slice; D2-REV fact-bundle rework — scalar tower reseeded as flat kind coproduct (RustScalar shape), `Numeric { tower }` wrapper + bare `PythonNumericTower` enum dissolved; per-primitive bool-alias/grounding-row HELD-PROVISIONAL 🟡 (operator A-vs-B ruling pending); principal int unbounded—no overflow carrier in-file.
+// Consumes: Kernel-ambient Bool, Int.
+// Status: extdeps python slice; D2-REV Phase-3 scalar-tower fact-bundle reseed; per-primitive D2-fix shape held-provisional on operator A-vs-B ruling (DECISIONS.md SL-3309-PYTHON-PER-PRIMITIVE-A-VS-B).
 // Anchor: https://docs.python.org/3.14/reference/datamodel.html#the-standard-type-hierarchy
+// Ledger: DECISIONS.md Part 6 (PR #3229): CP-3229-GREEN-TERMINAL, SL-3309-PYTHON-SCALAR-RESEED.
 
 module v4.extdeps.languages.python
 
@@ -13,14 +14,7 @@ type PythonSingletonKind
   | NotImplementedT
   | EllipsisT
 
-// 🟢 fact-bundle coproduct (RustScalar shape) — DECISIONS.md D2-REV.
-// The Python scalar tower flattened to one coproduct: the hollow
-// single-field `Numeric { tower }` wrapper and the bare `PythonNumericTower`
-// enum are dissolved into direct variants. Each variant's per-primitive
-// fact-bundle — int → arbitrary-precision integer, float/complex → IEEE-754
-// binary64, bool → subtype-of-int — grounds via per-primitive grounding
-// rows into std/integer + std/float (ref §3.2). Those rows, and the PyBool
-// alias below, are 🟡 HELD-PROVISIONAL on the operator A-vs-B ruling.
+// 🟢 coproduct dissolution — DECISIONS.md Part 6 · SL-3309-PYTHON-SCALAR-RESEED.
 type PythonScalar
   = IntScalar
   | FloatScalar
@@ -34,4 +28,3 @@ type PythonCost {
 }
 
 type PyBool = Bool
-// 🟢 Singleton / `Unit` D2a slice — DECISIONS.md §PR-3252-extdeps-deferrals + §PR-3252-cardinality-std (Practice 9).
