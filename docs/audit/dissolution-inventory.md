@@ -205,7 +205,8 @@ Caveats:
    plan.** Section 2's fresh findings + Section 3 VALID-🟡 are counted.
    **PR #3299** concretized the former §3 **VAGUE / INVALID-GATE**
    bucket into **named `feature:`** rows (`DECISIONS.md` Part 6) +
-   format-file plan anchors — those entries **now roll** under **P1 /
+   matching **terse format-file `// 🟡 gated — feature:`** lines — those
+   entries **now roll** under **P1 /
    P3 / P4** as amended in §1.1 + §3.3. **Only** **`SL-3229-INTEGER-GROUP-COMPLETION`**
    remains structurally outside P1–P9 until an owning **T-#** binds
    **P10**. The §1.2 illustrative 🟡-count column is still **qualitative**
@@ -658,10 +659,10 @@ alias-identity arrivals (lines 21, 34, 67, 69 on old `main` snapshots).
 | SL-3229-FLOAT-NOMINAL | DECISIONS.md row | feature | yes (cardinality.dag T-3; machine.dag = cross-ref only) | yes | **VALID (PR #3299)** |
 | verilog.dag × 5 in-file cite-sites | one-liner | feature | yes (inherits SL-3229-VERILOG-D3200 / P4) | — | **VALID** |
 | llvm_ir.dag:28 in-file cite-site | one-liner | feature | yes (inherits SL-3229-LLVM-WIDTH) | yes | VALID |
-| json.dag × 3 in-file blocks | prose | mixed | yes (plan anchor → P1+P3) | yes | **CONCRETIZED** |
-| yaml.dag × 6 in-file blocks | prose | mixed | yes (plan anchor → P1+P3) | yes | **CONCRETIZED** |
-| toml.dag × 7 in-file blocks | prose | mixed | yes (plan anchor → P1+P3) | yes | **CONCRETIZED** |
-| typescript.dag (historical cite) | prose | feature | yes (P4 / TS-D2) | yes | **RESOLVED** |
+| json.dag gate one-liners (post-`JsonValue`) | gate one-liner | feature | yes (Part 6 slugs → P1+P3) | yes | **CONCRETIZED** |
+| yaml.dag gate one-liners (post-`YamlValue`) | gate one-liner | feature | yes (Part 6 slugs → P1+P3 + YAML keys) | yes | **CONCRETIZED** |
+| toml.dag gate one-liners (+ table-syntax coproduct tag) | gate one-liner | feature | yes (Part 6 slugs → P1+P3 + datetime + table syntax) | yes | **CONCRETIZED** |
+| typescript.dag (historical cite) | header + coproduct one-liners | feature | yes (P4 / TS-D2) | yes | **RESOLVED** |
 
 Counts (**post-PR #3299** amendment to Section 3 — authoritative gates
 in `DECISIONS.md` Part 6 when this inventory disagrees):
@@ -675,7 +676,9 @@ in `DECISIONS.md` Part 6 when this inventory disagrees):
   FLOAT-NOMINAL are **VALID**; INTEGER is **CONCRETIZED** but **⛔**
   pending **T-#** (not "VAGUE" — the `feature:` is named).
 - **0 VAGUE in-file backlog** from the former `json`/`yaml`/`toml` /
-  `verilog` §3.2 bucket — **CONCRETIZED** or **VALID** per above.
+  `verilog` §3.2 bucket — **CONCRETIZED** or **VALID** per above; format
+  files on HEAD carry obligations **only** as terse **Part 6** gate
+  one-liners (no second-story Deferred prose).
 - **0 INVALID-GATE** — `typescript.dag` historical INVALID-GATE prose
   is **cleared** on the #3299 branch (🟢 coproducts + TS-D2).
 - **0 STALE → 🔴** — unchanged.
@@ -684,9 +687,11 @@ in `DECISIONS.md` Part 6 when this inventory disagrees):
 **not rollable under P1–P10** is **cleared** except **`SL-3229-INTEGER-GROUP-COMPLETION`**
 awaiting an owning **T-#** for the **P10** row. Authoritative **`feature:`**
 text for D3200 / FLOAT-NOMINAL / INTEGER lives in **`DECISIONS.md` Part 6**;
-`extdeps/formats/{json,yaml,toml}.dag` carry **#3244 plan anchors** tying
-Deferred prose to **P1** + **P3**. Downstream lane work is execution
-(T-3/T-4/T-6/T-7 landings), not further §3 triage on these items.
+`extdeps/formats/{json,yaml,toml}.dag` mirror that with **terse
+`// 🟡 gated — feature:`** lines (Part 6 slug tails) **after** each value
+coproduct — **P1** + **P3** (plus YAML/TOML-specific slugs). Downstream
+lane work is execution (T-3/T-4/T-6/T-7 landings), not further §3 triage
+on these items.
 
 **All re-gates and dissolve-now
 fixes are downstream lane work, not C1's** — C1 marks and flags.
