@@ -576,6 +576,43 @@ clobber surviving language vocabulary and the `std/` numeric core.
   the historical D2 row in this file (NOT the core).
 - **Active PRs:** `#3219` closed; `#3208` held.
 
+### P4-TS-REGATE — `typescript.dag` D2→fact-bundle regate disposition (2026-05-18)
+
+Per-language accountability row for the `typescript` entry of the
+**D2-encoding — rework** list above. The TypeScript `extdeps` file is the
+5th merged D2 language file; its D2-shaped scaffold is **re-gated**, not
+yet fact-modeled.
+
+- **Disposition: 🟡 gated.** `extdeps/languages/typescript.dag` carries a
+  D2-shaped scaffold — the kernel-ambient `type TsBoolean = Bool` alias
+  bridge, the cancelled `GroundingMap` facet (D2's `GroundingMap` arrival
+  was voided by D2-REV), and the `number` / `bigint` / `string` /
+  `symbol` / `null` / `undefined` alias sketches. None are terminal
+  models; all are bridges held until the Phase-3 rework.
+- **In-file carrier:** PR **#3251** (`session/crisp-crab-858`) — re-gates
+  the `typescript.dag` header (Owns/Status/grounding/operation-semantics
+  blocks → `🟡 gated — feature: T-4 fact-bundle Phase-3 rework`) and the
+  two smoke-test/census labels. **No** terminal fact-bundles authored
+  there; **no** `DECISIONS.md` edit in #3251 (ledger slice is this row).
+- **Named trigger / dissolve-on-arrival:** upstream P4 node
+  `node://adhoc-71ec74f4-080` ("T-4 fact-bundle Phase-3 rework
+  `extdeps/languages`", `crisp-crab-858`) authors the TypeScript
+  primitive fact-bundles — `number` (binary64 + NaN/Infinity/disposition
+  facts), `bigint` (exact unbounded integer facts), `string` (UTF-16
+  code-unit facts), `symbol` / `null` / `undefined` (nominal/runtime
+  facts). Any reuse of `std/float.dag` / `std/integer.dag` /
+  `std/text.dag` must cite **proven coincidence** evidence ("Coincide —
+  defined once", above), never a bare alias.
+- **Feeder gates (hard T-4 prereqs, per Phase 1 / `TASKS.md` T-4):**
+  T-3, **P1-KEYSTONE — CLEARED** (`#3226` merged @`77b9e7d72`), T-29,
+  T-30, T-25-core. The Phase-3 reseed does **not** begin until all clear.
+- **Dissolution:** this row is removed (or replaced by a
+  coincidence-evidenced bundle reference) when node `…71ec74f4-080`
+  lands and the TypeScript fact-bundles merge. The in-file ≤1-line
+  pointer is carried by #3251's gated header text; aligning it to a
+  slug-style pointer is a post-#3251-merge follow-up (out of scope here
+  to avoid a parallel edit to `typescript.dag`).
+
 ### Worked examples
 
 `docs/modeling/grounding-worked-examples.md` (this PR) demonstrates the
