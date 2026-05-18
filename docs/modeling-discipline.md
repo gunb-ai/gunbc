@@ -250,12 +250,21 @@ machine-checked meta-lens detects fired triggers, this review smell *is*
 the enforcement.
 
 **Scaffold exception:** early-milestone code (marked `// scaffold:
-<sunset-milestone>`) can defer its `DECISIONS.md` classification *ledger*
-until the sunset milestone. The exception covers the ledger only — the
-required one-line 🟢/🟡/🔴 tag on the coproduct itself is **not**
-waived (a scaffold coproduct still carries it, typically
-`// 🟡 feature:<sunset-milestone> — DECISIONS.md …`, the milestone being
-the gate). Scaffolds must be revisited before sunset.
+<sunset-milestone>`) can defer only the *verbose* part of its
+`DECISIONS.md` classification ledger — the dissolution-patterns-tried
+analysis — until the sunset milestone. The exception covers that
+analysis **only**. It does **not** waive: (a) the required one-line
+🟢/🟡/🔴 tag on the coproduct; nor (b) — for a 🟡 — the **bound
+dissolution plan** (the named missing primitive/consumer, its owning
+substrate PR or task, and the dissolve-on-arrival follow-up). A 🟡's
+plan-binding is the minimum that makes it a *valid* 🟡 (see the 🟡
+disposition above) — it is recorded in `DECISIONS.md` even when the
+fuller patterns-tried analysis defers. The gate names the **concrete
+missing primitive**, e.g. `// 🟡 feature:<missing-primitive> —
+DECISIONS.md <entry>` — a bare `<sunset-milestone>` is **not** a valid
+gate (a milestone-only gate leaves the dissolution path non-checkable);
+the sunset milestone records *when* the scaffold is revisited, not
+*what* it waits on. Scaffolds must be revisited before sunset.
 
 **Worked example (v2 retrospective):** `v2::ExprData` had 22 variants.
 Failed pattern 1 (every consumer dispatches on all 22), pattern 2
@@ -631,7 +640,11 @@ vocabulary:
   *code predicate*: a `match`/`if` on kind or symbol whose purpose is to
   *derive a property* ("is this a binder?", "which sugar is this?")
   rather than to do structurally distinct work. The property is a fact
-  the model should carry and the code should *read*.
+  the model should carry and the code should *read*. Canonical shape: a
+  coproduct discriminant — `free_monoid_non_empty` hand-rolling `match xs
+  { Empty => false ; Cons => true }` derives "which variant" by hand
+  where the coproduct already carries it. On a substrate / `std/` /
+  reusable algebraic helper this is unconditionally blocking.
 - **walker dissolution** *(new)* — Practice 7 lifted from
   declaration-families to *traversal*: a function that hand-rolls
   recursion over a structural type (`Node`, AST) — per-node-kind `match`
@@ -677,17 +690,23 @@ not prose. The symbol records a finding's *disposition*; the matching
 in-file `.dag` tag lands with the fix, per migration PR — it is not
 retro-applied across all v4 files at once.
 
-**Decidability — hard error vs advisory.** Findings differ in how
-mechanically a checker can decide them; this sets whether a finding is a
-hard error or a reviewer-judgment advisory:
+**Decidability — checker-flaggable vs reviewer-judgment.** Every
+dissolution finding is **blocking** — there is no advisory tier and no
+nit channel. A finding is resolved only by 🔴 dissolve-now, a tracked
+🟡, or a substantiated 🟢; it is never resolved by a free-text
+"intentional" / "short-circuiting" dismissal. The column below records
+only *who* flags a finding — a checker can mechanically hard-error the
+structural ones, the judgment ones a reviewer must decide — but a
+reviewer who identifies a finding blocks the PR exactly as a checker
+would:
 
 | finding | decidable? | enforcement |
 |---|---|---|
 | carrier dissolution | structural — type-shape match vs the `std/` carrier set | **hard error** |
-| walker dissolution | structural on the clean shape (recursion mirrors a modeled type) | **hard error** on the clean shape; **advisory** when the recursion is irregular |
+| walker dissolution | structural on the clean shape (recursion mirrors a modeled type) | **blocking** — hard error on the clean shape; genuinely-irregular recursion (call graph ≠ data graph) is a clean 🟢, not an advisory |
 | traverse dissolution | structural on the clean shape (a `fold` body that is a carrier short-circuit ladder) | **hard error** on the clean shape |
 | emit/template dissolution | structural — a literal template-string field | **hard error** on the literal-template shape |
-| predicate dissolution | judgment — a `match` *may* be genuinely distinct work, not a derived property | **advisory** — candidate only |
+| predicate dissolution | judgment — a `match` *may* be genuinely distinct work, not a derived property | **blocking** — a reviewer who identifies it blocks the PR; a `match` that is genuinely distinct work is a clean 🟢. No advisory / candidate tier. |
 | coproduct dissolution | already enforced — per-coproduct 🟢/🟡/🔴 tag + `DECISIONS.md` ledger (Practices 4 / 9) | already enforced |
 
 The *enforcement mechanism* — the checker-script build path and the
@@ -731,6 +750,12 @@ gap in a low-risk area → NON-BLOCKING.
 **When in doubt, prefer BLOCKING.** It is better to ask for a small
 rework now than to accept a substrate bug that propagates through three
 milestones before anyone notices.
+
+**Dissolution findings (Practice 10) are an always-BLOCKING class.** The
+NON-BLOCKING tier above does not apply to them: a dissolution finding —
+walker / traverse / predicate / carrier / emit-template — is resolved
+only by a 🔴 / tracked-🟡 / substantiated-🟢 disposition (Practice 10),
+never graded NON-BLOCKING and never waved off as a cleanup.
 
 ## For Reviewers
 
