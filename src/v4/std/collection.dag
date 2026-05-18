@@ -1,8 +1,8 @@
 // src/v4/std/collection.dag
 // Scope: container carriers grounded in algebraic constructions.
 // Anchor: https://en.wikipedia.org/wiki/Free_monoid
-// Owns: List, Set, Map, ListCombinators, SetCombinators, MapCombinators, SetAlgebra.
-// Consumes: std algebra, std logic, std witness.
+// Owns: List, Set, Map, ListMap, ListFilter, ListFold, ListFlatMap, ListAny, ListAll, ListCount, SetUnion, SetIntersect, SetDiff, SetComplement, SetMember, SetMap, SetFilter, SetFold, SetFlatMap, SetAny, SetAll, SetCount, MapKeys, MapValues, MapMapValues, MapFilterValues, MapFoldValues, MapCount.
+// Consumes: std algebra, std logic, std witness. Int is kernel-ambient per STRUCTURE.md.
 // Status: T-3 modeled; substrate-extension rule in src/v4/STRUCTURE.md.
 
 
@@ -17,36 +17,78 @@ type Set<T> = PointwisePower<T>
 type Map<K, V> {
   lookup: fn(K) -> Witness<V>
 }
-type ListCombinators<T, U, Acc> {
-  map: fn(List<T>, fn(T) -> U) -> List<U>
-  filter: fn(List<T>, fn(T) -> Bool) -> List<T>
-  fold: fn(List<T>, Acc, fn(Acc, T) -> Acc) -> Acc
-  flat_map: fn(List<T>, fn(T) -> List<U>) -> List<U>
-  any: fn(List<T>, fn(T) -> Bool) -> Bool
-  all: fn(List<T>, fn(T) -> Bool) -> Bool
-  count: fn(List<T>) -> Int
+type ListMap<T, U> {
+  apply: fn(List<T>, fn(T) -> U) -> List<U>
 }
-type SetAlgebra<T> {
-  union: fn(Set<T>, Set<T>) -> Set<T>
-  intersect: fn(Set<T>, Set<T>) -> Set<T>
-  diff: fn(Set<T>, Set<T>) -> Set<T>
-  complement: fn(Set<T>) -> Set<T>
-  member: fn(Set<T>, T) -> Bool
+type ListFilter<T> {
+  apply: fn(List<T>, fn(T) -> Bool) -> List<T>
 }
-type SetCombinators<T, U, Acc> {
-  map: fn(Set<T>, fn(T) -> U) -> Set<U>
-  filter: fn(Set<T>, fn(T) -> Bool) -> Set<T>
-  fold: fn(Set<T>, Acc, fn(Acc, T) -> Acc) -> Acc
-  flat_map: fn(Set<T>, fn(T) -> Set<U>) -> Set<U>
-  any: fn(Set<T>, fn(T) -> Bool) -> Bool
-  all: fn(Set<T>, fn(T) -> Bool) -> Bool
-  count: fn(Set<T>) -> Int
+type ListFold<T, Acc> {
+  apply: fn(List<T>, Acc, fn(Acc, T) -> Acc) -> Acc
 }
-type MapCombinators<K, V, U, Acc> {
-  keys: fn(Map<K, V>) -> List<K>
-  values: fn(Map<K, V>) -> List<V>
-  map_values: fn(Map<K, V>, fn(V) -> U) -> Map<K, U>
-  filter_values: fn(Map<K, V>, fn(V) -> Bool) -> Map<K, V>
-  fold_values: fn(Map<K, V>, Acc, fn(Acc, V) -> Acc) -> Acc
-  count: fn(Map<K, V>) -> Int
+type ListFlatMap<T, U> {
+  apply: fn(List<T>, fn(T) -> List<U>) -> List<U>
+}
+type ListAny<T> {
+  apply: fn(List<T>, fn(T) -> Bool) -> Bool
+}
+type ListAll<T> {
+  apply: fn(List<T>, fn(T) -> Bool) -> Bool
+}
+type ListCount<T> {
+  apply: fn(List<T>) -> Int
+}
+type SetUnion<T> {
+  apply: fn(Set<T>, Set<T>) -> Set<T>
+}
+type SetIntersect<T> {
+  apply: fn(Set<T>, Set<T>) -> Set<T>
+}
+type SetDiff<T> {
+  apply: fn(Set<T>, Set<T>) -> Set<T>
+}
+type SetComplement<T> {
+  apply: fn(Set<T>) -> Set<T>
+}
+type SetMember<T> {
+  apply: fn(Set<T>, T) -> Bool
+}
+type SetMap<T, U> {
+  apply: fn(Set<T>, fn(T) -> U) -> Set<U>
+}
+type SetFilter<T> {
+  apply: fn(Set<T>, fn(T) -> Bool) -> Set<T>
+}
+type SetFold<T, Acc> {
+  apply: fn(Set<T>, Acc, fn(Acc, T) -> Acc) -> Acc
+}
+type SetFlatMap<T, U> {
+  apply: fn(Set<T>, fn(T) -> Set<U>) -> Set<U>
+}
+type SetAny<T> {
+  apply: fn(Set<T>, fn(T) -> Bool) -> Bool
+}
+type SetAll<T> {
+  apply: fn(Set<T>, fn(T) -> Bool) -> Bool
+}
+type SetCount<T> {
+  apply: fn(Set<T>) -> Int
+}
+type MapKeys<K, V> {
+  apply: fn(Map<K, V>) -> List<K>
+}
+type MapValues<K, V> {
+  apply: fn(Map<K, V>) -> List<V>
+}
+type MapMapValues<K, V, U> {
+  apply: fn(Map<K, V>, fn(V) -> U) -> Map<K, U>
+}
+type MapFilterValues<K, V> {
+  apply: fn(Map<K, V>, fn(V) -> Bool) -> Map<K, V>
+}
+type MapFoldValues<K, V, Acc> {
+  apply: fn(Map<K, V>, Acc, fn(Acc, V) -> Acc) -> Acc
+}
+type MapCount<K, V> {
+  apply: fn(Map<K, V>) -> Int
 }
