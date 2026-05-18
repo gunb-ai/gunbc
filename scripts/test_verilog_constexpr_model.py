@@ -24,6 +24,12 @@ def test_constant_function_call_carries_attributes() -> None:
     assert "arguments: List<ConstantExpression>" in body
 
 
+def test_constant_system_function_call_carries_nonempty_arguments_site() -> None:
+    body = block(VERILOG.read_text(encoding="utf-8"), "ConstantSystemFunctionCall")
+    assert "system_function_name: Symbol" in body
+    assert "arguments: List<ConstantExpression>" in body
+
+
 def test_unary_constant_expression_takes_constant_primary() -> None:
     body = block(VERILOG.read_text(encoding="utf-8"), "ConstantExpression")
     assert (
@@ -46,6 +52,7 @@ def test_constant_primary_carries_parenthesized_single_expression() -> None:
 
 if __name__ == "__main__":
     test_constant_function_call_carries_attributes()
+    test_constant_system_function_call_carries_nonempty_arguments_site()
     test_unary_constant_expression_takes_constant_primary()
     test_constant_primary_carries_parenthesized_single_expression()
     print("OK: scripts/test_verilog_constexpr_model.py")
