@@ -14,16 +14,15 @@
 
 ## Canonical authorities (consume — do not re-spec here)
 
-| Path | Role | On `main`? |
-|------|------|-----------|
-| `docs/briefs/r4-lane-a-lens-prefix-t23-t12-ci.md` | Source brief `PREFIX-LENS-CI-1` — slices A–C, Acceptance-PR batches, `DISPATCH_HOLD`, P5/SG-0, TEST SURFACE. | Pending — lands via PR #3315 (`session/fierce-cat-31`). |
-| `docs/briefs/r4-lane-a-lens-interface-freeze-pin.md` | **Interface pin** — single authority batches author against: frozen carrier digest (`SectionRef`, `EnforcedApplication`, `IntrospectApplication`, `LensEnforcement`/`EnforceableLens`), CLI v0 template, `LENS_ID` registry, §5.1 synthesis default. | Pending — lands via PR #3315. |
-| `docs/briefs/r4-lane-a-lens-prefix-acceptance.md` | Acceptance artifact home — runnable AC table + red/green witnesses; evolves per batch, operator-signed. | Pending — lands via PR #3315. |
+| Path | Role |
+|------|------|
+| `docs/briefs/r4-lane-a-lens-prefix-t23-t12-ci.md` | Source brief `PREFIX-LENS-CI-1` — slices A–C, Acceptance-PR batches, `DISPATCH_HOLD`, P5/SG-0, TEST SURFACE. |
+| `docs/briefs/r4-lane-a-lens-interface-freeze-pin.md` | **Interface pin** — single authority batches author against: frozen carrier digest (`SectionRef`, `EnforcedApplication`, `IntrospectApplication`, `LensEnforcement`/`EnforceableLens`), CLI v0 template, `LENS_ID` registry, §5.1 synthesis default. |
+| `docs/briefs/r4-lane-a-lens-prefix-acceptance.md` | Acceptance artifact home — runnable AC table + red/green witnesses; evolves per batch, operator-signed. |
 
-Until PR #3315 merges, the three paths above are authoritative on
-`session/fierce-cat-31`. This index has a **manual depends_on** on PR #3315:
-its cross-references resolve once that PR squash-merges to `main`. Any §1–§3
-revision of the interface pin requires an **operator-signed** amendment.
+These three briefs are the canonical authorities for the PREFIX lens
+Acceptance program; this index re-specs none of them. Any §1–§3 revision of
+the interface pin requires an **operator-signed** amendment.
 
 ## Program map — batches under one interface pin
 
