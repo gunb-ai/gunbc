@@ -95,10 +95,14 @@ type OpenApiSchemaOasMemberKey
   | OpenApiSchemaOasExample
 
 
+// OAS 3.1 Schema Object — JSON Schema + OAS-only members + `x-*` + string-keyed wire deferrals
+// (https://spec.openapis.org/oas/v3.1.0.html#schema-object); `openapi_schema_deferred_keyword_members`
+// holds keys outside `core` / `openapi_schema_oas_members` / `openapi_schema_specification_extensions`.
 type OpenApiSchema {
   core: JsonSchema,
   openapi_schema_oas_members: Map<OpenApiSchemaOasMemberKey, JsonValue>,
   openapi_schema_specification_extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,
+  openapi_schema_deferred_keyword_members: Map<String, JsonValue>,
 }
 
 
