@@ -34,6 +34,18 @@ engineering.
 
 Everything else parallel-fills around that spine.
 
+> **Review status (2026-05-18):** 3/4 lanes ratified — Lane A (`fierce-cat-31`),
+> Lane B (`swift-ram-178`), Dissolution (`jolly-ibex-599`) — corrections folded
+> below. T-4-mgr (`vivid-carp-207`) rows encode its standing #3280/A-vs-B hold
+> (already confirmed elsewhere); explicit #3322 ack pending (low-priority — that
+> manager is correctly heads-down on the CORE-held reconcile). Will amend if it
+> diverges.
+>
+> **Lane-A clarification (folded):** CP-1b close sits on the **T-8→T-9** leg, a
+> T-9 prerequisite running **parallel wall-clock to the T-4 keystone wait** —
+> *not* on the T-4→T-9 edge and *not* keystone-gated. CP-1b therefore progresses
+> while T-4 waits on ratification (strengthens, not weakens, the parallel story).
+
 ---
 
 ## 2. Per-task dependency + dispatch table
@@ -61,7 +73,7 @@ exists, parallelizable) · `IFACE` (needs a contract frozen first) · `DESIGN` �
 | T-4.12 | languages/llvm_ir | NOT STARTED | T-1,T-2 | **READY** | T-4 mgr |
 | T-4.13 | languages/machine_code | NOT STARTED | T-3, T-4 LanguageModel | CP1 | T-4 mgr |
 | T-4.14 | languages/ptx | NOT STARTED | T-1,T-2 | OP (IN-B probe) | T-4 mgr |
-| **T-9** | compiler/04_infer | SCAFFOLD | T-8, T-4 | IMPL (gated by T-4) | Lane A |
+| **T-9** | compiler/04_infer | SCAFFOLD | T-8/CP-1b-close (∥) + T-4 | IMPL (T-4 keystone; CP-1b-close parallel, not keystone-gated) | Lane A |
 | **T-10** | 05_emit + 00_compile | SCAFFOLD | T-9, T-4 | IMPL+IFACE | Lane A |
 | **T-11** | emit per-target ×5 | NOT STARTED | T-10 | IMPL | Lane A |
 | T-12 | lens/complexity + cost | SCAFFOLD (fan-out **in flight**) | T-9 (refine) | **READY** (witness-first) | Lane A (lens) |
@@ -72,21 +84,28 @@ exists, parallelizable) · `IFACE` (needs a contract frozen first) · `DESIGN` �
 | T-17 | lens/synthesis + std/report | SCAFFOLD | T-12, T-9 | DESIGN+IMPL | Lane A (lens) |
 | T-18 | lens/coverage meta-lens | SCAFFOLD | T-12,T-13 | IMPL | Lane A (lens) |
 | T-19 | lens/testgen | SCAFFOLD | T-1,T-2,T-3 | **READY** | Lane B |
-| T-20 | workflow/bootstrap AS DATA | SCAFFOLD | T-1 | **READY** | Lane B |
+| T-20 | workflow/bootstrap AS DATA | Materially advanced — #3213 landed bootstrap+CI-as-data on main; remaining = fill tail | T-1 | **READY** | Lane B |
 | T-21 | lens/affected_set (IRT-1..4 held) | SCAFFOLD | T-1,T-2,T-3 | **READY** (honor IRT) | Lane B |
 | T-22 | compiler/05_eval interpreter (PRIMARY exec) | SCAFFOLD | T-9 (refine) | **READY** | Lane B |
 | T-23 | lens/application | **IFACE FROZEN** | lens fwk | IMPL (in flight) | Lane A (lens) |
-| T-24 | workflow/ci AS DATA | SCAFFOLD | T-20, T-21 | IMPL | Lane B |
+| T-24 | workflow/ci AS DATA | SCAFFOLD (T-20/T-24-adjacent slice landed via #3213) | T-20, T-21 | IMPL | Lane B |
 | T-25-core | refinement base + fail-closed validate | SCHEDULED | — | **DESIGN (OP)** | std / OP |
 | T-25-tail | refinement prover (erase) | SCHEDULED | T-9 | IMPL (optim) | Lane A |
-| T-26 | std/ boundary carriers (URL/HttpMethod) | SCHEDULED | T-3 | **READY** | std / Lane A |
+| T-26 | std/ boundary carriers (URL/HttpMethod) | SCHEDULED | T-3 | **READY** | std/ = canonical home; Lane A may run 1st PR as conduit |
 | T-28 | std/ module-graph | SCHEDULED (bundled→T-8) | T-3 | IMPL (in T-8) | Lane A |
 | T-29 | extdeps C++ ABI feeder | SCHEDULED | T-3/machine | **READY** | T-4 mgr |
-| T-30 | hollow-alias / fact-density gate | SCHEDULED (bootstrap mirror in flight) | — | IMPL+OP | Dissolution |
-| T-31 | de-prose/de-template backward sweep | SCHEDULED (indep. of T-4 gates) | — | **READY** | Dissolution |
+| T-30 | hollow-alias / fact-density gate | SCHEDULED — interim P5(b) mirror already on main (Rust gate + fact_density.dag witness + smoke) | — (none) | IMPL+OP (generated checker + operator closure remain) | Dissolution |
+| T-31 | de-prose/de-template backward sweep | SCHEDULED (indep. of T-4 gates, TASKS.md:1197-1199) | — | **READY** | Dissolution |
 | T-32 | minimum never-hand-edited bootstrap seed | SCHEDULED | — | DESIGN (doc) | Lane B / OP |
 
 *(T-5 REMOVED; T-27 DROPPED.)*
+
+**Folded clarifications (lane-manager review):**
+- **T-31** decomposes into **(a) rework-rider** — corrections that ride other
+  in-flight PRs (not independently dispatchable), and **(b) mop-up** — the true
+  parallel-fill backward sweep (Wave-0-dispatchable, independent of T-4 gates).
+- **Lens footnote:** the PREFIX driver/corpus gate is **T-23 + driver**, not
+  T-12 alone; T-12/T-13/T-17/T-18/T-23 rows match the running lens fan-out.
 
 ---
 
@@ -96,7 +115,7 @@ exists, parallelizable) · `IFACE` (needs a contract frozen first) · `DESIGN` �
 |---|---|---|---|
 | **P1-KEYSTONE / Practice-10 / #3240** | **OPERATOR ratification** | T-4 → T-9 → T-10 → T-11 → T-16; **also #3313 Wave-2 lenses; also the principled basis for #3280 A-vs-B** | **Operator** |
 | **T-25-core** | **DESIGN direction (operator review)** | T-4 refinement-bearers, T-4.5, T-4.6 | **Operator** + std |
-| T-30 hollow-alias gate | IMPL + OP (bootstrap mirror in flight) | T-4 fact-bundle integrity | Dissolution |
+| T-30 hollow-alias gate | IMPL+OP — interim P5(b) mirror on main; generated checker + operator closure remain | T-4 fact-bundle integrity | Dissolution |
 | T-29 C++ ABI | IMPL (READY, low fan-out) | T-4 cpp slice only | T-4 mgr |
 
 **One decision, three threads:** ratifying Practice-10/#3240 simultaneously
