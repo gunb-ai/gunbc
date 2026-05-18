@@ -77,6 +77,14 @@ def test_constant_select_shapes_match_parameter_and_specparam_grammar() -> None:
     ) in primary
 
 
+def test_vector_range_uses_constant_expression_endpoints() -> None:
+    body = block(VERILOG.read_text(encoding="utf-8"), "VectorRange")
+    assert "msb: ConstantExpression" in body
+    assert "lsb: ConstantExpression" in body
+    assert "msb_lexeme" not in body
+    assert "lsb_lexeme" not in body
+
+
 if __name__ == "__main__":
     test_constant_function_call_carries_attributes()
     test_constant_system_function_call_carries_nonempty_arguments_site()
@@ -84,4 +92,5 @@ if __name__ == "__main__":
     test_unary_constant_expression_takes_constant_primary()
     test_constant_primary_carries_parenthesized_single_expression()
     test_constant_select_shapes_match_parameter_and_specparam_grammar()
+    test_vector_range_uses_constant_expression_endpoints()
     print("OK: scripts/test_verilog_constexpr_model.py")
