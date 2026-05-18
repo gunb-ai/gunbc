@@ -49,4 +49,4 @@ T-4.11 English boundary file path is per `TASKS.md`; not re-audited in this pass
 ## Hand-off
 
 - **T-4 manager (`vivid-carp-207`):** consider a **table-only** refresh of `docs/briefs/r4-program-dispatch-plan.md` §2 for T-4.9 / T-4.13 (and optionally T-4.6/sql row clarity) so the discussion artifact matches headers — without folding any unrelated freeze work (#3280 custodian remains sole owner per operator routing).
-- **Operator / parent:** close the dashboard work item when this receipt + any manager edits are accepted; no PR was required for this leaf.
+- **Operator / parent:** close the dashboard work item when this receipt + any manager edits are accepted. The receipt lands via the **session PR on `session/calm-bear-268`** (dashboard-attached) for review visibility and CI after ready-for-review.
