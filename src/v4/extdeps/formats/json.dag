@@ -1,10 +1,10 @@
 // src/v4/extdeps/formats/json.dag
-// Scope: JSON value grammar (RFC 8259 / ECMA-404) — declarative model only; parse/emit deferred.
+// Scope: JSON value grammar (RFC 8259 / ECMA-404) with unique-name object profile — declarative model only.
 // Owns: JsonValue.
 // Consumes: std/node.dag; std/diagnostic.dag; std/collection.dag; std/algebra.dag (FreeMonoid).
-// Status: T-4.6 scaffold — parse/emit + numeric lexeme axes per DECISIONS.md Part 6.
+// Status: T-4.6 scaffold — parse/emit, numeric lexeme, unique-name profile axes per DECISIONS.md Part 6.
 // Anchor: https://datatracker.ietf.org/doc/html/rfc8259 + https://ecma-international.org/publications-and-standards/standards/ecma-404/
-// Ledger: DECISIONS.md Part 6: CP-3229-GREEN-TERMINAL, SL-3229-T4-FORMAT-T6T7, SL-3229-LLVM-WIDTH.
+// Ledger: DECISIONS.md Part 6: CP-3229-GREEN-TERMINAL, SL-3229-T4-FORMAT-T6T7, SL-3229-LLVM-WIDTH, SL-3229-JSON-UNIQUE-NAMES.
 
 module v4.extdeps.formats.json
 
