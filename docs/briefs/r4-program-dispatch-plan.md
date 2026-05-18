@@ -213,7 +213,10 @@ A-vs-B=B (b), decide T-25-core (c).
     T-9, it is Wave-3 IMPL-optim, never Wave-0.)*
 - **Wave 1 (P1-KEYSTONE + T-25-core + T-30 land):** T-4 ×5 languages, T-4.5,
   T-4.6 unblock (T-4 mgr).
-- **Wave 2 (T-4 lands):** T-9, T-4.7, T-4.8, T-4.13, T-18.
+- **Wave 2 (T-4 lands):** T-9, T-4.7, T-4.8, T-4.13. *(T-18 removed —
+  forward-dep fix per BLOCKING: T-18 is a meta-lens **over** T-12/T-13
+  (§2 Depends-on; TASKS.md "meta over the other lenses"), which only
+  become real in Wave 3 — so T-18 cannot precede them. Moved to Wave 4.)*
 
 > **Wave-2 dissolution-lens PREREQUISITES — cross-lane (sunny-wolf-435,
 > #3313 author, folded; reinforces the batch-(d) hold — Wave-2 cannot fan
@@ -242,7 +245,8 @@ A-vs-B=B (b), decide T-25-core (c).
 > (1a)+(2) → Dissolution-lane Wave-2 *consumes*; (1b) is in-lens. Batch (d)
 > held until (1a)+(2) land + #3313 stabilizes + A1 ratified.
 - **Wave 3 (T-9):** T-10, T-12/T-13 refine to real, T-17, T-22 refine.
-- **Wave 4 (T-10):** T-11, T-16, T-14, T-24.
+- **Wave 4 (T-10):** T-11, T-16, T-14, T-24, **T-18** (meta-lens — after
+  T-12/T-13 are real in Wave 3; forward-dep correct here).
 - **Wave 5 (T-16):** T-15 (self-host fixed-point — the terminal anti-regression
   gate) → **v4-done.**
 
