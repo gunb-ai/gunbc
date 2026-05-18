@@ -23,11 +23,9 @@ type TsScalarTowerSectionRefs {
   numeric_semantics: TsEcma262SectionRef
 }
 
-type TsNumberKind
-  = NumberPrimitive
+type TsNumberKind {}
 
-type TsBigIntKind
-  = BigIntPrimitive
+type TsBigIntKind {}
 
 // 🟢 coproduct dissolution — DECISIONS.md TS-SCALAR-PHASE3.
 type TsNumberWidth
@@ -35,8 +33,7 @@ type TsNumberWidth
   | ToInt32
   | ToUint32
 
-type TsBigIntWidth
-  = Unbounded
+type TsBigIntWidth {}
 
 // 🟢 coproduct dissolution — DECISIONS.md TS-SCALAR-PHASE3.
 type TsScalar
