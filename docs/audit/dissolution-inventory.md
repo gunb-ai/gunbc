@@ -55,7 +55,7 @@ double-counting).
   surface→dissolve loop, not a parking spot. **Count today: ~36
   bound to P1-P10 in § 1.1 (including the two #3225-merged findings
   added at final-ready — see § 1.1 P4 and P5 unblocks columns), plus
-  ~18 pre-plan backlog (Section 3 VAGUE+INVALID-GATE) not yet
+  ~20 pre-plan backlog (Section 3 VAGUE+INVALID-GATE) not yet
   rollable.**
 - **🟢 terminal** — audited and not a dissolution finding.
 
@@ -102,7 +102,7 @@ in-file 🟡 blocks, and *not* land the dissolve-now fixes.
   immediately** on each substrate PR's landing — the surface→dissolve
   loop is what makes 🟡 transient.
 - **§ 1.2** — 🟡 → 🟢 burn-down view.
-- **Pre-plan concretization backlog** — Section 3's ~14 VAGUE + 4
+- **Pre-plan concretization backlog** — Section 3's ~16 VAGUE + 4
   INVALID-GATE entries. **These are NOT in the P1-P10 plan**, because
   a VAGUE entry names no concrete primitive (cannot be rolled under
   any P#) and an INVALID-GATE entry's named arrival was cancelled by
@@ -190,7 +190,7 @@ Caveats:
 
 1. **"🟡 today" counts only entries already bound to a P# in the
    plan.** Section 2's fresh findings + Section 3's 6 VALID-🟡 are
-   counted; **Section 3's ~14 VAGUE + 4 INVALID-GATE are NOT** —
+   counted; **Section 3's ~16 VAGUE + 4 INVALID-GATE are NOT** —
    they are pre-plan backlog (no concrete primitive to roll under
    yet). The burn-down lane drives the backlog first; once a VAGUE/
    INVALID entry is re-concretized to a `feature:` arrival that
