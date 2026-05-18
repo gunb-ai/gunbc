@@ -2,7 +2,7 @@
 // Scope: Multi-program coordination as effect-typed Bind composition.
 // Owns: NetworkAddress, CoordinationBoundary, LanguageRef, FrameworkRef, FrameworkBinding, EndpointRef, Endpoint, SettleBound, ConvergeBound, ExchangePattern, SettlementGuarantee, ConsistencyGuarantee, HttpEffect, QueueEffect, StreamEffect, PubSubEffect, BindRef, HttpBind, QueueBind, StreamBind, PubSubBind, WireContractFacts, WireContract, DeploymentUnit.
 // Consumes: std/node.dag, std/diagnostic.dag, std/collection.dag, std/nat.dag.
-// Status: T-4.8 Lane C modeled; held for operator audit.
+// Status: Modeled with tracked scaffolds.
 
 module v4.extdeps.coordination
 

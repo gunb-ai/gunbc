@@ -181,45 +181,6 @@ carrier set without reopening the `EffectTypedBind<E>` illegal-state hole.
 
 10. **`test/claim/manual/resolve_compile_anchor.dag` (Tier-1 compile anchor):** **Why:** codex #13724 — keep `resolve` / `dag_language_model_canonical_symbols` / wave-1 `DagLanguageModel` on the v2 `compile --source-root src/v4` graph so resolver/LM edges cannot silently rot pre-T-22. **What:** imports `resolve` + `dag_language_model_wave1_void` / `dag_c3_surface_sugar_service`; `anchor_resolve_wave1_service_atom_via_canonical_symbols` builds minimal `Conj` → `Atom(service)` and calls `resolve` (exercises CP-1b items 1–2 + `resolve_atom` canonical-set fallback, including **`language_identity == dag_language_model_surface_id`** per codex #13790). **Runtime:** `v2-compiler run` on v4 `TestClaim`s remains **deferred until T-22** (`test/v2_run_preflight/MOVE1_COVERAGE.txt`); follow-up — promote to a real `TestClaim` asserting `Produced` on the resolved `Atom`, then add `Bind` / multi-edge cases.
 
-### Coordination coproduct receipts
-
-`FrameworkBinding` is 🟢 GREEN. Fact placement fails because every endpoint
-consumer needs the hosting coordinate. Variant-is-data fails because a boolean
-plus optional framework would make present-without-framework and hidden absence
-representable. Algebraic form is not applicable; framework hosting is not an
-algebra carrier. Dimensional decomposition fails because hosted vs unhosted is
-exclusive at one endpoint. Parameterized-family reduction fails because the
-hosted arm carries `FrameworkRef` and the unhosted arm is nullary.
-
-`ExchangePattern` is 🟢 GREEN. Fact placement fails because emitter,
-simulator, and verification consumers all read the same exchange topology.
-Variant-is-data fails because independent booleans would permit contradictory
-topologies. Algebraic form is not applicable; the variants are messaging
-patterns, not algebraic operations. Dimensional decomposition has already been
-performed: settlement and consistency are separate carriers, while the exchange
-topology itself remains one-of. Parameterized-family reduction fails because
-the four variants are named topology alternatives, not copies over a declared
-index family.
-
-`SettlementGuarantee` is 🟢 GREEN. Fact placement fails because bounded
-settlement is shared by simulator and verification consumers. Variant-is-data
-fails because an optional bound would allow a bounded claim with no bound.
-Algebraic form is not applicable; settlement timing is not a richer algebra
-carrier. Dimensional decomposition has already been performed: settlement is
-orthogonal to exchange topology and replica convergence. Parameterized-family
-reduction fails because immediate settlement and bounded settlement have
-different payload shapes.
-
-`ConsistencyGuarantee` is 🟢 GREEN. Fact placement fails because convergence
-obligations are shared by distributed simulation and verification consumers.
-Variant-is-data fails because an optional convergence bound would permit a
-convergence claim without evidence. Algebraic form is not applicable here;
-future CRDT or replica algebras may refine implementations, but this carrier is
-the wire-contract convergence obligation. Dimensional decomposition has already
-been performed: convergence is orthogonal to exchange and settlement.
-Parameterized-family reduction fails because the no-convergence and
-bounded-convergence arms have different payload shapes.
-
 ---
 
 ## OS-1 — #3209 Coproduct Dissolution And Scaffold Record
