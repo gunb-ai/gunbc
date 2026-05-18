@@ -1,19 +1,15 @@
 // src/v4/extdeps/coordination.dag
 // Scope: Multi-program coordination as effect-typed Bind composition.
-// Owns: NetworkAddress, LanguageRef, FrameworkRef, FrameworkBinding, EndpointRef, Endpoint, SettleBound, ConvergeBound, ExchangePattern, SettlementGuarantee, ConsistencyGuarantee, CoordinationEffectKind, BindRef, CoordinationBind, WireContractFacts, WireContract, DeploymentUnit.
-// Consumes: std/node.dag, std/collection.dag, std/nat.dag.
+// Owns: LanguageRef, FrameworkRef, FrameworkBinding, EndpointRef, Endpoint, SettleBound, ConvergeBound, ExchangePattern, SettlementGuarantee, ConsistencyGuarantee, CoordinationEffectKind, BindRef, CoordinationBind, WireContractFacts, WireContract, DeploymentUnit.
+// Consumes: std/node.dag, std/collection.dag, std/nat.dag, std/network.dag.
 // Status: Modeled with tracked scaffolds.
 
 module v4.extdeps.coordination
 
 import v4.std.collection { List }
 import v4.std.nat { Nat }
+import v4.std.network { NetworkAddress }
 import v4.std.node { Symbol }
-
-// Anchor: RFC 3986, January 2005, https://www.rfc-editor.org/rfc/rfc3986
-type NetworkAddress {
-  identity: Symbol
-}
 
 type LanguageRef {
   identity: Symbol
