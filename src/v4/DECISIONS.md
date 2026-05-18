@@ -1448,3 +1448,61 @@ git show 92cb26402eeb21471acb6ac47559cbae3b52afdb:src/v4/std/float.dag
 Merge-base `92cb26402` **may** mark a sum coproduct **🔴** in the Practice-4 header (stop-signal / fail-closed disposition). Live substrate one-liners use **`// 🔴 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-RED-PRACTICE4.`** — **not** `CP-3229-GREEN-TERMINAL` (that slug is **🟢 GREEN** bulk recovery only). Verbatim 🔴 five-pattern ledgers recover from the merge-base object the same way as 🟢 carriers; this row exists so the tag map never mislabels red as “green terminal.”
 
 **Recovery:** `git show 92cb26402eeb21471acb6ac47559cbae3b52afdb:`*path* on the five allowlisted `.dag` files; search `Coproduct dissolution` + `🔴` in the recovered `//` text.
+
+
+## Part 7 — Practice-4 coproduct classification ledger (PR #3213, still-hawk-102 Option-1)
+
+> Worker-authored provisional, operator-ratified on audit (still-hawk-102
+> Option-1, 2026-05-17). Scope: coproducts introduced by **PR #3213** in
+> non-allowlisted **workflow** files — distinct from **Part 6 / #3229**,
+> which relocates Practice-4 receipts for the five strict-de-prose
+> substrate files (`SL-3229-*` / `CP-3229-*`). The coproduct carries the
+> one-line in-file tag `// 🟡 coproduct dissolution — DECISIONS.md
+> LB-P4-3213` (modeling-discipline.md Practice 4 / Practice 9 general form).
+
+| ID | Coproduct / classification / dissolution-patterns-tried / trigger | Home |
+|---|---|---|
+| **LB-P4-3213** | `CiCommand` (`LintCommand \| TestCommand \| IgnoredTestCommand{test_name} \| BootstrapStageCompile{produces:Symbol} \| ShellCommand{command:String}`) — faithful PORT of v3 `dsl/gunbc/ci.dag` `CICommand` (still-hawk-102 fork-2 directive; not imported). **Single-authority (P2/Practice 5) — RESOLVED in-PR (openai-pro #3213 13971):** the bootstrap seed action is NOT restated in `ci.dag`; the `v2_compile_src_v4` job uses `BootstrapStageCompile{produces: v4_stage0_binary}`, a typed machine-readable reference imported from `v4.workflow.bootstrap` — `BootstrapPlan.seed` is the sole authority for the seed stage. **Structurally ENFORCED (P2/P3/Practice 5/6), not prose (openai-pro #3213 14006; operator BLOCKING inline #3213 ci.dag:168):** `ci_pipeline_well_formed` consumes the bootstrap authority `bootstrap_stage_output(plan: Outcome<BootstrapPlan>, s)` (owned by `v4.workflow.bootstrap`), which pattern-matches the canonical `bootstrap_plan` Outcome itself: fail-closed (`Rejected ⇒ false` — if the canonical bootstrap plan is Rejected, NO `BootstrapStageCompile` can satisfy the CI gate, so CI cannot be `Produced` while bootstrap is `Rejected`, INVARIANTS P3) and validates `produces` against the *validated plan's actual stage outputs* (`bp.seed/self0/self1.produces`), not a static symbol set — the validated `bootstrap_plan` is the sole authority (P2). Any out-of-plan or plan-Rejected payload routes to `ci_bootstrap_authority_violation`; a dangling payload cannot reach `Produced`. `BootstrapStageCompile` is 🟢 (a real cross-module authority edge, boundary-enforced, not deferred command-shape). The remaining 🟡 below is ONLY the `ShellCommand{String}` raw-argv command-shape decomposition, which is orthogonal and CORE-deferred to the consumer lane. **🟡 YELLOW (scaffold) — valid plan-bound, NOT "no change needed" (anti-#3250).** **Gate kind = `consumer:`** — the gate is the **first meaning-consumer** of the typed-command shape (deferred ci.yml projection / `select_jobs` / T-22 eval), which is **currently deferred-by-brief**, so the consumer-gate remains **CLOSED** and the #3244 gate-open→🔴 chain does **not** fire here. **Landed migration target:** `extdeps/process.dag::Command{program,args,env}` is **LANDED (#3209)** — it is the typed-command *feature/target*, NOT the meaning-consumer; the future consumer consumes typed `Command` **directly**, so **no parallel carrier is needed** and `#3213` does **NO migration** and **NO local `CiCommand` parse**. **Dissolution plan (complete #3244 plan-binding):** named consumer (ci.yml projection / `select_jobs` / T-22 eval) + landed target (`process.dag::Command`, #3209) + owning deferred lane — when that consumer lane is built it consumes `Command`, and `ShellCommand{command:String}`'s `String` dissolves there into typed `program/args/env`; the consumer owes the decomposition, not a local parse. **5 dissolution patterns tried:** (1) fact-placement FAILS (uniform command consumer, not scattered); (2) variant-is-data FAILS (heterogeneous payloads — `test_name` vs raw `command`; collapsing loses structural-intent-vs-raw-shell, the carrier's point); (3) algebraic N/A (not an algebra carrier); (4) dimensional FAILS (exactly-one-intent, not orthogonal axes); (5) parameterized-family FAILS (not `F<X>` over a declared set). Terminal-as-coproduct but 🟡 (not 🟢) because the consumer-gate is closed and the landed richer source (`process.dag::Command` #3209 / v3-F12) is the named decomposition target. | `src/v4/workflow/ci.dag` (`type CiCommand`) |
+
+### LB-P10-3213 — Practice-10 hand-rolled `List` operation dissolution ledger
+
+> Operator-flagged merge gate (still-hawk-102 via Lane B, 2026-05-18):
+> per-file hand-rolled `List` ops with duplicate-across-files are a
+> Practice-10 tell and must not merge as silent debt. Dispositions use
+> the **#3244 unified Dissolution dispositions** vocabulary (🔴
+> dissolve-now / 🟢 terminal / 🟡 gated `feature:`). Procedure result:
+> `std/collection.dag` (T-3; `git ls-tree` HEAD = 18 lines, only
+> `List`/`Set`/`Map` type aliases) declares **zero** derived `List`
+> operations ⇒ **zero 🔴** (nothing to dissolve into in-PR); every
+> generic primitive is **🟡 gated `feature:`**, owner **T-3
+> `std/collection.dag`** (the FreeMonoid-derived List-op surface;
+> `fold`/`map`/`count`/`concat` are language substrate primitives, used
+> directly — not hand-rolled, out of scope). In-file tag:
+> `// 🟡 List-op dissolution (Practice 10) — DECISIONS.md LB-P10-3213`.
+
+| ID | Helper(s) — *duplicate-across-files = Practice-10 tell* | Disposition | Missing `std/collection.dag` op (gate kind `feature:`, owner T-3) · dissolve-on-arrival obligation |
+|---|---|---|---|
+| **LB-P10-3213-MEMBER** | `bs_member` (bootstrap.dag) ∥ `ci_member` (ci.dag) — **duplicate** | 🟡 gated `feature:` | `member(x: T, xs: List<T>) -> Bool` (membership/contains). On arrival: replace both call-sites with the std op; **delete both hand-rolled helpers**. |
+| **LB-P10-3213-ANY** | `ci_symbol_resolves`, `ci_blocked` (ci.dag) | 🟡 gated `feature:` | `any(p: fn(T) -> Bool, xs: List<T>) -> Bool` (existential). On arrival: re-express as `any(...)`; delete the helpers. |
+| **LB-P10-3213-ALL** | `ci_all_job_ids_unique`, `ci_all_gate_ids_unique`, `ci_all_needs_resolve`, `ci_all_gate_jobs_resolve` (ci.dag) | 🟡 gated `feature:` | `all(p: fn(T) -> Bool, xs: List<T>) -> Bool` (universal). On arrival: the four predicates become `all(...)` compositions; delete the bespoke folds. |
+| **LB-P10-3213-COUNTIF** | `ci_id_occurrences` ∥ `ci_gate_id_occurrences` (ci.dag) — **duplicate** | 🟡 gated `feature:` | `count_if(p: fn(T) -> Bool, xs: List<T>) -> Int` (predicate count). On arrival: both occurrence-folds collapse to one `count_if`; delete both. |
+| **LB-P10-3213-SETEQ** | `bs_list_eq` (bootstrap.dag) | 🟡 gated `feature:` | `set_eq(a: List<T>, b: List<T>) -> Bool` (membership-symmetric / multiset equality). On arrival: replace with std `set_eq`; delete helper. |
+| **LB-P10-3213-FILTER** | `ci_eliminate_pass` (ci.dag) | 🟡 gated `feature:` | `filter(p: fn(T) -> Bool, xs: List<T>) -> List<T>`. On arrival: the keep-blocked pass becomes `filter(...)`; delete helper. |
+| **LB-P10-3213-FIND** | `ci_job_needs` (ci.dag) | 🟡 gated `feature:` | `find`/lookup-first — honest shape `find(p: fn(T) -> Bool, xs: List<T>) -> Witness<T>` (per TASKS.md:235 `Map`/`PartialFunction` honesty; gated also on `witness.dag`/Wave-A2). On arrival: replace lookup-fold; delete helper. |
+| **LB-P10-3213-KAHN** | `ci_kahn_fixpoint`, `ci_acyclic` (ci.dag) | 🟢 **terminal** | **Not** a reusable collection primitive: Kahn topological-elimination cycle-detection over the job graph — domain well-formedness model content, a *peer* of `ci_pipeline_well_formed` / `bootstrap_plan_well_formed` (which the gate does not ask to dissolve). Consumer-independent; no `std/collection.dag` op to dissolve into. (`fold`-as-bounded-counter is the P4 decidability idiom.) Its generic sub-primitives (`ci_member`/`ci_job_needs`/`ci_eliminate_pass`/`ci_blocked`) dissolve via the rows above; the Kahn *composition* stays. |
+
+**Note (out of dissolution scope, recorded for completeness):** `bs_diagnostic` / `ci_diagnostic` are `Diagnostic` constructors, not `List` operations. No 🔴 in this ledger — `std/collection.dag` currently has no derived-op surface to dissolve into; the gate opens when T-3 `std/collection.dag` lands the List-op surface, at which point every 🟡 row above is a dissolve-on-arrival merge obligation.
+
+### LB-T22-3213 — bootstrap-stage rejection-family negative-coverage plan-bound 🟡
+
+> CORE ruling (still-hawk-102, 2026-05-18, horn (i)): the
+> `BootstrapStageCompile` single-authority seam is **ADDRESSED-BY-CONSTRUCTION** —
+> `ci_pipeline_well_formed` is a pure structural predicate over the modeled
+> `CiPipeline`; an out-of-set `BootstrapStageCompile.produces` cannot satisfy
+> the gate (deterministically routes to `Rejected{ci_bootstrap_authority_violation}`,
+> a modeled `Outcome` variant — no imperative side-channel / stringly exception).
+> Verified in code by `bold-hawk-201` @ `6353d695e`. Horn (ii) — in-PR
+> executable negative harness — REJECTED (T-22-in-#3213 = brief violation;
+> hand-rolled harness = parallel test mechanism, anti-pattern).
+
+**🟡 plan-bound (NOT "no change needed" — anti-#3250).** The enforcement is structural and fail-closed *now*; what is deferred is the executable *demonstration*. **Arrival:** T-22's executable `TestClaim` runner lands (`compiler/05_eval.dag`; brief defers the executable TestClaim lane to the T-22 named trigger). **Follow-up (dissolves this 🟡):** add negative `TestClaim`(s) for the CI bootstrap-stage rejection family — dangling `BootstrapStageCompile.produces` + siblings (duplicate job/gate id, dangling `needs`, dangling gate job, dependency cycle) — exercising `ci_pipeline_well_formed`'s `Rejected` branches. **Bilateral binding:** the same obligation is recorded in `src/v4/TASKS.md` T-22 scope text (neither side is a vague "T-22 will cover"). In-file tag: `// 🟡 negative-coverage plan-bound (T-22) — DECISIONS.md LB-T22-3213`. | `src/v4/workflow/ci.dag` (`ci_pipeline_well_formed` rejection family) |
