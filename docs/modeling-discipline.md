@@ -732,10 +732,14 @@ For each relevant principle and its implementing practices:
 8. For cross-stage boundaries: verify facts flow forward.
 9. For any function whose behavior is fixed by a modeled type's shape
    (Practice 10): identify the derived-operations registry row it
-   hand-rolls, name the dissolution finding, and mark its disposition
-   (🔴 fix-now / 🟡 substrate-sequencing / 🟢 clean). A 🟡 finding names
-   the missing `std/` primitive — it is a tracked upstream obligation,
-   not a BLOCKING request-changes on an honest scaffold.
+   hand-rolls. For a row that carries a numbered dissolution finding
+   (rows 1 / 2 / 5 / 6 / 7), name the finding and mark its disposition
+   (🔴 fix-now / 🟡 substrate-sequencing / 🟢 clean); a 🟡 finding names
+   the missing `std/` primitive — a tracked upstream obligation, not a
+   BLOCKING request-changes on an honest scaffold. A hand-rolled registry
+   row 3 (translation) or 4 (coercion) carries **no** numbered finding —
+   it is a whole-architecture escalation, not a function-scale review
+   finding (per Practice 10's rows-3/4 carve-out).
 10. Classify every finding as BLOCKING or NON-BLOCKING per the calibration
     above.
 
