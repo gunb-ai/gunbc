@@ -88,14 +88,12 @@ type MachineDisplacement64WidthClass
 
 // Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
 type MachineSignedDisplacement32 {
-  kind: MachineIntKind
   width: MachineDisplacement32WidthClass
 }
 
 
 // Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
 type MachineSignedDisplacement64 {
-  kind: MachineIntKind
   width: MachineDisplacement64WidthClass
 }
 
