@@ -60,7 +60,8 @@ module v4.extdeps.formats.json
 // the total-emit shape superseded by this ratified fail-closed seam —
 // the literal header-line edit is the operator-tier batched
 // header-reconcile (csv-class; tracked-not-silent, see DECISIONS.md
-// Part 6 · SL-3229-T4-FORMAT-T6T7). No parallel `Result<ok, err>` in std/. This is the cross-file
+// Part 6 · SL-3229-T4-FORMAT-T6T7).
+// No parallel `Result<ok, err>` in std/. This is the cross-file
 // seam the canonical-first directive ratifies on THIS file; the other
 // five formats consume the SAME fail-closed-both-directions carrier.
 //

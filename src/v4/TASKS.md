@@ -249,7 +249,11 @@ language model coincides against. A per-language fact-bundle (T-4) cannot be
 authored until this vocabulary exists — so T-3 is on the **critical path** and
 every T-4 slice blocks on it. The exact-real / physical-quantity carriers (the
 SPICE gap — see `DECISIONS.md` "D2 REVERSAL + FACT-BUNDLE RESEED", Phase 2) are
-part of this vocabulary. Each axis is a real modeled fact, placed in the
+part of this vocabulary. **Temporal / RFC 3339 structured instants** (format
+lexemes → clock facts; T-4.6 consumers — `DECISIONS.md` Part 6 ·
+`SL-3229-T4-FORMAT-TOML-DATETIME`) are **T-3-owned `std/` vocabulary**, same
+scheduling envelope as other Wave-A2+ shared facts. Each **numeric /
+physical-quantity** axis is a real modeled fact, placed in the
 appropriate scalar/numeric file (`machine`, `integer`, `float`) by DFS to its
 concept-DAG home (M9) — never minted per-language.
 
