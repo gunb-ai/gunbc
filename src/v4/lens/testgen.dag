@@ -29,6 +29,19 @@ import v4.std.verification {
   T19ManualNatMulAssociativity,
   T19ManualAnchorAbsent
 }
+import v4.std.diagnostic {
+  Outcome,
+  Produced,
+  Rejected,
+  Diagnostic,
+  Correction,
+  Unavailable,
+  UserInputBoundary,
+  Locus,
+  Textual,
+  Extent,
+  WholeFile
+}
 import v4.std.node {
   Node,
   Connective,
@@ -101,11 +114,27 @@ data t19_law_nat_mul_annihilator: Symbol = t19_law_nat_mul_annihilator
 data t19_law_nat_mul_associativity: Symbol = t19_law_nat_mul_associativity
 
 
+data t19_testgen_lens_file: Symbol = t19_testgen_lens_file
+
+
+data t19_manual_anchor_absent_bootstrap: Symbol = t19_manual_anchor_absent_bootstrap
+
+
+fn t19_manual_anchor_absent_bootstrap_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: t19_manual_anchor_absent_bootstrap,
+    at: Textual { file: t19_testgen_lens_file, extent: WholeFile },
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+
 fn bootstrap_tier1_unit_classification() -> TestClassification {
   TestClassification { tier: Tier1, layer: Unit, }
 }
 
 
+// Wave-0: AssertKind mirrors manual `TestClaim.kind` in `nat_law_anchors` / `connective_anchors`; `TestgenConcept` is scheduling arm — M2 dissolves local table (TASKS T-19 P2).
 fn assert_kind_for_manual_anchor(key: T19ManualAnchorKey) -> AssertKind {
   match key {
     T19ManualTcConjEmpty => Compiles
@@ -207,7 +236,7 @@ fn testgen_concept_for_manual_anchor(key: T19ManualAnchorKey) -> TestgenConcept 
 }
 
 
-fn bootstrap_claim_generator_for_manual_anchor(
+fn bootstrap_claim_generator_for_manual_anchor_body(
   key: T19ManualAnchorKey
 ) -> Generator<TestgenConcept> {
   Generator {
@@ -215,5 +244,39 @@ fn bootstrap_claim_generator_for_manual_anchor(
     kind: assert_kind_for_manual_anchor(key: key),
     t19_anchor: key,
     slot: testgen_concept_for_manual_anchor(key: key),
+  }
+}
+
+
+fn bootstrap_claim_generator_for_manual_anchor(
+  key: T19ManualAnchorKey
+) -> Outcome<Generator<TestgenConcept>> {
+  match key {
+    T19ManualAnchorAbsent =>
+      Rejected { diagnostic: t19_manual_anchor_absent_bootstrap_diagnostic() }
+    T19ManualTcConjEmpty =>
+      Produced { value: bootstrap_claim_generator_for_manual_anchor_body(key: T19ManualTcConjEmpty) }
+    T19ManualTcDisjEmpty =>
+      Produced { value: bootstrap_claim_generator_for_manual_anchor_body(key: T19ManualTcDisjEmpty) }
+    T19ManualTcArrowTwoConj =>
+      Produced { value: bootstrap_claim_generator_for_manual_anchor_body(key: T19ManualTcArrowTwoConj) }
+    T19ManualTcCardinalityEmpty =>
+      Produced { value: bootstrap_claim_generator_for_manual_anchor_body(key: T19ManualTcCardinalityEmpty) }
+    T19ManualTcInstantiationEmpty =>
+      Produced { value: bootstrap_claim_generator_for_manual_anchor_body(key: T19ManualTcInstantiationEmpty) }
+    T19ManualTcConjEqualsRefl =>
+      Produced { value: bootstrap_claim_generator_for_manual_anchor_body(key: T19ManualTcConjEqualsRefl) }
+    T19ManualNatAddLeftIdentity =>
+      Produced { value: bootstrap_claim_generator_for_manual_anchor_body(key: T19ManualNatAddLeftIdentity) }
+    T19ManualNatAddRightIdentity =>
+      Produced { value: bootstrap_claim_generator_for_manual_anchor_body(key: T19ManualNatAddRightIdentity) }
+    T19ManualNatAddAssociativity =>
+      Produced { value: bootstrap_claim_generator_for_manual_anchor_body(key: T19ManualNatAddAssociativity) }
+    T19ManualNatMulLeftIdentity =>
+      Produced { value: bootstrap_claim_generator_for_manual_anchor_body(key: T19ManualNatMulLeftIdentity) }
+    T19ManualNatMulAnnihilator =>
+      Produced { value: bootstrap_claim_generator_for_manual_anchor_body(key: T19ManualNatMulAnnihilator) }
+    T19ManualNatMulAssociativity =>
+      Produced { value: bootstrap_claim_generator_for_manual_anchor_body(key: T19ManualNatMulAssociativity) }
   }
 }
