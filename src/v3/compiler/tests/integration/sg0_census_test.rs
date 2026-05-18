@@ -844,6 +844,10 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // T-30: `compile_to_dag` smoke on `src/v4/std/fact_density.dag` (Practice 8
     // structural mirror in `v4_hollow_alias_gate`). SG-0 + INVARIANTS §P5(b) receipt.
     "src/v3/compiler/tests/integration/v4_std_fact_density_dag_smoke_test.rs",
+    // T-19/T-20 closeout ratchets over v4 testgen + bootstrap-infra parse surfaces.
+    // SG-0 + INVARIANTS §P5(b) receipt; dissolves when the same checks are `.dag`
+    // TestClaims or generated harness coverage.
+    "src/v3/compiler/tests/integration/v4_test_bootstrap_infra_closeout_test.rs",
     // §1.8 gate #96 (`value_body_substrate_mirror_isomorphism_executable`):
     // CI-visible generated Rust `ValueBody` mirror vs `substrate.dag`
     // constructor isomorphism. Dissolves when `ValueBody` no longer has a
