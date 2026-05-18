@@ -115,20 +115,19 @@ in-file 🟡 blocks, and *not* land the dissolve-now fixes.
 
 **R1 (empty-`Conj`-root duplicate predicates)** — **LANDED PR #3284**
 (`src/v4/std/node.dag` `is_empty_conj_root`; disposition
-`DECISIONS.md` §CP-1b item 12). **R2** below remains the sole open
-🔴 in this band — one distinct follow-up PR. Each substrate primitive
-needed for R2 *already exists* on `main` @ `ce0241039` — no upstream
-substrate work blocks it.
+`DECISIONS.md` §CP-1b item 12). **R2** below — **LANDED PR #3245** —
+closed the LLVM discriminator predicate in the extdeps lane. Neither
+needed upstream substrate work.
 
 | # | finding | distinct fix | substrate available? |
 |---|---|---|---|
 | **R1** | WAS: `compiler/01_tokenize.dag lex_rules_node_is_conj_empty_root` **+** `compiler/02_parse.dag grammar_node_is_conj_empty_root` **+** `extdeps/languages/dag.dag dag_node_is_empty_conj_root` — three literal duplicates of the same empty-`Conj`-root shape query | **LANDED PR #3284:** `fn is_empty_conj_root` in `src/v4/std/node.dag`; all three sites import it (duplicate authority removed). **P5 / predicate disposition:** `src/v4/DECISIONS.md` §CP-1b item 12 — interim shared structural leg; forward dissolution under inventory §1.1 **P3** (T-6/T-7 walks) / **P5** (`fold_node`). | ✓ — pure composition over existing `std/node.dag` primitives (`Node`, `NodeKind`, `TypeNode`, `Conj`, `count`); all on main. |
-| **R2** | `extdeps/languages/llvm_ir.dag terminator_is_catchswitch` (526) — naked `match … _ => false` discriminator | Inline the `match` into the sole consumer `block_well_formed` (533); delete the discriminator predicate. | ✓ — pure pattern match on `Terminator` (already declared in `llvm_ir.dag`); no new substrate. |
+| **R2** | WAS: `extdeps/languages/llvm_ir.dag terminator_is_catchswitch` (526) — naked `match … _ => false` discriminator | **LANDED PR #3245:** the `CatchSwitch` match is inlined into the sole consumer `block_well_formed`; the discriminator predicate is deleted. `block_well_formed` now owns the LangRef catchswitch-body invariant directly over the declared `Terminator` constructor. | ✓ — pure pattern match on `Terminator` (already declared in `llvm_ir.dag`); no new substrate. |
 
-**R2** remains owned by the `extdeps/languages/llvm_ir.dag` lane. **R1**
-landed under the compiler/std lane (PR #3284). Per "C1 marks + flags +
-plans, does not fix," C1 does not author the R2 PR; it surfaces R2 as
-the audit anchor.
+**R1** landed under the compiler/std lane (PR #3284). **R2** landed under
+the `extdeps/languages/llvm_ir.dag` lane (PR #3245). Per "C1 marks +
+flags + plans, does not fix," C1 did not author these fixes; it surfaces
+the audit anchors.
 
 ### 1.1 Ranked substrate-PR queue
 
@@ -153,8 +152,8 @@ findings are `std/node.dag connective_edge_discipline` (T-1) and
 `extdeps/languages/llvm_ir.dag feature_disposition` (T-4 fact-bundle —
 rolls into **P4** as a separate fact within that rework). The third —
 `llvm_ir.dag block_well_formed` — is not really a substrate gap; it
-cascades off the `terminator_is_catchswitch` dissolve-now and closes
-without waiting on substrate.
+cascaded off the `terminator_is_catchswitch` dissolve-now and closed in
+PR #3245 without waiting on substrate.
 
 ### 1.2 🟡 → 🟢 burn-down
 
@@ -367,14 +366,13 @@ captured here as the audit anchor for the rest:
 ### 2.4 `src/v4/extdeps/`
 
 **`extdeps/languages/llvm_ir.dag`**
-- `terminator_is_catchswitch` (526) — 🔴 **predicate** —
-  `match t { CatchSwitch{…} => true ; _ => false }`. Naked
-  discriminator-as-predicate; the sole consumer (`block_well_formed`)
-  can inline the `match`. Dissolve now.
-- `block_well_formed` (533) — 🟡 **predicate** —
-  `consumer: post-dissolve-now inliner of terminator_is_catchswitch (this PR's follow-up)`.
-  Cascades the dissolve-now above; the catchswitch-body invariant
-  belongs as a per-`Terminator` constructor invariant.
+- `terminator_is_catchswitch` (526) — ✅ **landed** PR #3245 —
+  deleted. The naked discriminator predicate dissolved into its sole
+  consumer.
+- `block_well_formed` (533) — 🟢 **predicate** —
+  `CatchSwitch` is matched directly inside the consumer, where the
+  LangRef catchswitch-body invariant is enforced as `count(b.body) == 0`.
+  No parallel discriminator, no separate substrate gap.
 - `feature_disposition` (565) — 🟡 **predicate** (property projection) —
   `feature: per-FidelityFeature disposition fact on FidelityFeature itself (LLVM-substrate fact-bundle rework — T-4 fact-bundle program)`.
   12-arm `FidelityFeature -> FidelityDisposition` map; the disposition
@@ -728,7 +726,7 @@ fixes are downstream lane work, not C1's** — C1 marks and flags.
 |---|---|---|---|
 | walker | — | 3 (`std/node.dag node_well_formed` → `fold_node`; `std/algebra.dag free_monoid_length` → `fold FreeMonoid`; `std/float.dag nat_compare` → `fold Nat`) | rest |
 | traverse | — | 4 (`std/node.dag` × 4: → `forall` / `count_where` / `unique` over `FreeMonoid<T>` in `std/collection.dag` Wave-A2) | rest |
-| predicate | 1 (`extdeps/languages/llvm_ir.dag terminator_is_catchswitch`); empty-`Conj` R1 predicate **landed** PR #3284 (`std/node.dag` `is_empty_conj_root`, `DECISIONS.md` §CP-1b item 12) | 4 (`std/node.dag connective_edge_discipline` → per-`Connective` discipline fact; `std/float.dag float_finite_magnitude_zero` → `nat_is_zero`; `extdeps/languages/llvm_ir.dag` × 2: `block_well_formed` → cascade of dissolve-now; `feature_disposition` → per-feature disposition fact (T-4 fact-bundle)); `llvm_instruction_cost` **landed** under `lens/cost.dag`. | rest |
+| predicate | empty-`Conj` R1 predicate **landed** PR #3284 (`std/node.dag` `is_empty_conj_root`, `DECISIONS.md` §CP-1b item 12); LLVM R2 predicate **landed** PR #3245 (`terminator_is_catchswitch` deleted; `block_well_formed` consumes `CatchSwitch` directly) | 3 (`std/node.dag connective_edge_discipline` → per-`Connective` discipline fact; `std/float.dag float_finite_magnitude_zero` → `nat_is_zero`; `extdeps/languages/llvm_ir.dag feature_disposition` → per-feature disposition fact (T-4 fact-bundle)); `llvm_instruction_cost` **landed** under `lens/cost.dag`. | rest |
 | carrier | — | — | lane-wide |
 | emit/template | — | — | lane-wide |
 
@@ -744,18 +742,20 @@ dissolve-on-arrival rule):
    `std/collection.dag` (Wave-A2).
 4. `nat_is_zero : Nat -> Bool` in `std/nat.dag` (Wave-A2).
 5. Property-projection model facts (Practice 10 registry row 7) on
-   `Connective` (T-1 substrate-extension), `FidelityFeature` (T-4
-   fact-bundle), `Terminator` well-formedness (cascade of the LLVM
-   `terminator_is_catchswitch` dissolve-now).
+   `Connective` (T-1 substrate-extension) and `FidelityFeature` (T-4
+   fact-bundle). `LlvmInstruction` cost landed under `lens/cost.dag`;
+   `Terminator` well-formedness closed by the LLVM
+   `terminator_is_catchswitch` dissolve-now landing.
 
-**Dissolve-now (🔴) inventory** — three findings: **one landed**, one
-open:
+**Dissolve-now (🔴) inventory** — two findings: **both landed**:
 
 1. ~~`is_empty_conj_root : Node -> Bool` — extract into `std/node.dag`~~
    **DONE — PR #3284** (`src/v4/std/node.dag`; R1 receipt +
    `DECISIONS.md` §CP-1b item 12).
-2. Inline `terminator_is_catchswitch` into `block_well_formed` in
-   `extdeps/languages/llvm_ir.dag`; delete the discriminator predicate.
+2. ~~Inline `terminator_is_catchswitch` into `block_well_formed` in
+   `extdeps/languages/llvm_ir.dag`; delete the discriminator predicate~~
+   **DONE — PR #3245** (`src/v4/extdeps/languages/llvm_ir.dag`;
+   `block_well_formed` now matches `CatchSwitch` directly).
 
 Per Practice 10, the matching in-file `.dag` tag lands with the fix
 (per migration PR), not retro-applied here. This inventory is the
