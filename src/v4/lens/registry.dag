@@ -9,7 +9,7 @@ module v4.lens.registry
 
 import v4.std.text { String }
 
-// 🟢 coproduct — module binding state (no sentinel string in `path`).
+// 🟢 coproduct dissolution — DECISIONS.md PREFIX-T-23-registry (`LensModulePathV0`).
 type LensModulePathV0 = Bound { path: String } | Unbound
 
 type LensRegistryEntryV0 {
