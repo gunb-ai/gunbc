@@ -1,11 +1,27 @@
 // src/v4/extdeps/languages/typescript.dag
 // Scope: TypeScript 5.9 + ECMA-262 ES2025 scalar fact-bundle scaffold.
-// Owns: TsNumberKind, TsBigIntKind, TsNumberWidth, TsBigIntWidth, TsScalar, TsEcma262PrimitiveOperationSemantics.
+// Owns: TsEcma262SectionRef, TsScalarTowerSectionRefs, TsNumberKind, TsBigIntKind, TsNumberWidth, TsBigIntWidth, TsScalar, TsEcma262PrimitiveOperationSemantics.
 // Consumes: kernel-ambient String; std numeric/text/bool aliases and grounding rows are fact-bundle-gated.
 // Status: 🟡 gated — scalar tower fact-bundle slice landed; per-primitive bool alias/grounding rows held pending operator A-vs-B ruling.
 // Anchor: https://tc39.es/ecma262/
 
 module v4.extdeps.languages.typescript
+
+type TsEcma262SectionRef {
+  url: String
+  section: String
+}
+
+type TsScalarTowerSectionRefs {
+  number_kind: TsEcma262SectionRef
+  bigint_kind: TsEcma262SectionRef
+  boolean_kind: TsEcma262SectionRef
+  string_kind: TsEcma262SectionRef
+  symbol_kind: TsEcma262SectionRef
+  null_kind: TsEcma262SectionRef
+  undefined_kind: TsEcma262SectionRef
+  numeric_semantics: TsEcma262SectionRef
+}
 
 type TsNumberKind
   = NumberPrimitive
