@@ -73,13 +73,6 @@ fn tokenize_lex_e0_source_not_exhausted_diagnostic(at: Locus) -> Diagnostic {
     correction: Unavailable { reason: UserInputBoundary }
   }
 }
-fn lex_rules_node_is_conj_empty_root(rules: Node) -> Bool {
-  match rules.kind {
-    TypeNode { connective: Conj } => count(rules.children) == 0
-    TypeNode { connective: _ } => false
-    ComputationNode { behavior: _ } => false
-  }
-}
 fn tokenize(text: String, file: Symbol, rules: LexRules) -> Outcome<TokenStream> {
   let at = Textual {
     file: file,
