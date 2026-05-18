@@ -1,7 +1,6 @@
 // src/v4/std/network.dag
-// Scope: network boundary carriers shared by transport, format, and coordination models.
-// Anchor: RFC 9110 HTTP Semantics + RFC 5789 PATCH Method + RFC 3986 URI Generic Syntax
-// Owns: HttpMethod, Url, NetworkAddress.
+// Scope: network boundary carriers.
+// Owns: HttpMethod, UriScheme, UriUserInfo, UriHost, UriPort, UriAuthority, UriPath, UriQuery, UriFragment, Url, NetworkAddress.
 // Consumes: std text.
 // Status: T-26 modeled.
 
@@ -12,7 +11,8 @@ module v4.std.network
 import v4.std.text { String }
 
 
-// RFC 9110 Section 9 method carrier, ported from dsl/std/types.dag.
+// Anchor: https://www.rfc-editor.org/rfc/rfc9110.html#name-methods + https://www.rfc-editor.org/rfc/rfc5789.html
+// 🟢 coproduct dissolution — DECISIONS.md T-26-HttpMethod
 type HttpMethod
   = GET
   | POST
@@ -23,12 +23,51 @@ type HttpMethod
   | OPTIONS
   | TRACE
 
+type UriScheme {
+  spelling: String,
+}
 
-// Url: String refinement. Restore URI/URL parse predicate when the v4
-// refinement predicate substrate has a concrete pattern/format carrier.
-type Url = String
+type UriUserInfo {
+  spelling: String,
+}
+
+type UriHost {
+  spelling: String,
+}
+
+type UriPort {
+  spelling: String,
+}
+
+type UriAuthority {
+  userinfo: UriUserInfo,
+  host: UriHost,
+  port: UriPort,
+}
+
+type UriPath {
+  spelling: String,
+}
+
+type UriQuery {
+  spelling: String,
+}
+
+type UriFragment {
+  spelling: String,
+}
+
+// Anchor: https://www.rfc-editor.org/rfc/rfc3986.html#section-3
+type Url {
+  scheme: UriScheme,
+  authority: UriAuthority,
+  path: UriPath,
+  query: UriQuery,
+  fragment: UriFragment,
+}
 
 
+// Anchor: https://www.rfc-editor.org/rfc/rfc3986.html#section-3.2
 type NetworkAddress {
-  url: Url,
+  authority: UriAuthority,
 }
