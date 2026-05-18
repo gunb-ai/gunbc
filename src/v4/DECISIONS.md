@@ -912,6 +912,22 @@ PROPOSES; it does not decide.
 
 **PR receipt:** gunbc **#3255** (P7) + on-thread **#3244** disposition history.
 
+### SL-P6-FREEMONOID-IS-EMPTY-VPRED — `std/algebra.dag` `free_monoid_is_empty` (predicate-dissolution interim)
+
+**Authority:** PR #3249 cursor review artifact #14097 plus Practice 10's post-#3258 blocking disposition rule.
+
+**Disposition:** **🟡 gated** — `fn free_monoid_is_empty` is a **Practice 10 predicate-dissolution** interim: hand `match` derives the `FreeMonoid<T> = Empty | Cons { … }` **variant discriminant** (`Empty => true; Cons => false`) where the canonical surface is a **substrate-derived `Empty`-variant projection** once the discriminant-predicate machinery exists. **Not 🟢 terminal** while a named dissolve target exists.
+
+**`feature:` gate:** coproduct **variant-discriminant predicate** substrate (generated / compiler-owned discriminant API — canonical `is_<Ctor>` / projection family).
+
+**Plan bind:** internal work node **`node://adhoc-2145db6b-69a`** (same substrate bucket as `SL-P7-NAT-IS-ZERO-VPRED`).
+
+**Dissolve-on-arrival:** replace `free_monoid_is_empty`'s **body** with the substrate-derived **Empty discriminant** when **`node://adhoc-2145db6b-69a`** closes. **Explicitly forbidden interim “fix”:** rewriting into a **`free_monoid_fold`** / generic fold carrier as **fold laundering**; under strict evaluation that also turns a discriminant query into a full-spine walk.
+
+**Live substrate tag:** one-line **`// 🟡 gated — …`** immediately precedes `fn free_monoid_is_empty` in `src/v4/std/algebra.dag`; header **`// Ledger: … SL-P6-FREEMONOID-IS-EMPTY-VPRED`**.
+
+**PR receipt:** gunbc **#3249** rework after review artifact **#14097**.
+
 ### SL-3229-INTEGER-GROUP-COMPLETION — `GroupCompletion<M>` constrained-inhabitance gap
 
 Verbatim `//` lines from merge-base `integer.dag` (lines **124–132**):

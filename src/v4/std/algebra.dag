@@ -4,6 +4,7 @@
 // Owns: Magma, Semigroup, Monoid, CommutativeMonoid, Group, AbelianGroup, Semiring, CommutativeSemiring, Ring, CommutativeRing, OrderedRing, Field, ApproximateField, Lattice, BoundedLattice, BooleanAlgebra, FreeMonoid, free_monoid_fold, free_monoid_is_empty, free_monoid_length, PointwisePower, Ordering, Homomorphism.
 // Consumes: none.
 // Status: T-2 modeled.
+// Ledger: DECISIONS.md Part 6 — SL-P6-FREEMONOID-IS-EMPTY-VPRED.
 
 
 module v4.std.algebra
@@ -79,8 +80,12 @@ fn free_monoid_fold<T, A>(xs: FreeMonoid<T>, empty: A, cons: fn(T, A) -> A) -> A
     Cons { head: h, tail: t } => cons(h, free_monoid_fold(xs: t, empty: empty, cons: cons))
   }
 }
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: coproduct variant-discriminant predicate substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived Empty-variant discriminant projection; forbidden: free_monoid_fold laundering.
 fn free_monoid_is_empty<T>(xs: FreeMonoid<T>) -> Bool {
-  free_monoid_fold(xs: xs, empty: true, cons: fn(_, _) { false })
+  match xs {
+    Empty => true
+    Cons { head: _, tail: _ } => false
+  }
 }
 
 
