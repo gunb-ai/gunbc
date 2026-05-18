@@ -114,10 +114,19 @@ type RegisterScalar
   | PredicateScalar
 
 
+// 🟡 gated — feature: type-level per-axis-maximum bounded refinement (PTX
+// ISA 8.5 §grid/block per-axis maxima — x≤2^31-1, y/z≤65535 gridDim;
+// blockDim≤1024 etc.) — DECISIONS.md Part 6 · SL-3229-PTX-DIM3.
+// PARTIAL DISSOLUTION (#3259 cardinality refinement): the negative/zero
+// illegal state IS now structurally excluded — x/y/z are NonZeroNat
+// (≥1). The residual 🟡 is ONLY the version-pinned per-axis UPPER bound,
+// which needs a type-level-bounded refinement (a max parameterised by a
+// compile-time constant); UpperBoundedNat carries a per-instance bound,
+// not a type-pinned one, so it cannot type-enforce the ISA maxima.
 type Dim3 {
-  x: Int
-  y: Int
-  z: Int
+  x: NonZeroNat
+  y: NonZeroNat
+  z: NonZeroNat
 }
 
 
@@ -134,7 +143,10 @@ type ThreadCoord {
 }
 
 
+// 🟢 SL-3229-PTX-COST resolved in-PR (#3259 cardinality refinement
+// landed): cost is a non-negative quantity; the raw-Int negative-cost
+// illegal state is now structurally unrepresentable via Nat.
 type PtxCost {
-  instruction_cost: Int
-  occupancy_cost: Int
+  instruction_cost: Nat
+  occupancy_cost: Nat
 }

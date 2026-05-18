@@ -983,6 +983,8 @@ Verbatim `//` lines from merge-base `llvm_ir.dag` (lines **276–297**), immedia
 
 **Dissolution trigger:** when `std/cardinality.dag` refinement substrate lands (T-3), bounded non-negative widths become type-enforced; residual reclassifies 🟢 per merge-base note.
 
+**Disposition: 🟢 RESOLVED in-PR.** `std/cardinality.dag` refinement substrate **landed #3259** (`NonZeroNat`, `Nat`). `llvm_ir.dag` `LlvmType` now refines the four raw-`Int` width payloads exactly per the merge-base bridge property (c): `IntegerType.bits → NonZeroNat` (LangRef `iN`, N≥1), `VectorType.count → NonZeroNat` (LangRef vectors are non-empty), `PointerType.address_space → Nat` (≥0), `ArrayType.count → Nat` (LangRef `[0 x T]` zero-length arrays are legal). The SUM was already 🟢; only the payloads moved. Illegal widths (0-bit / negative-width integer, negative element count) are now structurally unrepresentable — INVARIANTS P2 satisfied at the type, not producer-side.
+
 ### SL-3229-LLVM-OPS — operation-specific operand constraints
 
 Verbatim `//` lines from merge-base `llvm_ir.dag` (lines **1117–1170**):
@@ -1047,6 +1049,8 @@ Verbatim `//` lines from merge-base `llvm_ir.dag` (lines **1117–1170**):
 
 **Dissolution trigger:** same checkable landing as `SL-3229-LLVM-WIDTH` (`std/cardinality.dag` refinement).
 
+**Disposition: 🟡 gated — RE-GATED (gate-attribution correction, Practice 4/5).** The original trigger above conflated this with `SL-3229-LLVM-WIDTH`. That attribution is **wrong**: bounded-natural cardinality refinement (`NonZeroNat` / `UpperBoundedNat`, landed #3259) type-enforces *scalar magnitude* bounds; it **cannot** express the operand-*relation* constraints this residual tracks (icmp/binary same-type operands, i1 select condition, integer GEP indices, shufflevector mask length relations). Those need a **dependent / refined operand-relation typed-value carrier** — a distinct substrate that has **not** landed (cardinality refinement is necessary-but-insufficient; the relational refinement is the gating piece). **Re-expressed gate:** `🟡 gated — feature: dependent/refined operand-relation typed-value carrier (LangRef operand-type relations) — not std/cardinality.dag bounded-natural`. **Dissolve-on-arrival obligation:** when a relational-refinement substrate lands, `LlvmInstruction` operand carriers refine to type-enforced same-type/i1-condition/integer-index relations and this residual reclassifies 🟢. Producer-side invariant remains in force until then (merge-base bridge (b)).
+
 ### SL-3229-PTX-DIM3 — `Dim3` kernel-ambient `Int` axis scaffold
 
 Verbatim `//` lines from merge-base `ptx.dag` (lines **1059–1090** — section header + 🟡 three-bridge note):
@@ -1089,6 +1093,8 @@ Verbatim `//` lines from merge-base `ptx.dag` (lines **1059–1090** — section
 
 **Dissolution trigger:** `std/cardinality.dag` refinement lands (T-3); axes refine per PTX-pinned maxima (merge-base text).
 
+**Disposition: 🟡 gated — PARTIALLY RESOLVED in-PR + RE-GATED residual.** `std/cardinality.dag` refinement landed #3259. The merge-base bridge (c) demanded *both* "positive **and** within the PTX-version-pinned per-axis maxima". The **positivity half is now dissolved**: `Dim3.x/y/z → NonZeroNat`, so the negative-dim / zero-dim illegal state (the dominant INVARIANTS P2 concern) is structurally unrepresentable. The **per-axis-maximum half does not dissolve** with the landed substrate: `UpperBoundedNat` carries a *per-instance* `inclusive_max`, not a *type-pinned* compile-time bound, so it cannot type-enforce the ISA-version-pinned maxima (x≤2³¹−1; y/z≤65535 gridDim; blockDim≤1024 …) as a type fact. **Re-expressed residual gate:** `🟡 gated — feature: type-level per-axis-maximum bounded refinement (compile-time-constant-parameterised max)`. **Dissolve-on-arrival obligation:** when a type-level-bounded refinement primitive lands, `Dim3` axes refine to the ISA-pinned maxima and this residual reclassifies 🟢; until then the per-axis-max invariant remains producer-side (merge-base bridge (b)).
+
 ### SL-3229-PTX-COST — raw-`Int` PTX cost axes (`PtxCost`)
 
 Verbatim `//` lines from merge-base `ptx.dag` (lines **1287–1328** — `PtxCost` + 🟡 three-bridge note):
@@ -1130,6 +1136,8 @@ type PtxCost {
 ```
 
 **Dissolution trigger:** `std/cardinality.dag` refinement substrate lands (T-3); non-negative cost axes become type-enforced (same dissolution family as `SL-3229-PTX-DIM3` / `SL-3229-LLVM-WIDTH`).
+
+**Disposition: 🟢 RESOLVED in-PR.** `std/cardinality.dag` refinement landed #3259. `PtxCost.instruction_cost` / `occupancy_cost` refine `Int → Nat`: cost is a non-negative quantity, so the negative-cost illegal state is now structurally unrepresentable (full dissolution — unlike the sibling `SL-3229-PTX-DIM3`, cost has no per-axis upper bound, so `Nat` alone is terminal). INVARIANTS P2 satisfied at the type, not producer-side.
 
 ### SL-3229-VERILOG-NONEMPTY — shared `List<T>` spec-non-empty Wave-A2 deferral
 
@@ -1409,6 +1417,8 @@ type VerilogCost {
 
 **Dissolution trigger:** `std/cardinality.dag` refinement substrate lands (T-3); `gate_cost` / `area_cost` refine to bounded non-negative numeric axes type-enforced (same dissolution family as `SL-3229-PTX-COST`, `SL-3229-LLVM-WIDTH`, `SL-3229-PTX-DIM3` — Practice 9 substrate debt, not `docs/v4-dag-rationale.md`).
 
+**Disposition: 🟢 RESOLVED in-PR.** `std/cardinality.dag` refinement landed #3259. `VerilogCost.gate_cost` / `area_cost` refine `Int → Nat`: both are non-negative quantities, so the negative-cost illegal state is now structurally unrepresentable (full dissolution — same family as `SL-3229-PTX-COST`; no upper bound, `Nat` is terminal). INVARIANTS P2 satisfied at the type, not producer-side.
+
 ### SL-3229-FLOAT-NOMINAL — nominal width / interchange list-length scaffold
 
 Verbatim `//` lines from merge-base `float.dag` (lines **104–144** — modeling notes through D3 cross-ref):
@@ -1489,6 +1499,18 @@ Verbatim `//` lines from merge-base `float.dag` (lines **104–144** — modelin
 **Dissolution trigger:** **`src/v4/std/datetime.dag`** is present in-tree with ratified temporal carriers + operations (**T-3**), and **T-4.6** wires typed interpretation (e.g. `toml_datetime_value : TomlDatetime -> Outcome<…>` over the four sub-kinds); this row closes.
 
 **Roll-up:** **`TASKS.md` T-3** + **T-4.6**; **orthogonal** to dissolution-inventory **P1** cardinality-width family (`SL-3229-LLVM-WIDTH`, `SL-3229-PTX-COST`, …).
+
+### SL-3229-FORMAT-NUMERIC — format numeric-value typed carrier (lexeme residual)
+
+**Gate (live cite, Practice 9):** `🟡 gated — feature: std/float.dag / std/integer.dag typed numeric value carriers (T-3 Wave-A2)`
+
+**Re-gate provenance (Practice 4/5 gate-attribution correction).** `json.dag` / `yaml.dag` / `toml.dag` previously carried a header cite `feature: std/cardinality.dag refinement + std/float.dag / std/integer.dag (T-3 Wave-A2) — … SL-3229-LLVM-WIDTH`. That anchor is now **stale** (SL-3229-LLVM-WIDTH is 🟢 RESOLVED in this PR — see its row) and the **cardinality clause is satisfied** (`std/cardinality.dag` refinement landed #3259). The numeric-value residual does **not** dissolve with cardinality refinement: `JsonNumber { lexeme: String }` (and the YAML/TOML scalar mirrors) defer the *typed numeric value* itself — sign / magnitude / float-vs-integer / precision — which is owned by `std/integer.dag` + `std/float.dag`, **not** bounded-natural cardinality. This row is the non-stale home for the narrowed residual.
+
+**Named arrival:** `std/integer.dag` + `std/float.dag` (T-3 Wave-A2) supply typed numeric value carriers; the format files keep the verbatim `lexeme: String` until then so no shadow numeric engine is improvised in `extdeps/formats/*` (Practice 5 single authority).
+
+**Dissolution trigger:** `std/integer.dag` / `std/float.dag` land typed numeric carriers (T-3 Wave-A2); T-4.6 wires `*_parse` so a number lexeme refines to the typed numeric value, and these cite-sites reclassify 🟢. Until then the lexeme→value interpretation is producer-side.
+
+**Bounded use:** consumers must treat `JsonNumber.lexeme` (and YAML/TOML scalar mirrors) as an un-interpreted RFC-grammar number lexeme, not a typed numeric value.
 
 ### SL-3229-JSON-UNIQUE-NAMES — JSON object unique-name profile
 

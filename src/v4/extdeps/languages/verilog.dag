@@ -1,8 +1,8 @@
 // src/v4/extdeps/languages/verilog.dag
 // Scope: IEEE 1364-2005 Verilog structural carriers (T-4.9).
 // Owns: PortDirection, NonTriregNetKind, NetType, EdgeTrigger, ProceduralAssignKind, VectorRange, PackingShape, NetVectoredPacking, Signedness, DriveStrengthClause, ChargeStrengthClause, DelayClause, AttributeInstanceClause, VectorednessClause, UnpackedDimensionsClause, VariableInitializerClause, NetDeclaration, NetAssignmentDeclarator, NetIdentifierDeclarator, VariableDeclaration, VariableDeclarator, OutputPortAnsiNetTypeKind, OutputPortAnsiVariableTypeKind, NonAnsiPort, AnsiNetPortType, AnsiPortDeclaration, AnsiHeaderPort, AnsiOutputPortDeclarator, ParameterTypeKind, ParameterAssignment, ParameterDeclaration, SensitivityItem, NetAssignment, ContinuousAssign, AlwaysBlock, AlwaysBlockSensitivity, InitialBlock, PortConnectionActual, OrderedPortConnection, NamedPortConnection, PortConnections, ParameterOverrideActual, NamedParameterOverride, ParameterOverrides, InstanceRangeClause, ModuleInstance, ModuleInstantiation, DefparamAssignment, DefparamDeclaration, GenerateRegion, LoopGenerateConstruct, ConditionalGenerateConstruct, SpecifyBlock, LifetimeClause, FunctionReturnTypeClause, TaskDeclaration, FunctionDeclaration, EventDeclarator, EventDeclaration, GenvarDeclaration, LocalParameterDeclaration, PrimitiveGateKind, GateInstantiation, UdpInstanceName, UdpInstance, UdpInstantiation, UdpDefinition, SpecparamAssignment, SpecparamDeclaration, AnsiModuleItem, NonAnsiModuleItem, ModuleParameterPortList, ModuleKeyword, VerilogModule, VerilogCost
-// Consumes: std/node.dag; Int kernel-ambient.
-// Status: T-4.9 PASS (IN-B); import v4.std.node Symbol only.
+// Consumes: std/node.dag; std/nat.dag; Int kernel-ambient.
+// Status: T-4.9 PASS (IN-B); import v4.std.node Symbol + v4.std.nat Nat.
 // Anchor: https://standards.ieee.org/ieee/1364/3641/
 // Ledger: DECISIONS.md Part 6 (PR #3229): CP-3229-GREEN-TERMINAL, SL-3229-VERILOG-COST, SL-3229-VERILOG-D3200, SL-3229-VERILOG-NONEMPTY, SL-3229-VERILOG-VECTOR-RANGE.
 
@@ -10,6 +10,7 @@ module v4.extdeps.languages.verilog
 
 
 import v4.std.node { Symbol }
+import v4.std.nat { Nat }
 
 
 
@@ -626,7 +627,10 @@ type VerilogModule
 
 
 
+// 🟢 SL-3229-VERILOG-COST resolved in-PR (#3259 cardinality refinement
+// landed): gate/area cost are non-negative quantities; the raw-Int
+// negative-cost illegal state is now structurally unrepresentable via Nat.
 type VerilogCost {
-  gate_cost: Int
-  area_cost: Int
+  gate_cost: Nat
+  area_cost: Nat
 }
