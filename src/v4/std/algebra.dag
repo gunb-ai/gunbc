@@ -1,7 +1,7 @@
 // src/v4/std/algebra.dag
 // Scope: algebraic structures and canonical carrier constructions.
 // Anchor: https://en.wikipedia.org/wiki/Algebraic_structure
-// Owns: Magma, Semigroup, Monoid, CommutativeMonoid, Group, AbelianGroup, Semiring, CommutativeSemiring, Ring, CommutativeRing, OrderedRing, Field, ApproximateField, Lattice, BoundedLattice, BooleanAlgebra, FreeMonoid, free_monoid_is_empty, free_monoid_length, PointwisePower, Ordering, Homomorphism.
+// Owns: Magma, Semigroup, Monoid, CommutativeMonoid, Group, AbelianGroup, Semiring, CommutativeSemiring, Ring, CommutativeRing, OrderedRing, Field, ApproximateField, Lattice, BoundedLattice, BooleanAlgebra, FreeMonoid, free_monoid_fold, free_monoid_is_empty, free_monoid_length, PointwisePower, Ordering, Homomorphism.
 // Consumes: none.
 // Status: T-2 modeled.
 
@@ -73,19 +73,19 @@ type BooleanAlgebra<T> {
 type FreeMonoid<T>
   = Empty
   | Cons { head: T, tail: FreeMonoid<T> }
-fn free_monoid_is_empty<T>(xs: FreeMonoid<T>) -> Bool {
+fn free_monoid_fold<T, A>(xs: FreeMonoid<T>, empty: A, cons: fn(T, A) -> A) -> A {
   match xs {
-    Empty => true
-    Cons { head: _, tail: _ } => false
+    Empty => empty
+    Cons { head: h, tail: t } => cons(h, free_monoid_fold(xs: t, empty: empty, cons: cons))
   }
+}
+fn free_monoid_is_empty<T>(xs: FreeMonoid<T>) -> Bool {
+  free_monoid_fold(xs: xs, empty: true, cons: fn(_, _) { false })
 }
 
 
 fn free_monoid_length<T>(xs: FreeMonoid<T>) -> Int {
-  match xs {
-    Empty => 0
-    Cons { head: _, tail: t } => 1 + free_monoid_length(xs: t)
-  }
+  free_monoid_fold(xs: xs, empty: 0, cons: fn(_, acc) { 1 + acc })
 }
 type PointwisePower<T> {
   member: fn(T) -> Bool
