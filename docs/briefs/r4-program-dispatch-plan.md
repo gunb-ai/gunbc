@@ -50,9 +50,19 @@ Everything else parallel-fills around that spine.
 
 ## 2. Per-task dependency + dispatch table
 
-Legend — **Blocked-on:** `LANDED` · `READY` (dispatch now) · `IMPL` (interface
-exists, parallelizable) · `IFACE` (needs a contract frozen first) · `DESIGN` ·
-`OP` (operator ruling) · `CP1` (needs v4 front-end output).
+Legend — **Blocked-on:** `LANDED` · `READY` (no unmet dep — full scope
+dispatchable now) · **`READY*`** (only a **bounded pre-T-9 scope** is
+dispatchable now — witness/scaffold/contract authoring; the
+dependency-satisfied implementation is **T-9-gated**, see *T-9 trigger*) ·
+`IMPL` (interface exists, parallelizable) · `IFACE` (needs a contract frozen
+first) · `DESIGN` · `OP` (operator ruling) · `CP1` (needs v4 front-end output).
+
+> **Anti-conflation rule (codex BLOCKING `a67577c3`, folded):** Wave-0 ≠
+> dependency-satisfied implementation. A `READY*` row's Wave-0 work is **only**
+> its named bounded pre-T-9 scope; the *refine-to-real* phase dissolves at the
+> stated **T-9 trigger** and is **Wave-3**, not Wave-0. Lanes dispatch the
+> bounded scope only; they do **not** read `READY*` as "build the whole thing
+> now."
 
 | Task | Scope | Status (derived) | Depends on | Blocked-on | Proposed lane |
 |---|---|---|---|---|---|
@@ -76,8 +86,8 @@ exists, parallelizable) · `IFACE` (needs a contract frozen first) · `DESIGN` �
 | **T-9** | compiler/04_infer | SCAFFOLD | T-8/CP-1b-close (∥) + T-4 | IMPL (T-4 keystone; CP-1b-close parallel, not keystone-gated) | Lane A |
 | **T-10** | 05_emit + 00_compile | SCAFFOLD | T-9, T-4 | IMPL+IFACE | Lane A |
 | **T-11** | emit per-target ×5 | NOT STARTED | T-10 | IMPL | Lane A |
-| T-12 | lens/complexity + cost | SCAFFOLD (fan-out **in flight**) | T-9 (refine) | **READY** (witness-first) | Lane A (lens) |
-| T-13 | lens/parallelism,effect,ownership,idempotency | SCAFFOLD | T-9 (refine) | **READY** | Lane A (lens) |
+| T-12 | lens/complexity + cost | SCAFFOLD (fan-out **in flight**) | T-9 (refine) | **`READY*`** — bounded scope: witness-first Acceptance authoring. *T-9 trigger:* real lens fold over inferred model → Wave-3 | Lane A (lens) |
+| T-13 | lens/parallelism,effect,ownership,idempotency | SCAFFOLD | T-9 (refine) | **`READY*`** — bounded scope: witness/Acceptance authoring. *T-9 trigger:* real fold over inferred model → Wave-3 | Lane A (lens) |
 | T-14 | TestClaim corpus + fixtures | SCAFFOLD | T-19 | IMPL | Lane B |
 | **T-15** | bin/main + self-host fixed-point gate | NOT STARTED | ~ALL | IMPL (terminal) | Lane B |
 | T-16 | full-stack omni-emission demo | NOT STARTED | T-4,T-10,T-11,T-4.5–4.8 | IMPL | Lane A |
@@ -86,7 +96,7 @@ exists, parallelizable) · `IFACE` (needs a contract frozen first) · `DESIGN` �
 | T-19 | lens/testgen | SCAFFOLD | T-1,T-2,T-3 | **READY** | Lane B |
 | T-20 | workflow/bootstrap AS DATA | Materially advanced — #3213 landed bootstrap+CI-as-data on main; remaining = fill tail | T-1 | **READY** | Lane B |
 | T-21 | lens/affected_set (IRT-1..4 held) | SCAFFOLD | T-1,T-2,T-3 | **READY** (honor IRT) | Lane B |
-| T-22 | compiler/05_eval interpreter (PRIMARY exec) | SCAFFOLD | T-9 (refine) | **READY** | Lane B |
+| T-22 | compiler/05_eval interpreter (PRIMARY exec) | SCAFFOLD | T-9 (refine) | **`READY*`** — bounded scope: interpreter scaffold + IRT-3 eval-shape. *T-9 trigger:* eval over inferred types → Wave-3 | Lane B |
 | T-23 | lens/application | **IFACE FROZEN** | lens fwk | IMPL (in flight) | Lane A (lens) |
 | T-24 | workflow/ci AS DATA | SCAFFOLD (T-20/T-24-adjacent slice landed via #3213) | T-20, T-21 | IMPL | Lane B |
 | T-25-core | refinement base + fail-closed validate | SCHEDULED | — | **DESIGN (OP)** | std / OP |
@@ -148,11 +158,17 @@ problems; they are one keystone.
 
 ## 4. Wavefront — maximal parallel shape
 
-- **Wave 0 (dispatch NOW — no keystone needed):** T-19, T-20, T-21, T-22
-  (Lane B Priority-1) · T-12, T-13, T-23 lens fan-out (Lane A — *already in
-  flight*) · T-26, T-25-tail (std) · T-31(b) mop-up (Dissolution). **≈11
-  parallel.** *(T-29/T-4.10/T-4.12 removed — already LANDED, not fresh
-  dispatch; their pre-#3240 rework is keystone-gated, not Wave-0.)*
+- **Wave 0 (dispatch NOW — no keystone needed):**
+  - *Full-scope `READY` (no T-9 dep):* T-19, T-20, T-21 (Lane B Priority-1) ·
+    T-23 IFACE-frozen lens contract (Lane A) · T-26 (std-authoritative) ·
+    T-31(b) mop-up (Dissolution).
+  - *`READY*` — bounded pre-T-9 scope only (refine-to-real is Wave-3 at the
+    named T-9 trigger):* T-22 (interpreter scaffold + IRT-3 shape) · T-12/T-13
+    lens **witness/Acceptance authoring** (Lane A fan-out — *already in
+    flight*).
+  - **≈9 parallel work-fronts.** *(Removed from Wave-0: T-29/T-4.10/T-4.12 —
+    already LANDED, pre-#3240 rework keystone-gated; **T-25-tail** — depends
+    T-9, it is Wave-3 IMPL-optim, never Wave-0.)*
 - **Wave 1 (P1-KEYSTONE + T-25-core + T-30 land):** T-4 ×5 languages, T-4.5,
   T-4.6 unblock (T-4 mgr).
 - **Wave 2 (T-4 lands):** T-9, T-4.7, T-4.8, T-4.13, T-18.
