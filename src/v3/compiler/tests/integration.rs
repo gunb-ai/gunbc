@@ -281,6 +281,8 @@ mod v4_extdeps_cpp_dag_smoke_test;
 mod v4_extdeps_lean_dag_smoke_test;
 #[path = "integration/v4_extdeps_machine_code_dag_smoke_test.rs"]
 mod v4_extdeps_machine_code_dag_smoke_test;
+#[path = "integration/v4_extdeps_ptx_dag_smoke_test.rs"]
+mod v4_extdeps_ptx_dag_smoke_test;
 #[path = "integration/v4_extdeps_typescript_dag_smoke_test.rs"]
 mod v4_extdeps_typescript_dag_smoke_test;
 #[path = "integration/v4_lens_cost_dag_smoke_test.rs"]
