@@ -1,7 +1,7 @@
 // src/v4/std/node.dag
 // Scope: v4 substrate root for type and computation nodes.
 // Anchor: THESIS.md "Substrate shape" + MODELING.md.
-// Owns: Symbol, Hash, Connective, Behavior, NodeKind, EdgeLabel, Edge, Node, Dag, CorpusRoot, Corpus, corpus_nodes, NodeFold, fold_node, EdgeDiscipline, connective_edge_discipline, edge_is_named, edge_is_positional, all_edges_named, all_edges_positional, name_occurrences, all_names_distinct, edges_conform, node_locally_well_formed, node_well_formed, is_empty_conj_root, Path, Edit, Diff.
+// Owns: Symbol, Hash, Connective, Behavior, NodeKind, EdgeLabel, Edge, Node, NodeFold, fold_node, EdgeDiscipline, connective_edge_discipline, edge_is_named, edge_is_positional, all_edges_named, all_edges_positional, name_occurrences, all_names_distinct, edges_conform, node_locally_well_formed, node_well_formed, is_empty_conj_root, Path, Edit, Diff.
 // Consumes: none.
 // Status: T-1 modeled; substrate-extension rule in src/v4/STRUCTURE.md.
 
@@ -40,24 +40,6 @@ type Node {
   kind: NodeKind
   children: List<Edge>
 }
-
-type Dag = Node
-
-type CorpusRoot {
-  identity: Symbol
-  root: Dag
-}
-
-type Corpus {
-  roots: List<CorpusRoot>
-}
-
-fn corpus_nodes(corpus: Corpus) -> List<Node> {
-  fold(corpus.roots, init: [], f: fn(acc, root) {
-    list_push(acc, root.root)
-  })
-}
-
 type NodeFold<R> {
   init: fn(Node) -> R
   step: fn(R, Edge, R) -> R
