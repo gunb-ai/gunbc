@@ -149,7 +149,7 @@ the audit anchor.
 |---|---|---|---|---|
 | **P1** | `std/cardinality.dag` bounded-natural / refinement substrate | std / T-3 Wave-A2 | **~22** | DECISIONS.md: `SL-3229-LLVM-WIDTH`, `SL-3229-LLVM-OPS`, `SL-3229-PTX-DIM3`, `SL-3229-PTX-COST`, `SL-3229-VERILOG-COST`, **`SL-3229-FLOAT-NOMINAL`** (PR #3299 — canonical `feature:` row). In-file: `llvm_ir.dag:28` + `json.dag` / `yaml.dag` / `toml.dag` terse `// 🟡 gated — feature: … SL-3229-LLVM-WIDTH` lines (refinement-side family). |
 | **P2** | `std/collection.dag` Wave-A2: `List<T> where non_empty` refinement **plus** the List combinator algebra (`forall` / `count_where` / `unique` over `FreeMonoid<T>`) | std / T-3 Wave-A2 (coercion-design.md RQ-3) | **5 named + 26 sites** | Section 2: `std/node.dag` × 4 traverses (`all_edges_named`, `all_edges_positional`, `name_occurrences`, `all_names_distinct`). DECISIONS.md: `SL-3229-VERILOG-NONEMPTY` (one row, 26 verilog.dag back-pointer sites). |
-| **P3** | Compiler pipeline-stage substrate (lex-walk + parse-walk) | compiler / T-6, T-7 | **2 + ~7 in-file** | Section 2: `compiler/01_tokenize.dag tokenize`, `compiler/02_parse.dag parse`. In-file: `json.dag` / `yaml.dag` / `toml.dag` terse `// 🟡 gated — feature: …` lines citing **DECISIONS.md Part 6 · SL-3229-T4-FORMAT-T6T7** (parse/emit deferral family). |
+| **P3** | Compiler pipeline-stage substrate (lex-walk + parse-walk) | compiler / T-6, T-7 | **2 + ~8 in-file** | Section 2: `compiler/01_tokenize.dag tokenize`, `compiler/02_parse.dag parse`. In-file **P3-axis** (parse/emit + T-4.6 format semantics — **excluding** `SL-3229-LLVM-WIDTH`, see **P1**): **`SL-3229-T4-FORMAT-T6T7`** (`json.dag` / `yaml.dag` / `toml.dag`); **`SL-3229-JSON-UNIQUE-NAMES`** (`json.dag`); **`SL-3229-YAML-CANONICAL-KEYS`** (`yaml.dag`); **`SL-3229-T4-FORMAT-TOML-DATETIME`** / **`SL-3229-TOML-TABLE-SYNTAX`** (`toml.dag`, including the pre-coproduct table-syntax coproduct cite). |
 | **P4** | T-4 fact-bundle Phase-3 rework (post-D2-reversal model) | extdeps/languages / T-4 manager `vivid-carp-207` (5-feeder gate; keystone #3226 merged @`77b9e7d72`; 4 feeders open: T-3, T-29, T-30, T-25-core) | **5 + 1 row + 1 fn** | **DECISIONS.md:** `SL-3229-VERILOG-D3200` (**PR #3299** — `feature:` T-4 Phase-3). **In-file:** `verilog.dag` × 5 coproduct one-liners (`… SL-3229-VERILOG-D3200`). `typescript.dag` sum carriers are **🟢** (`DECISIONS.md TS-D2`); file-level **🟡** scaffold is the **T-4 Phase-3** gate in the header `Status:` (see file). Section 2: `extdeps/languages/dag.dag dag_language_model_wave1_void_canonical_symbols` (CP-1b #3225). |
 | **P5** | `std/node.dag` `fold_node` — Node catamorphism (substrate-extension under T-1) | std / T-1 | **1 + 3 walker callers** | `fold_node` + the `std/node.dag node_well_formed` migration landed in the burn-down closeout. Remaining: `compiler/03_resolve.dag merge_binding_self` (94, the codex #3225 "sym↦sym module harvest" finding) — together with its three named-harvest walker callers (`add_module_named_exports` at 99, `add_arrow_domain_named_params` at 113, `add_bind_atom_binder` at 140) that fold over `Node.children` with constructor-discriminated recursion. These dissolve to `fold_node(root, ⟨binding-harvest algebra⟩)` only when the scoped harvest algebra lands without changing resolver scope semantics. |
 | **P6** | `std/algebra.dag` / `std/nat.dag` `fold` / `cata` over `FreeMonoid<T>` and `Nat` (Wave-A2) | std / T-3 Wave-A2 | **2** | Section 2: `std/algebra.dag free_monoid_length`, `std/float.dag nat_compare`. (Sibling to P2's combinator algebra; could land in the same PR — kept separate because the underlying primitive is the catamorphism, distinct from `forall`/`count_where` which are derived from it.) |
@@ -180,7 +180,7 @@ INVALID-GATE-once-re-gated):
 | (baseline) | **~38** | — | — |
 | P1 lands | ~22 | `std/cardinality.dag` refinement | ~16 |
 | P2 lands | 5 named (+ 26 verilog sites converge in one sweep) | `std/collection.dag` Wave-A2 | ~11 named |
-| P3 lands | 2 named (+ ~7 in-file) | T-6 + T-7 pipeline substrate | ~9 named |
+| P3 lands | 2 named (+ ~8 in-file) | T-6 + T-7 pipeline substrate (+ T-4.6 format parse/emit / profile gates) | ~8 named |
 | P4 lands | 4 + 1 row + 1 fn (`dag.dag canonical_symbols` #3225) | T-4 fact-bundle Phase-3 | ~3 named |
 | P5 lands | 1 named (+ 3 walker callers cascade in `03_resolve.dag` #3225) | `std/node.dag fold_node` | ~1 |
 | P6 lands | 2 | FreeMonoid/Nat catamorphism | ~0 |
@@ -690,7 +690,8 @@ awaiting an owning **T-#** for the **P10** row. Authoritative **`feature:`**
 text for D3200 / FLOAT-NOMINAL / INTEGER lives in **`DECISIONS.md` Part 6**;
 `extdeps/formats/{json,yaml,toml}.dag` mirror that with **terse
 `// 🟡 gated — feature:`** lines (Part 6 slug tails) **after** each value
-coproduct — **P1** + **P3** (plus YAML/TOML-specific slugs). Downstream
+coproduct — **P1** (`SL-3229-LLVM-WIDTH` on the three format carriers) **+**
+**P3** (format-axis Part 6 slugs **`SL-3229-T4-FORMAT-T6T7`**, **`SL-3229-JSON-UNIQUE-NAMES`**, **`SL-3229-YAML-CANONICAL-KEYS`**, **`SL-3229-T4-FORMAT-TOML-DATETIME`**, **`SL-3229-TOML-TABLE-SYNTAX`** — see **§1.1** rows **P1** / **P3**). Downstream
 lane work is execution (T-3/T-4/T-6/T-7 landings), not further §3 triage
 on these items.
 
