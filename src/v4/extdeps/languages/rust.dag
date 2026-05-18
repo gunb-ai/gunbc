@@ -1,7 +1,7 @@
 // src/v4/extdeps/languages/rust.dag
 // Scope: Rust Reference surface (scalar/reference/visibility/cost carriers) plus ratified D2 resolver types homed here pending resolver.dag migration.
-// Owns: RustIntKind, RustIntWidth, RustFloatWidth, RustScalar, RustReferenceKind, NamedSegment, PubInPath, RustVisibility, RustReference, RustCost, GroundingMap, OverflowAction, OverflowDisposition, RustBool, RustNever, rust_bool_grounding.
-// Consumes: v4.std.node.Node, Symbol; v4.std.cardinality.Never; kernel-ambient Bool, Int, List, String.
+// Owns: RustIntKind, RustIntWidth, RustFloatWidth, RustScalar, RustReferenceKind, NamedSegment, PubInPath, RustVisibility, RustReference, RustCost, OverflowAction, OverflowDisposition.
+// Consumes: v4.std.node.Node, Symbol; kernel-ambient Int, List.
 // Status: extdeps rust slice; PubInPath path semantics producer-obligation per DECISIONS.md Part 6 + D2-REV; D2b Arrow bodies deferred to bundled LanguageModel work.
 // Anchor: https://doc.rust-lang.org/reference/
 // Ledger: DECISIONS.md Part 6 (PR #3229): CP-3229-GREEN-TERMINAL.
