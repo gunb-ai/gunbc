@@ -24,12 +24,16 @@ engineering.
 
 ```
                  ┌─ P1-KEYSTONE (Practice-10 A1 invariant) ─┐
-   keystone ─────┼─ T-25-core (refinement substrate)    ─┼──▶ T-4 ──▶ T-9 ──▶ T-10 ──▶ T-11 ──▶ T-16 ──▶ T-15
-   cluster (×3)  └─ T-30 (hollow-alias gate)            ─┘  (5 langs)  infer    emit    per-tgt  omni    self-host
-                                                                                                          fixed-point
+   keystone ─────┼─ T-25-core (refinement substrate)       ─┤
+   cluster (×4)  ├─ T-30 (hollow-alias gate)               ─┼──▶ T-4 ──▶ T-9 ──▶ T-10 ──▶ T-11 ──▶ T-16 ──▶ T-15
+   = TASKS.md:64 └─ T-29 (C++ ABI; cpp-slice feeder)        ─┘  (5 langs)  infer    emit    per-tgt  omni    self-host
+   exact set                                                                                              fixed-point
                                                                                                           (anti-regress)
    T-1..T-8  =  LANDED  (front-end in CP-1b reconciliation tail; not the bottleneck)
-   T-29 (C++ ABI)  =  LANDED (#3267) — NOT a keystone; residual #3277 in-flight
+   T-29  =  core #3267 MERGED, **residual #3277 OPEN**; TASKS.md:64/:286/:1035
+            STILL declares it a hard T-4-cpp-slice feeder → REMAINS in the
+            cluster (NOT "LANDED/removed"); de-classify only when #3277 lands
+            AND TASKS.md is updated (authority = TASKS.md, not this plan)
 ```
 
 Everything else parallel-fills around that spine.
@@ -37,8 +41,10 @@ Everything else parallel-fills around that spine.
 > **Review status (2026-05-18):** **4/4 lanes ratified** — Lane A
 > (`fierce-cat-31`), Lane B (`swift-ram-178`), Dissolution (`jolly-ibex-599`),
 > T-4-mgr (`vivid-carp-207`) — all corrections folded below. T-4-mgr CONFIRMED
-> the T-4 keystone HOLD and supplied **material staleness corrections** (T-29 /
-> T-4.10 / T-4.12 already **LANDED**, not Wave-0; see Folded clarifications) plus
+> the T-4 keystone HOLD and supplied corrections (**T-4.10/T-4.12 LANDED**;
+> **T-29 STAYS a keystone-cluster feeder** per TASKS.md:64/:286/:1035 +
+> #3277-OPEN — codex REQUEST_CHANGES corrected an earlier wrong "T-29 landed"
+> reclassification; see Folded clarifications) plus
 > a new keystone-scope finding (early-canonical files' rework obligation).
 >
 > **Lane-A clarification (folded):** CP-1b close sits on the **T-8→T-9** leg, a
@@ -103,7 +109,7 @@ first) · `DESIGN` · `OP` (operator ruling) · `CP1` (needs v4 front-end output
 | T-25-tail | refinement prover (erase) | SCHEDULED | T-9 | IMPL (optim) | Lane A |
 | T-26 | std/ boundary carriers (URL/HttpMethod) | SCHEDULED | T-3 | **READY** | std/ = canonical home; Lane A may run 1st PR as conduit |
 | T-28 | std/ module-graph | SCHEDULED (bundled→T-8) | T-3 | IMPL (in T-8) | Lane A |
-| T-29 | extdeps C++ ABI feeder | **LANDED** — core #3267 merged (cpp_abi.dag on main); residual #3277 (cpp GAP) OPEN/in-flight | T-3/machine | LANDED (residual #3277 in-flight) | #3277 worker — **NOT in T-4-mgr subtree; attribution open (reparent or correct)** |
+| T-29 | extdeps C++ ABI — **T-4 cpp-slice side-branch feeder** (TASKS.md:64/:286/:1035) | core #3267 MERGED; **residual #3277 OPEN** | T-3/machine | **KEYSTONE-CLUSTER FEEDER (still declared by TASKS.md)** — not "LANDED"; de-classify only when #3277 lands AND TASKS.md updates | #3277 worker — attribution open (reparent/correct) |
 | T-30 | hollow-alias / fact-density gate | SCHEDULED — interim P5(b) mirror already on main (Rust gate + fact_density.dag witness + smoke) | — (none) | IMPL+OP (generated checker + operator closure remain) | Dissolution |
 | T-31 | de-prose/de-template backward sweep | SCHEDULED (indep. of T-4 gates, TASKS.md:1197-1199) | — | **READY** | Dissolution |
 | T-32 | minimum never-hand-edited bootstrap seed | SCHEDULED | — | DESIGN (doc) | Lane B / OP |
@@ -116,10 +122,13 @@ first) · `DESIGN` · `OP` (operator ruling) · `CP1` (needs v4 front-end output
   parallel-fill backward sweep (Wave-0-dispatchable, independent of T-4 gates).
 - **Lens footnote:** the PREFIX driver/corpus gate is **T-23 + driver**, not
   T-12 alone; T-12/T-13/T-17/T-18/T-23 rows match the running lens fan-out.
-- **T-4-mgr staleness correction (verified vs main):** T-29 core (#3267),
-  T-4.10 (#3168), T-4.12 (#3171) are **already LANDED** — the original
-  "Wave-0 dispatch NOW = T-29/T-4.10/T-4.12" column for T-4-mgr is **empty in
-  reality**. Wave-0 parallel count drops **≈14 → ≈11**.
+- **T-4-mgr staleness correction (verified vs main):** T-4.10 (#3168),
+  T-4.12 (#3171) are **already LANDED**. **T-29 is NOT landed-and-removed**
+  (codex REQUEST_CHANGES, TASKS.md authority): core #3267 merged but #3277
+  OPEN and TASKS.md:64/:286/:1035 still declares T-29 a hard T-4-cpp-slice
+  feeder — it **stays in the keystone cluster**, never was Wave-0. Wave-0
+  parallel count ≈14 → ≈11 (driven by T-4.10/T-4.12 + the READY* re-tier,
+  not by mis-dropping T-29).
 - **NEW keystone-scope finding (decision-relevant):** the early-canonical-path
   language/format files modelled **pre-D2-reversal** (spice #3168, llvm_ir
   #3171, and any sibling pre-#3240 models) likely carry a **fact-bundle REWORK
@@ -141,7 +150,7 @@ first) · `DESIGN` · `OP` (operator ruling) · `CP1` (needs v4 front-end output
 | **P1-KEYSTONE / Practice-10 A1 invariant** (the live gate; #3240 = closed tracker) | **OPERATOR ratification** | T-4 → T-9 → T-10 → T-11 → T-16; **also #3313 Wave-2 lenses; also the principled basis for #3280 A-vs-B** | **Operator** |
 | **T-25-core** | **DESIGN direction (operator review)** | T-4 refinement-bearers, T-4.5, T-4.6 | **Operator** + std |
 | T-30 hollow-alias gate | IMPL+OP — interim P5(b) mirror on main; generated checker + operator closure remain | T-4 fact-bundle integrity | Dissolution |
-| ~~T-29 C++ ABI~~ | **LANDED (#3267)** — no longer a keystone; residual #3277 in-flight | (was: T-4 cpp slice) | #3277 worker |
+| **T-29 C++ ABI** | **STILL a keystone-cluster feeder** (TASKS.md:64/:286/:1035 declares it a hard T-4-cpp-slice prereq) — core #3267 merged, residual #3277 OPEN; NOT "landed/removed" | T-4 cpp slice | #3277 worker (attribution open) |
 
 **Keystone blast radius (widened — T-4-mgr finding):** Practice-10/#3240 does
 not only gate T-4 ×5 forward — it also scopes the **rework obligation on the
@@ -217,9 +226,10 @@ A-vs-B=B (b), decide T-25-core (c).
     named T-9 trigger):* T-22 (interpreter scaffold + IRT-3 shape) · T-12/T-13
     lens **witness/Acceptance authoring** (Lane A fan-out — *already in
     flight*).
-  - **≈9 parallel work-fronts.** *(Removed from Wave-0: T-29/T-4.10/T-4.12 —
-    already LANDED, pre-#3240 rework keystone-gated; **T-25-tail** — depends
-    T-9, it is Wave-3 IMPL-optim, never Wave-0.)*
+  - **≈9 parallel work-fronts.** *(Not Wave-0: **T-29** — a TASKS.md-declared
+    keystone-cluster T-4-cpp feeder (core #3267 merged, residual #3277 OPEN);
+    T-4.10/T-4.12 already LANDED; pre-#3240 rework keystone-gated; **T-25-tail**
+    — depends T-9, Wave-3 IMPL-optim, never Wave-0.)*
 - **Wave 1 (P1-KEYSTONE + T-25-core + T-30 land):** T-4 ×5 languages, T-4.5,
   T-4.6 unblock (T-4 mgr). **+ lens-pipeline-derivations T-#** (`match_arm_shape`
   / `closed_vocab_scan` / `concept_home`) **+ Layer-0 lens stage plug-in**
@@ -296,7 +306,7 @@ sessions are *not* folded in — see exceptions.
 |---|---|---|---|
 | **Fresh: Compiler-Pipeline (+Lens, gated)** | **Pipeline scope (active on Wave-0 go):** T-3 tail, T-6–T-8 CP-1b close, T-9, T-10, T-11, T-16, T-25-tail, T-28; **T-26 = std-authoritative, conduit-only**. **Lens scope (T-12/13/17/18/23) — GATED on the `fierce-cat-31` lens fan-out CLOSEOUT** (one lens owner at a time — see exception 2; no P2 parallel-authority drift) | Wave-0: T-3 tail / CP-1b / T-26 only | **Mirrors §4 topology (strict, codex BLOCKING):** W2 T-9 → W3 T-10 (+T-4.8, +T-12/13 refine) → W4 T-11 (+T-17, +T-18 — lens-scope, also post-closeout) → W5 **T-16** → W6 T-15 handoff. Lens scope (T-12/13/17/18/23) additionally post-`fierce-cat-31`-closeout. |
 | **Fresh: Test/Bootstrap-Infra** | T-19, T-20, T-21, T-22, T-24, T-14, T-15, T-4.11, T-32 | **T-19, T-20, T-21** (full) · **T-22** (`READY*` scaffold scope) | §4-mirrored: T-24 W4 (post T-20/T-21), T-14 W4 (post T-19), **T-15 W6** (terminal, post T-16) |
-| **Fresh: extdeps/T-4** | T-4 ×5, T-4.5–T-4.14 | **— (T-29/T-4.10/T-4.12 LANDED; T-4 ×5 HELD on keystone)** | T-4 (post-keystone), T-4.5–4.8 |
+| **Fresh: extdeps/T-4** | T-4 ×5, T-4.5–T-4.14 | **— (T-4.10/T-4.12 LANDED; T-29 core #3267 merged but **residual #3277 OPEN & still a TASKS.md-declared T-4-cpp feeder**; T-4 ×5 HELD on keystone)** | T-4 (post-keystone+T-29 #3277), T-4.5–4.8 |
 | **Fresh: Dissolution** | T-30, T-31, Wave-2 lenses, 🟡 burn-down | **T-31(b) mop-up; T-30 generated-checker** | Wave-2 lenses — *consumes* the §4 cross-lane prereqs (new std/ carriers + 3 derived lens-stages built by Compiler-Pipeline+Lens) — post A1-ratification |
 | **Operator** | Keystone rulings | **see §7 decision sheet** | — |
 
@@ -321,8 +331,11 @@ sessions are *not* folded in — see exceptions.
    IRT-1..4 binding in T-21/T-22; T-15 terminal. Correction folded: T-20
    materially advanced via merged #3213.
 3. **`vivid-carp-207`** — ✅ RATIFIED. T-4 ×5 stays HELD on the keystone
-   cluster. Material correction folded: **T-29/T-4.10/T-4.12 already
-   LANDED** (not Wave-0); new keystone-scope finding (pre-#3240
+   cluster. Folded: **T-4.10/T-4.12 already LANDED** (not Wave-0).
+   **CORRECTION (codex REQUEST_CHANGES, TASKS.md authority):** T-29 was
+   wrongly reclassified "LANDED/removed" — TASKS.md:64/:286/:1035 still
+   declares it a hard T-4-cpp-slice feeder + #3277 OPEN; **T-29 restored to
+   the keystone cluster.** New keystone-scope finding (pre-#3240
    backward-rework) folded into §3.
 4. **`jolly-ibex-599`** — ✅ RATIFIED. T-30 interim P5(b) mirror on main;
    T-31 (a)rider/(b)mop-up split; Wave-2 post-#3240 coordination. Folded.
