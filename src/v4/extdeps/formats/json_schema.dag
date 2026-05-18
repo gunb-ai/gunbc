@@ -27,7 +27,7 @@ type JsonSchemaCoreTypeName
 type JsonSchemaTypeSlot
   = JsonSchemaTypeAbsent
   | JsonSchemaTypeSingle { core_type: JsonSchemaCoreTypeName }
-  | JsonSchemaTypeUnion { types: Set<JsonSchemaCoreTypeName> }
+  | JsonSchemaTypeUnion { first: JsonSchemaCoreTypeName, rest: Set<JsonSchemaCoreTypeName> }
 
 
 // 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-JsonSchemaItemsSlot

@@ -334,7 +334,7 @@ the in-file `// <emoji> coproduct dissolution — DECISIONS.md <ID>` tag
 | **T-4.6-P4-CsvHeaderPresence** | `CsvHeaderPresence` | 🟡 | Header present vs absent; cross-row arity couples to **T-4.6-CSV** mesh (operator-pending). |
 | **T-4.6-P4-CsvRow** | `CsvRow` | 🟡 | Peano spine = per-row field count; mesh with **T-4.6-CSV** / **T-4.6-P4-CsvHeaderPresence**. |
 | **T-4.6-P4-JsonSchemaCoreTypeName** | `JsonSchemaCoreTypeName` | 🟡 | Draft 2020-12 `type` keyword closed vocabulary for this slice; spec keyword churn extends the sum + amends this row. |
-| **T-4.6-P4-JsonSchemaTypeSlot** | `JsonSchemaTypeSlot` | 🟡 | Optional / single / union type shapes over **T-4.6-P4-JsonSchemaCoreTypeName**; union cardinality vs Core rules is slice-bounded (T-4 brief). |
+| **T-4.6-P4-JsonSchemaTypeSlot** | `JsonSchemaTypeSlot` | 🟡 | Optional / single / union type shapes over **T-4.6-P4-JsonSchemaCoreTypeName**; **`JsonSchemaTypeUnion`** uses **`first` + `rest:Set`** so the Draft 2020-12 `type` array is **non-empty** by construction. **`first` ∈ `rest`** or duplicate wire members ⇒ **parse/Diagnostic** (T-4 brief). |
 | **T-4.6-P4-JsonSchemaItemsSlot** | `JsonSchemaItemsSlot` | 🟡 | `items` absent vs schema subtree; validation/type-derivation for `items` keywords deferred (T-4.6 header). |
 | **T-4.6-P4-JsonSchemaPropertiesSlot** | `JsonSchemaPropertiesSlot` | 🟡 | `properties` absent vs map; key uniqueness is `Map` + parse/Diagnostic (collection.dag). |
 | **T-4.6-P4-JsonSchemaRequiredSlot** | `JsonSchemaRequiredSlot` | 🟡 | `required` absent vs `Set<String>`; set semantics vs instance `properties` keys validated at ingest (T-4 brief). |
