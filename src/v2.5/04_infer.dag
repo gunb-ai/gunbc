@@ -97,6 +97,7 @@ type InferScope {
 type InferDiagnostic
   = UnknownBinding { name: Symbol }
   | TypeMismatch { expected: TypeRef, actual: TypeRef }
+  | ArityMismatch { expected: Int, actual: Int }
   | NotCallable { actual: TypeRef }
   | MissingField { receiver: TypeRef, field: Symbol }
   | NotIndexable { actual: TypeRef }
@@ -210,9 +211,17 @@ fn merge_diagnostics(left: List<InferDiagnostic>, right: List<InferDiagnostic>) 
 }
 
 fn unify_pair(state: UnificationState, pair: SubstitutionPair) -> UnificationState {
-  UnificationState {
-    substitutions: list_push(state.substitutions, pair),
-    diagnostics: state.diagnostics
+  match pair.replacement {
+    ErrorType { diagnostic: diagnostic } =>
+      UnificationState {
+        substitutions: state.substitutions,
+        diagnostics: list_push(state.diagnostics, diagnostic)
+      }
+    _ =>
+      UnificationState {
+        substitutions: list_push(state.substitutions, pair),
+        diagnostics: state.diagnostics
+      }
   }
 }
 
@@ -306,14 +315,18 @@ fn infer_call(expr: NormalizedExpr, callee: InferredExpr, args: List<InferredExp
         CallableType { params: params, result: result } =>
           let pairs = zip_call_substitutions(params: params, args: args)
           let unified = unify_all(pairs: pairs)
-          let facts = required_facts(
-            result_type: result,
-            algebra: AlgebraFromOperand { operand: call }
-          )
-          ExprInference {
-            expr: InferredCall { callee: callee, args: args, call: call, facts: facts },
-            diagnostics: unified.diagnostics,
-            facts: facts
+          if unified.diagnostics |> count > 0 {
+            infer_error(diagnostic: first_diagnostic(diagnostics: unified.diagnostics))
+          } else {
+            let facts = required_facts(
+              result_type: result,
+              algebra: AlgebraFromOperand { operand: call }
+            )
+            ExprInference {
+              expr: InferredCall { callee: callee, args: args, call: call, facts: facts },
+              diagnostics: [],
+              facts: facts
+            }
           }
         _ =>
           infer_error(diagnostic: NotCallable { actual: callee_type })
@@ -439,9 +452,9 @@ fn infer_expr_variant(expr: NormalizedExpr, typed_children: List<InferredExprEdg
     NormalizedLet { binding: binding } =>
       infer_let(expr: expr, binding: binding, value: expr_at(children: typed_children, index: 0), body: expr_at(children: typed_children, index: 1), scope: scope)
     NormalizedRecordLit { type_ref: type_ref, fields: fields } =>
-      infer_record_lit(expr: expr, type_ref: type_ref, fields: fields, values: typed_children)
+      infer_record_lit(expr: expr, type_ref: type_ref, fields: fields, values: edge_targets(children: typed_children))
     NormalizedListLit =>
-      infer_list_lit(expr: expr, elements: typed_children)
+      infer_list_lit(expr: expr, elements: edge_targets(children: typed_children))
     NormalizedBinOp { op: _ } =>
       infer_binop(expr: expr, left: expr_at(children: typed_children, index: 0), right: expr_at(children: typed_children, index: 1))
     NormalizedUnaryOp { op: _ } =>
@@ -449,9 +462,9 @@ fn infer_expr_variant(expr: NormalizedExpr, typed_children: List<InferredExprEdg
     NormalizedLambda { params: params } =>
       infer_lambda(expr: expr, params: params, body: first_expr(children: typed_children), scope: scope)
     NormalizedStringInterp =>
-      infer_string_interp(expr: expr, parts: typed_children)
+      infer_string_interp(expr: expr, parts: edge_targets(children: typed_children))
     NormalizedBlock =>
-      infer_block(expr: expr, statements: typed_children)
+      infer_block(expr: expr, statements: edge_targets(children: typed_children))
     NormalizedCast { target: target } =>
       infer_cast(expr: expr, value: first_expr(children: typed_children), target: target)
     NormalizedForEach { binding: binding } =>
@@ -541,7 +554,28 @@ fn unary_result_type(op: Symbol, operand: TypeRef) -> TypeRef {
 }
 
 fn zip_call_substitutions(params: List<TypeRef>, args: List<InferredExpr>) -> List<SubstitutionPair> {
-  []
+  let expected = params |> count
+  let actual = args |> count
+  if expected != actual {
+    [SubstitutionPair {
+      variable: error_symbol,
+      replacement: diagnostic_type(diagnostic: ArityMismatch { expected: expected, actual: actual })
+    }]
+  } else {
+    zip(params, args) |> map(pair =>
+      SubstitutionPair {
+        variable: type_variable_symbol(type_ref: pair.first),
+        replacement: facts_of(expr: pair.second).result_type
+      }
+    )
+  }
+}
+
+fn type_variable_symbol(type_ref: TypeRef) -> Symbol {
+  match type_ref {
+    TypeVariable { name: name } => name
+    _ => error_symbol
+  }
 }
 
 fn first_expr(children: List<InferredExprEdge>) -> InferredExpr {
@@ -559,6 +593,31 @@ fn expr_at(children: List<InferredExprEdge>, index: Int) -> InferredExpr {
   match children |> skip(index) |> first {
     Some { value: edge } => edge.target
     None => infer_error(diagnostic: UnimplementedTypeKitBinding { missing: unknown_type_kit_binding }).expr
+  }
+}
+
+fn edge_targets(children: List<InferredExprEdge>) -> List<InferredExpr> {
+  children |> map(edge => edge.target)
+}
+
+fn first_expr_from_values(children: List<InferredExpr>) -> InferredExpr {
+  match children |> first {
+    Some { value: expr } => expr
+    None => infer_error(diagnostic: UnimplementedTypeKitBinding { missing: unknown_type_kit_binding }).expr
+  }
+}
+
+fn first_diagnostic(diagnostics: List<InferDiagnostic>) -> InferDiagnostic {
+  match diagnostics |> first {
+    Some { value: diagnostic } => diagnostic
+    None => UnimplementedTypeKitBinding { missing: unknown_type_kit_binding }
+  }
+}
+
+fn first_mismatched_arm_type(expected: TypeRef, arms: List<InferredExpr>) -> TypeRef? {
+  match arms |> find(arm => facts_of(expr: arm).result_type != expected) {
+    Some { value: arm } => Some { value: facts_of(expr: arm).result_type }
+    None => none
   }
 }
 
@@ -612,12 +671,18 @@ fn expr_result_node(result: ExprInference) -> InferredNode {
 }
 
 fn infer_match(expr: NormalizedExpr, scrutinee: InferredExpr, arms: List<NormalizedNode>, arm_results: List<InferredExpr>) -> ExprInference {
-  let first_arm = first_expr(children: arm_results)
-  let facts = facts_of(expr: first_arm)
-  ExprInference {
-    expr: InferredMatch { scrutinee: scrutinee, arms: arm_results, facts: facts },
-    diagnostics: [],
-    facts: facts
+  let first_arm = first_expr_from_values(children: arm_results)
+  let first_facts = facts_of(expr: first_arm)
+  let mismatch = first_mismatched_arm_type(expected: first_facts.result_type, arms: arm_results)
+  match mismatch {
+    Some { value: actual } =>
+      infer_error(diagnostic: BranchTypeMismatch { then_type: first_facts.result_type, else_type: actual })
+    None =>
+      ExprInference {
+        expr: InferredMatch { scrutinee: scrutinee, arms: arm_results, facts: first_facts },
+        diagnostics: [],
+        facts: first_facts
+      }
   }
 }
 
