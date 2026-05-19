@@ -1,12 +1,12 @@
 // src/v2.5/std/diagnostic.dag
 // Scope: fail-closed Outcome carrier for v2.5 pipeline stages.
-// Consumes: none.
+// Consumes: v2_5.std.identity (Symbol).
 // Status: fork substrate — normalize stage consumer; Tier-0 may supersede.
 
 module v2_5.std.diagnostic
 
 
-type Symbol
+import v2_5.std.identity { Symbol }
 
 
 type NoCorrectionReason

@@ -1,11 +1,12 @@
 // src/v2.5/std/node.dag
 // Scope: v2.5 substrate root — type kernel for the forked tree.
 // Owns: Symbol, Hash, Connective, Behavior, DeclarationKind, CompositeRole, NodeKind, EdgeLabel, Edge, Node, NodeFold, fold_node, EdgeDiscipline, connective_edge_discipline, edge_is_named, edge_is_positional, all_edges_named, all_edges_positional, name_occurrences, all_names_distinct, edges_conform, node_locally_well_formed, node_well_formed, is_empty_conj_root, Path, Edit, Diff.
-// Consumes: none.
+// Consumes: v2_5.std.identity (Symbol).
 
 module v2_5.std.node
 
-type Symbol
+import v2_5.std.identity { Symbol }
+
 type Hash
 
 type Connective

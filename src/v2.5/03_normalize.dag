@@ -236,6 +236,26 @@ fn normalized_type_from_seam_node(n: SeamResolvedNode, span: SourceSpan) -> Outc
 }
 
 
+fn apply_sugar_connective_replacement(
+  rule: SugarRule,
+  children: List<SeamResolvedEdge>
+) -> Outcome<NormalizedTypeForm> {
+  match normalize_seam_edges(children: children) {
+    Produced { value: normalized_children } =>
+      Produced {
+        value: NormalizedTypeForm {
+          connective: connective_for_replacement(
+            rep: rule.replacement,
+            sugar: rule.sugar
+          ),
+          children: normalized_children
+        }
+      }
+    Rejected { diagnostic: d } => Rejected { diagnostic: d }
+  }
+}
+
+
 fn apply_sugar_rule(
   rule: SugarRule,
   span: SourceSpan,
@@ -249,33 +269,9 @@ fn apply_sugar_rule(
           None => Rejected { diagnostic: malformed_sugar_diagnostic(span: span) }
         }
       ReplaceWithConj =>
-        match normalize_seam_edges(children: children) {
-          Produced { value: normalized_children } =>
-            Produced {
-              value: NormalizedTypeForm {
-                connective: connective_for_replacement(
-                  rep: rule.replacement,
-                  sugar: rule.sugar
-                ),
-                children: normalized_children
-              }
-            }
-          Rejected { diagnostic: d } => Rejected { diagnostic: d }
-        }
+        apply_sugar_connective_replacement(rule: rule, children: children)
       ReplaceWithArrow =>
-        match normalize_seam_edges(children: children) {
-          Produced { value: normalized_children } =>
-            Produced {
-              value: NormalizedTypeForm {
-                connective: connective_for_replacement(
-                  rep: rule.replacement,
-                  sugar: rule.sugar
-                ),
-                children: normalized_children
-              }
-            }
-          Rejected { diagnostic: d } => Rejected { diagnostic: d }
-        }
+        apply_sugar_connective_replacement(rule: rule, children: children)
     }
   } else {
     Rejected { diagnostic: malformed_sugar_diagnostic(span: span) }
@@ -501,11 +497,8 @@ fn normalize_item_core(item: ResolvedItemCore) -> Outcome<NormalizedItem> {
 
 fn normalize_module_item(item: ResolvedModuleItem) -> Outcome<NormalizedItem> {
   match item {
-    ResolvedSugared { sugar: sugar, inner: inner, span: span } =>
-      match lookup_sugar_rule(kind: sugar, rules: c3_sugar_rules()) {
-        Some { value: _rule } => normalize_item_core(item: inner)
-        None => Rejected { diagnostic: unknown_sugar_diagnostic(span: span) }
-      }
+    ResolvedSugared { sugar: _, inner: inner, span: _ } =>
+      normalize_item_core(item: inner)
     ResolvedCore { item: inner } => normalize_item_core(item: inner)
   }
 }
