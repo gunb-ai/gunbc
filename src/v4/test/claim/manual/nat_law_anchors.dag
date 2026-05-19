@@ -3,8 +3,6 @@
 // Owns: claim_nat_* TestClaim data
 // Consumes: v4.std.verification v4.std.diagnostic v4.test.claim.manual.connective_anchors
 // Status: v2 compile; classification discipline indexed DECISIONS V-HDR.
-// Note: `AlgebraLawSubject` algebra/inhabitant `Symbol` keys live in `v4.std.nat` (substrate bundle tied to
-// `nat_additive_commutative_monoid` / `nat_semiring` / carrier `Nat`); see `src/v4/lens/testgen.dag`.
 
 module v4.test.claim.manual.nat_law_anchors
 

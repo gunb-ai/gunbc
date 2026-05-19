@@ -150,13 +150,6 @@ fn t19_manual_anchor_absent_bootstrap_diagnostic() -> Diagnostic {
   }
 }
 
-
-// 🟡 gated — INVARIANTS P2 / `src/v4/TASKS.md` § T-19 Phase-1.5 (`t19_manual_anchor_manifest.dag` bullets, lines 780–783):
-// `manual_test_claim_for_manual_anchor` is a closed Wave-0 **key→claim** join (twelve `Produced` arms + `T19ManualAnchorAbsent` fail-closed),
-// not a canonical indexed query materialized over `TestClaim.t19_anchor`. Dissolve-on-arrival: fold this table into manifest-backed lookup /
-// reflection once **T-19 — `lens/testgen.dag` — M2 materialization band** + **M2 cross-file loading + literal validation** land (TASKS §T-19
-// `Retirement` paragraph, same subsection), per the P2 bijection rule (no parallel slug tables vs fields already on `TestClaim`).
-
 fn manual_test_claim_for_manual_anchor(key: T19ManualAnchorKey) -> Outcome<TestClaim> {
   match key {
     T19ManualAnchorAbsent =>

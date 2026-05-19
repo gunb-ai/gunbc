@@ -75,9 +75,7 @@ data nat_semiring: CommutativeSemiring<Nat> = CommutativeSemiring {
   }
 }
 
-
-// T-19 / Practice-8 bundle: nominal `Symbol` keys for `AlgebraLawSubject` scheduling only — **not** a second
-// algebra definition. `nat_additive_commutative_monoid` / `nat_semiring` / carrier `Nat` remain the substrate facts.
+// Practice-8 scheduling Symbols — DECISIONS.md T19-VHDR-3332
 data nat_algebra_law_subject_symbol_additive_monoid: Symbol = nat_algebra_law_subject_symbol_additive_monoid
 
 
