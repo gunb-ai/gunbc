@@ -44,7 +44,7 @@ jobs:
   affected:
     if: github.event.pull_request.draft != true
     runs-on: ubicloud-standard-2
-    timeout-minutes: 5
+    timeout-minutes: 15
     outputs:
       v2: ${{ steps.detect.outputs.v2 }}
       v3: ${{ steps.detect.outputs.v3 }}
