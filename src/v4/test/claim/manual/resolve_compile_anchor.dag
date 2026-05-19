@@ -1,7 +1,7 @@
 // src/v4/test/claim/manual/resolve_compile_anchor.dag
 //
 // Scope: Tier-1 v2-bootstrap compile anchor for `resolve` + wave-1 LM `canonical_symbols` (ledger: DECISIONS CP-1b item 10).
-// Owns: anchor_resolve_wave1_service_atom_via_canonical_symbols.
+// Owns: anchor_resolve_wave1_service_atom_via_canonical_symbols, anchor_resolve_wave1_multi_edge_conj_via_canonical_symbols, anchor_resolve_wave1_bind_binder_use.
 // Consumes: compiler/03_resolve.dag, extdeps/languages/dag.dag, std/diagnostic.dag, std/node.dag.
 // Status: scaffold — compile-only until T-22; `v2 run` TestClaims per MOVE1_COVERAGE.txt.
 // Anchor: https://en.wikipedia.org/wiki/Name_resolution_(programming_languages)
@@ -11,12 +11,16 @@ module v4.test.claim.manual.resolve_compile_anchor
 
 import v4.compiler.resolve { resolve, ResolvedTree }
 import v4.extdeps.languages.dag {
+  dag_c3_surface_sugar_fn,
   dag_c3_surface_sugar_service,
+  dag_c3_surface_sugar_type,
   dag_language_model_wave1_void
 }
 import v4.std.diagnostic { Outcome }
 import v4.std.node {
   Atom,
+  Bind,
+  ComputationNode,
   Conj,
   Edge,
   Node,
@@ -37,6 +41,91 @@ fn anchor_resolve_wave1_service_atom_via_canonical_symbols() -> Outcome<Resolved
               connective: Atom { identity: dag_c3_surface_sugar_service }
             },
             children: []
+          }
+        }
+      ]
+    },
+    lm: dag_language_model_wave1_void()
+  )
+}
+
+
+// Multi-edge Conj root — exercises `resolve_children_homogeneous_scope` over
+// more than one positional child, each resolved through the canonical-symbol
+// fallback (DECISIONS CP-1b item 10 follow-up: multi-edge coverage).
+fn anchor_resolve_wave1_multi_edge_conj_via_canonical_symbols() -> Outcome<ResolvedTree> {
+  resolve(
+    tree: Node {
+      kind: TypeNode { connective: Conj },
+      children: [
+        Edge {
+          label: Positional,
+          target: Node {
+            kind: TypeNode {
+              connective: Atom { identity: dag_c3_surface_sugar_service }
+            },
+            children: []
+          }
+        },
+        Edge {
+          label: Positional,
+          target: Node {
+            kind: TypeNode {
+              connective: Atom { identity: dag_c3_surface_sugar_type }
+            },
+            children: []
+          }
+        }
+      ]
+    },
+    lm: dag_language_model_wave1_void()
+  )
+}
+
+
+// Arity-3 `Bind` — exercises `resolve_bind_node` / `resolve_bind_edges`
+// (DECISIONS CP-1b item 3 + item 10 follow-up: Bind coverage). Slot-0 binder
+// declaration is `dag_c3_surface_sugar_fn`; slot-1 initializer resolves in the
+// outer scope via the canonical-symbol fallback; slot-2 body resolves the
+// binder through the `ScopeFrame` locals chain.
+fn anchor_resolve_wave1_bind_binder_use() -> Outcome<ResolvedTree> {
+  resolve(
+    tree: Node {
+      kind: TypeNode { connective: Conj },
+      children: [
+        Edge {
+          label: Positional,
+          target: Node {
+            kind: ComputationNode { behavior: Bind },
+            children: [
+              Edge {
+                label: Positional,
+                target: Node {
+                  kind: TypeNode {
+                    connective: Atom { identity: dag_c3_surface_sugar_fn }
+                  },
+                  children: []
+                }
+              },
+              Edge {
+                label: Positional,
+                target: Node {
+                  kind: TypeNode {
+                    connective: Atom { identity: dag_c3_surface_sugar_service }
+                  },
+                  children: []
+                }
+              },
+              Edge {
+                label: Positional,
+                target: Node {
+                  kind: TypeNode {
+                    connective: Atom { identity: dag_c3_surface_sugar_fn }
+                  },
+                  children: []
+                }
+              }
+            ]
           }
         }
       ]
