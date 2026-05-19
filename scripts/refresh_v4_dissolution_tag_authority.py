@@ -160,6 +160,12 @@ def refresh_gated_and_predicate_lines(text: str) -> str:
             line = gm.group(1) + body
         if "dissolution-inventory.md" in line or "DECISIONS.md" in line:
             line = line.replace("docs/audit/dissolution-inventory.md §1.0 R1 (PR #3284); ", "")
+            # Preserve slug + parenthetical when only the ledger prefix is stale (e.g. CP-1b anchors).
+            line = re.sub(
+                r"DECISIONS\.md (§[^;]+;\s*)",
+                r"\1",
+                line,
+            )
             line = re.sub(r"DECISIONS\.md §[^;]+;\s*", "", line)
             line = re.sub(r"DECISIONS\.md/§\S+", "modeling-discipline.md", line)
             line = re.sub(r"DECISIONS\.md Part 6 · ", "", line)
