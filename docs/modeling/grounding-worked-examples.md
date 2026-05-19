@@ -290,6 +290,121 @@ overflow at the emit boundary.
 
 ## Per-target carrier groundings
 
+## 0. `bool` / `!` — grounding at the primitive level (the base case of one universal discipline)
+
+**There are no "quirked" types.** *Every* external type is grounded in
+our primitives. The only question is **at what level the grounding
+starts**: most types start as a **refinement some level above a
+primitive**; a genuinely boutique type starts from the **raw
+primitives** and is built up. `bool` is the base case only because it
+sits *so close to a primitive* that there is almost nothing to get
+wrong — not because it is a different category. We model each
+language's type by **reading that language's spec for that type** (we
+are modeling the spec), then expressing it in our vocabulary at the
+appropriate level. Modeling accuracy is fundamentally an *integration*
+problem — it is iterative and validated by testgen against the target
+(separate followup), not asserted.
+
+**The retired shape (D2a).** The pre-ruling form asserted identity by a
+label + a spelling string:
+
+```
+type RustBool = Bool                                   // bare D2 assertion
+data rust_bool_grounding: GroundingMap<RustBool> = GroundingMap {
+  spelling: "bool"                                      // identity by a label string
+}
+```
+
+`"bool"` is prose a checker cannot walk — the hollow form the
+machine-readable-inhabitance bar forecloses. "Identity is a claim
+discharged by the fold, never an assertion."
+
+**The ratified shape (canonical-B) — declaration present, P2/E-6
+staging.** The grounding *declaration* is a real, fold-traversable edge
+that **references the single std authority** for the shared structure:
+
+```
+import v4.std.logic { Bool, bool_boolean_algebra }
+import v4.std.algebra { BooleanAlgebra }
+// Anchor: <the language's own bool spec>
+data <lang>_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
+```
+
+This is not an assertion: it grounds the language's `bool`, *read from
+that language's spec*, into the shared `std/logic` + `std/algebra`
+vocabulary by pointing at the one authoritative `BooleanAlgebra<Bool>`
+instance (`std/logic.dag`). A checker walks `<lang>_bool_grounding` →
+the real `bool_boolean_algebra` structure; coincidence with std `Bool`
+is then a structural fact the fold discharges, not a label. **One
+authority** (no per-file algebra duplication — M2); codewide
+improvements to the bool concept centralise there, and any future
+divergence is *fold-rechecked*, not silently inherited (the
+centralisation/drift resolution). `!` grounds to the std `Never`
+primitive directly (`type RustNever = Never`) — zero inhabitants, no
+structure above the primitive, so the primitive identity *is* the
+complete grounding (the degenerate base of the same discipline).
+
+**Verified scope (honest) — declaration, not landed authority.** The
+declaration compiles **0 diagnostics under the real bootstrap gate** —
+`v2-compiler compile --source-root src/v4` (ci.yml `v4:` job; 72 modules
+resolved). That is the *parse/resolve* half of bootstrap viability; the
+v2-**run** gate is T-22-deferred. Crucially this is **not** landed
+target-spec authority: no same-PR consumer reads `<lang>_bool_grounding`
+(the canonical/coincidence fold — the consumer — is
+*specified-not-realized*: `node.dag` B1-CANON contract, `[MODELED]`).
+**INVARIANTS E-6 permits this as a *bounded exception* (clause (b))** —
+a consumer-less target-spec decl that **sits behind a named scaffold
+marker with a dissolution trigger**: each `data <lang>_bool_grounding`
+carries the inline marker `🟡 feature:canonical-b-grounding-consumer`
+that dissolves when the B1-CANON fold + coercion zip-fold
+(`DECISIONS.md` B1 · T-9/C1) consume it for coincidence-checking. So the
+*shape* is the ratified canonical-B decl-ref and parse-verified; the
+*authority state* is **staging behind the E-6-named scaffold** —
+consumer-gated, not landed, **not** speculative metadata — claimed no
+further. (Aside: the frozen v3 interim parse-ratchets reject decl-ref
+`data` bodies — a v3-only artifact, v3 is *not* in the bootstrap chain;
+they are **dissolved in this PR** under operator authorization, with the
+v2 `v4:` job as the replacement parse gate.)
+
+**The level spectrum — bool vs int (the lesson).** Same discipline,
+different starting level:
+
+- **`bool`** — starts *at* the primitive: `bool` *is* the shared
+  2-element `BooleanAlgebra`. The grounding is the bare reference; no
+  build-up. (Rust / C++ / Go / Lean / TS bool all read this way from
+  their specs — strictly two values, standard ops, no object/null
+  semantics — so all use the identical shared reference.)
+- **`int`** — starts as a **refinement above** the primitive. Per
+  `std/integer.dag`, `Int = GroupCompletion<Nat>` is unbounded ℤ and
+  does **not** model overflow; `Int64 = Compose<Int,
+  MachineWidth<Word64>>` is `Int` *refined* by a width dimension, and
+  overflow is that refinement's boundary predicate. Python `int`
+  (arbitrary precision) grounds to bare `Int`; Rust `i64` grounds to
+  the `Compose` refinement + an overflow disposition — **same shared
+  `Int`, different spec-sourced refinements.**
+- **Python `bool`** — the worked deviation. The Python data model says
+  `bool` *is a subtype of `int`* (`True == 1`). So Python's bool reads
+  as: the shared truth grounding (`py_bool_grounding` → the same
+  authority) **plus** numeric-tower membership — carried by the
+  existing `PythonNumericTower.BoolLevel` classifier, the build-up
+  above the primitive. (Object/singleton *identity* is a runtime-layer
+  fact, outside the type model — the placement axis.) This is a *first
+  iteration*; the exact build-up shape is expected to refine as testgen
+  pressure-tests it against CPython.
+
+The contrast is the whole point: there is one grounding engine —
+*reference the shared authority for what the spec says is shared, build
+up from the primitives for what the spec says deviates.* `bool` is
+where the build-up is empty; `int` and Python-`bool` are where it
+isn't. None of them are special-cased.
+
+**Coercion shape.** `bool`: the fold compares canonical `Node` forms
+leaf-to-leaf (`True`↔`True`, `False`↔`False`) — identity-quality
+`Produced`; no width/sign/unit coordinate to drop or fabricate (the
+clean endpoint). `!`: `Never` has no inhabitants, so `T -> Outcome<!>`
+can only be `Rejected` (fail-closed by construction) and
+`! -> Outcome<T>` is the unique empty map (ex falso, vacuously total).
+
 ## 1. Rust — `[T; N]` (const generics, compound coercion)
 
 **Model** — grounded from the Rust Reference array type:
