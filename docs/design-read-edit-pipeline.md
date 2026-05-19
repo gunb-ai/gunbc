@@ -142,23 +142,37 @@ use `Node` directly.)
 ## 4. The read → edit pipeline
 
 Reads precede writes (the existing pattern; preserve it). The agent
-loop is six steps, closed:
+loop is seven steps, closed, with **gates running against the
+candidate post-edit state**, not the pre-edit graph:
 
 ```
-1. Read     →  apply_lens(lens, scope, Introspect)        # gather structural facts
-2. Diagnose →  reasoning over the facts (LLM or human)    # decide what should change
-3. Propose  →  produce Diff                               # express change as structural edits
-4. Gate     →  apply_lens(_, Enforce) on affected_set     # validate fail-closed
-5. Apply    →  apply_diff(dag, Diff)                      # land the edits
-6. Re-emit  →  emit per target language                   # files are a downstream effect
+1. Read       →  apply_lens(lens, scope, Introspect)        # gather structural facts
+2. Diagnose   →  reasoning over the facts (LLM or human)    # decide what should change
+3. Propose    →  produce Diff                               # express change as structural edits
+4. Candidate  →  candidate_dag = apply_diff(dag, Diff)      # produce uncommitted candidate
+                                                            # (fail-closed Diagnostic if any Edit's
+                                                            #  Path doesn't resolve — Diff bails here)
+5. Gate       →  affected_set(dag, Diff).frontier.for_each(ref =>
+                   apply_lens(_, ref, Enforce)              # validate the CANDIDATE state
+                 )                                          # NOT the pre-edit dag
+6. Commit     →  dag := candidate_dag                       # only if every gate passed
+7. Re-emit    →  emit per target language                   # files are a downstream effect
 ```
 
-Step 6 is the **only** place files re-enter the picture — they are a
-*consequence* of substrate state, not a cause.
+**Why gate the candidate, not the pre-edit graph.** Gating the
+pre-edit graph + applying the Diff afterwards would let a Diff
+introduce a post-edit invariant violation that never gets enforced —
+exactly the semantic gap the project's "structure gates emission"
+thesis exists to close. The candidate-state pattern keeps the
+fail-closed promise honest: validation happens against the state
+that will be emitted, not against a state already known to be valid.
 
-The pipeline is closed: any Diff that doesn't pass the gates doesn't
-land, period. There is no "force apply." The agent earns no special
-trust; structure gates it.
+Step 7 is the **only** place files re-enter the picture — they are a
+*consequence* of the committed substrate state, not a cause.
+
+The pipeline is closed: any Diff that doesn't pass the gates against
+the candidate state doesn't commit, period. There is no "force apply."
+The agent earns no special trust; structure gates it.
 
 ## 5. Worked examples
 
@@ -210,23 +224,26 @@ edits = matches.filter(m => m.type_name == RustBool).map(m =>
 diff = Diff(edits)
 ```
 
-**Gate** — run dissolution lenses on the affected frontier:
+**Candidate + Gate + Commit** — candidate-state pattern: apply Diff
+into an uncommitted candidate Node, gate against the candidate's
+affected frontier, commit only if all gates pass:
 ```dag
+candidate_dag = apply_diff(dag, diff)
+// → fail-closed Diagnostic here if any Edit's Path doesn't resolve
+
 affected = affected_set(dag, diff)
-// fold over the frontier set; each member already has its own scope ref
+// gate against the CANDIDATE state, not the pre-edit dag:
 affected.frontier.for_each(ref =>
-  apply_lens(L1.7, ref, Enforce)
-  // → Outcome<()>; fails if any new prose-asserted facts introduced
+  apply_lens(L1.7, ref, Enforce)   // evaluated in candidate_dag context
+  // → fails if any new prose-asserted facts introduced
 )
 affected.frontier.for_each(ref =>
   apply_lens(L1.10.b, ref, Enforce)
-  // → Outcome<()>; checks no String-escape-hatch introduced
+  // → checks no String-escape-hatch introduced
 )
-```
 
-**Apply**:
-```dag
-new_dag = apply_diff(dag, diff)
+// commit only if every gate passed:
+dag := candidate_dag
 ```
 
 **Re-emit** — `rust.dag` re-renders to Rust source per target emit.
@@ -400,17 +417,20 @@ L1_5_transform(matched_node) -> Diff {
 }
 ```
 
-**Pipeline**:
+**Pipeline** (candidate-state ordering — gates against post-edit):
 ```
 matches = declarations_in(dag).flat_map(d =>
   apply_lens(L1.5, DeclarationScope(d), Introspect).matches()
 )
 diff = Diff(matches.map(m => L1_5_transform(m)))
+
+candidate_dag = apply_diff(dag, diff)             // build uncommitted candidate
 affected = affected_set(dag, diff)
 affected.frontier.for_each(ref =>
-  apply_lens(L1.5, ref, Enforce)                 // re-validate clean per frontier member
+  apply_lens(L1.5, ref, Enforce)                  // validate CANDIDATE state per frontier member
 )
-new_dag = apply_diff(dag, diff)
+
+dag := candidate_dag                              // commit if all gates passed
 // per-target emit re-renders the affected files
 ```
 
@@ -421,35 +441,64 @@ clean shape going forward via the same L1.5 in `Enforce` mode.
 ### 6.4 Hero case (b): L1.12 canonical-B aliasing
 
 Same shape as canonical-B in #3338, but expressed as the lens's own
-auto-transform.
+auto-transform — with **honest treatment of the silence case**:
+auto-fix only when canonical authority is structurally declared;
+otherwise `NeedsDecision`.
 
-**Find** — L1.12's outcome (5) silence case: a `type T` declared in
-two files with no `CanonicalConcept` row, no alias, no retirement
-ledger.
+**Find** — L1.12 outcomes (4) and (5):
+- Outcome (4) **same-concept-without-alias-or-retirement**: a
+  `CanonicalConcept` row EXISTS but the non-canonical declaration is
+  neither aliased nor retired. The registry tells us which is
+  canonical. Auto-transform is grounded.
+- Outcome (5) **silence**: no `CanonicalConcept` row, no
+  `ConceptDisambiguation` row, no `HistoricalDeclaration` row. The
+  substrate has not declared which side is canonical. Auto-picking
+  would be ungrounded inference, exactly what INVARIANTS forbids.
 
-**Transform** — produce a Diff that adds the `CanonicalConcept`
-row AND the alias-identity edge (outcome 1 in the decision table):
+**Transform** — branching on which outcome fired:
 ```dag
-L1_12_transform(matched_pair) -> Diff {
-  let (canonical, historical) = pick_canonical_home(matched_pair)
-  Diff([
-    Edit { path: ontology_file, insert:
-      data <concept>_concept: CanonicalConcept = {
-        canonical_home: canonical.path,
-        members: { historical.path },
-      }
+L1_12_transform(matched_pair) -> ConditionalDiff {
+  match outcome_of(matched_pair) {
+    Outcome_4 {
+      // CanonicalConcept row exists; READ canonical_home from it
+      concept: CanonicalConcept,
+      historical: NodeRef,
+    } => Auto(Diff([
+      // (4) → (1): add the alias-identity edge to the structurally-named canonical home
+      Edit { path: historical.path, replace_with:
+        import <concept.canonical_home_module> as canonical_alias
+        type T = canonical_alias.T
+      },
+    ])),
+
+    Outcome_5 {
+      // silence — NO canonical authority declared. The substrate has
+      // not taken a position; we MUST NOT pick one.
+      pair: (NodeRef, NodeRef),
+    } => NeedsDecision {
+      because: no_canonical_authority,    // closed vocabulary
+      hint: <None>,                       // both candidates plausible;
+                                          // operator authors a CanonicalConcept row,
+                                          // re-running the lens then re-fires outcome (4)
+      needs: operator_authors_CanonicalConcept_row {
+        candidates: pair,
+      },
     },
-    Edit { path: historical.path, replace_with:
-      import <canonical_module> as canonical_alias
-      type T = canonical_alias.T
-    },
-  ])
+  }
 }
 ```
 
 **Hero**: the operator-ratified canonical-B work in #3338 is the
-worked example — the substrate could have generated that Diff
-automatically once L1.12 fired.
+worked example for outcome (4) — once `CanonicalConcept` rows for
+Bool/Char/Url/etc. land structurally, the substrate could have
+generated the alias edges automatically. The silence case
+(outcome 5) is what blocked auto-fix during #3338 — that's the
+correct shape: the operator authors the CanonicalConcept row first;
+the alias is then automatic.
+
+This is the general pattern for auto-fix: **transforms ground in
+substrate-declared authority; absence of authority becomes
+`NeedsDecision`, never an inferred guess.**
 
 ### 6.5 Hero case (c): interface cascade with conditional updates
 
