@@ -10,19 +10,18 @@ module v4.extdeps.languages.python
 import v4.std.logic { Bool, bool_boolean_algebra }
 import v4.std.algebra { BooleanAlgebra }
 
-// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type PythonSingletonKind
   = NoneT | NotImplementedT | EllipsisT
 
-// 🟢 coproduct dissolution — DECISIONS.md Part 6 · SL-3309-PYTHON-SCALAR-RESEED.
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type PythonScalar
   = IntScalar | FloatScalar | ComplexScalar | BoolScalar | Singleton { kind: PythonSingletonKind }
 
-type PythonCost
-{
+type PythonCost {
   operation_cost: Int
   allocation_cost: Int
 }
 
-// 🟡 canonical-B decl-ref (truth facet; int-subtype build-up = BoolScalar) · E-6(b) bounded-exception · scaffold feature:canonical-b-grounding-consumer · dissolve-on: B1-CANON+zip-fold consume (ledger: DECISIONS.md B1·T-9/C1 · grounding-worked-examples.md §0)
+// 🟡 canonical-B decl-ref (truth facet; int-subtype build-up = BoolScalar) · E-6(b) bounded-exception · scaffold feature:canonical-b-grounding-consumer · dissolve-on: B1-CANON+zip-fold consume (ledger: B1·T-9/C1 · grounding-worked-examples.md §0)
 data py_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
