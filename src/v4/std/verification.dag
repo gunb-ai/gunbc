@@ -7,7 +7,7 @@
 module v4.std.verification
 
 
-import v4.std.node { Node, Symbol }
+import v4.std.node { Node }
 import v4.std.diagnostic {
   Outcome
 }
