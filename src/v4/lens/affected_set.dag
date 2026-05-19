@@ -1,6 +1,6 @@
 // src/v4/lens/affected_set.dag
 // Scope: canonical affected-set authority for CI/incremental re-execution; fail-closed B-4/B-5 node frontier.
-// Owns: Dag, AffectedDimension, ExclusionKey, ExclusionProof, FrontierDecision, ReExecFrontier, AffectedSetRead, ChangedDimensionReceipt, affected_set.
+// Owns: Dag, AffectedDimension, ExclusionKey, ExclusionProof, FrontierDecision, ReExecFrontier, AffectedSetRead, ChangedDimensionReceipt, EditDagReceipt, affected_set.
 // Consumes: Map, Diff, Edit, Hash, Node, Path, Symbol, Witness; B1 content_hash receipts; B-4 resolved Symbol equality; B-5 per-Arrow signature effects.
 // Status: Wave-0 front: bounded changed-subgraph frontier fold landed; dissolves when CI use and .dag TestClaims land.
 
@@ -86,6 +86,12 @@ type ChangedDimensionReceipt
   | ChangedDimensionsUnknown { reason: Symbol }
 
 
+// 🟡 coproduct dissolution — DECISIONS.md #3153-subsumed; dissolves when D1 apply_diff emits per-edit Dag receipts.
+type EditDagReceipt
+  = EditDagAdvanced { dag: Dag }
+  | EditDagUnknown { reason: Symbol }
+
+
 // 🟡 coproduct dissolution — DECISIONS.md #3153-subsumed; dissolves when B-4/B-5 edge receipts are generated.
 type PropagationReceipt
   = Propagates
@@ -107,6 +113,7 @@ type AffectedFrontierRead {
 type AffectedSetRead {
   boundary: AffectedBoundaryRead
   frontier: AffectedFrontierRead
+  edit_dag_receipt: fn(Dag, Edit) -> EditDagReceipt
   propagation_receipt: fn(Dag, EditFrontierEdge) -> PropagationReceipt
 }
 
@@ -119,10 +126,29 @@ type FrontierAcc
   | WholeDagAcc { reason: Symbol }
 
 
+type AffectedFoldAcc {
+  dag: Dag
+  frontier: FrontierAcc
+}
+
+
 fn empty_frontier_acc() -> FrontierAcc {
   ChangedSubgraphAcc {
     decisions: empty_map()
   }
+}
+
+
+fn empty_affected_fold_acc(dag: Dag) -> AffectedFoldAcc {
+  AffectedFoldAcc {
+    dag: dag,
+    frontier: empty_frontier_acc()
+  }
+}
+
+
+fn frontier_from_fold_acc(acc: AffectedFoldAcc) -> ReExecFrontier {
+  frontier_from_acc(acc: acc.frontier)
 }
 
 
@@ -134,6 +160,37 @@ fn frontier_from_acc(acc: FrontierAcc) -> ReExecFrontier {
       }
     WholeDagAcc { reason: r } => WholeDagFailClosed { reason: r }
   }
+}
+
+
+fn advance_edit_dag(read_model: AffectedSetRead, acc: AffectedFoldAcc, edit: Edit, frontier: FrontierAcc) -> AffectedFoldAcc {
+  match read_model.edit_dag_receipt(acc.dag, edit) {
+    EditDagAdvanced { dag: next_dag } =>
+      AffectedFoldAcc {
+        dag: next_dag,
+        frontier: frontier
+      }
+    EditDagUnknown { reason: r } =>
+      AffectedFoldAcc {
+        dag: acc.dag,
+        frontier: mark_whole_dag(acc: frontier, reason: r)
+      }
+  }
+}
+
+
+fn seed_edit_fold_acc(read_model: AffectedSetRead, acc: AffectedFoldAcc, edit: Edit) -> AffectedFoldAcc {
+  advance_edit_dag(
+    read_model: read_model,
+    acc: acc,
+    edit: edit,
+    frontier: seed_edit_frontier(
+      read_model: read_model,
+      dag: acc.dag,
+      acc: acc.frontier,
+      edit: edit
+    )
+  )
 }
 
 
@@ -290,11 +347,10 @@ fn seed_edit_frontier(
 
 fn affected_set(read_model: AffectedSetRead, dag: Dag, diff: Diff) -> Witness<ReExecFrontier> {
   Holds {
-    value: frontier_from_acc(
-      acc: fold(diff.edits, init: empty_frontier_acc(), f: fn(acc, edit) {
-        seed_edit_frontier(
+    value: frontier_from_fold_acc(
+      acc: fold(diff.edits, init: empty_affected_fold_acc(dag: dag), f: fn(acc, edit) {
+        seed_edit_fold_acc(
           read_model: read_model,
-          dag: dag,
           acc: acc,
           edit: edit
         )
