@@ -4,7 +4,7 @@
 // Consumes: std/node.dag (Instantiation, Symbol); std/nat.dag (Nat); std/machine.dag (MachineWidth, PointerWidth, Word8, Word16, Word32, Word64, Word128); std/algebra.dag (Magma, Semigroup, Monoid, Group, AbelianGroup, Ring, OrderedRing, Ordering); std/diagnostic.dag (Diagnostic, Locus, Correction, NoCorrectionReason, Outcome<T> Tier-2 divide/modulo).
 // Status: T-3 modeled.
 // Anchor: https://en.wikipedia.org/wiki/Integer
-// Ledger: dissolution slugs (PR #3229): CP-3229-VERIFY, SL-3229-INTEGER-GROUP-COMPLETION.
+// Ledger: CP-3229-VERIFY, SL-3229-INTEGER-GROUP-COMPLETION.
 
 module v4.std.integer
 
