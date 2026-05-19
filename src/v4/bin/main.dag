@@ -8,10 +8,10 @@ module v4.bin.main
 
 import v4.std.verification {
   Equals,
+  Integration,
   TestClaim,
   TestClassification,
-  TestgenLayer,
-  TestgenTier,
+  Tier2,
   T19ManualAnchorAbsent
 }
 import v4.std.diagnostic { Produced }
