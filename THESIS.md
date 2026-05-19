@@ -2,7 +2,7 @@
 
 This is the parent document. Everything else — ROADMAP, INVARIANTS, MODELING, architecture, and design docs — serves this thesis.
 
-> **v4 supersession (2026-05-15).** The active program is **v4** in [`src/v4/`](src/v4/) — substrate scaffold + R3+R4 combined ship per [`docs/v4-close-interrogation.md`](docs/v4-close-interrogation.md). Every thesis claim below applies to v4; v3 references in the §Self-hosting four facets section (line ~232+) describe the v2→v3 transition that v4 supersedes (v4 = "v2's residual discipline + v3's modeling depth + recursive-flex from day 1"). v4's substrate is the operational instantiation of every claim in this thesis; v3 is frozen pending v4 ship. See [`src/v4/STRUCTURE.md`](src/v4/STRUCTURE.md) for the v4 file tree and [`docs/v4-close-interrogation.md`](docs/v4-close-interrogation.md) §"v4 applicability mapping" for v3→v4 path translation.
+> **v4 supersession (2026-05-15).** The active program is **v4** in [`src/v4/`](src/v4/) — substrate scaffold + R3+R4 combined ship per [`docs/v4-close-interrogation.md`](docs/v4-close-interrogation.md). Every thesis claim below applies to v4; v3 references in the §Self-hosting four facets section (line ~232+) describe the v2→v3 transition that v4 supersedes (v4 = "v2's residual discipline + v3's modeling depth + recursive-flex from day 1"). v4's substrate is the operational instantiation of every claim in this thesis; v3 is frozen pending v4 ship. See [`src/v4/TASKS.md`](src/v4/TASKS.md) and [`docs/v4-close-interrogation.md`](docs/v4-close-interrogation.md) §"v4 applicability mapping" for v3→v4 path translation (no maintained file-tree manifest; operator-ratified substrate per PR — 2026-05-19).
 
 ## How this doc is organized
 
@@ -286,7 +286,7 @@ Self-hosting is not one capability; it's four. All four are targets.
    facet now claims only lens self-application to the build/CI pipeline
    (which survives via `bootstrap.dag`/`ci.dag`), not process-self-
    modeling. The `workflow/` substrate is correspondingly `{ bootstrap,
-   ci }` only (STRUCTURE.md invariant 6).
+   ci }` only (zero-deferrals / no parallel engine — per THESIS self-hosting facets).
 
 Cost-of-change: editing any compiler concept — a new pass, substrate fact,
 target-language detail, or pipeline/contract test assertion — stays at

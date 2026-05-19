@@ -77,8 +77,9 @@ import v4.test.claim.manual.nat_law_anchors {
 }
 
 
+// 🟢 coproduct dissolution — LB-P4-3212.
 type TypeConstructionSubject
-// 🟢 coproduct dissolution — DECISIONS.md LB-P4-3212
+// 🟢 coproduct dissolution — LB-P4-3212
   = ConnectiveKernel { connective: Connective }
   | BehaviorValueSubject { behavior: Behavior }
 
@@ -98,8 +99,9 @@ type LensApplicabilitySubject {
 type BidirectionalRoundtripSubject { language: Symbol, production: Symbol }
 
 
+// 🟡 coproduct dissolution — LB-P4-3212.
 type TestgenConcept
-// 🟡 coproduct dissolution — DECISIONS.md LB-P4-3212
+// 🟡 coproduct dissolution — LB-P4-3212
 // RULING-1: 🟡 needs-more-work — multi-arm scheduling coproduct
   = TypeConstruction { subject: TypeConstructionSubject }
   | AlgebraLaw { subject: AlgebraLawSubject }
@@ -124,22 +126,25 @@ type CorpusEntry {
 
 
 // RULING-1: 🟡 needs-more-work
+// 🟢 coproduct dissolution — LB-P4-3212.
 type CorpusTraversalScope
-// 🟢 coproduct dissolution — DECISIONS.md LB-P4-3212
+// 🟢 coproduct dissolution — LB-P4-3212
   = RecursiveCorpusWalk
   | SingleDirectoryCorpusWalk
 
 
 // RULING-1: 🟡 needs-more-work
+// 🟢 coproduct dissolution — LB-P4-3212.
 type CorpusTraversalOrder
-// 🟢 coproduct dissolution — DECISIONS.md LB-P4-3212
+// 🟢 coproduct dissolution — LB-P4-3212
   = LexicalPathOrder
   | FilesystemNativeOrder
 
 
 // RULING-1: 🟡 needs-more-work
+// 🟢 coproduct dissolution — LB-P4-3212.
 type CorpusDuplicatePolicy
-// 🟢 coproduct dissolution — DECISIONS.md LB-P4-3212
+// 🟢 coproduct dissolution — LB-P4-3212
   = PreserveDuplicateEntries
   | RejectDuplicatePaths
 

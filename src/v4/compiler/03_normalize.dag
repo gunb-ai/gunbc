@@ -1,7 +1,7 @@
 // src/v4/compiler/03_normalize.dag
 //
 // Scope: Stage 3a — ParseTree→NormalizedTree; C3 sugar to Node.
-// Owns: NormalizedTree; SurfaceSugarKind; SugarClassification; normalize; stage Symbol reasons.
+// Owns: NormalizedTree; SurfaceSugarKind; normalize; stage Symbol reasons.
 // Consumes: std/node.dag, std/diagnostic.dag, compiler/02_parse.dag, extdeps/languages/dag.dag.
 // Status: scaffold — TASKS T-8.
 // Anchor: https://en.wikipedia.org/wiki/Abstract_syntax_tree
@@ -40,7 +40,7 @@ data normalize_reason_malformed_sugar: Symbol = normalize_reason_malformed_sugar
 data normalize_reason_post_normalize_not_well_formed: Symbol = normalize_reason_post_normalize_not_well_formed
 
 
-// 🟡 coproduct dissolution — DECISIONS.md CP-1b item 4 (SurfaceSugarKind)
+// 🟡 coproduct dissolution — CP-1b item 4 (SurfaceSugarKind).
 type SurfaceSugarKind
   = ServiceSugar
   | FnSugar
@@ -48,34 +48,38 @@ type SurfaceSugarKind
   | OperationSugar
 
 
-// 🟡 coproduct dissolution — DECISIONS.md CP-1b item 5 (SugarClassification)
-type SugarClassification
-  = Sugar { kind: SurfaceSugarKind }
-  | NotSugar
+fn some_surface_sugar_kind(kind: SurfaceSugarKind) -> SurfaceSugarKind? {
+  Some { value: kind }
+}
 
 
-fn classify_sugar(n: Node) -> SugarClassification {
+fn no_surface_sugar_kind() -> SurfaceSugarKind? {
+  None
+}
+
+
+fn classify_sugar(n: Node) -> SurfaceSugarKind? {
   match n.kind {
     TypeNode { connective: Atom { identity: id } } =>
       if id == dag_c3_surface_sugar_service {
-        Sugar { kind: ServiceSugar }
+        some_surface_sugar_kind(kind: ServiceSugar)
       } else {
         if id == dag_c3_surface_sugar_fn {
-          Sugar { kind: FnSugar }
+          some_surface_sugar_kind(kind: FnSugar)
         } else {
           if id == dag_c3_surface_sugar_type {
-            Sugar { kind: TypeSugar }
+            some_surface_sugar_kind(kind: TypeSugar)
           } else {
             if id == dag_c3_surface_sugar_operation {
-              Sugar { kind: OperationSugar }
+              some_surface_sugar_kind(kind: OperationSugar)
             } else {
-              NotSugar
+              no_surface_sugar_kind()
             }
           }
         }
       }
-    TypeNode { connective: _ } => NotSugar
-    ComputationNode { behavior: _ } => NotSugar
+    TypeNode { connective: _ } => no_surface_sugar_kind()
+    ComputationNode { behavior: _ } => no_surface_sugar_kind()
   }
 }
 
@@ -117,25 +121,24 @@ fn normalize_edge(e: Edge) -> Outcome<Edge> {
 }
 
 
-// 🟡 coproduct dissolution — DECISIONS.md CP-1b item 6 (NormalizeChildrenResult)
-type NormalizeChildrenResult
-  = NormalizedChildren { children: List<Edge> }
-  | NormalizeChildrenRejected { diagnostic: Diagnostic }
+fn empty_normalized_children() -> Outcome<List<Edge>> {
+  Produced { value: Empty }
+}
 
 
-fn normalize_children(children: List<Edge>) -> NormalizeChildrenResult {
-  fold(children, init: NormalizedChildren { children: [] }, f: fn(acc, e) {
+fn normalize_children(children: List<Edge>) -> Outcome<List<Edge>> {
+  fold(children, init: empty_normalized_children(), f: fn(acc, e) {
     match acc {
-      NormalizeChildrenRejected { diagnostic: d } =>
-        NormalizeChildrenRejected { diagnostic: d }
-      NormalizedChildren { children: done } =>
+      Rejected { diagnostic: d } =>
+        Rejected { diagnostic: d }
+      Produced { value: done } =>
         match normalize_edge(e: e) {
           Produced { value: normalized_edge } =>
-            NormalizedChildren {
-              children: list_push(done, normalized_edge)
+            Produced {
+              value: list_push(done, normalized_edge)
             }
           Rejected { diagnostic: d } =>
-            NormalizeChildrenRejected { diagnostic: d }
+            Rejected { diagnostic: d }
         }
     }
   })
@@ -205,12 +208,12 @@ fn normalize_sugar(kind: SurfaceSugarKind, n: Node, children: List<Edge>) -> Out
 
 fn normalize_node(n: Node) -> Outcome<Node> {
   match normalize_children(children: n.children) {
-    NormalizeChildrenRejected { diagnostic: d } => Rejected { diagnostic: d }
-    NormalizedChildren { children: normalized_children } =>
+    Rejected { diagnostic: d } => Rejected { diagnostic: d }
+    Produced { value: normalized_children } =>
       match classify_sugar(n: n) {
-        Sugar { kind: kind } =>
+        Some { value: kind } =>
           normalize_sugar(kind: kind, n: n, children: normalized_children)
-        NotSugar =>
+        None =>
           Produced {
             value: Node {
               kind: n.kind,
