@@ -348,13 +348,19 @@ complete grounding (the degenerate base of the same discipline).
 declaration compiles **0 diagnostics under the real bootstrap gate** —
 `v2-compiler compile --source-root src/v4` (ci.yml `v4:` job; 72 modules
 resolved). That is the *parse/resolve* half of bootstrap viability; the
-v2-**run** gate is T-22-deferred. Crucially, **per INVARIANTS P2 / E-6
-this is STAGING, not landed authority**: a declaration with no same-PR
-consumer is staging — and no consumer reads `<lang>_bool_grounding`,
-because the canonical/coincidence fold (the consumer) is
-*specified-not-realized* (`node.dag` B1-CANON contract; the fold is
-`[MODELED]`). So the *shape* is the ratified canonical-B decl-ref and it
-is parse-verified; the *authority state* is consumer-gated — claimed no
+v2-**run** gate is T-22-deferred. Crucially this is **not** landed
+target-spec authority: no same-PR consumer reads `<lang>_bool_grounding`
+(the canonical/coincidence fold — the consumer — is
+*specified-not-realized*: `node.dag` B1-CANON contract, `[MODELED]`).
+**INVARIANTS E-6 permits this as a *bounded exception* (clause (b))** —
+a consumer-less target-spec decl that **sits behind a named scaffold
+marker with a dissolution trigger**: each `data <lang>_bool_grounding`
+carries the inline marker `🟡 feature:canonical-b-grounding-consumer`
+that dissolves when the B1-CANON fold + coercion zip-fold
+(`DECISIONS.md` B1 · T-9/C1) consume it for coincidence-checking. So the
+*shape* is the ratified canonical-B decl-ref and parse-verified; the
+*authority state* is **staging behind the E-6-named scaffold** —
+consumer-gated, not landed, **not** speculative metadata — claimed no
 further. (Aside: the frozen v3 interim parse-ratchets reject decl-ref
 `data` bodies — a v3-only artifact, v3 is *not* in the bootstrap chain;
 they are **dissolved in this PR** under operator authorization, with the

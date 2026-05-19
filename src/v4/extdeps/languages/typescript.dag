@@ -42,4 +42,8 @@ type TsEcma262PrimitiveOperationSemantics
 // above the primitive to model — TS `boolean` *is* the shared 2-element
 // BooleanAlgebra. Grounded by referencing the single std authority
 // instance; coincidence is fold-discharged, not asserted.
+// 🟡 E-6 bounded-exception scaffold `feature:canonical-b-grounding-consumer` — consumer-less
+// target-spec decl permitted under INVARIANTS E-6 clause (b); dissolves when the B1-CANON
+// canonical/content_hash fold + coercion zip-fold (DECISIONS.md B1 · T-9/C1) consume this row
+// for coincidence-checking. P2/E-6 staging until then — not landed authority.
 data ts_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra

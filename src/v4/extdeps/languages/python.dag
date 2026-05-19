@@ -44,4 +44,8 @@ type PythonCost {
 // the primitive is the PythonNumericTower.BoolLevel classifier, NOT this
 // truth grounding. Object/singleton identity is a runtime-layer fact,
 // out of this type model (placement axis). First iteration — see §0.
+// 🟡 E-6 bounded-exception scaffold `feature:canonical-b-grounding-consumer` — consumer-less
+// target-spec decl permitted under INVARIANTS E-6 clause (b); dissolves when the B1-CANON
+// canonical/content_hash fold + coercion zip-fold (DECISIONS.md B1 · T-9/C1) consume this row
+// for coincidence-checking. P2/E-6 staging until then — not landed authority.
 data py_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
