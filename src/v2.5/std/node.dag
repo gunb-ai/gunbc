@@ -1,6 +1,6 @@
 // src/v2.5/std/node.dag
 // Scope: v2.5 substrate root — type kernel for the forked tree.
-// Owns: Symbol, Hash, Connective, Behavior, DeclarationKind, CompositeRole, NodeKind, EdgeLabel, Edge, Node, NodeFold, fold_node, EdgeDiscipline, connective_edge_discipline, edge_is_named, edge_is_positional, all_edges_named, all_edges_positional, name_occurrences, all_names_distinct, edges_conform, node_locally_well_formed, node_well_formed, is_empty_conj_root, Path, Edit, Diff.
+// Owns: Symbol, Hash, Connective, Behavior, NodeKind, EdgeLabel, Edge, Node, NodeFold, fold_node, EdgeDiscipline, connective_edge_discipline, edge_is_named, edge_is_positional, all_edges_named, all_edges_positional, name_occurrences, all_names_distinct, edges_conform, node_locally_well_formed, node_well_formed, is_empty_conj_root, Path, Edit, Diff.
 // Consumes: none.
 // Status: v2.5 Tier 0 draft.
 
@@ -26,26 +26,12 @@ type Behavior
   | Loop
   | Bind
 
-// 🟡 coproduct dissolution — consumer:v2_5.std.stage_types
-type DeclarationKind
-  = ModuleDecl
-  | ImportDecl
-  | TypeDecl
-  | FnDecl
-  | DataDecl
-
-// 🟡 coproduct dissolution — consumer:v2_5.std.stage_types
-type CompositeRole
-  = MatchArm
-  | Pattern
-  | StringInterp
-
 // 🟢 coproduct dissolution
 type NodeKind
-  = Declaration { kind: DeclarationKind }
+  = Declaration
   | TypeForm { connective: Connective }
   | Computation { behavior: Behavior }
-  | Composite { role: CompositeRole }
+  | Composite
 
 // 🟢 coproduct dissolution
 type EdgeLabel
