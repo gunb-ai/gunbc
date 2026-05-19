@@ -1176,7 +1176,7 @@ Existing `extdeps/languages/<lang>.dag` files do NOT need split. Their header sh
 
 **v4 owner allocation** (Wave-0 substrate — **authoritative file tree:** `src/v4/STRUCTURE.md`):
 
-The original `rust.dag` / `python.dag` / `go.dag` trio is joined by additional language and IR models under `src/v4/extdeps/languages/`. For **this §14 promise** (C/C++ surface, LLVM IR, TypeScript), the following are **landed** as `.dag` substrate (parse/resolve verified on the CI `v4:` path: `v2-compiler compile --source-root src/v4`; see INVARIANTS §P5(b) dissolution note — whole-tree compile subsumes retired per-file `compile_to_dag` smokes):
+The original `rust.dag` / `python.dag` / `go.dag` trio is joined by additional language and IR models under `src/v4/extdeps/languages/`. For **this §14 promise** (C/C++ surface, LLVM IR, TypeScript), the following are **landed** as `.dag` substrate (**parse/resolve** verified on CI `v4:` via `v2-compiler compile --source-root src/v4`, per `src/v4/STRUCTURE.md`; **INVARIANTS.md** §P5(b) interim receipt: that whole-tree gate subsumes the retired **six** per-file `v4_extdeps_*` **parse** smokes only — not every dissolved `compile_to_dag` harness, e.g. the P9 cost-lens single-owner probe named there is a different class with an explicit tracked gap):
 
 - `cpp.dag` — Anchor: ISO/IEC 14882 (C++ standard); subsumes C subset (**no separate `c.dag`** unless C-only consumer demand surfaces).
 - `typescript.dag` — Anchor: TypeScript Handbook + ECMA-262.
