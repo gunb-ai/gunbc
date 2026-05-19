@@ -1,9 +1,33 @@
 // src/v4/compiler/00_compile.dag
-// Scope: compiler orchestration from source and target spec to target source.
+// Scope: compiler orchestration; core = resolve ∘ normalize on the Node pivot.
 // Anchor: https://en.wikipedia.org/wiki/Compiler
-// Owns: none.
-// Consumes: none.
-// Status: scaffold for T-10.
+// Owns: CoreTree; core.
+// Consumes: compiler/02_parse.dag, compiler/03_normalize.dag, compiler/03_resolve.dag, extdeps/languages/dag.dag, std/diagnostic.dag.
+// Status: T-8 core boundary realized; emit compile path remains T-10 scaffold.
 
 
 module v4.compiler.compile
+
+
+import v4.compiler.normalize {
+  normalize
+}
+import v4.compiler.parse { ParseTree }
+import v4.compiler.resolve {
+  resolve,
+  ResolvedTree
+}
+import v4.extdeps.languages.dag { DagLanguageModel }
+import v4.std.diagnostic { Outcome }
+
+
+type CoreTree = ResolvedTree
+
+
+fn core(parse_tree: ParseTree, lm: DagLanguageModel) -> Outcome<CoreTree> {
+  match normalize(parse_tree: parse_tree) {
+    Rejected { diagnostic: d } => Rejected { diagnostic: d }
+    Produced { value: normalized } =>
+      resolve(tree: normalized, lm: lm)
+  }
+}

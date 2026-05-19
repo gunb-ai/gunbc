@@ -388,6 +388,7 @@ substrate imported them, so the cut is a pure scope reduction.
 
 **I/O (pivot truth):** `ParseTree` / `NormalizedTree` / `ResolvedTree` are aliases on the universal **`Node`** pivot (A1); composite normalize→resolve is **`resolve ∘ normalize`** on that pivot (standard `∘`: normalize first, then resolve).
 *Merged seam (CP-1b, literal headers today):* `normalize: ParseTree -> Result<NormalizedTree, Diagnostic>`, `resolve: NormalizedTree -> Result<ResolvedTree, Diagnostic>` in `03_normalize.dag` / `03_resolve.dag`.
+*Closeout boundary:* `compiler/00_compile.dag` exposes `core(parse_tree, lm) -> Outcome<CoreTree>` where `CoreTree = ResolvedTree`, and `core = resolve ∘ normalize`; T-9 consumes this boundary rather than reaching around T-8 stages.
 *Do not drift:* **Carrier is `Node`; the seam types are parse→normalize scaffolding** — keep the header aliases and `Result<…, Diagnostic>` until CP-1b closes; do not delete or flatten signatures early chasing “purity.”
 
 **Modeling decisions**:
