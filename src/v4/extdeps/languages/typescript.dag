@@ -23,4 +23,5 @@ type TsEcma262PrimitiveOperationSemantics
   | TsNumberBitwiseInt32Uint32Semantics
   | TsBigIntExactUnboundedSemantics
 
+// 🟡 canonical-B decl-ref · E-6(b) bounded-exception · scaffold feature:canonical-b-grounding-consumer · dissolve-on: B1-CANON+zip-fold consume (ledger: B1·T-9/C1 · grounding-worked-examples.md §0)
 data ts_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra

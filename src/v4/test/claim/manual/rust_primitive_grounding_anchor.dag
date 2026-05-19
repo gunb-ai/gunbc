@@ -1,0 +1,37 @@
+// src/v4/test/claim/manual/rust_primitive_grounding_anchor.dag
+// Scope: Canonical-B per-primitive grounding/coincidence compile exemplar (operator A-vs-B=B).
+// Owns: rust_anchor_* type/data aliases for bool decl-ref, never primitive coincidence, i64 fact-bundle vs std Int64.
+// Consumes: extdeps/languages/rust.dag, std/logic, std/cardinality, std/integer, std/algebra.
+// Status: compile-only groundedness testcase — depth bar for T-4 Phase-3 typescript/python slices.
+// Anchor: docs/modeling/grounding-worked-examples.md §0; INVARIANTS P1 hollow-alias / coincidence bar.
+
+module v4.test.claim.manual.rust_primitive_grounding_anchor
+
+import v4.extdeps.languages.rust {
+  rust_bool_grounding,
+  RustNever,
+  RustIntKind,
+  RustIntWidth,
+  RustScalar
+}
+import v4.std.algebra { BooleanAlgebra }
+import v4.std.cardinality { Never }
+import v4.std.integer { Int64 }
+import v4.std.logic { Bool, bool_boolean_algebra }
+
+// §0 base case — canonical-B decl-ref: language bool → single std authority (not GroundingMap spelling).
+data rust_anchor_bool_grounding: BooleanAlgebra<Bool> = rust_bool_grounding
+data rust_anchor_bool_std_authority: BooleanAlgebra<Bool> = bool_boolean_algebra
+
+// §0 degenerate case — primitive coincidence: Rust `!` is std `Never` (no build-up above the primitive).
+type rust_anchor_never_coincidence = RustNever
+type rust_anchor_never_std = Never
+
+// §0 classifier vs coincidence — `RustScalar.NeverScalar` classifies surface `!`; `RustNever` is the grounding target.
+type rust_anchor_never_scalar_classifier = RustScalar
+
+// §B refinement case — `RustScalar.IntScalar` fact-bundle (kind×width) vs std `Int64` coincidence target (fold-discharge, not alias).
+type rust_anchor_i64_scalar_classifier = RustScalar
+type rust_anchor_i64_kind_axis = RustIntKind
+type rust_anchor_i64_width_axis = RustIntWidth
+type rust_anchor_i64_std_coincidence_target = Int64
