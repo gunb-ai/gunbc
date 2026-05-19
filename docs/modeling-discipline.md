@@ -756,7 +756,7 @@ The *enforcement mechanism* — the checker-script build path and the
 eventual dissolution lens — is design work, specified in
 `docs/design-dissolution-lens.md`. This Practice carries only the
 classification, which is discipline a reviewer applies by hand. Worked
-examples from the #3225 dissolution inventory live in
+worked examples live in
 [modeling/grounding-worked-examples.md](modeling/grounding-worked-examples.md).
 
 **What to check.** For any function in the diff: is its behavior fixed by
