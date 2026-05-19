@@ -165,15 +165,15 @@ fn run_assert(kind: AssertKind, actual: Outcome<Node>, expected: Outcome<Node>, 
       Produced { value: _ } => Pass
       Rejected { diagnostic: _ } => Fail { actual: actual }
     }
-    Diagnostic => match actual {
-      Produced { value: _ } => Fail { actual: actual }
-      Rejected { diagnostic: _ } =>
-        if outcome_node_eq(a: actual, b: expected) { Pass } else { Fail { actual: actual } }
-    }
     RoundTrips => Fail {
       actual: Rejected {
         diagnostic: eval_diagnostic(reason: eval_rejected_roundtrip_deferred, node: input)
       }
+    }
+    _ => match actual {
+      Produced { value: _ } => Fail { actual: actual }
+      Rejected { diagnostic: _ } =>
+        if outcome_node_eq(a: actual, b: expected) { Pass } else { Fail { actual: actual } }
     }
   }
 }
