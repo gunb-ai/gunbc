@@ -178,10 +178,10 @@ sibling labels for one consolidated signature space.
 ### 5.1 Canonical L1.x acceptance-key names (rebase target for downstream consumers)
 
 Downstream consumers that need to register acceptance / coverage rows
-per Layer-1 lens (e.g. `src/v4/lens/coverage.dag`'s `dissolution_l1_*`
-rows) MUST use the canonical key names enumerated here. The lens
-suite is the single authority; key sets in other files are projections
-of this enumeration.
+per Layer-1 lens (e.g. `src/v4/lens/coverage.dag`'s `coverage_defect_*`
+rows) MUST use the canonical key names enumerated here. The lens suite
+is the single authority; key sets in other files are projections of this
+enumeration.
 
 | Lens / sub-signature | Canonical acceptance-key name |
 |---|---|
@@ -190,7 +190,7 @@ of this enumeration.
 | L1.3 Hollow-type | `coverage_defect_hollow_type` |
 | L1.4 Carrier-clone | `coverage_defect_carrier_clone` |
 | L1.5 Catamorphism | `coverage_defect_catamorphism` |
-| ~~L1.6 Emit/template~~ | **retired — see L1.10.a below; no `dissolution_l1_6_*` key** |
+| ~~L1.6 Emit/template~~ | **retired — see L1.10.a below; no `coverage_defect_emit_template` key** |
 | L1.7 Off-substrate-fact | `coverage_defect_off_substrate_fact` |
 | L1.8 Wrong-home | `coverage_defect_wrong_home` |
 | L1.9 Vacuous-arm | `coverage_defect_vacuous_arm` |

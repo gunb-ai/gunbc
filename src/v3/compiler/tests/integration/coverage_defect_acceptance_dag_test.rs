@@ -1,9 +1,9 @@
 //! **Layer:** integration
 //!
-//! Ratchet the PREFIX dissolution lens acceptance batch into the v4
-//! coverage-lens substrate. The check is intentionally structural and stays
-//! at parse level because v4 single-file compile smokes do not load sibling
-//! lens/std imports as a bundle yet.
+//! Ratchet coverage-defect acceptance keys into the v4 coverage-lens
+//! substrate. The check is intentionally structural and stays at parse level
+//! because v4 single-file checks do not load sibling lens/std imports as a
+//! bundle yet.
 
 use v3_compiler::parse_for_test;
 use v3_compiler::parse_surface::{SurfaceExpr, SurfaceItem, SurfaceRecordField};
@@ -24,32 +24,17 @@ const EXPECTED_ACCEPTANCE_ROWS: &[(&str, &str)] = &[
     ("coverage_defect_carrier_clone", "CarrierClone"),
     ("coverage_defect_catamorphism", "Catamorphism"),
     ("coverage_defect_template_hole", "TemplateHole"),
-    (
-        "coverage_defect_off_substrate_fact",
-        "OffSubstrateFact",
-    ),
+    ("coverage_defect_off_substrate_fact", "OffSubstrateFact"),
     ("coverage_defect_wrong_home", "WrongHome"),
     ("coverage_defect_vacuous_arm", "VacuousArm"),
-    (
-        "coverage_defect_canonical_carrier",
-        "CanonicalCarrier",
-    ),
-    (
-        "coverage_defect_plausible_fallback",
-        "PlausibleFallback",
-    ),
-    (
-        "coverage_defect_parallel_authority",
-        "ParallelAuthority",
-    ),
+    ("coverage_defect_canonical_carrier", "CanonicalCarrier"),
+    ("coverage_defect_plausible_fallback", "PlausibleFallback"),
+    ("coverage_defect_parallel_authority", "ParallelAuthority"),
 ];
 
 const RETIRED_ACCEPTANCE_ROWS: &[(&str, &str)] = &[
     ("coverage_defect_emit_template", "EmitTemplate"),
-    (
-        "coverage_defect_string_escape_hatch",
-        "StringEscapeHatch",
-    ),
+    ("coverage_defect_string_escape_hatch", "StringEscapeHatch"),
 ];
 
 #[test]
@@ -75,7 +60,7 @@ fn coverage_defect_acceptance_keys_match_declared_rows() {
 
     assert_eq!(
         observed_variants, expected_variants,
-        "{COVERAGE_PATH}: CoverageDefectKey variants must exactly match canonical Layer-1 keys"
+        "{COVERAGE_PATH}: CoverageDefectKey variants must exactly match canonical coverage-defect keys"
     );
 
     let retired_variants = RETIRED_ACCEPTANCE_ROWS
@@ -84,16 +69,17 @@ fn coverage_defect_acceptance_keys_match_declared_rows() {
         .collect::<BTreeSet<_>>();
     assert!(
         observed_variants.is_disjoint(&retired_variants),
-        "{COVERAGE_PATH}: retired L1.6 / monolithic L1.10 variants must not reappear"
+        "{COVERAGE_PATH}: retired emit-template / string-escape variants must not reappear"
     );
 
     let observed = module
         .items
         .iter()
         .filter_map(|item| match item {
-            SurfaceItem::Data { name, body, .. } if name.starts_with("dissolution_l1_") => {
-                Some((name.as_str(), acceptance_lens_variant(name, body.as_ref())))
-            }
+            SurfaceItem::Data { name, body, .. } if name.starts_with("coverage_defect_") => Some((
+                name.as_str(),
+                acceptance_defect_variant(name, body.as_ref()),
+            )),
             _ => None,
         })
         .collect::<BTreeSet<_>>();
@@ -104,7 +90,7 @@ fn coverage_defect_acceptance_keys_match_declared_rows() {
 
     assert_eq!(
         observed, expected,
-        "{COVERAGE_PATH}: PREFIX dissolution acceptance rows must exactly map canonical Layer-1 keys"
+        "{COVERAGE_PATH}: coverage-defect acceptance rows must exactly map canonical keys"
     );
 
     let retired = RETIRED_ACCEPTANCE_ROWS
@@ -113,11 +99,11 @@ fn coverage_defect_acceptance_keys_match_declared_rows() {
         .collect::<BTreeSet<_>>();
     assert!(
         observed.is_disjoint(&retired),
-        "{COVERAGE_PATH}: retired L1.6 / monolithic L1.10 rows must not reappear"
+        "{COVERAGE_PATH}: retired emit-template / string-escape rows must not reappear"
     );
 }
 
-fn acceptance_lens_variant<'a>(row_name: &str, body: Option<&'a SurfaceExpr>) -> &'a str {
+fn acceptance_defect_variant<'a>(row_name: &str, body: Option<&'a SurfaceExpr>) -> &'a str {
     let Some(SurfaceExpr::Record { fields, .. }) = body else {
         panic!("{COVERAGE_PATH}: {row_name} must have a record initializer");
     };
