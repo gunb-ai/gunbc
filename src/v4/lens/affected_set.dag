@@ -52,6 +52,7 @@ type ReExecFrontier {
 
 
 type AffectedSetRead {
+  hash_receipt: fn(Dag, Path, Node) -> HashReceipt
   read: fn(Dag, Diff) -> Witness<ReExecFrontier>
 }
 
@@ -136,13 +137,8 @@ fn append_root(acc: FrontierAcc, path: Path) -> FrontierAcc {
 }
 
 
-fn cached_hash_receipt(dag: Dag, path: Path, replacement: Node) -> HashReceipt {
-  HashUnknown { reason: affected_reason_no_hash_receipt }
-}
-
-
-fn boundary_receipt(dag: Dag, path: Path, replacement: Node) -> BoundaryReceipt {
-  match cached_hash_receipt(dag: dag, path: path, replacement: replacement) {
+fn boundary_receipt(read_model: AffectedSetRead, dag: Dag, path: Path, replacement: Node) -> BoundaryReceipt {
+  match read_model.hash_receipt(dag, path, replacement) {
     HashUnchanged { content_hash: h } =>
       BoundaryPruned {
         proof: UnchangedPureBoundary {
@@ -156,8 +152,14 @@ fn boundary_receipt(dag: Dag, path: Path, replacement: Node) -> BoundaryReceipt 
 }
 
 
-fn seed_edit_frontier(dag: Dag, acc: FrontierAcc, edit: Edit) -> FrontierAcc {
+fn seed_edit_frontier(
+  read_model: AffectedSetRead,
+  dag: Dag,
+  acc: FrontierAcc,
+  edit: Edit
+) -> FrontierAcc {
   match boundary_receipt(
+    read_model: read_model,
     dag: dag,
     path: edit.at,
     replacement: edit.replacement
@@ -178,11 +180,16 @@ fn seed_edit_frontier(dag: Dag, acc: FrontierAcc, edit: Edit) -> FrontierAcc {
 }
 
 
-fn affected_set(dag: Dag, diff: Diff) -> Witness<ReExecFrontier> {
+fn affected_set(read_model: AffectedSetRead, dag: Dag, diff: Diff) -> Witness<ReExecFrontier> {
   Holds {
     value: frontier_from_acc(
       acc: fold(diff.edits, init: empty_frontier_acc(), f: fn(acc, edit) {
-        seed_edit_frontier(dag: dag, acc: acc, edit: edit)
+        seed_edit_frontier(
+          read_model: read_model,
+          dag: dag,
+          acc: acc,
+          edit: edit
+        )
       })
     )
   }
