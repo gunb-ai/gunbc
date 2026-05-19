@@ -1,6 +1,6 @@
 // src/v4/std/fact_density.dag
 // Scope: T-30 generated structural hollow-alias checker — a pure Node -> Outcome gate that fails closed on a carrier reading zero spec facts.
-// Owns: SourceSpecReadFact, fact_density_kernel_ambient_string, fact_density_kernel_ambient_int, fact_density_kernel_ambient_bool, fact_density_kernel_ambient_char, fact_density_kernel_ambient_list, fact_density_kernel_ambient_map, symbol_is_kernel_ambient, density_fact, connective_spec_fact, carrier_spec_fact, carrier_is_hollow, fact_density_hollow_alias, hollow_alias_diagnostic, hollow_alias_gate, module_no_hollow_alias.
+// Owns: SourceSpecReadFact, fact_density_kernel_ambient_string, fact_density_kernel_ambient_int, fact_density_kernel_ambient_bool, fact_density_kernel_ambient_char, fact_density_kernel_ambient_list, fact_density_kernel_ambient_map, symbol_is_kernel_ambient, density_fact, connective_spec_fact, carrier_is_hollow, fact_density_hollow_alias, hollow_alias_diagnostic, hollow_alias_gate, module_no_hollow_alias.
 // Consumes: std node, std diagnostic.
 // Status: T-30 generated checker; P2-staging until operator-closure wires pipeline enforcement.
 // Anchor: https://github.com/gunb-ai/gunbc/blob/main/src/v4/TASKS.md
@@ -99,24 +99,20 @@ fn connective_spec_fact(c: Connective, child_count: Int) -> SourceSpecReadFact {
 }
 
 
-// The spec facts a type carrier reads. Computation nodes are not type
-// carriers — the hollow-alias concept does not apply, so they read a
-// non-hollow result by construction.
-fn carrier_spec_fact(carrier: Node) -> SourceSpecReadFact {
-  match carrier.kind {
-    TypeNode { connective: c } =>
-      connective_spec_fact(c: c, child_count: count(carrier.children))
-    ComputationNode { behavior: _ } =>
-      KernelAmbientAtom { atom: fact_density_kernel_ambient_bool }
-  }
-}
-
-
+// A carrier is hollow iff it is a type carrier reading no spec facts.
+// `SourceSpecReadFact` classifies only type carriers; computation nodes are
+// not type carriers — the hollow-alias concept does not apply, so the kind
+// match short-circuits them to non-hollow rather than forcing a spec-fact
+// classification onto them.
 fn carrier_is_hollow(carrier: Node) -> Bool {
-  match carrier_spec_fact(carrier: carrier) {
-    NoFact => true
-    NamedFieldFacts { density: _ } => false
-    KernelAmbientAtom { atom: _ } => false
+  match carrier.kind {
+    ComputationNode { behavior: _ } => false
+    TypeNode { connective: c } =>
+      match connective_spec_fact(c: c, child_count: count(carrier.children)) {
+        NoFact => true
+        NamedFieldFacts { density: _ } => false
+        KernelAmbientAtom { atom: _ } => false
+      }
   }
 }
 
