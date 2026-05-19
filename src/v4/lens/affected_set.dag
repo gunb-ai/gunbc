@@ -289,22 +289,30 @@ fn expand_dimension(
   edit: Edit,
   dimension: AffectedDimension
 ) -> ReExecFrontier {
-  match frontier_receipt(read_model: read_model, dag: dag, edit: edit, dimension: dimension) {
-    FrontierProduced { edges: edges } =>
-      fold(edges, init: frontier, f: fn(acc2, edge) {
-        match propagation_receipt(read_model: read_model, dag: dag, edit: edit, edge: edge) {
-          Propagates =>
-            mark_rerun(frontier: acc2, key: edge_key(edge: edge))
-          DoesNotPropagate { proof: p } =>
-            mark_excluded(frontier: acc2, key: edge_key(edge: edge), proof: p)
-          PropagationUnknown { reason: r } =>
-            mark_whole_dag(reason: r)
-        }
-      })
-    FrontierUnknown { reason: r } =>
-      mark_whole_dag(reason: r)
-    FrontierRejected { diagnostic: d } =>
-      mark_whole_dag_diagnostic(diagnostic: d)
+  match frontier {
+    WholeDagFailClosed { evidence: e } => WholeDagFailClosed { evidence: e }
+    ChangedSubgraphFrontier { boundary_exclusions: _, decisions: _ } =>
+      match frontier_receipt(read_model: read_model, dag: dag, edit: edit, dimension: dimension) {
+        FrontierProduced { edges: edges } =>
+          fold(edges, init: frontier, f: fn(acc2, edge) {
+            match acc2 {
+              WholeDagFailClosed { evidence: e } => WholeDagFailClosed { evidence: e }
+              ChangedSubgraphFrontier { boundary_exclusions: _, decisions: _ } =>
+                match propagation_receipt(read_model: read_model, dag: dag, edit: edit, edge: edge) {
+                  Propagates =>
+                    mark_rerun(frontier: acc2, key: edge_key(edge: edge))
+                  DoesNotPropagate { proof: p } =>
+                    mark_excluded(frontier: acc2, key: edge_key(edge: edge), proof: p)
+                  PropagationUnknown { reason: r } =>
+                    mark_whole_dag(reason: r)
+                }
+            }
+          })
+        FrontierUnknown { reason: r } =>
+          mark_whole_dag(reason: r)
+        FrontierRejected { diagnostic: d } =>
+          mark_whole_dag_diagnostic(diagnostic: d)
+      }
   }
 }
 

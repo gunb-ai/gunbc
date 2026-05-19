@@ -95,3 +95,8 @@ data expected_affected_set_unknown_fail_closed: ReExecFrontier = WholeDagFailClo
 data expected_affected_set_rejected_edit_fail_closed: ReExecFrontier = WholeDagFailClosed {
   evidence: WholeDagDiagnostic { diagnostic: affected_set_claim_invalid_edit_diagnostic }
 }
+
+
+data expected_affected_set_whole_dag_absorbs_later_unknown: ReExecFrontier = WholeDagFailClosed {
+  evidence: WholeDagDiagnostic { diagnostic: affected_set_claim_invalid_edit_diagnostic }
+}
