@@ -86,7 +86,5 @@ type OverflowDisposition<IRCarrier>
 data rust_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
 
 // Anchor: https://doc.rust-lang.org/reference/types/never.html
-// `!` is the uninhabited type: zero inhabitants, no operations — it *is*
-// the std `Never` primitive. Nothing above the primitive to model, so the
-// grounding is the direct primitive identity (the degenerate base case).
+// 🟢 RustNever — TERMINAL direct primitive-identity to std Never (uninhabited; nothing above the primitive; alias-identity, not consumer-gated — distinct from the bool decl-ref). Ledger: DECISIONS.md §rust.dag/RustNever · grounding-worked-examples.md §0
 type RustNever = Never
