@@ -1,7 +1,7 @@
 // src/v4/test/claim/manual/resolve_compile_anchor.dag
 //
-// Scope: Tier-1 v2-bootstrap compile anchor for `resolve` + wave-1 LM `canonical_symbols` (ledger: DECISIONS CP-1b item 10).
-// Owns: anchor_resolve_wave1_service_atom_via_canonical_symbols; anchor_resolve_wave1_service_atom_void_shape_empty_canonical_prelude_compile_only.
+// Scope: Tier-1 v2-bootstrap compile anchor for `resolve` + surface LM `canonical_symbols` (ledger: DECISIONS CP-1b item 10).
+// Owns: anchor_resolve_surface_prelude_full_service_atom; anchor_resolve_surface_empty_prelude_service_atom.
 // Consumes: compiler/03_resolve.dag, extdeps/languages/dag.dag, std/diagnostic.dag, std/node.dag.
 // Status: scaffold — compile-only until T-22; `v2 run` TestClaims per MOVE1_COVERAGE.txt.
 // Anchor: https://en.wikipedia.org/wiki/Name_resolution_(programming_languages)
@@ -12,8 +12,8 @@ module v4.test.claim.manual.resolve_compile_anchor
 import v4.compiler.resolve { resolve, ResolvedTree }
 import v4.extdeps.languages.dag {
   dag_c3_surface_sugar_service,
-  dag_language_model_wave1_void,
-  dag_language_model_wave1_void_shape_empty_canonical_prelude_compile_receipt
+  dag_language_model_surface_empty_prelude,
+  dag_language_model_surface_prelude_full
 }
 import v4.std.diagnostic { Outcome }
 import v4.std.node {
@@ -26,7 +26,7 @@ import v4.std.node {
 }
 
 
-fn anchor_resolve_wave1_service_atom_via_canonical_symbols() -> Outcome<ResolvedTree> {
+fn anchor_resolve_surface_prelude_full_service_atom() -> Outcome<ResolvedTree> {
   resolve(
     tree: Node {
       kind: TypeNode { connective: Conj },
@@ -42,12 +42,12 @@ fn anchor_resolve_wave1_service_atom_via_canonical_symbols() -> Outcome<Resolved
         }
       ]
     },
-    lm: dag_language_model_wave1_void()
+    lm: dag_language_model_surface_prelude_full()
   )
 }
 
 
-fn anchor_resolve_wave1_service_atom_void_shape_empty_canonical_prelude_compile_only() -> Outcome<ResolvedTree> {
+fn anchor_resolve_surface_empty_prelude_service_atom() -> Outcome<ResolvedTree> {
   resolve(
     tree: Node {
       kind: TypeNode { connective: Conj },
@@ -63,6 +63,6 @@ fn anchor_resolve_wave1_service_atom_void_shape_empty_canonical_prelude_compile_
         }
       ]
     },
-    lm: dag_language_model_wave1_void_shape_empty_canonical_prelude_compile_receipt()
+    lm: dag_language_model_surface_empty_prelude()
   )
 }
