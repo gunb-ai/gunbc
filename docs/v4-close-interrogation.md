@@ -1176,11 +1176,13 @@ Existing `extdeps/languages/<lang>.dag` files do NOT need split. Their header sh
 
 **v4 owner allocation** (Wave-0 substrate — **authoritative file tree:** `src/v4/STRUCTURE.md`):
 
-The original `rust.dag` / `python.dag` / `go.dag` trio is joined by additional language and IR models under `src/v4/extdeps/languages/`. For **this §14 promise** (C/C++ surface, LLVM IR, TypeScript), the following are **landed** as `.dag` substrate (**parse/resolve** verified on CI `v4:` via `v2-compiler compile --source-root src/v4`, per `src/v4/STRUCTURE.md`; **INVARIANTS.md** §P5(b) interim receipt: that whole-tree gate subsumes the retired **six** **parse** smokes that dissolution names as genuinely equivalent to whole-tree parse—**five** `v4_extdeps_{cpp_abi,cpp,typescript,machine_code,lean}_dag_smoke_test.rs` harnesses plus `v4_std_fact_density_dag_smoke_test.rs`—and does **not** substitute the dissolved **`v4_lens_cost_dag_smoke_test.rs`** P9 single-owner ratchet (different class; explicit tracked gap in §P5(b))):
+The original `rust.dag` / `python.dag` / `go.dag` trio is joined by additional language and IR models under `src/v4/extdeps/languages/`. For **this §14 promise** (C/C++ surface, LLVM IR, TypeScript), the following are **landed** as `.dag` substrate.
 
-- `cpp.dag` — Anchor: ISO/IEC 14882 (C++ standard); subsumes C subset (**no separate `c.dag`** unless C-only consumer demand surfaces).
-- `typescript.dag` — Anchor: TypeScript Handbook + ECMA-262.
-- `llvm_ir.dag` — Anchor: LLVM 18 LangRef (`TASKS.md` **T-4.12** — down-stack SSA / Φ structural vocabulary; file header `T-4.12 PASS`).
+**Parse/resolve receipt:** CI `v4:` runs `v2-compiler compile --source-root src/v4` (parse/resolve posture; authoritative file tree: `src/v4/STRUCTURE.md`).
+
+**INVARIANTS.md** §P5(b) interim receipt — **checkable harness split** (do not compress into “six `v4_extdeps_*`”):
+- The whole-tree gate **subsumes** the retired **six** parse smokes named there as genuinely equivalent to whole-tree parse: **five** `v4_extdeps_{cpp_abi,cpp,typescript,machine_code,lean}_dag_smoke_test.rs` harnesses plus `v4_std_fact_density_dag_smoke_test.rs`.
+- The dissolved **`v4_lens_cost_dag_smoke_test.rs`** P9 single-owner ratchet is **not** in that six; whole-tree parse **does not** substitute it (different class; explicit tracked gap / `feature:p9-llvm-instruction-cost-single-owner` in §P5(b)).
 
 **Still open as modeling / emission work** (not “missing files”): the **Probes** checklist below — emit/ingest/L5/L6/falsification — remains the honest gap vs “substrate exists”.
 
@@ -1194,11 +1196,11 @@ The original `rust.dag` / `python.dag` / `go.dag` trio is joined by additional l
 
 **Disposition** (operator-ratified 2026-05-15, **updated for landed substrate**): **IN** for C++ and TypeScript — `cpp.dag` and `typescript.dag` are present. **LLVM IR** is modeled separately as **`llvm_ir.dag`** (IR, not the C++ surface — T-4.12). **C** remains subsumed by `cpp.dag`. **Go** remains in v4 scope ("optional, keep for now; can replace if needed").
 
-**Landed substrate files** (this §’s targets — anchors unchanged):
+**Landed substrate files** (this §’s targets — paths under `src/v4/`):
 
-- `extdeps/languages/cpp.dag`
-- `extdeps/languages/typescript.dag`
-- `extdeps/languages/llvm_ir.dag`
+- `extdeps/languages/cpp.dag` — Anchor: ISO/IEC 14882 (C++ standard); subsumes C subset (**no separate `c.dag`** unless C-only consumer demand surfaces).
+- `extdeps/languages/typescript.dag` — Anchor: TypeScript Handbook + ECMA-262.
+- `extdeps/languages/llvm_ir.dag` — Anchor: LLVM 18 LangRef (`TASKS.md` **T-4.12** — down-stack SSA / Φ structural vocabulary; file header `T-4.12 PASS`).
 
 ---
 
