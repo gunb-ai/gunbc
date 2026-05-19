@@ -17,8 +17,6 @@ type Dag = Node
 
 type AffectedDimension = Symbol
 
-data affected_dimension_value: Symbol = affected_dimension_value
-
 
 type ExclusionKey {
   at: Path
@@ -299,7 +297,7 @@ fn seed_edit_fold_acc(
     BoundaryPruned { proof: p } =>
       AffectedFoldAcc {
         dag: next_dag,
-        frontier: mark_excluded(acc: acc.frontier, key: root_key(path: edit.at, dimension: affected_dimension_value), proof: p)
+        frontier: acc.frontier
       }
     BoundaryExpands =>
       AffectedFoldAcc {
