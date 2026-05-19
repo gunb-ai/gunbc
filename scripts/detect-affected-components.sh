@@ -21,6 +21,11 @@
 #                    if v3 is ever revived, the first src/v3/ PR catches latent breakage)
 #   v4=true|false  — true if src/v4/ or workspace deps changed
 #                    (triggers v2→v4 bootstrap viability test)
+#   workflow_policy=true|false — true if GitHub Actions workflow definitions, this
+#                    script (affects which jobs run, including Gate #103), or the
+#                    Gate #103 path-regex ratchet scripts changed. Independent of
+#                    v2/v3/v4: PRs that touch only `.github/workflows/ci.yml` must still
+#                    run fail-closed workflow policy checks (INVARIANTS P2/P3).
 #
 # Why this lives in a script (not inline in ci.yml):
 # Gate #103 (`ci_uses_affected_set_selection`) policy forbids path-selection
@@ -93,9 +98,21 @@ else
   echo "v4 affected: no (skipping v4 bootstrap test)" >&2
 fi
 
+# Gate #103 workflow / policy surface — orthogonal to compiler v2/v3/v4 buckets.
+# Include this file: edits here change `workflow_policy` / v2/v3/v4 outputs and must
+# not skip Gate #103 (INVARIANTS P3 fail-closed gating).
+if echo "$changed" | grep -qE '^\.github/workflows/|^scripts/detect-affected-components\.sh|^scripts/check-workflow-path-regex-inventory\.sh|^scripts/workflow-path-regex-forbidden-substrings\.txt'; then
+  workflow_policy_state="true"
+  echo "workflow_policy (Gate #103 surface): yes" >&2
+else
+  workflow_policy_state="false"
+  echo "workflow_policy (Gate #103 surface): no" >&2
+fi
+
 # Emit GitHub Actions outputs (or stdout if no output file given)
 {
   echo "v2=$v2_state"
   echo "v3=$v3_state"
   echo "v4=$v4_state"
+  echo "workflow_policy=$workflow_policy_state"
 } >> "$output_file"
