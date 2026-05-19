@@ -1085,11 +1085,10 @@ prepend `std/node.dag` without name collisions (see `DECISIONS.md` T-30
 a **body-less nominal witness** in `src/v4/std/fact_density.dag`, and (3) a
 **retired `compile_to_dag` smoke** harness (`v4_std_fact_density_dag_smoke_test.rs`,
 **dissolved** with **#3338**; see INVARIANTS §P5(b) / `v4:` bootstrap gate).
-The **SG-0** literals that paired (1) with **INVARIANTS.md** §P5(b) remain;
-the dissolved smoke row is **not** reintroduced as an interim ratchet.
-`EXPECTED_HAND_AUTHORED_{NON_TEST,TEST}` literal plus a matching
-**`INVARIANTS.md` §P5(b)** row under **T-PB-A** / **T-PB-B** naming the
-**dissolution** trigger when the generated checker is the authority. The
+**`EXPECTED_HAND_AUTHORED_{NON_TEST,TEST}`** literals and matching
+**`INVARIANTS.md` §P5(b)** rows under **T-PB-A** / **T-PB-B** name the
+**dissolution** trigger when the generated checker is the authority; the
+dissolved smoke harness is **not** reintroduced as an interim ratchet. The
 **`.dag` witness (2)** is a **P2-staging nominal** at `src/v4/std/fact_density.dag` (INVARIANTS §P2 / Practice 5: **parse/compile proof only** — **no** generated `.dag` consumer yet; **not** a landed substrate primitive alongside `node.dag` / `diagnostic.dag`). It is **enumerated honestly** in **`STRUCTURE.md`** (separate from the 14 landed `std/` primitives) and is **named** in the same **§P5(b) rows** (and `DECISIONS.md`) as the T-30 witness file — it is **not** a third **SG-0 hand-Rust** census path (SG-0 inventories **Rust** only). This slice is **sequencing**,
 not semantic deferral of the gate's *definition* (the three-part rule +
 kernel-ambient exemption is already pinned in tests and docs).
