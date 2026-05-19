@@ -34,13 +34,19 @@ S1 substrate track** (loyal-wren). Each substrate PR row in Section 1 is
 a self-contained spec for one substrate-PR's `feature:` arrival, with
 the count and concrete sites it unblocks; S1 consumes directly.
 
-Scope on `main` at `ce0241039` (HEAD; baseline rolled forward from `88ae56d2a` to absorb merges of #3225, #3210, #3232, #3242 between initial sweep and final-ready) — **every `src/v4/**/*.dag`** (67 files
-total) per still-hawk-102 scope-widening 2026-05-18: compiler/ + std/ +
-extdeps/ + workflow/ + lens/ + bin/ + test/claim/. Sweep frame is
-`main`, not in-flight branches — PR #3213 (workflow T-20 + T-24) is
-HELD with its own dissolution pass; its helpers reach `main` only when
-#3213 merges, and are covered by their own pass until then (no
-double-counting).
+Scope on `main` at `e5bde4943` (HEAD; post-#3338 / #3337 / #3325 / #3299
+/ #3306 ground-truth pass — absorbs canonical-B bool bundle #3338, P1
+cardinality regate copy #3337, CP-1b #3225 resolver fill, `fold_node`
+#3297, `nat_is_zero` #3257, and related dissolution merges) — **every
+`src/v4/**/*.dag`** (**73** files total; **§2.8** roll-calls all **11**
+`test/claim/**/*.dag` under the same sweep) per still-hawk-102
+scope-widening 2026-05-18: compiler/ + std/ + extdeps/ + workflow/ +
+lens/ + bin/ + test/claim/. Sweep frame is `main`, not in-flight
+branches — **PR #3213** (workflow T-20 + T-24; YAML / projection and any
+helpers still branch-only) is **HELD** with its own dissolution pass.
+**`src/v4/workflow/*.dag` on `main` at `e5bde4943`** is **not** empty
+scaffold — see **§2.5** (22 `fn` filled cores). Do not double-count branch
+helpers here once they merge as *additional* surface beyond §2.5.
 
 **Dispositions** — the four #3244 vocabulary symbols:
 
@@ -55,8 +61,8 @@ double-counting).
   surface→dissolve loop, not a parking spot. **Count today: ~36
   bound to P1-P10 in § 1.1 (including the two #3225-merged findings
   added at final-ready — see § 1.1 P4 and P5 unblocks columns), plus
-  ~23 pre-plan backlog (Section 3 VAGUE+INVALID-GATE) not yet
-  rollable.**
+  ~19 pre-plan backlog (Section 3 VAGUE only; **0** INVALID-GATE post-#3338)
+  not yet rollable.**
 - **🟢 terminal** — audited and not a dissolution finding.
 
 **Pre-existing-tracker triage** (Section 3) adds two derived
@@ -102,8 +108,8 @@ in-file 🟡 blocks, and *not* land the dissolve-now fixes.
   immediately** on each substrate PR's landing — the surface→dissolve
   loop is what makes 🟡 transient.
 - **§ 1.2** — 🟡 → 🟢 burn-down view.
-- **Pre-plan concretization backlog** — Section 3's ~19 VAGUE + 4
-  INVALID-GATE entries. **These are NOT in the P1-P10 plan**, because
+- **Pre-plan concretization backlog** — Section 3's ~19 VAGUE + **0**
+  INVALID-GATE entries (typescript D2-shaped INVALID retired **#3338**). **These are NOT in the P1-P10 plan**, because
   a VAGUE entry names no concrete primitive (cannot be rolled under
   any P#) and an INVALID-GATE entry's named arrival was cancelled by
   a design reversal (likewise unrollable). They are a **pre-plan
@@ -138,12 +144,12 @@ the audit anchors.
 | **P1** | `std/cardinality.dag` bounded-natural / refinement substrate | **substrate:** std / T-3 Wave-A2 — **`compile_to_dag` / extdeps import surface (flat v3 bootstrap, cardinality name resolution):** compiler / **T-32** (minimum never-hand-edited seed program; `src/v4/TASKS.md`) **+** receipt path per **T-30** interim mirror (`compile_to_dag` smoke harness / bootstrap collision notes in same §T-30) | **~20 live (+2 closed receipts)** | DECISIONS.md: `SL-3229-LLVM-OPS`, `SL-3229-PTX-DIM3`, `SL-3229-FLOAT-NOMINAL` once re-gated under this canonical owner (`SL-3229-LLVM-WIDTH`, `SL-3229-PTX-COST`, `SL-3229-VERILOG-COST` are **🟢 closed** on live carriers — see DECISIONS.md Part 6). **`Dim3`:** live `ptx.dag` uses `PositiveUpperBoundedNat`, closing negative-axis, zero-axis, and missing-bound states; **PTX-version / launch-role / axis-specific maxima remain live** until a PTX-specific max authority is modeled and consumed. In-file: the ~16 VAGUE prose blocks in `json.dag` / `yaml.dag` / `toml.dag` that concretize to this arrival (refinement-side family). **Receipt (PR #3310 / 2026-05-18 + follow-up):** `LlvmType` width payloads, `PtxCost` / `VerilogCost` non-negative axes. Remaining P1-family debt is **operand-relation refinement**, **SIMT dim PTX-specific maxima**, **float nominal/interchange re-gating**, and **import lowering / bootstrap extension** so cardinality refinements used in extdeps `.dag` files participate in `compile_to_dag`, not raw width/cost payload scaffolding alone. |
 | **P2** | `std/collection.dag` Wave-A2: `List<T> where non_empty` refinement **plus** the List combinator algebra (`forall` / `count_where` / `unique` over `FreeMonoid<T>`) | std / T-3 Wave-A2 (coercion-design.md RQ-3) | **5 named + 29 sites** | Section 2: `std/node.dag` × 4 traverses (`all_edges_named`, `all_edges_positional`, `name_occurrences`, `all_names_distinct`). DECISIONS.md: `SL-3229-VERILOG-NONEMPTY` (one row, 29 verilog.dag back-pointer sites after P8). |
 | **P3** | Compiler pipeline-stage substrate (lex-walk + parse-walk) | compiler / T-6, T-7 | **2 + ~7 in-file** | Section 2: `compiler/01_tokenize.dag tokenize`, `compiler/02_parse.dag parse`. In-file: the parser-side VAGUE prose blocks in `json.dag` / `yaml.dag` / `toml.dag` that concretize to T-6/T-7 (the operations-side family separate from P1). |
-| **P4** | T-4 fact-bundle Phase-3 rework (post-D2-reversal model) | extdeps/languages / T-4 manager `vivid-carp-207` (5-feeder gate; keystone #3226 merged @`77b9e7d72`; 4 feeders open: T-3, T-29, T-30, T-25-core) | **4 + 1 row + 1 fn** | In-file: `typescript.dag` × 4 INVALID-GATE blocks (re-gate against this arrival, not pre-reversal D2). DECISIONS.md: `SL-3229-VERILOG-D3200` (if re-gated as `feature: T-4 fact-bundle Phase-3 rework` rather than `consumer:` form — see Section 3). Section 2: `extdeps/languages/dag.dag dag_language_model_wave1_void_canonical_symbols` (added in CP-1b #3225 — canonical_symbols set is a fact on DagLanguageModel/language-identity, not a hand-rolled function). |
+| **P4** | T-4 fact-bundle Phase-3 rework (post-D2-reversal model) | extdeps/languages / T-4 manager `vivid-carp-207` (5-feeder gate; keystone #3226 merged @`77b9e7d72`; 4 feeders open: T-3, T-29, T-30, T-25-core) | **1 + 1 row + 1 fn** | **PR #3338** retired the obsolete `typescript.dag` ×4 INVALID-GATE snapshot (D2a GroundingMap / alias rows): file is now `DECISIONS.md TS-D2` — two primitive sums 🟢 + `data ts_bool_grounding` in the **six-language canonical-B bundle** (`rust` / `cpp` / `go` / `lean` / `python` / `typescript` `data *_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra`) — 🟡 **E-6(b)** `feature:canonical-b-grounding-consumer` staging (B1 fold consumption — `DECISIONS.md` B1 · `docs/modeling/grounding-worked-examples.md` §0), **not** the former INVALID-GATE class. **Python scalar:** flat `PythonScalar` post-**#3309** / **#3344** (`BoolScalar`; DECISIONS `SL-3309-PYTHON-SCALAR-RESEED`). Remaining P4-shaped backlog: file-`Status` 🟡 on TS non-bool numerics (feeder gate unchanged). DECISIONS.md: `SL-3229-VERILOG-D3200` (if re-gated as `feature: T-4 fact-bundle Phase-3 rework` rather than `consumer:` form — see Section 3). Section 2: `extdeps/languages/dag.dag dag_language_model_wave1_void_canonical_symbols` (CP-1b #3225). |
 | **P5** | `std/node.dag` `fold_node` — Node catamorphism (substrate-extension under T-1) | std / T-1 | **1 + 3 (03_resolve cascade only)** | **Substrate LANDED PR #3297:** `NodeFold<R>` + `fold_node` in `src/v4/std/node.dag`; `node_well_formed` consumes the shared `NodeFold<Bool>` algebra (burn-down closeout + #3297). **Cascade (open):** `compiler/03_resolve.dag merge_binding_self` (94, codex #3225) plus `add_module_named_exports` (99), `add_arrow_domain_named_params` (113), `add_bind_atom_binder` (140). These dissolve to `fold_node(root, ⟨binding-harvest algebra⟩)` only when a scoped harvest algebra lands without changing resolver scope semantics. |
 | **P6** | `std/algebra.dag` / `std/nat.dag` `fold` / `cata` over `FreeMonoid<T>` and `Nat` (Wave-A2) | std / T-3 Wave-A2 | **2** | Section 2: `std/algebra.dag free_monoid_length`, `std/float.dag nat_compare`. (Sibling to P2's combinator algebra; could land in the same PR — kept separate because the underlying primitive is the catamorphism, distinct from `forall`/`count_where` which are derived from it.) |
 | **P7** | `std/nat.dag nat_is_zero : Nat -> Bool` (Wave-A2) | std / T-3 Wave-A2 | **1** | Section 2: `std/float.dag float_finite_magnitude_zero`. |
 | **P8** | `extdeps/languages/verilog.dag` bundled T-4 LanguageModel `constant_expression` sub-grammar | extdeps/languages / T-4 Verilog Phase-3 | **0** | Landed: `VectorRange` carries `ConstantExpression` endpoints; DECISIONS.md row `SL-3229-VERILOG-VECTOR-RANGE` is closed. |
-| **P9** | `lens/cost.dag` cost-of-instruction model fact / lens | lens / T-12 | **0** | **LANDED:** `src/v4/lens/cost.dag` now owns `llvm_instruction_cost` (the 22-arm `LlvmInstruction -> Int` cost table); `extdeps/languages/llvm_ir.dag` owns only the LLVM instruction shape. |
+| **P9** | `lens/cost.dag` cost-of-instruction model fact / lens | lens / T-12 | **0** | **LANDED:** `src/v4/lens/cost.dag` now owns `llvm_instruction_cost` — **25** `match` arms on **`LlvmInstruction`** (**24** constructors; `Conversion` split into BitCast vs non-BitCast arms) mapping to `Int`; `extdeps/languages/llvm_ir.dag` owns only the LLVM instruction shape. |
 | **P10 ⛔ needs-concretization** | Constrained generic parameters / inhabitance-bound syntax (`<M> where M : CommutativeMonoid<_>`) | substrate extension; **no owning task yet** | **1** | DECISIONS.md: `SL-3229-INTEGER-GROUP-COMPLETION` (`GroupCompletion<M>`). **P10 does NOT enter the burn-down DAG as a normal upstream node until concretized** — under #3244 a 🟡 whose substrate primitive has no committed PR/task is not a valid 🟡 (the comment-graveyard case). The single finding under P10 (`SL-3229-INTEGER-GROUP-COMPLETION`) is reclassified VAGUE in Section 3.1 until an owning T-# is assigned. Action owner: substrate / operator-or-S1 assignment. |
 
 Plus property-projection model facts (Practice 10 row 7) that do not
@@ -168,7 +174,7 @@ INVALID-GATE-once-re-gated):
 | P1 lands | ~20 | `std/cardinality.dag` refinement (+ import lowering / bootstrap for extdeps cardinality imports) | ~16 |
 | P2 lands | 5 named (+ 29 verilog sites converge in one sweep) | `std/collection.dag` Wave-A2 | ~11 named |
 | P3 lands | 2 named (+ ~7 in-file) | T-6 + T-7 pipeline substrate | ~9 named |
-| P4 lands | 4 + 1 row + 1 fn (`dag.dag canonical_symbols` #3225) | T-4 fact-bundle Phase-3 | ~3 named |
+| P4 lands | 1 + 1 row + 1 fn (`typescript` INVALID retired #3338; `dag.dag canonical_symbols` #3225) | T-4 fact-bundle Phase-3 | ~3 named |
 | P5 cascade lands | 1 named (+ 3 walker sites in `03_resolve.dag` #3225) | scoped binding-harvest `fold_node` algebra (substrate: **#3297**) | ~1 |
 | P6 lands | 2 | FreeMonoid/Nat catamorphism | ~0 |
 | P7 lands | 1 | `nat_is_zero` | ~0 |
@@ -190,7 +196,7 @@ Caveats:
 
 1. **"🟡 today" counts only entries already bound to a P# in the
    plan.** Section 2's fresh findings + Section 3's 3 VALID-🟡 are
-   counted; **Section 3's ~19 VAGUE + 4 INVALID-GATE are NOT** —
+   counted; **Section 3's ~19 VAGUE + 0 INVALID-GATE (post-#3338) are NOT** —
    they are pre-plan backlog (no concrete primitive to roll under
    yet). The burn-down lane drives the backlog first; once a VAGUE/
    INVALID entry is re-concretized to a `feature:` arrival that
@@ -355,7 +361,7 @@ captured here as the audit anchor for the rest:
   `resolve_bind_edges`, `resolve_bind_node`, `resolve`,
   `resolve_with_namespace`, …) are **not individually triaged here**
   — the full sweep is a **named follow-up for the burn-down lane**
-  (`jolly-ibex-599`), not a C1 expansion. C1 is one-shot; the 21-fn
+  (dissolution burn-down queue), not a C1 expansion. C1 is one-shot; the 21-fn
   re-pass is dispatched by the burn-down lane as a standing
   re-sweep work-item alongside the per-primitive DAG. Many entries
   will likely roll under P5
@@ -382,8 +388,9 @@ captured here as the audit anchor for the rest:
   12-arm `FidelityFeature -> FidelityDisposition` map; the disposition
   IS a fact per feature.
 - `llvm_instruction_cost` — 🟢 **moved to cost-lens authority** —
-  `src/v4/lens/cost.dag` owns the 22-arm `LlvmInstruction -> Int`
-  table as the P9 cost-of-instruction model fact; this file owns only
+  `src/v4/lens/cost.dag` owns the **25**-arm `match` (`LlvmInstruction` →
+  `Int`) cost table as the P9 cost-of-instruction model fact — **24**
+  constructors with `Conversion` split into two patterns; this file owns only
   the LLVM instruction data shape.
 - `block_successors` (505), `unwind_successors` (498) — 🟢 — each arm
   reads its own constructor fields; constructor-driven projection, not
@@ -412,9 +419,17 @@ captured here as the audit anchor for the rest:
   distinct constructor inspection / pure data construction.
 
 **Other language files** (`rust`, `go`, `python`, `cpp`, `verilog`,
-`typescript`, `ptx`, `machine_code`, `lean`) — zero `fn` bodies. 🟢
-for all five dissolution classes (carrier and emit-template covered
-lane-wide).
+`typescript`, `ptx`, `machine_code`, `lean`) — zero `fn` bodies. **PR
+#3338 canonical-B bool bundle:** six `data *_bool_grounding:
+BooleanAlgebra<Bool> = bool_boolean_algebra` decl-ref rows (one per
+language file above except `verilog` / `ptx` / `machine_code`) — 🟡
+**E-6(b)** staging `feature:canonical-b-grounding-consumer` pending B1
+fold consumption (`DECISIONS.md` B1 · `grounding-worked-examples.md`
+§0); **not** Practice-10 derived-operation dissolution rows (ledger
+scaffold, same six-lang surface). **Python scalar:** flat `PythonScalar`
+coproduct (`#3309` / `#3344`; `BoolScalar` variant) — `DECISIONS.md`
+`SL-3309-PYTHON-SCALAR-RESEED`. 🟢 for all five dissolution classes
+(carrier and emit-template covered lane-wide).
 
 **`extdeps/formats/*.dag`** (`spice`, `toml`, `yaml`, `json`, `csv`,
 `openapi`, `json_schema`) — zero `fn` bodies. 🟢.
@@ -425,27 +440,54 @@ bodies. 🟢.
 
 ### 2.5 `src/v4/workflow/`
 
-Sweep frame `main` @ `ce0241039`. (PR #3213 fills both files with
-helper logic; that work is on the #3213 branch only, not in this sweep
-— covered by #3213's own dissolution pass.)
+Sweep frame `main` @ `e5bde4943`. **Verified on that commit:** `git show
+e5bde4943:src/v4/workflow/bootstrap.dag | grep -c '^fn '` → **5**;
+`git show e5bde4943:src/v4/workflow/ci.dag | grep -c '^fn '` → **17** —
+**22** `fn` bodies total under `src/v4/workflow/` (HEAD matches). Both
+files carry **`Status: filled`** in their headers — they are **not**
+the pre-roll empty scaffolds the inventory once assumed “held on #3213
+branch only.” **#3213** may still own *projection* / YAML-side follow-on,
+but the **`.dag` well-formedness cores** already live on `main` at the
+cited baseline and **must** appear in this audit's merge-gate surface.
 
-**`workflow/bootstrap.dag`** — scaffold on `main` (84 lines, all
-header prose + `module v4.workflow.bootstrap` declaration; zero `type`,
-zero `data`, zero `fn`). 🟢 across all five finding classes.
-**`workflow/ci.dag`** — scaffold on `main` (43 lines; same shape).
-🟢 across all five finding classes.
+**`workflow/bootstrap.dag`** — **5** `fn` (`bs_diagnostic`, `bs_member`,
+`bs_list_eq`, `bootstrap_stage_output`, `bootstrap_plan_well_formed`) +
+`type`/`data` for the bootstrap plan. **`bs_member` (57)** — 🟡 **List-op
+dissolution** (Practice 10) — `DECISIONS.md` **LB-P10-3213** (`fold` over
+`List<Symbol>` membership). Other fns: structural self-hosting /
+well-formedness over `BootstrapPlan` / `Outcome` — **not** individually
+expanded here (same C1 stance as `03_resolve.dag`: burn-down lane owns
+line-by-line re-sweep).
+
+**`workflow/ci.dag`** — **17** `fn` + `CiCommand` / `CiJob` / `CiGate` /
+`CiPipeline` carriers + `data ci_pipeline`. **`CiCommand` (line ~22)** —
+🟡 **coproduct dissolution** — `DECISIONS.md` **LB-P4-3213**.
+**`ci_id_occurrences` (80)** — 🟡 **List-op** — **LB-P10-3213**.
+**`ci_command_authority_ok` (163)** — 🟡 **negative-coverage plan-bound
+(T-22)** — `DECISIONS.md` **LB-T22-3213**. Remaining helpers: CI job/gate
+graph well-formedness (`fold` ladders over jobs/gates/needs, Kahn-style
+acyclicity) — triage deferred to burn-down lane unless a reviewer flags a
+specific symbol as a new registry row.
 
 Carrier and emit-template covered by lane-wide 🟢 (2.1).
 
 ### 2.6 `src/v4/lens/`
 
-11 files (`affected_set.dag`, `application.dag`, `complexity.dag`,
+12 files (`affected_set.dag`, `application.dag`, `complexity.dag`,
 `cost.dag`, `coverage.dag`, `effect.dag`, `idempotency.dag`,
-`ownership.dag`, `parallelism.dag`, `synthesis.dag`, `testgen.dag`)
-— **every one a scaffold on `main`** (each carries a
-`Status: scaffold — fill per TASKS.md T-##` line, header prose, and a
-`module v4.lens.<name>` declaration). **Zero `type`, zero `data`, zero
-`fn` bodies.** 🟢 across all five finding classes.
+`ownership.dag`, `parallelism.dag`, `registry.dag`, `synthesis.dag`,
+`testgen.dag`). **`registry.dag`** — v0 PREFIX lens registry (`type` +
+`data` rows; no `fn`). **`cost.dag`** — **P9 landed:** one `fn
+llvm_instruction_cost` (**25** `match` arms on `LlvmInstruction`; **24**
+constructors, `Conversion` split BitCast vs other — same count as §1.1 P9);
+file header remains
+T-12 scaffold for full cost-lens fill beyond this slice. The other **10**
+lens modules are scaffolds on `main` (each carries a `Status: scaffold —
+fill per TASKS.md T-##` line, header prose, and a `module v4.lens.<name>`
+declaration) with **no** additional `fn` bodies at HEAD. 🟢 across the
+five Practice-10 dissolution classes for the scaffolded modules;
+`llvm_instruction_cost` is the owned model fact, not a hand-rolled
+registry-row violation.
 
 `parallelism.dag:83` carries a prose mention of `fold(xs,…)` inside a
 comment ("Fold parallelizability is an ALGEBRA fact"); not an
@@ -465,22 +507,36 @@ substrate PRs.
 
 ### 2.8 `src/v4/test/claim/`
 
-9 files: 2 `manual/` (`connective_anchors.dag`, `nat_law_anchors.dag`)
-+ 1 `boundary/` (`english_ingest_fail_closed.dag`) + 6 `impossible_bug/`
-(`idempotency_contract.dag`, `nested_optional_flatten.dag`,
-`suboptimal_complexity.dag`, `transport_type_drift.dag`,
-`unenumerated_effects.dag`, `unhandled_diagnostic_paths.dag`).
+**11 files** (matches `find src/v4/test/claim -name '*.dag'` at sweep
+`HEAD`): **4** `manual/` + **1** `boundary/` + **6** `impossible_bug/`.
 
-The `manual/*` pair carries `data` declarations only — pure
-`TestClaim` literal values (e.g.
-`data claim_nat_add_left_identity: TestClaim = TestClaim { … }`). Zero
-`fn` bodies. By construction TestClaim instances cannot host
-dissolution findings — they are the data that *gets fed into* the
-compiler/lens stages whose dissolutions live elsewhere. 🟢.
+**`manual/`**
+- `connective_anchors.dag`, `nat_law_anchors.dag` — `data` rows (`Node`
+  stubs, `TestClaim` literals). Zero `fn` bodies. 🟢 — same rationale as
+  before: claim *data* cannot host Practice-10 dissolution findings;
+  resolver / LM debt stays in §2.3 / §2.4 / Section 1.
+- `t19_manual_anchor_manifest.dag` — twelve `data` rows over
+  `T19ManualAnchorKey` (join manifest for the two anchor corpora above).
+  Zero `fn` bodies. 🟢.
+- `resolve_compile_anchor.dag` — **one** `fn`
+  `anchor_resolve_wave1_service_atom_via_canonical_symbols` (calls
+  `resolve` on a minimal `Node` + `dag_language_model_wave1_void()`;
+  DECISIONS.md **CP-1b item 10** compile anchor; `Status: scaffold —
+  compile-only until T-22`). **Disposition:** 🟢 **harness / coverage
+  anchor** — delegates to `compiler/03_resolve.dag` `resolve` and LM
+  data; does not introduce a new hand-rolled walker / predicate /
+  traverse over `Node` beyond wiring already triaged under **P5** /
+  **P4** (`dag_language_model_wave1_void_canonical_symbols`). Not a
+  fifth dissolution-finding class on top of Section 2's catalog.
 
-All `boundary/*` and `impossible_bug/*` files are scaffolds (each
-carries `Status: scaffold — fill per TASKS.md T-##`; zero `type` /
-`data` / `fn`). 🟢.
+**`boundary/`** — `english_ingest_fail_closed.dag` — scaffold (`Status:
+scaffold …`). Zero `type` / `data` / `fn` bodies at sweep. 🟢.
+
+**`impossible_bug/`** — six scaffolds (`idempotency_contract.dag`,
+`nested_optional_flatten.dag`, `suboptimal_complexity.dag`,
+`transport_type_drift.dag`, `unenumerated_effects.dag`,
+`unhandled_diagnostic_paths.dag`). Each carries `Status: scaffold — fill
+per TASKS.md T-##`; zero `type` / `data` / `fn` bodies. 🟢.
 
 ---
 
@@ -657,25 +713,21 @@ refinement-side gates.
 - **Triage: same as yaml.dag — VALID-in-intent / VAGUE-in-form.**
 - **Action queued:** same as yaml.dag.
 
-**`extdeps/languages/typescript.dag` × 4 in-file blocks** (lines 21,
-34, 67, 69) — `D2a(2) grounding-map facet is 🟡 operator-pending` /
-`alias rows 🟡 TRACKED-SCAFFOLD per std/ ladders + refinement policy`.
-- **Triage: INVALID-GATE.**
-- **Why:** the named arrival ("D2a(2) grounding-map facet", "alias
-  rows per std/ ladders") references the **D2 alias-identity model**.
-  Per the operator's 2026-05-17 D2-reversal directive, D2 alias-identity
-  was REJECTED in favor of the **fact-bundle model** — the named
-  arrival as written *will not arrive*. This is not STALE (the gate
-  has not "already opened") and not VAGUE (the gate is concretely
-  named); it is **INVALID-GATE** — the gate's target was cancelled by
-  the design reversal. Per #3244, an INVALID-GATE entry must be
-  re-gated against the post-reversal model (the T-4 fact-bundle
-  Phase-3 rework — keystone PR #3226 merged @`77b9e7d72`; Phase-3 is
-  5-feeder-gated, four feeders open: T-3, T-29, T-30, T-25-core).
-- **Owning lane (re-gate action — out of C1 scope per "C1 marks and
-  flags, does not fix"):** the lane owning
-  `extdeps/languages/typescript.dag` (Lane C / T-4 manager
-  vivid-carp-207); the standing T-4-rework-PR HOLD directive applies.
+**`extdeps/languages/typescript.dag`** (HEAD; lines drift) — **PR #3338
+/ `DECISIONS.md` TS-D2** retired the pre-reversal ×4 INVALID-GATE snapshot
+(D2a GroundingMap / alias rows). **Current triage:**
+- `TsEcma262NumericPrimitiveKind`, `TsEcma262PrimitiveOperationSemantics` —
+  **🟢** coproduct dissolution tags (`DECISIONS.md TS-D2`); numeric
+  operation semantics remain feeder-gated to T-4 Phase-3 per file `Status`.
+- `data ts_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra` —
+  **🟡 E-6(b)** canonical-B decl-ref (`feature:canonical-b-grounding-consumer`;
+  dissolve-on B1 fold — `DECISIONS.md` B1 · `grounding-worked-examples.md`
+  §0). Same six-lang bool bundle as `rust` / `cpp` / `go` / `lean` /
+  `python` / `typescript` in **#3338**; **not** a returning INVALID-GATE
+  class.
+- **Action (lane):** burn-down / T-4 owns remaining TS numeric fact-bundle
+  work + B1 consumer wiring for the six `*_bool_grounding` rows; C1 does
+  not re-expand this pass.
 
 ### 3.3 Summary table
 
@@ -696,7 +748,7 @@ refinement-side gates.
 | json.dag × 3 in-file blocks | prose | mixed | **no** (class) | yes | **VAGUE** |
 | yaml.dag × 6 in-file blocks | prose | mixed | **no** (class) | yes | **VAGUE** |
 | toml.dag × 7+ in-file blocks | prose | mixed | **no** (class) | yes | **VAGUE** |
-| typescript.dag × 4 in-file blocks | prose | feature (D2-shaped) | **named arrival cancelled by D2-reversal** | yes | **INVALID-GATE** (re-gate post-reversal) |
+| typescript.dag (TS-D2 + bool canonical-B #3338) | types + `data` | mixed | yes (TS-D2 § + six-lang B) | yes (B1 / Phase-3 feeders) | **CLOSED INVALID** (#3338); **🟡** E-6(b) on `ts_bool_grounding`; **🟢** coproduct tags on primitive kinds |
 
 Counts (under the still-hawk-102 tightened bar 2026-05-18 — VALID-🟡
 requires concrete gate AND binding to a named primitive+owning-task
@@ -716,7 +768,9 @@ substrate PR in Section 1):
 - **~16 VAGUE in-file prose blocks** across `json.dag`, `yaml.dag`,
   `toml.dag`, and 5 `verilog.dag` cite-sites inheriting VERILOG-D3200
   ≈ **~19 VAGUE total**.
-- **4 INVALID-GATE** (typescript.dag D2-shaped gates).
+- **0 INVALID-GATE** at HEAD (**#3338** retired the `typescript.dag`
+  D2-shaped INVALID snapshot; remaining gates are VAGUE / VALID / 🟢 /
+  E-6(b) canonical-B staging per §3.2).
 - **1 STALE** (superseded cite-site snapshot only — `llvm_ir.dag`
   `LlvmType` row per §3.2; **does not** re-open §3.1 **`SL-3229-LLVM-WIDTH`
   CLOSED** or duplicate `VALID-🟡` counts above).
@@ -727,15 +781,17 @@ collection Wave-A2 / constrained-generics arrivals are still ahead of us,
 while the raw non-negative cost rows closed once their live carriers moved
 to `Nat`. Verified against
 `std/cardinality.dag`, `std/collection.dag`, `std/nat.dag`,
-`std/algebra.dag` on `main` @ `ce0241039`. The pre-existing-tracker
+`std/algebra.dag` on `main` @ `e5bde4943`. The pre-existing-tracker
 debt is **overwhelmingly VAGUE prose-form gates that #3244 retires** —
 concretizing the in-file prose blocks under one canonical
 `feature: std/cardinality.dag refinement (T-3 Wave-A2)` (and a smaller
 parser-side family `feature: T-6/T-7 parse/emit pipeline-stage
-substrate`) collapses much of the VAGUE list to VALID. The 4
-typescript.dag INVALID-GATE entries need substantive re-gating against
-the post-D2-reversal fact-bundle model. **All re-gates and dissolve-now
-fixes are downstream lane work, not C1's** — C1 marks and flags.
+substrate`) collapses much of the VAGUE list to VALID. **TypeScript
+INVALID-GATE debt closed in #3338** (`DECISIONS.md` TS-D2 + six-lang
+`ts_bool_grounding`); remaining TS work is T-4 Phase-3 feeders + B1
+canonical-B consumption, not re-litigating the retired D2a gate text.
+**All re-gates and dissolve-now fixes are downstream lane work, not C1's**
+— C1 marks and flags.
 
 ---
 
