@@ -97,14 +97,15 @@ type CorpusLensReadResult<C> = Outcome<C>
 
 // RULING-1: 🟡 needs-more-work
 type CorpusLensReader<C> {
-  read: fn(LensApplicabilitySubject) -> CorpusLensReadResult<C>
+  lens: Symbol
+  read: fn(Node) -> CorpusLensReadResult<C>
 }
 
 
 // RULING-1: 🟡 needs-more-work
 type CorpusLensObservation<C> {
   entry: CorpusEntry
-  subject: LensApplicabilitySubject
+  program: Node
   output: C
 }
 
