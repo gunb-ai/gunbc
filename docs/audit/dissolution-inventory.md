@@ -142,7 +142,7 @@ the audit anchors.
 | # | substrate PR (`feature:` arrival) | owner / owning task | 🟡-count | unblocks |
 |---|---|---|---|---|
 | **P1** | `std/cardinality.dag` bounded-natural / refinement substrate | **substrate:** std / T-3 Wave-A2 — **`compile_to_dag` / extdeps import surface (flat v3 bootstrap, cardinality name resolution):** compiler / **T-32** (minimum never-hand-edited seed program; `src/v4/TASKS.md`) **+** receipt path per **T-30** interim mirror (`compile_to_dag` smoke harness / bootstrap collision notes in same §T-30) | **2 live row groups (+3 closed receipts)** | DECISIONS.md: `SL-3229-LLVM-OPS`, `SL-3229-PTX-DIM3`, `SL-3229-FLOAT-NOMINAL` once re-gated under this canonical owner (`SL-3229-LLVM-WIDTH`, `SL-3229-PTX-COST`, `SL-3229-VERILOG-COST` are **🟢 closed** on live carriers — see DECISIONS.md Part 6). **`Dim3`:** live `ptx.dag` uses `PositiveUpperBoundedNat`, closing negative-axis, zero-axis, and missing-bound states; **PTX-version / launch-role / axis-specific maxima remain live** until a PTX-specific max authority is modeled and consumed. **Receipt (PR #3310 / 2026-05-18 + follow-up):** `LlvmType` width payloads, `PtxCost` / `VerilogCost` non-negative axes. Remaining P1-family debt is **operand-relation refinement**, **SIMT dim PTX-specific maxima**, **float nominal/interchange re-gating**, and **import lowering / bootstrap extension** so cardinality refinements used in extdeps `.dag` files participate in `compile_to_dag`, not raw width/cost payload scaffolding alone. |
-| **P2** | `std/collection.dag` Wave-A2: `List<T> where non_empty` refinement **plus** the List combinator algebra (`forall` / `count_where` / `unique` over `FreeMonoid<T>`) | std / T-3 Wave-A2 (coercion-design.md RQ-3) | **5 named + 29 sites** | Section 2: `std/node.dag` × 4 traverses (`all_edges_named`, `all_edges_positional`, `name_occurrences`, `all_names_distinct`). DECISIONS.md: `SL-3229-VERILOG-NONEMPTY` (one row, 29 verilog.dag back-pointer sites after P8). |
+| **P2** | `std/collection.dag` Wave-A2: `List<T> where non_empty` refinement **plus** the List combinator algebra (`forall` / `count_where` / `unique` over `FreeMonoid<T>`) | std / T-3 Wave-A2 (coercion-design.md RQ-3) | **5 named + 29 sites** (§2.2 `std/node` traverses + `verilog` back-pointers **only**) **+** **`workflow` / `LB-P10-3213`** (§1.1 workflow rollup — **merge-gate** list-op ledger; **not** folded into the `5+29` figure; same **P2** substrate arrival dissolves both) | Section 2: `std/node.dag` × 4 traverses (`all_edges_named`, `all_edges_positional`, `name_occurrences`, `all_names_distinct`). DECISIONS.md: `SL-3229-VERILOG-NONEMPTY` (one row, 29 verilog.dag back-pointer sites after P8). **Workflow (#3213):** every Practice-10 **`LB-P10-3213`** hand-rolled list op on `workflow/*.dag` rolls here — full symbol ↔ DECISIONS Part 7 sub-row roll-call in the **workflow merge-gate paragraph** immediately after this table (§1.1); not outside the ranked plan. |
 | **P3** | Compiler pipeline-stage substrate (lex-walk + parse-walk) | compiler / T-6, T-7 | **2 + 3 format parse cites** | Section 2: `compiler/01_tokenize.dag tokenize`, `compiler/02_parse.dag parse`. In-file: the concrete parse-half cites in `json.dag`, `yaml.dag`, and `toml.dag` gate on T-6/T-7 directly. |
 | **P4** | LanguageModel-axis rework family (post-D2-reversal model) | extdeps/languages (`typescript.dag` under T-4; Verilog D3200 under TASKS.md T-4.9) | **1 TypeScript status line + 1 row + 5 sites + 1 fn** | **PR #3338** retired the obsolete `typescript.dag` ×4 INVALID-GATE snapshot: the file now has `DECISIONS.md TS-D2` 🟢 coproduct tags plus `ts_bool_grounding` E-6(b) canonical-B staging, not the former D2a class. Remaining TypeScript backlog is the file-level non-bool numeric primitive status line gated on `feature: T-4 fact-bundle Phase-3 rework after T-3/T-29/T-30/T-25-core`. DECISIONS.md: `SL-3229-VERILOG-D3200` now gates on the T-4.9 Verilog `LanguageModel` axis rework named in `TASKS.md`; its five `verilog.dag` cite-sites remain strict-deprose one-line pointers to that row. Section 2: `extdeps/languages/dag.dag dag_language_model_wave1_void_canonical_symbols` (added in CP-1b #3225 — canonical_symbols set is a fact on DagLanguageModel/language-identity, not a hand-rolled function). |
 | **P5** | `std/node.dag` `fold_node` — Node catamorphism (substrate-extension under T-1) | std / T-1 | **1 + 3 (03_resolve cascade only)** | **Substrate LANDED PR #3297:** `NodeFold<R>` + `fold_node` in `src/v4/std/node.dag`; `node_well_formed` consumes the shared `NodeFold<Bool>` algebra (burn-down closeout + #3297). **Cascade (open):** `compiler/03_resolve.dag merge_binding_self` (94, codex #3225) plus `add_module_named_exports` (99), `add_arrow_domain_named_params` (113), `add_bind_atom_binder` (140). These dissolve to `fold_node(root, ⟨binding-harvest algebra⟩)` only when a scoped harvest algebra lands without changing resolver scope semantics. |
@@ -165,6 +165,46 @@ rolls into **P4** as a separate fact within that rework). The third —
 cascaded off the `terminator_is_catchswitch` dissolve-now and closed in
 PR #3245 without waiting on substrate.
 
+**Workflow (`src/v4/workflow/*.dag`) — PR #3213 merge-gate rollup (ties §2.5
+to §1.1).** The filled **`bootstrap.dag`** / **`ci.dag`** cores on `main`
+(§2.5 file/`fn` counts) are **in** the merge-gate surface **and** in the
+ranked plan: each in-file `// 🟡 … DECISIONS.md LB-*-3213` tag names a
+checkable dissolution row, **plus** the dual-counted **`ci_all_commands_authority_ok`**
+fold (see **ALL** roll-call — no separate `//` tag on the wrapper) — none
+are “burn-down only” orphans.
+
+- **`LB-P4-3213`** — `CiCommand` coproduct port (`ci.dag` ~L22) → **P4**
+  (T-4 / Practice-4 coproduct classification; same owner as §2.5 call-out).
+- **`LB-P10-3213`** — Practice-10 list-op ledger (**`DECISIONS.md` Part 7**
+  sub-rows). The **named std arrival** is **P2** (`std/collection.dag`
+  Wave-A2 list combinators / `forall` family — `member`, `any`, `all`,
+  `count_if`, `set_eq`, `filter`, honest `find`). **Roll-call (symbol →
+  sub-row):** **MEMBER** — `bs_member`, `ci_member`; **ANY** —
+  `ci_symbol_resolves`, `ci_blocked`; **ALL** — universal **`fold` over
+  `List<CiJob>`** / **`List<CiGate>`** (`all`-shaped): `ci_all_job_ids_unique`,
+  `ci_all_gate_ids_unique`, `ci_all_needs_resolve`,
+  `ci_all_gate_jobs_resolve`, `ci_all_commands_authority_ok` (**DECISIONS**
+  **LB-P10-3213-ALL**, Part 7 — **five** helpers). **`ci_all_commands_authority_ok`**
+  is **dual** with **LB-T22-3213** via inner **`ci_command_authority_ok`**
+  (in-file tag): **P2** `all` combinator dissolution **+** **T-22**
+  negative-coverage obligation; **COUNTIF** — `ci_id_occurrences`,
+  `ci_gate_id_occurrences`; **SETEQ** — `bs_list_eq`; **FILTER** —
+  `ci_eliminate_pass`; **FIND** — `ci_job_needs`. **KAHN** —
+  `ci_kahn_fixpoint`, `ci_acyclic` — **🟢 terminal** per DECISIONS (domain
+  graph algorithm, not a dissolvable collection primitive; still
+  well-formedness **content**, not backlog “triage deferred”).
+- **`LB-T22-3213`** — **`ci_command_authority_ok`** (in-file T-22 tag) and
+  **`ci_all_commands_authority_ok`** (jobs sweep — **no** wrapper tag; **dual**
+  **P2** / **ALL** roll-call above **+** **T-22** on the inner predicate) →
+  **T-22** executable negative-coverage plan-bound (**DECISIONS** Part 7
+  `LB-T22-3213`; §2.5).
+
+Structural helpers with **no** `LB-*-3213` tag (`bs_diagnostic`,
+`bootstrap_stage_output`, `bootstrap_plan_well_formed`, `ci_diagnostic`,
+`ci_pipeline_well_formed`) are lane-local well-formedness / diagnostics —
+🟢 for the five Practice-10 dissolution **classes** (they are not
+untracked list-op debt).
+
 ### 1.2 🟡 → 🟢 burn-down
 
 This table is a dependency-ordered dispatch view, **not an arithmetic
@@ -176,7 +216,7 @@ dissolve-on-arrival effect without deriving a residual total.
 | primitive PR | row-local 🟡 unit | landing event | dissolve-on-arrival effect |
 |---|---|---|---|
 | P1 lands | 2 row groups | `std/cardinality.dag` refinement (+ import lowering / bootstrap for extdeps `NonZeroNat`) | closes the live cardinality/refinement row groups (`SL-3229-LLVM-OPS`, `SL-3229-PTX-DIM3`; `SL-3229-FLOAT-NOMINAL` joins only after re-gate). |
-| P2 lands | 5 named (+ 29 verilog sites converge in one sweep) | `std/collection.dag` Wave-A2 | closes the List non-empty / combinator-algebra group. |
+| P2 lands | 5 named + 29 verilog (§2.2) **+** `workflow` **LB-P10-3213** (§1.1 rollup) | `std/collection.dag` Wave-A2 | closes the §2.2 List combinator / `verilog` cite group **and** dissolves the Part-7 **`workflow/*.dag`** list-op ledger under the **same** P2 landing. |
 | P3 lands | 2 named (+ 3 format parse cites) | T-6 + T-7 pipeline substrate | closes tokenize/parse substrate findings plus the format parse-half cites. |
 | P4 lands | 1 TypeScript status line + 1 row + 5 sites + 1 fn (`typescript` INVALID retired #3338; `dag.dag canonical_symbols` #3225) | LanguageModel-axis rework family (T-4 + T-4.9) | closes the post-D2 TypeScript status line, Verilog D3200 row/sites, and `dag.dag` canonical-symbols function. |
 | P5 cascade lands | 1 named (+ 3 walker sites in `03_resolve.dag` #3225) | scoped binding-harvest `fold_node` algebra (substrate: **#3297**) | closes the resolver binding-harvest cascade. |
@@ -205,6 +245,16 @@ Caveats:
    "🟡 → 🟢 sweep for P10" only fires after concretization. The
    `⛔ needs-concretization` flag on P10 in § 1.1 is structurally
    blocking that row's DAG entry.
+3. **`ci_all_commands_authority_ok`** is **dual-listed** in the §1.1
+   workflow rollup under **P2** (same **`all`/`fold`-over-`jobs`** combinator
+   class as **LB-P10-3213-ALL**) **and** **T-22** (inner **`ci_command_authority_ok`**
+   tag). That is **one** workflow surface with **two** ranked obligations, not
+   an extra 🟡 in the illustrative **~36** baseline column (no double-count).
+4. **P2 §1.1 `🟡-count` scoping:** the **`5 named + 29 sites`** figure is an
+   **exhaustive Section-2** count for `std/node` + `verilog` only. **`workflow/*.dag`**
+   **`LB-P10-3213`** obligations are a **separate bounded bucket** in the same
+   **P2** row (see rollup paragraph) so merge-gate accounting stays checkable
+   without silently inflating the `5+29` node/verilog arithmetic.
 
 **P1 remains high-priority.** Landing the remaining `std/cardinality.dag`
 refinement substrate closes the live P1 row groups and creates the
@@ -443,22 +493,37 @@ cited baseline and **must** appear in this audit's merge-gate surface.
 
 **`workflow/bootstrap.dag`** — **5** `fn` (`bs_diagnostic`, `bs_member`,
 `bs_list_eq`, `bootstrap_stage_output`, `bootstrap_plan_well_formed`) +
-`type`/`data` for the bootstrap plan. **`bs_member` (57)** — 🟡 **List-op
-dissolution** (Practice 10) — `DECISIONS.md` **LB-P10-3213** (`fold` over
-`List<Symbol>` membership). Other fns: structural self-hosting /
-well-formedness over `BootstrapPlan` / `Outcome` — **not** individually
-expanded here (same C1 stance as `03_resolve.dag`: burn-down lane owns
-line-by-line re-sweep).
+`type`/`data` for the bootstrap plan. **`bs_member` (57)** — 🟡 **List-op**
+(MEMBER row) — `DECISIONS.md` **LB-P10-3213**. **`bs_list_eq` (63)** — 🟡
+**List-op** (SETEQ row) — **LB-P10-3213**. **`bootstrap_stage_output`** /
+**`bootstrap_plan_well_formed`** / **`bs_diagnostic`** — structural
+bootstrap authority + diagnostics (no separate list-op row beyond the
+MEMBER/SETEQ folds they compose); **§1.1 workflow rollup** + **§1.1 P2**
+for dissolution queue ownership.
 
 **`workflow/ci.dag`** — **17** `fn` + `CiCommand` / `CiJob` / `CiGate` /
 `CiPipeline` carriers + `data ci_pipeline`. **`CiCommand` (line ~22)** —
-🟡 **coproduct dissolution** — `DECISIONS.md` **LB-P4-3213**.
-**`ci_id_occurrences` (80)** — 🟡 **List-op** — **LB-P10-3213**.
-**`ci_command_authority_ok` (163)** — 🟡 **negative-coverage plan-bound
-(T-22)** — `DECISIONS.md` **LB-T22-3213**. Remaining helpers: CI job/gate
-graph well-formedness (`fold` ladders over jobs/gates/needs, Kahn-style
-acyclicity) — triage deferred to burn-down lane unless a reviewer flags a
-specific symbol as a new registry row.
+🟡 **coproduct dissolution** — `DECISIONS.md` **LB-P4-3213** → **§1.1 P4**.
+**`ci_id_occurrences` (80)** — 🟡 **List-op** (COUNTIF row) —
+**LB-P10-3213** → **P2**. **`ci_command_authority_ok` (163)** — 🟡
+**negative-coverage plan-bound (T-22)** — `DECISIONS.md` **LB-T22-3213**
+(in-file tag). **`ci_all_commands_authority_ok` (173)** — **dual** 🟡:
+**P2** / **LB-P10-3213** as an **`all`-shaped** `jobs` fold (same combinator
+class as **LB-P10-3213-ALL**) **and** **T-22** via the inner
+**`ci_command_authority_ok`** check (see **§1.1** workflow rollup **ALL**
+bullet).
+**Remaining `fn`s:** every other **🟡 list-op-shaped** helper is **already
+named** in **`DECISIONS.md` Part 7** (`LB-P10-3213-*` sub-rows) and rolled
+under **§1.1 P2** in the **§1.1 workflow (PR #3213) merge-gate rollup**
+paragraph — **MEMBER** /
+**ANY** / **ALL** / **COUNTIF** / **FILTER** / **FIND** as listed there
+(`ci_member`, `ci_symbol_resolves`, `ci_blocked`, the **five** `ci_all_*`
+predicates over jobs/gates including **`ci_all_commands_authority_ok`**,
+`ci_gate_id_occurrences`, `ci_eliminate_pass`, `ci_job_needs`).
+**Kahn** (`ci_kahn_fixpoint`, `ci_acyclic`) is **🟢 terminal** per DECISIONS
+(not a backlog deferral). **`ci_diagnostic`** / **`ci_pipeline_well_formed`**
+— orchestration + rejection plumbing (🟢 dissolution-class stance; T-22
+tags the authority/negative-coverage slice only).
 
 Carrier and emit-template covered by lane-wide 🟢 (2.1).
 
