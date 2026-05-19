@@ -41,10 +41,11 @@ use std::path::PathBuf;
 use v3_compiler::r3_gate_87_cementing_regen_runner_suites::r3_gate_87_cementing_regen_lens_names_for_runner_table;
 
 use v3_compiler::analyze_parallelism;
+use v3_compiler::analyze_workflow;
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
     Behavior, Declaration, FieldValue, LiteralBits, ParallelismUnsupportedKind, ValueBody,
-    WorkflowParallelismReport,
+    WorkflowIdempotencyReport, WorkflowParallelismReport,
 };
 use v3_compiler::lens_cost_target_realization::type_realization_meta;
 use v3_compiler::lens_effect_enumeration::{
@@ -241,6 +242,29 @@ fn r3_gate_87_parallelism_rust_receipt_literal_no_workflow_projection() {
 }
 
 #[test]
+fn r3_gate_87_idempotency_rust_receipt_literal_no_lane2_workflow() {
+    let dag =
+        compile_to_dag("let lit: Int = 7", "r3_gate_87_idempotency_receipt.v3").expect("compile");
+    let bind = dag
+        .nodes()
+        .iter()
+        .find_map(|n| match n {
+            Behavior::Bind(b) if b.name == "lit" => Some(b),
+            _ => None,
+        })
+        .expect("lit bind");
+    let report = analyze_workflow(&dag, bind.id);
+    assert!(
+        matches!(
+            &report,
+            WorkflowIdempotencyReport::IdempotencyUnsupported(detail)
+                if detail.variant_name == "Lane2WorkflowRoot"
+        ),
+        "unstaged literal should classify as Lane2WorkflowRoot unsupported, got {report:?}"
+    );
+}
+
+#[test]
 fn r3_gate_87_provenance_origin_rust_receipt_on_literal_bind() {
     let dag =
         compile_to_dag("let lit: Int = 7", "r3_gate_87_provenance_receipt.v3").expect("compile");
@@ -286,6 +310,11 @@ fn r3_gate_87_lower_helpers_lens_source_compiles() {
 #[test]
 fn r3_gate_87_parallelism_lens_source_compiles() {
     assert_lens_dag_compiles("src/v3/lenses/parallelism.dag");
+}
+
+#[test]
+fn r3_gate_87_idempotency_lens_source_compiles() {
+    assert_lens_dag_compiles("src/v3/lenses/idempotency.dag");
 }
 
 #[test]
