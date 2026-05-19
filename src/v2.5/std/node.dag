@@ -2,13 +2,14 @@
 // Scope: v2.5 substrate root — type kernel for the forked tree.
 // Owns: Symbol, Hash, Connective, Behavior, DeclarationKind, CompositeRole, NodeKind, EdgeLabel, Edge, Node, NodeFold, fold_node, EdgeDiscipline, connective_edge_discipline, edge_is_named, edge_is_positional, all_edges_named, all_edges_positional, name_occurrences, all_names_distinct, edges_conform, node_locally_well_formed, node_well_formed, is_empty_conj_root, Path, Edit, Diff.
 // Consumes: none.
+// Status: v2.5 Tier 0 draft.
 
 module v2_5.std.node
 
 type Symbol
 type Hash
 
-// 🟢 coproduct dissolution — Connective: type-form connective; closed-sum, v4-aligned 6-case.
+// 🟢 coproduct dissolution
 type Connective
   = Atom { identity: Symbol }
   | Conj
@@ -17,7 +18,7 @@ type Connective
   | Cardinality
   | Instantiation
 
-// 🟢 coproduct dissolution — Behavior: abstract computation kind; closed-sum, v4-aligned 5-case.
+// 🟢 coproduct dissolution
 type Behavior
   = Value
   | Transform
@@ -25,7 +26,7 @@ type Behavior
   | Loop
   | Bind
 
-// 🟡 coproduct dissolution — DeclarationKind: substrate-level declaration kinds; closed-sum, may expand if stage-types surface a kind not covered (e.g. service decl).
+// 🟡 coproduct dissolution — consumer:v2_5.std.stage_types
 type DeclarationKind
   = ModuleDecl
   | ImportDecl
@@ -33,20 +34,20 @@ type DeclarationKind
   | FnDecl
   | DataDecl
 
-// 🟡 coproduct dissolution — CompositeRole: structural-wrapper roles; closed-sum, may expand on stage-type demand.
+// 🟡 coproduct dissolution — consumer:v2_5.std.stage_types
 type CompositeRole
   = MatchArm
   | Pattern
   | StringInterp
 
-// 🟢 coproduct dissolution — NodeKind: top-level layer discriminator (declaration | type-form | computation | composite); closed-sum.
+// 🟢 coproduct dissolution
 type NodeKind
   = Declaration { kind: DeclarationKind }
   | TypeForm { connective: Connective }
   | Computation { behavior: Behavior }
   | Composite { role: CompositeRole }
 
-// 🟢 coproduct dissolution — EdgeLabel: per-edge name/position discipline; closed-sum.
+// 🟢 coproduct dissolution
 type EdgeLabel
   = Named { name: Symbol }
   | Positional
@@ -72,7 +73,7 @@ fn fold_node<R>(n: Node, algebra: NodeFold<R>) -> R {
   )
 }
 
-// 🟢 coproduct dissolution — EdgeDiscipline: structural well-formedness rule per Connective; closed-sum.
+// 🟢 coproduct dissolution
 type EdgeDiscipline
   = NoEdges
   | LabeledEdges
