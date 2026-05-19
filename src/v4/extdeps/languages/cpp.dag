@@ -1,7 +1,7 @@
 // src/v4/extdeps/languages/cpp.dag
 // Scope: C++ language primitive fact bundles.
-// Owns: CppIntegerSurfaceSpelling, CppTwosComplement, CppIntegerOverflowDisposition, CppScalar, cpp_bool_grounding.
-// Consumes: v4.std.logic.Bool, bool_boolean_algebra; v4.std.algebra.BooleanAlgebra; v4.extdeps.cpp_abi.CppIntegerWidth/CppTargetDataModel/CppTargetProfile.
+// Owns: CppSignedIntegerSurfaceSpelling, CppUnsignedIntegerSurfaceSpelling, CppPlainCharSurfaceSpelling, CppCodeUnitIntegerSurfaceSpelling, CppSignedIntegerWidthSelection, CppUnsignedIntegerWidthSelection, CppPlainCharWidthSelection, CppCodeUnitIntegerWidthSelection, CppTwosComplement, CppIntegerOverflowDisposition, CppScalar, cpp_bool_grounding.
+// Consumes: v4.std.logic.Bool, bool_boolean_algebra; v4.std.algebra.BooleanAlgebra; v4.extdeps.cpp_abi.CppIntegerWidth/CppPlainCharSignedness/CppTargetProfile.
 // Status: D2-REV/T29 forward reconcile; C++ integer facts are ABI-width-parametric, bool canonical-B decl-ref grounding stays 🟡 E-6(b) staging.
 
 module v4.extdeps.languages.cpp
@@ -10,30 +10,62 @@ import v4.std.logic { Bool, bool_boolean_algebra }
 import v4.std.algebra { BooleanAlgebra }
 import v4.extdeps.cpp_abi {
   CppIntegerWidth,
-  CppTargetDataModel,
+  CppPlainCharSignedness,
   CppTargetProfile
 }
 
 
 // 🟢 coproduct dissolution — DECISIONS.md T29-CPP-SCALAR-FORWARD.
-type CppIntegerSurfaceSpelling
-  = PlainChar
-  | SignedChar
-  | UnsignedChar
+type CppSignedIntegerSurfaceSpelling
+  = SignedChar
   | ShortInt
-  | UnsignedShortInt
   | Int
-  | UnsignedInt
   | LongInt
-  | UnsignedLongInt
   | LongLongInt
+
+// 🟢 coproduct dissolution — DECISIONS.md T29-CPP-SCALAR-FORWARD.
+type CppUnsignedIntegerSurfaceSpelling
+  = UnsignedChar
+  | UnsignedShortInt
+  | UnsignedInt
+  | UnsignedLongInt
   | UnsignedLongLongInt
-  | WCharT
+
+type CppPlainCharSurfaceSpelling
+
+// 🟢 coproduct dissolution — DECISIONS.md T29-CPP-SCALAR-FORWARD.
+type CppCodeUnitIntegerSurfaceSpelling
+  = WCharT
   | Char8T
   | Char16T
   | Char32T
 
 type CppTwosComplement
+
+type CppSignedIntegerWidthSelection {
+  spelling: CppSignedIntegerSurfaceSpelling
+  target_profile: CppTargetProfile
+  width: CppIntegerWidth
+}
+
+type CppUnsignedIntegerWidthSelection {
+  spelling: CppUnsignedIntegerSurfaceSpelling
+  target_profile: CppTargetProfile
+  width: CppIntegerWidth
+}
+
+type CppPlainCharWidthSelection {
+  spelling: CppPlainCharSurfaceSpelling
+  target_profile: CppTargetProfile
+  width: CppIntegerWidth
+  plain_char_signedness: CppPlainCharSignedness
+}
+
+type CppCodeUnitIntegerWidthSelection {
+  spelling: CppCodeUnitIntegerSurfaceSpelling
+  target_profile: CppTargetProfile
+  width: CppIntegerWidth
+}
 
 // 🟢 coproduct dissolution — DECISIONS.md T29-ABI + D2-REV.
 type CppIntegerOverflowDisposition
@@ -43,19 +75,19 @@ type CppIntegerOverflowDisposition
 // 🟢 coproduct dissolution — DECISIONS.md T29-CPP-SCALAR-FORWARD.
 type CppScalar
   = SignedIntegerScalar {
-      spelling: CppIntegerSurfaceSpelling,
-      target_profile: CppTargetProfile,
-      data_model: CppTargetDataModel,
-      width: CppIntegerWidth,
+      width_selection: CppSignedIntegerWidthSelection,
       signed_representation: CppTwosComplement,
       overflow_disposition: CppIntegerOverflowDisposition
     }
   | UnsignedIntegerScalar {
-      spelling: CppIntegerSurfaceSpelling,
-      target_profile: CppTargetProfile,
-      data_model: CppTargetDataModel,
-      width: CppIntegerWidth,
+      width_selection: CppUnsignedIntegerWidthSelection,
       overflow_disposition: CppIntegerOverflowDisposition
+    }
+  | PlainCharScalar {
+      width_selection: CppPlainCharWidthSelection
+    }
+  | CodeUnitIntegerScalar {
+      width_selection: CppCodeUnitIntegerWidthSelection
     }
   | BoolScalar
 
