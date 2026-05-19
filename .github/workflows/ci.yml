@@ -70,7 +70,9 @@ jobs:
     if: github.event.pull_request.draft != true
     needs: [affected]
     runs-on: ubicloud-standard-2
-    timeout-minutes: 25
+    # Includes folded v4 bootstrap gate when `affected.outputs.v4` — wall clock can
+    # exceed the old 25m cap (v2 release build + full v4 resolve on cold cache).
+    timeout-minutes: 40
     steps:
     - name: Checkout
       uses: actions/checkout@v4
@@ -158,6 +160,33 @@ jobs:
     - name: T-15 v4 bin main.dag smoke (live integration receipt)
       if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.v3 == 'true' || needs.affected.outputs.workflow_policy == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
       run: cargo test -p v3-compiler --test integration v4_bin_main_dag_smoke_test::v4_bin_main_dag_tokenizes_and_parses_with_trampoline_source_anchor -- --exact --quiet
+    # v4 bootstrap viability — historically a standalone job, but Ubicloud repeatedly
+    # dropped that runner mid `v2-compiler compile` (~5m wall) with a shutdown signal
+    # while this `ci` job stayed healthy. Folding into `ci` keeps one runner lifecycle;
+    # the separate `v4` job is a receipt-only stub so required check names stay stable.
+    - name: Cache v2-compiler binary (v4 bootstrap gate)
+      if: needs.affected.outputs.v4 == 'true'
+      id: v4-v2-bin
+      uses: actions/cache@v4
+      with:
+        path: target/release/v2-compiler
+        key: v2-compiler-bin-${{ runner.os }}-${{ hashFiles('src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}
+    - name: Build v2 compiler (v4 bootstrap gate)
+      if: needs.affected.outputs.v4 == 'true' && steps.v4-v2-bin.outputs.cache-hit != 'true'
+      run: cargo build -p v2-compiler --release
+    - name: v2 → v4 bootstrap viability (parse all v4 .dag files via v2)
+      if: needs.affected.outputs.v4 == 'true'
+      run: |
+        set -euo pipefail
+        rm -rf /tmp/v4-stage1
+        mkdir -p /tmp/v4-stage1
+        target/release/v2-compiler compile --source-root src/v4 --output-dir /tmp/v4-stage1 --target dag
+        echo "Bootstrap viability OK — v2 indexed and resolved all v4 modules."
+    - name: 'INTERIM (T-24 bridge) — v4 v2-run-preflight notice (run gate deferred T-22)'
+      if: needs.affected.outputs.v4 == 'true'
+      env:
+        V2_PREFLIGHT_SKIP_COMPILE: "1"
+      run: bash scripts/v2-run-preflight.sh
   # v2 fixed-point — runs only when src/v2/ is affected. v2 is restored as
   # comparison artifact + v4 bootstrap source (frozen-buildable). Verifies
   # that any modification to v2 preserves the self-host fixed-point property.
@@ -192,75 +221,18 @@ jobs:
       run: |
         set -euo pipefail
         cargo test -p v2-compiler-tests --release bootstrap_fixed_point -- --ignored --exact
-  # v4 bootstrap viability — verifies v2's compiled binary can still parse
-  # every v4 .dag file. v4 stage0 must stay in v2-syntax-compatible subset
-  # (per src/v4/workflow/bootstrap.dag bootstrap chain) until v4 self-compiles.
-  # This gate catches any v4 change that introduces syntax v2 can't parse.
+  # v4 — check name preserved for branch protection / dashboard. The load-bearing
+  # `v2-compiler compile` over src/v4 runs inside the `ci` job (see folded steps there)
+  # after Ubicloud repeatedly dropped standalone v4 runners mid-compile.
   v4:
     if: github.event.pull_request.draft != true && needs.affected.outputs.v4 == 'true'
-    needs: [affected]
-    # v2 release build + full v4 parse can exceed small-runner interactive budgets;
-    # align with the v3 lane host class to reduce wall clock and preemption tail.
-    runs-on: ubicloud-standard-8
-    timeout-minutes: 15
+    needs: [affected, ci]
+    runs-on: ubicloud-standard-2
+    timeout-minutes: 5
     steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 1
-    - name: Setup Rust
-      uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
-      with:
-        cache: false
-        rustflags: ''
-    - name: Cache Cargo (v4 — shares with v2 since we build v2 binary)
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.cargo/registry/index/
-          ~/.cargo/registry/cache/
-          ~/.cargo/git/db/
-          target/
-        key: cargo-v2-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('src/v2/**') }}
-        restore-keys: |
-          cargo-v2-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-
-          cargo-v2-${{ runner.os }}-
-    # Cache the built v2-compiler BINARY, keyed on the frozen bootstrap
-    # seed. src/v2/ is touched almost never (and CI-gated when it is), so
-    # this key is near-permanently stable — a hit skips the cold ~1m
-    # v2-compiler rebuild entirely. Caching target/ alone is unreliable:
-    # cargo's freshness check over a cache-restored target/ frequently
-    # recompiles anyway; caching the output artifact and not invoking
-    # cargo at all sidesteps that.
-    #
-    # Interim MANUAL key. The structural form is content_hash() over the
-    # src/v2/stage0 input subgraph — see src/v4/lens/affected_set.dag and
-    # src/v4/workflow/ci.dag. Once workflow/ci.dag (T-24) emits this
-    # workflow, the key becomes an emitted content-hash, not a hashFiles
-    # glob.
-    - name: Cache v2-compiler binary
-      id: v2-bin
-      uses: actions/cache@v4
-      with:
-        path: target/release/v2-compiler
-        # Root Cargo.toml is included: its [profile.release] settings
-        # affect the v2-compiler binary without touching Cargo.lock or
-        # src/v2/stage0/**.
-        key: v2-compiler-bin-${{ runner.os }}-${{ hashFiles('src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}
-    - name: Build v2 compiler (bootstrap stage minus one)
-      if: steps.v2-bin.outputs.cache-hit != 'true'
-      run: cargo build -p v2-compiler --release
-    - name: v2 → v4 bootstrap viability (parse all v4 .dag files via v2)
+    - name: v4 receipt (bootstrap gate runs in ci job)
       run: |
-        set -euo pipefail
-        rm -rf /tmp/v4-stage1
-        mkdir -p /tmp/v4-stage1
-        target/release/v2-compiler compile --source-root src/v4 --output-dir /tmp/v4-stage1 --target dag
-        echo "Bootstrap viability OK — v2 indexed and resolved all v4 modules."
-    - name: 'INTERIM (T-24 bridge) — v4 v2-run-preflight notice (run gate deferred T-22)'
-      env:
-        V2_PREFLIGHT_SKIP_COMPILE: "1"
-      run: bash scripts/v2-run-preflight.sh
+        echo "::notice::v4 bootstrap viability + v2-run-preflight ran inside the ci job when v4 is affected."
   # v3 — FROZEN 2026-05-15 pending v4 program. Runs only when src/v3/ or dsl/
   # is affected (or on push-to-main for trunk verification). v3 is no longer
   # the active compiler; v4 program supersedes it (see PR #3147).
