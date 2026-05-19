@@ -29,7 +29,6 @@ import v2.std.core { SourceSpan }
 
 type GeneratedPosition {
   line: Int
-  column: Int?
 }
 
 type SpanMapping {
@@ -114,16 +113,6 @@ fn event_node_id(event: TraceEvent) -> String {
   event.point.node_id
 }
 
-fn event_is_error(event: TraceEvent) -> Bool {
-  match event.observation {
-    TraceEntered { inputs: _ } => false
-    TraceCompleted { result: r } => match r {
-      TraceReturned { output: _ } => false
-      TraceFailed { message: _ } => true
-    }
-  }
-}
-
 // =========================================================================
 // F2: Trace filtering and replay
 //
@@ -190,7 +179,17 @@ fn event_matches_span_filter(event: TraceEvent, span: SpanRange?) -> Bool {
 }
 
 fn event_matches_error_filter(event: TraceEvent, errors_only: Bool) -> Bool {
-  if errors_only { event_is_error(event: event) } else { true }
+  if errors_only {
+    match event.observation {
+      TraceEntered { inputs: _ } => false
+      TraceCompleted { result: r } => match r {
+        TraceReturned { output: _ } => false
+        TraceFailed { message: _ } => true
+      }
+    }
+  } else {
+    true
+  }
 }
 
 fn event_matches_filter(event: TraceEvent, trace_filter: TraceFilter) -> Bool {
@@ -278,7 +277,7 @@ type SourceMap {
 }
 
 fn generated_position_at_line(line: Int) -> GeneratedPosition {
-  GeneratedPosition { line: line, column: none }
+  GeneratedPosition { line: line }
 }
 
 fn mapping_applies_to_position(mapping: SpanMapping, generated: GeneratedPosition) -> Bool {
