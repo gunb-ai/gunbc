@@ -27,7 +27,7 @@ data v4_stage1_binary: Symbol = v4_stage1_binary
 data v4_stage2_binary: Symbol = v4_stage2_binary
 data v2_pipeline: Symbol = v2_pipeline
 data bit_identical_check: Symbol = bit_identical_check
-// 🟡 cache-hash scaffold — B1 content_hash is the owner; DECISIONS.md B1.
+// RULING-1: 🟡 needs-more-work — symbolic hash pins.
 data v4_stage0_hash: Hash = v4_stage0_hash
 data v4_stage1_hash: Hash = v4_stage1_hash
 data v4_stage2_hash: Hash = v4_stage2_hash
@@ -71,7 +71,6 @@ fn bs_diagnostic(reason: Symbol) -> Diagnostic {
 }
 
 fn bs_list_eq(a: List<Symbol>, b: List<Symbol>) -> Bool {
-  // 🟡 List-op dissolution (Practice 10) — DECISIONS.md LB-P10-3213
   (free_monoid_length(xs: a) == free_monoid_length(xs: b))
     && free_monoid_forall(xs: a, predicate: fn(x) {
          free_monoid_count_equal(xs: b, item: x, eq: fn(left, right) { left == right }) != 0
