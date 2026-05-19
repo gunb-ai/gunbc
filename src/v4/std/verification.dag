@@ -1,6 +1,6 @@
 // src/v4/std/verification.dag
 // Scope: Closed TestClaim schema — AssertKind, TestgenTier/Layer, TestClassification, ImpossibleBugClass, T19ManualAnchorKey, TestClaim fields.
-// Owns: AssertKind TestgenTier TestgenLayer TestClassification ImpossibleBugClass T19ManualAnchorKey TestClaim t19_present_manual_anchor_key
+// Owns: AssertKind TestgenTier TestgenLayer TestClassification ImpossibleBugClass T19ManualAnchorKey TestClaim
 // Consumes: v4.std.node v4.std.diagnostic
 // Status: T-3 modeled; substrate extension or file split = operator STOP.
 
@@ -10,13 +10,6 @@ module v4.std.verification
 import v4.std.node { Node, Symbol }
 import v4.std.diagnostic {
   Outcome,
-  Produced,
-  Rejected,
-  Diagnostic,
-  Unavailable,
-  UserInputBoundary,
-  Textual,
-  WholeFile
 }
 
 
@@ -84,37 +77,3 @@ type TestClaim {
   classification: TestClassification
 }
 
-
-data t19_verification_schema_file: Symbol = t19_verification_schema_file
-
-
-data t19_manual_anchor_absent_assert_kind: Symbol = t19_manual_anchor_absent_assert_kind
-
-
-fn t19_manual_anchor_absent_assert_kind_diagnostic() -> Diagnostic {
-  Diagnostic {
-    reason: t19_manual_anchor_absent_assert_kind,
-    at: Textual { file: t19_verification_schema_file, extent: WholeFile },
-    correction: Unavailable { reason: UserInputBoundary }
-  }
-}
-
-
-fn t19_present_manual_anchor_key(key: T19ManualAnchorKey) -> Outcome<T19ManualAnchorKey> {
-  match key {
-    T19ManualAnchorAbsent =>
-      Rejected { diagnostic: t19_manual_anchor_absent_assert_kind_diagnostic() }
-    T19ManualTcConjEmpty => Produced { value: T19ManualTcConjEmpty }
-    T19ManualTcDisjEmpty => Produced { value: T19ManualTcDisjEmpty }
-    T19ManualTcArrowTwoConj => Produced { value: T19ManualTcArrowTwoConj }
-    T19ManualTcCardinalityEmpty => Produced { value: T19ManualTcCardinalityEmpty }
-    T19ManualTcInstantiationEmpty => Produced { value: T19ManualTcInstantiationEmpty }
-    T19ManualTcConjEqualsRefl => Produced { value: T19ManualTcConjEqualsRefl }
-    T19ManualNatAddLeftIdentity => Produced { value: T19ManualNatAddLeftIdentity }
-    T19ManualNatAddRightIdentity => Produced { value: T19ManualNatAddRightIdentity }
-    T19ManualNatAddAssociativity => Produced { value: T19ManualNatAddAssociativity }
-    T19ManualNatMulLeftIdentity => Produced { value: T19ManualNatMulLeftIdentity }
-    T19ManualNatMulAnnihilator => Produced { value: T19ManualNatMulAnnihilator }
-    T19ManualNatMulAssociativity => Produced { value: T19ManualNatMulAssociativity }
-  }
-}

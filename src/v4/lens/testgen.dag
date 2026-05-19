@@ -1,6 +1,6 @@
 // src/v4/lens/testgen.dag
 // Scope: T-19 testgen — P2 manual-anchor join; Generator carries kind + anchor + classification + subject slot.
-// Owns: Generator TestgenConcept manual_test_claim_for_manual_anchor TypeConstructionSubject AlgebraLawSubject DiagnosticExhaustivenessSubject LensApplicabilitySubject BidirectionalRoundtripSubject
+// Owns: Generator TestgenConcept manual_test_claim_for_manual_anchor testgen_concept_for_manual_claim TypeConstructionSubject AlgebraLawSubject DiagnosticExhaustivenessSubject LensApplicabilitySubject BidirectionalRoundtripSubject
 // Consumes: v4.std.node v4.std.verification v4.test.claim.manual.connective_anchors v4.test.claim.manual.nat_law_anchors
 // Status: Wave-0 modeled; M2 merge compile + eval T-22.
 
@@ -11,7 +11,6 @@ import v4.std.verification {
   TestClassification,
   AssertKind,
   TestClaim,
-  t19_present_manual_anchor_key,
   T19ManualAnchorKey,
   T19ManualAnchorAbsent,
   T19ManualTcConjEmpty,
@@ -140,6 +139,12 @@ fn t19_manual_anchor_absent_bootstrap_diagnostic() -> Diagnostic {
 }
 
 
+// 🟡 gated — INVARIANTS P2 / `src/v4/TASKS.md` § T-19 Phase-1.5 (`t19_manual_anchor_manifest.dag` bullets, lines 780–783):
+// `manual_test_claim_for_manual_anchor` is a closed Wave-0 **key→claim** join (twelve `Produced` arms + `T19ManualAnchorAbsent` fail-closed),
+// not a canonical indexed query materialized over `TestClaim.t19_anchor`. Dissolve-on-arrival: fold this table into manifest-backed lookup /
+// reflection once **T-19 — `lens/testgen.dag` — M2 materialization band** + **M2 cross-file loading + literal validation** land (TASKS §T-19
+// `Retirement` paragraph, same subsection), per the P2 bijection rule (no parallel slug tables vs fields already on `TestClaim`).
+
 fn manual_test_claim_for_manual_anchor(key: T19ManualAnchorKey) -> Outcome<TestClaim> {
   match key {
     T19ManualAnchorAbsent =>
@@ -160,8 +165,8 @@ fn manual_test_claim_for_manual_anchor(key: T19ManualAnchorKey) -> Outcome<TestC
 }
 
 
-fn testgen_concept_for_manual_anchor(key: T19ManualAnchorKey) -> Outcome<TestgenConcept> {
-  match key {
+fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept> {
+  match claim.t19_anchor {
     T19ManualAnchorAbsent =>
       Rejected { diagnostic: t19_manual_anchor_absent_bootstrap_diagnostic() }
     T19ManualTcConjEmpty =>
@@ -267,23 +272,19 @@ fn testgen_concept_for_manual_anchor(key: T19ManualAnchorKey) -> Outcome<Testgen
 fn bootstrap_claim_generator_for_manual_anchor(
   key: T19ManualAnchorKey
 ) -> Outcome<Generator<TestgenConcept>> {
-  match t19_present_manual_anchor_key(key: key) {
+  match manual_test_claim_for_manual_anchor(key: key) {
     Rejected { diagnostic: d } => Rejected { diagnostic: d }
-    Produced { value: present } =>
-      match manual_test_claim_for_manual_anchor(key: present) {
+    Produced { value: claim } =>
+      match testgen_concept_for_manual_claim(claim: claim) {
         Rejected { diagnostic: d } => Rejected { diagnostic: d }
-        Produced { value: claim } =>
-          match testgen_concept_for_manual_anchor(key: present) {
-            Rejected { diagnostic: d } => Rejected { diagnostic: d }
-            Produced { value: slot } =>
-              Produced {
-                value: Generator {
-                  classification: claim.classification,
-                  kind: claim.kind,
-                  t19_anchor: claim.t19_anchor,
-                  slot: slot,
-                }
-              }
+        Produced { value: slot } =>
+          Produced {
+            value: Generator {
+              classification: claim.classification,
+              kind: claim.kind,
+              t19_anchor: claim.t19_anchor,
+              slot: slot,
+            }
           }
       }
   }
