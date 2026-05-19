@@ -28,18 +28,21 @@ data v4_stage2_binary: Symbol = v4_stage2_binary
 data v2_pipeline: Symbol = v2_pipeline
 data bit_identical_check: Symbol = bit_identical_check
 
+// RULING-1: 🟢 pretty-much-done — compiler-of-record chain.
 type CompileStage {
   consumes: List<Symbol>
   produces: Symbol
   compiled_by: Symbol
 }
 
+// RULING-1: 🟢 pretty-much-done — fixed-point assertion endpoint.
 type FixptStage1Stage2 {
   left: Symbol
   right: Symbol
   via: Symbol
 }
 
+// RULING-1: 🟢 pretty-much-done — canonical bootstrap chain.
 type BootstrapPlan {
   seed: CompileStage
   self0: CompileStage

@@ -481,10 +481,10 @@ def main() -> None:
         ),
         (
             "src/v4/extdeps/languages/ptx.dag",
-            "// Scope: NVIDIA PTX ISA 8.5 SIMT structural classifiers (T-4.14).",
+            "// Scope: NVIDIA PTX ISA 8.5 SIMT structural classifiers (param/shared state, registers, thread hierarchy).",
             "// Anchor: https://docs.nvidia.com/cuda/pdf/ptx_isa_8.5.pdf — TOC https://docs.nvidia.com/cuda/parallel-thread-execution/index.html",
             "// Consumes: std/nat.dag (Nat); std/cardinality.dag (PositiveUpperBoundedNat).",
-            "// Status: T-4.14 PASS (IN-B).",
+            "// Status: structural carriers present; conformance detail in DECISIONS.md Part 6.",
         ),
         (
             "src/v4/std/integer.dag",
