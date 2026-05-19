@@ -16,7 +16,11 @@
 > 10 review heuristic. Non-comment receipts only: [INVARIANTS.md](../INVARIANTS.md)
 > §P5(b), [`src/v4/TASKS.md`](../src/v4/TASKS.md),
 > [`docs/modeling/grounding-worked-examples.md`](modeling/grounding-worked-examples.md)
-> (*coincide*). Cost-of-change = 1 per [CLAUDE.md](../CLAUDE.md).
+> (*coincide*). **Bounded census (not a second mark ledger):**
+> [`docs/audit/coproduct-anemia-inventory.md`](audit/coproduct-anemia-inventory.md)
+> is the named v4 coproduct + grounding-axis inventory under the same
+> **`src/v4/TASKS.md`** § Watch row — cite substrate `.dag` paths; do not paste a
+> competing repo-wide 🟢/🟡 sweep outside that §. Cost-of-change = 1 per [CLAUDE.md](../CLAUDE.md).
 >
 > This document supplements, rather than parallels, INVARIANTS.md's
 > taxonomy. Each practice names the invariant principle it serves.
