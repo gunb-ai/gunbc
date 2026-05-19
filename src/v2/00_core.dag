@@ -1309,6 +1309,27 @@ fn map_children(node: Node, transform: fn(Node) -> Node) -> Node {
 }
 
 // =========================================================================
+// Node catamorphism -- the structural fold over a Node tree.
+//
+// fold_node is the derived-operation primitive for "compute a value by
+// recursing the children spine". Hand-rolled any-descendant / collect /
+// search recursions over node.children dissolve onto it (Practice 10).
+// Mirrors src/v4/std/node.dag fold_node; v2 Node carries children directly
+// as List<Node> with no Edge indirection.
+// =========================================================================
+
+type NodeFold<R> {
+  init: fn(Node) -> R
+  step: fn(R, Node, R) -> R
+}
+
+fn fold_node<R>(n: Node, algebra: NodeFold<R>) -> R {
+  fold(n.children, init: algebra.init(n), f: (acc, child) =>
+    algebra.step(acc, child, fold_node(n: child, algebra: algebra))
+  )
+}
+
+// =========================================================================
 // Self-call detection -- Node expression walkers
 //
 // These functions walk Node expr_data trees to detect self-recursive calls
@@ -1316,13 +1337,20 @@ fn map_children(node: Node, transform: fn(Node) -> Node) -> Node {
 // is_self_recursive and has_non_tail_self_call on Node.
 // =========================================================================
 
+// "Does this call site target fn_name anywhere in the tree" -- a fold_node
+// disjunction over the per-node "is this a self-call site" predicate.
+// expr_has_non_tail_self_call below stays a hand-written recursion: it is
+// genuinely irregular (the call graph is not the data graph -- tail position
+// flips per expr kind), so it is not a catamorphism.
 fn expr_has_self_call(texpr: Node, fn_name: String, source_indices: Map<String, NewlineIndex>) -> Bool {
-  match texpr.expr_data {
-    ExprCall { call_semantics: _, descent_evidence: _ } =>
-      if expr_call_func_at(texpr: texpr, source_indices: source_indices) == fn_name { true }
-      else { texpr.children |> any(child => expr_has_self_call(texpr: child, fn_name: fn_name, source_indices: source_indices)) }
-    _ => texpr.children |> any(child => expr_has_self_call(texpr: child, fn_name: fn_name, source_indices: source_indices))
-  }
+  fold_node(n: texpr, algebra: NodeFold {
+    init: (n) => match n.expr_data {
+      ExprCall { call_semantics: _, descent_evidence: _ } =>
+        expr_call_func_at(texpr: n, source_indices: source_indices) == fn_name
+      _ => false
+    },
+    step: (acc, _, child_result) => acc || child_result
+  })
 }
 
 fn expr_has_non_tail_self_call(texpr: Node, fn_name: String, in_tail: Bool, source_indices: Map<String, NewlineIndex>) -> Bool {
