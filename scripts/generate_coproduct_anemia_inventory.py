@@ -325,9 +325,9 @@ def main() -> None:
     lines_out.append(f"- **GROUNDED:** {len(grounded)}")
     lines_out.append(f"- **ANEMIC:** {len(anemic)}")
     lines_out.append("- **Ten worst (anemic-worst-first heuristic: col4 NONE > spec > yellow; then label-only; then 🔴 filing > 🟡 > 🟢):**")
-    for r in worst10:
+    for i, r in enumerate(worst10, 1):
         lines_out.append(
-            f"  1. `{r['path']}` **`{r['name']}`** — {r['c4']} / {r['shape']} / {r['c7']}"
+            f"  {i}. `{r['path']}` **`{r['name']}`** — {r['c4']} / {r['shape']} / {r['c7']}"
         )
     lines_out.append("")
     lines_out.append("## Operator exemplars (verbatim)")
@@ -343,7 +343,7 @@ def main() -> None:
     lines_out.append("## Inventory (worst-first within ANEMIC, then GROUNDED alphabetically by file)")
     lines_out.append("")
     lines_out.append(
-        "| file | type/concept | shape (coproduct\\|label-only) | grounding class | ANEMIC vs GROUNDED + reason | what GROUNDED requires here | class (🔴\\|🟡\\|🟢) |"
+        "| file | type/concept | shape (coproduct vs label-only) | grounding class | ANEMIC vs GROUNDED + reason | what GROUNDED requires here | class (filing) |"
     )
     lines_out.append("| --- | --- | --- | --- | --- | --- | --- |")
 
@@ -351,7 +351,6 @@ def main() -> None:
     sorted_grounded = sorted(grounded, key=lambda r: (r["path"], r["name"]))
 
     for r in sorted_anemic + sorted_grounded:
-        c5r = f"{r['c5']} — {r['c6']}"
         lines_out.append(
             "| "
             + " | ".join(
@@ -361,8 +360,8 @@ def main() -> None:
                     f"`{r['name']}`",
                     r["shape"],
                     r["c4"],
-                    c5r,
-                    r["c6"],
+                    r["col5"],
+                    r["col6"],
                     r["c7"],
                 )
             )
