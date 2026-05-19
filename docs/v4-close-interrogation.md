@@ -1200,7 +1200,7 @@ The original `rust.dag` / `python.dag` / `go.dag` trio is joined by additional l
 
 - `extdeps/languages/cpp.dag` — Anchor: ISO/IEC 14882 (C++ standard); subsumes C subset (**no separate `c.dag`** unless C-only consumer demand surfaces).
 - `extdeps/languages/typescript.dag` — Anchor: TypeScript Handbook + ECMA-262.
-- `extdeps/languages/llvm_ir.dag` — Anchor: LLVM 18 LangRef (`TASKS.md` **T-4.12** — down-stack SSA / Φ structural vocabulary; file header `T-4.12 PASS`).
+- `extdeps/languages/llvm_ir.dag` — Anchor: LLVM 18 LangRef (`TASKS.md` **T-4.12** — down-stack SSA / Φ structural vocabulary). The file header is **domain + ledger pointers** only (Scope, Imports, `DECISIONS.md` Part 6 row anchors); **parse/resolve posture** is the **§14 Parse/resolve receipt** above (whole-tree `v2-compiler compile --source-root src/v4` / CI `v4:`), not a duplicated in-file PASS banner.
 
 ---
 
