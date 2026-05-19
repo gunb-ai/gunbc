@@ -2,7 +2,7 @@
 // Scope: Lean 4 language model for PROOF-1 termination export.
 // Owns: LeanDeclarationKind, LeanName, LeanLevel, LeanLevelRef, LeanLevelNode, LeanBinderInfo, LeanBinder, LeanTermRef, LeanTermNode, LeanTermForm, LeanMatchAlternative, LeanTerminationMeasure, LeanTerminationBy, LeanDecreasingProof, LeanTerminationClause, LeanDefinitionTermination, LeanProofArtifact, LeanFidelityFeature, LeanFidelityDisposition, LeanProofCheckSemantics, Symbol, LeanIntKind, LeanIntWidth, LeanScalar, lean_bool_grounding.
 // Consumes: List, Bool, bool_boolean_algebra; v4.std.algebra.BooleanAlgebra.
-// Status: D2-REV; 🟢 P4-3208 — DECISIONS.md (lean scalar + ledger); bool grounded (canonical-B, v2-verified): lean_bool_grounding references the single std BooleanAlgebra<Bool> authority; classifier fact = LeanScalar.BoolScalar.
+// Status: D2-REV; 🟢 P4-3208 — DECISIONS.md (lean scalar + ledger); bool — canonical-B decl-ref `lean_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra` (single std authority) declared + v2-parse/resolve-verified (0-diag, v2 bootstrap gate). P2/E-6: STAGING, not landed authority — no same-PR consumer (canonical fold specified-not-realized). Classifier fact = LeanScalar.BoolScalar.
 
 module v4.extdeps.languages.lean
 

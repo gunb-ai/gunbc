@@ -319,9 +319,9 @@ data rust_bool_grounding: GroundingMap<RustBool> = GroundingMap {
 machine-readable-inhabitance bar forecloses. "Identity is a claim
 discharged by the fold, never an assertion."
 
-**The landed shape (canonical-B, v2-verified).** The grounding is a
-real, fold-traversable edge that **references the single std authority**
-for the shared structure:
+**The ratified shape (canonical-B) — declaration present, P2/E-6
+staging.** The grounding *declaration* is a real, fold-traversable edge
+that **references the single std authority** for the shared structure:
 
 ```
 import v4.std.logic { Bool, bool_boolean_algebra }
@@ -344,15 +344,21 @@ primitive directly (`type RustNever = Never`) — zero inhabitants, no
 structure above the primitive, so the primitive identity *is* the
 complete grounding (the degenerate base of the same discipline).
 
-**Verified scope (honest).** This compiles **0 diagnostics under the
-real bootstrap gate** — `v2-compiler compile --source-root src/v4`
-(ci.yml `v4:` job; 72 modules resolved). That is the *parse/resolve*
-half of bootstrap viability; the v2-**run** gate is T-22-deferred, so
-this is grounding-shape-verified, **not** execute-verified — claimed no
+**Verified scope (honest) — declaration, not landed authority.** The
+declaration compiles **0 diagnostics under the real bootstrap gate** —
+`v2-compiler compile --source-root src/v4` (ci.yml `v4:` job; 72 modules
+resolved). That is the *parse/resolve* half of bootstrap viability; the
+v2-**run** gate is T-22-deferred. Crucially, **per INVARIANTS P2 / E-6
+this is STAGING, not landed authority**: a declaration with no same-PR
+consumer is staging — and no consumer reads `<lang>_bool_grounding`,
+because the canonical/coincidence fold (the consumer) is
+*specified-not-realized* (`node.dag` B1-CANON contract; the fold is
+`[MODELED]`). So the *shape* is the ratified canonical-B decl-ref and it
+is parse-verified; the *authority state* is consumer-gated — claimed no
 further. (Aside: the frozen v3 interim parse-ratchets reject decl-ref
-`data` bodies — a v3-only artifact; v3 is *not* in the bootstrap chain.
-Their dissolution is a tracked governance followup, orthogonal to this
-grounding.)
+`data` bodies — a v3-only artifact, v3 is *not* in the bootstrap chain;
+they are **dissolved in this PR** under operator authorization, with the
+v2 `v4:` job as the replacement parse gate.)
 
 **The level spectrum — bool vs int (the lesson).** Same discipline,
 different starting level:

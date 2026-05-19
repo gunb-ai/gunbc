@@ -2,7 +2,7 @@
 // Scope: TypeScript 5.9 + ECMA-262 ES2025 primitive scaffold.
 // Owns: TsEcma262NumericPrimitiveKind, TsEcma262PrimitiveOperationSemantics, ts_bool_grounding.
 // Consumes: v4.std.logic.Bool, bool_boolean_algebra; v4.std.algebra.BooleanAlgebra.
-// Status: bool grounded (canonical-B, v2-verified): ts_bool_grounding references the single std BooleanAlgebra<Bool> authority. Non-bool numeric primitives still 🟡 gated — feature: T-4 fact-bundle Phase-3 rework after T-3/T-29/T-30/T-25-core.
+// Status: bool — canonical-B decl-ref `ts_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra` (single std authority) declared + v2-parse/resolve-verified (0-diag, v2 bootstrap gate). P2/E-6: STAGING, not landed authority — no same-PR consumer (canonical fold specified-not-realized). Non-bool numeric primitives still 🟡 gated — feature: T-4 fact-bundle Phase-3 rework after T-3/T-29/T-30/T-25-core.
 
 module v4.extdeps.languages.typescript
 

@@ -2,7 +2,7 @@
 // Scope: Go language spec surface (scalar width/kind sums, channel direction, export, cost shape, partial D2 resolver); L-2 pin go1.26 via Anchor.
 // Owns: SignedIntWidth, UnsignedIntWidth, GoFloatWidth, GoComplexWidth, GoScalarKind, GoScalar, GoChannelDirection, GoExportLocus, GoExportStatus, GoChannel, GoCost, GoBuiltinIntegerArithmeticOverflow, GoIntegerOverflowDisposition, go_bool_grounding.
 // Consumes: v4.std.node.Symbol; v4.std.logic.Bool, bool_boolean_algebra; v4.std.algebra.BooleanAlgebra; kernel-ambient Int (STRUCTURE.md traceability).
-// Status: extdeps go slice; bool grounded (canonical-B, v2-verified): go_bool_grounding references the single std BooleanAlgebra<Bool> authority; classifier fact = GoScalar.BoolScalar; numeric D2a rows deferred per DECISIONS.md D2-REV and resolver.dag; no D1 ops in-file.
+// Status: extdeps go slice; bool — canonical-B decl-ref `go_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra` (single std authority) declared + v2-parse/resolve-verified (0-diag, v2 bootstrap gate). P2/E-6: STAGING, not landed authority — no same-PR consumer (canonical fold specified-not-realized). Classifier fact = GoScalar.BoolScalar; numeric D2a rows deferred per DECISIONS.md D2-REV and resolver.dag; no D1 ops in-file.
 // Anchor: https://go.dev/ref/spec
 // Ledger: DECISIONS.md Part 6 (PR #3229): CP-3229-GREEN-TERMINAL.
 
