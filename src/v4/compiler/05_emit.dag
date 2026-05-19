@@ -131,20 +131,22 @@
 //      endpoints' views of a domain type diverge (they cannot, given
 //      gate #28 — this Acceptance proves the impossibility is structural).
 //
-// I/O — Owns (immutable contract; grounded in merged `00_compile.dag` /
-//   `05_emit.dag` `Owns`, NOT a TASKS invention — keep `Result<…,
-//   Diagnostic>` here; do NOT standardize to `Outcome<…>` without
-//   changing `00_compile.dag` in the same commit train).
+// I/O — Owns (immutable contract; SINGLE temporal authority — the
+//   pending CP-1b / `00_compile.dag` train, not "already merged Owns"):
 //
-//   SUBSTRATE-SPELLING GUARDRAIL (contract-honesty): `Result<…,
-//   Diagnostic>` here is the TASKS / orchestrator-`Owns` spelling. The
-//   landed fail-closed carrier in `std/diagnostic.dag` TODAY is
-//   `Outcome<T>` (DECISIONS.md item I) — there is NO `Result<ok,err>`
-//   `.dag` type yet. A `Result` spelling enters substrate only when the
-//   CP-1b / `00_compile.dag` train (incl. the TargetSpec↔TargetModel
-//   freeze) explicitly lands it. Until that train merges, read the
-//   `Consumes` `std/diagnostic.dag` line as `Outcome<T>`-backed; this
-//   header does NOT claim `Result` already lives in `diagnostic.dag`.
+//   `Result<…, Diagnostic>` below is the TASKS / orchestrator-target
+//   spelling that `00_compile.dag` / `05_emit.dag` `Owns` will carry
+//   once the CP-1b / `00_compile.dag` train (incl. the
+//   TargetSpec↔TargetModel freeze) freezes it. It is NOT yet grounded
+//   in merged `Owns`: at HEAD both files are bare scaffolds (`Owns:
+//   none.`), and the landed fail-closed carrier in `std/diagnostic.dag`
+//   is `Outcome<T>` (DECISIONS.md item I) — there is no `Result<ok,err>`
+//   `.dag` type today. One authority, one tense: this header states the
+//   forward contract the train will land; it does NOT claim `Result`
+//   already lives in merged `Owns` or in `diagnostic.dag`. Do NOT
+//   standardize the spelling to `Outcome<…>` independently — the
+//   spelling is settled with `00_compile.dag` in that same train, not
+//   here.
 //
 //   - emit: (InferredTree, TargetModel) -> Result<TargetSource, Diagnostic>
 //       the emit boundary / U1 Realize phase; structural inverse of
@@ -157,10 +159,10 @@
 //   STOP signal):
 //   - std/node.dag           — the universal `Node` IR (gate #28: ONE tree)
 //   - std/diagnostic.dag     — fail-closed branch carrier (`Outcome<T>`
-//                              today; the `Result` spelling is the
-//                              orchestrator `Owns` alignment pending the
-//                              CP-1b / `00_compile.dag` train — see the
-//                              substrate-spelling guardrail above)
+//                              today, DECISIONS.md item I; the `Result`
+//                              spelling is the pending-train forward
+//                              contract — see the single-temporal-
+//                              authority note in the I/O block above)
 //   - extdeps/languages/{rust,python,go,cpp,typescript}.dag
 //                            — the ×5 Shape-A grammar-as-data models
 //                              (inverse walk = emit; never a template)
