@@ -2,9 +2,7 @@
 // Scope: Python 3.14 Reference surface (flat scalar coproduct, singleton kinds, cost shape, partial D2 resolver).
 // Owns: PythonSingletonKind, PythonScalar, PythonCost, py_bool_grounding.
 // Consumes: Kernel-ambient Int; v4.std.logic.Bool, bool_boolean_algebra; v4.std.algebra.BooleanAlgebra; std/integer, std/float, std/cardinality when T-3 alias rows land (DECISIONS.md D2-REV).
-// Bool: canonical-B decl-ref grounding (truth facet; int-subtype build-up = BoolScalar) — 🟡 E-6(b) staging (scaffold at decl; ledger DECISIONS.md/§0).
-// Status: extdeps python slice; numeric overflow and resolver deferrals per DECISIONS.md D2-REV + Part 6 (PR #3229 · CP-3229-GREEN-TERMINAL); principal int unbounded—no overflow carrier in-file.
-// Anchor: https://docs.python.org/3.14/reference/
+// Status: extdeps python slice; bool canonical-B decl-ref grounding is 🟡 E-6(b) staging; numeric overflow/resolver deferrals per DECISIONS.md D2-REV + Part 6; principal int unbounded—no overflow carrier in-file.
 
 module v4.extdeps.languages.python
 
@@ -13,25 +11,31 @@ import v4.std.algebra { BooleanAlgebra }
 
 // 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
 type PythonSingletonKind
-  = NoneT
-  | NotImplementedT
-  | EllipsisT
+  =
+  NoneT
+  |
+  NotImplementedT
+  |
+  EllipsisT
 
 // 🟢 coproduct dissolution — DECISIONS.md Part 6 · SL-3309-PYTHON-SCALAR-RESEED.
 type PythonScalar
-  = IntScalar
-  | FloatScalar
-  | ComplexScalar
-  | BoolScalar
-  | Singleton { kind: PythonSingletonKind }
+  =
+  IntScalar
+  |
+  FloatScalar
+  |
+  ComplexScalar
+  |
+  BoolScalar
+  |
+  Singleton { kind: PythonSingletonKind }
 
-type PythonCost {
+type PythonCost
+{
   operation_cost: Int
   allocation_cost: Int
 }
 
-// 🟢 Singleton / `Unit` D2a slice — DECISIONS.md §PR-3252-extdeps-deferrals + §PR-3252-cardinality-std (Practice 9).
-
-// Anchor: https://docs.python.org/3.14/library/stdtypes.html#boolean-type-bool
 // 🟡 canonical-B decl-ref (truth facet; int-subtype build-up = BoolScalar) · E-6(b) bounded-exception · scaffold feature:canonical-b-grounding-consumer · dissolve-on: B1-CANON+zip-fold consume (ledger: DECISIONS.md B1·T-9/C1 · grounding-worked-examples.md §0)
 data py_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
