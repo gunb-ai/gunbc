@@ -455,6 +455,10 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // R3 gate #87: unit tests for `tests/integration.rs` wiring scanners (split from retired
     // `cementing_lens_registry_dispatch_test.rs`).
     "src/v3/compiler/tests/integration/common/wiring_scanner_test.rs",
+    // Coverage-defect acceptance keys: parse-level ratchet for
+    // `src/v4/lens/coverage.dag`; retires when generated coverage owns the
+    // same key projection.
+    "src/v3/compiler/tests/integration/coverage_defect_acceptance_dag_test.rs",
     // R3 L6 carrier slice (PR #1842; Measure-carrier precedent at #1819,
     // Director Option 2 RATIFIED at
     // gunbc#828 #issuecomment-4377533390): slice-active ratchet for
@@ -828,10 +832,6 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // R3 T-V2-Retirement §1.8 gate #41 (`v2_oracle_no_remaining_test_consumers`): comment-aware
     // source ratchet — no `v2-compiler` crate references outside `src/v2/`.
     "src/v3/compiler/tests/integration/v2_oracle_no_remaining_test_consumers_test.rs",
-    // Coverage-defect acceptance keys: parse-level ratchet for
-    // `src/v4/lens/coverage.dag`; retires when generated coverage owns the
-    // same key projection.
-    "src/v3/compiler/tests/integration/coverage_defect_acceptance_dag_test.rs",
     // PREFIX T-23 v0: `compile_to_dag` smoke on `src/v4/lens/registry.dag` (P2-staging
     // `LensIdV0` + `LensModulePathV0`; no generated consumer yet). SG-0 + INVARIANTS §P5(b) receipt.
     "src/v3/compiler/tests/integration/v4_lens_registry_dag_smoke_test.rs",
