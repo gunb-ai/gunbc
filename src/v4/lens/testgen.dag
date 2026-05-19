@@ -415,14 +415,16 @@ fn append_manual_anchor_generator(
 }
 
 
+data empty_manual_anchor_generators: List<Generator<TestgenConcept>> = []
+
+
 fn bootstrap_claim_generators_for_manual_anchors(
   keys: List<T19ManualAnchorKey>
 ) -> Outcome<List<Generator<TestgenConcept>>> {
-  fold(keys, init: Produced { value: [] }, f: fn(acc, key) {
+  fold(keys, init: Produced { value: empty_manual_anchor_generators }, f: fn(acc, key) {
     append_manual_anchor_generator(acc: acc, key: key)
   })
 }
 
 
-data bootstrap_manual_anchor_generators: Outcome<List<Generator<TestgenConcept>>> =
-  bootstrap_claim_generators_for_manual_anchors(keys: manual_anchor_manifest)
+data bootstrap_manual_anchor_generators: Outcome<List<Generator<TestgenConcept>>> = bootstrap_claim_generators_for_manual_anchors(keys: manual_anchor_manifest)
