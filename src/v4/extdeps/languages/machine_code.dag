@@ -1,14 +1,14 @@
 // src/v4/extdeps/languages/machine_code.dag
 // Scope: machine-code language model parameterized by Isa.
 // Owns: Isa, ByteOrder, InstructionLength, InstructionByteLimitRef, OperandFieldWidthRef, Symbol, MachineIntKind, MachineIntWidth, MachineScalar, MachineDisplacement32WidthClass, MachineDisplacement64WidthClass, MachineSignedDisplacement32, MachineSignedDisplacement64, InstructionWord, RegisterClass, RegisterDeclaration, RegisterRef, IndexScale, AddressingMode, Operand, ByteSequence, InstructionProductionRef, RegisterOperandSlotRef, ImmediateOperandSlotRef, MemoryOperandSlotRef, ImmediateOperandTarget, ImmediateOperandConstraint, MemoryOperandConstraint, InstructionOperandSlot, InstructionProduction, OperandBinding, DecodedInstruction, MachineFidelityFeature, MachineFidelityDisposition, MachineIntegerOverflowBehavior, MachineIntegerOperationSemantics, FlagWriteDisposition.
-// Consumes: List, Byte.
+// Consumes: List, Byte, MachineWidth, Word16, Word32, Word64, Word128.
 // Status: D2-REV; 🟢 P4-3208 — DECISIONS.md (machine_code scalar + displacement + ledger).
 
 module v4.extdeps.languages.machine_code
 
 
 import v4.std.collection { List }
-import v4.std.machine { Byte }
+import v4.std.machine { Byte, MachineWidth, Word16, Word32, Word64, Word128 }
 
 
 // Twin of `v4.std.node.Symbol` — M1(2.7) compile_to_dag import lowering; see lean.dag.
@@ -99,12 +99,12 @@ type MachineSignedDisplacement64 {
 
 
 // Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
-// 🟡 feature:fixed-cardinality-width-carrier — DECISIONS.md P4-3208
+// 🟡 gated — feature:parameterized-width-family-projection — carries MachineWidth<Word*> evidence now; dissolve-on-arrival by replacing this enumerated F<Word*> copy with one InstructionWord<word> projection.
 type InstructionWord
-  = Instr16
-  | Instr32
-  | Instr64
-  | Instr128
+  = Instr16 { width: MachineWidth<Word16> }
+  | Instr32 { width: MachineWidth<Word32> }
+  | Instr64 { width: MachineWidth<Word64> }
+  | Instr128 { width: MachineWidth<Word128> }
 
 
 // Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
@@ -304,4 +304,3 @@ type FlagWriteDisposition
   = DoesNotWriteFlags
   | WritesArchitecturalFlags
   | WritesPredicateRegister
-
