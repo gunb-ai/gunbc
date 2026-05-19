@@ -418,7 +418,10 @@ fn assert_fixpt(expr: &SurfaceExpr, expected: &ExpectedFixpt<'_>) {
     assert_eq!(var_name(record_field_expr(fields, "left")), expected.left);
     assert_hash_pin(record_field_expr(fields, "left_hash"), &expected.left_hash);
     assert_eq!(var_name(record_field_expr(fields, "right")), expected.right);
-    assert_hash_pin(record_field_expr(fields, "right_hash"), &expected.right_hash);
+    assert_hash_pin(
+        record_field_expr(fields, "right_hash"),
+        &expected.right_hash,
+    );
     assert_hash_pin(
         record_field_expr(fields, "pinned_hash"),
         &expected.pinned_hash,
