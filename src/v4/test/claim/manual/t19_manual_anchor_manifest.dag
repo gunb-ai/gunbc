@@ -1,6 +1,6 @@
 // src/v4/test/claim/manual/t19_manual_anchor_manifest.dag
 // Scope: Twelve-row membership over `std/verification.dag` `T19ManualAnchorKey` (connective_anchors ∪ nat_law_anchors).
-// Owns: twelve `T19ManualAnchorKey` data rows (no parallel string table)
+// Owns: twelve `T19ManualAnchorKey` data rows + manifest list (no parallel string table)
 // Consumes: v4.std.verification
 // Status: P2 join — each row's value equals `TestClaim.t19_anchor` on the paired claim (structural discriminant equality).
 
@@ -58,3 +58,19 @@ data manual_anchor_nat_mul_annihilator: T19ManualAnchorKey = T19ManualNatMulAnni
 
 
 data manual_anchor_nat_mul_associativity: T19ManualAnchorKey = T19ManualNatMulAssociativity
+
+
+data manual_anchor_manifest: List<T19ManualAnchorKey> = [
+  manual_anchor_tc_conj,
+  manual_anchor_tc_disj,
+  manual_anchor_tc_arrow,
+  manual_anchor_tc_cardinality,
+  manual_anchor_tc_instantiation,
+  manual_anchor_tc_conj_equals_refl,
+  manual_anchor_nat_add_left_identity,
+  manual_anchor_nat_add_right_identity,
+  manual_anchor_nat_add_associativity,
+  manual_anchor_nat_mul_left_identity,
+  manual_anchor_nat_mul_annihilator,
+  manual_anchor_nat_mul_associativity
+]

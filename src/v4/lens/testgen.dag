@@ -1,7 +1,7 @@
 // src/v4/lens/testgen.dag
 // Scope: Manual-anchor testgen plus filesystem-backed whole-corpus lens driver primitive.
-// Owns: Generator TestgenConcept manual_test_claim_for_manual_anchor testgen_concept_for_manual_claim TypeConstructionSubject AlgebraLawSubject DiagnosticExhaustivenessSubject LensApplicabilitySubject BidirectionalRoundtripSubject CorpusEntry CorpusTraversalScope CorpusTraversalOrder CorpusDuplicatePolicy CorpusTraversalPolicy CorpusEnumerationRequest CorpusEnumerationResult CorpusEnumerator CorpusEntryIngestResult CorpusEntryIngestor CorpusLensReadResult<C> CorpusLensReader<C> CorpusLensObservation<C> CorpusLensDriveResult<C> CorpusLensDriver<C>
-// Consumes: v4.std.diagnostic v4.std.nat v4.std.node v4.std.verification v4.extdeps.file_system v4.test.claim.manual.connective_anchors v4.test.claim.manual.nat_law_anchors
+// Owns: Generator TestgenConcept manual_test_claim_for_manual_anchor testgen_concept_for_manual_claim bootstrap_claim_generators_for_manual_anchors bootstrap_manual_anchor_generators TypeConstructionSubject AlgebraLawSubject DiagnosticExhaustivenessSubject LensApplicabilitySubject BidirectionalRoundtripSubject CorpusEntry CorpusTraversalScope CorpusTraversalOrder CorpusDuplicatePolicy CorpusTraversalPolicy CorpusEnumerationRequest CorpusEnumerationResult CorpusEnumerator CorpusEntryIngestResult CorpusEntryIngestor CorpusLensReadResult<C> CorpusLensReader<C> CorpusLensObservation<C> CorpusLensDriveResult<C> CorpusLensDriver<C>
+// Consumes: v4.std.diagnostic v4.std.nat v4.std.node v4.std.verification v4.extdeps.file_system v4.test.claim.manual.connective_anchors v4.test.claim.manual.nat_law_anchors v4.test.claim.manual.t19_manual_anchor_manifest
 // Status: Modeled Generator join for manual-anchor claims; substrate extension = operator STOP.
 
 module v4.lens.testgen
@@ -74,6 +74,9 @@ import v4.test.claim.manual.nat_law_anchors {
   claim_nat_mul_annihilator,
   claim_nat_mul_associativity,
   claim_nat_mul_left_identity
+}
+import v4.test.claim.manual.t19_manual_anchor_manifest {
+  manual_anchor_manifest
 }
 
 
@@ -394,3 +397,32 @@ fn bootstrap_claim_generator_for_manual_anchor(
     }
   }
 }
+
+
+fn append_manual_anchor_generator(
+  acc: Outcome<List<Generator<TestgenConcept>>>,
+  key: T19ManualAnchorKey
+) -> Outcome<List<Generator<TestgenConcept>>> {
+  match acc {
+    Rejected { diagnostic: d } => Rejected { diagnostic: d }
+    Produced { value: generators } =>
+      match bootstrap_claim_generator_for_manual_anchor(key: key) {
+        Rejected { diagnostic: d } => Rejected { diagnostic: d }
+        Produced { value: generator } =>
+          Produced { value: concat(generators, [generator]) }
+      }
+  }
+}
+
+
+fn bootstrap_claim_generators_for_manual_anchors(
+  keys: List<T19ManualAnchorKey>
+) -> Outcome<List<Generator<TestgenConcept>>> {
+  fold(keys, init: Produced { value: [] }, f: fn(acc, key) {
+    append_manual_anchor_generator(acc: acc, key: key)
+  })
+}
+
+
+data bootstrap_manual_anchor_generators: Outcome<List<Generator<TestgenConcept>>> =
+  bootstrap_claim_generators_for_manual_anchors(keys: manual_anchor_manifest)
