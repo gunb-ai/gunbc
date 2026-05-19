@@ -175,9 +175,8 @@ INVARIANTS P2); `algebra.dag` owns the algebra *structures* only.
 digest for `std/primitive.dag`. With that file deleted, `Hash` — which is
 not a scalar — re-homes to `std/node.dag`: this PR declares the opaque
 `Hash` type there (beside `Symbol`, the other K-1-opaque substrate-root
-identity) and updates `DECISIONS.md` B1's "Encoded in" column to
-`node.dag`. The `content_hash` fold and the canonical-form clause stay
-the T-1 closeout, exactly as B1 already states.
+identity) with `node.dag` as the authority carrier. The `content_hash`
+fold and the canonical-form clause stay the T-1 closeout, per B1.
 
 **Kernel-ambient types.** `String`, `Int`, `Bool`, `Char`, `List`, `Map` are
 provided by the v2 seed and are usable in any `.dag` file *without an import*.
