@@ -254,6 +254,13 @@ The file change is an *effect*, not the cause.
 Goal: rename `Bool` → `BooleanValue` everywhere it's referenced. The
 `CanonicalConcept` registry is the source of truth; the Diff cascades.
 
+> **Dependency caveat (same as §6.4).** `CanonicalConcept` is a
+> design-pending carrier today — it exists in
+> `docs/design-dissolution-lens.md` (PR #3334) but **NOT** as
+> ratified `.dag` substrate. See §6.8 item 8 — this example
+> assumes the carrier has landed; until it does, this case is
+> design-pending, not runnable.
+
 **Read** — both lenses fold over the declaration set:
 ```dag
 concept_row = declarations_in(dag).find_map(d =>
