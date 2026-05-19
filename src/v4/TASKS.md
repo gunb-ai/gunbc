@@ -926,7 +926,7 @@ All 5 artifacts share ONE Node tree (per gate #28 omni_layers_share_one_node_tre
 
 **Closes when all hold:**
 
-1. `docs/audit/coproduct-anemia-inventory.md` enumerates **274** corpus sums and the **full** corpus table carries **no** `DEFERRED` placeholder (nor equivalent queue-only text) in columns **4–7** for any row — every row has substantive hand-authored modeling notes read off the cited `.dag` fragment, per the Method bar in that file.
+1. `docs/audit/coproduct-anemia-inventory.md` enumerates **274** corpus sums; the **full** corpus table carries **no** `DEFERRED` placeholder in **grounding-axis columns (A)(B)(C)** (columns **8–10**) for any row, and **no** `DEFERRED` in **coproduct-modeling columns 4–7** for any row — every row has substantive hand-authored modeling notes read off the cited `.dag` fragment in cols **4–7**, per the Method bar in that file.
 2. The inventory’s **Method** and **Summary** sections describe completion in terms of **this structural condition** (and, where useful, `ROADMAP.md` / `MODELING.md` / `INVARIANTS.md` / `src/v4/DECISIONS.md`), not a session nickname as the sole dissolution trigger.
 3. The landing PR updates **this bullet** with the merge SHA (or the operator folds the obligation elsewhere and edits this section accordingly).
 
