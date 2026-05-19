@@ -7,7 +7,7 @@
 module v4.workflow.bootstrap
 
 import v4.std.node { Symbol }
-import v4.std.collection { set_eq }
+import v4.std.collection { member }
 import v4.std.diagnostic {
   Correction,
   Diagnostic,
@@ -61,14 +61,24 @@ fn bootstrap_stage_output(plan: Outcome<BootstrapPlan>, s: Symbol) -> Bool {
   }
 }
 
+fn bootstrap_consumes_exact_symbols(actual: List<Symbol>, expected: List<Symbol>) -> Bool {
+  (count(actual) == count(expected))
+    && fold(actual, init: true, f: fn(acc, item) {
+         acc && member(item: item, xs: expected, eq: fn(a, b) { a == b })
+       })
+    && fold(expected, init: true, f: fn(acc, item) {
+         acc && member(item: item, xs: actual, eq: fn(a, b) { a == b })
+       })
+}
+
 fn bootstrap_plan_well_formed(p: BootstrapPlan) -> Outcome<BootstrapPlan> {
-  if set_eq(a: p.seed.consumes, b: [v4_dag_source], eq: fn(a, b) { a == b })
+  if bootstrap_consumes_exact_symbols(actual: p.seed.consumes, expected: [v4_dag_source])
        && (p.seed.produces == v4_stage0_binary)
        && (p.seed.compiled_by == v2_pipeline)
-       && set_eq(a: p.self0.consumes, b: [v4_dag_source, v4_stage0_binary], eq: fn(a, b) { a == b })
+       && bootstrap_consumes_exact_symbols(actual: p.self0.consumes, expected: [v4_dag_source, v4_stage0_binary])
        && (p.self0.produces == v4_stage1_binary)
        && (p.self0.compiled_by == v4_stage0_binary)
-       && set_eq(a: p.self1.consumes, b: [v4_dag_source, v4_stage1_binary], eq: fn(a, b) { a == b })
+       && bootstrap_consumes_exact_symbols(actual: p.self1.consumes, expected: [v4_dag_source, v4_stage1_binary])
        && (p.self1.produces == v4_stage2_binary)
        && (p.self1.compiled_by == v4_stage1_binary)
        && (p.fixpt.left == v4_stage1_binary)

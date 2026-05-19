@@ -1,7 +1,7 @@
 // src/v4/std/collection.dag
 // Scope: container carriers grounded in algebraic constructions.
 // Anchor: https://en.wikipedia.org/wiki/Free_monoid
-// Owns: List, non_empty, member, set_eq, Set, Map.
+// Owns: List, non_empty, member, Set, Map.
 // Consumes: std algebra, std witness.
 // Status: T-3 modeled; substrate-extension rule in src/v4/STRUCTURE.md.
 
@@ -22,15 +22,6 @@ fn non_empty<T>(xs: List<T>) -> Bool {
 }
 fn member<T>(item: T, xs: List<T>, eq: fn(T, T) -> Bool) -> Bool {
   free_monoid_count_equal(xs: xs, item: item, eq: eq) > 0
-}
-fn set_eq<T>(a: List<T>, b: List<T>, eq: fn(T, T) -> Bool) -> Bool {
-  (count(a) == count(b))
-    && fold(a, init: true, f: fn(acc, item) {
-         acc && member(item: item, xs: b, eq: eq)
-       })
-    && fold(b, init: true, f: fn(acc, item) {
-         acc && member(item: item, xs: a, eq: eq)
-       })
 }
 type Set<T> = PointwisePower<T>
 type Map<K, V> {

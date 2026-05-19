@@ -1816,8 +1816,8 @@ Merge-base `92cb26402` **may** mark a sum coproduct **🔴** in the Practice-4 h
 > dissolve-now / 🟢 terminal / 🟡 gated `feature:`). Procedure result:
 > `std/collection.dag` now exposes the FreeMonoid-derived `List` surface
 > subset that the current v4 compiler validates cleanly across module
-> boundaries (`member`, `set_eq`). The workflow-local duplicate membership
-> and set-equality helpers have dissolved into those shared operations.
+> boundaries (`member`). The workflow-local duplicate membership helpers
+> have dissolved into that shared operation.
 > Higher-order record-field consumers remain gated until the collection
 > surface can be consumed without generic-lambda inference drift.
 
@@ -1827,7 +1827,7 @@ Merge-base `92cb26402` **may** mark a sum coproduct **🔴** in the Practice-4 h
 | **LB-P10-3213-ANY** | `ci_symbol_resolves`, `ci_blocked` (ci.dag) | 🟡 gated `feature:` | `any(p: fn(T) -> Bool, xs: List<T>) -> Bool` (existential) consumable from workflow record-field predicates without generic-lambda inference drift. |
 | **LB-P10-3213-ALL** | `ci_all_job_ids_unique`, `ci_all_gate_ids_unique`, `ci_all_needs_resolve`, `ci_all_gate_jobs_resolve` (ci.dag) | 🟡 gated `feature:` | `forall` / `unique` over `List<T>` consumable from workflow record-field predicates without generic-lambda inference drift. |
 | **LB-P10-3213-COUNTIF** | `ci_id_occurrences` ∥ `ci_gate_id_occurrences` (ci.dag) — **duplicate** | 🟡 gated `feature:` | `count_where(p: fn(T) -> Bool, xs: List<T>) -> Int` consumable from workflow record-field predicates without generic-lambda inference drift. |
-| **LB-P10-3213-SETEQ** | `bs_list_eq` (bootstrap.dag) | 🟢 dissolved | `std.collection.set_eq` landed and `bootstrap_plan_well_formed` consumes it directly. |
+| **LB-P10-3213-SETEQ** | `bs_list_eq` (bootstrap.dag) | 🟢 renamed/narrowed | The old helper was not valid shared substrate: `count + symmetric membership` over `List<T>` is neither extensional `Set<T>` equality nor multiset equality for duplicate-bearing lists. It is now `bootstrap_consumes_exact_symbols`, scoped to bootstrap's expected unique consumes-list checks, and consumes only the shared `std.collection.member` primitive. |
 | **LB-P10-3213-FILTER** | `ci_eliminate_pass` (ci.dag) | 🟡 gated `feature:` | `filter(p: fn(T) -> Bool, xs: List<T>) -> List<T>` with typed empty-list result construction; on arrival, the keep-blocked projection delegates to the shared op. |
 | **LB-P10-3213-FIND** | `ci_job_needs` (ci.dag) | 🟡 gated `feature:` | `find`/lookup-first — honest shape `find(p: fn(T) -> Bool, xs: List<T>) -> Witness<T>` (per TASKS.md:235 `Map`/`PartialFunction` honesty; gated also on `witness.dag`/Wave-A2). On arrival: replace lookup-fold; delete helper. |
 | **LB-P10-3213-KAHN** | `ci_kahn_fixpoint`, `ci_acyclic` (ci.dag) | 🟢 **terminal** | **Not** a reusable collection primitive: Kahn topological-elimination cycle-detection over the job graph — domain well-formedness model content, a *peer* of `ci_pipeline_well_formed` / `bootstrap_plan_well_formed` (which the gate does not ask to dissolve). Consumer-independent; no `std/collection.dag` op to dissolve into. (`fold`-as-bounded-counter is the P4 decidability idiom.) Its generic sub-primitives now split: membership consumes `std.collection.member`; `ci_job_needs` / `ci_eliminate_pass` / `ci_blocked` dissolve via the rows above. The Kahn *composition* stays. |
