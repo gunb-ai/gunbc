@@ -41,11 +41,11 @@ type DissolutionLensKey
   | L1_3HollowType
   | L1_4CarrierClone
   | L1_5Catamorphism
-  | L1_6EmitTemplate
+  | L1_10ATemplateHole
   | L1_7OffSubstrateFact
   | L1_8WrongHome
   | L1_9VacuousArm
-  | L1_10StringEscapeHatch
+  | L1_10BCanonicalCarrier
   | L1_11PlausibleFallback
   | L1_12ParallelAuthority
 
@@ -73,8 +73,8 @@ data dissolution_l1_4_carrier_clone: DissolutionLensAcceptance = {
 data dissolution_l1_5_catamorphism: DissolutionLensAcceptance = {
   concern: DissolutionLensAcceptanceKey { lens: L1_5Catamorphism }
 }
-data dissolution_l1_6_emit_template: DissolutionLensAcceptance = {
-  concern: DissolutionLensAcceptanceKey { lens: L1_6EmitTemplate }
+data dissolution_l1_10_a_template_hole: DissolutionLensAcceptance = {
+  concern: DissolutionLensAcceptanceKey { lens: L1_10ATemplateHole }
 }
 data dissolution_l1_7_off_substrate_fact: DissolutionLensAcceptance = {
   concern: DissolutionLensAcceptanceKey { lens: L1_7OffSubstrateFact }
@@ -85,8 +85,8 @@ data dissolution_l1_8_wrong_home: DissolutionLensAcceptance = {
 data dissolution_l1_9_vacuous_arm: DissolutionLensAcceptance = {
   concern: DissolutionLensAcceptanceKey { lens: L1_9VacuousArm }
 }
-data dissolution_l1_10_string_escape_hatch: DissolutionLensAcceptance = {
-  concern: DissolutionLensAcceptanceKey { lens: L1_10StringEscapeHatch }
+data dissolution_l1_10_b_canonical_carrier: DissolutionLensAcceptance = {
+  concern: DissolutionLensAcceptanceKey { lens: L1_10BCanonicalCarrier }
 }
 data dissolution_l1_11_plausible_fallback: DissolutionLensAcceptance = {
   concern: DissolutionLensAcceptanceKey { lens: L1_11PlausibleFallback }

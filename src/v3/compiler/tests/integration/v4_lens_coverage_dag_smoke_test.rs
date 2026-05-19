@@ -23,7 +23,7 @@ const EXPECTED_ACCEPTANCE_ROWS: &[(&str, &str)] = &[
     ("dissolution_l1_3_hollow_type", "L1_3HollowType"),
     ("dissolution_l1_4_carrier_clone", "L1_4CarrierClone"),
     ("dissolution_l1_5_catamorphism", "L1_5Catamorphism"),
-    ("dissolution_l1_6_emit_template", "L1_6EmitTemplate"),
+    ("dissolution_l1_10_a_template_hole", "L1_10ATemplateHole"),
     (
         "dissolution_l1_7_off_substrate_fact",
         "L1_7OffSubstrateFact",
@@ -31,8 +31,8 @@ const EXPECTED_ACCEPTANCE_ROWS: &[(&str, &str)] = &[
     ("dissolution_l1_8_wrong_home", "L1_8WrongHome"),
     ("dissolution_l1_9_vacuous_arm", "L1_9VacuousArm"),
     (
-        "dissolution_l1_10_string_escape_hatch",
-        "L1_10StringEscapeHatch",
+        "dissolution_l1_10_b_canonical_carrier",
+        "L1_10BCanonicalCarrier",
     ),
     (
         "dissolution_l1_11_plausible_fallback",
