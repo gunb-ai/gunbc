@@ -105,7 +105,7 @@ type Generator<C> {
   slot: C
 }
 
-// RULING-1: 🟢 pretty-much-done — echoes `TestClaim.t19_anchor` after lookup `Outcome`
+// RULING-1: 🟢 pretty-much-done — repeats manual claim anchor after lookup Outcome
 
 
 data t19_law_nat_add_left_identity: Symbol = t19_law_nat_add_left_identity

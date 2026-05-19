@@ -51,11 +51,15 @@ fn v4_lens_testgen_wave0_modules_tokenize_and_parse() {
 }
 
 #[test]
-fn v4_lens_testgen_wave0_verification_declares_present_anchor_key() {
+fn v4_lens_testgen_wave0_verification_manual_anchor_key_only() {
     let verification = parse_module(VERIFICATION_DAG, "src/v4/std/verification.dag");
     assert!(
-        module_declares_type_sum_named(&verification, "T19PresentManualAnchorKey"),
-        "substrate must declare `type T19PresentManualAnchorKey` (parsed `TypeSum`, not raw text)"
+        module_declares_type_sum_named(&verification, "T19ManualAnchorKey"),
+        "substrate must declare `type T19ManualAnchorKey` (parsed `TypeSum`)"
+    );
+    assert!(
+        !module_declares_type_sum_named(&verification, "T19PresentManualAnchorKey"),
+        "substrate must not declare a mirrored present-only `T19PresentManualAnchorKey` sum (Practice 5 single carrier)"
     );
 }
 
@@ -100,8 +104,8 @@ fn v4_lens_testgen_wave0_function_inventory_matches_wave0() {
     );
     assert_eq!(
         function_count(&testgen, "t19_present_manual_anchor_key_for_claim"),
-        1,
-        "present-anchor narrowing join must live in v4.lens.testgen (single Outcome<T19PresentManualAnchorKey> projection)"
+        0,
+        "lens/testgen must not host a mirrored present-key conversion table (codex duplicate-authority fix)"
     );
 }
 
@@ -128,19 +132,13 @@ fn v4_lens_testgen_wave0_nat_symbol_import_authority() {
     }
     assert!(
         !TESTGEN_DAG.contains("fn t19_present_manual_anchor_key("),
-        "testgen must not define the retired `t19_present_manual_anchor_key(` std-style helper (use `t19_present_manual_anchor_key_for_claim` in lens only)"
+        "testgen must not define the retired `t19_present_manual_anchor_key(` std-style helper"
     );
 }
 
 #[test]
 fn v4_lens_testgen_wave0_outcome_return_surfaces() {
     let testgen = parse_module(TESTGEN_DAG, "src/v4/lens/testgen.dag");
-    let present_anchor_rt = fn_return_type(&testgen, "t19_present_manual_anchor_key_for_claim")
-        .expect("t19_present_manual_anchor_key_for_claim should have an explicit return type");
-    assert!(
-        type_is_outcome_named(present_anchor_rt, "T19PresentManualAnchorKey"),
-        "present-anchor narrowing must return `Outcome<T19PresentManualAnchorKey>`; got {present_anchor_rt:?}"
-    );
 
     let manual_claim_rt = fn_return_type(&testgen, "manual_test_claim_for_manual_anchor")
         .expect("manual_test_claim_for_manual_anchor should have an explicit return type");
@@ -165,16 +163,16 @@ fn v4_lens_testgen_wave0_outcome_return_surfaces() {
 }
 
 #[test]
-fn v4_lens_testgen_wave0_generator_t19_anchor_field_is_present_key() {
+fn v4_lens_testgen_wave0_generator_t19_anchor_field_is_manual_key() {
     let testgen = parse_module(TESTGEN_DAG, "src/v4/lens/testgen.dag");
     let anchor_ty =
         generator_t19_anchor_field_ty(&testgen).expect("Generator should declare `t19_anchor`");
     assert!(
         matches!(
             anchor_ty,
-            SurfaceType::Named { name: n, .. } if n == "T19PresentManualAnchorKey"
+            SurfaceType::Named { name: n, .. } if n == "T19ManualAnchorKey"
         ),
-        "Generator.t19_anchor must be `T19PresentManualAnchorKey` (absent sentinel excluded from successful carrier); got {anchor_ty:?}"
+        "Generator.t19_anchor must be `T19ManualAnchorKey` (same carrier as `TestClaim.t19_anchor`); got {anchor_ty:?}"
     );
 }
 
@@ -200,15 +198,14 @@ fn v4_lens_testgen_wave0_generator_carries_claim_kind_and_classification() {
 }
 
 #[test]
-fn v4_lens_testgen_wave0_bootstrap_narrows_present_anchor_before_generator() {
+fn v4_lens_testgen_wave0_bootstrap_threads_claim_anchor_into_generator() {
     assert!(
-        TESTGEN_DAG.contains("fn t19_present_manual_anchor_key_for_claim")
-            && TESTGEN_DAG.contains("match t19_present_manual_anchor_key_for_claim(claim: claim)"),
-        "bootstrap must narrow `claim.t19_anchor` through `t19_present_manual_anchor_key_for_claim` before constructing `Generator`"
+        !TESTGEN_DAG.contains("fn t19_present_manual_anchor_key_for_claim"),
+        "bootstrap must not use a mirrored present-key conversion helper"
     );
     assert!(
-        TESTGEN_DAG.contains("t19_anchor: present_anchor"),
-        "Generator must wire `t19_anchor` from the narrowed present key (not raw `claim.t19_anchor`)"
+        TESTGEN_DAG.contains("t19_anchor: claim.t19_anchor"),
+        "Generator must wire `t19_anchor` from the manual `TestClaim` row (single authority)"
     );
     assert!(
         TESTGEN_DAG.contains("match testgen_concept_for_manual_claim(claim: claim)"),
