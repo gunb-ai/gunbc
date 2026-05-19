@@ -50,7 +50,7 @@ fn dag_language_model_wave1_void() -> DagLanguageModel {
 }
 
 
-// TASKS.md T-8 — CP-1b bucket C witness item 1 (native `.dag` LM; see v4.compiler.03_resolve.dag; DECISIONS §CP-1b item 2).
+// TASKS.md T-8 — CP-1b bucket C witness item 1 (native `.dag` LM; see v4.compiler.03_resolve.dag — TASKS T-8 «CP-1b bucket C» seam only).
 fn dag_language_model_wave1_void_canonical_symbols() -> Set<Symbol> {
   Set {
     member: fn(sym) {

@@ -25,13 +25,13 @@ import v4.std.nat { Nat, nat_compare, nat_is_zero }
 import v4.std.node { Symbol }
 type Float32Interchange = Word32
 type Float64Interchange = Word64
-// 🟢 coproduct dissolution — TASKS.md T-4 · CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution — TASKS.md T-3 · CP-3229-GREEN-TERMINAL.
 type FloatSpecial
   = QuietNan
   | SignalingNan
   | PosInfinity
   | NegInfinity
-// 🟢 coproduct dissolution — TASKS.md T-4 · CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution — TASKS.md T-3 · CP-3229-GREEN-TERMINAL.
 type FloatBody
   = Finite {
       sign: Bit

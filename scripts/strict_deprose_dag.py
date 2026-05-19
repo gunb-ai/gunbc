@@ -4,7 +4,7 @@
 Warning: every `//` line after `module` is deleted—non-idempotent if a target file gains
 authored in-body commentary; scoped to the pinned allowlist for that reason.
 
-Coproduct one-liners (`// 🟢|🟡|🔴 coproduct dissolution — TASKS.md T-4 · …`) are
+Coproduct one-liners (`// 🟢|🟡|🔴 coproduct dissolution — TASKS.md T-3|T-4 · …`) are
 (re)written from merge-base `92cb26402` Practice-4 / SL-3229 state (operator directive
 2026-05-17, PR #3234 modeling-discipline alignment): an existing tag with the wrong slug
 is replaced so `--check` cannot pass on stale pointers.
@@ -300,14 +300,17 @@ def format_ledger_line(
     return f"// Ledger: {slugs}.\n"
 
 
-def format_coproduct_tag(emoji: str, ref: str) -> str:
-    """Canonical Practice-4 one-liner for T-4 lane language files.
+def coproduct_tasks_lane_for_path(rel: str) -> str:
+    """TASKS.md row that owns the coproduct Practice-4 receipt prefix for ``rel``."""
+    if rel in ("src/v4/std/integer.dag", "src/v4/std/float.dag"):
+        return "T-3"
+    return "T-4"
 
-    `ref` is the ledger slug (CP-*, SL-*, …). The ``TASKS.md T-4 ·`` prefix is
-    lane-wide for every slug: the whole extdeps/languages table is T-4-scoped,
-    including SL-3229-* lineage that names a sub-ledger row, not a separate lane.
-    """
-    return f"// {emoji} coproduct dissolution — TASKS.md T-4 · {ref}."
+
+def format_coproduct_tag(emoji: str, ref: str, rel: str) -> str:
+    """Canonical Practice-4 one-liner; lane matches file task ownership (T-3 std vs T-4 extdeps)."""
+    lane = coproduct_tasks_lane_for_path(rel)
+    return f"// {emoji} coproduct dissolution — TASKS.md {lane} · {ref}."
 
 
 def grounded_tag_for_record_body(body_lines: list[str]) -> str:
@@ -363,7 +366,7 @@ def inject_coproduct_tags(body: str, rel: str, tag_map: dict[str, tuple[str, str
                 )
                 sys.exit(1)
             em, ref = tag_map[nm]
-            expected = format_coproduct_tag(em, ref)
+            expected = format_coproduct_tag(em, ref, rel)
             prev = bl[j - 1] if j > 0 else ""
             if COPRODUCT_TAG_RE.match(prev):
                 if prev != expected:
