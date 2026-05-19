@@ -1,9 +1,11 @@
 // Scope: v2.5 pipeline orchestrator — phase-typed stage composition as first-class data.
 // Owns: PipelineStageKind, PipelineStageRow, v2_5_compile_pipeline, PipelineCarrier,
 //       CompilePipelineState, compile_pipeline_io_ok, outcome_bind, run_compile_pipeline_fold, compile.
-// Consumes: v2_5.std.diagnostic, v2_5.std.stage_types, all v2_5.compiler.* stage modules.
-// Status: fork scaffold — orchestrator only; does not inspect Node/Edge (Tier 0 PR #3422).
-//         Stage bodies + Tier 1 phase carriers land in sibling PRs.
+// Consumes: v2_5.std.diagnostic + v2_5.std.node (Tier 0, PR #3422 — in tree),
+//           v2_5.std.stage_types (Tier 1 — vivid-lynx-807, pending),
+//           v2_5.compiler.{tokenize,parse,resolve,normalize,infer,complexity,ownership,artifact,emit} (Tier 2 — pending).
+// Status: fork scaffold — orchestrator only; does not inspect Node/Edge shape.
+//         Full v2.5 compile closure requires Tier 1+2 sibling PRs; v2-compiler can compile Tier 0 std alone today.
 // Anchor: https://en.wikipedia.org/wiki/Compiler
 
 module v2_5.compiler.compile
