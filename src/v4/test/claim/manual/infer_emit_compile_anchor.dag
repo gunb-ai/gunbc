@@ -1,0 +1,56 @@
+// src/v4/test/claim/manual/infer_emit_compile_anchor.dag
+//
+// Scope: Tier-1 v2-bootstrap compile anchor for the T-9/T-10 interface freeze — `infer` / `emit` / `compile` Wave-1 fail-closed boundary.
+// Owns: anchor_stub_empty_conj, anchor_stub_target_model, anchor_stub_source, anchor_infer_wave1_rejects, anchor_emit_wave1_rejects, anchor_compile_wave1_rejects.
+// Consumes: compiler/04_infer.dag, compiler/05_emit.dag, compiler/00_compile.dag, std/algebra.dag, std/diagnostic.dag, std/node.dag.
+// Status: scaffold — compile-only until T-22; mirrors the `resolve_compile_anchor.dag` shape (DECISIONS CP-1b item 10).
+// Anchor: https://en.wikipedia.org/wiki/Compiler
+//
+// Acceptance criterion (witness, T-9/T-10 interface freeze):
+//   - `infer(ResolvedTree)`, `emit(InferredTree, TargetModel)`, and
+//     `compile(Source, TargetModel)` all type-check against their frozen
+//     signatures under `v2-compiler compile --source-root src/v4`.
+//   - Each anchor returns `Outcome::Rejected { diagnostic: … }` carrying the
+//     stage-locus `not_realized` diagnostic — the fail-closed Wave-1
+//     boundary; never a fabricated `Produced` value (DECISIONS C1 / I).
+//   - `v2-compiler run` execution is deferred until T-22 (matches
+//     `test/v2_run_preflight/MOVE1_COVERAGE.txt` for `resolve_compile_anchor`).
+
+
+module v4.test.claim.manual.infer_emit_compile_anchor
+
+
+import v4.compiler.compile { Source, TargetModel, TargetSource, compile }
+import v4.compiler.emit { emit }
+import v4.compiler.infer { InferredTree, infer }
+import v4.compiler.resolve { ResolvedTree }
+import v4.std.algebra { Empty }
+import v4.std.diagnostic { Outcome }
+import v4.std.node { Conj, Node, TypeNode }
+
+
+data anchor_stub_empty_conj: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: []
+}
+
+
+data anchor_stub_target_model: TargetModel = anchor_stub_empty_conj
+
+
+data anchor_stub_source: Source = Empty
+
+
+fn anchor_infer_wave1_rejects() -> Outcome<InferredTree> {
+  infer(tree: anchor_stub_empty_conj)
+}
+
+
+fn anchor_emit_wave1_rejects() -> Outcome<TargetSource> {
+  emit(tree: anchor_stub_empty_conj, target: anchor_stub_target_model)
+}
+
+
+fn anchor_compile_wave1_rejects() -> Outcome<TargetSource> {
+  compile(source: anchor_stub_source, target: anchor_stub_target_model)
+}

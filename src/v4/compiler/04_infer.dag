@@ -1,9 +1,75 @@
 // src/v4/compiler/04_infer.dag
-// Scope: inference from resolved tree to inferred tree.
+//
+// Scope: Stage 4 — ResolvedTree -> InferredTree; the bounded Find phase of the U1 homomorphism (DECISIONS C1).
+// Owns: InferredTree, AlgebraRef, infer_stage_locus_port, infer_coercion_fold_not_realized, infer_coercion_fold_not_realized_diagnostic, infer.
+// Consumes: std/node.dag, std/diagnostic.dag, compiler/03_resolve.dag.
+// Status: scaffold — TASKS T-9; Wave-1 fail-closed boundary, coercion-fold realization deferred (DECISIONS C1 / IR-1).
 // Anchor: https://en.wikipedia.org/wiki/Type_inference
-// Owns: none.
-// Consumes: none.
-// Status: scaffold for T-9.
+//
+// IR-1 NOTE — `InferredTree` is NOT a new recursive type (A1); it is `Node` plus
+// the FROZEN flat `InferredFacts` coordinate (resolved_type, inhabits, cost,
+// descent — cardinality and effects are NOT fields, both already carried by
+// `resolved_type`'s `Node` structure; the 4-field set is closed, a 5th field is
+// a STOP). The `InferredFacts` carrier itself co-lands with `lens/cost.dag`'s
+// `SymbolicCost` declaration (T-12) so all four IR-1 fields land together —
+// 04_infer is a boundary index only (DECISIONS IR-1, cross-ref column).
+//
+// CP-1b/T-8-close coordination — TargetModel/TargetSpec single-spelling
+// reconciliation lives in 00_compile.dag + 05_emit.dag under
+// gentle-heron-61's T-8-close train. 04_infer takes no position on that
+// spelling — `infer` does not consume a target carrier (DECISIONS B4: the
+// IR is the universal InferredTree, target-specificity enters only at T-11).
 
 
 module v4.compiler.infer
+
+
+import v4.compiler.resolve { ResolvedTree }
+import v4.std.diagnostic {
+  Correction,
+  Diagnostic,
+  ExternalContractUnknown,
+  Locus,
+  Outcome,
+  PortLocus,
+  Unavailable
+}
+import v4.std.node { Node, Symbol }
+
+
+// IR-1: `InferredTree = Node` — the universal pivot (DECISIONS A1/B4).
+type InferredTree = Node
+
+
+// T-9 Theme-A audit #2 — `AlgebraRef` is a `Symbol` name-reference to the
+// algebra inhabitance (the `Diagnostic.reason` cross-declaration idiom, K-1),
+// NOT a type `std/algebra.dag` declares.
+type AlgebraRef = Symbol
+
+
+data infer_stage_locus_port: Symbol = infer_stage_locus_port
+
+
+data infer_coercion_fold_not_realized: Symbol = infer_coercion_fold_not_realized
+
+
+fn infer_coercion_fold_not_realized_diagnostic(at: Locus) -> Diagnostic {
+  Diagnostic {
+    reason: infer_coercion_fold_not_realized,
+    at: at,
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+
+// Wave-1 boundary: the coercion-fold Find phase is unrealized; emit the
+// fail-closed Rejected branch with a stage-locus diagnostic. Synthesizing a
+// candidate inhabitance here would leave the decidable fragment (DECISIONS
+// C1) — STOP and surface a diagnostic instead.
+fn infer(tree: ResolvedTree) -> Outcome<InferredTree> {
+  Rejected {
+    diagnostic: infer_coercion_fold_not_realized_diagnostic(
+      at: PortLocus { port: infer_stage_locus_port }
+    )
+  }
+}
