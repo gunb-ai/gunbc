@@ -23,7 +23,7 @@ env:
 jobs:
   fmt:
     if: github.event.pull_request.draft != true
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ubicloud-standard-2
     timeout-minutes: 5
     steps:
     - name: Checkout
@@ -43,7 +43,7 @@ jobs:
   # for trunk verification). Cheap (~30s); other jobs depend on its outputs.
   affected:
     if: github.event.pull_request.draft != true
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ubicloud-standard-2
     timeout-minutes: 5
     outputs:
       v2: ${{ steps.detect.outputs.v2 }}
@@ -64,7 +64,7 @@ jobs:
   ci:
     if: github.event.pull_request.draft != true
     needs: [affected]
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ubicloud-standard-2
     timeout-minutes: 25
     steps:
     - name: Checkout
@@ -152,7 +152,7 @@ jobs:
   v2:
     if: github.event.pull_request.draft != true && needs.affected.outputs.v2 == 'true'
     needs: [affected]
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ubicloud-standard-2
     timeout-minutes: 30
     steps:
     - name: Checkout
@@ -187,7 +187,7 @@ jobs:
   v4:
     if: github.event.pull_request.draft != true && needs.affected.outputs.v4 == 'true'
     needs: [affected]
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ubicloud-standard-2
     timeout-minutes: 15
     steps:
     - name: Checkout
