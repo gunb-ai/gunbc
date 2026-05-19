@@ -80,10 +80,8 @@ data expected_affected_set_excluded_proofs: ReExecFrontier = ChangedSubgraphFron
     empty_map(),
     ExclusionKey { at: affected_set_claim_path, dimension: affected_set_claim_dimension },
     Excluded {
-      proofs: [
-        DimensionNotRead { producer: affected_set_claim_path },
-        DimensionNotRead { producer: affected_set_claim_path }
-      ]
+      first: DimensionNotRead { producer: affected_set_claim_path },
+      rest: [DimensionNotRead { producer: affected_set_claim_path }]
     }
   )
 }

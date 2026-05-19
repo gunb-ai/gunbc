@@ -73,7 +73,7 @@ type WholeDagFailClosedEvidence
 // 🟢 coproduct dissolution — DECISIONS.md #3153-subsumed
 type FrontierDecision
   = Rerun
-  | Excluded { proofs: List<PropagationExclusionProof> }
+  | Excluded { first: PropagationExclusionProof, rest: List<PropagationExclusionProof> }
 
 
 // 🟢 coproduct dissolution — DECISIONS.md #3153-subsumed; IRT-1 whole/changed-subgraph gate.
@@ -220,15 +220,15 @@ fn mark_excluded(frontier: ReExecFrontier, key: ExclusionKey, proof: Propagation
             boundary_exclusions: boundary_exclusions,
             decisions: decisions
           }
-        Some { value: Excluded { proofs: proofs } } =>
+        Some { value: Excluded { first: first, rest: rest } } =>
           ChangedSubgraphFrontier {
             boundary_exclusions: boundary_exclusions,
-            decisions: map_insert(decisions, key, Excluded { proofs: list_push(proofs, proof) })
+            decisions: map_insert(decisions, key, Excluded { first: first, rest: list_push(rest, proof) })
           }
         None =>
           ChangedSubgraphFrontier {
             boundary_exclusions: boundary_exclusions,
-            decisions: map_insert(decisions, key, Excluded { proofs: [proof] })
+            decisions: map_insert(decisions, key, Excluded { first: proof, rest: [] })
           }
       }
   }
