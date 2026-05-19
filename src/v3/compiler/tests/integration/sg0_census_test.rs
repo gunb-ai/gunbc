@@ -832,6 +832,9 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // `src/v4/lens/coverage.dag` L1.1-L1.12 acceptance data rows. Dissolves when
     // the v4 coverage lens runs as `.dag` and no hand-Rust row-presence ratchet is needed.
     "src/v3/compiler/tests/integration/v4_lens_coverage_dag_smoke_test.rs",
+    // PREFIX T-23 v0: `compile_to_dag` smoke on `src/v4/lens/registry.dag` (P2-staging
+    // `LensIdV0` + `LensModulePathV0`; no generated consumer yet). SG-0 + INVARIANTS §P5(b) receipt.
+    "src/v3/compiler/tests/integration/v4_lens_registry_dag_smoke_test.rs",
     // §1.8 gate #96 (`value_body_substrate_mirror_isomorphism_executable`):
     // CI-visible generated Rust `ValueBody` mirror vs `substrate.dag`
     // constructor isomorphism. Dissolves when `ValueBody` no longer has a
