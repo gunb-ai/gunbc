@@ -21,12 +21,14 @@ import v4.std.node { Node, Symbol }
 import v4.std.text { String }
 
 
+// 🟢 grounded — testcase: anchor_stub_source
 type Source = String
 
 
 type TargetModel = Node
 
 
+// 🟢 grounded — testcase: emit returns Outcome<TargetSource> in anchor_emit_rejects
 type TargetSource = String
 
 

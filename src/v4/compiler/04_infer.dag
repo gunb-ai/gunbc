@@ -23,6 +23,7 @@ import v4.std.diagnostic {
 import v4.std.node { Node, Symbol }
 
 
+// 🟢 grounded — testcase: anchor_stub_algebra_ref
 type AlgebraRef = Symbol
 
 
