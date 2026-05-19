@@ -60,17 +60,37 @@ fn t19_manual_manifest_matches_claim_anchor_discriminants() {
     let nat_laws = parse_module(NAT_LAW_ANCHORS_DAG, NAT_LAW_ANCHORS_PATH);
     let manifest = parse_module(T19_MANIFEST_DAG, T19_MANIFEST_PATH);
 
-    let manifest_keys = manifest_anchor_values(&manifest);
+    let manifest_rows = manifest_anchor_rows(&manifest);
+    let manifest_list = manifest_anchor_manifest_rows(&manifest);
+    let manifest_row_names = manifest_list.iter().copied().collect::<BTreeSet<_>>();
+    let manifest_keys = manifest_list
+        .iter()
+        .map(|row| {
+            *manifest_rows
+                .get(row)
+                .unwrap_or_else(|| panic!("manual_anchor_manifest references missing row {row}"))
+        })
+        .collect::<BTreeSet<_>>();
     let claim_keys = claim_anchor_values(&[&connective, &nat_laws]);
 
     assert_eq!(
-        manifest_keys.len(),
+        manifest_rows.len(),
         12,
-        "T-19 manifest is the twelve live anchors"
+        "T-19 manifest rows are the twelve live anchors"
+    );
+    assert_eq!(
+        manifest_list.len(),
+        12,
+        "manual_anchor_manifest must enumerate the twelve live anchor rows"
+    );
+    assert_eq!(
+        manifest_row_names,
+        manifest_rows.keys().copied().collect::<BTreeSet<_>>(),
+        "manual_anchor_manifest list membership must match the twelve anchor rows exactly"
     );
     assert_eq!(
         claim_keys, manifest_keys,
-        "manual TestClaim.t19_anchor values must join to the manifest by the same T19ManualAnchorKey discriminants"
+        "manual TestClaim.t19_anchor values must join through manual_anchor_manifest by the same T19ManualAnchorKey discriminants"
     );
     assert!(
         !claim_keys.contains("T19ManualAnchorAbsent"),
@@ -254,19 +274,27 @@ fn surface_type_name(ty: &SurfaceType) -> String {
     }
 }
 
-fn manifest_anchor_values(module: &SurfaceModule) -> BTreeSet<&str> {
+fn manifest_anchor_rows(module: &SurfaceModule) -> BTreeMap<&str, &str> {
     module
         .items
         .iter()
         .filter_map(|item| match item {
             SurfaceItem::Data {
+                name: row_name,
                 ty: SurfaceType::Named { name: ty_name, .. },
                 body: Some(SurfaceExpr::Var { name, .. }),
                 ..
-            } if ty_name == "T19ManualAnchorKey" => Some(name.as_str()),
+            } if ty_name == "T19ManualAnchorKey" => Some((row_name.as_str(), name.as_str())),
             _ => None,
         })
         .collect()
+}
+
+fn manifest_anchor_manifest_rows(module: &SurfaceModule) -> Vec<&str> {
+    match data_expr(module, "manual_anchor_manifest") {
+        SurfaceExpr::List { elements, .. } => elements.iter().map(var_name).collect(),
+        other => panic!("manual_anchor_manifest must be a list of row refs, got {other:?}"),
+    }
 }
 
 fn claim_anchor_values<'a>(modules: &[&'a SurfaceModule]) -> BTreeSet<&'a str> {
