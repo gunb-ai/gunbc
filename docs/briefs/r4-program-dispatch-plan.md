@@ -87,7 +87,7 @@ first) · `DESIGN` · `OP` (operator ruling) · `CP1` (needs v4 front-end output
 | T-4.7 | frameworks/react | SCAFFOLD | T-4 (ts) | CP1 (LanguageModel) | T-4 mgr |
 | T-4.8 | coordination | SCAFFOLD | T-4, T-4.7 | IFACE | T-4 mgr |
 | T-4.9 | languages/verilog | **PASS (IN-B)** per file header | T-1,T-2 | LANDED | T-4 mgr |
-| T-4.10 | formats/spice | **LANDED** (#3168 merged) — *pre-D2-reversal canonical path; see rework-obligation note* | T-1 | LANDED | T-4 mgr |
+| T-4.10 | formats/spice | **LANDED** (#3168 merged; receipt: `src/v4/extdeps/formats/spice.dag`, plus this row as the r4-program-dispatch-plan source-of-truth alignment) — *pre-D2-reversal canonical path; see rework-obligation note* | T-1 | LANDED | T-4 mgr |
 | T-4.11 | claim/english_ingest | SCAFFOLD | T-3/verification.dag | IFACE (AssertKind) | Lane B |
 | T-4.12 | languages/llvm_ir | **LANDED** (#3171 merged; +#3229 de-prose +#3300 cost-move on main) — *pre-D2-reversal canonical path; see rework-obligation note* | T-1,T-2 | LANDED | T-4 mgr |
 | T-4.13 | languages/machine_code | **IMPL (modeled slice)** — D2-REV per file header; Isa-parameterized slice + zero-diagnostic smoke landed | T-3, T-4 LanguageModel | CP1 (T-4 LanguageModel; modeled slice landed) | T-4 mgr |
