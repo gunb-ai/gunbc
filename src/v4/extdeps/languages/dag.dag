@@ -63,7 +63,7 @@ fn dag_language_model_wave1_void_canonical_symbols() -> Set<Symbol> {
 }
 
 
-// 🟡 predicate dissolution — DECISIONS.md §CP-1b item 2.
+// 🟡 predicate dissolution — TASKS.md T-4 — CP-1b witness item 2 (see v4.compiler.03_resolve.dag; archived DECISIONS cross-ref on merge PR).
 fn dag_language_model_is_wave1_void_shape(lm: DagLanguageModel) -> Bool {
   match lm.lex {
     VoidLexRules =>

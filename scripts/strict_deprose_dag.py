@@ -301,6 +301,12 @@ def format_ledger_line(
 
 
 def format_coproduct_tag(emoji: str, ref: str) -> str:
+    """Canonical Practice-4 one-liner for T-4 lane language files.
+
+    `ref` is the ledger slug (CP-*, SL-*, …). The ``TASKS.md T-4 ·`` prefix is
+    lane-wide for every slug: the whole extdeps/languages table is T-4-scoped,
+    including SL-3229-* lineage that names a sub-ledger row, not a separate lane.
+    """
     return f"// {emoji} coproduct dissolution — TASKS.md T-4 · {ref}."
 
 
