@@ -33,5 +33,5 @@ type PythonCost {
 // 🟢 Singleton / `Unit` D2a slice — TASKS.md T-4 (archived §PR-3252-extdeps-deferrals + §PR-3252-cardinality-std; Practice 9).
 
 // Anchor: https://docs.python.org/3.14/library/stdtypes.html#boolean-type-bool
-// 🟡 canonical-B decl-ref (truth facet; int-subtype build-up = BoolScalar) · E-6(b) bounded-exception · scaffold feature:canonical-b-grounding-consumer · dissolve-on: B1-CANON+zip-fold consume (ledger: DECISIONS.md B1·T-9/C1 · grounding-worked-examples.md §0)
+// 🟡 canonical-B decl-ref (truth facet; int-subtype build-up = BoolScalar) · E-6(b) bounded-exception · scaffold feature:canonical-b-grounding-consumer · dissolve-on: B1-CANON+zip-fold consume (ledger: TASKS.md T-4 + modeling-discipline B1·T-9/C1 · grounding-worked-examples.md §0)
 data py_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra

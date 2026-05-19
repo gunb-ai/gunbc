@@ -50,7 +50,7 @@ fn dag_language_model_wave1_void() -> DagLanguageModel {
 }
 
 
-// DECISIONS.md §CP-1b (item 1).
+// TASKS.md T-4 — CP-1b witness item 1 (see v4.compiler.03_resolve.dag; archived DECISIONS cross-ref on merge PR).
 fn dag_language_model_wave1_void_canonical_symbols() -> Set<Symbol> {
   Set {
     member: fn(sym) {

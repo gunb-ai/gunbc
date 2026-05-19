@@ -192,7 +192,7 @@ def verilog_yellow_ref(block: str) -> str:
     tail = block[pos:] if pos >= 0 else block
     ledger_header = tail.split("// Terminal:")[0]
     # `#3200` footers often live after `// Terminal:` in merge-base banners; scan the full
-    # authority tail, not only the pre-Terminal slice (DECISIONS.md §SL-3229-VERILOG-D3200).
+    # authority tail, not only the pre-Terminal slice (merge-base SL-3229-VERILOG-D3200 ledger).
     if (
         "#3200" in block
         or "first meaning-consumer" in ledger_header
