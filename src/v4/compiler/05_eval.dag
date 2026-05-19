@@ -239,7 +239,7 @@ fn run_test_claim(
 ) -> TestClaimRun<Node> {
   let actual = eval_node(
     tree: subject.tree,
-    inputs: Inputs { root: subject.claim.input }
+    inputs: Inputs { root: subject.evaluator_input }
   )
   TestClaimRun {
     subject: subject,
