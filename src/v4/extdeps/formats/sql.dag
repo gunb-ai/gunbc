@@ -94,7 +94,7 @@ type SqlSchemaOperation
       columns: List<SqlIdentifier>,
     }
   | SqlDropIndex { index_name: SqlIdentifier }
-  | SqlRawStep { dialect: SqlDialect, statement: String }
+  | SqlRawStep { statement: String }
 
 
 type SqlMigrationStep {
