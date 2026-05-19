@@ -119,19 +119,12 @@ src/v4/
         nat_law_anchors.dag
         t19_manual_anchor_manifest.dag  # T-19 manifest — `T19ManualAnchorKey` membership rows
         resolve_compile_anchor.dag  # resolve + wave-1 canonical `Set` compile anchor (#3225; T-22 defers `v2 run`)
-        go_extdeps_grounding_anchor.dag  # Go carrier grounding anchor (AXIS-3; T-22 defers `v2 run`)
-        go_float_width_extdeps_grounding_anchor.dag  # Go float width grounding anchor (variant namespace split)
-        go_complex_width_extdeps_grounding_anchor.dag  # Go complex width grounding anchor (variant namespace split)
-        python_extdeps_grounding_anchor.dag  # Python carrier grounding anchor (AXIS-3; T-22 defers `v2 run`)
-        rust_extdeps_grounding_anchor.dag  # Rust carrier grounding anchor (AXIS-3; T-22 defers `v2 run`)
-        rust_int_width_extdeps_grounding_anchor.dag  # Rust integer width grounding anchor (variant namespace split)
-        rust_float_width_extdeps_grounding_anchor.dag  # Rust float width grounding anchor (variant namespace split)
       boundary/          # boundary-honesty probes
         english_ingest_fail_closed.dag  # T-4.11 — fail-closed ingest, no fabrication
     fixture/             # canonical input programs
 ```
 
-**Total: 81 .dag files + 5 docs + 5 .gitkeep = 91 files.** (Per invariant
+**Total: 73 .dag files + 5 docs + 5 .gitkeep = 83 files.** (Per invariant
 #1 the enumeration above — not the count — is authoritative; the count is
 a checksum, updated on every operator-ratified file addition/removal.
 **Reconciliation (2026-05-17, PR #3225 / review #13750):** the prior printed
@@ -154,10 +147,6 @@ checksum **71→72** `.dag`.
 `docs/briefs/r4-lane-a-lens-interface-freeze-pin.md` §3); checksum **72→73** `.dag`.
 **P2-staging** (INVARIANTS §P2) until a generated consumer reads the rows — paired
 `v4_lens_registry_dag_smoke_test.rs` receipt (parse witness only; same discipline as `fact_density.dag`).
-**2026-05-19 (AXIS-3 groundedness):** add seven `test/claim/manual/*_extdeps_grounding_anchor.dag`
-compile-only anchors for Go/Python/Rust grounded vs needs-more-work carrier markers; variant-name
-collisions require separate width-anchor modules; checksum **74→81** `.dag`
-(the prior printed checksum was one below the tracked tree).
 
 ## Scalar/numeric concept decomposition
 
