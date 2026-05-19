@@ -609,6 +609,105 @@ The agent's job is the *search*; the substrate's job is the *gates*.
 Once T-22 eval is live, this becomes operational; until then, the
 shape is named but not runnable.
 
+### 6.7b Hero case (f): mechanical refactor — declarative model transition
+
+The **cleanest convolution shape** — judgment applied at
+*command-selection* time, not at per-site application. The agent
+declares "transition from model A to model B across the corpus"; the
+substrate finds all matches and applies the same transform uniformly;
+no per-site decisions needed.
+
+**Distinguishing trait — zero per-site judgment**. Compare to the
+other cases:
+- (a) L1.5 catamorphism auto-fix — *one lens, one transform*
+- (b) L1.12 canonical-B — *one lens, branches on outcome*
+  (`Auto` vs `NeedsDecision`)
+- (c) Interface cascade — *per-site conditional* based on consumer
+  structure (`ConditionalDiff`)
+- **(f) Mechanical refactor** — *declarative target, uniform per-site*;
+  the agent picks the named refactor and the substrate guarantees
+  uniform application
+
+**Scenario**: "transition all `type LangBool = Bool` bare aliases to
+canonical-B decl-ref grounding across all 6 languages." The worked
+example is exactly PR #3338's canonical-B work, executed as a single
+mechanical refactor rather than a hand-edited PR.
+
+**Read** — find all matches via a pattern-match lens (compose
+existing L1.x's `Signature` half):
+```dag
+matches = declarations_in(dag).flat_map(d =>
+  apply_lens(bare_alias_pattern_lens, DeclarationScope(d), Introspect)
+    .matches()
+)
+// → List<Match { path, type_name, aliased_to }>
+```
+
+**Affected-LOC enumeration** — pre-execution, the agent can inspect
+the exact scope structurally (not by grep):
+```dag
+preview = {
+  site_count:    matches.length,
+  exact_paths:   matches.map(m => m.path),
+  re_exec_scope: affected_set(dag, refactor_diff).frontier,
+}
+```
+This answers *"what are all the affected LOC"* — a structural
+enumeration with re-validation scope, available **before** any Edit
+applies.
+
+**Transform** — uniform per-site, declaratively expressed:
+```dag
+refactor_bare_alias_to_decl_ref(matches) -> Diff {
+  Diff(matches.map(m =>
+    Edit { at: m.path,
+           replacement: build_decl_ref_node(canonical_authority: m.aliased_to) }
+  ))
+}
+```
+No conditionals; every match gets the same shape of replacement.
+
+**Migration guarantee — the candidate-state pattern from §4 IS the
+guarantee:**
+1. `candidate_dag = apply_diff(dag, refactor_diff)` — fail-closed
+   Diagnostic if any Edit's Path doesn't resolve; whole refactor
+   bails atomically, no partial state.
+2. `affected_set(dag, refactor_diff).frontier.for_each(ref => apply_lens(L1.7, ref, Enforce))`
+   per relevant lens — fail-closed if any new violations introduced
+   by the candidate.
+3. `dag := candidate_dag` only if every gate passed.
+
+**The guarantee is structural**: either the refactor lands completely
+or no-op. Never a half-migrated state. LOC count is irrelevant —
+the substrate handles 10 sites or 10,000 the same way. Atomicity is
+a property of `apply_diff` + candidate-state, not of the refactor
+authoring.
+
+**Hero**: PR #3338 (canonical-B across 6 languages + 7 v3 ratchet
+dissolutions) is the worked example for this shape. Judgment applied:
+- "use decl-ref for Bool" (one decision)
+- "dissolve the 7 v3 ratchets" (one decision)
+
+The 13 affected sites (6 langs + 7 ratchets) plus the cascading
+INVARIANTS / sg0_census / integration.rs changes were **uniform
+per-class** — no per-site judgment. The substrate (had it been
+operational) could have applied the entire refactor mechanically from
+those two decisions.
+
+**Composition with existing cases**: a mechanical refactor often
+*decomposes into* per-lens auto-fixes from §6.2's catalog. The
+canonical-B refactor decomposes into L1.7 transforms (introduce
+witness rows) + L1.12 outcome (4) transforms (alias the historical
+declarations). The agent's job is **picking the named refactor**;
+the substrate's job is **composing the per-lens transforms** that
+implement it.
+
+**Where this differs from §6.6 CLI declaration**: §6.6 is *single
+intent → single concept*; mechanical refactor is *single intent →
+named class-wide transition*. Both are agent-shape, but mechanical
+refactor scales by enumeration over the matched set; CLI declaration
+scales by composing within a single intent shape.
+
 ### 6.8 What's missing substrate-side to make this operational
 
 The convolution view is implicit today. To make it executable:
@@ -644,16 +743,22 @@ Easiest-and-most-illustrative to hardest, if you want to build them:
 1. **(a) L1.5 ci_member auto-fix** — clean unambiguous transform,
    small cascade, no operator judgment. Best first demo.
 2. **(b) L1.12 canonical-B aliasing** — aligned with #3338 already
-   merged; transform produces the alias edge.
-3. **(c) Interface cascade (BooleanAlgebra + xor)** — hero use case
-   for conditional updates; introduces the `ConditionalDiff` carrier.
-4. **(d) CLI-driven concept declaration** — most agent-shaped; uses
+   merged; transform branches on outcome (Auto vs NeedsDecision).
+3. **(f) Mechanical refactor** — declarative model-A → model-B
+   transition; zero per-site judgment; the substrate guarantees
+   atomic application or no-op. Composes per-lens transforms from
+   §6.2 catalog. PR #3338 is the worked example (canonical-B + 7
+   ratchet dissolutions). Most directly useful hero shape for
+   day-to-day refactoring work.
+4. **(c) Interface cascade (BooleanAlgebra + xor)** — conditional
+   updates per consumer; introduces the `ConditionalDiff` carrier.
+5. **(d) CLI-driven concept declaration** — most agent-shaped; uses
    the most new substrate (intent carriers).
-5. **(e) Merge sort synthesis** — heaviest; needs T-22 eval and
+6. **(e) Merge sort synthesis** — heaviest; needs T-22 eval and
    cost-lens-as-constraint live.
 
-(a)–(d) are convolutions; (e) is synthesis. Distinct enough that (e)
-probably warrants its own design doc when picked up.
+(a)–(d) and (f) are convolutions; (e) is synthesis. Distinct enough
+that (e) probably warrants its own design doc when picked up.
 
 ## 7. The hard part — remaining open interface questions
 
