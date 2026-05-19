@@ -35,7 +35,6 @@ type TestgenCoverageKey = TestgenConcept
 
 
 // 🟡 coproduct dissolution — DECISIONS.md Part 6 · SL-PREFIX-DISSOLUTION-LENS-KEY.
-// Layer-1 canonical keys follow design-dissolution-lens.md §5.1: L1.6 is retired into L1.10.a.
 type DissolutionLensKey
   = L1_1DiscriminantPredicate
   | L1_2DegenerateType
