@@ -21,7 +21,7 @@ type GrammarExpr
   | Choice { alternatives: List<GrammarExpr> }
   | Optional { element: GrammarExpr }
   | Repeat { element: GrammarExpr }
-  | PrattExpression { atom: Symbol, operators: List<OperatorSpec> }
+  | PrattExpression { atom: Symbol, operator_set: Symbol }
 
 
 type GrammarProduction {
@@ -180,7 +180,7 @@ fn dag_parse_grammar() -> ParseGrammar {
         name: grammar_expr,
         expression: PrattExpression {
           atom: grammar_atom_expr,
-          operators: dag_operator_specs()
+          operator_set: grammar_dag_operator_set
         },
         builds: ForwardCapture { capture: grammar_expr }
       }
@@ -274,6 +274,7 @@ data grammar_and_operator: Symbol = grammar_and_operator
 data grammar_equality_operator: Symbol = grammar_equality_operator
 data grammar_additive_operator: Symbol = grammar_additive_operator
 data grammar_multiplicative_operator: Symbol = grammar_multiplicative_operator
+data grammar_dag_operator_set: Symbol = grammar_dag_operator_set
 data grammar_left_operand: Symbol = grammar_left_operand
 data grammar_operator_token: Symbol = grammar_operator_token
 data grammar_right_operand: Symbol = grammar_right_operand
