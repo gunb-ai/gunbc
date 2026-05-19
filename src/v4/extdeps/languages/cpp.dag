@@ -1,10 +1,13 @@
 // src/v4/extdeps/languages/cpp.dag
 // Scope: C++ language primitive resolver facts.
-// Owns: CppIntegerOverflowDisposition.
-// Consumes: v4.std.logic.Bool / v4.std.algebra.BooleanAlgebra via `v4.std.logic::bool_boolean_algebra` for canonical-B (M1(2.8): user-range `data` cannot freeze std `data` by decl-ref or inline `fn` in `data` bodies — no local `cpp_bool_grounding` row until class-5 gap #3 lifts); CppTargetProfile/CppTargetDataModel via T29-ABI follow-up rows.
+// Owns: CppIntegerOverflowDisposition, cpp_bool_grounding.
+// Consumes: v4.std.logic.Bool, bool_boolean_algebra; v4.std.algebra.BooleanAlgebra; CppTargetProfile/CppTargetDataModel via T29-ABI follow-up rows.
 // Status: D2-REV resolver slice; bool canonical-B decl-ref grounding — 🟡 E-6(b) staging (scaffold at decl; ledger DECISIONS.md/§0). Non-bool C++ scalar ladder still 🟡 feature:t4-cpp-scalar-ladder — DECISIONS.md P4-3208 + T29-ABI.
 
 module v4.extdeps.languages.cpp
+
+import v4.std.logic { Bool, bool_boolean_algebra }
+import v4.std.algebra { BooleanAlgebra }
 
 
 // 🟢 coproduct dissolution — DECISIONS.md T29-ABI + D2-REV.
@@ -13,5 +16,6 @@ type CppIntegerOverflowDisposition
   | UnsignedModuloArithmetic
 
 
-// Anchor: https://eel.is/c++draft/basic.fundamental — canonical `Bool` / two-valued algebra: single
-// authority `v4.std.logic::bool_boolean_algebra` (DECISIONS.md B1·E-6(b); grounding-worked-examples.md §0).
+// Anchor: https://eel.is/c++draft/basic.fundamental
+// 🟡 canonical-B decl-ref · E-6(b) bounded-exception · scaffold feature:canonical-b-grounding-consumer · dissolve-on: B1-CANON+zip-fold consume (ledger: DECISIONS.md B1·T-9/C1 · grounding-worked-examples.md §0)
+data cpp_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
