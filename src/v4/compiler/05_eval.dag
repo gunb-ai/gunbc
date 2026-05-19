@@ -27,7 +27,6 @@ import v4.std.diagnostic {
 import v4.std.verification {
   AssertKind,
   Compiles,
-  Diagnostic,
   Equals,
   RoundTrips,
   TestClaim
@@ -83,10 +82,13 @@ type TestClaimCacheReceipt {
 }
 
 
-type TestClaimVerdict
-// 🟢 coproduct dissolution — TestClaim execution result is exactly pass or fail.
+type Verdict<T>
+// 🟢 coproduct dissolution — execution result is exactly pass or fail.
   = Pass
-  | Fail { actual: Outcome<Node> }
+  | Fail { actual: Outcome<T> }
+
+
+type TestClaimVerdict = Verdict<Node>
 
 
 type TestClaimRun {
@@ -135,6 +137,8 @@ fn outcome_node_eq(a: Outcome<Node>, b: Outcome<Node>) -> Bool {
       Produced { value: bv } => av == bv
       Rejected { diagnostic: _ } => false
     }
+    // Rejection equality is reason-level for TestClaim assertions; locus and
+    // correction are diagnostic presentation facts, not the oracle identity.
     Rejected { diagnostic: ad } => match b {
       Produced { value: _ } => false
       Rejected { diagnostic: bd } => ad.reason == bd.reason
@@ -189,11 +193,6 @@ type StructuralOutcomeClaim<T> {
 }
 
 
-type StructuralOutcomeVerdict
-  = StructuralPass
-  | StructuralFail
-
-
 fn ci_outcome_reason_eq(actual: Outcome<CiPipeline>, reason: Symbol) -> Bool {
   match actual {
     Produced { value: _ } => false
@@ -202,14 +201,14 @@ fn ci_outcome_reason_eq(actual: Outcome<CiPipeline>, reason: Symbol) -> Bool {
 }
 
 
-fn run_ci_negative_claim(claim: StructuralOutcomeClaim<CiPipeline>) -> StructuralOutcomeVerdict {
+fn run_ci_negative_claim(claim: StructuralOutcomeClaim<CiPipeline>) -> Verdict<CiPipeline> {
   match claim.expected {
-    Produced { value: _ } => StructuralFail
+    Produced { value: _ } => Fail { actual: claim.actual }
     Rejected { diagnostic: d } =>
       if ci_outcome_reason_eq(actual: claim.actual, reason: d.reason) {
-        StructuralPass
+        Pass
       } else {
-        StructuralFail
+        Fail { actual: claim.actual }
       }
   }
 }
@@ -329,9 +328,9 @@ data claim_ci_dependency_cycle: StructuralOutcomeClaim<CiPipeline> = StructuralO
 }
 
 
-data t22_ci_negative_claims_pass: Bool = (run_ci_negative_claim(claim: claim_ci_dangling_bootstrap_output) == StructuralPass)
-  && (run_ci_negative_claim(claim: claim_ci_duplicate_job_id) == StructuralPass)
-  && (run_ci_negative_claim(claim: claim_ci_duplicate_gate_id) == StructuralPass)
-  && (run_ci_negative_claim(claim: claim_ci_dangling_need) == StructuralPass)
-  && (run_ci_negative_claim(claim: claim_ci_dangling_gate_job) == StructuralPass)
-  && (run_ci_negative_claim(claim: claim_ci_dependency_cycle) == StructuralPass)
+data t22_ci_negative_claims_pass: Bool = (run_ci_negative_claim(claim: claim_ci_dangling_bootstrap_output) == Pass)
+  && (run_ci_negative_claim(claim: claim_ci_duplicate_job_id) == Pass)
+  && (run_ci_negative_claim(claim: claim_ci_duplicate_gate_id) == Pass)
+  && (run_ci_negative_claim(claim: claim_ci_dangling_need) == Pass)
+  && (run_ci_negative_claim(claim: claim_ci_dangling_gate_job) == Pass)
+  && (run_ci_negative_claim(claim: claim_ci_dependency_cycle) == Pass)
