@@ -836,8 +836,16 @@ type CiCommand = ... | ShellCommand { command: process.Command }
 - *Decidable:* yes — return-type shape + arm-RHS constructor membership
   + matched-sub-pattern is a "nothing-here" variant + registry
   membership of the RHS constructor are all structural facts.
-- *Verdict:* hard error. The fix is to lift the return type to
-  `Outcome<T>` and return `Rejected { diagnostic: DerivationUnknown }`.
+- *Verdict:* hard error. Fix depends on which case fired:
+  - **Bare-return case** (`fn(...) -> T; None => Ctor`): lift the
+    return type to `Outcome<T>` and return
+    `Rejected { diagnostic: DerivationUnknown }` on the missing-info
+    arm.
+  - **Outcome-wrapped case** (`fn(...) -> Outcome<T>; None => Produced { value: ... }`):
+    the return type is already `Outcome<_>` — replace the
+    `Produced` constructor on the missing-info arm with
+    `Rejected { diagnostic: DerivationUnknown }` (the registered
+    fail-closed-diagnostic variant).
 - *Escape (structural — no operator-confirm via prose):* for genuine
   total-by-design helpers (`or_default(opt, default)` etc.) where the
   `None` branch's RHS is the function's *definitional* result, the
