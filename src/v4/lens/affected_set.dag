@@ -55,15 +55,15 @@ type ReExecFrontier
 
 
 type AffectedSetRead {
-  hash_receipt: fn(Dag, Path, Node) -> HashReceipt
+  boundary_hash_receipt: fn(Dag, Path, Node) -> HashReceipt
   changed_subgraph_frontier_edges: fn(Dag, Path) -> List<FrontierEdge>
   propagation_receipt: fn(Dag, FrontierEdge) -> PropagationReceipt
 }
 
 
-// 🟡 coproduct dissolution — DECISIONS.md #3153-subsumed; dissolves into B1 content_hash read receipts.
+// 🟡 coproduct dissolution — DECISIONS.md #3153-subsumed; dissolves into B1 content_hash plus B-5 purity/effect receipts.
 type HashReceipt
-  = HashUnchanged { content_hash: Hash }
+  = HashUnchangedPure { content_hash: Hash }
   | HashChanged
   | HashUnknown { reason: Symbol }
 
@@ -139,8 +139,19 @@ fn mark_excluded(acc: FrontierAcc, key: ExclusionKey, proof: ExclusionProof) -> 
   match acc {
     WholeDagAcc { reason: r } => WholeDagAcc { reason: r }
     ChangedSubgraphAcc { decisions: decisions } =>
-      ChangedSubgraphAcc {
-        decisions: map_insert(decisions, key, Excluded { proof: proof })
+      match map_get(decisions, key) {
+        Some { value: Rerun } =>
+          ChangedSubgraphAcc {
+            decisions: decisions
+          }
+        Some { value: Excluded { proof: _ } } =>
+          ChangedSubgraphAcc {
+            decisions: map_insert(decisions, key, Excluded { proof: proof })
+          }
+        None =>
+          ChangedSubgraphAcc {
+            decisions: map_insert(decisions, key, Excluded { proof: proof })
+          }
       }
   }
 }
@@ -152,8 +163,8 @@ fn mark_whole_dag(acc: FrontierAcc, reason: Symbol) -> FrontierAcc {
 
 
 fn boundary_receipt(read_model: AffectedSetRead, dag: Dag, path: Path, replacement: Node) -> BoundaryReceipt {
-  match read_model.hash_receipt(dag, path, replacement) {
-    HashUnchanged { content_hash: h } =>
+  match read_model.boundary_hash_receipt(dag, path, replacement) {
+    HashUnchangedPure { content_hash: h } =>
       BoundaryPruned {
         proof: UnchangedPureBoundary {
           subject: path,
