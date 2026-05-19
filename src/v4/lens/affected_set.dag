@@ -1,6 +1,6 @@
 // src/v4/lens/affected_set.dag
 // Scope: canonical affected-set authority for CI/incremental re-execution; fail-closed B-4/B-5 node frontier.
-// Owns: Dag, AffectedDimension, ExclusionKey, ExclusionProof, BoundaryExclusionProof, WholeDagFailClosedEvidence, FrontierDecision, ReExecFrontier, AffectedSetRead, AffectedPostEditDagReceipt, HashReceipt, ChangedDimensionReceipt, affected_set.
+// Owns: Dag, AffectedDimension, ExclusionKey, ExclusionProof, BoundaryExclusionProof, BoundaryExclusion, WholeDagFailClosedEvidence, FrontierDecision, ReExecFrontier, AffectedSetRead, AffectedPostEditDagReceipt, HashReceipt, ChangedDimensionReceipt, affected_set.
 // Consumes: Map, Diagnostic, Diff, Edit, Hash, Node, Path, Symbol, Witness; B1 content_hash receipts; B-4 resolved Symbol equality; B-5 per-Arrow signature effects.
 // Status: Wave-0 front: bounded changed-subgraph frontier fold landed; dissolves when CI use and .dag TestClaims land.
 
@@ -54,6 +54,12 @@ type BoundaryExclusionProof
   = UnchangedPureBoundary { subject: Path, content_hash: Hash }
 
 
+type BoundaryExclusion {
+  edit: Edit
+  proof: BoundaryExclusionProof
+}
+
+
 // 🟡 coproduct dissolution — DECISIONS.md #3153-subsumed
 type WholeDagFailClosedEvidence
   = WholeDagReason { reason: Symbol }
@@ -69,7 +75,7 @@ type FrontierDecision
 // 🟢 coproduct dissolution — DECISIONS.md #3153-subsumed; IRT-1 whole/changed-subgraph gate.
 type ReExecFrontier
   = ChangedSubgraphFrontier {
-      boundary_exclusions: Map<Edit, BoundaryExclusionProof>,
+      boundary_exclusions: List<BoundaryExclusion>,
       decisions: Map<ExclusionKey, FrontierDecision>
     }
   | WholeDagFailClosed { evidence: WholeDagFailClosedEvidence }
@@ -126,24 +132,15 @@ type AffectedSetRead {
 }
 
 
-// 🟢 coproduct dissolution — DECISIONS.md #3153-subsumed; accumulator mirrors ReExecFrontier authority.
-type FrontierAcc
-  = ChangedSubgraphAcc {
-      boundary_exclusions: Map<Edit, BoundaryExclusionProof>,
-      decisions: Map<ExclusionKey, FrontierDecision>
-    }
-  | WholeDagAcc { evidence: WholeDagFailClosedEvidence }
-
-
 type AffectedFoldAcc {
   dag: Dag
-  frontier: FrontierAcc
+  frontier: ReExecFrontier
 }
 
 
-fn empty_frontier_acc() -> FrontierAcc {
-  ChangedSubgraphAcc {
-    boundary_exclusions: empty_map(),
+fn empty_frontier() -> ReExecFrontier {
+  ChangedSubgraphFrontier {
+    boundary_exclusions: [],
     decisions: empty_map()
   }
 }
@@ -152,25 +149,13 @@ fn empty_frontier_acc() -> FrontierAcc {
 fn empty_affected_fold_acc(dag: Dag) -> AffectedFoldAcc {
   AffectedFoldAcc {
     dag: dag,
-    frontier: empty_frontier_acc()
+    frontier: empty_frontier()
   }
 }
 
 
 fn frontier_from_fold_acc(acc: AffectedFoldAcc) -> ReExecFrontier {
-  frontier_from_acc(acc: acc.frontier)
-}
-
-
-fn frontier_from_acc(acc: FrontierAcc) -> ReExecFrontier {
-  match acc {
-    ChangedSubgraphAcc { boundary_exclusions: boundary_exclusions, decisions: decisions } =>
-      ChangedSubgraphFrontier {
-        boundary_exclusions: boundary_exclusions,
-        decisions: decisions
-      }
-    WholeDagAcc { evidence: e } => WholeDagFailClosed { evidence: e }
-  }
+  acc.frontier
 }
 
 
@@ -190,11 +175,11 @@ fn edge_key(edge: FrontierEdge) -> ExclusionKey {
 }
 
 
-fn mark_rerun(acc: FrontierAcc, key: ExclusionKey) -> FrontierAcc {
-  match acc {
-    WholeDagAcc { evidence: e } => WholeDagAcc { evidence: e }
-    ChangedSubgraphAcc { boundary_exclusions: boundary_exclusions, decisions: decisions } =>
-      ChangedSubgraphAcc {
+fn mark_rerun(frontier: ReExecFrontier, key: ExclusionKey) -> ReExecFrontier {
+  match frontier {
+    WholeDagFailClosed { evidence: e } => WholeDagFailClosed { evidence: e }
+    ChangedSubgraphFrontier { boundary_exclusions: boundary_exclusions, decisions: decisions } =>
+      ChangedSubgraphFrontier {
         boundary_exclusions: boundary_exclusions,
         decisions: map_insert(decisions, key, Rerun)
       }
@@ -202,35 +187,35 @@ fn mark_rerun(acc: FrontierAcc, key: ExclusionKey) -> FrontierAcc {
 }
 
 
-fn mark_boundary_excluded(acc: FrontierAcc, edit: Edit, proof: BoundaryExclusionProof) -> FrontierAcc {
-  match acc {
-    WholeDagAcc { evidence: e } => WholeDagAcc { evidence: e }
-    ChangedSubgraphAcc { boundary_exclusions: boundary_exclusions, decisions: decisions } =>
-      ChangedSubgraphAcc {
-        boundary_exclusions: map_insert(boundary_exclusions, edit, proof),
+fn mark_boundary_excluded(frontier: ReExecFrontier, edit: Edit, proof: BoundaryExclusionProof) -> ReExecFrontier {
+  match frontier {
+    WholeDagFailClosed { evidence: e } => WholeDagFailClosed { evidence: e }
+    ChangedSubgraphFrontier { boundary_exclusions: boundary_exclusions, decisions: decisions } =>
+      ChangedSubgraphFrontier {
+        boundary_exclusions: list_push(boundary_exclusions, BoundaryExclusion { edit: edit, proof: proof }),
         decisions: decisions
       }
   }
 }
 
 
-fn mark_excluded(acc: FrontierAcc, key: ExclusionKey, proof: ExclusionProof) -> FrontierAcc {
-  match acc {
-    WholeDagAcc { evidence: e } => WholeDagAcc { evidence: e }
-    ChangedSubgraphAcc { boundary_exclusions: boundary_exclusions, decisions: decisions } =>
+fn mark_excluded(frontier: ReExecFrontier, key: ExclusionKey, proof: ExclusionProof) -> ReExecFrontier {
+  match frontier {
+    WholeDagFailClosed { evidence: e } => WholeDagFailClosed { evidence: e }
+    ChangedSubgraphFrontier { boundary_exclusions: boundary_exclusions, decisions: decisions } =>
       match map_get(decisions, key) {
         Some { value: Rerun } =>
-          ChangedSubgraphAcc {
+          ChangedSubgraphFrontier {
             boundary_exclusions: boundary_exclusions,
             decisions: decisions
           }
         Some { value: Excluded { proofs: proofs } } =>
-          ChangedSubgraphAcc {
+          ChangedSubgraphFrontier {
             boundary_exclusions: boundary_exclusions,
             decisions: map_insert(decisions, key, Excluded { proofs: list_push(proofs, proof) })
           }
         None =>
-          ChangedSubgraphAcc {
+          ChangedSubgraphFrontier {
             boundary_exclusions: boundary_exclusions,
             decisions: map_insert(decisions, key, Excluded { proofs: [proof] })
           }
@@ -239,13 +224,13 @@ fn mark_excluded(acc: FrontierAcc, key: ExclusionKey, proof: ExclusionProof) -> 
 }
 
 
-fn mark_whole_dag(acc: FrontierAcc, reason: Symbol) -> FrontierAcc {
-  WholeDagAcc { evidence: WholeDagReason { reason: reason } }
+fn mark_whole_dag(reason: Symbol) -> ReExecFrontier {
+  WholeDagFailClosed { evidence: WholeDagReason { reason: reason } }
 }
 
 
-fn mark_whole_dag_diagnostic(acc: FrontierAcc, diagnostic: Diagnostic) -> FrontierAcc {
-  WholeDagAcc { evidence: WholeDagDiagnostic { diagnostic: diagnostic } }
+fn mark_whole_dag_diagnostic(diagnostic: Diagnostic) -> ReExecFrontier {
+  WholeDagFailClosed { evidence: WholeDagDiagnostic { diagnostic: diagnostic } }
 }
 
 
@@ -267,27 +252,24 @@ fn boundary_receipt(read_model: AffectedSetRead, dag: Dag, path: Path, replaceme
 fn expand_dimension(
   read_model: AffectedSetRead,
   dag: Dag,
-  acc: FrontierAcc,
+  frontier: ReExecFrontier,
   edit: Edit,
   dimension: AffectedDimension
-) -> FrontierAcc {
+) -> ReExecFrontier {
   fold(
     read_model.frontier.proven_transitive_changed_subgraph_frontier(
       dag,
       EditDimension { edit: edit, dimension: dimension }
     ),
-    init: acc,
+    init: frontier,
     f: fn(acc2, edge) {
     match read_model.propagation_receipt(dag, EditFrontierEdge { edit: edit, edge: edge }) {
       Propagates =>
-        mark_rerun(acc: acc2, key: edge_key(edge: edge))
+        mark_rerun(frontier: acc2, key: edge_key(edge: edge))
       DoesNotPropagate { proof: p } =>
-        mark_excluded(acc: acc2, key: edge_key(edge: edge), proof: p)
+        mark_excluded(frontier: acc2, key: edge_key(edge: edge), proof: p)
       PropagationUnknown { reason: r } =>
-        mark_whole_dag(
-          acc: mark_rerun(acc: acc2, key: edge_key(edge: edge)),
-          reason: r
-        )
+        mark_whole_dag(reason: r)
     }
   })
 }
@@ -297,28 +279,28 @@ fn expand_changed_dimensions(
   read_model: AffectedSetRead,
   boundary_dag: Dag,
   frontier_dag: Dag,
-  acc: FrontierAcc,
+  frontier: ReExecFrontier,
   edit: Edit
-) -> FrontierAcc {
+) -> ReExecFrontier {
   match read_model.boundary.changed_dimension_receipt(boundary_dag, edit) {
     ChangedDimensions { first: first_dimension, rest: rest_dimensions } =>
       fold(rest_dimensions, init: expand_dimension(
         read_model: read_model,
         dag: frontier_dag,
-        acc: mark_rerun(acc: acc, key: root_key(path: edit.at, dimension: first_dimension)),
+        frontier: mark_rerun(frontier: frontier, key: root_key(path: edit.at, dimension: first_dimension)),
         edit: edit,
         dimension: first_dimension
       ), f: fn(acc2, dimension) {
         expand_dimension(
           read_model: read_model,
           dag: frontier_dag,
-          acc: mark_rerun(acc: acc2, key: root_key(path: edit.at, dimension: dimension)),
+          frontier: mark_rerun(frontier: acc2, key: root_key(path: edit.at, dimension: dimension)),
           edit: edit,
           dimension: dimension
         )
       })
     ChangedDimensionsUnknown { reason: r } =>
-      mark_whole_dag(acc: acc, reason: r)
+      mark_whole_dag(reason: r)
   }
 }
 
@@ -340,7 +322,7 @@ fn seed_edit_fold_acc(
         BoundaryPruned { proof: p } =>
           AffectedFoldAcc {
             dag: next_dag,
-            frontier: mark_boundary_excluded(acc: acc.frontier, edit: edit, proof: p)
+            frontier: mark_boundary_excluded(frontier: acc.frontier, edit: edit, proof: p)
           }
         BoundaryExpands =>
           AffectedFoldAcc {
@@ -349,26 +331,20 @@ fn seed_edit_fold_acc(
               read_model: read_model,
               boundary_dag: acc.dag,
               frontier_dag: next_dag,
-              acc: acc.frontier,
+              frontier: acc.frontier,
               edit: edit
             )
           }
         BoundaryUnknown { reason: r } =>
           AffectedFoldAcc {
             dag: next_dag,
-            frontier: mark_whole_dag(
-              acc: acc.frontier,
-              reason: r
-            )
+            frontier: mark_whole_dag(reason: r)
           }
       }
     PostEditDagRejected { diagnostic: d } =>
       AffectedFoldAcc {
         dag: acc.dag,
-        frontier: mark_whole_dag_diagnostic(
-          acc: acc.frontier,
-          diagnostic: d
-        )
+        frontier: mark_whole_dag_diagnostic(diagnostic: d)
       }
   }
 }
