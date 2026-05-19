@@ -1525,13 +1525,13 @@ predicate for `List` carriers through the landed FreeMonoid predicate. Until
 then, the merge-base `List<T>` sites and PR #3272 sites 27-29 stay producer-side
 invariants rather than API-enforced refinements.
 
-### SL-3229-VERILOG-D3200 — #3200 consumer-independent 🟡 coproducts (first-consumer decomposition)
+### SL-3229-VERILOG-D3200 — #3200 consumer-independent 🟡 coproducts (T-4.9 gate)
 
-Merge-base `verilog.dag` Practice-4 headers marked **🟡 YELLOW** under the **#3200** consumer-independent rule (namable richer source axes + first meaning-consumer decomposition), **distinct** from the Wave-A2 `List<T> where non_empty` ledger (`SL-3229-VERILOG-NONEMPTY`).
+Merge-base `verilog.dag` Practice-4 headers marked **🟡 YELLOW** under the **#3200** consumer-independent rule (namable richer source axes + first meaning-consumer decomposition), **distinct** from the Wave-A2 `List<T> where non_empty` ledger (`SL-3229-VERILOG-NONEMPTY`). The original "D2 / synthesis / elaboration consumer" trigger was re-concretized after the D2 reversal: these carriers now gate on the T-4.9 Verilog `LanguageModel` axis rework named in `TASKS.md` T-4.9, where the Verilog language model grows the structural axes those coproducts compress.
 
 **Live coproduct one-liners cite this slug:** `NonTriregNetKind`, `VariableDeclaration`, `OutputPortAnsiVariableTypeKind`, `ParameterTypeKind`, `PrimitiveGateKind` (merge-base `92cb26402` — verbatim five-pattern ledgers + `#3200 RE-SCOPE` footers recoverable via `git show 92cb26402eeb21471acb6ac47559cbae3b52afdb:src/v4/extdeps/languages/verilog.dag`).
 
-**Dissolution trigger:** first meaning-consumer owes the structural decomposition named in each carrier’s merge-base footer (D2 / synthesis / elaboration consumers — not a verilog-local mint).
+**Dissolution trigger:** 🟡 gated — `feature: T-4.9 Verilog LanguageModel-axis rework (owner: TASKS.md T-4.9)`. Dissolve on arrival by decomposing each carrier against the axis named in its merge-base footer inside the Verilog T-4.9 language model; do not mint a Verilog-local parallel carrier outside that rework.
 
 ### SL-3229-VERILOG-VECTOR-RANGE — CLOSED: `VectorRange` constant_expression endpoints
 
