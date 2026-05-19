@@ -269,7 +269,294 @@ preserving the Edit's intent.
 **Gate** — `apply_lens(claim.property, NodeScope(claim.subject), Enforce)`
 is the literal validation; the TestClaim's property *is* the lens.
 
-## 6. The hard part — open interface questions
+## 6. Lens as `(find, transform)` — the convolution view + auto-fix demonstrations
+
+The framing operators have used to make this concrete:
+*"edit-via-code is a convolution — find this pattern, transform to
+this pattern."* Every L1.x dissolution lens is already structurally
+a `(find, transform)` pair: the Signature is the **find** half, the
+Clean shape is the **transform** half. Today both halves are
+authored as prose + example; the convolution-driven view turns them
+into executable rewrite operators.
+
+This is the most concrete answer to §7.1 below ("higher-order Edit
+combinators") — the L1.x catalog is *already* the seed library of
+combinators, just not yet machine-readable as transforms.
+
+### 6.1 Convolution vs synthesis — two distinct shapes
+
+Two distinct code-via-code shapes, both useful, both produce Diffs
+against the same substrate:
+
+| Shape | Kernel | Input | Output | When to use |
+|---|---|---|---|---|
+| **Convolution** | `(find_lens, transform_fn)` pair | Node graph | Diff | refactor / dissolve / interface cascade |
+| **Synthesis** | spec + cost constraints | `TestClaim` + complexity bound | Diff that lands a *new* function | "write merge sort" / pure synthesis |
+
+Convolution rewrites existing structure; synthesis generates new
+structure to satisfy a spec. They compose: synthesis lands a function,
+convolution-style refactoring keeps it clean as the substrate evolves.
+
+### 6.2 Auto-fix per L1.x — the seed combinator library
+
+Every L1.x lens has a hero auto-fix case implicit in its existing
+prose Clean shape. The table makes them explicit as
+`(find, transform)` pairs ready to be authored as machine-readable
+substrate data:
+
+| Lens | Find (signature) | Transform (auto-fix shape) | Hero case |
+|---|---|---|---|
+| **L1.1** Discriminant-predicate | `fn(coproduct) -> Bool { match { V => true/false } }` | Delete fn; rewrite consumers to inline `match` (or use derived discriminant once Track 2 lands) | `nat_is_zero` removed; consumers rewritten to `match n { Zero => ..., Succ => ... }` |
+| **L1.2** Degenerate-type | (a) struct-of-fns no `data`; (b) N near-identical wrappers | (a) inline as plain fn; (b) coalesce to coproduct + factor shared field | 26 `ListMap<A,B> { apply: fn }` wrappers collapse to one `list_map<A,B>(xs, f)` |
+| **L1.3** Hollow-type | declared but no inhabitance edge | Delete the type; rewrite the (very rare) incoming refs | Inert `ParseError` removed; consumers use `Diagnostic` directly |
+| **L1.4** Carrier-clone | local coproduct ≅ `std/` carrier | Replace local with std/ carrier; rewrite all consumers | `NormalizeChildrenResult` → `Outcome<List<Edge>>`; consumers updated |
+| **L1.5** Catamorphism | recursive `match`-over-data-shape | Replace with `fold` / `traverse` primitive | `ci_member` → `list_any(xs, fn(h) { symbol_eq(a: s, b: h) })` |
+| **L1.7** Off-substrate-fact | prose claim, no structural witness | Synthesize witness from claim type | `merge_evidence` + "inhabits BoundedLattice" comment → emit `data ... : BoundedLattice<DescentEvidence> = { ... }` |
+| **L1.8** Wrong-home | fn whose primary concept lives upstream | Move fn + rewire imports | `nat_compare` from `float.dag` → `nat.dag`; `float.dag` imports it |
+| **L1.9** Vacuous-arm | `match` arm with trivial RHS, asymmetric within fn | (mostly) operator-confirm exemption; rare auto-fix | Operator-judgment dominated; structured 🟡 instead of auto-apply |
+| **L1.10.a** TemplateHole | string literal with `{N}` placeholders | Replace template with grammar-as-data structural emitter | `list_template: "Vec<{0}>"` → `RustTypeRealization` data row |
+| **L1.10.b** CanonicalCarrier | `String` field whose name maps to registered typed carrier | Replace field type with typed carrier; rewrite construction sites | `ShellCommand { command: String }` → `ShellCommand { command: process.Command }` |
+| **L1.11** Plausible-fallback | `None => non-Rejected Ctor` | Lift return to `Outcome<T>`; replace with `Rejected { diagnostic: DerivationUnknown }` | `derive_effect_shape` `DELETE None => CreateEffect` → `Rejected { diagnostic: ... }` |
+| **L1.12** Parallel-authority | duplicate concept home | Make non-canonical an alias edge OR add `HistoricalDeclaration` row | `dsl.std.types.Bool` → alias-identity edge to `v4.std.logic.Bool` |
+
+**Most cells have a clean unambiguous transform.** The exceptions
+(L1.9, parts of L1.7) need operator judgment — captured structurally
+as `🟡 needs operator decision { because: <closed-vocab> }` rather
+than freeform prose. Same pattern as the "explicit throwaway
+acknowledgment vs no test" stance the operator ratified 2026-05-19.
+
+### 6.3 Hero case (a): L1.5 catamorphism auto-fix
+
+The cleanest illustrative case — unambiguous transform, small cascade,
+no operator judgment.
+
+**Find** — L1.5's existing signature matches `fn` recursing over a
+structural type by `match`ing its variants + self-calling on the
+sub-structure:
+```dag
+fn ci_member(s: Symbol, xs: List<Symbol>) -> Bool {
+  match xs {
+    Nil                       => false
+    Cons { head: h, tail: t } => match symbol_eq(a: s, b: h) {
+      True  => true
+      False => ci_member(s: s, xs: t)
+    }
+  }
+}
+```
+
+**Transform** — replace with the substrate-derived combinator.
+The lens's Clean shape (currently authored as prose) becomes an
+executable mapping:
+```dag
+// pseudo machine-readable Clean shape
+L1_5_transform(matched_node) -> Diff {
+  let inner_pred = extract_arm_body(matched_node, variant: Cons)
+  Diff([
+    Edit {
+      path: matched_node.path,
+      replace_with: build_fold_application(
+        primitive: list_any,
+        list_arg: matched_node.list_param,
+        predicate: synthesize_lambda(inner_pred)
+      )
+    }
+  ])
+}
+```
+
+**Pipeline**:
+```
+matches = declarations_in(dag).flat_map(d =>
+  apply_lens(L1.5, DeclarationScope(d), Introspect).matches()
+)
+diff = Diff(matches.map(m => L1_5_transform(m)))
+affected = affected_set(dag, diff)
+apply_lens(L1.5, NodeScope(affected), Enforce)   // re-validate clean
+new_dag = apply_diff(dag, diff)
+// per-target emit re-renders the affected files
+```
+
+Result: `ci_member`, `bs_member`, `ci_id_occurrences`, etc. all
+become single-line fold applications. The substrate enforces the
+clean shape going forward via the same L1.5 in `Enforce` mode.
+
+### 6.4 Hero case (b): L1.12 canonical-B aliasing
+
+Same shape as canonical-B in #3338, but expressed as the lens's own
+auto-transform.
+
+**Find** — L1.12's outcome (5) silence case: a `type T` declared in
+two files with no `CanonicalConcept` row, no alias, no retirement
+ledger.
+
+**Transform** — produce a Diff that adds the `CanonicalConcept`
+row AND the alias-identity edge (outcome 1 in the decision table):
+```dag
+L1_12_transform(matched_pair) -> Diff {
+  let (canonical, historical) = pick_canonical_home(matched_pair)
+  Diff([
+    Edit { path: ontology_file, insert:
+      data <concept>_concept: CanonicalConcept = {
+        canonical_home: canonical.path,
+        members: { historical.path },
+      }
+    },
+    Edit { path: historical.path, replace_with:
+      import <canonical_module> as canonical_alias
+      type T = canonical_alias.T
+    },
+  ])
+}
+```
+
+**Hero**: the operator-ratified canonical-B work in #3338 is the
+worked example — the substrate could have generated that Diff
+automatically once L1.12 fired.
+
+### 6.5 Hero case (c): interface cascade with conditional updates
+
+The "find downstream affected lines, make conditional updates"
+case from the operator's framing.
+
+**Scenario**: `BooleanAlgebra<T>` gains a required `xor` operation
+in `std/algebra.dag`. All existing `data ... : BooleanAlgebra<X>`
+rows are now incomplete.
+
+**Find** — consumers of the changed interface:
+```dag
+consumers = declarations_in(dag).flat_map(d =>
+  apply_lens(consumers_of(symbol: BooleanAlgebra), DeclarationScope(d), Introspect)
+    .matches()
+)
+// → List<Match { path, instance_type: X, current_fields: {...} }>
+```
+
+**Conditional transform per consumer** — this is where the "DAG of
+edits" framing earns its keep:
+```dag
+diff_per_consumer(m) -> ConditionalDiff {
+  let derived_xor = try_synthesize_xor_from(m.current_fields)
+  match derived_xor {
+    Some { fn } =>
+      Auto(Diff([Edit { path: m.path, insert_field: xor = fn }]))
+    None =>
+      NeedsDecision {
+        because: cannot_derive_xor_structurally,
+        hint: Diff([Edit { path: m.path, insert_field: xor = pending_operator_xor }]),
+        marker: 🟡_needs_operator_decision { interface_extension: xor }
+      }
+  }
+}
+```
+
+Three buckets of consumers:
+- **Auto-update**: `meet`/`join`/`complement` are present → derive
+  `xor = (a ∨ b) ∧ ¬(a ∧ b)` structurally → land the Diff
+- **Needs decision**: no derivable form → add a structured 🟡 marker
+  with the closed-vocab reason; the lens fires next CI run until the
+  operator authors a decision
+- **Alias / unchanged**: re-exports of canonical homes don't need
+  their own xor; propagation handled by the alias edge
+
+The conditional transform is the substrate-acknowledged version of
+"some sites I can fix; some need you." The 🟡 markers themselves are
+substrate data, not comments — they fire in CI with structured
+diagnostic until resolved.
+
+### 6.6 Hero case (d): CLI-driven concept declaration
+
+The agent-shape from the open question §7.5 below (workflow-as-data).
+
+**Scenario**: worker types
+```bash
+gunbc declare-concept Bool \
+  --canonical-home v4.std.logic.Bool \
+  --members dsl.std.types.Bool
+```
+
+**Substrate execution**:
+1. CLI parses the invocation into a `ConceptDeclarationIntent`
+   carrier (substrate data, not prose)
+2. `intent_to_diff(intent)` synthesizes:
+   - `data bool_concept: CanonicalConcept = { canonical_home: ..., members: ... }`
+   - Alias-identity Edit for each `members` entry
+3. `apply_diff(dag, diff)` applies
+4. `apply_lens(L1.12, NodeScope(affected), Enforce)` validates →
+   should pass via outcome (1) alias
+5. Re-emit affected files
+
+The CLI invocation is the spec; the Diff is the convolution output;
+the agent never touches a file directly. **This is the substrate-pivot
+fully realized for one specific intent shape** — the same pattern
+generalizes to every other "declare X, derive Y" intent.
+
+### 6.7 Hero case (e): merge sort synthesis (the synthesis-shape case)
+
+Distinguished from (a)–(d) because it's *synthesis*, not convolution.
+
+**Scenario**: a `TestClaim` row declares:
+```dag
+data merge_sort_claim: TestClaim = {
+  subject: <function-to-be-synthesized>,
+  property: sorts_correctly_and_stable,
+  cost_bound: complexity ≤ n_log_n,
+}
+```
+
+**Substrate execution**:
+1. Search the implementation space (LLM-driven; the substrate's job
+   is to shape the search, not to solve it)
+2. Each candidate Diff is validated via:
+   - T-22 eval over the TestClaim's property → does it sort?
+   - L1.5 catamorphism lens → is the recursion honest fold structure?
+   - Cost lens → does complexity match `n_log_n`?
+3. Iterate until all three gates pass
+4. Land the winning Diff
+
+The agent's job is the *search*; the substrate's job is the *gates*.
+Once T-22 eval is live, this becomes operational; until then, the
+shape is named but not runnable.
+
+### 6.8 What's missing substrate-side to make this operational
+
+The convolution view is implicit today. To make it executable:
+
+1. **Machine-readable Clean shape per lens** — currently prose +
+   example. Author each L1.x's Clean shape as `transform_fn(Matched)
+   → Diff` substrate data. The §6.2 table is the spec for this.
+2. **Conditional/branching transforms** — for cases like §6.5 where
+   the right transform depends on the consumer's structure. ADT shape:
+   `ConditionalDiff = Auto(Diff) | NeedsDecision { because: <closed-vocab>, hint: Diff? } | NotApplicable`.
+3. **DAG-of-edits composition** — sequential `List<Edit>` works for
+   small cases; non-local cascades need a partial-order graph (some
+   Edits must precede others). Natural extension; doesn't replace
+   `apply_diff`'s fail-closed semantics.
+4. **Intent-shaped declaration carriers** (for §6.6) — `ConceptDeclarationIntent`,
+   `AlgebraExtensionIntent`, etc. as substrate data + `intent_to_diff` as
+   a fold. This is Track 2 from #3313 generalized.
+5. **Search loop primitive** (for §6.7) — once T-22 eval is live,
+   compose into a synthesize-validate-iterate loop. Heaviest dep.
+
+### 6.9 Recommended ordering for hero demonstrations
+
+Easiest-and-most-illustrative to hardest, if you want to build them:
+
+1. **(a) L1.5 ci_member auto-fix** — clean unambiguous transform,
+   small cascade, no operator judgment. Best first demo.
+2. **(b) L1.12 canonical-B aliasing** — aligned with #3338 already
+   merged; transform produces the alias edge.
+3. **(c) Interface cascade (BooleanAlgebra + xor)** — hero use case
+   for conditional updates; introduces the `ConditionalDiff` carrier.
+4. **(d) CLI-driven concept declaration** — most agent-shaped; uses
+   the most new substrate (intent carriers).
+5. **(e) Merge sort synthesis** — heaviest; needs T-22 eval and
+   cost-lens-as-constraint live.
+
+(a)–(d) are convolutions; (e) is synthesis. Distinct enough that (e)
+probably warrants its own design doc when picked up.
+
+## 7. The hard part — remaining open interface questions
 
 The mechanical primitives are ratified. The **interface** is the part
 the operator named as hard. Six open design questions, each its own
@@ -312,7 +599,7 @@ follow-up:
    applied" — substrate-side, not commit-message-side. Makes audit +
    rollback structural rather than textual.
 
-## 7. What this doc isn't
+## 8. What this doc isn't
 
 - **Not a new framework.** The substrate-pivot principle holds: no
   LLM-specific nouns. Same Nodes, same lenses, same primitives —
@@ -321,11 +608,13 @@ follow-up:
 - **Not a replacement for T-23.** `lens/application.dag` is the
   operations / types file; this doc is the design rationale + worked
   examples.
-- **Not an implementation plan.** The open questions in §6 are
+- **Not an implementation plan.** The open questions in §7 are
   *interface design questions* — implementation follows once the
-  interface is clear.
+  interface is clear. The §6 hero demonstrations are illustrative,
+  not specifications — they show the convolution shape but the
+  authoring of machine-readable transforms is its own work.
 
-## 8. Status / open
+## 9. Status / open
 
 - **Vocabulary** (`Path` / `Edit` / `Diff` in `std/node.dag`):
   **ratified** per PR #3162.
