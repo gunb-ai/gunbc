@@ -1,13 +1,13 @@
 // src/v4/lens/affected_set.dag
 // Scope: canonical affected-set authority for CI/incremental re-execution; fail-closed B-4/B-5 node frontier.
 // Owns: Dag, AffectedDimension, ExclusionKey, ExclusionProof, PropagationExclusionProof, BoundaryExclusionProof, BoundaryExclusion, WholeDagFailClosedEvidence, FrontierDecision, ReExecFrontier, AffectedSetRead, AffectedPostEditDagReceipt, HashReceipt, ChangedDimensionReceipt, FrontierReceipt, affected_set.
-// Consumes: Map, Diagnostic, Diff, Edit, Hash, Node, Path, Symbol, Witness; B1 content_hash receipts; B-4 resolved Symbol equality; B-5 per-Arrow signature effects.
+// Consumes: List, Map, Diagnostic, Diff, Edit, Hash, Node, Path, Symbol, Witness; B1 content_hash receipts; B-4 resolved Symbol equality; B-5 per-Arrow signature effects.
 // Status: Wave-0 front: bounded changed-subgraph frontier fold landed; dissolves when CI use and .dag TestClaims land.
 
 module v4.lens.affected_set
 
 
-import v4.std.collection { Map }
+import v4.std.collection { List, Map }
 import v4.std.diagnostic { Diagnostic }
 import v4.std.node { Diff, Edit, Hash, Node, Path, Symbol }
 import v4.std.witness { Holds, Witness }
@@ -27,7 +27,7 @@ type ExclusionKey {
 type FrontierEdge {
   producer: Path
   consumer: Path
-  dimension: AffectedDimension
+  consumer_dimension: AffectedDimension
 }
 
 
@@ -39,6 +39,7 @@ type EditDimension {
 
 type EditFrontierEdge {
   edit: Edit
+  changed_dimension: AffectedDimension
   edge: FrontierEdge
 }
 
@@ -181,7 +182,7 @@ fn root_key(path: Path, dimension: AffectedDimension) -> ExclusionKey {
 fn edge_key(edge: FrontierEdge) -> ExclusionKey {
   ExclusionKey {
     at: edge.consumer,
-    dimension: edge.dimension
+    dimension: edge.consumer_dimension
   }
 }
 
@@ -276,9 +277,17 @@ fn propagation_receipt(
   read_model: AffectedSetRead,
   dag: Dag,
   edit: Edit,
+  dimension: AffectedDimension,
   edge: FrontierEdge
 ) -> PropagationReceipt {
-  read_model.propagation_receipt(dag, EditFrontierEdge { edit: edit, edge: edge })
+  read_model.propagation_receipt(
+    dag,
+    EditFrontierEdge {
+      edit: edit,
+      changed_dimension: dimension,
+      edge: edge
+    }
+  )
 }
 
 
@@ -298,7 +307,13 @@ fn expand_dimension(
             match acc2 {
               WholeDagFailClosed { evidence: e } => WholeDagFailClosed { evidence: e }
               ChangedSubgraphFrontier { boundary_exclusions: _, decisions: _ } =>
-                match propagation_receipt(read_model: read_model, dag: dag, edit: edit, edge: edge) {
+                match propagation_receipt(
+                  read_model: read_model,
+                  dag: dag,
+                  edit: edit,
+                  dimension: dimension,
+                  edge: edge
+                ) {
                   Propagates =>
                     mark_rerun(frontier: acc2, key: edge_key(edge: edge))
                   DoesNotPropagate { proof: p } =>
