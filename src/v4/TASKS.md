@@ -1080,12 +1080,13 @@ star remains a **generated** structural `Node → Outcome` gate in v4
 `.dag` authority. While the v4→v3 `compile_to_dag` bootstrap cannot yet
 prepend `std/node.dag` without name collisions (see `DECISIONS.md` T-30
 `fact_density.dag` encoding note), the Practice-8 predicate lands as the
-**P5(b) bounded triple**: (1) a **hand Rust mirror**
+**P5(b) bounded pattern**: (1) a **hand Rust mirror**
 (`src/v3/compiler/src/v4_hollow_alias_gate.rs` + hermetic unit tests), (2)
-a **body-less nominal witness** in `src/v4/std/fact_density.dag`, and (3)
-the **`compile_to_dag` smoke** harness
-(`src/v3/compiler/tests/integration/v4_std_fact_density_dag_smoke_test.rs`).
-The **two Rust paths (1)+(3)** each carry an **SG-0**
+a **body-less nominal witness** in `src/v4/std/fact_density.dag`, and (3) a
+**retired `compile_to_dag` smoke** harness (`v4_std_fact_density_dag_smoke_test.rs`,
+**dissolved** with **#3338**; see INVARIANTS §P5(b) / `v4:` bootstrap gate).
+The **SG-0** literals that paired (1) with **INVARIANTS.md** §P5(b) remain;
+the dissolved smoke row is **not** reintroduced as an interim ratchet.
 `EXPECTED_HAND_AUTHORED_{NON_TEST,TEST}` literal plus a matching
 **`INVARIANTS.md` §P5(b)** row under **T-PB-A** / **T-PB-B** naming the
 **dissolution** trigger when the generated checker is the authority. The

@@ -40,7 +40,19 @@ import v4.test.claim.manual.nat_law_anchors {
   claim_nat_add_right_identity,
   claim_nat_mul_annihilator,
   claim_nat_mul_associativity,
-  claim_nat_mul_left_identity
+  claim_nat_mul_left_identity,
+  nat_law_subject_algebra_nat_add_associativity,
+  nat_law_subject_algebra_nat_add_left_identity,
+  nat_law_subject_algebra_nat_add_right_identity,
+  nat_law_subject_algebra_nat_mul_annihilator,
+  nat_law_subject_algebra_nat_mul_associativity,
+  nat_law_subject_algebra_nat_mul_left_identity,
+  nat_law_subject_inhabitant_nat_add_associativity,
+  nat_law_subject_inhabitant_nat_add_left_identity,
+  nat_law_subject_inhabitant_nat_add_right_identity,
+  nat_law_subject_inhabitant_nat_mul_annihilator,
+  nat_law_subject_inhabitant_nat_mul_associativity,
+  nat_law_subject_inhabitant_nat_mul_left_identity
 }
 import v4.std.diagnostic {
   Outcome,
@@ -98,12 +110,6 @@ type Generator<C> {
   t19_anchor: T19ManualAnchorKey
   slot: C
 }
-
-
-data t19_bootstrap_algebra: Symbol = t19_bootstrap_algebra
-
-
-data t19_bootstrap_inhabitant: Symbol = t19_bootstrap_inhabitant
 
 
 data t19_law_nat_add_left_identity: Symbol = t19_law_nat_add_left_identity
@@ -209,8 +215,8 @@ fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept>
       Produced {
         value: AlgebraLaw {
           subject: AlgebraLawSubject {
-            algebra: t19_bootstrap_algebra,
-            inhabitant: t19_bootstrap_inhabitant,
+            algebra: nat_law_subject_algebra_nat_add_left_identity,
+            inhabitant: nat_law_subject_inhabitant_nat_add_left_identity,
             law: t19_law_nat_add_left_identity,
           },
         },
@@ -219,8 +225,8 @@ fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept>
       Produced {
         value: AlgebraLaw {
           subject: AlgebraLawSubject {
-            algebra: t19_bootstrap_algebra,
-            inhabitant: t19_bootstrap_inhabitant,
+            algebra: nat_law_subject_algebra_nat_add_right_identity,
+            inhabitant: nat_law_subject_inhabitant_nat_add_right_identity,
             law: t19_law_nat_add_right_identity,
           },
         },
@@ -229,8 +235,8 @@ fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept>
       Produced {
         value: AlgebraLaw {
           subject: AlgebraLawSubject {
-            algebra: t19_bootstrap_algebra,
-            inhabitant: t19_bootstrap_inhabitant,
+            algebra: nat_law_subject_algebra_nat_add_associativity,
+            inhabitant: nat_law_subject_inhabitant_nat_add_associativity,
             law: t19_law_nat_add_associativity,
           },
         },
@@ -239,8 +245,8 @@ fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept>
       Produced {
         value: AlgebraLaw {
           subject: AlgebraLawSubject {
-            algebra: t19_bootstrap_algebra,
-            inhabitant: t19_bootstrap_inhabitant,
+            algebra: nat_law_subject_algebra_nat_mul_left_identity,
+            inhabitant: nat_law_subject_inhabitant_nat_mul_left_identity,
             law: t19_law_nat_mul_left_identity,
           },
         },
@@ -249,8 +255,8 @@ fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept>
       Produced {
         value: AlgebraLaw {
           subject: AlgebraLawSubject {
-            algebra: t19_bootstrap_algebra,
-            inhabitant: t19_bootstrap_inhabitant,
+            algebra: nat_law_subject_algebra_nat_mul_annihilator,
+            inhabitant: nat_law_subject_inhabitant_nat_mul_annihilator,
             law: t19_law_nat_mul_annihilator,
           },
         },
@@ -259,8 +265,8 @@ fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept>
       Produced {
         value: AlgebraLaw {
           subject: AlgebraLawSubject {
-            algebra: t19_bootstrap_algebra,
-            inhabitant: t19_bootstrap_inhabitant,
+            algebra: nat_law_subject_algebra_nat_mul_associativity,
+            inhabitant: nat_law_subject_inhabitant_nat_mul_associativity,
             law: t19_law_nat_mul_associativity,
           },
         },

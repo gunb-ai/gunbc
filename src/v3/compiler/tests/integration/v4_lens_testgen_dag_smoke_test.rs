@@ -34,6 +34,12 @@ fn v4_lens_testgen_wave0_substrate_parses() {
     );
 
     assert!(
+        !TESTGEN_DAG.contains("t19_bootstrap_algebra")
+            && !TESTGEN_DAG.contains("t19_bootstrap_inhabitant"),
+        "nat-law AlgebraLawSubject algebra/inhabitant must project from `nat_law_anchors` authority (no shared bootstrap placeholders)"
+    );
+
+    assert!(
         !TESTGEN_DAG.contains("t19_present_manual_anchor_key"),
         "testgen must not import or call std `t19_present_manual_anchor_key` (convention-only present carrier removed)"
     );
@@ -158,7 +164,30 @@ fn assert_nat_manual_claim_blocks_use_equals(nat_src: &str) {
             "{claim}: nat-law manual stubs must use `kind: Equals` (AlgebraLaw Wave-0 pairing; openai-pro #14414 class)"
         );
     }
+    for sym in NAT_LAW_SUBJECT_SYMBOLS {
+        let needle = format!("data {sym}:");
+        assert!(
+            nat_src.contains(&needle),
+            "{needle}: missing nat-law AlgebraLawSubject symbol ground (authority colocated with manual claim)"
+        );
+    }
 }
+
+/// Symbol grounds declared in `nat_law_anchors.dag` for `AlgebraLawSubject.algebra` / `.inhabitant` (one pair per nat manual claim).
+const NAT_LAW_SUBJECT_SYMBOLS: [&str; 12] = [
+    "nat_law_subject_algebra_nat_add_left_identity",
+    "nat_law_subject_inhabitant_nat_add_left_identity",
+    "nat_law_subject_algebra_nat_add_right_identity",
+    "nat_law_subject_inhabitant_nat_add_right_identity",
+    "nat_law_subject_algebra_nat_add_associativity",
+    "nat_law_subject_inhabitant_nat_add_associativity",
+    "nat_law_subject_algebra_nat_mul_left_identity",
+    "nat_law_subject_inhabitant_nat_mul_left_identity",
+    "nat_law_subject_algebra_nat_mul_annihilator",
+    "nat_law_subject_inhabitant_nat_mul_annihilator",
+    "nat_law_subject_algebra_nat_mul_associativity",
+    "nat_law_subject_inhabitant_nat_mul_associativity",
+];
 
 fn assert_six_nat_arms_use_algebra_law_in_testgen_concept_fn(testgen_src: &str) {
     let start = testgen_src
