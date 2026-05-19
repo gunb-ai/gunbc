@@ -7,20 +7,24 @@ module v2_5.std.diagnostic
 
 import v2_5.std.node { Symbol, Node }
 
+// 🟢 coproduct dissolution — Extent: source-extent shape; closed-sum.
 type Extent
   = WholeFile
   | ByteRange { start: Int, end: Int }
 
+// 🟢 coproduct dissolution — Locus: diagnostic site; closed-sum.
 type Locus
   = Textual { file: Symbol, extent: Extent }
   | NodeLocus { node: Node }
   | PortLocus { port: Symbol }
 
+// 🟢 coproduct dissolution — NoCorrectionReason: closed-sum.
 type NoCorrectionReason
   = UserInputBoundary
   | AmbiguousIntent
   | ExternalContractUnknown
 
+// 🟢 coproduct dissolution — Correction: suggestion vs unavailable; closed-sum.
 type Correction
   = Suggested { node: Node }
   | Unavailable { reason: NoCorrectionReason }
@@ -31,6 +35,7 @@ type Diagnostic {
   correction: Correction
 }
 
+// 🟢 coproduct dissolution — Outcome<T>: fail-closed result carrier; closed-sum.
 type Outcome<T>
   = Produced { value: T }
   | Rejected { diagnostic: Diagnostic }
