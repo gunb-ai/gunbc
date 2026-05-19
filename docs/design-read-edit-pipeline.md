@@ -709,9 +709,9 @@ guarantee:**
 1. `candidate_dag = apply_diff(dag, refactor_diff)` — fail-closed
    Diagnostic if any Edit's Path doesn't resolve; whole refactor
    bails atomically, no partial state.
-2. `affected_set(dag, refactor_diff).frontier.for_each(ref => apply_lens(L1.7, ref, Enforce))`
-   per relevant lens — fail-closed if any new violations introduced
-   by the candidate.
+2. `affected_set(dag, refactor_diff).frontier.for_each(ref => apply_lens(L1.7, scope_in(candidate_dag, ref), Enforce))`
+   per relevant lens (candidate root structurally explicit) —
+   fail-closed if any new violations introduced by the candidate.
 3. `dag := candidate_dag` only if every gate passed.
 
 **The guarantee is structural**: either the refactor lands completely
