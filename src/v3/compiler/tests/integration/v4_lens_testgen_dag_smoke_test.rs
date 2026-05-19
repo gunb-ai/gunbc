@@ -18,6 +18,7 @@ use v3_compiler::tokenize_for_test;
 const TESTGEN_DAG: &str = include_str!("../../../../v4/lens/testgen.dag");
 const VERIFICATION_DAG: &str = include_str!("../../../../v4/std/verification.dag");
 const NAT_LAW_DAG: &str = include_str!("../../../../v4/test/claim/manual/nat_law_anchors.dag");
+const NAT_SUBSTRATE_DAG: &str = include_str!("../../../../v4/std/nat.dag");
 
 const NAT_MANUAL_CLAIM_DATA: [&str; 6] = [
     "claim_nat_add_left_identity",
@@ -41,7 +42,15 @@ fn v4_lens_testgen_wave0_substrate_parses() {
     assert!(
         !TESTGEN_DAG.contains("t19_bootstrap_algebra")
             && !TESTGEN_DAG.contains("t19_bootstrap_inhabitant"),
-        "nat-law AlgebraLawSubject algebra/inhabitant must project from `nat_law_anchors` authority (no shared bootstrap placeholders)"
+        "nat-law AlgebraLawSubject algebra/inhabitant must project from `v4.std.nat` substrate Symbol bundle (no shared bootstrap placeholders)"
+    );
+
+    assert!(
+        TESTGEN_DAG.contains("import v4.std.nat {")
+            && TESTGEN_DAG.contains("nat_algebra_law_subject_symbol_additive_monoid")
+            && TESTGEN_DAG.contains("nat_algebra_law_subject_symbol_commutative_semiring")
+            && TESTGEN_DAG.contains("nat_algebra_law_subject_symbol_inhabitant_nat"),
+        "testgen must import the three `AlgebraLawSubject` Symbol carriers from `v4.std.nat` (single substrate authority)"
     );
 
     assert!(
@@ -171,46 +180,39 @@ fn v4_lens_testgen_wave0_substrate_parses() {
     );
 
     assert_nat_manual_claim_blocks_use_equals(NAT_LAW_DAG);
+    assert_nat_algebra_law_subject_symbols_in_substrate(NAT_SUBSTRATE_DAG);
     assert_six_nat_arms_use_algebra_law_in_testgen_concept_fn(TESTGEN_DAG);
 }
 
-fn assert_nat_manual_claim_blocks_use_equals(nat_src: &str) {
+fn assert_nat_manual_claim_blocks_use_equals(nat_law_src: &str) {
     for claim in NAT_MANUAL_CLAIM_DATA {
         let needle = format!("data {claim}:");
-        let i = nat_src
+        let i = nat_law_src
             .find(&needle)
             .unwrap_or_else(|| panic!("{needle}: missing nat-law manual claim row"));
-        let end = nat_src.len().min(i.saturating_add(700));
-        let tail = &nat_src[i..end];
+        let end = nat_law_src.len().min(i.saturating_add(700));
+        let tail = &nat_law_src[i..end];
         assert!(
             tail.contains("kind: Equals"),
             "{claim}: nat-law manual stubs must use `kind: Equals` (AlgebraLaw Wave-0 pairing; openai-pro #14414 class)"
         );
     }
-    for sym in NAT_LAW_SUBJECT_SYMBOLS {
+}
+
+/// `AlgebraLawSubject` nominal `Symbol` carriers live in `v4.std.nat` (substrate), not in claim stubs.
+fn assert_nat_algebra_law_subject_symbols_in_substrate(nat_src: &str) {
+    for sym in [
+        "nat_algebra_law_subject_symbol_additive_monoid",
+        "nat_algebra_law_subject_symbol_commutative_semiring",
+        "nat_algebra_law_subject_symbol_inhabitant_nat",
+    ] {
         let needle = format!("data {sym}:");
         assert!(
             nat_src.contains(&needle),
-            "{needle}: missing nat-law AlgebraLawSubject symbol ground (authority colocated with manual claim)"
+            "{needle}: missing nat substrate AlgebraLawSubject Symbol ground"
         );
     }
 }
-
-/// Symbol grounds declared in `nat_law_anchors.dag` for `AlgebraLawSubject.algebra` / `.inhabitant` (one pair per nat manual claim).
-const NAT_LAW_SUBJECT_SYMBOLS: [&str; 12] = [
-    "nat_law_subject_algebra_nat_add_left_identity",
-    "nat_law_subject_inhabitant_nat_add_left_identity",
-    "nat_law_subject_algebra_nat_add_right_identity",
-    "nat_law_subject_inhabitant_nat_add_right_identity",
-    "nat_law_subject_algebra_nat_add_associativity",
-    "nat_law_subject_inhabitant_nat_add_associativity",
-    "nat_law_subject_algebra_nat_mul_left_identity",
-    "nat_law_subject_inhabitant_nat_mul_left_identity",
-    "nat_law_subject_algebra_nat_mul_annihilator",
-    "nat_law_subject_inhabitant_nat_mul_annihilator",
-    "nat_law_subject_algebra_nat_mul_associativity",
-    "nat_law_subject_inhabitant_nat_mul_associativity",
-];
 
 fn assert_six_nat_arms_use_algebra_law_in_testgen_concept_fn(testgen_src: &str) {
     let start = testgen_src

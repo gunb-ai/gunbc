@@ -1,14 +1,15 @@
 // src/v4/test/claim/manual/nat_law_anchors.dag
 // Scope: Manual Nat law TestClaims (stub payload; law text in label until T-22 eval).
-// Owns: claim_nat_* TestClaim data nat_law_subject_* Symbol grounds (AlgebraLawSubject algebra/inhabitant authority)
-// Consumes: v4.std.verification v4.std.diagnostic v4.std.node v4.test.claim.manual.connective_anchors
+// Owns: claim_nat_* TestClaim data
+// Consumes: v4.std.verification v4.std.diagnostic v4.test.claim.manual.connective_anchors
 // Status: v2 compile; classification discipline indexed DECISIONS V-HDR.
+// Note: `AlgebraLawSubject` algebra/inhabitant `Symbol` keys live in `v4.std.nat` (substrate bundle tied to
+// `nat_additive_commutative_monoid` / `nat_semiring` / carrier `Nat`); see `src/v4/lens/testgen.dag`.
 
 module v4.test.claim.manual.nat_law_anchors
 
 import v4.std.verification {
   TestClaim,
-  Compiles,
   Equals,
   TestClassification,
   Tier1,
@@ -21,7 +22,6 @@ import v4.std.verification {
   T19ManualNatMulAssociativity
 }
 import v4.std.diagnostic { Produced }
-import v4.std.node { Symbol }
 import v4.test.claim.manual.connective_anchors { stub_empty_conj }
 
 
@@ -35,12 +35,6 @@ data claim_nat_add_left_identity: TestClaim = TestClaim {
 }
 
 
-data nat_law_subject_algebra_nat_add_left_identity: Symbol = nat_law_subject_algebra_nat_add_left_identity
-
-
-data nat_law_subject_inhabitant_nat_add_left_identity: Symbol = nat_law_subject_inhabitant_nat_add_left_identity
-
-
 data claim_nat_add_right_identity: TestClaim = TestClaim {
   kind: Equals,
   label: "manual/nat: monoid right identity nat_add(a,Zero)=a (law; eval T-22)",
@@ -49,12 +43,6 @@ data claim_nat_add_right_identity: TestClaim = TestClaim {
   expected: Produced { value: stub_empty_conj },
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
-
-
-data nat_law_subject_algebra_nat_add_right_identity: Symbol = nat_law_subject_algebra_nat_add_right_identity
-
-
-data nat_law_subject_inhabitant_nat_add_right_identity: Symbol = nat_law_subject_inhabitant_nat_add_right_identity
 
 
 data claim_nat_add_associativity: TestClaim = TestClaim {
@@ -67,12 +55,6 @@ data claim_nat_add_associativity: TestClaim = TestClaim {
 }
 
 
-data nat_law_subject_algebra_nat_add_associativity: Symbol = nat_law_subject_algebra_nat_add_associativity
-
-
-data nat_law_subject_inhabitant_nat_add_associativity: Symbol = nat_law_subject_inhabitant_nat_add_associativity
-
-
 data claim_nat_mul_left_identity: TestClaim = TestClaim {
   kind: Equals,
   label: "manual/nat: multiplicative monoid identity nat_mul(one,a)=a where one is Succ-of-Zero (law; eval T-22)",
@@ -81,12 +63,6 @@ data claim_nat_mul_left_identity: TestClaim = TestClaim {
   expected: Produced { value: stub_empty_conj },
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
-
-
-data nat_law_subject_algebra_nat_mul_left_identity: Symbol = nat_law_subject_algebra_nat_mul_left_identity
-
-
-data nat_law_subject_inhabitant_nat_mul_left_identity: Symbol = nat_law_subject_inhabitant_nat_mul_left_identity
 
 
 data claim_nat_mul_annihilator: TestClaim = TestClaim {
@@ -99,12 +75,6 @@ data claim_nat_mul_annihilator: TestClaim = TestClaim {
 }
 
 
-data nat_law_subject_algebra_nat_mul_annihilator: Symbol = nat_law_subject_algebra_nat_mul_annihilator
-
-
-data nat_law_subject_inhabitant_nat_mul_annihilator: Symbol = nat_law_subject_inhabitant_nat_mul_annihilator
-
-
 data claim_nat_mul_associativity: TestClaim = TestClaim {
   kind: Equals,
   label: "manual/nat: multiplicative monoid associativity (anchor; eval T-22)",
@@ -113,9 +83,3 @@ data claim_nat_mul_associativity: TestClaim = TestClaim {
   expected: Produced { value: stub_empty_conj },
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
-
-
-data nat_law_subject_algebra_nat_mul_associativity: Symbol = nat_law_subject_algebra_nat_mul_associativity
-
-
-data nat_law_subject_inhabitant_nat_mul_associativity: Symbol = nat_law_subject_inhabitant_nat_mul_associativity

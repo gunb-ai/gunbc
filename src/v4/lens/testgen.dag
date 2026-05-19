@@ -1,12 +1,38 @@
 // src/v4/lens/testgen.dag
 // Scope: T-19 testgen — P2 manual-anchor join; Generator carries kind + anchor + classification + subject slot.
 // Owns: Generator TestgenConcept manual_test_claim_for_manual_anchor testgen_concept_for_manual_claim TypeConstructionSubject AlgebraLawSubject DiagnosticExhaustivenessSubject LensApplicabilitySubject BidirectionalRoundtripSubject
-// Consumes: v4.std.node v4.std.verification v4.test.claim.manual.connective_anchors v4.test.claim.manual.nat_law_anchors
+// Consumes: v4.std.diagnostic v4.std.nat v4.std.node v4.std.verification v4.test.claim.manual.connective_anchors v4.test.claim.manual.nat_law_anchors
 // Status: Wave-0 modeled; M2 merge compile + eval T-22.
 
 module v4.lens.testgen
 
 
+import v4.std.diagnostic {
+  Outcome,
+  Produced,
+  Rejected,
+  Diagnostic,
+  Unavailable,
+  UserInputBoundary,
+  Textual,
+  WholeFile
+}
+import v4.std.nat {
+  nat_algebra_law_subject_symbol_additive_monoid,
+  nat_algebra_law_subject_symbol_commutative_semiring,
+  nat_algebra_law_subject_symbol_inhabitant_nat
+}
+import v4.std.node {
+  Node,
+  Connective,
+  Conj,
+  Disj,
+  Arrow,
+  Cardinality,
+  Instantiation,
+  Behavior,
+  Symbol
+}
 import v4.std.verification {
   AssertKind,
   TestClaim,
@@ -53,40 +79,7 @@ import v4.test.claim.manual.nat_law_anchors {
   claim_nat_add_right_identity,
   claim_nat_mul_annihilator,
   claim_nat_mul_associativity,
-  claim_nat_mul_left_identity,
-  nat_law_subject_algebra_nat_add_associativity,
-  nat_law_subject_algebra_nat_add_left_identity,
-  nat_law_subject_algebra_nat_add_right_identity,
-  nat_law_subject_algebra_nat_mul_annihilator,
-  nat_law_subject_algebra_nat_mul_associativity,
-  nat_law_subject_algebra_nat_mul_left_identity,
-  nat_law_subject_inhabitant_nat_add_associativity,
-  nat_law_subject_inhabitant_nat_add_left_identity,
-  nat_law_subject_inhabitant_nat_add_right_identity,
-  nat_law_subject_inhabitant_nat_mul_annihilator,
-  nat_law_subject_inhabitant_nat_mul_associativity,
-  nat_law_subject_inhabitant_nat_mul_left_identity
-}
-import v4.std.diagnostic {
-  Outcome,
-  Produced,
-  Rejected,
-  Diagnostic,
-  Unavailable,
-  UserInputBoundary,
-  Textual,
-  WholeFile
-}
-import v4.std.node {
-  Node,
-  Connective,
-  Conj,
-  Disj,
-  Arrow,
-  Cardinality,
-  Instantiation,
-  Behavior,
-  Symbol
+  claim_nat_mul_left_identity
 }
 
 
@@ -228,8 +221,8 @@ fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept>
       Produced {
         value: AlgebraLaw {
           subject: AlgebraLawSubject {
-            algebra: nat_law_subject_algebra_nat_add_left_identity,
-            inhabitant: nat_law_subject_inhabitant_nat_add_left_identity,
+            algebra: nat_algebra_law_subject_symbol_additive_monoid,
+            inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
             law: t19_law_nat_add_left_identity,
           },
         },
@@ -238,8 +231,8 @@ fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept>
       Produced {
         value: AlgebraLaw {
           subject: AlgebraLawSubject {
-            algebra: nat_law_subject_algebra_nat_add_right_identity,
-            inhabitant: nat_law_subject_inhabitant_nat_add_right_identity,
+            algebra: nat_algebra_law_subject_symbol_additive_monoid,
+            inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
             law: t19_law_nat_add_right_identity,
           },
         },
@@ -248,8 +241,8 @@ fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept>
       Produced {
         value: AlgebraLaw {
           subject: AlgebraLawSubject {
-            algebra: nat_law_subject_algebra_nat_add_associativity,
-            inhabitant: nat_law_subject_inhabitant_nat_add_associativity,
+            algebra: nat_algebra_law_subject_symbol_additive_monoid,
+            inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
             law: t19_law_nat_add_associativity,
           },
         },
@@ -258,8 +251,8 @@ fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept>
       Produced {
         value: AlgebraLaw {
           subject: AlgebraLawSubject {
-            algebra: nat_law_subject_algebra_nat_mul_left_identity,
-            inhabitant: nat_law_subject_inhabitant_nat_mul_left_identity,
+            algebra: nat_algebra_law_subject_symbol_commutative_semiring,
+            inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
             law: t19_law_nat_mul_left_identity,
           },
         },
@@ -268,8 +261,8 @@ fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept>
       Produced {
         value: AlgebraLaw {
           subject: AlgebraLawSubject {
-            algebra: nat_law_subject_algebra_nat_mul_annihilator,
-            inhabitant: nat_law_subject_inhabitant_nat_mul_annihilator,
+            algebra: nat_algebra_law_subject_symbol_commutative_semiring,
+            inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
             law: t19_law_nat_mul_annihilator,
           },
         },
@@ -278,8 +271,8 @@ fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept>
       Produced {
         value: AlgebraLaw {
           subject: AlgebraLawSubject {
-            algebra: nat_law_subject_algebra_nat_mul_associativity,
-            inhabitant: nat_law_subject_inhabitant_nat_mul_associativity,
+            algebra: nat_algebra_law_subject_symbol_commutative_semiring,
+            inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
             law: t19_law_nat_mul_associativity,
           },
         },
