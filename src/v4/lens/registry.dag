@@ -9,10 +9,11 @@ module v4.lens.registry
 
 import v4.std.text { String }
 
-// 🟢 closed set — MODELING.md M4 / DECISIONS.md PREFIX-T-23-registry (`LensIdV0`).
+// 🟢 closed set — MODELING.md M4 / PREFIX-T-23-registry (`LensIdV0`).
+// 🟢 coproduct dissolution — PREFIX-T-23-registry (`LensModulePathV0`).
 type LensIdV0 = Complexity | Cost | Parallelism | EffectEnumeration | Idempotency | Provenance | UnusedParameters | StructuralResolution
 
-// 🟢 coproduct dissolution — DECISIONS.md PREFIX-T-23-registry (`LensModulePathV0`).
+// 🟢 coproduct dissolution — PREFIX-T-23-registry (`LensModulePathV0`).
 type LensModulePathV0 = Bound { path: String } | Unbound
 
 type LensRegistryEntryV0 {

@@ -50,19 +50,19 @@ type Namespace {
 }
 
 
-// 🟡 coproduct dissolution — DECISIONS.md CP-1b item 7 (Scope)
+// 🟡 coproduct dissolution — CP-1b item 7 (Scope).
 type Scope
   = ScopeRoot { module: Namespace }
   | ScopeFrame { locals: Map<Symbol, Symbol>, outer: Scope }
 
 
-// 🟡 coproduct dissolution — DECISIONS.md CP-1b item 8 (ResolveResult)
+// 🟡 coproduct dissolution — CP-1b item 8 (ResolveResult).
 type ResolveResult
   = ResolvedNode { node: Node }
   | ResolveRejected { diagnostic: Diagnostic }
 
 
-// 🟡 coproduct dissolution — DECISIONS.md CP-1b item 9 (ResolveChildrenResult)
+// 🟡 coproduct dissolution — CP-1b item 9 (ResolveChildrenResult).
 type ResolveChildrenResult
   = ResolvedChildren { children: List<Edge> }
   | ResolveChildrenRejected { diagnostic: Diagnostic }
@@ -402,7 +402,7 @@ fn resolve_edges_first_outer_then_inner(
 }
 
 
-// DECISIONS.md §CP-1b (item 3).
+// §CP-1b (item 3).
 fn resolve_bind_binder_target(t: Node) -> ResolveResult {
   match t.kind {
     TypeNode { connective: Atom { identity: id } } =>
