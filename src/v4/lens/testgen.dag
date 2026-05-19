@@ -8,23 +8,36 @@ module v4.lens.testgen
 
 
 import v4.std.verification {
-  TestClassification,
   AssertKind,
   TestClaim,
-  T19ManualAnchorKey,
+  TestClassification,
   T19ManualAnchorAbsent,
-  T19ManualTcConjEmpty,
-  T19ManualTcDisjEmpty,
-  T19ManualTcArrowTwoConj,
-  T19ManualTcCardinalityEmpty,
-  T19ManualTcInstantiationEmpty,
-  T19ManualTcConjEqualsRefl,
+  T19ManualAnchorKey,
+  T19ManualNatAddAssociativity,
   T19ManualNatAddLeftIdentity,
   T19ManualNatAddRightIdentity,
-  T19ManualNatAddAssociativity,
-  T19ManualNatMulLeftIdentity,
   T19ManualNatMulAnnihilator,
-  T19ManualNatMulAssociativity
+  T19ManualNatMulAssociativity,
+  T19ManualNatMulLeftIdentity,
+  T19ManualTcArrowTwoConj,
+  T19ManualTcCardinalityEmpty,
+  T19ManualTcConjEmpty,
+  T19ManualTcConjEqualsRefl,
+  T19ManualTcDisjEmpty,
+  T19ManualTcInstantiationEmpty,
+  T19PresentManualAnchorKey,
+  T19PresentManualNatAddAssociativity,
+  T19PresentManualNatAddLeftIdentity,
+  T19PresentManualNatAddRightIdentity,
+  T19PresentManualNatMulAnnihilator,
+  T19PresentManualNatMulAssociativity,
+  T19PresentManualNatMulLeftIdentity,
+  T19PresentManualTcArrowTwoConj,
+  T19PresentManualTcCardinalityEmpty,
+  T19PresentManualTcConjEmpty,
+  T19PresentManualTcConjEqualsRefl,
+  T19PresentManualTcDisjEmpty,
+  T19PresentManualTcInstantiationEmpty
 }
 import v4.test.claim.manual.connective_anchors {
   claim_arrow_two_conj_compiles,
@@ -107,7 +120,7 @@ type TestgenConcept
 type Generator<C> {
   classification: TestClassification
   kind: AssertKind
-  t19_anchor: T19ManualAnchorKey
+  t19_anchor: T19PresentManualAnchorKey
   slot: C
 }
 
@@ -275,6 +288,26 @@ fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept>
 }
 
 
+fn t19_present_manual_anchor_key_for_claim(claim: TestClaim) -> Outcome<T19PresentManualAnchorKey> {
+  match claim.t19_anchor {
+    T19ManualAnchorAbsent =>
+      Rejected { diagnostic: t19_manual_anchor_absent_bootstrap_diagnostic() }
+    T19ManualTcConjEmpty => Produced { value: T19PresentManualTcConjEmpty }
+    T19ManualTcDisjEmpty => Produced { value: T19PresentManualTcDisjEmpty }
+    T19ManualTcArrowTwoConj => Produced { value: T19PresentManualTcArrowTwoConj }
+    T19ManualTcCardinalityEmpty => Produced { value: T19PresentManualTcCardinalityEmpty }
+    T19ManualTcInstantiationEmpty => Produced { value: T19PresentManualTcInstantiationEmpty }
+    T19ManualTcConjEqualsRefl => Produced { value: T19PresentManualTcConjEqualsRefl }
+    T19ManualNatAddLeftIdentity => Produced { value: T19PresentManualNatAddLeftIdentity }
+    T19ManualNatAddRightIdentity => Produced { value: T19PresentManualNatAddRightIdentity }
+    T19ManualNatAddAssociativity => Produced { value: T19PresentManualNatAddAssociativity }
+    T19ManualNatMulLeftIdentity => Produced { value: T19PresentManualNatMulLeftIdentity }
+    T19ManualNatMulAnnihilator => Produced { value: T19PresentManualNatMulAnnihilator }
+    T19ManualNatMulAssociativity => Produced { value: T19PresentManualNatMulAssociativity }
+  }
+}
+
+
 fn bootstrap_claim_generator_for_manual_anchor(
   key: T19ManualAnchorKey
 ) -> Outcome<Generator<TestgenConcept>> {
@@ -284,13 +317,17 @@ fn bootstrap_claim_generator_for_manual_anchor(
       match testgen_concept_for_manual_claim(claim: claim) {
         Rejected { diagnostic: d } => Rejected { diagnostic: d }
         Produced { value: slot } =>
-          Produced {
-            value: Generator {
-              classification: claim.classification,
-              kind: claim.kind,
-              t19_anchor: claim.t19_anchor,
-              slot: slot,
-            }
+          match t19_present_manual_anchor_key_for_claim(claim: claim) {
+            Rejected { diagnostic: d } => Rejected { diagnostic: d }
+            Produced { value: present_anchor } =>
+              Produced {
+                value: Generator {
+                  classification: claim.classification,
+                  kind: claim.kind,
+                  t19_anchor: present_anchor,
+                  slot: slot,
+                }
+              }
           }
       }
   }

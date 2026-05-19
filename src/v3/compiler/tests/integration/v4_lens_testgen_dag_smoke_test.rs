@@ -3,7 +3,9 @@
 //! T-19 Wave-0: `src/v4/lens/testgen.dag` parses and exposes manual-anchor-key-driven
 //! `Generator` wiring (`kind` + `t19_anchor` + `classification` + `slot: TestgenConcept`).
 //! `T19ManualAnchorAbsent` is fail-closed on bootstrap via `Outcome` on `manual_test_claim_for_manual_anchor`.
-//! `Generator` metadata (`kind`, `classification`, `t19_anchor`) is read from the selected manual `TestClaim`;
+//! `Generator` metadata (`kind`, `classification`, `t19_anchor: T19PresentManualAnchorKey`) is wired from
+//! the selected manual `TestClaim` through `t19_present_manual_anchor_key_for_claim` so the carrier cannot
+//! structurally represent `T19ManualAnchorAbsent` (P2 / Practice 2); lookup/bootstrap input remains `T19ManualAnchorKey`.
 //! `testgen_concept_for_manual_claim` matches on `claim.t19_anchor` so the slot projection cannot split-brain
 //! from the claim authority path.
 //! **Note:** `compile_to_dag` on this module alone does not resolve `import v4.std.*` peers
@@ -14,6 +16,7 @@ use v3_compiler::parse_surface::{SurfaceItem, SurfaceType, TypeAngleArg};
 use v3_compiler::tokenize_for_test;
 
 const TESTGEN_DAG: &str = include_str!("../../../../v4/lens/testgen.dag");
+const VERIFICATION_DAG: &str = include_str!("../../../../v4/std/verification.dag");
 const NAT_LAW_DAG: &str = include_str!("../../../../v4/test/claim/manual/nat_law_anchors.dag");
 
 const NAT_MANUAL_CLAIM_DATA: [&str; 6] = [
@@ -28,9 +31,11 @@ const NAT_MANUAL_CLAIM_DATA: [&str; 6] = [
 #[test]
 fn v4_lens_testgen_wave0_substrate_parses() {
     let testgen = parse_module(TESTGEN_DAG, "src/v4/lens/testgen.dag");
-    let verification = parse_module(
-        include_str!("../../../../v4/std/verification.dag"),
-        "src/v4/std/verification.dag",
+    let verification = parse_module(VERIFICATION_DAG, "src/v4/std/verification.dag");
+
+    assert!(
+        VERIFICATION_DAG.contains("type T19PresentManualAnchorKey"),
+        "substrate must declare `T19PresentManualAnchorKey` (present-only manual anchor carrier)"
     );
 
     assert!(
@@ -92,14 +97,20 @@ fn v4_lens_testgen_wave0_substrate_parses() {
         "AssertKind bootstrap mapping must not live in verification (single `T19ManualAnchorKey` axis)"
     );
 
+    assert_eq!(
+        function_count(&testgen, "t19_present_manual_anchor_key_for_claim"),
+        1,
+        "present-anchor narrowing join must live in v4.lens.testgen (single Outcome<T19PresentManualAnchorKey> projection)"
+    );
+
     let anchor_ty =
         generator_t19_anchor_field_ty(&testgen).expect("Generator should declare `t19_anchor`");
     assert!(
         matches!(
             anchor_ty,
-            SurfaceType::Named { name: n, .. } if n == "T19ManualAnchorKey"
+            SurfaceType::Named { name: n, .. } if n == "T19PresentManualAnchorKey"
         ),
-        "Generator.t19_anchor must be `T19ManualAnchorKey` (no parallel present-only coproduct); got {anchor_ty:?}"
+        "Generator.t19_anchor must be `T19PresentManualAnchorKey` (absent sentinel excluded from successful carrier); got {anchor_ty:?}"
     );
 
     let manual_claim_rt = fn_return_type(&testgen, "manual_test_claim_for_manual_anchor")
@@ -138,8 +149,13 @@ fn v4_lens_testgen_wave0_substrate_parses() {
         "Generator must take AssertKind from manual TestClaim.kind"
     );
     assert!(
-        TESTGEN_DAG.contains("t19_anchor: claim.t19_anchor"),
-        "Generator must take t19_anchor from manual TestClaim.t19_anchor"
+        TESTGEN_DAG.contains("fn t19_present_manual_anchor_key_for_claim")
+            && TESTGEN_DAG.contains("match t19_present_manual_anchor_key_for_claim(claim: claim)"),
+        "bootstrap must narrow `claim.t19_anchor` through `t19_present_manual_anchor_key_for_claim` before constructing `Generator`"
+    );
+    assert!(
+        TESTGEN_DAG.contains("t19_anchor: present_anchor"),
+        "Generator must wire `t19_anchor` from the narrowed present key (not raw `claim.t19_anchor`)"
     );
 
     assert!(
