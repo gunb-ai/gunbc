@@ -1,9 +1,9 @@
 // src/v4/compiler/05_eval.dag
 // Scope: primary evaluation path over inferred tree/input subgraphs and TestClaim runner substrate.
-// Anchor: https://en.wikipedia.org/wiki/Interpreter_(computing)
 // Owns: InferredTree, Inputs, EvalContext, TestClaimEvalSubject, TestClaimRun, eval_node, run_test_claim.
 // Consumes: v4.std.node, v4.std.diagnostic, v4.std.verification, v4.workflow.ci.
 // Status: Wave-0 substrate; evaluator bodies remain structural until T-9 inferred-tree semantics.
+// Anchor: https://en.wikipedia.org/wiki/Interpreter_(computing)
 
 module v4.compiler.eval
 
@@ -20,6 +20,7 @@ import v4.std.diagnostic {
   Extent,
   Locus,
   NoCorrectionReason,
+  NodeLocus,
   Outcome,
   Produced,
   Rejected
@@ -137,8 +138,6 @@ fn outcome_node_eq(a: Outcome<Node>, b: Outcome<Node>) -> Bool {
       Produced { value: bv } => av == bv
       Rejected { diagnostic: _ } => false
     }
-    // Rejection equality is reason-level for TestClaim assertions; locus and
-    // correction are diagnostic presentation facts, not the oracle identity.
     Rejected { diagnostic: ad } => match b {
       Produced { value: _ } => false
       Rejected { diagnostic: bd } => ad.reason == bd.reason
