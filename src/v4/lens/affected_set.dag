@@ -96,7 +96,7 @@ type HashReceipt
 type BoundaryReceipt
   = BoundaryPruned { proof: BoundaryExclusionProof }
   | BoundaryExpands
-  | BoundaryFailClosed { evidence: WholeDagFailClosedEvidence }
+  | BoundaryUnknown { reason: Symbol }
 
 
 // 🟡 coproduct dissolution — DECISIONS.md #3153-subsumed; dissolves when per-edit dimension deltas are generated.
@@ -119,14 +119,14 @@ type FrontierReceipt
   | FrontierRejected { diagnostic: Diagnostic }
 
 
-type AffectedBoundaryRead {
-  boundary_receipt: fn(Dag, Path, Node) -> BoundaryReceipt,
-  changed_dimension_receipt: fn(Dag, Edit) -> ChangedDimensionReceipt
+type AffectedFrontierRead {
+  proven_transitive_changed_subgraph_frontier: fn(Dag, EditDimension) -> FrontierReceipt
 }
 
 
-type AffectedFrontierRead {
-  proven_transitive_changed_subgraph_frontier: fn(Dag, EditDimension) -> FrontierReceipt
+type AffectedBoundaryRead {
+  boundary_hash_receipt: fn(Dag, Path, Node) -> HashReceipt,
+  changed_dimension_receipt: fn(Dag, Edit) -> ChangedDimensionReceipt
 }
 
 
@@ -138,7 +138,7 @@ type AffectedPostEditDagReceipt
 
 type AffectedSetRead {
   boundary: AffectedBoundaryRead
-  frontier: AffectedFrontierRead
+  frontier: AffectedFrontierRead,
   propagation_receipt: fn(Dag, EditFrontierEdge) -> PropagationReceipt
 }
 
@@ -246,7 +246,16 @@ fn mark_whole_dag_diagnostic(diagnostic: Diagnostic) -> ReExecFrontier {
 
 
 fn boundary_receipt(read_model: AffectedSetRead, dag: Dag, path: Path, replacement: Node) -> BoundaryReceipt {
-  read_model.boundary.boundary_receipt(dag, path, replacement)
+  match read_model.boundary.boundary_hash_receipt(dag, path, replacement) {
+    HashUnchangedPure { content_hash: h } =>
+      BoundaryPruned {
+        proof: UnchangedPureBoundary {
+          content_hash: h
+        }
+      }
+    HashChanged => BoundaryExpands
+    HashUnknown { reason: r } => BoundaryUnknown { reason: r }
+  }
 }
 
 
@@ -344,10 +353,18 @@ fn seed_edit_fold_acc_live(
             frontier: mark_whole_dag_diagnostic(diagnostic: d)
           }
       }
-    BoundaryFailClosed { evidence: e } =>
-      AffectedFoldAcc {
-        dag: acc.dag,
-        frontier: WholeDagFailClosed { evidence: e }
+    BoundaryUnknown { reason: r } =>
+      match post_edit_dag(acc.dag, edit) {
+        PostEditDagProduced { dag: _ } =>
+          AffectedFoldAcc {
+            dag: acc.dag,
+            frontier: mark_whole_dag(reason: r)
+          }
+        PostEditDagRejected { diagnostic: d } =>
+          AffectedFoldAcc {
+            dag: acc.dag,
+            frontier: mark_whole_dag_diagnostic(diagnostic: d)
+          }
       }
   }
 }
