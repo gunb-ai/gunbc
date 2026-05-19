@@ -1,6 +1,6 @@
 // src/v4/lens/affected_set.dag
 // Scope: canonical affected-set authority for CI/incremental re-execution; fail-closed B-4/B-5 node frontier.
-// Owns: Dag, AffectedDimension, ExclusionKey, ExclusionProof, FrontierDecision, ReExecFrontier, AffectedSetRead, affected_set.
+// Owns: Dag, AffectedDimension, ExclusionKey, ExclusionProof, FrontierDecision, ReExecFrontier, AffectedSetRead, ChangedDimensionReceipt, affected_set.
 // Consumes: Map, Diff, Edit, Hash, Node, Path, Symbol, Witness; B1 content_hash receipts; B-4 resolved Symbol equality; B-5 per-Arrow signature effects.
 // Status: Wave-0 front: bounded changed-subgraph frontier fold landed; dissolves when CI use and .dag TestClaims land.
 
@@ -56,8 +56,9 @@ type ReExecFrontier
 
 type AffectedSetRead {
   boundary_hash_receipt: fn(Dag, Path, Node) -> HashReceipt
-  proven_transitive_changed_subgraph_frontier: fn(Dag, Path) -> List<FrontierEdge>
-  propagation_receipt: fn(Dag, FrontierEdge) -> PropagationReceipt
+  changed_dimension_receipt: fn(Dag, Edit) -> ChangedDimensionReceipt
+  proven_transitive_changed_subgraph_frontier: fn(Dag, Edit, AffectedDimension) -> List<FrontierEdge>
+  propagation_receipt: fn(Dag, Edit, FrontierEdge) -> PropagationReceipt
 }
 
 
@@ -73,6 +74,12 @@ type BoundaryReceipt
   = BoundaryPruned { proof: ExclusionProof }
   | BoundaryExpands
   | BoundaryUnknown { reason: Symbol }
+
+
+// 🟡 coproduct dissolution — DECISIONS.md #3153-subsumed; dissolves when per-edit dimension deltas are generated.
+type ChangedDimensionReceipt
+  = ChangedDimensions { dimensions: List<AffectedDimension> }
+  | ChangedDimensionsUnknown { reason: Symbol }
 
 
 // 🟡 coproduct dissolution — DECISIONS.md #3153-subsumed; dissolves when B-4/B-5 edge receipts are generated.
@@ -108,10 +115,10 @@ fn frontier_from_acc(acc: FrontierAcc) -> ReExecFrontier {
 }
 
 
-fn root_key(path: Path) -> ExclusionKey {
+fn root_key(path: Path, dimension: AffectedDimension) -> ExclusionKey {
   ExclusionKey {
     at: path,
-    dimension: affected_dimension_value
+    dimension: dimension
   }
 }
 
@@ -177,9 +184,15 @@ fn boundary_receipt(read_model: AffectedSetRead, dag: Dag, path: Path, replaceme
 }
 
 
-fn expand_path(read_model: AffectedSetRead, dag: Dag, acc: FrontierAcc, path: Path) -> FrontierAcc {
-  fold(read_model.proven_transitive_changed_subgraph_frontier(dag, path), init: acc, f: fn(acc2, edge) {
-    match read_model.propagation_receipt(dag, edge) {
+fn expand_dimension(
+  read_model: AffectedSetRead,
+  dag: Dag,
+  acc: FrontierAcc,
+  edit: Edit,
+  dimension: AffectedDimension
+) -> FrontierAcc {
+  fold(read_model.proven_transitive_changed_subgraph_frontier(dag, edit, dimension), init: acc, f: fn(acc2, edge) {
+    match read_model.propagation_receipt(dag, edit, edge) {
       Propagates =>
         mark_rerun(acc: acc2, key: edge_key(edge: edge))
       DoesNotPropagate { proof: p } =>
@@ -191,6 +204,29 @@ fn expand_path(read_model: AffectedSetRead, dag: Dag, acc: FrontierAcc, path: Pa
         )
     }
   })
+}
+
+
+fn expand_changed_dimensions(
+  read_model: AffectedSetRead,
+  dag: Dag,
+  acc: FrontierAcc,
+  edit: Edit
+) -> FrontierAcc {
+  match read_model.changed_dimension_receipt(dag, edit) {
+    ChangedDimensions { dimensions: dimensions } =>
+      fold(dimensions, init: acc, f: fn(acc2, dimension) {
+        expand_dimension(
+          read_model: read_model,
+          dag: dag,
+          acc: mark_rerun(acc: acc2, key: root_key(path: edit.at, dimension: dimension)),
+          edit: edit,
+          dimension: dimension
+        )
+      })
+    ChangedDimensionsUnknown { reason: r } =>
+      mark_whole_dag(acc: acc, reason: r)
+  }
 }
 
 
@@ -207,17 +243,17 @@ fn seed_edit_frontier(
     replacement: edit.replacement
   ) {
     BoundaryPruned { proof: p } =>
-      mark_excluded(acc: acc, key: root_key(path: edit.at), proof: p)
+      mark_excluded(acc: acc, key: root_key(path: edit.at, dimension: affected_dimension_value), proof: p)
     BoundaryExpands =>
-      expand_path(
+      expand_changed_dimensions(
         read_model: read_model,
         dag: dag,
-        acc: mark_rerun(acc: acc, key: root_key(path: edit.at)),
-        path: edit.at
+        acc: acc,
+        edit: edit
       )
     BoundaryUnknown { reason: r } =>
       mark_whole_dag(
-        acc: mark_rerun(acc: acc, key: root_key(path: edit.at)),
+        acc: acc,
         reason: r
       )
   }
