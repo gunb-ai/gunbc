@@ -115,9 +115,10 @@ type SourceRef {
   source_chars: List<Int>
 }
 
-type CharacterClass {
-  contains: fn(String) -> Bool
-}
+type CharacterClass
+  = DigitClass
+  | IdentStartClass
+  | IdentContinueClass
 
 // === Token construction helper ===
 //
@@ -151,11 +152,20 @@ fn source_scan_while(source: SourceRef, start: Int, pred: fn(String) -> Bool) ->
 }
 
 fn char_in_class(ch: String, class: CharacterClass) -> Bool {
-  class.contains(ch)
+  match class {
+    DigitClass => ch >= "0" && ch <= "9"
+    IdentStartClass => (ch >= "a" && ch <= "z") || (ch >= "A" && ch <= "Z") || ch == "_"
+    IdentContinueClass =>
+      char_in_class(ch: ch, class: IdentStartClass) ||
+        char_in_class(ch: ch, class: DigitClass)
+  }
 }
 
 fn source_scan_class(source: SourceRef, start: Int, class: CharacterClass) -> Int {
-  source_scan_while(source: source, start: start, pred: class.contains)
+  if start >= source_len(source: source) { source_len(source: source) }
+  else if char_in_class(ch: from_code_point(cp: source.source_chars[start]), class: class) {
+    source_scan_class(source: source, start: start + 1, class: class)
+  } else { start }
 }
 
 fn source_skip_ws(source: SourceRef, start: Int) -> Int {
@@ -286,7 +296,7 @@ fn emit(pos: TokPos, shape: TokenShape, text: String, len: Int, file: String) ->
 }
 
 fn scan_ident(source: SourceRef, pos: TokPos) -> ScanResult {
-  let end = source_scan_class(source: source, start: pos.pos, class: ident_continue_class())
+  let end = source_scan_class(source: source, start: pos.pos, class: IdentContinueClass)
   let text = source_substring(source: source, start: pos.pos, end: end)
   let shape = if is_keyword_text(text: text) { ShKeyword } else { ShIdent }
   let token = make_token(text: text, span: make_file_span(file: source.file, start: pos.pos, end: end), shape: shape)
@@ -294,10 +304,10 @@ fn scan_ident(source: SourceRef, pos: TokPos) -> ScanResult {
 }
 
 fn scan_number(source: SourceRef, pos: TokPos) -> ScanResult {
-  let int_end = source_scan_class(source: source, start: pos.pos, class: digit_class())
+  let int_end = source_scan_class(source: source, start: pos.pos, class: DigitClass)
   // Check for decimal point -> float (guard against EOF)
   if int_end + 1 < source_len(source: source) && source_char(source: source, pos: int_end) == "." && is_digit(ch: source_char(source: source, pos: int_end + 1)) {
-    let frac_end = source_scan_class(source: source, start: int_end + 1, class: digit_class())
+    let frac_end = source_scan_class(source: source, start: int_end + 1, class: DigitClass)
     let text = source_substring(source: source, start: pos.pos, end: frac_end)
     let token = make_token(text: text, span: make_file_span(file: source.file, start: pos.pos, end: frac_end), shape: ShLitFloat)
     return ScanResult { pos: frac_end, token: token, interp_depth: pos.interp_depth }
@@ -515,37 +525,14 @@ fn skip_spaces_and_comments(source: SourceRef, pos: TokPos, fuel: Int) -> TokPos
 
 // === Character predicates ===
 
-fn digit_class() -> CharacterClass {
-  CharacterClass {
-    contains: fn(ch) { ch >= "0" && ch <= "9" }
-  }
-}
-
-fn ident_start_class() -> CharacterClass {
-  CharacterClass {
-    contains: fn(ch) {
-      (ch >= "a" && ch <= "z") || (ch >= "A" && ch <= "Z") || ch == "_"
-    }
-  }
-}
-
-fn ident_continue_class() -> CharacterClass {
-  CharacterClass {
-    contains: fn(ch) {
-      char_in_class(ch: ch, class: ident_start_class()) ||
-        char_in_class(ch: ch, class: digit_class())
-    }
-  }
-}
-
 fn is_digit(ch: String) -> Bool {
-  char_in_class(ch: ch, class: digit_class())
+  char_in_class(ch: ch, class: DigitClass)
 }
 
 fn is_ident_start(ch: String) -> Bool {
-  char_in_class(ch: ch, class: ident_start_class())
+  char_in_class(ch: ch, class: IdentStartClass)
 }
 
 fn is_ident_char(ch: String) -> Bool {
-  char_in_class(ch: ch, class: ident_continue_class())
+  char_in_class(ch: ch, class: IdentContinueClass)
 }
