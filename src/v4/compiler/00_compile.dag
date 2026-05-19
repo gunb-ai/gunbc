@@ -1,9 +1,56 @@
 // src/v4/compiler/00_compile.dag
-// Scope: compiler orchestration from source and target spec to target source.
+// Scope: B2-OMNI orchestrator — (Source, TargetModel) -> TargetSource as `emit ∘ core ∘ ingest`.
+// Owns: Source, TargetModel, TargetSource, compile_stage_locus_port, compile_pipeline_not_realized, compile_pipeline_not_realized_diagnostic, compile.
+// Consumes: std/diagnostic.dag, std/node.dag, std/text.dag.
+// Status: scaffold — TASKS T-10; Wave-1 fail-closed boundary.
 // Anchor: https://en.wikipedia.org/wiki/Compiler
-// Owns: none.
-// Consumes: none.
-// Status: scaffold for T-10.
 
 
 module v4.compiler.compile
+
+
+import v4.std.diagnostic {
+  Diagnostic,
+  ExternalContractUnknown,
+  Locus,
+  Outcome,
+  PortLocus,
+  Unavailable
+}
+import v4.std.node { Node, Symbol }
+import v4.std.text { String }
+
+
+// 🟢 grounded — testcase: anchor_stub_source
+type Source = String
+
+
+type TargetModel = Node
+
+
+// 🟢 grounded — testcase: emit returns Outcome<TargetSource> in anchor_emit_rejects
+type TargetSource = String
+
+
+data compile_stage_locus_port: Symbol = compile_stage_locus_port
+
+
+data compile_pipeline_not_realized: Symbol = compile_pipeline_not_realized
+
+
+fn compile_pipeline_not_realized_diagnostic(at: Locus) -> Diagnostic {
+  Diagnostic {
+    reason: compile_pipeline_not_realized,
+    at: at,
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+
+fn compile(source: Source, target: TargetModel) -> Outcome<TargetSource> {
+  Rejected {
+    diagnostic: compile_pipeline_not_realized_diagnostic(
+      at: PortLocus { port: compile_stage_locus_port }
+    )
+  }
+}

@@ -146,6 +146,13 @@ jobs:
         set -euo pipefail
         cargo test -p v3-compiler --test integration ci_uses_affected_set_selection -- --quiet
         cargo test -p v3-compiler --test integration workflow_no_path_regex_policy_ci_yml -- --quiet
+    # T-15 SG-0 / INVARIANTS §P5(b) receipt: `v4_bin_main_dag_smoke_test` lives in the v3
+    # integration harness, but the v3 job still runs that harness under the gunbc#846 HOT-FIX
+    # zero-test-filter — so this receipt must execute here (ci job) whenever v3/v4/workflow_policy
+    # gates compile the integration binary, else the parse/tokenize/source-anchor assertions never run.
+    - name: T-15 v4 bin main.dag smoke (live integration receipt)
+      if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.v3 == 'true' || needs.affected.outputs.workflow_policy == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+      run: cargo test -p v3-compiler --test integration v4_bin_main_dag_smoke_test::v4_bin_main_dag_tokenizes_and_parses_with_trampoline_source_anchor -- --exact --quiet
   # v2 fixed-point — runs only when src/v2/ is affected. v2 is restored as
   # comparison artifact + v4 bootstrap source (frozen-buildable). Verifies
   # that any modification to v2 preserves the self-host fixed-point property.
@@ -182,7 +189,7 @@ jobs:
         cargo test -p v2-compiler-tests --release bootstrap_fixed_point -- --ignored --exact
   # v4 bootstrap viability — verifies v2's compiled binary can still parse
   # every v4 .dag file. v4 stage0 must stay in v2-syntax-compatible subset
-  # (per src/v4/STRUCTURE.md "Bootstrap chain") until v4 self-compiles.
+  # (per src/v4/workflow/bootstrap.dag bootstrap chain) until v4 self-compiles.
   # This gate catches any v4 change that introduces syntax v2 can't parse.
   v4:
     if: github.event.pull_request.draft != true && needs.affected.outputs.v4 == 'true'

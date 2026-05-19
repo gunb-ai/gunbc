@@ -994,22 +994,17 @@ correct the header; the dangling `Consumes` stands on the PR-head tree
 until that PR lands. (`NonEmptyList` itself, once T-25-core lands, is a
 `List` refinement — `List<T> where non_empty` — not a separate carrier.)
 
-### T-26 — std/ boundary carriers (net-address / URL / HttpMethod)  [SCHEDULED]
-**Operator ruling 2026-05-17 — SCHEDULED; the port disposition below stands (no fork).**
-**Gap:** `HttpMethod` and `URL` already have a single authority in the
-reference tree — `dsl/std/types.dag` (`HttpMethod` = the RFC 9110 enum;
-`Url` = a `String` refinement). They are not yet ported to v4 `std/`, so
-v4 consumers (`openapi.dag` references `HttpMethod`; the T-16 wire
-contract) have no carrier to `Consume`. `NetworkAddress` appears only in
-`coordination.dag` prose — DFS the concept DAG (M9) for an existing
-authority before minting.
-**Disposition:** **port** `HttpMethod` / `Url` into v4 `std/` from the
-`dsl/std/types.dag` authority — RFC 9110 / the URL spec are genuine
-shared facts, so the home is `std/`, not a new `extdeps` file; **create**
-a spec-grounded `NetworkAddress` carrier in `std/` if M9 finds none.
-Consumers (`openapi.dag`, `coordination.dag`, T-16) `Consume` the single
-`std/` authority. Minting a parallel `extdeps` carrier would be the very
-P2 violation this task names (INVARIANTS P2 / M9).
+### T-26 — std/ boundary carriers (net-address / URL / HttpMethod)  [SUBSTRATE LANDED]
+**Operator ruling 2026-05-17 — disposition unchanged (no fork); authority lives in `std/`.**
+**Status:** `src/v4/std/network.dag` is the v4 **single authority** for `HttpMethod`,
+structured RFC 3986 URI carriers (`Url`, `UriReference`, …), and
+`NetworkAddress { authority: UriAuthority }`. `extdeps/coordination.dag` and
+`extdeps/formats/openapi.dag` consume this module per M9 / DECISIONS Part 1
+(`std/network.dag` rows + coordination `NetworkAddress` dissolution row).
+**Residual (not T-26):** RFC 3986 validated-component refinements remain the
+`std/network.dag` **`feature:T-25-core`** yellow row; OpenAPI path verbs stay
+`OpenApiHttpMethod` (OAS eight-verb closed set vs broader `HttpMethod`) per
+DECISIONS **T-4.6-P4-OpenApiHttpMethod**.
 
 ### T-27 — extdeps version / semver / edition lattice  [DROPPED]
 **Operator ruling 2026-05-17 — ruled orthogonal, out of v4 entirely.**
