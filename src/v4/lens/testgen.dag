@@ -1,7 +1,7 @@
 // src/v4/lens/testgen.dag
 // Scope: T-19 testgen — P2 manual-anchor join; Generator carries kind + anchor + classification + subject slot.
-// Owns: Generator TestgenConcept bootstrap_assert_kind_for_manual_anchor TypeConstructionSubject AlgebraLawSubject DiagnosticExhaustivenessSubject LensApplicabilitySubject BidirectionalRoundtripSubject
-// Consumes: v4.std.node v4.std.verification
+// Owns: Generator TestgenConcept manual_test_claim_for_manual_anchor TypeConstructionSubject AlgebraLawSubject DiagnosticExhaustivenessSubject LensApplicabilitySubject BidirectionalRoundtripSubject
+// Consumes: v4.std.node v4.std.verification v4.test.claim.manual.connective_anchors v4.test.claim.manual.nat_law_anchors
 // Status: Wave-0 modeled; M2 merge compile + eval T-22.
 
 module v4.lens.testgen
@@ -9,11 +9,8 @@ module v4.lens.testgen
 
 import v4.std.verification {
   TestClassification,
-  Tier1,
-  Unit,
   AssertKind,
-  Compiles,
-  Equals,
+  TestClaim,
   t19_present_manual_anchor_key,
   T19ManualAnchorKey,
   T19ManualAnchorAbsent,
@@ -29,6 +26,22 @@ import v4.std.verification {
   T19ManualNatMulLeftIdentity,
   T19ManualNatMulAnnihilator,
   T19ManualNatMulAssociativity
+}
+import v4.test.claim.manual.connective_anchors {
+  claim_arrow_two_conj_compiles,
+  claim_cardinality_empty_compiles,
+  claim_conj_empty_compiles,
+  claim_conj_equals_refl,
+  claim_disj_empty_compiles,
+  claim_instantiation_empty_compiles
+}
+import v4.test.claim.manual.nat_law_anchors {
+  claim_nat_add_associativity,
+  claim_nat_add_left_identity,
+  claim_nat_add_right_identity,
+  claim_nat_mul_annihilator,
+  claim_nat_mul_associativity,
+  claim_nat_mul_left_identity
 }
 import v4.std.diagnostic {
   Outcome,
@@ -127,31 +140,27 @@ fn t19_manual_anchor_absent_bootstrap_diagnostic() -> Diagnostic {
 }
 
 
-fn bootstrap_tier1_unit_classification() -> TestClassification {
-  TestClassification { tier: Tier1, layer: Unit, }
-}
-
-
-fn bootstrap_assert_kind_for_manual_anchor(key: T19ManualAnchorKey) -> Outcome<AssertKind> =
+fn manual_test_claim_for_manual_anchor(key: T19ManualAnchorKey) -> Outcome<TestClaim> {
   match key {
     T19ManualAnchorAbsent =>
       Rejected { diagnostic: t19_manual_anchor_absent_bootstrap_diagnostic() }
-    T19ManualTcConjEmpty => Produced { value: Compiles }
-    T19ManualTcDisjEmpty => Produced { value: Compiles }
-    T19ManualTcArrowTwoConj => Produced { value: Compiles }
-    T19ManualTcCardinalityEmpty => Produced { value: Compiles }
-    T19ManualTcInstantiationEmpty => Produced { value: Compiles }
-    T19ManualTcConjEqualsRefl => Produced { value: Equals }
-    T19ManualNatAddLeftIdentity => Produced { value: Equals }
-    T19ManualNatAddRightIdentity => Produced { value: Equals }
-    T19ManualNatAddAssociativity => Produced { value: Equals }
-    T19ManualNatMulLeftIdentity => Produced { value: Equals }
-    T19ManualNatMulAnnihilator => Produced { value: Equals }
-    T19ManualNatMulAssociativity => Produced { value: Equals }
+    T19ManualTcConjEmpty => Produced { value: claim_conj_empty_compiles }
+    T19ManualTcDisjEmpty => Produced { value: claim_disj_empty_compiles }
+    T19ManualTcArrowTwoConj => Produced { value: claim_arrow_two_conj_compiles }
+    T19ManualTcCardinalityEmpty => Produced { value: claim_cardinality_empty_compiles }
+    T19ManualTcInstantiationEmpty => Produced { value: claim_instantiation_empty_compiles }
+    T19ManualTcConjEqualsRefl => Produced { value: claim_conj_equals_refl }
+    T19ManualNatAddLeftIdentity => Produced { value: claim_nat_add_left_identity }
+    T19ManualNatAddRightIdentity => Produced { value: claim_nat_add_right_identity }
+    T19ManualNatAddAssociativity => Produced { value: claim_nat_add_associativity }
+    T19ManualNatMulLeftIdentity => Produced { value: claim_nat_mul_left_identity }
+    T19ManualNatMulAnnihilator => Produced { value: claim_nat_mul_annihilator }
+    T19ManualNatMulAssociativity => Produced { value: claim_nat_mul_associativity }
   }
+}
 
 
-fn testgen_concept_for_manual_anchor(key: T19ManualAnchorKey) -> Outcome<TestgenConcept> =
+fn testgen_concept_for_manual_anchor(key: T19ManualAnchorKey) -> Outcome<TestgenConcept> {
   match key {
     T19ManualAnchorAbsent =>
       Rejected { diagnostic: t19_manual_anchor_absent_bootstrap_diagnostic() }
@@ -252,6 +261,7 @@ fn testgen_concept_for_manual_anchor(key: T19ManualAnchorKey) -> Outcome<Testgen
         },
       }
   }
+}
 
 
 fn bootstrap_claim_generator_for_manual_anchor(
@@ -260,17 +270,17 @@ fn bootstrap_claim_generator_for_manual_anchor(
   match t19_present_manual_anchor_key(key: key) {
     Rejected { diagnostic: d } => Rejected { diagnostic: d }
     Produced { value: present } =>
-      match bootstrap_assert_kind_for_manual_anchor(key: present) {
+      match manual_test_claim_for_manual_anchor(key: present) {
         Rejected { diagnostic: d } => Rejected { diagnostic: d }
-        Produced { value: kind } =>
+        Produced { value: claim } =>
           match testgen_concept_for_manual_anchor(key: present) {
             Rejected { diagnostic: d } => Rejected { diagnostic: d }
             Produced { value: slot } =>
               Produced {
                 value: Generator {
-                  classification: bootstrap_tier1_unit_classification(),
-                  kind: kind,
-                  t19_anchor: present,
+                  classification: claim.classification,
+                  kind: claim.kind,
+                  t19_anchor: claim.t19_anchor,
                   slot: slot,
                 }
               }
