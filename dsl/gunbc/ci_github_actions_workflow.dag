@@ -381,7 +381,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
     }, {
       id: "v4",
       name: none,
-      runner: SelfHosted { labels: ["ubicloud-standard-2"] },
+      runner: SelfHosted { labels: ["ubicloud-standard-8"] },
       steps: [UsesStep {
           name: Some { value: "Checkout" },
           id: none,

@@ -194,7 +194,7 @@ jobs:
   v4:
     if: github.event.pull_request.draft != true && needs.affected.outputs.v4 == 'true'
     needs: [affected]
-    runs-on: ubicloud-standard-2
+    runs-on: ubicloud-standard-8
     timeout-minutes: 15
     steps:
     - name: Checkout
