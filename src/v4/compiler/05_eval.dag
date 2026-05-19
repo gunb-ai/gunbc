@@ -19,7 +19,6 @@ import v4.std.node {
 import v4.std.diagnostic {
   Correction,
   Diagnostic,
-  NoCorrectionReason,
   NodeLocus,
   Outcome,
   Produced,
@@ -138,7 +137,6 @@ fn test_claim_cache_receipt(
 
 
 data eval_rejected_invalid_node: Symbol = eval_rejected_invalid_node
-data eval_rejected_diagnostic_mismatch: Symbol = eval_rejected_diagnostic_mismatch
 data eval_rejected_assert_kind_deferred: Symbol = eval_rejected_assert_kind_deferred
 data eval_rejected_roundtrip_deferred: Symbol = eval_rejected_roundtrip_deferred
 
