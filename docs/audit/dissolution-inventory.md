@@ -406,10 +406,12 @@ captured here as the audit anchor for the rest:
   rolls under **P4**. (`dag_node_is_empty_conj_root` **retired** — R1
   landed PR #3284: `dag_language_model_is_wave1_void_shape` imports
   `v4.std.node.is_empty_conj_root`; see `DECISIONS.md` §CP-1b item 12.)
+  **Bucket C close:** `DagLanguageModel.canonical_symbols` is the
+  substrate field; `compiler/03_resolve.dag` consumes `lm.canonical_symbols`
+  directly (no `dag_language_model_canonical_symbols` indirection).
 - `dag_language_model_is_wave1_void_shape` (83),
-  `dag_language_model_empty_canonical_symbol_set` (89),
-  `dag_language_model_canonical_symbols` (98) — 🟢 — structurally
-  distinct constructor inspection / pure data construction.
+  `dag_language_model_empty_canonical_symbol_set` (89) — 🟢 —
+  structurally distinct constructor inspection / pure data construction.
 
 **Other language files** (`rust`, `go`, `python`, `cpp`, `verilog`,
 `typescript`, `ptx`, `machine_code`, `lean`) — zero `fn` bodies. 🟢
