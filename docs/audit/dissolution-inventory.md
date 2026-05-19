@@ -147,7 +147,7 @@ the audit anchors.
 | **P6** | `std/algebra.dag` / `std/nat.dag` `fold` / `cata` over `FreeMonoid<T>` and `Nat` (Wave-A2) | std / T-3 Wave-A2 | **2** | Section 2: `std/algebra.dag free_monoid_length`, `std/float.dag nat_compare`. (Sibling to P2's combinator algebra; could land in the same PR — kept separate because the underlying primitive is the catamorphism, distinct from `forall`/`count_where` which are derived from it.) |
 | **P7** | `std/nat.dag nat_is_zero : Nat -> Bool` (Wave-A2) | std / T-3 Wave-A2 | **1** | Section 2: `std/float.dag float_finite_magnitude_zero`. |
 | **P8** | `extdeps/languages/verilog.dag` bundled T-4 LanguageModel `constant_expression` sub-grammar | extdeps/languages / T-4 Verilog Phase-3 | **0** | Landed: `VectorRange` carries `ConstantExpression` endpoints; DECISIONS.md row `SL-3229-VERILOG-VECTOR-RANGE` is closed. |
-| **P9** | `lens/cost.dag` cost-of-instruction model fact / lens | lens / T-12 | **0** | **LANDED:** `src/v4/lens/cost.dag` now owns `llvm_instruction_cost` (the 22-arm `LlvmInstruction -> Int` cost table); `extdeps/languages/llvm_ir.dag` owns only the LLVM instruction shape. |
+| **P9** | `lens/cost.dag` cost-of-instruction model fact / lens | lens / T-12 | **0** | **LANDED:** `src/v4/lens/cost.dag` now owns `llvm_instruction_cost` — **25** `match` arms on **`LlvmInstruction`** (**24** constructors; `Conversion` split into BitCast vs non-BitCast arms) mapping to `Int`; `extdeps/languages/llvm_ir.dag` owns only the LLVM instruction shape. |
 | **P10 ⛔ needs-concretization** | Constrained generic parameters / inhabitance-bound syntax (`<M> where M : CommutativeMonoid<_>`) | substrate extension; **no owning task yet** | **1** | DECISIONS.md: `SL-3229-INTEGER-GROUP-COMPLETION` (`GroupCompletion<M>`). **P10 does NOT enter the burn-down DAG as a normal upstream node until concretized** — under #3244 a 🟡 whose substrate primitive has no committed PR/task is not a valid 🟡 (the comment-graveyard case). The single finding under P10 (`SL-3229-INTEGER-GROUP-COMPLETION`) is reclassified VAGUE in Section 3.1 until an owning T-# is assigned. Action owner: substrate / operator-or-S1 assignment. |
 
 Plus property-projection model facts (Practice 10 row 7) that do not
@@ -386,8 +386,9 @@ captured here as the audit anchor for the rest:
   12-arm `FidelityFeature -> FidelityDisposition` map; the disposition
   IS a fact per feature.
 - `llvm_instruction_cost` — 🟢 **moved to cost-lens authority** —
-  `src/v4/lens/cost.dag` owns the 22-arm `LlvmInstruction -> Int`
-  table as the P9 cost-of-instruction model fact; this file owns only
+  `src/v4/lens/cost.dag` owns the **25**-arm `match` (`LlvmInstruction` →
+  `Int`) cost table as the P9 cost-of-instruction model fact — **24**
+  constructors with `Conversion` split into two patterns; this file owns only
   the LLVM instruction data shape.
 - `block_successors` (505), `unwind_successors` (498) — 🟢 — each arm
   reads its own constructor fields; constructor-driven projection, not
@@ -456,7 +457,9 @@ Carrier and emit-template covered by lane-wide 🟢 (2.1).
 `ownership.dag`, `parallelism.dag`, `registry.dag`, `synthesis.dag`,
 `testgen.dag`). **`registry.dag`** — v0 PREFIX lens registry (`type` +
 `data` rows; no `fn`). **`cost.dag`** — **P9 landed:** one `fn
-llvm_instruction_cost` (22-arm cost table per §1.1 P9); file header remains
+llvm_instruction_cost` (**25** `match` arms on `LlvmInstruction`; **24**
+constructors, `Conversion` split BitCast vs other — same count as §1.1 P9);
+file header remains
 T-12 scaffold for full cost-lens fill beyond this slice. The other **10**
 lens modules are scaffolds on `main` (each carries a `Status: scaffold —
 fill per TASKS.md T-##` line, header prose, and a `module v4.lens.<name>`
