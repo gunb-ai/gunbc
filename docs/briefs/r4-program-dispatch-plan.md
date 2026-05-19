@@ -86,12 +86,12 @@ first) · `DESIGN` · `OP` (operator ruling) · `CP1` (needs v4 front-end output
 | T-4.6 | extdeps/formats ×7 | SCAFFOLD | T-25-core, T-26 | IMPL | T-4 mgr |
 | T-4.7 | frameworks/react | SCAFFOLD | T-4 (ts) | CP1 (LanguageModel) | T-4 mgr |
 | T-4.8 | coordination | SCAFFOLD | T-4, T-4.7 | IFACE | T-4 mgr |
-| T-4.9 | languages/verilog | NOT STARTED | T-1,T-2 | OP (IN-B probe) | T-4 mgr |
+| T-4.9 | languages/verilog | **LANDED** — `extdeps/languages/verilog.dag` header **T-4.9 PASS (IN-B)**; same *pre-D2-reversal / early-canonical* **rework-obligation class** as T-4.10/4.12 where Practice-10/A1 applies (§3) | T-1,T-2 | LANDED + rework note | T-4 mgr |
 | T-4.10 | formats/spice | **LANDED** (#3168 merged) — *pre-D2-reversal canonical path; see rework-obligation note* | T-1 | LANDED | T-4 mgr |
 | T-4.11 | claim/english_ingest | SCAFFOLD | T-3/verification.dag | IFACE (AssertKind) | Lane B |
 | T-4.12 | languages/llvm_ir | **LANDED** (#3171 merged; +#3229 de-prose +#3300 cost-move on main) — *pre-D2-reversal canonical path; see rework-obligation note* | T-1,T-2 | LANDED | T-4 mgr |
-| T-4.13 | languages/machine_code | NOT STARTED | T-3, T-4 LanguageModel | CP1 | T-4 mgr |
-| T-4.14 | languages/ptx | NOT STARTED | T-1,T-2 | OP (IN-B probe) | T-4 mgr |
+| T-4.13 | languages/machine_code | **IMPL (modeled slice)** — `extdeps/languages/machine_code.dag` carries Isa-parameterized structural vocabulary (**D2-REV**, ledger **P4-3208**); **not** a blank scaffold — TASKS.md still keys **full** LanguageModel closure / downstream consumers on the T-4 bundle + CP-1 | T-3, T-4 LanguageModel | IMPL | T-4 mgr |
+| T-4.14 | languages/ptx | **LANDED** — `extdeps/languages/ptx.dag` header **T-4.14 PASS (IN-B)**; rework-obligation note same class as §3 early-canonical probes where applicable | T-1,T-2 | LANDED + rework note | T-4 mgr |
 | **T-9** | compiler/04_infer | SCAFFOLD | T-8/CP-1b-close (∥) + T-4 | IMPL (T-4 keystone; CP-1b-close parallel, not keystone-gated) | Lane A |
 | **T-10** | 05_emit + 00_compile | SCAFFOLD | T-9, T-4 | IMPL+IFACE | Lane A |
 | **T-11** | emit per-target ×5 | NOT STARTED | T-10 | IMPL | Lane A |
@@ -143,6 +143,15 @@ first) · `DESIGN` · `OP` (operator ruling) · `CP1` (needs v4 front-end output
 - **Coord flag:** T-29 residual #3277's worker (quick-bat-761) is **not in the
   T-4-mgr subtree** (absent from the graph). §2 attribution corrected to
   "open"; reparent/attribution routes via the owning manager, not assumed.
+- **T-4 + serial-spine manager closeout (bold-tern-525, 2026-05-19):** re-verified
+  §2 **substrate headers** on HEAD vs the dispatch table — **T-4.9** and **T-4.14**
+  were incorrectly marked `NOT STARTED` while files already report PASS probes;
+  **T-4.13** was incorrectly `NOT STARTED` while `machine_code.dag` already holds a
+  substantial modeled slice. Table rows above corrected; **keystone cluster,
+  T-4 ×5 HOLD, and serial spine diagram** are unchanged (authority remains
+  `TASKS.md` + operator items). Parallel-fill counts that assumed three extra
+  “greenfield” B2-OMNI probes should treat **T-4.9 / T-4.14** as landed substrate,
+  not unstarted scaffolds.
 
 ---
 
@@ -157,7 +166,7 @@ first) · `DESIGN` · `OP` (operator ruling) · `CP1` (needs v4 front-end output
 
 **Keystone blast radius (widened — T-4-mgr finding):** Practice-10/#3240 does
 not only gate T-4 ×5 forward — it also scopes the **rework obligation on the
-already-LANDED pre-D2-reversal files** (spice #3168, llvm_ir #3171, siblings).
+already-LANDED pre-D2-reversal files** (spice #3168, llvm_ir #3171, verilog T-4.9, ptx T-4.14, siblings).
 Ratifying the **Practice-10 A1 invariant** is therefore *higher-leverage than
 first stated*: it unblocks the forward spine **and** defines the backward-rework
 set in one ruling. "Landed pre-A1" is not "done."
