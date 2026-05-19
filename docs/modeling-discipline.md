@@ -5,16 +5,18 @@
 > The invariants are the reviewer-facing rubric; the practices below are
 > the concrete patterns each invariant manifests in modeling work.
 >
-> **Maintained ledgers (retired 2026-05-19).** `src/v4/DECISIONS.md` and
-> `src/v4/STRUCTURE.md` are deleted. Load-bearing rationale **re-homes** to
-> stable in-repo authorities (not PR-thread archaeology):
-> [`docs/audit/dissolution-inventory.md`](audit/dissolution-inventory.md)
-> (coproduct dissolution / 🟡 plans), [INVARIANTS.md](../INVARIANTS.md) §P5
-> (hand-Rust dissolution receipts), [`docs/modeling/grounding-worked-examples.md`](modeling/grounding-worked-examples.md)
-> (*coincide*), [`src/v4/TASKS.md`](../src/v4/TASKS.md) (task-scoped substrate).
-> PR review **lands** updates into these homes in the same PR; commit messages
-> carry process receipts only. Cost-of-change = 1 per [CLAUDE.md](../CLAUDE.md)
-> is unchanged (operator-ratified new files, no manifest).
+> **No comment-duplicating ledgers (standing rule, 2026-05-19).** Do not
+> create or maintain docs that re-list facts whose source-of-truth is an inline
+> model mark (`🟢`/`🟡`/`🔴`, `feature:`/`consumer:` gate, dissolution slug).
+> Deleted: `src/v4/DECISIONS.md`, `src/v4/STRUCTURE.md`,
+> `docs/audit/dissolution-inventory.md`. The **inline mark on the carrier** is
+> the system; verbose dissolution-pattern analysis and architectural debate live
+> in **PR review** (process receipts in the commit message). Unchanged:
+> dissolution is merge-blocking (INVARIANTS §P5), yellow must dissolve, Practice
+> 10 review heuristic. Non-comment receipts only: [INVARIANTS.md](../INVARIANTS.md)
+> §P5(b), [`src/v4/TASKS.md`](../src/v4/TASKS.md),
+> [`docs/modeling/grounding-worked-examples.md`](modeling/grounding-worked-examples.md)
+> (*coincide*). Cost-of-change = 1 per [CLAUDE.md](../CLAUDE.md).
 >
 > This document supplements, rather than parallels, INVARIANTS.md's
 > taxonomy. Each practice names the invariant principle it serves.
@@ -116,9 +118,8 @@ Every piece of structured information produced at one stage of the
 compiler must be either consumed by the next stage, carried forward as
 a field on downstream data structures, or explicitly discarded — with
 the justification recorded in a **stable in-repo home** ([INVARIANTS.md](../INVARIANTS.md)
-§P5 row, [`src/v4/TASKS.md`](../src/v4/TASKS.md), or
-[`docs/audit/dissolution-inventory.md`](audit/dissolution-inventory.md) — same PR
-as the change); process receipts go in the commit message (Practice 9), not as
+§P5 row or [`src/v4/TASKS.md`](../src/v4/TASKS.md) — same PR as the change);
+process receipts go in the commit message (Practice 9), not as
 in-file prose. Silent drops are violations.
 
 **What to check:** For each cross-stage boundary touched in the diff
@@ -189,9 +190,8 @@ variants), the three dispositions are:
 
 - **🟢 terminal** — the variants are irreducible distinctions at the
   user-input boundary (literals, keywords, source locations); no richer
-  structure can be named. Requires a row in
-  [`docs/audit/dissolution-inventory.md`](audit/dissolution-inventory.md)
-  recording which dissolution patterns were tried and why each failed.
+  structure can be named. Requires **PR review** (same PR) recording which
+  dissolution patterns were tried and why each failed.
 - **🟡 gated** — a richer source exists but decomposition waits on a
   named arrival (`feature:` substrate not ready, or `consumer:` no
   consumer reads the meaning yet). A `consumer`-gated entry **pre-assigns
@@ -238,12 +238,11 @@ or a `.dag` `type X = A | B | …`) must be classified (🟢/🟡/🔴). **The
 coproduct itself keeps a required one-line classification tag carrying
 the 🟢/🟡/🔴 emoji** (operator directive 2026-05-17) — e.g. `//
 🟡 coproduct dissolution`. The emoji stays *on the coproduct* so a
-reader sees the classification at the type. Dissolution patterns tried and
-🟡 gate binding are recorded in
-[`docs/audit/dissolution-inventory.md`](audit/dissolution-inventory.md) (or the
-matching [INVARIANTS.md](../INVARIANTS.md) §P5 / [`src/v4/TASKS.md`](../src/v4/TASKS.md)
-row when the gate is receipt-shaped). A coproduct with no in-file 🟢/🟡/🔴 tag
-is unfinished modeling and blocks review.
+reader sees the classification at the type. 🟡 gate binding is on the in-file tag
+(`feature:` / `consumer:`); verbose dissolution-pattern analysis is argued in
+**PR review** (or an [INVARIANTS.md](../INVARIANTS.md) §P5 /
+[`src/v4/TASKS.md`](../src/v4/TASKS.md) row when receipt-shaped). A coproduct
+with no in-file 🟢/🟡/🔴 tag is unfinished modeling and blocks review.
 
 **The lookup smell (the consumer-trigger backstop).** A `match` over a
 foreign-label coproduct, written *inside a consumer* — a lens, a
@@ -266,8 +265,8 @@ analysis until the sunset milestone. The exception covers that analysis
 **only**. It does **not** waive: (a) the required one-line 🟢/🟡/🔴 tag
 on the coproduct; nor (b) — for a 🟡 — the **bound dissolution plan**
 (the named missing primitive/consumer, its owning substrate PR or task,
-and the dissolve-on-arrival follow-up), recorded in
-[`docs/audit/dissolution-inventory.md`](audit/dissolution-inventory.md). A 🟡's
+and the dissolve-on-arrival follow-up), on the in-file 🟡 tag and in **PR review**.
+A 🟡's
 plan-binding is the minimum that makes it a *valid* 🟡 (see the 🟡
 disposition above). The gate names the **concrete missing primitive**,
 e.g. `// 🟡 feature:<missing-primitive>` — a bare `<sunset-milestone>` is
@@ -526,9 +525,9 @@ four things — nothing else survives:
      `type` with N ≥ 2 variants) carries a one-line tag with its
      🟢/🟡/🔴 classification emoji (operator directive 2026-05-17), e.g.
      `// 🟡 coproduct dissolution`. The emoji stays *on the coproduct*
-     (Practice 4). Dissolution patterns / 🟡 gate binding are recorded in
-     [`docs/audit/dissolution-inventory.md`](audit/dissolution-inventory.md).
-     This is not optional — a coproduct with no in-file 🟢/🟡/🔴 tag blocks
+     (Practice 4). 🟡 gate binding is on the in-file tag; verbose analysis in
+     **PR review**. This is not optional — a coproduct with no in-file 🟢/🟡/🔴
+     tag blocks
      review.
    - **Optional — concept tag / cite.** For any type, at most one
      further one-liner where genuinely useful: a concept tag where the
@@ -539,10 +538,9 @@ four things — nothing else survives:
 
 Everything else is **removed**: per-type descriptions, all Practice-N
 rationale, all multi-line rationale, `Seams`/`Brief`/process-meta
-blocks. Architectural decisions land in [`src/v4/TASKS.md`](../src/v4/TASKS.md),
-[INVARIANTS.md](../INVARIANTS.md) §P5, or
-[`docs/audit/dissolution-inventory.md`](audit/dissolution-inventory.md); process
-notes — de-prose receipts, "HEADER RECONCILE", "per directive X" — move to the
+blocks. Architectural decisions land in [`src/v4/TASKS.md`](../src/v4/TASKS.md) or
+[INVARIANTS.md](../INVARIANTS.md) §P5; process notes — de-prose receipts,
+"HEADER RECONCILE", "per directive X" — move to the
 **commit message**, never the file.
 
 **What to check:** count `comment-lines / total-lines`. The hard target

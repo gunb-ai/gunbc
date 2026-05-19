@@ -222,17 +222,14 @@ Each line says why it matters. Read in this order.
    Read first; STOP before crossing any of them.
 2. **`THESIS.md`** — the architecture's reasoning. Read for
    understanding. This is the *why* for everything.
-3. **`src/v4/STRUCTURE.md`** — the closed file tree, the seven
-   invariants, and the decisions ratified this round (especially
-   invariant 7 — the honest framing of enforcement).
-4. **`MODELING.md`** — how we model. Pay special attention to **M9: DFS
+3. **`MODELING.md`** — how we model. Pay special attention to **M9: DFS
    the concept DAG before defining any new type.** This is the core
    craft of the job.
-5. **`src/v4/TASKS.md`** — the full plan. Find your task. Read its
+4. **`src/v4/TASKS.md`** — the full plan. Find your task. Read its
    modeling-decisions list carefully — that list *is* your work.
-6. **`src/v4/BRIEF_TEMPLATE.md`** — the shape of your brief and the
+5. **`src/v4/BRIEF_TEMPLATE.md`** — the shape of your brief and the
    binding STOP triggers. Read the STOP section as permission.
-7. **Your scaffold file's header** — your immutable input/output
+6. **Your scaffold file's header** — your immutable input/output
    contract. The most important thirty lines you will read. Treat the
    header comments as the specification.
 8. **`TESTING.md`** — how testing works here: tests are data
