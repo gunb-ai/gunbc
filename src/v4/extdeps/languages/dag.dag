@@ -24,7 +24,6 @@ data dag_c3_surface_sugar_operation: Symbol = dag_c3_surface_sugar_operation
 data dag_language_model_surface_id: Symbol = dag_language_model_surface_id
 
 
-// Minted for compile-only receipt: wave-1 void *shape* without native `.dag` surface authority.
 data dag_language_model_non_native_void_shape_compile_receipt_id: Symbol = dag_language_model_non_native_void_shape_compile_receipt_id
 
 
@@ -56,7 +55,6 @@ fn dag_language_model_wave1_void() -> DagLanguageModel {
 }
 
 
-// Compile-anchor LM: same wave-1 void *shape* as native scaffold, non-native identity, **empty** canonical prelude (DECISIONS CP-1b item 2 — no shape-derived C3 grant).
 fn dag_language_model_wave1_void_shape_empty_canonical_prelude_compile_receipt() -> DagLanguageModel {
   DagLanguageModel {
     lex: dag_wave1_e0_void_lex(),
