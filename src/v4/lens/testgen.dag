@@ -1,7 +1,7 @@
 // src/v4/lens/testgen.dag
-// Scope: Manual-anchor testgen — Generator carries kind + anchor + classification + subject slot.
-// Owns: Generator TestgenConcept manual_test_claim_for_manual_anchor testgen_concept_for_manual_claim TypeConstructionSubject AlgebraLawSubject DiagnosticExhaustivenessSubject LensApplicabilitySubject BidirectionalRoundtripSubject
-// Consumes: v4.std.diagnostic v4.std.nat v4.std.node v4.std.verification v4.test.claim.manual.connective_anchors v4.test.claim.manual.nat_law_anchors
+// Scope: Manual-anchor testgen plus filesystem-backed whole-corpus lens driver primitive.
+// Owns: Generator TestgenConcept manual_test_claim_for_manual_anchor testgen_concept_for_manual_claim TypeConstructionSubject AlgebraLawSubject DiagnosticExhaustivenessSubject LensApplicabilitySubject BidirectionalRoundtripSubject CorpusEntry CorpusTraversalScope CorpusTraversalOrder CorpusDuplicatePolicy CorpusTraversalPolicy CorpusEnumerationRequest CorpusEnumerationResult CorpusEnumerator CorpusEntryIngestResult CorpusEntryIngestor CorpusLensReadResult<C> CorpusLensReader<C> CorpusLensObservation<C> CorpusLensDriveResult<C> CorpusLensDriver<C>
+// Consumes: v4.std.diagnostic v4.std.nat v4.std.node v4.std.verification v4.extdeps.file_system v4.test.claim.manual.connective_anchors v4.test.claim.manual.nat_law_anchors
 // Status: Modeled Generator join for manual-anchor claims; substrate extension = operator STOP.
 
 module v4.lens.testgen
@@ -32,6 +32,13 @@ import v4.std.node {
   Instantiation,
   Behavior,
   Symbol
+}
+import v4.extdeps.file_system {
+  AbsolutePath,
+  FileBody,
+  FileKindResolutionPolicy,
+  FileSystemOperations,
+  Filesystem
 }
 import v4.std.verification {
   AssertKind,
@@ -82,7 +89,10 @@ type AlgebraLawSubject { algebra: Symbol, inhabitant: Symbol, law: Symbol }
 type DiagnosticExhaustivenessSubject { reason: Symbol }
 
 
-type LensApplicabilitySubject { lens: Symbol, program: Node }
+type LensApplicabilitySubject {
+  lens: Symbol
+  program: Node
+}
 
 
 type BidirectionalRoundtripSubject { language: Symbol, production: Symbol }
@@ -104,6 +114,101 @@ type Generator<C> {
   t19_anchor: T19ManualAnchorKey
   slot: C
 }
+
+
+// RULING-1: 🟡 needs-more-work
+type CorpusEntry {
+  path: AbsolutePath
+  body: FileBody
+}
+
+
+// RULING-1: 🟡 needs-more-work
+type CorpusTraversalScope
+// 🟢 coproduct dissolution — DECISIONS.md LB-P4-3212
+  = RecursiveCorpusWalk
+  | SingleDirectoryCorpusWalk
+
+
+// RULING-1: 🟡 needs-more-work
+type CorpusTraversalOrder
+// 🟢 coproduct dissolution — DECISIONS.md LB-P4-3212
+  = LexicalPathOrder
+  | FilesystemNativeOrder
+
+
+// RULING-1: 🟡 needs-more-work
+type CorpusDuplicatePolicy
+// 🟢 coproduct dissolution — DECISIONS.md LB-P4-3212
+  = PreserveDuplicateEntries
+  | RejectDuplicatePaths
+
+
+// RULING-1: 🟡 needs-more-work
+type CorpusTraversalPolicy {
+  scope: CorpusTraversalScope
+  order: CorpusTraversalOrder
+  duplicates: CorpusDuplicatePolicy
+}
+
+
+// RULING-1: 🟡 needs-more-work
+type CorpusEnumerationRequest {
+  filesystem: Filesystem
+  root: AbsolutePath
+  operations: FileSystemOperations
+  resolution: FileKindResolutionPolicy
+  traversal: CorpusTraversalPolicy
+}
+
+
+// RULING-1: 🟡 needs-more-work
+type CorpusEnumerationResult = Outcome<List<CorpusEntry>>
+
+
+// RULING-1: 🟡 needs-more-work
+type CorpusEnumerator = fn(CorpusEnumerationRequest) -> CorpusEnumerationResult
+
+
+// RULING-1: 🟡 needs-more-work
+type CorpusEntryIngestResult = Outcome<Node>
+
+
+// RULING-1: 🟡 needs-more-work
+type CorpusEntryIngestor = fn(CorpusEntry) -> CorpusEntryIngestResult
+
+
+// RULING-1: 🟡 needs-more-work
+type CorpusLensReadResult<C> = Outcome<C>
+
+
+// RULING-1: 🟡 needs-more-work
+type CorpusLensReader<C> {
+  lens: Symbol
+  read: fn(Node) -> CorpusLensReadResult<C>
+}
+
+
+// RULING-1: 🟡 needs-more-work
+type CorpusLensObservation<C> {
+  entry: CorpusEntry
+  program: Node
+  output: C
+}
+
+
+// RULING-1: 🟡 needs-more-work
+type CorpusLensDriveResult<C> = Outcome<List<CorpusLensObservation<C>>>
+
+
+// RULING-1: 🟡 needs-more-work
+type CorpusLensDriver<C> = fn(
+  CorpusEnumerationRequest,
+  CorpusEnumerator,
+  CorpusEntryIngestor,
+  CorpusLensReader<C>
+) -> CorpusLensDriveResult<C>
+
 
 // RULING-1: 🟢 pretty-much-done — repeats manual claim anchor after lookup Outcome
 
@@ -281,6 +386,6 @@ fn bootstrap_claim_generator_for_manual_anchor(
               slot: slot,
             }
           }
-      }
+    }
   }
 }
