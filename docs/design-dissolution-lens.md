@@ -918,25 +918,32 @@ fn derive_effect_shape(...) -> Outcome<EffectShape> {
   mechanically-distinct outcomes** — three passing and two firing —
   and the decision table is closed (no escape outside this
   enumeration):
-  1. **Same-concept-with-alias.** A `CanonicalConcept` row claims
-     the two declarations as co-members AND the non-canonical
-     declaration is a structural alias (`import` + `type T =
-     <canonical-module>.T`) of the canonical home. → **passes.**
-  2. **Same-concept-with-retirement-record.** A `CanonicalConcept`
-     row claims co-membership AND a `HistoricalDeclaration` row
-     names the non-canonical declaration as retired with a
-     `dissolves_when` trigger:
+  Each outcome is defined by which **substrate-data resolution
+  shape(s) are present** — they are independent passing conditions,
+  NOT compound predicates. `CanonicalConcept` co-membership is one
+  resolution shape; an alias-identity edge is another; a
+  `HistoricalDeclaration` retirement row is another. Any single
+  passing shape's presence is enough.
+  1. **Alias-identity edge.** The non-canonical declaration is a
+     structural alias (`import` + `type T = <canonical-module>.T`)
+     of another declaration. The alias IS the resolution — it
+     re-exports rather than re-declares — regardless of whether a
+     `CanonicalConcept` row is also present. → **passes.**
+  2. **Retirement-record.** A `HistoricalDeclaration` row names one
+     of the two declarations as retired with a `dissolves_when`
+     trigger:
      ```dag
      data bool_dsl_std_retired: HistoricalDeclaration = {
        type:           dsl.std.types.Bool,
        dissolves_when: <trigger>,
      }
      ```
-     The retirement ledger is substrate data read by the lens, not
-     prose. → **passes.**
-  3. **Distinct concepts.** A `ConceptDisambiguation` row names
-     the two declarations as legitimately distinct concepts in
-     different namespaces:
+     The retirement ledger is substrate data read by the lens — its
+     presence resolves the lens regardless of whether a
+     `CanonicalConcept` row also exists. → **passes.**
+  3. **Distinct-concepts disambiguation.** A `ConceptDisambiguation`
+     row names the two declarations as legitimately distinct
+     concepts in different namespaces:
      ```dag
      data network_vs_normalize_result: ConceptDisambiguation = {
        names:   { network.Result, compiler.normalize.Result },
@@ -948,16 +955,24 @@ fn derive_effect_shape(...) -> Outcome<EffectShape> {
      `CanonicalConcept` co-membership row is a registry-inconsistency
      finding — caught by L0-class duplicate-data-row checks, not
      L1.12.)
-  4. **Same-concept-without-alias-or-retirement.** A `CanonicalConcept`
-     row claims co-membership but the non-canonical declaration is
-     neither structurally aliased nor in the retirement ledger →
-     **fires** (the original duplicate-authority case; reachable
-     via either trigger).
-  5. **Silence.** Triggered lexically (Trigger A), AND no
-     `CanonicalConcept` row, no `ConceptDisambiguation` row, no
-     `HistoricalDeclaration` row → **fires as unresolved-duplicate.**
-     The substrate must take a position. (Not reachable via Trigger
-     B — the trigger IS a registry row's presence.)
+  4. **CanonicalConcept co-membership without alias or retirement.**
+     A `CanonicalConcept` row claims the two declarations as
+     co-members, AND neither outcome (1) alias nor outcome (2)
+     retirement is present → **fires** (the duplicate-authority
+     case; reachable via either trigger). The CanonicalConcept row
+     by itself asserts the concept identity but does not resolve
+     the parallel authority — outcome (1) or (2) is required to
+     resolve, otherwise the substrate is asserting "these two
+     declarations are the same concept" while keeping both as
+     authoritative declarations, which is the violation.
+  5. **Silence.** Triggered lexically (Trigger A), AND none of
+     outcomes (1) / (2) / (3) / (4) apply (no alias, no
+     retirement-record, no disambiguation, no CanonicalConcept
+     row) → **fires as unresolved-duplicate.** The substrate must
+     take a position. (Not reachable via Trigger B — Trigger B's
+     premise is that a CanonicalConcept row IS present, so this
+     case becomes outcome (4) or one of the passing outcomes
+     instead.)
   Note: **deletion / migration** (removing the redeclaration in the
   same change so only one `type T` remains across the corpus) is
   not a sixth resolution — it removes the trigger condition (the
