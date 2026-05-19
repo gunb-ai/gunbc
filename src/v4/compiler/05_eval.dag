@@ -73,7 +73,6 @@ type TestClaimEvalSubject {
   claim_node: Node
   claim: TestClaim
   context: EvalContext
-  actual: Outcome<Node>
 }
 
 
@@ -200,6 +199,10 @@ fn run_test_claim(
   resources_hash: Hash,
   extdeps_hash: Hash
 ) -> TestClaimRun {
+  let actual = eval_node(
+    tree: subject.claim.input,
+    inputs: Inputs { root: subject.claim.input }
+  )
   TestClaimRun {
     subject: subject,
     cache: test_claim_cache_receipt(
@@ -211,7 +214,7 @@ fn run_test_claim(
     ),
     verdict: run_assert(
       kind: subject.claim.kind,
-      actual: subject.actual,
+      actual: actual,
       expected: subject.claim.expected,
       input: subject.claim.input
     )
@@ -223,11 +226,7 @@ fn eval_test_claim_subject(claim_node: Node, claim: TestClaim, context: EvalCont
   TestClaimEvalSubject {
     claim_node: claim_node,
     claim: claim,
-    context: context,
-    actual: eval_node(
-      tree: claim.input,
-      inputs: Inputs { root: claim.input }
-    )
+    context: context
   }
 }
 
@@ -289,24 +288,33 @@ fn t22_ci_context() -> EvalContext {
 }
 
 
-fn t22_ci_subject(claim_node: Node, claim: TestClaim, actual: Outcome<CiPipeline>) -> TestClaimEvalSubject {
+fn t22_ci_subject(claim_node: Node, claim: TestClaim) -> TestClaimEvalSubject {
   TestClaimEvalSubject {
     claim_node: claim_node,
     claim: claim,
-    context: t22_ci_context(),
-    actual: t22_ci_outcome(actual: actual)
+    context: t22_ci_context()
   }
 }
 
 
-fn t22_ci_run(subject: TestClaimEvalSubject) -> TestClaimRun {
-  run_test_claim(
+fn t22_ci_run(subject: TestClaimEvalSubject, pipeline: CiPipeline) -> TestClaimRun {
+  let actual = t22_ci_outcome(actual: ci_pipeline_well_formed(p: pipeline))
+  TestClaimRun {
     subject: subject,
-    claim_hash: t22_hash_claim,
-    evaluator_hash: t22_hash_evaluator,
-    resources_hash: t22_hash_resources,
-    extdeps_hash: t22_hash_extdeps
-  )
+    cache: test_claim_cache_receipt(
+      subject: subject,
+      claim_hash: t22_hash_claim,
+      evaluator_hash: t22_hash_evaluator,
+      resources_hash: t22_hash_resources,
+      extdeps_hash: t22_hash_extdeps
+    ),
+    verdict: run_assert(
+      kind: subject.claim.kind,
+      actual: actual,
+      expected: subject.claim.expected,
+      input: subject.claim.input
+    )
+  }
 }
 
 
@@ -319,8 +327,13 @@ data claim_ci_dangling_bootstrap_output: TestClaim = t22_ci_claim(
 
 data subject_ci_dangling_bootstrap_output: TestClaimEvalSubject = t22_ci_subject(
   claim_node: t22_symbol_node(s: t22_ci_dangling_bootstrap_output),
-  claim: claim_ci_dangling_bootstrap_output,
-  actual: ci_pipeline_well_formed(p: CiPipeline {
+  claim: claim_ci_dangling_bootstrap_output
+)
+
+
+data run_ci_dangling_bootstrap_output: TestClaimRun = t22_ci_run(
+  subject: subject_ci_dangling_bootstrap_output,
+  pipeline: CiPipeline {
     jobs: [
       CiJob {
         id: v2_compile_src_v4,
@@ -331,11 +344,8 @@ data subject_ci_dangling_bootstrap_output: TestClaimEvalSubject = t22_ci_subject
     gates: [
       CiGate { id: structural_v2_compile, job: v2_compile_src_v4 }
     ]
-  })
+  }
 )
-
-
-data run_ci_dangling_bootstrap_output: TestClaimRun = t22_ci_run(subject: subject_ci_dangling_bootstrap_output)
 
 
 data claim_ci_duplicate_job_id: TestClaim = t22_ci_claim(
@@ -347,8 +357,13 @@ data claim_ci_duplicate_job_id: TestClaim = t22_ci_claim(
 
 data subject_ci_duplicate_job_id: TestClaimEvalSubject = t22_ci_subject(
   claim_node: t22_symbol_node(s: t22_ci_duplicate_job_id),
-  claim: claim_ci_duplicate_job_id,
-  actual: ci_pipeline_well_formed(p: CiPipeline {
+  claim: claim_ci_duplicate_job_id
+)
+
+
+data run_ci_duplicate_job_id: TestClaimRun = t22_ci_run(
+  subject: subject_ci_duplicate_job_id,
+  pipeline: CiPipeline {
     jobs: [
       CiJob { id: v2_compile_src_v4, command: BootstrapStageCompile { produces: v4_stage0_binary }, needs: [] },
       CiJob { id: v2_compile_src_v4, command: BootstrapStageCompile { produces: v4_stage0_binary }, needs: [] }
@@ -356,11 +371,8 @@ data subject_ci_duplicate_job_id: TestClaimEvalSubject = t22_ci_subject(
     gates: [
       CiGate { id: structural_v2_compile, job: v2_compile_src_v4 }
     ]
-  })
+  }
 )
-
-
-data run_ci_duplicate_job_id: TestClaimRun = t22_ci_run(subject: subject_ci_duplicate_job_id)
 
 
 data claim_ci_duplicate_gate_id: TestClaim = t22_ci_claim(
@@ -372,8 +384,13 @@ data claim_ci_duplicate_gate_id: TestClaim = t22_ci_claim(
 
 data subject_ci_duplicate_gate_id: TestClaimEvalSubject = t22_ci_subject(
   claim_node: t22_symbol_node(s: t22_ci_duplicate_gate_id),
-  claim: claim_ci_duplicate_gate_id,
-  actual: ci_pipeline_well_formed(p: CiPipeline {
+  claim: claim_ci_duplicate_gate_id
+)
+
+
+data run_ci_duplicate_gate_id: TestClaimRun = t22_ci_run(
+  subject: subject_ci_duplicate_gate_id,
+  pipeline: CiPipeline {
     jobs: [
       CiJob { id: v2_compile_src_v4, command: BootstrapStageCompile { produces: v4_stage0_binary }, needs: [] }
     ],
@@ -381,11 +398,8 @@ data subject_ci_duplicate_gate_id: TestClaimEvalSubject = t22_ci_subject(
       CiGate { id: structural_v2_compile, job: v2_compile_src_v4 },
       CiGate { id: structural_v2_compile, job: v2_compile_src_v4 }
     ]
-  })
+  }
 )
-
-
-data run_ci_duplicate_gate_id: TestClaimRun = t22_ci_run(subject: subject_ci_duplicate_gate_id)
 
 
 data claim_ci_dangling_need: TestClaim = t22_ci_claim(
@@ -397,19 +411,21 @@ data claim_ci_dangling_need: TestClaim = t22_ci_claim(
 
 data subject_ci_dangling_need: TestClaimEvalSubject = t22_ci_subject(
   claim_node: t22_symbol_node(s: t22_ci_dangling_need),
-  claim: claim_ci_dangling_need,
-  actual: ci_pipeline_well_formed(p: CiPipeline {
+  claim: claim_ci_dangling_need
+)
+
+
+data run_ci_dangling_need: TestClaimRun = t22_ci_run(
+  subject: subject_ci_dangling_need,
+  pipeline: CiPipeline {
     jobs: [
       CiJob { id: v2_compile_src_v4, command: BootstrapStageCompile { produces: v4_stage0_binary }, needs: [t22_other_job] }
     ],
     gates: [
       CiGate { id: structural_v2_compile, job: v2_compile_src_v4 }
     ]
-  })
+  }
 )
-
-
-data run_ci_dangling_need: TestClaimRun = t22_ci_run(subject: subject_ci_dangling_need)
 
 
 data claim_ci_dangling_gate_job: TestClaim = t22_ci_claim(
@@ -421,19 +437,21 @@ data claim_ci_dangling_gate_job: TestClaim = t22_ci_claim(
 
 data subject_ci_dangling_gate_job: TestClaimEvalSubject = t22_ci_subject(
   claim_node: t22_symbol_node(s: t22_ci_dangling_gate_job),
-  claim: claim_ci_dangling_gate_job,
-  actual: ci_pipeline_well_formed(p: CiPipeline {
+  claim: claim_ci_dangling_gate_job
+)
+
+
+data run_ci_dangling_gate_job: TestClaimRun = t22_ci_run(
+  subject: subject_ci_dangling_gate_job,
+  pipeline: CiPipeline {
     jobs: [
       CiJob { id: v2_compile_src_v4, command: BootstrapStageCompile { produces: v4_stage0_binary }, needs: [] }
     ],
     gates: [
       CiGate { id: structural_v2_compile, job: t22_other_job }
     ]
-  })
+  }
 )
-
-
-data run_ci_dangling_gate_job: TestClaimRun = t22_ci_run(subject: subject_ci_dangling_gate_job)
 
 
 data claim_ci_dependency_cycle: TestClaim = t22_ci_claim(
@@ -445,8 +463,13 @@ data claim_ci_dependency_cycle: TestClaim = t22_ci_claim(
 
 data subject_ci_dependency_cycle: TestClaimEvalSubject = t22_ci_subject(
   claim_node: t22_symbol_node(s: t22_ci_dependency_cycle),
-  claim: claim_ci_dependency_cycle,
-  actual: ci_pipeline_well_formed(p: CiPipeline {
+  claim: claim_ci_dependency_cycle
+)
+
+
+data run_ci_dependency_cycle: TestClaimRun = t22_ci_run(
+  subject: subject_ci_dependency_cycle,
+  pipeline: CiPipeline {
     jobs: [
       CiJob { id: v2_compile_src_v4, command: BootstrapStageCompile { produces: v4_stage0_binary }, needs: [t22_other_job] },
       CiJob { id: t22_other_job, command: BootstrapStageCompile { produces: v4_stage0_binary }, needs: [v2_compile_src_v4] }
@@ -455,8 +478,5 @@ data subject_ci_dependency_cycle: TestClaimEvalSubject = t22_ci_subject(
       CiGate { id: structural_v2_compile, job: v2_compile_src_v4 },
       CiGate { id: t22_other_gate, job: t22_other_job }
     ]
-  })
+  }
 )
-
-
-data run_ci_dependency_cycle: TestClaimRun = t22_ci_run(subject: subject_ci_dependency_cycle)
