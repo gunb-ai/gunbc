@@ -1036,7 +1036,7 @@ PROPOSES; it does not decide.
 
 **Dissolve-on-arrival:** replace `nat_is_zero`’s **body** with the substrate-derived **Zero discriminant** when **`node://adhoc-2145db6b-69a`** closes. **Explicitly forbidden interim “fix”:** rewriting into a **`nat_cata`** / generic fold carrier as **fold laundering** (operator).
 
-**Live substrate tag:** one-line **`// 🟡 gated — …`** immediately precedes `fn nat_is_zero` in `src/v4/std/nat.dag`; header **`// Ledger: … SL-P7-NAT-IS-ZERO-VPRED`**.
+**Live substrate tag:** one-line **`// 🟡 gated — …`** immediately precedes `fn nat_is_zero` in `src/v4/std/nat.dag`; Lane-B header **Scope** line points **DECISIONS.md Part 6** nat rows (V-HDR: no separate `// Ledger:` line in `nat.dag`).
 
 **PR receipt:** gunbc **#3255** (P7) + on-thread **#3244** disposition history.
 
@@ -1050,7 +1050,7 @@ PROPOSES; it does not decide.
 
 **Dissolve-on-arrival:** replace `nat_compare`’s **body** with the substrate-owned **canonical Nat compare** (generated lex-compare / `OrderedSemiring<Nat>` witness consumer — whichever the `node://adhoc-2145db6b-69a` closure lands) **without** `nat_cata` / extra hand `match` **fold laundering** as stand-in authority (operator).
 
-**Live substrate tag:** one-line **`// 🟡 gated — …`** immediately precedes `fn nat_compare` in `src/v4/std/nat.dag` (parallel interim glyph to `nat_is_zero`, with **binary** `dissolve-on-arrival` text). File header **`// Ledger: … SL-P7-NAT-IS-ZERO-VPRED, SL-P7-NAT-COMPARE-VPRED`**.
+**Live substrate tag:** one-line **`// 🟡 gated — …`** immediately precedes `fn nat_compare` in `src/v4/std/nat.dag` (parallel interim glyph to `nat_is_zero`, with **binary** `dissolve-on-arrival` text). Lane-B header **Scope** line points **DECISIONS.md Part 6** (this subsection pair **SL-P7-NAT-IS-ZERO-VPRED** / **SL-P7-NAT-COMPARE-VPRED**; V-HDR: no `// Ledger:` line in `nat.dag`).
 
 **PR receipt:** gunbc **#3310** (this PR).
 

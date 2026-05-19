@@ -222,17 +222,36 @@ fn v4_lens_testgen_testgen_carries_six_nat_algebra_law_scheduling_arms() {
 
 fn assert_nat_manual_claim_blocks_use_equals(nat_law_src: &str) {
     for claim in NAT_MANUAL_CLAIM_DATA {
-        let needle = format!("data {claim}:");
-        let i = nat_law_src
-            .find(&needle)
-            .unwrap_or_else(|| panic!("{needle}: missing nat-law manual claim row"));
-        let end = nat_law_src.len().min(i.saturating_add(700));
-        let tail = &nat_law_src[i..end];
+        let block = nat_law_manual_claim_data_block(nat_law_src, claim);
+        let kind_lines: Vec<&str> = block
+            .lines()
+            .map(str::trim)
+            .filter(|l| l.starts_with("kind:"))
+            .collect();
+        assert_eq!(
+            kind_lines.len(),
+            1,
+            "{claim}: expected exactly one `kind:` field in this `data` block; got {kind_lines:?}"
+        );
         assert!(
-            tail.contains("kind: Equals"),
-            "{claim}: nat-law manual stubs must use `kind: Equals` (AlgebraLaw Wave-0 pairing)"
+            kind_lines[0].starts_with("kind: Equals"),
+            "{claim}: nat-law manual stub must use `kind: Equals` in its own block (not a neighbor claim); got {:?}",
+            kind_lines[0]
         );
     }
+}
+
+/// Slice one `data <claim>:` row through the byte before the next top-level `data ` row (openai-pro #14822).
+fn nat_law_manual_claim_data_block<'a>(nat_law_src: &'a str, claim: &str) -> &'a str {
+    let needle = format!("data {claim}:");
+    let start = nat_law_src
+        .find(&needle)
+        .unwrap_or_else(|| panic!("{needle}: missing nat-law manual claim row"));
+    let after_header = start + needle.len();
+    let tail = &nat_law_src[after_header..];
+    let rel = tail.find("\ndata ");
+    let end = rel.map(|j| after_header + j).unwrap_or(nat_law_src.len());
+    &nat_law_src[start..end]
 }
 
 /// `AlgebraLawSubject` nominal `Symbol` carriers live in `v4.std.nat` (substrate), not in claim stubs.
