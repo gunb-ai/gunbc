@@ -120,6 +120,10 @@ Types decompose into smaller types that each assert one fact.
 
 > Fact modeling is the **inputs facet** of the derived homomorphism: the facts a type asserts are what the compiler derives the cross-target map *from* (see [docs/modeling-discipline.md](docs/modeling-discipline.md) "The three facets").
 
+Do not hand-roll a derived operation. If a function's behavior is determined entirely by the shape of a modeled type, it is re-deriving something the compiler already derives. The deficiency is in the model, not the code — model the missing fact; do not hand-roll the operation.
+
+Practice 10 in [docs/modeling-discipline.md](docs/modeling-discipline.md#10-dont-hand-roll-a-derived-operation) is the operational checklist for this rule: identify the derived operation, then either consume the declared substrate primitive, model the missing fact, or record a tracked dissolution gate when the primitive is not yet present.
+
 ### M2: No duplicate type authorities
 
 Every type is defined in exactly one place.
