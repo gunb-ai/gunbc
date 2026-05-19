@@ -59,11 +59,6 @@ EXTRA_PART6_SLUGS_BY_REL: dict[str, frozenset[str]] = {
             "SL-3229-VERILOG-NONEMPTY",
         }
     ),
-    "src/v4/extdeps/languages/ptx.dag": frozenset(
-        {
-            "SL-3229-PTX-DIM3",
-        }
-    ),
     "src/v4/extdeps/languages/llvm_ir.dag": frozenset(
         {
             "SL-3229-LLVM-WIDTH",
@@ -483,7 +478,7 @@ def main() -> None:
             "src/v4/extdeps/languages/ptx.dag",
             "// Scope: NVIDIA PTX ISA 8.5 SIMT structural classifiers (T-4.14).",
             "// Anchor: https://docs.nvidia.com/cuda/pdf/ptx_isa_8.5.pdf — TOC https://docs.nvidia.com/cuda/parallel-thread-execution/index.html",
-            "// Consumes: std/nat.dag (Nat).",
+            "// Consumes: std/nat.dag (Nat); std/cardinality.dag (PositiveUpperBoundedNat).",
             "// Status: T-4.14 PASS (IN-B).",
         ),
         (

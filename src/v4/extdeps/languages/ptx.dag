@@ -4,7 +4,7 @@
 // Consumes: std/nat.dag (Nat); std/cardinality.dag (PositiveUpperBoundedNat).
 // Status: T-4.14 PASS (IN-B).
 // Anchor: https://docs.nvidia.com/cuda/pdf/ptx_isa_8.5.pdf — TOC https://docs.nvidia.com/cuda/parallel-thread-execution/index.html
-// Ledger: DECISIONS.md Part 6 (PR #3229): CP-3229-GREEN-TERMINAL, SL-3229-PTX-DIM3.
+// Ledger: DECISIONS.md Part 6 (PR #3229): CP-3229-GREEN-TERMINAL.
 
 module v4.extdeps.languages.ptx
 
