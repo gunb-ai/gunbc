@@ -108,14 +108,16 @@ over the affected frontier is composition, not a new scope shape.
 
 Per Path/Edit/Diff (`src/v4/std/node.dag`, ratified PR #3162):
 
-- **`Path`** — a structural address to a sub-Node. Not a filesystem
-  path; the Node graph's own coordinates.
-- **`Edit`** — a structural rewrite at a Path. Replace / insert /
-  delete at a position determined by the substrate's connective
-  family.
-- **`Diff = List<Edit>`** — ordered sequential rewrite program. The
-  list ordering is significant — Edits compose by sequential
-  application, NOT parallel.
+- **`Path { steps: List<Symbol> }`** — a structural address to a
+  sub-Node. Not a filesystem path; the Node graph's own coordinates.
+- **`Edit { at: Path, replacement: Node }`** — a structural rewrite
+  at a Path. **Only** a replacement; the ratified `std/node.dag`
+  definition has no separate insert / delete variants. Insertions
+  and deletions are expressed by replacing the parent node with a
+  new parent whose children include / exclude the targeted child.
+- **`Diff { edits: List<Edit> }`** — ordered sequential rewrite
+  program. The list ordering is significant — Edits compose by
+  sequential application, NOT parallel.
 
 Per the ratified contract in `src/v4/lens/application.dag`:
 
