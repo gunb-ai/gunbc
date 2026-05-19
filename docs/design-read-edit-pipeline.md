@@ -570,11 +570,12 @@ gunbc declare-concept Bool \
 2. `intent_to_diff(intent)` synthesizes:
    - `data bool_concept: CanonicalConcept = { canonical_home: ..., members: ... }`
    - Alias-identity Edit for each `members` entry
-3. `apply_diff(dag, diff)` applies
+3. `candidate_dag = apply_diff(dag, diff)` — uncommitted candidate
 4. `affected_set(dag, diff).frontier.for_each(ref => apply_lens(L1.12, ref, Enforce))`
-   validates → should pass via outcome (1) alias for each affected
-   declaration
-5. Re-emit affected files
+   validates **against the candidate** → should pass via outcome (1)
+   alias for each affected declaration
+5. `dag := candidate_dag` — commit if all gates pass
+6. Re-emit affected files
 
 The CLI invocation is the spec; the Diff is the convolution output;
 the agent never touches a file directly. **This is the substrate-pivot
