@@ -1,6 +1,6 @@
 // src/v4/compiler/05_eval.dag
 // Scope: primary evaluation path over inferred tree/input subgraphs and TestClaim runner substrate.
-// Owns: InferredTree, Inputs, EvalContext, TestClaimTypedInput, TestClaimEvalSubject, TestClaimCacheKey, TestClaimCacheReceipt, Verdict, TestClaimRun, eval_node, run_test_claim.
+// Owns: InferredTree, Inputs, EvalContext, TestClaimTypedInput, TestClaimEvalSubject, TestClaimCacheKey, TestClaimCacheReceipt, Verdict, TestClaimRun, TestClaimPassReceipt, eval_node, run_test_claim.
 // Consumes: v4.std.node, v4.std.diagnostic, v4.std.verification, v4.workflow.ci.
 // Status: Wave-0 substrate; evaluator bodies remain structural until T-9 inferred-tree semantics.
 
@@ -113,6 +113,11 @@ type TestClaimRun<T> {
 }
 
 
+type TestClaimPassReceipt<T> {
+  cache: TestClaimCacheReceipt<T>
+}
+
+
 type T22CiNegativeCase {
   label: String
   input_symbol: Symbol
@@ -144,6 +149,7 @@ data eval_rejected_invalid_node: Symbol = eval_rejected_invalid_node
 data eval_rejected_assert_kind_deferred: Symbol = eval_rejected_assert_kind_deferred
 data eval_rejected_roundtrip_deferred: Symbol = eval_rejected_roundtrip_deferred
 data eval_rejected_ci_projection_deferred: Symbol = eval_rejected_ci_projection_deferred
+data eval_rejected_test_claim_not_passed: Symbol = eval_rejected_test_claim_not_passed
 
 
 fn eval_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
@@ -272,6 +278,20 @@ fn run_test_claim(
 }
 
 
+fn test_claim_pass_receipt<T>(run: TestClaimRun<T>, input: Node) -> Outcome<TestClaimPassReceipt<T>> {
+  match run.verdict {
+    Pass => Produced { value: TestClaimPassReceipt { cache: run.cache } }
+    Fail { actual: _ } => Rejected {
+      diagnostic: eval_diagnostic(
+        reason: eval_rejected_test_claim_not_passed,
+        node: input
+      )
+    }
+    Deferred { actual: _, diagnostic: d } => Rejected { diagnostic: d }
+  }
+}
+
+
 fn eval_test_claim_subject(
   claim_node: Node,
   claim: TestClaim,
@@ -396,6 +416,9 @@ data subject_ci_dangling_bootstrap_output: TestClaimEvalSubject<CiPipeline> = t2
 data run_ci_dangling_bootstrap_output: TestClaimRun<CiPipeline> = t22_ci_run(subject: subject_ci_dangling_bootstrap_output)
 
 
+data receipt_ci_dangling_bootstrap_output: Outcome<TestClaimPassReceipt<CiPipeline>> = test_claim_pass_receipt(run: run_ci_dangling_bootstrap_output, input: subject_ci_dangling_bootstrap_output.input.claim_input)
+
+
 data case_ci_duplicate_job_id: T22CiNegativeCase = T22CiNegativeCase {
   label: "t22_ci_duplicate_job_id",
   input_symbol: t22_ci_duplicate_job_id,
@@ -416,6 +439,9 @@ data subject_ci_duplicate_job_id: TestClaimEvalSubject<CiPipeline> = t22_ci_subj
 
 
 data run_ci_duplicate_job_id: TestClaimRun<CiPipeline> = t22_ci_run(subject: subject_ci_duplicate_job_id)
+
+
+data receipt_ci_duplicate_job_id: Outcome<TestClaimPassReceipt<CiPipeline>> = test_claim_pass_receipt(run: run_ci_duplicate_job_id, input: subject_ci_duplicate_job_id.input.claim_input)
 
 
 data case_ci_duplicate_gate_id: T22CiNegativeCase = T22CiNegativeCase {
@@ -440,6 +466,9 @@ data subject_ci_duplicate_gate_id: TestClaimEvalSubject<CiPipeline> = t22_ci_sub
 data run_ci_duplicate_gate_id: TestClaimRun<CiPipeline> = t22_ci_run(subject: subject_ci_duplicate_gate_id)
 
 
+data receipt_ci_duplicate_gate_id: Outcome<TestClaimPassReceipt<CiPipeline>> = test_claim_pass_receipt(run: run_ci_duplicate_gate_id, input: subject_ci_duplicate_gate_id.input.claim_input)
+
+
 data case_ci_dangling_need: T22CiNegativeCase = T22CiNegativeCase {
   label: "t22_ci_dangling_need",
   input_symbol: t22_ci_dangling_need,
@@ -459,6 +488,9 @@ data subject_ci_dangling_need: TestClaimEvalSubject<CiPipeline> = t22_ci_subject
 
 
 data run_ci_dangling_need: TestClaimRun<CiPipeline> = t22_ci_run(subject: subject_ci_dangling_need)
+
+
+data receipt_ci_dangling_need: Outcome<TestClaimPassReceipt<CiPipeline>> = test_claim_pass_receipt(run: run_ci_dangling_need, input: subject_ci_dangling_need.input.claim_input)
 
 
 data case_ci_dangling_gate_job: T22CiNegativeCase = T22CiNegativeCase {
@@ -482,6 +514,9 @@ data subject_ci_dangling_gate_job: TestClaimEvalSubject<CiPipeline> = t22_ci_sub
 data run_ci_dangling_gate_job: TestClaimRun<CiPipeline> = t22_ci_run(subject: subject_ci_dangling_gate_job)
 
 
+data receipt_ci_dangling_gate_job: Outcome<TestClaimPassReceipt<CiPipeline>> = test_claim_pass_receipt(run: run_ci_dangling_gate_job, input: subject_ci_dangling_gate_job.input.claim_input)
+
+
 data case_ci_dependency_cycle: T22CiNegativeCase = T22CiNegativeCase {
   label: "t22_ci_dependency_cycle",
   input_symbol: t22_ci_dependency_cycle,
@@ -503,3 +538,6 @@ data subject_ci_dependency_cycle: TestClaimEvalSubject<CiPipeline> = t22_ci_subj
 
 
 data run_ci_dependency_cycle: TestClaimRun<CiPipeline> = t22_ci_run(subject: subject_ci_dependency_cycle)
+
+
+data receipt_ci_dependency_cycle: Outcome<TestClaimPassReceipt<CiPipeline>> = test_claim_pass_receipt(run: run_ci_dependency_cycle, input: subject_ci_dependency_cycle.input.claim_input)
