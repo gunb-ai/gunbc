@@ -80,7 +80,7 @@ import v2_5.std.stage_types {
   c3_surface_sugar_service,
   c3_surface_sugar_type
 }
-import v2_5.std.syntax { ExprErrorKind }
+import v2_5.std.syntax { InternalExprError }
 import v2_5.std.sugar_rules {
   PeelSinglePositionalChild,
   ReplaceWithArrow,
@@ -479,7 +479,7 @@ fn normalize_item_core(item: ResolvedItemCore) -> Outcome<NormalizedItem> {
           name: name,
           type_annotation: normalized_type_expr_stub(span: span),
           value: NormalizedError {
-            kind: ExprErrorKind,
+            kind: InternalExprError,
             message: "normalize-item-core-stub",
             span: span
           },
