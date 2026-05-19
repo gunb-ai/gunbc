@@ -169,7 +169,7 @@ INVALID-GATE-once-re-gated):
 | P2 lands | 5 named (+ 29 verilog sites converge in one sweep) | `std/collection.dag` Wave-A2 | ~11 named |
 | P3 lands | 2 named (+ ~7 in-file) | T-6 + T-7 pipeline substrate | ~9 named |
 | P4 lands | 4 + 1 row + 1 fn (`dag.dag canonical_symbols` #3225) | T-4 fact-bundle Phase-3 | ~3 named |
-| P5 cascade lands | 1 named (+ 3 walker sites in `03_resolve.dag` #3225) | scoped binding-harvest `fold_node` algebra (substrate: **#3297**) | ~1 |
+| P5 cascade landed | 0 | scoped binding-harvest `fold_node` algebra in `03_resolve.dag` (substrate: **#3297**) | no open P5 cascade debt |
 | P6 lands | 2 | FreeMonoid/Nat catamorphism | ~0 |
 | P7 lands | 1 | `nat_is_zero` | ~0 |
 | P9 landed | 0 | `lens/cost.dag` T-12 | ~0 |
@@ -740,7 +740,7 @@ fixes are downstream lane work, not C1's** — C1 marks and flags.
 
 | class | 🔴 dissolve-now | 🟡 gated (named feature: / consumer:) | 🟢 terminal |
 |---|---|---|---|
-| walker | — | 2 (`std/algebra.dag free_monoid_length` → `fold FreeMonoid`; `std/float.dag nat_compare` → `fold Nat`) + **P5 cascade** (`compiler/03_resolve.dag` binding-harvest sites → scoped `fold_node` algebra; substrate **#3297**) | rest |
+| walker | — | 2 (`std/algebra.dag free_monoid_length` → `fold FreeMonoid`; `std/float.dag nat_compare` → `fold Nat`) | rest; **P5 cascade closed** (`compiler/03_resolve.dag` binding-harvest sites consume scoped `fold_node` algebra; substrate **#3297**) |
 | traverse | — | 4 (`std/node.dag` × 4: → `forall` / `count_where` / `unique` over `FreeMonoid<T>` in `std/collection.dag` Wave-A2) | rest |
 | predicate | empty-`Conj` R1 predicate **landed** PR #3284 (`std/node.dag` `is_empty_conj_root`, `DECISIONS.md` §CP-1b item 12); LLVM R2 predicate **landed** PR #3245 (`terminator_is_catchswitch` deleted; `block_well_formed` consumes `CatchSwitch` directly) | 3 (`std/node.dag connective_edge_discipline` → per-`Connective` discipline fact; `std/float.dag float_finite_magnitude_zero` → `nat_is_zero`; `extdeps/languages/llvm_ir.dag feature_disposition` → per-feature disposition fact (T-4 fact-bundle)); `llvm_instruction_cost` **landed** under `lens/cost.dag`. | rest |
 | carrier | — | — | lane-wide |
@@ -751,7 +751,7 @@ fixes are downstream lane work, not C1's** — C1 marks and flags.
 dissolve-on-arrival rule):
 
 1. ~~`fold_node` — `Node` catamorphism in `std/node.dag` (substrate-extension
-   under T-1).~~ **LANDED PR #3297** (`NodeFold<R>`, `fold_node`; `node_well_formed` is a consumer). **P5 cascade** (binding-harvest in `03_resolve.dag`) remains open under a scoped algebra, not absent substrate.
+   under T-1).~~ **LANDED PR #3297** (`NodeFold<R>`, `fold_node`; `node_well_formed` is a consumer). **P5 cascade closed 2026-05-19:** binding-harvest in `03_resolve.dag` consumes scoped `NodeFold<Map<Symbol, Symbol>>` algebras.
 2. `fold` / `cata` over `FreeMonoid<T>` and `Nat` in `std/algebra.dag` /
    `std/nat.dag` (Wave-A2).
 3. `forall`, `count_where`, `unique` over `FreeMonoid<T>` in
