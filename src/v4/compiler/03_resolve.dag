@@ -50,10 +50,10 @@ type Namespace {
 }
 
 
-// 🟢 coproduct dissolution — DECISIONS.md CP-1b item 7 (Scope)
-type Scope
-  = ScopeRoot { module: Namespace }
-  | ScopeFrame { locals: Map<Symbol, Symbol>, outer: Scope }
+type Scope {
+  module: Namespace
+  frames: List<Map<Symbol, Symbol>>
+}
 
 
 type EdgeResolveAcc
@@ -162,27 +162,27 @@ fn build_program_namespace(tree: NormalizedTree, lm: DagLanguageModel) -> Namesp
 
 
 fn scope_from_namespace(namespace: Namespace) -> Scope {
-  ScopeRoot { module: namespace }
+  Scope { module: namespace, frames: [] }
 }
 
 
 fn scope_root_module(s: Scope) -> Namespace {
-  match s {
-    ScopeFrame { outer: o, locals: _ } => scope_root_module(s: o)
-    ScopeRoot { module: m } => m
-  }
+  s.module
+}
+
+
+fn scope_push_frame(s: Scope, locals: Map<Symbol, Symbol>) -> Scope {
+  Scope { module: s.module, frames: list_push(s.frames, locals) }
 }
 
 
 fn lookup_chain(s: Scope, name: Symbol) -> Symbol? {
-  match s {
-    ScopeFrame { locals: m, outer: o } =>
-      match map_get(m, name) {
-        Some { value: v } => Some { value: v }
-        None => lookup_chain(s: o, name: name)
-      }
-    ScopeRoot { module: mod } => map_get(mod.bindings, name)
-  }
+  fold(s.frames, init: map_get(s.module.bindings, name), f: fn(acc, m) {
+    match map_get(m, name) {
+      Some { value: v } => Some { value: v }
+      None => acc
+    }
+  })
 }
 
 
@@ -244,10 +244,10 @@ fn resolve_node(n: Node, scope: Scope) -> Outcome<Node> {
       match resolve_edges_first_outer_then_inner(
         edges: n.children,
         scope_outer: scope,
-        scope_inner: ScopeFrame {
-          locals: add_arrow_domain_named_params(n: n, acc: empty_map()),
-          outer: scope
-        }
+        scope_inner: scope_push_frame(
+          s: scope,
+          locals: add_arrow_domain_named_params(n: n, acc: empty_map())
+        )
       ) {
         Rejected { diagnostic: d } => Rejected { diagnostic: d }
         Produced { value: resolved_children } =>
@@ -488,10 +488,10 @@ fn resolve_bind_node(n: Node, scope: Scope) -> Outcome<Node> {
     match resolve_bind_edges(
       edges: n.children,
       scope_outer: scope,
-      scope_inner: ScopeFrame {
-        locals: add_bind_atom_binder(n: n, acc: empty_map()),
-        outer: scope
-      }
+      scope_inner: scope_push_frame(
+        s: scope,
+        locals: add_bind_atom_binder(n: n, acc: empty_map())
+      )
     ) {
       Rejected { diagnostic: d } => Rejected { diagnostic: d }
       Produced { value: resolved_children } =>
