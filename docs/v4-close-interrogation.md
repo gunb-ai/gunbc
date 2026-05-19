@@ -1178,7 +1178,7 @@ Existing `extdeps/languages/<lang>.dag` files do NOT need split. Their header sh
 
 The original `rust.dag` / `python.dag` / `go.dag` trio is joined by additional language and IR models under `src/v4/extdeps/languages/`. For **this §14 promise** (C/C++ surface, LLVM IR, TypeScript), the following are **landed** as `.dag` substrate.
 
-**Parse/resolve receipt:** CI `v4:` runs `v2-compiler compile --source-root src/v4` (parse/resolve posture; authoritative file tree: `src/v4/STRUCTURE.md`).
+**Parse/resolve receipt:** CI `v4:` runs `v2-compiler compile --source-root src/v4` (parse/resolve posture; **same authoritative file tree** as above).
 
 **INVARIANTS.md** §P5(b) interim receipt — **checkable harness split** (do not compress into “six `v4_extdeps_*`”):
 - The whole-tree gate **subsumes** the retired **six** parse smokes named there as genuinely equivalent to whole-tree parse: **five** `v4_extdeps_{cpp_abi,cpp,typescript,machine_code,lean}_dag_smoke_test.rs` harnesses plus `v4_std_fact_density_dag_smoke_test.rs`.
