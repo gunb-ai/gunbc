@@ -27,7 +27,11 @@ Both headers claim **T-4.5 modeled 2026-05-16** with POSIX anchors; `file_system
 
 ### T-4.6 — `extdeps/formats/*`
 
-Seven files on disk: `json`, `yaml`, `csv`, `toml`, `json_schema`, `openapi`, `spice`. There is **no** `src/v4/extdeps/formats/sql.dag` yet; SQL DDL under Theme-A remains the separately scheduled extension described in `TASKS.md` T-4.6 / T-16 notes (do not conflate with this formats directory census).
+**Authority (`TASKS.md` fan-out ~L121 + §T-4.6 ~L582):** the **T-4.6** bundle is **seven** format models: `json` / `yaml` / `csv` / `toml` / `json_schema` / `openapi` / **`sql`** — the **seventh file is `sql.dag`**, not SPICE.
+
+**`spice.dag`** is **dual-placed**: it lives in `src/v4/extdeps/formats/` but **`TASKS.md` routes it under T-4.10** (B2-OMNI probe — fan-out ~L125, §T-4.10 ~L672). It must **not** be substituted for the T-4.6 seventh slot when reconciling counts against `TASKS.md`.
+
+**On this tree:** the **six** non-`sql` T-4.6 files from that list are present; **`src/v4/extdeps/formats/sql.dag` is absent** (scheduled port / Theme-A SQL work per `TASKS.md` §T-4.6 + T-16 cross-refs ~L1106+). The same directory also contains **`spice.dag`** for **T-4.10** as above — directory census ≠ collapsing T-4.6 vs T-4.10 task identities.
 
 ### T-4.7 / T-4.8
 
