@@ -9,6 +9,12 @@ Coproduct one-liners (`// 🟢|🟡|🔴 coproduct dissolution — DECISIONS.md 
 2026-05-17, PR #3234 modeling-discipline alignment): an existing tag with the wrong slug
 is replaced so `--check` cannot pass on stale pointers.
 
+RULING-1 (operator 2026-05-19): each braced record `type` (not a sum coproduct) gets a
+single `// 🟢 grounded.` or `// 🟡 grounded.` line (lexeme-shaped `String` slots in
+the record body ⇒ 🟡). Coproduct rows already carry 🟢/🟡 dissolution state and do
+not get a second grounded line. Grounded lines are **not** preserved across strip —
+they are re-injected every run so spacing stays canonical.
+
 `// Owns:` is a **manifest of top-level module symbols** in **file order**: every
 `type`, `data`, and `fn` binding in the `.dag` body (deduped by name), not only headline
 carriers—so regenerated headers stay aligned with actual exports.
@@ -48,6 +54,11 @@ FN_RE = re.compile(r"^fn\s+([A-Za-z_][A-Za-z0-9_]*)\b")
 COPRODUCT_TAG_RE = re.compile(
     r"^\s*//\s*[🟢🟡🔴]\s+coproduct dissolution\b",
 )
+
+# Any `…lexeme`-shaped field typed `String` (partial lexical authority / D3200-style).
+# Uses a name suffix rule so new `foo_lexeme: String` sites classify as 🟢→🟡 without
+# extending a brittle per-field allowlist (composer-2 exploratory #3370).
+LEXEME_STRING_FIELD_RE = re.compile(r"\b\w*lexeme\s*:\s*String\b")
 
 PART6_SLUG_HEAD_RE = re.compile(r"^### (SL-3229-[A-Z0-9-]+|CP-3229-[A-Z0-9-]+)\b")
 
@@ -319,6 +330,45 @@ def format_coproduct_tag(emoji: str, ref: str) -> str:
     return f"// {emoji} coproduct dissolution — DECISIONS.md Part 6 · {ref}."
 
 
+def grounded_tag_for_record_body(body_lines: list[str]) -> str:
+    body = "\n".join(body_lines)
+    em = "🟡" if LEXEME_STRING_FIELD_RE.search(body) else "🟢"
+    return f"// {em} grounded."
+
+
+def inject_grounded_tags(bl: list[str]) -> list[str]:
+    """Insert RULING-1 `// 🟢|🟡 grounded.` before each braced record `type`.
+
+    Tags are **derived only** from the live record body (`LEXEME_STRING_FIELD_RE` → 🟡).
+    Callers must run `strip_body_comments` first so disk-authored grounded lines cannot
+    make `--check` pass stale classifications (codex BLOCKING #3370 / INVARIANTS P2).
+    """
+    out: list[str] = []
+    j = 0
+    while j < len(bl):
+        ln = bl[j]
+        st = ln.strip()
+        if TYPE_RE.match(st) and st.rstrip().endswith("{"):
+            depth = ln.count("{") - ln.count("}")
+            chunk = [ln]
+            j += 1
+            while j < len(bl) and depth > 0:
+                chunk.append(bl[j])
+                depth += bl[j].count("{") - bl[j].count("}")
+                j += 1
+            # Blank line before grounded tags when the previous emitted line is
+            # non-empty (matches verilog/llvm_ir spacing; fixes float.dag after
+            # coproduct variant rows — claude-opus #3370 non-blocking).
+            if out and out[-1].strip():
+                out.append("")
+            out.append(grounded_tag_for_record_body(chunk))
+            out.extend(chunk)
+            continue
+        out.append(ln)
+        j += 1
+    return out
+
+
 def inject_coproduct_tags(body: str, rel: str, tag_map: dict[str, tuple[str, str]]) -> str:
     bl = body.splitlines()
     out_lines: list[str] = []
@@ -393,7 +443,11 @@ def comment_ratio(text: str) -> tuple[int, int, float]:
 def strip_body_comments(after_module: str) -> str:
     out_lines: list[str] = []
     for line in after_module.splitlines(True):
-        if line.lstrip().startswith("//") and not COPRODUCT_TAG_RE.match(line):
+        sl = line.rstrip("\r\n")
+        # Only coproduct one-liners survive the strip; RULING-1 grounded lines are
+        # always re-materialized by inject_grounded_tags (keeps one code path and
+        # spacing normalization — e.g. float.dag after coproduct variants).
+        if sl.lstrip().startswith("//") and not COPRODUCT_TAG_RE.match(sl):
             continue
         out_lines.append(line)
     return "".join(out_lines)
@@ -408,6 +462,10 @@ def materialize_deprose_text(path: Path, rel: str, tag_map: dict[str, tuple[str,
     body = "".join(lines[idx + 1 :])
     new_body = strip_body_comments(body)
     new_body = inject_coproduct_tags(new_body, rel, tag_map)
+    ends_nl = new_body.endswith("\n")
+    core = new_body[:-1] if ends_nl else new_body
+    grounded_lines = inject_grounded_tags(core.splitlines())
+    new_body = "\n".join(grounded_lines) + ("\n" if ends_nl else "")
     return header + module_line + new_body
 
 
@@ -467,10 +525,10 @@ def main() -> None:
     specs: list[tuple[str, str, str, str, str]] = [
         (
             "src/v4/extdeps/languages/verilog.dag",
-            "// Scope: IEEE 1364-2005 Verilog structural carriers (T-4.9).",
+            "// Scope: IEEE 1364-2005 Verilog structural carriers.",
             "// Anchor: https://standards.ieee.org/ieee/1364/3641/",
             "// Consumes: std/node.dag; std/nat.dag (Nat).",
-            "// Status: T-4.9 PASS (IN-B); import v4.std.node Symbol; import v4.std.nat Nat.",
+            "// Status: PASS; import v4.std.node Symbol; import v4.std.nat Nat.",
         ),
         (
             "src/v4/extdeps/languages/llvm_ir.dag",
@@ -481,10 +539,10 @@ def main() -> None:
         ),
         (
             "src/v4/extdeps/languages/ptx.dag",
-            "// Scope: NVIDIA PTX ISA 8.5 SIMT structural classifiers (T-4.14).",
+            "// Scope: NVIDIA PTX ISA 8.5 SIMT structural classifiers (param/shared state, registers, thread hierarchy).",
             "// Anchor: https://docs.nvidia.com/cuda/pdf/ptx_isa_8.5.pdf — TOC https://docs.nvidia.com/cuda/parallel-thread-execution/index.html",
             "// Consumes: std/nat.dag (Nat); std/cardinality.dag (PositiveUpperBoundedNat).",
-            "// Status: T-4.14 PASS (IN-B).",
+            "// Status: structural carriers present; conformance detail in DECISIONS.md Part 6.",
         ),
         (
             "src/v4/std/integer.dag",
