@@ -2,12 +2,7 @@
 // Scope: Python 3.14 Reference surface (flat scalar coproduct, singleton kinds, cost shape, partial D2 resolver).
 // Owns: PythonSingletonKind, PythonScalar, PythonCost, py_bool_grounding.
 // Consumes: Kernel-ambient Int; v4.std.logic.Bool, bool_boolean_algebra; v4.std.algebra.BooleanAlgebra; std/integer, std/float, std/cardinality when T-3 alias rows land (DECISIONS.md D2-REV).
-<<<<<<< HEAD
 // Status: extdeps python slice; bool canonical-B decl-ref grounding — 🟡 E-6(b) staging (scaffold at decl; ledger DECISIONS.md/§0); numeric overflow and resolver deferrals per DECISIONS.md D2-REV + Part 6 (PR #3229 · CP-3229-GREEN-TERMINAL); principal int unbounded—no overflow carrier in-file.
-=======
-// Bool: canonical-B decl-ref grounding (truth facet; int-subtype build-up = BoolScalar) — 🟡 E-6(b) staging (scaffold at decl; ledger DECISIONS.md/§0).
-// Status: extdeps python slice; numeric overflow and resolver deferrals per DECISIONS.md D2-REV + Part 6 (PR #3229 · CP-3229-GREEN-TERMINAL); principal int unbounded—no overflow carrier in-file.
->>>>>>> origin/main
 // Anchor: https://docs.python.org/3.14/reference/
 
 module v4.extdeps.languages.python
