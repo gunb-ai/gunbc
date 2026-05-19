@@ -81,6 +81,13 @@ fn empty_canonical_symbol_set() -> Set<Symbol> {
 }
 
 
+// Empty `List<Edge>` at a concrete return type — the generic `Outcome<T>`
+// `Produced { value: … }` position does not pin `[]` on its own.
+fn empty_edge_list() -> List<Edge> {
+  []
+}
+
+
 fn merge_binding_self(m: Map<Symbol, Symbol>, sym: Symbol) -> Map<Symbol, Symbol> {
   map_insert(m, sym, sym)
 }
@@ -264,7 +271,7 @@ fn resolve_node(n: Node, scope: Scope) -> Outcome<Node> {
 
 
 fn resolve_children_homogeneous_scope(n: Node, scope: Scope) -> Outcome<Node> {
-  match fold(n.children, init: Produced { value: [] }, f: fn(acc, e) {
+  match fold(n.children, init: Produced { value: empty_edge_list() }, f: fn(acc, e) {
     match acc {
       Rejected { diagnostic: d } =>
         Rejected { diagnostic: d }
@@ -303,7 +310,7 @@ fn resolve_edges_first_outer_then_inner(
     edges,
     init: EdgeResolveAccMk {
       have_seen_first: false,
-      acc: Produced { value: [] }
+      acc: Produced { value: empty_edge_list() }
     },
     f: fn(state, e) {
       match state {
@@ -391,7 +398,7 @@ fn resolve_bind_edges(
     edges,
     init: BindEdgeAccMk {
       idx: 0,
-      acc: Produced { value: [] }
+      acc: Produced { value: empty_edge_list() }
     },
     f: fn(state, e) {
       match state {
