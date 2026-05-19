@@ -9,7 +9,7 @@
 module v4.std.node
 type Symbol
 type Hash
-// 🟢 coproduct dissolution — DECISIONS.md classification ledger: Connective.
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type Connective
   = Atom { identity: Symbol }
   | Conj
@@ -17,18 +17,18 @@ type Connective
   | Arrow
   | Cardinality
   | Instantiation
-// 🟢 coproduct dissolution — DECISIONS.md classification ledger: Behavior.
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type Behavior
   = Value
   | Transform
   | Branch
   | Loop
   | Bind
-// 🟢 coproduct dissolution — DECISIONS.md classification ledger: NodeKind.
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type NodeKind
   = TypeNode { connective: Connective }
   | ComputationNode { behavior: Behavior }
-// 🟢 coproduct dissolution — DECISIONS.md classification ledger: EdgeLabel.
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type EdgeLabel
   = Named { name: Symbol }
   | Positional
@@ -49,7 +49,7 @@ fn fold_node<R>(n: Node, algebra: NodeFold<R>) -> R {
     algebra.step(acc, e, fold_node(n: e.target, algebra: algebra))
   })
 }
-// 🟢 coproduct dissolution — DECISIONS.md classification ledger: EdgeDiscipline.
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type EdgeDiscipline
   = NoEdges
   | LabeledEdges
@@ -132,7 +132,7 @@ fn node_well_formed(n: Node) -> Bool {
     }
   )
 }
-// 🟢 predicate dissolution — DECISIONS.md §CP-1b item 12; docs/audit/dissolution-inventory.md §1.0 R1 (PR #3284); api-review P5 receipt PR #3274 (SG-0 census N/A for v4-only substrate).
+// 🟢 predicate dissolution — api-review P5 receipt PR #3274 (SG-0 census N/A for v4-only substrate).
 fn is_empty_conj_root(n: Node) -> Bool {
   match n.kind {
     TypeNode { connective: Conj } => count(n.children) == 0

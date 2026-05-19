@@ -23,7 +23,7 @@ import v4.std.diagnostic {
 import v4.std.node { Symbol }
 import v4.std.text { Char, String, string_is_empty }
 
-// 🟡 coproduct dissolution — DECISIONS.md CP-1b item 13a (LexCharClass).
+// 🟡 coproduct dissolution — CP-1b item 13a (LexCharClass).
 type LexCharClass
   = WhitespaceChar
   | DigitChar
@@ -31,7 +31,7 @@ type LexCharClass
   | IdentContinueChar
 
 
-// 🟡 coproduct dissolution — DECISIONS.md CP-1b item 13b (LexPattern).
+// 🟡 coproduct dissolution — CP-1b item 13b (LexPattern).
 type LexPattern
   = EmptyPattern
   | LiteralPattern { text: String }
@@ -43,7 +43,7 @@ type LexPattern
   | RepeatPattern { element: LexPattern }
 
 
-// 🟡 coproduct dissolution — DECISIONS.md CP-1b item 13c (LexRule).
+// 🟡 coproduct dissolution — CP-1b item 13c (LexRule).
 type LexRule
   = TokenRule { token_class: Symbol, pattern: LexPattern }
 
@@ -53,7 +53,7 @@ type LexRuleSet {
 }
 
 
-// 🟡 coproduct dissolution — DECISIONS.md CP-1b item 13d (LexRules).
+// 🟡 coproduct dissolution — CP-1b item 13d (LexRules).
 type LexRules
   = VoidLexRules
   | ModeledLexRules { root: LexRuleSet }

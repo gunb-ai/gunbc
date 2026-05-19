@@ -46,7 +46,7 @@ fn symbol_is_kernel_ambient(s: Symbol) -> Bool {
 }
 
 
-// 🟢 coproduct dissolution — DECISIONS.md classification ledger: SourceSpecReadFact.
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type SourceSpecReadFact
   = NamedFieldFacts { density: NonZeroNat }
   | KernelAmbientAtom
