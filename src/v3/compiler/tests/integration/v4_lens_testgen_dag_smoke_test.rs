@@ -11,7 +11,12 @@
 //! **Note:** `compile_to_dag` on this module alone does not resolve `import v4.std.*` peers
 //! (Import lowering is still M2-scoped); full merge compile lands with cross-file M2 per TASKS T-19.
 //!
-//! **TESTING.md:** each `#[test]` below pins one structural slice (split per `openai-pro` review **#14812**).
+//! **TESTING.md:** Each `#[test]` is one slice (**#14812**). Where the surface AST exposes the
+//! contract (`module` path, `TypeSum`/`Import` rows, typed `fn` return types, `Generator` fields),
+//! assertions use **`parse_for_test`**. Remaining `str::contains` probes intentionally pin a few
+//! Wave-0 wiring sentences inside `bootstrap_claim_generator_for_manual_anchor` / `Generator`
+//! construction until M2 can compile this module end-to-end (codex **#14839** — bounded parse
+//! ratchet, not a permanent substitute for `.dag` `TestClaim` coverage).
 
 use v3_compiler::parse_for_test;
 use v3_compiler::parse_surface::{SurfaceItem, SurfaceType, TypeAngleArg};
@@ -49,9 +54,10 @@ fn v4_lens_testgen_wave0_modules_tokenize_and_parse() {
 
 #[test]
 fn v4_lens_testgen_wave0_verification_declares_present_anchor_key() {
+    let verification = parse_module(VERIFICATION_DAG, "src/v4/std/verification.dag");
     assert!(
-        VERIFICATION_DAG.contains("type T19PresentManualAnchorKey"),
-        "substrate must declare `T19PresentManualAnchorKey` (present-only manual anchor carrier)"
+        module_declares_type_sum_named(&verification, "T19PresentManualAnchorKey"),
+        "substrate must declare `type T19PresentManualAnchorKey` (parsed `TypeSum`, not raw text)"
     );
 }
 
@@ -103,18 +109,25 @@ fn v4_lens_testgen_wave0_function_inventory_matches_wave0() {
 
 #[test]
 fn v4_lens_testgen_wave0_nat_symbol_import_authority() {
+    let testgen = parse_module(TESTGEN_DAG, "src/v4/lens/testgen.dag");
     assert!(
         !TESTGEN_DAG.contains("t19_bootstrap_algebra")
             && !TESTGEN_DAG.contains("t19_bootstrap_inhabitant"),
         "nat-law AlgebraLawSubject algebra/inhabitant must project from `v4.std.nat` substrate Symbol bundle (no shared bootstrap placeholders)"
     );
-    assert!(
-        TESTGEN_DAG.contains("import v4.std.nat {")
-            && TESTGEN_DAG.contains("nat_algebra_law_subject_symbol_additive_monoid")
-            && TESTGEN_DAG.contains("nat_algebra_law_subject_symbol_commutative_semiring")
-            && TESTGEN_DAG.contains("nat_algebra_law_subject_symbol_inhabitant_nat"),
-        "testgen must import the three `AlgebraLawSubject` Symbol carriers from `v4.std.nat` (single substrate authority)"
+    let names = import_names_for_path(&testgen, &["v4", "std", "nat"]).expect(
+        "testgen must import `v4.std.nat` for AlgebraLawSubject Symbol carriers (parsed `Import`)",
     );
+    for sym in [
+        "nat_algebra_law_subject_symbol_additive_monoid",
+        "nat_algebra_law_subject_symbol_commutative_semiring",
+        "nat_algebra_law_subject_symbol_inhabitant_nat",
+    ] {
+        assert!(
+            names.iter().any(|n| n == sym),
+            "import v4.std.nat must expose `{sym}`; got {names:?}"
+        );
+    }
     assert!(
         !TESTGEN_DAG.contains("fn t19_present_manual_anchor_key("),
         "testgen must not define the retired `t19_present_manual_anchor_key(` std-style helper (use `t19_present_manual_anchor_key_for_claim` in lens only)"
@@ -280,6 +293,44 @@ fn assert_six_algebra_law_constructor_sites_in_testgen(testgen_src: &str) {
         n, 6,
         "expected six nat `value: AlgebraLaw {{...}}` constructor sites in testgen.dag; got {n}"
     );
+}
+
+fn module_declares_type_sum_named(
+    module: &v3_compiler::parse_surface::SurfaceModule,
+    name: &str,
+) -> bool {
+    module.items.iter().any(|item| {
+        matches!(
+            item,
+            SurfaceItem::TypeSum {
+                name: item_name, ..
+            } if item_name == name
+        )
+    })
+}
+
+fn import_names_for_path<'a>(
+    module: &'a v3_compiler::parse_surface::SurfaceModule,
+    path: &[&str],
+) -> Option<&'a [String]> {
+    module.items.iter().find_map(|item| {
+        let SurfaceItem::Import {
+            path: item_path,
+            names,
+            ..
+        } = item
+        else {
+            return None;
+        };
+        if item_path.len() != path.len() {
+            return None;
+        }
+        item_path
+            .iter()
+            .zip(path.iter())
+            .all(|(a, &b)| a.as_str() == b)
+            .then_some(names.as_slice())
+    })
 }
 
 fn parse_module(source: &str, file: &str) -> v3_compiler::parse_surface::SurfaceModule {
