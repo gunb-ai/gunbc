@@ -1174,13 +1174,17 @@ Existing `extdeps/languages/<lang>.dag` files do NOT need split. Their header sh
 
 **Promise** (per `r4-c-compiler-and-llvm-in-dag-program-plan.md` + `design-r4-full-stack-omni-emission-canvas.md`): v4 supports additional Shape A target languages beyond Rust/Python/Go. C/C++ enable production-compiler-infrastructure demonstration; LLVM IR enables backend-portability; TypeScript enables frontend-stack omni-emission.
 
-**v4 owner allocation** (SCAFFOLD-GAP):
+**v4 owner allocation** (Wave-0 substrate — **authoritative file tree:** the live `src/v4/` tree at merge review; **no** maintained `STRUCTURE.md` manifest — operator 2026-05-19):
 
-Currently `src/v4/extdeps/languages/` has 3 files: `rust.dag`, `python.dag`, `go.dag`. R4 adds:
-- `c.dag` — Anchor: ISO/IEC 9899 (C standard) + Kaleidoscope-Ch8 subset for first delivery
-- `cpp.dag` — Anchor: ISO/IEC 14882 (C++ standard) + xlscc-subset (per pin in r4-c-compiler doc)
-- `llvm_ir.dag` — Anchor: https://llvm.org/docs/LangRef.html
-- `typescript.dag` — Anchor: https://www.typescriptlang.org/docs/handbook/2/everyday-types.html (TypeScript Handbook + ES standard)
+The original `rust.dag` / `python.dag` / `go.dag` trio is joined by additional language and IR models under `src/v4/extdeps/languages/`. For **this §14 promise** (C/C++ surface, LLVM IR, TypeScript), the following are **landed** as `.dag` substrate.
+
+**Parse/resolve receipt:** CI `v4:` runs `v2-compiler compile --source-root src/v4` (parse/resolve posture; **same authoritative file tree** as above).
+
+**INVARIANTS.md** §P5(b) interim receipt — **checkable harness split** (do not compress into “six `v4_extdeps_*`”):
+- The whole-tree gate **subsumes** the retired **six** parse smokes named there as genuinely equivalent to whole-tree parse: **five** `v4_extdeps_{cpp_abi,cpp,typescript,machine_code,lean}_dag_smoke_test.rs` harnesses plus `v4_std_fact_density_dag_smoke_test.rs`.
+- The dissolved **`v4_lens_cost_dag_smoke_test.rs`** P9 single-owner ratchet is **not** in that six; whole-tree parse **does not** substitute it (different class; explicit tracked gap / `feature:p9-llvm-instruction-cost-single-owner` in §P5(b)).
+
+**Still open as modeling / emission work** (not “missing files”): the **Probes** checklist below — emit/ingest/L5/L6/falsification — remains the honest gap vs “substrate exists”.
 
 **Probes**:
 
@@ -1190,15 +1194,13 @@ Currently `src/v4/extdeps/languages/` has 3 files: `rust.dag`, `python.dag`, `go
 - [ ] **L6 form completeness**: do all 6 connectives × 5 behaviors emit to every target? Per §3.5 L6 matrix.
 - [ ] **Falsification probe**: pick a `.dag` form that emits cleanly to Rust but cannot emit to LLVM IR (e.g., something Rust's borrow checker accepts but LLVM IR's SSA form rejects). Does v4 fail-closed when LLVM IR is targeted, or silently emit broken IR?
 
-**Disposition** (operator-ratified 2026-05-15): IN for C++ and TypeScript. Add `cpp.dag` and `typescript.dag` to v4 scaffold NOW.
-- C is a subset of C++ — `cpp.dag` covers both surfaces; no separate `c.dag` (unless concrete C-only-consumer demand surfaces).
-- LLVM IR is a distinct concept (IR, not source language) — surface separately if needed.
-- Go remains in v4 scope ("optional, keep for now; can replace if needed").
+**Disposition** (operator-ratified 2026-05-15, **updated for landed substrate**): **IN** for C++ and TypeScript — `cpp.dag` and `typescript.dag` are present. **LLVM IR** is modeled separately as **`llvm_ir.dag`** (IR, not the C++ surface — T-4.12). **C** remains subsumed by `cpp.dag`. **Go** remains in v4 scope ("optional, keep for now; can replace if needed").
 
-**Scaffold additions** (operator-ratified):
-- `extdeps/languages/cpp.dag` — Anchor: ISO/IEC 14882 (C++ standard); subsumes C subset
-- `extdeps/languages/typescript.dag` — Anchor: TypeScript Handbook + ECMAScript spec (ECMA-262)
-- TASKS.md: T-4 (extdeps languages) grows from 3 → 5 files (rust, python, go, cpp, typescript)
+**Landed substrate files** (this §’s targets — paths under `src/v4/`):
+
+- `extdeps/languages/cpp.dag` — Anchor: ISO/IEC 14882 (C++ standard); subsumes C subset (**no separate `c.dag`** unless C-only consumer demand surfaces).
+- `extdeps/languages/typescript.dag` — Anchor: TypeScript Handbook + ECMA-262.
+- `extdeps/languages/llvm_ir.dag` — Anchor: LLVM 18 LangRef (`TASKS.md` **T-4.12** — down-stack SSA / Φ structural vocabulary). The file header follows **modeling-discipline.md** Practice 9 (path + Scope / Owns / Consumes / **Status** + Anchor) with **Status** carrying the `v4.std.*` import surface (no process PASS banner); the terse header includes the script-enforced one-line `// Ledger:` slug inventory (no separate maintained ledger doc). **Parse/resolve posture** is the **§14 Parse/resolve receipt** above (whole-tree `v2-compiler compile --source-root src/v4` / CI `v4:`), not a second authority.
 
 ---
 
@@ -1265,7 +1267,7 @@ Currently no v4 file owns "deployment unit" or "endpoint" concept. Open design q
 Rationale: async / stream / pubsub are deployment patterns and effect-types, not behavior shapes. An HTTP call IS a `Bind` with an HTTP-effect type; a pubsub publish IS a `Bind` with a Queue-effect type; an async stream IS a `Bind` over a `Stream<T>` carrier. Substrate stays at 5 L1 behaviors (C1 stop-signal preserved per THESIS:202). Coordination concepts (`Endpoint`, `DeploymentUnit`, sync/async/stream/pubsub semantics) live as typed carriers in `extdeps/coordination.dag`.
 
 **Scaffold addition** (operator-ratified):
-- `extdeps/coordination.dag` — Anchor (EXTERNAL, per STRUCTURE.md extdeps-anchor convention): Wikipedia Distributed computing + Messaging pattern + Inter-process communication. Design rationale (explicitly NOT the anchor): the IN-B decision (effect-typed, not a 6th L1 behavior). Declares Endpoint / DeploymentUnit + the closed `CoordinationSemantics` as effect-typed carriers over the existing 5 behaviors.
+- `extdeps/coordination.dag` — Anchor (EXTERNAL, per extdeps-anchor convention — **PR review**; no manifest file): Wikipedia Distributed computing + Messaging pattern + Inter-process communication. Design rationale (explicitly NOT the anchor): the IN-B decision (effect-typed, not a 6th L1 behavior). Declares Endpoint / DeploymentUnit + the closed `CoordinationSemantics` as effect-typed carriers over the existing 5 behaviors.
 
 ---
 
