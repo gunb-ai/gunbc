@@ -828,22 +828,6 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // R3 T-V2-Retirement §1.8 gate #41 (`v2_oracle_no_remaining_test_consumers`): comment-aware
     // source ratchet — no `v2-compiler` crate references outside `src/v2/`.
     "src/v3/compiler/tests/integration/v2_oracle_no_remaining_test_consumers_test.rs",
-    "src/v3/compiler/tests/integration/v4_extdeps_cpp_abi_dag_smoke_test.rs",
-    "src/v3/compiler/tests/integration/v4_extdeps_cpp_dag_smoke_test.rs",
-    // T-4.13 / B-2: `compile_to_dag` smoke on `machine_code.dag` / `lean.dag` (zero module diagnostics).
-    "src/v3/compiler/tests/integration/v4_extdeps_lean_dag_smoke_test.rs",
-    "src/v3/compiler/tests/integration/v4_extdeps_machine_code_dag_smoke_test.rs",
-    // T-4 TypeScript primitive scaffold: `compile_to_dag` smoke on
-    // `src/v4/extdeps/languages/typescript.dag` (zero module diagnostics).
-    // SG-0 ratchet per INVARIANTS §P5(b) + `extdeps_sql_transport_test` precedent.
-    "src/v3/compiler/tests/integration/v4_extdeps_typescript_dag_smoke_test.rs",
-    // P9 / T-12 cost-lens authority ratchet: parsed single-owner check for
-    // `llvm_instruction_cost` moving from LLVM IR shape model to v4 cost lens.
-    // SG-0 + INVARIANTS §P5(b) receipt.
-    "src/v3/compiler/tests/integration/v4_lens_cost_dag_smoke_test.rs",
-    // T-30: `compile_to_dag` smoke on `src/v4/std/fact_density.dag` (Practice 8
-    // structural mirror in `v4_hollow_alias_gate`). SG-0 + INVARIANTS §P5(b) receipt.
-    "src/v3/compiler/tests/integration/v4_std_fact_density_dag_smoke_test.rs",
     // T-19/T-20 closeout ratchets over v4 testgen + bootstrap-infra parse surfaces.
     // SG-0 + INVARIANTS §P5(b) receipt; dissolves when the same checks are `.dag`
     // TestClaims or generated harness coverage.
