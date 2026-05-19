@@ -134,7 +134,17 @@
 // I/O — Owns (immutable contract; grounded in merged `00_compile.dag` /
 //   `05_emit.dag` `Owns`, NOT a TASKS invention — keep `Result<…,
 //   Diagnostic>` here; do NOT standardize to `Outcome<…>` without
-//   changing `00_compile.dag` in the same commit train):
+//   changing `00_compile.dag` in the same commit train).
+//
+//   SUBSTRATE-SPELLING GUARDRAIL (contract-honesty): `Result<…,
+//   Diagnostic>` here is the TASKS / orchestrator-`Owns` spelling. The
+//   landed fail-closed carrier in `std/diagnostic.dag` TODAY is
+//   `Outcome<T>` (DECISIONS.md item I) — there is NO `Result<ok,err>`
+//   `.dag` type yet. A `Result` spelling enters substrate only when the
+//   CP-1b / `00_compile.dag` train (incl. the TargetSpec↔TargetModel
+//   freeze) explicitly lands it. Until that train merges, read the
+//   `Consumes` `std/diagnostic.dag` line as `Outcome<T>`-backed; this
+//   header does NOT claim `Result` already lives in `diagnostic.dag`.
 //
 //   - emit: (InferredTree, TargetModel) -> Result<TargetSource, Diagnostic>
 //       the emit boundary / U1 Realize phase; structural inverse of
@@ -146,7 +156,11 @@
 // Consumes (closed; reference only — no new files, substrate extension =
 //   STOP signal):
 //   - std/node.dag           — the universal `Node` IR (gate #28: ONE tree)
-//   - std/diagnostic.dag     — `Result` / `Diagnostic` fail-closed branch
+//   - std/diagnostic.dag     — fail-closed branch carrier (`Outcome<T>`
+//                              today; the `Result` spelling is the
+//                              orchestrator `Owns` alignment pending the
+//                              CP-1b / `00_compile.dag` train — see the
+//                              substrate-spelling guardrail above)
 //   - extdeps/languages/{rust,python,go,cpp,typescript}.dag
 //                            — the ×5 Shape-A grammar-as-data models
 //                              (inverse walk = emit; never a template)
