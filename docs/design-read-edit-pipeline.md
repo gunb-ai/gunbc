@@ -38,10 +38,19 @@ Three reasons:
    that addresses the concept's structure — not a "line range in
    file Y." The right abstraction is the Node.
 
-The substrate models File explicitly via
-`src/v4/extdeps/file_system.dag` so file-tying is a *structural fact*
-("Node N is rendered into File F by emit, at region R") — not implicit
-text coupling.
+The substrate today is incomplete on file-tying. `src/v4/extdeps/file_system.dag`
+models POSIX file operations (open / read / write / close) but **does
+NOT yet carry a Node→File rendering binding** as a first-class
+substrate fact. The Node-to-File relationship is currently **emergent
+from the emit stage** — emit reads the Dag, produces text output per
+target language — not stored as a queryable `data ... : NodeToFileBinding`
+row. This is an honest gap: the design intent (file-tying as
+substrate data so it's queryable and auditable, not implicit in emit
+behavior) is right, but the substrate primitive doesn't exist yet.
+See §6.8 / §7 — landing a Node→File binding registry (e.g.
+`data <node>_rendered_into: NodeToFileBinding = { node: ..., file: ..., region: ... }`)
+is a tracked gap for the file-as-effect framing to become fully
+structural.
 
 ## 2. The read interface
 
@@ -552,6 +561,14 @@ The convolution view is implicit today. To make it executable:
    a fold. This is Track 2 from #3313 generalized.
 5. **Search loop primitive** (for §6.7) — once T-22 eval is live,
    compose into a synthesize-validate-iterate loop. Heaviest dep.
+6. **Node→File binding registry** — `data ... : NodeToFileBinding =
+   { node: ..., file: ..., region: ... }` rows so file-tying is
+   queryable substrate data, not emergent emit behavior. Today
+   `file_system.dag` carries only POSIX file ops; the rendering
+   binding is implicit in the emit stage. Making it explicit closes
+   the "files are a downstream effect of substrate state" framing —
+   that effect becomes a structurally-recorded fact, not just a
+   compile-time side effect.
 
 ### 6.9 Recommended ordering for hero demonstrations
 
