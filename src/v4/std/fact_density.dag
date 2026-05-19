@@ -145,10 +145,14 @@ fn hollow_alias_gate(carrier: Node) -> Outcome<Bool> {
 }
 
 
-// Whole-module gate: a module is hollow-alias-free iff none of its declared
-// carriers is hollow (fail-closed on any hollow carrier).
-fn module_no_hollow_alias(declarations: List<Node>) -> Bool {
-  fold(declarations, init: true, f: fn(acc, d) {
-    acc && !carrier_is_hollow(carrier: d)
+// Whole-module gate: fail-closed on any hollow carrier. Carries the typed
+// diagnostic of the first hollow declaration through to the boundary —
+// never collapses a module-level failure to a bare Bool.
+fn module_no_hollow_alias(declarations: List<Node>) -> Outcome<Bool> {
+  fold(declarations, init: Produced { value: true }, f: fn(acc, d) {
+    match acc {
+      Rejected { diagnostic: dg } => Rejected { diagnostic: dg }
+      Produced { value: _ } => hollow_alias_gate(carrier: d)
+    }
   })
 }
