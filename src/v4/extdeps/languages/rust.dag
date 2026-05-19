@@ -2,7 +2,7 @@
 // Scope: Rust Reference surface (scalar/reference/visibility/cost carriers) plus ratified D2 resolver types homed here pending resolver.dag migration.
 // Owns: RustIntKind, RustIntWidth, RustFloatWidth, RustScalar, RustReferenceKind, NamedSegment, PubInPath, RustVisibility, RustReference, RustCost, OverflowAction, OverflowDisposition, rust_bool_grounding, RustNever.
 // Consumes: v4.std.node.Node, Symbol; v4.std.logic.Bool, bool_boolean_algebra; v4.std.algebra.BooleanAlgebra; v4.std.cardinality.Never; kernel-ambient Int, List.
-// Status: extdeps rust slice; bool — canonical-B decl-ref `rust_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra` (single std authority) declared + v2-parse/resolve-verified (0-diag, v2 bootstrap gate). P2/E-6: STAGING, not landed authority — no same-PR consumer reads it (the canonical/coincidence fold is specified-not-realized). Rust Reference fixes bool as exactly {true,false} with standard ops (shared truth structure, no build-up); `!` → std Never primitive directly (uninhabited; nothing above the primitive). PubInPath path semantics producer-obligation per DECISIONS.md Part 6 + D2-REV; D2b Arrow bodies deferred to bundled LanguageModel work.
+// Status: extdeps rust slice; bool/`!` canonical-B decl-ref grounding — 🟡 E-6(b) staging (scaffold at decl; ledger DECISIONS.md/§0). PubInPath path semantics producer-obligation per DECISIONS.md Part 6 + D2-REV; D2b Arrow bodies deferred to bundled LanguageModel work.
 // Anchor: https://doc.rust-lang.org/reference/
 // Ledger: DECISIONS.md Part 6 (PR #3229): CP-3229-GREEN-TERMINAL.
 
@@ -82,16 +82,7 @@ type OverflowDisposition<IRCarrier>
   | MayPanicOrTwoComplementWrap
 
 // Anchor: https://doc.rust-lang.org/reference/types/boolean.html
-// Rust Reference: `bool` has exactly two values, `true` and `false`, with
-// the standard boolean operations. Read against the spec there is nothing
-// above the primitive to model — Rust bool *is* the shared 2-element
-// BooleanAlgebra. Grounded by referencing the single std authority
-// instance; coincidence is fold-discharged over shared vocabulary, not
-// asserted by a bare alias or a {spelling} label.
-// 🟡 E-6 bounded-exception scaffold `feature:canonical-b-grounding-consumer` — consumer-less
-// target-spec decl permitted under INVARIANTS E-6 clause (b); dissolves when the B1-CANON
-// canonical/content_hash fold + coercion zip-fold (DECISIONS.md B1 · T-9/C1) consume this row
-// for coincidence-checking. P2/E-6 staging until then — not landed authority.
+// 🟡 canonical-B decl-ref · E-6(b) bounded-exception · scaffold feature:canonical-b-grounding-consumer · dissolve-on: B1-CANON+zip-fold consume (ledger: DECISIONS.md B1·T-9/C1 · grounding-worked-examples.md §0)
 data rust_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
 
 // Anchor: https://doc.rust-lang.org/reference/types/never.html

@@ -2,7 +2,7 @@
 // Scope: Go language spec surface (scalar width/kind sums, channel direction, export, cost shape, partial D2 resolver); L-2 pin go1.26 via Anchor.
 // Owns: SignedIntWidth, UnsignedIntWidth, GoFloatWidth, GoComplexWidth, GoScalarKind, GoScalar, GoChannelDirection, GoExportLocus, GoExportStatus, GoChannel, GoCost, GoBuiltinIntegerArithmeticOverflow, GoIntegerOverflowDisposition, go_bool_grounding.
 // Consumes: v4.std.node.Symbol; v4.std.logic.Bool, bool_boolean_algebra; v4.std.algebra.BooleanAlgebra; kernel-ambient Int (STRUCTURE.md traceability).
-// Status: extdeps go slice; bool — canonical-B decl-ref `go_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra` (single std authority) declared + v2-parse/resolve-verified (0-diag, v2 bootstrap gate). P2/E-6: STAGING, not landed authority — no same-PR consumer (canonical fold specified-not-realized). Classifier fact = GoScalar.BoolScalar; numeric D2a rows deferred per DECISIONS.md D2-REV and resolver.dag; no D1 ops in-file.
+// Status: extdeps go slice; bool canonical-B decl-ref grounding — 🟡 E-6(b) staging (scaffold at decl; ledger DECISIONS.md/§0); classifier = GoScalar.BoolScalar; numeric D2a rows deferred per DECISIONS.md D2-REV and resolver.dag; no D1 ops in-file.
 // Anchor: https://go.dev/ref/spec
 // Ledger: DECISIONS.md Part 6 (PR #3229): CP-3229-GREEN-TERMINAL.
 
@@ -96,13 +96,5 @@ type GoIntegerOverflowDisposition<IRCarrier> {
 // 🟢 GoNever / no GoScalar bottom — DECISIONS.md §PR-3252-extdeps-deferrals (Practice 9).
 
 // Anchor: https://go.dev/ref/spec#Boolean_types
-// Go spec: `bool` has the predeclared values `true` and `false` with the
-// standard boolean operations. Read against the spec there is nothing
-// above the primitive to model — Go bool *is* the shared 2-element
-// BooleanAlgebra. Grounded by referencing the single std authority
-// instance; coincidence is fold-discharged, not asserted.
-// 🟡 E-6 bounded-exception scaffold `feature:canonical-b-grounding-consumer` — consumer-less
-// target-spec decl permitted under INVARIANTS E-6 clause (b); dissolves when the B1-CANON
-// canonical/content_hash fold + coercion zip-fold (DECISIONS.md B1 · T-9/C1) consume this row
-// for coincidence-checking. P2/E-6 staging until then — not landed authority.
+// 🟡 canonical-B decl-ref · E-6(b) bounded-exception · scaffold feature:canonical-b-grounding-consumer · dissolve-on: B1-CANON+zip-fold consume (ledger: DECISIONS.md B1·T-9/C1 · grounding-worked-examples.md §0)
 data go_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
