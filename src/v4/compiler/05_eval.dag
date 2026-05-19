@@ -86,7 +86,6 @@ type EvalContext {
 
 
 type TestClaimTypedInput<T> {
-  claim_input: Node
   evaluator_input: T
 }
 
@@ -278,7 +277,7 @@ fn run_test_claim(
       kind: subject.claim.kind,
       actual: actual,
       expected: subject.claim.expected,
-      input: subject.input.claim_input
+      input: subject.claim.input
     )
   }
 }
@@ -304,7 +303,7 @@ fn eval_test_claim_subject(
     claim: claim,
     context: context,
     tree: tree,
-    input: TestClaimTypedInput { claim_input: claim.input, evaluator_input: claim.input }
+    input: TestClaimTypedInput { evaluator_input: claim.input }
   }
 }
 
@@ -396,13 +395,13 @@ fn t22_ci_subject(
   case: T22CiNegativeCase
 ) -> TestClaimEvalSubject<CiPipeline> {
   let input = t22_symbol_node(s: case.input_symbol)
-  let typed_input = TestClaimTypedInput { claim_input: input, evaluator_input: case.pipeline }
+  let claim = t22_ci_claim(label: case.label, input: input, expected_reason: case.expected_reason)
   TestClaimEvalSubject {
     claim_node: input,
-    claim: t22_ci_claim(label: case.label, input: typed_input.claim_input, expected_reason: case.expected_reason),
+    claim: claim,
     context: t22_ci_context(),
-    tree: t22_inferred_tree(root: typed_input.claim_input),
-    input: typed_input
+    tree: t22_inferred_tree(root: claim.input),
+    input: TestClaimTypedInput { evaluator_input: case.pipeline }
   }
 }
 
@@ -421,7 +420,7 @@ fn t22_ci_run(subject: TestClaimEvalSubject<CiPipeline>) -> TestClaimRun<CiPipel
       kind: subject.claim.kind,
       actual: actual,
       expected: subject.claim.expected,
-      input: subject.input.claim_input
+      input: subject.claim.input
     )
   }
 }
