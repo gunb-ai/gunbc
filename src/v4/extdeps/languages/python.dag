@@ -11,13 +11,16 @@ import v4.std.logic { Bool, bool_boolean_algebra }
 import v4.std.algebra { BooleanAlgebra }
 
 // 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
+// 🟢 grounded — Python singleton-kind carrier; testcase: language_extdeps_grounding_anchor.dag.
 type PythonSingletonKind
   = NoneT | NotImplementedT | EllipsisT
 
 // 🟢 coproduct dissolution — DECISIONS.md Part 6 · SL-3309-PYTHON-SCALAR-RESEED.
+// 🟢 grounded — Python scalar carrier; testcase: language_extdeps_grounding_anchor.dag.
 type PythonScalar
   = IntScalar | FloatScalar | ComplexScalar | BoolScalar | Singleton { kind: PythonSingletonKind }
 
+// 🟡 needs-more-work — cost axes are raw Int until numeric/cost refinements land; testcase: language_extdeps_grounding_anchor.dag.
 type PythonCost
 {
   operation_cost: Int
