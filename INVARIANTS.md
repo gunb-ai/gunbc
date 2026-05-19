@@ -449,3 +449,47 @@ Per **Dispatch-Discipline Mechanisms (b)**, each path in `EXPECTED_HAND_AUTHORED
 | `src/v3/compiler/src/self_host_receipt_p0.rs` | **ROADMAP:** `ROADMAP.md` § **T-PB-A** / T-FixedPoint P0 — stable JSON receipt keys for `self_host_fixed_point` trends (DB-8 hand receipt). **PR receipt (P5 Mechanism (b)):** this row + census line same PR. **Dissolution:** delete when receipt schema is `.dag`/generated-owned. **Interim ratchet:** field-name unit tests in-module. |
 | `src/v3/compiler/src/test_runner.rs` | **ROADMAP:** `ROADMAP.md` § **T-PB-A** / **T-PB-B** — integration test runner host (`ExecuteCommand` / claim evaluation seam). **PR receipt (P5 Mechanism (b)):** this row + census line same PR. **Dissolution:** delete when runner is generated or substrate-owned without hand orchestration. **Interim ratchet:** integration + cementing suites. |
 | `src/v3/compiler/src/v4_hollow_alias_gate.rs` | **TASKS.md** **T-30** (`src/v4/TASKS.md`); **Spec:** `docs/modeling-discipline.md` **Practice 8** — *Interim floor: the hollow-alias discriminator* (Practice 8 *Interim floor* on `main` post-#3226 `77b9e7d72` + Practice 9 #3234 `125fc88c8`; diff `main` if §8/§9 drift). **ROADMAP:** `ROADMAP.md` § **Nine lanes** — **T-PB-A** / `pb_hand_rust_at_shim_floor` (SG-0 non-test census in `sg0_census_test.rs`; `docs/design-pure-bootstrap-zero.md`). **PR receipt (P5 Mechanism (b)):** this INVARIANTS row + matching `EXPECTED_HAND_AUTHORED_NON_TEST` literal land in the same PR. **Dissolution:** delete when T-30's structural `Node → Outcome` gate is generated from v4 `.dag` authority (no handwritten Practice-8 mirror). **Interim ratchet:** hermetic unit tests in-module pin the three-part hollow predicate + kernel-ambient exemption; paired **P2-staging** `.dag` nominal witness at `src/v4/std/fact_density.dag` (`SourceSpecReadFact` — **not** a landed substrate primitive per INVARIANTS §P2 until a generated consumer reads it; dissolution to `Node` payload when the v4-isolated bootstrap path lands; see file header + **PR review** (no maintained manifest). |
+| `src/v3/compiler/src/wall_clock_ratchet_manifest.rs` | **ROADMAP:** `ROADMAP.md` § **T-PB-A** — wall-clock warn manifest for CI/binary shims (timing discipline). **PR receipt (P5 Mechanism (b)):** this row + census line same PR. **Dissolution:** delete when timing manifest is `.dag` data consumed by codegen. **Interim ratchet:** modeled CI workflow tests. |
+---
+
+## Appendix: ID index
+
+Every numbered ID (C-N, E-N, L-N, DB-N) descends from one principle. The prose-name invariants are indexed under their principle above; this appendix exists so PR-history references like "violates C-8" or "see E-9" resolve quickly.
+
+| ID | Home principle | Short form | Subdoc |
+|---|---|---|---|
+| <a id="c-1"></a>C-1 | P3: Fail-Closed | missing args fail closed; no `LitNull` sentinels | [debt/root-cause-c-…](docs/debt/root-cause-c-errors-propagate-as-valid-looking-fabrications.md) |
+| <a id="c-2"></a>C-2 | P3: Fail-Closed | missing defaults / config fail closed; no `LitNull` sentinels | [debt/root-cause-c-…](docs/debt/root-cause-c-errors-propagate-as-valid-looking-fabrications.md) |
+| <a id="c-3"></a>C-3 | P3: Fail-Closed | parser recovery may not fabricate dummy `LitNull` nodes | [debt/root-cause-c-…](docs/debt/root-cause-c-errors-propagate-as-valid-looking-fabrications.md) |
+| <a id="c-4"></a>C-4 | P3: Fail-Closed | placeholder `<error:*>` types forbidden as live carriers | [debt/root-cause-c-…](docs/debt/root-cause-c-errors-propagate-as-valid-looking-fabrications.md) |
+| <a id="c-5"></a>C-5 | P3: Fail-Closed | error detection may not rely on string-sentinel probing | [debt/root-cause-c-…](docs/debt/root-cause-c-errors-propagate-as-valid-looking-fabrications.md) |
+| <a id="c-6"></a>C-6 | P3: Fail-Closed | emit may not use `<error:unknown_*>` sentinels | [debt/root-cause-c-…](docs/debt/root-cause-c-errors-propagate-as-valid-looking-fabrications.md) |
+| <a id="c-7"></a>C-7 | P3: Fail-Closed | `Dynamic` is not a universal compatibility fallback | [debt/root-cause-c-…](docs/debt/root-cause-c-errors-propagate-as-valid-looking-fabrications.md) |
+| <a id="c-8"></a>C-8 | P3: Fail-Closed | fail-closed compilation (canonical) | [invariants/decidability-invariant.md#fail-closed-compilation](docs/invariants/decidability-invariant.md#fail-closed-compilation) |
+| <a id="c-9"></a>C-9 | P3: Fail-Closed | missing fields / values may not fabricate empty nodes or strings | [debt/root-cause-c-…](docs/debt/root-cause-c-errors-propagate-as-valid-looking-fabrications.md) |
+| <a id="c-10"></a>C-10 | P3: Fail-Closed | ownership gaps may not silently clone for progress | [debt/root-cause-c-…](docs/debt/root-cause-c-errors-propagate-as-valid-looking-fabrications.md) |
+| <a id="db-1"></a>DB-1 | P3: Fail-Closed (cross-ref P2) | typed diagnostic carriers, not ad hoc warning text | [design-correction-shape.md](docs/design-correction-shape.md) |
+| <a id="db-4"></a>DB-4 | P5: Progress Is Dissolution | clean-emission as declared contract with real consumers | [design-clean-emission-contract.md](docs/design-clean-emission-contract.md) |
+| <a id="db-5"></a>DB-5 | P2: Boundary Discipline | substrate keyed lookup single-authority | [design-substrate-keyed-lookup-api.md](docs/design-substrate-keyed-lookup-api.md) |
+| <a id="db-8"></a>DB-8 | P4: Decidability | deterministic emission | [invariants/deterministic-emission-db-8.md](docs/invariants/deterministic-emission-db-8.md) |
+| <a id="db-9"></a>DB-9 | P4: Decidability | mutual recursion lowers structurally | [design-mutual-recursion-lowering.md](docs/design-mutual-recursion-lowering.md) |
+| <a id="db-14"></a>DB-14 | P2: Boundary Discipline | external primitives materialize through `Arrow.body` | [design-substrate-external-primitives.md](docs/design-substrate-external-primitives.md) |
+| <a id="e-5"></a>E-5 | P5: Progress Is Dissolution | clean-emission contract by construction | [invariants/e-5-…](docs/invariants/e-5-clean-emission-contract-is-satisfied-by-construction.md) |
+| <a id="e-6"></a>E-6 | P2: Boundary Discipline | no target-spec field without a same-PR consumer | [invariants/e-6-…](docs/invariants/e-6-no-target-spec-field-without-a-same-pr-consumer.md) |
+| <a id="e-7"></a>E-7 | P5: Progress Is Dissolution | no target-private realization schema without a dissolution ratchet | [invariants/e-7-…](docs/invariants/e-7-no-target-private-realization-schema-without-a-dissolution-ratchet.md) |
+| <a id="e-8"></a>E-8 | P3: Fail-Closed | unsupported core behaviors fail closed, never collapse semantically | [invariants/e-8-…](docs/invariants/e-8-unsupported-core-behaviors-fail-closed-never-collapse-semantically.md) |
+| <a id="e-9"></a>E-9 | P2: Boundary Discipline | external realization lives on `Arrow.body` | [invariants/e-9-…](docs/invariants/e-9-external-realization-lives-on-arrow-body.md) |
+| <a id="l-7"></a>L-7 | P2: Boundary Discipline | lenses consume declared substrate query functions | [invariants/l-7-…](docs/invariants/l-7-lenses-consume-declared-substrate-query-functions.md) |
+| <a id="l-8"></a>L-8 | P2: Boundary Discipline | lens Rust surfaces preserve typed failure carriers | [invariants/l-8-…](docs/invariants/l-8-lens-rust-surfaces-preserve-typed-failure-carriers.md) |
+| <a id="t-11"></a>T11 | P4: Decidability | tiered test execution (Tier 1/2/3 sub-rules) | [invariants/tiered-test-execution-t11.md](docs/invariants/tiered-test-execution-t11.md) |
+
+---
+
+## Pointers
+
+- [`docs/invariants/`](docs/invariants/) — per-rule long-form rationale (covers the prose-named rules, the E/L series, DB-8, T11)
+- [`docs/design-*.md`](docs/) — long-form rationale for most DB-series design decisions (DB-1, DB-4, DB-5, DB-9, DB-14). DB-8 is the exception and lives under `docs/invariants/`. See appendix for per-ID paths.
+- [`docs/debt/`](docs/debt/) — tracked open debt, including the C-series cluster receipt `root-cause-c-errors-propagate-as-valid-looking-fabrications.md`
+- [`docs/review-findings/`](docs/review-findings/) — archived branch-review receipts
+- [`docs/invariants/engineering-standards.md`](docs/invariants/engineering-standards.md) — engineering standards
+- [`docs/thesis/`](docs/thesis/) — thesis essays, including `epistemic-stacking.md` and `structural-decompression.md` referenced from P1
