@@ -17,13 +17,15 @@ import v4.std.node {
   node_well_formed
 }
 import v4.std.diagnostic {
+  AmbiguousIntent,
   Correction,
   Diagnostic,
   NoCorrectionReason,
   NodeLocus,
   Outcome,
   Produced,
-  Rejected
+  Rejected,
+  Unavailable
 }
 import v4.std.verification {
   AssertKind,
@@ -353,8 +355,9 @@ data claim_ci_dangling_bootstrap_output: TestClaim = t22_ci_claim(
 )
 
 
-data subject_ci_dangling_bootstrap_output: TestClaimEvalSubject = t22_ci_subject(
+data subject_ci_dangling_bootstrap_output: TestClaimEvalSubject<CiPipeline> = t22_ci_subject(
   claim_node: t22_symbol_node(s: t22_ci_dangling_bootstrap_output),
+  claim: claim_ci_dangling_bootstrap_output,
   pipeline: CiPipeline {
     jobs: [
       CiJob {
@@ -367,8 +370,6 @@ data subject_ci_dangling_bootstrap_output: TestClaimEvalSubject = t22_ci_subject
       CiGate { id: structural_v2_compile, job: v2_compile_src_v4 }
     ]
   }
-  },
-  claim: claim_ci_dangling_bootstrap_output
 )
 
 
@@ -393,7 +394,6 @@ data subject_ci_duplicate_job_id: TestClaimEvalSubject<CiPipeline> = t22_ci_subj
     gates: [
       CiGate { id: structural_v2_compile, job: v2_compile_src_v4 }
     ]
-  }
   }
 )
 
@@ -420,7 +420,6 @@ data subject_ci_duplicate_gate_id: TestClaimEvalSubject<CiPipeline> = t22_ci_sub
       CiGate { id: structural_v2_compile, job: v2_compile_src_v4 }
     ]
   }
-  }
 )
 
 
@@ -445,7 +444,6 @@ data subject_ci_dangling_need: TestClaimEvalSubject<CiPipeline> = t22_ci_subject
       CiGate { id: structural_v2_compile, job: v2_compile_src_v4 }
     ]
   }
-  }
 )
 
 
@@ -469,7 +467,6 @@ data subject_ci_dangling_gate_job: TestClaimEvalSubject<CiPipeline> = t22_ci_sub
     gates: [
       CiGate { id: structural_v2_compile, job: t22_other_job }
     ]
-  }
   }
 )
 
@@ -496,7 +493,6 @@ data subject_ci_dependency_cycle: TestClaimEvalSubject<CiPipeline> = t22_ci_subj
       CiGate { id: structural_v2_compile, job: v2_compile_src_v4 },
       CiGate { id: t22_other_gate, job: t22_other_job }
     ]
-  }
   }
 )
 
