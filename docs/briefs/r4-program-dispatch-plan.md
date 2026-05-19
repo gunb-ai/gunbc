@@ -128,7 +128,6 @@ first) · `DESIGN` · `OP` (operator ruling) · `CP1` (needs v4 front-end output
 - **T-4-mgr staleness correction (verified vs main):** T-4.10 (#3168),
   T-4.12 (#3171), T-4.14 (#3170) are **already LANDED**. T-4.9 (`verilog.dag`) and T-4.14
   (`ptx.dag`) carry **PASS (IN-B)** in their file headers (probe receipts; §2 Status column echoes that for T-4.9/T-4.14). PTX authority is **dispatch §2 + merge PR** (*not* `DECISIONS.md` — retired), with `ptx.dag` **domain-neutral** on the process axis (no process-axis status tag in the carrier). T-4.13
->>>>>>> cb1ff09d0 (WIP: FRESH extdeps/T-4 lane closeout)
   (`machine_code.dag`) carries a **D2-REV Isa-parameterized modeled slice**
   with a zero-diagnostic `compile_to_dag` smoke; §2 keeps T-4.13 **CP1-blocked on T-4
   LanguageModel** per TASKS.md while recording the landed smoke/model
