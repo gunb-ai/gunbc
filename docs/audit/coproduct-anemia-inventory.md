@@ -10,11 +10,14 @@
 
 **Column 7 (filing) discipline — codex #14662:** per the ruling frame (line 3), 🟢/🟡 on a `.dag` declaration is **filing posture**, not semantic grounding. Therefore **`🟢-substantiated` is reserved for rows whose column-5 verdict is `GROUNDED`** (substrate `data` / behavioral `fn` witness). If the verdict is `ANEMIC` but the declaration still carries a 🟢 dissolution ribbon, column 7 records **`🟢-decl-only`** (ledger/CP tag present; semantics still anemic). `🟡-tracked-bind` and `🔴-in-PR` continue to mean what they say on the declaration.
 
+**Grounding axis (operator RE-SPEC, orthogonal to column 7):** three additional columns on **every** inventory row — **(A) GROUNDING-STATUS**, **(B) WHY-NOT**, **(C) WHAT-IT-IS-WAITING-FOR** — track whether a **TestClaim-shaped** behavioral witness could *construct values and assert laws / fail closed* today. **Do not conflate** with the coproduct-dissolution / ledger column: a sum may be **`🟢-decl-only` in column 7** yet **`🟡-UNGROUNDED-WITH-PLAN` on the grounding axis** (or **`🔴-UNGROUNDED-NO-PLAN`** when no named blocker exists). **(A)** is exactly one of: **`🟢-GROUNDED`** | **`🟡-UNGROUNDED-WITH-PLAN`** | **`🔴-UNGROUNDED-NO-PLAN`**. **(B)** is one line naming the grounding gap for any non-🟢. **(C)** is mandatory for **`🟡` only**: a **concrete** named blocker (substrate primitive **or** named consumer **or** named modeling/doc decision) that can aggregate into the program graph — never vague “needs more work.” **No `DEFERRED` tokens in (A)–(C)** in the final artifact (this commit fills **§Checkpoint 12 + first 20 continuation** to depth for witty-cat-59 axis lock; remaining rows carry machine-filled grounding cells plus honest `DEFERRED` only in coproduct columns **4–7** until the full modeling pass lands).
+
 ## Summary
 
-- **Row count (corpus sums):** 274
+- **Row count (corpus sums):** 274 — inventory is also the **grounding-axis tracker** for parallel program planning (same PR; **DRAFT**; same locked operator content-review sequence).
 - **Checkpoint batch (hand columns 4–7):** 12 rows in §Checkpoint batch (initial depth-bar spot-check set; provenance may name review threads in prose, not as a completion gate).
-- **Deferred columns 4–7:** 262 rows — explicit queue marker only (not substantive analysis).
+- **Grounding-axis first checkpoint:** 12 §Checkpoint rows **+** first **20** continuation rows (**32** total) — columns **(A)(B)(C)** filled for witty-cat-59 axis lock; **all 274** rows now carry non-`DEFERRED` grounding-axis cells (continuation uses file/task-keyed blockers; coproduct cols **4–7** still `DEFERRED` where marked).
+- **Deferred columns 4–7 (coproduct modeling):** remaining continuation rows — explicit queue marker only until the full per-concept hand pass replaces them.
 - **Ten worst (same tie-break as §Method line 9 for corpus sort: NONE-bare → spec-anchor → yellow; then label-only; then 🔴→🟡→🟢 on the declaration — triples below match §Checkpoint hand read only):** ranked **within the §Checkpoint batch** by that tie-break among the twelve spot-verify rows (not a separate heuristic list).
   1. `src/v4/extdeps/languages/rust.dag:75` **`OverflowAction`** — NONE-bare / label-only / 🟢-decl-only
   2. `src/v4/extdeps/languages/rust.dag:80` **`OverflowDisposition`** — NONE-bare / label-only / 🟢-decl-only
