@@ -104,15 +104,10 @@ type AffectedFrontierRead {
 }
 
 
-type AffectedPropagationRead {
-  propagation_receipt: fn(Dag, EditFrontierEdge) -> PropagationReceipt
-}
-
-
 type AffectedSetRead {
   boundary: AffectedBoundaryRead
   frontier: AffectedFrontierRead
-  propagation: AffectedPropagationRead
+  propagation_receipt: fn(Dag, EditFrontierEdge) -> PropagationReceipt
 }
 
 
@@ -225,7 +220,7 @@ fn expand_dimension(
     ),
     init: acc,
     f: fn(acc2, edge) {
-    match read_model.propagation.propagation_receipt(dag, EditFrontierEdge { edit: edit, edge: edge }) {
+    match read_model.propagation_receipt(dag, EditFrontierEdge { edit: edit, edge: edge }) {
       Propagates =>
         mark_rerun(acc: acc2, key: edge_key(edge: edge))
       DoesNotPropagate { proof: p } =>
