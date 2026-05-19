@@ -1,14 +1,14 @@
 // src/v4/lens/affected_set.dag
 // Scope: canonical affected-set authority for CI/incremental re-execution; fail-closed B-4/B-5 node frontier.
-// Owns: Dag, AffectedDimension, ExclusionKey, ExclusionProof, FrontierDecision, ReExecFrontier, AffectedSetRead.
-// Consumes: Map, Diff, Node, Path, Symbol, Witness; B-4 resolved Symbol equality; B-5 per-Arrow signature effects.
-// Status: scaffold; dissolves when T-21 read body, CI use, and .dag TestClaims land.
+// Owns: Dag, AffectedDimension, ExclusionKey, ExclusionProof, FrontierDecision, ReExecFrontier, AffectedFrontierMode, AffectedSetRead, affected_set.
+// Consumes: Map, Diff, Edit, Hash, Node, Path, Symbol, Witness; B1 content_hash receipts; B-4 resolved Symbol equality; B-5 per-Arrow signature effects.
+// Status: Wave-0 front: read body + changed-subgraph gate landed; dissolves when CI use and .dag TestClaims land.
 
 module v4.lens.affected_set
 
 
 import v4.std.collection { Map }
-import v4.std.node { Diff, Node, Path, Symbol }
+import v4.std.node { Diff, Edit, Hash, Node, Path, Symbol }
 import v4.std.witness { Witness }
 
 
@@ -16,6 +16,9 @@ type Dag = Node
 
 
 type AffectedDimension = Symbol
+
+data affected_dimension_value: Symbol = affected_dimension_value
+data affected_reason_no_hash_receipt: Symbol = affected_reason_no_hash_receipt
 
 
 type ExclusionKey {
@@ -28,6 +31,12 @@ type ExclusionKey {
 type ExclusionProof
   = EmptyDimensionDelta { subject: Path }
   | DimensionNotRead { producer: Path }
+  | UnchangedPureBoundary { subject: Path, content_hash: Hash }
+
+
+type AffectedFrontierMode
+  = ChangedSubgraph { roots: List<Path> }
+  | WholeDagFailClosed { reason: Symbol }
 
 
 // 🟢 coproduct dissolution — DECISIONS.md #3153-subsumed
@@ -37,10 +46,144 @@ type FrontierDecision
 
 
 type ReExecFrontier {
+  mode: AffectedFrontierMode
   decisions: Map<ExclusionKey, FrontierDecision>
 }
 
 
 type AffectedSetRead {
   read: fn(Dag, Diff) -> Witness<ReExecFrontier>
+}
+
+
+type HashReceipt
+  = HashUnchanged { content_hash: Hash }
+  | HashChanged
+  | HashUnknown { reason: Symbol }
+
+
+type BoundaryReceipt
+  = BoundaryPruned { proof: ExclusionProof }
+  | BoundaryExpands
+  | BoundaryUnknown { reason: Symbol }
+
+
+type FrontierAcc {
+  mode: AffectedFrontierMode
+  decisions: Map<ExclusionKey, FrontierDecision>
+  roots: List<Path>
+}
+
+
+fn empty_frontier_acc() -> FrontierAcc {
+  FrontierAcc {
+    mode: ChangedSubgraph { roots: [] },
+    decisions: empty_map(),
+    roots: []
+  }
+}
+
+
+fn frontier_from_acc(acc: FrontierAcc) -> ReExecFrontier {
+  ReExecFrontier {
+    mode: acc.mode,
+    decisions: acc.decisions
+  }
+}
+
+
+fn root_key(path: Path) -> ExclusionKey {
+  ExclusionKey {
+    at: path,
+    dimension: affected_dimension_value
+  }
+}
+
+
+fn mark_rerun(acc: FrontierAcc, key: ExclusionKey) -> FrontierAcc {
+  FrontierAcc {
+    mode: acc.mode,
+    decisions: map_insert(acc.decisions, key, Rerun),
+    roots: acc.roots
+  }
+}
+
+
+fn mark_excluded(acc: FrontierAcc, key: ExclusionKey, proof: ExclusionProof) -> FrontierAcc {
+  FrontierAcc {
+    mode: acc.mode,
+    decisions: map_insert(acc.decisions, key, Excluded { proof: proof }),
+    roots: acc.roots
+  }
+}
+
+
+fn mark_whole_dag(acc: FrontierAcc, reason: Symbol) -> FrontierAcc {
+  FrontierAcc {
+    mode: WholeDagFailClosed { reason: reason },
+    decisions: acc.decisions,
+    roots: acc.roots
+  }
+}
+
+
+fn append_root(acc: FrontierAcc, path: Path) -> FrontierAcc {
+  FrontierAcc {
+    mode: ChangedSubgraph { roots: list_push(acc.roots, path) },
+    decisions: acc.decisions,
+    roots: list_push(acc.roots, path)
+  }
+}
+
+
+fn cached_hash_receipt(dag: Dag, path: Path, replacement: Node) -> HashReceipt {
+  HashUnknown { reason: affected_reason_no_hash_receipt }
+}
+
+
+fn boundary_receipt(dag: Dag, path: Path, replacement: Node) -> BoundaryReceipt {
+  match cached_hash_receipt(dag: dag, path: path, replacement: replacement) {
+    HashUnchanged { content_hash: h } =>
+      BoundaryPruned {
+        proof: UnchangedPureBoundary {
+          subject: path,
+          content_hash: h
+        }
+      }
+    HashChanged => BoundaryExpands
+    HashUnknown { reason: r } => BoundaryUnknown { reason: r }
+  }
+}
+
+
+fn seed_edit_frontier(dag: Dag, acc: FrontierAcc, edit: Edit) -> FrontierAcc {
+  match boundary_receipt(
+    dag: dag,
+    path: edit.at,
+    replacement: edit.replacement
+  ) {
+    BoundaryPruned { proof: p } =>
+      mark_excluded(acc: acc, key: root_key(path: edit.at), proof: p)
+    BoundaryExpands =>
+      append_root(
+        acc: mark_rerun(acc: acc, key: root_key(path: edit.at)),
+        path: edit.at
+      )
+    BoundaryUnknown { reason: r } =>
+      mark_whole_dag(
+        acc: mark_rerun(acc: acc, key: root_key(path: edit.at)),
+        reason: r
+      )
+  }
+}
+
+
+fn affected_set(dag: Dag, diff: Diff) -> Witness<ReExecFrontier> {
+  Holds {
+    value: frontier_from_acc(
+      acc: fold(diff.edits, init: empty_frontier_acc(), f: fn(acc, edit) {
+        seed_edit_frontier(dag: dag, acc: acc, edit: edit)
+      })
+    )
+  }
 }
