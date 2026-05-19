@@ -555,7 +555,6 @@ fn to_string(value: Int) -> String {
   } else if value == 0 {
     "0"
   } else {
-    let digit_chars = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]
     to_string_helper(value: value, acc: []) |> join(separator: "")
   }
 }
@@ -566,11 +565,8 @@ fn to_string_helper(value: Int, acc: List<String>) -> List<String> {
   } else {
     let rest = value / 10
     let digit = value - (rest * 10)
-    let digit_chars = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]
-    let ch = match digit_chars |> enumerate |> filter(p => p.first == digit) |> first {
-      Some { value: p } => p.second
-      None => "?"
-    }
+    // Digit-to-char is arithmetic on the codepoint ('0' == 48), not a list lookup.
+    let ch = from_code_point(cp: 48 + digit)
     to_string_helper(value: rest, acc: concat([ch], acc))
   }
 }
@@ -676,22 +672,20 @@ fn capitalize_first(s: String) -> String {
   }
 }
 
+// Capitalize each underscore-delimited segment and concatenate (snake_case -> PascalCase).
+fn pascal_join(name: String) -> String {
+  name |> split(delimiter: "_") |> map(p => capitalize_first(s: p)) |> join(separator: "")
+}
+
 fn to_pascal(name: String) -> String {
-  let snake = to_snake(name: name)
-  let parts = snake |> split(delimiter: "_")
-  let pascal_parts = parts |> map(p => capitalize_first(s: p))
-  pascal_parts |> join(separator: "")
+  pascal_join(name: to_snake(name: name))
 }
 
 // Apply a naming case transformation to an identifier.
 // Used by CaseVisibility to convert identifiers for export.
 fn apply_naming_case(name: String, case_style: NamingCase) -> String {
   match case_style {
-    PascalCase => {
-      let parts = name |> split(delimiter: "_")
-      let pascal_parts = parts |> map(p => capitalize_first(s: p))
-      pascal_parts |> join(separator: "")
-    }
+    PascalCase => pascal_join(name: name)
     SnakeCase => to_snake(name: name)
     CamelCase => to_camel(name: name)
     AsAuthored => name
@@ -796,17 +790,12 @@ fn language_spec(target: RenderTarget) -> LanguageSpec {
   language_spec_for_target(target: target)
 }
 
-fn reserved_prefix(target: RenderTarget) -> String {
-  match language_spec(target: target).reserved_words.strategy {
-    PrefixEscape { prefix: prefix } => prefix
-    _ => ""
-  }
-}
-
-fn reserved_suffix(target: RenderTarget) -> String {
-  match language_spec(target: target).reserved_words.strategy {
-    SuffixEscape { suffix: suffix } => suffix
-    _ => ""
+// Apply a reserved-word escape strategy to an already-converted identifier.
+fn apply_reserved_escape(name: String, strategy: ReservedWordStrategy) -> String {
+  match strategy {
+    PrefixEscape { prefix: p } => concat(p, name)
+    SuffixEscape { suffix: s } => concat(name, s)
+    NoEscape => name
   }
 }
 
@@ -1239,45 +1228,14 @@ fn effective_operation_transport(op_node: Node, fallback: Node) -> Node {
   }
 }
 
-// Structural transport queries: check if any operation in the service
-// uses a transport with specific structural properties.
-fn service_has_rest(fallback_transport: Node, op_children: List<Node>, source_indices: Map<String, NewlineIndex>) -> Bool {
-  let from_fallback = is_rest_transport(t: fallback_transport, source_indices: source_indices)
+// Structural transport query: does the service-level fallback transport, or
+// any operation's transport, satisfy `pred`? The transport-kind axis is the
+// `pred` argument — one query, not one function per kind.
+fn service_has_transport(fallback_transport: Node, op_children: List<Node>, pred: fn(Node) -> Bool) -> Bool {
   let from_ops = op_children |> any(op =>
-    if op.transport != none { is_rest_transport(t: op.transport.value, source_indices: source_indices) } else { false }
+    if op.transport != none { pred(op.transport.value) } else { false }
   )
-  from_fallback || from_ops
-}
-
-fn service_has_shell(fallback_transport: Node, op_children: List<Node>) -> Bool {
-  let from_fallback = is_shell_transport(t: fallback_transport)
-  let from_ops = op_children |> any(op =>
-    if op.transport != none { is_shell_transport(t: op.transport.value) } else { false }
-  )
-  from_fallback || from_ops
-}
-
-fn service_has_file(fallback_transport: Node, op_children: List<Node>, source_indices: Map<String, NewlineIndex>) -> Bool {
-  let from_fallback = is_file_transport(t: fallback_transport, source_indices: source_indices)
-  let from_ops = op_children |> any(op =>
-    if op.transport != none { is_file_transport(t: op.transport.value, source_indices: source_indices) } else { false }
-  )
-  from_fallback || from_ops
-}
-
-// Check if any REST operation (or the service-level fallback) has auth.
-fn service_has_rest_auth(fallback_transport: Node, op_children: List<Node>, source_indices: Map<String, NewlineIndex>) -> Bool {
-  let fallback_is_rest = is_rest_transport(t: fallback_transport, source_indices: source_indices)
-  let from_fallback = if fallback_is_rest {
-    transport_has_auth(t: fallback_transport, source_indices: source_indices)
-  } else { false }
-  let from_ops = op_children |> any(op =>
-    if op.transport != none {
-      let t = op.transport.value
-      if is_rest_transport(t: t, source_indices: source_indices) { transport_has_auth(t: t, source_indices: source_indices) } else { false }
-    } else { false }
-  )
-  from_fallback || from_ops
+  pred(fallback_transport) || from_ops
 }
 
 // Extract operation modifier names from a list of property field inits.
@@ -1302,10 +1260,14 @@ type ServiceFieldSet {
 
 fn compute_service_fields(fallback_transport: Node, op_children: List<Node>, source_indices: Map<String, NewlineIndex>) -> ServiceFieldSet {
   ServiceFieldSet {
-    has_rest: service_has_rest(fallback_transport: fallback_transport, op_children: op_children, source_indices: source_indices),
-    has_shell: service_has_shell(fallback_transport: fallback_transport, op_children: op_children),
-    has_file: service_has_file(fallback_transport: fallback_transport, op_children: op_children, source_indices: source_indices),
-    has_auth: service_has_rest_auth(fallback_transport: fallback_transport, op_children: op_children, source_indices: source_indices)
+    has_rest: service_has_transport(fallback_transport: fallback_transport, op_children: op_children,
+      pred: t => is_rest_transport(t: t, source_indices: source_indices)),
+    has_shell: service_has_transport(fallback_transport: fallback_transport, op_children: op_children,
+      pred: t => is_shell_transport(t: t)),
+    has_file: service_has_transport(fallback_transport: fallback_transport, op_children: op_children,
+      pred: t => is_file_transport(t: t, source_indices: source_indices)),
+    has_auth: service_has_transport(fallback_transport: fallback_transport, op_children: op_children,
+      pred: t => is_rest_transport(t: t, source_indices: source_indices) && transport_has_auth(t: t, source_indices: source_indices))
   }
 }
 
@@ -2086,11 +2048,7 @@ fn emit_ident(name: String, target: RenderTarget) -> String {
   }
   let is_reserved = spec.reserved_words.keywords |> any(r => r == converted)
   if is_reserved {
-    match spec.reserved_words.strategy {
-      PrefixEscape { prefix: p } => concat(p, converted)
-      SuffixEscape { suffix: s } => concat(converted, s)
-      NoEscape => converted
-    }
+    apply_reserved_escape(name: converted, strategy: spec.reserved_words.strategy)
   } else {
     converted
   }
@@ -2105,11 +2063,7 @@ fn emit_export_ident(name: String, target: RenderTarget) -> String {
       let result = apply_naming_case(name: name, case_style: ec)
       let is_reserved = spec.reserved_words.keywords |> any(r => r == result)
       if is_reserved {
-        match spec.reserved_words.strategy {
-          SuffixEscape { suffix: s } => concat(result, s)
-          PrefixEscape { prefix: p } => concat(p, result)
-          NoEscape => result
-        }
+        apply_reserved_escape(name: result, strategy: spec.reserved_words.strategy)
       } else { result }
     KeywordVisibility { prefix: _ } =>
       emit_ident(name: name, target: target)
