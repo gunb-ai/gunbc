@@ -1,6 +1,6 @@
 // src/v4/extdeps/formats/sql.dag
 // Scope: ISO/IEC 9075 SQL relational/DDL surface; Shape-B checked format, v3 SQL port — single authority (TASKS.md T-4.6 #4).
-// Owns: SqlDialect, SqlIdentifier, SqlDataType, SqlColumnConstraint, SqlColumnDefault, SqlColumnDefinition, SqlTableConstraint, SqlTableDefinition, SqlSchemaOperation, SqlMigrationStep, SqlMigrationScript, SqlMigrationEmissionTarget, SqlStatementKind, SqlParameterStyle, SqlTransactionMode, SqlResultFormatSlot, SqlTransportConfig
+// Owns: SqlDialect, SqlIdentifier, SqlDataType, SqlColumnConstraints, SqlColumnDefault, SqlColumnDefinition, SqlTableConstraint, SqlTableDefinition, SqlSchemaOperation, SqlMigrationStep, SqlMigrationScript, SqlMigrationEmissionTarget, SqlStatementKind, SqlParameterStyle, SqlTransactionMode, SqlResultFormat, SqlTransportConfig
 // Consumes: std/node.dag, std/diagnostic.dag, std/collection.dag, std/nat.dag, std/cardinality.dag
 // Status: scaffold — TASKS.md T-4.6
 // Anchor: https://www.iso.org/standard/76583.html
@@ -43,11 +43,11 @@ type SqlDataType
   | SqlTypeTimestampWithTimeZone
 
 
-// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-SqlColumnConstraint
-type SqlColumnConstraint
-  = SqlColumnNotNull
-  | SqlColumnPrimaryKey
-  | SqlColumnUnique
+type SqlColumnConstraints {
+  not_null: Bool,
+  primary_key: Bool,
+  unique: Bool,
+}
 
 
 // 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-SqlColumnDefault
@@ -59,7 +59,7 @@ type SqlColumnDefault
 type SqlColumnDefinition {
   name: SqlIdentifier,
   data_type: SqlDataType,
-  constraints: List<SqlColumnConstraint>,
+  constraints: SqlColumnConstraints,
   column_default: SqlColumnDefault,
 }
 
@@ -145,7 +145,10 @@ type SqlTransactionMode
   | SqlBeginCommit
 
 
-type SqlResultFormatSlot {}
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-SqlResultFormat
+type SqlResultFormat
+  = SqlResultFormatJson
+  | SqlResultFormatText
 
 
 type SqlTransportConfig {
@@ -153,5 +156,5 @@ type SqlTransportConfig {
   statement_kind: SqlStatementKind,
   parameter_style: SqlParameterStyle,
   transaction_mode: SqlTransactionMode,
-  result_format: SqlResultFormatSlot,
+  result_format: SqlResultFormat,
 }
