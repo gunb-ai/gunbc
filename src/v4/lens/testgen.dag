@@ -2,7 +2,7 @@
 // Scope: T-19 testgen — P2 manual-anchor join; Generator carries kind + anchor + classification + subject slot.
 // Owns: Generator TestgenConcept manual_test_claim_for_manual_anchor testgen_concept_for_manual_claim TypeConstructionSubject AlgebraLawSubject DiagnosticExhaustivenessSubject LensApplicabilitySubject BidirectionalRoundtripSubject
 // Consumes: v4.std.diagnostic v4.std.nat v4.std.node v4.std.verification v4.test.claim.manual.connective_anchors v4.test.claim.manual.nat_law_anchors
-// Status: Wave-0 modeled; M2 merge compile + eval T-22.
+// Status: Wave-0 modeled; M2 compile surface + eval T-22.
 
 module v4.lens.testgen
 
