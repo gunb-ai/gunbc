@@ -98,7 +98,7 @@ first) · `DESIGN` · `OP` (operator ruling) · `CP1` (needs v4 front-end output
 | T-12 | lens/complexity + cost | SCAFFOLD (fan-out **in flight**) | T-9 (refine) | **`READY*`** — bounded scope: witness-first Acceptance authoring. *T-9 trigger:* real lens fold over inferred model → Wave-3 | Lane A (lens) |
 | T-13 | lens/parallelism,effect,ownership,idempotency | SCAFFOLD | T-9 (refine) | **`READY*`** — bounded scope: witness/Acceptance authoring. *T-9 trigger:* real fold over inferred model → Wave-3 | Lane A (lens) |
 | T-14 | TestClaim corpus + fixtures | SCAFFOLD | T-19 | IMPL | Lane B |
-| **T-15** | bin/main + self-host fixed-point gate | NOT STARTED | ~ALL | IMPL (terminal) | Lane B |
+| **T-15** | bin/main + self-host fixed-point gate | **SCAFFOLD (bin/main receipt landed)** — `src/v4/bin/main.dag` is the trampoline authority, with parse smoke + CI receipt on main; full self-host fixed-point remains terminal Wave-6 work | ~ALL | IMPL (terminal) | Lane B |
 | T-16 | full-stack omni-emission demo | NOT STARTED | T-4,T-10,T-11,T-4.5–4.8 | IMPL | Lane A |
 | T-17 | lens/synthesis + std/report | SCAFFOLD | T-12, T-9 | DESIGN+IMPL | Lane A (lens) |
 | T-18 | lens/coverage meta-lens | SCAFFOLD | T-12,T-13 | IMPL | Lane A (lens) |
