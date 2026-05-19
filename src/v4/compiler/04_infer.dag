@@ -1,17 +1,27 @@
 // src/v4/compiler/04_infer.dag
-// Scope: inference from resolved tree to inferred tree.
-// Owns: AlgebraRef, InferredFacts, InferredTree.
-// Consumes: v4.lens.cost, v4.std.collection, v4.std.node, v4.std.cardinality.
-// Status: scaffold for T-9; IR-1 boundary carrier only.
+// Scope: Stage 4 — ResolvedTree -> InferredTree; bounded Find phase (DECISIONS C1 / IR-1).
+// Owns: AlgebraRef, InferredFacts, InferredTree, infer_stage_locus_port, infer_coercion_fold_not_realized, infer_coercion_fold_not_realized_diagnostic, infer.
+// Consumes: v4.compiler.resolve, v4.lens.cost, v4.std.cardinality, v4.std.collection, v4.std.diagnostic, v4.std.node.
+// Status: scaffold — TASKS T-9; Wave-1 fail-closed boundary.
+// Anchor: https://en.wikipedia.org/wiki/Type_inference
 
 
 module v4.compiler.infer
 
 
+import v4.compiler.resolve { ResolvedTree }
 import v4.lens.cost { SymbolicCost }
 import v4.std.cardinality { TerminationProof }
 import v4.std.collection { Map }
-import v4.std.node { Node }
+import v4.std.diagnostic {
+  Diagnostic,
+  ExternalContractUnknown,
+  Locus,
+  Outcome,
+  PortLocus,
+  Unavailable
+}
+import v4.std.node { Node, Symbol }
 
 
 // RULING-1: needs-more-work — typed bridge until algebra inhabitance authority lands.
@@ -34,4 +44,28 @@ type InferredFacts {
 type InferredTree {
   root: Node
   facts: Map<Node, InferredFacts>
+}
+
+
+data infer_stage_locus_port: Symbol = infer_stage_locus_port
+
+
+data infer_coercion_fold_not_realized: Symbol = infer_coercion_fold_not_realized
+
+
+fn infer_coercion_fold_not_realized_diagnostic(at: Locus) -> Diagnostic {
+  Diagnostic {
+    reason: infer_coercion_fold_not_realized,
+    at: at,
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+
+fn infer(tree: ResolvedTree) -> Outcome<InferredTree> {
+  Rejected {
+    diagnostic: infer_coercion_fold_not_realized_diagnostic(
+      at: PortLocus { port: infer_stage_locus_port }
+    )
+  }
 }

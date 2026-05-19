@@ -64,13 +64,13 @@ src/v4/
                          # NO 6th behavior per IN-B decision 2026-05-15)
 
   compiler/              # pipeline orchestrator + 6 stages (7 files)
-    00_compile.dag       # orchestrator: (Source, TargetSpec) -> Result<TargetSource, Diagnostic>
+    00_compile.dag       # orchestrator: (Source, TargetModel) -> Outcome<TargetSource> (TASKS T-10; spelling per CP-1b/T-8-close)
     01_tokenize.dag      # FreeMonoid<Char> -> TokenStream
     02_parse.dag         # TokenStream -> ParseTree
     03_normalize.dag     # ParseTree -> NormalizedTree (sugar dissolution)
     03_resolve.dag       # NormalizedTree -> ResolvedTree (symbol binding)
-    04_infer.dag         # ResolvedTree -> InferredTree (types/algebra/cardinality)
-    05_emit.dag          # InferredTree + TargetSpec -> TargetSource (omni-emission projection)
+    04_infer.dag         # ResolvedTree -> InferredTree (bounded Find phase, DECISIONS C1 / IR-1)
+    05_emit.dag          # InferredTree + TargetModel -> TargetSource (omni-emission projection)
     05_eval.dag          # InferredTree + Inputs -> Value (THE PRIMARY execution path,
                          # THESIS:225; sibling of emit — eval executes, emit projects)
 
