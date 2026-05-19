@@ -409,9 +409,17 @@ captured here as the audit anchor for the rest:
   **Bucket C close:** `DagLanguageModel.canonical_symbols` is the
   substrate field; `compiler/03_resolve.dag` consumes `lm.canonical_symbols`
   directly (no `dag_language_model_canonical_symbols` indirection).
-- `dag_language_model_is_wave1_void_shape` (83),
-  `dag_language_model_empty_canonical_symbol_set` (89) — 🟢 —
-  structurally distinct constructor inspection / pure data construction.
+- `dag_language_model_is_wave1_void_shape` (83) — 🟡 **predicate**
+  (bounded wave-1 structural query over the typed LM mode partition;
+  **not** the resolve prelude authority after CP-1b bucket C — prelude
+  is `DagLanguageModel.canonical_symbols` only; see `DECISIONS.md` §CP-1b
+  item 2). **Dissolution / triggers:** `feature:T-6`, `feature:T-7`, or
+  explicit canonical-mode query on `DagLanguageModel` when the generic
+  lex/parse walks subsume this discriminant (same disposition text as
+  DECISIONS item 2 — do not treat as terminal 🟢 while that ledger row
+  stays yellow).
+- `dag_language_model_empty_canonical_symbol_set` (89) — 🟢 — pure data
+  construction (constant empty `Set` characteristic function).
 
 **Other language files** (`rust`, `go`, `python`, `cpp`, `verilog`,
 `typescript`, `ptx`, `machine_code`, `lean`) — zero `fn` bodies. 🟢
