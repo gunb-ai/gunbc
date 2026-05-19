@@ -40,7 +40,7 @@ Once dashboard transport is restored, create these four work items:
 
 - M9 DFS before naming any new carrier.
 - Grep `dsl/std/`, `src/v3/std/`, and `src/v3/lenses/` before accepting a substrate proposal.
-- Practice 4 receipts on every enum/sum with at least two variants, including closed sums.
+- Per-coproduct 🟢/🟡/🔴 one-line tag on every enum/sum with at least two variants (Practice 4); dissolution rationale in PR review, not a maintained ledger doc.
 - No parallel authority: reuse existing `src/v3/std/lens.dag::Lens<C>` and `src/v3/std/dimensions.dag::Witness<C>` rather than defining similarly named substitutes.
 - `.dag` declarations are staging until the realization trio converges: emission target, parity test, and TS cut-over deletion.
 
