@@ -16,7 +16,7 @@ src/v4/
   TASKS.md               # the XL task plan (count drift-proof; see T-15)
   DECISIONS.md           # design-decisions ledger (RATIFIED + record)
 
-  std/                   # substrate primitives (14 landed + 1 P2-staging witness; see note on `fact_density.dag`)
+  std/                   # substrate primitives (15 landed + 1 P2-staging witness; see note on `fact_density.dag`)
     node.dag             # 6 type connectives + 5 L1 behaviors (substrate root)
     algebra.dag          # Magma/Monoid/BoolAlgebra/FreeMonoid (structures only)
     cardinality.dag      # cardinality refinement, P4 decidability
@@ -28,6 +28,7 @@ src/v4/
     integer.dag          # Int + fixed-width ints (Nat projected onto a width)
     float.dag            # Float — IEEE-754 floating-point (rounding-aware algebra, not exact Field)
     text.dag             # Char (Unicode code point) + String (FreeMonoid<Char>)
+    network.dag          # HttpMethod / Url / NetworkAddress boundary carriers
     collection.dag       # bounded containers
     verification.dag     # TestClaim schema + Tier×Layer classification (v4-fresh; studied v3/dsl)
     report.dag           # advisory carrier (NOT fail-closed Diagnostic); used by synthesis lens
@@ -74,7 +75,7 @@ src/v4/
     05_eval.dag          # InferredTree + Inputs -> Value (THE PRIMARY execution path,
                          # THESIS:225; sibling of emit — eval executes, emit projects)
 
-  lens/                  # dimensions (11 files, parallel after compiler)
+  lens/                  # dimensions (12 files, parallel after compiler)
     complexity.dag
     cost.dag             # Tier 1 + Tier 2 textbook (α(n)/log*/log log/sub-exp); UnknownCost floor
     parallelism.dag
@@ -86,6 +87,7 @@ src/v4/
     testgen.dag          # producer side — reads substrate, emits TestClaim corpus (Phase 1.5)
     affected_set.dag     # incremental re-exec frontier; replaces detect-affected shell (Phase 1.5)
     application.dag      # apply_lens surface — opt-in depth + ONLY advisory→fail-closed bridge
+    registry.dag         # P2-staging only (INVARIANTS §P2): PREFIX T-23 v0 `LensIdV0` × `LensModulePathV0` rows — **not** landed single authority until a **generated** consumer reads `LensRegistryEntryV0`; `v4_lens_registry_dag_smoke_test.rs` is **parse + inference cleanliness** only (same posture as `fact_density.dag`). Operator pin §3 human mirror; amend `.dag` first.
 
   workflow/              # meta-process as data (2 files; the v3-derived
                          # work-direction substrate — brief/worker_output/
@@ -122,7 +124,7 @@ src/v4/
     fixture/             # canonical input programs
 ```
 
-**Total: 70 .dag files + 5 docs + 5 .gitkeep = 80 files.** (Per invariant
+**Total: 73 .dag files + 5 docs + 5 .gitkeep = 83 files.** (Per invariant
 #1 the enumeration above — not the count — is authoritative; the count is
 a checksum, updated on every operator-ratified file addition/removal.
 **Reconciliation (2026-05-17, PR #3225 / review #13750):** the prior printed
@@ -134,8 +136,17 @@ intervening operator-ratified edits). **#3225** adds **`test/claim/manual/resolv
 extension (Option A, relay merry-ibex-337). −5 .dag 2026-05-15: work-direction
 meta-layer cut, operator-ratified. **2026-05-17 (PR #3212):** enumerate
 `test/claim/manual/*` (4) + `test/claim/impossible_bug/*` (6); checksum **65→69** `.dag`.)
+**2026-05-18 (T-26):** add `std/network.dag` for shared
+`HttpMethod` / `Url` / `NetworkAddress` boundary carriers; checksum
+**69→70** `.dag`.
 **2026-05-18 (T-29):** add `extdeps/cpp_abi.dag` for the operator-ratified
-C++ ABI / target data-model feeder; checksum **69→70** `.dag`.
+C++ ABI / target data-model feeder; checksum **70→71** `.dag`.
+**2026-05-18 (T-30):** add `std/fact_density.dag` P2-staging parse witness;
+checksum **71→72** `.dag`.
+**2026-05-18 (PREFIX / T-23 v0):** add `lens/registry.dag` (`LensIdV0` + `LensModulePathV0` registry twin of
+`docs/briefs/r4-lane-a-lens-interface-freeze-pin.md` §3); checksum **72→73** `.dag`.
+**P2-staging** (INVARIANTS §P2) until a generated consumer reads the rows — paired
+`v4_lens_registry_dag_smoke_test.rs` receipt (parse witness only; same discipline as `fact_density.dag`).
 
 ## Scalar/numeric concept decomposition
 
@@ -155,6 +166,8 @@ by six concept-located files, each anchored to a real external concept
   inhabiting a rounding-aware algebra — *not* an exact `Field`, and *not*
   opaque: fully grounded, only its algebra is weakened)
 - `std/text.dag` — `Char` (Unicode code point) + `String` (`FreeMonoid<Char>`)
+- `std/network.dag` — network boundary carriers (`HttpMethod`, `Url`,
+  `NetworkAddress`) shared by OpenAPI / coordination / wire contracts
 
 Each declares its own inhabitance (the inhabiting type owns its grounding —
 INVARIANTS P2); `algebra.dag` owns the algebra *structures* only.
