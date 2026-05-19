@@ -16,11 +16,18 @@
 > 10 review heuristic. Non-comment receipts only: [INVARIANTS.md](../INVARIANTS.md)
 > §P5(b), [`src/v4/TASKS.md`](../src/v4/TASKS.md),
 > [`docs/modeling/grounding-worked-examples.md`](modeling/grounding-worked-examples.md)
-> (*coincide*). **Bounded census (not a second mark ledger):**
+> (*coincide*). **Bounded census exception (P2 / Practice 9 — not a second mark ledger):**
 > [`docs/audit/coproduct-anemia-inventory.md`](audit/coproduct-anemia-inventory.md)
-> is the named v4 coproduct + grounding-axis inventory under the same
-> **`src/v4/TASKS.md`** § Watch row — cite substrate `.dag` paths; do not paste a
-> competing repo-wide 🟢/🟡 sweep outside that §. Cost-of-change = 1 per [CLAUDE.md](../CLAUDE.md).
+> is allowed **only** as a **TASKS-closed worksheet**: (a) cols **1–3** are a
+> mechanical corpus index (path:line, sum name, shape); (b) cols **4–7** and
+> grounding-axis **(A)–(C)** are **hand-authored audit notes** read off **cited
+> `.dag` fragments**, not a denormalized registry that replaces inline
+> `🟢`/`🟡`/`🔴` / gate / dissolution-slug authority on carriers; (c) **closure**
+> is **structural** per **`src/v4/TASKS.md`** § Watch for that file — not
+> “edit this table whenever any carrier mark drifts.” **Do not** treat inventory
+> rows as permission to contradict Practice 9 marks on `.dag` declarations; **do
+> not** maintain a competing repo-wide mark sweep outside that § Watch.
+> Cost-of-change = 1 per [CLAUDE.md](../CLAUDE.md).
 >
 > This document supplements, rather than parallels, INVARIANTS.md's
 > taxonomy. Each practice names the invariant principle it serves.
