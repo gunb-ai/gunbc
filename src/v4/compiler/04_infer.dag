@@ -14,12 +14,14 @@ import v4.std.collection { Map }
 import v4.std.node { Node }
 
 
+// RULING-1: needs-more-work — typed bridge until algebra inhabitance authority lands.
 type AlgebraRef {
   algebra: Node
   witness: Node
 }
 
 
+// RULING-1: needs-more-work — cost/inhabitance coordinates remain T-9/T-12 bridged.
 type InferredFacts {
   resolved_type: Node
   inhabits: AlgebraRef
@@ -28,6 +30,7 @@ type InferredFacts {
 }
 
 
+// RULING-1: needs-more-work — per-node fact table shape is present; producer semantics are T-9.
 type InferredTree {
   root: Node
   facts: Map<Node, InferredFacts>
