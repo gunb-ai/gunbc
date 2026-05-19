@@ -804,8 +804,8 @@ fn compile_gate_keeps_infer_errors_blocking_in_stage0() {
     // non-blocking (analyzer limitations ratchet down over time).
     assert_live_contains(
         &source,
-        "let type_errors = typed_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))",
-        "src/v2/compile.dag should gate emission on type errors",
+        "pipeline_gate_blocks_emission(stage: StageInfer, diagnostics: typed_diags)",
+        "src/v2/compile.dag should gate emission on infer/type errors via pipeline gate policy",
     );
     assert_live_not_contains(
         &source,

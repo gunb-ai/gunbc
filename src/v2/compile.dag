@@ -1,15 +1,8 @@
-// v2 compiler pipeline -- the full .dag-to-files transform.
-//
-// The compiler reads .dag source files and emits target-language source
-// files. No DAG IR, no interpreter, no executor. Each stage is a pure
-// function.
-//
-// Pipeline: tokenize -> parse -> resolve -> normalize -> infer -> complexity -> ownership -> artifact-plan -> emit
-// Each stage is a pure function. The pipeline wires them together.
-//
-// The emit stage dispatches to per-target renderers based on
-// RenderTarget (Rust, Python, Go). Artifact planning and trace contracts
-// live in separate modules; compile_sources only owns compilation.
+// Scope: v2 pipeline orchestrator — wires tokenize→parse→resolve→normalize→infer→complexity→ownership→artifact-plan→emit.
+// Owns: PipelineStageKind, PipelineGatePolicy, PipelineStageSpec, v2_compile_pipeline, SourceFile, PipelineResult, FrontendResult, compile_sources, compile_to_resolved, front_end_sources.
+// Consumes: v2.compiler.tokenize, parse, resolve, normalize, infer, complexity, ownership, artifact, emit, emit_rust, emit_python, emit_go; v2.std.core; std.induction, std.termination.
+// Status: calibration — pipeline order + gate policy are first-class data; stage bodies remain in sibling modules.
+// Anchor: https://en.wikipedia.org/wiki/Compiler
 
 module v2.compiler.compile
 
@@ -51,6 +44,69 @@ import std.termination {
 }
 import v2.compiler.ownership { OwnershipProof, OwnershipDecision, SharedError, analyze_ownership }
 import v2.compiler.artifact { ArtifactPlan, Artifact, RenderTarget, Dag, default_artifact_plan }
+
+// =========================================================================
+// Pipeline-as-data (v4 bootstrap.dag CompileStage shape; gate policy explicit)
+// =========================================================================
+
+// 🟢 grounded — closed receipt: v2 compile stage enumeration matches live call graph.
+type PipelineStageKind
+  = StageTokenize
+  | StageParse
+  | StageResolve
+  | StageNormalize
+  | StageInfer
+  | StageComplexity
+  | StageOwnership
+  | StageArtifactPlan
+  | StageEmit
+
+// 🟢 grounded — calibration: which stages halt the pipeline on error diagnostics.
+type PipelineGatePolicy
+  = BlockingOnErrors
+  | SurfaceOnly
+
+type PipelineStageSpec {
+  stage: PipelineStageKind
+  gate: PipelineGatePolicy
+}
+
+// Authoritative stage order — answer "what runs when" by reading this list, not call sequences.
+data v2_compile_pipeline: List<PipelineStageSpec> = [
+  PipelineStageSpec { stage: StageTokenize, gate: BlockingOnErrors },
+  PipelineStageSpec { stage: StageParse, gate: BlockingOnErrors },
+  PipelineStageSpec { stage: StageResolve, gate: BlockingOnErrors },
+  PipelineStageSpec { stage: StageNormalize, gate: BlockingOnErrors },
+  PipelineStageSpec { stage: StageInfer, gate: BlockingOnErrors },
+  PipelineStageSpec { stage: StageComplexity, gate: SurfaceOnly },
+  PipelineStageSpec { stage: StageOwnership, gate: BlockingOnErrors },
+  PipelineStageSpec { stage: StageArtifactPlan, gate: BlockingOnErrors },
+  PipelineStageSpec { stage: StageEmit, gate: BlockingOnErrors }
+]
+
+fn pipeline_gate_policy(stage: PipelineStageKind) -> PipelineGatePolicy {
+  match stage {
+    StageComplexity => SurfaceOnly
+    StageTokenize => BlockingOnErrors
+    StageParse => BlockingOnErrors
+    StageResolve => BlockingOnErrors
+    StageNormalize => BlockingOnErrors
+    StageInfer => BlockingOnErrors
+    StageOwnership => BlockingOnErrors
+    StageArtifactPlan => BlockingOnErrors
+    StageEmit => BlockingOnErrors
+  }
+}
+
+fn pipeline_gate_blocks_emission(stage: PipelineStageKind, diagnostics: List<ErrorNode>) -> Bool {
+  match pipeline_gate_policy(stage: stage) {
+    BlockingOnErrors => diagnostics |> any(d => is_error_diagnostic(d: d.diagnostic))
+    SurfaceOnly => false
+  }
+}
+
+// 🟡 coproduct dissolution — CompileResult in 00_core.dag is still a product {files, diagnostics};
+// v4 uses Outcome<TargetSource>; migrate when 00_core worker lands the carrier (Theme-A / T-10 train).
 
 // =========================================================================
 // Types
@@ -167,6 +223,17 @@ fn empty_artifact_plan() -> ArtifactPlan {
   ArtifactPlan { artifacts: [], boundaries: [] }
 }
 
+fn empty_pipeline_result(diagnostics: List<ErrorNode>, newline_indices: List<NewlineIndex>) -> PipelineResult {
+  PipelineResult {
+    files: [],
+    diagnostics: diagnostics,
+    complexity: empty_complexity_report(),
+    ownership: [],
+    artifact_plan: empty_artifact_plan(),
+    newline_indices: newline_indices
+  }
+}
+
 fn compile_bundle_error(message: String) -> ErrorNode {
   make_error_node(diagnostic: InternalError { message: message, span: no_span() }, module_name: "")
 }
@@ -179,6 +246,8 @@ fn emit_artifact(typed: ResolvedGraph, artifact: Artifact) -> EmitResult {
     Dag => emit_dag_artifact(typed: typed)
   }
 }
+
+// --- Dag JSON artifact serializer (~570 lines): dissolution candidate → extdeps/formats/json.dag walk ---
 
 fn json_quote(s: String) -> String {
   concat("\"", escape_json_string(s: s), "\"")
@@ -849,77 +918,29 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineR
   let frontend = front_end_sources(sources: sources)
   let newline_indices = frontend.newline_indices
   match frontend.graph {
-    None =>
-      PipelineResult {
-        files: [],
-        diagnostics: frontend.diagnostics,
-        complexity: empty_complexity_report(),
-        ownership: [],
-        artifact_plan: empty_artifact_plan(),
-        newline_indices: newline_indices
-      }
+    None => empty_pipeline_result(diagnostics: frontend.diagnostics, newline_indices: newline_indices)
     Some { value: graph } => {
-      // Stage 1-3: frontend graph build complete.
       let graph_diags = graph.diagnostics
-
-      // Gate: if resolve produced errors, do not proceed to typecheck.
-      let resolve_errors = graph_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))
-      if resolve_errors |> count > 0 {
-        return PipelineResult {
-          files: [],
-          diagnostics: frontend.diagnostics,
-          complexity: empty_complexity_report(),
-          ownership: [],
-          artifact_plan: empty_artifact_plan(),
-          newline_indices: newline_indices
-        }
+      if pipeline_gate_blocks_emission(stage: StageResolve, diagnostics: graph_diags) {
+        return empty_pipeline_result(diagnostics: frontend.diagnostics, newline_indices: newline_indices)
       }
 
-      // Build source_indices early so normalize can use it for authored names.
       let source_indices = fold(newline_indices, init: empty_map(), f: (acc, index) => map_insert(acc, index.file, index))
-
-      // Stage 3.5: Normalize the resolved graph.
-      // Enforces arity completeness on parameterized type nodes.
       let norm = normalize_graph(graph: graph, source_indices: source_indices)
       let norm_diags = norm.diagnostics
-
-      // Gate: if normalization produced errors (bare parameterized types,
-      // arity mismatches), do not proceed to infer.
-      let norm_errors = norm_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))
-      if norm_errors |> count > 0 {
-        return PipelineResult {
-          files: [],
-          diagnostics: concat(frontend.diagnostics, norm_diags),
-          complexity: empty_complexity_report(),
-          ownership: [],
-          artifact_plan: empty_artifact_plan(),
-          newline_indices: newline_indices
-        }
+      if pipeline_gate_blocks_emission(stage: StageNormalize, diagnostics: norm_diags) {
+        return empty_pipeline_result(diagnostics: concat(frontend.diagnostics, norm_diags), newline_indices: newline_indices)
       }
 
-      // Stage 4: Reconcile namespaces and infer the module graph.
-      // The env-error gate inside reconcile() prevents unresolved type
-      // references from reaching emit.
       let typed = reconcile(graph: norm.graph, source_indices: source_indices, intern_table: frontend.intern_table)
       let typed_diags = typed.diagnostics
-
-      // Stage 5: Complexity analysis.
-      // Every function gets a concrete cost from the lowering table.
-      // No violations possible — CostUnknown is deleted from CostExpr.
-      // PERF-6: topological processing + transit eviction bounds working set
-      // to the call graph frontier width, not total function count.
       let func_entries = extract_func_entries(typed: typed)
       let recursion_ctx = build_recursion_context(typed: typed)
       let complexity = build_complexity_report(func_entries: func_entries, recursion_ctx: recursion_ctx, source_indices: source_indices)
       let complexity_diags = complexity_diagnostics(complexity: complexity)
-
-      // Gate: type errors block emission. Complexity violations are surfaced
-      // in the final diagnostics (visible to the user) but non-blocking
-      // until the violation count reaches 0. The ratchet test enforces that
-      // the count doesn't increase.
       let all_diags = concat(typed_diags, complexity_diags)
-      let type_errors = typed_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))
-      if type_errors |> count > 0 {
+
+      if pipeline_gate_blocks_emission(stage: StageInfer, diagnostics: typed_diags) {
         return PipelineResult {
           files: [],
           diagnostics: concat(frontend.diagnostics, norm_diags, all_diags),
@@ -930,13 +951,9 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineR
         }
       }
 
-      // Stage 6: Ownership analysis.
       let ownership = extract_ownership_proofs(typed: typed)
       let ownership_diags = ownership_diagnostics(proofs: ownership)
-
-      // Gate: ownership errors block emission (Early Detection invariant).
-      let ownership_errors = ownership_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))
-      if ownership_errors |> count > 0 {
+      if pipeline_gate_blocks_emission(stage: StageOwnership, diagnostics: ownership_diags) {
         return PipelineResult {
           files: [],
           diagnostics: concat(frontend.diagnostics, norm_diags, all_diags, ownership_diags),
@@ -947,22 +964,14 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineR
         }
       }
 
-      // Stage 7: Default artifact planning for the current single-artifact flow.
       let artifact_plan = default_artifact_plan(
         root_modules: typed.modules |> map(m => authored_name_at(source_indices: source_indices, node: m.module)),
         target: target
       )
-
-      // Enrich typed graph with fan-out data from ownership analysis.
-      // Stage 8: Emit target-language files.
-      // The artifact plan is the source of truth for backend selection in the
-      // current single-artifact compiler path.
       let emit_result = emit_from_artifact_plan(typed: typed, artifact_plan: artifact_plan)
-      let emit_files = emit_result.files
       let emit_diags = emit_result.diagnostics
-      let emit_errors = emit_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))
-
-      let final_files = if emit_errors |> count > 0 { [] } else { emit_files }
+      let emit_blocks = pipeline_gate_blocks_emission(stage: StageEmit, diagnostics: emit_diags)
+      let final_files = if emit_blocks { [] } else { emit_result.files }
       PipelineResult {
         files: final_files,
         diagnostics: concat(frontend.diagnostics, norm_diags, all_diags, ownership_diags, emit_diags),
@@ -1004,8 +1013,7 @@ fn compile_to_resolved(sources: List<SourceFile>) -> ResolvedPipelineResult {
       }
     Some { value: graph } => {
       let graph_diags = graph.diagnostics
-      let resolve_errors = graph_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))
-      if resolve_errors |> count > 0 {
+      if pipeline_gate_blocks_emission(stage: StageResolve, diagnostics: graph_diags) {
         return ResolvedPipelineResult {
           graph: none,
           diagnostics: frontend.diagnostics,
@@ -1019,8 +1027,7 @@ fn compile_to_resolved(sources: List<SourceFile>) -> ResolvedPipelineResult {
       let source_indices = fold(newline_indices, init: empty_map(), f: (acc, index) => map_insert(acc, index.file, index))
       let norm = normalize_graph(graph: graph, source_indices: source_indices)
       let norm_diags = norm.diagnostics
-      let norm_errors = norm_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))
-      if norm_errors |> count > 0 {
+      if pipeline_gate_blocks_emission(stage: StageNormalize, diagnostics: norm_diags) {
         return ResolvedPipelineResult {
           graph: none,
           diagnostics: concat(frontend.diagnostics, norm_diags),
@@ -1039,8 +1046,7 @@ fn compile_to_resolved(sources: List<SourceFile>) -> ResolvedPipelineResult {
       let complexity_diags = complexity_diagnostics(complexity: complexity)
       let all_diags = concat(typed_diags, complexity_diags)
 
-      let type_errors = typed_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))
-      if type_errors |> count > 0 {
+      if pipeline_gate_blocks_emission(stage: StageInfer, diagnostics: typed_diags) {
         return ResolvedPipelineResult {
           graph: none,
           diagnostics: concat(frontend.diagnostics, norm_diags, all_diags),
@@ -1053,8 +1059,7 @@ fn compile_to_resolved(sources: List<SourceFile>) -> ResolvedPipelineResult {
 
       let ownership = extract_ownership_proofs(typed: typed)
       let ownership_diags = ownership_diagnostics(proofs: ownership)
-      let ownership_errors = ownership_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))
-      if ownership_errors |> count > 0 {
+      if pipeline_gate_blocks_emission(stage: StageOwnership, diagnostics: ownership_diags) {
         return ResolvedPipelineResult {
           graph: none,
           diagnostics: concat(frontend.diagnostics, norm_diags, all_diags, ownership_diags),
