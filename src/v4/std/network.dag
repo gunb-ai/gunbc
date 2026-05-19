@@ -13,7 +13,7 @@ import v4.std.nat { Nat }
 
 
 // Anchor: https://www.rfc-editor.org/rfc/rfc9110.html#name-methods + https://www.rfc-editor.org/rfc/rfc5789.html
-// 🟢 coproduct dissolution — DECISIONS.md T-26-HttpMethod
+// 🟢 coproduct dissolution — T-26-HttpMethod.
 type HttpMethod
   = GET
   | POST
@@ -75,7 +75,7 @@ type UriUserInfo {
   grammar: Rfc3986AbnfProduction,
 }
 
-// 🟢 coproduct dissolution — DECISIONS.md T-26-UriComponentPresence
+// 🟢 coproduct dissolution — T-26-UriComponentPresence.
 type UriUserInfoSlot
   = UriUserInfoAbsent
   | UriUserInfoPresent { userinfo: UriUserInfo }
@@ -90,7 +90,7 @@ type UriPort {
   grammar: Rfc3986AbnfProduction,
 }
 
-// 🟢 coproduct dissolution — DECISIONS.md T-26-UriComponentPresence
+// 🟢 coproduct dissolution — T-26-UriComponentPresence.
 type UriPortSlot
   = UriPortAbsent
   | UriPortPresent { port: UriPort }
@@ -106,7 +106,7 @@ type UriPath {
   grammar: Rfc3986AbnfProduction,
 }
 
-// 🟢 coproduct dissolution — DECISIONS.md T-26-UriHierPart
+// 🟢 coproduct dissolution — T-26-UriHierPart.
 type UriHierPart
   = UriHierAuthorityPath { authority: UriAuthority, path: UriPath }
   | UriHierPathAbsolute { path: UriPath }
@@ -118,7 +118,7 @@ type UriQuery {
   grammar: Rfc3986AbnfProduction,
 }
 
-// 🟢 coproduct dissolution — DECISIONS.md T-26-UriComponentPresence
+// 🟢 coproduct dissolution — T-26-UriComponentPresence.
 type UriQuerySlot
   = UriQueryAbsent
   | UriQueryPresent { query: UriQuery }
@@ -128,7 +128,7 @@ type UriFragment {
   grammar: Rfc3986AbnfProduction,
 }
 
-// 🟢 coproduct dissolution — DECISIONS.md T-26-UriComponentPresence
+// 🟢 coproduct dissolution — T-26-UriComponentPresence.
 type UriFragmentSlot
   = UriFragmentAbsent
   | UriFragmentPresent { fragment: UriFragment }
@@ -142,7 +142,7 @@ type Url {
 }
 
 // Anchor: https://www.rfc-editor.org/rfc/rfc3986.html#section-4.2
-// 🟢 coproduct dissolution — DECISIONS.md T-26-UriRelativePart
+// 🟢 coproduct dissolution — T-26-UriRelativePart.
 type UriRelativePart
   = UriRelativeAuthorityPath { authority: UriAuthority, path: UriPath }
   | UriRelativePathAbsolute { path: UriPath }
@@ -155,7 +155,7 @@ type UriRelativeReference {
   fragment: UriFragmentSlot,
 }
 
-// 🟢 coproduct dissolution — DECISIONS.md T-26-UriReference
+// 🟢 coproduct dissolution — T-26-UriReference.
 type UriReference
   = UriReferenceAbsolute { uri: Url }
   | UriReferenceRelative { relative: UriRelativeReference }
