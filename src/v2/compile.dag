@@ -104,10 +104,6 @@ fn pipeline_gate_blocks(policy: PipelineGatePolicy, diagnostics: List<ErrorNode>
   }
 }
 
-fn pipeline_gate_blocks_emission(stage: PipelineStageKind, diagnostics: List<ErrorNode>) -> Bool {
-  pipeline_gate_blocks(policy: pipeline_gate_policy(stage: stage), diagnostics: diagnostics)
-}
-
 // 🟡 coproduct dissolution — CompileResult in 00_core.dag is still a product {files, diagnostics};
 // v4 uses Outcome<TargetSource>; migrate when 00_core worker lands the carrier (Theme-A / T-10 train).
 
@@ -224,17 +220,6 @@ fn complexity_diagnostics(complexity: ComplexityReport) -> List<ErrorNode> {
 
 fn empty_artifact_plan() -> ArtifactPlan {
   ArtifactPlan { artifacts: [], boundaries: [] }
-}
-
-fn empty_pipeline_result(diagnostics: List<ErrorNode>, newline_indices: List<NewlineIndex>) -> PipelineResult {
-  PipelineResult {
-    files: [],
-    diagnostics: diagnostics,
-    complexity: empty_complexity_report(),
-    ownership: [],
-    artifact_plan: empty_artifact_plan(),
-    newline_indices: newline_indices
-  }
 }
 
 fn compile_bundle_error(message: String) -> ErrorNode {
@@ -909,6 +894,7 @@ fn front_end_sources(sources: List<SourceFile>) -> FrontendResult {
 
 type CompilePipelineState {
   halted: Bool
+  emit_blocked: Bool
   run_emit: Bool
   frontend: FrontendResult
   newline_indices: List<NewlineIndex>
@@ -939,6 +925,7 @@ fn pipeline_state_halt_result(state: CompilePipelineState) -> PipelineResult {
 fn pipeline_state_mark_halted(state: CompilePipelineState) -> CompilePipelineState {
   CompilePipelineState {
     halted: true,
+    emit_blocked: state.emit_blocked,
     run_emit: state.run_emit,
     frontend: state.frontend,
     newline_indices: state.newline_indices,
@@ -970,7 +957,25 @@ fn apply_pipeline_stage(state: CompilePipelineState, spec: PipelineStageSpec) ->
           if pipeline_gate_blocks(policy: spec.gate, diagnostics: graph.diagnostics) {
             pipeline_state_mark_halted(state: state)
           } else {
-            state
+            let source_indices = fold(state.newline_indices, init: empty_map(), f: (acc, index) => map_insert(acc, index.file, index))
+            CompilePipelineState {
+              halted: state.halted,
+              emit_blocked: state.emit_blocked,
+              run_emit: state.run_emit,
+              frontend: state.frontend,
+              newline_indices: state.newline_indices,
+              graph: state.graph,
+              source_indices: source_indices,
+              norm_diags: state.norm_diags,
+              typed: state.typed,
+              complexity: state.complexity,
+              ownership: state.ownership,
+              artifact_plan: state.artifact_plan,
+              stage_diags: state.stage_diags,
+              emit_diags: state.emit_diags,
+              emit_files: state.emit_files,
+              target: state.target
+            }
           }
       }
     StageNormalize =>
@@ -1025,9 +1030,10 @@ fn apply_pipeline_stage(state: CompilePipelineState, spec: PipelineStageSpec) ->
           let typed = reconcile(graph: graph, source_indices: state.source_indices, intern_table: state.frontend.intern_table)
           let typed_diags = typed.diagnostics
           let type_errors = typed_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))
-          let halted = pipeline_gate_blocks(policy: spec.gate, diagnostics: typed_diags)
+          let infer_blocks_emit = pipeline_gate_blocks(policy: spec.gate, diagnostics: typed_diags)
           CompilePipelineState {
-            halted: halted,
+            halted: state.halted,
+            emit_blocked: state.emit_blocked || infer_blocks_emit,
             run_emit: state.run_emit,
             frontend: state.frontend,
             newline_indices: state.newline_indices,
@@ -1073,15 +1079,19 @@ fn apply_pipeline_stage(state: CompilePipelineState, spec: PipelineStageSpec) ->
         }
       }
     StageOwnership =>
-      match state.typed {
-        None => pipeline_state_mark_halted(state: state)
-        Some { value: typed } => {
-          let ownership = extract_ownership_proofs(typed: typed)
-          let ownership_diags = ownership_diagnostics(proofs: ownership)
-          let halted = pipeline_gate_blocks(policy: spec.gate, diagnostics: ownership_diags)
-          CompilePipelineState {
-            halted: halted,
-            run_emit: state.run_emit,
+      if state.emit_blocked {
+        state
+      } else {
+        match state.typed {
+          None => pipeline_state_mark_halted(state: state)
+          Some { value: typed } => {
+            let ownership = extract_ownership_proofs(typed: typed)
+            let ownership_diags = ownership_diagnostics(proofs: ownership)
+            let ownership_blocks_emit = pipeline_gate_blocks(policy: spec.gate, diagnostics: ownership_diags)
+            CompilePipelineState {
+              halted: state.halted,
+              emit_blocked: state.emit_blocked || ownership_blocks_emit,
+              run_emit: state.run_emit,
             frontend: state.frontend,
             newline_indices: state.newline_indices,
             graph: state.graph,
@@ -1098,8 +1108,12 @@ fn apply_pipeline_stage(state: CompilePipelineState, spec: PipelineStageSpec) ->
           }
         }
       }
+      }
     StageArtifactPlan =>
-      match state.typed {
+      if state.emit_blocked {
+        state
+      } else {
+        match state.typed {
         None => pipeline_state_mark_halted(state: state)
         Some { value: typed } => {
           let artifact_plan = default_artifact_plan(
@@ -1108,6 +1122,7 @@ fn apply_pipeline_stage(state: CompilePipelineState, spec: PipelineStageSpec) ->
           )
           CompilePipelineState {
             halted: state.halted,
+            emit_blocked: state.emit_blocked,
             run_emit: state.run_emit,
             frontend: state.frontend,
             newline_indices: state.newline_indices,
@@ -1125,8 +1140,9 @@ fn apply_pipeline_stage(state: CompilePipelineState, spec: PipelineStageSpec) ->
           }
         }
       }
+      }
     StageEmit =>
-      if !state.run_emit {
+      if !state.run_emit || state.emit_blocked {
         state
       } else {
         match state.typed {
@@ -1136,6 +1152,7 @@ fn apply_pipeline_stage(state: CompilePipelineState, spec: PipelineStageSpec) ->
             let emit_blocks = pipeline_gate_blocks(policy: spec.gate, diagnostics: emit_result.diagnostics)
             CompilePipelineState {
               halted: state.halted,
+              emit_blocked: state.emit_blocked || emit_blocks,
               run_emit: state.run_emit,
               frontend: state.frontend,
               newline_indices: state.newline_indices,
@@ -1159,14 +1176,14 @@ fn apply_pipeline_stage(state: CompilePipelineState, spec: PipelineStageSpec) ->
 
 fn run_compile_pipeline_fold(frontend: FrontendResult, target: RenderTarget, run_emit: Bool) -> CompilePipelineState {
   let newline_indices = frontend.newline_indices
-  let source_indices = fold(newline_indices, init: empty_map(), f: (acc, index) => map_insert(acc, index.file, index))
   let initial = CompilePipelineState {
     halted: frontend.graph == None,
+    emit_blocked: false,
     run_emit: run_emit,
     frontend: frontend,
     newline_indices: newline_indices,
     graph: frontend.graph,
-    source_indices: source_indices,
+    source_indices: empty_map(),
     norm_diags: [],
     typed: none,
     complexity: empty_complexity_report(),
