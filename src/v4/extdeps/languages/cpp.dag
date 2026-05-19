@@ -11,7 +11,7 @@ import v4.std.algebra { BooleanAlgebra }
 
 
 // Anchor: https://www.iso.org/standard/79358.html — clause navigation https://eel.is/c++draft/
-// 🟢 coproduct dissolution — ISO C++ two-way overflow disposition (unsigned modular 2^N vs signed representability).
+// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-CPP-INTEGER-OVERFLOW.
 type CppIntegerOverflowDisposition
   = RepresentableResultRequired
   | UnsignedModuloArithmetic
