@@ -340,19 +340,15 @@ follow-up.** The two functions surfaced as #3225's un-cleared codex
 REQUEST_CHANGES findings (threads `3255338394` / `3255338395`) are
 captured here as the audit anchor for the rest:
 
-- `merge_binding_self` (94) — 🟡 **walker** (the "sym↦sym module harvest"
-  codex finding). The leaf helper is `map_insert(m, sym, sym)`, but it
-  is the symbolic-merge primitive used inside three named-harvest
-  walkers (`add_module_named_exports` at 99, `add_arrow_domain_named_params`
-  at 113, `add_bind_atom_binder` at 140) — all three are `fold` over
-  `Node.children` doing constructor-discriminated recursion.
-  **Substrate dependency satisfied (PR #3297):** `fold_node` exists in
-  `std/node.dag`. These four sites are the **P5 cascade** — they still
-  need a scoped binding-harvest `NodeFold<Map<Symbol, Symbol>>` (or
-  equivalent) that preserves resolver scope semantics; not a repeat
-  T-1 substrate-extension PR. Dissolves to `fold_node(root, ⟨algebra⟩)`
-  over that algebra; eliminates the three harvest walkers plus the
-  implicit recursion in `merge_binding_self`'s callers.
+- `merge_binding_self` (94) — 🟢 **DISSOLVED 2026-05-19.** The "sym↦sym"
+  leaf helper is gone. The three binding-harvest sites
+  (`add_module_named_exports`, `add_arrow_domain_named_params`,
+  `add_bind_atom_binder`) now consume scoped `NodeFold<Map<Symbol, Symbol>>`
+  algebras (`direct_named_edge_binding_fold`, `direct_atom_binding_fold`)
+  through `fold_node`. The algebras ignore child fold results where the
+  resolver contract requires direct children only, preserving module,
+  arrow-domain, and arity-3 `Bind` scope semantics while deleting the
+  local `Node.children` folds.
 
 - The other 22 fns in 03_resolve.dag (`empty_namespace`,
   `empty_canonical_symbol_set`, `build_program_namespace`,
@@ -785,7 +781,7 @@ work, not C1's** — C1 marks and flags.
 
 | class | 🔴 dissolve-now | 🟡 gated (named feature: / consumer:) | 🟢 terminal |
 |---|---|---|---|
-| walker | — | 2 (`std/algebra.dag free_monoid_length` → `fold FreeMonoid`; `std/float.dag nat_compare` → `fold Nat`) + **P5 cascade** (`compiler/03_resolve.dag` binding-harvest sites → scoped `fold_node` algebra; substrate **#3297**) | rest |
+| walker | — | 2 (`std/algebra.dag free_monoid_length` → `fold FreeMonoid`; `std/float.dag nat_compare` → `fold Nat`) | rest; **P5 cascade closed** (`compiler/03_resolve.dag` binding-harvest sites consume scoped `fold_node` algebra; substrate **#3297**) |
 | traverse | — | 4 (`std/node.dag` × 4: → `forall` / `count_where` / `unique` over `FreeMonoid<T>` in `std/collection.dag` Wave-A2) | rest |
 | predicate | empty-`Conj` R1 predicate **landed** PR #3284 (`std/node.dag` `is_empty_conj_root`, `DECISIONS.md` §CP-1b item 12); LLVM R2 predicate **landed** PR #3245 (`terminator_is_catchswitch` deleted; `block_well_formed` consumes `CatchSwitch` directly) | 3 (`std/node.dag connective_edge_discipline` → per-`Connective` discipline fact; `std/float.dag float_finite_magnitude_zero` → `nat_is_zero`; `extdeps/languages/llvm_ir.dag feature_disposition` → per-feature disposition fact (T-4 fact-bundle)); `llvm_instruction_cost` **landed** under `lens/cost.dag`. | rest |
 | carrier | — | — | lane-wide |
@@ -796,7 +792,7 @@ work, not C1's** — C1 marks and flags.
 dissolve-on-arrival rule):
 
 1. ~~`fold_node` — `Node` catamorphism in `std/node.dag` (substrate-extension
-   under T-1).~~ **LANDED PR #3297** (`NodeFold<R>`, `fold_node`; `node_well_formed` is a consumer). **P5 cascade** (binding-harvest in `03_resolve.dag`) remains open under a scoped algebra, not absent substrate.
+   under T-1).~~ **LANDED PR #3297** (`NodeFold<R>`, `fold_node`; `node_well_formed` is a consumer). **P5 cascade closed 2026-05-19:** binding-harvest in `03_resolve.dag` consumes scoped `NodeFold<Map<Symbol, Symbol>>` algebras.
 2. `fold` / `cata` over `FreeMonoid<T>` and `Nat` in `std/algebra.dag` /
    `std/nat.dag` (Wave-A2).
 3. `forall`, `count_where`, `unique` over `FreeMonoid<T>` in

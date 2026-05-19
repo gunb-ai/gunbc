@@ -65,11 +65,72 @@ def test_required_ledger_fails_on_unknown_live_coproduct() -> None:
             raise AssertionError("expected SystemExit")
 
 
+def test_strip_removes_grounded_tags_fail_closed() -> None:
+    """Disk `// … grounded.` must not survive strip — inject_grounded_tags recomputes."""
+    body = (
+        "type X\n  = A | B\n"
+        "// 🟢 grounded.\n"
+        "type R {\n  rhs_lexeme: String\n}\n"
+    )
+    stripped = s.strip_body_comments(body)
+    assert "grounded" not in stripped
+    assert "rhs_lexeme" in stripped
+
+
+def test_inject_grounded_recomputes_yellow_from_lexeme_string_field() -> None:
+    bl = [
+        "type R {",
+        "  rhs_lexeme: String",
+        "}",
+    ]
+    out = s.inject_grounded_tags(bl)
+    assert out[0] == "// 🟡 grounded."
+
+
+def test_inject_grounded_yellow_for_unlisted_lexeme_suffix() -> None:
+    """Suffix rule: any new `*_lexeme: String` should classify as partial without regex churn."""
+    bl = [
+        "type R {",
+        "  port_expression_lexeme: String",
+        "}",
+    ]
+    out = s.inject_grounded_tags(bl)
+    assert out[0] == "// 🟡 grounded."
+
+
+def test_inject_grounded_recomputes_green_without_lexeme_string_field() -> None:
+    bl = [
+        "type R {",
+        "  x: Nat",
+        "}",
+    ]
+    out = s.inject_grounded_tags(bl)
+    assert out[0] == "// 🟢 grounded."
+
+
+def test_inject_grounded_after_coproduct_dissolution_line() -> None:
+    """Braced records must still get a tag when the prior out line is a dissolution banner."""
+    bl = [
+        "// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.",
+        "type R {",
+        "  x: Nat",
+        "}",
+    ]
+    out = s.inject_grounded_tags(bl)
+    assert out[2] == "// 🟢 grounded."
+    assert out[3] == "type R {"
+
+
 def main() -> None:
     test_inject_rewrites_stale_verilog_slug()
     test_verilog_yellow_ref_post_terminal_footer_inline()
     test_inject_fails_when_coproduct_missing_from_tag_map()
     test_required_ledger_fails_on_unknown_live_coproduct()
+    test_strip_removes_grounded_tags_fail_closed()
+    test_inject_grounded_recomputes_yellow_from_lexeme_string_field()
+    test_inject_grounded_yellow_for_unlisted_lexeme_suffix()
+    test_inject_grounded_recomputes_green_without_lexeme_string_field()
+    test_inject_grounded_after_coproduct_dissolution_line()
     print("OK: scripts/test_strict_deprose_dag.py")
 
 
