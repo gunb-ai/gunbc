@@ -848,8 +848,8 @@ auto_fix_for_lens(lens, scope) -> AutoFixOutcome
                  specific case
   3. Verify:     candidate_dag = apply_diff(dag, transform_diff)
                  affected_set(dag, transform_diff).frontier.for_each(ref =>
-                   apply_lens(lens, ref, Enforce)
-                 )
+                   apply_lens(lens, scope_in(candidate_dag, ref), Enforce)
+                 )                                          # candidate root explicit per §4
   4. Fix/Edit:   dag := candidate_dag (atomic commit)
   5. Re-emit:    per-target emit re-renders files
 ```
