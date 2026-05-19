@@ -44,6 +44,14 @@ const EXPECTED_ACCEPTANCE_ROWS: &[(&str, &str)] = &[
     ),
 ];
 
+const RETIRED_ACCEPTANCE_ROWS: &[(&str, &str)] = &[
+    ("dissolution_l1_6_emit_template", "L1_6EmitTemplate"),
+    (
+        "dissolution_l1_10_string_escape_hatch",
+        "L1_10StringEscapeHatch",
+    ),
+];
+
 #[test]
 fn v4_lens_coverage_names_all_l1_acceptance_keys() {
     let module = parse_module(COVERAGE_DAG, COVERAGE_PATH);
@@ -67,7 +75,16 @@ fn v4_lens_coverage_names_all_l1_acceptance_keys() {
 
     assert_eq!(
         observed_variants, expected_variants,
-        "{COVERAGE_PATH}: DissolutionLensKey variants must exactly match L1.1-L1.12 keys"
+        "{COVERAGE_PATH}: DissolutionLensKey variants must exactly match canonical Layer-1 keys"
+    );
+
+    let retired_variants = RETIRED_ACCEPTANCE_ROWS
+        .iter()
+        .map(|(_, variant)| *variant)
+        .collect::<BTreeSet<_>>();
+    assert!(
+        observed_variants.is_disjoint(&retired_variants),
+        "{COVERAGE_PATH}: retired L1.6 / monolithic L1.10 variants must not reappear"
     );
 
     let observed = module
@@ -87,7 +104,16 @@ fn v4_lens_coverage_names_all_l1_acceptance_keys() {
 
     assert_eq!(
         observed, expected,
-        "{COVERAGE_PATH}: PREFIX dissolution acceptance rows must exactly map L1.1-L1.12 keys"
+        "{COVERAGE_PATH}: PREFIX dissolution acceptance rows must exactly map canonical Layer-1 keys"
+    );
+
+    let retired = RETIRED_ACCEPTANCE_ROWS
+        .iter()
+        .copied()
+        .collect::<BTreeSet<_>>();
+    assert!(
+        observed.is_disjoint(&retired),
+        "{COVERAGE_PATH}: retired L1.6 / monolithic L1.10 rows must not reappear"
     );
 }
 

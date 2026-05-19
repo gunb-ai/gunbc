@@ -829,8 +829,8 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // source ratchet — no `v2-compiler` crate references outside `src/v2/`.
     "src/v3/compiler/tests/integration/v2_oracle_no_remaining_test_consumers_test.rs",
     // PREFIX dissolution lens acceptance batch (d): parse-level ratchet for the
-    // `src/v4/lens/coverage.dag` L1.1-L1.12 acceptance data rows. Dissolves when
-    // the v4 coverage lens runs as `.dag` and no hand-Rust row-presence ratchet is needed.
+    // `src/v4/lens/coverage.dag` canonical Layer-1 acceptance rows. L1.6 is retired
+    // into L1.10.a; dissolves when the v4 coverage lens runs as `.dag` coverage.
     "src/v3/compiler/tests/integration/v4_lens_coverage_dag_smoke_test.rs",
     // PREFIX T-23 v0: `compile_to_dag` smoke on `src/v4/lens/registry.dag` (P2-staging
     // `LensIdV0` + `LensModulePathV0`; no generated consumer yet). SG-0 + INVARIANTS §P5(b) receipt.
