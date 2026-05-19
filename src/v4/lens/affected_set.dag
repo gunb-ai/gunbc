@@ -2,7 +2,7 @@
 // Scope: canonical affected-set authority for CI/incremental re-execution; fail-closed B-4/B-5 node frontier.
 // Owns: Dag, AffectedDimension, ExclusionKey, ExclusionProof, FrontierDecision, ReExecFrontier, AffectedSetRead, affected_set.
 // Consumes: Map, Diff, Edit, Hash, Node, Path, Symbol, Witness; B1 content_hash receipts; B-4 resolved Symbol equality; B-5 per-Arrow signature effects.
-// Status: Wave-0 front: changed-subgraph frontier expansion landed; dissolves when CI use and .dag TestClaims land.
+// Status: Wave-0 front: bounded changed-subgraph frontier fold landed; dissolves when CI use and .dag TestClaims land.
 
 module v4.lens.affected_set
 
@@ -57,7 +57,7 @@ type ReExecFrontier
 
 type AffectedSetRead {
   hash_receipt: fn(Dag, Path, Node) -> HashReceipt
-  frontier_edges: fn(Dag, Path) -> List<FrontierEdge>
+  changed_subgraph_frontier_edges: fn(Dag, Path) -> List<FrontierEdge>
   propagation_receipt: fn(Dag, FrontierEdge) -> PropagationReceipt
 }
 
@@ -185,7 +185,7 @@ fn boundary_receipt(read_model: AffectedSetRead, dag: Dag, path: Path, replaceme
 
 
 fn expand_path(read_model: AffectedSetRead, dag: Dag, acc: FrontierAcc, path: Path) -> FrontierAcc {
-  fold(read_model.frontier_edges(dag, path), init: acc, f: fn(acc2, edge) {
+  fold(read_model.changed_subgraph_frontier_edges(dag, path), init: acc, f: fn(acc2, edge) {
     match read_model.propagation_receipt(dag, edge) {
       Propagates =>
         append_root(
