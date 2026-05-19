@@ -49,9 +49,6 @@ COPRODUCT_TAG_RE = re.compile(
     r"^\s*//\s*[🟢🟡🔴]\s+coproduct dissolution\b",
 )
 
-# Domain-neutral carrier provenance (PTX lane; operator CASCADE separation).
-LEDGER_ANCHOR_RE = re.compile(r"^\s*//\s*Ledger anchor:\s*")
-
 PART6_SLUG_HEAD_RE = re.compile(r"^### (SL-3229-[A-Z0-9-]+|CP-3229-[A-Z0-9-]+)\b")
 
 # Non-coproduct merge-base receipts (strict de-prose strips their `//` bodies) that
@@ -304,8 +301,6 @@ def format_ledger_line(
     rel: str, tag_map: dict[str, tuple[str, str]], live_coproducts: set[str]
 ) -> str:
     slugs = ", ".join(sorted(required_ledger_slugs(rel, tag_map, live_coproducts)))
-    if rel == "src/v4/extdeps/languages/ptx.dag":
-        return f"// Ledger: DECISIONS.md Part 6 — {slugs}.\n"
     return f"// Ledger: DECISIONS.md Part 6 (PR #3229): {slugs}.\n"
 
 
@@ -320,9 +315,7 @@ def assert_part6_inventory(decisions_text: str, all_required: set[str]) -> None:
         sys.exit(1)
 
 
-def format_coproduct_tag(rel: str, emoji: str, ref: str) -> str:
-    if rel == "src/v4/extdeps/languages/ptx.dag":
-        return f"// Ledger anchor: DECISIONS.md Part 6 · {ref}."
+def format_coproduct_tag(emoji: str, ref: str) -> str:
     return f"// {emoji} coproduct dissolution — DECISIONS.md Part 6 · {ref}."
 
 
@@ -340,9 +333,9 @@ def inject_coproduct_tags(body: str, rel: str, tag_map: dict[str, tuple[str, str
                 )
                 sys.exit(1)
             em, ref = tag_map[nm]
-            expected = format_coproduct_tag(rel, em, ref)
+            expected = format_coproduct_tag(em, ref)
             prev = bl[j - 1] if j > 0 else ""
-            if COPRODUCT_TAG_RE.match(prev) or LEDGER_ANCHOR_RE.match(prev):
+            if COPRODUCT_TAG_RE.match(prev):
                 if prev != expected:
                     if not out_lines:
                         raise SystemExit(
@@ -400,11 +393,7 @@ def comment_ratio(text: str) -> tuple[int, int, float]:
 def strip_body_comments(after_module: str) -> str:
     out_lines: list[str] = []
     for line in after_module.splitlines(True):
-        if (
-            line.lstrip().startswith("//")
-            and not COPRODUCT_TAG_RE.match(line)
-            and not LEDGER_ANCHOR_RE.match(line)
-        ):
+        if line.lstrip().startswith("//") and not COPRODUCT_TAG_RE.match(line):
             continue
         out_lines.append(line)
     return "".join(out_lines)
