@@ -403,6 +403,44 @@ carriers: `ProcessId = Int`, `ExitCode = Int`, `SignalNum = Int`,
 them now would be fact-bundle-rework-class work, outside the NOT-D2-held
 de-prose scope.
 
+Each scaffold is bound to a concrete T-25-core target shape and a
+surface→dissolve loop (operator yellow-discipline 2026-05-18: a tracked
+yellow names its primitive, lands the substrate, and dissolves on landing
+— never an indefinite tracked comment). T-25-core models a refinement as
+a **base carrier + a named fail-closed validation discharged at the
+constructor boundary** (`TASKS.md` T-25 / `docs/coercion-design.md`
+Category 6); the substrate is **not yet landed** (`std/collection.dag`
+carries the `non_empty` predicate but no refined carrier; `integer.dag`
+states "no `where`-clause"), so these stay bound-not-dissolved:
+
+- `ProcessId = Int` → T-25-core `PositiveInt` (POSIX `pid_t` of a real
+  process is `> 0`; `0`/`-1` are sentinel/group, not a process id).
+  Dissolve: replace the bare `Int` alias with the `> 0`
+  constructor-validated refinement.
+- `SignalNum = Int` → T-25-core `PositiveInt` (a delivered/terminating
+  signal number is `>= 1`; `0` is the null signal, not a termination
+  fact). Dissolve: same shape as `ProcessId`.
+- `ExitCode = Int` → T-25-core `NonNegativeInt` (POSIX `WEXITSTATUS` is
+  `0..255`; non-negative is the minimal floor, the `0..255` bound is the
+  fuller fact deferred with it). Dissolve: replace with the non-negative
+  constructor-validated refinement.
+- `NamedPathComponent`, `PosixArgument`, `PosixEnvironmentName`,
+  `PosixEnvironmentValue` (each `{ bytes: PosixByteString }`) → T-25-core
+  non-empty NUL-free `PosixByteString` refinement (POSIX pathname
+  components and `exec` argument/environment strings are non-empty byte
+  strings containing no NUL; `PosixEnvironmentName` additionally excludes
+  `=`). Dissolve: replace the bare byte-record with the
+  constructor-validated byte-string refinement carrying that predicate.
+
+The surface→dissolve loop for all seven: name the T-25-core primitive
+(above) → land the T-25-core `std/` substrate PR → dissolve each scaffold
+in the same change that consumes it, replacing the bare alias/byte-record
+with the constructor-validated refinement; trigger stays **T-25-core /
+T-30 fact-density gate**. `.dag` source keeps only the terse
+`scaffold: … ; trigger T-25-core/T-30.` tags (OS-1 row: ledgers are
+decision records, not source comments) — this binding lives here, not in
+the `.dag` files, and is not a `.dag` fact-bundle expansion.
+
 ## Part 2 — RATIFIED 2026-05-15 (cascade-closures — now in Part 1)
 
 > **All three (U2, C3, C1) were ratified and are encoded — see Part 1.**
