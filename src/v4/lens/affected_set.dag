@@ -63,13 +63,13 @@ type WholeDagFailClosedEvidence
 // 🟢 coproduct dissolution — DECISIONS.md #3153-subsumed
 type FrontierDecision
   = Rerun
-  | Excluded { proof: ExclusionProof }
+  | Excluded { proofs: List<ExclusionProof> }
 
 
 // 🟢 coproduct dissolution — DECISIONS.md #3153-subsumed; IRT-1 whole/changed-subgraph gate.
 type ReExecFrontier
   = ChangedSubgraphFrontier {
-      boundary_exclusions: Map<Path, BoundaryExclusionProof>,
+      boundary_exclusions: Map<Edit, BoundaryExclusionProof>,
       decisions: Map<ExclusionKey, FrontierDecision>
     }
   | WholeDagFailClosed { evidence: WholeDagFailClosedEvidence }
@@ -129,7 +129,7 @@ type AffectedSetRead {
 // 🟢 coproduct dissolution — DECISIONS.md #3153-subsumed; accumulator mirrors ReExecFrontier authority.
 type FrontierAcc
   = ChangedSubgraphAcc {
-      boundary_exclusions: Map<Path, BoundaryExclusionProof>,
+      boundary_exclusions: Map<Edit, BoundaryExclusionProof>,
       decisions: Map<ExclusionKey, FrontierDecision>
     }
   | WholeDagAcc { evidence: WholeDagFailClosedEvidence }
@@ -202,12 +202,12 @@ fn mark_rerun(acc: FrontierAcc, key: ExclusionKey) -> FrontierAcc {
 }
 
 
-fn mark_boundary_excluded(acc: FrontierAcc, path: Path, proof: BoundaryExclusionProof) -> FrontierAcc {
+fn mark_boundary_excluded(acc: FrontierAcc, edit: Edit, proof: BoundaryExclusionProof) -> FrontierAcc {
   match acc {
     WholeDagAcc { evidence: e } => WholeDagAcc { evidence: e }
     ChangedSubgraphAcc { boundary_exclusions: boundary_exclusions, decisions: decisions } =>
       ChangedSubgraphAcc {
-        boundary_exclusions: map_insert(boundary_exclusions, path, proof),
+        boundary_exclusions: map_insert(boundary_exclusions, edit, proof),
         decisions: decisions
       }
   }
@@ -224,15 +224,15 @@ fn mark_excluded(acc: FrontierAcc, key: ExclusionKey, proof: ExclusionProof) -> 
             boundary_exclusions: boundary_exclusions,
             decisions: decisions
           }
-        Some { value: Excluded { proof: _ } } =>
+        Some { value: Excluded { proofs: proofs } } =>
           ChangedSubgraphAcc {
             boundary_exclusions: boundary_exclusions,
-            decisions: map_insert(decisions, key, Excluded { proof: proof })
+            decisions: map_insert(decisions, key, Excluded { proofs: list_push(proofs, proof) })
           }
         None =>
           ChangedSubgraphAcc {
             boundary_exclusions: boundary_exclusions,
-            decisions: map_insert(decisions, key, Excluded { proof: proof })
+            decisions: map_insert(decisions, key, Excluded { proofs: [proof] })
           }
       }
   }
@@ -340,7 +340,7 @@ fn seed_edit_fold_acc(
         BoundaryPruned { proof: p } =>
           AffectedFoldAcc {
             dag: next_dag,
-            frontier: mark_boundary_excluded(acc: acc.frontier, path: edit.at, proof: p)
+            frontier: mark_boundary_excluded(acc: acc.frontier, edit: edit, proof: p)
           }
         BoundaryExpands =>
           AffectedFoldAcc {
