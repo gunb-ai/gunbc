@@ -20,7 +20,7 @@ import v2.std.core { SourceSpan }
 // Use List<TraceFrame> as the trace stack until generic fn parsing lands.
 
 // =========================================================================
-// F1: Span mapping -- generated code line → source .dag span
+// F1: Span mapping -- generated code position → source .dag span
 //
 // Emitters produce SpanMappings alongside generated code. Runtime adapters
 // can use these mappings to remap target-language failures and trace events
@@ -53,14 +53,10 @@ type TracePoint {
   span: SourceSpan
 }
 
-// 🟢 coproduct dissolution -- lifecycle boundary: an event is either an
-// entry observation or a completion observation.
 type TraceObservation
   = TraceEntered { inputs: Map<String, String> }
   | TraceCompleted { result: TraceCompletion }
 
-// 🟢 coproduct dissolution -- completion boundary: a completed call has
-// exactly one runtime outcome.
 type TraceCompletion
   = TraceReturned { output: String }
   | TraceFailed { message: String }
@@ -135,10 +131,6 @@ fn event_is_error(event: TraceEvent) -> Bool {
 // filtered without mutating the original capture. Filtering reduces noise
 // for debugging and source-level inspection.
 //
-// TraceFilter is a conjunction of replay coordinates. Empty coordinates
-// match everything; errors_only restricts replay to failed completions.
-//
-// span matches events whose source span overlaps the given byte range.
 // SourceSpan uses byte offsets (start, end), not file/line.
 // =========================================================================
 
@@ -223,10 +215,6 @@ fn format_span(sp: SourceSpan) -> String {
   concat("[", to_string(sp.start), "..", to_string(sp.end), ")")
 }
 
-// Format a single TraceEvent as a human-readable string.
-//   TraceEnter  -> "> {node_id} at [start..end)"
-//   TraceExit   -> "< {node_id} at [start..end): {output}"
-//   TraceError  -> "! {node_id} at [start..end): {message}"
 fn format_trace_event(event: TraceEvent) -> String {
   let id = event_node_id(event: event)
   let sp = event_span(event: event)
@@ -262,8 +250,6 @@ type ReproCase {
   trace: Trace?
 }
 
-// 🟢 coproduct dissolution -- reproduction expectation is absent, returned,
-// or failed; these are mutually exclusive capture states.
 type TraceExpectation
   = ExpectationNotCaptured
   | ExpectOutput { output: String }
