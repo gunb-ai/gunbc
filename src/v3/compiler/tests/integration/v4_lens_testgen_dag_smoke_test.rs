@@ -206,8 +206,8 @@ fn v4_lens_testgen_wave0_bootstrap_narrows_present_anchor_before_generator() {
 }
 
 #[test]
-fn v4_lens_testgen_nat_law_manual_claims_use_equals() {
-    assert_nat_manual_claim_blocks_use_equals(NAT_LAW_DAG);
+fn v4_lens_testgen_nat_law_manual_claims_use_compiles_stub() {
+    assert_nat_manual_claim_blocks_use_compiles_stub(NAT_LAW_DAG);
 }
 
 #[test]
@@ -220,7 +220,7 @@ fn v4_lens_testgen_testgen_carries_six_nat_algebra_law_scheduling_arms() {
     assert_six_algebra_law_constructor_sites_in_testgen(TESTGEN_DAG);
 }
 
-fn assert_nat_manual_claim_blocks_use_equals(nat_law_src: &str) {
+fn assert_nat_manual_claim_blocks_use_compiles_stub(nat_law_src: &str) {
     for claim in NAT_MANUAL_CLAIM_DATA {
         let block = nat_law_manual_claim_data_block(nat_law_src, claim);
         let kind_lines: Vec<&str> = block
@@ -234,8 +234,8 @@ fn assert_nat_manual_claim_blocks_use_equals(nat_law_src: &str) {
             "{claim}: expected exactly one `kind:` field in this `data` block; got {kind_lines:?}"
         );
         assert!(
-            kind_lines[0].starts_with("kind: Equals"),
-            "{claim}: nat-law manual stub must use `kind: Equals` in its own block (not a neighbor claim); got {:?}",
+            kind_lines[0].starts_with("kind: Compiles"),
+            "{claim}: nat-law manual stubs use placeholder `input`/`expected`; `kind` must stay `Compiles` until T-22 law-shaped `Node` obligations land (codex #14833); got {:?}",
             kind_lines[0]
         );
     }
