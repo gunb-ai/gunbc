@@ -2,10 +2,10 @@
 // Each stage owns a distinct closed-sum root type. No optional fields acting
 // as kind discriminators; no inferred? on pre-infer phases; no NodeId side tables.
 //
-// Boundary: reconcile Connective / fold_node with v2_5.std.node when cool-bee-832
-// lands substrate. This file owns phased AST shapes; node.dag owns substrate algebra.
-// Reconcile: calm-crane-724 provisional normalize seam — SurfaceSugarKind + substrate
-// projection types at file end; ResolvedSugared wrapper on ResolvedModuleItem.
+// Phase AST shapes live here; substrate algebra in v2_5.std.node (PR #3422).
+// Reconcile: calm-crane-724 normalize seam (Seam* types); cool-bee-832 Tier 0
+// (Node + List<Edge>, 6-case Connective, 4-variant NodeKind).
+// Phase types stay parallel sums (not Node bags); lowering to Node uses node.dag.
 //
 // Pipeline (type signatures are the contract):
 //   tokenize : SourceText -> TokenStream
@@ -17,23 +17,22 @@
 
 module v2_5.std.stage_types
 
-import v2_5.std.identity { SourceSpan, Symbol, AuthoredName, BoundName }
+import v2_5.std.identity { SourceSpan, AuthoredName, BoundName }
+import v2_5.std.node {
+  Symbol,
+  Connective,
+  Behavior,
+  EdgeLabel,
+  DeclarationKind,
+  CompositeRole
+}
 import v2_5.std.syntax {
   BinOp, UnaryOpKind, LiteralValue, OperationModifier, ExprErrorKind, AlgebraFieldKind
 }
 import v2_5.std.token { TokenStream }
 
-// =========================================================================
-// Type-form connectives (v2-compatible four-case; node.dag may extend to six)
-// =========================================================================
-
-type Connective
-  = Conj
-  | Disj
-  | NoConnective
-  | Arrow
-
-type Cardinality
+// Param presence (v2 Required/CardOptional) — distinct from Connective::Cardinality.
+type ParamCardinality
   = Required
   | CardOptional
 
@@ -47,6 +46,15 @@ data c3_surface_sugar_service: Symbol = c3_surface_sugar_service
 data c3_surface_sugar_fn: Symbol = c3_surface_sugar_fn
 data c3_surface_sugar_type: Symbol = c3_surface_sugar_type
 data c3_surface_sugar_operation: Symbol = c3_surface_sugar_operation
+
+// DeclarationKind / CompositeRole (node.dag) ↔ phase variant mapping:
+//   ParseTypeDecl / ResolvedTypeDecl → DeclarationKind::TypeDecl
+//   ParseFn / ParseFunc → FnDecl; ParseService → (OperationSugar + service body)
+//   ParseImport* → ImportDecl; ParseModule → ModuleDecl
+//   ParseMatchArm → CompositeRole::MatchArm; ParsePattern → Pattern
+//   ParseStringInterp → StringInterp
+// Tier-1 🟡: Arg / FieldInit / Param wrappers — propose ArgSlot | FieldInitSlot |
+//   ParamSlot extensions to CompositeRole when cool-bee-832 expands substrate.
 
 // =========================================================================
 // Parse phase — syntax only, no binding or typing
@@ -71,7 +79,7 @@ type ParseParam {
   name: AuthoredName
   type_expr: ParseTypeExpr
   default_expr: ParseExpr?
-  cardinality: Cardinality
+  cardinality: ParamCardinality
 }
 
 type ParseArg {
@@ -93,7 +101,7 @@ type ParseMatchArm {
 type ParseTypeField {
   name: AuthoredName
   type_expr: ParseTypeExpr
-  cardinality: Cardinality
+  cardinality: ParamCardinality
   default_expr: ParseExpr?
   from_key: AuthoredName?
 }
@@ -297,7 +305,7 @@ type ResolvedParam {
   name: BoundName
   type_expr: ResolvedTypeExpr
   default_expr: ResolvedExpr?
-  cardinality: Cardinality
+  cardinality: ParamCardinality
 }
 
 type ResolvedArg {
@@ -319,7 +327,7 @@ type ResolvedMatchArm {
 type ResolvedTypeField {
   name: BoundName
   type_expr: ResolvedTypeExpr
-  cardinality: Cardinality
+  cardinality: ParamCardinality
   default_expr: ResolvedExpr?
   from_key: BoundName?
 }
@@ -531,7 +539,7 @@ type NormalizedParam {
   name: BoundName
   type_expr: NormalizedTypeExpr
   default_expr: NormalizedExpr?
-  cardinality: Cardinality
+  cardinality: ParamCardinality
 }
 
 type NormalizedArg {
@@ -553,7 +561,7 @@ type NormalizedMatchArm {
 type NormalizedTypeField {
   name: BoundName
   type_expr: NormalizedTypeExpr
-  cardinality: Cardinality
+  cardinality: ParamCardinality
   default_expr: NormalizedExpr?
   from_key: BoundName?
 }
@@ -755,7 +763,7 @@ type TypeForm
 type InferredTypeField {
   name: BoundName
   field_type: InferredType
-  cardinality: Cardinality
+  cardinality: ParamCardinality
 }
 
 type InferredTypeVariant {
@@ -766,7 +774,7 @@ type InferredTypeVariant {
 type InferredTypeParam {
   name: BoundName
   param_type: InferredType
-  cardinality: Cardinality
+  cardinality: ParamCardinality
 }
 
 type TailRecursionFacts
@@ -793,7 +801,7 @@ type InferredParam {
   name: BoundName
   type_expr: InferredType
   default_expr: InferredExpr?
-  cardinality: Cardinality
+  cardinality: ParamCardinality
 }
 
 type InferredArg {
@@ -1044,28 +1052,10 @@ type EmitStageIn {
 }
 
 // =========================================================================
-// Normalize seam — v4-substrate projection (reconcile calm-crane-724)
-// 03_normalize may implement against these carriers; full-module workers use
-// ResolvedModule / NormalizedModule above. Sugar strip: ResolvedSugarForm gone
-// on NormalizedTypeForm; ResolvedSugared gone on NormalizedModule.items.
+// Normalize seam — substrate projection (reconcile calm-crane-724 + node.dag)
+// Uses Connective / Behavior / EdgeLabel from v2_5.std.node. Targets are seam
+// nodes (not Node) until full AST lowering lands.
 // =========================================================================
-
-type CoreConnective
-  = CoreAtom { identity: Symbol }
-  | CoreConj
-  | CoreDisj
-  | CoreArrow
-
-type CoreBehavior
-  = CoreValue
-  | CoreTransform
-  | CoreBranch
-  | CoreLoop
-  | CoreBind
-
-type EdgeLabel
-  = NamedEdge { name: Symbol }
-  | PositionalEdge
 
 type SeamResolvedEdge {
   label: EdgeLabel
@@ -1084,23 +1074,23 @@ type ResolvedTypeForm
       children: List<SeamResolvedEdge>
     }
   | ResolvedCoreForm {
-      connective: CoreConnective
+      connective: Connective
       children: List<SeamResolvedEdge>
     }
 
 type NormalizedTypeForm {
-  connective: CoreConnective
+  connective: Connective
   children: List<SeamNormalizedEdge>
 }
 
 type ResolvedComputationForm {
-  behavior: CoreBehavior
+  behavior: Behavior
   span: SourceSpan
   children: List<SeamResolvedEdge>
 }
 
 type NormalizedComputationForm {
-  behavior: CoreBehavior
+  behavior: Behavior
   span: SourceSpan
   children: List<SeamNormalizedEdge>
 }
@@ -1151,6 +1141,7 @@ type SeamNormalizedNode
 // v2 Node.inferred? → eliminated; InferredExpr.expr_type is required per variant
 // v2 is_self_recursive / has_non_tail_self_call → InferredFn.recursion only
 // v2 item_kind() cascade → ParseItem closed sum (ParseFn | ParseFunc | ...)
-// v2 connective on flat Node → ParseTypeExpr | TypeForm connective variants
+// v2 connective on flat Node → ParseTypeExpr | TypeForm (phase AST; lower to Connective+Edge)
 // calm-crane-724 SeamResolvedNode → normalize sugar strip → SeamNormalizedNode
 // full pipeline: ResolvedSugared / ResolvedCore → NormalizedItem (core only)
+// node.dag: Node { kind: NodeKind, children: List<Edge> } — substrate target for lowering
