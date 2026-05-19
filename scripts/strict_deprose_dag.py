@@ -467,10 +467,20 @@ def main() -> None:
     specs: list[tuple[str, str, str, str, str]] = [
         (
             "src/v4/extdeps/languages/verilog.dag",
-            "// Scope: IEEE 1364-2005 Verilog structural carriers (T-4.9).",
+            "// Scope: IEEE 1364-2005 Verilog structural carriers (T-4.9).\n"
+            "// Wave-0: B2-OMNI + IN-B concurrency falsification probe — TASKS.md T-4.9 "
+            "is gated on T-1+T-2; this file imports only `v4.std.node` (Symbol) and "
+            "`v4.std.nat` (Nat for `VerilogCost`). `nat.dag` is the std locus of `Nat` "
+            "and its algebra witnesses — not the broader T-3 scalar/numeric cluster "
+            "(`integer`, `machine`, …) used by full T-4 fact-bundle work.\n"
+            "// Stress axis: hardware concurrency (`always`, continuous assign, parallel "
+            "module items) must not require a 6th L1 `Concurrent` behavior (C1 if it "
+            "does). Carriers here are ordinary sum/record structure; procedural bodies "
+            "and expression surfaces stay opaque `String` lexemes until later waves — "
+            "the IN-B bet (Bind + effect-typed carriers, DECISIONS L-1) holds at this layer.",
             "// Anchor: https://standards.ieee.org/ieee/1364/3641/",
             "// Consumes: std/node.dag; std/nat.dag (Nat).",
-            "// Status: T-4.9 PASS (IN-B); import v4.std.node Symbol; import v4.std.nat Nat.",
+            "// Status: T-4.9 Wave-0 PASS (IN-B, B2-OMNI); import v4.std.node Symbol; import v4.std.nat Nat.",
         ),
         (
             "src/v4/extdeps/languages/llvm_ir.dag",
