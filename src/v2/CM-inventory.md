@@ -24,7 +24,7 @@ fundamental question being asked and what changes with the ontology.
 |------|-------|---|---|---|-----------|-----------|
 | 00_core.dag | 4 | 2 | 0 | 2 | 0 | Transport identity by string |
 | 02_parse.dag | 26 | 17 | 0 | 9 | 4 | Grammar keyword dispatch (mostly legitimate) |
-| 03_normalize.dag | 1 | 1 | 0 | 0 | 0 | Container arity |
+| 03_normalize.dag | 1 | 0 | 1 | 0 | 0 | Container arity (name lookup) |
 | 03_resolve.dag | 5 | 2 | 1 | 2 | 0 | Bootstrap module ordering hack |
 | 04_items.dag | 2 | 0 | 1 | 1 | 0 | Item classification forest #1 |
 | 04_resolve.dag | 16 | 10 | 4 | 2 | 4 | Alias/generic resolution; many fail-open |
@@ -135,6 +135,24 @@ by keywords. The ontological concerns are:
 | 3394-3395 | `"let"` / `"return"` keyword dispatch | R | What statement? | Legitimate grammar dispatch |
 | 3733-3738 | `"match"` / `"if"` / `"for"` / `"fn"` etc. | R | What expression? | Legitimate grammar dispatch |
 | 3843-3854 | Uppercase-start casing heuristic | S | Record literal or variable + block? | Grammar ambiguity; SyntaxSpec should resolve |
+
+### 03_normalize.dag
+
+**CALIBRATION (2026-05-19).** v2 `normalize` runs **after** resolve on `ModuleGraph`;
+v4 `compiler/03_normalize.dag` runs **before** resolve on `ParseTree` for C3 sugar
+dissolution only. The names collide; the stages do not. v2 retains the lone
+post-resolve invariant pass below; sugar does not flow past the parser (CM.md
+§Surface sugar).
+
+| Lines | Heuristic | Cat | Question | With ontology |
+|-------|-----------|-----|----------|---------------|
+| 37-76 | `container_expected_arity(name: nname)` on bare `List`/`Map`/… leaves | A | Under-parameterized container? | Algebra arity from the type's declared profile — not `authored_name_at` string lookup. Structural legs already present (`children`/`params` counts, `NoConnective`, `has_structure`); the name table is duplicate authority shared with `04_types.dag` / `04_infer.dag`. Dissolve when profile arity is reachable at this boundary. |
+| 37-76 | `flat_map` tree walk over `children`/`params`/`inferred`/… | R | Visit every subtree for diagnostics? | Legitimate reduction traversal until a scoped `NodeFold` diagnostic algebra lands (P5); not an extra heuristic site. |
+
+**v4 counterpart (`src/v4/compiler/03_normalize.dag`):** C3 sugar → `Conj`/`Arrow`/target peel;
+`SurfaceSugarKind` 🟡 per DECISIONS CP-1b item 4; `SugarClassification` and
+`NormalizeChildrenResult` dissolved to `SurfaceSugarKind?` + `Outcome` (items 5–6).
+Triaged in `docs/audit/dissolution-inventory.md` §2.3.
 
 ### 03_resolve.dag
 

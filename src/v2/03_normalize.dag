@@ -1,13 +1,19 @@
-// v2 normalization pass -- structural graph rewrite between resolve and infer.
+// v2 normalization pass — post-resolve structural invariant check (not C3 desugar).
+//
+// Pipeline position (v2): resolve → normalize → infer on ModuleGraph.
+// C3 surface-sugar dissolution (`service` / `fn` / `type` / `operation` →
+// connective-shaped Node) is owned by v4 `compiler/03_normalize.dag` on the
+// ParseTree pivot *before* resolve (`resolve ∘ normalize`); see DECISIONS C3,
+// TASKS T-8, and CM-inventory §03_normalize calibration.
+//
+// This stage does not re-derive item kind or surface identity. It validates
+// invariants that should hold after resolve and before infer:
+//   - No bare container types (List, Map, Set, etc. with 0 type parameters)
 //
 // P3.7: arity bridge deleted. Arity enforcement via hardcoded
 // parameterized_type_arity is removed. Arity is now structural:
 // type declarations carry params, and generic substitution in
 // resolve_node_bounded checks declaration params at resolution time.
-//
-// The normalizer validates structural invariants that should hold
-// after resolve and before infer:
-//   - No bare container types (List, Map, Set, etc. with 0 type parameters)
 
 module v2.compiler.normalize
 
