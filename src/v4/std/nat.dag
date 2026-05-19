@@ -71,6 +71,7 @@ data nat_semiring: CommutativeSemiring<Nat> = CommutativeSemiring {
 }
 
 // Practice-8 scheduling Symbols — DECISIONS.md T19-VHDR-3332
+// RULING-1: DONE — nominal `Symbol` scheduling keys only; algebra facts remain the `data` rows above; receipt: `v4_lens_testgen_nat_substrate_carries_algebra_law_subject_symbols` in v3 `v4_lens_testgen_dag_smoke_test.rs`.
 data nat_algebra_law_subject_symbol_additive_monoid: Symbol = nat_algebra_law_subject_symbol_additive_monoid
 
 

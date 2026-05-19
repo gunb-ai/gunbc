@@ -53,6 +53,7 @@ type ImpossibleBugClass
 
 type T19ManualAnchorKey
 // 🟡 coproduct dissolution — DECISIONS.md LB-P4-3212
+// RULING-1: DONE — Wave-0 manual-anchor key sum + absent sentinel; receipt: v3 `v4_lens_testgen_dag_smoke_test.rs` (SG-0 P5 / PR #3332).
   = T19ManualTcConjEmpty
   | T19ManualTcDisjEmpty
   | T19ManualTcArrowTwoConj
@@ -70,6 +71,7 @@ type T19ManualAnchorKey
 
 type T19PresentManualAnchorKey
 // 🟡 coproduct dissolution — DECISIONS.md LB-P4-3212
+// RULING-1: WIP — present-only mirror pending M2 manifest fold per DECISIONS LB-P4-3212; receipt: same v3 smoke + INVARIANTS P5 row.
   = T19PresentManualTcConjEmpty
   | T19PresentManualTcDisjEmpty
   | T19PresentManualTcArrowTwoConj
