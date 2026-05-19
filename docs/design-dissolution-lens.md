@@ -174,6 +174,43 @@ The only mechanical merge in this layout is **L1.6 → L1.10** — the
 prior doc already stated that L1.10 generalizes L1.6, so the two were
 sibling labels for one consolidated signature space.
 
+### 5.1 Canonical L1.x acceptance-key names (rebase target for downstream consumers)
+
+Downstream consumers that need to register acceptance / coverage rows
+per Layer-1 lens (e.g. `src/v4/lens/coverage.dag`'s `dissolution_l1_*`
+rows) MUST use the canonical key names enumerated here. The lens
+suite is the single authority; key sets in other files are projections
+of this enumeration.
+
+| Lens / sub-signature | Canonical acceptance-key name |
+|---|---|
+| L1.1 Discriminant-predicate | `dissolution_l1_1_discriminant_predicate` |
+| L1.2 Degenerate-type | `dissolution_l1_2_degenerate_type` |
+| L1.3 Hollow-type | `dissolution_l1_3_hollow_type` |
+| L1.4 Carrier-clone | `dissolution_l1_4_carrier_clone` |
+| L1.5 Catamorphism | `dissolution_l1_5_catamorphism` |
+| ~~L1.6 Emit/template~~ | **retired — see L1.10.a below; no `dissolution_l1_6_*` key** |
+| L1.7 Off-substrate-fact | `dissolution_l1_7_off_substrate_fact` |
+| L1.8 Wrong-home | `dissolution_l1_8_wrong_home` |
+| L1.9 Vacuous-arm | `dissolution_l1_9_vacuous_arm` |
+| **L1.10.a** `TemplateHole` (sub-signature of Textual-bypass family) | `dissolution_l1_10_a_template_hole` |
+| **L1.10.b** `CanonicalCarrier` (sub-signature of Textual-bypass family) | `dissolution_l1_10_b_canonical_carrier` |
+| L1.11 Plausible-fallback | `dissolution_l1_11_plausible_fallback` |
+| L1.12 Parallel-authority | `dissolution_l1_12_parallel_authority` |
+
+**Migration notes for existing downstream consumers:**
+- Any consumer carrying `dissolution_l1_6_emit_template` is **stale**;
+  rename to `dissolution_l1_10_a_template_hole` (the renamed
+  sub-signature).
+- Any consumer carrying `dissolution_l1_10_string_escape_hatch` (the
+  pre-merge name) is **stale**; replace with the two sub-signature
+  rows `dissolution_l1_10_a_template_hole` AND
+  `dissolution_l1_10_b_canonical_carrier`. L1.10 itself is no longer
+  a single mechanical unit — it's a lens family per §5.0's exception.
+- These names are stable as of this revision; further changes to the
+  L1.x taxonomy will require a corresponding update to this enumeration
+  and a coordinated downstream rebase.
+
 ### L1.1 Discriminant-predicate lens — kills *predicate dissolution*
 
 - *Signature:* a `Bool`-returning `fn` over a coproduct whose body is a
@@ -775,17 +812,57 @@ type CiCommand = ... | ShellCommand { command: process.Command }
 > *different valid constructor* of that enum — a plausible guess —
 > instead of escalating through `Outcome::Rejected`.
 
-- *Signature:* a `match` arm of shape `None => Ctor` / `Empty => Ctor` /
-  `[] => Ctor` where `Ctor` is a constructor of the function's return
-  type AND the function's return type is **not** `Outcome<_>` (does not
-  carry a diagnostic variant).
-- *Decidable:* yes — return-type shape + arm-RHS constructor membership +
-  matched-sub-pattern is a "nothing-here" variant.
-- *Verdict:* hard error. The fix is to lift the return type to
-  `Outcome<T>` and return `Rejected { diagnostic: DerivationUnknown }`.
-- *Escape:* the missing-info case has a *uniquely correct* answer (e.g.
-  `or_default(opt: Option<Nat>, default: Nat)` style helpers where
-  `None => default` is the function's definition) — operator-confirm.
+- *Signature (no return-type carve-out — RHS constructor structural check):*
+  a `match` arm of shape `None => Ctor` / `Empty => Ctor` / `[] => Ctor`
+  where `Ctor` is a constructor of the function's return type AND
+  `Ctor` is **not** a structurally-registered fail-closed-diagnostic
+  variant. Fail-closed-diagnostic variants are declared by the
+  substrate:
+  ```dag
+  data outcome_rejected_variant: FailClosedDiagnostic = {
+    type: Outcome,
+    ctor: Rejected,
+  }
+  ```
+  The lens fires on **both** the bare-return case and the
+  Outcome-wrapped case:
+  - `fn(...) -> EffectShape; None => CreateEffect` — return is not
+    Outcome, `CreateEffect` is not registered → fires (F10).
+  - `fn(...) -> Outcome<EffectShape>; None => Produced { value: ... }`
+    — return is Outcome, `Produced` is not registered → fires
+    (fabricated success — the prior carve-out's false negative).
+  - `fn(...) -> Outcome<T>; None => Rejected { diagnostic: ... }` —
+    `Rejected` IS registered as `FailClosedDiagnostic` → passes.
+- *Decidable:* yes — return-type shape + arm-RHS constructor membership
+  + matched-sub-pattern is a "nothing-here" variant + registry
+  membership of the RHS constructor are all structural facts.
+- *Verdict:* hard error. Fix depends on which case fired:
+  - **Bare-return case** (`fn(...) -> T; None => Ctor`): lift the
+    return type to `Outcome<T>` and return
+    `Rejected { diagnostic: DerivationUnknown }` on the missing-info
+    arm.
+  - **Outcome-wrapped case** (`fn(...) -> Outcome<T>; None => Produced { value: ... }`):
+    the return type is already `Outcome<_>` — replace the
+    `Produced` constructor on the missing-info arm with
+    `Rejected { diagnostic: DerivationUnknown }` (the registered
+    fail-closed-diagnostic variant).
+- *Escape (structural — no operator-confirm via prose):* for genuine
+  total-by-design helpers (`or_default(opt, default)` etc.) where the
+  `None` branch's RHS is the function's *definitional* result, the
+  exemption is a substrate data row:
+  ```dag
+  data or_default_total: PlausibleFallbackExemption = {
+    function:    or_default,
+    arm_pattern: None,
+    because:     total-by-design,    // closed vocabulary
+                                     // (total-by-design /
+                                     //  domain-restricted /
+                                     //  proven-saturating)
+  }
+  ```
+  Comment markers do not satisfy the escape, by construction. Same
+  shape as L1.8 `WrongHomeExemption` and L1.9 `VacuousArmExemption` —
+  the exemption is read as substrate data, not as prose.
 
 **Concrete match — F10 (`dsl/std/effects.dag:268-282`):**
 ```dag
@@ -821,51 +898,120 @@ fn derive_effect_shape(...) -> Outcome<EffectShape> {
 > "Cross-reference — D2-resolver" note below for why the dangling-import
 > shape is a separate finding.
 
-- *Signature (resolved concept identity, not lexical spelling):* two
-  `type T1` and `type T2` declarations in different files are
-  duplicates IFF they **resolve to the same canonical concept
-  identity** AND neither is a structural alias of the other. The lens
-  does **not** key on lexical name equality — `network.Result` and
-  `compiler.normalize.Result` are different concepts in different
-  namespaces and are not duplicates; what makes two declarations a
-  duplicate is shared canonical-concept membership, declared
-  structurally:
-  ```dag
-  data bool_concept: CanonicalConcept = {
-    canonical_home: v4.std.logic.Bool,
-    members:        { dsl.std.types.Bool },   // historical mirrors
-  }
-  ```
-  The lens fires when two type declarations claim membership in the
-  same `CanonicalConcept` row without one being a structural alias /
-  retirement / migration of the other. Same lexical name in
-  different concepts does not fire. All declaration forms count —
-  sum / alias (`type T = A | B`), record (`type T { ... }`), unit
-  (`type T`), generic (`type T<X> = ...`) — the form is irrelevant
-  once concept identity is established. (Scope clarification — the
-  *planned-but-absent home* case is a different finding shape:
-  unresolved reference / fail-closed P3, caught by L0.8 extended to
-  dangling import paths, deliberately not L1.12.)
-- *Decidable:* yes — `CanonicalConcept` registry membership and
-  structural-alias edges are queryable from the parsed model. No
-  lexical name equality, no comment/prose inspection.
+- *Signature (concept-level — two triggers, union):* the lens fires
+  on **parallel authority for a concept**, which is detectable in
+  two mechanically-distinct ways. The lens has **two triggers**;
+  EITHER triggers the resolution check. P2 and Practice 5 demand
+  single-authority *at the concept level*, not at the lexical-name
+  level — both triggers exist so the lens detects the violation in
+  the shapes the substrate can mechanically see.
+  - **Trigger A (lexical):** a cross-file lexical-name collision —
+    two `type T` declarations in different files sharing the same
+    simple name.
+  - **Trigger B (concept-graph):** two `type T1` and `type T2`
+    declarations in different files that are **co-members of a
+    `CanonicalConcept` row**, regardless of whether their lexical
+    names match. This catches the "two parallel homes for one
+    concept under different names" shape, which Trigger A misses by
+    construction.
+  Once either trigger fires, the lens checks for one of **five
+  mechanically-distinct outcomes** — three passing and two firing —
+  and the decision table is closed (no escape outside this
+  enumeration):
+  Each outcome is defined by which **substrate-data resolution
+  shape(s) are present** — they are independent passing conditions,
+  NOT compound predicates. `CanonicalConcept` co-membership is one
+  resolution shape; an alias-identity edge is another; a
+  `HistoricalDeclaration` retirement row is another. Any single
+  passing shape's presence is enough.
+  1. **Alias-identity edge.** The non-canonical declaration is a
+     structural alias (`import` + `type T = <canonical-module>.T`)
+     of another declaration. The alias IS the resolution — it
+     re-exports rather than re-declares — regardless of whether a
+     `CanonicalConcept` row is also present. → **passes.**
+  2. **Retirement-record.** A `HistoricalDeclaration` row names one
+     of the two declarations as retired with a `dissolves_when`
+     trigger:
+     ```dag
+     data bool_dsl_std_retired: HistoricalDeclaration = {
+       type:           dsl.std.types.Bool,
+       dissolves_when: <trigger>,
+     }
+     ```
+     The retirement ledger is substrate data read by the lens — its
+     presence resolves the lens regardless of whether a
+     `CanonicalConcept` row also exists. → **passes.**
+  3. **Distinct-concepts disambiguation.** A `ConceptDisambiguation`
+     row names the two declarations as legitimately distinct
+     concepts in different namespaces:
+     ```dag
+     data network_vs_normalize_result: ConceptDisambiguation = {
+       names:   { network.Result, compiler.normalize.Result },
+       because: distinct-domain-concepts,
+     }
+     ```
+     → **passes.** (Note: applies to Trigger A only. Under Trigger B,
+     a `ConceptDisambiguation` row that *contradicts* a present
+     `CanonicalConcept` co-membership row is a registry-inconsistency
+     finding — caught by L0-class duplicate-data-row checks, not
+     L1.12.)
+  4. **CanonicalConcept co-membership without alias or retirement.**
+     A `CanonicalConcept` row claims the two declarations as
+     co-members, AND neither outcome (1) alias nor outcome (2)
+     retirement is present → **fires** (the duplicate-authority
+     case; reachable via either trigger). The CanonicalConcept row
+     by itself asserts the concept identity but does not resolve
+     the parallel authority — outcome (1) or (2) is required to
+     resolve, otherwise the substrate is asserting "these two
+     declarations are the same concept" while keeping both as
+     authoritative declarations, which is the violation.
+  5. **Silence.** Triggered lexically (Trigger A), AND none of
+     outcomes (1) / (2) / (3) / (4) apply (no alias, no
+     retirement-record, no disambiguation, no CanonicalConcept
+     row) → **fires as unresolved-duplicate.** The substrate must
+     take a position. (Not reachable via Trigger B — Trigger B's
+     premise is that a CanonicalConcept row IS present, so this
+     case becomes outcome (4) or one of the passing outcomes
+     instead.)
+  Note: **deletion / migration** (removing the redeclaration in the
+  same change so only one `type T` remains across the corpus) is
+  not a sixth resolution — it removes the trigger condition (the
+  lexical collision and/or the registry co-membership) entirely, so
+  the lens never engages.
+  **Decidability boundary (explicit):** the lens catches concept-level
+  parallel authority when EITHER (a) the duplicate uses the same
+  lexical name (Trigger A) OR (b) the substrate has registered the
+  concept identity via `CanonicalConcept` (Trigger B). It does NOT
+  catch the case where two homes use *different* lexical names AND
+  no `CanonicalConcept` row registers them as the same concept —
+  that case is a P2 violation but is mechanically undetectable from
+  parsed substrate alone; closing it requires either operator
+  judgment or an extension primitive (e.g., a structural similarity
+  fold) that the current substrate does not provide. This is the
+  honest decidability boundary, and per the §3 methodology a lens's
+  signature must catch its finding class with zero false positives —
+  Trigger B's CanonicalConcept-driven gate is the structural surface
+  the lens can decidably enforce today.
+  Unresolved-silence fails closed. Same lexical name in different
+  concepts passes via (3); the F9 motivating case (Bool in two
+  files with no rows anywhere) fires via (5) until one of (1),
+  (2), or (3) lands.
+- *Decidable:* yes — lexical-name uniqueness, `CanonicalConcept`
+  registry membership, structural-alias edges,
+  `HistoricalDeclaration` registry membership, and
+  `ConceptDisambiguation` registry membership are all structural
+  facts in the parsed model. No comment/prose inspection.
 - *Verdict:* hard error.
-- *Escape (structural — applies the same rule L1.7 enforces against
-  itself):* the lens does **not** accept a comment marker as authority,
-  because prose-as-authority is exactly the shape L1.7 kills. The only
-  passing shapes are themselves structural:
-  1. **Alias / re-export.** The non-canonical file does not redeclare
-     `type T`; it `import`s the canonical declaration and exposes it via
-     a `type T = <canonical-module>.T` alias-identity edge.
-  2. **Structural retirement record.** A `data` row in a designated
-     retirement ledger names the historical declaration and a
-     dissolution trigger, e.g.
-     `data bool_dsl_std_retired: HistoricalDeclaration = { type: dsl.std.types.Bool, dissolves_when: <trigger> }`.
-     The lens reads the ledger as data, not as prose.
-  3. **Deletion / migration.** The historical declaration is removed in
-     the same change and consumers are repointed at the canonical home.
-  Comment markers — including a `// Authority: canonical` header — do
-  not satisfy the escape, by construction.
+- *Escape (structural — same rule L1.7 enforces against itself):*
+  the passing shapes are outcomes (1), (2), and (3) in the
+  decision table above — alias edge, retirement-ledger row, or
+  ConceptDisambiguation row — all substrate data read by the
+  lens. Comment markers — including a `// Authority: canonical`
+  header — do not satisfy the escape, by construction. (Scope
+  clarification — the *planned-but-absent home* case is a
+  different finding shape: unresolved reference / fail-closed P3,
+  caught by L0.8 extended to dangling import paths, deliberately
+  not L1.12.)
 
 **Concrete match — F9 (`dsl/std/types.dag:173` and `src/v4/std/logic.dag:14`):**
 ```dag
@@ -875,19 +1021,31 @@ type Bool = True | False
 // src/v4/std/logic.dag:13-14
 type Bool = True | False
 
-// Some substrate-owned ontology file:
+// (no CanonicalConcept row, no ConceptDisambiguation row anywhere)
+```
+
+This is the **unresolved-duplicate** case — the trigger fires (lexical
+collision across two files) and silence in both registries means the
+substrate has not taken a position. Outcome (5): the lens fires.
+
+A `CanonicalConcept` row alone is not enough — it asserts co-membership
+but without a structural alias edge from `dsl.std.types.Bool` to
+`v4.std.logic.Bool` and no `HistoricalDeclaration` retirement row,
+outcome (4) "same-concept-without-alias-or-retirement" still fires:
+```dag
 data bool_concept: CanonicalConcept = {
   canonical_home: v4.std.logic.Bool,
   members:        { dsl.std.types.Bool },
 }
+// dsl.std.types still has `type Bool = True | False` (a redeclaration,
+// not an alias, not retired) → outcome (4) → fires.
 ```
 
-The `bool_concept` row asserts both declarations are the same
-canonical concept; the lens fires because the `dsl.std.types.Bool`
-declaration is not a structural alias of `v4.std.logic.Bool`. A
-hypothetical `network.Result` and `compiler.normalize.Result` would
-*not* fire — they are not co-members of any `CanonicalConcept` row,
-and the lens does not equate lexical spelling with concept identity.
+To pass, the historical declaration must become an alias-identity edge
+(or get retired via `HistoricalDeclaration` ledger, or get deleted in
+the same change). The hypothetical `network.Result` vs
+`compiler.normalize.Result` case passes via resolution (3) — a
+`ConceptDisambiguation` row marking them as legitimately distinct.
 
 **Cross-reference — D2-resolver:** the D2-resolver gap is a mix of
 shapes that **do not collapse into L1.12**:
