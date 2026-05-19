@@ -828,13 +828,17 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // R3 T-V2-Retirement §1.8 gate #41 (`v2_oracle_no_remaining_test_consumers`): comment-aware
     // source ratchet — no `v2-compiler` crate references outside `src/v2/`.
     "src/v3/compiler/tests/integration/v2_oracle_no_remaining_test_consumers_test.rs",
+    // Coverage-defect acceptance keys: parse-level ratchet for
+    // `src/v4/lens/coverage.dag`; retires when generated coverage owns the
+    // same key projection.
+    "src/v3/compiler/tests/integration/coverage_defect_acceptance_dag_test.rs",
+    // PREFIX T-23 v0: `compile_to_dag` smoke on `src/v4/lens/registry.dag` (P2-staging
+    // `LensIdV0` + `LensModulePathV0`; no generated consumer yet). SG-0 + INVARIANTS §P5(b) receipt.
+    "src/v3/compiler/tests/integration/v4_lens_registry_dag_smoke_test.rs",
     // T-19/T-20 closeout ratchets over v4 testgen + bootstrap-infra parse surfaces.
     // SG-0 + INVARIANTS §P5(b) receipt; dissolves when the same checks are `.dag`
     // TestClaims or generated harness coverage.
     "src/v3/compiler/tests/integration/v4_test_bootstrap_infra_closeout_test.rs",
-    // PREFIX T-23 v0: `compile_to_dag` smoke on `src/v4/lens/registry.dag` (P2-staging
-    // `LensIdV0` + `LensModulePathV0`; no generated consumer yet). SG-0 + INVARIANTS §P5(b) receipt.
-    "src/v3/compiler/tests/integration/v4_lens_registry_dag_smoke_test.rs",
     // §1.8 gate #96 (`value_body_substrate_mirror_isomorphism_executable`):
     // CI-visible generated Rust `ValueBody` mirror vs `substrate.dag`
     // constructor isomorphism. Dissolves when `ValueBody` no longer has a
