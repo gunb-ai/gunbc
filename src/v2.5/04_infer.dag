@@ -1,6 +1,6 @@
 module v2_5.compiler.infer
 
-import v2_5.std.node { Symbol, fold_node, NodeFold }
+import v2_5.std.node { Symbol, EdgeLabel }
 import v2_5.std.stage_types {
   NormalizedNode, NormalizedModule, NormalizedItem, NormalizedExpr,
   NormalizedLiteral, NormalizedError, NormalizedVar, NormalizedFieldAccess,
@@ -118,6 +118,16 @@ type ExprInference {
   expr: InferredExpr
   diagnostics: List<InferDiagnostic>
   facts: InferredFacts
+}
+
+type InferredEdge {
+  label: EdgeLabel
+  target: InferredNode
+}
+
+type InferredExprEdge {
+  label: EdgeLabel
+  target: InferredExpr
 }
 
 type ItemInference {
@@ -406,7 +416,7 @@ fn infer_if(expr: NormalizedExpr, condition: InferredExpr, then_branch: Inferred
   }
 }
 
-fn infer_expr_variant(expr: NormalizedExpr, typed_children: List<InferredExpr>, scope: InferScope) -> ExprInference {
+fn infer_expr_variant(expr: NormalizedExpr, typed_children: List<InferredExprEdge>, scope: InferScope) -> ExprInference {
   match expr {
     NormalizedLiteral { value: _, literal_type: _ } => infer_literal(expr: expr)
     NormalizedError { diagnostic: diagnostic } => infer_error(diagnostic: diagnostic)
@@ -455,7 +465,7 @@ fn infer_expr_variant(expr: NormalizedExpr, typed_children: List<InferredExpr>, 
   }
 }
 
-fn infer_item(item: NormalizedItem, children: List<InferredNode>, scope: InferScope) -> ItemInference {
+fn infer_item(item: NormalizedItem, children: List<InferredEdge>, scope: InferScope) -> ItemInference {
   match item {
     NormalizedTypeDecl { name: name, type_ref: type_ref } =>
       ItemInference {
@@ -474,7 +484,7 @@ fn infer_item(item: NormalizedItem, children: List<InferredNode>, scope: InferSc
   }
 }
 
-fn infer_module(module: NormalizedModule, children: List<InferredNode>) -> InferredNode {
+fn infer_module(module: NormalizedModule, children: List<InferredEdge>) -> InferredNode {
   let item_results = map(children, f: child_item_inference)
   let diagnostics = fold(item_results, init: [], f: (acc, item) =>
     merge_diagnostics(left: acc, right: item.diagnostics)
@@ -496,7 +506,7 @@ fn infer_node_algebra() -> NormalizedFoldAlgebra<InferredNode> {
     module: (module, children) => infer_module(module: module, children: children),
     item: (item, children, scope) => item_result_node(result: infer_item(item: item, children: children, scope: scope)),
     expr: (expr, children, scope) =>
-      expr_result_node(result: infer_expr_variant(expr: expr, typed_children: map(children, f: child_expr), scope: scope))
+      expr_result_node(result: infer_expr_variant(expr: expr, typed_children: map(children, f: child_expr_edge), scope: scope))
   }
 }
 
@@ -534,32 +544,36 @@ fn zip_call_substitutions(params: List<TypeRef>, args: List<InferredExpr>) -> Li
   []
 }
 
-fn first_expr(children: List<InferredExpr>) -> InferredExpr {
+fn first_expr(children: List<InferredExprEdge>) -> InferredExpr {
   match children |> first {
-    Some { value: expr } => expr
+    Some { value: edge } => edge.target
     None => infer_error(diagnostic: UnimplementedTypeKitBinding { missing: unknown_type_kit_binding }).expr
   }
 }
 
-fn rest_exprs(children: List<InferredExpr>) -> List<InferredExpr> {
-  children |> skip(1)
+fn rest_exprs(children: List<InferredExprEdge>) -> List<InferredExpr> {
+  children |> skip(1) |> map(edge => edge.target)
 }
 
-fn expr_at(children: List<InferredExpr>, index: Int) -> InferredExpr {
+fn expr_at(children: List<InferredExprEdge>, index: Int) -> InferredExpr {
   match children |> skip(index) |> first {
-    Some { value: expr } => expr
+    Some { value: edge } => edge.target
     None => infer_error(diagnostic: UnimplementedTypeKitBinding { missing: unknown_type_kit_binding }).expr
   }
 }
 
-fn first_node(children: List<InferredNode>) -> InferredNode {
+fn first_node(children: List<InferredEdge>) -> InferredNode {
   match children |> first {
-    Some { value: node } => node
+    Some { value: edge } => edge.target
     None => expr_result_node(result: infer_error(diagnostic: UnimplementedTypeKitBinding { missing: unknown_type_kit_binding }))
   }
 }
 
-fn child_expr(node: InferredNode) -> InferredExpr {
+fn child_expr_edge(edge: InferredEdge) -> InferredExprEdge {
+  InferredExprEdge { label: edge.label, target: child_expr_node(node: edge.target) }
+}
+
+fn child_expr_node(node: InferredNode) -> InferredExpr {
   match node {
     InferredModule { name: _, imports: _, items: _, exports: _, diagnostics: _ } =>
       infer_error(diagnostic: UnimplementedTypeKitBinding { missing: unknown_type_kit_binding }).expr
@@ -576,8 +590,8 @@ fn child_expr(node: InferredNode) -> InferredExpr {
   }
 }
 
-fn child_item_inference(node: InferredNode) -> ItemInference {
-  match node {
+fn child_item_inference(edge: InferredEdge) -> ItemInference {
+  match edge.target {
     InferredItemNode { item: item, diagnostics: diagnostics, exports: exports } =>
       ItemInference { item: item, diagnostics: diagnostics, exports: exports }
     _ =>
@@ -684,7 +698,7 @@ fn infer_data_decl(name: Symbol, fields: List<BindingFacts>) -> ItemInference {
 }
 
 fn infer_func_decl(name: Symbol, params: List<BindingFacts>, body: InferredNode, scope: InferScope) -> ItemInference {
-  let body_expr = child_expr(node: body)
+  let body_expr = child_expr_node(node: body)
   let result_type = CallableType { params: map(params, f: p => p.type_ref), result: facts_of(expr: body_expr).result_type }
   let facts = required_facts(result_type: result_type, algebra: AlgebraKnown { algebra: name })
   ItemInference {
@@ -694,8 +708,8 @@ fn infer_func_decl(name: Symbol, params: List<BindingFacts>, body: InferredNode,
   }
 }
 
-fn infer_service_decl(name: Symbol, operations: List<NormalizedNode>, children: List<InferredNode>, scope: InferScope) -> ItemInference {
-  ItemInference { item: InferredServiceDecl { name: name, operations: children }, diagnostics: [], exports: [] }
+fn infer_service_decl(name: Symbol, operations: List<NormalizedNode>, children: List<InferredEdge>, scope: InferScope) -> ItemInference {
+  ItemInference { item: InferredServiceDecl { name: name, operations: map(children, f: edge => edge.target) }, diagnostics: [], exports: [] }
 }
 
 fn infer_transport_decl(name: Symbol, transport: NormalizedNode) -> ItemInference {
