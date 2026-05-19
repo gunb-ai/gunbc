@@ -414,7 +414,7 @@ substrate imported them, so the cut is a pure scope reduction.
 - **The coercion fold** (rescoped 2026-05-17, D2-reversal — supersedes "algebra-homomorphism search algorithm"). Coercion is a **mechanical zip-fold** (a catamorphism) over two groundings — not a search, not research. It walks both canonical `Node` groundings in parallel and compares; `node.dag`'s B1-CANON contract `content_hash = merkle_fold ∘ canonical` already specifies the hard half (the canonical-form fold). Per `DECISIONS.md` U1 / C1 / T-9 the Find is **decidable by construction** over the closed declared candidate set — empty ⇒ Diagnostic, never a fabricated coercion. Name it the *coercion fold*; never an "engine" or "search algorithm".
 - **The coercion quality tag** — the coercion result is the ratified `Outcome` carrier (`std/diagnostic.dag`), and **quality and outcome are distinct axes**. A *successful* coercion is `Outcome::Produced` carrying the coerced value **plus a closed quality tag**: `Identity` (groundings coincide) | `Exact` (related, total, lossless) | `Lossy` (related, with a *declared* accepted-loss). A coercion that cannot be derived is `Outcome::Rejected { diagnostic }` — the audit's missing fourth *outcome*, "can't prove ⇒ fail-closed". Fail-closed is **not** a fourth quality value: it is the `Rejected` branch of `Outcome`. The quality tag attaches only to `Produced`; never collapse the success-quality axis and the success/failure axis into one flat enum.
 - **The composition rule** — when two *successful* coercions compose, their quality tags compose by a closed lattice (`Identity` is the unit; `Lossy` absorbs `Exact` and `Identity`; `Exact ∘ Exact = Exact`). If either coercion is `Rejected`, the composition is `Rejected` — `Outcome` short-circuits on the failure branch (the standard bind), so the failure axis needs no lattice entry. This is the audit's missing composition lattice; it lives here in T-9, not in a new task.
-- `type AlgebraRef = Symbol` — `04_infer.dag`'s IR-1 `InferredFacts.inhabits` names `AlgebraRef`; it is a `Symbol` name-reference to the algebra inhabitance (the `Diagnostic.reason` cross-declaration idiom, K-1), not a type `std/algebra.dag` declares. Declared here (Theme-A audit #2).
+- `type AlgebraRef { algebra: Node, witness: Node }` — `04_infer.dag`'s IR-1 `InferredFacts.inhabits` carries a typed boundary coordinate for algebra inhabitance while the full algebra authority is still pending. Declared here (Theme-A audit #2).
 - Cardinality propagation
 - Diagnostic precision when inference fails
 
@@ -555,7 +555,7 @@ data t_15_self_host_fixed_point: TestClaim {
 }
 ```
 
-**`BitIdentical` is a property name, not an `AssertKind`** (Theme-A audit, 2026-05-17): the probe's `kind` is `Equals` over the B1 `content_hash` of the two stage outputs — `verification.dag`'s closed `AssertKind` `{Equals, Diagnostic, Compiles, RoundTrips}` is sufficient; **no 5th kind**. The word "BitIdentical" elsewhere in this task denotes that *property*, never a substrate type.
+**`BitIdentical` is a property name, not an `AssertKind`** (Theme-A audit, 2026-05-17): the probe's `kind` is `Equals` over the B1 `content_hash` of the two stage outputs — `verification.dag`'s closed `AssertKind` `{Equals, DiagnosticAssert, Compiles, RoundTrips}` is sufficient; **no 5th kind**. The word "BitIdentical" elsewhere in this task denotes that *property*, never a substrate type.
 
 Failure modes the probe MUST catch (each enumerable, each testable):
 - **Non-determinism**: HashMap-iteration-order dependency in emit → different bytes between compilations
@@ -698,7 +698,7 @@ model shape to keep the probe "parallel."
 
 #### T-4.14: `extdeps/languages/ptx.dag` (CUDA)
 - **Stress axis**: the **SIMT data-parallel execution model** vs the 5 L1 behaviors — the IN-B bet again (like Verilog's concurrency, but data-parallel). A needed 6th `Parallel`/`Kernel` behavior = C1 escalation, by design caught early.
-- **Fork (PROPOSED — confirm)**: model **PTX** (the spec'd IR — clean, general, captures SIMT directly, parallel to llvm_ir; recommended) vs CUDA-C++ as a `cpp.dag` extension (entangled; the C++ surface is not where the stress is).
+- **PTX path (operator-ratified / evidenced):** model **PTX** (the spec'd IR — clean, general, captures SIMT directly, parallel to `llvm_ir.dag`). The CUDA-C++-as-`cpp.dag` extension alternative is the **rejected** fork (entangled; the C++ surface is not where the stress is). **IN-B probe receipt** is **DECISIONS.md L-3** (PTX falsification posture; `ptx.dag` file header is intentionally domain-neutral). **Derived scheduling / completion state** for this slice is authoritative in **`docs/briefs/r4-program-dispatch-plan.md` §2** (Status column: **PASS (IN-B)**; **Blocked-on** `LANDED` — table-accuracy with main; *LANDED* ≠ every TASKS Scope:L tail dissolved — see that row’s rework-obligation / keystone blast-radius notes in the dispatch plan).
 - **Anchor**: NVIDIA PTX ISA spec, pinned version (L-2).
 - **Scope**: L.
 
@@ -876,7 +876,7 @@ All 5 artifacts share ONE Node tree (per gate #28 omni_layers_share_one_node_tre
 **Incremental Re-Test requirement set — held (IRT-3; see T-21 for the full IRT-1..4 set + rationale).**
 - **IRT-3 (with T-19).** `eval` MUST evaluate ANY node subgraph bound into a TestClaim's `input: Node` — including a `program ∘ generated-input` composite — at arbitrary-node granularity; it must never silently restrict TestClaim evaluation to whole-function / whole-module units. Node-level evaluability is what lets the affected set (T-21) name re-runs at node precision.
 
-**Bilateral binding — #3213 negative-coverage obligation (DECISIONS.md LB-T22-3213).** ci.dag's `ci_pipeline_well_formed` enforces bootstrap-stage single-authority fail-closed by construction (`ci_all_commands_authority_ok` / `bootstrap_stage_output`), but the rejection family has no executable demonstration (the TestClaim runner is this task). **Arrival = T-22's executable `TestClaim` runner lands. Follow-up obligation:** add negative `TestClaim`(s) for the CI bootstrap-stage rejection family — dangling `BootstrapStageCompile.produces` + siblings (duplicate job/gate id, dangling `needs`, dangling gate job, dependency cycle) — landing them dissolves the `LB-T22-3213` 🟡. This binding is bilateral with DECISIONS.md `LB-T22-3213` (neither side is vague "T-22 will cover").
+**Bilateral binding — #3213 negative-coverage obligation (DECISIONS.md LB-T22-3213).** ci.dag's `ci_pipeline_well_formed` enforces bootstrap-stage single-authority fail-closed by construction (`ci_all_commands_authority_ok` / `bootstrap_stage_output`). T-22 Wave-0 now carries the executable demonstration in `test/claim/workflow/pipeline_rejections.dag`: six workflow-pipeline `TestClaimRun<CiPipeline>` rows cover dangling `BootstrapStageCompile.produces`, duplicate job/gate id, dangling `needs`, dangling gate job, and dependency cycle, and the paired pass-gate rows pass each run through `workflow_pipeline_pass_gate` so non-`Pass` verdicts become modeled non-pass coverage verdicts carrying the full run fact. Remaining yellow scope is the source-side plan-bound receipt plus the typed-input bridge until real B1 `content_hash` facts and Node projection / typed TestClaim input facts replace the placeholder cache hashes and make the pipeline subject a first-class `TestClaim.input` subgraph. This binding is bilateral with DECISIONS.md `LB-T22-3213`, `T22-EVAL-TYPED-INPUT-BRIDGE`, and `T22-EVAL-PASS-RECEIPT`.
 
 **Scope**: XL (extra-large — THE primary execution path; bootstrap + tests + dry-run all depend on it)
 
@@ -952,11 +952,10 @@ remaining fork — `#4 — T-16 SQL DDL` — was **RESOLVED by the operator
 - **#1 `BitIdentical`** — = `Equals` over B1 `content_hash`; no 5th
   `AssertKind`. Encoded in the T-15 probe above.
 - **#2 `AlgebraRef`** — `04_infer.dag`'s IR-1 `InferredFacts.inhabits`
-  names `AlgebraRef`; `std/algebra.dag` declares no such type. It is a
-  `Symbol` name-reference to the algebra inhabitance (the
-  `Diagnostic.reason` cross-declaration idiom, K-1). Disposition: T-9
-  declares `type AlgebraRef = Symbol` (or the IR-1 header states the
-  identity) — a clarification in existing T-9 scope, not a new task.
+  names `AlgebraRef`; `std/algebra.dag` declares no such type yet. It is a
+  typed boundary coordinate over the algebra and witness nodes until the
+  full algebra inhabitance authority lands. Disposition: T-9 declares the
+  carrier — a clarification in existing T-9 scope, not a new task.
 
 **New PROPOSED tasks (the "missing substrate" Theme-A gaps):**
 
@@ -1081,15 +1080,15 @@ star remains a **generated** structural `Node → Outcome` gate in v4
 `.dag` authority. While the v4→v3 `compile_to_dag` bootstrap cannot yet
 prepend `std/node.dag` without name collisions (see `DECISIONS.md` T-30
 `fact_density.dag` encoding note), the Practice-8 predicate lands as the
-**P5(b) bounded triple**: (1) a **hand Rust mirror**
+**P5(b) bounded pattern**: (1) a **hand Rust mirror**
 (`src/v3/compiler/src/v4_hollow_alias_gate.rs` + hermetic unit tests), (2)
-a **body-less nominal witness** in `src/v4/std/fact_density.dag`, and (3)
-the **`compile_to_dag` smoke** harness
-(`src/v3/compiler/tests/integration/v4_std_fact_density_dag_smoke_test.rs`).
-The **two Rust paths (1)+(3)** each carry an **SG-0**
-`EXPECTED_HAND_AUTHORED_{NON_TEST,TEST}` literal plus a matching
-**`INVARIANTS.md` §P5(b)** row under **T-PB-A** / **T-PB-B** naming the
-**dissolution** trigger when the generated checker is the authority. The
+a **body-less nominal witness** in `src/v4/std/fact_density.dag`, and (3) a
+**retired `compile_to_dag` smoke** harness (`v4_std_fact_density_dag_smoke_test.rs`,
+**dissolved** with **#3338**; see INVARIANTS §P5(b) / `v4:` bootstrap gate).
+**`EXPECTED_HAND_AUTHORED_{NON_TEST,TEST}`** literals and matching
+**`INVARIANTS.md` §P5(b)** rows under **T-PB-A** / **T-PB-B** name the
+**dissolution** trigger when the generated checker is the authority; the
+dissolved smoke harness is **not** reintroduced as an interim ratchet. The
 **`.dag` witness (2)** is a **P2-staging nominal** at `src/v4/std/fact_density.dag` (INVARIANTS §P2 / Practice 5: **parse/compile proof only** — **no** generated `.dag` consumer yet; **not** a landed substrate primitive alongside `node.dag` / `diagnostic.dag`). It is **enumerated honestly** in **`STRUCTURE.md`** (separate from the 14 landed `std/` primitives) and is **named** in the same **§P5(b) rows** (and `DECISIONS.md`) as the T-30 witness file — it is **not** a third **SG-0 hand-Rust** census path (SG-0 inventories **Rust** only). This slice is **sequencing**,
 not semantic deferral of the gate's *definition* (the three-part rule +
 kernel-ambient exemption is already pinned in tests and docs).
