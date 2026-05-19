@@ -4,19 +4,20 @@
 // Consumes: v4.std.logic (Bool, bool_boolean_algebra); v4.std.algebra (BooleanAlgebra).
 // Status: ts_bool_grounding decl-ref present + v2-parse-verified — 🟡 P2/E-6 STAGING (no same-PR consumer; canonical fold specified-not-realized); non-bool numeric primitives 🟡 gated D2→fact-bundle debt (T-4 Phase-3 rework, node://adhoc-71ec74f4-080).
 // Anchor: https://www.typescriptlang.org/docs/handbook/2/everyday-types.html — ECMA-262 https://tc39.es/ecma262/2025/multipage/
-// Ledger: dissolution slugs (PR #3229): CP-3229-GREEN-TERMINAL.
+// Ledger: CP-3229-GREEN-TERMINAL.
+// 🟡
 
 module v4.extdeps.languages.typescript
 
 import v4.std.logic { Bool, bool_boolean_algebra }
 import v4.std.algebra { BooleanAlgebra }
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type TsEcma262NumericPrimitiveKind
   = TsNumberPrimitive
   | TsBigIntPrimitive
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type TsEcma262PrimitiveOperationSemantics
   = TsNumberIeee754Binary64Semantics
   | TsNumberBitwiseInt32Uint32Semantics
