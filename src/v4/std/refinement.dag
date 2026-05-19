@@ -1,0 +1,60 @@
+// src/v4/std/refinement.dag
+// Scope: value-predicate refinement substrate — a base type plus a
+//        fail-closed validation obligation discharged at a named
+//        constructor boundary.
+// Owns: Validation, Refined, refine, refined_base.
+// Consumes: std diagnostic (Correction, Diagnostic, Locus, NoCorrectionReason, Outcome); std node (Symbol).
+// Status: T-25-core modeled.
+// Anchor: docs/coercion-design.md Category 6 (Refinement Coercion).
+
+
+module v4.std.refinement
+
+
+import v4.std.diagnostic {
+  Correction,
+  Diagnostic,
+  Locus,
+  NoCorrectionReason,
+  Outcome
+}
+import v4.std.node { Symbol }
+// A validation obligation: the predicate that admits a base value into the
+// refined type, plus the fail-closed reason emitted when it does not hold.
+// A refinement IS this — a base type B paired with one Validation<B>
+// (docs/coercion-design.md Category 6). Proven refinements erase to B; an
+// unproven base value must pass through `refine`.
+type Validation<B> {
+  reason: Symbol
+  admits: fn(B) -> Bool
+}
+// A refined value: its base carrier, admitted through `refine`. Carrying only
+// the base is the whole point — once the constructor boundary has discharged
+// the Validation, the refinement is proven and erases to B downstream.
+type Refined<B> {
+  base: B
+}
+// The named constructor boundary. The single place an unvalidated base value
+// enters the refined type. Fails closed: a base value the Validation does not
+// admit yields Rejected with the Validation's reason — never a silently
+// constructed Refined. This is the audit's missing fail-closed coercion
+// outcome (T-9 Outcome::Rejected), not a quality tag.
+fn refine<B>(base: B, by: Validation<B>, at: Locus) -> Outcome<Refined<B>> {
+  let admits = by.admits
+  if admits(base) {
+    Produced { value: Refined { base: base } }
+  } else {
+    Rejected {
+      diagnostic: Diagnostic {
+        reason: by.reason,
+        at: at,
+        correction: Unavailable { reason: UserInputBoundary }
+      }
+    }
+  }
+}
+// The base carrier of a refined value. Reading it discards the refinement;
+// re-entry into the refined type goes back through `refine`.
+fn refined_base<B>(r: Refined<B>) -> B {
+  r.base
+}
