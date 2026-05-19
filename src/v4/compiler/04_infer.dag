@@ -1,7 +1,7 @@
 // src/v4/compiler/04_infer.dag
 // Scope: Stage 4 — ResolvedTree -> InferredTree; bounded Find phase (DECISIONS C1 / IR-1).
-// Owns: InferredTree, AlgebraRef, infer_stage_locus_port, infer_coercion_fold_not_realized, infer_coercion_fold_not_realized_diagnostic, infer.
-// Consumes: std/node.dag, std/diagnostic.dag, compiler/03_resolve.dag.
+// Owns: InferredTree, InferredFacts, AlgebraRef, CostRef, infer_stage_locus_port, infer_coercion_fold_not_realized, infer_coercion_fold_not_realized_diagnostic, infer.
+// Consumes: std/node.dag, std/diagnostic.dag, std/cardinality.dag, compiler/03_resolve.dag.
 // Status: scaffold — TASKS T-9; Wave-1 fail-closed boundary.
 // Anchor: https://en.wikipedia.org/wiki/Type_inference
 
@@ -10,6 +10,7 @@ module v4.compiler.infer
 
 
 import v4.compiler.resolve { ResolvedTree }
+import v4.std.cardinality { DescentEvidence }
 import v4.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,
@@ -21,10 +22,24 @@ import v4.std.diagnostic {
 import v4.std.node { Node, Symbol }
 
 
-type InferredTree = Node
-
-
 type AlgebraRef = Symbol
+
+
+type CostRef = Symbol
+
+
+type InferredFacts {
+  resolved_type: Node
+  inhabits: AlgebraRef
+  cost: CostRef
+  descent: DescentEvidence
+}
+
+
+type InferredTree {
+  node: Node
+  facts: InferredFacts
+}
 
 
 data infer_stage_locus_port: Symbol = infer_stage_locus_port
