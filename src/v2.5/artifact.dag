@@ -2,14 +2,12 @@
 // Scope: typed artifact-plan — what the pipeline builds, for which target
 // LanguageSpec, into which output location.
 // Owns: ArtifactPath, Artifact, ArtifactPlan, single_module_plan.
-// Consumes: v2_5.compiler.emit { LanguageSpec } — RECONCILE-NEEDED: home
-// is provisional pending crisp-dove-396 sign-off; PM proposed
-// v2_5.std.language_spec.
+// Consumes: v2_5.std.language_spec { LanguageSpec }.
 // Status: fork first-pass — no bootstrap binary yet (sunny-otter-371).
 
 module v2_5.compiler.artifact
 
-import v2_5.compiler.emit { LanguageSpec }
+import v2_5.std.language_spec { LanguageSpec }
 
 
 type ArtifactPath {
