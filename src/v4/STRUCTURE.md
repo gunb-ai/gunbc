@@ -32,7 +32,7 @@ src/v4/
     collection.dag       # bounded containers
     verification.dag     # TestClaim schema + Tier×Layer classification (v4-fresh; studied v3/dsl)
     report.dag           # advisory carrier (NOT fail-closed Diagnostic); used by synthesis lens
-    fact_density.dag     # P2-staging only (INVARIANTS §P2): T-30 `compile_to_dag` parse witness — **not** a landed std primitive until a **generated** `.dag` consumer reads `SourceSpecReadFact`; hollow-alias authority today is the private Rust mirror module `v4_hollow_alias_gate` in `v3-compiler`. See `DECISIONS.md` T-30 encoding note + `TASKS.md` T-30.
+    fact_density.dag     # T-30 generated structural hollow-alias checker — pure `hollow_alias_gate: Node -> Outcome<Bool>`, fail-closed on a zero-fact carrier; consumed (compile-graph) by `test/claim/manual/fact_density_anchor.dag`. P2-staging (INVARIANTS §P2) until operator-closure wires pipeline enforcement and retires the Rust mirror `v4_hollow_alias_gate`. See `DECISIONS.md` T-30 encoding note + `TASKS.md` T-30.
 
   extdeps/               # external system contracts (23 files)
     cpp_abi.dag          # C++ ABI / target data-model (LP64/LLP64/ILP32/ILP64)
@@ -143,6 +143,10 @@ meta-layer cut, operator-ratified. **2026-05-17 (PR #3212):** enumerate
 C++ ABI / target data-model feeder; checksum **70→71** `.dag`.
 **2026-05-18 (T-30):** add `std/fact_density.dag` P2-staging parse witness;
 checksum **71→72** `.dag`.
+**2026-05-19 (T-30):** `std/fact_density.dag` graduates from body-less nominal
+to the generated structural hollow-alias checker (`hollow_alias_gate`); add
+`test/claim/manual/fact_density_anchor.dag` v2-bootstrap compile anchor;
+checksum **73→74** `.dag`.
 **2026-05-18 (PREFIX / T-23 v0):** add `lens/registry.dag` (`LensIdV0` + `LensModulePathV0` registry twin of
 `docs/briefs/r4-lane-a-lens-interface-freeze-pin.md` §3); checksum **72→73** `.dag`.
 **P2-staging** (INVARIANTS §P2) until a generated consumer reads the rows — paired

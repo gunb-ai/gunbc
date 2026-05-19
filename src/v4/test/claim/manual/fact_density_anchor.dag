@@ -26,7 +26,7 @@ import v4.std.diagnostic { Outcome }
 
 // A hollow alias — `type RustI32 = Int32`: an Atom carrier whose identity is
 // a non-kernel-ambient external primitive and which reads zero own facts.
-data fact_density_anchor_int32_symbol: Symbol = Int32
+data fact_density_anchor_int32_symbol: Symbol = fact_density_anchor_int32_symbol
 
 data fact_density_anchor_hollow_alias: Node = Node {
   kind: TypeNode { connective: Atom { identity: fact_density_anchor_int32_symbol } },
@@ -36,8 +36,8 @@ data fact_density_anchor_hollow_alias: Node = Node {
 
 // A real fact-bundle carrier — a Conj carrier with two named spec-read
 // fact-edges (width, signedness).
-data fact_density_anchor_width_field: Symbol = width
-data fact_density_anchor_signedness_field: Symbol = signedness
+data fact_density_anchor_width_field: Symbol = fact_density_anchor_width_field
+data fact_density_anchor_signedness_field: Symbol = fact_density_anchor_signedness_field
 
 data fact_density_anchor_fact_bundle: Node = Node {
   kind: TypeNode { connective: Conj },

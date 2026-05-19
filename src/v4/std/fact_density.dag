@@ -32,15 +32,20 @@ import v4.std.diagnostic {
 }
 
 
-// Kernel-ambient atom identities (STRUCTURE.md "Kernel-ambient types"):
-// String / Int / Bool / Char / List / Map are irreducible substrate atoms —
-// a carrier aliasing one of them is legitimately atomic, not hollow.
-data fact_density_kernel_ambient_string: Symbol = String
-data fact_density_kernel_ambient_int: Symbol = Int
-data fact_density_kernel_ambient_bool: Symbol = Bool
-data fact_density_kernel_ambient_char: Symbol = Char
-data fact_density_kernel_ambient_list: Symbol = List
-data fact_density_kernel_ambient_map: Symbol = Map
+// Kernel-ambient atom exemption set (STRUCTURE.md "Kernel-ambient types":
+// String / Int / Bool / Char / List / Map). A carrier aliasing a
+// kernel-ambient atom is legitimately atomic, not hollow — the gate exempts
+// it. These identity symbols are self-referential Symbol constants (the
+// substrate's only Symbol-introduction form); binding them to the
+// normalizer's interned kernel-ambient type symbols is operator-closure
+// pipeline wiring (T-30 IMPL+OP) — that wiring step is not part of this
+// checker's definition.
+data fact_density_kernel_ambient_string: Symbol = fact_density_kernel_ambient_string
+data fact_density_kernel_ambient_int: Symbol = fact_density_kernel_ambient_int
+data fact_density_kernel_ambient_bool: Symbol = fact_density_kernel_ambient_bool
+data fact_density_kernel_ambient_char: Symbol = fact_density_kernel_ambient_char
+data fact_density_kernel_ambient_list: Symbol = fact_density_kernel_ambient_list
+data fact_density_kernel_ambient_map: Symbol = fact_density_kernel_ambient_map
 
 
 fn symbol_is_kernel_ambient(s: Symbol) -> Bool {

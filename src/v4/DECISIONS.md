@@ -965,6 +965,20 @@ language/format targets fan out against the same template.
   is deferred until `compile_to_dag` can prepend `std/node.dag` without
   colliding on v3-bootstrap top-level names; dissolution ships in the
   same change set as that bridge.
+- **UPDATE 2026-05-19 (T-30 generated checker landed):** the body-less
+  nominal is superseded — `std/fact_density.dag` now carries the generated
+  structural checker `hollow_alias_gate: Node -> Outcome<Bool>` (fail-closed
+  on a zero-fact carrier; kernel-ambient `Atom` exemption; `SourceSpecReadFact`
+  is now a 3-variant classification coproduct). It lands via the **v2-bootstrap
+  import path** (`v2-compiler compile --source-root src/v4` resolves
+  `import v4.std.node` / `import v4.std.diagnostic`) — **not** the
+  `compile_to_dag` node-prepend bridge, which is therefore not on T-30's
+  critical path. The kernel-ambient identity symbols are self-referential
+  `Symbol` constants (the substrate's only Symbol-introduction form); binding
+  them to the normalizer's interned kernel-ambient type symbols is
+  operator-closure pipeline wiring (T-30 IMPL+OP). `fact_density.dag` stays
+  **P2-staging** until that operator-closure wiring lands and retires the
+  Rust mirror `v4_hollow_alias_gate`.
 
 ### Status
 
