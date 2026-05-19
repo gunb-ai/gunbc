@@ -53,7 +53,7 @@ double-counting).
   `feature:<primitive + owning task>` or `consumer:<named consumer>`
   + dissolve-on-arrival obligation. A 🟡 is a *committed*
   surface→dissolve loop, not a parking spot. **Count today:** the
-  row-local units bound to P1-P10 in § 1.1 (including the two
+  row-local units bound to P1-P12 in § 1.1 (including the two
   #3225-merged findings added at final-ready — see § 1.1 P4 and P5
   unblocks columns), plus 2 pre-plan VAGUE DECISIONS.md rows in
   Section 3 not yet rollable.
@@ -95,15 +95,15 @@ in-file 🟡 blocks, and *not* land the dissolve-now fixes.
   `main`; when found, they land immediately ahead of P1. Both current
   entries have landed. (Per Practice 10 / #3244: 🔴 is a directive,
   never a standing state.)
-- **§ 1.1** — **Ranked substrate-PR queue (P1-P10, 🟡 plan).** Every
-  🟡 in this inventory waits on one of ten named arrivals; each row =
+- **§ 1.1** — **Ranked substrate-PR queue (P1-P12, 🟡 plan).** Every
+  🟡 in this inventory waits on one of the named arrivals; each row =
   one substrate PR, ranked by 🟡-count (highest first), with the
   finding list it unblocks. **Dissolution follow-ups dispatch
   immediately** on each substrate PR's landing — the surface→dissolve
   loop is what makes 🟡 transient.
 - **§ 1.2** — 🟡 → 🟢 burn-down view.
 - **Pre-plan concretization backlog** — Section 3's 2 VAGUE
-  DECISIONS.md rows. **These are NOT in the P1-P10 plan**, because
+  DECISIONS.md rows. **These are NOT in the P1-P12 plan**, because
   a VAGUE entry names no concrete primitive (cannot be rolled under
   any P#). They are a **pre-plan
   backlog the burn-down lane drives first**: each gets re-concretized
@@ -144,6 +144,8 @@ the audit anchors.
 | **P8** | `extdeps/languages/verilog.dag` bundled T-4.9 `LanguageModel` `constant_expression` sub-grammar | extdeps/languages / T-4.9 Verilog | **0** | Landed: `VectorRange` carries `ConstantExpression` endpoints; DECISIONS.md row `SL-3229-VERILOG-VECTOR-RANGE` is closed. |
 | **P9** | `lens/cost.dag` cost-of-instruction model fact / lens | lens / T-12 | **0** | **LANDED:** `src/v4/lens/cost.dag` now owns `llvm_instruction_cost` (the 22-arm `LlvmInstruction -> Int` cost table); `extdeps/languages/llvm_ir.dag` owns only the LLVM instruction shape. |
 | **P10 ⛔ needs-concretization** | Constrained generic parameters / inhabitance-bound syntax (`<M> where M : CommutativeMonoid<_>`) | substrate extension; **no owning task yet** | **1** | DECISIONS.md: `SL-3229-INTEGER-GROUP-COMPLETION` (`GroupCompletion<M>`). **P10 does NOT enter the burn-down DAG as a normal upstream node until concretized** — under #3244 a 🟡 whose substrate primitive has no committed PR/task is not a valid 🟡 (the comment-graveyard case). The single finding under P10 (`SL-3229-INTEGER-GROUP-COMPLETION`) is reclassified VAGUE in Section 3.1 until an owning T-# is assigned. Action owner: substrate / operator-or-S1 assignment. |
+| **P11** | `compiler/05_emit.dag` grammar-directed emit pipeline substrate | compiler / T-10 | **3 format emit cites** | In-file: the emit-half cites in `json.dag`, `yaml.dag`, and `toml.dag` gate on TASKS.md T-10 directly. These are intentionally separate from P3: parse-walk landing does not close emit, and emit landing does not close parse. |
+| **P12** | T-4.6 format semantic gates: YAML canonical keys, TOML datetime interpretation, TOML inline-table/table syntax collapse | extdeps/formats / T-4.6, with TOML datetime substrate under std / T-3 | **3 format-specific cite groups** | DECISIONS.md Part 6: `SL-3229-YAML-CANONICAL-KEYS`, `SL-3229-T4-FORMAT-TOML-DATETIME`, and `SL-3229-TOML-TABLE-SYNTAX`. These close only when the format lane wires the named parse/emit validation or value-model reconciliation; they are not covered by P3's generic parse-walk substrate. |
 
 Plus property-projection model facts (Practice 10 row 7) that do not
 roll up into a shared substrate PR — each is a per-type fact-bundle
@@ -176,6 +178,8 @@ dissolve-on-arrival effect without deriving a residual total.
 | P9 landed | 0 | `lens/cost.dag` T-12 | already closed; retained as receipt. |
 | P8 landed | 0 | Verilog constant_expression | already closed; retained as receipt. |
 | P10 lands | 1 (after concretization) | constrained-generics syntax | closes only after an owning task is assigned. |
+| P11 lands | 3 format emit cites | T-10 grammar-directed emit substrate | closes the json/yaml/toml emit-half cite-sites. |
+| P12 lands | 3 format-specific cite groups | T-4.6 format semantic gates (+ T-3 temporal substrate for TOML datetime) | closes YAML canonical-key validation and TOML datetime/table-syntax cite groups. |
 
 (R1 **landed** PR #3284; R2 **landed** PR #3245. These are not counted in
 the 🟡 burn-down because they dissolved outside the substrate-gap queue.)
@@ -607,15 +611,18 @@ T-6/T-7 parse substrate (`SL-3229-T4-FORMAT-T6T7`, parse half) and
 T-10 emit substrate (`SL-3229-T4-FORMAT-T6T7`, emit half).
 - **Triage: VALID.**
 - **Why:** each cite names a concrete feature arrival plus owning task;
-  no pre-#3234 prose-form VAGUE blocks remain in PR head.
+  the parse half rolls under §1.1 P3 and the emit half rolls under
+  §1.1 P11. No pre-#3234 prose-form VAGUE blocks remain in PR head.
 
 **`extdeps/formats/yaml.dag` × 3 concrete cite-sites** (lines 22-24)
 — one-line `🟡 gated — feature:` cites for T-6/T-7 parse substrate,
 T-10 emit substrate, and YAML canonical mapping-key uniqueness
 (`SL-3229-YAML-CANONICAL-KEYS`).
 - **Triage: VALID.**
-- **Why:** each cite names a concrete feature arrival; no prose-form
-  VAGUE blocks remain in PR head.
+- **Why:** each cite names a concrete feature arrival; the parse half
+  rolls under §1.1 P3, the emit half under §1.1 P11, and the YAML
+  canonical-key gate under §1.1 P12. No prose-form VAGUE blocks remain
+  in PR head.
 
 **`extdeps/formats/toml.dag` × 5 concrete cite-sites** (lines 11, 23-26)
 — the `TomlValue` coproduct points to `SL-3229-TOML-TABLE-SYNTAX`;
@@ -624,7 +631,9 @@ T-10 emit, v4 temporal substrate for RFC 3339 datetime interpretation,
 and TOML inline-table/table syntax collapse.
 - **Triage: VALID.**
 - **Why:** each cite names a concrete ledger row or feature arrival;
-  no prose-form VAGUE blocks remain in PR head.
+  the parse half rolls under §1.1 P3, the emit half under §1.1 P11,
+  and the TOML datetime/table-syntax gates under §1.1 P12. No
+  prose-form VAGUE blocks remain in PR head.
 
 **`extdeps/languages/typescript.dag` × 1 file-level status line** (line 5)
 — line includes bool canonical-B staging plus: `Non-bool numeric
@@ -651,9 +660,9 @@ after T-3/T-29/T-30/T-25-core.`
 | SL-3229-FLOAT-NOMINAL | DECISIONS.md row | feature | **partial** (straddles machine.dag + cardinality.dag) | yes | **VAGUE** |
 | verilog.dag × 5 in-file cite-sites | one-liner | feature | yes (inherits TASKS.md T-4.9 Verilog LanguageModel-axis rework) | yes | VALID |
 | `llvm_ir.dag` (`LlvmType` row; legacy `llvm_ir.dag:28` snapshot) | one-liner | feature | yes (superseded — §3.1 **`SL-3229-LLVM-WIDTH` CLOSED**) | n/a | **STALE** (§3.2 — 🟢 terminal cite at HEAD; not a second `VALID-🟡` authority) |
-| json.dag × 2 in-file cite-sites | one-liner | feature | yes (T-6/T-7 parse; T-10 emit) | yes | VALID |
-| yaml.dag × 3 in-file cite-sites | one-liner | feature | yes (T-6/T-7 parse; T-10 emit; YAML canonical keys) | yes | VALID |
-| toml.dag × 5 in-file cite-sites | one-liner | feature | yes (T-6/T-7 parse; T-10 emit; datetime; table syntax) | yes | VALID |
+| json.dag × 2 in-file cite-sites | one-liner | feature | yes (§1.1 P3 parse; §1.1 P11 emit) | yes | VALID |
+| yaml.dag × 3 in-file cite-sites | one-liner | feature | yes (§1.1 P3 parse; §1.1 P11 emit; §1.1 P12 YAML canonical keys) | yes | VALID |
+| toml.dag × 5 in-file cite-sites | one-liner | feature | yes (§1.1 P3 parse; §1.1 P11 emit; §1.1 P12 datetime/table syntax) | yes | VALID |
 | typescript.dag × 1 file-level status line | one-liner | feature | yes (T-4 fact-bundle Phase-3 after named feeders) | yes | VALID |
 
 Counts (under the still-hawk-102 tightened bar 2026-05-18 — VALID-🟡
@@ -664,7 +673,8 @@ substrate PR in Section 1):
   PTX-DIM3, VERILOG-NONEMPTY, VERILOG-D3200 bound to P1/P2/P4;
   VERILOG-D3200 also carries five now-concrete Verilog cite-sites;
   the format files contribute concrete json/yaml/toml cite-site
-  groups; TypeScript contributes one concrete T-4 status line).
+  groups bound across §1.1 P3/P11/P12; TypeScript contributes one
+  concrete T-4 status line).
   `SL-3229-LLVM-WIDTH` is **CLOSED** (§3.1; §3.3 table row matches —
   not counted here), and the legacy `llvm_ir.dag:28` cite snapshot is
   **STALE** (§3.2 / §3.3 — not a parallel `VALID-🟡` authority). P8 closed
