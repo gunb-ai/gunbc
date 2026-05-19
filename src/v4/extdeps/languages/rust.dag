@@ -13,13 +13,11 @@ import v4.std.algebra { BooleanAlgebra }
 import v4.std.cardinality { Never }
 
 // 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
-// 🟢 grounded — Rust Reference integer-kind carrier; testcase: language_extdeps_grounding_anchor.dag.
 type RustIntKind
   = Signed
   | Unsigned
 
 // 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
-// 🟢 grounded — Rust Reference integer-width carrier; testcase: language_extdeps_grounding_anchor.dag.
 type RustIntWidth
   = Bits8
   | Bits16
@@ -29,13 +27,11 @@ type RustIntWidth
   | Pointer
 
 // 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
-// 🟢 grounded — Rust Reference float-width carrier; testcase: language_extdeps_grounding_anchor.dag.
 type RustFloatWidth
   = Bits32
   | Bits64
 
 // 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
-// 🟢 grounded — Rust Reference scalar carrier; testcase: language_extdeps_grounding_anchor.dag.
 type RustScalar
   = IntScalar { kind: RustIntKind, width: RustIntWidth }
   | FloatScalar { width: RustFloatWidth }
@@ -45,49 +41,41 @@ type RustScalar
   | NeverScalar
 
 // 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
-// 🟢 grounded — Rust Reference borrow-kind carrier; testcase: language_extdeps_grounding_anchor.dag.
 type RustReferenceKind
   = Shared
   | Exclusive
 
-// 🟢 grounded — Rust path segment carrier; testcase: language_extdeps_grounding_anchor.dag.
 type NamedSegment {
   id: Symbol
 }
 
-// 🟡 needs-more-work — path semantics remain a producer obligation until resolver migration; testcase: language_extdeps_grounding_anchor.dag.
 type PubInPath {
   resolved_path: List<NamedSegment>
 }
 
 // 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
-// 🟢 grounded — Rust Reference visibility carrier; testcase: language_extdeps_grounding_anchor.dag.
 type RustVisibility
   = Private
   | Pub
   | PubIn { path: PubInPath }
 
-// 🟢 grounded — Rust Reference reference carrier; testcase: language_extdeps_grounding_anchor.dag.
 type RustReference {
   kind: RustReferenceKind
   lifetime: Symbol
   referent: Node
 }
 
-// 🟡 needs-more-work — cost axes are raw Int until numeric/cost refinements land; testcase: language_extdeps_grounding_anchor.dag.
 type RustCost {
   instruction_cost: Int
   allocation_cost: Int
 }
 
 // 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
-// 🟢 grounded — Rust overflow action carrier; testcase: language_extdeps_grounding_anchor.dag.
 type OverflowAction
   = PanicOnOverflow
   | TwoComplementWrap
 
 // 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
-// 🟡 needs-more-work — IRCarrier policy bridge remains a D2-REV resolver obligation; testcase: language_extdeps_grounding_anchor.dag.
 type OverflowDisposition<IRCarrier>
   = MustPanicOnOverflow
   | MayPanicOrTwoComplementWrap
@@ -96,5 +84,4 @@ type OverflowDisposition<IRCarrier>
 data rust_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
 
 // Anchor: https://doc.rust-lang.org/reference/types/never.html
-// 🟢 grounded — Rust never type coincides with std Never; testcase: language_extdeps_grounding_anchor.dag.
 type RustNever = Never

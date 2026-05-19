@@ -12,7 +12,6 @@ import v4.std.logic { Bool, bool_boolean_algebra }
 import v4.std.algebra { BooleanAlgebra }
 
 // 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
-// 🟢 grounded — Go spec integer-width carrier; testcase: language_extdeps_grounding_anchor.dag.
 type SignedIntWidth
   = SignedBits8
   | SignedBits16
@@ -21,7 +20,6 @@ type SignedIntWidth
   | SignedPlatformInt
 
 // 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
-// 🟢 grounded — Go spec unsigned-integer-width carrier; testcase: language_extdeps_grounding_anchor.dag.
 type UnsignedIntWidth
   = UnsignedBits8
   | UnsignedBits16
@@ -31,19 +29,16 @@ type UnsignedIntWidth
   | UnsignedPointerSized
 
 // 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
-// 🟢 grounded — Go spec float-width carrier; testcase: language_extdeps_grounding_anchor.dag.
 type GoFloatWidth
   = Bits32
   | Bits64
 
 // 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
-// 🟢 grounded — Go spec complex-width carrier; testcase: language_extdeps_grounding_anchor.dag.
 type GoComplexWidth
   = Bits64
   | Bits128
 
 // 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
-// 🟢 grounded — Go spec scalar-kind classifier; testcase: language_extdeps_grounding_anchor.dag.
 type GoScalarKind
   = Int
   | Float
@@ -52,7 +47,6 @@ type GoScalarKind
   | String
 
 // 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
-// 🟢 grounded — Go spec scalar carrier; testcase: language_extdeps_grounding_anchor.dag.
 type GoScalar
   = SignedIntScalar { width: SignedIntWidth }
   | UnsignedIntScalar { width: UnsignedIntWidth }
@@ -62,44 +56,37 @@ type GoScalar
   | StringScalar
 
 // 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
-// 🟢 grounded — Go spec channel direction carrier; testcase: language_extdeps_grounding_anchor.dag.
 type GoChannelDirection
   = SendRecv
   | SendOnly
   | RecvOnly
 
 // 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
-// 🟢 grounded — Go spec export locus carrier; testcase: language_extdeps_grounding_anchor.dag.
 type GoExportLocus
   = PackageBlock
   | StructField
   | MethodName
 
 // 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
-// 🟢 grounded — Go spec export status carrier; testcase: language_extdeps_grounding_anchor.dag.
 type GoExportStatus
   = Exported { locus: GoExportLocus }
   | Unexported { locus: GoExportLocus }
 
-// 🟢 grounded — Go spec channel carrier over a modeled element reference; testcase: language_extdeps_grounding_anchor.dag.
 type GoChannel {
   direction: GoChannelDirection
   element_type_ref: Symbol
 }
 
-// 🟡 needs-more-work — cost axes are raw Int until numeric/cost refinements land; testcase: language_extdeps_grounding_anchor.dag.
 type GoCost {
   instruction_cost: Int
   allocation_cost: Int
 }
 
 // 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
-// 🟢 grounded — Go spec builtin integer overflow behavior; testcase: language_extdeps_grounding_anchor.dag.
 type GoBuiltinIntegerArithmeticOverflow
   = SignedTypedIntegerTruncatesSilentlyOnOverflow
   | UnsignedTypedIntegerTruncatesSilentlyOnOverflow
 
-// 🟡 needs-more-work — IRCarrier policy bridge remains a D2-REV resolver obligation; testcase: language_extdeps_grounding_anchor.dag.
 type GoIntegerOverflowDisposition<IRCarrier> {
   debug_default: GoBuiltinIntegerArithmeticOverflow
   release_default: GoBuiltinIntegerArithmeticOverflow

@@ -131,7 +131,7 @@ src/v4/
     fixture/             # canonical input programs
 ```
 
-**Total: 80 .dag files + 5 docs + 5 .gitkeep = 90 files.** (Per invariant
+**Total: 81 .dag files + 5 docs + 5 .gitkeep = 91 files.** (Per invariant
 #1 the enumeration above — not the count — is authoritative; the count is
 a checksum, updated on every operator-ratified file addition/removal.
 **Reconciliation (2026-05-17, PR #3225 / review #13750):** the prior printed
@@ -156,7 +156,8 @@ checksum **71→72** `.dag`.
 `v4_lens_registry_dag_smoke_test.rs` receipt (parse witness only; same discipline as `fact_density.dag`).
 **2026-05-19 (AXIS-3 groundedness):** add seven `test/claim/manual/*_extdeps_grounding_anchor.dag`
 compile-only anchors for Go/Python/Rust grounded vs needs-more-work carrier markers; variant-name
-collisions require separate width-anchor modules; checksum **73→80** `.dag`.
+collisions require separate width-anchor modules; checksum **74→81** `.dag`
+(the prior printed checksum was one below the tracked tree).
 
 ## Scalar/numeric concept decomposition
 
