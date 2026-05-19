@@ -1,16 +1,12 @@
 // v2 artifact model -- explicit representation of buildable/deployable units.
 //
 // The compiler currently assumes a single monolithic artifact. This module
-// makes that assumption explicit as data, and provides the artifact-plan
-// and boundary-checking contracts for future orchestration layers.
-//
-// Only explicit artifact plans are authoritative today. The compiler
-// pipeline does not yet own multi-artifact partitioning; this module keeps
-// the plan data model honest until a real partitioner exists.
+// makes that assumption explicit as data: default_artifact_plan turns the
+// current pipeline state into an explicit ArtifactPlan. The Artifact and
+// Boundary types model the buildable units a future orchestration layer
+// would partition; the compiler pipeline does not yet own that partition.
 
 module v2.compiler.artifact
-
-import v2.std.core { TextFile }
 
 // =========================================================================
 // Render target -- which language the emitter produces.
@@ -69,45 +65,19 @@ type ArtifactPlan {
 }
 
 // =========================================================================
-// Explicit partition rules -- authoritative today
-// =========================================================================
-
-type PartitionRule
-  = Explicit { artifacts: List<Artifact> }
-
-// Plan artifacts from an explicit rule. Placeholder partition strategies
-// were removed; adding new strategies should come with real authority.
-fn plan_artifacts(rule: PartitionRule) -> ArtifactPlan {
-  match rule {
-    Explicit { artifacts: arts } =>
-      ArtifactPlan { artifacts: arts, boundaries: [] }
-  }
-}
-
-// =========================================================================
-// Artifact output -- per-artifact emission result
-//
-// Not wired into compile_sources yet; retained here so artifact reports
-// can model per-artifact files once orchestration is real.
-// =========================================================================
-
-type ArtifactOutput {
-  artifact: Artifact
-  files: List<TextFile>
-}
-
-// =========================================================================
-// Default plan -- compatibility wrapper
+// Default plan -- the current single-artifact pipeline state as data.
 // =========================================================================
 
 // Create a default single-artifact plan from the current pipeline state.
-// This is the compatibility wrapper -- current behavior becomes an explicit plan.
 fn default_artifact_plan(root_modules: List<String>, target: RenderTarget) -> ArtifactPlan {
-  plan_artifacts(rule: Explicit { artifacts: [Artifact {
-    name: "default",
-    kind: ServiceBinary,
-    target: target,
-    entry_modules: root_modules,
-    dependencies: []
-  }] })
+  ArtifactPlan {
+    artifacts: [Artifact {
+      name: "default",
+      kind: ServiceBinary,
+      target: target,
+      entry_modules: root_modules,
+      dependencies: []
+    }],
+    boundaries: []
+  }
 }
