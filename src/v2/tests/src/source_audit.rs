@@ -362,26 +362,26 @@ fn typecheck_has_cycle_detection() {
 
 #[test]
 fn pattern_lookup_uses_explicit_subject_status() {
-    let source = read_v2_file("src/v2/04_patterns.dag");
+    let source = read_v2_file("src/v2/04_infer.dag");
     assert_live_contains(
         &source,
         "type PatternSubject",
-        "04_patterns.dag should define an explicit PatternSubject status channel",
+        "04_infer.dag should define an explicit PatternSubject status channel",
     );
     assert_live_contains(
         &source,
         "PatternLookupBlocked",
-        "04_patterns.dag should represent blocked lookup explicitly",
+        "04_infer.dag should represent blocked lookup explicitly",
     );
     assert_live_not_contains(
         &source,
         "scrut.name == \"Error\"",
-        "04_patterns.dag should not branch on raw scrutinee Error names inline",
+        "04_infer.dag should not branch on raw scrutinee Error names inline",
     );
     assert_live_not_contains(
         &source,
         "variant.name == \"Dynamic\"",
-        "04_patterns.dag should not branch on raw variant Dynamic names inline",
+        "04_infer.dag should not branch on raw variant Dynamic names inline",
     );
 }
 
@@ -404,18 +404,11 @@ fn resolve_filters_failed_imports_and_cycles() {
 
 #[test]
 fn typecheck_gates_inference_on_env_errors_and_resolves_expr_types() {
-    let resolve_source = read_v2_file("src/v2/04_resolve.dag");
-    assert_live_contains(
-        &resolve_source,
-        "fn resolve_expr_types(",
-        "04_resolve.dag should define fn resolve_expr_types",
-    );
-
     let infer_source = read_v2_file("src/v2/04_infer.dag");
-    assert_live_not_contains(
+    assert_live_contains(
         &infer_source,
         "fn resolve_expr_types(",
-        "04_infer.dag should not define fn resolve_expr_types",
+        "04_infer.dag should define the consolidated resolve_expr_types helper",
     );
     assert_live_contains(
         &infer_source,
@@ -485,16 +478,16 @@ fn final_cleanup_removes_parser_and_cli_fabrication_fallbacks() {
 
 #[test]
 fn unannotated_function_reports_signature_resolution_error() {
-    let source = read_v2_file("src/v2/04_sigs.dag");
+    let source = read_v2_file("src/v2/04_infer.dag");
     assert_live_contains(
         &source,
         "fn collect_func_call_edges(",
-        "04_sigs.dag should define fn collect_func_call_edges",
+        "04_infer.dag should define fn collect_func_call_edges",
     );
     assert_live_contains(
         &source,
         "fn topo_resolve_loop(",
-        "04_sigs.dag should define fn topo_resolve_loop",
+        "04_infer.dag should define fn topo_resolve_loop",
     );
 }
 
@@ -699,7 +692,7 @@ fn parser_progress_witness_hooks_live_in_parse_layer() {
 
 #[test]
 fn recursive_variant_witnesses_are_structural() {
-    let env_source = read_v2_file("src/v2/04_env.dag");
+    let env_source = read_v2_file("src/v2/04_infer.dag");
     let env_stage0 = read_v2_file("src/v2/stage0/src/v2_compiler_infer_env.rs");
     let infer_source = read_v2_file("src/v2/04_infer.dag");
 
@@ -708,7 +701,7 @@ fn recursive_variant_witnesses_are_structural() {
         assert_live_contains(
             &env_source,
             needle,
-            &format!("src/v2/04_env.dag should contain {needle}"),
+            &format!("src/v2/04_infer.dag should contain {needle}"),
         );
     }
 
@@ -966,7 +959,6 @@ fn no_self_fallback_in_consumer_files() {
     // fail-open "None => texpr" or "None => expr" child-access pattern.
     let files = [
         "src/v2/04_infer.dag",
-        "src/v2/04_service.dag",
         "src/v2/05_emit.dag",
         "src/v2/05_emit_rust.dag",
         "src/v2/05_emit_go.dag",

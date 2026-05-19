@@ -82,21 +82,21 @@ import v2.compiler.compiler_tests_rust { compiler_tests_source }
 import v2.compiler.coercion { coerce_primitive_type, is_copy, lookup_checkpoint }
 
 import std.types { is_container_type }
-import v2.compiler.infer_env { TypeEnv, TypeBinding, authored_name, lookup_type_by_name }
-import v2.compiler.infer_types {
+import v2.compiler.infer { TypeEnv, TypeBinding, authored_name, lookup_type_by_name }
+import v2.compiler.infer {
   resolved_type, normalize_access_type_node, for_each_element_type_node,
   child_type_node, emit_map_has,
   node_is_keyed_collection, node_is_element_collection, node_is_collection,
   is_product_type, is_coproduct_type, is_unit_like
 }
-import v2.compiler.infer_method {
+import v2.compiler.infer {
 }
-import v2.compiler.infer_sigs { ResolvedFuncEnv }
-import v2.compiler.infer_items {
+import v2.compiler.infer { ResolvedFuncEnv }
+import v2.compiler.infer {
   ResolvedGraph, TypedModule,
   ItemInfo, DataItem
 }
-import v2.compiler.infer_service {
+import v2.compiler.infer {
   is_typed_service_call_receiver, extract_typed_service_name
 }
 import v2.compiler.infer {
@@ -105,7 +105,7 @@ import v2.compiler.infer {
   build_emit_graph_info,
   expr_span
 }
-import v2.compiler.infer_emit_info {
+import v2.compiler.infer {
   EmitGraphInfo, TypeSummary, StructRepr, EnumRepr,
   lookup_emit_type_summary, is_enum_in_summaries, find_variant_parent, is_known_variant,
   variant_belongs_to_enum

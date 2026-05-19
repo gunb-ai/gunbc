@@ -36,9 +36,9 @@ import v2.compiler.tokenize { tokenize }
 import v2.compiler.parse { parse_with_table, ParseResult }
 import v2.compiler.resolve { resolve_modules, ModuleGraph }
 import v2.compiler.normalize { normalize_graph, NormalizeResult }
-import v2.compiler.infer_items { ResolvedGraph, TypedModule }
+import v2.compiler.infer { ResolvedGraph, TypedModule }
 import v2.compiler.infer { reconcile }
-import v2.compiler.infer_types { algebra_field_kind_name }
+import v2.compiler.infer { algebra_field_kind_name }
 import v2.compiler.emit { EmitResult, escape_json_string }
 import v2.compiler.emit_rust { emit_rust }
 import v2.compiler.emit_python { emit_python }

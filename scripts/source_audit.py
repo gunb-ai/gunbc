@@ -84,16 +84,9 @@ def main() -> int:
 
     require_contains(
         failures,
-        "src/v2/04_resolve.dag",
-        "fn resolve_expr_types(",
-        "should define resolve_expr_types in the resolve pass",
-        live_only=True,
-    )
-    require_not_contains(
-        failures,
         "src/v2/04_infer.dag",
         "fn resolve_expr_types(",
-        "should not define resolve_expr_types in infer anymore",
+        "should define resolve_expr_types in the consolidated infer stage",
         live_only=True,
     )
     require_contains(
@@ -107,8 +100,8 @@ def main() -> int:
     require_contains(
         failures,
         "src/v2/00_core.dag",
-        "fn expr_children",
-        "should retain the shared expr_children walk",
+        "fn map_children",
+        "should retain the shared expression child mapper",
     )
     require_contains(
         failures,
@@ -231,9 +224,9 @@ def main() -> int:
     )
     require_contains(
         failures,
-        "src/v2/05_emit.dag",
-        'Rust => concat("Rc<dyn Fn(',
-        "shared emit should render Rust callable aliases as Rc<dyn Fn(...)>",
+        "src/v2/languages.dag",
+        'callable_type_template: "Rc<dyn Fn(',
+        "language spec should render Rust callable aliases as Rc<dyn Fn(...)>",
     )
     require_not_contains(
         failures,
