@@ -4,11 +4,7 @@
 // Consumes: std/node.dag (Symbol); std/machine.dag (Bit, Word32, Word64); std/algebra.dag (Ordering, Less, Equal, Greater); std/diagnostic.dag (Diagnostic, Outcome, PortLocus, Produced, Rejected, Unavailable, UserInputBoundary); std/logic.dag (Bool); std/nat.dag (Nat, nat_is_zero, nat_compare).
 // Status: std float vocabulary (32/64, specials, IEEE-ordered compare).
 // Anchor: https://en.wikipedia.org/wiki/IEEE_754
-<<<<<<< HEAD
 // Ledger: CP-3229-GREEN-TERMINAL, SL-3229-FLOAT-NOMINAL.
-=======
-// Ledger: DECISIONS.md Part 6 — CP-3229-GREEN-TERMINAL, SL-3229-FLOAT-NOMINAL.
->>>>>>> 350387e64 (feat(v4): RULING-1 slice groundedness mark on strict_deprose headers)
 // 🟢
 
 module v4.std.float
