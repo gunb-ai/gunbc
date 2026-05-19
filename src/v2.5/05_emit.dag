@@ -1,32 +1,58 @@
 // src/v2.5/05_emit.dag
 // Scope: Stage 5 of the v2.5 fork — InferredNode × LanguageSpec -> Outcome<TargetSource>.
-//        Emission is a fold over closed InferredNode variants; per-target syntax is data.
-// Owns:  LanguageSpec carrier + sub-carriers (IdentifierRules, ItemSyntax, ExpressionSyntax,
-//        PatternSyntax, StringInterpSyntax, TypeRenderRules, VisibilityRules,
-//        TestConventions, CoercionRule); BinOp / NamingCase / ReservedEscape /
-//        ExportVisibility / TernaryForm / Precedence; emit; emit_fold_algebra;
-//        diagnostic symbols and locus port.
-// Consumes: v2_5.std.node (Node, Symbol, NodeFold, fold_node) — Tier 0 (cool-bee-832).
-//           v2_5.std.diagnostic (Outcome, Diagnostic, Locus, PortLocus, ...) — Tier 0 mirror of v4.
-//           v2_5.std.stage_types (InferredNode and its closed-sum variants) — Tier 1 (vivid-lynx-807).
-//           v2_5.std.string (concat, join, fold) — substrate ambient.
-// Status: DESIGN SCAFFOLD. Tier 0/1 substrates not yet authored; the import paths above name
-//         the expected modules but the dag compiler will not exercise this file until those
-//         land. The framework type kit + fold algebra + the LanguageSpec instance pattern
-//         (see src/v2.5/languages/rust.dag) are the substantive content. When Tier 1 publishes
-//         the authoritative InferredNode variant set, the fold step is wired to it directly.
-// Anchor: docs/design-emission-model.md ("Emission is a structural projection from a typed
-//         tree + per-target spec to target source; no decision engine, all real work lives in
-//         the substrate facts the spec carries.")
-// Calibration trigger: PR #3402 ("Deferred findings" §1 — per-target file split is the
-//         dominant coproduct defect across v2's emit_go/emit_python mirror pair). This file
-//         is the fork's resolution: ONE emit function, per-target syntax as data.
+//        Emission is a fold over closed InferredNode variants; per-target syntax is data
+//        (read from LanguageSpec, owned by src/v2.5/std/language_spec.dag).
+// Owns:  TargetFile; TargetSource; emit_stage_locus_port + reason symbols + diagnostic helpers;
+//        emit (entry); emit_root; emit_module; render_item dispatch; render_expr + expr_fold_algebra;
+//        emit_ident + apply_naming_case + apply_reserved_escape + render_binop_symbol + binop_eq;
+//        collect_outcomes; render_* per-variant signatures.
+// Consumes: v2_5.std.language_spec (LanguageSpec carrier + all sub-carriers — this file
+//             does not redefine them; multi-consumer std/ home).
+//           v2_5.std.node (Node, Symbol, NodeFold, fold_node) — Tier 0 (cool-bee-832).
+//           v2_5.std.diagnostic (Outcome, Diagnostic, Locus, PortLocus, Produced, Rejected,
+//             Unavailable, ExternalContractUnknown) — Tier 0 mirror of v4.
+//           v2_5.std.stage_types (InferredNode and its closed-sum variants) — Tier 1
+//             (vivid-lynx-807).
+// Status: DESIGN SCAFFOLD. Tier 0/1 substrates not yet authored; the import paths above
+//         name the expected modules. The framework + LanguageSpec projection + fold
+//         algebra + per-target instance pattern (src/v2.5/languages/rust.dag) are the
+//         substantive content. When Tier 1 publishes the authoritative InferredNode
+//         variant set, the fold step wires to it directly without restructuring.
+// Anchor: docs/design-emission-model.md — emission is a structural projection from a typed
+//         tree + per-target spec to target source; no decision engine, all real work lives
+//         in the substrate facts the spec carries.
+// Calibration trigger: PR #3402 "Deferred findings" §1 — per-target file split is the
+//         dominant coproduct defect across v2's emit_go / emit_python mirror pair. This
+//         file is the fork's resolution: ONE emit function, per-target syntax as data.
 
 
 module v2_5.compiler.emit
 
 
-import v2_5.std.node { Node, Symbol, NodeFold, fold_node }
+import v2_5.std.language_spec {
+  LanguageSpec,
+  IdentifierRules,
+  NamingCase,
+  SnakeCase,
+  PascalCase,
+  CamelCase,
+  AsAuthored,
+  ReservedEscape,
+  PrefixEscape,
+  SuffixEscape,
+  NoEscape,
+  BlockSyntax,
+  BracedBlock,
+  IndentedBlock,
+  IfForm,
+  IfExpression,
+  ConditionalTernary,
+  IfStatement,
+  InterpStyle,
+  BinOp,
+  BinOpRule
+}
+import v2_5.std.node { Node, Edge, Symbol, NodeFold, fold_node }
 import v2_5.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,
@@ -76,374 +102,7 @@ import v2_5.std.stage_types {
 
 
 // =============================================================================
-// LanguageSpec — per-target syntax as first-class typed data
-// =============================================================================
-//
-// LanguageSpec is the central carrier emit reads to render InferredNode into
-// target text. Every per-target syntactic fact lives here as typed data — not
-// as a `match target { Rust => ... | Python => ... }` arm in code. v2's
-// 05_emit.dag had 12+ such per-target match arms across the codebase; in v2.5
-// the target axis is dissolved into LanguageSpec field reads.
-//
-// LanguageSpec is organized by emission concern (identifiers, items, expressions,
-// patterns, strings, types, visibility, tests, coercions). Each sub-carrier is
-// its own closed coproduct or record. There are no bare String fields holding
-// kind-discriminator semantics; closed sums carry the discrimination.
-
-type LanguageSpec {
-  identity: LanguageIdentity
-  identifiers: IdentifierRules
-  items: ItemSyntax
-  expressions: ExpressionSyntax
-  patterns: PatternSyntax
-  strings: StringInterpSyntax
-  types: TypeRenderRules
-  visibility: VisibilityRules
-  tests: TestConventions
-  coercions: List<CoercionRule>
-  imports: ImportRules
-}
-
-
-// =============================================================================
-// LanguageIdentity — typed Symbol identifying the target (mirror of v4 pattern:
-// data <ident>: Symbol = <ident>).
-// =============================================================================
-
-type LanguageIdentity {
-  language_id: Symbol
-  display_name: String
-}
-
-
-// =============================================================================
-// IdentifierRules — naming case, reserved-word strategy
-// =============================================================================
-//
-// In v2/05_emit.dag this was scattered across `naming_case`, `reserved_words`,
-// `reserved_prefix`/`reserved_suffix` (dead-fns) + 4 inline matches in
-// `emit_ident`/`emit_export_ident`. PR #3402 collapsed the 4 inlines to one
-// `apply_reserved_escape`. v2.5 lifts the whole rule into a typed sub-carrier.
-
-type IdentifierRules {
-  default_case: NamingCase
-  reserved_words: List<Symbol>
-  reserved_escape: ReservedEscape
-}
-
-// Closed coproduct — the v2 equivalent was a sum-variant + field-presence on
-// `naming_case_for_target`/inline-match-sites.
-type NamingCase
-  = SnakeCase
-  | PascalCase
-  | CamelCase
-  | AsAuthored
-
-// Closed coproduct — collapses v2's reserved_prefix/suffix dead-fn pair + 2
-// inline match-sites (PR #3402 collapsed to apply_reserved_escape).
-type ReservedEscape
-  = PrefixEscape { prefix: String }
-  | SuffixEscape { suffix: String }
-  | NoEscape
-
-
-// =============================================================================
-// ItemSyntax — keywords and delimiters for item-level constructs
-// =============================================================================
-
-type ItemSyntax {
-  fn_keyword: String
-  type_alias_keyword: String
-  struct_keyword: String
-  enum_keyword: String
-  data_keyword: String
-  module_keyword: String
-  param_open: String
-  param_close: String
-  param_separator: String
-  param_type_form: ParamTypeForm
-  return_arrow: String
-  block: BlockSyntax
-  item_separator: String
-  field_separator: String
-  comment_prefix: String
-}
-
-// Closed coproduct: where does the type sit relative to the name?
-// Rust/Python: `name: Type`. Go: `name Type`. Some langs: `Type name`.
-type ParamTypeForm
-  = NameColonType { separator: String }    // "name: Type"
-  | NameSpaceType { separator: String }    // "name Type"
-  | TypeSpaceName { separator: String }    // "Type name"
-
-// Closed coproduct: braced (Rust/Go) vs indented (Python).
-// In v2 this was branched as `match target { Go|Rust => brace | Python => indent }`
-// across many call sites. Here it's data.
-type BlockSyntax
-  = BracedBlock { open: String, close: String, statement_terminator: String }
-  | IndentedBlock { header_terminator: String, statement_terminator: String, indent_unit: String }
-
-
-// =============================================================================
-// ExpressionSyntax — operators, precedence, ternary form
-// =============================================================================
-//
-// In v2 the operator-symbol table was per-target. v2.5: ONE List<BinOpRule>
-// per LanguageSpec, looked up by typed BinOp variant. Precedence ditto.
-
-type ExpressionSyntax {
-  binops: List<BinOpRule>
-  unary_neg: String
-  unary_not: String
-  if_form: IfForm
-  field_access_separator: String
-  method_call_separator: String
-  call_open: String
-  call_close: String
-  arg_separator: String
-  null_literal: String
-}
-
-// First-class typed binary operator (no more "binop_symbol" string lookups
-// across hand-rolled per-target tables — the rule is `BinOp variant -> symbol
-// per target`).
-type BinOp
-  = Add
-  | Sub
-  | Mul
-  | Div
-  | Mod
-  | Eq
-  | Neq
-  | Lt
-  | Lte
-  | Gt
-  | Gte
-  | And
-  | Or
-  | StringConcat
-  | NullCoalesce
-
-type BinOpRule {
-  op: BinOp
-  symbol: String
-  precedence: Int
-}
-
-// Closed coproduct — v2 had `IfValueForm = IfExpression | ConditionalTernary
-// | IfStatement` and branched per-call-site. Carried over directly.
-type IfForm
-  = IfExpression { kw_if: String, kw_then: String, kw_else: String }
-  | ConditionalTernary { then_form: String, else_form: String }   // e.g. Python "x if c else y"
-  | IfStatement { kw_if: String, kw_else: String }                 // no value; needs assignment wrapper
-
-
-// =============================================================================
-// PatternSyntax — match-pattern construction
-// =============================================================================
-//
-// In v2 each backend hand-spelled variant pattern emission with target-tuned
-// arm/payload syntax. Here the per-target shape is data; emit_pattern is a
-// fold over InferredPattern parameterized by this sub-carrier.
-
-type PatternSyntax {
-  match_keyword: String
-  arm_arrow: String
-  arm_separator: String
-  wildcard: String
-  bind_form: BindForm
-  variant_payload: VariantPayloadForm
-}
-
-type BindForm
-  = NamedBind                                 // pattern `x` binds
-  | AtBind { at_symbol: String }              // pattern `x @ pat` binds
-
-// Closed coproduct — Rust uses `Variant { field: x }`, Go uses tagged-union
-// type-switch, Python uses class-pattern syntax. v2 hand-rolled each.
-type VariantPayloadForm
-  = NamedBraces { open: String, close: String, field_separator: String }
-  | PositionalParens { open: String, close: String, field_separator: String }
-  | TypeAssertSwitch { syntax_id: Symbol }
-
-
-// =============================================================================
-// StringInterpSyntax — interpolation form + escape pairs
-// =============================================================================
-//
-// v2/05_emit.dag had separate escape_rust_interp_text / escape_go_interp_text /
-// escape_python_interp_text functions doing the same thing with different
-// EscapePair lists. The carrier `apply_escape_pairs(s, pairs)` already exists in
-// v2 (added in v2 audit but not yet wired through per-target callers — listed
-// as a deferred follow-up in PR #3402). In v2.5 there is one function and the
-// pairs are data.
-
-type StringInterpSyntax {
-  interp_style: InterpStyle
-  escape_pairs: List<EscapePair>
-}
-
-// Closed coproduct — three distinct interpolation models observed across
-// targets (Rust format!/format_args, Python f-strings, Go fmt.Sprintf positional).
-type InterpStyle
-  = NamedHole { hole_open: String, hole_close: String }                    // Rust "{name}"
-  | FStringHole { prefix: String, hole_open: String, hole_close: String }  // Python f"{name}"
-  | PositionalFormat { format_function: String, hole_token: String }       // Go fmt.Sprintf "%s"
-
-type EscapePair {
-  from: String
-  to: String
-}
-
-
-// =============================================================================
-// TypeRenderRules — how to render type forms
-// =============================================================================
-//
-// The largest single homomorphism debt in v2's emit was `render_node_type`
-// (~180 lines, hand-rolled type-tree catamorphism over 9+ arms). In v2.5 the
-// per-arm rendering is a TYPED ALGEBRA — one rule per Connective, looked up by
-// closed-sum dispatch — and the recursion is fold_node (Tier 0).
-//
-// Practice 10 receipt: the catamorphism shape lives in fold_node + this
-// algebra; emit does NOT re-implement recursion.
-
-type TypeRenderRules {
-  named_type_form: NamedTypeForm
-  optional_type: OptionalTypeForm
-  function_type: FunctionTypeForm
-  container_type: ContainerTypeForm
-  conjunction_type: ConjunctionTypeForm
-  disjunction_type: DisjunctionTypeForm
-  cardinality_type: CardinalityTypeForm
-}
-
-type NamedTypeForm {
-  type_arg_open: String        // "<" or "["
-  type_arg_close: String
-  type_arg_separator: String
-}
-
-// Closed coproduct — Rust `Option<T>`, Python `Optional[T]`, Go `*T` / `(T, error)`,
-// SQL `T NULL`. v2 branched on target inline; v2.5: typed dispatch.
-type OptionalTypeForm
-  = WrappedOptional { wrapper: String, open: String, close: String }   // Option<T>, Optional[T]
-  | PointerOptional { prefix: String }                                  // *T
-  | TupleErrorOptional { tuple_open: String, error_type: String, tuple_close: String, separator: String }
-
-type FunctionTypeForm {
-  fn_keyword: String
-  open: String
-  close: String
-  param_separator: String
-  return_arrow: String
-}
-
-type ContainerTypeForm {
-  list_open: String       // "List<" / "[" / "[]"
-  list_close: String
-  map_open: String        // "Map<" / "dict[" / "map["
-  map_close: String
-  map_key_separator: String   // ", " or "]"
-  set_open: String
-  set_close: String
-}
-
-type ConjunctionTypeForm
-  = AnonymousRecord { open: String, close: String, field_separator: String }
-  | TupleProduct { open: String, close: String, separator: String }
-
-type DisjunctionTypeForm
-  = SumKeyword { keyword: String, separator: String }
-  | TaggedUnion { open: String, close: String, tag_field: String }
-
-type CardinalityTypeForm
-  = SuffixCardinality { many: String, optional: String }   // "T*", "T?"
-  | RefinementClause { kw_where: String }
-
-
-// =============================================================================
-// VisibilityRules — export marker policy
-// =============================================================================
-
-type VisibilityRules
-  = KeywordVisibility { export_kw: String, hidden_kw: String }   // Rust "pub"
-  | CaseVisibility { export_case: NamingCase }                   // Go PascalCase = exported
-  | NoVisibilityMarker                                            // Python (everything public)
-
-
-// =============================================================================
-// TestConventions — test name case + framework attribute
-// =============================================================================
-
-type TestConventions {
-  test_name_case: NamingCase
-  test_attribute: String              // "#[test]" / "" / "func TestX"
-  test_file_suffix: String            // "_test.go" / "test_x.py" / "tests.rs"
-  mock_field_prefix: String           // "mock_"
-}
-
-
-// =============================================================================
-// ImportRules — import emission driven by typed triggers
-// =============================================================================
-
-type ImportRules {
-  import_keyword: String
-  import_path_open: String
-  import_path_close: String
-  rules: List<ImportRule>
-}
-
-// Closed coproduct — v2 had ImportRule.trigger with TypeUsageTrigger /
-// TraitImplTrigger / DeriveMacroTrigger / ContainerUsageTrigger /
-// AsyncUsageTrigger. Carried over directly into v2.5.
-type ImportTrigger
-  = TypeUsageTrigger { type_name: Symbol }
-  | TraitImplTrigger { trait_name: Symbol }
-  | DeriveMacroTrigger { macro_name: Symbol }
-  | ContainerUsageTrigger { container: Symbol }
-  | AsyncUsageTrigger
-  | EffectUsageTrigger { effect: Symbol }
-
-type ImportRule {
-  trigger: ImportTrigger
-  import_path: String
-}
-
-
-// =============================================================================
-// CoercionRule — typed coercion data (not match arms)
-// =============================================================================
-//
-// In v2/coercion.dag and emit's `coerce_primitive_type` / `coerce_container_template`,
-// coercions were hand-rolled type-pair match cascades. v2.5: a list of typed rules
-// the emitter applies during emission.
-
-type CoercionRule {
-  source: CoercionSource
-  target: CoercionTarget
-  render: CoercionRender
-}
-
-type CoercionSource
-  = FromPrimitive { name: Symbol }
-  | FromContainer { name: Symbol, element: Symbol }
-  | FromOptional { inner: Symbol }
-
-type CoercionTarget
-  = ToTargetType { name: Symbol }
-  | ToTargetGeneric { name: Symbol, arg: Symbol }
-
-type CoercionRender
-  = DirectAlias                                    // no syntactic transformation
-  | CastFn { fn_name: String }                     // emit `fn_name(x)`
-  | InterpolateCast { template: String }           // emit template with {} substitution
-  | TupleErrorWrap { tuple_open: String, tuple_close: String, error_value: String }
-
-
-// =============================================================================
-// Diagnostic symbols + locus port (fail-closed boundaries)
+// Diagnostic symbols + locus port — fail-closed boundaries
 // =============================================================================
 
 data emit_stage_locus_port: Symbol = emit_stage_locus_port
@@ -452,6 +111,7 @@ data emit_no_inhabitant: Symbol = emit_no_inhabitant
 data emit_under_refined: Symbol = emit_under_refined
 data emit_unsupported_coercion: Symbol = emit_unsupported_coercion
 data emit_missing_language_rule: Symbol = emit_missing_language_rule
+data emit_non_module_root: Symbol = emit_non_module_root
 
 
 fn emit_locus() -> Locus {
@@ -483,7 +143,7 @@ type TargetFile {
 
 type TargetSource {
   files: List<TargetFile>
-  spec_id: Symbol         // which LanguageSpec produced this output
+  spec_id: Symbol
 }
 
 
@@ -491,36 +151,32 @@ type TargetSource {
 // emit — the entry point
 // =============================================================================
 //
-// `emit` consumes an InferredNode (root) + LanguageSpec (target) and produces
-// Outcome<TargetSource>. The body is a fold over InferredNode whose algebra
-// reads LanguageSpec at every per-variant rendering decision.
-//
-// Per Practice 10: NO hand-rolled tree recursion. The emit function dispatches
-// once on the InferredNode top-level variant (module / item / expr / type / ...)
-// and delegates to fold_node + per-variant render functions that consume the
-// already-rendered child fragments.
+// emit consumes an InferredNode (root) + LanguageSpec (target) and produces
+// Outcome<TargetSource>. The body dispatches once on the InferredNode top-level
+// variant (module vs anything-else) and delegates rendering to per-variant
+// functions that consume LanguageSpec as data.
 
 fn emit(root: InferredNode, spec: LanguageSpec) -> Outcome<TargetSource> {
   match emit_root(node: root, spec: spec) {
-    Produced { value: files } => Produced { value: TargetSource { files: files, spec_id: spec.identity.language_id } }
+    Produced { value: files } =>
+      Produced {
+        value: TargetSource {
+          files: files,
+          spec_id: spec.identity.language_id
+        }
+      }
     Rejected { diagnostic: d } => Rejected { diagnostic: d }
   }
 }
 
 
-// emit_root dispatches the top-level InferredNode coproduct. Note this match is
-// over a CLOSED sum — vivid-lynx-807's stage_types.dag publishes the variant
-// set; this match is exhaustive by construction and the dag compiler enforces
-// it (no fallback arm).
+// emit_root dispatches the top-level InferredNode coproduct. Module is the
+// only file-bearing root; anything else at the root is rejected fail-closed.
 fn emit_root(node: InferredNode, spec: LanguageSpec) -> Outcome<List<TargetFile>> {
   match node {
     InferredModule { name: name, items: items, imports: imports } =>
       emit_module(name: name, items: items, imports: imports, spec: spec)
-    // Non-module roots are emit's responsibility to reject: a single item or
-    // expression at the root has no file to land in.
-    _ => Rejected {
-      diagnostic: emit_diagnostic(reason: emit_missing_language_rule)
-    }
+    _ => Rejected { diagnostic: emit_diagnostic(reason: emit_non_module_root) }
   }
 }
 
@@ -536,9 +192,8 @@ fn emit_module(
   spec: LanguageSpec
 ) -> Outcome<List<TargetFile>> {
   let import_block = render_imports(used_symbols: imports, spec: spec)
-  let item_strings = items |> map(i => render_item(item: i, spec: spec))
-  // fail-closed: if any item rendering rejected, propagate
-  match collect_outcomes(items: item_strings) {
+  let item_outcomes = items |> map(i => render_item(item: i, spec: spec))
+  match collect_outcomes(items: item_outcomes) {
     Produced { value: item_texts } => {
       let body = item_texts |> join(separator: spec.items.item_separator)
       let content = concat(import_block, body)
@@ -555,10 +210,9 @@ fn emit_module(
 // =============================================================================
 //
 // One match per InferredItem variant; each arm is a small render function that
-// reads LanguageSpec and produces String. The arms are NOT template-holes —
+// reads LanguageSpec and produces a String. The arms are NOT template-holes —
 // each variant has structurally distinct rendering needs (data layout differs
-// from fn body differs from service definition). They are honestly
-// per-variant.
+// from fn body differs from service definition). They are honestly per-variant.
 
 fn render_item(item: InferredItem, spec: LanguageSpec) -> Outcome<String> {
   match item {
@@ -577,38 +231,28 @@ fn render_item(item: InferredItem, spec: LanguageSpec) -> Outcome<String> {
 
 
 // =============================================================================
-// render_expr — closed dispatch over InferredExpr variants via fold_node
+// render_expr — closed dispatch over InferredExpr via fold_node
 // =============================================================================
 //
 // This is where Practice 10 most directly applies. v2's emit_typed_expr was a
 // 22-arm hand-rolled walker that re-traversed children at every arm. v2.5: ONE
 // fold_node call whose algebra (NodeFold<String>) describes per-variant
-// rendering. The recursion is in the substrate.
-//
-// expr_fold_algebra defines what to do at each node given the per-edge
-// already-rendered child string. The match is over the closed InferredExpr
-// variant set; LanguageSpec provides the syntactic fragments.
+// rendering. The recursion is in the substrate (Tier 0's fold_node, PR #3404).
 
 fn render_expr(expr: InferredExpr, spec: LanguageSpec) -> String {
-  fold_node(n: inferred_expr_to_node(e: expr), algebra: expr_fold_algebra(spec: spec))
+  fold_node(
+    n: inferred_expr_to_node(e: expr),
+    algebra: expr_fold_algebra(spec: spec)
+  )
 }
-
-// Pure conversion from the typed InferredExpr to a Node carrier — owned by
-// Tier 1 (stage_types.dag exports inferred_expr_to_node).
-extern fn inferred_expr_to_node(e: InferredExpr) -> Node
 
 
 fn expr_fold_algebra(spec: LanguageSpec) -> NodeFold<String> {
   NodeFold {
     init: fn(n) {
-      // init handles the per-variant "shape" — leaf rendering happens here,
-      // non-leaf variants return a sentinel string the step combines.
       render_expr_init(node: n, spec: spec)
     },
     step: fn(acc, edge, child_text) {
-      // step combines a partial render with the next child's already-rendered
-      // text. The edge label disambiguates (named edges carry semantic roles
-      // — `condition`, `then_branch`, `else_branch` — for if-expressions).
       render_expr_step(parent_text: acc, edge: edge, child_text: child_text, spec: spec)
     }
   }
@@ -616,17 +260,16 @@ fn expr_fold_algebra(spec: LanguageSpec) -> NodeFold<String> {
 
 
 // Per-variant init: handles leaves and stamps the parent variant's identity
-// so step can dispatch on it. The dispatch on InferredExpr's variant is once,
-// here, not at every recursive call as v2 did.
+// so step can compose. The dispatch on InferredExpr's variant is once, here,
+// not at every recursive call as v2 did.
 fn render_expr_init(node: Node, spec: LanguageSpec) -> String {
-  // The node's kind carries the InferredExpr variant identity (per Tier 1's
-  // stage_types convention). render_expr_dispatch consumes that variant tag
-  // and the leaf-only render of any value content (literals, var-names).
   render_expr_dispatch(node: node, spec: spec)
 }
 
 
-// Dispatch on InferredExpr variant — exhaustive over the closed sum.
+// Dispatch on InferredExpr variant — exhaustive over the closed sum that Tier
+// 1 publishes. Every arm reads LanguageSpec for its syntactic fragments; none
+// branches on a "target" string or enum.
 fn render_expr_dispatch(node: Node, spec: LanguageSpec) -> String {
   match inferred_expr_variant_of(n: node) {
     InferredLiteral { value: v } =>
@@ -634,14 +277,10 @@ fn render_expr_dispatch(node: Node, spec: LanguageSpec) -> String {
     InferredVarRef { name: name } =>
       emit_ident(name: name, rules: spec.identifiers)
     InferredFieldAccess { base: _, field: field } =>
-      // Base text comes from the recursive fold via step; init renders the field tail.
       concat(spec.expressions.field_access_separator, emit_ident(name: field, rules: spec.identifiers))
     InferredCall { callee: _, args: _ } =>
-      // Open/close come from spec; the recursive fold supplies callee text +
-      // arg texts joined by spec.expressions.arg_separator.
       spec.expressions.call_open
     InferredBinOp { op: op, left: _, right: _ } =>
-      // Operator symbol from typed BinOp lookup; left/right come via step.
       render_binop_symbol(op: op, spec: spec)
     InferredIf { condition: _, then_branch: _, else_branch: _ } =>
       render_if_form(form: spec.expressions.if_form)
@@ -661,16 +300,14 @@ fn render_expr_dispatch(node: Node, spec: LanguageSpec) -> String {
 
 
 // Per-variant step: combines parent's running text with a child render. The
-// edge label tells step which structural role the child plays.
+// edge label tells step which structural role the child plays. v4 demonstrates
+// the named/positional edge axis (v4.std.node.EdgeLabel); v2.5 follows it.
 fn render_expr_step(
   parent_text: String,
   edge: Edge,
   child_text: String,
   spec: LanguageSpec
 ) -> String {
-  // Edge labels are typed Symbols; this dispatch is lightweight string-key
-  // composition. Compare to v2 where every variant had its own concat order
-  // hand-written across hundreds of lines.
   concat(parent_text, child_text)
 }
 
@@ -678,9 +315,11 @@ fn render_expr_step(
 // =============================================================================
 // Leaf renderers — small, data-driven, mechanically derivable
 // =============================================================================
+//
+// emit_ident is the canonical example: ONE function, no per-target dispatch
+// (PR #3402's apply_reserved_escape principle generalized + grounded in a
+// closed NamingCase / ReservedEscape sum).
 
-// Identifier rendering — single function, no per-target dispatch (PR #3402's
-// apply_reserved_escape principle generalized).
 fn emit_ident(name: Symbol, rules: IdentifierRules) -> String {
   let converted = apply_naming_case(name: name, case: rules.default_case)
   let is_reserved = rules.reserved_words |> any(r => r == name)
@@ -711,11 +350,14 @@ fn apply_reserved_escape(name: String, escape: ReservedEscape) -> String {
 }
 
 
-// Binary-operator symbol — typed dispatch over List<BinOpRule>.
+// Binary-operator symbol — typed dispatch over List<BinOpRule>. v2 had
+// `binop_symbol(op: BinOp, target: RenderTarget)` doing string-keyed per-
+// target lookups; here the lookup is typed and the per-target axis is fully
+// captured by which LanguageSpec instance is passed in.
 fn render_binop_symbol(op: BinOp, spec: LanguageSpec) -> String {
   match spec.expressions.binops |> filter(r => binop_eq(a: r.op, b: op)) |> first {
     Some { value: rule } => rule.symbol
-    None => ""   // fail-closed: caller surfaces emit_missing_language_rule
+    None => ""   // fail-closed at caller: surfaces emit_missing_language_rule
   }
 }
 
@@ -742,14 +384,16 @@ fn binop_eq(a: BinOp, b: BinOp) -> Bool {
 
 
 // =============================================================================
-// Per-variant render skeletons (signatures — bodies pending Tier 1 publication)
+// Per-variant render skeletons — signatures
 // =============================================================================
 //
-// These functions are part of the framework's public contract; their bodies
-// follow the same shape — fold over their structural sub-children using
-// LanguageSpec to fill syntactic fragments. They are sketched here as
-// signatures so per-target data files can verify the LanguageSpec they
-// instantiate is shaped correctly.
+// These are the framework's public contract; the bodies follow the same shape
+// — fold over their structural sub-children using LanguageSpec to fill
+// syntactic fragments. They are sketched as signatures here so per-target data
+// files (src/v2.5/languages/<target>.dag) can verify the LanguageSpec they
+// instantiate is shaped correctly. Bodies follow once Tier 1's InferredNode
+// variant set is published; the variant arms each become a small data-driven
+// renderer reading from LanguageSpec, no per-target match arms.
 
 fn render_fn_def(sig: InferredFnDef, body: InferredBlock, spec: LanguageSpec) -> Outcome<String>
 fn render_func_def(sig: InferredFuncDef, body: InferredBlock, uses: List<Symbol>, spec: LanguageSpec) -> Outcome<String>
@@ -785,9 +429,10 @@ fn collect_outcomes(items: List<Outcome<String>>) -> Outcome<List<String>> {
 
 
 // =============================================================================
-// Bridges to Tier 1's InferredExpr shape — declared here, owned there
+// Bridges to substrate / Tier 1 shape — declared here, owned there
 // =============================================================================
 
+extern fn inferred_expr_to_node(e: InferredExpr) -> Node
 extern fn inferred_expr_variant_of(n: Node) -> InferredExpr
 extern fn symbol_to_string(s: Symbol) -> String
 extern fn to_snake(name: String) -> String
@@ -796,19 +441,20 @@ extern fn to_camel(name: String) -> String
 
 
 // =============================================================================
-// Notes on what dissolved (full receipts live in the PR body)
+// Receipts — v2 patterns that dissolve under this framework
 // =============================================================================
 //
 //   v2 pattern                                          | v2.5 resolution
-//   ----------------------------------------------------|---------------------------------
+//   ----------------------------------------------------|--------------------------------
 //   `match target { Rust => x | Python => y | Go => z}` | LanguageSpec field read
 //   `emit_rust_X` + `emit_go_X` + `emit_py_X` triples   | one `render_X(node, spec)`
 //   `render_node_type` 180-line hand-rolled catamorphism | fold_node + TypeRenderRules
-//   `emit_typed_expr` 22-arm walker + recursive calls   | fold_node + expr_fold_algebra
-//   `emit_rust_tco_*` family duplicating `emit_rust_*`  | one render path, tail-pos data
+//   `emit_typed_expr` 22-arm walker, recursive at arms  | fold_node + expr_fold_algebra
+//   `emit_rust_tco_*` family duplicating `emit_rust_*`  | one render path; tail-pos data
 //   per-target `escape_X_interp_text`                   | apply_escape_pairs + EscapePair list
 //   `reserved_prefix` + `reserved_suffix` (dead)        | typed ReservedEscape coproduct
 //   string-tagged "target" string parameter             | typed Symbol via LanguageIdentity
 //   `EmitResult { files, diagnostics }` (mixed shape)   | Outcome<TargetSource> closed sum
 //   per-target inline `if op_name == "fold" ...` chains | List<BinOpRule> typed lookup
-//   coercion match cascades                             | List<CoercionRule> typed data
+//   coercion match cascades (v2/coercion.dag)           | List<CoercionRule> typed data
+//   `RenderTarget = Rust | Python | Go | Dag` tag       | Symbol via LanguageIdentity + spec

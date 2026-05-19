@@ -1,0 +1,451 @@
+// src/v2.5/languages/rust.dag
+// Scope: Rust LanguageSpec instance — surface-syntax data for the v2.5 emit
+//        framework. This file is DATA, not code: it declares one LanguageSpec
+//        value populated with Rust's syntactic fragments. The emit framework
+//        (src/v2.5/05_emit.dag) reads this value to render an InferredNode
+//        into Rust source.
+// Owns:  rust_language_id, rust_spec, rust_binop_rules, rust_reserved_words,
+//        rust_import_rules, rust_coercion_rules.
+// Consumes: v2_5.std.language_spec — the carrier type definitions.
+//           v2_5.std.node (Symbol) — Tier 0 (cool-bee-832).
+// Status: DESIGN SCAFFOLD. Tier 0/1 substrates not yet authored; the dag
+//         compiler will not exercise this file until v2_5.std.language_spec
+//         + v2_5.std.node land. The data shape is the substantive content.
+// Anchor: https://doc.rust-lang.org/reference/
+// Calibration trigger: PR #3402 "Deferred findings" §1 — v2's per-target file
+//         split is the dominant coproduct defect. This file proves the
+//         collapse: ~150 lines of typed data replace ~6,800 lines of mirror-
+//         image hand-roll (v2/src/05_emit_rust.dag).
+
+
+module v2_5.languages.rust
+
+
+import v2_5.std.language_spec {
+  LanguageSpec,
+  LanguageIdentity,
+  IdentifierRules,
+  NamingCase,
+  SnakeCase,
+  PascalCase,
+  CamelCase,
+  ReservedEscape,
+  PrefixEscape,
+  ItemSyntax,
+  ParamTypeForm,
+  NameColonType,
+  BlockSyntax,
+  BracedBlock,
+  ExpressionSyntax,
+  BinOp,
+  Add,
+  Sub,
+  Mul,
+  Div,
+  Mod,
+  Eq,
+  Neq,
+  Lt,
+  Lte,
+  Gt,
+  Gte,
+  And,
+  Or,
+  StringConcat,
+  NullCoalesce,
+  BinOpRule,
+  IfForm,
+  IfExpression,
+  PatternSyntax,
+  BindForm,
+  NamedBind,
+  VariantPayloadForm,
+  NamedBraces,
+  StringInterpSyntax,
+  InterpStyle,
+  NamedHole,
+  EscapePair,
+  TypeRenderRules,
+  NamedTypeForm,
+  OptionalTypeForm,
+  WrappedOptional,
+  FunctionTypeForm,
+  ContainerTypeForm,
+  ConjunctionTypeForm,
+  AnonymousRecord,
+  DisjunctionTypeForm,
+  SumKeyword,
+  CardinalityTypeForm,
+  SuffixCardinality,
+  VisibilityRules,
+  KeywordVisibility,
+  TestConventions,
+  ImportRules,
+  ImportTrigger,
+  TypeUsageTrigger,
+  TraitImplTrigger,
+  DeriveMacroTrigger,
+  ContainerUsageTrigger,
+  AsyncUsageTrigger,
+  ImportRule,
+  CoercionRule,
+  CoercionSource,
+  FromPrimitive,
+  FromContainer,
+  CoercionTarget,
+  ToTargetType,
+  ToTargetGeneric,
+  CoercionRender,
+  DirectAlias,
+  CastFn
+}
+import v2_5.std.node { Symbol }
+
+
+// =============================================================================
+// LanguageIdentity — typed Symbol target identity (v4 pattern)
+// =============================================================================
+
+data rust_language_id: Symbol = rust_language_id
+
+
+// =============================================================================
+// Binary-operator rules — typed BinOp -> symbol mapping
+// =============================================================================
+//
+// Order is irrelevant; emit looks up by typed-equality. Precedence values
+// follow https://doc.rust-lang.org/reference/expressions.html#expression-precedence.
+
+fn rust_binop_rules() -> List<BinOpRule> {
+  [
+    BinOpRule { op: Mul, symbol: " * ", precedence: 12 },
+    BinOpRule { op: Div, symbol: " / ", precedence: 12 },
+    BinOpRule { op: Mod, symbol: " % ", precedence: 12 },
+    BinOpRule { op: Add, symbol: " + ", precedence: 11 },
+    BinOpRule { op: Sub, symbol: " - ", precedence: 11 },
+    BinOpRule { op: Lt, symbol: " < ", precedence: 9 },
+    BinOpRule { op: Lte, symbol: " <= ", precedence: 9 },
+    BinOpRule { op: Gt, symbol: " > ", precedence: 9 },
+    BinOpRule { op: Gte, symbol: " >= ", precedence: 9 },
+    BinOpRule { op: Eq, symbol: " == ", precedence: 8 },
+    BinOpRule { op: Neq, symbol: " != ", precedence: 8 },
+    BinOpRule { op: And, symbol: " && ", precedence: 4 },
+    BinOpRule { op: Or, symbol: " || ", precedence: 3 },
+    // String-concat in Rust: format!() preferred over +; emit framework
+    // surfaces this via NullCoalesce / StringConcat -> render path that may
+    // re-route through format!/concat! (decision deferred to render_binop
+    // when the InferredBinOp arm lands).
+    BinOpRule { op: StringConcat, symbol: " + ", precedence: 11 },
+    BinOpRule { op: NullCoalesce, symbol: ".unwrap_or", precedence: 12 }
+  ]
+}
+
+
+// =============================================================================
+// Reserved words — Rust 2024 edition
+// =============================================================================
+
+data rust_kw_as: Symbol = rust_kw_as
+data rust_kw_break: Symbol = rust_kw_break
+data rust_kw_const: Symbol = rust_kw_const
+data rust_kw_continue: Symbol = rust_kw_continue
+data rust_kw_crate: Symbol = rust_kw_crate
+data rust_kw_else: Symbol = rust_kw_else
+data rust_kw_enum: Symbol = rust_kw_enum
+data rust_kw_extern: Symbol = rust_kw_extern
+data rust_kw_false: Symbol = rust_kw_false
+data rust_kw_fn: Symbol = rust_kw_fn
+data rust_kw_for: Symbol = rust_kw_for
+data rust_kw_if: Symbol = rust_kw_if
+data rust_kw_impl: Symbol = rust_kw_impl
+data rust_kw_in: Symbol = rust_kw_in
+data rust_kw_let: Symbol = rust_kw_let
+data rust_kw_loop: Symbol = rust_kw_loop
+data rust_kw_match: Symbol = rust_kw_match
+data rust_kw_mod: Symbol = rust_kw_mod
+data rust_kw_move: Symbol = rust_kw_move
+data rust_kw_mut: Symbol = rust_kw_mut
+data rust_kw_pub: Symbol = rust_kw_pub
+data rust_kw_ref: Symbol = rust_kw_ref
+data rust_kw_return: Symbol = rust_kw_return
+data rust_kw_self_lower: Symbol = rust_kw_self_lower
+data rust_kw_self_upper: Symbol = rust_kw_self_upper
+data rust_kw_static: Symbol = rust_kw_static
+data rust_kw_struct: Symbol = rust_kw_struct
+data rust_kw_super: Symbol = rust_kw_super
+data rust_kw_trait: Symbol = rust_kw_trait
+data rust_kw_true: Symbol = rust_kw_true
+data rust_kw_type: Symbol = rust_kw_type
+data rust_kw_unsafe: Symbol = rust_kw_unsafe
+data rust_kw_use: Symbol = rust_kw_use
+data rust_kw_where: Symbol = rust_kw_where
+data rust_kw_while: Symbol = rust_kw_while
+data rust_kw_async: Symbol = rust_kw_async
+data rust_kw_await: Symbol = rust_kw_await
+data rust_kw_dyn: Symbol = rust_kw_dyn
+
+
+fn rust_reserved_words() -> List<Symbol> {
+  [
+    rust_kw_as, rust_kw_break, rust_kw_const, rust_kw_continue, rust_kw_crate,
+    rust_kw_else, rust_kw_enum, rust_kw_extern, rust_kw_false, rust_kw_fn,
+    rust_kw_for, rust_kw_if, rust_kw_impl, rust_kw_in, rust_kw_let, rust_kw_loop,
+    rust_kw_match, rust_kw_mod, rust_kw_move, rust_kw_mut, rust_kw_pub,
+    rust_kw_ref, rust_kw_return, rust_kw_self_lower, rust_kw_self_upper,
+    rust_kw_static, rust_kw_struct, rust_kw_super, rust_kw_trait, rust_kw_true,
+    rust_kw_type, rust_kw_unsafe, rust_kw_use, rust_kw_where, rust_kw_while,
+    rust_kw_async, rust_kw_await, rust_kw_dyn
+  ]
+}
+
+
+// =============================================================================
+// Import rules — typed triggers
+// =============================================================================
+//
+// Each rule says: "if the emitted code uses this symbol/feature, emit this
+// import path." emit consumes the list once per module; no per-target match.
+
+data sym_BTreeMap: Symbol = sym_BTreeMap
+data sym_HashMap: Symbol = sym_HashMap
+data sym_HashSet: Symbol = sym_HashSet
+data sym_Vec: Symbol = sym_Vec
+data sym_Arc: Symbol = sym_Arc
+data sym_Rc: Symbol = sym_Rc
+data sym_RefCell: Symbol = sym_RefCell
+data sym_Debug: Symbol = sym_Debug
+data sym_Clone: Symbol = sym_Clone
+data sym_Serialize: Symbol = sym_Serialize
+data sym_Deserialize: Symbol = sym_Deserialize
+
+
+fn rust_import_rules() -> List<ImportRule> {
+  [
+    ImportRule {
+      trigger: ContainerUsageTrigger { container: sym_BTreeMap },
+      import_path: "use std::collections::BTreeMap;"
+    },
+    ImportRule {
+      trigger: ContainerUsageTrigger { container: sym_HashMap },
+      import_path: "use std::collections::HashMap;"
+    },
+    ImportRule {
+      trigger: ContainerUsageTrigger { container: sym_HashSet },
+      import_path: "use std::collections::HashSet;"
+    },
+    ImportRule {
+      trigger: TypeUsageTrigger { type_name: sym_Arc },
+      import_path: "use std::sync::Arc;"
+    },
+    ImportRule {
+      trigger: TypeUsageTrigger { type_name: sym_Rc },
+      import_path: "use std::rc::Rc;"
+    },
+    ImportRule {
+      trigger: TypeUsageTrigger { type_name: sym_RefCell },
+      import_path: "use std::cell::RefCell;"
+    },
+    ImportRule {
+      trigger: DeriveMacroTrigger { macro_name: sym_Debug },
+      import_path: ""   // built-in derive; no import needed
+    },
+    ImportRule {
+      trigger: DeriveMacroTrigger { macro_name: sym_Serialize },
+      import_path: "use serde::Serialize;"
+    },
+    ImportRule {
+      trigger: DeriveMacroTrigger { macro_name: sym_Deserialize },
+      import_path: "use serde::Deserialize;"
+    },
+    ImportRule {
+      trigger: AsyncUsageTrigger,
+      import_path: "use tokio;"
+    }
+  ]
+}
+
+
+// =============================================================================
+// Coercion rules — typed data, not match arms
+// =============================================================================
+
+data sym_Int: Symbol = sym_Int
+data sym_String: Symbol = sym_String
+data sym_List: Symbol = sym_List
+data sym_Map: Symbol = sym_Map
+data sym_Bool: Symbol = sym_Bool
+data sym_Float: Symbol = sym_Float
+data sym_i64: Symbol = sym_i64
+data sym_i32: Symbol = sym_i32
+data sym_f64: Symbol = sym_f64
+data sym_str: Symbol = sym_str
+data sym_Vec_tgt: Symbol = sym_Vec_tgt
+
+
+fn rust_coercion_rules() -> List<CoercionRule> {
+  [
+    CoercionRule {
+      source: FromPrimitive { name: sym_Int },
+      target: ToTargetType { name: sym_i64 },
+      render: DirectAlias
+    },
+    CoercionRule {
+      source: FromPrimitive { name: sym_Float },
+      target: ToTargetType { name: sym_f64 },
+      render: DirectAlias
+    },
+    CoercionRule {
+      source: FromPrimitive { name: sym_Bool },
+      target: ToTargetType { name: sym_Bool },
+      render: DirectAlias
+    },
+    CoercionRule {
+      source: FromPrimitive { name: sym_String },
+      target: ToTargetType { name: sym_str },
+      render: CastFn { fn_name: "String::from" }
+    },
+    CoercionRule {
+      source: FromContainer { name: sym_List, element: sym_Int },
+      target: ToTargetGeneric { name: sym_Vec_tgt, arg: sym_i64 },
+      render: DirectAlias
+    }
+  ]
+}
+
+
+// =============================================================================
+// rust_spec — the LanguageSpec value
+// =============================================================================
+//
+// This is the deliverable: ONE typed value the emit framework reads. Every
+// field is either a primitive (String, Int, Symbol), a closed-sum variant,
+// or a list of typed-rule records. There are no hidden "if Rust then ..."
+// decisions; the data IS the decision.
+
+fn rust_spec() -> LanguageSpec {
+  LanguageSpec {
+    identity: LanguageIdentity {
+      language_id: rust_language_id,
+      display_name: "Rust"
+    },
+    identifiers: IdentifierRules {
+      default_case: SnakeCase,
+      reserved_words: rust_reserved_words(),
+      reserved_escape: PrefixEscape { prefix: "r#" }
+    },
+    items: ItemSyntax {
+      fn_keyword: "fn",
+      type_alias_keyword: "type",
+      struct_keyword: "struct",
+      enum_keyword: "enum",
+      data_keyword: "struct",
+      module_keyword: "mod",
+      param_open: "(",
+      param_close: ")",
+      param_separator: ", ",
+      param_type_form: NameColonType { separator: ": " },
+      return_arrow: " -> ",
+      block: BracedBlock {
+        open: " {\n",
+        close: "}\n",
+        statement_terminator: ";\n"
+      },
+      item_separator: "\n\n",
+      field_separator: ",\n",
+      comment_prefix: "// "
+    },
+    expressions: ExpressionSyntax {
+      binops: rust_binop_rules(),
+      unary_neg: "-",
+      unary_not: "!",
+      if_form: IfExpression {
+        kw_if: "if ",
+        kw_then: " ",     // Rust has no `then` keyword; block follows condition directly
+        kw_else: " else "
+      },
+      field_access_separator: ".",
+      method_call_separator: ".",
+      call_open: "(",
+      call_close: ")",
+      arg_separator: ", ",
+      null_literal: "None"
+    },
+    patterns: PatternSyntax {
+      match_keyword: "match ",
+      arm_arrow: " => ",
+      arm_separator: ",\n",
+      wildcard: "_",
+      bind_form: NamedBind,
+      variant_payload: NamedBraces {
+        open: " { ",
+        close: " }",
+        field_separator: ", "
+      }
+    },
+    strings: StringInterpSyntax {
+      interp_style: NamedHole { hole_open: "{", hole_close: "}" },
+      escape_pairs: [
+        EscapePair { from: "{", to: "{{" },
+        EscapePair { from: "}", to: "}}" }
+      ]
+    },
+    types: TypeRenderRules {
+      named_type_form: NamedTypeForm {
+        type_arg_open: "<",
+        type_arg_close: ">",
+        type_arg_separator: ", "
+      },
+      optional_type: WrappedOptional {
+        wrapper: "Option",
+        open: "<",
+        close: ">"
+      },
+      function_type: FunctionTypeForm {
+        fn_keyword: "fn",
+        open: "(",
+        close: ")",
+        param_separator: ", ",
+        return_arrow: " -> "
+      },
+      container_type: ContainerTypeForm {
+        list_open: "Vec<",
+        list_close: ">",
+        map_open: "HashMap<",
+        map_close: ">",
+        map_key_separator: ", ",
+        set_open: "HashSet<",
+        set_close: ">"
+      },
+      conjunction_type: AnonymousRecord {
+        open: "{ ",
+        close: " }",
+        field_separator: ", "
+      },
+      disjunction_type: SumKeyword {
+        keyword: "enum",
+        separator: ",\n"
+      },
+      cardinality_type: SuffixCardinality {
+        many: "Vec<>",
+        optional: "Option<>"
+      }
+    },
+    visibility: KeywordVisibility {
+      export_kw: "pub ",
+      hidden_kw: ""
+    },
+    tests: TestConventions {
+      test_name_case: SnakeCase,
+      test_attribute: "#[test]\n",
+      test_file_suffix: "_tests.rs",
+      mock_field_prefix: "mock_"
+    },
+    coercions: rust_coercion_rules(),
+    imports: ImportRules {
+      import_keyword: "use",
+      import_path_open: " ",
+      import_path_close: ";",
+      rules: rust_import_rules()
+    }
+  }
+}

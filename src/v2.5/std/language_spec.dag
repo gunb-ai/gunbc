@@ -1,0 +1,438 @@
+// src/v2.5/std/language_spec.dag
+// Scope: per-target language spec carrier — typed surface-syntax data shared across
+//        compiler stages (emit consumes it for source rendering; artifact uses it as
+//        the post-dissolution RenderTarget shape).
+// Owns:  LanguageSpec; LanguageIdentity; IdentifierRules + NamingCase + ReservedEscape;
+//        ItemSyntax + ParamTypeForm + BlockSyntax;
+//        ExpressionSyntax + BinOp + BinOpRule + IfForm;
+//        PatternSyntax + BindForm + VariantPayloadForm;
+//        StringInterpSyntax + InterpStyle + EscapePair;
+//        TypeRenderRules + NamedTypeForm + OptionalTypeForm + FunctionTypeForm +
+//        ContainerTypeForm + ConjunctionTypeForm + DisjunctionTypeForm +
+//        CardinalityTypeForm;
+//        VisibilityRules; TestConventions;
+//        ImportRules + ImportTrigger + ImportRule;
+//        CoercionRule + CoercionSource + CoercionTarget + CoercionRender.
+// Consumes: v2_5.std.node (Symbol) — Tier 0 (cool-bee-832).
+// Status: DESIGN SCAFFOLD. The carrier types are the substantive content; per-target
+//         instances live in src/v2.5/languages/<target>.dag (data declarations); the
+//         emit framework that projects this carrier lives in src/v2.5/05_emit.dag.
+//         Tier 0 substrate (v2_5.std.node) not yet authored; the dag compiler will not
+//         exercise this file until that lands.
+// Home rationale: LanguageSpec is consumed by multiple stages — emit (source rendering)
+//         and artifact (RenderTarget after dissolving the per-target tag-wrapper). Multi-
+//         consumer is the std/ tier criterion. Matches v4's pattern: spec-carrier types
+//         live in src/v4/std/* (RustScalar, GoScalar, PythonScalar); per-target instances
+//         live in src/v4/extdeps/languages/<target>.dag.
+// Calibration trigger: PR #3402 "Deferred findings" §1 — per-target file split is the
+//         dominant coproduct defect across v2's emit_go/emit_python mirror pair. This
+//         carrier is the resolution: the target axis becomes data, not code.
+
+
+module v2_5.std.language_spec
+
+
+import v2_5.std.node { Symbol }
+
+
+// =============================================================================
+// LanguageSpec — root carrier
+// =============================================================================
+//
+// LanguageSpec is the central per-target spec emit reads to render an
+// InferredNode into target text. Every per-target syntactic fact lives here
+// as typed data, organized by emission concern. There are no bare String
+// fields holding kind-discriminator semantics; closed sums carry the
+// discrimination, and String fields hold honest syntactic fragments (the "{"
+// in a brace-block IS a string; the *choice* of brace vs indent is a typed
+// BlockSyntax variant).
+
+type LanguageSpec {
+  identity: LanguageIdentity
+  identifiers: IdentifierRules
+  items: ItemSyntax
+  expressions: ExpressionSyntax
+  patterns: PatternSyntax
+  strings: StringInterpSyntax
+  types: TypeRenderRules
+  visibility: VisibilityRules
+  tests: TestConventions
+  coercions: List<CoercionRule>
+  imports: ImportRules
+}
+
+
+// =============================================================================
+// LanguageIdentity — typed Symbol target identity
+// =============================================================================
+//
+// v2 used a `RenderTarget = Rust | Python | Go | Dag` coproduct as the target
+// tag, then chased that tag through per-target `match` arms at every render
+// site. In v2.5 the tag is a Symbol (typed identifier per v4's `data <id>:
+// Symbol = <id>` pattern), and the per-target *behaviour* lives in the
+// LanguageSpec instance the Symbol identifies — NOT in match arms.
+
+type LanguageIdentity {
+  language_id: Symbol
+  display_name: String
+}
+
+
+// =============================================================================
+// IdentifierRules — naming case + reserved-word strategy
+// =============================================================================
+
+type IdentifierRules {
+  default_case: NamingCase
+  reserved_words: List<Symbol>
+  reserved_escape: ReservedEscape
+}
+
+// 🟢 coproduct dissolution — case-form axis as closed sum.
+type NamingCase
+  = SnakeCase
+  | PascalCase
+  | CamelCase
+  | AsAuthored
+
+// 🟢 coproduct dissolution — collapses v2's reserved_prefix / reserved_suffix
+// dead fn pair + the two inline `match strategy { Prefix | Suffix | NoEscape }`
+// sites in v2/05_emit.dag (collapsed in PR #3402 to apply_reserved_escape;
+// here lifted to a first-class typed carrier).
+type ReservedEscape
+  = PrefixEscape { prefix: String }
+  | SuffixEscape { suffix: String }
+  | NoEscape
+
+
+// =============================================================================
+// ItemSyntax — keywords and delimiters for item-level constructs
+// =============================================================================
+
+type ItemSyntax {
+  fn_keyword: String
+  type_alias_keyword: String
+  struct_keyword: String
+  enum_keyword: String
+  data_keyword: String
+  module_keyword: String
+  param_open: String
+  param_close: String
+  param_separator: String
+  param_type_form: ParamTypeForm
+  return_arrow: String
+  block: BlockSyntax
+  item_separator: String
+  field_separator: String
+  comment_prefix: String
+}
+
+// 🟢 coproduct dissolution — param-vs-type ordering as closed sum.
+// `name: Type` (Rust/Python), `name Type` (Go), `Type name` (C-family).
+type ParamTypeForm
+  = NameColonType { separator: String }
+  | NameSpaceType { separator: String }
+  | TypeSpaceName { separator: String }
+
+// 🟢 coproduct dissolution — braced (Rust/Go) vs indented (Python). v2 had
+// this as a target-conditional throughout; here the choice is typed data.
+type BlockSyntax
+  = BracedBlock {
+      open: String
+      close: String
+      statement_terminator: String
+    }
+  | IndentedBlock {
+      header_terminator: String
+      statement_terminator: String
+      indent_unit: String
+    }
+
+
+// =============================================================================
+// ExpressionSyntax — operators, precedence, control-form
+// =============================================================================
+
+type ExpressionSyntax {
+  binops: List<BinOpRule>
+  unary_neg: String
+  unary_not: String
+  if_form: IfForm
+  field_access_separator: String
+  method_call_separator: String
+  call_open: String
+  call_close: String
+  arg_separator: String
+  null_literal: String
+}
+
+// 🟢 coproduct dissolution — binary operator identity as a closed typed enum
+// instead of a String key. v2's `binop_symbol(op, target)` did string-keyed
+// per-target lookups; here the lookup is typed.
+type BinOp
+  = Add
+  | Sub
+  | Mul
+  | Div
+  | Mod
+  | Eq
+  | Neq
+  | Lt
+  | Lte
+  | Gt
+  | Gte
+  | And
+  | Or
+  | StringConcat
+  | NullCoalesce
+
+type BinOpRule {
+  op: BinOp
+  symbol: String
+  precedence: Int
+}
+
+// 🟢 coproduct dissolution — v2 had IfValueForm = IfExpression | ConditionalTernary
+// | IfStatement; carried over directly into the LanguageSpec carrier.
+type IfForm
+  = IfExpression { kw_if: String, kw_then: String, kw_else: String }
+  | ConditionalTernary { then_form: String, else_form: String }
+  | IfStatement { kw_if: String, kw_else: String }
+
+
+// =============================================================================
+// PatternSyntax — match-pattern construction
+// =============================================================================
+
+type PatternSyntax {
+  match_keyword: String
+  arm_arrow: String
+  arm_separator: String
+  wildcard: String
+  bind_form: BindForm
+  variant_payload: VariantPayloadForm
+}
+
+// 🟢 coproduct dissolution — pattern-binding form as closed sum.
+type BindForm
+  = NamedBind
+  | AtBind { at_symbol: String }
+
+// 🟢 coproduct dissolution — variant-payload syntax across targets. v2 hand-
+// rolled this per target (twin emit_variant_pattern / _rc_aware in
+// 05_emit_rust.dag).
+type VariantPayloadForm
+  = NamedBraces {
+      open: String
+      close: String
+      field_separator: String
+    }
+  | PositionalParens {
+      open: String
+      close: String
+      field_separator: String
+    }
+  | TypeAssertSwitch { syntax_id: Symbol }
+
+
+// =============================================================================
+// StringInterpSyntax — interpolation form + escape pairs
+// =============================================================================
+//
+// v2 had escape_rust_interp_text / escape_go_interp_text / escape_python_interp_text
+// — three nearly-identical functions distinguished only by escape pair sets. v2's
+// audit (PR #3402) introduced apply_escape_pairs(s, pairs) but the per-target
+// caller wrappers remained. In v2.5 the pair list is data, the function is one.
+
+type StringInterpSyntax {
+  interp_style: InterpStyle
+  escape_pairs: List<EscapePair>
+}
+
+// 🟢 coproduct dissolution — three interpolation models (named-hole Rust,
+// f-string Python, positional-format Go) as closed sum.
+type InterpStyle
+  = NamedHole { hole_open: String, hole_close: String }
+  | FStringHole { prefix: String, hole_open: String, hole_close: String }
+  | PositionalFormat { format_function: String, hole_token: String }
+
+type EscapePair {
+  from: String
+  to: String
+}
+
+
+// =============================================================================
+// TypeRenderRules — how to render type forms
+// =============================================================================
+//
+// The largest single homomorphism debt in v2's emit was `render_node_type`
+// (~180 lines, hand-rolled type-tree catamorphism, 9+ arms). In v2.5 the per-
+// arm rendering is a typed algebra — one rule per Connective — and the
+// recursion is fold_node (Tier 0 substrate, PR #3404).
+
+type TypeRenderRules {
+  named_type_form: NamedTypeForm
+  optional_type: OptionalTypeForm
+  function_type: FunctionTypeForm
+  container_type: ContainerTypeForm
+  conjunction_type: ConjunctionTypeForm
+  disjunction_type: DisjunctionTypeForm
+  cardinality_type: CardinalityTypeForm
+}
+
+type NamedTypeForm {
+  type_arg_open: String
+  type_arg_close: String
+  type_arg_separator: String
+}
+
+// 🟢 coproduct dissolution — optional-type rendering as closed sum across
+// targets that handle option differently (wrapped, pointer, tuple-error).
+type OptionalTypeForm
+  = WrappedOptional { wrapper: String, open: String, close: String }
+  | PointerOptional { prefix: String }
+  | TupleErrorOptional {
+      tuple_open: String
+      error_type: String
+      tuple_close: String
+      separator: String
+    }
+
+type FunctionTypeForm {
+  fn_keyword: String
+  open: String
+  close: String
+  param_separator: String
+  return_arrow: String
+}
+
+type ContainerTypeForm {
+  list_open: String
+  list_close: String
+  map_open: String
+  map_close: String
+  map_key_separator: String
+  set_open: String
+  set_close: String
+}
+
+// 🟢 coproduct dissolution — conjunction-type rendering (anonymous-record vs
+// tuple-product) as closed sum.
+type ConjunctionTypeForm
+  = AnonymousRecord {
+      open: String
+      close: String
+      field_separator: String
+    }
+  | TupleProduct {
+      open: String
+      close: String
+      separator: String
+    }
+
+// 🟢 coproduct dissolution — sum-type rendering (keyword-separated vs tagged-
+// union with tag-field) as closed sum.
+type DisjunctionTypeForm
+  = SumKeyword { keyword: String, separator: String }
+  | TaggedUnion {
+      open: String
+      close: String
+      tag_field: String
+    }
+
+// 🟢 coproduct dissolution — cardinality rendering across targets.
+type CardinalityTypeForm
+  = SuffixCardinality { many: String, optional: String }
+  | RefinementClause { kw_where: String }
+
+
+// =============================================================================
+// VisibilityRules — export marker policy
+// =============================================================================
+//
+// 🟢 coproduct dissolution — three visibility models (keyword, case, none) as
+// closed sum at the top, replacing v2's `match spec.visibility { CaseVisibility
+// { export_case: ec } => ... KeywordVisibility { prefix: _ } => ... }`.
+
+type VisibilityRules
+  = KeywordVisibility { export_kw: String, hidden_kw: String }
+  | CaseVisibility { export_case: NamingCase }
+  | NoVisibilityMarker
+
+
+// =============================================================================
+// TestConventions — test name case + framework attribute
+// =============================================================================
+
+type TestConventions {
+  test_name_case: NamingCase
+  test_attribute: String
+  test_file_suffix: String
+  mock_field_prefix: String
+}
+
+
+// =============================================================================
+// ImportRules — import emission driven by typed triggers
+// =============================================================================
+
+type ImportRules {
+  import_keyword: String
+  import_path_open: String
+  import_path_close: String
+  rules: List<ImportRule>
+}
+
+// 🟢 coproduct dissolution — v2 had ImportRule.trigger as ImportTrigger
+// closed sum already; carried over.
+type ImportTrigger
+  = TypeUsageTrigger { type_name: Symbol }
+  | TraitImplTrigger { trait_name: Symbol }
+  | DeriveMacroTrigger { macro_name: Symbol }
+  | ContainerUsageTrigger { container: Symbol }
+  | AsyncUsageTrigger
+  | EffectUsageTrigger { effect: Symbol }
+
+type ImportRule {
+  trigger: ImportTrigger
+  import_path: String
+}
+
+
+// =============================================================================
+// CoercionRule — typed coercion data (not match arms)
+// =============================================================================
+//
+// In v2/coercion.dag and emit's `coerce_primitive_type` /
+// `coerce_container_template`, coercions were hand-rolled type-pair match
+// cascades. v2.5: List<CoercionRule> typed data the emitter applies during
+// emission.
+
+type CoercionRule {
+  source: CoercionSource
+  target: CoercionTarget
+  render: CoercionRender
+}
+
+// 🟢 coproduct dissolution — coercion source-shape closed sum.
+type CoercionSource
+  = FromPrimitive { name: Symbol }
+  | FromContainer { name: Symbol, element: Symbol }
+  | FromOptional { inner: Symbol }
+
+// 🟢 coproduct dissolution — coercion target-shape closed sum.
+type CoercionTarget
+  = ToTargetType { name: Symbol }
+  | ToTargetGeneric { name: Symbol, arg: Symbol }
+
+// 🟢 coproduct dissolution — coercion render strategy closed sum.
+type CoercionRender
+  = DirectAlias
+  | CastFn { fn_name: String }
+  | InterpolateCast { template: String }
+  | TupleErrorWrap {
+      tuple_open: String
+      tuple_close: String
+      error_value: String
+    }
