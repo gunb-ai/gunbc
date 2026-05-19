@@ -1,21 +1,37 @@
 // src/v4/bin/main.dag
-//
-// Scope: emits main.rs trampoline (0-floor compliant per design-pure-bootstrap-zero.md:210).
-// Anchor: https://en.wikipedia.org/wiki/Entry_point + design-pure-bootstrap-zero.md trampoline (0-floor)
-//
-// Owns:
-//   - main.rs is machine-emitted from this .dag; not hand-authored
-//   - one-line include!() trampoline pattern
-//
-// Consumes:
-//   - std/node.dag
-//   - compiler/05_emit.dag (entry into the pipeline)
-//
-// Status: scaffold — fill per TASKS.md T-15
-// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
-// contract for the worker. Splitting this file requires explicit operator
-// ratification (substrate extension = stop signal).
-
+// Scope: Entry-point module + T-15 fixed-point TestClaim witness (emit trampoline contract; STRUCTURE.md §326).
+// Owns: stub_t15_b1_content_hash_placeholder t_15_self_host_fixed_point
+// Consumes: v4.std.verification v4.std.diagnostic v4.std.node
+// Status: scaffold — stub Node placeholders stand in for B1 content_hash(compile(…)) operands until T-16/T-22; trampoline body lands with emit/05_emit.
 
 module v4.bin.main
 
+import v4.std.verification {
+  Equals,
+  TestClaim,
+  TestClassification,
+  TestgenLayer,
+  TestgenTier,
+  T19ManualAnchorAbsent
+}
+import v4.std.diagnostic { Produced }
+import v4.std.node { Node, TypeNode, Conj }
+
+
+data stub_t15_b1_content_hash_placeholder: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: []
+}
+
+
+data t_15_self_host_fixed_point: TestClaim = TestClaim {
+  kind: Equals,
+  label: "v4 compiler fixed point: B1 content_hash(stage1 emitted Rust) == content_hash(stage2); operands stubbed until T-22",
+  t19_anchor: T19ManualAnchorAbsent,
+  input: stub_t15_b1_content_hash_placeholder,
+  expected: Produced { value: stub_t15_b1_content_hash_placeholder },
+  classification: TestClassification {
+    tier: Tier2,
+    layer: Integration
+  }
+}
