@@ -12,7 +12,6 @@ module v4.compiler.emit
 import v4.compiler.compile { TargetModel, TargetSource }
 import v4.compiler.infer { InferredTree }
 import v4.std.diagnostic {
-  Correction,
   Diagnostic,
   ExternalContractUnknown,
   Locus,

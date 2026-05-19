@@ -10,7 +10,6 @@ module v4.compiler.compile
 
 
 import v4.std.diagnostic {
-  Correction,
   Diagnostic,
   ExternalContractUnknown,
   Locus,
