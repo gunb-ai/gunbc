@@ -16,7 +16,7 @@ Header-level audit of `src/v4/extdeps/**` and the five Shape-A language files un
 | `rust.dag` | `CP-3229-GREEN-TERMINAL`; scalar / overflow carriers present; D2b deferrals cited |
 | `python.dag` | `CP-3229-GREEN-TERMINAL`; numeric tower + singleton slice |
 | `go.dag` | `CP-3229-GREEN-TERMINAL`; width/kind sums + overflow disposition |
-| `cpp.dag` | **🟡** `feature:t4-cpp-scalar-ladder` — T29-ABI + D2-REV resolver slice; not parity with rust/go/python terminal posture |
+| `cpp.dag` | **🟡** `src/v4/extdeps/languages/cpp.dag` top `// Status:` header (opens immediately under the file path banner): D2-REV resolver slice; non-bool scalar ladder carries the verbatim tag **`feature:t4-cpp-scalar-ladder`** with **DECISIONS.md** P4-3208 + T29-ABI ledger pointers on the same line — not session shorthand; not parity with rust/go/python terminal posture |
 | `typescript.dag` | **🟡** “T-4 fact-bundle Phase-3 rework after T-3/T-29/T-30/T-25-core” |
 
 **Conclusion:** three of five Shape-A slices are on the green terminal ledger called out in headers; **cpp** and **typescript** remain explicitly gated. This does **not** satisfy a literal reading of “all five fact-bundles ratified (B).” The **keystone HOLD** on T-4 in `r4-program-dispatch-plan.md` (P1-KEYSTONE / T-25-core / T-30 / T-29 cluster, residual [#3277](https://github.com/gunb-ai/gunbc/pull/3277) per that plan) remains consistent with `TASKS.md` — no de-classification claimed here.
