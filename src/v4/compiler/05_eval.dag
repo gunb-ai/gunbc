@@ -3,7 +3,6 @@
 // Owns: InferredTree, Inputs, EvalContext, TestClaimTypedInput, TestClaimEvalSubject, TestClaimCacheKey, TestClaimCacheReceipt, Verdict, TestClaimRun, eval_node, run_test_claim.
 // Consumes: v4.std.node, v4.std.diagnostic, v4.std.verification, v4.workflow.ci.
 // Status: Wave-0 substrate; evaluator bodies remain structural until T-9 inferred-tree semantics.
-// Anchor: https://en.wikipedia.org/wiki/Interpreter_(computing)
 
 module v4.compiler.eval
 
