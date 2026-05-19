@@ -1,7 +1,7 @@
 // src/v4/extdeps/languages/cpp.dag
 // Scope: C++ language primitive fact bundles.
 // Anchor: ISO/IEC 14882:2020 (C++20) [basic.fundamental], [expr.pre]; upstream mirror https://eel.is/c++draft/basic.fundamental.
-// Owns: CppSignedIntegerSurfaceSpelling, CppUnsignedIntegerSurfaceSpelling, CppPlainCharSurfaceSpelling, CppCodeUnitIntegerSurfaceSpelling, CppSignedIntegerWidthSelection, CppUnsignedIntegerWidthSelection, CppPlainCharWidthSelection, CppCodeUnitIntegerWidthSelection, CppTwosComplement, CppIntegerOverflowDisposition, CppScalar, cpp_bool_grounding.
+// Owns: CppSignedIntegerSurfaceSpelling, CppUnsignedIntegerSurfaceSpelling, CppPlainCharSurfaceSpelling, CppCodeUnitIntegerSurfaceSpelling, CppSignedIntegerWidthSelection, CppUnsignedIntegerWidthSelection, CppPlainCharWidthSelection, CppCodeUnitIntegerWidthSelection, CppTwosComplement, CppRepresentableResultRequired, CppUnsignedModuloArithmetic, CppScalar, cpp_bool_grounding.
 // Consumes: v4.std.logic.Bool, bool_boolean_algebra; v4.std.algebra.BooleanAlgebra; v4.extdeps.cpp_abi.CppIntegerWidth/CppPlainCharSignedness/CppTargetProfile.
 // Status: D2-REV/T29 forward reconcile; C++ integer facts are ABI-width-parametric, bool canonical-B decl-ref grounding stays 🟡 E-6(b) staging; scaffold:T-4-cpp-slice / 🟡 feature:t4-cpp-scalar-ladder bounds this file to carrier scaffolding until generated per-spelling CppTargetProfile selection rows consume it (INVARIANTS P5).
 
@@ -70,21 +70,19 @@ type CppCodeUnitIntegerWidthSelection {
 }
 
 // Anchor: ISO/IEC 14882:2020 (C++20) [expr.pre]; upstream mirror https://eel.is/c++draft/expr.pre.
-// 🟢 coproduct dissolution — DECISIONS.md T29-CPP-INTEGER-OVERFLOW.
-type CppIntegerOverflowDisposition
-  = RepresentableResultRequired
-  | UnsignedModuloArithmetic
+type CppRepresentableResultRequired
+type CppUnsignedModuloArithmetic
 
 // 🟢 coproduct dissolution — DECISIONS.md T29-CPP-SCALAR-FORWARD.
 type CppScalar
   = SignedIntegerScalar {
       width_selection: CppSignedIntegerWidthSelection,
       signed_representation: CppTwosComplement,
-      overflow_disposition: CppIntegerOverflowDisposition
+      overflow_disposition: CppRepresentableResultRequired
     }
   | UnsignedIntegerScalar {
       width_selection: CppUnsignedIntegerWidthSelection,
-      overflow_disposition: CppIntegerOverflowDisposition
+      overflow_disposition: CppUnsignedModuloArithmetic
     }
   | PlainCharScalar {
       width_selection: CppPlainCharWidthSelection
