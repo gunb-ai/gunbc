@@ -1,7 +1,8 @@
 // src/v4/std/collection.dag
 // Scope: container carriers grounded in algebraic constructions.
 // Anchor: https://en.wikipedia.org/wiki/Free_monoid
-// Owns: List, non_empty, Set, Map.
+// Owns: List, fold, non_empty, forall, any, count_where, count_equal, unique,
+//       member, set_eq, filter, Set, Map.
 // Consumes: std algebra, std witness.
 // Status: T-3 modeled; substrate-extension rule in src/v4/STRUCTURE.md.
 
@@ -9,11 +10,60 @@
 module v4.std.collection
 
 
-import v4.std.algebra { FreeMonoid, PointwisePower, free_monoid_non_empty }
+import v4.std.algebra {
+  FreeMonoid,
+  PointwisePower,
+  free_monoid_count_equal,
+  free_monoid_count_where,
+  free_monoid_fold,
+  free_monoid_forall,
+  free_monoid_non_empty,
+  free_monoid_unique
+}
 import v4.std.witness { Witness }
 type List<T> = FreeMonoid<T>
+fn fold<T, A>(xs: List<T>, init: A, f: fn(A, T) -> A) -> A {
+  free_monoid_fold(xs: xs, empty: init, cons: f)
+}
 fn non_empty<T>(xs: List<T>) -> Bool {
   free_monoid_non_empty(xs: xs)
+}
+fn forall<T>(xs: List<T>, predicate: fn(T) -> Bool) -> Bool {
+  free_monoid_forall(xs: xs, predicate: predicate)
+}
+fn any<T>(xs: List<T>, predicate: fn(T) -> Bool) -> Bool {
+  fold(xs, init: false, f: fn(acc, item) {
+    match acc {
+      true => true
+      false => predicate(item)
+    }
+  })
+}
+fn count_where<T>(xs: List<T>, predicate: fn(T) -> Bool) -> Int {
+  free_monoid_count_where(xs: xs, predicate: predicate)
+}
+fn count_equal<T>(xs: List<T>, item: T, eq: fn(T, T) -> Bool) -> Int {
+  free_monoid_count_equal(xs: xs, item: item, eq: eq)
+}
+fn unique<T>(xs: List<T>, eq: fn(T, T) -> Bool) -> Bool {
+  free_monoid_unique(xs: xs, eq: eq)
+}
+fn member<T>(item: T, xs: List<T>, eq: fn(T, T) -> Bool) -> Bool {
+  count_equal(xs: xs, item: item, eq: eq) > 0
+}
+fn set_eq<T>(a: List<T>, b: List<T>, eq: fn(T, T) -> Bool) -> Bool {
+  (count(a) == count(b))
+    && forall(xs: a, predicate: fn(item) { member(item: item, xs: b, eq: eq) })
+    && forall(xs: b, predicate: fn(item) { member(item: item, xs: a, eq: eq) })
+}
+fn filter<T>(xs: List<T>, predicate: fn(T) -> Bool) -> List<T> {
+  fold(xs, init: [], f: fn(acc, item) {
+    if predicate(item) {
+      concat([item], acc)
+    } else {
+      acc
+    }
+  })
 }
 type Set<T> = PointwisePower<T>
 type Map<K, V> {
