@@ -325,6 +325,11 @@ needed no absent substrate.
 
 **`compiler/03_resolve.dag`** — filled in CP-1b (#3225, merged
 `b83d8ed6c` 2026-05-18) with 23 `fn` bodies + 6 `type` declarations.
+**CP-1b/T-8 close (bucket B):** the two bespoke success-or-`Diagnostic`
+result types (`ResolveResult`, `ResolveChildrenResult`) dissolved to the
+canonical `Outcome<Node>` / `Outcome<List<Edge>>` carrier (M6); the
+`ResolvedTree`, `Namespace`, `Scope` (🟢 terminal), `EdgeResolveAcc`, and
+`BindEdgeAcc` declarations remain.
 **This file has moved from scaffold to filled between initial sweep
 and final-ready; the full re-sweep of all 23 fns is a near-future
 follow-up.** The two functions surfaced as #3225's un-cleared codex
