@@ -911,17 +911,6 @@ type CompilePipelineState {
   target: RenderTarget
 }
 
-fn pipeline_state_halt_result(state: CompilePipelineState) -> PipelineResult {
-  PipelineResult {
-    files: [],
-    diagnostics: concat(state.frontend.diagnostics, state.norm_diags, state.stage_diags, state.emit_diags),
-    complexity: state.complexity,
-    ownership: state.ownership,
-    artifact_plan: state.artifact_plan,
-    newline_indices: state.newline_indices
-  }
-}
-
 fn pipeline_state_mark_halted(state: CompilePipelineState) -> CompilePipelineState {
   CompilePipelineState {
     halted: true,
@@ -987,6 +976,7 @@ fn apply_pipeline_stage(state: CompilePipelineState, spec: PipelineStageSpec) ->
           if pipeline_gate_blocks(policy: spec.gate, diagnostics: norm_diags) {
             CompilePipelineState {
               halted: true,
+              emit_blocked: state.emit_blocked,
               run_emit: state.run_emit,
               frontend: state.frontend,
               newline_indices: state.newline_indices,
@@ -1005,6 +995,7 @@ fn apply_pipeline_stage(state: CompilePipelineState, spec: PipelineStageSpec) ->
           } else {
             CompilePipelineState {
               halted: state.halted,
+              emit_blocked: state.emit_blocked,
               run_emit: state.run_emit,
               frontend: state.frontend,
               newline_indices: state.newline_indices,
@@ -1061,6 +1052,7 @@ fn apply_pipeline_stage(state: CompilePipelineState, spec: PipelineStageSpec) ->
           let complexity_diags = complexity_diagnostics(complexity: complexity)
           CompilePipelineState {
             halted: state.halted,
+            emit_blocked: state.emit_blocked,
             run_emit: state.run_emit,
             frontend: state.frontend,
             newline_indices: state.newline_indices,
@@ -1198,17 +1190,13 @@ fn run_compile_pipeline_fold(frontend: FrontendResult, target: RenderTarget, run
 }
 
 fn compile_pipeline_state_to_result(state: CompilePipelineState) -> PipelineResult {
-  if state.halted {
-    pipeline_state_halt_result(state: state)
-  } else {
-    PipelineResult {
-      files: state.emit_files,
-      diagnostics: concat(state.frontend.diagnostics, state.norm_diags, state.stage_diags, state.emit_diags),
-      complexity: state.complexity,
-      ownership: state.ownership,
-      artifact_plan: state.artifact_plan,
-      newline_indices: state.newline_indices
-    }
+  PipelineResult {
+    files: if state.emit_blocked || state.halted { [] } else { state.emit_files },
+    diagnostics: concat(state.frontend.diagnostics, state.norm_diags, state.stage_diags, state.emit_diags),
+    complexity: state.complexity,
+    ownership: state.ownership,
+    artifact_plan: state.artifact_plan,
+    newline_indices: state.newline_indices
   }
 }
 
@@ -1244,7 +1232,7 @@ fn compile_to_resolved(sources: List<SourceFile>) -> ResolvedPipelineResult {
   let frontend = front_end_sources(sources: sources)
   let state = run_compile_pipeline_fold(frontend: frontend, target: Rust, run_emit: false)
   ResolvedPipelineResult {
-    graph: if state.halted { none } else { state.typed },
+    graph: if state.emit_blocked || state.halted { none } else { state.typed },
     diagnostics: concat(state.frontend.diagnostics, state.norm_diags, state.stage_diags),
     source_indices: state.source_indices,
     complexity: state.complexity,
