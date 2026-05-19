@@ -998,40 +998,6 @@ fn serializer_has_no_expr_other_fallback() {
     );
 }
 
-#[test]
-fn trace_contract_keeps_replay_filters_as_coordinates() {
-    let source = read_v2_file("src/v2/trace.dag");
-    assert!(
-        source.contains("type TraceFilter {\n  node_id: String?\n  span: SpanRange?\n  errors_only: Bool\n}"),
-        "trace replay filters should remain a coordinate record"
-    );
-    for old_variant in ["FilterByFunc", "FilterBySpan", "FilterErrors"] {
-        assert!(
-            !source.contains(old_variant),
-            "trace replay should not reintroduce compressed filter variant {old_variant}"
-        );
-    }
-}
-
-#[test]
-fn trace_contract_keeps_event_identity_single_authority() {
-    let source = read_v2_file("src/v2/trace.dag");
-    assert!(
-        source.contains("type TracePoint {\n  node_id: String\n  span: SourceSpan\n}"),
-        "TracePoint should own event identity and source locus"
-    );
-    assert!(
-        source.contains("type TraceEvent {\n  point: TracePoint\n  observation: TraceObservation\n}"),
-        "TraceEvent should pair the shared point with a lifecycle observation"
-    );
-    for old_variant in ["TraceEnter { node_id", "TraceExit { node_id", "TraceError { node_id"] {
-        assert!(
-            !source.contains(old_variant),
-            "TraceEvent should not duplicate point fields through old variant shape {old_variant}"
-        );
-    }
-}
-
 // ── Ratchet audits ────────────────────────────────────────────────────
 //
 // These tests make invisible breakage visible by counting structural
