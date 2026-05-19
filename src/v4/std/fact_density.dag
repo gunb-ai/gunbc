@@ -32,14 +32,6 @@ import v4.std.diagnostic {
 }
 
 
-// Kernel-ambient atom exemption set (STRUCTURE.md "Kernel-ambient types":
-// String / Int / Bool / Char / List / Map). A carrier aliasing a
-// kernel-ambient atom is legitimately atomic, not hollow — the gate exempts
-// it. These identity symbols are self-referential Symbol constants (the
-// substrate's only Symbol-introduction form); binding them to the
-// normalizer's interned kernel-ambient type symbols is operator-closure
-// pipeline wiring (T-30 IMPL+OP) — that wiring step is not part of this
-// checker's definition.
 data fact_density_kernel_ambient_string: Symbol = fact_density_kernel_ambient_string
 data fact_density_kernel_ambient_int: Symbol = fact_density_kernel_ambient_int
 data fact_density_kernel_ambient_bool: Symbol = fact_density_kernel_ambient_bool
@@ -59,16 +51,12 @@ fn symbol_is_kernel_ambient(s: Symbol) -> Bool {
 
 
 // 🟢 coproduct dissolution — DECISIONS.md classification ledger: SourceSpecReadFact.
-// What a carrier reads from its source spec; NoFact is the hollow alias —
-// a carrier decomposing into zero spec-read facts and not kernel-ambient.
 type SourceSpecReadFact
   = NamedFieldFacts { density: Int }
   | KernelAmbientAtom { atom: Symbol }
   | NoFact
 
 
-// Fact-density read: a carrier with >= 1 own fact-edge records that many
-// spec-read facts; zero own fact-edges is the hollow shape.
 fn density_fact(child_count: Int) -> SourceSpecReadFact {
   if child_count == 0 {
     NoFact
@@ -78,10 +66,6 @@ fn density_fact(child_count: Int) -> SourceSpecReadFact {
 }
 
 
-// A bare alias `type X = Y` lowers to an Atom carrier with zero own
-// fact-edges: hollow unless its identity is kernel-ambient. Conj / Disj /
-// Arrow / Cardinality / Instantiation carriers read facts iff they carry
-// own child edges.
 fn connective_spec_fact(c: Connective, child_count: Int) -> SourceSpecReadFact {
   match c {
     Atom { identity: id } =>
@@ -99,11 +83,6 @@ fn connective_spec_fact(c: Connective, child_count: Int) -> SourceSpecReadFact {
 }
 
 
-// A carrier is hollow iff it is a type carrier reading no spec facts.
-// `SourceSpecReadFact` classifies only type carriers; computation nodes are
-// not type carriers — the hollow-alias concept does not apply, so the kind
-// match short-circuits them to non-hollow rather than forcing a spec-fact
-// classification onto them.
 fn carrier_is_hollow(carrier: Node) -> Bool {
   match carrier.kind {
     ComputationNode { behavior: _ } => false
@@ -129,9 +108,6 @@ fn hollow_alias_diagnostic(carrier: Node) -> Diagnostic {
 }
 
 
-// The generated T-30 gate: fail-closed structural hollow-alias checker.
-// A hollow carrier is Rejected with a diagnostic; every fact-bearing or
-// kernel-ambient carrier is Produced.
 fn hollow_alias_gate(carrier: Node) -> Outcome<Bool> {
   if carrier_is_hollow(carrier: carrier) {
     Rejected { diagnostic: hollow_alias_diagnostic(carrier: carrier) }
@@ -141,9 +117,6 @@ fn hollow_alias_gate(carrier: Node) -> Outcome<Bool> {
 }
 
 
-// Whole-module gate: fail-closed on any hollow carrier. Carries the typed
-// diagnostic of the first hollow declaration through to the boundary —
-// never collapses a module-level failure to a bare Bool.
 fn module_no_hollow_alias(declarations: List<Node>) -> Outcome<Bool> {
   fold(declarations, init: Produced { value: true }, f: fn(acc, d) {
     match acc {
