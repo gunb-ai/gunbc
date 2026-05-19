@@ -88,6 +88,10 @@ type OverflowDisposition<IRCarrier>
 // BooleanAlgebra. Grounded by referencing the single std authority
 // instance; coincidence is fold-discharged over shared vocabulary, not
 // asserted by a bare alias or a {spelling} label.
+// 🟡 E-6 bounded-exception scaffold `feature:canonical-b-grounding-consumer` — consumer-less
+// target-spec decl permitted under INVARIANTS E-6 clause (b); dissolves when the B1-CANON
+// canonical/content_hash fold + coercion zip-fold (DECISIONS.md B1 · T-9/C1) consume this row
+// for coincidence-checking. P2/E-6 staging until then — not landed authority.
 data rust_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
 
 // Anchor: https://doc.rust-lang.org/reference/types/never.html
