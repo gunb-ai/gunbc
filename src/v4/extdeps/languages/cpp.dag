@@ -12,6 +12,7 @@ import v4.std.algebra { BooleanAlgebra }
 import v4.extdeps.cpp_abi { CppTargetProfile }
 
 
+<<<<<<< HEAD
 // 🟢 coproduct dissolution — DECISIONS.md T29-CPP-SCALAR-FORWARD.
 type CppSignedIntegerSurfaceSpelling
   = SignedChar
@@ -19,6 +20,12 @@ type CppSignedIntegerSurfaceSpelling
   | Int
   | LongInt
   | LongLongInt
+=======
+// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-CPP-INTEGER-OVERFLOW.
+type CppIntegerOverflowDisposition
+  = RepresentableResultRequired
+  | UnsignedModuloArithmetic
+>>>>>>> origin/main
 
 // 🟢 coproduct dissolution — DECISIONS.md T29-CPP-SCALAR-FORWARD.
 type CppUnsignedIntegerSurfaceSpelling
