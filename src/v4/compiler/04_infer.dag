@@ -11,10 +11,13 @@ module v4.compiler.infer
 import v4.lens.cost { SymbolicCost }
 import v4.std.cardinality { TerminationProof }
 import v4.std.collection { Map }
-import v4.std.node { Node, Symbol }
+import v4.std.node { Node }
 
 
-type AlgebraRef = Symbol
+type AlgebraRef {
+  algebra: Node
+  witness: Node
+}
 
 
 type InferredFacts {

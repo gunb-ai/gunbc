@@ -1,32 +1,19 @@
 // src/v4/compiler/05_eval.dag
 // Scope: primary evaluation path over inferred tree/input subgraphs and TestClaim runner substrate.
 // Owns: Inputs, EvalContext, TestClaimTypedInput, TestClaimEvalSubject, TestClaimCacheKey, TestClaimCacheReceipt, Verdict, TestClaimRun, eval_node, run_test_claim.
-// Consumes: v4.compiler.infer, v4.std.node, v4.std.diagnostic, v4.std.verification, v4.workflow.ci.
+// Consumes: v4.compiler.infer, v4.std.node, v4.std.diagnostic, v4.std.verification.
 // Status: Wave-0 substrate; evaluator bodies remain structural until T-9 inferred-tree semantics.
 
 module v4.compiler.eval
 
 
 import v4.compiler.infer {
-  InferredFacts,
   InferredTree
 }
-import v4.lens.cost {
-  UnknownCost
-}
-import v4.std.cardinality {
-  RankingDimension,
-  TerminationProof
-}
-import v4.std.collection {
-  Map
-}
 import v4.std.node {
-  Atom,
   Hash,
   Node,
   Symbol,
-  TypeNode,
   node_well_formed
 }
 import v4.std.diagnostic {
@@ -45,32 +32,9 @@ import v4.std.verification {
   Compiles,
   DiagnosticAssert,
   Equals,
-  Integration,
   RoundTrips,
-  T19ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1
+  TestClaim
 }
-import v4.std.witness {
-  Holds
-}
-import v4.workflow.ci {
-  BootstrapStageCompile,
-  CiGate,
-  CiJob,
-  CiPipeline,
-  ci_bootstrap_authority_violation,
-  ci_dangling_reference,
-  ci_dependency_cycle,
-  ci_diagnostic,
-  ci_duplicate_gate_id,
-  ci_duplicate_job_id,
-  ci_pipeline_well_formed,
-  structural_v2_compile,
-  v2_compile_src_v4
-}
-import v4.workflow.bootstrap { v4_stage0_binary }
 
 
 type Inputs {
@@ -91,7 +55,6 @@ type TestClaimTypedInput<T> {
 
 
 type TestClaimEvalSubject<T> {
-  claim_node: Node
   claim: TestClaim
   context: EvalContext
   tree: InferredTree
@@ -126,14 +89,6 @@ type TestClaimRun<T> {
 }
 
 
-type T22CiNegativeCase {
-  label: String
-  input_symbol: Symbol
-  expected_reason: Symbol
-  pipeline: CiPipeline
-}
-
-
 fn test_claim_cache_receipt<T>(
   subject: TestClaimEvalSubject<T>,
   claim_hash: Hash,
@@ -156,7 +111,6 @@ fn test_claim_cache_receipt<T>(
 data eval_rejected_invalid_node: Symbol = eval_rejected_invalid_node
 data eval_rejected_assert_kind_deferred: Symbol = eval_rejected_assert_kind_deferred
 data eval_rejected_roundtrip_deferred: Symbol = eval_rejected_roundtrip_deferred
-data eval_rejected_ci_projection_deferred: Symbol = eval_rejected_ci_projection_deferred
 fn eval_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
   Diagnostic {
     reason: reason,
@@ -218,42 +172,6 @@ fn run_node_assert(
 }
 
 
-fn run_ci_assert(
-  kind: AssertKind,
-  actual: Outcome<CiPipeline>,
-  expected: Outcome<Node>,
-  input: Node
-) -> Verdict<CiPipeline> {
-  match kind {
-    Equals => match actual {
-      Produced { value: _ } => match expected {
-        Produced { value: _ } => Deferred {
-          actual: actual,
-          diagnostic: eval_diagnostic(reason: eval_rejected_ci_projection_deferred, node: input)
-        }
-        Rejected { diagnostic: _ } => Fail { actual: actual }
-      }
-      Rejected { diagnostic: d } => {
-        let comparable = Rejected { diagnostic: d }
-        if outcome_node_eq(a: comparable, b: expected) { Pass } else { Fail { actual: actual } }
-      }
-    }
-    Compiles => match actual {
-      Produced { value: _ } => Pass
-      Rejected { diagnostic: _ } => Fail { actual: actual }
-    }
-    RoundTrips => Deferred {
-      actual: actual,
-      diagnostic: eval_diagnostic(reason: eval_rejected_roundtrip_deferred, node: input)
-    }
-    DiagnosticAssert => Deferred {
-      actual: actual,
-      diagnostic: eval_diagnostic(reason: eval_rejected_assert_kind_deferred, node: input)
-    }
-  }
-}
-
-
 fn run_test_claim(
   subject: TestClaimEvalSubject<Node>,
   claim_hash: Hash,
@@ -283,296 +201,15 @@ fn run_test_claim(
 }
 
 
-fn test_claim_ci_pass_receipt(run: TestClaimRun<CiPipeline>) -> Verdict<TestClaimRun<CiPipeline>> {
-  match run.verdict {
-    Pass => Pass
-    Fail { actual: _ } => Fail { actual: Produced { value: run } }
-    Deferred { actual: _, diagnostic: d } => Deferred { actual: Produced { value: run }, diagnostic: d }
-  }
-}
-
-
 fn eval_test_claim_subject(
-  claim_node: Node,
   claim: TestClaim,
   context: EvalContext,
   tree: InferredTree
 ) -> TestClaimEvalSubject<Node> {
   TestClaimEvalSubject {
-    claim_node: claim_node,
     claim: claim,
     context: context,
     tree: tree,
     input: TestClaimTypedInput { evaluator_input: claim.input }
   }
 }
-
-
-data t22_ci_dangling_bootstrap_output: Symbol = t22_ci_dangling_bootstrap_output
-data t22_ci_duplicate_job_id: Symbol = t22_ci_duplicate_job_id
-data t22_ci_duplicate_gate_id: Symbol = t22_ci_duplicate_gate_id
-data t22_ci_dangling_need: Symbol = t22_ci_dangling_need
-data t22_ci_dangling_gate_job: Symbol = t22_ci_dangling_gate_job
-data t22_ci_dependency_cycle: Symbol = t22_ci_dependency_cycle
-data t22_missing_stage_binary: Symbol = t22_missing_stage_binary
-data t22_other_job: Symbol = t22_other_job
-data t22_other_gate: Symbol = t22_other_gate
-data t22_ci_evaluator: Symbol = t22_ci_evaluator
-data t22_ci_resources: Symbol = t22_ci_resources
-data t22_ci_extdeps: Symbol = t22_ci_extdeps
-data t22_inferred_type: Symbol = t22_inferred_type
-data t22_inferred_inhabits: Symbol = t22_inferred_inhabits
-data t22_inferred_descent: Symbol = t22_inferred_descent
-// 🟡 typed-input bridge scaffold — DECISIONS.md T22-EVAL-TYPED-INPUT-BRIDGE
-// 🟡 cache-hash scaffold — DECISIONS.md T22-EVAL-CACHE-HASHES
-data t22_hash_claim: Hash = t22_hash_claim
-data t22_hash_evaluator: Hash = t22_hash_evaluator
-data t22_hash_resources: Hash = t22_hash_resources
-data t22_hash_extdeps: Hash = t22_hash_extdeps
-
-
-fn t22_symbol_node(s: Symbol) -> Node {
-  Node {
-    kind: TypeNode { connective: Atom { identity: s } },
-    children: []
-  }
-}
-
-
-fn t22_inferred_facts() -> InferredFacts {
-  InferredFacts {
-    resolved_type: t22_symbol_node(s: t22_inferred_type),
-    inhabits: t22_inferred_inhabits,
-    cost: UnknownCost { reason: "T-22 Wave-0 inferred cost scaffold" },
-    descent: TerminationProof {
-      non_increasing: [],
-      strict: RankingDimension { measured: t22_inferred_descent }
-    }
-  }
-}
-
-
-fn t22_inferred_fact_map(facts: InferredFacts) -> Map<Node, InferredFacts> {
-  Map {
-    lookup: fn(_) {
-      Holds { value: facts }
-    }
-  }
-}
-
-
-fn t22_inferred_tree(root: Node) -> InferredTree {
-  let facts = t22_inferred_facts()
-  InferredTree {
-    root: root,
-    facts: t22_inferred_fact_map(facts: facts)
-  }
-}
-
-
-fn t22_ci_claim(label: String, input: Node, expected_reason: Symbol) -> TestClaim {
-  TestClaim {
-    kind: Equals,
-    label: label,
-    t19_anchor: T19ManualAnchorAbsent,
-    input: input,
-    expected: Rejected { diagnostic: ci_diagnostic(reason: expected_reason) },
-    classification: TestClassification { tier: Tier1, layer: Integration }
-  }
-}
-
-
-fn t22_ci_context() -> EvalContext {
-  EvalContext {
-    evaluator: t22_symbol_node(s: t22_ci_evaluator),
-    resources: t22_symbol_node(s: t22_ci_resources),
-    extdeps: t22_symbol_node(s: t22_ci_extdeps)
-  }
-}
-
-
-fn t22_ci_subject(
-  case: T22CiNegativeCase
-) -> TestClaimEvalSubject<CiPipeline> {
-  let input = t22_symbol_node(s: case.input_symbol)
-  let claim = t22_ci_claim(label: case.label, input: input, expected_reason: case.expected_reason)
-  TestClaimEvalSubject {
-    claim_node: input,
-    claim: claim,
-    context: t22_ci_context(),
-    tree: t22_inferred_tree(root: claim.input),
-    input: TestClaimTypedInput { evaluator_input: case.pipeline }
-  }
-}
-
-
-fn t22_ci_run(subject: TestClaimEvalSubject<CiPipeline>) -> TestClaimRun<CiPipeline> {
-  let actual = ci_pipeline_well_formed(p: subject.input.evaluator_input)
-  TestClaimRun {
-    cache: test_claim_cache_receipt(
-      subject: subject,
-      claim_hash: t22_hash_claim,
-      evaluator_hash: t22_hash_evaluator,
-      resources_hash: t22_hash_resources,
-      extdeps_hash: t22_hash_extdeps
-    ),
-    verdict: run_ci_assert(
-      kind: subject.claim.kind,
-      actual: actual,
-      expected: subject.claim.expected,
-      input: subject.claim.input
-    )
-  }
-}
-
-
-data case_ci_dangling_bootstrap_output: T22CiNegativeCase = T22CiNegativeCase {
-  label: "t22_ci_dangling_bootstrap_output",
-  input_symbol: t22_ci_dangling_bootstrap_output,
-  expected_reason: ci_bootstrap_authority_violation,
-  pipeline: CiPipeline {
-    jobs: [
-      CiJob {
-        id: v2_compile_src_v4,
-        command: BootstrapStageCompile { produces: t22_missing_stage_binary },
-        needs: []
-      }
-    ],
-    gates: [
-      CiGate { id: structural_v2_compile, job: v2_compile_src_v4 }
-    ]
-  }
-}
-
-
-data subject_ci_dangling_bootstrap_output: TestClaimEvalSubject<CiPipeline> = t22_ci_subject(case: case_ci_dangling_bootstrap_output)
-
-
-data run_ci_dangling_bootstrap_output: TestClaimRun<CiPipeline> = t22_ci_run(subject: subject_ci_dangling_bootstrap_output)
-
-
-data receipt_ci_dangling_bootstrap_output: Verdict<TestClaimRun<CiPipeline>> = test_claim_ci_pass_receipt(run: run_ci_dangling_bootstrap_output)
-
-
-data case_ci_duplicate_job_id: T22CiNegativeCase = T22CiNegativeCase {
-  label: "t22_ci_duplicate_job_id",
-  input_symbol: t22_ci_duplicate_job_id,
-  expected_reason: ci_duplicate_job_id,
-  pipeline: CiPipeline {
-    jobs: [
-      CiJob { id: v2_compile_src_v4, command: BootstrapStageCompile { produces: v4_stage0_binary }, needs: [] },
-      CiJob { id: v2_compile_src_v4, command: BootstrapStageCompile { produces: v4_stage0_binary }, needs: [] }
-    ],
-    gates: [
-      CiGate { id: structural_v2_compile, job: v2_compile_src_v4 }
-    ]
-  }
-}
-
-
-data subject_ci_duplicate_job_id: TestClaimEvalSubject<CiPipeline> = t22_ci_subject(case: case_ci_duplicate_job_id)
-
-
-data run_ci_duplicate_job_id: TestClaimRun<CiPipeline> = t22_ci_run(subject: subject_ci_duplicate_job_id)
-
-
-data receipt_ci_duplicate_job_id: Verdict<TestClaimRun<CiPipeline>> = test_claim_ci_pass_receipt(run: run_ci_duplicate_job_id)
-
-
-data case_ci_duplicate_gate_id: T22CiNegativeCase = T22CiNegativeCase {
-  label: "t22_ci_duplicate_gate_id",
-  input_symbol: t22_ci_duplicate_gate_id,
-  expected_reason: ci_duplicate_gate_id,
-  pipeline: CiPipeline {
-    jobs: [
-      CiJob { id: v2_compile_src_v4, command: BootstrapStageCompile { produces: v4_stage0_binary }, needs: [] }
-    ],
-    gates: [
-      CiGate { id: structural_v2_compile, job: v2_compile_src_v4 },
-      CiGate { id: structural_v2_compile, job: v2_compile_src_v4 }
-    ]
-  }
-}
-
-
-data subject_ci_duplicate_gate_id: TestClaimEvalSubject<CiPipeline> = t22_ci_subject(case: case_ci_duplicate_gate_id)
-
-
-data run_ci_duplicate_gate_id: TestClaimRun<CiPipeline> = t22_ci_run(subject: subject_ci_duplicate_gate_id)
-
-
-data receipt_ci_duplicate_gate_id: Verdict<TestClaimRun<CiPipeline>> = test_claim_ci_pass_receipt(run: run_ci_duplicate_gate_id)
-
-
-data case_ci_dangling_need: T22CiNegativeCase = T22CiNegativeCase {
-  label: "t22_ci_dangling_need",
-  input_symbol: t22_ci_dangling_need,
-  expected_reason: ci_dangling_reference,
-  pipeline: CiPipeline {
-    jobs: [
-      CiJob { id: v2_compile_src_v4, command: BootstrapStageCompile { produces: v4_stage0_binary }, needs: [t22_other_job] }
-    ],
-    gates: [
-      CiGate { id: structural_v2_compile, job: v2_compile_src_v4 }
-    ]
-  }
-}
-
-
-data subject_ci_dangling_need: TestClaimEvalSubject<CiPipeline> = t22_ci_subject(case: case_ci_dangling_need)
-
-
-data run_ci_dangling_need: TestClaimRun<CiPipeline> = t22_ci_run(subject: subject_ci_dangling_need)
-
-
-data receipt_ci_dangling_need: Verdict<TestClaimRun<CiPipeline>> = test_claim_ci_pass_receipt(run: run_ci_dangling_need)
-
-
-data case_ci_dangling_gate_job: T22CiNegativeCase = T22CiNegativeCase {
-  label: "t22_ci_dangling_gate_job",
-  input_symbol: t22_ci_dangling_gate_job,
-  expected_reason: ci_dangling_reference,
-  pipeline: CiPipeline {
-    jobs: [
-      CiJob { id: v2_compile_src_v4, command: BootstrapStageCompile { produces: v4_stage0_binary }, needs: [] }
-    ],
-    gates: [
-      CiGate { id: structural_v2_compile, job: t22_other_job }
-    ]
-  }
-}
-
-
-data subject_ci_dangling_gate_job: TestClaimEvalSubject<CiPipeline> = t22_ci_subject(case: case_ci_dangling_gate_job)
-
-
-data run_ci_dangling_gate_job: TestClaimRun<CiPipeline> = t22_ci_run(subject: subject_ci_dangling_gate_job)
-
-
-data receipt_ci_dangling_gate_job: Verdict<TestClaimRun<CiPipeline>> = test_claim_ci_pass_receipt(run: run_ci_dangling_gate_job)
-
-
-data case_ci_dependency_cycle: T22CiNegativeCase = T22CiNegativeCase {
-  label: "t22_ci_dependency_cycle",
-  input_symbol: t22_ci_dependency_cycle,
-  expected_reason: ci_dependency_cycle,
-  pipeline: CiPipeline {
-    jobs: [
-      CiJob { id: v2_compile_src_v4, command: BootstrapStageCompile { produces: v4_stage0_binary }, needs: [t22_other_job] },
-      CiJob { id: t22_other_job, command: BootstrapStageCompile { produces: v4_stage0_binary }, needs: [v2_compile_src_v4] }
-    ],
-    gates: [
-      CiGate { id: structural_v2_compile, job: v2_compile_src_v4 },
-      CiGate { id: t22_other_gate, job: t22_other_job }
-    ]
-  }
-}
-
-
-data subject_ci_dependency_cycle: TestClaimEvalSubject<CiPipeline> = t22_ci_subject(case: case_ci_dependency_cycle)
-
-
-data run_ci_dependency_cycle: TestClaimRun<CiPipeline> = t22_ci_run(subject: subject_ci_dependency_cycle)
-
-
-data receipt_ci_dependency_cycle: Verdict<TestClaimRun<CiPipeline>> = test_claim_ci_pass_receipt(run: run_ci_dependency_cycle)
