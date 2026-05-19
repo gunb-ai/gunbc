@@ -75,9 +75,10 @@ same way:
 > mechanical lens.**
 
 A lens is added from *real evidence* — a finding that reached merge-ready
-despite being a defect (§8). The lens's signature is the smallest
-structural pattern that catches that finding's class with zero false
-positives on the clean shape.
+despite being a defect (§8), or a checkable review / audit receipt that
+names the same defect shape, its live substrate home, and its dissolve
+trigger. The lens's signature is the smallest structural pattern that
+catches that finding's class with zero false positives on the clean shape.
 
 ## 4. Layer 0 — standard compiler hygiene
 
@@ -177,35 +178,35 @@ sibling labels for one consolidated signature space.
 ### 5.1 Canonical L1.x acceptance-key names (rebase target for downstream consumers)
 
 Downstream consumers that need to register acceptance / coverage rows
-per Layer-1 lens (e.g. `src/v4/lens/coverage.dag`'s `dissolution_l1_*`
-rows) MUST use the canonical key names enumerated here. The lens
-suite is the single authority; key sets in other files are projections
-of this enumeration.
+per Layer-1 lens (e.g. `src/v4/lens/coverage.dag`'s `coverage_defect_*`
+rows) MUST use the canonical key names enumerated here. The lens suite
+is the single authority; key sets in other files are projections of this
+enumeration.
 
 | Lens / sub-signature | Canonical acceptance-key name |
 |---|---|
-| L1.1 Discriminant-predicate | `dissolution_l1_1_discriminant_predicate` |
-| L1.2 Degenerate-type | `dissolution_l1_2_degenerate_type` |
-| L1.3 Hollow-type | `dissolution_l1_3_hollow_type` |
-| L1.4 Carrier-clone | `dissolution_l1_4_carrier_clone` |
-| L1.5 Catamorphism | `dissolution_l1_5_catamorphism` |
-| ~~L1.6 Emit/template~~ | **retired — see L1.10.a below; no `dissolution_l1_6_*` key** |
-| L1.7 Off-substrate-fact | `dissolution_l1_7_off_substrate_fact` |
-| L1.8 Wrong-home | `dissolution_l1_8_wrong_home` |
-| L1.9 Vacuous-arm | `dissolution_l1_9_vacuous_arm` |
-| **L1.10.a** `TemplateHole` (sub-signature of Textual-bypass family) | `dissolution_l1_10_a_template_hole` |
-| **L1.10.b** `CanonicalCarrier` (sub-signature of Textual-bypass family) | `dissolution_l1_10_b_canonical_carrier` |
-| L1.11 Plausible-fallback | `dissolution_l1_11_plausible_fallback` |
-| L1.12 Parallel-authority | `dissolution_l1_12_parallel_authority` |
+| L1.1 Discriminant-predicate | `coverage_defect_discriminant_predicate` |
+| L1.2 Degenerate-type | `coverage_defect_degenerate_type` |
+| L1.3 Hollow-type | `coverage_defect_hollow_type` |
+| L1.4 Carrier-clone | `coverage_defect_carrier_clone` |
+| L1.5 Catamorphism | `coverage_defect_catamorphism` |
+| ~~L1.6 Emit/template~~ | **retired — see L1.10.a below; no `coverage_defect_emit_template` key** |
+| L1.7 Off-substrate-fact | `coverage_defect_off_substrate_fact` |
+| L1.8 Wrong-home | `coverage_defect_wrong_home` |
+| L1.9 Vacuous-arm | `coverage_defect_vacuous_arm` |
+| **L1.10.a** `TemplateHole` (sub-signature of Textual-bypass family) | `coverage_defect_template_hole` |
+| **L1.10.b** `CanonicalCarrier` (sub-signature of Textual-bypass family) | `coverage_defect_canonical_carrier` |
+| L1.11 Plausible-fallback | `coverage_defect_plausible_fallback` |
+| L1.12 Parallel-authority | `coverage_defect_parallel_authority` |
 
 **Migration notes for existing downstream consumers:**
-- Any consumer carrying `dissolution_l1_6_emit_template` is **stale**;
-  rename to `dissolution_l1_10_a_template_hole` (the renamed
+- Any consumer carrying `coverage_defect_emit_template` is **stale**;
+  rename to `coverage_defect_template_hole` (the renamed
   sub-signature).
-- Any consumer carrying `dissolution_l1_10_string_escape_hatch` (the
+- Any consumer carrying `coverage_defect_string_escape_hatch` (the
   pre-merge name) is **stale**; replace with the two sub-signature
-  rows `dissolution_l1_10_a_template_hole` AND
-  `dissolution_l1_10_b_canonical_carrier`. L1.10 itself is no longer
+  rows `coverage_defect_template_hole` AND
+  `coverage_defect_canonical_carrier`. L1.10 itself is no longer
   a single mechanical unit — it's a lens family per §5.0's exception.
 - These names are stable as of this revision; further changes to the
   L1.x taxonomy will require a corresponding update to this enumeration
@@ -1140,7 +1141,7 @@ A living record. Every finding that reaches merge-ready despite a defect
 is logged here, root-caused by the §3 methodology — so the lens set grows
 from real evidence, not speculation.
 
-| date | PR | finding | core invariant violated | lens |
+| date | receipt | finding | core invariant violated | lens |
 |---|---|---|---|---|
 | 2026-05-18 | #3250 | `free_monoid_non_empty` hand-rolled discriminant | A coproduct's variant-discriminant is a derived operation | L1.1 |
 | 2026-05-18 | #3255 | `nat_is_zero` hand-rolled discriminant | same | L1.1 |
