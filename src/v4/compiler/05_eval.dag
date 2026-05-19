@@ -288,10 +288,16 @@ fn t22_ci_context() -> EvalContext {
 }
 
 
-fn t22_ci_subject(claim_node: Node, claim: TestClaim, pipeline: CiPipeline) -> TestClaimEvalSubject<CiPipeline> {
+fn t22_ci_subject(
+  label: String,
+  input_symbol: Symbol,
+  expected_reason: Symbol,
+  pipeline: CiPipeline
+) -> TestClaimEvalSubject<CiPipeline> {
+  let input = t22_symbol_node(s: input_symbol)
   TestClaimEvalSubject {
-    claim_node: claim_node,
-    claim: claim,
+    claim_node: input,
+    claim: t22_ci_claim(label: label, input: input, expected_reason: expected_reason),
     context: t22_ci_context(),
     evaluator_input: pipeline
   }
@@ -319,16 +325,10 @@ fn t22_ci_run(subject: TestClaimEvalSubject<CiPipeline>) -> TestClaimRun<CiPipel
 }
 
 
-data claim_ci_dangling_bootstrap_output: TestClaim = t22_ci_claim(
-  label: "t22_ci_dangling_bootstrap_output",
-  input: t22_symbol_node(s: t22_ci_dangling_bootstrap_output),
-  expected_reason: ci_bootstrap_authority_violation
-)
-
-
 data subject_ci_dangling_bootstrap_output: TestClaimEvalSubject<CiPipeline> = t22_ci_subject(
-  claim_node: t22_symbol_node(s: t22_ci_dangling_bootstrap_output),
-  claim: claim_ci_dangling_bootstrap_output,
+  label: "t22_ci_dangling_bootstrap_output",
+  input_symbol: t22_ci_dangling_bootstrap_output,
+  expected_reason: ci_bootstrap_authority_violation,
   pipeline: CiPipeline {
     jobs: [
       CiJob {
@@ -347,16 +347,10 @@ data subject_ci_dangling_bootstrap_output: TestClaimEvalSubject<CiPipeline> = t2
 data run_ci_dangling_bootstrap_output: TestClaimRun<CiPipeline> = t22_ci_run(subject: subject_ci_dangling_bootstrap_output)
 
 
-data claim_ci_duplicate_job_id: TestClaim = t22_ci_claim(
-  label: "t22_ci_duplicate_job_id",
-  input: t22_symbol_node(s: t22_ci_duplicate_job_id),
-  expected_reason: ci_duplicate_job_id
-)
-
-
 data subject_ci_duplicate_job_id: TestClaimEvalSubject<CiPipeline> = t22_ci_subject(
-  claim_node: t22_symbol_node(s: t22_ci_duplicate_job_id),
-  claim: claim_ci_duplicate_job_id,
+  label: "t22_ci_duplicate_job_id",
+  input_symbol: t22_ci_duplicate_job_id,
+  expected_reason: ci_duplicate_job_id,
   pipeline: CiPipeline {
     jobs: [
       CiJob { id: v2_compile_src_v4, command: BootstrapStageCompile { produces: v4_stage0_binary }, needs: [] },
@@ -372,16 +366,10 @@ data subject_ci_duplicate_job_id: TestClaimEvalSubject<CiPipeline> = t22_ci_subj
 data run_ci_duplicate_job_id: TestClaimRun<CiPipeline> = t22_ci_run(subject: subject_ci_duplicate_job_id)
 
 
-data claim_ci_duplicate_gate_id: TestClaim = t22_ci_claim(
-  label: "t22_ci_duplicate_gate_id",
-  input: t22_symbol_node(s: t22_ci_duplicate_gate_id),
-  expected_reason: ci_duplicate_gate_id
-)
-
-
 data subject_ci_duplicate_gate_id: TestClaimEvalSubject<CiPipeline> = t22_ci_subject(
-  claim_node: t22_symbol_node(s: t22_ci_duplicate_gate_id),
-  claim: claim_ci_duplicate_gate_id,
+  label: "t22_ci_duplicate_gate_id",
+  input_symbol: t22_ci_duplicate_gate_id,
+  expected_reason: ci_duplicate_gate_id,
   pipeline: CiPipeline {
     jobs: [
       CiJob { id: v2_compile_src_v4, command: BootstrapStageCompile { produces: v4_stage0_binary }, needs: [] }
@@ -397,16 +385,10 @@ data subject_ci_duplicate_gate_id: TestClaimEvalSubject<CiPipeline> = t22_ci_sub
 data run_ci_duplicate_gate_id: TestClaimRun<CiPipeline> = t22_ci_run(subject: subject_ci_duplicate_gate_id)
 
 
-data claim_ci_dangling_need: TestClaim = t22_ci_claim(
-  label: "t22_ci_dangling_need",
-  input: t22_symbol_node(s: t22_ci_dangling_need),
-  expected_reason: ci_dangling_reference
-)
-
-
 data subject_ci_dangling_need: TestClaimEvalSubject<CiPipeline> = t22_ci_subject(
-  claim_node: t22_symbol_node(s: t22_ci_dangling_need),
-  claim: claim_ci_dangling_need,
+  label: "t22_ci_dangling_need",
+  input_symbol: t22_ci_dangling_need,
+  expected_reason: ci_dangling_reference,
   pipeline: CiPipeline {
     jobs: [
       CiJob { id: v2_compile_src_v4, command: BootstrapStageCompile { produces: v4_stage0_binary }, needs: [t22_other_job] }
@@ -421,16 +403,10 @@ data subject_ci_dangling_need: TestClaimEvalSubject<CiPipeline> = t22_ci_subject
 data run_ci_dangling_need: TestClaimRun<CiPipeline> = t22_ci_run(subject: subject_ci_dangling_need)
 
 
-data claim_ci_dangling_gate_job: TestClaim = t22_ci_claim(
-  label: "t22_ci_dangling_gate_job",
-  input: t22_symbol_node(s: t22_ci_dangling_gate_job),
-  expected_reason: ci_dangling_reference
-)
-
-
 data subject_ci_dangling_gate_job: TestClaimEvalSubject<CiPipeline> = t22_ci_subject(
-  claim_node: t22_symbol_node(s: t22_ci_dangling_gate_job),
-  claim: claim_ci_dangling_gate_job,
+  label: "t22_ci_dangling_gate_job",
+  input_symbol: t22_ci_dangling_gate_job,
+  expected_reason: ci_dangling_reference,
   pipeline: CiPipeline {
     jobs: [
       CiJob { id: v2_compile_src_v4, command: BootstrapStageCompile { produces: v4_stage0_binary }, needs: [] }
@@ -445,16 +421,10 @@ data subject_ci_dangling_gate_job: TestClaimEvalSubject<CiPipeline> = t22_ci_sub
 data run_ci_dangling_gate_job: TestClaimRun<CiPipeline> = t22_ci_run(subject: subject_ci_dangling_gate_job)
 
 
-data claim_ci_dependency_cycle: TestClaim = t22_ci_claim(
-  label: "t22_ci_dependency_cycle",
-  input: t22_symbol_node(s: t22_ci_dependency_cycle),
-  expected_reason: ci_dependency_cycle
-)
-
-
 data subject_ci_dependency_cycle: TestClaimEvalSubject<CiPipeline> = t22_ci_subject(
-  claim_node: t22_symbol_node(s: t22_ci_dependency_cycle),
-  claim: claim_ci_dependency_cycle,
+  label: "t22_ci_dependency_cycle",
+  input_symbol: t22_ci_dependency_cycle,
+  expected_reason: ci_dependency_cycle,
   pipeline: CiPipeline {
     jobs: [
       CiJob { id: v2_compile_src_v4, command: BootstrapStageCompile { produces: v4_stage0_binary }, needs: [t22_other_job] },
