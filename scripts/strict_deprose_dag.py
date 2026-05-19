@@ -10,9 +10,10 @@ Coproduct one-liners (`// 🟢|🟡|🔴 coproduct dissolution — DECISIONS.md 
 is replaced so `--check` cannot pass on stale pointers.
 
 RULING-1 (operator 2026-05-19): each braced record `type` (not a sum coproduct) gets a
-single preserved `// 🟢 grounded.` or `// 🟡 grounded.` line (lexeme-shaped `String`
-slots in the record body ⇒ 🟡). Coproduct rows already carry 🟢/🟡 dissolution state
-and do not get a second grounded line.
+single `// 🟢 grounded.` or `// 🟡 grounded.` line (lexeme-shaped `String` slots in
+the record body ⇒ 🟡). Coproduct rows already carry 🟢/🟡 dissolution state and do
+not get a second grounded line. Grounded lines are **not** preserved across strip —
+they are re-injected every run so spacing stays canonical.
 
 `// Owns:` is a **manifest of top-level module symbols** in **file order**: every
 `type`, `data`, and `fn` binding in the `.dag` body (deduped by name), not only headline
@@ -357,6 +358,11 @@ def inject_grounded_tags(bl: list[str]) -> list[str]:
                     chunk.append(bl[j])
                     depth += bl[j].count("{") - bl[j].count("}")
                     j += 1
+                # Blank line before grounded tags when the previous emitted line is
+                # non-empty (matches verilog/llvm_ir spacing; fixes float.dag after
+                # coproduct variant rows — claude-opus #3370 non-blocking).
+                if out and out[-1].strip():
+                    out.append("")
                 out.append(grounded_tag_for_record_body(chunk))
                 out.extend(chunk)
                 continue
@@ -440,9 +446,10 @@ def strip_body_comments(after_module: str) -> str:
     out_lines: list[str] = []
     for line in after_module.splitlines(True):
         sl = line.rstrip("\r\n")
-        if sl.lstrip().startswith("//") and not (
-            COPRODUCT_TAG_RE.match(sl) or GROUNDED_TAG_RE.match(sl)
-        ):
+        # Only coproduct one-liners survive the strip; RULING-1 grounded lines are
+        # always re-materialized by inject_grounded_tags (keeps one code path and
+        # spacing normalization — e.g. float.dag after coproduct variants).
+        if sl.lstrip().startswith("//") and not COPRODUCT_TAG_RE.match(sl):
             continue
         out_lines.append(line)
     return "".join(out_lines)
