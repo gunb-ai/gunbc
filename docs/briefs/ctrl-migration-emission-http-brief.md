@@ -31,7 +31,7 @@ Inspect before adding carriers:
 ## Acceptance Gates
 
 1. Route shape composes from existing REST/path/service primitives where possible.
-2. Every enum/sum with at least two variants has a Practice 4 receipt.
+2. Every enum/sum with at least two variants carries a Practice 4 one-line 🟢/🟡/🔴 tag; gate binding argued in PR review.
 3. The target can express `POST /api/internal-work-items` and `POST /api/nodes/:id/declare` as examples without hardcoding ctrl-specific routes.
 4. The brief names the first consumer subsystem, expected to be work-item API or inbox delivery.
 5. No cut-over claim is made before a generated handler passes parity.
