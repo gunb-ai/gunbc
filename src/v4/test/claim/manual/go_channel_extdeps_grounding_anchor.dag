@@ -1,0 +1,12 @@
+// src/v4/test/claim/manual/go_channel_extdeps_grounding_anchor.dag
+// Scope: Tier-1 v2-compile anchor for Go channel carrier.
+// Owns: anchor_go_channel.
+// Consumes: extdeps/languages/go.dag.
+// Status: scaffold - compile-only until T-22.
+// Anchor: https://go.dev/ref/spec
+
+module v4.test.claim.manual.go_channel_extdeps_grounding_anchor
+
+import v4.extdeps.languages.go { GoChannel }
+
+fn anchor_go_channel(x: GoChannel) -> GoChannel { x }

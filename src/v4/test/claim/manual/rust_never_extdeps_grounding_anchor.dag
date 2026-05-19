@@ -1,0 +1,13 @@
+// src/v4/test/claim/manual/rust_never_extdeps_grounding_anchor.dag
+// Scope: Tier-1 v2-compile anchor for Rust never carrier.
+// Owns: anchor_rust_never.
+// Consumes: extdeps/languages/rust.dag, std/cardinality.dag.
+// Status: scaffold - compile-only until T-22.
+// Anchor: https://doc.rust-lang.org/reference/types/never.html
+
+module v4.test.claim.manual.rust_never_extdeps_grounding_anchor
+
+import v4.extdeps.languages.rust { RustNever }
+import v4.std.cardinality { Never }
+
+fn anchor_rust_never(x: RustNever) -> Never { x }

@@ -1,0 +1,12 @@
+// src/v4/test/claim/manual/go_scalar_kind_extdeps_grounding_anchor.dag
+// Scope: Tier-1 v2-compile anchor for Go scalar kind.
+// Owns: anchor_go_scalar_kind.
+// Consumes: extdeps/languages/go.dag.
+// Status: scaffold - compile-only until T-22.
+// Anchor: https://go.dev/ref/spec
+
+module v4.test.claim.manual.go_scalar_kind_extdeps_grounding_anchor
+
+import v4.extdeps.languages.go { GoScalarKind }
+
+fn anchor_go_scalar_kind(x: GoScalarKind) -> GoScalarKind { x }

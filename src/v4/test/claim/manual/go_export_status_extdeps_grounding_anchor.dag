@@ -1,0 +1,12 @@
+// src/v4/test/claim/manual/go_export_status_extdeps_grounding_anchor.dag
+// Scope: Tier-1 v2-compile anchor for Go export status.
+// Owns: anchor_go_export_status.
+// Consumes: extdeps/languages/go.dag.
+// Status: scaffold - compile-only until T-22.
+// Anchor: https://go.dev/ref/spec
+
+module v4.test.claim.manual.go_export_status_extdeps_grounding_anchor
+
+import v4.extdeps.languages.go { GoExportStatus }
+
+fn anchor_go_export_status(x: GoExportStatus) -> GoExportStatus { x }

@@ -1,0 +1,12 @@
+// src/v4/test/claim/manual/rust_named_segment_extdeps_grounding_anchor.dag
+// Scope: Tier-1 v2-compile anchor for Rust named path segment.
+// Owns: anchor_named_segment.
+// Consumes: extdeps/languages/rust.dag.
+// Status: scaffold - compile-only until T-22.
+// Anchor: https://doc.rust-lang.org/reference/paths.html
+
+module v4.test.claim.manual.rust_named_segment_extdeps_grounding_anchor
+
+import v4.extdeps.languages.rust { NamedSegment }
+
+fn anchor_named_segment(x: NamedSegment) -> NamedSegment { x }

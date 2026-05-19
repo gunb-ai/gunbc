@@ -1,0 +1,12 @@
+// src/v4/test/claim/manual/rust_scalar_extdeps_grounding_anchor.dag
+// Scope: Tier-1 v2-compile anchor for Rust scalar carrier.
+// Owns: anchor_rust_scalar.
+// Consumes: extdeps/languages/rust.dag.
+// Status: scaffold - compile-only until T-22.
+// Anchor: https://doc.rust-lang.org/reference/types.html
+
+module v4.test.claim.manual.rust_scalar_extdeps_grounding_anchor
+
+import v4.extdeps.languages.rust { RustScalar }
+
+fn anchor_rust_scalar(x: RustScalar) -> RustScalar { x }
