@@ -43,7 +43,7 @@ src/v4/
       go.dag
       cpp.dag            # C++ (subsumes C subset); ISO/IEC 14882
       typescript.dag     # TypeScript + ECMAScript
-      verilog.dag        # Verilog HDL (T-4.9 — B2-OMNI probe; IN-B concurrency)
+      verilog.dag        # Verilog HDL (IEEE 1364-2005; extdeps language model; header Consumes: std/node.dag; std/nat.dag (Nat); schedule edges in TASKS extdeps fan-out)
       llvm_ir.dag        # LLVM IR (T-4.12 — B2-OMNI probe; down-the-stack SSA)
       machine_code.dag   # ISA-parameterized (T-4.13 — bottom of stack; disasm fail-closed)
       ptx.dag            # CUDA/PTX (T-4.14 — B2-OMNI+IN-B probe; SIMT data-parallel)

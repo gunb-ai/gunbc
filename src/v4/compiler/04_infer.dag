@@ -1,9 +1,37 @@
 // src/v4/compiler/04_infer.dag
 // Scope: inference from resolved tree to inferred tree.
-// Anchor: https://en.wikipedia.org/wiki/Type_inference
-// Owns: none.
-// Consumes: none.
-// Status: scaffold for T-9.
+// Owns: AlgebraRef, InferredFacts, InferredTree.
+// Consumes: v4.lens.cost, v4.std.collection, v4.std.node, v4.std.cardinality.
+// Status: scaffold for T-9; IR-1 boundary carrier only.
 
 
 module v4.compiler.infer
+
+
+import v4.lens.cost { SymbolicCost }
+import v4.std.cardinality { TerminationProof }
+import v4.std.collection { Map }
+import v4.std.node { Node }
+
+
+// RULING-1: needs-more-work — typed bridge until algebra inhabitance authority lands.
+type AlgebraRef {
+  algebra: Node
+  witness: Node
+}
+
+
+// RULING-1: needs-more-work — cost/inhabitance coordinates remain T-9/T-12 bridged.
+type InferredFacts {
+  resolved_type: Node
+  inhabits: AlgebraRef
+  cost: SymbolicCost
+  descent: TerminationProof
+}
+
+
+// RULING-1: needs-more-work — per-node fact table shape is present; producer semantics are T-9.
+type InferredTree {
+  root: Node
+  facts: Map<Node, InferredFacts>
+}
