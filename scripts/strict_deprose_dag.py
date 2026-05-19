@@ -54,7 +54,6 @@ FN_RE = re.compile(r"^fn\s+([A-Za-z_][A-Za-z0-9_]*)\b")
 COPRODUCT_TAG_RE = re.compile(
     r"^\s*//\s*[🟢🟡🔴]\s+coproduct dissolution\b",
 )
-GROUNDED_TAG_RE = re.compile(r"^\s*//\s*[🟢🟡]\s+grounded\.\s*$")
 
 # Lexeme-shaped `String` fields in a record body ⇒ 🟡 grounded (SL-3229 / D3200-style
 # partial authority); purely structural records ⇒ 🟢.
@@ -342,30 +341,33 @@ def grounded_tag_for_record_body(body_lines: list[str]) -> str:
 
 
 def inject_grounded_tags(bl: list[str]) -> list[str]:
-    """Insert RULING-1 `// 🟢|🟡 grounded.` before each braced record `type` when needed."""
+    """Insert RULING-1 `// 🟢|🟡 grounded.` before each braced record `type`.
+
+    Tags are **derived only** from the live record body (`LEXEME_STRING_FIELD_RE` → 🟡).
+    Callers must run `strip_body_comments` first so disk-authored grounded lines cannot
+    make `--check` pass stale classifications (codex BLOCKING #3370 / INVARIANTS P2).
+    """
     out: list[str] = []
     j = 0
     while j < len(bl):
         ln = bl[j]
         st = ln.strip()
         if TYPE_RE.match(st) and st.rstrip().endswith("{"):
-            prev = out[-1] if out else ""
-            if not (COPRODUCT_TAG_RE.match(prev) or GROUNDED_TAG_RE.match(prev)):
-                depth = ln.count("{") - ln.count("}")
-                chunk = [ln]
+            depth = ln.count("{") - ln.count("}")
+            chunk = [ln]
+            j += 1
+            while j < len(bl) and depth > 0:
+                chunk.append(bl[j])
+                depth += bl[j].count("{") - bl[j].count("}")
                 j += 1
-                while j < len(bl) and depth > 0:
-                    chunk.append(bl[j])
-                    depth += bl[j].count("{") - bl[j].count("}")
-                    j += 1
-                # Blank line before grounded tags when the previous emitted line is
-                # non-empty (matches verilog/llvm_ir spacing; fixes float.dag after
-                # coproduct variant rows — claude-opus #3370 non-blocking).
-                if out and out[-1].strip():
-                    out.append("")
-                out.append(grounded_tag_for_record_body(chunk))
-                out.extend(chunk)
-                continue
+            # Blank line before grounded tags when the previous emitted line is
+            # non-empty (matches verilog/llvm_ir spacing; fixes float.dag after
+            # coproduct variant rows — claude-opus #3370 non-blocking).
+            if out and out[-1].strip():
+                out.append("")
+            out.append(grounded_tag_for_record_body(chunk))
+            out.extend(chunk)
+            continue
         out.append(ln)
         j += 1
     return out
