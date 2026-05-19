@@ -33,6 +33,18 @@ type FrontierEdge {
 }
 
 
+type EditDimension {
+  edit: Edit
+  dimension: AffectedDimension
+}
+
+
+type EditFrontierEdge {
+  edit: Edit
+  edge: FrontierEdge
+}
+
+
 // 🟡 coproduct dissolution — DECISIONS.md #3153-subsumed
 type ExclusionProof
   = EmptyDimensionDelta { subject: Path }
@@ -52,14 +64,6 @@ type ReExecFrontier
       decisions: Map<ExclusionKey, FrontierDecision>
     }
   | WholeDagFailClosed { reason: Symbol }
-
-
-type AffectedSetRead {
-  boundary_hash_receipt: fn(Dag, Path, Node) -> HashReceipt
-  changed_dimension_receipt: fn(Dag, Edit) -> ChangedDimensionReceipt
-  proven_transitive_changed_subgraph_frontier: fn(Dag, Edit, AffectedDimension) -> List<FrontierEdge>
-  propagation_receipt: fn(Dag, Edit, FrontierEdge) -> PropagationReceipt
-}
 
 
 // 🟡 coproduct dissolution — DECISIONS.md #3153-subsumed; dissolves into B1 content_hash plus B-5 purity/effect receipts.
@@ -87,6 +91,29 @@ type PropagationReceipt
   = Propagates
   | DoesNotPropagate { proof: ExclusionProof }
   | PropagationUnknown { reason: Symbol }
+
+
+type AffectedBoundaryRead {
+  boundary_hash_receipt: fn(Dag, Path, Node) -> HashReceipt,
+  changed_dimension_receipt: fn(Dag, Edit) -> ChangedDimensionReceipt
+}
+
+
+type AffectedFrontierRead {
+  proven_transitive_changed_subgraph_frontier: fn(Dag, EditDimension) -> List<FrontierEdge>
+}
+
+
+type AffectedPropagationRead {
+  propagation_receipt: fn(Dag, EditFrontierEdge) -> PropagationReceipt
+}
+
+
+type AffectedSetRead {
+  boundary: AffectedBoundaryRead
+  frontier: AffectedFrontierRead
+  propagation: AffectedPropagationRead
+}
 
 
 // 🟢 coproduct dissolution — DECISIONS.md #3153-subsumed; accumulator mirrors ReExecFrontier authority.
@@ -170,7 +197,7 @@ fn mark_whole_dag(acc: FrontierAcc, reason: Symbol) -> FrontierAcc {
 
 
 fn boundary_receipt(read_model: AffectedSetRead, dag: Dag, path: Path, replacement: Node) -> BoundaryReceipt {
-  match read_model.boundary_hash_receipt(dag, path, replacement) {
+  match read_model.boundary.boundary_hash_receipt(dag, path, replacement) {
     HashUnchangedPure { content_hash: h } =>
       BoundaryPruned {
         proof: UnchangedPureBoundary {
@@ -191,8 +218,14 @@ fn expand_dimension(
   edit: Edit,
   dimension: AffectedDimension
 ) -> FrontierAcc {
-  fold(read_model.proven_transitive_changed_subgraph_frontier(dag, edit, dimension), init: acc, f: fn(acc2, edge) {
-    match read_model.propagation_receipt(dag, edit, edge) {
+  fold(
+    read_model.frontier.proven_transitive_changed_subgraph_frontier(
+      dag,
+      EditDimension { edit: edit, dimension: dimension }
+    ),
+    init: acc,
+    f: fn(acc2, edge) {
+    match read_model.propagation.propagation_receipt(dag, EditFrontierEdge { edit: edit, edge: edge }) {
       Propagates =>
         mark_rerun(acc: acc2, key: edge_key(edge: edge))
       DoesNotPropagate { proof: p } =>
@@ -213,7 +246,7 @@ fn expand_changed_dimensions(
   acc: FrontierAcc,
   edit: Edit
 ) -> FrontierAcc {
-  match read_model.changed_dimension_receipt(dag, edit) {
+  match read_model.boundary.changed_dimension_receipt(dag, edit) {
     ChangedDimensions { dimensions: dimensions } =>
       fold(dimensions, init: acc, f: fn(acc2, dimension) {
         expand_dimension(
