@@ -675,7 +675,7 @@ model shape to keep the probe "parallel."
 - **Stress axis**: is the format/`LanguageModel` abstraction *actually* general, or secretly programming-language-shaped? A SPICE netlist has **no control flow** — components + a connection graph.
 - **Clear win**: one `.dag` circuit declaration → a SPICE netlist that simulates (omni-emission reaches analog hardware).
 - **Placement (operator-ratified fork)**: `extdeps/formats/` — a netlist is a data format, not a programming language (sibling of csv/json), Shape B.
-- **Scope**: M-L.
+- **Scope**: M-L. **Status**: LANDED via PR #3168 (`src/v4/extdeps/formats/spice.dag`); any pre-D2-reversal / pre-Practice-10-A1 fact-bundle rework stays gated by the A1-invariant decision and is not Wave-0 fill for this already-landed probe.
 
 #### T-4.11: `test/claim/boundary/english_ingest_fail_closed.dag`
 - **Framing (operator-ratified fork)**: English is **NOT a language model** (no formal grammar). It is a **boundary-honesty probe**, not `extdeps/languages/english.dag`.
