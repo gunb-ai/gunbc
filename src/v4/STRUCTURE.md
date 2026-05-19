@@ -42,7 +42,7 @@ src/v4/
       go.dag
       cpp.dag            # C++ (subsumes C subset); ISO/IEC 14882
       typescript.dag     # TypeScript + ECMAScript
-      verilog.dag        # Verilog HDL (T-4.9 — B2-OMNI probe; IN-B concurrency)
+      verilog.dag        # Verilog HDL (IEEE 1364-2005; extdeps language model; header Consumes: std/node.dag; std/nat.dag (Nat); schedule edges in TASKS extdeps fan-out)
       llvm_ir.dag        # LLVM IR (T-4.12 — B2-OMNI probe; down-the-stack SSA)
       machine_code.dag   # ISA-parameterized (T-4.13 — bottom of stack; disasm fail-closed)
       ptx.dag            # CUDA/PTX (T-4.14 — B2-OMNI+IN-B probe; SIMT data-parallel)
@@ -74,7 +74,7 @@ src/v4/
     05_eval.dag          # InferredTree + Inputs -> Value (THE PRIMARY execution path,
                          # THESIS:225; sibling of emit — eval executes, emit projects)
 
-  lens/                  # dimensions (12 files, parallel after compiler)
+  lens/                  # dimensions (13 files, parallel after compiler)
     complexity.dag
     cost.dag             # Tier 1 + Tier 2 textbook (α(n)/log*/log log/sub-exp); UnknownCost floor
     parallelism.dag
@@ -85,6 +85,7 @@ src/v4/
     coverage.dag         # meta-lens — L6/L7/impossible-bug/testgen coverage discipline (structural)
     testgen.dag          # producer side — reads substrate, emits TestClaim corpus (Phase 1.5)
     affected_set.dag     # incremental re-exec frontier; replaces detect-affected shell (Phase 1.5)
+    affected_set_examples.dag # expected affected-frontier example values
     application.dag      # apply_lens surface — opt-in depth + ONLY advisory→fail-closed bridge
     fact_density.dag     # T-30 fact-density lens — pure-advisory `carrier_spec_fact: Node -> SourceSpecReadFact`; surfaces carriers with empty fact-cardinality. Enforcement is the downstream `apply_lens(Enforce)` bridge, not this file. Compile-graph exercised by `test/claim/manual/fact_density_anchor.dag`.
     registry.dag         # P2-staging only (INVARIANTS §P2): PREFIX T-23 v0 `LensIdV0` × `LensModulePathV0` rows — **not** landed single authority until a **generated** consumer reads `LensRegistryEntryV0`; `v4_lens_registry_dag_smoke_test.rs` is **parse + inference cleanliness** only (same posture as `fact_density.dag`). Operator pin §3 human mirror; amend `.dag` first.
@@ -125,7 +126,7 @@ src/v4/
     fixture/             # canonical input programs
 ```
 
-**Total: 74 .dag files + 5 docs + 5 .gitkeep = 84 files.** (Per invariant
+**Total: 75 .dag files + 5 docs + 5 .gitkeep = 85 files.** (Per invariant
 #1 the enumeration above — not the count — is authoritative; the count is
 a checksum, updated on every operator-ratified file addition/removal.
 **Reconciliation (2026-05-17, PR #3225 / review #13750):** the prior printed
@@ -148,15 +149,8 @@ checksum **71→72** `.dag`.
 `docs/briefs/r4-lane-a-lens-interface-freeze-pin.md` §3); checksum **72→73** `.dag`.
 **P2-staging** (INVARIANTS §P2) until a generated consumer reads the rows — paired
 `v4_lens_registry_dag_smoke_test.rs` receipt (parse witness only; same discipline as `fact_density.dag`).
-**2026-05-19 (T-30):** `std/fact_density.dag` graduates from body-less nominal
-to the generated structural hollow-alias checker (`hollow_alias_gate`); add
-`test/claim/manual/fact_density_anchor.dag` v2-bootstrap compile anchor;
-checksum **73→74** `.dag`.
-**2026-05-19 (T-30, operator RULING-6):** `fact_density.dag` moves `std/` → `lens/`
-— it is a lens, not std-kernel — reshaped as the pure-advisory empty-cardinality
-lens read (`carrier_spec_fact: Node -> SourceSpecReadFact`); the enforcement shape
-(`hollow_alias_gate`/`Outcome`/diagnostics) is removed (downstream `apply_lens(Enforce)`).
-Net `.dag` count unchanged at **74** (relocation, not addition).
+**2026-05-19 (#3349):** add `lens/affected_set_examples.dag` as expected affected-frontier example values;
+checksum **74→75** `.dag`.
 
 ## Scalar/numeric concept decomposition
 
