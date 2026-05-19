@@ -1,0 +1,95 @@
+// src/v2.5/artifact.dag
+// Scope: typed artifact-plan + render-target — what the pipeline builds,
+// for which target language, into which output location. RenderTarget is
+// first-class data (it carries the LanguageSpec the emitter projects
+// from), not a bare tag consumers re-dispatch on.
+// Owns: RenderTarget, ArtifactPath, Artifact, ArtifactPlan,
+// single_module_plan.
+// Consumes: v2_5.compiler.emit { LanguageSpec } — provisional path; the
+// LanguageSpec shape and module are owned by the v2.5 emit worker
+// (crisp-dove-396) and surfaced to the PM as a cross-stage contract.
+// Status: fork first-pass — no bootstrap binary yet (sunny-otter-371).
+
+module v2_5.compiler.artifact
+
+import v2_5.compiler.emit { LanguageSpec }
+
+// =========================================================================
+// Render target — first-class data
+//
+// In v2 this was `RenderTarget = Rust | Python | Go | Dag`, a bare 4-arm
+// coproduct every consumer dispatched on (`match target { Rust => f(...),
+// Python => g(...), ... }` — 30+ such matches across emit/coercion). The
+// dispatch was a template-hole disguised as variance: each arm called a
+// per-language function rather than reading per-language data.
+//
+// Here RenderTarget carries the LanguageSpec the emitter projects from,
+// so the dispatch dissolves into field reads (`target.spec.keywords`,
+// `target.spec.file_extension`, ...). New target languages enter as new
+// LanguageSpec values, not as new variants + N new match arms.
+// =========================================================================
+
+type RenderTarget {
+  spec: LanguageSpec
+}
+
+// =========================================================================
+// Output paths — where an artifact lands on disk.
+// =========================================================================
+
+type ArtifactPath {
+  output_dir: String
+  file_stem: String
+}
+
+// =========================================================================
+// Artifact — one buildable unit
+//
+// An artifact pins (target, entry modules, output location). v2 also
+// carried `kind: ArtifactKind` (ServiceBinary | Library | Frontend |
+// GeneratedSupport) and `boundaries: List<Boundary>`; the calibration
+// dispatch (loyal-dove-547 PR #3406) found `kind` was write-only across
+// all of src/v2 (no consumer ever read it) and `boundaries` was never
+// inhabited. Neither is carried into v2.5; if a future consumer reads a
+// kind discriminator, it enters as a closed sum where the variants live
+// with the consumer that needs them.
+// =========================================================================
+
+type Artifact {
+  name: String
+  target: RenderTarget
+  entry_modules: List<String>
+  output: ArtifactPath
+}
+
+// =========================================================================
+// Artifact plan — the build request the pipeline orchestrator consumes.
+//
+// One plan, N artifacts. v2's `boundaries: List<Boundary>` is dropped per
+// above; multi-artifact communication models enter when a consumer needs
+// them.
+// =========================================================================
+
+type ArtifactPlan {
+  artifacts: List<Artifact>
+}
+
+// =========================================================================
+// Single-module plan — the common case (one root module, one target,
+// one output dir). v2's `default_artifact_plan` equivalent, typed.
+// =========================================================================
+
+fn single_module_plan(
+  root_module: String,
+  target: RenderTarget,
+  output: ArtifactPath
+) -> ArtifactPlan {
+  ArtifactPlan {
+    artifacts: [Artifact {
+      name: root_module,
+      target: target,
+      entry_modules: [root_module],
+      output: output
+    }]
+  }
+}
