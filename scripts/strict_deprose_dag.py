@@ -484,7 +484,7 @@ def main() -> None:
             "// Scope: TypeScript 5.9 + ECMA-262 ES2025 primitive D2 resolver slice (T-4 typescript).",
             "// Anchor: https://www.typescriptlang.org/docs/handbook/2/everyday-types.html — ECMA-262 https://tc39.es/ecma262/2025/multipage/",
             "// Consumes: v4.std.logic (Bool, bool_boolean_algebra); v4.std.algebra (BooleanAlgebra).",
-            "// Status: bool canonical-B decl-ref grounding landed (#3338); non-bool numeric primitives 🟡 gated on T-4 fact-bundle Phase-3 after T-3/T-29/T-30/T-25-core.",
+            "// Status: ts_bool_grounding decl-ref present + v2-parse-verified — 🟡 P2/E-6 STAGING (no same-PR consumer; canonical fold specified-not-realized per DECISIONS.md:916-920); non-bool numeric primitives 🟡 gated D2→fact-bundle debt (T-4 Phase-3 rework, node://adhoc-71ec74f4-080).",
         ),
         (
             "src/v4/extdeps/languages/ptx.dag",
