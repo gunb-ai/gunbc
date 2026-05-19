@@ -256,6 +256,29 @@ fn boundary_receipt(read_model: AffectedSetRead, dag: Dag, path: Path, replaceme
 }
 
 
+fn frontier_receipt(
+  read_model: AffectedSetRead,
+  dag: Dag,
+  edit: Edit,
+  dimension: AffectedDimension
+) -> FrontierReceipt {
+  read_model.frontier.proven_transitive_changed_subgraph_frontier(
+    dag,
+    EditDimension { edit: edit, dimension: dimension }
+  )
+}
+
+
+fn propagation_receipt(
+  read_model: AffectedSetRead,
+  dag: Dag,
+  edit: Edit,
+  edge: FrontierEdge
+) -> PropagationReceipt {
+  read_model.propagation_receipt(dag, EditFrontierEdge { edit: edit, edge: edge })
+}
+
+
 fn expand_dimension(
   read_model: AffectedSetRead,
   dag: Dag,
@@ -263,13 +286,10 @@ fn expand_dimension(
   edit: Edit,
   dimension: AffectedDimension
 ) -> ReExecFrontier {
-  match read_model.frontier.proven_transitive_changed_subgraph_frontier(
-    dag,
-    EditDimension { edit: edit, dimension: dimension }
-  ) {
+  match frontier_receipt(read_model: read_model, dag: dag, edit: edit, dimension: dimension) {
     FrontierProduced { edges: edges } =>
       fold(edges, init: frontier, f: fn(acc2, edge) {
-        match read_model.propagation_receipt(dag, EditFrontierEdge { edit: edit, edge: edge }) {
+        match propagation_receipt(read_model: read_model, dag: dag, edit: edit, edge: edge) {
           Propagates =>
             mark_rerun(frontier: acc2, key: edge_key(edge: edge))
           DoesNotPropagate { proof: p } =>
@@ -329,7 +349,6 @@ fn seed_edit_fold_acc_live(
       }
     }
   }
-}
 
 
 fn expand_changed_dimensions(
