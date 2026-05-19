@@ -143,21 +143,30 @@ use `Node` directly.)
 
 Reads precede writes (the existing pattern; preserve it). The agent
 loop is seven steps, closed, with **gates running against the
-candidate post-edit state**, not the pre-edit graph:
+candidate post-edit state**, not the pre-edit graph. The candidate
+root is **explicit in the gate surface**, not a comment-level
+convention:
 
 ```
-1. Read       →  apply_lens(lens, scope, Introspect)        # gather structural facts
-2. Diagnose   →  reasoning over the facts (LLM or human)    # decide what should change
-3. Propose    →  produce Diff                               # express change as structural edits
-4. Candidate  →  candidate_dag = apply_diff(dag, Diff)      # produce uncommitted candidate
+1. Read       →  apply_lens(lens, scope_in(dag, ref), Introspect)
+2. Diagnose   →  reasoning over the facts (LLM or human)
+3. Propose    →  produce Diff
+4. Candidate  →  candidate_dag = apply_diff(dag, Diff)      # uncommitted candidate
                                                             # (fail-closed Diagnostic if any Edit's
-                                                            #  Path doesn't resolve — Diff bails here)
+                                                            #  Path doesn't resolve)
 5. Gate       →  affected_set(dag, Diff).frontier.for_each(ref =>
-                   apply_lens(_, ref, Enforce)              # validate the CANDIDATE state
-                 )                                          # NOT the pre-edit dag
+                   apply_lens(_, scope_in(candidate_dag, ref), Enforce)
+                 )                                          # candidate_dag is the gate root
 6. Commit     →  dag := candidate_dag                       # only if every gate passed
 7. Re-emit    →  emit per target language                   # files are a downstream effect
 ```
+
+`scope_in(root: Node, ref: NodeRef) -> SectionRef` is the helper
+that **explicitly binds a frontier ref to a dag root**, producing a
+`DeclarationScope` / `NodeScope` resolved in that root. It makes the
+candidate-vs-pre-edit context **structurally visible in every gate
+call** — a worker can't accidentally lose the candidate authority by
+calling `apply_lens(_, ref, Enforce)` with an ambiguous root.
 
 **Why gate the candidate, not the pre-edit graph.** Gating the
 pre-edit graph + applying the Diff afterwards would let a Diff
@@ -232,13 +241,14 @@ candidate_dag = apply_diff(dag, diff)
 // → fail-closed Diagnostic here if any Edit's Path doesn't resolve
 
 affected = affected_set(dag, diff)
-// gate against the CANDIDATE state, not the pre-edit dag:
+// gate against the CANDIDATE state — scope_in(candidate_dag, ref) makes
+// the candidate root structurally explicit in every call:
 affected.frontier.for_each(ref =>
-  apply_lens(L1.7, ref, Enforce)   // evaluated in candidate_dag context
+  apply_lens(L1.7, scope_in(candidate_dag, ref), Enforce)
   // → fails if any new prose-asserted facts introduced
 )
 affected.frontier.for_each(ref =>
-  apply_lens(L1.10.b, ref, Enforce)
+  apply_lens(L1.10.b, scope_in(candidate_dag, ref), Enforce)
   // → checks no String-escape-hatch introduced
 )
 
@@ -434,7 +444,7 @@ diff = Diff(matches.map(m => L1_5_transform(m)))
 candidate_dag = apply_diff(dag, diff)             // build uncommitted candidate
 affected = affected_set(dag, diff)
 affected.frontier.for_each(ref =>
-  apply_lens(L1.5, ref, Enforce)                  // validate CANDIDATE state per frontier member
+  apply_lens(L1.5, scope_in(candidate_dag, ref), Enforce)   // candidate root explicit
 )
 
 dag := candidate_dag                              // commit if all gates passed
@@ -586,9 +596,10 @@ gunbc declare-concept Bool \
    - `data bool_concept: CanonicalConcept = { canonical_home: ..., members: ... }`
    - Alias-identity Edit for each `members` entry
 3. `candidate_dag = apply_diff(dag, diff)` — uncommitted candidate
-4. `affected_set(dag, diff).frontier.for_each(ref => apply_lens(L1.12, ref, Enforce))`
-   validates **against the candidate** → should pass via outcome (1)
-   alias for each affected declaration
+4. `affected_set(dag, diff).frontier.for_each(ref => apply_lens(L1.12, scope_in(candidate_dag, ref), Enforce))`
+   validates **against the candidate** (candidate root structurally
+   explicit) → should pass via outcome (1) alias for each affected
+   declaration
 5. `dag := candidate_dag` — commit if all gates pass
 6. Re-emit affected files
 
@@ -658,18 +669,29 @@ matches = declarations_in(dag).flat_map(d =>
 // → List<Match { path, type_name, aliased_to }>
 ```
 
-**Affected-LOC enumeration** — pre-execution, the agent can inspect
-the exact scope structurally (not by grep):
+**Affected-structural-paths enumeration** — pre-execution, the agent
+can inspect the exact scope structurally (not by grep):
 ```dag
 preview = {
   site_count:    matches.length,
-  exact_paths:   matches.map(m => m.path),
+  exact_paths:   matches.map(m => m.path),    // structural Paths in the Node graph
   re_exec_scope: affected_set(dag, refactor_diff).frontier,
 }
 ```
-This answers *"what are all the affected LOC"* — a structural
-enumeration with re-validation scope, available **before** any Edit
-applies.
+This answers *"what are all the affected structural sites"* — a
+substrate-native enumeration of `Path`s + re-validation scope,
+available **before** any Edit applies.
+
+> **Translation to file/line ("affected LOC") depends on the
+> Node→File binding registry (§6.8 item 6).** Until that registry
+> lands, the substrate-native answer is in terms of `Path`s, not
+> file:line pairs. Per §1, file/line is an *emergent* property of
+> emit behavior today — to project from structural Path to
+> file:line you'd need to walk the emit stage's mapping (implicit)
+> or wait for the Node→File binding registry to make it queryable
+> substrate data. The substrate-native answer is still complete —
+> "affected sites" is a structural fact; "affected LOC" is the
+> file/line projection of that fact, downstream of emit.
 
 **Transform** — uniform per-site, declaratively expressed:
 ```dag
@@ -693,7 +715,7 @@ guarantee:**
 3. `dag := candidate_dag` only if every gate passed.
 
 **The guarantee is structural**: either the refactor lands completely
-or no-op. Never a half-migrated state. LOC count is irrelevant —
+or no-op. Never a half-migrated state. Site count is irrelevant —
 the substrate handles 10 sites or 10,000 the same way. Atomicity is
 a property of `apply_diff` + candidate-state, not of the refactor
 authoring.
