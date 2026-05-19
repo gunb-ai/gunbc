@@ -2,7 +2,8 @@
 // Owns: PipelineStageKind, PipelineStageRow, v2_5_compile_pipeline, PipelineCarrier,
 //       CompilePipelineState, compile_pipeline_io_ok, outcome_bind, run_compile_pipeline_fold, compile.
 // Consumes: v2_5.std.diagnostic, v2_5.std.stage_types, all v2_5.compiler.* stage modules.
-// Status: fork scaffold — stage bodies + Tier 0/1 type kit land in sibling PRs.
+// Status: fork scaffold — orchestrator only; does not inspect Node/Edge (Tier 0 PR #3422).
+//         Stage bodies + Tier 1 phase carriers land in sibling PRs.
 // Anchor: https://en.wikipedia.org/wiki/Compiler
 
 module v2_5.compiler.compile
@@ -12,8 +13,7 @@ import v2_5.std.diagnostic {
   ExternalContractUnknown,
   Outcome,
   PortLocus,
-  Unavailable,
-  diagnostic_is_error
+  Unavailable
 }
 import v2_5.std.stage_types {
   Source,
@@ -76,13 +76,8 @@ type PipelineStageRow {
   produces: Symbol
 }
 
-fn pipeline_gate_blocks(policy: PipelineGatePolicy, diagnostics: List<Diagnostic>) -> Bool {
-  match policy {
-    BlockingOnErrors => diagnostics |> any(d => diagnostic_is_error(d: d))
-    SurfaceOnly => false
-  }
-}
-
+// Gate policy is declared on each PipelineStageRow; stage workers honor it and set
+// blocks_emit on their result bundle (orchestrator does not classify Diagnostic.reason).
 fn pipeline_row_io_matches(row: PipelineStageRow) -> Bool {
   match row.stage {
     StageTokenize => (row.consumes == source_type) && (row.produces == token_stream_type)
@@ -367,7 +362,7 @@ fn apply_pipeline_stage(state: CompilePipelineState, row: PipelineStageRow) -> C
         CarrierNormalized { source: source, tokens: tokens, parsed: parsed, resolved: resolved, normalized: normalized } =>
           match infer(normalized: normalized) {
             Produced { value: result } =>
-              let infer_blocks_emit = pipeline_gate_blocks(policy: row.gate, diagnostics: result.diagnostics)
+              let infer_blocks_emit = result.blocks_emit
               CompilePipelineState {
                 carrier: CarrierInferred {
                   source: source,
@@ -399,7 +394,7 @@ fn apply_pipeline_stage(state: CompilePipelineState, row: PipelineStageRow) -> C
           CarrierInferred { source: source, spec: spec, tokens: tokens, parsed: parsed, resolved: resolved, normalized: normalized, inferred: inferred } =>
             match complexity_analyze(inferred: inferred) {
               Produced { value: result } =>
-                let complexity_blocks_emit = pipeline_gate_blocks(policy: row.gate, diagnostics: result.diagnostics)
+                let complexity_blocks_emit = result.blocks_emit
                 CompilePipelineState {
                   carrier: CarrierInferred {
                     source: source,
@@ -432,7 +427,7 @@ fn apply_pipeline_stage(state: CompilePipelineState, row: PipelineStageRow) -> C
           CarrierInferred { source: source, spec: spec, tokens: tokens, parsed: parsed, resolved: resolved, normalized: normalized, inferred: inferred } =>
             match ownership_analyze(inferred: inferred) {
               Produced { value: result } =>
-                let ownership_blocks_emit = pipeline_gate_blocks(policy: row.gate, diagnostics: result.diagnostics)
+                let ownership_blocks_emit = result.blocks_emit
                 CompilePipelineState {
                   carrier: CarrierInferred {
                     source: source,
