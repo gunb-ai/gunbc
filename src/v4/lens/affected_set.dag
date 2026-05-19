@@ -1,6 +1,6 @@
 // src/v4/lens/affected_set.dag
 // Scope: canonical affected-set authority for CI/incremental re-execution; fail-closed B-4/B-5 node frontier.
-// Owns: Dag, AffectedDimension, ExclusionKey, ExclusionProof, FrontierDecision, ReExecFrontier, AffectedSetRead, ChangedDimensionReceipt, affected_set.
+// Owns: Dag, AffectedDimension, ExclusionKey, ExclusionProof, FrontierDecision, ReExecFrontier, AffectedSetRead, BoundaryReceipt, ChangedDimensionReceipt, affected_set.
 // Consumes: Map, Diff, Edit, Hash, Node, Path, Symbol, Witness; B1 content_hash receipts; B-4 resolved Symbol equality; B-5 per-Arrow signature effects.
 // Status: Wave-0 front: bounded changed-subgraph frontier fold landed; dissolves when CI use and .dag TestClaims land.
 
@@ -66,13 +66,6 @@ type ReExecFrontier
   | WholeDagFailClosed { reason: Symbol }
 
 
-// 🟡 coproduct dissolution — DECISIONS.md #3153-subsumed; dissolves into B1 content_hash plus B-5 purity/effect receipts.
-type HashReceipt
-  = HashUnchangedPure { content_hash: Hash, dag: Dag }
-  | HashChanged { dag: Dag }
-  | HashUnknown { reason: Symbol }
-
-
 // 🟡 coproduct dissolution — DECISIONS.md #3153-subsumed; dissolves when T-21 .dag TestClaims prove boundary cases.
 type BoundaryReceipt
   = BoundaryPruned { proof: ExclusionProof, dag: Dag }
@@ -93,20 +86,10 @@ type PropagationReceipt
   | PropagationUnknown { reason: Symbol }
 
 
-type AffectedBoundaryRead {
-  boundary_hash_receipt: fn(Dag, Path, Node) -> HashReceipt,
-  changed_dimension_receipt: fn(Dag, Edit) -> ChangedDimensionReceipt
-}
-
-
-type AffectedFrontierRead {
-  proven_transitive_changed_subgraph_frontier: fn(Dag, EditDimension) -> List<FrontierEdge>
-}
-
-
 type AffectedSetRead {
-  boundary: AffectedBoundaryRead
-  frontier: AffectedFrontierRead
+  boundary_receipt: fn(Dag, Edit) -> BoundaryReceipt
+  changed_dimension_receipt: fn(Dag, Edit) -> ChangedDimensionReceipt
+  proven_transitive_changed_subgraph_frontier: fn(Dag, EditDimension) -> List<FrontierEdge>
   propagation_receipt: fn(Dag, EditFrontierEdge) -> PropagationReceipt
 }
 
@@ -210,19 +193,8 @@ fn mark_whole_dag(acc: FrontierAcc, reason: Symbol) -> FrontierAcc {
 }
 
 
-fn boundary_receipt(read_model: AffectedSetRead, dag: Dag, path: Path, replacement: Node) -> BoundaryReceipt {
-  match read_model.boundary.boundary_hash_receipt(dag, path, replacement) {
-    HashUnchangedPure { content_hash: h, dag: next_dag } =>
-      BoundaryPruned {
-        proof: UnchangedPureBoundary {
-          subject: path,
-          content_hash: h
-        },
-        dag: next_dag
-      }
-    HashChanged { dag: next_dag } => BoundaryExpands { dag: next_dag }
-    HashUnknown { reason: r } => BoundaryUnknown { reason: r }
-  }
+fn read_boundary_receipt(read_model: AffectedSetRead, dag: Dag, edit: Edit) -> BoundaryReceipt {
+  read_model.boundary_receipt(dag, edit)
 }
 
 
@@ -234,7 +206,7 @@ fn expand_dimension(
   dimension: AffectedDimension
 ) -> FrontierAcc {
   fold(
-    read_model.frontier.proven_transitive_changed_subgraph_frontier(
+    read_model.proven_transitive_changed_subgraph_frontier(
       dag,
       EditDimension { edit: edit, dimension: dimension }
     ),
@@ -262,7 +234,7 @@ fn expand_changed_dimensions(
   acc: FrontierAcc,
   edit: Edit
 ) -> FrontierAcc {
-  match read_model.boundary.changed_dimension_receipt(boundary_dag, edit) {
+  match read_model.changed_dimension_receipt(boundary_dag, edit) {
     ChangedDimensions { dimensions: dimensions } =>
       fold(dimensions, init: acc, f: fn(acc2, dimension) {
         expand_dimension(
@@ -284,11 +256,10 @@ fn seed_edit_fold_acc(
   acc: AffectedFoldAcc,
   edit: Edit
 ) -> AffectedFoldAcc {
-  match boundary_receipt(
+  match read_boundary_receipt(
     read_model: read_model,
     dag: acc.dag,
-    path: edit.at,
-    replacement: edit.replacement
+    edit: edit
   ) {
     BoundaryPruned { proof: p, dag: next_dag } =>
       AffectedFoldAcc {
