@@ -1,7 +1,7 @@
 // src/v4/test/claim/manual/resolve_compile_anchor.dag
 //
 // Scope: Tier-1 v2-bootstrap compile anchor for `resolve` + wave-1 LM `canonical_symbols` (ledger: DECISIONS CP-1b item 10).
-// Owns: anchor_resolve_wave1_service_atom_via_canonical_symbols, anchor_resolve_wave1_multi_edge_conj_via_canonical_symbols, anchor_resolve_wave1_bind_binder_use.
+// Owns: anchor_decl_first, anchor_decl_second, anchor_resolve_wave1_service_atom_via_canonical_symbols, anchor_resolve_wave1_multi_edge_conj_via_canonical_symbols, anchor_resolve_wave1_bind_binder_use.
 // Consumes: compiler/03_resolve.dag, extdeps/languages/dag.dag, std/diagnostic.dag, std/node.dag.
 // Status: scaffold — compile-only until T-22; `v2 run` TestClaims per MOVE1_COVERAGE.txt.
 // Anchor: https://en.wikipedia.org/wiki/Name_resolution_(programming_languages)
@@ -23,19 +23,29 @@ import v4.std.node {
   ComputationNode,
   Conj,
   Edge,
+  Named,
   Node,
   Positional,
+  Symbol,
   TypeNode
 }
 
 
+// Module-declaration names for the `Conj` anchor roots — `Conj` carries the
+// `LabeledEdges` discipline (`std/node.dag`), so the program-module root edges
+// must be `Named` and name-distinct.
+data anchor_decl_first: Symbol = anchor_decl_first
+data anchor_decl_second: Symbol = anchor_decl_second
+
+
+// DECISIONS CP-1b item 10.
 fn anchor_resolve_wave1_service_atom_via_canonical_symbols() -> Outcome<ResolvedTree> {
   resolve(
     tree: Node {
       kind: TypeNode { connective: Conj },
       children: [
         Edge {
-          label: Positional,
+          label: Named { name: anchor_decl_first },
           target: Node {
             kind: TypeNode {
               connective: Atom { identity: dag_c3_surface_sugar_service }
@@ -57,7 +67,7 @@ fn anchor_resolve_wave1_multi_edge_conj_via_canonical_symbols() -> Outcome<Resol
       kind: TypeNode { connective: Conj },
       children: [
         Edge {
-          label: Positional,
+          label: Named { name: anchor_decl_first },
           target: Node {
             kind: TypeNode {
               connective: Atom { identity: dag_c3_surface_sugar_service }
@@ -66,7 +76,7 @@ fn anchor_resolve_wave1_multi_edge_conj_via_canonical_symbols() -> Outcome<Resol
           }
         },
         Edge {
-          label: Positional,
+          label: Named { name: anchor_decl_second },
           target: Node {
             kind: TypeNode {
               connective: Atom { identity: dag_c3_surface_sugar_type }
@@ -88,7 +98,7 @@ fn anchor_resolve_wave1_bind_binder_use() -> Outcome<ResolvedTree> {
       kind: TypeNode { connective: Conj },
       children: [
         Edge {
-          label: Positional,
+          label: Named { name: anchor_decl_first },
           target: Node {
             kind: ComputationNode { behavior: Bind },
             children: [
