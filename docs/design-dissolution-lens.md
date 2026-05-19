@@ -898,15 +898,26 @@ fn derive_effect_shape(...) -> Outcome<EffectShape> {
 > "Cross-reference — D2-resolver" note below for why the dangling-import
 > shape is a separate finding.
 
-- *Signature (lexical collision triggers; structural resolution
-  required, silence fails closed):* a cross-file lexical-name
-  collision — two `type T` declarations in different files sharing
-  the same simple name — is the **trigger** for the lens. The
-  trigger by itself does not finalize the verdict; it demands a
-  *structural resolution* from the substrate. The lens then checks
-  for one of **five mechanically-distinct outcomes** — three passing
-  and two firing — and the decision table is closed (no escape
-  outside this enumeration):
+- *Signature (concept-level — two triggers, union):* the lens fires
+  on **parallel authority for a concept**, which is detectable in
+  two mechanically-distinct ways. The lens has **two triggers**;
+  EITHER triggers the resolution check. P2 and Practice 5 demand
+  single-authority *at the concept level*, not at the lexical-name
+  level — both triggers exist so the lens detects the violation in
+  the shapes the substrate can mechanically see.
+  - **Trigger A (lexical):** a cross-file lexical-name collision —
+    two `type T` declarations in different files sharing the same
+    simple name.
+  - **Trigger B (concept-graph):** two `type T1` and `type T2`
+    declarations in different files that are **co-members of a
+    `CanonicalConcept` row**, regardless of whether their lexical
+    names match. This catches the "two parallel homes for one
+    concept under different names" shape, which Trigger A misses by
+    construction.
+  Once either trigger fires, the lens checks for one of **five
+  mechanically-distinct outcomes** — three passing and two firing —
+  and the decision table is closed (no escape outside this
+  enumeration):
   1. **Same-concept-with-alias.** A `CanonicalConcept` row claims
      the two declarations as co-members AND the non-canonical
      declaration is a structural alias (`import` + `type T =
@@ -932,21 +943,41 @@ fn derive_effect_shape(...) -> Outcome<EffectShape> {
        because: distinct-domain-concepts,
      }
      ```
-     → **passes.**
+     → **passes.** (Note: applies to Trigger A only. Under Trigger B,
+     a `ConceptDisambiguation` row that *contradicts* a present
+     `CanonicalConcept` co-membership row is a registry-inconsistency
+     finding — caught by L0-class duplicate-data-row checks, not
+     L1.12.)
   4. **Same-concept-without-alias-or-retirement.** A `CanonicalConcept`
      row claims co-membership but the non-canonical declaration is
      neither structurally aliased nor in the retirement ledger →
-     **fires** (the original duplicate-authority case).
-  5. **Silence.** No `CanonicalConcept` row, no
-     `ConceptDisambiguation` row, no `HistoricalDeclaration` row →
-     **fires as unresolved-duplicate.** The substrate must take a
-     position.
+     **fires** (the original duplicate-authority case; reachable
+     via either trigger).
+  5. **Silence.** Triggered lexically (Trigger A), AND no
+     `CanonicalConcept` row, no `ConceptDisambiguation` row, no
+     `HistoricalDeclaration` row → **fires as unresolved-duplicate.**
+     The substrate must take a position. (Not reachable via Trigger
+     B — the trigger IS a registry row's presence.)
   Note: **deletion / migration** (removing the redeclaration in the
   same change so only one `type T` remains across the corpus) is
-  not a fifth resolution — it removes the trigger condition (the
-  lexical collision) entirely, so the lens never engages.
-  The lexical collision is the trigger, not the conclusion;
-  unresolved-silence fails closed. Same lexical name in different
+  not a sixth resolution — it removes the trigger condition (the
+  lexical collision and/or the registry co-membership) entirely, so
+  the lens never engages.
+  **Decidability boundary (explicit):** the lens catches concept-level
+  parallel authority when EITHER (a) the duplicate uses the same
+  lexical name (Trigger A) OR (b) the substrate has registered the
+  concept identity via `CanonicalConcept` (Trigger B). It does NOT
+  catch the case where two homes use *different* lexical names AND
+  no `CanonicalConcept` row registers them as the same concept —
+  that case is a P2 violation but is mechanically undetectable from
+  parsed substrate alone; closing it requires either operator
+  judgment or an extension primitive (e.g., a structural similarity
+  fold) that the current substrate does not provide. This is the
+  honest decidability boundary, and per the §3 methodology a lens's
+  signature must catch its finding class with zero false positives —
+  Trigger B's CanonicalConcept-driven gate is the structural surface
+  the lens can decidably enforce today.
+  Unresolved-silence fails closed. Same lexical name in different
   concepts passes via (3); the F9 motivating case (Bool in two
   files with no rows anywhere) fires via (5) until one of (1),
   (2), or (3) lands.
