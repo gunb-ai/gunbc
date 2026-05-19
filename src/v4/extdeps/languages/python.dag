@@ -1,11 +1,15 @@
 // src/v4/extdeps/languages/python.dag
 // Scope: Python 3.14 Reference surface (numeric tower, singleton kinds, scalar sum, cost shape, partial D2 resolver).
-// Owns: PythonNumericTower, PythonSingletonKind, PythonScalar, PythonCost, PyBool.
-// Consumes: Kernel-ambient Bool, Int; std/integer, std/float, std/cardinality when T-3 alias rows land (DECISIONS.md D2-REV).
+// Owns: PythonNumericTower, PythonSingletonKind, PythonScalar, PythonCost, py_bool_grounding.
+// Consumes: Kernel-ambient Int; v4.std.logic.Bool, bool_boolean_algebra; v4.std.algebra.BooleanAlgebra; std/integer, std/float, std/cardinality when T-3 alias rows land (DECISIONS.md D2-REV).
+// Bool: canonical-B decl-ref grounding (truth facet; int-subtype build-up = PythonNumericTower.BoolLevel) — 🟡 E-6(b) staging (scaffold at decl; ledger DECISIONS.md/§0).
 // Status: extdeps python slice; numeric overflow and resolver deferrals per DECISIONS.md D2-REV + Part 6 (PR #3229 · CP-3229-GREEN-TERMINAL); principal int unbounded—no overflow carrier in-file.
 // Anchor: https://docs.python.org/3.14/reference/
 
 module v4.extdeps.languages.python
+
+import v4.std.logic { Bool, bool_boolean_algebra }
+import v4.std.algebra { BooleanAlgebra }
 
 // 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
 type PythonNumericTower
@@ -30,5 +34,8 @@ type PythonCost {
   allocation_cost: Int
 }
 
-type PyBool = Bool
 // 🟢 Singleton / `Unit` D2a slice — DECISIONS.md §PR-3252-extdeps-deferrals + §PR-3252-cardinality-std (Practice 9).
+
+// Anchor: https://docs.python.org/3.14/library/stdtypes.html#boolean-type-bool
+// 🟡 canonical-B decl-ref (truth facet; int-subtype build-up = PythonNumericTower.BoolLevel) · E-6(b) bounded-exception · scaffold feature:canonical-b-grounding-consumer · dissolve-on: B1-CANON+zip-fold consume (ledger: DECISIONS.md B1·T-9/C1 · grounding-worked-examples.md §0)
+data py_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
