@@ -1,0 +1,353 @@
+module v2_5.compiler.trace
+
+import v2_5.std.identity { SourceSpan, AuthoredName, BoundName }
+import v2_5.std.node { Node, Symbol }
+import v2_5.std.stage_types {
+  ParseModule, ResolvedModule, NormalizedModule, InferredModule,
+  ParseExpr, ResolvedExpr, NormalizedExpr, InferredExpr,
+  ParseItem, ResolvedModuleItem, NormalizedItem, InferredItem
+}
+
+type TracePathStep
+  = TraceNamedEdge { name: Symbol }
+  | TracePositionalEdge { index: Int }
+
+type TraceNodePath {
+  steps: List<TracePathStep>
+}
+
+type TraceNodeRoot
+  = TraceSubstrateRoot { node: Node }
+  | TraceParseModuleRoot { module: ParseModule }
+  | TraceResolvedModuleRoot { module: ResolvedModule }
+  | TraceNormalizedModuleRoot { module: NormalizedModule }
+  | TraceInferredModuleRoot { module: InferredModule }
+
+type TracePhaseNode
+  = TraceParseExprNode { expr: ParseExpr }
+  | TraceResolvedExprNode { expr: ResolvedExpr }
+  | TraceNormalizedExprNode { expr: NormalizedExpr }
+  | TraceInferredExprNode { expr: InferredExpr }
+  | TraceParseItemNode { item: ParseItem }
+  | TraceResolvedItemNode { item: ResolvedModuleItem }
+  | TraceNormalizedItemNode { item: NormalizedItem }
+  | TraceInferredItemNode { item: InferredItem }
+
+type TraceLocus
+  = TraceRootLocus {
+      root: TraceNodeRoot
+      path: TraceNodePath
+      span: SourceSpan
+    }
+  | TracePhaseLocus {
+      node: TracePhaseNode
+      path: TraceNodePath
+      span: SourceSpan
+    }
+  | TraceGeneratedLocus {
+      generated_file: String
+      position: GeneratedPosition
+      source_span: SourceSpan
+    }
+
+type TracePoint {
+  locus: TraceLocus
+}
+
+type TraceBinding {
+  name: BoundName
+  value: String
+}
+
+type TraceInput
+  = TraceAuthoredInput { name: AuthoredName, value: String }
+  | TraceBoundInput { name: BoundName, value: String }
+
+type TraceValue
+  = TraceTextValue { value: String }
+  | TraceStructuredValue { fields: List<TraceBinding> }
+
+type TraceFailure {
+  message: String
+  at: TraceLocus
+}
+
+type TraceEvent
+  = TraceEntered {
+      point: TracePoint
+      inputs: List<TraceInput>
+    }
+  | TraceReturned {
+      point: TracePoint
+      output: TraceValue
+    }
+  | TraceFailed {
+      point: TracePoint
+      failure: TraceFailure
+    }
+  | TraceSourceMapped {
+      point: TracePoint
+      mapping: SpanMapping
+    }
+
+type TraceFrame
+  = TraceModuleFrame {
+      module: BoundName
+      entered_at: TracePoint
+    }
+  | TraceFunctionFrame {
+      function: BoundName
+      call_site: TracePoint
+      bindings: List<TraceBinding>
+    }
+  | TraceRuntimeAdapterFrame {
+      adapter: Symbol
+      generated_at: GeneratedPosition
+      source: TraceLocus
+    }
+
+type TraceStack
+  = TraceStackEmpty
+  | TraceStackCons {
+      frame: TraceFrame
+      previous: TraceStack
+    }
+
+type Trace {
+  events: List<TraceEvent>
+  stack: TraceStack
+}
+
+fn empty_trace() -> Trace {
+  Trace { events: [], stack: TraceStackEmpty }
+}
+
+fn trace_push_event(trace: Trace, event: TraceEvent) -> Trace {
+  Trace { events: list_push(trace.events, event), stack: trace.stack }
+}
+
+fn trace_push_frame(trace: Trace, frame: TraceFrame) -> Trace {
+  Trace {
+    events: trace.events,
+    stack: TraceStackCons { frame: frame, previous: trace.stack }
+  }
+}
+
+fn trace_pop_frame(trace: Trace) -> Trace {
+  match trace.stack {
+    TraceStackEmpty => trace
+    TraceStackCons { frame: _, previous: rest } => Trace { events: trace.events, stack: rest }
+  }
+}
+
+type TraceEventKind
+  = TraceEnterKind
+  | TraceReturnKind
+  | TraceFailureKind
+  | TraceSourceMapKind
+
+type SpanRange {
+  start: Int
+  end: Int
+}
+
+type TraceFilter {
+  phase_path: TraceNodePath?
+  span: SpanRange?
+  event_kind: TraceEventKind?
+}
+
+fn trace_filter_all() -> TraceFilter {
+  TraceFilter { phase_path: none, span: none, event_kind: none }
+}
+
+fn trace_filter_by_path(path: TraceNodePath) -> TraceFilter {
+  TraceFilter { phase_path: Some { value: path }, span: none, event_kind: none }
+}
+
+fn trace_filter_by_span(start: Int, end: Int) -> TraceFilter {
+  TraceFilter {
+    phase_path: none,
+    span: Some { value: SpanRange { start: start, end: end } },
+    event_kind: none
+  }
+}
+
+fn trace_filter_failures() -> TraceFilter {
+  TraceFilter { phase_path: none, span: none, event_kind: Some { value: TraceFailureKind } }
+}
+
+fn trace_event_point(event: TraceEvent) -> TracePoint {
+  match event {
+    TraceEntered { point: p, inputs: _ } => p
+    TraceReturned { point: p, output: _ } => p
+    TraceFailed { point: p, failure: _ } => p
+    TraceSourceMapped { point: p, mapping: _ } => p
+  }
+}
+
+fn trace_event_kind(event: TraceEvent) -> TraceEventKind {
+  match event {
+    TraceEntered { point: _, inputs: _ } => TraceEnterKind
+    TraceReturned { point: _, output: _ } => TraceReturnKind
+    TraceFailed { point: _, failure: _ } => TraceFailureKind
+    TraceSourceMapped { point: _, mapping: _ } => TraceSourceMapKind
+  }
+}
+
+fn trace_locus_span(locus: TraceLocus) -> SourceSpan {
+  match locus {
+    TraceRootLocus { root: _, path: _, span: s } => s
+    TracePhaseLocus { node: _, path: _, span: s } => s
+    TraceGeneratedLocus { generated_file: _, position: _, source_span: s } => s
+  }
+}
+
+fn trace_locus_path(locus: TraceLocus) -> TraceNodePath {
+  match locus {
+    TraceRootLocus { root: _, path: p, span: _ } => p
+    TracePhaseLocus { node: _, path: p, span: _ } => p
+    TraceGeneratedLocus { generated_file: _, position: _, source_span: _ } =>
+      TraceNodePath { steps: [] }
+  }
+}
+
+fn trace_point_locus(point: TracePoint) -> TraceLocus {
+  point.locus
+}
+
+fn trace_point_span(point: TracePoint) -> SourceSpan {
+  trace_locus_span(locus: trace_point_locus(point: point))
+}
+
+fn trace_point_path(point: TracePoint) -> TraceNodePath {
+  trace_locus_path(locus: trace_point_locus(point: point))
+}
+
+fn event_matches_span_range(event: TraceEvent, range: SpanRange) -> Bool {
+  let span = trace_point_span(point: trace_event_point(event: event))
+  span.start >= range.start && span.start < range.end
+}
+
+fn event_matches_path_filter(event: TraceEvent, phase_path: TraceNodePath?) -> Bool {
+  match phase_path {
+    Some { value: p } => trace_point_path(point: trace_event_point(event: event)) == p
+    None => true
+  }
+}
+
+fn event_matches_span_filter(event: TraceEvent, span: SpanRange?) -> Bool {
+  match span {
+    Some { value: range } => event_matches_span_range(event: event, range: range)
+    None => true
+  }
+}
+
+fn event_matches_kind_filter(event: TraceEvent, event_kind: TraceEventKind?) -> Bool {
+  match event_kind {
+    Some { value: k } => trace_event_kind(event: event) == k
+    None => true
+  }
+}
+
+fn event_matches_filter(event: TraceEvent, trace_filter: TraceFilter) -> Bool {
+  event_matches_path_filter(event: event, phase_path: trace_filter.phase_path)
+    && event_matches_span_filter(event: event, span: trace_filter.span)
+    && event_matches_kind_filter(event: event, event_kind: trace_filter.event_kind)
+}
+
+fn replay_trace(trace: Trace, trace_filter: TraceFilter) -> List<TraceEvent> {
+  trace.events |> filter(e => event_matches_filter(event: e, trace_filter: trace_filter))
+}
+
+type GeneratedColumn
+  = GeneratedColumnUnknown
+  | GeneratedColumnKnown { column: Int }
+
+type GeneratedPosition {
+  line: Int
+  column: GeneratedColumn
+}
+
+type SpanMapping {
+  generated: GeneratedPosition
+  source_span: SourceSpan
+}
+
+type SourceMap {
+  generated_file: String
+  mappings: List<SpanMapping>
+}
+
+type SourceMapLookup
+  = SourceMapHit { span: SourceSpan }
+  | SourceMapMiss
+
+fn generated_position_at_line(line: Int) -> GeneratedPosition {
+  GeneratedPosition { line: line, column: GeneratedColumnUnknown }
+}
+
+fn generated_position_at_column(line: Int, column: Int) -> GeneratedPosition {
+  GeneratedPosition { line: line, column: GeneratedColumnKnown { column: column } }
+}
+
+fn generated_column_leq(left: GeneratedColumn, right: GeneratedColumn) -> Bool {
+  match left {
+    GeneratedColumnUnknown => true
+    GeneratedColumnKnown { column: l } => match right {
+      GeneratedColumnUnknown => true
+      GeneratedColumnKnown { column: r } => l <= r
+    }
+  }
+}
+
+fn generated_position_leq(left: GeneratedPosition, right: GeneratedPosition) -> Bool {
+  if left.line < right.line {
+    true
+  } else if left.line > right.line {
+    false
+  } else {
+    generated_column_leq(left: left.column, right: right.column)
+  }
+}
+
+fn mapping_applies_to_position(mapping: SpanMapping, generated: GeneratedPosition) -> Bool {
+  generated_position_leq(left: mapping.generated, right: generated)
+}
+
+fn remap_position(source_map: SourceMap, generated: GeneratedPosition) -> SourceMapLookup {
+  let hits = source_map.mappings
+    |> filter(m => mapping_applies_to_position(mapping: m, generated: generated))
+  match last(hits) {
+    Some { value: mapping } => SourceMapHit { span: mapping.source_span }
+    None => SourceMapMiss
+  }
+}
+
+fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceMapLookup {
+  remap_position(
+    source_map: source_map,
+    generated: generated_position_at_line(line: generated_line)
+  )
+}
+
+type TraceExpectation
+  = ExpectationNotCaptured
+  | ExpectReturn { output: TraceValue }
+  | ExpectFailure { failure: TraceFailure }
+
+type ReproCase {
+  function: BoundName
+  inputs: List<TraceInput>
+  expected: TraceExpectation
+  trace: Trace
+}
+
+fn capture_repro(function: BoundName, inputs: List<TraceInput>, trace: Trace) -> ReproCase {
+  ReproCase {
+    function: function,
+    inputs: inputs,
+    expected: ExpectationNotCaptured,
+    trace: trace
+  }
+}
