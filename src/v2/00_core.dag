@@ -1344,12 +1344,12 @@ fn fold_node<R>(n: Node, algebra: NodeFold<R>) -> R {
 // flips per expr kind), so it is not a catamorphism.
 fn expr_has_self_call(texpr: Node, fn_name: String, source_indices: Map<String, NewlineIndex>) -> Bool {
   fold_node(n: texpr, algebra: NodeFold {
-    init: (n) => match n.expr_data {
+    init: n => match n.expr_data {
       ExprCall { call_semantics: _, descent_evidence: _ } =>
         expr_call_func_at(texpr: n, source_indices: source_indices) == fn_name
       _ => false
     },
-    step: (acc, _, child_result) => acc || child_result
+    step: (acc, child, child_result) => acc || child_result
   })
 }
 
