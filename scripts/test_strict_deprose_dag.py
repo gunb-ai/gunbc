@@ -87,6 +87,17 @@ def test_inject_grounded_recomputes_yellow_from_lexeme_string_field() -> None:
     assert out[0] == "// 🟡 grounded."
 
 
+def test_inject_grounded_yellow_for_unlisted_lexeme_suffix() -> None:
+    """Suffix rule: any new `*_lexeme: String` should classify as partial without regex churn."""
+    bl = [
+        "type R {",
+        "  port_expression_lexeme: String",
+        "}",
+    ]
+    out = s.inject_grounded_tags(bl)
+    assert out[0] == "// 🟡 grounded."
+
+
 def test_inject_grounded_recomputes_green_without_lexeme_string_field() -> None:
     bl = [
         "type R {",
@@ -117,6 +128,7 @@ def main() -> None:
     test_required_ledger_fails_on_unknown_live_coproduct()
     test_strip_removes_grounded_tags_fail_closed()
     test_inject_grounded_recomputes_yellow_from_lexeme_string_field()
+    test_inject_grounded_yellow_for_unlisted_lexeme_suffix()
     test_inject_grounded_recomputes_green_without_lexeme_string_field()
     test_inject_grounded_after_coproduct_dissolution_line()
     print("OK: scripts/test_strict_deprose_dag.py")

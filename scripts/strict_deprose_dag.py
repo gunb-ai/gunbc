@@ -55,14 +55,10 @@ COPRODUCT_TAG_RE = re.compile(
     r"^\s*//\s*[🟢🟡🔴]\s+coproduct dissolution\b",
 )
 
-# Lexeme-shaped `String` fields in a record body ⇒ 🟡 grounded (SL-3229 / D3200-style
-# partial authority); purely structural records ⇒ 🟢.
-LEXEME_STRING_FIELD_RE = re.compile(
-    r"\b("
-    r"lexeme|rhs_lexeme|lhs_lexeme|body_lexeme|initializer_lexeme|expression_lexeme|"
-    r"default_lexeme|event_expression_lexeme|value_lexeme"
-    r")\s*:\s*String\b"
-)
+# Any `…lexeme`-shaped field typed `String` (partial lexical authority / D3200-style).
+# Uses a name suffix rule so new `foo_lexeme: String` sites classify as 🟢→🟡 without
+# extending a brittle per-field allowlist (composer-2 exploratory #3370).
+LEXEME_STRING_FIELD_RE = re.compile(r"\b\w*lexeme\s*:\s*String\b")
 
 PART6_SLUG_HEAD_RE = re.compile(r"^### (SL-3229-[A-Z0-9-]+|CP-3229-[A-Z0-9-]+)\b")
 
