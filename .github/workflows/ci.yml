@@ -248,6 +248,13 @@ jobs:
         set -euo pipefail
         rm -rf /tmp/v4-stage1
         mkdir -p /tmp/v4-stage1
+        (
+          while sleep 30; do
+            echo "v4 bootstrap viability still running..."
+          done
+        ) &
+        heartbeat_pid=$!
+        trap 'kill "$heartbeat_pid" 2>/dev/null || true' EXIT
         target/release/v2-compiler compile --source-root src/v4 --output-dir /tmp/v4-stage1 --target dag
         echo "Bootstrap viability OK — v2 indexed and resolved all v4 modules."
     - name: 'INTERIM (T-24 bridge) — v4 v2-run-preflight notice (run gate deferred T-22)'
