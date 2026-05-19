@@ -36,6 +36,12 @@ module v4.lens.cost
 import v4.extdeps.languages.llvm_ir { LlvmInstruction }
 
 
+type SymbolicCost
+// 🟡 coproduct dissolution — DECISIONS.md T22-INFER-SYMBOLIC-COST-BRIDGE
+  = ConstantCost { value: Int }
+  | UnknownCost { reason: String }
+
+
 fn llvm_instruction_cost(i: LlvmInstruction) -> Int {
   match i {
     Binary { result: _, result_type: _, op: _, lhs: _, rhs: _ } => 1
