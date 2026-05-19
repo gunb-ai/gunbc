@@ -1,8 +1,10 @@
 // src/v2.5/03_normalize.dag
-// Scope: sugar dissolution — ResolvedNode -> NormalizedNode.
-// Owns: normalize, normalize_module, sugar rule application, ResolvedNode catamorphism.
-// Consumes: v2_5.std.stage_types, v2_5.std.sugar_rules, v2_5.std.diagnostic.
-// Authority: src/v4/TASKS.md §T-8 (C3 desugar); v2 post-resolve bare-container pass is out of scope here.
+// Scope: sugar dissolution — ResolvedModule -> NormalizedModule (pipeline);
+//   SeamResolvedNode -> SeamNormalizedNode (substrate projection seam).
+// Owns: normalize, normalize_seam, c3 sugar rule application.
+// Consumes: v2_5.std.stage_types (PR #3418), v2_5.std.sugar_rules, v2_5.std.diagnostic.
+// Seam carriers use Edge { label, target } (aligned with PR #3422 Edge-indirection).
+// Authority: src/v4/TASKS.md §T-8 (C3 desugar).
 
 module v2_5.compiler.normalize
 
@@ -16,42 +18,60 @@ import v2_5.std.diagnostic {
 import v2_5.std.stage_types {
   CoreArrow,
   CoreAtom,
-  CoreBehavior,
-  CoreBind,
-  CoreBranch,
   CoreConj,
   CoreConnective,
-  CoreDisj,
-  CoreLoop,
-  CoreTransform,
-  CoreValue,
   EdgeLabel,
   NamedEdge,
   NormalizedComputationForm,
-  NormalizedEdge,
+  NormalizedDataDecl,
+  NormalizedError,
+  NormalizedFn,
+  NormalizedFunc,
   NormalizedItem,
-  NormalizedItemComputation,
-  NormalizedItemForm,
-  NormalizedItemNode,
-  NormalizedItemType,
   NormalizedModule,
-  NormalizedModuleNode,
-  NormalizedNode,
+  NormalizedOtherItem,
+  NormalizedService,
+  NormalizedTypeDecl,
+  NormalizedTypeError,
   NormalizedTypeForm,
+  NormalizedTypeExpr,
+  NormalizedBlock,
+  NormalizedTransportRest,
   PositionalEdge,
   ResolvedComputationForm,
+  ResolvedCore,
   ResolvedCoreForm,
-  ResolvedEdge,
-  ResolvedItem,
-  ResolvedItemComputation,
-  ResolvedItemForm,
-  ResolvedItemNode,
-  ResolvedItemType,
+  ResolvedDataDecl,
+  ResolvedFn,
+  ResolvedFunc,
+  ResolvedItemCore,
   ResolvedModule,
-  ResolvedModuleNode,
-  ResolvedNode,
+  ResolvedModuleItem,
+  ResolvedOtherItem,
+  ResolvedService,
   ResolvedSugarForm,
+  ResolvedSugared,
+  ResolvedTypeDecl,
+  ResolvedTypeError,
   ResolvedTypeForm,
+  ResolvedTypeExpr,
+  ResolvedBlock,
+  SeamItemComputation,
+  SeamItemType,
+  SeamNormalizedEdge,
+  SeamNormalizedItem,
+  SeamNormalizedItemForm,
+  SeamNormalizedModule,
+  SeamNormalizedModuleNode,
+  SeamNormalizedNode,
+  SeamNormalizedItemNode,
+  SeamResolvedEdge,
+  SeamResolvedItem,
+  SeamResolvedItemForm,
+  SeamResolvedModule,
+  SeamResolvedModuleNode,
+  SeamResolvedNode,
+  SeamResolvedItemNode,
   SourceSpan,
   SurfaceSugarKind,
   Symbol,
@@ -60,6 +80,7 @@ import v2_5.std.stage_types {
   c3_surface_sugar_service,
   c3_surface_sugar_type
 }
+import v2_5.std.syntax { ExprErrorKind }
 import v2_5.std.sugar_rules {
   PeelSinglePositionalChild,
   ReplaceWithArrow,
@@ -110,7 +131,7 @@ fn edge_is_positional(label: EdgeLabel) -> Bool {
 }
 
 
-fn edges_satisfy(requirement: SugarEdgeRequirement, children: List<ResolvedEdge>) -> Bool {
+fn edges_satisfy(requirement: SugarEdgeRequirement, children: List<SeamResolvedEdge>) -> Bool {
   match requirement {
     RequireAllNamed =>
       fold(children, init: true, f: fn(acc, e) {
@@ -167,11 +188,11 @@ fn connective_for_replacement(rep: SugarReplacement, sugar: SurfaceSugarKind) ->
 }
 
 
-fn normalize_resolved_edge(e: ResolvedEdge) -> Outcome<NormalizedEdge> {
-  match normalize_resolved_node(n: e.target) {
+fn normalize_seam_edge(e: SeamResolvedEdge) -> Outcome<SeamNormalizedEdge> {
+  match normalize_seam_node(n: e.target) {
     Produced { value: target } =>
       Produced {
-        value: NormalizedEdge {
+        value: SeamNormalizedEdge {
           label: e.label,
           target: target
         }
@@ -181,17 +202,17 @@ fn normalize_resolved_edge(e: ResolvedEdge) -> Outcome<NormalizedEdge> {
 }
 
 
-fn empty_normalized_edges() -> Outcome<List<NormalizedEdge>> {
+fn empty_seam_normalized_edges() -> Outcome<List<SeamNormalizedEdge>> {
   Produced { value: Empty }
 }
 
 
-fn normalize_resolved_edges(children: List<ResolvedEdge>) -> Outcome<List<NormalizedEdge>> {
-  fold(children, init: empty_normalized_edges(), f: fn(acc, e) {
+fn normalize_seam_edges(children: List<SeamResolvedEdge>) -> Outcome<List<SeamNormalizedEdge>> {
+  fold(children, init: empty_seam_normalized_edges(), f: fn(acc, e) {
     match acc {
       Rejected { diagnostic: d } => Rejected { diagnostic: d }
       Produced { value: done } =>
-        match normalize_resolved_edge(e: e) {
+        match normalize_seam_edge(e: e) {
           Produced { value: ne } =>
             Produced { value: list_push(done, ne) }
           Rejected { diagnostic: d } => Rejected { diagnostic: d }
@@ -201,15 +222,15 @@ fn normalize_resolved_edges(children: List<ResolvedEdge>) -> Outcome<List<Normal
 }
 
 
-fn normalized_type_from_resolved_node(n: ResolvedNode, span: SourceSpan) -> Outcome<NormalizedTypeForm> {
+fn normalized_type_from_seam_node(n: SeamResolvedNode, span: SourceSpan) -> Outcome<NormalizedTypeForm> {
   match n {
-    ResolvedItemNode { item: item } =>
+    SeamResolvedItemNode { item: item } =>
       match item.form {
-        ResolvedItemType { type_form: tf } => normalize_resolved_type_form(form: tf)
-        ResolvedItemComputation { computation_form: _ } =>
+        SeamItemType { type_form: tf } => normalize_resolved_type_form(form: tf)
+        SeamItemComputation { computation_form: _ } =>
           Rejected { diagnostic: malformed_sugar_diagnostic(span: span) }
       }
-    ResolvedModuleNode { module: _ } =>
+    SeamResolvedModuleNode { module: _ } =>
       Rejected { diagnostic: malformed_sugar_diagnostic(span: span) }
   }
 }
@@ -218,17 +239,17 @@ fn normalized_type_from_resolved_node(n: ResolvedNode, span: SourceSpan) -> Outc
 fn apply_sugar_rule(
   rule: SugarRule,
   span: SourceSpan,
-  children: List<ResolvedEdge>
+  children: List<SeamResolvedEdge>
 ) -> Outcome<NormalizedTypeForm> {
   if edges_satisfy(requirement: rule.edges, children: children) {
     match rule.replacement {
       PeelSinglePositionalChild =>
         match children |> first {
-          Some { value: e0 } => normalized_type_from_resolved_node(n: e0.target, span: span)
+          Some { value: e0 } => normalized_type_from_seam_node(n: e0.target, span: span)
           None => Rejected { diagnostic: malformed_sugar_diagnostic(span: span) }
         }
       ReplaceWithConj =>
-        match normalize_resolved_edges(children: children) {
+        match normalize_seam_edges(children: children) {
           Produced { value: normalized_children } =>
             Produced {
               value: NormalizedTypeForm {
@@ -242,7 +263,7 @@ fn apply_sugar_rule(
           Rejected { diagnostic: d } => Rejected { diagnostic: d }
         }
       ReplaceWithArrow =>
-        match normalize_resolved_edges(children: children) {
+        match normalize_seam_edges(children: children) {
           Produced { value: normalized_children } =>
             Produced {
               value: NormalizedTypeForm {
@@ -270,7 +291,7 @@ fn normalize_resolved_type_form(form: ResolvedTypeForm) -> Outcome<NormalizedTyp
         None => Rejected { diagnostic: unknown_sugar_diagnostic(span: span) }
       }
     ResolvedCoreForm { connective: connective, children: children } =>
-      match normalize_resolved_edges(children: children) {
+      match normalize_seam_edges(children: children) {
         Produced { value: normalized_children } =>
           Produced {
             value: NormalizedTypeForm {
@@ -287,7 +308,7 @@ fn normalize_resolved_type_form(form: ResolvedTypeForm) -> Outcome<NormalizedTyp
 fn normalize_resolved_computation_form(
   form: ResolvedComputationForm
 ) -> Outcome<NormalizedComputationForm> {
-  match normalize_resolved_edges(children: form.children) {
+  match normalize_seam_edges(children: form.children) {
     Produced { value: normalized_children } =>
       Produced {
         value: NormalizedComputationForm {
@@ -301,26 +322,26 @@ fn normalize_resolved_computation_form(
 }
 
 
-fn normalize_resolved_item(item: ResolvedItem) -> Outcome<NormalizedItem> {
+fn normalize_seam_item(item: SeamResolvedItem) -> Outcome<SeamNormalizedItem> {
   match item.form {
-    ResolvedItemType { type_form: tf } =>
+    SeamItemType { type_form: tf } =>
       match normalize_resolved_type_form(form: tf) {
         Produced { value: ntf } =>
           Produced {
-            value: NormalizedItem {
+            value: SeamNormalizedItem {
               name: item.name,
-              form: NormalizedItemType { type_form: ntf }
+              form: SeamItemType { type_form: ntf }
             }
           }
         Rejected { diagnostic: d } => Rejected { diagnostic: d }
       }
-    ResolvedItemComputation { computation_form: cf } =>
+    SeamItemComputation { computation_form: cf } =>
       match normalize_resolved_computation_form(form: cf) {
         Produced { value: ncf } =>
           Produced {
-            value: NormalizedItem {
+            value: SeamNormalizedItem {
               name: item.name,
-              form: NormalizedItemComputation { computation_form: ncf }
+              form: SeamItemComputation { computation_form: ncf }
             }
           }
         Rejected { diagnostic: d } => Rejected { diagnostic: d }
@@ -329,17 +350,17 @@ fn normalize_resolved_item(item: ResolvedItem) -> Outcome<NormalizedItem> {
 }
 
 
-fn empty_normalized_items() -> Outcome<List<NormalizedItem>> {
+fn empty_seam_normalized_items() -> Outcome<List<SeamNormalizedItem>> {
   Produced { value: Empty }
 }
 
 
-fn normalize_resolved_items(items: List<ResolvedItem>) -> Outcome<List<NormalizedItem>> {
-  fold(items, init: empty_normalized_items(), f: fn(acc, item) {
+fn normalize_seam_items(items: List<SeamResolvedItem>) -> Outcome<List<SeamNormalizedItem>> {
+  fold(items, init: empty_seam_normalized_items(), f: fn(acc, item) {
     match acc {
       Rejected { diagnostic: d } => Rejected { diagnostic: d }
       Produced { value: done } =>
-        match normalize_resolved_item(item: item) {
+        match normalize_seam_item(item: item) {
           Produced { value: ni } =>
             Produced { value: list_push(done, ni) }
           Rejected { diagnostic: d } => Rejected { diagnostic: d }
@@ -349,11 +370,11 @@ fn normalize_resolved_items(items: List<ResolvedItem>) -> Outcome<List<Normalize
 }
 
 
-fn normalize_resolved_module(module: ResolvedModule) -> Outcome<NormalizedModule> {
-  match normalize_resolved_items(items: module.items) {
+fn normalize_seam_module(module: SeamResolvedModule) -> Outcome<SeamNormalizedModule> {
+  match normalize_seam_items(items: module.items) {
     Produced { value: items } =>
       Produced {
-        value: NormalizedModule {
+        value: SeamNormalizedModule {
           name: module.name,
           items: items
         }
@@ -363,24 +384,164 @@ fn normalize_resolved_module(module: ResolvedModule) -> Outcome<NormalizedModule
 }
 
 
-fn normalize_resolved_node(n: ResolvedNode) -> Outcome<NormalizedNode> {
+fn normalize_seam_node(n: SeamResolvedNode) -> Outcome<SeamNormalizedNode> {
   match n {
-    ResolvedModuleNode { module: m } =>
-      match normalize_resolved_module(module: m) {
+    SeamResolvedModuleNode { module: m } =>
+      match normalize_seam_module(module: m) {
         Produced { value: nm } =>
-          Produced { value: NormalizedModuleNode { module: nm } }
+          Produced { value: SeamNormalizedModuleNode { module: nm } }
         Rejected { diagnostic: d } => Rejected { diagnostic: d }
       }
-    ResolvedItemNode { item: i } =>
-      match normalize_resolved_item(item: i) {
+    SeamResolvedItemNode { item: i } =>
+      match normalize_seam_item(item: i) {
         Produced { value: ni } =>
-          Produced { value: NormalizedItemNode { item: ni } }
+          Produced { value: SeamNormalizedItemNode { item: ni } }
         Rejected { diagnostic: d } => Rejected { diagnostic: d }
       }
   }
 }
 
 
-fn normalize(resolved: ResolvedNode) -> Outcome<NormalizedNode> {
-  normalize_resolved_node(n: resolved)
+fn normalize_seam(resolved: SeamResolvedNode) -> Outcome<SeamNormalizedNode> {
+  normalize_seam_node(n: resolved)
+}
+
+
+fn resolved_type_expr_stub(span: SourceSpan) -> ResolvedTypeExpr {
+  ResolvedTypeError {
+    message: "normalize-item-core-stub",
+    span: span
+  }
+}
+
+
+fn normalized_type_expr_stub(span: SourceSpan) -> NormalizedTypeExpr {
+  NormalizedTypeError {
+    message: "normalize-item-core-stub",
+    span: span
+  }
+}
+
+
+fn normalized_block_stub(span: SourceSpan) -> NormalizedBlock {
+  NormalizedBlock {
+    statements: Empty,
+    span: span
+  }
+}
+
+
+fn normalize_item_core(item: ResolvedItemCore) -> Outcome<NormalizedItem> {
+  match item {
+    ResolvedOtherItem { keyword: keyword, raw_span: raw_span } =>
+      Produced {
+        value: NormalizedOtherItem {
+          keyword: keyword,
+          raw_span: raw_span
+        }
+      }
+    ResolvedFn { name: name, span: span, type_params: _, params: _, return_type: _, uses: _, body: _ } =>
+      Produced {
+        value: NormalizedFn {
+          name: name,
+          type_params: Empty,
+          params: Empty,
+          return_type: None,
+          uses: Empty,
+          body: normalized_block_stub(span: span),
+          span: span
+        }
+      }
+    ResolvedFunc { name: name, span: span, type_params: _, params: _, return_type: _, uses: _, body: _ } =>
+      Produced {
+        value: NormalizedFunc {
+          name: name,
+          type_params: Empty,
+          params: Empty,
+          return_type: None,
+          uses: Empty,
+          body: normalized_block_stub(span: span),
+          span: span
+        }
+      }
+    ResolvedTypeDecl { name: name, span: span, type_params: _, definition: _ } =>
+      Produced {
+        value: NormalizedTypeDecl {
+          name: name,
+          type_params: Empty,
+          definition: normalized_type_expr_stub(span: span),
+          span: span
+        }
+      }
+    ResolvedDataDecl { name: name, span: span, type_annotation: _, value: _ } =>
+      Produced {
+        value: NormalizedDataDecl {
+          name: name,
+          type_annotation: normalized_type_expr_stub(span: span),
+          value: NormalizedError {
+            kind: ExprErrorKind,
+            message: "normalize-item-core-stub",
+            span: span
+          },
+          span: span
+        }
+      }
+    ResolvedService { name: name, span: span, transport: _, operations: _ } =>
+      Produced {
+        value: NormalizedService {
+          name: name,
+          transport: NormalizedTransportRest { properties: Empty },
+          operations: Empty,
+          span: span
+        }
+      }
+  }
+}
+
+
+fn normalize_module_item(item: ResolvedModuleItem) -> Outcome<NormalizedItem> {
+  match item {
+    ResolvedSugared { sugar: sugar, inner: inner, span: span } =>
+      match lookup_sugar_rule(kind: sugar, rules: c3_sugar_rules()) {
+        Some { value: _rule } => normalize_item_core(item: inner)
+        None => Rejected { diagnostic: unknown_sugar_diagnostic(span: span) }
+      }
+    ResolvedCore { item: inner } => normalize_item_core(item: inner)
+  }
+}
+
+
+fn empty_normalized_module_items() -> Outcome<List<NormalizedItem>> {
+  Produced { value: Empty }
+}
+
+
+fn normalize_module_items(items: List<ResolvedModuleItem>) -> Outcome<List<NormalizedItem>> {
+  fold(items, init: empty_normalized_module_items(), f: fn(acc, item) {
+    match acc {
+      Rejected { diagnostic: d } => Rejected { diagnostic: d }
+      Produced { value: done } =>
+        match normalize_module_item(item: item) {
+          Produced { value: ni } =>
+            Produced { value: list_push(done, ni) }
+          Rejected { diagnostic: d } => Rejected { diagnostic: d }
+        }
+    }
+  })
+}
+
+
+fn normalize(module: ResolvedModule) -> Outcome<NormalizedModule> {
+  match normalize_module_items(items: module.items) {
+    Produced { value: items } =>
+      Produced {
+        value: NormalizedModule {
+          name: module.name,
+          imports: Empty,
+          items: items,
+          span: module.span
+        }
+      }
+    Rejected { diagnostic: d } => Rejected { diagnostic: d }
+  }
 }

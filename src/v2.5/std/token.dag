@@ -1,0 +1,31 @@
+// v2.5 token contract — interim until 01_tokenize.dag lands.
+// nimble-swift-454 owns tokenizer implementation; this file owns the type.
+
+module v2_5.std.token
+
+import v2_5.std.identity { SourceSpan }
+
+type TokenShape
+  = ShKeyword
+  | ShLBrace | ShRBrace | ShLParen | ShRParen | ShLBracket | ShRBracket
+  | ShLt | ShGt | ShLe | ShGe | ShFatArrow | ShArrow
+  | ShColon | ShComma | ShDot | ShDotDot
+  | ShEq | ShEqEq | ShNe
+  | ShPlus | ShMinus | ShStar | ShSlash | ShPercent
+  | ShBang | ShAnd | ShOr
+  | ShQuestion | ShNullCoalesce
+  | ShPipe | ShPipeArrow
+  | ShLitStr | ShLitInt | ShLitFloat | ShIdent
+  | ShStrBegin | ShStrMid | ShStrEnd
+  | ShNewline | ShEof
+  | ShUnknown
+
+type Token {
+  text: String
+  span: SourceSpan
+  shape: TokenShape
+}
+
+type TokenStream {
+  tokens: List<Token>
+}

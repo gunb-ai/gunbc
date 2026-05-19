@@ -1,21 +1,41 @@
-// src/v2.5/std/stage_types.dag
-// Scope: phase-typed pipeline carriers (resolve → normalize seam).
-// Owns: ResolvedNode, NormalizedNode, SurfaceSugarKind, CoreConnective, edge labels.
-// Consumes: none.
-// Status: PROVISIONAL — RECONCILE-NEEDED when vivid-lynx-807's canonical
-//   stage-type kit lands (Tier 1). This seam holds normalize/resolve shapes only.
+// v2.5 phase-typed pipeline interface kit (Tier 1).
+// Each stage owns a distinct closed-sum root type. No optional fields acting
+// as kind discriminators; no inferred? on pre-infer phases; no NodeId side tables.
+//
+// Boundary: reconcile Connective / fold_node with v2_5.std.node when cool-bee-832
+// lands substrate. This file owns phased AST shapes; node.dag owns substrate algebra.
+// Reconcile: calm-crane-724 provisional normalize seam — SurfaceSugarKind + substrate
+// projection types at file end; ResolvedSugared wrapper on ResolvedModuleItem.
+//
+// Pipeline (type signatures are the contract):
+//   tokenize : SourceText -> TokenStream
+//   parse    : TokenStream -> ParseModule
+//   resolve  : ParseModule -> ResolvedModule
+//   normalize: ResolvedModule -> NormalizedModule
+//   infer    : NormalizedModule -> InferredModule
+//   emit     : InferredModule -> TargetSource
 
 module v2_5.std.stage_types
 
-
-type Symbol
-
-
-type SourceSpan {
-  start: Int
-  end: Int
+import v2_5.std.identity { SourceSpan, Symbol, AuthoredName, BoundName }
+import v2_5.std.syntax {
+  BinOp, UnaryOpKind, LiteralValue, OperationModifier, ExprErrorKind, AlgebraFieldKind
 }
+import v2_5.std.token { TokenStream }
 
+// =========================================================================
+// Type-form connectives (v2-compatible four-case; node.dag may extend to six)
+// =========================================================================
+
+type Connective
+  = Conj
+  | Disj
+  | NoConnective
+  | Arrow
+
+type Cardinality
+  = Required
+  | CardOptional
 
 type SurfaceSugarKind
   = ServiceSugar
@@ -23,19 +43,1018 @@ type SurfaceSugarKind
   | TypeSugar
   | OperationSugar
 
-
 data c3_surface_sugar_service: Symbol = c3_surface_sugar_service
 data c3_surface_sugar_fn: Symbol = c3_surface_sugar_fn
 data c3_surface_sugar_type: Symbol = c3_surface_sugar_type
 data c3_surface_sugar_operation: Symbol = c3_surface_sugar_operation
 
+// =========================================================================
+// Parse phase — syntax only, no binding or typing
+// =========================================================================
+
+type ParsePattern
+  = ParsePatBind { name: AuthoredName }
+  | ParsePatLit { value: LiteralValue }
+  | ParsePatVariant {
+      name: AuthoredName
+      parent_enum: AuthoredName?
+      field_bindings: List<ParseFieldBinding>
+    }
+  | ParsePatWildcard
+
+type ParseFieldBinding {
+  field: AuthoredName
+  pattern: ParsePattern
+}
+
+type ParseParam {
+  name: AuthoredName
+  type_expr: ParseTypeExpr
+  default_expr: ParseExpr?
+  cardinality: Cardinality
+}
+
+type ParseArg {
+  name: AuthoredName?
+  value: ParseExpr
+}
+
+type ParseFieldInit {
+  name: AuthoredName
+  value: ParseExpr
+}
+
+type ParseMatchArm {
+  pattern: ParsePattern
+  guard: ParseExpr?
+  body: ParseExpr
+}
+
+type ParseTypeField {
+  name: AuthoredName
+  type_expr: ParseTypeExpr
+  cardinality: Cardinality
+  default_expr: ParseExpr?
+  from_key: AuthoredName?
+}
+
+type ParseTypeVariant {
+  name: AuthoredName
+  fields: List<ParseTypeField>
+}
+
+type ParseTypeExpr
+  = ParseTypeAtom { name: AuthoredName }
+  | ParseTypeConj { fields: List<ParseTypeField> }
+  | ParseTypeDisj { variants: List<ParseTypeVariant> }
+  | ParseTypeArrow {
+      params: List<ParseParam>
+      return_type: ParseTypeExpr
+    }
+  | ParseTypeError { message: String, span: SourceSpan }
+
+type ParseExpr
+  = ParseLit { value: LiteralValue, span: SourceSpan }
+  | ParseError { kind: ExprErrorKind, message: String, span: SourceSpan }
+  | ParseVar { name: AuthoredName }
+  | ParseFieldAccess {
+      receiver: ParseExpr
+      field: AuthoredName
+    }
+  | ParseCall {
+      callee: AuthoredName
+      args: List<ParseArg>
+    }
+  | ParseMethodCall {
+      receiver: ParseExpr
+      method: AuthoredName
+      args: List<ParseArg>
+    }
+  | ParseMatch {
+      scrutinee: ParseExpr
+      arms: List<ParseMatchArm>
+    }
+  | ParseIf {
+      condition: ParseExpr
+      then_expr: ParseExpr
+      else_expr: ParseExpr
+    }
+  | ParseLet {
+      name: AuthoredName
+      value: ParseExpr
+      body: ParseExpr
+    }
+  | ParseRecordLit {
+      type_name: AuthoredName?
+      fields: List<ParseFieldInit>
+    }
+  | ParseListLit { elements: List<ParseExpr> }
+  | ParseBinOp {
+      op: BinOp
+      left: ParseExpr
+      right: ParseExpr
+      algebra_field: AlgebraFieldKind?
+    }
+  | ParseUnaryOp { op: UnaryOpKind, operand: ParseExpr }
+  | ParseLambda {
+      params: List<ParseParam>
+      body: ParseExpr
+    }
+  | ParseStringInterp {
+      parts: List<ParseStringPart>
+    }
+  | ParseBlock { statements: List<ParseExpr> }
+  | ParseCast {
+      expr: ParseExpr
+      target_type: ParseTypeExpr
+    }
+  | ParseForEach {
+      variable: AuthoredName
+      iterable: ParseExpr
+      body: ParseExpr
+    }
+  | ParseIndex {
+      base: ParseExpr
+      index: ParseExpr
+    }
+  | ParseSlice {
+      base: ParseExpr
+      start: ParseExpr?
+      end: ParseExpr?
+    }
+  | ParseReturn { value: ParseExpr? }
+
+type ParseStringPart
+  = ParseStrText { value: String }
+  | ParseStrInterp { expr: ParseExpr }
+
+type ParseBlock {
+  statements: List<ParseExpr>
+  span: SourceSpan
+}
+
+type ParseTransport
+  = ParseTransportRest { properties: List<ParseTransportProperty> }
+  | ParseTransportShell { properties: List<ParseTransportProperty> }
+  | ParseTransportFile { properties: List<ParseTransportProperty> }
+  | ParseTransportLocal { properties: List<ParseTransportProperty> }
+
+type ParseTransportProperty {
+  key: AuthoredName
+  value: ParseExpr
+}
+
+type ParseOperation {
+  name: AuthoredName
+  params: List<ParseParam>
+  outputs: List<ParseParam>
+  modifiers: List<OperationModifier>
+  body: ParseBlock?
+}
+
+type ParseResourceUse {
+  name: AuthoredName
+  resource_type: ParseTypeExpr
+}
+
+type ParseImport
+  = ParseImportAll { module_path: String, span: SourceSpan }
+  | ParseImportNames {
+      module_path: String
+      names: List<AuthoredName>
+      span: SourceSpan
+    }
+
+type ParseItem
+  = ParseFn {
+      name: AuthoredName
+      type_params: List<ParseParam>
+      params: List<ParseParam>
+      return_type: ParseTypeExpr?
+      uses: List<ParseResourceUse>
+      body: ParseBlock
+      span: SourceSpan
+    }
+  | ParseFunc {
+      name: AuthoredName
+      type_params: List<ParseParam>
+      params: List<ParseParam>
+      return_type: ParseTypeExpr?
+      uses: List<ParseResourceUse>
+      body: ParseBlock
+      span: SourceSpan
+    }
+  | ParseTypeDecl {
+      name: AuthoredName
+      type_params: List<ParseParam>
+      definition: ParseTypeExpr
+      span: SourceSpan
+    }
+  | ParseDataDecl {
+      name: AuthoredName
+      type_annotation: ParseTypeExpr
+      value: ParseExpr
+      span: SourceSpan
+    }
+  | ParseService {
+      name: AuthoredName
+      transport: ParseTransport
+      operations: List<ParseOperation>
+      span: SourceSpan
+    }
+  | ParseOtherItem {
+      keyword: String
+      raw_span: SourceSpan
+    }
+
+type ParseModule {
+  name: AuthoredName
+  imports: List<ParseImport>
+  items: List<ParseItem>
+  span: SourceSpan
+}
+
+// =========================================================================
+// Resolve phase — names bound; still no typing
+// =========================================================================
+
+type ResolvedPattern
+  = ResolvedPatBind { name: BoundName }
+  | ResolvedPatLit { value: LiteralValue }
+  | ResolvedPatVariant {
+      name: BoundName
+      parent_enum: BoundName?
+      field_bindings: List<ResolvedFieldBinding>
+    }
+  | ResolvedPatWildcard
+
+type ResolvedFieldBinding {
+  field: BoundName
+  pattern: ResolvedPattern
+}
+
+type ResolvedParam {
+  name: BoundName
+  type_expr: ResolvedTypeExpr
+  default_expr: ResolvedExpr?
+  cardinality: Cardinality
+}
+
+type ResolvedArg {
+  name: BoundName?
+  value: ResolvedExpr
+}
+
+type ResolvedFieldInit {
+  name: BoundName
+  value: ResolvedExpr
+}
+
+type ResolvedMatchArm {
+  pattern: ResolvedPattern
+  guard: ResolvedExpr?
+  body: ResolvedExpr
+}
+
+type ResolvedTypeField {
+  name: BoundName
+  type_expr: ResolvedTypeExpr
+  cardinality: Cardinality
+  default_expr: ResolvedExpr?
+  from_key: BoundName?
+}
+
+type ResolvedTypeVariant {
+  name: BoundName
+  fields: List<ResolvedTypeField>
+}
+
+type ResolvedTypeExpr
+  = ResolvedTypeAtom { name: BoundName }
+  | ResolvedTypeConj { fields: List<ResolvedTypeField> }
+  | ResolvedTypeDisj { variants: List<ResolvedTypeVariant> }
+  | ResolvedTypeArrow {
+      params: List<ResolvedParam>
+      return_type: ResolvedTypeExpr
+    }
+  | ResolvedTypeError { message: String, span: SourceSpan }
+
+type ResolvedExpr
+  = ResolvedLit { value: LiteralValue, span: SourceSpan }
+  | ResolvedError { kind: ExprErrorKind, message: String, span: SourceSpan }
+  | ResolvedVar { name: BoundName }
+  | ResolvedFieldAccess {
+      receiver: ResolvedExpr
+      field: BoundName
+    }
+  | ResolvedCall {
+      callee: BoundName
+      args: List<ResolvedArg>
+    }
+  | ResolvedMethodCall {
+      receiver: ResolvedExpr
+      method: BoundName
+      args: List<ResolvedArg>
+    }
+  | ResolvedMatch {
+      scrutinee: ResolvedExpr
+      arms: List<ResolvedMatchArm>
+    }
+  | ResolvedIf {
+      condition: ResolvedExpr
+      then_expr: ResolvedExpr
+      else_expr: ResolvedExpr
+    }
+  | ResolvedLet {
+      name: BoundName
+      value: ResolvedExpr
+      body: ResolvedExpr
+    }
+  | ResolvedRecordLit {
+      type_name: BoundName?
+      fields: List<ResolvedFieldInit>
+    }
+  | ResolvedListLit { elements: List<ResolvedExpr> }
+  | ResolvedBinOp {
+      op: BinOp
+      left: ResolvedExpr
+      right: ResolvedExpr
+      algebra_field: AlgebraFieldKind?
+    }
+  | ResolvedUnaryOp { op: UnaryOpKind, operand: ResolvedExpr }
+  | ResolvedLambda {
+      params: List<ResolvedParam>
+      body: ResolvedExpr
+    }
+  | ResolvedStringInterp {
+      parts: List<ResolvedStringPart>
+    }
+  | ResolvedBlock { statements: List<ResolvedExpr> }
+  | ResolvedCast {
+      expr: ResolvedExpr
+      target_type: ResolvedTypeExpr
+    }
+  | ResolvedForEach {
+      variable: BoundName
+      iterable: ResolvedExpr
+      body: ResolvedExpr
+    }
+  | ResolvedIndex {
+      base: ResolvedExpr
+      index: ResolvedExpr
+    }
+  | ResolvedSlice {
+      base: ResolvedExpr
+      start: ResolvedExpr?
+      end: ResolvedExpr?
+    }
+  | ResolvedReturn { value: ResolvedExpr? }
+
+type ResolvedStringPart
+  = ResolvedStrText { value: String }
+  | ResolvedStrInterp { expr: ResolvedExpr }
+
+type ResolvedBlock {
+  statements: List<ResolvedExpr>
+  span: SourceSpan
+}
+
+type ResolvedTransport
+  = ResolvedTransportRest { properties: List<ResolvedTransportProperty> }
+  | ResolvedTransportShell { properties: List<ResolvedTransportProperty> }
+  | ResolvedTransportFile { properties: List<ResolvedTransportProperty> }
+  | ResolvedTransportLocal { properties: List<ResolvedTransportProperty> }
+
+type ResolvedTransportProperty {
+  key: BoundName
+  value: ResolvedExpr
+}
+
+type ResolvedOperation {
+  name: BoundName
+  params: List<ResolvedParam>
+  outputs: List<ResolvedParam>
+  modifiers: List<OperationModifier>
+  body: ResolvedBlock?
+}
+
+type ResolvedResourceUse {
+  name: BoundName
+  resource_type: ResolvedTypeExpr
+}
+
+type ResolvedImport
+  = ResolvedImportAll { module_path: Symbol, span: SourceSpan }
+  | ResolvedImportNames {
+      module_path: Symbol
+      names: List<BoundName>
+      span: SourceSpan
+    }
+
+type ResolvedItemCore
+  = ResolvedFn {
+      name: BoundName
+      type_params: List<ResolvedParam>
+      params: List<ResolvedParam>
+      return_type: ResolvedTypeExpr?
+      uses: List<ResolvedResourceUse>
+      body: ResolvedBlock
+      span: SourceSpan
+    }
+  | ResolvedFunc {
+      name: BoundName
+      type_params: List<ResolvedParam>
+      params: List<ResolvedParam>
+      return_type: ResolvedTypeExpr?
+      uses: List<ResolvedResourceUse>
+      body: ResolvedBlock
+      span: SourceSpan
+    }
+  | ResolvedTypeDecl {
+      name: BoundName
+      type_params: List<ResolvedParam>
+      definition: ResolvedTypeExpr
+      span: SourceSpan
+    }
+  | ResolvedDataDecl {
+      name: BoundName
+      type_annotation: ResolvedTypeExpr
+      value: ResolvedExpr
+      span: SourceSpan
+    }
+  | ResolvedService {
+      name: BoundName
+      transport: ResolvedTransport
+      operations: List<ResolvedOperation>
+      span: SourceSpan
+    }
+  | ResolvedOtherItem {
+      keyword: String
+      raw_span: SourceSpan
+    }
+
+type ResolvedModuleItem
+  = ResolvedSugared {
+      sugar: SurfaceSugarKind
+      inner: ResolvedItemCore
+      span: SourceSpan
+    }
+  | ResolvedCore { item: ResolvedItemCore }
+
+type ResolvedModule {
+  name: BoundName
+  imports: List<ResolvedImport>
+  items: List<ResolvedModuleItem>
+  span: SourceSpan
+}
+
+// =========================================================================
+// Normalize phase — surface sugar stripped; items are ResolvedItemCore only
+// =========================================================================
+
+type NormalizedPattern
+  = NormalizedPatBind { name: BoundName }
+  | NormalizedPatLit { value: LiteralValue }
+  | NormalizedPatVariant {
+      name: BoundName
+      parent_enum: BoundName?
+      field_bindings: List<NormalizedFieldBinding>
+    }
+  | NormalizedPatWildcard
+
+type NormalizedFieldBinding {
+  field: BoundName
+  pattern: NormalizedPattern
+}
+
+type NormalizedParam {
+  name: BoundName
+  type_expr: NormalizedTypeExpr
+  default_expr: NormalizedExpr?
+  cardinality: Cardinality
+}
+
+type NormalizedArg {
+  name: BoundName?
+  value: NormalizedExpr
+}
+
+type NormalizedFieldInit {
+  name: BoundName
+  value: NormalizedExpr
+}
+
+type NormalizedMatchArm {
+  pattern: NormalizedPattern
+  guard: NormalizedExpr?
+  body: NormalizedExpr
+}
+
+type NormalizedTypeField {
+  name: BoundName
+  type_expr: NormalizedTypeExpr
+  cardinality: Cardinality
+  default_expr: NormalizedExpr?
+  from_key: BoundName?
+}
+
+type NormalizedTypeVariant {
+  name: BoundName
+  fields: List<NormalizedTypeField>
+}
+
+type NormalizedTypeExpr
+  = NormalizedTypeAtom { name: BoundName }
+  | NormalizedTypeConj { fields: List<NormalizedTypeField> }
+  | NormalizedTypeDisj { variants: List<NormalizedTypeVariant> }
+  | NormalizedTypeArrow {
+      params: List<NormalizedParam>
+      return_type: NormalizedTypeExpr
+    }
+  | NormalizedTypeError { message: String, span: SourceSpan }
+
+type NormalizedExpr
+  = NormalizedLit { value: LiteralValue, span: SourceSpan }
+  | NormalizedError { kind: ExprErrorKind, message: String, span: SourceSpan }
+  | NormalizedVar { name: BoundName }
+  | NormalizedFieldAccess {
+      receiver: NormalizedExpr
+      field: BoundName
+    }
+  | NormalizedCall {
+      callee: BoundName
+      args: List<NormalizedArg>
+    }
+  | NormalizedMethodCall {
+      receiver: NormalizedExpr
+      method: BoundName
+      args: List<NormalizedArg>
+    }
+  | NormalizedMatch {
+      scrutinee: NormalizedExpr
+      arms: List<NormalizedMatchArm>
+    }
+  | NormalizedIf {
+      condition: NormalizedExpr
+      then_expr: NormalizedExpr
+      else_expr: NormalizedExpr
+    }
+  | NormalizedLet {
+      name: BoundName
+      value: NormalizedExpr
+      body: NormalizedExpr
+    }
+  | NormalizedRecordLit {
+      type_name: BoundName?
+      fields: List<NormalizedFieldInit>
+    }
+  | NormalizedListLit { elements: List<NormalizedExpr> }
+  | NormalizedBinOp {
+      op: BinOp
+      left: NormalizedExpr
+      right: NormalizedExpr
+      algebra_field: AlgebraFieldKind?
+    }
+  | NormalizedUnaryOp { op: UnaryOpKind, operand: NormalizedExpr }
+  | NormalizedLambda {
+      params: List<NormalizedParam>
+      body: NormalizedExpr
+    }
+  | NormalizedStringInterp {
+      parts: List<NormalizedStringPart>
+    }
+  | NormalizedBlock { statements: List<NormalizedExpr> }
+  | NormalizedCast {
+      expr: NormalizedExpr
+      target_type: NormalizedTypeExpr
+    }
+  | NormalizedForEach {
+      variable: BoundName
+      iterable: NormalizedExpr
+      body: NormalizedExpr
+    }
+  | NormalizedIndex {
+      base: NormalizedExpr
+      index: NormalizedExpr
+    }
+  | NormalizedSlice {
+      base: NormalizedExpr
+      start: NormalizedExpr?
+      end: NormalizedExpr?
+    }
+  | NormalizedReturn { value: NormalizedExpr? }
+
+type NormalizedStringPart
+  = NormalizedStrText { value: String }
+  | NormalizedStrInterp { expr: NormalizedExpr }
+
+type NormalizedBlock {
+  statements: List<NormalizedExpr>
+  span: SourceSpan
+}
+
+type NormalizedTransport
+  = NormalizedTransportRest { properties: List<NormalizedTransportProperty> }
+  | NormalizedTransportShell { properties: List<NormalizedTransportProperty> }
+  | NormalizedTransportFile { properties: List<NormalizedTransportProperty> }
+  | NormalizedTransportLocal { properties: List<NormalizedTransportProperty> }
+
+type NormalizedTransportProperty {
+  key: BoundName
+  value: NormalizedExpr
+}
+
+type NormalizedOperation {
+  name: BoundName
+  params: List<NormalizedParam>
+  outputs: List<NormalizedParam>
+  modifiers: List<OperationModifier>
+  body: NormalizedBlock?
+}
+
+type NormalizedResourceUse {
+  name: BoundName
+  resource_type: NormalizedTypeExpr
+}
+
+type NormalizedImport
+  = NormalizedImportAll { module_path: Symbol, span: SourceSpan }
+  | NormalizedImportNames {
+      module_path: Symbol
+      names: List<BoundName>
+      span: SourceSpan
+    }
+
+type NormalizedItem
+  = NormalizedFn {
+      name: BoundName
+      type_params: List<NormalizedParam>
+      params: List<NormalizedParam>
+      return_type: NormalizedTypeExpr?
+      uses: List<NormalizedResourceUse>
+      body: NormalizedBlock
+      span: SourceSpan
+    }
+  | NormalizedFunc {
+      name: BoundName
+      type_params: List<NormalizedParam>
+      params: List<NormalizedParam>
+      return_type: NormalizedTypeExpr?
+      uses: List<NormalizedResourceUse>
+      body: NormalizedBlock
+      span: SourceSpan
+    }
+  | NormalizedTypeDecl {
+      name: BoundName
+      type_params: List<NormalizedParam>
+      definition: NormalizedTypeExpr
+      span: SourceSpan
+    }
+  | NormalizedDataDecl {
+      name: BoundName
+      type_annotation: NormalizedTypeExpr
+      value: NormalizedExpr
+      span: SourceSpan
+    }
+  | NormalizedService {
+      name: BoundName
+      transport: NormalizedTransport
+      operations: List<NormalizedOperation>
+      span: SourceSpan
+    }
+  | NormalizedOtherItem {
+      keyword: String
+      raw_span: SourceSpan
+    }
+
+type NormalizedModule {
+  name: BoundName
+  imports: List<NormalizedImport>
+  items: List<NormalizedItem>
+  span: SourceSpan
+}
+
+// =========================================================================
+// Infer phase — typing is structural fact on every expression variant
+// =========================================================================
+
+type InferredType
+  = InferredTypeOk { form: TypeForm }
+  | InferredTypeError { message: String, span: SourceSpan }
+  | InferredTypeVariable { id: Symbol }
+
+type TypeForm
+  = TypeAtom { name: BoundName }
+  | TypeConj { fields: List<InferredTypeField> }
+  | TypeDisj { variants: List<InferredTypeVariant> }
+  | TypeArrow {
+      params: List<InferredTypeParam>
+      return_type: TypeForm
+    }
+
+type InferredTypeField {
+  name: BoundName
+  field_type: InferredType
+  cardinality: Cardinality
+}
+
+type InferredTypeVariant {
+  name: BoundName
+  fields: List<InferredTypeField>
+}
+
+type InferredTypeParam {
+  name: BoundName
+  param_type: InferredType
+  cardinality: Cardinality
+}
+
+type TailRecursionFacts
+  = NotRecursive
+  | SelfRecursive { tail_only: Bool }
+
+type InferredPattern
+  = InferredPatBind { name: BoundName, pattern_type: InferredType }
+  | InferredPatLit { value: LiteralValue, pattern_type: InferredType }
+  | InferredPatVariant {
+      name: BoundName
+      parent_enum: BoundName?
+      field_bindings: List<InferredFieldBinding>
+      pattern_type: InferredType
+    }
+  | InferredPatWildcard { pattern_type: InferredType }
+
+type InferredFieldBinding {
+  field: BoundName
+  pattern: InferredPattern
+}
+
+type InferredParam {
+  name: BoundName
+  type_expr: InferredType
+  default_expr: InferredExpr?
+  cardinality: Cardinality
+}
+
+type InferredArg {
+  name: BoundName?
+  value: InferredExpr
+}
+
+type InferredFieldInit {
+  name: BoundName
+  value: InferredExpr
+}
+
+type InferredMatchArm {
+  pattern: InferredPattern
+  guard: InferredExpr?
+  body: InferredExpr
+}
+
+type InferredExpr
+  = InferredLit { value: LiteralValue, span: SourceSpan, expr_type: InferredType }
+  | InferredError { kind: ExprErrorKind, message: String, span: SourceSpan }
+  | InferredVar { name: BoundName, expr_type: InferredType }
+  | InferredFieldAccess {
+      receiver: InferredExpr
+      field: BoundName
+      expr_type: InferredType
+    }
+  | InferredCall {
+      callee: BoundName
+      args: List<InferredArg>
+      expr_type: InferredType
+    }
+  | InferredMethodCall {
+      receiver: InferredExpr
+      method: BoundName
+      args: List<InferredArg>
+      expr_type: InferredType
+    }
+  | InferredMatch {
+      scrutinee: InferredExpr
+      arms: List<InferredMatchArm>
+      expr_type: InferredType
+    }
+  | InferredIf {
+      condition: InferredExpr
+      then_expr: InferredExpr
+      else_expr: InferredExpr
+      expr_type: InferredType
+    }
+  | InferredLet {
+      name: BoundName
+      value: InferredExpr
+      body: InferredExpr
+      expr_type: InferredType
+    }
+  | InferredRecordLit {
+      type_name: BoundName?
+      fields: List<InferredFieldInit>
+      expr_type: InferredType
+    }
+  | InferredListLit {
+      elements: List<InferredExpr>
+      expr_type: InferredType
+    }
+  | InferredBinOp {
+      op: BinOp
+      left: InferredExpr
+      right: InferredExpr
+      algebra_field: AlgebraFieldKind?
+      expr_type: InferredType
+    }
+  | InferredUnaryOp {
+      op: UnaryOpKind
+      operand: InferredExpr
+      expr_type: InferredType
+    }
+  | InferredLambda {
+      params: List<InferredParam>
+      body: InferredExpr
+      expr_type: InferredType
+    }
+  | InferredStringInterp {
+      parts: List<InferredStringPart>
+      expr_type: InferredType
+    }
+  | InferredBlock {
+      statements: List<InferredExpr>
+      expr_type: InferredType
+    }
+  | InferredCast {
+      expr: InferredExpr
+      target_type: InferredType
+      expr_type: InferredType
+    }
+  | InferredForEach {
+      variable: BoundName
+      iterable: InferredExpr
+      body: InferredExpr
+      expr_type: InferredType
+    }
+  | InferredIndex {
+      base: InferredExpr
+      index: InferredExpr
+      expr_type: InferredType
+    }
+  | InferredSlice {
+      base: InferredExpr
+      start: InferredExpr?
+      end: InferredExpr?
+      expr_type: InferredType
+    }
+  | InferredReturn {
+      value: InferredExpr?
+      expr_type: InferredType
+    }
+
+type InferredStringPart
+  = InferredStrText { value: String }
+  | InferredStrInterp { expr: InferredExpr }
+
+type InferredBlock {
+  statements: List<InferredExpr>
+  span: SourceSpan
+  block_type: InferredType
+}
+
+type InferredTransport
+  = InferredTransportRest { properties: List<InferredTransportProperty> }
+  | InferredTransportShell { properties: List<InferredTransportProperty> }
+  | InferredTransportFile { properties: List<InferredTransportProperty> }
+  | InferredTransportLocal { properties: List<InferredTransportProperty> }
+
+type InferredTransportProperty {
+  key: BoundName
+  value: InferredExpr
+}
+
+type InferredOperation {
+  name: BoundName
+  params: List<InferredParam>
+  outputs: List<InferredParam>
+  modifiers: List<OperationModifier>
+  body: InferredBlock?
+}
+
+type InferredResourceUse {
+  name: BoundName
+  resource_type: InferredType
+}
+
+type InferredImport
+  = InferredImportAll { module_path: Symbol, span: SourceSpan }
+  | InferredImportNames {
+      module_path: Symbol
+      names: List<BoundName>
+      span: SourceSpan
+    }
+
+type InferredItem
+  = InferredFn {
+      name: BoundName
+      type_params: List<InferredParam>
+      params: List<InferredParam>
+      return_type: InferredType
+      uses: List<InferredResourceUse>
+      body: InferredBlock
+      recursion: TailRecursionFacts
+      span: SourceSpan
+    }
+  | InferredFunc {
+      name: BoundName
+      type_params: List<InferredParam>
+      params: List<InferredParam>
+      return_type: InferredType
+      uses: List<InferredResourceUse>
+      body: InferredBlock
+      recursion: TailRecursionFacts
+      span: SourceSpan
+    }
+  | InferredTypeDecl {
+      name: BoundName
+      type_params: List<InferredParam>
+      definition: InferredType
+      span: SourceSpan
+    }
+  | InferredDataDecl {
+      name: BoundName
+      type_annotation: InferredType
+      value: InferredExpr
+      span: SourceSpan
+    }
+  | InferredService {
+      name: BoundName
+      transport: InferredTransport
+      operations: List<InferredOperation>
+      span: SourceSpan
+    }
+  | InferredOtherItem {
+      keyword: String
+      raw_span: SourceSpan
+    }
+
+type InferredModule {
+  name: BoundName
+  imports: List<InferredImport>
+  items: List<InferredItem>
+  span: SourceSpan
+}
+
+// =========================================================================
+// Pipeline stage ports — distinct types enforce phase ordering
+// =========================================================================
+
+type ParseStageIn {
+  tokens: TokenStream
+}
+
+type ParseStageOut {
+  module: ParseModule
+}
+
+type ResolveStageIn {
+  module: ParseModule
+}
+
+type ResolveStageOut {
+  module: ResolvedModule
+}
+
+type NormalizeStageIn {
+  module: ResolvedModule
+}
+
+type NormalizeStageOut {
+  module: NormalizedModule
+}
+
+type InferStageIn {
+  module: NormalizedModule
+}
+
+type InferStageOut {
+  module: InferredModule
+}
+
+type EmitStageIn {
+  module: InferredModule
+}
+
+// =========================================================================
+// Normalize seam — v4-substrate projection (reconcile calm-crane-724)
+// 03_normalize may implement against these carriers; full-module workers use
+// ResolvedModule / NormalizedModule above. Sugar strip: ResolvedSugarForm gone
+// on NormalizedTypeForm; ResolvedSugared gone on NormalizedModule.items.
+// =========================================================================
 
 type CoreConnective
   = CoreAtom { identity: Symbol }
   | CoreConj
   | CoreDisj
   | CoreArrow
-
 
 type CoreBehavior
   = CoreValue
@@ -44,95 +1063,94 @@ type CoreBehavior
   | CoreLoop
   | CoreBind
 
-
 type EdgeLabel
   = NamedEdge { name: Symbol }
   | PositionalEdge
 
-
-type ResolvedEdge {
+type SeamResolvedEdge {
   label: EdgeLabel
-  target: ResolvedNode
+  target: SeamResolvedNode
 }
 
-
-type NormalizedEdge {
+type SeamNormalizedEdge {
   label: EdgeLabel
-  target: NormalizedNode
+  target: SeamNormalizedNode
 }
-
 
 type ResolvedTypeForm
   = ResolvedSugarForm {
       kind: SurfaceSugarKind
       span: SourceSpan
-      children: List<ResolvedEdge>
+      children: List<SeamResolvedEdge>
     }
   | ResolvedCoreForm {
       connective: CoreConnective
-      children: List<ResolvedEdge>
+      children: List<SeamResolvedEdge>
     }
-
 
 type NormalizedTypeForm {
   connective: CoreConnective
-  children: List<NormalizedEdge>
+  children: List<SeamNormalizedEdge>
 }
-
 
 type ResolvedComputationForm {
   behavior: CoreBehavior
   span: SourceSpan
-  children: List<ResolvedEdge>
+  children: List<SeamResolvedEdge>
 }
-
 
 type NormalizedComputationForm {
   behavior: CoreBehavior
   span: SourceSpan
-  children: List<NormalizedEdge>
+  children: List<SeamNormalizedEdge>
 }
 
-
-type ResolvedItem {
+type SeamResolvedItem {
   name: Symbol
-  form: ResolvedItemForm
+  form: SeamResolvedItemForm
 }
 
+type SeamResolvedItemForm
+  = SeamItemType { type_form: ResolvedTypeForm }
+  | SeamItemComputation { computation_form: ResolvedComputationForm }
 
-type ResolvedItemForm
-  = ResolvedItemType { type_form: ResolvedTypeForm }
-  | ResolvedItemComputation { computation_form: ResolvedComputationForm }
-
-
-type NormalizedItem {
+type SeamNormalizedItem {
   name: Symbol
-  form: NormalizedItemForm
+  form: SeamNormalizedItemForm
 }
 
+type SeamNormalizedItemForm
+  = SeamItemType { type_form: NormalizedTypeForm }
+  | SeamItemComputation { computation_form: NormalizedComputationForm }
 
-type NormalizedItemForm
-  = NormalizedItemType { type_form: NormalizedTypeForm }
-  | NormalizedItemComputation { computation_form: NormalizedComputationForm }
-
-
-type ResolvedModule {
+type SeamResolvedModule {
   name: Symbol
-  items: List<ResolvedItem>
+  items: List<SeamResolvedItem>
 }
 
-
-type NormalizedModule {
+type SeamNormalizedModule {
   name: Symbol
-  items: List<NormalizedItem>
+  items: List<SeamNormalizedItem>
 }
 
+type SeamResolvedNode
+  = SeamResolvedModuleNode { module: SeamResolvedModule }
+  | SeamResolvedItemNode { item: SeamResolvedItem }
 
-type ResolvedNode
-  = ResolvedModuleNode { module: ResolvedModule }
-  | ResolvedItemNode { item: ResolvedItem }
+type SeamNormalizedNode
+  = SeamNormalizedModuleNode { module: SeamNormalizedModule }
+  | SeamNormalizedItemNode { item: SeamNormalizedItem }
 
-
-type NormalizedNode
-  = NormalizedModuleNode { module: NormalizedModule }
-  | NormalizedItemNode { item: NormalizedItem }
+// =========================================================================
+// v2 field → v2.5 variant mapping (reference for stage workers)
+// =========================================================================
+//
+// v2 Node.expr_data (22 cases) → ParseExpr / ResolvedExpr / ... (one variant each)
+// v2 Node.match_pattern → ParseMatchArm.pattern (not a field on expr nodes)
+// v2 Node.params/body/transport/uses → ParseFn | ParseFunc | ParseService variants
+// v2 Node.inferred? → eliminated; InferredExpr.expr_type is required per variant
+// v2 is_self_recursive / has_non_tail_self_call → InferredFn.recursion only
+// v2 item_kind() cascade → ParseItem closed sum (ParseFn | ParseFunc | ...)
+// v2 connective on flat Node → ParseTypeExpr | TypeForm connective variants
+// calm-crane-724 SeamResolvedNode → normalize sugar strip → SeamNormalizedNode
+// full pipeline: ResolvedSugared / ResolvedCore → NormalizedItem (core only)
