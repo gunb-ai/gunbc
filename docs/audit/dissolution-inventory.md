@@ -181,11 +181,11 @@ are “burn-down only” orphans.
   `ci_symbol_resolves`, `ci_blocked`; **ALL** — universal **`fold` over
   `List<CiJob>`** / **`List<CiGate>`** (`all`-shaped): `ci_all_job_ids_unique`,
   `ci_all_gate_ids_unique`, `ci_all_needs_resolve`,
-  `ci_all_gate_jobs_resolve` (**DECISIONS** **LB-P10-3213-ALL** table) **and**
-  `ci_all_commands_authority_ok` (same list-op **shape** — rolls under **P2**
-  with the four above; inner predicate **`ci_command_authority_ok`** carries
-  the **LB-T22-3213** in-file tag, so the wrapper is **dual**: **P2** list-op
-  dissolution **+** **T-22** negative-coverage obligation); **COUNTIF** — `ci_id_occurrences`,
+  `ci_all_gate_jobs_resolve`, `ci_all_commands_authority_ok` (**DECISIONS**
+  **LB-P10-3213-ALL**, Part 7 — **five** helpers). **`ci_all_commands_authority_ok`**
+  is **dual** with **LB-T22-3213** via inner **`ci_command_authority_ok`**
+  (in-file tag): **P2** `all` combinator dissolution **+** **T-22**
+  negative-coverage obligation; **COUNTIF** — `ci_id_occurrences`,
   `ci_gate_id_occurrences`; **SETEQ** — `bs_list_eq`; **FILTER** —
   `ci_eliminate_pass`; **FIND** — `ci_job_needs`. **KAHN** —
   `ci_kahn_fixpoint`, `ci_acyclic` — **🟢 terminal** per DECISIONS (domain
