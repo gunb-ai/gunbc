@@ -1,0 +1,158 @@
+// src/v4/extdeps/formats/sql.dag
+// Scope: ISO/IEC 9075 SQL relational/DDL surface; Shape-B checked format, v3 SQL port — single authority (TASKS.md T-4.6 #4).
+// Owns: SqlDialect, SqlIdentifier, SqlDataType, SqlColumnConstraint, SqlColumnDefault, SqlColumnDefinition, SqlTableConstraint, SqlTableDefinition, SqlSchemaOperation, SqlMigrationStep, SqlMigrationScript, SqlMigrationEmissionTarget, SqlStatementKind, SqlParameterStyle, SqlTransactionMode, SqlResultFormatSlot, SqlTransportConfig
+// Consumes: std/node.dag, std/diagnostic.dag, std/collection.dag, std/nat.dag
+// Status: scaffold — TASKS.md T-4.6
+// Anchor: https://www.iso.org/standard/76583.html
+
+module v4.extdeps.formats.sql
+
+
+import v4.std.nat { Nat }
+
+
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-SqlDialect
+type SqlDialect
+  = SqlDialectIso9075
+  | SqlDialectPostgreSql
+  | SqlDialectSqlite
+  | SqlDialectMySql
+
+
+type SqlIdentifier {
+  name: String,
+}
+
+
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-SqlDataType
+type SqlDataType
+  = SqlTypeBoolean
+  | SqlTypeSmallInt
+  | SqlTypeInteger
+  | SqlTypeBigInt
+  | SqlTypeReal
+  | SqlTypeDoublePrecision
+  | SqlTypeNumeric { precision: Nat, scale: Nat }
+  | SqlTypeCharacter { length: Nat }
+  | SqlTypeCharacterVarying { length: Nat }
+  | SqlTypeCharacterLargeObject
+  | SqlTypeDate
+  | SqlTypeTime
+  | SqlTypeTimestamp
+  | SqlTypeTimestampWithTimeZone
+
+
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-SqlColumnConstraint
+type SqlColumnConstraint
+  = SqlColumnNotNull
+  | SqlColumnPrimaryKey
+  | SqlColumnUnique
+
+
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-SqlColumnDefault
+type SqlColumnDefault
+  = SqlColumnDefaultAbsent
+  | SqlColumnDefaultLiteral { literal: String }
+
+
+type SqlColumnDefinition {
+  name: SqlIdentifier,
+  data_type: SqlDataType,
+  constraints: List<SqlColumnConstraint>,
+  column_default: SqlColumnDefault,
+}
+
+
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-SqlTableConstraint
+type SqlTableConstraint
+  = SqlTablePrimaryKey { columns: List<SqlIdentifier> }
+  | SqlTableUnique { columns: List<SqlIdentifier> }
+  | SqlTableForeignKey {
+      columns: List<SqlIdentifier>,
+      referenced_table: SqlIdentifier,
+      referenced_columns: List<SqlIdentifier>,
+    }
+
+
+type SqlTableDefinition {
+  name: SqlIdentifier,
+  columns: List<SqlColumnDefinition>,
+  table_constraints: List<SqlTableConstraint>,
+}
+
+
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-SqlSchemaOperation
+type SqlSchemaOperation
+  = SqlCreateTable { table: SqlTableDefinition }
+  | SqlDropTable { table_name: SqlIdentifier }
+  | SqlAddColumn { table_name: SqlIdentifier, column: SqlColumnDefinition }
+  | SqlDropColumn { table_name: SqlIdentifier, column_name: SqlIdentifier }
+  | SqlAlterTableConstraint { table_name: SqlIdentifier, constraint: SqlTableConstraint }
+  | SqlCreateIndex {
+      index_name: SqlIdentifier,
+      table_name: SqlIdentifier,
+      columns: List<SqlIdentifier>,
+    }
+  | SqlDropIndex { index_name: SqlIdentifier }
+  | SqlRawStep { dialect: SqlDialect, statement: String }
+
+
+type SqlMigrationStep {
+  name: String,
+  operation: SqlSchemaOperation,
+  dialect: SqlDialect,
+  reversible: Bool,
+}
+
+
+type SqlMigrationScript {
+  migration_id: String,
+  wraps_transaction: Bool,
+  steps: List<SqlMigrationStep>,
+}
+
+
+type SqlMigrationEmissionTarget {
+  database_name: String,
+  migrations: List<SqlMigrationScript>,
+}
+
+
+// 🟢 coproduct dissolution — DECISIONS.md T-4.6-P4-SqlStatementKind
+type SqlStatementKind
+  = SqlSelect
+  | SqlInsert
+  | SqlUpdate
+  | SqlDelete
+  | SqlDdl
+  | SqlTransactionControl
+
+
+// 🟢 coproduct dissolution — DECISIONS.md T-4.6-P4-SqlParameterStyle
+type SqlParameterStyle
+  = SqlParamQuestionMark
+  | SqlParamNumberedDollar
+  | SqlParamNamedColon
+  | SqlParamNamedAt
+  | SqlParamNamedDollar
+
+
+// 🟢 coproduct dissolution — DECISIONS.md T-4.6-P4-SqlTransactionMode
+type SqlTransactionMode
+  = SqlAutocommit
+  | SqlExistingTransaction
+  | SqlBeginCommit
+
+
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-SqlResultFormatSlot
+type SqlResultFormatSlot
+  = SqlResultFormatDeferred
+
+
+type SqlTransportConfig {
+  connection_name: String,
+  statement_kind: SqlStatementKind,
+  parameter_style: SqlParameterStyle,
+  transaction_mode: SqlTransactionMode,
+  result_format: SqlResultFormatSlot,
+}
