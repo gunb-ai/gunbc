@@ -445,6 +445,14 @@ auto-transform — with **honest treatment of the silence case**:
 auto-fix only when canonical authority is structurally declared;
 otherwise `NeedsDecision`.
 
+> **Dependency caveat.** This case references `CanonicalConcept`,
+> `ConceptDisambiguation`, and `HistoricalDeclaration` as substrate
+> carriers. Today they exist as *design* in
+> `docs/design-dissolution-lens.md` (PR #3334) but **NOT** as
+> ratified `.dag` substrate. See §6.8 item 8 — this hero case is
+> design-pending until those carriers are authored as substrate
+> data rows.
+
 **Find** — L1.12 outcomes (4) and (5):
 - Outcome (4) **same-concept-without-alias-or-retirement**: a
   `CanonicalConcept` row EXISTS but the non-canonical declaration is
@@ -738,6 +746,19 @@ The convolution view is implicit today. To make it executable:
 7. **Library wrappers for the substrate primitives** — the
    agent-surface layer. See §6.10 for the commitment + §6.11 for the
    layered dependency order.
+8. **L1.12 concept-identity registry carriers** — the §6.4 hero case
+   (b) and the L1.12-transform examples reference `CanonicalConcept`,
+   `ConceptDisambiguation`, and `HistoricalDeclaration` as substrate
+   data rows the lens consumes. Today these carriers exist as
+   *design* in `docs/design-dissolution-lens.md` (PR #3334, operator
+   manual-merge queue) but **NOT** as ratified `.dag` substrate.
+   Until the design lands AND the carriers are authored as
+   `data ... : <CarrierType>` rows in some substrate-owned `.dag`
+   file (likely `std/` or a new `lens/concept_identity.dag`), the
+   §6.4 examples are *design-pending*, not runnable. Concretely:
+   - `data <X>_concept: CanonicalConcept = { canonical_home, members }`
+   - `data <X>_retired: HistoricalDeclaration = { type, dissolves_when }`
+   - `data <X>_distinct: ConceptDisambiguation = { names, because }`
 
 ### 6.9 Recommended ordering for hero demonstrations
 
