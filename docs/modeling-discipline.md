@@ -104,7 +104,7 @@ than type-enforced.
 Every piece of structured information produced at one stage of the
 compiler must be either consumed by the next stage, carried forward as
 a field on downstream data structures, or explicitly discarded — with
-the justification recorded in `src/v4/DECISIONS.md` (Practice 9), not as
+the justification recorded in the **PR / commit message** (Practice 9), not as
 in-file prose. Silent drops are violations.
 
 **What to check:** For each cross-stage boundary touched in the diff
@@ -219,20 +219,14 @@ terminal:
    this pattern exists.
 
 **What to check:** Any new coproduct with N ≥ 2 variants (a Rust enum,
-or a `.dag` `type X = A | B | …`) must be classified (🟢/🟡/🔴), with a
-ledger entry if 🟢, or the gate kind + concrete named arrival
-(`feature:<name>` / `consumer:<name>`) + dissolve-on-arrival obligation
-if 🟡. Per Practice 9 the
-classification *ledger* and the *trigger* live in `src/v4/DECISIONS.md`
-— *not* an in-file `Practice 4: ...` block. **But the coproduct itself
-keeps a required one-line classification tag carrying the 🟢/🟡/🔴
-emoji** (operator directive 2026-05-17) — e.g. `// 🟡 coproduct
-dissolution — DECISIONS.md OS-1`. The emoji stays *on the coproduct* so
-a reader sees the classification at the type; the decision-making (the
-ledger, the dissolution patterns tried, the 🟡 gate) lives in
-`DECISIONS.md`. A coproduct with no in-file 🟢/🟡/🔴 tag, or no
-`DECISIONS.md` classification entry, is unfinished modeling and blocks
-review.
+or a `.dag` `type X = A | B | …`) must be classified (🟢/🟡/🔴). **The
+coproduct itself keeps a required one-line classification tag carrying
+the 🟢/🟡/🔴 emoji** (operator directive 2026-05-17) — e.g. `//
+🟡 coproduct dissolution`. The emoji stays *on the coproduct* so a
+reader sees the classification at the type. Dissolution patterns tried,
+🟡 gate binding, and architectural rationale are argued in **PR review**
+(not a parallel maintained ledger doc). A coproduct with no in-file
+🟢/🟡/🔴 tag is unfinished modeling and blocks review.
 
 **The lookup smell (the consumer-trigger backstop).** A `match` over a
 foreign-label coproduct, written *inside a consumer* — a lens, a
