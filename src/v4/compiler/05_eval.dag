@@ -87,7 +87,7 @@ type TestClaimEvalSubject<T> {
 
 
 type TestClaimCacheKey<T> {
-  subject: TestClaimEvalSubject<T>
+  eval_subject: TestClaimEvalSubject<T>
   claim_hash: Hash
   evaluator_hash: Hash
   resources_hash: Hash
@@ -97,7 +97,6 @@ type TestClaimCacheKey<T> {
 
 type TestClaimCacheReceipt<T> {
   key: TestClaimCacheKey<T>
-  claim_input: Node
 }
 
 
@@ -136,13 +135,12 @@ fn test_claim_cache_receipt<T>(
 ) -> TestClaimCacheReceipt<T> {
   TestClaimCacheReceipt {
     key: TestClaimCacheKey {
-      subject: subject,
+      eval_subject: subject,
       claim_hash: claim_hash,
       evaluator_hash: evaluator_hash,
       resources_hash: resources_hash,
       extdeps_hash: extdeps_hash
-    },
-    claim_input: subject.input.claim_input
+    }
   }
 }
 
@@ -281,7 +279,7 @@ fn run_test_claim(
 
 
 fn test_claim_ci_pass_receipt(run: TestClaimRun<CiPipeline>) -> Outcome<TestClaimPassReceipt<CiPipeline>> {
-  let input = run.cache.claim_input
+  let input = run.cache.key.eval_subject.input.claim_input
   match run.verdict {
     Pass => Produced { value: TestClaimPassReceipt { cache: run.cache } }
     Fail { actual: _ } => Rejected {
