@@ -13,17 +13,21 @@ import v4.std.node { Diff, Edit, Hash, Node, Path, Symbol }
 import v4.std.witness { Holds, Witness }
 
 
+// grounded: pretty-much-done; receipt: std.node Node.
 type Dag = Node
 
 
+// grounded: pretty-much-done; receipt: std.node Symbol.
 type AffectedDimension = Symbol
 
+// grounded: pretty-much-done; receipt: affected_set_examples.
 type ExclusionKey {
   at: Path
   dimension: AffectedDimension
 }
 
 
+// grounded: pretty-much-done; receipt: affected_set_examples.
 type FrontierEdge {
   producer: Path
   consumer: Path
@@ -31,12 +35,14 @@ type FrontierEdge {
 }
 
 
+// grounded: pretty-much-done; receipt: affected_set_examples.
 type EditDimension {
   edit: Edit
   dimension: AffectedDimension
 }
 
 
+// grounded: pretty-much-done; receipt: affected_set_examples.
 type EditFrontierEdge {
   edit: Edit
   changed_dimension: AffectedDimension
@@ -45,20 +51,24 @@ type EditFrontierEdge {
 
 
 // 🟡 coproduct dissolution — DECISIONS.md #3153-subsumed
+// grounded: needs-more-work; receipt: affected_set_examples.
 type ExclusionProof
   = EmptyDimensionDelta { subject: Path }
 
 
 // 🟡 coproduct dissolution — DECISIONS.md #3153-subsumed
+// grounded: needs-more-work; receipt: affected_set_examples.
 type PropagationExclusionProof
   = DimensionNotRead { producer: Path, changed_dimension: AffectedDimension }
 
 
 // 🟡 coproduct dissolution — DECISIONS.md #3153-subsumed
+// grounded: needs-more-work; receipt: affected_set_examples.
 type BoundaryExclusionProof
   = UnchangedPureBoundary { content_hash: Hash }
 
 
+// grounded: pretty-much-done; receipt: affected_set_examples.
 type BoundaryExclusion {
   edit: Edit
   proof: BoundaryExclusionProof
@@ -66,18 +76,21 @@ type BoundaryExclusion {
 
 
 // 🟡 coproduct dissolution — DECISIONS.md #3153-subsumed
+// grounded: needs-more-work; receipt: affected_set_examples.
 type WholeDagFailClosedEvidence
   = WholeDagReason { reason: Symbol }
   | WholeDagDiagnostic { diagnostic: Diagnostic }
 
 
 // 🟡 coproduct dissolution — DECISIONS.md #3153-subsumed
+// grounded: needs-more-work; receipt: affected_set_examples.
 type FrontierDecision
   = Rerun
   | Excluded { first: PropagationExclusionProof, rest: List<PropagationExclusionProof> }
 
 
 // 🟢 coproduct dissolution — DECISIONS.md #3153-subsumed; IRT-1 whole/changed-subgraph gate.
+// grounded: pretty-much-done; receipt: affected_set_examples.
 type ReExecFrontier
   = ChangedSubgraphFrontier {
       boundary_exclusions: List<BoundaryExclusion>,
@@ -87,6 +100,7 @@ type ReExecFrontier
 
 
 // 🟡 coproduct dissolution — DECISIONS.md #3153-subsumed; dissolves into B1 content_hash plus B-5 purity/effect receipts.
+// grounded: needs-more-work; receipt: boundary read hook.
 type HashReceipt
   = HashUnchangedPure { content_hash: Hash }
   | HashChanged
@@ -94,6 +108,7 @@ type HashReceipt
 
 
 // 🟡 coproduct dissolution — DECISIONS.md #3153-subsumed; dissolves when T-21 .dag TestClaims prove boundary cases.
+// grounded: needs-more-work; receipt: boundary read hook.
 type BoundaryReceipt
   = BoundaryPruned { proof: BoundaryExclusionProof }
   | BoundaryExpands
@@ -101,12 +116,14 @@ type BoundaryReceipt
 
 
 // 🟡 coproduct dissolution — DECISIONS.md #3153-subsumed; dissolves when per-edit dimension deltas are generated.
+// grounded: needs-more-work; receipt: boundary read hook.
 type ChangedDimensionReceipt
   = ChangedDimensions { first: AffectedDimension, rest: List<AffectedDimension> }
   | ChangedDimensionsUnknown { reason: Symbol }
 
 
 // 🟡 coproduct dissolution — DECISIONS.md #3153-subsumed; dissolves when B-4/B-5 edge receipts are generated.
+// grounded: needs-more-work; receipt: propagation read hook.
 type PropagationReceipt
   = Propagates
   | DoesNotPropagate { proof: PropagationExclusionProof }
@@ -114,23 +131,27 @@ type PropagationReceipt
 
 
 // 🟡 coproduct dissolution — DECISIONS.md #3153-subsumed; proves transitive frontier or fails closed.
+// grounded: needs-more-work; receipt: frontier read hook.
 type FrontierReceipt
   = FrontierProduced { edges: List<FrontierEdge> }
   | FrontierUnknown { reason: Symbol }
   | FrontierRejected { diagnostic: Diagnostic }
 
 
+// grounded: needs-more-work; receipt: frontier read hook.
 type AffectedFrontierRead {
   proven_transitive_changed_subgraph_frontier: fn(Dag, EditDimension) -> FrontierReceipt
 }
 
 
+// grounded: needs-more-work; receipt: boundary read hook.
 type AffectedBoundaryRead {
   boundary_hash_receipt: fn(Dag, Path, Node) -> HashReceipt,
   changed_dimension_receipt: fn(Dag, Edit) -> ChangedDimensionReceipt
 }
 
 
+// grounded: needs-more-work; receipt: affected_set function.
 type AffectedSetRead {
   boundary: AffectedBoundaryRead
   frontier: AffectedFrontierRead,
@@ -138,11 +159,13 @@ type AffectedSetRead {
 }
 
 
+// grounded: needs-more-work; receipt: std.diagnostic Outcome.
 type AffectedPostEditDagRead {
   outcome: Outcome<Node>
 }
 
 
+// grounded: pretty-much-done; receipt: affected_set function.
 type AffectedFoldAcc {
   dag: Dag
   frontier: ReExecFrontier
