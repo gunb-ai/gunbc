@@ -521,6 +521,14 @@ def main() -> None:
             "// 🟡",
         ),
         (
+            "src/v4/extdeps/languages/typescript.dag",
+            "// Scope: TypeScript 5.9 + ECMA-262 ES2025 primitive D2 resolver slice (T-4 typescript).",
+            "// Anchor: https://www.typescriptlang.org/docs/handbook/2/everyday-types.html — ECMA-262 https://tc39.es/ecma262/2025/multipage/",
+            "// Consumes: v4.std.logic (Bool, bool_boolean_algebra); v4.std.algebra (BooleanAlgebra).",
+            "// Status: ts_bool_grounding decl-ref present + v2-parse-verified — 🟡 P2/E-6 STAGING (no same-PR consumer; canonical fold specified-not-realized); non-bool numeric primitives 🟡 gated D2→fact-bundle debt (T-4 Phase-3 rework, node://adhoc-71ec74f4-080).",
+            "// 🟡",
+        ),
+        (
             "src/v4/std/integer.dag",
             "// Scope: Abstract Int/UInt, fixed-width projections, divide/modulo carriers and diagnostics.",
             "// Anchor: https://en.wikipedia.org/wiki/Integer",
