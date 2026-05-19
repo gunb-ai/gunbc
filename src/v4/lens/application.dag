@@ -125,7 +125,7 @@
 // Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
 // contract for the worker. Splitting this file requires explicit operator
 // ratification (substrate extension = stop signal).
-// See DECISIONS.md (T-23-PIN).
+// See (T-23-PIN).
 
 module v4.lens.application
 

@@ -13,7 +13,7 @@ type CppMachineWidth16
 type CppMachineWidth32
 type CppMachineWidth64
 
-// 🟢 coproduct dissolution — DECISIONS.md T29-ABI.
+// 🟢 coproduct dissolution — T29-ABI.
 type CppIntegerWidth
   = CppWidth8 { width: CppMachineWidth8 }
   | CppWidth16 { width: CppMachineWidth16 }
@@ -22,7 +22,7 @@ type CppIntegerWidth
 
 type CppCoreIntegerWidthModel<char_width, short_width, int_width, long_width, long_long_width, pointer_width, wchar_t_width>
 
-// 🟢 coproduct dissolution — DECISIONS.md T29-ABI.
+// 🟢 coproduct dissolution — T29-ABI.
 type CppPlainCharSignedness
   = PlainCharSigned { tag: CppPlainCharSigned }
   | PlainCharUnsigned { tag: CppPlainCharUnsigned }
@@ -30,7 +30,7 @@ type CppPlainCharSignedness
 type CppPlainCharSigned
 type CppPlainCharUnsigned
 
-// 🟢 coproduct dissolution — DECISIONS.md T29-ABI.
+// 🟢 coproduct dissolution — T29-ABI.
 type CppDataModelFamily
   = ILP32 { tag: CppDataModelFamilyILP32 }
   | LP64 { tag: CppDataModelFamilyLP64 }
@@ -42,7 +42,7 @@ type CppDataModelFamilyLP64
 type CppDataModelFamilyLLP64
 type CppDataModelFamilyILP64
 
-// 🟢 coproduct dissolution — DECISIONS.md T29-ABI.
+// 🟢 coproduct dissolution — T29-ABI.
 type CppAbiModel
   = ItaniumCxxAbi186 { tag: CppAbiModelItaniumCxxAbi186 }
   | PlatformCxxAbi { tag: CppAbiModelPlatformCxxAbi }
