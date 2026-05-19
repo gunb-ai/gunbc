@@ -1,0 +1,280 @@
+module v2_5.compiler.parse
+
+
+import v2_5.std.diagnostic {
+  Correction,
+  Diagnostic,
+  ExternalContractUnknown,
+  Locus,
+  Outcome,
+  PortLocus
+}
+import v2_5.std.nat { Nat }
+import v2_5.std.stage_types { ParseNode, Token }
+import v2_5.std.symbol { Symbol }
+
+
+type GrammarExpr
+  = Empty
+  | Terminal { token_class: Symbol, capture: Symbol }
+  | Nonterminal { production: Symbol, capture: Symbol }
+  | Sequence { parts: List<GrammarExpr> }
+  | Choice { alternatives: List<GrammarExpr> }
+  | Optional { element: GrammarExpr }
+  | Repeat { element: GrammarExpr }
+  | PrattExpression { atom: Symbol, operators: List<OperatorSpec> }
+
+
+type GrammarProduction {
+  name: Symbol
+  expression: GrammarExpr
+  builds: ParseBuilder
+}
+
+
+type ParseBuilder
+  = BuildParseNode { kind: ParseNodeKind, fields: List<ParseFieldBinding> }
+  | ForwardCapture { capture: Symbol }
+
+
+type ParseNodeKind
+  = ParseModule
+  | ParseImport
+  | ParseTypeDecl
+  | ParseFunctionDecl
+  | ParseDataDecl
+  | ParseServiceDecl
+  | ParseResourceDecl
+  | ParseOperationDecl
+  | ParseCapabilityDecl
+  | ParseBlockExpr
+  | ParseLiteralExpr
+  | ParseNameExpr
+  | ParseCallExpr
+  | ParseFieldExpr
+  | ParseIndexExpr
+  | ParseUnaryExpr
+  | ParseBinaryExpr
+  | ParseMatchExpr
+  | ParseIfExpr
+  | ParseLetExpr
+  | ParseRecordExpr
+  | ParseListExpr
+  | ParseLambdaExpr
+  | ParseReturnExpr
+
+
+type ParseFieldBinding {
+  field: Symbol
+  source: ParseCapture
+}
+
+
+type ParseCapture
+  = CapturedToken { name: Symbol }
+  | CapturedNode { name: Symbol }
+  | CapturedNodes { name: Symbol }
+
+
+type OperatorAssociativity
+  = LeftAssociative
+  | RightAssociative
+  | NonAssociative
+
+
+type OperatorSpec {
+  token_class: Symbol
+  precedence: Nat
+  associativity: OperatorAssociativity
+  builds: ParseBuilder
+}
+
+
+type ParseGrammar {
+  start: Symbol
+  productions: List<GrammarProduction>
+  operators: List<OperatorSpec>
+}
+
+
+type ParseContract {
+  grammar: ParseGrammar
+}
+
+
+data parse_stage_locus_port: Symbol = parse_stage_locus_port
+
+data parse_waiting_for_stage_type_kit: Symbol = parse_waiting_for_stage_type_kit
+
+
+fn parse_waiting_for_stage_type_kit_diagnostic(at: Locus) -> Diagnostic {
+  Diagnostic {
+    reason: parse_waiting_for_stage_type_kit,
+    at: at,
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+
+fn parse(tokens: List<Token>) -> Outcome<ParseNode> {
+  parse_with_contract(tokens: tokens, contract: dag_parse_contract())
+}
+
+
+fn parse_with_contract(tokens: List<Token>, contract: ParseContract) -> Outcome<ParseNode> {
+  let at = PortLocus {
+    port: parse_stage_locus_port
+  }
+  Rejected {
+    diagnostic: parse_waiting_for_stage_type_kit_diagnostic(at: at)
+  }
+}
+
+
+fn dag_parse_contract() -> ParseContract {
+  ParseContract {
+    grammar: dag_parse_grammar()
+  }
+}
+
+
+fn dag_parse_grammar() -> ParseGrammar {
+  ParseGrammar {
+    start: grammar_module,
+    productions: [
+      GrammarProduction {
+        name: grammar_module,
+        expression: Repeat {
+          element: Choice {
+            alternatives: [
+              Nonterminal { production: grammar_import, capture: grammar_module_item },
+              Nonterminal { production: grammar_declaration, capture: grammar_module_item }
+            ]
+          }
+        },
+        builds: BuildParseNode {
+          kind: ParseModule,
+          fields: [
+            ParseFieldBinding {
+              field: grammar_module_items,
+              source: CapturedNodes { name: grammar_module_item }
+            }
+          ]
+        }
+      },
+      GrammarProduction {
+        name: grammar_declaration,
+        expression: Choice {
+          alternatives: [
+            Nonterminal { production: grammar_type_decl, capture: grammar_decl },
+            Nonterminal { production: grammar_function_decl, capture: grammar_decl },
+            Nonterminal { production: grammar_data_decl, capture: grammar_decl },
+            Nonterminal { production: grammar_service_decl, capture: grammar_decl },
+            Nonterminal { production: grammar_resource_decl, capture: grammar_decl },
+            Nonterminal { production: grammar_operation_decl, capture: grammar_decl },
+            Nonterminal { production: grammar_capability_decl, capture: grammar_decl }
+          ]
+        },
+        builds: ForwardCapture { capture: grammar_decl }
+      },
+      GrammarProduction {
+        name: grammar_expr,
+        expression: PrattExpression {
+          atom: grammar_atom_expr,
+          operators: dag_operator_specs()
+        },
+        builds: ForwardCapture { capture: grammar_expr }
+      }
+    ],
+    operators: dag_operator_specs()
+  }
+}
+
+
+fn dag_operator_specs() -> List<OperatorSpec> {
+  [
+    OperatorSpec {
+      token_class: grammar_arrow_operator,
+      precedence: 1,
+      associativity: RightAssociative,
+      builds: binary_expr_builder()
+    },
+    OperatorSpec {
+      token_class: grammar_or_operator,
+      precedence: 2,
+      associativity: LeftAssociative,
+      builds: binary_expr_builder()
+    },
+    OperatorSpec {
+      token_class: grammar_and_operator,
+      precedence: 3,
+      associativity: LeftAssociative,
+      builds: binary_expr_builder()
+    },
+    OperatorSpec {
+      token_class: grammar_equality_operator,
+      precedence: 4,
+      associativity: NonAssociative,
+      builds: binary_expr_builder()
+    },
+    OperatorSpec {
+      token_class: grammar_additive_operator,
+      precedence: 5,
+      associativity: LeftAssociative,
+      builds: binary_expr_builder()
+    },
+    OperatorSpec {
+      token_class: grammar_multiplicative_operator,
+      precedence: 6,
+      associativity: LeftAssociative,
+      builds: binary_expr_builder()
+    }
+  ]
+}
+
+
+fn binary_expr_builder() -> ParseBuilder {
+  BuildParseNode {
+    kind: ParseBinaryExpr,
+    fields: [
+      ParseFieldBinding {
+        field: grammar_left_operand,
+        source: CapturedNode { name: grammar_left_operand }
+      },
+      ParseFieldBinding {
+        field: grammar_operator_token,
+        source: CapturedToken { name: grammar_operator_token }
+      },
+      ParseFieldBinding {
+        field: grammar_right_operand,
+        source: CapturedNode { name: grammar_right_operand }
+      }
+    ]
+  }
+}
+
+
+data grammar_module: Symbol = grammar_module
+data grammar_import: Symbol = grammar_import
+data grammar_declaration: Symbol = grammar_declaration
+data grammar_type_decl: Symbol = grammar_type_decl
+data grammar_function_decl: Symbol = grammar_function_decl
+data grammar_data_decl: Symbol = grammar_data_decl
+data grammar_service_decl: Symbol = grammar_service_decl
+data grammar_resource_decl: Symbol = grammar_resource_decl
+data grammar_operation_decl: Symbol = grammar_operation_decl
+data grammar_capability_decl: Symbol = grammar_capability_decl
+data grammar_expr: Symbol = grammar_expr
+data grammar_atom_expr: Symbol = grammar_atom_expr
+data grammar_decl: Symbol = grammar_decl
+data grammar_module_item: Symbol = grammar_module_item
+data grammar_module_items: Symbol = grammar_module_items
+data grammar_arrow_operator: Symbol = grammar_arrow_operator
+data grammar_or_operator: Symbol = grammar_or_operator
+data grammar_and_operator: Symbol = grammar_and_operator
+data grammar_equality_operator: Symbol = grammar_equality_operator
+data grammar_additive_operator: Symbol = grammar_additive_operator
+data grammar_multiplicative_operator: Symbol = grammar_multiplicative_operator
+data grammar_left_operand: Symbol = grammar_left_operand
+data grammar_operator_token: Symbol = grammar_operator_token
+data grammar_right_operand: Symbol = grammar_right_operand
