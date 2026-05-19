@@ -467,10 +467,10 @@ def main() -> None:
     specs: list[tuple[str, str, str, str, str]] = [
         (
             "src/v4/extdeps/languages/verilog.dag",
-            "// Scope: IEEE 1364-2005 Verilog structural carriers (T-4.9 Wave-0; IN-B/B2-OMNI concurrency probe).",
+            "// Scope: IEEE 1364-2005 Verilog structural carriers.",
             "// Anchor: https://standards.ieee.org/ieee/1364/3641/",
             "// Consumes: std/node.dag; std/nat.dag (Nat).",
-            "// Status: T-4.9 Wave-0 PASS (IN-B, B2-OMNI); import v4.std.node Symbol; import v4.std.nat Nat.",
+            "// Status: PASS; import v4.std.node Symbol; import v4.std.nat Nat.",
         ),
         (
             "src/v4/extdeps/languages/llvm_ir.dag",
