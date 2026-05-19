@@ -371,6 +371,11 @@ fn ownership_parses_strict() {
 }
 
 #[test]
+fn trace_parses_strict() {
+    assert_parses_strict("src/v2/trace.dag");
+}
+
+#[test]
 fn shared_behavioral_parses_strict() {
     assert_parses_strict("dsl/std/behavioral.dag");
 }
