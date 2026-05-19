@@ -424,13 +424,26 @@ states "no `where`-clause"), so these stay bound-not-dissolved:
   `0..255`; non-negative is the minimal floor, the `0..255` bound is the
   fuller fact deferred with it). Dissolve: replace with the non-negative
   constructor-validated refinement.
-- `NamedPathComponent`, `PosixArgument`, `PosixEnvironmentName`,
-  `PosixEnvironmentValue` (each `{ bytes: PosixByteString }`) → T-25-core
-  non-empty NUL-free `PosixByteString` refinement (POSIX pathname
-  components and `exec` argument/environment strings are non-empty byte
-  strings containing no NUL; `PosixEnvironmentName` additionally excludes
-  `=`). Dissolve: replace the bare byte-record with the
-  constructor-validated byte-string refinement carrying that predicate.
+- The four `{ bytes: PosixByteString }` byte-records → T-25-core
+  `PosixByteString` refinements. The shared fact is **NUL-free** (each is
+  a NUL-terminated C string at the `exec`/`environ`/path boundary, so an
+  embedded NUL is unrepresentable); the non-empty fact is **per-carrier,
+  not shared** — POSIX permits empty `argv` elements and empty
+  environment values, so non-empty must not be imposed on those:
+  - `NamedPathComponent` → non-empty, NUL-free, and excludes `/` (a
+    pathname component lies between separators; empty or `/`-bearing is
+    not a component).
+  - `PosixEnvironmentName` → non-empty, NUL-free, and excludes `=` (the
+    `name=value` separator); an empty name is not a valid `environ`
+    entry.
+  - `PosixArgument` → NUL-free only. An `exec` argument **may be empty**
+    (`argv[i] == ""`, including a deliberately empty `argv[0]`);
+    requiring non-empty would make valid external states unrepresentable.
+  - `PosixEnvironmentValue` → NUL-free only. An environment value **may
+    be empty** (`FOO=`); requiring non-empty would make valid external
+    states unrepresentable.
+  Dissolve: replace each bare byte-record with the constructor-validated
+  byte-string refinement carrying its own predicate above.
 
 The surface→dissolve loop for all seven: name the T-25-core primitive
 (above) → land the T-25-core `std/` substrate PR → dissolve each scaffold
