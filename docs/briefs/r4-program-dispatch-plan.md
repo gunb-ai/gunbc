@@ -432,5 +432,4 @@ overstated). #4/#5/#6 are independent and low-risk; **#7 still needs you**;
 **#8 is resolved (B2)**. Honest count: the long pole is **2–3 operator
 items** — (a) ratify the verbatim invariant text, (b) confirm A-vs-B=B,
 (c) authorize T-25-core (ratified shape — a stamp, not a design call) —
-plus the low-risk independents.  T-4.12 (#3171), T-4.14 (#3170) are **already LANDED**. T-4.9 (`verilog.dag`) and T-4.14
-  (`ptx.dag`) carry **PASS (IN-B)** in their file headers (probe receipts; §2 Status column echoes that for T-4.9/T-4.14). PTX authority is **dispatch §2 + merge PR** (historical *L-3* stake; `DECISIONS.md` retired), with `ptx.dag` **domain-neutral** on the process axis (no process-axis status tag in the carrier). T-4.13
+plus the low-risk independents.
