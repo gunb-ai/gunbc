@@ -23,7 +23,7 @@ env:
 jobs:
   fmt:
     if: github.event.pull_request.draft != true
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ubicloud-standard-2
     timeout-minutes: 5
     steps:
     - name: Checkout
@@ -43,8 +43,8 @@ jobs:
   # for trunk verification). Cheap (~30s); other jobs depend on its outputs.
   affected:
     if: github.event.pull_request.draft != true
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
-    timeout-minutes: 5
+    runs-on: ubicloud-standard-2
+    timeout-minutes: 15
     outputs:
       v2: ${{ steps.detect.outputs.v2 }}
       v3: ${{ steps.detect.outputs.v3 }}
@@ -64,7 +64,7 @@ jobs:
   ci:
     if: github.event.pull_request.draft != true
     needs: [affected]
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ubicloud-standard-2
     timeout-minutes: 25
     steps:
     - name: Checkout
@@ -146,13 +146,20 @@ jobs:
         set -euo pipefail
         cargo test -p v3-compiler --test integration ci_uses_affected_set_selection -- --quiet
         cargo test -p v3-compiler --test integration workflow_no_path_regex_policy_ci_yml -- --quiet
+    # T-15 SG-0 / INVARIANTS §P5(b) receipt: `v4_bin_main_dag_smoke_test` lives in the v3
+    # integration harness, but the v3 job still runs that harness under the gunbc#846 HOT-FIX
+    # zero-test-filter — so this receipt must execute here (ci job) whenever v3/v4/workflow_policy
+    # gates compile the integration binary, else the parse/tokenize/source-anchor assertions never run.
+    - name: T-15 v4 bin main.dag smoke (live integration receipt)
+      if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.v3 == 'true' || needs.affected.outputs.workflow_policy == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+      run: cargo test -p v3-compiler --test integration v4_bin_main_dag_smoke_test::v4_bin_main_dag_tokenizes_and_parses_with_trampoline_source_anchor -- --exact --quiet
   # v2 fixed-point — runs only when src/v2/ is affected. v2 is restored as
   # comparison artifact + v4 bootstrap source (frozen-buildable). Verifies
   # that any modification to v2 preserves the self-host fixed-point property.
   v2:
     if: github.event.pull_request.draft != true && needs.affected.outputs.v2 == 'true'
     needs: [affected]
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ubicloud-standard-2
     timeout-minutes: 30
     steps:
     - name: Checkout
@@ -187,7 +194,7 @@ jobs:
   v4:
     if: github.event.pull_request.draft != true && needs.affected.outputs.v4 == 'true'
     needs: [affected]
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ubicloud-standard-2
     timeout-minutes: 15
     steps:
     - name: Checkout
