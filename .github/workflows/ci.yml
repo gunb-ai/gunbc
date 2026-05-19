@@ -187,6 +187,7 @@ jobs:
         if [[ "$status" -eq 0 ]]; then
           echo "Bootstrap viability OK — v2 compiled all v4 modules."
         elif [[ "$status" -eq 124 ]] && grep -q "resolved .* sources (transitive import closure)" /tmp/v4-stage1.log; then
+          # T-22-deferred bridge: remove this timeout success branch once v2 can run/emit v4 directly.
           echo "Bootstrap viability OK — v2 indexed and resolved all v4 modules; emit path remains T-22-deferred."
         else
           exit "$status"

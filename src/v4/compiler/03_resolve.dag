@@ -199,6 +199,8 @@ fn scope_push_frame(s: Scope, locals: Map<Symbol, Symbol>) -> Scope {
 
 
 fn lookup_chain(s: Scope, name: Symbol) -> Symbol? {
+  // `list_push` appends frames and `fold` visits in insertion order, so later
+  // frames override earlier outer bindings.
   fold(s.frames, init: map_get(s.module.bindings, name), f: fn(acc, m) {
     match map_get(m, name) {
       Some { value: v } => Some { value: v }
