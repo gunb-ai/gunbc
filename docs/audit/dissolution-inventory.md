@@ -392,8 +392,8 @@ captured here as the audit anchor for the rest:
   a `match`-to-derive of a pre-existing fact.
 
 **`extdeps/languages/dag.dag`**
-- `dag_wave1_e0_void_lex`, `dag_wave1_g0_void_grammar`,
-  `dag_language_model_wave1_void` — 🟢 — pure data constructors.
+- `dag_void_lex_rules`, `dag_void_grammar`,
+  `dag_language_model_void` — 🟢 — pure data constructors.
 - `dag_language_model_void_canonical_symbols` (62, added in
   CP-1b #3225) — 🟡 **predicate** (property projection, registry
   row 7) — the "four C3 Atom identities" codex finding (thread
@@ -406,9 +406,9 @@ captured here as the audit anchor for the rest:
   fact carried on DagLanguageModel (T-4 LanguageModel-axis — same
   family as feature_disposition on FidelityFeature)` —
   rolls under **P4**. (`dag_node_is_empty_conj_root` **retired** — R1
-  landed PR #3284: `dag_language_model_is_wave1_void_shape` imports
+  landed PR #3284: `dag_language_model_is_void_shape` imports
   `v4.std.node.is_empty_conj_root`; see `DECISIONS.md` §CP-1b item 12.)
-- `dag_language_model_is_wave1_void_shape` (83),
+- `dag_language_model_is_void_shape` (83),
   `dag_language_model_empty_canonical_symbol_set` (89),
   `dag_language_model_canonical_symbols` (98) — 🟢 — structurally
   distinct constructor inspection / pure data construction.
@@ -514,8 +514,8 @@ substrate PRs.
   `T19ManualAnchorKey` (join manifest for the two anchor corpora above).
   Zero `fn` bodies. 🟢.
 - `resolve_compile_anchor.dag` — **one** `fn`
-  `anchor_resolve_wave1_service_atom_via_canonical_symbols` (calls
-  `resolve` on a minimal `Node` + `dag_language_model_wave1_void()`;
+  `anchor_resolve_void_model_service_atom_via_canonical_symbols` (calls
+  `resolve` on a minimal `Node` + `dag_language_model_void()`;
   DECISIONS.md **CP-1b item 10** compile anchor; `Status: scaffold —
   compile-only until T-22`). **Disposition:** 🟢 **harness / coverage
   anchor** — delegates to `compiler/03_resolve.dag` `resolve` and LM
