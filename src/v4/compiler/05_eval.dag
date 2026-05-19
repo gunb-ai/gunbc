@@ -88,11 +88,7 @@ type TestClaimEvalSubject<T> {
 
 
 type TestClaimCacheKey<T> {
-  claim: TestClaim
-  context: EvalContext
-  claim_node: Node
-  tree: InferredTree
-  input: TestClaimTypedInput<T>
+  subject: TestClaimEvalSubject<T>
   claim_hash: Hash
   evaluator_hash: Hash
   resources_hash: Hash
@@ -113,7 +109,6 @@ type Verdict<T>
 
 
 type TestClaimRun<T> {
-  subject: TestClaimEvalSubject<T>
   cache: TestClaimCacheReceipt<T>
   verdict: Verdict<T>
 }
@@ -136,11 +131,7 @@ fn test_claim_cache_receipt<T>(
 ) -> TestClaimCacheReceipt<T> {
   TestClaimCacheReceipt {
     key: TestClaimCacheKey {
-      claim: subject.claim,
-      context: subject.context,
-      claim_node: subject.claim_node,
-      tree: subject.tree,
-      input: subject.input,
+      subject: subject,
       claim_hash: claim_hash,
       evaluator_hash: evaluator_hash,
       resources_hash: resources_hash,
@@ -166,10 +157,14 @@ fn eval_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
 
 
 fn eval_node(tree: InferredTree, inputs: Inputs) -> Outcome<Node> {
-  if node_well_formed(n: inputs.root) {
-    Produced { value: inputs.root }
+  if node_well_formed(n: tree) {
+    if node_well_formed(n: inputs.root) {
+      Produced { value: inputs.root }
+    } else {
+      Rejected { diagnostic: eval_diagnostic(reason: eval_rejected_invalid_node, node: inputs.root) }
+    }
   } else {
-    Rejected { diagnostic: eval_diagnostic(reason: eval_rejected_invalid_node, node: inputs.root) }
+    Rejected { diagnostic: eval_diagnostic(reason: eval_rejected_invalid_node, node: tree) }
   }
 }
 
@@ -261,7 +256,6 @@ fn run_test_claim(
     inputs: Inputs { root: subject.input.evaluator_input }
   )
   TestClaimRun {
-    subject: subject,
     cache: test_claim_cache_receipt(
       subject: subject,
       claim_hash: claim_hash,
@@ -361,7 +355,6 @@ fn t22_ci_subject(
 fn t22_ci_run(subject: TestClaimEvalSubject<CiPipeline>) -> TestClaimRun<CiPipeline> {
   let actual = ci_pipeline_well_formed(p: subject.input.evaluator_input)
   TestClaimRun {
-    subject: subject,
     cache: test_claim_cache_receipt(
       subject: subject,
       claim_hash: t22_hash_claim,
