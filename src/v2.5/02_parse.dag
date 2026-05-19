@@ -9,9 +9,8 @@ import v2_5.std.diagnostic {
   Outcome,
   PortLocus
 }
-import v2_5.std.nat { Nat }
+import v2_5.std.node { EdgeLabel, Symbol }
 import v2_5.std.stage_types { ParseNode, Token }
-import v2_5.std.symbol { Symbol }
 
 
 type GrammarExpr
@@ -65,7 +64,7 @@ type ParseNodeKind
 
 
 type ParseFieldBinding {
-  field: Symbol
+  label: EdgeLabel
   source: ParseCapture
 }
 
@@ -84,7 +83,7 @@ type OperatorAssociativity
 
 type OperatorSpec {
   token_class: Symbol
-  precedence: Nat
+  precedence: Int
   associativity: OperatorAssociativity
   builds: ParseBuilder
 }
@@ -156,7 +155,7 @@ fn dag_parse_grammar() -> ParseGrammar {
           kind: ParseModule,
           fields: [
             ParseFieldBinding {
-              field: grammar_module_items,
+              label: Named { name: grammar_module_items },
               source: CapturedNodes { name: grammar_module_item }
             }
           ]
@@ -238,15 +237,15 @@ fn binary_expr_builder() -> ParseBuilder {
     kind: ParseBinaryExpr,
     fields: [
       ParseFieldBinding {
-        field: grammar_left_operand,
+        label: Named { name: grammar_left_operand },
         source: CapturedNode { name: grammar_left_operand }
       },
       ParseFieldBinding {
-        field: grammar_operator_token,
+        label: Named { name: grammar_operator_token },
         source: CapturedToken { name: grammar_operator_token }
       },
       ParseFieldBinding {
-        field: grammar_right_operand,
+        label: Named { name: grammar_right_operand },
         source: CapturedNode { name: grammar_right_operand }
       }
     ]
