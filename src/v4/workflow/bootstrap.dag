@@ -28,21 +28,21 @@ data v4_stage2_binary: Symbol = v4_stage2_binary
 data v2_pipeline: Symbol = v2_pipeline
 data bit_identical_check: Symbol = bit_identical_check
 
-// Grounded: pretty-much-done. Receipt: bootstrap_plan_well_formed validates the canonical compiler-of-record chain for each compile step.
+// RULING-1: 🟢 pretty-much-done — compiler-of-record chain.
 type CompileStage {
   consumes: List<Symbol>
   produces: Symbol
   compiled_by: Symbol
 }
 
-// Grounded: pretty-much-done. Receipt: bootstrap_plan_well_formed validates the stage1/stage2 bit-identical assertion endpoint.
+// RULING-1: 🟢 pretty-much-done — fixed-point assertion endpoint.
 type FixptStage1Stage2 {
   left: Symbol
   right: Symbol
   via: Symbol
 }
 
-// Grounded: pretty-much-done. Receipt: bootstrap_plan is accepted only through bootstrap_plan_well_formed; source-root compile verifies the carrier parses in the v4 graph.
+// RULING-1: 🟢 pretty-much-done — canonical bootstrap chain.
 type BootstrapPlan {
   seed: CompileStage
   self0: CompileStage
