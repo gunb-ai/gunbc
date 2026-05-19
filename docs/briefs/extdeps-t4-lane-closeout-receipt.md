@@ -46,7 +46,7 @@ On-disk headers contradict the *derived* “NOT STARTED” wording still shown f
 - **T-4.10** `formats/spice.dag` — present (plan already marks LANDED; rework-obligation note remains operator-owned).
 - **T-4.12** `llvm_ir.dag` — header: **T-4.12 PASS (B2-OMNI)** (aligns with plan).
 - **T-4.13** `machine_code.dag` — substantial model + **🟢 P4-3208** ledger tag (not “absent”).
-- **T-4.14** `ptx.dag` — header: **T-4.14 PASS (IN-B)**.
+- **T-4.14** `ptx.dag` — **PASS (IN-B)** dispatch posture (**DECISIONS.md L-3**); file header intentionally domain-neutral (no process-axis status tag in the carrier).
 
 T-4.11 English boundary file path is per `TASKS.md`; not re-audited in this pass (Lane B / verification.dag coupling).
 

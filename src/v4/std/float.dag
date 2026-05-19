@@ -4,7 +4,7 @@
 // Consumes: std/node.dag (Symbol); std/machine.dag (Bit, Word32, Word64); std/algebra.dag (Ordering, Less, Equal, Greater); std/diagnostic.dag (Diagnostic, Outcome, PortLocus, Produced, Rejected, Unavailable, UserInputBoundary); std/logic.dag (Bool); std/nat.dag (Nat, nat_is_zero, nat_compare).
 // Status: T-3 modeled.
 // Anchor: https://en.wikipedia.org/wiki/IEEE_754
-// Ledger: DECISIONS.md Part 6 (PR #3229): CP-3229-GREEN-TERMINAL, SL-3229-FLOAT-NOMINAL.
+// Ledger: dissolution slugs (PR #3229): CP-3229-GREEN-TERMINAL, SL-3229-FLOAT-NOMINAL.
 
 module v4.std.float
 
@@ -25,13 +25,13 @@ import v4.std.nat { Nat, nat_compare, nat_is_zero }
 import v4.std.node { Symbol }
 type Float32Interchange = Word32
 type Float64Interchange = Word64
-// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type FloatSpecial
   = QuietNan
   | SignalingNan
   | PosInfinity
   | NegInfinity
-// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type FloatBody
   = Finite {
       sign: Bit
@@ -39,10 +39,13 @@ type FloatBody
       trailing_significand: Nat
     }
   | NonFinite { tag: FloatSpecial }
+
+// 🟢 grounded.
 type Float32 {
   body: FloatBody
 }
 
+// 🟢 grounded.
 type Float64 {
   body: FloatBody
 }

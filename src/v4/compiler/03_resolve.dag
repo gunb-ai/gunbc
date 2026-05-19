@@ -29,8 +29,10 @@ import v4.std.node {
   Conj,
   Edge,
   Node,
+  NodeFold,
   Symbol,
   TypeNode,
+  fold_node,
   node_well_formed
 }
 
@@ -91,22 +93,59 @@ fn empty_canonical_symbol_set() -> Set<Symbol> {
 }
 
 
-fn merge_binding_self(m: Map<Symbol, Symbol>, sym: Symbol) -> Map<Symbol, Symbol> {
-  map_insert(m, sym, sym)
+fn direct_named_edge_binding_fold(base: Map<Symbol, Symbol>) -> NodeFold<Map<Symbol, Symbol>> {
+  NodeFold {
+    init: fn(_) {
+      base
+    },
+    step: fn(acc, e, _) {
+      match e.label {
+        Named { name: sym } => map_insert(acc, sym, sym)
+        Positional => acc
+      }
+    }
+  }
+}
+
+
+fn direct_atom_binding_fold(base: Map<Symbol, Symbol>) -> NodeFold<Map<Symbol, Symbol>> {
+  NodeFold {
+    init: fn(n0) {
+      match n0.kind {
+        TypeNode { connective: Atom { identity: sym } } =>
+          map_insert(base, sym, sym)
+        _ => base
+      }
+    },
+    step: fn(acc, _, _) {
+      acc
+    }
+  }
+}
+
+
+fn harvest_conj_named_bindings(root: Node, acc: Map<Symbol, Symbol>) -> Map<Symbol, Symbol> {
+  match root.kind {
+    TypeNode { connective: Conj } =>
+      fold_node(
+        n: root,
+        algebra: direct_named_edge_binding_fold(base: acc)
+      )
+    _ => acc
+  }
+}
+
+
+fn harvest_direct_atom_binding(root: Node, acc: Map<Symbol, Symbol>) -> Map<Symbol, Symbol> {
+  fold_node(
+    n: root,
+    algebra: direct_atom_binding_fold(base: acc)
+  )
 }
 
 
 fn add_module_named_exports(root: Node, acc: Map<Symbol, Symbol>) -> Map<Symbol, Symbol> {
-  match root.kind {
-    TypeNode { connective: Conj } =>
-      fold(root.children, init: acc, f: fn(acc2, e) {
-        match e.label {
-          Named { name: decl } => merge_binding_self(m: acc2, sym: decl)
-          Positional => acc2
-        }
-      })
-    _ => acc
-  }
+  harvest_conj_named_bindings(root: root, acc: acc)
 }
 
 
@@ -116,17 +155,7 @@ fn add_arrow_domain_named_params(n: Node, acc: Map<Symbol, Symbol>) -> Map<Symbo
       if count(n.children) >= 1 {
         match first(n.children) {
           Some { value: e0 } =>
-            match e0.target.kind {
-              TypeNode { connective: Conj } =>
-                fold(e0.target.children, init: acc, f: fn(acc2, pe) {
-                  match pe.label {
-                    Named { name: param } =>
-                      merge_binding_self(m: acc2, sym: param)
-                    Positional => acc2
-                  }
-                })
-              _ => acc
-            }
+            harvest_conj_named_bindings(root: e0.target, acc: acc)
           None => acc
         }
       } else {
@@ -143,11 +172,7 @@ fn add_bind_atom_binder(n: Node, acc: Map<Symbol, Symbol>) -> Map<Symbol, Symbol
       if count(n.children) == 3 {
         match first(n.children) {
           Some { value: e0 } =>
-            match e0.target.kind {
-              TypeNode { connective: Atom { identity: b } } =>
-                merge_binding_self(m: acc, sym: b)
-              _ => acc
-            }
+            harvest_direct_atom_binding(root: e0.target, acc: acc)
           None => acc
         }
       } else {

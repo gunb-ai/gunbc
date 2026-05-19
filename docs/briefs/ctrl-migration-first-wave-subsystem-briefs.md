@@ -12,7 +12,7 @@ Acceptance gates:
 
 1. Declare service contracts, carriers, projections, and pure helper signatures for the subsystem.
 2. Name every current ctrl TS source file that remains runtime authority.
-3. Add Practice 4 receipts for every enum/sum with at least two variants.
+3. Add Practice 4 one-line 🟢/🟡/🔴 tags for every enum/sum with at least two variants (rationale in PR review).
 4. Mark the file 🟡 STAGED and name the consumer receipt that upgrades it to authority.
 5. Avoid new std-like carrier names unless the worker provides an M9 DFS non-reuse proof.
 

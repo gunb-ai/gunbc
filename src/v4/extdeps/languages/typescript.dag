@@ -2,21 +2,21 @@
 // Scope: TypeScript 5.9 + ECMA-262 ES2025 primitive D2 resolver slice (T-4 typescript).
 // Owns: TsEcma262NumericPrimitiveKind, TsEcma262PrimitiveOperationSemantics, ts_bool_grounding
 // Consumes: v4.std.logic (Bool, bool_boolean_algebra); v4.std.algebra (BooleanAlgebra).
-// Status: ts_bool_grounding decl-ref present + v2-parse-verified — 🟡 P2/E-6 STAGING (no same-PR consumer; canonical fold specified-not-realized per DECISIONS.md:916-920); non-bool numeric primitives 🟡 gated D2→fact-bundle debt (T-4 Phase-3 rework, node://adhoc-71ec74f4-080).
+// Status: ts_bool_grounding decl-ref present + v2-parse-verified — 🟡 P2/E-6 STAGING (no same-PR consumer; canonical fold specified-not-realized); non-bool numeric primitives 🟡 gated D2→fact-bundle debt (T-4 Phase-3 rework, node://adhoc-71ec74f4-080).
 // Anchor: https://www.typescriptlang.org/docs/handbook/2/everyday-types.html — ECMA-262 https://tc39.es/ecma262/2025/multipage/
-// Ledger: DECISIONS.md Part 6 (PR #3229): CP-3229-GREEN-TERMINAL.
+// Ledger: dissolution slugs (PR #3229): CP-3229-GREEN-TERMINAL.
 
 module v4.extdeps.languages.typescript
 
 import v4.std.logic { Bool, bool_boolean_algebra }
 import v4.std.algebra { BooleanAlgebra }
 
-// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type TsEcma262NumericPrimitiveKind
   = TsNumberPrimitive
   | TsBigIntPrimitive
 
-// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type TsEcma262PrimitiveOperationSemantics
   = TsNumberIeee754Binary64Semantics
   | TsNumberBitwiseInt32Uint32Semantics

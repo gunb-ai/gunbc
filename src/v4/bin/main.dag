@@ -1,21 +1,24 @@
 // src/v4/bin/main.dag
-//
-// Scope: emits main.rs trampoline (0-floor compliant per design-pure-bootstrap-zero.md:210).
-// Anchor: https://en.wikipedia.org/wiki/Entry_point + design-pure-bootstrap-zero.md trampoline (0-floor)
-//
-// Owns:
-//   - main.rs is machine-emitted from this .dag; not hand-authored
-//   - one-line include!() trampoline pattern
-//
-// Consumes:
-//   - std/node.dag
-//   - compiler/05_emit.dag (entry into the pipeline)
-//
-// Status: scaffold — fill per TASKS.md T-15
-// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
-// contract for the worker. Splitting this file requires explicit operator
-// ratification (substrate extension = stop signal).
-
+// Scope: v4 bin entry — T-15 authority for the 1-line main.rs include! trampoline (STRUCTURE closed-system inv.2, TASKS T-15, design-pure-bootstrap-zero:210) plus B1 digest operand placeholders.
+// Owns: main_rs_trampoline_authority stub_stage1_emitted_rust_digest_placeholder stub_stage2_emitted_rust_digest_placeholder
+// Consumes: v4.std.node
+// Status: scaffold — trampoline one-liner is authored here (single authority); 05_emit only materializes bytes; digest stubs only until B1 content_hash operands + Equals witness (no premature TestClaim).
 
 module v4.bin.main
 
+import v4.std.node { Node, TypeNode, Conj, Disj }
+
+
+data main_rs_trampoline_authority: String = "include!(\"v4_main_generated.rs\");"
+
+
+data stub_stage1_emitted_rust_digest_placeholder: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: []
+}
+
+
+data stub_stage2_emitted_rust_digest_placeholder: Node = Node {
+  kind: TypeNode { connective: Disj },
+  children: []
+}
