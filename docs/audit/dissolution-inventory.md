@@ -394,7 +394,7 @@ captured here as the audit anchor for the rest:
 **`extdeps/languages/dag.dag`**
 - `dag_void_lex_rules`, `dag_void_grammar`,
   `dag_language_model_void` — 🟢 — pure data constructors.
-- `dag_language_model_void_canonical_symbols` (62, added in
+- `dag_language_model_void_canonical_symbols` (54, added in
   CP-1b #3225) — 🟡 **predicate** (property projection, registry
   row 7) — the "four C3 Atom identities" codex finding (thread
   `3255338394`). Returns a `Set<Symbol>` whose `member: fn(sym)` is a
@@ -408,9 +408,9 @@ captured here as the audit anchor for the rest:
   rolls under **P4**. (`dag_node_is_empty_conj_root` **retired** — R1
   landed PR #3284: `dag_language_model_is_void_shape` imports
   `v4.std.node.is_empty_conj_root`; see `DECISIONS.md` §CP-1b item 12.)
-- `dag_language_model_is_void_shape` (83),
-  `dag_language_model_empty_canonical_symbol_set` (89),
-  `dag_language_model_canonical_symbols` (98) — 🟢 — structurally
+- `dag_language_model_is_void_shape` (67),
+  `dag_language_model_empty_canonical_symbol_set` (79),
+  `dag_language_model_canonical_symbols` (88) — 🟢 — structurally
   distinct constructor inspection / pure data construction.
 
 **Other language files** (`rust`, `go`, `python`, `cpp`, `verilog`,
