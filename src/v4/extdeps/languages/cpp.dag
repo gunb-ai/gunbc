@@ -11,6 +11,7 @@ import v4.std.logic { Bool, bool_boolean_algebra }
 import v4.std.algebra { BooleanAlgebra }
 import v4.extdeps.cpp_abi { CppTargetProfile }
 
+// 🟢 pretty-much-done — closed signed integer spelling family; testcase: test/claim/manual/cpp_scalar_grounding_anchor.dag.
 // 🟢 coproduct dissolution — DECISIONS.md T29-CPP-SCALAR-FORWARD.
 type CppSignedIntegerSurfaceSpelling
   = SignedChar
@@ -19,6 +20,7 @@ type CppSignedIntegerSurfaceSpelling
   | LongInt
   | LongLongInt
 
+// 🟢 pretty-much-done — closed unsigned integer spelling family; testcase: test/claim/manual/cpp_scalar_grounding_anchor.dag.
 // 🟢 coproduct dissolution — DECISIONS.md T29-CPP-SCALAR-FORWARD.
 type CppUnsignedIntegerSurfaceSpelling
   = UnsignedChar
@@ -27,18 +29,23 @@ type CppUnsignedIntegerSurfaceSpelling
   | UnsignedLongInt
   | UnsignedLongLongInt
 
+// 🟢 pretty-much-done — singleton plain-char spelling; testcase: test/claim/manual/cpp_scalar_grounding_anchor.dag.
 type CppPlainCharSurfaceSpelling
 
+// 🟢 pretty-much-done — singleton wchar_t spelling; testcase: test/claim/manual/cpp_scalar_grounding_anchor.dag.
 type CppWcharTSurfaceSpelling
 
+// 🟢 pretty-much-done — closed fixed unsigned code-unit spelling family; testcase: test/claim/manual/cpp_scalar_grounding_anchor.dag.
 // 🟢 coproduct dissolution — DECISIONS.md T29-CPP-SCALAR-FORWARD.
 type CppFixedUnsignedCodeUnitIntegerSurfaceSpelling
   = Char8T
   | Char16T
   | Char32T
 
+// 🟢 pretty-much-done — C++20 signed integer representation fact; testcase: test/claim/manual/cpp_scalar_grounding_anchor.dag.
 type CppTwosComplement
 
+// 🟡 needs-more-work — generated per-spelling target-profile selection rows still produce these witnesses; testcase: test/claim/manual/cpp_scalar_grounding_anchor.dag.
 // 🟡 feature:t4-cpp-scalar-ladder — scaffold:T-4-cpp-slice; dissolve-on: generated per-spelling target-profile selection rows consume CppTargetProfile and select these widths.
 type CppSignedIntegerWidthSelection {
   spelling: CppSignedIntegerSurfaceSpelling
@@ -66,9 +73,11 @@ type CppFixedUnsignedCodeUnitIntegerWidthSelection {
 }
 
 // Anchor: ISO/IEC 14882:2020 (C++20) [expr.pre]; upstream mirror https://eel.is/c++draft/expr.pre.
+// 🟢 pretty-much-done — arm-specific overflow witnesses; testcase: test/claim/manual/cpp_scalar_grounding_anchor.dag.
 type CppRepresentableResultRequired
 type CppUnsignedModuloArithmetic
 
+// 🟢 pretty-much-done — scalar fact-bundle arms prevent spelling/signedness/overflow cross-pairings; testcase: test/claim/manual/cpp_scalar_grounding_anchor.dag.
 // 🟢 coproduct dissolution — DECISIONS.md T29-CPP-SCALAR-FORWARD.
 type CppScalar
   = SignedIntegerScalar {
