@@ -87,7 +87,7 @@ first) · `DESIGN` · `OP` (operator ruling) · `CP1` (needs v4 front-end output
 | T-4.10 | formats/spice | **LANDED** (#3168 merged) — *pre-D2-reversal canonical path; see rework-obligation note* | T-1 | LANDED | T-4 mgr |
 | T-4.11 | claim/english_ingest | SCAFFOLD | T-3/verification.dag | IFACE (AssertKind) | Lane B |
 | T-4.12 | languages/llvm_ir | **LANDED** (#3171 merged; +#3229 de-prose +#3300 cost-move on main) — *pre-D2-reversal canonical path; see rework-obligation note* | T-1,T-2 | LANDED | T-4 mgr |
-| T-4.13 | languages/machine_code | **D2-REV** per file header; zero-diagnostic smoke landed | T-3, T-4 LanguageModel | CP1 (T-4 LanguageModel; smoke/model evidence landed) | T-4 mgr |
+| T-4.13 | languages/machine_code | **IMPL (modeled slice)** — D2-REV per file header; Isa-parameterized slice + zero-diagnostic smoke landed | T-3, T-4 LanguageModel | CP1 (T-4 LanguageModel; modeled slice landed) | T-4 mgr |
 | T-4.14 | languages/ptx | **PASS (IN-B)** per file header | T-1,T-2 | LANDED | T-4 mgr |
 | **T-9** | compiler/04_infer | SCAFFOLD | T-8/CP-1b-close (∥) + T-4 | IMPL (T-4 keystone; CP-1b-close parallel, not keystone-gated) | Lane A |
 | **T-10** | 05_emit + 00_compile | SCAFFOLD | T-9, T-4 | IMPL+IFACE | Lane A |
@@ -125,8 +125,8 @@ first) · `DESIGN` · `OP` (operator ruling) · `CP1` (needs v4 front-end output
 - **T-4-mgr staleness correction (verified vs main):** T-4.10 (#3168),
   T-4.12 (#3171) are **already LANDED**. T-4.9 (`verilog.dag`) and T-4.14
   (`ptx.dag`) now carry **PASS (IN-B)** in their file headers, and T-4.13
-  (`machine_code.dag`) carries **D2-REV** with a zero-diagnostic
-  `compile_to_dag` smoke; §2 keeps T-4.13 **CP1-blocked on T-4
+  (`machine_code.dag`) carries a **D2-REV Isa-parameterized modeled slice**
+  with a zero-diagnostic `compile_to_dag` smoke; §2 keeps T-4.13 **CP1-blocked on T-4
   LanguageModel** per TASKS.md while recording the landed smoke/model
   evidence. These are table-accuracy only updates, without changing
   TASKS.md's remaining LanguageModel/refinement authority.
@@ -144,9 +144,10 @@ first) · `DESIGN` · `OP` (operator ruling) · `CP1` (needs v4 front-end output
   live-tree absence explicit.
 - **NEW keystone-scope finding (decision-relevant):** the early-canonical-path
   language/format files modelled **pre-D2-reversal** (spice #3168, llvm_ir
-  #3171, and any sibling pre-#3240 models) likely carry a **fact-bundle REWORK
-  obligation that is itself Practice-10/#3240-keystone-gated** — the *same*
-  class as T-4 ×5 and #3280 A-vs-B. "LANDED" ≠ "done": ratifying the
+  #3171, verilog T-4.9, ptx T-4.14, and any sibling pre-#3240 models) likely
+  carry a **fact-bundle REWORK obligation that is itself
+  Practice-10/#3240-keystone-gated** — the *same* class as T-4 ×5 and #3280
+  A-vs-B. "LANDED" ≠ "done": ratifying the
   **verbatim invariant** (`modeling-discipline.md` ~§594–600 — the fold is
   already on main; *not* the closed #3240 tracker) also scopes their
   rework. This **widens the keystone's blast radius** (see §3).
@@ -167,7 +168,8 @@ first) · `DESIGN` · `OP` (operator ruling) · `CP1` (needs v4 front-end output
 
 **Keystone blast radius (widened — T-4-mgr finding):** Practice-10/#3240 does
 not only gate T-4 ×5 forward — it also scopes the **rework obligation on the
-already-LANDED pre-D2-reversal files** (spice #3168, llvm_ir #3171, siblings).
+already-LANDED pre-D2-reversal files** (spice #3168, llvm_ir #3171, verilog
+T-4.9, ptx T-4.14, siblings).
 Ratifying the **Practice-10 A1 invariant** is therefore *higher-leverage than
 first stated*: it unblocks the forward spine **and** defines the backward-rework
 set in one ruling. "Landed pre-A1" is not "done."
@@ -319,7 +321,7 @@ sessions are *not* folded in — see exceptions.
 |---|---|---|---|
 | **Fresh: Compiler-Pipeline (+Lens, gated)** | **Pipeline scope (active on Wave-0 go):** T-3 tail, T-6–T-8 CP-1b close, T-9, T-10, T-11, T-16, T-25-tail, T-28; **T-26 = std-authoritative, conduit-only**. **Lens scope (T-12/13/17/18/23) — GATED on the `fierce-cat-31` lens fan-out CLOSEOUT** (one lens owner at a time — see exception 2; no P2 parallel-authority drift) | Wave-0: T-3 tail / CP-1b / T-26 only | **Mirrors §4 topology (strict, codex BLOCKING):** W2 T-9 → W3 T-10 (+T-4.8, +T-12/13 refine) → W4 T-11 (+T-17, +T-18 — lens-scope, also post-closeout) → W5 **T-16** → W6 T-15 handoff. Lens scope (T-12/13/17/18/23) additionally post-`fierce-cat-31`-closeout. |
 | **Fresh: Test/Bootstrap-Infra** | T-19, T-20, T-21, T-22, T-24, T-14, T-15, T-4.11, T-32 | **T-19, T-20, T-21** (full) · **T-22** (`READY*` scaffold scope) | §4-mirrored: T-24 W4 (post T-20/T-21), T-14 W4 (post T-19), **T-15 W6** (terminal, post T-16) |
-| **Fresh: extdeps/T-4** | T-4 ×5, T-4.5–T-4.14 | **— (T-4.10/T-4.12 LANDED; T-29 core #3267 merged but **residual #3277 OPEN & still a TASKS.md-declared T-4-cpp feeder**; T-4 ×5 HELD on keystone)** | T-4 (post-keystone+T-29 #3277), T-4.5–4.8 |
+| **Fresh: extdeps/T-4** | T-4 ×5, T-4.5–T-4.14 | **— (T-4.9/T-4.10/T-4.12/T-4.14 LANDED; T-4.13 modeled slice landed but LanguageModel-blocked; T-29 core #3267 merged but **residual #3277 OPEN & still a TASKS.md-declared T-4-cpp feeder**; T-4 ×5 HELD on keystone)** | T-4 (post-keystone+T-29 #3277), T-4.5–4.8 |
 | **Fresh: Dissolution** | T-30, T-31, Wave-2 lenses, 🟡 burn-down | **T-31(b) mop-up; T-30 generated-checker** | Wave-2 lenses — *consumes* the §4 cross-lane prereqs (new std/ carriers + 3 derived lens-stages built by Compiler-Pipeline+Lens) — post A1-ratification |
 | **Operator** | Keystone rulings | **see §7 decision sheet** | — |
 
