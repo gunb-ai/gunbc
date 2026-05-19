@@ -735,6 +735,9 @@ The convolution view is implicit today. To make it executable:
    the "files are a downstream effect of substrate state" framing —
    that effect becomes a structurally-recorded fact, not just a
    compile-time side effect.
+7. **Library wrappers for the substrate primitives** — the
+   agent-surface layer. See §6.10 for the commitment + §6.11 for the
+   layered dependency order.
 
 ### 6.9 Recommended ordering for hero demonstrations
 
@@ -759,6 +762,149 @@ Easiest-and-most-illustrative to hardest, if you want to build them:
 
 (a)–(d) and (f) are convolutions; (e) is synthesis. Distinct enough
 that (e) probably warrants its own design doc when picked up.
+
+### 6.10 Agent-surface — library-first commitment
+
+The agent-side surface for the read/edit pipeline is **library
+calls**. Three implications:
+
+1. **All substrate primitives surface as library functions** —
+   `apply_lens`, `apply_diff`, `subterm_at`, `affected_set`,
+   `declarations_in` are library calls. Not RPC services. Not
+   CLI-first. The Rust binding is the in-substrate today; once v4
+   self-hosts, these become `.dag` intrinsics callable from
+   user-program `.dag`.
+2. **CLI wraps libraries** — `gunbc apply-lens ...`,
+   `gunbc auto-fix ...`, `gunbc refactor ...` etc. are thin shells
+   that compose library calls. Adding a new CLI subcommand is
+   composition, not new substrate.
+3. **The library boundary IS the agent-substrate surface.** No
+   premature transport layer (JSON-RPC, gRPC) — the agent loop is
+   function calls. Network transport, if ever introduced, is its
+   own concern that doesn't pre-date library landings.
+
+**First concrete I/O workflow — auto-fix-for-lens-error:**
+
+The most directly useful agent-shape orchestration; concretizes the
+§4 seven-step pipeline for one specific input (a lens-fired
+diagnostic):
+
+```
+auto_fix_for_lens(lens, scope) -> AutoFixOutcome
+  1. Lens error: apply_lens(lens, scope, Enforce) returns Diagnostic
+                 (the trigger — the agent observes a fail-closed lens)
+  2. Search:     agent picks transform — machine-readable Clean shape
+                 per lens (§6.8 item 1) or hand-authored for the
+                 specific case
+  3. Verify:     candidate_dag = apply_diff(dag, transform_diff)
+                 affected_set(dag, transform_diff).frontier.for_each(ref =>
+                   apply_lens(lens, ref, Enforce)
+                 )
+  4. Fix/Edit:   dag := candidate_dag (atomic commit)
+  5. Re-emit:    per-target emit re-renders files
+```
+
+§6.3 hero case (a) L1.5 catamorphism auto-fix is the first concrete
+instance — `auto_fix_for_lens(L1.5, RootScope)` over the corpus,
+swapping recursive `match` shapes for `list_any` / `traverse` fold
+primitives.
+
+`AutoFixOutcome` is a structural carrier reporting either
+`AppliedClean { sites: N, diff: Diff }` (every match auto-fixed
+cleanly) or `PartiallyApplied { sites: N, needs_decision: List<NeedsDecision> }`
+(some matches required operator judgment, structurally recorded).
+
+### 6.11 Dependent build order — layered implementation sequence
+
+The library-first commitment implies a layered dependency order.
+**Each layer builds on the prior.** The build sequence below
+is the dependency-correct one for getting from today's
+scaffold-only state to operational auto-fix-for-lens-error:
+
+**Layer 0 — Substrate primitives (T-23 fills today's scaffold).**
+- `apply_lens(lens, section, config)` and `apply_diff(root, d)` in
+  `src/v4/lens/application.dag`
+- `subterm_at(root, p)` (same file)
+- `Path`, `Edit`, `Diff` types ratified in `src/v4/std/node.dag`
+  (PR #3162, already on main)
+- `affected_set(dag, diff)` in `src/v4/lens/affected_set.dag`
+- All scaffold today; T-23 is the named lane that fills them.
+
+**Layer 1 — Library wrappers (depend on Layer 0).**
+- Thin language bindings to invoke the Layer-0 primitives. Rust
+  crate today (consumed by v3 + tooling); `.dag` intrinsics once
+  v4 self-hosts.
+- Helpers: `declarations_in(dag)` corpus fold, plus the
+  `affected.frontier.for_each(...)` idiom captured as a fold
+  combinator.
+- This is what §6.8 item 7 names.
+
+**Layer 2 — Per-lens transform Clean shapes (depend on Layer 1 +
+§6.8 item 1).**
+- Machine-readable `transform_fn(Matched) → Diff` (or
+  `→ ConditionalDiff` for branching cases) for each L1.x.
+- §6.2 table is the spec for what these need to be.
+- Authored in parallel — each per-lens transform is independent
+  modeling work.
+
+**Layer 3 — Orchestration wrappers (depend on Layers 0–2).**
+- `auto_fix_for_lens(lens, scope) → AutoFixOutcome` — the §6.10
+  workflow as a single library call.
+- `mechanical_refactor(refactor_name, scope) → RefactorOutcome` —
+  the §6.7b hero case (f) as a library call.
+- Built on top of `apply_lens` + `apply_diff` + the per-lens
+  Layer-2 transforms.
+
+**Layer 4 — Composition wrappers (depend on Layers 0–3).**
+- `interface_cascade(interface_change, conditional_fn) → CascadeOutcome`
+  — §6.5 hero case (c) as a library call. Introduces
+  `ConditionalDiff` carrier (§6.8 item 2).
+- `intent_to_diff(intent) → Diff` — §6.6 hero case (d) as a
+  library call. Consumes intent-shaped declaration carriers
+  (§6.8 item 4).
+
+**Layer 5 — CLI wrappers (depend on Layers 1–4).**
+- `gunbc apply-lens <lens> --scope <scope> [--enforce]` — Layer 1
+- `gunbc auto-fix <lens> [--scope <scope>]` — Layer 3
+- `gunbc refactor <named-refactor>` — Layer 3
+- `gunbc cascade <interface-change>` — Layer 4
+- `gunbc declare-concept <name> ...` — Layer 4
+- All are thin shells; the substantive logic is in the libraries.
+
+**Layer 6 — Synthesis loop (depends on T-22 eval + Layers 0–3).**
+- `synthesize_from_claim(test_claim) → Diff` — §6.7 hero case (e).
+- Heaviest dep: requires T-22 eval live + cost-lens-as-constraint.
+- Distinct enough that it warrants its own design doc when picked up.
+
+**Critical-path for first-functional system (auto-fix L1.5 demo):**
+
+```
+Layer 0 (apply_lens + apply_diff + affected_set scaffolds filled — T-23)
+     ↓
+Layer 1 (Rust crate wrapping the primitives)
+     ↓
+Layer 2 (just L1.5's transform — one row from §6.2)
+     ↓
+Layer 3 (just auto_fix_for_lens orchestration)
+```
+
+That's the minimum dependency closure for the first runnable demo —
+auto-fixing `ci_member` and siblings to `list_any` fold applications.
+Layer 5 CLI is convenience; Layer 4 composition and Layer 6
+synthesis are out-of-scope for first demo.
+
+**Parallelizable within each layer:**
+- Layer 2 transforms are mutually independent — multiple workers can
+  author per-lens Clean shapes in parallel
+- Layer 4 composition wrappers are independent of each other (modulo
+  shared Layer 2/3 deps)
+- Layer 5 CLI subcommands are independent (modulo shared library
+  surface)
+
+**Serial within the layer stack:** Layer N depends on Layer N-1; no
+shortcut from Layer 3 to Layer 0. Each new layer is a layer of
+agent-surface authority, not a parallel pseudo-authority — same
+single-authority discipline the substrate enforces.
 
 ## 7. The hard part — remaining open interface questions
 
