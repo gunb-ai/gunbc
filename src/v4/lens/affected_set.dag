@@ -55,7 +55,7 @@ type PropagationExclusionProof
 
 // 🟡 coproduct dissolution — DECISIONS.md #3153-subsumed
 type BoundaryExclusionProof
-  = UnchangedPureBoundary { subject: Path, content_hash: Hash }
+  = UnchangedPureBoundary { content_hash: Hash }
 
 
 type BoundaryExclusion {
@@ -250,7 +250,6 @@ fn boundary_receipt(read_model: AffectedSetRead, dag: Dag, path: Path, replaceme
     HashUnchangedPure { content_hash: h } =>
       BoundaryPruned {
         proof: UnchangedPureBoundary {
-          subject: path,
           content_hash: h
         }
       }

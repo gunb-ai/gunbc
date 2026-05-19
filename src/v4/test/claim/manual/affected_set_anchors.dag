@@ -56,7 +56,6 @@ data expected_affected_set_boundary_prune: ReExecFrontier = ChangedSubgraphFront
     BoundaryExclusion {
       edit: affected_set_claim_edit,
       proof: UnchangedPureBoundary {
-        subject: affected_set_claim_path,
         content_hash: affected_set_claim_hash
       }
     }
