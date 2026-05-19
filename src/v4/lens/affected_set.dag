@@ -18,7 +18,6 @@ type Dag = Node
 type AffectedDimension = Symbol
 
 data affected_dimension_value: Symbol = affected_dimension_value
-data affected_reason_no_hash_receipt: Symbol = affected_reason_no_hash_receipt
 
 
 type ExclusionKey {
