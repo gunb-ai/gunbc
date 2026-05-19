@@ -41,7 +41,7 @@ Known hazards:
 
 ## Acceptance Gates
 
-1. Every enum/sum with at least two variants has a Practice 4 receipt.
+1. Every enum/sum with at least two variants carries a Practice 4 one-line 🟢/🟡/🔴 tag; gate binding argued in PR review.
 2. The file explicitly marks each staged carrier and its dissolution trigger.
 3. Closure checks are fail-closed: undeclared post-cutoff mode, undrained bucket, and composite-with-open-children are representable refusals.
 4. Operation effects are typed per operation; no blanket monotonicity claim.
