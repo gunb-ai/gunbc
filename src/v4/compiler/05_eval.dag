@@ -19,6 +19,7 @@ import v4.std.node {
 import v4.std.diagnostic {
   Correction,
   Diagnostic,
+  NoCorrectionReason,
   NodeLocus,
   Outcome,
   Produced,
