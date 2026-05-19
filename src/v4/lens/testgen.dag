@@ -1,6 +1,6 @@
 // src/v4/lens/testgen.dag
 // Scope: T-19 testgen — substrate folds emit TestClaim; five scheduling categories + Generator<C>; filesystem-backed whole-corpus lens driver primitive.
-// Owns: Generator<C> TypeConstructionSubject AlgebraLawSubject DiagnosticExhaustivenessSubject LensApplicabilitySubject BidirectionalRoundtripSubject TestgenConcept CorpusEntry CorpusEnumerationRequest CorpusEnumerationResult CorpusEnumerator CorpusEntryIngestResult CorpusEntryIngestor CorpusLensReader<C> CorpusLensDriver<C>
+// Owns: Generator<C> TypeConstructionSubject AlgebraLawSubject DiagnosticExhaustivenessSubject LensApplicabilitySubject BidirectionalRoundtripSubject TestgenConcept CorpusEntry CorpusEnumerationRequest CorpusEnumerationResult CorpusEnumerator CorpusEntryIngestResult CorpusEntryIngestor CorpusLensReadResult<C> CorpusLensReader<C> CorpusLensObservation<C> CorpusLensDriveResult<C> CorpusLensDriver<C>
 // Consumes: v4.std.node v4.std.verification v4.std.diagnostic v4.extdeps.file_system (algebra/lens/extdeps at materialization — TASKS T-19)
 // Status: M1 — live types + Generator<C>; eval wiring T-22.
 
@@ -89,14 +89,22 @@ type CorpusLensReadResult<C> = Outcome<C>
 
 
 type CorpusLensReader<C> {
-  read: fn(Node) -> CorpusLensReadResult<C>
+  read: fn(LensApplicabilitySubject) -> CorpusLensReadResult<C>
 }
 
 
-type CorpusLensDriveResult<C> = Outcome<List<C>>
+type CorpusLensObservation<C> {
+  entry: CorpusEntry
+  subject: LensApplicabilitySubject
+  output: C
+}
+
+
+type CorpusLensDriveResult<C> = Outcome<List<CorpusLensObservation<C>>>
 
 
 type CorpusLensDriver<C> {
+  lens: Symbol
   enumerator: CorpusEnumerator
   ingestor: CorpusEntryIngestor
   reader: CorpusLensReader<C>
