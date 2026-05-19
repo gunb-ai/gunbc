@@ -1,0 +1,386 @@
+// src/v2.5/03_normalize.dag
+// Scope: sugar dissolution — ResolvedNode -> NormalizedNode.
+// Owns: normalize, normalize_module, sugar rule application, ResolvedNode catamorphism.
+// Consumes: v2_5.std.stage_types, v2_5.std.sugar_rules, v2_5.std.diagnostic.
+// Authority: src/v4/TASKS.md §T-8 (C3 desugar); v2 post-resolve bare-container pass is out of scope here.
+
+module v2_5.compiler.normalize
+
+
+import v2_5.std.diagnostic {
+  Diagnostic,
+  Outcome,
+  Unavailable,
+  UserInputBoundary
+}
+import v2_5.std.stage_types {
+  CoreArrow,
+  CoreAtom,
+  CoreBehavior,
+  CoreBind,
+  CoreBranch,
+  CoreConj,
+  CoreConnective,
+  CoreDisj,
+  CoreLoop,
+  CoreTransform,
+  CoreValue,
+  EdgeLabel,
+  NamedEdge,
+  NormalizedComputationForm,
+  NormalizedEdge,
+  NormalizedItem,
+  NormalizedItemComputation,
+  NormalizedItemForm,
+  NormalizedItemNode,
+  NormalizedItemType,
+  NormalizedModule,
+  NormalizedModuleNode,
+  NormalizedNode,
+  NormalizedTypeForm,
+  PositionalEdge,
+  ResolvedComputationForm,
+  ResolvedCoreForm,
+  ResolvedEdge,
+  ResolvedItem,
+  ResolvedItemComputation,
+  ResolvedItemForm,
+  ResolvedItemNode,
+  ResolvedItemType,
+  ResolvedModule,
+  ResolvedModuleNode,
+  ResolvedNode,
+  ResolvedSugarForm,
+  ResolvedTypeForm,
+  SourceSpan,
+  SurfaceSugarKind,
+  Symbol,
+  c3_surface_sugar_fn,
+  c3_surface_sugar_operation,
+  c3_surface_sugar_service,
+  c3_surface_sugar_type
+}
+import v2_5.std.sugar_rules {
+  PeelSinglePositionalChild,
+  ReplaceWithArrow,
+  ReplaceWithConj,
+  RequireAllNamed,
+  RequireAllPositional,
+  RequireExactlyOnePositional,
+  SugarEdgeRequirement,
+  SugarReplacement,
+  SugarRule,
+  c3_sugar_rules
+}
+
+
+data normalize_reason_malformed_sugar: Symbol = normalize_reason_malformed_sugar
+data normalize_reason_unknown_sugar: Symbol = normalize_reason_unknown_sugar
+
+
+fn malformed_sugar_diagnostic(span: SourceSpan) -> Diagnostic {
+  Diagnostic {
+    reason: normalize_reason_malformed_sugar,
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+
+fn unknown_sugar_diagnostic(span: SourceSpan) -> Diagnostic {
+  Diagnostic {
+    reason: normalize_reason_unknown_sugar,
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+
+fn edge_is_named(label: EdgeLabel) -> Bool {
+  match label {
+    NamedEdge { name: _ } => true
+    PositionalEdge => false
+  }
+}
+
+
+fn edge_is_positional(label: EdgeLabel) -> Bool {
+  match label {
+    NamedEdge { name: _ } => false
+    PositionalEdge => true
+  }
+}
+
+
+fn edges_satisfy(requirement: SugarEdgeRequirement, children: List<ResolvedEdge>) -> Bool {
+  match requirement {
+    RequireAllNamed =>
+      fold(children, init: true, f: fn(acc, e) {
+        acc && edge_is_named(label: e.label)
+      })
+    RequireAllPositional =>
+      fold(children, init: true, f: fn(acc, e) {
+        acc && edge_is_positional(label: e.label)
+      })
+    RequireExactlyOnePositional =>
+      if count(children) == 1 {
+        match children |> first {
+          Some { value: e0 } => edge_is_positional(label: e0.label)
+          None => false
+        }
+      } else {
+        false
+      }
+  }
+}
+
+
+fn lookup_sugar_rule(kind: SurfaceSugarKind, rules: List<SugarRule>) -> SugarRule? {
+  fold(rules, init: None, f: fn(acc, r) {
+    match acc {
+      Some { value: _ } => acc
+      None =>
+        if r.sugar == kind {
+          Some { value: r }
+        } else {
+          None
+        }
+    }
+  })
+}
+
+
+fn symbol_for_sugar(kind: SurfaceSugarKind) -> Symbol {
+  match kind {
+    ServiceSugar => c3_surface_sugar_service
+    FnSugar => c3_surface_sugar_fn
+    TypeSugar => c3_surface_sugar_type
+    OperationSugar => c3_surface_sugar_operation
+  }
+}
+
+
+fn connective_for_replacement(rep: SugarReplacement, sugar: SurfaceSugarKind) -> CoreConnective {
+  match rep {
+    ReplaceWithConj => CoreConj
+    ReplaceWithArrow => CoreArrow
+    PeelSinglePositionalChild => CoreAtom { identity: symbol_for_sugar(kind: sugar) }
+  }
+}
+
+
+fn normalize_resolved_edge(e: ResolvedEdge) -> Outcome<NormalizedEdge> {
+  match normalize_resolved_node(n: e.target) {
+    Produced { value: target } =>
+      Produced {
+        value: NormalizedEdge {
+          label: e.label,
+          target: target
+        }
+      }
+    Rejected { diagnostic: d } => Rejected { diagnostic: d }
+  }
+}
+
+
+fn empty_normalized_edges() -> Outcome<List<NormalizedEdge>> {
+  Produced { value: Empty }
+}
+
+
+fn normalize_resolved_edges(children: List<ResolvedEdge>) -> Outcome<List<NormalizedEdge>> {
+  fold(children, init: empty_normalized_edges(), f: fn(acc, e) {
+    match acc {
+      Rejected { diagnostic: d } => Rejected { diagnostic: d }
+      Produced { value: done } =>
+        match normalize_resolved_edge(e: e) {
+          Produced { value: ne } =>
+            Produced { value: list_push(done, ne) }
+          Rejected { diagnostic: d } => Rejected { diagnostic: d }
+        }
+    }
+  })
+}
+
+
+fn normalized_type_from_resolved_node(n: ResolvedNode, span: SourceSpan) -> Outcome<NormalizedTypeForm> {
+  match n {
+    ResolvedItemNode { item: item } =>
+      match item.form {
+        ResolvedItemType { type_form: tf } => normalize_resolved_type_form(form: tf)
+        ResolvedItemComputation { computation_form: _ } =>
+          Rejected { diagnostic: malformed_sugar_diagnostic(span: span) }
+      }
+    ResolvedModuleNode { module: _ } =>
+      Rejected { diagnostic: malformed_sugar_diagnostic(span: span) }
+  }
+}
+
+
+fn apply_sugar_rule(
+  rule: SugarRule,
+  span: SourceSpan,
+  children: List<ResolvedEdge>
+) -> Outcome<NormalizedTypeForm> {
+  if edges_satisfy(requirement: rule.edges, children: children) {
+    match rule.replacement {
+      PeelSinglePositionalChild =>
+        match children |> first {
+          Some { value: e0 } => normalized_type_from_resolved_node(n: e0.target)
+          None => Rejected { diagnostic: malformed_sugar_diagnostic(span: span) }
+        }
+      ReplaceWithConj =>
+        match normalize_resolved_edges(children: children) {
+          Produced { value: normalized_children } =>
+            Produced {
+              value: NormalizedTypeForm {
+                connective: connective_for_replacement(
+                  rep: rule.replacement,
+                  sugar: rule.sugar
+                ),
+                children: normalized_children
+              }
+            }
+          Rejected { diagnostic: d } => Rejected { diagnostic: d }
+        }
+      ReplaceWithArrow =>
+        match normalize_resolved_edges(children: children) {
+          Produced { value: normalized_children } =>
+            Produced {
+              value: NormalizedTypeForm {
+                connective: connective_for_replacement(
+                  rep: rule.replacement,
+                  sugar: rule.sugar
+                ),
+                children: normalized_children
+              }
+            }
+          Rejected { diagnostic: d } => Rejected { diagnostic: d }
+        }
+    }
+  } else {
+    Rejected { diagnostic: malformed_sugar_diagnostic(span: span) }
+  }
+}
+
+
+fn normalize_resolved_type_form(form: ResolvedTypeForm) -> Outcome<NormalizedTypeForm> {
+  match form {
+    ResolvedSugarForm { kind: kind, span: span, children: children } =>
+      match lookup_sugar_rule(kind: kind, rules: c3_sugar_rules()) {
+        Some { value: rule } => apply_sugar_rule(rule: rule, span: span, children: children)
+        None => Rejected { diagnostic: unknown_sugar_diagnostic(span: span) }
+      }
+    ResolvedCoreForm { connective: connective, children: children } =>
+      match normalize_resolved_edges(children: children) {
+        Produced { value: normalized_children } =>
+          Produced {
+            value: NormalizedTypeForm {
+              connective: connective,
+              children: normalized_children
+            }
+          }
+        Rejected { diagnostic: d } => Rejected { diagnostic: d }
+      }
+  }
+}
+
+
+fn normalize_resolved_computation_form(
+  form: ResolvedComputationForm
+) -> Outcome<NormalizedComputationForm> {
+  match normalize_resolved_edges(children: form.children) {
+    Produced { value: normalized_children } =>
+      Produced {
+        value: NormalizedComputationForm {
+          behavior: form.behavior,
+          span: form.span,
+          children: normalized_children
+        }
+      }
+    Rejected { diagnostic: d } => Rejected { diagnostic: d }
+  }
+}
+
+
+fn normalize_resolved_item(item: ResolvedItem) -> Outcome<NormalizedItem> {
+  match item.form {
+    ResolvedItemType { type_form: tf } =>
+      match normalize_resolved_type_form(form: tf) {
+        Produced { value: ntf } =>
+          Produced {
+            value: NormalizedItem {
+              name: item.name,
+              form: NormalizedItemType { type_form: ntf }
+            }
+          }
+        Rejected { diagnostic: d } => Rejected { diagnostic: d }
+      }
+    ResolvedItemComputation { computation_form: cf } =>
+      match normalize_resolved_computation_form(form: cf) {
+        Produced { value: ncf } =>
+          Produced {
+            value: NormalizedItem {
+              name: item.name,
+              form: NormalizedItemComputation { computation_form: ncf }
+            }
+          }
+        Rejected { diagnostic: d } => Rejected { diagnostic: d }
+      }
+  }
+}
+
+
+fn empty_normalized_items() -> Outcome<List<NormalizedItem>> {
+  Produced { value: Empty }
+}
+
+
+fn normalize_resolved_items(items: List<ResolvedItem>) -> Outcome<List<NormalizedItem>> {
+  fold(items, init: empty_normalized_items(), f: fn(acc, item) {
+    match acc {
+      Rejected { diagnostic: d } => Rejected { diagnostic: d }
+      Produced { value: done } =>
+        match normalize_resolved_item(item: item) {
+          Produced { value: ni } =>
+            Produced { value: list_push(done, ni) }
+          Rejected { diagnostic: d } => Rejected { diagnostic: d }
+        }
+    }
+  })
+}
+
+
+fn normalize_resolved_module(module: ResolvedModule) -> Outcome<NormalizedModule> {
+  match normalize_resolved_items(items: module.items) {
+    Produced { value: items } =>
+      Produced {
+        value: NormalizedModule {
+          name: module.name,
+          items: items
+        }
+      }
+    Rejected { diagnostic: d } => Rejected { diagnostic: d }
+  }
+}
+
+
+fn normalize_resolved_node(n: ResolvedNode) -> Outcome<NormalizedNode> {
+  match n {
+    ResolvedModuleNode { module: m } =>
+      match normalize_resolved_module(module: m) {
+        Produced { value: nm } =>
+          Produced { value: NormalizedModuleNode { module: nm } }
+        Rejected { diagnostic: d } => Rejected { diagnostic: d }
+      }
+    ResolvedItemNode { item: i } =>
+      match normalize_resolved_item(item: i) {
+        Produced { value: ni } =>
+          Produced { value: NormalizedItemNode { item: ni } }
+        Rejected { diagnostic: d } => Rejected { diagnostic: d }
+      }
+  }
+}
+
+
+fn normalize(resolved: ResolvedNode) -> Outcome<NormalizedNode> {
+  normalize_resolved_node(n: resolved)
+}

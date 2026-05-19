@@ -1,0 +1,138 @@
+// src/v2.5/std/stage_types.dag
+// Scope: phase-typed pipeline carriers (resolve → normalize seam).
+// Owns: ResolvedNode, NormalizedNode, SurfaceSugarKind, CoreConnective, edge labels.
+// Consumes: none.
+// Status: PROVISIONAL — vivid-lynx-807 owns the full stage-type kit; this file
+//   holds the normalize/resolve boundary shapes until Tier-1 lands.
+
+module v2_5.std.stage_types
+
+
+type Symbol
+
+
+type SourceSpan {
+  start: Int
+  end: Int
+}
+
+
+type SurfaceSugarKind
+  = ServiceSugar
+  | FnSugar
+  | TypeSugar
+  | OperationSugar
+
+
+data c3_surface_sugar_service: Symbol = c3_surface_sugar_service
+data c3_surface_sugar_fn: Symbol = c3_surface_sugar_fn
+data c3_surface_sugar_type: Symbol = c3_surface_sugar_type
+data c3_surface_sugar_operation: Symbol = c3_surface_sugar_operation
+
+
+type CoreConnective
+  = CoreAtom { identity: Symbol }
+  | CoreConj
+  | CoreDisj
+  | CoreArrow
+
+
+type CoreBehavior
+  = CoreValue
+  | CoreTransform
+  | CoreBranch
+  | CoreLoop
+  | CoreBind
+
+
+type EdgeLabel
+  = NamedEdge { name: Symbol }
+  | PositionalEdge
+
+
+type ResolvedEdge {
+  label: EdgeLabel
+  target: ResolvedNode
+}
+
+
+type NormalizedEdge {
+  label: EdgeLabel
+  target: NormalizedNode
+}
+
+
+type ResolvedTypeForm
+  = ResolvedSugarForm {
+      kind: SurfaceSugarKind
+      span: SourceSpan
+      children: List<ResolvedEdge>
+    }
+  | ResolvedCoreForm {
+      connective: CoreConnective
+      children: List<ResolvedEdge>
+    }
+
+
+type NormalizedTypeForm {
+  connective: CoreConnective
+  children: List<NormalizedEdge>
+}
+
+
+type ResolvedComputationForm {
+  behavior: CoreBehavior
+  span: SourceSpan
+  children: List<ResolvedEdge>
+}
+
+
+type NormalizedComputationForm {
+  behavior: CoreBehavior
+  span: SourceSpan
+  children: List<NormalizedEdge>
+}
+
+
+type ResolvedItem {
+  name: Symbol
+  form: ResolvedItemForm
+}
+
+
+type ResolvedItemForm
+  = ResolvedItemType { type_form: ResolvedTypeForm }
+  | ResolvedItemComputation { computation_form: ResolvedComputationForm }
+
+
+type NormalizedItem {
+  name: Symbol
+  form: NormalizedItemForm
+}
+
+
+type NormalizedItemForm
+  = NormalizedItemType { type_form: NormalizedTypeForm }
+  | NormalizedItemComputation { computation_form: NormalizedComputationForm }
+
+
+type ResolvedModule {
+  name: Symbol
+  items: List<ResolvedItem>
+}
+
+
+type NormalizedModule {
+  name: Symbol
+  items: List<NormalizedItem>
+}
+
+
+type ResolvedNode
+  = ResolvedModuleNode { module: ResolvedModule }
+  | ResolvedItemNode { item: ResolvedItem }
+
+
+type NormalizedNode
+  = NormalizedModuleNode { module: NormalizedModule }
+  | NormalizedItemNode { item: NormalizedItem }

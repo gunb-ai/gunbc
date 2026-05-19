@@ -1,0 +1,29 @@
+// src/v2.5/std/diagnostic.dag
+// Scope: fail-closed Outcome carrier for v2.5 pipeline stages.
+// Consumes: none.
+// Status: fork substrate — normalize stage consumer; Tier-0 may supersede.
+
+module v2_5.std.diagnostic
+
+
+type Symbol
+
+
+type NoCorrectionReason
+  = UserInputBoundary
+  | AmbiguousIntent
+
+
+type Correction
+  = Unavailable { reason: NoCorrectionReason }
+
+
+type Diagnostic {
+  reason: Symbol
+  correction: Correction
+}
+
+
+type Outcome<T>
+  = Produced { value: T }
+  | Rejected { diagnostic: Diagnostic }
