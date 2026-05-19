@@ -4,6 +4,8 @@
 //
 // Boundary: reconcile Connective / fold_node with v2_5.std.node when cool-bee-832
 // lands substrate. This file owns phased AST shapes; node.dag owns substrate algebra.
+// Reconcile: calm-crane-724 provisional normalize seam — SurfaceSugarKind + substrate
+// projection types at file end; ResolvedSugared wrapper on ResolvedModuleItem.
 //
 // Pipeline (type signatures are the contract):
 //   tokenize : SourceText -> TokenStream
@@ -34,6 +36,17 @@ type Connective
 type Cardinality
   = Required
   | CardOptional
+
+type SurfaceSugarKind
+  = ServiceSugar
+  | FnSugar
+  | TypeSugar
+  | OperationSugar
+
+data c3_surface_sugar_service: Symbol = c3_surface_sugar_service
+data c3_surface_sugar_fn: Symbol = c3_surface_sugar_fn
+data c3_surface_sugar_type: Symbol = c3_surface_sugar_type
+data c3_surface_sugar_operation: Symbol = c3_surface_sugar_operation
 
 // =========================================================================
 // Parse phase — syntax only, no binding or typing
@@ -438,7 +451,7 @@ type ResolvedImport
       span: SourceSpan
     }
 
-type ResolvedItem
+type ResolvedItemCore
   = ResolvedFn {
       name: BoundName
       type_params: List<ResolvedParam>
@@ -480,15 +493,23 @@ type ResolvedItem
       raw_span: SourceSpan
     }
 
+type ResolvedModuleItem
+  = ResolvedSugared {
+      sugar: SurfaceSugarKind
+      inner: ResolvedItemCore
+      span: SourceSpan
+    }
+  | ResolvedCore { item: ResolvedItemCore }
+
 type ResolvedModule {
   name: BoundName
   imports: List<ResolvedImport>
-  items: List<ResolvedItem>
+  items: List<ResolvedModuleItem>
   span: SourceSpan
 }
 
 // =========================================================================
-// Normalize phase — sugar dissolved; same variant set as Resolved
+// Normalize phase — surface sugar stripped; items are ResolvedItemCore only
 // =========================================================================
 
 type NormalizedPattern
@@ -1023,6 +1044,104 @@ type EmitStageIn {
 }
 
 // =========================================================================
+// Normalize seam — v4-substrate projection (reconcile calm-crane-724)
+// 03_normalize may implement against these carriers; full-module workers use
+// ResolvedModule / NormalizedModule above. Sugar strip: ResolvedSugarForm gone
+// on NormalizedTypeForm; ResolvedSugared gone on NormalizedModule.items.
+// =========================================================================
+
+type CoreConnective
+  = CoreAtom { identity: Symbol }
+  | CoreConj
+  | CoreDisj
+  | CoreArrow
+
+type CoreBehavior
+  = CoreValue
+  | CoreTransform
+  | CoreBranch
+  | CoreLoop
+  | CoreBind
+
+type EdgeLabel
+  = NamedEdge { name: Symbol }
+  | PositionalEdge
+
+type SeamResolvedEdge {
+  label: EdgeLabel
+  target: SeamResolvedNode
+}
+
+type SeamNormalizedEdge {
+  label: EdgeLabel
+  target: SeamNormalizedNode
+}
+
+type ResolvedTypeForm
+  = ResolvedSugarForm {
+      kind: SurfaceSugarKind
+      span: SourceSpan
+      children: List<SeamResolvedEdge>
+    }
+  | ResolvedCoreForm {
+      connective: CoreConnective
+      children: List<SeamResolvedEdge>
+    }
+
+type NormalizedTypeForm {
+  connective: CoreConnective
+  children: List<SeamNormalizedEdge>
+}
+
+type ResolvedComputationForm {
+  behavior: CoreBehavior
+  span: SourceSpan
+  children: List<SeamResolvedEdge>
+}
+
+type NormalizedComputationForm {
+  behavior: CoreBehavior
+  span: SourceSpan
+  children: List<SeamNormalizedEdge>
+}
+
+type SeamResolvedItem {
+  name: Symbol
+  form: SeamResolvedItemForm
+}
+
+type SeamResolvedItemForm
+  = SeamItemType { type_form: ResolvedTypeForm }
+  | SeamItemComputation { computation_form: ResolvedComputationForm }
+
+type SeamNormalizedItem {
+  name: Symbol
+  form: SeamNormalizedItemForm
+}
+
+type SeamNormalizedItemForm
+  = SeamItemType { type_form: NormalizedTypeForm }
+  | SeamItemComputation { computation_form: NormalizedComputationForm }
+
+type SeamResolvedModule {
+  name: Symbol
+  items: List<SeamResolvedItem>
+}
+
+type SeamNormalizedModule {
+  name: Symbol
+  items: List<SeamNormalizedItem>
+}
+
+type SeamResolvedNode
+  = SeamResolvedModuleNode { module: SeamResolvedModule }
+  | SeamResolvedItemNode { item: SeamResolvedItem }
+
+type SeamNormalizedNode
+  = SeamNormalizedModuleNode { module: SeamNormalizedModule }
+  | SeamNormalizedItemNode { item: SeamNormalizedItem }
+
+// =========================================================================
 // v2 field → v2.5 variant mapping (reference for stage workers)
 // =========================================================================
 //
@@ -1033,3 +1152,5 @@ type EmitStageIn {
 // v2 is_self_recursive / has_non_tail_self_call → InferredFn.recursion only
 // v2 item_kind() cascade → ParseItem closed sum (ParseFn | ParseFunc | ...)
 // v2 connective on flat Node → ParseTypeExpr | TypeForm connective variants
+// calm-crane-724 SeamResolvedNode → normalize sugar strip → SeamNormalizedNode
+// full pipeline: ResolvedSugared / ResolvedCore → NormalizedItem (core only)
