@@ -1,14 +1,73 @@
 // src/v4/lens/testgen.dag
-// Scope: T-19 testgen — substrate folds emit TestClaim; five scheduling categories + Generator<C>.
-// Owns: Generator<C> TypeConstructionSubject AlgebraLawSubject DiagnosticExhaustivenessSubject LensApplicabilitySubject BidirectionalRoundtripSubject TestgenConcept
-// Consumes: v4.std.node v4.std.verification (algebra/diagnostic/lens/extdeps at materialization — TASKS T-19)
-// Status: M1 — live types + Generator<C>; eval wiring T-22.
+// Scope: Manual-anchor testgen — Generator carries kind + anchor + classification + subject slot.
+// Owns: Generator TestgenConcept manual_test_claim_for_manual_anchor testgen_concept_for_manual_claim TypeConstructionSubject AlgebraLawSubject DiagnosticExhaustivenessSubject LensApplicabilitySubject BidirectionalRoundtripSubject
+// Consumes: v4.std.diagnostic v4.std.nat v4.std.node v4.std.verification v4.test.claim.manual.connective_anchors v4.test.claim.manual.nat_law_anchors
+// Status: Modeled Generator join for manual-anchor claims; substrate extension = operator STOP.
 
 module v4.lens.testgen
 
 
-import v4.std.verification { TestClassification }
-import v4.std.node { Node, Connective, Behavior, Symbol }
+import v4.std.diagnostic {
+  Outcome,
+  Produced,
+  Rejected,
+  Diagnostic,
+  Unavailable,
+  UserInputBoundary,
+  Textual,
+  WholeFile
+}
+import v4.std.nat {
+  nat_algebra_law_subject_symbol_additive_monoid,
+  nat_algebra_law_subject_symbol_commutative_semiring,
+  nat_algebra_law_subject_symbol_inhabitant_nat
+}
+import v4.std.node {
+  Node,
+  Connective,
+  Conj,
+  Disj,
+  Arrow,
+  Cardinality,
+  Instantiation,
+  Behavior,
+  Symbol
+}
+import v4.std.verification {
+  AssertKind,
+  TestClaim,
+  TestClassification,
+  T19ManualAnchorAbsent,
+  T19ManualAnchorKey,
+  T19ManualNatAddAssociativity,
+  T19ManualNatAddLeftIdentity,
+  T19ManualNatAddRightIdentity,
+  T19ManualNatMulAnnihilator,
+  T19ManualNatMulAssociativity,
+  T19ManualNatMulLeftIdentity,
+  T19ManualTcArrowTwoConj,
+  T19ManualTcCardinalityEmpty,
+  T19ManualTcConjEmpty,
+  T19ManualTcConjEqualsRefl,
+  T19ManualTcDisjEmpty,
+  T19ManualTcInstantiationEmpty
+}
+import v4.test.claim.manual.connective_anchors {
+  claim_arrow_two_conj_compiles,
+  claim_cardinality_empty_compiles,
+  claim_conj_empty_compiles,
+  claim_conj_equals_refl,
+  claim_disj_empty_compiles,
+  claim_instantiation_empty_compiles
+}
+import v4.test.claim.manual.nat_law_anchors {
+  claim_nat_add_associativity,
+  claim_nat_add_left_identity,
+  claim_nat_add_right_identity,
+  claim_nat_mul_annihilator,
+  claim_nat_mul_associativity,
+  claim_nat_mul_left_identity
+}
 
 
 type TypeConstructionSubject
@@ -31,6 +90,7 @@ type BidirectionalRoundtripSubject { language: Symbol, production: Symbol }
 
 type TestgenConcept
 // 🟡 coproduct dissolution — DECISIONS.md LB-P4-3212
+// RULING-1: 🟡 needs-more-work — multi-arm scheduling coproduct
   = TypeConstruction { subject: TypeConstructionSubject }
   | AlgebraLaw { subject: AlgebraLawSubject }
   | DiagnosticExhaustiveness { subject: DiagnosticExhaustivenessSubject }
@@ -40,5 +100,187 @@ type TestgenConcept
 
 type Generator<C> {
   classification: TestClassification
+  kind: AssertKind
+  t19_anchor: T19ManualAnchorKey
   slot: C
+}
+
+// RULING-1: 🟢 pretty-much-done — repeats manual claim anchor after lookup Outcome
+
+
+data t19_law_nat_add_left_identity: Symbol = t19_law_nat_add_left_identity
+
+
+data t19_law_nat_add_right_identity: Symbol = t19_law_nat_add_right_identity
+
+
+data t19_law_nat_add_associativity: Symbol = t19_law_nat_add_associativity
+
+
+data t19_law_nat_mul_left_identity: Symbol = t19_law_nat_mul_left_identity
+
+
+data t19_law_nat_mul_annihilator: Symbol = t19_law_nat_mul_annihilator
+
+
+data t19_law_nat_mul_associativity: Symbol = t19_law_nat_mul_associativity
+
+
+data t19_testgen_lens_file: Symbol = t19_testgen_lens_file
+
+
+data t19_manual_anchor_absent_bootstrap: Symbol = t19_manual_anchor_absent_bootstrap
+
+
+fn t19_manual_anchor_absent_bootstrap_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: t19_manual_anchor_absent_bootstrap,
+    at: Textual { file: t19_testgen_lens_file, extent: WholeFile },
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+fn manual_test_claim_for_manual_anchor(key: T19ManualAnchorKey) -> Outcome<TestClaim> {
+  match key {
+    T19ManualAnchorAbsent =>
+      Rejected { diagnostic: t19_manual_anchor_absent_bootstrap_diagnostic() }
+    T19ManualTcConjEmpty => Produced { value: claim_conj_empty_compiles }
+    T19ManualTcDisjEmpty => Produced { value: claim_disj_empty_compiles }
+    T19ManualTcArrowTwoConj => Produced { value: claim_arrow_two_conj_compiles }
+    T19ManualTcCardinalityEmpty => Produced { value: claim_cardinality_empty_compiles }
+    T19ManualTcInstantiationEmpty => Produced { value: claim_instantiation_empty_compiles }
+    T19ManualTcConjEqualsRefl => Produced { value: claim_conj_equals_refl }
+    T19ManualNatAddLeftIdentity => Produced { value: claim_nat_add_left_identity }
+    T19ManualNatAddRightIdentity => Produced { value: claim_nat_add_right_identity }
+    T19ManualNatAddAssociativity => Produced { value: claim_nat_add_associativity }
+    T19ManualNatMulLeftIdentity => Produced { value: claim_nat_mul_left_identity }
+    T19ManualNatMulAnnihilator => Produced { value: claim_nat_mul_annihilator }
+    T19ManualNatMulAssociativity => Produced { value: claim_nat_mul_associativity }
+  }
+}
+
+
+fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept> {
+  match claim.t19_anchor {
+    T19ManualAnchorAbsent =>
+      Rejected { diagnostic: t19_manual_anchor_absent_bootstrap_diagnostic() }
+    T19ManualTcConjEmpty =>
+      Produced {
+        value: TypeConstruction {
+          subject: ConnectiveKernel { connective: Conj },
+        },
+      }
+    T19ManualTcDisjEmpty =>
+      Produced {
+        value: TypeConstruction {
+          subject: ConnectiveKernel { connective: Disj },
+        },
+      }
+    T19ManualTcArrowTwoConj =>
+      Produced {
+        value: TypeConstruction {
+          subject: ConnectiveKernel { connective: Arrow },
+        },
+      }
+    T19ManualTcCardinalityEmpty =>
+      Produced {
+        value: TypeConstruction {
+          subject: ConnectiveKernel { connective: Cardinality },
+        },
+      }
+    T19ManualTcInstantiationEmpty =>
+      Produced {
+        value: TypeConstruction {
+          subject: ConnectiveKernel { connective: Instantiation },
+        },
+      }
+    T19ManualTcConjEqualsRefl =>
+      Produced {
+        value: TypeConstruction {
+          subject: ConnectiveKernel { connective: Conj },
+        },
+      }
+    T19ManualNatAddLeftIdentity =>
+      Produced {
+        value: AlgebraLaw {
+          subject: AlgebraLawSubject {
+            algebra: nat_algebra_law_subject_symbol_additive_monoid,
+            inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
+            law: t19_law_nat_add_left_identity,
+          },
+        },
+      }
+    T19ManualNatAddRightIdentity =>
+      Produced {
+        value: AlgebraLaw {
+          subject: AlgebraLawSubject {
+            algebra: nat_algebra_law_subject_symbol_additive_monoid,
+            inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
+            law: t19_law_nat_add_right_identity,
+          },
+        },
+      }
+    T19ManualNatAddAssociativity =>
+      Produced {
+        value: AlgebraLaw {
+          subject: AlgebraLawSubject {
+            algebra: nat_algebra_law_subject_symbol_additive_monoid,
+            inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
+            law: t19_law_nat_add_associativity,
+          },
+        },
+      }
+    T19ManualNatMulLeftIdentity =>
+      Produced {
+        value: AlgebraLaw {
+          subject: AlgebraLawSubject {
+            algebra: nat_algebra_law_subject_symbol_commutative_semiring,
+            inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
+            law: t19_law_nat_mul_left_identity,
+          },
+        },
+      }
+    T19ManualNatMulAnnihilator =>
+      Produced {
+        value: AlgebraLaw {
+          subject: AlgebraLawSubject {
+            algebra: nat_algebra_law_subject_symbol_commutative_semiring,
+            inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
+            law: t19_law_nat_mul_annihilator,
+          },
+        },
+      }
+    T19ManualNatMulAssociativity =>
+      Produced {
+        value: AlgebraLaw {
+          subject: AlgebraLawSubject {
+            algebra: nat_algebra_law_subject_symbol_commutative_semiring,
+            inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
+            law: t19_law_nat_mul_associativity,
+          },
+        },
+      }
+  }
+}
+
+
+fn bootstrap_claim_generator_for_manual_anchor(
+  key: T19ManualAnchorKey
+) -> Outcome<Generator<TestgenConcept>> {
+  match manual_test_claim_for_manual_anchor(key: key) {
+    Rejected { diagnostic: d } => Rejected { diagnostic: d }
+    Produced { value: claim } =>
+      match testgen_concept_for_manual_claim(claim: claim) {
+        Rejected { diagnostic: d } => Rejected { diagnostic: d }
+        Produced { value: slot } =>
+          Produced {
+            value: Generator {
+              classification: claim.classification,
+              kind: claim.kind,
+              t19_anchor: claim.t19_anchor,
+              slot: slot,
+            }
+          }
+      }
+  }
 }

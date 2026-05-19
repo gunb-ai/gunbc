@@ -59,6 +59,8 @@ mod cementing_provenance_origin_integration_test;
 mod complexity_lens_behavioral_completion;
 #[path = "integration/cementing/cost_lens_symbolic_consumer_test.rs"]
 mod cost_lens_symbolic_consumer_test;
+#[path = "integration/coverage_defect_acceptance_dag_test.rs"]
+mod coverage_defect_acceptance_dag_test;
 #[path = "integration/cross_target_coverage_carrier_test.rs"]
 mod cross_target_coverage_carrier_test;
 #[path = "integration/ctrl_pr_digests_dag_smoke_test.rs"]
@@ -273,8 +275,12 @@ mod thesis_validation_test;
 mod timing_lens_substrate_carrier_test;
 #[path = "integration/v2_oracle_no_remaining_test_consumers_test.rs"]
 mod v2_oracle_no_remaining_test_consumers_test;
+#[path = "integration/v4_bin_main_dag_smoke_test.rs"]
+mod v4_bin_main_dag_smoke_test;
 #[path = "integration/v4_lens_registry_dag_smoke_test.rs"]
 mod v4_lens_registry_dag_smoke_test;
+#[path = "integration/v4_lens_testgen_dag_smoke_test.rs"]
+mod v4_lens_testgen_dag_smoke_test;
 #[path = "integration/value_body_substrate_mirror_isomorphism_test.rs"]
 mod value_body_substrate_mirror_isomorphism_test;
 #[path = "integration/common/wiring_scanner_test.rs"]
