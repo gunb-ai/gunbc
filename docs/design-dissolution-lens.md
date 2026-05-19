@@ -185,28 +185,28 @@ of this enumeration.
 
 | Lens / sub-signature | Canonical acceptance-key name |
 |---|---|
-| L1.1 Discriminant-predicate | `dissolution_l1_1_discriminant_predicate` |
-| L1.2 Degenerate-type | `dissolution_l1_2_degenerate_type` |
-| L1.3 Hollow-type | `dissolution_l1_3_hollow_type` |
-| L1.4 Carrier-clone | `dissolution_l1_4_carrier_clone` |
-| L1.5 Catamorphism | `dissolution_l1_5_catamorphism` |
+| L1.1 Discriminant-predicate | `coverage_defect_discriminant_predicate` |
+| L1.2 Degenerate-type | `coverage_defect_degenerate_type` |
+| L1.3 Hollow-type | `coverage_defect_hollow_type` |
+| L1.4 Carrier-clone | `coverage_defect_carrier_clone` |
+| L1.5 Catamorphism | `coverage_defect_catamorphism` |
 | ~~L1.6 Emit/template~~ | **retired — see L1.10.a below; no `dissolution_l1_6_*` key** |
-| L1.7 Off-substrate-fact | `dissolution_l1_7_off_substrate_fact` |
-| L1.8 Wrong-home | `dissolution_l1_8_wrong_home` |
-| L1.9 Vacuous-arm | `dissolution_l1_9_vacuous_arm` |
-| **L1.10.a** `TemplateHole` (sub-signature of Textual-bypass family) | `dissolution_l1_10_a_template_hole` |
-| **L1.10.b** `CanonicalCarrier` (sub-signature of Textual-bypass family) | `dissolution_l1_10_b_canonical_carrier` |
-| L1.11 Plausible-fallback | `dissolution_l1_11_plausible_fallback` |
-| L1.12 Parallel-authority | `dissolution_l1_12_parallel_authority` |
+| L1.7 Off-substrate-fact | `coverage_defect_off_substrate_fact` |
+| L1.8 Wrong-home | `coverage_defect_wrong_home` |
+| L1.9 Vacuous-arm | `coverage_defect_vacuous_arm` |
+| **L1.10.a** `TemplateHole` (sub-signature of Textual-bypass family) | `coverage_defect_template_hole` |
+| **L1.10.b** `CanonicalCarrier` (sub-signature of Textual-bypass family) | `coverage_defect_canonical_carrier` |
+| L1.11 Plausible-fallback | `coverage_defect_plausible_fallback` |
+| L1.12 Parallel-authority | `coverage_defect_parallel_authority` |
 
 **Migration notes for existing downstream consumers:**
-- Any consumer carrying `dissolution_l1_6_emit_template` is **stale**;
-  rename to `dissolution_l1_10_a_template_hole` (the renamed
+- Any consumer carrying `coverage_defect_emit_template` is **stale**;
+  rename to `coverage_defect_template_hole` (the renamed
   sub-signature).
-- Any consumer carrying `dissolution_l1_10_string_escape_hatch` (the
+- Any consumer carrying `coverage_defect_string_escape_hatch` (the
   pre-merge name) is **stale**; replace with the two sub-signature
-  rows `dissolution_l1_10_a_template_hole` AND
-  `dissolution_l1_10_b_canonical_carrier`. L1.10 itself is no longer
+  rows `coverage_defect_template_hole` AND
+  `coverage_defect_canonical_carrier`. L1.10 itself is no longer
   a single mechanical unit — it's a lens family per §5.0's exception.
 - These names are stable as of this revision; further changes to the
   L1.x taxonomy will require a corresponding update to this enumeration

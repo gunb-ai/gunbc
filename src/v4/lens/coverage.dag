@@ -1,6 +1,6 @@
 // src/v4/lens/coverage.dag
 // Scope: T-18 meta-lens — expected vs actual TestClaim coverage over substrate slices.
-// Owns: Coverage<C> L6CoverageKey L7CoverageKey ImpossibleBugCoverageKey TestgenCoverageKey DissolutionLensKey DissolutionLensAcceptanceKey
+// Owns: Coverage<C> L6CoverageKey L7CoverageKey ImpossibleBugCoverageKey TestgenCoverageKey CoverageDefectKey CoverageDefectAcceptanceKey
 // Consumes: std/node std/witness std/diagnostic std/verification std/algebra extdeps/languages lens/testgen
 // Status: scaffold — fill per TASKS T-18.
 
@@ -34,63 +34,63 @@ type ImpossibleBugCoverageKey {
 type TestgenCoverageKey = TestgenConcept
 
 
-// 🟡 coproduct dissolution — DECISIONS.md Part 6 · SL-PREFIX-DISSOLUTION-LENS-KEY.
-type DissolutionLensKey
-  = L1_1DiscriminantPredicate
-  | L1_2DegenerateType
-  | L1_3HollowType
-  | L1_4CarrierClone
-  | L1_5Catamorphism
-  | L1_10ATemplateHole
-  | L1_7OffSubstrateFact
-  | L1_8WrongHome
-  | L1_9VacuousArm
-  | L1_10BCanonicalCarrier
-  | L1_11PlausibleFallback
-  | L1_12ParallelAuthority
+// 🟡 coproduct dissolution — DECISIONS.md Part 6 · SL-COVERAGE-DEFECT-KEY.
+type CoverageDefectKey
+  = DiscriminantPredicate
+  | DegenerateType
+  | HollowType
+  | CarrierClone
+  | Catamorphism
+  | TemplateHole
+  | OffSubstrateFact
+  | WrongHome
+  | VacuousArm
+  | CanonicalCarrier
+  | PlausibleFallback
+  | ParallelAuthority
 
 
-type DissolutionLensAcceptanceKey {
-  lens: DissolutionLensKey
+type CoverageDefectAcceptanceKey {
+  lens: CoverageDefectKey
 }
 
 
-type DissolutionLensAcceptance = Coverage<DissolutionLensAcceptanceKey>
+type CoverageDefectAcceptance = Coverage<CoverageDefectAcceptanceKey>
 
 
-data dissolution_l1_1_discriminant_predicate: DissolutionLensAcceptance = {
-  concern: DissolutionLensAcceptanceKey { lens: L1_1DiscriminantPredicate }
+data coverage_defect_discriminant_predicate: CoverageDefectAcceptance = {
+  concern: CoverageDefectAcceptanceKey { lens: DiscriminantPredicate }
 }
-data dissolution_l1_2_degenerate_type: DissolutionLensAcceptance = {
-  concern: DissolutionLensAcceptanceKey { lens: L1_2DegenerateType }
+data coverage_defect_degenerate_type: CoverageDefectAcceptance = {
+  concern: CoverageDefectAcceptanceKey { lens: DegenerateType }
 }
-data dissolution_l1_3_hollow_type: DissolutionLensAcceptance = {
-  concern: DissolutionLensAcceptanceKey { lens: L1_3HollowType }
+data coverage_defect_hollow_type: CoverageDefectAcceptance = {
+  concern: CoverageDefectAcceptanceKey { lens: HollowType }
 }
-data dissolution_l1_4_carrier_clone: DissolutionLensAcceptance = {
-  concern: DissolutionLensAcceptanceKey { lens: L1_4CarrierClone }
+data coverage_defect_carrier_clone: CoverageDefectAcceptance = {
+  concern: CoverageDefectAcceptanceKey { lens: CarrierClone }
 }
-data dissolution_l1_5_catamorphism: DissolutionLensAcceptance = {
-  concern: DissolutionLensAcceptanceKey { lens: L1_5Catamorphism }
+data coverage_defect_catamorphism: CoverageDefectAcceptance = {
+  concern: CoverageDefectAcceptanceKey { lens: Catamorphism }
 }
-data dissolution_l1_10_a_template_hole: DissolutionLensAcceptance = {
-  concern: DissolutionLensAcceptanceKey { lens: L1_10ATemplateHole }
+data coverage_defect_template_hole: CoverageDefectAcceptance = {
+  concern: CoverageDefectAcceptanceKey { lens: TemplateHole }
 }
-data dissolution_l1_7_off_substrate_fact: DissolutionLensAcceptance = {
-  concern: DissolutionLensAcceptanceKey { lens: L1_7OffSubstrateFact }
+data coverage_defect_off_substrate_fact: CoverageDefectAcceptance = {
+  concern: CoverageDefectAcceptanceKey { lens: OffSubstrateFact }
 }
-data dissolution_l1_8_wrong_home: DissolutionLensAcceptance = {
-  concern: DissolutionLensAcceptanceKey { lens: L1_8WrongHome }
+data coverage_defect_wrong_home: CoverageDefectAcceptance = {
+  concern: CoverageDefectAcceptanceKey { lens: WrongHome }
 }
-data dissolution_l1_9_vacuous_arm: DissolutionLensAcceptance = {
-  concern: DissolutionLensAcceptanceKey { lens: L1_9VacuousArm }
+data coverage_defect_vacuous_arm: CoverageDefectAcceptance = {
+  concern: CoverageDefectAcceptanceKey { lens: VacuousArm }
 }
-data dissolution_l1_10_b_canonical_carrier: DissolutionLensAcceptance = {
-  concern: DissolutionLensAcceptanceKey { lens: L1_10BCanonicalCarrier }
+data coverage_defect_canonical_carrier: CoverageDefectAcceptance = {
+  concern: CoverageDefectAcceptanceKey { lens: CanonicalCarrier }
 }
-data dissolution_l1_11_plausible_fallback: DissolutionLensAcceptance = {
-  concern: DissolutionLensAcceptanceKey { lens: L1_11PlausibleFallback }
+data coverage_defect_plausible_fallback: CoverageDefectAcceptance = {
+  concern: CoverageDefectAcceptanceKey { lens: PlausibleFallback }
 }
-data dissolution_l1_12_parallel_authority: DissolutionLensAcceptance = {
-  concern: DissolutionLensAcceptanceKey { lens: L1_12ParallelAuthority }
+data coverage_defect_parallel_authority: CoverageDefectAcceptance = {
+  concern: CoverageDefectAcceptanceKey { lens: ParallelAuthority }
 }

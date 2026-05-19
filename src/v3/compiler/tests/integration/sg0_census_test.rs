@@ -831,7 +831,7 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // PREFIX dissolution lens acceptance batch (d): parse-level ratchet for the
     // `src/v4/lens/coverage.dag` canonical Layer-1 acceptance rows. L1.6 is retired
     // into L1.10.a; dissolves when the v4 coverage lens runs as `.dag` coverage.
-    "src/v3/compiler/tests/integration/v4_lens_coverage_dag_smoke_test.rs",
+    "src/v3/compiler/tests/integration/coverage_defect_acceptance_dag_test.rs",
     // PREFIX T-23 v0: `compile_to_dag` smoke on `src/v4/lens/registry.dag` (P2-staging
     // `LensIdV0` + `LensModulePathV0`; no generated consumer yet). SG-0 + INVARIANTS §P5(b) receipt.
     "src/v3/compiler/tests/integration/v4_lens_registry_dag_smoke_test.rs",

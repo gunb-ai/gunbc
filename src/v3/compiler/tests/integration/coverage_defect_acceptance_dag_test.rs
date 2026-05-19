@@ -16,50 +16,50 @@ const COVERAGE_PATH: &str = "src/v4/lens/coverage.dag";
 
 const EXPECTED_ACCEPTANCE_ROWS: &[(&str, &str)] = &[
     (
-        "dissolution_l1_1_discriminant_predicate",
-        "L1_1DiscriminantPredicate",
+        "coverage_defect_discriminant_predicate",
+        "DiscriminantPredicate",
     ),
-    ("dissolution_l1_2_degenerate_type", "L1_2DegenerateType"),
-    ("dissolution_l1_3_hollow_type", "L1_3HollowType"),
-    ("dissolution_l1_4_carrier_clone", "L1_4CarrierClone"),
-    ("dissolution_l1_5_catamorphism", "L1_5Catamorphism"),
-    ("dissolution_l1_10_a_template_hole", "L1_10ATemplateHole"),
+    ("coverage_defect_degenerate_type", "DegenerateType"),
+    ("coverage_defect_hollow_type", "HollowType"),
+    ("coverage_defect_carrier_clone", "CarrierClone"),
+    ("coverage_defect_catamorphism", "Catamorphism"),
+    ("coverage_defect_template_hole", "TemplateHole"),
     (
-        "dissolution_l1_7_off_substrate_fact",
-        "L1_7OffSubstrateFact",
+        "coverage_defect_off_substrate_fact",
+        "OffSubstrateFact",
     ),
-    ("dissolution_l1_8_wrong_home", "L1_8WrongHome"),
-    ("dissolution_l1_9_vacuous_arm", "L1_9VacuousArm"),
+    ("coverage_defect_wrong_home", "WrongHome"),
+    ("coverage_defect_vacuous_arm", "VacuousArm"),
     (
-        "dissolution_l1_10_b_canonical_carrier",
-        "L1_10BCanonicalCarrier",
-    ),
-    (
-        "dissolution_l1_11_plausible_fallback",
-        "L1_11PlausibleFallback",
+        "coverage_defect_canonical_carrier",
+        "CanonicalCarrier",
     ),
     (
-        "dissolution_l1_12_parallel_authority",
-        "L1_12ParallelAuthority",
+        "coverage_defect_plausible_fallback",
+        "PlausibleFallback",
+    ),
+    (
+        "coverage_defect_parallel_authority",
+        "ParallelAuthority",
     ),
 ];
 
 const RETIRED_ACCEPTANCE_ROWS: &[(&str, &str)] = &[
-    ("dissolution_l1_6_emit_template", "L1_6EmitTemplate"),
+    ("coverage_defect_emit_template", "EmitTemplate"),
     (
-        "dissolution_l1_10_string_escape_hatch",
-        "L1_10StringEscapeHatch",
+        "coverage_defect_string_escape_hatch",
+        "StringEscapeHatch",
     ),
 ];
 
 #[test]
-fn v4_lens_coverage_names_all_l1_acceptance_keys() {
+fn coverage_defect_acceptance_keys_match_declared_rows() {
     let module = parse_module(COVERAGE_DAG, COVERAGE_PATH);
     let observed_variants = module
         .items
         .iter()
         .find_map(|item| match item {
-            SurfaceItem::TypeSum { name, variants, .. } if name == "DissolutionLensKey" => Some(
+            SurfaceItem::TypeSum { name, variants, .. } if name == "CoverageDefectKey" => Some(
                 variants
                     .iter()
                     .map(|variant| variant.name.as_str())
@@ -67,7 +67,7 @@ fn v4_lens_coverage_names_all_l1_acceptance_keys() {
             ),
             _ => None,
         })
-        .unwrap_or_else(|| panic!("{COVERAGE_PATH}: missing DissolutionLensKey coproduct"));
+        .unwrap_or_else(|| panic!("{COVERAGE_PATH}: missing CoverageDefectKey coproduct"));
     let expected_variants = EXPECTED_ACCEPTANCE_ROWS
         .iter()
         .map(|(_, variant)| *variant)
@@ -75,7 +75,7 @@ fn v4_lens_coverage_names_all_l1_acceptance_keys() {
 
     assert_eq!(
         observed_variants, expected_variants,
-        "{COVERAGE_PATH}: DissolutionLensKey variants must exactly match canonical Layer-1 keys"
+        "{COVERAGE_PATH}: CoverageDefectKey variants must exactly match canonical Layer-1 keys"
     );
 
     let retired_variants = RETIRED_ACCEPTANCE_ROWS
@@ -124,16 +124,16 @@ fn acceptance_lens_variant<'a>(row_name: &str, body: Option<&'a SurfaceExpr>) ->
     let concern = field_value(fields, "concern")
         .unwrap_or_else(|| panic!("{COVERAGE_PATH}: {row_name} must initialize concern"));
     let SurfaceExpr::VariantRecord { target, fields, .. } = concern else {
-        panic!("{COVERAGE_PATH}: {row_name}.concern must construct DissolutionLensAcceptanceKey");
+        panic!("{COVERAGE_PATH}: {row_name}.concern must construct CoverageDefectAcceptanceKey");
     };
     assert_eq!(
-        target, "DissolutionLensAcceptanceKey",
-        "{COVERAGE_PATH}: {row_name}.concern must construct DissolutionLensAcceptanceKey"
+        target, "CoverageDefectAcceptanceKey",
+        "{COVERAGE_PATH}: {row_name}.concern must construct CoverageDefectAcceptanceKey"
     );
     let lens = field_value(fields, "lens")
         .unwrap_or_else(|| panic!("{COVERAGE_PATH}: {row_name}.concern must initialize lens"));
     let SurfaceExpr::Var { name, .. } = lens else {
-        panic!("{COVERAGE_PATH}: {row_name}.concern.lens must be a DissolutionLensKey variant");
+        panic!("{COVERAGE_PATH}: {row_name}.concern.lens must be a CoverageDefectKey variant");
     };
     name.as_str()
 }

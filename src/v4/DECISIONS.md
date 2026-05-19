@@ -1036,11 +1036,11 @@ PROPOSES; it does not decide.
 
 **Cross-ref:** Part 1 table row `NatLeWitness` / `UpperBoundedNat`; **`§PR-3252-cardinality-std`** for `Never` / `Unit` inhabitance context. **Not** part of merge-base **`### CP-3229-GREEN-TERMINAL`** bulk table (that table enumerates strict-de-prose merge-base files only); this subsection is the **reachable** Practice-4 receipt for `NatLeWitness`.
 
-### SL-PREFIX-DISSOLUTION-LENS-KEY — `lens/coverage.dag` `DissolutionLensKey`
+### SL-COVERAGE-DEFECT-KEY — `lens/coverage.dag` `CoverageDefectKey`
 
 **Authority:** PREFIX lens acceptance batch (d), PR #3318.
 
-**Disposition:** **🟡 scaffold — hand-authored acceptance universe.** `DissolutionLensKey` is not a user-domain coproduct and not a semantic classifier over source programs; it is the finite acceptance-key set for the current `docs/design-dissolution-lens.md` Layer-1 gate surface after the §5.1 canonical-key migration: L1.6 is retired into L1.10.a `TemplateHole`, and the old monolithic L1.10 key is split into L1.10.a `TemplateHole` plus L1.10.b `CanonicalCarrier`. The variants name required coverage obligations so `Coverage<DissolutionLensAcceptanceKey>` can carry them as substrate data. It is not 🟢 terminal while the key set is copied from the design doc by hand.
+**Disposition:** **🟡 scaffold — hand-authored acceptance universe.** `CoverageDefectKey` is not a user-domain coproduct and not a semantic classifier over source programs; it is the finite acceptance-key set for the current `docs/design-dissolution-lens.md` Layer-1 gate surface after the §5.1 canonical-key migration: L1.6 is retired into L1.10.a `TemplateHole`, and the old monolithic L1.10 key is split into L1.10.a `TemplateHole` plus L1.10.b `CanonicalCarrier`. The variants name required coverage obligations so `Coverage<CoverageDefectAcceptanceKey>` can carry them as substrate data. It is not 🟢 terminal while the key set is copied from the design doc by hand.
 
 **`feature:` gate:** v4 coverage-lens registry projection for registered dissolution-lens declarations.
 
@@ -1048,9 +1048,9 @@ PROPOSES; it does not decide.
 
 **Dissolution patterns checked:** (1) **Fact placement:** fails — the fact is a meta-lens coverage obligation, not owned by any one target lens file without making coverage query the lens corpus ad hoc. (2) **Variant-is-data / coordinates:** fails for the interim shape — each key is an exactly-one obligation, not simultaneous axes on one finding. (3) **Algebraic derivation:** blocked today — the lens runner cannot yet enumerate registered dissolution-lens declarations directly, so the key set is hand-authored from `docs/design-dissolution-lens.md`. (4) **Dimensional decomposition:** fails — dimensions would permit invalid mixtures and lose the one-obligation identity. (5) **Parameterized family:** fails — the canonical Layer-1 keys are named mechanical signatures with distinct acceptance semantics, not `Lens<N>` instances over a numeric parameter.
 
-**Dissolve-on-arrival:** when the v4 coverage lens can enumerate registered dissolution-lens declarations directly, replace `DissolutionLensKey` and the twelve hand-authored `dissolution_l1_*` rows with the derived registry projection; retire the host parse ratchet in the same change under T-PB-B / generated coverage.
+**Dissolve-on-arrival:** when the v4 coverage lens can enumerate registered dissolution-lens declarations directly, replace `CoverageDefectKey` and the twelve hand-authored `dissolution_l1_*` rows with the derived registry projection; retire the host parse ratchet in the same change under T-PB-B / generated coverage.
 
-**Live substrate tag:** one-line `// 🟡 coproduct dissolution — DECISIONS.md Part 6 · SL-PREFIX-DISSOLUTION-LENS-KEY.` immediately precedes `type DissolutionLensKey` in `src/v4/lens/coverage.dag`.
+**Live substrate tag:** one-line `// 🟡 coproduct dissolution — DECISIONS.md Part 6 · SL-COVERAGE-DEFECT-KEY.` immediately precedes `type CoverageDefectKey` in `src/v4/lens/coverage.dag`.
 
 ### CP-3229-CPP-INTEGER-OVERFLOW — `extdeps/languages/cpp.dag` `CppIntegerOverflowDisposition` (Practice-4 terminal sum)
 
