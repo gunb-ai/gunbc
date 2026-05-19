@@ -84,25 +84,28 @@ data v2_compile_pipeline: List<PipelineStageSpec> = [
   PipelineStageSpec { stage: StageEmit, gate: BlockingOnErrors }
 ]
 
+fn pipeline_spec_for(stage: PipelineStageKind) -> PipelineStageSpec? {
+  fold(v2_compile_pipeline, init: none, f: (found, spec) =>
+    if spec.stage == stage { Some { value: spec } } else { found }
+  )
+}
+
 fn pipeline_gate_policy(stage: PipelineStageKind) -> PipelineGatePolicy {
-  match stage {
-    StageComplexity => SurfaceOnly
-    StageTokenize => BlockingOnErrors
-    StageParse => BlockingOnErrors
-    StageResolve => BlockingOnErrors
-    StageNormalize => BlockingOnErrors
-    StageInfer => BlockingOnErrors
-    StageOwnership => BlockingOnErrors
-    StageArtifactPlan => BlockingOnErrors
-    StageEmit => BlockingOnErrors
+  match pipeline_spec_for(stage: stage) {
+    Some { value: spec } => spec.gate
+    None => BlockingOnErrors
+  }
+}
+
+fn pipeline_gate_blocks(policy: PipelineGatePolicy, diagnostics: List<ErrorNode>) -> Bool {
+  match policy {
+    BlockingOnErrors => diagnostics |> any(d => is_error_diagnostic(d: d.diagnostic))
+    SurfaceOnly => false
   }
 }
 
 fn pipeline_gate_blocks_emission(stage: PipelineStageKind, diagnostics: List<ErrorNode>) -> Bool {
-  match pipeline_gate_policy(stage: stage) {
-    BlockingOnErrors => diagnostics |> any(d => is_error_diagnostic(d: d.diagnostic))
-    SurfaceOnly => false
-  }
+  pipeline_gate_blocks(policy: pipeline_gate_policy(stage: stage), diagnostics: diagnostics)
 }
 
 // 🟡 coproduct dissolution — CompileResult in 00_core.dag is still a product {files, diagnostics};
@@ -901,8 +904,181 @@ fn front_end_sources(sources: List<SourceFile>) -> FrontendResult {
 }
 
 // =========================================================================
-// Full pipeline
+// Full pipeline — fold over v2_compile_pipeline (single order + gate authority)
 // =========================================================================
+
+type CompilePipelineState {
+  halted: Bool
+  run_emit: Bool
+  frontend: FrontendResult
+  newline_indices: List<NewlineIndex>
+  graph: ModuleGraph?
+  source_indices: Map<String, NewlineIndex>
+  norm_diags: List<ErrorNode>
+  typed: ResolvedGraph?
+  complexity: ComplexityReport
+  ownership: List<OwnershipProof>
+  artifact_plan: ArtifactPlan
+  stage_diags: List<ErrorNode>
+  emit_diags: List<ErrorNode>
+  emit_files: List<TextFile>
+  target: RenderTarget
+}
+
+fn pipeline_state_halt_result(state: CompilePipelineState) -> PipelineResult {
+  PipelineResult {
+    files: [],
+    diagnostics: concat(state.frontend.diagnostics, state.norm_diags, state.stage_diags, state.emit_diags),
+    complexity: state.complexity,
+    ownership: state.ownership,
+    artifact_plan: state.artifact_plan,
+    newline_indices: state.newline_indices
+  }
+}
+
+fn apply_pipeline_stage(state: CompilePipelineState, spec: PipelineStageSpec) -> CompilePipelineState {
+  if state.halted {
+    return state
+  }
+  match spec.stage {
+    StageTokenize => state
+    StageParse => state
+    StageResolve =>
+      match state.graph {
+        None => CompilePipelineState { halted: true, ..state }
+        Some { value: graph } =>
+          if pipeline_gate_blocks(policy: spec.gate, diagnostics: graph.diagnostics) {
+            CompilePipelineState { halted: true, ..state }
+          } else {
+            state
+          }
+      }
+    StageNormalize =>
+      match state.graph {
+        None => CompilePipelineState { halted: true, ..state }
+        Some { value: graph } => {
+          let norm = normalize_graph(graph: graph, source_indices: state.source_indices)
+          let norm_diags = norm.diagnostics
+          if pipeline_gate_blocks(policy: spec.gate, diagnostics: norm_diags) {
+            CompilePipelineState { halted: true, norm_diags: norm_diags, ..state }
+          } else {
+            CompilePipelineState { graph: Some { value: norm.graph }, norm_diags: norm_diags, ..state }
+          }
+        }
+      }
+    StageInfer =>
+      match state.graph {
+        None => CompilePipelineState { halted: true, ..state }
+        Some { value: graph } => {
+          let typed = reconcile(graph: graph, source_indices: state.source_indices, intern_table: state.frontend.intern_table)
+          let typed_diags = typed.diagnostics
+          let halted = pipeline_gate_blocks(policy: spec.gate, diagnostics: typed_diags)
+          CompilePipelineState {
+            halted: halted,
+            typed: typed,
+            stage_diags: concat(state.stage_diags, typed_diags),
+            ..state
+          }
+        }
+      }
+    StageComplexity =>
+      match state.typed {
+        None => CompilePipelineState { halted: true, ..state }
+        Some { value: typed } => {
+          let func_entries = extract_func_entries(typed: typed)
+          let recursion_ctx = build_recursion_context(typed: typed)
+          let complexity = build_complexity_report(func_entries: func_entries, recursion_ctx: recursion_ctx, source_indices: state.source_indices)
+          let complexity_diags = complexity_diagnostics(complexity: complexity)
+          CompilePipelineState {
+            complexity: complexity,
+            stage_diags: concat(state.stage_diags, complexity_diags),
+            ..state
+          }
+        }
+      }
+    StageOwnership =>
+      match state.typed {
+        None => CompilePipelineState { halted: true, ..state }
+        Some { value: typed } => {
+          let ownership = extract_ownership_proofs(typed: typed)
+          let ownership_diags = ownership_diagnostics(proofs: ownership)
+          let halted = pipeline_gate_blocks(policy: spec.gate, diagnostics: ownership_diags)
+          CompilePipelineState {
+            halted: halted,
+            ownership: ownership,
+            stage_diags: concat(state.stage_diags, ownership_diags),
+            ..state
+          }
+        }
+      }
+    StageArtifactPlan =>
+      match state.typed {
+        None => CompilePipelineState { halted: true, ..state }
+        Some { value: typed } => {
+          let artifact_plan = default_artifact_plan(
+            root_modules: typed.modules |> map(m => authored_name_at(source_indices: state.source_indices, node: m.module)),
+            target: state.target
+          )
+          CompilePipelineState { artifact_plan: artifact_plan, ..state }
+        }
+      }
+    StageEmit =>
+      if !state.run_emit || state.halted {
+        state
+      } else {
+        match state.typed {
+          None => CompilePipelineState { halted: true, ..state }
+          Some { value: typed } => {
+            let emit_result = emit_from_artifact_plan(typed: typed, artifact_plan: state.artifact_plan)
+            let emit_blocks = pipeline_gate_blocks(policy: spec.gate, diagnostics: emit_result.diagnostics)
+            CompilePipelineState {
+              emit_diags: emit_result.diagnostics,
+              emit_files: if emit_blocks { [] } else { emit_result.files },
+              ..state
+            }
+          }
+        }
+      }
+  }
+}
+
+fn run_compile_pipeline_fold(frontend: FrontendResult, target: RenderTarget, run_emit: Bool) -> CompilePipelineState {
+  let newline_indices = frontend.newline_indices
+  let source_indices = fold(newline_indices, init: empty_map(), f: (acc, index) => map_insert(acc, index.file, index))
+  let initial = CompilePipelineState {
+    halted: frontend.graph == None,
+    run_emit: run_emit,
+    frontend: frontend,
+    newline_indices: newline_indices,
+    graph: frontend.graph,
+    source_indices: source_indices,
+    norm_diags: [],
+    typed: none,
+    complexity: empty_complexity_report(),
+    ownership: [],
+    artifact_plan: empty_artifact_plan(),
+    stage_diags: [],
+    emit_diags: [],
+    emit_files: [],
+    target: target
+  }
+  fold(v2_compile_pipeline, init: initial, f: (state, spec) => apply_pipeline_stage(state: state, spec: spec))
+}
+
+fn compile_pipeline_state_to_result(state: CompilePipelineState) -> PipelineResult {
+  if state.halted {
+    pipeline_state_halt_result(state: state)
+  } else {
+    PipelineResult {
+      files: state.emit_files,
+      diagnostics: concat(state.frontend.diagnostics, state.norm_diags, state.stage_diags, state.emit_diags),
+      complexity: state.complexity,
+      ownership: state.ownership,
+      artifact_plan: state.artifact_plan,
+      newline_indices: state.newline_indices
+    }
+  }
+}
 
 // Resolve-only pipeline: tokenize -> parse -> resolve.
 // Returns diagnostics from all three stages without proceeding to typecheck.
@@ -912,77 +1088,11 @@ fn resolve_sources(sources: List<SourceFile>) -> CompileResult {
 }
 
 // Pure compiler pipeline: sources in, compiled files out.
-// Wires tokenize -> parse -> resolve -> typecheck -> emit.
-// The target parameter selects the output language (Rust, Python, Go).
+// Stage order and gates: fold over v2_compile_pipeline (P2 single authority).
 fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineResult {
   let frontend = front_end_sources(sources: sources)
-  let newline_indices = frontend.newline_indices
-  match frontend.graph {
-    None => empty_pipeline_result(diagnostics: frontend.diagnostics, newline_indices: newline_indices)
-    Some { value: graph } => {
-      let graph_diags = graph.diagnostics
-      if pipeline_gate_blocks_emission(stage: StageResolve, diagnostics: graph_diags) {
-        return empty_pipeline_result(diagnostics: frontend.diagnostics, newline_indices: newline_indices)
-      }
-
-      let source_indices = fold(newline_indices, init: empty_map(), f: (acc, index) => map_insert(acc, index.file, index))
-      let norm = normalize_graph(graph: graph, source_indices: source_indices)
-      let norm_diags = norm.diagnostics
-      if pipeline_gate_blocks_emission(stage: StageNormalize, diagnostics: norm_diags) {
-        return empty_pipeline_result(diagnostics: concat(frontend.diagnostics, norm_diags), newline_indices: newline_indices)
-      }
-
-      let typed = reconcile(graph: norm.graph, source_indices: source_indices, intern_table: frontend.intern_table)
-      let typed_diags = typed.diagnostics
-      let func_entries = extract_func_entries(typed: typed)
-      let recursion_ctx = build_recursion_context(typed: typed)
-      let complexity = build_complexity_report(func_entries: func_entries, recursion_ctx: recursion_ctx, source_indices: source_indices)
-      let complexity_diags = complexity_diagnostics(complexity: complexity)
-      let all_diags = concat(typed_diags, complexity_diags)
-
-      let type_errors = typed_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))
-      if type_errors |> count > 0 {
-        return PipelineResult {
-          files: [],
-          diagnostics: concat(frontend.diagnostics, norm_diags, all_diags),
-          complexity: complexity,
-          ownership: [],
-          artifact_plan: empty_artifact_plan(),
-          newline_indices: newline_indices
-        }
-      }
-
-      let ownership = extract_ownership_proofs(typed: typed)
-      let ownership_diags = ownership_diagnostics(proofs: ownership)
-      if pipeline_gate_blocks_emission(stage: StageOwnership, diagnostics: ownership_diags) {
-        return PipelineResult {
-          files: [],
-          diagnostics: concat(frontend.diagnostics, norm_diags, all_diags, ownership_diags),
-          complexity: complexity,
-          ownership: ownership,
-          artifact_plan: empty_artifact_plan(),
-          newline_indices: newline_indices
-        }
-      }
-
-      let artifact_plan = default_artifact_plan(
-        root_modules: typed.modules |> map(m => authored_name_at(source_indices: source_indices, node: m.module)),
-        target: target
-      )
-      let emit_result = emit_from_artifact_plan(typed: typed, artifact_plan: artifact_plan)
-      let emit_diags = emit_result.diagnostics
-      let emit_blocks = pipeline_gate_blocks_emission(stage: StageEmit, diagnostics: emit_diags)
-      let final_files = if emit_blocks { [] } else { emit_result.files }
-      PipelineResult {
-        files: final_files,
-        diagnostics: concat(frontend.diagnostics, norm_diags, all_diags, ownership_diags, emit_diags),
-        complexity: complexity,
-        ownership: ownership,
-        artifact_plan: artifact_plan,
-        newline_indices: newline_indices
-      }
-    }
-  }
+  let state = run_compile_pipeline_fold(frontend: frontend, target: target, run_emit: true)
+  compile_pipeline_state_to_result(state: state)
 }
 
 // Result of compiling through validation (no emission).
@@ -997,89 +1107,16 @@ type ResolvedPipelineResult {
   newline_indices: List<NewlineIndex>
 }
 
-// Compile through validation: front-end → normalize → infer → complexity → ownership.
-// Stops before emission. Returns the typed graph for interpretation or tooling.
+// Compile through validation: fold over v2_compile_pipeline with run_emit=false.
 fn compile_to_resolved(sources: List<SourceFile>) -> ResolvedPipelineResult {
   let frontend = front_end_sources(sources: sources)
-  let newline_indices = frontend.newline_indices
-  match frontend.graph {
-    None =>
-      ResolvedPipelineResult {
-        graph: none,
-        diagnostics: frontend.diagnostics,
-        source_indices: empty_map(),
-        complexity: empty_complexity_report(),
-        ownership: [],
-        newline_indices: newline_indices
-      }
-    Some { value: graph } => {
-      let graph_diags = graph.diagnostics
-      if pipeline_gate_blocks_emission(stage: StageResolve, diagnostics: graph_diags) {
-        return ResolvedPipelineResult {
-          graph: none,
-          diagnostics: frontend.diagnostics,
-          source_indices: empty_map(),
-          complexity: empty_complexity_report(),
-          ownership: [],
-          newline_indices: newline_indices
-        }
-      }
-
-      let source_indices = fold(newline_indices, init: empty_map(), f: (acc, index) => map_insert(acc, index.file, index))
-      let norm = normalize_graph(graph: graph, source_indices: source_indices)
-      let norm_diags = norm.diagnostics
-      if pipeline_gate_blocks_emission(stage: StageNormalize, diagnostics: norm_diags) {
-        return ResolvedPipelineResult {
-          graph: none,
-          diagnostics: concat(frontend.diagnostics, norm_diags),
-          source_indices: source_indices,
-          complexity: empty_complexity_report(),
-          ownership: [],
-          newline_indices: newline_indices
-        }
-      }
-
-      let typed = reconcile(graph: norm.graph, source_indices: source_indices, intern_table: frontend.intern_table)
-      let typed_diags = typed.diagnostics
-      let func_entries = extract_func_entries(typed: typed)
-      let recursion_ctx = build_recursion_context(typed: typed)
-      let complexity = build_complexity_report(func_entries: func_entries, recursion_ctx: recursion_ctx, source_indices: source_indices)
-      let complexity_diags = complexity_diagnostics(complexity: complexity)
-      let all_diags = concat(typed_diags, complexity_diags)
-
-      let type_errors = typed_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))
-      if type_errors |> count > 0 {
-        return ResolvedPipelineResult {
-          graph: none,
-          diagnostics: concat(frontend.diagnostics, norm_diags, all_diags),
-          source_indices: source_indices,
-          complexity: complexity,
-          ownership: [],
-          newline_indices: newline_indices
-        }
-      }
-
-      let ownership = extract_ownership_proofs(typed: typed)
-      let ownership_diags = ownership_diagnostics(proofs: ownership)
-      if pipeline_gate_blocks_emission(stage: StageOwnership, diagnostics: ownership_diags) {
-        return ResolvedPipelineResult {
-          graph: none,
-          diagnostics: concat(frontend.diagnostics, norm_diags, all_diags, ownership_diags),
-          source_indices: source_indices,
-          complexity: complexity,
-          ownership: ownership,
-          newline_indices: newline_indices
-        }
-      }
-
-      ResolvedPipelineResult {
-        graph: typed,
-        diagnostics: concat(frontend.diagnostics, norm_diags, all_diags, ownership_diags),
-        source_indices: source_indices,
-        complexity: complexity,
-        ownership: ownership,
-        newline_indices: newline_indices
-      }
-    }
+  let state = run_compile_pipeline_fold(frontend: frontend, target: Rust, run_emit: false)
+  ResolvedPipelineResult {
+    graph: if state.halted { none } else { state.typed },
+    diagnostics: concat(state.frontend.diagnostics, state.norm_diags, state.stage_diags),
+    source_indices: state.source_indices,
+    complexity: state.complexity,
+    ownership: state.ownership,
+    newline_indices: state.newline_indices
   }
 }
