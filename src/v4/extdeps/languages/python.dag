@@ -12,25 +12,11 @@ import v4.std.algebra { BooleanAlgebra }
 
 // 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
 type PythonSingletonKind
-  =
-  NoneT
-  |
-  NotImplementedT
-  |
-  EllipsisT
+  = NoneT | NotImplementedT | EllipsisT
 
 // 🟢 coproduct dissolution — DECISIONS.md Part 6 · SL-3309-PYTHON-SCALAR-RESEED.
 type PythonScalar
-  =
-  IntScalar
-  |
-  FloatScalar
-  |
-  ComplexScalar
-  |
-  BoolScalar
-  |
-  Singleton { kind: PythonSingletonKind }
+  = IntScalar | FloatScalar | ComplexScalar | BoolScalar | Singleton { kind: PythonSingletonKind }
 
 type PythonCost
 {
