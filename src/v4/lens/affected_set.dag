@@ -1,6 +1,6 @@
 // src/v4/lens/affected_set.dag
 // Scope: canonical affected-set authority for CI/incremental re-execution; fail-closed B-4/B-5 node frontier.
-// Owns: Dag, AffectedDimension, ExclusionKey, ExclusionProof, FrontierDecision, ReExecFrontier, AffectedSetRead, AffectedPostEditDagReceipt, HashReceipt, ChangedDimensionReceipt, affected_set.
+// Owns: Dag, AffectedDimension, ExclusionKey, ExclusionProof, BoundaryExclusionProof, WholeDagFailClosedEvidence, FrontierDecision, ReExecFrontier, AffectedSetRead, AffectedPostEditDagReceipt, HashReceipt, ChangedDimensionReceipt, affected_set.
 // Consumes: Map, Diagnostic, Diff, Edit, Hash, Node, Path, Symbol, Witness; B1 content_hash receipts; B-4 resolved Symbol equality; B-5 per-Arrow signature effects.
 // Status: Wave-0 front: bounded changed-subgraph frontier fold landed; dissolves when CI use and .dag TestClaims land.
 
@@ -17,9 +17,6 @@ type Dag = Node
 
 
 type AffectedDimension = Symbol
-
-data affected_reason_invalid_edit: Symbol = affected_reason_invalid_edit
-
 
 type ExclusionKey {
   at: Path
@@ -50,7 +47,17 @@ type EditFrontierEdge {
 type ExclusionProof
   = EmptyDimensionDelta { subject: Path }
   | DimensionNotRead { producer: Path }
-  | UnchangedPureBoundary { subject: Path, content_hash: Hash }
+
+
+// 🟡 coproduct dissolution — DECISIONS.md #3153-subsumed
+type BoundaryExclusionProof
+  = UnchangedPureBoundary { subject: Path, content_hash: Hash }
+
+
+// 🟡 coproduct dissolution — DECISIONS.md #3153-subsumed
+type WholeDagFailClosedEvidence
+  = WholeDagReason { reason: Symbol }
+  | WholeDagDiagnostic { diagnostic: Diagnostic }
 
 
 // 🟢 coproduct dissolution — DECISIONS.md #3153-subsumed
@@ -62,10 +69,10 @@ type FrontierDecision
 // 🟢 coproduct dissolution — DECISIONS.md #3153-subsumed; IRT-1 whole/changed-subgraph gate.
 type ReExecFrontier
   = ChangedSubgraphFrontier {
-      boundary_exclusions: Map<Path, ExclusionProof>,
+      boundary_exclusions: Map<Path, BoundaryExclusionProof>,
       decisions: Map<ExclusionKey, FrontierDecision>
     }
-  | WholeDagFailClosed { reason: Symbol }
+  | WholeDagFailClosed { evidence: WholeDagFailClosedEvidence }
 
 
 // 🟡 coproduct dissolution — DECISIONS.md #3153-subsumed; dissolves into B1 content_hash plus B-5 purity/effect receipts.
@@ -77,7 +84,7 @@ type HashReceipt
 
 // 🟡 coproduct dissolution — DECISIONS.md #3153-subsumed; dissolves when T-21 .dag TestClaims prove boundary cases.
 type BoundaryReceipt
-  = BoundaryPruned { proof: ExclusionProof }
+  = BoundaryPruned { proof: BoundaryExclusionProof }
   | BoundaryExpands
   | BoundaryUnknown { reason: Symbol }
 
@@ -122,10 +129,10 @@ type AffectedSetRead {
 // 🟢 coproduct dissolution — DECISIONS.md #3153-subsumed; accumulator mirrors ReExecFrontier authority.
 type FrontierAcc
   = ChangedSubgraphAcc {
-      boundary_exclusions: Map<Path, ExclusionProof>,
+      boundary_exclusions: Map<Path, BoundaryExclusionProof>,
       decisions: Map<ExclusionKey, FrontierDecision>
     }
-  | WholeDagAcc { reason: Symbol }
+  | WholeDagAcc { evidence: WholeDagFailClosedEvidence }
 
 
 type AffectedFoldAcc {
@@ -162,7 +169,7 @@ fn frontier_from_acc(acc: FrontierAcc) -> ReExecFrontier {
         boundary_exclusions: boundary_exclusions,
         decisions: decisions
       }
-    WholeDagAcc { reason: r } => WholeDagFailClosed { reason: r }
+    WholeDagAcc { evidence: e } => WholeDagFailClosed { evidence: e }
   }
 }
 
@@ -185,7 +192,7 @@ fn edge_key(edge: FrontierEdge) -> ExclusionKey {
 
 fn mark_rerun(acc: FrontierAcc, key: ExclusionKey) -> FrontierAcc {
   match acc {
-    WholeDagAcc { reason: r } => WholeDagAcc { reason: r }
+    WholeDagAcc { evidence: e } => WholeDagAcc { evidence: e }
     ChangedSubgraphAcc { boundary_exclusions: boundary_exclusions, decisions: decisions } =>
       ChangedSubgraphAcc {
         boundary_exclusions: boundary_exclusions,
@@ -195,9 +202,9 @@ fn mark_rerun(acc: FrontierAcc, key: ExclusionKey) -> FrontierAcc {
 }
 
 
-fn mark_boundary_excluded(acc: FrontierAcc, path: Path, proof: ExclusionProof) -> FrontierAcc {
+fn mark_boundary_excluded(acc: FrontierAcc, path: Path, proof: BoundaryExclusionProof) -> FrontierAcc {
   match acc {
-    WholeDagAcc { reason: r } => WholeDagAcc { reason: r }
+    WholeDagAcc { evidence: e } => WholeDagAcc { evidence: e }
     ChangedSubgraphAcc { boundary_exclusions: boundary_exclusions, decisions: decisions } =>
       ChangedSubgraphAcc {
         boundary_exclusions: map_insert(boundary_exclusions, path, proof),
@@ -209,7 +216,7 @@ fn mark_boundary_excluded(acc: FrontierAcc, path: Path, proof: ExclusionProof) -
 
 fn mark_excluded(acc: FrontierAcc, key: ExclusionKey, proof: ExclusionProof) -> FrontierAcc {
   match acc {
-    WholeDagAcc { reason: r } => WholeDagAcc { reason: r }
+    WholeDagAcc { evidence: e } => WholeDagAcc { evidence: e }
     ChangedSubgraphAcc { boundary_exclusions: boundary_exclusions, decisions: decisions } =>
       match map_get(decisions, key) {
         Some { value: Rerun } =>
@@ -233,7 +240,12 @@ fn mark_excluded(acc: FrontierAcc, key: ExclusionKey, proof: ExclusionProof) -> 
 
 
 fn mark_whole_dag(acc: FrontierAcc, reason: Symbol) -> FrontierAcc {
-  WholeDagAcc { reason: reason }
+  WholeDagAcc { evidence: WholeDagReason { reason: reason } }
+}
+
+
+fn mark_whole_dag_diagnostic(acc: FrontierAcc, diagnostic: Diagnostic) -> FrontierAcc {
+  WholeDagAcc { evidence: WholeDagDiagnostic { diagnostic: diagnostic } }
 }
 
 
@@ -344,12 +356,12 @@ fn seed_edit_fold_acc(
             )
           }
       }
-    PostEditDagRejected { diagnostic: _ } =>
+    PostEditDagRejected { diagnostic: d } =>
       AffectedFoldAcc {
         dag: acc.dag,
-        frontier: mark_whole_dag(
+        frontier: mark_whole_dag_diagnostic(
           acc: acc.frontier,
-          reason: affected_reason_invalid_edit
+          diagnostic: d
         )
       }
   }
