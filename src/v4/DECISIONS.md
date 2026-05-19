@@ -1815,20 +1815,20 @@ Merge-base `92cb26402` **may** mark a sum coproduct **🔴** in the Practice-4 h
 > the **#3244 unified Dissolution dispositions** vocabulary (🔴
 > dissolve-now / 🟢 terminal / 🟡 gated `feature:`). Procedure result:
 > `std/collection.dag` now exposes the FreeMonoid-derived `List` surface
-> (`fold`, `forall`, `any`, `count_where`, `count_equal`, `unique`,
-> `member`, `set_eq`, `filter`). The workflow-local folds below have
-> dissolved into those shared operations where the generic primitive exists;
-> remaining workflow functions are domain predicates/compositions, not
-> second collection authorities.
+> subset that the current v4 compiler validates cleanly across module
+> boundaries (`member`, `set_eq`). The workflow-local duplicate membership
+> and set-equality helpers have dissolved into those shared operations.
+> Higher-order record-field consumers remain gated until the collection
+> surface can be consumed without generic-lambda inference drift.
 
 | ID | Helper(s) — *duplicate-across-files = Practice-10 tell* | Disposition | Shared surface / remaining obligation |
 |---|---|---|---|
 | **LB-P10-3213-MEMBER** | `bs_member` (bootstrap.dag) ∥ `ci_member` (ci.dag) — **duplicate** | 🟢 dissolved | `std.collection.member` landed and the duplicate workflow helpers are deleted. |
-| **LB-P10-3213-ANY** | `ci_symbol_resolves`, `ci_blocked` (ci.dag) | 🟢 dissolved | Workflow predicates remain as CI-domain names, but their existential list work now delegates to `std.collection.any`. |
-| **LB-P10-3213-ALL** | `ci_all_job_ids_unique`, `ci_all_gate_ids_unique`, `ci_all_needs_resolve`, `ci_all_gate_jobs_resolve` (ci.dag) | 🟢 dissolved | Universal traversal delegates to `std.collection.forall`; uniqueness delegates to `std.collection.unique`. |
-| **LB-P10-3213-COUNTIF** | `ci_id_occurrences` ∥ `ci_gate_id_occurrences` (ci.dag) — **duplicate** | 🟢 dissolved | Duplicate occurrence folds are deleted; uniqueness uses `std.collection.unique` directly. `std.collection.count_where` / `count_equal` own predicate-count facts for future consumers. |
+| **LB-P10-3213-ANY** | `ci_symbol_resolves`, `ci_blocked` (ci.dag) | 🟡 gated `feature:` | `any(p: fn(T) -> Bool, xs: List<T>) -> Bool` (existential) consumable from workflow record-field predicates without generic-lambda inference drift. |
+| **LB-P10-3213-ALL** | `ci_all_job_ids_unique`, `ci_all_gate_ids_unique`, `ci_all_needs_resolve`, `ci_all_gate_jobs_resolve` (ci.dag) | 🟡 gated `feature:` | `forall` / `unique` over `List<T>` consumable from workflow record-field predicates without generic-lambda inference drift. |
+| **LB-P10-3213-COUNTIF** | `ci_id_occurrences` ∥ `ci_gate_id_occurrences` (ci.dag) — **duplicate** | 🟡 gated `feature:` | `count_where(p: fn(T) -> Bool, xs: List<T>) -> Int` consumable from workflow record-field predicates without generic-lambda inference drift. |
 | **LB-P10-3213-SETEQ** | `bs_list_eq` (bootstrap.dag) | 🟢 dissolved | `std.collection.set_eq` landed and `bootstrap_plan_well_formed` consumes it directly. |
-| **LB-P10-3213-FILTER** | `ci_eliminate_pass` (ci.dag) | 🟢 dissolved | Keep-blocked projection delegates to `std.collection.filter`; the CI-domain function remains the graph-elimination step name. |
+| **LB-P10-3213-FILTER** | `ci_eliminate_pass` (ci.dag) | 🟡 gated `feature:` | `filter(p: fn(T) -> Bool, xs: List<T>) -> List<T>` with typed empty-list result construction; on arrival, the keep-blocked projection delegates to the shared op. |
 | **LB-P10-3213-FIND** | `ci_job_needs` (ci.dag) | 🟡 gated `feature:` | `find`/lookup-first — honest shape `find(p: fn(T) -> Bool, xs: List<T>) -> Witness<T>` (per TASKS.md:235 `Map`/`PartialFunction` honesty; gated also on `witness.dag`/Wave-A2). On arrival: replace lookup-fold; delete helper. |
 | **LB-P10-3213-KAHN** | `ci_kahn_fixpoint`, `ci_acyclic` (ci.dag) | 🟢 **terminal** | **Not** a reusable collection primitive: Kahn topological-elimination cycle-detection over the job graph — domain well-formedness model content, a *peer* of `ci_pipeline_well_formed` / `bootstrap_plan_well_formed` (which the gate does not ask to dissolve). Consumer-independent; no `std/collection.dag` op to dissolve into. (`fold`-as-bounded-counter is the P4 decidability idiom.) Its generic sub-primitives (`ci_member`/`ci_job_needs`/`ci_eliminate_pass`/`ci_blocked`) dissolve via the rows above; the Kahn *composition* stays. |
 
