@@ -87,9 +87,13 @@ primitive; that's a fold over the section set the caller assembles
 - `registry` — single-authority registry projection
 
 **Composition**: lenses compose by feeding into each other.
-`affected_set(dag, diff)` produces a `Witness<ReExecFrontier>`; that
-frontier is itself a scope, so other lenses can run AT that frontier
-("which complexity lenses need to re-run given this Diff?").
+`affected_set(dag, diff)` produces a `Witness<ReExecFrontier>` — a
+*set* of declaration / node references that need re-validation given
+the Diff. The frontier is **not** a third `SectionRef` variant; it's
+a set that the caller folds over by re-applying the lens at each
+member's `DeclarationScope` or `NodeScope`. The two-branch
+`SectionRef = DeclarationScope | NodeScope` discipline holds — gating
+over the affected frontier is composition, not a new scope shape.
 
 ## 3. The write interface
 
@@ -183,10 +187,15 @@ diff = Diff(edits)
 **Gate** — run dissolution lenses on the affected frontier:
 ```dag
 affected = affected_set(dag, diff)
-apply_lens(L1.7, NodeScope(affected), Enforce)
+// fold over the frontier set; each member already has its own scope ref
+affected.frontier.for_each(ref =>
+  apply_lens(L1.7, ref, Enforce)
   // → Outcome<()>; fails if any new prose-asserted facts introduced
-apply_lens(L1.10.b, NodeScope(affected), Enforce)
+)
+affected.frontier.for_each(ref =>
+  apply_lens(L1.10.b, ref, Enforce)
   // → Outcome<()>; checks no String-escape-hatch introduced
+)
 ```
 
 **Apply**:
@@ -372,7 +381,9 @@ matches = declarations_in(dag).flat_map(d =>
 )
 diff = Diff(matches.map(m => L1_5_transform(m)))
 affected = affected_set(dag, diff)
-apply_lens(L1.5, NodeScope(affected), Enforce)   // re-validate clean
+affected.frontier.for_each(ref =>
+  apply_lens(L1.5, ref, Enforce)                 // re-validate clean per frontier member
+)
 new_dag = apply_diff(dag, diff)
 // per-target emit re-renders the affected files
 ```
@@ -466,7 +477,10 @@ diagnostic until resolved.
 
 ### 6.6 Hero case (d): CLI-driven concept declaration
 
-The agent-shape from the open question §7.5 below (workflow-as-data).
+The agent-shape from the open question §7.5 below (agent-loop
+composition at the user-program level — this CLI workflow is itself
+a user program composing the substrate primitives, not gunbc
+self-application).
 
 **Scenario**: worker types
 ```bash
@@ -482,8 +496,9 @@ gunbc declare-concept Bool \
    - `data bool_concept: CanonicalConcept = { canonical_home: ..., members: ... }`
    - Alias-identity Edit for each `members` entry
 3. `apply_diff(dag, diff)` applies
-4. `apply_lens(L1.12, NodeScope(affected), Enforce)` validates →
-   should pass via outcome (1) alias
+4. `affected_set(dag, diff).frontier.for_each(ref => apply_lens(L1.12, ref, Enforce))`
+   validates → should pass via outcome (1) alias for each affected
+   declaration
 5. Re-emit affected files
 
 The CLI invocation is the spec; the Diff is the convolution output;
@@ -587,12 +602,21 @@ follow-up:
    fired; the clean shape is `traverse_outcome(xs, ...)`; here's the
    Diff that would land it." Self-suggesting rewrites.
 
-5. **Workflow-as-data for the agent loop.** The read → diagnose →
-   propose → gate → apply → re-emit loop is currently orchestrated
-   by shell + LLM. Self-application would model the loop in
-   `workflow/agent_loop.dag`. THESIS / #3322 narrows self-application
-   to `workflow/{bootstrap, ci}`; extending to `agent_loop` would
-   close this gap.
+5. **Agent-loop composition at the user-program level.** The read →
+   diagnose → propose → gate → apply → re-emit loop is currently
+   orchestrated by shell + LLM. The substrate already exposes the
+   primitives (`apply_lens`, `apply_diff`, `affected_set`, emit) for
+   a *user program* to compose its own agent loop as data. **This is
+   a user-program concern, not gunbc self-application.** THESIS
+   (2026-05-15 retraction of meta-process / work-direction modeling)
+   narrowed gunbc's own `workflow/` surface to `{ bootstrap, ci }`;
+   the agent loop is *not* an extension of that, it's a downstream
+   consumer that uses the same primitives any user program uses.
+   Open question: what user-program-side carriers (intent shapes,
+   decision points, audit traces) ship with gunbc as helpful
+   conveniences vs are left for user programs to author themselves?
+   Either way, **`workflow/agent_loop.dag` is not the right place**;
+   the THESIS narrowing stands.
 
 6. **Read/write provenance traces.** When an agent modifies code, an
    honest *structural* trail of "lens X said Y, so Diff Z was
