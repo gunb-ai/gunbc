@@ -1,19 +1,15 @@
 // src/v4/extdeps/languages/cpp.dag
 // Scope: C++ language primitive fact bundles.
-// Anchor: ISO/IEC 14882:2020 (C++20) [basic.fundamental], [expr.pre]; upstream mirror https://eel.is/c++draft/basic.fundamental.
-// Owns: CppSignedIntegerSurfaceSpelling, CppUnsignedIntegerSurfaceSpelling, CppPlainCharSurfaceSpelling, CppWcharTSurfaceSpelling, CppFixedUnsignedCodeUnitIntegerSurfaceSpelling, CppSignedIntegerWidthSelection, CppUnsignedIntegerWidthSelection, CppPlainCharWidthSelection, CppWcharTSignedness, CppWcharTWidthSelection, CppFixedUnsignedCodeUnitIntegerWidthSelection, CppTwosComplement, CppRepresentableResultRequired, CppUnsignedModuloArithmetic, CppScalar, cpp_bool_grounding.
-// Consumes: v4.std.logic.Bool, bool_boolean_algebra; v4.std.algebra.BooleanAlgebra; v4.extdeps.cpp_abi.CppIntegerWidth/CppPlainCharSignedness/CppTargetProfile.
+// Owns: CppSignedIntegerSurfaceSpelling, CppUnsignedIntegerSurfaceSpelling, CppPlainCharSurfaceSpelling, CppWcharTSurfaceSpelling, CppFixedUnsignedCodeUnitIntegerSurfaceSpelling, CppSignedIntegerWidthSelection, CppUnsignedIntegerWidthSelection, CppPlainCharWidthSelection, CppWcharTWidthSelection, CppFixedUnsignedCodeUnitIntegerWidthSelection, CppTwosComplement, CppRepresentableResultRequired, CppUnsignedModuloArithmetic, CppScalar, cpp_bool_grounding.
+// Consumes: v4.std.logic.Bool, bool_boolean_algebra; v4.std.algebra.BooleanAlgebra; v4.extdeps.cpp_abi.CppTargetProfile.
 // Status: D2-REV/T29 forward reconcile; C++ integer facts are ABI-width-parametric, bool canonical-B decl-ref grounding stays 🟡 E-6(b) staging; scaffold:T-4-cpp-slice / 🟡 feature:t4-cpp-scalar-ladder bounds this file to carrier scaffolding until generated per-spelling CppTargetProfile selection rows consume it (INVARIANTS P5).
+// Anchor: ISO/IEC 14882:2020 (C++20) [basic.fundamental], [expr.pre]; upstream mirror https://eel.is/c++draft/basic.fundamental.
 
 module v4.extdeps.languages.cpp
 
 import v4.std.logic { Bool, bool_boolean_algebra }
 import v4.std.algebra { BooleanAlgebra }
-import v4.extdeps.cpp_abi {
-  CppIntegerWidth,
-  CppPlainCharSignedness,
-  CppTargetProfile
-}
+import v4.extdeps.cpp_abi { CppTargetProfile }
 
 
 // 🟢 coproduct dissolution — DECISIONS.md T29-CPP-SCALAR-FORWARD.
@@ -44,45 +40,30 @@ type CppFixedUnsignedCodeUnitIntegerSurfaceSpelling
 
 type CppTwosComplement
 
-// 🟢 coproduct dissolution — DECISIONS.md T29-CPP-SCALAR-FORWARD.
-type CppWcharTSignedness
-  = WcharTSigned { tag: CppWcharTSigned }
-  | WcharTUnsigned { tag: CppWcharTUnsigned }
-
-type CppWcharTSigned
-type CppWcharTUnsigned
-
 // 🟡 feature:t4-cpp-scalar-ladder — scaffold:T-4-cpp-slice; dissolve-on: generated per-spelling target-profile selection rows consume CppTargetProfile and select these widths.
 type CppSignedIntegerWidthSelection {
   spelling: CppSignedIntegerSurfaceSpelling
   target_profile: CppTargetProfile
-  width: CppIntegerWidth
 }
 
 type CppUnsignedIntegerWidthSelection {
   spelling: CppUnsignedIntegerSurfaceSpelling
   target_profile: CppTargetProfile
-  width: CppIntegerWidth
 }
 
 type CppPlainCharWidthSelection {
   spelling: CppPlainCharSurfaceSpelling
   target_profile: CppTargetProfile
-  width: CppIntegerWidth
-  plain_char_signedness: CppPlainCharSignedness
 }
 
 type CppWcharTWidthSelection {
   spelling: CppWcharTSurfaceSpelling
   target_profile: CppTargetProfile
-  width: CppIntegerWidth
-  wchar_t_signedness: CppWcharTSignedness
 }
 
 type CppFixedUnsignedCodeUnitIntegerWidthSelection {
   spelling: CppFixedUnsignedCodeUnitIntegerSurfaceSpelling
   target_profile: CppTargetProfile
-  width: CppIntegerWidth
 }
 
 // Anchor: ISO/IEC 14882:2020 (C++20) [expr.pre]; upstream mirror https://eel.is/c++draft/expr.pre.
