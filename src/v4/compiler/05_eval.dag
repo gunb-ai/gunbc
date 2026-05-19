@@ -17,8 +17,6 @@ import v4.std.node {
 import v4.std.diagnostic {
   Correction,
   Diagnostic,
-  Extent,
-  Locus,
   NoCorrectionReason,
   NodeLocus,
   Outcome,
@@ -72,7 +70,10 @@ type TestClaimEvalSubject {
 
 
 type TestClaimCacheKey {
-  whole_claim_hash: Hash
+  claim_hash: Hash
+  evaluator_hash: Hash
+  resources_hash: Hash
+  extdeps_hash: Hash
 }
 
 
@@ -84,7 +85,7 @@ type TestClaimCacheReceipt {
 
 
 type Verdict<T>
-// 🟢 coproduct dissolution — execution result is exactly pass or fail.
+// 🟢 coproduct dissolution — DECISIONS.md T22-EVAL-VERDICT
   = Pass
   | Fail { actual: Outcome<T> }
 
@@ -99,10 +100,22 @@ type TestClaimRun {
 }
 
 
-fn test_claim_cache_receipt(subject: TestClaimEvalSubject, whole_claim_hash: Hash, reused: Bool) -> TestClaimCacheReceipt {
+fn test_claim_cache_receipt(
+  subject: TestClaimEvalSubject,
+  claim_hash: Hash,
+  evaluator_hash: Hash,
+  resources_hash: Hash,
+  extdeps_hash: Hash,
+  reused: Bool
+) -> TestClaimCacheReceipt {
   TestClaimCacheReceipt {
     source: subject.claim_node,
-    key: TestClaimCacheKey { whole_claim_hash: whole_claim_hash },
+    key: TestClaimCacheKey {
+      claim_hash: claim_hash,
+      evaluator_hash: evaluator_hash,
+      resources_hash: resources_hash,
+      extdeps_hash: extdeps_hash
+    },
     reused: reused
   }
 }
@@ -111,7 +124,6 @@ fn test_claim_cache_receipt(subject: TestClaimEvalSubject, whole_claim_hash: Has
 data eval_rejected_invalid_node: Symbol = eval_rejected_invalid_node
 data eval_rejected_diagnostic_mismatch: Symbol = eval_rejected_diagnostic_mismatch
 data eval_rejected_roundtrip_deferred: Symbol = eval_rejected_roundtrip_deferred
-data eval_file: Symbol = eval_file
 
 
 fn eval_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
@@ -140,7 +152,7 @@ fn outcome_node_eq(a: Outcome<Node>, b: Outcome<Node>) -> Bool {
     }
     Rejected { diagnostic: ad } => match b {
       Produced { value: _ } => false
-      Rejected { diagnostic: bd } => ad.reason == bd.reason
+      Rejected { diagnostic: bd } => ad == bd
     }
   }
 }
@@ -185,26 +197,18 @@ fn run_test_claim(subject: TestClaimEvalSubject, cache: TestClaimCacheReceipt) -
 }
 
 
-type StructuralOutcomeClaim<T> {
+type StructuralRejectionClaim<T> {
   label: Symbol
   actual: Outcome<T>
-  expected: Outcome<T>
+  expected_reason: Symbol
 }
 
 
-fn ci_outcome_reason_eq(actual: Outcome<CiPipeline>, reason: Symbol) -> Bool {
-  match actual {
-    Produced { value: _ } => false
-    Rejected { diagnostic: d } => d.reason == reason
-  }
-}
-
-
-fn run_ci_negative_claim(claim: StructuralOutcomeClaim<CiPipeline>) -> Verdict<CiPipeline> {
-  match claim.expected {
+fn run_ci_negative_claim(claim: StructuralRejectionClaim<CiPipeline>) -> Verdict<CiPipeline> {
+  match claim.actual {
     Produced { value: _ } => Fail { actual: claim.actual }
     Rejected { diagnostic: d } =>
-      if ci_outcome_reason_eq(actual: claim.actual, reason: d.reason) {
+      if d.reason == claim.expected_reason {
         Pass
       } else {
         Fail { actual: claim.actual }
@@ -224,18 +228,7 @@ data t22_other_job: Symbol = t22_other_job
 data t22_other_gate: Symbol = t22_other_gate
 
 
-fn t22_ci_expected(reason: Symbol) -> Outcome<CiPipeline> {
-  Rejected {
-    diagnostic: Diagnostic {
-      reason: reason,
-      at: Textual { file: eval_file, extent: WholeFile },
-      correction: Unavailable { reason: AmbiguousIntent }
-    }
-  }
-}
-
-
-data claim_ci_dangling_bootstrap_output: StructuralOutcomeClaim<CiPipeline> = StructuralOutcomeClaim {
+data claim_ci_dangling_bootstrap_output: StructuralRejectionClaim<CiPipeline> = StructuralRejectionClaim {
   label: t22_ci_dangling_bootstrap_output,
   actual: ci_pipeline_well_formed(p: CiPipeline {
     jobs: [
@@ -249,11 +242,11 @@ data claim_ci_dangling_bootstrap_output: StructuralOutcomeClaim<CiPipeline> = St
       CiGate { id: structural_v2_compile, job: v2_compile_src_v4 }
     ]
   }),
-  expected: t22_ci_expected(reason: ci_bootstrap_authority_violation)
+  expected_reason: ci_bootstrap_authority_violation
 }
 
 
-data claim_ci_duplicate_job_id: StructuralOutcomeClaim<CiPipeline> = StructuralOutcomeClaim {
+data claim_ci_duplicate_job_id: StructuralRejectionClaim<CiPipeline> = StructuralRejectionClaim {
   label: t22_ci_duplicate_job_id,
   actual: ci_pipeline_well_formed(p: CiPipeline {
     jobs: [
@@ -264,11 +257,11 @@ data claim_ci_duplicate_job_id: StructuralOutcomeClaim<CiPipeline> = StructuralO
       CiGate { id: structural_v2_compile, job: v2_compile_src_v4 }
     ]
   }),
-  expected: t22_ci_expected(reason: ci_duplicate_job_id)
+  expected_reason: ci_duplicate_job_id
 }
 
 
-data claim_ci_duplicate_gate_id: StructuralOutcomeClaim<CiPipeline> = StructuralOutcomeClaim {
+data claim_ci_duplicate_gate_id: StructuralRejectionClaim<CiPipeline> = StructuralRejectionClaim {
   label: t22_ci_duplicate_gate_id,
   actual: ci_pipeline_well_formed(p: CiPipeline {
     jobs: [
@@ -279,11 +272,11 @@ data claim_ci_duplicate_gate_id: StructuralOutcomeClaim<CiPipeline> = Structural
       CiGate { id: structural_v2_compile, job: v2_compile_src_v4 }
     ]
   }),
-  expected: t22_ci_expected(reason: ci_duplicate_gate_id)
+  expected_reason: ci_duplicate_gate_id
 }
 
 
-data claim_ci_dangling_need: StructuralOutcomeClaim<CiPipeline> = StructuralOutcomeClaim {
+data claim_ci_dangling_need: StructuralRejectionClaim<CiPipeline> = StructuralRejectionClaim {
   label: t22_ci_dangling_need,
   actual: ci_pipeline_well_formed(p: CiPipeline {
     jobs: [
@@ -293,11 +286,11 @@ data claim_ci_dangling_need: StructuralOutcomeClaim<CiPipeline> = StructuralOutc
       CiGate { id: structural_v2_compile, job: v2_compile_src_v4 }
     ]
   }),
-  expected: t22_ci_expected(reason: ci_dangling_reference)
+  expected_reason: ci_dangling_reference
 }
 
 
-data claim_ci_dangling_gate_job: StructuralOutcomeClaim<CiPipeline> = StructuralOutcomeClaim {
+data claim_ci_dangling_gate_job: StructuralRejectionClaim<CiPipeline> = StructuralRejectionClaim {
   label: t22_ci_dangling_gate_job,
   actual: ci_pipeline_well_formed(p: CiPipeline {
     jobs: [
@@ -307,11 +300,11 @@ data claim_ci_dangling_gate_job: StructuralOutcomeClaim<CiPipeline> = Structural
       CiGate { id: structural_v2_compile, job: t22_other_job }
     ]
   }),
-  expected: t22_ci_expected(reason: ci_dangling_reference)
+  expected_reason: ci_dangling_reference
 }
 
 
-data claim_ci_dependency_cycle: StructuralOutcomeClaim<CiPipeline> = StructuralOutcomeClaim {
+data claim_ci_dependency_cycle: StructuralRejectionClaim<CiPipeline> = StructuralRejectionClaim {
   label: t22_ci_dependency_cycle,
   actual: ci_pipeline_well_formed(p: CiPipeline {
     jobs: [
@@ -323,7 +316,7 @@ data claim_ci_dependency_cycle: StructuralOutcomeClaim<CiPipeline> = StructuralO
       CiGate { id: t22_other_gate, job: t22_other_job }
     ]
   }),
-  expected: t22_ci_expected(reason: ci_dependency_cycle)
+  expected_reason: ci_dependency_cycle
 }
 
 
