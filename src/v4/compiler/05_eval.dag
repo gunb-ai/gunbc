@@ -178,13 +178,37 @@ fn outcome_node_eq(a: Outcome<Node>, b: Outcome<Node>) -> Bool {
 }
 
 
-fn run_assert<T>(
+fn run_node_assert(
   kind: AssertKind,
-  actual: Outcome<T>,
-  comparable: Outcome<Node>,
+  actual: Outcome<Node>,
   expected: Outcome<Node>,
   input: Node
-) -> Verdict<T> {
+) -> Verdict<Node> {
+  match kind {
+    Equals => if outcome_node_eq(a: actual, b: expected) { Pass } else { Fail { actual: actual } }
+    Compiles => match actual {
+      Produced { value: _ } => Pass
+      Rejected { diagnostic: _ } => Fail { actual: actual }
+    }
+    RoundTrips => Deferred {
+      actual: actual,
+      diagnostic: eval_diagnostic(reason: eval_rejected_roundtrip_deferred, node: input)
+    }
+    DiagnosticAssert => Deferred {
+      actual: actual,
+      diagnostic: eval_diagnostic(reason: eval_rejected_assert_kind_deferred, node: input)
+    }
+  }
+}
+
+
+fn run_ci_assert(
+  kind: AssertKind,
+  actual: Outcome<CiPipeline>,
+  expected: Outcome<Node>,
+  input: Node
+) -> Verdict<CiPipeline> {
+  let comparable = t22_ci_outcome(actual: actual)
   match kind {
     Equals => if outcome_node_eq(a: comparable, b: expected) { Pass } else { Fail { actual: actual } }
     Compiles => match comparable {
@@ -223,10 +247,9 @@ fn run_test_claim(
       resources_hash: resources_hash,
       extdeps_hash: extdeps_hash
     ),
-    verdict: run_assert(
+    verdict: run_node_assert(
       kind: subject.claim.kind,
       actual: actual,
-      comparable: actual,
       expected: subject.claim.expected,
       input: subject.claim.input
     )
@@ -325,10 +348,9 @@ fn t22_ci_run(subject: TestClaimEvalSubject<CiPipeline>) -> TestClaimRun<CiPipel
       resources_hash: t22_hash_resources,
       extdeps_hash: t22_hash_extdeps
     ),
-    verdict: run_assert(
+    verdict: run_ci_assert(
       kind: subject.claim.kind,
       actual: actual,
-      comparable: t22_ci_outcome(actual: actual),
       expected: subject.claim.expected,
       input: subject.claim.input
     )
