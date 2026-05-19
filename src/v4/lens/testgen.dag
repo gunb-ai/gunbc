@@ -55,31 +55,35 @@ type Generator<C> {
 }
 
 
-// RULING-1: 🟡 needs-more-work — consumer: materialized corpus lens driver; dissolve-on-arrival: driver consumes these carriers directly.
+// RULING-1: 🟡 needs-more-work — DECISIONS.md CORPUS-LENS-DRIVER
 type CorpusEntry {
   path: AbsolutePath
   body: FileBody
 }
 
 
+// RULING-1: 🟡 needs-more-work — DECISIONS.md CORPUS-LENS-DRIVER
 type CorpusTraversalScope
 // 🟢 coproduct dissolution — traversal policy axis
   = RecursiveCorpusWalk
   | SingleDirectoryCorpusWalk
 
 
+// RULING-1: 🟡 needs-more-work — DECISIONS.md CORPUS-LENS-DRIVER
 type CorpusTraversalOrder
 // 🟢 coproduct dissolution — traversal policy axis
   = LexicalPathOrder
   | FilesystemNativeOrder
 
 
+// RULING-1: 🟡 needs-more-work — DECISIONS.md CORPUS-LENS-DRIVER
 type CorpusDuplicatePolicy
 // 🟢 coproduct dissolution — traversal policy axis
   = PreserveDuplicateEntries
   | RejectDuplicatePaths
 
 
+// RULING-1: 🟡 needs-more-work — DECISIONS.md CORPUS-LENS-DRIVER
 type CorpusTraversalPolicy {
   scope: CorpusTraversalScope
   order: CorpusTraversalOrder
@@ -87,6 +91,7 @@ type CorpusTraversalPolicy {
 }
 
 
+// RULING-1: 🟡 needs-more-work — DECISIONS.md CORPUS-LENS-DRIVER
 type CorpusEnumerationRequest {
   filesystem: Filesystem
   root: AbsolutePath
@@ -96,27 +101,34 @@ type CorpusEnumerationRequest {
 }
 
 
+// RULING-1: 🟡 needs-more-work — DECISIONS.md CORPUS-LENS-DRIVER
 type CorpusEnumerationResult = Outcome<List<CorpusEntry>>
 
 
+// RULING-1: 🟡 needs-more-work — DECISIONS.md CORPUS-LENS-DRIVER
 type CorpusEnumerator = fn(CorpusEnumerationRequest) -> CorpusEnumerationResult
 
 
+// RULING-1: 🟡 needs-more-work — DECISIONS.md CORPUS-LENS-DRIVER
 type CorpusEntryIngestResult = Outcome<Node>
 
 
+// RULING-1: 🟡 needs-more-work — DECISIONS.md CORPUS-LENS-DRIVER
 type CorpusEntryIngestor = fn(CorpusEntry) -> CorpusEntryIngestResult
 
 
+// RULING-1: 🟡 needs-more-work — DECISIONS.md CORPUS-LENS-DRIVER
 type CorpusLensReadResult<C> = Outcome<C>
 
 
+// RULING-1: 🟡 needs-more-work — DECISIONS.md CORPUS-LENS-DRIVER
 type CorpusLensReader<C> {
   lens: Symbol
   read: fn(Node) -> CorpusLensReadResult<C>
 }
 
 
+// RULING-1: 🟡 needs-more-work — DECISIONS.md CORPUS-LENS-DRIVER
 type CorpusLensObservation<C> {
   entry: CorpusEntry
   program: Node
@@ -124,9 +136,11 @@ type CorpusLensObservation<C> {
 }
 
 
+// RULING-1: 🟡 needs-more-work — DECISIONS.md CORPUS-LENS-DRIVER
 type CorpusLensDriveResult<C> = Outcome<List<CorpusLensObservation<C>>>
 
 
+// RULING-1: 🟡 needs-more-work — DECISIONS.md CORPUS-LENS-DRIVER
 type CorpusLensDriver<C> = fn(
   CorpusEnumerationRequest,
   CorpusEnumerator,
