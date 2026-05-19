@@ -15,7 +15,12 @@ permissions:
   contents: read
   pull-requests: read
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}-${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+  # One in-flight `ci` workflow per pull request (keyed by PR number). Omitting
+  # `head.sha` from the group lets a newer `synchronize` supersede (cancel) an
+  # older run instead of stacking multiple v2→v4 bootstrap compiles on
+  # `ubicloud-standard-*` — correlated with runner shutdown mid-compile under
+  # burst merges / merge-main hops. Push-to-main still keys off `run_id`.
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
 env:
   CARGO_TERM_COLOR: always
@@ -194,7 +199,9 @@ jobs:
   v4:
     if: github.event.pull_request.draft != true && needs.affected.outputs.v4 == 'true'
     needs: [affected]
-    runs-on: ubicloud-standard-2
+    # v2 release build + full v4 parse can exceed small-runner interactive budgets;
+    # align with the v3 lane host class to reduce wall clock and preemption tail.
+    runs-on: ubicloud-standard-8
     timeout-minutes: 15
     steps:
     - name: Checkout

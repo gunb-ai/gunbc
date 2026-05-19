@@ -20,7 +20,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
   on: [Push { branches: ["main"], paths: [] }, PullRequest { branches: ["main"], types: [Opened, Synchronize, Reopened, ReadyForReview] }],
   concurrency: Some {
   value: ConcurrencyMappingQueueNotMax {
-      group: "${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}-${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}",
+      group: "${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}",
       cancel_in_progress: Some { value: CancelInProgressBool { value: true } },
       explicit_single: none
     }
@@ -381,7 +381,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
     }, {
       id: "v4",
       name: none,
-      runner: SelfHosted { labels: ["ubicloud-standard-2"] },
+      runner: SelfHosted { labels: ["ubicloud-standard-8"] },
       steps: [UsesStep {
           name: Some { value: "Checkout" },
           id: none,
