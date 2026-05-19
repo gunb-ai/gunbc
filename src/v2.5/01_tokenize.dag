@@ -531,7 +531,7 @@ fn scan_token(source: Source, frame: LexerFrame) -> ScanOutcome {
   if cursor >= source_len(source: source) {
     Scanned {
       step: ScanStep {
-        cursor: cursor,
+        cursor: cursor + 1,
         token: make_token(source: source, start: cursor, end: cursor, lexeme: "", kind: EofToken),
         interpolation_depth: active.interpolation_depth
       }
