@@ -99,6 +99,16 @@ A type that models an external spec primitive is declared as a **bare alias** �
 
 **Receipt:** v4 decision D2 modeled external language primitives as alias-identity declarations (`type RustI32 = Int32`). Each passed structural review precisely because it was minimal. The operator reversed D2 (2026-05-17): the aliases asserted unproven identities and modeled nothing. Dissolution: fact-bundle modeling — every external primitive carries the facts its own spec states; deduplication onto `std/` happens only on proven coincidence.
 
+### Problem shape: Hand-rolled derived operation
+
+**Do not hand-roll a derived operation.** If a function's behavior is determined entirely by the shape of a modeled type, it is re-deriving something the compiler already derives. The deficiency is in the model, not the code — model the missing fact; do not hand-roll the operation.
+
+A function walks a modeled structure, projects a property from a variant shape, threads a standard carrier by hand, or templates an emitter from local strings. The behavior is fixed by the model's shape, so the code is a second authority for a fact the model should carry or derive.
+
+**Solution shape:** Add or consume the substrate primitive that derives the operation — a catamorphism, traversal, structural fact, grammar model, or other declared carrier — and delete the hand-rolled local function. When the primitive is missing, record a tracked dissolution gate with the owning substrate task and dissolve on arrival; untracked hand-rolled derived operations block merge.
+
+**Receipt:** Practice 10 in `docs/modeling-discipline.md` names the derived-operations registry and the dissolution findings (`walker`, `traverse`, `predicate`, `carrier`, `emit/template`, `nominalization`, and coproduct dissolution). It is the review rubric for deciding whether a local helper is real logic or a duplicated derivation.
+
 ### Procedure: substrate-fact introduction (decision procedure for new modeling)
 
 **When to run this:** any time you're about to introduce a new substrate type, sum-type variant, field, or named lane. Run BEFORE authoring; if any check surfaces a gap, redirect rather than escalate.
@@ -144,6 +154,7 @@ Fundamental primitives (physics, computation, mathematics) declare as substrate 
 - **Bounded Substrate Seed** — Rust-native seed items must remain narrow; undeclared seed growth is ungrounded
 - **Design Commitments Must Name The Substrate Target** — unnamed substrate = ungrounded claim
 - **Heuristics Indicate Lost Structure** — heuristic output traces to a dropped upstream fact, not to a declared source
+- **Do not hand-roll a derived operation** — if behavior is fixed by modeled shape, model the missing fact or consume the derived operation
 - **Documentation Describes Live State** — aspirational docs describe a reality the codebase doesn't embody
 - **Substrate-Fact Introduction Procedure** (above) — operational decision procedure for adding new substrate types/variants/fields
 
