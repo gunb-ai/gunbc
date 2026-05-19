@@ -1,6 +1,6 @@
 // src/v4/lens/affected_set.dag
 // Scope: canonical affected-set authority for CI/incremental re-execution; fail-closed B-4/B-5 node frontier.
-// Owns: Dag, AffectedDimension, ExclusionKey, ExclusionProof, PropagationExclusionProof, BoundaryExclusionProof, BoundaryExclusion, WholeDagFailClosedEvidence, FrontierDecision, ReExecFrontier, AffectedSetRead, AffectedPostEditDagReceipt, HashReceipt, ChangedDimensionReceipt, FrontierReceipt, affected_set.
+// Owns: Dag, AffectedDimension, ExclusionKey, ExclusionProof, PropagationExclusionProof, BoundaryExclusionProof, BoundaryExclusion, WholeDagFailClosedEvidence, FrontierDecision, ReExecFrontier, AffectedSetRead, HashReceipt, ChangedDimensionReceipt, FrontierReceipt, affected_set.
 // Consumes: List, Map, Diagnostic, Diff, Edit, Hash, Node, Path, Symbol, Witness; B1 content_hash receipts; B-4 resolved Symbol equality; B-5 per-Arrow signature effects.
 // Status: Wave-0 front: bounded changed-subgraph frontier fold landed; dissolves when CI use and .dag TestClaims land.
 
@@ -8,7 +8,7 @@ module v4.lens.affected_set
 
 
 import v4.std.collection { List, Map }
-import v4.std.diagnostic { Diagnostic }
+import v4.std.diagnostic { Diagnostic, Outcome, Produced, Rejected }
 import v4.std.node { Diff, Edit, Hash, Node, Path, Symbol }
 import v4.std.witness { Holds, Witness }
 
@@ -131,17 +131,14 @@ type AffectedBoundaryRead {
 }
 
 
-// 🟡 coproduct dissolution — DECISIONS.md #3153-subsumed; dissolves into D1 apply_diff Outcome<Dag>.
-type AffectedPostEditDagReceipt
-  = PostEditDagProduced { dag: Dag }
-  | PostEditDagRejected { diagnostic: Diagnostic }
-
-
 type AffectedSetRead {
   boundary: AffectedBoundaryRead
   frontier: AffectedFrontierRead,
   propagation_receipt: fn(Dag, EditFrontierEdge) -> PropagationReceipt
 }
+
+
+type AffectedPostEditDagOutcome = Outcome<Node>
 
 
 type AffectedFoldAcc {
@@ -334,7 +331,7 @@ fn expand_dimension(
 
 fn seed_edit_fold_acc_live(
   read_model: AffectedSetRead,
-  post_edit_dag: fn(Dag, Edit) -> AffectedPostEditDagReceipt,
+  post_edit_dag: fn(Dag, Edit) -> AffectedPostEditDagOutcome,
   acc: AffectedFoldAcc,
   edit: Edit
 ) -> AffectedFoldAcc {
@@ -351,7 +348,7 @@ fn seed_edit_fold_acc_live(
       }
     BoundaryExpands =>
       match post_edit_dag(acc.dag, edit) {
-        PostEditDagProduced { dag: next_dag } =>
+        Produced { value: next_dag } =>
           AffectedFoldAcc {
             dag: next_dag,
             frontier: expand_changed_dimensions(
@@ -362,7 +359,7 @@ fn seed_edit_fold_acc_live(
               edit: edit
             )
           }
-        PostEditDagRejected { diagnostic: d } =>
+        Rejected { diagnostic: d } =>
           AffectedFoldAcc {
             dag: acc.dag,
             frontier: mark_whole_dag_diagnostic(diagnostic: d)
@@ -370,12 +367,12 @@ fn seed_edit_fold_acc_live(
       }
     BoundaryUnknown { reason: r } =>
       match post_edit_dag(acc.dag, edit) {
-        PostEditDagProduced { dag: _ } =>
+        Produced { value: _ } =>
           AffectedFoldAcc {
             dag: acc.dag,
             frontier: mark_whole_dag(reason: r)
           }
-        PostEditDagRejected { diagnostic: d } =>
+        Rejected { diagnostic: d } =>
           AffectedFoldAcc {
             dag: acc.dag,
             frontier: mark_whole_dag_diagnostic(diagnostic: d)
@@ -417,7 +414,7 @@ fn expand_changed_dimensions(
 
 fn seed_edit_fold_acc(
   read_model: AffectedSetRead,
-  post_edit_dag: fn(Dag, Edit) -> AffectedPostEditDagReceipt,
+  post_edit_dag: fn(Dag, Edit) -> AffectedPostEditDagOutcome,
   acc: AffectedFoldAcc,
   edit: Edit
 ) -> AffectedFoldAcc {
@@ -436,7 +433,7 @@ fn seed_edit_fold_acc(
 
 fn affected_set(
   read_model: AffectedSetRead,
-  post_edit_dag: fn(Dag, Edit) -> AffectedPostEditDagReceipt,
+  post_edit_dag: fn(Dag, Edit) -> AffectedPostEditDagOutcome,
   dag: Dag,
   diff: Diff
 ) -> Witness<ReExecFrontier> {
