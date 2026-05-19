@@ -91,7 +91,7 @@ type BoundaryReceipt
 
 // 🟡 coproduct dissolution — DECISIONS.md #3153-subsumed; dissolves when per-edit dimension deltas are generated.
 type ChangedDimensionReceipt
-  = ChangedDimensions { dimensions: List<AffectedDimension> }
+  = ChangedDimensions { first: AffectedDimension, rest: List<AffectedDimension> }
   | ChangedDimensionsUnknown { reason: Symbol }
 
 
@@ -301,8 +301,14 @@ fn expand_changed_dimensions(
   edit: Edit
 ) -> FrontierAcc {
   match read_model.boundary.changed_dimension_receipt(boundary_dag, edit) {
-    ChangedDimensions { dimensions: dimensions } =>
-      fold(dimensions, init: acc, f: fn(acc2, dimension) {
+    ChangedDimensions { first: first_dimension, rest: rest_dimensions } =>
+      fold(rest_dimensions, init: expand_dimension(
+        read_model: read_model,
+        dag: frontier_dag,
+        acc: mark_rerun(acc: acc, key: root_key(path: edit.at, dimension: first_dimension)),
+        edit: edit,
+        dimension: first_dimension
+      ), f: fn(acc2, dimension) {
         expand_dimension(
           read_model: read_model,
           dag: frontier_dag,
