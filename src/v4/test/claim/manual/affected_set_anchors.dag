@@ -1,22 +1,12 @@
 // src/v4/test/claim/manual/affected_set_anchors.dag
-// Scope: Manual TestClaim anchors for T-21 affected_set Wave-0 gate cases.
-// Owns: affected-set expected frontier rows + claim_affected_set_* TestClaim data
-// Consumes: v4.std.verification v4.std.diagnostic v4.std.node v4.lens.affected_set
-// Status: v2 compile; claim execution deferred (T-22).
+// Scope: Manual expected-frontier anchors for T-21 affected_set Wave-0 gate cases.
+// Owns: affected-set expected frontier rows
+// Consumes: v4.std.diagnostic v4.std.node v4.lens.affected_set
+// Status: non-executable staging data until T-22 can assert ReExecFrontier TestClaims.
 
 module v4.test.claim.manual.affected_set_anchors
 
-import v4.std.verification {
-  TestClaim,
-  Equals,
-  TestClassification,
-  Tier1,
-  Unit,
-  Boundary,
-  T19ManualAnchorAbsent
-}
 import v4.std.diagnostic {
-  Produced,
   Diagnostic,
   NodeLocus,
   Unavailable,
@@ -107,44 +97,4 @@ data expected_affected_set_unknown_fail_closed: ReExecFrontier = WholeDagFailClo
 
 data expected_affected_set_rejected_edit_fail_closed: ReExecFrontier = WholeDagFailClosed {
   evidence: WholeDagDiagnostic { diagnostic: affected_set_claim_invalid_edit_diagnostic }
-}
-
-
-data claim_affected_set_boundary_prune_explicit: TestClaim = TestClaim {
-  kind: Equals,
-  label: "affected_set: unchanged/pure boundary pruning surfaces explicit edit-scoped BoundaryExclusionProof",
-  t19_anchor: T19ManualAnchorAbsent,
-  input: stub_empty_conj,
-  expected: Produced { value: stub_empty_conj },
-  classification: TestClassification { tier: Tier1, layer: Unit }
-}
-
-
-data claim_affected_set_changed_dimension_seeds_rerun: TestClaim = TestClaim {
-  kind: Equals,
-  label: "affected_set: non-empty changed dimensions seed one Rerun per real AffectedDimension",
-  t19_anchor: T19ManualAnchorAbsent,
-  input: stub_empty_conj,
-  expected: Produced { value: stub_empty_conj },
-  classification: TestClassification { tier: Tier1, layer: Unit }
-}
-
-
-data claim_affected_set_unknowns_fail_closed: TestClaim = TestClaim {
-  kind: Equals,
-  label: "affected_set: ChangedDimensionsUnknown and PropagationUnknown collapse to WholeDagFailClosed",
-  t19_anchor: T19ManualAnchorAbsent,
-  input: stub_empty_conj,
-  expected: Produced { value: stub_empty_conj },
-  classification: TestClassification { tier: Tier1, layer: Boundary }
-}
-
-
-data claim_affected_set_post_edit_rejected_preserves_diagnostic: TestClaim = TestClaim {
-  kind: Equals,
-  label: "affected_set: PostEditDagRejected preserves Diagnostic in WholeDagFailClosedEvidence",
-  t19_anchor: T19ManualAnchorAbsent,
-  input: stub_empty_conj,
-  expected: Produced { value: stub_empty_conj },
-  classification: TestClassification { tier: Tier1, layer: Boundary }
 }

@@ -1,6 +1,6 @@
 // src/v4/lens/affected_set.dag
 // Scope: canonical affected-set authority for CI/incremental re-execution; fail-closed B-4/B-5 node frontier.
-// Owns: Dag, AffectedDimension, ExclusionKey, ExclusionProof, BoundaryExclusionProof, BoundaryExclusion, WholeDagFailClosedEvidence, FrontierDecision, ReExecFrontier, AffectedSetRead, AffectedPostEditDagReceipt, HashReceipt, ChangedDimensionReceipt, affected_set.
+// Owns: Dag, AffectedDimension, ExclusionKey, ExclusionProof, BoundaryExclusionProof, BoundaryExclusion, WholeDagFailClosedEvidence, FrontierDecision, ReExecFrontier, AffectedSetRead, AffectedPostEditDagReceipt, HashReceipt, ChangedDimensionReceipt, FrontierReceipt, affected_set.
 // Consumes: Map, Diagnostic, Diff, Edit, Hash, Node, Path, Symbol, Witness; B1 content_hash receipts; B-4 resolved Symbol equality; B-5 per-Arrow signature effects.
 // Status: Wave-0 front: bounded changed-subgraph frontier fold landed; dissolves when CI use and .dag TestClaims land.
 
@@ -108,6 +108,13 @@ type PropagationReceipt
   | PropagationUnknown { reason: Symbol }
 
 
+// 🟡 coproduct dissolution — DECISIONS.md #3153-subsumed; proves transitive frontier or fails closed.
+type FrontierReceipt
+  = FrontierProduced { edges: List<FrontierEdge> }
+  | FrontierUnknown { reason: Symbol }
+  | FrontierRejected { diagnostic: Diagnostic }
+
+
 type AffectedBoundaryRead {
   boundary_hash_receipt: fn(Dag, Path, Node) -> HashReceipt,
   changed_dimension_receipt: fn(Dag, Edit) -> ChangedDimensionReceipt
@@ -115,7 +122,7 @@ type AffectedBoundaryRead {
 
 
 type AffectedFrontierRead {
-  proven_transitive_changed_subgraph_frontier: fn(Dag, EditDimension) -> List<FrontierEdge>
+  proven_transitive_changed_subgraph_frontier: fn(Dag, EditDimension) -> FrontierReceipt
 }
 
 
@@ -256,56 +263,30 @@ fn expand_dimension(
   edit: Edit,
   dimension: AffectedDimension
 ) -> ReExecFrontier {
-  fold(
-    read_model.frontier.proven_transitive_changed_subgraph_frontier(
-      dag,
-      EditDimension { edit: edit, dimension: dimension }
-    ),
-    init: frontier,
-    f: fn(acc2, edge) {
-    match read_model.propagation_receipt(dag, EditFrontierEdge { edit: edit, edge: edge }) {
-      Propagates =>
-        mark_rerun(frontier: acc2, key: edge_key(edge: edge))
-      DoesNotPropagate { proof: p } =>
-        mark_excluded(frontier: acc2, key: edge_key(edge: edge), proof: p)
-      PropagationUnknown { reason: r } =>
-        mark_whole_dag(reason: r)
-    }
-  })
-}
-
-
-fn expand_changed_dimensions(
-  read_model: AffectedSetRead,
-  boundary_dag: Dag,
-  frontier_dag: Dag,
-  frontier: ReExecFrontier,
-  edit: Edit
-) -> ReExecFrontier {
-  match read_model.boundary.changed_dimension_receipt(boundary_dag, edit) {
-    ChangedDimensions { first: first_dimension, rest: rest_dimensions } =>
-      fold(rest_dimensions, init: expand_dimension(
-        read_model: read_model,
-        dag: frontier_dag,
-        frontier: mark_rerun(frontier: frontier, key: root_key(path: edit.at, dimension: first_dimension)),
-        edit: edit,
-        dimension: first_dimension
-      ), f: fn(acc2, dimension) {
-        expand_dimension(
-          read_model: read_model,
-          dag: frontier_dag,
-          frontier: mark_rerun(frontier: acc2, key: root_key(path: edit.at, dimension: dimension)),
-          edit: edit,
-          dimension: dimension
-        )
+  match read_model.frontier.proven_transitive_changed_subgraph_frontier(
+    dag,
+    EditDimension { edit: edit, dimension: dimension }
+  ) {
+    FrontierProduced { edges: edges } =>
+      fold(edges, init: frontier, f: fn(acc2, edge) {
+        match read_model.propagation_receipt(dag, EditFrontierEdge { edit: edit, edge: edge }) {
+          Propagates =>
+            mark_rerun(frontier: acc2, key: edge_key(edge: edge))
+          DoesNotPropagate { proof: p } =>
+            mark_excluded(frontier: acc2, key: edge_key(edge: edge), proof: p)
+          PropagationUnknown { reason: r } =>
+            mark_whole_dag(reason: r)
+        }
       })
-    ChangedDimensionsUnknown { reason: r } =>
+    FrontierUnknown { reason: r } =>
       mark_whole_dag(reason: r)
+    FrontierRejected { diagnostic: d } =>
+      mark_whole_dag_diagnostic(diagnostic: d)
   }
 }
 
 
-fn seed_edit_fold_acc(
+fn seed_edit_fold_acc_live(
   read_model: AffectedSetRead,
   post_edit_dag: fn(Dag, Edit) -> AffectedPostEditDagReceipt,
   acc: AffectedFoldAcc,
@@ -346,6 +327,56 @@ fn seed_edit_fold_acc(
         dag: acc.dag,
         frontier: mark_whole_dag_diagnostic(diagnostic: d)
       }
+    }
+  }
+}
+
+
+fn expand_changed_dimensions(
+  read_model: AffectedSetRead,
+  boundary_dag: Dag,
+  frontier_dag: Dag,
+  frontier: ReExecFrontier,
+  edit: Edit
+) -> ReExecFrontier {
+  match read_model.boundary.changed_dimension_receipt(boundary_dag, edit) {
+    ChangedDimensions { first: first_dimension, rest: rest_dimensions } =>
+      fold(rest_dimensions, init: expand_dimension(
+        read_model: read_model,
+        dag: frontier_dag,
+        frontier: mark_rerun(frontier: frontier, key: root_key(path: edit.at, dimension: first_dimension)),
+        edit: edit,
+        dimension: first_dimension
+      ), f: fn(acc2, dimension) {
+        expand_dimension(
+          read_model: read_model,
+          dag: frontier_dag,
+          frontier: mark_rerun(frontier: acc2, key: root_key(path: edit.at, dimension: dimension)),
+          edit: edit,
+          dimension: dimension
+        )
+      })
+    ChangedDimensionsUnknown { reason: r } =>
+      mark_whole_dag(reason: r)
+  }
+}
+
+
+fn seed_edit_fold_acc(
+  read_model: AffectedSetRead,
+  post_edit_dag: fn(Dag, Edit) -> AffectedPostEditDagReceipt,
+  acc: AffectedFoldAcc,
+  edit: Edit
+) -> AffectedFoldAcc {
+  match acc.frontier {
+    WholeDagFailClosed { evidence: _ } => acc
+    ChangedSubgraphFrontier { boundary_exclusions: _, decisions: _ } =>
+      seed_edit_fold_acc_live(
+        read_model: read_model,
+        post_edit_dag: post_edit_dag,
+        acc: acc,
+        edit: edit
+      )
   }
 }
 
