@@ -22,7 +22,7 @@ import v4.std.verification {
 import v4.std.diagnostic { Produced }
 import v4.test.claim.manual.connective_anchors { stub_empty_conj }
 
-// RULING-1: WIP — `Compiles` stub `TestClaim` rows until law-bearing `Node` obligations land; receipt: `v4_lens_testgen_nat_law_manual_claims_use_compiles_stub` in v3 `v4_lens_testgen_dag_smoke_test.rs`.
+// RULING-1: 🟡 needs-more-work — stub claims; law-shaped nodes later
 
 data claim_nat_add_left_identity: TestClaim = TestClaim {
   kind: Compiles,

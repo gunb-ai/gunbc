@@ -103,7 +103,7 @@ type BidirectionalRoundtripSubject { language: Symbol, production: Symbol }
 
 type TestgenConcept
 // 🟡 coproduct dissolution — DECISIONS.md LB-P4-3212
-// RULING-1: WIP — five scheduling arms; M2 discriminant/manifest routing per DECISIONS LB-P4-3212; receipt: `v4_lens_testgen_testgen_carries_six_nat_algebra_law_scheduling_arms` in v3 `v4_lens_testgen_dag_smoke_test.rs`.
+// RULING-1: 🟡 needs-more-work — multi-arm scheduling coproduct
   = TypeConstruction { subject: TypeConstructionSubject }
   | AlgebraLaw { subject: AlgebraLawSubject }
   | DiagnosticExhaustiveness { subject: DiagnosticExhaustivenessSubject }
@@ -118,7 +118,7 @@ type Generator<C> {
   slot: C
 }
 
-// RULING-1: DONE — Wave-0 Outcome bootstrap + present `t19_anchor`; receipt: `v4_lens_testgen_wave0_bootstrap_narrows_present_anchor_before_generator` in v3 `v4_lens_testgen_dag_smoke_test.rs`.
+// RULING-1: 🟢 pretty-much-done — narrowed anchor on success path
 
 
 data t19_law_nat_add_left_identity: Symbol = t19_law_nat_add_left_identity
