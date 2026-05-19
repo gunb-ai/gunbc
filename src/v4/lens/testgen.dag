@@ -55,14 +55,14 @@ type Generator<C> {
 }
 
 
-// RULING-1: 🟡 needs-more-work
+// RULING-1: 🟡 needs-more-work — consumer: materialized corpus lens driver
 type CorpusEntry {
   path: AbsolutePath
   body: FileBody
 }
 
 
-// RULING-1: 🟡 needs-more-work
+// RULING-1: 🟡 needs-more-work — consumer: materialized corpus lens driver
 type CorpusEnumerationRequest {
   filesystem: Filesystem
   root: AbsolutePath
@@ -71,38 +71,34 @@ type CorpusEnumerationRequest {
 }
 
 
-// RULING-1: 🟡 needs-more-work
+// RULING-1: 🟡 needs-more-work — consumer: materialized corpus lens driver
 type CorpusEnumerationResult = Outcome<List<CorpusEntry>>
 
 
-// RULING-1: 🟡 needs-more-work
-type CorpusEnumerator {
-  enumerate: fn(CorpusEnumerationRequest) -> CorpusEnumerationResult
-}
+// RULING-1: 🟡 needs-more-work — consumer: materialized corpus lens driver
+type CorpusEnumerator = fn(CorpusEnumerationRequest) -> CorpusEnumerationResult
 
 
-// RULING-1: 🟡 needs-more-work
+// RULING-1: 🟡 needs-more-work — consumer: materialized corpus lens driver
 type CorpusEntryIngestResult = Outcome<Node>
 
 
-// RULING-1: 🟡 needs-more-work
-type CorpusEntryIngestor {
-  ingest: fn(CorpusEntry) -> CorpusEntryIngestResult
-}
+// RULING-1: 🟡 needs-more-work — consumer: materialized corpus lens driver
+type CorpusEntryIngestor = fn(CorpusEntry) -> CorpusEntryIngestResult
 
 
-// RULING-1: 🟡 needs-more-work
+// RULING-1: 🟡 needs-more-work — consumer: materialized corpus lens driver
 type CorpusLensReadResult<C> = Outcome<C>
 
 
-// RULING-1: 🟡 needs-more-work
+// RULING-1: 🟡 needs-more-work — consumer: materialized corpus lens driver
 type CorpusLensReader<C> {
   lens: Symbol
   read: fn(Node) -> CorpusLensReadResult<C>
 }
 
 
-// RULING-1: 🟡 needs-more-work
+// RULING-1: 🟡 needs-more-work — consumer: materialized corpus lens driver
 type CorpusLensObservation<C> {
   entry: CorpusEntry
   program: Node
@@ -110,13 +106,14 @@ type CorpusLensObservation<C> {
 }
 
 
-// RULING-1: 🟡 needs-more-work
+// RULING-1: 🟡 needs-more-work — consumer: materialized corpus lens driver
 type CorpusLensDriveResult<C> = Outcome<List<CorpusLensObservation<C>>>
 
 
-// RULING-1: 🟡 needs-more-work
-type CorpusLensDriver<C> {
-  enumerator: CorpusEnumerator
-  ingestor: CorpusEntryIngestor
-  reader: CorpusLensReader<C>
-}
+// RULING-1: 🟡 needs-more-work — consumer: materialized corpus lens driver
+type CorpusLensDriver<C> = fn(
+  CorpusEnumerationRequest,
+  CorpusEnumerator,
+  CorpusEntryIngestor,
+  CorpusLensReader<C>
+) -> CorpusLensDriveResult<C>
