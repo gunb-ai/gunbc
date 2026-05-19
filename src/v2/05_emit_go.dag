@@ -71,19 +71,12 @@ import v2.compiler.languages {
   scaffold_for_target, TestConventions, ItemKeywords, test_conventions_for_target,
   is_string_like, CaseVisibility
 }
-import v2.compiler.infer { TypeEnv, TypeBinding, authored_name }
-import v2.compiler.infer { resolved_type, normalize_access_type_node, node_is_keyed_collection }
 import v2.compiler.infer {
-}
-import v2.compiler.infer { ResolvedFuncSig, ResolvedFuncEnv }
-import v2.compiler.infer {
-  ResolvedGraph, TypedModule,
-  ItemInfo
-}
-import v2.compiler.infer {
-  is_typed_service_call_receiver, extract_typed_service_name
-}
-import v2.compiler.infer {
+  TypeEnv, TypeBinding, authored_name,
+  resolved_type, normalize_access_type_node, node_is_keyed_collection,
+  ResolvedFuncSig, ResolvedFuncEnv,
+  ResolvedGraph, TypedModule, ItemInfo,
+  is_typed_service_call_receiver, extract_typed_service_name,
   InferScope,
   build_params_scope, extend_scope,
   expr_span
