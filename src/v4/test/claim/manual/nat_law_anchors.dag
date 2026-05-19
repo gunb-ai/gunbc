@@ -34,6 +34,12 @@ data claim_nat_add_left_identity: TestClaim = TestClaim {
 }
 
 
+data nat_law_subject_algebra_nat_add_left_identity: Symbol = nat_law_subject_algebra_nat_add_left_identity
+
+
+data nat_law_subject_inhabitant_nat_add_left_identity: Symbol = nat_law_subject_inhabitant_nat_add_left_identity
+
+
 data claim_nat_add_right_identity: TestClaim = TestClaim {
   kind: Equals,
   label: "manual/nat: monoid right identity nat_add(a,Zero)=a (law; eval T-22)",
@@ -44,6 +50,12 @@ data claim_nat_add_right_identity: TestClaim = TestClaim {
 }
 
 
+data nat_law_subject_algebra_nat_add_right_identity: Symbol = nat_law_subject_algebra_nat_add_right_identity
+
+
+data nat_law_subject_inhabitant_nat_add_right_identity: Symbol = nat_law_subject_inhabitant_nat_add_right_identity
+
+
 data claim_nat_add_associativity: TestClaim = TestClaim {
   kind: Equals,
   label: "manual/nat: monoid associativity nat_add(nat_add(a,b),c)=nat_add(a,nat_add(b,c)) (law; eval T-22)",
@@ -52,6 +64,12 @@ data claim_nat_add_associativity: TestClaim = TestClaim {
   expected: Produced { value: stub_empty_conj },
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
+
+
+data nat_law_subject_algebra_nat_add_associativity: Symbol = nat_law_subject_algebra_nat_add_associativity
+
+
+data nat_law_subject_inhabitant_nat_add_associativity: Symbol = nat_law_subject_inhabitant_nat_add_associativity
 
 
 data claim_nat_mul_left_identity: TestClaim = TestClaim {
