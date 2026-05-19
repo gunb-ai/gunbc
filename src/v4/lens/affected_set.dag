@@ -56,7 +56,7 @@ type ReExecFrontier
 
 type AffectedSetRead {
   boundary_hash_receipt: fn(Dag, Path, Node) -> HashReceipt
-  changed_subgraph_frontier_edges: fn(Dag, Path) -> List<FrontierEdge>
+  proven_transitive_changed_subgraph_frontier: fn(Dag, Path) -> List<FrontierEdge>
   propagation_receipt: fn(Dag, FrontierEdge) -> PropagationReceipt
 }
 
@@ -178,7 +178,7 @@ fn boundary_receipt(read_model: AffectedSetRead, dag: Dag, path: Path, replaceme
 
 
 fn expand_path(read_model: AffectedSetRead, dag: Dag, acc: FrontierAcc, path: Path) -> FrontierAcc {
-  fold(read_model.changed_subgraph_frontier_edges(dag, path), init: acc, f: fn(acc2, edge) {
+  fold(read_model.proven_transitive_changed_subgraph_frontier(dag, path), init: acc, f: fn(acc2, edge) {
     match read_model.propagation_receipt(dag, edge) {
       Propagates =>
         mark_rerun(acc: acc2, key: edge_key(edge: edge))
