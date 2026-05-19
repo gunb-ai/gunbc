@@ -735,14 +735,12 @@ data unterminated_interpolation_regression: TokenizeRegression = TokenizeRegress
   expected: ExpectRejected { reason: UnterminatedInterpolation }
 }
 
-data nested_brace_interpolation_regression_holds: Bool =
-  tokenize_expectation_holds(
+data nested_brace_interpolation_regression_holds: Bool = tokenize_expectation_holds(
     source: nested_brace_interpolation_regression.source,
     expected: nested_brace_interpolation_regression.expected
   )
 
-data unterminated_interpolation_regression_holds: Bool =
-  tokenize_expectation_holds(
+data unterminated_interpolation_regression_holds: Bool = tokenize_expectation_holds(
     source: unterminated_interpolation_regression.source,
     expected: unterminated_interpolation_regression.expected
   )
