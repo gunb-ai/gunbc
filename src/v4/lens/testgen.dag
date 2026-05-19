@@ -34,7 +34,6 @@ type DiagnosticExhaustivenessSubject { reason: Symbol }
 type LensApplicabilitySubject {
   lens: Symbol
   program: Node
-  corpus_root: AbsolutePath
 }
 
 
