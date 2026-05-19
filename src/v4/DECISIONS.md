@@ -86,7 +86,7 @@ remain boundary indexes until the named substrate support lands.
 | `std/cardinality.dag` | `TerminationProof` | Green proof record | Encodes lexicographic descent by structure: `non_increasing: List<RankingDimension>` plus mandatory `strict: RankingDimension`; no stored `DescentEvidence` field may stand in for the strict witness. |
 | `std/cardinality.dag` | `Never`, `Unit` | Green opaque atoms | Canonical 0- and 1-inhabitance anchors in shared vocabulary: `Never` (empty), `Unit` (singleton). Rust `!` / `()` name **external** encodings of those facts, not identities proved in this row. **D2-REV:** per-language never/unit primitives (e.g. `NeverScalar`) remain **spec fact-bundles** in `extdeps/`; this ledger does **not** assert a bare alias into `std/`—deduplication to these carriers only on **structurally evidenced coincidence** authored elsewhere. Opaque atoms carry no fields; `std/` must not mint a parallel second empty/unit authority. |
 | `std/cardinality.dag` | `NonZeroNat` | Green proof record | Structural strictly-positive natural: `prev: Nat` denotes `Succ { prev }` (same witness field name as `Nat`’s successor case) — excludes `Zero` by construction (no separate ordering predicate). Use for positive counts/widths (e.g. “at least one”) without kernel-ambient `Int` width payloads. |
-| `std/cardinality.dag` | `NatLeWitness`, `UpperBoundedNat` | Green proof bundle | Inductive witness for `value ≤ inclusive_max` on Peano `Nat`: `LeqZero { upper }` proves `Zero ≤ upper`; `LeqSucc { inner }` lifts `a ≤ b` to `Succ a ≤ Succ b`. `UpperBoundedNat` carries **only** `{ le: NatLeWitness }`; `nat_le_witness_lower` / `nat_le_witness_upper` derive the endpoints from the witness spine (no independent value/max fields that could disagree with `le`). `upper_bounded_nat_value` / `upper_bounded_nat_inclusive_max` project those derived endpoints. **`nat_le_witness_well_formed` / `upper_bounded_nat_well_formed` are vacuous on any inhabited witness** (always `true` by induction over the spine): uniform predicate hooks only—downstream must not treat them as substantive runtime validators that recover facts absent from the witness. |
+| `std/cardinality.dag` | `NatLeWitness`, `UpperBoundedNat`, `PositiveNatLeWitness`, `PositiveUpperBoundedNat` | Green proof bundle | Inductive witness for `value ≤ inclusive_max` on Peano `Nat`: `LeqZero { upper }` proves `Zero ≤ upper`; `LeqSucc { inner }` lifts `a ≤ b` to `Succ a ≤ Succ b`. `UpperBoundedNat` carries **only** `{ le: NatLeWitness }`; `nat_le_witness_lower` / `nat_le_witness_upper` derive the endpoints from the witness spine (no independent value/max fields that could disagree with `le`). `PositiveNatLeWitness = PositiveLeqSucc { inner }` lifts any `inner: a ≤ b` witness to `Succ a ≤ Succ b`, so `PositiveUpperBoundedNat` excludes zero and carries the bound in the same spine. Projection helpers derive value/max for both carriers. **The well_formed hooks are vacuous on any inhabited witness** (always `true` by induction over the spine): uniform predicate hooks only—downstream must not treat them as substantive runtime validators that recover facts absent from the witness. |
 | `std/collection.dag` | `NonEmptyList<T>` | Yellow refinement scaffold | `NonEmptyList<T> = List<T> where non_empty` is the canonical future shared shape over the `List<T> = FreeMonoid<T>` carrier, not a second head/tail inhabitant family. It is not exported from `std/collection.dag` yet because `src/v3/compiler/src/lower.rs` lowers registered `non_empty` predicates through the placeholder path rather than a Bool body tied to `free_monoid_non_empty`. Bounded use: consumers must not rely on this alias to reject empty lists yet. Trigger: bootstrap lowerer synthesizes/enforces `non_empty` for `List` carriers through the landed FreeMonoid predicate, then `std/collection.dag` may publish `NonEmptyList<T>` and downstream non-empty-list sites may rewrite to it. |
 | `std/collection.dag` | `Set<T>` finite-cardinality refinement | Yellow refinement scaffold | Documented: bare `Set<T> = PointwisePower<T>` is an arbitrary subset/characteristic-function carrier and does not encode finiteness. Bounded use: consumers needing finite subsets must wait on the refinement, not infer finiteness from `Set<T>`. Trigger: cardinality/enumerability substrate (`Multiplicity` plus an enumerability `Witness`) lands and adds `FiniteSet<T>` or equivalent. |
 | `std/diagnostic.dag` | `Extent.ByteRange` | Yellow value-refinement scaffold | Documented: `ByteRange { start: Int, end: Int }` is an honest bridge carrier because current substrate syntax cannot exclude negative offsets or `start > end`. Bounded use: producers must validate textual spans before constructing diagnostics that rely on byte-range validity. Trigger: bounded/non-negative ordered span carrier or equivalent substrate refinement. |
@@ -1212,14 +1212,14 @@ Verbatim `//` lines from merge-base `llvm_ir.dag` (lines **1117–1170**):
 **Authority / closure:** PR #3310 P1 cardinality refinement plus follow-up
 receipt PR (2026-05-18).
 
-**Disposition:** **🟢 GREEN terminal for the merge-base raw `Int` axis
-payload class.** Live `ptx.dag` uses `Nat` for `Dim3.x` / `y` / `z`, so
-negative dimension or coordinate axes are no longer representable by this
-carrier. **Residual remains 🟡:** `Nat` still admits zero and does not encode
-PTX-version-specific per-axis maxima, so `SL-3229-PTX-DIM3` remains a live
-ledger slug on `ptx.dag` for the positive / bounded-axis refinement. Named
-trigger: the same T-3 bounded-natural refinement substrate must supply a
-positive bounded-axis witness before this row can close fully.
+**Disposition:** **partial closure only.** Live `ptx.dag` uses
+`PositiveUpperBoundedNat` for `Dim3.x` / `y` / `z`, so negative axes, zero
+axes, and completely unbounded axes are no longer representable by this
+carrier. **Residual remains 🟡:** `PositiveUpperBoundedNat` proves only
+positivity and some caller-supplied upper bound; it does not tie that bound
+to the PTX-version / launch-role / axis-specific maxima. `SL-3229-PTX-DIM3`
+therefore remains live until the PTX-specific max authority is modeled and
+consumed by `Dim3`.
 
 Verbatim `//` lines from merge-base `ptx.dag` (lines **1059–1090** — section header + 🟡 three-bridge note):
 
@@ -1259,10 +1259,9 @@ Verbatim `//` lines from merge-base `ptx.dag` (lines **1059–1090** — section
 //       scaffold dissolves.
 ```
 
-**Dissolution result:** P1's `Nat` carrier landing closes only the
-merge-base negative-axis illegal state. The zero-axis and
-PTX-pinned-maximum illegal states remain live under `SL-3229-PTX-DIM3`
-until the named positive bounded-axis witness lands.
+**Dissolution result:** P1's positive bounded witness closes the negative,
+zero, and missing-bound portions of the carrier scaffold on `Dim3`. The
+PTX-specific per-axis maximum portion remains live under `SL-3229-PTX-DIM3`.
 
 ### SL-3229-PTX-COST — raw-`Int` PTX cost axes (`PtxCost`)
 
@@ -1696,6 +1695,8 @@ Verbatim `//` lines from merge-base `float.dag` (lines **104–144** — modelin
 **Bool grounding unchanged.** The canonical-B grounding mechanism `#3338` landed — `data py_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra` plus its `v4.std.logic` / `v4.std.algebra` imports — is preserved **byte-exact**; this reseed touches neither the data row nor its imports. Python's data-model fact that `bool` is an `int` subtype, formerly anchored at `PythonNumericTower.BoolLevel`, is re-anchored to the flat `PythonScalar.BoolScalar` variant.
 
 **Ratchet authority:** this `###` row is the post-reseed Practice-4 authority for the live `PythonScalar` coproduct. `PythonSingletonKind` is unchanged from merge-base and retains `CP-3229-GREEN-TERMINAL`.
+
+**Supersedes:** the prior held-provisional `SL-3309-PYTHON-PER-PRIMITIVE-A-VS-B` row, closed by operator A-vs-B ruling **(2)** + `#3338` `py_bool_grounding`. It is **not carried forward**: its premise (an open A-vs-B gate) and its referent (a per-primitive bool alias that does not exist on post-`#3338` main) are both retired, so a verbatim carry would itself be a stale closed-gate ledger reference — the class of defect this dissolution removes. The resolved state is captured by this row plus the reconciled `python.dag` / singletons bullet.
 
 **PR receipt:** gunbc `#3309` forward-port (fresh PR onto post-`#3338` main).
 
