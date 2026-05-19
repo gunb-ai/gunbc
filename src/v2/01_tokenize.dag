@@ -115,6 +115,7 @@ type SourceRef {
   source_chars: List<Int>
 }
 
+// 🟢 terminal coproduct: lexer input classes are the closed grammar categories consumed by this tokenizer.
 type CharacterClass
   = DigitClass
   | IdentStartClass
@@ -151,6 +152,7 @@ fn source_scan_while(source: SourceRef, start: Int, pred: fn(String) -> Bool) ->
   } else { start }
 }
 
+// 🟢 terminal predicate: recovers the structural membership fact for each lexer input class.
 fn char_in_class(ch: String, class: CharacterClass) -> Bool {
   match class {
     DigitClass => ch >= "0" && ch <= "9"
