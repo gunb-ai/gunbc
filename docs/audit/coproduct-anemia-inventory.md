@@ -16,7 +16,7 @@
 
 ## Summary
 
-- **Row count (corpus sums):** 274 — inventory is also the **grounding-axis tracker** for parallel program planning (same PR; **DRAFT**; same locked operator content-review sequence).
+- **Row count (corpus sums):** 274 — inventory is also the **grounding-axis tracker** for parallel program planning (same PR; operator merge / review path).
 - **Checkpoint batch (hand columns 4–7):** 12 rows in §Checkpoint batch (initial depth-bar spot-check set; provenance may name review threads in prose, not as a completion gate).
 - **Grounding-axis first checkpoint:** 12 §Checkpoint rows **+** first **20** continuation rows (**32** total) — columns **(A)(B)(C)** filled for witty-cat-59 axis lock; **all 274** rows carry non-`DEFERRED` grounding-axis cells (**continuation (C)** = single bounded-vocabulary token; **§Checkpoint (C)** = locked exemplar prose). Coproduct cols **4–7** still `DEFERRED` where marked.
 - **(C) aggregation:** row counts per blocker class (full corpus **274**, including §Checkpoint rows mapped to a primary class for planning — checkpoint table cells themselves stay prose) — see **§Grounding-axis (C) blocker-class aggregation** after the continuation table.
