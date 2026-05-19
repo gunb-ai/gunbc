@@ -33,10 +33,10 @@ The deleted helper modules are therefore a calibration receipt, not a v4 design 
 
 ## Mechanical Changes
 
-- Downstream v2 imports now read all former helper declarations from `v2.compiler.infer`.
+- Downstream v2 `.dag` imports touched by this consolidation now read former helper declarations from `v2.compiler.infer`.
 - Duplicate local `is_type_variable` / `type_variable_node` helper definitions collapsed to the existing `04_infer.dag` definitions.
-- Source-audit checks that previously targeted deleted helper files now target `04_infer.dag`.
+- The non-Rust `scripts/source_audit.py` checks that previously targeted deleted helper files now target `04_infer.dag`.
 
 ## Residual Boundary
 
-The committed stage0 Rust mirror still contains generated Rust modules named after the former helper modules. That mirror remains bootstrap seed output, not `.dag` authority. The `.dag` authority for this calibration slice is now the single consolidated source file.
+The committed stage0 Rust mirror and Rust test crate still contain generated/module references named after the former helper modules. Those Rust surfaces remain bootstrap seed/test-infra output, not `.dag` authority. The `.dag` authority for this calibration slice is now the single consolidated source file.
