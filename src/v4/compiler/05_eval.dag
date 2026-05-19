@@ -221,9 +221,12 @@ fn run_ci_assert(
 ) -> Verdict<CiPipeline> {
   match kind {
     Equals => match actual {
-      Produced { value: _ } => Deferred {
-        actual: actual,
-        diagnostic: eval_diagnostic(reason: eval_rejected_ci_projection_deferred, node: input)
+      Produced { value: _ } => match expected {
+        Produced { value: _ } => Deferred {
+          actual: actual,
+          diagnostic: eval_diagnostic(reason: eval_rejected_ci_projection_deferred, node: input)
+        }
+        Rejected { diagnostic: _ } => Fail { actual: actual }
       }
       Rejected { diagnostic: d } => {
         let comparable = Rejected { diagnostic: d }
