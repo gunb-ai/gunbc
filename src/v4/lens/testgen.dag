@@ -104,7 +104,6 @@ type CorpusLensDriveResult<C> = Outcome<List<CorpusLensObservation<C>>>
 
 
 type CorpusLensDriver<C> {
-  lens: Symbol
   enumerator: CorpusEnumerator
   ingestor: CorpusEntryIngestor
   reader: CorpusLensReader<C>
