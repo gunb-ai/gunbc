@@ -2,7 +2,7 @@
 // Scope: Rust Reference surface (scalar/reference/visibility/cost carriers) plus ratified D2 resolver types homed here pending resolver.dag migration.
 // Owns: RustIntKind, RustIntWidth, RustFloatWidth, RustScalar, RustReferenceKind, NamedSegment, PubInPath, RustVisibility, RustReference, RustCost, OverflowAction, OverflowDisposition, rust_bool_grounding, RustNever.
 // Consumes: v4.std.node.Node, Symbol; v4.std.logic.Bool, bool_boolean_algebra; v4.std.algebra.BooleanAlgebra; v4.std.cardinality.Never; kernel-ambient Int, List.
-// Status: extdeps rust slice; bool/`!` canonical-B decl-ref grounding — 🟡 E-6(b) staging (scaffold at decl; ledger DECISIONS.md/§0). PubInPath path semantics producer-obligation per DECISIONS.md Part 6 + D2-REV; D2b Arrow bodies deferred to bundled LanguageModel work.
+// Status: extdeps rust slice; bool/`!` canonical-B decl-ref grounding — 🟡 E-6(b) staging; D2b Arrow bodies deferred to bundled LanguageModel work.
 // Anchor: https://doc.rust-lang.org/reference/
 
 module v4.extdeps.languages.rust
@@ -84,4 +84,5 @@ type OverflowDisposition<IRCarrier>
 data rust_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
 
 // Anchor: https://doc.rust-lang.org/reference/types/never.html
+// Coincidence: Rust `!` is the uninhabited carrier modeled by v4.std.cardinality.Never; grounding-worked-examples.md §0.
 type RustNever = Never
