@@ -113,6 +113,14 @@ type TestClaimRun<T> {
 }
 
 
+type T22CiNegativeCase {
+  label: String
+  input_symbol: Symbol
+  expected_reason: Symbol
+  pipeline: CiPipeline
+}
+
+
 fn test_claim_cache_receipt<T>(
   subject: TestClaimEvalSubject<T>,
   claim_hash: Hash,
@@ -289,17 +297,14 @@ fn t22_ci_context() -> EvalContext {
 
 
 fn t22_ci_subject(
-  label: String,
-  input_symbol: Symbol,
-  expected_reason: Symbol,
-  pipeline: CiPipeline
+  case: T22CiNegativeCase
 ) -> TestClaimEvalSubject<CiPipeline> {
-  let input = t22_symbol_node(s: input_symbol)
+  let input = t22_symbol_node(s: case.input_symbol)
   TestClaimEvalSubject {
     claim_node: input,
-    claim: t22_ci_claim(label: label, input: input, expected_reason: expected_reason),
+    claim: t22_ci_claim(label: case.label, input: input, expected_reason: case.expected_reason),
     context: t22_ci_context(),
-    evaluator_input: pipeline
+    evaluator_input: case.pipeline
   }
 }
 
@@ -325,7 +330,7 @@ fn t22_ci_run(subject: TestClaimEvalSubject<CiPipeline>) -> TestClaimRun<CiPipel
 }
 
 
-data subject_ci_dangling_bootstrap_output: TestClaimEvalSubject<CiPipeline> = t22_ci_subject(
+data case_ci_dangling_bootstrap_output: T22CiNegativeCase = T22CiNegativeCase {
   label: "t22_ci_dangling_bootstrap_output",
   input_symbol: t22_ci_dangling_bootstrap_output,
   expected_reason: ci_bootstrap_authority_violation,
@@ -341,13 +346,16 @@ data subject_ci_dangling_bootstrap_output: TestClaimEvalSubject<CiPipeline> = t2
       CiGate { id: structural_v2_compile, job: v2_compile_src_v4 }
     ]
   }
-)
+}
+
+
+data subject_ci_dangling_bootstrap_output: TestClaimEvalSubject<CiPipeline> = t22_ci_subject(case: case_ci_dangling_bootstrap_output)
 
 
 data run_ci_dangling_bootstrap_output: TestClaimRun<CiPipeline> = t22_ci_run(subject: subject_ci_dangling_bootstrap_output)
 
 
-data subject_ci_duplicate_job_id: TestClaimEvalSubject<CiPipeline> = t22_ci_subject(
+data case_ci_duplicate_job_id: T22CiNegativeCase = T22CiNegativeCase {
   label: "t22_ci_duplicate_job_id",
   input_symbol: t22_ci_duplicate_job_id,
   expected_reason: ci_duplicate_job_id,
@@ -360,13 +368,16 @@ data subject_ci_duplicate_job_id: TestClaimEvalSubject<CiPipeline> = t22_ci_subj
       CiGate { id: structural_v2_compile, job: v2_compile_src_v4 }
     ]
   }
-)
+}
+
+
+data subject_ci_duplicate_job_id: TestClaimEvalSubject<CiPipeline> = t22_ci_subject(case: case_ci_duplicate_job_id)
 
 
 data run_ci_duplicate_job_id: TestClaimRun<CiPipeline> = t22_ci_run(subject: subject_ci_duplicate_job_id)
 
 
-data subject_ci_duplicate_gate_id: TestClaimEvalSubject<CiPipeline> = t22_ci_subject(
+data case_ci_duplicate_gate_id: T22CiNegativeCase = T22CiNegativeCase {
   label: "t22_ci_duplicate_gate_id",
   input_symbol: t22_ci_duplicate_gate_id,
   expected_reason: ci_duplicate_gate_id,
@@ -379,13 +390,16 @@ data subject_ci_duplicate_gate_id: TestClaimEvalSubject<CiPipeline> = t22_ci_sub
       CiGate { id: structural_v2_compile, job: v2_compile_src_v4 }
     ]
   }
-)
+}
+
+
+data subject_ci_duplicate_gate_id: TestClaimEvalSubject<CiPipeline> = t22_ci_subject(case: case_ci_duplicate_gate_id)
 
 
 data run_ci_duplicate_gate_id: TestClaimRun<CiPipeline> = t22_ci_run(subject: subject_ci_duplicate_gate_id)
 
 
-data subject_ci_dangling_need: TestClaimEvalSubject<CiPipeline> = t22_ci_subject(
+data case_ci_dangling_need: T22CiNegativeCase = T22CiNegativeCase {
   label: "t22_ci_dangling_need",
   input_symbol: t22_ci_dangling_need,
   expected_reason: ci_dangling_reference,
@@ -397,13 +411,16 @@ data subject_ci_dangling_need: TestClaimEvalSubject<CiPipeline> = t22_ci_subject
       CiGate { id: structural_v2_compile, job: v2_compile_src_v4 }
     ]
   }
-)
+}
+
+
+data subject_ci_dangling_need: TestClaimEvalSubject<CiPipeline> = t22_ci_subject(case: case_ci_dangling_need)
 
 
 data run_ci_dangling_need: TestClaimRun<CiPipeline> = t22_ci_run(subject: subject_ci_dangling_need)
 
 
-data subject_ci_dangling_gate_job: TestClaimEvalSubject<CiPipeline> = t22_ci_subject(
+data case_ci_dangling_gate_job: T22CiNegativeCase = T22CiNegativeCase {
   label: "t22_ci_dangling_gate_job",
   input_symbol: t22_ci_dangling_gate_job,
   expected_reason: ci_dangling_reference,
@@ -415,13 +432,16 @@ data subject_ci_dangling_gate_job: TestClaimEvalSubject<CiPipeline> = t22_ci_sub
       CiGate { id: structural_v2_compile, job: t22_other_job }
     ]
   }
-)
+}
+
+
+data subject_ci_dangling_gate_job: TestClaimEvalSubject<CiPipeline> = t22_ci_subject(case: case_ci_dangling_gate_job)
 
 
 data run_ci_dangling_gate_job: TestClaimRun<CiPipeline> = t22_ci_run(subject: subject_ci_dangling_gate_job)
 
 
-data subject_ci_dependency_cycle: TestClaimEvalSubject<CiPipeline> = t22_ci_subject(
+data case_ci_dependency_cycle: T22CiNegativeCase = T22CiNegativeCase {
   label: "t22_ci_dependency_cycle",
   input_symbol: t22_ci_dependency_cycle,
   expected_reason: ci_dependency_cycle,
@@ -435,7 +455,10 @@ data subject_ci_dependency_cycle: TestClaimEvalSubject<CiPipeline> = t22_ci_subj
       CiGate { id: t22_other_gate, job: t22_other_job }
     ]
   }
-)
+}
+
+
+data subject_ci_dependency_cycle: TestClaimEvalSubject<CiPipeline> = t22_ci_subject(case: case_ci_dependency_cycle)
 
 
 data run_ci_dependency_cycle: TestClaimRun<CiPipeline> = t22_ci_run(subject: subject_ci_dependency_cycle)
