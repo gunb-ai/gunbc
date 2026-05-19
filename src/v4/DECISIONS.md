@@ -1185,13 +1185,14 @@ Verbatim `//` lines from merge-base `llvm_ir.dag` (lines **1117–1170**):
 **Authority / closure:** PR #3310 P1 cardinality refinement plus follow-up
 receipt PR (2026-05-18).
 
-**Disposition:** **🟢 GREEN terminal for the merge-base raw `Int` axis
-payload class and the follow-on zero/unbounded-axis residual.** Live
-`ptx.dag` uses `PositiveUpperBoundedNat` for `Dim3.x` / `y` / `z`; negative
-axes, zero axes, and unconstrained axes are no longer representable by this
-carrier. PTX-version-specific numeric maxima remain producer-authored
-witness facts through the `PositiveNatLeWitness` spine; a malformed witness
-cannot inhabit the type.
+**Disposition:** **partial closure only.** Live `ptx.dag` uses
+`PositiveUpperBoundedNat` for `Dim3.x` / `y` / `z`, so negative axes, zero
+axes, and completely unbounded axes are no longer representable by this
+carrier. **Residual remains 🟡:** `PositiveUpperBoundedNat` proves only
+positivity and some caller-supplied upper bound; it does not tie that bound
+to the PTX-version / launch-role / axis-specific maxima. `SL-3229-PTX-DIM3`
+therefore remains live until the PTX-specific max authority is modeled and
+consumed by `Dim3`.
 
 Verbatim `//` lines from merge-base `ptx.dag` (lines **1059–1090** — section header + 🟡 three-bridge note):
 
@@ -1232,8 +1233,8 @@ Verbatim `//` lines from merge-base `ptx.dag` (lines **1059–1090** — section
 ```
 
 **Dissolution result:** P1's positive bounded witness closes the negative,
-zero, and unbounded-axis carrier scaffold on `Dim3`. No live
-`SL-3229-PTX-DIM3` cite remains in `ptx.dag`.
+zero, and missing-bound portions of the carrier scaffold on `Dim3`. The
+PTX-specific per-axis maximum portion remains live under `SL-3229-PTX-DIM3`.
 
 ### SL-3229-PTX-COST — raw-`Int` PTX cost axes (`PtxCost`)
 
