@@ -2,7 +2,7 @@
 // Scope: canonical affected-set authority for CI/incremental re-execution; fail-closed B-4/B-5 node frontier.
 // Owns: Dag, AffectedDimension, ExclusionKey, ExclusionProof, FrontierDecision, ReExecFrontier, AffectedFrontierMode, AffectedSetRead, affected_set.
 // Consumes: Map, Diff, Edit, Hash, Node, Path, Symbol, Witness; B1 content_hash receipts; B-4 resolved Symbol equality; B-5 per-Arrow signature effects.
-// Status: Wave-0 front: read body + changed-subgraph gate landed; dissolves when CI use and .dag TestClaims land.
+// Status: Wave-0 front: changed-subgraph frontier expansion landed; dissolves when CI use and .dag TestClaims land.
 
 module v4.lens.affected_set
 
@@ -22,6 +22,13 @@ data affected_dimension_value: Symbol = affected_dimension_value
 
 type ExclusionKey {
   at: Path
+  dimension: AffectedDimension
+}
+
+
+type FrontierEdge {
+  producer: Path
+  consumer: Path
   dimension: AffectedDimension
 }
 
@@ -53,6 +60,8 @@ type ReExecFrontier {
 
 type AffectedSetRead {
   hash_receipt: fn(Dag, Path, Node) -> HashReceipt
+  downstream_edges: fn(Dag, Path) -> List<FrontierEdge>
+  propagation_receipt: fn(Dag, FrontierEdge) -> PropagationReceipt
 }
 
 
@@ -68,6 +77,13 @@ type BoundaryReceipt
   = BoundaryPruned { proof: ExclusionProof }
   | BoundaryExpands
   | BoundaryUnknown { reason: Symbol }
+
+
+// 🟡 coproduct dissolution — DECISIONS.md #3153-subsumed; dissolves when B-4/B-5 edge receipts are generated.
+type PropagationReceipt
+  = Propagates
+  | DoesNotPropagate { proof: ExclusionProof }
+  | PropagationUnknown { reason: Symbol }
 
 
 type FrontierAcc {
@@ -96,6 +112,14 @@ fn root_key(path: Path) -> ExclusionKey {
   ExclusionKey {
     at: path,
     dimension: affected_dimension_value
+  }
+}
+
+
+fn edge_key(edge: FrontierEdge) -> ExclusionKey {
+  ExclusionKey {
+    at: edge.consumer,
+    dimension: edge.dimension
   }
 }
 
@@ -155,6 +179,31 @@ fn boundary_receipt(read_model: AffectedSetRead, dag: Dag, path: Path, replaceme
 }
 
 
+fn expand_path(read_model: AffectedSetRead, dag: Dag, acc: FrontierAcc, path: Path) -> FrontierAcc {
+  fold(read_model.downstream_edges(dag, path), init: acc, f: fn(acc2, edge) {
+    match read_model.propagation_receipt(dag, edge) {
+      Propagates =>
+        expand_path(
+          read_model: read_model,
+          dag: dag,
+          acc: append_root(
+            acc: mark_rerun(acc: acc2, key: edge_key(edge: edge)),
+            path: edge.consumer
+          ),
+          path: edge.consumer
+        )
+      DoesNotPropagate { proof: p } =>
+        mark_excluded(acc: acc2, key: edge_key(edge: edge), proof: p)
+      PropagationUnknown { reason: r } =>
+        mark_whole_dag(
+          acc: mark_rerun(acc: acc2, key: edge_key(edge: edge)),
+          reason: r
+        )
+    }
+  })
+}
+
+
 fn seed_edit_frontier(
   read_model: AffectedSetRead,
   dag: Dag,
@@ -170,8 +219,13 @@ fn seed_edit_frontier(
     BoundaryPruned { proof: p } =>
       mark_excluded(acc: acc, key: root_key(path: edit.at), proof: p)
     BoundaryExpands =>
-      append_root(
-        acc: mark_rerun(acc: acc, key: root_key(path: edit.at)),
+      expand_path(
+        read_model: read_model,
+        dag: dag,
+        acc: append_root(
+          acc: mark_rerun(acc: acc, key: root_key(path: edit.at)),
+          path: edit.at
+        ),
         path: edit.at
       )
     BoundaryUnknown { reason: r } =>
