@@ -2,13 +2,13 @@
 // Scope: JSON value grammar (RFC 8259 / ECMA-404) with unique-name object profile — declarative model only.
 // Owns: JsonValue.
 // Consumes: std/node.dag; std/diagnostic.dag; std/collection.dag; std/algebra.dag (FreeMonoid).
-// Status: T-4.6 scaffold — parse/emit, numeric lexeme, unique-name profile axes per DECISIONS.md Part 6.
+// Status: T-4.6 scaffold — parse/emit, numeric lexeme, unique-name profile axes per TASKS.md T-4.6.
 // Anchor: https://datatracker.ietf.org/doc/html/rfc8259 + https://ecma-international.org/publications-and-standards/standards/ecma-404/
 
 module v4.extdeps.formats.json
 
 
-// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type JsonValue
   = JsonNull
   | JsonBool { value: Bool }
@@ -18,5 +18,5 @@ type JsonValue
   | JsonObject { members: Map<String, JsonValue> }
 
 
-// 🟡 gated — feature: dissolution-inventory §1.1 P3 — T-6 lexical-walk + T-7 parse-walk compiler pipeline-stage substrate (TASKS T-6/T-7) — DECISIONS.md Part 6 · SL-3229-T4-FORMAT-T6T7 (parse half).
-// 🟡 gated — feature: T-10 emit pipeline-stage substrate (TASKS T-10) — DECISIONS.md Part 6 · SL-3229-T4-FORMAT-T6T7 (emit half).
+// 🟡 gated — feature: T-6 lexical-walk + T-7 parse-walk compiler pipeline-stage substrate (TASKS T-6/T-7) — SL-3229-T4-FORMAT-T6T7 (parse half).
+// 🟡 gated — feature: T-10 emit pipeline-stage substrate (TASKS T-10) — SL-3229-T4-FORMAT-T6T7 (emit half).
