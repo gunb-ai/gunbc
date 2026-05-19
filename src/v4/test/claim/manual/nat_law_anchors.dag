@@ -1,8 +1,8 @@
 // src/v4/test/claim/manual/nat_law_anchors.dag
-// Scope: T-19 manual Nat law TestClaims (stub payload; law text in label until T-22 eval).
+// Scope: Manual Nat law TestClaims (stub payload; law text in claim label).
 // Owns: claim_nat_* TestClaim data
 // Consumes: v4.std.verification v4.std.diagnostic v4.test.claim.manual.connective_anchors
-// Status: Wave-0 modeled; v2 compile; M2 Compiles stubs; classification discipline indexed DECISIONS V-HDR.
+// Status: v2 compile; classification discipline indexed DECISIONS V-HDR.
 
 module v4.test.claim.manual.nat_law_anchors
 
@@ -25,7 +25,7 @@ import v4.test.claim.manual.connective_anchors { stub_empty_conj }
 
 data claim_nat_add_left_identity: TestClaim = TestClaim {
   kind: Compiles,
-  label: "manual/nat: monoid left identity nat_add(Zero,a)=a (law; T-19 anchor; Wave-0 M2 Compiles stub; eval T-22)",
+  label: "manual/nat: monoid left identity nat_add(Zero,a)=a (law)",
   t19_anchor: T19ManualNatAddLeftIdentity,
   input: stub_empty_conj,
   expected: Produced { value: stub_empty_conj },
@@ -35,7 +35,7 @@ data claim_nat_add_left_identity: TestClaim = TestClaim {
 
 data claim_nat_add_right_identity: TestClaim = TestClaim {
   kind: Compiles,
-  label: "manual/nat: monoid right identity nat_add(a,Zero)=a (law; T-19 anchor; Wave-0 M2 Compiles stub; eval T-22)",
+  label: "manual/nat: monoid right identity nat_add(a,Zero)=a (law)",
   t19_anchor: T19ManualNatAddRightIdentity,
   input: stub_empty_conj,
   expected: Produced { value: stub_empty_conj },
@@ -45,7 +45,7 @@ data claim_nat_add_right_identity: TestClaim = TestClaim {
 
 data claim_nat_add_associativity: TestClaim = TestClaim {
   kind: Compiles,
-  label: "manual/nat: monoid associativity nat_add(nat_add(a,b),c)=nat_add(a,nat_add(b,c)) (law; T-19 anchor; Wave-0 M2 Compiles stub; eval T-22)",
+  label: "manual/nat: monoid associativity nat_add(nat_add(a,b),c)=nat_add(a,nat_add(b,c)) (law)",
   t19_anchor: T19ManualNatAddAssociativity,
   input: stub_empty_conj,
   expected: Produced { value: stub_empty_conj },
@@ -55,7 +55,7 @@ data claim_nat_add_associativity: TestClaim = TestClaim {
 
 data claim_nat_mul_left_identity: TestClaim = TestClaim {
   kind: Compiles,
-  label: "manual/nat: multiplicative monoid identity nat_mul(one,a)=a where one is Succ-of-Zero (law; T-19 anchor; Wave-0 M2 Compiles stub; eval T-22)",
+  label: "manual/nat: multiplicative monoid identity nat_mul(one,a)=a where one is Succ-of-Zero (law)",
   t19_anchor: T19ManualNatMulLeftIdentity,
   input: stub_empty_conj,
   expected: Produced { value: stub_empty_conj },
@@ -65,7 +65,7 @@ data claim_nat_mul_left_identity: TestClaim = TestClaim {
 
 data claim_nat_mul_annihilator: TestClaim = TestClaim {
   kind: Compiles,
-  label: "manual/nat: semiring zero annihilator nat_mul(Zero,a)=Zero (law; T-19 anchor; Wave-0 M2 Compiles stub; eval T-22)",
+  label: "manual/nat: semiring zero annihilator nat_mul(Zero,a)=Zero (law)",
   t19_anchor: T19ManualNatMulAnnihilator,
   input: stub_empty_conj,
   expected: Produced { value: stub_empty_conj },
@@ -75,7 +75,7 @@ data claim_nat_mul_annihilator: TestClaim = TestClaim {
 
 data claim_nat_mul_associativity: TestClaim = TestClaim {
   kind: Compiles,
-  label: "manual/nat: multiplicative monoid associativity (T-19 anchor; Wave-0 M2 Compiles stub; eval T-22)",
+  label: "manual/nat: multiplicative monoid associativity (law)",
   t19_anchor: T19ManualNatMulAssociativity,
   input: stub_empty_conj,
   expected: Produced { value: stub_empty_conj },
