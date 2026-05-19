@@ -6,6 +6,9 @@
 > before anything fans out. Derived from `src/v4/TASKS.md` (1265 lines, verified
 > 2026-05-18); statuses marked *derived* are first-articulation and explicitly
 > open to lane-manager correction in review.
+> **Anchor convention:** every `TASKS.md:NNN` line anchor below refers to
+> this file — `src/v4/TASKS.md`. There is no root-level `TASKS.md`; do not
+> hunt for one.
 >
 > Authoring session: `witty-cat-59` (root). Lanes referenced: `fierce-cat-31`
 > (Lane A — compiler pipeline), `swift-ram-178` (Lane B — test/bootstrap infra),
@@ -78,7 +81,7 @@ first) · `DESIGN` · `OP` (operator ruling) · `CP1` (needs v4 front-end output
 | T-6 | compiler/01_tokenize | LANDED | T-3 | LANDED (CP-1b tail) | Lane A |
 | T-7 | compiler/02_parse | LANDED | T-6 | LANDED (CP-1b tail) | Lane A |
 | T-8 | 03_normalize + 03_resolve (+T-28 bundled) | LANDED (seam scaffold until CP-1b closes) | T-7 | IMPL (CP-1b close) | Lane A |
-| **T-4** | extdeps/languages ×5 fact-bundles | WIP, **HELD** | T-3, **P1-KEYSTONE (= Practice-10 **A1-invariant** ratification — NOT the closed #3240 tracker, NOT the merged numeric #3226)**, T-25-core, T-30 | **OP + DESIGN** | T-4 mgr |
+| **T-4** | extdeps/languages ×5 fact-bundles | WIP, **HELD** | T-3 (landed) + the **TASKS.md:286/:64 exact feeder set `{P1-KEYSTONE, T-30, T-29, T-25-core}`** — **P1-KEYSTONE** (= Practice-10 **A1-invariant** ratification — NOT the closed #3240 tracker, NOT the merged numeric #3226), **T-30**, **T-29** (cpp-slice; #3277 OPEN), **T-25-core**. Never a partial subset — all four gate T-4. | **OP + DESIGN** | T-4 mgr |
 | T-4.5 | extdeps/process + file_system | SCAFFOLD | T-3, T-25-core | IMPL | T-4 mgr |
 | T-4.6 | extdeps/formats ×7 (**current tree census:** csv/json/json_schema/openapi/spice/toml/yaml; TASKS still schedules sql.dag port) | SCAFFOLD | T-25-core, T-26 | IMPL (sql.dag not yet present in `src/v4/extdeps/formats/`) | T-4 mgr |
 | T-4.7 | frameworks/react | SCAFFOLD | T-4 (ts) | CP1 (LanguageModel) | T-4 mgr |
@@ -105,7 +108,7 @@ first) · `DESIGN` · `OP` (operator ruling) · `CP1` (needs v4 front-end output
 | T-22 | compiler/05_eval interpreter (PRIMARY exec) | SCAFFOLD | T-9 (refine) | **`READY*`** — bounded scope: interpreter scaffold + IRT-3 eval-shape. *T-9 trigger:* eval over inferred types → Wave-3 | Lane B |
 | T-23 | lens/application | **IFACE FROZEN** | lens fwk | IMPL (in flight) | Lane A (lens) |
 | T-24 | workflow/ci AS DATA | SCAFFOLD (T-20/T-24-adjacent slice landed via #3213) | T-20, T-21 | IMPL | Lane B |
-| T-25-core | refinement base + fail-closed validate | SCHEDULED | — | **DESIGN (OP)** | std / OP |
+| T-25-core | refinement base + fail-closed validate | SCHEDULED | — | **AUTHORIZE — shape operator-ratified (TASKS.md §962+ / coercion-design.md Cat-6); NOT a design fork** | std (build) + OP (authorize stamp) |
 | T-25-tail | refinement prover (erase) | SCHEDULED | T-9 | IMPL (optim) | Lane A |
 | T-26 | std/ boundary carriers (URL/HttpMethod) | SCHEDULED | T-3 | **READY** | std/ = canonical home; Lane A may run 1st PR as conduit |
 | T-28 | std/ module-graph | SCHEDULED (bundled→T-8) | T-3 | IMPL (in T-8) | Lane A |
@@ -162,7 +165,7 @@ first) · `DESIGN` · `OP` (operator ruling) · `CP1` (needs v4 front-end output
 | Keystone | Kind | Unblocks | Owner |
 |---|---|---|---|
 | **P1-KEYSTONE / Practice-10 A1 invariant** (the live gate; #3240 = closed tracker) | **OPERATOR ratification** | T-4 → T-9 → T-10 → T-11 → T-16; **also #3313 Wave-2 lenses; also the principled basis for #3280 A-vs-B** | **Operator** |
-| **T-25-core** | **DESIGN direction (operator review)** | T-4 refinement-bearers, T-4.5, T-4.6 | **Operator** + std |
+| **T-25-core** | **AUTHORIZE-to-build — shape operator-ratified (TASKS.md §962+ / coercion-design.md Category 6: base type + fail-closed validation at a named constructor boundary). NOT a design fork — earlier "design direction" framing overstated; corrected per §7 #3b** | T-4 refinement-bearers, T-4.5, T-4.6 | std (build) + **Operator** (authorize stamp) |
 | T-30 hollow-alias gate | IMPL+OP — interim P5(b) mirror on main; generated checker + operator closure remain | T-4 fact-bundle integrity | Dissolution |
 | **T-29 C++ ABI** | **STILL a keystone-cluster feeder** (TASKS.md:64/:286/:1035 declares it a hard T-4-cpp-slice prereq) — core #3267 merged, residual #3277 OPEN; NOT "landed/removed" | T-4 cpp slice | #3277 worker (attribution open) |
 
@@ -213,12 +216,18 @@ overstated collapsibility):
   inhabitance is the primitive-case application of Practice-10. State and
   confirm the implication explicitly — do **not** let the narrower A-vs-B
   ruling ride (a) unscrutinized.
-- **(c) T-25-core is a genuine separate design fork** ("needs you" —
-  §7 #3b). It is not collapsed by (a).
+- **(c) T-25-core is a separate operator item — but an *authorize-to-build
+  stamp*, NOT a design fork.** The shape is **operator-ratified**
+  (TASKS.md §962+ / coercion-design.md Category 6: base type + fail-closed
+  validation at a named constructor boundary); the earlier "genuine design
+  fork / needs you" framing was **overstated** and is corrected in §7 #3b.
+  It is a distinct one-line authorize (+ blessing the 2 Wave-2-prereq T#s),
+  not collapsed by (a), and not a design decision.
 
 So the long pole is **2–3 operator items**, not one line: ratify the
 verbatim invariant text (a — exists today, small), explicitly confirm
-A-vs-B=B (b), decide T-25-core (c).
+A-vs-B=B (b), authorize T-25-core (c — ratified shape, a stamp not a
+design call).
 
 ---
 
@@ -245,8 +254,17 @@ A-vs-B=B (b), decide T-25-core (c).
     keystone-cluster T-4-cpp feeder (core #3267 merged, residual #3277 OPEN);
     T-4.10/T-4.12 already LANDED; pre-#3240 rework keystone-gated; **T-25-tail**
     — depends T-9, Wave-3 IMPL-optim, never Wave-0.)*
-- **Wave 1 (P1-KEYSTONE + T-25-core + T-30 land):** T-4 ×5 languages, T-4.5,
-  T-4.6 unblock (T-4 mgr). **+ lens-pipeline-derivations T-#** (`match_arm_shape`
+- **Wave 1 (the keystone-cluster ×4 land — TASKS.md:64/:286 exact set
+  `{P1-KEYSTONE + T-30 + T-29 + T-25-core}`; T-29 is NOT dropped — core
+  #3267 merged but residual #3277 still gates the T-4 cpp slice):**
+  **T-4 ×5 languages** unblock on the **full ×4 set**. **T-4.5** (per the
+  §2 T-4.5 row, deps `T-3, T-25-core`) and **T-4.6** (per the §2 T-4.6
+  row, deps `T-25-core, T-26`)
+  unblock on **T-25-core only** — their sole keystone-cluster feeder; NOT
+  gated on P1-KEYSTONE / T-30 / T-29 — once their own §2 table deps are
+  met, i.e. potentially **earlier** than the full ×4 (T-4 mgr). The §2
+  per-task table is the dependency authority; this wave heading does not
+  widen T-4.5/T-4.6's gate. **+ lens-pipeline-derivations T-#** (`match_arm_shape`
   / `closed_vocab_scan` / `concept_home`) **+ Layer-0 lens stage plug-in**
   (Fresh CP+Lens lane) → **Layer-0 hygiene CI HARD-GATE bites here** —
   table-stakes (L0.1–L0.15 read parse+resolve only, both LANDED, **no T-9
@@ -321,7 +339,11 @@ sessions are *not* folded in — see exceptions.
 |---|---|---|---|
 | **Fresh: Compiler-Pipeline (+Lens, gated)** | **Pipeline scope (active on Wave-0 go):** T-3 tail, T-6–T-8 CP-1b close, T-9, T-10, T-11, T-16, T-25-tail, T-28; **T-26 = std-authoritative, conduit-only**. **Lens scope (T-12/13/17/18/23) — GATED on the `fierce-cat-31` lens fan-out CLOSEOUT** (one lens owner at a time — see exception 2; no P2 parallel-authority drift) | Wave-0: T-3 tail / CP-1b / T-26 only | **Mirrors §4 topology (strict, codex BLOCKING):** W2 T-9 → W3 T-10 (+T-4.8, +T-12/13 refine) → W4 T-11 (+T-17, +T-18 — lens-scope, also post-closeout) → W5 **T-16** → W6 T-15 handoff. Lens scope (T-12/13/17/18/23) additionally post-`fierce-cat-31`-closeout. |
 | **Fresh: Test/Bootstrap-Infra** | T-19, T-20, T-21, T-22, T-24, T-14, T-15, T-4.11, T-32 | **T-19, T-20, T-21** (full) · **T-22** (`READY*` scaffold scope) | §4-mirrored: T-24 W4 (post T-20/T-21), T-14 W4 (post T-19), **T-15 W6** (terminal, post T-16) |
+<<<<<<< HEAD
 | **Fresh: extdeps/T-4** | T-4 ×5, T-4.5–T-4.14 | **— (T-4.9/T-4.10/T-4.12/T-4.14 LANDED; T-4.13 modeled slice landed but LanguageModel-blocked; T-29 core #3267 merged but **residual #3277 OPEN & still a TASKS.md-declared T-4-cpp feeder**; T-4 ×5 HELD on keystone)** | T-4 (post-keystone+T-29 #3277), T-4.5–4.8 |
+=======
+| **Fresh: extdeps/T-4** | T-4 ×5, T-4.5–T-4.14 | **— (T-4.10/T-4.12 LANDED; T-29 core #3267 merged but **residual #3277 OPEN & still a TASKS.md-declared T-4-cpp feeder**; T-4 ×5 HELD on the **full TASKS.md:286 feeder set `{P1-KEYSTONE, T-30, T-29, T-25-core}`** — all four, never keystone-only (same gate as the §2 T-4 row and this row's gated cell))** | T-4 (post the **full TASKS.md:286 feeder set `{P1-KEYSTONE + T-30 + T-29 #3277 + T-25-core}`** — not "keystone + T-29" alone; T-25-core and T-30 are hard T-4 prerequisites too). **T-4.5–4.8 follow their own §2 table deps, NOT the full ×4** (T-4.5: `T-3,T-25-core`; T-4.6: `T-25-core,T-26`; T-4.7/T-4.8: post-T-4) — §2 is the sole dependency authority; this lane cell does not widen their gate. |
+>>>>>>> origin/main
 | **Fresh: Dissolution** | T-30, T-31, Wave-2 lenses, 🟡 burn-down | **T-31(b) mop-up; T-30 generated-checker** | Wave-2 lenses — *consumes* the §4 cross-lane prereqs (new std/ carriers + 3 derived lens-stages built by Compiler-Pipeline+Lens) — post A1-ratification |
 | **Operator** | Keystone rulings | **see §7 decision sheet** | — |
 
@@ -345,8 +367,10 @@ sessions are *not* folded in — see exceptions.
 2. **`swift-ram-178`** — ✅ RATIFIED. Owns + can parallel T-19/20/21/22;
    IRT-1..4 binding in T-21/T-22; T-15 terminal. Correction folded: T-20
    materially advanced via merged #3213.
-3. **`vivid-carp-207`** — ✅ RATIFIED. T-4 ×5 stays HELD on the keystone
-   cluster. Folded: **T-4.10/T-4.12 already LANDED** (not Wave-0).
+3. **`vivid-carp-207`** — ✅ RATIFIED. T-4 ×5 stays HELD on the **full
+   keystone cluster** — the TASKS.md:286 feeder set
+   `{P1-KEYSTONE, T-30, T-29, T-25-core}`, all four (never keystone-only).
+   Folded: **T-4.10/T-4.12 already LANDED** (not Wave-0).
    **CORRECTION (codex REQUEST_CHANGES, TASKS.md authority):** T-29 was
    wrongly reclassified "LANDED/removed" — TASKS.md:64/:286/:1035 still
    declares it a hard T-4-cpp-slice feeder + #3277 OPEN; **T-29 restored to
@@ -357,7 +381,8 @@ sessions are *not* folded in — see exceptions.
 5. **Operator** — ⏳ OPEN: the §3 cluster — **ratify the verbatim invariant
    blockquote at `modeling-discipline.md` ~§594–600** (exists on main; #3240
    is a closed tracker, not it; `still-hawk-102` then lands+de-hedges —
-   small), confirm **A-vs-B=B**, and give a T-25-core direction. That
+   small), confirm **A-vs-B=B**, and **authorize T-25-core** (shape already
+   ratified — TASKS.md §962+/Cat-6; a stamp, not a direction). That
    sequence collapses the long pole *and*
    unjams #3280 + #3313, **and** scopes the pre-#3240 backward-rework set.
 
@@ -404,8 +429,11 @@ Everything else **follows from or is independent of** that root call:
 an equivalence — #1 must not ride #3a unscrutinized). #2 falls out of #1
 (forward-only, no revert). #3a is **ratify-exact-text-today** (the invariant
 blockquote exists on main; still-hawk then does a small mechanical land +
-de-hedge), NOT a drafting effort. #3b (T-25-core) is a genuine separate
-design fork. #4/#5/#6 are independent and low-risk; **#7 still needs you**;
+de-hedge), NOT a drafting effort. #3b (T-25-core) is a separate
+**authorize-to-build stamp** (shape operator-ratified — TASKS.md §962+ /
+coercion-design.md Category 6; NOT a design fork — earlier framing
+overstated). #4/#5/#6 are independent and low-risk; **#7 still needs you**;
 **#8 is resolved (B2)**. Honest count: the long pole is **2–3 operator
 items** — (a) ratify the verbatim invariant text, (b) confirm A-vs-B=B,
-(c) decide T-25-core — plus the low-risk independents.
+(c) authorize T-25-core (ratified shape — a stamp, not a design call) —
+plus the low-risk independents.

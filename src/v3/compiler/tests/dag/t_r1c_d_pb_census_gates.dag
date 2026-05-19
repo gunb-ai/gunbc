@@ -152,6 +152,7 @@ data pb_test_file_generated_from_dag_gate: TestClaim = {
       PendingFact { output_path: "src/v3/compiler/src/cost_symbolic_lens_generated.rs" },
       PendingFact { output_path: "src/v3/compiler/src/lens_cost_target_realization_generated.rs" },
       PendingFact { output_path: "src/v3/compiler/src/lens_effect_enumeration_generated.rs" },
+      PendingFact { output_path: "src/v3/compiler/src/lens_idempotency_generated.rs" },
       PendingFact { output_path: "src/v3/compiler/src/lens_parallelism_generated.rs" },
       PendingFact { output_path: "src/v3/compiler/src/lens_provenance_generated.rs" },
       PendingFact { output_path: "src/v3/compiler/src/lens_structural_resolution_generated.rs" },
