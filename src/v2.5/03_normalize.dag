@@ -268,9 +268,7 @@ fn apply_sugar_rule(
           Some { value: e0 } => normalized_type_from_seam_node(n: e0.target, span: span)
           None => Rejected { diagnostic: malformed_sugar_diagnostic(span: span) }
         }
-      ReplaceWithConj =>
-        apply_sugar_connective_replacement(rule: rule, children: children)
-      ReplaceWithArrow =>
+      _ =>
         apply_sugar_connective_replacement(rule: rule, children: children)
     }
   } else {
