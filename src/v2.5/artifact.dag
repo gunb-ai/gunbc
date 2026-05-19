@@ -1,9 +1,8 @@
 // src/v2.5/artifact.dag
-// Scope: typed artifact-plan — what the pipeline builds, for which target
-// LanguageSpec, into which output location.
+// Scope: typed artifact-plan — what the pipeline builds, for which target LanguageSpec, into which output location.
 // Owns: ArtifactPath, Artifact, ArtifactPlan, single_module_plan.
 // Consumes: v2_5.std.language_spec { LanguageSpec }.
-// Status: fork first-pass — no bootstrap binary yet (sunny-otter-371).
+// Status: fork first-pass.
 
 module v2_5.compiler.artifact
 
