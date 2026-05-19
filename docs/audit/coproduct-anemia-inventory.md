@@ -4,28 +4,28 @@
 
 **Corpus:** every `type … = … | …` sum in `src/v4/extdeps/languages/*`, `src/v4/extdeps/formats/*`, `src/v4/extdeps/*.dag`, plus every sum in `src/v4/std/**/*.dag`, `src/v4/compiler/**/*.dag`, `src/v4/lens/**/*.dag` (274 rows).
 
-**Stable repo anchors (outside dashboard threads):** long-lived substrate intent and gates live in `ROADMAP.md`, `MODELING.md`, `INVARIANTS.md`, and `src/v4/DECISIONS.md`. Ephemeral names here (`witty-cat-59`, `codex #14662`, internal adhoc ids) record **lane checkpoint / review provenance** for this inventory only — they are not substitutes for those files.
+**Stable repo anchors (outside dashboard threads):** long-lived substrate intent and gates live in `ROADMAP.md`, `MODELING.md`, `INVARIANTS.md`, and `src/v4/DECISIONS.md`. Ephemeral names here (`witty-cat-59`, `codex #14662`, internal adhoc ids) record **lane checkpoint / review provenance** for this inventory only — they are not substitutes for those files, and they are **not** the dissolution trigger for the `DEFERRED` continuation rows (see **`src/v4/TASKS.md`** § **Watch — `docs/audit/coproduct-anemia-inventory.md` (v4 coproduct sum census)** for the repo-checkable **P5** close condition).
 
-**Method (METHOD redo):** columns 1–3 are mechanically enumerated (path:line, sum name, `label-only` vs `coproduct`) and worst-first ordered using a **non-authoritative** tie-break (NONE-bare → spec-anchor → yellow; then label-only; then 🔴→🟡→🟢 **declaration** tags) **only to sort rows**—not to emit columns 4–7. Columns 4–7 for the §Checkpoint batch are **hand-authored modeling notes** read off the cited `.dag` fragments. Remaining rows carry an explicit **`DEFERRED`** queue marker in columns 4–7 pending witty-cat-59 spot-verify of §Checkpoint depth before a full pass. **No committed `scripts/*.py` corpus walker** for this audit (local ad-hoc enumeration during authorship only).
+**Method (METHOD redo):** columns 1–3 are mechanically enumerated (path:line, sum name, `label-only` vs `coproduct`) and worst-first ordered using a **non-authoritative** tie-break (NONE-bare → spec-anchor → yellow; then label-only; then 🔴→🟡→🟢 **declaration** tags) **only to sort rows**—not to emit columns 4–7. Columns 4–7 for the §Checkpoint batch are **hand-authored modeling notes** read off the cited `.dag` fragments. Remaining rows carry an explicit **`DEFERRED`** queue marker in columns 4–7 until the **structural completion** gate in **`src/v4/TASKS.md`** § **Watch — `docs/audit/coproduct-anemia-inventory.md`** is satisfied (every continuation row filled to the same depth bar; no `DEFERRED` placeholders in the final table). **No committed `scripts/*.py` corpus walker** for this audit (local ad-hoc enumeration during authorship only).
 
 **Column 7 (filing) discipline — codex #14662:** per the ruling frame (line 3), 🟢/🟡 on a `.dag` declaration is **filing posture**, not semantic grounding. Therefore **`🟢-substantiated` is reserved for rows whose column-5 verdict is `GROUNDED`** (substrate `data` / behavioral `fn` witness). If the verdict is `ANEMIC` but the declaration still carries a 🟢 dissolution ribbon, column 7 records **`🟢-decl-only`** (ledger/CP tag present; semantics still anemic). `🟡-tracked-bind` and `🔴-in-PR` continue to mean what they say on the declaration.
 
 ## Summary
 
 - **Row count (corpus sums):** 274
-- **Checkpoint batch (hand columns 4–7):** 12 rows in §Checkpoint batch (witty-cat spot-verify set).
+- **Checkpoint batch (hand columns 4–7):** 12 rows in §Checkpoint batch (initial depth-bar spot-check set; provenance may name review threads in prose, not as a completion gate).
 - **Deferred columns 4–7:** 262 rows — explicit queue marker only (not substantive analysis).
-- **Ten worst (ordering tie-break only; grounding/filing triples below match §Checkpoint hand read, not the old regex heuristic):**
-  1. `src/v4/extdeps/languages/typescript.dag:16` **`TsEcma262NumericPrimitiveKind`** — yellow-tracked-scaffold / label-only / 🟡-tracked-bind
-  2. `src/v4/extdeps/languages/typescript.dag:32` **`TsEcma262PrimitiveOperationSemantics`** — yellow-tracked-scaffold / label-only / 🟡-tracked-bind
+- **Ten worst (same tie-break as §Method line 9 for corpus sort: NONE-bare → spec-anchor → yellow; then label-only; then 🔴→🟡→🟢 on the declaration — triples below match §Checkpoint hand read only):** ranked **within the §Checkpoint batch** by that tie-break among the twelve spot-verify rows (not a separate heuristic list).
+  1. `src/v4/extdeps/languages/rust.dag:75` **`OverflowAction`** — NONE-bare / label-only / 🟢-decl-only
+  2. `src/v4/extdeps/languages/rust.dag:80` **`OverflowDisposition`** — NONE-bare / label-only / 🟢-decl-only
   3. `src/v4/std/verification.dag:14` **`AssertKind`** — spec-anchor-comment-only / label-only / 🟢-decl-only
   4. `src/v4/std/verification.dag:42` **`ImpossibleBugClass`** — spec-anchor-comment-only / label-only / 🟢-decl-only
-  5. `src/v4/std/verification.dag:52` **`T19ManualAnchorKey`** — yellow-tracked-scaffold / label-only / 🟡-tracked-bind
-  6. `src/v4/std/verification.dag:29` **`TestgenLayer`** — spec-anchor-comment-only / label-only / 🟢-decl-only
-  7. `src/v4/std/verification.dag:22` **`TestgenTier`** — spec-anchor-comment-only / label-only / 🟢-decl-only
-  8. `src/v4/lens/testgen.dag:32` **`TestgenConcept`** — yellow-tracked-scaffold / coproduct / 🟡-tracked-bind
-  9. `src/v4/lens/testgen.dag:14` **`TypeConstructionSubject`** — spec-anchor-comment-only / coproduct / 🟢-decl-only
-  10. `src/v4/extdeps/coordination.dag:48` **`ExchangePattern`** — spec-anchor-comment-only / label-only / 🟢-decl-only
+  5. `src/v4/std/verification.dag:29` **`TestgenLayer`** — spec-anchor-comment-only / label-only / 🟢-decl-only
+  6. `src/v4/std/verification.dag:22` **`TestgenTier`** — spec-anchor-comment-only / label-only / 🟢-decl-only
+  7. `src/v4/lens/testgen.dag:14` **`TypeConstructionSubject`** — spec-anchor-comment-only / coproduct / 🟢-decl-only
+  8. `src/v4/extdeps/coordination.dag:48` **`ExchangePattern`** — spec-anchor-comment-only / label-only / 🟢-decl-only
+  9. `src/v4/extdeps/languages/typescript.dag:16` **`TsEcma262NumericPrimitiveKind`** — yellow-tracked-scaffold / label-only / 🟡-tracked-bind
+  10. `src/v4/extdeps/languages/typescript.dag:32` **`TsEcma262PrimitiveOperationSemantics`** — yellow-tracked-scaffold / label-only / 🟡-tracked-bind
 
 ## Operator exemplars (verbatim)
 
@@ -33,7 +33,7 @@ ANEMIC = src/v4/extdeps/languages/rust.dag OverflowAction (PanicOnOverflow | Two
 
 GROUNDED = same file, data rust_bool_grounding BooleanAlgebra of Bool = bool_boolean_algebra.
 
-## §Checkpoint batch (witty-cat spot-verify) — full seven columns
+## §Checkpoint batch — full seven columns
 
 | file | type/concept | shape (coproduct vs label-only) | grounding class | ANEMIC vs GROUNDED + reason | what GROUNDED requires here | class (filing; see §Method column-7 discipline) |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -52,7 +52,7 @@ GROUNDED = same file, data rust_bool_grounding BooleanAlgebra of Bool = bool_boo
 
 ## Corpus continuation (274 rows; columns 4–7 deferred)
 
-The 262 rows below are the same worst-first enumeration with the §Checkpoint batch rows removed. Columns 4–7 reuse a single **queue tag** (not per-row modeling). Full hand analysis will replace these cells after witty-cat-59 sign-off.
+The 262 rows below are the same worst-first enumeration with the §Checkpoint batch rows removed. Columns 4–7 reuse a single **queue tag** (not per-row modeling). Full hand analysis replaces these cells under the **repo-checkable** completion gate in **`src/v4/TASKS.md`** § **Watch — `docs/audit/coproduct-anemia-inventory.md` (v4 coproduct sum census)** (P5 — **INVARIANTS** §P5: progress is dissolution with a machine-stated receipt, not a session nickname as sole trigger).
 
 | file | type/concept | shape | col4 | col5 | col6 | col7 |
 | --- | --- | --- | --- | --- | --- | --- |
