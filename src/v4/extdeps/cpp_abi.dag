@@ -14,12 +14,7 @@ type CppMachineWidth16
 type CppMachineWidth32
 type CppMachineWidth64
 
-<<<<<<< HEAD
-// 🟢 pretty-much-done — closed ABI integer-width atoms; testcase: test/claim/manual/cpp_scalar_grounding_anchor.dag.
-// 🟢 coproduct dissolution — DECISIONS.md T29-ABI.
-=======
 // 🟢 coproduct dissolution — T29-ABI.
->>>>>>> origin/main
 type CppIntegerWidth
   = CppWidth8 { width: CppMachineWidth8 }
   | CppWidth16 { width: CppMachineWidth16 }
@@ -29,12 +24,7 @@ type CppIntegerWidth
 // 🟢 pretty-much-done — core integer-width bundle includes wchar_t width; testcase: test/claim/manual/cpp_scalar_grounding_anchor.dag.
 type CppCoreIntegerWidthModel<char_width, short_width, int_width, long_width, long_long_width, pointer_width, wchar_t_width>
 
-<<<<<<< HEAD
-// 🟢 pretty-much-done — implementation-defined plain-char signedness coordinate; testcase: test/claim/manual/cpp_scalar_grounding_anchor.dag.
-// 🟢 coproduct dissolution — DECISIONS.md T29-ABI.
-=======
 // 🟢 coproduct dissolution — T29-ABI.
->>>>>>> origin/main
 type CppPlainCharSignedness
   = PlainCharSigned { tag: CppPlainCharSigned }
   | PlainCharUnsigned { tag: CppPlainCharUnsigned }
@@ -42,9 +32,8 @@ type CppPlainCharSignedness
 type CppPlainCharSigned
 type CppPlainCharUnsigned
 
-<<<<<<< HEAD
 // 🟢 pretty-much-done — implementation-defined wchar_t signedness coordinate; testcase: test/claim/manual/cpp_scalar_grounding_anchor.dag.
-// 🟢 coproduct dissolution — DECISIONS.md T29-ABI.
+// 🟢 coproduct dissolution — T29-ABI.
 type CppWcharTSignedness
   = WcharTSigned { tag: CppWcharTSigned }
   | WcharTUnsigned { tag: CppWcharTUnsigned }
@@ -53,10 +42,7 @@ type CppWcharTSigned
 type CppWcharTUnsigned
 
 // 🟢 pretty-much-done — standard data-model family names; testcase: test/claim/manual/cpp_scalar_grounding_anchor.dag.
-// 🟢 coproduct dissolution — DECISIONS.md T29-ABI.
-=======
 // 🟢 coproduct dissolution — T29-ABI.
->>>>>>> origin/main
 type CppDataModelFamily
   = ILP32 { tag: CppDataModelFamilyILP32 }
   | LP64 { tag: CppDataModelFamilyLP64 }
@@ -68,12 +54,8 @@ type CppDataModelFamilyLP64
 type CppDataModelFamilyLLP64
 type CppDataModelFamilyILP64
 
-<<<<<<< HEAD
 // 🟢 pretty-much-done — ABI model selector; testcase: test/claim/manual/cpp_scalar_grounding_anchor.dag.
-// 🟢 coproduct dissolution — DECISIONS.md T29-ABI.
-=======
 // 🟢 coproduct dissolution — T29-ABI.
->>>>>>> origin/main
 type CppAbiModel
   = ItaniumCxxAbi186 { tag: CppAbiModelItaniumCxxAbi186 }
   | PlatformCxxAbi { tag: CppAbiModelPlatformCxxAbi }
