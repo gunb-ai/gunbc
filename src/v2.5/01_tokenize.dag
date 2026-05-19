@@ -16,6 +16,7 @@ type SourceSpan {
 type DiagnosticReason
   = UnexpectedCharacter
   | UnterminatedString
+  | UnterminatedInterpolation
   | LexicalProgressExhausted
 
 type Diagnostic {
@@ -179,6 +180,16 @@ type ScanStep {
 type ScanOutcome
   = Scanned { step: ScanStep }
   | ScanRejected { diagnostic: Diagnostic }
+
+type TokenizeExpectation
+  = ExpectProduced
+  | ExpectRejected { reason: DiagnosticReason }
+
+type TokenizeRegression {
+  name: Symbol
+  source: Source
+  expected: TokenizeExpectation
+}
 
 data keyword_table: Map<String, Keyword> = {
   "module": ModuleKeyword, "import": ImportKeyword,
@@ -501,11 +512,16 @@ fn scan_lbrace(source: Source, frame: LexerFrame) -> ScanOutcome {
 }
 
 fn scan_rbrace(source: Source, frame: LexerFrame) -> ScanOutcome {
+  let new_depth = if count(frame.interpolation_depth) > 0 {
+    replace_last(stack: frame.interpolation_depth, value: last(frame.interpolation_depth).value - 1)
+  } else {
+    frame.interpolation_depth
+  }
   Scanned {
     step: ScanStep {
       cursor: frame.cursor + 1,
       token: make_token(source: source, start: frame.cursor, end: frame.cursor + 1, lexeme: "}", kind: PunctuationToken { punctuation: RBrace }),
-      interpolation_depth: frame.interpolation_depth
+      interpolation_depth: new_depth
     }
   }
 }
@@ -528,7 +544,11 @@ fn scan_token(source: Source, frame: LexerFrame) -> ScanOutcome {
     interpolation_depth: frame.interpolation_depth,
     eof_emitted: frame.eof_emitted
   }
-  if cursor >= source_len(source: source) {
+  if cursor >= source_len(source: source) && count(active.interpolation_depth) > 0 {
+    ScanRejected {
+      diagnostic: diagnostic(source: source, reason: UnterminatedInterpolation, start: cursor, end: cursor, lexeme: "")
+    }
+  } else if cursor >= source_len(source: source) {
     Scanned {
       step: ScanStep {
         cursor: cursor + 1,
@@ -639,6 +659,16 @@ fn tokenize(source: Source) -> Outcome<TokenStream> {
             lexeme: ""
           )
         }
+      } else if count(frame.interpolation_depth) > 0 {
+        Rejected {
+          diagnostic: diagnostic(
+            source: source,
+            reason: UnterminatedInterpolation,
+            start: frame.cursor,
+            end: frame.cursor,
+            lexeme: ""
+          )
+        }
       } else if frame.eof_emitted {
         Produced { value: TokenStream { tokens: frame.tokens } }
       } else {
@@ -647,3 +677,72 @@ fn tokenize(source: Source) -> Outcome<TokenStream> {
       }
   }
 }
+
+fn tokenize_expectation_holds(source: Source, expected: TokenizeExpectation) -> Bool {
+  match tokenize(source: source) {
+    Produced { value: _ } =>
+      match expected {
+        ExpectProduced => true
+        ExpectRejected { reason: _ } => false
+      }
+    Rejected { diagnostic: d } =>
+      match expected {
+        ExpectProduced => false
+        ExpectRejected { reason } => d.reason == reason
+      }
+  }
+}
+
+data nested_brace_interpolation_regression: TokenizeRegression = TokenizeRegression {
+  name: nested_brace_interpolation_regression,
+  source: Source {
+    file: nested_brace_interpolation_regression,
+    text: concat(
+      "\"x ",
+      concat(
+        from_code_point(cp: code_point("{")),
+        concat(
+          "foo(",
+          concat(
+            from_code_point(cp: code_point("{")),
+            concat(
+              "bar: 1",
+              concat(
+                from_code_point(cp: code_point("}")),
+                concat(
+                  ")",
+                  concat(
+                    from_code_point(cp: code_point("}")),
+                    concat(" y", "\"")
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  },
+  expected: ExpectProduced
+}
+
+data unterminated_interpolation_regression: TokenizeRegression = TokenizeRegression {
+  name: unterminated_interpolation_regression,
+  source: Source {
+    file: unterminated_interpolation_regression,
+    text: concat("\"x ", concat(from_code_point(cp: code_point("{")), "name"))
+  },
+  expected: ExpectRejected { reason: UnterminatedInterpolation }
+}
+
+data nested_brace_interpolation_regression_holds: Bool =
+  tokenize_expectation_holds(
+    source: nested_brace_interpolation_regression.source,
+    expected: nested_brace_interpolation_regression.expected
+  )
+
+data unterminated_interpolation_regression_holds: Bool =
+  tokenize_expectation_holds(
+    source: unterminated_interpolation_regression.source,
+    expected: unterminated_interpolation_regression.expected
+  )
