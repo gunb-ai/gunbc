@@ -126,13 +126,8 @@ first) · `DESIGN` · `OP` (operator ruling) · `CP1` (needs v4 front-end output
 - **Lens footnote:** the PREFIX driver/corpus gate is **T-23 + driver**, not
   T-12 alone; T-12/T-13/T-17/T-18/T-23 rows match the running lens fan-out.
 - **T-4-mgr staleness correction (verified vs main):** T-4.10 (#3168),
-<<<<<<< HEAD
   T-4.12 (#3171), T-4.14 (#3170) are **already LANDED**. T-4.9 (`verilog.dag`) and T-4.14
-  (`ptx.dag`) carry **PASS (IN-B)** in their file headers (probe receipts; §2 Status column echoes that for T-4.9/T-4.14). PTX authority is **dispatch §2 + merge PR** (*not* `DECISIONS.md` — retired), with `ptx.dag` **domain-neutral** on the process axis (no process-axis status tag in the carrier). T-4.13
-=======
-  T-4.12 (#3171), T-4.14 (#3170) are **already LANDED**. T-4.9 (`verilog.dag`)
-  carries **PASS (IN-B)** in its file header (probe receipt; §2 Status column echoes that for T-4.9). **T-4.14** (`ptx.dag`) records the same **PASS (IN-B)** dispatch posture under **dispatch §2 + merge PR** (historical *L-3* stake; `DECISIONS.md` retired) with a **domain-neutral** file header (no process-axis status tag in the carrier). T-4.13
->>>>>>> 7ef5aa323 (docs: retire DECISIONS.md L-3 citations — point T-4.14 authority at §2 + PR)
+  (`ptx.dag`) carry **PASS (IN-B)** in their file headers (probe receipts; §2 Status column echoes that for T-4.9/T-4.14). PTX authority is **dispatch §2 + merge PR** (historical *L-3* stake; `DECISIONS.md` retired), with `ptx.dag` **domain-neutral** on the process axis (no process-axis status tag in the carrier). T-4.13
   (`machine_code.dag`) carries a **D2-REV Isa-parameterized modeled slice**
   with a zero-diagnostic `compile_to_dag` smoke; §2 keeps T-4.13 **CP1-blocked on T-4
   LanguageModel** per TASKS.md while recording the landed smoke/model
@@ -437,4 +432,5 @@ overstated). #4/#5/#6 are independent and low-risk; **#7 still needs you**;
 **#8 is resolved (B2)**. Honest count: the long pole is **2–3 operator
 items** — (a) ratify the verbatim invariant text, (b) confirm A-vs-B=B,
 (c) authorize T-25-core (ratified shape — a stamp, not a design call) —
-plus the low-risk independents.
+plus the low-risk independents.  T-4.12 (#3171), T-4.14 (#3170) are **already LANDED**. T-4.9 (`verilog.dag`) and T-4.14
+  (`ptx.dag`) carry **PASS (IN-B)** in their file headers (probe receipts; §2 Status column echoes that for T-4.9/T-4.14). PTX authority is **dispatch §2 + merge PR** (historical *L-3* stake; `DECISIONS.md` retired), with `ptx.dag` **domain-neutral** on the process axis (no process-axis status tag in the carrier). T-4.13
