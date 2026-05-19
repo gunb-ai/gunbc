@@ -82,11 +82,15 @@
 //                                 substrate kind)
 //     • OpenAPI wire contract   — Shape-B (`extdeps/formats/openapi.dag`)
 //     • SQL DDL persistence     — Shape-B (canvas #4 fork (a): emitted
-//                                 THROUGH `extdeps/formats/sql.dag`, a
-//                                 grounded ISO-SQL format model, so the
-//                                 schema is coercion-checked — never a
-//                                 string DDL printout, ruled out as the
-//                                 emit-side templating smell)
+//                                 THROUGH a grounded ISO-SQL format
+//                                 model so the schema is coercion-
+//                                 checked — never a string DDL printout.
+//                                 That model is `extdeps/formats/
+//                                 sql.dag`, a NOT-YET-LANDED T-4.6
+//                                 formats-bundle extension; this layer
+//                                 does NOT freeze a Consumes edge to it
+//                                 — see the named pending dependency
+//                                 below)
 //     • Markdown docs           — Shape-B
 //
 //   Endpoint partitioning (which program fragment runs where) is
@@ -166,8 +170,18 @@
 //   - extdeps/languages/{rust,python,go,cpp,typescript}.dag
 //                            — the ×5 Shape-A grammar-as-data models
 //                              (inverse walk = emit; never a template)
-//   - extdeps/formats/{openapi,sql}.dag — T-16 Shape-B wire/persistence
-//                              projections (coercion-checked, not printed)
+//   - extdeps/formats/openapi.dag       — T-16 Shape-B wire-contract
+//                              projection (coercion-checked, not printed)
+//
+//   Named pending dependency (NOT a frozen closed-tree Consumes edge —
+//   the file is not on `main`; INVARIANTS P2):
+//   - extdeps/formats/sql.dag — T-16 Shape-B SQL-DDL persistence
+//                              projection. NOT-YET-LANDED: scheduled as
+//                              the T-4.6 formats-bundle 7th-file
+//                              extension (canvas #4 fork (a)). The T-16
+//                              real-fill trigger above already gates on
+//                              T-4.6; the SQL projection binds when
+//                              `sql.dag` lands, not before.
 //   - extdeps/frameworks/react.dag      — T-16 React-as-TS (canvas Q2-a)
 //   - extdeps/coordination.dag          — T-16 endpoint partitioning
 //                              (`Endpoint` / `DeploymentUnit` /
