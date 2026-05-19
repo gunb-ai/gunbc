@@ -83,8 +83,9 @@ type TestClaimCacheReceipt<T> {
 
 
 // RULING-1: pretty-much-done — verdict carrier preserves actual Outcome in non-pass states.
+// 🟢 coproduct dissolution — T22-EVAL-VERDICT.
 type Verdict<T>
-// 🟢 coproduct dissolution — DECISIONS.md T22-EVAL-VERDICT
+// 🟢 coproduct dissolution — T22-EVAL-VERDICT
   = Pass
   | Fail { actual: Outcome<T> }
   | Deferred { actual: Outcome<T>, diagnostic: Diagnostic }
@@ -141,7 +142,7 @@ fn eval_node(tree: InferredTree, inputs: Inputs) -> Outcome<Node> {
 }
 
 
-// 🟡 derived equality scaffold — DECISIONS.md T22-EVAL-OUTCOME-EQ
+// 🟡 derived equality scaffold — T22-EVAL-OUTCOME-EQ
 fn outcome_node_eq(a: Outcome<Node>, b: Outcome<Node>) -> Bool {
   match a {
     Produced { value: av } => match b {

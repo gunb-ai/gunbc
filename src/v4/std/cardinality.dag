@@ -11,13 +11,13 @@ module v4.std.cardinality
 import v4.std.collection { List }
 import v4.std.nat { Nat }
 import v4.std.node { Symbol }
-// 🟢 DECISIONS.md Part 1 Never/Unit + §PR-3252-cardinality-std (Practice 9).
+// 🟢 Part 1 Never/Unit + §PR-3252-cardinality-std (Practice 9).
 type Never
 type Unit
 type NonZeroNat {
   prev: Nat
 }
-// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-NAT-LE-WITNESS.
+// 🟢 coproduct dissolution — CP-3229-NAT-LE-WITNESS.
 type NatLeWitness
   = LeqZero { upper: Nat }
   | LeqSucc { inner: NatLeWitness }
@@ -80,7 +80,7 @@ fn positive_nat_le_witness_well_formed(w: PositiveNatLeWitness) -> Bool {
 fn positive_upper_bounded_nat_well_formed(b: PositiveUpperBoundedNat) -> Bool {
   positive_nat_le_witness_well_formed(w: b.le)
 }
-// 🟢 coproduct dissolution — DECISIONS.md classification ledger: DescentEvidence.
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type DescentEvidence
   = Strict
   | NonIncreasing
@@ -92,7 +92,7 @@ type TerminationProof {
   non_increasing: List<RankingDimension>
   strict: RankingDimension
 }
-// 🟢 coproduct dissolution — DECISIONS.md classification ledger: Multiplicity.
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type Multiplicity
   = Bounded
   | Unbounded { step: TerminationProof }

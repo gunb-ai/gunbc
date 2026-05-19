@@ -924,6 +924,20 @@ All 5 artifacts share ONE Node tree (per gate #28 omni_layers_share_one_node_tre
 
 ---
 
+## Watch — `docs/audit/coproduct-anemia-inventory.md` (v4 coproduct sum census)
+
+**P5 dissolution (repo-checkable).** This row is the **stable** completion gate for the inventory artifact — not a dashboard session handle.
+
+**Closes when all hold:**
+
+1. `docs/audit/coproduct-anemia-inventory.md` enumerates **274** corpus sums; the **full** corpus table carries **no** `DEFERRED` placeholder in **grounding-axis columns (A)(B)(C)** (columns **8–10**) for any row, and **no** `DEFERRED` in **coproduct-modeling columns 4–7** for any row — every row has substantive hand-authored modeling notes read off the cited `.dag` fragment in cols **4–7**, per the Method bar in that file.
+2. The inventory’s **Method** and **Summary** sections describe completion in terms of **this structural condition** (and, where useful, stable intent in `ROADMAP.md` / `MODELING.md` / `INVARIANTS.md` plus the **no parallel comment-ledgers** standing rule in `docs/modeling-discipline.md` — **not** a resurrected standalone `DECISIONS.md` path), not a session nickname as the sole dissolution trigger.
+3. The landing PR updates **this bullet** with the merge SHA (or the operator folds the obligation elsewhere and edits this section accordingly).
+
+Until (1)–(3): the partial table with `DEFERRED` cells is **honest interim state**; reviewers use the checkpoint batch + exemplars as the depth bar, not as “done.”
+
+---
+
 ## Summary
 
 Every task in this plan is a bounded, modeling-load-bearing pure function (the count is intentionally unstated — it drifts as scope is ratified; see T-15's drift-proof close gate). Gaming surface is structurally bounded because adding files / splitting files / reaching outside declared substrate all require operator escalation. Per zero-deferrals: "I'll just do this for now" is forbidden — STOP and escalate.
