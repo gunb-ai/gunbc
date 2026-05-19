@@ -1,13 +1,14 @@
 // src/v4/workflow/ci.dag
 // Scope: CI pipeline AS DATA; gunbc job/gate DAG + eager well-formedness; ci.yml projection deferred.
 // Owns: CiCommand, CiJob, CiGate, CiPipeline, ci_pipeline_well_formed, ci_pipeline
-// Consumes: v4.std.node, v4.std.diagnostic, v4.workflow.bootstrap
+// Consumes: v4.std.node, v4.std.collection, v4.std.diagnostic, v4.workflow.bootstrap
 // Status: filled — declarative core + eager well-formedness; structural v2 gate only.
 
 module v4.workflow.ci
 
 
 import v4.std.node { Symbol }
+import v4.std.collection { any, filter, forall, member, unique }
 import v4.std.diagnostic {
   Correction,
   Diagnostic,
@@ -76,55 +77,28 @@ fn ci_diagnostic(reason: Symbol) -> Diagnostic {
   }
 }
 
-// 🟡 List-op dissolution (Practice 10) — DECISIONS.md LB-P10-3213
-fn ci_id_occurrences(id: Symbol, jobs: List<CiJob>) -> Int {
-  fold(jobs, init: 0, f: fn(acc, j) {
-    if j.id == id { acc + 1 } else { acc }
-  })
-}
-
 fn ci_symbol_resolves(s: Symbol, jobs: List<CiJob>) -> Bool {
-  fold(jobs, init: false, f: fn(acc, j) {
-    acc || (j.id == s)
-  })
-}
-
-fn ci_member(s: Symbol, ids: List<Symbol>) -> Bool {
-  fold(ids, init: false, f: fn(acc, x) {
-    acc || (x == s)
-  })
+  any(xs: jobs, predicate: fn(j) { j.id == s })
 }
 
 fn ci_all_job_ids_unique(jobs: List<CiJob>) -> Bool {
-  fold(jobs, init: true, f: fn(acc, j) {
-    acc && (ci_id_occurrences(id: j.id, jobs: jobs) == 1)
-  })
-}
-
-fn ci_gate_id_occurrences(id: Symbol, gates: List<CiGate>) -> Int {
-  fold(gates, init: 0, f: fn(acc, g) {
-    if g.id == id { acc + 1 } else { acc }
-  })
+  unique(xs: jobs, eq: fn(a, b) { a.id == b.id })
 }
 
 fn ci_all_gate_ids_unique(gates: List<CiGate>) -> Bool {
-  fold(gates, init: true, f: fn(acc, g) {
-    acc && (ci_gate_id_occurrences(id: g.id, gates: gates) == 1)
-  })
+  unique(xs: gates, eq: fn(a, b) { a.id == b.id })
 }
 
 fn ci_all_needs_resolve(jobs: List<CiJob>) -> Bool {
-  fold(jobs, init: true, f: fn(acc, j) {
-    acc && fold(j.needs, init: true, f: fn(acc2, n) {
-      acc2 && ci_symbol_resolves(s: n, jobs: jobs)
+  forall(xs: jobs, predicate: fn(j) {
+    forall(xs: j.needs, predicate: fn(n) {
+      ci_symbol_resolves(s: n, jobs: jobs)
     })
   })
 }
 
 fn ci_all_gate_jobs_resolve(gates: List<CiGate>, jobs: List<CiJob>) -> Bool {
-  fold(gates, init: true, f: fn(acc, g) {
-    acc && ci_symbol_resolves(s: g.job, jobs: jobs)
-  })
+  forall(xs: gates, predicate: fn(g) { ci_symbol_resolves(s: g.job, jobs: jobs) })
 }
 
 fn ci_job_needs(id: Symbol, jobs: List<CiJob>) -> List<Symbol> {
@@ -134,18 +108,14 @@ fn ci_job_needs(id: Symbol, jobs: List<CiJob>) -> List<Symbol> {
 }
 
 fn ci_blocked(id: Symbol, remaining: List<Symbol>, jobs: List<CiJob>) -> Bool {
-  fold(ci_job_needs(id: id, jobs: jobs), init: false, f: fn(acc, n) {
-    acc || ci_member(s: n, ids: remaining)
+  any(xs: ci_job_needs(id: id, jobs: jobs), predicate: fn(n) {
+    member(item: n, xs: remaining, eq: fn(a, b) { a == b })
   })
 }
 
 fn ci_eliminate_pass(remaining: List<Symbol>, jobs: List<CiJob>) -> List<Symbol> {
-  fold(remaining, init: [], f: fn(acc, id) {
-    if ci_blocked(id: id, remaining: remaining, jobs: jobs) {
-      concat([id], acc)
-    } else {
-      acc
-    }
+  filter(xs: remaining, predicate: fn(id) {
+    ci_blocked(id: id, remaining: remaining, jobs: jobs)
   })
 }
 
@@ -171,9 +141,7 @@ fn ci_command_authority_ok(c: CiCommand) -> Bool {
 }
 
 fn ci_all_commands_authority_ok(jobs: List<CiJob>) -> Bool {
-  fold(jobs, init: true, f: fn(acc, j) {
-    acc && ci_command_authority_ok(c: j.command)
-  })
+  forall(xs: jobs, predicate: fn(j) { ci_command_authority_ok(c: j.command) })
 }
 
 fn ci_pipeline_well_formed(p: CiPipeline) -> Outcome<CiPipeline> {

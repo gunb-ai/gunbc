@@ -1,12 +1,13 @@
 // src/v4/workflow/bootstrap.dag
 // Scope: v4-owned bootstrap orchestration AS DATA — four stages (seed→stage0→stage1→stage2, fixpt stage1==stage2). compiled_by = stage compiler-of-record: seed←v2 (seed used once), self0←stage0, self1←stage1; v2 is never in the loop again (STRUCTURE.md "Seed used once" :404-405, SELF_HOSTING.md §meta-circular).
 // Owns: CompileStage, FixptStage1Stage2, BootstrapPlan, bootstrap_stage_output, bootstrap_plan_well_formed, bootstrap_plan
-// Consumes: v4.std.node, v4.std.diagnostic
+// Consumes: v4.std.node, v4.std.collection, v4.std.diagnostic
 // Status: filled — compiler-of-record is the self-hosting structural fact; structural gate only.
 
 module v4.workflow.bootstrap
 
 import v4.std.node { Symbol }
+import v4.std.collection { set_eq }
 import v4.std.diagnostic {
   Correction,
   Diagnostic,
@@ -53,23 +54,6 @@ fn bs_diagnostic(reason: Symbol) -> Diagnostic {
   }
 }
 
-// 🟡 List-op dissolution (Practice 10) — DECISIONS.md LB-P10-3213
-fn bs_member(s: Symbol, xs: List<Symbol>) -> Bool {
-  fold(xs, init: false, f: fn(acc, x) {
-    acc || (x == s)
-  })
-}
-
-fn bs_list_eq(a: List<Symbol>, b: List<Symbol>) -> Bool {
-  (count(a) == count(b))
-    && fold(a, init: true, f: fn(acc, x) {
-         acc && bs_member(s: x, xs: b)
-       })
-    && fold(b, init: true, f: fn(acc, y) {
-         acc && bs_member(s: y, xs: a)
-       })
-}
-
 fn bootstrap_stage_output(plan: Outcome<BootstrapPlan>, s: Symbol) -> Bool {
   match plan {
     Produced { value: bp } => (s == bp.seed.produces) || (s == bp.self0.produces) || (s == bp.self1.produces)
@@ -78,13 +62,13 @@ fn bootstrap_stage_output(plan: Outcome<BootstrapPlan>, s: Symbol) -> Bool {
 }
 
 fn bootstrap_plan_well_formed(p: BootstrapPlan) -> Outcome<BootstrapPlan> {
-  if bs_list_eq(a: p.seed.consumes, b: [v4_dag_source])
+  if set_eq(a: p.seed.consumes, b: [v4_dag_source], eq: fn(a, b) { a == b })
        && (p.seed.produces == v4_stage0_binary)
        && (p.seed.compiled_by == v2_pipeline)
-       && bs_list_eq(a: p.self0.consumes, b: [v4_dag_source, v4_stage0_binary])
+       && set_eq(a: p.self0.consumes, b: [v4_dag_source, v4_stage0_binary], eq: fn(a, b) { a == b })
        && (p.self0.produces == v4_stage1_binary)
        && (p.self0.compiled_by == v4_stage0_binary)
-       && bs_list_eq(a: p.self1.consumes, b: [v4_dag_source, v4_stage1_binary])
+       && set_eq(a: p.self1.consumes, b: [v4_dag_source, v4_stage1_binary], eq: fn(a, b) { a == b })
        && (p.self1.produces == v4_stage2_binary)
        && (p.self1.compiled_by == v4_stage1_binary)
        && (p.fixpt.left == v4_stage1_binary)
