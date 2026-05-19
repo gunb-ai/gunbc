@@ -34,6 +34,7 @@ type ExclusionProof
   | UnchangedPureBoundary { subject: Path, content_hash: Hash }
 
 
+// 🟢 coproduct dissolution — DECISIONS.md #3153-subsumed; IRT-1 whole/changed-subgraph gate.
 type AffectedFrontierMode
   = ChangedSubgraph { roots: List<Path> }
   | WholeDagFailClosed { reason: Symbol }
@@ -57,12 +58,14 @@ type AffectedSetRead {
 }
 
 
+// 🟡 coproduct dissolution — DECISIONS.md #3153-subsumed; dissolves into B1 content_hash read receipts.
 type HashReceipt
   = HashUnchanged { content_hash: Hash }
   | HashChanged
   | HashUnknown { reason: Symbol }
 
 
+// 🟡 coproduct dissolution — DECISIONS.md #3153-subsumed; dissolves when T-21 .dag TestClaims prove boundary cases.
 type BoundaryReceipt
   = BoundaryPruned { proof: ExclusionProof }
   | BoundaryExpands
@@ -129,10 +132,19 @@ fn mark_whole_dag(acc: FrontierAcc, reason: Symbol) -> FrontierAcc {
 
 
 fn append_root(acc: FrontierAcc, path: Path) -> FrontierAcc {
-  FrontierAcc {
-    mode: ChangedSubgraph { roots: list_push(acc.roots, path) },
-    decisions: acc.decisions,
-    roots: list_push(acc.roots, path)
+  match acc.mode {
+    WholeDagFailClosed { reason: r } =>
+      FrontierAcc {
+        mode: WholeDagFailClosed { reason: r },
+        decisions: acc.decisions,
+        roots: list_push(acc.roots, path)
+      }
+    ChangedSubgraph { roots: _ } =>
+      FrontierAcc {
+        mode: ChangedSubgraph { roots: list_push(acc.roots, path) },
+        decisions: acc.decisions,
+        roots: list_push(acc.roots, path)
+      }
   }
 }
 
