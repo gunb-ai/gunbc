@@ -550,8 +550,9 @@ only in `DECISIONS.md` Part 6 (PR #3229)** — not here.
 ## `ptx.dag` — header IN-B headline / Owned-elsewhere detail
 
 ```
-//        (forced by DECISIONS.md L-3 — PTX is the SIMT *IR*; CUDA-C++ is
-//        a Shape A source already covered by general modeling, so it
+//        (historical L-3 B2-OMNI stake — `DECISIONS.md` retired; live authority:
+//        `docs/briefs/r4-program-dispatch-plan.md` §2 + merge PR. PTX is the SIMT *IR*;
+//        CUDA-C++ is a Shape A source already covered by general modeling, so it
 //        would not be a down-the-stack probe at all): the SIMT execution
 //        model (grid / block / thread), the memory hierarchy
 //        (register / shared / global / etc.), kernels and barriers.

@@ -91,7 +91,7 @@ first) · `DESIGN` · `OP` (operator ruling) · `CP1` (needs v4 front-end output
 | T-4.11 | claim/english_ingest | SCAFFOLD | T-3/verification.dag | IFACE (AssertKind) | Lane B |
 | T-4.12 | languages/llvm_ir | **LANDED** (#3171 merged; +#3229 de-prose +#3300 cost-move on main) — *pre-D2-reversal canonical path; see rework-obligation note* | T-1,T-2 | LANDED | T-4 mgr |
 | T-4.13 | languages/machine_code | **IMPL (modeled slice)** — D2-REV per file header; Isa-parameterized slice + zero-diagnostic smoke landed | T-3, T-4 LanguageModel | CP1 (T-4 LanguageModel; modeled slice landed) | T-4 mgr |
-| T-4.14 | languages/ptx | **PASS (IN-B)** — **DECISIONS.md L-3**; `ptx.dag` header intentionally domain-neutral | T-1,T-2 | LANDED | T-4 mgr |
+| T-4.14 | languages/ptx | **PASS (IN-B)** — **dispatch §2 + merge PR** (historical *L-3* B2-OMNI stake; `DECISIONS.md` retired); `ptx.dag` header intentionally domain-neutral | T-1,T-2 | LANDED | T-4 mgr |
 | **T-9** | compiler/04_infer | SCAFFOLD | T-8/CP-1b-close (∥) + T-4 | IMPL (T-4 keystone; CP-1b-close parallel, not keystone-gated) | Lane A |
 | **T-10** | 05_emit + 00_compile | SCAFFOLD | T-9, T-4 | IMPL+IFACE | Lane A |
 | **T-11** | emit per-target ×5 | NOT STARTED | T-10 | IMPL | Lane A |
@@ -126,8 +126,13 @@ first) · `DESIGN` · `OP` (operator ruling) · `CP1` (needs v4 front-end output
 - **Lens footnote:** the PREFIX driver/corpus gate is **T-23 + driver**, not
   T-12 alone; T-12/T-13/T-17/T-18/T-23 rows match the running lens fan-out.
 - **T-4-mgr staleness correction (verified vs main):** T-4.10 (#3168),
+<<<<<<< HEAD
   T-4.12 (#3171), T-4.14 (#3170) are **already LANDED**. T-4.9 (`verilog.dag`) and T-4.14
   (`ptx.dag`) carry **PASS (IN-B)** in their file headers (probe receipts; §2 Status column echoes that for T-4.9/T-4.14). PTX authority is **dispatch §2 + merge PR** (*not* `DECISIONS.md` — retired), with `ptx.dag` **domain-neutral** on the process axis (no process-axis status tag in the carrier). T-4.13
+=======
+  T-4.12 (#3171), T-4.14 (#3170) are **already LANDED**. T-4.9 (`verilog.dag`)
+  carries **PASS (IN-B)** in its file header (probe receipt; §2 Status column echoes that for T-4.9). **T-4.14** (`ptx.dag`) records the same **PASS (IN-B)** dispatch posture under **dispatch §2 + merge PR** (historical *L-3* stake; `DECISIONS.md` retired) with a **domain-neutral** file header (no process-axis status tag in the carrier). T-4.13
+>>>>>>> 7ef5aa323 (docs: retire DECISIONS.md L-3 citations — point T-4.14 authority at §2 + PR)
   (`machine_code.dag`) carries a **D2-REV Isa-parameterized modeled slice**
   with a zero-diagnostic `compile_to_dag` smoke; §2 keeps T-4.13 **CP1-blocked on T-4
   LanguageModel** per TASKS.md while recording the landed smoke/model
