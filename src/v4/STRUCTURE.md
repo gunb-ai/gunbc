@@ -65,13 +65,13 @@ src/v4/
                          # NO 6th behavior per IN-B decision 2026-05-15)
 
   compiler/              # pipeline orchestrator + 6 stages (7 files)
-    00_compile.dag       # orchestrator: (Source, TargetSpec) -> Result<TargetSource, Diagnostic>
+    00_compile.dag       # orchestrator: (Source, TargetModel) -> Outcome<TargetSource> (TASKS T-10; spelling per CP-1b/T-8-close)
     01_tokenize.dag      # FreeMonoid<Char> -> TokenStream
     02_parse.dag         # TokenStream -> ParseTree
     03_normalize.dag     # ParseTree -> NormalizedTree (sugar dissolution)
     03_resolve.dag       # NormalizedTree -> ResolvedTree (symbol binding)
-    04_infer.dag         # ResolvedTree -> InferredTree (types/algebra/cardinality)
-    05_emit.dag          # InferredTree + TargetSpec -> TargetSource (omni-emission projection)
+    04_infer.dag         # ResolvedTree -> InferredTree (bounded Find phase, DECISIONS C1 / IR-1)
+    05_emit.dag          # InferredTree + TargetModel -> TargetSource (omni-emission projection)
     05_eval.dag          # InferredTree + Inputs -> Value (THE PRIMARY execution path,
                          # THESIS:225; sibling of emit — eval executes, emit projects)
 
@@ -119,12 +119,13 @@ src/v4/
         nat_law_anchors.dag
         t19_manual_anchor_manifest.dag  # T-19 manifest — `T19ManualAnchorKey` membership rows
         resolve_compile_anchor.dag  # resolve + wave-1 canonical `Set` compile anchor (#3225; T-22 defers `v2 run`)
+        infer_emit_compile_anchor.dag  # T-9/T-10 interface-freeze witness: `infer`/`emit`/`compile` Wave-1 fail-closed boundary (crisp-cat-892; T-22 defers `v2 run`)
       boundary/          # boundary-honesty probes
         english_ingest_fail_closed.dag  # T-4.11 — fail-closed ingest, no fabrication
     fixture/             # canonical input programs
 ```
 
-**Total: 73 .dag files + 5 docs + 5 .gitkeep = 83 files.** (Per invariant
+**Total: 74 .dag files + 5 docs + 5 .gitkeep = 84 files.** (Per invariant
 #1 the enumeration above — not the count — is authoritative; the count is
 a checksum, updated on every operator-ratified file addition/removal.
 **Reconciliation (2026-05-17, PR #3225 / review #13750):** the prior printed
@@ -147,6 +148,7 @@ checksum **71→72** `.dag`.
 `docs/briefs/r4-lane-a-lens-interface-freeze-pin.md` §3); checksum **72→73** `.dag`.
 **P2-staging** (INVARIANTS §P2) until a generated consumer reads the rows — paired
 `v4_lens_registry_dag_smoke_test.rs` receipt (parse witness only; same discipline as `fact_density.dag`).
+**2026-05-19 (T-9/T-10 interface freeze):** add `test/claim/manual/infer_emit_compile_anchor.dag` (Tier-1 v2-compile anchor — `infer`/`emit`/`compile` Wave-1 fail-closed boundary, T-22 defers `v2 run`); checksum **73→74** `.dag`.
 
 ## Scalar/numeric concept decomposition
 
