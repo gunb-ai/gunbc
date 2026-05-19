@@ -39,10 +39,13 @@ type FloatBody
       trailing_significand: Nat
     }
   | NonFinite { tag: FloatSpecial }
+
+// 🟢 grounded.
 type Float32 {
   body: FloatBody
 }
 
+// 🟢 grounded.
 type Float64 {
   body: FloatBody
 }
