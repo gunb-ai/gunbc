@@ -16,7 +16,7 @@ src/v4/
   TASKS.md               # the XL task plan (count drift-proof; see T-15)
   DECISIONS.md           # design-decisions ledger (RATIFIED + record)
 
-  std/                   # substrate primitives (15 landed + 1 P2-staging witness; see note on `fact_density.dag`)
+  std/                   # substrate primitives (15 landed)
     node.dag             # 6 type connectives + 5 L1 behaviors (substrate root)
     algebra.dag          # Magma/Monoid/BoolAlgebra/FreeMonoid (structures only)
     cardinality.dag      # cardinality refinement, P4 decidability
@@ -32,7 +32,6 @@ src/v4/
     collection.dag       # bounded containers
     verification.dag     # TestClaim schema + Tier×Layer classification (v4-fresh; studied v3/dsl)
     report.dag           # advisory carrier (NOT fail-closed Diagnostic); used by synthesis lens
-    fact_density.dag     # P2-staging only (INVARIANTS §P2): T-30 `compile_to_dag` parse witness — **not** a landed std primitive until a **generated** `.dag` consumer reads `SourceSpecReadFact`; hollow-alias authority today is the private Rust mirror module `v4_hollow_alias_gate` in `v3-compiler`. See `DECISIONS.md` T-30 encoding note + `TASKS.md` T-30.
 
   extdeps/               # external system contracts (23 files)
     cpp_abi.dag          # C++ ABI / target data-model (LP64/LLP64/ILP32/ILP64)
@@ -43,7 +42,7 @@ src/v4/
       go.dag
       cpp.dag            # C++ (subsumes C subset); ISO/IEC 14882
       typescript.dag     # TypeScript + ECMAScript
-      verilog.dag        # Verilog HDL (T-4.9 — B2-OMNI probe; IN-B concurrency)
+      verilog.dag        # Verilog HDL (IEEE 1364-2005; extdeps language model; header Consumes: std/node.dag; std/nat.dag (Nat); schedule edges in TASKS extdeps fan-out)
       llvm_ir.dag        # LLVM IR (T-4.12 — B2-OMNI probe; down-the-stack SSA)
       machine_code.dag   # ISA-parameterized (T-4.13 — bottom of stack; disasm fail-closed)
       ptx.dag            # CUDA/PTX (T-4.14 — B2-OMNI+IN-B probe; SIMT data-parallel)
@@ -75,7 +74,7 @@ src/v4/
     05_eval.dag          # InferredTree + Inputs -> Value (THE PRIMARY execution path,
                          # THESIS:225; sibling of emit — eval executes, emit projects)
 
-  lens/                  # dimensions (12 files, parallel after compiler)
+  lens/                  # dimensions (13 files, parallel after compiler)
     complexity.dag
     cost.dag             # Tier 1 + Tier 2 textbook (α(n)/log*/log log/sub-exp); UnknownCost floor
     parallelism.dag
@@ -86,7 +85,9 @@ src/v4/
     coverage.dag         # meta-lens — L6/L7/impossible-bug/testgen coverage discipline (structural)
     testgen.dag          # producer side — reads substrate, emits TestClaim corpus (Phase 1.5)
     affected_set.dag     # incremental re-exec frontier; replaces detect-affected shell (Phase 1.5)
+    affected_set_examples.dag # expected affected-frontier example values
     application.dag      # apply_lens surface — opt-in depth + ONLY advisory→fail-closed bridge
+    fact_density.dag     # T-30 fact-density lens — pure-advisory `carrier_spec_fact: Node -> SourceSpecReadFact`; surfaces carriers with empty fact-cardinality. Enforcement is the downstream `apply_lens(Enforce)` bridge, not this file. Compile-graph exercised by `test/claim/manual/fact_density_anchor.dag`.
     registry.dag         # P2-staging only (INVARIANTS §P2): PREFIX T-23 v0 `LensIdV0` × `LensModulePathV0` rows — **not** landed single authority until a **generated** consumer reads `LensRegistryEntryV0`; `v4_lens_registry_dag_smoke_test.rs` is **parse + inference cleanliness** only (same posture as `fact_density.dag`). Operator pin §3 human mirror; amend `.dag` first.
 
   workflow/              # meta-process as data (2 files; the v3-derived
@@ -119,13 +120,13 @@ src/v4/
         nat_law_anchors.dag
         t19_manual_anchor_manifest.dag  # T-19 manifest — `T19ManualAnchorKey` membership rows
         resolve_compile_anchor.dag  # resolve + wave-1 canonical `Set` compile anchor (#3225; T-22 defers `v2 run`)
-        infer_emit_compile_anchor.dag  # T-9/T-10 interface-freeze witness: `infer`/`emit`/`compile` Wave-1 fail-closed boundary (crisp-cat-892; T-22 defers `v2 run`)
+        fact_density_anchor.dag  # T-30 fact-density lens compile anchor (hollow / fact-bundle / kernel-ambient carriers; T-22 defers `v2 run`)
       boundary/          # boundary-honesty probes
         english_ingest_fail_closed.dag  # T-4.11 — fail-closed ingest, no fabrication
     fixture/             # canonical input programs
 ```
 
-**Total: 74 .dag files + 5 docs + 5 .gitkeep = 84 files.** (Per invariant
+**Total: 75 .dag files + 5 docs + 5 .gitkeep = 85 files.** (Per invariant
 #1 the enumeration above — not the count — is authoritative; the count is
 a checksum, updated on every operator-ratified file addition/removal.
 **Reconciliation (2026-05-17, PR #3225 / review #13750):** the prior printed
@@ -148,7 +149,8 @@ checksum **71→72** `.dag`.
 `docs/briefs/r4-lane-a-lens-interface-freeze-pin.md` §3); checksum **72→73** `.dag`.
 **P2-staging** (INVARIANTS §P2) until a generated consumer reads the rows — paired
 `v4_lens_registry_dag_smoke_test.rs` receipt (parse witness only; same discipline as `fact_density.dag`).
-**2026-05-19 (T-9/T-10 interface freeze):** add `test/claim/manual/infer_emit_compile_anchor.dag` (Tier-1 v2-compile anchor — `infer`/`emit`/`compile` Wave-1 fail-closed boundary, T-22 defers `v2 run`); checksum **73→74** `.dag`.
+**2026-05-19 (#3349):** add `lens/affected_set_examples.dag` as expected affected-frontier example values;
+checksum **74→75** `.dag`.
 
 ## Scalar/numeric concept decomposition
 

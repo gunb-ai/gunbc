@@ -116,6 +116,7 @@ type RegisterScalar
   | PredicateScalar
 
 
+// 🟢 grounded.
 type Dim3 {
   x: PositiveUpperBoundedNat
   y: PositiveUpperBoundedNat
@@ -130,12 +131,14 @@ type ThreadHierarchyShape
   | ExplicitClusterLaunch { cluster_grid_dim: Dim3, cluster_dim: Dim3, block_dim: Dim3 }
 
 
+// 🟢 grounded.
 type ThreadCoord {
   source: ThreadCoordSource
   axis: ThreadAxis
 }
 
 
+// 🟢 grounded.
 type PtxCost {
   instruction_cost: Nat
   occupancy_cost: Nat
