@@ -805,9 +805,12 @@ auto_fix_for_lens(lens, scope) -> AutoFixOutcome
 ```
 
 §6.3 hero case (a) L1.5 catamorphism auto-fix is the first concrete
-instance — `auto_fix_for_lens(L1.5, RootScope)` over the corpus,
+instance — `auto_fix_for_lens` folded over `declarations_in(dag)`
+(i.e. `declarations_in(dag).for_each(d => auto_fix_for_lens(L1.5, DeclarationScope(d)))`),
 swapping recursive `match` shapes for `list_any` / `traverse` fold
-primitives.
+primitives. Per §2, corpus-wide application is the fold over the
+declaration set; `auto_fix_for_lens` itself takes a `SectionRef`
+(`DeclarationScope` or `NodeScope`) — never an invented `RootScope`.
 
 `AutoFixOutcome` is a structural carrier reporting either
 `AppliedClean { sites: N, diff: Diff }` (every match auto-fixed
