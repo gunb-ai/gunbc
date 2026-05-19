@@ -484,7 +484,8 @@ type TestPredicate
   // in this module) and `cementing_receipts` (the Band-C receipt list in the suite
   // fixture). Evaluation projects bootstrap `LensRegistryEntry` (`regen.dag`) rows
   // whose `lens_file` basename appears in the register slice with behavioral axis
-  // `LensCapabilityBehavioralComplete` plus v2 axis `LensCapabilityV2RealV2`,
+  // `LensCapabilityBehavioralComplete` plus v2 axis `LensCapabilityV2RealV2` **or**
+  // `LensCapabilityV2NoneV3Native` (v3-native behavioral-complete gate-#87 harnesses),
   // expands each matched pair to the closed roster of `(registry_name, module_stem, kind)`
   // receipts, then asserts the `cementing_receipts` list matches that expansion
   // **exactly** (set equality on receipt triples, not merely registry-name keys), that

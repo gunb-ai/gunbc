@@ -134,7 +134,11 @@ the audit anchors.
 
 | # | substrate PR (`feature:` arrival) | owner / owning task | 🟡-count | unblocks |
 |---|---|---|---|---|
+<<<<<<< HEAD
 | **P1** | `std/cardinality.dag` bounded-natural / refinement substrate | std / T-3 Wave-A2 | **3 row groups + 1 cite (+2 closed receipts)** | DECISIONS.md: `SL-3229-LLVM-WIDTH`, `SL-3229-LLVM-OPS`, `SL-3229-PTX-DIM3`, `SL-3229-PTX-COST`, `SL-3229-VERILOG-COST` (+ `SL-3229-FLOAT-NOMINAL` once re-gated under this canonical owner). In-file: `llvm_ir.dag:28`. **Receipt (PR #3310 / 2026-05-18 + follow-up receipt):** `LlvmType` raw-width payload scaffold **closed** (live `NonZeroNat` / `Nat`); `PtxCost` and `VerilogCost` raw signed-`Int` payload scaffolds **closed** where live carriers now use `Nat`; `Dim3` closes only its negative-axis illegal state and remains 🟡 for positive / per-axis-maximum refinement; three format carriers drop the erroneous `SL-3229-LLVM-WIDTH` Practice-9 cite (DECISIONS.md §SL-3229-T4-FORMAT-T6T7 operator note — cite P1 separately from float/integer). Remaining P1-family debt is operand-relation / stronger-bound refinement, not raw non-negative cost payload scaffolding. |
+=======
+| **P1** | `std/cardinality.dag` bounded-natural / refinement substrate | **substrate:** std / T-3 Wave-A2 — **`compile_to_dag` / extdeps import surface (flat v3 bootstrap, `NonZeroNat` name resolution):** compiler / **T-32** (minimum never-hand-edited seed program; `src/v4/TASKS.md`) **+** receipt path per **T-30** interim mirror (`compile_to_dag` smoke harness / bootstrap collision notes in same §T-30) | **~20 live (+2 closed receipts)** | DECISIONS.md: `SL-3229-LLVM-OPS`, `SL-3229-PTX-DIM3`, `SL-3229-FLOAT-NOMINAL` once re-gated under this canonical owner (`SL-3229-LLVM-WIDTH`, `SL-3229-PTX-COST`, `SL-3229-VERILOG-COST` are **🟢 closed** on live carriers — see DECISIONS.md Part 6). **`Dim3`:** merge-base negative-axis illegal state is closed (`Int` → `Nat` on `ptx.dag` axes); **zero-axis + per-axis-maximum** refinement remains 🟡 until a checkable positive bounded-axis witness lands **and** `compile_to_dag` resolves `v4.std.cardinality` imports for extdeps single-file smoke (today imports are parse-only; `NonZeroNat` is not in the flat v3 bootstrap name table). In-file: the ~16 VAGUE prose blocks in `json.dag` / `yaml.dag` / `toml.dag` that concretize to this arrival (refinement-side family). **Receipt (PR #3310 / 2026-05-18 + follow-up):** `LlvmType` width payloads, `PtxCost` / `VerilogCost` non-negative axes. Remaining P1-family debt is **operand-relation refinement**, **SIMT dim strict-positivity + per-axis maxima**, and **import lowering / bootstrap extension** so cardinality refinements used in extdeps `.dag` files participate in `compile_to_dag`, not raw width/cost payload scaffolding alone. |
+>>>>>>> origin/main
 | **P2** | `std/collection.dag` Wave-A2: `List<T> where non_empty` refinement **plus** the List combinator algebra (`forall` / `count_where` / `unique` over `FreeMonoid<T>`) | std / T-3 Wave-A2 (coercion-design.md RQ-3) | **5 named + 29 sites** | Section 2: `std/node.dag` × 4 traverses (`all_edges_named`, `all_edges_positional`, `name_occurrences`, `all_names_distinct`). DECISIONS.md: `SL-3229-VERILOG-NONEMPTY` (one row, 29 verilog.dag back-pointer sites after P8). |
 | **P3** | Compiler pipeline-stage substrate (lex-walk + parse-walk) | compiler / T-6, T-7 | **2 + 3 format parse cites** | Section 2: `compiler/01_tokenize.dag tokenize`, `compiler/02_parse.dag parse`. In-file: the concrete parse-half cites in `json.dag`, `yaml.dag`, and `toml.dag` gate on T-6/T-7 directly. |
 | **P4** | LanguageModel-axis rework family (post-D2-reversal model) | extdeps/languages (`typescript.dag` under T-4; Verilog D3200 under TASKS.md T-4.9) | **1 TypeScript status gate + 1 row + 5 sites + 1 fn** | In-file: `typescript.dag` now carries one file-level concrete status gate (`feature: T-4 fact-bundle Phase-3 rework after T-3/T-29/T-30/T-25-core`); no D2-shaped yellow blocks remain on PR head. DECISIONS.md: `SL-3229-VERILOG-D3200` now gates on the T-4.9 Verilog `LanguageModel` axis rework named in `TASKS.md`; its five `verilog.dag` cite-sites remain strict-deprose one-line pointers to that row. Section 2: `extdeps/languages/dag.dag dag_language_model_wave1_void_canonical_symbols` (added in CP-1b #3225 — canonical_symbols set is a fact on DagLanguageModel/language-identity, not a hand-rolled function). |
@@ -163,7 +167,11 @@ Total 🟡 in the v4 substrate today (Section 2 + Section 3 VALID-🟡):
 | primitive PR | 🟡 today | landing event | 🟡 after landing |
 |---|---|---|---|
 | (baseline) | **~36** | — | — |
+<<<<<<< HEAD
 | P1 lands | 3 row groups + 1 cite | `std/cardinality.dag` refinement | ~16 |
+=======
+| P1 lands | ~20 | `std/cardinality.dag` refinement (+ import lowering / bootstrap for extdeps `NonZeroNat`) | ~16 |
+>>>>>>> origin/main
 | P2 lands | 5 named (+ 29 verilog sites converge in one sweep) | `std/collection.dag` Wave-A2 | ~11 named |
 | P3 lands | 2 named (+ 3 format parse cites) | T-6 + T-7 pipeline substrate | ~9 named |
 | P4 lands | 1 TypeScript status gate + 1 row + 5 sites + 1 fn (`dag.dag canonical_symbols` #3225) | LanguageModel-axis rework family (T-4 + T-4.9) | ~3 named |
@@ -187,8 +195,13 @@ the 🟡 burn-down because they dissolved outside the substrate-gap queue.)
 Caveats:
 
 1. **"🟡 today" counts only entries already bound to a P# in the
+<<<<<<< HEAD
    plan.** Section 2's fresh findings + Section 3's VALID-🟡 are
    counted; **Section 3's 2 VAGUE DECISIONS.md rows are NOT** —
+=======
+   plan.** Section 2's fresh findings + Section 3's 3 VALID-🟡 are
+   counted; **Section 3's ~19 VAGUE + 4 INVALID-GATE are NOT** —
+>>>>>>> origin/main
    they are pre-plan backlog (no concrete primitive to roll under
    yet). The burn-down lane drives the backlog first; once a VAGUE/
    INVALID entry is re-concretized to a `feature:` arrival that
@@ -510,10 +523,14 @@ generic parameters / inhabitance bounds." Verified against
 **`SL-3229-LLVM-WIDTH`** — raw-`Int` width payload scaffold
 (`LlvmType` family). Named arrival: "std/cardinality.dag refinement
 substrate lands (T-3)." Verified `std/cardinality.dag` on main:
-`DescentEvidence`, `RankingDimension`, `TerminationProof`,
-`Multiplicity` modeled; **no bounded-natural / refinement primitive**.
-- **Triage: VALID.**
-- **#3244 re-expression:** `🟡 gated — feature: bounded-natural refinement in std/cardinality.dag (T-3 Wave-A2)`. Gate is concrete; owning task named.
+`NonZeroNat`, `NatLeWitness`, `UpperBoundedNat`, `DescentEvidence`,
+`Multiplicity`, … — **bounded-natural / strict-positivity refinement
+carriers are consumable**; live `llvm_ir.dag` uses `NonZeroNat` for
+`IntegerType.bits` and `VectorType.count` per DECISIONS.md disposition.
+- **Triage: CLOSED** (merge-base raw-`Int` width payload class; LangRef
+tightness beyond strict positivity stays producer-side per DECISIONS).
+- **#3244 re-expression:** n/a — cite-sites on `LlvmType` are 🟢 terminal
+coproduct rows; ledger remains as audit history.
 
 **`SL-3229-LLVM-OPS`** — operation-specific operand constraints. Named
 arrival: same as `SL-3229-LLVM-WIDTH` (cardinality refinement / operand
@@ -527,7 +544,9 @@ Named arrival: same cardinality-refinement family (T-3).
 - **Closure receipt:** live `ptx.dag` uses `Nat` for `Dim3.x` / `y` / `z`.
   The negative-axis illegal state is closed, but zero and PTX pinned-maximum
   illegal states remain representable until T-3 supplies a positive
-  bounded-axis witness. `SL-3229-PTX-DIM3` therefore remains live.
+  bounded-axis witness **and** extdeps can resolve `v4.std.cardinality`
+  imports under `compile_to_dag` (or equivalent bootstrap extension).
+  `SL-3229-PTX-DIM3` therefore remains live.
 
 **`SL-3229-PTX-COST`** — raw-`Int` PTX cost axes (`PtxCost`). Named
 arrival: cardinality refinement (T-3).
@@ -596,14 +615,12 @@ one-line shape; the concrete gate lives in the cited DECISIONS.md row.
 - **Triage: VALID** (inherits the concretized T-4.9 Verilog
   LanguageModel-axis gate from `SL-3229-VERILOG-D3200`, Section 3.1).
 
-**`extdeps/languages/llvm_ir.dag:28`** — `// 🟡 coproduct dissolution —
-DECISIONS.md Part 6 · SL-3229-LLVM-WIDTH.`
-- **Triage: VALID** (inherits from 3.1 SL-3229-LLVM-WIDTH VALID).
-- **#3244 re-expression at cite-site:** can stay as-is (the ledger row
-  itself is the authority; the in-file one-liner is a pointer). If the
-  operator-mandated form requires the gate kind on the cite-site too,
-  cite-site becomes `// 🟡 coproduct dissolution — feature:
-  std/cardinality.dag refinement (T-3) — DECISIONS.md Part 6 · SL-3229-LLVM-WIDTH.`
+**`extdeps/languages/llvm_ir.dag` (`LlvmType` row)** — merge-base had a
+🟡 `SL-3229-LLVM-WIDTH` cite immediately above `type LlvmType`; **HEAD**
+carries `// 🟢 … CP-3229-GREEN-TERMINAL` on `LlvmType` with `NonZeroNat`
+payloads (see §3.1 **`SL-3229-LLVM-WIDTH` CLOSED**).
+- **Triage: STALE** (inventory line-number snapshot; no live 🟡 cite on
+  `LlvmType` at HEAD).
 
 **`extdeps/formats/json.dag` × 2 concrete cite-sites** (lines 21-22)
 — both are one-line `🟡 gated — feature:` cites:
@@ -643,7 +660,7 @@ T-3/T-29/T-30/T-25-core.`
 | tracker | shape | gate-kind | concrete-arrival? | dissolve-on-arrival obligation? | triage |
 |---|---|---|---|---|---|
 | SL-3229-INTEGER-GROUP-COMPLETION | DECISIONS.md row | feature | partial (feature named, owning task TBD) | yes | **VAGUE** (no owning task → not bound to a named substrate PR; tightened bar) |
-| SL-3229-LLVM-WIDTH | DECISIONS.md row | feature | yes (cardinality.dag T-3) | yes | VALID |
+| SL-3229-LLVM-WIDTH | DECISIONS.md row | feature | yes (cardinality.dag T-3) | yes | **CLOSED** (§3.1 — live `llvm_ir.dag` carriers; ledger row retained) |
 | SL-3229-LLVM-OPS | DECISIONS.md row | feature | yes (cardinality.dag T-3) | yes | VALID |
 | SL-3229-PTX-DIM3 | DECISIONS.md row | feature | yes (cardinality.dag T-3) | yes | VALID |
 | SL-3229-PTX-COST | DECISIONS.md row | feature | yes (cardinality.dag T-3) | yes | CLOSED |
@@ -652,17 +669,27 @@ T-3/T-29/T-30/T-25-core.`
 | SL-3229-VERILOG-VECTOR-RANGE | DECISIONS.md row | feature | yes (T-4.9 Verilog constant_expression) | yes | CLOSED |
 | SL-3229-VERILOG-COST | DECISIONS.md row | feature | yes (cardinality.dag T-3) | yes | CLOSED |
 | SL-3229-FLOAT-NOMINAL | DECISIONS.md row | feature | **partial** (straddles machine.dag + cardinality.dag) | yes | **VAGUE** |
+<<<<<<< HEAD
 | verilog.dag × 5 in-file cite-sites | one-liner | feature | yes (inherits TASKS.md T-4.9 Verilog LanguageModel-axis rework) | yes | VALID |
 | llvm_ir.dag:28 in-file cite-site | one-liner | feature | yes (inherits SL-3229-LLVM-WIDTH) | yes | VALID |
 | json.dag × 2 in-file cite-sites | one-liner | feature | yes (T-6/T-7 parse; T-10 emit) | yes | VALID |
 | yaml.dag × 3 in-file cite-sites | one-liner | feature | yes (T-6/T-7 parse; T-10 emit; YAML canonical keys) | yes | VALID |
 | toml.dag × 5 in-file cite-sites | one-liner | feature | yes (T-6/T-7 parse; T-10 emit; datetime; table syntax) | yes | VALID |
 | typescript.dag × 1 file-level status gate | one-liner | feature | yes (T-4 fact-bundle Phase-3 after named feeders) | yes | VALID |
+=======
+| verilog.dag × 5 in-file cite-sites | one-liner | (inherits SL-3229-VERILOG-D3200) | — | — | **VAGUE** (inherits) |
+| `llvm_ir.dag` (`LlvmType` row; legacy `llvm_ir.dag:28` snapshot) | one-liner | feature | yes (superseded — §3.1 **`SL-3229-LLVM-WIDTH` CLOSED**) | n/a | **STALE** (§3.2 — 🟢 terminal cite at HEAD; not a second `VALID-🟡` authority) |
+| json.dag × 3 in-file blocks | prose | mixed | **no** (class) | yes | **VAGUE** |
+| yaml.dag × 6 in-file blocks | prose | mixed | **no** (class) | yes | **VAGUE** |
+| toml.dag × 7+ in-file blocks | prose | mixed | **no** (class) | yes | **VAGUE** |
+| typescript.dag × 4 in-file blocks | prose | feature (D2-shaped) | **named arrival cancelled by D2-reversal** | yes | **INVALID-GATE** (re-gate post-reversal) |
+>>>>>>> origin/main
 
 Counts (under the still-hawk-102 tightened bar 2026-05-18 — VALID-🟡
 requires concrete gate AND binding to a named primitive+owning-task
 substrate PR in Section 1):
 
+<<<<<<< HEAD
 - **10 VALID-🟡 row groups** (5 DECISIONS.md rows: LLVM-WIDTH, LLVM-OPS,
   PTX-DIM3, VERILOG-NONEMPTY, VERILOG-D3200 bound to P1/P2/P4 + 1
   in-file cite-site `llvm_ir.dag:28` bound to P1; VERILOG-D3200 also
@@ -681,11 +708,32 @@ substrate PR in Section 1):
   gone on PR head and replaced by one concrete T-4 fact-bundle status
   gate.
 - **0 STALE → 🔴** — no named arrival has already landed.
+=======
+- **3 VALID-🟡** (3 DECISIONS.md rows: LLVM-OPS, PTX-DIM3,
+  VERILOG-NONEMPTY bound to P1/P2). **`SL-3229-LLVM-WIDTH`** is **CLOSED**
+  (§3.1; §3.3 table row matches — not counted here). The legacy
+  `llvm_ir.dag:28` cite snapshot is **STALE** (§3.2 / §3.3 — **not** a
+  parallel `VALID-🟡` authority). P8 closed `VERILOG-VECTOR-RANGE`;
+  `PTX-COST` and `VERILOG-COST` are **CLOSED**; those rows remain in
+  DECISIONS.md as audit receipts, not live 🟡.
+- **3 VAGUE DECISIONS.md rows** — `SL-3229-VERILOG-D3200` (consumer-class
+  not named) + `SL-3229-FLOAT-NOMINAL` (straddles two owners) +
+  **`SL-3229-INTEGER-GROUP-COMPLETION`** (no owning task — reclassified
+  under the tightened bar; P10 in Section 1 carries this flag).
+- **~16 VAGUE in-file prose blocks** across `json.dag`, `yaml.dag`,
+  `toml.dag`, and 5 `verilog.dag` cite-sites inheriting VERILOG-D3200
+  ≈ **~19 VAGUE total**.
+- **4 INVALID-GATE** (typescript.dag D2-shaped gates).
+- **1 STALE** (superseded cite-site snapshot only — `llvm_ir.dag`
+  `LlvmType` row per §3.2; **does not** re-open §3.1 **`SL-3229-LLVM-WIDTH`
+  CLOSED** or duplicate `VALID-🟡` counts above).
+>>>>>>> origin/main
 
-**Headline finding:** no pre-existing tracker is STALE — the remaining
-cardinality-refinement / collection Wave-A2 / constrained-generics
-arrivals are still ahead of us, while the raw non-negative cost rows closed
-once their live carriers moved to `Nat`. Verified against
+**Headline finding:** §3.1 / §3.2 / §3.3 agree on **`SL-3229-LLVM-WIDTH`**
+**CLOSED** + cite-site **STALE**; remaining cardinality-refinement /
+collection Wave-A2 / constrained-generics arrivals are still ahead of us,
+while the raw non-negative cost rows closed once their live carriers moved
+to `Nat`. Verified against
 `std/cardinality.dag`, `std/collection.dag`, `std/nat.dag`,
 `std/algebra.dag` on `main` @ `ce0241039`. The pre-existing-tracker
 debt is now down to the two VAGUE DECISIONS.md rows above; PR-head

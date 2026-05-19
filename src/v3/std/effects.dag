@@ -129,7 +129,7 @@ import std.methods {
   replace_method,
   with_method
 }
-import v3.std.substrate { ElementRef, NonSingletonList, PortId }
+import v3.std.substrate { Dag, ElementRef, NonSingletonList, PortId }
 import v3.std.services { Operation, CallableRef }
 
 // ── Path-template carriers ──────────────────────────────────────
@@ -767,7 +767,11 @@ fn report_parallelism_unsupported(
 
 // Stage 2b projection: `LinearEffect` delegates to `compose_effects`; other
 // shapes are explicit unsupported until downstream stages consume them.
-fn lane2_workflow_idempotency_report(wf: WorkflowEffect) -> WorkflowIdempotencyReport {
+//
+// `d` is the substrate root authority for executable lowering (Rust
+// `compose_operation_effects` needs the `Dag`); the current `.dag` body for
+// `LinearEffect` still routes through the index-only `compose_effects` model.
+fn lane2_workflow_idempotency_report(d: Dag, wf: WorkflowEffect) -> WorkflowIdempotencyReport {
   match wf {
     LinearEffect { ops } => WorkflowCompositionVerdict(compose_effects(effects: ops))
     BranchEffect { .. } =>
