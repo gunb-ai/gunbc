@@ -1,6 +1,6 @@
 // src/v4/lens/affected_set.dag
 // Scope: canonical affected-set authority for CI/incremental re-execution; fail-closed B-4/B-5 node frontier.
-// Owns: Dag, AffectedDimension, ExclusionKey, ExclusionProof, FrontierDecision, ReExecFrontier, AffectedSetRead, AffectedCurrentDagRead, HashReceipt, ChangedDimensionReceipt, affected_set.
+// Owns: Dag, AffectedDimension, ExclusionKey, ExclusionProof, FrontierDecision, ReExecFrontier, AffectedSetRead, AffectedPostEditDagReceipt, HashReceipt, ChangedDimensionReceipt, affected_set.
 // Consumes: Map, Diagnostic, Diff, Edit, Hash, Node, Path, Symbol, Witness; B1 content_hash receipts; B-4 resolved Symbol equality; B-5 per-Arrow signature effects.
 // Status: Wave-0 front: bounded changed-subgraph frontier fold landed; dissolves when CI use and .dag TestClaims land.
 
@@ -110,11 +110,6 @@ type AffectedFrontierRead {
 type AffectedPostEditDagReceipt
   = PostEditDagProduced { dag: Dag }
   | PostEditDagRejected { diagnostic: Diagnostic }
-
-
-type AffectedCurrentDagRead {
-  post_edit_dag: fn(Dag, Edit) -> AffectedPostEditDagReceipt
-}
 
 
 type AffectedSetRead {
@@ -312,11 +307,11 @@ fn expand_changed_dimensions(
 
 fn seed_edit_fold_acc(
   read_model: AffectedSetRead,
-  current_dag_read: AffectedCurrentDagRead,
+  post_edit_dag: fn(Dag, Edit) -> AffectedPostEditDagReceipt,
   acc: AffectedFoldAcc,
   edit: Edit
 ) -> AffectedFoldAcc {
-  match current_dag_read.post_edit_dag(acc.dag, edit) {
+  match post_edit_dag(acc.dag, edit) {
     PostEditDagProduced { dag: next_dag } =>
       match boundary_receipt(
         read_model: read_model,
@@ -363,7 +358,7 @@ fn seed_edit_fold_acc(
 
 fn affected_set(
   read_model: AffectedSetRead,
-  current_dag_read: AffectedCurrentDagRead,
+  post_edit_dag: fn(Dag, Edit) -> AffectedPostEditDagReceipt,
   dag: Dag,
   diff: Diff
 ) -> Witness<ReExecFrontier> {
@@ -372,7 +367,7 @@ fn affected_set(
       acc: fold(diff.edits, init: empty_affected_fold_acc(dag: dag), f: fn(acc, edit) {
         seed_edit_fold_acc(
           read_model: read_model,
-          current_dag_read: current_dag_read,
+          post_edit_dag: post_edit_dag,
           acc: acc,
           edit: edit
         )
