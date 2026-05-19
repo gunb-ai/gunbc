@@ -4,10 +4,10 @@
 Warning: every `//` line after `module` is deleted—non-idempotent if a target file gains
 authored in-body commentary; scoped to the pinned allowlist for that reason.
 
-Coproduct one-liners (`// 🟢|🟡|🔴 coproduct dissolution — DECISIONS.md Part 6 · …`) are
-(re)written from merge-base `92cb26402` Practice-4 / SL-3229 state (operator directive
-2026-05-17, PR #3234 modeling-discipline alignment): an existing tag with the wrong slug
-is replaced so `--check` cannot pass on stale pointers.
+Coproduct one-liners (`// 🟢|🟡|🔴 coproduct dissolution — <slug>.`) are (re)written from
+merge-base `92cb26402` Practice-4 / SL-3229 state (operator directive 2026-05-17, PR
+#3234 modeling-discipline alignment): an existing tag with the wrong slug is replaced
+so `--check` cannot pass on stale pointers.
 
 RULING-1 (operator 2026-05-19): each braced record `type` (not a sum coproduct) gets a
 single `// 🟢 grounded.` or `// 🟡 grounded.` line (lexeme-shaped `String` slots in
@@ -19,8 +19,8 @@ they are re-injected every run so spacing stays canonical.
 `type`, `data`, and `fn` binding in the `.dag` body (deduped by name), not only headline
 carriers—so regenerated headers stay aligned with actual exports.
 
-`// Ledger:` lists **Part 6 slugs for the live substrate**: one Part-6 ref per live
-sum coproduct (from the merge-base tag map) plus **EXTRA** non-coproduct scaffolds
+`// Ledger:` lists **dissolution slugs for the live substrate**: one slug per live sum
+coproduct (from the merge-base tag map) plus **EXTRA** non-coproduct scaffolds
 (`EXTRA_PART6_SLUGS_BY_REL`). A live coproduct name absent from the merge-base map is
 a hard failure (Practice 4 fail-closed).
 
@@ -36,8 +36,6 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-
-DECISIONS_REL = "src/v4/DECISIONS.md"
 
 MERGE_BASE = "92cb26402eeb21471acb6ac47559cbae3b52afdb"
 # Audit recovery: `coproduct_tag_from_merge_base` uses `git show MERGE_BASE:path`.
@@ -257,20 +255,6 @@ def coproduct_tag_from_merge_base(rel: str) -> dict[str, tuple[str, str]]:
     return out
 
 
-def part6_slugs_in_decisions(decisions_text: str) -> set[str]:
-    if "## Part 6" not in decisions_text:
-        return set()
-    chunk = decisions_text.split("## Part 6", 1)[1]
-    out: set[str] = set()
-    for ln in chunk.splitlines():
-        if ln.startswith("## ") and "Part 6" not in ln:
-            break
-        m = PART6_SLUG_HEAD_RE.match(ln)
-        if m:
-            out.add(m.group(1))
-    return out
-
-
 def module_body_line_list(path: Path) -> list[str]:
     lines = path.read_text().splitlines()
     for i, ln in enumerate(lines):
@@ -312,30 +296,11 @@ def format_ledger_line(
     rel: str, tag_map: dict[str, tuple[str, str]], live_coproducts: set[str]
 ) -> str:
     slugs = ", ".join(sorted(required_ledger_slugs(rel, tag_map, live_coproducts)))
-    return f"// Ledger: DECISIONS.md Part 6 (PR #3229): {slugs}.\n"
-
-
-def assert_part6_inventory(decisions_text: str, all_required: set[str]) -> None:
-    present = part6_slugs_in_decisions(decisions_text)
-    missing = sorted(all_required - present)
-    if missing:
-        print(
-            "FAIL: Part 6 missing authoritative rows for: " + ", ".join(missing),
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
-
-def maybe_assert_part6_inventory(all_required: set[str]) -> None:
-    """Part 6 ledger rows lived in DECISIONS.md until operator nuke (2026-05-19)."""
-    decisions_path = ROOT / DECISIONS_REL
-    if not decisions_path.is_file():
-        return
-    assert_part6_inventory(decisions_path.read_text(), all_required)
+    return f"// Ledger: dissolution slugs (PR #3229): {slugs}.\n"
 
 
 def format_coproduct_tag(emoji: str, ref: str) -> str:
-    return f"// {emoji} coproduct dissolution — DECISIONS.md Part 6 · {ref}."
+    return f"// {emoji} coproduct dissolution — {ref}."
 
 
 def grounded_tag_for_record_body(body_lines: list[str]) -> str:
@@ -489,8 +454,6 @@ def run_check(specs: list[tuple[str, str, str, str, str]]) -> None:
         tag_map = coproduct_tag_from_merge_base(rel)
         live = coproduct_type_names_in_path(path)
         union_required |= required_ledger_slugs(rel, tag_map, live)
-    maybe_assert_part6_inventory(union_required)
-
     drift: list[str] = []
     for rel, scope, anchor, consumes, status in specs:
         path = ROOT / rel
@@ -548,7 +511,7 @@ def main() -> None:
             "// Scope: NVIDIA PTX ISA 8.5 SIMT structural classifiers (param/shared state, registers, thread hierarchy).",
             "// Anchor: https://docs.nvidia.com/cuda/pdf/ptx_isa_8.5.pdf — TOC https://docs.nvidia.com/cuda/parallel-thread-execution/index.html",
             "// Consumes: std/nat.dag (Nat); std/cardinality.dag (PositiveUpperBoundedNat).",
-            "// Status: structural carriers present; conformance detail in DECISIONS.md Part 6.",
+            "// Status: structural carriers present; conformance detail in docs/audit/dissolution-inventory.md.",
         ),
         (
             "src/v4/std/integer.dag",
@@ -565,14 +528,6 @@ def main() -> None:
             "// Status: T-3 modeled.",
         ),
     ]
-
-    union_required: set[str] = set()
-    for rel, *_rest in specs:
-        path = ROOT / rel
-        tag_map = coproduct_tag_from_merge_base(rel)
-        live = coproduct_type_names_in_path(path)
-        union_required |= required_ledger_slugs(rel, tag_map, live)
-    maybe_assert_part6_inventory(union_required)
 
     if check_only:
         run_check(specs)

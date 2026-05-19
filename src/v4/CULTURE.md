@@ -202,7 +202,7 @@ insubordination.
   recursive generics; termination is compile-time and total by
   construction).
 - **How the anti-regression guarantee actually works (honestly framed)**
-  — `src/v4/STRUCTURE.md` invariant 7, and `src/v4/workflow/bootstrap.dag`.
+  — `src/v4/workflow/bootstrap.dag` (bootstrap chain as data).
 - **The single cost/coercion/emission spine, and the no-engine rule** —
   `src/v4/std/algebra.dag` header.
 - **How the cross-algorithm complexity lens is bounded** —
