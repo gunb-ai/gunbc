@@ -1,14 +1,15 @@
 // src/v4/extdeps/languages/lean.dag
 // Scope: Lean 4 language model for PROOF-1 termination export.
-// Owns: LeanDeclarationKind, LeanName, LeanLevel, LeanLevelRef, LeanLevelNode, LeanBinderInfo, LeanBinder, LeanTermRef, LeanTermNode, LeanTermForm, LeanMatchAlternative, LeanTerminationMeasure, LeanTerminationBy, LeanDecreasingProof, LeanTerminationClause, LeanDefinitionTermination, LeanProofArtifact, LeanFidelityFeature, LeanFidelityDisposition, LeanProofCheckSemantics, Symbol, LeanIntKind, LeanIntWidth, LeanScalar.
-// Consumes: List, Bool.
-// Status: D2-REV; 🟢 P4-3208 — DECISIONS.md (lean scalar + ledger); bool D2a bare-alias + {spelling}-GroundingMap retired (ruled-B); classifier fact = LeanScalar.BoolScalar; machine-readable grounding edge open per canonical-B (grounding-worked-examples.md §0).
+// Owns: LeanDeclarationKind, LeanName, LeanLevel, LeanLevelRef, LeanLevelNode, LeanBinderInfo, LeanBinder, LeanTermRef, LeanTermNode, LeanTermForm, LeanMatchAlternative, LeanTerminationMeasure, LeanTerminationBy, LeanDecreasingProof, LeanTerminationClause, LeanDefinitionTermination, LeanProofArtifact, LeanFidelityFeature, LeanFidelityDisposition, LeanProofCheckSemantics, Symbol, LeanIntKind, LeanIntWidth, LeanScalar, lean_bool_grounding.
+// Consumes: List, Bool, bool_boolean_algebra; v4.std.algebra.BooleanAlgebra.
+// Status: D2-REV; 🟢 P4-3208 — DECISIONS.md (lean scalar + ledger); bool grounded (canonical-B, v2-verified): lean_bool_grounding references the single std BooleanAlgebra<Bool> authority; classifier fact = LeanScalar.BoolScalar.
 
 module v4.extdeps.languages.lean
 
 
 import v4.std.collection { List }
-import v4.std.logic { Bool }
+import v4.std.logic { Bool, bool_boolean_algebra }
+import v4.std.algebra { BooleanAlgebra }
 
 
 // Twin of `v4.std.node.Symbol` — M1(2.7) compile_to_dag import lowering; local L-2 atom until `v4.std.node` import lowering lands (DECISIONS.md / P2).
@@ -201,3 +202,12 @@ type LeanIntWidth
 type LeanScalar
   = IntScalar { kind: LeanIntKind, width: LeanIntWidth }
   | BoolScalar
+
+
+// Anchor: https://lean-lang.org/doc/reference/4.20.0/Basic-Types/Booleans/
+// Lean 4: `Bool` is the inductive `true | false` with the standard
+// boolean operations. Read against the spec there is nothing above the
+// primitive to model — Lean Bool *is* the shared 2-element BooleanAlgebra.
+// Grounded by referencing the single std authority instance; coincidence
+// is fold-discharged, not asserted.
+data lean_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra

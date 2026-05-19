@@ -1,14 +1,16 @@
 // src/v4/extdeps/languages/go.dag
 // Scope: Go language spec surface (scalar width/kind sums, channel direction, export, cost shape, partial D2 resolver); L-2 pin go1.26 via Anchor.
-// Owns: SignedIntWidth, UnsignedIntWidth, GoFloatWidth, GoComplexWidth, GoScalarKind, GoScalar, GoChannelDirection, GoExportLocus, GoExportStatus, GoChannel, GoCost, GoBuiltinIntegerArithmeticOverflow, GoIntegerOverflowDisposition.
-// Consumes: v4.std.node.Symbol; kernel-ambient Int (STRUCTURE.md traceability).
-// Status: extdeps go slice; bool D2a bare-alias retired (ruled-B); classifier fact = GoScalar.BoolScalar; machine-readable grounding edge open per canonical-B (grounding-worked-examples.md §0); numeric D2a rows deferred per DECISIONS.md D2-REV and resolver.dag; no D1 ops in-file.
+// Owns: SignedIntWidth, UnsignedIntWidth, GoFloatWidth, GoComplexWidth, GoScalarKind, GoScalar, GoChannelDirection, GoExportLocus, GoExportStatus, GoChannel, GoCost, GoBuiltinIntegerArithmeticOverflow, GoIntegerOverflowDisposition, go_bool_grounding.
+// Consumes: v4.std.node.Symbol; v4.std.logic.Bool, bool_boolean_algebra; v4.std.algebra.BooleanAlgebra; kernel-ambient Int (STRUCTURE.md traceability).
+// Status: extdeps go slice; bool grounded (canonical-B, v2-verified): go_bool_grounding references the single std BooleanAlgebra<Bool> authority; classifier fact = GoScalar.BoolScalar; numeric D2a rows deferred per DECISIONS.md D2-REV and resolver.dag; no D1 ops in-file.
 // Anchor: https://go.dev/ref/spec
 // Ledger: DECISIONS.md Part 6 (PR #3229): CP-3229-GREEN-TERMINAL.
 
 module v4.extdeps.languages.go
 
 import v4.std.node { Symbol }
+import v4.std.logic { Bool, bool_boolean_algebra }
+import v4.std.algebra { BooleanAlgebra }
 
 // 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
 type SignedIntWidth
@@ -92,3 +94,11 @@ type GoIntegerOverflowDisposition<IRCarrier> {
 }
 
 // 🟢 GoNever / no GoScalar bottom — DECISIONS.md §PR-3252-extdeps-deferrals (Practice 9).
+
+// Anchor: https://go.dev/ref/spec#Boolean_types
+// Go spec: `bool` has the predeclared values `true` and `false` with the
+// standard boolean operations. Read against the spec there is nothing
+// above the primitive to model — Go bool *is* the shared 2-element
+// BooleanAlgebra. Grounded by referencing the single std authority
+// instance; coincidence is fold-discharged, not asserted.
+data go_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
