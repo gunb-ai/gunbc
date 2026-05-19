@@ -359,7 +359,7 @@ captured here as the audit anchor for the rest:
   `resolve_bind_edges`, `resolve_bind_node`, `resolve`,
   `resolve_with_namespace`, …) are **not individually triaged here**
   — the full sweep is a **named follow-up for the burn-down lane**
-  (`jolly-ibex-599`), not a C1 expansion. C1 is one-shot; the 21-fn
+  (dissolution burn-down queue), not a C1 expansion. C1 is one-shot; the 21-fn
   re-pass is dispatched by the burn-down lane as a standing
   re-sweep work-item alongside the per-primitive DAG. Many entries
   will likely roll under P5
