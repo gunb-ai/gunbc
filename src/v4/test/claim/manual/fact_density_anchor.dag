@@ -1,6 +1,6 @@
 // src/v4/test/claim/manual/fact_density_anchor.dag
-// Scope: T-30 v2-bootstrap compile anchor — exercises the fact-density lens read on a hollow alias, a fact-bundle carrier, and a kernel-ambient atom.
-// Owns: fact_density_anchor_int32_symbol, fact_density_anchor_width_field, fact_density_anchor_signedness_field, fact_density_anchor_hollow_alias, fact_density_anchor_fact_bundle, fact_density_anchor_kernel_ambient_bool, anchor_hollow_alias_read, anchor_fact_bundle_read, anchor_kernel_ambient_bool_read.
+// Scope: T-30 v2-bootstrap compile anchor — exercises fact-density read + hollow-alias gate on a hollow alias, a fact-bundle carrier, and a kernel-ambient atom.
+// Owns: fact_density_anchor_int32_symbol, fact_density_anchor_width_field, fact_density_anchor_signedness_field, fact_density_anchor_hollow_alias, fact_density_anchor_fact_bundle, fact_density_anchor_kernel_ambient_bool, anchor_hollow_alias_read, anchor_fact_bundle_read, anchor_kernel_ambient_bool_read, anchor_hollow_alias_gate_rejects, anchor_fact_bundle_gate_produces, anchor_kernel_ambient_gate_produces.
 // Consumes: lens fact_density, std node.
 // Status: scaffold — compile-only until T-22; lens read pinned in lens/fact_density.dag.
 // Anchor: https://github.com/gunb-ai/gunbc/blob/main/src/v4/TASKS.md
@@ -10,9 +10,11 @@ module v4.test.claim.manual.fact_density_anchor
 
 import v4.lens.fact_density {
   carrier_spec_fact,
+  hollow_alias_gate,
   SourceSpecReadFact,
   fact_density_kernel_ambient_bool
 }
+import v4.std.diagnostic { Outcome }
 import v4.std.node {
   Node,
   TypeNode,
@@ -68,4 +70,19 @@ fn anchor_fact_bundle_read() -> SourceSpecReadFact {
 
 fn anchor_kernel_ambient_bool_read() -> SourceSpecReadFact {
   carrier_spec_fact(carrier: fact_density_anchor_kernel_ambient_bool)
+}
+
+
+fn anchor_hollow_alias_gate_rejects() -> Outcome<Bool> {
+  hollow_alias_gate(carrier: fact_density_anchor_hollow_alias)
+}
+
+
+fn anchor_fact_bundle_gate_produces() -> Outcome<Bool> {
+  hollow_alias_gate(carrier: fact_density_anchor_fact_bundle)
+}
+
+
+fn anchor_kernel_ambient_gate_produces() -> Outcome<Bool> {
+  hollow_alias_gate(carrier: fact_density_anchor_kernel_ambient_bool)
 }

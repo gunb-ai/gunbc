@@ -1,8 +1,8 @@
 // src/v4/lens/fact_density.dag
-// Scope: T-30 fact-density lens — a pure-advisory read that classifies each type carrier by the spec facts it records, surfacing carriers with empty fact-cardinality.
-// Owns: SourceSpecReadFact, fact_density_kernel_ambient_string, fact_density_kernel_ambient_int, fact_density_kernel_ambient_bool, fact_density_kernel_ambient_char, fact_density_kernel_ambient_list, fact_density_kernel_ambient_map, symbol_is_kernel_ambient, named_fact_count, density_fact, connective_is_kernel_ambient_atom, connective_spec_fact, carrier_spec_fact.
-// Consumes: std node, std nat, std cardinality.
-// Status: T-30 lens — pure-advisory read; enforcement is the downstream apply_lens(Enforce) bridge, not this file.
+// Scope: T-30 fact-density lens — classifies each type carrier by spec facts read and fails closed on hollow aliases.
+// Owns: SourceSpecReadFact, fact_density_kernel_ambient_string, fact_density_kernel_ambient_int, fact_density_kernel_ambient_bool, fact_density_kernel_ambient_char, fact_density_kernel_ambient_list, fact_density_kernel_ambient_map, symbol_is_kernel_ambient, named_fact_count, density_fact, connective_is_kernel_ambient_atom, connective_spec_fact, carrier_spec_fact, carrier_is_hollow, fact_density_hollow_alias, fact_density_malformed_carrier, hollow_alias_diagnostic, malformed_carrier_diagnostic, hollow_alias_gate, module_no_hollow_alias.
+// Consumes: std node, std nat, std cardinality, std diagnostic.
+// Status: T-30 generated structural checker (Node -> Outcome); operator-closure wires pipeline enforcement.
 // Anchor: https://github.com/gunb-ai/gunbc/blob/main/src/v4/TASKS.md
 
 module v4.lens.fact_density
@@ -22,10 +22,20 @@ import v4.std.node {
   Instantiation,
   TypeNode,
   ComputationNode,
-  Symbol
+  Symbol,
+  node_well_formed
 }
 import v4.std.nat { Nat, Zero, Succ }
 import v4.std.cardinality { NonZeroNat }
+import v4.std.diagnostic {
+  Outcome,
+  Produced,
+  Rejected,
+  Diagnostic,
+  NodeLocus,
+  Unavailable,
+  UserInputBoundary
+}
 
 
 data fact_density_kernel_ambient_string: Symbol = fact_density_kernel_ambient_string
@@ -95,4 +105,59 @@ fn carrier_spec_fact(carrier: Node) -> SourceSpecReadFact {
     TypeNode { connective: c } =>
       connective_spec_fact(c: c, named_facts: named_fact_count(children: carrier.children))
   }
+}
+
+
+fn carrier_is_hollow(carrier: Node) -> Bool {
+  match carrier_spec_fact(carrier: carrier) {
+    NoFact => true
+    NamedFieldFacts { density: _ } => false
+    KernelAmbientAtom => false
+    NotATypeCarrier => false
+  }
+}
+
+
+data fact_density_hollow_alias: Symbol = fact_density_hollow_alias
+data fact_density_malformed_carrier: Symbol = fact_density_malformed_carrier
+
+
+fn hollow_alias_diagnostic(carrier: Node) -> Diagnostic {
+  Diagnostic {
+    reason: fact_density_hollow_alias,
+    at: NodeLocus { node: carrier },
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+
+fn malformed_carrier_diagnostic(carrier: Node) -> Diagnostic {
+  Diagnostic {
+    reason: fact_density_malformed_carrier,
+    at: NodeLocus { node: carrier },
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+
+fn hollow_alias_gate(carrier: Node) -> Outcome<Bool> {
+  if node_well_formed(n: carrier) {
+    if carrier_is_hollow(carrier: carrier) {
+      Rejected { diagnostic: hollow_alias_diagnostic(carrier: carrier) }
+    } else {
+      Produced { value: true }
+    }
+  } else {
+    Rejected { diagnostic: malformed_carrier_diagnostic(carrier: carrier) }
+  }
+}
+
+
+fn module_no_hollow_alias(declarations: List<Node>) -> Outcome<Bool> {
+  fold(declarations, init: Produced { value: true }, f: fn(acc, d) {
+    match acc {
+      Rejected { diagnostic: dg } => Rejected { diagnostic: dg }
+      Produced { value: _ } => hollow_alias_gate(carrier: d)
+    }
+  })
 }
