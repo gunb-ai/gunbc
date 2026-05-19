@@ -697,7 +697,7 @@ model shape to keep the probe "parallel."
 
 #### T-4.14: `extdeps/languages/ptx.dag` (CUDA)
 - **Stress axis**: the **SIMT data-parallel execution model** vs the 5 L1 behaviors — the IN-B bet again (like Verilog's concurrency, but data-parallel). A needed 6th `Parallel`/`Kernel` behavior = C1 escalation, by design caught early.
-- **Fork (PROPOSED — confirm)**: model **PTX** (the spec'd IR — clean, general, captures SIMT directly, parallel to llvm_ir; recommended) vs CUDA-C++ as a `cpp.dag` extension (entangled; the C++ surface is not where the stress is).
+- **PTX path (operator-ratified / evidenced):** model **PTX** (the spec'd IR — clean, general, captures SIMT directly, parallel to `llvm_ir.dag`). The CUDA-C++-as-`cpp.dag` extension alternative is the **rejected** fork (entangled; the C++ surface is not where the stress is). Probe status: `extdeps/languages/ptx.dag` header records **T-4.14 PASS (IN-B)** — same posture as **DECISIONS.md L-3** (PTX, not CUDA-C++).
 - **Anchor**: NVIDIA PTX ISA spec, pinned version (L-2).
 - **Scope**: L.
 
