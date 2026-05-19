@@ -154,7 +154,7 @@ fn eval_node(tree: InferredTree, inputs: Inputs) -> Outcome<Node> {
   if node_well_formed(n: inputs.root) {
     Produced { value: inputs.root }
   } else {
-    Rejected { diagnostic: eval_diagnostic(reason: eval_rejected_invalid_node, node: tree) }
+    Rejected { diagnostic: eval_diagnostic(reason: eval_rejected_invalid_node, node: inputs.root) }
   }
 }
 
