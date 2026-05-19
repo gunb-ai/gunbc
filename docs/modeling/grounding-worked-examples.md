@@ -393,7 +393,7 @@ different starting level:
   `bool` *is a subtype of `int`* (`True == 1`). So Python's bool reads
   as: the shared truth grounding (`py_bool_grounding` → the same
   authority) **plus** numeric-tower membership — carried by the
-  existing `PythonNumericTower.BoolLevel` classifier, the build-up
+  existing `PythonScalar.BoolScalar` classifier, the build-up
   above the primitive. (Object/singleton *identity* is a runtime-layer
   fact, outside the type model — the placement axis.) This is a *first
   iteration*; the exact build-up shape is expected to refine as testgen
