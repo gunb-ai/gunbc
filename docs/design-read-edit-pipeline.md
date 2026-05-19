@@ -54,11 +54,21 @@ model. Type:
 - `lens(scope) → Witness<finding>` in `Introspect` mode
 - `lens(scope) → Outcome<()>` in `Enforce` mode
 
-**Scope** = where the lens runs. Three forms:
-- `RootScope()` — over the whole `Dag`
+**Scope** = where the lens runs. Per the ratified
+`SectionRef = DeclarationScope | NodeScope` contract in
+`src/v4/lens/application.dag`, there are **two** scope forms:
+- `DeclarationScope(decl_ref)` — at a declaration unit (module-level
+  / decl-level scope)
 - `NodeScope(node_ref)` — at a sub-Node ("ask <lens> about <this
   section>")
-- `DeclarationScope(decl_ref)` — at a declaration unit
+
+There is **no separate `RootScope` / corpus-wide variant** —
+corpus-wide application is achieved by **composition over the
+declaration set**: iterate over `declarations_in(dag)`, applying
+`apply_lens(lens, DeclarationScope(d), config)` per declaration. The
+substrate intentionally does not have a "scan the whole corpus"
+primitive; that's a fold over the section set the caller assembles
+(or that `affected_set(dag, diff)` derives).
 
 **Mode** = what the lens does:
 - `Introspect` — read-only; produces a structural fact carrier
@@ -94,7 +104,19 @@ Per Path/Edit/Diff (`src/v4/std/node.dag`, ratified PR #3162):
   list ordering is significant — Edits compose by sequential
   application, NOT parallel.
 
-`apply_diff(dag, Diff) → Outcome<Dag>`:
+Per the ratified contract in `src/v4/lens/application.dag`:
+
+```
+apply_diff(root: Node, d: Diff) -> Result<Node, Diagnostic>
+subterm_at(root: Node, p: Path) -> Result<Node, Diagnostic>
+```
+
+(The carrier is `Result<_, Diagnostic>` and the input is `Node` —
+note that `affected_set.dag` does define `type Dag = Node`, so the
+`Dag` shorthand is acceptable in prose, but the published signatures
+use `Node` directly.)
+
+`apply_diff` semantics:
 - Folds Edits in order, each as `t[s]p` (substitute at path)
 - **All-or-nothing**: if any Edit's Path no longer resolves (because
   a prior Edit invalidated it), the whole Diff fails with one
@@ -132,12 +154,12 @@ Three concrete .dag-level scenarios showing read-then-edit shape.
 Same shape as the canonical-B work in PR #3338 (operator-ratified
 2026-05-19, "ALL external types grounded in our substrate").
 
-**Read** — find all bare-alias sites:
+**Read** — find all bare-alias sites by composition over the
+declaration set:
 ```dag
-matches = apply_lens(
-  L1.7.bare_alias_signature,
-  RootScope(),
-  Introspect
+matches = declarations_in(dag).flat_map(d =>
+  apply_lens(L1.7.bare_alias_signature, DeclarationScope(d), Introspect)
+    .matches()
 )
 // → List<Match { path: Path, type_name: Symbol, aliased_to: Symbol }>
 ```
@@ -180,19 +202,17 @@ The file change is an *effect*, not the cause.
 Goal: rename `Bool` → `BooleanValue` everywhere it's referenced. The
 `CanonicalConcept` registry is the source of truth; the Diff cascades.
 
-**Read**:
+**Read** — both lenses fold over the declaration set:
 ```dag
-concept_row = apply_lens(
-  canonical_concept_for(symbol: Bool),
-  RootScope(),
-  Introspect
+concept_row = declarations_in(dag).find_map(d =>
+  apply_lens(canonical_concept_for(symbol: Bool), DeclarationScope(d), Introspect)
+    .single_match()
 )
 // → CanonicalConcept { canonical_home: v4.std.logic.Bool, members: { ... } }
 
-references = apply_lens(
-  references_to(symbol: Bool),
-  RootScope(),
-  Introspect
+references = declarations_in(dag).flat_map(d =>
+  apply_lens(references_to(symbol: Bool), DeclarationScope(d), Introspect)
+    .matches()
 )
 // → List<Path>
 ```
@@ -223,20 +243,18 @@ fails.
 
 **Read**:
 ```dag
-claim = apply_lens(
-  test_claim_lookup(id: claim_id),
-  RootScope(),
-  Introspect
+claim = declarations_in(dag).find_map(d =>
+  apply_lens(test_claim_lookup(id: claim_id), DeclarationScope(d), Introspect)
+    .single_match()
 )
 // → TestClaim { subject: Node, property: lens, expected: Witness }
 
 actual = apply_lens(claim.property, NodeScope(claim.subject), Introspect)
 // → Witness (the current value)
 
-recent_diff = apply_lens(
-  diffs_since(commit: last_known_passing),
-  RootScope(),
-  Introspect
+recent_diff = declarations_in(dag).flat_map(d =>
+  apply_lens(diffs_since(commit: last_known_passing), DeclarationScope(d), Introspect)
+    .matches()
 )
 // → List<Diff>
 ```
