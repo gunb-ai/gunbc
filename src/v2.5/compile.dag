@@ -1,0 +1,606 @@
+// Scope: v2.5 pipeline orchestrator — phase-typed stage composition as first-class data.
+// Owns: PipelineStageKind, PipelineStageRow, v2_5_compile_pipeline, PipelineCarrier,
+//       CompilePipelineState, pipeline_well_formed, outcome_bind, run_compile_pipeline_fold, compile.
+// Consumes: v2_5.std.diagnostic, v2_5.std.stage_types, all v2_5.compiler.* stage modules.
+// Status: fork scaffold — executable stage bodies land in sibling Tier 2 PRs; Tier 0/1 type kit required.
+// Anchor: https://en.wikipedia.org/wiki/Compiler
+
+module v2_5.compiler.compile
+
+import v2_5.std.diagnostic {
+  Diagnostic,
+  Locus,
+  Outcome,
+  PortLocus,
+  Produced,
+  Rejected
+}
+import v2_5.std.stage_types {
+  Source,
+  SourceFile,
+  TokenStream,
+  ParseNode,
+  ResolvedNode,
+  NormalizedNode,
+  InferredNode,
+  TargetSource,
+  TargetSpec,
+  source_type,
+  token_stream_type,
+  parse_node_type,
+  resolved_node_type,
+  normalized_node_type,
+  inferred_node_type,
+  target_source_type
+}
+import v2_5.compiler.tokenize { tokenize }
+import v2_5.compiler.parse { parse }
+import v2_5.compiler.resolve { resolve }
+import v2_5.compiler.normalize { normalize }
+import v2_5.compiler.infer { infer }
+import v2_5.compiler.complexity {
+  ComplexityReport,
+  complexity_analyze,
+  empty_complexity_report
+}
+import v2_5.compiler.ownership {
+  OwnershipProof,
+  ownership_analyze
+}
+import v2_5.compiler.artifact {
+  ArtifactPlan,
+  default_artifact_plan,
+  empty_artifact_plan
+}
+import v2_5.compiler.emit { emit }
+
+// =========================================================================
+// Pipeline-as-data — stage order + gate policy + phase I/O contracts (P2)
+// =========================================================================
+
+// Closed stage enumeration; one row per executable step (no inert tokenize/parse/resolve no-ops).
+type PipelineStageKind
+  = StageTokenize
+  | StageParse
+  | StageResolve
+  | StageNormalize
+  | StageInfer
+  | StageComplexity
+  | StageOwnership
+  | StageArtifactPlan
+  | StageEmit
+
+// Which stages halt the carrier vs only block emission (mirrors v2 mainline contract).
+type PipelineGatePolicy
+  = BlockingOnErrors
+  | SurfaceOnly
+
+type PipelineStageRow {
+  stage: PipelineStageKind
+  gate: PipelineGatePolicy
+  consumes: Symbol
+  produces: Symbol
+}
+
+fn pipeline_gate_blocks(policy: PipelineGatePolicy, diagnostics: List<Diagnostic>) -> Bool {
+  match policy {
+    BlockingOnErrors =>
+      diagnostics |> any(d => d.severity == DiagnosticSeverityError)
+    SurfaceOnly => false
+  }
+}
+
+// Phase chain well-formedness — each row's consumes/produces must match the prior row's produces.
+fn pipeline_row_io_matches(row: PipelineStageRow) -> Bool {
+  match row.stage {
+    StageTokenize => (row.consumes == source_type) && (row.produces == token_stream_type)
+    StageParse => (row.consumes == token_stream_type) && (row.produces == parse_node_type)
+    StageResolve => (row.consumes == parse_node_type) && (row.produces == resolved_node_type)
+    StageNormalize => (row.consumes == resolved_node_type) && (row.produces == normalized_node_type)
+    StageInfer => (row.consumes == normalized_node_type) && (row.produces == inferred_node_type)
+    StageComplexity => (row.consumes == inferred_node_type) && (row.produces == inferred_node_type)
+    StageOwnership => (row.consumes == inferred_node_type) && (row.produces == inferred_node_type)
+    StageArtifactPlan => (row.consumes == inferred_node_type) && (row.produces == inferred_node_type)
+    StageEmit => (row.consumes == inferred_node_type) && (row.produces == target_source_type)
+  }
+}
+
+fn pipeline_adjacent_link_ok(prev: PipelineStageRow, next: PipelineStageRow) -> Bool {
+  prev.produces == next.consumes
+}
+
+fn pipeline_chain_well_formed(rows: List<PipelineStageRow>) -> Bool {
+  if rows |> count == 0 {
+    return false
+  }
+  let all_rows_ok = rows |> all(row => pipeline_row_io_matches(row: row))
+  if !all_rows_ok {
+    return false
+  }
+  fold(rows, init: true, f: (acc, row) =>
+    match acc {
+      false => false
+      true =>
+        match row {
+          first =>
+            if row == first {
+              true
+            } else {
+              let prev = rows |> find_index(i => rows[i] == row) |> map(i => rows[i - 1])
+              match prev {
+                None => false
+                Some { value: p } => pipeline_adjacent_link_ok(prev: p, next: row)
+              }
+            }
+        }
+    }
+  )
+}
+
+// Authoritative pipeline — fold is the only executor.
+data v2_5_compile_pipeline: List<PipelineStageRow> = [
+  PipelineStageRow { stage: StageTokenize, gate: BlockingOnErrors, consumes: source_type, produces: token_stream_type },
+  PipelineStageRow { stage: StageParse, gate: BlockingOnErrors, consumes: token_stream_type, produces: parse_node_type },
+  PipelineStageRow { stage: StageResolve, gate: BlockingOnErrors, consumes: parse_node_type, produces: resolved_node_type },
+  PipelineStageRow { stage: StageNormalize, gate: BlockingOnErrors, consumes: resolved_node_type, produces: normalized_node_type },
+  PipelineStageRow { stage: StageInfer, gate: BlockingOnErrors, consumes: normalized_node_type, produces: inferred_node_type },
+  PipelineStageRow { stage: StageComplexity, gate: SurfaceOnly, consumes: inferred_node_type, produces: inferred_node_type },
+  PipelineStageRow { stage: StageOwnership, gate: BlockingOnErrors, consumes: inferred_node_type, produces: inferred_node_type },
+  PipelineStageRow { stage: StageArtifactPlan, gate: BlockingOnErrors, consumes: inferred_node_type, produces: inferred_node_type },
+  PipelineStageRow { stage: StageEmit, gate: BlockingOnErrors, consumes: inferred_node_type, produces: target_source_type }
+]
+
+data compile_pipeline_mis_wired: Symbol = compile_pipeline_mis_wired
+data compile_pipeline_locus: Symbol = compile_pipeline_locus
+
+fn compile_pipeline_mis_wired_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: compile_pipeline_mis_wired,
+    at: PortLocus { port: compile_pipeline_locus },
+    severity: DiagnosticSeverityError,
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn pipeline_table_well_formed() -> Outcome<List<PipelineStageRow>> {
+  if pipeline_chain_well_formed(rows: v2_5_compile_pipeline) {
+    Produced { value: v2_5_compile_pipeline }
+  } else {
+    Rejected { diagnostic: compile_pipeline_mis_wired_diagnostic() }
+  }
+}
+
+// =========================================================================
+// Outcome algebra — short-circuit without per-stage hand-rolled match chains
+// =========================================================================
+
+fn outcome_bind<T, U>(step: Outcome<T>, continue: fn(T) -> Outcome<U>) -> Outcome<U> {
+  match step {
+    Produced { value: v } => continue(v)
+    Rejected { diagnostic: d } => Rejected { diagnostic: d }
+  }
+}
+
+fn outcome_map<T, U>(step: Outcome<T>, f: fn(T) -> U) -> Outcome<U> {
+  match step {
+    Produced { value: v } => Produced { value: f(v) }
+    Rejected { diagnostic: d } => Rejected { diagnostic: d }
+  }
+}
+
+fn outcome_collect_diagnostics(steps: List<Outcome<Bool>>) -> List<Diagnostic> {
+  steps |> flat_map(step =>
+    match step {
+      Produced { value: _ } => []
+      Rejected { diagnostic: d } => [d]
+    }
+  )
+}
+
+// =========================================================================
+// Pipeline carrier — closed sum for "where we are" (not field-presence on Node)
+// =========================================================================
+
+type PipelineCarrier
+  = CarrierSource { source: Source }
+  | CarrierTokens { source: Source, tokens: TokenStream }
+  | CarrierParsed { source: Source, tokens: TokenStream, parsed: ParseNode }
+  | CarrierResolved { source: Source, tokens: TokenStream, parsed: ParseNode, resolved: ResolvedNode }
+  | CarrierNormalized {
+      source: Source
+      tokens: TokenStream
+      parsed: ParseNode
+      resolved: ResolvedNode
+      normalized: NormalizedNode
+    }
+  | CarrierInferred {
+      source: Source
+      spec: TargetSpec
+      tokens: TokenStream
+      parsed: ParseNode
+      resolved: ResolvedNode
+      normalized: NormalizedNode
+      inferred: InferredNode
+    }
+  | CarrierEmitted {
+      source: Source
+      spec: TargetSpec
+      inferred: InferredNode
+      target: TargetSource
+    }
+  | CarrierHalted { diagnostics: List<Diagnostic> }
+
+type CompilePipelineState {
+  carrier: PipelineCarrier
+  spec: TargetSpec
+  emit_blocked: Bool
+  run_emit: Bool
+  complexity: ComplexityReport
+  ownership: List<OwnershipProof>
+  artifact_plan: ArtifactPlan
+  stage_diags: List<Diagnostic>
+}
+
+fn pipeline_state_halted(state: CompilePipelineState, diagnostics: List<Diagnostic>) -> CompilePipelineState {
+  CompilePipelineState {
+    carrier: CarrierHalted { diagnostics: concat(state.stage_diags, diagnostics) },
+    spec: state.spec,
+    emit_blocked: state.emit_blocked,
+    run_emit: state.run_emit,
+    complexity: state.complexity,
+    ownership: state.ownership,
+    artifact_plan: state.artifact_plan,
+    stage_diags: concat(state.stage_diags, diagnostics)
+  }
+}
+
+fn pipeline_carrier_is_halted(carrier: PipelineCarrier) -> Bool {
+  match carrier {
+    CarrierHalted { diagnostics: _ } => true
+    _ => false
+  }
+}
+
+// =========================================================================
+// Stage dispatch — each arm calls one typed stage function; gates use spec.gate
+// =========================================================================
+
+fn apply_pipeline_stage(state: CompilePipelineState, row: PipelineStageRow) -> CompilePipelineState {
+  if pipeline_carrier_is_halted(carrier: state.carrier) {
+    return state
+  }
+  match row.stage {
+    StageTokenize =>
+      match state.carrier {
+        CarrierSource { source: source } =>
+          match tokenize(source: source) {
+            Produced { value: tokens } =>
+              CompilePipelineState {
+                carrier: CarrierTokens { source: source, tokens: tokens },
+                spec: state.spec,
+                emit_blocked: state.emit_blocked,
+                run_emit: state.run_emit,
+                complexity: state.complexity,
+                ownership: state.ownership,
+                artifact_plan: state.artifact_plan,
+                stage_diags: state.stage_diags
+              }
+            Rejected { diagnostic: d } =>
+              pipeline_state_halted(state: state, diagnostics: [d])
+          }
+        _ => pipeline_state_halted(state: state, diagnostics: [])
+      }
+    StageParse =>
+      match state.carrier {
+        CarrierTokens { source: source, tokens: tokens } =>
+          match parse(tokens: tokens, source: source) {
+            Produced { value: parsed } =>
+              if pipeline_gate_blocks(policy: row.gate, diagnostics: []) {
+                pipeline_state_halted(state: state, diagnostics: [])
+              } else {
+                CompilePipelineState {
+                  carrier: CarrierParsed { source: source, tokens: tokens, parsed: parsed },
+                  spec: state.spec,
+                  emit_blocked: state.emit_blocked,
+                  run_emit: state.run_emit,
+                  complexity: state.complexity,
+                  ownership: state.ownership,
+                  artifact_plan: state.artifact_plan,
+                  stage_diags: state.stage_diags
+                }
+              }
+            Rejected { diagnostic: d } =>
+              pipeline_state_halted(state: state, diagnostics: [d])
+          }
+        _ => pipeline_state_halted(state: state, diagnostics: [])
+      }
+    StageResolve =>
+      match state.carrier {
+        CarrierParsed { source: source, tokens: tokens, parsed: parsed } =>
+          match resolve(parsed: parsed) {
+            Produced { value: resolved } =>
+              if pipeline_gate_blocks(policy: row.gate, diagnostics: []) {
+                pipeline_state_halted(state: state, diagnostics: [])
+              } else {
+                CompilePipelineState {
+                  carrier: CarrierResolved { source: source, tokens: tokens, parsed: parsed, resolved: resolved },
+                  spec: state.spec,
+                  emit_blocked: state.emit_blocked,
+                  run_emit: state.run_emit,
+                  complexity: state.complexity,
+                  ownership: state.ownership,
+                  artifact_plan: state.artifact_plan,
+                  stage_diags: state.stage_diags
+                }
+              }
+            Rejected { diagnostic: d } =>
+              pipeline_state_halted(state: state, diagnostics: [d])
+          }
+        _ => pipeline_state_halted(state: state, diagnostics: [])
+      }
+    StageNormalize =>
+      match state.carrier {
+        CarrierResolved { source: source, tokens: tokens, parsed: parsed, resolved: resolved } =>
+          match normalize(resolved: resolved) {
+            Produced { value: normalized } =>
+              if pipeline_gate_blocks(policy: row.gate, diagnostics: []) {
+                pipeline_state_halted(state: state, diagnostics: [])
+              } else {
+                CompilePipelineState {
+                  carrier: CarrierNormalized {
+                    source: source,
+                    tokens: tokens,
+                    parsed: parsed,
+                    resolved: resolved,
+                    normalized: normalized
+                  },
+                  spec: state.spec,
+                  emit_blocked: state.emit_blocked,
+                  run_emit: state.run_emit,
+                  complexity: state.complexity,
+                  ownership: state.ownership,
+                  artifact_plan: state.artifact_plan,
+                  stage_diags: state.stage_diags
+                }
+              }
+            Rejected { diagnostic: d } =>
+              pipeline_state_halted(state: state, diagnostics: [d])
+          }
+        _ => pipeline_state_halted(state: state, diagnostics: [])
+      }
+    StageInfer =>
+      match state.carrier {
+        CarrierNormalized { source: source, tokens: tokens, parsed: parsed, resolved: resolved, normalized: normalized } =>
+          match infer(normalized: normalized) {
+            Produced { value: inferred } =>
+              let infer_diags = inferred.diagnostics
+              let infer_blocks_emit = pipeline_gate_blocks(policy: row.gate, diagnostics: infer_diags)
+              CompilePipelineState {
+                carrier: CarrierInferred {
+                  source: source,
+                  spec: state.spec,
+                  tokens: tokens,
+                  parsed: parsed,
+                  resolved: resolved,
+                  normalized: normalized,
+                  inferred: inferred
+                },
+                spec: state.spec,
+                emit_blocked: state.emit_blocked || infer_blocks_emit,
+                run_emit: state.run_emit,
+                complexity: state.complexity,
+                ownership: state.ownership,
+                artifact_plan: state.artifact_plan,
+                stage_diags: concat(state.stage_diags, infer_diags)
+              }
+            Rejected { diagnostic: d } =>
+              pipeline_state_halted(state: state, diagnostics: [d])
+          }
+        _ => pipeline_state_halted(state: state, diagnostics: [])
+      }
+    StageComplexity =>
+      if state.emit_blocked {
+        state
+      } else {
+        match state.carrier {
+          CarrierInferred { source: source, spec: spec, tokens: tokens, parsed: parsed, resolved: resolved, normalized: normalized, inferred: inferred } =>
+            match complexity_analyze(inferred: inferred) {
+              Produced { value: bundle } =>
+                let complexity_blocks_emit = pipeline_gate_blocks(policy: row.gate, diagnostics: bundle.diagnostics)
+                CompilePipelineState {
+                  carrier: CarrierInferred {
+                    source: source,
+                    spec: spec,
+                    tokens: tokens,
+                    parsed: parsed,
+                    resolved: resolved,
+                    normalized: normalized,
+                    inferred: inferred
+                  },
+                  spec: state.spec,
+                  emit_blocked: state.emit_blocked || complexity_blocks_emit,
+                  run_emit: state.run_emit,
+                  complexity: bundle.report,
+                  ownership: state.ownership,
+                  artifact_plan: state.artifact_plan,
+                  stage_diags: concat(state.stage_diags, bundle.diagnostics)
+                }
+              Rejected { diagnostic: d } =>
+                pipeline_state_halted(state: state, diagnostics: [d])
+            }
+          _ => pipeline_state_halted(state: state, diagnostics: [])
+        }
+      }
+    StageOwnership =>
+      if state.emit_blocked {
+        state
+      } else {
+        match state.carrier {
+          CarrierInferred { source: source, spec: spec, tokens: tokens, parsed: parsed, resolved: resolved, normalized: normalized, inferred: inferred } =>
+            match ownership_analyze(inferred: inferred) {
+              Produced { value: bundle } =>
+                let ownership_blocks_emit = pipeline_gate_blocks(policy: row.gate, diagnostics: bundle.diagnostics)
+                CompilePipelineState {
+                  carrier: CarrierInferred {
+                    source: source,
+                    spec: spec,
+                    tokens: tokens,
+                    parsed: parsed,
+                    resolved: resolved,
+                    normalized: normalized,
+                    inferred: inferred
+                  },
+                  spec: state.spec,
+                  emit_blocked: state.emit_blocked || ownership_blocks_emit,
+                  run_emit: state.run_emit,
+                  complexity: state.complexity,
+                  ownership: bundle.proofs,
+                  artifact_plan: state.artifact_plan,
+                  stage_diags: concat(state.stage_diags, bundle.diagnostics)
+                }
+              Rejected { diagnostic: d } =>
+                pipeline_state_halted(state: state, diagnostics: [d])
+            }
+          _ => pipeline_state_halted(state: state, diagnostics: [])
+        }
+      }
+    StageArtifactPlan =>
+      if state.emit_blocked {
+        state
+      } else {
+        match state.carrier {
+          CarrierInferred { source: source, spec: spec, tokens: tokens, parsed: parsed, resolved: resolved, normalized: normalized, inferred: inferred } =>
+            match default_artifact_plan(inferred: inferred, spec: state.spec) {
+              Produced { value: plan } =>
+                CompilePipelineState {
+                  carrier: CarrierInferred {
+                    source: source,
+                    spec: spec,
+                    tokens: tokens,
+                    parsed: parsed,
+                    resolved: resolved,
+                    normalized: normalized,
+                    inferred: inferred
+                  },
+                  spec: state.spec,
+                  emit_blocked: state.emit_blocked,
+                  run_emit: state.run_emit,
+                  complexity: state.complexity,
+                  ownership: state.ownership,
+                  artifact_plan: plan,
+                  stage_diags: state.stage_diags
+                }
+              Rejected { diagnostic: d } =>
+                pipeline_state_halted(state: state, diagnostics: [d])
+            }
+          _ => pipeline_state_halted(state: state, diagnostics: [])
+        }
+      }
+    StageEmit =>
+      if !state.run_emit || state.emit_blocked {
+        state
+      } else {
+        match state.carrier {
+          CarrierInferred { source: source, spec: spec, tokens: tokens, parsed: parsed, resolved: resolved, normalized: normalized, inferred: inferred } =>
+            match emit(inferred: inferred, spec: state.spec, plan: state.artifact_plan) {
+              Produced { value: target } =>
+                let emit_blocks = pipeline_gate_blocks(policy: row.gate, diagnostics: [])
+                if emit_blocks {
+                  pipeline_state_halted(state: state, diagnostics: [])
+                } else {
+                  CompilePipelineState {
+                    carrier: CarrierEmitted { source: source, spec: spec, inferred: inferred, target: target },
+                    spec: state.spec,
+                    emit_blocked: state.emit_blocked,
+                    run_emit: state.run_emit,
+                    complexity: state.complexity,
+                    ownership: state.ownership,
+                    artifact_plan: state.artifact_plan,
+                    stage_diags: state.stage_diags
+                  }
+                }
+              Rejected { diagnostic: d } =>
+                pipeline_state_halted(state: state, diagnostics: [d])
+            }
+          _ => pipeline_state_halted(state: state, diagnostics: [])
+        }
+      }
+  }
+}
+
+fn run_compile_pipeline_fold(source: Source, spec: TargetSpec, run_emit: Bool) -> CompilePipelineState {
+  let initial = CompilePipelineState {
+    carrier: CarrierSource { source: source },
+    spec: spec,
+    emit_blocked: false,
+    run_emit: run_emit,
+    complexity: empty_complexity_report(),
+    ownership: [],
+    artifact_plan: empty_artifact_plan(),
+    stage_diags: []
+  }
+  fold(v2_5_compile_pipeline, init: initial, f: (state, row) => apply_pipeline_stage(state: state, row: row))
+}
+
+// =========================================================================
+// Public compile API — closed-sum result at top (Outcome<TargetSource>)
+// =========================================================================
+
+type CompileBundle {
+  target: TargetSource
+  diagnostics: List<Diagnostic>
+  complexity: ComplexityReport
+  ownership: List<OwnershipProof>
+  artifact_plan: ArtifactPlan
+}
+
+fn compile_pipeline_state_to_outcome(state: CompilePipelineState) -> Outcome<TargetSource> {
+  match state.carrier {
+    CarrierEmitted { target: target, .. } =>
+      if state.emit_blocked {
+        Rejected { diagnostic: compile_pipeline_mis_wired_diagnostic() }
+      } else {
+        Produced { value: target }
+      }
+    CarrierHalted { diagnostics: diags } =>
+      match diags |> head {
+        Some { value: d } => Rejected { diagnostic: d }
+        None => Rejected { diagnostic: compile_pipeline_mis_wired_diagnostic() }
+      }
+    _ =>
+      Rejected { diagnostic: compile_pipeline_mis_wired_diagnostic() }
+  }
+}
+
+// fn compile : Source × TargetSpec -> Outcome<TargetSource>
+fn compile(source: Source, spec: TargetSpec) -> Outcome<TargetSource> {
+  match pipeline_table_well_formed() {
+    Produced { value: _table } =>
+      let state = run_compile_pipeline_fold(source: source, spec: spec, run_emit: true)
+      compile_pipeline_state_to_outcome(state: state)
+    Rejected { diagnostic: d } => Rejected { diagnostic: d }
+  }
+}
+
+// Validation-only path (no emission) — same fold, run_emit=false.
+fn compile_to_inferred(source: Source, spec: TargetSpec) -> Outcome<InferredNode> {
+  match pipeline_table_well_formed() {
+    Produced { value: _table } =>
+      let state = run_compile_pipeline_fold(source: source, spec: spec, run_emit: false)
+      match state.carrier {
+        CarrierInferred { inferred: inferred, .. } =>
+          if state.emit_blocked {
+            Rejected { diagnostic: compile_pipeline_mis_wired_diagnostic() }
+          } else {
+            Produced { value: inferred }
+          }
+        CarrierHalted { diagnostics: diags } =>
+          match diags |> head {
+            Some { value: d } => Rejected { diagnostic: d }
+            None => Rejected { diagnostic: compile_pipeline_mis_wired_diagnostic() }
+          }
+        _ => Rejected { diagnostic: compile_pipeline_mis_wired_diagnostic() }
+      }
+    Rejected { diagnostic: d } => Rejected { diagnostic: d }
+  }
+}
