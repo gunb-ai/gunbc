@@ -315,20 +315,20 @@ fn seed_edit_fold_acc_live(
   acc: AffectedFoldAcc,
   edit: Edit
 ) -> AffectedFoldAcc {
-  match post_edit_dag(acc.dag, edit) {
-    PostEditDagProduced { dag: next_dag } =>
-      match boundary_receipt(
-        read_model: read_model,
+  match boundary_receipt(
+    read_model: read_model,
+    dag: acc.dag,
+    path: edit.at,
+    replacement: edit.replacement
+  ) {
+    BoundaryPruned { proof: p } =>
+      AffectedFoldAcc {
         dag: acc.dag,
-        path: edit.at,
-        replacement: edit.replacement
-      ) {
-        BoundaryPruned { proof: p } =>
-          AffectedFoldAcc {
-            dag: next_dag,
-            frontier: mark_boundary_excluded(frontier: acc.frontier, edit: edit, proof: p)
-          }
-        BoundaryExpands =>
+        frontier: mark_boundary_excluded(frontier: acc.frontier, edit: edit, proof: p)
+      }
+    BoundaryExpands =>
+      match post_edit_dag(acc.dag, edit) {
+        PostEditDagProduced { dag: next_dag } =>
           AffectedFoldAcc {
             dag: next_dag,
             frontier: expand_changed_dimensions(
@@ -339,18 +339,17 @@ fn seed_edit_fold_acc_live(
               edit: edit
             )
           }
-        BoundaryUnknown { reason: r } =>
+        PostEditDagRejected { diagnostic: d } =>
           AffectedFoldAcc {
-            dag: next_dag,
-            frontier: mark_whole_dag(reason: r)
+            dag: acc.dag,
+            frontier: mark_whole_dag_diagnostic(diagnostic: d)
           }
       }
-    PostEditDagRejected { diagnostic: d } =>
+    BoundaryUnknown { reason: r } =>
       AffectedFoldAcc {
         dag: acc.dag,
-        frontier: mark_whole_dag_diagnostic(diagnostic: d)
+        frontier: mark_whole_dag(reason: r)
       }
-    }
   }
 
 
