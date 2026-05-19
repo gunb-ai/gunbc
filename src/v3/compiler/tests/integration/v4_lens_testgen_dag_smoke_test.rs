@@ -45,8 +45,8 @@ fn v4_lens_testgen_wave0_substrate_parses() {
     );
 
     assert!(
-        !TESTGEN_DAG.contains("t19_present_manual_anchor_key"),
-        "testgen must not import or call std `t19_present_manual_anchor_key` (convention-only present carrier removed)"
+        !TESTGEN_DAG.contains("fn t19_present_manual_anchor_key("),
+        "testgen must not define the retired `t19_present_manual_anchor_key(` std-style helper (use `t19_present_manual_anchor_key_for_claim` in lens only)"
     );
 
     assert_eq!(
@@ -111,6 +111,13 @@ fn v4_lens_testgen_wave0_substrate_parses() {
             SurfaceType::Named { name: n, .. } if n == "T19PresentManualAnchorKey"
         ),
         "Generator.t19_anchor must be `T19PresentManualAnchorKey` (absent sentinel excluded from successful carrier); got {anchor_ty:?}"
+    );
+
+    let present_anchor_rt = fn_return_type(&testgen, "t19_present_manual_anchor_key_for_claim")
+        .expect("t19_present_manual_anchor_key_for_claim should have an explicit return type");
+    assert!(
+        type_is_outcome_named(present_anchor_rt, "T19PresentManualAnchorKey"),
+        "present-anchor narrowing must return `Outcome<T19PresentManualAnchorKey>`; got {present_anchor_rt:?}"
     );
 
     let manual_claim_rt = fn_return_type(&testgen, "manual_test_claim_for_manual_anchor")
