@@ -3,8 +3,8 @@
 // Pipeline position (v2): resolve → normalize → infer on ModuleGraph.
 // C3 surface-sugar dissolution (`service` / `fn` / `type` / `operation` →
 // connective-shaped Node) is owned by v4 `compiler/03_normalize.dag` on the
-// ParseTree pivot *before* resolve (`resolve ∘ normalize`); see DECISIONS C3,
-// TASKS T-8, and CM-inventory §03_normalize calibration.
+// ParseTree pivot *before* resolve (`resolve ∘ normalize`); authority:
+// src/v4/TASKS.md §T-8 (C3 desugar). See CM-inventory §03_normalize calibration.
 //
 // This stage does not re-derive item kind or surface identity. It validates
 // invariants that should hold after resolve and before infer:

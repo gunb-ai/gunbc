@@ -151,7 +151,7 @@ post-resolve invariant pass below; sugar does not flow past the parser (CM.md
 
 **v4 counterpart (`src/v4/compiler/03_normalize.dag`, out of scope here):** C3 sugar →
 `Conj`/`Arrow`/target peel; closed N=4 `SurfaceSugarKind` axis; local success carriers
-dissolved to `SurfaceSugarKind?` + `Outcome` (v4 T-8 / CP-1b). v2 stage does not host
+dissolved to `SurfaceSugarKind?` + `Outcome` (`src/v4/TASKS.md` T-8). v2 stage does not host
 that seam — pipeline order differs (`resolve → normalize` vs `normalize → resolve`).
 
 ### 03_resolve.dag
