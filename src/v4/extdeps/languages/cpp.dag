@@ -1,6 +1,6 @@
 // src/v4/extdeps/languages/cpp.dag
 // Scope: C++ language primitive fact bundles.
-// Owns: CppIntegerSurfaceSpelling, CppSignedIntegerRepresentation, CppIntegerOverflowDisposition, CppScalar, cpp_bool_grounding.
+// Owns: CppIntegerSurfaceSpelling, CppTwosComplement, CppIntegerOverflowDisposition, CppScalar, cpp_bool_grounding.
 // Consumes: v4.std.logic.Bool, bool_boolean_algebra; v4.std.algebra.BooleanAlgebra; v4.extdeps.cpp_abi.CppIntegerWidth/CppTargetDataModel/CppTargetProfile.
 // Status: D2-REV/T29 forward reconcile; C++ integer facts are ABI-width-parametric, bool canonical-B decl-ref grounding stays 🟡 E-6(b) staging.
 
@@ -33,9 +33,7 @@ type CppIntegerSurfaceSpelling
   | Char16T
   | Char32T
 
-// 🟢 coproduct dissolution — DECISIONS.md T29-CPP-SCALAR-FORWARD.
-type CppSignedIntegerRepresentation
-  = CppTwosComplement
+type CppTwosComplement
 
 // 🟢 coproduct dissolution — DECISIONS.md T29-ABI + D2-REV.
 type CppIntegerOverflowDisposition
@@ -49,7 +47,7 @@ type CppScalar
       target_profile: CppTargetProfile,
       data_model: CppTargetDataModel,
       width: CppIntegerWidth,
-      signed_representation: CppSignedIntegerRepresentation,
+      signed_representation: CppTwosComplement,
       overflow_disposition: CppIntegerOverflowDisposition
     }
   | UnsignedIntegerScalar {
