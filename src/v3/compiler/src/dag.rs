@@ -344,11 +344,11 @@ pub(crate) use effects::{
 };
 
 pub use effects::{
-    analyze_workflow, lane2_workflow_idempotency_report, operation_effect_shape,
-    report_unsupported_workflow_variant, BranchArm, BreakingShape, CallableRef, CompositionVerdict,
-    CreateCause, EffectShape, HttpMethodScalar, IdempotencyUnsupportedDetail, IdempotentShape,
-    InputField, KeySource, Operation, ParallelismUnsupportedDetail, ParallelismUnsupportedKind,
-    PathTemplate, RestEndpointBinding, UrlPathToken, WorkflowEffect, WorkflowIdempotencyReport,
+    lane2_workflow_idempotency_report, operation_effect_shape, report_unsupported_workflow_variant,
+    BranchArm, BreakingShape, CallableRef, CompositionVerdict, CreateCause, EffectShape,
+    HttpMethodScalar, IdempotencyUnsupportedDetail, IdempotentShape, InputField, KeySource,
+    Operation, ParallelismUnsupportedDetail, ParallelismUnsupportedKind, PathTemplate,
+    RestEndpointBinding, UrlPathToken, WorkflowEffect, WorkflowIdempotencyReport,
     WorkflowParallelismReport,
 };
 pub use ports::{
@@ -2360,7 +2360,7 @@ pub struct ValueNode {
     /// [`Dag::lane2_workflow_effect_at`] are read-only projections of the same
     /// storage. The sole mutating constructor for tests/staging is
     /// [`Dag::try_register_lane2_workflow_effect`]; lowering fills this field when
-    /// it exists. [`crate::dag::analyze_workflow`] reads through
+    /// it exists. [`crate::analyze_workflow`] reads through
     /// [`Dag::lane2_workflow_effect_at`].
     pub(crate) lane2_workflow: Option<Box<WorkflowEffect>>,
 }
