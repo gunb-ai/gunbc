@@ -1,16 +1,9 @@
 // src/v4/extdeps/languages/cpp.dag
-<<<<<<< HEAD
 // Scope: C++ language primitive fact bundles.
 // Owns: CppSignedIntegerSurfaceSpelling, CppUnsignedIntegerSurfaceSpelling, CppPlainCharSurfaceSpelling, CppWcharTSurfaceSpelling, CppFixedUnsignedCodeUnitIntegerSurfaceSpelling, CppSignedIntegerWidthSelection, CppUnsignedIntegerWidthSelection, CppPlainCharWidthSelection, CppWcharTWidthSelection, CppFixedUnsignedCodeUnitIntegerWidthSelection, CppTwosComplement, CppRepresentableResultRequired, CppUnsignedModuloArithmetic, CppScalar, cpp_bool_grounding.
 // Consumes: v4.std.logic.Bool, bool_boolean_algebra; v4.std.algebra.BooleanAlgebra; v4.extdeps.cpp_abi.CppTargetProfile.
 // Status: D2-REV/T29 forward reconcile; C++ integer facts are ABI-width-parametric, bool canonical-B decl-ref grounding stays 🟡 E-6(b) staging; scaffold:T-4-cpp-slice / 🟡 feature:t4-cpp-scalar-ladder bounds this file to carrier scaffolding until generated per-spelling CppTargetProfile selection rows consume it (INVARIANTS P5).
 // Anchor: ISO/IEC 14882:2020 (C++20) [basic.fundamental], [expr.pre]; upstream mirror https://eel.is/c++draft/basic.fundamental.
-=======
-// Scope: C++ language primitive resolver facts.
-// Owns: CppIntegerOverflowDisposition, cpp_bool_grounding.
-// Consumes: v4.std.logic.Bool, bool_boolean_algebra; v4.std.algebra.BooleanAlgebra; CppTargetProfile/CppTargetDataModel via T29-ABI follow-up rows.
-// Status: D2-REV resolver slice; bool canonical-B decl-ref grounding — 🟡 E-6(b) staging (scaffold at decl; ledger modeling-discipline.md Non-bool C++ scalar ladder still 🟡 feature:t4-cpp-scalar-ladder — P4-3208 + T29-ABI.
->>>>>>> origin/main
 
 module v4.extdeps.languages.cpp
 
@@ -27,7 +20,6 @@ type CppSignedIntegerSurfaceSpelling
   | LongInt
   | LongLongInt
 
-<<<<<<< HEAD
 // 🟢 pretty-much-done — closed unsigned integer spelling family; testcase: test/claim/manual/cpp_scalar_grounding_anchor.dag.
 // 🟢 coproduct dissolution — DECISIONS.md T29-CPP-SCALAR-FORWARD.
 type CppUnsignedIntegerSurfaceSpelling
@@ -36,12 +28,11 @@ type CppUnsignedIntegerSurfaceSpelling
   | UnsignedInt
   | UnsignedLongInt
   | UnsignedLongLongInt
-=======
+
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type CppIntegerOverflowDisposition
   = RepresentableResultRequired
   | UnsignedModuloArithmetic
->>>>>>> origin/main
 
 // 🟢 pretty-much-done — singleton plain-char spelling; testcase: test/claim/manual/cpp_scalar_grounding_anchor.dag.
 type CppPlainCharSurfaceSpelling
