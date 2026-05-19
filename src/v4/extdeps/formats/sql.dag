@@ -101,6 +101,7 @@ type SqlSchemaOperation
       columns: List<SqlIdentifier>,
     }
   | SqlDropIndex { index_name: SqlIdentifier }
+  | SqlAlterTableRaw { table_name: SqlIdentifier, alteration: String }
   | SqlRawStep { statement: String }
 
 
