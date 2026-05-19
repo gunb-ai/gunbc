@@ -1,7 +1,7 @@
 // src/v4/compiler/04_infer.dag
 // Scope: Stage 4 — ResolvedTree -> InferredTree; bounded Find phase (DECISIONS C1 / IR-1).
-// Owns: InferredTree, InferredFacts, AlgebraRef, CostRef, infer_stage_locus_port, infer_coercion_fold_not_realized, infer_coercion_fold_not_realized_diagnostic, infer.
-// Consumes: std/node.dag, std/diagnostic.dag, std/cardinality.dag, compiler/03_resolve.dag.
+// Owns: InferredTree, InferredFacts, AlgebraRef, infer_stage_locus_port, infer_coercion_fold_not_realized, infer_coercion_fold_not_realized_diagnostic, infer.
+// Consumes: std/node.dag, std/diagnostic.dag, std/cardinality.dag, std/collection.dag, compiler/03_resolve.dag.
 // Status: scaffold — TASKS T-9; Wave-1 fail-closed boundary.
 // Anchor: https://en.wikipedia.org/wiki/Type_inference
 
@@ -11,6 +11,7 @@ module v4.compiler.infer
 
 import v4.compiler.resolve { ResolvedTree }
 import v4.std.cardinality { DescentEvidence }
+import v4.std.collection { Map }
 import v4.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,
@@ -25,20 +26,23 @@ import v4.std.node { Node, Symbol }
 type AlgebraRef = Symbol
 
 
-type CostRef = Symbol
-
-
 type InferredFacts {
   resolved_type: Node
   inhabits: AlgebraRef
-  cost: CostRef
+  // 🟡 needs-more-work — SymbolicCost carrier-ownership is an A3-class
+  //    operator decision (canonical owner is lens/cost.dag T-12, which has
+  //    not yet declared the lattice). The cost coordinate is held by a
+  //    Symbol name-reference to a not-yet-grounded cost expression; co-located
+  //    needs-work testcase: `anchor_stub_cost_symbol` in
+  //    test/claim/manual/infer_emit_compile_anchor.dag.
+  cost: Symbol
   descent: DescentEvidence
 }
 
 
 type InferredTree {
   node: Node
-  facts: InferredFacts
+  facts: Map<Node, InferredFacts>
 }
 
 

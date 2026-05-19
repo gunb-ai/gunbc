@@ -1,7 +1,7 @@
 // src/v4/test/claim/manual/infer_emit_compile_anchor.dag
 // Scope: Tier-1 v2-compile anchor for T-9/T-10 interface freeze — `infer`/`emit`/`compile` Wave-1 boundary.
-// Owns: anchor_stub_empty_conj, anchor_stub_target_model, anchor_stub_source, anchor_stub_algebra_ref, anchor_stub_cost_ref, anchor_stub_inferred_facts, anchor_stub_inferred_tree, anchor_infer_wave1_rejects, anchor_emit_wave1_rejects, anchor_compile_wave1_rejects.
-// Consumes: compiler/04_infer.dag, compiler/05_emit.dag, compiler/00_compile.dag, std/algebra.dag, std/cardinality.dag, std/diagnostic.dag, std/node.dag.
+// Owns: anchor_stub_empty_conj, anchor_stub_target_model, anchor_stub_source, anchor_stub_algebra_ref, anchor_stub_cost_symbol, anchor_stub_inferred_facts, anchor_stub_empty_facts_map, anchor_stub_inferred_tree, anchor_facts_map_lookup_not_realized, anchor_infer_rejects, anchor_emit_rejects, anchor_compile_rejects.
+// Consumes: compiler/04_infer.dag, compiler/05_emit.dag, compiler/00_compile.dag, std/algebra.dag, std/cardinality.dag, std/collection.dag, std/diagnostic.dag, std/node.dag, std/witness.dag.
 // Status: scaffold — compile-only until T-22.
 // Anchor: https://en.wikipedia.org/wiki/Compiler
 
@@ -13,15 +13,22 @@ import v4.compiler.compile { Source, TargetModel, TargetSource, compile }
 import v4.compiler.emit { emit }
 import v4.compiler.infer {
   AlgebraRef,
-  CostRef,
   InferredFacts,
   InferredTree,
   infer
 }
 import v4.std.algebra { Empty }
 import v4.std.cardinality { DescentUnknown }
-import v4.std.diagnostic { Outcome }
-import v4.std.node { Conj, Node, TypeNode }
+import v4.std.collection { Map }
+import v4.std.diagnostic {
+  Diagnostic,
+  ExternalContractUnknown,
+  Outcome,
+  PortLocus,
+  Unavailable
+}
+import v4.std.node { Conj, Node, Symbol, TypeNode }
+import v4.std.witness { Violates, Witness }
 
 
 data anchor_stub_empty_conj: Node = Node {
@@ -39,33 +46,52 @@ data anchor_stub_source: Source = Empty
 data anchor_stub_algebra_ref: AlgebraRef = anchor_stub_algebra_ref
 
 
-data anchor_stub_cost_ref: CostRef = anchor_stub_cost_ref
+// 🟡 needs-more-work — cost coordinate not-yet-grounded; T-12 lens/cost.dag
+//    will own the SymbolicCost lattice. This Symbol stub stands in until the
+//    A3 carrier-ownership ruling lands.
+data anchor_stub_cost_symbol: Symbol = anchor_stub_cost_symbol
+
+
+data anchor_facts_map_lookup_not_realized: Symbol = anchor_facts_map_lookup_not_realized
 
 
 data anchor_stub_inferred_facts: InferredFacts = InferredFacts {
   resolved_type: anchor_stub_empty_conj,
   inhabits: anchor_stub_algebra_ref,
-  cost: anchor_stub_cost_ref,
+  cost: anchor_stub_cost_symbol,
   descent: DescentUnknown
+}
+
+
+data anchor_stub_empty_facts_map: Map<Node, InferredFacts> = Map {
+  lookup: fn(_) {
+    Violates {
+      diagnostic: Diagnostic {
+        reason: anchor_facts_map_lookup_not_realized,
+        at: PortLocus { port: anchor_facts_map_lookup_not_realized },
+        correction: Unavailable { reason: ExternalContractUnknown }
+      }
+    }
+  }
 }
 
 
 data anchor_stub_inferred_tree: InferredTree = InferredTree {
   node: anchor_stub_empty_conj,
-  facts: anchor_stub_inferred_facts
+  facts: anchor_stub_empty_facts_map
 }
 
 
-fn anchor_infer_wave1_rejects() -> Outcome<InferredTree> {
+fn anchor_infer_rejects() -> Outcome<InferredTree> {
   infer(tree: anchor_stub_empty_conj)
 }
 
 
-fn anchor_emit_wave1_rejects() -> Outcome<TargetSource> {
+fn anchor_emit_rejects() -> Outcome<TargetSource> {
   emit(tree: anchor_stub_inferred_tree, target: anchor_stub_target_model)
 }
 
 
-fn anchor_compile_wave1_rejects() -> Outcome<TargetSource> {
+fn anchor_compile_rejects() -> Outcome<TargetSource> {
   compile(source: anchor_stub_source, target: anchor_stub_target_model)
 }
