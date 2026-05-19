@@ -1023,6 +1023,24 @@ PROPOSES; it does not decide.
 
 **Cross-ref:** Part 1 table row `NatLeWitness` / `UpperBoundedNat`; **`§PR-3252-cardinality-std`** for `Never` / `Unit` inhabitance context. **Not** part of merge-base **`### CP-3229-GREEN-TERMINAL`** bulk table (that table enumerates strict-de-prose merge-base files only); this subsection is the **reachable** Practice-4 receipt for `NatLeWitness`.
 
+### CP-3229-CPP-INTEGER-OVERFLOW — `extdeps/languages/cpp.dag` `CppIntegerOverflowDisposition` (Practice-4 terminal sum)
+
+**Authority:** PR #3199 T-4 cpp D2-resolver model; de-prose redo (PR #3291 follow-up, 2026-05-19) — coproduct tag conformed to the `Part 6 · <slug>` form mandated by the in-file one-liners directive above.
+
+**Disposition:** **🟢 GREEN terminal** — `CppIntegerOverflowDisposition = RepresentableResultRequired | UnsignedModuloArithmetic` partitions the two C++-spec dispositions for arithmetic overflow: signed arithmetic must produce a representable result (else undefined behavior), unsigned arithmetic wraps modulo `2^N`. The alternatives are externally named C++-standard dispositions, not coordinates of a product.
+
+**Five-pattern ledger (Practice 4):**
+
+1. **Fact placement** — FAILS: the disposition is a C++-spec fact on the language slice, not a single downstream consumer projection.
+2. **Variant-is-data / flat record** — FAILS: each variant is a nullary disposition tag, not a tagless product encoding.
+3. **Algebraic law carrier** — FAILS: not an algebra table; it is a closed two-way classification.
+4. **Dimensional decomposition** — FAILS: one coproduct axis (overflow disposition), not orthogonal coordinates.
+5. **Parameterized indexed family** — FAILS: closed two-variant sum, not an `F<X>` family over an open index.
+
+**Live substrate tag:** `// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-CPP-INTEGER-OVERFLOW.` immediately precedes `type CppIntegerOverflowDisposition` in `src/v4/extdeps/languages/cpp.dag`.
+
+**Cross-ref:** Part 1 table row **`T29-ABI`** (C++ ABI / target data-model slice); `D2-REV`. **Not** part of merge-base **`### CP-3229-GREEN-TERMINAL`** bulk table (`cpp.dag` was created post-merge-base in PR #3199); this subsection is the reachable Practice-4 receipt for `CppIntegerOverflowDisposition`.
+
 ### SL-P7-NAT-IS-ZERO-VPRED — `std/nat.dag` `nat_is_zero` (predicate-dissolution interim)
 
 **Authority:** operator CORE relay (`still-hawk-102` → `jolly-ibex-599` → P7 lane, 2026-05-18).
