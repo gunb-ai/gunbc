@@ -44,7 +44,7 @@ type Command {
 
 
 // Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/functions/waitpid.html + https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/sys_wait.h.html
-// 🟡 coproduct dissolution — DECISIONS.md OS-1
+// Ledger anchor: DECISIONS.md OS-1
 type Termination
   = Exited { code: ExitCode }
   | Signaled { signal: SignalNum }
@@ -77,7 +77,7 @@ type WaitedTerminatedProcess {
   output: CapturedOutputPipes
 }
 
-// 🟡 coproduct dissolution — DECISIONS.md OS-1
+// Ledger anchor: DECISIONS.md OS-1
 type CaptureSource
   = Live { resources: ProcessResources, process: RunningProcess }
   | Waited { waited: WaitedProcess }

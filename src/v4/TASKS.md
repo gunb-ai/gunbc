@@ -700,6 +700,7 @@ model shape to keep the probe "parallel."
 #### T-4.14: `extdeps/languages/ptx.dag` (CUDA)
 - **Stress axis**: the **SIMT data-parallel execution model** vs the 5 L1 behaviors — the IN-B bet again (like Verilog's concurrency, but data-parallel). A needed 6th `Parallel`/`Kernel` behavior = C1 escalation, by design caught early.
 - **PTX path (operator-ratified / evidenced):** model **PTX** (the spec'd IR — clean, general, captures SIMT directly, parallel to `llvm_ir.dag`). The CUDA-C++-as-`cpp.dag` extension alternative is the **rejected** fork (entangled; the C++ surface is not where the stress is). **`ptx.dag`** records **T-4.14 PASS (IN-B)** (historical *L-3* / B2-OMNI stake). **IN-B probe receipt** is **review-visible on this lane's merge PR** + **`docs/briefs/r4-program-dispatch-plan.md` §2** — *not* a maintained `DECISIONS.md` ledger (retired). **`ptx.dag`** file header stays intentionally domain-neutral on the process axis. **Derived scheduling / completion state** for this slice is authoritative in **`docs/briefs/r4-program-dispatch-plan.md` §2** (Status column: **PASS (IN-B)**; **Blocked-on** `LANDED` — table-accuracy with main; *LANDED* ≠ every TASKS Scope:L tail dissolved — see that row's rework-obligation / keystone blast-radius notes in the dispatch plan).
+>>>>>>> cb1ff09d0 (WIP: FRESH extdeps/T-4 lane closeout)
 - **Anchor**: NVIDIA PTX ISA spec, pinned version (L-2).
 - **Scope**: L.
 
