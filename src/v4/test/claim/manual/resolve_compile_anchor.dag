@@ -12,8 +12,7 @@ module v4.test.claim.manual.resolve_compile_anchor
 import v4.compiler.resolve { resolve, ResolvedTree }
 import v4.extdeps.languages.dag {
   dag_c3_surface_sugar_service,
-  dag_language_model_wave1_void,
-  dag_language_model_wave1_void_shape_empty_canonical_prelude_compile_receipt
+  dag_language_model_void
 }
 import v4.std.diagnostic { Outcome }
 import v4.std.node {
@@ -26,7 +25,7 @@ import v4.std.node {
 }
 
 
-fn anchor_resolve_wave1_service_atom_via_canonical_symbols() -> Outcome<ResolvedTree> {
+fn anchor_resolve_void_service_atom_via_canonical_symbols() -> Outcome<ResolvedTree> {
   resolve(
     tree: Node {
       kind: TypeNode { connective: Conj },
@@ -42,27 +41,6 @@ fn anchor_resolve_wave1_service_atom_via_canonical_symbols() -> Outcome<Resolved
         }
       ]
     },
-    lm: dag_language_model_wave1_void()
-  )
-}
-
-
-fn anchor_resolve_wave1_service_atom_void_shape_empty_canonical_prelude_compile_only() -> Outcome<ResolvedTree> {
-  resolve(
-    tree: Node {
-      kind: TypeNode { connective: Conj },
-      children: [
-        Edge {
-          label: Positional,
-          target: Node {
-            kind: TypeNode {
-              connective: Atom { identity: dag_c3_surface_sugar_service }
-            },
-            children: []
-          }
-        }
-      ]
-    },
-    lm: dag_language_model_wave1_void_shape_empty_canonical_prelude_compile_receipt()
+    lm: dag_language_model_void()
   )
 }

@@ -144,7 +144,7 @@ the audit anchors.
 | **P1** | `std/cardinality.dag` bounded-natural / refinement substrate | **substrate:** std / T-3 Wave-A2 — **`compile_to_dag` / extdeps import surface (flat v3 bootstrap, cardinality name resolution):** compiler / **T-32** (minimum never-hand-edited seed program; `src/v4/TASKS.md`) **+** receipt path per **T-30** interim mirror (`compile_to_dag` smoke harness / bootstrap collision notes in same §T-30) | **2 live row groups (+3 closed receipts)** | DECISIONS.md: `SL-3229-LLVM-OPS`, `SL-3229-PTX-DIM3`, `SL-3229-FLOAT-NOMINAL` once re-gated under this canonical owner (`SL-3229-LLVM-WIDTH`, `SL-3229-PTX-COST`, `SL-3229-VERILOG-COST` are **🟢 closed** on live carriers — see DECISIONS.md Part 6). **`Dim3`:** live `ptx.dag` uses `PositiveUpperBoundedNat`, closing negative-axis, zero-axis, and missing-bound states; **PTX-version / launch-role / axis-specific maxima remain live** until a PTX-specific max authority is modeled and consumed. **Receipt (PR #3310 / 2026-05-18 + follow-up):** `LlvmType` width payloads, `PtxCost` / `VerilogCost` non-negative axes. Remaining P1-family debt is **operand-relation refinement**, **SIMT dim PTX-specific maxima**, **float nominal/interchange re-gating**, and **import lowering / bootstrap extension** so cardinality refinements used in extdeps `.dag` files participate in `compile_to_dag`, not raw width/cost payload scaffolding alone. |
 | **P2** | `std/collection.dag` Wave-A2: `List<T> where non_empty` refinement **plus** the List combinator algebra (`forall` / `count_where` / `unique` over `FreeMonoid<T>`) | std / T-3 Wave-A2 (coercion-design.md RQ-3) | **5 named + 29 sites** | Section 2: `std/node.dag` × 4 traverses (`all_edges_named`, `all_edges_positional`, `name_occurrences`, `all_names_distinct`). DECISIONS.md: `SL-3229-VERILOG-NONEMPTY` (one row, 29 verilog.dag back-pointer sites after P8). |
 | **P3** | Compiler pipeline-stage substrate (lex-walk + parse-walk) | compiler / T-6, T-7 | **2 + 3 format parse cites** | Section 2: `compiler/01_tokenize.dag tokenize`, `compiler/02_parse.dag parse`. In-file: the concrete parse-half cites in `json.dag`, `yaml.dag`, and `toml.dag` gate on T-6/T-7 directly. |
-| **P4** | LanguageModel-axis rework family (post-D2-reversal model) | extdeps/languages (`typescript.dag` under T-4; Verilog D3200 under TASKS.md T-4.9) | **1 TypeScript status line + 1 row + 5 sites + 1 fn** | **PR #3338** retired the obsolete `typescript.dag` ×4 INVALID-GATE snapshot: the file now has `DECISIONS.md TS-D2` 🟢 coproduct tags plus `ts_bool_grounding` E-6(b) canonical-B staging, not the former D2a class. Remaining TypeScript backlog is the file-level non-bool numeric primitive status line gated on `feature: T-4 fact-bundle Phase-3 rework after T-3/T-29/T-30/T-25-core`. DECISIONS.md: `SL-3229-VERILOG-D3200` now gates on the T-4.9 Verilog `LanguageModel` axis rework named in `TASKS.md`; its five `verilog.dag` cite-sites remain strict-deprose one-line pointers to that row. Section 2: `extdeps/languages/dag.dag dag_language_model_wave1_void_canonical_symbols` (added in CP-1b #3225 — canonical_symbols set is a fact on DagLanguageModel/language-identity, not a hand-rolled function). |
+| **P4** | LanguageModel-axis rework family (post-D2-reversal model) | extdeps/languages (`typescript.dag` under T-4; Verilog D3200 under TASKS.md T-4.9) | **1 TypeScript status line + 1 row + 5 sites + 1 fn** | **PR #3338** retired the obsolete `typescript.dag` ×4 INVALID-GATE snapshot: the file now has `DECISIONS.md TS-D2` 🟢 coproduct tags plus `ts_bool_grounding` E-6(b) canonical-B staging, not the former D2a class. Remaining TypeScript backlog is the file-level non-bool numeric primitive status line gated on `feature: T-4 fact-bundle Phase-3 rework after T-3/T-29/T-30/T-25-core`. DECISIONS.md: `SL-3229-VERILOG-D3200` now gates on the T-4.9 Verilog `LanguageModel` axis rework named in `TASKS.md`; its five `verilog.dag` cite-sites remain strict-deprose one-line pointers to that row. Section 2: `extdeps/languages/dag.dag dag_language_model_void_canonical_symbols` (added in CP-1b #3225 — canonical_symbols set is a fact on DagLanguageModel/language-identity, not a hand-rolled function). |
 | **P5** | `std/node.dag` `fold_node` — Node catamorphism (substrate-extension under T-1) | std / T-1 | **1 + 3 (03_resolve cascade only)** | **Substrate LANDED PR #3297:** `NodeFold<R>` + `fold_node` in `src/v4/std/node.dag`; `node_well_formed` consumes the shared `NodeFold<Bool>` algebra (burn-down closeout + #3297). **Cascade (open):** `compiler/03_resolve.dag merge_binding_self` (94, codex #3225) plus `add_module_named_exports` (99), `add_arrow_domain_named_params` (113), `add_bind_atom_binder` (140). These dissolve to `fold_node(root, ⟨binding-harvest algebra⟩)` only when a scoped harvest algebra lands without changing resolver scope semantics. |
 | **P6** | `std/algebra.dag` / `std/nat.dag` `fold` / `cata` over `FreeMonoid<T>` and `Nat` (Wave-A2) | std / T-3 Wave-A2 | **2** | Section 2: `std/algebra.dag free_monoid_length`, `std/float.dag nat_compare`. (Sibling to P2's combinator algebra; could land in the same PR — kept separate because the underlying primitive is the catamorphism, distinct from `forall`/`count_where` which are derived from it.) |
 | **P7** | `std/nat.dag nat_is_zero : Nat -> Bool` (Wave-A2) | std / T-3 Wave-A2 | **1** | Section 2: `std/float.dag float_finite_magnitude_zero`. |
@@ -392,9 +392,9 @@ captured here as the audit anchor for the rest:
   a `match`-to-derive of a pre-existing fact.
 
 **`extdeps/languages/dag.dag`**
-- `dag_wave1_e0_void_lex`, `dag_wave1_g0_void_grammar`,
-  `dag_language_model_wave1_void` — 🟢 — pure data constructors.
-- `dag_language_model_wave1_void_canonical_symbols` (62, added in
+- `dag_void_lex`, `dag_void_grammar`,
+  `dag_language_model_void` — 🟢 — pure data constructors.
+- `dag_language_model_void_canonical_symbols` (added in
   CP-1b #3225) — 🟡 **predicate** (property projection, registry
   row 7) — the "four C3 Atom identities" codex finding (thread
   `3255338394`). Returns a `Set<Symbol>` whose `member: fn(sym)` is a
@@ -406,13 +406,17 @@ captured here as the audit anchor for the rest:
   fact carried on DagLanguageModel (T-4 LanguageModel-axis — same
   family as feature_disposition on FidelityFeature)` —
   rolls under **P4**. (`dag_node_is_empty_conj_root` **retired** — R1
-  landed PR #3284: `dag_language_model_is_wave1_void_shape` imports
+  landed PR #3284: `dag_language_model_is_void_shape` imports
   `v4.std.node.is_empty_conj_root`; see `DECISIONS.md` §CP-1b item 12.)
-  **Bucket C close:** `DagLanguageModel.canonical_symbols` is the
-  substrate field; `compiler/03_resolve.dag` consumes `lm.canonical_symbols`
-  directly (no `dag_language_model_canonical_symbols` indirection).
-- `dag_language_model_is_wave1_void_shape` (83) — 🟡 **predicate**
-  (bounded wave-1 structural query over the typed LM mode partition;
+  **Substrate-field authority (CP-1b bucket C, not yet closed):**
+  `DagLanguageModel.canonical_symbols` is the substrate field and
+  `compiler/03_resolve.dag` consumes `lm.canonical_symbols` directly
+  (no resolver-side shape indirection); `dag_language_model_void_canonical_symbols`
+  still **populates** that field as a four-way disjunction, so this row
+  stays **🟡 open under P4** — bucket C is **not** declared closed while
+  this same-fact placeholder remains.
+- `dag_language_model_is_void_shape` — 🟡 **predicate**
+  (bounded void-shape structural query over the typed LM mode partition;
   **not** the resolve prelude authority after CP-1b bucket C — prelude
   is `DagLanguageModel.canonical_symbols` only; see `DECISIONS.md` §CP-1b
   item 2). **Dissolution / triggers:** `feature:T-6`, `feature:T-7`, or
@@ -524,14 +528,14 @@ substrate PRs.
   `T19ManualAnchorKey` (join manifest for the two anchor corpora above).
   Zero `fn` bodies. 🟢.
 - `resolve_compile_anchor.dag` — **one** `fn`
-  `anchor_resolve_wave1_service_atom_via_canonical_symbols` (calls
-  `resolve` on a minimal `Node` + `dag_language_model_wave1_void()`;
+  `anchor_resolve_void_service_atom_via_canonical_symbols` (calls
+  `resolve` on a minimal `Node` + `dag_language_model_void()`;
   DECISIONS.md **CP-1b item 10** compile anchor; `Status: scaffold —
   compile-only until T-22`). **Disposition:** 🟢 **harness / coverage
   anchor** — delegates to `compiler/03_resolve.dag` `resolve` and LM
   data; does not introduce a new hand-rolled walker / predicate /
   traverse over `Node` beyond wiring already triaged under **P5** /
-  **P4** (`dag_language_model_wave1_void_canonical_symbols`). Not a
+  **P4** (`dag_language_model_void_canonical_symbols`). Not a
   fifth dissolution-finding class on top of Section 2's catalog.
 
 **`boundary/`** — `english_ingest_fail_closed.dag` — scaffold (`Status:
