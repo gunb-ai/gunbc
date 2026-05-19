@@ -153,6 +153,7 @@ fn test_claim_cache_receipt<T>(
 data eval_rejected_invalid_node: Symbol = eval_rejected_invalid_node
 data eval_rejected_assert_kind_deferred: Symbol = eval_rejected_assert_kind_deferred
 data eval_rejected_roundtrip_deferred: Symbol = eval_rejected_roundtrip_deferred
+data eval_rejected_ci_projection_deferred: Symbol = eval_rejected_ci_projection_deferred
 
 
 fn eval_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
@@ -173,6 +174,7 @@ fn eval_node(tree: InferredTree, inputs: Inputs) -> Outcome<Node> {
 }
 
 
+// 🟡 derived equality scaffold — DECISIONS.md T22-EVAL-OUTCOME-EQ
 fn outcome_node_eq(a: Outcome<Node>, b: Outcome<Node>) -> Bool {
   match a {
     Produced { value: av } => match b {
@@ -217,10 +219,18 @@ fn run_ci_assert(
   expected: Outcome<Node>,
   input: Node
 ) -> Verdict<CiPipeline> {
-  let comparable = t22_ci_outcome(actual: actual)
   match kind {
-    Equals => if outcome_node_eq(a: comparable, b: expected) { Pass } else { Fail { actual: actual } }
-    Compiles => match comparable {
+    Equals => match actual {
+      Produced { value: _ } => Deferred {
+        actual: actual,
+        diagnostic: eval_diagnostic(reason: eval_rejected_ci_projection_deferred, node: input)
+      }
+      Rejected { diagnostic: d } => {
+        let comparable = Rejected { diagnostic: d }
+        if outcome_node_eq(a: comparable, b: expected) { Pass } else { Fail { actual: actual } }
+      }
+    }
+    Compiles => match actual {
       Produced { value: _ } => Pass
       Rejected { diagnostic: _ } => Fail { actual: actual }
     }
@@ -291,7 +301,6 @@ data t22_ci_dependency_cycle: Symbol = t22_ci_dependency_cycle
 data t22_missing_stage_binary: Symbol = t22_missing_stage_binary
 data t22_other_job: Symbol = t22_other_job
 data t22_other_gate: Symbol = t22_other_gate
-data t22_ci_unexpected_produced: Symbol = t22_ci_unexpected_produced
 data t22_ci_evaluator: Symbol = t22_ci_evaluator
 data t22_ci_resources: Symbol = t22_ci_resources
 data t22_ci_extdeps: Symbol = t22_ci_extdeps
@@ -309,15 +318,6 @@ fn t22_symbol_node(s: Symbol) -> Node {
     children: []
   }
 }
-
-
-fn t22_ci_outcome(actual: Outcome<CiPipeline>) -> Outcome<Node> {
-  match actual {
-    Produced { value: _ } => Produced { value: t22_symbol_node(s: t22_ci_unexpected_produced) }
-    Rejected { diagnostic: d } => Rejected { diagnostic: d }
-  }
-}
-
 
 fn t22_ci_claim(label: String, input: Node, expected_reason: Symbol) -> TestClaim {
   TestClaim {
