@@ -100,6 +100,7 @@ type Verdict<T>
 // 🟢 coproduct dissolution — DECISIONS.md T22-EVAL-VERDICT
   = Pass
   | Fail { actual: Outcome<T> }
+  | Deferred { actual: Outcome<T>, diagnostic: Diagnostic }
 
 
 type TestClaimVerdict = Verdict<Node>
@@ -181,15 +182,13 @@ fn run_assert(kind: AssertKind, actual: Outcome<Node>, expected: Outcome<Node>, 
       Produced { value: _ } => Pass
       Rejected { diagnostic: _ } => Fail { actual: actual }
     }
-    RoundTrips => Fail {
-      actual: Rejected {
-        diagnostic: eval_diagnostic(reason: eval_rejected_roundtrip_deferred, node: input)
-      }
+    RoundTrips => Deferred {
+      actual: actual,
+      diagnostic: eval_diagnostic(reason: eval_rejected_roundtrip_deferred, node: input)
     }
-    _ => Fail {
-      actual: Rejected {
-        diagnostic: eval_diagnostic(reason: eval_rejected_assert_kind_deferred, node: input)
-      }
+    _ => Deferred {
+      actual: actual,
+      diagnostic: eval_diagnostic(reason: eval_rejected_assert_kind_deferred, node: input)
     }
   }
 }
@@ -247,6 +246,7 @@ data t22_ci_unexpected_produced: Symbol = t22_ci_unexpected_produced
 data t22_ci_evaluator: Symbol = t22_ci_evaluator
 data t22_ci_resources: Symbol = t22_ci_resources
 data t22_ci_extdeps: Symbol = t22_ci_extdeps
+// 🟡 cache-hash scaffold — DECISIONS.md T22-EVAL-CACHE-HASHES
 data t22_hash_claim: Hash = t22_hash_claim
 data t22_hash_evaluator: Hash = t22_hash_evaluator
 data t22_hash_resources: Hash = t22_hash_resources
