@@ -51,7 +51,7 @@ type ExclusionProof
 
 // 🟡 coproduct dissolution — DECISIONS.md #3153-subsumed
 type PropagationExclusionProof
-  = DimensionNotRead { producer: Path }
+  = DimensionNotRead { producer: Path, changed_dimension: AffectedDimension }
 
 
 // 🟡 coproduct dissolution — DECISIONS.md #3153-subsumed
