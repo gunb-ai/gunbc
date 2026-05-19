@@ -132,7 +132,7 @@ fn bootstrap_tier1_unit_classification() -> TestClassification {
 }
 
 
-fn bootstrap_assert_kind_for_manual_anchor(key: T19ManualAnchorKey) -> Outcome<AssertKind> {
+fn bootstrap_assert_kind_for_manual_anchor(key: T19ManualAnchorKey) -> Outcome<AssertKind> =
   match key {
     T19ManualAnchorAbsent =>
       Rejected { diagnostic: t19_manual_anchor_absent_bootstrap_diagnostic() }
@@ -142,17 +142,16 @@ fn bootstrap_assert_kind_for_manual_anchor(key: T19ManualAnchorKey) -> Outcome<A
     T19ManualTcCardinalityEmpty => Produced { value: Compiles }
     T19ManualTcInstantiationEmpty => Produced { value: Compiles }
     T19ManualTcConjEqualsRefl => Produced { value: Equals }
-    T19ManualNatAddLeftIdentity => Produced { value: Compiles }
-    T19ManualNatAddRightIdentity => Produced { value: Compiles }
-    T19ManualNatAddAssociativity => Produced { value: Compiles }
-    T19ManualNatMulLeftIdentity => Produced { value: Compiles }
-    T19ManualNatMulAnnihilator => Produced { value: Compiles }
+    T19ManualNatAddLeftIdentity => Produced { value: Equals }
+    T19ManualNatAddRightIdentity => Produced { value: Equals }
+    T19ManualNatAddAssociativity => Produced { value: Equals }
+    T19ManualNatMulLeftIdentity => Produced { value: Equals }
+    T19ManualNatMulAnnihilator => Produced { value: Equals }
     T19ManualNatMulAssociativity => Produced { value: Equals }
   }
-}
 
 
-fn testgen_concept_for_manual_anchor(key: T19ManualAnchorKey) -> Outcome<TestgenConcept> {
+fn testgen_concept_for_manual_anchor(key: T19ManualAnchorKey) -> Outcome<TestgenConcept> =
   match key {
     T19ManualAnchorAbsent =>
       Rejected { diagnostic: t19_manual_anchor_absent_bootstrap_diagnostic() }
@@ -253,7 +252,6 @@ fn testgen_concept_for_manual_anchor(key: T19ManualAnchorKey) -> Outcome<Testgen
         },
       }
   }
-}
 
 
 fn bootstrap_claim_generator_for_manual_anchor(
