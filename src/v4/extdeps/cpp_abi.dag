@@ -14,7 +14,6 @@ type CppMachineWidth16
 type CppMachineWidth32
 type CppMachineWidth64
 
-// 🟢 pretty-much-done — closed ABI integer-width atoms; testcase: test/claim/manual/cpp_scalar_grounding_anchor.dag.
 // 🟢 coproduct dissolution — T29-ABI.
 type CppIntegerWidth
   = CppWidth8 { width: CppMachineWidth8 }
@@ -25,7 +24,6 @@ type CppIntegerWidth
 // 🟢 pretty-much-done — core integer-width bundle includes wchar_t width; testcase: test/claim/manual/cpp_scalar_grounding_anchor.dag.
 type CppCoreIntegerWidthModel<char_width, short_width, int_width, long_width, long_long_width, pointer_width, wchar_t_width>
 
-// 🟢 pretty-much-done — implementation-defined plain-char signedness coordinate; testcase: test/claim/manual/cpp_scalar_grounding_anchor.dag.
 // 🟢 coproduct dissolution — T29-ABI.
 type CppPlainCharSignedness
   = PlainCharSigned { tag: CppPlainCharSigned }

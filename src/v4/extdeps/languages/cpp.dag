@@ -29,11 +29,6 @@ type CppUnsignedIntegerSurfaceSpelling
   | UnsignedLongInt
   | UnsignedLongLongInt
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
-type CppIntegerOverflowDisposition
-  = RepresentableResultRequired
-  | UnsignedModuloArithmetic
-
 // 🟢 pretty-much-done — singleton plain-char spelling; testcase: test/claim/manual/cpp_scalar_grounding_anchor.dag.
 type CppPlainCharSurfaceSpelling
 
