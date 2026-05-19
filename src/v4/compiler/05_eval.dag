@@ -72,12 +72,18 @@ type EvalContext {
 }
 
 
+type TestClaimTypedInput<T> {
+  claim_input: Node
+  evaluator_input: T
+}
+
+
 type TestClaimEvalSubject<T> {
   claim_node: Node
   claim: TestClaim
   context: EvalContext
   tree: InferredTree
-  evaluator_input: T
+  input: TestClaimTypedInput<T>
 }
 
 
@@ -86,7 +92,7 @@ type TestClaimCacheKey<T> {
   context: EvalContext
   claim_node: Node
   tree: InferredTree
-  evaluator_input: T
+  input: TestClaimTypedInput<T>
   claim_hash: Hash
   evaluator_hash: Hash
   resources_hash: Hash
@@ -134,7 +140,7 @@ fn test_claim_cache_receipt<T>(
       context: subject.context,
       claim_node: subject.claim_node,
       tree: subject.tree,
-      evaluator_input: subject.evaluator_input,
+      input: subject.input,
       claim_hash: claim_hash,
       evaluator_hash: evaluator_hash,
       resources_hash: resources_hash,
@@ -239,7 +245,7 @@ fn run_test_claim(
 ) -> TestClaimRun<Node> {
   let actual = eval_node(
     tree: subject.tree,
-    inputs: Inputs { root: subject.evaluator_input }
+    inputs: Inputs { root: subject.input.evaluator_input }
   )
   TestClaimRun {
     subject: subject,
@@ -254,7 +260,7 @@ fn run_test_claim(
       kind: subject.claim.kind,
       actual: actual,
       expected: subject.claim.expected,
-      input: subject.claim.input
+      input: subject.input.claim_input
     )
   }
 }
@@ -271,7 +277,7 @@ fn eval_test_claim_subject(
     claim: claim,
     context: context,
     tree: tree,
-    evaluator_input: claim.input
+    input: TestClaimTypedInput { claim_input: claim.input, evaluator_input: claim.input }
   }
 }
 
@@ -289,6 +295,7 @@ data t22_ci_unexpected_produced: Symbol = t22_ci_unexpected_produced
 data t22_ci_evaluator: Symbol = t22_ci_evaluator
 data t22_ci_resources: Symbol = t22_ci_resources
 data t22_ci_extdeps: Symbol = t22_ci_extdeps
+// 🟡 typed-input bridge scaffold — DECISIONS.md T22-EVAL-TYPED-INPUT-BRIDGE
 // 🟡 cache-hash scaffold — DECISIONS.md T22-EVAL-CACHE-HASHES
 data t22_hash_claim: Hash = t22_hash_claim
 data t22_hash_evaluator: Hash = t22_hash_evaluator
@@ -337,18 +344,19 @@ fn t22_ci_subject(
   case: T22CiNegativeCase
 ) -> TestClaimEvalSubject<CiPipeline> {
   let input = t22_symbol_node(s: case.input_symbol)
+  let typed_input = TestClaimTypedInput { claim_input: input, evaluator_input: case.pipeline }
   TestClaimEvalSubject {
     claim_node: input,
-    claim: t22_ci_claim(label: case.label, input: input, expected_reason: case.expected_reason),
+    claim: t22_ci_claim(label: case.label, input: typed_input.claim_input, expected_reason: case.expected_reason),
     context: t22_ci_context(),
-    tree: input,
-    evaluator_input: case.pipeline
+    tree: typed_input.claim_input,
+    input: typed_input
   }
 }
 
 
 fn t22_ci_run(subject: TestClaimEvalSubject<CiPipeline>) -> TestClaimRun<CiPipeline> {
-  let actual = ci_pipeline_well_formed(p: subject.evaluator_input)
+  let actual = ci_pipeline_well_formed(p: subject.input.evaluator_input)
   TestClaimRun {
     subject: subject,
     cache: test_claim_cache_receipt(
@@ -362,7 +370,7 @@ fn t22_ci_run(subject: TestClaimEvalSubject<CiPipeline>) -> TestClaimRun<CiPipel
       kind: subject.claim.kind,
       actual: actual,
       expected: subject.claim.expected,
-      input: subject.claim.input
+      input: subject.input.claim_input
     )
   }
 }
