@@ -164,6 +164,21 @@ trust; structure gates it.
 
 Three concrete .dag-level scenarios showing read-then-edit shape.
 
+> **Pseudo-code disclaimer.** The examples in §5 and §6 use
+> **higher-level edit verbs** (`replace_with`, `replace`, `insert`,
+> `insert_field`) as a **future combinator layer** shorthand —
+> *not* as literal `.dag` against the ratified single-Edit shape.
+> The ratified carrier is exactly `Edit { at: Path, replacement:
+> Node }` (§3). Insertions and field-additions decompose into
+> parent-replacement: build a new parent node whose children list
+> includes the desired child, and emit a single `Edit { at:
+> parent_path, replacement: new_parent }`. The shorthand verbs are
+> what §6.8 item 1 (machine-readable Clean shape) and item 3
+> (DAG-of-edits composition) are about: a thin combinator layer
+> over the ratified primitive that compresses common intent shapes.
+> Treat the examples as intent illustrations, not as authoritative
+> Edit constructors.
+
 ### Example A: bare-alias refactor (`type RustBool = Bool` → canonical-B)
 
 Same shape as the canonical-B work in PR #3338 (operator-ratified
