@@ -1,14 +1,16 @@
 // src/v4/std/verification.dag
 // Scope: Closed TestClaim schema — AssertKind, TestgenTier/Layer, TestClassification, ImpossibleBugClass, T19ManualAnchorKey, TestClaim fields.
 // Owns: AssertKind TestgenTier TestgenLayer TestClassification ImpossibleBugClass T19ManualAnchorKey TestClaim
-// Consumes: v4.std.node { Node } v4.std.diagnostic { Outcome }
+// Consumes: v4.std.node v4.std.diagnostic
 // Status: T-3 modeled; substrate extension or file split = operator STOP.
 
 module v4.std.verification
 
 
 import v4.std.node { Node }
-import v4.std.diagnostic { Outcome }
+import v4.std.diagnostic {
+  Outcome
+}
 
 
 // RULING-1: pretty-much-done — closed TestClaim assertion kind set.
@@ -57,6 +59,7 @@ type ImpossibleBugClass
 // RULING-1: needs-more-work — manual anchor bridge until generated corpus coverage owns all rows.
 type T19ManualAnchorKey
 // 🟡 coproduct dissolution — DECISIONS.md LB-P4-3212
+// RULING-1: 🟢 pretty-much-done
   = T19ManualTcConjEmpty
   | T19ManualTcDisjEmpty
   | T19ManualTcArrowTwoConj
@@ -81,3 +84,4 @@ type TestClaim {
   expected: Outcome<Node>
   classification: TestClassification
 }
+

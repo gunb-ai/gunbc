@@ -279,6 +279,8 @@ mod v2_oracle_no_remaining_test_consumers_test;
 mod v4_bin_main_dag_smoke_test;
 #[path = "integration/v4_lens_registry_dag_smoke_test.rs"]
 mod v4_lens_registry_dag_smoke_test;
+#[path = "integration/v4_lens_testgen_dag_smoke_test.rs"]
+mod v4_lens_testgen_dag_smoke_test;
 #[path = "integration/value_body_substrate_mirror_isomorphism_test.rs"]
 mod value_body_substrate_mirror_isomorphism_test;
 #[path = "integration/common/wiring_scanner_test.rs"]
