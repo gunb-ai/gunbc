@@ -1,6 +1,6 @@
 // src/v4/extdeps/formats/sql.dag
 // Scope: ISO/IEC 9075 SQL relational/DDL surface; Shape-B checked format, v3 SQL port — single authority (TASKS.md T-4.6 #4).
-// Owns: SqlDialect, SqlIdentifier, SqlDataType, SqlColumnConstraints, SqlColumnDefault, SqlColumnDefinition, SqlTableConstraint, SqlTableDefinition, SqlSchemaOperation, SqlMigrationStep, SqlMigrationScript, SqlMigrationEmissionTarget, SqlStatementKind, SqlParameterStyle, SqlTransactionMode, SqlResultFormat, SqlTransportConfig
+// Owns: SqlDialect, SqlIdentifier, SqlDataType, SqlColumnConstraints, SqlColumnDefault, SqlColumnDefinition, SqlTableConstraint, SqlPrimaryKeySlot, SqlTableDefinition, SqlSchemaOperation, SqlMigrationStep, SqlMigrationScript, SqlMigrationEmissionTarget, SqlStatementKind, SqlParameterStyle, SqlTransactionMode, SqlResultFormat, SqlTransportConfig
 // Consumes: std/node.dag, std/diagnostic.dag, std/collection.dag, std/nat.dag, std/cardinality.dag
 // Status: scaffold — TASKS.md T-4.6
 // Anchor: https://www.iso.org/standard/76583.html
@@ -20,9 +20,10 @@ type SqlDialect
   | SqlDialectMySql
 
 
-type SqlIdentifier {
-  name: String,
-}
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-SqlIdentifier
+type SqlIdentifier
+  = SqlRegularIdentifier { name: String }
+  | SqlDelimitedIdentifier { name: String }
 
 
 // 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-SqlDataType
@@ -45,7 +46,6 @@ type SqlDataType
 
 type SqlColumnConstraints {
   not_null: Bool,
-  primary_key: Bool,
   unique: Bool,
 }
 
@@ -66,8 +66,7 @@ type SqlColumnDefinition {
 
 // 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-SqlTableConstraint
 type SqlTableConstraint
-  = SqlTablePrimaryKey { columns: List<SqlIdentifier> }
-  | SqlTableUnique { columns: List<SqlIdentifier> }
+  = SqlTableUnique { columns: List<SqlIdentifier> }
   | SqlTableForeignKey {
       columns: List<SqlIdentifier>,
       referenced_table: SqlIdentifier,
@@ -75,9 +74,16 @@ type SqlTableConstraint
     }
 
 
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-SqlPrimaryKeySlot
+type SqlPrimaryKeySlot
+  = SqlPrimaryKeyAbsent
+  | SqlPrimaryKeyPresent { columns: List<SqlIdentifier> }
+
+
 type SqlTableDefinition {
   name: SqlIdentifier,
   columns: List<SqlColumnDefinition>,
+  primary_key: SqlPrimaryKeySlot,
   table_constraints: List<SqlTableConstraint>,
 }
 
