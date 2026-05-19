@@ -27,6 +27,20 @@ const T19_MANIFEST_DAG: &str =
     include_str!("../../../../v4/test/claim/manual/t19_manual_anchor_manifest.dag");
 const T19_MANIFEST_PATH: &str = "src/v4/test/claim/manual/t19_manual_anchor_manifest.dag";
 
+struct ExpectedHashPin<'a> {
+    digest: &'a str,
+    pin: &'a str,
+}
+
+struct ExpectedFixpt<'a> {
+    left: &'a str,
+    left_hash: ExpectedHashPin<'a>,
+    right: &'a str,
+    right_hash: ExpectedHashPin<'a>,
+    pinned_hash: ExpectedHashPin<'a>,
+    via: &'a str,
+}
+
 #[test]
 fn t19_testgen_concept_surface_stays_closed_and_classified() {
     let module = parse_module(TESTGEN_DAG, TESTGEN_PATH);
@@ -149,37 +163,51 @@ fn t20_bootstrap_plan_keeps_self_hosting_chain_as_data() {
         record_field_expr(bootstrap_plan_fields, "seed"),
         &["v4_dag_source"],
         "v4_stage0_binary",
-        "v4_stage0_hash",
-        "v4_stage0_hash_pin",
+        ExpectedHashPin {
+            digest: "v4_stage0_hash",
+            pin: "v4_stage0_hash_pin",
+        },
         "v2_pipeline",
     );
     assert_compile_stage(
         record_field_expr(bootstrap_plan_fields, "self0"),
         &["v4_dag_source", "v4_stage0_binary"],
         "v4_stage1_binary",
-        "v4_stage1_hash",
-        "v4_stage1_hash_pin",
+        ExpectedHashPin {
+            digest: "v4_stage1_hash",
+            pin: "v4_stage1_hash_pin",
+        },
         "v4_stage0_binary",
     );
     assert_compile_stage(
         record_field_expr(bootstrap_plan_fields, "self1"),
         &["v4_dag_source", "v4_stage1_binary"],
         "v4_stage2_binary",
-        "v4_stage2_hash",
-        "v4_stage2_hash_pin",
+        ExpectedHashPin {
+            digest: "v4_stage2_hash",
+            pin: "v4_stage2_hash_pin",
+        },
         "v4_stage1_binary",
     );
     assert_fixpt(
         record_field_expr(bootstrap_plan_fields, "fixpt"),
-        "v4_stage1_binary",
-        "v4_stage1_hash",
-        "v4_stage1_hash_pin",
-        "v4_stage2_binary",
-        "v4_stage2_hash",
-        "v4_stage2_hash_pin",
-        "pinned_v4_fixed_point_hash",
-        "pinned_v4_fixed_point_hash_pin",
-        "bit_identical_check",
+        &ExpectedFixpt {
+            left: "v4_stage1_binary",
+            left_hash: ExpectedHashPin {
+                digest: "v4_stage1_hash",
+                pin: "v4_stage1_hash_pin",
+            },
+            right: "v4_stage2_binary",
+            right_hash: ExpectedHashPin {
+                digest: "v4_stage2_hash",
+                pin: "v4_stage2_hash_pin",
+            },
+            pinned_hash: ExpectedHashPin {
+                digest: "pinned_v4_fixed_point_hash",
+                pin: "pinned_v4_fixed_point_hash_pin",
+            },
+            via: "bit_identical_check",
+        },
     );
 }
 
@@ -326,8 +354,7 @@ fn assert_compile_stage(
     expr: &SurfaceExpr,
     expected_consumes: &[&str],
     expected_produces: &str,
-    expected_produces_hash_digest: &str,
-    expected_produces_hash_pin: &str,
+    expected_produces_hash: ExpectedHashPin<'_>,
     expected_compiled_by: &str,
 ) {
     let fields = match expr {
@@ -350,8 +377,7 @@ fn assert_compile_stage(
     );
     assert_hash_pin(
         record_field_expr(fields, "produces_hash"),
-        expected_produces_hash_digest,
-        expected_produces_hash_pin,
+        &expected_produces_hash,
     );
     assert_eq!(
         var_name(record_field_expr(fields, "compiled_by")),
@@ -360,7 +386,7 @@ fn assert_compile_stage(
     );
 }
 
-fn assert_hash_pin(expr: &SurfaceExpr, expected_digest: &str, expected_pin: &str) {
+fn assert_hash_pin(expr: &SurfaceExpr, expected: &ExpectedHashPin<'_>) {
     let fields = match expr {
         SurfaceExpr::VariantRecord { target, fields, .. } => {
             assert_eq!(target, "BootstrapHashPin");
@@ -370,28 +396,17 @@ fn assert_hash_pin(expr: &SurfaceExpr, expected_digest: &str, expected_pin: &str
     };
     assert_eq!(
         var_name(record_field_expr(fields, "digest")),
-        expected_digest,
+        expected.digest,
         "BootstrapHashPin.digest drifted"
     );
     assert_eq!(
         var_name(record_field_expr(fields, "pin")),
-        expected_pin,
+        expected.pin,
         "BootstrapHashPin.pin drifted"
     );
 }
 
-fn assert_fixpt(
-    expr: &SurfaceExpr,
-    expected_left: &str,
-    expected_left_digest: &str,
-    expected_left_pin: &str,
-    expected_right: &str,
-    expected_right_digest: &str,
-    expected_right_pin: &str,
-    expected_pinned_digest: &str,
-    expected_pinned_pin: &str,
-    expected_via: &str,
-) {
+fn assert_fixpt(expr: &SurfaceExpr, expected: &ExpectedFixpt<'_>) {
     let fields = match expr {
         SurfaceExpr::VariantRecord { target, fields, .. } => {
             assert_eq!(target, "FixptStage1Stage2");
@@ -400,24 +415,15 @@ fn assert_fixpt(
         other => panic!("expected FixptStage1Stage2 record, got {other:?}"),
     };
 
-    assert_eq!(var_name(record_field_expr(fields, "left")), expected_left);
-    assert_hash_pin(
-        record_field_expr(fields, "left_hash"),
-        expected_left_digest,
-        expected_left_pin,
-    );
-    assert_eq!(var_name(record_field_expr(fields, "right")), expected_right);
-    assert_hash_pin(
-        record_field_expr(fields, "right_hash"),
-        expected_right_digest,
-        expected_right_pin,
-    );
+    assert_eq!(var_name(record_field_expr(fields, "left")), expected.left);
+    assert_hash_pin(record_field_expr(fields, "left_hash"), &expected.left_hash);
+    assert_eq!(var_name(record_field_expr(fields, "right")), expected.right);
+    assert_hash_pin(record_field_expr(fields, "right_hash"), &expected.right_hash);
     assert_hash_pin(
         record_field_expr(fields, "pinned_hash"),
-        expected_pinned_digest,
-        expected_pinned_pin,
+        &expected.pinned_hash,
     );
-    assert_eq!(var_name(record_field_expr(fields, "via")), expected_via);
+    assert_eq!(var_name(record_field_expr(fields, "via")), expected.via);
 }
 
 fn list_var_names(expr: &SurfaceExpr) -> Vec<&str> {
