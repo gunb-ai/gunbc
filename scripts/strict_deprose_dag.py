@@ -9,6 +9,11 @@ Coproduct one-liners (`// 🟢|🟡|🔴 coproduct dissolution — DECISIONS.md 
 2026-05-17, PR #3234 modeling-discipline alignment): an existing tag with the wrong slug
 is replaced so `--check` cannot pass on stale pointers.
 
+RULING-1 (operator 2026-05-19): each braced record `type` (not a sum coproduct) gets a
+single preserved `// 🟢 grounded.` or `// 🟡 grounded.` line (lexeme-shaped `String`
+slots in the record body ⇒ 🟡). Coproduct rows already carry 🟢/🟡 dissolution state
+and do not get a second grounded line.
+
 `// Owns:` is a **manifest of top-level module symbols** in **file order**: every
 `type`, `data`, and `fn` binding in the `.dag` body (deduped by name), not only headline
 carriers—so regenerated headers stay aligned with actual exports.
@@ -47,6 +52,16 @@ DATA_RE = re.compile(r"^data\s+([A-Za-z_][A-Za-z0-9_]*)\b")
 FN_RE = re.compile(r"^fn\s+([A-Za-z_][A-Za-z0-9_]*)\b")
 COPRODUCT_TAG_RE = re.compile(
     r"^\s*//\s*[🟢🟡🔴]\s+coproduct dissolution\b",
+)
+GROUNDED_TAG_RE = re.compile(r"^\s*//\s*[🟢🟡]\s+grounded\.\s*$")
+
+# Lexeme-shaped `String` fields in a record body ⇒ 🟡 grounded (SL-3229 / D3200-style
+# partial authority); purely structural records ⇒ 🟢.
+LEXEME_STRING_FIELD_RE = re.compile(
+    r"\b("
+    r"lexeme|rhs_lexeme|lhs_lexeme|body_lexeme|initializer_lexeme|expression_lexeme|"
+    r"default_lexeme|event_expression_lexeme|value_lexeme"
+    r")\s*:\s*String\b"
 )
 
 PART6_SLUG_HEAD_RE = re.compile(r"^### (SL-3229-[A-Z0-9-]+|CP-3229-[A-Z0-9-]+)\b")
@@ -319,6 +334,37 @@ def format_coproduct_tag(emoji: str, ref: str) -> str:
     return f"// {emoji} coproduct dissolution — DECISIONS.md Part 6 · {ref}."
 
 
+def grounded_tag_for_record_body(body_lines: list[str]) -> str:
+    body = "\n".join(body_lines)
+    em = "🟡" if LEXEME_STRING_FIELD_RE.search(body) else "🟢"
+    return f"// {em} grounded."
+
+
+def inject_grounded_tags(bl: list[str]) -> list[str]:
+    """Insert RULING-1 `// 🟢|🟡 grounded.` before each braced record `type` when needed."""
+    out: list[str] = []
+    j = 0
+    while j < len(bl):
+        ln = bl[j]
+        st = ln.strip()
+        if TYPE_RE.match(st) and st.rstrip().endswith("{"):
+            prev = out[-1] if out else ""
+            if not (COPRODUCT_TAG_RE.match(prev) or GROUNDED_TAG_RE.match(prev)):
+                depth = ln.count("{") - ln.count("}")
+                chunk = [ln]
+                j += 1
+                while j < len(bl) and depth > 0:
+                    chunk.append(bl[j])
+                    depth += bl[j].count("{") - bl[j].count("}")
+                    j += 1
+                out.append(grounded_tag_for_record_body(chunk))
+                out.extend(chunk)
+                continue
+        out.append(ln)
+        j += 1
+    return out
+
+
 def inject_coproduct_tags(body: str, rel: str, tag_map: dict[str, tuple[str, str]]) -> str:
     bl = body.splitlines()
     out_lines: list[str] = []
@@ -393,7 +439,10 @@ def comment_ratio(text: str) -> tuple[int, int, float]:
 def strip_body_comments(after_module: str) -> str:
     out_lines: list[str] = []
     for line in after_module.splitlines(True):
-        if line.lstrip().startswith("//") and not COPRODUCT_TAG_RE.match(line):
+        sl = line.rstrip("\r\n")
+        if sl.lstrip().startswith("//") and not (
+            COPRODUCT_TAG_RE.match(sl) or GROUNDED_TAG_RE.match(sl)
+        ):
             continue
         out_lines.append(line)
     return "".join(out_lines)
@@ -408,6 +457,10 @@ def materialize_deprose_text(path: Path, rel: str, tag_map: dict[str, tuple[str,
     body = "".join(lines[idx + 1 :])
     new_body = strip_body_comments(body)
     new_body = inject_coproduct_tags(new_body, rel, tag_map)
+    ends_nl = new_body.endswith("\n")
+    core = new_body[:-1] if ends_nl else new_body
+    grounded_lines = inject_grounded_tags(core.splitlines())
+    new_body = "\n".join(grounded_lines) + ("\n" if ends_nl else "")
     return header + module_line + new_body
 
 

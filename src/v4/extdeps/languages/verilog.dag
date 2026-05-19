@@ -130,6 +130,7 @@ type ConstantPrimary
   | ConstantString { lexeme: String }
 
 
+// 🟢 grounded.
 type ConstantFunctionCall {
   function_name: Symbol
   attributes: AttributeInstanceClause
@@ -137,17 +138,20 @@ type ConstantFunctionCall {
 }
 
 
+// 🟢 grounded.
 type ConstantSystemFunctionCall {
   system_function_name: Symbol
   arguments: List<ConstantExpression>
 }
 
 
+// 🟢 grounded.
 type ConstantConcatenation {
   expressions: List<ConstantExpression>
 }
 
 
+// 🟢 grounded.
 type ConstantMultipleConcatenation {
   repeat_count: ConstantExpression
   concatenation: ConstantConcatenation
@@ -162,6 +166,7 @@ type ConstantExpression
   | ConstantConditionalExpression { condition: ConstantExpression, attributes: AttributeInstanceClause, if_true: ConstantExpression, if_false: ConstantExpression }
 
 
+// 🟢 grounded.
 type VectorRange {
   msb: ConstantExpression
   lsb: ConstantExpression
@@ -264,12 +269,14 @@ type NetDeclaration
     }
 
 
+// 🟡 grounded.
 type NetAssignmentDeclarator {
   name: Symbol
   rhs_lexeme: String
 }
 
 
+// 🟢 grounded.
 type NetIdentifierDeclarator {
   name: Symbol
   unpacked_dimensions: UnpackedDimensionsClause
@@ -352,12 +359,14 @@ type AnsiPortDeclaration
     }
 
 
+// 🟢 grounded.
 type AnsiHeaderPort {
   attributes: AttributeInstanceClause
   decl: AnsiPortDeclaration
 }
 
 
+// 🟢 grounded.
 type AnsiOutputPortDeclarator {
   name: Symbol
   initializer: VariableInitializerClause
@@ -377,30 +386,35 @@ type ParameterTypeKind
 
 
 
+// 🟡 grounded.
 type ParameterAssignment {
   name: Symbol
   default_lexeme: String
 }
 
 
+// 🟢 grounded.
 type ParameterDeclaration {
   type_kind: ParameterTypeKind
   assignments: List<ParameterAssignment>
 }
 
 
+// 🟡 grounded.
 type SensitivityItem {
   trigger: EdgeTrigger
   event_expression_lexeme: String
 }
 
 
+// 🟡 grounded.
 type NetAssignment {
   lhs_lexeme: String
   rhs_lexeme: String
 }
 
 
+// 🟢 grounded.
 type ContinuousAssign {
   drive_strength: DriveStrengthClause
   delay: DelayClause
@@ -408,6 +422,7 @@ type ContinuousAssign {
 }
 
 
+// 🟡 grounded.
 type AlwaysBlock {
   sensitivity: AlwaysBlockSensitivity
   body_lexeme: String
@@ -421,6 +436,7 @@ type AlwaysBlockSensitivity
   | ExplicitEventList { items: List<SensitivityItem> }
 
 
+// 🟡 grounded.
 type InitialBlock {
   body_lexeme: String
 }
@@ -432,12 +448,14 @@ type PortConnectionActual
   | BlankConnection
 
 
+// 🟢 grounded.
 type OrderedPortConnection {
   attributes: AttributeInstanceClause
   actual: PortConnectionActual
 }
 
 
+// 🟢 grounded.
 type NamedPortConnection {
   attributes: AttributeInstanceClause
   port: Symbol
@@ -462,6 +480,7 @@ type ParameterOverrideActual
   | ParameterOverrideExpression { lexeme: String }
 
 
+// 🟢 grounded.
 type NamedParameterOverride {
   parameter: Symbol
   actual: ParameterOverrideActual
@@ -481,6 +500,7 @@ type InstanceRangeClause
   | InstanceRange { range: VectorRange }
 
 
+// 🟢 grounded.
 type ModuleInstance {
   instance_name: Symbol
   instance_range: InstanceRangeClause
@@ -488,6 +508,7 @@ type ModuleInstance {
 }
 
 
+// 🟢 grounded.
 type ModuleInstantiation {
   module_name: Symbol
   parameter_overrides: ParameterOverrides
@@ -495,32 +516,38 @@ type ModuleInstantiation {
 }
 
 
+// 🟡 grounded.
 type DefparamAssignment {
   target_path: String
   value_lexeme: String
 }
 
 
+// 🟢 grounded.
 type DefparamDeclaration {
   assignments: List<DefparamAssignment>
 }
 
 
+// 🟡 grounded.
 type GenerateRegion {
   body_lexeme: String
 }
 
 
+// 🟡 grounded.
 type LoopGenerateConstruct {
   body_lexeme: String
 }
 
 
+// 🟡 grounded.
 type ConditionalGenerateConstruct {
   body_lexeme: String
 }
 
 
+// 🟡 grounded.
 type SpecifyBlock {
   body_lexeme: String
 }
@@ -538,6 +565,7 @@ type FunctionReturnTypeClause
   | FunctionReturnTypeLexeme { lexeme: String }
 
 
+// 🟡 grounded.
 type TaskDeclaration {
   lifetime: LifetimeClause
   name: Symbol
@@ -545,6 +573,7 @@ type TaskDeclaration {
 }
 
 
+// 🟡 grounded.
 type FunctionDeclaration {
   lifetime: LifetimeClause
   return_type: FunctionReturnTypeClause
@@ -553,22 +582,26 @@ type FunctionDeclaration {
 }
 
 
+// 🟢 grounded.
 type EventDeclarator {
   name: Symbol
   unpacked_dimensions: UnpackedDimensionsClause
 }
 
 
+// 🟢 grounded.
 type EventDeclaration {
   event_declarators: List<EventDeclarator>
 }
 
 
+// 🟢 grounded.
 type GenvarDeclaration {
   genvar_names: List<Symbol>
 }
 
 
+// 🟢 grounded.
 type LocalParameterDeclaration {
   type_kind: ParameterTypeKind
   assignments: List<ParameterAssignment>
@@ -605,6 +638,7 @@ type PrimitiveGateKind
   | GatePullup
 
 
+// 🟡 grounded.
 type GateInstantiation {
   gate_kind: PrimitiveGateKind
   body_lexeme: String
@@ -617,12 +651,14 @@ type UdpInstanceName
   | NamedUdpInstance { name: Symbol, instance_range: InstanceRangeClause }
 
 
+// 🟡 grounded.
 type UdpInstance {
   instance_name: UdpInstanceName
   body_lexeme: String
 }
 
 
+// 🟢 grounded.
 type UdpInstantiation {
   udp_name: Symbol
   drive_strength: DriveStrengthClause
@@ -631,6 +667,7 @@ type UdpInstantiation {
 }
 
 
+// 🟡 grounded.
 type UdpDefinition {
   attributes: AttributeInstanceClause
   name: Symbol
@@ -644,6 +681,7 @@ type SpecparamAssignment
   | PulseControlSpecparam { lexeme: String }
 
 
+// 🟢 grounded.
 type SpecparamDeclaration {
   packing: PackingShape
   assignments: List<SpecparamAssignment>
@@ -731,6 +769,7 @@ type VerilogModule
 
 
 
+// 🟢 grounded.
 type VerilogCost {
   gate_cost: Nat
   area_cost: Nat
