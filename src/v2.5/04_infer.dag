@@ -728,7 +728,7 @@ fn infer_record_lit(expr: NormalizedExpr, type_ref: TypeRef, fields: List<Symbol
 }
 
 fn infer_list_lit(expr: NormalizedExpr, elements: List<InferredExpr>) -> ExprInference {
-  let element_type = facts_of(expr: first_expr(children: elements)).result_type
+  let element_type = facts_of(expr: first_expr_from_values(children: elements)).result_type
   let list_type = TypeApply { callee: TypeName { name: list_symbol }, args: [element_type] }
   let facts = required_facts(result_type: list_type, algebra: AlgebraKnown { algebra: list_symbol })
   ExprInference { expr: InferredListLit { elements: elements, facts: facts }, diagnostics: [], facts: facts }
