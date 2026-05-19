@@ -1,6 +1,6 @@
 // src/v4/lens/testgen.dag
 // Scope: T-19 testgen — substrate folds emit TestClaim; five scheduling categories + Generator<C>; filesystem-backed whole-corpus lens driver primitive.
-// Owns: Generator<C> TypeConstructionSubject AlgebraLawSubject DiagnosticExhaustivenessSubject LensApplicabilitySubject BidirectionalRoundtripSubject TestgenConcept CorpusEntry CorpusEnumerationRequest CorpusEnumerationResult CorpusEnumerator CorpusEntryIngestResult CorpusEntryIngestor CorpusLensReadResult<C> CorpusLensReader<C> CorpusLensObservation<C> CorpusLensDriveResult<C> CorpusLensDriver<C>
+// Owns: Generator<C> TypeConstructionSubject AlgebraLawSubject DiagnosticExhaustivenessSubject LensApplicabilitySubject BidirectionalRoundtripSubject TestgenConcept CorpusEntry CorpusTraversalScope CorpusTraversalOrder CorpusDuplicatePolicy CorpusTraversalPolicy CorpusEnumerationRequest CorpusEnumerationResult CorpusEnumerator CorpusEntryIngestResult CorpusEntryIngestor CorpusLensReadResult<C> CorpusLensReader<C> CorpusLensObservation<C> CorpusLensDriveResult<C> CorpusLensDriver<C>
 // Consumes: v4.std.node v4.std.verification v4.std.diagnostic v4.extdeps.file_system (algebra/lens/extdeps at materialization — TASKS T-19)
 // Status: M1 — live types + Generator<C>; eval wiring T-22.
 
@@ -55,50 +55,68 @@ type Generator<C> {
 }
 
 
-// RULING-1: 🟡 needs-more-work — consumer: materialized corpus lens driver
+// RULING-1: 🟡 needs-more-work — consumer: materialized corpus lens driver; dissolve-on-arrival: driver consumes these carriers directly.
 type CorpusEntry {
   path: AbsolutePath
   body: FileBody
 }
 
 
-// RULING-1: 🟡 needs-more-work — consumer: materialized corpus lens driver
+type CorpusTraversalScope
+// 🟢 coproduct dissolution — traversal policy axis
+  = RecursiveCorpusWalk
+  | SingleDirectoryCorpusWalk
+
+
+type CorpusTraversalOrder
+// 🟢 coproduct dissolution — traversal policy axis
+  = LexicalPathOrder
+  | FilesystemNativeOrder
+
+
+type CorpusDuplicatePolicy
+// 🟢 coproduct dissolution — traversal policy axis
+  = PreserveDuplicateEntries
+  | RejectDuplicatePaths
+
+
+type CorpusTraversalPolicy {
+  scope: CorpusTraversalScope
+  order: CorpusTraversalOrder
+  duplicates: CorpusDuplicatePolicy
+}
+
+
 type CorpusEnumerationRequest {
   filesystem: Filesystem
   root: AbsolutePath
   operations: FileSystemOperations
   resolution: FileKindResolutionPolicy
+  traversal: CorpusTraversalPolicy
 }
 
 
-// RULING-1: 🟡 needs-more-work — consumer: materialized corpus lens driver
 type CorpusEnumerationResult = Outcome<List<CorpusEntry>>
 
 
-// RULING-1: 🟡 needs-more-work — consumer: materialized corpus lens driver
 type CorpusEnumerator = fn(CorpusEnumerationRequest) -> CorpusEnumerationResult
 
 
-// RULING-1: 🟡 needs-more-work — consumer: materialized corpus lens driver
 type CorpusEntryIngestResult = Outcome<Node>
 
 
-// RULING-1: 🟡 needs-more-work — consumer: materialized corpus lens driver
 type CorpusEntryIngestor = fn(CorpusEntry) -> CorpusEntryIngestResult
 
 
-// RULING-1: 🟡 needs-more-work — consumer: materialized corpus lens driver
 type CorpusLensReadResult<C> = Outcome<C>
 
 
-// RULING-1: 🟡 needs-more-work — consumer: materialized corpus lens driver
 type CorpusLensReader<C> {
   lens: Symbol
   read: fn(Node) -> CorpusLensReadResult<C>
 }
 
 
-// RULING-1: 🟡 needs-more-work — consumer: materialized corpus lens driver
 type CorpusLensObservation<C> {
   entry: CorpusEntry
   program: Node
@@ -106,11 +124,9 @@ type CorpusLensObservation<C> {
 }
 
 
-// RULING-1: 🟡 needs-more-work — consumer: materialized corpus lens driver
 type CorpusLensDriveResult<C> = Outcome<List<CorpusLensObservation<C>>>
 
 
-// RULING-1: 🟡 needs-more-work — consumer: materialized corpus lens driver
 type CorpusLensDriver<C> = fn(
   CorpusEnumerationRequest,
   CorpusEnumerator,
