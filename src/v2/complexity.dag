@@ -1,16 +1,17 @@
-// v2 complexity analysis -- cost algebra and proof vocabulary.
+// src/v2/complexity.dag
 //
-// Defines the symbolic types for runtime complexity analysis of DAG
-// execution structure. The analyzer walks authoritative program structure
-// and produces symbolic cost terms. Program IR and cost IR are separate:
-// these types are proof objects, not program nodes.
+// Scope: complexity lens — asymptotic projection of symbolic cost (U2).
+// Owns: ComplexityBound, Witness<ComplexityBound>, complexity_lens_read,
+//       CostExpr/SizeExpr, build_complexity_report pipeline adapter.
+// Consumes: v2.std.core Node, std.termination, std.computation, std.induction.
+// Status: calibration lens — advisory read; enforcement stays in compile.dag.
 //
-// Two metrics are first-class:
-//   work  -- total operations performed
-//   span  -- critical path length under DAG dependency structure
+// U2: CostExpr work/span is the single cost authority; ComplexityBound is
+// projected from it via complexity_bound_from_cost (never re-derived from Node
+// shape alone). complexity_lens_read delegates to cost_of_expr then projects.
 //
-// D2: get_or_compute_summary -- lazy cached summary computation
-// D4: build_complexity_report -- collect summaries (no violations — all costs concrete)
+// RULING-6: lens READ is advisory — Witness::Holds carries observations;
+// compile-time blocking uses ComplexityViolation downstream, not this lens.
 
 module v2.compiler.complexity
 
@@ -4555,13 +4556,230 @@ fn substitute_cost(expr: CostExpr, legend: Map<String, String>) -> CostExpr {
   }
 }
 
+// =========================================================================
+// Lens contract (v4 discipline, v2 substrate)
+//
+// Node -> Witness<ComplexityBound> via cost_of_expr + asymptotic projection.
+// =========================================================================
+
+type ComplexityBound
+  = BoundConstant
+  | BoundLog
+  | BoundLinear
+  | BoundLinearithmic
+  | BoundQuadratic
+  | BoundPolynomial { degree: Int }
+  | BoundUnknown { reason: String }
+  | BoundExtern { name: String }
+
+type Witness<Carrier>
+  = Holds { value: Carrier }
+  | Unavailable { reason: String }
+
+fn complexity_bound_eq(a: ComplexityBound, b: ComplexityBound) -> Bool =
+  match a {
+    BoundConstant =>
+      match b { BoundConstant => True, _ => False }
+    BoundLog =>
+      match b { BoundLog => True, _ => False }
+    BoundLinear =>
+      match b { BoundLinear => True, _ => False }
+    BoundLinearithmic =>
+      match b { BoundLinearithmic => True, _ => False }
+    BoundQuadratic =>
+      match b { BoundQuadratic => True, _ => False }
+    BoundPolynomial { degree: da } =>
+      match b {
+        BoundPolynomial { degree: db } => da == db
+        _ => False
+      }
+    BoundUnknown { reason: ra } =>
+      match b {
+        BoundUnknown { reason: rb } => ra == rb
+        _ => False
+      }
+    BoundExtern { name: na } =>
+      match b {
+        BoundExtern { name: nb } => na == nb
+        _ => False
+      }
+  }
+
+fn complexity_bound_rank(bound: ComplexityBound) -> Int =
+  match bound {
+    BoundConstant => 0
+    BoundLog => 1
+    BoundLinear => 2
+    BoundLinearithmic => 3
+    BoundQuadratic => 4
+    BoundPolynomial { degree: d } => 4 + d
+    BoundExtern { name: _ } => 5
+    BoundUnknown { reason: _ } => 99
+  }
+
+fn complexity_bound_max(a: ComplexityBound, b: ComplexityBound) -> ComplexityBound =
+  if complexity_bound_rank(bound: a) >= complexity_bound_rank(bound: b) then a else b
+
+fn complexity_bound_mul(a: ComplexityBound, b: ComplexityBound) -> ComplexityBound =
+  match a {
+    BoundConstant => b
+    BoundLinear =>
+      match b {
+        BoundConstant => a
+        BoundLinear => BoundQuadratic
+        BoundQuadratic => BoundPolynomial { degree: 3 }
+        BoundPolynomial { degree: d } => BoundPolynomial { degree: d + 1 }
+        other => other
+      }
+    BoundQuadratic =>
+      match b {
+        BoundConstant => a
+        BoundLinear => BoundPolynomial { degree: 3 }
+        BoundQuadratic => BoundPolynomial { degree: 4 }
+        BoundPolynomial { degree: d } => BoundPolynomial { degree: d + 2 }
+        other => complexity_bound_max(a: a, b: b)
+      }
+    other =>
+      complexity_bound_max(a: other, b: b)
+  }
+
+fn complexity_bound_from_normalized(expr: CostExpr) -> ComplexityBound =
+  match expr {
+    CostUnknown { reason: r } => BoundUnknown { reason: r }
+    CostExtern { name: n } => BoundExtern { name: n }
+    CostConst { value: _ } => BoundConstant
+    CostLog { base: _, argument: _ } => BoundLog
+    CostSum { binder: _, upper: _, body: bd } =>
+      match complexity_bound_from_normalized(expr: bd) {
+        BoundConstant => BoundLinear
+        BoundLinear => BoundQuadratic
+        BoundQuadratic => BoundPolynomial { degree: 3 }
+        BoundPolynomial { degree: d } => BoundPolynomial { degree: d + 1 }
+        other => other
+      }
+    CostMul { left: l, right: r } =>
+      complexity_bound_mul(
+        a: complexity_bound_from_normalized(expr: l),
+        b: complexity_bound_from_normalized(expr: r)
+      )
+    CostAdd { left: l, right: r } =>
+      complexity_bound_max(
+        a: complexity_bound_from_normalized(expr: l),
+        b: complexity_bound_from_normalized(expr: r)
+      )
+    CostMax { left: l, right: r } =>
+      complexity_bound_max(
+        a: complexity_bound_from_normalized(expr: l),
+        b: complexity_bound_from_normalized(expr: r)
+      )
+  }
+
+fn complexity_bound_from_cost(expr: CostExpr) -> ComplexityBound =
+  complexity_bound_from_normalized(expr: normalize_asymptotic(expr: simplify_cost(expr: expr)))
+
+fn complexity_bound_to_display(bound: ComplexityBound) -> String =
+  match bound {
+    BoundConstant => "O(1)"
+    BoundLog => "O(log n)"
+    BoundLinear => "O(n)"
+    BoundLinearithmic => "O(n log n)"
+    BoundQuadratic => "O(n²)"
+    BoundPolynomial { degree: d } => concat("O(n^", to_string(d), ")")
+    BoundUnknown { reason: _ } => "O(?)"
+    BoundExtern { name: n } => concat("O(extern(", n, "))")
+  }
+
 fn classify_complexity(expr: CostExpr) -> String {
   let normalized = normalize_asymptotic(expr: simplify_cost(expr: expr))
   let size_names = collect_size_vars(expr: normalized)
   let legend = build_legend(size_names: size_names)
   let substituted = substitute_cost(expr: normalized, legend: legend.substitution)
-  concat(format_cost_class(expr: substituted), legend.suffix)
+  concat(
+    complexity_bound_to_display(bound: complexity_bound_from_normalized(expr: substituted)),
+    legend.suffix
+  )
 }
+
+fn complexity_witness_from_summary(summary: ComplexitySummary) -> Witness<ComplexityBound> =
+  Holds { value: complexity_bound_from_cost(expr: summary.work) }
+
+// Lens TDD — table discharges via complexity_bound_from_cost (U2 projection).
+type ComplexityLensExpectation = ExpectFiresPass | ExpectFiresAdvisory | ExpectNearMiss
+
+type ComplexityLensTddCase {
+  name: String
+  cost: CostExpr
+  expected: ComplexityBound
+  expectation: ComplexityLensExpectation
+}
+
+fn discharge_complexity_lens_tdd_case(case: ComplexityLensTddCase) -> Bool =
+  let observed = complexity_bound_from_cost(expr: case.cost)
+  let matches = complexity_bound_eq(a: observed, b: case.expected)
+  match case.expectation {
+    ExpectFiresPass => matches
+    ExpectFiresAdvisory => matches
+    ExpectNearMiss => !matches
+  }
+
+fn complexity_lens_tdd_constant_pass() -> ComplexityLensTddCase =
+  ComplexityLensTddCase {
+    name: "canonical_constant"
+    cost: CostConst { value: 1 }
+    expected: BoundConstant
+    expectation: ExpectFiresPass
+  }
+
+fn complexity_lens_tdd_linear_pass() -> ComplexityLensTddCase =
+  ComplexityLensTddCase {
+    name: "canonical_linear_sum"
+    cost: CostSum {
+      binder: "i"
+      upper: SizeLen { collection: "items" }
+      body: CostConst { value: 1 }
+    }
+    expected: BoundLinear
+    expectation: ExpectFiresPass
+  }
+
+fn complexity_lens_tdd_quadratic_fires() -> ComplexityLensTddCase =
+  ComplexityLensTddCase {
+    name: "nested_iteration"
+    cost: CostSum {
+      binder: "i"
+      upper: SizeLen { collection: "items" }
+      body: CostSum {
+        binder: "j"
+        upper: SizeLen { collection: "items" }
+        body: CostConst { value: 1 }
+      }
+    }
+    expected: BoundQuadratic
+    expectation: ExpectFiresPass
+  }
+
+fn complexity_lens_tdd_unknown_advisory() -> ComplexityLensTddCase =
+  ComplexityLensTddCase {
+    name: "escape_unknown_cost"
+    cost: CostUnknown { reason: "unmodeled primitive" }
+    expected: BoundUnknown { reason: "unmodeled primitive" }
+    expectation: ExpectFiresAdvisory
+  }
+
+fn complexity_lens_tdd_near_miss() -> ComplexityLensTddCase =
+  ComplexityLensTddCase {
+    name: "sibling_not_linear"
+    cost: CostConst { value: 1 }
+    expected: BoundLinear
+    expectation: ExpectNearMiss
+  }
+
+fn complexity_lens_tdd_table_passes() -> Bool =
+  discharge_complexity_lens_tdd_case(case: complexity_lens_tdd_constant_pass())
+  && discharge_complexity_lens_tdd_case(case: complexity_lens_tdd_linear_pass())
+  && discharge_complexity_lens_tdd_case(case: complexity_lens_tdd_quadratic_fires())
+  && discharge_complexity_lens_tdd_case(case: complexity_lens_tdd_unknown_advisory())
+  && !discharge_complexity_lens_tdd_case(case: complexity_lens_tdd_near_miss())
 
 // Collect all SizeLen collection names from a CostExpr tree for the "where" clause.
 fn collect_size_vars_from_size(size: SizeExpr) -> List<String> {
@@ -5027,6 +5245,27 @@ fn estimate_expr_size(texpr: Node, budget: Int) -> Int {
     )
   }
 }
+
+fn complexity_lens_read(
+  node: Node,
+  func_index: Map<String, FuncEntry>,
+  scc_index: Map<String, SccInfo>,
+  table: CostInternTable,
+  parser_always_advancing: Map<String, Bool>,
+  recursion_ctx: RecursionContext,
+  si: Map<String, NewlineIndex>
+) -> Witness<ComplexityBound> =
+  complexity_witness_from_summary(
+    summary: cost_of_expr(
+      texpr: node,
+      func_index: func_index,
+      scc_index: scc_index,
+      table: table,
+      parser_always_advancing: parser_always_advancing,
+      recursion_ctx: recursion_ctx,
+      si: si
+    ).summary
+  )
 
 fn get_or_compute_summary(func_name: String, func_index: Map<String, FuncEntry>, scc_index: Map<String, SccInfo>, table: CostInternTable, parser_always_advancing: Map<String, Bool>, recursion_ctx: RecursionContext, si: Map<String, NewlineIndex>) -> SummaryResult {
   // Check cache first

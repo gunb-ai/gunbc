@@ -154,6 +154,24 @@ pub enum Certainty {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum ComplexityBound {
+    BoundConstant,
+    BoundLog,
+    BoundLinear,
+    BoundLinearithmic,
+    BoundQuadratic,
+    BoundPolynomial { degree: i64 },
+    BoundUnknown { reason: String },
+    BoundExtern { name: String },
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum ComplexityWitness {
+    Holds { value: ComplexityBound },
+    Unavailable { reason: String },
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ComplexitySummary {
     pub work: Rc<CostExpr>,
     pub span: Rc<CostExpr>,
@@ -8056,14 +8074,249 @@ pub fn substitute_cost(expr: Rc<CostExpr>, legend: &Rc<HashMap<String, String>>)
     })
 }
 
+pub fn complexity_bound_eq(a: &ComplexityBound, b: &ComplexityBound) -> bool {
+    match (a, b) {
+        (ComplexityBound::BoundConstant, ComplexityBound::BoundConstant) => true,
+        (ComplexityBound::BoundLog, ComplexityBound::BoundLog) => true,
+        (ComplexityBound::BoundLinear, ComplexityBound::BoundLinear) => true,
+        (ComplexityBound::BoundLinearithmic, ComplexityBound::BoundLinearithmic) => true,
+        (ComplexityBound::BoundQuadratic, ComplexityBound::BoundQuadratic) => true,
+        (
+            ComplexityBound::BoundPolynomial { degree: da },
+            ComplexityBound::BoundPolynomial { degree: db },
+        ) => da == db,
+        (
+            ComplexityBound::BoundUnknown { reason: ra },
+            ComplexityBound::BoundUnknown { reason: rb },
+        ) => ra == rb,
+        (ComplexityBound::BoundExtern { name: na }, ComplexityBound::BoundExtern { name: nb }) => {
+            na == nb
+        }
+        _ => false,
+    }
+}
+
+pub fn complexity_bound_rank(bound: &ComplexityBound) -> i64 {
+    match bound {
+        ComplexityBound::BoundConstant => 0,
+        ComplexityBound::BoundLog => 1,
+        ComplexityBound::BoundLinear => 2,
+        ComplexityBound::BoundLinearithmic => 3,
+        ComplexityBound::BoundQuadratic => 4,
+        ComplexityBound::BoundPolynomial { degree: d } => 4 + d,
+        ComplexityBound::BoundExtern { name: _ } => 5,
+        ComplexityBound::BoundUnknown { reason: _ } => 99,
+    }
+}
+
+pub fn complexity_bound_max(a: ComplexityBound, b: ComplexityBound) -> ComplexityBound {
+    if complexity_bound_rank(&a) >= complexity_bound_rank(&b) {
+        a
+    } else {
+        b
+    }
+}
+
+pub fn complexity_bound_mul(a: ComplexityBound, b: ComplexityBound) -> ComplexityBound {
+    match a {
+        ComplexityBound::BoundConstant => b,
+        ComplexityBound::BoundLinear => match b {
+            ComplexityBound::BoundConstant => a,
+            ComplexityBound::BoundLinear => ComplexityBound::BoundQuadratic,
+            ComplexityBound::BoundQuadratic => ComplexityBound::BoundPolynomial { degree: 3 },
+            ComplexityBound::BoundPolynomial { degree: d } => {
+                ComplexityBound::BoundPolynomial { degree: d + 1 }
+            }
+            other => other,
+        },
+        ComplexityBound::BoundQuadratic => match b {
+            ComplexityBound::BoundConstant => a,
+            ComplexityBound::BoundLinear => ComplexityBound::BoundPolynomial { degree: 3 },
+            ComplexityBound::BoundQuadratic => ComplexityBound::BoundPolynomial { degree: 4 },
+            ComplexityBound::BoundPolynomial { degree: d } => {
+                ComplexityBound::BoundPolynomial { degree: d + 2 }
+            }
+            other => complexity_bound_max(a, b),
+        },
+        other => complexity_bound_max(other, b),
+    }
+}
+
+pub fn complexity_bound_from_normalized(expr: Rc<CostExpr>) -> ComplexityBound {
+    match (*expr).clone() {
+        CostExpr::CostUnknown { reason: r } => ComplexityBound::BoundUnknown { reason: r },
+        CostExpr::CostExtern { name: n } => ComplexityBound::BoundExtern { name: n },
+        CostExpr::CostConst { value: _ } => ComplexityBound::BoundConstant,
+        CostExpr::CostLog {
+            base: _,
+            argument: _,
+        } => ComplexityBound::BoundLog,
+        CostExpr::CostSum {
+            binder: _,
+            upper: _,
+            body: bd,
+        } => match complexity_bound_from_normalized(bd) {
+            ComplexityBound::BoundConstant => ComplexityBound::BoundLinear,
+            ComplexityBound::BoundLinear => ComplexityBound::BoundQuadratic,
+            ComplexityBound::BoundQuadratic => ComplexityBound::BoundPolynomial { degree: 3 },
+            ComplexityBound::BoundPolynomial { degree: d } => {
+                ComplexityBound::BoundPolynomial { degree: d + 1 }
+            }
+            other => other,
+        },
+        CostExpr::CostMul { left: l, right: r } => complexity_bound_mul(
+            complexity_bound_from_normalized(l),
+            complexity_bound_from_normalized(r),
+        ),
+        CostExpr::CostAdd { left: l, right: r } => complexity_bound_max(
+            complexity_bound_from_normalized(l),
+            complexity_bound_from_normalized(r),
+        ),
+        CostExpr::CostMax { left: l, right: r } => complexity_bound_max(
+            complexity_bound_from_normalized(l),
+            complexity_bound_from_normalized(r),
+        ),
+    }
+}
+
+pub fn complexity_bound_from_cost(expr: Rc<CostExpr>) -> ComplexityBound {
+    complexity_bound_from_normalized(normalize_asymptotic(simplify_cost(expr)))
+}
+
+pub fn complexity_bound_to_display(bound: &ComplexityBound) -> String {
+    match bound {
+        ComplexityBound::BoundConstant => "O(1)".to_string(),
+        ComplexityBound::BoundLog => "O(log n)".to_string(),
+        ComplexityBound::BoundLinear => "O(n)".to_string(),
+        ComplexityBound::BoundLinearithmic => "O(n log n)".to_string(),
+        ComplexityBound::BoundQuadratic => "O(n²)".to_string(),
+        ComplexityBound::BoundPolynomial { degree: d } => {
+            v2_rt::concat("O(n^".to_string(), to_string(*d), ")".to_string())
+        }
+        ComplexityBound::BoundUnknown { reason: _ } => "O(?)".to_string(),
+        ComplexityBound::BoundExtern { name: n } => {
+            v2_rt::concat("O(extern(".to_string(), n.clone(), ")".to_string())
+        }
+    }
+}
+
 pub fn classify_complexity(expr: Rc<CostExpr>) -> String {
     {
         let normalized = normalize_asymptotic(simplify_cost(expr));
         let size_names = collect_size_vars(normalized.clone());
         let legend = build_legend(size_names);
         let substituted = substitute_cost(normalized.clone(), &legend.substitution.clone());
-        v2_rt::concat(format_cost_class(substituted), legend.suffix.clone())
+        v2_rt::concat(
+            complexity_bound_to_display(&complexity_bound_from_normalized(substituted)),
+            legend.suffix.clone(),
+        )
     }
+}
+
+pub fn complexity_witness_from_summary(summary: &ComplexitySummary) -> ComplexityWitness {
+    ComplexityWitness::Holds {
+        value: complexity_bound_from_cost(summary.work.clone()),
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum ComplexityLensExpectation {
+    ExpectFiresPass,
+    ExpectFiresAdvisory,
+    ExpectNearMiss,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ComplexityLensTddCase {
+    pub name: String,
+    pub cost: Rc<CostExpr>,
+    pub expected: ComplexityBound,
+    pub expectation: ComplexityLensExpectation,
+}
+
+pub fn discharge_complexity_lens_tdd_case(case: &ComplexityLensTddCase) -> bool {
+    let observed = complexity_bound_from_cost(case.cost.clone());
+    let matches = complexity_bound_eq(&observed, &case.expected);
+    match case.expectation {
+        ComplexityLensExpectation::ExpectFiresPass => matches,
+        ComplexityLensExpectation::ExpectFiresAdvisory => matches,
+        ComplexityLensExpectation::ExpectNearMiss => !matches,
+    }
+}
+
+pub fn complexity_lens_tdd_constant_pass() -> ComplexityLensTddCase {
+    ComplexityLensTddCase {
+        name: "canonical_constant".to_string(),
+        cost: Rc::new(CostExpr::CostConst { value: 1 }),
+        expected: ComplexityBound::BoundConstant,
+        expectation: ComplexityLensExpectation::ExpectFiresPass,
+    }
+}
+
+pub fn complexity_lens_tdd_linear_pass() -> ComplexityLensTddCase {
+    ComplexityLensTddCase {
+        name: "canonical_linear_sum".to_string(),
+        cost: Rc::new(CostExpr::CostSum {
+            binder: "i".to_string(),
+            upper: Rc::new(SizeExpr::SizeLen {
+                collection: "items".to_string(),
+            }),
+            body: Rc::new(CostExpr::CostConst { value: 1 }),
+        }),
+        expected: ComplexityBound::BoundLinear,
+        expectation: ComplexityLensExpectation::ExpectFiresPass,
+    }
+}
+
+pub fn complexity_lens_tdd_quadratic_fires() -> ComplexityLensTddCase {
+    ComplexityLensTddCase {
+        name: "nested_iteration".to_string(),
+        cost: Rc::new(CostExpr::CostSum {
+            binder: "i".to_string(),
+            upper: Rc::new(SizeExpr::SizeLen {
+                collection: "items".to_string(),
+            }),
+            body: Rc::new(CostExpr::CostSum {
+                binder: "j".to_string(),
+                upper: Rc::new(SizeExpr::SizeLen {
+                    collection: "items".to_string(),
+                }),
+                body: Rc::new(CostExpr::CostConst { value: 1 }),
+            }),
+        }),
+        expected: ComplexityBound::BoundQuadratic,
+        expectation: ComplexityLensExpectation::ExpectFiresPass,
+    }
+}
+
+pub fn complexity_lens_tdd_unknown_advisory() -> ComplexityLensTddCase {
+    ComplexityLensTddCase {
+        name: "escape_unknown_cost".to_string(),
+        cost: Rc::new(CostExpr::CostUnknown {
+            reason: "unmodeled primitive".to_string(),
+        }),
+        expected: ComplexityBound::BoundUnknown {
+            reason: "unmodeled primitive".to_string(),
+        },
+        expectation: ComplexityLensExpectation::ExpectFiresAdvisory,
+    }
+}
+
+pub fn complexity_lens_tdd_near_miss() -> ComplexityLensTddCase {
+    ComplexityLensTddCase {
+        name: "sibling_not_linear".to_string(),
+        cost: Rc::new(CostExpr::CostConst { value: 1 }),
+        expected: ComplexityBound::BoundLinear,
+        expectation: ComplexityLensExpectation::ExpectNearMiss,
+    }
+}
+
+pub fn complexity_lens_tdd_table_passes() -> bool {
+    discharge_complexity_lens_tdd_case(&complexity_lens_tdd_constant_pass())
+        && discharge_complexity_lens_tdd_case(&complexity_lens_tdd_linear_pass())
+        && discharge_complexity_lens_tdd_case(&complexity_lens_tdd_quadratic_fires())
+        && discharge_complexity_lens_tdd_case(&complexity_lens_tdd_unknown_advisory())
+        && !discharge_complexity_lens_tdd_case(&complexity_lens_tdd_near_miss())
 }
 
 pub fn collect_size_vars_from_size(size: Rc<SizeExpr>) -> Rc<Vec<String>> {
@@ -8816,6 +9069,29 @@ pub fn estimate_expr_size(texpr: Rc<Node>, budget: i64) -> i64 {
                 })
         }
     })
+}
+
+pub fn complexity_lens_read(
+    node: &Rc<Node>,
+    func_index: &Rc<HashMap<String, Rc<FuncEntry>>>,
+    scc_index: &Rc<HashMap<String, Rc<SccInfo>>>,
+    table: Rc<CostInternTable>,
+    parser_always_advancing: &Rc<HashMap<String, bool>>,
+    recursion_ctx: &RecursionContext,
+    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> ComplexityWitness {
+    complexity_witness_from_summary(
+        &cost_of_expr(
+            node,
+            func_index,
+            scc_index,
+            table,
+            parser_always_advancing,
+            recursion_ctx,
+            si,
+        )
+        .summary,
+    )
 }
 
 pub fn get_or_compute_summary(
