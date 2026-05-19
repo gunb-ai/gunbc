@@ -343,6 +343,13 @@ centralisation/drift resolution). `!` grounds to the std `Never`
 primitive directly (`type RustNever = Never`) — zero inhabitants, no
 structure above the primitive, so the primitive identity *is* the
 complete grounding (the degenerate base of the same discipline).
+**`type RustNever = Never` is therefore TERMINAL, *not* the
+consumer-gated P2/E-6 staging case** that the `<lang>_bool_grounding`
+decl-ref is: there is no coincidence fold to discharge (nothing to
+compare beyond the identity), so it carries **no**
+`feature:canonical-b-grounding-consumer` scaffold and is not retired —
+only the hollow `{spelling}`/`GroundingMap` form was retired. (Ledger:
+`src/v4/DECISIONS.md` §`rust.dag`/`RustNever`.)
 
 **Verified scope (honest) — declaration, not landed authority.** The
 declaration compiles **0 diagnostics under the real bootstrap gate** —
