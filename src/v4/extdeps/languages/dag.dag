@@ -52,7 +52,7 @@ fn dag_language_model_surface_prelude_full() -> DagLanguageModel {
 }
 
 
-// Compile-anchor LM: same wave-1 void *shape* as native scaffold, non-native identity, **empty** canonical prelude (DECISIONS CP-1b item 2 — no shape-derived C3 grant).
+// DECISIONS.md §CP-1b item 2 (compile-anchor empty prelude).
 fn dag_language_model_surface_empty_prelude() -> DagLanguageModel {
   DagLanguageModel {
     lex: dag_surface_empty_lex(),
