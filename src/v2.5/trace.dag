@@ -106,20 +106,13 @@ type TraceFrame
       source: TraceLocus
     }
 
-type TraceStack
-  = TraceStackEmpty
-  | TraceStackCons {
-      frame: TraceFrame
-      previous: TraceStack
-    }
-
 type Trace {
   events: List<TraceEvent>
-  stack: TraceStack
+  stack: List<TraceFrame>
 }
 
 fn empty_trace() -> Trace {
-  Trace { events: [], stack: TraceStackEmpty }
+  Trace { events: [], stack: [] }
 }
 
 fn trace_push_event(trace: Trace, event: TraceEvent) -> Trace {
@@ -127,16 +120,15 @@ fn trace_push_event(trace: Trace, event: TraceEvent) -> Trace {
 }
 
 fn trace_push_frame(trace: Trace, frame: TraceFrame) -> Trace {
-  Trace {
-    events: trace.events,
-    stack: TraceStackCons { frame: frame, previous: trace.stack }
-  }
+  Trace { events: trace.events, stack: list_push(trace.stack, frame) }
 }
 
 fn trace_pop_frame(trace: Trace) -> Trace {
-  match trace.stack {
-    TraceStackEmpty => trace
-    TraceStackCons { frame: _, previous: rest } => Trace { events: trace.events, stack: rest }
+  let n = trace.stack |> count
+  if n <= 1 {
+    Trace { events: trace.events, stack: [] }
+  } else {
+    Trace { events: trace.events, stack: trace.stack |> take(n - 1) }
   }
 }
 
