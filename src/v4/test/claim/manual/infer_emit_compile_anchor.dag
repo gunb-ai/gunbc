@@ -1,20 +1,9 @@
 // src/v4/test/claim/manual/infer_emit_compile_anchor.dag
-//
-// Scope: Tier-1 v2-bootstrap compile anchor for the T-9/T-10 interface freeze — `infer` / `emit` / `compile` Wave-1 fail-closed boundary.
+// Scope: Tier-1 v2-compile anchor for T-9/T-10 interface freeze — `infer`/`emit`/`compile` Wave-1 boundary.
 // Owns: anchor_stub_empty_conj, anchor_stub_target_model, anchor_stub_source, anchor_infer_wave1_rejects, anchor_emit_wave1_rejects, anchor_compile_wave1_rejects.
 // Consumes: compiler/04_infer.dag, compiler/05_emit.dag, compiler/00_compile.dag, std/algebra.dag, std/diagnostic.dag, std/node.dag.
-// Status: scaffold — compile-only until T-22; mirrors the `resolve_compile_anchor.dag` shape (DECISIONS CP-1b item 10).
+// Status: scaffold — compile-only until T-22.
 // Anchor: https://en.wikipedia.org/wiki/Compiler
-//
-// Acceptance criterion (witness, T-9/T-10 interface freeze):
-//   - `infer(ResolvedTree)`, `emit(InferredTree, TargetModel)`, and
-//     `compile(Source, TargetModel)` all type-check against their frozen
-//     signatures under `v2-compiler compile --source-root src/v4`.
-//   - Each anchor returns `Outcome::Rejected { diagnostic: … }` carrying the
-//     stage-locus `not_realized` diagnostic — the fail-closed Wave-1
-//     boundary; never a fabricated `Produced` value (DECISIONS C1 / I).
-//   - `v2-compiler run` execution is deferred until T-22 (matches
-//     `test/v2_run_preflight/MOVE1_COVERAGE.txt` for `resolve_compile_anchor`).
 
 
 module v4.test.claim.manual.infer_emit_compile_anchor

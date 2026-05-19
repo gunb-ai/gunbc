@@ -1,22 +1,9 @@
 // src/v4/compiler/05_emit.dag
-//
-// Scope: Stage 5 — InferredTree + TargetModel -> TargetSource (omni-emission, U1 Realize phase; the inverse walk of ingest, DECISIONS C5).
+// Scope: Stage 5 — InferredTree + TargetModel -> TargetSource; omni-emission, inverse-grammar walk (DECISIONS C5).
 // Owns: emit_stage_locus_port, emit_inverse_grammar_walk_not_realized, emit_inverse_grammar_walk_not_realized_diagnostic, emit.
-// Consumes: std/diagnostic.dag, std/node.dag, compiler/00_compile.dag (TargetModel + TargetSource), compiler/04_infer.dag (InferredTree).
-// Status: scaffold — TASKS T-10; Wave-1 fail-closed boundary, inverse-grammar walk realization deferred.
+// Consumes: std/diagnostic.dag, std/node.dag, compiler/00_compile.dag, compiler/04_infer.dag.
+// Status: scaffold — TASKS T-10; Wave-1 fail-closed boundary.
 // Anchor: https://en.wikipedia.org/wiki/Code_generation_(compiler)
-//
-// Single-spelling — `TargetModel` is the operator-ratified spelling for the
-// emit-parameter carrier (TASKS T-10 Owns / B2-OMNI). Declared once in
-// 00_compile.dag as `type TargetModel = Node`; this header consumes that
-// authority. Reconciliation of the legacy `TargetSpec` prose lives in
-// gentle-heron-61's CP-1b/T-8-close train; crisp-cat-892's scaffold uses
-// `TargetModel` exclusively — no in-flight dual-naming on this file.
-//
-// No-templating constraint (operator 2026-05-17, TASKS T-10) — emit goes
-// THROUGH the grounded `TargetModel`'s grammar-as-data, run inverted; never
-// a string template. Wave-1's fail-closed Rejected branch upholds this
-// constraint structurally (no string-template path can ever be reached).
 
 
 module v4.compiler.emit
@@ -51,10 +38,6 @@ fn emit_inverse_grammar_walk_not_realized_diagnostic(at: Locus) -> Diagnostic {
 }
 
 
-// Wave-1 boundary: emit's inverse-grammar walk is unrealized; emit the
-// fail-closed Rejected branch with a stage-locus diagnostic. A string-template
-// shortcut would be the emit-side D2 hollow alias (TASKS T-10
-// no-templating) — STOP and surface a diagnostic instead.
 fn emit(tree: InferredTree, target: TargetModel) -> Outcome<TargetSource> {
   Rejected {
     diagnostic: emit_inverse_grammar_walk_not_realized_diagnostic(

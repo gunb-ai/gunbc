@@ -1,25 +1,9 @@
 // src/v4/compiler/00_compile.dag
-//
 // Scope: B2-OMNI orchestrator — (Source, TargetModel) -> TargetSource as `emit ∘ core ∘ ingest`.
 // Owns: Source, TargetModel, TargetSource, compile_stage_locus_port, compile_pipeline_not_realized, compile_pipeline_not_realized_diagnostic, compile.
-// Consumes: std/diagnostic.dag, std/node.dag, std/text.dag, compiler/04_infer.dag (InferredTree), compiler/05_emit.dag (emit).
-// Status: scaffold — TASKS T-10; Wave-1 fail-closed boundary, `emit ∘ core ∘ ingest` composition deferred.
+// Consumes: std/diagnostic.dag, std/node.dag, std/text.dag.
+// Status: scaffold — TASKS T-10; Wave-1 fail-closed boundary.
 // Anchor: https://en.wikipedia.org/wiki/Compiler
-//
-// Single-spelling — `TargetModel` is the operator-ratified emit-parameter
-// carrier (TASKS T-10 Owns / B2-OMNI). This file is the single declaration
-// site for `TargetModel`, `Source`, and `TargetSource`; 05_emit.dag and
-// future stage files import them from here. The legacy `TargetSpec` scope
-// prose reconciliation is owned by gentle-heron-61's CP-1b/T-8-close train;
-// crisp-cat-892 takes no unilateral position on TargetSpec — the spelling
-// here is `TargetModel` because that is what the operator-ratified TASKS
-// T-10 signature and the brief both use.
-//
-// `Result` vs `Outcome` (api-review alignment, TASKS T-10) — this header
-// spells `Outcome<TargetSource>` per DECISIONS item I (the single fail-closed
-// pairing authority is `std/diagnostic.dag`'s `Outcome<T>`; there is no
-// parallel `.dag` `Result<ok, err>` type). The TASKS T-10 prose `Result<…, Diagnostic>`
-// denotes the same semantic surface.
 
 
 module v4.compiler.compile
@@ -38,19 +22,12 @@ import v4.std.node { Node, Symbol }
 import v4.std.text { String }
 
 
-// `Source` is the input text the orchestrator hands to `tokenize` (matches
-// `compiler/01_tokenize.dag`'s `text: String` input shape).
 type Source = String
 
 
-// TASKS T-10 Theme-A audit #9 — declare the `TargetModel` carrier formally;
-// per DECISIONS B2-OMNI a model IS a `Node` (declarative language data in
-// `extdeps/languages/*.dag`, walked bidirectionally).
 type TargetModel = Node
 
 
-// `TargetSource` is the projected target-language source text (the symmetric
-// counterpart of `Source`).
 type TargetSource = String
 
 
@@ -69,10 +46,6 @@ fn compile_pipeline_not_realized_diagnostic(at: Locus) -> Diagnostic {
 }
 
 
-// Wave-1 boundary: the `emit ∘ core ∘ ingest` composition is unrealized;
-// emit the fail-closed Rejected branch with a stage-locus diagnostic. Stage
-// files are individually scaffolded (Wave-1 fail-closed) and the
-// orchestrator composition lands as their realizations land.
 fn compile(source: Source, target: TargetModel) -> Outcome<TargetSource> {
   Rejected {
     diagnostic: compile_pipeline_not_realized_diagnostic(
