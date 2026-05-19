@@ -1,9 +1,8 @@
 // src/v4/extdeps/languages/cpp.dag
-// Scope: C++ language primitive resolver facts (L-2: ISO/IEC 14882:2020 / C++20; clause navigation via Anchor).
+// Scope: C++ language primitive resolver facts (L-2: ISO/IEC 14882:2020 / C++20; clause navigation: https://eel.is/c++draft/ with normative edition https://www.iso.org/standard/79358.html).
 // Owns: CppIntegerOverflowDisposition, cpp_bool_grounding.
 // Consumes: v4.std.logic.Bool, bool_boolean_algebra; v4.std.algebra.BooleanAlgebra; CppTargetProfile/CppTargetDataModel via T29-ABI follow-up rows.
-// Status: D2-REV resolver slice; bool canonical-B decl-ref grounding — 🟡 E-6(b) staging (scaffold at decl; ledger DECISIONS.md/§0). Non-bool C++ scalar ladder still 🟡 feature:t4-cpp-scalar-ladder — DECISIONS.md P4-3208 + T29-ABI.
-// Anchor: https://www.iso.org/standard/79358.html — clause navigation https://eel.is/c++draft/
+// Status: D2-REV resolver slice; bool canonical-B decl-ref grounding — 🟡 E-6(b) staging (scaffold at decl). Non-bool C++ scalar ladder still 🟡 feature:t4-cpp-scalar-ladder.
 
 module v4.extdeps.languages.cpp
 
@@ -11,7 +10,8 @@ import v4.std.logic { Bool, bool_boolean_algebra }
 import v4.std.algebra { BooleanAlgebra }
 
 
-// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-CPP-INTEGER-OVERFLOW.
+// Anchor: https://www.iso.org/standard/79358.html — clause navigation https://eel.is/c++draft/
+// 🟢 coproduct dissolution — ISO C++ two-way overflow disposition (unsigned modular 2^N vs signed representability).
 type CppIntegerOverflowDisposition
   = RepresentableResultRequired
   | UnsignedModuloArithmetic
