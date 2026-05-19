@@ -116,6 +116,23 @@ type OperatorSpec {
   algebra_field: AlgebraFieldKind?  // when present, matches only this algebra field on the operand type
 }
 
+type OperatorBindingPower {
+  left: Int
+  right: Int
+}
+
+fn operator_binding_power(op: OperatorSpec) -> OperatorBindingPower {
+  OperatorBindingPower { left: op.left_bp, right: op.right_bp }
+}
+
+fn find_operator_spec(ops: List<OperatorSpec>, symbol: String) -> OperatorSpec? {
+  let matching = ops |> filter(op => op.symbol == symbol)
+  match matching |> first {
+    Some { value: op } => Some { value: op }
+    None => none
+  }
+}
+
 // -- Full syntax specification ----------------------------------------
 // Everything a parser needs to recognize a language's surface syntax.
 

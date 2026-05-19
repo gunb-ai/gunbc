@@ -69,7 +69,7 @@ import v2.compiler.languages {
   ItemForm, ItemFormKind, OtherForm, BodyKind,
   ExprBody, BlockBody, TypeBody, ValueBody, NoBody,
   ServiceBody, ResourceBody,
-  OperatorSpec, SyntaxSpec
+  OperatorSpec, SyntaxSpec, find_operator_spec, operator_binding_power
 }
 
 import extdeps.languages.dag.syntax { dag_syntax_spec, dag_non_name_keywords }
@@ -149,9 +149,6 @@ type ItemPrefixResult {
 // service Node construction boundary. This type exists only inside the parser.
 type ServiceConfig { endpoint: Node, auth: Node?, auth_input: Node?, auth_source: Node?, rate_limit: Node?, retry: Node? }
 type ConfigResult { config: ServiceConfig, tokens: List<Token>, ctx: ParseContext, err: ErrorNode? }
-
-// Pratt parser binding power
-type BindingPower { left: Int, right: Int }
 
 type ExpectedToken
   = ExpectKeyword { text: String }
@@ -3531,9 +3528,10 @@ fn parse_expr_loop(tokens: List<Token>, ctx: ParseContext, lhs: Node, min_bp: In
       parse_expr_loop(tokens: post.tokens, ctx: post.ctx, lhs: post.expr, min_bp: min_bp)
     } else {
       // Try infix: binary operators (use tokens which has continuation newlines skipped)
-      let bp = infix_bp(tokens: tokens)
-      match bp {
-        Some { value: bps } => {
+      let op_spec = infix_operator(tokens: tokens)
+      match op_spec {
+        Some { value: op } => {
+          let bps = operator_binding_power(op: op)
           if bps.left < min_bp {
             ExprResult { expr: lhs, tokens: tokens, ctx: ctx, err: none }
           } else {
@@ -3554,8 +3552,7 @@ fn parse_expr_loop(tokens: List<Token>, ctx: ParseContext, lhs: Node, min_bp: In
                   let tokens = skip_newlines(tokens: rest)
                   let r = parse_expr_bp(tokens: tokens, ctx: ctx, min_bp: bps.right)
                   if has_err(err: r.err) { return ExprResult { expr: r.expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
-                  let binop_opt = find_operator_binop(ops: dag_syntax_spec.operators, symbol: op_tok.text)
-                  match binop_opt {
+                  match op.binop {
                     Some { value: binop } => {
                       let new_lhs = make_expr_node(expr_data: ExprBinOp { op: binop, algebra_field: none }, children: [lhs, r.expr], inferred: none, span: loop_span)
                       parse_expr_loop(tokens: r.tokens, ctx: r.ctx, lhs: new_lhs, min_bp: min_bp)
@@ -3574,32 +3571,10 @@ fn parse_expr_loop(tokens: List<Token>, ctx: ParseContext, lhs: Node, min_bp: In
   }
 }
 
-// Operator precedence: data-driven from dag_syntax_spec.operators (SyntaxSpec).
-// Adding a new operator = one entry in syntax.dag.
-
-fn find_operator_bp(ops: List<OperatorSpec>, symbol: String) -> BindingPower? {
-  let matching = ops |> filter(op => op.symbol == symbol)
-  if matching |> count > 0 {
-    let op = first(matching).value
-    Some { value: BindingPower { left: op.left_bp, right: op.right_bp } }
-  } else {
-    none
-  }
-}
-
-fn infix_bp(tokens: List<Token>) -> BindingPower? {
+fn infix_operator(tokens: List<Token>) -> OperatorSpec? {
   match tokens |> first {
-    Some { value: t } => find_operator_bp(ops: dag_syntax_spec.operators, symbol: t.text)
+    Some { value: t } => find_operator_spec(ops: dag_syntax_spec.operators, symbol: t.text)
     None => none
-  }
-}
-
-fn find_operator_binop(ops: List<OperatorSpec>, symbol: String) -> BinOp? {
-  let matching = ops |> filter(op => op.symbol == symbol)
-  if matching |> count > 0 {
-    first(matching).value.binop
-  } else {
-    none
   }
 }
 
@@ -4098,9 +4073,10 @@ fn parse_expr_loop_no_brace(tokens: List<Token>, ctx: ParseContext, lhs: Node, m
       if has_err(err: r.err) { return ExprResult { expr: r.expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
       parse_expr_loop_no_brace(tokens: r.tokens, ctx: r.ctx, lhs: r.expr, min_bp: min_bp)
     } else {
-      let bp = infix_bp(tokens: tokens)
-      match bp {
-        Some { value: bps } => {
+      let op_spec = infix_operator(tokens: tokens)
+      match op_spec {
+        Some { value: op } => {
+          let bps = operator_binding_power(op: op)
           if bps.left < min_bp {
             ExprResult { expr: lhs, tokens: tokens, ctx: ctx, err: none }
           } else {
@@ -4120,8 +4096,7 @@ fn parse_expr_loop_no_brace(tokens: List<Token>, ctx: ParseContext, lhs: Node, m
                   let tokens = skip_newlines(tokens: rest)
                   let r = parse_expr_bp_no_brace(tokens: tokens, ctx: ctx, min_bp: bps.right)
                   if has_err(err: r.err) { return ExprResult { expr: r.expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
-                  let binop_opt = find_operator_binop(ops: dag_syntax_spec.operators, symbol: op_tok.text)
-                  match binop_opt {
+                  match op.binop {
                     Some { value: binop } => {
                       let new_lhs = make_expr_node(expr_data: ExprBinOp { op: binop, algebra_field: none }, children: [lhs, r.expr], inferred: none, span: loop_span)
                       parse_expr_loop_no_brace(tokens: r.tokens, ctx: r.ctx, lhs: new_lhs, min_bp: min_bp)
