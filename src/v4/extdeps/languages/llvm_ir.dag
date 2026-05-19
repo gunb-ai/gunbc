@@ -123,12 +123,14 @@ type ConstExprOpcode
   | CeExtractElement | CeInsertElement | CeShuffleVector
 
 
+// 🟢 grounded.
 type PhiIncoming {
   value: LlvmValue
   block: Symbol
 }
 
 
+// 🟢 grounded.
 type PhiNode {
   result: Symbol
   result_type: LlvmType
@@ -136,12 +138,14 @@ type PhiNode {
 }
 
 
+// 🟢 grounded.
 type SwitchCase {
   match_value: LlvmConstant
   target: Symbol
 }
 
 
+// 🟢 grounded.
 type CallArgument {
   ty: LlvmType
   value: LlvmValue
@@ -415,6 +419,7 @@ type UnwindDest
   | UnwindToLabel { target: Symbol }
 
 
+// 🟢 grounded.
 type BasicBlock {
   label: Symbol
   phis: List<PhiNode>
@@ -444,12 +449,14 @@ type FunctionBody
   | Defined { entry: BasicBlock, rest: List<BasicBlock> }
 
 
+// 🟢 grounded.
 type FunctionParameter {
   ty: LlvmType
   name: Symbol
 }
 
 
+// 🟢 grounded.
 type LlvmFunction {
   name: Symbol
   result_type: LlvmType
@@ -472,6 +479,7 @@ type GlobalInitializer
   | InitializedWith { constant: LlvmConstant }
 
 
+// 🟢 grounded.
 type LlvmGlobal {
   name: Symbol
   value_type: LlvmType
@@ -482,12 +490,14 @@ type LlvmGlobal {
 }
 
 
+// 🟢 grounded.
 type NamedStructDef {
   name: Symbol
   definition: LlvmType
 }
 
 
+// 🟢 grounded.
 type LlvmModule {
   data_layout: Symbol
   target_triple: Symbol
