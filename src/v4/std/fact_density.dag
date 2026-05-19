@@ -58,9 +58,9 @@ fn symbol_is_kernel_ambient(s: Symbol) -> Bool {
 }
 
 
-// 🟢 coproduct dissolution — what a carrier reads from its source spec.
-// NoFact is the hollow alias: a carrier that decomposes into zero spec-read
-// facts and is not an exempt kernel-ambient atom.
+// 🟢 coproduct dissolution — DECISIONS.md classification ledger: SourceSpecReadFact.
+// What a carrier reads from its source spec; NoFact is the hollow alias —
+// a carrier decomposing into zero spec-read facts and not kernel-ambient.
 type SourceSpecReadFact
   = NamedFieldFacts { density: Int }
   | KernelAmbientAtom { atom: Symbol }
