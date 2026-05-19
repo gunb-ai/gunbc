@@ -5,6 +5,11 @@
 > The invariants are the reviewer-facing rubric; the practices below are
 > the concrete patterns each invariant manifests in modeling work.
 >
+> **Maintained ledgers (retired 2026-05-19).** `src/v4/DECISIONS.md` and
+> `src/v4/STRUCTURE.md` are deleted. Coproduct 🟢/🟡/🔴 tags stay on the
+> type; dissolution rationale and new-file substrate extension are argued in
+> **PR review** (cost-of-change = 1 per [CLAUDE.md](../CLAUDE.md) is unchanged).
+>
 > This document supplements, rather than parallels, INVARIANTS.md's
 > taxonomy. Each practice names the invariant principle it serves.
 >
@@ -175,7 +180,7 @@ variants), the three dispositions are:
 
 - **🟢 terminal** — the variants are irreducible distinctions at the
   user-input boundary (literals, keywords, source locations); no richer
-  structure can be named. Requires a **ledger entry** recording which
+  structure can be named. Requires **PR review** recording which
   dissolution patterns were tried and why each failed.
 - **🟡 gated** — a richer source exists but decomposition waits on a
   named arrival (`feature:` substrate not ready, or `consumer:` no

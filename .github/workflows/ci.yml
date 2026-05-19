@@ -182,7 +182,7 @@ jobs:
         cargo test -p v2-compiler-tests --release bootstrap_fixed_point -- --ignored --exact
   # v4 bootstrap viability — verifies v2's compiled binary can still parse
   # every v4 .dag file. v4 stage0 must stay in v2-syntax-compatible subset
-  # (per src/v4/STRUCTURE.md "Bootstrap chain") until v4 self-compiles.
+  # (per src/v4/workflow/bootstrap.dag bootstrap chain) until v4 self-compiles.
   # This gate catches any v4 change that introduces syntax v2 can't parse.
   v4:
     if: github.event.pull_request.draft != true && needs.affected.outputs.v4 == 'true'

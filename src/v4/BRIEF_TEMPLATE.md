@@ -106,7 +106,7 @@ and why). Do not proceed until operator commits a decision.
 
 ## Why STOP TRIGGERS are non-negotiable
 
-Per `STRUCTURE.md` "Zero-deferrals discipline" — the v4 program exists
+Per zero-deferrals discipline (THESIS / INVARIANTS) — the v4 program exists
 because v3 failed at exactly this surface. v3 workers hit hard
 decisions, made local choices to keep moving, and the local choices
 accumulated into substrate drift that took operator intervention to
