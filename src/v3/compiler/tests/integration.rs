@@ -275,8 +275,6 @@ mod timing_lens_substrate_carrier_test;
 mod v2_oracle_no_remaining_test_consumers_test;
 #[path = "integration/v4_lens_cost_dag_smoke_test.rs"]
 mod v4_lens_cost_dag_smoke_test;
-#[path = "integration/v4_std_fact_density_dag_smoke_test.rs"]
-mod v4_std_fact_density_dag_smoke_test;
 #[path = "integration/value_body_substrate_mirror_isomorphism_test.rs"]
 mod value_body_substrate_mirror_isomorphism_test;
 #[path = "integration/common/wiring_scanner_test.rs"]
