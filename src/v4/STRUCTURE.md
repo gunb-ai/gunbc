@@ -75,7 +75,7 @@ src/v4/
     05_eval.dag          # InferredTree + Inputs -> Value (THE PRIMARY execution path,
                          # THESIS:225; sibling of emit — eval executes, emit projects)
 
-  lens/                  # dimensions (12 files, parallel after compiler)
+  lens/                  # dimensions (13 files, parallel after compiler)
     complexity.dag
     cost.dag             # Tier 1 + Tier 2 textbook (α(n)/log*/log log/sub-exp); UnknownCost floor
     parallelism.dag
@@ -86,6 +86,7 @@ src/v4/
     coverage.dag         # meta-lens — L6/L7/impossible-bug/testgen coverage discipline (structural)
     testgen.dag          # producer side — reads substrate, emits TestClaim corpus (Phase 1.5)
     affected_set.dag     # incremental re-exec frontier; replaces detect-affected shell (Phase 1.5)
+    affected_set_examples.dag # expected affected-frontier example values
     application.dag      # apply_lens surface — opt-in depth + ONLY advisory→fail-closed bridge
     registry.dag         # P2-staging only (INVARIANTS §P2): PREFIX T-23 v0 `LensIdV0` × `LensModulePathV0` rows — **not** landed single authority until a **generated** consumer reads `LensRegistryEntryV0`; `v4_lens_registry_dag_smoke_test.rs` is **parse + inference cleanliness** only (same posture as `fact_density.dag`). Operator pin §3 human mirror; amend `.dag` first.
 
@@ -124,7 +125,7 @@ src/v4/
     fixture/             # canonical input programs
 ```
 
-**Total: 73 .dag files + 5 docs + 5 .gitkeep = 83 files.** (Per invariant
+**Total: 75 .dag files + 5 docs + 5 .gitkeep = 85 files.** (Per invariant
 #1 the enumeration above — not the count — is authoritative; the count is
 a checksum, updated on every operator-ratified file addition/removal.
 **Reconciliation (2026-05-17, PR #3225 / review #13750):** the prior printed
@@ -147,6 +148,8 @@ checksum **71→72** `.dag`.
 `docs/briefs/r4-lane-a-lens-interface-freeze-pin.md` §3); checksum **72→73** `.dag`.
 **P2-staging** (INVARIANTS §P2) until a generated consumer reads the rows — paired
 `v4_lens_registry_dag_smoke_test.rs` receipt (parse witness only; same discipline as `fact_density.dag`).
+**2026-05-19 (#3349):** add `lens/affected_set_examples.dag` as expected affected-frontier example values;
+checksum **74→75** `.dag`.
 
 ## Scalar/numeric concept decomposition
 
