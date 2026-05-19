@@ -135,7 +135,7 @@ the audit anchors.
 
 | # | substrate PR (`feature:` arrival) | owner / owning task | 🟡-count | unblocks |
 |---|---|---|---|---|
-| **P1** | `std/cardinality.dag` bounded-natural / refinement substrate | **substrate:** std / T-3 Wave-A2 — **`compile_to_dag` / extdeps import surface (flat v3 bootstrap, `NonZeroNat` name resolution):** compiler / **T-32** (minimum never-hand-edited seed program; `src/v4/TASKS.md`) **+** receipt path per **T-30** interim mirror (`compile_to_dag` smoke harness / bootstrap collision notes in same §T-30) | **~20 live (+2 closed receipts)** | DECISIONS.md: `SL-3229-LLVM-OPS`, `SL-3229-PTX-DIM3`, `SL-3229-FLOAT-NOMINAL` once re-gated under this canonical owner (`SL-3229-LLVM-WIDTH`, `SL-3229-PTX-COST`, `SL-3229-VERILOG-COST` are **🟢 closed** on live carriers — see DECISIONS.md Part 6). **`Dim3`:** merge-base negative-axis illegal state is closed (`Int` → `Nat` on `ptx.dag` axes); **zero-axis + per-axis-maximum** refinement remains 🟡 until a checkable positive bounded-axis witness lands **and** `compile_to_dag` resolves `v4.std.cardinality` imports for extdeps single-file smoke (today imports are parse-only; `NonZeroNat` is not in the flat v3 bootstrap name table). In-file: the ~16 VAGUE prose blocks in `json.dag` / `yaml.dag` / `toml.dag` that concretize to this arrival (refinement-side family). **Receipt (PR #3310 / 2026-05-18 + follow-up):** `LlvmType` width payloads, `PtxCost` / `VerilogCost` non-negative axes. Remaining P1-family debt is **operand-relation refinement**, **SIMT dim strict-positivity + per-axis maxima**, and **import lowering / bootstrap extension** so cardinality refinements used in extdeps `.dag` files participate in `compile_to_dag`, not raw width/cost payload scaffolding alone. |
+| **P1** | `std/cardinality.dag` bounded-natural / refinement substrate | **substrate:** std / T-3 Wave-A2 — **`compile_to_dag` / extdeps import surface (flat v3 bootstrap, cardinality name resolution):** compiler / **T-32** (minimum never-hand-edited seed program; `src/v4/TASKS.md`) **+** receipt path per **T-30** interim mirror (`compile_to_dag` smoke harness / bootstrap collision notes in same §T-30) | **~20 live (+2 closed receipts)** | DECISIONS.md: `SL-3229-LLVM-OPS`, `SL-3229-PTX-DIM3`, `SL-3229-FLOAT-NOMINAL` once re-gated under this canonical owner (`SL-3229-LLVM-WIDTH`, `SL-3229-PTX-COST`, `SL-3229-VERILOG-COST` are **🟢 closed** on live carriers — see DECISIONS.md Part 6). **`Dim3`:** live `ptx.dag` uses `PositiveUpperBoundedNat`, closing negative-axis, zero-axis, and missing-bound states; **PTX-version / launch-role / axis-specific maxima remain live** until a PTX-specific max authority is modeled and consumed. In-file: the ~16 VAGUE prose blocks in `json.dag` / `yaml.dag` / `toml.dag` that concretize to this arrival (refinement-side family). **Receipt (PR #3310 / 2026-05-18 + follow-up):** `LlvmType` width payloads, `PtxCost` / `VerilogCost` non-negative axes. Remaining P1-family debt is **operand-relation refinement**, **SIMT dim PTX-specific maxima**, **float nominal/interchange re-gating**, and **import lowering / bootstrap extension** so cardinality refinements used in extdeps `.dag` files participate in `compile_to_dag`, not raw width/cost payload scaffolding alone. |
 | **P2** | `std/collection.dag` Wave-A2: `List<T> where non_empty` refinement **plus** the List combinator algebra (`forall` / `count_where` / `unique` over `FreeMonoid<T>`) | std / T-3 Wave-A2 (coercion-design.md RQ-3) | **5 named + 29 sites** | Section 2: `std/node.dag` × 4 traverses (`all_edges_named`, `all_edges_positional`, `name_occurrences`, `all_names_distinct`). DECISIONS.md: `SL-3229-VERILOG-NONEMPTY` (one row, 29 verilog.dag back-pointer sites after P8). |
 | **P3** | Compiler pipeline-stage substrate (lex-walk + parse-walk) | compiler / T-6, T-7 | **2 + ~7 in-file** | Section 2: `compiler/01_tokenize.dag tokenize`, `compiler/02_parse.dag parse`. In-file: the parser-side VAGUE prose blocks in `json.dag` / `yaml.dag` / `toml.dag` that concretize to T-6/T-7 (the operations-side family separate from P1). |
 | **P4** | T-4 fact-bundle Phase-3 rework (post-D2-reversal model) | extdeps/languages / T-4 manager `vivid-carp-207` (5-feeder gate; keystone #3226 merged @`77b9e7d72`; 4 feeders open: T-3, T-29, T-30, T-25-core) | **4 + 1 row + 1 fn** | In-file: `typescript.dag` × 4 INVALID-GATE blocks (re-gate against this arrival, not pre-reversal D2). DECISIONS.md: `SL-3229-VERILOG-D3200` (if re-gated as `feature: T-4 fact-bundle Phase-3 rework` rather than `consumer:` form — see Section 3). Section 2: `extdeps/languages/dag.dag dag_language_model_wave1_void_canonical_symbols` (added in CP-1b #3225 — canonical_symbols set is a fact on DagLanguageModel/language-identity, not a hand-rolled function). |
@@ -165,7 +165,7 @@ INVALID-GATE-once-re-gated):
 | primitive PR | 🟡 today | landing event | 🟡 after landing |
 |---|---|---|---|
 | (baseline) | **~36** | — | — |
-| P1 lands | ~20 | `std/cardinality.dag` refinement (+ import lowering / bootstrap for extdeps `NonZeroNat`) | ~16 |
+| P1 lands | ~20 | `std/cardinality.dag` refinement (+ import lowering / bootstrap for extdeps cardinality imports) | ~16 |
 | P2 lands | 5 named (+ 29 verilog sites converge in one sweep) | `std/collection.dag` Wave-A2 | ~11 named |
 | P3 lands | 2 named (+ ~7 in-file) | T-6 + T-7 pipeline substrate | ~9 named |
 | P4 lands | 4 + 1 row + 1 fn (`dag.dag canonical_symbols` #3225) | T-4 fact-bundle Phase-3 | ~3 named |
@@ -526,12 +526,11 @@ relation refinement).
 **`SL-3229-PTX-DIM3`** — `Dim3` kernel-ambient `Int` axis scaffold.
 Named arrival: same cardinality-refinement family (T-3).
 - **Triage: VALID-🟡, narrowed by partial closure.**
-- **Closure receipt:** live `ptx.dag` uses `Nat` for `Dim3.x` / `y` / `z`.
-  The negative-axis illegal state is closed, but zero and PTX pinned-maximum
-  illegal states remain representable until T-3 supplies a positive
-  bounded-axis witness **and** extdeps can resolve `v4.std.cardinality`
-  imports under `compile_to_dag` (or equivalent bootstrap extension).
-  `SL-3229-PTX-DIM3` therefore remains live.
+- **Closure receipt:** live `ptx.dag` uses `PositiveUpperBoundedNat` for
+  `Dim3.x` / `y` / `z`. The negative-axis, zero-axis, and missing-bound
+  illegal states are closed, but PTX-version / launch-role / axis-specific
+  maxima remain representable until a PTX-specific max authority is modeled
+  and consumed by `Dim3`. `SL-3229-PTX-DIM3` therefore remains live.
 
 **`SL-3229-PTX-COST`** — raw-`Int` PTX cost axes (`PtxCost`). Named
 arrival: cardinality refinement (T-3).
