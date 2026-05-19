@@ -1,6 +1,6 @@
 // src/v4/lens/affected_set.dag
 // Scope: canonical affected-set authority for CI/incremental re-execution; fail-closed B-4/B-5 node frontier.
-// Owns: Dag, AffectedDimension, ExclusionKey, ExclusionProof, FrontierDecision, ReExecFrontier, AffectedFrontierMode, AffectedSetRead, affected_set.
+// Owns: Dag, AffectedDimension, ExclusionKey, ExclusionProof, FrontierDecision, ReExecFrontier, AffectedSetRead, affected_set.
 // Consumes: Map, Diff, Edit, Hash, Node, Path, Symbol, Witness; B1 content_hash receipts; B-4 resolved Symbol equality; B-5 per-Arrow signature effects.
 // Status: Wave-0 front: changed-subgraph frontier expansion landed; dissolves when CI use and .dag TestClaims land.
 
@@ -40,27 +40,24 @@ type ExclusionProof
   | UnchangedPureBoundary { subject: Path, content_hash: Hash }
 
 
-// 🟢 coproduct dissolution — DECISIONS.md #3153-subsumed; IRT-1 whole/changed-subgraph gate.
-type AffectedFrontierMode
-  = ChangedSubgraph { roots: List<Path> }
-  | WholeDagFailClosed { reason: Symbol }
-
-
 // 🟢 coproduct dissolution — DECISIONS.md #3153-subsumed
 type FrontierDecision
   = Rerun
   | Excluded { proof: ExclusionProof }
 
 
-type ReExecFrontier {
-  mode: AffectedFrontierMode
-  decisions: Map<ExclusionKey, FrontierDecision>
-}
+// 🟢 coproduct dissolution — DECISIONS.md #3153-subsumed; IRT-1 whole/changed-subgraph gate.
+type ReExecFrontier
+  = ChangedSubgraphFrontier {
+      roots: List<Path>,
+      decisions: Map<ExclusionKey, FrontierDecision>
+    }
+  | WholeDagFailClosed { reason: Symbol }
 
 
 type AffectedSetRead {
   hash_receipt: fn(Dag, Path, Node) -> HashReceipt
-  downstream_edges: fn(Dag, Path) -> List<FrontierEdge>
+  frontier_edges: fn(Dag, Path) -> List<FrontierEdge>
   propagation_receipt: fn(Dag, FrontierEdge) -> PropagationReceipt
 }
 
@@ -86,24 +83,31 @@ type PropagationReceipt
   | PropagationUnknown { reason: Symbol }
 
 
-type FrontierAcc {
-  mode: AffectedFrontierMode
-  decisions: Map<ExclusionKey, FrontierDecision>
-}
+// 🟢 coproduct dissolution — DECISIONS.md #3153-subsumed; accumulator mirrors ReExecFrontier authority.
+type FrontierAcc
+  = ChangedSubgraphAcc {
+      roots: List<Path>,
+      decisions: Map<ExclusionKey, FrontierDecision>
+    }
+  | WholeDagAcc { reason: Symbol }
 
 
 fn empty_frontier_acc() -> FrontierAcc {
-  FrontierAcc {
-    mode: ChangedSubgraph { roots: [] },
+  ChangedSubgraphAcc {
+    roots: [],
     decisions: empty_map()
   }
 }
 
 
 fn frontier_from_acc(acc: FrontierAcc) -> ReExecFrontier {
-  ReExecFrontier {
-    mode: acc.mode,
-    decisions: acc.decisions
+  match acc {
+    ChangedSubgraphAcc { roots: roots, decisions: decisions } =>
+      ChangedSubgraphFrontier {
+        roots: roots,
+        decisions: decisions
+      }
+    WholeDagAcc { reason: r } => WholeDagFailClosed { reason: r }
   }
 }
 
@@ -125,40 +129,41 @@ fn edge_key(edge: FrontierEdge) -> ExclusionKey {
 
 
 fn mark_rerun(acc: FrontierAcc, key: ExclusionKey) -> FrontierAcc {
-  FrontierAcc {
-    mode: acc.mode,
-    decisions: map_insert(acc.decisions, key, Rerun)
+  match acc {
+    WholeDagAcc { reason: r } => WholeDagAcc { reason: r }
+    ChangedSubgraphAcc { roots: roots, decisions: decisions } =>
+      ChangedSubgraphAcc {
+        roots: roots,
+        decisions: map_insert(decisions, key, Rerun)
+      }
   }
 }
 
 
 fn mark_excluded(acc: FrontierAcc, key: ExclusionKey, proof: ExclusionProof) -> FrontierAcc {
-  FrontierAcc {
-    mode: acc.mode,
-    decisions: map_insert(acc.decisions, key, Excluded { proof: proof })
+  match acc {
+    WholeDagAcc { reason: r } => WholeDagAcc { reason: r }
+    ChangedSubgraphAcc { roots: roots, decisions: decisions } =>
+      ChangedSubgraphAcc {
+        roots: roots,
+        decisions: map_insert(decisions, key, Excluded { proof: proof })
+      }
   }
 }
 
 
 fn mark_whole_dag(acc: FrontierAcc, reason: Symbol) -> FrontierAcc {
-  FrontierAcc {
-    mode: WholeDagFailClosed { reason: reason },
-    decisions: acc.decisions
-  }
+  WholeDagAcc { reason: reason }
 }
 
 
 fn append_root(acc: FrontierAcc, path: Path) -> FrontierAcc {
-  match acc.mode {
-    WholeDagFailClosed { reason: r } =>
-      FrontierAcc {
-        mode: WholeDagFailClosed { reason: r },
-        decisions: acc.decisions
-      }
-    ChangedSubgraph { roots: roots } =>
-      FrontierAcc {
-        mode: ChangedSubgraph { roots: list_push(roots, path) },
-        decisions: acc.decisions
+  match acc {
+    WholeDagAcc { reason: r } => WholeDagAcc { reason: r }
+    ChangedSubgraphAcc { roots: roots, decisions: decisions } =>
+      ChangedSubgraphAcc {
+        roots: list_push(roots, path),
+        decisions: decisions
       }
   }
 }
@@ -180,16 +185,11 @@ fn boundary_receipt(read_model: AffectedSetRead, dag: Dag, path: Path, replaceme
 
 
 fn expand_path(read_model: AffectedSetRead, dag: Dag, acc: FrontierAcc, path: Path) -> FrontierAcc {
-  fold(read_model.downstream_edges(dag, path), init: acc, f: fn(acc2, edge) {
+  fold(read_model.frontier_edges(dag, path), init: acc, f: fn(acc2, edge) {
     match read_model.propagation_receipt(dag, edge) {
       Propagates =>
-        expand_path(
-          read_model: read_model,
-          dag: dag,
-          acc: append_root(
-            acc: mark_rerun(acc: acc2, key: edge_key(edge: edge)),
-            path: edge.consumer
-          ),
+        append_root(
+          acc: mark_rerun(acc: acc2, key: edge_key(edge: edge)),
           path: edge.consumer
         )
       DoesNotPropagate { proof: p } =>
