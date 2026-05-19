@@ -1,6 +1,6 @@
 // src/v4/compiler/05_eval.dag
 // Scope: primary evaluation path over inferred tree/input subgraphs and TestClaim runner substrate.
-// Owns: InferredTree, Inputs, EvalContext, TestClaimEvalSubject, TestClaimCacheKey, TestClaimCacheReceipt, Verdict, TestClaimRun, eval_node, run_test_claim.
+// Owns: InferredTree, Inputs, EvalContext, TestClaimTypedInput, TestClaimEvalSubject, TestClaimCacheKey, TestClaimCacheReceipt, Verdict, TestClaimRun, eval_node, run_test_claim.
 // Consumes: v4.std.node, v4.std.diagnostic, v4.std.verification, v4.workflow.ci.
 // Status: Wave-0 substrate; evaluator bodies remain structural until T-9 inferred-tree semantics.
 // Anchor: https://en.wikipedia.org/wiki/Interpreter_(computing)
