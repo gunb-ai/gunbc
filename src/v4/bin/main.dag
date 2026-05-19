@@ -1,37 +1,21 @@
 // src/v4/bin/main.dag
-// Scope: Entry-point module + T-15 fixed-point TestClaim witness (emit trampoline contract; STRUCTURE.md §326).
-// Owns: stub_t15_b1_content_hash_placeholder t_15_self_host_fixed_point
-// Consumes: v4.std.verification v4.std.diagnostic v4.std.node
-// Status: scaffold — stub Node placeholders stand in for B1 content_hash(compile(…)) operands until T-16/T-22; trampoline body lands with emit/05_emit.
+// Scope: Entry-point module + T-15 operand placeholders (emit trampoline contract; STRUCTURE.md §326).
+// Owns: stub_t15_stage1_rust_digest_placeholder stub_t15_stage2_rust_digest_placeholder
+// Consumes: v4.std.node
+// Status: scaffold — distinct stage1/stage2 digest carriers only; no TestClaim until B1 content_hash operands exist (TASKS T-15); trampoline via emit/05_emit is T-16/T-22.
 
 module v4.bin.main
 
-import v4.std.verification {
-  Equals,
-  Integration,
-  TestClaim,
-  TestClassification,
-  Tier2,
-  T19ManualAnchorAbsent
-}
-import v4.std.diagnostic { Produced }
-import v4.std.node { Node, TypeNode, Conj }
+import v4.std.node { Node, TypeNode, Conj, Disj }
 
 
-data stub_t15_b1_content_hash_placeholder: Node = Node {
+data stub_t15_stage1_rust_digest_placeholder: Node = Node {
   kind: TypeNode { connective: Conj },
   children: []
 }
 
 
-data t_15_self_host_fixed_point: TestClaim = TestClaim {
-  kind: Equals,
-  label: "v4 compiler fixed point: B1 content_hash(stage1 emitted Rust) == content_hash(stage2); operands stubbed until T-22",
-  t19_anchor: T19ManualAnchorAbsent,
-  input: stub_t15_b1_content_hash_placeholder,
-  expected: Produced { value: stub_t15_b1_content_hash_placeholder },
-  classification: TestClassification {
-    tier: Tier2,
-    layer: Integration
-  }
+data stub_t15_stage2_rust_digest_placeholder: Node = Node {
+  kind: TypeNode { connective: Disj },
+  children: []
 }
