@@ -143,14 +143,14 @@ meta-layer cut, operator-ratified. **2026-05-17 (PR #3212):** enumerate
 C++ ABI / target data-model feeder; checksum **70→71** `.dag`.
 **2026-05-18 (T-30):** add `std/fact_density.dag` P2-staging parse witness;
 checksum **71→72** `.dag`.
-**2026-05-19 (T-30):** `std/fact_density.dag` graduates from body-less nominal
-to the generated structural hollow-alias checker (`hollow_alias_gate`); add
-`test/claim/manual/fact_density_anchor.dag` v2-bootstrap compile anchor;
-checksum **73→74** `.dag`.
 **2026-05-18 (PREFIX / T-23 v0):** add `lens/registry.dag` (`LensIdV0` + `LensModulePathV0` registry twin of
 `docs/briefs/r4-lane-a-lens-interface-freeze-pin.md` §3); checksum **72→73** `.dag`.
 **P2-staging** (INVARIANTS §P2) until a generated consumer reads the rows — paired
 `v4_lens_registry_dag_smoke_test.rs` receipt (parse witness only; same discipline as `fact_density.dag`).
+**2026-05-19 (T-30):** `std/fact_density.dag` graduates from body-less nominal
+to the generated structural hollow-alias checker (`hollow_alias_gate`); add
+`test/claim/manual/fact_density_anchor.dag` v2-bootstrap compile anchor;
+checksum **73→74** `.dag`.
 
 ## Scalar/numeric concept decomposition
 
