@@ -129,7 +129,7 @@ import std.methods {
   replace_method,
   with_method
 }
-import v3.std.substrate { ElementRef, NonSingletonList, PortId }
+import v3.std.substrate { Dag, ElementRef, NonSingletonList, PortId }
 import v3.std.services { Operation, CallableRef }
 
 // ── Path-template carriers ──────────────────────────────────────
