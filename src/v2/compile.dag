@@ -51,9 +51,7 @@ import v2.compiler.artifact { ArtifactPlan, Artifact, RenderTarget, Dag, default
 
 // 🟢 grounded — closed receipt: v2 compile stage enumeration matches live call graph.
 type PipelineStageKind
-  = StageTokenize
-  | StageParse
-  | StageResolve
+  = StageFrontend
   | StageNormalize
   | StageInfer
   | StageComplexity
@@ -71,11 +69,9 @@ type PipelineStageSpec {
   gate: PipelineGatePolicy
 }
 
-// Authoritative stage order — answer "what runs when" by reading this list, not call sequences.
+// Authoritative stage order — fold is the only executor; StageFrontend = tokenize+parse+resolve bundle.
 data v2_compile_pipeline: List<PipelineStageSpec> = [
-  PipelineStageSpec { stage: StageTokenize, gate: BlockingOnErrors },
-  PipelineStageSpec { stage: StageParse, gate: BlockingOnErrors },
-  PipelineStageSpec { stage: StageResolve, gate: BlockingOnErrors },
+  PipelineStageSpec { stage: StageFrontend, gate: BlockingOnErrors },
   PipelineStageSpec { stage: StageNormalize, gate: BlockingOnErrors },
   PipelineStageSpec { stage: StageInfer, gate: BlockingOnErrors },
   PipelineStageSpec { stage: StageComplexity, gate: SurfaceOnly },
@@ -83,19 +79,6 @@ data v2_compile_pipeline: List<PipelineStageSpec> = [
   PipelineStageSpec { stage: StageArtifactPlan, gate: BlockingOnErrors },
   PipelineStageSpec { stage: StageEmit, gate: BlockingOnErrors }
 ]
-
-fn pipeline_spec_for(stage: PipelineStageKind) -> PipelineStageSpec? {
-  fold(v2_compile_pipeline, init: none, f: (found, spec) =>
-    if spec.stage == stage { Some { value: spec } } else { found }
-  )
-}
-
-fn pipeline_gate_policy(stage: PipelineStageKind) -> PipelineGatePolicy {
-  match pipeline_spec_for(stage: stage) {
-    Some { value: spec } => spec.gate
-    None => BlockingOnErrors
-  }
-}
 
 fn pipeline_gate_blocks(policy: PipelineGatePolicy, diagnostics: List<ErrorNode>) -> Bool {
   match policy {
@@ -893,6 +876,7 @@ fn front_end_sources(sources: List<SourceFile>) -> FrontendResult {
 // =========================================================================
 
 type CompilePipelineState {
+  sources: List<SourceFile>
   halted: Bool
   emit_blocked: Bool
   run_emit: Bool
@@ -913,6 +897,7 @@ type CompilePipelineState {
 
 fn pipeline_state_mark_halted(state: CompilePipelineState) -> CompilePipelineState {
   CompilePipelineState {
+    sources: state.sources,
     halted: true,
     emit_blocked: state.emit_blocked,
     run_emit: state.run_emit,
@@ -937,36 +922,73 @@ fn apply_pipeline_stage(state: CompilePipelineState, spec: PipelineStageSpec) ->
     return state
   }
   match spec.stage {
-    StageTokenize => state
-    StageParse => state
-    StageResolve =>
-      match state.graph {
-        None => pipeline_state_mark_halted(state: state)
+    StageFrontend => {
+      let frontend = front_end_sources(sources: state.sources)
+      match frontend.graph {
+        None => CompilePipelineState {
+          halted: true,
+          emit_blocked: state.emit_blocked,
+          run_emit: state.run_emit,
+          sources: state.sources,
+          frontend: frontend,
+          newline_indices: frontend.newline_indices,
+          graph: none,
+          source_indices: empty_map(),
+          norm_diags: state.norm_diags,
+          typed: state.typed,
+          complexity: state.complexity,
+          ownership: state.ownership,
+          artifact_plan: state.artifact_plan,
+          stage_diags: concat(state.stage_diags, frontend.diagnostics),
+          emit_diags: state.emit_diags,
+          emit_files: state.emit_files,
+          target: state.target
+        }
         Some { value: graph } =>
           if pipeline_gate_blocks(policy: spec.gate, diagnostics: graph.diagnostics) {
-            pipeline_state_mark_halted(state: state)
-          } else {
-            let source_indices = fold(state.newline_indices, init: empty_map(), f: (acc, index) => map_insert(acc, index.file, index))
             CompilePipelineState {
-              halted: state.halted,
+              halted: true,
               emit_blocked: state.emit_blocked,
               run_emit: state.run_emit,
-              frontend: state.frontend,
-              newline_indices: state.newline_indices,
-              graph: state.graph,
+              sources: state.sources,
+              frontend: frontend,
+              newline_indices: frontend.newline_indices,
+              graph: Some { value: graph },
+              source_indices: empty_map(),
+              norm_diags: state.norm_diags,
+              typed: state.typed,
+              complexity: state.complexity,
+              ownership: state.ownership,
+              artifact_plan: state.artifact_plan,
+              stage_diags: concat(state.stage_diags, frontend.diagnostics),
+              emit_diags: state.emit_diags,
+              emit_files: state.emit_files,
+              target: state.target
+            }
+          } else {
+            let source_indices = fold(frontend.newline_indices, init: empty_map(), f: (acc, index) => map_insert(acc, index.file, index))
+            CompilePipelineState {
+              halted: false,
+              emit_blocked: state.emit_blocked,
+              run_emit: state.run_emit,
+              sources: state.sources,
+              frontend: frontend,
+              newline_indices: frontend.newline_indices,
+              graph: Some { value: graph },
               source_indices: source_indices,
               norm_diags: state.norm_diags,
               typed: state.typed,
               complexity: state.complexity,
               ownership: state.ownership,
               artifact_plan: state.artifact_plan,
-              stage_diags: state.stage_diags,
+              stage_diags: concat(state.stage_diags, frontend.diagnostics),
               emit_diags: state.emit_diags,
               emit_files: state.emit_files,
               target: state.target
             }
           }
       }
+    }
     StageNormalize =>
       match state.graph {
         None => pipeline_state_mark_halted(state: state)
@@ -975,6 +997,7 @@ fn apply_pipeline_stage(state: CompilePipelineState, spec: PipelineStageSpec) ->
           let norm_diags = norm.diagnostics
           if pipeline_gate_blocks(policy: spec.gate, diagnostics: norm_diags) {
             CompilePipelineState {
+              sources: state.sources,
               halted: true,
               emit_blocked: state.emit_blocked,
               run_emit: state.run_emit,
@@ -994,6 +1017,7 @@ fn apply_pipeline_stage(state: CompilePipelineState, spec: PipelineStageSpec) ->
             }
           } else {
             CompilePipelineState {
+              sources: state.sources,
               halted: state.halted,
               emit_blocked: state.emit_blocked,
               run_emit: state.run_emit,
@@ -1023,6 +1047,7 @@ fn apply_pipeline_stage(state: CompilePipelineState, spec: PipelineStageSpec) ->
           let type_errors = typed_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))
           let infer_blocks_emit = pipeline_gate_blocks(policy: spec.gate, diagnostics: typed_diags)
           CompilePipelineState {
+            sources: state.sources,
             halted: state.halted,
             emit_blocked: state.emit_blocked || infer_blocks_emit,
             run_emit: state.run_emit,
@@ -1050,10 +1075,12 @@ fn apply_pipeline_stage(state: CompilePipelineState, spec: PipelineStageSpec) ->
           let recursion_ctx = build_recursion_context(typed: typed)
           let complexity = build_complexity_report(func_entries: func_entries, recursion_ctx: recursion_ctx, source_indices: state.source_indices)
           let complexity_diags = complexity_diagnostics(complexity: complexity)
+          let complexity_blocks_emit = pipeline_gate_blocks(policy: spec.gate, diagnostics: complexity_diags)
           CompilePipelineState {
             halted: state.halted,
-            emit_blocked: state.emit_blocked,
+            emit_blocked: state.emit_blocked || complexity_blocks_emit,
             run_emit: state.run_emit,
+            sources: state.sources,
             frontend: state.frontend,
             newline_indices: state.newline_indices,
             graph: state.graph,
@@ -1081,10 +1108,11 @@ fn apply_pipeline_stage(state: CompilePipelineState, spec: PipelineStageSpec) ->
             let ownership_diags = ownership_diagnostics(proofs: ownership)
             let ownership_blocks_emit = pipeline_gate_blocks(policy: spec.gate, diagnostics: ownership_diags)
             CompilePipelineState {
+              sources: state.sources,
               halted: state.halted,
               emit_blocked: state.emit_blocked || ownership_blocks_emit,
               run_emit: state.run_emit,
-            frontend: state.frontend,
+              frontend: state.frontend,
             newline_indices: state.newline_indices,
             graph: state.graph,
             source_indices: state.source_indices,
@@ -1113,6 +1141,7 @@ fn apply_pipeline_stage(state: CompilePipelineState, spec: PipelineStageSpec) ->
             target: state.target
           )
           CompilePipelineState {
+            sources: state.sources,
             halted: state.halted,
             emit_blocked: state.emit_blocked,
             run_emit: state.run_emit,
@@ -1143,6 +1172,7 @@ fn apply_pipeline_stage(state: CompilePipelineState, spec: PipelineStageSpec) ->
             let emit_result = emit_from_artifact_plan(typed: typed, artifact_plan: state.artifact_plan)
             let emit_blocks = pipeline_gate_blocks(policy: spec.gate, diagnostics: emit_result.diagnostics)
             CompilePipelineState {
+              sources: state.sources,
               halted: state.halted,
               emit_blocked: state.emit_blocked || emit_blocks,
               run_emit: state.run_emit,
@@ -1166,15 +1196,21 @@ fn apply_pipeline_stage(state: CompilePipelineState, spec: PipelineStageSpec) ->
   }
 }
 
-fn run_compile_pipeline_fold(frontend: FrontendResult, target: RenderTarget, run_emit: Bool) -> CompilePipelineState {
-  let newline_indices = frontend.newline_indices
+fn run_compile_pipeline_fold(sources: List<SourceFile>, target: RenderTarget, run_emit: Bool) -> CompilePipelineState {
+  let empty_frontend = FrontendResult {
+    graph: none,
+    diagnostics: [],
+    newline_indices: [],
+    intern_table: empty_intern_table()
+  }
   let initial = CompilePipelineState {
-    halted: frontend.graph == None,
+    sources: sources,
+    halted: false,
     emit_blocked: false,
     run_emit: run_emit,
-    frontend: frontend,
-    newline_indices: newline_indices,
-    graph: frontend.graph,
+    frontend: empty_frontend,
+    newline_indices: [],
+    graph: none,
     source_indices: empty_map(),
     norm_diags: [],
     typed: none,
@@ -1192,7 +1228,7 @@ fn run_compile_pipeline_fold(frontend: FrontendResult, target: RenderTarget, run
 fn compile_pipeline_state_to_result(state: CompilePipelineState) -> PipelineResult {
   PipelineResult {
     files: if state.emit_blocked || state.halted { [] } else { state.emit_files },
-    diagnostics: concat(state.frontend.diagnostics, state.norm_diags, state.stage_diags, state.emit_diags),
+    diagnostics: concat(state.norm_diags, state.stage_diags, state.emit_diags),
     complexity: state.complexity,
     ownership: state.ownership,
     artifact_plan: state.artifact_plan,
@@ -1210,8 +1246,7 @@ fn resolve_sources(sources: List<SourceFile>) -> CompileResult {
 // Pure compiler pipeline: sources in, compiled files out.
 // Stage order and gates: fold over v2_compile_pipeline (P2 single authority).
 fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineResult {
-  let frontend = front_end_sources(sources: sources)
-  let state = run_compile_pipeline_fold(frontend: frontend, target: target, run_emit: true)
+  let state = run_compile_pipeline_fold(sources: sources, target: target, run_emit: true)
   compile_pipeline_state_to_result(state: state)
 }
 
@@ -1229,11 +1264,10 @@ type ResolvedPipelineResult {
 
 // Compile through validation: fold over v2_compile_pipeline with run_emit=false.
 fn compile_to_resolved(sources: List<SourceFile>) -> ResolvedPipelineResult {
-  let frontend = front_end_sources(sources: sources)
-  let state = run_compile_pipeline_fold(frontend: frontend, target: Rust, run_emit: false)
+  let state = run_compile_pipeline_fold(sources: sources, target: Rust, run_emit: false)
   ResolvedPipelineResult {
     graph: if state.emit_blocked || state.halted { none } else { state.typed },
-    diagnostics: concat(state.frontend.diagnostics, state.norm_diags, state.stage_diags),
+    diagnostics: concat(state.norm_diags, state.stage_diags),
     source_indices: state.source_indices,
     complexity: state.complexity,
     ownership: state.ownership,
