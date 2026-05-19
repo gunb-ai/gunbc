@@ -1,13 +1,10 @@
 // src/v4/extdeps/languages/typescript.dag
 // Scope: TypeScript 5.9 + ECMA-262 ES2025 primitive scaffold.
-// Owns: TsEcma262NumericPrimitiveKind, TsEcma262PrimitiveOperationSemantics, ts_bool_grounding.
-// Consumes: v4.std.logic.Bool, bool_boolean_algebra; v4.std.algebra.BooleanAlgebra.
+// Owns: TsEcma262NumericPrimitiveKind, TsEcma262PrimitiveOperationSemantics.
+// Consumes: v4.std.logic / `bool_boolean_algebra` for canonical ECMAScript `Boolean` (M1(2.8): no local `ts_bool_grounding` `data` row until class-5 gap #3 lifts — same posture as `cpp.dag`).
 // Status: bool canonical-B decl-ref grounding — 🟡 E-6(b) staging (scaffold at decl; ledger DECISIONS.md/§0). Non-bool numeric primitives still 🟡 gated — feature: T-4 fact-bundle Phase-3 rework after T-3/T-29/T-30/T-25-core.
 
 module v4.extdeps.languages.typescript
-
-import v4.std.logic { Bool }
-import v4.std.algebra { BooleanAlgebra, BoundedLattice, Lattice }
 
 
 
@@ -36,32 +33,5 @@ type TsEcma262PrimitiveOperationSemantics
   | TsBigIntExactUnboundedSemantics
 
 
-// Anchor: https://tc39.es/ecma262/#sec-ecmascript-language-types-boolean-type
-// 🟡 canonical-B decl-ref · E-6(b) bounded-exception · scaffold feature:canonical-b-grounding-consumer · dissolve-on: B1-CANON+zip-fold consume (ledger: DECISIONS.md B1·T-9/C1 · grounding-worked-examples.md §0)
-// M1(2.8): structural duplicate of `v4.std.logic::bool_boolean_algebra` (see `cpp.dag` comment).
-data ts_bool_grounding: BooleanAlgebra<Bool> = BooleanAlgebra {
-  bounded_lattice: BoundedLattice {
-    lattice: Lattice {
-      meet: fn(a, b) {
-        match a {
-          True => b
-          False => False
-        }
-      },
-      join: fn(a, b) {
-        match a {
-          True => True
-          False => b
-        }
-      }
-    },
-    top: True,
-    bottom: False
-  },
-  complement: fn(a) {
-    match a {
-      True => False
-      False => True
-    }
-  }
-}
+// Anchor: https://tc39.es/ecma262/#sec-ecmascript-language-types-boolean-type — canonical two-valued
+// algebra: single authority `v4.std.logic::bool_boolean_algebra` (DECISIONS.md B1·E-6(b)).

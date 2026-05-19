@@ -1,7 +1,7 @@
 // src/v4/extdeps/languages/lean.dag
 // Scope: Lean 4 language model for PROOF-1 termination export.
-// Owns: LeanDeclarationKind, LeanName, LeanLevel, LeanLevelRef, LeanLevelNode, LeanBinderInfo, LeanBinder, LeanTermRef, LeanTermNode, LeanTermForm, LeanMatchAlternative, LeanTerminationMeasure, LeanTerminationBy, LeanDecreasingProof, LeanTerminationClause, LeanDefinitionTermination, LeanProofArtifact, LeanFidelityFeature, LeanFidelityDisposition, LeanProofCheckSemantics, Symbol, LeanIntKind, LeanIntWidth, LeanScalar, lean_bool_grounding.
-// Consumes: List, Bool, bool_boolean_algebra; v4.std.algebra.BooleanAlgebra.
+// Owns: LeanDeclarationKind, LeanName, LeanLevel, LeanLevelRef, LeanLevelNode, LeanBinderInfo, LeanBinder, LeanTermRef, LeanTermNode, LeanTermForm, LeanMatchAlternative, LeanTerminationMeasure, LeanTerminationBy, LeanDecreasingProof, LeanTerminationClause, LeanDefinitionTermination, LeanProofArtifact, LeanFidelityFeature, LeanFidelityDisposition, LeanProofCheckSemantics, Symbol, LeanIntKind, LeanIntWidth, LeanScalar.
+// Consumes: List, Bool; v4.std.algebra.BooleanAlgebra / `v4.std.logic::bool_boolean_algebra` for canonical-B (M1(2.8): no local `lean_bool_grounding` `data` row until class-5 gap #3 lifts).
 // Status: D2-REV; 🟢 P4-3208 — DECISIONS.md (lean scalar + ledger); bool canonical-B decl-ref grounding — 🟡 E-6(b) staging (scaffold at decl; ledger DECISIONS.md/§0); classifier = LeanScalar.BoolScalar.
 
 module v4.extdeps.languages.lean
@@ -9,7 +9,6 @@ module v4.extdeps.languages.lean
 
 import v4.std.collection { List }
 import v4.std.logic { Bool }
-import v4.std.algebra { BooleanAlgebra, BoundedLattice, Lattice }
 
 
 // Twin of `v4.std.node.Symbol` — M1(2.7) compile_to_dag import lowering; local L-2 atom until `v4.std.node` import lowering lands (DECISIONS.md / P2).
@@ -204,32 +203,5 @@ type LeanScalar
   | BoolScalar
 
 
-// Anchor: https://lean-lang.org/doc/reference/4.20.0/Basic-Types/Booleans/
-// 🟡 canonical-B decl-ref · E-6(b) bounded-exception · scaffold feature:canonical-b-grounding-consumer · dissolve-on: B1-CANON+zip-fold consume (ledger: DECISIONS.md B1·T-9/C1 · grounding-worked-examples.md §0)
-// M1(2.8): structural duplicate of `v4.std.logic::bool_boolean_algebra` (see `cpp.dag` comment).
-data lean_bool_grounding: BooleanAlgebra<Bool> = BooleanAlgebra {
-  bounded_lattice: BoundedLattice {
-    lattice: Lattice {
-      meet: fn(a, b) {
-        match a {
-          True => b
-          False => False
-        }
-      },
-      join: fn(a, b) {
-        match a {
-          True => True
-          False => b
-        }
-      }
-    },
-    top: True,
-    bottom: False
-  },
-  complement: fn(a) {
-    match a {
-      True => False
-      False => True
-    }
-  }
-}
+// Anchor: https://lean-lang.org/doc/reference/4.20.0/Basic-Types/Booleans/ — canonical two-valued
+// algebra: single authority `v4.std.logic::bool_boolean_algebra` (DECISIONS.md B1·E-6(b)).
