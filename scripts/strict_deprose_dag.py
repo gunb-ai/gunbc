@@ -4,10 +4,10 @@
 Warning: every `//` line after `module` is deleted—non-idempotent if a target file gains
 authored in-body commentary; scoped to the pinned allowlist for that reason.
 
-Coproduct one-liners (`// 🟢|🟡|🔴 coproduct dissolution — <slug>.`) are (re)written from
-merge-base `92cb26402` Practice-4 / SL-3229 state (operator directive 2026-05-17, PR
-#3234 modeling-discipline alignment): an existing tag with the wrong slug is replaced
-so `--check` cannot pass on stale pointers.
+Coproduct one-liners (`// 🟢|🟡|🔴 coproduct dissolution — TASKS.md T-4 · …`) are
+(re)written from merge-base `92cb26402` Practice-4 / SL-3229 state (operator directive
+2026-05-17, PR #3234 modeling-discipline alignment): an existing tag with the wrong slug
+is replaced so `--check` cannot pass on stale pointers.
 
 RULING-1 (operator 2026-05-19): each braced record `type` (not a sum coproduct) gets a
 single `// 🟢 grounded.` or `// 🟡 grounded.` line (lexeme-shaped `String` slots in
@@ -19,9 +19,10 @@ they are re-injected every run so spacing stays canonical.
 `type`, `data`, and `fn` binding in the `.dag` body (deduped by name), not only headline
 carriers—so regenerated headers stay aligned with actual exports.
 
-`// Ledger:` lists **dissolution slugs for the live substrate**: one slug per live sum
-coproduct (from the merge-base tag map) plus **EXTRA** non-coproduct scaffolds
-(`EXTRA_PART6_SLUGS_BY_REL`). A live coproduct name absent from the merge-base map is
+`// Ledger:` lists **Practice-4 slug inventory** for the live substrate: one ref per live
+sum coproduct (from the merge-base tag map) plus **EXTRA** non-coproduct scaffolds
+(`EXTRA_PART6_SLUGS_BY_REL`). The retired `src/v4/DECISIONS.md` ledger is **not** read;
+rationale is argued in PR threads / briefs. A live coproduct name absent from the merge-base map is
 a hard failure (Practice 4 fail-closed).
 
 Run with `--check` to verify allowlisted files already match merge-base-derived output
@@ -58,10 +59,13 @@ COPRODUCT_TAG_RE = re.compile(
 # extending a brittle per-field allowlist (composer-2 exploratory #3370).
 LEXEME_STRING_FIELD_RE = re.compile(r"\b\w*lexeme\s*:\s*String\b")
 
+# Domain-neutral carrier provenance (PTX lane; operator CASCADE separation).
+LEDGER_ANCHOR_RE = re.compile(r"^\s*//\s*Ledger anchor:\s*")
+
 PART6_SLUG_HEAD_RE = re.compile(r"^### (SL-3229-[A-Z0-9-]+|CP-3229-[A-Z0-9-]+)\b")
 
 # Non-coproduct merge-base receipts (strict de-prose strips their `//` bodies) that
-# must still have a Part 6 row + appear on the live `// Ledger:` line for inventory.
+# must still appear on the live `// Ledger:` line for slug inventory.
 EXTRA_PART6_SLUGS_BY_REL: dict[str, frozenset[str]] = {
     "src/v4/extdeps/languages/verilog.dag": frozenset(
         {
@@ -277,7 +281,7 @@ def coproduct_type_names_in_path(path: Path) -> set[str]:
 def required_ledger_slugs(
     rel: str, tag_map: dict[str, tuple[str, str]], live_coproducts: set[str]
 ) -> set[str]:
-    """Part-6 slug inventory for the live `// Ledger:` line: current coproduct refs + EXTRA scaffolds."""
+    """Practice-4 slug inventory for the live `// Ledger:` line: current coproduct refs + EXTRA scaffolds."""
     unknown = live_coproducts - tag_map.keys()
     if unknown:
         print(
@@ -296,11 +300,11 @@ def format_ledger_line(
     rel: str, tag_map: dict[str, tuple[str, str]], live_coproducts: set[str]
 ) -> str:
     slugs = ", ".join(sorted(required_ledger_slugs(rel, tag_map, live_coproducts)))
-    return f"// Ledger: dissolution slugs (PR #3229): {slugs}.\n"
+    return f"// Ledger: {slugs}.\n"
 
 
 def format_coproduct_tag(emoji: str, ref: str) -> str:
-    return f"// {emoji} coproduct dissolution — {ref}."
+    return f"// {emoji} coproduct dissolution — TASKS.md T-4 · {ref}."
 
 
 def grounded_tag_for_record_body(body_lines: list[str]) -> str:
@@ -420,7 +424,11 @@ def strip_body_comments(after_module: str) -> str:
         # Only coproduct one-liners survive the strip; RULING-1 grounded lines are
         # always re-materialized by inject_grounded_tags (keeps one code path and
         # spacing normalization — e.g. float.dag after coproduct variants).
-        if sl.lstrip().startswith("//") and not COPRODUCT_TAG_RE.match(sl):
+        if (
+            sl.lstrip().startswith("//")
+            and not COPRODUCT_TAG_RE.match(sl)
+            and not LEDGER_ANCHOR_RE.match(sl)
+        ):
             continue
         out_lines.append(line)
     return "".join(out_lines)
@@ -448,12 +456,6 @@ def rewrite(path: Path, header: str, rel: str, tag_map: dict[str, tuple[str, str
 
 def run_check(specs: list[tuple[str, str, str, str, str]]) -> None:
     """Exit 0 only if each allowlisted file already matches merge-base-derived output."""
-    union_required: set[str] = set()
-    for rel, *_rest in specs:
-        path = ROOT / rel
-        tag_map = coproduct_tag_from_merge_base(rel)
-        live = coproduct_type_names_in_path(path)
-        union_required |= required_ledger_slugs(rel, tag_map, live)
     drift: list[str] = []
     for rel, scope, anchor, consumes, status in specs:
         path = ROOT / rel
@@ -511,7 +513,7 @@ def main() -> None:
             "// Scope: NVIDIA PTX ISA 8.5 SIMT structural classifiers (param/shared state, registers, thread hierarchy).",
             "// Anchor: https://docs.nvidia.com/cuda/pdf/ptx_isa_8.5.pdf — TOC https://docs.nvidia.com/cuda/parallel-thread-execution/index.html",
             "// Consumes: std/nat.dag (Nat); std/cardinality.dag (PositiveUpperBoundedNat).",
-            "// Status: structural carriers present; conformance argued in PR review.",
+            "// Status: structural carriers present; conformance authority in dispatch §2 + TASKS.",
         ),
         (
             "src/v4/std/integer.dag",
