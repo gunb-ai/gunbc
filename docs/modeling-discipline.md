@@ -104,8 +104,11 @@ than type-enforced.
 Every piece of structured information produced at one stage of the
 compiler must be either consumed by the next stage, carried forward as
 a field on downstream data structures, or explicitly discarded — with
-the justification recorded in the **PR / review thread** (Practice 9), not as
-in-file prose. Silent drops are violations.
+the justification recorded in a **stable in-repo home** (`docs/briefs/…`,
+`INVARIANTS.md`, `src/v4/TASKS.md`, or another checked-in `docs/` authority —
+never *only* ephemeral chat). The **PR / review thread** must **link** to that
+named receipt (Practice 9 still forbids expanding rationale *inside* the `.dag`).
+Silent drops are violations.
 
 **What to check:** For each cross-stage boundary touched in the diff
 (parse→lower, lower→infer, infer→lens, lens→emit), enumerate the fields
@@ -223,15 +226,18 @@ or a `.dag` `type X = A | B | …`) must be classified (🟢/🟡/🔴), with
 review-visible terminal rationale if 🟢, or the gate kind + concrete named arrival
 (`feature:<name>` / `consumer:<name>`) + dissolve-on-arrival obligation
 if 🟡. Per Practice 9 the
-classification *ledger* (patterns tried, 🟡 gate binding) is argued in the
-**PR / review thread** (and optional design briefs) — *not* an in-file `Practice 4: ...` block. **But the coproduct itself
+classification *ledger* (patterns tried, 🟡 gate binding) lives in a **named
+in-repo receipt** — typically `docs/briefs/…`, `docs/briefs/r4-program-dispatch-plan.md`,
+or a **`src/v4/TASKS.md` row / anchor** (the checkable authority INVARIANTS §P5 expects) —
+*not* an in-file `Practice 4: …` block and **not** PR-only vapor. The merge PR must
+**point** at that stable path (same merge-train visibility). **But the coproduct itself
 keeps a required one-line classification tag carrying the 🟢/🟡/🔴
 emoji** (operator directive 2026-05-17) — e.g. `// 🟡 coproduct
-dissolution — <PR-or-brief ref> (OS-1 disposition)`. The emoji stays *on the coproduct* so
+dissolution — TASKS.md T-4 · <Practice-4 slug>`. The emoji stays *on the coproduct* so
 a reader sees the classification at the type; the decision-making (the
-dissolution patterns tried, the 🟡 gate) lives **off the carrier** in review-visible
-channels. A coproduct with no in-file 🟢/🟡/🔴 tag, or no **recorded**
-classification rationale in the PR thread when challenged, is unfinished modeling and blocks
+dissolution patterns tried, the 🟡 gate) is **readable from the in-repo receipt**
+linked in review. A coproduct with no in-file 🟢/🟡/🔴 tag, or no **named in-repo**
+classification ledger when challenged, is unfinished modeling and blocks
 review.
 
 **The lookup smell (the consumer-trigger backstop).** A `match` over a
@@ -515,13 +521,14 @@ four things — nothing else survives:
      🟢/🟡/🔴 classification emoji (operator directive 2026-05-17), e.g.
      `// 🟡 coproduct dissolution — TASKS.md T-4 · <Practice-4 slug>`. The emoji stays
      *on the coproduct*; the dissolution patterns / named
-     trigger are argued **off the carrier** in the PR thread (Practice 4). This is not optional —
+     trigger are argued **off the carrier** in a **named in-repo brief / `TASKS.md` row**
+     (PR links there — Practice 4). This is not optional —
      a coproduct with no in-file 🟢/🟡/🔴 tag blocks review.
    - **Optional — concept tag / cite.** For any type, at most one
      further one-liner where genuinely useful: a concept tag where the
      concept is non-obvious from name + structure, *or* a one-line cite
-     to a `DECISIONS.md` entry (e.g. `// coincides: <DECISIONS.md ref>`
-     — the Practice-8 coincidence cite).
+     to review-visible authority (e.g. `// coincides: <brief path>` / `TASKS.md` anchor
+     — the Practice-8 coincidence cite; **not** a maintained prose ledger).
    Never a description of the type; never a `Practice N: ...` rationale
    line; never a `see docs/X` pointer.
 
@@ -558,18 +565,20 @@ proof (Practice 8). Practice 9 supersedes all of them, under one uniform
 rule:
 
 - the **record relocates** — an architectural decision, a classification
-  *write-up*, a discard justification, a coincidence proof all move to
-  **PR threads / briefs**; a process receipt (`HEADER RECONCILE`, "per
+  *write-up*, a discard justification, a coincidence proof all move to a
+  **stable in-repo home** (`docs/briefs/…`, program-plan tables, `INVARIANTS.md`,
+  `src/v4/TASKS.md`, …). The **PR / review thread** is the **index** (merge-visible pointer)
+  to that receipt — not a substitute for it. A process receipt (`HEADER RECONCILE`, "per
   directive X", a de-prose note) moves to the **commit message**;
 - the `.dag` file keeps the **item-4 one-line tag** — for a coproduct, a
   *required* 🟢/🟡/🔴 classification tag (e.g.
-  `// 🟡 coproduct dissolution — DECISIONS.md OS-1`); optionally one
+  `// 🟡 coproduct dissolution — TASKS.md T-4 · <Practice-4 slug>`); optionally one
   further concept tag or a one-line `// coincides: <brief ref>`
   cite. The classification *emoji* stays on the coproduct; only the
   *patterns-tried / 🟡 gate* narrative relocates.
 
 Wherever an earlier Practice says "record X in a comment," read it as
-"record X **off the `.dag` file** (PR / brief); the file keeps the one-line tag." The same
+"record X **off the `.dag` file** in a **named repo path**; the file keeps the one-line tag." The same
 applies to rules that mandated an in-file block — D5's
 `HEADER RECONCILE` receipt moves to the commit message. No earlier
 in-file *artifact mandate* survives un-superseded by Practice 9. This
@@ -815,8 +824,9 @@ For each relevant principle and its implementing practices:
    or merely behavioral (convention).
 4. For new coproducts: verify the coproduct carries its required
    one-line 🟢/🟡/🔴 classification tag *in the file* (Practice 4 /
-   Practice 9 item 4) **and** has a `DECISIONS.md` entry for the ledger /
-   patterns-tried / gate. **Merge requirement — every 🟡 binds a
+   Practice 9 item 4) **and** has a **named in-repo** dissolution ledger /
+   patterns-tried / gate record (`docs/briefs/…`, `TASKS.md`, dispatch plan —
+   not PR-only prose). **Merge requirement — every 🟡 binds a
    dissolution plan:** the gate kind (`feature:`/`consumer:`), the named
    missing primitive/consumer, the substrate PR or task that will land
    it, and the dissolution follow-up that converts the 🟡 to 🟢. A 🟡
@@ -836,7 +846,7 @@ For each relevant principle and its implementing practices:
    it is a fact-bundle (invents the facts the spec states) or a *cited*
    coincidence reuse of a `std/` carrier — not a bare alias. Apply the
    structural fact-density gate: a bare alias of a spec primitive with
-   no coincidence-evidence `DECISIONS.md` entry is hollow and blocks. For any emit
+   no coincidence-evidence (named brief / `TASKS.md` / one-line `// coincides:` cite) is hollow and blocks. For any emit
    artifact: verify it is grounded grammar-as-data, not a string
    template.
 7. For any `.dag` file in the diff (Practice 9): count `comment-lines /
@@ -844,7 +854,7 @@ For each relevant principle and its implementing practices:
    has not been de-prosed — the comments must reduce to the four allowed
    things (file-path line, terse four-line header, per-carrier anchor,
    one-line tag: the required 🟢/🟡/🔴 tag on each coproduct plus an
-   optional concept tag / `DECISIONS.md` cite). Process-meta prose in the file
+   optional concept tag / brief cite). Process-meta prose in the file
    (`HEADER RECONCILE`, de-prose receipts) is itself a finding.
 8. For cross-stage boundaries: verify facts flow forward.
 9. For any function whose behavior is fixed by a modeled type's shape

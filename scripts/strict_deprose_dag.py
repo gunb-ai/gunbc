@@ -22,7 +22,7 @@ carriers—so regenerated headers stay aligned with actual exports.
 `// Ledger:` lists **Practice-4 slug inventory** for the live substrate: one ref per live
 sum coproduct (from the merge-base tag map) plus **EXTRA** non-coproduct scaffolds
 (`EXTRA_PART6_SLUGS_BY_REL`). The retired `src/v4/DECISIONS.md` ledger is **not** read;
-rationale is argued in PR threads / briefs. A live coproduct name absent from the merge-base map is
+rationale is argued in **named in-repo** briefs / `TASKS.md` (PR threads **link** there). A live coproduct name absent from the merge-base map is
 a hard failure (Practice 4 fail-closed).
 
 Run with `--check` to verify allowlisted files already match merge-base-derived output
@@ -58,9 +58,6 @@ COPRODUCT_TAG_RE = re.compile(
 # Uses a name suffix rule so new `foo_lexeme: String` sites classify as 🟢→🟡 without
 # extending a brittle per-field allowlist (composer-2 exploratory #3370).
 LEXEME_STRING_FIELD_RE = re.compile(r"\b\w*lexeme\s*:\s*String\b")
-
-# Domain-neutral carrier provenance (PTX lane; operator CASCADE separation).
-LEDGER_ANCHOR_RE = re.compile(r"^\s*//\s*Ledger anchor:\s*")
 
 PART6_SLUG_HEAD_RE = re.compile(r"^### (SL-3229-[A-Z0-9-]+|CP-3229-[A-Z0-9-]+)\b")
 
@@ -424,11 +421,7 @@ def strip_body_comments(after_module: str) -> str:
         # Only coproduct one-liners survive the strip; RULING-1 grounded lines are
         # always re-materialized by inject_grounded_tags (keeps one code path and
         # spacing normalization — e.g. float.dag after coproduct variants).
-        if (
-            sl.lstrip().startswith("//")
-            and not COPRODUCT_TAG_RE.match(sl)
-            and not LEDGER_ANCHOR_RE.match(sl)
-        ):
+        if sl.lstrip().startswith("//") and not COPRODUCT_TAG_RE.match(sl):
             continue
         out_lines.append(line)
     return "".join(out_lines)
