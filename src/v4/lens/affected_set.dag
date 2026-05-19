@@ -70,7 +70,7 @@ type WholeDagFailClosedEvidence
   | WholeDagDiagnostic { diagnostic: Diagnostic }
 
 
-// 🟢 coproduct dissolution — DECISIONS.md #3153-subsumed
+// 🟡 coproduct dissolution — DECISIONS.md #3153-subsumed
 type FrontierDecision
   = Rerun
   | Excluded { first: PropagationExclusionProof, rest: List<PropagationExclusionProof> }
