@@ -167,7 +167,9 @@ PR #3245 without waiting on substrate.
 to §1.1).** The filled **`bootstrap.dag`** / **`ci.dag`** cores on `main`
 (§2.5 file/`fn` counts) are **in** the merge-gate surface **and** in the
 ranked plan: each in-file `// 🟡 … DECISIONS.md LB-*-3213` tag names a
-checkable dissolution row; none are “burn-down only” orphans.
+checkable dissolution row, **plus** the dual-counted **`ci_all_commands_authority_ok`**
+fold (see **ALL** roll-call — no separate `//` tag on the wrapper) — none
+are “burn-down only” orphans.
 
 - **`LB-P4-3213`** — `CiCommand` coproduct port (`ci.dag` ~L22) → **P4**
   (T-4 / Practice-4 coproduct classification; same owner as §2.5 call-out).
@@ -176,18 +178,24 @@ checkable dissolution row; none are “burn-down only” orphans.
   Wave-A2 list combinators / `forall` family — `member`, `any`, `all`,
   `count_if`, `set_eq`, `filter`, honest `find`). **Roll-call (symbol →
   sub-row):** **MEMBER** — `bs_member`, `ci_member`; **ANY** —
-  `ci_symbol_resolves`, `ci_blocked`; **ALL** — `ci_all_job_ids_unique`,
+  `ci_symbol_resolves`, `ci_blocked`; **ALL** — universal **`fold` over
+  `List<CiJob>`** / **`List<CiGate>`** (`all`-shaped): `ci_all_job_ids_unique`,
   `ci_all_gate_ids_unique`, `ci_all_needs_resolve`,
-  `ci_all_gate_jobs_resolve`; **COUNTIF** — `ci_id_occurrences`,
+  `ci_all_gate_jobs_resolve` (**DECISIONS** **LB-P10-3213-ALL** table) **and**
+  `ci_all_commands_authority_ok` (same list-op **shape** — rolls under **P2**
+  with the four above; inner predicate **`ci_command_authority_ok`** carries
+  the **LB-T22-3213** in-file tag, so the wrapper is **dual**: **P2** list-op
+  dissolution **+** **T-22** negative-coverage obligation); **COUNTIF** — `ci_id_occurrences`,
   `ci_gate_id_occurrences`; **SETEQ** — `bs_list_eq`; **FILTER** —
   `ci_eliminate_pass`; **FIND** — `ci_job_needs`. **KAHN** —
   `ci_kahn_fixpoint`, `ci_acyclic` — **🟢 terminal** per DECISIONS (domain
   graph algorithm, not a dissolvable collection primitive; still
   well-formedness **content**, not backlog “triage deferred”).
-- **`LB-T22-3213`** — `ci_command_authority_ok` plus the
-  `ci_all_commands_authority_ok` job-fold wrapper → **T-22** executable
-  negative-coverage plan-bound (DECISIONS Part 7 `LB-T22-3213`; same §2.5
-  tag).
+- **`LB-T22-3213`** — **`ci_command_authority_ok`** (in-file T-22 tag) and
+  **`ci_all_commands_authority_ok`** (jobs sweep — **no** wrapper tag; **dual**
+  **P2** / **ALL** roll-call above **+** **T-22** on the inner predicate) →
+  **T-22** executable negative-coverage plan-bound (**DECISIONS** Part 7
+  `LB-T22-3213`; §2.5).
 
 Structural helpers with **no** `LB-*-3213` tag (`bs_diagnostic`,
 `bootstrap_stage_output`, `bootstrap_plan_well_formed`, `ci_diagnostic`,
@@ -241,6 +249,11 @@ Caveats:
    "🟡 → 🟢 sweep for P10" only fires after concretization. The
    `⛔ needs-concretization` flag on P10 in § 1.1 is structurally
    blocking that row's DAG entry.
+3. **`ci_all_commands_authority_ok`** is **dual-listed** in the §1.1
+   workflow rollup under **P2** (same **`all`/`fold`-over-`jobs`** combinator
+   class as **LB-P10-3213-ALL**) **and** **T-22** (inner **`ci_command_authority_ok`**
+   tag). That is **one** workflow surface with **two** ranked obligations, not
+   an extra 🟡 in the illustrative **~36** baseline column (no double-count).
 
 **P1 is the headline.** Landing the remaining `std/cardinality.dag`
 refinement substrate dissolves more than half of the v4 substrate's
@@ -497,14 +510,20 @@ for dissolution queue ownership.
 🟡 **coproduct dissolution** — `DECISIONS.md` **LB-P4-3213** → **§1.1 P4**.
 **`ci_id_occurrences` (80)** — 🟡 **List-op** (COUNTIF row) —
 **LB-P10-3213** → **P2**. **`ci_command_authority_ok` (163)** — 🟡
-**negative-coverage plan-bound (T-22)** — `DECISIONS.md` **LB-T22-3213**.
+**negative-coverage plan-bound (T-22)** — `DECISIONS.md` **LB-T22-3213**
+(in-file tag). **`ci_all_commands_authority_ok` (173)** — **dual** 🟡:
+**P2** / **LB-P10-3213** as an **`all`-shaped** `jobs` fold (same combinator
+class as **LB-P10-3213-ALL**) **and** **T-22** via the inner
+**`ci_command_authority_ok`** check (see **§1.1** workflow rollup **ALL**
+bullet).
 **Remaining `fn`s:** every other **🟡 list-op-shaped** helper is **already
 named** in **`DECISIONS.md` Part 7** (`LB-P10-3213-*` sub-rows) and rolled
 under **§1.1 P2** in the **§1.1 workflow (PR #3213) merge-gate rollup**
 paragraph — **MEMBER** /
 **ANY** / **ALL** / **COUNTIF** / **FILTER** / **FIND** as listed there
-(`ci_member`, `ci_symbol_resolves`, `ci_blocked`, the four `ci_all_*`
-predicates, `ci_gate_id_occurrences`, `ci_eliminate_pass`, `ci_job_needs`).
+(`ci_member`, `ci_symbol_resolves`, `ci_blocked`, the **five** `ci_all_*`
+predicates over jobs/gates including **`ci_all_commands_authority_ok`**,
+`ci_gate_id_occurrences`, `ci_eliminate_pass`, `ci_job_needs`).
 **Kahn** (`ci_kahn_fixpoint`, `ci_acyclic`) is **🟢 terminal** per DECISIONS
 (not a backlog deferral). **`ci_diagnostic`** / **`ci_pipeline_well_formed`**
 — orchestration + rejection plumbing (🟢 dissolution-class stance; T-22
