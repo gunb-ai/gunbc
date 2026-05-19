@@ -17,7 +17,7 @@
 
 use std::collections::BTreeMap;
 
-use super::{BoolPortRef, Dag, DeclarationId, ElementRef, NodeId, NonSingletonList};
+use super::{BoolPortRef, Dag, DeclarationId, ElementRef, NonSingletonList};
 
 /// 🟢 **TERMINAL.** HTTP verb literals — 1:1 with `std.effects` `HttpMethod`;
 /// naming authority is `effects.dag`.
@@ -479,21 +479,4 @@ pub(crate) fn project_workflow_idempotency_report(
             },
         ),
     }
-}
-
-/// Native-Dag convenience entry for the declared `lenses.idempotency` surface.
-///
-/// The `.dag` entry reads the reflected substrate with `lane2_workflow_at`;
-/// this Rust entry reads the same projection from the native `Dag` fields used
-/// before emission.
-pub fn analyze_workflow(d: &Dag, workflow_root: NodeId) -> WorkflowIdempotencyReport {
-    let Some(workflow) = d.lane2_workflow_effect_at(&workflow_root) else {
-        return WorkflowIdempotencyReport::IdempotencyUnsupported(IdempotencyUnsupportedDetail {
-            variant_name: "Lane2WorkflowRoot".to_string(),
-            downstream_stage: "lane2_stage2b_idempotency_lens".to_string(),
-            reason: "no WorkflowEffect at this substrate root - populate `lane2_workflow` on `Value`/`Bind` via lowering or `try_register_lane2_workflow_effect`"
-                .to_string(),
-        });
-    };
-    project_workflow_idempotency_report(d, workflow)
 }

@@ -52,6 +52,41 @@ data cementing_band_c_v2_complete_receipts: List<CementingBandCReceipt> = [
     registry_name: "cost_symbolic"
     module_stem: "cost_lens_symbolic_consumer_test"
     kind: TemporaryRustModule
+  },
+  {
+    registry_name: "effect_enumeration"
+    module_stem: "t_r3_gate_87_cementing_regen_effect_enumeration"
+    kind: DagHarness
+  },
+  {
+    registry_name: "idempotency"
+    module_stem: "t_r3_gate_87_cementing_regen_idempotency"
+    kind: DagHarness
+  },
+  {
+    registry_name: "parallelism"
+    module_stem: "t_r3_gate_87_cementing_regen_parallelism"
+    kind: DagHarness
+  },
+  {
+    registry_name: "provenance"
+    module_stem: "t_r3_gate_87_cementing_regen_provenance"
+    kind: DagHarness
+  },
+  {
+    registry_name: "structural_resolution"
+    module_stem: "t_r3_gate_87_cementing_regen_structural_resolution"
+    kind: DagHarness
+  },
+  {
+    registry_name: "unused_parameters"
+    module_stem: "t_r3_gate_87_cementing_regen_unused_parameters"
+    kind: DagHarness
+  },
+  {
+    registry_name: "variant_payload"
+    module_stem: "t_r3_gate_87_cementing_regen_variant_payload"
+    kind: DagHarness
   }
 ]
 

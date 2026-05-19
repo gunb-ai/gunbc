@@ -1,14 +1,23 @@
 // src/v4/extdeps/languages/cpp.dag
 // Scope: C++ language primitive resolver facts.
-// Owns: CppIntegerOverflowDisposition, CppBool.
-// Consumes: kernel-ambient Bool; CppTargetProfile/CppTargetDataModel via T29-ABI follow-up rows.
-// Status: D2-REV-compatible C++ resolver slice; grounding rows and non-Bool scalar aliases deferred to pinned shared carriers.
+// Owns: CppIntegerOverflowDisposition, cpp_bool_grounding.
+// Consumes: v4.std.logic.Bool, bool_boolean_algebra; v4.std.algebra.BooleanAlgebra; CppTargetProfile/CppTargetDataModel via T29-ABI follow-up rows.
+// Status: D2-REV resolver slice; bool canonical-B decl-ref grounding — 🟡 E-6(b) staging (scaffold at decl; ledger DECISIONS.md/§0). Non-bool C++ scalar ladder still 🟡 feature:t4-cpp-scalar-ladder — DECISIONS.md P4-3208 + T29-ABI.
+// Anchor: https://eel.is/c++draft/
+// Ledger: DECISIONS.md Part 6 (PR #3229): CP-3229-GREEN-TERMINAL.
 
 module v4.extdeps.languages.cpp
+
+import v4.std.logic { Bool, bool_boolean_algebra }
+import v4.std.algebra { BooleanAlgebra }
+
 
 // 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
 type CppIntegerOverflowDisposition
   = RepresentableResultRequired
   | UnsignedModuloArithmetic
 
-type CppBool = Bool
+
+// Anchor: https://eel.is/c++draft/basic.fundamental
+// 🟡 canonical-B decl-ref · E-6(b) bounded-exception · scaffold feature:canonical-b-grounding-consumer · dissolve-on: B1-CANON+zip-fold consume (ledger: DECISIONS.md B1·T-9/C1 · grounding-worked-examples.md §0)
+data cpp_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra

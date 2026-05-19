@@ -234,10 +234,15 @@ Close-the-loop + late substrate:
 
 ### T-3: std/* supporting (cardinality, witness, diagnostic, collection, verification + the scalar/numeric stack)
 
-**File**: 11 files in `src/v4/std/` — `cardinality`, `witness`, `diagnostic`,
+**File**: 11 files in `src/v4/std/` today — `cardinality`, `witness`, `diagnostic`,
 `collection`, `verification`, plus the **scalar/numeric stack** (`logic`,
 `nat`, `machine`, `integer`, `float`, `text`) that replaced the deleted
 `primitive.dag` — see `STRUCTURE.md` §"Scalar/numeric concept decomposition".
+**Scheduled (named carrier home, checkable arrival):** **`src/v4/std/datetime.dag`**
+(module `v4.std.datetime` once authored) — RFC 3339 / clock-calendar instant
+facts for format-layer consumers; **absent from the tree until** the Wave-A2+
+landing PR; dissolution paired with `DECISIONS.md` Part 6 ·
+`SL-3229-T4-FORMAT-TOML-DATETIME` (T-4.6 `toml.dag` wires ops against this file).
 **Why bundled**: smaller individually, all interrelated, foundation for everything.
 
 **Shared-fact vocabulary — T-3 owns it (D2-reversal scope, operator-ratified
@@ -249,7 +254,12 @@ language model coincides against. A per-language fact-bundle (T-4) cannot be
 authored until this vocabulary exists — so T-3 is on the **critical path** and
 every T-4 slice blocks on it. The exact-real / physical-quantity carriers (the
 SPICE gap — see `DECISIONS.md` "D2 REVERSAL + FACT-BUNDLE RESEED", Phase 2) are
-part of this vocabulary. Each axis is a real modeled fact, placed in the
+part of this vocabulary. **Temporal / RFC 3339 structured instants** (format
+lexemes → clock facts; T-4.6 consumers — `DECISIONS.md` Part 6 ·
+`SL-3229-T4-FORMAT-TOML-DATETIME`) are **T-3-owned `std/` vocabulary** with the
+**concrete scheduled home** `src/v4/std/datetime.dag` (see **File** above), same
+scheduling envelope as other Wave-A2+ shared facts. Each **numeric /
+physical-quantity** axis is a real modeled fact, placed in the
 appropriate scalar/numeric file (`machine`, `integer`, `float`) by DFS to its
 concept-DAG home (M9) — never minted per-language.
 
@@ -331,17 +341,17 @@ substrate imported them, so the cut is a pure scope reduction.
 
 ### T-6: compiler/01_tokenize.dag
 
-**Role:** Lexical half of generic `ingest` (00_compile B2-OMNI): walker over `LanguageModel` **lex** `Node` data — grammar-as-data, not hardcoded `.dag` classes (N×M STOP). Wave-2+ = extend **data**, not walker.
+**Role:** Lexical half of generic `ingest` (00_compile B2-OMNI): walker over `LanguageModel` **lex** `LexRules` data — grammar-as-data, not hardcoded `.dag` classes (N×M STOP). Wave-2+ = extend **data**, not walker.
 
 **Merged `00_compile.dag` ingest (literal `Owns` today):** `ingest: (Source, LanguageModel) -> Result<Node, Diagnostic>` — authoritative composed ingest spelling on the orchestrator file (per DECISIONS.md item **I**: `Result<…, Diagnostic>` prose denotes the same fail-closed surface as `Outcome<…>` from `std/diagnostic.dag`; do not “fix” TASKS to one carrier spelling without changing **`00_compile.dag` in the same commit train**).
-**Merged `01_tokenize.dag` (literal `Owns` today):** `tokenize(text: String, file: Symbol, rules: LexRules) -> Outcome<TokenStream>` with `LexRules = Node` (`String` + `file: Symbol` is the concrete source slot inside `ingest` today; read `LexRules` as the lexical projection of the `LanguageModel` bundle per Theme-A #9 — not a second authority).
+**Merged `01_tokenize.dag` (literal `Owns` today):** `tokenize(text: String, file: Symbol, rules: LexRules) -> Outcome<TokenStream>` with `LexRules = VoidLexRules | ModeledLexRules { root: LexRuleSet }` and `TokenRule.pattern: LexPattern` (`String` + `file: Symbol` is the concrete source slot inside `ingest` today; read `LexRules` as the lexical projection of the `LanguageModel` bundle per Theme-A #9 — not a second authority).
 *Theme-A #9:* Until `LanguageModel` is a **named** carrier (or merged `00_compile.dag` states formally that the model **IS** a `Node`), read **`LexRules` / `Grammar` as the model's lexical and syntax projections** on the same grammar-as-data — not a second authority beside the conceptual `(Source, LanguageModel)` spelling.
 
 **Modeling decisions**:
 - The lexical-rule **data schema** on the `LanguageModel` — what a
-  declarative lexical production is, as `Node` (the structural shape the
-  walker recognizes by discriminant + child structure, never by `Symbol`
-  spelling).
+  declarative lexical production is, as typed `LexRule` / `LexPattern`
+  payload data (the structural shape the walker recognizes by constructor
+  + child structure, never by `Symbol` spelling).
 - Whitespace/comment handling expressed *in that data*, not as walker logic.
 - The walker's structural recognition contract (E0 and successors).
 
@@ -573,6 +583,12 @@ Once T-15 lands and stays green, all four failure modes are impossible-by-constr
 
 **File**: 7 files in `src/v4/extdeps/formats/` (operator-ratified 2026-05-15: arbitrary ingestion via direction-agnostic format models; `sql.dag` added 2026-05-17 — Theme-A #4 fork (a))
 **Why bundled**: identical structural shape per format; each file declares the format MODEL (data structure + parse/emit operations).
+
+**Substrate cross-locks (checkable, not prose-only):** `toml.dag` **TomlDatetime**
+value semantics (RFC 3339 / TOML §Date-Time four sub-kinds) dissolve on
+**`src/v4/std/datetime.dag`** landing under **T-3** + typed ops wired on **T-4.6**
+(`toml_datetime_value`, …) — authority `DECISIONS.md` Part 6 ·
+`SL-3229-T4-FORMAT-TOML-DATETIME`.
 
 **Modeling decisions**:
 - Recursive vs iterative parsing strategy (per-format)
@@ -858,6 +874,8 @@ All 5 artifacts share ONE Node tree (per gate #28 omni_layers_share_one_node_tre
 
 **Incremental Re-Test requirement set — held (IRT-3; see T-21 for the full IRT-1..4 set + rationale).**
 - **IRT-3 (with T-19).** `eval` MUST evaluate ANY node subgraph bound into a TestClaim's `input: Node` — including a `program ∘ generated-input` composite — at arbitrary-node granularity; it must never silently restrict TestClaim evaluation to whole-function / whole-module units. Node-level evaluability is what lets the affected set (T-21) name re-runs at node precision.
+
+**Bilateral binding — #3213 negative-coverage obligation (DECISIONS.md LB-T22-3213).** ci.dag's `ci_pipeline_well_formed` enforces bootstrap-stage single-authority fail-closed by construction (`ci_all_commands_authority_ok` / `bootstrap_stage_output`), but the rejection family has no executable demonstration (the TestClaim runner is this task). **Arrival = T-22's executable `TestClaim` runner lands. Follow-up obligation:** add negative `TestClaim`(s) for the CI bootstrap-stage rejection family — dangling `BootstrapStageCompile.produces` + siblings (duplicate job/gate id, dangling `needs`, dangling gate job, dependency cycle) — landing them dissolves the `LB-T22-3213` 🟡. This binding is bilateral with DECISIONS.md `LB-T22-3213` (neither side is vague "T-22 will cover").
 
 **Scope**: XL (extra-large — THE primary execution path; bootstrap + tests + dry-run all depend on it)
 
