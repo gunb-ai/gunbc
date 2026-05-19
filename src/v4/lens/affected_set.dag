@@ -138,7 +138,9 @@ type AffectedSetRead {
 }
 
 
-type AffectedPostEditDagOutcome = Outcome<Node>
+type AffectedPostEditDagRead {
+  outcome: Outcome<Node>
+}
 
 
 type AffectedFoldAcc {
@@ -331,7 +333,7 @@ fn expand_dimension(
 
 fn seed_edit_fold_acc_live(
   read_model: AffectedSetRead,
-  post_edit_dag: fn(Dag, Edit) -> AffectedPostEditDagOutcome,
+  post_edit_dag: fn(Dag, Edit) -> AffectedPostEditDagRead,
   acc: AffectedFoldAcc,
   edit: Edit
 ) -> AffectedFoldAcc {
@@ -347,7 +349,7 @@ fn seed_edit_fold_acc_live(
         frontier: mark_boundary_excluded(frontier: acc.frontier, edit: edit, proof: p)
       }
     BoundaryExpands =>
-      match post_edit_dag(acc.dag, edit) {
+      match post_edit_dag(acc.dag, edit).outcome {
         Produced { value: next_dag } =>
           AffectedFoldAcc {
             dag: next_dag,
@@ -366,7 +368,7 @@ fn seed_edit_fold_acc_live(
           }
       }
     BoundaryUnknown { reason: r } =>
-      match post_edit_dag(acc.dag, edit) {
+      match post_edit_dag(acc.dag, edit).outcome {
         Produced { value: _ } =>
           AffectedFoldAcc {
             dag: acc.dag,
@@ -414,7 +416,7 @@ fn expand_changed_dimensions(
 
 fn seed_edit_fold_acc(
   read_model: AffectedSetRead,
-  post_edit_dag: fn(Dag, Edit) -> AffectedPostEditDagOutcome,
+  post_edit_dag: fn(Dag, Edit) -> AffectedPostEditDagRead,
   acc: AffectedFoldAcc,
   edit: Edit
 ) -> AffectedFoldAcc {
@@ -433,7 +435,7 @@ fn seed_edit_fold_acc(
 
 fn affected_set(
   read_model: AffectedSetRead,
-  post_edit_dag: fn(Dag, Edit) -> AffectedPostEditDagOutcome,
+  post_edit_dag: fn(Dag, Edit) -> AffectedPostEditDagRead,
   dag: Dag,
   diff: Diff
 ) -> Witness<ReExecFrontier> {
