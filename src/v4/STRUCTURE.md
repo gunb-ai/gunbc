@@ -16,7 +16,7 @@ src/v4/
   TASKS.md               # the XL task plan (count drift-proof; see T-15)
   DECISIONS.md           # design-decisions ledger (RATIFIED + record)
 
-  std/                   # substrate primitives (15 landed + 1 P2-staging witness; see note on `fact_density.dag`)
+  std/                   # substrate primitives (15 landed)
     node.dag             # 6 type connectives + 5 L1 behaviors (substrate root)
     algebra.dag          # Magma/Monoid/BoolAlgebra/FreeMonoid (structures only)
     cardinality.dag      # cardinality refinement, P4 decidability
@@ -32,7 +32,6 @@ src/v4/
     collection.dag       # bounded containers
     verification.dag     # TestClaim schema + Tier×Layer classification (v4-fresh; studied v3/dsl)
     report.dag           # advisory carrier (NOT fail-closed Diagnostic); used by synthesis lens
-    fact_density.dag     # T-30 generated structural hollow-alias checker — pure `hollow_alias_gate: Node -> Outcome<Bool>`, fail-closed on a zero-fact carrier; consumed (compile-graph) by `test/claim/manual/fact_density_anchor.dag`. P2-staging (INVARIANTS §P2) until operator-closure wires pipeline enforcement and retires the Rust mirror `v4_hollow_alias_gate`. See `DECISIONS.md` T-30 encoding note + `TASKS.md` T-30.
 
   extdeps/               # external system contracts (23 files)
     cpp_abi.dag          # C++ ABI / target data-model (LP64/LLP64/ILP32/ILP64)
@@ -87,6 +86,7 @@ src/v4/
     testgen.dag          # producer side — reads substrate, emits TestClaim corpus (Phase 1.5)
     affected_set.dag     # incremental re-exec frontier; replaces detect-affected shell (Phase 1.5)
     application.dag      # apply_lens surface — opt-in depth + ONLY advisory→fail-closed bridge
+    fact_density.dag     # T-30 fact-density lens — pure-advisory `carrier_spec_fact: Node -> SourceSpecReadFact`; surfaces carriers with empty fact-cardinality. Enforcement is the downstream `apply_lens(Enforce)` bridge, not this file. Compile-graph exercised by `test/claim/manual/fact_density_anchor.dag`.
     registry.dag         # P2-staging only (INVARIANTS §P2): PREFIX T-23 v0 `LensIdV0` × `LensModulePathV0` rows — **not** landed single authority until a **generated** consumer reads `LensRegistryEntryV0`; `v4_lens_registry_dag_smoke_test.rs` is **parse + inference cleanliness** only (same posture as `fact_density.dag`). Operator pin §3 human mirror; amend `.dag` first.
 
   workflow/              # meta-process as data (2 files; the v3-derived
@@ -119,7 +119,7 @@ src/v4/
         nat_law_anchors.dag
         t19_manual_anchor_manifest.dag  # T-19 manifest — `T19ManualAnchorKey` membership rows
         resolve_compile_anchor.dag  # resolve + wave-1 canonical `Set` compile anchor (#3225; T-22 defers `v2 run`)
-        fact_density_anchor.dag  # T-30 hollow-alias gate compile anchor (hollow / fact-bundle / kernel-ambient carriers; T-22 defers `v2 run`)
+        fact_density_anchor.dag  # T-30 fact-density lens compile anchor (hollow / fact-bundle / kernel-ambient carriers; T-22 defers `v2 run`)
       boundary/          # boundary-honesty probes
         english_ingest_fail_closed.dag  # T-4.11 — fail-closed ingest, no fabrication
     fixture/             # canonical input programs
@@ -152,6 +152,11 @@ checksum **71→72** `.dag`.
 to the generated structural hollow-alias checker (`hollow_alias_gate`); add
 `test/claim/manual/fact_density_anchor.dag` v2-bootstrap compile anchor;
 checksum **73→74** `.dag`.
+**2026-05-19 (T-30, operator RULING-6):** `fact_density.dag` moves `std/` → `lens/`
+— it is a lens, not std-kernel — reshaped as the pure-advisory empty-cardinality
+lens read (`carrier_spec_fact: Node -> SourceSpecReadFact`); the enforcement shape
+(`hollow_alias_gate`/`Outcome`/diagnostics) is removed (downstream `apply_lens(Enforce)`).
+Net `.dag` count unchanged at **74** (relocation, not addition).
 
 ## Scalar/numeric concept decomposition
 

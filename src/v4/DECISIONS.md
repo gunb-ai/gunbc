@@ -108,7 +108,7 @@ remain boundary indexes until the named substrate support lands.
 | `std/node.dag` | `Connective`, `Behavior`, `NodeKind`, `EdgeLabel`, `EdgeDiscipline` | Green coproducts | `Connective` is the closed set of six type connectives; additions are substrate-extension stops. `Behavior` is the closed set of five L1 computation behaviors. `NodeKind` is the binary type/computation split. `EdgeLabel` is named vs positional child addressing. `EdgeDiscipline` is the closed classifier derived from connectives. |
 | `std/node.dag` | `Path` prior step sum | Green dissolved-away receipt | Positional path steps are deliberately dissolved: `Path` is `List<Symbol>` over named edges only. The removed path-step sum is not retained; positional addressing is subsumed by replacing the enclosing named subtree until a future ratified extension changes that shape. |
 | `std/witness.dag` | `Witness<C>` | Green coproduct | Closed fail-closed proof/read carrier: `Holds { value } | Violates { diagnostic }`. Terminal because every read either carries the witnessed value or a diagnostic explaining the failed witness. |
-| `std/fact_density.dag` | `SourceSpecReadFact` | Green coproduct | Closed classification of what a T-30 carrier reads from its source spec: `NamedFieldFacts { density: NonZeroNat }` (≥1 own fact-edge), `KernelAmbientAtom { atom: Symbol }` (exempt irreducible atom), `NoFact` (the hollow alias). Terminal because the three are mutually exclusive — a carrier records facts, is an exempt kernel-ambient atom, or records nothing — and the fail-closed hollow decision is exactly the `NoFact` arm. The density payload is `NonZeroNat` (`std/cardinality.dag`), not a bare `Int`: a raw `Int` admits `0`/negative and could represent the same zero-fact state as `NoFact` (INVARIANTS P2 illegal-states), so the structurally-nonzero carrier makes that overlap unrepresentable. Not an algebra carrier; not a dimensional product (exactly one classification holds per carrier); not a parameterized family. |
+| `lens/fact_density.dag` | `SourceSpecReadFact` | Green coproduct | Closed classification the T-30 fact-density lens reads off a carrier: `NamedFieldFacts { density: NonZeroNat }` (≥1 own NAMED spec-fact-edge), `KernelAmbientAtom` (exempt irreducible kernel-ambient atom — nullary, so a non-kernel symbol is structurally unrepresentable), `NoFact` (empty fact-cardinality — the surfaced carrier), `NotATypeCarrier` (a computation node, outside the lens's type-carrier domain). Terminal because the four are mutually exclusive and exhaustive over `Node`. The density payload is `NonZeroNat` (`std/cardinality.dag`), not a bare `Int`: a raw `Int` admits `0`/negative and could represent the same zero-fact state as `NoFact` (INVARIANTS P2 illegal-states), so the structurally-nonzero carrier makes that overlap unrepresentable. Only NAMED edges count as spec facts (positional operands of Arrow/Cardinality/Instantiation are composition, not facts). Not an algebra carrier; not a dimensional product (exactly one classification holds per carrier); not a parameterized family. |
 | `extdeps/coordination.dag` | `FrameworkBinding` | Green coproduct | Closed endpoint framework coordinate: an endpoint is either hosted by a named framework or not framework-hosted. Terminal because a bare optional would hide absence, and a flat record would make missing-present combinations representable. |
 | `extdeps/coordination.dag` | `ExchangePattern` | Green coproduct | Closed messaging-pattern coordinate: request-reply, fire-and-forget, stream, and publish-subscribe are mutually exclusive exchange topologies at the wire-contract layer. Settlement and replica convergence are separate coordinates, so async pubsub and streaming-with-convergence remain representable. |
 | `extdeps/coordination.dag` | `SettlementGuarantee` | Green coproduct | Closed settlement coordinate: a contract either settles immediately or carries a structural `SettleBound`. Terminal because an optional bound would allow boundedness to be skipped, while making settlement a coordinate avoids compressing it into exchange topology. |
@@ -993,6 +993,22 @@ language/format targets fan out against the same template.
   operator-closure pipeline wiring (T-30 IMPL+OP). `fact_density.dag` stays
   **P2-staging** until that operator-closure wiring lands and retires the
   Rust mirror `v4_hollow_alias_gate`.
+- **UPDATE 2026-05-19 (operator RULING-6 — fact_density is a LENS):** the
+  `std/` checker framing above is superseded. `fact_density.dag` moves
+  `std/` → `lens/` — it is a lens, not std-kernel. It is reshaped as the
+  **pure-advisory** empty-cardinality lens read
+  `carrier_spec_fact: Node -> SourceSpecReadFact` (surfaces carriers whose
+  fact-cardinality is empty). The enforcement shape — `hollow_alias_gate`,
+  `Outcome<Bool>`, `Rejected`, the `*_diagnostic` carriers,
+  `module_no_hollow_alias` — is **removed from the lens**: what to DO about a
+  flagged carrier (compile error / fail-closed) is the downstream
+  `apply_lens(_, Enforce)` advisory→fail-closed bridge, a SEPARATE concern
+  (RULING-6 hard read/enforcement separation). `SourceSpecReadFact` is now a
+  4-variant read result (`NamedFieldFacts`/`KernelAmbientAtom`/`NoFact`/
+  `NotATypeCarrier`); `KernelAmbientAtom` is nullary (no raw `Symbol`
+  payload — INVARIANTS P2 illegal-states); only NAMED edges count as spec
+  facts. `apply_lens` signature-conformance is pending the authoritative
+  T-23 lens-read contract.
 
 ### Status
 
