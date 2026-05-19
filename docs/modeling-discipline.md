@@ -78,6 +78,8 @@ relevant practice, where it could be violated, and whether the existing
 checks are structural (type-system enforced) or merely behavioral
 (convention).
 
+> **Ledger-doc retirement (operator 2026-05-19):** `src/v4/DECISIONS.md`, `src/v4/STRUCTURE.md`, and `docs/audit/dissolution-inventory.md` are **deleted** — no maintained manifests or parallel prose ledgers for facts that belong in inline `//` marks. **Standing principle:** do not create or maintain new docs that duplicate comment or model marks; marks plus PR review are authoritative. Classification and dissolution **discipline** (Practices 4 / 9 / 10, INVARIANTS P5) is unchanged. Where older text below still names `DECISIONS.md` or a doc ledger for the same job, read **PR review, issues, and commit messages** unless that sentence was rewritten in this PR.
+
 ### 1. Fail-closed
 
 Every failure path goes through the diagnostic mechanism. No silent
@@ -117,9 +119,13 @@ than type-enforced.
 Every piece of structured information produced at one stage of the
 compiler must be either consumed by the next stage, carried forward as
 a field on downstream data structures, or explicitly discarded — with
+<<<<<<< HEAD
 the justification recorded in a **stable in-repo home** ([INVARIANTS.md](../INVARIANTS.md)
 §P5 row or [`src/v4/TASKS.md`](../src/v4/TASKS.md) — same PR as the change);
 process receipts go in the commit message (Practice 9), not as
+=======
+the justification recorded in **PR review** (Practice 9), not as
+>>>>>>> 120d3297d (WIP: T-4.12 llvm_ir.dag Wave-0 — down-stack SSA probe (T-1,T-2))
 in-file prose. Silent drops are violations.
 
 **What to check:** For each cross-stage boundary touched in the diff
@@ -234,6 +240,7 @@ terminal:
    this pattern exists.
 
 **What to check:** Any new coproduct with N ≥ 2 variants (a Rust enum,
+<<<<<<< HEAD
 or a `.dag` `type X = A | B | …`) must be classified (🟢/🟡/🔴). **The
 coproduct itself keeps a required one-line classification tag carrying
 the 🟢/🟡/🔴 emoji** (operator directive 2026-05-17) — e.g. `//
@@ -243,6 +250,23 @@ reader sees the classification at the type. 🟡 gate binding is on the in-file 
 **PR review** (or an [INVARIANTS.md](../INVARIANTS.md) §P5 /
 [`src/v4/TASKS.md`](../src/v4/TASKS.md) row when receipt-shaped). A coproduct
 with no in-file 🟢/🟡/🔴 tag is unfinished modeling and blocks review.
+=======
+or a `.dag` `type X = A | B | …`) must be classified (🟢/🟡/🔴), with a
+ledger entry if 🟢, or the gate kind + concrete named arrival
+(`feature:<name>` / `consumer:<name>`) + dissolve-on-arrival obligation
+if 🟡. Per Practice 9 the
+classification *ledger* and the *trigger* are argued in **PR review**
+— *not* an in-file `Practice 4: ...` block. **But the coproduct itself
+keeps a required one-line classification tag carrying the 🟢/🟡/🔴
+emoji** (operator directive 2026-05-17) — e.g. `// 🟡 coproduct
+dissolution · OS-1`. The emoji stays *on the coproduct* so
+a reader sees the classification at the type; the decision-making (the
+dissolution patterns tried, the 🟡 gate) is **not** duplicated in a
+maintained ledger file. A coproduct with no in-file 🟢/🟡/🔴 tag, or no
+**review-visible** classification narrative (issue/PR thread) when a
+reviewer needs it, is unfinished modeling and blocks
+review.
+>>>>>>> 120d3297d (WIP: T-4.12 llvm_ir.dag Wave-0 — down-stack SSA probe (T-1,T-2))
 
 **The lookup smell (the consumer-trigger backstop).** A `match` over a
 foreign-label coproduct, written *inside a consumer* — a lens, a
@@ -260,6 +284,7 @@ machine-checked meta-lens detects fired triggers, this review smell *is*
 the enforcement.
 
 **Scaffold exception:** early-milestone code (marked `// scaffold:
+<<<<<<< HEAD
 <sunset-milestone>`) can defer only the *verbose* dissolution-patterns-tried
 analysis until the sunset milestone. The exception covers that analysis
 **only**. It does **not** waive: (a) the required one-line 🟢/🟡/🔴 tag
@@ -274,6 +299,23 @@ e.g. `// 🟡 feature:<missing-primitive>` — a bare `<sunset-milestone>` is
 non-checkable); the sunset milestone records *when* the scaffold is
 revisited, not *what* it waits on. Scaffolds must be revisited before
 sunset.
+=======
+<sunset-milestone>`) can defer only the *verbose* part of its
+**PR review** classification ledger — the dissolution-patterns-tried
+analysis — until the sunset milestone. The exception covers that
+analysis **only**. It does **not** waive: (a) the required one-line
+🟢/🟡/🔴 tag on the coproduct; nor (b) — for a 🟡 — the **bound
+dissolution plan** (the named missing primitive/consumer, its owning
+substrate PR or task, and the dissolve-on-arrival follow-up). A 🟡's
+plan-binding is the minimum that makes it a *valid* 🟡 (see the 🟡
+disposition above) — it is recorded in **PR review** even when the
+fuller patterns-tried analysis defers. The gate names the **concrete
+missing primitive**, e.g. `// 🟡 feature:<missing-primitive>` **plus** a
+bound plan in the **PR / issue thread** — a bare `<sunset-milestone>` is **not** a valid
+gate (a milestone-only gate leaves the dissolution path non-checkable);
+the sunset milestone records *when* the scaffold is revisited, not
+*what* it waits on. Scaffolds must be revisited before sunset.
+>>>>>>> 120d3297d (WIP: T-4.12 llvm_ir.dag Wave-0 — down-stack SSA probe (T-1,T-2))
 
 **Worked example (v2 retrospective):** `v2::ExprData` had 22 variants.
 Failed pattern 1 (every consumer dispatches on all 22), pattern 2
@@ -384,7 +426,11 @@ that looks like modeling and isn't.
 Modeling is mandatory; deduplication is conditional. You MUST model the
 facts. You may collapse your model onto a `std/` carrier ONLY when you
 have **proven** the two coincide — and *coincide* has a precise meaning
+<<<<<<< HEAD
 (see `docs/modeling/grounding-worked-examples.md`): both groundings, reduced to canonical `Node`s, are
+=======
+(see Practice 8 / INVARIANTS coincidence bar): both groundings, reduced to canonical `Node`s, are
+>>>>>>> 120d3297d (WIP: T-4.12 llvm_ir.dag Wave-0 — down-stack SSA probe (T-1,T-2))
 structurally equal, expressed in shared `std/` vocabulary. Identity is
 an evidenced claim, never an assumed default. "These are obviously the
 same" is not evidence.
@@ -476,11 +522,17 @@ A declaration is **hollow** when *all three* hold:
 2. its subject is an **external spec primitive** — something a
    language / format / framework specification names and states facts
    about; **and**
+<<<<<<< HEAD
 3. it carries **no coincidence evidence** — no cited row in
    [`docs/modeling/grounding-worked-examples.md`](modeling/grounding-worked-examples.md)
    proving coincidence
    entry proving `X` and `Y` coincide, cited from the file by at most a
    one-line tag (Practice 9).
+=======
+3. it carries **no coincidence evidence** — no **PR-reviewed** proof that
+   `X` and `Y` coincide, cited from the file by at most a one-line tag
+   (Practice 9).
+>>>>>>> 120d3297d (WIP: T-4.12 llvm_ir.dag Wave-0 — down-stack SSA probe (T-1,T-2))
 
 A hollow declaration **blocks review**. The fix is one of: invent the
 fact-bundle (now `X` carries ≥ 1 fact of its own), or supply the
@@ -507,18 +559,25 @@ the answer is no.
 A `.dag` file's comments are **not a parallel prose authority**. After
 modeling, a file's comments carry only what a mechanical consumer or a
 reviewer needs *to use the file* — never rationale, never narration,
+<<<<<<< HEAD
 never a record of the work done. Rationale is argued in **PR review**;
 process notes live in the commit message. A comment
 that records that the file was de-prosed is itself the prose to remove.
+=======
+never a record of the work done. Rationale lives in **PR review and
+issues** (no maintained ledger doc); process notes live in the commit
+message. A comment that records that the file was de-prosed is itself the
+prose to remove.
+>>>>>>> 120d3297d (WIP: T-4.12 llvm_ir.dag Wave-0 — down-stack SSA probe (T-1,T-2))
 
 **The spec.** After de-prose, a `.dag` file's comments are ONLY these
 four things — nothing else survives — **except** the narrow **RULING-1**
 carve-out for the five files regenerated by `scripts/strict_deprose_dag.py`
-(ratified in `src/v4/DECISIONS.md` Part 6 preamble, **RULING-1 slice
-groundedness**): one **emoji-only** line (`// 🟡` or `// 🟢`) immediately
-after the live `// Ledger: DECISIONS.md Part 6 — …` line and before
-`module`. No other `.dag` file may use that convention without extending
-the script allowlist and `DECISIONS.md`.
+(ratified in this document's Practice 9 + operator directive, **RULING-1
+slice groundedness**): one **emoji-only** line (`// 🟡` or `// 🟢`)
+immediately after the live script-enforced `// Ledger: …` slug line and
+before `module`. No other `.dag` file may use that convention without
+extending the script allowlist (and operator ratification).
 
 1. **Line 1** — the file-path line.
 2. **A terse header** — exactly four lines: `Scope:` (one line),

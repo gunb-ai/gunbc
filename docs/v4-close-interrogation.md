@@ -1174,7 +1174,7 @@ Existing `extdeps/languages/<lang>.dag` files do NOT need split. Their header sh
 
 **Promise** (per `r4-c-compiler-and-llvm-in-dag-program-plan.md` + `design-r4-full-stack-omni-emission-canvas.md`): v4 supports additional Shape A target languages beyond Rust/Python/Go. C/C++ enable production-compiler-infrastructure demonstration; LLVM IR enables backend-portability; TypeScript enables frontend-stack omni-emission.
 
-**v4 owner allocation** (Wave-0 substrate — **authoritative file tree:** `src/v4/STRUCTURE.md`):
+**v4 owner allocation** (Wave-0 substrate — **authoritative file tree:** the live `src/v4/` tree at merge review; **no** maintained `STRUCTURE.md` manifest — operator 2026-05-19):
 
 The original `rust.dag` / `python.dag` / `go.dag` trio is joined by additional language and IR models under `src/v4/extdeps/languages/`. For **this §14 promise** (C/C++ surface, LLVM IR, TypeScript), the following are **landed** as `.dag` substrate.
 
@@ -1200,7 +1200,7 @@ The original `rust.dag` / `python.dag` / `go.dag` trio is joined by additional l
 
 - `extdeps/languages/cpp.dag` — Anchor: ISO/IEC 14882 (C++ standard); subsumes C subset (**no separate `c.dag`** unless C-only consumer demand surfaces).
 - `extdeps/languages/typescript.dag` — Anchor: TypeScript Handbook + ECMA-262.
-- `extdeps/languages/llvm_ir.dag` — Anchor: LLVM 18 LangRef (`TASKS.md` **T-4.12** — down-stack SSA / Φ structural vocabulary). The file header follows **modeling-discipline.md** Practice 9 (path + Scope / Owns / Consumes / **Status** + Anchor) with **Status** carrying the `v4.std.*` import surface (no process PASS banner); **Part 6** ledger row anchors are the DECISIONS pointer line. **Parse/resolve posture** is the **§14 Parse/resolve receipt** above (whole-tree `v2-compiler compile --source-root src/v4` / CI `v4:`), not a second authority.
+- `extdeps/languages/llvm_ir.dag` — Anchor: LLVM 18 LangRef (`TASKS.md` **T-4.12** — down-stack SSA / Φ structural vocabulary). The file header follows **modeling-discipline.md** Practice 9 (path + Scope / Owns / Consumes / **Status** + Anchor) with **Status** carrying the `v4.std.*` import surface (no process PASS banner); the terse header includes the script-enforced one-line `// Ledger:` slug inventory (no separate maintained ledger doc). **Parse/resolve posture** is the **§14 Parse/resolve receipt** above (whole-tree `v2-compiler compile --source-root src/v4` / CI `v4:`), not a second authority.
 
 ---
 
@@ -1267,7 +1267,7 @@ Currently no v4 file owns "deployment unit" or "endpoint" concept. Open design q
 Rationale: async / stream / pubsub are deployment patterns and effect-types, not behavior shapes. An HTTP call IS a `Bind` with an HTTP-effect type; a pubsub publish IS a `Bind` with a Queue-effect type; an async stream IS a `Bind` over a `Stream<T>` carrier. Substrate stays at 5 L1 behaviors (C1 stop-signal preserved per THESIS:202). Coordination concepts (`Endpoint`, `DeploymentUnit`, sync/async/stream/pubsub semantics) live as typed carriers in `extdeps/coordination.dag`.
 
 **Scaffold addition** (operator-ratified):
-- `extdeps/coordination.dag` — Anchor (EXTERNAL, per STRUCTURE.md extdeps-anchor convention): Wikipedia Distributed computing + Messaging pattern + Inter-process communication. Design rationale (explicitly NOT the anchor): the IN-B decision (effect-typed, not a 6th L1 behavior). Declares Endpoint / DeploymentUnit + the closed `CoordinationSemantics` as effect-typed carriers over the existing 5 behaviors.
+- `extdeps/coordination.dag` — Anchor (EXTERNAL, per extdeps-anchor convention — **PR review**; no manifest file): Wikipedia Distributed computing + Messaging pattern + Inter-process communication. Design rationale (explicitly NOT the anchor): the IN-B decision (effect-typed, not a 6th L1 behavior). Declares Endpoint / DeploymentUnit + the closed `CoordinationSemantics` as effect-typed carriers over the existing 5 behaviors.
 
 ---
 
