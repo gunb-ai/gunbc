@@ -569,19 +569,22 @@ classification + ledger/trigger (Practice 4), a coincidence-evidence
 proof (Practice 8). Practice 9 supersedes all of them, under one uniform
 rule:
 
-- the **record relocates** — architectural decisions, discard
-  justifications, coincidence proofs, and dissolution-pattern analysis
-  land in the stable in-repo homes named in the header block above (same
-  PR as the change); a process receipt (`HEADER RECONCILE`, "per directive X", a
-  de-prose note) moves to the **commit message**;
+- the **record relocates** — the inline 🟢/🟡/🔴 mark (and `feature:`/`consumer:`
+  gate on 🟡) stays on the carrier; verbose dissolution-pattern analysis and
+  architectural debate are argued in **PR review**; coincidence proofs land in
+  [`docs/modeling/grounding-worked-examples.md`](modeling/grounding-worked-examples.md);
+  hand-Rust / test receipts in [INVARIANTS.md](../INVARIANTS.md) §P5(b);
+  task-scoped substrate in [`src/v4/TASKS.md`](../src/v4/TASKS.md). Process
+  receipts (`HEADER RECONCILE`, "per directive X", a de-prose note) move to the
+  **commit message**;
 - the `.dag` file keeps the **item-4 one-line tag** — for a coproduct, a
   *required* 🟢/🟡/🔴 classification tag (e.g.
   `// 🟡 coproduct dissolution`); optionally one further concept tag or
   coincidence cite. The classification *emoji* stays on the coproduct.
 
 Wherever an earlier Practice says "record X in a comment," read it as
-"land X in the in-repo home for that class of fact; the file keeps the
-one-line tag." D5's
+"keep the one-line tag on the carrier; land non-comment receipts per the
+header block; argue verbose analysis in PR review." D5's
 `HEADER RECONCILE` receipt moves to the commit message. No earlier
 in-file *artifact mandate* survives un-superseded by Practice 9. This
 does not mean the file carries no comments at all: Practice 9 itself
