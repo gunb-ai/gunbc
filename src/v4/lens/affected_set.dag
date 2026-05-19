@@ -1,6 +1,6 @@
 // src/v4/lens/affected_set.dag
 // Scope: canonical affected-set authority for CI/incremental re-execution; fail-closed B-4/B-5 node frontier.
-// Owns: Dag, AffectedDimension, ExclusionKey, ExclusionProof, BoundaryExclusionProof, BoundaryExclusion, WholeDagFailClosedEvidence, FrontierDecision, ReExecFrontier, AffectedSetRead, AffectedPostEditDagReceipt, HashReceipt, ChangedDimensionReceipt, FrontierReceipt, affected_set.
+// Owns: Dag, AffectedDimension, ExclusionKey, ExclusionProof, PropagationExclusionProof, BoundaryExclusionProof, BoundaryExclusion, WholeDagFailClosedEvidence, FrontierDecision, ReExecFrontier, AffectedSetRead, AffectedPostEditDagReceipt, HashReceipt, ChangedDimensionReceipt, FrontierReceipt, affected_set.
 // Consumes: Map, Diagnostic, Diff, Edit, Hash, Node, Path, Symbol, Witness; B1 content_hash receipts; B-4 resolved Symbol equality; B-5 per-Arrow signature effects.
 // Status: Wave-0 front: bounded changed-subgraph frontier fold landed; dissolves when CI use and .dag TestClaims land.
 
@@ -46,7 +46,11 @@ type EditFrontierEdge {
 // 🟡 coproduct dissolution — DECISIONS.md #3153-subsumed
 type ExclusionProof
   = EmptyDimensionDelta { subject: Path }
-  | DimensionNotRead { producer: Path }
+
+
+// 🟡 coproduct dissolution — DECISIONS.md #3153-subsumed
+type PropagationExclusionProof
+  = DimensionNotRead { producer: Path }
 
 
 // 🟡 coproduct dissolution — DECISIONS.md #3153-subsumed
@@ -69,7 +73,7 @@ type WholeDagFailClosedEvidence
 // 🟢 coproduct dissolution — DECISIONS.md #3153-subsumed
 type FrontierDecision
   = Rerun
-  | Excluded { proofs: List<ExclusionProof> }
+  | Excluded { proofs: List<PropagationExclusionProof> }
 
 
 // 🟢 coproduct dissolution — DECISIONS.md #3153-subsumed; IRT-1 whole/changed-subgraph gate.
@@ -104,7 +108,7 @@ type ChangedDimensionReceipt
 // 🟡 coproduct dissolution — DECISIONS.md #3153-subsumed; dissolves when B-4/B-5 edge receipts are generated.
 type PropagationReceipt
   = Propagates
-  | DoesNotPropagate { proof: ExclusionProof }
+  | DoesNotPropagate { proof: PropagationExclusionProof }
   | PropagationUnknown { reason: Symbol }
 
 
@@ -206,7 +210,7 @@ fn mark_boundary_excluded(frontier: ReExecFrontier, edit: Edit, proof: BoundaryE
 }
 
 
-fn mark_excluded(frontier: ReExecFrontier, key: ExclusionKey, proof: ExclusionProof) -> ReExecFrontier {
+fn mark_excluded(frontier: ReExecFrontier, key: ExclusionKey, proof: PropagationExclusionProof) -> ReExecFrontier {
   match frontier {
     WholeDagFailClosed { evidence: e } => WholeDagFailClosed { evidence: e }
     ChangedSubgraphFrontier { boundary_exclusions: boundary_exclusions, decisions: decisions } =>

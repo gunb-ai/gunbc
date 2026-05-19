@@ -22,7 +22,7 @@ import v4.lens.affected_set {
   ExclusionKey,
   Rerun,
   Excluded,
-  EmptyDimensionDelta,
+  DimensionNotRead,
   WholeDagFailClosed,
   WholeDagReason,
   WholeDagDiagnostic
@@ -82,8 +82,8 @@ data expected_affected_set_excluded_proofs: ReExecFrontier = ChangedSubgraphFron
     ExclusionKey { at: affected_set_claim_path, dimension: affected_set_claim_dimension },
     Excluded {
       proofs: [
-        EmptyDimensionDelta { subject: affected_set_claim_path },
-        EmptyDimensionDelta { subject: affected_set_claim_path }
+        DimensionNotRead { producer: affected_set_claim_path },
+        DimensionNotRead { producer: affected_set_claim_path }
       ]
     }
   )
