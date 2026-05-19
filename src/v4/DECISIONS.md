@@ -1746,6 +1746,7 @@ Merge-base `92cb26402` **Practice-4** `// Coproduct dissolution … 🟢 GREEN (
 | `src/v4/extdeps/languages/go.dag` | 10 |
 | `src/v4/extdeps/languages/python.dag` | 3 |
 | `src/v4/extdeps/languages/rust.dag` | 8 |
+| `src/v4/extdeps/languages/typescript.dag` | 2 |
 | `src/v4/extdeps/formats/json.dag` | 1 |
 | `src/v4/extdeps/formats/yaml.dag` | 1 |
 | `src/v4/std/float.dag` | 2 |
@@ -1778,6 +1779,7 @@ git show 92cb26402eeb21471acb6ac47559cbae3b52afdb:src/v4/extdeps/languages/ptx.d
 git show 92cb26402eeb21471acb6ac47559cbae3b52afdb:src/v4/extdeps/languages/go.dag
 git show 92cb26402eeb21471acb6ac47559cbae3b52afdb:src/v4/extdeps/languages/python.dag
 git show 92cb26402eeb21471acb6ac47559cbae3b52afdb:src/v4/extdeps/languages/rust.dag
+git show 92cb26402eeb21471acb6ac47559cbae3b52afdb:src/v4/extdeps/languages/typescript.dag
 git show 92cb26402eeb21471acb6ac47559cbae3b52afdb:src/v4/extdeps/formats/json.dag
 git show 92cb26402eeb21471acb6ac47559cbae3b52afdb:src/v4/extdeps/formats/yaml.dag
 git show 92cb26402eeb21471acb6ac47559cbae3b52afdb:src/v4/std/float.dag
