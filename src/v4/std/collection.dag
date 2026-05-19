@@ -1,8 +1,8 @@
 // src/v4/std/collection.dag
 // Scope: container carriers grounded in algebraic constructions.
 // Anchor: https://en.wikipedia.org/wiki/Free_monoid
-// Owns: List, non_empty, Set, Map, NonEmptyList, list_empty_reason, non_empty_list.
-// Consumes: std algebra, std witness, std refinement, std diagnostic, std node.
+// Owns: List, non_empty, Set, Map.
+// Consumes: std algebra, std witness.
 // Status: T-3 modeled; substrate-extension rule in src/v4/STRUCTURE.md.
 
 
@@ -11,9 +11,6 @@ module v4.std.collection
 
 import v4.std.algebra { FreeMonoid, PointwisePower, free_monoid_non_empty }
 import v4.std.witness { Witness }
-import v4.std.refinement { Refined, Validation, refine }
-import v4.std.diagnostic { Locus, Outcome }
-import v4.std.node { Symbol }
 type List<T> = FreeMonoid<T>
 fn non_empty<T>(xs: List<T>) -> Bool {
   free_monoid_non_empty(xs: xs)
@@ -21,16 +18,4 @@ fn non_empty<T>(xs: List<T>) -> Bool {
 type Set<T> = PointwisePower<T>
 type Map<K, V> {
   lookup: fn(K) -> Witness<V>
-}
-type NonEmptyList<T> = Refined<List<T>>
-data list_empty_reason: Symbol = list_empty_reason
-fn non_empty_list<T>(xs: List<T>, at: Locus) -> Outcome<NonEmptyList<T>> {
-  refine(
-    base: xs,
-    by: Validation {
-      reason: list_empty_reason,
-      admits: fn(items) { non_empty(xs: items) }
-    },
-    at: at
-  )
 }
