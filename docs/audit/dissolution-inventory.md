@@ -42,10 +42,11 @@ cardinality regate copy #3337, CP-1b #3225 resolver fill, `fold_node`
 `test/claim/**/*.dag` under the same sweep) per still-hawk-102
 scope-widening 2026-05-18: compiler/ + std/ + extdeps/ + workflow/ +
 lens/ + bin/ + test/claim/. Sweep frame is `main`, not in-flight
-branches — PR #3213 (workflow T-20 + T-24) is
-HELD with its own dissolution pass; its helpers reach `main` only when
-#3213 merges, and are covered by their own pass until then (no
-double-counting).
+branches — **PR #3213** (workflow T-20 + T-24; YAML / projection and any
+helpers still branch-only) is **HELD** with its own dissolution pass.
+**`src/v4/workflow/*.dag` on `main` at `e5bde4943`** is **not** empty
+scaffold — see **§2.5** (22 `fn` filled cores). Do not double-count branch
+helpers here once they merge as *additional* surface beyond §2.5.
 
 **Dispositions** — the four #3244 vocabulary symbols:
 
@@ -439,15 +440,34 @@ bodies. 🟢.
 
 ### 2.5 `src/v4/workflow/`
 
-Sweep frame `main` @ `e5bde4943`. (PR #3213 fills both files with
-helper logic; that work is on the #3213 branch only, not in this sweep
-— covered by #3213's own dissolution pass.)
+Sweep frame `main` @ `e5bde4943`. **Verified on that commit:** `git show
+e5bde4943:src/v4/workflow/bootstrap.dag | grep -c '^fn '` → **5**;
+`git show e5bde4943:src/v4/workflow/ci.dag | grep -c '^fn '` → **17** —
+**22** `fn` bodies total under `src/v4/workflow/` (HEAD matches). Both
+files carry **`Status: filled`** in their headers — they are **not**
+the pre-roll empty scaffolds the inventory once assumed “held on #3213
+branch only.” **#3213** may still own *projection* / YAML-side follow-on,
+but the **`.dag` well-formedness cores** already live on `main` at the
+cited baseline and **must** appear in this audit's merge-gate surface.
 
-**`workflow/bootstrap.dag`** — scaffold on `main` (header prose +
-`module v4.workflow.bootstrap`; dynamics land with PR #3213). 🟢 across
-all five finding classes.
-**`workflow/ci.dag`** — scaffold on `main` (same shape).
-🟢 across all five finding classes.
+**`workflow/bootstrap.dag`** — **5** `fn` (`bs_diagnostic`, `bs_member`,
+`bs_list_eq`, `bootstrap_stage_output`, `bootstrap_plan_well_formed`) +
+`type`/`data` for the bootstrap plan. **`bs_member` (57)** — 🟡 **List-op
+dissolution** (Practice 10) — `DECISIONS.md` **LB-P10-3213** (`fold` over
+`List<Symbol>` membership). Other fns: structural self-hosting /
+well-formedness over `BootstrapPlan` / `Outcome` — **not** individually
+expanded here (same C1 stance as `03_resolve.dag`: burn-down lane owns
+line-by-line re-sweep).
+
+**`workflow/ci.dag`** — **17** `fn` + `CiCommand` / `CiJob` / `CiGate` /
+`CiPipeline` carriers + `data ci_pipeline`. **`CiCommand` (line ~22)** —
+🟡 **coproduct dissolution** — `DECISIONS.md` **LB-P4-3213**.
+**`ci_id_occurrences` (80)** — 🟡 **List-op** — **LB-P10-3213**.
+**`ci_command_authority_ok` (163)** — 🟡 **negative-coverage plan-bound
+(T-22)** — `DECISIONS.md` **LB-T22-3213**. Remaining helpers: CI job/gate
+graph well-formedness (`fold` ladders over jobs/gates/needs, Kahn-style
+acyclicity) — triage deferred to burn-down lane unless a reviewer flags a
+specific symbol as a new registry row.
 
 Carrier and emit-template covered by lane-wide 🟢 (2.1).
 
