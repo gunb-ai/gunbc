@@ -31,9 +31,7 @@ import v4.std.node {
 }
 
 
-// Module-declaration names for the `Conj` anchor roots — `Conj` carries the
-// `LabeledEdges` discipline (`std/node.dag`), so the program-module root edges
-// must be `Named` and name-distinct.
+// Module-declaration names for the Named-edge Conj anchor roots.
 data anchor_decl_first: Symbol = anchor_decl_first
 data anchor_decl_second: Symbol = anchor_decl_second
 
