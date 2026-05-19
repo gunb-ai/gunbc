@@ -939,7 +939,7 @@ fn apply_pipeline_stage(state: CompilePipelineState, spec: PipelineStageSpec) ->
           complexity: state.complexity,
           ownership: state.ownership,
           artifact_plan: state.artifact_plan,
-          stage_diags: concat(state.stage_diags, frontend.diagnostics),
+          stage_diags: state.stage_diags,
           emit_diags: state.emit_diags,
           emit_files: state.emit_files,
           target: state.target
@@ -960,7 +960,7 @@ fn apply_pipeline_stage(state: CompilePipelineState, spec: PipelineStageSpec) ->
               complexity: state.complexity,
               ownership: state.ownership,
               artifact_plan: state.artifact_plan,
-              stage_diags: concat(state.stage_diags, frontend.diagnostics),
+              stage_diags: state.stage_diags,
               emit_diags: state.emit_diags,
               emit_files: state.emit_files,
               target: state.target
@@ -981,7 +981,7 @@ fn apply_pipeline_stage(state: CompilePipelineState, spec: PipelineStageSpec) ->
               complexity: state.complexity,
               ownership: state.ownership,
               artifact_plan: state.artifact_plan,
-              stage_diags: concat(state.stage_diags, frontend.diagnostics),
+              stage_diags: state.stage_diags,
               emit_diags: state.emit_diags,
               emit_files: state.emit_files,
               target: state.target
@@ -1044,7 +1044,6 @@ fn apply_pipeline_stage(state: CompilePipelineState, spec: PipelineStageSpec) ->
         Some { value: graph } => {
           let typed = reconcile(graph: graph, source_indices: state.source_indices, intern_table: state.frontend.intern_table)
           let typed_diags = typed.diagnostics
-          let type_errors = typed_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))
           let infer_blocks_emit = pipeline_gate_blocks(policy: spec.gate, diagnostics: typed_diags)
           CompilePipelineState {
             sources: state.sources,
@@ -1228,7 +1227,7 @@ fn run_compile_pipeline_fold(sources: List<SourceFile>, target: RenderTarget, ru
 fn compile_pipeline_state_to_result(state: CompilePipelineState) -> PipelineResult {
   PipelineResult {
     files: if state.emit_blocked || state.halted { [] } else { state.emit_files },
-    diagnostics: concat(state.norm_diags, state.stage_diags, state.emit_diags),
+    diagnostics: concat(state.frontend.diagnostics, state.norm_diags, state.stage_diags, state.emit_diags),
     complexity: state.complexity,
     ownership: state.ownership,
     artifact_plan: state.artifact_plan,
@@ -1267,7 +1266,7 @@ fn compile_to_resolved(sources: List<SourceFile>) -> ResolvedPipelineResult {
   let state = run_compile_pipeline_fold(sources: sources, target: Rust, run_emit: false)
   ResolvedPipelineResult {
     graph: if state.emit_blocked || state.halted { none } else { state.typed },
-    diagnostics: concat(state.norm_diags, state.stage_diags),
+    diagnostics: concat(state.frontend.diagnostics, state.norm_diags, state.stage_diags),
     source_indices: state.source_indices,
     complexity: state.complexity,
     ownership: state.ownership,
