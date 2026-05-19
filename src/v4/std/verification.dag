@@ -14,7 +14,7 @@ import v4.std.diagnostic { Outcome }
 type AssertKind
 // 🟢 coproduct dissolution — DECISIONS.md LB-P4-3212
   = Equals
-  | Diagnostic
+  | DiagnosticAssert
   | Compiles
   | RoundTrips
 

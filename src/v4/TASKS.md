@@ -555,7 +555,7 @@ data t_15_self_host_fixed_point: TestClaim {
 }
 ```
 
-**`BitIdentical` is a property name, not an `AssertKind`** (Theme-A audit, 2026-05-17): the probe's `kind` is `Equals` over the B1 `content_hash` of the two stage outputs — `verification.dag`'s closed `AssertKind` `{Equals, Diagnostic, Compiles, RoundTrips}` is sufficient; **no 5th kind**. The word "BitIdentical" elsewhere in this task denotes that *property*, never a substrate type.
+**`BitIdentical` is a property name, not an `AssertKind`** (Theme-A audit, 2026-05-17): the probe's `kind` is `Equals` over the B1 `content_hash` of the two stage outputs — `verification.dag`'s closed `AssertKind` `{Equals, DiagnosticAssert, Compiles, RoundTrips}` is sufficient; **no 5th kind**. The word "BitIdentical" elsewhere in this task denotes that *property*, never a substrate type.
 
 Failure modes the probe MUST catch (each enumerable, each testable):
 - **Non-determinism**: HashMap-iteration-order dependency in emit → different bytes between compilations

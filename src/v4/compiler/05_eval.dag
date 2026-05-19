@@ -30,6 +30,7 @@ import v4.std.diagnostic {
 import v4.std.verification {
   AssertKind,
   Compiles,
+  DiagnosticAssert,
   Equals,
   Integration,
   RoundTrips,
@@ -141,7 +142,6 @@ fn test_claim_cache_receipt<T>(
 
 
 data eval_rejected_invalid_node: Symbol = eval_rejected_invalid_node
-// 🟡 assert-kind scaffold — DECISIONS.md T22-EVAL-ASSERT-DEFERRED
 data eval_rejected_assert_kind_deferred: Symbol = eval_rejected_assert_kind_deferred
 data eval_rejected_roundtrip_deferred: Symbol = eval_rejected_roundtrip_deferred
 
@@ -195,7 +195,7 @@ fn run_assert<T>(
       actual: actual,
       diagnostic: eval_diagnostic(reason: eval_rejected_roundtrip_deferred, node: input)
     }
-    _ => Deferred {
+    DiagnosticAssert => Deferred {
       actual: actual,
       diagnostic: eval_diagnostic(reason: eval_rejected_assert_kind_deferred, node: input)
     }
