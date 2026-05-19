@@ -160,7 +160,7 @@ type LineScanState
   | LineClosed { end: Int }
 
 type StringBodyState
-  = StringOpen { cursor: Int, acc: List<String>, escaped: Bool }
+  = StringOpen { cursor: Int, acc: String, escaped: Bool }
   | StringClosed { content: String, end_pos: Int }
   | StringInterpolation { content: String, end_pos: Int }
 
@@ -249,8 +249,8 @@ fn char_in_class(ch: String, class: CharacterClass) -> Bool {
     DigitClass => ch >= "0" && ch <= "9"
     IdentStartClass => (ch >= "a" && ch <= "z") || (ch >= "A" && ch <= "Z") || ch == "_"
     IdentContinueClass =>
-      char_in_class(ch: ch, class: IdentStartClass) ||
-        char_in_class(ch: ch, class: DigitClass)
+      (ch >= "a" && ch <= "z") || (ch >= "A" && ch <= "Z") || ch == "_" ||
+        (ch >= "0" && ch <= "9")
     WhitespaceClass => ch == " " || ch == "\t"
   }
 }
@@ -380,7 +380,7 @@ fn scan_string_body(source: Source, start: Int) -> StringBodyState {
   fold_source_chars(
     source: source,
     algebra: SourceFold {
-      init: StringOpen { cursor: start, acc: [], escaped: false },
+      init: StringOpen { cursor: start, acc: "", escaped: false },
       step: fn(state, item) {
         match state {
           StringClosed { content, end_pos } => StringClosed { content: content, end_pos: end_pos }
@@ -388,13 +388,13 @@ fn scan_string_body(source: Source, start: Int) -> StringBodyState {
           StringOpen { cursor, acc, escaped } =>
             if item.index < start { StringOpen { cursor: cursor, acc: acc, escaped: escaped } }
             else if item.index != cursor { StringOpen { cursor: cursor, acc: acc, escaped: escaped } }
-            else if escaped { StringOpen { cursor: cursor + 1, acc: list_push(acc, escaped_char(ch: item.char)), escaped: false } }
+            else if escaped { StringOpen { cursor: cursor + 1, acc: concat(acc, escaped_char(ch: item.char)), escaped: false } }
             else if item.char == "\\" { StringOpen { cursor: cursor + 1, acc: acc, escaped: true } }
-            else if item.char == "\"" { StringClosed { content: join(acc, separator: ""), end_pos: cursor } }
+            else if item.char == "\"" { StringClosed { content: acc, end_pos: cursor } }
             else if item.char == "{" && should_start_interpolation(source: source, pos: cursor) {
-              StringInterpolation { content: join(acc, separator: ""), end_pos: cursor }
+              StringInterpolation { content: acc, end_pos: cursor }
             }
-            else { StringOpen { cursor: cursor + 1, acc: list_push(acc, item.char), escaped: false } }
+            else { StringOpen { cursor: cursor + 1, acc: concat(acc, item.char), escaped: false } }
         }
       }
     }
@@ -459,7 +459,7 @@ fn scan_string_with_role(source: Source, frame: LexerFrame, role: StringTokenRol
           reason: UnterminatedString,
           start: span_start,
           end: cursor,
-          lexeme: join(acc, separator: "")
+          lexeme: acc
         )
       }
     }
