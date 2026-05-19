@@ -50,20 +50,7 @@ import v4.std.verification {
   T19ManualTcConjEmpty,
   T19ManualTcConjEqualsRefl,
   T19ManualTcDisjEmpty,
-  T19ManualTcInstantiationEmpty,
-  T19PresentManualAnchorKey,
-  T19PresentManualNatAddAssociativity,
-  T19PresentManualNatAddLeftIdentity,
-  T19PresentManualNatAddRightIdentity,
-  T19PresentManualNatMulAnnihilator,
-  T19PresentManualNatMulAssociativity,
-  T19PresentManualNatMulLeftIdentity,
-  T19PresentManualTcArrowTwoConj,
-  T19PresentManualTcCardinalityEmpty,
-  T19PresentManualTcConjEmpty,
-  T19PresentManualTcConjEqualsRefl,
-  T19PresentManualTcDisjEmpty,
-  T19PresentManualTcInstantiationEmpty
+  T19ManualTcInstantiationEmpty
 }
 import v4.test.claim.manual.connective_anchors {
   claim_arrow_two_conj_compiles,
@@ -114,11 +101,11 @@ type TestgenConcept
 type Generator<C> {
   classification: TestClassification
   kind: AssertKind
-  t19_anchor: T19PresentManualAnchorKey
+  t19_anchor: T19ManualAnchorKey
   slot: C
 }
 
-// RULING-1: 🟢 pretty-much-done — narrowed anchor on success path
+// RULING-1: 🟢 pretty-much-done — echoes `TestClaim.t19_anchor` after lookup `Outcome`
 
 
 data t19_law_nat_add_left_identity: Symbol = t19_law_nat_add_left_identity
@@ -277,26 +264,6 @@ fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept>
 }
 
 
-fn t19_present_manual_anchor_key_for_claim(claim: TestClaim) -> Outcome<T19PresentManualAnchorKey> {
-  match claim.t19_anchor {
-    T19ManualAnchorAbsent =>
-      Rejected { diagnostic: t19_manual_anchor_absent_bootstrap_diagnostic() }
-    T19ManualTcConjEmpty => Produced { value: T19PresentManualTcConjEmpty }
-    T19ManualTcDisjEmpty => Produced { value: T19PresentManualTcDisjEmpty }
-    T19ManualTcArrowTwoConj => Produced { value: T19PresentManualTcArrowTwoConj }
-    T19ManualTcCardinalityEmpty => Produced { value: T19PresentManualTcCardinalityEmpty }
-    T19ManualTcInstantiationEmpty => Produced { value: T19PresentManualTcInstantiationEmpty }
-    T19ManualTcConjEqualsRefl => Produced { value: T19PresentManualTcConjEqualsRefl }
-    T19ManualNatAddLeftIdentity => Produced { value: T19PresentManualNatAddLeftIdentity }
-    T19ManualNatAddRightIdentity => Produced { value: T19PresentManualNatAddRightIdentity }
-    T19ManualNatAddAssociativity => Produced { value: T19PresentManualNatAddAssociativity }
-    T19ManualNatMulLeftIdentity => Produced { value: T19PresentManualNatMulLeftIdentity }
-    T19ManualNatMulAnnihilator => Produced { value: T19PresentManualNatMulAnnihilator }
-    T19ManualNatMulAssociativity => Produced { value: T19PresentManualNatMulAssociativity }
-  }
-}
-
-
 fn bootstrap_claim_generator_for_manual_anchor(
   key: T19ManualAnchorKey
 ) -> Outcome<Generator<TestgenConcept>> {
@@ -306,17 +273,13 @@ fn bootstrap_claim_generator_for_manual_anchor(
       match testgen_concept_for_manual_claim(claim: claim) {
         Rejected { diagnostic: d } => Rejected { diagnostic: d }
         Produced { value: slot } =>
-          match t19_present_manual_anchor_key_for_claim(claim: claim) {
-            Rejected { diagnostic: d } => Rejected { diagnostic: d }
-            Produced { value: present_anchor } =>
-              Produced {
-                value: Generator {
-                  classification: claim.classification,
-                  kind: claim.kind,
-                  t19_anchor: present_anchor,
-                  slot: slot,
-                }
-              }
+          Produced {
+            value: Generator {
+              classification: claim.classification,
+              kind: claim.kind,
+              t19_anchor: claim.t19_anchor,
+              slot: slot,
+            }
           }
       }
   }
