@@ -1,6 +1,6 @@
 // src/v4/lens/testgen.dag
 // Scope: T-19 testgen — substrate folds emit TestClaim; five scheduling categories + Generator<C>; filesystem-backed whole-corpus lens driver primitive.
-// Owns: Generator<C> TypeConstructionSubject AlgebraLawSubject DiagnosticExhaustivenessSubject LensApplicabilitySubject BidirectionalRoundtripSubject TestgenConcept CorpusEntry CorpusEnumerationRequest CorpusEnumerationResult CorpusEnumerator CorpusLensReader<C> CorpusLensDriver<C>
+// Owns: Generator<C> TypeConstructionSubject AlgebraLawSubject DiagnosticExhaustivenessSubject LensApplicabilitySubject BidirectionalRoundtripSubject TestgenConcept CorpusEntry CorpusEnumerationRequest CorpusEnumerationResult CorpusEnumerator CorpusEntryIngestResult CorpusEntryIngestor CorpusLensReader<C> CorpusLensDriver<C>
 // Consumes: v4.std.node v4.std.verification v4.std.diagnostic v4.extdeps.file_system (algebra/lens/extdeps at materialization — TASKS T-19)
 // Status: M1 — live types + Generator<C>; eval wiring T-22.
 
@@ -9,7 +9,7 @@ module v4.lens.testgen
 
 import v4.std.verification { TestClassification }
 import v4.std.diagnostic { Outcome }
-import v4.std.node { Connective, Behavior, Symbol }
+import v4.std.node { Connective, Behavior, Node, Symbol }
 import v4.extdeps.file_system {
   AbsolutePath,
   FileBody,
@@ -33,6 +33,7 @@ type DiagnosticExhaustivenessSubject { reason: Symbol }
 
 type LensApplicabilitySubject {
   lens: Symbol
+  program: Node
   corpus_root: AbsolutePath
 }
 
@@ -77,11 +78,19 @@ type CorpusEnumerator {
 }
 
 
+type CorpusEntryIngestResult = Outcome<Node>
+
+
+type CorpusEntryIngestor {
+  ingest: fn(CorpusEntry) -> CorpusEntryIngestResult
+}
+
+
 type CorpusLensReadResult<C> = Outcome<C>
 
 
 type CorpusLensReader<C> {
-  read: fn(CorpusEntry) -> CorpusLensReadResult<C>
+  read: fn(Node) -> CorpusLensReadResult<C>
 }
 
 
@@ -90,5 +99,6 @@ type CorpusLensDriveResult<C> = Outcome<List<C>>
 
 type CorpusLensDriver<C> {
   enumerator: CorpusEnumerator
+  ingestor: CorpusEntryIngestor
   reader: CorpusLensReader<C>
 }
