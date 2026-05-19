@@ -1174,13 +1174,15 @@ Existing `extdeps/languages/<lang>.dag` files do NOT need split. Their header sh
 
 **Promise** (per `r4-c-compiler-and-llvm-in-dag-program-plan.md` + `design-r4-full-stack-omni-emission-canvas.md`): v4 supports additional Shape A target languages beyond Rust/Python/Go. C/C++ enable production-compiler-infrastructure demonstration; LLVM IR enables backend-portability; TypeScript enables frontend-stack omni-emission.
 
-**v4 owner allocation** (SCAFFOLD-GAP):
+**v4 owner allocation** (Wave-0 substrate — **authoritative file tree:** `src/v4/STRUCTURE.md`):
 
-Currently `src/v4/extdeps/languages/` has 3 files: `rust.dag`, `python.dag`, `go.dag`. R4 adds:
-- `c.dag` — Anchor: ISO/IEC 9899 (C standard) + Kaleidoscope-Ch8 subset for first delivery
-- `cpp.dag` — Anchor: ISO/IEC 14882 (C++ standard) + xlscc-subset (per pin in r4-c-compiler doc)
-- `llvm_ir.dag` — Anchor: https://llvm.org/docs/LangRef.html
-- `typescript.dag` — Anchor: https://www.typescriptlang.org/docs/handbook/2/everyday-types.html (TypeScript Handbook + ES standard)
+The original `rust.dag` / `python.dag` / `go.dag` trio is joined by additional language and IR models under `src/v4/extdeps/languages/`. For **this §14 promise** (C/C++ surface, LLVM IR, TypeScript), the following are **landed** as `.dag` substrate (parse/resolve verified on the CI `v4:` path: `v2-compiler compile --source-root src/v4`; see INVARIANTS §P5(b) dissolution note — whole-tree compile subsumes retired per-file `compile_to_dag` smokes):
+
+- `cpp.dag` — Anchor: ISO/IEC 14882 (C++ standard); subsumes C subset (**no separate `c.dag`** unless C-only consumer demand surfaces).
+- `typescript.dag` — Anchor: TypeScript Handbook + ECMA-262.
+- `llvm_ir.dag` — Anchor: LLVM 18 LangRef (`TASKS.md` **T-4.12** — down-stack SSA / Φ structural vocabulary; file header `T-4.12 PASS`).
+
+**Still open as modeling / emission work** (not “missing files”): the **Probes** checklist below — emit/ingest/L5/L6/falsification — remains the honest gap vs “substrate exists”.
 
 **Probes**:
 
@@ -1190,15 +1192,13 @@ Currently `src/v4/extdeps/languages/` has 3 files: `rust.dag`, `python.dag`, `go
 - [ ] **L6 form completeness**: do all 6 connectives × 5 behaviors emit to every target? Per §3.5 L6 matrix.
 - [ ] **Falsification probe**: pick a `.dag` form that emits cleanly to Rust but cannot emit to LLVM IR (e.g., something Rust's borrow checker accepts but LLVM IR's SSA form rejects). Does v4 fail-closed when LLVM IR is targeted, or silently emit broken IR?
 
-**Disposition** (operator-ratified 2026-05-15): IN for C++ and TypeScript. Add `cpp.dag` and `typescript.dag` to v4 scaffold NOW.
-- C is a subset of C++ — `cpp.dag` covers both surfaces; no separate `c.dag` (unless concrete C-only-consumer demand surfaces).
-- LLVM IR is a distinct concept (IR, not source language) — surface separately if needed.
-- Go remains in v4 scope ("optional, keep for now; can replace if needed").
+**Disposition** (operator-ratified 2026-05-15, **updated for landed substrate**): **IN** for C++ and TypeScript — `cpp.dag` and `typescript.dag` are present. **LLVM IR** is modeled separately as **`llvm_ir.dag`** (IR, not the C++ surface — T-4.12). **C** remains subsumed by `cpp.dag`. **Go** remains in v4 scope ("optional, keep for now; can replace if needed").
 
-**Scaffold additions** (operator-ratified):
-- `extdeps/languages/cpp.dag` — Anchor: ISO/IEC 14882 (C++ standard); subsumes C subset
-- `extdeps/languages/typescript.dag` — Anchor: TypeScript Handbook + ECMAScript spec (ECMA-262)
-- TASKS.md: T-4 (extdeps languages) grows from 3 → 5 files (rust, python, go, cpp, typescript)
+**Landed substrate files** (this §’s targets — anchors unchanged):
+
+- `extdeps/languages/cpp.dag`
+- `extdeps/languages/typescript.dag`
+- `extdeps/languages/llvm_ir.dag`
 
 ---
 
