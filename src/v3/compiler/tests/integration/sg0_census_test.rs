@@ -842,9 +842,9 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // SG-0 + INVARIANTS §P5(b) receipt.
     "src/v3/compiler/tests/integration/v4_lens_cost_dag_smoke_test.rs",
     // T-19 testgen Wave-0: parse ratchet on `src/v4/lens/testgen.dag` — T19ManualAnchorKey-driven
-    // `bootstrap_claim_generator_for_manual_anchor` + `testgen_concept_for_manual_anchor` +
-    // `manual_test_claim_for_manual_anchor` in `src/v4/lens/testgen.dag`;
-    // `t19_present_manual_anchor_key` in `src/v4/std/verification.dag`.
+    // `bootstrap_claim_generator_for_manual_anchor` + `testgen_concept_for_manual_claim` +
+    // `manual_test_claim_for_manual_anchor` in `src/v4/lens/testgen.dag`; `src/v4/std/verification.dag`
+    // for closed `TestClaim` schema only (no std present-key helper).
     "src/v3/compiler/tests/integration/v4_lens_testgen_dag_smoke_test.rs",
     // T-30: `compile_to_dag` smoke on `src/v4/std/fact_density.dag` (Practice 8
     // structural mirror in `v4_hollow_alias_gate`). SG-0 + INVARIANTS §P5(b) receipt.
