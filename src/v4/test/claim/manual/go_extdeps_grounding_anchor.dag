@@ -1,6 +1,6 @@
 // src/v4/test/claim/manual/go_extdeps_grounding_anchor.dag
 // Scope: Tier-1 v2-compile anchor for Go extdeps groundedness markers.
-// Owns: anchor_signed_int_width, anchor_unsigned_int_width, anchor_go_scalar_kind, anchor_go_scalar, anchor_go_channel_direction, anchor_go_export_locus, anchor_go_export_status, anchor_go_channel, anchor_go_cost, anchor_go_builtin_overflow, anchor_go_integer_overflow_disposition.
+// Owns: anchor_signed_int_width, anchor_unsigned_int_width, anchor_go_float_width, anchor_go_complex_width, anchor_go_scalar_kind, anchor_go_scalar, anchor_go_channel_direction, anchor_go_export_locus, anchor_go_export_status, anchor_go_channel, anchor_go_cost, anchor_go_builtin_overflow, anchor_go_integer_overflow_disposition.
 // Consumes: extdeps/languages/go.dag.
 // Status: scaffold — compile-only until T-22.
 // Anchor: https://go.dev/ref/spec
@@ -11,9 +11,11 @@ import v4.extdeps.languages.go {
   GoBuiltinIntegerArithmeticOverflow,
   GoChannel,
   GoChannelDirection,
+  GoComplexWidth,
   GoCost,
   GoExportLocus,
   GoExportStatus,
+  GoFloatWidth,
   GoIntegerOverflowDisposition,
   GoScalar,
   GoScalarKind,
@@ -24,6 +26,10 @@ import v4.extdeps.languages.go {
 fn anchor_signed_int_width(x: SignedIntWidth) -> SignedIntWidth { x }
 
 fn anchor_unsigned_int_width(x: UnsignedIntWidth) -> UnsignedIntWidth { x }
+
+fn anchor_go_float_width(x: GoFloatWidth) -> GoFloatWidth { x }
+
+fn anchor_go_complex_width(x: GoComplexWidth) -> GoComplexWidth { x }
 
 fn anchor_go_scalar_kind(x: GoScalarKind) -> GoScalarKind { x }
 

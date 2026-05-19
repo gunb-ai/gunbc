@@ -1,6 +1,6 @@
 // src/v4/test/claim/manual/rust_extdeps_grounding_anchor.dag
 // Scope: Tier-1 v2-compile anchor for Rust extdeps groundedness markers.
-// Owns: anchor_rust_int_kind, anchor_rust_scalar, anchor_rust_reference_kind, anchor_named_segment, anchor_pub_in_path, anchor_rust_visibility, anchor_rust_reference, anchor_rust_cost, anchor_overflow_action, anchor_overflow_disposition, anchor_rust_never.
+// Owns: anchor_rust_int_width, anchor_rust_float_width, anchor_rust_int_kind, anchor_rust_scalar, anchor_rust_reference_kind, anchor_named_segment, anchor_pub_in_path, anchor_rust_visibility, anchor_rust_reference, anchor_rust_cost, anchor_overflow_action, anchor_overflow_disposition, anchor_rust_never.
 // Consumes: extdeps/languages/rust.dag, std/cardinality.dag.
 // Status: scaffold — compile-only until T-22.
 // Anchor: https://doc.rust-lang.org/reference/
@@ -13,7 +13,9 @@ import v4.extdeps.languages.rust {
   OverflowDisposition,
   PubInPath,
   RustCost,
+  RustFloatWidth,
   RustIntKind,
+  RustIntWidth,
   RustNever,
   RustReference,
   RustReferenceKind,
@@ -21,6 +23,10 @@ import v4.extdeps.languages.rust {
   RustVisibility
 }
 import v4.std.cardinality { Never }
+
+fn anchor_rust_int_width(x: RustIntWidth) -> RustIntWidth { x }
+
+fn anchor_rust_float_width(x: RustFloatWidth) -> RustFloatWidth { x }
 
 fn anchor_rust_int_kind(x: RustIntKind) -> RustIntKind { x }
 
