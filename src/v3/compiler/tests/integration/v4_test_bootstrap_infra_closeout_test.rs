@@ -87,9 +87,10 @@ fn t20_bootstrap_plan_keeps_self_hosting_chain_as_data() {
         expected_field_type_map(&[
             ("consumes", "List<Symbol>"),
             ("produces", "Symbol"),
+            ("produces_hash", "BootstrapHashPin"),
             ("compiled_by", "Symbol"),
         ]),
-        "CompileStage must keep the compiler-of-record as a structural field"
+        "CompileStage must keep output hash pins and compiler-of-record as structural fields"
     );
     assert_eq!(
         record_field_type_map(type_record(&module, "BootstrapPlan")),
@@ -131,18 +132,21 @@ fn t20_bootstrap_plan_keeps_self_hosting_chain_as_data() {
         record_field_expr(bootstrap_plan_fields, "seed"),
         &["v4_dag_source"],
         "v4_stage0_binary",
+        "v4_stage0_hash_pin",
         "v2_pipeline",
     );
     assert_compile_stage(
         record_field_expr(bootstrap_plan_fields, "self0"),
         &["v4_dag_source", "v4_stage0_binary"],
         "v4_stage1_binary",
+        "v4_stage1_hash_pin",
         "v4_stage0_binary",
     );
     assert_compile_stage(
         record_field_expr(bootstrap_plan_fields, "self1"),
         &["v4_dag_source", "v4_stage1_binary"],
         "v4_stage2_binary",
+        "v4_stage2_hash_pin",
         "v4_stage1_binary",
     );
     assert_fixpt(
@@ -296,6 +300,7 @@ fn assert_compile_stage(
     expr: &SurfaceExpr,
     expected_consumes: &[&str],
     expected_produces: &str,
+    expected_produces_hash_pin: &str,
     expected_compiled_by: &str,
 ) {
     let fields = match expr {
@@ -316,10 +321,30 @@ fn assert_compile_stage(
         expected_produces,
         "CompileStage.produces drifted"
     );
+    assert_bootstrap_hash_pin(
+        record_field_expr(fields, "produces_hash"),
+        expected_produces_hash_pin,
+    );
     assert_eq!(
         var_name(record_field_expr(fields, "compiled_by")),
         expected_compiled_by,
         "CompileStage.compiled_by drifted"
+    );
+}
+
+fn assert_bootstrap_hash_pin(expr: &SurfaceExpr, expected_pin: &str) {
+    let fields = match expr {
+        SurfaceExpr::VariantRecord { target, fields, .. } => {
+            assert_eq!(target, "BootstrapHashPin");
+            fields
+        }
+        other => panic!("expected BootstrapHashPin record, got {other:?}"),
+    };
+
+    assert_eq!(
+        var_name(record_field_expr(fields, "pin")),
+        expected_pin,
+        "BootstrapHashPin.pin drifted"
     );
 }
 
