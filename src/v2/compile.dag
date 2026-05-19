@@ -940,7 +940,8 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineR
       let complexity_diags = complexity_diagnostics(complexity: complexity)
       let all_diags = concat(typed_diags, complexity_diags)
 
-      if pipeline_gate_blocks_emission(stage: StageInfer, diagnostics: typed_diags) {
+      let type_errors = typed_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))
+      if type_errors |> count > 0 {
         return PipelineResult {
           files: [],
           diagnostics: concat(frontend.diagnostics, norm_diags, all_diags),
@@ -1046,7 +1047,8 @@ fn compile_to_resolved(sources: List<SourceFile>) -> ResolvedPipelineResult {
       let complexity_diags = complexity_diagnostics(complexity: complexity)
       let all_diags = concat(typed_diags, complexity_diags)
 
-      if pipeline_gate_blocks_emission(stage: StageInfer, diagnostics: typed_diags) {
+      let type_errors = typed_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))
+      if type_errors |> count > 0 {
         return ResolvedPipelineResult {
           graph: none,
           diagnostics: concat(frontend.diagnostics, norm_diags, all_diags),

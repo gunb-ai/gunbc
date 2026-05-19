@@ -48,6 +48,11 @@
 
 Per-stage modules (`01_tokenize` … `05_emit`, `complexity.dag`) own stage bodies. This PR does **not** change their signatures. Escalate signature changes to PM (`sunny-wolf-435`).
 
+## Operator constraints (this PR)
+
+- **No Rust hand-edits** — only `.dag` + calibration doc. `src/v2/tests/src/source_audit.rs` was reverted after PM clarification; infer gate keeps the legacy `type_errors` filter spelling for the existing ratchet until operator approves a test update.
+- **No stage0 regen in this PR** — self-compile blocked on `generated.method_template_projection` (known v2 gap); stage0 freshness is a follow-on when the dedicated worker lands.
+
 ## Recommended next steps (operator)
 
 1. Decide whether v2-first modeling migration is the program direction (vs waiting for v4 T-9/T-10 impl).
