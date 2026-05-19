@@ -666,6 +666,7 @@ model shape to keep the probe "parallel."
 
 #### T-4.9: `extdeps/languages/verilog.dag`
 - **Stress axis**: hardware **concurrency** vs the 5 L1 behaviors. This is the **IN-B validation probe** — if Verilog (`always @(posedge clk)`, continuous assignment) cannot be modeled as effect-typed `Bind` composition without a 6th `Concurrent` behavior, that is a **C1 stop-signal escalation**, and catching it early is the entire point.
+- **Wave-0 / Practice 9 (header hygiene):** The live `verilog.dag` preamble stays **terse** — path line, the four-line `Scope` / `Owns` / `Consumes` / `Status` block, `// Anchor`, `// Ledger`, and mandated coproduct one-liners only (`docs/modeling-discipline.md` §9). Do not add extra `//` rationale paragraphs to the `.dag` file; falsification narrative and T-1+T-2 import discipline for this probe live **here** and under `DECISIONS.md` **L-1**, not as parallel prose authority in the substrate header.
 - **Clear win**: one `.dag` FSM → simulable Verilog + a Rust reference model, same Node, zero translator.
 - **Scope**: L (substrate-validating; concurrency model is the risk).
 
