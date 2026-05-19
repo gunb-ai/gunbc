@@ -30,6 +30,7 @@ import v4.std.diagnostic {
 import v4.std.verification {
   AssertKind,
   Compiles,
+  Diagnostic,
   Equals,
   Integration,
   RoundTrips,
@@ -103,13 +104,10 @@ type Verdict<T>
   | Deferred { actual: Outcome<T>, diagnostic: Diagnostic }
 
 
-type TestClaimVerdict = Verdict<Node>
-
-
 type TestClaimRun<T> {
   subject: TestClaimEvalSubject<T>
   cache: TestClaimCacheReceipt<T>
-  verdict: TestClaimVerdict
+  verdict: Verdict<T>
 }
 
 
@@ -180,10 +178,16 @@ fn outcome_node_eq(a: Outcome<Node>, b: Outcome<Node>) -> Bool {
 }
 
 
-fn run_assert(kind: AssertKind, actual: Outcome<Node>, expected: Outcome<Node>, input: Node) -> TestClaimVerdict {
+fn run_assert<T>(
+  kind: AssertKind,
+  actual: Outcome<T>,
+  comparable: Outcome<Node>,
+  expected: Outcome<Node>,
+  input: Node
+) -> Verdict<T> {
   match kind {
-    Equals => if outcome_node_eq(a: actual, b: expected) { Pass } else { Fail { actual: actual } }
-    Compiles => match actual {
+    Equals => if outcome_node_eq(a: comparable, b: expected) { Pass } else { Fail { actual: actual } }
+    Compiles => match comparable {
       Produced { value: _ } => Pass
       Rejected { diagnostic: _ } => Fail { actual: actual }
     }
@@ -191,7 +195,7 @@ fn run_assert(kind: AssertKind, actual: Outcome<Node>, expected: Outcome<Node>, 
       actual: actual,
       diagnostic: eval_diagnostic(reason: eval_rejected_roundtrip_deferred, node: input)
     }
-    _ => Deferred {
+    Diagnostic => Deferred {
       actual: actual,
       diagnostic: eval_diagnostic(reason: eval_rejected_assert_kind_deferred, node: input)
     }
@@ -222,6 +226,7 @@ fn run_test_claim(
     verdict: run_assert(
       kind: subject.claim.kind,
       actual: actual,
+      comparable: actual,
       expected: subject.claim.expected,
       input: subject.claim.input
     )
@@ -310,7 +315,7 @@ fn t22_ci_subject(
 
 
 fn t22_ci_run(subject: TestClaimEvalSubject<CiPipeline>) -> TestClaimRun<CiPipeline> {
-  let actual = t22_ci_outcome(actual: ci_pipeline_well_formed(p: subject.evaluator_input))
+  let actual = ci_pipeline_well_formed(p: subject.evaluator_input)
   TestClaimRun {
     subject: subject,
     cache: test_claim_cache_receipt(
@@ -323,6 +328,7 @@ fn t22_ci_run(subject: TestClaimEvalSubject<CiPipeline>) -> TestClaimRun<CiPipel
     verdict: run_assert(
       kind: subject.claim.kind,
       actual: actual,
+      comparable: t22_ci_outcome(actual: actual),
       expected: subject.claim.expected,
       input: subject.claim.input
     )
