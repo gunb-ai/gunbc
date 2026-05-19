@@ -103,10 +103,12 @@ type InferDiagnostic
   | NotIndexable { actual: TypeRef }
   | NonBooleanCondition { actual: TypeRef }
   | BranchTypeMismatch { then_type: TypeRef, else_type: TypeRef }
+  | EmptyMatch
   | UnimplementedTypeKitBinding { missing: Symbol }
 
 type SubstitutionPair {
   variable: Symbol
+  expected: TypeRef
   replacement: TypeRef
 }
 
@@ -218,9 +220,24 @@ fn unify_pair(state: UnificationState, pair: SubstitutionPair) -> UnificationSta
         diagnostics: list_push(state.diagnostics, diagnostic)
       }
     _ =>
-      UnificationState {
-        substitutions: list_push(state.substitutions, pair),
-        diagnostics: state.diagnostics
+      match pair.expected {
+        TypeVariable { name: _ } =>
+          UnificationState {
+            substitutions: list_push(state.substitutions, pair),
+            diagnostics: state.diagnostics
+          }
+        _ =>
+          if pair.expected == pair.replacement {
+            UnificationState {
+              substitutions: state.substitutions,
+              diagnostics: state.diagnostics
+            }
+          } else {
+            UnificationState {
+              substitutions: state.substitutions,
+              diagnostics: list_push(state.diagnostics, TypeMismatch { expected: pair.expected, actual: pair.replacement })
+            }
+          }
       }
   }
 }
@@ -559,12 +576,14 @@ fn zip_call_substitutions(params: List<TypeRef>, args: List<InferredExpr>) -> Li
   if expected != actual {
     [SubstitutionPair {
       variable: error_symbol,
+      expected: diagnostic_type(diagnostic: ArityMismatch { expected: expected, actual: actual }),
       replacement: diagnostic_type(diagnostic: ArityMismatch { expected: expected, actual: actual })
     }]
   } else {
     zip(params, args) |> map(pair =>
       SubstitutionPair {
         variable: type_variable_symbol(type_ref: pair.first),
+        expected: pair.first,
         replacement: facts_of(expr: pair.second).result_type
       }
     )
@@ -671,18 +690,22 @@ fn expr_result_node(result: ExprInference) -> InferredNode {
 }
 
 fn infer_match(expr: NormalizedExpr, scrutinee: InferredExpr, arms: List<NormalizedNode>, arm_results: List<InferredExpr>) -> ExprInference {
-  let first_arm = first_expr_from_values(children: arm_results)
-  let first_facts = facts_of(expr: first_arm)
-  let mismatch = first_mismatched_arm_type(expected: first_facts.result_type, arms: arm_results)
-  match mismatch {
-    Some { value: actual } =>
-      infer_error(diagnostic: BranchTypeMismatch { then_type: first_facts.result_type, else_type: actual })
-    None =>
-      ExprInference {
-        expr: InferredMatch { scrutinee: scrutinee, arms: arm_results, facts: first_facts },
-        diagnostics: [],
-        facts: first_facts
-      }
+  if arm_results |> count == 0 {
+    infer_error(diagnostic: EmptyMatch)
+  } else {
+    let first_arm = first_expr_from_values(children: arm_results)
+    let first_facts = facts_of(expr: first_arm)
+    let mismatch = first_mismatched_arm_type(expected: first_facts.result_type, arms: arm_results)
+    match mismatch {
+      Some { value: actual } =>
+        infer_error(diagnostic: BranchTypeMismatch { then_type: first_facts.result_type, else_type: actual })
+      None =>
+        ExprInference {
+          expr: InferredMatch { scrutinee: scrutinee, arms: arm_results, facts: first_facts },
+          diagnostics: [],
+          facts: first_facts
+        }
+    }
   }
 }
 
