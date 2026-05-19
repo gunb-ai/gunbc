@@ -4,7 +4,11 @@
 // Consumes: std/node.dag (Symbol); std/nat.dag (Nat); std/cardinality.dag (NonZeroNat); Int kernel-ambient.
 // Status: import v4.std.node Symbol; v4.std.nat Nat; v4.std.cardinality NonZeroNat.
 // Anchor: https://releases.llvm.org/18.1.8/docs/LangRef.html
+<<<<<<< HEAD
 // Ledger: CP-3229-GREEN-TERMINAL, SL-3229-LLVM-OPS, SL-3229-LLVM-WIDTH.
+=======
+// Ledger: DECISIONS.md Part 6 — CP-3229-GREEN-TERMINAL, SL-3229-LLVM-OPS, SL-3229-LLVM-WIDTH.
+>>>>>>> 350387e64 (feat(v4): RULING-1 slice groundedness mark on strict_deprose headers)
 // 🟡
 
 module v4.extdeps.languages.llvm_ir

@@ -4,7 +4,11 @@
 // Consumes: std/node.dag (Instantiation, Symbol); std/nat.dag (Nat); std/machine.dag (MachineWidth, PointerWidth, Word8, Word16, Word32, Word64, Word128); std/algebra.dag (Magma, Semigroup, Monoid, Group, AbelianGroup, Ring, OrderedRing, Ordering); std/diagnostic.dag (Diagnostic, Locus, Correction, NoCorrectionReason, Outcome<T> Tier-2 divide/modulo).
 // Status: std integer vocabulary (widths, group completion, divide/modulo outcomes).
 // Anchor: https://en.wikipedia.org/wiki/Integer
+<<<<<<< HEAD
 // Ledger: CP-3229-VERIFY, SL-3229-INTEGER-GROUP-COMPLETION.
+=======
+// Ledger: DECISIONS.md Part 6 — CP-3229-VERIFY, SL-3229-INTEGER-GROUP-COMPLETION.
+>>>>>>> 350387e64 (feat(v4): RULING-1 slice groundedness mark on strict_deprose headers)
 // 🟢
 
 module v4.std.integer

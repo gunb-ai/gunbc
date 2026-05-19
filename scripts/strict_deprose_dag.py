@@ -473,7 +473,12 @@ def run_check(specs: list[tuple[str, str, str, str, str, str]]) -> None:
             f"{status}\n"
             f"{anchor}\n"
             f"{format_ledger_line(rel, tag_map, live)}"
+<<<<<<< HEAD
             f"{format_grounded_r1_slice_marker(grounded_r1)}"
+=======
+            f"{grounded_r1}"
+            f"\n"
+>>>>>>> 350387e64 (feat(v4): RULING-1 slice groundedness mark on strict_deprose headers)
         )
         expected = materialize_deprose_text(path, rel, tag_map, header)
         actual = path.read_text()
@@ -492,9 +497,14 @@ def main() -> None:
         raise SystemExit("usage: strict_deprose_dag.py [--check]")
     check_only = argv == ["--check"]
 
+<<<<<<< HEAD
     # Sixth field: operator RULING-1 slice groundedness (emoji-only; ratified in
     # `docs/modeling-discipline.md` Practice 9; ledger doc retired 2026-05-19).
     # Extdeps language slices 🟡 (Shape A emit/L5/L6 still open per v4-close-interrogation §14); std 🟢.
+=======
+    # Sixth field: operator RULING-1 groundedness (emoji-only; no prose). Extdeps language
+    # slices 🟡 (Shape A emit/L5/L6 still open per v4-close-interrogation §14); std 🟢.
+>>>>>>> 350387e64 (feat(v4): RULING-1 slice groundedness mark on strict_deprose headers)
     specs: list[tuple[str, str, str, str, str, str]] = [
         (
             "src/v4/extdeps/languages/verilog.dag",
@@ -502,7 +512,11 @@ def main() -> None:
             "// Anchor: https://standards.ieee.org/ieee/1364/3641/",
             "// Consumes: std/node.dag; std/nat.dag (Nat).",
             "// Status: import v4.std.node Symbol; v4.std.nat Nat.",
+<<<<<<< HEAD
             "// 🟡",
+=======
+            "// 🟡\n",
+>>>>>>> 350387e64 (feat(v4): RULING-1 slice groundedness mark on strict_deprose headers)
         ),
         (
             "src/v4/extdeps/languages/llvm_ir.dag",
@@ -510,7 +524,11 @@ def main() -> None:
             "// Anchor: https://releases.llvm.org/18.1.8/docs/LangRef.html",
             "// Consumes: std/node.dag (Symbol); std/nat.dag (Nat); std/cardinality.dag (NonZeroNat); Int kernel-ambient.",
             "// Status: import v4.std.node Symbol; v4.std.nat Nat; v4.std.cardinality NonZeroNat.",
+<<<<<<< HEAD
             "// 🟡",
+=======
+            "// 🟡\n",
+>>>>>>> 350387e64 (feat(v4): RULING-1 slice groundedness mark on strict_deprose headers)
         ),
         (
             "src/v4/extdeps/languages/ptx.dag",
@@ -518,7 +536,11 @@ def main() -> None:
             "// Anchor: https://docs.nvidia.com/cuda/pdf/ptx_isa_8.5.pdf — TOC https://docs.nvidia.com/cuda/parallel-thread-execution/index.html",
             "// Consumes: std/nat.dag (Nat); std/cardinality.dag (PositiveUpperBoundedNat).",
             "// Status: import v4.std.nat Nat; v4.std.cardinality PositiveUpperBoundedNat.",
+<<<<<<< HEAD
             "// 🟡",
+=======
+            "// 🟡\n",
+>>>>>>> 350387e64 (feat(v4): RULING-1 slice groundedness mark on strict_deprose headers)
         ),
         (
             "src/v4/std/integer.dag",
@@ -526,7 +548,11 @@ def main() -> None:
             "// Anchor: https://en.wikipedia.org/wiki/Integer",
             "// Consumes: std/node.dag (Instantiation, Symbol); std/nat.dag (Nat); std/machine.dag (MachineWidth, PointerWidth, Word8, Word16, Word32, Word64, Word128); std/algebra.dag (Magma, Semigroup, Monoid, Group, AbelianGroup, Ring, OrderedRing, Ordering); std/diagnostic.dag (Diagnostic, Locus, Correction, NoCorrectionReason, Outcome<T> Tier-2 divide/modulo).",
             "// Status: std integer vocabulary (widths, group completion, divide/modulo outcomes).",
+<<<<<<< HEAD
             "// 🟢",
+=======
+            "// 🟢\n",
+>>>>>>> 350387e64 (feat(v4): RULING-1 slice groundedness mark on strict_deprose headers)
         ),
         (
             "src/v4/std/float.dag",
@@ -534,7 +560,11 @@ def main() -> None:
             "// Anchor: https://en.wikipedia.org/wiki/IEEE_754",
             "// Consumes: std/node.dag (Symbol); std/machine.dag (Bit, Word32, Word64); std/algebra.dag (Ordering, Less, Equal, Greater); std/diagnostic.dag (Diagnostic, Outcome, PortLocus, Produced, Rejected, Unavailable, UserInputBoundary); std/logic.dag (Bool); std/nat.dag (Nat, nat_is_zero, nat_compare).",
             "// Status: std float vocabulary (32/64, specials, IEEE-ordered compare).",
+<<<<<<< HEAD
             "// 🟢",
+=======
+            "// 🟢\n",
+>>>>>>> 350387e64 (feat(v4): RULING-1 slice groundedness mark on strict_deprose headers)
         ),
     ]
 
@@ -560,7 +590,12 @@ def main() -> None:
             f"{status}\n"
             f"{anchor}\n"
             f"{format_ledger_line(rel, tag_map, live)}"
+<<<<<<< HEAD
             f"{format_grounded_r1_slice_marker(grounded_r1)}"
+=======
+            f"{grounded_r1}"
+            f"\n"
+>>>>>>> 350387e64 (feat(v4): RULING-1 slice groundedness mark on strict_deprose headers)
         )
         rewrite(path, header, rel, tag_map)
         c, t, pct = comment_ratio(path.read_text())

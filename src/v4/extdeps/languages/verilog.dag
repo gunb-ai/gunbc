@@ -4,7 +4,11 @@
 // Consumes: std/node.dag; std/nat.dag (Nat).
 // Status: import v4.std.node Symbol; v4.std.nat Nat.
 // Anchor: https://standards.ieee.org/ieee/1364/3641/
+<<<<<<< HEAD
 // Ledger: CP-3229-GREEN-TERMINAL, CP-3229-VERILOG-CONSTEXPR-TERMINAL, SL-3229-VERILOG-D3200, SL-3229-VERILOG-NONEMPTY.
+=======
+// Ledger: DECISIONS.md Part 6 — CP-3229-GREEN-TERMINAL, CP-3229-VERILOG-CONSTEXPR-TERMINAL, SL-3229-VERILOG-D3200, SL-3229-VERILOG-NONEMPTY.
+>>>>>>> 350387e64 (feat(v4): RULING-1 slice groundedness mark on strict_deprose headers)
 // 🟡
 
 module v4.extdeps.languages.verilog

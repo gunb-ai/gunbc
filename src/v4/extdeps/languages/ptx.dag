@@ -4,7 +4,11 @@
 // Consumes: std/nat.dag (Nat); std/cardinality.dag (PositiveUpperBoundedNat).
 // Status: import v4.std.nat Nat; v4.std.cardinality PositiveUpperBoundedNat.
 // Anchor: https://docs.nvidia.com/cuda/pdf/ptx_isa_8.5.pdf — TOC https://docs.nvidia.com/cuda/parallel-thread-execution/index.html
+<<<<<<< HEAD
 // Ledger: CP-3229-GREEN-TERMINAL, SL-3229-PTX-DIM3.
+=======
+// Ledger: DECISIONS.md Part 6 — CP-3229-GREEN-TERMINAL, SL-3229-PTX-DIM3.
+>>>>>>> 350387e64 (feat(v4): RULING-1 slice groundedness mark on strict_deprose headers)
 // 🟡
 
 module v4.extdeps.languages.ptx
