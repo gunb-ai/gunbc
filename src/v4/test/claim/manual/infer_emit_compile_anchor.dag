@@ -12,7 +12,6 @@ module v4.test.claim.manual.infer_emit_compile_anchor
 import v4.compiler.compile { Source, TargetModel, TargetSource, compile }
 import v4.compiler.emit { emit }
 import v4.compiler.infer { InferredTree, infer }
-import v4.compiler.resolve { ResolvedTree }
 import v4.std.algebra { Empty }
 import v4.std.diagnostic { Outcome }
 import v4.std.node { Conj, Node, TypeNode }
