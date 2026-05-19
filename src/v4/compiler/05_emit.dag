@@ -1,9 +1,176 @@
 // src/v4/compiler/05_emit.dag
-// Scope: target-source projection from inferred tree and target spec.
+//
+// Scope: target-source projection from the inferred tree and a target
+//        model — the U1 Realize phase, the structural inverse of
+//        `ingest`. Per-target specialization (T-11) and the full-stack
+//        omni-emission demo contract (T-16) are owned here: emit is the
+//        single coercion=emission authority (STRUCTURE.md §"coercion =
+//        emission"). There is no parallel per-target emitter and no
+//        separate omni-projection mechanism.
 // Anchor: https://en.wikipedia.org/wiki/Code_generation_(compiler)
-// Owns: none.
-// Consumes: none.
-// Status: scaffold for T-10.
+//
+// ── WAVE-0 SCOPE (interface-freeze + witness/Acceptance design layer) ──
+//
+//   This is the bounded Wave-0 deliverable for T-11 + T-16: the
+//   immutable I/O contract, the per-target / omni design contract, and
+//   the worked Acceptance examples a Wave-3+ worker must satisfy. It is
+//   NOT the implementation. Per the anti-conflation rule (codex BLOCKING
+//   `a67577c3`): Wave-0 ≠ dependency-satisfied implementation. No carrier
+//   is minted here; the real per-target grammar-data fold and the omni
+//   projection are the NAMED Wave-3 triggers below, not this PR.
+//
+//   NAMED REFINE TRIGGERS (explicit — refine-to-real is Wave-3+, NOT here):
+//     • T-11 real fill — TRIGGER: T-10 orchestrator real (`emit ∘ core ∘
+//       ingest` over a real `InferredTree`) + T-4 ×5 Shape-A language
+//       models grammar-as-data landed. Wave-4 IMPL per TASKS.md T-11.
+//     • T-16 real fill — TRIGGER: T-11 real + T-4.5–T-4.8 (coordination /
+//       react / formats) landed. Wave-5 IMPL per TASKS.md T-16.
+//
+//   WITNESSES OFF REFINEMENT (Wave-0 discipline, operator-pinned): the
+//   Acceptance design below does NOT use refinement keys or
+//   `NonEmptyList`. Those are deferred to `std/collection.dag` Wave-A2 /
+//   T-25-core (a refined `List<T> where non_empty`, never a per-file
+//   mint — 5-language precedent, operator-flagged). Any Acceptance shape
+//   that would need a non-empty/refined carrier is held until T-25-core
+//   lands OR is named as an explicit Wave-3 trigger above. Do NOT mint a
+//   local refinement to make a witness expressible — STOP and escalate.
+//
+// ── NO-TEMPLATING CONSTRAINT (operator 2026-05-17, binding) ──
+//
+//   emit goes THROUGH the grounded target model's grammar-as-data, run
+//   in the inverse direction — NEVER a string template or print routine.
+//   The declarative bidirectional grammar relation (concrete-syntax ⟷
+//   `Node`) is authored once (T-4 / T-7) and consumed in BOTH directions:
+//   forward = parse (T-7), inverse = emit. A string-templated emit path
+//   is the emit-side D2 hollow alias — an artifact the compiler cannot
+//   ground and coercion-check. The per-target "translation tables" of
+//   T-11 ARE this grammar-as-data, NOT fill-in-the-holes templates. STOP
+//   if any emission step cannot be expressed as the inverse grammar walk.
+//
+// ── T-11: PER-TARGET SPECIALIZATION (×5 Shape-A) ──
+//
+//   The five Shape-A targets — rust / python / go / cpp / typescript —
+//   match T-4's language set and the execution-graph critical path; T-16
+//   depends on the full set. Per-target behavior is the inverse walk of
+//   each target's own grammar-as-data model (`extdeps/languages/<t>`),
+//   never an `if target == X` special-case in emit. Per STRUCTURE.md:
+//   "every emitter special case is evidence of an ungrounded concept
+//   upstream" — a special-case in this file is a STOP signal pointing at
+//   a missing fact in `04_infer.dag` (owns) or the target's language
+//   model, not a local branch to add here.
+//
+//   Target-specific optimization (or its principled absence) is a
+//   cost-lens-derived realization decision (U1/U2 cost spine, per-target
+//   from `extdeps/languages/<t>`), taken at this emit boundary — it is
+//   read, never a heuristic guess. Same `InferredTree` → five
+//   cost-derived realizations; the model never changes, only the
+//   per-target realize step does (mirrors lens/parallelism.dag example C).
+//
+// ── T-16: FULL-STACK OMNI-EMISSION DEMO CONTRACT ──
+//
+//   ONE `.dag` program → a multi-language, multi-endpoint application.
+//   The structural guarantee is gate #28 `omni_layers_share_one_node_
+//   tree`: all projected artifacts share ONE `Node` tree — coherence is
+//   STRUCTURAL, not test-checked. The N-target projection set (gate #28
+//   is layer-count-agnostic; canvas Q4 EXTEND, NOT a parallel gate —
+//   INVARIANTS P1):
+//     • Rust backend            — Shape-A (existing language model)
+//     • C++ backend (variant)   — Shape-A
+//     • TypeScript + React UI   — Shape-A (canvas Q2-a: a React component
+//                                 IS TS source at emit time; Q5-a:
+//                                 `Component` is `Behavior::Bind`, no new
+//                                 substrate kind)
+//     • OpenAPI wire contract   — Shape-B (`extdeps/formats/openapi.dag`)
+//     • SQL DDL persistence     — Shape-B (canvas #4 fork (a): emitted
+//                                 THROUGH `extdeps/formats/sql.dag`, a
+//                                 grounded ISO-SQL format model, so the
+//                                 schema is coercion-checked — never a
+//                                 string DDL printout, ruled out as the
+//                                 emit-side templating smell)
+//     • Markdown docs           — Shape-B
+//
+//   Endpoint partitioning (which program fragment runs where) is
+//   expressed via `extdeps/coordination.dag`'s `Endpoint` /
+//   `DeploymentUnit`; the cross-endpoint wire contract derives from the
+//   shared domain types (one `Node` tree ⇒ Rust and TypeScript carry the
+//   SAME domain types by construction). Cross-target consistency is
+//   therefore structural here and L5-tested downstream, not re-asserted
+//   by a parallel mechanism in this file.
+//
+// ── WORKED ACCEPTANCE (design contract — Wave-3+ worker fills to satisfy;
+//     refinement-free per the Wave-0 discipline above) ──
+//
+//   A. Inverse-grammar emit (T-11, golden). A typed `InferredTree` node
+//      for a record + a target language model → that target's concrete
+//      syntax, produced by the INVERSE walk of the target's grammar-as-
+//      data. Round-trips: `parse(emit(n, t)) == n` for every Shape-A `t`
+//      (the bidirectional relation authored once, consumed both ways).
+//
+//   B. Fail-closed on un-emittable (T-11, Diagnostic path). A node whose
+//      concept has no grounded production in target `t`'s grammar model
+//      → a precise `Diagnostic` (which concept, which target, which
+//      missing production) — NEVER a fabricated or templated string.
+//      The architecture refusing to lie is the demonstrable result.
+//
+//   C. Same tree, five realizations (T-11). One `InferredTree` →
+//      rust/python/go/cpp/typescript artifacts, each the inverse walk of
+//      its own grammar model; differences are cost-realize-derived and
+//      inspectable per target, never an emit special-case.
+//
+//   D. ONE Node tree, N projections (T-16, gate #28). One omni `.dag`
+//      program → {Rust, TS+React, OpenAPI, SQL DDL, Markdown}, all read
+//      off the SAME `Node` tree. The Rust and TS domain types are
+//      structurally the same node — wire-contract derivation needs no
+//      separate declaration; divergence is impossible by construction,
+//      not caught by a test.
+//
+//   E. Endpoint partition coherence (T-16). A `DeploymentUnit` over two
+//      `Endpoint`s (backend Rust + frontend TS/React) → each fragment
+//      emits for its endpoint's language; the `WireContract` between
+//      them is the shared-type projection, fail-closed if the two
+//      endpoints' views of a domain type diverge (they cannot, given
+//      gate #28 — this Acceptance proves the impossibility is structural).
+//
+// I/O — Owns (immutable contract; grounded in merged `00_compile.dag` /
+//   `05_emit.dag` `Owns`, NOT a TASKS invention — keep `Result<…,
+//   Diagnostic>` here; do NOT standardize to `Outcome<…>` without
+//   changing `00_compile.dag` in the same commit train):
+//
+//   - emit: (InferredTree, TargetModel) -> Result<TargetSource, Diagnostic>
+//       the emit boundary / U1 Realize phase; structural inverse of
+//       `ingest`; the single per-target (T-11) and omni (T-16) authority.
+//   - compile: (Source, TargetModel) -> Result<TargetSource, Diagnostic>
+//       the orchestrator, `emit ∘ core ∘ ingest` (T-10-owned composition;
+//       referenced here only for the literal `Owns` alignment).
+//
+// Consumes (closed; reference only — no new files, substrate extension =
+//   STOP signal):
+//   - std/node.dag           — the universal `Node` IR (gate #28: ONE tree)
+//   - std/diagnostic.dag     — `Result` / `Diagnostic` fail-closed branch
+//   - extdeps/languages/{rust,python,go,cpp,typescript}.dag
+//                            — the ×5 Shape-A grammar-as-data models
+//                              (inverse walk = emit; never a template)
+//   - extdeps/formats/{openapi,sql}.dag — T-16 Shape-B wire/persistence
+//                              projections (coercion-checked, not printed)
+//   - extdeps/frameworks/react.dag      — T-16 React-as-TS (canvas Q2-a)
+//   - extdeps/coordination.dag          — T-16 endpoint partitioning
+//                              (`Endpoint` / `DeploymentUnit` /
+//                              `WireContract`)
+//
+// Dissolution disposition (Practice 4): 🟢 — no dissolution work. This
+//   PR authors the interface-freeze + Acceptance design layer ONLY; it
+//   mints NO carrier, no walker, no emit-template, no refinement. There
+//   is therefore no dissolution-class surface in the diff and no
+//   downstream dissolve named here. Carrier impl + witnesses are the
+//   NAMED Wave-3 triggers above (TASKS.md T-11 / T-16), not deferred
+//   prose.
+//
+// Status: scaffold — interface-freeze + Wave-0 design layer for T-11
+//   (per-target ×5) and T-16 (omni demo); fill per TASKS.md T-11 / T-16
+//   on the named refine triggers above.
+// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
+//   contract for the worker. Splitting this file requires explicit
+//   operator ratification (substrate extension = stop signal).
 
 
 module v4.compiler.emit
