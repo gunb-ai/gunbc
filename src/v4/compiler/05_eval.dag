@@ -106,20 +106,20 @@ type Verdict<T>
 type TestClaimVerdict = Verdict<Node>
 
 
-type TestClaimRun {
-  subject: TestClaimEvalSubject<Node>
-  cache: TestClaimCacheReceipt<Node>
+type TestClaimRun<T> {
+  subject: TestClaimEvalSubject<T>
+  cache: TestClaimCacheReceipt<T>
   verdict: TestClaimVerdict
 }
 
 
-fn test_claim_cache_receipt(
-  subject: TestClaimEvalSubject<Node>,
+fn test_claim_cache_receipt<T>(
+  subject: TestClaimEvalSubject<T>,
   claim_hash: Hash,
   evaluator_hash: Hash,
   resources_hash: Hash,
   extdeps_hash: Hash
-) -> TestClaimCacheReceipt<Node> {
+) -> TestClaimCacheReceipt<T> {
   TestClaimCacheReceipt {
     key: TestClaimCacheKey {
       claim: subject.claim,
@@ -197,7 +197,7 @@ fn run_test_claim(
   evaluator_hash: Hash,
   resources_hash: Hash,
   extdeps_hash: Hash
-) -> TestClaimRun {
+) -> TestClaimRun<Node> {
   let actual = eval_node(
     tree: subject.evaluator_input,
     inputs: Inputs { root: subject.evaluator_input }
@@ -279,35 +279,6 @@ fn t22_ci_claim(label: String, input: Node, expected_reason: Symbol) -> TestClai
 }
 
 
-type CiTestClaimRun {
-  subject: TestClaimEvalSubject<CiPipeline>
-  cache: TestClaimCacheReceipt<CiPipeline>
-  verdict: TestClaimVerdict
-}
-
-
-fn test_claim_ci_cache_receipt(
-  subject: TestClaimEvalSubject<CiPipeline>,
-  claim_hash: Hash,
-  evaluator_hash: Hash,
-  resources_hash: Hash,
-  extdeps_hash: Hash
-) -> TestClaimCacheReceipt<CiPipeline> {
-  TestClaimCacheReceipt {
-    key: TestClaimCacheKey {
-      claim: subject.claim,
-      context: subject.context,
-      claim_node: subject.claim_node,
-      evaluator_input: subject.evaluator_input,
-      claim_hash: claim_hash,
-      evaluator_hash: evaluator_hash,
-      resources_hash: resources_hash,
-      extdeps_hash: extdeps_hash
-    }
-  }
-}
-
-
 fn t22_ci_context() -> EvalContext {
   EvalContext {
     evaluator: t22_symbol_node(s: t22_ci_evaluator),
@@ -327,11 +298,11 @@ fn t22_ci_subject(claim_node: Node, claim: TestClaim, pipeline: CiPipeline) -> T
 }
 
 
-fn t22_ci_run(subject: TestClaimEvalSubject<CiPipeline>) -> CiTestClaimRun {
+fn t22_ci_run(subject: TestClaimEvalSubject<CiPipeline>) -> TestClaimRun<CiPipeline> {
   let actual = t22_ci_outcome(actual: ci_pipeline_well_formed(p: subject.evaluator_input))
-  CiTestClaimRun {
+  TestClaimRun {
     subject: subject,
-    cache: test_claim_ci_cache_receipt(
+    cache: test_claim_cache_receipt(
       subject: subject,
       claim_hash: t22_hash_claim,
       evaluator_hash: t22_hash_evaluator,
@@ -373,7 +344,7 @@ data subject_ci_dangling_bootstrap_output: TestClaimEvalSubject<CiPipeline> = t2
 )
 
 
-data run_ci_dangling_bootstrap_output: CiTestClaimRun = t22_ci_run(subject: subject_ci_dangling_bootstrap_output)
+data run_ci_dangling_bootstrap_output: TestClaimRun<CiPipeline> = t22_ci_run(subject: subject_ci_dangling_bootstrap_output)
 
 
 data claim_ci_duplicate_job_id: TestClaim = t22_ci_claim(
@@ -398,7 +369,7 @@ data subject_ci_duplicate_job_id: TestClaimEvalSubject<CiPipeline> = t22_ci_subj
 )
 
 
-data run_ci_duplicate_job_id: CiTestClaimRun = t22_ci_run(subject: subject_ci_duplicate_job_id)
+data run_ci_duplicate_job_id: TestClaimRun<CiPipeline> = t22_ci_run(subject: subject_ci_duplicate_job_id)
 
 
 data claim_ci_duplicate_gate_id: TestClaim = t22_ci_claim(
@@ -423,7 +394,7 @@ data subject_ci_duplicate_gate_id: TestClaimEvalSubject<CiPipeline> = t22_ci_sub
 )
 
 
-data run_ci_duplicate_gate_id: CiTestClaimRun = t22_ci_run(subject: subject_ci_duplicate_gate_id)
+data run_ci_duplicate_gate_id: TestClaimRun<CiPipeline> = t22_ci_run(subject: subject_ci_duplicate_gate_id)
 
 
 data claim_ci_dangling_need: TestClaim = t22_ci_claim(
@@ -447,7 +418,7 @@ data subject_ci_dangling_need: TestClaimEvalSubject<CiPipeline> = t22_ci_subject
 )
 
 
-data run_ci_dangling_need: CiTestClaimRun = t22_ci_run(subject: subject_ci_dangling_need)
+data run_ci_dangling_need: TestClaimRun<CiPipeline> = t22_ci_run(subject: subject_ci_dangling_need)
 
 
 data claim_ci_dangling_gate_job: TestClaim = t22_ci_claim(
@@ -471,7 +442,7 @@ data subject_ci_dangling_gate_job: TestClaimEvalSubject<CiPipeline> = t22_ci_sub
 )
 
 
-data run_ci_dangling_gate_job: CiTestClaimRun = t22_ci_run(subject: subject_ci_dangling_gate_job)
+data run_ci_dangling_gate_job: TestClaimRun<CiPipeline> = t22_ci_run(subject: subject_ci_dangling_gate_job)
 
 
 data claim_ci_dependency_cycle: TestClaim = t22_ci_claim(
@@ -497,4 +468,4 @@ data subject_ci_dependency_cycle: TestClaimEvalSubject<CiPipeline> = t22_ci_subj
 )
 
 
-data run_ci_dependency_cycle: CiTestClaimRun = t22_ci_run(subject: subject_ci_dependency_cycle)
+data run_ci_dependency_cycle: TestClaimRun<CiPipeline> = t22_ci_run(subject: subject_ci_dependency_cycle)
