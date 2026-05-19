@@ -81,7 +81,6 @@ fn empty_canonical_symbol_set() -> Set<Symbol> {
 }
 
 
-// `[]` pinned at a concrete return type — generic `Outcome` `Produced` does not.
 fn empty_edge_list() -> List<Edge> {
   []
 }

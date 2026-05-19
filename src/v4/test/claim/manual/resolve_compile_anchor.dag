@@ -50,7 +50,7 @@ fn anchor_resolve_wave1_service_atom_via_canonical_symbols() -> Outcome<Resolved
 }
 
 
-// Multi-edge Conj coverage — DECISIONS CP-1b item 10.
+// DECISIONS CP-1b item 10.
 fn anchor_resolve_wave1_multi_edge_conj_via_canonical_symbols() -> Outcome<ResolvedTree> {
   resolve(
     tree: Node {
@@ -81,7 +81,7 @@ fn anchor_resolve_wave1_multi_edge_conj_via_canonical_symbols() -> Outcome<Resol
 }
 
 
-// Arity-3 Bind coverage — DECISIONS CP-1b items 3 and 10.
+// DECISIONS CP-1b items 3 and 10.
 fn anchor_resolve_wave1_bind_binder_use() -> Outcome<ResolvedTree> {
   resolve(
     tree: Node {
