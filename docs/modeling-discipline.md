@@ -513,7 +513,7 @@ four things — nothing else survives:
    - **Required — coproduct classification tag.** Every coproduct (a
      `type` with N ≥ 2 variants) carries a one-line tag with its
      🟢/🟡/🔴 classification emoji (operator directive 2026-05-17), e.g.
-     `// 🟡 coproduct dissolution — DECISIONS.md OS-1`. The emoji stays
+     `// 🟡 coproduct dissolution — TASKS.md T-4 · <Practice-4 slug>`. The emoji stays
      *on the coproduct*; the dissolution patterns / named
      trigger are argued **off the carrier** in the PR thread (Practice 4). This is not optional —
      a coproduct with no in-file 🟢/🟡/🔴 tag blocks review.
