@@ -398,6 +398,10 @@ substrate imported them, so the cut is a pure scope reduction.
   resolve stage contract is "identifier binding to declarations".
 - The sugar-name authority is the `LanguageModel`'s, consumed — never
   re-minted in this stage (single-authority, Practice 5).
+- **CP-1b bucket C (native `.dag` LM):** `DagLanguageModel` carries
+  `canonical_symbols: Set<Symbol>` as declared data; resolve reads that field
+  only—no inferring the native C3 prelude `Set` from void lex/grammar shape
+  inside `03_resolve.dag` (DECISIONS §CP-1b item 2).
 
 **Reference**:
 - v2: `src/v2/03_normalize.dag`, `src/v2/03_resolve.dag`
@@ -917,6 +921,20 @@ All 5 artifacts share ONE Node tree (per gate #28 omni_layers_share_one_node_tre
 **Scope**: L (large — closes the v3 hand-authored-CI gap; dissolves the shell bridge)
 
 **Reference**: THESIS:223-226 + v4-close-interrogation.md §3.2 + v3 gate #98 (the gap not to reproduce)
+
+---
+
+## Watch — `docs/audit/coproduct-anemia-inventory.md` (v4 coproduct sum census)
+
+**P5 dissolution (repo-checkable).** This row is the **stable** completion gate for the inventory artifact — not a dashboard session handle.
+
+**Closes when all hold:**
+
+1. `docs/audit/coproduct-anemia-inventory.md` enumerates **274** corpus sums; the **full** corpus table carries **no** `DEFERRED` placeholder in **grounding-axis columns (A)(B)(C)** (columns **8–10**) for any row, and **no** `DEFERRED` in **coproduct-modeling columns 4–7** for any row — every row has substantive hand-authored modeling notes read off the cited `.dag` fragment in cols **4–7**, per the Method bar in that file.
+2. The inventory’s **Method** and **Summary** sections describe completion in terms of **this structural condition** (and, where useful, stable intent in `ROADMAP.md` / `MODELING.md` / `INVARIANTS.md` plus the **no parallel comment-ledgers** standing rule in `docs/modeling-discipline.md` — **not** a resurrected standalone `DECISIONS.md` path), not a session nickname as the sole dissolution trigger.
+3. The landing PR updates **this bullet** with the merge SHA (or the operator folds the obligation elsewhere and edits this section accordingly).
+
+Until (1)–(3): the partial table with `DEFERRED` cells is **honest interim state**; reviewers use the checkpoint batch + exemplars as the depth bar, not as “done.”
 
 ---
 
