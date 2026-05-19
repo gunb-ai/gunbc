@@ -1,10 +1,11 @@
 // src/v4/extdeps/languages/llvm_ir.dag
-// Scope: LLVM 18 LangRef IR structural vocabulary (T-4.12).
+// Scope: LLVM 18 LangRef IR structural vocabulary (SSA-oriented types, instructions, terminators, and related carriers).
 // Owns: FloatKind, LlvmType, VectorScaling, StructPacking, VarArg, LlvmConstant, LlvmValue, BinaryOpcode, ConversionOpcode, IntPredicate, FloatPredicate, ConstExprOpcode, PhiIncoming, PhiNode, SwitchCase, CallArgument, CallResult, LandingPadCleanup, LandingClause, AtomicOrdering, CmpXchgSuccessOrdering, CmpXchgFailureOrdering, FenceOrdering, AtomicRmwOrdering, AtomicRmwOp, LlvmInstruction, LoadOrdering, StoreOrdering, LoadAtomicity, StoreAtomicity, Terminator, UnwindDest, BasicBlock, Linkage, FunctionBody, FunctionParameter, LlvmFunction, GlobalMutability, GlobalInitializer, LlvmGlobal, NamedStructDef, LlvmModule, unwind_successors, block_successors, block_well_formed, FidelityDisposition, FidelityFeature, feature_disposition
 // Consumes: std/node.dag (Symbol); std/nat.dag (Nat); std/cardinality.dag (NonZeroNat); Int kernel-ambient.
-// Status: T-4.12 PASS (B2-OMNI); import v4.std.node Symbol; import v4.std.nat Nat; import v4.std.cardinality NonZeroNat.
+// Status: import v4.std.node Symbol; v4.std.nat Nat; v4.std.cardinality NonZeroNat.
 // Anchor: https://releases.llvm.org/18.1.8/docs/LangRef.html
-// Ledger: dissolution slugs (PR #3229): CP-3229-GREEN-TERMINAL, SL-3229-LLVM-OPS, SL-3229-LLVM-WIDTH.
+// Ledger: CP-3229-GREEN-TERMINAL, SL-3229-LLVM-OPS, SL-3229-LLVM-WIDTH.
+// 🟡
 
 module v4.extdeps.languages.llvm_ir
 
@@ -16,7 +17,7 @@ import v4.std.node { Symbol }
 
 
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type FloatKind
   = HalfFloat
   | BFloatFloat
@@ -27,7 +28,7 @@ type FloatKind
   | PpcFp128Float
 
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type LlvmType
   = VoidType
   | LabelType
@@ -43,25 +44,25 @@ type LlvmType
   | NamedType { name: Symbol }
 
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type VectorScaling
   = FixedVector
   | ScalableVector
 
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type StructPacking
   = NaturalAligned
   | Packed
 
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type VarArg
   = FixedArity
   | Variadic
 
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type LlvmConstant
   = IntConstant { ty: LlvmType, value: Int }
   | FloatConstant { ty: LlvmType, bits: Int }
@@ -76,7 +77,7 @@ type LlvmConstant
   | ConstantExpr { op: ConstExprOpcode, operands: List<LlvmConstant>, result_type: LlvmType }
 
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type LlvmValue
   = LocalRef { name: Symbol }
   | ConstantOperand { constant: LlvmConstant }
@@ -84,14 +85,14 @@ type LlvmValue
 
 
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type BinaryOpcode
   = OpAdd | OpSub | OpMul | OpUDiv | OpSDiv | OpURem | OpSRem
   | OpShl | OpLShr | OpAShr | OpAnd | OpOr | OpXor
   | OpFAdd | OpFSub | OpFMul | OpFDiv | OpFRem
 
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type ConversionOpcode
   = OpTrunc | OpZExt | OpSExt
   | OpFPTrunc | OpFPExt
@@ -99,14 +100,14 @@ type ConversionOpcode
   | OpPtrToInt | OpIntToPtr | OpBitCast | OpAddrSpaceCast
 
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type IntPredicate
   = IcmpEq | IcmpNe
   | IcmpUgt | IcmpUge | IcmpUlt | IcmpUle
   | IcmpSgt | IcmpSge | IcmpSlt | IcmpSle
 
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type FloatPredicate
   = FcmpFalse
   | FcmpOeq | FcmpOgt | FcmpOge | FcmpOlt | FcmpOle | FcmpOne | FcmpOrd
@@ -114,7 +115,7 @@ type FloatPredicate
   | FcmpTrue
 
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type ConstExprOpcode
   = CeTrunc | CePtrToInt | CeIntToPtr | CeBitCast
   | CeAddrSpaceCast | CeGetElementPtr
@@ -152,25 +153,25 @@ type CallArgument {
 }
 
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type CallResult
   = VoidCall
   | ValueCall { name: Symbol, result_type: LlvmType }
 
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type LandingPadCleanup
   = IsCleanup
   | NotCleanup
 
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type LandingClause
   = CatchClause { type_info: LlvmValue }
   | FilterClause { type_infos: List<LlvmValue> }
 
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type AtomicOrdering
   = OrderingUnordered
   | OrderingMonotonic
@@ -180,7 +181,7 @@ type AtomicOrdering
   | OrderingSeqCst
 
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type CmpXchgSuccessOrdering
   = SuccessMonotonic
   | SuccessAcquire
@@ -188,20 +189,20 @@ type CmpXchgSuccessOrdering
   | SuccessAcqRel
   | SuccessSeqCst
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type CmpXchgFailureOrdering
   = FailureMonotonic
   | FailureAcquire
   | FailureSeqCst
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type FenceOrdering
   = FenceAcquire
   | FenceRelease
   | FenceAcqRel
   | FenceSeqCst
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type AtomicRmwOrdering
   = RmwOrdMonotonic
   | RmwOrdAcquire
@@ -210,14 +211,14 @@ type AtomicRmwOrdering
   | RmwOrdSeqCst
 
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type AtomicRmwOp
   = RmwXchg | RmwAdd | RmwSub | RmwAnd | RmwNand | RmwOr | RmwXor
   | RmwMax | RmwMin | RmwUMax | RmwUMin | RmwFAdd | RmwFSub
   | RmwFMax | RmwFMin | RmwUIncWrap | RmwUDecWrap
 
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type LlvmInstruction
   = Binary {
       result: Symbol
@@ -358,14 +359,14 @@ type LlvmInstruction
 
 
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type LoadOrdering
   = LoadUnordered
   | LoadMonotonic
   | LoadAcquire
   | LoadSeqCst
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type StoreOrdering
   = StoreUnordered
   | StoreMonotonic
@@ -373,18 +374,18 @@ type StoreOrdering
   | StoreSeqCst
 
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type LoadAtomicity
   = PlainLoad
   | AtomicLoad { ordering: LoadOrdering }
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type StoreAtomicity
   = PlainStore
   | AtomicStore { ordering: StoreOrdering }
 
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type Terminator
   = RetVoid
   | RetValue { value: LlvmValue }
@@ -413,7 +414,7 @@ type Terminator
   | CatchRet { catch_pad: LlvmValue, successor: Symbol }
 
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type UnwindDest
   = UnwindToCaller
   | UnwindToLabel { target: Symbol }
@@ -428,7 +429,7 @@ type BasicBlock {
 }
 
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type Linkage
   = LinkagePrivate
   | LinkageInternal
@@ -443,7 +444,7 @@ type Linkage
   | LinkageExternalWeak
 
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type FunctionBody
   = Declared
   | Defined { entry: BasicBlock, rest: List<BasicBlock> }
@@ -467,13 +468,13 @@ type LlvmFunction {
 }
 
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type GlobalMutability
   = MutableGlobal
   | ConstantGlobal
 
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type GlobalInitializer
   = ExternalInit
   | InitializedWith { constant: LlvmConstant }
@@ -543,14 +544,14 @@ fn block_well_formed(b: BasicBlock) -> Bool {
 }
 
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type FidelityDisposition
   = Modeled
   | DeclaredNormalized { feature: FidelityFeature }
   | FailClosed { feature: FidelityFeature }
 
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type FidelityFeature
   = StructuralCore
   | SsaValueSpelling
