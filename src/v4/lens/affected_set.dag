@@ -49,7 +49,6 @@ type FrontierDecision
 // 🟢 coproduct dissolution — DECISIONS.md #3153-subsumed; IRT-1 whole/changed-subgraph gate.
 type ReExecFrontier
   = ChangedSubgraphFrontier {
-      roots: List<Path>,
       decisions: Map<ExclusionKey, FrontierDecision>
     }
   | WholeDagFailClosed { reason: Symbol }
@@ -86,7 +85,6 @@ type PropagationReceipt
 // 🟢 coproduct dissolution — DECISIONS.md #3153-subsumed; accumulator mirrors ReExecFrontier authority.
 type FrontierAcc
   = ChangedSubgraphAcc {
-      roots: List<Path>,
       decisions: Map<ExclusionKey, FrontierDecision>
     }
   | WholeDagAcc { reason: Symbol }
@@ -94,7 +92,6 @@ type FrontierAcc
 
 fn empty_frontier_acc() -> FrontierAcc {
   ChangedSubgraphAcc {
-    roots: [],
     decisions: empty_map()
   }
 }
@@ -102,9 +99,8 @@ fn empty_frontier_acc() -> FrontierAcc {
 
 fn frontier_from_acc(acc: FrontierAcc) -> ReExecFrontier {
   match acc {
-    ChangedSubgraphAcc { roots: roots, decisions: decisions } =>
+    ChangedSubgraphAcc { decisions: decisions } =>
       ChangedSubgraphFrontier {
-        roots: roots,
         decisions: decisions
       }
     WholeDagAcc { reason: r } => WholeDagFailClosed { reason: r }
@@ -131,9 +127,8 @@ fn edge_key(edge: FrontierEdge) -> ExclusionKey {
 fn mark_rerun(acc: FrontierAcc, key: ExclusionKey) -> FrontierAcc {
   match acc {
     WholeDagAcc { reason: r } => WholeDagAcc { reason: r }
-    ChangedSubgraphAcc { roots: roots, decisions: decisions } =>
+    ChangedSubgraphAcc { decisions: decisions } =>
       ChangedSubgraphAcc {
-        roots: roots,
         decisions: map_insert(decisions, key, Rerun)
       }
   }
@@ -143,9 +138,8 @@ fn mark_rerun(acc: FrontierAcc, key: ExclusionKey) -> FrontierAcc {
 fn mark_excluded(acc: FrontierAcc, key: ExclusionKey, proof: ExclusionProof) -> FrontierAcc {
   match acc {
     WholeDagAcc { reason: r } => WholeDagAcc { reason: r }
-    ChangedSubgraphAcc { roots: roots, decisions: decisions } =>
+    ChangedSubgraphAcc { decisions: decisions } =>
       ChangedSubgraphAcc {
-        roots: roots,
         decisions: map_insert(decisions, key, Excluded { proof: proof })
       }
   }
@@ -154,18 +148,6 @@ fn mark_excluded(acc: FrontierAcc, key: ExclusionKey, proof: ExclusionProof) -> 
 
 fn mark_whole_dag(acc: FrontierAcc, reason: Symbol) -> FrontierAcc {
   WholeDagAcc { reason: reason }
-}
-
-
-fn append_root(acc: FrontierAcc, path: Path) -> FrontierAcc {
-  match acc {
-    WholeDagAcc { reason: r } => WholeDagAcc { reason: r }
-    ChangedSubgraphAcc { roots: roots, decisions: decisions } =>
-      ChangedSubgraphAcc {
-        roots: list_push(roots, path),
-        decisions: decisions
-      }
-  }
 }
 
 
@@ -188,10 +170,7 @@ fn expand_path(read_model: AffectedSetRead, dag: Dag, acc: FrontierAcc, path: Pa
   fold(read_model.changed_subgraph_frontier_edges(dag, path), init: acc, f: fn(acc2, edge) {
     match read_model.propagation_receipt(dag, edge) {
       Propagates =>
-        append_root(
-          acc: mark_rerun(acc: acc2, key: edge_key(edge: edge)),
-          path: edge.consumer
-        )
+        mark_rerun(acc: acc2, key: edge_key(edge: edge))
       DoesNotPropagate { proof: p } =>
         mark_excluded(acc: acc2, key: edge_key(edge: edge), proof: p)
       PropagationUnknown { reason: r } =>
@@ -222,10 +201,7 @@ fn seed_edit_frontier(
       expand_path(
         read_model: read_model,
         dag: dag,
-        acc: append_root(
-          acc: mark_rerun(acc: acc, key: root_key(path: edit.at)),
-          path: edit.at
-        ),
+        acc: mark_rerun(acc: acc, key: root_key(path: edit.at)),
         path: edit.at
       )
     BoundaryUnknown { reason: r } =>
