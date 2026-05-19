@@ -52,11 +52,11 @@ double-counting).
 - **🟡 gated** — substrate primitive does not exist yet; carries
   `feature:<primitive + owning task>` or `consumer:<named consumer>`
   + dissolve-on-arrival obligation. A 🟡 is a *committed*
-  surface→dissolve loop, not a parking spot. **Count today: ~36
-  bound to P1-P10 in § 1.1 (including the two #3225-merged findings
-  added at final-ready — see § 1.1 P4 and P5 unblocks columns), plus
-  ~2 pre-plan backlog (Section 3 VAGUE) not yet
-  rollable.**
+  surface→dissolve loop, not a parking spot. **Count today:** the
+  row-local units bound to P1-P10 in § 1.1 (including the two
+  #3225-merged findings added at final-ready — see § 1.1 P4 and P5
+  unblocks columns), plus 2 pre-plan VAGUE DECISIONS.md rows in
+  Section 3 not yet rollable.
 - **🟢 terminal** — audited and not a dissolution finding.
 
 **Pre-existing-tracker triage** (Section 3) adds two derived
@@ -158,56 +158,48 @@ PR #3245 without waiting on substrate.
 
 ### 1.2 🟡 → 🟢 burn-down
 
-Total 🟡 in the v4 substrate today (Section 2 + Section 3 VALID-🟡):
+This table is a dependency-ordered dispatch view, **not an arithmetic
+subtraction table**: rows mix DECISIONS rows, in-file cite groups,
+function findings, and cascades. The checkable count for each primitive
+is the row-local unit listed in §1.1; the last column states the
+dissolve-on-arrival effect without deriving a residual total.
 
-| primitive PR | 🟡 today | landing event | 🟡 after landing |
+| primitive PR | row-local 🟡 unit | landing event | dissolve-on-arrival effect |
 |---|---|---|---|
-| (baseline) | **~36** | — | — |
-| P1 lands | 2 row groups | `std/cardinality.dag` refinement (+ import lowering / bootstrap for extdeps `NonZeroNat`) | ~16 |
-| P2 lands | 5 named (+ 29 verilog sites converge in one sweep) | `std/collection.dag` Wave-A2 | ~11 named |
-| P3 lands | 2 named (+ 3 format parse cites) | T-6 + T-7 pipeline substrate | ~9 named |
-| P4 lands | 1 TypeScript status line + 1 row + 5 sites + 1 fn (`dag.dag canonical_symbols` #3225) | LanguageModel-axis rework family (T-4 + T-4.9) | ~3 named |
-| P5 cascade lands | 1 named (+ 3 walker sites in `03_resolve.dag` #3225) | scoped binding-harvest `fold_node` algebra (substrate: **#3297**) | ~1 |
-| P6 lands | 2 | FreeMonoid/Nat catamorphism | ~0 |
-| P7 lands | 1 | `nat_is_zero` | ~0 |
-| P9 landed | 0 | `lens/cost.dag` T-12 | ~0 |
-| P8 landed | 0 | Verilog constant_expression | ~0 |
-| P10 lands | 1 (after concretization) | constrained-generics syntax | **0** |
-
-(Residual column is illustrative — counts roll up imperfectly because
-some entries are counted with cascades — e.g. P5's `merge_binding_self`
-implicates its 3 named-harvest walker callers — and Section 3 VAGUE
-entries that concretize to a P# only enter their column on re-gate.
-The cumulative endpoint after all P1-P10 land is 0; the column shows
-qualitative trajectory, not strict arithmetic.)
+| P1 lands | 2 row groups | `std/cardinality.dag` refinement (+ import lowering / bootstrap for extdeps `NonZeroNat`) | closes the live cardinality/refinement row groups (`SL-3229-LLVM-OPS`, `SL-3229-PTX-DIM3`; `SL-3229-FLOAT-NOMINAL` joins only after re-gate). |
+| P2 lands | 5 named (+ 29 verilog sites converge in one sweep) | `std/collection.dag` Wave-A2 | closes the List non-empty / combinator-algebra group. |
+| P3 lands | 2 named (+ 3 format parse cites) | T-6 + T-7 pipeline substrate | closes tokenize/parse substrate findings plus the format parse-half cites. |
+| P4 lands | 1 TypeScript status line + 1 row + 5 sites + 1 fn (`dag.dag canonical_symbols` #3225) | LanguageModel-axis rework family (T-4 + T-4.9) | closes the post-D2 TypeScript status line, Verilog D3200 row/sites, and `dag.dag` canonical-symbols function. |
+| P5 cascade lands | 1 named (+ 3 walker sites in `03_resolve.dag` #3225) | scoped binding-harvest `fold_node` algebra (substrate: **#3297**) | closes the resolver binding-harvest cascade. |
+| P6 lands | 2 | FreeMonoid/Nat catamorphism | closes the FreeMonoid/Nat catamorphism findings. |
+| P7 lands | 1 | `nat_is_zero` | closes the zero-discriminant predicate finding. |
+| P9 landed | 0 | `lens/cost.dag` T-12 | already closed; retained as receipt. |
+| P8 landed | 0 | Verilog constant_expression | already closed; retained as receipt. |
+| P10 lands | 1 (after concretization) | constrained-generics syntax | closes only after an owning task is assigned. |
 
 (R1 **landed** PR #3284; R2 **landed** PR #3245. These are not counted in
 the 🟡 burn-down because they dissolved outside the substrate-gap queue.)
 
 Caveats:
 
-1. **"🟡 today" counts only entries already bound to a P# in the
-   plan.** Section 2's fresh findings + Section 3's VALID-🟡 are
-   counted; **Section 3's 2 VAGUE DECISIONS.md rows are NOT** —
+1. **"row-local 🟡 unit" counts only entries already bound to that P#
+   in the plan.** Section 2's fresh findings + Section 3's VALID-🟡 are
+   included; **Section 3's 2 VAGUE DECISIONS.md rows are NOT** —
    they are pre-plan backlog (no concrete primitive to roll under
    yet). The burn-down lane drives the backlog first; once a VAGUE/
    INVALID entry is re-concretized to a `feature:` arrival that
    matches an existing P#, it rolls in and the corresponding row's
-   🟡-count grows. The numbers above project the post-concretization
-   landing impact under the assumption that the pre-plan backlog
-   concretizes uniformly to the canonical owners named in Section 3
-   (e.g. refinement-side VAGUE → P1; parser-side VAGUE → P3).
+   local count grows.
 2. **P10 lands** requires the owning task be assigned first; the
    "🟡 → 🟢 sweep for P10" only fires after concretization. The
    `⛔ needs-concretization` flag on P10 in § 1.1 is structurally
    blocking that row's DAG entry.
 
-**P1 is the headline.** Landing the remaining `std/cardinality.dag`
-refinement substrate dissolves more than half of the v4 substrate's
-outstanding 🟡 debt in a single sweep — by 🟡-count it dominates every other
-substrate PR by 4× or more. The S1 substrate track should prioritize
-P1 ahead of P2-P10. R2 already jumped that queue and landed because it
-needed no absent substrate.
+**P1 remains high-priority.** Landing the remaining `std/cardinality.dag`
+refinement substrate closes the live P1 row groups and creates the
+canonical home for `SL-3229-FLOAT-NOMINAL` once that VAGUE row is
+re-gated. R2 already jumped the queue and landed because it needed no
+absent substrate.
 
 ---
 
