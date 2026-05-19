@@ -37,8 +37,9 @@ import v4.extdeps.languages.llvm_ir { LlvmInstruction }
 
 
 // RULING-1: needs-more-work — minimal carrier until T-12 cost lattice/fold lands.
+// 🟡 coproduct dissolution — T22-INFER-SYMBOLIC-COST-BRIDGE.
 type SymbolicCost
-// 🟡 coproduct dissolution — DECISIONS.md T22-INFER-SYMBOLIC-COST-BRIDGE
+// 🟡 coproduct dissolution — T22-INFER-SYMBOLIC-COST-BRIDGE
   = ConstantCost { value: Int }
   | UnknownCost { reason: String }
 
