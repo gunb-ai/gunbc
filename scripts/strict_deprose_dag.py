@@ -4,10 +4,10 @@
 Warning: every `//` line after `module` is deleted—non-idempotent if a target file gains
 authored in-body commentary; scoped to the pinned allowlist for that reason.
 
-Coproduct one-liners (`// 🟢|🟡|🔴 coproduct dissolution — <slug>.`) are (re)written from
-merge-base `92cb26402` Practice-4 / SL-3229 state (operator directive 2026-05-17, PR
-#3234 modeling-discipline alignment): an existing tag with the wrong slug is replaced
-so `--check` cannot pass on stale pointers.
+Coproduct one-liners (`// 🟢|🟡|🔴 coproduct dissolution · …`) are (re)written from merge-base
+`92cb26402` Practice-4 / SL-3229 state (operator directive 2026-05-17, PR #3234
+modeling-discipline alignment): an existing tag with the wrong slug is replaced so
+`--check` cannot pass on stale pointers.
 
 RULING-1 (operator 2026-05-19): each braced record `type` (not a sum coproduct) gets a
 single `// 🟢 grounded.` or `// 🟡 grounded.` line (lexeme-shaped `String` slots in
@@ -19,10 +19,11 @@ they are re-injected every run so spacing stays canonical.
 `type`, `data`, and `fn` binding in the `.dag` body (deduped by name), not only headline
 carriers—so regenerated headers stay aligned with actual exports.
 
-`// Ledger:` lists **dissolution slugs for the live substrate**: one slug per live sum
+`// Ledger:` lists **slug inventory for the live substrate**: one ledger ref per live sum
 coproduct (from the merge-base tag map) plus **EXTRA** non-coproduct scaffolds
 (`EXTRA_PART6_SLUGS_BY_REL`). A live coproduct name absent from the merge-base map is
-a hard failure (Practice 4 fail-closed).
+a hard failure (Practice 4 fail-closed). There is **no** separate maintained ledger file;
+slugs are merge-base-derived + script-enforced only (operator 2026-05-19).
 
 Run with `--check` to verify allowlisted files already match merge-base-derived output
 without writing (exit 1 on drift).
@@ -58,10 +59,8 @@ COPRODUCT_TAG_RE = re.compile(
 # extending a brittle per-field allowlist (composer-2 exploratory #3370).
 LEXEME_STRING_FIELD_RE = re.compile(r"\b\w*lexeme\s*:\s*String\b")
 
-PART6_SLUG_HEAD_RE = re.compile(r"^### (SL-3229-[A-Z0-9-]+|CP-3229-[A-Z0-9-]+)\b")
-
 # Non-coproduct merge-base receipts (strict de-prose strips their `//` bodies) that
-# must still have a Part 6 row + appear on the live `// Ledger:` line for inventory.
+# must still appear on the live `// Ledger:` line for inventory.
 EXTRA_PART6_SLUGS_BY_REL: dict[str, frozenset[str]] = {
     "src/v4/extdeps/languages/verilog.dag": frozenset(
         {
@@ -191,7 +190,7 @@ def verilog_yellow_ref(block: str) -> str:
     tail = block[pos:] if pos >= 0 else block
     ledger_header = tail.split("// Terminal:")[0]
     # `#3200` footers often live after `// Terminal:` in merge-base banners; scan the full
-    # authority tail, not only the pre-Terminal slice (DECISIONS.md §SL-3229-VERILOG-D3200).
+    # authority tail, not only the pre-Terminal slice (merge-base §SL-3229-VERILOG-D3200).
     if (
         "#3200" in block
         or "first meaning-consumer" in ledger_header
@@ -208,7 +207,7 @@ def verilog_yellow_ref(block: str) -> str:
 
 
 def coproduct_tag_from_merge_base(rel: str) -> dict[str, tuple[str, str]]:
-    """Map coproduct `type` name -> (emoji, Part-6 ref slug) from merge-base authority."""
+    """Map coproduct `type` name -> (emoji, ledger ref slug) from merge-base authority."""
     lines = git_merge_base_lines(rel)
     out: dict[str, tuple[str, str]] = {}
     for i, _ln in enumerate(lines):
@@ -277,7 +276,7 @@ def coproduct_type_names_in_path(path: Path) -> set[str]:
 def required_ledger_slugs(
     rel: str, tag_map: dict[str, tuple[str, str]], live_coproducts: set[str]
 ) -> set[str]:
-    """Part-6 slug inventory for the live `// Ledger:` line: current coproduct refs + EXTRA scaffolds."""
+    """Ledger slug inventory for the live `// Ledger:` line: current coproduct refs + EXTRA scaffolds."""
     unknown = live_coproducts - tag_map.keys()
     if unknown:
         print(
@@ -296,11 +295,19 @@ def format_ledger_line(
     rel: str, tag_map: dict[str, tuple[str, str]], live_coproducts: set[str]
 ) -> str:
     slugs = ", ".join(sorted(required_ledger_slugs(rel, tag_map, live_coproducts)))
-    return f"// Ledger: dissolution slugs (PR #3229): {slugs}.\n"
+    return f"// Ledger: {slugs}.\n"
+
+
+def format_grounded_r1_slice_marker(marker: str) -> str:
+    """RULING-1 slice groundedness line + blank line before `module` (marker has no required trailing newline)."""
+    stripped = marker.strip()
+    if stripped not in ("// 🟡", "// 🟢"):
+        raise SystemExit(f"RULING-1 marker must be '// 🟡' or '// 🟢', got {stripped!r}")
+    return stripped + "\n\n"
 
 
 def format_coproduct_tag(emoji: str, ref: str) -> str:
-    return f"// {emoji} coproduct dissolution — {ref}."
+    return f"// {emoji} coproduct dissolution · {ref}."
 
 
 def grounded_tag_for_record_body(body_lines: list[str]) -> str:
@@ -446,16 +453,10 @@ def rewrite(path: Path, header: str, rel: str, tag_map: dict[str, tuple[str, str
     path.write_text(materialize_deprose_text(path, rel, tag_map, header))
 
 
-def run_check(specs: list[tuple[str, str, str, str, str]]) -> None:
+def run_check(specs: list[tuple[str, str, str, str, str, str]]) -> None:
     """Exit 0 only if each allowlisted file already matches merge-base-derived output."""
-    union_required: set[str] = set()
-    for rel, *_rest in specs:
-        path = ROOT / rel
-        tag_map = coproduct_tag_from_merge_base(rel)
-        live = coproduct_type_names_in_path(path)
-        union_required |= required_ledger_slugs(rel, tag_map, live)
     drift: list[str] = []
-    for rel, scope, anchor, consumes, status in specs:
+    for rel, scope, anchor, consumes, status, grounded_r1 in specs:
         path = ROOT / rel
         tag_map = coproduct_tag_from_merge_base(rel)
         live = coproduct_type_names_in_path(path)
@@ -472,7 +473,7 @@ def run_check(specs: list[tuple[str, str, str, str, str]]) -> None:
             f"{status}\n"
             f"{anchor}\n"
             f"{format_ledger_line(rel, tag_map, live)}"
-            f"\n"
+            f"{format_grounded_r1_slice_marker(grounded_r1)}"
         )
         expected = materialize_deprose_text(path, rel, tag_map, header)
         actual = path.read_text()
@@ -491,41 +492,49 @@ def main() -> None:
         raise SystemExit("usage: strict_deprose_dag.py [--check]")
     check_only = argv == ["--check"]
 
-    specs: list[tuple[str, str, str, str, str]] = [
+    # Sixth field: operator RULING-1 slice groundedness (emoji-only; ratified in
+    # `docs/modeling-discipline.md` Practice 9; ledger doc retired 2026-05-19).
+    # Extdeps language slices 🟡 (Shape A emit/L5/L6 still open per v4-close-interrogation §14); std 🟢.
+    specs: list[tuple[str, str, str, str, str, str]] = [
         (
             "src/v4/extdeps/languages/verilog.dag",
             "// Scope: IEEE 1364-2005 Verilog structural carriers.",
             "// Anchor: https://standards.ieee.org/ieee/1364/3641/",
             "// Consumes: std/node.dag; std/nat.dag (Nat).",
-            "// Status: PASS; import v4.std.node Symbol; import v4.std.nat Nat.",
+            "// Status: import v4.std.node Symbol; v4.std.nat Nat.",
+            "// 🟡",
         ),
         (
             "src/v4/extdeps/languages/llvm_ir.dag",
-            "// Scope: LLVM 18 LangRef IR structural vocabulary (T-4.12).",
+            "// Scope: LLVM 18 LangRef IR structural vocabulary (SSA-oriented types, instructions, terminators, and related carriers).",
             "// Anchor: https://releases.llvm.org/18.1.8/docs/LangRef.html",
             "// Consumes: std/node.dag (Symbol); std/nat.dag (Nat); std/cardinality.dag (NonZeroNat); Int kernel-ambient.",
-            "// Status: T-4.12 PASS (B2-OMNI); import v4.std.node Symbol; import v4.std.nat Nat; import v4.std.cardinality NonZeroNat.",
+            "// Status: import v4.std.node Symbol; v4.std.nat Nat; v4.std.cardinality NonZeroNat.",
+            "// 🟡",
         ),
         (
             "src/v4/extdeps/languages/ptx.dag",
             "// Scope: NVIDIA PTX ISA 8.5 SIMT structural classifiers (param/shared state, registers, thread hierarchy).",
             "// Anchor: https://docs.nvidia.com/cuda/pdf/ptx_isa_8.5.pdf — TOC https://docs.nvidia.com/cuda/parallel-thread-execution/index.html",
             "// Consumes: std/nat.dag (Nat); std/cardinality.dag (PositiveUpperBoundedNat).",
-            "// Status: structural carriers present; conformance argued in PR review.",
+            "// Status: import v4.std.nat Nat; v4.std.cardinality PositiveUpperBoundedNat.",
+            "// 🟡",
         ),
         (
             "src/v4/std/integer.dag",
-            "// Scope: Abstract Int/UInt, fixed-width projections, Tier-2 divide/modulo (T-3).",
+            "// Scope: Abstract Int/UInt, fixed-width projections, divide/modulo carriers and diagnostics.",
             "// Anchor: https://en.wikipedia.org/wiki/Integer",
             "// Consumes: std/node.dag (Instantiation, Symbol); std/nat.dag (Nat); std/machine.dag (MachineWidth, PointerWidth, Word8, Word16, Word32, Word64, Word128); std/algebra.dag (Magma, Semigroup, Monoid, Group, AbelianGroup, Ring, OrderedRing, Ordering); std/diagnostic.dag (Diagnostic, Locus, Correction, NoCorrectionReason, Outcome<T> Tier-2 divide/modulo).",
-            "// Status: T-3 modeled.",
+            "// Status: std integer vocabulary (widths, group completion, divide/modulo outcomes).",
+            "// 🟢",
         ),
         (
             "src/v4/std/float.dag",
-            "// Scope: IEEE-754 Float32/Float64 semantic carrier + Tier-2 compare (T-3).",
+            "// Scope: IEEE-754 Float32/Float64 interchange, specials, body carriers, and ordered compare semantics.",
             "// Anchor: https://en.wikipedia.org/wiki/IEEE_754",
             "// Consumes: std/node.dag (Symbol); std/machine.dag (Bit, Word32, Word64); std/algebra.dag (Ordering, Less, Equal, Greater); std/diagnostic.dag (Diagnostic, Outcome, PortLocus, Produced, Rejected, Unavailable, UserInputBoundary); std/logic.dag (Bool); std/nat.dag (Nat, nat_is_zero, nat_compare).",
-            "// Status: T-3 modeled.",
+            "// Status: std float vocabulary (32/64, specials, IEEE-ordered compare).",
+            "// 🟢",
         ),
     ]
 
@@ -534,7 +543,7 @@ def main() -> None:
         return
 
     report: list[tuple[str, float]] = []
-    for rel, scope, anchor, consumes, status in specs:
+    for rel, scope, anchor, consumes, status, grounded_r1 in specs:
         path = ROOT / rel
         tag_map = coproduct_tag_from_merge_base(rel)
         live = coproduct_type_names_in_path(path)
@@ -551,7 +560,7 @@ def main() -> None:
             f"{status}\n"
             f"{anchor}\n"
             f"{format_ledger_line(rel, tag_map, live)}"
-            f"\n"
+            f"{format_grounded_r1_slice_marker(grounded_r1)}"
         )
         rewrite(path, header, rel, tag_map)
         c, t, pct = comment_ratio(path.read_text())
