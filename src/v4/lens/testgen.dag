@@ -55,12 +55,14 @@ type Generator<C> {
 }
 
 
+// RULING-1: needs-more-work; receipt: v2 source-root compile, execution coverage waits for materialized driver wiring.
 type CorpusEntry {
   path: AbsolutePath
   body: FileBody
 }
 
 
+// RULING-1: needs-more-work; receipt: v2 source-root compile, execution coverage waits for materialized driver wiring.
 type CorpusEnumerationRequest {
   filesystem: Filesystem
   root: AbsolutePath
@@ -69,30 +71,37 @@ type CorpusEnumerationRequest {
 }
 
 
+// RULING-1: needs-more-work; receipt: v2 source-root compile, execution coverage waits for materialized driver wiring.
 type CorpusEnumerationResult = Outcome<List<CorpusEntry>>
 
 
+// RULING-1: needs-more-work; receipt: v2 source-root compile, execution coverage waits for materialized driver wiring.
 type CorpusEnumerator {
   enumerate: fn(CorpusEnumerationRequest) -> CorpusEnumerationResult
 }
 
 
+// RULING-1: needs-more-work; receipt: v2 source-root compile, execution coverage waits for materialized driver wiring.
 type CorpusEntryIngestResult = Outcome<Node>
 
 
+// RULING-1: needs-more-work; receipt: v2 source-root compile, execution coverage waits for materialized driver wiring.
 type CorpusEntryIngestor {
   ingest: fn(CorpusEntry) -> CorpusEntryIngestResult
 }
 
 
+// RULING-1: needs-more-work; receipt: v2 source-root compile, execution coverage waits for materialized driver wiring.
 type CorpusLensReadResult<C> = Outcome<C>
 
 
+// RULING-1: needs-more-work; receipt: v2 source-root compile, execution coverage waits for materialized driver wiring.
 type CorpusLensReader<C> {
   read: fn(LensApplicabilitySubject) -> CorpusLensReadResult<C>
 }
 
 
+// RULING-1: needs-more-work; receipt: v2 source-root compile, execution coverage waits for materialized driver wiring.
 type CorpusLensObservation<C> {
   entry: CorpusEntry
   subject: LensApplicabilitySubject
@@ -100,9 +109,11 @@ type CorpusLensObservation<C> {
 }
 
 
+// RULING-1: needs-more-work; receipt: v2 source-root compile, execution coverage waits for materialized driver wiring.
 type CorpusLensDriveResult<C> = Outcome<List<CorpusLensObservation<C>>>
 
 
+// RULING-1: needs-more-work; receipt: v2 source-root compile, execution coverage waits for materialized driver wiring.
 type CorpusLensDriver<C> {
   enumerator: CorpusEnumerator
   ingestor: CorpusEntryIngestor
