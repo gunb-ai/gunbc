@@ -1,9 +1,29 @@
 // src/v4/compiler/04_infer.dag
 // Scope: inference from resolved tree to inferred tree.
-// Anchor: https://en.wikipedia.org/wiki/Type_inference
-// Owns: none.
-// Consumes: none.
-// Status: scaffold for T-9.
+// Owns: AlgebraRef, InferredFacts, InferredTree.
+// Consumes: v4.std.node, v4.std.cardinality.
+// Status: scaffold for T-9; IR-1 boundary carrier only.
 
 
 module v4.compiler.infer
+
+
+import v4.std.cardinality { TerminationProof }
+import v4.std.node { Node, Symbol }
+
+
+type AlgebraRef = Symbol
+
+
+type InferredFacts {
+  resolved_type: Node
+  inhabits: AlgebraRef
+  cost: Node
+  descent: TerminationProof
+}
+
+
+type InferredTree {
+  root: Node
+  facts: InferredFacts
+}

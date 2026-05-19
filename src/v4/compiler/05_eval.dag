@@ -1,12 +1,20 @@
 // src/v4/compiler/05_eval.dag
 // Scope: primary evaluation path over inferred tree/input subgraphs and TestClaim runner substrate.
-// Owns: InferredTree, Inputs, EvalContext, TestClaimTypedInput, TestClaimEvalSubject, TestClaimCacheKey, TestClaimCacheReceipt, Verdict, TestClaimRun, eval_node, run_test_claim.
-// Consumes: v4.std.node, v4.std.diagnostic, v4.std.verification, v4.workflow.ci.
+// Owns: Inputs, EvalContext, TestClaimTypedInput, TestClaimEvalSubject, TestClaimCacheKey, TestClaimCacheReceipt, Verdict, TestClaimRun, eval_node, run_test_claim.
+// Consumes: v4.compiler.infer, v4.std.node, v4.std.diagnostic, v4.std.verification, v4.workflow.ci.
 // Status: Wave-0 substrate; evaluator bodies remain structural until T-9 inferred-tree semantics.
 
 module v4.compiler.eval
 
 
+import v4.compiler.infer {
+  InferredFacts,
+  InferredTree
+}
+import v4.std.cardinality {
+  RankingDimension,
+  TerminationProof
+}
 import v4.std.node {
   Atom,
   Hash,
@@ -54,9 +62,6 @@ import v4.workflow.ci {
   v2_compile_src_v4
 }
 import v4.workflow.bootstrap { v4_stage0_binary }
-
-
-type InferredTree = Node
 
 
 type Inputs {
@@ -154,14 +159,14 @@ fn eval_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
 
 
 fn eval_node(tree: InferredTree, inputs: Inputs) -> Outcome<Node> {
-  if node_well_formed(n: tree) {
+  if node_well_formed(n: tree.root) {
     if node_well_formed(n: inputs.root) {
       Produced { value: inputs.root }
     } else {
       Rejected { diagnostic: eval_diagnostic(reason: eval_rejected_invalid_node, node: inputs.root) }
     }
   } else {
-    Rejected { diagnostic: eval_diagnostic(reason: eval_rejected_invalid_node, node: tree) }
+    Rejected { diagnostic: eval_diagnostic(reason: eval_rejected_invalid_node, node: tree.root) }
   }
 }
 
@@ -307,6 +312,10 @@ data t22_other_gate: Symbol = t22_other_gate
 data t22_ci_evaluator: Symbol = t22_ci_evaluator
 data t22_ci_resources: Symbol = t22_ci_resources
 data t22_ci_extdeps: Symbol = t22_ci_extdeps
+data t22_inferred_type: Symbol = t22_inferred_type
+data t22_inferred_inhabits: Symbol = t22_inferred_inhabits
+data t22_inferred_cost: Symbol = t22_inferred_cost
+data t22_inferred_descent: Symbol = t22_inferred_descent
 // 🟡 typed-input bridge scaffold — DECISIONS.md T22-EVAL-TYPED-INPUT-BRIDGE
 // 🟡 cache-hash scaffold — DECISIONS.md T22-EVAL-CACHE-HASHES
 data t22_hash_claim: Hash = t22_hash_claim
@@ -321,6 +330,23 @@ fn t22_symbol_node(s: Symbol) -> Node {
     children: []
   }
 }
+
+
+fn t22_inferred_tree(root: Node) -> InferredTree {
+  InferredTree {
+    root: root,
+    facts: InferredFacts {
+      resolved_type: t22_symbol_node(s: t22_inferred_type),
+      inhabits: t22_inferred_inhabits,
+      cost: t22_symbol_node(s: t22_inferred_cost),
+      descent: TerminationProof {
+        non_increasing: [],
+        strict: RankingDimension { measured: t22_inferred_descent }
+      }
+    }
+  }
+}
+
 
 fn t22_ci_claim(label: String, input: Node, expected_reason: Symbol) -> TestClaim {
   TestClaim {
@@ -352,7 +378,7 @@ fn t22_ci_subject(
     claim_node: input,
     claim: t22_ci_claim(label: case.label, input: typed_input.claim_input, expected_reason: case.expected_reason),
     context: t22_ci_context(),
-    tree: typed_input.claim_input,
+    tree: t22_inferred_tree(root: typed_input.claim_input),
     input: typed_input
   }
 }
