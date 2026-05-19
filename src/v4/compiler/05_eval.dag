@@ -97,6 +97,7 @@ type TestClaimCacheKey<T> {
 
 type TestClaimCacheReceipt<T> {
   key: TestClaimCacheKey<T>
+  claim_input: Node
 }
 
 
@@ -140,7 +141,8 @@ fn test_claim_cache_receipt<T>(
       evaluator_hash: evaluator_hash,
       resources_hash: resources_hash,
       extdeps_hash: extdeps_hash
-    }
+    },
+    claim_input: subject.input.claim_input
   }
 }
 
@@ -278,7 +280,8 @@ fn run_test_claim(
 }
 
 
-fn test_claim_pass_receipt<T>(run: TestClaimRun<T>, input: Node) -> Outcome<TestClaimPassReceipt<T>> {
+fn test_claim_ci_pass_receipt(run: TestClaimRun<CiPipeline>) -> Outcome<TestClaimPassReceipt<CiPipeline>> {
+  let input = run.cache.claim_input
   match run.verdict {
     Pass => Produced { value: TestClaimPassReceipt { cache: run.cache } }
     Fail { actual: _ } => Rejected {
@@ -416,7 +419,7 @@ data subject_ci_dangling_bootstrap_output: TestClaimEvalSubject<CiPipeline> = t2
 data run_ci_dangling_bootstrap_output: TestClaimRun<CiPipeline> = t22_ci_run(subject: subject_ci_dangling_bootstrap_output)
 
 
-data receipt_ci_dangling_bootstrap_output: Outcome<TestClaimPassReceipt<CiPipeline>> = test_claim_pass_receipt(run: run_ci_dangling_bootstrap_output, input: subject_ci_dangling_bootstrap_output.input.claim_input)
+data receipt_ci_dangling_bootstrap_output: Outcome<TestClaimPassReceipt<CiPipeline>> = test_claim_ci_pass_receipt(run: run_ci_dangling_bootstrap_output)
 
 
 data case_ci_duplicate_job_id: T22CiNegativeCase = T22CiNegativeCase {
@@ -441,7 +444,7 @@ data subject_ci_duplicate_job_id: TestClaimEvalSubject<CiPipeline> = t22_ci_subj
 data run_ci_duplicate_job_id: TestClaimRun<CiPipeline> = t22_ci_run(subject: subject_ci_duplicate_job_id)
 
 
-data receipt_ci_duplicate_job_id: Outcome<TestClaimPassReceipt<CiPipeline>> = test_claim_pass_receipt(run: run_ci_duplicate_job_id, input: subject_ci_duplicate_job_id.input.claim_input)
+data receipt_ci_duplicate_job_id: Outcome<TestClaimPassReceipt<CiPipeline>> = test_claim_ci_pass_receipt(run: run_ci_duplicate_job_id)
 
 
 data case_ci_duplicate_gate_id: T22CiNegativeCase = T22CiNegativeCase {
@@ -466,7 +469,7 @@ data subject_ci_duplicate_gate_id: TestClaimEvalSubject<CiPipeline> = t22_ci_sub
 data run_ci_duplicate_gate_id: TestClaimRun<CiPipeline> = t22_ci_run(subject: subject_ci_duplicate_gate_id)
 
 
-data receipt_ci_duplicate_gate_id: Outcome<TestClaimPassReceipt<CiPipeline>> = test_claim_pass_receipt(run: run_ci_duplicate_gate_id, input: subject_ci_duplicate_gate_id.input.claim_input)
+data receipt_ci_duplicate_gate_id: Outcome<TestClaimPassReceipt<CiPipeline>> = test_claim_ci_pass_receipt(run: run_ci_duplicate_gate_id)
 
 
 data case_ci_dangling_need: T22CiNegativeCase = T22CiNegativeCase {
@@ -490,7 +493,7 @@ data subject_ci_dangling_need: TestClaimEvalSubject<CiPipeline> = t22_ci_subject
 data run_ci_dangling_need: TestClaimRun<CiPipeline> = t22_ci_run(subject: subject_ci_dangling_need)
 
 
-data receipt_ci_dangling_need: Outcome<TestClaimPassReceipt<CiPipeline>> = test_claim_pass_receipt(run: run_ci_dangling_need, input: subject_ci_dangling_need.input.claim_input)
+data receipt_ci_dangling_need: Outcome<TestClaimPassReceipt<CiPipeline>> = test_claim_ci_pass_receipt(run: run_ci_dangling_need)
 
 
 data case_ci_dangling_gate_job: T22CiNegativeCase = T22CiNegativeCase {
@@ -514,7 +517,7 @@ data subject_ci_dangling_gate_job: TestClaimEvalSubject<CiPipeline> = t22_ci_sub
 data run_ci_dangling_gate_job: TestClaimRun<CiPipeline> = t22_ci_run(subject: subject_ci_dangling_gate_job)
 
 
-data receipt_ci_dangling_gate_job: Outcome<TestClaimPassReceipt<CiPipeline>> = test_claim_pass_receipt(run: run_ci_dangling_gate_job, input: subject_ci_dangling_gate_job.input.claim_input)
+data receipt_ci_dangling_gate_job: Outcome<TestClaimPassReceipt<CiPipeline>> = test_claim_ci_pass_receipt(run: run_ci_dangling_gate_job)
 
 
 data case_ci_dependency_cycle: T22CiNegativeCase = T22CiNegativeCase {
@@ -540,4 +543,4 @@ data subject_ci_dependency_cycle: TestClaimEvalSubject<CiPipeline> = t22_ci_subj
 data run_ci_dependency_cycle: TestClaimRun<CiPipeline> = t22_ci_run(subject: subject_ci_dependency_cycle)
 
 
-data receipt_ci_dependency_cycle: Outcome<TestClaimPassReceipt<CiPipeline>> = test_claim_pass_receipt(run: run_ci_dependency_cycle, input: subject_ci_dependency_cycle.input.claim_input)
+data receipt_ci_dependency_cycle: Outcome<TestClaimPassReceipt<CiPipeline>> = test_claim_ci_pass_receipt(run: run_ci_dependency_cycle)
