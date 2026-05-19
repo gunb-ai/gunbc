@@ -1,6 +1,6 @@
 // src/v4/lens/coverage.dag
 // Scope: T-18 meta-lens — expected vs actual TestClaim coverage over substrate slices.
-// Owns: Coverage<C> L6CoverageKey L7CoverageKey ImpossibleBugCoverageKey TestgenCoverageKey
+// Owns: Coverage<C> L6CoverageKey L7CoverageKey ImpossibleBugCoverageKey TestgenCoverageKey CoverageDefectKey CoverageDefectAcceptanceKey
 // Consumes: std/node std/witness std/diagnostic std/verification std/algebra extdeps/languages lens/testgen
 // Status: scaffold — fill per TASKS T-18.
 
@@ -32,3 +32,65 @@ type ImpossibleBugCoverageKey {
 
 
 type TestgenCoverageKey = TestgenConcept
+
+
+// 🟡 coproduct dissolution — DECISIONS.md Part 6 · SL-COVERAGE-DEFECT-KEY.
+type CoverageDefectKey
+  = DiscriminantPredicate
+  | DegenerateType
+  | HollowType
+  | CarrierClone
+  | Catamorphism
+  | TemplateHole
+  | OffSubstrateFact
+  | WrongHome
+  | VacuousArm
+  | CanonicalCarrier
+  | PlausibleFallback
+  | ParallelAuthority
+
+
+type CoverageDefectAcceptanceKey {
+  lens: CoverageDefectKey
+}
+
+
+type CoverageDefectAcceptance = Coverage<CoverageDefectAcceptanceKey>
+
+
+data coverage_defect_discriminant_predicate: CoverageDefectAcceptance = {
+  concern: CoverageDefectAcceptanceKey { lens: DiscriminantPredicate }
+}
+data coverage_defect_degenerate_type: CoverageDefectAcceptance = {
+  concern: CoverageDefectAcceptanceKey { lens: DegenerateType }
+}
+data coverage_defect_hollow_type: CoverageDefectAcceptance = {
+  concern: CoverageDefectAcceptanceKey { lens: HollowType }
+}
+data coverage_defect_carrier_clone: CoverageDefectAcceptance = {
+  concern: CoverageDefectAcceptanceKey { lens: CarrierClone }
+}
+data coverage_defect_catamorphism: CoverageDefectAcceptance = {
+  concern: CoverageDefectAcceptanceKey { lens: Catamorphism }
+}
+data coverage_defect_template_hole: CoverageDefectAcceptance = {
+  concern: CoverageDefectAcceptanceKey { lens: TemplateHole }
+}
+data coverage_defect_off_substrate_fact: CoverageDefectAcceptance = {
+  concern: CoverageDefectAcceptanceKey { lens: OffSubstrateFact }
+}
+data coverage_defect_wrong_home: CoverageDefectAcceptance = {
+  concern: CoverageDefectAcceptanceKey { lens: WrongHome }
+}
+data coverage_defect_vacuous_arm: CoverageDefectAcceptance = {
+  concern: CoverageDefectAcceptanceKey { lens: VacuousArm }
+}
+data coverage_defect_canonical_carrier: CoverageDefectAcceptance = {
+  concern: CoverageDefectAcceptanceKey { lens: CanonicalCarrier }
+}
+data coverage_defect_plausible_fallback: CoverageDefectAcceptance = {
+  concern: CoverageDefectAcceptanceKey { lens: PlausibleFallback }
+}
+data coverage_defect_parallel_authority: CoverageDefectAcceptance = {
+  concern: CoverageDefectAcceptanceKey { lens: ParallelAuthority }
+}
