@@ -480,6 +480,13 @@ def main() -> None:
             "// Status: T-4.12 PASS (B2-OMNI); import v4.std.node Symbol; import v4.std.nat Nat; import v4.std.cardinality NonZeroNat.",
         ),
         (
+            "src/v4/extdeps/languages/typescript.dag",
+            "// Scope: TypeScript 5.9 + ECMA-262 ES2025 primitive D2 resolver slice (T-4 typescript).",
+            "// Anchor: https://www.typescriptlang.org/docs/handbook/2/everyday-types.html — ECMA-262 https://tc39.es/ecma262/2025/multipage/",
+            "// Consumes: v4.std.logic (Bool, bool_boolean_algebra); v4.std.algebra (BooleanAlgebra).",
+            "// Status: bool canonical-B decl-ref grounding landed (#3338); non-bool numeric primitives 🟡 gated on T-4 fact-bundle Phase-3 after T-3/T-29/T-30/T-25-core.",
+        ),
+        (
             "src/v4/extdeps/languages/ptx.dag",
             "// Scope: NVIDIA PTX ISA 8.5 SIMT structural classifiers (T-4.14).",
             "// Anchor: https://docs.nvidia.com/cuda/pdf/ptx_isa_8.5.pdf — TOC https://docs.nvidia.com/cuda/parallel-thread-execution/index.html",
