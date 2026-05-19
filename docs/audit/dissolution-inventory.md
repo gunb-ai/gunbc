@@ -38,7 +38,8 @@ Scope on `main` at `e5bde4943` (HEAD; post-#3338 / #3337 / #3325 / #3299
 / #3306 ground-truth pass — absorbs canonical-B bool bundle #3338, P1
 cardinality regate copy #3337, CP-1b #3225 resolver fill, `fold_node`
 #3297, `nat_is_zero` #3257, and related dissolution merges) — **every
-`src/v4/**/*.dag`** (**73** files total) per still-hawk-102
+`src/v4/**/*.dag`** (**73** files total; **§2.8** roll-calls all **11**
+`test/claim/**/*.dag` under the same sweep) per still-hawk-102
 scope-widening 2026-05-18: compiler/ + std/ + extdeps/ + workflow/ +
 lens/ + bin/ + test/claim/. Sweep frame is `main`, not in-flight
 branches — PR #3213 (workflow T-20 + T-24) is
@@ -486,22 +487,36 @@ substrate PRs.
 
 ### 2.8 `src/v4/test/claim/`
 
-9 files: 2 `manual/` (`connective_anchors.dag`, `nat_law_anchors.dag`)
-+ 1 `boundary/` (`english_ingest_fail_closed.dag`) + 6 `impossible_bug/`
-(`idempotency_contract.dag`, `nested_optional_flatten.dag`,
-`suboptimal_complexity.dag`, `transport_type_drift.dag`,
-`unenumerated_effects.dag`, `unhandled_diagnostic_paths.dag`).
+**11 files** (matches `find src/v4/test/claim -name '*.dag'` at sweep
+`HEAD`): **4** `manual/` + **1** `boundary/` + **6** `impossible_bug/`.
 
-The `manual/*` pair carries `data` declarations only — pure
-`TestClaim` literal values (e.g.
-`data claim_nat_add_left_identity: TestClaim = TestClaim { … }`). Zero
-`fn` bodies. By construction TestClaim instances cannot host
-dissolution findings — they are the data that *gets fed into* the
-compiler/lens stages whose dissolutions live elsewhere. 🟢.
+**`manual/`**
+- `connective_anchors.dag`, `nat_law_anchors.dag` — `data` rows (`Node`
+  stubs, `TestClaim` literals). Zero `fn` bodies. 🟢 — same rationale as
+  before: claim *data* cannot host Practice-10 dissolution findings;
+  resolver / LM debt stays in §2.3 / §2.4 / Section 1.
+- `t19_manual_anchor_manifest.dag` — twelve `data` rows over
+  `T19ManualAnchorKey` (join manifest for the two anchor corpora above).
+  Zero `fn` bodies. 🟢.
+- `resolve_compile_anchor.dag` — **one** `fn`
+  `anchor_resolve_wave1_service_atom_via_canonical_symbols` (calls
+  `resolve` on a minimal `Node` + `dag_language_model_wave1_void()`;
+  DECISIONS.md **CP-1b item 10** compile anchor; `Status: scaffold —
+  compile-only until T-22`). **Disposition:** 🟢 **harness / coverage
+  anchor** — delegates to `compiler/03_resolve.dag` `resolve` and LM
+  data; does not introduce a new hand-rolled walker / predicate /
+  traverse over `Node` beyond wiring already triaged under **P5** /
+  **P4** (`dag_language_model_wave1_void_canonical_symbols`). Not a
+  fifth dissolution-finding class on top of Section 2's catalog.
 
-All `boundary/*` and `impossible_bug/*` files are scaffolds (each
-carries `Status: scaffold — fill per TASKS.md T-##`; zero `type` /
-`data` / `fn`). 🟢.
+**`boundary/`** — `english_ingest_fail_closed.dag` — scaffold (`Status:
+scaffold …`). Zero `type` / `data` / `fn` bodies at sweep. 🟢.
+
+**`impossible_bug/`** — six scaffolds (`idempotency_contract.dag`,
+`nested_optional_flatten.dag`, `suboptimal_complexity.dag`,
+`transport_type_drift.dag`, `unenumerated_effects.dag`,
+`unhandled_diagnostic_paths.dag`). Each carries `Status: scaffold — fill
+per TASKS.md T-##`; zero `type` / `data` / `fn` bodies. 🟢.
 
 ---
 
