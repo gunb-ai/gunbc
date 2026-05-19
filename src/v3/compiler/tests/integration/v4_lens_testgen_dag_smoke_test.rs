@@ -10,6 +10,8 @@
 //! from the claim authority path.
 //! **Note:** `compile_to_dag` on this module alone does not resolve `import v4.std.*` peers
 //! (Import lowering is still M2-scoped); full merge compile lands with cross-file M2 per TASKS T-19.
+//!
+//! **TESTING.md:** each `#[test]` below pins one structural slice (split per `openai-pro` review **#14812**).
 
 use v3_compiler::parse_for_test;
 use v3_compiler::parse_surface::{SurfaceItem, SurfaceType, TypeAngleArg};
@@ -30,39 +32,33 @@ const NAT_MANUAL_CLAIM_DATA: [&str; 6] = [
 ];
 
 #[test]
-fn v4_lens_testgen_wave0_substrate_parses() {
+fn v4_lens_testgen_wave0_modules_tokenize_and_parse() {
     let testgen = parse_module(TESTGEN_DAG, "src/v4/lens/testgen.dag");
     let verification = parse_module(VERIFICATION_DAG, "src/v4/std/verification.dag");
-
-    assert!(
-        VERIFICATION_DAG.contains("type T19PresentManualAnchorKey"),
-        "substrate must declare `T19PresentManualAnchorKey` (present-only manual anchor carrier)"
-    );
-
-    assert!(
-        !TESTGEN_DAG.contains("t19_bootstrap_algebra")
-            && !TESTGEN_DAG.contains("t19_bootstrap_inhabitant"),
-        "nat-law AlgebraLawSubject algebra/inhabitant must project from `v4.std.nat` substrate Symbol bundle (no shared bootstrap placeholders)"
-    );
-
-    assert!(
-        TESTGEN_DAG.contains("import v4.std.nat {")
-            && TESTGEN_DAG.contains("nat_algebra_law_subject_symbol_additive_monoid")
-            && TESTGEN_DAG.contains("nat_algebra_law_subject_symbol_commutative_semiring")
-            && TESTGEN_DAG.contains("nat_algebra_law_subject_symbol_inhabitant_nat"),
-        "testgen must import the three `AlgebraLawSubject` Symbol carriers from `v4.std.nat` (single substrate authority)"
-    );
-
-    assert!(
-        !TESTGEN_DAG.contains("fn t19_present_manual_anchor_key("),
-        "testgen must not define the retired `t19_present_manual_anchor_key(` std-style helper (use `t19_present_manual_anchor_key_for_claim` in lens only)"
-    );
-
     assert_eq!(
         module_paths(&testgen),
         vec![vec!["v4", "lens", "testgen"]],
         "T-19 authority module should remain v4.lens.testgen"
     );
+    assert_eq!(
+        module_paths(&verification),
+        vec![vec!["v4", "std", "verification"]],
+        "`TestClaim` schema should remain v4.std.verification"
+    );
+}
+
+#[test]
+fn v4_lens_testgen_wave0_verification_declares_present_anchor_key() {
+    assert!(
+        VERIFICATION_DAG.contains("type T19PresentManualAnchorKey"),
+        "substrate must declare `T19PresentManualAnchorKey` (present-only manual anchor carrier)"
+    );
+}
+
+#[test]
+fn v4_lens_testgen_wave0_function_inventory_matches_wave0() {
+    let testgen = parse_module(TESTGEN_DAG, "src/v4/lens/testgen.dag");
+    let verification = parse_module(VERIFICATION_DAG, "src/v4/std/verification.dag");
     assert_eq!(
         function_count(&testgen, "bootstrap_claim_generator_for_manual_anchor"),
         1,
@@ -88,13 +84,6 @@ fn v4_lens_testgen_wave0_substrate_parses() {
         0,
         "AssertKind must not be re-authored in testgen; use manual `TestClaim.kind`"
     );
-
-    assert_eq!(
-        module_paths(&verification),
-        vec![vec!["v4", "std", "verification"]],
-        "`TestClaim` schema should remain v4.std.verification"
-    );
-
     assert_eq!(
         function_count(&verification, "t19_present_manual_anchor_key"),
         0,
@@ -105,23 +94,36 @@ fn v4_lens_testgen_wave0_substrate_parses() {
         0,
         "AssertKind bootstrap mapping must not live in verification (single `T19ManualAnchorKey` axis)"
     );
-
     assert_eq!(
         function_count(&testgen, "t19_present_manual_anchor_key_for_claim"),
         1,
         "present-anchor narrowing join must live in v4.lens.testgen (single Outcome<T19PresentManualAnchorKey> projection)"
     );
+}
 
-    let anchor_ty =
-        generator_t19_anchor_field_ty(&testgen).expect("Generator should declare `t19_anchor`");
+#[test]
+fn v4_lens_testgen_wave0_nat_symbol_import_authority() {
     assert!(
-        matches!(
-            anchor_ty,
-            SurfaceType::Named { name: n, .. } if n == "T19PresentManualAnchorKey"
-        ),
-        "Generator.t19_anchor must be `T19PresentManualAnchorKey` (absent sentinel excluded from successful carrier); got {anchor_ty:?}"
+        !TESTGEN_DAG.contains("t19_bootstrap_algebra")
+            && !TESTGEN_DAG.contains("t19_bootstrap_inhabitant"),
+        "nat-law AlgebraLawSubject algebra/inhabitant must project from `v4.std.nat` substrate Symbol bundle (no shared bootstrap placeholders)"
     );
+    assert!(
+        TESTGEN_DAG.contains("import v4.std.nat {")
+            && TESTGEN_DAG.contains("nat_algebra_law_subject_symbol_additive_monoid")
+            && TESTGEN_DAG.contains("nat_algebra_law_subject_symbol_commutative_semiring")
+            && TESTGEN_DAG.contains("nat_algebra_law_subject_symbol_inhabitant_nat"),
+        "testgen must import the three `AlgebraLawSubject` Symbol carriers from `v4.std.nat` (single substrate authority)"
+    );
+    assert!(
+        !TESTGEN_DAG.contains("fn t19_present_manual_anchor_key("),
+        "testgen must not define the retired `t19_present_manual_anchor_key(` std-style helper (use `t19_present_manual_anchor_key_for_claim` in lens only)"
+    );
+}
 
+#[test]
+fn v4_lens_testgen_wave0_outcome_return_surfaces() {
+    let testgen = parse_module(TESTGEN_DAG, "src/v4/lens/testgen.dag");
     let present_anchor_rt = fn_return_type(&testgen, "t19_present_manual_anchor_key_for_claim")
         .expect("t19_present_manual_anchor_key_for_claim should have an explicit return type");
     assert!(
@@ -149,13 +151,33 @@ fn v4_lens_testgen_wave0_substrate_parses() {
         type_is_outcome_generator_testgen_concept(bootstrap_rt),
         "T-19 Wave-0 bootstrap must fail-close `T19ManualAnchorAbsent` via `Outcome<Generator<TestgenConcept>>`; got {bootstrap_rt:?}"
     );
+}
 
+#[test]
+fn v4_lens_testgen_wave0_generator_t19_anchor_field_is_present_key() {
+    let testgen = parse_module(TESTGEN_DAG, "src/v4/lens/testgen.dag");
+    let anchor_ty =
+        generator_t19_anchor_field_ty(&testgen).expect("Generator should declare `t19_anchor`");
+    assert!(
+        matches!(
+            anchor_ty,
+            SurfaceType::Named { name: n, .. } if n == "T19PresentManualAnchorKey"
+        ),
+        "Generator.t19_anchor must be `T19PresentManualAnchorKey` (absent sentinel excluded from successful carrier); got {anchor_ty:?}"
+    );
+}
+
+#[test]
+fn v4_lens_testgen_wave0_concept_projection_matches_claim_t19_anchor() {
     assert!(
         TESTGEN_DAG.contains("fn testgen_concept_for_manual_claim")
             && TESTGEN_DAG.contains("match claim.t19_anchor"),
         "concept projection must match on `claim.t19_anchor` (single authority path with manual claim)"
     );
+}
 
+#[test]
+fn v4_lens_testgen_wave0_generator_carries_claim_kind_and_classification() {
     assert!(
         TESTGEN_DAG.contains("classification: claim.classification"),
         "Generator must take classification from manual TestClaim"
@@ -164,6 +186,10 @@ fn v4_lens_testgen_wave0_substrate_parses() {
         TESTGEN_DAG.contains("kind: claim.kind"),
         "Generator must take AssertKind from manual TestClaim.kind"
     );
+}
+
+#[test]
+fn v4_lens_testgen_wave0_bootstrap_narrows_present_anchor_before_generator() {
     assert!(
         TESTGEN_DAG.contains("fn t19_present_manual_anchor_key_for_claim")
             && TESTGEN_DAG.contains("match t19_present_manual_anchor_key_for_claim(claim: claim)"),
@@ -173,15 +199,25 @@ fn v4_lens_testgen_wave0_substrate_parses() {
         TESTGEN_DAG.contains("t19_anchor: present_anchor"),
         "Generator must wire `t19_anchor` from the narrowed present key (not raw `claim.t19_anchor`)"
     );
-
     assert!(
         TESTGEN_DAG.contains("match testgen_concept_for_manual_claim(claim: claim)"),
         "bootstrap must thread the same `claim` into the concept projection"
     );
+}
 
+#[test]
+fn v4_lens_testgen_nat_law_manual_claims_use_equals() {
     assert_nat_manual_claim_blocks_use_equals(NAT_LAW_DAG);
+}
+
+#[test]
+fn v4_lens_testgen_nat_substrate_carries_algebra_law_subject_symbols() {
     assert_nat_algebra_law_subject_symbols_in_substrate(NAT_SUBSTRATE_DAG);
-    assert_six_nat_arms_use_algebra_law_in_testgen_concept_fn(TESTGEN_DAG);
+}
+
+#[test]
+fn v4_lens_testgen_testgen_carries_six_nat_algebra_law_scheduling_arms() {
+    assert_six_algebra_law_constructor_sites_in_testgen(TESTGEN_DAG);
 }
 
 fn assert_nat_manual_claim_blocks_use_equals(nat_law_src: &str) {
@@ -194,7 +230,7 @@ fn assert_nat_manual_claim_blocks_use_equals(nat_law_src: &str) {
         let tail = &nat_law_src[i..end];
         assert!(
             tail.contains("kind: Equals"),
-            "{claim}: nat-law manual stubs must use `kind: Equals` (AlgebraLaw Wave-0 pairing; openai-pro #14414 class)"
+            "{claim}: nat-law manual stubs must use `kind: Equals` (AlgebraLaw Wave-0 pairing)"
         );
     }
 }
@@ -214,20 +250,16 @@ fn assert_nat_algebra_law_subject_symbols_in_substrate(nat_src: &str) {
     }
 }
 
-fn assert_six_nat_arms_use_algebra_law_in_testgen_concept_fn(testgen_src: &str) {
-    let start = testgen_src
-        .find("fn testgen_concept_for_manual_claim")
-        .expect("testgen_concept_for_manual_claim missing");
-    let tail = &testgen_src[start..];
-    let rel = tail
-        .find("fn bootstrap_claim_generator_for_manual_anchor")
-        .expect("bootstrap_claim_generator_for_manual_anchor must follow concept fn");
-    let body = &tail[..rel];
-    // Count constructor sites only: `AlgebraLawSubject` also contains the substring `AlgebraLaw`.
-    let n = body.matches("value: AlgebraLaw {").count();
+/// Count `value: AlgebraLaw {` sites in `testgen.dag` (file-wide; currently exactly six nat scheduling arms).
+fn assert_six_algebra_law_constructor_sites_in_testgen(testgen_src: &str) {
+    assert!(
+        testgen_src.contains("fn testgen_concept_for_manual_claim"),
+        "testgen_concept_for_manual_claim must exist for Wave-0 nat scheduling slice"
+    );
+    let n = testgen_src.matches("value: AlgebraLaw {").count();
     assert_eq!(
         n, 6,
-        "expected six nat `value: AlgebraLaw {{...}}` arms inside testgen_concept_for_manual_claim; got {n}"
+        "expected six nat `value: AlgebraLaw {{...}}` constructor sites in testgen.dag; got {n}"
     );
 }
 
