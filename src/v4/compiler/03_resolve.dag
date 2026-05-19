@@ -1,8 +1,13 @@
 // src/v4/compiler/03_resolve.dag
 //
 // Scope: Stage 3b — NormalizedTree→ResolvedTree; K-1 Atom use→def.
+<<<<<<< HEAD
 // Owns: ResolvedTree; Namespace; Scope; EdgeResolveAcc; BindEdgeAcc; resolve; Symbol reasons.
 // Consumes: std/node.dag, std/diagnostic.dag, std/collection.dag, compiler/03_normalize.dag, extdeps/languages/dag.dag (DagLanguageModel for canonical_symbols).
+=======
+// Owns: ResolvedTree; Namespace; Scope; BindEdgeAcc; ResolveResult; ResolveChildrenResult; resolve; Symbol reasons.
+// Consumes: std/node.dag, std/diagnostic.dag, std/collection.dag, compiler/03_normalize.dag, extdeps/languages/dag.dag (DagLanguageModel.canonical_symbols prelude fact).
+>>>>>>> origin/main
 // Status: scaffold — TASKS T-8.
 // Anchor: https://en.wikipedia.org/wiki/Name_resolution_(programming_languages)
 
@@ -10,10 +15,7 @@ module v4.compiler.resolve
 
 
 import v4.compiler.normalize { NormalizedTree }
-import v4.extdeps.languages.dag {
-  DagLanguageModel,
-  dag_language_model_canonical_symbols
-}
+import v4.extdeps.languages.dag { DagLanguageModel }
 import v4.std.collection { Set }
 import v4.std.diagnostic {
   Diagnostic,
@@ -52,10 +54,29 @@ type Namespace {
 }
 
 
+<<<<<<< HEAD
 type Scope {
   module: Namespace
   frames: List<Map<Symbol, Symbol>>
 }
+=======
+// 🟡 coproduct dissolution — CP-1b item 7 (Scope).
+type Scope
+  = ScopeRoot { module: Namespace }
+  | ScopeFrame { locals: Map<Symbol, Symbol>, outer: Scope }
+
+
+// 🟡 coproduct dissolution — CP-1b item 8 (ResolveResult).
+type ResolveResult
+  = ResolvedNode { node: Node }
+  | ResolveRejected { diagnostic: Diagnostic }
+
+
+// 🟡 coproduct dissolution — CP-1b item 9 (ResolveChildrenResult).
+type ResolveChildrenResult
+  = ResolvedChildren { children: List<Edge> }
+  | ResolveChildrenRejected { diagnostic: Diagnostic }
+>>>>>>> origin/main
 
 
 type EdgeResolveAcc
@@ -181,7 +202,7 @@ fn add_bind_atom_binder(n: Node, acc: Map<Symbol, Symbol>) -> Map<Symbol, Symbol
 fn build_program_namespace(tree: NormalizedTree, lm: DagLanguageModel) -> Namespace {
   Namespace {
     bindings: add_module_named_exports(root: tree, acc: empty_map()),
-    canonical_symbols: dag_language_model_canonical_symbols(lm: lm)
+    canonical_symbols: lm.canonical_symbols
   }
 }
 
@@ -397,8 +418,13 @@ fn resolve_edges_first_outer_then_inner(
 }
 
 
+<<<<<<< HEAD
 // DECISIONS.md §CP-1b (item 3).
 fn resolve_bind_binder_target(t: Node) -> Outcome<Node> {
+=======
+// §CP-1b (item 3).
+fn resolve_bind_binder_target(t: Node) -> ResolveResult {
+>>>>>>> origin/main
   match t.kind {
     TypeNode { connective: Atom { identity: id } } =>
       Produced {
