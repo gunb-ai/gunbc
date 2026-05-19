@@ -351,6 +351,7 @@ fn seed_edit_fold_acc_live(
         frontier: mark_whole_dag(reason: r)
       }
   }
+}
 
 
 fn expand_changed_dimensions(
