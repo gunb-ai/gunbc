@@ -2,8 +2,8 @@
 // Scope: phase-typed pipeline carriers (resolve → normalize seam).
 // Owns: ResolvedNode, NormalizedNode, SurfaceSugarKind, CoreConnective, edge labels.
 // Consumes: none.
-// Status: PROVISIONAL — vivid-lynx-807 owns the full stage-type kit; this file
-//   holds the normalize/resolve boundary shapes until Tier-1 lands.
+// Status: PROVISIONAL — RECONCILE-NEEDED when vivid-lynx-807's canonical
+//   stage-type kit lands (Tier 1). This seam holds normalize/resolve shapes only.
 
 module v2_5.std.stage_types
 

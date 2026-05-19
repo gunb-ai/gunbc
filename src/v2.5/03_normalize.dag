@@ -224,7 +224,7 @@ fn apply_sugar_rule(
     match rule.replacement {
       PeelSinglePositionalChild =>
         match children |> first {
-          Some { value: e0 } => normalized_type_from_resolved_node(n: e0.target)
+          Some { value: e0 } => normalized_type_from_resolved_node(n: e0.target, span: span)
           None => Rejected { diagnostic: malformed_sugar_diagnostic(span: span) }
         }
       ReplaceWithConj =>
