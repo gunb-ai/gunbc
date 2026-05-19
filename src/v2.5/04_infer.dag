@@ -1,0 +1,724 @@
+module v2_5.compiler.infer
+
+import v2_5.std.node { Symbol, fold_node, NodeFold }
+import v2_5.std.stage_types {
+  NormalizedNode, NormalizedModule, NormalizedItem, NormalizedExpr,
+  NormalizedLiteral, NormalizedError, NormalizedVar, NormalizedFieldAccess,
+  NormalizedCall, NormalizedMethodCall, NormalizedMatch, NormalizedIf,
+  NormalizedLet, NormalizedRecordLit, NormalizedListLit, NormalizedBinOp,
+  NormalizedUnaryOp, NormalizedLambda, NormalizedStringInterp, NormalizedBlock,
+  NormalizedCast, NormalizedForEach, NormalizedIndex, NormalizedSlice,
+  NormalizedReturn,
+  NormalizedTypeDecl, NormalizedDataDecl, NormalizedFuncDecl,
+  NormalizedServiceDecl, NormalizedTransportDecl,
+  InferredNode, InferredModule, InferredItem, InferredExpr,
+  InferredLiteral, InferredError, InferredVar, InferredFieldAccess,
+  InferredCall, InferredMethodCall, InferredMatch, InferredIf,
+  InferredLet, InferredRecordLit, InferredListLit, InferredBinOp,
+  InferredUnaryOp, InferredLambda, InferredStringInterp, InferredBlock,
+  InferredCast, InferredForEach, InferredIndex, InferredSlice,
+  InferredReturn,
+  InferredTypeDecl, InferredDataDecl, InferredFuncDecl,
+  InferredServiceDecl, InferredTransportDecl,
+  NormalizedFoldAlgebra, fold_normalized_node
+}
+
+type TypeRef
+  = TypeName { name: Symbol }
+  | TypeApply { callee: TypeRef, args: List<TypeRef> }
+  | CallableType { params: List<TypeRef>, result: TypeRef }
+  | TypeVariable { name: Symbol }
+  | ErrorType { diagnostic: InferDiagnostic }
+
+type Cardinality
+  = Required
+  | Optional
+
+type AlgebraEvidence
+  = AlgebraKnown { algebra: Symbol }
+  | AlgebraFromOperand { operand: Symbol }
+  | AlgebraUnknown { diagnostic: InferDiagnostic }
+
+type DescentEvidence
+  = StrictDescent
+  | PreservedDescent
+  | UnknownDescent { diagnostic: InferDiagnostic }
+
+type InferredFacts {
+  result_type: TypeRef
+  cardinality: Cardinality
+  algebra: AlgebraEvidence
+  descent: DescentEvidence
+}
+
+type ExprDataDissolution
+  = NoExprDataRetired
+  | LiteralCase
+  | ErrorCase
+  | VarCase
+  | FieldAccessCase
+  | CallCase
+  | MethodCallCase
+  | MatchCase
+  | IfCase
+  | LetCase
+  | RecordLitCase
+  | ListLitCase
+  | BinOpCase
+  | UnaryOpCase
+  | LambdaCase
+  | StringInterpCase
+  | BlockCase
+  | CastCase
+  | ForEachCase
+  | IndexCase
+  | SliceCase
+  | ReturnCase
+
+type TypeKitGate
+  = AwaitingStageTypes { gate: Symbol }
+  | BoundToStageTypes
+
+type BindingFacts {
+  name: Symbol
+  type_ref: TypeRef
+  cardinality: Cardinality
+}
+
+type TypeEnv {
+  bindings: List<BindingFacts>
+}
+
+type InferScope {
+  env: TypeEnv
+  expected: TypeRef?
+}
+
+type InferDiagnostic
+  = UnknownBinding { name: Symbol }
+  | TypeMismatch { expected: TypeRef, actual: TypeRef }
+  | NotCallable { actual: TypeRef }
+  | MissingField { receiver: TypeRef, field: Symbol }
+  | NotIndexable { actual: TypeRef }
+  | NonBooleanCondition { actual: TypeRef }
+  | BranchTypeMismatch { then_type: TypeRef, else_type: TypeRef }
+  | UnimplementedTypeKitBinding { missing: Symbol }
+
+type SubstitutionPair {
+  variable: Symbol
+  replacement: TypeRef
+}
+
+type UnificationState {
+  substitutions: List<SubstitutionPair>
+  diagnostics: List<InferDiagnostic>
+}
+
+type ExprInference {
+  expr: InferredExpr
+  diagnostics: List<InferDiagnostic>
+  facts: InferredFacts
+}
+
+type ItemInference {
+  item: InferredItem
+  diagnostics: List<InferDiagnostic>
+  exports: List<BindingFacts>
+}
+
+data unit_type: TypeRef = TypeName { name: unit_symbol }
+data bool_type: TypeRef = TypeName { name: bool_symbol }
+data string_type: TypeRef = TypeName { name: string_symbol }
+data int_type: TypeRef = TypeName { name: int_symbol }
+data float_type: TypeRef = TypeName { name: float_symbol }
+data error_symbol: Symbol = error_symbol
+data unit_symbol: Symbol = unit_symbol
+data bool_symbol: Symbol = bool_symbol
+data string_symbol: Symbol = string_symbol
+data int_symbol: Symbol = int_symbol
+data float_symbol: Symbol = float_symbol
+data unknown_type_kit_binding: Symbol = unknown_type_kit_binding
+data v25_stage_type_kit_gate: Symbol = v25_stage_type_kit_gate
+data stage_type_kit_status: TypeKitGate = AwaitingStageTypes { gate: v25_stage_type_kit_gate }
+
+fn required_facts(result_type: TypeRef, algebra: AlgebraEvidence) -> InferredFacts {
+  InferredFacts {
+    result_type: result_type,
+    cardinality: Required,
+    algebra: algebra,
+    descent: PreservedDescent
+  }
+}
+
+fn diagnostic_type(diagnostic: InferDiagnostic) -> TypeRef {
+  ErrorType { diagnostic: diagnostic }
+}
+
+fn diagnostic_facts(diagnostic: InferDiagnostic) -> InferredFacts {
+  required_facts(
+    result_type: diagnostic_type(diagnostic: diagnostic),
+    algebra: AlgebraUnknown { diagnostic: diagnostic }
+  )
+}
+
+fn lookup_binding(env: TypeEnv, name: Symbol) -> BindingFacts? {
+  env.bindings |> find(b => b.name == name)
+}
+
+fn extend_env(env: TypeEnv, binding: BindingFacts) -> TypeEnv {
+  TypeEnv { bindings: list_push(env.bindings, binding) }
+}
+
+fn facts_of(expr: InferredExpr) -> InferredFacts {
+  match expr {
+    InferredLiteral { facts: facts, value: _ } => facts
+    InferredError { facts: facts, diagnostic: _ } => facts
+    InferredVar { facts: facts, name: _, binding: _ } => facts
+    InferredFieldAccess { facts: facts, receiver: _, field: _ } => facts
+    InferredCall { facts: facts, callee: _, args: _, call: _ } => facts
+    InferredMethodCall { facts: facts, receiver: _, args: _, method: _ } => facts
+    InferredMatch { facts: facts, scrutinee: _, arms: _ } => facts
+    InferredIf { facts: facts, condition: _, then_branch: _, else_branch: _ } => facts
+    InferredLet { facts: facts, binding: _, value: _, body: _ } => facts
+    InferredRecordLit { facts: facts, type_ref: _, fields: _ } => facts
+    InferredListLit { facts: facts, elements: _ } => facts
+    InferredBinOp { facts: facts, op: _, left: _, right: _ } => facts
+    InferredUnaryOp { facts: facts, op: _, operand: _ } => facts
+    InferredLambda { facts: facts, params: _, body: _ } => facts
+    InferredStringInterp { facts: facts, parts: _ } => facts
+    InferredBlock { facts: facts, statements: _ } => facts
+    InferredCast { facts: facts, expr: _, target: _ } => facts
+    InferredForEach { facts: facts, binding: _, collection: _, body: _ } => facts
+    InferredIndex { facts: facts, base: _, index: _ } => facts
+    InferredSlice { facts: facts, base: _, start: _, end: _ } => facts
+    InferredReturn { facts: facts, value: _ } => facts
+  }
+}
+
+fn merge_diagnostics(left: List<InferDiagnostic>, right: List<InferDiagnostic>) -> List<InferDiagnostic> {
+  fold(right, init: left, f: (acc, diagnostic) => list_push(acc, diagnostic))
+}
+
+fn unify_pair(state: UnificationState, pair: SubstitutionPair) -> UnificationState {
+  UnificationState {
+    substitutions: list_push(state.substitutions, pair),
+    diagnostics: state.diagnostics
+  }
+}
+
+fn unify_all(pairs: List<SubstitutionPair>) -> UnificationState {
+  fold(
+    pairs,
+    init: UnificationState { substitutions: [], diagnostics: [] },
+    f: (state, pair) => unify_pair(state: state, pair: pair)
+  )
+}
+
+fn infer_literal(expr: NormalizedExpr) -> ExprInference {
+  match expr {
+    NormalizedLiteral { value: value, literal_type: literal_type } =>
+      let facts = required_facts(
+        result_type: literal_type,
+        algebra: AlgebraKnown { algebra: literal_algebra(type_ref: literal_type) }
+      )
+      ExprInference {
+        expr: InferredLiteral { value: value, facts: facts },
+        diagnostics: [],
+        facts: facts
+      }
+    _ =>
+      infer_error(diagnostic: UnimplementedTypeKitBinding { missing: unknown_type_kit_binding })
+  }
+}
+
+fn infer_error(diagnostic: InferDiagnostic) -> ExprInference {
+  let facts = diagnostic_facts(diagnostic: diagnostic)
+  ExprInference {
+    expr: InferredError { diagnostic: diagnostic, facts: facts },
+    diagnostics: [diagnostic],
+    facts: facts
+  }
+}
+
+fn infer_var(expr: NormalizedExpr, scope: InferScope) -> ExprInference {
+  match expr {
+    NormalizedVar { name: name } =>
+      match lookup_binding(env: scope.env, name: name) {
+        Some { value: binding } =>
+          let facts = InferredFacts {
+            result_type: binding.type_ref,
+            cardinality: binding.cardinality,
+            algebra: AlgebraKnown { algebra: name },
+            descent: PreservedDescent
+          }
+          ExprInference {
+            expr: InferredVar { name: name, binding: binding, facts: facts },
+            diagnostics: [],
+            facts: facts
+          }
+        None =>
+          infer_error(diagnostic: UnknownBinding { name: name })
+      }
+    _ =>
+      infer_error(diagnostic: UnimplementedTypeKitBinding { missing: unknown_type_kit_binding })
+  }
+}
+
+fn infer_field_access(expr: NormalizedExpr, receiver: InferredExpr) -> ExprInference {
+  match expr {
+    NormalizedFieldAccess { field: field } =>
+      let receiver_facts = facts_of(expr: receiver)
+      let field_type = field_type_of(receiver: receiver_facts.result_type, field: field)
+      match field_type {
+        Some { value: resolved } =>
+          let facts = required_facts(
+            result_type: resolved,
+            algebra: AlgebraFromOperand { operand: field }
+          )
+          ExprInference {
+            expr: InferredFieldAccess { receiver: receiver, field: field, facts: facts },
+            diagnostics: [],
+            facts: facts
+          }
+        None =>
+          infer_error(diagnostic: MissingField { receiver: receiver_facts.result_type, field: field })
+      }
+    _ =>
+      infer_error(diagnostic: UnimplementedTypeKitBinding { missing: unknown_type_kit_binding })
+  }
+}
+
+fn infer_call(expr: NormalizedExpr, callee: InferredExpr, args: List<InferredExpr>) -> ExprInference {
+  match expr {
+    NormalizedCall { call: call } =>
+      let callee_type = facts_of(expr: callee).result_type
+      match callee_type {
+        CallableType { params: params, result: result } =>
+          let pairs = zip_call_substitutions(params: params, args: args)
+          let unified = unify_all(pairs: pairs)
+          let facts = required_facts(
+            result_type: result,
+            algebra: AlgebraFromOperand { operand: call }
+          )
+          ExprInference {
+            expr: InferredCall { callee: callee, args: args, call: call, facts: facts },
+            diagnostics: unified.diagnostics,
+            facts: facts
+          }
+        _ =>
+          infer_error(diagnostic: NotCallable { actual: callee_type })
+      }
+    _ =>
+      infer_error(diagnostic: UnimplementedTypeKitBinding { missing: unknown_type_kit_binding })
+  }
+}
+
+fn infer_method_call(expr: NormalizedExpr, receiver: InferredExpr, args: List<InferredExpr>) -> ExprInference {
+  match expr {
+    NormalizedMethodCall { method: method } =>
+      let receiver_facts = facts_of(expr: receiver)
+      let method_type = method_type_of(receiver: receiver_facts.result_type, method: method)
+      match method_type {
+        Some { value: callable } =>
+          infer_call(
+            expr: NormalizedCall { call: method },
+            callee: InferredVar {
+              name: method,
+              binding: BindingFacts { name: method, type_ref: callable, cardinality: Required },
+              facts: required_facts(result_type: callable, algebra: AlgebraFromOperand { operand: method })
+            },
+            args: list_push_front(receiver, args)
+          )
+        None =>
+          infer_error(diagnostic: MissingField { receiver: receiver_facts.result_type, field: method })
+      }
+    _ =>
+      infer_error(diagnostic: UnimplementedTypeKitBinding { missing: unknown_type_kit_binding })
+  }
+}
+
+fn infer_binop(expr: NormalizedExpr, left: InferredExpr, right: InferredExpr) -> ExprInference {
+  match expr {
+    NormalizedBinOp { op: op } =>
+      let left_facts = facts_of(expr: left)
+      let right_facts = facts_of(expr: right)
+      let result = binop_result_type(op: op, left: left_facts.result_type, right: right_facts.result_type)
+      match result {
+        Some { value: result_type } =>
+          let facts = required_facts(
+            result_type: result_type,
+            algebra: AlgebraFromOperand { operand: op }
+          )
+          ExprInference {
+            expr: InferredBinOp { op: op, left: left, right: right, facts: facts },
+            diagnostics: [],
+            facts: facts
+          }
+        None =>
+          infer_error(diagnostic: TypeMismatch { expected: left_facts.result_type, actual: right_facts.result_type })
+      }
+    _ =>
+      infer_error(diagnostic: UnimplementedTypeKitBinding { missing: unknown_type_kit_binding })
+  }
+}
+
+fn infer_unary(expr: NormalizedExpr, operand: InferredExpr) -> ExprInference {
+  match expr {
+    NormalizedUnaryOp { op: op } =>
+      let operand_facts = facts_of(expr: operand)
+      let result = unary_result_type(op: op, operand: operand_facts.result_type)
+      let facts = required_facts(
+        result_type: result,
+        algebra: AlgebraFromOperand { operand: op }
+      )
+      ExprInference {
+        expr: InferredUnaryOp { op: op, operand: operand, facts: facts },
+        diagnostics: [],
+        facts: facts
+      }
+    _ =>
+      infer_error(diagnostic: UnimplementedTypeKitBinding { missing: unknown_type_kit_binding })
+  }
+}
+
+fn infer_if(expr: NormalizedExpr, condition: InferredExpr, then_branch: InferredExpr, else_branch: InferredExpr) -> ExprInference {
+  match expr {
+    NormalizedIf =>
+      let condition_type = facts_of(expr: condition).result_type
+      if condition_type != bool_type {
+        infer_error(diagnostic: NonBooleanCondition { actual: condition_type })
+      } else {
+        let then_type = facts_of(expr: then_branch).result_type
+        let else_type = facts_of(expr: else_branch).result_type
+        if then_type == else_type {
+          let facts = required_facts(result_type: then_type, algebra: AlgebraKnown { algebra: bool_symbol })
+          ExprInference {
+            expr: InferredIf { condition: condition, then_branch: then_branch, else_branch: else_branch, facts: facts },
+            diagnostics: [],
+            facts: facts
+          }
+        } else {
+          infer_error(diagnostic: BranchTypeMismatch { then_type: then_type, else_type: else_type })
+        }
+      }
+    _ =>
+      infer_error(diagnostic: UnimplementedTypeKitBinding { missing: unknown_type_kit_binding })
+  }
+}
+
+fn infer_expr_variant(expr: NormalizedExpr, typed_children: List<InferredExpr>, scope: InferScope) -> ExprInference {
+  match expr {
+    NormalizedLiteral { value: _, literal_type: _ } => infer_literal(expr: expr)
+    NormalizedError { diagnostic: diagnostic } => infer_error(diagnostic: diagnostic)
+    NormalizedVar { name: _ } => infer_var(expr: expr, scope: scope)
+    NormalizedFieldAccess { field: _ } =>
+      infer_field_access(expr: expr, receiver: first_expr(children: typed_children))
+    NormalizedCall { call: _ } =>
+      infer_call(expr: expr, callee: first_expr(children: typed_children), args: rest_exprs(children: typed_children))
+    NormalizedMethodCall { method: _ } =>
+      infer_method_call(expr: expr, receiver: first_expr(children: typed_children), args: rest_exprs(children: typed_children))
+    NormalizedMatch { arms: arms } =>
+      infer_match(expr: expr, scrutinee: first_expr(children: typed_children), arms: arms, arm_results: rest_exprs(children: typed_children))
+    NormalizedIf =>
+      infer_if(
+        expr: expr,
+        condition: expr_at(children: typed_children, index: 0),
+        then_branch: expr_at(children: typed_children, index: 1),
+        else_branch: expr_at(children: typed_children, index: 2)
+      )
+    NormalizedLet { binding: binding } =>
+      infer_let(expr: expr, binding: binding, value: expr_at(children: typed_children, index: 0), body: expr_at(children: typed_children, index: 1), scope: scope)
+    NormalizedRecordLit { type_ref: type_ref, fields: fields } =>
+      infer_record_lit(expr: expr, type_ref: type_ref, fields: fields, values: typed_children)
+    NormalizedListLit =>
+      infer_list_lit(expr: expr, elements: typed_children)
+    NormalizedBinOp { op: _ } =>
+      infer_binop(expr: expr, left: expr_at(children: typed_children, index: 0), right: expr_at(children: typed_children, index: 1))
+    NormalizedUnaryOp { op: _ } =>
+      infer_unary(expr: expr, operand: first_expr(children: typed_children))
+    NormalizedLambda { params: params } =>
+      infer_lambda(expr: expr, params: params, body: first_expr(children: typed_children), scope: scope)
+    NormalizedStringInterp =>
+      infer_string_interp(expr: expr, parts: typed_children)
+    NormalizedBlock =>
+      infer_block(expr: expr, statements: typed_children)
+    NormalizedCast { target: target } =>
+      infer_cast(expr: expr, value: first_expr(children: typed_children), target: target)
+    NormalizedForEach { binding: binding } =>
+      infer_for_each(expr: expr, binding: binding, collection: expr_at(children: typed_children, index: 0), body: expr_at(children: typed_children, index: 1))
+    NormalizedIndex =>
+      infer_index(expr: expr, base: expr_at(children: typed_children, index: 0), index: expr_at(children: typed_children, index: 1))
+    NormalizedSlice =>
+      infer_slice(expr: expr, base: expr_at(children: typed_children, index: 0), start: expr_at(children: typed_children, index: 1), end: expr_at(children: typed_children, index: 2))
+    NormalizedReturn =>
+      infer_return(expr: expr, value: first_expr(children: typed_children))
+  }
+}
+
+fn infer_item(item: NormalizedItem, children: List<InferredNode>, scope: InferScope) -> ItemInference {
+  match item {
+    NormalizedTypeDecl { name: name, type_ref: type_ref } =>
+      ItemInference {
+        item: InferredTypeDecl { name: name, type_ref: type_ref },
+        diagnostics: [],
+        exports: [BindingFacts { name: name, type_ref: type_ref, cardinality: Required }]
+      }
+    NormalizedDataDecl { name: name, fields: fields } =>
+      infer_data_decl(name: name, fields: fields)
+    NormalizedFuncDecl { name: name, params: params } =>
+      infer_func_decl(name: name, params: params, body: first_node(children: children), scope: scope)
+    NormalizedServiceDecl { name: name, operations: operations } =>
+      infer_service_decl(name: name, operations: operations, children: children, scope: scope)
+    NormalizedTransportDecl { name: name, transport: transport } =>
+      infer_transport_decl(name: name, transport: transport)
+  }
+}
+
+fn infer_module(module: NormalizedModule, children: List<InferredNode>) -> InferredNode {
+  let item_results = map(children, f: child_item_inference)
+  let diagnostics = fold(item_results, init: [], f: (acc, item) =>
+    merge_diagnostics(left: acc, right: item.diagnostics)
+  )
+  let exports = fold(item_results, init: [], f: (acc, item) =>
+    fold(item.exports, init: acc, f: (inner, binding) => list_push(inner, binding))
+  )
+  InferredModule {
+    name: module.name,
+    imports: module.imports,
+    items: map(item_results, f: r => r.item),
+    exports: exports,
+    diagnostics: diagnostics
+  }
+}
+
+fn infer_node_algebra() -> NormalizedFoldAlgebra<InferredNode> {
+  NormalizedFoldAlgebra {
+    module: (module, children) => infer_module(module: module, children: children),
+    item: (item, children, scope) => item_result_node(result: infer_item(item: item, children: children, scope: scope)),
+    expr: (expr, children, scope) =>
+      expr_result_node(result: infer_expr_variant(expr: expr, typed_children: map(children, f: child_expr), scope: scope))
+  }
+}
+
+fn infer(root: NormalizedNode) -> InferredNode {
+  fold_normalized_node(root: root, algebra: infer_node_algebra())
+}
+
+fn literal_algebra(type_ref: TypeRef) -> Symbol {
+  match type_ref {
+    TypeName { name: name } => name
+    TypeApply { callee: callee, args: _ } => literal_algebra(type_ref: callee)
+    CallableType { params: _, result: result } => literal_algebra(type_ref: result)
+    TypeVariable { name: name } => name
+    ErrorType { diagnostic: _ } => error_symbol
+  }
+}
+
+fn field_type_of(receiver: TypeRef, field: Symbol) -> TypeRef? {
+  none
+}
+
+fn method_type_of(receiver: TypeRef, method: Symbol) -> TypeRef? {
+  none
+}
+
+fn binop_result_type(op: Symbol, left: TypeRef, right: TypeRef) -> TypeRef? {
+  if left == right { Some { value: left } } else { none }
+}
+
+fn unary_result_type(op: Symbol, operand: TypeRef) -> TypeRef {
+  operand
+}
+
+fn zip_call_substitutions(params: List<TypeRef>, args: List<InferredExpr>) -> List<SubstitutionPair> {
+  []
+}
+
+fn first_expr(children: List<InferredExpr>) -> InferredExpr {
+  match children |> first {
+    Some { value: expr } => expr
+    None => infer_error(diagnostic: UnimplementedTypeKitBinding { missing: unknown_type_kit_binding }).expr
+  }
+}
+
+fn rest_exprs(children: List<InferredExpr>) -> List<InferredExpr> {
+  children |> skip(1)
+}
+
+fn expr_at(children: List<InferredExpr>, index: Int) -> InferredExpr {
+  match children |> skip(index) |> first {
+    Some { value: expr } => expr
+    None => infer_error(diagnostic: UnimplementedTypeKitBinding { missing: unknown_type_kit_binding }).expr
+  }
+}
+
+fn first_node(children: List<InferredNode>) -> InferredNode {
+  match children |> first {
+    Some { value: node } => node
+    None => expr_result_node(result: infer_error(diagnostic: UnimplementedTypeKitBinding { missing: unknown_type_kit_binding }))
+  }
+}
+
+fn child_expr(node: InferredNode) -> InferredExpr {
+  match node {
+    InferredModule { name: _, imports: _, items: _, exports: _, diagnostics: _ } =>
+      infer_error(diagnostic: UnimplementedTypeKitBinding { missing: unknown_type_kit_binding }).expr
+    InferredTypeDecl { name: _, type_ref: _ } =>
+      infer_error(diagnostic: UnimplementedTypeKitBinding { missing: unknown_type_kit_binding }).expr
+    InferredDataDecl { name: _, fields: _ } =>
+      infer_error(diagnostic: UnimplementedTypeKitBinding { missing: unknown_type_kit_binding }).expr
+    InferredFuncDecl { name: _, params: _, body: body, facts: _ } => body
+    InferredServiceDecl { name: _, operations: _ } =>
+      infer_error(diagnostic: UnimplementedTypeKitBinding { missing: unknown_type_kit_binding }).expr
+    InferredTransportDecl { name: _, transport: _ } =>
+      infer_error(diagnostic: UnimplementedTypeKitBinding { missing: unknown_type_kit_binding }).expr
+    InferredExprNode { expr: expr } => expr
+  }
+}
+
+fn child_item_inference(node: InferredNode) -> ItemInference {
+  match node {
+    InferredItemNode { item: item, diagnostics: diagnostics, exports: exports } =>
+      ItemInference { item: item, diagnostics: diagnostics, exports: exports }
+    _ =>
+      ItemInference {
+        item: InferredTypeDecl { name: error_symbol, type_ref: diagnostic_type(diagnostic: UnimplementedTypeKitBinding { missing: unknown_type_kit_binding }) },
+        diagnostics: [UnimplementedTypeKitBinding { missing: unknown_type_kit_binding }],
+        exports: []
+      }
+  }
+}
+
+fn item_result_node(result: ItemInference) -> InferredNode {
+  InferredItemNode { item: result.item, diagnostics: result.diagnostics, exports: result.exports }
+}
+
+fn expr_result_node(result: ExprInference) -> InferredNode {
+  InferredExprNode { expr: result.expr }
+}
+
+fn infer_match(expr: NormalizedExpr, scrutinee: InferredExpr, arms: List<NormalizedNode>, arm_results: List<InferredExpr>) -> ExprInference {
+  let first_arm = first_expr(children: arm_results)
+  let facts = facts_of(expr: first_arm)
+  ExprInference {
+    expr: InferredMatch { scrutinee: scrutinee, arms: arm_results, facts: facts },
+    diagnostics: [],
+    facts: facts
+  }
+}
+
+fn infer_let(expr: NormalizedExpr, binding: BindingFacts, value: InferredExpr, body: InferredExpr, scope: InferScope) -> ExprInference {
+  let facts = facts_of(expr: body)
+  ExprInference {
+    expr: InferredLet { binding: binding, value: value, body: body, facts: facts },
+    diagnostics: [],
+    facts: facts
+  }
+}
+
+fn infer_record_lit(expr: NormalizedExpr, type_ref: TypeRef, fields: List<Symbol>, values: List<InferredExpr>) -> ExprInference {
+  let facts = required_facts(result_type: type_ref, algebra: AlgebraKnown { algebra: literal_algebra(type_ref: type_ref) })
+  ExprInference {
+    expr: InferredRecordLit { type_ref: type_ref, fields: values, facts: facts },
+    diagnostics: [],
+    facts: facts
+  }
+}
+
+fn infer_list_lit(expr: NormalizedExpr, elements: List<InferredExpr>) -> ExprInference {
+  let element_type = facts_of(expr: first_expr(children: elements)).result_type
+  let list_type = TypeApply { callee: TypeName { name: list_symbol }, args: [element_type] }
+  let facts = required_facts(result_type: list_type, algebra: AlgebraKnown { algebra: list_symbol })
+  ExprInference { expr: InferredListLit { elements: elements, facts: facts }, diagnostics: [], facts: facts }
+}
+
+fn infer_lambda(expr: NormalizedExpr, params: List<BindingFacts>, body: InferredExpr, scope: InferScope) -> ExprInference {
+  let result_type = CallableType { params: map(params, f: p => p.type_ref), result: facts_of(expr: body).result_type }
+  let facts = required_facts(result_type: result_type, algebra: AlgebraKnown { algebra: lambda_symbol })
+  ExprInference { expr: InferredLambda { params: params, body: body, facts: facts }, diagnostics: [], facts: facts }
+}
+
+fn infer_string_interp(expr: NormalizedExpr, parts: List<InferredExpr>) -> ExprInference {
+  let facts = required_facts(result_type: string_type, algebra: AlgebraKnown { algebra: string_symbol })
+  ExprInference { expr: InferredStringInterp { parts: parts, facts: facts }, diagnostics: [], facts: facts }
+}
+
+fn infer_block(expr: NormalizedExpr, statements: List<InferredExpr>) -> ExprInference {
+  let terminal = last_expr_or_unit(statements: statements)
+  let facts = facts_of(expr: terminal)
+  ExprInference { expr: InferredBlock { statements: statements, facts: facts }, diagnostics: [], facts: facts }
+}
+
+fn infer_cast(expr: NormalizedExpr, value: InferredExpr, target: TypeRef) -> ExprInference {
+  let facts = required_facts(result_type: target, algebra: AlgebraKnown { algebra: cast_symbol })
+  ExprInference { expr: InferredCast { expr: value, target: target, facts: facts }, diagnostics: [], facts: facts }
+}
+
+fn infer_for_each(expr: NormalizedExpr, binding: BindingFacts, collection: InferredExpr, body: InferredExpr) -> ExprInference {
+  let facts = facts_of(expr: body)
+  ExprInference { expr: InferredForEach { binding: binding, collection: collection, body: body, facts: facts }, diagnostics: [], facts: facts }
+}
+
+fn infer_index(expr: NormalizedExpr, base: InferredExpr, index: InferredExpr) -> ExprInference {
+  match indexed_result_type(base: facts_of(expr: base).result_type) {
+    Some { value: result_type } =>
+      let facts = required_facts(result_type: result_type, algebra: AlgebraKnown { algebra: index_symbol })
+      ExprInference { expr: InferredIndex { base: base, index: index, facts: facts }, diagnostics: [], facts: facts }
+    None =>
+      infer_error(diagnostic: NotIndexable { actual: facts_of(expr: base).result_type })
+  }
+}
+
+fn infer_slice(expr: NormalizedExpr, base: InferredExpr, start: InferredExpr, end: InferredExpr) -> ExprInference {
+  let facts = facts_of(expr: base)
+  ExprInference { expr: InferredSlice { base: base, start: start, end: end, facts: facts }, diagnostics: [], facts: facts }
+}
+
+fn infer_return(expr: NormalizedExpr, value: InferredExpr) -> ExprInference {
+  let facts = facts_of(expr: value)
+  ExprInference { expr: InferredReturn { value: value, facts: facts }, diagnostics: [], facts: facts }
+}
+
+fn infer_data_decl(name: Symbol, fields: List<BindingFacts>) -> ItemInference {
+  ItemInference { item: InferredDataDecl { name: name, fields: fields }, diagnostics: [], exports: fields }
+}
+
+fn infer_func_decl(name: Symbol, params: List<BindingFacts>, body: InferredNode, scope: InferScope) -> ItemInference {
+  let body_expr = child_expr(node: body)
+  let result_type = CallableType { params: map(params, f: p => p.type_ref), result: facts_of(expr: body_expr).result_type }
+  let facts = required_facts(result_type: result_type, algebra: AlgebraKnown { algebra: name })
+  ItemInference {
+    item: InferredFuncDecl { name: name, params: params, body: body_expr, facts: facts },
+    diagnostics: [],
+    exports: [BindingFacts { name: name, type_ref: result_type, cardinality: Required }]
+  }
+}
+
+fn infer_service_decl(name: Symbol, operations: List<NormalizedNode>, children: List<InferredNode>, scope: InferScope) -> ItemInference {
+  ItemInference { item: InferredServiceDecl { name: name, operations: children }, diagnostics: [], exports: [] }
+}
+
+fn infer_transport_decl(name: Symbol, transport: NormalizedNode) -> ItemInference {
+  ItemInference { item: InferredTransportDecl { name: name, transport: transport }, diagnostics: [], exports: [] }
+}
+
+data list_symbol: Symbol = list_symbol
+data lambda_symbol: Symbol = lambda_symbol
+data cast_symbol: Symbol = cast_symbol
+data index_symbol: Symbol = index_symbol
+
+fn last_expr_or_unit(statements: List<InferredExpr>) -> InferredExpr {
+  match statements |> reverse |> first {
+    Some { value: expr } => expr
+    None =>
+      let facts = required_facts(result_type: unit_type, algebra: AlgebraKnown { algebra: unit_symbol })
+      InferredLiteral { value: unit_symbol, facts: facts }
+  }
+}
+
+fn indexed_result_type(base: TypeRef) -> TypeRef? {
+  match base {
+    TypeApply { callee: _, args: args } => args |> first
+    _ => none
+  }
+}
