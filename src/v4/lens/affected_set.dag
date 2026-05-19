@@ -53,7 +53,6 @@ type ReExecFrontier {
 
 type AffectedSetRead {
   hash_receipt: fn(Dag, Path, Node) -> HashReceipt
-  read: fn(Dag, Diff) -> Witness<ReExecFrontier>
 }
 
 
@@ -74,15 +73,13 @@ type BoundaryReceipt
 type FrontierAcc {
   mode: AffectedFrontierMode
   decisions: Map<ExclusionKey, FrontierDecision>
-  roots: List<Path>
 }
 
 
 fn empty_frontier_acc() -> FrontierAcc {
   FrontierAcc {
     mode: ChangedSubgraph { roots: [] },
-    decisions: empty_map(),
-    roots: []
+    decisions: empty_map()
   }
 }
 
@@ -106,8 +103,7 @@ fn root_key(path: Path) -> ExclusionKey {
 fn mark_rerun(acc: FrontierAcc, key: ExclusionKey) -> FrontierAcc {
   FrontierAcc {
     mode: acc.mode,
-    decisions: map_insert(acc.decisions, key, Rerun),
-    roots: acc.roots
+    decisions: map_insert(acc.decisions, key, Rerun)
   }
 }
 
@@ -115,8 +111,7 @@ fn mark_rerun(acc: FrontierAcc, key: ExclusionKey) -> FrontierAcc {
 fn mark_excluded(acc: FrontierAcc, key: ExclusionKey, proof: ExclusionProof) -> FrontierAcc {
   FrontierAcc {
     mode: acc.mode,
-    decisions: map_insert(acc.decisions, key, Excluded { proof: proof }),
-    roots: acc.roots
+    decisions: map_insert(acc.decisions, key, Excluded { proof: proof })
   }
 }
 
@@ -124,8 +119,7 @@ fn mark_excluded(acc: FrontierAcc, key: ExclusionKey, proof: ExclusionProof) -> 
 fn mark_whole_dag(acc: FrontierAcc, reason: Symbol) -> FrontierAcc {
   FrontierAcc {
     mode: WholeDagFailClosed { reason: reason },
-    decisions: acc.decisions,
-    roots: acc.roots
+    decisions: acc.decisions
   }
 }
 
@@ -135,14 +129,12 @@ fn append_root(acc: FrontierAcc, path: Path) -> FrontierAcc {
     WholeDagFailClosed { reason: r } =>
       FrontierAcc {
         mode: WholeDagFailClosed { reason: r },
-        decisions: acc.decisions,
-        roots: list_push(acc.roots, path)
+        decisions: acc.decisions
       }
-    ChangedSubgraph { roots: _ } =>
+    ChangedSubgraph { roots: roots } =>
       FrontierAcc {
-        mode: ChangedSubgraph { roots: list_push(acc.roots, path) },
-        decisions: acc.decisions,
-        roots: list_push(acc.roots, path)
+        mode: ChangedSubgraph { roots: list_push(roots, path) },
+        decisions: acc.decisions
       }
   }
 }
