@@ -44,6 +44,7 @@ import v4.workflow.ci {
   ci_bootstrap_authority_violation,
   ci_dangling_reference,
   ci_dependency_cycle,
+  ci_diagnostic,
   ci_duplicate_gate_id,
   ci_duplicate_job_id,
   ci_pipeline_well_formed,
@@ -77,6 +78,8 @@ type TestClaimEvalSubject {
 
 
 type TestClaimCacheKey {
+  claim: TestClaim
+  context: EvalContext
   claim_node: Node
   evaluator: Node
   resources: Node
@@ -118,6 +121,8 @@ fn test_claim_cache_receipt(
 ) -> TestClaimCacheReceipt {
   TestClaimCacheReceipt {
     key: TestClaimCacheKey {
+      claim: subject.claim,
+      context: subject.context,
       claim_node: subject.claim_node,
       evaluator: subject.context.evaluator,
       resources: subject.context.resources,
@@ -190,10 +195,22 @@ fn run_assert(kind: AssertKind, actual: Outcome<Node>, expected: Outcome<Node>, 
 }
 
 
-fn run_test_claim(subject: TestClaimEvalSubject, cache: TestClaimCacheReceipt) -> TestClaimRun {
+fn run_test_claim(
+  subject: TestClaimEvalSubject,
+  claim_hash: Hash,
+  evaluator_hash: Hash,
+  resources_hash: Hash,
+  extdeps_hash: Hash
+) -> TestClaimRun {
   TestClaimRun {
     subject: subject,
-    cache: cache,
+    cache: test_claim_cache_receipt(
+      subject: subject,
+      claim_hash: claim_hash,
+      evaluator_hash: evaluator_hash,
+      resources_hash: resources_hash,
+      extdeps_hash: extdeps_hash
+    ),
     verdict: run_assert(
       kind: subject.claim.kind,
       actual: subject.actual,
@@ -244,10 +261,10 @@ fn t22_symbol_node(s: Symbol) -> Node {
 }
 
 
-fn t22_ci_rejection_reason_node(actual: Outcome<CiPipeline>) -> Node {
+fn t22_ci_outcome(actual: Outcome<CiPipeline>) -> Outcome<Node> {
   match actual {
-    Produced { value: _ } => t22_symbol_node(s: t22_ci_unexpected_produced)
-    Rejected { diagnostic: d } => t22_symbol_node(s: d.reason)
+    Produced { value: _ } => Produced { value: t22_symbol_node(s: t22_ci_unexpected_produced) }
+    Rejected { diagnostic: d } => Rejected { diagnostic: d }
   }
 }
 
@@ -258,7 +275,7 @@ fn t22_ci_claim(label: String, input: Node, expected_reason: Symbol) -> TestClai
     label: label,
     t19_anchor: T19ManualAnchorAbsent,
     input: input,
-    expected: Produced { value: t22_symbol_node(s: expected_reason) },
+    expected: Rejected { diagnostic: ci_diagnostic(reason: expected_reason) },
     classification: TestClassification { tier: Tier1, layer: Integration }
   }
 }
@@ -278,7 +295,7 @@ fn t22_ci_subject(claim_node: Node, claim: TestClaim, actual: Outcome<CiPipeline
     claim_node: claim_node,
     claim: claim,
     context: t22_ci_context(),
-    actual: Produced { value: t22_ci_rejection_reason_node(actual: actual) }
+    actual: t22_ci_outcome(actual: actual)
   }
 }
 
@@ -286,13 +303,10 @@ fn t22_ci_subject(claim_node: Node, claim: TestClaim, actual: Outcome<CiPipeline
 fn t22_ci_run(subject: TestClaimEvalSubject) -> TestClaimRun {
   run_test_claim(
     subject: subject,
-    cache: test_claim_cache_receipt(
-      subject: subject,
-      claim_hash: t22_hash_claim,
-      evaluator_hash: t22_hash_evaluator,
-      resources_hash: t22_hash_resources,
-      extdeps_hash: t22_hash_extdeps
-    )
+    claim_hash: t22_hash_claim,
+    evaluator_hash: t22_hash_evaluator,
+    resources_hash: t22_hash_resources,
+    extdeps_hash: t22_hash_extdeps
   )
 }
 
