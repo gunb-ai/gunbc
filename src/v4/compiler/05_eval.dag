@@ -76,6 +76,7 @@ type TestClaimEvalSubject<T> {
   claim_node: Node
   claim: TestClaim
   context: EvalContext
+  tree: InferredTree
   evaluator_input: T
 }
 
@@ -84,6 +85,7 @@ type TestClaimCacheKey<T> {
   claim: TestClaim
   context: EvalContext
   claim_node: Node
+  tree: InferredTree
   evaluator_input: T
   claim_hash: Hash
   evaluator_hash: Hash
@@ -131,6 +133,7 @@ fn test_claim_cache_receipt<T>(
       claim: subject.claim,
       context: subject.context,
       claim_node: subject.claim_node,
+      tree: subject.tree,
       evaluator_input: subject.evaluator_input,
       claim_hash: claim_hash,
       evaluator_hash: evaluator_hash,
@@ -235,8 +238,8 @@ fn run_test_claim(
   extdeps_hash: Hash
 ) -> TestClaimRun<Node> {
   let actual = eval_node(
-    tree: subject.evaluator_input,
-    inputs: Inputs { root: subject.evaluator_input }
+    tree: subject.tree,
+    inputs: Inputs { root: subject.claim.input }
   )
   TestClaimRun {
     subject: subject,
@@ -257,11 +260,17 @@ fn run_test_claim(
 }
 
 
-fn eval_test_claim_subject(claim_node: Node, claim: TestClaim, context: EvalContext) -> TestClaimEvalSubject<Node> {
+fn eval_test_claim_subject(
+  claim_node: Node,
+  claim: TestClaim,
+  context: EvalContext,
+  tree: InferredTree
+) -> TestClaimEvalSubject<Node> {
   TestClaimEvalSubject {
     claim_node: claim_node,
     claim: claim,
     context: context,
+    tree: tree,
     evaluator_input: claim.input
   }
 }
@@ -332,6 +341,7 @@ fn t22_ci_subject(
     claim_node: input,
     claim: t22_ci_claim(label: case.label, input: input, expected_reason: case.expected_reason),
     context: t22_ci_context(),
+    tree: input,
     evaluator_input: case.pipeline
   }
 }
