@@ -832,6 +832,8 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // `src/v4/lens/coverage.dag`; retires when generated coverage owns the
     // same key projection.
     "src/v3/compiler/tests/integration/coverage_defect_acceptance_dag_test.rs",
+    // T-15: tokenize/parse smoke on `src/v4/bin/main.dag` + trampoline source anchors (see harness module docs).
+    "src/v3/compiler/tests/integration/v4_bin_main_dag_smoke_test.rs",
     // PREFIX T-23 v0: `compile_to_dag` smoke on `src/v4/lens/registry.dag` (P2-staging
     // `LensIdV0` + `LensModulePathV0`; no generated consumer yet). SG-0 + INVARIANTS §P5(b) receipt.
     "src/v3/compiler/tests/integration/v4_lens_registry_dag_smoke_test.rs",
