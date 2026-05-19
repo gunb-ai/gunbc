@@ -936,6 +936,26 @@ fn pipeline_state_halt_result(state: CompilePipelineState) -> PipelineResult {
   }
 }
 
+fn pipeline_state_mark_halted(state: CompilePipelineState) -> CompilePipelineState {
+  CompilePipelineState {
+    halted: true,
+    run_emit: state.run_emit,
+    frontend: state.frontend,
+    newline_indices: state.newline_indices,
+    graph: state.graph,
+    source_indices: state.source_indices,
+    norm_diags: state.norm_diags,
+    typed: state.typed,
+    complexity: state.complexity,
+    ownership: state.ownership,
+    artifact_plan: state.artifact_plan,
+    stage_diags: state.stage_diags,
+    emit_diags: state.emit_diags,
+    emit_files: state.emit_files,
+    target: state.target
+  }
+}
+
 fn apply_pipeline_stage(state: CompilePipelineState, spec: PipelineStageSpec) -> CompilePipelineState {
   if state.halted {
     return state
@@ -945,96 +965,191 @@ fn apply_pipeline_stage(state: CompilePipelineState, spec: PipelineStageSpec) ->
     StageParse => state
     StageResolve =>
       match state.graph {
-        None => CompilePipelineState { halted: true, ..state }
+        None => pipeline_state_mark_halted(state: state)
         Some { value: graph } =>
           if pipeline_gate_blocks(policy: spec.gate, diagnostics: graph.diagnostics) {
-            CompilePipelineState { halted: true, ..state }
+            pipeline_state_mark_halted(state: state)
           } else {
             state
           }
       }
     StageNormalize =>
       match state.graph {
-        None => CompilePipelineState { halted: true, ..state }
+        None => pipeline_state_mark_halted(state: state)
         Some { value: graph } => {
           let norm = normalize_graph(graph: graph, source_indices: state.source_indices)
           let norm_diags = norm.diagnostics
           if pipeline_gate_blocks(policy: spec.gate, diagnostics: norm_diags) {
-            CompilePipelineState { halted: true, norm_diags: norm_diags, ..state }
+            CompilePipelineState {
+              halted: true,
+              run_emit: state.run_emit,
+              frontend: state.frontend,
+              newline_indices: state.newline_indices,
+              graph: state.graph,
+              source_indices: state.source_indices,
+              norm_diags: norm_diags,
+              typed: state.typed,
+              complexity: state.complexity,
+              ownership: state.ownership,
+              artifact_plan: state.artifact_plan,
+              stage_diags: state.stage_diags,
+              emit_diags: state.emit_diags,
+              emit_files: state.emit_files,
+              target: state.target
+            }
           } else {
-            CompilePipelineState { graph: Some { value: norm.graph }, norm_diags: norm_diags, ..state }
+            CompilePipelineState {
+              halted: state.halted,
+              run_emit: state.run_emit,
+              frontend: state.frontend,
+              newline_indices: state.newline_indices,
+              graph: Some { value: norm.graph },
+              source_indices: state.source_indices,
+              norm_diags: norm_diags,
+              typed: state.typed,
+              complexity: state.complexity,
+              ownership: state.ownership,
+              artifact_plan: state.artifact_plan,
+              stage_diags: state.stage_diags,
+              emit_diags: state.emit_diags,
+              emit_files: state.emit_files,
+              target: state.target
+            }
           }
         }
       }
     StageInfer =>
       match state.graph {
-        None => CompilePipelineState { halted: true, ..state }
+        None => pipeline_state_mark_halted(state: state)
         Some { value: graph } => {
           let typed = reconcile(graph: graph, source_indices: state.source_indices, intern_table: state.frontend.intern_table)
           let typed_diags = typed.diagnostics
+          let type_errors = typed_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))
           let halted = pipeline_gate_blocks(policy: spec.gate, diagnostics: typed_diags)
           CompilePipelineState {
             halted: halted,
-            typed: typed,
+            run_emit: state.run_emit,
+            frontend: state.frontend,
+            newline_indices: state.newline_indices,
+            graph: state.graph,
+            source_indices: state.source_indices,
+            norm_diags: state.norm_diags,
+            typed: Some { value: typed },
+            complexity: state.complexity,
+            ownership: state.ownership,
+            artifact_plan: state.artifact_plan,
             stage_diags: concat(state.stage_diags, typed_diags),
-            ..state
+            emit_diags: state.emit_diags,
+            emit_files: state.emit_files,
+            target: state.target
           }
         }
       }
     StageComplexity =>
       match state.typed {
-        None => CompilePipelineState { halted: true, ..state }
+        None => pipeline_state_mark_halted(state: state)
         Some { value: typed } => {
           let func_entries = extract_func_entries(typed: typed)
           let recursion_ctx = build_recursion_context(typed: typed)
           let complexity = build_complexity_report(func_entries: func_entries, recursion_ctx: recursion_ctx, source_indices: state.source_indices)
           let complexity_diags = complexity_diagnostics(complexity: complexity)
           CompilePipelineState {
+            halted: state.halted,
+            run_emit: state.run_emit,
+            frontend: state.frontend,
+            newline_indices: state.newline_indices,
+            graph: state.graph,
+            source_indices: state.source_indices,
+            norm_diags: state.norm_diags,
+            typed: state.typed,
             complexity: complexity,
+            ownership: state.ownership,
+            artifact_plan: state.artifact_plan,
             stage_diags: concat(state.stage_diags, complexity_diags),
-            ..state
+            emit_diags: state.emit_diags,
+            emit_files: state.emit_files,
+            target: state.target
           }
         }
       }
     StageOwnership =>
       match state.typed {
-        None => CompilePipelineState { halted: true, ..state }
+        None => pipeline_state_mark_halted(state: state)
         Some { value: typed } => {
           let ownership = extract_ownership_proofs(typed: typed)
           let ownership_diags = ownership_diagnostics(proofs: ownership)
           let halted = pipeline_gate_blocks(policy: spec.gate, diagnostics: ownership_diags)
           CompilePipelineState {
             halted: halted,
+            run_emit: state.run_emit,
+            frontend: state.frontend,
+            newline_indices: state.newline_indices,
+            graph: state.graph,
+            source_indices: state.source_indices,
+            norm_diags: state.norm_diags,
+            typed: state.typed,
+            complexity: state.complexity,
             ownership: ownership,
+            artifact_plan: state.artifact_plan,
             stage_diags: concat(state.stage_diags, ownership_diags),
-            ..state
+            emit_diags: state.emit_diags,
+            emit_files: state.emit_files,
+            target: state.target
           }
         }
       }
     StageArtifactPlan =>
       match state.typed {
-        None => CompilePipelineState { halted: true, ..state }
+        None => pipeline_state_mark_halted(state: state)
         Some { value: typed } => {
           let artifact_plan = default_artifact_plan(
             root_modules: typed.modules |> map(m => authored_name_at(source_indices: state.source_indices, node: m.module)),
             target: state.target
           )
-          CompilePipelineState { artifact_plan: artifact_plan, ..state }
+          CompilePipelineState {
+            halted: state.halted,
+            run_emit: state.run_emit,
+            frontend: state.frontend,
+            newline_indices: state.newline_indices,
+            graph: state.graph,
+            source_indices: state.source_indices,
+            norm_diags: state.norm_diags,
+            typed: state.typed,
+            complexity: state.complexity,
+            ownership: state.ownership,
+            artifact_plan: artifact_plan,
+            stage_diags: state.stage_diags,
+            emit_diags: state.emit_diags,
+            emit_files: state.emit_files,
+            target: state.target
+          }
         }
       }
     StageEmit =>
-      if !state.run_emit || state.halted {
+      if !state.run_emit {
         state
       } else {
         match state.typed {
-          None => CompilePipelineState { halted: true, ..state }
+          None => pipeline_state_mark_halted(state: state)
           Some { value: typed } => {
             let emit_result = emit_from_artifact_plan(typed: typed, artifact_plan: state.artifact_plan)
             let emit_blocks = pipeline_gate_blocks(policy: spec.gate, diagnostics: emit_result.diagnostics)
             CompilePipelineState {
+              halted: state.halted,
+              run_emit: state.run_emit,
+              frontend: state.frontend,
+              newline_indices: state.newline_indices,
+              graph: state.graph,
+              source_indices: state.source_indices,
+              norm_diags: state.norm_diags,
+              typed: state.typed,
+              complexity: state.complexity,
+              ownership: state.ownership,
+              artifact_plan: state.artifact_plan,
+              stage_diags: state.stage_diags,
               emit_diags: emit_result.diagnostics,
               emit_files: if emit_blocks { [] } else { emit_result.files },
-              ..state
+              target: state.target
             }
           }
         }
