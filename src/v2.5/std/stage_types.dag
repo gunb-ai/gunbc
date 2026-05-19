@@ -1051,6 +1051,19 @@ type EmitStageIn {
   module: InferredModule
 }
 
+type TargetArtifact {
+  path: String
+  content: String
+}
+
+type TargetSource {
+  artifacts: List<TargetArtifact>
+}
+
+type EmitStageOut {
+  output: TargetSource
+}
+
 // =========================================================================
 // Normalize seam — substrate projection (reconcile calm-crane-724 + node.dag)
 // Uses Connective / Behavior / EdgeLabel from v2_5.std.node. Targets are seam
