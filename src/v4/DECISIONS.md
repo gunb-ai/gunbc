@@ -1679,6 +1679,8 @@ Verbatim `//` lines from merge-base `float.dag` (lines **104–144** — modelin
 
 **Ratchet authority:** this `###` row is the post-reseed Practice-4 authority for the live `PythonScalar` coproduct. `PythonSingletonKind` is unchanged from merge-base and retains `CP-3229-GREEN-TERMINAL`.
 
+**Supersedes:** the prior held-provisional `SL-3309-PYTHON-PER-PRIMITIVE-A-VS-B` row, closed by operator A-vs-B ruling **(2)** + `#3338` `py_bool_grounding`. It is **not carried forward**: its premise (an open A-vs-B gate) and its referent (a per-primitive bool alias that does not exist on post-`#3338` main) are both retired, so a verbatim carry would itself be a stale closed-gate ledger reference — the class of defect this dissolution removes. The resolved state is captured by this row plus the reconciled `python.dag` / singletons bullet.
+
 **PR receipt:** gunbc `#3309` forward-port (fresh PR onto post-`#3338` main).
 
 ### SL-3229-T4-FORMAT-T6T7 — T-4.6 format parse/emit bodies (compiler pipeline P3)
