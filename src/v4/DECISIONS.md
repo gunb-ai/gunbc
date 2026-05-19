@@ -1836,7 +1836,7 @@ Merge-base `92cb26402` **may** mark a sum coproduct **🔴** in the Practice-4 h
 
 **Note (out of dissolution scope, recorded for completeness):** `bs_diagnostic` / `ci_diagnostic` are `Diagnostic` constructors, not `List` operations. No 🔴 in this ledger — `std/collection.dag` currently has no derived-op surface to dissolve into; the gate opens when T-3 `std/collection.dag` lands the List-op surface, at which point every 🟡 row above is a dissolve-on-arrival merge obligation.
 
-### LB-T22-3213 — bootstrap-stage rejection-family negative-coverage plan-bound 🟡
+### LB-T22-3213 — bootstrap-stage rejection-family negative-coverage ledger 🟡
 
 > CORE ruling (still-hawk-102, 2026-05-18, horn (i)): the
 > `BootstrapStageCompile` single-authority seam is **ADDRESSED-BY-CONSTRUCTION** —
@@ -1848,7 +1848,7 @@ Merge-base `92cb26402` **may** mark a sum coproduct **🔴** in the Practice-4 h
 > executable negative harness — REJECTED (T-22-in-#3213 = brief violation;
 > hand-rolled harness = parallel test mechanism, anti-pattern).
 
-**🟡 plan-bound (NOT "no change needed" — anti-#3250).** The enforcement is structural and fail-closed *now*; what is deferred is the executable *demonstration*. **Arrival:** T-22's executable `TestClaim` runner lands (`compiler/05_eval.dag`; brief defers the executable TestClaim lane to the T-22 named trigger). **Follow-up (dissolves this 🟡):** add negative `TestClaim`(s) for the CI bootstrap-stage rejection family — dangling `BootstrapStageCompile.produces` + siblings (duplicate job/gate id, dangling `needs`, dangling gate job, dependency cycle) — exercising `ci_pipeline_well_formed`'s `Rejected` branches. **Bilateral binding:** the same obligation is recorded in `src/v4/TASKS.md` T-22 scope text (neither side is a vague "T-22 will cover"). In-file tag: `// 🟡 negative-coverage plan-bound (T-22) — DECISIONS.md LB-T22-3213`. | `src/v4/workflow/ci.dag` (`ci_pipeline_well_formed` rejection family) |
+**🟡 status after T-22 Wave-0.** The enforcement is structural and fail-closed, and the executable demonstration is now modeled in `compiler/05_eval.dag`: `run_ci_dangling_bootstrap_output`, `run_ci_duplicate_job_id`, `run_ci_duplicate_gate_id`, `run_ci_dangling_need`, `run_ci_dangling_gate_job`, and `run_ci_dependency_cycle` exercise `ci_pipeline_well_formed`'s rejection branches through `TestClaimRun<CiPipeline>`. **Remaining yellow scope:** the source-side `ci.dag` in-file tag remains a plan-bound receipt until B1 `content_hash` facts replace the T-22 placeholder cache hashes and the coverage can be keyed by real TestClaim content hashes. **Bilateral binding:** the same status is recorded in `src/v4/TASKS.md` T-22 scope text. In-file tag remains: `// 🟡 negative-coverage plan-bound (T-22) — DECISIONS.md LB-T22-3213`. | `src/v4/workflow/ci.dag` (`ci_pipeline_well_formed` rejection family) + `src/v4/compiler/05_eval.dag` (`run_ci_*`) |
 
 ### T22-EVAL-VERDICT — `compiler/05_eval.dag` `Verdict<T>` coproduct ledger 🟢
 
