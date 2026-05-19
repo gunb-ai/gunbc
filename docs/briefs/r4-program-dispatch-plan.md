@@ -241,8 +241,14 @@ design call).
     — depends T-9, Wave-3 IMPL-optim, never Wave-0.)*
 - **Wave 1 (the keystone-cluster ×4 land — TASKS.md:64/:286 exact set
   `{P1-KEYSTONE + T-30 + T-29 + T-25-core}`; T-29 is NOT dropped — core
-  #3267 merged but residual #3277 still gates the T-4 cpp slice):** T-4 ×5 languages, T-4.5,
-  T-4.6 unblock (T-4 mgr). **+ lens-pipeline-derivations T-#** (`match_arm_shape`
+  #3267 merged but residual #3277 still gates the T-4 cpp slice):**
+  **T-4 ×5 languages** unblock on the **full ×4 set**. **T-4.5** (§2 :85
+  deps `T-3, T-25-core`) and **T-4.6** (§2 :86 deps `T-25-core, T-26`)
+  unblock on **T-25-core only** — their sole keystone-cluster feeder; NOT
+  gated on P1-KEYSTONE / T-30 / T-29 — once their own §2 table deps are
+  met, i.e. potentially **earlier** than the full ×4 (T-4 mgr). The §2
+  per-task table is the dependency authority; this wave heading does not
+  widen T-4.5/T-4.6's gate. **+ lens-pipeline-derivations T-#** (`match_arm_shape`
   / `closed_vocab_scan` / `concept_home`) **+ Layer-0 lens stage plug-in**
   (Fresh CP+Lens lane) → **Layer-0 hygiene CI HARD-GATE bites here** —
   table-stakes (L0.1–L0.15 read parse+resolve only, both LANDED, **no T-9
