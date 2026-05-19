@@ -146,8 +146,8 @@ post-resolve invariant pass below; sugar does not flow past the parser (CM.md
 
 | Lines | Heuristic | Cat | Question | With ontology |
 |-------|-----------|-----|----------|---------------|
-| 37-76 | `container_expected_arity(name: nname)` on bare `List`/`Map`/… leaves | A | Under-parameterized container? | Algebra arity from the type's declared profile — not `authored_name_at` string lookup. Structural legs already present (`children`/`params` counts, `NoConnective`, `has_structure`); the name table is duplicate authority shared with `04_types.dag` / `04_infer.dag`. Dissolve when profile arity is reachable at this boundary. |
-| 37-76 | `flat_map` tree walk over `children`/`params`/`inferred`/… | R | Visit every subtree for diagnostics? | Legitimate reduction traversal until a scoped `NodeFold` diagnostic algebra lands (P5); not an extra heuristic site. |
+| 47-56 | `container_expected_arity(name: nname)` on bare `List`/`Map`/… leaves | A | Under-parameterized container? | Algebra arity from the type's declared profile — not `authored_name_at` string lookup. Structural legs already present (`children`/`params` counts, `NoConnective`, `has_structure`); the name table is duplicate authority shared with `04_types.dag` / `04_infer.dag`. Dissolve when profile arity is reachable at this boundary. |
+| 57-81 | `flat_map` tree walk over `children`/`params`/`inferred`/… | R | Visit every subtree for diagnostics? | Legitimate reduction traversal until a scoped `NodeFold` diagnostic algebra lands (P5); not an extra heuristic site. |
 
 **v4 counterpart (`src/v4/compiler/03_normalize.dag`, out of scope here):** C3 sugar →
 `Conj`/`Arrow`/target peel; closed N=4 `SurfaceSugarKind` axis; local success carriers
