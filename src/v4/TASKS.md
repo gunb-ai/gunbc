@@ -121,7 +121,7 @@ Substrate / extdeps fan-out:
   T-4.6 extdeps/formats/* (7 files: json/yaml/csv/toml/json_schema/openapi/sql)  [needs T-25-core, T-26]
   T-4.7 extdeps/frameworks/react.dag    [needs T-4 (typescript)]
   T-4.8 extdeps/coordination.dag         [needs T-4, T-4.7]
-  T-4.9  extdeps/languages/verilog.dag   [needs T-1, T-2; B2-OMNI falsification probe — concurrency vs the 5 behaviors]
+  T-4.9  extdeps/languages/verilog.dag   [needs T-1, T-2; imports std/node.dag + std/nat.dag (Nat); B2-OMNI falsification probe — concurrency vs the 5 behaviors]
   T-4.10 extdeps/formats/spice.dag       [needs T-1; B2-OMNI falsification probe — LanguageModel generality (no control flow)]
   T-4.11 test/claim/boundary/english_ingest_fail_closed.dag  [needs T-1, T-3 std/verification.dag; boundary-honesty probe — TestClaim/AssertKind bind after verification.dag fill, not parallel to Wave-A2 scaffold]
   T-4.12 extdeps/languages/llvm_ir.dag   [needs T-1, T-2; B2-OMNI probe — generalize DOWN the stack (SSA IR)]
@@ -666,7 +666,7 @@ model shape to keep the probe "parallel."
 
 #### T-4.9: `extdeps/languages/verilog.dag`
 - **Stress axis**: hardware **concurrency** vs the 5 L1 behaviors. This is the **IN-B validation probe** — if Verilog (`always @(posedge clk)`, continuous assignment) cannot be modeled as effect-typed `Bind` composition without a 6th `Concurrent` behavior, that is a **C1 stop-signal escalation**, and catching it early is the entire point.
-- **Wave-0 / Practice 9 (header hygiene):** The live `verilog.dag` preamble stays **terse** — path line, the four-line `Scope` / `Owns` / `Consumes` / `Status` block, `// Anchor`, `// Ledger`, and mandated coproduct one-liners only (`docs/modeling-discipline.md` §9). Do not add extra `//` rationale paragraphs to the `.dag` file; falsification narrative and T-1+T-2 import discipline for this probe live **here** and under `DECISIONS.md` **L-1**, not as parallel prose authority in the substrate header.
+- **Wave-0 / Practice 9 (header hygiene):** The live `verilog.dag` preamble stays **terse** — path line, the four-line `Scope` / `Owns` / `Consumes` / `Status` block, `// Anchor`, `// Ledger`, and mandated coproduct one-liners only (`docs/modeling-discipline.md` §9). Do not add extra `//` rationale paragraphs to the `.dag` file; falsification narrative lives **here** and under `DECISIONS.md` **L-1**, not as parallel prose authority in the substrate header. **Boundary (P2):** the **authoritative import surface** is the header `Consumes: std/node.dag; std/nat.dag (Nat)` — not the execution-graph tag `[needs T-1, T-2]` (that tag names **substrate schedule prerequisites**: `node` + `algebra` must exist before the probe is fillable). T-2 facts reach Verilog through `std/nat.dag` (which **Consumes** `std/algebra.dag`), not by importing `algebra.dag` directly in this file.
 - **Clear win**: one `.dag` FSM → simulable Verilog + a Rust reference model, same Node, zero translator.
 - **Scope**: L (substrate-validating; concurrency model is the risk).
 
