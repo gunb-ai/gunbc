@@ -125,9 +125,9 @@ fn node_locally_well_formed(n: Node) -> Bool {
   match n.kind {
     TypeForm { connective: c } =>
       edges_conform(children: n.children, d: connective_edge_discipline(c: c))
-    Declaration { kind: _ } => true
+    Declaration => true
     Computation { behavior: _ } => true
-    Composite { role: _ } => true
+    Composite => true
   }
 }
 
