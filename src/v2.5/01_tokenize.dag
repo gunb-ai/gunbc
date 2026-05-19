@@ -1,0 +1,649 @@
+module v2_5.compiler.tokenize
+
+type Symbol
+
+type Source {
+  file: Symbol
+  text: String
+}
+
+type SourceSpan {
+  file: Symbol
+  start: Int
+  end: Int
+}
+
+type DiagnosticReason
+  = UnexpectedCharacter
+  | UnterminatedString
+  | LexicalProgressExhausted
+
+type Diagnostic {
+  reason: DiagnosticReason
+  span: SourceSpan
+  lexeme: String
+}
+
+type Outcome<T>
+  = Produced { value: T }
+  | Rejected { diagnostic: Diagnostic }
+
+type Keyword
+  = ModuleKeyword
+  | ImportKeyword
+  | TypeKeyword
+  | FnKeyword
+  | FuncKeyword
+  | ResourceKeyword
+  | ServiceKeyword
+  | DataKeyword
+  | InterfaceKeyword
+  | PipelineKeyword
+  | ProfileKeyword
+  | PatternKeyword
+  | LetKeyword
+  | ReturnKeyword
+  | MatchKeyword
+  | IfKeyword
+  | ThenKeyword
+  | ElseKeyword
+  | ForKeyword
+  | InKeyword
+  | WhereKeyword
+  | WithKeyword
+  | TrueKeyword
+  | FalseKeyword
+  | NoneKeyword
+  | NullKeyword
+  | AcquireKeyword
+  | ReleaseKeyword
+  | CapabilityKeyword
+  | OperationKeyword
+  | InputKeyword
+  | OutputKeyword
+  | IdempotentKeyword
+  | ReadonlyKeyword
+  | HermeticKeyword
+
+type LiteralKind
+  = StringLiteral
+  | IntLiteral
+  | FloatLiteral
+
+type CharacterClass
+  = DigitClass
+  | IdentStartClass
+  | IdentContinueClass
+  | WhitespaceClass
+
+type Punctuation
+  = LBrace
+  | RBrace
+  | LParen
+  | RParen
+  | LBracket
+  | RBracket
+  | Lt
+  | Gt
+  | Le
+  | Ge
+  | FatArrow
+  | Arrow
+  | Colon
+  | Comma
+  | Dot
+  | DotDot
+  | Eq
+  | EqEq
+  | Ne
+  | Plus
+  | Minus
+  | Star
+  | Slash
+  | Percent
+  | Bang
+  | And
+  | Or
+  | Question
+  | NullCoalesce
+  | Pipe
+  | PipeArrow
+
+type TokenKind
+  = KeywordToken { keyword: Keyword }
+  | IdentifierToken
+  | LiteralToken { literal: LiteralKind }
+  | PunctuationToken { punctuation: Punctuation }
+  | StringBeginToken
+  | StringMiddleToken
+  | StringEndToken
+  | NewlineToken
+  | EofToken
+
+type Token {
+  kind: TokenKind
+  lexeme: String
+  span: SourceSpan
+}
+
+type TokenStream {
+  tokens: List<Token>
+}
+
+type IndexedChar {
+  index: Int
+  char: String
+}
+
+type SourceFold<R> {
+  init: R
+  step: fn(R, IndexedChar) -> R
+}
+
+type LexerFrame {
+  cursor: Int
+  tokens: List<Token>
+  interpolation_depth: List<Int>
+  eof_emitted: Bool
+}
+
+type LexerState
+  = Lexing { frame: LexerFrame }
+  | LexFailed { diagnostic: Diagnostic }
+
+type ClassScanState
+  = ClassOpen { end: Int }
+  | ClassClosed { end: Int }
+
+type LineScanState
+  = LineOpen { end: Int }
+  | LineClosed { end: Int }
+
+type StringBodyState
+  = StringOpen { cursor: Int, acc: List<String>, escaped: Bool }
+  | StringClosed { content: String, end_pos: Int }
+  | StringInterpolation { content: String, end_pos: Int }
+
+type StringTokenRole
+  = WholeString
+  | InterpolationBegin
+  | InterpolationMiddle
+  | InterpolationEnd
+
+type ScanStep {
+  cursor: Int
+  token: Token
+  interpolation_depth: List<Int>
+}
+
+type ScanOutcome
+  = Scanned { step: ScanStep }
+  | ScanRejected { diagnostic: Diagnostic }
+
+data keyword_table: Map<String, Keyword> = {
+  "module": ModuleKeyword, "import": ImportKeyword,
+  "type": TypeKeyword, "fn": FnKeyword, "func": FuncKeyword,
+  "resource": ResourceKeyword, "service": ServiceKeyword, "data": DataKeyword,
+  "interface": InterfaceKeyword, "pipeline": PipelineKeyword, "profile": ProfileKeyword,
+  "pattern": PatternKeyword,
+  "let": LetKeyword, "return": ReturnKeyword, "match": MatchKeyword,
+  "if": IfKeyword, "then": ThenKeyword, "else": ElseKeyword,
+  "for": ForKeyword, "in": InKeyword, "where": WhereKeyword, "with": WithKeyword,
+  "true": TrueKeyword, "false": FalseKeyword, "none": NoneKeyword, "null": NullKeyword,
+  "acquire": AcquireKeyword, "release": ReleaseKeyword,
+  "capability": CapabilityKeyword, "operation": OperationKeyword,
+  "input": InputKeyword, "output": OutputKeyword,
+  "idempotent": IdempotentKeyword, "readonly": ReadonlyKeyword, "hermetic": HermeticKeyword
+}
+
+data single_punct: Map<String, Punctuation> = {
+  "(": LParen, ")": RParen,
+  "[": LBracket, "]": RBracket,
+  ":": Colon, ",": Comma, ".": Dot,
+  "+": Plus, "*": Star, "%": Percent, "/": Slash,
+  "=": Eq, "<": Lt, ">": Gt, "-": Minus,
+  "!": Bang, "?": Question, "|": Pipe
+}
+
+data double_punct: Map<String, Punctuation> = {
+  "=>": FatArrow, "->": Arrow,
+  "==": EqEq, "!=": Ne,
+  "<=": Le, ">=": Ge,
+  "&&": And, "||": Or,
+  "|>": PipeArrow, "??": NullCoalesce,
+  "..": DotDot
+}
+
+fn span(source: Source, start: Int, end: Int) -> SourceSpan {
+  SourceSpan { file: source.file, start: start, end: end }
+}
+
+fn diagnostic(source: Source, reason: DiagnosticReason, start: Int, end: Int, lexeme: String) -> Diagnostic {
+  Diagnostic { reason: reason, span: span(source: source, start: start, end: end), lexeme: lexeme }
+}
+
+fn make_token(source: Source, start: Int, end: Int, lexeme: String, kind: TokenKind) -> Token {
+  Token { kind: kind, lexeme: lexeme, span: span(source: source, start: start, end: end) }
+}
+
+fn fold_source_chars<R>(source: Source, algebra: SourceFold<R>) -> R {
+  fold(enumerate(chars(source.text)), init: algebra.init, f: fn(acc, pair) {
+    algebra.step(acc, IndexedChar { index: pair.first, char: from_code_point(cp: pair.second) })
+  })
+}
+
+fn source_len(source: Source) -> Int {
+  count(chars(source.text))
+}
+
+fn source_char(source: Source, index: Int) -> String {
+  from_code_point(cp: chars(source.text)[index])
+}
+
+fn source_slice(source: Source, start: Int, end: Int) -> String {
+  chars_to_string(chars: chars(source.text), start: start, end: end)
+}
+
+fn char_in_class(ch: String, class: CharacterClass) -> Bool {
+  match class {
+    DigitClass => ch >= "0" && ch <= "9"
+    IdentStartClass => (ch >= "a" && ch <= "z") || (ch >= "A" && ch <= "Z") || ch == "_"
+    IdentContinueClass =>
+      char_in_class(ch: ch, class: IdentStartClass) ||
+        char_in_class(ch: ch, class: DigitClass)
+    WhitespaceClass => ch == " " || ch == "\t"
+  }
+}
+
+fn scan_class(source: Source, start: Int, class: CharacterClass) -> Int {
+  let result = fold_source_chars(
+    source: source,
+    algebra: SourceFold {
+      init: ClassOpen { end: start },
+      step: fn(state, item) {
+        match state {
+          ClassClosed { end } => ClassClosed { end: end }
+          ClassOpen { end } =>
+            if item.index < start { ClassOpen { end: end } }
+            else if item.index != end { ClassOpen { end: end } }
+            else if char_in_class(ch: item.char, class: class) { ClassOpen { end: end + 1 } }
+            else { ClassClosed { end: end } }
+        }
+      }
+    }
+  )
+  match result {
+    ClassOpen { end } => end
+    ClassClosed { end } => end
+  }
+}
+
+fn scan_to_eol(source: Source, start: Int) -> Int {
+  let result = fold_source_chars(
+    source: source,
+    algebra: SourceFold {
+      init: LineOpen { end: start },
+      step: fn(state, item) {
+        match state {
+          LineClosed { end } => LineClosed { end: end }
+          LineOpen { end } =>
+            if item.index < start { LineOpen { end: end } }
+            else if item.index != end { LineOpen { end: end } }
+            else if item.char == "\n" { LineClosed { end: end } }
+            else { LineOpen { end: end + 1 } }
+        }
+      }
+    }
+  )
+  match result {
+    LineOpen { end } => end
+    LineClosed { end } => end
+  }
+}
+
+fn skip_trivia(source: Source, cursor: Int) -> Int {
+  let after_ws = scan_class(source: source, start: cursor, class: WhitespaceClass)
+  if after_ws + 1 < source_len(source: source) &&
+    source_char(source: source, index: after_ws) == "/" &&
+    source_char(source: source, index: after_ws + 1) == "/" {
+    scan_to_eol(source: source, start: after_ws)
+  } else {
+    after_ws
+  }
+}
+
+fn classify_identifier(text: String) -> TokenKind {
+  match lookup(keyword_table, key: text) {
+    Some { value: keyword } => KeywordToken { keyword: keyword }
+    None => IdentifierToken
+  }
+}
+
+fn scan_identifier(source: Source, frame: LexerFrame) -> ScanOutcome {
+  let end = scan_class(source: source, start: frame.cursor, class: IdentContinueClass)
+  let text = source_slice(source: source, start: frame.cursor, end: end)
+  Scanned {
+    step: ScanStep {
+      cursor: end,
+      token: make_token(source: source, start: frame.cursor, end: end, lexeme: text, kind: classify_identifier(text: text)),
+      interpolation_depth: frame.interpolation_depth
+    }
+  }
+}
+
+fn scan_number(source: Source, frame: LexerFrame) -> ScanOutcome {
+  let int_end = scan_class(source: source, start: frame.cursor, class: DigitClass)
+  if int_end + 1 < source_len(source: source) &&
+    source_char(source: source, index: int_end) == "." &&
+    char_in_class(ch: source_char(source: source, index: int_end + 1), class: DigitClass) {
+    let frac_end = scan_class(source: source, start: int_end + 1, class: DigitClass)
+    let text = source_slice(source: source, start: frame.cursor, end: frac_end)
+    Scanned {
+      step: ScanStep {
+        cursor: frac_end,
+        token: make_token(source: source, start: frame.cursor, end: frac_end, lexeme: text, kind: LiteralToken { literal: FloatLiteral }),
+        interpolation_depth: frame.interpolation_depth
+      }
+    }
+  } else {
+    let text = source_slice(source: source, start: frame.cursor, end: int_end)
+    Scanned {
+      step: ScanStep {
+        cursor: int_end,
+        token: make_token(source: source, start: frame.cursor, end: int_end, lexeme: text, kind: LiteralToken { literal: IntLiteral }),
+        interpolation_depth: frame.interpolation_depth
+      }
+    }
+  }
+}
+
+fn should_start_interpolation(source: Source, pos: Int) -> Bool {
+  if pos + 1 >= source_len(source: source) {
+    false
+  } else {
+    let next = source_char(source: source, index: pos + 1)
+    char_in_class(ch: next, class: IdentStartClass) || next == "(" || next == "!" || next == "-"
+  }
+}
+
+fn escaped_char(ch: String) -> String {
+  if ch == "\"" { "\"" }
+  else if ch == "\\" { "\\" }
+  else if ch == "n" { "\n" }
+  else if ch == "t" { "\t" }
+  else if ch == "{" { "{" }
+  else if ch == "}" { "}" }
+  else { concat("\\", ch) }
+}
+
+fn scan_string_body(source: Source, start: Int) -> StringBodyState {
+  fold_source_chars(
+    source: source,
+    algebra: SourceFold {
+      init: StringOpen { cursor: start, acc: [], escaped: false },
+      step: fn(state, item) {
+        match state {
+          StringClosed { content, end_pos } => StringClosed { content: content, end_pos: end_pos }
+          StringInterpolation { content, end_pos } => StringInterpolation { content: content, end_pos: end_pos }
+          StringOpen { cursor, acc, escaped } =>
+            if item.index < start { StringOpen { cursor: cursor, acc: acc, escaped: escaped } }
+            else if item.index != cursor { StringOpen { cursor: cursor, acc: acc, escaped: escaped } }
+            else if escaped { StringOpen { cursor: cursor + 1, acc: list_push(acc, escaped_char(ch: item.char)), escaped: false } }
+            else if item.char == "\\" { StringOpen { cursor: cursor + 1, acc: acc, escaped: true } }
+            else if item.char == "\"" { StringClosed { content: join(acc, separator: ""), end_pos: cursor } }
+            else if item.char == "{" && should_start_interpolation(source: source, pos: cursor) {
+              StringInterpolation { content: join(acc, separator: ""), end_pos: cursor }
+            }
+            else { StringOpen { cursor: cursor + 1, acc: list_push(acc, item.char), escaped: false } }
+        }
+      }
+    }
+  )
+}
+
+fn string_token_kind(role: StringTokenRole) -> TokenKind {
+  match role {
+    WholeString => LiteralToken { literal: StringLiteral }
+    InterpolationBegin => StringBeginToken
+    InterpolationMiddle => StringMiddleToken
+    InterpolationEnd => StringEndToken
+  }
+}
+
+fn push_interpolation(stack: List<Int>) -> List<Int> {
+  list_push(stack, 0)
+}
+
+fn drop_last(stack: List<Int>) -> List<Int> {
+  let len = count(stack)
+  fold(enumerate(stack), init: [], f: fn(result, pair) {
+    if pair.first < len - 1 { list_push(result, pair.second) } else { result }
+  })
+}
+
+fn replace_last(stack: List<Int>, value: Int) -> List<Int> {
+  list_push(drop_last(stack: stack), value)
+}
+
+fn scan_string_with_role(source: Source, frame: LexerFrame, role: StringTokenRole, body_start: Int, span_start: Int) -> ScanOutcome {
+  let body = scan_string_body(source: source, start: body_start)
+  match body {
+    StringClosed { content, end_pos } => {
+      Scanned {
+        step: ScanStep {
+          cursor: end_pos + 1,
+          token: make_token(source: source, start: span_start, end: end_pos + 1, lexeme: content, kind: string_token_kind(role: role)),
+          interpolation_depth: frame.interpolation_depth
+        }
+      }
+    }
+    StringInterpolation { content, end_pos } => {
+      let token_kind = match role {
+        WholeString => StringBeginToken
+        InterpolationBegin => StringBeginToken
+        InterpolationMiddle => StringMiddleToken
+        InterpolationEnd => StringMiddleToken
+      }
+      Scanned {
+        step: ScanStep {
+          cursor: end_pos + 1,
+          token: make_token(source: source, start: span_start, end: end_pos + 1, lexeme: content, kind: token_kind),
+          interpolation_depth: push_interpolation(stack: frame.interpolation_depth)
+        }
+      }
+    }
+    StringOpen { cursor, acc, escaped: _ } => {
+      ScanRejected {
+        diagnostic: diagnostic(
+          source: source,
+          reason: UnterminatedString,
+          start: span_start,
+          end: cursor,
+          lexeme: join(acc, separator: "")
+        )
+      }
+    }
+  }
+}
+
+fn scan_string(source: Source, frame: LexerFrame) -> ScanOutcome {
+  scan_string_with_role(source: source, frame: frame, role: WholeString, body_start: frame.cursor + 1, span_start: frame.cursor)
+}
+
+fn scan_string_continuation(source: Source, frame: LexerFrame) -> ScanOutcome {
+  scan_string_with_role(source: source, frame: frame, role: InterpolationEnd, body_start: frame.cursor + 1, span_start: frame.cursor)
+}
+
+fn emit_punctuation(source: Source, frame: LexerFrame, punctuation: Punctuation, width: Int) -> ScanOutcome {
+  let text = source_slice(source: source, start: frame.cursor, end: frame.cursor + width)
+  Scanned {
+    step: ScanStep {
+      cursor: frame.cursor + width,
+      token: make_token(source: source, start: frame.cursor, end: frame.cursor + width, lexeme: text, kind: PunctuationToken { punctuation: punctuation }),
+      interpolation_depth: frame.interpolation_depth
+    }
+  }
+}
+
+fn scan_lbrace(source: Source, frame: LexerFrame) -> ScanOutcome {
+  let new_depth = if count(frame.interpolation_depth) > 0 {
+    replace_last(stack: frame.interpolation_depth, value: last(frame.interpolation_depth).value + 1)
+  } else {
+    frame.interpolation_depth
+  }
+  Scanned {
+    step: ScanStep {
+      cursor: frame.cursor + 1,
+      token: make_token(source: source, start: frame.cursor, end: frame.cursor + 1, lexeme: "{", kind: PunctuationToken { punctuation: LBrace }),
+      interpolation_depth: new_depth
+    }
+  }
+}
+
+fn scan_rbrace(source: Source, frame: LexerFrame) -> ScanOutcome {
+  Scanned {
+    step: ScanStep {
+      cursor: frame.cursor + 1,
+      token: make_token(source: source, start: frame.cursor, end: frame.cursor + 1, lexeme: "}", kind: PunctuationToken { punctuation: RBrace }),
+      interpolation_depth: frame.interpolation_depth
+    }
+  }
+}
+
+fn scan_newline(source: Source, frame: LexerFrame) -> ScanOutcome {
+  Scanned {
+    step: ScanStep {
+      cursor: frame.cursor + 1,
+      token: make_token(source: source, start: frame.cursor, end: frame.cursor + 1, lexeme: "\n", kind: NewlineToken),
+      interpolation_depth: frame.interpolation_depth
+    }
+  }
+}
+
+fn scan_token(source: Source, frame: LexerFrame) -> ScanOutcome {
+  let cursor = skip_trivia(source: source, cursor: frame.cursor)
+  let active = LexerFrame {
+    cursor: cursor,
+    tokens: frame.tokens,
+    interpolation_depth: frame.interpolation_depth,
+    eof_emitted: frame.eof_emitted
+  }
+  if cursor >= source_len(source: source) {
+    Scanned {
+      step: ScanStep {
+        cursor: cursor,
+        token: make_token(source: source, start: cursor, end: cursor, lexeme: "", kind: EofToken),
+        interpolation_depth: active.interpolation_depth
+      }
+    }
+  } else {
+    let ch = source_char(source: source, index: cursor)
+    if ch == "\n" { scan_newline(source: source, frame: active) }
+    else if ch == "}" && count(active.interpolation_depth) > 0 && last(active.interpolation_depth).value == 0 {
+      let after_pop = LexerFrame {
+        cursor: cursor,
+        tokens: active.tokens,
+        interpolation_depth: drop_last(stack: active.interpolation_depth),
+        eof_emitted: active.eof_emitted
+      }
+      scan_string_continuation(source: source, frame: after_pop)
+    }
+    else if ch == "\"" { scan_string(source: source, frame: active) }
+    else if char_in_class(ch: ch, class: DigitClass) { scan_number(source: source, frame: active) }
+    else if char_in_class(ch: ch, class: IdentStartClass) { scan_identifier(source: source, frame: active) }
+    else {
+      let next = if cursor + 1 < source_len(source: source) { source_char(source: source, index: cursor + 1) } else { "" }
+      let two = concat(ch, next)
+      match lookup(double_punct, key: two) {
+        Some { value: punct } => emit_punctuation(source: source, frame: active, punctuation: punct, width: 2)
+        None =>
+          if ch == "{" { scan_lbrace(source: source, frame: active) }
+          else if ch == "}" { scan_rbrace(source: source, frame: active) }
+          else {
+            match lookup(single_punct, key: ch) {
+              Some { value: punct } => emit_punctuation(source: source, frame: active, punctuation: punct, width: 1)
+              None => ScanRejected {
+                diagnostic: diagnostic(source: source, reason: UnexpectedCharacter, start: cursor, end: cursor + 1, lexeme: ch)
+              }
+            }
+          }
+      }
+    }
+  }
+}
+
+fn append_step(frame: LexerFrame, step: ScanStep) -> LexerFrame {
+  LexerFrame {
+    cursor: step.cursor,
+    tokens: list_push(frame.tokens, step.token),
+    interpolation_depth: step.interpolation_depth,
+    eof_emitted: frame.eof_emitted || token_is_eof(token: step.token)
+  }
+}
+
+fn token_is_eof(token: Token) -> Bool {
+  match token.kind {
+    EofToken => true
+    _ => false
+  }
+}
+
+fn lex_step(source: Source, state: LexerState, item: IndexedChar) -> LexerState {
+  match state {
+    LexFailed { diagnostic } => LexFailed { diagnostic: diagnostic }
+    Lexing { frame } =>
+      if item.index < frame.cursor { Lexing { frame: frame } }
+      else {
+        match scan_token(source: source, frame: frame) {
+          Scanned { step } =>
+            if step.cursor <= frame.cursor {
+              LexFailed {
+                diagnostic: diagnostic(
+                  source: source,
+                  reason: LexicalProgressExhausted,
+                  start: frame.cursor,
+                  end: frame.cursor,
+                  lexeme: ""
+                )
+              }
+            } else {
+              Lexing { frame: append_step(frame: frame, step: step) }
+            }
+          ScanRejected { diagnostic } => LexFailed { diagnostic: diagnostic }
+        }
+      }
+  }
+}
+
+fn tokenize(source: Source) -> Outcome<TokenStream> {
+  let initial = Lexing { frame: LexerFrame { cursor: 0, tokens: [], interpolation_depth: [], eof_emitted: false } }
+  let folded = fold_source_chars(
+    source: source,
+    algebra: SourceFold {
+      init: initial,
+      step: fn(state, item) {
+        lex_step(source: source, state: state, item: item)
+      }
+    }
+  )
+  match folded {
+    LexFailed { diagnostic } => Rejected { diagnostic: diagnostic }
+    Lexing { frame } =>
+      if frame.cursor < source_len(source: source) {
+        Rejected {
+          diagnostic: diagnostic(
+            source: source,
+            reason: LexicalProgressExhausted,
+            start: frame.cursor,
+            end: frame.cursor,
+            lexeme: ""
+          )
+        }
+      } else if frame.eof_emitted {
+        Produced { value: TokenStream { tokens: frame.tokens } }
+      } else {
+        let eof = make_token(source: source, start: frame.cursor, end: frame.cursor, lexeme: "", kind: EofToken)
+        Produced { value: TokenStream { tokens: list_push(frame.tokens, eof) } }
+      }
+  }
+}
