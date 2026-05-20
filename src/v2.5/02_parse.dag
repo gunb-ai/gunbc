@@ -9,7 +9,7 @@ import v2_5.std.diagnostic {
   Outcome,
   PortLocus
 }
-import v2_5.std.node { EdgeLabel, Nat, Path, Symbol }
+import v2_5.std.node { EdgeLabel, Nat, Path, PathStep, Symbol }
 import v2_5.std.stage_types { ParseNode, Token }
 
 
