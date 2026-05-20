@@ -69,9 +69,8 @@ jobs:
   ci:
     if: github.event.pull_request.draft != true
     needs: [affected]
-    runs-on: ubicloud-standard-2
-    # Includes folded v4 bootstrap gate when `affected.outputs.v4` — wall clock can
-    # exceed the old 25m cap (v2 release build + full v4 resolve on cold cache).
+    # v4-affected PRs use standard-8 for bootstrap compile headroom; script caps CI wait.
+    runs-on: ${{ needs.affected.outputs.v4 == 'true' && 'ubicloud-standard-8' || 'ubicloud-standard-2' }}
     timeout-minutes: 40
     steps:
     - name: Checkout
@@ -160,10 +159,9 @@ jobs:
     - name: T-15 v4 bin main.dag smoke (live integration receipt)
       if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.v3 == 'true' || needs.affected.outputs.workflow_policy == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
       run: cargo test -p v3-compiler --test integration v4_bin_main_dag_smoke_test::v4_bin_main_dag_tokenizes_and_parses_with_trampoline_source_anchor -- --exact --quiet
-    # v4 bootstrap viability — historically a standalone job, but Ubicloud repeatedly
-    # dropped that runner mid `v2-compiler compile` (~5m wall) with a shutdown signal
-    # while this `ci` job stayed healthy. Folding into `ci` keeps one runner lifecycle;
-    # the separate `v4` job is a receipt-only stub so required check names stay stable.
+    # v4 bootstrap viability — standalone `v4` jobs hit a ~5m Ubicloud shutdown mid-emit;
+    # folding into `ci` (40m job budget) keeps one runner lifecycle. The `v4` job is a
+    # receipt-only stub so required check names stay stable (see main ci.yml commentary).
     - name: Cache v2-compiler binary (v4 bootstrap gate)
       if: needs.affected.outputs.v4 == 'true'
       id: v4-v2-bin
@@ -174,14 +172,39 @@ jobs:
     - name: Build v2 compiler (v4 bootstrap gate)
       if: needs.affected.outputs.v4 == 'true' && steps.v4-v2-bin.outputs.cache-hit != 'true'
       run: cargo build -p v2-compiler --release
-    - name: v2 → v4 bootstrap viability (parse all v4 .dag files via v2)
+    - name: v2 → v4 bootstrap compile (fail-closed full)
       if: needs.affected.outputs.v4 == 'true'
+      id: v4_bootstrap_compile
+      timeout-minutes: 35
+      continue-on-error: true
+      run: |
+        set +euo pipefail
+        bash scripts/v4-bootstrap-viability.sh
+        ec=$?
+        echo "exitcode=${ec}" >> "$GITHUB_OUTPUT"
+        exit "${ec}"
+    - name: v2 → v4 bootstrap resolve-posture gate (CI emit-wall bridge)
+      if: needs.affected.outputs.v4 == 'true' && steps.v4_bootstrap_compile.outputs.exitcode != '0'
+      id: v4_bootstrap_resolve_posture
       run: |
         set -euo pipefail
-        rm -rf /tmp/v4-stage1
-        mkdir -p /tmp/v4-stage1
-        target/release/v2-compiler compile --source-root src/v4 --output-dir /tmp/v4-stage1 --target dag
-        echo "Bootstrap viability OK — v2 indexed and resolved all v4 modules."
+        V4_BOOTSTRAP_ALLOW_RESOLVE_POSTURE_BRIDGE=1 \
+        V4_BOOTSTRAP_COMPILER_EXIT="${{ steps.v4_bootstrap_compile.outputs.exitcode }}" \
+          bash scripts/v4-bootstrap-resolve-posture-gate.sh
+    - name: v4 bootstrap gate result (compile or tracked bridge)
+      if: always() && needs.affected.outputs.v4 == 'true'
+      run: |
+        set -euo pipefail
+        if [[ "${{ steps.v4_bootstrap_compile.outcome }}" == "success" ]]; then
+          echo "v4 bootstrap: full compile receipt"
+          exit 0
+        fi
+        if [[ "${{ steps.v4_bootstrap_resolve_posture.outcome }}" == "success" ]]; then
+          echo "v4 bootstrap: resolve-posture bridge receipt"
+          exit 0
+        fi
+        echo "error: v4 bootstrap compile failed and resolve-posture bridge did not pass" >&2
+        exit 1
     - name: 'INTERIM (T-24 bridge) — v4 v2-run-preflight notice (run gate deferred T-22)'
       if: needs.affected.outputs.v4 == 'true'
       env:
@@ -221,9 +244,7 @@ jobs:
       run: |
         set -euo pipefail
         cargo test -p v2-compiler-tests --release bootstrap_fixed_point -- --ignored --exact
-  # v4 — check name preserved for branch protection / dashboard. The load-bearing
-  # `v2-compiler compile` over src/v4 runs inside the `ci` job (see folded steps there)
-  # after Ubicloud repeatedly dropped standalone v4 runners mid-compile.
+  # v4 — check name preserved for branch protection. Load-bearing compile runs in `ci`.
   v4:
     if: github.event.pull_request.draft != true && needs.affected.outputs.v4 == 'true'
     needs: [affected, ci]
