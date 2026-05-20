@@ -2,7 +2,7 @@
 // Scope: typed artifact-plan — what the pipeline builds, for which target LanguageSpec, into which output location.
 // Owns: ArtifactPath, Artifact, ArtifactPlan, single_module_plan.
 // Consumes: v2_5.std.language_spec { LanguageSpec }.
-// Status: fork first-pass.
+// Status: scaffold; dissolves when keen-ibex-355's compile.dag consumes ArtifactPlan.
 
 module v2_5.compiler.artifact
 
