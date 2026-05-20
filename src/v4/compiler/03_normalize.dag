@@ -24,7 +24,8 @@ import v4.std.diagnostic {
   Accepted,
   None,
   diagnostics_merge,
-  diagnostics_singleton
+  diagnostics_singleton,
+  rejected_with_pending
 }
 import v4.std.node {
   Connective,
@@ -141,7 +142,9 @@ fn normalize_children(children: List<Edge>) -> Outcome<List<Edge>> {
               diagnostics: diagnostics_merge(outer: ad, inner: ed)
             }
           Rejected { diagnostics: r } =>
-            Rejected { diagnostics: r }
+            Rejected {
+              diagnostics: rejected_with_pending(pending: ad, rejected: r)
+            }
         }
     }
   })
@@ -216,7 +219,10 @@ fn normalize_node(n: Node) -> Outcome<Node> {
       match classify_sugar(n: n) {
         Some { value: kind } =>
           match normalize_sugar(kind: kind, n: n, children: normalized_children) {
-            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Rejected { diagnostics: r } =>
+              Rejected {
+                diagnostics: rejected_with_pending(pending: cd, rejected: r)
+              }
             Accepted { value: v, diagnostics: d } =>
               Accepted {
                 value: v,
@@ -240,7 +246,14 @@ fn normalize(parse_tree: ParseTree) -> Outcome<NormalizedTree> {
       if node_well_formed(n: normalized) {
         Accepted { value: normalized, diagnostics: d }
       } else {
-        Rejected { diagnostics: diagnostics_singleton(d: post_normalize_not_well_formed_diagnostic(n: normalized)) }
+        Rejected {
+          diagnostics: rejected_with_pending(
+            pending: d,
+            rejected: diagnostics_singleton(
+              d: post_normalize_not_well_formed_diagnostic(n: normalized)
+            )
+          )
+        }
       }
   }
 }

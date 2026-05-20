@@ -1,6 +1,6 @@
 // src/v4/std/find_witness.dag
 // Scope: unified candidate-enumeration-and-check primitive (Pass B unification).
-// Anchor: docs/design-v4-compiler-homomorphism.md — find_witness primitive row; Practice 11.
+// Anchor: docs/design-v4-compiler-homomorphism.md (Pass B unification row); docs/modeling-discipline.md Practice 11.
 // Owns: CandidateSet, PreservationPredicate, FindWitnessResult, TargetSelectionPolicy, MultiplicityPolicy,
 //       find_witness, verify_witness.
 // Consumes: std collection, std diagnostic, std node.
@@ -35,10 +35,11 @@ type PreservationPredicate {
   algebra: Node
   preservation_rule: Symbol
 }
+// 🟡 coproduct dissolution — scaffold:find-witness-result-witness · dissolve-on: W-T-10 typed witness carriers per caller.
 type FindWitnessResult {
   candidate: Node
-  witness: Node
-  closedness_provenance: Node
+  witness: StructuralPropertyWitness
+  closedness: StructuralPropertyWitness
 }
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type TargetSelectionPolicy
@@ -81,7 +82,7 @@ fn verify_witness(
   source_facts: Node,
   candidate: Node,
   predicate: PreservationPredicate,
-  witness: Node,
-) -> Outcome<Node> {
+  witness: StructuralPropertyWitness,
+) -> Outcome<StructuralPropertyWitness> {
   outcome_rejected(find_witness_not_realized_diagnostic(source_facts: source_facts))
 }

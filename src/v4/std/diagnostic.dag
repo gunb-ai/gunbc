@@ -13,7 +13,6 @@
 module v4.std.diagnostic
 
 
-import v4.std.algebra { free_monoid_count_equal }
 import v4.std.node { Node }
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type Extent
@@ -114,16 +113,24 @@ fn diagnostic_eq(a: Diagnostic, b: Diagnostic) -> Bool {
     && locus_eq(a: a.at, b: b.at)
     && correction_eq(a: a.correction, b: b.correction)
 }
-fn diagnostic_eq_fn(x: Diagnostic, y: Diagnostic) -> Bool {
-  diagnostic_eq(a: x, b: y)
+fn diagnostic_count_in(xs: List<Diagnostic>, item: Diagnostic) -> Int {
+  fold(xs, init: 0, f: fn(acc, d) {
+    if diagnostic_eq(a: d, b: item) {
+      acc + 1
+    } else {
+      acc
+    }
+  })
 }
-// Tail multiset equality: equal lengths + per-element counts match (single-sided scan over `a` suffices).
+// Tail bag/multiset equality (order-insensitive); equal lengths + per-element counts match.
 fn diagnostic_tail_eq(a: List<Diagnostic>, b: List<Diagnostic>) -> Bool {
   if count(a) != count(b) {
     false
   } else {
     fold(a, init: true, f: fn(acc, da) {
-      acc && (free_monoid_count_equal(xs: a, item: da, eq: diagnostic_eq_fn) == free_monoid_count_equal(xs: b, item: da, eq: diagnostic_eq_fn))
+      acc
+        && (diagnostic_count_in(xs: a, item: da)
+          == diagnostic_count_in(xs: b, item: da))
     })
   }
 }

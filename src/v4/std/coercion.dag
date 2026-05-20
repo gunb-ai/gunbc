@@ -1,6 +1,6 @@
 // src/v4/std/coercion.dag
 // Scope: target coercion fold via find_witness + TargetSelection (T-9/T-10 wrapper).
-// Anchor: design-v4-compiler-homomorphism.md Ratified Q14; TASKS.md T-9 line 418; Practice 11.
+// Anchor: design-v4-compiler-homomorphism.md Ratified Q14; TASKS.md T-9; docs/modeling-discipline.md Practice 11.
 // Owns: CoercionCandidateSet, CoercionQuality, CoercionMismatchKind,
 //       CoercionResult, CoercionWitness, coercion_fold, declared_candidates_for_algebra.
 // Consumes: std find_witness, std constraints, std diagnostic, std witness, std node.
@@ -55,7 +55,10 @@ type CoercionResult {
 type CoercionWitness {
   homomorphism: HomomorphismWitness
 }
-fn coercion_not_realized_diagnostic(source: CanonicalGrounding) -> Diagnostic {
+fn coercion_not_realized_diagnostic(
+  source: CanonicalGrounding,
+  kind: CoercionMismatchKind,
+) -> Diagnostic {
   Diagnostic {
     reason: coercion_not_realized,
     at: NodeLocus { node: source.node },

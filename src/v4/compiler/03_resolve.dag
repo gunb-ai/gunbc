@@ -23,7 +23,8 @@ import v4.std.diagnostic {
   Accepted,
   None,
   diagnostics_merge,
-  diagnostics_singleton
+  diagnostics_singleton,
+  rejected_with_pending
 }
 import v4.std.node {
   Arrow,
@@ -299,7 +300,9 @@ fn resolve_children_homogeneous_scope(n: Node, scope: Scope) -> Outcome<Node> {
       Accepted { value: done, diagnostics: ad } =>
         match resolve_node(n: e.target, scope: scope) {
           Rejected { diagnostics: r } =>
-            Rejected { diagnostics: r }
+            Rejected {
+              diagnostics: rejected_with_pending(pending: ad, rejected: r)
+            }
           Accepted { value: resolved_target, diagnostics: ed } =>
             Accepted {
               value: list_push(done, Edge {
@@ -347,7 +350,9 @@ fn resolve_edges_first_outer_then_inner(
                   Rejected { diagnostics: r } =>
                     EdgeResolveAccMk {
                       have_seen_first: true,
-                      acc: Rejected { diagnostics: r }
+                      acc: Rejected {
+                        diagnostics: rejected_with_pending(pending: ad, rejected: r)
+                      }
                     }
                   Accepted { value: resolved_target, diagnostics: ed } =>
                     EdgeResolveAccMk {
@@ -369,7 +374,9 @@ fn resolve_edges_first_outer_then_inner(
                   Rejected { diagnostics: r } =>
                     EdgeResolveAccMk {
                       have_seen_first: true,
-                      acc: Rejected { diagnostics: r }
+                      acc: Rejected {
+                        diagnostics: rejected_with_pending(pending: ad, rejected: r)
+                      }
                     }
                   Accepted { value: resolved_target, diagnostics: ed } =>
                     EdgeResolveAccMk {
@@ -433,7 +440,9 @@ fn resolve_bind_edges(
                   Rejected { diagnostics: r } =>
                     BindEdgeAccMk {
                       idx: i + 1,
-                      acc: Rejected { diagnostics: r }
+                      acc: Rejected {
+                        diagnostics: rejected_with_pending(pending: ad, rejected: r)
+                      }
                     }
                   Accepted { value: rt, diagnostics: ed } =>
                     BindEdgeAccMk {
@@ -456,7 +465,9 @@ fn resolve_bind_edges(
                     Rejected { diagnostics: r } =>
                       BindEdgeAccMk {
                         idx: i + 1,
-                        acc: Rejected { diagnostics: r }
+                        acc: Rejected {
+                          diagnostics: rejected_with_pending(pending: ad, rejected: r)
+                        }
                       }
                     Accepted { value: rt, diagnostics: ed } =>
                       BindEdgeAccMk {
@@ -478,7 +489,9 @@ fn resolve_bind_edges(
                     Rejected { diagnostics: r } =>
                       BindEdgeAccMk {
                         idx: i + 1,
-                        acc: Rejected { diagnostics: r }
+                        acc: Rejected {
+                          diagnostics: rejected_with_pending(pending: ad, rejected: r)
+                        }
                       }
                     Accepted { value: rt, diagnostics: ed } =>
                       BindEdgeAccMk {

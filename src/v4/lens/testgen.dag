@@ -7,7 +7,19 @@
 module v4.lens.testgen
 
 
-import v4.std.diagnostic {Outcome, Diagnostic, Unavailable, UserInputBoundary, Textual, WholeFile, Accepted, None, diagnostics_singleton}
+import v4.std.diagnostic {
+  Outcome,
+  Diagnostic,
+  Unavailable,
+  UserInputBoundary,
+  Textual,
+  WholeFile,
+  Accepted,
+  None,
+  diagnostics_merge,
+  diagnostics_singleton,
+  rejected_with_pending
+}
 import v4.std.nat {
   nat_algebra_law_subject_symbol_additive_monoid,
   nat_algebra_law_subject_symbol_commutative_semiring,
@@ -346,16 +358,20 @@ fn bootstrap_claim_generator_for_manual_anchor(
 ) -> Outcome<Generator<TestgenConcept>> {
   match manual_test_claim_for_manual_anchor(key: key) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
-    Accepted { value: claim, diagnostics: None } =>
+    Accepted { value: claim, diagnostics: d0 } =>
       match testgen_concept_for_manual_claim(claim: claim) {
-        Rejected { diagnostics: r } => Rejected { diagnostics: r }
-        Accepted { value: slot, diagnostics: None } =>
-          Accepted { value: Generator {
+        Rejected { diagnostics: r } =>
+          Rejected { diagnostics: rejected_with_pending(pending: d0, rejected: r) }
+        Accepted { value: slot, diagnostics: d1 } =>
+          Accepted {
+            value: Generator {
               classification: claim.classification,
               kind: claim.kind,
               t19_anchor: claim.t19_anchor,
-              slot: slot,
-            }, diagnostics: None }
+              slot: slot
+            },
+            diagnostics: diagnostics_merge(outer: d0, inner: d1)
+          }
     }
   }
 }

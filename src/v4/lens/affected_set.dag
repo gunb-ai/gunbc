@@ -212,6 +212,8 @@ fn fold_pending(acc: AffectedFoldAcc, next: Diagnostics) -> Diagnostics {
 }
 
 
+// Pending accepted diagnostics escalate to whole-DAG fail-closed (conservative Q11 policy).
+// When both a WholeDagReason and pending diagnostics exist, diagnostics evidence wins.
 fn frontier_from_fold_acc(acc: AffectedFoldAcc) -> ReExecFrontier {
   match acc.pending {
     Some { diagnostics: nds } => WholeDagFailClosed {
@@ -429,9 +431,9 @@ fn seed_edit_fold_acc_live(
       }
     BoundaryUnknown { reason: boundary_reason } =>
       match post_edit_dag(acc.dag, edit).outcome {
-        Accepted { value: _, diagnostics: ad } =>
+        Accepted { value: next_dag, diagnostics: ad } =>
           AffectedFoldAcc {
-            dag: acc.dag,
+            dag: next_dag,
             frontier: mark_whole_dag(reason: boundary_reason),
             pending: fold_pending(acc: acc, next: ad)
           }
