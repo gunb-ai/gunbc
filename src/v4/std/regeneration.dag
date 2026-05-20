@@ -3,7 +3,7 @@
 // Anchor: docs/design-v4-compiler-homomorphism.md P8; T-21 lens/affected_set.dag is a frontier specialization (see A4 report).
 // Owns: ChangeKind, Change, ChangeSet, AffectedSet, InvalidationReason, Projection, ArtifactKind, Artifact, RecomputePlan.
 // Consumes: v4.std.collection, v4.std.dependency, v4.std.node, v4.std.witness.
-// Status: Wave-1 Worker A — strict substrate (Symbol refs are scaffolding toward typed DependencySubject authority).
+// Status: Wave-1 Worker A — strict substrate; bare Symbol only on RULING-1 🟡 gated surfaces declared below.
 
 
 module v4.std.regeneration
@@ -36,10 +36,11 @@ type ChangeKind
   | CorePackageSchemaChanged
 
 
+// RULING-1: 🟢 pretty-much-done — change subject uses DependencySubject authority (not bare Symbol).
 type Change {
   kind: ChangeKind
   at: Path
-  subject: Symbol
+  subject: DependencySubject
 }
 
 
@@ -68,7 +69,7 @@ type ArtifactKind
 type InvalidationReason
   = DirectChange { change: Change }
   | DependencyPropagation { edge: DependencyEdge }
-  | ProjectionInputChanged { projection: Symbol }
+  | ProjectionInputChanged { projection: ProjectionIdentityRef }
   | InvalidationFromLensContract { lens: Symbol }
   | PipelineStageContractChanged { stage: Symbol }
 
@@ -79,11 +80,23 @@ type ArtifactRef {
 }
 
 
+// RULING-1: 🟡 feature:projection-identity-ref consumer:v4.std.regeneration::Projection dissolve-on: AffectedSet.projections carries Projection rows or ProjectionRef substrate (bounds: AffectedSet.projections only; owner: Wave-2 P8 substrate PR after #3439).
+type ProjectionIdentityRef = Symbol
+
+
+// RULING-1: 🟡 feature:recompute-cache-key consumer:v4.std.regeneration::RecomputePlan dissolve-on: CacheKey carrier replaces Symbol in RecomputePlan.cached (bounds: RecomputePlan.cached only; owner: Wave-2 P8 substrate PR after #3439).
+type CacheKey = Symbol
+
+
+// RULING-1: 🟡 feature:recompute-invalidation-key consumer:v4.std.regeneration::RecomputePlan dissolve-on: InvalidationKey carrier replaces Symbol in RecomputePlan.invalidated (bounds: RecomputePlan.invalidated only; owner: Wave-2 P8 substrate PR after #3439).
+type InvalidationKey = Symbol
+
+
 type AffectedSet {
   source: ChangeSet
   graph: DependencyGraph
   invalidations: List<InvalidationReason>
-  projections: List<Symbol>
+  projections: List<ProjectionIdentityRef>
   artifacts: List<ArtifactRef>
 }
 
@@ -98,7 +111,7 @@ type Projection {
 }
 
 
-// RULING-1: 🟡 feature:witness-ref-substrate consumer:v4.std.witness::WitnessRef dissolve-on: WitnessRef carrier in v4.std.witness (bounds: Artifact.witness_ref only; owner: post-land follow-up PR).
+// RULING-1: 🟡 feature:witness-ref-substrate consumer:v4.std.witness::WitnessRef dissolve-on: WitnessRef carrier in v4.std.witness (bounds: Artifact.witness_ref only; owner: src/v4/TASKS.md T-3 witness substrate + Wave-2 WitnessRef PR after #3439).
 type Artifact {
   kind: ArtifactKind
   identity: Symbol
@@ -113,8 +126,8 @@ type Artifact {
 type RecomputePlan {
   affected: AffectedSet
   schedule: Witness<TopologicalPlan>
-  cached: List<Symbol>
-  invalidated: List<Symbol>
+  cached: List<CacheKey>
+  invalidated: List<InvalidationKey>
 }
 
 
