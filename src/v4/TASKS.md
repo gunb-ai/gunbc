@@ -1182,6 +1182,152 @@ SQL as a checked `extdeps` Shape-B format) on 2026-05-17 (D2-reversal
 Phase-1 execution). Theme-A missed-planning debt is **closed** — no fork
 remains open.
 
+### T-33 — std/model_core.dag — shared substrate factoring  [SCHEDULED]
+**Operator-ratified 2026-05-20 (PR #3437, "Ratified Q1 — `HostModel` is `Q1a + factored ModelCore`").**
+The shared base substrate that both `LanguageModel` (T-4) and `HostModel`
+(T-34) extend. `ModelCore` is the categorical floor for primitive-type
+and algebra-inhabitance declarations to stay consistent across language
+and host targets without duplicate authority.
+
+**File:** `src/v4/std/model_core.dag` — does not exist on main; this task
+is its first authoring.
+
+**Carrier shape (per `docs/design-v4-compiler-homomorphism.md` §"`ModelCore`"):**
+- **Primitive types** — each a Practice-8 fact-bundle (width, signedness,
+  range, encoding, …) grounding in the T-3 shared-fact vocabulary.
+- **Algebra inhabitance declarations** — which primitives inhabit which
+  algebras (consumed by the T-9 coercion fold).
+- **Laws / proof obligations** — associativity, commutativity, etc., for
+  the coercion fold's preservation checks.
+- **Effect semantics** — what effects each primitive operation declares
+  (Open Q10 in the design doc).
+- **Partiality semantics** — which operations are partial; how partiality
+  is discharged or surfaced.
+
+**Why a sibling of T-3, not a fold-in.** T-3 already owns the shared-fact
+vocabulary (Signedness / Representation / the numeric stack); ModelCore is
+one layer up — the named carrier that *bundles* a primitive's facts +
+inhabitance + laws + effects under a single substrate type. It consumes
+T-3 vocabulary; it does not duplicate it. Authored as its own file so
+LanguageModel and HostModel both have a single named carrier to extend
+(rather than each re-declaring the bundle shape).
+
+**Dependencies — does this restructure T-4?** No silent change to T-4's
+`[needs …]` list as part of this PR. Once `model_core.dag` lands, the
+T-4 fact-bundle authoring contract should be re-expressed in terms of
+"LanguageModel extends ModelCore" — that reconcile is its own commit
+train, not bundled with the substrate landing. The Q1 ratification
+established the SHAPE; landing the carrier file and re-routing T-4's
+authoring are two separable steps.
+
+**Reference:** `docs/design-v4-compiler-homomorphism.md` §"`ModelCore`
+(shared substrate, factored per ratified Q1)" + §"Ratified Q1 — `HostModel`
+is `Q1a + factored ModelCore` (2026-05-20)".
+
+---
+
+### T-34 — std/host.dag — HostModel substrate  [SCHEDULED]
+**Operator-ratified 2026-05-20 (PR #3437, Ratified Q1).** A `HostModel`
+that is a **distinct peer of `LanguageModel`**, both extending the shared
+`ModelCore` (T-33). Host-side concerns (allocation, execution model,
+runtime values, resource limits) are categorically different from
+emit-side concerns (grammar, serialization) and live only on `HostModel`;
+the rejected `VoidGrammar` variant (Q1b) conflated them.
+
+**File:** `src/v4/std/host.dag` — does not exist on main; this task is its
+first authoring. Named explicitly in the design doc's MVP-B substrate row
+(`std/host.dag` (Ratified Q1)).
+
+**Carrier shape (per `docs/design-v4-compiler-homomorphism.md` §"`HostModel`
+(extends `ModelCore`, ratified Q1a)"):** in addition to whatever
+`ModelCore` carries —
+- **Host value representation** — how a substrate primitive is
+  represented at runtime.
+- **Primitive operation interpretation** — Transform → host function
+  call; Branch → host if-expression; Value → host literal allocation.
+- **Execution semantics** — call/return, allocation, control transfer.
+- **Resource / effect boundary** — FFI, host exceptions, async /
+  concurrency model, identity / reference semantics.
+
+**Dependencies — `[needs T-33]`.** Cannot author the HostModel carrier
+shape until ModelCore is named (Q1 ratification factored ModelCore out
+*because* HostModel and LanguageModel needed a shared base).
+
+**Why a sibling, not a LanguageModel variant.** Q1c ("eval =
+translate-to-machine-code + execute") was rejected because host execution
+involves real process state, runtime values, and failure modes that the
+emit-side `LanguageModel` does not model. A distinct `HostModel` is
+the operator-ratified discipline; do not collapse them.
+
+**Consumer:** T-22 (`compiler/05_eval.dag`) — eval takes a `HostModel` to
+interpret primitives. The MVP-B route (`eval(host_model)`) depends on
+this carrier landing.
+
+**Reference:** `docs/design-v4-compiler-homomorphism.md` §"`HostModel`
+(extends `ModelCore`, ratified Q1a)" + §"Ratified Q1".
+
+---
+
+### T-4.15 — extdeps/protocols/{rest,graphql,grpc}.dag — transport substrate  [SCHEDULED]
+**Operator-ratified 2026-05-20 (PR #3437, P4 — "Glue derivation is
+composed homomorphism, orthogonal to the compiler").** Transport
+semantics substrate — the carrier shape the eventual T-16 omni-stack
+glue derivation composes over. Inter-module marshaling is structurally a
+**composed homomorphism**: source → wire-format model → target. Same
+primitive (the coercion fold), applied twice through a shared transport
+model.
+
+**Files:** `src/v4/extdeps/protocols/{rest,graphql,grpc}.dag` — directory
+does not exist on main; this task is its first authoring. The
+**`extdeps/protocols/`** slot is named verbatim in the design doc as
+**"Currently missing"** substrate.
+
+**Modeling decisions:**
+- Per-transport carrier shape — the structural facts each transport
+  declares (REST: method / path / status / body-type negotiation;
+  GraphQL: schema / query / mutation / subscription; gRPC: service /
+  method / message types / streaming kinds).
+- Where to ground against T-26 boundary carriers (HttpMethod / Url /
+  NetworkAddress) vs. authoring fresh transport-specific carriers.
+- Bidirectional read: same substrate consumed by ingest (parse a wire
+  message into Node) and emit (project a Node into wire-format text) —
+  composed homomorphism, NOT a string template (no-templating
+  principle).
+- Relationship to T-4.8 `coordination.dag`'s `WireContract` /
+  `CoordinationSemantics` (HTTP / REST is the immediate consumer in
+  omni-stack scenarios).
+
+**Dependencies — `[needs T-3, T-26, T-4]`.** Numeric and string vocabulary
+from T-3; HttpMethod / Url / NetworkAddress from T-26; language carriers
+from T-4 because protocols often parameterize over the host language's
+type system (e.g., gRPC service definitions reference language types).
+
+**Scope discipline — L-2 holds.** Model the versioned transport SPEC
+(IETF RFCs for REST / HTTP semantics, the GraphQL spec, the gRPC HTTP/2
+spec) — NOT specific implementations (Axum / FastAPI / Apollo / Tonic).
+Libraries are downstream programs written in the modeled language; they
+are ordinary `Node`s, never modeled as targets.
+
+**Out of scope for the initial single-target compiler.** The design doc
+names this explicitly: "Glue derivation / omni-stack — orthogonal
+substrate (P4). Architecture must not preclude, but no implementation in
+the initial single-target compiler." This task is scheduled because the
+substrate slot is named; the file authoring waits until omni-stack glue
+work activates (T-16 timeline), not part of the critical-path single-target
+MVP.
+
+**Related substrate slot (NOT bundled here).** The design doc also names
+**`std/system.dag` or equivalent — module decomposition substrate.
+Currently informal** as a sibling P4 substrate gap. That is a separate
+follow-on task (not scheduled here; tracked when glue derivation work
+activates).
+
+**Reference:** `docs/design-v4-compiler-homomorphism.md` §"P4 — Glue
+derivation is composed homomorphism, orthogonal to the compiler" +
+§"What's NOT in scope for this design" (the `extdeps/protocols/` row).
+
+---
+
 ### T-31 — de-prose / de-templating backward sweep  [SCHEDULED]
 **Operator-confirmed 2026-05-17 (D2-reversal Phase-1 execution).** The
 no-prose and no-templating principles are operator-ratified, but they
