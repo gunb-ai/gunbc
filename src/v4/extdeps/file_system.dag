@@ -1,14 +1,12 @@
+// src/v4/extdeps/file_system.dag
+// Scope: External file-system resource model + modeled file effects (read/write).
+// Owns: FileResource, FilePath, FileContent, FileRead, FileWrite, FileReadWitness, FileWriteWitness, FileEffectWitness, FileReadResult, FileWriteResult, file_read, file_write.
+// Consumes: v4.std.algebra, v4.std.diagnostic, v4.std.machine.
+// Status: scaffold — Wave-2 fail-closed boundary.
+
 module v4.extdeps.file_system
 
 import v4.std.algebra { FreeMonoid }
-import v4.std.diagnostic {
-  Diagnostic,
-  ExternalContractUnknown,
-  Outcome,
-  PortLocus,
-  Rejected,
-  Unavailable
-}
 import v4.std.machine { Byte }
 
 type FileResource {}
@@ -21,25 +19,7 @@ type FileWriteWitness { request: FileWrite }
 type FileEffectWitness
   = ReadWitness { witness: FileReadWitness }
   | WriteWitness { witness: FileWriteWitness }
-
-data file_read_not_wired: Symbol = file_read_not_wired
-
-fn file_read(req: FileRead) -> Outcome<FileContent> {
-  Rejected {
-    diagnostic: Diagnostic {
-      reason: file_read_not_wired,
-      at: PortLocus { port: file_read_not_wired },
-      correction: Unavailable { reason: ExternalContractUnknown }
-    }
-  }
-}
-
-fn file_write(req: FileWrite) -> Outcome<FileWriteWitness> {
-  Rejected {
-    diagnostic: Diagnostic {
-      reason: file_read_not_wired,
-      at: PortLocus { port: file_read_not_wired },
-      correction: Unavailable { reason: ExternalContractUnknown }
-    }
-  }
-}
+type FileReadResult {}
+type FileWriteResult {}
+fn file_read(req: FileRead) -> FileReadResult
+fn file_write(req: FileWrite) -> FileWriteResult

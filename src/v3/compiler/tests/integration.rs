@@ -279,6 +279,8 @@ mod v2_oracle_no_remaining_test_consumers_test;
 mod v4_bin_main_dag_smoke_test;
 #[path = "integration/v4_extdeps_react_dag_smoke_test.rs"]
 mod v4_extdeps_react_dag_smoke_test;
+#[path = "integration/v4_extdeps_file_system_dag_smoke_test.rs"]
+mod v4_extdeps_file_system_dag_smoke_test;
 #[path = "integration/v4_lens_registry_dag_smoke_test.rs"]
 mod v4_lens_registry_dag_smoke_test;
 #[path = "integration/v4_lens_testgen_dag_smoke_test.rs"]
