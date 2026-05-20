@@ -1,7 +1,7 @@
 // src/v4/std/regeneration.dag
 // Scope: P8 change-consequence substrate — ChangeSet, AffectedSet, Projection, Artifact, RecomputePlan.
-// Owns: Change, ChangeSet, AffectedConsequence, AffectedSet, InvalidationReason, Projection, ArtifactKind, Artifact, RecomputePlan.
-// Consumes: v4.std.collection, v4.std.dependency, v4.std.node, v4.std.witness.
+// Owns: Change, ChangeSet, AffectedConsequence, AffectedSet, AffectedSetSeed, InvalidationReason, Projection, ArtifactKind, Artifact, RecomputePlan.
+// Consumes: v4.std.collection, v4.std.dependency, v4.std.node, v4.std.pipeline, v4.std.witness.
 // Status: Wave-1 Worker A strict substrate.
 
 
@@ -17,12 +17,8 @@ import v4.std.dependency {
   TopologicalPlan
 }
 import v4.std.node { Hash, Path, Symbol }
-import v4.std.pipeline { CarrierKind }
+import v4.std.pipeline { CarrierKind, PipelineStage }
 import v4.std.witness { Witness }
-
-
-// 🟡 feature:projection-identity-ref consumer:v4.std.regeneration::Projection dissolve-on: Projection substrate rows in AffectedConsequence (bounds: AffectedProjection.projection; owner: src/v4/TASKS.md T-21 §847).
-type ProjectionIdentityRef = Symbol
 
 
 // 🟡 feature:recompute-cache-key consumer:v4.std.regeneration::RecomputePlan dissolve-on: CacheKey in RecomputePlan.cached (bounds: cached field; owner: src/v4/TASKS.md T-20 §802).
@@ -37,42 +33,12 @@ type InvalidationKey = Symbol
 type LensContractRef = Symbol
 
 
-// 🟡 feature:pipeline-stage-name consumer:v4.std.pipeline::PipelineStage dissolve-on: PipelineStage.name in PipelineStageContractChanged (bounds: stage field; owner: src/v4/std/pipeline.dag semantic_compile_pipeline).
-type PipelineStageName = Symbol
-
-
 // 🟡 feature:stage0-contract-ref consumer:v4.std.regeneration::Stage0Contract dissolve-on: Stage0Contract in Stage0ContractChanged (bounds: contract field; owner: src/v4/TASKS.md T-20 §802 workflow/bootstrap.dag).
 type Stage0ContractRef = Symbol
 
 
 // 🟡 feature:core-package-schema-ref consumer:v4.std.regeneration::CorePackageSchema dissolve-on: CorePackageSchema in CorePackageSchemaChanged (bounds: schema field; owner: docs/design-v4-compiler-homomorphism.md §P9 Stage0Contract ~391).
 type CorePackageSchemaRef = Symbol
-
-
-// 🟢 coproduct dissolution
-type Change
-  = NodeChanged { at: Path }
-  | EdgeChanged { edge: DependencyEdge }
-  | FactChanged { at: Path, fact: Symbol }
-  | WitnessChanged { at: Path, witness: Symbol }
-  | GrammarChanged { grammar: Symbol }
-  | LanguageModelChanged { language_model: Symbol }
-  | HostModelChanged { host_model: Symbol }
-  | PipelineStageChanged { stage: PipelineStageName }
-  | LensContractChanged { lens: LensContractRef }
-  | ProjectionChanged {
-      projection: ProjectionIdentityRef,
-      endpoint: ArtifactDependencyEndpoint
-    }
-  | Stage0ContractChanged { contract: Stage0ContractRef }
-  | CorePackageSchemaChanged { schema: CorePackageSchemaRef }
-
-
-type ChangeSet {
-  from_revision: Hash
-  to_revision: Hash
-  changes: List<Change>
-}
 
 
 // 🟢 coproduct dissolution
@@ -89,13 +55,48 @@ type ArtifactKind
   | WitnessBundle
 
 
+type Projection {
+  output_artifact_kind: ArtifactKind
+  name: Symbol
+  input_carrier: CarrierKind
+  depends_on: List<DependencySubject>
+  algebra_ref: Symbol
+}
+
+
+// 🟢 coproduct dissolution
+type Change
+  = NodeChanged { at: Path }
+  | EdgeChanged { edge: DependencyEdge }
+  | FactChanged { at: Path, fact: Symbol }
+  | WitnessChanged { at: Path, witness: Symbol }
+  | GrammarChanged { grammar: Symbol }
+  | LanguageModelChanged { language_model: Symbol }
+  | HostModelChanged { host_model: Symbol }
+  | PipelineStageChanged { stage: PipelineStage }
+  | LensContractChanged { lens: LensContractRef }
+  | ProjectionChanged {
+      projection: Projection,
+      endpoint: ArtifactDependencyEndpoint
+    }
+  | Stage0ContractChanged { contract: Stage0ContractRef }
+  | CorePackageSchemaChanged { schema: CorePackageSchemaRef }
+
+
+type ChangeSet {
+  from_revision: Hash
+  to_revision: Hash
+  changes: List<Change>
+}
+
+
 // 🟢 coproduct dissolution
 type InvalidationReason
   = DirectChange { change: Change }
   | DependencyPropagation { edge: DependencyEdge }
-  | ProjectionInputChanged { projection: ProjectionIdentityRef }
+  | ProjectionInputChanged { projection: Projection }
   | InvalidationFromLensContract { lens: LensContractRef }
-  | PipelineStageContractChanged { stage: PipelineStageName }
+  | PipelineStageContractChanged { stage: PipelineStage }
 
 
 type ArtifactRef {
@@ -108,7 +109,7 @@ type ArtifactRef {
 type AffectedConsequence
   = Invalidation { reason: InvalidationReason }
   | AffectedProjection {
-      projection: ProjectionIdentityRef,
+      projection: Projection,
       because: InvalidationReason
     }
   | AffectedArtifact { artifact: ArtifactRef, because: InvalidationReason }
@@ -121,12 +122,9 @@ type AffectedSet {
 }
 
 
-type Projection {
-  output_artifact_kind: ArtifactKind
-  name: Symbol
-  input_carrier: CarrierKind
-  depends_on: List<DependencySubject>
-  algebra_ref: Symbol
+type AffectedSetSeed {
+  source: ChangeSet
+  graph: DependencyGraph
 }
 
 
@@ -159,10 +157,9 @@ fn empty_change_set(from_revision: Hash, to_revision: Hash) -> ChangeSet {
 }
 
 
-fn empty_affected_set(source: ChangeSet, graph: DependencyGraph) -> AffectedSet {
-  AffectedSet {
+fn affected_set_seed(source: ChangeSet, graph: DependencyGraph) -> AffectedSetSeed {
+  AffectedSetSeed {
     source: source,
-    graph: graph,
-    consequences: []
+    graph: graph
   }
 }

@@ -1,6 +1,6 @@
 // src/v4/std/dependency.dag
 // Scope: P6 dependency graph substrate — domains, edges, witnesses, SCC, topological plan.
-// Owns: DependencySubject, ArtifactDependencyEndpoint, Program/TargetPlan/ArtifactSchedulingReason, scheduling/containment edges, ClosedWorldDependencyWitness, IndependenceClaim, DependencyDiagnostic, TopologicalPlan.
+// Owns: DependencySubject, ArtifactDependencyEndpoint, Program/TargetPlan/ArtifactSchedulingReason, scheduling/containment edges, ClosedWorldDependencyWitness, IndependenceAttempt, IndependenceClaim, DependencyDiagnostic, TopologicalPlan.
 // Consumes: v4.std.collection, v4.std.node.
 // Status: Wave-1 Worker A strict substrate.
 
@@ -200,6 +200,16 @@ type IndependenceClaim
 
 
 // 🟢 coproduct dissolution
+type IndependenceAttempt
+  = Program { left: Path, right: Path }
+  | TargetPlan { left: Path, right: Path }
+  | Artifact {
+      left: ArtifactDependencyEndpoint,
+      right: ArtifactDependencyEndpoint
+    }
+
+
+// 🟢 coproduct dissolution
 type CycleClassification
   = Acyclic
   | ValidFixedPoint { witness: Symbol }
@@ -210,7 +220,7 @@ type CycleClassification
 type DependencyDiagnostic
   = UnknownEffectFact { edge: ProgramSchedulingEdge }
   | UnknownResourceFact { edge: ProgramSchedulingEdge }
-  | IndependenceWithoutWitness { claim: IndependenceClaim }
+  | IndependenceWithoutWitness { attempt: IndependenceAttempt }
   | InvalidCycleReason { edge: SchedulingDependencyEdge }
 
 
