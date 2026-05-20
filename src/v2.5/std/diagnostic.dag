@@ -1,29 +1,42 @@
 // src/v2.5/std/diagnostic.dag
-// Scope: fail-closed Outcome carrier for v2.5 pipeline stages.
-// Consumes: v2_5.std.identity (Symbol).
-// Status: fork substrate — normalize stage consumer; Tier-0 may supersede.
+// Scope: fail-closed diagnostic schema for v2.5.
+// Owns: Diagnostic, Outcome, Locus, Extent, Correction, NoCorrectionReason.
+// Consumes: v2_5.std.node.
+// Status: v2.5 Tier 0 draft.
 
 module v2_5.std.diagnostic
 
+import v2_5.std.node { Symbol, Nat, Node, Path }
 
-import v2_5.std.identity { Symbol }
+// 🟡 coproduct dissolution — feature:byte-range-ordering-witness
+type Extent
+  = WholeFile
+  | ByteRange { start: Nat, end: Nat }
 
+// 🟢 coproduct dissolution
+type Locus
+  = Textual { file: Symbol, extent: Extent }
+  | NodeLocus { node: Node }
+  | PortLocus { path: Path }
 
+// 🟢 coproduct dissolution
 type NoCorrectionReason
   = UserInputBoundary
   | AmbiguousIntent
+  | ExternalContractUnknown
 
-
+// 🟢 coproduct dissolution
 type Correction
-  = Unavailable { reason: NoCorrectionReason }
-
+  = Suggested { node: Node }
+  | Unavailable { reason: NoCorrectionReason }
 
 type Diagnostic {
   reason: Symbol
+  at: Locus
   correction: Correction
 }
 
-
+// 🟢 coproduct dissolution
 type Outcome<T>
   = Produced { value: T }
   | Rejected { diagnostic: Diagnostic }

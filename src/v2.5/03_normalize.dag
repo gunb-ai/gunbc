@@ -13,21 +13,25 @@ module v2_5.compiler.normalize
 import v2_5.std.diagnostic {
   Diagnostic,
   Outcome,
+  Textual,
   Unavailable,
-  UserInputBoundary
+  UserInputBoundary,
+  WholeFile
+}
+import v2_5.std.node {
+  Atom,
+  Arrow,
+  Conj,
+  Connective,
+  EdgeLabel,
+  Named,
+  Positional
 }
 import v2_5.std.stage_types {
-  CoreArrow,
-  CoreAtom,
-  CoreConj,
-  CoreConnective,
-  EdgeLabel,
-  NamedEdge,
   NormalizedComputationForm,
   NormalizedItem,
   NormalizedModule,
   NormalizedTypeForm,
-  PositionalEdge,
   ResolvedComputationForm,
   ResolvedCore,
   ResolvedCoreForm,
@@ -84,6 +88,7 @@ data normalize_reason_malformed_sugar: Symbol = normalize_reason_malformed_sugar
 fn malformed_sugar_diagnostic(span: SourceSpan) -> Diagnostic {
   Diagnostic {
     reason: normalize_reason_malformed_sugar,
+    at: Textual { file: span.file, extent: WholeFile },
     correction: Unavailable { reason: UserInputBoundary }
   }
 }
@@ -91,16 +96,16 @@ fn malformed_sugar_diagnostic(span: SourceSpan) -> Diagnostic {
 
 fn edge_is_named(label: EdgeLabel) -> Bool {
   match label {
-    NamedEdge { name: _ } => true
-    PositionalEdge => false
+    Named { name: _ } => true
+    Positional => false
   }
 }
 
 
 fn edge_is_positional(label: EdgeLabel) -> Bool {
   match label {
-    NamedEdge { name: _ } => false
-    PositionalEdge => true
+    Named { name: _ } => false
+    Positional => true
   }
 }
 
@@ -138,11 +143,11 @@ fn symbol_for_sugar(kind: SurfaceSugarKind) -> Symbol {
 }
 
 
-fn connective_for_replacement(rep: SugarReplacement, sugar: SurfaceSugarKind) -> CoreConnective {
+fn connective_for_replacement(rep: SugarReplacement, sugar: SurfaceSugarKind) -> Connective {
   match rep {
-    ReplaceWithConj => CoreConj
-    ReplaceWithArrow => CoreArrow
-    PeelSinglePositionalChild => CoreAtom { identity: symbol_for_sugar(kind: sugar) }
+    ReplaceWithConj => Conj
+    ReplaceWithArrow => Arrow
+    PeelSinglePositionalChild => Atom { identity: symbol_for_sugar(kind: sugar) }
   }
 }
 

@@ -1,14 +1,16 @@
 // src/v2.5/std/node.dag
 // Scope: v2.5 substrate root — type kernel for the forked tree.
-// Owns: Symbol, Hash, Connective, Behavior, DeclarationKind, CompositeRole, NodeKind, EdgeLabel, Edge, Node, NodeFold, fold_node, EdgeDiscipline, connective_edge_discipline, edge_is_named, edge_is_positional, all_edges_named, all_edges_positional, name_occurrences, all_names_distinct, edges_conform, node_locally_well_formed, node_well_formed, is_empty_conj_root, Path, Edit, Diff.
-// Consumes: v2_5.std.identity (Symbol).
+// Owns: Symbol, Hash, Nat, Connective, Behavior, NodeKind, EdgeLabel, Edge, Node, NodeFold, fold_node, EdgeDiscipline, connective_edge_discipline, all_edges_named, all_edges_positional, name_occurrences, all_names_distinct, edges_conform, node_locally_well_formed, node_well_formed, PathStep, Path, Edit, Diff.
+// Consumes: none.
+// Status: v2.5 Tier 0 draft.
 
 module v2_5.std.node
 
-import v2_5.std.identity { Symbol }
-
+type Symbol
 type Hash
+type Nat
 
+// 🟢 coproduct dissolution
 type Connective
   = Atom { identity: Symbol }
   | Conj
@@ -17,6 +19,7 @@ type Connective
   | Cardinality
   | Instantiation
 
+// 🟢 coproduct dissolution
 type Behavior
   = Value
   | Transform
@@ -24,24 +27,12 @@ type Behavior
   | Loop
   | Bind
 
-type DeclarationKind
-  = ModuleDecl
-  | ImportDecl
-  | TypeDecl
-  | FnDecl
-  | DataDecl
-
-type CompositeRole
-  = MatchArm
-  | Pattern
-  | StringInterp
-
+// 🟢 coproduct dissolution
 type NodeKind
-  = Declaration { kind: DeclarationKind }
-  | TypeForm { connective: Connective }
+  = TypeForm { connective: Connective }
   | Computation { behavior: Behavior }
-  | Composite { role: CompositeRole }
 
+// 🟢 coproduct dissolution
 type EdgeLabel
   = Named { name: Symbol }
   | Positional
@@ -67,6 +58,7 @@ fn fold_node<R>(n: Node, algebra: NodeFold<R>) -> R {
   )
 }
 
+// 🟢 coproduct dissolution
 type EdgeDiscipline
   = NoEdges
   | LabeledEdges
@@ -83,26 +75,18 @@ fn connective_edge_discipline(c: Connective) -> EdgeDiscipline {
   }
 }
 
-fn edge_is_named(e: Edge) -> Bool {
-  match e.label {
-    Named { name: _ } => true
-    Positional => false
-  }
-}
-
-fn edge_is_positional(e: Edge) -> Bool {
-  match e.label {
-    Named { name: _ } => false
-    Positional => true
-  }
-}
-
 fn all_edges_named(children: List<Edge>) -> Bool {
-  fold(children, init: true, f: (acc, e) => acc && edge_is_named(e: e))
+  fold(children, init: true, f: (acc, e) => match e.label {
+    Named { name: _ } => acc
+    Positional => false
+  })
 }
 
 fn all_edges_positional(children: List<Edge>) -> Bool {
-  fold(children, init: true, f: (acc, e) => acc && edge_is_positional(e: e))
+  fold(children, init: true, f: (acc, e) => match e.label {
+    Named { name: _ } => false
+    Positional => acc
+  })
 }
 
 fn name_occurrences(name: Symbol, children: List<Edge>) -> Int {
@@ -132,9 +116,7 @@ fn node_locally_well_formed(n: Node) -> Bool {
   match n.kind {
     TypeForm { connective: c } =>
       edges_conform(children: n.children, d: connective_edge_discipline(c: c))
-    Declaration { kind: _ } => true
     Computation { behavior: _ } => true
-    Composite { role: _ } => true
   }
 }
 
@@ -145,15 +127,13 @@ fn node_well_formed(n: Node) -> Bool {
   })
 }
 
-fn is_empty_conj_root(n: Node) -> Bool {
-  match n.kind {
-    TypeForm { connective: Conj } => count(n.children) == 0
-    _ => false
-  }
-}
+// 🟢 coproduct dissolution
+type PathStep
+  = NamedStep { name: Symbol }
+  | PositionalStep { index: Nat }
 
 type Path {
-  steps: List<Symbol>
+  steps: List<PathStep>
 }
 
 type Edit {
