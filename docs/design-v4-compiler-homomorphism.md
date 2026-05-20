@@ -1218,10 +1218,10 @@ Probably needs operator ratification before bootstrap substrate lands.
 **Resolved.** Multi-lens execution is `fold_node(InferredTree, composed_lens_algebra)` where `composed_lens_algebra` is a single algebra carrying multiple per-Node lens-step functions + their dependency DAG. No new substrate primitive — this is the unification's point: any pattern that LOOKS like "find / coalesce / traverse" is `fold_node` with the appropriate algebra-as-data.
 
 - **Single-pass coalescing** is the algebra computing all independent lens outputs per Node visit.
-- **Lens-to-lens dependencies** (e.g., complexity reads cost): the composed algebra computes a topological order over the lens-dependency DAG at algebra-construction time, then the fold visits each Node once with the staged per-Node steps. Multi-pass over the *tree* is not required even when lenses have *internal* dependencies — the algebra stages them per Node.
+- **Lens-to-lens dependencies** (e.g., complexity reads cost): the lens-dependency relation is **itself a typed dependency graph** (per P6 — kinds: `LensReadsLensOutput` / `LensRequiresFact`); its topological order is computed by the **same `Typed dependency graph + topological/SCC machinery` primitive** that produces program-level orderings. Single authority for topological ordering = the typed-dep-graph primitive, NOT a separate fold over the lens-dep DAG. The composed lens algebra consumes the topological order produced by that primitive at algebra-construction time, then the fold visits each Node once with the staged per-Node steps. Multi-pass over the *Node tree* is not required.
 - **Lens outputs as Node-graph data:** yes — `DimensionFact` carriers are Node-shaped, so downstream lens-algebras consume them uniformly and downstream tooling (IDEs, reporters) can read them.
 
-Substrate that needs to land: the `LensAlgebra<F>` carrier shape + the composed-lens-algebra construction (which is itself a `fold_node` over the lens-dependency DAG producing the per-Node-step composition).
+Substrate that needs to land: the `LensAlgebra<F>` carrier shape + the composed-lens-algebra construction (which **consumes the topological order from the Typed dependency graph primitive** — single scheduling authority — to produce the per-Node-step composition). The lens-dependency DAG is a P6 typed-dependency-graph instance (one of its consumer surfaces), not a parallel ordering authority.
 
 ### Ratified Q7 — `LanguageModel` is declarative-data-only (2026-05-20)
 
