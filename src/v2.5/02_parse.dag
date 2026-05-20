@@ -10,7 +10,8 @@ import v2_5.std.diagnostic {
   PortLocus
 }
 import v2_5.std.node { EdgeLabel, Nat, Path, PathStep, Symbol }
-import v2_5.std.stage_types { ParseNode, Token }
+import v2_5.std.stage_types { ParseModule }
+import v2_5.std.token { TokenStream }
 
 
 // 🟡 feature:grammar-walker — dissolves when grammar productions are consumed by the parser homomorphism.
@@ -32,13 +33,13 @@ type GrammarProduction {
 }
 
 
-// 🟡 feature:tier1-stage-types — dissolves when builders construct concrete ParseNode variants from the stage-type kit.
+// 🟡 feature:grammar-walker — dissolves when builders construct concrete ParseModule subtrees from grammar captures.
 type ParseBuilder
   = BuildParseNode { kind: ParseNodeKind, fields: List<ParseFieldBinding> }
   | ForwardCapture { capture: Symbol }
 
 
-// 🟡 feature:tier1-stage-types — dissolves when ParseNode exposes these closed variants directly.
+// 🟡 feature:grammar-walker — dissolves when builder kinds map directly to ParseModule/ParseItem/ParseExpr variants.
 type ParseNodeKind
   = ParseModule
   | ParseImport
@@ -120,12 +121,12 @@ fn parse_waiting_for_stage_type_kit_diagnostic(at: Locus) -> Diagnostic {
 }
 
 
-fn parse(tokens: List<Token>) -> Outcome<ParseNode> {
+fn parse(tokens: TokenStream) -> Outcome<ParseModule> {
   parse_with_contract(tokens: tokens, contract: dag_parse_contract())
 }
 
 
-fn parse_with_contract(tokens: List<Token>, contract: ParseContract) -> Outcome<ParseNode> {
+fn parse_with_contract(tokens: TokenStream, contract: ParseContract) -> Outcome<ParseModule> {
   let at = PortLocus {
     path: parse_stage_locus_path()
   }
