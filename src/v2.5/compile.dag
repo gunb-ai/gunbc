@@ -5,7 +5,7 @@
 //           v2_5.std.stage_types (Tier 1 — vivid-lynx-807, pending),
 //           v2_5.compiler.{tokenize,parse,resolve,normalize,infer,complexity,ownership,artifact,emit} (Tier 2 — pending).
 // Status: fork scaffold — orchestrator only; does not inspect Node/Edge shape.
-//         Full v2.5 compile closure requires Tier 1+2 sibling PRs; v2-compiler can compile Tier 0 std alone today.
+//         Full v2.5 compile closure requires Tier 1+2 sibling PRs. No NodeKind dispatch (2-variant substrate @ #3422 05b84a8ff).
 // Anchor: https://en.wikipedia.org/wiki/Compiler
 
 module v2_5.compiler.compile
@@ -17,6 +17,7 @@ import v2_5.std.diagnostic {
   PortLocus,
   Unavailable
 }
+import v2_5.std.node { NamedStep, Path }
 import v2_5.std.stage_types {
   Source,
   TokenStream,
@@ -188,10 +189,14 @@ data v2_5_compile_pipeline: List<PipelineStageRow> = [
 data compile_pipeline_mis_wired: Symbol = compile_pipeline_mis_wired
 data compile_pipeline_carrier_mismatch: Symbol = compile_pipeline_carrier_mismatch
 
+fn compile_pipeline_port_path(port: Symbol) -> Path {
+  Path { steps: [NamedStep { name: port }] }
+}
+
 fn compile_pipeline_mis_wired_diagnostic() -> Diagnostic {
   Diagnostic {
     reason: compile_pipeline_mis_wired,
-    at: PortLocus { port: compile_pipeline_mis_wired },
+    at: PortLocus { path: compile_pipeline_port_path(port: compile_pipeline_mis_wired) },
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
@@ -199,7 +204,7 @@ fn compile_pipeline_mis_wired_diagnostic() -> Diagnostic {
 fn compile_pipeline_carrier_mismatch_diagnostic(stage: PipelineStageKind) -> Diagnostic {
   Diagnostic {
     reason: compile_pipeline_carrier_mismatch,
-    at: PortLocus { port: compile_pipeline_mis_wired },
+    at: PortLocus { path: compile_pipeline_port_path(port: compile_pipeline_mis_wired) },
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
