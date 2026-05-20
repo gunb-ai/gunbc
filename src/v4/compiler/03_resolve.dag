@@ -15,7 +15,16 @@ import v4.extdeps.languages.dag {
   dag_language_model_canonical_symbols
 }
 import v4.std.collection { Set }
-import v4.std.diagnostic {Diagnostic, NodeLocus, Outcome, UserInputBoundary, Accepted, None, diagnostics_singleton}
+import v4.std.diagnostic {
+  Diagnostic,
+  NodeLocus,
+  Outcome,
+  UserInputBoundary,
+  Accepted,
+  None,
+  diagnostics_merge,
+  diagnostics_singleton
+}
 import v4.std.node {
   Arrow,
   Atom,
@@ -266,11 +275,11 @@ fn resolve_node(n: Node, scope: Scope) -> Outcome<Node> {
         }
       ) {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
-        Accepted { value: resolved_children, diagnostics: None } =>
+        Accepted { value: resolved_children, diagnostics: d } =>
           Accepted { value: Node {
               kind: n.kind,
               children: resolved_children
-            }, diagnostics: None }
+            }, diagnostics: d }
       }
     ComputationNode { behavior: Bind } =>
       resolve_bind_node(n: n, scope: scope)
@@ -287,24 +296,27 @@ fn resolve_children_homogeneous_scope(n: Node, scope: Scope) -> Outcome<Node> {
     match acc {
       Rejected { diagnostics: r } =>
         Rejected { diagnostics: r }
-      Accepted { value: done, diagnostics: None } =>
+      Accepted { value: done, diagnostics: ad } =>
         match resolve_node(n: e.target, scope: scope) {
           Rejected { diagnostics: r } =>
             Rejected { diagnostics: r }
-          Accepted { value: resolved_target, diagnostics: None } =>
-            Accepted { value: list_push(done, Edge {
+          Accepted { value: resolved_target, diagnostics: ed } =>
+            Accepted {
+              value: list_push(done, Edge {
                 label: e.label,
                 target: resolved_target
-              }), diagnostics: None }
+              }),
+              diagnostics: diagnostics_merge(outer: ad, inner: ed)
+            }
         }
     }
   }) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
-    Accepted { value: resolved_children, diagnostics: None } =>
+    Accepted { value: resolved_children, diagnostics: d } =>
       Accepted { value: Node {
           kind: n.kind,
           children: resolved_children
-        }, diagnostics: None }
+        }, diagnostics: d }
   }
 }
 
@@ -329,7 +341,7 @@ fn resolve_edges_first_outer_then_inner(
                 have_seen_first: true,
                 acc: Rejected { diagnostics: r }
               }
-            Accepted { value: done, diagnostics: None } =>
+            Accepted { value: done, diagnostics: ad } =>
               if seen {
                 match resolve_node(n: e.target, scope: scope_inner) {
                   Rejected { diagnostics: r } =>
@@ -337,16 +349,19 @@ fn resolve_edges_first_outer_then_inner(
                       have_seen_first: true,
                       acc: Rejected { diagnostics: r }
                     }
-                  Accepted { value: resolved_target, diagnostics: None } =>
+                  Accepted { value: resolved_target, diagnostics: ed } =>
                     EdgeResolveAccMk {
                       have_seen_first: true,
-                      acc: Accepted { value: list_push(
+                      acc: Accepted {
+                        value: list_push(
                           done,
                           Edge {
                             label: e.label,
                             target: resolved_target
                           }
-                        ), diagnostics: None }
+                        ),
+                        diagnostics: diagnostics_merge(outer: ad, inner: ed)
+                      }
                     }
                 }
               } else {
@@ -356,16 +371,19 @@ fn resolve_edges_first_outer_then_inner(
                       have_seen_first: true,
                       acc: Rejected { diagnostics: r }
                     }
-                  Accepted { value: resolved_target, diagnostics: None } =>
+                  Accepted { value: resolved_target, diagnostics: ed } =>
                     EdgeResolveAccMk {
                       have_seen_first: true,
-                      acc: Accepted { value: list_push(
+                      acc: Accepted {
+                        value: list_push(
                           done,
                           Edge {
                             label: e.label,
                             target: resolved_target
                           }
-                        ), diagnostics: None }
+                        ),
+                        diagnostics: diagnostics_merge(outer: ad, inner: ed)
+                      }
                     }
                 }
               }
@@ -409,7 +427,7 @@ fn resolve_bind_edges(
                 idx: i + 1,
                 acc: Rejected { diagnostics: r }
               }
-            Accepted { value: done, diagnostics: None } =>
+            Accepted { value: done, diagnostics: ad } =>
               if i == 0 {
                 match resolve_bind_binder_target(t: e.target) {
                   Rejected { diagnostics: r } =>
@@ -417,16 +435,19 @@ fn resolve_bind_edges(
                       idx: i + 1,
                       acc: Rejected { diagnostics: r }
                     }
-                  Accepted { value: rt, diagnostics: None } =>
+                  Accepted { value: rt, diagnostics: ed } =>
                     BindEdgeAccMk {
                       idx: i + 1,
-                      acc: Accepted { value: list_push(
+                      acc: Accepted {
+                        value: list_push(
                           done,
                           Edge {
                             label: e.label,
                             target: rt
                           }
-                        ), diagnostics: None }
+                        ),
+                        diagnostics: diagnostics_merge(outer: ad, inner: ed)
+                      }
                     }
                 }
               } else {
@@ -437,16 +458,19 @@ fn resolve_bind_edges(
                         idx: i + 1,
                         acc: Rejected { diagnostics: r }
                       }
-                    Accepted { value: rt, diagnostics: None } =>
+                    Accepted { value: rt, diagnostics: ed } =>
                       BindEdgeAccMk {
                         idx: i + 1,
-                        acc: Accepted { value: list_push(
+                        acc: Accepted {
+                          value: list_push(
                             done,
                             Edge {
                               label: e.label,
                               target: rt
                             }
-                          ), diagnostics: None }
+                          ),
+                          diagnostics: diagnostics_merge(outer: ad, inner: ed)
+                        }
                       }
                   }
                 } else {
@@ -456,16 +480,19 @@ fn resolve_bind_edges(
                         idx: i + 1,
                         acc: Rejected { diagnostics: r }
                       }
-                    Accepted { value: rt, diagnostics: None } =>
+                    Accepted { value: rt, diagnostics: ed } =>
                       BindEdgeAccMk {
                         idx: i + 1,
-                        acc: Accepted { value: list_push(
+                        acc: Accepted {
+                          value: list_push(
                             done,
                             Edge {
                               label: e.label,
                               target: rt
                             }
-                          ), diagnostics: None }
+                          ),
+                          diagnostics: diagnostics_merge(outer: ad, inner: ed)
+                        }
                       }
                   }
                 }
@@ -490,11 +517,11 @@ fn resolve_bind_node(n: Node, scope: Scope) -> Outcome<Node> {
       }
     ) {
       Rejected { diagnostics: r } => Rejected { diagnostics: r }
-      Accepted { value: resolved_children, diagnostics: None } =>
+      Accepted { value: resolved_children, diagnostics: d } =>
         Accepted { value: Node {
             kind: n.kind,
             children: resolved_children
-          }, diagnostics: None }
+          }, diagnostics: d }
     }
   } else {
     Rejected { diagnostics: diagnostics_singleton(d: malformed_tree_diagnostic(n: n)) }

@@ -69,17 +69,21 @@ fn solve_constraints(
   graph: ConstraintGraph,
   policy: ConstraintSolvePolicy,
 ) -> Outcome<CanonicalGrounding> {
-  match find_witness(
-    source_facts: graph.root,
-    candidates: CandidateSet { candidates: [], closedness: graph.root },
-    predicate: PreservationPredicate {
-      algebra: graph.root,
-      preservation_rule: preservation_rule_constraint_satisfaction
-    },
-    multiplicity_policy: UniqueOnly
-  ) {
-    Accepted { value: _, diagnostics: _ } =>
-      outcome_rejected(constraints_not_realized_diagnostic(graph: graph))
+  match canonical_grounding_candidates(graph: graph, policy: policy) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: grounding_candidates, diagnostics: _ } =>
+      match find_witness(
+        source_facts: graph.root,
+        candidates: grounding_candidates.set,
+        predicate: PreservationPredicate {
+          algebra: graph.root,
+          preservation_rule: preservation_rule_constraint_satisfaction
+        },
+        multiplicity_policy: UniqueOnly
+      ) {
+        Accepted { value: _, diagnostics: _ } =>
+          outcome_rejected(constraints_not_realized_diagnostic(graph: graph))
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      }
   }
 }
