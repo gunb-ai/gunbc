@@ -16,7 +16,7 @@ Treat **every** custom hook call site as **opaque at this layer**: only `impleme
 
 `ReactHookSite` (including `CustomHook`) remains **🟡 YELLOW** Practice‑4 per `docs/design-r4-full-stack-omni-emission-canvas.md` §12 — this Phase‑1.5 canvas **does not** “close” that carrier to 🟢. It only ratifies **how** `CustomHook` may gain fields **without** parallel lifecycle sums. **Dissolution** of the built‑in roster + Custom boundary still requires the **semver / hooks‑index** edit path on the substrate PR.
 
-**Single authority with Practice 9:** the abbreviated five-pattern dissolution **ledger** for the pinned Hooks-index call-shape substrate lives in **`src/v4/DECISIONS.md` §T-4.7 (`react-p4-hook-site`)** — that entry is **aligned** with this paragraph (whole `ReactHookSite` sum **🟡** per §12); it records dissolution *attempts* on the built-in slice and **does not** assert a 🟢 terminal closure that contradicts §12 or this canvas.
+**Single authority with Practice 9:** the dissolution record for the pinned Hooks-index call-shape substrate lives as inline `// 🟡` marks on the relevant `ReactHookSite` declarations in `src/v4/extdeps/frameworks/react.dag` (the whole sum **🟡** per §12); the paired discipline / Practice‑9 rules live in `docs/modeling-discipline.md` and the T-4.7 bullets of `src/v4/TASKS.md`. No standalone `DECISIONS.md` ledger path is reintroduced.
 
 ## 3. Promotion trigger (Practice‑4)
 
