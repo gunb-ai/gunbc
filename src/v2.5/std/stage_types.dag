@@ -181,7 +181,7 @@ type ParseExpr
   | ParseStringInterp {
       parts: List<ParseStringPart>
     }
-  | ParseBlock { statements: List<ParseExpr> }
+  | ParseBlockExpr { block: ParseBlock }
   | ParseCast {
       expr: ParseExpr
       target_type: ParseTypeExpr
