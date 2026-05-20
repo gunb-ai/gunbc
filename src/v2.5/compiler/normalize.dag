@@ -62,11 +62,11 @@ import v2_5.std.stage_types {
   c3_surface_sugar_service,
   c3_surface_sugar_type
 }
-import v2_5.compiler.normalize_forward {
+import v2_5.compiler.item_forward {
   normalize_item_core,
   normalize_resolved_imports
 }
-import std.list { Empty }
+import v2_5.std.list { Empty }
 import v2_5.std.sugar_rules {
   PeelSinglePositionalChild,
   ReplaceWithArrow,

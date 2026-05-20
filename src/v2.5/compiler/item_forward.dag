@@ -3,10 +3,10 @@
 // Owns: normalize_item_core and supporting normalize_resolved_* helpers.
 // Consumes: v2_5.std.stage_types, v2_5.std.diagnostic.
 
-module v2_5.compiler.normalize_forward
+module v2_5.compiler.item_forward
 
 
-import std.list { Empty }
+import v2_5.std.list { Empty }
 import v2_5.std.diagnostic { Outcome }
 import v2_5.std.stage_types {
   NormalizedArg,

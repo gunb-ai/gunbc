@@ -1,0 +1,9 @@
+// v2.5 list carrier — minimal Empty variant for fold initializers.
+// Canonical home is std.list (v3); this is a v2-compiler-compatible stub.
+
+module v2_5.std.list
+
+
+type List<element>
+  = Empty
+  | Cons { head: element, tail: List<element> }
