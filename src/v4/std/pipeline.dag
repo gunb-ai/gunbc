@@ -12,13 +12,11 @@ import v4.std.collection { List }
 import v4.std.dependency {
   ArtifactSchedulingKind,
   ArtifactSchedulingReason,
-  ArtifactSchedulingWitness,
   ProgramSchedulingKind,
   ProgramSchedulingReason,
-  ProgramSchedulingWitness,
+  SchedulingWitness,
   TargetPlanSchedulingKind,
-  TargetPlanSchedulingReason,
-  TargetPlanSchedulingWitness
+  TargetPlanSchedulingReason
 }
 import v4.std.node { Symbol }
 

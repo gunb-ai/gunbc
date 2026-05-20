@@ -1,6 +1,6 @@
 // src/v4/std/dependency.dag
 // Scope: P6 dependency graph substrate — domains, edges, witnesses, SCC, topological plan.
-// Owns: DependencySubject, ArtifactDependencyEndpoint, Program/TargetPlan/ArtifactSchedulingKind+Reason (sole dependency-cause axis), ClosedWorldScope, scheduling/containment edges, ClosedWorldDependencyWitness, IndependenceAttempt, IndependenceClaim, DependencyDiagnostic, SchedulableScc, InvalidCycleScc, TopologicalPlan.
+// Owns: DependencySubject, ArtifactDependencyEndpoint, SchedulingWitness, Program/TargetPlan/ArtifactSchedulingKind+Reason (sole dependency-cause axis), ClosedWorldScope, scheduling/containment edges, ClosedWorldDependencyWitness, IndependenceAttempt, IndependenceClaim, DependencyDiagnostic, SchedulableScc, InvalidCycleScc, TopologicalPlan.
 // Consumes: v4.std.collection, v4.std.node, v4.std.witness.
 // Status: Wave-1 Worker A strict substrate.
 
@@ -26,8 +26,8 @@ type DependencySubject
   | ArtifactEndpoint { endpoint: ArtifactDependencyEndpoint }
 
 
-// 🟢 coproduct dissolution
-type ProgramSchedulingWitness
+// 🟢 coproduct dissolution — sole scheduling witness axis (contract vs edge evidence).
+type SchedulingWitness
   = ContractSummary
   | EdgeEvidence { ref: Symbol }
 
@@ -45,14 +45,8 @@ type ProgramSchedulingKind
 // Practice 4 variant-is-data — kind axis + shared witness coordinate (not same-payload coproduct).
 type ProgramSchedulingReason {
   kind: ProgramSchedulingKind
-  witness: ProgramSchedulingWitness
+  witness: SchedulingWitness
 }
-
-
-// 🟢 coproduct dissolution
-type TargetPlanSchedulingWitness
-  = ContractSummary
-  | EdgeEvidence { ref: Symbol }
 
 
 // 🟢 coproduct dissolution
@@ -64,14 +58,8 @@ type TargetPlanSchedulingKind
 
 type TargetPlanSchedulingReason {
   kind: TargetPlanSchedulingKind
-  witness: TargetPlanSchedulingWitness
+  witness: SchedulingWitness
 }
-
-
-// 🟢 coproduct dissolution
-type ArtifactSchedulingWitness
-  = ContractSummary
-  | EdgeEvidence { ref: Symbol }
 
 
 // 🟢 coproduct dissolution
@@ -86,7 +74,7 @@ type ArtifactSchedulingKind
 
 type ArtifactSchedulingReason {
   kind: ArtifactSchedulingKind
-  witness: ArtifactSchedulingWitness
+  witness: SchedulingWitness
 }
 
 
