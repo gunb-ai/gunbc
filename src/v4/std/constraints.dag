@@ -1,0 +1,128 @@
+// src/v4/std/constraints.dag
+// Scope: constraint-solving substrate boundary for canonical source grounding.
+// Owns: ConstraintKind, Constraint, ConstraintSource, ConstraintGraph, ConstraintSolvePolicy, CanonicalGrounding, CanonicalGroundingWitness, ConstraintSolveResult, AmbiguousGroundingDiagnostic, UnsatisfiedConstraintDiagnostic, solve_constraints.
+// Consumes: std collection, std diagnostic, std node.
+// Status: scaffold — TASKS T-9; exact canonical-grounding boundary only.
+// Anchor: docs/design-v4-compiler-homomorphism.md P5.
+
+
+module v4.std.constraints
+
+
+import v4.std.collection { List }
+import v4.std.diagnostic {
+  Diagnostic,
+  ExternalContractUnknown,
+  Locus,
+  Outcome,
+  PortLocus,
+  Rejected,
+  Unavailable
+}
+import v4.std.node { Hash, Node, Symbol }
+
+
+// 🟡 coproduct dissolution — feature:t9-solve-constraints-consumer.
+type ConstraintKind
+  = TypeShapeConstraint
+  | InhabitanceConstraint
+  | EqualityConstraint
+  | DependencyConstraint
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type ConstraintSource
+  = SourceNode { node: Node }
+  | SourceEdge { from: Node, to: Node }
+  | SourceStage { stage: Symbol }
+
+
+type Constraint {
+  kind: ConstraintKind
+  source: ConstraintSource
+  left: Node
+  right: Node
+}
+
+
+type ConstraintGraph {
+  root: Node
+  constraints: List<Constraint>
+}
+
+
+type ConstraintSolvePolicy {
+  require_unique_grounding: Bool
+}
+
+
+type CanonicalGroundingWitness {
+  source_graph: ConstraintGraph
+  canonical_hash: Hash
+}
+
+
+type CanonicalGrounding {
+  root: Node
+  witness: CanonicalGroundingWitness
+}
+
+
+type ConstraintSolveResult = Outcome<CanonicalGrounding>
+
+
+type AmbiguousGroundingDiagnostic {
+  graph: ConstraintGraph
+  at: Locus
+}
+
+
+type UnsatisfiedConstraintDiagnostic {
+  constraint: Constraint
+  at: Locus
+}
+
+
+data constraint_solve_stage_locus_port: Symbol = constraint_solve_stage_locus_port
+data ambiguous_grounding: Symbol = ambiguous_grounding
+data unsatisfied_constraint: Symbol = unsatisfied_constraint
+data constraint_solver_not_realized: Symbol = constraint_solver_not_realized
+
+
+fn ambiguous_grounding_diagnostic(d: AmbiguousGroundingDiagnostic) -> Diagnostic {
+  Diagnostic {
+    reason: ambiguous_grounding,
+    at: d.at,
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+
+fn unsatisfied_constraint_diagnostic(d: UnsatisfiedConstraintDiagnostic) -> Diagnostic {
+  Diagnostic {
+    reason: unsatisfied_constraint,
+    at: d.at,
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+
+fn constraint_solver_not_realized_diagnostic(at: Locus) -> Diagnostic {
+  Diagnostic {
+    reason: constraint_solver_not_realized,
+    at: at,
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+
+fn solve_constraints(
+  graph: ConstraintGraph,
+  policy: ConstraintSolvePolicy,
+) -> ConstraintSolveResult {
+  Rejected {
+    diagnostic: constraint_solver_not_realized_diagnostic(
+      at: PortLocus { port: constraint_solve_stage_locus_port }
+    )
+  }
+}

@@ -1,0 +1,130 @@
+// src/v4/std/coercion.dag
+// Scope: exact coercion-fold substrate boundary over canonical groundings.
+// Owns: CoercionCandidate, CoercionCandidateSet, CoercionFoldPolicy, TargetSelectionPolicy, CoercionMismatchKind, CoercionDiagnostic, CoercionWitness, CoercionResult, coercion_fold, verify_coercion_witness.
+// Consumes: std constraints, std collection, std diagnostic, std node.
+// Status: scaffold — TASKS T-9/T-10; exact-only coercion fold, no rewrites.
+// Anchor: docs/design-v4-compiler-homomorphism.md P7.
+
+
+module v4.std.coercion
+
+
+import v4.std.collection { List }
+import v4.std.constraints { CanonicalGrounding }
+import v4.std.diagnostic {
+  Diagnostic,
+  ExternalContractUnknown,
+  Locus,
+  Outcome,
+  PortLocus,
+  Produced,
+  Rejected,
+  Unavailable
+}
+import v4.std.node { Hash, Node, Symbol }
+
+
+type CoercionCandidate {
+  target: Node
+  canonical_hash: Hash
+}
+
+
+type CoercionCandidateSet {
+  candidates: List<CoercionCandidate>
+}
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type TargetSelectionPolicy
+  = RejectAmbiguousTarget
+  | DeterministicCandidateOrder
+
+
+type CoercionFoldPolicy {
+  target_selection: TargetSelectionPolicy
+}
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type CoercionMismatchKind
+  = NoTargetCandidate
+  | AmbiguousTargetCandidate
+  | StructuralMismatch
+  | CoercionFoldNotRealized
+
+
+type CoercionDiagnostic {
+  kind: CoercionMismatchKind
+  at: Locus
+}
+
+
+type CoercionWitness {
+  source: CanonicalGrounding
+  target: CoercionCandidate
+}
+
+
+type CoercionResult {
+  witness: CoercionWitness
+  target: Node
+}
+
+
+data coercion_fold_stage_locus_port: Symbol = coercion_fold_stage_locus_port
+data no_target_candidate: Symbol = no_target_candidate
+data ambiguous_target_candidate: Symbol = ambiguous_target_candidate
+data structural_mismatch: Symbol = structural_mismatch
+data coercion_fold_not_realized: Symbol = coercion_fold_not_realized
+
+
+fn coercion_mismatch_reason(kind: CoercionMismatchKind) -> Symbol {
+  match kind {
+    NoTargetCandidate => no_target_candidate
+    AmbiguousTargetCandidate => ambiguous_target_candidate
+    StructuralMismatch => structural_mismatch
+    CoercionFoldNotRealized => coercion_fold_not_realized
+  }
+}
+
+
+fn coercion_diagnostic(d: CoercionDiagnostic) -> Diagnostic {
+  Diagnostic {
+    reason: coercion_mismatch_reason(kind: d.kind),
+    at: d.at,
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+
+fn coercion_fold(
+  source: CanonicalGrounding,
+  candidates: CoercionCandidateSet,
+  policy: CoercionFoldPolicy,
+) -> Outcome<CoercionResult> {
+  Rejected {
+    diagnostic: coercion_diagnostic(
+      d: CoercionDiagnostic {
+        kind: CoercionFoldNotRealized,
+        at: PortLocus { port: coercion_fold_stage_locus_port }
+      }
+    )
+  }
+}
+
+
+fn verify_coercion_witness(witness: CoercionWitness) -> Outcome<CoercionWitness> {
+  if witness.source.witness.canonical_hash == witness.target.canonical_hash {
+    Produced { value: witness }
+  } else {
+    Rejected {
+      diagnostic: coercion_diagnostic(
+        d: CoercionDiagnostic {
+          kind: StructuralMismatch,
+          at: PortLocus { port: coercion_fold_stage_locus_port }
+        }
+      )
+    }
+  }
+}
