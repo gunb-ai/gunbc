@@ -1,27 +1,57 @@
 // src/v4/std/nat.dag
-// Scope: natural numbers.
-// Anchor: https://en.wikipedia.org/wiki/Natural_number
-// Owns: Nat, nat_add, nat_mul, nat_additive_commutative_monoid, nat_semiring.
-// Consumes: std algebra.
+// Scope: Natural numbers (Part 6 nat rows; external Natural_number anchor out of Lane-B header).
+// Owns: Nat nat_cata nat_add nat_mul nat_compare nat_is_zero nat_additive_commutative_monoid nat_semiring nat_algebra_law_subject_symbol_additive_monoid nat_algebra_law_subject_symbol_commutative_semiring nat_algebra_law_subject_symbol_inhabitant_nat
+// Consumes: v4.std.algebra v4.std.node
 // Status: T-3 modeled.
 
-
 module v4.std.nat
-import v4.std.algebra { Magma, Semigroup, Monoid, CommutativeMonoid, Semiring, CommutativeSemiring }
-// 🟢 coproduct dissolution — DECISIONS.md classification ledger: Nat.
+import v4.std.algebra {
+  Magma,
+  Semigroup,
+  Monoid,
+  CommutativeMonoid,
+  Semiring,
+  CommutativeSemiring,
+  Ordering,
+  Less,
+  Equal,
+  Greater,
+}
+import v4.std.node { Symbol }
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type Nat
   = Zero
   | Succ { prev: Nat }
-fn nat_add(a: Nat, b: Nat) -> Nat {
-  match a {
-    Zero => b
-    Succ { prev: p } => Succ { prev: nat_add(a: p, b: b) }
+fn nat_cata<A>(n: Nat, zero: A, succ: fn(A) -> A) -> A {
+  match n {
+    Zero => zero
+    Succ { prev: p } => succ(nat_cata(n: p, zero: zero, succ: succ))
   }
 }
+fn nat_add(a: Nat, b: Nat) -> Nat {
+  nat_cata(n: a, zero: b, succ: fn(acc) { Succ { prev: acc } })
+}
 fn nat_mul(a: Nat, b: Nat) -> Nat {
+  nat_cata(n: a, zero: Zero, succ: fn(acc) { nat_add(a: b, b: acc) })
+}
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: coproduct variant-discriminant predicate substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived Nat total-order compare (binary query consumer); forbidden: nat_cata / fold launder (operator CORE 2026-05-18).
+fn nat_compare(a: Nat, b: Nat) -> Ordering {
   match a {
-    Zero => Zero
-    Succ { prev: p } => nat_add(a: b, b: nat_mul(a: p, b: b))
+    Zero => match b {
+      Zero => Equal
+      Succ { prev: _ } => Less
+    }
+    Succ { prev: ap } => match b {
+      Zero => Greater
+      Succ { prev: bp } => nat_compare(a: ap, b: bp)
+    }
+  }
+}
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: coproduct variant-discriminant predicate substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived Zero-variant discriminant projection; forbidden: nat_cata / fold launder (operator CORE 2026-05-18).
+fn nat_is_zero(n: Nat) -> Bool {
+  match n {
+    Zero => true
+    Succ { prev: _ } => false
   }
 }
 data nat_additive_commutative_monoid: CommutativeMonoid<Nat> = CommutativeMonoid {
@@ -39,3 +69,13 @@ data nat_semiring: CommutativeSemiring<Nat> = CommutativeSemiring {
     }
   }
 }
+
+// Practice-8 scheduling Symbols — T19-VHDR-3332
+// RULING-1: 🟢 pretty-much-done — nominal scheduling symbols
+data nat_algebra_law_subject_symbol_additive_monoid: Symbol = nat_algebra_law_subject_symbol_additive_monoid
+
+
+data nat_algebra_law_subject_symbol_commutative_semiring: Symbol = nat_algebra_law_subject_symbol_commutative_semiring
+
+
+data nat_algebra_law_subject_symbol_inhabitant_nat: Symbol = nat_algebra_law_subject_symbol_inhabitant_nat

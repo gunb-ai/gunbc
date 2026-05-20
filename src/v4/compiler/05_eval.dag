@@ -1,8 +1,224 @@
 // src/v4/compiler/05_eval.dag
-// Scope: primary evaluation path over inferred tree and inputs.
-// Anchor: https://en.wikipedia.org/wiki/Interpreter_(computing)
-// Owns: none.
-// Consumes: none.
-// Status: scaffold for T-22.
+// Scope: primary evaluation path over inferred tree/input subgraphs and TestClaim runner substrate.
+// Owns: Inputs, EvalContext, TestClaimTypedInput, TestClaimEvalSubject, TestClaimCacheKey, TestClaimCacheReceipt, Verdict, TestClaimRun, eval_node, run_test_claim.
+// Consumes: v4.compiler.infer, v4.std.node, v4.std.diagnostic, v4.std.verification.
+// Status: Wave-0 substrate; evaluator bodies remain structural until T-9 inferred-tree semantics.
 
 module v4.compiler.eval
+
+
+import v4.compiler.infer {
+  InferredTree
+}
+import v4.std.node {
+  Hash,
+  Node,
+  Symbol,
+  node_well_formed
+}
+import v4.std.diagnostic {
+  AmbiguousIntent,
+  Correction,
+  Diagnostic,
+  NoCorrectionReason,
+  NodeLocus,
+  Outcome,
+  Produced,
+  Rejected,
+  Unavailable
+}
+import v4.std.verification {
+  AssertKind,
+  Compiles,
+  DiagnosticAssert,
+  Equals,
+  RoundTrips,
+  TestClaim
+}
+
+
+// RULING-1: needs-more-work — evaluator body remains structural until T-9.
+type Inputs {
+  root: Node
+}
+
+
+// RULING-1: pretty-much-done — explicit evaluator/resource/extdeps authority bundle.
+type EvalContext {
+  evaluator: Node
+  resources: Node
+  extdeps: Node
+}
+
+
+// RULING-1: needs-more-work — typed-input bridge until TestClaim input projection lands.
+type TestClaimTypedInput<T> {
+  evaluator_input: T
+}
+
+
+// RULING-1: needs-more-work — bridge subject for current TestClaim execution rows.
+type TestClaimEvalSubject<T> {
+  claim: TestClaim
+  context: EvalContext
+  tree: InferredTree
+  input: TestClaimTypedInput<T>
+}
+
+
+// RULING-1: needs-more-work — hash slots dissolve to B1 content_hash facts.
+type TestClaimCacheKey<T> {
+  eval_subject: TestClaimEvalSubject<T>
+  claim_hash: Hash
+  evaluator_hash: Hash
+  resources_hash: Hash
+  extdeps_hash: Hash
+}
+
+
+// RULING-1: needs-more-work — receipt remains hash-scaffolded until cache hashes derive.
+type TestClaimCacheReceipt<T> {
+  key: TestClaimCacheKey<T>
+}
+
+
+// RULING-1: pretty-much-done — verdict carrier preserves actual Outcome in non-pass states.
+// 🟢 coproduct dissolution — T22-EVAL-VERDICT.
+type Verdict<T>
+// 🟢 coproduct dissolution — T22-EVAL-VERDICT
+  = Pass
+  | Fail { actual: Outcome<T> }
+  | Deferred { actual: Outcome<T>, diagnostic: Diagnostic }
+
+
+// RULING-1: needs-more-work — executable corpus runner will replace Wave-0 run rows.
+type TestClaimRun<T> {
+  cache: TestClaimCacheReceipt<T>
+  verdict: Verdict<T>
+}
+
+
+fn test_claim_cache_receipt<T>(
+  subject: TestClaimEvalSubject<T>,
+  claim_hash: Hash,
+  evaluator_hash: Hash,
+  resources_hash: Hash,
+  extdeps_hash: Hash
+) -> TestClaimCacheReceipt<T> {
+  TestClaimCacheReceipt {
+    key: TestClaimCacheKey {
+      eval_subject: subject,
+      claim_hash: claim_hash,
+      evaluator_hash: evaluator_hash,
+      resources_hash: resources_hash,
+      extdeps_hash: extdeps_hash
+    }
+  }
+}
+
+
+data eval_rejected_invalid_node: Symbol = eval_rejected_invalid_node
+data eval_rejected_assert_kind_deferred: Symbol = eval_rejected_assert_kind_deferred
+data eval_rejected_roundtrip_deferred: Symbol = eval_rejected_roundtrip_deferred
+fn eval_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: NodeLocus { node: node },
+    correction: Unavailable { reason: AmbiguousIntent }
+  }
+}
+
+
+fn eval_node(tree: InferredTree, inputs: Inputs) -> Outcome<Node> {
+  if node_well_formed(n: tree.root) {
+    if node_well_formed(n: inputs.root) {
+      Produced { value: inputs.root }
+    } else {
+      Rejected { diagnostic: eval_diagnostic(reason: eval_rejected_invalid_node, node: inputs.root) }
+    }
+  } else {
+    Rejected { diagnostic: eval_diagnostic(reason: eval_rejected_invalid_node, node: tree.root) }
+  }
+}
+
+
+// 🟡 derived equality scaffold — T22-EVAL-OUTCOME-EQ
+fn outcome_node_eq(a: Outcome<Node>, b: Outcome<Node>) -> Bool {
+  match a {
+    Produced { value: av } => match b {
+      Produced { value: bv } => av == bv
+      Rejected { diagnostic: _ } => false
+    }
+    Rejected { diagnostic: ad } => match b {
+      Produced { value: _ } => false
+      Rejected { diagnostic: bd } => ad == bd
+    }
+  }
+}
+
+
+fn run_node_assert(
+  kind: AssertKind,
+  actual: Outcome<Node>,
+  expected: Outcome<Node>,
+  input: Node
+) -> Verdict<Node> {
+  match kind {
+    Equals => if outcome_node_eq(a: actual, b: expected) { Pass } else { Fail { actual: actual } }
+    Compiles => match actual {
+      Produced { value: _ } => Pass
+      Rejected { diagnostic: _ } => Fail { actual: actual }
+    }
+    RoundTrips => Deferred {
+      actual: actual,
+      diagnostic: eval_diagnostic(reason: eval_rejected_roundtrip_deferred, node: input)
+    }
+    DiagnosticAssert => Deferred {
+      actual: actual,
+      diagnostic: eval_diagnostic(reason: eval_rejected_assert_kind_deferred, node: input)
+    }
+  }
+}
+
+
+fn run_test_claim(
+  subject: TestClaimEvalSubject<Node>,
+  claim_hash: Hash,
+  evaluator_hash: Hash,
+  resources_hash: Hash,
+  extdeps_hash: Hash
+) -> TestClaimRun<Node> {
+  let actual = eval_node(
+    tree: subject.tree,
+    inputs: Inputs { root: subject.input.evaluator_input }
+  )
+  TestClaimRun {
+    cache: test_claim_cache_receipt(
+      subject: subject,
+      claim_hash: claim_hash,
+      evaluator_hash: evaluator_hash,
+      resources_hash: resources_hash,
+      extdeps_hash: extdeps_hash
+    ),
+    verdict: run_node_assert(
+      kind: subject.claim.kind,
+      actual: actual,
+      expected: subject.claim.expected,
+      input: subject.claim.input
+    )
+  }
+}
+
+
+fn eval_test_claim_subject(
+  claim: TestClaim,
+  context: EvalContext,
+  tree: InferredTree
+) -> TestClaimEvalSubject<Node> {
+  TestClaimEvalSubject {
+    claim: claim,
+    context: context,
+    tree: tree,
+    input: TestClaimTypedInput { evaluator_input: claim.input }
+  }
+}

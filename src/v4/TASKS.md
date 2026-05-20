@@ -121,7 +121,7 @@ Substrate / extdeps fan-out:
   T-4.6 extdeps/formats/* (7 files: json/yaml/csv/toml/json_schema/openapi/sql)  [needs T-25-core, T-26]
   T-4.7 extdeps/frameworks/react.dag    [needs T-4 (typescript)]
   T-4.8 extdeps/coordination.dag         [needs T-4, T-4.7]
-  T-4.9  extdeps/languages/verilog.dag   [needs T-1, T-2; B2-OMNI falsification probe — concurrency vs the 5 behaviors]
+  T-4.9  extdeps/languages/verilog.dag   [needs T-1, T-2; header Consumes: std/node.dag; std/nat.dag (Nat); B2-OMNI falsification probe — concurrency vs the 5 behaviors]
   T-4.10 extdeps/formats/spice.dag       [needs T-1; B2-OMNI falsification probe — LanguageModel generality (no control flow)]
   T-4.11 test/claim/boundary/english_ingest_fail_closed.dag  [needs T-1, T-3 std/verification.dag; boundary-honesty probe — TestClaim/AssertKind bind after verification.dag fill, not parallel to Wave-A2 scaffold]
   T-4.12 extdeps/languages/llvm_ir.dag   [needs T-1, T-2; B2-OMNI probe — generalize DOWN the stack (SSA IR)]
@@ -234,10 +234,15 @@ Close-the-loop + late substrate:
 
 ### T-3: std/* supporting (cardinality, witness, diagnostic, collection, verification + the scalar/numeric stack)
 
-**File**: 11 files in `src/v4/std/` — `cardinality`, `witness`, `diagnostic`,
+**File**: 11 files in `src/v4/std/` today — `cardinality`, `witness`, `diagnostic`,
 `collection`, `verification`, plus the **scalar/numeric stack** (`logic`,
 `nat`, `machine`, `integer`, `float`, `text`) that replaced the deleted
 `primitive.dag` — see `STRUCTURE.md` §"Scalar/numeric concept decomposition".
+**Scheduled (named carrier home, checkable arrival):** **`src/v4/std/datetime.dag`**
+(module `v4.std.datetime` once authored) — RFC 3339 / clock-calendar instant
+facts for format-layer consumers; **absent from the tree until** the Wave-A2+
+landing PR; dissolution paired with `DECISIONS.md` Part 6 ·
+`SL-3229-T4-FORMAT-TOML-DATETIME` (T-4.6 `toml.dag` wires ops against this file).
 **Why bundled**: smaller individually, all interrelated, foundation for everything.
 
 **Shared-fact vocabulary — T-3 owns it (D2-reversal scope, operator-ratified
@@ -249,7 +254,12 @@ language model coincides against. A per-language fact-bundle (T-4) cannot be
 authored until this vocabulary exists — so T-3 is on the **critical path** and
 every T-4 slice blocks on it. The exact-real / physical-quantity carriers (the
 SPICE gap — see `DECISIONS.md` "D2 REVERSAL + FACT-BUNDLE RESEED", Phase 2) are
-part of this vocabulary. Each axis is a real modeled fact, placed in the
+part of this vocabulary. **Temporal / RFC 3339 structured instants** (format
+lexemes → clock facts; T-4.6 consumers — `DECISIONS.md` Part 6 ·
+`SL-3229-T4-FORMAT-TOML-DATETIME`) are **T-3-owned `std/` vocabulary** with the
+**concrete scheduled home** `src/v4/std/datetime.dag` (see **File** above), same
+scheduling envelope as other Wave-A2+ shared facts. Each **numeric /
+physical-quantity** axis is a real modeled fact, placed in the
 appropriate scalar/numeric file (`machine`, `integer`, `float`) by DFS to its
 concept-DAG home (M9) — never minted per-language.
 
@@ -331,17 +341,17 @@ substrate imported them, so the cut is a pure scope reduction.
 
 ### T-6: compiler/01_tokenize.dag
 
-**Role:** Lexical half of generic `ingest` (00_compile B2-OMNI): walker over `LanguageModel` **lex** `Node` data — grammar-as-data, not hardcoded `.dag` classes (N×M STOP). Wave-2+ = extend **data**, not walker.
+**Role:** Lexical half of generic `ingest` (00_compile B2-OMNI): walker over `LanguageModel` **lex** `LexRules` data — grammar-as-data, not hardcoded `.dag` classes (N×M STOP). Wave-2+ = extend **data**, not walker.
 
 **Merged `00_compile.dag` ingest (literal `Owns` today):** `ingest: (Source, LanguageModel) -> Result<Node, Diagnostic>` — authoritative composed ingest spelling on the orchestrator file (per DECISIONS.md item **I**: `Result<…, Diagnostic>` prose denotes the same fail-closed surface as `Outcome<…>` from `std/diagnostic.dag`; do not “fix” TASKS to one carrier spelling without changing **`00_compile.dag` in the same commit train**).
-**Merged `01_tokenize.dag` (literal `Owns` today):** `tokenize(text: String, file: Symbol, rules: LexRules) -> Outcome<TokenStream>` with `LexRules = Node` (`String` + `file: Symbol` is the concrete source slot inside `ingest` today; read `LexRules` as the lexical projection of the `LanguageModel` bundle per Theme-A #9 — not a second authority).
+**Merged `01_tokenize.dag` (literal `Owns` today):** `tokenize(text: String, file: Symbol, rules: LexRules) -> Outcome<TokenStream>` with `LexRules = VoidLexRules | ModeledLexRules { root: LexRuleSet }` and `TokenRule.pattern: LexPattern` (`String` + `file: Symbol` is the concrete source slot inside `ingest` today; read `LexRules` as the lexical projection of the `LanguageModel` bundle per Theme-A #9 — not a second authority).
 *Theme-A #9:* Until `LanguageModel` is a **named** carrier (or merged `00_compile.dag` states formally that the model **IS** a `Node`), read **`LexRules` / `Grammar` as the model's lexical and syntax projections** on the same grammar-as-data — not a second authority beside the conceptual `(Source, LanguageModel)` spelling.
 
 **Modeling decisions**:
 - The lexical-rule **data schema** on the `LanguageModel` — what a
-  declarative lexical production is, as `Node` (the structural shape the
-  walker recognizes by discriminant + child structure, never by `Symbol`
-  spelling).
+  declarative lexical production is, as typed `LexRule` / `LexPattern`
+  payload data (the structural shape the walker recognizes by constructor
+  + child structure, never by `Symbol` spelling).
 - Whitespace/comment handling expressed *in that data*, not as walker logic.
 - The walker's structural recognition contract (E0 and successors).
 
@@ -388,6 +398,14 @@ substrate imported them, so the cut is a pure scope reduction.
   resolve stage contract is "identifier binding to declarations".
 - The sugar-name authority is the `LanguageModel`'s, consumed — never
   re-minted in this stage (single-authority, Practice 5).
+- **CP-1b bucket C (native `.dag` LM):** `DagLanguageModel` carries
+  `canonical_symbols: Set<Symbol>` as declared data; resolve reads it only via
+  `dag_language_model_canonical_symbols/1`—no inferring the native C3 prelude `Set` from void lex/grammar shape
+  inside `03_resolve.dag` (TASKS T-8 / CP-1b bucket C).
+- **CI emit-wall bridge (tracked):** when Ubicloud SIGTERMs v2 emit after a clean resolve,
+  `scripts/v4-bootstrap-resolve-posture-gate.sh` is the sole bridge authority (structured receipt +
+  `V4_BOOTSTRAP_ALLOW_RESOLVE_POSTURE_BRIDGE=1`); dissolves when a typed resolve-only compiler gate
+  lands or emit reaches `compiled:` on standard-8 without host SIGTERM.
 
 **Reference**:
 - v2: `src/v2/03_normalize.dag`, `src/v2/03_resolve.dag`
@@ -404,7 +422,7 @@ substrate imported them, so the cut is a pure scope reduction.
 - **The coercion fold** (rescoped 2026-05-17, D2-reversal — supersedes "algebra-homomorphism search algorithm"). Coercion is a **mechanical zip-fold** (a catamorphism) over two groundings — not a search, not research. It walks both canonical `Node` groundings in parallel and compares; `node.dag`'s B1-CANON contract `content_hash = merkle_fold ∘ canonical` already specifies the hard half (the canonical-form fold). Per `DECISIONS.md` U1 / C1 / T-9 the Find is **decidable by construction** over the closed declared candidate set — empty ⇒ Diagnostic, never a fabricated coercion. Name it the *coercion fold*; never an "engine" or "search algorithm".
 - **The coercion quality tag** — the coercion result is the ratified `Outcome` carrier (`std/diagnostic.dag`), and **quality and outcome are distinct axes**. A *successful* coercion is `Outcome::Produced` carrying the coerced value **plus a closed quality tag**: `Identity` (groundings coincide) | `Exact` (related, total, lossless) | `Lossy` (related, with a *declared* accepted-loss). A coercion that cannot be derived is `Outcome::Rejected { diagnostic }` — the audit's missing fourth *outcome*, "can't prove ⇒ fail-closed". Fail-closed is **not** a fourth quality value: it is the `Rejected` branch of `Outcome`. The quality tag attaches only to `Produced`; never collapse the success-quality axis and the success/failure axis into one flat enum.
 - **The composition rule** — when two *successful* coercions compose, their quality tags compose by a closed lattice (`Identity` is the unit; `Lossy` absorbs `Exact` and `Identity`; `Exact ∘ Exact = Exact`). If either coercion is `Rejected`, the composition is `Rejected` — `Outcome` short-circuits on the failure branch (the standard bind), so the failure axis needs no lattice entry. This is the audit's missing composition lattice; it lives here in T-9, not in a new task.
-- `type AlgebraRef = Symbol` — `04_infer.dag`'s IR-1 `InferredFacts.inhabits` names `AlgebraRef`; it is a `Symbol` name-reference to the algebra inhabitance (the `Diagnostic.reason` cross-declaration idiom, K-1), not a type `std/algebra.dag` declares. Declared here (Theme-A audit #2).
+- `type AlgebraRef { algebra: Node, witness: Node }` — `04_infer.dag`'s IR-1 `InferredFacts.inhabits` carries a typed boundary coordinate for algebra inhabitance while the full algebra authority is still pending. Declared here (Theme-A audit #2).
 - Cardinality propagation
 - Diagnostic precision when inference fails
 
@@ -545,7 +563,7 @@ data t_15_self_host_fixed_point: TestClaim {
 }
 ```
 
-**`BitIdentical` is a property name, not an `AssertKind`** (Theme-A audit, 2026-05-17): the probe's `kind` is `Equals` over the B1 `content_hash` of the two stage outputs — `verification.dag`'s closed `AssertKind` `{Equals, Diagnostic, Compiles, RoundTrips}` is sufficient; **no 5th kind**. The word "BitIdentical" elsewhere in this task denotes that *property*, never a substrate type.
+**`BitIdentical` is a property name, not an `AssertKind`** (Theme-A audit, 2026-05-17): the probe's `kind` is `Equals` over the B1 `content_hash` of the two stage outputs — `verification.dag`'s closed `AssertKind` `{Equals, DiagnosticAssert, Compiles, RoundTrips}` is sufficient; **no 5th kind**. The word "BitIdentical" elsewhere in this task denotes that *property*, never a substrate type.
 
 Failure modes the probe MUST catch (each enumerable, each testable):
 - **Non-determinism**: HashMap-iteration-order dependency in emit → different bytes between compilations
@@ -573,6 +591,12 @@ Once T-15 lands and stays green, all four failure modes are impossible-by-constr
 
 **File**: 7 files in `src/v4/extdeps/formats/` (operator-ratified 2026-05-15: arbitrary ingestion via direction-agnostic format models; `sql.dag` added 2026-05-17 — Theme-A #4 fork (a))
 **Why bundled**: identical structural shape per format; each file declares the format MODEL (data structure + parse/emit operations).
+
+**Substrate cross-locks (checkable, not prose-only):** `toml.dag` **TomlDatetime**
+value semantics (RFC 3339 / TOML §Date-Time four sub-kinds) dissolve on
+**`src/v4/std/datetime.dag`** landing under **T-3** + typed ops wired on **T-4.6**
+(`toml_datetime_value`, …) — authority `DECISIONS.md` Part 6 ·
+`SL-3229-T4-FORMAT-TOML-DATETIME`.
 
 **Modeling decisions**:
 - Recursive vs iterative parsing strategy (per-format)
@@ -654,14 +678,16 @@ model shape to keep the probe "parallel."
 
 #### T-4.9: `extdeps/languages/verilog.dag`
 - **Stress axis**: hardware **concurrency** vs the 5 L1 behaviors. This is the **IN-B validation probe** — if Verilog (`always @(posedge clk)`, continuous assignment) cannot be modeled as effect-typed `Bind` composition without a 6th `Concurrent` behavior, that is a **C1 stop-signal escalation**, and catching it early is the entire point.
+- **Wave-0 / Practice 9 (header hygiene):** The live `verilog.dag` preamble stays **terse** — path line, the four-line `Scope` / `Owns` / `Consumes` / `Status` block, `// Anchor`, `// Ledger`, and mandated coproduct one-liners only (`docs/modeling-discipline.md` §9). Do not add extra `//` rationale paragraphs to the `.dag` file; falsification narrative lives **here** and under `DECISIONS.md` **L-1**, not as parallel prose authority in the substrate header. **Boundary (P2):** the **authoritative import surface** is the header `Consumes: std/node.dag; std/nat.dag (Nat)` — not the execution-graph tag `[needs T-1, T-2]` (that tag names **substrate schedule prerequisites**: `node` + `algebra` must exist before the probe is fillable). T-2 facts reach Verilog through `std/nat.dag` (which **Consumes** `std/algebra.dag`), not by importing `algebra.dag` directly in this file.
 - **Clear win**: one `.dag` FSM → simulable Verilog + a Rust reference model, same Node, zero translator.
+- **Owns D3200 dissolution arrival**: `SL-3229-VERILOG-D3200` gates on this task, specifically the Verilog `LanguageModel` axis rework that decomposes `NonTriregNetKind`, `VariableDeclaration`, `OutputPortAnsiVariableTypeKind`, `ParameterTypeKind`, and `PrimitiveGateKind` against their merge-base richer-source axes. This is a T-4.9-owned arrival, not the mainstream T-4 language fact-bundle task.
 - **Scope**: L (substrate-validating; concurrency model is the risk).
 
 #### T-4.10: `extdeps/formats/spice.dag`
 - **Stress axis**: is the format/`LanguageModel` abstraction *actually* general, or secretly programming-language-shaped? A SPICE netlist has **no control flow** — components + a connection graph.
 - **Clear win**: one `.dag` circuit declaration → a SPICE netlist that simulates (omni-emission reaches analog hardware).
 - **Placement (operator-ratified fork)**: `extdeps/formats/` — a netlist is a data format, not a programming language (sibling of csv/json), Shape B.
-- **Scope**: M-L.
+- **Scope**: M-L. **Status**: LANDED via PR #3168 (`src/v4/extdeps/formats/spice.dag`); any pre-D2-reversal / pre-Practice-10-A1 fact-bundle rework stays gated by the A1-invariant decision and is not Wave-0 fill for this already-landed probe.
 
 #### T-4.11: `test/claim/boundary/english_ingest_fail_closed.dag`
 - **Framing (operator-ratified fork)**: English is **NOT a language model** (no formal grammar). It is a **boundary-honesty probe**, not `extdeps/languages/english.dag`.
@@ -685,7 +711,7 @@ model shape to keep the probe "parallel."
 
 #### T-4.14: `extdeps/languages/ptx.dag` (CUDA)
 - **Stress axis**: the **SIMT data-parallel execution model** vs the 5 L1 behaviors — the IN-B bet again (like Verilog's concurrency, but data-parallel). A needed 6th `Parallel`/`Kernel` behavior = C1 escalation, by design caught early.
-- **Fork (PROPOSED — confirm)**: model **PTX** (the spec'd IR — clean, general, captures SIMT directly, parallel to llvm_ir; recommended) vs CUDA-C++ as a `cpp.dag` extension (entangled; the C++ surface is not where the stress is).
+- **PTX path (operator-ratified / evidenced):** model **PTX** (the spec'd IR — clean, general, captures SIMT directly, parallel to `llvm_ir.dag`). The CUDA-C++-as-`cpp.dag` extension alternative is the **rejected** fork (entangled; the C++ surface is not where the stress is). **IN-B probe receipt** is **DECISIONS.md L-3** (PTX falsification posture; `ptx.dag` file header is intentionally domain-neutral). **Derived scheduling / completion state** for this slice is authoritative in **`docs/briefs/r4-program-dispatch-plan.md` §2** (Status column: **PASS (IN-B)**; **Blocked-on** `LANDED` — table-accuracy with main; *LANDED* ≠ every TASKS Scope:L tail dissolved — see that row’s rework-obligation / keystone blast-radius notes in the dispatch plan).
 - **Anchor**: NVIDIA PTX ISA spec, pinned version (L-2).
 - **Scope**: L.
 
@@ -749,8 +775,8 @@ All 5 artifacts share ONE Node tree (per gate #28 omni_layers_share_one_node_tre
 
 **Modeling decisions**:
 - Generator<C> generic carrier shape — one lens, parameterized over substrate concept type
-- Per-substrate-kind testgen rules (see file header for the 5 categories: type-construction / algebra-law / diagnostic-exhaustiveness / lens-applicability / bidirectional-roundtrip)
-- TestClassification = (Tier, Layer) on every produced claim — Tier1/2/3 (correctness) × Unit/Integration/Boundary (test layer)
+- Per-substrate-kind testgen rules — closed five-way **`TestgenConcept`** in `lens/testgen.dag` (variants `TypeConstruction` / `AlgebraLaw` / `DiagnosticExhaustiveness` / `LensApplicability` / `BidirectionalRoundtrip`; names align with the type-construction / algebra-law / diagnostic-exhaustiveness / lens-applicability / bidirectional-roundtrip scheduling arms)
+- **TestClaim.classification** (`TestClassification`: Tier×Layer) on every produced claim — canonical field in `std/verification.dag` (STRUCTURE §248); testgen stamps the same axes on each emitted claim as on its scheduling `Generator<C>`. Tier1/2/3 (correctness) × Unit/Integration/Boundary (test layer)
 - Bootstrap path: hand-authored TestClaims in `test/claim/manual/` are the contract testgen must satisfy; coverage lens (T-18) enforces produced ⊇ manual
 
 **Incremental Re-Test requirement set — held (IRT-2, IRT-3; see T-21 for the full IRT-1..4 set + rationale).**
@@ -763,6 +789,12 @@ All 5 artifacts share ONE Node tree (per gate #28 omni_layers_share_one_node_tre
 - After T-1 (`std/node.dag`) lands: hand-author 5-10 TestClaims in `test/claim/manual/` covering type-construction for the 6 connectives + 5 behaviors. Validates schema + shape immediately.
 - After T-2 (`std/algebra.dag`) lands: hand-author algebra-law TestClaims for at least Magma/Monoid.
 - After T-19 implementation: testgen produces same set programmatically; manual claims become regression anchors.
+
+**Phase-1.5 scaffolding — forward dissolution (INVARIANTS P2)**:
+- **`t19_manual_anchor_manifest.dag` — P2 join (single authority):** `T19ManualAnchorKey` is defined **once** in `std/verification.dag` (closed 12 live anchors + **`T19ManualAnchorAbsent`** for claims outside this set). Manifest rows and manual **`TestClaim`** literals use the **same discriminant values** — mechanical join is **tag equality** on `T19ManualAnchorKey` (no parallel `String` slug tables). **`TestClaim.classification`** and **`TestClaim.kind`** remain sole authority for tier×layer and assert form. Testgen scheduling arm (`type_construction` vs `algebra_law` …) is implied by variant name prefix until M2 can read claims or carry a single non-duplicated discriminant if needed.
+- **`BehaviorValueSubject` (L1 `Value` in `type_construction`):** `BehaviorValueSubject { behavior: Behavior }` in `lens/testgen.dag` — carries the **five-behavior** axis structurally (pairs with `ConnectiveKernel { connective: Connective }` for the **six connectives** per bootstrap pragma above). **No** live manual `TestClaim` yet ⇒ **no** manifest row until one lands (same P2 bijection rule).
+- **Retirement (same band as M2 unblock):** fold manifest membership into reflection / `Symbol` spellings once M2 cross-file loading + literal validation land; never reintroduce parallel `Int` encodings of axes already on `TestClaim`. **`T19ManualAnchorAbsent`:** use on **`TestClaim`** rows not in the twelve-anchor manifest until a broader substrate generalizes membership.
+- **`lens/testgen.dag` — M2 materialization band:** subject folds / eval wiring land with cross-file M2 load; first change set that enables peer imports must keep declarations consistent with this file's live `type` carriers.
 
 **Reference**:
 - TESTING.md §141 "Test layers (target ratios)" — Unit ~75% / Integration ~15% / Boundary ~10%
@@ -801,6 +833,7 @@ All 5 artifacts share ONE Node tree (per gate #28 omni_layers_share_one_node_tre
 
 **Modeling decisions**:
 - Coverage<C> generic carrier shape — one lens, parameterized over coverage concern (L6 form×target / L7 algebra×law×inhabitant / impossible-bug class enum / testgen type×inhabitant)
+- **L6 (THESIS L6 / §181):** `L6CoverageKey` is **`{ subject: TypeConstructionSubject, language: Symbol }`** — form × **target language identity** (not form-only). Canonical **gunbc `.dag`** surface token: **`dag_language_model_surface_id`** in `extdeps/languages/dag.dag` (K-1); other `extdeps/languages/*` models add their own `Symbol` anchors when L6 expands past language #1.
 - Substrate read for each concern: derive EXPECTED set from substrate authority (not hand-enumerated)
 - Comparison shape: actual TestClaim corpus vs expected derived set; emit Diagnostic per missing
 - Composition with testgen: testgen produces TestClaims; coverage lens checks they cover the expected combinatorics
@@ -851,9 +884,12 @@ All 5 artifacts share ONE Node tree (per gate #28 omni_layers_share_one_node_tre
 - Bounded-execution enforcement (INVARIANTS P4 — no unbounded loops; how does the evaluator structurally refuse non-termination?)
 - The shared substrate three consumers compose over: `workflow/bootstrap.dag` (interpreted, not compiled), TestClaim evaluation, lens dry-run
 - Concept-unification (THESIS:188): interpreter runtime = language spec = transport spec — eval reads the same `extdeps/languages/*.dag` carriers emit does
+- **`BehaviorValueSubject` naming vs eval slice (T-19 → T-22):** The identifier anchors the T-19 **L1 `Value`** placement under `type_construction` (T-19 Phase-1.5); the payload is still the **closed** `Behavior` sum (all five behaviors—not Value-only structurally). When T-22 binds testgen/type-construction to execution, re-audit the name with the real consumer: either keep it as the Value-slice carrier of `Behavior` facts or rename (e.g. to `BehaviorSubject`) if the eval path is behavior-wide with no residual Value reading; fold the decision into the T-22 close gate so names cannot silently drift from semantics.
 
 **Incremental Re-Test requirement set — held (IRT-3; see T-21 for the full IRT-1..4 set + rationale).**
 - **IRT-3 (with T-19).** `eval` MUST evaluate ANY node subgraph bound into a TestClaim's `input: Node` — including a `program ∘ generated-input` composite — at arbitrary-node granularity; it must never silently restrict TestClaim evaluation to whole-function / whole-module units. Node-level evaluability is what lets the affected set (T-21) name re-runs at node precision.
+
+**Bilateral binding — #3213 negative-coverage obligation (DECISIONS.md LB-T22-3213).** ci.dag's `ci_pipeline_well_formed` enforces bootstrap-stage single-authority fail-closed by construction (`ci_all_commands_authority_ok` / `bootstrap_stage_output`). T-22 Wave-0 now carries the executable demonstration in `test/claim/workflow/pipeline_rejections.dag`: six workflow-pipeline `TestClaimRun<CiPipeline>` rows cover dangling `BootstrapStageCompile.produces`, duplicate job/gate id, dangling `needs`, dangling gate job, and dependency cycle, and the paired pass-gate rows pass each run through `workflow_pipeline_pass_gate` so non-`Pass` verdicts become modeled non-pass coverage verdicts carrying the full run fact. Remaining yellow scope is the source-side plan-bound receipt plus the typed-input bridge until real B1 `content_hash` facts and Node projection / typed TestClaim input facts replace the placeholder cache hashes and make the pipeline subject a first-class `TestClaim.input` subgraph. This binding is bilateral with DECISIONS.md `LB-T22-3213`, `T22-EVAL-TYPED-INPUT-BRIDGE`, and `T22-EVAL-PASS-RECEIPT`.
 
 **Scope**: XL (extra-large — THE primary execution path; bootstrap + tests + dry-run all depend on it)
 
@@ -867,7 +903,7 @@ All 5 artifacts share ONE Node tree (per gate #28 omni_layers_share_one_node_tre
 **Why load-bearing**: `apply_lens(<lens>, Enforce { ... })` is referenced by `report.dag`, `synthesis.dag`, and the C7 advisory→blocking bridge — but had no substrate home until now. It is simultaneously: §1.5 user-defined-dimensions surface, §6.2 audience-duality opt-in-depth mechanism, and the ONLY advisory→fail-closed path.
 
 **Modeling decisions**:
-- `EnforcedApplication<Output, Budget>` vs `IntrospectApplication<Output>` carrier shapes (v3 T-Lens-Application-Surface precedent: two separate carriers, NOT a sum — per r3-structure.md:40)
+- `EnforcedApplication<Output, Budget, Projected>` (references `EnforceableLens<Output, Budget, Projected>` — bundled lens + enforcement) vs `IntrospectApplication<Output>` carrier shapes (v3 T-Lens-Application-Surface precedent: **two separate top-level carriers**, NOT a sum — per `docs/design-lens-application-surface.md` §2 + `src/v4/DECISIONS.md` Part 4 **T-23-PIN**; the historical two-parameter `EnforcedApplication<Output, Budget>` sketch is **retracted** here)
 - `SectionRef = DeclarationScope | NodeScope` (where a lens attaches)
 - The advisory→fail-closed conversion: how `Enforce { }` turns a lens's `Set<Report>` into fail-closed Diagnostics (the single explicit bridge per `std/report.dag` discipline)
 - Default policy: a function with no `apply_lens(<lens>, Enforce { ... })` declaration gets synthesized Introspect-only (no implicit Enforce) per THESIS:307-321 opt-in depth. `apply_lens` is a first-class declaration (a Node), not an annotation — absence of the declaration, not absence of a tag, is the default trigger.
@@ -893,6 +929,20 @@ All 5 artifacts share ONE Node tree (per gate #28 omni_layers_share_one_node_tre
 **Scope**: L (large — closes the v3 hand-authored-CI gap; dissolves the shell bridge)
 
 **Reference**: THESIS:223-226 + v4-close-interrogation.md §3.2 + v3 gate #98 (the gap not to reproduce)
+
+---
+
+## Watch — `docs/audit/coproduct-anemia-inventory.md` (v4 coproduct sum census)
+
+**P5 dissolution (repo-checkable).** This row is the **stable** completion gate for the inventory artifact — not a dashboard session handle.
+
+**Closes when all hold:**
+
+1. `docs/audit/coproduct-anemia-inventory.md` enumerates **274** corpus sums; the **full** corpus table carries **no** `DEFERRED` placeholder in **grounding-axis columns (A)(B)(C)** (columns **8–10**) for any row, and **no** `DEFERRED` in **coproduct-modeling columns 4–7** for any row — every row has substantive hand-authored modeling notes read off the cited `.dag` fragment in cols **4–7**, per the Method bar in that file.
+2. The inventory’s **Method** and **Summary** sections describe completion in terms of **this structural condition** (and, where useful, stable intent in `ROADMAP.md` / `MODELING.md` / `INVARIANTS.md` plus the **no parallel comment-ledgers** standing rule in `docs/modeling-discipline.md` — **not** a resurrected standalone `DECISIONS.md` path), not a session nickname as the sole dissolution trigger.
+3. The landing PR updates **this bullet** with the merge SHA (or the operator folds the obligation elsewhere and edits this section accordingly).
+
+Until (1)–(3): the partial table with `DEFERRED` cells is **honest interim state**; reviewers use the checkpoint batch + exemplars as the depth bar, not as “done.”
 
 ---
 
@@ -929,11 +979,10 @@ remaining fork — `#4 — T-16 SQL DDL` — was **RESOLVED by the operator
 - **#1 `BitIdentical`** — = `Equals` over B1 `content_hash`; no 5th
   `AssertKind`. Encoded in the T-15 probe above.
 - **#2 `AlgebraRef`** — `04_infer.dag`'s IR-1 `InferredFacts.inhabits`
-  names `AlgebraRef`; `std/algebra.dag` declares no such type. It is a
-  `Symbol` name-reference to the algebra inhabitance (the
-  `Diagnostic.reason` cross-declaration idiom, K-1). Disposition: T-9
-  declares `type AlgebraRef = Symbol` (or the IR-1 header states the
-  identity) — a clarification in existing T-9 scope, not a new task.
+  names `AlgebraRef`; `std/algebra.dag` declares no such type yet. It is a
+  typed boundary coordinate over the algebra and witness nodes until the
+  full algebra inhabitance authority lands. Disposition: T-9 declares the
+  carrier — a clarification in existing T-9 scope, not a new task.
 
 **New PROPOSED tasks (the "missing substrate" Theme-A gaps):**
 
@@ -971,22 +1020,17 @@ correct the header; the dangling `Consumes` stands on the PR-head tree
 until that PR lands. (`NonEmptyList` itself, once T-25-core lands, is a
 `List` refinement — `List<T> where non_empty` — not a separate carrier.)
 
-### T-26 — std/ boundary carriers (net-address / URL / HttpMethod)  [SCHEDULED]
-**Operator ruling 2026-05-17 — SCHEDULED; the port disposition below stands (no fork).**
-**Gap:** `HttpMethod` and `URL` already have a single authority in the
-reference tree — `dsl/std/types.dag` (`HttpMethod` = the RFC 9110 enum;
-`Url` = a `String` refinement). They are not yet ported to v4 `std/`, so
-v4 consumers (`openapi.dag` references `HttpMethod`; the T-16 wire
-contract) have no carrier to `Consume`. `NetworkAddress` appears only in
-`coordination.dag` prose — DFS the concept DAG (M9) for an existing
-authority before minting.
-**Disposition:** **port** `HttpMethod` / `Url` into v4 `std/` from the
-`dsl/std/types.dag` authority — RFC 9110 / the URL spec are genuine
-shared facts, so the home is `std/`, not a new `extdeps` file; **create**
-a spec-grounded `NetworkAddress` carrier in `std/` if M9 finds none.
-Consumers (`openapi.dag`, `coordination.dag`, T-16) `Consume` the single
-`std/` authority. Minting a parallel `extdeps` carrier would be the very
-P2 violation this task names (INVARIANTS P2 / M9).
+### T-26 — std/ boundary carriers (net-address / URL / HttpMethod)  [SUBSTRATE LANDED]
+**Operator ruling 2026-05-17 — disposition unchanged (no fork); authority lives in `std/`.**
+**Status:** `src/v4/std/network.dag` is the v4 **single authority** for `HttpMethod`,
+structured RFC 3986 URI carriers (`Url`, `UriReference`, …), and
+`NetworkAddress { authority: UriAuthority }`. `extdeps/coordination.dag` and
+`extdeps/formats/openapi.dag` consume this module per M9 / DECISIONS Part 1
+(`std/network.dag` rows + coordination `NetworkAddress` dissolution row).
+**Residual (not T-26):** RFC 3986 validated-component refinements remain the
+`std/network.dag` **`feature:T-25-core`** yellow row; OpenAPI path verbs stay
+`OpenApiHttpMethod` (OAS eight-verb closed set vs broader `HttpMethod`) per
+DECISIONS **T-4.6-P4-OpenApiHttpMethod**.
 
 ### T-27 — extdeps version / semver / edition lattice  [DROPPED]
 **Operator ruling 2026-05-17 — ruled orthogonal, out of v4 entirely.**
@@ -1052,6 +1096,24 @@ into ≥1 spec-read fact beyond a bare std alias); how the gate reads
 fact-density off a `Node` carrier; the kernel-ambient exemption (`Bool`
 and the other kernel-ambient atoms are legitimately atomic — not hollow);
 the Diagnostic shape on a fail-closed hollow alias.
+
+**Interim bootstrap mirror (not the final generated checker).** The north
+star remains a **generated** structural `Node → Outcome` gate in v4
+`.dag` authority. While the v4→v3 `compile_to_dag` bootstrap cannot yet
+prepend `std/node.dag` without name collisions (see `DECISIONS.md` T-30
+`fact_density.dag` encoding note), the Practice-8 predicate lands as the
+**P5(b) bounded pattern**: (1) a **hand Rust mirror**
+(`src/v3/compiler/src/v4_hollow_alias_gate.rs` + hermetic unit tests), (2)
+a **body-less nominal witness** in `src/v4/std/fact_density.dag`, and (3) a
+**retired `compile_to_dag` smoke** harness (`v4_std_fact_density_dag_smoke_test.rs`,
+**dissolved** with **#3338**; see INVARIANTS §P5(b) / `v4:` bootstrap gate).
+**`EXPECTED_HAND_AUTHORED_{NON_TEST,TEST}`** literals and matching
+**`INVARIANTS.md` §P5(b)** rows under **T-PB-A** / **T-PB-B** name the
+**dissolution** trigger when the generated checker is the authority; the
+dissolved smoke harness is **not** reintroduced as an interim ratchet. The
+**`.dag` witness (2)** is a **P2-staging nominal** at `src/v4/std/fact_density.dag` (INVARIANTS §P2 / Practice 5: **parse/compile proof only** — **no** generated `.dag` consumer yet; **not** a landed substrate primitive alongside `node.dag` / `diagnostic.dag`). It is **enumerated honestly** in **`STRUCTURE.md`** (separate from the 14 landed `std/` primitives) and is **named** in the same **§P5(b) rows** (and `DECISIONS.md`) as the T-30 witness file — it is **not** a third **SG-0 hand-Rust** census path (SG-0 inventories **Rust** only). This slice is **sequencing**,
+not semantic deferral of the gate's *definition* (the three-part rule +
+kernel-ambient exemption is already pinned in tests and docs).
 
 **Scope / clarification dispositions:**
 - **#4 — T-16 SQL DDL — RESOLVED (operator 2026-05-17): fork (a).** SQL is

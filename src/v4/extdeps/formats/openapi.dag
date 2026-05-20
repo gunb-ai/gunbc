@@ -1,7 +1,7 @@
 // src/v4/extdeps/formats/openapi.dag
 // Scope: OpenAPI 3.1.0 document slice; Lane C (TASKS.md T-4.6).
 // Owns: OpenApiComponents, OpenApiComponentsDeferredKey, OpenApiComponentsMapKey, OpenApiComponentsPathItemsSlot, OpenApiComponentsSchemasSlot, OpenApiComponentsSlot, OpenApiContact, OpenApiContactSlot, OpenApiDocument, OpenApiDocumentRoot, OpenApiHeaderContentSingle, OpenApiHeaderDeferredKey, OpenApiHeaderDeprecatedSlot, OpenApiHeaderObject, OpenApiHeaderOrReference, OpenApiHeaderPayloadSlot, OpenApiHeaderRequiredSlot, OpenApiHeadersSlot, OpenApiHttpMethod, OpenApiInfo, OpenApiLicense, OpenApiLicenseSlot, OpenApiLicenseUrlOrIdentifierSlot, OpenApiLinkDeferredKey, OpenApiLinkObject, OpenApiLinkOrReference, OpenApiLinkTarget, OpenApiMediaType, OpenApiMediaTypeDeferredKey, OpenApiMediaTypeSchemaSlot, OpenApiOpenapiField3_1, OpenApiOpenapiObjectDeferredKey, OpenApiOperation, OpenApiOperationDeferredKey, OpenApiOptionalString, OpenApiPathItem, OpenApiPathItemDeferredKey, OpenApiPathItemOrReference, OpenApiPathTemplateKey, OpenApiPaths, OpenApiPathsSlot, OpenApiReferenceObject, OpenApiResponse, OpenApiResponseContentSlot, OpenApiResponseKey, OpenApiResponseKeyNonDefault, OpenApiResponseKeyWildcardKind, OpenApiResponseOrReference, OpenApiResponses, OpenApiResponsesDefaultSlot, OpenApiResponsesPrimaryEntry, OpenApiSchema, OpenApiSchemaOasMemberKey, OpenApiSpecificationExtensionKey, OpenApiStatusDigit, OpenApiStatusHundreds, OpenApiWebhooks, OpenApiWebhooksSlot
-// Consumes: std/node.dag, std/diagnostic.dag, std/collection.dag, std/nat.dag, extdeps/formats/json_schema.dag, extdeps/formats/json.dag, extdeps/formats/yaml.dag
+// Consumes: std/node.dag, std/diagnostic.dag, std/collection.dag, std/nat.dag, std/network.dag, extdeps/formats/json_schema.dag, extdeps/formats/json.dag, extdeps/formats/yaml.dag
 // Status: scaffold — TASKS.md T-4.6
 // Anchor: https://spec.openapis.org/oas/v3.1.0
 
@@ -10,10 +10,11 @@ module v4.extdeps.formats.openapi
 
 import v4.extdeps.formats.json { JsonValue }
 import v4.extdeps.formats.json_schema { JsonSchema }
+import v4.std.network { UriReference }
 import v4.std.nat { Nat }
 
 
-// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiSpecificationExtensionKey
+// 🟡 coproduct dissolution — T-4.6-P4-OpenApiSpecificationExtensionKey.
 type OpenApiSpecificationExtensionKey
   = OpenApiSpecExtensionOaiReserved { remainder: String }
   | OpenApiSpecExtensionOasReserved { remainder: String }
@@ -25,7 +26,7 @@ type OpenApiComponentsMapKey {
 }
 
 
-// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiOpenapiObjectDeferredKey
+// 🟡 coproduct dissolution — T-4.6-P4-OpenApiOpenapiObjectDeferredKey.
 type OpenApiOpenapiObjectDeferredKey
   = OpenApiOpenapiDeferredServers
   | OpenApiOpenapiDeferredSecurity
@@ -33,7 +34,7 @@ type OpenApiOpenapiObjectDeferredKey
   | OpenApiOpenapiDeferredExternalDocs
 
 
-// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiOperationDeferredKey
+// 🟡 coproduct dissolution — T-4.6-P4-OpenApiOperationDeferredKey.
 type OpenApiOperationDeferredKey
   = OpenApiOpDeferredTags
   | OpenApiOpDeferredSummary
@@ -47,7 +48,7 @@ type OpenApiOperationDeferredKey
   | OpenApiOpDeferredDeprecated
 
 
-// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiPathItemDeferredKey
+// 🟡 coproduct dissolution — T-4.6-P4-OpenApiPathItemDeferredKey.
 type OpenApiPathItemDeferredKey
   = OpenApiPathDeferredDollarRef
   | OpenApiPathDeferredSummary
@@ -56,7 +57,7 @@ type OpenApiPathItemDeferredKey
   | OpenApiPathDeferredParameters
 
 
-// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiComponentsDeferredKey
+// 🟡 coproduct dissolution — T-4.6-P4-OpenApiComponentsDeferredKey.
 type OpenApiComponentsDeferredKey
   = OpenApiComponentsDeferredResponses
   | OpenApiComponentsDeferredParameters
@@ -68,14 +69,14 @@ type OpenApiComponentsDeferredKey
   | OpenApiComponentsDeferredCallbacks
 
 
-// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiMediaTypeDeferredKey
+// 🟡 coproduct dissolution — T-4.6-P4-OpenApiMediaTypeDeferredKey.
 type OpenApiMediaTypeDeferredKey
   = OpenApiMediaDeferredExample
   | OpenApiMediaDeferredExamples
   | OpenApiMediaDeferredEncoding
 
 
-// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiHeaderDeferredKey
+// 🟡 coproduct dissolution — T-4.6-P4-OpenApiHeaderDeferredKey.
 type OpenApiHeaderDeferredKey
   = OpenApiHeaderDeferredStyle
   | OpenApiHeaderDeferredExplode
@@ -83,14 +84,14 @@ type OpenApiHeaderDeferredKey
   | OpenApiHeaderDeferredExamples
 
 
-// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiLinkDeferredKey
+// 🟡 coproduct dissolution — T-4.6-P4-OpenApiLinkDeferredKey.
 type OpenApiLinkDeferredKey
   = OpenApiLinkDeferredParameters
   | OpenApiLinkDeferredRequestBody
   | OpenApiLinkDeferredServer
 
 
-// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiSchemaOasMemberKey
+// 🟡 coproduct dissolution — T-4.6-P4-OpenApiSchemaOasMemberKey.
 type OpenApiSchemaOasMemberKey
   = OpenApiSchemaOasDiscriminator
   | OpenApiSchemaOasXml
@@ -106,7 +107,7 @@ type OpenApiSchema {
 }
 
 
-// 🟢 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiHttpMethod
+// 🟢 coproduct dissolution — T-4.6-P4-OpenApiHttpMethod.
 type OpenApiHttpMethod
   = OpenApiGet
   | OpenApiPut
@@ -118,7 +119,7 @@ type OpenApiHttpMethod
   | OpenApiTrace
 
 
-// 🟢 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiOptionalString
+// 🟢 coproduct dissolution — T-4.6-P4-OpenApiOptionalString.
 type OpenApiOptionalString
   = OpenApiStringPresent { value: String }
   | OpenApiStringAbsent
@@ -131,19 +132,19 @@ type OpenApiReferenceObject {
 }
 
 
-// 🟢 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiHeaderRequiredSlot
+// 🟢 coproduct dissolution — T-4.6-P4-OpenApiHeaderRequiredSlot.
 type OpenApiHeaderRequiredSlot
   = OpenApiHeaderRequiredAbsent
   | OpenApiHeaderRequiredPresent { value: Bool }
 
 
-// 🟢 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiHeaderDeprecatedSlot
+// 🟢 coproduct dissolution — T-4.6-P4-OpenApiHeaderDeprecatedSlot.
 type OpenApiHeaderDeprecatedSlot
   = OpenApiHeaderDeprecatedAbsent
   | OpenApiHeaderDeprecatedPresent { value: Bool }
 
 
-// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiLinkTarget
+// 🟡 coproduct dissolution — T-4.6-P4-OpenApiLinkTarget.
 type OpenApiLinkTarget
   = OpenApiLinkTargetOperationId { operation_id: String }
   | OpenApiLinkTargetOperationRef { operation_ref: String }
@@ -157,7 +158,7 @@ type OpenApiLinkObject {
 }
 
 
-// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiLinkOrReference
+// 🟡 coproduct dissolution — T-4.6-P4-OpenApiLinkOrReference.
 type OpenApiLinkOrReference
   = OpenApiLinkInline { link: OpenApiLinkObject }
   | OpenApiLinkReference { reference: OpenApiReferenceObject }
@@ -171,15 +172,15 @@ type OpenApiContact {
 }
 
 
-// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiContactSlot
+// 🟡 coproduct dissolution — T-4.6-P4-OpenApiContactSlot.
 type OpenApiContactSlot
   = OpenApiContactPresent { contact: OpenApiContact }
   | OpenApiContactAbsent
 
 
-// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiLicenseUrlOrIdentifierSlot
+// 🟡 coproduct dissolution — T-4.6-P4-OpenApiLicenseUrlOrIdentifierSlot.
 type OpenApiLicenseUrlOrIdentifierSlot
-  = OpenApiLicenseUrlPresent { url: String }
+  = OpenApiLicenseUrlPresent { url: UriReference }
   | OpenApiLicenseIdentifierPresent { identifier: String }
   | OpenApiLicenseUrlOrIdentifierNeither
 
@@ -191,7 +192,7 @@ type OpenApiLicense {
 }
 
 
-// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiLicenseSlot
+// 🟡 coproduct dissolution — T-4.6-P4-OpenApiLicenseSlot.
 type OpenApiLicenseSlot
   = OpenApiLicensePresent { license: OpenApiLicense }
   | OpenApiLicenseAbsent
@@ -222,7 +223,7 @@ type OpenApiHeaderContentSingle {
 }
 
 
-// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiHeaderPayloadSlot
+// 🟡 coproduct dissolution — T-4.6-P4-OpenApiHeaderPayloadSlot.
 type OpenApiHeaderPayloadSlot
   = OpenApiHeaderPayloadSchema { schema: OpenApiSchema }
   | OpenApiHeaderPayloadContent { content: OpenApiHeaderContentSingle }
@@ -238,31 +239,31 @@ type OpenApiHeaderObject {
 }
 
 
-// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiHeaderOrReference
+// 🟡 coproduct dissolution — T-4.6-P4-OpenApiHeaderOrReference.
 type OpenApiHeaderOrReference
   = OpenApiHeaderInline { header: OpenApiHeaderObject }
   | OpenApiHeaderReference { reference: OpenApiReferenceObject }
 
 
-// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiMediaTypeSchemaSlot
+// 🟡 coproduct dissolution — T-4.6-P4-OpenApiMediaTypeSchemaSlot.
 type OpenApiMediaTypeSchemaSlot
   = OpenApiMediaSchemaPresent { schema: OpenApiSchema }
   | OpenApiMediaSchemaAbsent
 
 
-// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiResponseContentSlot
+// 🟡 coproduct dissolution — T-4.6-P4-OpenApiResponseContentSlot.
 type OpenApiResponseContentSlot
   = OpenApiResponseContentAbsent
   | OpenApiResponseContentPresent { content: Map<String, OpenApiMediaType> }
 
 
-// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiHeadersSlot
+// 🟡 coproduct dissolution — T-4.6-P4-OpenApiHeadersSlot.
 type OpenApiHeadersSlot
   = OpenApiHeadersAbsent
   | OpenApiHeadersPresent { headers: Map<String, OpenApiHeaderOrReference> }
 
 
-// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiLinksSlot
+// 🟡 coproduct dissolution — T-4.6-P4-OpenApiLinksSlot.
 type OpenApiLinksSlot
   = OpenApiLinksAbsent
   | OpenApiLinksPresent { links: Map<String, OpenApiLinkOrReference> }
@@ -277,13 +278,13 @@ type OpenApiResponse {
 }
 
 
-// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiResponseOrReference
+// 🟡 coproduct dissolution — T-4.6-P4-OpenApiResponseOrReference.
 type OpenApiResponseOrReference
   = OpenApiResponseInline { response: OpenApiResponse }
   | OpenApiResponseReference { reference: OpenApiReferenceObject }
 
 
-// 🟢 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiStatusDigit
+// 🟢 coproduct dissolution — T-4.6-P4-OpenApiStatusDigit.
 type OpenApiStatusDigit
   = OpenApiDigit0
   | OpenApiDigit1
@@ -297,7 +298,7 @@ type OpenApiStatusDigit
   | OpenApiDigit9
 
 
-// 🟢 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiStatusHundreds
+// 🟢 coproduct dissolution — T-4.6-P4-OpenApiStatusHundreds.
 type OpenApiStatusHundreds
   = OpenApiHundreds1
   | OpenApiHundreds2
@@ -306,7 +307,7 @@ type OpenApiStatusHundreds
   | OpenApiHundreds5
 
 
-// 🟢 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiResponseKeyWildcardKind
+// 🟢 coproduct dissolution — T-4.6-P4-OpenApiResponseKeyWildcardKind.
 type OpenApiResponseKeyWildcardKind
   = OpenApiWildcard1xx
   | OpenApiWildcard2xx
@@ -315,19 +316,19 @@ type OpenApiResponseKeyWildcardKind
   | OpenApiWildcard5xx
 
 
-// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiResponseKeyNonDefault
+// 🟡 coproduct dissolution — T-4.6-P4-OpenApiResponseKeyNonDefault.
 type OpenApiResponseKeyNonDefault
   = OpenApiResponseKeyExplicitHttpStatus { hundreds: OpenApiStatusHundreds, tens: OpenApiStatusDigit, ones: OpenApiStatusDigit }
   | OpenApiResponseKeyWildcard { kind: OpenApiResponseKeyWildcardKind }
 
 
-// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiResponseKey
+// 🟡 coproduct dissolution — T-4.6-P4-OpenApiResponseKey.
 type OpenApiResponseKey
   = OpenApiResponseKeyDefault
   | OpenApiResponseKeyOther { key: OpenApiResponseKeyNonDefault }
 
 
-// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiResponsesDefaultSlot
+// 🟡 coproduct dissolution — T-4.6-P4-OpenApiResponsesDefaultSlot.
 type OpenApiResponsesDefaultSlot
   = OpenApiResponsesDefaultAbsent
   | OpenApiResponsesDefaultPresent { response: OpenApiResponseOrReference }
@@ -362,7 +363,7 @@ type OpenApiPathItem {
 }
 
 
-// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiPathItemOrReference
+// 🟡 coproduct dissolution — T-4.6-P4-OpenApiPathItemOrReference.
 type OpenApiPathItemOrReference
   = OpenApiPathItemInline { path_item: OpenApiPathItem }
   | OpenApiPathItemReference { reference: OpenApiReferenceObject }
@@ -379,19 +380,19 @@ type OpenApiPaths {
 }
 
 
-// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiPathsSlot
+// 🟡 coproduct dissolution — T-4.6-P4-OpenApiPathsSlot.
 type OpenApiPathsSlot
   = OpenApiPathsPresent { paths: OpenApiPaths }
   | OpenApiPathsAbsent
 
 
-// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiComponentsSchemasSlot
+// 🟡 coproduct dissolution — T-4.6-P4-OpenApiComponentsSchemasSlot.
 type OpenApiComponentsSchemasSlot
   = OpenApiComponentsSchemasAbsent
   | OpenApiComponentsSchemasPresent { schemas: Map<OpenApiComponentsMapKey, OpenApiSchema> }
 
 
-// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiComponentsPathItemsSlot
+// 🟡 coproduct dissolution — T-4.6-P4-OpenApiComponentsPathItemsSlot.
 type OpenApiComponentsPathItemsSlot
   = OpenApiComponentsPathItemsAbsent
   | OpenApiComponentsPathItemsPresent { path_items: Map<OpenApiComponentsMapKey, OpenApiPathItemOrReference> }
@@ -405,7 +406,7 @@ type OpenApiComponents {
 }
 
 
-// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiComponentsSlot
+// 🟡 coproduct dissolution — T-4.6-P4-OpenApiComponentsSlot.
 type OpenApiComponentsSlot
   = OpenApiComponentsPresent { components: OpenApiComponents }
   | OpenApiComponentsAbsent
@@ -417,13 +418,13 @@ type OpenApiWebhooks {
 }
 
 
-// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiWebhooksSlot
+// 🟡 coproduct dissolution — T-4.6-P4-OpenApiWebhooksSlot.
 type OpenApiWebhooksSlot
   = OpenApiWebhooksPresent { webhooks: OpenApiWebhooks }
   | OpenApiWebhooksAbsent
 
 
-// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiDocumentRoot
+// 🟡 coproduct dissolution — T-4.6-P4-OpenApiDocumentRoot.
 type OpenApiDocumentRoot
   = OpenApiDocumentRootPathsPresent {
       paths: OpenApiPaths,
@@ -438,7 +439,7 @@ type OpenApiDocumentRoot
       webhooks: OpenApiWebhooks,
     }
 
-// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiOpenapiField3_1
+// 🟡 coproduct dissolution — T-4.6-P4-OpenApiOpenapiField3_1
 type OpenApiOpenapiField3_1
   = OpenApiOpenapi31Patch { patch: Nat }
 

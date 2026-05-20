@@ -1,9 +1,10 @@
 // src/v4/std/algebra.dag
 // Scope: algebraic structures and canonical carrier constructions.
 // Anchor: https://en.wikipedia.org/wiki/Algebraic_structure
-// Owns: Magma, Semigroup, Monoid, CommutativeMonoid, Group, AbelianGroup, Semiring, CommutativeSemiring, Ring, CommutativeRing, OrderedRing, Field, ApproximateField, Lattice, BoundedLattice, BooleanAlgebra, FreeMonoid, free_monoid_is_empty, free_monoid_length, PointwisePower, Ordering, Homomorphism.
+// Owns: Magma, Semigroup, Monoid, CommutativeMonoid, Group, AbelianGroup, Semiring, CommutativeSemiring, Ring, CommutativeRing, OrderedRing, Field, ApproximateField, Lattice, BoundedLattice, BooleanAlgebra, FreeMonoid, FreeMonoidUniqueState, free_monoid_fold, free_monoid_is_empty, free_monoid_non_empty, free_monoid_length, free_monoid_forall, free_monoid_count_where, free_monoid_count_equal, free_monoid_unique, PointwisePower, Ordering, Homomorphism.
 // Consumes: none.
 // Status: T-2 modeled.
+// Ledger: Part 6 — SL-P6-FREEMONOID-IS-EMPTY-VPRED.
 
 
 module v4.std.algebra
@@ -69,10 +70,21 @@ type BooleanAlgebra<T> {
   bounded_lattice: BoundedLattice<T>
   complement: fn(T) -> T
 }
-// 🟢 coproduct dissolution — DECISIONS.md classification ledger: FreeMonoid<T>.
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type FreeMonoid<T>
   = Empty
   | Cons { head: T, tail: FreeMonoid<T> }
+type FreeMonoidUniqueState<T> {
+  seen: FreeMonoid<T>
+  unique: Bool
+}
+fn free_monoid_fold<T, A>(xs: FreeMonoid<T>, empty: A, cons: fn(A, T) -> A) -> A {
+  match xs {
+    Empty => empty
+    Cons { head: h, tail: t } => free_monoid_fold(xs: t, empty: cons(empty, h), cons: cons)
+  }
+}
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: coproduct variant-discriminant predicate substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived Empty-variant discriminant projection; forbidden: free_monoid_fold laundering.
 fn free_monoid_is_empty<T>(xs: FreeMonoid<T>) -> Bool {
   match xs {
     Empty => true
@@ -81,16 +93,60 @@ fn free_monoid_is_empty<T>(xs: FreeMonoid<T>) -> Bool {
 }
 
 
-fn free_monoid_length<T>(xs: FreeMonoid<T>) -> Int {
-  match xs {
-    Empty => 0
-    Cons { head: _, tail: t } => 1 + free_monoid_length(xs: t)
+fn free_monoid_non_empty<T>(xs: FreeMonoid<T>) -> Bool {
+  match free_monoid_is_empty(xs: xs) {
+    true => false
+    false => true
   }
+}
+
+
+fn free_monoid_length<T>(xs: FreeMonoid<T>) -> Int {
+  free_monoid_fold(xs: xs, empty: 0, cons: fn(count, _) { count + 1 })
+}
+
+
+fn free_monoid_forall<T>(xs: FreeMonoid<T>, predicate: fn(T) -> Bool) -> Bool {
+  free_monoid_fold(xs: xs, empty: true, cons: fn(acc, item) {
+    match acc {
+      true => predicate(item)
+      false => false
+    }
+  })
+}
+
+
+fn free_monoid_count_where<T>(xs: FreeMonoid<T>, predicate: fn(T) -> Bool) -> Int {
+  free_monoid_fold(xs: xs, empty: 0, cons: fn(count, item) {
+    match predicate(item) {
+      true => count + 1
+      false => count
+    }
+  })
+}
+
+
+fn free_monoid_count_equal<T>(xs: FreeMonoid<T>, item: T, eq: fn(T, T) -> Bool) -> Int {
+  free_monoid_count_where(xs: xs, predicate: fn(candidate) { eq(candidate, item) })
+}
+
+
+fn free_monoid_unique<T>(xs: FreeMonoid<T>, eq: fn(T, T) -> Bool) -> Bool {
+  let state = free_monoid_fold(xs: xs, empty: FreeMonoidUniqueState { seen: Empty, unique: true }, cons: fn(acc, item) {
+    match acc.unique {
+      true => match free_monoid_count_equal(xs: acc.seen, item: item, eq: eq) {
+        0 => FreeMonoidUniqueState { seen: Cons { head: item, tail: acc.seen }, unique: true }
+        _ => FreeMonoidUniqueState { seen: acc.seen, unique: false }
+      }
+      false => acc
+    }
+  })
+  state.unique
 }
 type PointwisePower<T> {
   member: fn(T) -> Bool
 }
-// 🟢 coproduct dissolution — DECISIONS.md classification ledger: Ordering.
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type Ordering
   = Less
   | Equal

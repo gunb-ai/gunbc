@@ -1,109 +1,396 @@
 // src/v4/lens/testgen.dag
-//
-// Scope: testgen lens — reads substrate declarations and produces TestClaim
-//        instances structurally. The producer side of "tests are data, not
-//        code" (THESIS facet 3). Output is consumed by lens/coverage.dag
-//        which verifies the produced set covers the expected substrate
-//        cross-product.
-// Anchor: TESTING.md §"Test layers (target ratios)" + THESIS.md §348-368
-//         "Tests are structural data" + §168-182 correctness tiers +
-//         memory: feedback_groundedness_gates_lenses (testgen applies
-//         to every program by construction)
-//
-// Owns:
-//   - Generator<C> generic carrier (parameterized over substrate concept)
-//   - Per-substrate-kind testgen rules. Every rule emits TestClaims whose
-//     `kind` is one of std/verification.dag's CLOSED AssertKind
-//     (Equals | Diagnostic | Compiles | RoundTrips) — testgen names the
-//     AssertKind, it does NOT coin parallel claim vocabulary:
-//     - type_construction(Atom | Conj | Disj | Arrow | Cardinality
-//       | Instantiation) -> Set<Compiles TestClaim>
-//       (the complete closed 6-connective kernel — no "...")
-//     - algebra_law(Algebra × Inhabitant × Law) -> Set<Equals TestClaim>
-//     - diagnostic_exhaustiveness(NamedReason variant) -> Set<Diagnostic TestClaim>
-//     - lens_applicability(Lens × Program) -> Set<Equals TestClaim>
-//     - bidirectional_roundtrip(Language × GrammarProduction) -> Set<RoundTrips TestClaim>
-//   - Simulator-generation arm (operator-ratified 2026-05-15: lives HERE,
-//     not a separate lens/simulation.dag — testgen owns both claim
-//     production and the simulators its boundary claims need):
-//     - simulator_generation(WireContract | Effect | Language) -> Node
-//       generates a hermetic simulator (just Node — bounded kernel) from
-//       the declared contract. NOT hand-written (would be a rotting
-//       mirror — feedback_isomorphism_or_generation_for_mirrors); the
-//       simulator is structurally bound to the contract and regenerates
-//       when it changes.
-//     - external_conformance(Language | WireContract × Node)
-//       -> Set<{Compiles|Equals|RoundTrips} TestClaim>
-//       boundary claims whose `input` is (program ∘ generated simulator) —
-//       hermetic AND deterministic. The live oracle (real rustc / live
-//       endpoint) is the OPT-IN boundary run, never the default suite.
-//   - Simulation adds NO AssertKind: it substitutes generated-simulator
-//     Node into `input` at the WireContract boundary. AssertKind stays
-//     the closed 4 (see std/verification.dag).
-//   - Sim fidelity caveat: a generated simulator is faithful-to-CONTRACT,
-//     not faithful-to-reality. Catching contract under-specification is
-//     STRUCTURAL — the opt-in live-oracle reconciliation is a CI-as-data
-//     gate; sim-pass + oracle-fail ⟹ the WireContract is incomplete ⟹
-//     STOP and extend the carrier. Generated simulation is necessary,
-//     not sufficient.
-//   - TestClassification = (Tier, Layer) for every produced claim
-//     - Tier: Tier1 | Tier2 | Tier3 (THESIS correctness tier)
-//     - Layer: Unit | Integration | Boundary (TESTING.md test layer)
-//   - lens read: () -> Set<TestClaim>  (the produced corpus)
-//
-// C5-1 / C5-3 (operator-ratified 2026-05-16) — the bidirectional_roundtrip
-// contract:
-//   - C5-1: a RoundTrips TestClaim asserts `ingest∘emit = id_Node` —
-//     B1 `content_hash(N) == content_hash(ingest(emit(N)))` — the
-//     MEANING round-trips. It does NOT assert text-byte identity
-//     (`emit∘ingest = id_text`); the lexical skin (0x1F vs 31,
-//     whitespace, comment placement) is allowed to canonicalize.
-//   - C5-3: F (the lossless core a roundtrip claim covers) = the
-//     SPEC-PROVABLE meaning set. If the language spec does not
-//     unambiguously place a feature on the meaning side it is OUT of F
-//     — Declared-normalized (emit canonicalizes; recorded per-feature)
-//     or Fail-closed (ingest can't disambiguate without semantics ⇒
-//     Diagnostic, never a guess). Conservative / fail-safe: the spec
-//     decides, the modeler has NO discretion. A language's roundtrip
-//     corpus covers its declared F; non-F shrinkage (e.g. C++
-//     most-vexing-parse) is explicit up front, not discovered at test
-//     time.
-//   - Text-level fidelity (`emit∘ingest = id_text`) is a DEFERRED,
-//     ORTHOGONAL future layer: a concrete-syntax/trivia sidecar
-//     OUTSIDE the Node and OUTSIDE content_hash, partial (only
-//     ingest-originated Nodes; vacuous for synthesized ones). It does
-//     NOT change C5-1 or content_hash (Node stays the α-/rename-
-//     invariant identity, K-1). The C5-fidelity Declared-normalized
-//     per-feature dispositions ARE its forward hook — adopting
-//     node-level + the disposition table preserves text-level as a
-//     clean future add with zero rework. Not built now.
-//
-// Tier × Layer cross-cut discipline (per TESTING.md ratio targets):
-//   - Unit tests target ~75%: type-construction, exhaustiveness, lens-applicability
-//   - Integration tests target ~15%: cross-stage invariants, fixed-point convergence
-//   - Boundary tests target ~10%: language roundtrips (rustc/python/go/cpp/ts), L4 runtime equivalence
-//   - testgen output respecting these ratios is structurally enforceable via coverage lens
-//
-// Bootstrap path:
-//   - test/claim/manual/ holds hand-authored TestClaims authored after T-1 lands
-//   - testgen (T-19) produces the same corpus programmatically
-//   - Assertion: testgen-produced set ⊇ manual set; manual claims are
-//     anti-regression anchors against testgen drift
-//
-// Consumes:
-//   - std/node.dag (substrate to walk)
-//   - std/algebra.dag (algebra inhabitance for L7-class testgen)
-//   - std/verification.dag (TestClaim output schema)
-//   - std/diagnostic.dag (Diagnostic.NamedReason for exhaustiveness testgen)
-//   - lens/*.dag (each lens's declared read shape, for applicability testgen)
-//   - extdeps/languages/*.dag (bidirectional roundtrip testgen)
-//   - extdeps/coordination.dag (WireContract/Effect — simulator-generation arm)
-//
-// Status: scaffold — fill per TASKS.md T-19
-// Brief: see BRIEF_TEMPLATE.md. T-19 is Phase 1.5 — right after std/*
-// substrate (T-1/T-2/T-3) lands, BEFORE compiler stages (T-6+) start.
-// This buys test evidence early — every Phase 2+ task gets a testgen-
-// derived corpus instead of hand-authoring.
+// Scope: Manual-anchor testgen plus filesystem-backed whole-corpus lens driver primitive.
+// Owns: Generator TestgenConcept manual_test_claim_for_manual_anchor testgen_concept_for_manual_claim TypeConstructionSubject AlgebraLawSubject DiagnosticExhaustivenessSubject LensApplicabilitySubject BidirectionalRoundtripSubject CorpusEntry CorpusTraversalScope CorpusTraversalOrder CorpusDuplicatePolicy CorpusTraversalPolicy CorpusEnumerationRequest CorpusEnumerationResult CorpusEnumerator CorpusEntryIngestResult CorpusEntryIngestor CorpusLensReadResult<C> CorpusLensReader<C> CorpusLensObservation<C> CorpusLensDriveResult<C> CorpusLensDriver<C>
+// Consumes: v4.std.diagnostic v4.std.nat v4.std.node v4.std.verification v4.extdeps.file_system v4.test.claim.manual.connective_anchors v4.test.claim.manual.nat_law_anchors
+// Status: Modeled Generator join for manual-anchor claims; substrate extension = operator STOP.
 
 module v4.lens.testgen
 
+
+import v4.std.diagnostic {
+  Outcome,
+  Produced,
+  Rejected,
+  Diagnostic,
+  Unavailable,
+  UserInputBoundary,
+  Textual,
+  WholeFile
+}
+import v4.std.nat {
+  nat_algebra_law_subject_symbol_additive_monoid,
+  nat_algebra_law_subject_symbol_commutative_semiring,
+  nat_algebra_law_subject_symbol_inhabitant_nat
+}
+import v4.std.node {
+  Node,
+  Connective,
+  Conj,
+  Disj,
+  Arrow,
+  Cardinality,
+  Instantiation,
+  Behavior,
+  Symbol
+}
+import v4.extdeps.file_system {
+  AbsolutePath,
+  FileBody,
+  FileKindResolutionPolicy,
+  FileSystemOperations,
+  Filesystem
+}
+import v4.std.verification {
+  AssertKind,
+  TestClaim,
+  TestClassification,
+  T19ManualAnchorAbsent,
+  T19ManualAnchorKey,
+  T19ManualNatAddAssociativity,
+  T19ManualNatAddLeftIdentity,
+  T19ManualNatAddRightIdentity,
+  T19ManualNatMulAnnihilator,
+  T19ManualNatMulAssociativity,
+  T19ManualNatMulLeftIdentity,
+  T19ManualTcArrowTwoConj,
+  T19ManualTcCardinalityEmpty,
+  T19ManualTcConjEmpty,
+  T19ManualTcConjEqualsRefl,
+  T19ManualTcDisjEmpty,
+  T19ManualTcInstantiationEmpty
+}
+import v4.test.claim.manual.connective_anchors {
+  claim_arrow_two_conj_compiles,
+  claim_cardinality_empty_compiles,
+  claim_conj_empty_compiles,
+  claim_conj_equals_refl,
+  claim_disj_empty_compiles,
+  claim_instantiation_empty_compiles
+}
+import v4.test.claim.manual.nat_law_anchors {
+  claim_nat_add_associativity,
+  claim_nat_add_left_identity,
+  claim_nat_add_right_identity,
+  claim_nat_mul_annihilator,
+  claim_nat_mul_associativity,
+  claim_nat_mul_left_identity
+}
+
+
+// 🟢 coproduct dissolution — LB-P4-3212.
+type TypeConstructionSubject
+// 🟢 coproduct dissolution — LB-P4-3212
+  = ConnectiveKernel { connective: Connective }
+  | BehaviorValueSubject { behavior: Behavior }
+
+
+type AlgebraLawSubject { algebra: Symbol, inhabitant: Symbol, law: Symbol }
+
+
+type DiagnosticExhaustivenessSubject { reason: Symbol }
+
+
+type LensApplicabilitySubject {
+  lens: Symbol
+  program: Node
+}
+
+
+type BidirectionalRoundtripSubject { language: Symbol, production: Symbol }
+
+
+// 🟡 coproduct dissolution — LB-P4-3212.
+type TestgenConcept
+// 🟡 coproduct dissolution — LB-P4-3212
+// RULING-1: 🟡 needs-more-work — multi-arm scheduling coproduct
+  = TypeConstruction { subject: TypeConstructionSubject }
+  | AlgebraLaw { subject: AlgebraLawSubject }
+  | DiagnosticExhaustiveness { subject: DiagnosticExhaustivenessSubject }
+  | LensApplicability { subject: LensApplicabilitySubject }
+  | BidirectionalRoundtrip { subject: BidirectionalRoundtripSubject }
+
+
+type Generator<C> {
+  classification: TestClassification
+  kind: AssertKind
+  t19_anchor: T19ManualAnchorKey
+  slot: C
+}
+
+
+// RULING-1: 🟡 needs-more-work
+type CorpusEntry {
+  path: AbsolutePath
+  body: FileBody
+}
+
+
+// RULING-1: 🟡 needs-more-work
+// 🟢 coproduct dissolution — LB-P4-3212.
+type CorpusTraversalScope
+// 🟢 coproduct dissolution — LB-P4-3212
+  = RecursiveCorpusWalk
+  | SingleDirectoryCorpusWalk
+
+
+// RULING-1: 🟡 needs-more-work
+// 🟢 coproduct dissolution — LB-P4-3212.
+type CorpusTraversalOrder
+// 🟢 coproduct dissolution — LB-P4-3212
+  = LexicalPathOrder
+  | FilesystemNativeOrder
+
+
+// RULING-1: 🟡 needs-more-work
+// 🟢 coproduct dissolution — LB-P4-3212.
+type CorpusDuplicatePolicy
+// 🟢 coproduct dissolution — LB-P4-3212
+  = PreserveDuplicateEntries
+  | RejectDuplicatePaths
+
+
+// RULING-1: 🟡 needs-more-work
+type CorpusTraversalPolicy {
+  scope: CorpusTraversalScope
+  order: CorpusTraversalOrder
+  duplicates: CorpusDuplicatePolicy
+}
+
+
+// RULING-1: 🟡 needs-more-work
+type CorpusEnumerationRequest {
+  filesystem: Filesystem
+  root: AbsolutePath
+  operations: FileSystemOperations
+  resolution: FileKindResolutionPolicy
+  traversal: CorpusTraversalPolicy
+}
+
+
+// RULING-1: 🟡 needs-more-work
+type CorpusEnumerationResult = Outcome<List<CorpusEntry>>
+
+
+// RULING-1: 🟡 needs-more-work
+type CorpusEnumerator = fn(CorpusEnumerationRequest) -> CorpusEnumerationResult
+
+
+// RULING-1: 🟡 needs-more-work
+type CorpusEntryIngestResult = Outcome<Node>
+
+
+// RULING-1: 🟡 needs-more-work
+type CorpusEntryIngestor = fn(CorpusEntry) -> CorpusEntryIngestResult
+
+
+// RULING-1: 🟡 needs-more-work
+type CorpusLensReadResult<C> = Outcome<C>
+
+
+// RULING-1: 🟡 needs-more-work
+type CorpusLensReader<C> {
+  lens: Symbol
+  read: fn(Node) -> CorpusLensReadResult<C>
+}
+
+
+// RULING-1: 🟡 needs-more-work
+type CorpusLensObservation<C> {
+  entry: CorpusEntry
+  program: Node
+  output: C
+}
+
+
+// RULING-1: 🟡 needs-more-work
+type CorpusLensDriveResult<C> = Outcome<List<CorpusLensObservation<C>>>
+
+
+// RULING-1: 🟡 needs-more-work
+type CorpusLensDriver<C> = fn(
+  CorpusEnumerationRequest,
+  CorpusEnumerator,
+  CorpusEntryIngestor,
+  CorpusLensReader<C>
+) -> CorpusLensDriveResult<C>
+
+
+// RULING-1: 🟢 pretty-much-done — repeats manual claim anchor after lookup Outcome
+
+
+data t19_law_nat_add_left_identity: Symbol = t19_law_nat_add_left_identity
+
+
+data t19_law_nat_add_right_identity: Symbol = t19_law_nat_add_right_identity
+
+
+data t19_law_nat_add_associativity: Symbol = t19_law_nat_add_associativity
+
+
+data t19_law_nat_mul_left_identity: Symbol = t19_law_nat_mul_left_identity
+
+
+data t19_law_nat_mul_annihilator: Symbol = t19_law_nat_mul_annihilator
+
+
+data t19_law_nat_mul_associativity: Symbol = t19_law_nat_mul_associativity
+
+
+data t19_testgen_lens_file: Symbol = t19_testgen_lens_file
+
+
+data t19_manual_anchor_absent_bootstrap: Symbol = t19_manual_anchor_absent_bootstrap
+
+
+fn t19_manual_anchor_absent_bootstrap_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: t19_manual_anchor_absent_bootstrap,
+    at: Textual { file: t19_testgen_lens_file, extent: WholeFile },
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+fn manual_test_claim_for_manual_anchor(key: T19ManualAnchorKey) -> Outcome<TestClaim> {
+  match key {
+    T19ManualAnchorAbsent =>
+      Rejected { diagnostic: t19_manual_anchor_absent_bootstrap_diagnostic() }
+    T19ManualTcConjEmpty => Produced { value: claim_conj_empty_compiles }
+    T19ManualTcDisjEmpty => Produced { value: claim_disj_empty_compiles }
+    T19ManualTcArrowTwoConj => Produced { value: claim_arrow_two_conj_compiles }
+    T19ManualTcCardinalityEmpty => Produced { value: claim_cardinality_empty_compiles }
+    T19ManualTcInstantiationEmpty => Produced { value: claim_instantiation_empty_compiles }
+    T19ManualTcConjEqualsRefl => Produced { value: claim_conj_equals_refl }
+    T19ManualNatAddLeftIdentity => Produced { value: claim_nat_add_left_identity }
+    T19ManualNatAddRightIdentity => Produced { value: claim_nat_add_right_identity }
+    T19ManualNatAddAssociativity => Produced { value: claim_nat_add_associativity }
+    T19ManualNatMulLeftIdentity => Produced { value: claim_nat_mul_left_identity }
+    T19ManualNatMulAnnihilator => Produced { value: claim_nat_mul_annihilator }
+    T19ManualNatMulAssociativity => Produced { value: claim_nat_mul_associativity }
+  }
+}
+
+
+fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept> {
+  match claim.t19_anchor {
+    T19ManualAnchorAbsent =>
+      Rejected { diagnostic: t19_manual_anchor_absent_bootstrap_diagnostic() }
+    T19ManualTcConjEmpty =>
+      Produced {
+        value: TypeConstruction {
+          subject: ConnectiveKernel { connective: Conj },
+        },
+      }
+    T19ManualTcDisjEmpty =>
+      Produced {
+        value: TypeConstruction {
+          subject: ConnectiveKernel { connective: Disj },
+        },
+      }
+    T19ManualTcArrowTwoConj =>
+      Produced {
+        value: TypeConstruction {
+          subject: ConnectiveKernel { connective: Arrow },
+        },
+      }
+    T19ManualTcCardinalityEmpty =>
+      Produced {
+        value: TypeConstruction {
+          subject: ConnectiveKernel { connective: Cardinality },
+        },
+      }
+    T19ManualTcInstantiationEmpty =>
+      Produced {
+        value: TypeConstruction {
+          subject: ConnectiveKernel { connective: Instantiation },
+        },
+      }
+    T19ManualTcConjEqualsRefl =>
+      Produced {
+        value: TypeConstruction {
+          subject: ConnectiveKernel { connective: Conj },
+        },
+      }
+    T19ManualNatAddLeftIdentity =>
+      Produced {
+        value: AlgebraLaw {
+          subject: AlgebraLawSubject {
+            algebra: nat_algebra_law_subject_symbol_additive_monoid,
+            inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
+            law: t19_law_nat_add_left_identity,
+          },
+        },
+      }
+    T19ManualNatAddRightIdentity =>
+      Produced {
+        value: AlgebraLaw {
+          subject: AlgebraLawSubject {
+            algebra: nat_algebra_law_subject_symbol_additive_monoid,
+            inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
+            law: t19_law_nat_add_right_identity,
+          },
+        },
+      }
+    T19ManualNatAddAssociativity =>
+      Produced {
+        value: AlgebraLaw {
+          subject: AlgebraLawSubject {
+            algebra: nat_algebra_law_subject_symbol_additive_monoid,
+            inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
+            law: t19_law_nat_add_associativity,
+          },
+        },
+      }
+    T19ManualNatMulLeftIdentity =>
+      Produced {
+        value: AlgebraLaw {
+          subject: AlgebraLawSubject {
+            algebra: nat_algebra_law_subject_symbol_commutative_semiring,
+            inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
+            law: t19_law_nat_mul_left_identity,
+          },
+        },
+      }
+    T19ManualNatMulAnnihilator =>
+      Produced {
+        value: AlgebraLaw {
+          subject: AlgebraLawSubject {
+            algebra: nat_algebra_law_subject_symbol_commutative_semiring,
+            inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
+            law: t19_law_nat_mul_annihilator,
+          },
+        },
+      }
+    T19ManualNatMulAssociativity =>
+      Produced {
+        value: AlgebraLaw {
+          subject: AlgebraLawSubject {
+            algebra: nat_algebra_law_subject_symbol_commutative_semiring,
+            inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
+            law: t19_law_nat_mul_associativity,
+          },
+        },
+      }
+  }
+}
+
+
+fn bootstrap_claim_generator_for_manual_anchor(
+  key: T19ManualAnchorKey
+) -> Outcome<Generator<TestgenConcept>> {
+  match manual_test_claim_for_manual_anchor(key: key) {
+    Rejected { diagnostic: d } => Rejected { diagnostic: d }
+    Produced { value: claim } =>
+      match testgen_concept_for_manual_claim(claim: claim) {
+        Rejected { diagnostic: d } => Rejected { diagnostic: d }
+        Produced { value: slot } =>
+          Produced {
+            value: Generator {
+              classification: claim.classification,
+              kind: claim.kind,
+              t19_anchor: claim.t19_anchor,
+              slot: slot,
+            }
+          }
+    }
+  }
+}

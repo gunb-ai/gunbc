@@ -1,332 +1,106 @@
 // src/v4/extdeps/languages/cpp.dag
-//
-// Scope: C++ language model — direction-agnostic. Subsumes C subset
-//        (C is a syntactic subset of C++).
-// Anchor: ISO/IEC 14882, C++ standard — the versioned upstream
-//         specification (L-2 fidelity authority).
-//         https://www.iso.org/standard/79358.html
-//         cppreference is a navigation aid, not the authority.
-// Unifies: (per THESIS:188) language spec = transport spec =
-//         interpreter runtime. ONE substrate carrier for all three
-//         roles. Different lenses read different facts from the same
-//         data (emission reads syntax; transport reads serialization;
-//         interpreter reads execution semantics). A worker needing
-//         transport or runtime extends this file, not a new "transport
-//         spec" file.
-//
-// Owns:
-//   - C++ grammar (declarations, expressions, statements, templates, classes)
-//   - Type system (primitive types + struct + union + class + template instantiation)
-//   - D2 resolver facts for C++ primitive carriers: alias-identity to
-//     std/ carriers and operation-semantics carriers. This file is NOT
-//     an algebra-inhabitance site; the std/ scalar files own algebra
-//     once. D2a(2) grounding-map rows are tracked-scaffold deferred
-//     because the shared `GroundingMap` home is operator-pending.
-//   - Cost realization: per-operation cost on C++ targets
-//
-// Consumes:
-//   - std/logic.dag: Bool (kernel-ambient; alias-identity below)
-//   - the std/ scalar files (integer/float/text) when their C++ alias
-//     targets land. No std/algebra.dag import in this slice because
-//     D2 forbids per-language algebra re-declaration.
-//
-// Status: T-4 cpp D2-resolver modeled 2026-05-16 (sunny-cat-482).
-//   Mirrors the canonical rust.dag D2-resolver DISCIPLINE from PR
-//   #3174 at 0328bee9: resolver facts only, no per-language algebra
-//   inhabitance, no IrToCpp string table, no grammar operation stub.
-//   Header edits encode the resolver shape under DECISIONS.md D2's
-//   delegated "extdeps/languages/* headers" authority.
-// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
-// contract for the worker. Splitting this file requires explicit operator
-// ratification (substrate extension = stop signal).
+// Scope: C++ language primitive fact bundles.
+// Owns: CppSignedIntegerSurfaceSpelling, CppUnsignedIntegerSurfaceSpelling, CppPlainCharSurfaceSpelling, CppWcharTSurfaceSpelling, CppFixedUnsignedCodeUnitIntegerSurfaceSpelling, CppSignedIntegerWidthSelection, CppUnsignedIntegerWidthSelection, CppPlainCharWidthSelection, CppWcharTWidthSelection, CppFixedUnsignedCodeUnitIntegerWidthSelection, CppTwosComplement, CppRepresentableResultRequired, CppUnsignedModuloArithmetic, CppScalar, cpp_bool_grounding.
+// Consumes: v4.std.logic.Bool, bool_boolean_algebra; v4.std.algebra.BooleanAlgebra; v4.extdeps.cpp_abi.CppTargetProfile.
+// Status: D2-REV/T29 forward reconcile; C++ integer facts are ABI-width-parametric, bool canonical-B decl-ref grounding stays 🟡 E-6(b) staging; scaffold:T-4-cpp-slice / 🟡 feature:t4-cpp-scalar-ladder bounds this file to carrier scaffolding until generated per-spelling CppTargetProfile selection rows consume it (INVARIANTS P5).
+// Anchor: ISO/IEC 14882:2020 (C++20) [basic.fundamental], [expr.pre]; upstream mirror https://eel.is/c++draft/basic.fundamental.
 
 module v4.extdeps.languages.cpp
 
+import v4.std.logic { Bool, bool_boolean_algebra }
+import v4.std.algebra { BooleanAlgebra }
+import v4.extdeps.cpp_abi { CppTargetProfile }
 
-// ─────────────────────────────────────────────────────────────────────
-// Modeling notes
-//
-// D2 RESOLVER, NOT INHABITANCE. Per DECISIONS.md D2, a language
-// extdeps file is a resolver for abstract std/ carriers. It contributes
-// three thin facets per primitive:
-//   (1) alias-identity to the std/ carrier (`type CppBool = Bool`);
-//   (2) a grounding map carrying the source spelling — DEFERRED here
-//       because the shared `GroundingMap` type has no pinned home yet;
-//   (3) operation-semantics carriers that are genuine C++ facts.
-//
-// It must NOT declare `OrderedRing<CppInt, ...>` or a sibling algebra
-// instance for any C++ primitive. Integer, float, text, and boolean
-// algebra inhabitance live in std/ (`std/integer.dag`,
-// `std/float.dag`, `std/text.dag`, `std/logic.dag`) and flow through
-// alias identity. Re-declaring them here would be the parallel
-// substrate INVARIANTS P1 forbids (`numeric_aliases_align_to_refinements`).
-//
-// C++ IMPLEMENTATION-DEFINED WIDTHS. Unlike Rust, C++'s core integer
-// types (`short`, `int`, `long`, `long long`, `wchar_t`) are specified
-// by constraints and implementation-defined representation choices, not
-// by fixed source-level bit widths. This file therefore cannot land
-// aliases such as `type CppInt = Int32` without a target ABI / data-model
-// resolver fact. The correct D2 shape is still alias identity, but the
-// alias target must be selected by a declared implementation model
-// (LP64/LLP64/ILP32 or a future more precise target-data carrier), not
-// guessed in cpp.dag.
-//
-// GRAMMAR FACTS OWNED ELSEWHERE. D2 covers per-primitive inhabitance
-// form only. It does not settle C++ grammar ambiguity or bidirectional
-// parse/emit behavior. Syntax that needs semantic feedback to parse
-// (`T(a)`-class declaration-vs-expression ambiguity, most-vexing-parse,
-// `<` template-argument vs less-than contexts) belongs to the T-4
-// LanguageModel grammar slice and C5-3 fidelity dispositions. This file
-// does not stub `emit_cpp`, `ingest_cpp`, or an `Outcome<T>` result
-// shape.
-//
-// LIBRARIES ARE NOT THE SPEC SURFACE. `std::string`, `std::vector<T>`,
-// `std::int32_t`, and friends are library/program nodes in the modeled
-// language, not primitive C++ language carriers. The core-language
-// primitive resolver here names only fundamental types. Fixed-width
-// typedefs from `<cstdint>` can be modeled by the library/program surface
-// once library ingestion is in scope; they are not core extdeps facts.
+// 🟢 pretty-much-done — closed signed integer spelling family; testcase: test/claim/manual/cpp_scalar_grounding_anchor.dag.
+// 🟢 coproduct dissolution · T29-CPP-SCALAR-FORWARD.
+type CppSignedIntegerSurfaceSpelling
+  = SignedChar
+  | ShortInt
+  | Int
+  | LongInt
+  | LongLongInt
 
+// 🟢 pretty-much-done — closed unsigned integer spelling family; testcase: test/claim/manual/cpp_scalar_grounding_anchor.dag.
+// 🟢 coproduct dissolution · T29-CPP-SCALAR-FORWARD.
+type CppUnsignedIntegerSurfaceSpelling
+  = UnsignedChar
+  | UnsignedShortInt
+  | UnsignedInt
+  | UnsignedLongInt
+  | UnsignedLongLongInt
 
-// ─────────────────────────────────────────────────────────────────────
-// D2a(2) grounding-map facet — 🟡 TRACKED-SCAFFOLD DEFERRED.
-//
-// Per the T-4 manager brief (msg_c131bdf6, 2026-05-16), `GroundingMap`
-// is a SHARED resolver type with no pinned substrate home yet. Declaring
-// a local `GroundingMap<IRCarrier>` in every language file would create
-// N parallel declarations for one fact, violating INVARIANTS P2.
-//
-// Therefore this file intentionally does NOT declare:
-//   - `type GroundingMap<IRCarrier> { spelling: String }`
-//   - `data cpp_bool_grounding: GroundingMap<CppBool> = ...`
-//   - any future `cpp_<primitive>_grounding` rows
-//
-// Dissolution trigger: when the operator pins the shared `GroundingMap`
-// home, C++ primitive grounding rows amend in as consumers of that
-// single authority. Until then D2a(1) alias-identity and D2a(3)
-// operation-semantics can land without fabricating the shared type.
+// 🟢 pretty-much-done — singleton plain-char spelling; testcase: test/claim/manual/cpp_scalar_grounding_anchor.dag.
+type CppPlainCharSurfaceSpelling
 
+// 🟢 pretty-much-done — singleton wchar_t spelling; testcase: test/claim/manual/cpp_scalar_grounding_anchor.dag.
+type CppWcharTSurfaceSpelling
 
-// ─────────────────────────────────────────────────────────────────────
-// CppIntegerOverflowDisposition — the closed IN-F C++ integer
-// overflow/range disposition set for core arithmetic result values.
-// Anchor: C++ draft [basic.fundamental] unsigned integer range and
-// arithmetic modulo 2^N:
-//   https://eel.is/c++draft/basic.fundamental
-// Anchor: C++ draft [expr.pre] undefined behavior rule for expression
-// evaluation outside mathematically-defined result range:
-//   https://eel.is/c++draft/expr.pre
-//
-//   - RepresentableResultRequired  signed arithmetic result values are
-//                                  in F only when the mathematical
-//                                  result is representable by the result
-//                                  type. If not, the source program is
-//                                  outside F and the consumer must fail
-//                                  closed.
-//   - UnsignedModuloArithmetic     unsigned arithmetic result values are
-//                                  defined modulo 2^N for the unsigned
-//                                  type's width.
-//
-// Signed integer OVERFLOW is deliberately NOT a variant here. The C++
-// standard gives overflow undefined behavior; per C5-3 and the manager
-// brief, that is fail-closed / out-of-F, not a third "action" inside a
-// language-wide overflow taxonomy. `RepresentableResultRequired` models
-// the in-F signed result-range precondition; a consumer that cannot prove
-// it rejects with a Diagnostic rather than producing a fabricated
-// semantic value.
-//
-// This carrier is deliberately NOT the full per-operator safety model.
-// Division/modulo by zero, signed division quotient overflow, shift-count
-// validity, and similar operator-specific preconditions live on the
-// operation-realization facts for those operators. The per-primitive D2
-// resolver records only the primitive-family overflow/range disposition
-// that composes with the alias target.
-//
-// This is operation-semantics data, not algebra inhabitance. Unsigned
-// bounded integer aliases may point at std/ `UIntN` carriers; this
-// sibling disposition records C++'s defined modulo arithmetic. Signed
-// aliases point at `RepresentableResultRequired`, not at an undefined-
-// behavior value.
-//
-// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — five patterns attempted:
-//   1. Fact placement — FAILS: emit, ingest, runtime-equivalence, and
-//      Tier-2 safety consumers all need the same overflow/range
-//      disposition fact; shared, not scattered.
-//   2. Variant-is-data — FAILS: a string/Symbol tag would reopen the
-//      K-1 readable-tag anti-pattern. A Bool such as
-//      `{ wraps: true }` would also collapse the signed precondition
-//      and unsigned modulo rule into a boolean proxy.
-//   3. Algebraic form — PARTIAL: unsigned modulo arithmetic is ring-like
-//      over a fixed width, but the algebra lives on the std/ `UIntN`
-//      carrier. This C++ carrier records the language's operation
-//      overflow/range disposition, not a second algebra instance.
-//   4. Dimensional — FAILS: signed representability and unsigned modulo
-//      are alternatives selected by the primitive family's signedness
-//      fact, not simultaneous coordinates. The undefined signed-overflow
-//      case is outside F, so it is absence/fail-closed, not a value
-//      carried simultaneously with the in-F disposition.
-//   5. Parameterized family — FAILS for this closed vocabulary: these
-//      are the C++ standard's own signed-vs-unsigned overflow/range
-//      dispositions. Per-alias attachment is deliberately NOT modeled as
-//      `IntegerOverflowDisposition<IRCarrier>`, because that unconstrained
-//      generic would allow any carrier to pair with either disposition.
-//      Future rows must attach through the signed/unsigned alias target
-//      selected by the std integer ladder + C++ implementation model.
-// Terminal: the closed in-F C++ core integer overflow/range disposition set.
-type CppIntegerOverflowDisposition
-  = RepresentableResultRequired
-  | UnsignedModuloArithmetic
+// 🟢 pretty-much-done — closed fixed unsigned code-unit spelling family; testcase: test/claim/manual/cpp_scalar_grounding_anchor.dag.
+// 🟢 coproduct dissolution · T29-CPP-SCALAR-FORWARD.
+type CppFixedUnsignedCodeUnitIntegerSurfaceSpelling
+  = Char8T
+  | Char16T
+  | Char32T
 
+// 🟢 pretty-much-done — C++20 signed integer representation fact; testcase: test/claim/manual/cpp_scalar_grounding_anchor.dag.
+type CppTwosComplement
 
-// ─────────────────────────────────────────────────────────────────────
-// Per-alias integer overflow/range disposition — 🟡 TRACKED-SCAFFOLD
-// DEFERRED.
-// Anchor: C++ draft [basic.fundamental], unsigned arithmetic modulo 2^N:
-//   https://eel.is/c++draft/basic.fundamental
-// Anchor: C++ draft [expr.pre], result not mathematically defined or not
-// in representable range is undefined behavior:
-//   https://eel.is/c++draft/expr.pre
-//
-// Signed core integer aliases use `RepresentableResultRequired`;
-// overflow itself is undefined behavior and therefore fail-closed /
-// out-of-F unless a proof or explicit totalized carrier makes the
-// operation defined. Unsigned aliases use `UnsignedModuloArithmetic`.
-//
-// This file intentionally does NOT declare an unconstrained generic
-// `IntegerOverflowDisposition<IRCarrier>` record. Such a record would
-// make the signedness invariant a row-authoring convention: any carrier
-// could be paired with either the signed representability precondition or
-// the unsigned modulo rule. That is not a sufficient API boundary.
-//
-// Dissolution trigger: when std/integer.dag exposes the signed/unsigned
-// integer ladder and the C++ implementation model selects each source
-// type's target carrier, per-alias rows amend in through a signedness-
-// indexed attachment shape that mechanically prevents signed carriers
-// from receiving `UnsignedModuloArithmetic` and unsigned carriers from
-// receiving `RepresentableResultRequired`.
-//
-// Operator-specific safety preconditions are excluded from this carrier:
-// division/modulo zero, quotient representability for `/`, shift-count
-// bounds, and analogous per-operator facts attach to the relevant
-// operation-realization declarations.
+// 🟡 needs-more-work — generated per-spelling target-profile selection rows still produce these witnesses; testcase: test/claim/manual/cpp_scalar_grounding_anchor.dag.
+// 🟡 feature:t4-cpp-scalar-ladder — scaffold:T-4-cpp-slice; dissolve-on: generated per-spelling target-profile selection rows consume CppTargetProfile and select these widths.
+type CppSignedIntegerWidthSelection {
+  spelling: CppSignedIntegerSurfaceSpelling
+  target_profile: CppTargetProfile
+}
 
+type CppUnsignedIntegerWidthSelection {
+  spelling: CppUnsignedIntegerSurfaceSpelling
+  target_profile: CppTargetProfile
+}
 
-// ─────────────────────────────────────────────────────────────────────
-// Per-primitive alias-identity declarations.
-//
-// LANDABLE NOW — grounded against current origin/main carriers:
+type CppPlainCharWidthSelection {
+  spelling: CppPlainCharSurfaceSpelling
+  target_profile: CppTargetProfile
+}
 
-// C++ `bool` ↔ std/logic.dag's `Bool`.
-// Anchor: C++ draft [basic.fundamental], boolean type:
-//   https://eel.is/c++draft/basic.fundamental
-//
-// Alias-identity is the machine-readable D2 inhabitance form: CppBool
-// is literally the same Node carrier as Bool, so Bool's BooleanAlgebra
-// inhabitance flows through std/logic.dag's single authority.
-type CppBool = Bool
+type CppWcharTWidthSelection {
+  spelling: CppWcharTSurfaceSpelling
+  target_profile: CppTargetProfile
+}
 
-// Bool has no integer overflow / NaN operation-semantics row.
+type CppFixedUnsignedCodeUnitIntegerWidthSelection {
+  spelling: CppFixedUnsignedCodeUnitIntegerSurfaceSpelling
+  target_profile: CppTargetProfile
+}
 
+// Anchor: ISO/IEC 14882:2020 (C++20) [expr.pre]; upstream mirror https://eel.is/c++draft/expr.pre.
+// 🟢 pretty-much-done — arm-specific overflow witnesses; testcase: test/claim/manual/cpp_scalar_grounding_anchor.dag.
+type CppRepresentableResultRequired
+type CppUnsignedModuloArithmetic
 
-// 🟡 TRACKED-SCAFFOLD — DEFERRED ALIAS-IDENTITY ROWS
-//
-// The rows below are not omitted decisions; they are D2-form commitments
-// blocked on named upstream carriers. When the owner lands, each row
-// amends in as:
-//   - `type Cpp<X> = <StdCarrier>` alias-identity;
-//   - grounding row ONLY after the shared `GroundingMap` home is pinned;
-//   - for integer aliases, a signedness-indexed overflow/range
-//     disposition attachment that derives from the selected std signed or
-//     unsigned carrier, not a free choice over a generic `IRCarrier`.
-// Signed aliases carry `RepresentableResultRequired`; signed overflow
-// itself is fail-closed/out-of-F unless separately proven safe or
-// totalized. There is no undefined-behavior variant.
-//
-// SUBSTRATE SINGLE-AUTHORITY GUARD. cpp.dag MUST NOT mint local
-// `Int`, `UInt`, `Float`, `Char`, or `String` carriers. The std/ scalar
-// files are the sole authority. C++ supplies resolver facts and genuine
-// per-language operation semantics only.
-//
-// C++ signed core integers — short int / int / long int / long long int
-//   - target form        alias to the std signed integer carrier selected
-//                        by the declared C++ implementation data model,
-//                        plus a future shared grounding row and
-//                        `RepresentableResultRequired` overflow/range
-//                        disposition.
-//   - named owner        std/integer.dag for the Int/IntN ladder;
-//                        target implementation model for source type →
-//                        width mapping (LP64/LLP64/ILP32 or successor).
-//   - dissolution trigger
-//                        when std/integer.dag lands the signed ladder
-//                        AND the C++ target data-model resolver can pick
-//                        the width without guessing.
-//
-// C++ unsigned core integers — unsigned short int / unsigned int /
-//                              unsigned long int / unsigned long long int
-//   - target form        alias to the std unsigned integer carrier
-//                        selected by the declared implementation model,
-//                        plus a future shared grounding row and
-//                        `UnsignedModuloArithmetic` overflow/range
-//                        disposition.
-//   - named owner        std/integer.dag for the UInt/UIntN ladder;
-//                        target implementation model for widths.
-//   - dissolution trigger
-//                        same as signed, with unsigned carrier targets.
-//
-// C++ character/code-unit types — char / signed char / unsigned char /
-//                                 wchar_t / char8_t / char16_t / char32_t
-//   - target form        char8_t/char16_t/char32_t are code-unit types,
-//                        not automatically std/text.dag `Char` (Unicode
-//                        scalar value). `char` / `wchar_t` are
-//                        implementation-defined code-unit carriers.
-//                        `signed char` and `unsigned char` do NOT get a
-//                        second alias lane here: they are the integer
-//                        carriers above with character/code-unit facets
-//                        attached when that refinement has a pinned home.
-//   - named owner        std/text.dag refined code-point / code-unit
-//                        carriers plus the C++ implementation model.
-//   - dissolution trigger
-//                        when text.dag exposes the needed code-unit and
-//                        Unicode-scalar refinements, or an operator-
-//                        ratified per-language refinement-disposition
-//                        carrier decides where the refinement lives.
-//
-// C++ floating types — float / double / long double
-//   - target form        alias to std/float.dag carriers selected by the
-//                        implementation's floating format facts, plus
-//                        grounding and IEEE / implementation-specific
-//                        NaN/Inf disposition rows.
-//   - named owner        std/float.dag for Float32/Float64 and the
-//                        ApproximateField inhabitance; target
-//                        implementation model for `long double` and
-//                        non-IEC-559 implementations.
-//   - dissolution trigger
-//                        when std/float.dag lands its Float ladder and
-//                        the C++ implementation model declares the
-//                        concrete formats without guessing.
-//
-// C++ `void` — no value carrier.
-//   - target form        not an alias to Bool/Int/Float/Text. `void`
-//                        is the absence of a value in function return
-//                        position, modeled with the function / type
-//                        substrate when the grammar slice lands.
-//   - named owner        T-4 LanguageModel grammar + std/cardinality
-//                        empty/unit carrier decision.
-//   - dissolution trigger
-//                        when function return-shape modeling needs a
-//                        machine-readable `void` carrier.
+// 🟢 pretty-much-done — scalar fact-bundle arms prevent spelling/signedness/overflow cross-pairings; testcase: test/claim/manual/cpp_scalar_grounding_anchor.dag.
+// 🟢 coproduct dissolution · T29-CPP-SCALAR-FORWARD.
+type CppScalar
+  = SignedIntegerScalar {
+      width_selection: CppSignedIntegerWidthSelection,
+      signed_representation: CppTwosComplement,
+      overflow_disposition: CppRepresentableResultRequired
+    }
+  | UnsignedIntegerScalar {
+      width_selection: CppUnsignedIntegerWidthSelection,
+      overflow_disposition: CppUnsignedModuloArithmetic
+    }
+  | PlainCharScalar {
+      width_selection: CppPlainCharWidthSelection
+    }
+  | WcharTScalar {
+      width_selection: CppWcharTWidthSelection
+    }
+  | FixedUnsignedCodeUnitIntegerScalar {
+      width_selection: CppFixedUnsignedCodeUnitIntegerWidthSelection,
+      unsigned_modulo_arithmetic: CppUnsignedModuloArithmetic
+    }
+  | BoolScalar
 
-
-// ─────────────────────────────────────────────────────────────────────
-// D2b — C++ floating-operation realizations.
-//
-// For irreducible floating arithmetic, DECISIONS.md D2b uses the same
-// single external-primitive path as every language: `Transform →
-// FunctionRef → Arrow`, where the Arrow's body is an extdeps realization.
-// C++ operator spellings, precedence, overload-resolution boundaries,
-// and NaN/Inf handling are LanguageModel / operation-realization data.
-//
-// This slice declares the resolver carriers they will use; it does not
-// author the Arrow-body realizations before std/float.dag's
-// ApproximateField instance and the T-4 grammar production data exist.
+// Anchor: https://eel.is/c++draft/basic.fundamental
+// 🟡 canonical-B decl-ref · E-6(b) bounded-exception · scaffold feature:canonical-b-grounding-consumer · dissolve-on: B1-CANON+zip-fold consume (ledger: B1·T-9/C1 · grounding-worked-examples.md §0)
+data cpp_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra

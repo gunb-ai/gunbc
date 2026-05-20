@@ -1,29 +1,36 @@
 // src/v4/extdeps/languages/ptx.dag
-// Scope: NVIDIA PTX ISA 8.5 SIMT structural classifiers (T-4.14).
+// Scope: NVIDIA PTX ISA 8.5 SIMT structural classifiers (param/shared state, registers, thread hierarchy).
 // Owns: ParamScope, SharedScope, StateSpace, BarrierScope, ThreadAxis, ThreadCoordSource, BitsWidth, IntegerWidth, FloatWidth, RegisterScalarKind, RegisterStateSpace, RegisterScalar, Dim3, ThreadHierarchyShape, ThreadCoord, PtxCost
-// Consumes: (none; Int kernel-ambient).
-// Status: T-4.14 PASS (IN-B).
+// Consumes: std/nat.dag (Nat); std/cardinality.dag (PositiveUpperBoundedNat).
+// Status: import v4.std.nat Nat; v4.std.cardinality PositiveUpperBoundedNat.
 // Anchor: https://docs.nvidia.com/cuda/pdf/ptx_isa_8.5.pdf — TOC https://docs.nvidia.com/cuda/parallel-thread-execution/index.html
-// Ledger: DECISIONS.md Part 6 (PR #3229): CP-3229-GREEN-TERMINAL, SL-3229-PTX-COST, SL-3229-PTX-DIM3.
+// Ledger: CP-3229-GREEN-TERMINAL, SL-3229-PTX-DIM3.
+// 🟡
 
 module v4.extdeps.languages.ptx
 
 
 
 
-// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
+import v4.std.nat { Nat }
+import v4.std.cardinality { PositiveUpperBoundedNat }
+
+
+
+
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type ParamScope
   = ParamEntry
   | ParamFunc
 
 
-// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type SharedScope
   = SharedCta
   | SharedCluster
 
 
-// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type StateSpace
   = Reg
   | SReg
@@ -35,7 +42,7 @@ type StateSpace
   | Tex
 
 
-// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type BarrierScope
   = Cta
   | Cluster
@@ -43,14 +50,14 @@ type BarrierScope
   | System
 
 
-// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type ThreadAxis
   = X
   | Y
   | Z
 
 
-// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type ThreadCoordSource
   = ThreadInCta
   | CtaInCluster
@@ -58,7 +65,7 @@ type ThreadCoordSource
   | CtaInGrid
 
 
-// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type BitsWidth
   = Bits8
   | Bits16
@@ -67,7 +74,7 @@ type BitsWidth
   | Bits128
 
 
-// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type IntegerWidth
   = Bits8
   | Bits16
@@ -75,14 +82,14 @@ type IntegerWidth
   | Bits64
 
 
-// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type FloatWidth
   = Bits16
   | Bits32
   | Bits64
 
 
-// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type RegisterScalarKind
   = Bits
   | Unsigned
@@ -91,7 +98,7 @@ type RegisterScalarKind
   | Predicate
 
 
-// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type RegisterStateSpace
   = ResReg
   | ResConst
@@ -101,7 +108,7 @@ type RegisterStateSpace
   | ResShared { scope: SharedScope }
 
 
-// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type RegisterScalar
   = BitsScalar { width: BitsWidth, state_space: RegisterStateSpace }
   | UnsignedScalar { width: IntegerWidth, state_space: RegisterStateSpace }
@@ -110,27 +117,30 @@ type RegisterScalar
   | PredicateScalar
 
 
+// 🟢 grounded.
 type Dim3 {
-  x: Int
-  y: Int
-  z: Int
+  x: PositiveUpperBoundedNat
+  y: PositiveUpperBoundedNat
+  z: PositiveUpperBoundedNat
 }
 
 
-// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type ThreadHierarchyShape
   = FlatLaunch { grid_dim: Dim3, block_dim: Dim3 }
   | ImplicitClusterLaunch { grid_dim: Dim3, block_dim: Dim3 }
   | ExplicitClusterLaunch { cluster_grid_dim: Dim3, cluster_dim: Dim3, block_dim: Dim3 }
 
 
+// 🟢 grounded.
 type ThreadCoord {
   source: ThreadCoordSource
   axis: ThreadAxis
 }
 
 
+// 🟢 grounded.
 type PtxCost {
-  instruction_cost: Int
-  occupancy_cost: Int
+  instruction_cost: Nat
+  occupancy_cost: Nat
 }

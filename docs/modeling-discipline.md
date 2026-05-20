@@ -5,6 +5,30 @@
 > The invariants are the reviewer-facing rubric; the practices below are
 > the concrete patterns each invariant manifests in modeling work.
 >
+> **No comment-duplicating ledgers (standing rule, 2026-05-19).** Do not
+> create or maintain docs that re-list facts whose source-of-truth is an inline
+> model mark (`🟢`/`🟡`/`🔴`, `feature:`/`consumer:` gate, dissolution slug).
+> Deleted: `src/v4/DECISIONS.md`, `src/v4/STRUCTURE.md`,
+> `docs/audit/dissolution-inventory.md`. The **inline mark on the carrier** is
+> the system; verbose dissolution-pattern analysis and architectural debate live
+> in **PR review** (process receipts in the commit message). Unchanged:
+> dissolution is merge-blocking (INVARIANTS §P5), yellow must dissolve, Practice
+> 10 review heuristic. Non-comment receipts only: [INVARIANTS.md](../INVARIANTS.md)
+> §P5(b), [`src/v4/TASKS.md`](../src/v4/TASKS.md),
+> [`docs/modeling/grounding-worked-examples.md`](modeling/grounding-worked-examples.md)
+> (*coincide*). **Bounded census exception (P2 / Practice 9 — not a second mark ledger):**
+> [`docs/audit/coproduct-anemia-inventory.md`](audit/coproduct-anemia-inventory.md)
+> is allowed **only** as a **TASKS-closed worksheet**: (a) cols **1–3** are a
+> mechanical corpus index (path:line, sum name, shape); (b) cols **4–7** and
+> grounding-axis **(A)–(C)** are **hand-authored audit notes** read off **cited
+> `.dag` fragments**, not a denormalized registry that replaces inline
+> `🟢`/`🟡`/`🔴` / gate / dissolution-slug authority on carriers; (c) **closure**
+> is **structural** per **`src/v4/TASKS.md`** § Watch for that file — not
+> “edit this table whenever any carrier mark drifts.” **Do not** treat inventory
+> rows as permission to contradict Practice 9 marks on `.dag` declarations; **do
+> not** maintain a competing repo-wide mark sweep outside that § Watch.
+> Cost-of-change = 1 per [CLAUDE.md](../CLAUDE.md).
+>
 > This document supplements, rather than parallels, INVARIANTS.md's
 > taxonomy. Each practice names the invariant principle it serves.
 >
@@ -58,12 +82,14 @@ Mapping:
 - Practice 7 (Projection over enumeration) — implements **P1: Modeling Faithfulness**
 - Practice 8 (Fact-bundle modeling) — implements **P1: Modeling Faithfulness**
 - Practice 9 (No-prose discipline) — implements **P2: Boundary Discipline**
-- Practice 10 (Don't hand-roll a derived operation) — implements **P1: Modeling Faithfulness** (and the proposed *Do not hand-roll a derived operation* invariant — pending operator ratification, rework-tracker PR #3240 task A1)
+- Practice 10 (Don't hand-roll a derived operation) — implements **P1: Modeling Faithfulness** and the *Do not hand-roll a derived operation* invariant.
 
 A reviewer should name specifically whether the diff satisfies each
 relevant practice, where it could be violated, and whether the existing
 checks are structural (type-system enforced) or merely behavioral
 (convention).
+
+> **Ledger-doc retirement (operator 2026-05-19):** `src/v4/DECISIONS.md`, `src/v4/STRUCTURE.md`, and `docs/audit/dissolution-inventory.md` are **deleted** — no maintained manifests or parallel prose ledgers for facts that belong in inline `//` marks. **Standing principle:** do not create or maintain new docs that duplicate comment or model marks; marks plus PR review are authoritative. Classification and dissolution **discipline** (Practices 4 / 9 / 10, INVARIANTS P5) is unchanged. Where older text below still names `DECISIONS.md` or a doc ledger for the same job, read **PR review, issues, and commit messages** unless that sentence was rewritten in this PR.
 
 ### 1. Fail-closed
 
@@ -104,7 +130,9 @@ than type-enforced.
 Every piece of structured information produced at one stage of the
 compiler must be either consumed by the next stage, carried forward as
 a field on downstream data structures, or explicitly discarded — with
-the justification recorded in `src/v4/DECISIONS.md` (Practice 9), not as
+the justification recorded in **PR review**, in an [INVARIANTS.md](../INVARIANTS.md) §P5 row,
+or [`src/v4/TASKS.md`](../src/v4/TASKS.md) (same PR as the change when receipt-shaped);
+process receipts go in the commit message (Practice 9), not as
 in-file prose. Silent drops are violations.
 
 **What to check:** For each cross-stage boundary touched in the diff
@@ -175,7 +203,7 @@ variants), the three dispositions are:
 
 - **🟢 terminal** — the variants are irreducible distinctions at the
   user-input boundary (literals, keywords, source locations); no richer
-  structure can be named. Requires a **ledger entry** recording which
+  structure can be named. Requires **PR review** (same PR) recording which
   dissolution patterns were tried and why each failed.
 - **🟡 gated** — a richer source exists but decomposition waits on a
   named arrival (`feature:` substrate not ready, or `consumer:` no
@@ -219,20 +247,15 @@ terminal:
    this pattern exists.
 
 **What to check:** Any new coproduct with N ≥ 2 variants (a Rust enum,
-or a `.dag` `type X = A | B | …`) must be classified (🟢/🟡/🔴), with a
-ledger entry if 🟢, or the gate kind + concrete named arrival
-(`feature:<name>` / `consumer:<name>`) + dissolve-on-arrival obligation
-if 🟡. Per Practice 9 the
-classification *ledger* and the *trigger* live in `src/v4/DECISIONS.md`
-— *not* an in-file `Practice 4: ...` block. **But the coproduct itself
-keeps a required one-line classification tag carrying the 🟢/🟡/🔴
-emoji** (operator directive 2026-05-17) — e.g. `// 🟡 coproduct
-dissolution — DECISIONS.md OS-1`. The emoji stays *on the coproduct* so
-a reader sees the classification at the type; the decision-making (the
-ledger, the dissolution patterns tried, the 🟡 gate) lives in
-`DECISIONS.md`. A coproduct with no in-file 🟢/🟡/🔴 tag, or no
-`DECISIONS.md` classification entry, is unfinished modeling and blocks
-review.
+or a `.dag` `type X = A | B | …`) must be classified (🟢/🟡/🔴). **The
+coproduct itself keeps a required one-line classification tag carrying
+the 🟢/🟡/🔴 emoji** (operator directive 2026-05-17) — e.g. `//
+🟡 coproduct dissolution`. The emoji stays *on the coproduct* so a
+reader sees the classification at the type. 🟡 gate binding is on the in-file tag
+(`feature:` / `consumer:`); verbose dissolution-pattern analysis is argued in
+**PR review** (or an [INVARIANTS.md](../INVARIANTS.md) §P5 /
+[`src/v4/TASKS.md`](../src/v4/TASKS.md) row when receipt-shaped). A coproduct
+with no in-file 🟢/🟡/🔴 tag is unfinished modeling and blocks review.
 
 **The lookup smell (the consumer-trigger backstop).** A `match` over a
 foreign-label coproduct, written *inside a consumer* — a lens, a
@@ -250,12 +273,20 @@ machine-checked meta-lens detects fired triggers, this review smell *is*
 the enforcement.
 
 **Scaffold exception:** early-milestone code (marked `// scaffold:
-<sunset-milestone>`) can defer its `DECISIONS.md` classification *ledger*
-until the sunset milestone. The exception covers the ledger only — the
-required one-line 🟢/🟡/🔴 tag on the coproduct itself is **not**
-waived (a scaffold coproduct still carries it, typically
-`// 🟡 feature:<sunset-milestone> — DECISIONS.md …`, the milestone being
-the gate). Scaffolds must be revisited before sunset.
+<sunset-milestone>`) can defer only the *verbose* dissolution-patterns-tried
+analysis until the sunset milestone. The exception covers that analysis
+**only**. It does **not** waive: (a) the required one-line 🟢/🟡/🔴 tag
+on the coproduct; nor (b) — for a 🟡 — the **bound dissolution plan**
+(the named missing primitive/consumer, its owning substrate PR or task,
+and the dissolve-on-arrival follow-up), on the in-file 🟡 tag and in **PR review**.
+A 🟡's
+plan-binding is the minimum that makes it a *valid* 🟡 (see the 🟡
+disposition above). The gate names the **concrete missing primitive**,
+e.g. `// 🟡 feature:<missing-primitive>` — a bare `<sunset-milestone>` is
+**not** a valid gate (a milestone-only gate leaves the dissolution path
+non-checkable); the sunset milestone records *when* the scaffold is
+revisited, not *what* it waits on. Scaffolds must be revisited before
+sunset.
 
 **Worked example (v2 retrospective):** `v2::ExprData` had 22 variants.
 Failed pattern 1 (every consumer dispatches on all 22), pattern 2
@@ -366,7 +397,7 @@ that looks like modeling and isn't.
 Modeling is mandatory; deduplication is conditional. You MUST model the
 facts. You may collapse your model onto a `std/` carrier ONLY when you
 have **proven** the two coincide — and *coincide* has a precise meaning
-(see DECISIONS.md): both groundings, reduced to canonical `Node`s, are
+(see `docs/modeling/grounding-worked-examples.md`): both groundings, reduced to canonical `Node`s, are
 structurally equal, expressed in shared `std/` vocabulary. Identity is
 an evidenced claim, never an assumed default. "These are obviously the
 same" is not evidence.
@@ -458,7 +489,9 @@ A declaration is **hollow** when *all three* hold:
 2. its subject is an **external spec primitive** — something a
    language / format / framework specification names and states facts
    about; **and**
-3. it carries **no coincidence evidence** — no `src/v4/DECISIONS.md`
+3. it carries **no coincidence evidence** — no cited row in
+   [`docs/modeling/grounding-worked-examples.md`](modeling/grounding-worked-examples.md)
+   proving coincidence
    entry proving `X` and `Y` coincide, cited from the file by at most a
    one-line tag (Practice 9).
 
@@ -487,12 +520,18 @@ the answer is no.
 A `.dag` file's comments are **not a parallel prose authority**. After
 modeling, a file's comments carry only what a mechanical consumer or a
 reviewer needs *to use the file* — never rationale, never narration,
-never a record of the work done. Rationale lives in `src/v4/DECISIONS.md`
-(single authority); process notes live in the commit message. A comment
+never a record of the work done. Rationale is argued in **PR review**;
+process notes live in the commit message. A comment
 that records that the file was de-prosed is itself the prose to remove.
 
 **The spec.** After de-prose, a `.dag` file's comments are ONLY these
-four things — nothing else survives:
+four things — nothing else survives — **except** the narrow **RULING-1**
+carve-out for the five files regenerated by `scripts/strict_deprose_dag.py`
+(ratified in this document's Practice 9 + operator directive, **RULING-1
+slice groundedness**): one **emoji-only** line (`// 🟡` or `// 🟢`)
+immediately after the live script-enforced `// Ledger: …` slug line and
+before `module`. No other `.dag` file may use that convention without
+extending the script allowlist (and operator ratification).
 
 1. **Line 1** — the file-path line.
 2. **A terse header** — exactly four lines: `Scope:` (one line),
@@ -504,23 +543,24 @@ four things — nothing else survives:
    - **Required — coproduct classification tag.** Every coproduct (a
      `type` with N ≥ 2 variants) carries a one-line tag with its
      🟢/🟡/🔴 classification emoji (operator directive 2026-05-17), e.g.
-     `// 🟡 coproduct dissolution — DECISIONS.md OS-1`. The emoji stays
-     *on the coproduct*; the ledger / dissolution patterns / named
-     trigger live in `DECISIONS.md` (Practice 4). This is not optional —
-     a coproduct with no in-file 🟢/🟡/🔴 tag blocks review.
+     `// 🟡 coproduct dissolution`. The emoji stays *on the coproduct*
+     (Practice 4). 🟡 gate binding is on the in-file tag; verbose analysis in
+     **PR review**. This is not optional — a coproduct with no in-file 🟢/🟡/🔴
+     tag blocks
+     review.
    - **Optional — concept tag / cite.** For any type, at most one
      further one-liner where genuinely useful: a concept tag where the
-     concept is non-obvious from name + structure, *or* a one-line cite
-     to a `DECISIONS.md` entry (e.g. `// coincides: <DECISIONS.md ref>`
-     — the Practice-8 coincidence cite).
+     concept is non-obvious from name + structure, *or* a one-line
+     coincidence cite (Practice 8) when reuse is non-obvious.
    Never a description of the type; never a `Practice N: ...` rationale
    line; never a `see docs/X` pointer.
 
 Everything else is **removed**: per-type descriptions, all Practice-N
 rationale, all multi-line rationale, `Seams`/`Brief`/process-meta
-blocks. Architectural decisions move to `src/v4/DECISIONS.md`; process
-notes — de-prose receipts, "HEADER RECONCILE", "per directive X" — move
-to the **commit message**, never the file.
+blocks. Architectural decisions land in [`src/v4/TASKS.md`](../src/v4/TASKS.md) or
+[INVARIANTS.md](../INVARIANTS.md) §P5; process notes — de-prose receipts,
+"HEADER RECONCILE", "per directive X" — move to the
+**commit message**, never the file.
 
 **What to check:** count `comment-lines / total-lines`. The hard target
 is that a modeled `.dag` file is roughly **under 20% comment lines**. A
@@ -536,7 +576,7 @@ are. Never pad a file to lower the percentage — content-compliance
 (comments are *only* the four allowed things) is the real bar.
 
 **Why:** prose in the file is a second authority. It drifts from the
-structure it narrates and from `DECISIONS.md`; it is the
+structure it narrates; it is the
 documentation-side hollow alias (Practice 8) — it looks like modeling
 and isn't. The structure *is* the model; the terse header is the single
 machine-readable boundary contract; everything else is removed.
@@ -548,26 +588,27 @@ classification + ledger/trigger (Practice 4), a coincidence-evidence
 proof (Practice 8). Practice 9 supersedes all of them, under one uniform
 rule:
 
-- the **record relocates** — an architectural decision, a classification
-  *ledger*, a discard justification, a coincidence proof all move to
-  `src/v4/DECISIONS.md`; a process receipt (`HEADER RECONCILE`, "per
-  directive X", a de-prose note) moves to the **commit message**;
+- the **record relocates** — the inline 🟢/🟡/🔴 mark (and `feature:`/`consumer:`
+  gate on 🟡) stays on the carrier; verbose dissolution-pattern analysis and
+  architectural debate are argued in **PR review**; coincidence proofs land in
+  [`docs/modeling/grounding-worked-examples.md`](modeling/grounding-worked-examples.md);
+  hand-Rust / test receipts in [INVARIANTS.md](../INVARIANTS.md) §P5(b);
+  task-scoped substrate in [`src/v4/TASKS.md`](../src/v4/TASKS.md). Process
+  receipts (`HEADER RECONCILE`, "per directive X", a de-prose note) move to the
+  **commit message**;
 - the `.dag` file keeps the **item-4 one-line tag** — for a coproduct, a
   *required* 🟢/🟡/🔴 classification tag (e.g.
-  `// 🟡 coproduct dissolution — DECISIONS.md OS-1`); optionally one
-  further concept tag or a one-line `// coincides: <DECISIONS.md ref>`
-  cite. The classification *emoji* stays on the coproduct; only the
-  *ledger / patterns-tried / 🟡 gate* relocate.
+  `// 🟡 coproduct dissolution`); optionally one further concept tag or
+  coincidence cite. The classification *emoji* stays on the coproduct.
 
 Wherever an earlier Practice says "record X in a comment," read it as
-"record X in `DECISIONS.md`; the file keeps the one-line tag." The same
-applies to `DECISIONS.md` rules that mandated an in-file block — D5's
+"keep the one-line tag on the carrier; land non-comment receipts per the
+header block; argue verbose analysis in PR review." D5's
 `HEADER RECONCILE` receipt moves to the commit message. No earlier
 in-file *artifact mandate* survives un-superseded by Practice 9. This
 does not mean the file carries no comments at all: Practice 9 itself
 *authorizes* the four allowed classes — including the **required**
-one-line 🟢/🟡/🔴 coproduct tag (item 4). Practice 9 relocates the
-ledger/rationale/receipt prose; it authorizes the terse one-line tag.
+one-line 🟢/🟡/🔴 coproduct tag (item 4).
 
 ### 10. Don't hand-roll a derived operation
 
@@ -579,10 +620,8 @@ the code. The fix is never to polish the hand-rolled construct — it is to
 model the missing fact, or name the missing substrate primitive, and let
 the operation be derived.
 
-**The invariant this implements** (proposed — pending operator
-ratification, rework-tracker PR #3240 task A1; on ratification it lands
-in [INVARIANTS.md](../INVARIANTS.md) / [MODELING.md](../MODELING.md), and
-this Practice cites it directly):
+**The invariant this implements** (see [INVARIANTS.md](../INVARIANTS.md)
+P1 and [MODELING.md](../MODELING.md) M1):
 
 > **Do not hand-roll a derived operation.** If a function's behavior is
 > determined entirely by the shape of a modeled type, it is re-deriving
@@ -633,9 +672,14 @@ vocabulary:
   rather than to do structurally distinct work. The property is a fact
   the model should carry and the code should *read*. Canonical shape: a
   coproduct discriminant — `free_monoid_non_empty` hand-rolling `match xs
-  { Empty => false ; Cons => true }` derives "which variant" by hand
-  where the coproduct already carries it. On a substrate / `std/` /
-  reusable algebraic helper this is unconditionally blocking.
+  { Empty => false ; Cons => true }`, or `nat_is_zero` hand-rolling
+  `Zero => true ; Succ => false`, derives "which variant" by hand where
+  the coproduct already carries it. Mechanical trigger: any new `is_*`,
+  `has_*`, `*_is_*`, `*_has_*`, `non_empty`, `is_empty`, or similar
+  `Bool` helper over a coproduct that `match`es the value and returns
+  `true` for one variant and `false` for another is predicate
+  dissolution until proven otherwise. On a substrate / `std/` / reusable
+  algebraic helper this is unconditionally blocking.
 - **walker dissolution** *(new)* — Practice 7 lifted from
   declaration-families to *traversal*: a function that hand-rolls
   recursion over a structural type (`Node`, AST) — per-node-kind `match`
@@ -652,6 +696,32 @@ vocabulary:
   string-templating" rule: a string-templated emitter
   (`template: "Vec<{0}>"`) where grammar-as-declarative-bidirectional-data
   belongs. The emit-side mirror of walker dissolution.
+
+**The inverse direction — nominalization.** Every finding above detects
+*under-modeling*: a hand-rolled construct that should be modeled or
+derived. **Nominalization** is the opposite error — *over-modeling*: an
+operation declared as a *type*. It is camouflaged precisely because it
+*looks* like good modeling — it is *more* type declaration, not less —
+so a reviewer scanning for "is this modeled enough?" reads it as
+compliant, even exemplary. The rubric checks **both** directions; the
+over-modeling direction must be looked for on purpose.
+
+- **nominalization** *(new)* — an operation (a function), or a derived
+  operation, declared as a *type*. The tell is a struct whose only
+  field(s) are functions and which has no `data` instances —
+  `type ListMap<T, U> { apply: fn(List<T>, fn(T) -> U) -> List<U> }`.
+  **Discriminant: does the type have more than one meaningful
+  inhabitant?** A genuine algebraic *structure* does — `Monoid<T>` has
+  the additive monoid, the multiplicative monoid, … — so it is a
+  legitimate type. A combinator does not: there is exactly one
+  list-`map`. *A type with exactly one meaningful inhabitant is an
+  operation in disguise — it must be a `fn`* with a real body, or a
+  derived operation. The degenerate single-field `{ field: T }` wrapper
+  repeated across N near-identical subjects (e.g. `{ spelling: String }`
+  across the seven URI components) is the same finding — N hollow
+  wrappers standing where modeled facts belong. Disposition: normally
+  🔴 — rewrite as a `fn`; 🟡 only if it should be a *derived* operation
+  and the derivation primitive is absent.
 
 **Disposition — per the shared Dissolution dispositions (Practice 4).**
 Every dissolution finding — and every audited function that turns out
@@ -675,11 +745,11 @@ it is what stops a reviewer from wrongly demanding the impossible:
   recursion or `match` is genuinely irregular (the call graph is not the
   data graph), or the construct already uses the derived operation.
 
-The retroactive v4 dissolution audit (rework-tracker PR #3240 task C1)
-applies this legend per-file, per-finding — a symbol-marked inventory,
-not prose. The symbol records a finding's *disposition*; the matching
-in-file `.dag` tag lands with the fix, per migration PR — it is not
-retro-applied across all v4 files at once.
+The retroactive v4 dissolution audit applies this legend per-file,
+per-finding — a symbol-marked inventory, not prose. The symbol records a
+finding's *disposition*; the matching in-file `.dag` tag lands with the
+fix, per migration PR — it is not retro-applied across all v4 files at
+once.
 
 **Decidability — checker-flaggable vs reviewer-judgment.** Every
 dissolution finding is **blocking** — there is no advisory tier and no
@@ -697,50 +767,70 @@ would:
 | walker dissolution | structural on the clean shape (recursion mirrors a modeled type) | **blocking** — hard error on the clean shape; genuinely-irregular recursion (call graph ≠ data graph) is a clean 🟢, not an advisory |
 | traverse dissolution | structural on the clean shape (a `fold` body that is a carrier short-circuit ladder) | **hard error** on the clean shape |
 | emit/template dissolution | structural — a literal template-string field | **hard error** on the literal-template shape |
+| nominalization | structural — a struct whose only fields are functions with no `data` instances, or N near-identical single-field wrappers | **hard error** on the wrapper shape |
 | predicate dissolution | judgment — a `match` *may* be genuinely distinct work, not a derived property | **blocking** — a reviewer who identifies it blocks the PR; a `match` that is genuinely distinct work is a clean 🟢. No advisory / candidate tier. |
-| coproduct dissolution | already enforced — per-coproduct 🟢/🟡/🔴 tag + `DECISIONS.md` ledger (Practices 4 / 9) | already enforced |
+| coproduct dissolution | already enforced — per-coproduct 🟢/🟡/🔴 tag (Practices 4 / 9); rationale in PR review | already enforced |
 
 The *enforcement mechanism* — the checker-script build path and the
-eventual dissolution lens — is design work, specified in the planned
-`docs/design-dissolution-lens.md` (rework-tracker PR #3240 task B1). This
-Practice carries only the classification, which is discipline a reviewer
-applies by hand. Worked examples — the #3225 dissolution inventory — land
-in [modeling/grounding-worked-examples.md](modeling/grounding-worked-examples.md)
-(PR #3240 task B2).
+eventual dissolution lens — is design work, specified in
+`docs/design-dissolution-lens.md`. This Practice carries only the
+classification, which is discipline a reviewer applies by hand. Worked
+examples live in
+[modeling/grounding-worked-examples.md](modeling/grounding-worked-examples.md).
 
 **What to check.** For any function in the diff: is its behavior fixed by
 the *shape* of a modeled type rather than by logic unique to this call
 site? If yes, it is a candidate dissolution finding — identify the
 registry row, then mark the disposition (🔴 dissolve-now / 🟡 gated /
 🟢 clean).
+For predicates, verification helpers, and structural walkers, look for
+direct matches on lower-layer representation (`Empty`/`Cons`, enum
+variants, field conventions, ad hoc list traversal) when a canonical
+fold, accessor, query, or substrate fact already exists or should exist.
+Do several functions repeat the same recursion? Does the PR call the
+helper a "refinement predicate", "short-circuiting primitive", or
+"matches sibling style" without explaining why that requires a separate
+walker? Those are not sufficient answers: preserve semantic requirements
+such as short-circuiting in the canonical surface, and treat existing
+sibling helpers with the same shape as accumulated debt, not precedent.
+A coproduct's 🟢/🟡/🔴 tag does not disposition a predicate over that
+coproduct; predicate dissolution lives on the consumer function and
+needs its own disposition.
 **Not when** the recursion or `match` is genuinely irregular — the call
 graph is not the data graph, the branches do genuinely distinct work.
 Irregularity is the honest escape hatch: a derived operation is one whose
 shape *is* the data's shape.
 
-## Calibration: Blocking vs Non-blocking
+## Calibration: Blocking vs Omit
 
 A finding is **BLOCKING** if fixing it in a later PR would be meaningfully
 harder than fixing it now — i.e., if merging this PR commits the project
 to a shape that is expensive to change.
 
-A finding is **NON-BLOCKING** if it's a cleanup that can land later at
-roughly the same cost.
+Do not use a nit/advisory finding as a third category. If a concern is
+valid and PR-relevant, request changes. If it is not serious enough to
+require action, omit it from the review.
 
 **Substrate-level issues are almost always BLOCKING** because the
 substrate sets patterns that get copied. Once a bad shape propagates
 through three consumers, changing it means changing all three plus the
 substrate.
 
-**Performance issues are almost always NON-BLOCKING** because they can
-be optimized later without changing interfaces.
+**Performance issues are usually omitted** unless they change interfaces,
+make a bound false, or create a concrete invariant violation.
 
 **Test coverage gaps depend:** gap in a high-risk invariant → BLOCKING;
-gap in a low-risk area → NON-BLOCKING.
+gap in a low-risk area → omit.
 
 **When in doubt, prefer BLOCKING.** It is better to ask for a small
 rework now than to accept a substrate bug that propagates through three
 milestones before anyone notices.
+
+**Dissolution findings (Practice 10) are an always-BLOCKING class.** A
+dissolution finding — walker / traverse / predicate / carrier /
+emit-template — is resolved only by a 🔴 / tracked-🟡 / substantiated-🟢
+disposition (Practice 10), never graded advisory and never waved off as
+a cleanup or by free-text "intentional, no code change."
 
 ## For Reviewers
 
@@ -757,8 +847,8 @@ For each relevant principle and its implementing practices:
    or merely behavioral (convention).
 4. For new coproducts: verify the coproduct carries its required
    one-line 🟢/🟡/🔴 classification tag *in the file* (Practice 4 /
-   Practice 9 item 4) **and** has a `DECISIONS.md` entry for the ledger /
-   patterns-tried / gate. **Merge requirement — every 🟡 binds a
+   Practice 9 item 4) **and** states dissolution patterns / gate binding in
+   **PR review** when non-obvious. **Merge requirement — every 🟡 binds a
    dissolution plan:** the gate kind (`feature:`/`consumer:`), the named
    missing primitive/consumer, the substrate PR or task that will land
    it, and the dissolution follow-up that converts the 🟡 to 🟢. A 🟡
@@ -778,7 +868,7 @@ For each relevant principle and its implementing practices:
    it is a fact-bundle (invents the facts the spec states) or a *cited*
    coincidence reuse of a `std/` carrier — not a bare alias. Apply the
    structural fact-density gate: a bare alias of a spec primitive with
-   no coincidence-evidence `DECISIONS.md` entry is hollow and blocks. For any emit
+   no PR-reviewed coincidence evidence is hollow and blocks. For any emit
    artifact: verify it is grounded grammar-as-data, not a string
    template.
 7. For any `.dag` file in the diff (Practice 9): count `comment-lines /
@@ -786,7 +876,7 @@ For each relevant principle and its implementing practices:
    has not been de-prosed — the comments must reduce to the four allowed
    things (file-path line, terse four-line header, per-carrier anchor,
    one-line tag: the required 🟢/🟡/🔴 tag on each coproduct plus an
-   optional concept tag / `DECISIONS.md` cite). Process-meta prose in the file
+   optional concept tag / coincidence cite). Process-meta prose in the file
    (`HEADER RECONCILE`, de-prose receipts) is itself a finding.
 8. For cross-stage boundaries: verify facts flow forward.
 9. For any function whose behavior is fixed by a modeled type's shape
@@ -801,8 +891,11 @@ For each relevant principle and its implementing practices:
    the Calibration section). A hand-rolled registry row 3 (translation) or 4 (coercion)
    carries **no** numbered finding — it is a whole-architecture
    escalation, not a function-scale review finding (per Practice 10's
-   rows-3/4 carve-out).
-10. Classify every finding as BLOCKING or NON-BLOCKING per the calibration
+   rows-3/4 carve-out). For any `is_*`, `has_*`, `*_is_*`, `*_has_*`,
+   `non_empty`, `is_empty`, or similar `Bool` helper over a coproduct,
+   verify the function itself has a 🔴/🟡/🟢 disposition; the coproduct's
+   tag alone is not enough.
+10. Classify every finding as BLOCKING or omit it per the calibration
     above.
 
 This document is the distilled version of modeling principles. For the

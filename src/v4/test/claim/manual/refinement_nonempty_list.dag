@@ -1,0 +1,26 @@
+// src/v4/test/claim/manual/refinement_nonempty_list.dag
+// Scope: acceptance witness — NonEmptyList resolves as a List refinement Refined<List<T>>, not a separate carrier.
+// Owns: NonEmptyList, refinement_empty_list_reason, witness_non_empty_list.
+// Consumes: std refinement, std collection, std diagnostic, std node.
+// Status: T-25-core acceptance witness; eval T-22.
+
+
+module v4.test.claim.manual.refinement_nonempty_list
+
+
+import v4.std.refinement { Refined, Validation, refine }
+import v4.std.collection { List, non_empty }
+import v4.std.diagnostic { Locus, Outcome }
+import v4.std.node { Symbol }
+type NonEmptyList<T> = Refined<List<T>>
+data refinement_empty_list_reason: Symbol = refinement_empty_list_reason
+fn witness_non_empty_list<T>(xs: List<T>, at: Locus) -> Outcome<NonEmptyList<T>> {
+  refine(
+    base: xs,
+    by: Validation {
+      reason: refinement_empty_list_reason,
+      admits: fn(items) { non_empty(xs: items) }
+    },
+    at: at
+  )
+}

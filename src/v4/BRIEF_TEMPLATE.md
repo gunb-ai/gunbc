@@ -41,6 +41,26 @@ DISCIPLINE (non-negotiable):
   - Cost-of-change: changes here should not ripple to other files
     (if they do, the substrate is wrong — surface, do not work around)
 
+BURN-DOWN OUTPUT BAR (per docs/modeling-discipline.md — Practices 4, 7–10;
+  same numbering as that doc only; not a parallel rubric):
+  - **Practice 7 — projection, not enumeration:** derived operations (map /
+    filter / …) come from eliminators (`fold`, projections), not hand-zoos
+    of nominal one-field wrappers.
+  - **Practices 8 / 9 — fact-bundle / no-prose:** no hollow carriers;
+    deferral rationale lives in PR review / INVARIANTS §P5 — not multi-line
+    `.dag` comment expansion.
+  - **Practice 4 — dissolution dispositions on substrate PRs:** any
+    dissolution-class surface in the diff must carry an explicit **🔴 / 🟡 /
+    🟢** disposition (shared legend in modeling-discipline) consistent with PR
+    #3244: **🟢** means *genuinely no dissolution work* (must **not** name a
+    downstream dissolve substrate in the same breath); **🟡** names the **named
+    primitive + substrate node + dissolve-on-arrival** follow-up; **🔴** fixes
+    here. (Practice 10 in that doc is the derived-operation / dissolution-
+    findings *review* class; disposition tags themselves are Practice 4.)
+  - **Manager pre-gate (burn-down lane):** before `gh pr ready`, the manager
+    reads every disposition for internal consistency; workers do not flip
+    ready on self-disposition alone.
+
 TEST SURFACE:
   src/v4/test/claim/<path>/*.dag — TestClaim data
   Each TestClaim is typed input + expected output, no Rust
@@ -86,7 +106,7 @@ and why). Do not proceed until operator commits a decision.
 
 ## Why STOP TRIGGERS are non-negotiable
 
-Per `STRUCTURE.md` "Zero-deferrals discipline" — the v4 program exists
+Per zero-deferrals discipline (THESIS / INVARIANTS) — the v4 program exists
 because v3 failed at exactly this surface. v3 workers hit hard
 decisions, made local choices to keep moving, and the local choices
 accumulated into substrate drift that took operator intervention to

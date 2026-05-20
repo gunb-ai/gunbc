@@ -4,7 +4,8 @@
 // Anchor: THESIS:95-101 (user-defined dimensions) + THESIS:307-321 (audience duality / opt-in depth) + r3-structure.md:40 (v3 T-Lens-Application-Surface precedent)
 //
 // Owns:
-//   - EnforcedApplication<Output, Budget> (lens, section, budget, severity, span)
+//   - EnforcedApplication<Output, Budget, Projected> (enforceable_lens, section,
+//     budget, diagnostic_severity, span)
 //   - IntrospectApplication<Output> (lens, section, span; no Budget — advisory)
 //   - SectionRef = DeclarationScope | NodeScope (disjoint sum; where the lens attaches)
 //   - apply_lens(lens, section, config) — the user-facing surface
@@ -124,6 +125,7 @@
 // Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
 // contract for the worker. Splitting this file requires explicit operator
 // ratification (substrate extension = stop signal).
+// See (T-23-PIN).
 
 module v4.lens.application
 

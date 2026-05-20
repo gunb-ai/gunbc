@@ -1,52 +1,308 @@
 // src/v4/extdeps/languages/machine_code.dag
-//
-// Scope: machine code model — direction-agnostic, the BOTTOM of the
-//        abstraction stack. emit: Node -> encoded instructions; ingest:
-//        bytes -> Node (disassembly). PARAMETERIZED BY AN ISA model:
-//        one machine_code model, the ISA is the parameter, exactly as
-//        `LanguageModel` parameterizes the B2-OMNI boundary
-//        (fractal/consistent; O(N+M), not one file per ISA).
-// Anchor: the ISA specification is the (parameterized) versioned fidelity
-//         authority (L-2) — Intel 64 & IA-32 Architectures SDM /
-//         Arm Architecture Reference Manual (Arm ARM); pin a revision.
-// Stress (T-4.13 — a B2-OMNI falsification probe): the extreme of every
-//   boundary. (a) No cosmetic surface at all — F is purely instruction
-//   encoding; the strongest test that C5-fidelity holds at the limit.
-//   (b) Disassembly is ingest-is-harder taken to the extreme: MOST byte
-//   sequences are not valid/meaningful instructions → the fail-closed
-//   boundary is enormous. A disassembler that "guesses" is the no-engine
-//   violation made visible — this probe forces fail-closed honesty.
-// Clear win: `.dag → machine code` (we don't *necessarily* output a
-//   binary — we CAN), and `bytes → Node` disassembly, both via one
-//   ISA-parameterized model.
-//
-// Shape (operator-ratified L-3): ONE `machine_code.dag` parameterized by
-//   an `Isa` model. Per-ISA files (`x86_64.dag`, `arm64.dag`, …) would
-//   reintroduce the N×M trap B2-OMNI forbids.
-//
-// Owns:
-//   - machine_code grammar parameterized by `Isa` (declarative,
-//     bidirectional): instruction encoding/decoding, registers, operands
-//   - disassembly ingest is fail-closed: a byte run that does not decode
-//     to a valid instruction is a Diagnostic, NEVER a fabricated/"best
-//     effort" instruction (no-engine, C5)
-//   - Cost realization: per-instruction cost on the parameterized ISA
-//
-// Consumes:
-//   - std/node.dag: Node pivot + behavior substrate
-//   - std/diagnostic.dag: fail-closed ingest/disassembly diagnostics
-//   - std/machine.dag: Byte, Word*, MachineWidth, PointerWidth
-//   - extdeps/languages/* canonical LanguageModel shape from T-4
-//
-// Prerequisite correction (T-4.13): this file is NOT fillable after T-1
-// alone. The worker must wait for std/machine.dag (T-3 scalar/numeric
-// stack: logic + nat -> machine) and T-4's canonical LanguageModel-as-data
-// shape. Do not invent local Byte/Word carriers or a private language model
-// schema here.
-//
-// Status: scaffold — fill per TASKS.md T-4.13
-// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
-// contract for the worker. Splitting this file requires explicit operator
-// ratification (substrate extension = stop signal).
+// Scope: machine-code language model parameterized by Isa.
+// Owns: Isa, ByteOrder, InstructionLength, InstructionByteLimitRef, OperandFieldWidthRef, Symbol, MachineIntKind, MachineIntWidth, MachineScalar, MachineDisplacement32WidthClass, MachineDisplacement64WidthClass, MachineSignedDisplacement32, MachineSignedDisplacement64, InstructionWord, RegisterClass, RegisterDeclaration, RegisterRef, IndexScale, AddressingMode, Operand, ByteSequence, InstructionProductionRef, RegisterOperandSlotRef, ImmediateOperandSlotRef, MemoryOperandSlotRef, ImmediateOperandTarget, ImmediateOperandConstraint, MemoryOperandConstraint, InstructionOperandSlot, InstructionProduction, OperandBinding, DecodedInstruction, MachineFidelityFeature, MachineFidelityDisposition, MachineIntegerOverflowBehavior, MachineIntegerOperationSemantics, FlagWriteDisposition.
+// Consumes: List, Byte.
+// Status: D2-REV; 🟢 P4-3208 — (machine_code scalar + displacement + ledger).
 
 module v4.extdeps.languages.machine_code
+
+
+import v4.std.collection { List }
+import v4.std.machine { Byte }
+
+
+// Twin of `v4.std.node.Symbol` — M1(2.7) compile_to_dag import lowering; see lean.dag.
+type Symbol
+
+
+// Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
+// 🟢 coproduct dissolution — P4-3208.
+type Isa
+  = X86_64Isa { revision: Symbol }
+  | Aarch64Isa { revision: Symbol }
+  | RiscV64Isa { revision: Symbol }
+
+
+// Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
+// 🟢 coproduct dissolution — P4-3208.
+type ByteOrder
+  = LittleEndian
+  | BigEndian
+
+
+// Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
+// 🟢 coproduct dissolution — P4-3208.
+type InstructionLength
+  = FixedLength { width: InstructionWord }
+  | VariableLength { max_bytes: InstructionByteLimitRef }
+
+
+// Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
+type InstructionByteLimitRef {
+  isa: Isa,
+  limit: Symbol
+}
+
+
+// Anchor: https://github.com/riscv/riscv-isa-manual/releases/tag/20240411
+type OperandFieldWidthRef {
+  isa: Isa,
+  width: Symbol
+}
+
+
+// Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
+// 🟢 coproduct dissolution — P4-3208.
+type MachineIntKind
+  = Signed
+  | Unsigned
+
+
+// Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
+// 🟢 coproduct dissolution — P4-3208.
+type MachineIntWidth
+  = Bits8
+  | Bits16
+  | Bits32
+  | Bits64
+  | Bits128
+
+
+// Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
+// 🟢 coproduct dissolution — P4-3208
+type MachineScalar
+  = IntScalar { kind: MachineIntKind, width: MachineIntWidth }
+
+
+// Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
+// 🟢 coproduct dissolution — P4-3208
+type MachineDisplacement32WidthClass
+  = DisplacementEncodingBits32 {}
+
+
+// Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
+// 🟢 coproduct dissolution — P4-3208
+type MachineDisplacement64WidthClass
+  = DisplacementEncodingBits64 {}
+
+
+// Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
+type MachineSignedDisplacement32 {
+  width: MachineDisplacement32WidthClass
+}
+
+
+// Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
+type MachineSignedDisplacement64 {
+  width: MachineDisplacement64WidthClass
+}
+
+
+// Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
+// 🟡 feature:fixed-cardinality-width-carrier — P4-3208
+// 🟡 coproduct dissolution — P4-3208.
+type InstructionWord
+  = Instr16
+  | Instr32
+  | Instr64
+  | Instr128
+
+
+// Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
+// 🟢 coproduct dissolution — P4-3208.
+type RegisterClass
+  = GeneralPurposeRegister
+  | FloatingPointRegister
+  | VectorRegister
+  | PredicateRegister
+  | FlagsRegister
+  | ControlRegister
+
+
+type RegisterDeclaration {
+  isa: Isa
+  name: Symbol
+  class: RegisterClass
+}
+
+
+type RegisterRef {
+  declaration: RegisterDeclaration
+}
+
+
+// Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
+// 🟢 coproduct dissolution — P4-3208.
+type IndexScale
+  = Scale1
+  | Scale2
+  | Scale4
+  | Scale8
+
+
+// Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
+// 🟢 coproduct dissolution — P4-3208.
+type AddressingMode
+  = AbsoluteAddress { displacement: MachineSignedDisplacement64 }
+  | RegisterIndirect { base: RegisterRef }
+  | BaseDisplacement { base: RegisterRef, displacement: MachineSignedDisplacement32 }
+  | BaseIndexScale {
+      base: RegisterRef,
+      index: RegisterRef,
+      scale: IndexScale,
+      displacement: MachineSignedDisplacement32
+    }
+  | PcRelative { displacement: MachineSignedDisplacement32 }
+
+
+// Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
+// 🟢 coproduct dissolution — P4-3208.
+type Operand
+  = RegisterOperand { register: RegisterRef }
+  | ImmediateOperand { bytes: ByteSequence, order: ByteOrder }
+  | MemoryOperand { mode: AddressingMode }
+
+
+type ByteSequence {
+  bytes: List<Byte>
+}
+
+
+type InstructionProductionRef {
+  isa: Isa
+  opcode: Symbol
+}
+
+
+type RegisterOperandSlotRef {
+  slot: Symbol
+}
+
+
+type ImmediateOperandSlotRef {
+  slot: Symbol
+}
+
+
+type MemoryOperandSlotRef {
+  slot: Symbol
+}
+
+
+// Anchor: https://github.com/riscv/riscv-isa-manual/releases/tag/20240411
+// 🟢 coproduct dissolution — P4-3208.
+type ImmediateOperandTarget
+  = LiteralImmediate
+  | PcRelativeImmediate
+  | AbsoluteAddressImmediate
+
+
+type ImmediateOperandConstraint {
+  width: OperandFieldWidthRef
+  order: ByteOrder
+  target: ImmediateOperandTarget
+}
+
+
+// Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
+// 🟢 coproduct dissolution — P4-3208.
+type MemoryOperandConstraint
+  = AbsoluteAddressSlot { displacement_width: OperandFieldWidthRef }
+  | RegisterIndirectSlot { allowed_bases: List<RegisterRef> }
+  | BaseDisplacementSlot {
+      allowed_bases: List<RegisterRef>,
+      displacement_width: OperandFieldWidthRef
+    }
+  | BaseIndexScaleSlot {
+      allowed_bases: List<RegisterRef>,
+      allowed_indexes: List<RegisterRef>,
+      scale: IndexScale,
+      displacement_width: OperandFieldWidthRef
+    }
+  | PcRelativeSlot { displacement_width: OperandFieldWidthRef }
+
+
+// Anchor: https://github.com/riscv/riscv-isa-manual/releases/tag/20240411
+// 🟢 coproduct dissolution — P4-3208.
+type InstructionOperandSlot
+  = RegisterInstructionSlot {
+      name: RegisterOperandSlotRef,
+      allowed_registers: List<RegisterRef>
+    }
+  | ImmediateInstructionSlot {
+      name: ImmediateOperandSlotRef,
+      constraint: ImmediateOperandConstraint
+    }
+  | MemoryInstructionSlot {
+      name: MemoryOperandSlotRef,
+      constraint: MemoryOperandConstraint
+    }
+
+
+type InstructionProduction {
+  reference: InstructionProductionRef
+  slots: List<InstructionOperandSlot>
+}
+
+
+// 🟢 coproduct dissolution — P4-3208.
+type OperandBinding
+  = RegisterOperandBinding {
+      slot: RegisterOperandSlotRef,
+      register: RegisterRef
+    }
+  | ImmediateOperandBinding {
+      slot: ImmediateOperandSlotRef,
+      bytes: ByteSequence
+    }
+  | MemoryOperandBinding {
+      slot: MemoryOperandSlotRef,
+      mode: AddressingMode
+    }
+
+
+type DecodedInstruction {
+  production: InstructionProductionRef
+  operands: List<OperandBinding>
+}
+
+
+// Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
+// 🟢 coproduct dissolution — P4-3208.
+type MachineFidelityFeature
+  = ValidInstructionEncoding
+  | InstructionAliasSpelling
+  | PaddingByteRun
+  | UndecodableByteRun
+  | PrivilegedOrUndefinedEncoding
+  | IsaRevisionMismatch
+  | AmbiguousDecode
+
+
+// 🟢 coproduct dissolution — P4-3208.
+type MachineFidelityDisposition
+  = MachineModeled
+  | MachineDeclaredNormalized { feature: MachineFidelityFeature }
+  | MachineFailClosed { feature: MachineFidelityFeature }
+
+
+// Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
+// 🟢 coproduct dissolution — P4-3208.
+type MachineIntegerOverflowBehavior
+  = WrapModuloWidth
+  | TrapOnOverflow
+  | UndefinedByIsa
+
+
+type MachineIntegerOperationSemantics<IRCarrier> {
+  overflow: MachineIntegerOverflowBehavior
+  writes_flags: FlagWriteDisposition
+}
+
+
+// 🟢 coproduct dissolution — P4-3208.
+type FlagWriteDisposition
+  = DoesNotWriteFlags
+  | WritesArchitecturalFlags
+  | WritesPredicateRegister
+

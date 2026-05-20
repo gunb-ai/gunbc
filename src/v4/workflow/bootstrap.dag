@@ -1,84 +1,153 @@
 // src/v4/workflow/bootstrap.dag
-//
-// Scope: bootstrap orchestration AS DATA — the seed-once → self-host →
-//        fixed-point chain expressed as a .dag workflow, NOT a build.rs
-//        or shell script. v2's interpreter (`v2-compiler run`) executes
-//        this workflow; every step is data, so the bootstrap orchestration
-//        carries zero editable Rust authority.
-// Anchor: THESIS:223-226 (meta-process: "Bootstrap, CI, build orchestration
-//         ... modeled as .dag workflows") + docs/design-pure-bootstrap-zero.md
-//         §"N=0 runtime boundary" (seed is external-to-v4; here in-repo as
-//         frozen src/v2/, not in src/v4/)
-//
-// Owns:
-//   - BootstrapPlan: the ordered step sequence
-//     - Step seed:   v2-compiler compile --source-root src/v4 → emit Rust
-//                    to build-dir → rustc → v4-stage0 binary  (v2 = seed,
-//                    touched EXACTLY ONCE; v2's Rust lives in src/v2/,
-//                    outside src/v4/, and is frozen/CI-gated)
-//     - Step self0:  v4-stage0 compile src/v4 → emit Rust (v4's OWN
-//                    emission style) → rustc → v4-stage1
-//     - Step self1:  v4-stage1 compile src/v4 → emit Rust → rustc → v4-stage2
-//     - Step fixpt:  assert stage1-emitted == stage2-emitted (BitIdentical);
-//                    fixed point is stage1==stage2 (NOT stage0==stage1 —
-//                    stage0 is v2-emission-style, stage1+ is v4-style)
-//   - artifact pinning: v4-stage-final binary is content-addressed; its
-//     hash is the anti-regression anchor (T-15 BitIdentical TestClaim)
-//
-// A3 (operator-ratified 2026-05-15) — the retirement predicate, honestly:
-//   - `retired` is NOT a count of hand-Rust files (v3's gameable proxy —
-//     defeated by paper-shrink: template-relocation, module-relocation).
-//     It is a REPRODUCTION: rebuild from (.dag + frozen-pinned seed) ONLY
-//     reproduces the pinned hash AND the seed's own hash matches its pin.
-//     `HandResidual` = the Rust the .dag-rebuild cannot reproduce —
-//     empty BY REPRODUCTION, never BY COUNT.
-//   - This is NOT un-gameable (no structural mechanism is — Trusting-Trust;
-//     the pin/CI/seed are all editable by whoever commits). Its job is
-//     EARLY, LOUD SURFACING: run per-PR on the affected set (T-21/T-24) so
-//     a gaming attempt (un-pin/edit seed, relocate Rust authority, add a
-//     7th connective) is un-missable and routes to operator ratification
-//     the same commit — not silent drift found months later.
-//   - Seed trust is a NAMED AXIOM (built in the open, pinned at a known-
-//     good point), not a proof — stated honestly per feedback_no_engine.
-//     Any edit to / growth of src/v2/ is the maximally-conspicuous signal
-//     = STOP (INVARIANTS:136 bounded seed), routed to the operator.
-//   - Actual enforcement = operator-ratification spine + STOP-and-escalate
-//     culture + no proxy ratchet to game. Structure makes defection
-//     conspicuous, not impossible.
-//   - A4 corollary: a 7th connective / 6th behavior is the SAME machine —
-//     it changes the reproduction → conspicuous signal → STOP → human
-//     judgment. Not "the substrate refuses by construction."
-//   - PROOF-1 (operator-ratified 2026-05-15) — the EXTERNAL trust-
-//     discharge: gunbc's structural evidence (A2 descent, the algebra-
-//     homomorphism chain, cost, effects) is emitted as a machine-
-//     checkable proof term an external Lean/Coq KERNEL checks. Converts
-//     the seed-trust NAMED AXIOM above into an INTERSUBJECTIVE check
-//     against an anchor gunbc does not own — does NOT make it
-//     un-gameable (the external kernel + evidence-faithfulness are the
-//     new named axioms; trust MOVED, not eliminated). The lens exports
-//     witnesses already held; the prover only kernel-checks, never
-//     searches (no-engine + A2). Full framing: STRUCTURE.md §7 +
-//     DECISIONS.md PROOF-1.
-//
-// Discipline:
-//   - This file is the ONLY bootstrap authority. No build.rs, no bootstrap.sh.
-//     A worker reaching for shell/build.rs orchestration has reintroduced
-//     editable Rust authority = STOP signal (the v3 regression door).
-//   - v2 interprets this (`v2-compiler run workflow/bootstrap.dag`) — v2 is
-//     never compiled INTO v4; it is the external frozen seed.
-//   - Emitted Rust is transient (build-dir; option (a)); never committed,
-//     never editable authority. .dag is sole authority.
-//
-// Consumes:
-//   - extdeps/process.dag: spawn v2-compiler / rustc / v4-stage-N subprocesses
-//   - extdeps/file_system.dag: read src/v4/*.dag, write build-dir Rust
-//   - std/diagnostic.dag: fail-closed on any step
-//   - std/verification.dag: BitIdentical TestClaim for the fixed-point assert
-//
-// Status: scaffold — fill per TASKS.md T-20 (scaffold early; full self-host
-// content lands incrementally as the pipeline matures; T-15 consumes this
-// for fixed-point validation)
-// Brief: see BRIEF_TEMPLATE.md.
+// Scope: v4-owned bootstrap orchestration AS DATA — four stages (seed→stage0→stage1→stage2, fixpt stage1==stage2). compiled_by = stage compiler-of-record: seed←v2 (seed used once), self0←stage0, self1←stage1; v2 is never in the loop again (STRUCTURE.md "Seed used once" :404-405, SELF_HOSTING.md §meta-circular). The fixed-point binary is content-addressed by the pinned stage1/stage2 hash. Hash pin Symbols are placeholder identities unified by bootstrap_plan_well_formed.
+// Owns: CompileStage, FixptStage1Stage2, BootstrapPlan, bootstrap_stage_output, bootstrap_plan_well_formed, bootstrap_plan
+// Consumes: v4.std.node, v4.std.diagnostic, v4.std.algebra
+// Status: filled — compiler-of-record is the self-hosting structural fact; structural gate only.
 
 module v4.workflow.bootstrap
 
+import v4.std.node { Hash, Symbol }
+import v4.std.algebra {
+  free_monoid_count_equal,
+  free_monoid_forall,
+  free_monoid_length
+}
+import v4.std.diagnostic {
+  Correction,
+  Diagnostic,
+  Extent,
+  Locus,
+  NoCorrectionReason,
+  Outcome
+}
+
+data v4_dag_source: Symbol = v4_dag_source
+data v4_stage0_binary: Symbol = v4_stage0_binary
+data v4_stage1_binary: Symbol = v4_stage1_binary
+data v4_stage2_binary: Symbol = v4_stage2_binary
+data v2_pipeline: Symbol = v2_pipeline
+data bit_identical_check: Symbol = bit_identical_check
+data v4_stage0_hash_pin: Symbol = v4_stage0_hash_pin
+data v4_stage1_hash_pin: Symbol = v4_stage1_hash_pin
+data v4_stage2_hash_pin: Symbol = v4_stage2_hash_pin
+data pinned_v4_fixed_point_hash_pin: Symbol = pinned_v4_fixed_point_hash_pin
+// RULING-1: 🟡 needs-more-work — symbolic hash pins.
+data v4_stage0_hash: Hash = v4_stage0_hash
+data v4_stage1_hash: Hash = v4_stage1_hash
+data v4_stage2_hash: Hash = v4_stage2_hash
+data pinned_v4_fixed_point_hash: Hash = pinned_v4_fixed_point_hash
+
+type BootstrapHashPin {
+  digest: Hash
+  pin: Symbol
+}
+
+// RULING-1: 🟢 pretty-much-done — compiler-of-record chain.
+type CompileStage {
+  consumes: List<Symbol>
+  produces: Symbol
+  produces_hash: BootstrapHashPin
+  compiled_by: Symbol
+}
+
+// RULING-1: 🟢 pretty-much-done — fixed-point assertion endpoint.
+type FixptStage1Stage2 {
+  left: Symbol
+  left_hash: BootstrapHashPin
+  right: Symbol
+  right_hash: BootstrapHashPin
+  pinned_hash: BootstrapHashPin
+  via: Symbol
+}
+
+// RULING-1: 🟢 pretty-much-done — canonical bootstrap chain.
+type BootstrapPlan {
+  seed: CompileStage
+  self0: CompileStage
+  self1: CompileStage
+  fixpt: FixptStage1Stage2
+}
+
+data bootstrap_mis_wired: Symbol = bootstrap_mis_wired
+data bootstrap_workflow_file: Symbol = bootstrap_workflow_file
+
+fn bs_diagnostic(reason: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: Textual { file: bootstrap_workflow_file, extent: WholeFile },
+    correction: Unavailable { reason: AmbiguousIntent }
+  }
+}
+
+fn bs_list_eq(a: List<Symbol>, b: List<Symbol>) -> Bool {
+  (free_monoid_length(xs: a) == free_monoid_length(xs: b))
+    && free_monoid_forall(xs: a, predicate: fn(x) {
+         free_monoid_count_equal(xs: b, item: x, eq: fn(left, right) { left == right }) != 0
+       })
+    && free_monoid_forall(xs: b, predicate: fn(y) {
+         free_monoid_count_equal(xs: a, item: y, eq: fn(left, right) { left == right }) != 0
+       })
+}
+
+fn bootstrap_stage_output(plan: Outcome<BootstrapPlan>, s: Symbol) -> Bool {
+  match plan {
+    Produced { value: bp } => (s == bp.seed.produces) || (s == bp.self0.produces) || (s == bp.self1.produces)
+    Rejected { diagnostic: _ } => false
+  }
+}
+
+fn bootstrap_plan_well_formed(p: BootstrapPlan) -> Outcome<BootstrapPlan> {
+  if bs_list_eq(a: p.seed.consumes, b: [v4_dag_source])
+       && (p.seed.produces == v4_stage0_binary)
+       && (p.seed.compiled_by == v2_pipeline)
+       && bs_list_eq(a: p.self0.consumes, b: [v4_dag_source, v4_stage0_binary])
+       && (p.self0.produces == v4_stage1_binary)
+       && (p.self0.compiled_by == v4_stage0_binary)
+       && bs_list_eq(a: p.self1.consumes, b: [v4_dag_source, v4_stage1_binary])
+       && (p.self1.produces == v4_stage2_binary)
+       && (p.self1.compiled_by == v4_stage1_binary)
+       && (p.fixpt.left == v4_stage1_binary)
+       && (p.fixpt.right == v4_stage2_binary)
+       && (p.seed.produces_hash.pin == v4_stage0_hash_pin)
+       && (p.self0.produces_hash.pin == v4_stage1_hash_pin)
+       && (p.self1.produces_hash.pin == v4_stage2_hash_pin)
+       && (p.fixpt.left_hash.pin == v4_stage1_hash_pin)
+       && (p.fixpt.right_hash.pin == v4_stage2_hash_pin)
+       && (p.fixpt.left_hash.pin == p.fixpt.right_hash.pin)
+       && (p.fixpt.pinned_hash.pin == pinned_v4_fixed_point_hash_pin)
+       && (p.fixpt.left_hash.pin == p.fixpt.pinned_hash.pin)
+       && (p.fixpt.via == bit_identical_check) {
+    Produced { value: p }
+  } else {
+    Rejected { diagnostic: bs_diagnostic(reason: bootstrap_mis_wired) }
+  }
+}
+
+data bootstrap_plan: Outcome<BootstrapPlan> = bootstrap_plan_well_formed(p: BootstrapPlan {
+  seed: CompileStage {
+    consumes: [v4_dag_source],
+    produces: v4_stage0_binary,
+    produces_hash: BootstrapHashPin { digest: v4_stage0_hash, pin: v4_stage0_hash_pin },
+    compiled_by: v2_pipeline
+  },
+  self0: CompileStage {
+    consumes: [v4_dag_source, v4_stage0_binary],
+    produces: v4_stage1_binary,
+    produces_hash: BootstrapHashPin { digest: v4_stage1_hash, pin: v4_stage1_hash_pin },
+    compiled_by: v4_stage0_binary
+  },
+  self1: CompileStage {
+    consumes: [v4_dag_source, v4_stage1_binary],
+    produces: v4_stage2_binary,
+    produces_hash: BootstrapHashPin { digest: v4_stage2_hash, pin: v4_stage2_hash_pin },
+    compiled_by: v4_stage1_binary
+  },
+  fixpt: FixptStage1Stage2 {
+    left: v4_stage1_binary,
+    left_hash: BootstrapHashPin { digest: v4_stage1_hash, pin: v4_stage1_hash_pin },
+    right: v4_stage2_binary,
+    right_hash: BootstrapHashPin { digest: v4_stage2_hash, pin: v4_stage2_hash_pin },
+    pinned_hash: BootstrapHashPin { digest: pinned_v4_fixed_point_hash, pin: pinned_v4_fixed_point_hash_pin },
+    via: bit_identical_check
+  }
+})
