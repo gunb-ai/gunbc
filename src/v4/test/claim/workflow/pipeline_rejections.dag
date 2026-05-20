@@ -150,8 +150,8 @@ data inferred_type_symbol: Symbol = inferred_type_symbol
 data inferred_algebra_symbol: Symbol = inferred_algebra_symbol
 data inferred_algebra_witness_symbol: Symbol = inferred_algebra_witness_symbol
 data inferred_descent_symbol: Symbol = inferred_descent_symbol
-// 🟡 typed-input bridge scaffold — T22-EVAL-TYPED-INPUT-BRIDGE
-// 🟡 cache-hash scaffold — T22-EVAL-CACHE-HASHES
+// 🟡 typed-input bridge scaffold — DECISIONS.md T22-EVAL-TYPED-INPUT-BRIDGE
+// 🟡 cache-hash scaffold — DECISIONS.md T22-EVAL-CACHE-HASHES
 data claim_hash_placeholder: Hash = claim_hash_placeholder
 data evaluator_hash_placeholder: Hash = evaluator_hash_placeholder
 data resources_hash_placeholder: Hash = resources_hash_placeholder

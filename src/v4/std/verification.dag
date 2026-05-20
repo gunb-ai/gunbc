@@ -14,9 +14,8 @@ import v4.std.diagnostic {
 
 
 // RULING-1: pretty-much-done — closed TestClaim assertion kind set.
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type AssertKind
-// 🟢 coproduct dissolution — LB-P4-3212
+// 🟢 coproduct dissolution — DECISIONS.md LB-P4-3212
   = Equals
   | DiagnosticAssert
   | Compiles
@@ -24,18 +23,16 @@ type AssertKind
 
 
 // RULING-1: pretty-much-done — closed TestClaim tier set.
-// 🟢 coproduct dissolution — LB-P4-3212.
 type TestgenTier
-// 🟢 coproduct dissolution — LB-P4-3212
+// 🟢 coproduct dissolution — DECISIONS.md LB-P4-3212
   = Tier1
   | Tier2
   | Tier3
 
 
 // RULING-1: pretty-much-done — closed TestClaim layer set.
-// 🟢 coproduct dissolution — LB-P4-3212.
 type TestgenLayer
-// 🟢 coproduct dissolution — LB-P4-3212
+// 🟢 coproduct dissolution — DECISIONS.md LB-P4-3212
   = Unit
   | Integration
   | Boundary
@@ -49,9 +46,8 @@ type TestClassification {
 
 
 // RULING-1: pretty-much-done — closed impossible-bug class set.
-// 🟢 coproduct dissolution — LB-P4-3212.
 type ImpossibleBugClass
-// 🟢 coproduct dissolution — LB-P4-3212
+// 🟢 coproduct dissolution — DECISIONS.md LB-P4-3212
   = SuboptimalComplexity
   | IdempotencyContract
   | TransportTypeDrift
@@ -61,9 +57,8 @@ type ImpossibleBugClass
 
 
 // RULING-1: needs-more-work — manual anchor bridge until generated corpus coverage owns all rows.
-// 🟡 coproduct dissolution — LB-P4-3212.
 type T19ManualAnchorKey
-// 🟡 coproduct dissolution — LB-P4-3212
+// 🟡 coproduct dissolution — DECISIONS.md LB-P4-3212
 // RULING-1: 🟢 pretty-much-done
   = T19ManualTcConjEmpty
   | T19ManualTcDisjEmpty

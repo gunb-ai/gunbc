@@ -19,7 +19,7 @@ import v4.std.diagnostic {
 import v4.workflow.bootstrap { v4_stage0_binary, bootstrap_plan, bootstrap_stage_output }
 
 
-// 🟡 coproduct dissolution — LB-P4-3213.
+// 🟡 coproduct dissolution — DECISIONS.md LB-P4-3213
 type CiCommand
   = LintCommand
   | TestCommand
@@ -76,7 +76,7 @@ fn ci_diagnostic(reason: Symbol) -> Diagnostic {
   }
 }
 
-// 🟡 List-op dissolution (Practice 10) — LB-P10-3213
+// 🟡 List-op dissolution (Practice 10) — DECISIONS.md LB-P10-3213
 fn ci_id_occurrences(id: Symbol, jobs: List<CiJob>) -> Int {
   fold(jobs, init: 0, f: fn(acc, j) {
     if j.id == id { acc + 1 } else { acc }
@@ -159,7 +159,7 @@ fn ci_acyclic(jobs: List<CiJob>) -> Bool {
   count(ci_kahn_fixpoint(jobs: jobs)) == 0
 }
 
-// 🟡 negative-coverage plan-bound (T-22) — LB-T22-3213
+// 🟡 negative-coverage plan-bound (T-22) — DECISIONS.md LB-T22-3213
 fn ci_command_authority_ok(c: CiCommand) -> Bool {
   match c {
     LintCommand => true

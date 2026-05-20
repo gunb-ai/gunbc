@@ -10,7 +10,7 @@ module v4.std.witness
 
 
 import v4.std.diagnostic { Diagnostic }
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution — DECISIONS.md classification ledger: Witness<C>.
 type Witness<C>
   = Holds { value: C }
   | Violates { diagnostic: Diagnostic }

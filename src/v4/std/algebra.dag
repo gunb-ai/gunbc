@@ -4,7 +4,7 @@
 // Owns: Magma, Semigroup, Monoid, CommutativeMonoid, Group, AbelianGroup, Semiring, CommutativeSemiring, Ring, CommutativeRing, OrderedRing, Field, ApproximateField, Lattice, BoundedLattice, BooleanAlgebra, FreeMonoid, FreeMonoidUniqueState, free_monoid_fold, free_monoid_is_empty, free_monoid_non_empty, free_monoid_length, free_monoid_forall, free_monoid_count_where, free_monoid_count_equal, free_monoid_unique, PointwisePower, Ordering, Homomorphism.
 // Consumes: none.
 // Status: T-2 modeled.
-// Ledger: Part 6 — SL-P6-FREEMONOID-IS-EMPTY-VPRED.
+// Ledger: DECISIONS.md Part 6 — SL-P6-FREEMONOID-IS-EMPTY-VPRED.
 
 
 module v4.std.algebra
@@ -70,7 +70,7 @@ type BooleanAlgebra<T> {
   bounded_lattice: BoundedLattice<T>
   complement: fn(T) -> T
 }
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution — DECISIONS.md classification ledger: FreeMonoid<T>.
 type FreeMonoid<T>
   = Empty
   | Cons { head: T, tail: FreeMonoid<T> }
@@ -146,7 +146,7 @@ fn free_monoid_unique<T>(xs: FreeMonoid<T>, eq: fn(T, T) -> Bool) -> Bool {
 type PointwisePower<T> {
   member: fn(T) -> Bool
 }
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution — DECISIONS.md classification ledger: Ordering.
 type Ordering
   = Less
   | Equal

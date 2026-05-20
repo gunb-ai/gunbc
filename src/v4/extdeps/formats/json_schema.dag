@@ -12,7 +12,7 @@ import v4.extdeps.formats.json { JsonValue }
 import v4.std.collection { Map, Set }
 
 
-// 🟡 coproduct dissolution — T-4.6-P4-JsonSchemaCoreTypeName.
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-JsonSchemaCoreTypeName
 type JsonSchemaCoreTypeName
   = JsonSchemaCoreTypeNull
   | JsonSchemaCoreTypeBoolean
@@ -23,32 +23,32 @@ type JsonSchemaCoreTypeName
   | JsonSchemaCoreTypeInteger
 
 
-// 🟡 coproduct dissolution — T-4.6-P4-JsonSchemaTypeSlot.
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-JsonSchemaTypeSlot
 type JsonSchemaTypeSlot
   = JsonSchemaTypeAbsent
   | JsonSchemaTypeSingle { core_type: JsonSchemaCoreTypeName }
   | JsonSchemaTypeUnion { first: JsonSchemaCoreTypeName, rest: Set<JsonSchemaCoreTypeName> }
 
 
-// 🟡 coproduct dissolution — T-4.6-P4-JsonSchemaItemsSlot.
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-JsonSchemaItemsSlot
 type JsonSchemaItemsSlot
   = JsonSchemaItemsAbsent
   | JsonSchemaItemsSchema { item_schema: JsonSchema }
 
 
-// 🟡 coproduct dissolution — T-4.6-P4-JsonSchemaPropertiesSlot.
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-JsonSchemaPropertiesSlot
 type JsonSchemaPropertiesSlot
   = JsonSchemaPropertiesAbsent
   | JsonSchemaPropertiesPresent { properties: Map<String, JsonSchema> }
 
 
-// 🟡 coproduct dissolution — T-4.6-P4-JsonSchemaRequiredSlot.
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-JsonSchemaRequiredSlot
 type JsonSchemaRequiredSlot
   = JsonSchemaRequiredAbsent
   | JsonSchemaRequiredPresent { required: Set<String> }
 
 
-// 🟡 coproduct dissolution — T-4.6-JSK.
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-JSK
 type JsonSchemaAdditionalKeywordKey
   = JsonSchemaKwAllOf
   | JsonSchemaKwAnyOf
@@ -107,7 +107,7 @@ type JsonSchemaAdditionalKeywordKey
   | JsonSchemaKwDependencies
 
 
-// 🟡 coproduct dissolution — T-4.6-P4-JsonSchema.
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-JsonSchema
 type JsonSchema
   = JsonSchemaTrue
   | JsonSchemaFalse

@@ -2,7 +2,7 @@
 // Scope: machine-code language model parameterized by Isa.
 // Owns: Isa, ByteOrder, InstructionLength, InstructionByteLimitRef, OperandFieldWidthRef, Symbol, MachineIntKind, MachineIntWidth, MachineScalar, MachineDisplacement32WidthClass, MachineDisplacement64WidthClass, MachineSignedDisplacement32, MachineSignedDisplacement64, InstructionWord, RegisterClass, RegisterDeclaration, RegisterRef, IndexScale, AddressingMode, Operand, ByteSequence, InstructionProductionRef, RegisterOperandSlotRef, ImmediateOperandSlotRef, MemoryOperandSlotRef, ImmediateOperandTarget, ImmediateOperandConstraint, MemoryOperandConstraint, InstructionOperandSlot, InstructionProduction, OperandBinding, DecodedInstruction, MachineFidelityFeature, MachineFidelityDisposition, MachineIntegerOverflowBehavior, MachineIntegerOperationSemantics, FlagWriteDisposition.
 // Consumes: List, Byte.
-// Status: D2-REV; 🟢 P4-3208 — (machine_code scalar + displacement + ledger).
+// Status: D2-REV; 🟢 P4-3208 — DECISIONS.md (machine_code scalar + displacement + ledger).
 
 module v4.extdeps.languages.machine_code
 
@@ -16,7 +16,7 @@ type Symbol
 
 
 // Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
-// 🟢 coproduct dissolution — P4-3208.
+// 🟢 coproduct dissolution — DECISIONS.md P4-3208
 type Isa
   = X86_64Isa { revision: Symbol }
   | Aarch64Isa { revision: Symbol }
@@ -24,14 +24,14 @@ type Isa
 
 
 // Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
-// 🟢 coproduct dissolution — P4-3208.
+// 🟢 coproduct dissolution — DECISIONS.md P4-3208
 type ByteOrder
   = LittleEndian
   | BigEndian
 
 
 // Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
-// 🟢 coproduct dissolution — P4-3208.
+// 🟢 coproduct dissolution — DECISIONS.md P4-3208
 type InstructionLength
   = FixedLength { width: InstructionWord }
   | VariableLength { max_bytes: InstructionByteLimitRef }
@@ -52,14 +52,14 @@ type OperandFieldWidthRef {
 
 
 // Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
-// 🟢 coproduct dissolution — P4-3208.
+// 🟢 coproduct dissolution — DECISIONS.md P4-3208
 type MachineIntKind
   = Signed
   | Unsigned
 
 
 // Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
-// 🟢 coproduct dissolution — P4-3208.
+// 🟢 coproduct dissolution — DECISIONS.md P4-3208
 type MachineIntWidth
   = Bits8
   | Bits16
@@ -69,19 +69,19 @@ type MachineIntWidth
 
 
 // Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
-// 🟢 coproduct dissolution — P4-3208
+// 🟢 coproduct dissolution — DECISIONS.md P4-3208
 type MachineScalar
   = IntScalar { kind: MachineIntKind, width: MachineIntWidth }
 
 
 // Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
-// 🟢 coproduct dissolution — P4-3208
+// 🟢 coproduct dissolution — DECISIONS.md P4-3208
 type MachineDisplacement32WidthClass
   = DisplacementEncodingBits32 {}
 
 
 // Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
-// 🟢 coproduct dissolution — P4-3208
+// 🟢 coproduct dissolution — DECISIONS.md P4-3208
 type MachineDisplacement64WidthClass
   = DisplacementEncodingBits64 {}
 
@@ -99,8 +99,7 @@ type MachineSignedDisplacement64 {
 
 
 // Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
-// 🟡 feature:fixed-cardinality-width-carrier — P4-3208
-// 🟡 coproduct dissolution — P4-3208.
+// 🟡 feature:fixed-cardinality-width-carrier — DECISIONS.md P4-3208
 type InstructionWord
   = Instr16
   | Instr32
@@ -109,7 +108,7 @@ type InstructionWord
 
 
 // Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
-// 🟢 coproduct dissolution — P4-3208.
+// 🟢 coproduct dissolution — DECISIONS.md P4-3208
 type RegisterClass
   = GeneralPurposeRegister
   | FloatingPointRegister
@@ -132,7 +131,7 @@ type RegisterRef {
 
 
 // Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
-// 🟢 coproduct dissolution — P4-3208.
+// 🟢 coproduct dissolution — DECISIONS.md P4-3208
 type IndexScale
   = Scale1
   | Scale2
@@ -141,7 +140,7 @@ type IndexScale
 
 
 // Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
-// 🟢 coproduct dissolution — P4-3208.
+// 🟢 coproduct dissolution — DECISIONS.md P4-3208
 type AddressingMode
   = AbsoluteAddress { displacement: MachineSignedDisplacement64 }
   | RegisterIndirect { base: RegisterRef }
@@ -156,7 +155,7 @@ type AddressingMode
 
 
 // Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
-// 🟢 coproduct dissolution — P4-3208.
+// 🟢 coproduct dissolution — DECISIONS.md P4-3208
 type Operand
   = RegisterOperand { register: RegisterRef }
   | ImmediateOperand { bytes: ByteSequence, order: ByteOrder }
@@ -190,7 +189,7 @@ type MemoryOperandSlotRef {
 
 
 // Anchor: https://github.com/riscv/riscv-isa-manual/releases/tag/20240411
-// 🟢 coproduct dissolution — P4-3208.
+// 🟢 coproduct dissolution — DECISIONS.md P4-3208
 type ImmediateOperandTarget
   = LiteralImmediate
   | PcRelativeImmediate
@@ -205,7 +204,7 @@ type ImmediateOperandConstraint {
 
 
 // Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
-// 🟢 coproduct dissolution — P4-3208.
+// 🟢 coproduct dissolution — DECISIONS.md P4-3208
 type MemoryOperandConstraint
   = AbsoluteAddressSlot { displacement_width: OperandFieldWidthRef }
   | RegisterIndirectSlot { allowed_bases: List<RegisterRef> }
@@ -223,7 +222,7 @@ type MemoryOperandConstraint
 
 
 // Anchor: https://github.com/riscv/riscv-isa-manual/releases/tag/20240411
-// 🟢 coproduct dissolution — P4-3208.
+// 🟢 coproduct dissolution — DECISIONS.md P4-3208
 type InstructionOperandSlot
   = RegisterInstructionSlot {
       name: RegisterOperandSlotRef,
@@ -245,7 +244,7 @@ type InstructionProduction {
 }
 
 
-// 🟢 coproduct dissolution — P4-3208.
+// 🟢 coproduct dissolution — DECISIONS.md P4-3208
 type OperandBinding
   = RegisterOperandBinding {
       slot: RegisterOperandSlotRef,
@@ -268,7 +267,7 @@ type DecodedInstruction {
 
 
 // Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
-// 🟢 coproduct dissolution — P4-3208.
+// 🟢 coproduct dissolution — DECISIONS.md P4-3208
 type MachineFidelityFeature
   = ValidInstructionEncoding
   | InstructionAliasSpelling
@@ -279,7 +278,7 @@ type MachineFidelityFeature
   | AmbiguousDecode
 
 
-// 🟢 coproduct dissolution — P4-3208.
+// 🟢 coproduct dissolution — DECISIONS.md P4-3208
 type MachineFidelityDisposition
   = MachineModeled
   | MachineDeclaredNormalized { feature: MachineFidelityFeature }
@@ -287,7 +286,7 @@ type MachineFidelityDisposition
 
 
 // Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
-// 🟢 coproduct dissolution — P4-3208.
+// 🟢 coproduct dissolution — DECISIONS.md P4-3208
 type MachineIntegerOverflowBehavior
   = WrapModuloWidth
   | TrapOnOverflow
@@ -300,7 +299,7 @@ type MachineIntegerOperationSemantics<IRCarrier> {
 }
 
 
-// 🟢 coproduct dissolution — P4-3208.
+// 🟢 coproduct dissolution — DECISIONS.md P4-3208
 type FlagWriteDisposition
   = DoesNotWriteFlags
   | WritesArchitecturalFlags

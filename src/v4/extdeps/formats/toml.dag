@@ -2,13 +2,13 @@
 // Scope: TOML v1.0.0 structural value model — declarative only; parse/emit deferred.
 // Owns: TomlValue.
 // Consumes: std/node.dag; std/diagnostic.dag; std/collection.dag.
-// Status: T-4.6 scaffold — parse/emit, numeric/datetime, table-syntax axes per TASKS.md T-4.6.
+// Status: T-4.6 scaffold — parse/emit, numeric/datetime, table-syntax axes per DECISIONS.md Part 6.
 // Anchor: https://toml.io/en/v1.0.0
 
 module v4.extdeps.formats.toml
 
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// 🟡 coproduct dissolution — DECISIONS.md Part 6 · SL-3229-TOML-TABLE-SYNTAX.
 type TomlValue
   = TomlString { value: String }
   | TomlInt { lexeme: String }
@@ -20,7 +20,7 @@ type TomlValue
   | TomlTable { entries: Map<String, TomlValue> }
 
 
-// 🟡 gated — feature: T-6 lexical-walk + T-7 parse-walk compiler pipeline-stage substrate (TASKS T-6/T-7) — SL-3229-T4-FORMAT-T6T7 (parse half).
-// 🟡 gated — feature: T-10 emit pipeline-stage substrate (TASKS T-10) — SL-3229-T4-FORMAT-T6T7 (emit half).
-// 🟡 gated — feature: v4 temporal substrate for RFC 3339 datetime value interpretation (TOML §Date-Time) — SL-3229-T4-FORMAT-TOML-DATETIME.
-// 🟡 gated — feature: TOML inline-table/table construction syntax collapse — SL-3229-TOML-TABLE-SYNTAX.
+// 🟡 gated — feature: dissolution-inventory §1.1 P3 — T-6 lexical-walk + T-7 parse-walk compiler pipeline-stage substrate (TASKS T-6/T-7) — DECISIONS.md Part 6 · SL-3229-T4-FORMAT-T6T7 (parse half).
+// 🟡 gated — feature: T-10 emit pipeline-stage substrate (TASKS T-10) — DECISIONS.md Part 6 · SL-3229-T4-FORMAT-T6T7 (emit half).
+// 🟡 gated — feature: v4 temporal substrate for RFC 3339 datetime value interpretation (TOML §Date-Time) — DECISIONS.md Part 6 · SL-3229-T4-FORMAT-TOML-DATETIME.
+// 🟡 gated — feature: TOML inline-table/table construction syntax collapse — DECISIONS.md Part 6 · SL-3229-TOML-TABLE-SYNTAX.

@@ -3,8 +3,7 @@
 #
 # INTERIM (T-24 bridge): Move 1 / Move 3 pre-flight helper. The structural
 # authority for CI remains `v2-compiler compile` (see .github/workflows/ci.yml
-# v4 bootstrap steps folded into the `ci` job when v4 is affected). v2 `run` over
-# src/v4 is **not** a green gate today — see
+# v4 job). v2 `run` over src/v4 is **not** a green gate today — see
 # src/v4/test/v2_run_preflight/MOVE1_COVERAGE.txt (deferred until T-22).
 #
 # Usage: from repo root, with v2-compiler already built:

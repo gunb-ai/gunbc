@@ -2,8 +2,9 @@
 // Scope: Rust Reference surface (scalar/reference/visibility/cost carriers) plus ratified D2 resolver types homed here pending resolver.dag migration.
 // Owns: RustIntKind, RustIntWidth, RustFloatWidth, RustScalar, RustReferenceKind, NamedSegment, PubInPath, RustVisibility, RustReference, RustCost, OverflowAction, OverflowDisposition, rust_bool_grounding, RustNever.
 // Consumes: v4.std.node.Node, Symbol; v4.std.logic.Bool, bool_boolean_algebra; v4.std.algebra.BooleanAlgebra; v4.std.cardinality.Never; kernel-ambient Int, List.
-// Status: extdeps rust slice; bool/`!` canonical-B decl-ref grounding — 🟡 E-6(b) staging; PubInPath path semantics producer-obligation per TASKS.md T-4.6 + D2-REV; D2b Arrow bodies deferred to bundled LanguageModel work.
+// Status: extdeps rust slice; bool/`!` canonical-B decl-ref grounding — 🟡 E-6(b) staging (scaffold at decl; ledger DECISIONS.md/§0). PubInPath path semantics producer-obligation per DECISIONS.md Part 6 + D2-REV; D2b Arrow bodies deferred to bundled LanguageModel work.
 // Anchor: https://doc.rust-lang.org/reference/
+// Ledger: DECISIONS.md Part 6 (PR #3229): CP-3229-GREEN-TERMINAL.
 
 module v4.extdeps.languages.rust
 
@@ -12,12 +13,12 @@ import v4.std.logic { Bool, bool_boolean_algebra }
 import v4.std.algebra { BooleanAlgebra }
 import v4.std.cardinality { Never }
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
 type RustIntKind
   = Signed
   | Unsigned
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
 type RustIntWidth
   = Bits8
   | Bits16
@@ -26,12 +27,12 @@ type RustIntWidth
   | Bits128
   | Pointer
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
 type RustFloatWidth
   = Bits32
   | Bits64
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
 type RustScalar
   = IntScalar { kind: RustIntKind, width: RustIntWidth }
   | FloatScalar { width: RustFloatWidth }
@@ -40,7 +41,7 @@ type RustScalar
   | StrScalar
   | NeverScalar
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
 type RustReferenceKind
   = Shared
   | Exclusive
@@ -53,7 +54,7 @@ type PubInPath {
   resolved_path: List<NamedSegment>
 }
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
 type RustVisibility
   = Private
   | Pub
@@ -70,19 +71,22 @@ type RustCost {
   allocation_cost: Int
 }
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
 type OverflowAction
   = PanicOnOverflow
   | TwoComplementWrap
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
 type OverflowDisposition<IRCarrier>
   = MustPanicOnOverflow
   | MayPanicOrTwoComplementWrap
 
-// 🟡 canonical-B decl-ref · E-6(b) bounded-exception · scaffold feature:canonical-b-grounding-consumer · dissolve-on: B1-CANON+zip-fold consume (ledger: B1·T-9/C1 · grounding-worked-examples.md §0)
+// Anchor: https://doc.rust-lang.org/reference/types/boolean.html
+// 🟡 canonical-B decl-ref · E-6(b) bounded-exception · scaffold feature:canonical-b-grounding-consumer · dissolve-on: B1-CANON+zip-fold consume (ledger: DECISIONS.md B1·T-9/C1 · grounding-worked-examples.md §0)
 data rust_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
 
 // Anchor: https://doc.rust-lang.org/reference/types/never.html
-// Coincidence: Rust `!` is the uninhabited carrier modeled by v4.std.cardinality.Never; grounding-worked-examples.md §0.
+// `!` is the uninhabited type: zero inhabitants, no operations — it *is*
+// the std `Never` primitive. Nothing above the primitive to model, so the
+// grounding is the direct primitive identity (the degenerate base case).
 type RustNever = Never

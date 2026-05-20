@@ -1,5 +1,5 @@
 // src/v4/workflow/bootstrap.dag
-// Scope: v4-owned bootstrap orchestration AS DATA — four stages (seed→stage0→stage1→stage2, fixpt stage1==stage2). compiled_by = stage compiler-of-record: seed←v2 (seed used once), self0←stage0, self1←stage1; v2 is never in the loop again (STRUCTURE.md "Seed used once" :404-405, SELF_HOSTING.md §meta-circular). The fixed-point binary is content-addressed by the pinned stage1/stage2 hash. Hash pin Symbols are placeholder identities unified by bootstrap_plan_well_formed.
+// Scope: v4-owned bootstrap orchestration AS DATA — four stages (seed→stage0→stage1→stage2, fixpt stage1==stage2). compiled_by = stage compiler-of-record: seed←v2 (seed used once), self0←stage0, self1←stage1; v2 is never in the loop again (STRUCTURE.md "Seed used once" :404-405, SELF_HOSTING.md §meta-circular). The fixed-point binary is content-addressed by the pinned stage1/stage2 hash. The stage1, stage2, and pinned fixed-point hash symbols are placeholder pins unified by bootstrap_plan_well_formed.
 // Owns: CompileStage, FixptStage1Stage2, BootstrapPlan, bootstrap_stage_output, bootstrap_plan_well_formed, bootstrap_plan
 // Consumes: v4.std.node, v4.std.diagnostic, v4.std.algebra
 // Status: filled — compiler-of-record is the self-hosting structural fact; structural gate only.
@@ -27,36 +27,27 @@ data v4_stage1_binary: Symbol = v4_stage1_binary
 data v4_stage2_binary: Symbol = v4_stage2_binary
 data v2_pipeline: Symbol = v2_pipeline
 data bit_identical_check: Symbol = bit_identical_check
-data v4_stage0_hash_pin: Symbol = v4_stage0_hash_pin
-data v4_stage1_hash_pin: Symbol = v4_stage1_hash_pin
-data v4_stage2_hash_pin: Symbol = v4_stage2_hash_pin
-data pinned_v4_fixed_point_hash_pin: Symbol = pinned_v4_fixed_point_hash_pin
 // RULING-1: 🟡 needs-more-work — symbolic hash pins.
 data v4_stage0_hash: Hash = v4_stage0_hash
 data v4_stage1_hash: Hash = v4_stage1_hash
 data v4_stage2_hash: Hash = v4_stage2_hash
 data pinned_v4_fixed_point_hash: Hash = pinned_v4_fixed_point_hash
 
-type BootstrapHashPin {
-  digest: Hash
-  pin: Symbol
-}
-
 // RULING-1: 🟢 pretty-much-done — compiler-of-record chain.
 type CompileStage {
   consumes: List<Symbol>
   produces: Symbol
-  produces_hash: BootstrapHashPin
+  produces_hash: Hash
   compiled_by: Symbol
 }
 
 // RULING-1: 🟢 pretty-much-done — fixed-point assertion endpoint.
 type FixptStage1Stage2 {
   left: Symbol
-  left_hash: BootstrapHashPin
+  left_hash: Hash
   right: Symbol
-  right_hash: BootstrapHashPin
-  pinned_hash: BootstrapHashPin
+  right_hash: Hash
+  pinned_hash: Hash
   via: Symbol
 }
 
@@ -108,14 +99,14 @@ fn bootstrap_plan_well_formed(p: BootstrapPlan) -> Outcome<BootstrapPlan> {
        && (p.self1.compiled_by == v4_stage1_binary)
        && (p.fixpt.left == v4_stage1_binary)
        && (p.fixpt.right == v4_stage2_binary)
-       && (p.seed.produces_hash.pin == v4_stage0_hash_pin)
-       && (p.self0.produces_hash.pin == v4_stage1_hash_pin)
-       && (p.self1.produces_hash.pin == v4_stage2_hash_pin)
-       && (p.fixpt.left_hash.pin == v4_stage1_hash_pin)
-       && (p.fixpt.right_hash.pin == v4_stage2_hash_pin)
-       && (p.fixpt.left_hash.pin == p.fixpt.right_hash.pin)
-       && (p.fixpt.pinned_hash.pin == pinned_v4_fixed_point_hash_pin)
-       && (p.fixpt.left_hash.pin == p.fixpt.pinned_hash.pin)
+       && (p.seed.produces_hash == v4_stage0_hash)
+       && (p.self0.produces_hash == v4_stage1_hash)
+       && (p.self1.produces_hash == v4_stage2_hash)
+       && (p.fixpt.left_hash == v4_stage1_hash)
+       && (p.fixpt.right_hash == v4_stage2_hash)
+       && (p.fixpt.left_hash == p.fixpt.right_hash)
+       && (p.fixpt.pinned_hash == pinned_v4_fixed_point_hash)
+       && (p.fixpt.left_hash == p.fixpt.pinned_hash)
        && (p.fixpt.via == bit_identical_check) {
     Produced { value: p }
   } else {
@@ -127,27 +118,27 @@ data bootstrap_plan: Outcome<BootstrapPlan> = bootstrap_plan_well_formed(p: Boot
   seed: CompileStage {
     consumes: [v4_dag_source],
     produces: v4_stage0_binary,
-    produces_hash: BootstrapHashPin { digest: v4_stage0_hash, pin: v4_stage0_hash_pin },
+    produces_hash: v4_stage0_hash,
     compiled_by: v2_pipeline
   },
   self0: CompileStage {
     consumes: [v4_dag_source, v4_stage0_binary],
     produces: v4_stage1_binary,
-    produces_hash: BootstrapHashPin { digest: v4_stage1_hash, pin: v4_stage1_hash_pin },
+    produces_hash: v4_stage1_hash,
     compiled_by: v4_stage0_binary
   },
   self1: CompileStage {
     consumes: [v4_dag_source, v4_stage1_binary],
     produces: v4_stage2_binary,
-    produces_hash: BootstrapHashPin { digest: v4_stage2_hash, pin: v4_stage2_hash_pin },
+    produces_hash: v4_stage2_hash,
     compiled_by: v4_stage1_binary
   },
   fixpt: FixptStage1Stage2 {
     left: v4_stage1_binary,
-    left_hash: BootstrapHashPin { digest: v4_stage1_hash, pin: v4_stage1_hash_pin },
+    left_hash: v4_stage1_hash,
     right: v4_stage2_binary,
-    right_hash: BootstrapHashPin { digest: v4_stage2_hash, pin: v4_stage2_hash_pin },
-    pinned_hash: BootstrapHashPin { digest: pinned_v4_fixed_point_hash, pin: pinned_v4_fixed_point_hash_pin },
+    right_hash: v4_stage2_hash,
+    pinned_hash: pinned_v4_fixed_point_hash,
     via: bit_identical_check
   }
 })

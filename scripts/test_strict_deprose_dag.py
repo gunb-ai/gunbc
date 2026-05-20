@@ -19,7 +19,7 @@ import strict_deprose_dag as s  # noqa: E402
 
 def test_inject_rewrites_stale_verilog_slug() -> None:
     body = (
-        "// 🟡 coproduct dissolution · SL-3229-VERILOG-NONEMPTY.\n"
+        "// 🟡 coproduct dissolution — DECISIONS.md Part 6 · SL-3229-VERILOG-NONEMPTY.\n"
         "type NonTriregNetKind\n"
         "  = Wire\n"
         "  | Tri\n"
@@ -111,7 +111,7 @@ def test_inject_grounded_recomputes_green_without_lexeme_string_field() -> None:
 def test_inject_grounded_after_coproduct_dissolution_line() -> None:
     """Braced records must still get a tag when the prior out line is a dissolution banner."""
     bl = [
-        "// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.",
+        "// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.",
         "type R {",
         "  x: Nat",
         "}",

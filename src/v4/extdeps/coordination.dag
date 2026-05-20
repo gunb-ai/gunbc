@@ -19,7 +19,7 @@ type FrameworkRef {
   identity: Symbol
 }
 
-// 🟢 coproduct dissolution — #coordination-coproduct-ledgers.
+// 🟢 coproduct dissolution — DECISIONS.md#coordination-coproduct-ledgers
 type FrameworkBinding
   = HostedByFramework { framework: FrameworkRef }
   | NoFramework
@@ -44,25 +44,25 @@ type ConvergeBound {
 }
 
 // Anchor: https://en.wikipedia.org/wiki/Messaging_pattern
-// 🟢 coproduct dissolution — #coordination-coproduct-ledgers.
+// 🟢 coproduct dissolution — DECISIONS.md#coordination-coproduct-ledgers
 type ExchangePattern
   = RequestReply
   | FireAndForget
   | StreamExchange
   | PublishSubscribe
 
-// 🟢 coproduct dissolution — #coordination-coproduct-ledgers.
+// 🟢 coproduct dissolution — DECISIONS.md#coordination-coproduct-ledgers
 type SettlementGuarantee
   = ImmediateSettlement
   | SettlesWithin { bound: SettleBound }
 
 // Anchor: https://en.wikipedia.org/wiki/Eventual_consistency
-// 🟢 coproduct dissolution — #coordination-coproduct-ledgers.
+// 🟢 coproduct dissolution — DECISIONS.md#coordination-coproduct-ledgers
 type ConsistencyGuarantee
   = NoReplicaConvergence
   | EventuallyConsistent { bound: ConvergeBound }
 
-// 🟡 coproduct dissolution — #coordination-coproduct-ledgers.
+// 🟡 coproduct dissolution — DECISIONS.md#coordination-coproduct-ledgers
 type CoordinationEffectKind
   = Http
   | Queue

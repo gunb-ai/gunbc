@@ -34,7 +34,7 @@ type ImpossibleBugCoverageKey {
 type TestgenCoverageKey = TestgenConcept
 
 
-// 🟡 coproduct dissolution — SL-COVERAGE-DEFECT-KEY.
+// 🟡 coproduct dissolution — DECISIONS.md Part 6 · SL-COVERAGE-DEFECT-KEY.
 type CoverageDefectKey
   = DiscriminantPredicate
   | DegenerateType

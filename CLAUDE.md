@@ -32,5 +32,3 @@ The pre-push hook runs `cargo fmt --all --check` on push. If drift is detected *
 When the language grows by one type, one expression, or one transport,
 how many files need editing? The answer should be 1.
 
-**Ledger standing principle (operator 2026-05-19):** Do not create or maintain documentation that acts as a parallel ledger for facts whose source of truth is already in inline comments or model marks. The mark is authoritative; debate belongs in PR review. Flag new comment-duplicating ledger docs if you see them proposed.
-
