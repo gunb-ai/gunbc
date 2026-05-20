@@ -413,10 +413,15 @@ stage0               // seed that reads compiler.corepkg, NOT arbitrary surface 
 ### The bootstrap epoch loop
 
 ```
-Epoch k:
+Epoch k (stable):
   Stage0[k] + CorePackage[k] ──> Stage1[k]
   Stage1[k] + SourceModels[k] ──> Stage1'[k]
-  verify(Stage1[k] == Stage1'[k]) ──> PromotionWitness[k].fixed_point_sub_check
+  verify(Stage1[k] == Stage1'[k])  // in-epoch stability invariant
+  // NOTE: this is NOT a promotion-witness check — Stage1[k]'s fixed-point
+  // status was already proven by PromotionWitness[k] (bound to the
+  // CANDIDATE during the prior k-1 → k promotion). The verify above
+  // re-confirms steady-state stability; it does NOT produce a new
+  // PromotionWitness.
 
 Upgrade k → k+1 (when an upstream model changes):
   Edit SourceModels[k+1]
@@ -424,12 +429,16 @@ Upgrade k → k+1 (when an upstream model changes):
     ChangeSet[k → k+1] + AffectedSet + RecomputePlan
   Stage0[k] + Bridge/CorePackage[k → k+1] ──> Stage1[k+1]
   Stage1[k+1] ──> Stage0Candidate[k+1] + Stage1Candidate[k+1]
-  verify:
+  verify (both checks bind to PromotionWitness[k+1], over the CANDIDATE):
     Stage0Candidate[k+1] can produce Stage1Candidate[k+1]
-    Stage1Candidate[k+1] is equivalent / fixed-point
+      ──> PromotionWitness[k+1].candidate_bootstrap_roundtrip_sub_check
+    Stage1Candidate[k+1] is a fixed-point (self-emits)
+      ──> PromotionWitness[k+1].candidate_fixed_point_sub_check
     witnesses / tests / lenses pass
   promote:
     Stage0[k+1] = Stage0Candidate[k+1]
+    (gate requires both sub-checks pass — non-self-emitting candidate
+     CANNOT be promoted; THESIS facet 2 holds by construction)
 ```
 
 The **active compiler never mutates itself in place**. The only "back edge" is a **promotion edge**, and it is guarded by:
@@ -511,7 +520,7 @@ Keeping them separate prevents the confusion "does the compiler's own resolver d
 |---|---|---|---|
 | **`StructuralPropertyWitness<P>`** | `P` = the structural property | "This graph has structural property P" | `P = being-canonical` (was CanonicalGroundingWitness); `P = having-no-invalid-cycles` (was AcyclicityWitness); `P = being-completely-classified` (was ClosedWorldDependencyWitness). |
 | **`HomomorphismWitness<R>`** | `R` = the preservation rule | "Rule R holds between source and target" | `R = exact-structural-equality` (was Witness<homomorphism> produced by coercion fold); `R = lawful-rewrite-precondition` (was LawfulRewriteWitness — per algebra-laws like associativity-for-tree-reduce, per-element-independence-for-parallel-map). |
-| **`PromotionWitness`** | (not generic — composes two specific checks) | "This candidate is promotion-ready: fixed-point-equivalent AND bootstrap-roundtrip-valid" | Was BootstrapWitness + FixedPointWitness — composed into one promotion-gate witness. |
+| **`PromotionWitness`** | (not generic — composes two specific checks, **both bound to the CANDIDATE at k+1**) | "This **candidate** (Stage0Candidate[k+1] + Stage1Candidate[k+1]) is promotion-ready: the candidate Stage1 is a fixed-point AND the candidate Stage0 bootstrap-roundtrips to the candidate Stage1" — the fixed-point check is over the candidate, NOT the existing Stage1[k]; otherwise the gate could promote a non-self-emitting compiler. | Was BootstrapWitness + FixedPointWitness — composed into one promotion-gate witness. |
 
 All are **checkable substrate data**, not opaque proofs — per Ratified Q9 (next section), the derivation is untrusted; the witness check is trusted.
 
@@ -528,7 +537,7 @@ All are **checkable substrate data**, not opaque proofs — per Ratified Q9 (nex
 | **`CorePackage`** | The stable canonical bootstrap package consumed by stage0. | Not declared. |
 | **`CorePackageSchema`** | The schema describing what CorePackage carries (changes here are bootstrap-breaking per Case 3). | Not declared. |
 | **`Bridge`** | Migration package for bootstrap-breaking changes (Case 3 of bootstrap-impact taxonomy). | Not declared. |
-| **`PromotionWitness`** *(composed gate; Pass B witness-taxonomy unification)* | Single promotion-gate witness composing two specific checks: (a) the **bootstrap-roundtrip check** — Stage0Candidate[k+1] can produce Stage1Candidate[k+1] (was `BootstrapWitness`); (b) the **fixed-point check** — Stage1[k] compiles to itself (compiler self-emits, THESIS facet 2; was `FixedPointWitness`). The two checks are **internal sub-fields** of the single `PromotionWitness` carrier — NOT separate authorities. Implementers see one promotion-ready witness, not three. Matches the witness-taxonomy collapse at line 511 above (no parallel authority). | Not declared. |
+| **`PromotionWitness`** *(composed gate; Pass B witness-taxonomy unification)* | Single promotion-gate witness composing two specific checks **both bound to the CANDIDATE at k+1, NOT the existing stage at k**: (a) the **candidate-bootstrap-roundtrip check** — `Stage0Candidate[k+1]` can produce `Stage1Candidate[k+1]` (was `BootstrapWitness`); (b) the **candidate-fixed-point check** — `Stage1Candidate[k+1]` compiles to itself (i.e., the *candidate* is a self-emitting fixed point per THESIS facet 2; was `FixedPointWitness`). **The fixed-point check is over the candidate, not the existing `Stage1[k]`** — `Stage1[k]`'s stability is already-known from the prior promotion's witness; promotion to k+1 requires proving the *new* compiler self-emits, not merely re-confirming the old one is still stable. Without binding to the candidate, the gate could promote a non-self-emitting compiler (THESIS facet 2 violation). The two checks are **internal sub-fields** of the single `PromotionWitness` carrier — NOT separate authorities. Implementers see one promotion-ready witness, not three. Matches the witness-taxonomy collapse at line 511 above (no parallel authority). | Not declared. |
 | **`PromotionPlan`** | The procedural step from candidate to active stage0. | Not declared. |
 | **`PromotionDiagnostic`** / **`BootstrapBreak`** | Fail-closed diagnostic shape for un-promotable candidates. | Not declared. |
 
