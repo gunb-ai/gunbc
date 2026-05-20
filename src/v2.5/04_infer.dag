@@ -182,6 +182,24 @@ fn extend_env(env: TypeEnv, binding: BindingFacts) -> TypeEnv {
   TypeEnv { bindings: list_push(env.bindings, binding) }
 }
 
+fn extend_scope(scope: InferScope, binding: BindingFacts) -> InferScope {
+  InferScope {
+    env: extend_env(env: scope.env, binding: binding),
+    expected: scope.expected
+  }
+}
+
+fn binding_from_scope(scope: InferScope, binding: BindingFacts) -> BindingFacts {
+  match lookup_binding(env: scope.env, name: binding.name) {
+    Some { value: scoped } => scoped
+    None => BindingFacts {
+      name: binding.name,
+      type_ref: diagnostic_type(diagnostic: UnknownBinding { name: binding.name }),
+      cardinality: binding.cardinality
+    }
+  }
+}
+
 fn facts_of(expr: InferredExpr) -> InferredFacts {
   match expr {
     InferredLiteral { facts: facts, value: _ } => facts
@@ -206,6 +224,17 @@ fn facts_of(expr: InferredExpr) -> InferredFacts {
     InferredSlice { facts: facts, base: _, start: _, end: _ } => facts
     InferredReturn { facts: facts, value: _ } => facts
   }
+}
+
+fn diagnostics_of(expr: InferredExpr) -> List<InferDiagnostic> {
+  match expr {
+    InferredError { diagnostic: diagnostic, facts: _ } => [diagnostic]
+    _ => []
+  }
+}
+
+fn diagnostics_from_exprs(exprs: List<InferredExpr>) -> List<InferDiagnostic> {
+  fold(exprs, init: [], f: (acc, expr) => merge_diagnostics(left: acc, right: diagnostics_of(expr: expr)))
 }
 
 fn merge_diagnostics(left: List<InferDiagnostic>, right: List<InferDiagnostic>) -> List<InferDiagnostic> {
@@ -541,7 +570,12 @@ fn infer_node_algebra() -> NormalizedFoldAlgebra<InferredNode> {
 }
 
 fn infer(root: NormalizedNode) -> InferredNode {
-  fold_normalized_node(root: root, algebra: infer_node_algebra())
+  match stage_type_kit_status {
+    BoundToStageTypes =>
+      fold_normalized_node(root: root, algebra: infer_node_algebra())
+    AwaitingStageTypes { gate: gate } =>
+      expr_result_node(result: infer_error(diagnostic: UnimplementedTypeKitBinding { missing: gate }))
+  }
 }
 
 fn literal_algebra(type_ref: TypeRef) -> Symbol {
@@ -710,11 +744,25 @@ fn infer_match(expr: NormalizedExpr, scrutinee: InferredExpr, arms: List<Normali
 }
 
 fn infer_let(expr: NormalizedExpr, binding: BindingFacts, value: InferredExpr, body: InferredExpr, scope: InferScope) -> ExprInference {
-  let facts = facts_of(expr: body)
-  ExprInference {
-    expr: InferredLet { binding: binding, value: value, body: body, facts: facts },
-    diagnostics: [],
-    facts: facts
+  let body_scope = extend_scope(scope: scope, binding: binding)
+  let scoped_binding = binding_from_scope(scope: body_scope, binding: binding)
+  let value_check = unify_all(pairs: [
+    SubstitutionPair {
+      variable: scoped_binding.name,
+      expected: scoped_binding.type_ref,
+      replacement: facts_of(expr: value).result_type
+    }
+  ])
+  if value_check.diagnostics |> count > 0 {
+    infer_error(diagnostic: first_diagnostic(diagnostics: value_check.diagnostics))
+  } else {
+    let facts = facts_of(expr: body)
+    let diagnostics = diagnostics_of(expr: body)
+    ExprInference {
+      expr: InferredLet { binding: scoped_binding, value: value, body: body, facts: facts },
+      diagnostics: diagnostics,
+      facts: facts
+    }
   }
 }
 
@@ -748,7 +796,8 @@ fn infer_string_interp(expr: NormalizedExpr, parts: List<InferredExpr>) -> ExprI
 fn infer_block(expr: NormalizedExpr, statements: List<InferredExpr>) -> ExprInference {
   let terminal = last_expr_or_unit(statements: statements)
   let facts = facts_of(expr: terminal)
-  ExprInference { expr: InferredBlock { statements: statements, facts: facts }, diagnostics: [], facts: facts }
+  let diagnostics = diagnostics_from_exprs(exprs: statements)
+  ExprInference { expr: InferredBlock { statements: statements, facts: facts }, diagnostics: diagnostics, facts: facts }
 }
 
 fn infer_cast(expr: NormalizedExpr, value: InferredExpr, target: TypeRef) -> ExprInference {
