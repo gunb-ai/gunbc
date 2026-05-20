@@ -1,9 +1,8 @@
 // src/v4/std/regeneration.dag
-// Scope: change-consequence substrate (P8) — ChangeSet, AffectedSet, Projection, Artifact, RecomputePlan.
-// Anchor: docs/design-v4-compiler-homomorphism.md P8; T-21 lens/affected_set.dag is a frontier specialization (see A4 report).
-// Owns: ChangeKind, Change, ChangeSet, AffectedSet, InvalidationReason, Projection, ArtifactKind, Artifact, RecomputePlan.
+// Scope: P8 change-consequence substrate — ChangeSet, AffectedSet, Projection, Artifact, RecomputePlan.
+// Owns: Change, ChangeSet, AffectedSet, InvalidationReason, Projection, ArtifactKind, Artifact, RecomputePlan.
 // Consumes: v4.std.collection, v4.std.dependency, v4.std.node, v4.std.witness.
-// Status: Wave-1 Worker A — strict substrate; bare Symbol only on RULING-1 🟡 gated surfaces declared below.
+// Status: Wave-1 Worker A strict substrate.
 
 
 module v4.std.regeneration
@@ -11,6 +10,7 @@ module v4.std.regeneration
 
 import v4.std.collection { List }
 import v4.std.dependency {
+  ArtifactDependencyEndpoint,
   DependencyEdge,
   DependencyGraph,
   DependencySubject,
@@ -20,28 +20,51 @@ import v4.std.node { Hash, Path, Symbol }
 import v4.std.witness { Witness }
 
 
-// RULING-1: 🟢 pretty-much-done — stable change-consequence taxonomy (P8 unified regeneration).
-type ChangeKind
-  = NodeChanged
-  | EdgeChanged
-  | FactChanged
-  | WitnessChanged
-  | GrammarChanged
-  | LanguageModelChanged
-  | HostModelChanged
-  | PipelineStageChanged
-  | LensContractChanged
-  | ProjectionChanged
-  | Stage0ContractChanged
-  | CorePackageSchemaChanged
+// 🟡 feature:projection-identity-ref consumer:v4.std.regeneration::Projection dissolve-on: ProjectionRef in AffectedSet.projections (bounds: projections field; owner: Wave-2 P8 after #3439).
+type ProjectionIdentityRef = Symbol
 
 
-// RULING-1: 🟢 pretty-much-done — change subject uses DependencySubject authority (not bare Symbol).
-type Change {
-  kind: ChangeKind
-  at: Path
-  subject: DependencySubject
-}
+// 🟡 feature:recompute-cache-key consumer:v4.std.regeneration::RecomputePlan dissolve-on: CacheKey in RecomputePlan.cached (bounds: cached field; owner: Wave-2 P8 after #3439).
+type CacheKey = Symbol
+
+
+// 🟡 feature:recompute-invalidation-key consumer:v4.std.regeneration::RecomputePlan dissolve-on: InvalidationKey in RecomputePlan.invalidated (bounds: invalidated field; owner: Wave-2 P8 after #3439).
+type InvalidationKey = Symbol
+
+
+// 🟡 feature:lens-contract-ref consumer:v4.lens::LensContract dissolve-on: LensContract authority (bounds: InvalidationFromLensContract; owner: Wave-2 P8 after #3439).
+type LensContractRef = Symbol
+
+
+// 🟡 feature:pipeline-stage-name consumer:v4.std.pipeline::PipelineStage dissolve-on: PipelineStage.name authority (bounds: PipelineStageContractChanged; owner: Wave-2 P8 after #3439).
+type PipelineStageName = Symbol
+
+
+// 🟡 feature:stage0-contract-ref consumer:v4.std.regeneration::Stage0Contract dissolve-on: Stage0Contract carrier (bounds: Stage0ContractChanged; owner: Wave-2 P8 after #3439).
+type Stage0ContractRef = Symbol
+
+
+// 🟡 feature:core-package-schema-ref consumer:v4.std.regeneration::CorePackageSchema dissolve-on: CorePackageSchema carrier (bounds: CorePackageSchemaChanged; owner: Wave-2 P8 after #3439).
+type CorePackageSchemaRef = Symbol
+
+
+// 🟢 coproduct dissolution
+type Change
+  = NodeChanged { at: Path }
+  | EdgeChanged { edge: DependencyEdge }
+  | FactChanged { at: Path, fact: Symbol }
+  | WitnessChanged { at: Path, witness: Symbol }
+  | GrammarChanged { grammar: Symbol }
+  | LanguageModelChanged { language_model: Symbol }
+  | HostModelChanged { host_model: Symbol }
+  | PipelineStageChanged { stage: PipelineStageName }
+  | LensContractChanged { lens: LensContractRef }
+  | ProjectionChanged {
+      projection: ProjectionIdentityRef,
+      endpoint: ArtifactDependencyEndpoint
+    }
+  | Stage0ContractChanged { contract: Stage0ContractRef }
+  | CorePackageSchemaChanged { schema: CorePackageSchemaRef }
 
 
 type ChangeSet {
@@ -51,7 +74,7 @@ type ChangeSet {
 }
 
 
-// RULING-1: 🟢 pretty-much-done — artifact taxonomy; bootstrap kinds reserved, protocol deferred at use.
+// 🟢 coproduct dissolution
 type ArtifactKind
   = TargetSource
   | TestSource
@@ -65,27 +88,7 @@ type ArtifactKind
   | WitnessBundle
 
 
-// RULING-1: 🟡 feature:projection-identity-ref consumer:v4.std.regeneration::Projection dissolve-on: AffectedSet.projections carries Projection rows or ProjectionRef substrate (bounds: AffectedSet.projections only; owner: Wave-2 P8 substrate PR after #3439).
-type ProjectionIdentityRef = Symbol
-
-
-// RULING-1: 🟡 feature:recompute-cache-key consumer:v4.std.regeneration::RecomputePlan dissolve-on: CacheKey carrier replaces Symbol in RecomputePlan.cached (bounds: RecomputePlan.cached only; owner: Wave-2 P8 substrate PR after #3439).
-type CacheKey = Symbol
-
-
-// RULING-1: 🟡 feature:recompute-invalidation-key consumer:v4.std.regeneration::RecomputePlan dissolve-on: InvalidationKey carrier replaces Symbol in RecomputePlan.invalidated (bounds: RecomputePlan.invalidated only; owner: Wave-2 P8 substrate PR after #3439).
-type InvalidationKey = Symbol
-
-
-// RULING-1: 🟡 feature:lens-contract-ref consumer:v4.lens::LensContract dissolve-on: lens invalidations reference LensContract authority not bare Symbol (bounds: InvalidationFromLensContract only; owner: Wave-2 P8 substrate PR after #3439).
-type LensContractRef = Symbol
-
-
-// RULING-1: 🟡 feature:pipeline-stage-name consumer:v4.std.pipeline::PipelineStage dissolve-on: stage invalidations use PipelineStage.name authority (bounds: PipelineStageContractChanged only; owner: Wave-2 P8 substrate PR after #3439).
-type PipelineStageName = Symbol
-
-
-// RULING-1: 🟢 pretty-much-done — invalidation evidence carriers for AffectedSet.
+// 🟢 coproduct dissolution
 type InvalidationReason
   = DirectChange { change: Change }
   | DependencyPropagation { edge: DependencyEdge }
@@ -109,7 +112,6 @@ type AffectedSet {
 }
 
 
-// RULING-1: 🟢 pretty-much-done — variant-is-data (Practice 4): output kind is a field, not repeated variants.
 type Projection {
   output_artifact_kind: ArtifactKind
   name: Symbol
@@ -119,7 +121,7 @@ type Projection {
 }
 
 
-// RULING-1: 🟡 feature:witness-ref-substrate consumer:v4.std.witness::WitnessRef dissolve-on: WitnessRef carrier in v4.std.witness (bounds: Artifact.witness_ref only; owner: src/v4/TASKS.md T-3 witness substrate + Wave-2 WitnessRef PR after #3439).
+// 🟡 feature:witness-ref-substrate consumer:v4.std.witness::WitnessRef dissolve-on: WitnessRef in v4.std.witness (bounds: Artifact.witness_ref; owner: src/v4/TASKS.md T-3 + Wave-2 after #3439).
 type Artifact {
   kind: ArtifactKind
   identity: Symbol

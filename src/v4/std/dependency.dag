@@ -1,13 +1,8 @@
 // src/v4/std/dependency.dag
-// Scope: typed dependency graph substrate (P6) — domains, edges, witnesses, SCC/topo data.
-// Anchor: docs/design-v4-compiler-homomorphism.md P6; edge orientation required_before → dependent_after.
-// Rule: EffectDependsOn/ResourceDependsOn are edge classifications derived from modeled facts;
-//       scheduling edges are domain-tagged; reason family matches domain (illegal cross-domain states unrepresentable).
-// Owns: DependencySubject, ArtifactDependencyEndpoint, Program/TargetPlan/Artifact scheduling reasons, ContainmentEdge,
-//       SchedulingDependencyEdge,
-//       Program/TargetPlan/Artifact dependency kind summaries, ClosedWorldDependencyWitness, topo carriers.
+// Scope: P6 dependency graph substrate — domains, edges, witnesses, SCC, topological plan.
+// Owns: DependencySubject, ArtifactDependencyEndpoint, scheduling/containment edges, ClosedWorldDependencyWitness, IndependenceClaim, TopologicalPlan.
 // Consumes: v4.std.collection, v4.std.node.
-// Status: Wave-1 Worker A — strict substrate (data contracts only; no stage implementations).
+// Status: Wave-1 Worker A strict substrate.
 
 
 module v4.std.dependency
@@ -17,14 +12,13 @@ import v4.std.collection { List }
 import v4.std.node { Path, Symbol }
 
 
-// RULING-1: 🟢 pretty-much-done — P6 domain partition (program vs target-plan vs artifact).
 type DependencyDomain
   = Program
   | TargetPlan
   | Artifact
 
 
-// RULING-1: 🟢 pretty-much-done — summary labels for pipeline contracts (not edge authorities).
+// 🟢 coproduct dissolution
 type ProgramDependencyKind
   = BindsTo
   | TypeDependsOn
@@ -34,14 +28,14 @@ type ProgramDependencyKind
   | ModuleDependsOn
 
 
-// RULING-1: 🟢 pretty-much-done — target-plan scheduling relation family (P6 TargetPlan tier).
+// 🟢 coproduct dissolution
 type TargetPlanDependencyKind
   = PlacementConstraint
   | TransferDependsOn
   | BarrierBefore
 
 
-// RULING-1: 🟢 pretty-much-done — artifact/projection provenance relation family (P6 Artifact tier).
+// 🟢 coproduct dissolution
 type ArtifactDependencyKind
   = ModelDependsOn
   | ProjectionDependsOn
@@ -51,15 +45,19 @@ type ArtifactDependencyKind
   | PromotionDependsOn
 
 
-// RULING-1: 🟢 pretty-much-done — edge endpoints (Node graph vs artifact/projection/model refs).
-type DependencySubject
-  = NodeSubject { path: Path }
-  | ArtifactSubject { artifact: Symbol }
+type ArtifactDependencyEndpoint
+  = ArtifactSubject { artifact: Symbol }
   | ProjectionSubject { projection: Symbol }
   | ModelSubject { model: Symbol }
 
 
-// RULING-1: 🟢 pretty-much-done — program-tier scheduling evidence (pairs with ProgramDependencyKind summaries).
+// 🟢 coproduct dissolution
+type DependencySubject
+  = NodeSubject { path: Path }
+  | ArtifactEndpoint { endpoint: ArtifactDependencyEndpoint }
+
+
+// 🟢 coproduct dissolution
 type ProgramSchedulingReason
   = BindingReason { fact: Symbol }
   | TypeReason { constraint: Symbol }
@@ -69,14 +67,14 @@ type ProgramSchedulingReason
   | ModuleReason { module_import: Symbol }
 
 
-// RULING-1: 🟢 pretty-much-done — target-plan-tier scheduling evidence.
+// 🟢 coproduct dissolution
 type TargetPlanSchedulingReason
   = PlacementReason { placement_witness: Symbol }
   | TransferReason { transfer_witness: Symbol }
   | BarrierReason { barrier_witness: Symbol }
 
 
-// RULING-1: 🟢 pretty-much-done — artifact/projection/model scheduling evidence.
+// 🟢 coproduct dissolution
 type ArtifactSchedulingReason
   = ArtifactReason { provenance: Symbol }
   | ModelReason { model_ref: Symbol }
@@ -87,7 +85,6 @@ type ArtifactSchedulingReason
   | PromotionReason { promotion_witness: Symbol }
 
 
-// RULING-1: 🟢 pretty-much-done — program scheduling over node paths (P6 Program tier).
 type ProgramSchedulingEdge {
   required_before: Path
   dependent_after: Path
@@ -95,7 +92,6 @@ type ProgramSchedulingEdge {
 }
 
 
-// RULING-1: 🟢 pretty-much-done — target-plan scheduling over node paths (P6 TargetPlan tier).
 type TargetPlanSchedulingEdge {
   required_before: Path
   dependent_after: Path
@@ -103,14 +99,6 @@ type TargetPlanSchedulingEdge {
 }
 
 
-// RULING-1: 🟢 pretty-much-done — artifact-tier endpoints (no NodeSubject on artifact scheduling).
-type ArtifactDependencyEndpoint
-  = ArtifactSubject { artifact: Symbol }
-  | ProjectionSubject { projection: Symbol }
-  | ModelSubject { model: Symbol }
-
-
-// RULING-1: 🟢 pretty-much-done — artifact scheduling over ArtifactDependencyEndpoint only (P6 Artifact tier).
 type ArtifactSchedulingEdge {
   required_before: ArtifactDependencyEndpoint
   dependent_after: ArtifactDependencyEndpoint
@@ -118,34 +106,32 @@ type ArtifactSchedulingEdge {
 }
 
 
-// RULING-1: 🟢 pretty-much-done — domain fixes reason family and endpoint shape (no Program+PlacementReason).
+// 🟢 coproduct dissolution
 type SchedulingDependencyEdge
   = Program { edge: ProgramSchedulingEdge }
   | TargetPlan { edge: TargetPlanSchedulingEdge }
   | Artifact { edge: ArtifactSchedulingEdge }
 
 
-// RULING-1: 🟢 pretty-much-done — structural spine (parent contains child); not a scheduling edge.
 type ContainmentEdge {
   parent: DependencySubject
   child: DependencySubject
 }
 
 
-// RULING-1: 🟢 pretty-much-done — tagged union for diagnostics; scheduling carries domain-tagged edges.
+// 🟢 coproduct dissolution
 type DependencyEdge
   = Containment { edge: ContainmentEdge }
   | Scheduling { edge: SchedulingDependencyEdge }
 
 
-// RULING-1: 🟢 pretty-much-done — containment tree + typed scheduling sidecar (artifact subjects, not Path).
 type DependencyGraph {
   containment: List<ContainmentEdge>
   scheduling: List<SchedulingDependencyEdge>
 }
 
 
-// RULING-1: 🟢 pretty-much-done — program-tier closed-world completeness (P6 Program).
+// 🟢 coproduct dissolution
 type ProgramCompletenessFact
   = ProgramSemanticFactsComplete
   | EffectFactsComplete
@@ -171,7 +157,7 @@ type ProgramIndependenceClaim {
 }
 
 
-// RULING-1: 🟢 pretty-much-done — target-plan-tier closed-world completeness (P6 TargetPlan).
+// 🟢 coproduct dissolution
 type TargetPlanCompletenessFact
   = PlacementFactsComplete
   | TransferFactsComplete
@@ -197,7 +183,7 @@ type TargetPlanIndependenceClaim {
 }
 
 
-// RULING-1: 🟢 pretty-much-done — artifact-tier closed-world completeness (P6 Artifact).
+// 🟢 coproduct dissolution
 type ArtifactCompletenessFact
   = ArtifactGraphFactsComplete
   | ArtifactProvenanceFactsComplete
@@ -222,21 +208,21 @@ type ArtifactIndependenceClaim {
 }
 
 
-// RULING-1: 🟢 pretty-much-done — domain fixes completeness family (no Program witness + artifact facts).
+// 🟢 coproduct dissolution
 type ClosedWorldDependencyWitness
   = Program { witness: ProgramClosedWorldWitness }
   | TargetPlan { witness: TargetPlanClosedWorldWitness }
   | Artifact { witness: ArtifactClosedWorldWitness }
 
 
-// RULING-1: 🟢 pretty-much-done — domain fixes witness + endpoint shape (no Program witness + ArtifactSubject).
+// 🟢 coproduct dissolution
 type IndependenceClaim
   = Program { claim: ProgramIndependenceClaim }
   | TargetPlan { claim: TargetPlanIndependenceClaim }
   | Artifact { claim: ArtifactIndependenceClaim }
 
 
-// RULING-1: 🟢 pretty-much-done — cycle permit/reject classification (P6; not blind rejection).
+// 🟢 coproduct dissolution
 type CycleClassification
   = Acyclic
   | ValidFixedPoint { witness: Symbol }
@@ -274,7 +260,6 @@ type TopologicalLayer {
 }
 
 
-// RULING-1: 🟢 pretty-much-done — value only; Witness<TopologicalPlan> lives on RecomputePlan.schedule.
 type TopologicalPlan {
   condensation: SccCondensation
   layers: List<TopologicalLayer>

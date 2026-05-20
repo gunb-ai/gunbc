@@ -1,9 +1,8 @@
 // src/v4/std/pipeline.dag
-// Scope: compiler pipeline AS DATA — stage carriers, dependency contracts, diagnostic policy.
-// Anchor: docs/design-v4-compiler-homomorphism.md "The pipeline — stages as named algebras".
+// Scope: compiler pipeline as data — stage carriers, dependency contracts, diagnostic policy.
 // Owns: CarrierKind, PipelineStage, Pipeline, StageDiagnosticPolicy, StageRequirements, StageEffects, StageDependencyContract.
 // Consumes: v4.std.collection, v4.std.dependency, v4.std.node.
-// Status: Wave-1 Worker A — strict substrate (stages are data; algebra_ref is Symbol, not hidden control flow).
+// Status: Wave-1 Worker A strict substrate.
 
 
 module v4.std.pipeline
@@ -18,7 +17,7 @@ import v4.std.dependency {
 import v4.std.node { Symbol }
 
 
-// RULING-1: 🟢 pretty-much-done — compile-core carrier progression per homomorphism doc.
+// 🟢 coproduct dissolution
 type CarrierKind
   = Text
   | SurfaceNode
@@ -30,17 +29,15 @@ type CarrierKind
   | HostValue
 
 
-// RULING-1: 🟢 pretty-much-done — per-stage diagnostic policy (accumulation only).
+// 🟢 coproduct dissolution
 type DiagnosticAccumulationPolicy
   = Accumulate
   | ShortCircuit
 
 
-// RULING-1: 🟢 pretty-much-done — alias only; fail-closed is pipeline invariant (P3), not a Bool field.
 type StageDiagnosticPolicy = DiagnosticAccumulationPolicy
 
 
-// RULING-1: 🟢 pretty-much-done — no domain field (lists are authoritative; avoids domain/list contradiction).
 type StageRequirements {
   program: List<ProgramDependencyKind>
   target_plan: List<TargetPlanDependencyKind>
@@ -48,7 +45,6 @@ type StageRequirements {
 }
 
 
-// RULING-1: 🟢 pretty-much-done — containment spine is structural (ContainmentEdge), not a scheduling kind.
 type StageEffects {
   adds_containment_spine: Bool
   program: List<ProgramDependencyKind>
