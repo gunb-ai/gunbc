@@ -1184,7 +1184,7 @@ Required substrate (declared as derived combinators in `std/node.dag` or peer):
 
 1. **`traverse_node` / `sequence_node` / `bind_outcome`** — derived combinators that wrap `fold_node` with `Outcome`-threading. Single declaration of each; no duplicates (per Worker C finding #3 — `map_node_outcome` ≡ `bind_outcome` is forbidden).
 2. **`Outcome<T>` shape**: `Accepted { value: T, diagnostics: Diagnostics } | Rejected { diagnostics: NonEmptyDiagnostics }` per Ratified Q11. Clean success = `Accepted(value, None)`. Two-variant collapse; no `Produced` / `RejectedAccumulating` split.
-3. **`StageDiagnosticPolicy`** with `accumulation: Accumulate | ShortCircuit`; fatality is `FailClosed` invariant, NOT a selectable mode. Single authority (lives in `std/diagnostic.dag` extension, NOT split across `std/pipeline.dag`).
+3. **`StageDiagnosticPolicy`** with `accumulation: Accumulate | ShortCircuit`; fatality is `FailClosed` invariant, NOT a selectable mode. **Type declaration lives in `std/diagnostic.dag`** (single authority — extension of the existing Outcome substrate). Each stage row in `std/pipeline.dag` carries a `diagnostic_policy: StageDiagnosticPolicy` field referencing per-stage VALUES of that type. The TYPE has one home; the VALUES are per-stage data — that is not split authority.
 4. **Define laws** — `traverse_node`'s derivation from `fold_node` must obey identity (`traverse(pure)` is no-op), composition (`traverse` over composed algebras = composition of traverses), failure-monotonicity (a Rejected anywhere produces Rejected overall; accumulation is per-policy).
 
 Without the laws + single-authority discipline, Q4a degrades to Q4b convention — that's the trap. Per Worker C's `NodeOutcomeFold.step` finding: algebras MUST NOT see prior `Outcome` (would create dual authority). The combinator is the sole policy-aware site.
@@ -1256,14 +1256,14 @@ The "EffectDependsOn / ResourceDependsOn as label vs as derived classification" 
 
 ### Ratified Q11 — `Outcome<T>` per-stage policy via `StageDiagnosticPolicy` (2026-05-20)
 
-**Resolved Q11c.** Per-stage choice via `StageDiagnosticPolicy { accumulation: Accumulate | ShortCircuit; fatality: FailClosed (invariant) }` declared per stage in `std/pipeline.dag`. **Fail-closed is the invariant, NOT a selectable policy** (per strict-review correction #7).
+**Resolved Q11c.** Per-stage choice via `StageDiagnosticPolicy { accumulation: Accumulate | ShortCircuit; fatality: FailClosed (invariant) }`. **The TYPE declaration lives in `std/diagnostic.dag` (single authority — extension of the existing Outcome substrate).** Each stage row in `std/pipeline.dag` carries a FIELD `diagnostic_policy: StageDiagnosticPolicy` referencing the per-stage value of that type; no duplicate type declaration. **Fail-closed is the invariant, NOT a selectable policy** (per strict-review correction #7).
 
 `Outcome<T>` shape (per strict-review correction #11):
 - `Accepted { value: T, diagnostics: Diagnostics }`
 - `Rejected { diagnostics: NonEmptyDiagnostics }`
 - where `Diagnostics = None | Some { diagnostics: NonEmptyDiagnostics }`
 
-Clean success is `Accepted(value, None)`. No `Produced` vs `Accepted` split; no `Rejected` vs `RejectedAccumulating` split. `traverse_outcome` + `map_node_outcome` + `bind_outcome` take/thread the `StageDiagnosticPolicy` to honor accumulation vs short-circuit. Single authority for `StageDiagnosticPolicy` is in the substrate file that owns Outcome (likely `std/diagnostic.dag` extension, not split across `pipeline.dag`).
+Clean success is `Accepted(value, None)`. No `Produced` vs `Accepted` split; no `Rejected` vs `RejectedAccumulating` split. The canonical derived-combinator set is `traverse_node` / `sequence_node` / `bind_outcome` per Ratified Q4 — they take/thread the `StageDiagnosticPolicy` to honor accumulation vs short-circuit. `map_node_outcome` is explicitly forbidden as a duplicate (per Worker C finding #3 — `map_node_outcome ≡ bind_outcome`); use `bind_outcome` instead.
 
 ### Ratified Q12 — Grammar bidirectional law is target-parse-after-serialize (2026-05-20)
 
