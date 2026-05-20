@@ -37,14 +37,10 @@ type DiagnosticAccumulationPolicy
   | ShortCircuit
 
 
-// RULING-1: 🟢 pretty-much-done — invariant stage fatality (no non-fail-closed stages).
-type StageFatality
-  = FailClosedPolicy
-
-
+// RULING-1: 🟢 pretty-much-done — fail-closed is invariant; accumulation policy is the only stage knob.
 type StageDiagnosticPolicy {
   accumulation: DiagnosticAccumulationPolicy
-  fatality: StageFatality
+  fail_closed: Bool
 }
 
 
@@ -109,7 +105,7 @@ data algebra_eval: Symbol = algebra_eval
 
 data stage_diagnostic_fail_closed_accumulate: StageDiagnosticPolicy = StageDiagnosticPolicy {
   accumulation: Accumulate,
-  fatality: FailClosedPolicy
+  fail_closed: true
 }
 
 
