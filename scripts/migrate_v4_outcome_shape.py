@@ -89,9 +89,14 @@ def replace_rejected_diagnostic(text: str) -> str:
                 depth -= 1
             k += 1
         expr = text[expr_start:k].strip()
-        out.append(
-            f"Rejected {{ diagnostics: diagnostics_singleton(d: {expr}) }}"
-        )
+        # Pattern binds (`d`, `_`) become NonEmptyDiagnostics fields; call sites stay expressions.
+        if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", expr):
+            bind = "r" if expr == "d" else expr
+            out.append(f"Rejected {{ diagnostics: {bind} }}")
+        else:
+            out.append(
+                f"Rejected {{ diagnostics: diagnostics_singleton(d: {expr}) }}"
+            )
         i = k + 1  # skip closing brace of Rejected
     return "".join(out)
 

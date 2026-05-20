@@ -97,16 +97,16 @@ fn run_pipeline_assert(
           actual: actual,
           diagnostic: eval_diagnostic(reason: eval_rejected_pipeline_projection_deferred, node: input)
         }
-        Rejected { diagnostics: diagnostics_singleton(d: _) } => Fail { actual: actual }
+        Rejected { diagnostics: _ } => Fail { actual: actual }
       }
-      Rejected { diagnostics: diagnostics_singleton(d: d) } => {
-        let comparable = Rejected { diagnostics: diagnostics_singleton(d: d) }
+      Rejected { diagnostics: r } => {
+        let comparable = Rejected { diagnostics: r }
         if outcome_node_eq(a: comparable, b: expected) { Pass } else { Fail { actual: actual } }
       }
     }
     Compiles => match actual {
       Accepted { value: _, diagnostics: None } => Pass
-      Rejected { diagnostics: diagnostics_singleton(d: _) } => Fail { actual: actual }
+      Rejected { diagnostics: _ } => Fail { actual: actual }
     }
     RoundTrips => Deferred {
       actual: actual,

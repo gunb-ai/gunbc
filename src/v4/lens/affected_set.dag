@@ -392,7 +392,7 @@ fn seed_edit_fold_acc_live(
               edit: edit
             )
           }
-        Rejected { diagnostics: diagnostics_singleton(d: d) } =>
+        Rejected { diagnostics: r } =>
           AffectedFoldAcc {
             dag: acc.dag,
             frontier: mark_whole_dag_diagnostic(diagnostic: d)
@@ -405,7 +405,7 @@ fn seed_edit_fold_acc_live(
             dag: acc.dag,
             frontier: mark_whole_dag(reason: r)
           }
-        Rejected { diagnostics: diagnostics_singleton(d: d) } =>
+        Rejected { diagnostics: r } =>
           AffectedFoldAcc {
             dag: acc.dag,
             frontier: mark_whole_dag_diagnostic(diagnostic: d)

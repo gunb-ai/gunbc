@@ -345,10 +345,10 @@ fn bootstrap_claim_generator_for_manual_anchor(
   key: T19ManualAnchorKey
 ) -> Outcome<Generator<TestgenConcept>> {
   match manual_test_claim_for_manual_anchor(key: key) {
-    Rejected { diagnostics: diagnostics_singleton(d: d) } => Rejected { diagnostics: diagnostics_singleton(d: d) }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: claim, diagnostics: None } =>
       match testgen_concept_for_manual_claim(claim: claim) {
-        Rejected { diagnostics: diagnostics_singleton(d: d) } => Rejected { diagnostics: diagnostics_singleton(d: d) }
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: slot, diagnostics: None } =>
           Accepted { value: Generator {
               classification: claim.classification,

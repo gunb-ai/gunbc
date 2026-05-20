@@ -109,7 +109,7 @@ fn normalize_edge(e: Edge) -> Outcome<Edge> {
           label: e.label,
           target: normalized_target
         }, diagnostics: None }
-    Rejected { diagnostics: diagnostics_singleton(d: d) } => Rejected { diagnostics: diagnostics_singleton(d: d) }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
 }
 
@@ -122,14 +122,14 @@ fn empty_normalized_children() -> Outcome<List<Edge>> {
 fn normalize_children(children: List<Edge>) -> Outcome<List<Edge>> {
   fold(children, init: empty_normalized_children(), f: fn(acc, e) {
     match acc {
-      Rejected { diagnostics: diagnostics_singleton(d: d) } =>
-        Rejected { diagnostics: diagnostics_singleton(d: d) }
+      Rejected { diagnostics: r } =>
+        Rejected { diagnostics: r }
       Accepted { value: done, diagnostics: None } =>
         match normalize_edge(e: e) {
           Accepted { value: normalized_edge, diagnostics: None } =>
             Accepted { value: list_push(done, normalized_edge), diagnostics: None }
-          Rejected { diagnostics: diagnostics_singleton(d: d) } =>
-            Rejected { diagnostics: diagnostics_singleton(d: d) }
+          Rejected { diagnostics: r } =>
+            Rejected { diagnostics: r }
         }
     }
   })
@@ -199,7 +199,7 @@ fn normalize_sugar(kind: SurfaceSugarKind, n: Node, children: List<Edge>) -> Out
 
 fn normalize_node(n: Node) -> Outcome<Node> {
   match normalize_children(children: n.children) {
-    Rejected { diagnostics: diagnostics_singleton(d: d) } => Rejected { diagnostics: diagnostics_singleton(d: d) }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: normalized_children, diagnostics: None } =>
       match classify_sugar(n: n) {
         Some { value: kind } =>
@@ -216,7 +216,7 @@ fn normalize_node(n: Node) -> Outcome<Node> {
 
 fn normalize(parse_tree: ParseTree) -> Outcome<NormalizedTree> {
   match normalize_node(n: parse_tree) {
-    Rejected { diagnostics: diagnostics_singleton(d: d) } => Rejected { diagnostics: diagnostics_singleton(d: d) }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: normalized, diagnostics: None } =>
       if node_well_formed(n: normalized) {
         Accepted { value: normalized, diagnostics: None }
