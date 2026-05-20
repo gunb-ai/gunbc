@@ -62,11 +62,10 @@ fn rust_i32_candidate_fixture() -> CoercionCandidateSet {
   CoercionCandidateSet {
     set: CandidateSet {
       candidates: [rust_i32_inhabitant_node()],
-      closedness: int_source_node()
-    },
-    closedness_witness: StructuralPropertyWitness {
-      property: fixture_property_closed_candidates,
-      evidence: int_source_node()
+      closedness: StructuralPropertyWitness {
+        property: fixture_property_closed_candidates,
+        evidence: int_source_node()
+      }
     }
   }
 }

@@ -46,7 +46,6 @@ type CoercionMismatchKind
   | WouldLoseInformation
 type CoercionCandidateSet {
   set: CandidateSet
-  closedness_witness: StructuralPropertyWitness
 }
 type CoercionResult {
   target: Node

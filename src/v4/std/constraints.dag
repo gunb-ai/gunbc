@@ -47,7 +47,6 @@ type ConstraintSolvePolicy {
 }
 type CanonicalGroundingCandidateSet {
   set: CandidateSet
-  closedness_witness: StructuralPropertyWitness
 }
 type CanonicalGroundingWitness {
   structural: StructuralPropertyWitness
@@ -65,25 +64,22 @@ fn canonical_grounding_candidates(
 ) -> Outcome<CanonicalGroundingCandidateSet> {
   outcome_rejected(constraints_not_realized_diagnostic(graph: graph))
 }
-fn solve_constraints(
-  graph: ConstraintGraph,
-  policy: ConstraintSolvePolicy,
-) -> Outcome<CanonicalGrounding> {
-  match canonical_grounding_candidates(graph: graph, policy: policy) {
+fn solve_constraints(policy: ConstraintSolvePolicy) -> Outcome<CanonicalGrounding> {
+  match canonical_grounding_candidates(graph: policy.graph, policy: policy) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: grounding_candidates, diagnostics: _ } =>
       match find_witness(
-        source_facts: graph.root,
+        source_facts: policy.graph.root,
         candidates: grounding_candidates.set,
         predicate: PreservationPredicate {
-          algebra: graph.root,
+          algebra: policy.graph.root,
           preservation_rule: preservation_rule_constraint_satisfaction
         },
         multiplicity_policy: UniqueOnly
       ) {
         // Scaffold only while find_witness rejects: W-T-9 must lift FindWitnessResult → CanonicalGrounding here.
         Accepted { value: _, diagnostics: _ } =>
-          outcome_rejected(constraints_not_realized_diagnostic(graph: graph))
+          outcome_rejected(constraints_not_realized_diagnostic(graph: policy.graph))
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
       }
   }
