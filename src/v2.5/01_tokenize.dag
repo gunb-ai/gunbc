@@ -2,11 +2,13 @@ module v2_5.compiler.tokenize
 
 type Symbol
 
+// 🟡 feature:v2_5-source-text-carrier
 type Source {
   file: Symbol
   text: String
 }
 
+// 🟡 feature:v2_5-std-diagnostic-locus
 type SourceSpan {
   file: Symbol
   start: Int
@@ -20,6 +22,7 @@ type DiagnosticReason
   | UnterminatedInterpolation
   | LexicalProgressExhausted
 
+// 🟡 feature:v2_5-std-diagnostic-outcome
 type Diagnostic {
   reason: DiagnosticReason
   span: SourceSpan
@@ -199,6 +202,7 @@ type TokenizeRegression {
   expected: TokenizeExpectation
 }
 
+// 🟡 feature:v2_5-syntax-spec-keywords
 data keyword_table: Map<String, Keyword> = {
   "module": ModuleKeyword, "import": ImportKeyword,
   "type": TypeKeyword, "fn": FnKeyword, "func": FuncKeyword,
@@ -215,6 +219,7 @@ data keyword_table: Map<String, Keyword> = {
   "idempotent": IdempotentKeyword, "readonly": ReadonlyKeyword, "hermetic": HermeticKeyword
 }
 
+// 🟡 feature:v2_5-syntax-spec-operators
 data single_punct: Map<String, Punctuation> = {
   "(": LParen, ")": RParen,
   "[": LBracket, "]": RBracket,
@@ -224,6 +229,7 @@ data single_punct: Map<String, Punctuation> = {
   "!": Bang, "?": Question, "|": Pipe
 }
 
+// 🟡 feature:v2_5-syntax-spec-operators
 data double_punct: Map<String, Punctuation> = {
   "=>": FatArrow, "->": Arrow,
   "==": EqEq, "!=": Ne,
