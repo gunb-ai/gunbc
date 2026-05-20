@@ -177,7 +177,7 @@ type AffectedFoldAcc {
 }
 
 
-type AffectedSetFoldAcc {
+type AffectedSetFoldAcc
   = AffectedSetActive {
       dag: Dag,
       changes: ChangeSet,
