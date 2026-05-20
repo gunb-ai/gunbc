@@ -1,29 +1,18 @@
-// v2.5 syntax carriers — closed sums for operators and literals.
-// Authority for expression/type surface metadata used by stage_types.
-// Does not import v2, v3, v4, or dsl.
+// v2.5 syntax extensions — operators/literals from std.syntax (M2 authority);
+// v2 surface carriers not yet in compiler-std consolidation live here.
 
 module v2_5.std.syntax
 
-type BinOp
-  = Add | Sub | Mul | Div | Mod
-  | Eq | Ne | Lt | Gt | Le | Ge
-  | And | Or | NullCoalesce
+import std.syntax { BinOp, LiteralValue, AlgebraFieldKind }
 
+// 🟢 coproduct dissolution
 type UnaryOpKind
   = Not | Neg
 
-type LiteralValue
-  = LitStr { value: String }
-  | LitInt { value: Int }
-  | LitFloat { value: String }
-  | LitBool { value: Bool }
-  | LitNull
-
+// 🟢 coproduct dissolution
 type OperationModifier
   = Idempotent | Readonly | Hermetic
 
+// 🟢 coproduct dissolution
 type ExprErrorKind
   = ParseRecoveryError | SemanticExprError | InternalExprError
-
-type AlgebraFieldKind
-  = AlgAdd | AlgMul | AlgReciprocal | AlgQuotient | AlgRemainder | AlgCompare | AlgMeet | AlgJoin

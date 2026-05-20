@@ -1,15 +1,11 @@
 // v2.5 identity and provenance — shared across all pipeline phases.
 // Parse phases use AuthoredName; post-resolve phases use Symbol (from node).
+// SourceSpan authority: std.types (FilePath refinement, M2 single-authority).
 
 module v2_5.std.identity
 
+import std.types { SourceSpan, FilePath }
 import v2_5.std.node { Symbol }
-
-type SourceSpan {
-  start: Int
-  end: Int
-  file: String
-}
 
 type AuthoredName {
   text: String

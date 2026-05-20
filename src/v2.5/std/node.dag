@@ -75,18 +75,28 @@ fn connective_edge_discipline(c: Connective) -> EdgeDiscipline {
   }
 }
 
-fn all_edges_named(children: List<Edge>) -> Bool {
-  fold(children, init: true, f: (acc, e) => match e.label {
-    Named { name: _ } => acc
+// 🟢 predicate dissolution — derived EdgeLabel property; list walkers delegate here.
+fn edge_is_named(e: Edge) -> Bool {
+  match e.label {
+    Named { name: _ } => true
     Positional => false
-  })
+  }
+}
+
+// 🟢 predicate dissolution — derived EdgeLabel property; list walkers delegate here.
+fn edge_is_positional(e: Edge) -> Bool {
+  match e.label {
+    Named { name: _ } => false
+    Positional => true
+  }
+}
+
+fn all_edges_named(children: List<Edge>) -> Bool {
+  fold(children, init: true, f: (acc, e) => acc && edge_is_named(e: e))
 }
 
 fn all_edges_positional(children: List<Edge>) -> Bool {
-  fold(children, init: true, f: (acc, e) => match e.label {
-    Named { name: _ } => false
-    Positional => acc
-  })
+  fold(children, init: true, f: (acc, e) => acc && edge_is_positional(e: e))
 }
 
 fn name_occurrences(name: Symbol, children: List<Edge>) -> Int {
