@@ -1,108 +1,82 @@
 // src/v4/std/find_witness.dag
 // Scope: unified candidate-enumeration-and-check primitive (Pass B unification).
-// Anchor: docs/design-v4-compiler-homomorphism.md — find_witness primitive row.
-// Owns: PreservationPredicate, WitnessMatch, MultiplicityPolicy, TargetSelectionPolicy, find_witness, verify_witness.
-// Consumes: std diagnostic, std witness, std collection, std node.
-// Status: Wave-2-BC3 modeled; algorithm scaffold — dissolve when stage bodies wire consumers.
+// Anchor: docs/design-v4-compiler-homomorphism.md — find_witness primitive row; Practice 11.
+// Owns: CandidateSet, PreservationPredicate, FindWitnessResult, MultiplicityPolicy, find_witness, verify_witness.
+// Consumes: std diagnostic, std node.
+// Status: Wave-2-BC3 modeled; enumeration body scaffold until stage consumers land.
 
 
 module v4.std.find_witness
 
 
-import v4.std.collection { List, count, fold }
 import v4.std.diagnostic {
   Diagnostic,
-  NonEmptyDiagnostics,
+  ExternalContractUnknown,
+  NodeLocus,
   Outcome,
-  diagnostics_singleton,
-  outcome_accepted,
+  Unavailable,
   outcome_rejected
 }
 import v4.std.node { Node, Symbol }
-import v4.std.witness { Holds, Violates, Witness }
 data find_witness_reason_no_candidate: Symbol = find_witness_reason_no_candidate
 data find_witness_reason_ambiguous_candidate: Symbol = find_witness_reason_ambiguous_candidate
 data find_witness_reason_not_realized: Symbol = find_witness_reason_not_realized
-type PreservationPredicate<C, W> {
-  check: fn(C) -> Witness<W>
+data preservation_rule_constraint_satisfaction: Symbol = preservation_rule_constraint_satisfaction
+data preservation_rule_exact_structural_equality_zip_fold: Symbol =
+  preservation_rule_exact_structural_equality_zip_fold
+type CandidateSet {
+  candidates: List<Node>
+  closedness: Node
 }
-type WitnessMatch<C, W> {
-  candidate: C
-  witness: W
+type PreservationPredicate {
+  algebra: Node
+  preservation_rule: Symbol
+}
+type FindWitnessResult {
+  candidate: Node
+  witness: Node
+  closedness_provenance: Node
 }
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
-type TargetSelectionPolicy
-  = UniqueOnly
-  | TargetDeclaredPriority { priority: List<Symbol> }
-  | UserSelected { selection: Symbol }
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// TargetSelectionPolicy concrete variants live in v4.std.coercion; policy slot is Node until
+// cross-module type import is available without cycle (coercion imports find_witness).
 type MultiplicityPolicy
   = UniqueOnly
-  | TargetSelection { policy: TargetSelectionPolicy }
-fn find_witness_no_candidate_diagnostic(at: Node) -> Diagnostic {
+  | TargetSelection { policy: Node }
+fn find_witness_no_candidate_diagnostic(source_facts: Node) -> Diagnostic {
   Diagnostic {
     reason: find_witness_reason_no_candidate,
-    at: NodeLocus { node: at },
+    at: NodeLocus { node: source_facts },
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
-fn find_witness_ambiguous_candidate_diagnostic(at: Node) -> Diagnostic {
+fn find_witness_ambiguous_candidate_diagnostic(source_facts: Node) -> Diagnostic {
   Diagnostic {
     reason: find_witness_reason_ambiguous_candidate,
-    at: NodeLocus { node: at },
-    correction: Unavailable { reason: AmbiguousIntent }
-  }
-}
-fn find_witness_not_realized_diagnostic(at: Node) -> Diagnostic {
-  Diagnostic {
-    reason: find_witness_reason_not_realized,
-    at: NodeLocus { node: at },
+    at: NodeLocus { node: source_facts },
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
-fn find_witness<C, W>(
-  source_facts: Node,
-  candidates: List<C>,
-  predicate: PreservationPredicate<C, W>,
-  policy: MultiplicityPolicy,
-) -> Outcome<WitnessMatch<C, W>> {
-  let passing = fold(candidates, init: [], f: fn(acc, c) {
-    match predicate.check(c) {
-      Holds { value: w } =>
-        list_push(acc, WitnessMatch { candidate: c, witness: w })
-      Violates { diagnostic: _ } => acc
-    }
-  })
-  let n = count(passing)
-  if n == 0 {
-    outcome_rejected(find_witness_no_candidate_diagnostic(at: source_facts))
-  } else {
-    if n == 1 {
-      match first(passing) {
-        Some { value: m } => outcome_accepted(m)
-        None =>
-          outcome_rejected(find_witness_no_candidate_diagnostic(at: source_facts))
-      }
-    } else {
-      match policy {
-        UniqueOnly =>
-          outcome_rejected(
-            find_witness_ambiguous_candidate_diagnostic(at: source_facts)
-          )
-        TargetSelection { policy: _ } =>
-          outcome_rejected(find_witness_not_realized_diagnostic(at: source_facts))
-      }
-    }
+fn find_witness_not_realized_diagnostic(source_facts: Node) -> Diagnostic {
+  Diagnostic {
+    reason: find_witness_reason_not_realized,
+    at: NodeLocus { node: source_facts },
+    correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
-fn verify_witness<C, W>(
+fn find_witness(
   source_facts: Node,
-  candidate: C,
-  predicate: PreservationPredicate<C, W>,
-  witness: W,
-) -> Bool {
-  match predicate.check(candidate) {
-    Holds { value: w } => w == witness
-    Violates { diagnostic: _ } => false
-  }
+  candidates: CandidateSet,
+  predicate: PreservationPredicate,
+  multiplicity_policy: MultiplicityPolicy,
+) -> Outcome<FindWitnessResult> {
+  outcome_rejected(find_witness_not_realized_diagnostic(source_facts: source_facts))
+}
+fn verify_witness(
+  source_facts: Node,
+  candidate: Node,
+  predicate: PreservationPredicate,
+  witness: Node,
+) -> Outcome<Node> {
+  outcome_rejected(find_witness_not_realized_diagnostic(source_facts: source_facts))
 }

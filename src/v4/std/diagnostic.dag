@@ -3,7 +3,7 @@
 // Anchor: THESIS.md "show the correct code" + INVARIANTS P3; design-v4-compiler-homomorphism.md Ratified Q11.
 // Owns: Diagnostic, Outcome, Diagnostics, NonEmptyDiagnostics, StageDiagnosticPolicy, Locus, Extent, Correction, NoCorrectionReason.
 // Consumes: std node, std collection.
-// Status: T-3 modeled; Outcome shape migrated (Pass B / Wave-2-BC3).
+// Status: T-3 modeled; Wave-2-BC3 Outcome ratification (Ratified Q11).
 
 
 module v4.std.diagnostic

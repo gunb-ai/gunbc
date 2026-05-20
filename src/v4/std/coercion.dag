@@ -1,0 +1,108 @@
+// src/v4/std/coercion.dag
+// Scope: target coercion fold via find_witness + TargetSelection (T-9/T-10 wrapper).
+// Anchor: design-v4-compiler-homomorphism.md Ratified Q14; TASKS.md T-9 line 418; Practice 11.
+// Owns: CoercionCandidateSet, TargetSelectionPolicy, CoercionQuality, CoercionMismatchKind,
+//       CoercionResult, CoercionWitness, coercion_fold, declared_candidates_for_algebra.
+// Consumes: std find_witness, std constraints, std diagnostic, std witness, std node.
+// Status: Wave-2-BC3 modeled; coercion_fold delegates to find_witness.
+
+
+module v4.std.coercion
+
+
+import v4.std.constraints { CanonicalGrounding, CanonicalGroundingWitness }
+import v4.std.diagnostic {
+  Diagnostic,
+  ExternalContractUnknown,
+  NodeLocus,
+  Outcome,
+  Unavailable,
+  outcome_rejected
+}
+import v4.std.find_witness {
+  CandidateSet,
+  PreservationPredicate,
+  TargetSelection,
+  find_witness,
+  preservation_rule_exact_structural_equality_zip_fold
+}
+import v4.std.node { Node, Symbol }
+import v4.std.witness { HomomorphismWitness, StructuralPropertyWitness }
+data coercion_property_closed_candidate_set: Symbol = coercion_property_closed_candidate_set
+data homomorphism_rule_exact_structural_equality: Symbol = homomorphism_rule_exact_structural_equality
+data coercion_not_realized: Symbol = coercion_not_realized
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type TargetSelectionPolicy
+  = TargetDeclaredPriority { priority: Node }
+  | UserSelected { selection: Node }
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type CoercionQuality
+  = Identity
+  | Exact
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type CoercionMismatchKind
+  = NoTargetCandidate
+  | AmbiguousTargetCandidate
+  | StructuralMismatch
+  | WouldLoseInformation
+type CoercionCandidateSet {
+  set: CandidateSet
+  closedness_witness: StructuralPropertyWitness
+}
+type CoercionResult {
+  target: Node
+  quality: CoercionQuality
+  witness: CoercionWitness
+}
+type CoercionWitness {
+  homomorphism: HomomorphismWitness
+}
+fn target_selection_policy_node(policy: TargetSelectionPolicy) -> Node {
+  match policy {
+    TargetDeclaredPriority { priority: p } => p
+    UserSelected { selection: s } => s
+  }
+}
+fn coercion_not_realized_diagnostic(source: CanonicalGrounding) -> Diagnostic {
+  Diagnostic {
+    reason: coercion_not_realized,
+    at: NodeLocus { node: source.node },
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+fn declared_candidates_for_algebra(
+  target_model: Node,
+  algebra_instance: Node,
+) -> Outcome<CoercionCandidateSet> {
+  outcome_rejected(
+    coercion_not_realized_diagnostic(
+      source: CanonicalGrounding {
+        node: algebra_instance,
+        witness: CanonicalGroundingWitness {
+          structural: StructuralPropertyWitness {
+            property: coercion_property_closed_candidate_set,
+            evidence: target_model
+          }
+        }
+      }
+    )
+  )
+}
+fn coercion_fold(
+  source: CanonicalGrounding,
+  candidates: CoercionCandidateSet,
+  policy: TargetSelectionPolicy,
+) -> Outcome<CoercionResult> {
+  let _fw = find_witness(
+    source_facts: source.node,
+    candidates: candidates.set,
+    predicate: PreservationPredicate {
+      algebra: source.node,
+      preservation_rule: preservation_rule_exact_structural_equality_zip_fold
+    },
+    multiplicity_policy: TargetSelection {
+      policy: target_selection_policy_node(policy: policy)
+    }
+  )
+  outcome_rejected(coercion_not_realized_diagnostic(source: source))
+}
