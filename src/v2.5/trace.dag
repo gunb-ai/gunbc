@@ -267,6 +267,10 @@ type SourceMapLookup
   = SourceMapHit { span: SourceSpan }
   | SourceMapMiss
 
+type SourceMapCandidate
+  = SourceMapCandidateNone
+  | SourceMapCandidateHit { mapping: SpanMapping }
+
 fn generated_position_at_line(line: Int) -> GeneratedPosition {
   GeneratedPosition { line: line, column: GeneratedColumnUnknown }
 }
@@ -299,13 +303,34 @@ fn mapping_applies_to_position(mapping: SpanMapping, generated: GeneratedPositio
   generated_position_leq(left: mapping.generated, right: generated)
 }
 
-fn remap_position(source_map: SourceMap, generated: GeneratedPosition) -> SourceMapLookup {
-  let hits = source_map.mappings
-    |> filter(m => mapping_applies_to_position(mapping: m, generated: generated))
-  match last(hits) {
-    Some { value: mapping } => SourceMapHit { span: mapping.source_span }
-    None => SourceMapMiss
+fn better_source_map_candidate(current: SourceMapCandidate, candidate: SpanMapping, generated: GeneratedPosition) -> SourceMapCandidate {
+  if mapping_applies_to_position(mapping: candidate, generated: generated) == false {
+    current
+  } else {
+    match current {
+      SourceMapCandidateNone => SourceMapCandidateHit { mapping: candidate }
+      SourceMapCandidateHit { mapping: existing } =>
+        if generated_position_leq(left: existing.generated, right: candidate.generated) {
+          SourceMapCandidateHit { mapping: candidate }
+        } else {
+          current
+        }
+    }
   }
+}
+
+fn source_map_candidate_lookup(candidate: SourceMapCandidate) -> SourceMapLookup {
+  match candidate {
+    SourceMapCandidateNone => SourceMapMiss
+    SourceMapCandidateHit { mapping: mapping } => SourceMapHit { span: mapping.source_span }
+  }
+}
+
+fn remap_position(source_map: SourceMap, generated: GeneratedPosition) -> SourceMapLookup {
+  let candidate = source_map.mappings
+    |> fold(init: SourceMapCandidateNone, f: (current, mapping) =>
+      better_source_map_candidate(current: current, candidate: mapping, generated: generated))
+  source_map_candidate_lookup(candidate: candidate)
 }
 
 fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceMapLookup {
