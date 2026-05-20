@@ -64,7 +64,7 @@ cross-ref the THESIS section. The connection should always be one click
 away from where the concept is taught; a parenthetical on every
 occurrence is noise.
 
-## Ten Modeling Practices
+## Modeling Practices
 
 Each practice implements one of the five invariant principles from
 INVARIANTS.md. A reviewer works from the five principles; the practices
@@ -83,6 +83,7 @@ Mapping:
 - Practice 8 (Fact-bundle modeling) — implements **P1: Modeling Faithfulness**
 - Practice 9 (No-prose discipline) — implements **P2: Boundary Discipline**
 - Practice 10 (Don't hand-roll a derived operation) — implements **P1: Modeling Faithfulness** and the *Do not hand-roll a derived operation* invariant.
+- Practice 11 (Parameterize, don't duplicate; respect concept-home boundaries) — implements **P2: Boundary Discipline** + M2 (no duplicate type authorities). The design-time meta-practice that catches duplication and boundary-crossing *before* a downstream worker authors them; upstream of Practice 4 / 5 / 10.
 
 A reviewer should name specifically whether the diff satisfies each
 relevant practice, where it could be violated, and whether the existing
@@ -665,7 +666,11 @@ vocabulary:
   FooRejected { diagnostic }` that *is* `Outcome<T>`). Before classifying
   a coproduct for dissolution, check it against the `std/` carrier set —
   a match makes the finding the sharper, mechanical "delete it, use the
-  std carrier," not generic "model this as facts."
+  std carrier," not generic "model this as facts." **See Practice 11
+  for the *parametric* generalization** — two operations or carriers
+  that differ only by a typed parameter (predicate, domain, policy) are
+  parametric duplication, not structural-identity duplication; carrier
+  dissolution catches the latter, Practice 11 catches the former.
 - **predicate dissolution** — Practice 8 / Practice 7 at the level of a
   *code predicate*: a `match`/`if` on kind or symbol whose purpose is to
   *derive a property* ("is this a binder?", "which sugar is this?")
@@ -801,6 +806,181 @@ graph is not the data graph, the branches do genuinely distinct work.
 Irregularity is the honest escape hatch: a derived operation is one whose
 shape *is* the data's shape.
 
+### 11. Parameterize, don't duplicate; respect concept-home boundaries
+
+The compiler's primitive set is **small by construction.** Operations,
+carriers, and witnesses that *look* like new concepts are usually
+parameterizations of existing primitives with a different typed argument.
+Before authoring a new operation, carrier, or witness, exhaust the
+question:
+
+> Is this an instance of an existing one, with the per-instance
+> variation expressed as a typed parameter?
+
+If yes, it is not a new thing — it is a *call site* of the existing
+primitive with a parameter.
+
+**The invariant this implements** (see [INVARIANTS.md](../INVARIANTS.md)
+P2 and M2 in [MODELING.md](../MODELING.md)):
+
+> **No duplicate type authorities — including parametric duplicates.**
+> If two operations or carriers have the same structural shape differing
+> only by domain (which language / which target / which file) or by
+> predicate / policy (which check, which preservation rule, which
+> resolution strategy), that is **one** parameterized operation/carrier
+> with the difference as a typed parameter. Apply recursively — to the
+> architecture's own carrier set, not just to user-program modeling.
+
+**This is upstream of the dissolution findings in Practice 10.** Carrier
+dissolution catches "you re-authored `Outcome<T>`" — *structural identity*
+match. Predicate dissolution catches "you hand-rolled `match` on a
+variant" — *shape match against the data*. Practice 11 catches the
+**meta-pattern those don't see**: *you authored two
+operations/carriers/witnesses with similar-but-distinct shapes where one
+parameterized declaration would do.* The discriminant is not structural
+identity — it is **parametric similarity**: two declarations whose only
+difference is a typed parameter.
+
+**Mechanical trigger.** When authoring or reviewing a new substrate
+declaration, ask:
+
+1. **Is there an existing declaration with the same shape modulo one
+   typed parameter?** If yes, the new declaration is a parameterization;
+   the substrate primitive is the parameterized form, and the new
+   declaration is a *call site*, not a sibling.
+2. **Are you authoring two declarations in this PR (or the same wave)
+   that differ only by predicate / domain / policy?** If yes, collapse
+   them into one parameterized declaration with the variation as a typed
+   parameter; the original two names become call sites in glossary, not
+   rows in the primitive table.
+3. **Would a reader of your design doc see your two declarations as "the
+   same thing in different domains"?** If yes, the doc itself is
+   mis-naming — the primitive is the parameterized shape, and the
+   domain-named instances belong as glossary call sites, not as primitive
+   declarations.
+
+**Worked examples (load-bearing — drawn from real v4 corrections).** Each
+row was a real design-review correction; the point of Practice 11 is to
+catch them at brief-authoring, not after a worker has implemented them
+under a mis-shaped brief.
+
+| Domain-named pair/triple (the wrong shape) | Parameterized form (the right shape) | What the parameter is |
+|---|---|---|
+| `solve_constraints`, coercion fold, `LawfulRewriteWitness` | `find_witness(facts, candidates, predicate, multiplicity_policy)` | preservation predicate + multiplicity policy |
+| `CanonicalGroundingWitness`, `AcyclicityWitness`, `ClosedWorldDependencyWitness` | `StructuralPropertyWitness<P>` | the structural property `P` |
+| `Witness<homomorphism>`, `LawfulRewriteWitness` | `HomomorphismWitness<R>` | the preservation rule `R` |
+| `BootstrapWitness` + `FixedPointWitness` (two carriers gating one transition) | `PromotionWitness` (composed gate) | which two sub-checks compose |
+| `traverse_node`, `sequence_node`, `bind_outcome` (as primitives) | `fold_node` + an Outcome-threading algebra (derived combinators) | the algebra-as-data |
+| Three distinct MVP terminuses for the same compile path | One MVP | (collapsed) |
+| `ProgramSchedulingEdge`, `TargetPlanSchedulingEdge`, `ArtifactSchedulingEdge` | one `DependencyEdge` with a `DependencyKind` label | the kind |
+| `DependencyGraph` as a separate authored carrier | Edge-on-Node parameterized by `DependencyKind` | (the carrier dissolves entirely — first-order facts live as Edge labels on the Node DAG) |
+| `TopologicalPlan` / `ReadinessLayer` as authored ledger data | lens output — `fold_node` over Node reading dependency edges | (the carrier dissolves to a derived view; no parallel ledger) |
+
+**Connection to existing practices.**
+
+- **P2 / M2 (single authority)**: Practice 11 sharpens "no duplicate type
+  authorities" to mean *no parametric-pair authorities either*. Two
+  operations with the same shape modulo a parameter are still two
+  authorities — collapse them.
+- **Practice 4 (Coproduct dissolution)**: Practice 11 generalizes
+  coproduct dissolution from "flat enum with parametric structure" to
+  "set of operations / carriers / witnesses with parametric structure."
+  A coproduct *dissolves* into richer structure; a parametric pair
+  *dissolves* into one parameterized declaration.
+- **Practice 10 (Don't hand-roll a derived operation)**: Practice 10
+  catches *hand-rolled instances* of a registered derived operation —
+  the implementation-time error. Practice 11 catches the *registration
+  of a derived operation as a primitive in the first place* — the
+  design-time error upstream of it. Without Practice 11, Practice 10
+  catches the symptom (hand-rolled emit-templates) while leaving the
+  cause (a domain-named "primitive" that's actually a parameterization)
+  in the doc, ready to seed the next round.
+
+**Disposition.** A Practice 11 finding is **always BLOCKING** at the
+design-doc / brief-authoring stage; merging carries it forward into
+every downstream worker's brief, where it propagates as N implementation
+findings. Standard 🔴/🟡/🟢:
+
+- **🔴 dissolve-now** — the parameterized form already exists, or can be
+  authored in this PR; replace the duplicated declarations with the
+  parameterized one + N call sites.
+- **🟡 gated** — the parameterized substrate primitive doesn't yet
+  exist (e.g. `find_witness` before Pass B); the gate names the missing
+  primitive + its owning task; the 🟡 carries the dissolve-on-arrival
+  obligation (shared rule, Practice 4). An untracked Practice 11 🟡 is
+  the most expensive class of silent dissolution debt because it
+  propagates into every downstream worker brief.
+- **🟢 clean** — audited and *not* parametric duplication: the two
+  declarations have shapes that genuinely differ in more than one
+  dimension, or the structural shape itself differs.
+
+#### Concept-home boundary discipline (Practice 11 companion)
+
+A second meta-rule, structurally distinct enough to call out separately
+but in the same "look before you author" family:
+
+> Before adding a field to a substrate file, confirm the field doesn't
+> cross a boundary that file's identity is supposed to keep separate.
+
+A file in `extdeps/file_system.dag` models the external file-system
+resource. It should not know about compiler `Node`. Adding a
+`NodeFileBinding { node: Node, path: FilePath }` to that file crosses the
+boundary from "external resource model" into "compiler provenance" —
+the relation is real (some `Node` came from some file), but it doesn't
+belong in the resource model; it belongs in artifact / projection /
+ingest. The same pattern recurs in disguise wherever a substrate file's
+identity is implicit: when "file_system" silently becomes
+"file_system_plus_provenance," the boundary the file's name encodes has
+been crossed.
+
+**Mechanical trigger.** Before adding a field that references a type from
+outside the file's concept-home, ask:
+
+1. **Does this field describe the file's concept?** (`file_system.dag`
+   should describe files, not file↔Node relationships.)
+2. **If the relation is real, where does it belong?** Most often: a
+   *different* concept-home (provenance / artifact / projection /
+   ingest), not the resource-model file.
+3. **Is an existing violation precedent for adding a new one?**
+   Strict-mode answer: no. Surface the existing violation as its own
+   finding; don't deepen it.
+
+**Disposition.** Standard 🔴/🟡/🟢:
+
+- **🔴** — the right home exists; move the declaration there.
+- **🟡** — the right home doesn't exist yet; gate on landing it, with a
+  named owning task.
+- **🟢** — the field genuinely belongs in this file (audited).
+
+**Worked examples.**
+
+| Wrong home | Right home | What was misplaced |
+|---|---|---|
+| `NodeFileBinding` in `extdeps/file_system.dag` | `std/artifact.dag` / `std/projection.dag` / ingest-side | Node-to-file *provenance* in the *resource* model |
+| `DependencyKind` taxonomy collapsed inside one of the domain-specific edge files (`ProgramSchedulingEdge` etc.) | `std/dependency.dag` (single authority for the kind taxonomy) | classification authority placed inside one consumer |
+| Per-stage `StageDiagnosticPolicy` values authored inside the consuming stage files | `std/pipeline.dag` (stage rows carry the values; type lives in `std/diagnostic.dag`) | values + type co-authored at the call site instead of in the substrate home |
+
+The boundary check is mechanical *given the substrate concept-home
+list*: each `.dag` file has an implicit identity (what concept it
+models), and fields/imports outside that identity are the smell.
+Practice 11's companion is the design-time discipline that keeps each
+concept-home single-authority.
+
+#### Why Practice 11 is the design-time meta-practice
+
+Practices 1–10 are *file-scale* — a reviewer reads one diff and checks
+whether the diff conforms. Practice 11 is *design-scale* — a reviewer
+reads the **brief** that produced the diff and asks whether the brief
+itself names duplicates as primitives or asks a worker to cross a
+concept-home boundary.
+
+A Practice 11 violation in a design doc propagates as N file-scale
+violations across every worker the brief dispatches. The cost is
+asymmetric: catching it in the design doc deletes the violation once;
+catching it after dispatch costs N rounds of corrections + N worker
+contexts that need to be re-briefed. **Block Practice 11 findings at the
+design-PR layer, even when no implementation hunks are touched.**
+
 ## Calibration: Blocking vs Omit
 
 A finding is **BLOCKING** if fixing it in a later PR would be meaningfully
@@ -832,10 +1012,17 @@ emit-template — is resolved only by a 🔴 / tracked-🟡 / substantiated-🟢
 disposition (Practice 10), never graded advisory and never waved off as
 a cleanup or by free-text "intentional, no code change."
 
+**Practice 11 findings are always BLOCKING at the design-PR layer**
+even when no implementation hunks are present. A parametric-duplication
+or concept-home-boundary violation in a design doc propagates as N
+file-scale violations across every worker the brief dispatches; the
+cheapest place to fix it is the design PR. A Practice 11 finding is
+resolved only by 🔴 / tracked-🟡 / substantiated-🟢, like Practice 10.
+
 ## For Reviewers
 
 A review applies the **five invariant principles from
-[INVARIANTS.md](../INVARIANTS.md)**. The ten modeling practices in this
+[INVARIANTS.md](../INVARIANTS.md)**. The modeling practices in this
 document are the concrete patterns that inform each check — consult them when a
 principle's abstract statement needs a recognizable failure shape.
 
@@ -897,6 +1084,16 @@ For each relevant principle and its implementing practices:
    tag alone is not enough.
 10. Classify every finding as BLOCKING or omit it per the calibration
     above.
+11. For any **design PR** or **brief PR** (a PR whose hunks include
+    `docs/design-*.md`, `src/v4/TASKS.md`, or brief templates): apply
+    Practice 11. Enumerate the new operations / carriers / witnesses /
+    edge labels the diff introduces, and for each ask "is this a
+    parameterization of an existing one?" A 🔴 / 🟡 / 🟢 disposition is
+    required per declaration. Also verify the **concept-home boundary
+    discipline**: every new field's type-imports stay inside the file's
+    concept-home, or carry an explicit cross-home justification.
+    Practice 11 findings are BLOCKING at the design-PR layer even when
+    no implementation hunks exist (Calibration section above).
 
 This document is the distilled version of modeling principles. For the
 full analysis and additional worked examples, see
