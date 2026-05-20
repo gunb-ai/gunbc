@@ -58,31 +58,41 @@ fn append_dependency_views(left: List<DependencyView>, right: List<DependencyVie
   })
 }
 
-fn dependency_fold_algebra() -> NodeFold<DependencyFoldState> {
-  NodeFold {
-    init: fn(n) {
-      DependencyFoldState {
-        current: n,
-        dependencies: []
-      }
-    },
-    step: fn(acc: DependencyFoldState, edge: Edge, child_state: DependencyFoldState) {
-      DependencyFoldState {
-        current: acc.current,
-        dependencies: append_dependency_views(
-          left: list_push(acc.dependencies, dependency_view_for_edge(parent: acc.current, edge: edge)),
-          right: child_state.dependencies
-        )
-      }
-    }
+fn dependency_fold_init(n: Node) -> DependencyFoldState {
+  DependencyFoldState {
+    current: n,
+    dependencies: []
   }
 }
 
+fn dependency_fold_step(acc: DependencyFoldState, edge: Edge, child_state: DependencyFoldState) -> DependencyFoldState {
+  DependencyFoldState {
+    current: acc.current,
+    dependencies: append_dependency_views(
+      left: list_push(acc.dependencies, dependency_view_for_edge(parent: acc.current, edge: edge)),
+      right: child_state.dependencies
+    )
+  }
+}
+
+fn dependency_fold_algebra() -> NodeFold<DependencyFoldState> {
+  NodeFold {
+    init: dependency_fold_init,
+    step: dependency_fold_step
+  }
+}
+
+fn dependency_fold_dependencies(state: DependencyFoldState) -> List<DependencyView> {
+  state.dependencies
+}
+
 fn dependency_lens(root: Node) -> List<DependencyView> {
-  fold_node(
-    n: root,
-    algebra: dependency_fold_algebra()
-  ).dependencies
+  dependency_fold_dependencies(
+    state: fold_node(
+      n: root,
+      algebra: dependency_fold_algebra()
+    )
+  )
 }
 
 type ReadinessLayer {
@@ -95,30 +105,40 @@ type ReadinessFoldState {
   layers: List<ReadinessLayer>
 }
 
-fn ready_set_algebra() -> NodeFold<ReadinessFoldState> {
-  NodeFold {
-    init: fn(n) {
-      ReadinessFoldState {
-        current: n,
-        ready: [n],
-        layers: []
-      }
-    },
-    step: fn(acc: ReadinessFoldState, _: Edge, child_state: ReadinessFoldState) {
-      ReadinessFoldState {
-        current: acc.current,
-        ready: append_nodes(left: acc.ready, right: child_state.ready),
-        layers: acc.layers
-      }
-    }
+fn readiness_fold_init(n: Node) -> ReadinessFoldState {
+  ReadinessFoldState {
+    current: n,
+    ready: [n],
+    layers: []
   }
 }
 
+fn ready_set_fold_step(acc: ReadinessFoldState, edge: Edge, child_state: ReadinessFoldState) -> ReadinessFoldState {
+  ReadinessFoldState {
+    current: acc.current,
+    ready: append_nodes(left: acc.ready, right: child_state.ready),
+    layers: acc.layers
+  }
+}
+
+fn ready_set_algebra() -> NodeFold<ReadinessFoldState> {
+  NodeFold {
+    init: readiness_fold_init,
+    step: ready_set_fold_step
+  }
+}
+
+fn readiness_fold_ready(state: ReadinessFoldState) -> List<Node> {
+  state.ready
+}
+
 fn ready_set(graph_node: Node) -> List<Node> {
-  fold_node(
-    n: graph_node,
-    algebra: ready_set_algebra()
-  ).ready
+  readiness_fold_ready(
+    state: fold_node(
+      n: graph_node,
+      algebra: ready_set_algebra()
+    )
+  )
 }
 
 fn append_nodes(left: List<Node>, right: List<Node>) -> List<Node> {
@@ -127,34 +147,44 @@ fn append_nodes(left: List<Node>, right: List<Node>) -> List<Node> {
   })
 }
 
-fn topological_layers_algebra() -> NodeFold<ReadinessFoldState> {
-  NodeFold {
-    init: fn(n) {
-      ReadinessFoldState {
-        current: n,
-        ready: [n],
-        layers: [
-          ReadinessLayer {
-            ready: [n]
-          }
-        ]
+fn topological_layers_fold_init(n: Node) -> ReadinessFoldState {
+  ReadinessFoldState {
+    current: n,
+    ready: [n],
+    layers: [
+      ReadinessLayer {
+        ready: [n]
       }
-    },
-    step: fn(acc: ReadinessFoldState, _: Edge, child_state: ReadinessFoldState) {
-      ReadinessFoldState {
-        current: acc.current,
-        ready: append_nodes(left: acc.ready, right: child_state.ready),
-        layers: append_readiness_layers(left: acc.layers, right: child_state.layers)
-      }
-    }
+    ]
   }
 }
 
+fn topological_layers_fold_step(acc: ReadinessFoldState, edge: Edge, child_state: ReadinessFoldState) -> ReadinessFoldState {
+  ReadinessFoldState {
+    current: acc.current,
+    ready: append_nodes(left: acc.ready, right: child_state.ready),
+    layers: append_readiness_layers(left: acc.layers, right: child_state.layers)
+  }
+}
+
+fn topological_layers_algebra() -> NodeFold<ReadinessFoldState> {
+  NodeFold {
+    init: topological_layers_fold_init,
+    step: topological_layers_fold_step
+  }
+}
+
+fn readiness_fold_layers(state: ReadinessFoldState) -> List<ReadinessLayer> {
+  state.layers
+}
+
 fn topological_layers(graph_node: Node) -> List<ReadinessLayer> {
-  fold_node(
-    n: graph_node,
-    algebra: topological_layers_algebra()
-  ).layers
+  readiness_fold_layers(
+    state: fold_node(
+      n: graph_node,
+      algebra: topological_layers_algebra()
+    )
+  )
 }
 
 fn append_readiness_layers(left: List<ReadinessLayer>, right: List<ReadinessLayer>) -> List<ReadinessLayer> {
