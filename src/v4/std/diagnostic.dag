@@ -37,8 +37,11 @@ type Diagnostic {
 type NonEmptyDiagnostics
   = Singleton { diagnostic: Diagnostic }
   | Cons { head: Diagnostic, tail: List<Diagnostic> }
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
-// Reconciliation: Accepted / RejectedAccumulating are new canonical terminals; Produced / Rejected are legacy unchanged.
+// 🟡 coproduct dissolution — W-TRAVERSE-OUTCOME-LEGACY-PRODUCED.
+// Trigger: migrate all Outcome consumers to Accepted/RejectedAccumulating; retire Produced/Rejected variants.
+// Until trigger closes: legacy Produced/Rejected remain parse-compatible (Worker B #3440); outcome.dag
+// combinators preserve legacy on map/bind/map_node paths; traverse_outcome alone may introduce Accepted
+// at list-fold boundaries when assembling accumulated diagnostics.
 type Outcome<T>
   = Produced { value: T }
   | Rejected { diagnostic: Diagnostic }
