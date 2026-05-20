@@ -30,18 +30,14 @@ type CarrierKind
   | HostValue
 
 
-// RULING-1: 🟢 pretty-much-done — fail-closed is invariant; policy selects accumulation behavior only.
-// RULING-1: 🟢 pretty-much-done — diagnostic collection behavior (fatality is always fail-closed).
+// RULING-1: 🟢 pretty-much-done — per-stage diagnostic policy (accumulation only).
 type DiagnosticAccumulationPolicy
   = Accumulate
   | ShortCircuit
 
 
-// RULING-1: 🟢 pretty-much-done — fail-closed is invariant; accumulation policy is the only stage knob.
-type StageDiagnosticPolicy {
-  accumulation: DiagnosticAccumulationPolicy
-  fail_closed: Bool
-}
+// RULING-1: 🟢 pretty-much-done — alias only; fail-closed is pipeline invariant (P3), not a Bool field.
+type StageDiagnosticPolicy = DiagnosticAccumulationPolicy
 
 
 // RULING-1: 🟢 pretty-much-done — no domain field (lists are authoritative; avoids domain/list contradiction).
@@ -103,10 +99,7 @@ data algebra_translate: Symbol = algebra_translate
 data algebra_serialize: Symbol = algebra_serialize
 data algebra_eval: Symbol = algebra_eval
 
-data stage_diagnostic_fail_closed_accumulate: StageDiagnosticPolicy = StageDiagnosticPolicy {
-  accumulation: Accumulate,
-  fail_closed: true
-}
+data stage_diagnostic_fail_closed_accumulate: StageDiagnosticPolicy = Accumulate
 
 
 fn ingest_text_to_surface_contract() -> StageDependencyContract {
