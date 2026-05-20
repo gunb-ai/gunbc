@@ -37,7 +37,7 @@ type LensContractRef = Symbol
 type Stage0ContractRef = Symbol
 
 
-// 🟡 feature:core-package-schema-ref consumer:v4.std.regeneration::CorePackageSchema dissolve-on: CorePackageSchema in CorePackageSchemaChanged (bounds: schema field; owner: docs/design-v4-compiler-homomorphism.md §P9 Stage0Contract ~391).
+// 🟡 feature:core-package-schema-ref consumer:v4.std.regeneration::CorePackageSchema dissolve-on: CorePackageSchema in CorePackageSchemaChanged (bounds: schema field; owner: src/v4/TASKS.md T-20 §802 workflow/bootstrap.dag CorePackage).
 type CorePackageSchemaRef = Symbol
 
 
@@ -58,7 +58,7 @@ type ArtifactKind
 type Projection {
   output_artifact_kind: ArtifactKind
   name: Symbol
-  input_carrier: CarrierKind
+  input_carrier: StageCarrier
   depends_on: List<DependencySubject>
   algebra_ref: Symbol
 }

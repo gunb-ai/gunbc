@@ -336,7 +336,7 @@ data semantic_compile_pipeline: Pipeline = Pipeline {
     PipelineStage {
       name: stage_eval,
       input_carrier: InferredTree,
-      output_carrier: HostValue,
+      output_carrier: EvalResult,
       dependency_contract: eval_contract(),
       diagnostic_policy: stage_diagnostic_fail_closed_accumulate,
       algebra_ref: algebra_eval
