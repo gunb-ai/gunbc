@@ -69,7 +69,7 @@ jobs:
   ci:
     if: github.event.pull_request.draft != true
     needs: [affected]
-  # v4 bootstrap compile needs standard-8 wall; standard-2 kills emit ~2m (SIGTERM 143).
+    # v4-affected PRs use standard-8 for bootstrap compile headroom; script caps CI wait.
     runs-on: ${{ needs.affected.outputs.v4 == 'true' && 'ubicloud-standard-8' || 'ubicloud-standard-2' }}
     timeout-minutes: 40
     steps:
