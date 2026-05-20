@@ -7,6 +7,16 @@
 // and module structure are stage-level variants (ParseItem, ParseExpr, …), not substrate.
 // Reconcile: calm-crane-724 normalize seam (Seam* types).
 // Lowering: phase AST → Node { kind, children: List<Edge> } at stage boundaries.
+//
+// Pipeline stage ports (the records below are the contract):
+//   tokenize : Source -> TokenizeStageOut { tokens: Outcome<TokenStream> }
+//   parse    : ParseStageIn -> ParseStageOut { outcome: Outcome<ParseModule> }
+//   resolve  : ResolveStageIn -> ResolveStageOut { outcome: Outcome<ResolvedModule> }
+//   normalize: NormalizeStageIn -> NormalizeStageOut { outcome: Outcome<NormalizedModule> }
+//   infer    : InferStageIn -> InferStageOut { outcome: Outcome<InferredModule> }
+//   emit     : EmitStageIn -> EmitStageOut { outcome: Outcome<TargetSource> }
+// Stage boundary failures use Outcome/Rejected + Diagnostic; recovery-shaped
+// *Error expr variants inside Produced modules are v2 parity only (🟡 gated).
 
 module v2_5.std.stage_types
 
@@ -51,7 +61,8 @@ data c3_surface_sugar_type: Symbol = c3_surface_sugar_type
 data c3_surface_sugar_operation: Symbol = c3_surface_sugar_operation
 
 // THESIS-faithful discrimination (stage-types only; substrate stays TypeForm | Computation):
-//   ParseModule / ParseImport / ParseFn / ParseTypeDecl / ParseService → ParseItem variants
+//   ParseModule / ParseImport / ParseCallable / ParseTypeDecl / ParseService → ParseItem variants
+//   fn/func surface sugar → ResolvedSugared { sugar: FnSugar, … } until normalize strips wrapper
 //   ParseMatchArm / ParsePattern / ParseArg / ParseFieldInit → nested under ParseExpr
 //   Lowering to substrate: module items → TypeForm { connective: Conj }; expr bodies → Computation
 
@@ -120,11 +131,13 @@ type ParseTypeExpr
       params: List<ParseParam>
       return_type: ParseTypeExpr
     }
+  // 🟡 coproduct dissolution — feature:v2-recovery-expr-carrier
   | ParseTypeError { message: String, span: SourceSpan }
 
 // 🟢 coproduct dissolution
 type ParseExpr
   = ParseLit { value: LiteralValue, span: SourceSpan }
+  // 🟡 coproduct dissolution — feature:v2-recovery-expr-carrier
   | ParseError { kind: ExprErrorKind, message: String, span: SourceSpan }
   | ParseVar { name: AuthoredName }
   | ParseFieldAccess {
@@ -173,7 +186,7 @@ type ParseExpr
   | ParseStringInterp {
       parts: List<ParseStringPart>
     }
-  | ParseBlock { statements: List<ParseExpr> }
+  | ParseBlockExpr { block: ParseBlock }
   | ParseCast {
       expr: ParseExpr
       target_type: ParseTypeExpr
@@ -240,16 +253,7 @@ type ParseImport
 
 // 🟢 coproduct dissolution
 type ParseItem
-  = ParseFn {
-      name: AuthoredName
-      type_params: List<ParseParam>
-      params: List<ParseParam>
-      return_type: ParseTypeExpr?
-      uses: List<ParseResourceUse>
-      body: ParseBlock
-      span: SourceSpan
-    }
-  | ParseFunc {
+  = ParseCallable {
       name: AuthoredName
       type_params: List<ParseParam>
       params: List<ParseParam>
@@ -353,11 +357,13 @@ type ResolvedTypeExpr
       params: List<ResolvedParam>
       return_type: ResolvedTypeExpr
     }
+  // 🟡 coproduct dissolution — feature:v2-recovery-expr-carrier
   | ResolvedTypeError { message: String, span: SourceSpan }
 
 // 🟢 coproduct dissolution
 type ResolvedExpr
   = ResolvedLit { value: LiteralValue, span: SourceSpan }
+  // 🟡 coproduct dissolution — feature:v2-recovery-expr-carrier
   | ResolvedError { kind: ExprErrorKind, message: String, span: SourceSpan }
   | ResolvedVar { name: BoundName }
   | ResolvedFieldAccess {
@@ -406,7 +412,7 @@ type ResolvedExpr
   | ResolvedStringInterp {
       parts: List<ResolvedStringPart>
     }
-  | ResolvedBlock { statements: List<ResolvedExpr> }
+  | ResolvedBlockExpr { block: ResolvedBlock }
   | ResolvedCast {
       expr: ResolvedExpr
       target_type: ResolvedTypeExpr
@@ -473,16 +479,7 @@ type ResolvedImport
 
 // 🟢 coproduct dissolution
 type ResolvedItemCore
-  = ResolvedFn {
-      name: BoundName
-      type_params: List<ResolvedParam>
-      params: List<ResolvedParam>
-      return_type: ResolvedTypeExpr?
-      uses: List<ResolvedResourceUse>
-      body: ResolvedBlock
-      span: SourceSpan
-    }
-  | ResolvedFunc {
+  = ResolvedCallable {
       name: BoundName
       type_params: List<ResolvedParam>
       params: List<ResolvedParam>
@@ -595,11 +592,13 @@ type NormalizedTypeExpr
       params: List<NormalizedParam>
       return_type: NormalizedTypeExpr
     }
+  // 🟡 coproduct dissolution — feature:v2-recovery-expr-carrier
   | NormalizedTypeError { message: String, span: SourceSpan }
 
 // 🟢 coproduct dissolution
 type NormalizedExpr
   = NormalizedLit { value: LiteralValue, span: SourceSpan }
+  // 🟡 coproduct dissolution — feature:v2-recovery-expr-carrier
   | NormalizedError { kind: ExprErrorKind, message: String, span: SourceSpan }
   | NormalizedVar { name: BoundName }
   | NormalizedFieldAccess {
@@ -648,7 +647,7 @@ type NormalizedExpr
   | NormalizedStringInterp {
       parts: List<NormalizedStringPart>
     }
-  | NormalizedBlock { statements: List<NormalizedExpr> }
+  | NormalizedBlockExpr { block: NormalizedBlock }
   | NormalizedCast {
       expr: NormalizedExpr
       target_type: NormalizedTypeExpr
@@ -715,16 +714,7 @@ type NormalizedImport
 
 // 🟢 coproduct dissolution
 type NormalizedItem
-  = NormalizedFn {
-      name: BoundName
-      type_params: List<NormalizedParam>
-      params: List<NormalizedParam>
-      return_type: NormalizedTypeExpr?
-      uses: List<NormalizedResourceUse>
-      body: NormalizedBlock
-      span: SourceSpan
-    }
-  | NormalizedFunc {
+  = NormalizedCallable {
       name: BoundName
       type_params: List<NormalizedParam>
       params: List<NormalizedParam>
@@ -770,6 +760,7 @@ type NormalizedModule {
 // 🟢 coproduct dissolution
 type InferredType
   = InferredTypeOk { form: TypeForm }
+  // 🟡 coproduct dissolution — feature:v2-recovery-expr-carrier
   | InferredTypeError { message: String, span: SourceSpan }
   | InferredTypeVariable { id: Symbol }
 
@@ -850,6 +841,7 @@ type InferredMatchArm {
 // 🟢 coproduct dissolution
 type InferredExpr
   = InferredLit { value: LiteralValue, span: SourceSpan, expr_type: InferredType }
+  // 🟡 coproduct dissolution — feature:v2-recovery-expr-carrier
   | InferredError {
       kind: ExprErrorKind
       message: String
@@ -920,8 +912,8 @@ type InferredExpr
       parts: List<InferredStringPart>
       expr_type: InferredType
     }
-  | InferredBlock {
-      statements: List<InferredExpr>
+  | InferredBlockExpr {
+      block: InferredBlock
       expr_type: InferredType
     }
   | InferredCast {
@@ -998,17 +990,7 @@ type InferredImport
 
 // 🟢 coproduct dissolution
 type InferredItem
-  = InferredFn {
-      name: BoundName
-      type_params: List<InferredParam>
-      params: List<InferredParam>
-      return_type: InferredType
-      uses: List<InferredResourceUse>
-      body: InferredBlock
-      recursion: TailRecursionFacts
-      span: SourceSpan
-    }
-  | InferredFunc {
+  = InferredCallable {
       name: BoundName
       type_params: List<InferredParam>
       params: List<InferredParam>
@@ -1057,7 +1039,7 @@ type ParseStageIn {
 }
 
 type ParseStageOut {
-  module: ParseModule
+  outcome: Outcome<ParseModule>
 }
 
 type ResolveStageIn {
@@ -1065,7 +1047,7 @@ type ResolveStageIn {
 }
 
 type ResolveStageOut {
-  module: ResolvedModule
+  outcome: Outcome<ResolvedModule>
 }
 
 type NormalizeStageIn {
@@ -1073,7 +1055,7 @@ type NormalizeStageIn {
 }
 
 type NormalizeStageOut {
-  module: NormalizedModule
+  outcome: Outcome<NormalizedModule>
 }
 
 type InferStageIn {
@@ -1081,7 +1063,7 @@ type InferStageIn {
 }
 
 type InferStageOut {
-  module: InferredModule
+  outcome: Outcome<InferredModule>
 }
 
 type EmitStageIn {
@@ -1177,12 +1159,12 @@ type SeamNormalizedModule {
   items: List<SeamNormalizedItem>
 }
 
-// 🟢 coproduct dissolution
+// 🟡 coproduct dissolution — feature:ast-to-node-lowering
 type SeamResolvedNode
   = SeamResolvedModuleNode { module: SeamResolvedModule }
   | SeamResolvedItemNode { item: SeamResolvedItem }
 
-// 🟢 coproduct dissolution
+// 🟡 coproduct dissolution — feature:ast-to-node-lowering
 type SeamNormalizedNode
   = SeamNormalizedModuleNode { module: SeamNormalizedModule }
   | SeamNormalizedItemNode { item: SeamNormalizedItem }
@@ -1193,10 +1175,11 @@ type SeamNormalizedNode
 //
 // v2 Node.expr_data (22 cases) → ParseExpr / ResolvedExpr / ... (one variant each)
 // v2 Node.match_pattern → ParseMatchArm.pattern (not a field on expr nodes)
-// v2 Node.params/body/transport/uses → ParseFn | ParseFunc | ParseService variants
+// v2 Node.params/body/transport/uses → ParseCallable | ParseService variants
 // v2 Node.inferred? → eliminated; InferredExpr.expr_type is required per variant
-// v2 is_self_recursive / has_non_tail_self_call → InferredFn.recursion only
-// v2 item_kind() cascade → ParseItem closed sum (ParseFn | ParseFunc | ...)
+// v2 is_self_recursive / has_non_tail_self_call → InferredCallable.recursion only
+// v2 item_kind() cascade → ParseItem closed sum (ParseCallable | …)
+// v2 block expr → *BlockExpr { block: *Block } — single block record authority per phase
 // v2 connective on flat Node → ParseTypeExpr | TypeForm (phase AST; lower to Connective+Edge)
 // calm-crane-724 SeamResolvedNode → normalize sugar strip → SeamNormalizedNode
 // full pipeline: ResolvedSugared / ResolvedCore → NormalizedItem (core only)
