@@ -52,7 +52,7 @@ import v2_5.std.language_spec {
   BinOp,
   BinOpRule
 }
-import v2_5.std.node { Node, Edge, Symbol, NodeFold, fold_node }
+import v2_5.std.node { Node, Edge, Symbol, NodeFold, fold_node, Path, PathStep, NamedStep }
 import v2_5.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,
@@ -115,7 +115,11 @@ data emit_non_module_root: Symbol = emit_non_module_root
 
 
 fn emit_locus() -> Locus {
-  PortLocus { port: emit_stage_locus_port }
+  // PortLocus carries a Path (PR #3422 substrate reshape 2026-05-19); the
+  // emit stage's port is the single-segment path naming its locus port.
+  PortLocus {
+    path: Path { steps: [NamedStep { name: emit_stage_locus_port }] }
+  }
 }
 
 
