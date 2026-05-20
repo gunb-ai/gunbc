@@ -160,7 +160,7 @@ Compiler stages are expressed as folds/traversals over Node, but their carriers 
 Practical implications:
 - Resolve's algebra is not naively bottom-up. The carrier is roughly `Node → Env → Outcome<BoundNode>` — at each Node the fold returns a function that takes inherited scope context. This is an attribute-grammar-style inherited attribute, expressed through the carrier's higher-orderness.
 - Ground (infer) may produce a constraint set per Node, then a separate `solve : ConstraintSet → Outcome<InferredTree>` step. The solver is substrate machinery (coercion fold) — not ad hoc compiler code.
-- Translate's coercion-fold step is a fold, but its algebra performs structural-equality search against the target language model's declared inhabitants. The search is bounded (closed candidate set) and decidable by construction — not heuristic.
+- Translate's coercion-fold step is a fold, but its algebra **enumerates the target language model's declared candidate inhabitants and performs a structural-equality zip-fold** against the source's canonical grounding. The candidate set is closed (declared in `target_lang.dag`) and the structural check is decidable by construction — this is **deterministic candidate enumeration**, not a heuristic search.
 
 The discipline still holds (everything is a substrate-primitive operation), but "fold" doesn't mean "pure synthesized bottom-up." Inherited context, effects, constraints, and fixed-point analyses are first-class — they're just carried by the algebra's signature, not by ad-hoc walkers.
 
@@ -505,9 +505,15 @@ These are diagnostic-UX questions, not correctness questions. The coercion fold'
 
 ### Open Q9 — Independent witness checking
 
-Is the coercion fold's output (a target Node + inhabitance witness) **independently checkable**? I.e., can a separate `verify_homomorphism(source, target, witness) -> Bool` function consume the witness and re-prove structure preservation without re-running the search?
+Is the coercion fold's output (a target Node + inhabitance witness) **independently checkable**? I.e., can a separate `verify_homomorphism(source, target, witness) -> Bool` function consume the witness and re-prove structure preservation **without re-running the coercion fold's candidate enumeration**?
 
-Strongly preferred (per reviewer): **search is untrusted; checker is trusted.** This matches fail-closed philosophy — the compiler doesn't have to trust its own search; the witness is verifiable by inspection.
+Strongly preferred (per reviewer): the **derivation is untrusted; the witness check is trusted.** This matches fail-closed philosophy — the compiler doesn't have to trust its own derivation; the witness is verifiable by inspection. Useful even though the coercion fold is decidable by construction, because (a) it gives downstream tooling a cheap re-validation path, and (b) it provides a clean abstraction boundary between "find the inhabitant" and "verify the inhabitant satisfies structure preservation."
+
+### Open Q9b — Ambiguity surface when multiple candidates pass structure preservation
+
+(Related to Q14 — target selection policy.) The coercion fold over a closed candidate set may find **zero, one, or many** inhabitants whose structural check passes. T-9's contract handles "zero ⇒ Diagnostic" cleanly. The **many** case is the ambiguity question: which target inhabitant gets picked, and is the selection part of the coercion fold's contract or a separate target-policy layer?
+
+This isn't a question about completeness or search — both candidates are *valid* under structure preservation. It's about deterministic selection in the legitimately-ambiguous case.
 
 ### Open Q10 — Partiality and effects in `ModelCore`
 
