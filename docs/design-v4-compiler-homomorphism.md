@@ -595,7 +595,7 @@ To operationalize P0 + P8, the substrate needs explicit concepts for change-cons
 | **`Artifact`** | An emitted artifact (generated source file, test file, schema, diagnostic table, compiler stage table) with its provenance (which projection produced it from which model state). **`ArtifactKind` reserves bootstrap-related variants up front** — `Stage0Candidate`, `CorePackage`, `WitnessBundle` — so P9 bootstrap substrate can land later without forcing an artifact/projection refactor. | Not declared. |
 | **`RecomputePlan`** | Topological schedule + SCC/fixpoint groups + cached-vs-invalidated artifacts + regeneration ordering. The "how to recompute" data given an `AffectedSet`. | Not declared. |
 
-**Implementation order:** declare the regeneration substrate as a unified cluster (likely `std/regeneration.dag` + the bootstrap substrate in `std/bootstrap.dag`); land alongside or after the multi-lens dependency-management primitive (Open Q6). T-21's `affected_set` must be **migrated** to the unified `AffectedSet` shape, not left as a parallel concept — the unified declaration is the single source of authority.
+**Implementation order:** declare the regeneration substrate as a unified cluster (likely `std/regeneration.dag` + the bootstrap substrate in `std/bootstrap.dag`); land alongside or after the `LensAlgebra<F>` + composed-lens-algebra substrate work (Ratified Q6 — derives from `fold_node`; NOT a separate primitive). T-21's `affected_set` must be **migrated** to the unified `AffectedSet` shape, not left as a parallel concept — the unified declaration is the single source of authority.
 
 ### P7 — Lawful rewrite witnesses for structure-changing lowerings
 
@@ -787,7 +787,7 @@ Terminal output. `TargetSource` is target-grammar-serialized text + diagnostics.
 
 ## The EDIT direction — symmetric to compile
 
-This doc is primarily about the **compile direction** (CoreNode → target). But the substrate is read/write symmetric: `apply_diff` is the write-side primitive that mutates a `CoreNode` graph. The full **EDIT direction** is documented in [`docs/design-read-edit-pipeline.md`](design-read-edit-pipeline.md) (PR #3364, merged 2026-05-19, operator-ratified); this section summarizes the architecture that compile must compose with.
+This doc is primarily about the **compile direction** (CoreNode → target). But the substrate is read/write symmetric: `apply_diff` is the **write-side derived combinator** (post-Pass B unification — `apply_diff = fold_node(root, substitute_at_paths(diff))`, an instance of `fold_node` with the substitution algebra). It mutates a `CoreNode` graph. The full **EDIT direction** is documented in [`docs/design-read-edit-pipeline.md`](design-read-edit-pipeline.md) (PR #3364, merged 2026-05-19, operator-ratified); this section summarizes the architecture that compile must compose with.
 
 ### Read/edit primitives
 
@@ -901,7 +901,7 @@ All profiles share the **same substrate**:
 - `std/dependency.dag` (P6 dep edges) — not yet declared.
 - `std/testgen.dag` (lens family library) — exists as `lens/testgen.dag`; pending the rename to fit the lens-family naming convention.
 
-**Lens-to-lens dependencies** are first-class (Open Q6 multi-lens primitive): `testgen.property` may depend on `testgen.algebra_law`'s output; `testgen.integration` may depend on `testgen.roundtrip`. These compose via the lens-dependency DAG (P3 commitment 5), not via ad hoc calls — Practice 10 row 1 applies to lens internals too.
+**Lens-to-lens dependencies** are first-class (per Ratified Q6 — composed-lens-algebra derived from `fold_node`; NOT a separate primitive): `testgen.property` may depend on `testgen.algebra_law`'s output; `testgen.integration` may depend on `testgen.roundtrip`. These compose via the lens-dependency DAG (P3 commitment 5), not via ad hoc calls — Practice 10 row 1 applies to lens internals too.
 
 **Important boundary (P0 implication):** tests are projections OF the model; the model is NOT derived from tests. Tests are **behavioral probes** generated from the source-of-truth model. The slogan: *"tests are generated from the model as behavioral probes; they are not the source of truth for the model."*
 
@@ -957,7 +957,7 @@ When a `.dag` substrate type changes — say `std/node.dag`'s `NodeFold<R>` carr
 1. **Hand-authored Diff via the read/edit pipeline.** The operator (or an agent) declares the change as a `Diff` against the substrate-typed Node graph. `apply_diff` mutates; the seven-step candidate-state pattern validates against the candidate. Commit lands. This is exactly the read/edit doc's "(f) mechanical refactor" hero case applied to the compiler's own source.
 2. **Mechanical refactor from upstream change.** When a substrate type evolves, a lens (e.g., an L1.x dissolution lens, or a custom interface-cascade lens like read/edit doc § 6.5) computes the affected sites + the per-site transform. The substrate handles N affected sites in the compiler's own code the same way it handles N user-code sites. Atomic apply via candidate-state.
 
-There is no "self-edit special case." Self-edit is `apply_diff(self, Diff)` where `self` is the compiler's own CoreNode graph. The substrate's read/write-symmetric primitive set means there's no hidden machinery — same surface, applied to the compiler's source.
+There is no "self-edit special case." Self-edit is `apply_diff(self, Diff)` where `self` is the compiler's own CoreNode graph. The substrate's read/write-symmetric mechanism (`fold_node` reads; `fold_node`-with-`substitute_at_paths` algebra writes) means there's no hidden machinery — same surface, applied to the compiler's source.
 
 ### stage0 regeneration as a compile of self
 
@@ -1342,7 +1342,7 @@ Defer trigger: first attempt to compile against a non-current version (e.g., Pyt
 | **`Path`** | A structural address to a sub-Node — `Path { steps: List<Symbol> }`. NOT a filesystem path; the Node graph's own coordinates. Ratified in `src/v4/std/node.dag` (PR #3162). |
 | **`Edit`** | A structural rewrite: `Edit { at: Path, replacement: Node }`. Replacement only — no insert/delete variants; those decompose into parent-replacement. |
 | **`Diff`** | An ordered sequential rewrite program: `Diff { edits: List<Edit> }`. Sequential composition, NOT parallel. Fail-closed all-or-nothing on `apply_diff`. |
-| **`apply_diff`** | The structural-edit primitive symmetric to `fold_node`. Takes a Node and a Diff; folds edits sequentially; fail-closed on unresolved Path. The agent-side mutation primitive. |
+| **`apply_diff`** (DERIVED, not primitive) | The structural-edit **derived combinator** = `fold_node(root, substitute_at_paths(diff))`. Takes a Node and a Diff; folds edits sequentially; fail-closed on unresolved Path. The agent-side mutation operation; composes with `fold_node`, doesn't extend the primitive set. |
 | **`apply_lens`** | The lens application surface: `apply_lens(lens, scope, mode) → Witness<finding> \| Outcome<()>`. The substrate-level read-side primitive lenses use. |
 | **`SectionRef`** | The scope shape for lens application: `DeclarationScope(decl_ref) \| NodeScope(node_ref)`. Two variants only — corpus-wide application is composition over the declaration set, not a separate scope. |
 | **`scope_in`** | Helper `scope_in(root: Node, ref: NodeRef) → SectionRef` that binds a frontier ref to a specific dag root. Makes the candidate-vs-pre-edit root structurally explicit in every gate call (read/edit doc § 4). |
