@@ -16,6 +16,9 @@ import v2_5.std.stage_types {
   NormalizedFieldInit,
   NormalizedFn,
   NormalizedFunc,
+  NormalizedImport,
+  NormalizedImportAll,
+  NormalizedImportNames,
   NormalizedItem,
   NormalizedMatchArm,
   NormalizedOperation,
@@ -43,6 +46,9 @@ import v2_5.std.stage_types {
   ResolvedFieldInit,
   ResolvedFn,
   ResolvedFunc,
+  ResolvedImport,
+  ResolvedImportAll,
+  ResolvedImportNames,
   ResolvedItemCore,
   ResolvedMatchArm,
   ResolvedOperation,
@@ -955,6 +961,51 @@ fn normalize_resolved_resource_use(use: ResolvedResourceUse) -> Outcome<Normaliz
       }
     Rejected { diagnostic: d } => Rejected { diagnostic: d }
   }
+}
+
+
+fn normalize_resolved_import(imp: ResolvedImport) -> Outcome<NormalizedImport> {
+  match imp {
+    ResolvedImportAll { module_path: module_path, span: span } =>
+      Produced {
+        value: NormalizedImportAll {
+          module_path: module_path,
+          span: span
+        }
+      }
+    ResolvedImportNames {
+      module_path: module_path,
+      names: names,
+      span: span
+    } =>
+      Produced {
+        value: NormalizedImportNames {
+          module_path: module_path,
+          names: names,
+          span: span
+        }
+      }
+  }
+}
+
+
+fn empty_normalized_imports() -> Outcome<List<NormalizedImport>> {
+  Produced { value: Empty }
+}
+
+
+fn normalize_resolved_imports(imports: List<ResolvedImport>) -> Outcome<List<NormalizedImport>> {
+  fold(imports, init: empty_normalized_imports(), f: fn(acc, imp) {
+    match acc {
+      Rejected { diagnostic: d } => Rejected { diagnostic: d }
+      Produced { value: done } =>
+        match normalize_resolved_import(imp: imp) {
+          Produced { value: nimp } =>
+            Produced { value: list_push(done, nimp) }
+          Rejected { diagnostic: d } => Rejected { diagnostic: d }
+        }
+    }
+  })
 }
 
 

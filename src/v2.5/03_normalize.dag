@@ -60,7 +60,10 @@ import v2_5.std.stage_types {
   c3_surface_sugar_service,
   c3_surface_sugar_type
 }
-import v2_5.std.normalize_forward { normalize_item_core }
+import v2_5.std.normalize_forward {
+  normalize_item_core,
+  normalize_resolved_imports
+}
 import v2_5.std.sugar_rules {
   PeelSinglePositionalChild,
   ReplaceWithArrow,
@@ -388,15 +391,19 @@ fn normalize_module_items(items: List<ResolvedModuleItem>) -> Outcome<List<Norma
 
 
 fn normalize(module: ResolvedModule) -> Outcome<NormalizedModule> {
-  match normalize_module_items(items: module.items) {
-    Produced { value: items } =>
-      Produced {
-        value: NormalizedModule {
-          name: module.name,
-          imports: Empty,
-          items: items,
-          span: module.span
-        }
+  match normalize_resolved_imports(imports: module.imports) {
+    Produced { value: nimports } =>
+      match normalize_module_items(items: module.items) {
+        Produced { value: nitems } =>
+          Produced {
+            value: NormalizedModule {
+              name: module.name,
+              imports: nimports,
+              items: nitems,
+              span: module.span
+            }
+          }
+        Rejected { diagnostic: d } => Rejected { diagnostic: d }
       }
     Rejected { diagnostic: d } => Rejected { diagnostic: d }
   }
