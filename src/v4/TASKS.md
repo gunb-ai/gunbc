@@ -1223,13 +1223,17 @@ T-3 vocabulary; it does not duplicate it. Authored as its own file so
 LanguageModel and HostModel both have a single named carrier to extend
 (rather than each re-declaring the bundle shape).
 
-**Dependencies — does this restructure T-4?** No silent change to T-4's
-`[needs …]` list as part of this PR. Once `model_core.dag` lands, the
-T-4 fact-bundle authoring contract should be re-expressed in terms of
-"LanguageModel extends ModelCore" — that reconcile is its own commit
-train, not bundled with the substrate landing. The Q1 ratification
-established the SHAPE; landing the carrier file and re-routing T-4's
-authoring are two separable steps.
+**Dependencies — what this PR DOES vs DOES NOT touch in T-4.** This PR
+adds T-33 to T-4's authoritative dependency contract:
+`[needs T-3, P1-KEYSTONE, T-29, T-30, T-25-core, T-33]`. A schedule-edge
+update recording that LanguageModel cannot be authored before ModelCore
+exists; single-authority for the dependency fact lives in T-4's `[needs
+…]` line, not in this T-33 prose. What this PR does NOT do: re-express
+T-4's fact-bundle *authoring contract* (the body prose under T-4) in
+terms of "LanguageModel extends ModelCore". That authoring reframe is
+its own commit train, after T-33 lands. The Q1 ratification established
+the SHAPE; the schedule edge belongs in `[needs …]`; the authoring
+reframe is a separate edit.
 
 **Reference:** `docs/design-v4-compiler-homomorphism.md` §"`ModelCore`
 (shared substrate, factored per ratified Q1)" + §"Ratified Q1 — `HostModel`
