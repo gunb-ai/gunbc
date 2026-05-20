@@ -71,25 +71,16 @@ import v2_5.std.sugar_rules {
   SugarEdgeRequirement,
   SugarReplacement,
   SugarRule,
-  c3_sugar_rules
+  c3_sugar_rule_for_kind
 }
 
 
 data normalize_reason_malformed_sugar: Symbol = normalize_reason_malformed_sugar
-data normalize_reason_unknown_sugar: Symbol = normalize_reason_unknown_sugar
 
 
 fn malformed_sugar_diagnostic(span: SourceSpan) -> Diagnostic {
   Diagnostic {
     reason: normalize_reason_malformed_sugar,
-    correction: Unavailable { reason: UserInputBoundary }
-  }
-}
-
-
-fn unknown_sugar_diagnostic(span: SourceSpan) -> Diagnostic {
-  Diagnostic {
-    reason: normalize_reason_unknown_sugar,
     correction: Unavailable { reason: UserInputBoundary }
   }
 }
@@ -131,21 +122,6 @@ fn edges_satisfy(requirement: SugarEdgeRequirement, children: List<SeamResolvedE
         false
       }
   }
-}
-
-
-fn lookup_sugar_rule(kind: SurfaceSugarKind, rules: List<SugarRule>) -> SugarRule? {
-  fold(rules, init: None, f: fn(acc, r) {
-    match acc {
-      Some { value: _ } => acc
-      None =>
-        if r.sugar == kind {
-          Some { value: r }
-        } else {
-          None
-        }
-    }
-  })
 }
 
 
@@ -260,10 +236,11 @@ fn apply_sugar_rule(
 fn normalize_resolved_type_form(form: ResolvedTypeForm) -> Outcome<NormalizedTypeForm> {
   match form {
     ResolvedSugarForm { kind: kind, span: span, children: children } =>
-      match lookup_sugar_rule(kind: kind, rules: c3_sugar_rules()) {
-        Some { value: rule } => apply_sugar_rule(rule: rule, span: span, children: children)
-        None => Rejected { diagnostic: unknown_sugar_diagnostic(span: span) }
-      }
+      apply_sugar_rule(
+        rule: c3_sugar_rule_for_kind(kind: kind),
+        span: span,
+        children: children
+      )
     ResolvedCoreForm { connective: connective, children: children } =>
       match normalize_seam_edges(children: children) {
         Produced { value: normalized_children } =>

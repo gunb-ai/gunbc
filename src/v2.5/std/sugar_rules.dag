@@ -1,6 +1,6 @@
 // src/v2.5/std/sugar_rules.dag
 // Scope: C3 surface-sugar rewrite rules as first-class data (sugar-as-data).
-// Owns: SugarRule, SugarReplacement, c3_sugar_rules.
+// Owns: SugarRule, SugarReplacement, c3_sugar_rule_for_kind, c3_sugar_rules.
 // Consumes: v2_5.std.stage_types.
 // Status: fork — authority for the closed N=4 gunbc .dag sugar forms (src/v4/TASKS.md T-8).
 
@@ -29,27 +29,41 @@ type SugarRule {
 }
 
 
+fn c3_sugar_rule_for_kind(kind: SurfaceSugarKind) -> SugarRule {
+  match kind {
+    ServiceSugar =>
+      SugarRule {
+        sugar: ServiceSugar
+        edges: RequireAllNamed
+        replacement: ReplaceWithConj
+      }
+    FnSugar =>
+      SugarRule {
+        sugar: FnSugar
+        edges: RequireAllPositional
+        replacement: ReplaceWithArrow
+      }
+    TypeSugar =>
+      SugarRule {
+        sugar: TypeSugar
+        edges: RequireExactlyOnePositional
+        replacement: PeelSinglePositionalChild
+      }
+    OperationSugar =>
+      SugarRule {
+        sugar: OperationSugar
+        edges: RequireAllPositional
+        replacement: ReplaceWithArrow
+      }
+  }
+}
+
+
 fn c3_sugar_rules() -> List<SugarRule> {
   [
-    SugarRule {
-      sugar: ServiceSugar
-      edges: RequireAllNamed
-      replacement: ReplaceWithConj
-    },
-    SugarRule {
-      sugar: FnSugar
-      edges: RequireAllPositional
-      replacement: ReplaceWithArrow
-    },
-    SugarRule {
-      sugar: TypeSugar
-      edges: RequireExactlyOnePositional
-      replacement: PeelSinglePositionalChild
-    },
-    SugarRule {
-      sugar: OperationSugar
-      edges: RequireAllPositional
-      replacement: ReplaceWithArrow
-    }
+    c3_sugar_rule_for_kind(kind: ServiceSugar),
+    c3_sugar_rule_for_kind(kind: FnSugar),
+    c3_sugar_rule_for_kind(kind: TypeSugar),
+    c3_sugar_rule_for_kind(kind: OperationSugar)
   ]
 }
