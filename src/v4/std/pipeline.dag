@@ -1,0 +1,246 @@
+// src/v4/std/pipeline.dag
+// Scope: compiler pipeline AS DATA — stage carriers, dependency contracts, diagnostic policy.
+// Anchor: docs/design-v4-compiler-homomorphism.md "The pipeline — stages as named algebras".
+// Owns: CarrierKind, PipelineStage, Pipeline, StageDiagnosticPolicy, StageDependencyContract.
+// Consumes: v4.std.collection, v4.std.dependency, v4.std.node.
+// Status: Wave-1 Worker A — strict substrate (stages are data; algebra_ref is Symbol, not hidden control flow).
+
+
+module v4.std.pipeline
+
+
+import v4.std.collection { List }
+import v4.std.dependency {
+  ArtifactDependencyKind,
+  DependencyDomain,
+  ProgramDependencyKind,
+  TargetPlanDependencyKind
+}
+import v4.std.node { Symbol }
+
+
+// RULING-1: 🟢 pretty-much-done — carrier progression per compile-core homomorphism doc.
+type CarrierKind
+  = Text
+  | SurfaceNode
+  | CoreNode
+  | ResolvedCoreNode
+  | InferredTree
+  | TargetSurfaceNode
+  | TargetSource
+  | HostValue
+
+
+// RULING-1: 🟢 pretty-much-done — fail-closed default for Wave-1 substrate stages.
+type StageDiagnosticPolicy
+  = FailClosed
+  | AccumulateDiagnostics
+  | PropagateOnly
+
+
+// RULING-1: 🟢 pretty-much-done — which P6 facts a stage requires and monotonically adds.
+type StageDependencyContract {
+  domain: DependencyDomain
+  requires_program: List<ProgramDependencyKind>
+  adds_program: List<ProgramDependencyKind>
+  requires_target_plan: List<TargetPlanDependencyKind>
+  adds_target_plan: List<TargetPlanDependencyKind>
+  requires_artifact: List<ArtifactDependencyKind>
+  adds_artifact: List<ArtifactDependencyKind>
+}
+
+
+// RULING-1: 🟢 pretty-much-done — one stage row; algebra_ref names the stage algebra (data, not executor).
+type PipelineStage {
+  name: Symbol
+  input_carrier: CarrierKind
+  output_carrier: CarrierKind
+  requires_dependencies: StageDependencyContract
+  adds_dependencies: StageDependencyContract
+  diagnostic_policy: StageDiagnosticPolicy
+  algebra_ref: Symbol
+}
+
+
+type Pipeline {
+  name: Symbol
+  stages: List<PipelineStage>
+}
+
+
+data pipeline_semantic_compile: Symbol = pipeline_semantic_compile
+
+data stage_tokenize: Symbol = stage_tokenize
+data stage_parse: Symbol = stage_parse
+data stage_normalize: Symbol = stage_normalize
+data stage_resolve: Symbol = stage_resolve
+data stage_ground: Symbol = stage_ground
+data stage_translate: Symbol = stage_translate
+data stage_serialize: Symbol = stage_serialize
+data stage_eval: Symbol = stage_eval
+
+data algebra_tokenize: Symbol = algebra_tokenize
+data algebra_parse: Symbol = algebra_parse
+data algebra_normalize: Symbol = algebra_normalize
+data algebra_resolve: Symbol = algebra_resolve
+data algebra_ground: Symbol = algebra_ground
+data algebra_translate: Symbol = algebra_translate
+data algebra_serialize: Symbol = algebra_serialize
+data algebra_eval: Symbol = algebra_eval
+
+
+fn ingest_text_to_surface_contract() -> StageDependencyContract {
+  StageDependencyContract {
+    domain: Program,
+    requires_program: [],
+    adds_program: [Contains],
+    requires_target_plan: [],
+    adds_target_plan: [],
+    requires_artifact: [],
+    adds_artifact: []
+  }
+}
+
+
+fn ingest_surface_to_core_contract() -> StageDependencyContract {
+  StageDependencyContract {
+    domain: Program,
+    requires_program: [Contains],
+    adds_program: [Contains],
+    requires_target_plan: [],
+    adds_target_plan: [],
+    requires_artifact: [],
+    adds_artifact: []
+  }
+}
+
+
+fn resolve_contract() -> StageDependencyContract {
+  StageDependencyContract {
+    domain: Program,
+    requires_program: [Contains],
+    adds_program: [BindsTo, ModuleDependsOn],
+    requires_target_plan: [],
+    adds_target_plan: [],
+    requires_artifact: [],
+    adds_artifact: []
+  }
+}
+
+
+fn ground_contract() -> StageDependencyContract {
+  StageDependencyContract {
+    domain: Program,
+    requires_program: [Contains, BindsTo, ModuleDependsOn],
+    adds_program: [
+      TypeDependsOn,
+      DataDependsOn,
+      EffectDependsOn,
+      ResourceDependsOn
+    ],
+    requires_target_plan: [],
+    adds_target_plan: [],
+    requires_artifact: [],
+    adds_artifact: []
+  }
+}
+
+
+fn translate_contract() -> StageDependencyContract {
+  StageDependencyContract {
+    domain: TargetPlan,
+    requires_program: [
+      Contains,
+      BindsTo,
+      TypeDependsOn,
+      DataDependsOn,
+      EffectDependsOn,
+      ResourceDependsOn,
+      ModuleDependsOn
+    ],
+    adds_program: [],
+    requires_target_plan: [],
+    adds_target_plan: [PlacementConstraint, TransferDependsOn, BarrierBefore],
+    requires_artifact: [],
+    adds_artifact: []
+  }
+}
+
+
+data semantic_compile_pipeline: Pipeline = Pipeline {
+  name: pipeline_semantic_compile,
+  stages: [
+    PipelineStage {
+      name: stage_tokenize,
+      input_carrier: Text,
+      output_carrier: Text,
+      requires_dependencies: ingest_text_to_surface_contract(),
+      adds_dependencies: ingest_text_to_surface_contract(),
+      diagnostic_policy: FailClosed,
+      algebra_ref: algebra_tokenize
+    },
+    PipelineStage {
+      name: stage_parse,
+      input_carrier: Text,
+      output_carrier: SurfaceNode,
+      requires_dependencies: ingest_text_to_surface_contract(),
+      adds_dependencies: ingest_text_to_surface_contract(),
+      diagnostic_policy: FailClosed,
+      algebra_ref: algebra_parse
+    },
+    PipelineStage {
+      name: stage_normalize,
+      input_carrier: SurfaceNode,
+      output_carrier: CoreNode,
+      requires_dependencies: ingest_surface_to_core_contract(),
+      adds_dependencies: ingest_surface_to_core_contract(),
+      diagnostic_policy: FailClosed,
+      algebra_ref: algebra_normalize
+    },
+    PipelineStage {
+      name: stage_resolve,
+      input_carrier: CoreNode,
+      output_carrier: ResolvedCoreNode,
+      requires_dependencies: resolve_contract(),
+      adds_dependencies: resolve_contract(),
+      diagnostic_policy: FailClosed,
+      algebra_ref: algebra_resolve
+    },
+    PipelineStage {
+      name: stage_ground,
+      input_carrier: ResolvedCoreNode,
+      output_carrier: InferredTree,
+      requires_dependencies: ground_contract(),
+      adds_dependencies: ground_contract(),
+      diagnostic_policy: FailClosed,
+      algebra_ref: algebra_ground
+    },
+    PipelineStage {
+      name: stage_translate,
+      input_carrier: InferredTree,
+      output_carrier: TargetSurfaceNode,
+      requires_dependencies: translate_contract(),
+      adds_dependencies: translate_contract(),
+      diagnostic_policy: FailClosed,
+      algebra_ref: algebra_translate
+    },
+    PipelineStage {
+      name: stage_serialize,
+      input_carrier: TargetSurfaceNode,
+      output_carrier: TargetSource,
+      requires_dependencies: translate_contract(),
+      adds_dependencies: translate_contract(),
+      diagnostic_policy: FailClosed,
+      algebra_ref: algebra_serialize
+    },
+    PipelineStage {
+      name: stage_eval,
+      input_carrier: InferredTree,
+      output_carrier: HostValue,
+      requires_dependencies: ground_contract(),
+      adds_dependencies: ground_contract(),
+      diagnostic_policy: FailClosed,
+      algebra_ref: algebra_eval
+    }
+  ]
+}
