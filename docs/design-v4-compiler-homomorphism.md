@@ -475,9 +475,12 @@ Layer 2 — Compiler models (.dag, source of truth)
   lens algebras (including testgen lens family)
 
 Layer 1 — Substrate models (.dag, source of truth)
-  Node, fold_node, traverse, Outcome/Diagnostic/Locus,
-  grammar-as-data, dependency graph, coercion fold,
-  change/artifact/bootstrap substrate
+  Node, fold_node, find_witness (unified Pass B primitive),
+  Outcome/Diagnostic/Locus, grammar-as-data, typed dependency graph,
+  change/artifact/bootstrap substrate.
+  Derived combinators on top: traverse_node, sequence_node,
+  bind_outcome, apply_diff, coercion fold, solve_constraints
+  (all are fold_node / find_witness invocations, not primitives).
 
 Layer 0 — Seed
   stage0 executable. Minimal, boring, audited.
@@ -520,7 +523,7 @@ All are **checkable substrate data**, not opaque proofs — per Ratified Q9 (nex
 
 | Concept | Purpose | Status |
 |---|---|---|
-| **`Stage0Contract`** | What stage0 promises to do (consume canonical CorePackage; run minimal fold_node + traverse; fail-closed diagnostics; emit verified artifact). | Not declared. Likely `std/bootstrap.dag`. |
+| **`Stage0Contract`** | What stage0 promises to do (consume canonical CorePackage; run minimal `fold_node` + derived `traverse_node` combinator; fail-closed diagnostics; emit verified artifact). | Not declared. Likely `std/bootstrap.dag`. |
 | **`BootstrapEpoch`** | The k-indexed snapshot of (stage0, CorePackage, SourceModels). | Not declared. |
 | **`CorePackage`** | The stable canonical bootstrap package consumed by stage0. | Not declared. |
 | **`CorePackageSchema`** | The schema describing what CorePackage carries (changes here are bootstrap-breaking per Case 3). | Not declared. |
@@ -1324,7 +1327,7 @@ Defer trigger: first attempt to compile against a non-current version (e.g., Pyt
 | **`InferredTree`** | The post-grounding Node tree — same shape as input, with inhabitance/typeshape/binding witnesses attached. |
 | **Practice 8** | "Fact-bundle modeling" rule — every external primitive must declare its facts (width, signedness, range, ...) rather than being a bare alias. See [`docs/modeling-discipline.md`](modeling-discipline.md#8-fact-bundle-modeling). |
 | **Practice 9** | "No-prose discipline" — `.dag` files carry only structured comments, never narrative prose. |
-| **Practice 10** | "Don't hand-roll a derived operation" — every fold/walker/translator that's mechanically determined by a Node's shape must use a substrate primitive (`fold_node`, `traverse`, coercion fold), not hand-rolled recursion. |
+| **Practice 10** | "Don't hand-roll a derived operation" — every fold/walker/translator that's mechanically determined by a Node's shape must use a substrate primitive (`fold_node`, `find_witness`) or a derived combinator built on them (`traverse_node`, coercion fold, `solve_constraints`, etc.), not hand-rolled recursion. Per Pass B unification, `traverse` / coercion fold are *derived*, not primitive — but they remain the right thing to reach for instead of hand-rolling. |
 | **T-8 / T-9 / T-10 / T-22** | Task IDs in `src/v4/TASKS.md`. T-8 = normalize+resolve; T-9 = ground (infer); T-10 = translate; T-22 = eval. |
 | **D2 reversal** | A 2026-05-17 operator-ratified design course correction (recorded in `src/v4/TASKS.md`) that reshaped how language fact-bundles and the coercion fold are framed. The current "coercion fold (not search)" framing is post-D2. |
 | **fail-closed** | A discipline (Practice 1): every failure path produces a structured Diagnostic; no silent `None`s or panics. |
