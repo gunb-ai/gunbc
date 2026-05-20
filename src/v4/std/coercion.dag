@@ -95,6 +95,7 @@ fn coercion_fold(
     },
     multiplicity_policy: TargetSelection { policy: policy }
   ) {
+    // Scaffold only while find_witness rejects: W-T-10 must lift FindWitnessResult → CoercionResult here.
     Accepted { value: _, diagnostics: _ } =>
       outcome_rejected(coercion_not_realized_diagnostic(source: source))
     Rejected { diagnostics: r } => Rejected { diagnostics: r }

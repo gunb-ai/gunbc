@@ -5,6 +5,7 @@
 //       find_witness, verify_witness.
 // Consumes: std collection, std diagnostic, std node.
 // Status: Wave-2-BC3 modeled; enumeration body scaffold until stage consumers land.
+// 🟡 coproduct dissolution — scaffold:find_witness-enum · dissolve-on: W-T-10 wires find_witness/verify_witness bodies.
 
 
 module v4.std.find_witness

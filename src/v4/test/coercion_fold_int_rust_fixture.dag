@@ -11,7 +11,6 @@ module v4.test.coercion_fold_int_rust_fixture
 import v4.std.coercion {
   CoercionCandidateSet,
   CoercionResult,
-  TargetDeclaredPriority,
   coercion_fold
 }
 import v4.std.diagnostic { Outcome }
@@ -19,7 +18,7 @@ import v4.std.constraints {
   CanonicalGrounding,
   CanonicalGroundingWitness
 }
-import v4.std.find_witness { CandidateSet }
+import v4.std.find_witness { CandidateSet, TargetDeclaredPriority }
 import v4.std.integer { Int }
 import v4.std.node {
   Atom,

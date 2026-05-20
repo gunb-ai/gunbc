@@ -81,6 +81,7 @@ fn solve_constraints(
         },
         multiplicity_policy: UniqueOnly
       ) {
+        // Scaffold only while find_witness rejects: W-T-9 must lift FindWitnessResult → CanonicalGrounding here.
         Accepted { value: _, diagnostics: _ } =>
           outcome_rejected(constraints_not_realized_diagnostic(graph: graph))
         Rejected { diagnostics: r } => Rejected { diagnostics: r }

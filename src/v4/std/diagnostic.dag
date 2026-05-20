@@ -121,6 +121,7 @@ fn diagnostic_eq(a: Diagnostic, b: Diagnostic) -> Bool {
     && locus_eq(a: a.at, b: b.at)
     && correction_eq(a: a.correction, b: b.correction)
 }
+// Tail compares as a multiset (order-insensitive); head order is authoritative via diagnostic_eq.
 fn diagnostic_tail_eq(a: List<Diagnostic>, b: List<Diagnostic>) -> Bool {
   if count(a) != count(b) {
     false
