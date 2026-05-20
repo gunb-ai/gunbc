@@ -1,0 +1,159 @@
+// src/v2.5/std/node.dag
+// Scope: v2.5 substrate root — type kernel for the forked tree.
+// Owns: Symbol, Hash, Connective, Behavior, NodeKind, EdgeLabel, Edge, Node, NodeFold, fold_node, EdgeDiscipline, connective_edge_discipline, edge_is_named, edge_is_positional, all_edges_named, all_edges_positional, name_occurrences, all_names_distinct, edges_conform, node_locally_well_formed, node_well_formed, is_empty_conj_root, Path, Edit, Diff.
+// Consumes: none.
+// Status: v2.5 Tier 0 draft.
+
+module v2_5.std.node
+
+type Symbol
+type Hash
+
+// 🟢 coproduct dissolution
+type Connective
+  = Atom { identity: Symbol }
+  | Conj
+  | Disj
+  | Arrow
+  | Cardinality
+  | Instantiation
+
+// 🟢 coproduct dissolution
+type Behavior
+  = Value
+  | Transform
+  | Branch
+  | Loop
+  | Bind
+
+// 🟢 coproduct dissolution
+type NodeKind
+  = Declaration
+  | TypeForm { connective: Connective }
+  | Computation { behavior: Behavior }
+  | Composite
+
+// 🟢 coproduct dissolution
+type EdgeLabel
+  = Named { name: Symbol }
+  | Positional
+
+type Edge {
+  label: EdgeLabel
+  target: Node
+}
+
+type Node {
+  kind: NodeKind
+  children: List<Edge>
+}
+
+type NodeFold<R> {
+  init: fn(Node) -> R
+  step: fn(R, Edge, R) -> R
+}
+
+fn fold_node<R>(n: Node, algebra: NodeFold<R>) -> R {
+  fold(n.children, init: algebra.init(n), f: (acc, e) =>
+    algebra.step(acc, e, fold_node(n: e.target, algebra: algebra))
+  )
+}
+
+// 🟢 coproduct dissolution
+type EdgeDiscipline
+  = NoEdges
+  | LabeledEdges
+  | PositionalEdges
+
+fn connective_edge_discipline(c: Connective) -> EdgeDiscipline {
+  match c {
+    Atom { identity: _ } => NoEdges
+    Conj => LabeledEdges
+    Disj => LabeledEdges
+    Arrow => PositionalEdges
+    Cardinality => PositionalEdges
+    Instantiation => PositionalEdges
+  }
+}
+
+fn edge_is_named(e: Edge) -> Bool {
+  match e.label {
+    Named { name: _ } => true
+    Positional => false
+  }
+}
+
+fn edge_is_positional(e: Edge) -> Bool {
+  match e.label {
+    Named { name: _ } => false
+    Positional => true
+  }
+}
+
+fn all_edges_named(children: List<Edge>) -> Bool {
+  fold(children, init: true, f: (acc, e) => acc && edge_is_named(e: e))
+}
+
+fn all_edges_positional(children: List<Edge>) -> Bool {
+  fold(children, init: true, f: (acc, e) => acc && edge_is_positional(e: e))
+}
+
+fn name_occurrences(name: Symbol, children: List<Edge>) -> Int {
+  fold(children, init: 0, f: (acc, e) => match e.label {
+    Named { name: n } => if n == name { acc + 1 } else { acc }
+    Positional => acc
+  })
+}
+
+fn all_names_distinct(children: List<Edge>) -> Bool {
+  fold(children, init: true, f: (acc, e) => match e.label {
+    Named { name: n } => acc && (name_occurrences(name: n, children: children) == 1)
+    Positional => acc
+  })
+}
+
+fn edges_conform(children: List<Edge>, d: EdgeDiscipline) -> Bool {
+  match d {
+    NoEdges => count(children) == 0
+    LabeledEdges =>
+      all_edges_named(children: children) && all_names_distinct(children: children)
+    PositionalEdges => all_edges_positional(children: children)
+  }
+}
+
+fn node_locally_well_formed(n: Node) -> Bool {
+  match n.kind {
+    TypeForm { connective: c } =>
+      edges_conform(children: n.children, d: connective_edge_discipline(c: c))
+    Declaration => true
+    Computation { behavior: _ } => true
+    Composite => true
+  }
+}
+
+fn node_well_formed(n: Node) -> Bool {
+  fold_node(n: n, algebra: NodeFold {
+    init: n0 => node_locally_well_formed(n: n0),
+    step: (acc, edge, child_ok) => acc && child_ok
+  })
+}
+
+fn is_empty_conj_root(n: Node) -> Bool {
+  match n.kind {
+    TypeForm { connective: Conj } => count(n.children) == 0
+    _ => false
+  }
+}
+
+type Path {
+  steps: List<Symbol>
+}
+
+type Edit {
+  at: Path
+  replacement: Node
+}
+
+type Diff {
+  edits: List<Edit>
+}
