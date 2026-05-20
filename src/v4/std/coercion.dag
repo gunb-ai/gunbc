@@ -36,6 +36,10 @@ import v4.std.witness { HomomorphismWitness, StructuralPropertyWitness }
 data coercion_property_closed_candidate_set: Symbol = coercion_property_closed_candidate_set
 data homomorphism_rule_exact_structural_equality: Symbol = homomorphism_rule_exact_structural_equality
 data coercion_not_realized: Symbol = coercion_not_realized
+data coercion_mismatch_no_target: Symbol = coercion_mismatch_no_target
+data coercion_mismatch_ambiguous: Symbol = coercion_mismatch_ambiguous
+data coercion_mismatch_structural: Symbol = coercion_mismatch_structural
+data coercion_mismatch_would_lose: Symbol = coercion_mismatch_would_lose
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type CoercionQuality
   = Identity
@@ -57,12 +61,20 @@ type CoercionResult {
 type CoercionWitness {
   homomorphism: HomomorphismWitness
 }
+fn coercion_mismatch_reason(kind: CoercionMismatchKind) -> Symbol {
+  match kind {
+    NoTargetCandidate => coercion_mismatch_no_target
+    AmbiguousTargetCandidate => coercion_mismatch_ambiguous
+    StructuralMismatch => coercion_mismatch_structural
+    WouldLoseInformation => coercion_mismatch_would_lose
+  }
+}
 fn coercion_not_realized_diagnostic(
   source: CanonicalGrounding,
   kind: CoercionMismatchKind,
 ) -> Diagnostic {
   Diagnostic {
-    reason: coercion_not_realized,
+    reason: coercion_mismatch_reason(kind: kind),
     at: NodeLocus { node: source.node },
     correction: Unavailable { reason: ExternalContractUnknown }
   }

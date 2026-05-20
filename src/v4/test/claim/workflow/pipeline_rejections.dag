@@ -92,8 +92,8 @@ fn run_pipeline_assert(
 ) -> Verdict<CiPipeline> {
   match kind {
     Equals => match actual {
-      Accepted { value: _, diagnostics: None } => match expected {
-        Accepted { value: _, diagnostics: None } => Deferred {
+      Accepted { value: _, diagnostics: ad } => match expected {
+        Accepted { value: _, diagnostics: ed } => Deferred {
           actual: actual,
           diagnostic: eval_diagnostic(reason: eval_rejected_pipeline_projection_deferred, node: input)
         }
@@ -105,7 +105,7 @@ fn run_pipeline_assert(
       }
     }
     Compiles => match actual {
-      Accepted { value: _, diagnostics: None } => Pass
+      Accepted { value: _, diagnostics: _ } => Pass
       Rejected { diagnostics: _ } => Fail { actual: actual }
     }
     RoundTrips => Deferred {
