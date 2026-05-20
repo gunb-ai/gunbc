@@ -1,8 +1,8 @@
 // src/v4/lens/affected_set.dag
-// Scope: T-21 lens-frontier specialization for CI/incremental re-execution (ReExecFrontier); general change-consequence authority is v4.std.regeneration::AffectedSet.
+// Scope: T-21 lens-frontier specialization (ReExecFrontier); P8 change-consequence substrate is v4.std.regeneration::AffectedSet — ReExecFrontier merge is 🟡 below.
 // Owns: Dag, AffectedDimension, ExclusionKey, ExclusionProof, PropagationExclusionProof, BoundaryExclusionProof, BoundaryExclusion, WholeDagFailClosedEvidence, FrontierDecision, ReExecFrontier, AffectedSetRead, HashReceipt, ChangedDimensionReceipt, FrontierReceipt, affected_set.
 // Consumes: List, Map, Diagnostic, Diff, Edit, Hash, Node, Path, Symbol, Witness; B1 content_hash receipts; B-4 resolved Symbol equality; B-5 per-Arrow signature effects.
-// Status: Wave-0 front landed — lens return is Witness<ReExecFrontier> only; general AffectedSet authority is v4.std.regeneration.
+// Status: Wave-0 front landed — Witness<ReExecFrontier> only; this file owns frontier semantics until hoist dissolves into regeneration::AffectedSet.
 // 🟡 consumer:T-21-reexec-frontier-hoist feature:regeneration-affected-set-authority dissolve-on: PR lands ReExecFrontier semantics inside v4.std.regeneration::AffectedSet and narrows this file to lens read (bounds: affected_set.dag; owner: src/v4/TASKS.md T-21 §847; trigger: checkable = no new consumer treats v4.lens.affected_set as general change-consequence authority).
 
 module v4.lens.affected_set
