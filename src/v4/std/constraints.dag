@@ -51,9 +51,7 @@ type ConstraintGraph {
 }
 
 
-type ConstraintSolvePolicy {
-  require_unique_grounding: Bool
-}
+type ConstraintSolvePolicy
 
 
 type CanonicalGroundingWitness {
