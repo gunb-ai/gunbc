@@ -11,6 +11,7 @@ import v2_5.std.diagnostic {
   UserInputBoundary
 }
 import v2_5.std.token { Token, TokenShape, TokenStream }
+import v2_5.std.stage_types { TokenizeStageOut }
 
 type Source {
   file: String
@@ -535,7 +536,7 @@ fn lex_step(source: Source, state: LexerState, item: IndexedChar) -> LexerState 
   }
 }
 
-fn tokenize(source: Source) -> Outcome<TokenStream> {
+fn tokenize_outcome(source: Source) -> Outcome<TokenStream> {
   let initial = Lexing { frame: LexerFrame { cursor: 0, tokens: [], interpolation_depth: [], eof_emitted: false } }
   let folded = fold_source_chars(
     source: source,
@@ -576,8 +577,12 @@ fn tokenize(source: Source) -> Outcome<TokenStream> {
   }
 }
 
+fn tokenize(source: Source) -> TokenizeStageOut {
+  TokenizeStageOut { tokens: tokenize_outcome(source: source) }
+}
+
 fn tokenize_expectation_holds(source: Source, expected: TokenizeExpectation) -> Bool {
-  match tokenize(source: source) {
+  match tokenize(source: source).tokens {
     Produced { value: _ } =>
       match expected {
         ExpectProduced => true
