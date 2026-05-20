@@ -15,9 +15,7 @@
 use std::collections::BTreeSet;
 
 use v3_compiler::parse_for_test;
-use v3_compiler::parse_surface::{
-    SurfaceField, SurfaceItem, SurfaceType, TypeAngleArg,
-};
+use v3_compiler::parse_surface::{SurfaceField, SurfaceItem, SurfaceType, TypeAngleArg};
 use v3_compiler::tokenize_for_test;
 
 const FILE_SYSTEM_DAG: &str = include_str!("../../../../v4/extdeps/file_system.dag");
