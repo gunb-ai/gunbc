@@ -319,45 +319,6 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           if_condition: Some { value: "needs.affected.outputs.v4 == 'true' || needs.affected.outputs.v3 == 'true' || needs.affected.outputs.workflow_policy == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')" },
           continue_on_error: false,
           timeout_minutes: none
-        }, UsesStep {
-          name: Some { value: "Cache v2-compiler binary (v4 bootstrap gate)" },
-          id: Some { value: "v4-v2-bin" },
-          uses: { owner: "actions", repo: "cache", ref: "v4" },
-          with: { "path": "target/release/v2-compiler", "key": "v2-compiler-bin-${{ runner.os }}-${{ hashFiles('src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}" },
-          env: none,
-          if_condition: Some { value: "needs.affected.outputs.v4 == 'true'" },
-          continue_on_error: false,
-          timeout_minutes: none
-        }, RunStep {
-          name: Some { value: "Build v2 compiler (v4 bootstrap gate)" },
-          id: none,
-          run: "cargo build -p v2-compiler --release",
-          shell: Bash,
-          env: none,
-          working_directory: none,
-          if_condition: Some { value: "needs.affected.outputs.v4 == 'true' && steps.v4-v2-bin.outputs.cache-hit != 'true'" },
-          continue_on_error: false,
-          timeout_minutes: none
-        }, RunStep {
-          name: Some { value: "v2 → v4 bootstrap viability (parse all v4 .dag files via v2)" },
-          id: none,
-          run: "set -euo pipefail\nrm -rf /tmp/v4-stage1\nmkdir -p /tmp/v4-stage1\ntarget/release/v2-compiler compile --source-root src/v4 --output-dir /tmp/v4-stage1 --target dag\necho \"Bootstrap viability OK — v2 indexed and resolved all v4 modules.\"\n",
-          shell: Bash,
-          env: none,
-          working_directory: none,
-          if_condition: Some { value: "needs.affected.outputs.v4 == 'true'" },
-          continue_on_error: false,
-          timeout_minutes: none
-        }, RunStep {
-          name: Some { value: "INTERIM (T-24 bridge) — v4 v2-run-preflight notice (run gate deferred T-22)" },
-          id: none,
-          run: "bash scripts/v2-run-preflight.sh",
-          shell: Bash,
-          env: { "V2_PREFLIGHT_SKIP_COMPILE": "1" },
-          working_directory: none,
-          if_condition: Some { value: "needs.affected.outputs.v4 == 'true'" },
-          continue_on_error: false,
-          timeout_minutes: none
         }],
       needs: ["affected"],
       env: none,
@@ -421,23 +382,70 @@ data gunbc_ci_github_actions_workflow: Workflow = {
       id: "v4",
       name: none,
       runner: SelfHosted { labels: ["ubicloud-standard-2"] },
-      steps: [RunStep {
-          name: Some { value: "v4 receipt (bootstrap gate runs in ci job)" },
+      steps: [UsesStep {
+          name: Some { value: "Checkout" },
           id: none,
-          run: "echo \"::notice::v4 bootstrap viability + v2-run-preflight ran inside the ci job when v4 is affected.\"\n",
+          uses: { owner: "actions", repo: "checkout", ref: "v4" },
+          with: { "fetch-depth": "1" },
+          env: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }, UsesStep {
+          name: Some { value: "Setup Rust" },
+          id: none,
+          uses: { owner: "actions-rust-lang", repo: "setup-rust-toolchain", ref: "v1.16.0" },
+          with: { "cache": "false", "rustflags": "" },
+          env: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }, UsesStep {
+          name: Some { value: "Cache v2-compiler binary" },
+          id: Some { value: "v4-v2-bin" },
+          uses: { owner: "actions", repo: "cache", ref: "v4" },
+          with: { "path": "target/release/v2-compiler", "key": "v2-compiler-bin-${{ runner.os }}-${{ hashFiles('src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}" },
+          env: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }, RunStep {
+          name: Some { value: "Build v2 compiler" },
+          id: none,
+          run: "cargo build -p v2-compiler --release",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: Some { value: "steps.v4-v2-bin.outputs.cache-hit != 'true'" },
+          continue_on_error: false,
+          timeout_minutes: none
+        }, RunStep {
+          name: Some { value: "v2 → v4 bootstrap viability (fail-closed full compile)" },
+          id: none,
+          run: "bash scripts/v4-bootstrap-viability.sh",
           shell: Bash,
           env: none,
           working_directory: none,
           if_condition: none,
           continue_on_error: false,
+          timeout_minutes: Some { value: 25 }
+        }, RunStep {
+          name: Some { value: "INTERIM (T-24 bridge) — v4 v2-run-preflight notice (run gate deferred T-22)" },
+          id: none,
+          run: "bash scripts/v2-run-preflight.sh",
+          shell: Bash,
+          env: { "V2_PREFLIGHT_SKIP_COMPILE": "1" },
+          working_directory: none,
+          if_condition: none,
+          continue_on_error: false,
           timeout_minutes: none
         }],
-      needs: ["affected", "ci"],
+      needs: ["affected"],
       env: none,
       outputs: none,
       if_condition: Some { value: "github.event.pull_request.draft != true && needs.affected.outputs.v4 == 'true'" },
       strategy: none,
-      timeout_minutes: Some { value: 5 },
+      timeout_minutes: Some { value: 30 },
       continue_on_error: false,
       concurrency: none
     }, {
