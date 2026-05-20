@@ -1,27 +1,12 @@
 // src/v4/std/node.dag
 // Scope: v4 substrate root for type and computation nodes.
 // Anchor: THESIS.md "Substrate shape" + MODELING.md.
-// Owns: Symbol, Hash, Connective, Behavior, NodeKind, EdgeLabel, Edge, Node, NodeFold, fold_node, NodeOutcomeFold, traverse_node, sequence_node, map_node_outcome, EdgeDiscipline, connective_edge_discipline, edge_is_named, edge_is_positional, all_edges_named, all_edges_positional, name_occurrences, all_names_distinct, edges_conform, node_locally_well_formed, node_well_formed, is_empty_conj_root, Path, Edit, Diff.
-// Consumes: std diagnostic, std outcome.
-// Status: T-1 modeled; traverse_node substrate per design-v4-compiler-homomorphism Ratified Q4.
+// Owns: Symbol, Hash, Connective, Behavior, NodeKind, EdgeLabel, Edge, Node, NodeFold, fold_node, EdgeDiscipline, connective_edge_discipline, edge_is_named, edge_is_positional, all_edges_named, all_edges_positional, name_occurrences, all_names_distinct, edges_conform, node_locally_well_formed, node_well_formed, is_empty_conj_root, Path, Edit, Diff.
+// Consumes: none.
+// Status: T-1 modeled; substrate-extension rule in src/v4/STRUCTURE.md.
 
 
 module v4.std.node
-
-
-import v4.std.diagnostic {
-  Accepted,
-  Diagnostic,
-  ExternalContractUnknown,
-  Outcome,
-  PortLocus,
-  Produced,
-  Rejected,
-  RejectedSingular,
-  Singleton,
-  Unavailable
-}
-import v4.std.outcome { StageDiagnosticPolicy }
 type Symbol
 type Hash
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
@@ -63,44 +48,6 @@ fn fold_node<R>(n: Node, algebra: NodeFold<R>) -> R {
   fold(n.children, init: algebra.init(n), f: fn(acc, e) {
     algebra.step(acc, e, fold_node(n: e.target, algebra: algebra))
   })
-}
-type NodeOutcomeFold<R> {
-  policy: StageDiagnosticPolicy
-  init: fn(Node) -> Outcome<R>
-  step: fn(Outcome<R>, Edge, Node) -> Outcome<R>
-}
-data traverse_node_not_realized: Symbol = traverse_node_not_realized
-fn traverse_node_not_realized_diagnostic() -> Diagnostic {
-  Diagnostic {
-    reason: traverse_node_not_realized,
-    at: PortLocus { port: traverse_node_not_realized },
-    correction: Unavailable { reason: ExternalContractUnknown }
-  }
-}
-fn traverse_node<R>(n: Node, algebra: NodeOutcomeFold<R>) -> Outcome<R> {
-  Rejected {
-    diagnostics: Singleton { diagnostic: traverse_node_not_realized_diagnostic() }
-  }
-}
-fn sequence_node<R>(nodes: List<Node>, algebra: NodeOutcomeFold<R>) -> Outcome<List<R>> {
-  Rejected {
-    diagnostics: Singleton { diagnostic: traverse_node_not_realized_diagnostic() }
-  }
-}
-fn map_node_outcome<T, U>(o: Outcome<T>, f: fn(T) -> Outcome<U>) -> Outcome<U> {
-  match o {
-    Rejected { diagnostics: d } => Rejected { diagnostics: d }
-    RejectedSingular { diagnostic: d } =>
-      Rejected { diagnostics: Singleton { diagnostic: d } }
-    Produced { value: v } => f(v)
-    Accepted { value: v, diagnostics: ds } => match f(v) {
-      Rejected { diagnostics: d } => Rejected { diagnostics: d }
-      RejectedSingular { diagnostic: d } =>
-        Rejected { diagnostics: Singleton { diagnostic: d } }
-      Produced { value: u } => Accepted { value: u, diagnostics: ds }
-      Accepted { value: u, diagnostics: ds2 } => Accepted { value: u, diagnostics: ds }
-    }
-  }
 }
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type EdgeDiscipline
