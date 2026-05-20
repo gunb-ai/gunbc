@@ -78,8 +78,14 @@ type PipelineStageRow {
   produces: Symbol
 }
 
-// Gate policy is declared on each PipelineStageRow; stage workers honor it and set
-// blocks_emit on their result bundle (orchestrator does not classify Diagnostic.reason).
+// Apply PipelineStageRow.gate to a stage-reported would-block flag (single gate authority).
+fn pipeline_stage_blocks_emit(policy: PipelineGatePolicy, stage_would_block: Bool) -> Bool {
+  match policy {
+    BlockingOnErrors => stage_would_block
+    SurfaceOnly => false
+  }
+}
+
 fn pipeline_row_io_matches(row: PipelineStageRow) -> Bool {
   match row.stage {
     StageTokenize => (row.consumes == source_type) && (row.produces == token_stream_type)
@@ -369,7 +375,7 @@ fn apply_pipeline_stage(state: CompilePipelineState, row: PipelineStageRow) -> C
         CarrierNormalized { source: source, tokens: tokens, parsed: parsed, resolved: resolved, normalized: normalized } =>
           match infer(normalized: normalized) {
             Produced { value: result } =>
-              let infer_blocks_emit = result.blocks_emit
+              let infer_blocks_emit = pipeline_stage_blocks_emit(policy: row.gate, stage_would_block: result.blocks_emit)
               CompilePipelineState {
                 carrier: CarrierInferred {
                   source: source,
@@ -394,37 +400,33 @@ fn apply_pipeline_stage(state: CompilePipelineState, row: PipelineStageRow) -> C
         _ => pipeline_state_carrier_mismatch(state: state, stage: row.stage)
       }
     StageComplexity =>
-      if state.emit_blocked {
-        state
-      } else {
-        match state.carrier {
-          CarrierInferred { source: source, spec: spec, tokens: tokens, parsed: parsed, resolved: resolved, normalized: normalized, inferred: inferred } =>
-            match complexity_analyze(inferred: inferred) {
-              Produced { value: result } =>
-                let complexity_blocks_emit = result.blocks_emit
-                CompilePipelineState {
-                  carrier: CarrierInferred {
-                    source: source,
-                    spec: spec,
-                    tokens: tokens,
-                    parsed: parsed,
-                    resolved: resolved,
-                    normalized: normalized,
-                    inferred: inferred
-                  },
-                  spec: state.spec,
-                  emit_blocked: state.emit_blocked || complexity_blocks_emit,
-                  run_emit: state.run_emit,
-                  complexity: result.report,
-                  ownership: state.ownership,
-                  artifact_plan: state.artifact_plan,
-                  stage_diags: concat(state.stage_diags, result.diagnostics)
-                }
-              Rejected { diagnostic: d } =>
-                pipeline_state_halted(state: state, diagnostics: [d])
-            }
-          _ => pipeline_state_carrier_mismatch(state: state, stage: row.stage)
-        }
+      match state.carrier {
+        CarrierInferred { source: source, spec: spec, tokens: tokens, parsed: parsed, resolved: resolved, normalized: normalized, inferred: inferred } =>
+          match complexity_analyze(inferred: inferred) {
+            Produced { value: result } =>
+              let complexity_blocks_emit = pipeline_stage_blocks_emit(policy: row.gate, stage_would_block: result.blocks_emit)
+              CompilePipelineState {
+                carrier: CarrierInferred {
+                  source: source,
+                  spec: spec,
+                  tokens: tokens,
+                  parsed: parsed,
+                  resolved: resolved,
+                  normalized: normalized,
+                  inferred: inferred
+                },
+                spec: state.spec,
+                emit_blocked: state.emit_blocked || complexity_blocks_emit,
+                run_emit: state.run_emit,
+                complexity: result.report,
+                ownership: state.ownership,
+                artifact_plan: state.artifact_plan,
+                stage_diags: concat(state.stage_diags, result.diagnostics)
+              }
+            Rejected { diagnostic: d } =>
+              pipeline_state_halted(state: state, diagnostics: [d])
+          }
+        _ => pipeline_state_carrier_mismatch(state: state, stage: row.stage)
       }
     StageOwnership =>
       if state.emit_blocked {
@@ -434,7 +436,7 @@ fn apply_pipeline_stage(state: CompilePipelineState, row: PipelineStageRow) -> C
           CarrierInferred { source: source, spec: spec, tokens: tokens, parsed: parsed, resolved: resolved, normalized: normalized, inferred: inferred } =>
             match ownership_analyze(inferred: inferred) {
               Produced { value: result } =>
-                let ownership_blocks_emit = result.blocks_emit
+                let ownership_blocks_emit = pipeline_stage_blocks_emit(policy: row.gate, stage_would_block: result.blocks_emit)
                 CompilePipelineState {
                   carrier: CarrierInferred {
                     source: source,
@@ -536,21 +538,26 @@ fn run_compile_pipeline_fold(pipeline: List<PipelineStageRow>, source: Source, s
 // Public API — compile : Source × TargetSpec -> Outcome<TargetSource>
 // =========================================================================
 
+fn compile_pipeline_emit_blocked_diagnostic(state: CompilePipelineState) -> Diagnostic {
+  match state.stage_diags |> first {
+    Some { value: d } => d
+    None => compile_pipeline_mis_wired_diagnostic()
+  }
+}
+
 fn compile_pipeline_state_to_outcome(state: CompilePipelineState) -> Outcome<TargetSource> {
-  match state.carrier {
-    CarrierEmitted { target: target } =>
-      if state.emit_blocked {
-        Rejected { diagnostic: compile_pipeline_mis_wired_diagnostic() }
-      } else {
-        Produced { value: target }
-      }
-    CarrierHalted { diagnostics: diags } =>
-      match diags |> first {
-        Some { value: d } => Rejected { diagnostic: d }
-        None => Rejected { diagnostic: compile_pipeline_mis_wired_diagnostic() }
-      }
-    _ =>
-      Rejected { diagnostic: compile_pipeline_mis_wired_diagnostic() }
+  if state.emit_blocked {
+    Rejected { diagnostic: compile_pipeline_emit_blocked_diagnostic(state: state) }
+  } else {
+    match state.carrier {
+      CarrierEmitted { target: target } => Produced { value: target }
+      CarrierHalted { diagnostics: diags } =>
+        match diags |> first {
+          Some { value: d } => Rejected { diagnostic: d }
+          None => Rejected { diagnostic: compile_pipeline_mis_wired_diagnostic() }
+        }
+      _ => Rejected { diagnostic: compile_pipeline_mis_wired_diagnostic() }
+    }
   }
 }
 
@@ -567,20 +574,18 @@ fn compile_to_inferred(source: Source, spec: TargetSpec) -> Outcome<InferredNode
   match pipeline_table_well_formed() {
     Produced { value: pipeline } =>
       let state = run_compile_pipeline_fold(pipeline: pipeline, source: source, spec: spec, run_emit: false)
-      match state.carrier {
-        CarrierInferred { inferred: inferred } =>
-          if state.emit_blocked {
-            Rejected { diagnostic: compile_pipeline_mis_wired_diagnostic() }
-          } else {
-            Produced { value: inferred }
-          }
-        CarrierHalted { diagnostics: diags } =>
-          match diags |> first {
-            Some { value: d } => Rejected { diagnostic: d }
-            None => Rejected { diagnostic: compile_pipeline_mis_wired_diagnostic() }
-          }
-        _ =>
-          Rejected { diagnostic: compile_pipeline_mis_wired_diagnostic() }
+      if state.emit_blocked {
+        Rejected { diagnostic: compile_pipeline_emit_blocked_diagnostic(state: state) }
+      } else {
+        match state.carrier {
+          CarrierInferred { inferred: inferred } => Produced { value: inferred }
+          CarrierHalted { diagnostics: diags } =>
+            match diags |> first {
+              Some { value: d } => Rejected { diagnostic: d }
+              None => Rejected { diagnostic: compile_pipeline_mis_wired_diagnostic() }
+            }
+          _ => Rejected { diagnostic: compile_pipeline_mis_wired_diagnostic() }
+        }
       }
     Rejected { diagnostic: d } => Rejected { diagnostic: d }
   }
