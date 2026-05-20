@@ -1,25 +1,164 @@
 // src/v4/extdeps/file_system.dag
 // Scope: External file-system resource model + modeled file effects (read/write).
-// Owns: FileResource, FilePath, FileContent, FileRead, FileWrite, FileReadWitness, FileWriteWitness, FileEffectWitness, FileReadResult, FileWriteResult, file_read, file_write.
+// Owns: PosixByteString, NamedPathComponent, PathComponent, AbsolutePath, RelativePathHead, RelativePath, FilesystemPath, FileKind, FileKindResolutionPolicy, Filesystem, FileBody, FileResource, FilePath, FileContent, FileRead, FileWrite, FileReadWitness, FileWriteWitness, FileEffectWitness, FileReadResult, FileWriteResult, ReadFileRequest, WriteFileRequest, ListDirRequest, FileKindRequest, FileSystemOperations, ModeledFileEffects.
 // Consumes: v4.std.algebra, v4.std.diagnostic, v4.std.machine.
-// Status: scaffold — Wave-2 fail-closed boundary.
+// Status: scaffold — Wave-2 fail-closed boundary (POSIX substrate retained for process/testgen consumers).
 
 module v4.extdeps.file_system
 
+
 import v4.std.algebra { FreeMonoid }
+import v4.std.diagnostic { Outcome }
 import v4.std.machine { Byte }
 
-type FileResource {}
-type FilePath {}
-type FileContent = FreeMonoid<Byte>
-type FileRead { resource: FileResource, path: FilePath }
-type FileWrite { resource: FileResource, path: FilePath, content: FileContent }
-type FileReadWitness { request: FileRead, content: FileContent }
-type FileWriteWitness { request: FileWrite }
+
+// Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/V1_chap03.html#tag_03_241
+// coincides: finite POSIX byte sequence.
+type PosixByteString = FreeMonoid<Byte>
+
+// tag: named pathname component spelling.
+// scaffold: POSIX byte refinements; trigger T-25-core/T-30.
+type NamedPathComponent {
+  bytes: PosixByteString
+}
+
+// 🟡 coproduct dissolution — OS-1.
+type PathComponent
+  = CurrentComponent
+  | ParentComponent
+  | NamedComponent { component: NamedPathComponent }
+
+
+// Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/V1_chap03.html#tag_03_271
+type AbsolutePath {
+  components: List<PathComponent>
+}
+
+// 🟡 coproduct dissolution — OS-1.
+type RelativePathHead
+  = ParentHead
+  | NamedHead { component: NamedPathComponent }
+
+// 🟡 coproduct dissolution — OS-1.
+type RelativePath
+  = CurrentDirectory
+  | CurrentDescendant { first: RelativePathHead, rest: List<PathComponent> }
+  | RelativeDescendant { first: RelativePathHead, rest: List<PathComponent> }
+
+// 🟡 coproduct dissolution — OS-1.
+type FilesystemPath
+  = Absolute { path: AbsolutePath }
+  | Relative { path: RelativePath }
+
+
+// Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/sys_stat.h.html
+// 🟡 coproduct dissolution — OS-1.
+type FileKind
+  = RegularFile
+  | Directory
+  | Symlink
+
+// tag: stat/lstat symlink policy.
+// 🟡 coproduct dissolution — OS-1.
+type FileKindResolutionPolicy
+  = FollowSymlinks
+  | DoNotFollowSymlinks
+
+
+// Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/functions/read.html + https://pubs.opengroup.org/onlinepubs/9799919799/functions/write.html + https://pubs.opengroup.org/onlinepubs/9799919799/functions/readdir.html
+type Filesystem
+
+// coincides: finite POSIX byte sequence.
+type FileBody = FreeMonoid<Byte>
+
+// Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/V1_chap03.html#tag_03_271
+// Modeled resource — effects are explicit parameters against this carrier.
+type FileResource {
+  filesystem: Filesystem
+}
+
+// Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/V1_chap03.html#tag_03_271
+// Peripheral effect path coordinate (absolute path for MVP shims).
+type FilePath {
+  absolute: AbsolutePath
+}
+
+// coincides: finite POSIX byte sequence.
+type FileContent = FileBody
+
+// 🟢 grounded.
+type FileRead {
+  resource: FileResource,
+  path: FilePath
+}
+
+// 🟢 grounded.
+type FileWrite {
+  resource: FileResource,
+  path: FilePath,
+  content: FileContent
+}
+
+// 🟢 grounded.
+type FileReadWitness {
+  request: FileRead,
+  content: FileContent
+}
+
+// 🟢 grounded.
+type FileWriteWitness {
+  request: FileWrite
+}
+
+// 🟢 coproduct dissolution — Wave-2-C2.
 type FileEffectWitness
   = ReadWitness { witness: FileReadWitness }
   | WriteWitness { witness: FileWriteWitness }
-type FileReadResult {}
-type FileWriteResult {}
-fn file_read(req: FileRead) -> FileReadResult
-fn file_write(req: FileWrite) -> FileWriteResult
+
+type FileReadResult = Outcome<FileContent>
+
+type FileWriteResult = Outcome<FileWriteWitness>
+
+// Canonical modeled-effect surface (request carriers above; wiring deferred — M1(2.8) extdeps fn bodies).
+type ModeledFileEffects {
+  file_read: fn(FileRead) -> FileReadResult
+  file_write: fn(FileWrite) -> FileWriteResult
+}
+
+type ReadFileRequest {
+  filesystem: Filesystem
+  path: AbsolutePath
+}
+
+type ReadFileResult = Outcome<FileBody>
+
+type WriteFileRequest {
+  filesystem: Filesystem
+  path: AbsolutePath
+  body: FileBody
+}
+
+type WriteFileResult = Outcome<Filesystem>
+
+type ListDirRequest {
+  filesystem: Filesystem
+  path: AbsolutePath
+}
+
+type ListDirResult = Outcome<List<PathComponent>>
+
+type FileKindRequest {
+  filesystem: Filesystem
+  path: AbsolutePath
+  resolution: FileKindResolutionPolicy
+}
+
+type FileKindResult = Outcome<FileKind>
+
+// Operation-payload carriers for corpus/process consumers; public modeled effects are ModeledFileEffects.file_* .
+type FileSystemOperations {
+  read_file: fn(ReadFileRequest) -> ReadFileResult
+  write_file: fn(WriteFileRequest) -> WriteFileResult
+  list_dir: fn(ListDirRequest) -> ListDirResult
+  file_kind: fn(FileKindRequest) -> FileKindResult
+}
