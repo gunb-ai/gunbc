@@ -2,25 +2,30 @@
 // Scope: fail-closed diagnostic schema for v2.5.
 // Owns: Diagnostic, Outcome, Locus, Extent, Correction, NoCorrectionReason.
 // Consumes: v2_5.std.node.
+// Status: v2.5 Tier 0 draft.
 
 module v2_5.std.diagnostic
 
-import v2_5.std.node { Symbol, Node }
+import v2_5.std.node { Symbol, Nat, Node, Path }
 
+// 🟡 coproduct dissolution — feature:byte-range-ordering-witness
 type Extent
   = WholeFile
-  | ByteRange { start: Int, end: Int }
+  | ByteRange { start: Nat, end: Nat }
 
+// 🟢 coproduct dissolution
 type Locus
   = Textual { file: Symbol, extent: Extent }
   | NodeLocus { node: Node }
-  | PortLocus { port: Symbol }
+  | PortLocus { path: Path }
 
+// 🟢 coproduct dissolution
 type NoCorrectionReason
   = UserInputBoundary
   | AmbiguousIntent
   | ExternalContractUnknown
 
+// 🟢 coproduct dissolution
 type Correction
   = Suggested { node: Node }
   | Unavailable { reason: NoCorrectionReason }
@@ -31,6 +36,7 @@ type Diagnostic {
   correction: Correction
 }
 
+// 🟢 coproduct dissolution
 type Outcome<T>
   = Produced { value: T }
   | Rejected { diagnostic: Diagnostic }
