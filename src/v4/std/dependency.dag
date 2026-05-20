@@ -133,16 +133,20 @@ type DependencyGraph {
 }
 
 
-// 🟢 coproduct dissolution
-type ProgramCompletenessFact
-  = ProgramSemanticFactsComplete
-  | EffectFactsComplete
-  | ResourceFactsComplete
+type ProgramSemanticFactsComplete {}
+type EffectFactsComplete {}
+type ResourceFactsComplete {}
+type PlacementFactsComplete {}
+type TransferFactsComplete {}
+type BarrierFactsComplete {}
+type ArtifactGraphFactsComplete {}
+type ArtifactProvenanceFactsComplete {}
 
 
 type ProgramCompletenessFacts {
-  first: ProgramCompletenessFact
-  rest: List<ProgramCompletenessFact>
+  program_semantic: ProgramSemanticFactsComplete
+  effect: EffectFactsComplete
+  resource: ResourceFactsComplete
 }
 
 
@@ -159,16 +163,10 @@ type ProgramIndependenceClaim {
 }
 
 
-// 🟢 coproduct dissolution
-type TargetPlanCompletenessFact
-  = PlacementFactsComplete
-  | TransferFactsComplete
-  | BarrierFactsComplete
-
-
 type TargetPlanCompletenessFacts {
-  first: TargetPlanCompletenessFact
-  rest: List<TargetPlanCompletenessFact>
+  placement: PlacementFactsComplete
+  transfer: TransferFactsComplete
+  barrier: BarrierFactsComplete
 }
 
 
@@ -185,15 +183,9 @@ type TargetPlanIndependenceClaim {
 }
 
 
-// 🟢 coproduct dissolution
-type ArtifactCompletenessFact
-  = ArtifactGraphFactsComplete
-  | ArtifactProvenanceFactsComplete
-
-
 type ArtifactCompletenessFacts {
-  first: ArtifactCompletenessFact
-  rest: List<ArtifactCompletenessFact>
+  artifact_graph: ArtifactGraphFactsComplete
+  artifact_provenance: ArtifactProvenanceFactsComplete
 }
 
 
@@ -231,8 +223,16 @@ type CycleClassification
   | InvalidCycle { diagnostic: DependencyDiagnostic }
 
 
+// 🟢 coproduct dissolution
+type DependencyDiagnosticReason
+  = UnknownEffectFact
+  | UnknownResourceFact
+  | IndependenceWithoutWitness
+  | InvalidCycleReason
+
+
 type DependencyDiagnostic {
-  reason: Symbol
+  reason: DependencyDiagnosticReason
   edge: DependencyEdge
 }
 
@@ -268,13 +268,7 @@ type TopologicalPlan {
 }
 
 
-data dependency_unknown_effect_fact: Symbol = dependency_unknown_effect_fact
-data dependency_unknown_resource_fact: Symbol = dependency_unknown_resource_fact
-data dependency_independence_without_witness: Symbol = dependency_independence_without_witness
-data dependency_invalid_cycle: Symbol = dependency_invalid_cycle
-
-
-fn dependency_diagnostic(reason: Symbol, edge: DependencyEdge) -> DependencyDiagnostic {
+fn dependency_diagnostic(reason: DependencyDiagnosticReason, edge: DependencyEdge) -> DependencyDiagnostic {
   DependencyDiagnostic {
     reason: reason,
     edge: edge

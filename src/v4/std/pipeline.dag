@@ -1,6 +1,6 @@
 // src/v4/std/pipeline.dag
 // Scope: compiler pipeline as data — stage carriers, dependency contracts, diagnostic policy.
-// Owns: CarrierKind, PipelineStage, Pipeline, StageDiagnosticPolicy, StageRequirements, StageEffects, StageDependencyContract.
+// Owns: CarrierKind, PipelineStage, PipelineStageEdge, Pipeline, StageDiagnosticPolicy, StageRequirements, StageEffects, StageDependencyContract.
 // Consumes: v4.std.collection, v4.std.dependency, v4.std.node.
 // Status: Wave-1 Worker A strict substrate.
 
@@ -70,9 +70,17 @@ type PipelineStage {
 }
 
 
+type PipelineStageEdge {
+  producer: Symbol
+  consumer: Symbol
+  carrier: CarrierKind
+}
+
+
 type Pipeline {
   name: Symbol
   stages: List<PipelineStage>
+  edges: List<PipelineStageEdge>
 }
 
 
@@ -239,6 +247,43 @@ fn eval_contract() -> StageDependencyContract {
 
 data semantic_compile_pipeline: Pipeline = Pipeline {
   name: pipeline_semantic_compile,
+  edges: [
+    PipelineStageEdge {
+      producer: stage_tokenize,
+      consumer: stage_parse,
+      carrier: TokenStream
+    },
+    PipelineStageEdge {
+      producer: stage_parse,
+      consumer: stage_normalize,
+      carrier: SurfaceNode
+    },
+    PipelineStageEdge {
+      producer: stage_normalize,
+      consumer: stage_resolve,
+      carrier: CoreNode
+    },
+    PipelineStageEdge {
+      producer: stage_resolve,
+      consumer: stage_ground,
+      carrier: ResolvedCoreNode
+    },
+    PipelineStageEdge {
+      producer: stage_ground,
+      consumer: stage_translate,
+      carrier: InferredTree
+    },
+    PipelineStageEdge {
+      producer: stage_translate,
+      consumer: stage_serialize,
+      carrier: TargetSurfaceNode
+    },
+    PipelineStageEdge {
+      producer: stage_ground,
+      consumer: stage_eval,
+      carrier: InferredTree
+    }
+  ],
   stages: [
     PipelineStage {
       name: stage_tokenize,
