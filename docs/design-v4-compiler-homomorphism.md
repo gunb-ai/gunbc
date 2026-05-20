@@ -93,15 +93,16 @@ This doc operationalizes that claim.
 The v4 compiler is:
 
 1. **One structural primitive** — `fold_node` (catamorphism over Node).
-2. **Plus eight substrate operations** that aren't `fold_node` but are needed:
+2. **Plus four substrate operations** that aren't `fold_node` but are needed:
    - A **diagnostic carrier** (`Diagnostic + Locus`, fail-closed reporting).
    - **Grammar-as-bidirectional-data** — one declarative grammar model that drives both parsing and serialization. Default law: `parse_target(serialize_target(node)) == node`.
-   - **`traverse`** over the diagnostic-effect carrier (a Node fold/traverse that short-circuits or accumulates over `Outcome<T>` without re-derived match ladders).
-   - **`solve_constraints`** — declared constraint-solving substrate; produces the *canonical* source grounding consumed by the coercion fold. Distinct from the coercion fold.
-   - **The coercion fold** — a mechanical zip-fold over two canonical-Node groundings that checks **exact** structure preservation. Per `src/v4/TASKS.md` T-9, decidable by construction, never a search.
-   - **`LawfulRewriteWitness`** (P7) — witness primitive for structure-changing lowerings (parallel-map, tree-reduce, CUDA, MapReduce). Rewrites are declared by target/runtime models with precondition algebra laws; rewritten plan groundings then go through the coercion fold's exact check.
-   - **Typed dependency graph + topological/SCC machinery** — per P6, dependencies are first-class typed edges carried alongside containment.
-   - **`apply_diff`** (write-side primitive, symmetric to `fold_node`) — structural mutation of a Node graph via a `Diff = List<Edit { at: Path, replacement: Node }>`. Fail-closed all-or-nothing. The agent-side mutation primitive. The substrate is **read/write-symmetric** at the primitive layer: reads are folds, writes are `apply_diff`. See [`docs/design-read-edit-pipeline.md`](design-read-edit-pipeline.md) for the full surface.
+   - **`find_witness`** — the search-structure-preserving primitive (rescoped 2026-05-20 — Pass B unification). Given (source facts, closed candidate set, preservation predicate), find the candidate whose structure preserves the predicate, or fail-closed. **Unifies what was previously two distinct primitives** (`solve_constraints` and the coercion fold): both are "find candidate in closed set whose structure preserves the predicate." `solve_constraints` is `find_witness` over canonical-form candidates with constraint-satisfaction predicate; the coercion fold is `find_witness` over target-language declared inhabitants with exact-structural-equality-zip-fold predicate. See "Primitive unification" section below.
+   - **Typed dependency graph** — per P6, dependencies are first-class typed edges (kind + reason + subject) carried alongside containment. Edge orientation `A → B` = "A required before B." SCC condensation + topological-order primitive.
+
+**Things that were primitives in earlier drafts but are now derived** (Pass B unification):
+- **`traverse_node` / `sequence_node` / `bind_outcome`** are `fold_node` invocations with an Outcome-threading algebra; the combinator (not the algebra) interprets `StageDiagnosticPolicy` to thread failures. The algebra is pure-success-accumulator: `fn(R, Edge, Node) -> Outcome<R>`. Single authority for failure handling = combinator. See "Derived combinators" below.
+- **`apply_diff`** is `fold_node(root, substitute_at_paths(diff))` — a specific algebra parameterizing the catamorphism with the substitution operation. The agent-side mutation surface (read/edit pipeline doc); composes with `fold_node`, not parallel to it.
+- **`LawfulRewriteWitness`** (P7, when implemented) is `find_witness` with an algebra-preserving precondition law as the `preservation_predicate`. Different lawful rewrites = different predicates over `find_witness`, not a separate primitive.
 3. **Compile-core has no boundary actions.** The compile core is **purely data-in / data-out**: `CoreNode + LanguageModel + CompileMode → Outcome<Output>`. No implicit text-reading, no implicit text-writing, no implicit "execute." All real-world I/O — reading source from disk, writing target source to disk, executing on a host, reporting diagnostics to stderr — is **modeled as effects against modeled resources** (`extdeps/file_system.dag` for files, `extdeps/process.dag` for shell/OS, `extdeps/network.dag` for network, etc.), composed by *peripheral shims* outside the compile-core surface. The architecture itself doesn't think about text/files/processes; those are orthogonal concerns modeled independently.
 
 Everything else — every "pass," every "stage," every "language-specific" anything — is an **algebra** plugged into `fold_node` or another declared substrate primitive. The compiler knows no specific language code (Rust, Python, even `.dag` itself, beyond an irreducible bootstrap-seed for `dag.dag`); language-specific *data* lives in `LanguageModel` declarations under `extdeps/languages/`.
@@ -361,6 +362,8 @@ For edges that are naturally references (Atom binding), the edge payload may car
 ### P9 — Bootstrap is stratified; stage0 is a generated artifact, not self-modifying code
 
 > **Ratified 2026-05-20** (reviewer-proposed, operator-direct).
+>
+> **Empirical motivation:** [sunny-otter-371's PR #3407](https://github.com/gunb-ai/gunbc/pull/3407) (the stage0-mirror investigation) surfaced the concrete "stage0 mirror is fundamentally broken under constant manual patch pressure" finding that this stratification is the structural response to.
 
 The compiler may model and regenerate its own implementation, **including stage0**, but **no running compiler generation mutates itself in place**. The "compiler edits itself" framing from earlier sections is precise only in this stratified sense:
 
@@ -496,7 +499,23 @@ P6 names dependency edges over user programs. Bootstrap requires the **same idea
 
 Keeping them separate prevents the confusion "does the compiler's own resolver depend on the resolver it is resolving?" — answer: at epoch k, `Stage0[k]` resolves `model[k]` enough to build `Stage1[k]`. No active stage depends on its own output. The two graphs use the same substrate ideas but model different relationships.
 
+### Witness taxonomy
+
+*(Pass B unification 2026-05-20: 7 witness types → 3 generic carriers parameterized by what's being witnessed.)*
+
+| Witness | Generic parameter | What it asserts | Instances |
+|---|---|---|---|
+| **`StructuralPropertyWitness<P>`** | `P` = the structural property | "This graph has structural property P" | `P = being-canonical` (was CanonicalGroundingWitness); `P = having-no-invalid-cycles` (was AcyclicityWitness); `P = being-completely-classified` (was ClosedWorldDependencyWitness). |
+| **`HomomorphismWitness<R>`** | `R` = the preservation rule | "Rule R holds between source and target" | `R = exact-structural-equality` (was Witness<homomorphism> produced by coercion fold); `R = lawful-rewrite-precondition` (was LawfulRewriteWitness — per algebra-laws like associativity-for-tree-reduce, per-element-independence-for-parallel-map). |
+| **`PromotionWitness`** | (not generic — composes two specific checks) | "This candidate is promotion-ready: fixed-point-equivalent AND bootstrap-roundtrip-valid" | Was BootstrapWitness + FixedPointWitness — composed into one promotion-gate witness. |
+
+All are **checkable substrate data**, not opaque proofs — per Ratified Q9 (next section), the derivation is untrusted; the witness check is trusted.
+
+**Why the collapse:** the previous 7 witnesses were named by *what produces them*, not *what they assert*. CanonicalGroundingWitness / AcyclicityWitness / ClosedWorldDependencyWitness all assert a structural property of a graph — one carrier parameterized by which property. Witness<homomorphism> + LawfulRewriteWitness both assert a preservation rule holds — one carrier parameterized by which rule. BootstrapWitness + FixedPointWitness both gate promotion — one carrier composing the two specific checks. Pass B's "concept unification" thesis applies recursively to the architecture's own carrier set.
+
 ### New bootstrap substrate (needed but not yet declared)
+
+> **Concrete shape of `Stage0Contract` / `CorePackage` / `CorePackageSchema`** is **deferred to a future dispatch** when bootstrap implementation is in scope (held per the current dispatch hold on `std/bootstrap.dag`). This section names the substrate shape needed; the field-level structural design is its own substrate brief, not part of the regeneration-substrate cluster this doc dispatches.
 
 | Concept | Purpose | Status |
 |---|---|---|
@@ -611,17 +630,23 @@ This preserves the "coercion fold is not heuristic search" principle while leavi
 
 | Primitive | Purpose | Status |
 |---|---|---|
-| **`fold_node`** (catamorphism over Node) | Generic structural recursion over Node trees; anti-walker-dissolution substrate (Practice 10 row 1 of the modeling-discipline rubric). Every "pass" the compiler runs is `fold_node(tree, algebra)`. | **Landed** in `src/v4/std/node.dag` line 47, with the `NodeFold<R>` algebra carrier type. |
-| **`traverse`** over `Outcome<T>` | Effect threading. When a fold's algebra produces `Outcome<T>` (success-or-diagnostic), `traverse` propagates failures and short-circuits without inline `match` ladders (Practice 10 row 2 — "traverse dissolution"). | **Uncertain.** Not explicitly visible in `std/`; may be implicit in `fold_node` with short-circuiting algebras. See Open Q4. |
-| **Grammar-as-bidirectional-data** | One declarative grammar model in `extdeps/languages/X.dag` serves both parsing (text → Node) and serialization (Node → text). No separate parser and printer; the grammar production data IS the relation (Practice 8 — "No string-templating"). **Default law:** `parse_target(serialize_target(target_node)) == target_node` — serialization may canonicalize whitespace, comments, optional delimiters, and equivalent syntactic forms; full source-text round-tripping (Q12c) is an opt-in trivia-preserving tool mode, NOT the compiler default. | **Partially landed** — `Grammar / ModeledGrammar / VoidGrammar` declared in `src/v4/compiler/02_parse.dag`; consumed by `extdeps/languages/dag.dag`. Inverse-grammar walk (the serialize direction) is scaffolded but not implemented. |
-| **`solve_constraints`** | Declared constraint-solving substrate primitive. Consumed by ground / infer. Takes a `ConstraintGraph` produced by the grounding fold; produces a `Outcome<InferredTree>` containing the **canonical source grounding** (unique by ratified Q-canonical invariant — see Ground stage). Must produce checkable witnesses or fail-closed diagnostics. **Distinct from the coercion fold** — solver is the upstream machinery; coercion fold is the downstream exact-preservation check. | **Not yet declared.** Likely lands in `std/inference.dag` or extension of `std/cardinality.dag`. |
-| **The coercion fold** | THE homomorphism-verification primitive. Given two **canonical Node groundings** (the canonical source grounding produced by `solve_constraints`, and the target language's closed declared candidate inhabitants), a **mechanical zip-fold** (catamorphism) walks both in parallel and checks structure preservation. Decidable by construction over the closed declared candidate set; empty candidate ⇒ Diagnostic (fail-closed), never a fabricated coercion. **Strictly exact**: structure-changing rewrites (parallel-map / tree-reduce / CUDA / MapReduce lowerings) are NOT performed by the coercion fold. Output carrier carries an **extension slot for future LawfulRewriteWitness**: conceptually `TranslatePlan = ExactCoercion(source_grounding, target_node) \| RewrittenThenCoerced(rewrite_witness, target_plan_grounding, target_node)`. MVP implements only `ExactCoercion`; the `RewrittenThenCoerced` variant lands with P7's LawfulRewriteWitness substrate without requiring refactor. | **Not yet implemented.** Substrate underlying it (canonical-form fold via `node.dag`'s B1-CANON contract, `content_hash = merkle_fold ∘ canonical`) exists. Ratified per `src/v4/TASKS.md` T-9 (line 418, D2-reversal 2026-05-17). Earlier project text (THESIS line 181, "structural algebra-homomorphism search") was superseded by this ratification; the doc-level reconcile is pending. |
-| **`LawfulRewriteWitness`** | Per P7. Witness primitive for structure-changing target lowerings — sequential→parallel map, left-fold→tree-reduce, CPU loop→CUDA kernel, sequential reduce→MapReduce. Each rewrite is declared by the target/runtime model (e.g., `extdeps/runtimes/cuda.dag`) with its precondition algebra laws (per-element independence, associativity, etc.). The witness composes with the coercion fold: rewrite first, then exact-zip-fold check on the rewritten plan grounding. Keeps "not heuristic search" while supporting structure-changing lowerings. | **Not yet declared.** Substrate-design work; likely lands in `std/rewrite.dag` or similar. Out of scope for the initial single-target compiler but architecturally enabled. |
-| **Diagnostic + Locus carrier** | Fail-closed reporting (Practice 1). Every failure path goes through a structured `Diagnostic` with source `Locus`. | **Landed** in `src/v4/std/diagnostic.dag`. |
-| **Typed dependency graph + topological/SCC machinery** | Per P6, dependencies are first-class typed edges (not incidental containment). The substrate declares `DependencyEdge`, `DependencyKind`, `DependencyGraph`, `AcyclicityWitness`, SCC condensation, topological-order derivation. Carriers (post-resolve onward) carry the graph alongside the containment tree. | **Not yet declared.** Probably lands in `src/v4/std/dependency.dag`. T-21's `affected_set.dag` is the incremental-rebuild specialization — built on the same substrate. |
-| **`apply_diff` (write-side primitive)** | The structural-edit primitive symmetric to `fold_node`. Takes a `Node` and a `Diff` (a `List<Edit>` where `Edit = { at: Path, replacement: Node }` and `Path` is a structural address into the Node graph). Folds the edits sequentially into a candidate Node; **fail-closed all-or-nothing** if any Path fails to resolve. The agent-side mutation primitive. Used by query-driven rewrite, mechanical refactor, self-modification, and the candidate-state gate pattern. See [`docs/design-read-edit-pipeline.md`](design-read-edit-pipeline.md) for the full read/edit pipeline. | **Vocabulary ratified** (`Path / Edit / Diff` in `src/v4/std/node.dag` per PR #3162). **Operations scaffold** in `src/v4/lens/application.dag`; T-23 fills them. |
+| **`fold_node`** (catamorphism over Node) | Generic structural recursion over Node trees; anti-walker-dissolution substrate (Practice 10 row 1). Every "pass" the compiler runs is `fold_node(tree, algebra)`. Algebra is pure-success-accumulator `fn(R, Edge, Node) -> Outcome<R>`; the *combinator* (not the algebra) interprets `StageDiagnosticPolicy` to thread failures — single authority for failure handling. | **Landed** in `src/v4/std/node.dag` line 47, with `NodeFold<R>` algebra carrier. |
+| **Grammar-as-bidirectional-data** | One declarative grammar model in `extdeps/languages/X.dag` serves both parsing (text → Node) and serialization (Node → text). No separate parser and printer; the grammar production data IS the relation (Practice 8). **Default law:** `parse_target(serialize_target(target_node)) == target_node` — serialization may canonicalize; full source-text round-tripping is opt-in tooling. | **Partially landed** — `Grammar / ModeledGrammar / VoidGrammar` declared in `src/v4/compiler/02_parse.dag`. Inverse-grammar walk scaffolded but not implemented. |
+| **`find_witness`** *(unified primitive — Pass B unification 2026-05-20)* | THE structure-preservation-search primitive. Given `(source_facts, closed_candidate_set, preservation_predicate)`, find a candidate in the set whose structure preserves the predicate (with witness), or fail-closed. **Unifies what were previously two distinct primitives:** `solve_constraints` (with constraint-satisfaction predicate over canonical-form candidates) and the coercion fold (with exact-structural-equality-zip-fold predicate over target-language declared inhabitants). Both instances are "find candidate in closed set whose structure preserves the predicate"; the predicate is the algebra-as-data parameter. `LawfulRewriteWitness` (P7, when implemented) is a third instance: same primitive with a lawful-rewrite precondition predicate. | **Not yet declared.** Substrate likely lands in `std/find_witness.dag` with the predicate algebras living in their consuming files (`std/constraints.dag` for the grounding predicate; `std/coercion.dag` for the exact-zip-fold predicate). |
+| **Typed dependency graph** | Per P6, dependencies are first-class typed edges. Edge carries `(kind, reason, subject, source-required-before, dependent-after, witness?)` — NOT just `kind` (per strict-review correction #4 — bare labels insufficient; reason/evidence required). `DependencyKind` is a *classification* over `DependencyReason`. SCC condensation + topological-order derivation. Source/core dependencies are separated from target-plan dependencies. | **Not yet declared.** Probably lands in `src/v4/std/dependency.dag`. T-21's `affected_set.dag` is the incremental-rebuild specialization built on the same substrate (migrates into unified `AffectedSet`). |
+| **Diagnostic + Locus carrier** | Fail-closed reporting (Practice 1). Every failure path goes through a structured `Diagnostic` with source `Locus`. `Outcome<T>` shape: `Accepted { value, diagnostics: Diagnostics } \| Rejected { diagnostics: NonEmptyDiagnostics }` (two-variant collapse per Pass B correction #11). | **Landed** in `src/v4/std/diagnostic.dag`; needs Outcome-shape reconcile in corrections round. |
 
-That is the full compiler-primitive surface. **Nine things.** Every stage, every pass, every translation, every eval, every glue derivation, every read/edit operation is structurally `fold_node + traverse + (one or more of the other seven) + an algebra-as-data`. **Reads** are folds (via `fold_node` / lens algebras); **writes** are `apply_diff`; the substrate is read/write-symmetric at the primitive layer.
+That is the full compiler-primitive surface. **Five things** (was 9 before Pass B unification). Every stage, pass, translation, eval, glue derivation, and read/edit operation is structurally `fold_node + (one or more of the other four primitives) + an algebra-as-data`.
+
+### Derived combinators (NOT primitives — Pass B unification)
+
+These were primitives in earlier drafts; they are now **derived** from the 5-primitive set:
+
+- **`traverse_node` / `sequence_node` / `bind_outcome`** = `fold_node` invoked with an `Outcome`-threading algebra; the combinator interprets `StageDiagnosticPolicy` (accumulate vs short-circuit). Algebras are pure success-accumulators (per Worker C's `NodeOutcomeFold.step` fix — combinator owns failure policy as single authority). `traverse_node` is `fold_node + NodeOutcomeFold`, not a parallel primitive.
+- **`apply_diff`** = `fold_node(root, substitute_at_paths(diff))` — a specific algebra parameterizing the catamorphism. The agent-side mutation surface (read/edit pipeline doc); composes with `fold_node`, doesn't extend the primitive set.
+- **The coercion fold** = `find_witness(canonical_source_grounding, target_lang.declared_inhabitants, exact_structural_equality_zip_fold)`. The "fold" name is preserved in TASKS.md T-9 ratification; conceptually it's an instance of `find_witness`.
+- **`solve_constraints`** = `find_witness(constraint_graph, canonical-form-candidates, constraint_satisfaction)`. Same primitive, different algebra.
+- **`LawfulRewriteWitness`** (P7) = `find_witness(source_grounding, candidate_rewrites_declared_by_target, lawful_rewrite_precondition_predicate)`. Same primitive again.
 
 **Why this terminology shift matters (coercion fold vs. "search"):** an earlier framing called the homomorphism step an "algebra-homomorphism search" or "inhabitance search," which suggests an open-ended search algorithm with potentially intractable complexity. The ratified position is the opposite: the candidate set is **closed and declared** (by the target language model), the source's grounding is **canonical and unique**, and the check is a **mechanical structural zip** — closer to type unification than to logic-programming search. If you find yourself reasoning about it as a search, that's a signal you're solving the wrong problem.
 
@@ -1095,17 +1120,30 @@ If a worker encounters a deeper scaffold-vs-design contradiction not catalogued 
 
 ---
 
-## MVP routes — named explicitly
+## MVP — single endpoint
 
-Three named MVP endpoints, increasing in scope:
+**The MVP is one endpoint, not three (rescoped 2026-05-20 — strict amendment per P2 boundary discipline; multiple valid terminuses for one boundary was a soft framing):**
 
-| MVP | What it proves | Required substrate + impl |
-|---|---|---|
-| **Core MVP** | The compile-core homomorphism produces a TargetSource from a CoreNode. Pure data-in/data-out; no shims. | `std/dependency.dag` + `std/constraints.dag` (solve_constraints) + W-CoercionFold + W-TraverseOutcome + W-T-9-impl + W-T-10-impl (translate + serialize) + scaffold reconciles. |
-| **MVP-A (translate-only)** | Core MVP + the peripheral shim composes to end-to-end "file on disk → file on disk." Validates the I/O-as-modeled-effects framing. | Core MVP + `extdeps/file_system.dag` refresh + W-EmitShim (file_read → ingest_text → compile → file_write). |
-| **MVP-B (eval-only)** | The compile-core homomorphism produces a Value via host interpretation. Validates P2 (eval = translate-to-host). | `std/dependency.dag` + `std/constraints.dag` + W-CoercionFold + W-TraverseOutcome + W-T-9-impl + `std/host.dag` (Ratified Q1) + W-T-22-impl + W-EvalShim. |
+> Given a `CoreNode` representing a small `.dag` program (the canonical `add(x, y) = x + y` worked example), `compile(source, dag_lang, TranslateTo(rust_lang))` produces a `TargetSource` containing valid Rust source code for the equivalent program, via the homomorphism mechanic. Pure data-in / data-out at the compile-core boundary; no shims required.
 
-**Either MVP-A or MVP-B is sufficient as the first proof point**; both together is the strongest exercise of the architecture. MVP-A is the more direct demonstration of the homomorphism story (translate explicitly walks the coercion fold); MVP-B is smaller if Rust serialization proves harder than expected.
+**Required substrate + implementation for MVP:**
+- `std/dependency.dag` (substrate cluster — Worker A).
+- `std/constraints.dag` (solve_constraints signature — Worker B).
+- `W-CoercionFold` (the coercion fold operation — Worker B).
+- `W-TraverseOutcome` (traverse_node + Outcome — Worker C).
+- `W-T-9-impl` (ground stage body).
+- `W-T-10-impl` (translate + serialize bodies).
+- Scaffold reconciles per the migration plan (00_compile signature, lens.cost removal — Worker C).
+
+**Out of scope for MVP** (deferred to follow-on waves; explicit defer with trigger):
+- **Eval / host interpretation** — `std/host.dag` + W-T-22-impl + W-EvalShim. Defer trigger: after MVP lands, when first end-to-end execution case (not codegen) is needed.
+- **File-to-file shim** — `extdeps/file_system.dag` refresh + W-EmitShim. Defer trigger: when MVP's `compile_test_fixture(corenode) -> targetsource` round-trips clean, file-to-file convenience is a small follow-on.
+- **Multi-target translate** — Python/Go/TypeScript/C++ targets. Defer trigger: after Rust MVP, language-by-language follow-on.
+- **Lawful rewrites + structure-changing lowerings** — `LawfulRewriteWitness` substrate (P7). Defer trigger: first MapReduce / CUDA / parallel-map case.
+- **Multi-lens dependency primitive** (Open Q6). Defer trigger: first multi-lens scheduling case.
+- **Bootstrap promotion + stage0 candidate generation** (P9). Defer trigger: first `compile(self_corenode, dag_lang, TranslateTo(rust_lang))` invocation when source-of-truth migration to `.dag` is in scope.
+
+**Why one MVP and not three:** the homomorphism mechanic is the load-bearing claim. One end-to-end demonstration of it (CoreNode → coercion fold → TargetSource) validates everything; adding shims and eval routes BEFORE the core mechanic works is premature scope. P2 boundary discipline: name the single MVP terminus, demonstrate it, then extend.
 
 ## What's NOT in scope for this design
 
@@ -1156,99 +1194,90 @@ Per the reviewer, `LanguageModel` is expanded (see "Carrier shapes" above) to de
 
 For Rust, Python, JavaScript, etc., binding behavior is not optional metadata — it is part of the language model.
 
-### Open Q6 — Multi-lens dependency management substrate primitive
+### Open Q15 — Bridge-of-bridge: when does the bridge itself need a bridge?
 
-P3 commitment 5 requires that N lenses consuming the same `InferredTree` share traversal — no re-walks per lens. This is a substrate-design question, of the same flavor as the coercion fold's substrate primitive.
+Per P9's bootstrap-impact taxonomy, Case 3 (bootstrap-breaking change) requires a modeled `Bridge[k → k+1]` migration package. **Second-order question:** when does upgrading the bridge format itself become a bootstrap-breaking change? I.e., if `Bridge`'s schema changes between epochs, does that require a `Bridge[bridge_k → bridge_k+1]` — bridge-of-bridge?
 
-Three sub-questions:
+Sub-questions:
+- Is `Bridge` a special-status carrier that's never allowed to change format (so bridge-of-bridge is impossible by construction)?
+- Or is `Bridge` schema-versioned with a stable canonical schema, similar to `CorePackageSchema`?
+- Or is there a tiny "bootstrap-of-bootstrap" seed for bridge-schema changes (recursive but bounded)?
 
-- **Q6a.** Is there a substrate primitive `multi_lens_fold(tree, List<Lens>) -> Map<Lens, DimensionFact>` that coalesces shared traversals — single pass over the tree, each Node visited once, each lens's algebra applied at the right step?
-- **Q6b.** How are lens-to-lens dependencies expressed? Example: the complexity lens reads the cost lens's output. Does the multi-lens fold compute a topological order over lens dependencies and stage the folds (cost first, complexity second)? Or do lenses produce intermediate values consumable by other lenses in the SAME pass (more complex but single-traversal)?
-- **Q6c.** Are lens outputs themselves Node-graph data, so they are consumable by other lenses uniformly (and by downstream tooling like IDEs, build reporters)?
+Probably needs operator ratification before bootstrap substrate lands.
 
-This is substrate-design work. Probably lands in a new `std/lens.dag` or extension of `std/node.dag`. Required before multi-lens execution is correct under Practice 3 (facts flow forward, no re-derivation).
+### Ratified Q6 — Multi-lens execution derives from `fold_node` with a composed-lens-algebra (2026-05-20, Pass B unification)
 
-### Open Q7 — `LanguageModel` contract: declarative data only, or executable predicates?
+**Resolved.** Multi-lens execution is `fold_node(InferredTree, composed_lens_algebra)` where `composed_lens_algebra` is a single algebra carrying multiple per-Node lens-step functions + their dependency DAG. No new substrate primitive — this is the unification's point: any pattern that LOOKS like "find / coalesce / traverse" is `fold_node` with the appropriate algebra-as-data.
 
-Is a `LanguageModel` purely declarative `.dag` data, or can it contain executable predicates / algebras / functions?
+- **Single-pass coalescing** is the algebra computing all independent lens outputs per Node visit.
+- **Lens-to-lens dependencies** (e.g., complexity reads cost): the composed algebra computes a topological order over the lens-dependency DAG at algebra-construction time, then the fold visits each Node once with the staged per-Node steps. Multi-pass over the *tree* is not required even when lenses have *internal* dependencies — the algebra stages them per Node.
+- **Lens outputs as Node-graph data:** yes — `DimensionFact` carriers are Node-shaped, so downstream lens-algebras consume them uniformly and downstream tooling (IDEs, reporters) can read them.
 
-If executable behavior is allowed, what prevents a "hidden emitter" (e.g., a function on `rust.dag` named `emit_function_decl(node) -> Text` that's effectively the v2 `emit_rust` smuggled into the model) from sneaking back in? Or a "hidden parser" (executable token-by-token recognition that bypasses grammar-as-data)?
+Substrate that needs to land: the `LensAlgebra<F>` carrier shape + the composed-lens-algebra construction (which is itself a `fold_node` over the lens-dependency DAG producing the per-Node-step composition).
 
-Preferred: declarative-data-only. Every part of a `LanguageModel` should be inspectable as data — including grammar productions, sugar dissolutions, binding rules. Any callable function on a `LanguageModel` is a Practice-10 hand-rolled-derived-operation smell.
+### Ratified Q7 — `LanguageModel` is declarative-data-only (2026-05-20)
 
-But declarative-only is hard for some concerns (e.g., scoping rules in languages with macros that rewrite scope). Need to decide: are macro-handling languages out of scope, or does `LanguageModel` permit a typed-predicate dialect for them?
+**Resolved.** `LanguageModel` is purely declarative `.dag` data. Grammar productions, sugar dissolutions, binding rules, version metadata, algebra inhabitance — all data, not callable functions. No executable predicates / algebras / functions on a `LanguageModel`. Any callable on a `LanguageModel` is a Practice-10 hand-rolled-derived-operation smell + risks smuggling back a hidden emitter / hidden parser / hidden test generator (the v2 `emit_rust` failure mode P1 + P8 exist to prevent).
 
-### Open Q8 — Diagnostic shape on coercion-fold failure
+**Macro-handling languages out of scope** for the initial single-target compiler. Languages whose scope/binding rules require macro-rewrite semantics (Lisp-family, some C++ templates) need a typed-predicate dialect modeled separately if/when added. Defer trigger: first attempt to ground a macro-rewrite language; treated as a substrate-amendment requiring explicit operator ratification.
 
-> **Note:** the prior draft of this Q proposed a "Q8a complete vs Q8b incomplete-bounded" fork. This was wrong and was struck — per `src/v4/TASKS.md` T-9 (D2 reversal ratification), the coercion fold is **decidable by construction over the closed declared candidate set**; there is no "search may have missed something" mode. Empty candidate ⇒ Diagnostic, always. The legitimate open question is the *shape* of that diagnostic, not whether incompleteness is allowed.
+### Ratified Q8 — Coercion failure diagnostic carries `CoercionMismatchKind` (2026-05-20, partial)
 
-When the coercion fold fails (no target inhabitant exists for a source structure in the target's closed candidate set), the diagnostic must carry actionable provenance. The open sub-questions:
+**Resolved at substrate level.** Per Pass A's TASKS.md amendment, coercion failure is `Outcome::Rejected { diagnostic: CoercionMismatchKind }` where `CoercionMismatchKind = NoTargetCandidate | AmbiguousTargetCandidate | StructuralMismatch | WouldLoseInformation`. Each kind carries actionable provenance (which source inhabitance, which target candidates considered, where structural inequality surfaced).
 
-- **Q8a.** What structural mismatch caused the failure? The diagnostic should name WHICH algebra inhabitance the source required, WHICH target inhabitants were considered, and WHERE in the zip-fold the structural inequality first surfaced — not a generic "no inhabitant found."
-- **Q8b.** Does the diagnostic include a *near-miss* — the target inhabitant that came closest, with a structural-diff explanation? Useful for IDE quick-fix suggestions; possibly costly to compute.
-- **Q8c.** Is the diagnostic differentiated by *reason*: structural-shape-mismatch vs missing-algebra-inhabitance vs effect/partiality-mismatch vs version-dialect-mismatch? Each is a different user-facing remediation.
+**Deferred-with-trigger: near-miss / structural-diff IDE quick-fix details.** Defer trigger: first IDE/editor integration consuming the diagnostic; UX shape lands when there's an actual consumer beyond the compile-time error.
 
-These are diagnostic-UX questions, not correctness questions. The coercion fold's correctness is settled (decidable-by-construction per T-9).
+### Ratified Q9 — Derivation untrusted; witness check trusted (2026-05-20, Pass B)
 
-### Open Q9 — Independent witness checking
+**Resolved.** The `find_witness` primitive's output (candidate + witness pair) is **independently checkable**. A separate `verify_witness(source_facts, candidate, preservation_predicate, witness) -> Bool` consumes the witness and re-proves the preservation predicate without re-running candidate enumeration.
 
-Is the coercion fold's output (a target Node + inhabitance witness) **independently checkable**? I.e., can a separate `verify_homomorphism(source, target, witness) -> Bool` function consume the witness and re-prove structure preservation **without re-running the coercion fold's candidate enumeration**?
+Discipline: **the derivation is untrusted; the witness check is trusted.** The compiler doesn't have to trust its own search/fold; the witness is verifiable by inspection. Benefits:
+- Downstream tooling has a cheap re-validation path (IDE, build cache, distributed verification).
+- Clean abstraction boundary: "find the candidate" (production) vs "verify the candidate satisfies the predicate" (verification).
+- Applies uniformly across all `find_witness` instances: solve_constraints witnesses are check-by-replaying constraint-satisfaction; coercion-fold witnesses are check-by-replaying the structural-equality zip-fold; lawful-rewrite witnesses are check-by-replaying the rewrite-law verification.
 
-Strongly preferred (per reviewer): the **derivation is untrusted; the witness check is trusted.** This matches fail-closed philosophy — the compiler doesn't have to trust its own derivation; the witness is verifiable by inspection. Useful even though the coercion fold is decidable by construction, because (a) it gives downstream tooling a cheap re-validation path, and (b) it provides a clean abstraction boundary between "find the inhabitant" and "verify the inhabitant satisfies structure preservation."
+The 3 witness carriers in the witness taxonomy above (`StructuralPropertyWitness<P>` / `HomomorphismWitness<R>` / `PromotionWitness`) each carry enough data to be re-checkable without re-running their producing primitive.
 
-### Open Q9b — Ambiguity surface when multiple candidates pass structure preservation
+Q9b (ambiguity surface for multiple valid candidates) is folded into **Ratified Q14** above — handled by target-declared `TargetSelectionPolicy` or `AmbiguousTargetCandidate` diagnostic; not a separate question.
 
-(Related to Q14 — target selection policy.) The coercion fold over a closed candidate set may find **zero, one, or many** inhabitants whose structural check passes. T-9's contract handles "zero ⇒ Diagnostic" cleanly. The **many** case is the ambiguity question: which target inhabitant gets picked, and is the selection part of the coercion fold's contract or a separate target-policy layer?
+### Open Q10 — Partiality and effects in `ModelCore` (deferred-with-trigger)
 
-This isn't a question about completeness or search — both candidates are *valid* under structure preservation. It's about deterministic selection in the legitimately-ambiguous case.
+**Deferred.** Effect / partiality modeling is substantive substrate work that the strict-review correction #4 (DependencyReason / DependencySubject restructure) implicitly pulls in. Resolution lands when:
+- **Trigger:** first primitive operation in `std/` that declares non-trivial effect/partiality (e.g., a `divide` operation that must declare division-by-zero partiality + an effect signature). At that point, the substrate representation decision (effect-types-as-fact-bundles vs effect-rows-in-type-system vs effect-graph-as-P6-edges) must be ratified.
+- **Pending: representation candidate names** are `EffectSignature` / `ResourceAccess` / `CommutationWitness` / `ConflictWitness` per strict-review correction #4 + the P6 edge-evidence requirement.
 
-### Open Q10 — Partiality and effects in `ModelCore`
+The "EffectDependsOn / ResourceDependsOn as label vs as derived classification" decision IS the answer: edges are *derived classifications* of underlying `EffectSignature` / `ResourceAccess` facts, not labels in their own right.
 
-How are these declared on `ModelCore`?
-- **Partiality** — division by zero, integer overflow, out-of-bounds, force-unwrap.
-- **Effects** — exceptions, mutation, async, host I/O, allocation failure, nondeterminism, nontermination.
+### Ratified Q11 — `Outcome<T>` per-stage policy via `StageDiagnosticPolicy` (2026-05-20)
 
-These affect whether a homomorphism is honest — a source that's pure can't be translated to a target where the corresponding operation is effectful, without surfacing the effect. Practice 8 fact-bundle modeling for languages must include these. Need to decide the substrate representation:
-- Effect types as fact-bundles (`{ pure: Bool, mutates: List<Resource>, ... }`)?
-- Effect rows in the type system?
-- Effect graph as P6 dependency edges (`EffectDependsOn`)?
+**Resolved Q11c.** Per-stage choice via `StageDiagnosticPolicy { accumulation: Accumulate | ShortCircuit; fatality: FailClosed (invariant) }` declared per stage in `std/pipeline.dag`. **Fail-closed is the invariant, NOT a selectable policy** (per strict-review correction #7).
 
-### Open Q11 — `Outcome<T>` accumulate vs short-circuit policy
+`Outcome<T>` shape (per strict-review correction #11):
+- `Accepted { value: T, diagnostics: Diagnostics }`
+- `Rejected { diagnostics: NonEmptyDiagnostics }`
+- where `Diagnostics = None | Some { diagnostics: NonEmptyDiagnostics }`
 
-Per Q4's ratification, `Outcome<T>` likely accumulates diagnostics. What's the per-stage policy?
+Clean success is `Accepted(value, None)`. No `Produced` vs `Accepted` split; no `Rejected` vs `RejectedAccumulating` split. `traverse_outcome` + `map_node_outcome` + `bind_outcome` take/thread the `StageDiagnosticPolicy` to honor accumulation vs short-circuit. Single authority for `StageDiagnosticPolicy` is in the substrate file that owns Outcome (likely `std/diagnostic.dag` extension, not split across `pipeline.dag`).
 
-- **Q11a.** Every stage accumulates all local failures; reports them all at the end of the stage.
-- **Q11b.** Every stage short-circuits at the first failure for performance.
-- **Q11c.** Per-stage choice — some accumulate (parse, ground — UX wants all errors), some short-circuit (translate — once one Node fails, downstream is meaningless).
+### Ratified Q12 — Grammar bidirectional law is target-parse-after-serialize (2026-05-20)
 
-Reviewer recommends Q11c. The per-stage policy is part of each stage's algebra contract.
+**Resolved Q12b** as the default. Grammar law: `parse_target(serialize_target(target_node)) == target_node`. Serialize is canonicalizing (picks one canonical form for whitespace/comments/optional syntax); parse recovers the substrate Node from any valid concrete representation. Already in the primitive set table (line 636).
 
-### Open Q12 — Bidirectional grammar law
+**Q12c (source-text-faithful round-tripping)** is **opt-in** for round-trip code-mod tooling that needs trivia preservation. NOT the compiler default; lives in tooling that wants it. Q12a (full bidirectionality both ways) is rejected — parsing is many-to-one for most languages.
 
-What law does grammar-as-bidirectional-data satisfy?
+### Open Q13 — Language versions / dialects (deferred-with-trigger)
 
-- **Q12a.** Full bidirectionality: `parse(serialize(node)) == node` AND `serialize(parse(text)) == text`. The strongest law; usually impossible because parsing is many-to-one (whitespace, comments, optional syntax).
-- **Q12b.** Target stability only: `parse_target(serialize_target(target_node)) == target_node`. The serialize direction is canonicalizing (picks one canonical form); the parse direction recovers structure.
-- **Q12c.** Source-text-faithful: `serialize_source(parse_source(original_text)) == original_text` — requires preserving comments, whitespace, trivia. Opt-in for round-trip code-mod tooling.
+**Deferred.** Multiple-version-of-same-language modeling is real work (Rust editions, Python 2 vs 3, TypeScript strict mode, C++ standards). The substrate decision is whether multiple versions are *one* parameterized `LanguageModel` (e.g., `rust.dag` with `version: 2021` field) or *separate* `LanguageModel` files (`rust_2021.dag`, `rust_2024.dag`).
 
-Reviewer recommends Q12b as the default (this is what translation needs); Q12c is opt-in for tools that need fidelity.
+Defer trigger: first attempt to compile against a non-current version (e.g., Python 2 alongside Python 3, or Rust 2024 alongside 2021). At that point, both options ratify; the call depends on how different the versions are (parameterized works for editions; separate files needed for Python 2 vs 3 where the languages are fundamentally different).
 
-### Open Q13 — Language versions / dialects
+### Ratified Q14 — Target selection: deterministic policy OR ambiguity diagnostic (2026-05-20)
 
-Rust editions, Python 2 vs 3, TypeScript strict mode, C++ standards (98, 11, 14, 17, 20, 23) — where do these live?
+**Resolved Q14c + Q14d:** when the coercion fold finds multiple structurally-valid target candidates:
+- **Default:** target language model declares a deterministic `TargetSelectionPolicy` (e.g., `UniqueOnly | TargetDeclaredPriority { priority } | UserSelected { selection }`). The target's own model picks the canonical preference; compiler defers to that authority.
+- **Fallback when no policy declared OR policy fails to disambiguate:** `Outcome::Rejected { diagnostic: AmbiguousTargetCandidate { candidates } }` — fail-closed; user (or wrapper) chooses per call site.
 
-Probably as fields on `LanguageModel`. But the question is whether multiple versions are *one* `LanguageModel` parameterized by version (e.g., `rust.dag` with a `version: 2021` field) or *separate* `LanguageModel`s (`rust_2021.dag`, `rust_2024.dag`, …). The former is more parsimonious but may not be honest if the language is fundamentally different across versions (Python 2 vs 3 is the canonical example).
-
-### Open Q14 — Target selection policy under multiple valid homomorphisms
-
-Per the reviewer: a source `Map` or `Transform` may be representable in a target as a loop, an iterator combinator, recursion, a library call, a macro, or a SIMD/vectorized primitive — multiple structure-preserving choices. The compiler needs a deterministic selection policy:
-
-- **Q14a.** First-declared in the target model (positional priority).
-- **Q14b.** Lowest-cost per cost-lens (requires lens-as-input to compile — collides with P3 unless via target-model policy).
-- **Q14c.** Canonical / project-policy declared on the target model (the target language declares its own preferences).
-- **Q14d.** Surface ambiguity to the user — multiple valid translations, user picks per call site.
-
-Recommendation: Q14c default + Q14d opt-in for advanced surface. Q14b is the "let optimizer choose" version but requires the lens framework to be part of the compile decision, which violates P3 — it can live in a wrapper, but not in compile-core.
+**Q14b (lowest-cost via cost-lens) is rejected** — would require lens framework to be part of compile-core decision-making, violating P3 commitment 4 (no specific lens imports in compiler-core). If a project wants cost-driven selection, it lives in a wrapper that runs the cost lens and supplies a `UserSelected` policy — NOT in compile-core.
 
 ---
 
@@ -1295,8 +1324,10 @@ Recommendation: Q14c default + Q14d opt-in for advanced surface. Q14b is the "le
 | **synthesized attribute** | A fact computed bottom-up from a Node's children (e.g., typeshape, content_hash). Naturally fits `fold_node`. |
 | **inherited attribute** | A fact propagated top-down from a Node's parent / context (e.g., scope environment in resolve). Requires a higher-order algebra carrier per P5. |
 | **SCC condensation** | Strongly-connected-component reduction: collapsing valid cycles in a dependency graph into single nodes so the result is a DAG. Used to handle mutually-recursive definitions and other cyclic-but-valid structures. |
-| **`solve_constraints`** | Declared constraint-solving substrate primitive consumed by ground / infer. Takes a `ConstraintGraph`, produces a unique canonical source grounding (or an ambiguity diagnostic). Distinct from the coercion fold. |
-| **`LawfulRewriteWitness`** | Witness primitive (P7) for structure-changing target lowerings — parallel-map, tree-reduce, CUDA, MapReduce. Each rewrite is declared by the target/runtime model with its precondition algebra laws; the rewritten plan grounding is then checked by the coercion fold's exact zip-fold. |
+| **`find_witness`** (unified primitive, Pass B 2026-05-20) | `find_witness(source_facts, closed_candidate_set, preservation_predicate) -> Outcome<(Candidate, Witness)>`. THE structure-preservation-search primitive. Unifies what were previously `solve_constraints` + coercion fold + `LawfulRewriteWitness` — all three are `find_witness` invocations with different predicates. |
+| **`solve_constraints`** (DERIVED, not primitive) | `find_witness(constraint_graph, canonical-form-candidates, constraint_satisfaction_predicate)`. Produces canonical source grounding via the unified primitive. |
+| **coercion fold** (DERIVED, not primitive) | `find_witness(canonical_source_grounding, target_lang.declared_inhabitants, exact_structural_equality_zip_fold)`. Verifies homomorphism via the unified primitive. T-9 ratification preserves the "coercion fold" name; conceptually it's `find_witness`. |
+| **`LawfulRewriteWitness`** (DERIVED, not primitive) | `find_witness(source_grounding, candidate_rewrites_declared_by_target, lawful_rewrite_precondition_predicate)`. Structure-changing lowerings (parallel-map, tree-reduce, CUDA, MapReduce). Different rewrites = different predicates over `find_witness`. |
 | **`ConstraintGraph`** | Intermediate carrier produced by the grounding fold, consumed by `solve_constraints` to produce the canonical `InferredTree`. |
 | **`ClosedWorldDependencyWitness`** | Substrate witness that a region's dependency classification is complete; required before absence-of-edge can be interpreted as independence (e.g., for parallelism). |
 | **canonical (source) grounding** | The unique, witnessed normalization of a Node's algebra-inhabitance facts. The coercion fold operates only on canonical groundings; ambiguity surfaces as a diagnostic in ground, never as multiple downstream candidates. |
