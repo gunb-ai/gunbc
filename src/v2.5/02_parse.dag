@@ -9,7 +9,7 @@ import v2_5.std.diagnostic {
   Outcome,
   PortLocus
 }
-import v2_5.std.node { EdgeLabel, Symbol }
+import v2_5.std.node { EdgeLabel, Nat, Path, Symbol }
 import v2_5.std.stage_types { ParseNode, Token }
 
 
@@ -88,7 +88,7 @@ type OperatorAssociativity
 
 type OperatorSpec {
   token_class: Symbol
-  precedence: Int
+  precedence: Nat
   associativity: OperatorAssociativity
   builds: ParseBuilder
 }
@@ -127,10 +127,19 @@ fn parse(tokens: List<Token>) -> Outcome<ParseNode> {
 
 fn parse_with_contract(tokens: List<Token>, contract: ParseContract) -> Outcome<ParseNode> {
   let at = PortLocus {
-    port: parse_stage_locus_port
+    path: parse_stage_locus_path()
   }
   Rejected {
     diagnostic: parse_waiting_for_stage_type_kit_diagnostic(at: at)
+  }
+}
+
+
+fn parse_stage_locus_path() -> Path {
+  Path {
+    steps: [
+      NamedStep { name: parse_stage_locus_port }
+    ]
   }
 }
 
