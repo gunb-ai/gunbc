@@ -1,6 +1,6 @@
 // src/v4/std/pipeline.dag
 // Scope: compiler pipeline as data — stage carriers, dependency contracts, diagnostic policy.
-// Owns: CarrierKind, PipelineStage, PipelineStageEdge, Pipeline, StageDiagnosticPolicy, StageRequirements, StageEffects, StageDependencyContract.
+// Owns: StageCarrier, PipelineStage, PipelineStageEdge, Pipeline, StageDiagnosticPolicy, StageRequirements, StageEffects, StageDependencyContract.
 // Consumes: v4.std.collection, v4.std.dependency, v4.std.node.
 // Status: Wave-1 Worker A strict substrate.
 
@@ -17,17 +17,17 @@ import v4.std.dependency {
 import v4.std.node { Symbol }
 
 
-// 🟢 coproduct dissolution
-type CarrierKind
-  = Text
+// 🟢 coproduct dissolution — names align with v4.compiler stage I/O (compile/tokenize/parse/normalize/resolve/infer/emit/eval).
+type StageCarrier
+  = Source
   | TokenStream
-  | SurfaceNode
-  | CoreNode
-  | ResolvedCoreNode
+  | ParseTree
+  | NormalizedTree
+  | ResolvedTree
   | InferredTree
-  | TargetSurfaceNode
+  | TargetModel
   | TargetSource
-  | HostValue
+  | EvalResult
 
 
 // 🟢 coproduct dissolution
@@ -62,8 +62,8 @@ type StageDependencyContract {
 
 type PipelineStage {
   name: Symbol
-  input_carrier: CarrierKind
-  output_carrier: CarrierKind
+  input_carrier: StageCarrier
+  output_carrier: StageCarrier
   dependency_contract: StageDependencyContract
   diagnostic_policy: StageDiagnosticPolicy
   algebra_ref: Symbol
@@ -279,7 +279,7 @@ data semantic_compile_pipeline: Pipeline = Pipeline {
   stages: [
     PipelineStage {
       name: stage_tokenize,
-      input_carrier: Text,
+      input_carrier: Source,
       output_carrier: TokenStream,
       dependency_contract: ingest_text_to_surface_contract(),
       diagnostic_policy: stage_diagnostic_fail_closed_accumulate,
@@ -288,30 +288,30 @@ data semantic_compile_pipeline: Pipeline = Pipeline {
     PipelineStage {
       name: stage_parse,
       input_carrier: TokenStream,
-      output_carrier: SurfaceNode,
+      output_carrier: ParseTree,
       dependency_contract: ingest_surface_to_core_contract(),
       diagnostic_policy: stage_diagnostic_fail_closed_accumulate,
       algebra_ref: algebra_parse
     },
     PipelineStage {
       name: stage_normalize,
-      input_carrier: SurfaceNode,
-      output_carrier: CoreNode,
+      input_carrier: ParseTree,
+      output_carrier: NormalizedTree,
       dependency_contract: ingest_surface_to_core_contract(),
       diagnostic_policy: stage_diagnostic_fail_closed_accumulate,
       algebra_ref: algebra_normalize
     },
     PipelineStage {
       name: stage_resolve,
-      input_carrier: CoreNode,
-      output_carrier: ResolvedCoreNode,
+      input_carrier: NormalizedTree,
+      output_carrier: ResolvedTree,
       dependency_contract: resolve_contract(),
       diagnostic_policy: stage_diagnostic_fail_closed_accumulate,
       algebra_ref: algebra_resolve
     },
     PipelineStage {
       name: stage_ground,
-      input_carrier: ResolvedCoreNode,
+      input_carrier: ResolvedTree,
       output_carrier: InferredTree,
       dependency_contract: ground_contract(),
       diagnostic_policy: stage_diagnostic_fail_closed_accumulate,
@@ -320,14 +320,14 @@ data semantic_compile_pipeline: Pipeline = Pipeline {
     PipelineStage {
       name: stage_translate,
       input_carrier: InferredTree,
-      output_carrier: TargetSurfaceNode,
+      output_carrier: TargetModel,
       dependency_contract: translate_contract(),
       diagnostic_policy: stage_diagnostic_fail_closed_accumulate,
       algebra_ref: algebra_translate
     },
     PipelineStage {
       name: stage_serialize,
-      input_carrier: TargetSurfaceNode,
+      input_carrier: TargetModel,
       output_carrier: TargetSource,
       dependency_contract: serialize_contract(),
       diagnostic_policy: stage_diagnostic_fail_closed_accumulate,

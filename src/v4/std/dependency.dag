@@ -52,22 +52,31 @@ type DependencySubject
   | ArtifactEndpoint { endpoint: ArtifactDependencyEndpoint }
 
 
-type ProgramSchedulingReason {
-  kind: ProgramDependencyKind
-  witness: Symbol
-}
+// 🟢 coproduct dissolution
+type ProgramSchedulingReason
+  = BindsTo { binding_witness: Symbol }
+  | TypeDependsOn { type_witness: Symbol }
+  | DataDependsOn { dataflow_witness: Symbol }
+  | EffectDependsOn { effect_order_witness: Symbol }
+  | ResourceDependsOn { resource_conflict_witness: Symbol }
+  | ModuleDependsOn { module_import_witness: Symbol }
 
 
-type TargetPlanSchedulingReason {
-  kind: TargetPlanDependencyKind
-  witness: Symbol
-}
+// 🟢 coproduct dissolution
+type TargetPlanSchedulingReason
+  = PlacementConstraint { placement_witness: Symbol }
+  | TransferDependsOn { transfer_witness: Symbol }
+  | BarrierBefore { barrier_witness: Symbol }
 
 
-type ArtifactSchedulingReason {
-  kind: ArtifactDependencyKind
-  witness: Symbol
-}
+// 🟢 coproduct dissolution
+type ArtifactSchedulingReason
+  = ModelDependsOn { model_witness: Symbol }
+  | ProjectionDependsOn { projection_witness: Symbol }
+  | GeneratedFrom { provenance_witness: Symbol }
+  | VerifiedBy { verifier_witness: Symbol }
+  | BootstrapDependsOn { stage_witness: Symbol }
+  | PromotionDependsOn { promotion_witness: Symbol }
 
 
 type ProgramSchedulingEdge {
@@ -218,8 +227,9 @@ type CycleClassification
 
 // 🟢 coproduct dissolution
 type DependencyDiagnostic
-  = UnknownEffectFact { edge: ProgramSchedulingEdge }
-  | UnknownResourceFact { edge: ProgramSchedulingEdge }
+  = UnknownProgramSchedulingFact { edge: ProgramSchedulingEdge }
+  | UnknownTargetPlanSchedulingFact { edge: TargetPlanSchedulingEdge }
+  | UnknownArtifactSchedulingFact { edge: ArtifactSchedulingEdge }
   | IndependenceWithoutWitness { attempt: IndependenceAttempt }
   | InvalidCycleReason { edge: SchedulingDependencyEdge }
 

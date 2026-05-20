@@ -17,7 +17,7 @@ import v4.std.dependency {
   TopologicalPlan
 }
 import v4.std.node { Hash, Path, Symbol }
-import v4.std.pipeline { CarrierKind, PipelineStage }
+import v4.std.pipeline { PipelineStage, StageCarrier }
 import v4.std.witness { Witness }
 
 
