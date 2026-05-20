@@ -1,8 +1,8 @@
 // src/v4/lens/affected_set.dag
-// Scope: canonical affected-set authority for CI/incremental re-execution; fail-closed B-4/B-5 node frontier.
+// Scope: T-21 lens-frontier specialization for CI/incremental re-execution (ReExecFrontier); general change-consequence authority is v4.std.regeneration::AffectedSet.
 // Owns: Dag, AffectedDimension, ExclusionKey, ExclusionProof, PropagationExclusionProof, BoundaryExclusionProof, BoundaryExclusion, WholeDagFailClosedEvidence, FrontierDecision, ReExecFrontier, AffectedSetRead, HashReceipt, ChangedDimensionReceipt, FrontierReceipt, affected_set.
 // Consumes: List, Map, Diagnostic, Diff, Edit, Hash, Node, Path, Symbol, Witness; B1 content_hash receipts; B-4 resolved Symbol equality; B-5 per-Arrow signature effects.
-// Status: Wave-0 front: bounded changed-subgraph frontier fold landed; dissolves when CI use and .dag TestClaims land.
+// Status: Wave-0 front landed; hoisting ReExecFrontier into regeneration::AffectedSet is a follow-on (semantic migration — not Wave-1 A4).
 
 module v4.lens.affected_set
 

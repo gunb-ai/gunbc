@@ -45,6 +45,20 @@ type ChangeSet {
 }
 
 
+// RULING-1: 🟢 pretty-much-done — bootstrap-related kinds reserved; protocol not implemented here.
+type ArtifactKind
+  = TargetSource
+  | TestSource
+  | Schema
+  | Documentation
+  | DiagnosticTable
+  | CompilerSource
+  | CorePackage
+  | Stage0Candidate
+  | Stage1Candidate
+  | WitnessBundle
+
+
 // RULING-1: 🟢 pretty-much-done — general affected-set authority (artifact/projection invalidation).
 type InvalidationReason
   = DirectChange { change: Change }
@@ -87,20 +101,6 @@ type Projection {
   depends_on: List<Symbol>
   algebra_ref: Symbol
 }
-
-
-// RULING-1: 🟢 pretty-much-done — bootstrap-related kinds reserved; protocol not implemented here.
-type ArtifactKind
-  = TargetSource
-  | TestSource
-  | Schema
-  | Documentation
-  | DiagnosticTable
-  | CompilerSource
-  | CorePackage
-  | Stage0Candidate
-  | Stage1Candidate
-  | WitnessBundle
 
 
 type Artifact {
