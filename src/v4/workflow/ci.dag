@@ -178,21 +178,21 @@ fn ci_pipeline_well_formed(p: CiPipeline) -> Outcome<CiPipeline> {
             if ci_all_commands_authority_ok(jobs: p.jobs) {
               Accepted { value: p, diagnostics: None }
             } else {
-              Rejected { diagnostics: diagnostics_singleton(d: ci_diagnostic(reason: ci_bootstrap_authority_violation) }
+              Rejected { diagnostics: diagnostics_singleton(d: ci_diagnostic(reason: ci_bootstrap_authority_violation)) }
             }
           } else {
-            Rejected { diagnostics: diagnostics_singleton(d: ci_diagnostic(reason: ci_dependency_cycle) }
+            Rejected { diagnostics: diagnostics_singleton(d: ci_diagnostic(reason: ci_dependency_cycle)) }
           }
         } else {
-          Rejected { diagnostics: diagnostics_singleton(d: ci_diagnostic(reason: ci_dangling_reference) }
+          Rejected { diagnostics: diagnostics_singleton(d: ci_diagnostic(reason: ci_dangling_reference)) }
         }
       } else {
-        Rejected { diagnostics: diagnostics_singleton(d: ci_diagnostic(reason: ci_dangling_reference) }
+        Rejected { diagnostics: diagnostics_singleton(d: ci_diagnostic(reason: ci_dangling_reference)) }
       }
     } else {
-      Rejected { diagnostics: diagnostics_singleton(d: ci_diagnostic(reason: ci_duplicate_gate_id) }
+      Rejected { diagnostics: diagnostics_singleton(d: ci_diagnostic(reason: ci_duplicate_gate_id)) }
     }
   } else {
-    Rejected { diagnostics: diagnostics_singleton(d: ci_diagnostic(reason: ci_duplicate_job_id) }
+    Rejected { diagnostics: diagnostics_singleton(d: ci_diagnostic(reason: ci_duplicate_job_id)) }
   }
 }

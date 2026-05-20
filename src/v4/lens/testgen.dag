@@ -244,7 +244,7 @@ fn t19_manual_anchor_absent_bootstrap_diagnostic() -> Diagnostic {
 fn manual_test_claim_for_manual_anchor(key: T19ManualAnchorKey) -> Outcome<TestClaim> {
   match key {
     T19ManualAnchorAbsent =>
-      Rejected { diagnostics: diagnostics_singleton(d: t19_manual_anchor_absent_bootstrap_diagnostic() }
+      Rejected { diagnostics: diagnostics_singleton(d: t19_manual_anchor_absent_bootstrap_diagnostic()) }
     T19ManualTcConjEmpty => Accepted { value: claim_conj_empty_compiles, diagnostics: None }
     T19ManualTcDisjEmpty => Accepted { value: claim_disj_empty_compiles, diagnostics: None }
     T19ManualTcArrowTwoConj => Accepted { value: claim_arrow_two_conj_compiles, diagnostics: None }
@@ -264,7 +264,7 @@ fn manual_test_claim_for_manual_anchor(key: T19ManualAnchorKey) -> Outcome<TestC
 fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept> {
   match claim.t19_anchor {
     T19ManualAnchorAbsent =>
-      Rejected { diagnostics: diagnostics_singleton(d: t19_manual_anchor_absent_bootstrap_diagnostic() }
+      Rejected { diagnostics: diagnostics_singleton(d: t19_manual_anchor_absent_bootstrap_diagnostic()) }
     T19ManualTcConjEmpty =>
       Accepted { value: TypeConstruction {
           subject: ConnectiveKernel { connective: Conj },
@@ -345,10 +345,10 @@ fn bootstrap_claim_generator_for_manual_anchor(
   key: T19ManualAnchorKey
 ) -> Outcome<Generator<TestgenConcept>> {
   match manual_test_claim_for_manual_anchor(key: key) {
-    Rejected { diagnostics: diagnostics_singleton(d: d } => Rejected { diagnostics: diagnostics_singleton(d: d }
+    Rejected { diagnostics: diagnostics_singleton(d: d) } => Rejected { diagnostics: diagnostics_singleton(d: d) }
     Accepted { value: claim, diagnostics: None } =>
       match testgen_concept_for_manual_claim(claim: claim) {
-        Rejected { diagnostics: diagnostics_singleton(d: d } => Rejected { diagnostics: diagnostics_singleton(d: d }
+        Rejected { diagnostics: diagnostics_singleton(d: d) } => Rejected { diagnostics: diagnostics_singleton(d: d) }
         Accepted { value: slot, diagnostics: None } =>
           Accepted { value: Generator {
               classification: claim.classification,

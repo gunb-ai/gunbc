@@ -93,7 +93,7 @@ fn coercion_fold(
   candidates: CoercionCandidateSet,
   policy: TargetSelectionPolicy,
 ) -> Outcome<CoercionResult> {
-  let _fw = find_witness(
+  find_witness(
     source_facts: source.node,
     candidates: candidates.set,
     predicate: PreservationPredicate {

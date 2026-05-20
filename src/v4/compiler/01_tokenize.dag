@@ -95,11 +95,9 @@ fn tokenize(text: String, file: Symbol, rules: LexRules) -> Outcome<TokenStream>
             tokens: []
           }, diagnostics: None }
       } else {
-        Rejected { diagnostics: diagnostics_singleton(d: tokenize_lex_e0_source_not_exhausted_diagnostic(at: at)
-        }
+        Rejected { diagnostics: diagnostics_singleton(d: tokenize_lex_e0_source_not_exhausted_diagnostic(at: at)) }
       }
     ModeledLexRules { root: _ } =>
-      Rejected { diagnostics: diagnostics_singleton(d: tokenize_lexical_walk_not_realized_diagnostic(at: at)
-      }
+      Rejected { diagnostics: diagnostics_singleton(d: tokenize_lexical_walk_not_realized_diagnostic(at: at)) }
   }
 }

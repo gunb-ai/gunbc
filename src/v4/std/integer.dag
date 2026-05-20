@@ -118,7 +118,8 @@ fn integer_modulo_by_zero_diagnostic(at: Locus) -> Diagnostic {
 }
 fn int_div(a: Int, b: Int, at: Locus) -> Outcome<Int> {
   if int_is_zero(a: b) {
-    Rejected { diagnostics: diagnostics_singleton(d: integer_divide_by_zero_diagnostic(at: at)
+    Rejected {
+      diagnostic: integer_divide_by_zero_diagnostic(at: at)
     }
   } else {
     Accepted { value: a / b, diagnostics: None }
@@ -127,7 +128,8 @@ fn int_div(a: Int, b: Int, at: Locus) -> Outcome<Int> {
 
 fn int_mod(a: Int, b: Int, at: Locus) -> Outcome<Int> {
   if int_is_zero(a: b) {
-    Rejected { diagnostics: diagnostics_singleton(d: integer_modulo_by_zero_diagnostic(at: at)
+    Rejected {
+      diagnostic: integer_modulo_by_zero_diagnostic(at: at)
     }
   } else {
     Accepted { value: a % b, diagnostics: None }

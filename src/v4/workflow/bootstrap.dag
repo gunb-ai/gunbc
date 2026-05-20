@@ -85,7 +85,7 @@ fn bs_list_eq(a: List<Symbol>, b: List<Symbol>) -> Bool {
 fn bootstrap_stage_output(plan: Outcome<BootstrapPlan>, s: Symbol) -> Bool {
   match plan {
     Accepted { value: bp, diagnostics: None } => (s == bp.seed.produces) || (s == bp.self0.produces) || (s == bp.self1.produces)
-    Rejected { diagnostics: diagnostics_singleton(d: _ } => false
+    Rejected { diagnostics: diagnostics_singleton(d: _) } => false
   }
 }
 
@@ -112,7 +112,7 @@ fn bootstrap_plan_well_formed(p: BootstrapPlan) -> Outcome<BootstrapPlan> {
        && (p.fixpt.via == bit_identical_check) {
     Accepted { value: p, diagnostics: None }
   } else {
-    Rejected { diagnostics: diagnostics_singleton(d: bs_diagnostic(reason: bootstrap_mis_wired) }
+    Rejected { diagnostics: diagnostics_singleton(d: bs_diagnostic(reason: bootstrap_mis_wired)) }
   }
 }
 

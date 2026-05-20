@@ -124,10 +124,10 @@ fn eval_node(tree: InferredTree, inputs: Inputs) -> Outcome<Node> {
     if node_well_formed(n: inputs.root) {
       Accepted { value: inputs.root, diagnostics: None }
     } else {
-      Rejected { diagnostics: diagnostics_singleton(d: eval_diagnostic(reason: eval_rejected_invalid_node, node: inputs.root) }
+      Rejected { diagnostics: diagnostics_singleton(d: eval_diagnostic(reason: eval_rejected_invalid_node, node: inputs.root)) }
     }
   } else {
-    Rejected { diagnostics: diagnostics_singleton(d: eval_diagnostic(reason: eval_rejected_invalid_node, node: tree.root) }
+    Rejected { diagnostics: diagnostics_singleton(d: eval_diagnostic(reason: eval_rejected_invalid_node, node: tree.root)) }
   }
 }
 
@@ -137,11 +137,11 @@ fn outcome_node_eq(a: Outcome<Node>, b: Outcome<Node>) -> Bool {
   match a {
     Accepted { value: av, diagnostics: None } => match b {
       Accepted { value: bv, diagnostics: None } => av == bv
-      Rejected { diagnostics: diagnostics_singleton(d: _ } => false
+      Rejected { diagnostics: diagnostics_singleton(d: _) } => false
     }
-    Rejected { diagnostics: diagnostics_singleton(d: ad } => match b {
+    Rejected { diagnostics: diagnostics_singleton(d: ad) } => match b {
       Accepted { value: _, diagnostics: None } => false
-      Rejected { diagnostics: diagnostics_singleton(d: bd } => ad == bd
+      Rejected { diagnostics: diagnostics_singleton(d: bd) } => ad == bd
     }
   }
 }
@@ -157,7 +157,7 @@ fn run_node_assert(
     Equals => if outcome_node_eq(a: actual, b: expected) { Pass } else { Fail { actual: actual } }
     Compiles => match actual {
       Accepted { value: _, diagnostics: None } => Pass
-      Rejected { diagnostics: diagnostics_singleton(d: _ } => Fail { actual: actual }
+      Rejected { diagnostics: diagnostics_singleton(d: _) } => Fail { actual: actual }
     }
     RoundTrips => Deferred {
       actual: actual,

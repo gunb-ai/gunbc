@@ -20,7 +20,6 @@ import v4.std.diagnostic {
 }
 import v4.std.find_witness {
   CandidateSet,
-  MultiplicityPolicy,
   PreservationPredicate,
   UniqueOnly,
   find_witness,
@@ -68,7 +67,7 @@ fn solve_constraints(
   graph: ConstraintGraph,
   policy: ConstraintSolvePolicy,
 ) -> Outcome<CanonicalGrounding> {
-  let _fw = find_witness(
+  match find_witness(
     source_facts: graph.root,
     candidates: CandidateSet { candidates: [], closedness: graph.root },
     predicate: PreservationPredicate {
@@ -76,6 +75,9 @@ fn solve_constraints(
       preservation_rule: preservation_rule_constraint_satisfaction
     },
     multiplicity_policy: UniqueOnly
-  )
-  outcome_rejected(constraints_not_realized_diagnostic(graph: graph))
+  ) {
+    Accepted { value: _, diagnostics: _ } =>
+      outcome_rejected(constraints_not_realized_diagnostic(graph: graph))
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
 }

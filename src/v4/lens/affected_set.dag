@@ -143,7 +143,7 @@ type PropagationReceipt
 type FrontierReceipt
   = FrontierProduced { edges: List<FrontierEdge> }
   | FrontierUnknown { reason: Symbol }
-  | FrontierRejected { diagnostics: diagnostics_singleton(d: Diagnostic }
+  | FrontierRejected { diagnostic: Diagnostic }
 
 
 // RULING-1: 🟡 needs-more-work — frontier read.
@@ -355,7 +355,7 @@ fn expand_dimension(
           })
         FrontierUnknown { reason: r } =>
           mark_whole_dag(reason: r)
-        FrontierRejected { diagnostics: diagnostics_singleton(d: d } =>
+        FrontierRejected { diagnostic: d } =>
           mark_whole_dag_diagnostic(diagnostic: d)
       }
   }
@@ -392,7 +392,7 @@ fn seed_edit_fold_acc_live(
               edit: edit
             )
           }
-        Rejected { diagnostics: diagnostics_singleton(d: d } =>
+        Rejected { diagnostics: diagnostics_singleton(d: d) } =>
           AffectedFoldAcc {
             dag: acc.dag,
             frontier: mark_whole_dag_diagnostic(diagnostic: d)
@@ -405,7 +405,7 @@ fn seed_edit_fold_acc_live(
             dag: acc.dag,
             frontier: mark_whole_dag(reason: r)
           }
-        Rejected { diagnostics: diagnostics_singleton(d: d } =>
+        Rejected { diagnostics: diagnostics_singleton(d: d) } =>
           AffectedFoldAcc {
             dag: acc.dag,
             frontier: mark_whole_dag_diagnostic(diagnostic: d)

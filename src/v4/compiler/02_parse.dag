@@ -216,20 +216,17 @@ fn parse(tokens: TokenStream, grammar: Grammar) -> Outcome<ParseTree> {
   let ntok = count(tokens.tokens)
   let grammar_node = grammar_to_node(grammar: grammar)
   if !node_well_formed(n: grammar_node) {
-    Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_not_well_formed_diagnostic(at: at)
-    }
+    Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_not_well_formed_diagnostic(at: at)) }
   } else {
     match grammar {
       VoidGrammar =>
         if ntok == 0 {
           Accepted { value: grammar_node, diagnostics: None }
         } else {
-          Rejected { diagnostics: diagnostics_singleton(d: parse_g0_tokens_remain_diagnostic(at: at)
-          }
+          Rejected { diagnostics: diagnostics_singleton(d: parse_g0_tokens_remain_diagnostic(at: at)) }
         }
       ModeledGrammar { root: _ } =>
-        Rejected { diagnostics: diagnostics_singleton(d: parse_walk_not_realized_diagnostic(at: at)
-        }
+        Rejected { diagnostics: diagnostics_singleton(d: parse_walk_not_realized_diagnostic(at: at)) }
     }
   }
 }

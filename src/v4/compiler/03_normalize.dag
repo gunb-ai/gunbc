@@ -109,7 +109,7 @@ fn normalize_edge(e: Edge) -> Outcome<Edge> {
           label: e.label,
           target: normalized_target
         }, diagnostics: None }
-    Rejected { diagnostics: diagnostics_singleton(d: d } => Rejected { diagnostics: diagnostics_singleton(d: d }
+    Rejected { diagnostics: diagnostics_singleton(d: d) } => Rejected { diagnostics: diagnostics_singleton(d: d) }
   }
 }
 
@@ -122,14 +122,14 @@ fn empty_normalized_children() -> Outcome<List<Edge>> {
 fn normalize_children(children: List<Edge>) -> Outcome<List<Edge>> {
   fold(children, init: empty_normalized_children(), f: fn(acc, e) {
     match acc {
-      Rejected { diagnostics: diagnostics_singleton(d: d } =>
-        Rejected { diagnostics: diagnostics_singleton(d: d }
+      Rejected { diagnostics: diagnostics_singleton(d: d) } =>
+        Rejected { diagnostics: diagnostics_singleton(d: d) }
       Accepted { value: done, diagnostics: None } =>
         match normalize_edge(e: e) {
           Accepted { value: normalized_edge, diagnostics: None } =>
             Accepted { value: list_push(done, normalized_edge), diagnostics: None }
-          Rejected { diagnostics: diagnostics_singleton(d: d } =>
-            Rejected { diagnostics: diagnostics_singleton(d: d }
+          Rejected { diagnostics: diagnostics_singleton(d: d) } =>
+            Rejected { diagnostics: diagnostics_singleton(d: d) }
         }
     }
   })
@@ -164,13 +164,13 @@ fn normalize_sugar(kind: SurfaceSugarKind, n: Node, children: List<Edge>) -> Out
       if all_children_named(children: children) {
         Accepted { value: type_node(connective: Conj, children: children), diagnostics: None }
       } else {
-        Rejected { diagnostics: diagnostics_singleton(d: malformed_sugar_diagnostic(n: n) }
+        Rejected { diagnostics: diagnostics_singleton(d: malformed_sugar_diagnostic(n: n)) }
       }
     FnSugar =>
       if all_children_positional(children: children) {
         Accepted { value: type_node(connective: Arrow, children: children), diagnostics: None }
       } else {
-        Rejected { diagnostics: diagnostics_singleton(d: malformed_sugar_diagnostic(n: n) }
+        Rejected { diagnostics: diagnostics_singleton(d: malformed_sugar_diagnostic(n: n)) }
       }
     TypeSugar =>
       if exactly_one_child(children: children) {
@@ -179,19 +179,19 @@ fn normalize_sugar(kind: SurfaceSugarKind, n: Node, children: List<Edge>) -> Out
             if edge_is_positional(e: e0) {
               Accepted { value: e0.target, diagnostics: None }
             } else {
-              Rejected { diagnostics: diagnostics_singleton(d: malformed_sugar_diagnostic(n: n) }
+              Rejected { diagnostics: diagnostics_singleton(d: malformed_sugar_diagnostic(n: n)) }
             }
           None =>
-            Rejected { diagnostics: diagnostics_singleton(d: malformed_sugar_diagnostic(n: n) }
+            Rejected { diagnostics: diagnostics_singleton(d: malformed_sugar_diagnostic(n: n)) }
         }
       } else {
-        Rejected { diagnostics: diagnostics_singleton(d: malformed_sugar_diagnostic(n: n) }
+        Rejected { diagnostics: diagnostics_singleton(d: malformed_sugar_diagnostic(n: n)) }
       }
     OperationSugar =>
       if all_children_positional(children: children) {
         Accepted { value: type_node(connective: Arrow, children: children), diagnostics: None }
       } else {
-        Rejected { diagnostics: diagnostics_singleton(d: malformed_sugar_diagnostic(n: n) }
+        Rejected { diagnostics: diagnostics_singleton(d: malformed_sugar_diagnostic(n: n)) }
       }
   }
 }
@@ -199,7 +199,7 @@ fn normalize_sugar(kind: SurfaceSugarKind, n: Node, children: List<Edge>) -> Out
 
 fn normalize_node(n: Node) -> Outcome<Node> {
   match normalize_children(children: n.children) {
-    Rejected { diagnostics: diagnostics_singleton(d: d } => Rejected { diagnostics: diagnostics_singleton(d: d }
+    Rejected { diagnostics: diagnostics_singleton(d: d) } => Rejected { diagnostics: diagnostics_singleton(d: d) }
     Accepted { value: normalized_children, diagnostics: None } =>
       match classify_sugar(n: n) {
         Some { value: kind } =>
@@ -216,13 +216,12 @@ fn normalize_node(n: Node) -> Outcome<Node> {
 
 fn normalize(parse_tree: ParseTree) -> Outcome<NormalizedTree> {
   match normalize_node(n: parse_tree) {
-    Rejected { diagnostics: diagnostics_singleton(d: d } => Rejected { diagnostics: diagnostics_singleton(d: d }
+    Rejected { diagnostics: diagnostics_singleton(d: d) } => Rejected { diagnostics: diagnostics_singleton(d: d) }
     Accepted { value: normalized, diagnostics: None } =>
       if node_well_formed(n: normalized) {
         Accepted { value: normalized, diagnostics: None }
       } else {
-        Rejected { diagnostics: diagnostics_singleton(d: post_normalize_not_well_formed_diagnostic(n: normalized)
-        }
+        Rejected { diagnostics: diagnostics_singleton(d: post_normalize_not_well_formed_diagnostic(n: normalized)) }
       }
   }
 }
