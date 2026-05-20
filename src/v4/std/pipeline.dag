@@ -214,10 +214,10 @@ fn ground_contract() -> StageDependencyContract {
     effects: StageEffects {
       adds_containment_spine: false,
       program: [
-        TypeDependsOn { witness: ContractSummary },
-        DataDependsOn { witness: ContractSummary },
-        EffectDependsOn { witness: ContractSummary },
-        ResourceDependsOn { witness: ContractSummary }
+        ProgramSchedulingReason { kind: TypeDependsOn, witness: ContractSummary },
+        ProgramSchedulingReason { kind: DataDependsOn, witness: ContractSummary },
+        ProgramSchedulingReason { kind: EffectDependsOn, witness: ContractSummary },
+        ProgramSchedulingReason { kind: ResourceDependsOn, witness: ContractSummary }
       ],
       target_plan: [],
       artifact: []
