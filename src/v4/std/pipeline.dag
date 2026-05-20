@@ -73,7 +73,6 @@ type PipelineStage {
 type PipelineStageEdge {
   producer: Symbol
   consumer: Symbol
-  carrier: CarrierKind
 }
 
 
@@ -250,38 +249,31 @@ data semantic_compile_pipeline: Pipeline = Pipeline {
   edges: [
     PipelineStageEdge {
       producer: stage_tokenize,
-      consumer: stage_parse,
-      carrier: TokenStream
+      consumer: stage_parse
     },
     PipelineStageEdge {
       producer: stage_parse,
-      consumer: stage_normalize,
-      carrier: SurfaceNode
+      consumer: stage_normalize
     },
     PipelineStageEdge {
       producer: stage_normalize,
-      consumer: stage_resolve,
-      carrier: CoreNode
+      consumer: stage_resolve
     },
     PipelineStageEdge {
       producer: stage_resolve,
-      consumer: stage_ground,
-      carrier: ResolvedCoreNode
+      consumer: stage_ground
     },
     PipelineStageEdge {
       producer: stage_ground,
-      consumer: stage_translate,
-      carrier: InferredTree
+      consumer: stage_translate
     },
     PipelineStageEdge {
       producer: stage_translate,
-      consumer: stage_serialize,
-      carrier: TargetSurfaceNode
+      consumer: stage_serialize
     },
     PipelineStageEdge {
       producer: stage_ground,
-      consumer: stage_eval,
-      carrier: InferredTree
+      consumer: stage_eval
     }
   ],
   stages: [
