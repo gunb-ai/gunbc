@@ -56,13 +56,11 @@ import v2_5.std.language_spec {
   IfExpression,
   ConditionalTernary,
   IfStatement,
-  InterpStyle,
   BinOpRule,
   BinOpRender,
   InfixSymbol,
   RightMethodCall,
-  PrefixFunction,
-  ConjunctionTypeForm
+  PrefixFunction
 }
 import v2_5.std.syntax {
   BinOp,
@@ -596,11 +594,30 @@ fn binop_eq(a: BinOp, b: BinOp) -> Bool {
 // BoundName, body is InferredBlock, item-level types carry their own
 // `definition` / `type_annotation` / `value` fields. Rebased against
 // stage_types.dag dfb926f8c.
-fn render_fn(name: BoundName, params: List<InferredParam>, return_type: InferredType, body: InferredBlock, spec: LanguageSpec) -> Outcome<String>
-fn render_func(name: BoundName, params: List<InferredParam>, return_type: InferredType, uses: List<InferredResourceUse>, body: InferredBlock, spec: LanguageSpec) -> Outcome<String>
-fn render_type_decl(name: BoundName, definition: InferredType, spec: LanguageSpec) -> Outcome<String>
-fn render_data_decl(name: BoundName, type_annotation: InferredType, value: InferredExpr, spec: LanguageSpec) -> Outcome<String>
-fn render_service(name: BoundName, transport: InferredTransport, operations: List<InferredOperation>, spec: LanguageSpec) -> Outcome<String>
+// Item-render per-variant bodies route through render_pending() until their
+// real bodies land — fail-closed boundary symmetric with the InferredExpr
+// arms (cursor review #15235 finding 1). When the real bodies fill in, they
+// replace `render_pending()` with the per-variant structural rendering.
+
+fn render_fn(name: BoundName, params: List<InferredParam>, return_type: InferredType, body: InferredBlock, spec: LanguageSpec) -> Outcome<String> {
+  render_pending()
+}
+
+fn render_func(name: BoundName, params: List<InferredParam>, return_type: InferredType, uses: List<InferredResourceUse>, body: InferredBlock, spec: LanguageSpec) -> Outcome<String> {
+  render_pending()
+}
+
+fn render_type_decl(name: BoundName, definition: InferredType, spec: LanguageSpec) -> Outcome<String> {
+  render_pending()
+}
+
+fn render_data_decl(name: BoundName, type_annotation: InferredType, value: InferredExpr, spec: LanguageSpec) -> Outcome<String> {
+  render_pending()
+}
+
+fn render_service(name: BoundName, transport: InferredTransport, operations: List<InferredOperation>, spec: LanguageSpec) -> Outcome<String> {
+  render_pending()
+}
 
 // Concrete leaf renderers — closed-sum dispatch with real bodies. The earlier
 // draft kept these as signatures-only; codex review #15207 noted that approach
@@ -658,15 +675,11 @@ fn render_module_path(name: BoundName, spec: LanguageSpec) -> String {
 }
 
 
-// Skeleton signatures — bodies follow when their per-variant render fills in
-// (each is small once the closed structural shape is consumed). Listed for
-// LanguageSpec-instance authors to verify the carrier shape they instantiate.
-fn render_lambda_prefix(spec: LanguageSpec) -> String
-fn render_string_interp_prefix(style: InterpStyle) -> String
-fn render_record_open(form: ConjunctionTypeForm) -> String
-fn render_cast_prefix(spec: LanguageSpec) -> String
-fn render_foreach_prefix(spec: LanguageSpec) -> String
-fn render_return_prefix(spec: LanguageSpec) -> String
+// Per-variant skeletons for lambda / string-interp / record / cast / foreach
+// / return have been deleted — they were dead signatures (the InferredExpr
+// arms that called them now route through render_pending() so the dispatch
+// fail-closes). When those arms gain bodies, the per-variant helpers can be
+// reintroduced with real signatures, or the rendering can be inlined.
 
 
 // =============================================================================
