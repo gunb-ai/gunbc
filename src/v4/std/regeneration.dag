@@ -14,7 +14,6 @@ import v4.std.dependency {
   DependencyEdge,
   DependencyGraph,
   DependencySubject,
-  ProjectionSubject,
   TopologicalPlan
 }
 import v4.std.node { Hash, Path, Symbol }
@@ -134,7 +133,7 @@ type Artifact {
   kind: ArtifactKind
   identity: Symbol
   content_hash: Hash
-  produced_by: ProjectionSubject
+  produced_by: DependencySubject
   generated_from: List<DependencySubject>
   dependency_hash: Hash
   witness_ref: Symbol

@@ -80,8 +80,8 @@ type DependencyReason
 
 // RULING-1: 🟢 pretty-much-done — structural spine (parent contains child); not a scheduling edge.
 type ContainmentEdge {
-  parent: NodeSubject
-  child: NodeSubject
+  parent: DependencySubject
+  child: DependencySubject
 }
 
 
