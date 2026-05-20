@@ -3,19 +3,24 @@
 // Anchor: docs/design-v4-compiler-homomorphism.md P8; T-21 lens/affected_set.dag is a frontier specialization (see A4 report).
 // Owns: ChangeKind, Change, ChangeSet, AffectedSet, InvalidationReason, Projection, ArtifactKind, Artifact, RecomputePlan.
 // Consumes: v4.std.collection, v4.std.dependency, v4.std.node, v4.std.witness.
-// Status: Wave-1 Worker A — strict substrate (bootstrap artifact kinds reserved; no promotion protocol).
+// Status: Wave-1 Worker A — strict substrate (Symbol refs are scaffolding toward typed DependencySubject authority).
 
 
 module v4.std.regeneration
 
 
 import v4.std.collection { List }
-import v4.std.dependency { DependencyEdge, DependencyGraph, TopologicalPlan }
+import v4.std.dependency {
+  DependencyEdge,
+  DependencyGraph,
+  DependencySubject,
+  ProjectionSubject,
+  TopologicalPlan
+}
 import v4.std.node { Hash, Path, Symbol }
 import v4.std.witness { Witness }
 
 
-// RULING-1: 🟢 pretty-much-done — unified change taxonomy (model, grammar, pipeline, bootstrap contract).
 type ChangeKind
   = NodeChanged
   | EdgeChanged
@@ -45,7 +50,6 @@ type ChangeSet {
 }
 
 
-// RULING-1: 🟢 pretty-much-done — bootstrap-related kinds reserved; protocol not implemented here.
 type ArtifactKind
   = TargetSource
   | TestSource
@@ -59,7 +63,6 @@ type ArtifactKind
   | WitnessBundle
 
 
-// RULING-1: 🟢 pretty-much-done — general affected-set authority (artifact/projection invalidation).
 type InvalidationReason
   = DirectChange { change: Change }
   | DependencyPropagation { edge: DependencyEdge }
@@ -83,56 +86,58 @@ type AffectedSet {
 }
 
 
-// RULING-1: 🟢 pretty-much-done — each variant structurally fixes its output artifact kind (no independent fields).
+// RULING-1: 🟢 pretty-much-done — each variant structurally fixes its output artifact kind.
 type Projection
   = LensProjection {
       name: Symbol,
       input_carrier: Symbol,
-      depends_on: List<Symbol>,
+      depends_on: List<DependencySubject>,
       algebra_ref: Symbol
     }
   | TargetTestProjection {
       name: Symbol,
       input_carrier: Symbol,
-      depends_on: List<Symbol>,
+      depends_on: List<DependencySubject>,
       algebra_ref: Symbol
     }
   | CompilerSourceProjection {
       name: Symbol,
       input_carrier: Symbol,
-      depends_on: List<Symbol>,
+      depends_on: List<DependencySubject>,
       algebra_ref: Symbol
     }
   | SchemaProjection {
       name: Symbol,
       input_carrier: Symbol,
-      depends_on: List<Symbol>,
+      depends_on: List<DependencySubject>,
       algebra_ref: Symbol
     }
   | DocumentationProjection {
       name: Symbol,
       input_carrier: Symbol,
-      depends_on: List<Symbol>,
+      depends_on: List<DependencySubject>,
       algebra_ref: Symbol
     }
   | DiagnosticTableProjection {
       name: Symbol,
       input_carrier: Symbol,
-      depends_on: List<Symbol>,
+      depends_on: List<DependencySubject>,
       algebra_ref: Symbol
     }
 
 
+// RULING-1: 🟡 needs-more-work — witness_ref is Symbol scaffold until WitnessRef substrate lands.
 type Artifact {
   kind: ArtifactKind
   identity: Symbol
   content_hash: Hash
-  produced_by: Symbol
-  provenance: Symbol
+  produced_by: ProjectionSubject
+  generated_from: List<DependencySubject>
+  dependency_hash: Hash
+  witness_ref: Symbol
 }
 
 
-// RULING-1: 🟢 pretty-much-done — topo validation is Witness<TopologicalPlan> on the producer, not embedded in the plan.
 type RecomputePlan {
   affected: AffectedSet
   schedule: Witness<TopologicalPlan>

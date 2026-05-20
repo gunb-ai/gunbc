@@ -1,7 +1,10 @@
 // src/v4/std/dependency.dag
 // Scope: typed dependency graph substrate (P6) — domains, edges, witnesses, SCC/topo data.
 // Anchor: docs/design-v4-compiler-homomorphism.md P6; edge orientation required_before → dependent_after.
-// Owns: DependencyDomain, Program/TargetPlan/Artifact dependency kinds, DependencyEdge, DependencyGraph, ClosedWorldDependencyWitness, CycleClassification, Scc, SccCondensation, TopologicalPlan, DependencyDiagnostic.
+// Rule: EffectDependsOn/ResourceDependsOn are edge classifications derived from modeled facts;
+//       edges carry DependencyReason evidence — bare kind labels without witnesses are insufficient.
+// Owns: DependencySubject, DependencyReason, ContainmentEdge, SchedulingDependencyEdge, DependencyGraph,
+//       Program/TargetPlan/Artifact dependency kind summaries, ClosedWorldDependencyWitness, topo carriers.
 // Consumes: v4.std.collection, v4.std.node.
 // Status: Wave-1 Worker A — strict substrate (data contracts only; no stage implementations).
 
@@ -20,10 +23,9 @@ type DependencyDomain
   | Artifact
 
 
-// RULING-1: 🟢 pretty-much-done — source/core semantic edges (parse/resolve/ground).
+// RULING-1: 🟢 pretty-much-done — summary labels for pipeline contracts (not edge authorities).
 type ProgramDependencyKind
-  = Contains
-  | BindsTo
+  = BindsTo
   | TypeDependsOn
   | DataDependsOn
   | EffectDependsOn
@@ -31,14 +33,12 @@ type ProgramDependencyKind
   | ModuleDependsOn
 
 
-// RULING-1: 🟢 pretty-much-done — target-plan tier; not source/core semantics by default.
 type TargetPlanDependencyKind
   = PlacementConstraint
   | TransferDependsOn
   | BarrierBefore
 
 
-// RULING-1: 🟢 pretty-much-done — artifact/projection/bootstrap graph edges.
 type ArtifactDependencyKind
   = ModelDependsOn
   | ProjectionDependsOn
@@ -48,44 +48,64 @@ type ArtifactDependencyKind
   | PromotionDependsOn
 
 
-// RULING-1: 🟢 pretty-much-done — orientation: required_before must be satisfied before dependent_after.
-type ProgramDependencyEdge {
-  kind: ProgramDependencyKind
-  required_before: Path
-  dependent_after: Path
+// RULING-1: 🟢 pretty-much-done — edge endpoints (Node graph vs artifact/projection/model refs).
+type DependencySubject
+  = NodeSubject { path: Path }
+  | ArtifactSubject { artifact: Symbol }
+  | ProjectionSubject { projection: Symbol }
+  | ModelSubject { model: Symbol }
+
+
+// RULING-1: 🟢 pretty-much-done — modeled evidence; kind summaries project from reason family.
+type DependencyReason
+  = BindingReason { fact: Symbol }
+  | TypeReason { constraint: Symbol }
+  | DataflowReason { flow: Symbol }
+  | EffectReason { effect_order_witness: Symbol }
+  | ResourceReason { resource_conflict_witness: Symbol }
+  | ModuleReason { import: Symbol }
+  | PlacementReason { placement_witness: Symbol }
+  | TransferReason { transfer_witness: Symbol }
+  | BarrierReason { barrier_witness: Symbol }
+  | ArtifactReason { provenance: Symbol }
+  | ModelReason { model_ref: Symbol }
+  | ProjectionReason { projection_ref: Symbol }
+  | GeneratedFromReason { source: Symbol }
+  | VerifiedByReason { verifier: Symbol }
+  | BootstrapReason { stage: Symbol }
+  | PromotionReason { promotion_witness: Symbol }
+
+
+// RULING-1: 🟢 pretty-much-done — structural spine (parent contains child); not a scheduling edge.
+type ContainmentEdge {
+  parent: NodeSubject
+  child: NodeSubject
 }
 
 
-type TargetPlanDependencyEdge {
-  kind: TargetPlanDependencyKind
-  required_before: Path
-  dependent_after: Path
+// RULING-1: 🟢 pretty-much-done — scheduling/recompute edge with evidence (required_before → dependent_after).
+type SchedulingDependencyEdge {
+  domain: DependencyDomain
+  required_before: DependencySubject
+  dependent_after: DependencySubject
+  reason: DependencyReason
 }
 
 
-type ArtifactDependencyEdge {
-  kind: ArtifactDependencyKind
-  required_before: Path
-  dependent_after: Path
-}
-
-
-// RULING-1: 🟢 pretty-much-done — tagged edge preserves domain + kind authority (no untyped merge).
+// RULING-1: 🟢 pretty-much-done — tagged union for diagnostics; scheduling carries reason payloads.
 type DependencyEdge
-  = ProgramEdge { edge: ProgramDependencyEdge }
-  | TargetPlanEdge { edge: TargetPlanDependencyEdge }
-  | ArtifactEdge { edge: ArtifactDependencyEdge }
+  = Containment { edge: ContainmentEdge }
+  | Scheduling { edge: SchedulingDependencyEdge }
 
 
-// RULING-1: 🟢 pretty-much-done — carrier for post-resolve onward; tree spine + typed sidecar edges.
+// RULING-1: 🟢 pretty-much-done — containment tree + typed scheduling sidecar (artifact subjects, not Path).
 type DependencyGraph {
-  program_edges: List<ProgramDependencyEdge>
-  target_plan_edges: List<TargetPlanDependencyEdge>
-  artifact_edges: List<ArtifactDependencyEdge>
+  containment: List<ContainmentEdge>
+  scheduling: List<SchedulingDependencyEdge>
 }
 
 
-// RULING-1: 🟢 pretty-much-done — absence-of-edge independence requires explicit closed-world witness.
+// RULING-1: 🟢 pretty-much-done — parallelism independence may require multiple completeness facts.
 type DependencyCompletenessFact
   = ProgramSemanticFactsComplete
   | EffectFactsComplete
@@ -96,18 +116,17 @@ type DependencyCompletenessFact
 type ClosedWorldDependencyWitness {
   region: Symbol
   domain: DependencyDomain
-  completeness: DependencyCompletenessFact
+  completeness: List<DependencyCompletenessFact>
 }
 
 
 type IndependenceClaim {
   witness: ClosedWorldDependencyWitness
-  left: Path
-  right: Path
+  left: DependencySubject
+  right: DependencySubject
 }
 
 
-// RULING-1: 🟢 pretty-much-done — cycles classified, not blindly rejected (P6).
 type CycleClassification
   = Acyclic
   | ValidFixedPoint { witness: Symbol }
@@ -120,7 +139,6 @@ type DependencyDiagnostic {
 }
 
 
-// RULING-1: 🟢 pretty-much-done — strongly connected component member set.
 type Scc {
   id: Symbol
   members: List<Path>
@@ -128,7 +146,6 @@ type Scc {
 }
 
 
-// RULING-1: 🟢 pretty-much-done — condensation DAG over SCC ids (data for topo derivation).
 type SccCondensation {
   components: List<Scc>
   order_edges: List<SccOrderEdge>
@@ -141,14 +158,12 @@ type SccOrderEdge {
 }
 
 
-// RULING-1: 🟢 pretty-much-done — schedule boundary uses SCC identity; Path expansion is downstream only.
 type TopologicalLayer {
   ready_after_scc_ids: List<Symbol>
   scheduled_scc_ids: List<Symbol>
 }
 
 
-// RULING-1: 🟢 pretty-much-done — validated value only; producers return Witness<TopologicalPlan> separately.
 type TopologicalPlan {
   condensation: SccCondensation
   layers: List<TopologicalLayer>
@@ -169,25 +184,9 @@ fn dependency_diagnostic(reason: Symbol, edge: DependencyEdge) -> DependencyDiag
 }
 
 
-fn program_edge(
-  kind: ProgramDependencyKind,
-  required_before: Path,
-  dependent_after: Path
-) -> DependencyEdge {
-  ProgramEdge {
-    edge: ProgramDependencyEdge {
-      kind: kind,
-      required_before: required_before,
-      dependent_after: dependent_after
-    }
-  }
-}
-
-
 fn empty_dependency_graph() -> DependencyGraph {
   DependencyGraph {
-    program_edges: [],
-    target_plan_edges: [],
-    artifact_edges: []
+    containment: [],
+    scheduling: []
   }
 }

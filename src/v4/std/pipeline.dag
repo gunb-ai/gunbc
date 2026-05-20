@@ -12,14 +12,12 @@ module v4.std.pipeline
 import v4.std.collection { List }
 import v4.std.dependency {
   ArtifactDependencyKind,
-  DependencyDomain,
   ProgramDependencyKind,
   TargetPlanDependencyKind
 }
 import v4.std.node { Symbol }
 
 
-// RULING-1: 🟢 pretty-much-done — carrier progression per compile-core homomorphism doc.
 type CarrierKind
   = Text
   | SurfaceNode
@@ -31,24 +29,32 @@ type CarrierKind
   | HostValue
 
 
-// RULING-1: 🟢 pretty-much-done — fail-closed default for Wave-1 substrate stages.
-type StageDiagnosticPolicy
-  = FailClosed
-  | AccumulateDiagnostics
-  | PropagateOnly
+// RULING-1: 🟢 pretty-much-done — fail-closed is invariant; policy selects accumulation behavior only.
+type DiagnosticAccumulationPolicy
+  = Accumulate
+  | ShortCircuit
 
 
-// RULING-1: 🟢 pretty-much-done — prerequisites the stage must find on the carrier (single authority).
+type StageFatality = FailClosed
+
+
+type StageDiagnosticPolicy {
+  accumulation: DiagnosticAccumulationPolicy
+  fatality: StageFatality
+}
+
+
+// RULING-1: 🟢 pretty-much-done — no domain field (lists are authoritative; avoids domain/list contradiction).
 type StageRequirements {
-  domain: DependencyDomain
   program: List<ProgramDependencyKind>
   target_plan: List<TargetPlanDependencyKind>
   artifact: List<ArtifactDependencyKind>
 }
 
 
-// RULING-1: 🟢 pretty-much-done — dependency facts the stage monotonically adds (disjoint from requirements).
+// RULING-1: 🟢 pretty-much-done — containment spine is structural (ContainmentEdge), not a scheduling kind.
 type StageEffects {
+  adds_containment_spine: Bool
   program: List<ProgramDependencyKind>
   target_plan: List<TargetPlanDependencyKind>
   artifact: List<ArtifactDependencyKind>
@@ -61,7 +67,6 @@ type StageDependencyContract {
 }
 
 
-// RULING-1: 🟢 pretty-much-done — one dependency_contract per stage (no duplicate requires/adds fields).
 type PipelineStage {
   name: Symbol
   input_carrier: CarrierKind
@@ -98,17 +103,22 @@ data algebra_translate: Symbol = algebra_translate
 data algebra_serialize: Symbol = algebra_serialize
 data algebra_eval: Symbol = algebra_eval
 
+data stage_diagnostic_fail_closed_accumulate: StageDiagnosticPolicy = StageDiagnosticPolicy {
+  accumulation: Accumulate,
+  fatality: FailClosed
+}
+
 
 fn ingest_text_to_surface_contract() -> StageDependencyContract {
   StageDependencyContract {
     requirements: StageRequirements {
-      domain: Program,
       program: [],
       target_plan: [],
       artifact: []
     },
     effects: StageEffects {
-      program: [Contains],
+      adds_containment_spine: false,
+      program: [],
       target_plan: [],
       artifact: []
     }
@@ -119,13 +129,13 @@ fn ingest_text_to_surface_contract() -> StageDependencyContract {
 fn ingest_surface_to_core_contract() -> StageDependencyContract {
   StageDependencyContract {
     requirements: StageRequirements {
-      domain: Program,
-      program: [Contains],
+      program: [],
       target_plan: [],
       artifact: []
     },
     effects: StageEffects {
-      program: [Contains],
+      adds_containment_spine: true,
+      program: [],
       target_plan: [],
       artifact: []
     }
@@ -136,12 +146,12 @@ fn ingest_surface_to_core_contract() -> StageDependencyContract {
 fn resolve_contract() -> StageDependencyContract {
   StageDependencyContract {
     requirements: StageRequirements {
-      domain: Program,
-      program: [Contains],
+      program: [],
       target_plan: [],
       artifact: []
     },
     effects: StageEffects {
+      adds_containment_spine: false,
       program: [BindsTo, ModuleDependsOn],
       target_plan: [],
       artifact: []
@@ -153,12 +163,12 @@ fn resolve_contract() -> StageDependencyContract {
 fn ground_contract() -> StageDependencyContract {
   StageDependencyContract {
     requirements: StageRequirements {
-      domain: Program,
-      program: [Contains, BindsTo, ModuleDependsOn],
+      program: [BindsTo, ModuleDependsOn],
       target_plan: [],
       artifact: []
     },
     effects: StageEffects {
+      adds_containment_spine: false,
       program: [
         TypeDependsOn,
         DataDependsOn,
@@ -175,9 +185,7 @@ fn ground_contract() -> StageDependencyContract {
 fn translate_contract() -> StageDependencyContract {
   StageDependencyContract {
     requirements: StageRequirements {
-      domain: TargetPlan,
       program: [
-        Contains,
         BindsTo,
         TypeDependsOn,
         DataDependsOn,
@@ -189,8 +197,50 @@ fn translate_contract() -> StageDependencyContract {
       artifact: []
     },
     effects: StageEffects {
+      adds_containment_spine: false,
       program: [],
       target_plan: [PlacementConstraint, TransferDependsOn, BarrierBefore],
+      artifact: []
+    }
+  }
+}
+
+
+fn serialize_contract() -> StageDependencyContract {
+  StageDependencyContract {
+    requirements: StageRequirements {
+      program: [],
+      target_plan: [PlacementConstraint, TransferDependsOn, BarrierBefore],
+      artifact: []
+    },
+    effects: StageEffects {
+      adds_containment_spine: false,
+      program: [],
+      target_plan: [],
+      artifact: []
+    }
+  }
+}
+
+
+fn eval_contract() -> StageDependencyContract {
+  StageDependencyContract {
+    requirements: StageRequirements {
+      program: [
+        BindsTo,
+        TypeDependsOn,
+        DataDependsOn,
+        EffectDependsOn,
+        ResourceDependsOn,
+        ModuleDependsOn
+      ],
+      target_plan: [],
+      artifact: []
+    },
+    effects: StageEffects {
+      adds_containment_spine: false,
+      program: [],
+      target_plan: [],
       artifact: []
     }
   }
@@ -205,15 +255,15 @@ data semantic_compile_pipeline: Pipeline = Pipeline {
       input_carrier: Text,
       output_carrier: Text,
       dependency_contract: ingest_text_to_surface_contract(),
-      diagnostic_policy: FailClosed,
+      diagnostic_policy: stage_diagnostic_fail_closed_accumulate,
       algebra_ref: algebra_tokenize
     },
     PipelineStage {
       name: stage_parse,
       input_carrier: Text,
       output_carrier: SurfaceNode,
-      dependency_contract: ingest_text_to_surface_contract(),
-      diagnostic_policy: FailClosed,
+      dependency_contract: ingest_surface_to_core_contract(),
+      diagnostic_policy: stage_diagnostic_fail_closed_accumulate,
       algebra_ref: algebra_parse
     },
     PipelineStage {
@@ -221,7 +271,7 @@ data semantic_compile_pipeline: Pipeline = Pipeline {
       input_carrier: SurfaceNode,
       output_carrier: CoreNode,
       dependency_contract: ingest_surface_to_core_contract(),
-      diagnostic_policy: FailClosed,
+      diagnostic_policy: stage_diagnostic_fail_closed_accumulate,
       algebra_ref: algebra_normalize
     },
     PipelineStage {
@@ -229,7 +279,7 @@ data semantic_compile_pipeline: Pipeline = Pipeline {
       input_carrier: CoreNode,
       output_carrier: ResolvedCoreNode,
       dependency_contract: resolve_contract(),
-      diagnostic_policy: FailClosed,
+      diagnostic_policy: stage_diagnostic_fail_closed_accumulate,
       algebra_ref: algebra_resolve
     },
     PipelineStage {
@@ -237,7 +287,7 @@ data semantic_compile_pipeline: Pipeline = Pipeline {
       input_carrier: ResolvedCoreNode,
       output_carrier: InferredTree,
       dependency_contract: ground_contract(),
-      diagnostic_policy: FailClosed,
+      diagnostic_policy: stage_diagnostic_fail_closed_accumulate,
       algebra_ref: algebra_ground
     },
     PipelineStage {
@@ -245,23 +295,23 @@ data semantic_compile_pipeline: Pipeline = Pipeline {
       input_carrier: InferredTree,
       output_carrier: TargetSurfaceNode,
       dependency_contract: translate_contract(),
-      diagnostic_policy: FailClosed,
+      diagnostic_policy: stage_diagnostic_fail_closed_accumulate,
       algebra_ref: algebra_translate
     },
     PipelineStage {
       name: stage_serialize,
       input_carrier: TargetSurfaceNode,
       output_carrier: TargetSource,
-      dependency_contract: translate_contract(),
-      diagnostic_policy: FailClosed,
+      dependency_contract: serialize_contract(),
+      diagnostic_policy: stage_diagnostic_fail_closed_accumulate,
       algebra_ref: algebra_serialize
     },
     PipelineStage {
       name: stage_eval,
       input_carrier: InferredTree,
       output_carrier: HostValue,
-      dependency_contract: ground_contract(),
-      diagnostic_policy: FailClosed,
+      dependency_contract: eval_contract(),
+      diagnostic_policy: stage_diagnostic_fail_closed_accumulate,
       algebra_ref: algebra_eval
     }
   ]
