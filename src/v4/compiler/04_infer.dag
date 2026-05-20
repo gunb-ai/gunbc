@@ -10,7 +10,6 @@ module v4.compiler.infer
 
 
 import v4.compiler.resolve { ResolvedTree }
-import v4.lens.cost { SymbolicCost }
 import v4.std.cardinality { TerminationProof }
 import v4.std.collection { Map }
 import v4.std.diagnostic {
@@ -31,11 +30,10 @@ type AlgebraRef {
 }
 
 
-// RULING-1: needs-more-work — cost/inhabitance coordinates remain T-9/T-12 bridged.
+// RULING-1: needs-more-work — inhabitance coordinates remain T-9 bridged.
 type InferredFacts {
   resolved_type: Node
   inhabits: AlgebraRef
-  cost: SymbolicCost
   descent: TerminationProof
 }
 
