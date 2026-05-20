@@ -361,6 +361,8 @@ For edges that are naturally references (Atom binding), the edge payload may car
 ### P9 — Bootstrap is stratified; stage0 is a generated artifact, not self-modifying code
 
 > **Ratified 2026-05-20** (reviewer-proposed, operator-direct).
+>
+> **Empirical motivation:** [sunny-otter-371's PR #3407](https://github.com/gunb-ai/gunbc/pull/3407) (the stage0-mirror investigation) surfaced the concrete "stage0 mirror is fundamentally broken under constant manual patch pressure" finding that this stratification is the structural response to.
 
 The compiler may model and regenerate its own implementation, **including stage0**, but **no running compiler generation mutates itself in place**. The "compiler edits itself" framing from earlier sections is precise only in this stratified sense:
 
@@ -496,7 +498,25 @@ P6 names dependency edges over user programs. Bootstrap requires the **same idea
 
 Keeping them separate prevents the confusion "does the compiler's own resolver depend on the resolver it is resolving?" — answer: at epoch k, `Stage0[k]` resolves `model[k]` enough to build `Stage1[k]`. No active stage depends on its own output. The two graphs use the same substrate ideas but model different relationships.
 
+### Witness taxonomy
+
+Multiple witness types appear in this architecture; they sit at different levels and verify different things. Disambiguating up front:
+
+| Witness | Verifies | Substrate | Premise |
+|---|---|---|---|
+| **`CanonicalGroundingWitness`** | Ground produced a unique canonical grounding (or surfaced ambiguity as a diagnostic). | `std/constraints.dag` (or extension of cardinality). | P5 + canonical-grounding invariant |
+| **`Witness<homomorphism>`** (informal — produced by coercion fold) | The coercion fold's structural-equality zip-walk succeeded — candidate target inhabitant preserves source structure. | Coercion fold operation (per T-9 ratification). | P1 + P5 |
+| **`LawfulRewriteWitness`** | A structure-changing target lowering (parallel-map, tree-reduce, CUDA, MapReduce) preserves semantics under declared algebra laws. Consumed by translate before the coercion fold. | `std/lawful_rewrite.dag` (not yet declared, held per P7). | P7 |
+| **`AcyclicityWitness`** | A dependency graph contains no invalid cycles (valid SCCs are condensed; invalid ones surface as diagnostics). | `std/dependency.dag` (not yet declared). | P6 |
+| **`ClosedWorldDependencyWitness`** | A region's dependency classification is complete; permits inferring independence from absence-of-edge (for parallelism). | `std/dependency.dag`. | P6 |
+| **`BootstrapWitness`** | `Stage0Candidate[k+1]` can produce `Stage1Candidate[k+1]` from the new `CorePackage[k+1]`. Consumed by the promotion protocol. | `std/bootstrap.dag` (held). | P9 |
+| **`FixedPointWitness`** | `Stage1[k]` compiles to itself byte-identically (THESIS facet 2 — compiler self-emits). Consumed by promotion. | `std/bootstrap.dag` (held). | P9 |
+
+Witnesses at lower levels (canonical-grounding, homomorphism, acyclicity) are produced during normal compile; witnesses at higher levels (lawful-rewrite, bootstrap, fixed-point) gate specific operations (structure-changing lowerings, bootstrap promotion). All are checkable substrate data, not opaque proofs — per Open Q9, the derivation is untrusted; the witness check is trusted.
+
 ### New bootstrap substrate (needed but not yet declared)
+
+> **Concrete shape of `Stage0Contract` / `CorePackage` / `CorePackageSchema`** is **deferred to a future dispatch** when bootstrap implementation is in scope (held per the current dispatch hold on `std/bootstrap.dag`). This section names the substrate shape needed; the field-level structural design is its own substrate brief, not part of the regeneration-substrate cluster this doc dispatches.
 
 | Concept | Purpose | Status |
 |---|---|---|
@@ -1155,6 +1175,17 @@ Per the reviewer, `LanguageModel` is expanded (see "Carrier shapes" above) to de
 - Version / dialect / edition metadata.
 
 For Rust, Python, JavaScript, etc., binding behavior is not optional metadata — it is part of the language model.
+
+### Open Q15 — Bridge-of-bridge: when does the bridge itself need a bridge?
+
+Per P9's bootstrap-impact taxonomy, Case 3 (bootstrap-breaking change) requires a modeled `Bridge[k → k+1]` migration package. **Second-order question:** when does upgrading the bridge format itself become a bootstrap-breaking change? I.e., if `Bridge`'s schema changes between epochs, does that require a `Bridge[bridge_k → bridge_k+1]` — bridge-of-bridge?
+
+Sub-questions:
+- Is `Bridge` a special-status carrier that's never allowed to change format (so bridge-of-bridge is impossible by construction)?
+- Or is `Bridge` schema-versioned with a stable canonical schema, similar to `CorePackageSchema`?
+- Or is there a tiny "bootstrap-of-bootstrap" seed for bridge-schema changes (recursive but bounded)?
+
+Probably needs operator ratification before bootstrap substrate lands.
 
 ### Open Q6 — Multi-lens dependency management substrate primitive
 
