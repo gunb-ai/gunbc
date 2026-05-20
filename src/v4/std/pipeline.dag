@@ -51,12 +51,12 @@ type StageDependencyContract {
 
 
 // RULING-1: 🟢 pretty-much-done — one stage row; algebra_ref names the stage algebra (data, not executor).
+// Single dependency_contract: requires_* and adds_* live inside StageDependencyContract (no parallel duplicate fields).
 type PipelineStage {
   name: Symbol
   input_carrier: CarrierKind
   output_carrier: CarrierKind
-  requires_dependencies: StageDependencyContract
-  adds_dependencies: StageDependencyContract
+  dependency_contract: StageDependencyContract
   diagnostic_policy: StageDiagnosticPolicy
   algebra_ref: Symbol
 }
@@ -174,8 +174,7 @@ data semantic_compile_pipeline: Pipeline = Pipeline {
       name: stage_tokenize,
       input_carrier: Text,
       output_carrier: Text,
-      requires_dependencies: ingest_text_to_surface_contract(),
-      adds_dependencies: ingest_text_to_surface_contract(),
+      dependency_contract: ingest_text_to_surface_contract(),
       diagnostic_policy: FailClosed,
       algebra_ref: algebra_tokenize
     },
@@ -183,8 +182,7 @@ data semantic_compile_pipeline: Pipeline = Pipeline {
       name: stage_parse,
       input_carrier: Text,
       output_carrier: SurfaceNode,
-      requires_dependencies: ingest_text_to_surface_contract(),
-      adds_dependencies: ingest_text_to_surface_contract(),
+      dependency_contract: ingest_text_to_surface_contract(),
       diagnostic_policy: FailClosed,
       algebra_ref: algebra_parse
     },
@@ -192,8 +190,7 @@ data semantic_compile_pipeline: Pipeline = Pipeline {
       name: stage_normalize,
       input_carrier: SurfaceNode,
       output_carrier: CoreNode,
-      requires_dependencies: ingest_surface_to_core_contract(),
-      adds_dependencies: ingest_surface_to_core_contract(),
+      dependency_contract: ingest_surface_to_core_contract(),
       diagnostic_policy: FailClosed,
       algebra_ref: algebra_normalize
     },
@@ -201,8 +198,7 @@ data semantic_compile_pipeline: Pipeline = Pipeline {
       name: stage_resolve,
       input_carrier: CoreNode,
       output_carrier: ResolvedCoreNode,
-      requires_dependencies: resolve_contract(),
-      adds_dependencies: resolve_contract(),
+      dependency_contract: resolve_contract(),
       diagnostic_policy: FailClosed,
       algebra_ref: algebra_resolve
     },
@@ -210,8 +206,7 @@ data semantic_compile_pipeline: Pipeline = Pipeline {
       name: stage_ground,
       input_carrier: ResolvedCoreNode,
       output_carrier: InferredTree,
-      requires_dependencies: ground_contract(),
-      adds_dependencies: ground_contract(),
+      dependency_contract: ground_contract(),
       diagnostic_policy: FailClosed,
       algebra_ref: algebra_ground
     },
@@ -219,8 +214,7 @@ data semantic_compile_pipeline: Pipeline = Pipeline {
       name: stage_translate,
       input_carrier: InferredTree,
       output_carrier: TargetSurfaceNode,
-      requires_dependencies: translate_contract(),
-      adds_dependencies: translate_contract(),
+      dependency_contract: translate_contract(),
       diagnostic_policy: FailClosed,
       algebra_ref: algebra_translate
     },
@@ -228,8 +222,7 @@ data semantic_compile_pipeline: Pipeline = Pipeline {
       name: stage_serialize,
       input_carrier: TargetSurfaceNode,
       output_carrier: TargetSource,
-      requires_dependencies: translate_contract(),
-      adds_dependencies: translate_contract(),
+      dependency_contract: translate_contract(),
       diagnostic_policy: FailClosed,
       algebra_ref: algebra_serialize
     },
@@ -237,8 +230,7 @@ data semantic_compile_pipeline: Pipeline = Pipeline {
       name: stage_eval,
       input_carrier: InferredTree,
       output_carrier: HostValue,
-      requires_dependencies: ground_contract(),
-      adds_dependencies: ground_contract(),
+      dependency_contract: ground_contract(),
       diagnostic_policy: FailClosed,
       algebra_ref: algebra_eval
     }
