@@ -127,7 +127,7 @@ fn span(source: Source, start: Int, end: Int) -> SourceSpan {
   SourceSpan { file: source.file, start: start, end: end }
 }
 
-fn diagnostic(source: Source, reason: Symbol, start: Int, end: Int, lexeme: String) -> Diagnostic {
+fn diagnostic(source: Source, reason: Symbol, start: Int, end: Int) -> Diagnostic {
   Diagnostic {
     reason: reason,
     at: Textual { file: source.file_symbol, extent: ByteRange { start: start, end: end } },
@@ -371,8 +371,7 @@ fn scan_string_with_role(source: Source, frame: LexerFrame, role: StringTokenRol
           source: source,
           reason: unterminated_string,
           start: span_start,
-          end: cursor,
-          lexeme: acc
+          end: cursor
         )
       }
     }
@@ -448,7 +447,7 @@ fn scan_token(source: Source, frame: LexerFrame) -> ScanOutcome {
   }
   if cursor >= source_len(source: source) && count(active.interpolation_depth) > 0 {
     ScanRejected {
-      diagnostic: diagnostic(source: source, reason: unterminated_interpolation, start: cursor, end: cursor, lexeme: "")
+      diagnostic: diagnostic(source: source, reason: unterminated_interpolation, start: cursor, end: cursor)
     }
   } else if cursor >= source_len(source: source) {
     Scanned {
@@ -485,7 +484,7 @@ fn scan_token(source: Source, frame: LexerFrame) -> ScanOutcome {
             match lookup(single_punct, key: ch) {
               Some { value: shape } => emit_punctuation(source: source, frame: active, shape: shape, width: 1)
               None => ScanRejected {
-                diagnostic: diagnostic(source: source, reason: unexpected_character, start: cursor, end: cursor + 1, lexeme: ch)
+                diagnostic: diagnostic(source: source, reason: unexpected_character, start: cursor, end: cursor + 1)
               }
             }
           }
@@ -524,8 +523,7 @@ fn lex_step(source: Source, state: LexerState, item: IndexedChar) -> LexerState 
                   source: source,
                   reason: lexical_progress_exhausted,
                   start: frame.cursor,
-                  end: frame.cursor,
-                  lexeme: ""
+                  end: frame.cursor
                 )
               }
             } else {
@@ -557,8 +555,7 @@ fn tokenize(source: Source) -> Outcome<TokenStream> {
             source: source,
             reason: lexical_progress_exhausted,
             start: frame.cursor,
-            end: frame.cursor,
-            lexeme: ""
+            end: frame.cursor
           )
         }
       } else if count(frame.interpolation_depth) > 0 {
@@ -567,8 +564,7 @@ fn tokenize(source: Source) -> Outcome<TokenStream> {
             source: source,
             reason: unterminated_interpolation,
             start: frame.cursor,
-            end: frame.cursor,
-            lexeme: ""
+            end: frame.cursor
           )
         }
       } else if frame.eof_emitted {
