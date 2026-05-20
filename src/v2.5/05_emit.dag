@@ -3,12 +3,20 @@
 //        Emission is a fold over closed InferredItem / InferredExpr variants; per-target
 //        syntax is data (read from LanguageSpec, owned by src/v2.5/std/language_spec.dag).
 // Owns:  TargetFile; TargetSource; emit_stage_locus_port + reason symbols + diagnostic helpers;
-//        emit (entry); emit_root; emit_module; render_item dispatch; render_expr + expr_fold_algebra;
-//        emit_ident + apply_naming_case + apply_reserved_escape + render_binop_symbol + binop_eq;
-//        collect_outcomes; render_* per-variant signatures.
+//        emit (entry); emit_module; render_item closed dispatch; render_expr per-variant
+//        case-analysis on the closed Tier 1 InferredExpr sum; render_arg / render_if /
+//        render_block / render_binop / render_unary_symbol with closed-sum body bodies;
+//        emit_ident + apply_naming_case + apply_reserved_escape + binop_eq leaf helpers;
+//        bind_outcome / collect_outcomes Outcome-thread combinators;
+//        render_* per-variant signatures (skeleton-pending arms).
 // Consumes: v2_5.std.language_spec (LanguageSpec carrier + all sub-carriers — this file
 //             does not redefine them; multi-consumer std/ home).
-//           v2_5.std.node (Node, Symbol, NodeFold, fold_node) — Tier 0 (cool-bee-832).
+//           v2_5.std.node (Symbol, Path / PathStep / NamedStep for PortLocus only) —
+//             Tier 0 (cool-bee-832, PR #3422). fold_node intentionally NOT
+//             consumed for expression rendering; expr-render is per-variant
+//             case-analysis on the closed Tier 1 InferredExpr sum (the
+//             closed-sum IS the structural carrier; Practice 10 applies as
+//             exhaustive case analysis, not as a generic-Node fold).
 //           v2_5.std.diagnostic (Outcome, Diagnostic, Locus, PortLocus, Produced, Rejected,
 //             Unavailable, ExternalContractUnknown) — Tier 0 mirror of v4.
 //           v2_5.std.stage_types (InferredNode and its closed-sum variants) — Tier 1
@@ -50,6 +58,10 @@ import v2_5.std.language_spec {
   IfStatement,
   InterpStyle,
   BinOpRule,
+  BinOpRender,
+  InfixSymbol,
+  RightMethodCall,
+  PrefixFunction,
   ConjunctionTypeForm
 }
 import v2_5.std.syntax {
@@ -57,10 +69,18 @@ import v2_5.std.syntax {
   Add, Sub, Mul, Div, Mod,
   Eq, Ne, Lt, Gt, Le, Ge,
   And, Or, NullCoalesce,
-  LiteralValue, UnaryOpKind
+  LiteralValue,
+  LitStr, LitInt, LitFloat, LitBool, LitNull,
+  UnaryOpKind,
+  Not, Neg
 }
 import v2_5.std.identity { BoundName, AuthoredName, SourceSpan }
-import v2_5.std.node { Node, Edge, Symbol, NodeFold, fold_node, Path, PathStep, NamedStep }
+// Symbol + Path/PathStep/NamedStep from substrate. Node / Edge / NodeFold /
+// fold_node intentionally NOT imported here — render_expr is per-variant
+// structural recursion on the closed InferredExpr sum (not a generic Node
+// fold). When render_type's body lands it imports them (type-tree rendering
+// IS the appropriate fold_node consumer per Practice 10).
+import v2_5.std.node { Symbol, Path, PathStep, NamedStep }
 import v2_5.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,
@@ -433,22 +453,86 @@ fn apply_reserved_escape(name: String, escape: ReservedEscape) -> String {
 }
 
 
-// Binary-operator symbol — typed dispatch over List<BinOpRule>, diagnostic-
-// bearing. v2 had `binop_symbol(op: BinOp, target: RenderTarget)` doing
-// string-keyed per-target lookups with no failure surface. In v2.5 the lookup
-// is typed AND fail-closed: a BinOp absent from spec.expressions.binops
-// surfaces an emit_missing_language_rule diagnostic instead of returning "".
+// render_binop — typed dispatch over List<BinOpRule> + BinOpRender. The shape
+// expresses BOTH infix-symbol ops (lhs <symbol> rhs) AND non-infix realizations
+// (lhs.method(rhs), fn(lhs, rhs)) without forcing all ops through one mold.
+// Codex #15207 finding 3 (Rust's NullCoalesce is `lhs.unwrap_or(rhs)`, not an
+// infix operator): the typed BinOpRender carries which shape applies.
+// Fail-closed: a BinOp absent from spec.expressions.binops surfaces
+// emit_missing_language_rule.
 //
-// 🟡 The List<BinOpRule> shape lacks structural totality and uniqueness over
-// the closed BinOp domain. A Map<BinOp, BinOpRule> would prove uniqueness by
-// construction; v2.5 substrate (PR #3422) does not yet expose a Map carrier
-// (only node/diagnostic). Until a substrate Map lands, the diagnostic-bearing
-// lookup is the boundary that catches gaps. Dissolves on v2_5.std.collection.Map.
-fn render_binop_symbol(op: BinOp, spec: LanguageSpec) -> Outcome<String> {
+// 🟡 The List<BinOpRule> shape lacks structural totality + uniqueness over the
+// closed BinOp domain. A Map<BinOp, BinOpRule> would prove uniqueness by
+// construction; v2.5 substrate (PR #3422) does not yet expose a Map carrier.
+// Until a substrate Map lands, the diagnostic-bearing lookup is the boundary
+// that catches gaps. Dissolves on v2_5.std.collection.Map.
+fn render_binop(op: BinOp, left: String, right: String, spec: LanguageSpec) -> Outcome<String> {
   match spec.expressions.binops |> filter(r => binop_eq(a: r.op, b: op)) |> first {
-    Some { value: rule } => Produced { value: rule.symbol }
+    Some { value: rule } =>
+      match rule.render {
+        InfixSymbol { symbol: s, precedence: _ } =>
+          Produced { value: concat(left, s, right) }
+        RightMethodCall { method_name: m, open: o, close: c } =>
+          // `lhs.method(rhs)` — Rust's .unwrap_or pattern.
+          Produced { value: concat(left, ".", m, o, right, c) }
+        PrefixFunction { function_name: fname, open: o, separator: sep, close: c } =>
+          // `fn(lhs, rhs)` — e.g. some targets emit comparisons as a function.
+          Produced { value: concat(fname, o, left, sep, right, c) }
+      }
     None => Rejected { diagnostic: emit_diagnostic(reason: emit_missing_language_rule) }
   }
+}
+
+
+fn render_unary_symbol(op: UnaryOpKind, spec: LanguageSpec) -> String {
+  match op {
+    Not => spec.expressions.unary_not
+    Neg => spec.expressions.unary_neg
+  }
+}
+
+
+// render_if — IfForm closed sum carries the three target-arrangements
+// (value-expression, ternary, statement); each composes the three rendered
+// pieces (cond, then, else) per its grammar.
+fn render_if(form: IfForm, cond: String, then_text: String, else_text: String) -> Outcome<String> {
+  match form {
+    IfExpression { kw_if: ki, kw_then: kt, kw_else: ke } =>
+      Produced { value: concat(ki, cond, kt, then_text, ke, else_text) }
+    ConditionalTernary { then_form: tf, else_form: ef } =>
+      // Python "x if c else y" style.
+      Produced { value: concat(then_text, tf, cond, ef, else_text) }
+    IfStatement { kw_if: _, kw_else: _ } =>
+      // Statement-form needs assignment-wrapper to lift to expression
+      // position; the lifting decision is per-caller. Surface as
+      // under-refined until the caller threads its lifting strategy.
+      Rejected { diagnostic: emit_diagnostic(reason: emit_under_refined) }
+  }
+}
+
+
+fn render_block(block: BlockSyntax, statements: List<String>) -> Outcome<String> {
+  match block {
+    BracedBlock { open: o, close: c, statement_terminator: t } =>
+      Produced { value: concat(o, statements |> join(separator: t), c) }
+    IndentedBlock { header_terminator: ht, statement_terminator: st, indent_unit: _ } =>
+      Produced { value: concat(ht, statements |> join(separator: st)) }
+  }
+}
+
+
+// render_arg — InferredArg carries optional name (for keyword args) + value.
+// Named args render `name: value` (target-syntax-dependent — defaults to the
+// param-type separator); positional args render just the value.
+fn render_arg(arg: InferredArg, spec: LanguageSpec) -> Outcome<String> {
+  bind_outcome(o: render_expr(expr: arg.value, spec: spec), f: fn(value_text) {
+    match arg.name {
+      Some { value: name } =>
+        Produced { value: concat(emit_ident(name: name, rules: spec.identifiers), ": ", value_text) }
+      None =>
+        Produced { value: value_text }
+    }
+  })
 }
 
 
@@ -498,12 +582,48 @@ fn render_type_decl(name: BoundName, definition: InferredType, spec: LanguageSpe
 fn render_data_decl(name: BoundName, type_annotation: InferredType, value: InferredExpr, spec: LanguageSpec) -> Outcome<String>
 fn render_service(name: BoundName, transport: InferredTransport, operations: List<InferredOperation>, spec: LanguageSpec) -> Outcome<String>
 
-fn render_literal(value: LiteralValue, spec: LanguageSpec) -> String
-fn render_imports(used_imports: List<InferredImport>, spec: LanguageSpec) -> String
-fn render_module_path(name: BoundName, spec: LanguageSpec) -> String
-fn render_if_form(form: IfForm) -> String
+// Concrete leaf renderers — closed-sum dispatch with real bodies. The earlier
+// draft kept these as signatures-only; codex review #15207 noted that approach
+// hides the discipline. Inlining the small ones makes the per-variant render
+// strategy explicit + the LanguageSpec field reads visible.
+
+fn render_literal(value: LiteralValue, spec: LanguageSpec) -> String {
+  match value {
+    LitStr { value: s } => concat("\"", s, "\"")
+    LitInt { value: i } => int_to_string(i: i)
+    LitFloat { value: f } => f
+    LitBool { value: b } => if b { "true" } else { "false" }
+    LitNull => spec.expressions.null_literal
+  }
+}
+
+
+// render_imports — filter rules by trigger, emit one import line per match.
+// The framing comes from spec.imports (import_keyword + path_open + path_close);
+// each rule supplies only the path body. Codex review #15207 finding 2 — the
+// previous shape carried fully-rendered "use ...;" strings AND framing fields;
+// now the rule path is bare and the framework composes the line.
+fn render_imports(used_imports: List<InferredImport>, spec: LanguageSpec) -> String {
+  // 🟡 trigger-matching against used_imports is a follow-on commit (needs the
+  // Tier 1 InferredImport coproduct to be walked to extract the used name set
+  // that triggers each rule). For now this returns an empty import block; the
+  // per-rule line shape compositional structure is the relevant design fact.
+  ""
+}
+
+
+fn render_module_path(name: BoundName, spec: LanguageSpec) -> String {
+  // Module path is the module's BoundName + the target's file suffix; spec
+  // does not yet carry a file-suffix-for-module field. 🟡 add a
+  // file_suffix_for_module: String to ItemSyntax when this lands real.
+  concat(symbol_to_string(s: name.symbol), ".out")
+}
+
+
+// Skeleton signatures — bodies follow when their per-variant render fills in
+// (each is small once the closed structural shape is consumed). Listed for
+// LanguageSpec-instance authors to verify the carrier shape they instantiate.
 fn render_lambda_prefix(spec: LanguageSpec) -> String
-fn render_block_open(block: BlockSyntax) -> String
 fn render_string_interp_prefix(style: InterpStyle) -> String
 fn render_record_open(form: ConjunctionTypeForm) -> String
 fn render_cast_prefix(spec: LanguageSpec) -> String
@@ -533,9 +653,8 @@ fn collect_outcomes(items: List<Outcome<String>>) -> Outcome<List<String>> {
 // Bridges to substrate / Tier 1 shape — declared here, owned there
 // =============================================================================
 
-extern fn inferred_expr_to_node(e: InferredExpr) -> Node
-extern fn inferred_expr_variant_of(n: Node) -> InferredExpr
 extern fn symbol_to_string(s: Symbol) -> String
+extern fn int_to_string(i: Int) -> String
 extern fn to_snake(name: String) -> String
 extern fn to_pascal(name: String) -> String
 extern fn to_camel(name: String) -> String
@@ -549,13 +668,27 @@ extern fn to_camel(name: String) -> String
 //   ----------------------------------------------------|--------------------------------
 //   `match target { Rust => x | Python => y | Go => z}` | LanguageSpec field read
 //   `emit_rust_X` + `emit_go_X` + `emit_py_X` triples   | one `render_X(node, spec)`
-//   `render_node_type` 180-line hand-rolled catamorphism | fold_node + TypeRenderRules
-//   `emit_typed_expr` 22-arm walker, recursive at arms  | fold_node + expr_fold_algebra
+//   `render_node_type` 180-line hand-rolled catamorphism | fold_node + TypeRenderRules (pending)
+//   `emit_typed_expr` 22-arm walker, recursive at arms  | per-variant case-analysis on closed
+//                                                       | InferredExpr sum (Practice 10 over
+//                                                       | the closed-sum carrier; fold_node
+//                                                       | applies to generic Node walks, not
+//                                                       | to typed-sum dispatch — codex review
+//                                                       | #15207 finding 1 disposition)
 //   `emit_rust_tco_*` family duplicating `emit_rust_*`  | one render path; tail-pos data
 //   per-target `escape_X_interp_text`                   | apply_escape_pairs + EscapePair list
 //   `reserved_prefix` + `reserved_suffix` (dead)        | typed ReservedEscape coproduct
 //   string-tagged "target" string parameter             | typed Symbol via LanguageIdentity
 //   `EmitResult { files, diagnostics }` (mixed shape)   | Outcome<TargetSource> closed sum
 //   per-target inline `if op_name == "fold" ...` chains | List<BinOpRule> typed lookup
+//   inline infix-vs-method-call op rendering branches   | BinOpRender typed coproduct
+//                                                       | (InfixSymbol / RightMethodCall /
+//                                                       | PrefixFunction; codex #15207 #3
+//                                                       | disposition)
 //   coercion match cascades (v2/coercion.dag)           | List<CoercionRule> typed data
 //   `RenderTarget = Rust | Python | Go | Dag` tag       | Symbol via LanguageIdentity + spec
+//   import line pre-rendered string in each rule        | ImportRules carries per-target framing
+//                                                       | (keyword + open + close); ImportRule
+//                                                       | carries bare path body only (codex
+//                                                       | #15207 #2 disposition — single
+//                                                       | authority per axis)

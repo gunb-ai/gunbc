@@ -39,6 +39,9 @@ import v2_5.std.language_spec {
   BracedBlock,
   ExpressionSyntax,
   BinOpRule,
+  BinOpRender,
+  InfixSymbol,
+  RightMethodCall,
   IfForm,
   IfExpression,
   PatternSyntax,
@@ -104,27 +107,31 @@ data rust_language_id: Symbol = rust_language_id
 // Order is irrelevant; emit looks up by typed-equality. Precedence values
 // follow https://doc.rust-lang.org/reference/expressions.html#expression-precedence.
 
+// Each rule carries a BinOpRender — typed strategy for HOW the operator
+// realizes in Rust source. Most are infix-symbol; NullCoalesce is a method-
+// call form (`lhs.unwrap_or(rhs)`) — codex review #15207 finding 3 correctly
+// noted that modelling `unwrap_or` as an infix `.unwrap_or` symbol couldn't
+// place the `(rhs)` correctly. BinOpRender carries that shape distinction.
 fn rust_binop_rules() -> List<BinOpRule> {
   [
-    BinOpRule { op: Mul, symbol: " * ", precedence: 12 },
-    BinOpRule { op: Div, symbol: " / ", precedence: 12 },
-    BinOpRule { op: Mod, symbol: " % ", precedence: 12 },
-    BinOpRule { op: Add, symbol: " + ", precedence: 11 },
-    BinOpRule { op: Sub, symbol: " - ", precedence: 11 },
-    BinOpRule { op: Lt, symbol: " < ", precedence: 9 },
-    BinOpRule { op: Le, symbol: " <= ", precedence: 9 },
-    BinOpRule { op: Gt, symbol: " > ", precedence: 9 },
-    BinOpRule { op: Ge, symbol: " >= ", precedence: 9 },
-    BinOpRule { op: Eq, symbol: " == ", precedence: 8 },
-    BinOpRule { op: Ne, symbol: " != ", precedence: 8 },
-    BinOpRule { op: And, symbol: " && ", precedence: 4 },
-    BinOpRule { op: Or, symbol: " || ", precedence: 3 },
-    BinOpRule { op: NullCoalesce, symbol: ".unwrap_or", precedence: 12 }
+    BinOpRule { op: Mul,  render: InfixSymbol { symbol: " * ", precedence: 12 } },
+    BinOpRule { op: Div,  render: InfixSymbol { symbol: " / ", precedence: 12 } },
+    BinOpRule { op: Mod,  render: InfixSymbol { symbol: " % ", precedence: 12 } },
+    BinOpRule { op: Add,  render: InfixSymbol { symbol: " + ", precedence: 11 } },
+    BinOpRule { op: Sub,  render: InfixSymbol { symbol: " - ", precedence: 11 } },
+    BinOpRule { op: Lt,   render: InfixSymbol { symbol: " < ",  precedence: 9 } },
+    BinOpRule { op: Le,   render: InfixSymbol { symbol: " <= ", precedence: 9 } },
+    BinOpRule { op: Gt,   render: InfixSymbol { symbol: " > ",  precedence: 9 } },
+    BinOpRule { op: Ge,   render: InfixSymbol { symbol: " >= ", precedence: 9 } },
+    BinOpRule { op: Eq,   render: InfixSymbol { symbol: " == ", precedence: 8 } },
+    BinOpRule { op: Ne,   render: InfixSymbol { symbol: " != ", precedence: 8 } },
+    BinOpRule { op: And,  render: InfixSymbol { symbol: " && ", precedence: 4 } },
+    BinOpRule { op: Or,   render: InfixSymbol { symbol: " || ", precedence: 3 } },
+    BinOpRule { op: NullCoalesce, render: RightMethodCall { method_name: "unwrap_or", open: "(", close: ")" } }
   ]
   // Note: v2_5.std.syntax.BinOp does not carry a StringConcat variant; Rust's
   // string-concat (format!/concat!) is a coercion-render decision over String
-  // operands of Add, not a separate operator. The first draft erroneously
-  // declared a local StringConcat arm; rebased against canonical syntax.
+  // operands of Add, not a separate operator.
 }
 
 
@@ -210,27 +217,27 @@ fn rust_import_rules() -> List<ImportRule> {
   [
     ImportRule {
       trigger: ContainerUsageTrigger { container: sym_BTreeMap },
-      import_path: "use std::collections::BTreeMap;"
+      import_path: "std::collections::BTreeMap"
     },
     ImportRule {
       trigger: ContainerUsageTrigger { container: sym_HashMap },
-      import_path: "use std::collections::HashMap;"
+      import_path: "std::collections::HashMap"
     },
     ImportRule {
       trigger: ContainerUsageTrigger { container: sym_HashSet },
-      import_path: "use std::collections::HashSet;"
+      import_path: "std::collections::HashSet"
     },
     ImportRule {
       trigger: TypeUsageTrigger { type_name: sym_Arc },
-      import_path: "use std::sync::Arc;"
+      import_path: "std::sync::Arc"
     },
     ImportRule {
       trigger: TypeUsageTrigger { type_name: sym_Rc },
-      import_path: "use std::rc::Rc;"
+      import_path: "std::rc::Rc"
     },
     ImportRule {
       trigger: TypeUsageTrigger { type_name: sym_RefCell },
-      import_path: "use std::cell::RefCell;"
+      import_path: "std::cell::RefCell"
     },
     ImportRule {
       trigger: DeriveMacroTrigger { macro_name: sym_Debug },
@@ -238,15 +245,15 @@ fn rust_import_rules() -> List<ImportRule> {
     },
     ImportRule {
       trigger: DeriveMacroTrigger { macro_name: sym_Serialize },
-      import_path: "use serde::Serialize;"
+      import_path: "serde::Serialize"
     },
     ImportRule {
       trigger: DeriveMacroTrigger { macro_name: sym_Deserialize },
-      import_path: "use serde::Deserialize;"
+      import_path: "serde::Deserialize"
     },
     ImportRule {
       trigger: AsyncUsageTrigger,
-      import_path: "use tokio;"
+      import_path: "tokio"
     }
   ]
 }
