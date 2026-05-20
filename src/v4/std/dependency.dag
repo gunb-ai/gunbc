@@ -1,6 +1,6 @@
 // src/v4/std/dependency.dag
 // Scope: P6 dependency graph substrate — domains, edges, witnesses, SCC, topological plan.
-// Owns: DependencySubject, ArtifactDependencyEndpoint, Program/TargetPlan/ArtifactSchedulingReason, scheduling/containment edges, ClosedWorldDependencyWitness, IndependenceClaim, TopologicalPlan.
+// Owns: DependencySubject, ArtifactDependencyEndpoint, Program/TargetPlan/ArtifactSchedulingReason, scheduling/containment edges, ClosedWorldDependencyWitness, IndependenceClaim, DependencyDiagnostic, TopologicalPlan.
 // Consumes: v4.std.collection, v4.std.node.
 // Status: Wave-1 Worker A strict substrate.
 
@@ -10,13 +10,6 @@ module v4.std.dependency
 
 import v4.std.collection { List }
 import v4.std.node { Path, Symbol }
-
-
-// 🟢 coproduct dissolution
-type DependencyDomain
-  = Program
-  | TargetPlan
-  | Artifact
 
 
 // 🟢 coproduct dissolution
@@ -214,17 +207,11 @@ type CycleClassification
 
 
 // 🟢 coproduct dissolution
-type DependencyDiagnosticReason
-  = UnknownEffectFact
-  | UnknownResourceFact
-  | IndependenceWithoutWitness
-  | InvalidCycleReason
-
-
-type DependencyDiagnostic {
-  reason: DependencyDiagnosticReason
-  edge: DependencyEdge
-}
+type DependencyDiagnostic
+  = UnknownEffectFact { edge: ProgramSchedulingEdge }
+  | UnknownResourceFact { edge: ProgramSchedulingEdge }
+  | IndependenceWithoutWitness { claim: IndependenceClaim }
+  | InvalidCycleReason { edge: SchedulingDependencyEdge }
 
 
 type Scc {
@@ -255,14 +242,6 @@ type TopologicalLayer {
 type TopologicalPlan {
   condensation: SccCondensation
   layers: List<TopologicalLayer>
-}
-
-
-fn dependency_diagnostic(reason: DependencyDiagnosticReason, edge: DependencyEdge) -> DependencyDiagnostic {
-  DependencyDiagnostic {
-    reason: reason,
-    edge: edge
-  }
 }
 
 
