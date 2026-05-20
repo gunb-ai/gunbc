@@ -191,11 +191,10 @@ type IndependenceAttempt
     }
 
 
-// 🟢 coproduct dissolution
-type CycleClassification
-  = Acyclic
-  | ValidFixedPoint { witness: Symbol }
-  | InvalidCycle { diagnostic: DependencyDiagnostic }
+type NonEmptyDependencySubjects {
+  first: DependencySubject
+  rest: List<DependencySubject>
+}
 
 
 // 🟢 coproduct dissolution
@@ -207,11 +206,19 @@ type DependencyDiagnostic
   | InvalidCycleReason { edge: SchedulingDependencyEdge }
 
 
-type Scc {
-  id: Symbol
-  members: List<DependencySubject>
-  classification: CycleClassification
-}
+// 🟢 coproduct dissolution
+type Scc
+  = AcyclicSingleton { id: Symbol, member: DependencySubject }
+  | ValidFixedPointCycle {
+      id: Symbol,
+      members: NonEmptyDependencySubjects,
+      witness: Symbol
+    }
+  | InvalidCycleScc {
+      id: Symbol,
+      members: NonEmptyDependencySubjects,
+      diagnostic: DependencyDiagnostic
+    }
 
 
 type SccCondensation {
