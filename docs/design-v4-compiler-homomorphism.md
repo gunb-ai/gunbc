@@ -525,8 +525,7 @@ All are **checkable substrate data**, not opaque proofs — per Ratified Q9 (nex
 | **`CorePackage`** | The stable canonical bootstrap package consumed by stage0. | Not declared. |
 | **`CorePackageSchema`** | The schema describing what CorePackage carries (changes here are bootstrap-breaking per Case 3). | Not declared. |
 | **`Bridge`** | Migration package for bootstrap-breaking changes (Case 3 of bootstrap-impact taxonomy). | Not declared. |
-| **`BootstrapWitness`** | Proof that Stage0Candidate[k+1] can produce Stage1Candidate[k+1]. | Not declared. |
-| **`FixedPointWitness`** | Proof that Stage1[k] compiles to itself (compiler self-emits, THESIS facet 2). | Not declared. |
+| **`PromotionWitness`** *(composed gate; Pass B witness-taxonomy unification)* | Single promotion-gate witness composing two specific checks: (a) the **bootstrap-roundtrip check** — Stage0Candidate[k+1] can produce Stage1Candidate[k+1] (was `BootstrapWitness`); (b) the **fixed-point check** — Stage1[k] compiles to itself (compiler self-emits, THESIS facet 2; was `FixedPointWitness`). The two checks are **internal sub-fields** of the single `PromotionWitness` carrier — NOT separate authorities. Implementers see one promotion-ready witness, not three. Matches the witness-taxonomy collapse at line 511 above (no parallel authority). | Not declared. |
 | **`PromotionPlan`** | The procedural step from candidate to active stage0. | Not declared. |
 | **`PromotionDiagnostic`** / **`BootstrapBreak`** | Fail-closed diagnostic shape for un-promotable candidates. | Not declared. |
 
