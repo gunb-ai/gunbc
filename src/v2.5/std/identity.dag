@@ -1,0 +1,22 @@
+// v2.5 identity and provenance — shared across all pipeline phases.
+// Parse phases use AuthoredName; post-resolve phases use Symbol (from node).
+
+module v2_5.std.identity
+
+import v2_5.std.node { Symbol }
+
+type SourceSpan {
+  start: Int
+  end: Int
+  file: String
+}
+
+type AuthoredName {
+  text: String
+  span: SourceSpan
+}
+
+type BoundName {
+  symbol: Symbol
+  span: SourceSpan
+}

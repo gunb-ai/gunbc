@@ -1,0 +1,29 @@
+// v2.5 syntax carriers — closed sums for operators and literals.
+// Authority for expression/type surface metadata used by stage_types.
+// Does not import v2, v3, v4, or dsl.
+
+module v2_5.std.syntax
+
+type BinOp
+  = Add | Sub | Mul | Div | Mod
+  | Eq | Ne | Lt | Gt | Le | Ge
+  | And | Or | NullCoalesce
+
+type UnaryOpKind
+  = Not | Neg
+
+type LiteralValue
+  = LitStr { value: String }
+  | LitInt { value: Int }
+  | LitFloat { value: String }
+  | LitBool { value: Bool }
+  | LitNull
+
+type OperationModifier
+  = Idempotent | Readonly | Hermetic
+
+type ExprErrorKind
+  = ParseRecoveryError | SemanticExprError | InternalExprError
+
+type AlgebraFieldKind
+  = AlgAdd | AlgMul | AlgReciprocal | AlgQuotient | AlgRemainder | AlgCompare | AlgMeet | AlgJoin
