@@ -3,7 +3,8 @@
 // Anchor: docs/design-v4-compiler-homomorphism.md P6; edge orientation required_before → dependent_after.
 // Rule: EffectDependsOn/ResourceDependsOn are edge classifications derived from modeled facts;
 //       scheduling edges are domain-tagged; reason family matches domain (illegal cross-domain states unrepresentable).
-// Owns: DependencySubject, Program/TargetPlan/Artifact scheduling reasons, ContainmentEdge, SchedulingDependencyEdge,
+// Owns: DependencySubject, ArtifactDependencyEndpoint, Program/TargetPlan/Artifact scheduling reasons, ContainmentEdge,
+//       SchedulingDependencyEdge,
 //       Program/TargetPlan/Artifact dependency kind summaries, ClosedWorldDependencyWitness, topo carriers.
 // Consumes: v4.std.collection, v4.std.node.
 // Status: Wave-1 Worker A — strict substrate (data contracts only; no stage implementations).
