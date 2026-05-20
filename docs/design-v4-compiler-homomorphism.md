@@ -1133,7 +1133,7 @@ If a worker encounters a deeper scaffold-vs-design contradiction not catalogued 
 
 **Required substrate + implementation for MVP** (post-Pass B unification — all derived operations are `find_witness` or `fold_node` invocations with specific algebras-as-data):
 - `std/dependency.dag` (substrate cluster: typed dep graph + reason + subject per P6 + strict-review correction #4 — Worker A).
-- `std/find_witness.dag` (unified primitive declaration — replaces what were `std/constraints.dag` + `std/coercion.dag`; carrying the two predicate-algebras as data: constraint-satisfaction + exact-structural-equality-zip-fold — Worker B).
+- `std/find_witness.dag` (unified primitive declaration — generic; carries the `find_witness` operation signature + the `Outcome<(Candidate, Witness)>` shape). The two predicate algebras live in their consuming concept-homes per M10: **constraint-satisfaction predicate in `std/constraints.dag`**, **exact-structural-equality-zip-fold predicate in `std/coercion.dag`**. Single authority per concept: primitive in find_witness.dag, predicates in their respective consuming files — NOT all three lumped into find_witness.dag. — Worker B authors all three.
 - Derived combinators: `traverse_node` / `sequence_node` / `bind_outcome` as `fold_node + Outcome-threading-algebra` (in `std/node.dag` extension; single-authority combinator-owns-policy per Worker C `NodeOutcomeFold.step` fix — Worker C).
 - `W-T-9-impl` (ground stage body — invokes `find_witness` with constraint-satisfaction predicate).
 - `W-T-10-impl` (translate body — invokes `find_witness` with exact-structural-equality predicate; plus serialize via grammar-as-bidir-data).
