@@ -98,6 +98,28 @@ fn surface_type_name(ty: &SurfaceType) -> String {
     }
 }
 
+fn surface_arrow_signature(ty: &SurfaceType) -> String {
+    match ty {
+        SurfaceType::Arrow { inputs, output, .. } => {
+            let args = inputs
+                .iter()
+                .map(surface_type_name)
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("fn({args}) -> {}", surface_type_name(output))
+        }
+        other => panic!("expected Arrow type, got {other:?}"),
+    }
+}
+
+fn record_field_arrow_signature(fields: &[SurfaceField], name: &str) -> String {
+    fields
+        .iter()
+        .find(|field| field.name == name)
+        .map(|field| surface_arrow_signature(&field.ty))
+        .unwrap_or_else(|| panic!("missing field {name}"))
+}
+
 fn record_field_type_map(fields: &[SurfaceField]) -> BTreeSet<(&str, String)> {
     fields
         .iter()
@@ -206,14 +228,16 @@ fn v4_extdeps_file_system_dag_wave2_c2_modeled_effects_and_witness_shape() {
         "file_write must return modified resource per THESIS unenumerated-effects write shape"
     );
 
-    let modeled = record_field_type_map(type_record_fields(&module, "ModeledFileEffects"));
+    let modeled_fields = type_record_fields(&module, "ModeledFileEffects");
     assert_eq!(
-        modeled,
-        BTreeSet::from([
-            ("file_read", "fn".to_string()),
-            ("file_write", "fn".to_string()),
-        ]),
-        "ModeledFileEffects must be the canonical public read/write effect surface"
+        record_field_arrow_signature(modeled_fields, "file_read"),
+        "fn(FileRead) -> FileReadResult",
+        "file_read must pin the load-bearing read effect signature"
+    );
+    assert_eq!(
+        record_field_arrow_signature(modeled_fields, "file_write"),
+        "fn(FileWrite) -> FileWriteResult",
+        "file_write must pin the load-bearing write effect signature"
     );
 }
 
