@@ -80,18 +80,24 @@ type CompilerStageSubject
   | InferStage
   | EmitStage
 
+// Verification-local bridge until the shared std Node carrier exists in dsl/std.
+// Do not import v2.std.core.Node here: std.verification is the shared test
+// authority, not a v2 compiler-stage module. Dissolution trigger: replace this
+// with the shared std.node Node carrier when that type graduates.
+type TestClaimNodeRef {}
+
 // A structural test input. `CompilerStageInput` gives pipeline-stage coverage a
-// typed subject edge; `NodeInput` remains the generic v4-compatible node claim
-// shape until the shared Node carrier supersedes the v2 compiler record.
+// typed subject edge; `NodeInput` remains the generic v4-compatible claim shape
+// until the shared Node carrier supersedes this verification-local bridge.
 type TestClaimInput
-  = NodeInput { node: Node }
-  | CompilerStageInput { stage: CompilerStageSubject, node: Node }
+  = NodeInput { node: TestClaimNodeRef }
+  | CompilerStageInput { stage: CompilerStageSubject, node: TestClaimNodeRef }
 
 // A structural expected result. This is a bounded scaffold because shared
 // `std.diagnostic.Outcome<T>` does not exist in dsl/std yet; dissolve by
 // replacing this with the shared Outcome carrier once diagnostic.dag graduates.
 type TestClaimExpected
-  = ExpectedNode { node: Node }
+  = ExpectedNode { node: TestClaimNodeRef }
   | ExpectedDiagnostic
 
 // Core TestClaim carrier. Receipts live beside claim rows; renderers and
