@@ -102,10 +102,17 @@ type TargetPlanSchedulingEdge {
 }
 
 
-// RULING-1: 🟢 pretty-much-done — artifact scheduling over DependencySubject endpoints (P6 Artifact tier).
+// RULING-1: 🟢 pretty-much-done — artifact-tier endpoints (no NodeSubject on artifact scheduling).
+type ArtifactDependencyEndpoint
+  = ArtifactSubject { artifact: Symbol }
+  | ProjectionSubject { projection: Symbol }
+  | ModelSubject { model: Symbol }
+
+
+// RULING-1: 🟢 pretty-much-done — artifact scheduling over ArtifactDependencyEndpoint only (P6 Artifact tier).
 type ArtifactSchedulingEdge {
-  required_before: DependencySubject
-  dependent_after: DependencySubject
+  required_before: ArtifactDependencyEndpoint
+  dependent_after: ArtifactDependencyEndpoint
   reason: ArtifactSchedulingReason
 }
 
@@ -187,13 +194,6 @@ type TargetPlanIndependenceClaim {
   left: Path
   right: Path
 }
-
-
-// RULING-1: 🟢 pretty-much-done — artifact-tier endpoints (no NodeSubject on artifact independence).
-type ArtifactDependencyEndpoint
-  = ArtifactSubject { artifact: Symbol }
-  | ProjectionSubject { projection: Symbol }
-  | ModelSubject { model: Symbol }
 
 
 // RULING-1: 🟢 pretty-much-done — artifact-tier closed-world completeness (P6 Artifact).

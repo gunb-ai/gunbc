@@ -77,13 +77,21 @@ type CacheKey = Symbol
 type InvalidationKey = Symbol
 
 
+// RULING-1: 🟡 feature:lens-contract-ref consumer:v4.lens::LensContract dissolve-on: lens invalidations reference LensContract authority not bare Symbol (bounds: InvalidationFromLensContract only; owner: Wave-2 P8 substrate PR after #3439).
+type LensContractRef = Symbol
+
+
+// RULING-1: 🟡 feature:pipeline-stage-name consumer:v4.std.pipeline::PipelineStage dissolve-on: stage invalidations use PipelineStage.name authority (bounds: PipelineStageContractChanged only; owner: Wave-2 P8 substrate PR after #3439).
+type PipelineStageName = Symbol
+
+
 // RULING-1: 🟢 pretty-much-done — invalidation evidence carriers for AffectedSet.
 type InvalidationReason
   = DirectChange { change: Change }
   | DependencyPropagation { edge: DependencyEdge }
   | ProjectionInputChanged { projection: ProjectionIdentityRef }
-  | InvalidationFromLensContract { lens: Symbol }
-  | PipelineStageContractChanged { stage: Symbol }
+  | InvalidationFromLensContract { lens: LensContractRef }
+  | PipelineStageContractChanged { stage: PipelineStageName }
 
 
 type ArtifactRef {
