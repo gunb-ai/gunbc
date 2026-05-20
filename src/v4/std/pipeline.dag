@@ -1,7 +1,7 @@
 // src/v4/std/pipeline.dag
 // Scope: compiler pipeline AS DATA — stage carriers, dependency contracts, diagnostic policy.
 // Anchor: docs/design-v4-compiler-homomorphism.md "The pipeline — stages as named algebras".
-// Owns: CarrierKind, PipelineStage, Pipeline, StageDiagnosticPolicy, StageDependencyContract.
+// Owns: CarrierKind, PipelineStage, Pipeline, StageDiagnosticPolicy, StageRequirements, StageEffects, StageDependencyContract.
 // Consumes: v4.std.collection, v4.std.dependency, v4.std.node.
 // Status: Wave-1 Worker A — strict substrate (stages are data; algebra_ref is Symbol, not hidden control flow).
 
@@ -38,20 +38,30 @@ type StageDiagnosticPolicy
   | PropagateOnly
 
 
-// RULING-1: 🟢 pretty-much-done — which P6 facts a stage requires and monotonically adds.
-type StageDependencyContract {
+// RULING-1: 🟢 pretty-much-done — prerequisites the stage must find on the carrier (single authority).
+type StageRequirements {
   domain: DependencyDomain
-  requires_program: List<ProgramDependencyKind>
-  adds_program: List<ProgramDependencyKind>
-  requires_target_plan: List<TargetPlanDependencyKind>
-  adds_target_plan: List<TargetPlanDependencyKind>
-  requires_artifact: List<ArtifactDependencyKind>
-  adds_artifact: List<ArtifactDependencyKind>
+  program: List<ProgramDependencyKind>
+  target_plan: List<TargetPlanDependencyKind>
+  artifact: List<ArtifactDependencyKind>
 }
 
 
-// RULING-1: 🟢 pretty-much-done — one stage row; algebra_ref names the stage algebra (data, not executor).
-// Single dependency_contract: requires_* and adds_* live inside StageDependencyContract (no parallel duplicate fields).
+// RULING-1: 🟢 pretty-much-done — dependency facts the stage monotonically adds (disjoint from requirements).
+type StageEffects {
+  program: List<ProgramDependencyKind>
+  target_plan: List<TargetPlanDependencyKind>
+  artifact: List<ArtifactDependencyKind>
+}
+
+
+type StageDependencyContract {
+  requirements: StageRequirements
+  effects: StageEffects
+}
+
+
+// RULING-1: 🟢 pretty-much-done — one dependency_contract per stage (no duplicate requires/adds fields).
 type PipelineStage {
   name: Symbol
   input_carrier: CarrierKind
@@ -91,78 +101,98 @@ data algebra_eval: Symbol = algebra_eval
 
 fn ingest_text_to_surface_contract() -> StageDependencyContract {
   StageDependencyContract {
-    domain: Program,
-    requires_program: [],
-    adds_program: [Contains],
-    requires_target_plan: [],
-    adds_target_plan: [],
-    requires_artifact: [],
-    adds_artifact: []
+    requirements: StageRequirements {
+      domain: Program,
+      program: [],
+      target_plan: [],
+      artifact: []
+    },
+    effects: StageEffects {
+      program: [Contains],
+      target_plan: [],
+      artifact: []
+    }
   }
 }
 
 
 fn ingest_surface_to_core_contract() -> StageDependencyContract {
   StageDependencyContract {
-    domain: Program,
-    requires_program: [Contains],
-    adds_program: [Contains],
-    requires_target_plan: [],
-    adds_target_plan: [],
-    requires_artifact: [],
-    adds_artifact: []
+    requirements: StageRequirements {
+      domain: Program,
+      program: [Contains],
+      target_plan: [],
+      artifact: []
+    },
+    effects: StageEffects {
+      program: [Contains],
+      target_plan: [],
+      artifact: []
+    }
   }
 }
 
 
 fn resolve_contract() -> StageDependencyContract {
   StageDependencyContract {
-    domain: Program,
-    requires_program: [Contains],
-    adds_program: [BindsTo, ModuleDependsOn],
-    requires_target_plan: [],
-    adds_target_plan: [],
-    requires_artifact: [],
-    adds_artifact: []
+    requirements: StageRequirements {
+      domain: Program,
+      program: [Contains],
+      target_plan: [],
+      artifact: []
+    },
+    effects: StageEffects {
+      program: [BindsTo, ModuleDependsOn],
+      target_plan: [],
+      artifact: []
+    }
   }
 }
 
 
 fn ground_contract() -> StageDependencyContract {
   StageDependencyContract {
-    domain: Program,
-    requires_program: [Contains, BindsTo, ModuleDependsOn],
-    adds_program: [
-      TypeDependsOn,
-      DataDependsOn,
-      EffectDependsOn,
-      ResourceDependsOn
-    ],
-    requires_target_plan: [],
-    adds_target_plan: [],
-    requires_artifact: [],
-    adds_artifact: []
+    requirements: StageRequirements {
+      domain: Program,
+      program: [Contains, BindsTo, ModuleDependsOn],
+      target_plan: [],
+      artifact: []
+    },
+    effects: StageEffects {
+      program: [
+        TypeDependsOn,
+        DataDependsOn,
+        EffectDependsOn,
+        ResourceDependsOn
+      ],
+      target_plan: [],
+      artifact: []
+    }
   }
 }
 
 
 fn translate_contract() -> StageDependencyContract {
   StageDependencyContract {
-    domain: TargetPlan,
-    requires_program: [
-      Contains,
-      BindsTo,
-      TypeDependsOn,
-      DataDependsOn,
-      EffectDependsOn,
-      ResourceDependsOn,
-      ModuleDependsOn
-    ],
-    adds_program: [],
-    requires_target_plan: [],
-    adds_target_plan: [PlacementConstraint, TransferDependsOn, BarrierBefore],
-    requires_artifact: [],
-    adds_artifact: []
+    requirements: StageRequirements {
+      domain: TargetPlan,
+      program: [
+        Contains,
+        BindsTo,
+        TypeDependsOn,
+        DataDependsOn,
+        EffectDependsOn,
+        ResourceDependsOn,
+        ModuleDependsOn
+      ],
+      target_plan: [],
+      artifact: []
+    },
+    effects: StageEffects {
+      program: [],
+      target_plan: [PlacementConstraint, TransferDependsOn, BarrierBefore],
+      artifact: []
+    }
   }
 }
 
