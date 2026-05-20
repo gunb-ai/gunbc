@@ -8,7 +8,6 @@ module v2_5.std.normalize_forward
 
 import v2_5.std.diagnostic { Outcome }
 import v2_5.std.stage_types {
-  BoundName,
   NormalizedArg,
   NormalizedBlock,
   NormalizedDataDecl,
@@ -125,8 +124,7 @@ import v2_5.std.stage_types {
   ResolvedStrText,
   ResolvedStrInterp,
   NormalizedStrText,
-  NormalizedStrInterp,
-  SourceSpan
+  NormalizedStrInterp
 }
 
 
