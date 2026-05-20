@@ -240,123 +240,154 @@ fn render_item(item: InferredItem, spec: LanguageSpec) -> Outcome<String> {
 
 
 // =============================================================================
-// render_expr — closed dispatch over InferredExpr via fold_node, Outcome-typed
+// render_expr — per-variant structural recursion on the closed InferredExpr sum
 // =============================================================================
 //
-// This is where Practice 10 most directly applies. v2's emit_typed_expr was a
-// 22-arm hand-rolled walker that re-traversed children at every arm. v2.5: ONE
-// fold_node call whose algebra (NodeFold<Outcome<String>>) describes per-variant
-// rendering. The recursion is in the substrate (PR #3404 / PR #3422 fold_node);
-// the fold result is Outcome-threaded so per-arm failure (an absent
-// LanguageSpec rule, an unrecognized variant, etc.) propagates fail-closed to
-// the stage boundary instead of degenerating into an empty-string sentinel.
-// This is the discipline boundary cursor + codex flagged on the first draft:
-// the module signature is Outcome<TargetSource>, so the fold algebra must
-// carry diagnostics too, not strip them at the per-arm level.
+// REVISED DESIGN. The earlier draft tried to express emit-of-expression as one
+// `fold_node` call with a `NodeFold<Outcome<String>>` algebra. Codex review
+// #15207 (REQUEST_CHANGES) correctly flagged the fatal defect: the fold's
+// `step` cannot reconstruct per-variant structure (call's `(args)` wrapping,
+// if-expression's `if cond then ... else ...` arrangement, field-access
+// separator placement) from a generic `(parent, edge, child)` triple without
+// the per-variant grammar. Concat-only step loses child-role facts; the fold
+// shape encodes the wrong emission algorithm.
+//
+// Reframe per Practice 10 honestly: a Tier 1 closed-sum `InferredExpr` is its
+// OWN structural carrier — case analysis over its arms IS the structural
+// recursion the discipline names. `fold_node` is appropriate for *generic*
+// walks over the substrate Node carrier (e.g. collecting all Symbol leaves
+// across an unknown tree); it is not appropriate when every variant has a
+// distinct, named-field grammar that the typechecker proves exhaustive.
+//
+// This file now consumes `InferredExpr` directly via `match`, recursing into
+// each variant's named children. The recursion is structural (the closed sum
+// proves termination + exhaustiveness) and Outcome-threaded (every per-arm
+// failure surfaces at the stage boundary).
 
 fn render_expr(expr: InferredExpr, spec: LanguageSpec) -> Outcome<String> {
-  fold_node(
-    n: inferred_expr_to_node(e: expr),
-    algebra: expr_fold_algebra(spec: spec)
-  )
-}
-
-
-fn expr_fold_algebra(spec: LanguageSpec) -> NodeFold<Outcome<String>> {
-  NodeFold {
-    init: fn(n) {
-      render_expr_init(node: n, spec: spec)
-    },
-    step: fn(acc, edge, child_outcome) {
-      render_expr_step(parent: acc, edge: edge, child: child_outcome, spec: spec)
-    }
-  }
-}
-
-
-// Per-variant init: handles leaves and stamps the parent variant's identity
-// so step can compose. The dispatch on InferredExpr's variant is once, here,
-// not at every recursive call as v2 did.
-fn render_expr_init(node: Node, spec: LanguageSpec) -> Outcome<String> {
-  render_expr_dispatch(node: node, spec: spec)
-}
-
-
-// Dispatch on InferredExpr variant — exhaustive over the closed sum that Tier
-// 1 publishes. Every arm reads LanguageSpec for its syntactic fragments and
-// returns Outcome<String>; an unrecognized variant fails closed instead of
-// degenerating into an empty string.
-fn render_expr_dispatch(node: Node, spec: LanguageSpec) -> Outcome<String> {
-  match inferred_expr_variant_of(n: node) {
+  match expr {
+    // Leaves
     InferredLit { value: v, span: _, expr_type: _ } =>
       Produced { value: render_literal(value: v, spec: spec) }
+
     InferredVar { name: name, expr_type: _ } =>
       Produced { value: emit_ident(name: name, rules: spec.identifiers) }
-    InferredFieldAccess { receiver: _, field: field, expr_type: _ } =>
-      Produced {
-        value: concat(spec.expressions.field_access_separator, emit_ident(name: field, rules: spec.identifiers))
-      }
-    InferredCall { callee: _, args: _, expr_type: _ } =>
-      Produced { value: spec.expressions.call_open }
-    InferredMethodCall { receiver: _, method: _, args: _, expr_type: _ } =>
-      Produced { value: spec.expressions.method_call_separator }
-    InferredBinOp { op: op, left: _, right: _, algebra_field: _, expr_type: _ } =>
-      // diagnostic-bearing lookup: a BinOp with no rule in spec.expressions.binops
-      // surfaces emit_missing_language_rule rather than a "" fallback.
-      render_binop_symbol(op: op, spec: spec)
-    InferredUnaryOp { op: _, operand: _, expr_type: _ } =>
-      Produced { value: spec.expressions.unary_neg }
-    InferredIf { condition: _, then_expr: _, else_expr: _, expr_type: _ } =>
-      Produced { value: render_if_form(form: spec.expressions.if_form) }
-    InferredMatch { scrutinee: _, arms: _, expr_type: _ } =>
-      Produced { value: spec.patterns.match_keyword }
-    InferredLet { name: name, value: _, body: _, expr_type: _ } =>
-      Produced { value: concat("let ", emit_ident(name: name, rules: spec.identifiers)) }
-    InferredLambda { params: _, body: _, expr_type: _ } =>
-      Produced { value: render_lambda_prefix(spec: spec) }
-    InferredBlock { statements: _, expr_type: _ } =>
-      Produced { value: render_block_open(block: spec.items.block) }
-    InferredStringInterp { parts: _, expr_type: _ } =>
-      Produced { value: render_string_interp_prefix(style: spec.strings.interp_style) }
-    InferredRecordLit { type_name: _, fields: _, expr_type: _ } =>
-      Produced { value: render_record_open(form: spec.types.conjunction_type) }
-    InferredListLit { elements: _, expr_type: _ } =>
-      Produced { value: spec.types.container_type.list_open }
-    InferredCast { expr: _, target_type: _, expr_type: _ } =>
-      Produced { value: render_cast_prefix(spec: spec) }
-    InferredForEach { variable: _, iterable: _, body: _, expr_type: _ } =>
-      Produced { value: render_foreach_prefix(spec: spec) }
-    InferredIndex { base: _, index: _, expr_type: _ } =>
-      Produced { value: spec.types.container_type.list_open }
-    InferredSlice { base: _, start: _, end: _, expr_type: _ } =>
-      Produced { value: spec.types.container_type.list_open }
-    InferredReturn { value: _, expr_type: _ } =>
-      Produced { value: render_return_prefix(spec: spec) }
+
     InferredError { kind: _, message: _, span: _ } =>
-      // Upstream-stage error reached emit — fail-closed.
+      // An upstream-stage error reached emit — fail-closed.
       Rejected { diagnostic: emit_diagnostic(reason: emit_under_refined) }
+
+    // Composites — per-variant recursion preserving the grammar
+    InferredFieldAccess { receiver: receiver, field: field, expr_type: _ } =>
+      bind_outcome(o: render_expr(expr: receiver, spec: spec), f: fn(receiver_text) {
+        Produced {
+          value: concat(receiver_text, spec.expressions.field_access_separator,
+                        emit_ident(name: field, rules: spec.identifiers))
+        }
+      })
+
+    InferredCall { callee: callee, args: args, expr_type: _ } =>
+      bind_outcome(o: render_args(args: args, spec: spec), f: fn(args_text) {
+        Produced {
+          value: concat(emit_ident(name: callee, rules: spec.identifiers),
+                        spec.expressions.call_open, args_text, spec.expressions.call_close)
+        }
+      })
+
+    InferredMethodCall { receiver: receiver, method: method, args: args, expr_type: _ } =>
+      bind_outcome(o: render_expr(expr: receiver, spec: spec), f: fn(receiver_text) {
+        bind_outcome(o: render_args(args: args, spec: spec), f: fn(args_text) {
+          Produced {
+            value: concat(receiver_text, spec.expressions.method_call_separator,
+                          emit_ident(name: method, rules: spec.identifiers),
+                          spec.expressions.call_open, args_text, spec.expressions.call_close)
+          }
+        })
+      })
+
+    InferredBinOp { op: op, left: left, right: right, algebra_field: _, expr_type: _ } =>
+      bind_outcome(o: render_expr(expr: left, spec: spec), f: fn(left_text) {
+        bind_outcome(o: render_expr(expr: right, spec: spec), f: fn(right_text) {
+          render_binop(op: op, left: left_text, right: right_text, spec: spec)
+        })
+      })
+
+    InferredUnaryOp { op: op, operand: operand, expr_type: _ } =>
+      bind_outcome(o: render_expr(expr: operand, spec: spec), f: fn(operand_text) {
+        Produced { value: concat(render_unary_symbol(op: op, spec: spec), operand_text) }
+      })
+
+    InferredIf { condition: condition, then_expr: then_expr, else_expr: else_expr, expr_type: _ } =>
+      bind_outcome(o: render_expr(expr: condition, spec: spec), f: fn(cond_text) {
+        bind_outcome(o: render_expr(expr: then_expr, spec: spec), f: fn(then_text) {
+          bind_outcome(o: render_expr(expr: else_expr, spec: spec), f: fn(else_text) {
+            render_if(form: spec.expressions.if_form, cond: cond_text, then_text: then_text, else_text: else_text)
+          })
+        })
+      })
+
+    InferredLet { name: name, value: value, body: body, expr_type: _ } =>
+      bind_outcome(o: render_expr(expr: value, spec: spec), f: fn(value_text) {
+        bind_outcome(o: render_expr(expr: body, spec: spec), f: fn(body_text) {
+          Produced {
+            value: concat("let ", emit_ident(name: name, rules: spec.identifiers), " = ",
+                          value_text, ";\n", body_text)
+          }
+        })
+      })
+
+    InferredBlock { statements: statements, expr_type: _ } =>
+      bind_outcome(
+        o: collect_outcomes(items: statements |> map(s => render_expr(expr: s, spec: spec))),
+        f: fn(stmt_texts) {
+          render_block(block: spec.items.block, statements: stmt_texts)
+        })
+
+    // Remaining variants — render arms pending. Each carries its closed
+    // structural shape (lambda params + body, match scrutinee + arms, etc.);
+    // the per-variant render is a small follow-on commit that does NOT change
+    // the dispatch shape. Marked Rejected with emit_under_refined for now so
+    // a smoke test surfaces the gap rather than silently emitting "".
+    InferredMatch { scrutinee: _, arms: _, expr_type: _ } => render_pending()
+    InferredLambda { params: _, body: _, expr_type: _ } => render_pending()
+    InferredStringInterp { parts: _, expr_type: _ } => render_pending()
+    InferredRecordLit { type_name: _, fields: _, expr_type: _ } => render_pending()
+    InferredListLit { elements: _, expr_type: _ } => render_pending()
+    InferredCast { expr: _, target_type: _, expr_type: _ } => render_pending()
+    InferredForEach { variable: _, iterable: _, body: _, expr_type: _ } => render_pending()
+    InferredIndex { base: _, index: _, expr_type: _ } => render_pending()
+    InferredSlice { base: _, start: _, end: _, expr_type: _ } => render_pending()
+    InferredReturn { value: _, expr_type: _ } => render_pending()
   }
 }
 
 
-// Per-variant step: combines parent's running text with a child render, both
-// Outcome-typed. The edge label tells step which structural role the child
-// plays (v4 demonstrates the named/positional edge axis; v2.5 follows it).
-// Fail-closed: either side Rejected propagates the diagnostic; both Produced
-// concatenates the strings.
-fn render_expr_step(
-  parent: Outcome<String>,
-  edge: Edge,
-  child: Outcome<String>,
-  spec: LanguageSpec
-) -> Outcome<String> {
-  match parent {
+// Outcome bind — sequential composition. Bind preserves Rejected; chains the
+// success path. This is the standard monadic bind for the Outcome carrier;
+// when v2_5.std.diagnostic publishes a canonical `bind` it dissolves to that.
+fn bind_outcome(o: Outcome<String>, f: fn(String) -> Outcome<String>) -> Outcome<String> {
+  match o {
     Rejected { diagnostic: d } => Rejected { diagnostic: d }
-    Produced { value: p } =>
-      match child {
-        Rejected { diagnostic: d } => Rejected { diagnostic: d }
-        Produced { value: c } => Produced { value: concat(p, c) }
-      }
+    Produced { value: v } => f(v)
+  }
+}
+
+
+// Helper for variants whose render body is a follow-on commit. Surfaces
+// fail-closed with under-refined so the smoke detects the gap; per-variant
+// bodies replace this with structural rendering as they land.
+fn render_pending() -> Outcome<String> {
+  Rejected { diagnostic: emit_diagnostic(reason: emit_under_refined) }
+}
+
+
+// render_args — fold over List<InferredArg>, joining with arg_separator.
+fn render_args(args: List<InferredArg>, spec: LanguageSpec) -> Outcome<String> {
+  let arg_outcomes = args |> map(a => render_arg(arg: a, spec: spec))
+  match collect_outcomes(items: arg_outcomes) {
+    Produced { value: arg_texts } =>
+      Produced { value: arg_texts |> join(separator: spec.expressions.arg_separator) }
+    Rejected { diagnostic: d } => Rejected { diagnostic: d }
   }
 }
 

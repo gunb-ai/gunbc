@@ -175,17 +175,22 @@ type ExpressionSyntax {
 
 // BinOp is OWNED by v2_5.std.syntax (universal operator identity, target-
 // independent) — imported above. Codex #3 disposition (review #15165): identity
-// lives in syntax, per-target REALIZATION (symbol + precedence) lives in
-// BinOpRule here. The canonical BinOp arms are
-// Add | Sub | Mul | Div | Mod | Eq | Ne | Lt | Gt | Le | Ge | And | Or
-// | NullCoalesce (note: Ne not Neq; Le/Ge not Lte/Gte; no StringConcat — the
-// first-draft local declaration that diverged from the canonical set has been
-// removed in favour of the syntax import).
+// lives in syntax, per-target REALIZATION lives in BinOpRule below.
+//
+// 🟢 coproduct dissolution — BinOpRender carries the realization-strategy axis.
+// Codex #15207 finding 3 (Rust's NullCoalesce as `lhs.unwrap_or(rhs)` is a
+// method-call form, not an infix symbol): the carrier needs to express both
+// shapes typed. v2 hand-rolled the discrimination inside emit code; v2.5 makes
+// it a typed coproduct read from the spec.
+type BinOpRender
+  = InfixSymbol { symbol: String, precedence: Int }              // `lhs <symbol> rhs`
+  | RightMethodCall { method_name: String, open: String, close: String }  // `lhs.method(rhs)`
+  | PrefixFunction { function_name: String, open: String, separator: String, close: String }
+                                                                  // `fn(lhs, rhs)`
 
 type BinOpRule {
   op: BinOp
-  symbol: String
-  precedence: Int
+  render: BinOpRender
 }
 
 // 🟢 coproduct dissolution — v2 had IfValueForm = IfExpression | ConditionalTernary
