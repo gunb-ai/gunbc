@@ -10,9 +10,9 @@ module v4.std.pipeline
 
 import v4.std.collection { List }
 import v4.std.dependency {
-  ArtifactDependencyCause,
-  ProgramDependencyCause,
-  TargetPlanDependencyCause
+  ArtifactSchedulingReason,
+  ProgramSchedulingReason,
+  TargetPlanSchedulingReason
 }
 import v4.std.node { Symbol }
 
@@ -40,17 +40,17 @@ type StageDiagnosticPolicy = DiagnosticAccumulationPolicy
 
 
 type StageRequirements {
-  program: List<ProgramDependencyCause>
-  target_plan: List<TargetPlanDependencyCause>
-  artifact: List<ArtifactDependencyCause>
+  program: List<ProgramSchedulingReason>
+  target_plan: List<TargetPlanSchedulingReason>
+  artifact: List<ArtifactSchedulingReason>
 }
 
 
 type StageEffects {
   adds_containment_spine: Bool
-  program: List<ProgramDependencyCause>
-  target_plan: List<TargetPlanDependencyCause>
-  artifact: List<ArtifactDependencyCause>
+  program: List<ProgramSchedulingReason>
+  target_plan: List<TargetPlanSchedulingReason>
+  artifact: List<ArtifactSchedulingReason>
 }
 
 
@@ -149,7 +149,10 @@ fn resolve_contract() -> StageDependencyContract {
     },
     effects: StageEffects {
       adds_containment_spine: false,
-      program: [BindsTo, ModuleDependsOn],
+      program: [
+        BindsTo { witness: ContractSummary },
+        ModuleDependsOn { witness: ContractSummary }
+      ],
       target_plan: [],
       artifact: []
     }
@@ -160,17 +163,20 @@ fn resolve_contract() -> StageDependencyContract {
 fn ground_contract() -> StageDependencyContract {
   StageDependencyContract {
     requirements: StageRequirements {
-      program: [BindsTo, ModuleDependsOn],
+      program: [
+        BindsTo { witness: ContractSummary },
+        ModuleDependsOn { witness: ContractSummary }
+      ],
       target_plan: [],
       artifact: []
     },
     effects: StageEffects {
       adds_containment_spine: false,
       program: [
-        TypeDependsOn,
-        DataDependsOn,
-        EffectDependsOn,
-        ResourceDependsOn
+        TypeDependsOn { witness: ContractSummary },
+        DataDependsOn { witness: ContractSummary },
+        EffectDependsOn { witness: ContractSummary },
+        ResourceDependsOn { witness: ContractSummary }
       ],
       target_plan: [],
       artifact: []
@@ -183,12 +189,12 @@ fn translate_contract() -> StageDependencyContract {
   StageDependencyContract {
     requirements: StageRequirements {
       program: [
-        BindsTo,
-        TypeDependsOn,
-        DataDependsOn,
-        EffectDependsOn,
-        ResourceDependsOn,
-        ModuleDependsOn
+        BindsTo { witness: ContractSummary },
+        TypeDependsOn { witness: ContractSummary },
+        DataDependsOn { witness: ContractSummary },
+        EffectDependsOn { witness: ContractSummary },
+        ResourceDependsOn { witness: ContractSummary },
+        ModuleDependsOn { witness: ContractSummary }
       ],
       target_plan: [],
       artifact: []
@@ -196,7 +202,11 @@ fn translate_contract() -> StageDependencyContract {
     effects: StageEffects {
       adds_containment_spine: false,
       program: [],
-      target_plan: [PlacementConstraint, TransferDependsOn, BarrierBefore],
+      target_plan: [
+        PlacementConstraint { witness: ContractSummary },
+        TransferDependsOn { witness: ContractSummary },
+        BarrierBefore { witness: ContractSummary }
+      ],
       artifact: []
     }
   }
@@ -207,7 +217,11 @@ fn serialize_contract() -> StageDependencyContract {
   StageDependencyContract {
     requirements: StageRequirements {
       program: [],
-      target_plan: [PlacementConstraint, TransferDependsOn, BarrierBefore],
+      target_plan: [
+        PlacementConstraint { witness: ContractSummary },
+        TransferDependsOn { witness: ContractSummary },
+        BarrierBefore { witness: ContractSummary }
+      ],
       artifact: []
     },
     effects: StageEffects {
@@ -224,12 +238,12 @@ fn eval_contract() -> StageDependencyContract {
   StageDependencyContract {
     requirements: StageRequirements {
       program: [
-        BindsTo,
-        TypeDependsOn,
-        DataDependsOn,
-        EffectDependsOn,
-        ResourceDependsOn,
-        ModuleDependsOn
+        BindsTo { witness: ContractSummary },
+        TypeDependsOn { witness: ContractSummary },
+        DataDependsOn { witness: ContractSummary },
+        EffectDependsOn { witness: ContractSummary },
+        ResourceDependsOn { witness: ContractSummary },
+        ModuleDependsOn { witness: ContractSummary }
       ],
       target_plan: [],
       artifact: []
