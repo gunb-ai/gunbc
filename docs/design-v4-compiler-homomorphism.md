@@ -93,7 +93,7 @@ That is the full external surface of the compiler. Two parameters; one fail-clos
 
 **`Output`** is mode-dependent: `TargetSource` (bytes/text) for `TranslateTo`, `Value` (host representation) for `Eval`.
 
-> **Note on Lens mode:** the original draft of this doc proposed a third `CompileMode` for running lenses (the analysis framework for complexity / cost / ownership / effects / user-defined dimensions). This was flagged as contradicting THESIS by an automated review. **The lens stance is under reconsideration** — see "Open Q0 — Lens architecture (under operator review)" below. Until that resolves, treat the lens question as unsettled, NOT as ratified in either direction.
+> **Note on Lens mode:** the original draft of this doc proposed a third `CompileMode` for running lenses (the analysis framework for complexity / cost / ownership / effects / user-defined dimensions). This was flagged as contradicting THESIS by an automated review. **Resolved 2026-05-20 — see P3 below.** Lenses are a side-channel over `InferredTree`, orthogonal to the emission/eval homomorphism. They're invoked via a project-mandatory wrapper (`validate_then_compile`-style) that gates emit/eval on lens pass; whether the lens fold runs inside or outside the bare `compile()` is a non-load-bearing surface choice.
 
 ---
 
@@ -111,19 +111,30 @@ Evaluation is structurally the same operation as translation, with the host runt
 
 Open question on `HostModel` shape — see Open Q1.
 
-### P3 — Lens stance (under reconsideration — DO NOT TREAT AS RATIFIED)
+### P3 — Lenses are a side-channel over `InferredTree`
 
-> **This premise was flagged in code review (PR #3437) as contradicting THESIS.** THESIS lines 105 + 342 require lens validation to be part of the compile-time guarantee ("by construction, not by opt-in"). The original P3 wording made lens enforcement entirely external to compile, which is too strong.
->
-> Three candidates are under operator review (one of these will replace this section):
->
-> - **(A) Compile validates lenses directly** — built-in lenses hard-coded, user-defined lenses registered through a typed plug-in interface. Closest to THESIS's literal text.
-> - **(B) Compile takes lenses as a data parameter** — `compile(..., lenses: List<Lens>, ...)`. Compiler folds the lens algebras over `InferredTree` but knows no lens by name. Built-ins passed through the same channel as user-defined.
-> - **(C) Compile stays lens-naive; a project-mandatory wrapper gates emit/eval on lens pass.** Compiler exposes `ground(text, input_lang) -> InferredTree` as a public operation; lens machinery lives in `lens/` as a separate consumer; `validate_then_compile` is the project-mandatory contract that runs lens validation BEFORE emit/eval. "By construction" guarantee preserved at the contract layer, not the compiler-core layer.
->
-> Under all three, the compiler core does not `import lens.cost.SymbolicCost` or any other named lens. The fix to `04_infer.dag`'s current `import v4.lens.cost { SymbolicCost }` is needed regardless.
->
-> Resolution lands when operator picks A / B / C.
+> **Ratified 2026-05-20** (operator-direct, resolving the codex-flagged conflict between the prior draft's lens stance and THESIS lines 105 + 342). The earlier "lenses entirely external to compile" framing was too strong; THESIS's "by construction" guarantee must hold. The reconciling insight: lens enforcement is **orthogonal to the homomorphism** — lenses observe the program; they don't participate in translate/eval. The right architectural question is the consumption *contract*, not the surface invocation.
+
+Lens enforcement is **orthogonal to the emission/eval homomorphism.** The compiler's pipeline produces `InferredTree` as the **raw primitive layer where the program's full structure is visible.** Lenses are **folds over that tree** that produce dimension facts as side-channel output — they do NOT modify the tree, do NOT block translate/eval, and do NOT feed downstream stages of the homomorphism. THESIS's "by construction" guarantee is preserved by project-mandatory invocation of the lens pass, regardless of where the fold physically runs.
+
+**Six commitments:**
+1. **`InferredTree` is the lens consumption point** — a stable public contract. The lens framework binds to it.
+2. **Lenses are folds over `InferredTree`** sharing the `fold_node` primitive (Practice 10 row 1).
+3. **Lens outputs are side-channel** — `DimensionFact` / diagnostics. Translate/eval do NOT depend on lens output. Lens output does NOT feed downstream stages of the homomorphism.
+4. **Built-in and user-defined lenses share one algebra contract.** The compiler core does NOT import or name any specific lens. `04_infer.dag`'s current `import v4.lens.cost { SymbolicCost }` violates this and needs to be fixed.
+5. **Multi-lens execution is dependency-managed.** Multiple lenses over the same `InferredTree` share traversal — no re-walks. Lens-to-lens dependencies (e.g., complexity reading cost) are expressed in the substrate, not re-derived per call. See Open Q6 for the substrate primitive.
+6. **"By construction" guarantee preserved at the contract layer.** Some project-mandatory wrapper (`validate_then_compile` or equivalent) runs lens validation BEFORE emit/eval. Bare `compile(text, input_lang, mode)` is the narrow advanced surface; the wrapper is the everyday entry point.
+
+**Surface choice (B vs C) is not architecturally load-bearing.** Given commitments 1–6, two implementation surfaces are equivalent:
+- **B-style:** lenses fold inside `compile(text, input_lang, lenses, mode)`.
+- **C-style:** lenses fold outside compile, in a thin wrapper that calls `ground` + the lens fold + `compile_terminal`.
+
+Both honor 1–6 identically. The `InferredTree` contract is the same; the lens algebra contract is the same; the dependency-management discipline is the same. **Refactoring B↔C is a mechanical change**, not an architectural one. Initial implementation will land one of them; the choice can be revisited without architectural cost.
+
+**The hard substrate work** that 1–6 imply:
+- A `LensAlgebra<F>` carrier shape that both built-ins and user-defined lenses satisfy.
+- The multi-lens dependency-management primitive (Open Q6).
+- Stable `InferredTree` shape that won't break the lens contract as new substrate facts are added.
 
 ### P4 — Glue derivation is composed homomorphism, orthogonal to the compiler
 
@@ -324,9 +335,9 @@ Falsification probes (not load-bearing for the initial homomorphism):
 
 ## Open questions — input wanted
 
-### Open Q0 — Lens architecture (under operator review)
+### Ratified Q0 — Lens architecture (2026-05-20)
 
-See P3 above. Three candidates (A / B / C) — pending operator pick.
+**Resolved.** Lenses are a side-channel over `InferredTree`, sharing the `fold_node` primitive, with multi-lens dependency-management and a project-mandatory wrapper preserving the THESIS "by construction" guarantee. Six commitments per P3 above; B-style vs C-style surface is a non-load-bearing implementation choice. The new substrate question this raises is **Open Q6 — multi-lens dependency management** (below).
 
 ### Open Q1 — `HostModel`: distinct type, or `LanguageModel` variant?
 
@@ -338,13 +349,9 @@ Eval needs a model of "what does the host runtime do for each substrate primitiv
 
 Q1c is the most-economical (no new substrate); Q1a is the most-explicit. Q1b is in between. Recommendation: probably Q1a — host concerns (allocation, execution model, runtime values) are categorically different from emit concerns (grammar, serialization). But open to argument.
 
-### Open Q2 — `InferredTree` dimensional facts: zero or N?
+### Ratified Q2 — `InferredTree` dimensional facts (2026-05-20)
 
-Should `InferredTree` carry built-in dimensional facts (cost, complexity, termination, ownership) computed during grounding, or should those facts be derived separately by lens-folds over a leaner `InferredTree`?
-
-This question is coupled with Q0 (lens architecture). If lens validation runs inside compile (Q0-A or Q0-B), then `InferredTree` may need to carry dimension facts. If lens validation is external (Q0-C), then `InferredTree` is leaner.
-
-The current `04_infer.dag` scaffold imports `v4.lens.cost.SymbolicCost` — entangles infer with a specific lens. Regardless of Q0 resolution, that specific import is wrong (no specific lens name in the compiler).
+**Resolved by P3.** `InferredTree` carries **only grounding facts** (locus, binding, typeshape, inhabitance witness). Dimensional facts (cost, complexity, termination, ownership) are **lens outputs** produced as side-channel from folds over `InferredTree` (P3 commitment 3). The current `04_infer.dag` import of `v4.lens.cost.SymbolicCost` violates P3 commitment 4 and is a fix-needed.
 
 ### Open Q3 — Stage fusion: separate `parse` + `normalize`, or one stage?
 
@@ -372,6 +379,18 @@ Recommendation: Q4a — explicit primitive matches the discipline doc.
 - **Q5b.** Resolve is part of parse (consults language scope rules; produces bound Nodes directly).
 
 Current scaffold is Q5a. Probably keep — binding has scope-discipline beyond what parse can satisfy in one pass.
+
+### Open Q6 — Multi-lens dependency management substrate primitive
+
+P3 commitment 5 requires that N lenses consuming the same `InferredTree` share traversal — no re-walks per lens. This is a substrate-design question, of the same flavor as the coercion fold's substrate primitive.
+
+Three sub-questions:
+
+- **Q6a.** Is there a substrate primitive `multi_lens_fold(tree, List<Lens>) -> Map<Lens, DimensionFact>` that coalesces shared traversals — single pass over the tree, each Node visited once, each lens's algebra applied at the right step?
+- **Q6b.** How are lens-to-lens dependencies expressed? Example: the complexity lens reads the cost lens's output. Does the multi-lens fold compute a topological order over lens dependencies and stage the folds (cost first, complexity second)? Or do lenses produce intermediate values consumable by other lenses in the SAME pass (more complex but single-traversal)?
+- **Q6c.** Are lens outputs themselves Node-graph data, so they are consumable by other lenses uniformly (and by downstream tooling like IDEs, build reporters)?
+
+This is substrate-design work. Probably lands in a new `std/lens.dag` or extension of `std/node.dag`. Required before multi-lens execution is correct under Practice 3 (facts flow forward, no re-derivation).
 
 ---
 
