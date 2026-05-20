@@ -61,10 +61,10 @@ closing at T-15.
           that model (composition, not a new subsystem).
 ```
 
-### Side branch — `{P1-KEYSTONE, T-30, T-29, T-25-core} → T-4 → T-9` (watch item)
+### Side branch — `{P1-KEYSTONE, T-30, T-29, T-25-core, T-33} → T-4 → T-9` (watch item)
 
 ```
-{P1-KEYSTONE, T-30, T-29, T-25-core} → T-4 → T-9
+{P1-KEYSTONE, T-30, T-29, T-25-core, T-33} → T-4 → T-9
 ```
 
 T-9 needs T-4 (the language fact-bundles) in addition to T-8. This branch
@@ -72,10 +72,10 @@ carries slack against the `T-6→T-7→T-8` pipeline branch **only if its
 feeders start immediately**. The D2 reversal CHANGED T-4's dependency set
 — the old alias model needed almost nothing; fact-bundle modeling needs
 the shared vocabulary (`T-3`, itself on the critical path) plus
-**four feeders that are not on the critical path and gate `T-4 → T-9`**:
-P1-KEYSTONE, T-30, T-29, T-25-core. Those four are **watch items**, not
-slack-having parallel fill — if any slips, the side branch goes critical.
-T-4 is no longer a schedule-anytime leaf — see T-4.
+**five feeders that are not on the critical path and gate `T-4 → T-9`**:
+P1-KEYSTONE, T-30, T-29, T-25-core, T-33. Those five are **watch items**,
+not slack-having parallel fill — if any slips, the side branch goes
+critical. T-4 is no longer a schedule-anytime leaf — see T-4.
 
 ```
   P1-KEYSTONE   the Phase-1 doc keystone — NOT a T-## task. The
@@ -101,8 +101,14 @@ T-4 is no longer a schedule-anytime leaf — see T-4.
                 refinement-bearing carriers need it. Sits near T-3 — see
                 T-25. (T-25-tail, the predicate prover, is post-T-9
                 parallel fill, not a feeder.)
+  T-33  std/model_core.dag — shared substrate factoring (Ratified Q1).
+                LanguageModel (T-4) and HostModel (T-34) both extend it;
+                T-4's fact-bundle authoring cannot ground primitives + algebra
+                inhabitance + laws against ModelCore until the carrier file
+                exists. Low-dependency (needs only T-1, T-2, T-3) but a hard
+                T-4 prerequisite — see T-33.
   T-4   extdeps/languages/{rust,python,go,cpp,typescript}.dag
-        [needs T-3, P1-KEYSTONE, T-29, T-30, T-25-core — see T-4]
+        [needs T-3, P1-KEYSTONE, T-29, T-30, T-25-core, T-33 — see T-4]
 ```
 
 ### Parallel fill — schedule the instant deps clear
@@ -155,10 +161,13 @@ Test + bootstrap substrate (schedule early — every later task benefits):
         job selection — the shell bridge dissolves once both land.
 
 Interpreter + lens dimensions (each needs T-9):
-  T-22  compiler/05_eval.dag             [needs T-9]
+  T-22  compiler/05_eval.dag             [needs T-9, T-34]
         The interpreter — THE PRIMARY execution path (THESIS:225).
         Sibling of emit (same InferredTree input). workflow/bootstrap.dag
         + TestClaim eval + lens dry-run all compose over it.
+        T-34 added 2026-05-20 (Ratified Q1) — eval(InferredTree, HostModel,
+        Inputs) takes the HostModel parameter; eval cannot be authored
+        before the host-semantics carrier exists.
   T-12  lens/complexity.dag + lens/cost.dag      [needs T-9]
   T-13  lens/{parallelism,effect,ownership,idempotency}.dag   [needs T-9]
   T-17  lens/synthesis.dag + std/report.dag  (cross-algorithm complexity, C7;
@@ -293,7 +302,9 @@ flat — dispatch in waves):
 **File**: 5 files in `src/v4/extdeps/languages/` (operator-ratified 2026-05-15: cpp + typescript added; cpp subsumes C subset; Go retained)
 **Why bundled**: identical structural shape per language; the SHAPE is the work. Each file declares the language MODEL (grammar + types + semantics) — direction-agnostic; emit AND ingest are operations against the same model.
 
-**Dependencies — re-gated by the D2 reversal (operator-ratified 2026-05-17).** T-4 is no longer a schedule-anytime Phase-1 leaf: `[needs T-3, P1-KEYSTONE, T-29, T-30, T-25-core]`. The old alias model needed almost nothing — a bare alias reads no facts. Fact-bundle modeling needs T-3's shared-fact vocabulary (signedness/representation/numeric stack), the `P1-KEYSTONE` modeling-discipline rubric (the doc against which every bundle is authored and reviewed), the `T-30` structural fact-density / hollow-alias gate (the per-language rework does not run under convention-tier-only enforcement — see T-30), `T-25-core` (the refinement substrate — a language fact-bundle that grounds a refinement-bearing carrier needs the base-type + fail-closed-validation shape), and — for the cpp slice — the T-29 C++ ABI / target data-model. T-4 sits on the `{P1-KEYSTONE, T-30, T-29, T-25-core} → T-4 → T-9` side branch — its four feeders are watch items, not slack-having parallel fill; see the execution graph. The D2 reversal *changing this dependency set* is the single most consequential planning edit of the reseed.
+**Dependencies — re-gated by the D2 reversal (operator-ratified 2026-05-17) + Ratified Q1 (operator-ratified 2026-05-20).** T-4 is no longer a schedule-anytime Phase-1 leaf: `[needs T-3, P1-KEYSTONE, T-29, T-30, T-25-core, T-33]`. The old alias model needed almost nothing — a bare alias reads no facts. Fact-bundle modeling needs T-3's shared-fact vocabulary (signedness/representation/numeric stack), the `P1-KEYSTONE` modeling-discipline rubric (the doc against which every bundle is authored and reviewed), the `T-30` structural fact-density / hollow-alias gate (the per-language rework does not run under convention-tier-only enforcement — see T-30), `T-25-core` (the refinement substrate — a language fact-bundle that grounds a refinement-bearing carrier needs the base-type + fail-closed-validation shape), `T-33` (the `std/model_core.dag` shared substrate that LanguageModel extends per Ratified Q1 — primitives + algebra inhabitance + laws ground against ModelCore, not re-declared per-language), and — for the cpp slice — the T-29 C++ ABI / target data-model. T-4 sits on the `{P1-KEYSTONE, T-30, T-29, T-25-core, T-33} → T-4 → T-9` side branch — its five feeders are watch items, not slack-having parallel fill; see the execution graph. The D2 reversal *changing this dependency set* is the single most consequential planning edit of the reseed; T-33 is the 2026-05-20 Q1 addition.
+
+**Note on T-33 edge scope.** Adding T-33 to `[needs …]` is a graph-edge update — it records that LanguageModel cannot be authored before ModelCore exists. It does **not** restructure the T-4 fact-bundle authoring contract (the body text above) to be expressed in terms of "LanguageModel extends ModelCore". That re-expression is its own commit train, after T-33 lands.
 
 **Authoring contract (operator-ratified 2026-05-15; D2 bullet superseded 2026-05-17):**
 - **Model the SPECIFICATION, not libraries (L-2).** Model the versioned upstream spec (Rust Reference, ECMAScript/TS Handbook, IEEE 1364, …) — the anchor IS that spec. Do NOT model std/crates/packages: a library is just a program in the modeled language = `Node`. Modeling libraries is infinite, non-general, the wrong layer.
