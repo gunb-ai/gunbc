@@ -17,6 +17,7 @@ import v4.std.dependency {
   TopologicalPlan
 }
 import v4.std.node { Hash, Path, Symbol }
+import v4.std.pipeline { CarrierKind }
 import v4.std.witness { Witness }
 
 
@@ -115,7 +116,7 @@ type AffectedSet {
 type Projection {
   output_artifact_kind: ArtifactKind
   name: Symbol
-  input_carrier: Symbol
+  input_carrier: CarrierKind
   depends_on: List<DependencySubject>
   algebra_ref: Symbol
 }
