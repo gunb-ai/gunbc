@@ -1,7 +1,8 @@
 // src/v4/std/find_witness.dag
 // Scope: unified candidate-enumeration-and-check primitive (Pass B unification).
 // Anchor: docs/design-v4-compiler-homomorphism.md — find_witness primitive row; Practice 11.
-// Owns: CandidateSet, PreservationPredicate, FindWitnessResult, MultiplicityPolicy, find_witness, verify_witness.
+// Owns: CandidateSet, PreservationPredicate, FindWitnessResult, TargetSelectionPolicy, MultiplicityPolicy,
+//       find_witness, verify_witness.
 // Consumes: std collection, std diagnostic, std node.
 // Status: Wave-2-BC3 modeled; enumeration body scaffold until stage consumers land.
 
@@ -38,11 +39,13 @@ type FindWitnessResult {
   closedness_provenance: Node
 }
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
-// TargetSelectionPolicy concrete variants live in v4.std.coercion; policy slot is Node until
-// cross-module type import is available without cycle (coercion imports find_witness).
+type TargetSelectionPolicy
+  = TargetDeclaredPriority { priority: Node }
+  | UserSelected { selection: Node }
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type MultiplicityPolicy
   = UniqueOnly
-  | TargetSelection { policy: Node }
+  | TargetSelection { policy: TargetSelectionPolicy }
 fn find_witness_no_candidate_diagnostic(source_facts: Node) -> Diagnostic {
   Diagnostic {
     reason: find_witness_reason_no_candidate,

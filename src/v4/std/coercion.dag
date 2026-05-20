@@ -1,7 +1,7 @@
 // src/v4/std/coercion.dag
 // Scope: target coercion fold via find_witness + TargetSelection (T-9/T-10 wrapper).
 // Anchor: design-v4-compiler-homomorphism.md Ratified Q14; TASKS.md T-9 line 418; Practice 11.
-// Owns: CoercionCandidateSet, TargetSelectionPolicy, CoercionQuality, CoercionMismatchKind,
+// Owns: CoercionCandidateSet, CoercionQuality, CoercionMismatchKind,
 //       CoercionResult, CoercionWitness, coercion_fold, declared_candidates_for_algebra.
 // Consumes: std find_witness, std constraints, std diagnostic, std witness, std node.
 // Status: Wave-2-BC3 modeled; coercion_fold delegates to find_witness.
@@ -25,6 +25,7 @@ import v4.std.find_witness {
   CandidateSet,
   PreservationPredicate,
   TargetSelection,
+  TargetSelectionPolicy,
   find_witness,
   preservation_rule_exact_structural_equality_zip_fold
 }
@@ -33,10 +34,6 @@ import v4.std.witness { HomomorphismWitness, StructuralPropertyWitness }
 data coercion_property_closed_candidate_set: Symbol = coercion_property_closed_candidate_set
 data homomorphism_rule_exact_structural_equality: Symbol = homomorphism_rule_exact_structural_equality
 data coercion_not_realized: Symbol = coercion_not_realized
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
-type TargetSelectionPolicy
-  = TargetDeclaredPriority { priority: Node }
-  | UserSelected { selection: Node }
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type CoercionQuality
   = Identity
@@ -58,12 +55,6 @@ type CoercionResult {
 }
 type CoercionWitness {
   homomorphism: HomomorphismWitness
-}
-fn target_selection_policy_node(policy: TargetSelectionPolicy) -> Node {
-  match policy {
-    TargetDeclaredPriority { priority: p } => p
-    UserSelected { selection: s } => s
-  }
 }
 fn coercion_not_realized_diagnostic(source: CanonicalGrounding) -> Diagnostic {
   Diagnostic {
@@ -102,9 +93,7 @@ fn coercion_fold(
       algebra: source.node,
       preservation_rule: preservation_rule_exact_structural_equality_zip_fold
     },
-    multiplicity_policy: TargetSelection {
-      policy: target_selection_policy_node(policy: policy)
-    }
+    multiplicity_policy: TargetSelection { policy: policy }
   ) {
     Accepted { value: _, diagnostics: _ } =>
       outcome_rejected(coercion_not_realized_diagnostic(source: source))

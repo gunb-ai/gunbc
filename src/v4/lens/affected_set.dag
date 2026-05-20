@@ -8,7 +8,14 @@ module v4.lens.affected_set
 
 
 import v4.std.collection { List, Map }
-import v4.std.diagnostic {Diagnostic, Outcome, Accepted, None, diagnostics_singleton}
+import v4.std.diagnostic {
+  Diagnostic,
+  NonEmptyDiagnostics,
+  Outcome,
+  Accepted,
+  None,
+  diagnostics_singleton
+}
 import v4.std.node { Diff, Edit, Hash, Node, Path, Symbol }
 import v4.std.witness { Holds, Witness }
 
@@ -80,7 +87,7 @@ type BoundaryExclusion {
 // 🟡 coproduct dissolution — #3153-subsumed.
 type WholeDagFailClosedEvidence
   = WholeDagReason { reason: Symbol }
-  | WholeDagDiagnostic { diagnostic: Diagnostic }
+  | WholeDagDiagnostics { diagnostics: NonEmptyDiagnostics }
 
 
 // 🟡 coproduct dissolution — #3153-subsumed
@@ -271,8 +278,13 @@ fn mark_whole_dag(reason: Symbol) -> ReExecFrontier {
 }
 
 
+fn mark_whole_dag_diagnostics(diagnostics: NonEmptyDiagnostics) -> ReExecFrontier {
+  WholeDagFailClosed { evidence: WholeDagDiagnostics { diagnostics: diagnostics } }
+}
 fn mark_whole_dag_diagnostic(diagnostic: Diagnostic) -> ReExecFrontier {
-  WholeDagFailClosed { evidence: WholeDagDiagnostic { diagnostic: diagnostic } }
+  mark_whole_dag_diagnostics(
+    diagnostics: diagnostics_singleton(d: diagnostic)
+  )
 }
 
 
@@ -395,7 +407,7 @@ fn seed_edit_fold_acc_live(
         Rejected { diagnostics: nds } =>
           AffectedFoldAcc {
             dag: acc.dag,
-            frontier: mark_whole_dag_diagnostic(diagnostic: nds.head)
+            frontier: mark_whole_dag_diagnostics(diagnostics: nds)
           }
       }
     BoundaryUnknown { reason: boundary_reason } =>
@@ -408,7 +420,7 @@ fn seed_edit_fold_acc_live(
         Rejected { diagnostics: nds } =>
           AffectedFoldAcc {
             dag: acc.dag,
-            frontier: mark_whole_dag_diagnostic(diagnostic: nds.head)
+            frontier: mark_whole_dag_diagnostics(diagnostics: nds)
           }
       }
   }
