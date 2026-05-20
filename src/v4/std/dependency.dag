@@ -1,6 +1,6 @@
 // src/v4/std/dependency.dag
 // Scope: P6 dependency graph substrate — domains, edges, witnesses, SCC, topological plan.
-// Owns: DependencySubject, ArtifactDependencyEndpoint, Program/TargetPlan/ArtifactSchedulingReason (sole dependency-cause axis), scheduling/containment edges, ClosedWorldDependencyWitness, IndependenceAttempt, IndependenceClaim, DependencyDiagnostic, TopologicalPlan.
+// Owns: DependencySubject, ArtifactDependencyEndpoint, Program/TargetPlan/ArtifactSchedulingReason (sole dependency-cause axis), ClosedWorldScope, scheduling/containment edges, ClosedWorldDependencyWitness, IndependenceAttempt, IndependenceClaim, DependencyDiagnostic, TopologicalPlan.
 // Consumes: v4.std.collection, v4.std.node, v4.std.witness.
 // Status: Wave-1 Worker A strict substrate.
 
@@ -117,123 +117,127 @@ type DependencyGraph {
 }
 
 
-type DependencyCompletenessReceipt {
+type ClosedWorldScope {
   region: Symbol
   graph_revision: Hash
   checker: Symbol
 }
 
 
-type ProgramSemanticFactsComplete {
-  receipt: DependencyCompletenessReceipt
-}
-
-
-type EffectFactsComplete {
-  receipt: DependencyCompletenessReceipt
-}
-
-
-type ResourceFactsComplete {
-  receipt: DependencyCompletenessReceipt
-}
-
-
-type PlacementFactsComplete {
-  receipt: DependencyCompletenessReceipt
-}
-
-
-type TransferFactsComplete {
-  receipt: DependencyCompletenessReceipt
-}
-
-
-type BarrierFactsComplete {
-  receipt: DependencyCompletenessReceipt
-}
-
-
-type ArtifactGraphFactsComplete {
-  receipt: DependencyCompletenessReceipt
-}
-
-
-type ArtifactProvenanceFactsComplete {
-  receipt: DependencyCompletenessReceipt
-}
+type ProgramSemanticFactsComplete {}
+type EffectFactsComplete {}
+type ResourceFactsComplete {}
 
 
 type ProgramCompletenessFacts {
+  scope: ClosedWorldScope
   program_semantic: ProgramSemanticFactsComplete
   effect: EffectFactsComplete
   resource: ResourceFactsComplete
 }
 
 
-type ProgramClosedWorldEvidence {
-  region: Symbol
-  graph_revision: Hash
-  completeness: ProgramCompletenessFacts
-  covered_paths: List<Path>
+type ProgramClosedWorldCoverage {
+  paths: List<Path>
 }
 
 
-type ProgramIndependenceClaim {
-  witness: Witness<ProgramClosedWorldEvidence>
+type ProgramClosedWorldEvidence {
+  completeness: ProgramCompletenessFacts
+  coverage: ProgramClosedWorldCoverage
+}
+
+
+type ProgramIndependenceEvidence {
+  completeness: ProgramCompletenessFacts
   left: Path
   right: Path
 }
 
 
+type ProgramIndependenceClaim {
+  witness: Witness<ProgramIndependenceEvidence>
+}
+
+
+type PlacementFactsComplete {}
+type TransferFactsComplete {}
+type BarrierFactsComplete {}
+
+
 type TargetPlanCompletenessFacts {
+  scope: ClosedWorldScope
   placement: PlacementFactsComplete
   transfer: TransferFactsComplete
   barrier: BarrierFactsComplete
 }
 
 
-type TargetPlanClosedWorldEvidence {
-  region: Symbol
-  graph_revision: Hash
-  completeness: TargetPlanCompletenessFacts
-  covered_paths: List<Path>
+type TargetPlanClosedWorldCoverage {
+  paths: List<Path>
 }
 
 
-type TargetPlanIndependenceClaim {
-  witness: Witness<TargetPlanClosedWorldEvidence>
+type TargetPlanClosedWorldEvidence {
+  completeness: TargetPlanCompletenessFacts
+  coverage: TargetPlanClosedWorldCoverage
+}
+
+
+type TargetPlanIndependenceEvidence {
+  completeness: TargetPlanCompletenessFacts
   left: Path
   right: Path
 }
 
 
+type TargetPlanIndependenceClaim {
+  witness: Witness<TargetPlanIndependenceEvidence>
+}
+
+
+type ArtifactGraphFactsComplete {}
+type ArtifactProvenanceFactsComplete {}
+
+
 type ArtifactCompletenessFacts {
+  scope: ClosedWorldScope
   artifact_graph: ArtifactGraphFactsComplete
   artifact_provenance: ArtifactProvenanceFactsComplete
 }
 
 
+type ArtifactClosedWorldCoverage {
+  endpoints: List<ArtifactDependencyEndpoint>
+}
+
+
 type ArtifactClosedWorldEvidence {
-  region: Symbol
-  graph_revision: Hash
   completeness: ArtifactCompletenessFacts
-  covered_endpoints: List<ArtifactDependencyEndpoint>
+  coverage: ArtifactClosedWorldCoverage
+}
+
+
+type ArtifactIndependenceEvidence {
+  completeness: ArtifactCompletenessFacts
+  left: ArtifactDependencyEndpoint
+  right: ArtifactDependencyEndpoint
 }
 
 
 type ArtifactIndependenceClaim {
-  witness: Witness<ArtifactClosedWorldEvidence>
-  left: ArtifactDependencyEndpoint
-  right: ArtifactDependencyEndpoint
+  witness: Witness<ArtifactIndependenceEvidence>
 }
 
 
 // 🟢 coproduct dissolution
 type ClosedWorldDependencyWitness
   = Program { evidence: ProgramClosedWorldEvidence }
+  | ProgramIndependence { evidence: ProgramIndependenceEvidence }
   | TargetPlan { evidence: TargetPlanClosedWorldEvidence }
+  | TargetPlanIndependence { evidence: TargetPlanIndependenceEvidence }
   | Artifact { evidence: ArtifactClosedWorldEvidence }
+  | ArtifactIndependence { evidence: ArtifactIndependenceEvidence }
 
 
 // 🟢 coproduct dissolution
