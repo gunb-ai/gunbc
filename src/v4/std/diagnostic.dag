@@ -1,16 +1,17 @@
 // src/v4/std/diagnostic.dag
 // Scope: fail-closed diagnostic schema.
-// Anchor: THESIS.md "show the correct code" + INVARIANTS P3.
-// Owns: Diagnostic, Outcome, Locus, Extent, Correction, NoCorrectionReason.
-// Consumes: std node.
-// Status: T-3 modeled.
+// Anchor: THESIS.md "show the correct code" + INVARIANTS P3; design-v4-compiler-homomorphism.md Ratified Q11.
+// Owns: Diagnostic, Outcome, Diagnostics, NonEmptyDiagnostics, StageDiagnosticPolicy, Locus, Extent, Correction, NoCorrectionReason.
+// Consumes: std node, std collection.
+// Status: T-3 modeled; Outcome shape migrated (Pass B / Wave-2-BC3).
 
 
 module v4.std.diagnostic
 
 
+import v4.std.collection { List }
 import v4.std.node { Node }
-// 🟡 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type Extent
   = WholeFile
   | ByteRange { start: Int, end: Int }
@@ -33,7 +34,31 @@ type Diagnostic {
   at: Locus
   correction: Correction
 }
+type NonEmptyDiagnostics {
+  head: Diagnostic
+  tail: List<Diagnostic>
+}
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type Diagnostics
+  = None
+  | Some { diagnostics: NonEmptyDiagnostics }
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type Outcome<T>
-  = Produced { value: T }
-  | Rejected { diagnostic: Diagnostic }
+  = Accepted { value: T, diagnostics: Diagnostics }
+  | Rejected { diagnostics: NonEmptyDiagnostics }
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type DiagnosticAccumulation
+  = Accumulate
+  | ShortCircuit
+type StageDiagnosticPolicy {
+  accumulation: DiagnosticAccumulation
+}
+fn diagnostics_singleton(d: Diagnostic) -> NonEmptyDiagnostics {
+  NonEmptyDiagnostics { head: d, tail: [] }
+}
+fn outcome_accepted<T>(value: T) -> Outcome<T> {
+  Accepted { value: value, diagnostics: None }
+}
+fn outcome_rejected<T>(d: Diagnostic) -> Outcome<T> {
+  Rejected { diagnostics: diagnostics_singleton(d: d) }
+}
