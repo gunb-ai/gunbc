@@ -20,31 +20,31 @@ import v4.std.node { Hash, Path, Symbol }
 import v4.std.witness { Witness }
 
 
-// 🟡 feature:projection-identity-ref consumer:v4.std.regeneration::Projection dissolve-on: ProjectionRef in AffectedSet.projections (bounds: projections field; owner: Wave-2 P8 after #3439).
+// 🟡 feature:projection-identity-ref consumer:v4.std.regeneration::Projection dissolve-on: Projection rows replace Symbol in AffectedSet.projections (bounds: projections field; owner: P8-typed-carrier PR post-#3439 per homomorphism.md §568-578; prerequisite to src/v4/TASKS.md T-21 §847).
 type ProjectionIdentityRef = Symbol
 
 
-// 🟡 feature:recompute-cache-key consumer:v4.std.regeneration::RecomputePlan dissolve-on: CacheKey in RecomputePlan.cached (bounds: cached field; owner: Wave-2 P8 after #3439).
+// 🟡 feature:recompute-cache-key consumer:v4.std.regeneration::RecomputePlan dissolve-on: CacheKey carrier in RecomputePlan.cached (bounds: cached field; owner: P8-typed-carrier PR post-#3439 per homomorphism.md §568-578; prerequisite to src/v4/TASKS.md T-21 §847).
 type CacheKey = Symbol
 
 
-// 🟡 feature:recompute-invalidation-key consumer:v4.std.regeneration::RecomputePlan dissolve-on: InvalidationKey in RecomputePlan.invalidated (bounds: invalidated field; owner: Wave-2 P8 after #3439).
+// 🟡 feature:recompute-invalidation-key consumer:v4.std.regeneration::RecomputePlan dissolve-on: InvalidationKey carrier in RecomputePlan.invalidated (bounds: invalidated field; owner: P8-typed-carrier PR post-#3439 per homomorphism.md §568-578; prerequisite to src/v4/TASKS.md T-21 §847).
 type InvalidationKey = Symbol
 
 
-// 🟡 feature:lens-contract-ref consumer:v4.lens::LensContract dissolve-on: LensContract authority (bounds: InvalidationFromLensContract; owner: Wave-2 P8 after #3439).
+// 🟡 feature:lens-contract-ref consumer:v4.lens::LensContract dissolve-on: LensContract authority in InvalidationFromLensContract (bounds: lens field; owner: src/v4/TASKS.md T-21 §847 hoist PR).
 type LensContractRef = Symbol
 
 
-// 🟡 feature:pipeline-stage-name consumer:v4.std.pipeline::PipelineStage dissolve-on: PipelineStage.name authority (bounds: PipelineStageContractChanged; owner: Wave-2 P8 after #3439).
+// 🟡 feature:pipeline-stage-name consumer:v4.std.pipeline::PipelineStage dissolve-on: PipelineStage.name in PipelineStageContractChanged (bounds: stage field; owner: src/v4/std/pipeline.dag semantic_compile_pipeline stage rows).
 type PipelineStageName = Symbol
 
 
-// 🟡 feature:stage0-contract-ref consumer:v4.std.regeneration::Stage0Contract dissolve-on: Stage0Contract carrier (bounds: Stage0ContractChanged; owner: Wave-2 P8 after #3439).
+// 🟡 feature:stage0-contract-ref consumer:v4.std.regeneration::Stage0Contract dissolve-on: Stage0Contract carrier in Stage0ContractChanged (bounds: contract field; owner: docs/design-v4-compiler-homomorphism.md §934 stage0 regeneration contract PR).
 type Stage0ContractRef = Symbol
 
 
-// 🟡 feature:core-package-schema-ref consumer:v4.std.regeneration::CorePackageSchema dissolve-on: CorePackageSchema carrier (bounds: CorePackageSchemaChanged; owner: Wave-2 P8 after #3439).
+// 🟡 feature:core-package-schema-ref consumer:v4.std.regeneration::CorePackageSchema dissolve-on: CorePackageSchema carrier in CorePackageSchemaChanged (bounds: schema field; owner: P8-typed-carrier PR post-#3439 per homomorphism.md §568-578 CorePackage row).
 type CorePackageSchemaRef = Symbol
 
 
@@ -121,7 +121,7 @@ type Projection {
 }
 
 
-// 🟡 feature:witness-ref-substrate consumer:v4.std.witness::WitnessRef dissolve-on: WitnessRef in v4.std.witness (bounds: Artifact.witness_ref; owner: src/v4/TASKS.md T-3 + Wave-2 after #3439).
+// 🟡 feature:witness-ref-substrate consumer:v4.std.witness::WitnessRef dissolve-on: WitnessRef carrier in v4.std.witness (bounds: Artifact.witness_ref; owner: src/v4/TASKS.md T-3 §235 witness.dag).
 type Artifact {
   kind: ArtifactKind
   identity: Symbol

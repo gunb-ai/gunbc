@@ -12,6 +12,7 @@ import v4.std.collection { List }
 import v4.std.node { Path, Symbol }
 
 
+// 🟢 coproduct dissolution
 type DependencyDomain
   = Program
   | TargetPlan
@@ -45,6 +46,7 @@ type ArtifactDependencyKind
   | PromotionDependsOn
 
 
+// 🟢 coproduct dissolution
 type ArtifactDependencyEndpoint
   = ArtifactSubject { artifact: Symbol }
   | ProjectionSubject { projection: Symbol }
