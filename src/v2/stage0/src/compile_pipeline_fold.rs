@@ -18,8 +18,9 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use super::v2_compiler_compile::{
-    complexity_diagnostics, emit_from_artifact_plan, extract_func_entries, extract_ownership_proofs,
-    front_end_sources, ownership_diagnostics, EmitResult, FrontendResult, PipelineResult, SourceFile,
+    build_recursion_context, complexity_diagnostics, emit_from_artifact_plan, extract_func_entries,
+    extract_ownership_proofs, front_end_sources, ownership_diagnostics, FrontendResult,
+    PipelineResult, ResolvedPipelineResult, SourceFile,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -204,7 +205,7 @@ fn apply_pipeline_stage(
             None => pipeline_state_mark_halted(state),
             Some(typed) => {
                 let func_entries = extract_func_entries(typed.clone());
-                let recursion_ctx = super::v2_compiler_compile::build_recursion_context(typed.clone());
+                let recursion_ctx = build_recursion_context(typed.clone());
                 let complexity = build_complexity_report(
                     &func_entries,
                     recursion_ctx,
@@ -352,16 +353,6 @@ pub fn compile_pipeline_state_to_result(state: CompilePipelineState) -> Rc<Pipel
         artifact_plan: state.artifact_plan.clone(),
         newline_indices: state.newline_indices.clone(),
     })
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct ResolvedPipelineResult {
-    pub graph: Option<Rc<ResolvedGraph>>,
-    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
-    pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    pub complexity: Rc<ComplexityReport>,
-    pub ownership: Rc<Vec<Rc<OwnershipProof>>>,
-    pub newline_indices: Rc<Vec<Rc<NewlineIndex>>>,
 }
 
 pub fn compile_sources_via_fold(
