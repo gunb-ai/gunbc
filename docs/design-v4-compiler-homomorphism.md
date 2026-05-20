@@ -58,11 +58,13 @@ This doc operationalizes that claim.
 The v4 compiler is:
 
 1. **One structural primitive** — `fold_node` (catamorphism over Node).
-2. **Plus five substrate operations** that aren't `fold_node` but are needed:
+2. **Plus seven substrate operations** that aren't `fold_node` but are needed:
    - A **diagnostic carrier** (`Diagnostic + Locus`, fail-closed reporting).
-   - **Grammar-as-bidirectional-data** — one declarative grammar model that drives both parsing and serialization. No separate parser and printer.
+   - **Grammar-as-bidirectional-data** — one declarative grammar model that drives both parsing and serialization. Default law: `parse_target(serialize_target(node)) == node`.
    - **`traverse`** over the diagnostic-effect carrier (a Node fold/traverse that short-circuits or accumulates over `Outcome<T>` without re-derived match ladders).
-   - **The coercion fold** — a mechanical zip-fold over two canonical-Node groundings that checks structure preservation. Per `src/v4/TASKS.md` T-9, this is **the** homomorphism-derivation primitive — decidable by construction, never a search.
+   - **`solve_constraints`** — declared constraint-solving substrate; produces the *canonical* source grounding consumed by the coercion fold. Distinct from the coercion fold.
+   - **The coercion fold** — a mechanical zip-fold over two canonical-Node groundings that checks **exact** structure preservation. Per `src/v4/TASKS.md` T-9, decidable by construction, never a search.
+   - **`LawfulRewriteWitness`** (P7) — witness primitive for structure-changing lowerings (parallel-map, tree-reduce, CUDA, MapReduce). Rewrites are declared by target/runtime models with precondition algebra laws; rewritten plan groundings then go through the coercion fold's exact check.
    - **Typed dependency graph + topological/SCC machinery** — per P6, dependencies are first-class typed edges carried alongside containment.
 3. **Plus three irreducible boundary actions** — read input text, write output text (or execute), report diagnostics. (The earlier "project" boundary-action mention from the original draft is removed — it was an artifact of the rescinded lens-as-compile-mode framing.)
 
@@ -127,8 +129,8 @@ Lens enforcement is **orthogonal to the emission/eval homomorphism.** The compil
 2. **Lenses are folds over `InferredTree`** sharing the `fold_node` primitive (Practice 10 row 1).
 3. **Lens outputs are side-channel** — `DimensionFact` / diagnostics. Translate/eval do NOT depend on lens output. Lens output does NOT feed downstream stages of the homomorphism.
 4. **Built-in and user-defined lenses share one algebra contract.** The compiler core does NOT import or name any specific lens. `04_infer.dag`'s current `import v4.lens.cost { SymbolicCost }` violates this and needs to be fixed.
-5. **Multi-lens execution is dependency-managed.** Multiple lenses over the same `InferredTree` share traversal — no re-walks. Lens-to-lens dependencies (e.g., complexity reading cost) are expressed in the substrate, not re-derived per call. See Open Q6 for the substrate primitive.
-6. **"By construction" guarantee preserved at the contract layer.** Some project-mandatory wrapper (`validate_then_compile` or equivalent) runs lens validation BEFORE emit/eval. Bare `compile(text, input_lang, mode)` is the narrow advanced surface; the wrapper is the everyday entry point.
+5. **Multi-lens execution is dependency-managed.** Lenses with no interdependencies are coalesced into a shared traversal. Lenses with dependencies (e.g., complexity reads cost) are scheduled by a **lens-dependency DAG**; each stage coalesces all lenses whose inputs are available. No lens may trigger an ad hoc unmanaged re-walk. See Open Q6 for the substrate primitive.
+6. **"By construction" guarantee preserved at the contract layer.** Lens output does not feed the homomorphism and bare compile-core does not consume lens output. **Project-policy wrappers MAY block terminal emit/eval based on lens diagnostics** (the `validate_then_compile`-style contract). Bare `compile(text, input_lang, mode)` is the narrow advanced surface; the wrapper is the everyday entry point.
 
 **Surface choice (B vs C) is not architecturally load-bearing.** Given commitments 1–6, two implementation surfaces are equivalent:
 - **B-style:** lenses fold inside `compile(text, input_lang, lenses, mode)`.
@@ -159,7 +161,7 @@ Compiler stages are expressed as folds/traversals over Node, but their carriers 
 
 Practical implications:
 - Resolve's algebra is not naively bottom-up. The carrier is roughly `Node → Env → Outcome<BoundNode>` — at each Node the fold returns a function that takes inherited scope context. This is an attribute-grammar-style inherited attribute, expressed through the carrier's higher-orderness.
-- Ground (infer) may produce a constraint set per Node, then a separate `solve : ConstraintSet → Outcome<InferredTree>` step. The solver is substrate machinery (coercion fold) — not ad hoc compiler code.
+- Ground (infer) may produce a `ConstraintGraph` per Node, then invoke a declared constraint-solving substrate primitive: `solve_constraints : ConstraintGraph → Outcome<InferredTree>`. The solver is **named substrate machinery — distinct from the coercion fold** — and must produce checkable witnesses or fail-closed diagnostics. It is not ad hoc compiler code. Its output is the **canonical source grounding** consumed later by the coercion fold during translate.
 - Translate's coercion-fold step is a fold, but its algebra **enumerates the target language model's declared candidate inhabitants and performs a structural-equality zip-fold** against the source's canonical grounding. The candidate set is closed (declared in `target_lang.dag`) and the structural check is decidable by construction — this is **deterministic candidate enumeration**, not a heuristic search.
 
 The discipline still holds (everything is a substrate-primitive operation), but "fold" doesn't mean "pure synthesized bottom-up." Inherited context, effects, constraints, and fixed-point analyses are first-class — they're just carried by the algebra's signature, not by ad-hoc walkers.
@@ -201,6 +203,54 @@ The distinction matters: **semantic dependency facts are compiler-core; scheduli
 - Core: "x must be bound before it's used," "write A must happen before read B," "this function depends on this imported module."
 - Downstream (lens / target-policy / runtime): "fuse these two maps," "shard this reduce 32 ways," "place this on GPU."
 
+**Edge orientation convention.** All dependency edges use one orientation: `A → B` means **A is required before B** — A must be available, valid, or scheduled before B may be resolved, checked, or executed. Examples:
+- `Decl → AtomUse` (BindsTo: declaration must exist before reference resolves).
+- `ProducerValue → Consumer` (DataDependsOn).
+- `ImportedModule → Importer` (ModuleDependsOn).
+- `PriorEffect → LaterEffect` (EffectDependsOn / BarrierBefore).
+- `ParentContainer → ChildContent` (Contains, when scheduling matters).
+
+For edges that are naturally references (Atom binding), the edge payload may carry referrer/referent role tags, but the **scheduling orientation remains `required_before → dependent_after`**.
+
+**Conservative-by-default rule.** Absence of an edge is evidence of independence **only under a `ClosedWorldDependencyWitness`** for the relevant region. Unknown effect or resource facts conservatively introduce ordering constraints or produce fail-closed diagnostics. Parallelism is permitted only when dependency classification is complete; uncertainty defaults to dependent, not independent. This matters for CUDA / MapReduce: missing `EffectDependsOn` or `ResourceDependsOn` edges from incomplete analysis must NOT be inferred as independence.
+
+**Source-core vs target-plan dependency tiers.** Not every dependency kind belongs on `InferredTree`:
+
+| Tier | Kinds | When introduced |
+|---|---|---|
+| **Source / core** | `Contains`, `BindsTo`, `TypeDependsOn`, `DataDependsOn`, `EffectDependsOn`, `ResourceDependsOn`, `ModuleDependsOn` | parse / resolve / ground — semantic facts about the program |
+| **TargetPlan / Runtime** | `PlacementConstraint`, `TransferDependsOn`, `BarrierBefore` (for synthetic sync points), shard / partition / device-binding edges | introduced during translate / target lowering — *not* part of source semantics |
+
+`PlacementDependsOn` from the initial taxonomy is a **TargetPlan-tier concept** unless the source language explicitly declares placement (rare). Most placement decisions belong to target / runtime policy, not source `InferredTree`.
+
+### P7 — Lawful rewrite witnesses for structure-changing lowerings
+
+> **Ratified 2026-05-20** (reviewer-proposed, operator-direct).
+
+The coercion fold (P6 / primitive set) checks **exact structural preservation** between two canonical groundings — it is a mechanical zip-fold, decidable by construction, NOT heuristic. But some legitimate target lowerings change structure:
+
+- Sequential `map` → parallel `map`.
+- Left fold → tree reduce.
+- CPU loop → CUDA kernel launch + device transfer + barrier + copy-back.
+- Sequential reduce → MapReduce shuffle + per-key reduce.
+- Iterator chain → fused single-pass loop.
+
+These are valid under the algebra's laws (map's per-element independence, reduce's associativity, etc.) but they are NOT exact structural equality.
+
+**Resolution:** structure-changing lowerings require a separate **`LawfulRewriteWitness`** primitive. The pipeline becomes:
+
+```
+canonical source grounding
+  ── LawfulRewriteWitness (declared by target/runtime model) ──>
+target-plan grounding
+  ── coercion fold (exact structural zip-fold) ──>
+target Node tree
+```
+
+The `LawfulRewriteWitness` is the primitive that proves a structure-changing rewrite preserves semantics under declared algebraic laws. Each rewrite is **declared by the target/runtime model** (e.g., `extdeps/runtimes/cuda.dag` declares "sequential map over Vec<T> may rewrite to CUDA kernel iff per-element function is pure + has no cross-element data deps"). Searches and rewrites remain **closed and decidable** — candidates are declared, every rewrite produces a checkable witness, none is heuristic.
+
+This preserves the "coercion fold is not heuristic search" principle while leaving room for MapReduce / CUDA / parallel-map / fusion lowerings. Without this distinction, implementation workers would have to choose between (a) cementing CUDA/MapReduce into the compiler (Practice 10 row 3 failure) or (b) extending the coercion fold to do heuristic search (T-9 D2-reversal violation). Both are wrong; P7 names the third path.
+
 ---
 
 ## The primitive set — the things the compiler IS
@@ -209,12 +259,14 @@ The distinction matters: **semantic dependency facts are compiler-core; scheduli
 |---|---|---|
 | **`fold_node`** (catamorphism over Node) | Generic structural recursion over Node trees; anti-walker-dissolution substrate (Practice 10 row 1 of the modeling-discipline rubric). Every "pass" the compiler runs is `fold_node(tree, algebra)`. | **Landed** in `src/v4/std/node.dag` line 47, with the `NodeFold<R>` algebra carrier type. |
 | **`traverse`** over `Outcome<T>` | Effect threading. When a fold's algebra produces `Outcome<T>` (success-or-diagnostic), `traverse` propagates failures and short-circuits without inline `match` ladders (Practice 10 row 2 — "traverse dissolution"). | **Uncertain.** Not explicitly visible in `std/`; may be implicit in `fold_node` with short-circuiting algebras. See Open Q4. |
-| **Grammar-as-bidirectional-data** | One declarative grammar model in `extdeps/languages/X.dag` serves both parsing (text → Node) and serialization (Node → text). No separate parser and printer; the grammar production data IS the relation, used in both directions (Practice 8 — "No string-templating"). | **Partially landed** — `Grammar / ModeledGrammar / VoidGrammar` declared in `src/v4/compiler/02_parse.dag`; consumed by `extdeps/languages/dag.dag`. Inverse-grammar walk (the serialize direction) is scaffolded but not implemented. |
-| **The coercion fold** | THE homomorphism-derivation primitive. Given two **canonical Node groundings** (a source Node's grounding into its algebra-instance, and the target language's declared inhabitants), a **mechanical zip-fold** (catamorphism) walks both in parallel and checks structure preservation. Decidable by construction over the closed declared candidate set; empty candidate ⇒ Diagnostic (fail-closed), never a fabricated coercion. | **Not yet implemented.** Substrate underlying it (canonical-form fold via `node.dag`'s B1-CANON contract, `content_hash = merkle_fold ∘ canonical`) exists. Ratified per `src/v4/TASKS.md` T-9 (line 418, D2-reversal 2026-05-17). Earlier project text (THESIS line 181, "structural algebra-homomorphism search") was superseded by this ratification; the doc-level reconcile is pending. |
+| **Grammar-as-bidirectional-data** | One declarative grammar model in `extdeps/languages/X.dag` serves both parsing (text → Node) and serialization (Node → text). No separate parser and printer; the grammar production data IS the relation (Practice 8 — "No string-templating"). **Default law:** `parse_target(serialize_target(target_node)) == target_node` — serialization may canonicalize whitespace, comments, optional delimiters, and equivalent syntactic forms; full source-text round-tripping (Q12c) is an opt-in trivia-preserving tool mode, NOT the compiler default. | **Partially landed** — `Grammar / ModeledGrammar / VoidGrammar` declared in `src/v4/compiler/02_parse.dag`; consumed by `extdeps/languages/dag.dag`. Inverse-grammar walk (the serialize direction) is scaffolded but not implemented. |
+| **`solve_constraints`** | Declared constraint-solving substrate primitive. Consumed by ground / infer. Takes a `ConstraintGraph` produced by the grounding fold; produces a `Outcome<InferredTree>` containing the **canonical source grounding** (unique by ratified Q-canonical invariant — see Ground stage). Must produce checkable witnesses or fail-closed diagnostics. **Distinct from the coercion fold** — solver is the upstream machinery; coercion fold is the downstream exact-preservation check. | **Not yet declared.** Likely lands in `std/inference.dag` or extension of `std/cardinality.dag`. |
+| **The coercion fold** | THE homomorphism-derivation primitive. Given two **canonical Node groundings** (the canonical source grounding produced by `solve_constraints`, and the target language's closed declared candidate inhabitants), a **mechanical zip-fold** (catamorphism) walks both in parallel and checks structure preservation. Decidable by construction over the closed declared candidate set; empty candidate ⇒ Diagnostic (fail-closed), never a fabricated coercion. **Strictly exact**: structure-changing rewrites (parallel-map / tree-reduce / CUDA / MapReduce lowerings) are NOT performed by the coercion fold — those go through the `LawfulRewriteWitness` primitive first (P7). | **Not yet implemented.** Substrate underlying it (canonical-form fold via `node.dag`'s B1-CANON contract, `content_hash = merkle_fold ∘ canonical`) exists. Ratified per `src/v4/TASKS.md` T-9 (line 418, D2-reversal 2026-05-17). Earlier project text (THESIS line 181, "structural algebra-homomorphism search") was superseded by this ratification; the doc-level reconcile is pending. |
+| **`LawfulRewriteWitness`** | Per P7. Witness primitive for structure-changing target lowerings — sequential→parallel map, left-fold→tree-reduce, CPU loop→CUDA kernel, sequential reduce→MapReduce. Each rewrite is declared by the target/runtime model (e.g., `extdeps/runtimes/cuda.dag`) with its precondition algebra laws (per-element independence, associativity, etc.). The witness composes with the coercion fold: rewrite first, then exact-zip-fold check on the rewritten plan grounding. Keeps "not heuristic search" while supporting structure-changing lowerings. | **Not yet declared.** Substrate-design work; likely lands in `std/rewrite.dag` or similar. Out of scope for the initial single-target compiler but architecturally enabled. |
 | **Diagnostic + Locus carrier** | Fail-closed reporting (Practice 1). Every failure path goes through a structured `Diagnostic` with source `Locus`. | **Landed** in `src/v4/std/diagnostic.dag`. |
 | **Typed dependency graph + topological/SCC machinery** | Per P6, dependencies are first-class typed edges (not incidental containment). The substrate declares `DependencyEdge`, `DependencyKind`, `DependencyGraph`, `AcyclicityWitness`, SCC condensation, topological-order derivation. Carriers (post-resolve onward) carry the graph alongside the containment tree. | **Not yet declared.** Probably lands in `src/v4/std/dependency.dag`. T-21's `affected_set.dag` is the incremental-rebuild specialization — built on the same substrate. |
 
-That is the full compiler-primitive surface. Six things. Every stage, every pass, every translation, every eval, every glue derivation is structurally `fold_node + traverse + (one or more of the other four) + an algebra-as-data`.
+That is the full compiler-primitive surface. **Eight things.** Every stage, every pass, every translation, every eval, every glue derivation is structurally `fold_node + traverse + (one or more of the other six) + an algebra-as-data`.
 
 **Why this terminology shift matters (coercion fold vs. "search"):** an earlier framing called the homomorphism step an "algebra-homomorphism search" or "inhabitance search," which suggests an open-ended search algorithm with potentially intractable complexity. The ratified position is the opposite: the candidate set is **closed and declared** (by the target language model), the source's grounding is **canonical and unique**, and the check is a **mechanical structural zip** — closer to type unification than to logic-programming search. If you find yourself reasoning about it as a search, that's a signal you're solving the wrong problem.
 
@@ -236,8 +288,8 @@ Each stage is a fold/traverse over Node (potentially with a higher-order, effect
 | `parse(input_lang)` | Node tree in input_lang's grammar | `input_lang.dag` (grammar productions) |
 | `normalize` | canonical Node (surface sugar dissolved to substrate primitives) | `input_lang.dag` (sugar dissolutions) — possibly fused with parse, see Open Q3 |
 | `resolve` | bound Node (every Atom → Decl reference) | scope-resolution algebra (likely substrate, may consult input_lang for binding rules) |
-| `ground` | **`InferredTree`** — each Node carries algebra-inhabitance witness + typeshape | substrate's algebra-inhabitance machinery |
-| `translate(target_lang)` | Target Node tree | **derived via the coercion fold** over (`InferredTree`, target_lang's declared inhabitants) |
+| `ground` | **`InferredTree`** — each Node carries algebra-inhabitance witness + typeshape + the P6 semantic dependency graph. **Canonical-grounding invariant:** ground must produce *exactly one* canonical grounding per Node (with witness), OR an ambiguity diagnostic. Translate never receives an ambiguous source grounding. | substrate's `solve_constraints` primitive + algebra-inhabitance machinery |
+| `translate(target_lang)` | Target Node tree | optional `LawfulRewriteWitness` step (per P7, for structure-changing lowerings declared by `target_lang` / target runtime); then **the coercion fold** — exact zip-fold over (rewritten canonical grounding, target_lang's closed declared candidate inhabitants) |
 | `serialize(grammar)` | target source text | target_lang.dag (grammar productions, inverse direction) |
 | `eval(host_model)` | host Value | host_model's interpretation algebra |
 
@@ -424,7 +476,7 @@ Falsification probes (not load-bearing for the initial homomorphism):
 
 - **Glue derivation / omni-stack** — orthogonal substrate (P4). Architecture must not preclude, but no implementation in the initial single-target compiler.
 - **`extdeps/protocols/`** — missing substrate; deferred until glue is in scope.
-- **Lens framework integration** — pending Open Q0 resolution.
+- **Lens framework implementation** — out of initial compiler-core scope. The lens consumption contract is **ratified by P3 + Ratified Q0**; the multi-lens dependency-management substrate primitive remains Open Q6.
 - **Per-target emitters** — does not exist (P1). Each new target is one new `LanguageModel`.
 - **Multi-module compilation** — single-module first; module decomposition substrate (`std/system.dag`) is a follow-on.
 
@@ -442,7 +494,7 @@ Falsification probes (not load-bearing for the initial homomorphism):
 
 ### Ratified Q2 — `InferredTree` dimensional facts (2026-05-20)
 
-**Resolved by P3.** `InferredTree` carries **only grounding facts** (locus, binding, typeshape, inhabitance witness). Dimensional facts (cost, complexity, termination, ownership) are **lens outputs** produced as side-channel from folds over `InferredTree` (P3 commitment 3). The current `04_infer.dag` import of `v4.lens.cost.SymbolicCost` violates P3 commitment 4 and is a fix-needed.
+**Resolved.** `InferredTree` carries **compiler-core semantic facts only**: locus, binding, typeshape, inhabitance witness, **and the P6 semantic dependency graph** (`BindsTo`, `TypeDependsOn`, `DataDependsOn`, `EffectDependsOn`, `ResourceDependsOn`, `ModuleDependsOn`). It does NOT carry dimensional lens outputs — cost, complexity, ownership policy, termination policy, parallelism decisions, optimization decisions — those are lens outputs (P3) produced as side-channel folds over `InferredTree`. The current `04_infer.dag` import of `v4.lens.cost.SymbolicCost` violates P3 commitment 4 and is a fix-needed.
 
 ### Ratified Q3 — Parse + normalize stay logically separate (2026-05-20)
 
@@ -576,7 +628,7 @@ Recommendation: Q14c default + Q14d opt-in for advanced surface. Q14b is the "le
 
 ## Process for amending this doc
 
-- A change to a ratified premise (P1 / P2 / P3 / P4 / P5 / P6) requires explicit operator ratification + reconcile of any downstream substrate.
+- A change to a ratified premise (P1 / P2 / P3 / P4 / P5 / P6 / P7) requires explicit operator ratification + reconcile of any downstream substrate.
 - Resolution of an Open Q is recorded inline (move from "Open" section to a new "Ratified" subsection with date).
 - Implementation that contradicts a premise is a STOP — escalate, do not improvise.
 
@@ -608,3 +660,8 @@ Recommendation: Q14c default + Q14d opt-in for advanced surface. Q14b is the "le
 | **synthesized attribute** | A fact computed bottom-up from a Node's children (e.g., typeshape, content_hash). Naturally fits `fold_node`. |
 | **inherited attribute** | A fact propagated top-down from a Node's parent / context (e.g., scope environment in resolve). Requires a higher-order algebra carrier per P5. |
 | **SCC condensation** | Strongly-connected-component reduction: collapsing valid cycles in a dependency graph into single nodes so the result is a DAG. Used to handle mutually-recursive definitions and other cyclic-but-valid structures. |
+| **`solve_constraints`** | Declared constraint-solving substrate primitive consumed by ground / infer. Takes a `ConstraintGraph`, produces a unique canonical source grounding (or an ambiguity diagnostic). Distinct from the coercion fold. |
+| **`LawfulRewriteWitness`** | Witness primitive (P7) for structure-changing target lowerings — parallel-map, tree-reduce, CUDA, MapReduce. Each rewrite is declared by the target/runtime model with its precondition algebra laws; the rewritten plan grounding is then checked by the coercion fold's exact zip-fold. |
+| **`ConstraintGraph`** | Intermediate carrier produced by the grounding fold, consumed by `solve_constraints` to produce the canonical `InferredTree`. |
+| **`ClosedWorldDependencyWitness`** | Substrate witness that a region's dependency classification is complete; required before absence-of-edge can be interpreted as independence (e.g., for parallelism). |
+| **canonical (source) grounding** | The unique, witnessed normalization of a Node's algebra-inhabitance facts. The coercion fold operates only on canonical groundings; ambiguity surfaces as a diagnostic in ground, never as multiple downstream candidates. |
