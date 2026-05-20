@@ -17,7 +17,8 @@ import v4.std.diagnostic {
   Locus,
   Outcome,
   PortLocus,
-  Unavailable
+  Unavailable,
+  diagnostics_singleton
 }
 import v4.std.node { Symbol }
 
@@ -39,8 +40,10 @@ fn emit_inverse_grammar_walk_not_realized_diagnostic(at: Locus) -> Diagnostic {
 
 fn emit(tree: InferredTree, target: TargetModel) -> Outcome<TargetSource> {
   Rejected {
-    diagnostic: emit_inverse_grammar_walk_not_realized_diagnostic(
-      at: PortLocus { port: emit_stage_locus_port }
+    diagnostics: diagnostics_singleton(
+      d: emit_inverse_grammar_walk_not_realized_diagnostic(
+        at: PortLocus { port: emit_stage_locus_port }
+      )
     )
   }
 }

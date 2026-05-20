@@ -25,11 +25,13 @@ fn refine<B>(base: B, by: Validation<B>, at: Locus) -> Outcome<Refined<B>> {
     Accepted { value: Refined { base: base }, diagnostics: None }
   } else {
     Rejected {
-      diagnostic: Diagnostic {
-        reason: by.reason,
-        at: at,
-        correction: Unavailable { reason: UserInputBoundary }
-      }
+      diagnostics: diagnostics_singleton(
+        d: Diagnostic {
+          reason: by.reason,
+          at: at,
+          correction: Unavailable { reason: UserInputBoundary }
+        }
+      )
     }
   }
 }

@@ -93,7 +93,7 @@ fn coercion_fold(
   candidates: CoercionCandidateSet,
   policy: TargetSelectionPolicy,
 ) -> Outcome<CoercionResult> {
-  find_witness(
+  match find_witness(
     source_facts: source.node,
     candidates: candidates.set,
     predicate: PreservationPredicate {
@@ -103,6 +103,9 @@ fn coercion_fold(
     multiplicity_policy: TargetSelection {
       policy: target_selection_policy_node(policy: policy)
     }
-  )
-  outcome_rejected(coercion_not_realized_diagnostic(source: source))
+  ) {
+    Accepted { value: _, diagnostics: _ } =>
+      outcome_rejected(coercion_not_realized_diagnostic(source: source))
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
 }
