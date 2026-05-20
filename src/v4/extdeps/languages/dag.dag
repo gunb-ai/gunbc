@@ -52,7 +52,7 @@ fn dag_language_model_surface_prelude_full() -> DagLanguageModel {
 }
 
 
-// DECISIONS.md §CP-1b item 2 (compile-anchor empty prelude; same language_identity as prelude_full).
+// CP-1b item 2 (compile-anchor empty prelude; same language_identity as prelude_full).
 fn dag_language_model_surface_empty_prelude() -> DagLanguageModel {
   DagLanguageModel {
     lex: dag_surface_empty_lex(),
@@ -63,7 +63,7 @@ fn dag_language_model_surface_empty_prelude() -> DagLanguageModel {
 }
 
 
-// DECISIONS.md §CP-1b (item 1).
+// CP-1b (item 1).
 fn dag_language_model_surface_prelude_atoms() -> Set<Symbol> {
   Set {
     member: fn(sym) {
@@ -76,7 +76,7 @@ fn dag_language_model_surface_prelude_atoms() -> Set<Symbol> {
 }
 
 
-// 🟡 predicate dissolution — DECISIONS.md §CP-1b item 2.
+// 🟡 predicate dissolution — §CP-1b item 2.
 fn dag_language_model_is_surface_empty_shape(lm: DagLanguageModel) -> Bool {
   match lm.lex {
     VoidLexRules =>

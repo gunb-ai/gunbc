@@ -12,7 +12,7 @@ import v4.std.algebra { BooleanAlgebra }
 import v4.extdeps.cpp_abi { CppTargetProfile }
 
 // 🟢 pretty-much-done — closed signed integer spelling family; testcase: test/claim/manual/cpp_scalar_grounding_anchor.dag.
-// 🟢 coproduct dissolution — DECISIONS.md T29-CPP-SCALAR-FORWARD.
+// 🟢 coproduct dissolution · T29-CPP-SCALAR-FORWARD.
 type CppSignedIntegerSurfaceSpelling
   = SignedChar
   | ShortInt
@@ -21,7 +21,7 @@ type CppSignedIntegerSurfaceSpelling
   | LongLongInt
 
 // 🟢 pretty-much-done — closed unsigned integer spelling family; testcase: test/claim/manual/cpp_scalar_grounding_anchor.dag.
-// 🟢 coproduct dissolution — DECISIONS.md T29-CPP-SCALAR-FORWARD.
+// 🟢 coproduct dissolution · T29-CPP-SCALAR-FORWARD.
 type CppUnsignedIntegerSurfaceSpelling
   = UnsignedChar
   | UnsignedShortInt
@@ -36,7 +36,7 @@ type CppPlainCharSurfaceSpelling
 type CppWcharTSurfaceSpelling
 
 // 🟢 pretty-much-done — closed fixed unsigned code-unit spelling family; testcase: test/claim/manual/cpp_scalar_grounding_anchor.dag.
-// 🟢 coproduct dissolution — DECISIONS.md T29-CPP-SCALAR-FORWARD.
+// 🟢 coproduct dissolution · T29-CPP-SCALAR-FORWARD.
 type CppFixedUnsignedCodeUnitIntegerSurfaceSpelling
   = Char8T
   | Char16T
@@ -78,7 +78,7 @@ type CppRepresentableResultRequired
 type CppUnsignedModuloArithmetic
 
 // 🟢 pretty-much-done — scalar fact-bundle arms prevent spelling/signedness/overflow cross-pairings; testcase: test/claim/manual/cpp_scalar_grounding_anchor.dag.
-// 🟢 coproduct dissolution — DECISIONS.md T29-CPP-SCALAR-FORWARD.
+// 🟢 coproduct dissolution · T29-CPP-SCALAR-FORWARD.
 type CppScalar
   = SignedIntegerScalar {
       width_selection: CppSignedIntegerWidthSelection,
