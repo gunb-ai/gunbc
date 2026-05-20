@@ -1,7 +1,7 @@
 // src/v4/compiler/04_infer.dag
 // Scope: Stage 4 — ResolvedTree -> InferredTree; bounded Find phase (DECISIONS C1 / IR-1).
 // Owns: AlgebraRef, InferredFacts, InferredTree, infer_stage_locus_port, infer_coercion_fold_not_realized, infer_coercion_fold_not_realized_diagnostic, infer.
-// Consumes: v4.compiler.resolve, v4.lens.cost, v4.std.cardinality, v4.std.collection, v4.std.diagnostic, v4.std.node.
+// Consumes: v4.compiler.resolve, v4.std.cardinality, v4.std.collection, v4.std.diagnostic, v4.std.node.
 // Status: scaffold — TASKS T-9; Wave-1 fail-closed boundary.
 // Anchor: https://en.wikipedia.org/wiki/Type_inference
 
@@ -10,7 +10,6 @@ module v4.compiler.infer
 
 
 import v4.compiler.resolve { ResolvedTree }
-import v4.lens.cost { SymbolicCost }
 import v4.std.cardinality { TerminationProof }
 import v4.std.collection { Map }
 import v4.std.diagnostic {
@@ -31,11 +30,10 @@ type AlgebraRef {
 }
 
 
-// RULING-1: needs-more-work — cost/inhabitance coordinates remain T-9/T-12 bridged.
+// RULING-1: needs-more-work — inhabitance coordinates remain T-9 bridged.
 type InferredFacts {
   resolved_type: Node
   inhabits: AlgebraRef
-  cost: SymbolicCost
   descent: TerminationProof
 }
 
