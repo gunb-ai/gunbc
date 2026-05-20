@@ -127,6 +127,7 @@ Substrate / extdeps fan-out:
   T-4.12 extdeps/languages/llvm_ir.dag   [needs T-1, T-2; B2-OMNI probe — generalize DOWN the stack (SSA IR)]
   T-4.13 extdeps/languages/machine_code.dag  [needs T-3 machine + T-4 LanguageModel shape; B2-OMNI probe — bottom of stack; disassembly = extreme fail-closed]
   T-4.14 extdeps/languages/ptx.dag       [needs T-1, T-2; B2-OMNI + IN-B probe — SIMT data-parallel vs the 5 behaviors]
+  T-4.15 extdeps/protocols/{rest,graphql,grpc}.dag   [needs T-3, T-26, T-4; P4 substrate from `docs/design-v4-compiler-homomorphism.md` (Ratified 2026-05-20). Out-of-scope for the initial single-target compiler; in-scope for the architecture so glue derivation (T-16 omni-stack) is not foreclosed.]
   T-5   REMOVED 2026-05-15 (operator-ratified) — work-direction meta-layer
         cut; only workflow/bootstrap.dag (T-20) + workflow/ci.dag (T-24) remain
 
@@ -189,6 +190,15 @@ Close-the-loop + late substrate:
   T-26  std/ boundary carriers (HttpMethod / URL / NetworkAddress port)
         [needs T-3] — feeds T-4.6 (openapi's HttpMethod/Url) and the T-16
         wire contract; genuine slack (T-4.6 itself has slack).
+  T-33  std/model_core.dag — shared substrate factoring (Ratified Q1)
+        [needs T-1, T-2, T-3] — the shared base carrying primitive types,
+        algebra inhabitance, laws, effect / partiality semantics; consumed
+        by T-4 (LanguageModel) and T-34 (HostModel).
+  T-34  std/host.dag — HostModel substrate (Ratified Q1)
+        [needs T-33] — structural peer of LanguageModel over the same
+        ModelCore; carries host value representation, primitive operation
+        interpretation, execution semantics, resource / effect boundary.
+        Consumed by T-22 (eval) and the MVP-B route.
   (T-28 module-graph substrate is bundled into T-8 — it is critical-path
    work inside T-8, not a standalone parallel-fill item; see T-28. T-29
    and T-25-core are side-branch feeders of T-4, listed in the side
