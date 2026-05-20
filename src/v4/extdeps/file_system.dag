@@ -125,6 +125,10 @@ type ModeledFileEffects {
   file_write: fn(FileWrite) -> FileWriteResult
 }
 
+// 🟡 P5 bridge — legacy POSIX operation payload table (consumer: v4.extdeps.process, v4.lens.testgen).
+// Dissolution trigger: wave2-c2-testgen-modeled-file-effects — delete ReadFileRequest,
+// WriteFileRequest, ListDirRequest, FileKindRequest, and FileSystemOperations when
+// v4/lens/testgen.dag CorpusEnumerationRequest.operations is ModeledFileEffects-only.
 type ReadFileRequest {
   filesystem: Filesystem
   path: AbsolutePath
@@ -155,7 +159,6 @@ type FileKindRequest {
 
 type FileKindResult = Outcome<FileKind>
 
-// Operation-payload carriers for corpus/process consumers; public modeled effects are ModeledFileEffects.file_* .
 type FileSystemOperations {
   read_file: fn(ReadFileRequest) -> ReadFileResult
   write_file: fn(WriteFileRequest) -> WriteFileResult

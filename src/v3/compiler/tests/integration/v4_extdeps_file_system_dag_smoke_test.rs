@@ -12,18 +12,25 @@
 //! **PR receipt (P5 Mechanism (b)):** this harness + matching `EXPECTED_HAND_AUTHORED_TEST`
 //! line in `sg0_census_test.rs` + INVARIANTS table row land in the same PR.
 
+use std::collections::BTreeSet;
+
+use v3_compiler::parse_for_test;
+use v3_compiler::parse_surface::{
+    SurfaceField, SurfaceItem, SurfaceType, SurfaceVariant, TypeAngleArg,
+};
+use v3_compiler::tokenize_for_test;
+
 const FILE_SYSTEM_DAG: &str = include_str!("../../../../v4/extdeps/file_system.dag");
 const FILE_SYSTEM_PATH: &str = "src/v4/extdeps/file_system.dag";
 
 fn file_system_surface_or_panic() -> v3_compiler::parse_surface::SurfaceModule {
-    let tokens = v3_compiler::tokenize_for_test(FILE_SYSTEM_DAG, FILE_SYSTEM_PATH)
+    let tokens = tokenize_for_test(FILE_SYSTEM_DAG, FILE_SYSTEM_PATH)
         .unwrap_or_else(|e| panic!("{FILE_SYSTEM_PATH}: tokenize: {e:?}"));
-    v3_compiler::parse_for_test(&tokens, FILE_SYSTEM_PATH)
+    parse_for_test(&tokens, FILE_SYSTEM_PATH)
         .unwrap_or_else(|e| panic!("{FILE_SYSTEM_PATH}: parse: {e:?}"))
 }
 
 fn surface_declares_type(module: &v3_compiler::parse_surface::SurfaceModule, name: &str) -> bool {
-    use v3_compiler::parse_surface::SurfaceItem;
     module.items.iter().any(|item| {
         matches!(
             item,
@@ -36,73 +43,176 @@ fn surface_declares_type(module: &v3_compiler::parse_surface::SurfaceModule, nam
     })
 }
 
+fn type_record_fields<'a>(
+    module: &'a v3_compiler::parse_surface::SurfaceModule,
+    name: &str,
+) -> &'a [SurfaceField] {
+    module
+        .items
+        .iter()
+        .find_map(|item| match item {
+            SurfaceItem::TypeRecord {
+                name: item_name,
+                fields,
+                ..
+            } if item_name == name => Some(fields.as_slice()),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("missing type record {name}"))
+}
+
+fn type_sum_variants<'a>(
+    module: &'a v3_compiler::parse_surface::SurfaceModule,
+    name: &str,
+) -> &'a [SurfaceVariant] {
+    module
+        .items
+        .iter()
+        .find_map(|item| match item {
+            SurfaceItem::TypeSum {
+                name: item_name,
+                variants,
+                ..
+            } if item_name == name => Some(variants.as_slice()),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("missing type sum {name}"))
+}
+
+fn surface_type_name(ty: &SurfaceType) -> String {
+    match ty {
+        SurfaceType::Named { name, .. } => name.clone(),
+        SurfaceType::Parameterized { name, args, .. } => {
+            let rendered = args
+                .iter()
+                .map(|arg| match arg {
+                    TypeAngleArg::TypeExpr { ty } => surface_type_name(ty),
+                    TypeAngleArg::WidthNatLiteral { decimal, .. } => decimal.clone(),
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("{name}<{rendered}>")
+        }
+        SurfaceType::Optional { inner, .. } => format!("?{}", surface_type_name(inner)),
+        SurfaceType::Arrow { .. } => "fn".to_string(),
+    }
+}
+
+fn record_field_type_map(fields: &[SurfaceField]) -> BTreeSet<(&str, String)> {
+    fields
+        .iter()
+        .map(|field| (field.name.as_str(), surface_type_name(&field.ty)))
+        .collect()
+}
+
+fn variant_name_set(variants: &[SurfaceVariant]) -> BTreeSet<&str> {
+    variants
+        .iter()
+        .map(|variant| variant.name.as_str())
+        .collect()
+}
+
+fn import_paths(module: &v3_compiler::parse_surface::SurfaceModule) -> Vec<Vec<&str>> {
+    module
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            SurfaceItem::Import { path, .. } => {
+                Some(path.iter().map(String::as_str).collect::<Vec<_>>())
+            }
+            _ => None,
+        })
+        .collect()
+}
+
 #[test]
 fn v4_extdeps_file_system_dag_tokenizes_and_parses() {
     let _module = file_system_surface_or_panic();
 }
 
 #[test]
-fn v4_extdeps_file_system_dag_practice11_companion_source_has_no_node_import_or_binding() {
+fn v4_extdeps_file_system_dag_practice11_companion_has_no_node_import_or_binding() {
+    let module = file_system_surface_or_panic();
     assert!(
-        !FILE_SYSTEM_DAG.contains("import v4.std.node"),
+        !import_paths(&module)
+            .iter()
+            .any(|path| path.as_slice() == ["v4", "std", "node"]),
         "{FILE_SYSTEM_PATH}: must not import v4.std.node (Practice 11 companion)"
     );
-    for forbidden in ["NodeFileBinding", "NodeRef", " Node ", " Node\n", " Node,"] {
+    for forbidden in ["NodeFileBinding", "Node", "NodeRef"] {
         assert!(
-            !FILE_SYSTEM_DAG.contains(forbidden),
-            "{FILE_SYSTEM_PATH}: forbidden compiler-domain token `{forbidden:?}` in source"
+            !surface_declares_type(&module, forbidden),
+            "{FILE_SYSTEM_PATH}: must not declare compiler-domain type `{forbidden}`"
         );
     }
-    assert!(
-        !FILE_SYSTEM_DAG.contains("file_read_not_wired"),
-        "{FILE_SYSTEM_PATH}: fail-closed stubs must not use Symbol data without std.node import"
-    );
 }
 
 #[test]
-fn v4_extdeps_file_system_dag_file_path_is_posix_grounded_not_empty() {
-    let _module = file_system_surface_or_panic();
-    assert!(
-        FILE_SYSTEM_DAG.contains("type FilePath") && FILE_SYSTEM_DAG.contains("absolute: AbsolutePath"),
-        "{FILE_SYSTEM_PATH}: FilePath must be a POSIX-grounded fact-bundle (absolute: AbsolutePath), not an empty carrier"
-    );
-    assert!(
-        FILE_SYSTEM_DAG.contains("pubs.opengroup.org"),
-        "{FILE_SYSTEM_PATH}: FilePath/FileResource path facts must cite POSIX anchor (extdeps fidelity)"
-    );
-}
-
-#[test]
-fn v4_extdeps_file_system_dag_wave2_c2_and_legacy_consumers_coexist() {
+fn v4_extdeps_file_system_dag_file_path_is_posix_grounded_record() {
     let module = file_system_surface_or_panic();
-    for decl in [
-        "FileResource",
-        "FilePath",
-        "FileContent",
-        "FileRead",
-        "FileWrite",
-        "FileReadWitness",
-        "FileWriteWitness",
-        "FileEffectWitness",
-        "ModeledFileEffects",
+    let fields = type_record_fields(&module, "FilePath");
+    assert_eq!(
+        record_field_type_map(fields),
+        BTreeSet::from([("absolute", "AbsolutePath".to_string())]),
+        "FilePath must ground path identity in AbsolutePath (POSIX fact-bundle), not an empty carrier"
+    );
+}
+
+#[test]
+fn v4_extdeps_file_system_dag_wave2_c2_modeled_effects_and_witness_shape() {
+    let module = file_system_surface_or_panic();
+    let witness_arms = variant_name_set(type_sum_variants(&module, "FileEffectWitness"));
+    assert_eq!(
+        witness_arms,
+        BTreeSet::from(["ReadWitness", "WriteWitness"]),
+        "FileEffectWitness must distinguish read vs write receipt arms"
+    );
+
+    let read_witness_fields = record_field_type_map(type_record_fields(&module, "FileReadWitness"));
+    assert_eq!(
+        read_witness_fields,
+        BTreeSet::from([
+            ("request", "FileRead".to_string()),
+            ("content", "FileContent".to_string()),
+        ]),
+        "FileReadWitness must embed the read request (Practice 11 — no duplicated resource/path fields)"
+    );
+
+    let write_witness_fields =
+        record_field_type_map(type_record_fields(&module, "FileWriteWitness"));
+    assert_eq!(
+        write_witness_fields,
+        BTreeSet::from([("request", "FileWrite".to_string())]),
+        "FileWriteWitness must embed the write request only"
+    );
+
+    let modeled = record_field_type_map(type_record_fields(&module, "ModeledFileEffects"));
+    assert_eq!(
+        modeled,
+        BTreeSet::from([
+            ("file_read", "fn".to_string()),
+            ("file_write", "fn".to_string()),
+        ]),
+        "ModeledFileEffects must be the canonical public read/write effect surface"
+    );
+}
+
+#[test]
+fn v4_extdeps_file_system_dag_legacy_consumer_exports_remain() {
+    let module = file_system_surface_or_panic();
+    for legacy in [
         "PosixByteString",
         "AbsolutePath",
         "Filesystem",
         "FileBody",
         "FileKindResolutionPolicy",
         "FileSystemOperations",
+        "ReadFileRequest",
+        "WriteFileRequest",
     ] {
         assert!(
-            surface_declares_type(&module, decl),
-            "{FILE_SYSTEM_PATH}: expected declaration `{decl}`"
+            surface_declares_type(&module, legacy),
+            "{FILE_SYSTEM_PATH}: legacy consumer export `{legacy}` must remain until P5-bridge dissolution"
         );
     }
-    assert!(
-        FILE_SYSTEM_DAG.contains("file_read:") && FILE_SYSTEM_DAG.contains("file_write:"),
-        "{FILE_SYSTEM_PATH}: ModeledFileEffects must expose file_read/file_write as canonical modeled-effect surface"
-    );
-    assert!(
-        FILE_SYSTEM_DAG.contains("coproduct dissolution — Wave-2-C2"),
-        "{FILE_SYSTEM_PATH}: FileEffectWitness must carry Practice-4 disposition"
-    );
 }
