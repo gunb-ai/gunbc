@@ -471,6 +471,127 @@ Terminal output. `TargetSource` is target-grammar-serialized text + diagnostics.
 
 ---
 
+## The EDIT direction — symmetric to compile
+
+This doc is primarily about the **compile direction** (CoreNode → target). But the substrate is read/write symmetric: `apply_diff` is the write-side primitive that mutates a `CoreNode` graph. The full **EDIT direction** is documented in [`docs/design-read-edit-pipeline.md`](design-read-edit-pipeline.md) (PR #3364, merged 2026-05-19, operator-ratified); this section summarizes the architecture that compile must compose with.
+
+### Read/edit primitives
+
+| Primitive | Purpose | Where |
+|---|---|---|
+| **`Path`** | A structural address to a sub-Node — `Path { steps: List<Symbol> }`. NOT a filesystem path; the Node graph's own coordinates. | `src/v4/std/node.dag` (ratified PR #3162) |
+| **`Edit`** | A structural rewrite: `Edit { at: Path, replacement: Node }`. **Replacement only** — no separate insert/delete variants. Insertions/deletions decompose into parent-replacement. | `src/v4/std/node.dag` |
+| **`Diff`** | An ordered sequential rewrite program: `Diff { edits: List<Edit> }`. Sequential composition, NOT parallel. | `src/v4/std/node.dag` |
+| **`apply_diff(root, Diff) → Result<Node, Diagnostic>`** | Folds Edits in order; fail-closed all-or-nothing. Any unresolved Path ⇒ whole Diff fails with one Diagnostic. | `src/v4/lens/application.dag` (scaffold; T-23) |
+| **`subterm_at(root, Path) → Result<Node, Diagnostic>`** | Inverse of substitution — fetch the Node at a Path. | `src/v4/lens/application.dag` |
+| **`apply_lens(lens, scope, mode) → Witness<finding> \| Outcome<()>`** | The read-side lens application surface — Introspect or Enforce. `scope: SectionRef = DeclarationScope \| NodeScope`. | `src/v4/lens/application.dag` |
+| **`affected_set(dag, Diff) → Witness<ReExecFrontier>`** | Incremental re-execution frontier — what needs re-validation given a Diff. The substrate's lens-frontier primitive. | `src/v4/lens/affected_set.dag` (T-21) |
+
+### The seven-step read→edit pipeline
+
+Per [`docs/design-read-edit-pipeline.md`](design-read-edit-pipeline.md) § 4, the agent loop is:
+
+```
+1. Read       →  apply_lens(lens, scope_in(dag, ref), Introspect)
+2. Diagnose   →  reasoning over the facts (LLM or human)
+3. Propose    →  produce Diff
+4. Candidate  →  candidate_dag = apply_diff(dag, Diff)   # uncommitted candidate
+5. Gate       →  affected_set(dag, Diff).frontier.for_each(ref =>
+                   apply_lens(_, scope_in(candidate_dag, ref), Enforce)
+                 )                                       # gates against CANDIDATE
+6. Commit     →  dag := candidate_dag                    # only if all gates pass
+7. Re-emit    →  emit per target language                # files are a downstream effect
+```
+
+**The candidate-state pattern is structurally important.** Gates run against the **post-edit candidate state**, NOT the pre-edit graph. Reasoning: gating the pre-edit graph and applying the Diff afterward would let a Diff introduce a post-edit invariant violation that never gets enforced. The candidate pattern keeps the fail-closed promise honest: validation happens against the state that will be committed/emitted, not against a state already known to be valid.
+
+The `scope_in(root, ref)` helper binds a frontier ref to a specific root, making the candidate-vs-pre-edit context structurally explicit in every gate call — a worker can't accidentally validate against the wrong root.
+
+**This is the same monotonic-facts invariant** as the compile direction's Practice 3 (P3 stage-by-stage facts), but applied to mutation: facts flow forward through the candidate; the commit either lands all of them or none.
+
+### EDIT direction = the "Query-driven rewrite" ingest path
+
+In the "Ingest paths" table earlier, **"Query-driven rewrite"** — using `affected_set + apply_diff` to produce a new `CoreNode` — IS the read/edit pipeline. The compile direction takes the resulting CoreNode and proceeds normally. From the compile direction's view, query-driven rewrite is just another entry point producing a CoreNode; from the read/edit doc's view, it is the canonical agent workflow.
+
+### Library-first agent surface
+
+Per [`docs/design-read-edit-pipeline.md`](design-read-edit-pipeline.md) § 6.10:
+
+1. **All substrate primitives surface as library functions.** `apply_lens`, `apply_diff`, `subterm_at`, `affected_set`, `declarations_in` are library calls. Not RPC services. Not CLI-first.
+2. **CLI wraps libraries.** `gunbc apply-lens ...`, `gunbc auto-fix ...`, `gunbc refactor ...` are thin shells over library calls.
+3. **The library boundary IS the agent-substrate surface.** No premature transport layer (JSON-RPC, gRPC). Network transport is a future concern that doesn't pre-date library landings.
+
+**This applies to `compile()` too.** `compile(source, input_lang, mode)` is a library call. The same no-premature-transport principle holds — compile is a library, not a service.
+
+### Lens as `(find, transform)` — the convolution view
+
+Per the read/edit doc § 6, every L1.x dissolution lens is structurally a `(find, transform)` pair: the lens's Signature is the find half, the Clean shape is the transform half. The read/edit doc's § 6.7b "**(f) mechanical refactor**" hero case is the worked example most relevant to this compiler architecture: a single intent → uniform per-site transform → atomic apply via the candidate-state pattern. PR #3338's canonical-B refactor (across 6 languages + 7 ratchet dissolutions) is the worked example. This is also what `compile`-level rewrites (e.g., self-modification, see below) decompose into.
+
+---
+
+## Self-modification, stage0, self-edit
+
+The compiler is itself authored in `.dag`. Self-modification — the compiler editing its own source — is therefore a natural composition of the EDIT direction (read/edit pipeline) and the COMPILE direction (this doc). This section addresses the specific question the read/edit doc reviewer raised: "how will the compiler edit itself?"
+
+### The compiler reading its own source
+
+The compiler's own pipeline (`compile.dag` / `parse.dag` / `infer.dag` / `emit.dag` / `eval.dag` / `normalize.dag` / `resolve.dag`, all in `src/v4/compiler/`) is itself a set of `.dag` programs. To the substrate, they are `CoreNode` graphs like any other. The compiler reads them by `apply_lens(lens, scope, mode)` on the relevant `DeclarationScope` or `NodeScope`. Reading the compiler's own source uses the **same lens surface** as reading any user program — there is no special introspection mechanism.
+
+### The compiler writing to its own source
+
+When a `.dag` substrate type changes — say `std/node.dag`'s `NodeFold<R>` carrier gains a new field — that change propagates through the compiler's own `.dag` source. Two valid mechanisms, both go through the read/edit pipeline:
+
+1. **Hand-authored Diff via the read/edit pipeline.** The operator (or an agent) declares the change as a `Diff` against the substrate-typed Node graph. `apply_diff` mutates; the seven-step candidate-state pattern validates against the candidate. Commit lands. This is exactly the read/edit doc's "(f) mechanical refactor" hero case applied to the compiler's own source.
+2. **Mechanical refactor from upstream change.** When a substrate type evolves, a lens (e.g., an L1.x dissolution lens, or a custom interface-cascade lens like read/edit doc § 6.5) computes the affected sites + the per-site transform. The substrate handles N affected sites in the compiler's own code the same way it handles N user-code sites. Atomic apply via candidate-state.
+
+There is no "self-edit special case." Self-edit is `apply_diff(self, Diff)` where `self` is the compiler's own CoreNode graph. The substrate's read/write-symmetric primitive set means there's no hidden machinery — same surface, applied to the compiler's source.
+
+### stage0 regeneration as a compile of self
+
+The hand-Rust-to-zero trajectory (per [`docs/design-pure-bootstrap-zero.md`](design-pure-bootstrap-zero.md)) requires the compiler to **emit its own Rust bootstrap**. Structurally this is a self-targeting compile:
+
+```
+compile(
+  source: self_compiler_dag_as_corenode,        // the compiler's own .dag source
+  input_lang: dag_lang,                          // .dag is the input language
+  mode: TranslateTo(target_lang: rust_lang)      // Rust is the target
+) -> Outcome<TargetSource>                       // the emitted Rust bootstrap source
+```
+
+There is **no special "regenerate stage0" mode**. stage0 regeneration is a `TranslateTo(rust_lang)` compile where the input happens to be the compiler's own source. The homomorphism mechanic applies identically: parse + normalize + resolve + ground the `.dag` source; coercion-fold against `rust.dag`'s declared inhabitants; serialize via Rust's grammar. The output is the Rust bootstrap that THESIS facet 2 ("compiler self-emits, fixed-point") requires.
+
+This is why P1 (Languages are I/O integration surfaces) and self-hosting are not orthogonal: self-hosting IS the compiler taking itself as input and emitting itself as output, with both sides using the same `LanguageModel` substrate. The trajectory of hand-Rust-to-zero IS the same compile loop closing on itself.
+
+### Candidate-state for self-modification safety
+
+When the compiler proposes a change to itself, the candidate-state pattern from the read/edit pipeline is what makes self-modification **safe**:
+
+```
+candidate_self = apply_diff(self, proposed_diff)
+// Validate the candidate against all relevant lenses:
+gates = [
+  apply_lens(L_practice_10, scope_in(candidate_self, ...), Enforce),  // no walker dissolutions
+  apply_lens(L_practice_9,  scope_in(candidate_self, ...), Enforce),  // no-prose discipline
+  apply_lens(L_correctness, scope_in(candidate_self, ...), Enforce),  // substrate invariants
+  // ... whatever lenses the project policy requires
+]
+if all_passed(gates):
+  self := candidate_self     // atomic commit
+  // optionally: regenerate stage0 via compile(self, dag_lang, TranslateTo(rust_lang))
+else:
+  reject with diagnostics
+```
+
+Self-modification can never produce a broken substrate because the candidate is validated against the same lens framework that validates user code. If a self-edit would break Practice 10 / Practice 9 / a substrate invariant, the lenses fire on the candidate and the commit fails. **The compiler cannot break itself silently** — the candidate-state + lens-gate pattern makes that fail-closed.
+
+### Implications
+
+- **No new substrate is needed for self-edit.** `apply_diff` + lens-gate is the mechanism. The compiler's `.dag` source is just data; the same primitives that handle user data handle compiler data.
+- **Self-hosting is one specific compile invocation.** `compile(self, dag, TranslateTo(rust))` produces stage0 Rust. `compile(self, dag, Eval(host))` evaluates the compiler on the host. `compile(self, dag, TranslateTo(other_lang))` would emit the compiler in some other language — the substrate makes this trivial in principle.
+- **The "Rust shrinks to zero" trajectory IS the loop closing.** When stage0 Rust is reliably regenerable from `compile(self, dag, TranslateTo(rust))`, the hand-maintained surface shrinks; per [`docs/design-pure-bootstrap-zero.md`](design-pure-bootstrap-zero.md), the target is zero hand-authored Rust.
+
+---
+
 ## Concrete example — what happens when this compiler compiles
 
 To make the architecture concrete, here's a tiny `.dag` source going through the pipeline. (Syntax is illustrative; not all surface sugar is finalized.)
@@ -751,3 +872,13 @@ Recommendation: Q14c default + Q14d opt-in for advanced surface. Q14b is the "le
 | **canonical (source) grounding** | The unique, witnessed normalization of a Node's algebra-inhabitance facts. The coercion fold operates only on canonical groundings; ambiguity surfaces as a diagnostic in ground, never as multiple downstream candidates. |
 | **ingest** | The (separable) layer that produces a `CoreNode` from a source (text, programmatic builder, query-driven rewrite, round-trip). The compile-core takes `CoreNode` and does not know how it was produced. |
 | **ingest_text** | The text-to-`CoreNode` ingest path: `ingest_text(text, input_lang) → Outcome<CoreNode>`. Parse + normalize composed. Uses the grammar-as-bidirectional-data primitive (forward direction). |
+| **`Path`** | A structural address to a sub-Node — `Path { steps: List<Symbol> }`. NOT a filesystem path; the Node graph's own coordinates. Ratified in `src/v4/std/node.dag` (PR #3162). |
+| **`Edit`** | A structural rewrite: `Edit { at: Path, replacement: Node }`. Replacement only — no insert/delete variants; those decompose into parent-replacement. |
+| **`Diff`** | An ordered sequential rewrite program: `Diff { edits: List<Edit> }`. Sequential composition, NOT parallel. Fail-closed all-or-nothing on `apply_diff`. |
+| **`apply_diff`** | The structural-edit primitive symmetric to `fold_node`. Takes a Node and a Diff; folds edits sequentially; fail-closed on unresolved Path. The agent-side mutation primitive. |
+| **`apply_lens`** | The lens application surface: `apply_lens(lens, scope, mode) → Witness<finding> \| Outcome<()>`. The substrate-level read-side primitive lenses use. |
+| **`SectionRef`** | The scope shape for lens application: `DeclarationScope(decl_ref) \| NodeScope(node_ref)`. Two variants only — corpus-wide application is composition over the declaration set, not a separate scope. |
+| **`scope_in`** | Helper `scope_in(root: Node, ref: NodeRef) → SectionRef` that binds a frontier ref to a specific dag root. Makes the candidate-vs-pre-edit root structurally explicit in every gate call (read/edit doc § 4). |
+| **candidate-state pattern** | The read/edit pipeline's invariant: gates run against `candidate_dag = apply_diff(dag, Diff)`, NOT against the pre-edit graph. Validates against the state that will be committed, not against a state already known to be valid. |
+| **`affected_set`** | T-21 substrate primitive: `affected_set(dag, Diff) → Witness<ReExecFrontier>`. Incremental re-execution frontier; consumed by the read/edit pipeline's gate step + by incremental rebuild. |
+| **self-edit / stage0** | The compiler editing its own source via `apply_diff(self, Diff)`. Self-hosting (stage0 regeneration) is `compile(self, dag_lang, TranslateTo(rust_lang))` — no special mode. See "Self-modification" section. |
