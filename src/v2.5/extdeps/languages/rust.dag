@@ -1,7 +1,7 @@
 // src/v2.5/extdeps/languages/rust.dag
 // Scope: Rust target-primitive fact bundle (scalar/reference/visibility/cost carriers) for the v2.5 fork.
 // Owns: RustIntKind, RustIntWidth, RustFloatWidth, RustScalar, RustReferenceKind, NamedSegment, PubInPath, RustVisibility, RustReference, RustCost.
-// Consumes: v2_5.std.node.Node, Symbol; kernel-ambient Int, List.
+// Consumes: v2_5.std.node.Node, Symbol; kernel-ambient Int, List, Nat.
 // Status: scaffold:v2_5.std.node — design scaffold until v2_5.std.node lands on the fork (compile exercise blocked).
 // Anchor: https://doc.rust-lang.org/reference/
 
@@ -14,19 +14,14 @@ type RustIntKind
   = Signed
   | Unsigned
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// 🟡 feature:rust-int-width-facts — scaffold:v2_5.std.machine + v2_5.std.integer · dissolve-on: MachineWidth witness rows consume bit_width + PointerWidth platform witness.
 type RustIntWidth
-  = Bits8
-  | Bits16
-  | Bits32
-  | Bits64
-  | Bits128
-  | Pointer
+  = FixedWidth { bit_width: Nat }
+  | PointerWidth
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// 🟡 feature:rust-float-width-facts — scaffold:v2_5.std.float · dissolve-on: Real32/Real64 width witnesses consume bit_width.
 type RustFloatWidth
-  = Bits32
-  | Bits64
+  = FixedWidth { bit_width: Nat }
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type RustScalar
