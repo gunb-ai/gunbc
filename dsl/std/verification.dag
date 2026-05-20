@@ -1,131 +1,77 @@
-// std/verification.dag -- structural authority for generated tests.
+// std/verification.dag -- Verifiable claims about program behavior.
 //
-// A TestClaim is data: one typed assertion over one modeled compiler subject.
-// Test runners and target framework renderers consume this schema; they do not
-// invent parallel assertion taxonomies.
+// A test is a named conjunction of verifiable claims. A claim is a
+// proposition that a program state satisfies a predicate. This is the
+// logical structure of verification — no testing philosophy, no
+// fixtures, no mocking opinions.
 //
-// Relationship to src/v4/std/verification.dag:
-//   This is the shared std projection of the v4 TestClaim substrate for the
-//   v2.5 fork. It keeps the older TestCase/TestNodeCostDimension surfaces in
-//   this canonical file while giving tokenize/parse/normalize/resolve/infer/
-//   emit coverage a closed TestClaim schema to consume.
+// RELATIONSHIP TO std/termination.dag:
+//   termination.dag proves well-founded descent via ranking functions.
+//   This file proves specification compliance via test evidence.
+//   Both are proof structures — the former for termination, the latter
+//   for behavioral correctness.
+//
+// RELATIONSHIP TO std/logic.dag:
+//   A TestClaim is a proposition (true or false). AssertKind encodes
+//   the predicate form. A TestCase is a conjunction (all claims must hold).
+//
+// Consumers:
+//   v2/coercion.dag         -- structural coercion tests from data declarations
+//   v2/05_emit.dag          -- test extraction and rendering (future)
 
 module std.verification
 
 import std.types { Milliseconds }
 
-// Closed assertion kind set. Each variant names a predicate shape that is
-// grounded in compiler substrate facts: equality over modeled nodes, diagnostic
-// rejection, successful compilation, or round-trip preservation.
+// The predicate form of an assertion.
+// Each variant corresponds to a standard verification predicate
+// that every test framework supports.
 type AssertKind
-  = Equals
-  | DiagnosticAssert
-  | Compiles
-  | RoundTrips
+  = AssertEqual    // actual == expected
+  | AssertTrue     // condition holds
+  | AssertSome     // value is present (not None/nil/null)
+  | AssertNone     // value is absent
 
-// Test generation tier: Tier1 structural checks, Tier2 safety checks, and
-// Tier3 emitted/runtime verification.
-type TestgenTier
-  = Tier1
-  | Tier2
-  | Tier3
-
-// Test generation layer: local unit-shaped facts, integrated stage facts, or
-// external/boundary behavior.
-type TestgenLayer
-  = Unit
-  | Integration
-  | Boundary
-
-type TestClassification {
-  tier: TestgenTier
-  layer: TestgenLayer
-}
-
-// Closed impossible-bug taxonomy for generated regression claims. New variants
-// require a modeled bug class, not a prose-only label.
-type ImpossibleBugClass
-  = SuboptimalComplexity
-  | IdempotencyContract
-  | TransportTypeDrift
-  | NestedOptionalFlatten
-  | UnenumeratedEffects
-  | UnhandledDiagnosticPaths
-
-// Manual anchor bridge for the initial generated corpus. The bridge dissolves
-// when generated corpus coverage owns every row directly.
-type T19ManualAnchorKey
-  = T19ManualTcConjEmpty
-  | T19ManualTcDisjEmpty
-  | T19ManualTcArrowTwoConj
-  | T19ManualTcCardinalityEmpty
-  | T19ManualTcInstantiationEmpty
-  | T19ManualTcConjEqualsRefl
-  | T19ManualNatAddLeftIdentity
-  | T19ManualNatAddRightIdentity
-  | T19ManualNatAddAssociativity
-  | T19ManualNatMulLeftIdentity
-  | T19ManualNatMulAnnihilator
-  | T19ManualNatMulAssociativity
-  | T19ManualAnchorAbsent
-
-// Compiler-stage subjects that structural coverage can bind without relying on
-// free-form labels. The stage set follows the v2.5 pipeline boundary names that
-// this work item unblocks.
-type CompilerStageSubject
-  = TokenizeStage
-  | ParseStage
-  | NormalizeStage
-  | ResolveStage
-  | InferStage
-  | EmitStage
-
-// Verification-local bridge until the shared std Node carrier exists in dsl/std.
-// Do not import v2.std.core.Node here: std.verification is the shared test
-// authority, not a v2 compiler-stage module. Dissolution trigger: replace this
-// with the shared std.node Node carrier when that type graduates.
-type TestClaimNodeRef {}
-
-// A structural test input. `CompilerStageInput` gives pipeline-stage coverage a
-// typed subject edge; `NodeInput` remains the generic v4-compatible claim shape
-// until the shared Node carrier supersedes this verification-local bridge.
-type TestClaimInput
-  = NodeInput { node: TestClaimNodeRef }
-  | CompilerStageInput { stage: CompilerStageSubject, node: TestClaimNodeRef }
-
-// A structural expected result. This is a bounded scaffold because shared
-// `std.diagnostic.Outcome<T>` does not exist in dsl/std yet; dissolve by
-// replacing this with the shared Outcome carrier once diagnostic.dag graduates.
-type TestClaimExpected
-  = ExpectedNode { node: TestClaimNodeRef }
-  | ExpectedDiagnostic
-
-// Core TestClaim carrier. Receipts live beside claim rows; renderers and
-// runners consume `kind`, `input`, `expected`, and `classification` rather than
-// reverse-engineering meaning from labels.
+// A single verifiable claim about program behavior.
+// The label describes what is being verified — it becomes the
+// failure message when the claim does not hold.
 type TestClaim {
   kind: AssertKind
   label: String
-  t19_anchor: T19ManualAnchorKey
-  input: TestClaimInput
-  expected: TestClaimExpected
-  classification: TestClassification
 }
 
-// A named test case is a conjunction of claims.
+// R3 T-Workflow-As-Data gate #101 (`test_cost_dimension_landed`).
+//
+// Test execution cost is a first-class structural fact attached to a
+// modeled test node. This deliberately does not reuse compiler-internal
+// `SymbolicCost`: the slow-test ratchet needs observed/budgeted wall-clock
+// cost for the test node itself. **Target:** #102 derives ratchet policy from
+// those substrate facts. **Interim (not #102 closure):** warn-token rows live in
+// `dsl/gunbc/test_node_wall_clock_ratchet.dag` and are projected for shell/JQ until
+// the runner routes policy off `TestNodeCostDimension` facts instead of a parallel
+// warn-name list. **Follow-on:** attach explicit `TimingBudget` / `TimingMeasurement`
+// rows per test where paydown replaces warn-only policy.
+//
+// Legacy dsl projection note: this tree does not carry T-WAD's v3
+// `TimingBudget` / `TimingMeasurement` / `Nanoseconds` substrate yet.
+// The bootstrap-local v3 authority (`src/v3/std/verification.dag`) is the
+// convergence shape. These `_ms` fields use the existing branded
+// non-negative `Milliseconds` carrier as the older dsl projection of that
+// same timing fact, not a parallel cost algebra.
+// Retirement trigger: #102 (`slow_test_exemptions_dissolved`) consumes the v3
+// `Nanoseconds` timing authority for the slow-test ratchet, then deletes or
+// rewires this dsl projection instead of extending it.
+
+// A named test case — a conjunction of claims.
+// All claims must hold for the test to pass.
 type TestCase {
   name: String
   claims: List<TestClaim>
   ignored: Bool
 }
 
-// R3 T-Workflow-As-Data gate #101 (`test_cost_dimension_landed`).
-//
-// Test execution cost is a first-class structural fact attached to a modeled
-// test node. This older dsl projection keeps Milliseconds until the v3
-// TimingBudget / TimingMeasurement authority converges into shared std.
 type TestNodeRef
-  = TestCaseNode { test_case: TestCase }
+  = TestCaseNode(TestCase)
 
 type TestNodeCostDimension {
   node: TestNodeRef

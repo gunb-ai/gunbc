@@ -26,28 +26,6 @@ present failure — it migrates on touch or via a dedicated paydown
 lane. This keeps the doc honest against the live-state invariant
 without forcing a blocking refactor backlog.
 
-## Comment discipline
-
-Code should speak for itself. Prefer clear names, small functions,
-structured return types, and readable control flow over comments that
-explain what the code is doing. A reviewer should flag new explanatory
-commentary when the same clarity could reasonably be achieved by
-renaming, extracting a helper, tightening a type, or simplifying the
-branch structure.
-
-Acceptable comments are narrow:
-
-- One-line comments that mark a non-obvious boundary, invariant, or
-  external constraint.
-- Slightly longer comments for genuinely complex decisions, historical
-  compatibility, performance tradeoffs, or behavior that would otherwise
-  look wrong after a careful read.
-- Load-bearing headers required by automation or by project invariants.
-
-Comments are not a substitute for structure. If a block needs prose to
-make ordinary control flow understandable, the fix is usually better
-names or smaller pieces, not more prose.
-
 ## Five principles
 
 ### 1. Pure functions by default

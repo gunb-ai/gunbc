@@ -43,7 +43,7 @@ fn build_system_prompt(
   algebra_ref: String,
   extdeps_ref: String
 ) -> String {
-  let instructions = "Review on three axes:\n1. INVARIANT VIOLATIONS: check diff against INVARIANTS.md\n2. COMPOSITIONAL MODELING: for .dag changes, evaluate accuracy, harmony, layering\n3. CODING.md COMMENT DISCIPLINE: code should speak through clear names, small functions, structured types, and readable control flow instead of explanatory comments. Accept narrow comments only for non-obvious boundaries, genuinely complex decisions, historical/performance context, or load-bearing headers.\n\nOutput:\nVIOLATION|file|line|description\nMODEL|file|GOOD|description\nMODEL|file|IMPROVE|description\nSTYLE|file|line|description\nSUMMARY|one sentence\n\nNothing else."
+  let instructions = "Review on two axes:\n1. INVARIANT VIOLATIONS: check diff against INVARIANTS.md\n2. COMPOSITIONAL MODELING: for .dag changes, evaluate accuracy, harmony, layering\n\nOutput:\nVIOLATION|file|line|description\nMODEL|file|GOOD|description\nMODEL|file|IMPROVE|description\nSUMMARY|one sentence\n\nNothing else."
   "{instructions}\n\n--- INVARIANTS.md ---\n{invariants}\n\n--- std/algebra.dag ---\n{algebra_ref}\n\n--- extdeps.md ---\n{extdeps_ref}"
 }
 

@@ -1,0 +1,77 @@
+// src/v2.5/std/verification.dag
+// Scope: closed TestClaim schema for v2.5 fork-local verification rows.
+// Owns: CompilerStage, AssertKind, TestgenTier, TestgenLayer, TestClassification,
+// ImpossibleBugClass, T19ManualAnchorKey, TestClaim, TestSuite.
+// Consumes: v2_5.std.node, v2_5.std.diagnostic.
+// Status: v2.5 Tier 0 supporting substrate.
+
+module v2_5.std.verification
+
+import v2_5.std.node { Symbol }
+import v2_5.std.diagnostic { Diagnostic, Outcome }
+
+type CompilerStage
+  = Tokenize
+  | Parse
+  | Resolve
+  | Normalize
+  | Infer
+  | Emit
+  | Compile
+
+type AssertKind<T>
+  = Equals { actual: T, expected: T }
+  | DiagnosticAssert { actual: Outcome<T>, expected: Diagnostic }
+  | Compiles { actual: Outcome<T> }
+  | RoundTrips { initial: T, final: T }
+
+type TestgenTier
+  = Tier1
+  | Tier2
+  | Tier3
+
+type TestgenLayer
+  = Unit
+  | Integration
+  | Boundary
+
+type TestClassification {
+  tier: TestgenTier
+  layer: TestgenLayer
+}
+
+type ImpossibleBugClass
+  = SuboptimalComplexity
+  | IdempotencyContract
+  | TransportTypeDrift
+  | NestedOptionalFlatten
+  | UnenumeratedEffects
+  | UnhandledDiagnosticPaths
+
+type T19ManualAnchorKey
+  = T19ManualTcConjEmpty
+  | T19ManualTcDisjEmpty
+  | T19ManualTcArrowTwoConj
+  | T19ManualTcCardinalityEmpty
+  | T19ManualTcInstantiationEmpty
+  | T19ManualTcConjEqualsRefl
+  | T19ManualNatAddLeftIdentity
+  | T19ManualNatAddRightIdentity
+  | T19ManualNatAddAssociativity
+  | T19ManualNatMulLeftIdentity
+  | T19ManualNatMulAnnihilator
+  | T19ManualNatMulAssociativity
+  | T19ManualAnchorAbsent
+
+type TestClaim<T> {
+  label: Symbol
+  stage: CompilerStage
+  assertion: AssertKind<T>
+  t19_anchor: T19ManualAnchorKey
+  classification: TestClassification
+}
+
+type TestSuite<T> {
+  label: Symbol
+  claims: List<TestClaim<T>>
+}
