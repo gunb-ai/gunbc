@@ -39,6 +39,7 @@ type DependencyFoldState {
   dependencies: List<DependencyView>
 }
 
+// 🟡 predicate dissolution — feature:dependency-usage-classifier-consumes-resolve-ground-facts.
 fn classify_node_edge_usage(parent: Node, edge: Edge) -> DependencyKind {
   Contains
 }
