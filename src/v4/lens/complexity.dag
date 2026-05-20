@@ -52,15 +52,13 @@ import v4.lens.cost {
   ProductCost,
   SumCost,
   UnknownCost,
+  PolyLogExponent,
   PolynomialDegree,
   SymbolicCost,
   SizeVariable,
-  add_polynomial_degree,
   asymptotic_class_dominates,
   asymptotic_class_of_cost,
-  cost_lens,
-  increment_polynomial_degree,
-  polynomial_degree_two
+  cost_lens
 }
 import v4.std.diagnostic {
   AmbiguousIntent,
@@ -85,6 +83,8 @@ type ComplexityBound
   = Constant
   | Logarithmic { size_var: SizeVariable }
   | Linear { size_var: SizeVariable }
+  | Linearithmic { size_var: SizeVariable }
+  | PolyLogarithmic { size_var: SizeVariable, exponent: PolyLogExponent }
   | Polynomial { size_var: SizeVariable, degree: PolynomialDegree }
   | Exponential { size_var: SizeVariable }
   | Factorial { size_var: SizeVariable }
@@ -94,35 +94,81 @@ fn unknown_complexity() -> ComplexityBound {
   Unknown { diagnostic: complexity_projection_diagnostic() }
 }
 
-fn complexity_bound_from_cost(cost: SymbolicCost) -> ComplexityBound {
+fn representative_size_variable(cost: SymbolicCost) -> Witness<SizeVariable> {
   match cost {
-    ConstantCost { value: _ } => Constant
-    LogCost { variable: v } => Logarithmic { size_var: v }
-    LinearCost { variable: v } => Linear { size_var: v }
-    PolynomialCost { variable: v, degree: d } => Polynomial { size_var: v, degree: d }
-    PolyLogCost { variable: _, exponent: _ } => unknown_complexity()
-    ExponentialCost { variable: v, base: _ } => Exponential { size_var: v }
-    FactorialCost { variable: v } => Factorial { size_var: v }
+    ConstantCost { value: _ } =>
+      Violates { diagnostic: complexity_projection_diagnostic() }
+    LogCost { variable: v } => Holds { value: v }
+    LinearCost { variable: v } => Holds { value: v }
+    PolynomialCost { variable: v, degree: _ } => Holds { value: v }
+    PolyLogCost { variable: v, exponent: _ } => Holds { value: v }
+    ExponentialCost { variable: v, base: _ } => Holds { value: v }
+    FactorialCost { variable: v } => Holds { value: v }
     SumCost { lhs: lhs, rhs: rhs } =>
-      dominant_complexity_bound(
-        a: complexity_bound_from_cost(cost: lhs),
-        b: complexity_bound_from_cost(cost: rhs)
-      )
+      match representative_size_variable(cost: lhs) {
+        Holds { value: v } => Holds { value: v }
+        Violates { diagnostic: _ } => representative_size_variable(cost: rhs)
+      }
     ProductCost { lhs: lhs, rhs: rhs } =>
-      multiply_complexity_bounds(
-        a: complexity_bound_from_cost(cost: lhs),
-        b: complexity_bound_from_cost(cost: rhs)
-      )
-    UnknownCost { reason: _ } => unknown_complexity()
+      match representative_size_variable(cost: lhs) {
+        Holds { value: v } => Holds { value: v }
+        Violates { diagnostic: _ } => representative_size_variable(cost: rhs)
+      }
+    UnknownCost { reason: _ } =>
+      Violates { diagnostic: complexity_projection_diagnostic() }
   }
 }
 
-fn dominant_complexity_bound(a: ComplexityBound, b: ComplexityBound) -> ComplexityBound {
-  if complexity_bound_dominates(a: a, b: b) {
-    a
-  } else {
-    b
+fn complexity_bound_from_class(
+  class: AsymptoticClass,
+  size_var: Witness<SizeVariable>
+) -> ComplexityBound {
+  match class {
+    ClassConstant => Constant
+    ClassLog =>
+      match size_var {
+        Holds { value: v } => Logarithmic { size_var: v }
+        Violates { diagnostic: _ } => unknown_complexity()
+      }
+    ClassLinear =>
+      match size_var {
+        Holds { value: v } => Linear { size_var: v }
+        Violates { diagnostic: _ } => unknown_complexity()
+      }
+    ClassLinearithmic =>
+      match size_var {
+        Holds { value: v } => Linearithmic { size_var: v }
+        Violates { diagnostic: _ } => unknown_complexity()
+      }
+    ClassPolyLog { exponent: e } =>
+      match size_var {
+        Holds { value: v } => PolyLogarithmic { size_var: v, exponent: e }
+        Violates { diagnostic: _ } => unknown_complexity()
+      }
+    ClassPolynomial { degree: d } =>
+      match size_var {
+        Holds { value: v } => Polynomial { size_var: v, degree: d }
+        Violates { diagnostic: _ } => unknown_complexity()
+      }
+    ClassExponential =>
+      match size_var {
+        Holds { value: v } => Exponential { size_var: v }
+        Violates { diagnostic: _ } => unknown_complexity()
+      }
+    ClassFactorial =>
+      match size_var {
+        Holds { value: v } => Factorial { size_var: v }
+        Violates { diagnostic: _ } => unknown_complexity()
+      }
+    ClassUnknown => unknown_complexity()
   }
+}
+
+fn complexity_bound_from_cost(cost: SymbolicCost) -> ComplexityBound {
+  complexity_bound_from_class(
+    class: asymptotic_class_of_cost(cost: cost),
+    size_var: representative_size_variable(cost: cost)
+  )
 }
 
 fn complexity_projection_diagnostic() -> Diagnostic {
@@ -151,6 +197,8 @@ fn complexity_bound_class(b: ComplexityBound) -> AsymptoticClass {
     Constant => ClassConstant
     Logarithmic { size_var: _ } => ClassLog
     Linear { size_var: _ } => ClassLinear
+    Linearithmic { size_var: _ } => ClassLinearithmic
+    PolyLogarithmic { size_var: _, exponent: e } => ClassPolyLog { exponent: e }
     Polynomial { size_var: _, degree: d } => ClassPolynomial { degree: d }
     Exponential { size_var: _ } => ClassExponential
     Factorial { size_var: _ } => ClassFactorial
@@ -163,52 +211,4 @@ fn complexity_bound_dominates(a: ComplexityBound, b: ComplexityBound) -> Bool {
     a: complexity_bound_class(b: a),
     b: complexity_bound_class(b: b)
   )
-}
-
-fn multiply_complexity_bounds(a: ComplexityBound, b: ComplexityBound) -> ComplexityBound {
-  match a {
-    Constant => b
-    Unknown { diagnostic: _ } => a
-    Factorial { size_var: _ } => a
-    Exponential { size_var: _ } =>
-      match b {
-        Factorial { size_var: _ } => b
-        Unknown { diagnostic: _ } => b
-        _ => a
-      }
-    Polynomial { size_var: v, degree: ad } =>
-      match b {
-        Constant => a
-        Logarithmic { size_var: _ } =>
-          Polynomial { size_var: v, degree: increment_polynomial_degree(d: ad) }
-        Linear { size_var: _ } =>
-          Polynomial { size_var: v, degree: increment_polynomial_degree(d: ad) }
-        Polynomial { size_var: _, degree: bd } =>
-          Polynomial { size_var: v, degree: add_polynomial_degree(a: ad, b: bd) }
-        Exponential { size_var: _ } => b
-        Factorial { size_var: _ } => b
-        Unknown { diagnostic: _ } => b
-      }
-    Linear { size_var: v } =>
-      match b {
-        Constant => a
-        Logarithmic { size_var: _ } => Polynomial { size_var: v, degree: polynomial_degree_two() }
-        Linear { size_var: _ } => Polynomial { size_var: v, degree: polynomial_degree_two() }
-        Polynomial { size_var: _, degree: bd } =>
-          Polynomial { size_var: v, degree: increment_polynomial_degree(d: bd) }
-        Exponential { size_var: _ } => b
-        Factorial { size_var: _ } => b
-        Unknown { diagnostic: _ } => b
-      }
-    Logarithmic { size_var: v } =>
-      match b {
-        Constant => a
-        Logarithmic { size_var: _ } => unknown_complexity()
-        Linear { size_var: bv } => Polynomial { size_var: bv, degree: polynomial_degree_two() }
-        Polynomial { size_var: _, degree: _ } => b
-        Exponential { size_var: _ } => b
-        Factorial { size_var: _ } => b
-        Unknown { diagnostic: _ } => b
-      }
-  }
 }
