@@ -8,7 +8,7 @@ module v4.lens.affected_set
 
 
 import v4.std.collection { List, Map }
-import v4.std.diagnostic { Diagnostic, Outcome, Produced, Rejected }
+import v4.std.diagnostic {Diagnostic, Outcome, Accepted, None, diagnostics_singleton}
 import v4.std.node { Diff, Edit, Hash, Node, Path, Symbol }
 import v4.std.witness { Holds, Witness }
 
@@ -143,7 +143,7 @@ type PropagationReceipt
 type FrontierReceipt
   = FrontierProduced { edges: List<FrontierEdge> }
   | FrontierUnknown { reason: Symbol }
-  | FrontierRejected { diagnostic: Diagnostic }
+  | FrontierRejected { diagnostics: diagnostics_singleton(d: Diagnostic }
 
 
 // RULING-1: 🟡 needs-more-work — frontier read.
@@ -355,7 +355,7 @@ fn expand_dimension(
           })
         FrontierUnknown { reason: r } =>
           mark_whole_dag(reason: r)
-        FrontierRejected { diagnostic: d } =>
+        FrontierRejected { diagnostics: diagnostics_singleton(d: d } =>
           mark_whole_dag_diagnostic(diagnostic: d)
       }
   }
@@ -381,7 +381,7 @@ fn seed_edit_fold_acc_live(
       }
     BoundaryExpands =>
       match post_edit_dag(acc.dag, edit).outcome {
-        Produced { value: next_dag } =>
+        Accepted { value: next_dag, diagnostics: None } =>
           AffectedFoldAcc {
             dag: next_dag,
             frontier: expand_changed_dimensions(
@@ -392,7 +392,7 @@ fn seed_edit_fold_acc_live(
               edit: edit
             )
           }
-        Rejected { diagnostic: d } =>
+        Rejected { diagnostics: diagnostics_singleton(d: d } =>
           AffectedFoldAcc {
             dag: acc.dag,
             frontier: mark_whole_dag_diagnostic(diagnostic: d)
@@ -400,12 +400,12 @@ fn seed_edit_fold_acc_live(
       }
     BoundaryUnknown { reason: r } =>
       match post_edit_dag(acc.dag, edit).outcome {
-        Produced { value: _ } =>
+        Accepted { value: _, diagnostics: None } =>
           AffectedFoldAcc {
             dag: acc.dag,
             frontier: mark_whole_dag(reason: r)
           }
-        Rejected { diagnostic: d } =>
+        Rejected { diagnostics: diagnostics_singleton(d: d } =>
           AffectedFoldAcc {
             dag: acc.dag,
             frontier: mark_whole_dag_diagnostic(diagnostic: d)

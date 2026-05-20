@@ -8,14 +8,7 @@ module v4.workflow.ci
 
 
 import v4.std.node { Symbol }
-import v4.std.diagnostic {
-  Correction,
-  Diagnostic,
-  Extent,
-  Locus,
-  NoCorrectionReason,
-  Outcome
-}
+import v4.std.diagnostic {Correction, Diagnostic, Extent, Locus, NoCorrectionReason, Outcome, Accepted, None, diagnostics_singleton}
 import v4.workflow.bootstrap { v4_stage0_binary, bootstrap_plan, bootstrap_stage_output }
 
 
@@ -183,23 +176,23 @@ fn ci_pipeline_well_formed(p: CiPipeline) -> Outcome<CiPipeline> {
         if ci_all_gate_jobs_resolve(gates: p.gates, jobs: p.jobs) {
           if ci_acyclic(jobs: p.jobs) {
             if ci_all_commands_authority_ok(jobs: p.jobs) {
-              Produced { value: p }
+              Accepted { value: p, diagnostics: None }
             } else {
-              Rejected { diagnostic: ci_diagnostic(reason: ci_bootstrap_authority_violation) }
+              Rejected { diagnostics: diagnostics_singleton(d: ci_diagnostic(reason: ci_bootstrap_authority_violation) }
             }
           } else {
-            Rejected { diagnostic: ci_diagnostic(reason: ci_dependency_cycle) }
+            Rejected { diagnostics: diagnostics_singleton(d: ci_diagnostic(reason: ci_dependency_cycle) }
           }
         } else {
-          Rejected { diagnostic: ci_diagnostic(reason: ci_dangling_reference) }
+          Rejected { diagnostics: diagnostics_singleton(d: ci_diagnostic(reason: ci_dangling_reference) }
         }
       } else {
-        Rejected { diagnostic: ci_diagnostic(reason: ci_dangling_reference) }
+        Rejected { diagnostics: diagnostics_singleton(d: ci_diagnostic(reason: ci_dangling_reference) }
       }
     } else {
-      Rejected { diagnostic: ci_diagnostic(reason: ci_duplicate_gate_id) }
+      Rejected { diagnostics: diagnostics_singleton(d: ci_diagnostic(reason: ci_duplicate_gate_id) }
     }
   } else {
-    Rejected { diagnostic: ci_diagnostic(reason: ci_duplicate_job_id) }
+    Rejected { diagnostics: diagnostics_singleton(d: ci_diagnostic(reason: ci_duplicate_job_id) }
   }
 }

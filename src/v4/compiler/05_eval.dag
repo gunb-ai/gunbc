@@ -16,17 +16,7 @@ import v4.std.node {
   Symbol,
   node_well_formed
 }
-import v4.std.diagnostic {
-  AmbiguousIntent,
-  Correction,
-  Diagnostic,
-  NoCorrectionReason,
-  NodeLocus,
-  Outcome,
-  Produced,
-  Rejected,
-  Unavailable
-}
+import v4.std.diagnostic {AmbiguousIntent, Correction, Diagnostic, NoCorrectionReason, NodeLocus, Outcome, Unavailable, Accepted, None, diagnostics_singleton}
 import v4.std.verification {
   AssertKind,
   Compiles,
@@ -132,12 +122,12 @@ fn eval_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
 fn eval_node(tree: InferredTree, inputs: Inputs) -> Outcome<Node> {
   if node_well_formed(n: tree.root) {
     if node_well_formed(n: inputs.root) {
-      Produced { value: inputs.root }
+      Accepted { value: inputs.root, diagnostics: None }
     } else {
-      Rejected { diagnostic: eval_diagnostic(reason: eval_rejected_invalid_node, node: inputs.root) }
+      Rejected { diagnostics: diagnostics_singleton(d: eval_diagnostic(reason: eval_rejected_invalid_node, node: inputs.root) }
     }
   } else {
-    Rejected { diagnostic: eval_diagnostic(reason: eval_rejected_invalid_node, node: tree.root) }
+    Rejected { diagnostics: diagnostics_singleton(d: eval_diagnostic(reason: eval_rejected_invalid_node, node: tree.root) }
   }
 }
 
@@ -145,13 +135,13 @@ fn eval_node(tree: InferredTree, inputs: Inputs) -> Outcome<Node> {
 // 🟡 derived equality scaffold — T22-EVAL-OUTCOME-EQ
 fn outcome_node_eq(a: Outcome<Node>, b: Outcome<Node>) -> Bool {
   match a {
-    Produced { value: av } => match b {
-      Produced { value: bv } => av == bv
-      Rejected { diagnostic: _ } => false
+    Accepted { value: av, diagnostics: None } => match b {
+      Accepted { value: bv, diagnostics: None } => av == bv
+      Rejected { diagnostics: diagnostics_singleton(d: _ } => false
     }
-    Rejected { diagnostic: ad } => match b {
-      Produced { value: _ } => false
-      Rejected { diagnostic: bd } => ad == bd
+    Rejected { diagnostics: diagnostics_singleton(d: ad } => match b {
+      Accepted { value: _, diagnostics: None } => false
+      Rejected { diagnostics: diagnostics_singleton(d: bd } => ad == bd
     }
   }
 }
@@ -166,8 +156,8 @@ fn run_node_assert(
   match kind {
     Equals => if outcome_node_eq(a: actual, b: expected) { Pass } else { Fail { actual: actual } }
     Compiles => match actual {
-      Produced { value: _ } => Pass
-      Rejected { diagnostic: _ } => Fail { actual: actual }
+      Accepted { value: _, diagnostics: None } => Pass
+      Rejected { diagnostics: diagnostics_singleton(d: _ } => Fail { actual: actual }
     }
     RoundTrips => Deferred {
       actual: actual,

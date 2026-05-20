@@ -67,7 +67,8 @@ def replace_produced(text: str) -> str:
 def migrate_file(path: Path) -> bool:
     if path.name == "diagnostic.dag":
         return False
-    text = path.read_text()
+    orig = path.read_text()
+    text = orig
     if "Produced" not in text and "Rejected { diagnostic" not in text:
         return False
     text, fw = protect_frontier(text)
@@ -79,7 +80,6 @@ def migrate_file(path: Path) -> bool:
     )
     text = replace_produced(text)
     text = unprotect_frontier(text, fw)
-    orig = path.read_text()
     if text != orig:
         path.write_text(text)
         return True

@@ -15,14 +15,7 @@ import v4.extdeps.languages.dag {
   dag_language_model_canonical_symbols
 }
 import v4.std.collection { Set }
-import v4.std.diagnostic {
-  Diagnostic,
-  NodeLocus,
-  Outcome,
-  Produced,
-  Rejected,
-  UserInputBoundary
-}
+import v4.std.diagnostic {Diagnostic, NodeLocus, Outcome, UserInputBoundary, Accepted, None, diagnostics_singleton}
 import v4.std.node {
   Arrow,
   Atom,
@@ -245,17 +238,15 @@ fn canonical_atom(identity: Symbol) -> Node {
 fn resolve_atom(n: Node, scope: Scope, identity: Symbol) -> Outcome<Node> {
   match lookup_chain(s: scope, name: identity) {
     Some { value: canonical } =>
-      Produced {
-        value: canonical_atom(identity: canonical)
-      }
+      Accepted { value: canonical_atom(identity: canonical), diagnostics: None }
     None =>
       if namespace_has_canonical_symbol(
         namespace: scope_root_module(s: scope),
         name: identity
       ) {
-        Produced { value: canonical_atom(identity: identity) }
+        Accepted { value: canonical_atom(identity: identity), diagnostics: None }
       } else {
-        Rejected { diagnostic: unbound_symbol_diagnostic(n: n) }
+        Rejected { diagnostics: diagnostics_singleton(d: unbound_symbol_diagnostic(n: n) }
       }
   }
 }
@@ -274,14 +265,12 @@ fn resolve_node(n: Node, scope: Scope) -> Outcome<Node> {
           outer: scope
         }
       ) {
-        Rejected { diagnostic: d } => Rejected { diagnostic: d }
-        Produced { value: resolved_children } =>
-          Produced {
-            value: Node {
+        Rejected { diagnostics: diagnostics_singleton(d: d } => Rejected { diagnostics: diagnostics_singleton(d: d }
+        Accepted { value: resolved_children, diagnostics: None } =>
+          Accepted { value: Node {
               kind: n.kind,
               children: resolved_children
-            }
-          }
+            }, diagnostics: None }
       }
     ComputationNode { behavior: Bind } =>
       resolve_bind_node(n: n, scope: scope)
@@ -294,32 +283,28 @@ fn resolve_node(n: Node, scope: Scope) -> Outcome<Node> {
 
 
 fn resolve_children_homogeneous_scope(n: Node, scope: Scope) -> Outcome<Node> {
-  match fold(n.children, init: Produced { value: empty_edge_list() }, f: fn(acc, e) {
+  match fold(n.children, init: Accepted { value: empty_edge_list(), diagnostics: None }, f: fn(acc, e) {
     match acc {
-      Rejected { diagnostic: d } =>
-        Rejected { diagnostic: d }
-      Produced { value: done } =>
+      Rejected { diagnostics: diagnostics_singleton(d: d } =>
+        Rejected { diagnostics: diagnostics_singleton(d: d }
+      Accepted { value: done, diagnostics: None } =>
         match resolve_node(n: e.target, scope: scope) {
-          Rejected { diagnostic: d } =>
-            Rejected { diagnostic: d }
-          Produced { value: resolved_target } =>
-            Produced {
-              value: list_push(done, Edge {
+          Rejected { diagnostics: diagnostics_singleton(d: d } =>
+            Rejected { diagnostics: diagnostics_singleton(d: d }
+          Accepted { value: resolved_target, diagnostics: None } =>
+            Accepted { value: list_push(done, Edge {
                 label: e.label,
                 target: resolved_target
-              })
-            }
+              }), diagnostics: None }
         }
     }
   }) {
-    Rejected { diagnostic: d } => Rejected { diagnostic: d }
-    Produced { value: resolved_children } =>
-      Produced {
-        value: Node {
+    Rejected { diagnostics: diagnostics_singleton(d: d } => Rejected { diagnostics: diagnostics_singleton(d: d }
+    Accepted { value: resolved_children, diagnostics: None } =>
+      Accepted { value: Node {
           kind: n.kind,
           children: resolved_children
-        }
-      }
+        }, diagnostics: None }
   }
 }
 
@@ -333,58 +318,54 @@ fn resolve_edges_first_outer_then_inner(
     edges,
     init: EdgeResolveAccMk {
       have_seen_first: false,
-      acc: Produced { value: empty_edge_list() }
+      acc: Accepted { value: empty_edge_list(), diagnostics: None }
     },
     f: fn(state, e) {
       match state {
         EdgeResolveAccMk { have_seen_first: seen, acc: acc_state } =>
           match acc_state {
-            Rejected { diagnostic: d } =>
+            Rejected { diagnostics: diagnostics_singleton(d: d } =>
               EdgeResolveAccMk {
                 have_seen_first: true,
-                acc: Rejected { diagnostic: d }
+                acc: Rejected { diagnostics: diagnostics_singleton(d: d }
               }
-            Produced { value: done } =>
+            Accepted { value: done, diagnostics: None } =>
               if seen {
                 match resolve_node(n: e.target, scope: scope_inner) {
-                  Rejected { diagnostic: d } =>
+                  Rejected { diagnostics: diagnostics_singleton(d: d } =>
                     EdgeResolveAccMk {
                       have_seen_first: true,
-                      acc: Rejected { diagnostic: d }
+                      acc: Rejected { diagnostics: diagnostics_singleton(d: d }
                     }
-                  Produced { value: resolved_target } =>
+                  Accepted { value: resolved_target, diagnostics: None } =>
                     EdgeResolveAccMk {
                       have_seen_first: true,
-                      acc: Produced {
-                        value: list_push(
+                      acc: Accepted { value: list_push(
                           done,
                           Edge {
                             label: e.label,
                             target: resolved_target
                           }
-                        )
-                      }
+                        ), diagnostics: None }
                     }
                 }
               } else {
                 match resolve_node(n: e.target, scope: scope_outer) {
-                  Rejected { diagnostic: d } =>
+                  Rejected { diagnostics: diagnostics_singleton(d: d } =>
                     EdgeResolveAccMk {
                       have_seen_first: true,
-                      acc: Rejected { diagnostic: d }
+                      acc: Rejected { diagnostics: diagnostics_singleton(d: d }
                     }
-                  Produced { value: resolved_target } =>
+                  Accepted { value: resolved_target, diagnostics: None } =>
                     EdgeResolveAccMk {
                       have_seen_first: true,
-                      acc: Produced {
-                        value: list_push(
+                      acc: Accepted { value: list_push(
                           done,
                           Edge {
                             label: e.label,
                             target: resolved_target
                           }
-                        )
-                      }
+                        ), diagnostics: None }
                     }
                 }
               }
@@ -401,12 +382,9 @@ fn resolve_edges_first_outer_then_inner(
 fn resolve_bind_binder_target(t: Node) -> Outcome<Node> {
   match t.kind {
     TypeNode { connective: Atom { identity: id } } =>
-      Produced {
-        value: canonical_atom(identity: id)
-      }
+      Accepted { value: canonical_atom(identity: id), diagnostics: None }
     _ =>
-      Rejected {
-        diagnostic: malformed_tree_diagnostic(n: t)
+      Rejected { diagnostics: diagnostics_singleton(d: malformed_tree_diagnostic(n: t)
       }
   }
 }
@@ -421,80 +399,74 @@ fn resolve_bind_edges(
     edges,
     init: BindEdgeAccMk {
       idx: 0,
-      acc: Produced { value: empty_edge_list() }
+      acc: Accepted { value: empty_edge_list(), diagnostics: None }
     },
     f: fn(state, e) {
       match state {
         BindEdgeAccMk { idx: i, acc: acc_state } =>
           match acc_state {
-            Rejected { diagnostic: d } =>
+            Rejected { diagnostics: diagnostics_singleton(d: d } =>
               BindEdgeAccMk {
                 idx: i + 1,
-                acc: Rejected { diagnostic: d }
+                acc: Rejected { diagnostics: diagnostics_singleton(d: d }
               }
-            Produced { value: done } =>
+            Accepted { value: done, diagnostics: None } =>
               if i == 0 {
                 match resolve_bind_binder_target(t: e.target) {
-                  Rejected { diagnostic: d } =>
+                  Rejected { diagnostics: diagnostics_singleton(d: d } =>
                     BindEdgeAccMk {
                       idx: i + 1,
-                      acc: Rejected { diagnostic: d }
+                      acc: Rejected { diagnostics: diagnostics_singleton(d: d }
                     }
-                  Produced { value: rt } =>
+                  Accepted { value: rt, diagnostics: None } =>
                     BindEdgeAccMk {
                       idx: i + 1,
-                      acc: Produced {
-                        value: list_push(
+                      acc: Accepted { value: list_push(
                           done,
                           Edge {
                             label: e.label,
                             target: rt
                           }
-                        )
-                      }
+                        ), diagnostics: None }
                     }
                 }
               } else {
                 if i == 1 {
                   match resolve_node(n: e.target, scope: scope_outer) {
-                    Rejected { diagnostic: d } =>
+                    Rejected { diagnostics: diagnostics_singleton(d: d } =>
                       BindEdgeAccMk {
                         idx: i + 1,
-                        acc: Rejected { diagnostic: d }
+                        acc: Rejected { diagnostics: diagnostics_singleton(d: d }
                       }
-                    Produced { value: rt } =>
+                    Accepted { value: rt, diagnostics: None } =>
                       BindEdgeAccMk {
                         idx: i + 1,
-                        acc: Produced {
-                          value: list_push(
+                        acc: Accepted { value: list_push(
                             done,
                             Edge {
                               label: e.label,
                               target: rt
                             }
-                          )
-                        }
+                          ), diagnostics: None }
                       }
                   }
                 } else {
                   match resolve_node(n: e.target, scope: scope_inner) {
-                    Rejected { diagnostic: d } =>
+                    Rejected { diagnostics: diagnostics_singleton(d: d } =>
                       BindEdgeAccMk {
                         idx: i + 1,
-                        acc: Rejected { diagnostic: d }
+                        acc: Rejected { diagnostics: diagnostics_singleton(d: d }
                       }
-                    Produced { value: rt } =>
+                    Accepted { value: rt, diagnostics: None } =>
                       BindEdgeAccMk {
                         idx: i + 1,
-                        acc: Produced {
-                          value: list_push(
+                        acc: Accepted { value: list_push(
                             done,
                             Edge {
                               label: e.label,
                               target: rt
                             }
-                          )
-                        }
+                          ), diagnostics: None }
                       }
                   }
                 }
@@ -518,18 +490,15 @@ fn resolve_bind_node(n: Node, scope: Scope) -> Outcome<Node> {
         outer: scope
       }
     ) {
-      Rejected { diagnostic: d } => Rejected { diagnostic: d }
-      Produced { value: resolved_children } =>
-        Produced {
-          value: Node {
+      Rejected { diagnostics: diagnostics_singleton(d: d } => Rejected { diagnostics: diagnostics_singleton(d: d }
+      Accepted { value: resolved_children, diagnostics: None } =>
+        Accepted { value: Node {
             kind: n.kind,
             children: resolved_children
-          }
-        }
+          }, diagnostics: None }
     }
   } else {
-    Rejected {
-      diagnostic: malformed_tree_diagnostic(n: n)
+    Rejected { diagnostics: diagnostics_singleton(d: malformed_tree_diagnostic(n: n)
     }
   }
 }
@@ -547,6 +516,6 @@ fn resolve_with_namespace(tree: NormalizedTree, namespace: Namespace) -> Outcome
   if node_well_formed(n: tree) {
     resolve_node(n: tree, scope: scope_from_namespace(namespace: namespace))
   } else {
-    Rejected { diagnostic: malformed_tree_diagnostic(n: tree) }
+    Rejected { diagnostics: diagnostics_singleton(d: malformed_tree_diagnostic(n: tree) }
   }
 }

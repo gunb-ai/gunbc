@@ -40,11 +40,7 @@ import v4.std.node {
   Symbol,
   TypeNode
 }
-import v4.std.diagnostic {
-  Outcome,
-  Produced,
-  Rejected
-}
+import v4.std.diagnostic {Outcome, Accepted, None, diagnostics_singleton}
 import v4.std.verification {
   AssertKind,
   Compiles,
@@ -96,21 +92,21 @@ fn run_pipeline_assert(
 ) -> Verdict<CiPipeline> {
   match kind {
     Equals => match actual {
-      Produced { value: _ } => match expected {
-        Produced { value: _ } => Deferred {
+      Accepted { value: _, diagnostics: None } => match expected {
+        Accepted { value: _, diagnostics: None } => Deferred {
           actual: actual,
           diagnostic: eval_diagnostic(reason: eval_rejected_pipeline_projection_deferred, node: input)
         }
-        Rejected { diagnostic: _ } => Fail { actual: actual }
+        Rejected { diagnostics: diagnostics_singleton(d: _ } => Fail { actual: actual }
       }
-      Rejected { diagnostic: d } => {
-        let comparable = Rejected { diagnostic: d }
+      Rejected { diagnostics: diagnostics_singleton(d: d } => {
+        let comparable = Rejected { diagnostics: diagnostics_singleton(d: d }
         if outcome_node_eq(a: comparable, b: expected) { Pass } else { Fail { actual: actual } }
       }
     }
     Compiles => match actual {
-      Produced { value: _ } => Pass
-      Rejected { diagnostic: _ } => Fail { actual: actual }
+      Accepted { value: _, diagnostics: None } => Pass
+      Rejected { diagnostics: diagnostics_singleton(d: _ } => Fail { actual: actual }
     }
     RoundTrips => Deferred {
       actual: actual,
@@ -127,8 +123,8 @@ fn run_pipeline_assert(
 fn workflow_pipeline_pass_gate(run: TestClaimRun<CiPipeline>) -> Verdict<TestClaimRun<CiPipeline>> {
   match run.verdict {
     Pass => Pass
-    Fail { actual: _ } => Fail { actual: Produced { value: run } }
-    Deferred { actual: _, diagnostic: d } => Deferred { actual: Produced { value: run }, diagnostic: d }
+    Fail { actual: _ } => Fail { actual: Accepted { value: run, diagnostics: None } }
+    Deferred { actual: _, diagnostic: d } => Deferred { actual: Accepted { value: run, diagnostics: None }, diagnostic: d }
   }
 }
 
@@ -209,7 +205,7 @@ fn pipeline_rejection_claim(label: String, input: Node, expected_reason: Symbol)
     label: label,
     t19_anchor: T19ManualAnchorAbsent,
     input: input,
-    expected: Rejected { diagnostic: ci_diagnostic(reason: expected_reason) },
+    expected: Rejected { diagnostics: diagnostics_singleton(d: ci_diagnostic(reason: expected_reason) },
     classification: TestClassification { tier: Tier1, layer: Unit }
   }
 }

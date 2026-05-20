@@ -16,12 +16,7 @@ import v4.extdeps.languages.dag {
   dag_c3_surface_sugar_service,
   dag_c3_surface_sugar_type
 }
-import v4.std.diagnostic {
-  Diagnostic,
-  NodeLocus,
-  Outcome,
-  UserInputBoundary
-}
+import v4.std.diagnostic {Diagnostic, NodeLocus, Outcome, UserInputBoundary, Accepted, None, diagnostics_singleton}
 import v4.std.node {
   Connective,
   Edge,
@@ -109,36 +104,32 @@ fn exactly_one_child(children: List<Edge>) -> Bool {
 
 fn normalize_edge(e: Edge) -> Outcome<Edge> {
   match normalize_node(n: e.target) {
-    Produced { value: normalized_target } =>
-      Produced {
-        value: Edge {
+    Accepted { value: normalized_target, diagnostics: None } =>
+      Accepted { value: Edge {
           label: e.label,
           target: normalized_target
-        }
-      }
-    Rejected { diagnostic: d } => Rejected { diagnostic: d }
+        }, diagnostics: None }
+    Rejected { diagnostics: diagnostics_singleton(d: d } => Rejected { diagnostics: diagnostics_singleton(d: d }
   }
 }
 
 
 fn empty_normalized_children() -> Outcome<List<Edge>> {
-  Produced { value: Empty }
+  Accepted { value: Empty, diagnostics: None }
 }
 
 
 fn normalize_children(children: List<Edge>) -> Outcome<List<Edge>> {
   fold(children, init: empty_normalized_children(), f: fn(acc, e) {
     match acc {
-      Rejected { diagnostic: d } =>
-        Rejected { diagnostic: d }
-      Produced { value: done } =>
+      Rejected { diagnostics: diagnostics_singleton(d: d } =>
+        Rejected { diagnostics: diagnostics_singleton(d: d }
+      Accepted { value: done, diagnostics: None } =>
         match normalize_edge(e: e) {
-          Produced { value: normalized_edge } =>
-            Produced {
-              value: list_push(done, normalized_edge)
-            }
-          Rejected { diagnostic: d } =>
-            Rejected { diagnostic: d }
+          Accepted { value: normalized_edge, diagnostics: None } =>
+            Accepted { value: list_push(done, normalized_edge), diagnostics: None }
+          Rejected { diagnostics: diagnostics_singleton(d: d } =>
+            Rejected { diagnostics: diagnostics_singleton(d: d }
         }
     }
   })
@@ -171,36 +162,36 @@ fn normalize_sugar(kind: SurfaceSugarKind, n: Node, children: List<Edge>) -> Out
   match kind {
     ServiceSugar =>
       if all_children_named(children: children) {
-        Produced { value: type_node(connective: Conj, children: children) }
+        Accepted { value: type_node(connective: Conj, children: children), diagnostics: None }
       } else {
-        Rejected { diagnostic: malformed_sugar_diagnostic(n: n) }
+        Rejected { diagnostics: diagnostics_singleton(d: malformed_sugar_diagnostic(n: n) }
       }
     FnSugar =>
       if all_children_positional(children: children) {
-        Produced { value: type_node(connective: Arrow, children: children) }
+        Accepted { value: type_node(connective: Arrow, children: children), diagnostics: None }
       } else {
-        Rejected { diagnostic: malformed_sugar_diagnostic(n: n) }
+        Rejected { diagnostics: diagnostics_singleton(d: malformed_sugar_diagnostic(n: n) }
       }
     TypeSugar =>
       if exactly_one_child(children: children) {
         match children |> first {
           Some { value: e0 } =>
             if edge_is_positional(e: e0) {
-              Produced { value: e0.target }
+              Accepted { value: e0.target, diagnostics: None }
             } else {
-              Rejected { diagnostic: malformed_sugar_diagnostic(n: n) }
+              Rejected { diagnostics: diagnostics_singleton(d: malformed_sugar_diagnostic(n: n) }
             }
           None =>
-            Rejected { diagnostic: malformed_sugar_diagnostic(n: n) }
+            Rejected { diagnostics: diagnostics_singleton(d: malformed_sugar_diagnostic(n: n) }
         }
       } else {
-        Rejected { diagnostic: malformed_sugar_diagnostic(n: n) }
+        Rejected { diagnostics: diagnostics_singleton(d: malformed_sugar_diagnostic(n: n) }
       }
     OperationSugar =>
       if all_children_positional(children: children) {
-        Produced { value: type_node(connective: Arrow, children: children) }
+        Accepted { value: type_node(connective: Arrow, children: children), diagnostics: None }
       } else {
-        Rejected { diagnostic: malformed_sugar_diagnostic(n: n) }
+        Rejected { diagnostics: diagnostics_singleton(d: malformed_sugar_diagnostic(n: n) }
       }
   }
 }
@@ -208,18 +199,16 @@ fn normalize_sugar(kind: SurfaceSugarKind, n: Node, children: List<Edge>) -> Out
 
 fn normalize_node(n: Node) -> Outcome<Node> {
   match normalize_children(children: n.children) {
-    Rejected { diagnostic: d } => Rejected { diagnostic: d }
-    Produced { value: normalized_children } =>
+    Rejected { diagnostics: diagnostics_singleton(d: d } => Rejected { diagnostics: diagnostics_singleton(d: d }
+    Accepted { value: normalized_children, diagnostics: None } =>
       match classify_sugar(n: n) {
         Some { value: kind } =>
           normalize_sugar(kind: kind, n: n, children: normalized_children)
         None =>
-          Produced {
-            value: Node {
+          Accepted { value: Node {
               kind: n.kind,
               children: normalized_children
-            }
-          }
+            }, diagnostics: None }
       }
   }
 }
@@ -227,13 +216,12 @@ fn normalize_node(n: Node) -> Outcome<Node> {
 
 fn normalize(parse_tree: ParseTree) -> Outcome<NormalizedTree> {
   match normalize_node(n: parse_tree) {
-    Rejected { diagnostic: d } => Rejected { diagnostic: d }
-    Produced { value: normalized } =>
+    Rejected { diagnostics: diagnostics_singleton(d: d } => Rejected { diagnostics: diagnostics_singleton(d: d }
+    Accepted { value: normalized, diagnostics: None } =>
       if node_well_formed(n: normalized) {
-        Produced { value: normalized }
+        Accepted { value: normalized, diagnostics: None }
       } else {
-        Rejected {
-          diagnostic: post_normalize_not_well_formed_diagnostic(n: normalized)
+        Rejected { diagnostics: diagnostics_singleton(d: post_normalize_not_well_formed_diagnostic(n: normalized)
         }
       }
   }
