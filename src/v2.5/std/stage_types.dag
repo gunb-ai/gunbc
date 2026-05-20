@@ -10,11 +10,13 @@
 //
 // Pipeline (type signatures are the contract):
 //   tokenize : SourceText -> TokenStream
-//   parse    : TokenStream -> ParseModule
-//   resolve  : ParseModule -> ResolvedModule
-//   normalize: ResolvedModule -> NormalizedModule
-//   infer    : NormalizedModule -> InferredModule
+//   parse    : TokenStream -> Outcome<ParseModule>
+//   resolve  : ParseModule -> Outcome<ResolvedModule>
+//   normalize: ResolvedModule -> Outcome<NormalizedModule>
+//   infer    : NormalizedModule -> Outcome<InferredModule>
 //   emit     : (InferredModule, TargetModel) -> Outcome<TargetSource>
+// Stage boundary failures use Outcome/Rejected + Diagnostic; recovery-shaped
+// *Error expr variants inside Produced modules are v2 parity only (🟡 gated).
 
 module v2_5.std.stage_types
 
@@ -129,11 +131,13 @@ type ParseTypeExpr
       params: List<ParseParam>
       return_type: ParseTypeExpr
     }
+  // 🟡 coproduct dissolution — feature:v2-recovery-expr-carrier
   | ParseTypeError { message: String, span: SourceSpan }
 
 // 🟢 coproduct dissolution
 type ParseExpr
   = ParseLit { value: LiteralValue, span: SourceSpan }
+  // 🟡 coproduct dissolution — feature:v2-recovery-expr-carrier
   | ParseError { kind: ExprErrorKind, message: String, span: SourceSpan }
   | ParseVar { name: AuthoredName }
   | ParseFieldAccess {
@@ -353,11 +357,13 @@ type ResolvedTypeExpr
       params: List<ResolvedParam>
       return_type: ResolvedTypeExpr
     }
+  // 🟡 coproduct dissolution — feature:v2-recovery-expr-carrier
   | ResolvedTypeError { message: String, span: SourceSpan }
 
 // 🟢 coproduct dissolution
 type ResolvedExpr
   = ResolvedLit { value: LiteralValue, span: SourceSpan }
+  // 🟡 coproduct dissolution — feature:v2-recovery-expr-carrier
   | ResolvedError { kind: ExprErrorKind, message: String, span: SourceSpan }
   | ResolvedVar { name: BoundName }
   | ResolvedFieldAccess {
@@ -586,11 +592,13 @@ type NormalizedTypeExpr
       params: List<NormalizedParam>
       return_type: NormalizedTypeExpr
     }
+  // 🟡 coproduct dissolution — feature:v2-recovery-expr-carrier
   | NormalizedTypeError { message: String, span: SourceSpan }
 
 // 🟢 coproduct dissolution
 type NormalizedExpr
   = NormalizedLit { value: LiteralValue, span: SourceSpan }
+  // 🟡 coproduct dissolution — feature:v2-recovery-expr-carrier
   | NormalizedError { kind: ExprErrorKind, message: String, span: SourceSpan }
   | NormalizedVar { name: BoundName }
   | NormalizedFieldAccess {
@@ -752,6 +760,7 @@ type NormalizedModule {
 // 🟢 coproduct dissolution
 type InferredType
   = InferredTypeOk { form: TypeForm }
+  // 🟡 coproduct dissolution — feature:v2-recovery-expr-carrier
   | InferredTypeError { message: String, span: SourceSpan }
   | InferredTypeVariable { id: Symbol }
 
@@ -832,6 +841,7 @@ type InferredMatchArm {
 // 🟢 coproduct dissolution
 type InferredExpr
   = InferredLit { value: LiteralValue, span: SourceSpan, expr_type: InferredType }
+  // 🟡 coproduct dissolution — feature:v2-recovery-expr-carrier
   | InferredError {
       kind: ExprErrorKind
       message: String
@@ -1029,7 +1039,7 @@ type ParseStageIn {
 }
 
 type ParseStageOut {
-  module: ParseModule
+  outcome: Outcome<ParseModule>
 }
 
 type ResolveStageIn {
@@ -1037,7 +1047,7 @@ type ResolveStageIn {
 }
 
 type ResolveStageOut {
-  module: ResolvedModule
+  outcome: Outcome<ResolvedModule>
 }
 
 type NormalizeStageIn {
@@ -1045,7 +1055,7 @@ type NormalizeStageIn {
 }
 
 type NormalizeStageOut {
-  module: NormalizedModule
+  outcome: Outcome<NormalizedModule>
 }
 
 type InferStageIn {
@@ -1053,7 +1063,7 @@ type InferStageIn {
 }
 
 type InferStageOut {
-  module: InferredModule
+  outcome: Outcome<InferredModule>
 }
 
 type EmitStageIn {
@@ -1149,12 +1159,12 @@ type SeamNormalizedModule {
   items: List<SeamNormalizedItem>
 }
 
-// 🟢 coproduct dissolution
+// 🟡 coproduct dissolution — feature:ast-to-node-lowering
 type SeamResolvedNode
   = SeamResolvedModuleNode { module: SeamResolvedModule }
   | SeamResolvedItemNode { item: SeamResolvedItem }
 
-// 🟢 coproduct dissolution
+// 🟡 coproduct dissolution — feature:ast-to-node-lowering
 type SeamNormalizedNode
   = SeamNormalizedModuleNode { module: SeamNormalizedModule }
   | SeamNormalizedItemNode { item: SeamNormalizedItem }

@@ -75,7 +75,17 @@ fn connective_edge_discipline(c: Connective) -> EdgeDiscipline {
   }
 }
 
-// 🟢 predicate dissolution — derived EdgeLabel property; list walkers delegate here.
+fn behavior_edge_discipline(b: Behavior) -> EdgeDiscipline {
+  match b {
+    Value => NoEdges
+    Transform => PositionalEdges
+    Branch => LabeledEdges
+    Loop => PositionalEdges
+    Bind => PositionalEdges
+  }
+}
+
+// 🟡 predicate dissolution — feature:substrate-edge-label-query
 fn edge_is_named(e: Edge) -> Bool {
   match e.label {
     Named { name: _ } => true
@@ -83,7 +93,7 @@ fn edge_is_named(e: Edge) -> Bool {
   }
 }
 
-// 🟢 predicate dissolution — derived EdgeLabel property; list walkers delegate here.
+// 🟡 predicate dissolution — feature:substrate-edge-label-query
 fn edge_is_positional(e: Edge) -> Bool {
   match e.label {
     Named { name: _ } => false
@@ -126,7 +136,8 @@ fn node_locally_well_formed(n: Node) -> Bool {
   match n.kind {
     TypeForm { connective: c } =>
       edges_conform(children: n.children, d: connective_edge_discipline(c: c))
-    Computation { behavior: _ } => true
+    Computation { behavior: b } =>
+      edges_conform(children: n.children, d: behavior_edge_discipline(b: b))
   }
 }
 
