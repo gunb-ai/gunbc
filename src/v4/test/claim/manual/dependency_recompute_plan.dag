@@ -9,6 +9,7 @@ module v4.test.claim.manual.dependency_recompute_plan
 import v4.std.change {
   AffectedDependency,
   AffectedSet,
+  AffectedSetProduced,
   Change,
   ChangeSet,
   NodeChanged,
@@ -119,7 +120,7 @@ data target_projection_dependency: DependencyView = DependencyView {
   usage_site: target_test_projection_node
 }
 
-data refinement_affected_set: AffectedSet = AffectedSet {
+data refinement_affected_set: AffectedSet = AffectedSetProduced {
   changes: refinement_change_set,
   affected: [
     AffectedDependency {

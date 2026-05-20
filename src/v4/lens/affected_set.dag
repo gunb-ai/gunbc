@@ -11,6 +11,11 @@ import v4.std.collection { List, Map }
 import v4.std.change {
   AffectedDependency,
   AffectedSet,
+  AffectedSetDiagnostic,
+  AffectedSetEvidence,
+  AffectedSetFailClosed,
+  AffectedSetProduced,
+  AffectedSetReason,
   Change,
   ChangeSet,
   NodeChanged
@@ -173,10 +178,15 @@ type AffectedFoldAcc {
 
 
 type AffectedSetFoldAcc {
-  dag: Dag
-  changes: ChangeSet
-  affected: List<AffectedDependency>
-}
+  = AffectedSetActive {
+      dag: Dag,
+      changes: ChangeSet,
+      affected: List<AffectedDependency>
+    }
+  | AffectedSetFailed {
+      changes: ChangeSet,
+      evidence: AffectedSetEvidence
+    }
 
 
 fn empty_frontier() -> ReExecFrontier {
@@ -196,7 +206,7 @@ fn empty_affected_fold_acc(dag: Dag) -> AffectedFoldAcc {
 
 
 fn empty_affected_set_fold_acc(dag: Dag) -> AffectedSetFoldAcc {
-  AffectedSetFoldAcc {
+  AffectedSetActive {
     dag: dag,
     changes: ChangeSet { changes: [] },
     affected: []
@@ -224,10 +234,18 @@ fn change_for_edit(edit: Edit) -> Change {
 
 
 fn affected_set_from_fold_acc(acc: AffectedSetFoldAcc) -> AffectedSet {
-  AffectedSet {
-    changes: acc.changes,
-    affected: acc.affected,
-    restricted_to: lens_frontier_dependency_kinds()
+  match acc {
+    AffectedSetActive { dag: _, changes: changes, affected: affected } =>
+      AffectedSetProduced {
+        changes: changes,
+        affected: affected,
+        restricted_to: lens_frontier_dependency_kinds()
+      }
+    AffectedSetFailed { changes: changes, evidence: evidence } =>
+      AffectedSetFailClosed {
+        changes: changes,
+        evidence: evidence
+      }
   }
 }
 
@@ -239,21 +257,78 @@ fn append_change(changes: ChangeSet, change: Change) -> ChangeSet {
 }
 
 
+fn add_change_to_affected_acc(acc: AffectedSetFoldAcc, change: Change) -> AffectedSetFoldAcc {
+  match acc {
+    AffectedSetActive { dag: dag, changes: changes, affected: affected } =>
+      AffectedSetActive {
+        dag: dag,
+        changes: append_change(changes: changes, change: change),
+        affected: affected
+      }
+    AffectedSetFailed { changes: changes, evidence: evidence } =>
+      AffectedSetFailed {
+        changes: append_change(changes: changes, change: change),
+        evidence: evidence
+      }
+  }
+}
+
+
 fn record_affected_dependency(
   acc: AffectedSetFoldAcc,
   change: Change,
   dependency: DependencyView
 ) -> AffectedSetFoldAcc {
-  AffectedSetFoldAcc {
-    dag: acc.dag,
-    changes: acc.changes,
-    affected: list_push(
-      acc.affected,
-      AffectedDependency {
-        change: change,
-        dependency: dependency
+  match acc {
+    AffectedSetActive { dag: dag, changes: changes, affected: affected } =>
+      AffectedSetActive {
+        dag: dag,
+        changes: changes,
+        affected: list_push(
+          affected,
+          AffectedDependency {
+            change: change,
+            dependency: dependency
+          }
+        )
       }
-    )
+    AffectedSetFailed { changes: changes, evidence: evidence } =>
+      AffectedSetFailed {
+        changes: changes,
+        evidence: evidence
+      }
+  }
+}
+
+
+fn fail_affected_set_with_reason(acc: AffectedSetFoldAcc, reason: Symbol) -> AffectedSetFoldAcc {
+  match acc {
+    AffectedSetActive { dag: _, changes: changes, affected: _ } =>
+      AffectedSetFailed {
+        changes: changes,
+        evidence: AffectedSetReason { reason: reason }
+      }
+    AffectedSetFailed { changes: changes, evidence: evidence } =>
+      AffectedSetFailed {
+        changes: changes,
+        evidence: evidence
+      }
+  }
+}
+
+
+fn fail_affected_set_with_diagnostic(acc: AffectedSetFoldAcc, diagnostic: Diagnostic) -> AffectedSetFoldAcc {
+  match acc {
+    AffectedSetActive { dag: _, changes: changes, affected: _ } =>
+      AffectedSetFailed {
+        changes: changes,
+        evidence: AffectedSetDiagnostic { diagnostic: diagnostic }
+      }
+    AffectedSetFailed { changes: changes, evidence: evidence } =>
+      AffectedSetFailed {
+        changes: changes,
+        evidence: evidence
+      }
   }
 }
 
@@ -542,16 +617,14 @@ fn expand_affected_dimension(
               dependency: dependency
             )
           DoesNotPropagate { proof: _ } => acc2
-          PropagationUnknown { reason: _ } =>
-            record_affected_dependency(
-              acc: acc2,
-              change: change_for_edit(edit: edit),
-              dependency: dependency
-            )
+          PropagationUnknown { reason: r } =>
+            fail_affected_set_with_reason(acc: acc2, reason: r)
         }
       })
-    FrontierUnknown { reason: _ } => acc
-    FrontierRejected { diagnostic: _ } => acc
+    FrontierUnknown { reason: r } =>
+      fail_affected_set_with_reason(acc: acc, reason: r)
+    FrontierRejected { diagnostic: d } =>
+      fail_affected_set_with_diagnostic(acc: acc, diagnostic: d)
   }
 }
 
@@ -580,7 +653,8 @@ fn expand_affected_dimensions(
           dimension: dimension
         )
       })
-    ChangedDimensionsUnknown { reason: _ } => acc
+    ChangedDimensionsUnknown { reason: r } =>
+      fail_affected_set_with_reason(acc: acc, reason: r)
   }
 }
 
@@ -592,35 +666,56 @@ fn seed_affected_set_fold_acc_live(
   edit: Edit
 ) -> AffectedSetFoldAcc {
   let change = change_for_edit(edit: edit)
-  let acc_with_change = AffectedSetFoldAcc {
-    dag: acc.dag,
-    changes: append_change(changes: acc.changes, change: change),
-    affected: acc.affected
-  }
-  match boundary_receipt(
-    read_model: read_model,
-    dag: acc.dag,
-    path: edit.at,
-    replacement: edit.replacement
-  ) {
-    BoundaryPruned { proof: _ } => acc_with_change
-    BoundaryExpands =>
-      match post_edit_dag(acc.dag, edit).outcome {
-        Produced { value: next_dag } =>
-          expand_affected_dimensions(
-            read_model: read_model,
-            boundary_dag: acc.dag,
-            frontier_dag: next_dag,
-            acc: AffectedSetFoldAcc {
-              dag: next_dag,
-              changes: acc_with_change.changes,
-              affected: acc_with_change.affected
+  match add_change_to_affected_acc(acc: acc, change: change) {
+    AffectedSetFailed { changes: changes, evidence: evidence } =>
+      AffectedSetFailed { changes: changes, evidence: evidence }
+    AffectedSetActive { dag: active_dag, changes: active_changes, affected: active_affected } =>
+      match boundary_receipt(
+        read_model: read_model,
+        dag: active_dag,
+        path: edit.at,
+        replacement: edit.replacement
+      ) {
+        BoundaryPruned { proof: _ } =>
+          AffectedSetActive {
+            dag: active_dag,
+            changes: active_changes,
+            affected: active_affected
+          }
+        BoundaryExpands =>
+          match post_edit_dag(active_dag, edit).outcome {
+            Produced { value: next_dag } =>
+              expand_affected_dimensions(
+                read_model: read_model,
+                boundary_dag: active_dag,
+                frontier_dag: next_dag,
+                acc: AffectedSetActive {
+                  dag: next_dag,
+                  changes: active_changes,
+                  affected: active_affected
+                },
+                edit: edit
+              )
+            Rejected { diagnostic: d } =>
+              fail_affected_set_with_diagnostic(
+                acc: AffectedSetActive {
+                  dag: active_dag,
+                  changes: active_changes,
+                  affected: active_affected
+                },
+                diagnostic: d
+              )
+          }
+        BoundaryUnknown { reason: r } =>
+          fail_affected_set_with_reason(
+            acc: AffectedSetActive {
+              dag: active_dag,
+              changes: active_changes,
+              affected: active_affected
             },
-            edit: edit
+            reason: r
           )
-        Rejected { diagnostic: _ } => acc_with_change
       }
-    BoundaryUnknown { reason: _ } => acc_with_change
   }
 }
 
