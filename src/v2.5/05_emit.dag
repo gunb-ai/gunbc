@@ -1,7 +1,7 @@
 // src/v2.5/05_emit.dag
-// Scope: Stage 5 of the v2.5 fork — InferredNode × LanguageSpec -> Outcome<TargetSource>.
-//        Emission is a fold over closed InferredNode variants; per-target syntax is data
-//        (read from LanguageSpec, owned by src/v2.5/std/language_spec.dag).
+// Scope: Stage 5 of the v2.5 fork — InferredModule × LanguageSpec -> Outcome<TargetSource>.
+//        Emission is a fold over closed InferredItem / InferredExpr variants; per-target
+//        syntax is data (read from LanguageSpec, owned by src/v2.5/std/language_spec.dag).
 // Owns:  TargetFile; TargetSource; emit_stage_locus_port + reason symbols + diagnostic helpers;
 //        emit (entry); emit_root; emit_module; render_item dispatch; render_expr + expr_fold_algebra;
 //        emit_ident + apply_naming_case + apply_reserved_escape + render_binop_symbol + binop_eq;
@@ -49,9 +49,17 @@ import v2_5.std.language_spec {
   ConditionalTernary,
   IfStatement,
   InterpStyle,
-  BinOp,
-  BinOpRule
+  BinOpRule,
+  ConjunctionTypeForm
 }
+import v2_5.std.syntax {
+  BinOp,
+  Add, Sub, Mul, Div, Mod,
+  Eq, Ne, Lt, Gt, Le, Ge,
+  And, Or, NullCoalesce,
+  LiteralValue, UnaryOpKind
+}
+import v2_5.std.identity { BoundName, AuthoredName, SourceSpan }
 import v2_5.std.node { Node, Edge, Symbol, NodeFold, fold_node, Path, PathStep, NamedStep }
 import v2_5.std.diagnostic {
   Diagnostic,
@@ -63,18 +71,21 @@ import v2_5.std.diagnostic {
   Rejected,
   Unavailable
 }
+// Tier 1 — variant names from vivid-lynx-807 PR #3418 (reconciled dfb926f8c).
+// Canonical pipeline contract: `emit : InferredModule -> TargetSource`. emit
+// consumes InferredModule directly, not a generic InferredNode root carrier.
 import v2_5.std.stage_types {
-  InferredNode,
   InferredModule,
   InferredItem,
-  InferredFnDef,
-  InferredFuncDef,
-  InferredTypeDef,
-  InferredDataDef,
-  InferredServiceDef,
+  InferredFn,
+  InferredFunc,
+  InferredTypeDecl,
+  InferredDataDecl,
+  InferredService,
+  InferredOtherItem,
   InferredExpr,
-  InferredLiteral,
-  InferredVarRef,
+  InferredLit,
+  InferredVar,
   InferredFieldAccess,
   InferredCall,
   InferredMethodCall,
@@ -91,13 +102,19 @@ import v2_5.std.stage_types {
   InferredCast,
   InferredForEach,
   InferredIndex,
+  InferredSlice,
   InferredReturn,
+  InferredError,
   InferredType,
   InferredPattern,
   InferredMatchArm,
-  InferredLetBinding,
   InferredFieldInit,
-  InferredArg
+  InferredArg,
+  InferredImport,
+  InferredOperation,
+  InferredResourceUse,
+  InferredTransport,
+  InferredParam
 }
 
 
@@ -111,7 +128,6 @@ data emit_no_inhabitant: Symbol = emit_no_inhabitant
 data emit_under_refined: Symbol = emit_under_refined
 data emit_unsupported_coercion: Symbol = emit_unsupported_coercion
 data emit_missing_language_rule: Symbol = emit_missing_language_rule
-data emit_non_module_root: Symbol = emit_non_module_root
 
 
 fn emit_locus() -> Locus {
@@ -155,13 +171,14 @@ type TargetSource {
 // emit — the entry point
 // =============================================================================
 //
-// emit consumes an InferredNode (root) + LanguageSpec (target) and produces
-// Outcome<TargetSource>. The body dispatches once on the InferredNode top-level
-// variant (module vs anything-else) and delegates rendering to per-variant
-// functions that consume LanguageSpec as data.
+// Per Tier 1's pipeline contract (v2_5.std.stage_types):
+//   `emit : InferredModule -> TargetSource`
+// emit consumes a fully-inferred module directly — there is no generic
+// InferredNode top-level coproduct to dispatch on. Module IS the root carrier.
+// This is the phase-typed boundary: emit's signature asserts post-inference.
 
-fn emit(root: InferredNode, spec: LanguageSpec) -> Outcome<TargetSource> {
-  match emit_root(node: root, spec: spec) {
+fn emit(module: InferredModule, spec: LanguageSpec) -> Outcome<TargetSource> {
+  match emit_module(module: module, spec: spec) {
     Produced { value: files } =>
       Produced {
         value: TargetSource {
@@ -174,34 +191,18 @@ fn emit(root: InferredNode, spec: LanguageSpec) -> Outcome<TargetSource> {
 }
 
 
-// emit_root dispatches the top-level InferredNode coproduct. Module is the
-// only file-bearing root; anything else at the root is rejected fail-closed.
-fn emit_root(node: InferredNode, spec: LanguageSpec) -> Outcome<List<TargetFile>> {
-  match node {
-    InferredModule { name: name, items: items, imports: imports } =>
-      emit_module(name: name, items: items, imports: imports, spec: spec)
-    _ => Rejected { diagnostic: emit_diagnostic(reason: emit_non_module_root) }
-  }
-}
-
-
 // =============================================================================
 // emit_module — module → file
 // =============================================================================
 
-fn emit_module(
-  name: Symbol,
-  items: List<InferredItem>,
-  imports: List<Symbol>,
-  spec: LanguageSpec
-) -> Outcome<List<TargetFile>> {
-  let import_block = render_imports(used_symbols: imports, spec: spec)
-  let item_outcomes = items |> map(i => render_item(item: i, spec: spec))
+fn emit_module(module: InferredModule, spec: LanguageSpec) -> Outcome<List<TargetFile>> {
+  let import_block = render_imports(used_imports: module.imports, spec: spec)
+  let item_outcomes = module.items |> map(i => render_item(item: i, spec: spec))
   match collect_outcomes(items: item_outcomes) {
     Produced { value: item_texts } => {
       let body = item_texts |> join(separator: spec.items.item_separator)
       let content = concat(import_block, body)
-      let file_path = render_module_path(name: name, spec: spec)
+      let file_path = render_module_path(name: module.name, spec: spec)
       Produced { value: [TargetFile { path: file_path, content: content }] }
     }
     Rejected { diagnostic: d } => Rejected { diagnostic: d }
@@ -220,16 +221,20 @@ fn emit_module(
 
 fn render_item(item: InferredItem, spec: LanguageSpec) -> Outcome<String> {
   match item {
-    InferredFnDef { sig: sig, body: body } =>
-      render_fn_def(sig: sig, body: body, spec: spec)
-    InferredFuncDef { sig: sig, body: body, uses: uses } =>
-      render_func_def(sig: sig, body: body, uses: uses, spec: spec)
-    InferredTypeDef { name: name, body: body } =>
-      render_type_def(name: name, body: body, spec: spec)
-    InferredDataDef { name: name, fields: fields } =>
-      render_data_def(name: name, fields: fields, spec: spec)
-    InferredServiceDef { name: name, ops: ops, transport: transport } =>
-      render_service_def(name: name, ops: ops, transport: transport, spec: spec)
+    InferredFn { name: name, type_params: _, params: params, return_type: ret, uses: _, body: body, recursion: _, span: _ } =>
+      render_fn(name: name, params: params, return_type: ret, body: body, spec: spec)
+    InferredFunc { name: name, type_params: _, params: params, return_type: ret, uses: uses, body: body, recursion: _, span: _ } =>
+      render_func(name: name, params: params, return_type: ret, uses: uses, body: body, spec: spec)
+    InferredTypeDecl { name: name, type_params: _, definition: definition, span: _ } =>
+      render_type_decl(name: name, definition: definition, spec: spec)
+    InferredDataDecl { name: name, type_annotation: ty, value: value, span: _ } =>
+      render_data_decl(name: name, type_annotation: ty, value: value, spec: spec)
+    InferredService { name: name, transport: transport, operations: operations, span: _ } =>
+      render_service(name: name, transport: transport, operations: operations, spec: spec)
+    InferredOtherItem { keyword: _, raw_span: _ } =>
+      // Unrecognized item kind reached emit — surface as fail-closed; the
+      // pipeline should have rejected upstream rather than passing through.
+      Rejected { diagnostic: emit_diagnostic(reason: emit_under_refined) }
   }
 }
 
@@ -283,33 +288,53 @@ fn render_expr_init(node: Node, spec: LanguageSpec) -> Outcome<String> {
 // degenerating into an empty string.
 fn render_expr_dispatch(node: Node, spec: LanguageSpec) -> Outcome<String> {
   match inferred_expr_variant_of(n: node) {
-    InferredLiteral { value: v } =>
+    InferredLit { value: v, span: _, expr_type: _ } =>
       Produced { value: render_literal(value: v, spec: spec) }
-    InferredVarRef { name: name } =>
+    InferredVar { name: name, expr_type: _ } =>
       Produced { value: emit_ident(name: name, rules: spec.identifiers) }
-    InferredFieldAccess { base: _, field: field } =>
+    InferredFieldAccess { receiver: _, field: field, expr_type: _ } =>
       Produced {
         value: concat(spec.expressions.field_access_separator, emit_ident(name: field, rules: spec.identifiers))
       }
-    InferredCall { callee: _, args: _ } =>
+    InferredCall { callee: _, args: _, expr_type: _ } =>
       Produced { value: spec.expressions.call_open }
-    InferredBinOp { op: op, left: _, right: _ } =>
+    InferredMethodCall { receiver: _, method: _, args: _, expr_type: _ } =>
+      Produced { value: spec.expressions.method_call_separator }
+    InferredBinOp { op: op, left: _, right: _, algebra_field: _, expr_type: _ } =>
       // diagnostic-bearing lookup: a BinOp with no rule in spec.expressions.binops
       // surfaces emit_missing_language_rule rather than a "" fallback.
       render_binop_symbol(op: op, spec: spec)
-    InferredIf { condition: _, then_branch: _, else_branch: _ } =>
+    InferredUnaryOp { op: _, operand: _, expr_type: _ } =>
+      Produced { value: spec.expressions.unary_neg }
+    InferredIf { condition: _, then_expr: _, else_expr: _, expr_type: _ } =>
       Produced { value: render_if_form(form: spec.expressions.if_form) }
-    InferredMatch { scrutinee: _, arms: _ } =>
+    InferredMatch { scrutinee: _, arms: _, expr_type: _ } =>
       Produced { value: spec.patterns.match_keyword }
-    InferredLet { name: name, value: _, body: _ } =>
+    InferredLet { name: name, value: _, body: _, expr_type: _ } =>
       Produced { value: concat("let ", emit_ident(name: name, rules: spec.identifiers)) }
-    InferredLambda { params: _, body: _ } =>
+    InferredLambda { params: _, body: _, expr_type: _ } =>
       Produced { value: render_lambda_prefix(spec: spec) }
-    InferredBlock { stmts: _ } =>
+    InferredBlock { statements: _, expr_type: _ } =>
       Produced { value: render_block_open(block: spec.items.block) }
-    InferredStringInterp { parts: _ } =>
+    InferredStringInterp { parts: _, expr_type: _ } =>
       Produced { value: render_string_interp_prefix(style: spec.strings.interp_style) }
-    _ => Rejected { diagnostic: emit_diagnostic(reason: emit_under_refined) }
+    InferredRecordLit { type_name: _, fields: _, expr_type: _ } =>
+      Produced { value: render_record_open(form: spec.types.conjunction_type) }
+    InferredListLit { elements: _, expr_type: _ } =>
+      Produced { value: spec.types.container_type.list_open }
+    InferredCast { expr: _, target_type: _, expr_type: _ } =>
+      Produced { value: render_cast_prefix(spec: spec) }
+    InferredForEach { variable: _, iterable: _, body: _, expr_type: _ } =>
+      Produced { value: render_foreach_prefix(spec: spec) }
+    InferredIndex { base: _, index: _, expr_type: _ } =>
+      Produced { value: spec.types.container_type.list_open }
+    InferredSlice { base: _, start: _, end: _, expr_type: _ } =>
+      Produced { value: spec.types.container_type.list_open }
+    InferredReturn { value: _, expr_type: _ } =>
+      Produced { value: render_return_prefix(spec: spec) }
+    InferredError { kind: _, message: _, span: _ } =>
+      // Upstream-stage error reached emit — fail-closed.
+      Rejected { diagnostic: emit_diagnostic(reason: emit_under_refined) }
   }
 }
 
@@ -344,9 +369,12 @@ fn render_expr_step(
 // (PR #3402's apply_reserved_escape principle generalized + grounded in a
 // closed NamingCase / ReservedEscape sum).
 
-fn emit_ident(name: Symbol, rules: IdentifierRules) -> String {
-  let converted = apply_naming_case(name: name, case: rules.default_case)
-  let is_reserved = rules.reserved_words |> any(r => r == name)
+// Identifiers at emit see post-resolve BoundName (per Tier 1's stage_types:
+// "Parse phases use AuthoredName; post-resolve phases use Symbol"). BoundName
+// = { symbol: Symbol, span: SourceSpan }; we render from the symbol field.
+fn emit_ident(name: BoundName, rules: IdentifierRules) -> String {
+  let converted = apply_naming_case(symbol: name.symbol, case: rules.default_case)
+  let is_reserved = rules.reserved_words |> any(r => r == name.symbol)
   if is_reserved {
     apply_reserved_escape(name: converted, escape: rules.reserved_escape)
   } else {
@@ -355,12 +383,12 @@ fn emit_ident(name: Symbol, rules: IdentifierRules) -> String {
 }
 
 
-fn apply_naming_case(name: Symbol, case: NamingCase) -> String {
+fn apply_naming_case(symbol: Symbol, case: NamingCase) -> String {
   match case {
-    SnakeCase => to_snake(name: symbol_to_string(s: name))
-    PascalCase => to_pascal(name: symbol_to_string(s: name))
-    CamelCase => to_camel(name: symbol_to_string(s: name))
-    AsAuthored => symbol_to_string(s: name)
+    SnakeCase => to_snake(name: symbol_to_string(s: symbol))
+    PascalCase => to_pascal(name: symbol_to_string(s: symbol))
+    CamelCase => to_camel(name: symbol_to_string(s: symbol))
+    AsAuthored => symbol_to_string(s: symbol)
   }
 }
 
@@ -393,6 +421,10 @@ fn render_binop_symbol(op: BinOp, spec: LanguageSpec) -> Outcome<String> {
 }
 
 
+// 🟡 Practice 10: hand-rolled 14-way equality dissolves when the substrate
+// publishes derived equality over enum sums (sibling of v2_5.std.collection.Map
+// for BinOp keys). Until then this is the explicit-and-honest lookup pred.
+// Arms match canonical v2_5.std.syntax.BinOp exactly (Ne/Le/Ge; no StringConcat).
 fn binop_eq(a: BinOp, b: BinOp) -> Bool {
   match a {
     Add => match b { Add => true _ => false }
@@ -401,14 +433,13 @@ fn binop_eq(a: BinOp, b: BinOp) -> Bool {
     Div => match b { Div => true _ => false }
     Mod => match b { Mod => true _ => false }
     Eq => match b { Eq => true _ => false }
-    Neq => match b { Neq => true _ => false }
+    Ne => match b { Ne => true _ => false }
     Lt => match b { Lt => true _ => false }
-    Lte => match b { Lte => true _ => false }
+    Le => match b { Le => true _ => false }
     Gt => match b { Gt => true _ => false }
-    Gte => match b { Gte => true _ => false }
+    Ge => match b { Ge => true _ => false }
     And => match b { And => true _ => false }
     Or => match b { Or => true _ => false }
-    StringConcat => match b { StringConcat => true _ => false }
     NullCoalesce => match b { NullCoalesce => true _ => false }
   }
 }
@@ -426,19 +457,27 @@ fn binop_eq(a: BinOp, b: BinOp) -> Bool {
 // variant set is published; the variant arms each become a small data-driven
 // renderer reading from LanguageSpec, no per-target match arms.
 
-fn render_fn_def(sig: InferredFnDef, body: InferredBlock, spec: LanguageSpec) -> Outcome<String>
-fn render_func_def(sig: InferredFuncDef, body: InferredBlock, uses: List<Symbol>, spec: LanguageSpec) -> Outcome<String>
-fn render_type_def(name: Symbol, body: InferredType, spec: LanguageSpec) -> Outcome<String>
-fn render_data_def(name: Symbol, fields: List<InferredFieldInit>, spec: LanguageSpec) -> Outcome<String>
-fn render_service_def(name: Symbol, ops: List<InferredItem>, transport: Symbol, spec: LanguageSpec) -> Outcome<String>
+// Signatures match Tier 1 (PR #3418) variant field shapes: name carrier is
+// BoundName, body is InferredBlock, item-level types carry their own
+// `definition` / `type_annotation` / `value` fields. Rebased against
+// stage_types.dag dfb926f8c.
+fn render_fn(name: BoundName, params: List<InferredParam>, return_type: InferredType, body: InferredBlock, spec: LanguageSpec) -> Outcome<String>
+fn render_func(name: BoundName, params: List<InferredParam>, return_type: InferredType, uses: List<InferredResourceUse>, body: InferredBlock, spec: LanguageSpec) -> Outcome<String>
+fn render_type_decl(name: BoundName, definition: InferredType, spec: LanguageSpec) -> Outcome<String>
+fn render_data_decl(name: BoundName, type_annotation: InferredType, value: InferredExpr, spec: LanguageSpec) -> Outcome<String>
+fn render_service(name: BoundName, transport: InferredTransport, operations: List<InferredOperation>, spec: LanguageSpec) -> Outcome<String>
 
-fn render_literal(value: Symbol, spec: LanguageSpec) -> String
-fn render_imports(used_symbols: List<Symbol>, spec: LanguageSpec) -> String
-fn render_module_path(name: Symbol, spec: LanguageSpec) -> String
+fn render_literal(value: LiteralValue, spec: LanguageSpec) -> String
+fn render_imports(used_imports: List<InferredImport>, spec: LanguageSpec) -> String
+fn render_module_path(name: BoundName, spec: LanguageSpec) -> String
 fn render_if_form(form: IfForm) -> String
 fn render_lambda_prefix(spec: LanguageSpec) -> String
 fn render_block_open(block: BlockSyntax) -> String
 fn render_string_interp_prefix(style: InterpStyle) -> String
+fn render_record_open(form: ConjunctionTypeForm) -> String
+fn render_cast_prefix(spec: LanguageSpec) -> String
+fn render_foreach_prefix(spec: LanguageSpec) -> String
+fn render_return_prefix(spec: LanguageSpec) -> String
 
 
 // =============================================================================

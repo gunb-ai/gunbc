@@ -38,22 +38,6 @@ import v2_5.std.language_spec {
   BlockSyntax,
   BracedBlock,
   ExpressionSyntax,
-  BinOp,
-  Add,
-  Sub,
-  Mul,
-  Div,
-  Mod,
-  Eq,
-  Neq,
-  Lt,
-  Lte,
-  Gt,
-  Gte,
-  And,
-  Or,
-  StringConcat,
-  NullCoalesce,
   BinOpRule,
   IfForm,
   IfExpression,
@@ -100,6 +84,9 @@ import v2_5.std.language_spec {
   DirectAlias,
   CastFn
 }
+import v2_5.std.syntax {
+  BinOp, Add, Sub, Mul, Div, Mod, Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce
+}
 import v2_5.std.node { Symbol }
 
 
@@ -125,20 +112,19 @@ fn rust_binop_rules() -> List<BinOpRule> {
     BinOpRule { op: Add, symbol: " + ", precedence: 11 },
     BinOpRule { op: Sub, symbol: " - ", precedence: 11 },
     BinOpRule { op: Lt, symbol: " < ", precedence: 9 },
-    BinOpRule { op: Lte, symbol: " <= ", precedence: 9 },
+    BinOpRule { op: Le, symbol: " <= ", precedence: 9 },
     BinOpRule { op: Gt, symbol: " > ", precedence: 9 },
-    BinOpRule { op: Gte, symbol: " >= ", precedence: 9 },
+    BinOpRule { op: Ge, symbol: " >= ", precedence: 9 },
     BinOpRule { op: Eq, symbol: " == ", precedence: 8 },
-    BinOpRule { op: Neq, symbol: " != ", precedence: 8 },
+    BinOpRule { op: Ne, symbol: " != ", precedence: 8 },
     BinOpRule { op: And, symbol: " && ", precedence: 4 },
     BinOpRule { op: Or, symbol: " || ", precedence: 3 },
-    // String-concat in Rust: format!() preferred over +; emit framework
-    // surfaces this via NullCoalesce / StringConcat -> render path that may
-    // re-route through format!/concat! (decision deferred to render_binop
-    // when the InferredBinOp arm lands).
-    BinOpRule { op: StringConcat, symbol: " + ", precedence: 11 },
     BinOpRule { op: NullCoalesce, symbol: ".unwrap_or", precedence: 12 }
   ]
+  // Note: v2_5.std.syntax.BinOp does not carry a StringConcat variant; Rust's
+  // string-concat (format!/concat!) is a coercion-render decision over String
+  // operands of Add, not a separate operator. The first draft erroneously
+  // declared a local StringConcat arm; rebased against canonical syntax.
 }
 
 
