@@ -87,6 +87,11 @@ type TokenizeRegression {
   expected: TokenizeExpectation
 }
 
+data unexpected_character: Symbol = unexpected_character
+data unterminated_string: Symbol = unterminated_string
+data unterminated_interpolation: Symbol = unterminated_interpolation
+data lexical_progress_exhausted: Symbol = lexical_progress_exhausted
+
 // 🟡 feature:v2_5-syntax-spec-keywords
 data keyword_table: Map<String, Bool> = {
   "module": true, "import": true,
@@ -128,12 +133,16 @@ fn span(source: Source, start: Int, end: Int) -> SourceSpan {
   SourceSpan { file: source.file, start: start, end: end }
 }
 
-fn diagnostic(source: Source, reason: DiagnosticReason, start: Int, end: Int, lexeme: String) -> Diagnostic {
-  Diagnostic { reason: reason, span: span(source: source, start: start, end: end), lexeme: lexeme }
+fn diagnostic(source: Source, reason: Symbol, start: Int, end: Int, lexeme: String) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: Textual { file: source.file_symbol, extent: ByteRange { start: start, end: end } },
+    correction: Unavailable { reason: UserInputBoundary }
+  }
 }
 
-fn make_token(source: Source, start: Int, end: Int, lexeme: String, kind: TokenKind) -> Token {
-  Token { kind: kind, lexeme: lexeme, span: span(source: source, start: start, end: end) }
+fn make_token(source: Source, start: Int, end: Int, lexeme: String, shape: TokenShape) -> Token {
+  Token { text: lexeme, span: span(source: source, start: start, end: end), shape: shape }
 }
 
 fn fold_source_chars<R>(source: Source, algebra: SourceFold<R>) -> R {
@@ -222,10 +231,10 @@ fn skip_trivia(source: Source, cursor: Int) -> Int {
   }
 }
 
-fn classify_identifier(text: String) -> TokenKind {
+fn classify_identifier(text: String) -> TokenShape {
   match lookup(keyword_table, key: text) {
-    Some { value: keyword } => KeywordToken { keyword: keyword }
-    None => IdentifierToken
+    Some { value: _ } => ShKeyword
+    None => ShIdent
   }
 }
 
@@ -235,7 +244,7 @@ fn scan_identifier(source: Source, frame: LexerFrame) -> ScanOutcome {
   Scanned {
     step: ScanStep {
       cursor: end,
-      token: make_token(source: source, start: frame.cursor, end: end, lexeme: text, kind: classify_identifier(text: text)),
+      token: make_token(source: source, start: frame.cursor, end: end, lexeme: text, shape: classify_identifier(text: text)),
       interpolation_depth: frame.interpolation_depth
     }
   }
@@ -251,7 +260,7 @@ fn scan_number(source: Source, frame: LexerFrame) -> ScanOutcome {
     Scanned {
       step: ScanStep {
         cursor: frac_end,
-        token: make_token(source: source, start: frame.cursor, end: frac_end, lexeme: text, kind: LiteralToken { literal: FloatLiteral }),
+        token: make_token(source: source, start: frame.cursor, end: frac_end, lexeme: text, shape: ShLitFloat),
         interpolation_depth: frame.interpolation_depth
       }
     }
@@ -260,7 +269,7 @@ fn scan_number(source: Source, frame: LexerFrame) -> ScanOutcome {
     Scanned {
       step: ScanStep {
         cursor: int_end,
-        token: make_token(source: source, start: frame.cursor, end: int_end, lexeme: text, kind: LiteralToken { literal: IntLiteral }),
+        token: make_token(source: source, start: frame.cursor, end: int_end, lexeme: text, shape: ShLitInt),
         interpolation_depth: frame.interpolation_depth
       }
     }
@@ -311,12 +320,12 @@ fn scan_string_body(source: Source, start: Int) -> StringBodyState {
   )
 }
 
-fn string_token_kind(role: StringTokenRole) -> TokenKind {
+fn string_token_shape(role: StringTokenRole) -> TokenShape {
   match role {
-    WholeString => LiteralToken { literal: StringLiteral }
-    InterpolationBegin => StringBeginToken
-    InterpolationMiddle => StringMiddleToken
-    InterpolationEnd => StringEndToken
+    WholeString => ShLitStr
+    InterpolationBegin => ShStrBegin
+    InterpolationMiddle => ShStrMid
+    InterpolationEnd => ShStrEnd
   }
 }
 
@@ -342,22 +351,22 @@ fn scan_string_with_role(source: Source, frame: LexerFrame, role: StringTokenRol
       Scanned {
         step: ScanStep {
           cursor: end_pos + 1,
-          token: make_token(source: source, start: span_start, end: end_pos + 1, lexeme: content, kind: string_token_kind(role: role)),
+          token: make_token(source: source, start: span_start, end: end_pos + 1, lexeme: content, shape: string_token_shape(role: role)),
           interpolation_depth: frame.interpolation_depth
         }
       }
     }
     StringInterpolation { content, end_pos } => {
-      let token_kind = match role {
-        WholeString => StringBeginToken
-        InterpolationBegin => StringBeginToken
-        InterpolationMiddle => StringMiddleToken
-        InterpolationEnd => StringMiddleToken
+      let token_shape = match role {
+        WholeString => ShStrBegin
+        InterpolationBegin => ShStrBegin
+        InterpolationMiddle => ShStrMid
+        InterpolationEnd => ShStrMid
       }
       Scanned {
         step: ScanStep {
           cursor: end_pos + 1,
-          token: make_token(source: source, start: span_start, end: end_pos + 1, lexeme: content, kind: token_kind),
+          token: make_token(source: source, start: span_start, end: end_pos + 1, lexeme: content, shape: token_shape),
           interpolation_depth: push_interpolation(stack: frame.interpolation_depth)
         }
       }
@@ -366,7 +375,7 @@ fn scan_string_with_role(source: Source, frame: LexerFrame, role: StringTokenRol
       ScanRejected {
         diagnostic: diagnostic(
           source: source,
-          reason: UnterminatedString,
+          reason: unterminated_string,
           start: span_start,
           end: cursor,
           lexeme: acc
@@ -384,12 +393,12 @@ fn scan_string_continuation(source: Source, frame: LexerFrame) -> ScanOutcome {
   scan_string_with_role(source: source, frame: frame, role: InterpolationEnd, body_start: frame.cursor + 1, span_start: frame.cursor)
 }
 
-fn emit_punctuation(source: Source, frame: LexerFrame, punctuation: Punctuation, width: Int) -> ScanOutcome {
+fn emit_punctuation(source: Source, frame: LexerFrame, shape: TokenShape, width: Int) -> ScanOutcome {
   let text = source_slice(source: source, start: frame.cursor, end: frame.cursor + width)
   Scanned {
     step: ScanStep {
       cursor: frame.cursor + width,
-      token: make_token(source: source, start: frame.cursor, end: frame.cursor + width, lexeme: text, kind: PunctuationToken { punctuation: punctuation }),
+      token: make_token(source: source, start: frame.cursor, end: frame.cursor + width, lexeme: text, shape: shape),
       interpolation_depth: frame.interpolation_depth
     }
   }
@@ -404,7 +413,7 @@ fn scan_lbrace(source: Source, frame: LexerFrame) -> ScanOutcome {
   Scanned {
     step: ScanStep {
       cursor: frame.cursor + 1,
-      token: make_token(source: source, start: frame.cursor, end: frame.cursor + 1, lexeme: "{", kind: PunctuationToken { punctuation: LBrace }),
+      token: make_token(source: source, start: frame.cursor, end: frame.cursor + 1, lexeme: "{", shape: ShLBrace),
       interpolation_depth: new_depth
     }
   }
@@ -419,7 +428,7 @@ fn scan_rbrace(source: Source, frame: LexerFrame) -> ScanOutcome {
   Scanned {
     step: ScanStep {
       cursor: frame.cursor + 1,
-      token: make_token(source: source, start: frame.cursor, end: frame.cursor + 1, lexeme: "}", kind: PunctuationToken { punctuation: RBrace }),
+      token: make_token(source: source, start: frame.cursor, end: frame.cursor + 1, lexeme: "}", shape: ShRBrace),
       interpolation_depth: new_depth
     }
   }
@@ -429,7 +438,7 @@ fn scan_newline(source: Source, frame: LexerFrame) -> ScanOutcome {
   Scanned {
     step: ScanStep {
       cursor: frame.cursor + 1,
-      token: make_token(source: source, start: frame.cursor, end: frame.cursor + 1, lexeme: "\n", kind: NewlineToken),
+      token: make_token(source: source, start: frame.cursor, end: frame.cursor + 1, lexeme: "\n", shape: ShNewline),
       interpolation_depth: frame.interpolation_depth
     }
   }
@@ -445,13 +454,13 @@ fn scan_token(source: Source, frame: LexerFrame) -> ScanOutcome {
   }
   if cursor >= source_len(source: source) && count(active.interpolation_depth) > 0 {
     ScanRejected {
-      diagnostic: diagnostic(source: source, reason: UnterminatedInterpolation, start: cursor, end: cursor, lexeme: "")
+      diagnostic: diagnostic(source: source, reason: unterminated_interpolation, start: cursor, end: cursor, lexeme: "")
     }
   } else if cursor >= source_len(source: source) {
     Scanned {
       step: ScanStep {
         cursor: cursor + 1,
-        token: make_token(source: source, start: cursor, end: cursor, lexeme: "", kind: EofToken),
+        token: make_token(source: source, start: cursor, end: cursor, lexeme: "", shape: ShEof),
         interpolation_depth: active.interpolation_depth
       }
     }
@@ -474,15 +483,15 @@ fn scan_token(source: Source, frame: LexerFrame) -> ScanOutcome {
       let next = if cursor + 1 < source_len(source: source) { source_char(source: source, index: cursor + 1) } else { "" }
       let two = concat(ch, next)
       match lookup(double_punct, key: two) {
-        Some { value: punct } => emit_punctuation(source: source, frame: active, punctuation: punct, width: 2)
+        Some { value: shape } => emit_punctuation(source: source, frame: active, shape: shape, width: 2)
         None =>
           if ch == "{" { scan_lbrace(source: source, frame: active) }
           else if ch == "}" { scan_rbrace(source: source, frame: active) }
           else {
             match lookup(single_punct, key: ch) {
-              Some { value: punct } => emit_punctuation(source: source, frame: active, punctuation: punct, width: 1)
+              Some { value: shape } => emit_punctuation(source: source, frame: active, shape: shape, width: 1)
               None => ScanRejected {
-                diagnostic: diagnostic(source: source, reason: UnexpectedCharacter, start: cursor, end: cursor + 1, lexeme: ch)
+                diagnostic: diagnostic(source: source, reason: unexpected_character, start: cursor, end: cursor + 1, lexeme: ch)
               }
             }
           }
@@ -501,8 +510,8 @@ fn append_step(frame: LexerFrame, step: ScanStep) -> LexerFrame {
 }
 
 fn token_is_eof(token: Token) -> Bool {
-  match token.kind {
-    EofToken => true
+  match token.shape {
+    ShEof => true
     _ => false
   }
 }
@@ -519,7 +528,7 @@ fn lex_step(source: Source, state: LexerState, item: IndexedChar) -> LexerState 
               LexFailed {
                 diagnostic: diagnostic(
                   source: source,
-                  reason: LexicalProgressExhausted,
+                  reason: lexical_progress_exhausted,
                   start: frame.cursor,
                   end: frame.cursor,
                   lexeme: ""
@@ -552,7 +561,7 @@ fn tokenize(source: Source) -> Outcome<TokenStream> {
         Rejected {
           diagnostic: diagnostic(
             source: source,
-            reason: LexicalProgressExhausted,
+            reason: lexical_progress_exhausted,
             start: frame.cursor,
             end: frame.cursor,
             lexeme: ""
@@ -562,7 +571,7 @@ fn tokenize(source: Source) -> Outcome<TokenStream> {
         Rejected {
           diagnostic: diagnostic(
             source: source,
-            reason: UnterminatedInterpolation,
+            reason: unterminated_interpolation,
             start: frame.cursor,
             end: frame.cursor,
             lexeme: ""
@@ -571,7 +580,7 @@ fn tokenize(source: Source) -> Outcome<TokenStream> {
       } else if frame.eof_emitted {
         Produced { value: TokenStream { tokens: frame.tokens } }
       } else {
-        let eof = make_token(source: source, start: frame.cursor, end: frame.cursor, lexeme: "", kind: EofToken)
+        let eof = make_token(source: source, start: frame.cursor, end: frame.cursor, lexeme: "", shape: ShEof)
         Produced { value: TokenStream { tokens: list_push(frame.tokens, eof) } }
       }
   }
@@ -594,8 +603,9 @@ fn tokenize_expectation_holds(source: Source, expected: TokenizeExpectation) -> 
 
 data nested_brace_interpolation_regression: TokenizeRegression = TokenizeRegression {
   name: nested_brace_interpolation_regression,
-  source: Source {
-    file: nested_brace_interpolation_regression,
+	  source: Source {
+	    file: "nested_brace_interpolation_regression",
+	    file_symbol: nested_brace_interpolation_regression,
     text: concat(
       "\"x ",
       concat(
@@ -627,12 +637,13 @@ data nested_brace_interpolation_regression: TokenizeRegression = TokenizeRegress
 
 data unterminated_interpolation_regression: TokenizeRegression = TokenizeRegression {
   name: unterminated_interpolation_regression,
-  source: Source {
-    file: unterminated_interpolation_regression,
+	  source: Source {
+	    file: "unterminated_interpolation_regression",
+	    file_symbol: unterminated_interpolation_regression,
     text: concat("\"x ", concat(from_code_point(cp: code_point("{")), "name"))
   },
-  expected: ExpectRejected { reason: UnterminatedInterpolation }
-}
+	  expected: ExpectRejected { reason: unterminated_interpolation }
+	}
 
 data nested_brace_interpolation_regression_holds: Bool = tokenize_expectation_holds(
     source: nested_brace_interpolation_regression.source,
