@@ -1,7 +1,8 @@
 // src/v4/std/diagnostic.dag
 // Scope: fail-closed diagnostic schema.
 // Anchor: THESIS.md "show the correct code" + INVARIANTS P3; design-v4-compiler-homomorphism.md Ratified Q11.
-// Owns: Diagnostic, Outcome, Diagnostics, NonEmptyDiagnostics, StageDiagnosticPolicy, Locus, Extent, Correction, NoCorrectionReason.
+// Owns: Diagnostic, Outcome, Diagnostics, NonEmptyDiagnostics, StageDiagnosticPolicy, NodeOutcomeFold,
+//       traverse_node, sequence_node, bind_outcome, Locus, Extent, Correction, NoCorrectionReason.
 // Consumes: std node, std collection.
 // Status: T-3 modeled; Wave-2-BC3 Outcome ratification (Ratified Q11).
 
@@ -10,7 +11,7 @@ module v4.std.diagnostic
 
 
 import v4.std.collection { List }
-import v4.std.node { Node }
+import v4.std.node { Edge, Node }
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type Extent
   = WholeFile
@@ -61,4 +62,31 @@ fn outcome_accepted<T>(value: T) -> Outcome<T> {
 }
 fn outcome_rejected<T>(d: Diagnostic) -> Outcome<T> {
   Rejected { diagnostics: diagnostics_singleton(d: d) }
+}
+type NodeOutcomeFold<R> {
+  init: fn(Node) -> Outcome<R>
+  step: fn(R, Edge, R) -> Outcome<R>
+}
+fn bind_outcome<T, U>(o: Outcome<T>, f: fn(T) -> Outcome<U>) -> Outcome<U> {
+  match o {
+    Accepted { value: v, diagnostics: _ } => f(v)
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+fn traverse_node<R>(
+  n: Node,
+  algebra: NodeOutcomeFold<R>,
+  policy: StageDiagnosticPolicy,
+) -> Outcome<R> {
+  match policy.accumulation {
+    Accumulate => algebra.init(n)
+    ShortCircuit => algebra.init(n)
+  }
+}
+fn sequence_node<R>(
+  n: Node,
+  algebra: NodeOutcomeFold<R>,
+  policy: StageDiagnosticPolicy,
+) -> Outcome<R> {
+  traverse_node(n: n, algebra: algebra, policy: policy)
 }

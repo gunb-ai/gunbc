@@ -1,21 +1,14 @@
 // src/v4/std/node.dag
 // Scope: v4 substrate root for type and computation nodes.
 // Anchor: THESIS.md "Substrate shape" + MODELING.md.
-// Owns: Symbol, Hash, Connective, Behavior, NodeKind, EdgeLabel, Edge, Node, NodeFold, fold_node,
-//       NodeOutcomeFold, traverse_node, sequence_node, bind_outcome, EdgeDiscipline, ...
-// Consumes: std diagnostic (Outcome threading — Ratified Q4/Q11).
-// Status: T-1 modeled; Wave-2-BC3 Outcome-derived combinators.
+// Owns: Symbol, Hash, Connective, Behavior, NodeKind, EdgeLabel, Edge, Node, NodeFold, fold_node, EdgeDiscipline, ...
+// Consumes: none.
+// Status: T-1 modeled; substrate-extension rule in src/v4/STRUCTURE.md.
+// Note: NodeOutcomeFold + traverse_node / sequence_node / bind_outcome live in v4.std.diagnostic
+// (Ratified Q4) — avoids diagnostic↔node import cycle while keeping fold_node here.
 
 
 module v4.std.node
-
-
-import v4.std.diagnostic {
-  Accumulate,
-  Outcome,
-  ShortCircuit,
-  StageDiagnosticPolicy
-}
 type Symbol
 type Hash
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
@@ -157,31 +150,4 @@ type Edit {
 }
 type Diff {
   edits: List<Edit>
-}
-type NodeOutcomeFold<R> {
-  init: fn(Node) -> Outcome<R>
-  step: fn(R, Edge, R) -> Outcome<R>
-}
-fn bind_outcome<T, U>(o: Outcome<T>, f: fn(T) -> Outcome<U>) -> Outcome<U> {
-  match o {
-    Accepted { value: v, diagnostics: _ } => f(v)
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
-  }
-}
-fn traverse_node<R>(
-  n: Node,
-  algebra: NodeOutcomeFold<R>,
-  policy: StageDiagnosticPolicy,
-) -> Outcome<R> {
-  match policy.accumulation {
-    Accumulate => algebra.init(n)
-    ShortCircuit => algebra.init(n)
-  }
-}
-fn sequence_node<R>(
-  n: Node,
-  algebra: NodeOutcomeFold<R>,
-  policy: StageDiagnosticPolicy,
-) -> Outcome<R> {
-  traverse_node(n: n, algebra: algebra, policy: policy)
 }
