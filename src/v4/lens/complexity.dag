@@ -35,16 +35,32 @@ import v4.lens.cost {
   AsymptoticClass,
   ClassExponential,
   ClassFactorial,
+  ClassConstant,
+  ClassUnknown,
   ClassLinear,
   ClassLinearithmic,
   ClassLog,
   ClassPolynomial,
   ClassPolyLog,
+  ConstantCost,
+  ExponentialCost,
+  FactorialCost,
+  LinearCost,
+  LogCost,
+  PolynomialCost,
+  PolyLogCost,
+  ProductCost,
+  SumCost,
+  UnknownCost,
+  PolynomialDegree,
   SymbolicCost,
   SizeVariable,
+  add_polynomial_degree,
   asymptotic_class_dominates,
   asymptotic_class_of_cost,
-  cost_lens
+  cost_lens,
+  increment_polynomial_degree,
+  polynomial_degree_two
 }
 import v4.std.diagnostic {
   AmbiguousIntent,
@@ -69,7 +85,7 @@ type ComplexityBound
   = Constant
   | Logarithmic { size_var: SizeVariable }
   | Linear { size_var: SizeVariable }
-  | Polynomial { size_var: SizeVariable, degree: Int }
+  | Polynomial { size_var: SizeVariable, degree: PolynomialDegree }
   | Exponential { size_var: SizeVariable }
   | Factorial { size_var: SizeVariable }
   | Unknown { diagnostic: Diagnostic }
@@ -163,9 +179,12 @@ fn multiply_complexity_bounds(a: ComplexityBound, b: ComplexityBound) -> Complex
     Polynomial { size_var: v, degree: ad } =>
       match b {
         Constant => a
-        Logarithmic { size_var: _ } => a
-        Linear { size_var: _ } => Polynomial { size_var: v, degree: ad + 1 }
-        Polynomial { size_var: _, degree: bd } => Polynomial { size_var: v, degree: ad + bd }
+        Logarithmic { size_var: _ } =>
+          Polynomial { size_var: v, degree: increment_polynomial_degree(d: ad) }
+        Linear { size_var: _ } =>
+          Polynomial { size_var: v, degree: increment_polynomial_degree(d: ad) }
+        Polynomial { size_var: _, degree: bd } =>
+          Polynomial { size_var: v, degree: add_polynomial_degree(a: ad, b: bd) }
         Exponential { size_var: _ } => b
         Factorial { size_var: _ } => b
         Unknown { diagnostic: _ } => b
@@ -173,9 +192,10 @@ fn multiply_complexity_bounds(a: ComplexityBound, b: ComplexityBound) -> Complex
     Linear { size_var: v } =>
       match b {
         Constant => a
-        Logarithmic { size_var: _ } => Polynomial { size_var: v, degree: 2 }
-        Linear { size_var: _ } => Polynomial { size_var: v, degree: 2 }
-        Polynomial { size_var: _, degree: bd } => Polynomial { size_var: v, degree: bd + 1 }
+        Logarithmic { size_var: _ } => Polynomial { size_var: v, degree: polynomial_degree_two() }
+        Linear { size_var: _ } => Polynomial { size_var: v, degree: polynomial_degree_two() }
+        Polynomial { size_var: _, degree: bd } =>
+          Polynomial { size_var: v, degree: increment_polynomial_degree(d: bd) }
         Exponential { size_var: _ } => b
         Factorial { size_var: _ } => b
         Unknown { diagnostic: _ } => b
@@ -183,8 +203,8 @@ fn multiply_complexity_bounds(a: ComplexityBound, b: ComplexityBound) -> Complex
     Logarithmic { size_var: v } =>
       match b {
         Constant => a
-        Logarithmic { size_var: _ } => Polynomial { size_var: v, degree: 1 }
-        Linear { size_var: bv } => Polynomial { size_var: bv, degree: 2 }
+        Logarithmic { size_var: _ } => unknown_complexity()
+        Linear { size_var: bv } => Polynomial { size_var: bv, degree: polynomial_degree_two() }
         Polynomial { size_var: _, degree: _ } => b
         Exponential { size_var: _ } => b
         Factorial { size_var: _ } => b

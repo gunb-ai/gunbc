@@ -7,7 +7,15 @@
 module v4.test.claim.lens_complexity.nested
 
 import v4.lens.complexity { ComplexityBound, Polynomial, complexity_lens }
-import v4.lens.cost { LinearCost, ProductCost, SizeVariable, SymbolicCost, cost_lens }
+import v4.lens.cost {
+  LinearCost,
+  PolynomialDegree,
+  ProductCost,
+  SizeVariable,
+  SymbolicCost,
+  cost_lens
+}
+import v4.std.cardinality { NonZeroNat }
 import v4.std.diagnostic {
   AmbiguousIntent,
   Diagnostic,
@@ -25,6 +33,7 @@ import v4.std.node {
   Transform,
   TypeNode
 }
+import v4.std.nat { Zero }
 import v4.std.witness { Witness }
 
 data nested_claim_file: Symbol = nested_claim_file
@@ -64,7 +73,7 @@ data nested_claim: LensComplexityClaim = LensComplexityClaim {
   },
   expected_complexity: Polynomial {
     size_var: SizeVariable { source: nested_input },
-    degree: 2
+    degree: PolynomialDegree { predecessor_after_linear: NonZeroNat { prev: Zero } }
   },
   falsification: Diagnostic {
     reason: nested_claim_reason,

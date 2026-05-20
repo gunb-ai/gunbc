@@ -280,10 +280,18 @@ fn symbolic_max(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
       match b {
         ConstantCost { value: 0 } => a
         _ =>
-          if symbolic_cost_dominates(a: a, b: b) {
+          if a == b {
             a
           } else {
-            b
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
           }
       }
   }
@@ -542,7 +550,7 @@ fn multiply_classes(a: AsymptoticClass, b: AsymptoticClass) -> AsymptoticClass {
         ClassLinearithmic => ClassPolynomial { degree: polynomial_degree_two() }
         ClassPolynomial { degree: bd } =>
           ClassPolynomial { degree: increment_polynomial_degree(d: bd) }
-        ClassPolyLog { exponent: _ } => ClassLinear
+        ClassPolyLog { exponent: _ } => ClassPolynomial { degree: polynomial_degree_two() }
         ClassExponential => ClassExponential
         ClassFactorial => ClassFactorial
         ClassUnknown => ClassUnknown
@@ -550,23 +558,23 @@ fn multiply_classes(a: AsymptoticClass, b: AsymptoticClass) -> AsymptoticClass {
     ClassLinearithmic =>
       match b {
         ClassConstant => ClassLinearithmic
-        ClassLog => ClassLinearithmic
+        ClassLog => ClassPolynomial { degree: polynomial_degree_two() }
         ClassLinear => ClassPolynomial { degree: polynomial_degree_two() }
         ClassLinearithmic => ClassPolynomial { degree: polynomial_degree_two() }
         ClassPolynomial { degree: bd } =>
           ClassPolynomial { degree: increment_polynomial_degree(d: bd) }
-        ClassPolyLog { exponent: _ } => ClassLinearithmic
+        ClassPolyLog { exponent: _ } => ClassPolynomial { degree: polynomial_degree_two() }
         ClassExponential => ClassExponential
         ClassFactorial => ClassFactorial
         ClassUnknown => ClassUnknown
       }
-    ClassPolyLog { exponent: _ } =>
+    ClassPolyLog { exponent: e } =>
       match b {
         ClassConstant => a
         ClassLog => a
         ClassPolyLog { exponent: _ } => a
         ClassLinear => ClassLinear
-        ClassLinearithmic => ClassLinearithmic
+        ClassLinearithmic => ClassPolynomial { degree: polynomial_degree_two() }
         ClassPolynomial { degree: pd } =>
           ClassPolynomial { degree: max_polynomial_degree(
             a: pd,
@@ -584,7 +592,8 @@ fn multiply_classes(a: AsymptoticClass, b: AsymptoticClass) -> AsymptoticClass {
           ClassPolyLog { exponent: increment_polylog_exponent(e: e) }
         ClassLinear => ClassLinearithmic
         ClassLinearithmic => ClassLinearithmic
-        ClassPolynomial { degree: _ } => b
+        ClassPolynomial { degree: bd } =>
+          ClassPolynomial { degree: increment_polynomial_degree(d: bd) }
         ClassExponential => ClassExponential
         ClassFactorial => ClassFactorial
         ClassUnknown => ClassUnknown
