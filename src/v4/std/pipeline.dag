@@ -20,6 +20,7 @@ import v4.std.node { Symbol }
 // 🟢 coproduct dissolution
 type CarrierKind
   = Text
+  | TokenStream
   | SurfaceNode
   | CoreNode
   | ResolvedCoreNode
@@ -242,14 +243,14 @@ data semantic_compile_pipeline: Pipeline = Pipeline {
     PipelineStage {
       name: stage_tokenize,
       input_carrier: Text,
-      output_carrier: Text,
+      output_carrier: TokenStream,
       dependency_contract: ingest_text_to_surface_contract(),
       diagnostic_policy: stage_diagnostic_fail_closed_accumulate,
       algebra_ref: algebra_tokenize
     },
     PipelineStage {
       name: stage_parse,
-      input_carrier: Text,
+      input_carrier: TokenStream,
       output_carrier: SurfaceNode,
       dependency_contract: ingest_surface_to_core_contract(),
       diagnostic_policy: stage_diagnostic_fail_closed_accumulate,
