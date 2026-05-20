@@ -19,7 +19,7 @@ import v4.std.verification {
   T19ManualNatMulAnnihilator,
   T19ManualNatMulAssociativity
 }
-import v4.std.diagnostic {}
+import v4.std.diagnostic { Accepted, None, Outcome }
 import v4.test.claim.manual.connective_anchors { stub_empty_conj }
 
 // RULING-1: 🟡 needs-more-work — stub claims; law-shaped nodes later

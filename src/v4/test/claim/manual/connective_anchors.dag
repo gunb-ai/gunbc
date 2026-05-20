@@ -20,7 +20,7 @@ import v4.std.verification {
   T19ManualTcInstantiationEmpty,
   T19ManualTcConjEqualsRefl
 }
-import v4.std.diagnostic {}
+import v4.std.diagnostic { Accepted, None, Outcome }
 import v4.std.node { Node, TypeNode, Conj, Disj, Arrow, Cardinality, Instantiation, Edge }
 
 
