@@ -10,7 +10,6 @@ module v4.std.dependency
 
 
 import v4.std.collection { List }
-import v4.std.diagnostic { Diagnostic }
 import v4.std.node { Path, Symbol }
 import v4.std.witness { Witness }
 
