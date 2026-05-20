@@ -114,7 +114,7 @@ This is a direct consequence of THESIS's "The derived homomorphism" claim plus [
 
 Evaluation is structurally the same operation as translation, with the host runtime as the target. The compiler-side machinery (parse, normalize, resolve, ground, then the coercion fold) is shared. Eval differs from translate **only** in the terminal action: execute the resulting structure via the host's interpretation algebra (eval) vs. serialize it via the target's grammar (translate).
 
-Open question on `HostModel` shape — see Open Q1.
+`HostModel` shape is **ratified per Q1**: distinct `HostModel` as a peer of `LanguageModel`, both over shared `ModelCore`.
 
 ### P3 — Lenses are a side-channel over `InferredTree`
 
