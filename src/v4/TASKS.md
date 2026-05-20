@@ -61,10 +61,10 @@ closing at T-15.
           that model (composition, not a new subsystem).
 ```
 
-### Side branch — `{P1-KEYSTONE, T-30, T-29, T-25-core} → T-4 → T-9` (watch item)
+### Side branch — `{P1-KEYSTONE, T-30, T-29, T-25-core, T-33} → T-4 → T-9` (watch item)
 
 ```
-{P1-KEYSTONE, T-30, T-29, T-25-core} → T-4 → T-9
+{P1-KEYSTONE, T-30, T-29, T-25-core, T-33} → T-4 → T-9
 ```
 
 T-9 needs T-4 (the language fact-bundles) in addition to T-8. This branch
@@ -72,10 +72,10 @@ carries slack against the `T-6→T-7→T-8` pipeline branch **only if its
 feeders start immediately**. The D2 reversal CHANGED T-4's dependency set
 — the old alias model needed almost nothing; fact-bundle modeling needs
 the shared vocabulary (`T-3`, itself on the critical path) plus
-**four feeders that are not on the critical path and gate `T-4 → T-9`**:
-P1-KEYSTONE, T-30, T-29, T-25-core. Those four are **watch items**, not
-slack-having parallel fill — if any slips, the side branch goes critical.
-T-4 is no longer a schedule-anytime leaf — see T-4.
+**five feeders that are not on the critical path and gate `T-4 → T-9`**:
+P1-KEYSTONE, T-30, T-29, T-25-core, T-33. Those five are **watch items**,
+not slack-having parallel fill — if any slips, the side branch goes
+critical. T-4 is no longer a schedule-anytime leaf — see T-4.
 
 ```
   P1-KEYSTONE   the Phase-1 doc keystone — NOT a T-## task. The
@@ -101,8 +101,14 @@ T-4 is no longer a schedule-anytime leaf — see T-4.
                 refinement-bearing carriers need it. Sits near T-3 — see
                 T-25. (T-25-tail, the predicate prover, is post-T-9
                 parallel fill, not a feeder.)
+  T-33  std/model_core.dag — shared substrate factoring (Ratified Q1).
+                LanguageModel (T-4) and HostModel (T-34) both extend it;
+                T-4's fact-bundle authoring cannot ground primitives + algebra
+                inhabitance + laws against ModelCore until the carrier file
+                exists. Low-dependency (needs only T-1, T-2, T-3) but a hard
+                T-4 prerequisite — see T-33.
   T-4   extdeps/languages/{rust,python,go,cpp,typescript}.dag
-        [needs T-3, P1-KEYSTONE, T-29, T-30, T-25-core — see T-4]
+        [needs T-3, P1-KEYSTONE, T-29, T-30, T-25-core, T-33 — see T-4]
 ```
 
 ### Parallel fill — schedule the instant deps clear
@@ -129,6 +135,10 @@ Substrate / extdeps fan-out:
   T-4.14 extdeps/languages/ptx.dag       [needs T-1, T-2; B2-OMNI + IN-B probe — SIMT data-parallel vs the 5 behaviors]
   T-5   REMOVED 2026-05-15 (operator-ratified) — work-direction meta-layer
         cut; only workflow/bootstrap.dag (T-20) + workflow/ci.dag (T-24) remain
+  (T-4.15 protocols substrate is NOT in this "instant parallel fill" block —
+   see "Close-the-loop + late substrate" below. It is scheduled-but-deferred:
+   file authoring activates when omni-stack glue work activates, per P4
+   "Out of scope for the initial single-target compiler.")
 
 Test + bootstrap substrate (schedule early — every later task benefits):
   T-19  lens/testgen.dag                 [needs T-1, T-2, T-3]
@@ -154,10 +164,13 @@ Test + bootstrap substrate (schedule early — every later task benefits):
         job selection — the shell bridge dissolves once both land.
 
 Interpreter + lens dimensions (each needs T-9):
-  T-22  compiler/05_eval.dag             [needs T-9]
+  T-22  compiler/05_eval.dag             [needs T-9, T-34]
         The interpreter — THE PRIMARY execution path (THESIS:225).
         Sibling of emit (same InferredTree input). workflow/bootstrap.dag
         + TestClaim eval + lens dry-run all compose over it.
+        T-34 added 2026-05-20 (Ratified Q1) — eval(InferredTree, HostModel,
+        Inputs) takes the HostModel parameter; eval cannot be authored
+        before the host-semantics carrier exists.
   T-12  lens/complexity.dag + lens/cost.dag      [needs T-9]
   T-13  lens/{parallelism,effect,ownership,idempotency}.dag   [needs T-9]
   T-17  lens/synthesis.dag + std/report.dag  (cross-algorithm complexity, C7;
@@ -189,6 +202,28 @@ Close-the-loop + late substrate:
   T-26  std/ boundary carriers (HttpMethod / URL / NetworkAddress port)
         [needs T-3] — feeds T-4.6 (openapi's HttpMethod/Url) and the T-16
         wire contract; genuine slack (T-4.6 itself has slack).
+  T-4.15 extdeps/protocols/{rest,graphql,grpc}.dag — transport substrate
+        (Ratified P4)
+        [needs T-3, T-26; scheduled-but-deferred — file authoring activates
+        with omni-stack glue work per P4 ("Out of scope for the initial
+        single-target compiler. Architecture must not preclude, but no
+        implementation in the initial single-target compiler"). Language-
+        orthogonal: transport declares its own wire-format type system;
+        LanguageModel ⊗ TransportModel composition is the future-omni-stack-
+        expansion's responsibility (beyond T-16's current OpenAPI scope —
+        T-16's `[needs]` does NOT include T-4.15 today), not this
+        substrate's. Single-authority for the activation gate lives in
+        the task body's "Out of scope for the initial single-target
+        compiler" section — see T-4.15.]
+  (T-33 std/model_core.dag is NOT in this "late substrate" bucket —
+   see the side-branch feeders block at the top of this file. T-33 is a
+   watch-item T-4 prerequisite, not slack; the side branch goes critical
+   if T-33 slips.)
+  T-34  std/host.dag — HostModel substrate (Ratified Q1)
+        [needs T-33] — structural peer of LanguageModel over the same
+        ModelCore; carries host value representation, primitive operation
+        interpretation, execution semantics, resource / effect boundary.
+        Consumed by T-22 (eval) and the MVP-B route.
   (T-28 module-graph substrate is bundled into T-8 — it is critical-path
    work inside T-8, not a standalone parallel-fill item; see T-28. T-29
    and T-25-core are side-branch feeders of T-4, listed in the side
@@ -283,7 +318,9 @@ flat — dispatch in waves):
 **File**: 5 files in `src/v4/extdeps/languages/` (operator-ratified 2026-05-15: cpp + typescript added; cpp subsumes C subset; Go retained)
 **Why bundled**: identical structural shape per language; the SHAPE is the work. Each file declares the language MODEL (grammar + types + semantics) — direction-agnostic; emit AND ingest are operations against the same model.
 
-**Dependencies — re-gated by the D2 reversal (operator-ratified 2026-05-17).** T-4 is no longer a schedule-anytime Phase-1 leaf: `[needs T-3, P1-KEYSTONE, T-29, T-30, T-25-core]`. The old alias model needed almost nothing — a bare alias reads no facts. Fact-bundle modeling needs T-3's shared-fact vocabulary (signedness/representation/numeric stack), the `P1-KEYSTONE` modeling-discipline rubric (the doc against which every bundle is authored and reviewed), the `T-30` structural fact-density / hollow-alias gate (the per-language rework does not run under convention-tier-only enforcement — see T-30), `T-25-core` (the refinement substrate — a language fact-bundle that grounds a refinement-bearing carrier needs the base-type + fail-closed-validation shape), and — for the cpp slice — the T-29 C++ ABI / target data-model. T-4 sits on the `{P1-KEYSTONE, T-30, T-29, T-25-core} → T-4 → T-9` side branch — its four feeders are watch items, not slack-having parallel fill; see the execution graph. The D2 reversal *changing this dependency set* is the single most consequential planning edit of the reseed.
+**Dependencies — re-gated by the D2 reversal (operator-ratified 2026-05-17) + Ratified Q1 (operator-ratified 2026-05-20).** T-4 is no longer a schedule-anytime Phase-1 leaf: `[needs T-3, P1-KEYSTONE, T-29, T-30, T-25-core, T-33]`. The old alias model needed almost nothing — a bare alias reads no facts. Fact-bundle modeling needs T-3's shared-fact vocabulary (signedness/representation/numeric stack), the `P1-KEYSTONE` modeling-discipline rubric (the doc against which every bundle is authored and reviewed), the `T-30` structural fact-density / hollow-alias gate (the per-language rework does not run under convention-tier-only enforcement — see T-30), `T-25-core` (the refinement substrate — a language fact-bundle that grounds a refinement-bearing carrier needs the base-type + fail-closed-validation shape), `T-33` (the `std/model_core.dag` shared substrate that LanguageModel extends per Ratified Q1 — primitives + algebra inhabitance + laws ground against ModelCore, not re-declared per-language), and — for the cpp slice — the T-29 C++ ABI / target data-model. T-4 sits on the `{P1-KEYSTONE, T-30, T-29, T-25-core, T-33} → T-4 → T-9` side branch — its five feeders are watch items, not slack-having parallel fill; see the execution graph. The D2 reversal *changing this dependency set* is the single most consequential planning edit of the reseed; T-33 is the 2026-05-20 Q1 addition.
+
+**Note on T-33 edge scope.** Adding T-33 to `[needs …]` is a graph-edge update — it records that LanguageModel cannot be authored before ModelCore exists. It does **not** restructure the T-4 fact-bundle authoring contract (the body text above) to be expressed in terms of "LanguageModel extends ModelCore". That re-expression is its own commit train, after T-33 lands.
 
 **Authoring contract (operator-ratified 2026-05-15; D2 bullet superseded 2026-05-17):**
 - **Model the SPECIFICATION, not libraries (L-2).** Model the versioned upstream spec (Rust Reference, ECMAScript/TS Handbook, IEEE 1364, …) — the anchor IS that spec. Do NOT model std/crates/packages: a library is just a program in the modeled language = `Node`. Modeling libraries is infinite, non-general, the wrong layer.
@@ -881,10 +918,10 @@ All 5 artifacts share ONE Node tree (per gate #28 omni_layers_share_one_node_tre
 **Why load-bearing**: THESIS:225 — `dag run` is THE primary execution path. eval is not an afterthought to emit; it is the default. Sibling of `05_emit.dag` (same `InferredTree` input; eval executes, emit projects to target languages).
 
 **Modeling decisions**:
-- `eval: (InferredTree, Inputs) -> Result<Value, Diagnostic>` shape
+- `eval: (InferredTree, HostModel, Inputs) -> Result<Value, Diagnostic>` shape (HostModel parameter added 2026-05-20 per Ratified Q1 — eval interprets primitives against the HostModel substrate; see T-34)
 - Bounded-execution enforcement (INVARIANTS P4 — no unbounded loops; how does the evaluator structurally refuse non-termination?)
 - The shared substrate three consumers compose over: `workflow/bootstrap.dag` (interpreted, not compiled), TestClaim evaluation, lens dry-run
-- Concept-unification (THESIS:188): interpreter runtime = language spec = transport spec — eval reads the same `extdeps/languages/*.dag` carriers emit does
+- Concept-unification (THESIS:188): under Ratified Q1, eval reads **HostModel** (T-34) for primitive interpretation, execution semantics, and host value representation — NOT LanguageModel. LanguageModel is for ingest grammar + emit serialization; HostModel is for runtime. They share `ModelCore` (T-33) for primitive-type / algebra-inhabitance / laws / effect / partiality facts; the split on what's specific to each carrier is exactly the Q1 factoring. The earlier "eval reads the same `extdeps/languages/*.dag` carriers emit does" framing predates Q1 and is superseded
 - **`BehaviorValueSubject` naming vs eval slice (T-19 → T-22):** The identifier anchors the T-19 **L1 `Value`** placement under `type_construction` (T-19 Phase-1.5); the payload is still the **closed** `Behavior` sum (all five behaviors—not Value-only structurally). When T-22 binds testgen/type-construction to execution, re-audit the name with the real consumer: either keep it as the Value-slice carrier of `Behavior` facts or rename (e.g. to `BehaviorSubject`) if the eval path is behavior-wide with no residual Value reading; fold the decision into the T-22 close gate so names cannot silently drift from semantics.
 
 **Incremental Re-Test requirement set — held (IRT-3; see T-21 for the full IRT-1..4 set + rationale).**
@@ -1176,6 +1213,179 @@ disposition forks and resolved the `#4 — T-16 SQL DDL` fork (fork (a) —
 SQL as a checked `extdeps` Shape-B format) on 2026-05-17 (D2-reversal
 Phase-1 execution). Theme-A missed-planning debt is **closed** — no fork
 remains open.
+
+### T-33 — std/model_core.dag — shared substrate factoring  [SCHEDULED]
+**Operator-ratified 2026-05-20 (PR #3437, "Ratified Q1 — `HostModel` is `Q1a + factored ModelCore`").**
+The shared base substrate that both `LanguageModel` (T-4) and `HostModel`
+(T-34) extend. `ModelCore` is the categorical floor for primitive-type
+and algebra-inhabitance declarations to stay consistent across language
+and host targets without duplicate authority.
+
+**Dependencies — `[needs T-1, T-2, T-3]`.** Numeric and string vocabulary
+(T-3 scalar/numeric stack); algebra carriers (T-2); the Node substrate
+root (T-1). Low-dependency — no upstream-feeder watch items — but a hard
+T-4 / T-34 prerequisite per the side-branch graph at the top of this
+file.
+
+**File:** `src/v4/std/model_core.dag` — does not exist on main; this task
+is its first authoring.
+
+**Carrier shape (per `docs/design-v4-compiler-homomorphism.md` §"`ModelCore`"):**
+- **Primitive types** — each a Practice-8 fact-bundle (width, signedness,
+  range, encoding, …) grounding in the T-3 shared-fact vocabulary.
+- **Algebra inhabitance declarations** — which primitives inhabit which
+  algebras (consumed by the T-9 coercion fold).
+- **Laws / proof obligations** — associativity, commutativity, etc., for
+  the coercion fold's preservation checks.
+- **Effect semantics** — what effects each primitive operation declares
+  (Open Q10 in the design doc).
+- **Partiality semantics** — which operations are partial; how partiality
+  is discharged or surfaced.
+
+**Why a sibling of T-3, not a fold-in.** T-3 already owns the shared-fact
+vocabulary (Signedness / Representation / the numeric stack); ModelCore is
+one layer up — the named carrier that *bundles* a primitive's facts +
+inhabitance + laws + effects under a single substrate type. It consumes
+T-3 vocabulary; it does not duplicate it. Authored as its own file so
+LanguageModel and HostModel both have a single named carrier to extend
+(rather than each re-declaring the bundle shape).
+
+**Dependencies — what this PR DOES vs DOES NOT touch in T-4.** This PR
+adds T-33 to T-4's authoritative dependency contract:
+`[needs T-3, P1-KEYSTONE, T-29, T-30, T-25-core, T-33]`. A schedule-edge
+update recording that LanguageModel cannot be authored before ModelCore
+exists; single-authority for the dependency fact lives in T-4's `[needs
+…]` line, not in this T-33 prose. What this PR does NOT do: re-express
+T-4's fact-bundle *authoring contract* (the body prose under T-4) in
+terms of "LanguageModel extends ModelCore". That authoring reframe is
+its own commit train, after T-33 lands. The Q1 ratification established
+the SHAPE; the schedule edge belongs in `[needs …]`; the authoring
+reframe is a separate edit.
+
+**Reference:** `docs/design-v4-compiler-homomorphism.md` §"`ModelCore`
+(shared substrate, factored per ratified Q1)" + §"Ratified Q1 — `HostModel`
+is `Q1a + factored ModelCore` (2026-05-20)".
+
+---
+
+### T-34 — std/host.dag — HostModel substrate  [SCHEDULED]
+**Operator-ratified 2026-05-20 (PR #3437, Ratified Q1).** A `HostModel`
+that is a **distinct peer of `LanguageModel`**, both extending the shared
+`ModelCore` (T-33). Host-side concerns (allocation, execution model,
+runtime values, resource limits) are categorically different from
+emit-side concerns (grammar, serialization) and live only on `HostModel`;
+the rejected `VoidGrammar` variant (Q1b) conflated them.
+
+**File:** `src/v4/std/host.dag` — does not exist on main; this task is its
+first authoring. Named explicitly in the design doc's MVP-B substrate row
+(`std/host.dag` (Ratified Q1)).
+
+**Carrier shape (per `docs/design-v4-compiler-homomorphism.md` §"`HostModel`
+(extends `ModelCore`, ratified Q1a)"):** in addition to whatever
+`ModelCore` carries —
+- **Host value representation** — how a substrate primitive is
+  represented at runtime.
+- **Primitive operation interpretation** — Transform → host function
+  call; Branch → host if-expression; Value → host literal allocation.
+- **Execution semantics** — call/return, allocation, control transfer.
+- **Resource / effect boundary** — FFI, host exceptions, async /
+  concurrency model, identity / reference semantics.
+
+**Dependencies — `[needs T-33]`.** Cannot author the HostModel carrier
+shape until ModelCore is named (Q1 ratification factored ModelCore out
+*because* HostModel and LanguageModel needed a shared base).
+
+**Why a sibling, not a LanguageModel variant.** Q1c ("eval =
+translate-to-machine-code + execute") was rejected because host execution
+involves real process state, runtime values, and failure modes that the
+emit-side `LanguageModel` does not model. A distinct `HostModel` is
+the operator-ratified discipline; do not collapse them.
+
+**Consumer:** T-22 (`compiler/05_eval.dag`) — eval takes a `HostModel` to
+interpret primitives. The MVP-B route (`eval(host_model)`) depends on
+this carrier landing.
+
+**Reference:** `docs/design-v4-compiler-homomorphism.md` §"`HostModel`
+(extends `ModelCore`, ratified Q1a)" + §"Ratified Q1".
+
+---
+
+### T-4.15 — extdeps/protocols/{rest,graphql,grpc}.dag — transport substrate  [SCHEDULED]
+**Operator-ratified 2026-05-20 (PR #3437, P4 — "Glue derivation is
+composed homomorphism, orthogonal to the compiler").** Transport
+semantics substrate — the carrier shape that a **future omni-stack
+expansion** (beyond T-16's current OpenAPI-based wire-contract scope)
+glue derivation composes over. Inter-module marshaling is structurally a
+**composed homomorphism**: source → wire-format model → target. Same
+primitive (the coercion fold), applied twice through a shared transport
+model. **Note on the T-16 edge:** T-16's authoritative `[needs]` does
+NOT include T-4.15 — T-16's current scope is the OpenAPI demo (via
+T-4.6 `openapi.dag` + T-4.8 `coordination.dag`'s WireContract), not the
+full REST/GraphQL/gRPC transport substrate. Co-scheduling T-4.15 with
+T-16 would assert a consumer edge T-16 does not actually carry in its
+current scope.
+
+**Files:** `src/v4/extdeps/protocols/{rest,graphql,grpc}.dag` — directory
+does not exist on main; this task is its first authoring. The
+**`extdeps/protocols/`** slot is named verbatim in the design doc as
+**"Currently missing"** substrate.
+
+**Modeling decisions:**
+- Per-transport carrier shape — the structural facts each transport
+  declares (REST: method / path / status / body-type negotiation;
+  GraphQL: schema / query / mutation / subscription; gRPC: service /
+  method / message types / streaming kinds).
+- Where to ground against T-26 boundary carriers (HttpMethod / Url /
+  NetworkAddress) vs. authoring fresh transport-specific carriers.
+- Bidirectional read: same substrate consumed by ingest (parse a wire
+  message into Node) and emit (project a Node into wire-format text) —
+  composed homomorphism, NOT a string template (no-templating
+  principle).
+- Relationship to T-4.8 `coordination.dag`'s `WireContract` /
+  `CoordinationSemantics` (HTTP / REST is the immediate consumer in
+  omni-stack scenarios).
+
+**Dependencies — `[needs T-3, T-26]`. Language-orthogonal per P4.**
+Numeric and string vocabulary from T-3 for wire-format primitives;
+HttpMethod / Url / NetworkAddress from T-26 for REST grounding. **NOT
+T-4.** The transport substrate declares its OWN wire-format type system
+(REST: structured HTTP bodies + headers; gRPC: protobuf wire format with
+its own primitive/message types; GraphQL: GraphQL type system).
+LanguageModel bindings happen downstream at *composition time* — a
+**future-expanded omni-stack glue derivation** (beyond T-16's current
+OpenAPI scope; not part of T-16's current `[needs]`) composes
+`LanguageModel(source) ∘ TransportModel ∘ LanguageModel(target)` via the
+coercion fold, P4's "applied twice through a shared transport model."
+Co-locating language-binding facts on this substrate would collapse the
+shared transport model back into language-specific concerns — the
+opposite of the P4 framing.
+
+**Scope discipline — L-2 holds.** Model the versioned transport SPEC
+(IETF RFCs for REST / HTTP semantics, the GraphQL spec, the gRPC HTTP/2
+spec) — NOT specific implementations (Axum / FastAPI / Apollo / Tonic).
+Libraries are downstream programs written in the modeled language; they
+are ordinary `Node`s, never modeled as targets.
+
+**Out of scope for the initial single-target compiler.** The design doc
+names this explicitly: "Glue derivation / omni-stack — orthogonal
+substrate (P4). Architecture must not preclude, but no implementation in
+the initial single-target compiler." This task is scheduled because the
+substrate slot is named; the file authoring waits until omni-stack glue
+work activates *beyond T-16's current OpenAPI scope* (a future expansion;
+T-16's `[needs]` does NOT list T-4.15 today), not part of the critical-path single-target
+MVP.
+
+**Related substrate slot (NOT bundled here).** The design doc also names
+**`std/system.dag` or equivalent — module decomposition substrate.
+Currently informal** as a sibling P4 substrate gap. That is a separate
+follow-on task (not scheduled here; tracked when glue derivation work
+activates).
+
+**Reference:** `docs/design-v4-compiler-homomorphism.md` §"P4 — Glue
+derivation is composed homomorphism, orthogonal to the compiler" +
+§"What's NOT in scope for this design" (the `extdeps/protocols/` row).
+
+---
 
 ### T-31 — de-prose / de-templating backward sweep  [SCHEDULED]
 **Operator-confirmed 2026-05-17 (D2-reversal Phase-1 execution).** The
