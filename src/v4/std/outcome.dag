@@ -1,6 +1,6 @@
 // src/v4/std/outcome.dag
 // Scope: Outcome traverse combinators + diagnostic policy carriers + traverse law witnesses.
-// Owns: DiagnosticAccumulationPolicy, StageDiagnosticPolicy, NodeOutcomeFold, traverse_node, sequence_node, map_node_outcome, traverse_outcome, map_outcome, bind_outcome, append_non_empty, merge_accepted_diagnostics, TraverseIdentityLaw, TraverseCompositionLaw, TraverseFailureMonotonicityLaw.
+// Owns: DiagnosticAccumulationPolicy, StageDiagnosticPolicy, NodeOutcomeFold, traverse_node, sequence_node, map_node_outcome, traverse_outcome, map_outcome, bind_outcome, append_non_empty, TraverseIdentityLaw, TraverseCompositionLaw, TraverseFailureMonotonicityLaw.
 // Consumes: std diagnostic, std node, std collection, std algebra.
 // Status: W-TraverseOutcome substrate (design-v4-compiler-homomorphism Ratified Q4 companion).
 
@@ -11,18 +11,15 @@ module v4.std.outcome
 import v4.std.algebra { Empty, Cons }
 import v4.std.collection { List }
 import v4.std.diagnostic {
-  Accepted,
   Diagnostic,
   ExternalContractUnknown,
   More,
   NonEmptyDiagnostics,
   One,
   Outcome,
-  PluralDiagnostics,
   PortLocus,
   Produced,
   Rejected,
-  RejectedAccumulating,
   Unavailable
 }
 import v4.std.node { Edge, Node, Symbol }
@@ -69,14 +66,6 @@ fn append_non_empty(front: NonEmptyDiagnostics, back: NonEmptyDiagnostics) -> No
 }
 
 
-fn merge_accepted_diagnostics(
-  prior: NonEmptyDiagnostics,
-  next: NonEmptyDiagnostics
-) -> NonEmptyDiagnostics {
-  append_non_empty(front: prior, back: next)
-}
-
-
 type NodeOutcomeFold<R> {
   policy: StageDiagnosticPolicy
   init: fn(Node) -> Outcome<R>
@@ -109,18 +98,7 @@ fn sequence_node<R>(nodes: List<Node>, algebra: NodeOutcomeFold<R>) -> Outcome<L
 fn map_node_outcome<T, U>(o: Outcome<T>, f: fn(T) -> Outcome<U>) -> Outcome<U> {
   match o {
     Rejected { diagnostic: d } => Rejected { diagnostic: d }
-    RejectedAccumulating { diagnostics: d } => RejectedAccumulating { diagnostics: d }
     Produced { value: v } => f(v)
-    Accepted { value: v, diagnostics: ds } => match f(v) {
-      Rejected { diagnostic: d } => Rejected { diagnostic: d }
-      RejectedAccumulating { diagnostics: d } => RejectedAccumulating { diagnostics: d }
-      Produced { value: u } => Produced { value: u }
-      Accepted { value: u, diagnostics: ds2 } =>
-        Accepted {
-          value: u,
-          diagnostics: merge_accepted_diagnostics(prior: ds, next: ds2)
-        }
-    }
   }
 }
 
@@ -130,27 +108,10 @@ fn traverse_outcome<T, U>(xs: List<T>, f: fn(T) -> Outcome<U>) -> Outcome<List<U
     Empty => Produced { value: Empty }
     Cons { head: h, tail: t } => match f(h) {
       Rejected { diagnostic: d } => Rejected { diagnostic: d }
-      RejectedAccumulating { diagnostics: d } => RejectedAccumulating { diagnostics: d }
       Produced { value: u } =>
         match traverse_outcome(xs: t, f: f) {
           Rejected { diagnostic: d } => Rejected { diagnostic: d }
-          RejectedAccumulating { diagnostics: d } => RejectedAccumulating { diagnostics: d }
-          Produced { value: rest } =>
-            Produced { value: Cons { head: u, tail: rest } }
-          Accepted { value: rest, diagnostics: ds } =>
-            Accepted { value: Cons { head: u, tail: rest }, diagnostics: ds }
-        }
-      Accepted { value: u, diagnostics: ds } =>
-        match traverse_outcome(xs: t, f: f) {
-          Rejected { diagnostic: d } => Rejected { diagnostic: d }
-          RejectedAccumulating { diagnostics: d } => RejectedAccumulating { diagnostics: d }
-          Produced { value: rest } =>
-            Accepted { value: Cons { head: u, tail: rest }, diagnostics: ds }
-          Accepted { value: rest, diagnostics: ds2 } =>
-            Accepted {
-              value: Cons { head: u, tail: rest },
-              diagnostics: merge_accepted_diagnostics(prior: ds, next: ds2)
-            }
+          Produced { value: rest } => Produced { value: Cons { head: u, tail: rest } }
         }
     }
   }
@@ -160,9 +121,7 @@ fn traverse_outcome<T, U>(xs: List<T>, f: fn(T) -> Outcome<U>) -> Outcome<List<U
 fn map_outcome<T, U>(o: Outcome<T>, f: fn(T) -> U) -> Outcome<U> {
   match o {
     Rejected { diagnostic: d } => Rejected { diagnostic: d }
-    RejectedAccumulating { diagnostics: d } => RejectedAccumulating { diagnostics: d }
     Produced { value: v } => Produced { value: f(v) }
-    Accepted { value: v, diagnostics: ds } => Accepted { value: f(v), diagnostics: ds }
   }
 }
 
@@ -170,17 +129,6 @@ fn map_outcome<T, U>(o: Outcome<T>, f: fn(T) -> U) -> Outcome<U> {
 fn bind_outcome<T, U>(o: Outcome<T>, f: fn(T) -> Outcome<U>) -> Outcome<U> {
   match o {
     Rejected { diagnostic: d } => Rejected { diagnostic: d }
-    RejectedAccumulating { diagnostics: d } => RejectedAccumulating { diagnostics: d }
     Produced { value: v } => f(v)
-    Accepted { value: v, diagnostics: ds } => match f(v) {
-      Rejected { diagnostic: d } => Rejected { diagnostic: d }
-      RejectedAccumulating { diagnostics: d } => RejectedAccumulating { diagnostics: d }
-      Produced { value: u } => Produced { value: u }
-      Accepted { value: u, diagnostics: ds2 } =>
-        Accepted {
-          value: u,
-          diagnostics: merge_accepted_diagnostics(prior: ds, next: ds2)
-        }
-    }
   }
 }

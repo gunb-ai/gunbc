@@ -1,9 +1,9 @@
 // src/v4/std/diagnostic.dag
 // Scope: fail-closed diagnostic schema.
 // Anchor: THESIS.md "show the correct code" + INVARIANTS P3.
-// Owns: Diagnostic, Outcome, NonEmptyDiagnostics, PluralDiagnostics, RejectedAccumulating, Locus, Extent, Correction, NoCorrectionReason.
+// Owns: Diagnostic, Outcome, NonEmptyDiagnostics, PluralDiagnostics, Locus, Extent, Correction, NoCorrectionReason.
 // Consumes: std node.
-// Status: T-3 modeled; Outcome Accepted/Rejected reconciled with design-v4-compiler-homomorphism Q4.
+// Status: T-3 modeled; Outcome stays legacy Produced/Rejected until Pass A correction packet.
 
 
 module v4.std.diagnostic
@@ -34,21 +34,17 @@ type Diagnostic {
   correction: Correction
 }
 // 🟡 coproduct dissolution — W-TRAVERSE-OUTCOME-NON-EMPTY-DIAGNOSTICS.
-// Trigger: dissolve to substrate NonEmptyList refinement (T-25-core).
+// Trigger: dissolve to substrate NonEmptyList refinement (T-25-core); not yet in Outcome sum.
 type NonEmptyDiagnostics
   = One { diagnostic: Diagnostic }
   | More { head: Diagnostic, tail: NonEmptyDiagnostics }
-// Plural only — ≥2 diagnostics; singles use Rejected { diagnostic }.
+// Plural only — ≥2 diagnostics; not yet in Outcome sum (Pass A correction packet).
 type PluralDiagnostics {
   head: Diagnostic
   tail: NonEmptyDiagnostics
 }
 // 🟡 coproduct dissolution — W-TRAVERSE-OUTCOME-LEGACY-PRODUCED.
-// Trigger: migrate consumers to Accepted/PluralDiagnostics; retire Produced/Rejected.
-// Authority: Produced = clean success; Accepted = success + ≥1 diagnostic;
-// Rejected = one failure; RejectedAccumulating = ≥2 failures only.
+// Trigger: Pass A correction collapses to Accepted/Rejected with Diagnostics substrate.
 type Outcome<T>
   = Produced { value: T }
   | Rejected { diagnostic: Diagnostic }
-  | Accepted { value: T, diagnostics: NonEmptyDiagnostics }
-  | RejectedAccumulating { diagnostics: PluralDiagnostics }
