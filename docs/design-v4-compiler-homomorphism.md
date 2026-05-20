@@ -519,8 +519,8 @@ A change to an upstream model — Node shape, grammar productions, `LanguageMode
 **Worked example: language-model self-regeneration.** Suppose `LanguageModel` is extended with a new field (e.g., effect-semantics declarations per Open Q10). The compiler:
 
 1. `affected_set` computes which compiler stages / lenses depend on `LanguageModel`'s shape (resolve consults binding rules; ground consults inhabitance; translate consults grammar; …).
-2. Each affected stage's algebra extends or fails-closed on the new field.
-3. Existing `rust.dag` / `python.dag` / etc. fail-closed-or-default on the new field until updated.
+2. Each affected stage's algebra extends or **fails closed** on the new field.
+3. Existing `rust.dag` / `python.dag` / etc. that lack the new field must either: (a) declare a **typed `Default<T>` witness** for the field (an explicit modeled default, NOT an implicit silent default), or (b) surface a fail-closed diagnostic until updated. There is **no silent default acceptance** — per P3 fail-closed, missing newly-required facts produce either a typed witness OR a diagnostic, never an unsignalled default.
 
 There is no manual sync. The compiler is rebuilt from its models the same way user programs are rebuilt from theirs.
 
