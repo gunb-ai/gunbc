@@ -28,7 +28,6 @@ import v4.compiler.infer {
   InferredFacts,
   InferredTree
 }
-import v4.lens.cost { UnknownCost }
 import v4.std.cardinality {
   RankingDimension,
   TerminationProof
@@ -178,7 +177,6 @@ fn workflow_inferred_facts() -> InferredFacts {
   InferredFacts {
     resolved_type: pipeline_symbol_node(s: inferred_type_symbol),
     inhabits: workflow_inferred_algebra_ref(),
-    cost: UnknownCost { reason: "workflow pipeline inferred cost scaffold" },
     descent: TerminationProof {
       non_increasing: [],
       strict: RankingDimension { measured: inferred_descent_symbol }
