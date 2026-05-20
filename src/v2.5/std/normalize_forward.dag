@@ -210,7 +210,7 @@ fn normalize_resolved_block_opt(block: ResolvedBlock?) -> Outcome<NormalizedBloc
 
 
 fn empty_normalized_type_fields() -> Outcome<List<NormalizedTypeField>> {
-  Produced { value: Empty }
+  Produced { value: [] }
 }
 
 
@@ -251,7 +251,7 @@ fn normalize_resolved_type_field(field: ResolvedTypeField) -> Outcome<Normalized
 
 
 fn empty_normalized_type_variants() -> Outcome<List<NormalizedTypeVariant>> {
-  Produced { value: Empty }
+  Produced { value: [] }
 }
 
 
@@ -287,7 +287,7 @@ fn normalize_resolved_type_variant(variant: ResolvedTypeVariant) -> Outcome<Norm
 
 
 fn empty_normalized_params() -> Outcome<List<NormalizedParam>> {
-  Produced { value: Empty }
+  Produced { value: [] }
 }
 
 
@@ -327,7 +327,7 @@ fn normalize_resolved_param(param: ResolvedParam) -> Outcome<NormalizedParam> {
 
 
 fn empty_normalized_exprs() -> Outcome<List<NormalizedExpr>> {
-  Produced { value: Empty }
+  Produced { value: [] }
 }
 
 
@@ -599,7 +599,7 @@ fn normalize_resolved_expr(expr: ResolvedExpr) -> Outcome<NormalizedExpr> {
 
 
 fn empty_normalized_args() -> Outcome<List<NormalizedArg>> {
-  Produced { value: Empty }
+  Produced { value: [] }
 }
 
 
@@ -630,7 +630,7 @@ fn normalize_resolved_arg(arg: ResolvedArg) -> Outcome<NormalizedArg> {
 
 
 fn empty_normalized_field_inits() -> Outcome<List<NormalizedFieldInit>> {
-  Produced { value: Empty }
+  Produced { value: [] }
 }
 
 
@@ -663,7 +663,7 @@ fn normalize_resolved_field_init(field: ResolvedFieldInit) -> Outcome<Normalized
 
 
 fn empty_normalized_match_arms() -> Outcome<List<NormalizedMatchArm>> {
-  Produced { value: Empty }
+  Produced { value: [] }
 }
 
 
@@ -734,7 +734,7 @@ fn normalize_resolved_pattern(pattern: ResolvedPattern) -> Outcome<NormalizedPat
 
 
 fn empty_normalized_field_bindings() -> Outcome<List<NormalizedFieldBinding>> {
-  Produced { value: Empty }
+  Produced { value: [] }
 }
 
 
@@ -770,7 +770,7 @@ fn normalize_resolved_field_binding(binding: ResolvedFieldBinding) -> Outcome<No
 
 
 fn empty_normalized_string_parts() -> Outcome<List<NormalizedStringPart>> {
-  Produced { value: Empty }
+  Produced { value: [] }
 }
 
 
@@ -844,7 +844,7 @@ fn normalize_resolved_transport(transport: ResolvedTransport) -> Outcome<Normali
 
 
 fn empty_normalized_transport_properties() -> Outcome<List<NormalizedTransportProperty>> {
-  Produced { value: Empty }
+  Produced { value: [] }
 }
 
 
@@ -882,7 +882,7 @@ fn normalize_resolved_transport_property(
 
 
 fn empty_normalized_operations() -> Outcome<List<NormalizedOperation>> {
-  Produced { value: Empty }
+  Produced { value: [] }
 }
 
 
@@ -929,7 +929,7 @@ fn normalize_resolved_operation(op: ResolvedOperation) -> Outcome<NormalizedOper
 
 
 fn empty_normalized_resource_uses() -> Outcome<List<NormalizedResourceUse>> {
-  Produced { value: Empty }
+  Produced { value: [] }
 }
 
 
@@ -990,7 +990,7 @@ fn normalize_resolved_import(imp: ResolvedImport) -> Outcome<NormalizedImport> {
 
 
 fn empty_normalized_imports() -> Outcome<List<NormalizedImport>> {
-  Produced { value: Empty }
+  Produced { value: [] }
 }
 
 

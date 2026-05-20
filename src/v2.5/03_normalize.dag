@@ -167,7 +167,7 @@ fn normalize_seam_edge(e: SeamResolvedEdge) -> Outcome<SeamNormalizedEdge> {
 
 
 fn empty_seam_normalized_edges() -> Outcome<List<SeamNormalizedEdge>> {
-  Produced { value: Empty }
+  Produced { value: [] }
 }
 
 
@@ -310,7 +310,7 @@ fn normalize_seam_item(item: SeamResolvedItem) -> Outcome<SeamNormalizedItem> {
 
 
 fn empty_seam_normalized_items() -> Outcome<List<SeamNormalizedItem>> {
-  Produced { value: Empty }
+  Produced { value: [] }
 }
 
 
@@ -376,7 +376,7 @@ fn normalize_module_item(item: ResolvedModuleItem) -> Outcome<NormalizedItem> {
 
 
 fn empty_normalized_module_items() -> Outcome<List<NormalizedItem>> {
-  Produced { value: Empty }
+  Produced { value: [] }
 }
 
 
