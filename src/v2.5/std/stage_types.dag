@@ -2,26 +2,11 @@
 // Each stage owns a distinct closed-sum root type. No optional fields acting
 // as kind discriminators; no inferred? on pre-infer phases; no NodeId side tables.
 //
-<<<<<<< HEAD
-// Phase AST shapes live here; substrate algebra in v2_5.std.node (PR #3422).
-// Reconcile: calm-crane-724 normalize seam (Seam* types); cool-bee-832 Tier 0
-// (Node + List<Edge>, 6-case Connective, 4-variant NodeKind).
-// Phase types stay parallel sums (not Node bags); lowering to Node uses node.dag.
-=======
 // Phase AST shapes live here; substrate is v2_5.std.node only (PR #3422, cool-bee-832).
 // NodeKind = TypeForm | Computation (2-variant, THESIS-faithful). Declarations, wrappers,
 // and module structure are stage-level variants (ParseItem, ParseExpr, …), not substrate.
 // Reconcile: calm-crane-724 normalize seam (Seam* types).
 // Lowering: phase AST → Node { kind, children: List<Edge> } at stage boundaries.
-//
-// Pipeline (type signatures are the contract):
-//   tokenize : SourceText -> TokenStream
-//   parse    : TokenStream -> ParseModule
-//   resolve  : ParseModule -> ResolvedModule
-//   normalize: ResolvedModule -> NormalizedModule
-//   infer    : NormalizedModule -> InferredModule
-//   emit     : InferredModule -> TargetSource
->>>>>>> origin/session/vivid-lynx-807
 
 module v2_5.std.stage_types
 
