@@ -63,6 +63,86 @@ fn outcome_accepted<T>(value: T) -> Outcome<T> {
 fn outcome_rejected<T>(d: Diagnostic) -> Outcome<T> {
   Rejected { diagnostics: diagnostics_singleton(d: d) }
 }
+fn extent_eq(a: Extent, b: Extent) -> Bool {
+  match a {
+    WholeFile => match b {
+      WholeFile => true
+      ByteRange { start: _, end: _ } => false
+    }
+    ByteRange { start: sa, end: ea } => match b {
+      WholeFile => false
+      ByteRange { start: sb, end: eb } => (sa == sb) && (ea == eb)
+    }
+  }
+}
+fn locus_eq(a: Locus, b: Locus) -> Bool {
+  match a {
+    Textual { file: fa, extent: ea } => match b {
+      Textual { file: fb, extent: eb } => (fa == fb) && extent_eq(a: ea, b: eb)
+      NodeLocus { node: _ } => false
+      PortLocus { port: _ } => false
+    }
+    NodeLocus { node: na } => match b {
+      Textual { file: _, extent: _ } => false
+      NodeLocus { node: nb } => na == nb
+      PortLocus { port: _ } => false
+    }
+    PortLocus { port: pa } => match b {
+      Textual { file: _, extent: _ } => false
+      NodeLocus { node: _ } => false
+      PortLocus { port: pb } => pa == pb
+    }
+  }
+}
+fn correction_eq(a: Correction, b: Correction) -> Bool {
+  match a {
+    Suggested { node: na } => match b {
+      Suggested { node: nb } => na == nb
+      Unavailable { reason: _ } => false
+    }
+    Unavailable { reason: ra } => match b {
+      Suggested { node: _ } => false
+      Unavailable { reason: rb } => ra == rb
+    }
+  }
+}
+fn diagnostic_eq(a: Diagnostic, b: Diagnostic) -> Bool {
+  (a.reason == b.reason)
+    && locus_eq(a: a.at, b: b.at)
+    && correction_eq(a: a.correction, b: b.correction)
+}
+fn non_empty_diagnostics_eq(a: NonEmptyDiagnostics, b: NonEmptyDiagnostics) -> Bool {
+  diagnostic_eq(a: a.head, b: b.head)
+    && fold(a.tail, init: true, f: fn(acc, d) {
+      acc && fold(b.tail, init: false, f: fn(_, bd) {
+        diagnostic_eq(a: d, b: bd)
+      })
+    })
+}
+fn diagnostics_eq(a: Diagnostics, b: Diagnostics) -> Bool {
+  match a {
+    None => match b {
+      None => true
+      Some { diagnostics: _ } => false
+    }
+    Some { diagnostics: da } => match b {
+      None => false
+      Some { diagnostics: db } => non_empty_diagnostics_eq(a: da, b: db)
+    }
+  }
+}
+fn outcome_node_eq(a: Outcome<Node>, b: Outcome<Node>) -> Bool {
+  match a {
+    Accepted { value: av, diagnostics: ad } => match b {
+      Accepted { value: bv, diagnostics: bd } => (av == bv) && diagnostics_eq(a: ad, b: bd)
+      Rejected { diagnostics: _ } => false
+    }
+    Rejected { diagnostics: ar } => match b {
+      Accepted { value: _, diagnostics: _ } => false
+      Rejected { diagnostics: br } => non_empty_diagnostics_eq(a: ar, b: br)
+    }
+  }
+}
 type NodeOutcomeFold<R> {
   init: fn(Node) -> Outcome<R>
   step: fn(R, Edge, R) -> Outcome<R>

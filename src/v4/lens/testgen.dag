@@ -268,27 +268,27 @@ fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept>
     T19ManualTcConjEmpty =>
       Accepted { value: TypeConstruction {
           subject: ConnectiveKernel { connective: Conj },
-        },, diagnostics: None }
+        }, diagnostics: None }
     T19ManualTcDisjEmpty =>
       Accepted { value: TypeConstruction {
           subject: ConnectiveKernel { connective: Disj },
-        },, diagnostics: None }
+        }, diagnostics: None }
     T19ManualTcArrowTwoConj =>
       Accepted { value: TypeConstruction {
           subject: ConnectiveKernel { connective: Arrow },
-        },, diagnostics: None }
+        }, diagnostics: None }
     T19ManualTcCardinalityEmpty =>
       Accepted { value: TypeConstruction {
           subject: ConnectiveKernel { connective: Cardinality },
-        },, diagnostics: None }
+        }, diagnostics: None }
     T19ManualTcInstantiationEmpty =>
       Accepted { value: TypeConstruction {
           subject: ConnectiveKernel { connective: Instantiation },
-        },, diagnostics: None }
+        }, diagnostics: None }
     T19ManualTcConjEqualsRefl =>
       Accepted { value: TypeConstruction {
           subject: ConnectiveKernel { connective: Conj },
-        },, diagnostics: None }
+        }, diagnostics: None }
     T19ManualNatAddLeftIdentity =>
       Accepted { value: AlgebraLaw {
           subject: AlgebraLawSubject {
@@ -296,7 +296,7 @@ fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept>
             inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
             law: t19_law_nat_add_left_identity,
           },
-        },, diagnostics: None }
+        }, diagnostics: None }
     T19ManualNatAddRightIdentity =>
       Accepted { value: AlgebraLaw {
           subject: AlgebraLawSubject {
@@ -304,7 +304,7 @@ fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept>
             inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
             law: t19_law_nat_add_right_identity,
           },
-        },, diagnostics: None }
+        }, diagnostics: None }
     T19ManualNatAddAssociativity =>
       Accepted { value: AlgebraLaw {
           subject: AlgebraLawSubject {
@@ -312,7 +312,7 @@ fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept>
             inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
             law: t19_law_nat_add_associativity,
           },
-        },, diagnostics: None }
+        }, diagnostics: None }
     T19ManualNatMulLeftIdentity =>
       Accepted { value: AlgebraLaw {
           subject: AlgebraLawSubject {
@@ -320,7 +320,7 @@ fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept>
             inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
             law: t19_law_nat_mul_left_identity,
           },
-        },, diagnostics: None }
+        }, diagnostics: None }
     T19ManualNatMulAnnihilator =>
       Accepted { value: AlgebraLaw {
           subject: AlgebraLawSubject {
@@ -328,7 +328,7 @@ fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept>
             inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
             law: t19_law_nat_mul_annihilator,
           },
-        },, diagnostics: None }
+        }, diagnostics: None }
     T19ManualNatMulAssociativity =>
       Accepted { value: AlgebraLaw {
           subject: AlgebraLawSubject {
@@ -336,7 +336,7 @@ fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept>
             inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
             law: t19_law_nat_mul_associativity,
           },
-        },, diagnostics: None }
+        }, diagnostics: None }
   }
 }
 
