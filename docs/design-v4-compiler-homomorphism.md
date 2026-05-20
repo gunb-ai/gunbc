@@ -253,7 +253,7 @@ Lens enforcement is **orthogonal to the emission/eval homomorphism.** The compil
 2. **Lenses are folds over `InferredTree`** sharing the `fold_node` primitive (Practice 10 row 1).
 3. **Lens outputs are side-channel** — `DimensionFact` / diagnostics. Translate/eval do NOT depend on lens output. Lens output does NOT feed downstream stages of the homomorphism.
 4. **Built-in and user-defined lenses share one algebra contract.** The compiler core does NOT import or name any specific lens. `04_infer.dag`'s current `import v4.lens.cost { SymbolicCost }` violates this and needs to be fixed.
-5. **Multi-lens execution is dependency-managed.** Lenses with no interdependencies are coalesced into a shared traversal. Lenses with dependencies (e.g., complexity reads cost) are scheduled by a **lens-dependency DAG**; each stage coalesces all lenses whose inputs are available. No lens may trigger an ad hoc unmanaged re-walk. See Open Q6 for the substrate primitive.
+5. **Multi-lens execution is dependency-managed.** Lenses with no interdependencies are coalesced into a shared traversal. Lenses with dependencies (e.g., complexity reads cost) are scheduled by a **lens-dependency DAG**; each stage coalesces all lenses whose inputs are available. No lens may trigger an ad hoc unmanaged re-walk. See Ratified Q6 below — derives from `fold_node` + composed-lens-algebra; NO new substrate primitive.
 6. **"By construction" guarantee — type-enforced at the public terminal.** Lens output does not feed the homomorphism and bare compile-core does not consume lens output. **`validate_then_compile` (or equivalent) is the project's public terminal API**; bare `compile(source, input_lang, mode)` is **explicitly marked as internal / non-terminal** — accessible to advanced consumers (lens framework, build tooling, the compiler itself for self-edit), but NOT the everyday user surface. The distinction is **type-level**, not convention-level: a `Validated<Output>` carrier (or similar) discharged only by the wrapper enforces the gate at the type system, so a bare `compile()` invocation cannot accidentally bypass lens enforcement at terminal emit/eval. Project policy decides the wrapper's lens set; the wrapper-as-terminal pattern is invariant.
 
 **Surface choice (B vs C) is not architecturally load-bearing.** Given commitments 1–6, two implementation surfaces are equivalent:
@@ -264,7 +264,7 @@ Both honor 1–6 identically. The `InferredTree` contract is the same; the lens 
 
 **The hard substrate work** that 1–6 imply:
 - A `LensAlgebra<F>` carrier shape that both built-ins and user-defined lenses satisfy.
-- The multi-lens dependency-management primitive (Open Q6).
+- The `LensAlgebra<F>` carrier shape + composed-lens-algebra construction (per Ratified Q6 — NOT a substrate primitive; derives from `fold_node`).
 - Stable `InferredTree` shape that won't break the lens contract as new substrate facts are added.
 
 ### P4 — Glue derivation is composed homomorphism, orthogonal to the compiler
