@@ -13,6 +13,7 @@
 module v2.compiler.tokenize
 
 import std.types { SourceSpan }
+import std.unicode { CharClass, char_in_class }
 import v2.std.core {
   make_file_span,
   Token, TokenShape,
@@ -115,12 +116,6 @@ type SourceRef {
   source_chars: List<Int>
 }
 
-// 🟢 terminal coproduct: lexer input classes are the closed grammar categories consumed by this tokenizer.
-type CharacterClass
-  = DigitClass
-  | IdentStartClass
-  | IdentContinueClass
-
 // === Token construction helper ===
 //
 fn make_token(text: String, span: SourceSpan, shape: TokenShape) -> Token {
@@ -152,20 +147,9 @@ fn source_scan_while(source: SourceRef, start: Int, pred: fn(String) -> Bool) ->
   } else { start }
 }
 
-// 🟢 terminal predicate: recovers the structural membership fact for each lexer input class.
-fn char_in_class(ch: String, class: CharacterClass) -> Bool {
-  match class {
-    DigitClass => ch >= "0" && ch <= "9"
-    IdentStartClass => (ch >= "a" && ch <= "z") || (ch >= "A" && ch <= "Z") || ch == "_"
-    IdentContinueClass =>
-      char_in_class(ch: ch, class: IdentStartClass) ||
-        char_in_class(ch: ch, class: DigitClass)
-  }
-}
-
-fn source_scan_class(source: SourceRef, start: Int, class: CharacterClass) -> Int {
+fn source_scan_class(source: SourceRef, start: Int, class: CharClass) -> Int {
   if start >= source_len(source: source) { source_len(source: source) }
-  else if char_in_class(ch: from_code_point(cp: source.source_chars[start]), class: class) {
+  else if char_in_class(c: source.source_chars[start], class: class) {
     source_scan_class(source: source, start: start + 1, class: class)
   } else { start }
 }
@@ -298,7 +282,7 @@ fn emit(pos: TokPos, shape: TokenShape, text: String, len: Int, file: String) ->
 }
 
 fn scan_ident(source: SourceRef, pos: TokPos) -> ScanResult {
-  let end = source_scan_class(source: source, start: pos.pos, class: IdentContinueClass)
+  let end = source_scan_class(source: source, start: pos.pos, class: IdentContinue)
   let text = source_substring(source: source, start: pos.pos, end: end)
   let shape = if is_keyword_text(text: text) { ShKeyword } else { ShIdent }
   let token = make_token(text: text, span: make_file_span(file: source.file, start: pos.pos, end: end), shape: shape)
@@ -306,10 +290,10 @@ fn scan_ident(source: SourceRef, pos: TokPos) -> ScanResult {
 }
 
 fn scan_number(source: SourceRef, pos: TokPos) -> ScanResult {
-  let int_end = source_scan_class(source: source, start: pos.pos, class: DigitClass)
+  let int_end = source_scan_class(source: source, start: pos.pos, class: Digit)
   // Check for decimal point -> float (guard against EOF)
   if int_end + 1 < source_len(source: source) && source_char(source: source, pos: int_end) == "." && is_digit(ch: source_char(source: source, pos: int_end + 1)) {
-    let frac_end = source_scan_class(source: source, start: int_end + 1, class: DigitClass)
+    let frac_end = source_scan_class(source: source, start: int_end + 1, class: Digit)
     let text = source_substring(source: source, start: pos.pos, end: frac_end)
     let token = make_token(text: text, span: make_file_span(file: source.file, start: pos.pos, end: frac_end), shape: ShLitFloat)
     return ScanResult { pos: frac_end, token: token, interp_depth: pos.interp_depth }
@@ -528,13 +512,13 @@ fn skip_spaces_and_comments(source: SourceRef, pos: TokPos, fuel: Int) -> TokPos
 // === Character predicates ===
 
 fn is_digit(ch: String) -> Bool {
-  char_in_class(ch: ch, class: DigitClass)
+  char_in_class(c: code_point(ch), class: Digit)
 }
 
 fn is_ident_start(ch: String) -> Bool {
-  char_in_class(ch: ch, class: IdentStartClass)
+  char_in_class(c: code_point(ch), class: IdentStart)
 }
 
 fn is_ident_char(ch: String) -> Bool {
-  char_in_class(ch: ch, class: IdentContinueClass)
+  char_in_class(c: code_point(ch), class: IdentContinue)
 }
