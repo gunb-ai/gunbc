@@ -137,33 +137,99 @@ type DependencyGraph {
 }
 
 
-// RULING-1: 🟢 pretty-much-done — parallelism independence may require multiple completeness facts.
-type DependencyCompletenessFact
+// RULING-1: 🟢 pretty-much-done — program-tier closed-world completeness (P6 Program).
+type ProgramCompletenessFact
   = ProgramSemanticFactsComplete
   | EffectFactsComplete
   | ResourceFactsComplete
-  | ArtifactGraphFactsComplete
 
 
-// RULING-1: 🟢 pretty-much-done — at least one completeness fact (empty list not representable).
-type CompletenessFacts {
-  first: DependencyCompletenessFact
-  rest: List<DependencyCompletenessFact>
+type ProgramCompletenessFacts {
+  first: ProgramCompletenessFact
+  rest: List<ProgramCompletenessFact>
 }
 
 
-type ClosedWorldDependencyWitness {
+type ProgramClosedWorldWitness {
   region: Symbol
-  domain: DependencyDomain
-  completeness: CompletenessFacts
+  completeness: ProgramCompletenessFacts
 }
 
 
-type IndependenceClaim {
-  witness: ClosedWorldDependencyWitness
-  left: DependencySubject
-  right: DependencySubject
+type ProgramIndependenceClaim {
+  witness: ProgramClosedWorldWitness
+  left: Path
+  right: Path
 }
+
+
+// RULING-1: 🟢 pretty-much-done — target-plan-tier closed-world completeness (P6 TargetPlan).
+type TargetPlanCompletenessFact
+  = TargetPlanFactsComplete
+
+
+type TargetPlanCompletenessFacts {
+  first: TargetPlanCompletenessFact
+  rest: List<TargetPlanCompletenessFact>
+}
+
+
+type TargetPlanClosedWorldWitness {
+  region: Symbol
+  completeness: TargetPlanCompletenessFacts
+}
+
+
+type TargetPlanIndependenceClaim {
+  witness: TargetPlanClosedWorldWitness
+  left: Path
+  right: Path
+}
+
+
+// RULING-1: 🟢 pretty-much-done — artifact-tier endpoints (no NodeSubject on artifact independence).
+type ArtifactDependencyEndpoint
+  = ArtifactSubject { artifact: Symbol }
+  | ProjectionSubject { projection: Symbol }
+  | ModelSubject { model: Symbol }
+
+
+// RULING-1: 🟢 pretty-much-done — artifact-tier closed-world completeness (P6 Artifact).
+type ArtifactCompletenessFact
+  = ArtifactGraphFactsComplete
+
+
+type ArtifactCompletenessFacts {
+  first: ArtifactCompletenessFact
+  rest: List<ArtifactCompletenessFact>
+}
+
+
+type ArtifactClosedWorldWitness {
+  region: Symbol
+  completeness: ArtifactCompletenessFacts
+}
+
+
+type ArtifactIndependenceClaim {
+  witness: ArtifactClosedWorldWitness
+  left: ArtifactDependencyEndpoint
+  right: ArtifactDependencyEndpoint
+}
+
+
+// RULING-1: 🟢 pretty-much-done — domain fixes completeness family (no Program witness + artifact facts).
+type ClosedWorldDependencyWitness
+  = Program { witness: ProgramClosedWorldWitness }
+  | TargetPlan { witness: TargetPlanClosedWorldWitness }
+  | Artifact { witness: ArtifactClosedWorldWitness }
+
+
+// RULING-1: 🟢 pretty-much-done — domain fixes witness + endpoint shape (no Program witness + ArtifactSubject).
+type IndependenceClaim
+  = Program { claim: ProgramIndependenceClaim }
+  | TargetPlan { claim: TargetPlanIndependenceClaim }
+  | Artifact { claim: ArtifactIndependenceClaim }
 
 
 // RULING-1: 🟢 pretty-much-done — cycle permit/reject classification (P6; not blind rejection).
