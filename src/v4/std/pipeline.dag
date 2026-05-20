@@ -10,9 +10,9 @@ module v4.std.pipeline
 
 import v4.std.collection { List }
 import v4.std.dependency {
-  ArtifactSchedulingReason,
-  ProgramSchedulingReason,
-  TargetPlanSchedulingReason
+  ArtifactDependencyCause,
+  ProgramDependencyCause,
+  TargetPlanDependencyCause
 }
 import v4.std.node { Symbol }
 

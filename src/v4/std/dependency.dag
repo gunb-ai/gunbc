@@ -1,6 +1,6 @@
 // src/v4/std/dependency.dag
 // Scope: P6 dependency graph substrate — domains, edges, witnesses, SCC, topological plan.
-// Owns: DependencySubject, ArtifactDependencyEndpoint, Program/TargetPlan/ArtifactSchedulingReason (sole dependency-cause axis per domain), scheduling/containment edges, ClosedWorldDependencyWitness, IndependenceAttempt, IndependenceClaim, DependencyDiagnostic, TopologicalPlan.
+// Owns: DependencySubject, ArtifactDependencyEndpoint, Program/TargetPlan/ArtifactDependencyCause (stage-contract projection), Program/TargetPlan/ArtifactSchedulingReason (edge evidence), scheduling/containment edges, ClosedWorldDependencyWitness, IndependenceAttempt, IndependenceClaim, DependencyDiagnostic, TopologicalPlan.
 // Consumes: v4.std.collection, v4.std.node.
 // Status: Wave-1 Worker A strict substrate.
 
@@ -25,7 +25,17 @@ type DependencySubject
   | ArtifactEndpoint { endpoint: ArtifactDependencyEndpoint }
 
 
-// 🟢 coproduct dissolution
+// 🟢 coproduct dissolution — stage-contract cause tags (no witness; not edge evidence).
+type ProgramDependencyCause
+  = BindsTo
+  | TypeDependsOn
+  | DataDependsOn
+  | EffectDependsOn
+  | ResourceDependsOn
+  | ModuleDependsOn
+
+
+// 🟢 coproduct dissolution — scheduling-edge evidence (witness required).
 type ProgramSchedulingReason
   = BindsTo { binding_witness: Symbol }
   | TypeDependsOn { type_witness: Symbol }
@@ -36,10 +46,27 @@ type ProgramSchedulingReason
 
 
 // 🟢 coproduct dissolution
+type TargetPlanDependencyCause
+  = PlacementConstraint
+  | TransferDependsOn
+  | BarrierBefore
+
+
+// 🟢 coproduct dissolution
 type TargetPlanSchedulingReason
   = PlacementConstraint { placement_witness: Symbol }
   | TransferDependsOn { transfer_witness: Symbol }
   | BarrierBefore { barrier_witness: Symbol }
+
+
+// 🟢 coproduct dissolution
+type ArtifactDependencyCause
+  = ModelDependsOn
+  | ProjectionDependsOn
+  | GeneratedFrom
+  | VerifiedBy
+  | BootstrapDependsOn
+  | PromotionDependsOn
 
 
 // 🟢 coproduct dissolution

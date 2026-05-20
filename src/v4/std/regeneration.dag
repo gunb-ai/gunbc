@@ -10,7 +10,6 @@ module v4.std.regeneration
 
 import v4.std.collection { List }
 import v4.std.dependency {
-  ArtifactDependencyEndpoint,
   DependencyEdge,
   DependencyGraph,
   DependencySubject,
@@ -75,10 +74,7 @@ type Change
   | HostModelChanged { host_model: Symbol }
   | PipelineStageChanged { stage: PipelineStage }
   | LensContractChanged { lens: LensContractRef }
-  | ProjectionChanged {
-      projection: Projection,
-      endpoint: ArtifactDependencyEndpoint
-    }
+  | ProjectionChanged { projection: Projection }
   | Stage0ContractChanged { contract: Stage0ContractRef }
   | CorePackageSchemaChanged { schema: CorePackageSchemaRef }
 
