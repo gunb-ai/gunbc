@@ -78,9 +78,9 @@ type FileResource {
 }
 
 // Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/V1_chap03.html#tag_03_271
-// Peripheral effect path coordinate (absolute path for MVP shims).
+// Peripheral effect path coordinate (POSIX absolute or relative via FilesystemPath).
 type FilePath {
-  absolute: AbsolutePath
+  path: FilesystemPath
 }
 
 // coincides: finite POSIX byte sequence.

@@ -153,8 +153,8 @@ fn v4_extdeps_file_system_dag_file_path_is_posix_grounded_record() {
     let fields = type_record_fields(&module, "FilePath");
     assert_eq!(
         record_field_type_map(fields),
-        BTreeSet::from([("absolute", "AbsolutePath".to_string())]),
-        "FilePath must ground path identity in AbsolutePath (POSIX fact-bundle), not an empty carrier"
+        BTreeSet::from([("path", "FilesystemPath".to_string())]),
+        "FilePath must ground path identity in FilesystemPath (absolute or relative POSIX facts), not an empty carrier"
     );
 }
 
