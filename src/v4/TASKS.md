@@ -213,10 +213,10 @@ Close-the-loop + late substrate:
         not this substrate's. Single-authority for the activation gate
         lives in the task body's "Out of scope for the initial single-
         target compiler" section — see T-4.15.]
-  T-33  std/model_core.dag — shared substrate factoring (Ratified Q1)
-        [needs T-1, T-2, T-3] — the shared base carrying primitive types,
-        algebra inhabitance, laws, effect / partiality semantics; consumed
-        by T-4 (LanguageModel) and T-34 (HostModel).
+  (T-33 std/model_core.dag is NOT in this "late substrate" bucket —
+   see the side-branch feeders block at the top of this file. T-33 is a
+   watch-item T-4 prerequisite, not slack; the side branch goes critical
+   if T-33 slips.)
   T-34  std/host.dag — HostModel substrate (Ratified Q1)
         [needs T-33] — structural peer of LanguageModel over the same
         ModelCore; carries host value representation, primitive operation
