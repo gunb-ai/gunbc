@@ -18,6 +18,7 @@ import v4.std.dependency {
 import v4.std.node { Symbol }
 
 
+// RULING-1: 🟢 pretty-much-done — compile-core carrier progression per homomorphism doc.
 type CarrierKind
   = Text
   | SurfaceNode
@@ -30,11 +31,13 @@ type CarrierKind
 
 
 // RULING-1: 🟢 pretty-much-done — fail-closed is invariant; policy selects accumulation behavior only.
+// RULING-1: 🟢 pretty-much-done — diagnostic collection behavior (fatality is always fail-closed).
 type DiagnosticAccumulationPolicy
   = Accumulate
   | ShortCircuit
 
 
+// RULING-1: 🟢 pretty-much-done — invariant stage fatality (no non-fail-closed stages).
 type StageFatality = FailClosed
 
 

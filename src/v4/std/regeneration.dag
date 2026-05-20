@@ -21,6 +21,7 @@ import v4.std.node { Hash, Path, Symbol }
 import v4.std.witness { Witness }
 
 
+// RULING-1: 🟢 pretty-much-done — stable change-consequence taxonomy (P8 unified regeneration).
 type ChangeKind
   = NodeChanged
   | EdgeChanged
@@ -50,6 +51,7 @@ type ChangeSet {
 }
 
 
+// RULING-1: 🟢 pretty-much-done — artifact taxonomy; bootstrap kinds reserved, protocol deferred at use.
 type ArtifactKind
   = TargetSource
   | TestSource
@@ -63,6 +65,7 @@ type ArtifactKind
   | WitnessBundle
 
 
+// RULING-1: 🟢 pretty-much-done — invalidation evidence carriers for AffectedSet.
 type InvalidationReason
   = DirectChange { change: Change }
   | DependencyPropagation { edge: DependencyEdge }

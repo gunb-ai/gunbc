@@ -33,12 +33,14 @@ type ProgramDependencyKind
   | ModuleDependsOn
 
 
+// RULING-1: 🟢 pretty-much-done — target-plan scheduling relation family (P6 TargetPlan tier).
 type TargetPlanDependencyKind
   = PlacementConstraint
   | TransferDependsOn
   | BarrierBefore
 
 
+// RULING-1: 🟢 pretty-much-done — artifact/projection provenance relation family (P6 Artifact tier).
 type ArtifactDependencyKind
   = ModelDependsOn
   | ProjectionDependsOn
@@ -127,6 +129,7 @@ type IndependenceClaim {
 }
 
 
+// RULING-1: 🟢 pretty-much-done — cycle permit/reject classification (P6; not blind rejection).
 type CycleClassification
   = Acyclic
   | ValidFixedPoint { witness: Symbol }
