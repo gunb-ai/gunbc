@@ -1,0 +1,22 @@
+// SeamNormalizedItemForm constructors (isolated to avoid variant collision with Resolved form).
+
+module v2_5.compiler.seam_builders
+
+
+import v2_5.std.stage_types {
+  NormalizedComputationForm,
+  NormalizedTypeForm,
+  SeamNormalizedItemForm
+}
+
+
+fn seam_normalized_type_form(type_form: NormalizedTypeForm) -> SeamNormalizedItemForm {
+  SeamItemType { type_form: type_form }
+}
+
+
+fn seam_normalized_computation_form(
+  computation_form: NormalizedComputationForm
+) -> SeamNormalizedItemForm {
+  SeamItemComputation { computation_form: computation_form }
+}

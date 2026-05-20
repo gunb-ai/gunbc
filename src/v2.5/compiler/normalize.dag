@@ -48,8 +48,6 @@ import v2_5.std.stage_types {
   SeamNormalizedItemNode,
   SeamResolvedEdge,
   SeamResolvedItem,
-  SeamNormalizedItemForm,
-  SeamResolvedItemForm,
   SeamResolvedModule,
   SeamResolvedModuleNode,
   SeamResolvedNode,
@@ -65,6 +63,10 @@ import v2_5.std.stage_types {
 import v2_5.compiler.item_forward {
   normalize_item_core,
   normalize_resolved_imports
+}
+import v2_5.compiler.seam_builders {
+  seam_normalized_computation_form,
+  seam_normalized_type_form
 }
 import v2_5.std.list { Empty }
 import v2_5.std.sugar_rules {
@@ -182,6 +184,24 @@ fn normalize_seam_edges(children: List<SeamResolvedEdge>) -> Outcome<List<SeamNo
         }
     }
   })
+}
+
+
+fn normalize_seam_resolved_form(form: SeamResolvedItemForm) -> Outcome<SeamNormalizedItemForm> {
+  match form {
+    SeamItemType { type_form: tf } =>
+      match normalize_resolved_type_form(form: tf) {
+        Produced { value: ntf } =>
+          Produced { value: seam_normalized_type_form(type_form: ntf) }
+        Rejected { diagnostic: d } => Rejected { diagnostic: d }
+      }
+    SeamItemComputation { computation_form: cf } =>
+      match normalize_resolved_computation_form(form: cf) {
+        Produced { value: ncf } =>
+          Produced { value: seam_normalized_computation_form(computation_form: ncf) }
+        Rejected { diagnostic: d } => Rejected { diagnostic: d }
+      }
+  }
 }
 
 
