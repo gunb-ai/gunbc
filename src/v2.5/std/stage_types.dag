@@ -18,7 +18,6 @@
 
 module v2_5.std.stage_types
 
-import std.syntax { BinOp, LiteralValue, AlgebraFieldKind }
 import v2_5.std.diagnostic { Outcome }
 import v2_5.std.identity { SourceSpan, AuthoredName, BoundName }
 import v2_5.std.node {
@@ -29,7 +28,12 @@ import v2_5.std.node {
   EdgeLabel
 }
 import v2_5.std.syntax {
-  UnaryOpKind, OperationModifier, ExprErrorKind
+  BinOp,
+  UnaryOpKind,
+  LiteralValue,
+  OperationModifier,
+  ExprErrorKind,
+  AlgebraFieldKind
 }
 import v2_5.std.token { TokenStream }
 

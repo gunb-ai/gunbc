@@ -1,11 +1,28 @@
-// v2.5 syntax extensions — operators/literals from std.syntax (M2 authority);
-// v2 surface carriers not yet in compiler-std consolidation live here.
+// v2.5 syntax carriers — self-contained fork tree.
+// Shape-reference: dsl/std/syntax.dag (BinOp, LiteralValue, AlgebraFieldKind transcribed;
+// no import from dsl/, src/v2/, src/v3/, or src/v4/).
 
 module v2_5.std.syntax
 
-import std.syntax { BinOp, LiteralValue, AlgebraFieldKind }
+// 🟢 coproduct dissolution — shape-ref: std.syntax BinOp
+type BinOp
+  = Add | Sub | Mul | Div | Mod
+  | Eq | Ne | Lt | Gt | Le | Ge
+  | And | Or | NullCoalesce
 
-// 🟢 coproduct dissolution
+// 🟢 coproduct dissolution — shape-ref: std.syntax LiteralValue
+type LiteralValue
+  = LitStr { value: String }
+  | LitInt { value: Int }
+  | LitFloat { value: String }
+  | LitBool { value: Bool }
+  | LitNull
+
+// 🟢 coproduct dissolution — shape-ref: std.syntax AlgebraFieldKind
+type AlgebraFieldKind
+  = AlgAdd | AlgMul | AlgReciprocal | AlgQuotient | AlgRemainder | AlgCompare | AlgMeet | AlgJoin
+
+// 🟢 coproduct dissolution — v2 surface (not yet in dsl/std/syntax.dag)
 type UnaryOpKind
   = Not | Neg
 
