@@ -47,7 +47,7 @@ type ReactModuleSurface
   | ReactServerComponentsModule
 
 // Anchor: https://react.dev/reference/react/hooks
-// 🟡 coproduct dissolution
+// 🟡 coproduct dissolution — consumer:react-custom-hook-structural-classifier
 type ReactHookSite
   = UseState { initial_ref: ReactCrossDeclRef }
   | UseReducer {
@@ -149,7 +149,7 @@ type ReactElement
   | Fragment { key: ReactOptKey, children: List<ReactCreateElementChild> }
 
 // Anchor: https://react.dev/reference/react/createElement
-// 🟡 coproduct dissolution
+// 🟡 coproduct dissolution — consumer:react-child-lattice-arm-discriminator
 type ReactCreateElementChild
   = Element { element: ReactElement }
   | Text { text_value_ref: ReactCrossDeclRef }
