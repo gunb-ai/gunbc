@@ -959,7 +959,7 @@ When a `.dag` substrate type changes — say `std/node.dag`'s `NodeFold<R>` carr
 1. **Hand-authored Diff via the read/edit pipeline.** The operator (or an agent) declares the change as a `Diff` against the substrate-typed Node graph. `apply_diff` mutates; the seven-step candidate-state pattern validates against the candidate. Commit lands. This is exactly the read/edit doc's "(f) mechanical refactor" hero case applied to the compiler's own source.
 2. **Mechanical refactor from upstream change.** When a substrate type evolves, a lens (e.g., an L1.x dissolution lens, or a custom interface-cascade lens like read/edit doc § 6.5) computes the affected sites + the per-site transform. The substrate handles N affected sites in the compiler's own code the same way it handles N user-code sites. Atomic apply via candidate-state.
 
-There is no "self-edit special case." Self-edit is `apply_diff(self, Diff)` where `self` is the compiler's own CoreNode graph. The substrate's read/write-symmetric mechanism (`fold_node` reads; `fold_node`-with-`substitute_at_paths` algebra writes) means there's no hidden machinery — same surface, applied to the compiler's source.
+There is no "self-edit special case." Self-edit is `apply_diff(self, Diff)` where `self` is the compiler's own CoreNode graph. The substrate's read/write-symmetric mechanism (`fold_node` reads; `apply_diff` writes via sequential `sequence_outcome` over `Diff.edits` with per-Edit `fold_node` substitution against the intermediate candidate) means there's no hidden machinery — same primitive set, applied to the compiler's source.
 
 ### stage0 regeneration as a compile of self
 
