@@ -69,6 +69,7 @@ data compile_pipeline_emit_blocked: Symbol = compile_pipeline_emit_blocked
 // Pipeline-as-data — stage order, gate policy, phase I/O symbols (P2)
 // =========================================================================
 
+// 🟢 coproduct dissolution
 type PipelineStageKind
   = StageTokenize
   | StageParse
@@ -80,6 +81,7 @@ type PipelineStageKind
   | StageArtifactPlan
   | StageEmit
 
+// 🟢 coproduct dissolution
 type PipelineGatePolicy
   = BlockingOnErrors
   | SurfaceOnly
@@ -289,6 +291,7 @@ fn pipeline_table_well_formed() -> Outcome<List<PipelineStageRow>> {
 // Pipeline carrier — closed sum for execution position (not Node field-presence)
 // =========================================================================
 
+// 🟢 coproduct dissolution
 type PipelineCarrier
   = CarrierSource { source: SourceText }
   | CarrierTokens { source: SourceText, tokens: TokenStream }
