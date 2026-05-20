@@ -235,15 +235,21 @@ fn render_item(item: InferredItem, spec: LanguageSpec) -> Outcome<String> {
 
 
 // =============================================================================
-// render_expr — closed dispatch over InferredExpr via fold_node
+// render_expr — closed dispatch over InferredExpr via fold_node, Outcome-typed
 // =============================================================================
 //
 // This is where Practice 10 most directly applies. v2's emit_typed_expr was a
 // 22-arm hand-rolled walker that re-traversed children at every arm. v2.5: ONE
-// fold_node call whose algebra (NodeFold<String>) describes per-variant
-// rendering. The recursion is in the substrate (Tier 0's fold_node, PR #3404).
+// fold_node call whose algebra (NodeFold<Outcome<String>>) describes per-variant
+// rendering. The recursion is in the substrate (PR #3404 / PR #3422 fold_node);
+// the fold result is Outcome-threaded so per-arm failure (an absent
+// LanguageSpec rule, an unrecognized variant, etc.) propagates fail-closed to
+// the stage boundary instead of degenerating into an empty-string sentinel.
+// This is the discipline boundary cursor + codex flagged on the first draft:
+// the module signature is Outcome<TargetSource>, so the fold algebra must
+// carry diagnostics too, not strip them at the per-arm level.
 
-fn render_expr(expr: InferredExpr, spec: LanguageSpec) -> String {
+fn render_expr(expr: InferredExpr, spec: LanguageSpec) -> Outcome<String> {
   fold_node(
     n: inferred_expr_to_node(e: expr),
     algebra: expr_fold_algebra(spec: spec)
@@ -251,13 +257,13 @@ fn render_expr(expr: InferredExpr, spec: LanguageSpec) -> String {
 }
 
 
-fn expr_fold_algebra(spec: LanguageSpec) -> NodeFold<String> {
+fn expr_fold_algebra(spec: LanguageSpec) -> NodeFold<Outcome<String>> {
   NodeFold {
     init: fn(n) {
       render_expr_init(node: n, spec: spec)
     },
-    step: fn(acc, edge, child_text) {
-      render_expr_step(parent_text: acc, edge: edge, child_text: child_text, spec: spec)
+    step: fn(acc, edge, child_outcome) {
+      render_expr_step(parent: acc, edge: edge, child: child_outcome, spec: spec)
     }
   }
 }
@@ -266,53 +272,67 @@ fn expr_fold_algebra(spec: LanguageSpec) -> NodeFold<String> {
 // Per-variant init: handles leaves and stamps the parent variant's identity
 // so step can compose. The dispatch on InferredExpr's variant is once, here,
 // not at every recursive call as v2 did.
-fn render_expr_init(node: Node, spec: LanguageSpec) -> String {
+fn render_expr_init(node: Node, spec: LanguageSpec) -> Outcome<String> {
   render_expr_dispatch(node: node, spec: spec)
 }
 
 
 // Dispatch on InferredExpr variant — exhaustive over the closed sum that Tier
-// 1 publishes. Every arm reads LanguageSpec for its syntactic fragments; none
-// branches on a "target" string or enum.
-fn render_expr_dispatch(node: Node, spec: LanguageSpec) -> String {
+// 1 publishes. Every arm reads LanguageSpec for its syntactic fragments and
+// returns Outcome<String>; an unrecognized variant fails closed instead of
+// degenerating into an empty string.
+fn render_expr_dispatch(node: Node, spec: LanguageSpec) -> Outcome<String> {
   match inferred_expr_variant_of(n: node) {
     InferredLiteral { value: v } =>
-      render_literal(value: v, spec: spec)
+      Produced { value: render_literal(value: v, spec: spec) }
     InferredVarRef { name: name } =>
-      emit_ident(name: name, rules: spec.identifiers)
+      Produced { value: emit_ident(name: name, rules: spec.identifiers) }
     InferredFieldAccess { base: _, field: field } =>
-      concat(spec.expressions.field_access_separator, emit_ident(name: field, rules: spec.identifiers))
+      Produced {
+        value: concat(spec.expressions.field_access_separator, emit_ident(name: field, rules: spec.identifiers))
+      }
     InferredCall { callee: _, args: _ } =>
-      spec.expressions.call_open
+      Produced { value: spec.expressions.call_open }
     InferredBinOp { op: op, left: _, right: _ } =>
+      // diagnostic-bearing lookup: a BinOp with no rule in spec.expressions.binops
+      // surfaces emit_missing_language_rule rather than a "" fallback.
       render_binop_symbol(op: op, spec: spec)
     InferredIf { condition: _, then_branch: _, else_branch: _ } =>
-      render_if_form(form: spec.expressions.if_form)
+      Produced { value: render_if_form(form: spec.expressions.if_form) }
     InferredMatch { scrutinee: _, arms: _ } =>
-      spec.patterns.match_keyword
+      Produced { value: spec.patterns.match_keyword }
     InferredLet { name: name, value: _, body: _ } =>
-      concat("let ", emit_ident(name: name, rules: spec.identifiers))
+      Produced { value: concat("let ", emit_ident(name: name, rules: spec.identifiers)) }
     InferredLambda { params: _, body: _ } =>
-      render_lambda_prefix(spec: spec)
+      Produced { value: render_lambda_prefix(spec: spec) }
     InferredBlock { stmts: _ } =>
-      render_block_open(block: spec.items.block)
+      Produced { value: render_block_open(block: spec.items.block) }
     InferredStringInterp { parts: _ } =>
-      render_string_interp_prefix(style: spec.strings.interp_style)
-    _ => ""
+      Produced { value: render_string_interp_prefix(style: spec.strings.interp_style) }
+    _ => Rejected { diagnostic: emit_diagnostic(reason: emit_under_refined) }
   }
 }
 
 
-// Per-variant step: combines parent's running text with a child render. The
-// edge label tells step which structural role the child plays. v4 demonstrates
-// the named/positional edge axis (v4.std.node.EdgeLabel); v2.5 follows it.
+// Per-variant step: combines parent's running text with a child render, both
+// Outcome-typed. The edge label tells step which structural role the child
+// plays (v4 demonstrates the named/positional edge axis; v2.5 follows it).
+// Fail-closed: either side Rejected propagates the diagnostic; both Produced
+// concatenates the strings.
 fn render_expr_step(
-  parent_text: String,
+  parent: Outcome<String>,
   edge: Edge,
-  child_text: String,
+  child: Outcome<String>,
   spec: LanguageSpec
-) -> String {
-  concat(parent_text, child_text)
+) -> Outcome<String> {
+  match parent {
+    Rejected { diagnostic: d } => Rejected { diagnostic: d }
+    Produced { value: p } =>
+      match child {
+        Rejected { diagnostic: d } => Rejected { diagnostic: d }
+        Produced { value: c } => Produced { value: concat(p, c) }
+      }
+  }
 }
 
 
@@ -354,14 +374,21 @@ fn apply_reserved_escape(name: String, escape: ReservedEscape) -> String {
 }
 
 
-// Binary-operator symbol — typed dispatch over List<BinOpRule>. v2 had
-// `binop_symbol(op: BinOp, target: RenderTarget)` doing string-keyed per-
-// target lookups; here the lookup is typed and the per-target axis is fully
-// captured by which LanguageSpec instance is passed in.
-fn render_binop_symbol(op: BinOp, spec: LanguageSpec) -> String {
+// Binary-operator symbol — typed dispatch over List<BinOpRule>, diagnostic-
+// bearing. v2 had `binop_symbol(op: BinOp, target: RenderTarget)` doing
+// string-keyed per-target lookups with no failure surface. In v2.5 the lookup
+// is typed AND fail-closed: a BinOp absent from spec.expressions.binops
+// surfaces an emit_missing_language_rule diagnostic instead of returning "".
+//
+// 🟡 The List<BinOpRule> shape lacks structural totality and uniqueness over
+// the closed BinOp domain. A Map<BinOp, BinOpRule> would prove uniqueness by
+// construction; v2.5 substrate (PR #3422) does not yet expose a Map carrier
+// (only node/diagnostic). Until a substrate Map lands, the diagnostic-bearing
+// lookup is the boundary that catches gaps. Dissolves on v2_5.std.collection.Map.
+fn render_binop_symbol(op: BinOp, spec: LanguageSpec) -> Outcome<String> {
   match spec.expressions.binops |> filter(r => binop_eq(a: r.op, b: op)) |> first {
-    Some { value: rule } => rule.symbol
-    None => ""   // fail-closed at caller: surfaces emit_missing_language_rule
+    Some { value: rule } => Produced { value: rule.symbol }
+    None => Rejected { diagnostic: emit_diagnostic(reason: emit_missing_language_rule) }
   }
 }
 
