@@ -1,14 +1,15 @@
 // src/v4/std/diagnostic.dag
 // Scope: fail-closed diagnostic schema.
 // Anchor: THESIS.md "show the correct code" + INVARIANTS P3.
-// Owns: Diagnostic, Outcome, Locus, Extent, Correction, NoCorrectionReason.
-// Consumes: std node.
-// Status: T-3 modeled.
+// Owns: Diagnostic, Outcome, NonEmptyDiagnostics, Locus, Extent, Correction, NoCorrectionReason.
+// Consumes: std node, std collection.
+// Status: T-3 modeled; Outcome Accepted/Rejected reconciled with design-v4-compiler-homomorphism Q4.
 
 
 module v4.std.diagnostic
 
 
+import v4.std.collection { List }
 import v4.std.node { Node }
 // 🟡 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type Extent
@@ -33,7 +34,14 @@ type Diagnostic {
   at: Locus
   correction: Correction
 }
+type NonEmptyDiagnostics
+  = Singleton { diagnostic: Diagnostic }
+  | Cons { head: Diagnostic, tail: List<Diagnostic> }
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// Reconciliation: Accepted{value, diagnostics} is canonical; Produced{value} ≡ Accepted with empty diagnostics.
+// Rejected{diagnostics: NonEmptyDiagnostics} is canonical; RejectedSingular{diagnostic} is legacy single-diagnostic terminal.
 type Outcome<T>
-  = Produced { value: T }
-  | Rejected { diagnostic: Diagnostic }
+  = Accepted { value: T, diagnostics: List<Diagnostic> }
+  | Rejected { diagnostics: NonEmptyDiagnostics }
+  | Produced { value: T }
+  | RejectedSingular { diagnostic: Diagnostic }

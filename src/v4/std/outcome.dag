@@ -1,0 +1,110 @@
+// src/v4/std/outcome.dag
+// Scope: Outcome traverse combinators + diagnostic policy carriers + traverse law witnesses.
+// Owns: DiagnosticAccumulationPolicy, StageDiagnosticPolicy, traverse_outcome, map_outcome, bind_outcome, TraverseIdentityLaw, TraverseCompositionLaw, TraverseFailureMonotonicityLaw.
+// Consumes: std diagnostic, std collection, std algebra.
+// Status: W-TraverseOutcome substrate (design-v4-compiler-homomorphism Ratified Q4 companion).
+
+
+module v4.std.outcome
+
+
+import v4.std.algebra { Empty, Cons }
+import v4.std.collection { List }
+import v4.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  NonEmptyDiagnostics,
+  Outcome,
+  Produced,
+  Rejected,
+  RejectedSingular,
+  Singleton
+}
+
+
+type DiagnosticAccumulationPolicy
+  = Accumulate
+  | ShortCircuit
+
+
+type StageDiagnosticPolicy {
+  accumulation: DiagnosticAccumulationPolicy
+}
+
+
+data traverse_identity_law: TraverseIdentityLaw = traverse_identity_law
+
+
+data traverse_composition_law: TraverseCompositionLaw = traverse_composition_law
+
+
+data traverse_failure_monotonicity_law: TraverseFailureMonotonicityLaw = traverse_failure_monotonicity_law
+
+
+type TraverseIdentityLaw {}
+
+
+type TraverseCompositionLaw {}
+
+
+type TraverseFailureMonotonicityLaw {}
+
+
+fn traverse_outcome<T, U>(xs: List<T>, f: fn(T) -> Outcome<U>) -> Outcome<List<U>> {
+  match xs {
+    Empty => Accepted { value: Empty, diagnostics: Empty }
+    Cons { head: h, tail: t } => match f(h) {
+      Rejected { diagnostics: d } => Rejected { diagnostics: d }
+      RejectedSingular { diagnostic: d } =>
+        Rejected { diagnostics: Singleton { diagnostic: d } }
+      Produced { value: u } =>
+        match traverse_outcome(xs: t, f: f) {
+          Rejected { diagnostics: d } => Rejected { diagnostics: d }
+          RejectedSingular { diagnostic: d } =>
+            Rejected { diagnostics: Singleton { diagnostic: d } }
+          Produced { value: rest } =>
+            Accepted { value: Cons { head: u, tail: rest }, diagnostics: Empty }
+          Accepted { value: rest, diagnostics: ds } =>
+            Accepted { value: Cons { head: u, tail: rest }, diagnostics: ds }
+        }
+      Accepted { value: u, diagnostics: ds } =>
+        match traverse_outcome(xs: t, f: f) {
+          Rejected { diagnostics: d } => Rejected { diagnostics: d }
+          RejectedSingular { diagnostic: d } =>
+            Rejected { diagnostics: Singleton { diagnostic: d } }
+          Produced { value: rest } =>
+            Accepted { value: Cons { head: u, tail: rest }, diagnostics: ds }
+          Accepted { value: rest, diagnostics: ds2 } =>
+            Accepted { value: Cons { head: u, tail: rest }, diagnostics: ds }
+        }
+    }
+  }
+}
+
+
+fn map_outcome<T, U>(o: Outcome<T>, f: fn(T) -> U) -> Outcome<U> {
+  match o {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    RejectedSingular { diagnostic: d } =>
+      Rejected { diagnostics: Singleton { diagnostic: d } }
+    Produced { value: v } => Accepted { value: f(v), diagnostics: Empty }
+    Accepted { value: v, diagnostics: ds } => Accepted { value: f(v), diagnostics: ds }
+  }
+}
+
+
+fn bind_outcome<T, U>(o: Outcome<T>, f: fn(T) -> Outcome<U>) -> Outcome<U> {
+  match o {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    RejectedSingular { diagnostic: d } =>
+      Rejected { diagnostics: Singleton { diagnostic: d } }
+    Produced { value: v } => f(v)
+    Accepted { value: v, diagnostics: ds } => match f(v) {
+      Rejected { diagnostics: d } => Rejected { diagnostics: d }
+      RejectedSingular { diagnostic: d } =>
+        Rejected { diagnostics: Singleton { diagnostic: d } }
+      Produced { value: u } => Accepted { value: u, diagnostics: ds }
+      Accepted { value: u, diagnostics: ds2 } => Accepted { value: u, diagnostics: ds }
+    }
+  }
+}
