@@ -1,14 +1,75 @@
 # v4 Compiler Architecture — Homomorphism-First Design
 
-> **Status: DRAFT, under discussion.** This doc reconciles what the v4 compiler should be, ahead of T-9 (infer), T-10 (translate), T-22 (eval) implementation. It is intended as a forum for review and amendment — comment, push back, propose alternatives. Decisions ratified here flow into worker briefs and substrate PRs.
->
-> Purpose: ensure the compiler architecture is consistent with [THESIS.md](../THESIS.md) — particularly "The derived homomorphism" — before implementation cements the wrong shape. v2's `emit_rust` is the canonical example of the shape we are NOT building.
+> **Status: DRAFT, under discussion.** Forum for review and amendment — comment, push back, propose alternatives. Decisions ratified here flow into implementation briefs.
+
+## What this document is
+
+A design reference for the **v4 compiler** in the `gunbc` project, written before implementation of the compiler's middle and back stages (the ones that turn parsed source into typed source, then into target output or evaluated values). It captures the architectural decisions we want to commit to before code is written, so implementation does not cement the wrong shape.
+
+This doc supplements but does not replace [`THESIS.md`](../THESIS.md) (the project's goals) or [`docs/modeling-discipline.md`](modeling-discipline.md) (the modeling rules). It exists to make one specific question concrete: **what is the compiler, mechanically, if we take "The derived homomorphism" claim in THESIS literally?**
+
+Intended audience:
+- Project insiders deciding T-9 / T-10 / T-22 implementation shape.
+- Newcomers trying to understand what the compiler is supposed to do.
+- Reviewers checking architectural commitments against THESIS, MODELING, and INVARIANTS.
+
+You can read it cold without prior context — the next two sections give that context. If you already know the project, skim to "TL;DR".
+
+---
+
+## Background (skip if you know the project)
+
+### What gunbc is
+
+`gunbc` is a compiler for a language called **`.dag`**. The thesis (one line): *a program is a dependency graph (a "DAG" of typed nodes); when the dependency graph is structurally correct, emission to any target language becomes mechanical translation.* See [`THESIS.md`](../THESIS.md) for the full claim set.
+
+Concretely, the user writes a `.dag` source file — types, functions, services, types-with-effects. The compiler is supposed to:
+
+1. Validate that the dependency graph is structurally coherent (type-checking, termination, no aliased mutation, no cross-target drift, …).
+2. Either **emit** that same graph as source code in a target language (Rust, Python, Go, TypeScript, C++, …), or **evaluate** it directly on a host runtime.
+3. Catch correctness violations that mainstream languages miss — complexity bounds, idempotency, cost, effect tracking — by reading the graph structurally rather than by testing.
+
+The ambition (eventually) is **omni-emission**: from one `.dag` source declaring a system (backend + frontend + database schema + the network glue between them), produce source code for each component AND the inter-component marshaling, with type-fidelity by construction. None of that is in scope for *this* doc — but the compiler's architecture must not preclude it.
+
+### The `.dag` substrate
+
+Programs are trees of **`Node`** values (declared in `src/v4/std/node.dag`). A Node has a kind (one of six type connectives: `Atom`, `Conj`, `Disj`, `Arrow`, `Cardinality`, `Instantiation`) and edges to child Nodes. Computation is expressed via five behaviors (`Value`, `Transform`, `Branch`, `Loop`, `Bind`). Everything user-facing — `fn`, `type`, `service` — is surface sugar over this layer.
+
+The substrate has a fundamental operation: **`fold_node`** (a catamorphism, i.e., generic structural recursion over the Node tree). Every "pass" the compiler runs — type checking, evaluation, code generation, lens analyses — is supposed to be `fold_node(tree, some_algebra)`. The "algebra" is the per-Node-kind step function. This is load-bearing for the architecture below: it means new passes are data (the algebra), not code (a new walker).
+
+External-target languages and frameworks are themselves modeled as `.dag` files under `extdeps/languages/`, `extdeps/frameworks/`, `extdeps/formats/`. So Rust isn't "a thing the compiler knows" — it's `extdeps/languages/rust.dag`, a fact-bundle declaring Rust's grammar and primitive types, consumed by the compiler as data.
+
+### What "homomorphism" means here
+
+A homomorphism is a **structure-preserving map** between two algebraic structures. In our compiler context:
+
+- **Source structure:** a `.dag` program is a Node tree with declared facts (every type asserts what it inhabits — e.g., `Int` inhabits `OrderedRing`).
+- **Target structure:** Rust (or Python, or any target) is *also* declared as a Node tree of declared facts in `extdeps/languages/X.dag`. Rust's `i32` inhabits Rust's signed-integer algebra with a 32-bit width fact, etc.
+- **The homomorphism:** the mapping from source Nodes to target Nodes that **preserves structure** — operations compose the same way after translation as before. If `compose(f, g)` exists in source, it must map to `compose(f', g')` in target where `f' = h(f)` and `g' = h(g)` and the composition law holds.
+
+The thesis claim: **the compiler should *derive* this map** from the two language models, not hand-author it. A handwritten Rust emitter cements an N×M cost (every new feature × every target). A derived homomorphism is N+M (every new feature in the substrate; every new target as one new model).
+
+This doc operationalizes that claim.
+
+---
 
 ## TL;DR — the compiler we want
 
-The v4 compiler is **one structural primitive** (`fold_node`) plus **four irreducible side-effects at the boundaries** (read text, write text / execute / project) plus **five things that aren't `fold_node` but are substrate-shared** (the diagnostic carrier, grammar-as-bidirectional-data, `traverse` over the effect carrier, algebra-inhabitance search, and the diagnostic+locus carrier).
+The v4 compiler is:
 
-Everything else — every "pass," every "stage," every "language-specific" anything — is an **algebra** plugged into `fold_node`. The compiler knows nothing about Rust, Python, JavaScript, or even `.dag` beyond an irreducible bootstrap-seed grammar for `dag.dag` itself.
+1. **One structural primitive** — `fold_node` (catamorphism over Node).
+2. **Plus four substrate operations** that aren't `fold_node` but are needed:
+   - A diagnostic carrier (`Diagnostic + Locus`, fail-closed reporting).
+   - **Grammar-as-bidirectional-data** — one declarative grammar model that drives both parsing (text → Node) and serialization (Node → text). No separate parser and printer.
+   - **`traverse`** over the diagnostic-effect carrier (Node fold that short-circuits on failures without re-derived match ladders).
+   - **The coercion fold** — a mechanical zip-fold over two canonical-Node groundings that checks structure preservation. Per `src/v4/TASKS.md` T-9 (ratified 2026-05-17), this is **the** homomorphism-derivation primitive — decidable by construction, never a search.
+3. **Plus three irreducible boundary actions** — read input text, write output text (or execute, or project a value), report diagnostics.
+
+Everything else — every "pass," every "stage," every "language-specific" anything — is an **algebra** plugged into `fold_node`. The compiler knows nothing about any specific language (Rust, Python, even `.dag` itself, beyond an irreducible bootstrap-seed needed to read `dag.dag` once).
+
+The doc that follows defines what `compile()` takes and returns, why each piece is shaped that way, what's already in the codebase, and what's still open for design.
+
+---
 
 ## End-to-end I/O — the compile function
 
@@ -20,215 +81,335 @@ compile(
 ) -> Outcome<Output>
 
 where CompileMode =
-  | TranslateTo(target_lang: LanguageModel)        // produce target source
-  | Eval(host_interp: HostModel)                   // execute on host runtime
+  | TranslateTo(target_lang: LanguageModel)    // produce target source
+  | Eval(host_interp: HostModel)               // execute on host runtime
 ```
 
 That is the full external surface of the compiler. Two parameters; one fail-closed `Outcome`.
 
-**`LanguageModel`** is a `.dag` model in `extdeps/languages/X.dag` — a fact-bundle declaring X's grammar (bidirectional), primitive types, algebra inhabitance, and sugar dissolutions. Practice 8 governs its honesty.
+**`LanguageModel`** is a `.dag` model in `extdeps/languages/X.dag` — a fact-bundle declaring X's grammar (bidirectional), primitive types with their facts (width, signedness, range, …), algebra inhabitance (this type inhabits this algebra), and sugar dissolutions (how the language's surface forms reduce to substrate primitives).
 
-**`HostModel`** is structurally the same shape as `LanguageModel` minus the grammar (no serialization needed — execution is the terminal action, not text emission). See "Open Q1" below — whether HostModel is a distinct substrate type or just a TargetModel variant is unresolved.
+**`HostModel`** is structurally the same shape as `LanguageModel` minus the grammar — execution is the terminal action, not text emission. Whether it's a distinct substrate type or a LanguageModel variant is **Open Q1** below.
 
-**`Output`** is mode-dependent: `TargetSource` (bytes/text) for TranslateTo, `Value` (host representation) for Eval.
+**`Output`** is mode-dependent: `TargetSource` (bytes/text) for `TranslateTo`, `Value` (host representation) for `Eval`.
 
-**No Lens mode.** See "Lens stance" below — lenses are NOT a compiler concern.
+> **Note on Lens mode:** the original draft of this doc proposed a third `CompileMode` for running lenses (the analysis framework for complexity / cost / ownership / effects / user-defined dimensions). This was flagged as contradicting THESIS by an automated review. **The lens stance is under reconsideration** — see "Open Q0 — Lens architecture (under operator review)" below. Until that resolves, treat the lens question as unsettled, NOT as ratified in either direction.
 
-## Architectural premises (ratified — these inform worker briefs)
+---
+
+## Architectural premises (ratified — these inform implementation briefs)
 
 ### P1 — Languages are I/O integration surfaces, not compiler concerns
 
-Both source and target languages are LanguageModels passed in as parameters. The same `rust.dag` model is consumed when emitting Rust AND when parsing Rust as input (bidirectional grammar-as-data). There is no per-target emitter; `emit_rust` does not exist as compiler code. The Rust knowledge lives entirely in `extdeps/languages/rust.dag`.
+Both source and target languages are `LanguageModel` data passed in as parameters. The same `rust.dag` model is consumed when emitting Rust AND when parsing Rust as input (bidirectional grammar-as-data). There is no per-target emitter; `emit_rust` does not exist as compiler code. The Rust knowledge lives entirely in `extdeps/languages/rust.dag`.
 
-This is a direct consequence of the derived-homomorphism thesis ([THESIS](../THESIS.md) "The derived homomorphism") + Practice 10 Row 3 (hand-written emitter is a whole-architecture failure).
+This is a direct consequence of THESIS's "The derived homomorphism" claim plus [`docs/modeling-discipline.md`](modeling-discipline.md) Practice 10 Row 3, which classifies a hand-written cross-target emitter as "you re-wrote the compiler" — a whole-architecture failure, not a localized smell.
 
 ### P2 — Eval is translate-to-host
 
-Eval is structurally the same operation as translate, with the host runtime as the target. The homomorphism-derivation step is shared. Eval differs from translate ONLY in the terminal action: execute via host's algebra vs. serialize via target's grammar.
+Evaluation is structurally the same operation as translation, with the host runtime as the target. The compiler-side machinery (parse, normalize, resolve, ground, then the coercion fold) is shared. Eval differs from translate **only** in the terminal action: execute the resulting structure via the host's interpretation algebra (eval) vs. serialize it via the target's grammar (translate).
 
-Open question on HostModel shape — see Open Q1.
+Open question on `HostModel` shape — see Open Q1.
 
-### P3 — Lens stance: NOT a compile mode
+### P3 — Lens stance (under reconsideration — DO NOT TREAT AS RATIFIED)
 
-Lenses are user-facing enforcement over arbitrary sections of code. They are NOT consumed by the compiler core and the compiler does NOT know about any specific lens by name (`complexity`, `cost`, `ownership`, etc.).
-
-The compiler produces `InferredTree` (the grounded program with algebra-inhabitance facts attached). Whatever runs lenses consumes `InferredTree` AS A DOWNSTREAM LAYER — it is not part of the compile pipeline. A lens framework MAY exist in `lens/` and emit diagnostics through the shared `std/diagnostic.dag` channel, but invocation is external to `compile()`.
-
-**Concretely:**
-- `compile()` has no `lenses: List<Lens>` parameter.
-- The compiler does not import any `lens/*.dag` module.
-- The smell to fix: `04_infer.dag` currently imports `v4.lens.cost { SymbolicCost }` — this entangles infer with a specific lens. The right shape is infer producing the grounding facts; cost-as-a-lens runs separately over the InferredTree.
-
-This stance is **conservative** — it does not preclude a future where "this lens applies to all code" is a project policy. It DOES preclude that policy being implemented inside the compiler. Such a policy would be a build-system convention or a wrapper, not a compiler feature.
+> **This premise was flagged in code review (PR #3437) as contradicting THESIS.** THESIS lines 105 + 342 require lens validation to be part of the compile-time guarantee ("by construction, not by opt-in"). The original P3 wording made lens enforcement entirely external to compile, which is too strong.
+>
+> Three candidates are under operator review (one of these will replace this section):
+>
+> - **(A) Compile validates lenses directly** — built-in lenses hard-coded, user-defined lenses registered through a typed plug-in interface. Closest to THESIS's literal text.
+> - **(B) Compile takes lenses as a data parameter** — `compile(..., lenses: List<Lens>, ...)`. Compiler folds the lens algebras over `InferredTree` but knows no lens by name. Built-ins passed through the same channel as user-defined.
+> - **(C) Compile stays lens-naive; a project-mandatory wrapper gates emit/eval on lens pass.** Compiler exposes `ground(text, input_lang) -> InferredTree` as a public operation; lens machinery lives in `lens/` as a separate consumer; `validate_then_compile` is the project-mandatory contract that runs lens validation BEFORE emit/eval. "By construction" guarantee preserved at the contract layer, not the compiler-core layer.
+>
+> Under all three, the compiler core does not `import lens.cost.SymbolicCost` or any other named lens. The fix to `04_infer.dag`'s current `import v4.lens.cost { SymbolicCost }` is needed regardless.
+>
+> Resolution lands when operator picks A / B / C.
 
 ### P4 — Glue derivation is composed homomorphism, orthogonal to the compiler
 
-For full-stack omni-emission (one `.dag` source → backend Rust + frontend JS + Postgres schema + the glue between), inter-module marshaling is the COMPOSED homomorphism of two single-module translates through a shared transport model. The "glue derivation" mechanism is `fold_node` + algebra-inhabitance-search composed twice through a transport carrier — same primitive, applied twice.
+For the eventual full-stack omni-emission story (one `.dag` source → backend Rust + frontend JS + Postgres schema + the wire-format glue between them), inter-module marshaling is structurally a **composed homomorphism**: source → wire-format model → target. Same primitive (the coercion fold), applied twice through a shared transport model.
 
 For this to work, two substrate slots must exist:
-- `extdeps/protocols/` — transport semantics (REST, GraphQL, gRPC, ...). **Currently missing.**
-- `std/system.dag` or equivalent — module decomposition substrate. **Currently informal; may already be implicit in module declarations but warrants explicit substrate.**
+- `extdeps/protocols/` — transport semantics (REST, GraphQL, gRPC, …). **Currently missing.**
+- `std/system.dag` or equivalent — module decomposition substrate. **Currently informal.**
 
-Out of scope for the initial single-target compiler; in scope for the architecture (it must not cement a shape that prevents glue derivation later).
+Out of scope for the initial single-target compiler; in scope for the architecture (must not cement a shape that prevents glue derivation later).
+
+---
 
 ## The primitive set — the things the compiler IS
 
 | Primitive | Purpose | Status |
 |---|---|---|
-| `fold_node` (catamorphism over Node) | structural recursion — anti-walker-dissolution substrate (Practice 10 row 1) | **Landed** in `std/node.dag` line 47, with `NodeFold<R>` algebra carrier |
-| `traverse` over the `Outcome<T>` effect carrier | effect threading — anti-traverse-dissolution substrate (Practice 10 row 2) | **Status uncertain** — not visible via quick grep; may be implicit in fold_node-with-short-circuit-algebra. Needs explicit substrate. |
-| Grammar-as-bidirectional-data | one declarative model serves both parse and serialize (Practice 8) | **Partially landed** — `Grammar / ModeledGrammar / VoidGrammar` declared in `02_parse.dag`; `dag.dag` uses it. Inverse-grammar walk (emit-side) is scaffolded but not implemented |
-| Algebra-inhabitance search | given (source algebra-instance, target's declared inhabitants), find the structure-preserving map. THE homomorphism mechanic. | **Not yet declared.** Inhabitance vocabulary exists (`cardinality.dag`, `nat.dag` law subjects), but the SEARCH primitive that translate/eval/coercion all consume is unstarted. This is the largest novel substrate move. |
-| Diagnostic + Locus carrier | fail-closed reporting (Practice 1) | **Landed** in `std/diagnostic.dag` |
+| **`fold_node`** (catamorphism over Node) | Generic structural recursion over Node trees; anti-walker-dissolution substrate (Practice 10 row 1 of the modeling-discipline rubric). Every "pass" the compiler runs is `fold_node(tree, algebra)`. | **Landed** in `src/v4/std/node.dag` line 47, with the `NodeFold<R>` algebra carrier type. |
+| **`traverse`** over `Outcome<T>` | Effect threading. When a fold's algebra produces `Outcome<T>` (success-or-diagnostic), `traverse` propagates failures and short-circuits without inline `match` ladders (Practice 10 row 2 — "traverse dissolution"). | **Uncertain.** Not explicitly visible in `std/`; may be implicit in `fold_node` with short-circuiting algebras. See Open Q4. |
+| **Grammar-as-bidirectional-data** | One declarative grammar model in `extdeps/languages/X.dag` serves both parsing (text → Node) and serialization (Node → text). No separate parser and printer; the grammar production data IS the relation, used in both directions (Practice 8 — "No string-templating"). | **Partially landed** — `Grammar / ModeledGrammar / VoidGrammar` declared in `src/v4/compiler/02_parse.dag`; consumed by `extdeps/languages/dag.dag`. Inverse-grammar walk (the serialize direction) is scaffolded but not implemented. |
+| **The coercion fold** | THE homomorphism-derivation primitive. Given two **canonical Node groundings** (a source Node's grounding into its algebra-instance, and the target language's declared inhabitants), a **mechanical zip-fold** (catamorphism) walks both in parallel and checks structure preservation. Decidable by construction over the closed declared candidate set; empty candidate ⇒ Diagnostic (fail-closed), never a fabricated coercion. | **Not yet implemented.** Substrate underlying it (canonical-form fold via `node.dag`'s B1-CANON contract, `content_hash = merkle_fold ∘ canonical`) exists. Ratified per `src/v4/TASKS.md` T-9 (line 418, D2-reversal 2026-05-17). Earlier project text (THESIS line 181, "structural algebra-homomorphism search") was superseded by this ratification; the doc-level reconcile is pending. |
+| **Diagnostic + Locus carrier** | Fail-closed reporting (Practice 1). Every failure path goes through a structured `Diagnostic` with source `Locus`. | **Landed** in `src/v4/std/diagnostic.dag`. |
 
-That is the full compiler-primitive surface. Five things. Every stage, every pass, every translation, every eval, every glue derivation is structurally `fold_node(tree, algebra)` + `traverse` for effect threading + one of the other three primitives for the work-specific operation.
+That is the full compiler-primitive surface. Five things. Every stage, every pass, every translation, every eval, every glue derivation is structurally `fold_node + traverse + (one of the other three) + an algebra-as-data`.
+
+**Why this terminology shift matters (coercion fold vs. "search"):** an earlier framing called the homomorphism step an "algebra-homomorphism search" or "inhabitance search," which suggests an open-ended search algorithm with potentially intractable complexity. The ratified position is the opposite: the candidate set is **closed and declared** (by the target language model), the source's grounding is **canonical and unique**, and the check is a **mechanical structural zip** — closer to type unification than to logic-programming search. If you find yourself reasoning about it as a search, that's a signal you're solving the wrong problem.
+
+---
 
 ## The pipeline — stages as named algebras
 
 ```
                                   ┌─── pure middle (folds over Node) ───┐
 
-  text ── parse(input_lang) ─── normalize ─── resolve ─── ground ──┬── translate(target_lang) ── serialize(target_lang.grammar) ── target_text
-                                                                    └── eval(host_model) ── execute(host)
+  text ── parse(input_lang) ── normalize ── resolve ── ground ──┬── translate(target_lang) ── serialize(target_lang.grammar) ── target_text
+                                                                 └── eval(host_model) ── execute(host)
 ```
 
-Each stage is `fold_node(upstream_carrier, stage_algebra)`. Facts flow forward (Practice 3, strong form): each stage extends the SAME tree with its added facts. Nothing re-walks. The Node tree is monotonic — resolve adds bind-edges; ground adds inhabitance witnesses.
+Each stage is `fold_node(upstream_carrier, stage_algebra)`. Facts flow forward (Practice 3, strong form): each stage extends the **same** tree with its added facts. Nothing re-walks. The tree is monotonic — resolve adds bind-edges (Atom-to-declaration references); ground adds inhabitance witnesses (proof that each Node lives in some algebra-instance).
 
-| Stage | Algebra produces | Owns the algebra |
+| Stage | Algebra produces | Where the algebra lives |
 |---|---|---|
-| `parse(input_lang)` | Node tree in input_lang's grammar | input_lang.dag (grammar productions) |
-| `normalize` | canonical Node (sugar dissolved to substrate) | input_lang.dag (sugar dissolutions) — possibly fused with parse, see Open Q3 |
-| `resolve` | bound Node (Atoms → Decl edges) | scope-resolution algebra (likely substrate, may consult input_lang for binding rules) |
-| `ground` | EnrichedSource (each Node carries algebra-inhabitance witness, typeshape) | the substrate's algebra-inhabitance machinery |
-| `translate(target_lang)` | Target Node tree | derived via algebra-inhabitance search across (EnrichedSource, target_lang) |
+| `parse(input_lang)` | Node tree in input_lang's grammar | `input_lang.dag` (grammar productions) |
+| `normalize` | canonical Node (surface sugar dissolved to substrate primitives) | `input_lang.dag` (sugar dissolutions) — possibly fused with parse, see Open Q3 |
+| `resolve` | bound Node (every Atom → Decl reference) | scope-resolution algebra (likely substrate, may consult input_lang for binding rules) |
+| `ground` | **`InferredTree`** — each Node carries algebra-inhabitance witness + typeshape | substrate's algebra-inhabitance machinery |
+| `translate(target_lang)` | Target Node tree | **derived via the coercion fold** over (`InferredTree`, target_lang's declared inhabitants) |
 | `serialize(grammar)` | target source text | target_lang.dag (grammar productions, inverse direction) |
 | `eval(host_model)` | host Value | host_model's interpretation algebra |
 
 **Carrier shape progression:**
 ```
-Text → ParseTree → NormalizedTree → ResolvedTree → InferredTree (EnrichedSource)
-                                                   ├─→ TargetNodeTree → TargetSource (TranslateTo mode)
-                                                   └─→ Value (Eval mode)
+Text → ParseTree → NormalizedTree → ResolvedTree → InferredTree
+                                                   ├─→ TargetNodeTree → TargetSource  (TranslateTo mode)
+                                                   └─→ Value                          (Eval mode)
 ```
+
+The substrate-task IDs that implement each stage:
+- **T-8** (in-flight) — `normalize` + `resolve`.
+- **T-9** — `ground` (currently scaffolded in `04_infer.dag`).
+- **T-10** — `translate` + `serialize` (currently scaffolded in `05_emit.dag` + `00_compile.dag`).
+- **T-22** — `eval` (currently scaffolded in `05_eval.dag`).
+
+See `src/v4/TASKS.md` for the full task dependency graph.
+
+---
 
 ## Carrier shapes — what each tree carries
 
-### InferredTree (the central artifact)
+### `InferredTree` (the central artifact)
 
-The post-grounding tree. Each Node N carries:
-- **Locus** — source position (from parse, propagated)
-- **Binding** — for any Atom: resolved FunctionRef / Decl reference (from resolve, propagated)
-- **Typeshape** — the inferred type, itself a substrate Node referencing an algebra-instance
-- **Inhabitance witness** — which algebra-instance this Node inhabits + the structural proof (consumed by translate's homomorphism search and by eval's interpretation)
+The post-grounding tree. Each Node `N` carries:
+- **Locus** — source position (from parse, propagated forward).
+- **Binding** — for any Atom: resolved FunctionRef / Decl reference (from resolve, propagated forward).
+- **Typeshape** — the inferred type, itself a substrate Node referencing an algebra-instance.
+- **Inhabitance witness** — which algebra-instance this Node inhabits + the structural proof. Consumed downstream by `translate`'s coercion fold and `eval`'s interpretation.
 
-InferredTree does **NOT** carry:
-- Cost, complexity, ownership, parallelism, termination — these are **lens facts** (P3 above) computed AGAINST InferredTree, not baked in
-- Target-specific anything — translate is parametric on target_lang
+`InferredTree` does **NOT** carry:
+- Cost, complexity, ownership, parallelism, termination — these are **lens facts** (see "Open Q0" + "Open Q2" below) and their location is part of the unresolved lens-architecture question.
+- Target-specific anything — `translate` is parametric on `target_lang`.
 
-See Open Q2 for the dimensional-facts question.
-
-### LanguageModel
+### `LanguageModel`
 
 Declared in `extdeps/languages/X.dag`. Contains:
-- Grammar (bidirectional productions — concrete syntax ↔ Node)
-- Primitive types (each a Practice-8 fact-bundle)
-- Sugar dissolutions (surface form → substrate Node)
-- Algebra inhabitance declarations (which primitives inhabit which algebras)
+- **Grammar** (bidirectional productions — concrete syntax ↔ Node).
+- **Primitive types** (each a Practice-8 fact-bundle — width, signedness, range, encoding, …).
+- **Sugar dissolutions** (surface form → substrate Node).
+- **Algebra inhabitance declarations** (which primitives inhabit which algebras, e.g., Rust's `i32` inhabits the signed-integer algebra with width=32).
 
-### HostModel
+### `HostModel`
 
-Structurally a LanguageModel with no grammar (no serialization step). Declares:
-- Algebra inhabitance for substrate primitives
-- The host's representation for each substrate primitive (Transform → host function call; Branch → host if; Value → host literal)
+Structurally a `LanguageModel` with no grammar (no serialization step). Declares:
+- Algebra inhabitance for substrate primitives (same shape as `LanguageModel`).
+- The host's runtime representation for each substrate primitive (Transform → host function call; Branch → host if-expression; Value → host literal allocation).
 
-See Open Q1.
+See Open Q1 for whether it's a distinct type or a `LanguageModel` variant.
 
-### TargetSource / Value
+### `TargetSource` / `Value`
 
-Terminal output. TargetSource is target-grammar-serialized text + diagnostics. Value is the host's runtime representation + diagnostics.
+Terminal output. `TargetSource` is target-grammar-serialized text + diagnostics. `Value` is the host's runtime representation + diagnostics.
+
+---
+
+## Concrete example — what happens when this compiler compiles
+
+To make the architecture concrete, here's a tiny `.dag` source going through the pipeline. (Syntax is illustrative; not all surface sugar is finalized.)
+
+**Source (`example.dag`):**
+```dag
+fn add(x: Int, y: Int) -> Int = x + y
+```
+
+**Stage 1 — `parse(input_text, dag_lang)`** uses `extdeps/languages/dag.dag`'s grammar productions to recognize `fn`, identifiers, types, and the `+` expression. Output: a `ParseTree` Node:
+```
+Arrow {
+  name: add
+  params: [Atom("x"): Atom("Int"), Atom("y"): Atom("Int")]
+  result: Atom("Int")
+  body: Apply(Atom("+"), [Atom("x"), Atom("y")])
+}
+```
+
+**Stage 2 — `normalize`** dissolves `fn` sugar to substrate `Arrow` (already mostly canonical here), dissolves `+` to `Apply(FunctionRef("std::int::add"), …)` per dag-language's sugar dissolutions. Output: same shape with surface sugar gone.
+
+**Stage 3 — `resolve`** binds `Atom("Int")` to `std/integer.dag`'s `Int` declaration; binds `FunctionRef("std::int::add")` to its declaration. Output: every Atom now points to a Decl Node.
+
+**Stage 4 — `ground` (T-9)** walks the tree and computes each Node's algebra-inhabitance:
+- `Int` inhabits `OrderedRing` (algebra-instance witness recorded).
+- `x` and `y` each inhabit `Int` (via the param type).
+- `std::int::add` is the `add` operation projected from `OrderedRing<Int>`.
+- The whole `add` function inhabits `Arrow<Int, Int, Int>`.
+
+Output: `InferredTree` — same Node shape as resolve's output, but each Node now carries its inhabitance witness.
+
+**Stage 5a — `translate(rust_lang)` (T-10)** runs the **coercion fold** over (`InferredTree`'s canonical grounding, `rust.dag`'s declared inhabitants):
+- Source `Int` inhabits `OrderedRing` → look up Rust's inhabitants of `OrderedRing` → finds `i32`, `i64`, …
+- Picks one by the source's width fact (or fails closed if ambiguous — diagnostic).
+- Source `std::int::add` → Rust's `+` operator on the chosen integer type.
+- Source `Arrow` → Rust's `fn`.
+
+Output: a `TargetNodeTree` in Rust's grammar:
+```
+Rust::Fn {
+  name: add
+  params: [x: i32, y: i32]
+  return: i32
+  body: Rust::BinOp(Add, Rust::Ident(x), Rust::Ident(y))
+}
+```
+
+**Stage 6 — `serialize(rust.dag.grammar)`** walks the Rust Node tree using rust.dag's grammar productions in the inverse direction:
+```rust
+fn add(x: i32, y: i32) -> i32 { x + y }
+```
+
+**OR Stage 5b — `eval(host_model)` (T-22)** would, instead of translating to Rust, walk the InferredTree with the host's interpretation algebra:
+- `Arrow` becomes a host closure.
+- `std::int::add` becomes the host's runtime add.
+- Calling `add(2, 3)` produces `Value::Int(5)`.
+
+**Failure modes (fail-closed at every stage):**
+- `parse` fails → text doesn't match grammar → `Diagnostic(SyntaxError, locus)`.
+- `resolve` fails → unresolved Atom → `Diagnostic(UnresolvedSymbol, locus)`.
+- `ground` fails → no algebra-instance found → `Diagnostic(UngroundedType, locus)`.
+- `translate` fails → coercion-fold finds no target inhabitant matching source's structure → `Diagnostic(NoTargetInhabitant, locus)` (THESIS's Tier 1 grounding completeness).
+
+Every failure carries source position. No silent drops. No partial outputs.
+
+---
 
 ## What we have today (relevant substrate)
 
-- `std/node.dag` — Node + Edge + `fold_node` + `NodeFold<R>` algebra carrier. **Foundation in place.**
-- `std/algebra.dag` — algebra structures (Magma, Monoid, …) — the inhabitance authority
-- `std/cardinality.dag` — inhabitance + bounded-natural refinement + descent evidence
-- `std/diagnostic.dag` — Diagnostic + Locus, fail-closed reporting
-- `std/refinement.dag` — base-type + fail-closed validation substrate (T-25-core, just landed)
-- `std/verification.dag` — TestClaim substrate (eval's downstream consumer)
-- `extdeps/languages/dag.dag` + `rust.dag` + `python.dag` + `go.dag` + `cpp.dag` + `typescript.dag` — Wave-1 LanguageModels with Practice-8 fact-bundles
-- `compiler/01_tokenize.dag`, `02_parse.dag`, `03_normalize.dag`, `03_resolve.dag` — pipeline scaffolds; T-8 implementation in flight
-- `compiler/04_infer.dag`, `05_emit.dag`, `05_eval.dag`, `00_compile.dag` — scaffolds with correct interface shape, **bodies not implemented**
+- `src/v4/std/node.dag` — `Node`, `Edge`, `fold_node`, `NodeFold<R>` algebra carrier. **Foundation in place.**
+- `src/v4/std/algebra.dag` — algebra structures (Magma, Monoid, …) — the inhabitance authority.
+- `src/v4/std/cardinality.dag` — inhabitance + bounded-natural refinement + descent evidence.
+- `src/v4/std/diagnostic.dag` — `Diagnostic` + `Locus`, fail-closed reporting.
+- `src/v4/std/refinement.dag` — base-type + fail-closed validation substrate (T-25-core, recently landed).
+- `src/v4/std/verification.dag` — `TestClaim` substrate (eval's downstream consumer).
+- `src/v4/extdeps/languages/dag.dag` + `rust.dag` + `python.dag` + `go.dag` + `cpp.dag` + `typescript.dag` — Wave-1 LanguageModels with Practice-8 fact-bundles.
+- `src/v4/compiler/01_tokenize.dag`, `02_parse.dag`, `03_normalize.dag`, `03_resolve.dag` — pipeline scaffolds; T-8 implementation in flight.
+- `src/v4/compiler/04_infer.dag`, `05_emit.dag`, `05_eval.dag`, `00_compile.dag` — scaffolds with correct interface shape, **bodies not implemented**.
 
 Falsification probes (not load-bearing for the initial homomorphism):
-- `extdeps/languages/` verilog, llvm_ir, machine_code, ptx, lean — probe the 5-behavior thesis across heterogeneous domains
-- `extdeps/formats/spice.dag` — physics simulation probe (no control flow)
+- `src/v4/extdeps/languages/` — verilog, llvm_ir, machine_code, ptx, lean (probes the 5-behavior thesis across heterogeneous domains).
+- `src/v4/extdeps/formats/spice.dag` — physics simulation probe (no control flow).
+
+---
 
 ## What's NOT in scope for this design
 
 - **Glue derivation / omni-stack** — orthogonal substrate (P4). Architecture must not preclude, but no implementation in the initial single-target compiler.
 - **`extdeps/protocols/`** — missing substrate; deferred until glue is in scope.
-- **Lens framework integration** — P3. Lenses are downstream consumers, not compiler features.
-- **Per-target emitters** — does not exist (P1).
+- **Lens framework integration** — pending Open Q0 resolution.
+- **Per-target emitters** — does not exist (P1). Each new target is one new `LanguageModel`.
 - **Multi-module compilation** — single-module first; module decomposition substrate (`std/system.dag`) is a follow-on.
+
+---
 
 ## Open questions — input wanted
 
-### Open Q1 — HostModel: distinct type, or LanguageModel variant?
+### Open Q0 — Lens architecture (under operator review)
+
+See P3 above. Three candidates (A / B / C) — pending operator pick.
+
+### Open Q1 — `HostModel`: distinct type, or `LanguageModel` variant?
 
 Eval needs a model of "what does the host runtime do for each substrate primitive." Options:
 
-- **Q1a.** HostModel is a distinct substrate type in `std/host.dag` (or similar) — explicitly NO grammar field, declares only algebra-inhabitance + per-primitive host-operation mapping.
-- **Q1b.** HostModel is a LanguageModel with `grammar = VoidGrammar` (the existing empty-grammar variant). Same machinery, just with grammar omitted.
-- **Q1c.** "Host" is just `extdeps/languages/machine_code.dag` (or some other language model) — eval is then literally `translate-to-machine-code + execute`, with no new type at all.
+- **Q1a.** `HostModel` is a distinct substrate type in `std/host.dag` (or similar) — explicitly no grammar field, declares only algebra-inhabitance + per-primitive host-operation mapping.
+- **Q1b.** `HostModel` is a `LanguageModel` with `grammar = VoidGrammar` (the existing empty-grammar variant). Same machinery, just with grammar omitted.
+- **Q1c.** "Host" is just `extdeps/languages/machine_code.dag` (or some other LanguageModel) — eval is then literally `translate-to-machine-code + execute`, with no new type at all.
 
-Q1c is the most-economical (no new substrate); Q1a is the most-explicit. Q1b is in between. Recommendation: probably Q1a, because the host-side concerns (allocation, execution model, runtime values) are categorically different from emit-side concerns (grammar, serialization). But open to argument.
+Q1c is the most-economical (no new substrate); Q1a is the most-explicit. Q1b is in between. Recommendation: probably Q1a — host concerns (allocation, execution model, runtime values) are categorically different from emit concerns (grammar, serialization). But open to argument.
 
-### Open Q2 — InferredTree dimensional facts: zero or N?
+### Open Q2 — `InferredTree` dimensional facts: zero or N?
 
-Should InferredTree carry built-in dimensional facts (cost, complexity, termination, ownership) computed during grounding, or should those facts be derived separately by lens-folds over a leaner InferredTree?
+Should `InferredTree` carry built-in dimensional facts (cost, complexity, termination, ownership) computed during grounding, or should those facts be derived separately by lens-folds over a leaner `InferredTree`?
 
-- **Q2a.** InferredTree carries ONLY structural grounding (typeshape, inhabitance, binding). All dimensional facts are computed as separate folds (potentially user-extensible). Aligns with P3 (lenses are not compiler-concerns).
-- **Q2b.** InferredTree carries the "core" dimensional facts (termination, cost) needed for downstream guarantees (THESIS Tier 1 CX gate), and user-defined dimensions are computed separately.
+This question is coupled with Q0 (lens architecture). If lens validation runs inside compile (Q0-A or Q0-B), then `InferredTree` may need to carry dimension facts. If lens validation is external (Q0-C), then `InferredTree` is leaner.
 
-The current `04_infer.dag` scaffold leans Q2b — it imports `v4.lens.cost { SymbolicCost }`. P3's "no specific named lens in the compiler" leans Q2a. Recommended Q2a, but this is a real fork worth deciding.
+The current `04_infer.dag` scaffold imports `v4.lens.cost.SymbolicCost` — entangles infer with a specific lens. Regardless of Q0 resolution, that specific import is wrong (no specific lens name in the compiler).
 
-### Open Q3 — Stage fusion: separate parse + normalize, or one stage?
+### Open Q3 — Stage fusion: separate `parse` + `normalize`, or one stage?
 
-`parse` produces a Node tree in input_lang's grammar; `normalize` dissolves sugar to substrate primitives. The sugar IS declared in input_lang's grammar. Could parse produce canonical substrate Nodes directly?
+`parse` produces a Node tree in input_lang's grammar; `normalize` dissolves sugar to substrate primitives. The sugar IS declared in input_lang's grammar. Could `parse` produce canonical substrate Nodes directly?
 
-- **Q3a.** Keep parse and normalize separate (current scaffold).
-- **Q3b.** Fuse — parse consults the language model's sugar dissolutions and produces canonical Nodes directly.
+- **Q3a.** Keep `parse` and `normalize` separate (current scaffold).
+- **Q3b.** Fuse — `parse` consults the language model's sugar dissolutions and produces canonical Nodes directly.
 
 Q3b saves a stage and an intermediate carrier; Q3a is more debuggable (you can inspect a pre-normalized parse tree). Probably Q3a for now; Q3b is a future optimization.
 
 ### Open Q4 — `traverse` primitive: explicit or implicit?
 
-Practice 10 row 2 (traverse dissolution) requires an explicit `traverse`/`sequence` over the diagnostic-effect carrier. Currently we have `fold_node`. A `fold_node` whose algebra short-circuits on `Rejected` IS effectively a traverse. But the substrate primitive being implicit means every fold-author writes the short-circuit ladder, which is exactly the traverse-dissolution finding.
+Practice 10 row 2 requires an explicit `traverse` over the diagnostic-effect carrier. Currently the substrate has `fold_node`; a `fold_node` whose algebra short-circuits on `Rejected` IS effectively a traverse. But if the substrate primitive is implicit, every fold-author writes the short-circuit ladder — which is exactly the traverse-dissolution finding that Practice 10 forbids.
 
-- **Q4a.** Declare an explicit `traverse_node` in `std/node.dag` that takes a fail-closed algebra. Compiler stages use this when threading diagnostics.
-- **Q4b.** Document the convention that fold_node algebras must use `Outcome<T>` carriers and short-circuit, without a separate `traverse_node` primitive.
+- **Q4a.** Declare an explicit `traverse_node` in `std/node.dag` that takes a fail-closed algebra.
+- **Q4b.** Document the convention that fold algebras must short-circuit, without a separate primitive.
 
-Recommendation: Q4a — explicit primitive matches the discipline doc. Otherwise every algebra-author re-derives the short-circuit pattern (traverse dissolution).
+Recommendation: Q4a — explicit primitive matches the discipline doc.
 
-### Open Q5 — Resolve's substrate
+### Open Q5 — Resolve's substrate placement
 
-Resolve is binding (Atom → Decl). Options:
+`resolve` is binding (Atom → Decl). Options:
 
 - **Q5a.** Resolve is its own stage with its own algebra; binding rules consulted from input_lang.
-- **Q5b.** Resolve is part of parse — parse consults language scope rules and produces bound Nodes directly. Fuses with parse like Q3b.
+- **Q5b.** Resolve is part of parse (consults language scope rules; produces bound Nodes directly).
 
-The current scaffold is Q5a. Probably keep — binding has scope-discipline beyond what parse can satisfy in one pass.
+Current scaffold is Q5a. Probably keep — binding has scope-discipline beyond what parse can satisfy in one pass.
+
+---
 
 ## What this doc does NOT decide
 
-- Specific worker fan-out / who-implements-what (separate doc, follows ratification here).
+- Specific implementation fan-out / who-implements-what (separate doc, follows ratification here).
 - The shape of `extdeps/protocols/rest.dag` (out of scope per P4).
 - Whether the bootstrap seed is Rust, native code, or another language (separate discipline — see `docs/design-pure-bootstrap-zero.md`).
-- The detailed shape of the algebra-inhabitance search algorithm (substrate design follow-up).
+- The detailed shape of the coercion fold's algorithm (substrate design follow-up; this doc only commits the **shape** — zip-fold over canonical groundings, decidable-by-construction, fail-closed on empty candidate set).
+
+---
 
 ## Process for amending this doc
 
-This is a living architectural reference. Amendments:
-- A change to a ratified premise (P1–P4) requires explicit operator ratification + reconcile of any downstream substrate.
+- A change to a ratified premise (P1 / P2 / P4) requires explicit operator ratification + reconcile of any downstream substrate.
 - Resolution of an Open Q is recorded inline (move from "Open" section to a new "Ratified" subsection with date).
 - Implementation that contradicts a premise is a STOP — escalate, do not improvise.
+
+---
+
+## Glossary
+
+| Term | Meaning |
+|---|---|
+| **`.dag`** | The language `gunbc` compiles. Source files have `.dag` extension. Programs are typed Node trees. |
+| **Node** | The substrate primitive (`src/v4/std/node.dag`). Every `.dag` value, type, function, and statement is a Node. |
+| **`fold_node`** | The substrate's catamorphism — generic structural recursion over a Node tree, parameterized by an algebra. |
+| **algebra** | A per-Node-kind step function plugged into `fold_node`. Compiler "passes" are algebras, not new code. |
+| **catamorphism** | A structure-preserving fold over an algebraic data type. In our case, `fold_node` is the catamorphism over Node. |
+| **homomorphism** | A structure-preserving map between algebraic structures. In our case, the map from source Nodes to target Nodes (via the coercion fold). |
+| **coercion fold** | The mechanical zip-fold (per `TASKS.md` T-9) that walks two canonical Node groundings in parallel to check structure preservation. Decidable by construction; empty candidate set ⇒ Diagnostic. |
+| **grounding** | The process of attaching algebra-inhabitance witnesses to every Node (i.e., "this Node lives in this algebra-instance"). What stage `ground` produces. |
+| **inhabitance** | A type/value inhabits an algebra-instance if it satisfies that algebra's laws. E.g., `Int` inhabits `OrderedRing`. |
+| **`LanguageModel`** | A `.dag` model in `extdeps/languages/X.dag` declaring language X's grammar + primitives + sugar dissolutions. |
+| **`InferredTree`** | The post-grounding Node tree — same shape as input, with inhabitance/typeshape/binding witnesses attached. |
+| **Practice 8** | "Fact-bundle modeling" rule — every external primitive must declare its facts (width, signedness, range, ...) rather than being a bare alias. See [`docs/modeling-discipline.md`](modeling-discipline.md#8-fact-bundle-modeling). |
+| **Practice 9** | "No-prose discipline" — `.dag` files carry only structured comments, never narrative prose. |
+| **Practice 10** | "Don't hand-roll a derived operation" — every fold/walker/translator that's mechanically determined by a Node's shape must use a substrate primitive (`fold_node`, `traverse`, coercion fold), not hand-rolled recursion. |
+| **T-8 / T-9 / T-10 / T-22** | Task IDs in `src/v4/TASKS.md`. T-8 = normalize+resolve; T-9 = ground (infer); T-10 = translate; T-22 = eval. |
+| **D2 reversal** | A 2026-05-17 operator-ratified design course correction (recorded in `src/v4/TASKS.md`) that reshaped how language fact-bundles and the coercion fold are framed. The current "coercion fold (not search)" framing is post-D2. |
+| **fail-closed** | A discipline (Practice 1): every failure path produces a structured Diagnostic; no silent `None`s or panics. |
