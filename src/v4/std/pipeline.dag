@@ -17,7 +17,8 @@ import v4.std.dependency {
 import v4.std.node { Symbol }
 
 
-// 🟢 coproduct dissolution — names align with v4.compiler stage I/O (compile/tokenize/parse/normalize/resolve/infer/emit/eval).
+// 🟢 coproduct dissolution — StageCarrier is per-stage I/O for semantic_compile_pipeline (Source→…→EvalResult).
+// Stage Symbols use homomorphism names (ground/translate/serialize); ingest chain is tokenize→parse→normalize→resolve.
 type StageCarrier
   = Source
   | TokenStream
