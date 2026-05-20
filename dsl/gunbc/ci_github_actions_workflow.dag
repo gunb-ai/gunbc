@@ -339,15 +339,35 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           continue_on_error: false,
           timeout_minutes: none
         }, RunStep {
-          name: Some { value: "v2 → v4 bootstrap viability (fail-closed full compile)" },
-          id: none,
-          run: "bash scripts/v4-bootstrap-viability.sh",
+          name: Some { value: "v2 → v4 bootstrap compile (fail-closed full)" },
+          id: Some { value: "v4_bootstrap_compile" },
+          run: "set +euo pipefail\nbash scripts/v4-bootstrap-viability.sh\nec=$?\necho \"exitcode=${ec}\" >> \"$GITHUB_OUTPUT\"\nexit \"${ec}\"\n",
           shell: Bash,
           env: none,
           working_directory: none,
           if_condition: Some { value: "needs.affected.outputs.v4 == 'true'" },
-          continue_on_error: false,
+          continue_on_error: true,
           timeout_minutes: Some { value: 35 }
+        }, RunStep {
+          name: Some { value: "v2 → v4 bootstrap resolve-posture gate (CI emit-wall bridge)" },
+          id: Some { value: "v4_bootstrap_resolve_posture" },
+          run: "set -euo pipefail\nV4_BOOTSTRAP_ALLOW_RESOLVE_POSTURE_BRIDGE=1 \\\nV4_BOOTSTRAP_COMPILER_EXIT=\"${{ steps.v4_bootstrap_compile.outputs.exitcode }}\" \\\n  bash scripts/v4-bootstrap-resolve-posture-gate.sh\n",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: Some { value: "needs.affected.outputs.v4 == 'true' && steps.v4_bootstrap_compile.outputs.exitcode != '0'" },
+          continue_on_error: false,
+          timeout_minutes: none
+        }, RunStep {
+          name: Some { value: "v4 bootstrap gate result (compile or tracked bridge)" },
+          id: none,
+          run: "set -euo pipefail\nif [[ \"${{ steps.v4_bootstrap_compile.outcome }}\" == \"success\" ]]; then\n  echo \"v4 bootstrap: full compile receipt\"\n  exit 0\nfi\nif [[ \"${{ steps.v4_bootstrap_resolve_posture.outcome }}\" == \"success\" ]]; then\n  echo \"v4 bootstrap: resolve-posture bridge receipt\"\n  exit 0\nfi\necho \"error: v4 bootstrap compile failed and resolve-posture bridge did not pass\" >&2\nexit 1\n",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: Some { value: "always() && needs.affected.outputs.v4 == 'true'" },
+          continue_on_error: false,
+          timeout_minutes: none
         }, RunStep {
           name: Some { value: "INTERIM (T-24 bridge) — v4 v2-run-preflight notice (run gate deferred T-22)" },
           id: none,

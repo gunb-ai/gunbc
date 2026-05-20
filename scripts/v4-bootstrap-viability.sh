@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
 # scripts/v4-bootstrap-viability.sh
 #
-# Fail-closed v4 bootstrap gate for v2-compiler over src/v4.
+# Fail-closed v4 bootstrap gate: v2-compiler full compile over src/v4.
+# Success requires exit 0 and the compiler's `compiled: N files emitted, 0 diagnostics` line.
 #
-# Local / default: exit 0 and the "compiled: N files emitted, 0 diagnostics" receipt.
-# GitHub Actions: Ubicloud often SIGTERMs during emit (~2–5m) after a clean resolve;
-# then require resolve posture (resolved line, no compiler error lines) — same bar as
-# docs/v4-close-interrogation.md §14 parse/resolve receipt / CI v4 posture.
+# CI emit-wall bridge (log grep / timeout-as-success) lives in
+# scripts/v4-bootstrap-resolve-posture-gate.sh — separate step, separate exit authority.
 
 set -euo pipefail
 
@@ -39,26 +38,15 @@ fi
 status=${PIPESTATUS[0]}
 set -e
 
-bootstrap_resolve_posture_ok() {
-  grep -qE '^resolved [0-9]+ sources \(transitive import closure\)$' "$log" \
-    && ! grep -qE '^error:' "$log"
-}
-
-if [[ "$status" -eq 0 ]]; then
-  if ! grep -E '^compiled: [0-9]+ files emitted, 0 diagnostics$' "$log" >/dev/null; then
-    echo "error: v4 bootstrap compile did not emit a clean compiled receipt" >&2
-    exit 1
-  fi
-  echo "Bootstrap viability OK — v2 compiled all v4 modules."
-  exit 0
+if [[ "$status" -ne 0 ]]; then
+  echo "error: v4 bootstrap compile exited $status (log: $log)" >&2
+  exit "$status"
 fi
 
-if [[ -n "${GITHUB_ACTIONS:-}" && ( "$status" -eq 124 || "$status" -eq 143 ) ]]; then
-  if bootstrap_resolve_posture_ok; then
-    echo "::warning::v4 bootstrap: compile exit $status after clean resolve (CI emit wall); full compiled receipt not required on Actions." >&2
-    echo "Bootstrap viability OK — parse/resolve posture verified (CI)."
-    exit 0
-  fi
+if ! grep -E '^compiled: [0-9]+ files emitted, 0 diagnostics$' "$log" >/dev/null; then
+  echo "error: v4 bootstrap compile did not emit a clean compiled receipt" >&2
+  exit 1
 fi
 
-exit "$status"
+echo "Bootstrap viability OK — v2 compiled all v4 modules."
+exit 0

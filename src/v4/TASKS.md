@@ -402,6 +402,10 @@ substrate imported them, so the cut is a pure scope reduction.
   `canonical_symbols: Set<Symbol>` as declared data; resolve reads it only via
   `dag_language_model_canonical_symbols/1`—no inferring the native C3 prelude `Set` from void lex/grammar shape
   inside `03_resolve.dag` (TASKS T-8 / CP-1b bucket C).
+- **CI emit-wall bridge (tracked):** when Ubicloud SIGTERMs v2 emit after a clean resolve,
+  `scripts/v4-bootstrap-resolve-posture-gate.sh` is the sole bridge authority (structured receipt +
+  `V4_BOOTSTRAP_ALLOW_RESOLVE_POSTURE_BRIDGE=1`); dissolves when a typed resolve-only compiler gate
+  lands or emit reaches `compiled:` on standard-8 without host SIGTERM.
 
 **Reference**:
 - v2: `src/v2/03_normalize.dag`, `src/v2/03_resolve.dag`

@@ -172,10 +172,39 @@ jobs:
     - name: Build v2 compiler (v4 bootstrap gate)
       if: needs.affected.outputs.v4 == 'true' && steps.v4-v2-bin.outputs.cache-hit != 'true'
       run: cargo build -p v2-compiler --release
-    - name: v2 → v4 bootstrap viability (fail-closed full compile)
+    - name: v2 → v4 bootstrap compile (fail-closed full)
       if: needs.affected.outputs.v4 == 'true'
+      id: v4_bootstrap_compile
       timeout-minutes: 35
-      run: bash scripts/v4-bootstrap-viability.sh
+      continue-on-error: true
+      run: |
+        set +euo pipefail
+        bash scripts/v4-bootstrap-viability.sh
+        ec=$?
+        echo "exitcode=${ec}" >> "$GITHUB_OUTPUT"
+        exit "${ec}"
+    - name: v2 → v4 bootstrap resolve-posture gate (CI emit-wall bridge)
+      if: needs.affected.outputs.v4 == 'true' && steps.v4_bootstrap_compile.outputs.exitcode != '0'
+      id: v4_bootstrap_resolve_posture
+      run: |
+        set -euo pipefail
+        V4_BOOTSTRAP_ALLOW_RESOLVE_POSTURE_BRIDGE=1 \
+        V4_BOOTSTRAP_COMPILER_EXIT="${{ steps.v4_bootstrap_compile.outputs.exitcode }}" \
+          bash scripts/v4-bootstrap-resolve-posture-gate.sh
+    - name: v4 bootstrap gate result (compile or tracked bridge)
+      if: always() && needs.affected.outputs.v4 == 'true'
+      run: |
+        set -euo pipefail
+        if [[ "${{ steps.v4_bootstrap_compile.outcome }}" == "success" ]]; then
+          echo "v4 bootstrap: full compile receipt"
+          exit 0
+        fi
+        if [[ "${{ steps.v4_bootstrap_resolve_posture.outcome }}" == "success" ]]; then
+          echo "v4 bootstrap: resolve-posture bridge receipt"
+          exit 0
+        fi
+        echo "error: v4 bootstrap compile failed and resolve-posture bridge did not pass" >&2
+        exit 1
     - name: 'INTERIM (T-24 bridge) — v4 v2-run-preflight notice (run gate deferred T-22)'
       if: needs.affected.outputs.v4 == 'true'
       env:
