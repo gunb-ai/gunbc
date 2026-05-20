@@ -18,6 +18,7 @@ import v4.std.diagnostic {
   Outcome,
   Rejected,
   Unavailable,
+  bind_outcome,
   outcome_rejected
 }
 import v4.std.find_witness {
@@ -64,9 +65,9 @@ fn canonical_grounding_candidates(
   outcome_rejected(constraints_not_realized_diagnostic(graph: policy.graph))
 }
 fn solve_constraints(policy: ConstraintSolvePolicy) -> Outcome<CanonicalGrounding> {
-  match canonical_grounding_candidates(policy: policy) {
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
-    Accepted { value: grounding_candidates, diagnostics: _ } =>
+  bind_outcome(
+    o: canonical_grounding_candidates(policy: policy),
+    f: fn(grounding_candidates) {
       match find_witness(
         source_facts: policy.graph.root,
         candidates: grounding_candidates.set,
@@ -81,5 +82,6 @@ fn solve_constraints(policy: ConstraintSolvePolicy) -> Outcome<CanonicalGroundin
           outcome_rejected(constraints_not_realized_diagnostic(graph: policy.graph))
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
       }
-  }
+    }
+  )
 }
