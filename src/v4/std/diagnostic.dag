@@ -2,7 +2,8 @@
 // Scope: fail-closed diagnostic schema.
 // Anchor: THESIS.md "show the correct code" + INVARIANTS P3; design-v4-compiler-homomorphism.md Ratified Q11.
 // Owns: Diagnostic, Outcome, Diagnostics, NonEmptyDiagnostics, StageDiagnosticPolicy,
-//       traverse_node, sequence_node, bind_outcome, diagnostics_merge, outcome_node_eq, diagnostic_eq,
+//       traverse_node, sequence_node, bind_outcome, diagnostics_merge, rejected_with_pending,
+//       outcome_node_eq, diagnostic_eq,
 //       diagnostics_eq, non_empty_diagnostics_append,
 //       Locus, Extent, Correction, NoCorrectionReason.
 // Consumes: std node (List/fold/count are prelude — no collection import; avoids diagnostic↔witness cycle).
@@ -164,6 +165,15 @@ fn diagnostics_merge(outer: Diagnostics, inner: Diagnostics) -> Diagnostics {
     }
   }
 }
+fn rejected_with_pending(
+  pending: Diagnostics,
+  rejected: NonEmptyDiagnostics,
+) -> NonEmptyDiagnostics {
+  match pending {
+    None => rejected
+    Some { diagnostics: p } => non_empty_diagnostics_append(a: p, b: rejected)
+  }
+}
 fn diagnostics_eq(a: Diagnostics, b: Diagnostics) -> Bool {
   match a {
     None => match b {
@@ -198,7 +208,8 @@ fn bind_outcome_accepted<U>(od: Diagnostics, inner: Outcome<U>) -> Outcome<U> {
         value: u,
         diagnostics: diagnostics_merge(outer: od, inner: ud)
       )
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Rejected { diagnostics: r } =>
+      Rejected { diagnostics: rejected_with_pending(pending: od, rejected: r) }
   }
 }
 fn bind_outcome<T, U>(o: Outcome<T>, f: fn(T) -> Outcome<U>) -> Outcome<U> {
@@ -209,25 +220,37 @@ fn bind_outcome<T, U>(o: Outcome<T>, f: fn(T) -> Outcome<U>) -> Outcome<U> {
 }
 fn traverse_node<R>(
   n: Node,
-  init: fn(Node) -> Outcome<R>,
-  step: fn(R, Edge, R) -> Outcome<R>,
+  algebra_init: fn(Node) -> Outcome<R>,
+  algebra_step: fn(R, Edge, R) -> Outcome<R>,
   policy: StageDiagnosticPolicy,
 ) -> Outcome<R> {
-  match init(n) {
+  match algebra_init(n) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: seed, diagnostics: d0 } =>
       if count(n.children) == 0 {
         Accepted { value: seed, diagnostics: d0 }
       } else {
-        outcome_rejected(traverse_children_not_realized_diagnostic(n: n))
+        Rejected {
+          diagnostics: rejected_with_pending(
+            pending: d0,
+            rejected: diagnostics_singleton(
+              d: traverse_children_not_realized_diagnostic(n: n)
+            )
+          )
+        }
       }
   }
 }
 fn sequence_node<R>(
   n: Node,
-  init: fn(Node) -> Outcome<R>,
-  step: fn(R, Edge, R) -> Outcome<R>,
+  algebra_init: fn(Node) -> Outcome<R>,
+  algebra_step: fn(R, Edge, R) -> Outcome<R>,
   policy: StageDiagnosticPolicy,
 ) -> Outcome<R> {
-  traverse_node(n: n, init: init, step: step, policy: policy)
+  traverse_node(
+    n: n,
+    algebra_init: algebra_init,
+    algebra_step: algebra_step,
+    policy: policy
+  )
 }
