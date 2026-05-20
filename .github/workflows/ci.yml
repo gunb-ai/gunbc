@@ -176,12 +176,7 @@ jobs:
       run: cargo build -p v2-compiler --release
     - name: v2 → v4 bootstrap viability (parse all v4 .dag files via v2)
       if: needs.affected.outputs.v4 == 'true'
-      run: |
-        set -euo pipefail
-        rm -rf /tmp/v4-stage1
-        mkdir -p /tmp/v4-stage1
-        target/release/v2-compiler compile --source-root src/v4 --output-dir /tmp/v4-stage1 --target dag
-        echo "Bootstrap viability OK — v2 indexed and resolved all v4 modules."
+      run: bash scripts/v4-bootstrap-viability.sh
     - name: 'INTERIM (T-24 bridge) — v4 v2-run-preflight notice (run gate deferred T-22)'
       if: needs.affected.outputs.v4 == 'true'
       env:
