@@ -13,7 +13,7 @@ use crate::v2_rt;
 use crate::v2_std_core::{
     authored_name_at, empty_intern_table, is_error_diagnostic, InternTable, NewlineIndex, TextFile,
 };
-use crate::v2_std_core::{CompileResult, ErrorNode};
+use crate::v2_std_core::ErrorNode;
 use std::collections::HashMap;
 use std::rc::Rc;
 

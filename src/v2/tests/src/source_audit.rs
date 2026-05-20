@@ -825,6 +825,49 @@ fn compile_gate_keeps_infer_errors_blocking_in_stage0() {
 }
 
 #[test]
+fn compile_stage0_mirror_uses_pipeline_fold_authority() {
+    let source = read_v2_file("src/v2/compile.dag");
+    let stage0_compile = read_v2_file("src/v2/stage0/src/v2_compiler_compile.rs");
+    let stage0_fold = read_v2_file("src/v2/stage0/src/compile_pipeline_fold.rs");
+
+    assert_live_contains(
+        &source,
+        "run_compile_pipeline_fold",
+        "compile.dag should execute via v2_compile_pipeline fold",
+    );
+    assert_live_contains(
+        &stage0_compile,
+        "compile_sources_via_fold",
+        "stage0 compile_sources should delegate to pipeline fold",
+    );
+    assert_live_not_contains(
+        &stage0_compile,
+        "pub fn compile_sources(\n    sources: Rc<Vec<Rc<SourceFile>>>,\n    target: RenderTarget,\n) -> Rc<PipelineResult> {\n    {\n        let frontend = front_end_sources(sources);",
+        "stage0 compile_sources must not inline front_end_sources before fold",
+    );
+    assert_live_contains(
+        &stage0_fold,
+        "V2_COMPILE_PIPELINE",
+        "stage0 fold mirror should own v2_compile_pipeline table",
+    );
+    assert_live_contains(
+        &stage0_fold,
+        "pipeline_gate_blocks",
+        "stage0 fold mirror should apply spec.gate via pipeline_gate_blocks",
+    );
+    assert_live_contains(
+        &stage0_fold,
+        "PipelineGatePolicy::SurfaceOnly",
+        "stage0 fold mirror should honor SurfaceOnly on complexity stage",
+    );
+    assert_live_contains(
+        &stage0_fold,
+        "front_end_sources(state.sources.clone())",
+        "stage0 front_end runs inside StageFrontend fold arm only",
+    );
+}
+
+#[test]
 fn testgen_emits_valid_rust() {
     let source = read_v2_file("src/v2/05_emit_rust.dag");
     let shared_source = read_v2_file("src/v2/05_emit.dag");
