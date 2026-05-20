@@ -111,7 +111,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
     }, {
       id: "ci",
       name: none,
-      runner: SelfHosted { labels: ["ubicloud-standard-2"] },
+      runner: RunsOnExpression { expression: "${{ needs.affected.outputs.v4 == 'true' && 'ubicloud-standard-8' || 'ubicloud-standard-2' }}" },
       steps: [UsesStep {
           name: Some { value: "Checkout" },
           id: none,
@@ -339,15 +339,15 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           continue_on_error: false,
           timeout_minutes: none
         }, RunStep {
-          name: Some { value: "v2 → v4 bootstrap viability (parse all v4 .dag files via v2)" },
+          name: Some { value: "v2 → v4 bootstrap viability (fail-closed full compile)" },
           id: none,
-          run: "set -euo pipefail\nrm -rf /tmp/v4-stage1\nmkdir -p /tmp/v4-stage1\ntarget/release/v2-compiler compile --source-root src/v4 --output-dir /tmp/v4-stage1 --target dag\necho \"Bootstrap viability OK — v2 indexed and resolved all v4 modules.\"\n",
+          run: "bash scripts/v4-bootstrap-viability.sh",
           shell: Bash,
           env: none,
           working_directory: none,
           if_condition: Some { value: "needs.affected.outputs.v4 == 'true'" },
           continue_on_error: false,
-          timeout_minutes: none
+          timeout_minutes: Some { value: 35 }
         }, RunStep {
           name: Some { value: "INTERIM (T-24 bridge) — v4 v2-run-preflight notice (run gate deferred T-22)" },
           id: none,
