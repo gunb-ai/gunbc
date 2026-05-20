@@ -380,7 +380,7 @@ The architecture has **three distinct pipelines** that must not be collapsed:
 |---|---|---|---|
 | **1. Semantic compile pipeline** | user/source text (or `CoreNode` directly) | target source / eval Value | Per the rest of this doc — parse→normalize→resolve→ground→translate/serialize OR eval. The "compile" surface most users see. |
 | **2. Artifact projection pipeline** | `InferredGraph` (the compiler's own modeled state, OR any user program) | generated compiler code / tests / docs / schemas / glue / diagnostics tables / stage1 compiler source | Lenses + projections per P3 + P8. Everything downstream of a model that's *not* the user-program target output. |
-| **3. Bootstrap promotion pipeline** | current `stage0[k]` + candidate-next-compiler artifacts | `stage0[k+1]` (or rejection diagnostic) | The protocol that **replaces the active seed**. Guarded by `BootstrapWitness` + `FixedPointWitness` + promotion checks. |
+| **3. Bootstrap promotion pipeline** | current `stage0[k]` + candidate-next-compiler artifacts | `stage0[k+1]` (or rejection diagnostic) | The protocol that **replaces the active seed**. Guarded by `PromotionWitness` (composed gate with internal bootstrap-roundtrip + fixed-point sub-checks) + promotion checks. |
 
 The mistake is collapsing all three into "the compiler edits itself." The right model:
 - The compiler **models** itself (pipeline 1 reads `.dag` source of any program, including the compiler's own source).
@@ -416,7 +416,7 @@ stage0               // seed that reads compiler.corepkg, NOT arbitrary surface 
 Epoch k:
   Stage0[k] + CorePackage[k] ──> Stage1[k]
   Stage1[k] + SourceModels[k] ──> Stage1'[k]
-  verify(Stage1[k] == Stage1'[k]) ──> FixedPointWitness[k]
+  verify(Stage1[k] == Stage1'[k]) ──> PromotionWitness[k].fixed_point_sub_check
 
 Upgrade k → k+1 (when an upstream model changes):
   Edit SourceModels[k+1]
@@ -1368,9 +1368,9 @@ Defer trigger: first attempt to compile against a non-current version (e.g., Pyt
 | **`Projection`** | Declared projection-as-data: name + input carrier + output artifact + dependency requirements + regeneration algebra + validation lens set. Not yet declared (`std/projection.dag`). |
 | **`Artifact`** | An emitted artifact (source file, test file, schema, diagnostic table, compiler stage table) with its provenance (which projection produced it from which model state). Not yet declared (`std/artifact.dag`). |
 | **`RecomputePlan`** | Topological schedule + SCC/fixpoint groups + cached-vs-invalidated artifacts. The "how to recompute" data given an `AffectedSet`. Not yet declared. |
-| **`Stage0Contract`** | What stage0 promises (consume canonical CorePackage; minimal fold_node + traverse; fail-closed; emit verified artifact). Per P9. Not yet declared. |
+| **`Stage0Contract`** | What stage0 promises (consume canonical CorePackage; minimal `fold_node` + derived `traverse_node` combinator; fail-closed; emit verified artifact). Per P9. Not yet declared. |
 | **`CorePackage` / `CorePackageSchema`** | The stable canonical bootstrap package stage0 consumes (per P9). NOT the evolving surface language — decoupled from it. Not yet declared. |
 | **`BootstrapEpoch`** | k-indexed snapshot of (stage0, CorePackage, SourceModels). Per P9. Not yet declared. |
 | **`Bridge`** | Migration package for bootstrap-breaking changes (Case 3 of P9's bootstrap-impact taxonomy). Not yet declared. |
-| **`BootstrapWitness` / `FixedPointWitness`** | Verification artifacts for the promotion step (P9). Not yet declared. |
+| **`PromotionWitness`** | Verification artifact for the promotion step (P9), with internal sub-fields for the bootstrap-roundtrip and fixed-point checks (formerly `BootstrapWitness` + `FixedPointWitness`). Not yet declared. |
 | **promotion protocol** | The guarded step that replaces `Stage0[k]` with `Stage0[k+1]`. Per P9 — the *only* "back edge" in the system. Not yet implemented. |
