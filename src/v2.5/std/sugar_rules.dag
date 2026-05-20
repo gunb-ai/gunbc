@@ -10,12 +10,14 @@ module v2_5.std.sugar_rules
 import v2_5.std.stage_types { SurfaceSugarKind, ServiceSugar, FnSugar, TypeSugar, OperationSugar }
 
 
+// 🟢 coproduct dissolution
 type SugarEdgeRequirement
   = RequireAllNamed
   | RequireAllPositional
   | RequireExactlyOnePositional
 
 
+// 🟢 coproduct dissolution
 type SugarReplacement
   = ReplaceWithConj
   | ReplaceWithArrow

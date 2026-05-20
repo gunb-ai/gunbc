@@ -31,10 +31,12 @@ import v2_5.std.syntax {
 import v2_5.std.token { TokenStream }
 
 // Param presence (v2 Required/CardOptional) — distinct from Connective::Cardinality.
+// 🟢 coproduct dissolution — phase-typed closed sum (terminal at stage boundary)
 type ParamCardinality
   = Required
   | CardOptional
 
+// 🟢 coproduct dissolution — phase-typed closed sum (terminal at stage boundary)
 type SurfaceSugarKind
   = ServiceSugar
   | FnSugar
@@ -55,6 +57,7 @@ data c3_surface_sugar_operation: Symbol = c3_surface_sugar_operation
 // Parse phase — syntax only, no binding or typing
 // =========================================================================
 
+// 🟢 coproduct dissolution — phase-typed closed sum (terminal at stage boundary)
 type ParsePattern
   = ParsePatBind { name: AuthoredName }
   | ParsePatLit { value: LiteralValue }
@@ -106,6 +109,7 @@ type ParseTypeVariant {
   fields: List<ParseTypeField>
 }
 
+// 🟢 coproduct dissolution — phase-typed closed sum (terminal at stage boundary)
 type ParseTypeExpr
   = ParseTypeAtom { name: AuthoredName }
   | ParseTypeConj { fields: List<ParseTypeField> }
@@ -116,6 +120,7 @@ type ParseTypeExpr
     }
   | ParseTypeError { message: String, span: SourceSpan }
 
+// 🟢 coproduct dissolution — phase-typed closed sum (terminal at stage boundary)
 type ParseExpr
   = ParseLit { value: LiteralValue, span: SourceSpan }
   | ParseError { kind: ExprErrorKind, message: String, span: SourceSpan }
@@ -187,6 +192,7 @@ type ParseExpr
     }
   | ParseReturn { value: ParseExpr? }
 
+// 🟢 coproduct dissolution — phase-typed closed sum (terminal at stage boundary)
 type ParseStringPart
   = ParseStrText { value: String }
   | ParseStrInterp { expr: ParseExpr }
@@ -196,6 +202,7 @@ type ParseBlock {
   span: SourceSpan
 }
 
+// 🟢 coproduct dissolution — phase-typed closed sum (terminal at stage boundary)
 type ParseTransport
   = ParseTransportRest { properties: List<ParseTransportProperty> }
   | ParseTransportShell { properties: List<ParseTransportProperty> }
@@ -220,6 +227,7 @@ type ParseResourceUse {
   resource_type: ParseTypeExpr
 }
 
+// 🟢 coproduct dissolution — phase-typed closed sum (terminal at stage boundary)
 type ParseImport
   = ParseImportAll { module_path: String, span: SourceSpan }
   | ParseImportNames {
@@ -228,6 +236,7 @@ type ParseImport
       span: SourceSpan
     }
 
+// 🟢 coproduct dissolution — phase-typed closed sum (terminal at stage boundary)
 type ParseItem
   = ParseFn {
       name: AuthoredName
@@ -281,6 +290,7 @@ type ParseModule {
 // Resolve phase — names bound; still no typing
 // =========================================================================
 
+// 🟢 coproduct dissolution — phase-typed closed sum (terminal at stage boundary)
 type ResolvedPattern
   = ResolvedPatBind { name: BoundName }
   | ResolvedPatLit { value: LiteralValue }
@@ -332,6 +342,7 @@ type ResolvedTypeVariant {
   fields: List<ResolvedTypeField>
 }
 
+// 🟢 coproduct dissolution — phase-typed closed sum (terminal at stage boundary)
 type ResolvedTypeExpr
   = ResolvedTypeAtom { name: BoundName }
   | ResolvedTypeConj { fields: List<ResolvedTypeField> }
@@ -342,6 +353,7 @@ type ResolvedTypeExpr
     }
   | ResolvedTypeError { message: String, span: SourceSpan }
 
+// 🟢 coproduct dissolution — phase-typed closed sum (terminal at stage boundary)
 type ResolvedExpr
   = ResolvedLit { value: LiteralValue, span: SourceSpan }
   | ResolvedError { kind: ExprErrorKind, message: String, span: SourceSpan }
@@ -413,6 +425,7 @@ type ResolvedExpr
     }
   | ResolvedReturn { value: ResolvedExpr? }
 
+// 🟢 coproduct dissolution — phase-typed closed sum (terminal at stage boundary)
 type ResolvedStringPart
   = ResolvedStrText { value: String }
   | ResolvedStrInterp { expr: ResolvedExpr }
@@ -422,6 +435,7 @@ type ResolvedBlock {
   span: SourceSpan
 }
 
+// 🟢 coproduct dissolution — phase-typed closed sum (terminal at stage boundary)
 type ResolvedTransport
   = ResolvedTransportRest { properties: List<ResolvedTransportProperty> }
   | ResolvedTransportShell { properties: List<ResolvedTransportProperty> }
@@ -446,6 +460,7 @@ type ResolvedResourceUse {
   resource_type: ResolvedTypeExpr
 }
 
+// 🟢 coproduct dissolution — phase-typed closed sum (terminal at stage boundary)
 type ResolvedImport
   = ResolvedImportAll { module_path: Symbol, span: SourceSpan }
   | ResolvedImportNames {
@@ -454,6 +469,7 @@ type ResolvedImport
       span: SourceSpan
     }
 
+// 🟢 coproduct dissolution — phase-typed closed sum (terminal at stage boundary)
 type ResolvedItemCore
   = ResolvedFn {
       name: BoundName
@@ -496,6 +512,7 @@ type ResolvedItemCore
       raw_span: SourceSpan
     }
 
+// 🟢 coproduct dissolution — phase-typed closed sum (terminal at stage boundary)
 type ResolvedModuleItem
   = ResolvedSugared {
       sugar: SurfaceSugarKind
@@ -515,6 +532,7 @@ type ResolvedModule {
 // Normalize phase — surface sugar stripped; items are ResolvedItemCore only
 // =========================================================================
 
+// 🟢 coproduct dissolution — phase-typed closed sum (terminal at stage boundary)
 type NormalizedPattern
   = NormalizedPatBind { name: BoundName }
   | NormalizedPatLit { value: LiteralValue }
@@ -566,6 +584,7 @@ type NormalizedTypeVariant {
   fields: List<NormalizedTypeField>
 }
 
+// 🟢 coproduct dissolution — phase-typed closed sum (terminal at stage boundary)
 type NormalizedTypeExpr
   = NormalizedTypeAtom { name: BoundName }
   | NormalizedTypeConj { fields: List<NormalizedTypeField> }
@@ -576,6 +595,7 @@ type NormalizedTypeExpr
     }
   | NormalizedTypeError { message: String, span: SourceSpan }
 
+// 🟢 coproduct dissolution — phase-typed closed sum (terminal at stage boundary)
 type NormalizedExpr
   = NormalizedLit { value: LiteralValue, span: SourceSpan }
   | NormalizedError { kind: ExprErrorKind, message: String, span: SourceSpan }
@@ -647,6 +667,7 @@ type NormalizedExpr
     }
   | NormalizedReturn { value: NormalizedExpr? }
 
+// 🟢 coproduct dissolution — phase-typed closed sum (terminal at stage boundary)
 type NormalizedStringPart
   = NormalizedStrText { value: String }
   | NormalizedStrInterp { expr: NormalizedExpr }
@@ -656,6 +677,7 @@ type NormalizedBlock {
   span: SourceSpan
 }
 
+// 🟢 coproduct dissolution — phase-typed closed sum (terminal at stage boundary)
 type NormalizedTransport
   = NormalizedTransportRest { properties: List<NormalizedTransportProperty> }
   | NormalizedTransportShell { properties: List<NormalizedTransportProperty> }
@@ -680,6 +702,7 @@ type NormalizedResourceUse {
   resource_type: NormalizedTypeExpr
 }
 
+// 🟢 coproduct dissolution — phase-typed closed sum (terminal at stage boundary)
 type NormalizedImport
   = NormalizedImportAll { module_path: Symbol, span: SourceSpan }
   | NormalizedImportNames {
@@ -688,6 +711,7 @@ type NormalizedImport
       span: SourceSpan
     }
 
+// 🟢 coproduct dissolution — phase-typed closed sum (terminal at stage boundary)
 type NormalizedItem
   = NormalizedFn {
       name: BoundName
@@ -741,11 +765,13 @@ type NormalizedModule {
 // Infer phase — typing is structural fact on every expression variant
 // =========================================================================
 
+// 🟢 coproduct dissolution — phase-typed closed sum (terminal at stage boundary)
 type InferredType
   = InferredTypeOk { form: TypeForm }
   | InferredTypeError { message: String, span: SourceSpan }
   | InferredTypeVariable { id: Symbol }
 
+// 🟢 coproduct dissolution — phase-typed closed sum (terminal at stage boundary)
 type TypeForm
   = TypeAtom { name: BoundName }
   | TypeConj { fields: List<InferredTypeField> }
@@ -772,10 +798,12 @@ type InferredTypeParam {
   cardinality: ParamCardinality
 }
 
+// 🟢 coproduct dissolution — phase-typed closed sum (terminal at stage boundary)
 type TailRecursionFacts
   = NotRecursive
   | SelfRecursive { tail_only: Bool }
 
+// 🟢 coproduct dissolution — phase-typed closed sum (terminal at stage boundary)
 type InferredPattern
   = InferredPatBind { name: BoundName, pattern_type: InferredType }
   | InferredPatLit { value: LiteralValue, pattern_type: InferredType }
@@ -815,6 +843,7 @@ type InferredMatchArm {
   body: InferredExpr
 }
 
+// 🟢 coproduct dissolution — phase-typed closed sum (terminal at stage boundary)
 type InferredExpr
   = InferredLit { value: LiteralValue, span: SourceSpan, expr_type: InferredType }
   | InferredError { kind: ExprErrorKind, message: String, span: SourceSpan }
@@ -913,6 +942,7 @@ type InferredExpr
       expr_type: InferredType
     }
 
+// 🟢 coproduct dissolution — phase-typed closed sum (terminal at stage boundary)
 type InferredStringPart
   = InferredStrText { value: String }
   | InferredStrInterp { expr: InferredExpr }
@@ -923,6 +953,7 @@ type InferredBlock {
   block_type: InferredType
 }
 
+// 🟢 coproduct dissolution — phase-typed closed sum (terminal at stage boundary)
 type InferredTransport
   = InferredTransportRest { properties: List<InferredTransportProperty> }
   | InferredTransportShell { properties: List<InferredTransportProperty> }
@@ -947,6 +978,7 @@ type InferredResourceUse {
   resource_type: InferredType
 }
 
+// 🟢 coproduct dissolution — phase-typed closed sum (terminal at stage boundary)
 type InferredImport
   = InferredImportAll { module_path: Symbol, span: SourceSpan }
   | InferredImportNames {
@@ -955,6 +987,7 @@ type InferredImport
       span: SourceSpan
     }
 
+// 🟢 coproduct dissolution — phase-typed closed sum (terminal at stage boundary)
 type InferredItem
   = InferredFn {
       name: BoundName
@@ -1075,6 +1108,7 @@ type SeamNormalizedEdge {
   target: SeamNormalizedNode
 }
 
+// 🟢 coproduct dissolution — phase-typed closed sum (terminal at stage boundary)
 type ResolvedTypeForm
   = ResolvedSugarForm {
       kind: SurfaceSugarKind
@@ -1108,6 +1142,7 @@ type SeamResolvedItem {
   form: SeamResolvedItemForm
 }
 
+// 🟢 coproduct dissolution — phase-typed closed sum (terminal at stage boundary)
 type SeamResolvedItemForm
   = SeamItemType { type_form: ResolvedTypeForm }
   | SeamItemComputation { computation_form: ResolvedComputationForm }
@@ -1117,6 +1152,7 @@ type SeamNormalizedItem {
   form: SeamNormalizedItemForm
 }
 
+// 🟢 coproduct dissolution — phase-typed closed sum (terminal at stage boundary)
 type SeamNormalizedItemForm
   = SeamItemType { type_form: NormalizedTypeForm }
   | SeamItemComputation { computation_form: NormalizedComputationForm }
@@ -1131,10 +1167,12 @@ type SeamNormalizedModule {
   items: List<SeamNormalizedItem>
 }
 
+// 🟢 coproduct dissolution — phase-typed closed sum (terminal at stage boundary)
 type SeamResolvedNode
   = SeamResolvedModuleNode { module: SeamResolvedModule }
   | SeamResolvedItemNode { item: SeamResolvedItem }
 
+// 🟢 coproduct dissolution — phase-typed closed sum (terminal at stage boundary)
 type SeamNormalizedNode
   = SeamNormalizedModuleNode { module: SeamNormalizedModule }
   | SeamNormalizedItemNode { item: SeamNormalizedItem }

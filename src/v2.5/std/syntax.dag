@@ -4,14 +4,17 @@
 
 module v2_5.std.syntax
 
+// 🟢 coproduct dissolution — operator closed sum (terminal at syntax boundary)
 type BinOp
   = Add | Sub | Mul | Div | Mod
   | Eq | Ne | Lt | Gt | Le | Ge
   | And | Or | NullCoalesce
 
+// 🟢 coproduct dissolution
 type UnaryOpKind
   = Not | Neg
 
+// 🟢 coproduct dissolution
 type LiteralValue
   = LitStr { value: String }
   | LitInt { value: Int }
@@ -19,11 +22,14 @@ type LiteralValue
   | LitBool { value: Bool }
   | LitNull
 
+// 🟢 coproduct dissolution
 type OperationModifier
   = Idempotent | Readonly | Hermetic
 
+// 🟢 coproduct dissolution
 type ExprErrorKind
   = ParseRecoveryError | SemanticExprError | InternalExprError
 
+// 🟢 coproduct dissolution
 type AlgebraFieldKind
   = AlgAdd | AlgMul | AlgReciprocal | AlgQuotient | AlgRemainder | AlgCompare | AlgMeet | AlgJoin

@@ -23,9 +23,8 @@ import v2_5.std.node {
   Arrow,
   Conj,
   Connective,
-  EdgeLabel,
-  Named,
-  Positional
+  edge_is_named,
+  edge_is_positional
 }
 import v2_5.std.stage_types {
   NormalizedComputationForm,
@@ -92,22 +91,6 @@ fn malformed_sugar_diagnostic(span: SourceSpan) -> Diagnostic {
     reason: normalize_reason_malformed_sugar,
     at: Textual { file: span.file, extent: WholeFile },
     correction: Unavailable { reason: UserInputBoundary }
-  }
-}
-
-
-fn edge_is_named(label: EdgeLabel) -> Bool {
-  match label {
-    Named { name: _ } => true
-    Positional => false
-  }
-}
-
-
-fn edge_is_positional(label: EdgeLabel) -> Bool {
-  match label {
-    Named { name: _ } => false
-    Positional => true
   }
 }
 
