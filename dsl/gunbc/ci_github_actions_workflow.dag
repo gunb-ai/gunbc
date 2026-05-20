@@ -341,7 +341,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
         }, RunStep {
           name: Some { value: "v2 → v4 bootstrap viability (parse all v4 .dag files via v2)" },
           id: none,
-          run: "bash scripts/v4-bootstrap-viability.sh",
+          run: "set -euo pipefail\nrm -rf /tmp/v4-stage1\nmkdir -p /tmp/v4-stage1\ntarget/release/v2-compiler compile --source-root src/v4 --output-dir /tmp/v4-stage1 --target dag\necho \"Bootstrap viability OK — v2 indexed and resolved all v4 modules.\"\n",
           shell: Bash,
           env: none,
           working_directory: none,
