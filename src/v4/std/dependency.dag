@@ -2,8 +2,8 @@
 // Scope: typed dependency graph substrate (P6) — domains, edges, witnesses, SCC/topo data.
 // Anchor: docs/design-v4-compiler-homomorphism.md P6; edge orientation required_before → dependent_after.
 // Rule: EffectDependsOn/ResourceDependsOn are edge classifications derived from modeled facts;
-//       edges carry DependencyReason evidence — bare kind labels without witnesses are insufficient.
-// Owns: DependencySubject, DependencyReason, ContainmentEdge, SchedulingDependencyEdge, DependencyGraph,
+//       scheduling edges are domain-tagged; reason family matches domain (illegal cross-domain states unrepresentable).
+// Owns: DependencySubject, Program/TargetPlan/Artifact scheduling reasons, ContainmentEdge, SchedulingDependencyEdge,
 //       Program/TargetPlan/Artifact dependency kind summaries, ClosedWorldDependencyWitness, topo carriers.
 // Consumes: v4.std.collection, v4.std.node.
 // Status: Wave-1 Worker A — strict substrate (data contracts only; no stage implementations).
@@ -58,24 +58,63 @@ type DependencySubject
   | ModelSubject { model: Symbol }
 
 
-// RULING-1: 🟢 pretty-much-done — modeled evidence; kind summaries project from reason family.
-type DependencyReason
+// RULING-1: 🟢 pretty-much-done — program-tier scheduling evidence (pairs with ProgramDependencyKind summaries).
+type ProgramSchedulingReason
   = BindingReason { fact: Symbol }
   | TypeReason { constraint: Symbol }
   | DataflowReason { flow: Symbol }
   | EffectReason { effect_order_witness: Symbol }
   | ResourceReason { resource_conflict_witness: Symbol }
-  | ModuleReason { import: Symbol }
-  | PlacementReason { placement_witness: Symbol }
+  | ModuleReason { module_import: Symbol }
+
+
+// RULING-1: 🟢 pretty-much-done — target-plan-tier scheduling evidence.
+type TargetPlanSchedulingReason
+  = PlacementReason { placement_witness: Symbol }
   | TransferReason { transfer_witness: Symbol }
   | BarrierReason { barrier_witness: Symbol }
-  | ArtifactReason { provenance: Symbol }
+
+
+// RULING-1: 🟢 pretty-much-done — artifact/projection/model scheduling evidence.
+type ArtifactSchedulingReason
+  = ArtifactReason { provenance: Symbol }
   | ModelReason { model_ref: Symbol }
   | ProjectionReason { projection_ref: Symbol }
   | GeneratedFromReason { source: Symbol }
   | VerifiedByReason { verifier: Symbol }
   | BootstrapReason { stage: Symbol }
   | PromotionReason { promotion_witness: Symbol }
+
+
+// RULING-1: 🟢 pretty-much-done — program scheduling over node paths (P6 Program tier).
+type ProgramSchedulingEdge {
+  required_before: Path
+  dependent_after: Path
+  reason: ProgramSchedulingReason
+}
+
+
+// RULING-1: 🟢 pretty-much-done — target-plan scheduling over node paths (P6 TargetPlan tier).
+type TargetPlanSchedulingEdge {
+  required_before: Path
+  dependent_after: Path
+  reason: TargetPlanSchedulingReason
+}
+
+
+// RULING-1: 🟢 pretty-much-done — artifact scheduling over DependencySubject endpoints (P6 Artifact tier).
+type ArtifactSchedulingEdge {
+  required_before: DependencySubject
+  dependent_after: DependencySubject
+  reason: ArtifactSchedulingReason
+}
+
+
+// RULING-1: 🟢 pretty-much-done — domain fixes reason family and endpoint shape (no Program+PlacementReason).
+type SchedulingDependencyEdge
+  = Program { edge: ProgramSchedulingEdge }
+  | TargetPlan { edge: TargetPlanSchedulingEdge }
+  | Artifact { edge: ArtifactSchedulingEdge }
 
 
 // RULING-1: 🟢 pretty-much-done — structural spine (parent contains child); not a scheduling edge.
@@ -85,16 +124,7 @@ type ContainmentEdge {
 }
 
 
-// RULING-1: 🟢 pretty-much-done — scheduling/recompute edge with evidence (required_before → dependent_after).
-type SchedulingDependencyEdge {
-  domain: DependencyDomain
-  required_before: DependencySubject
-  dependent_after: DependencySubject
-  reason: DependencyReason
-}
-
-
-// RULING-1: 🟢 pretty-much-done — tagged union for diagnostics; scheduling carries reason payloads.
+// RULING-1: 🟢 pretty-much-done — tagged union for diagnostics; scheduling carries domain-tagged edges.
 type DependencyEdge
   = Containment { edge: ContainmentEdge }
   | Scheduling { edge: SchedulingDependencyEdge }
@@ -151,7 +181,7 @@ type DependencyDiagnostic {
 
 type Scc {
   id: Symbol
-  members: List<Path>
+  members: List<DependencySubject>
   classification: CycleClassification
 }
 

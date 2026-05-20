@@ -88,47 +88,17 @@ type AffectedSet {
 }
 
 
-// RULING-1: 🟢 pretty-much-done — each variant structurally fixes its output artifact kind.
-type Projection
-  = LensProjection {
-      name: Symbol,
-      input_carrier: Symbol,
-      depends_on: List<DependencySubject>,
-      algebra_ref: Symbol
-    }
-  | TargetTestProjection {
-      name: Symbol,
-      input_carrier: Symbol,
-      depends_on: List<DependencySubject>,
-      algebra_ref: Symbol
-    }
-  | CompilerSourceProjection {
-      name: Symbol,
-      input_carrier: Symbol,
-      depends_on: List<DependencySubject>,
-      algebra_ref: Symbol
-    }
-  | SchemaProjection {
-      name: Symbol,
-      input_carrier: Symbol,
-      depends_on: List<DependencySubject>,
-      algebra_ref: Symbol
-    }
-  | DocumentationProjection {
-      name: Symbol,
-      input_carrier: Symbol,
-      depends_on: List<DependencySubject>,
-      algebra_ref: Symbol
-    }
-  | DiagnosticTableProjection {
-      name: Symbol,
-      input_carrier: Symbol,
-      depends_on: List<DependencySubject>,
-      algebra_ref: Symbol
-    }
+// RULING-1: 🟢 pretty-much-done — variant-is-data (Practice 4): output kind is a field, not repeated variants.
+type Projection {
+  output_artifact_kind: ArtifactKind
+  name: Symbol
+  input_carrier: Symbol
+  depends_on: List<DependencySubject>
+  algebra_ref: Symbol
+}
 
 
-// RULING-1: 🟡 needs-more-work — witness_ref is Symbol scaffold until WitnessRef substrate lands.
+// RULING-1: 🟡 feature:witness-ref-substrate consumer:v4.std.witness::WitnessRef dissolve-on: WitnessRef carrier in v4.std.witness (bounds: Artifact.witness_ref only; owner: post-land follow-up PR).
 type Artifact {
   kind: ArtifactKind
   identity: Symbol
