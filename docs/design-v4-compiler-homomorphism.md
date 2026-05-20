@@ -198,7 +198,7 @@ Lens enforcement is **orthogonal to the emission/eval homomorphism.** The compil
 3. **Lens outputs are side-channel** — `DimensionFact` / diagnostics. Translate/eval do NOT depend on lens output. Lens output does NOT feed downstream stages of the homomorphism.
 4. **Built-in and user-defined lenses share one algebra contract.** The compiler core does NOT import or name any specific lens. `04_infer.dag`'s current `import v4.lens.cost { SymbolicCost }` violates this and needs to be fixed.
 5. **Multi-lens execution is dependency-managed.** Lenses with no interdependencies are coalesced into a shared traversal. Lenses with dependencies (e.g., complexity reads cost) are scheduled by a **lens-dependency DAG**; each stage coalesces all lenses whose inputs are available. No lens may trigger an ad hoc unmanaged re-walk. See Open Q6 for the substrate primitive.
-6. **"By construction" guarantee preserved at the contract layer.** Lens output does not feed the homomorphism and bare compile-core does not consume lens output. **Project-policy wrappers MAY block terminal emit/eval based on lens diagnostics** (the `validate_then_compile`-style contract). Bare `compile(text, input_lang, mode)` is the narrow advanced surface; the wrapper is the everyday entry point.
+6. **"By construction" guarantee — type-enforced at the public terminal.** Lens output does not feed the homomorphism and bare compile-core does not consume lens output. **`validate_then_compile` (or equivalent) is the project's public terminal API**; bare `compile(source, input_lang, mode)` is **explicitly marked as internal / non-terminal** — accessible to advanced consumers (lens framework, build tooling, the compiler itself for self-edit), but NOT the everyday user surface. The distinction is **type-level**, not convention-level: a `Validated<Output>` carrier (or similar) discharged only by the wrapper enforces the gate at the type system, so a bare `compile()` invocation cannot accidentally bypass lens enforcement at terminal emit/eval. Project policy decides the wrapper's lens set; the wrapper-as-terminal pattern is invariant.
 
 **Surface choice (B vs C) is not architecturally load-bearing.** Given commitments 1–6, two implementation surfaces are equivalent:
 - **B-style:** lenses fold inside `compile(text, input_lang, lenses, mode)`.
@@ -661,19 +661,40 @@ Every failure carries source position. No silent drops. No partial outputs.
 
 ## What we have today (relevant substrate)
 
-- `src/v4/std/node.dag` — `Node`, `Edge`, `fold_node`, `NodeFold<R>` algebra carrier. **Foundation in place.**
+> **Verifiability note (per codex review 2026-05-20).** Each row below lists the file path + the substrate carriers it owns. To verify any row independently: `ls src/v4/...` confirms file existence; `head -10 src/v4/<file>.dag` shows the file's status header (each `.dag` file declares its own status per Practice 9's four-line header rule). Bot reviews flagged this as "verify against the v4 tree" — the rows below are accurate as of the last sweep; if a row drifts from main, this paragraph is the explicit pointer for how to re-verify.
+
+- `src/v4/std/node.dag` — `Node`, `Edge`, `fold_node`, `NodeFold<R>` algebra carrier, plus `Path` / `Edit` / `Diff` vocabulary (PR #3162). **Foundation in place.**
 - `src/v4/std/algebra.dag` — algebra structures (Magma, Monoid, …) — the inhabitance authority.
 - `src/v4/std/cardinality.dag` — inhabitance + bounded-natural refinement + descent evidence.
 - `src/v4/std/diagnostic.dag` — `Diagnostic` + `Locus`, fail-closed reporting.
-- `src/v4/std/refinement.dag` — base-type + fail-closed validation substrate (T-25-core, recently landed).
+- `src/v4/std/refinement.dag` — base-type + fail-closed validation substrate (T-25-core, landed via #3354 — header status: "T-25-core modeled").
 - `src/v4/std/verification.dag` — `TestClaim` substrate (eval's downstream consumer).
 - `src/v4/extdeps/languages/dag.dag` + `rust.dag` + `python.dag` + `go.dag` + `cpp.dag` + `typescript.dag` — Wave-1 LanguageModels with Practice-8 fact-bundles.
-- `src/v4/compiler/01_tokenize.dag`, `02_parse.dag`, `03_normalize.dag`, `03_resolve.dag` — pipeline scaffolds; T-8 implementation in flight.
-- `src/v4/compiler/04_infer.dag`, `05_emit.dag`, `05_eval.dag`, `00_compile.dag` — scaffolds with correct interface shape, **bodies not implemented**.
+- `src/v4/compiler/01_tokenize.dag`, `02_parse.dag`, `03_normalize.dag`, `03_resolve.dag` — pipeline scaffolds; T-8 implementation in flight (consolidated as PR #3436).
+- `src/v4/compiler/04_infer.dag`, `05_emit.dag`, `05_eval.dag`, `00_compile.dag` — scaffolds with **divergent interface shape** — see "Scaffold-vs-design divergence" below — and bodies not implemented.
+- `src/v4/lens/application.dag` — `apply_lens` + `apply_diff` operations (scaffold; T-23).
+- `src/v4/lens/affected_set.dag` — incremental-rebuild + lens-frontier primitive (T-21).
 
 Falsification probes (not load-bearing for the initial homomorphism):
 - `src/v4/extdeps/languages/` — verilog, llvm_ir, machine_code, ptx, lean (probes the 5-behavior thesis across heterogeneous domains).
 - `src/v4/extdeps/formats/spice.dag` — physics simulation probe (no control flow).
+
+## Scaffold-vs-design divergence — implementation migration plan
+
+The current compiler scaffolds in `src/v4/compiler/` were authored before this design doc; some of their declared interfaces **predate the ratifications in this doc and are stale-pending-reconcile**. Implementation workers should treat these scaffolds as **shape placeholders**, not as the contracts to implement against. The migration is named below; landing it is part of T-9 / T-10 / T-22 implementation work.
+
+| Scaffold | Current declared signature | This doc's ratified signature | Migration |
+|---|---|---|---|
+| `00_compile.dag` | `fn compile(source: Source, target: TargetModel) -> Outcome<TargetSource>` | `compile(source: CoreNode, input_lang: LanguageModel, mode: CompileMode) -> Outcome<Output>` where `CompileMode = TranslateTo(target_lang) \| Eval(host_interp)` | (a) Rename `Source` → use `CoreNode` from `std/node.dag` directly. (b) Add `input_lang` param. (c) Replace `target: TargetModel` with `mode: CompileMode` (sum type). (d) `Output` is mode-dependent. (e) Public terminal is `validate_then_compile` (lens gate); bare `compile` is internal/advanced surface per P3 commitment 6. |
+| `04_infer.dag` | `import v4.lens.cost { SymbolicCost }` (line 13) | No lens import in compiler core (P3 commitment 4) | Remove the `v4.lens.cost` import. Cost is a lens that runs over `InferredTree` downstream — NOT a fact baked into infer's carrier. Practice 10 enforcement: a specific lens name imported in compiler core is a Row-3-direction violation. |
+| `04_infer.dag` | Produces `InferredTree { typeshape, inhabitance witness, ... }` without explicit canonical-grounding invariant | Must produce *exactly one* canonical grounding per Node + the full P6 semantic dependency graph (`BindsTo`, `TypeDependsOn`, `DataDependsOn`, `EffectDependsOn`, `ResourceDependsOn`, `ModuleDependsOn`) | Add the canonical-grounding invariant to ground's contract. Surface ambiguity as a diagnostic in ground; translate never receives ambiguous source. |
+| `05_emit.dag` | Single-step "emit" | Two steps under P7: optional `LawfulRewriteWitness` (target-declared) → exact coercion fold → serialize via grammar | When implementing emit, factor the two steps. Direct exact-preservation coercion is the default; `LawfulRewriteWitness` is the named extension point for structure-changing lowerings. |
+| `05_eval.dag` | Standalone "primary execution path" with TestClaim runner | `eval(host_model)` — structurally `translate-to-host` per P2; differs from translate only in the terminal action (execute, not serialize) | Share the homomorphism mechanic with translate. Eval-specific machinery is only the host-interpretation algebra + the terminal `execute` action. |
+| `00_compile.dag` `Source` carrier | Implicit text-typed source | `CoreNode` (data) — text is one of several ingest paths per the text/data separation | Replace `Source` carrier with explicit `CoreNode`. Text→CoreNode is the separable `ingest_text` operation, not part of compile-core's signature. |
+
+**This is not a STOP on T-9 / T-10 / T-22 implementation** — workers implementing those tasks should land the design-ratified interface, not preserve the scaffold's stale signature. The scaffolds' purpose was to lock down stage existence + dependency order; the *exact signatures* in those scaffolds predate this doc's ratifications and are expected to be migrated.
+
+If a worker encounters a deeper scaffold-vs-design contradiction not catalogued above, **escalate** — don't preserve the scaffold against this doc, and don't break the scaffold without recording the migration.
 
 ---
 
