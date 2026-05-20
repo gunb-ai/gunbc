@@ -50,19 +50,19 @@ type EditFrontierEdge {
 }
 
 
-// 🟡 coproduct dissolution — DECISIONS.md #3153-subsumed
+// 🟡 coproduct dissolution — #3153-subsumed
 // RULING-1: 🟡 needs-more-work — scaffold carrier.
 type ExclusionProof
   = EmptyDimensionDelta { subject: Path }
 
 
-// 🟡 coproduct dissolution — DECISIONS.md #3153-subsumed
+// 🟡 coproduct dissolution — #3153-subsumed
 // RULING-1: 🟡 needs-more-work — scaffold carrier.
 type PropagationExclusionProof
   = DimensionNotRead { producer: Path, changed_dimension: AffectedDimension }
 
 
-// 🟡 coproduct dissolution — DECISIONS.md #3153-subsumed
+// 🟡 coproduct dissolution — #3153-subsumed
 // RULING-1: 🟡 needs-more-work — scaffold carrier.
 type BoundaryExclusionProof
   = UnchangedPureBoundary { content_hash: Hash }
@@ -75,22 +75,25 @@ type BoundaryExclusion {
 }
 
 
-// 🟡 coproduct dissolution — DECISIONS.md #3153-subsumed
+// 🟡 coproduct dissolution — #3153-subsumed
 // RULING-1: 🟡 needs-more-work — scaffold carrier.
+// 🟡 coproduct dissolution — #3153-subsumed.
 type WholeDagFailClosedEvidence
   = WholeDagReason { reason: Symbol }
   | WholeDagDiagnostic { diagnostic: Diagnostic }
 
 
-// 🟡 coproduct dissolution — DECISIONS.md #3153-subsumed
+// 🟡 coproduct dissolution — #3153-subsumed
 // RULING-1: 🟡 needs-more-work — scaffold carrier.
+// 🟡 coproduct dissolution — #3153-subsumed.
 type FrontierDecision
   = Rerun
   | Excluded { first: PropagationExclusionProof, rest: List<PropagationExclusionProof> }
 
 
-// 🟢 coproduct dissolution — DECISIONS.md #3153-subsumed; IRT-1 whole/changed-subgraph gate.
+// 🟢 coproduct dissolution — #3153-subsumed; IRT-1 whole/changed-subgraph gate.
 // RULING-1: 🟢 pretty-much-done — frontier carrier.
+// 🟢 coproduct dissolution — #3153-subsumed; IRT-1 whole/changed-subgraph gate.
 type ReExecFrontier
   = ChangedSubgraphFrontier {
       boundary_exclusions: List<BoundaryExclusion>,
@@ -99,39 +102,44 @@ type ReExecFrontier
   | WholeDagFailClosed { evidence: WholeDagFailClosedEvidence }
 
 
-// 🟡 coproduct dissolution — DECISIONS.md #3153-subsumed; dissolves into B1 content_hash plus B-5 purity/effect receipts.
+// 🟡 coproduct dissolution — #3153-subsumed; dissolves into B1 content_hash plus B-5 purity/effect receipts.
 // RULING-1: 🟡 needs-more-work — boundary read.
+// 🟡 coproduct dissolution — #3153-subsumed; dissolves into B1 content_hash plus B-5 purity/effect receipts.
 type HashReceipt
   = HashUnchangedPure { content_hash: Hash }
   | HashChanged
   | HashUnknown { reason: Symbol }
 
 
-// 🟡 coproduct dissolution — DECISIONS.md #3153-subsumed; dissolves when T-21 .dag TestClaims prove boundary cases.
+// 🟡 coproduct dissolution — #3153-subsumed; dissolves when T-21 .dag TestClaims prove boundary cases.
 // RULING-1: 🟡 needs-more-work — boundary read.
+// 🟡 coproduct dissolution — #3153-subsumed; dissolves when T-21 .dag TestClaims prove boundary cases.
 type BoundaryReceipt
   = BoundaryPruned { proof: BoundaryExclusionProof }
   | BoundaryExpands
   | BoundaryUnknown { reason: Symbol }
 
 
-// 🟡 coproduct dissolution — DECISIONS.md #3153-subsumed; dissolves when per-edit dimension deltas are generated.
+// 🟡 coproduct dissolution — #3153-subsumed; dissolves when per-edit dimension deltas are generated.
 // RULING-1: 🟡 needs-more-work — boundary read.
+// 🟡 coproduct dissolution — #3153-subsumed; dissolves when per-edit dimension deltas are generated.
 type ChangedDimensionReceipt
   = ChangedDimensions { first: AffectedDimension, rest: List<AffectedDimension> }
   | ChangedDimensionsUnknown { reason: Symbol }
 
 
-// 🟡 coproduct dissolution — DECISIONS.md #3153-subsumed; dissolves when B-4/B-5 edge receipts are generated.
+// 🟡 coproduct dissolution — #3153-subsumed; dissolves when B-4/B-5 edge receipts are generated.
 // RULING-1: 🟡 needs-more-work — propagation read.
+// 🟡 coproduct dissolution — #3153-subsumed; dissolves when B-4/B-5 edge receipts are generated.
 type PropagationReceipt
   = Propagates
   | DoesNotPropagate { proof: PropagationExclusionProof }
   | PropagationUnknown { reason: Symbol }
 
 
-// 🟡 coproduct dissolution — DECISIONS.md #3153-subsumed; proves transitive frontier or fails closed.
+// 🟡 coproduct dissolution — #3153-subsumed; proves transitive frontier or fails closed.
 // RULING-1: 🟡 needs-more-work — frontier read.
+// 🟡 coproduct dissolution — #3153-subsumed; proves transitive frontier or fails closed.
 type FrontierReceipt
   = FrontierProduced { edges: List<FrontierEdge> }
   | FrontierUnknown { reason: Symbol }
