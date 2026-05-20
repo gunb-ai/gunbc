@@ -48,6 +48,7 @@ import v2_5.std.stage_types {
   SeamNormalizedItemNode,
   SeamResolvedEdge,
   SeamResolvedItem,
+  SeamResolvedItemForm,
   SeamResolvedModule,
   SeamResolvedModuleNode,
   SeamResolvedNode,
@@ -205,18 +206,6 @@ fn normalize_seam_resolved_form(form: SeamResolvedItemForm) -> Outcome<SeamNorma
 }
 
 
-fn seam_normalized_type_form(type_form: NormalizedTypeForm) -> SeamNormalizedItemForm {
-  SeamItemType { type_form: type_form }
-}
-
-
-fn seam_normalized_computation_form(
-  computation_form: NormalizedComputationForm
-) -> SeamNormalizedItemForm {
-  SeamItemComputation { computation_form: computation_form }
-}
-
-
 fn normalized_type_from_seam_node(n: SeamResolvedNode, span: SourceSpan) -> Outcome<NormalizedTypeForm> {
   match n {
     SeamResolvedItemNode { item: item } =>
@@ -313,29 +302,15 @@ fn normalize_resolved_computation_form(
 
 
 fn normalize_seam_item(item: SeamResolvedItem) -> Outcome<SeamNormalizedItem> {
-  match item.form {
-    SeamItemType { type_form: tf } =>
-      match normalize_resolved_type_form(form: tf) {
-        Produced { value: ntf } =>
-          Produced {
-            value: SeamNormalizedItem {
-              name: item.name,
-              form: seam_normalized_type_form(type_form: ntf)
-            }
-          }
-        Rejected { diagnostic: d } => Rejected { diagnostic: d }
+  match normalize_seam_resolved_form(form: item.form) {
+    Produced { value: nform } =>
+      Produced {
+        value: SeamNormalizedItem {
+          name: item.name,
+          form: nform
+        }
       }
-    SeamItemComputation { computation_form: cf } =>
-      match normalize_resolved_computation_form(form: cf) {
-        Produced { value: ncf } =>
-          Produced {
-            value: SeamNormalizedItem {
-              name: item.name,
-              form: seam_normalized_computation_form(computation_form: ncf)
-            }
-          }
-        Rejected { diagnostic: d } => Rejected { diagnostic: d }
-      }
+    Rejected { diagnostic: d } => Rejected { diagnostic: d }
   }
 }
 
