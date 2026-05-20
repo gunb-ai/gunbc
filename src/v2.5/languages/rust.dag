@@ -7,7 +7,8 @@
 // Owns:  rust_language_id, rust_spec, rust_binop_rules, rust_reserved_words,
 //        rust_import_rules, rust_coercion_rules.
 // Consumes: v2_5.std.language_spec — the carrier type definitions.
-//           v2_5.std.node (Symbol) — Tier 0 (cool-bee-832).
+//           v2_5.std.syntax (BinOp + arms) — Tier 0/syntax (PR #3418 reconciled).
+//           v2_5.std.node (Symbol) — Tier 0 (cool-bee-832, PR #3422).
 // Status: DESIGN SCAFFOLD. Tier 0/1 substrates not yet authored; the dag
 //         compiler will not exercise this file until v2_5.std.language_spec
 //         + v2_5.std.node land. The data shape is the substantive content.

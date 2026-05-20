@@ -4,7 +4,7 @@
 //        the post-dissolution RenderTarget shape).
 // Owns:  LanguageSpec; LanguageIdentity; IdentifierRules + NamingCase + ReservedEscape;
 //        ItemSyntax + ParamTypeForm + BlockSyntax;
-//        ExpressionSyntax + BinOp + BinOpRule + IfForm;
+//        ExpressionSyntax + BinOpRule + IfForm;
 //        PatternSyntax + BindForm + VariantPayloadForm;
 //        StringInterpSyntax + InterpStyle + EscapePair;
 //        TypeRenderRules + NamedTypeForm + OptionalTypeForm + FunctionTypeForm +
@@ -13,7 +13,13 @@
 //        VisibilityRules; TestConventions;
 //        ImportRules + ImportTrigger + ImportRule;
 //        CoercionRule + CoercionSource + CoercionTarget + CoercionRender.
-// Consumes: v2_5.std.node (Symbol) — Tier 0 (cool-bee-832).
+// Consumes: v2_5.std.node (Symbol) — Tier 0 (cool-bee-832, PR #3422);
+//           v2_5.std.syntax (BinOp) — Tier 0/syntax (PR #3418 reconciled).
+//           Operator identity is owned by v2_5.std.syntax (universal across
+//           targets); LanguageSpec carries only the per-target REALIZATION of
+//           that identity (symbol string + precedence). This identity/realization
+//           split addresses codex #3 (PR #3429 review #15165) — only actionable
+//           after PR #3418 published v2_5.std.syntax.
 // Status: DESIGN SCAFFOLD. The carrier types are the substantive content; per-target
 //         instances live in src/v2.5/languages/<target>.dag (data declarations); the
 //         emit framework that projects this carrier lives in src/v2.5/05_emit.dag.
@@ -33,6 +39,7 @@ module v2_5.std.language_spec
 
 
 import v2_5.std.node { Symbol }
+import v2_5.std.syntax { BinOp }
 
 
 // =============================================================================
@@ -166,25 +173,14 @@ type ExpressionSyntax {
   null_literal: String
 }
 
-// 🟢 coproduct dissolution — binary operator identity as a closed typed enum
-// instead of a String key. v2's `binop_symbol(op, target)` did string-keyed
-// per-target lookups; here the lookup is typed.
-type BinOp
-  = Add
-  | Sub
-  | Mul
-  | Div
-  | Mod
-  | Eq
-  | Neq
-  | Lt
-  | Lte
-  | Gt
-  | Gte
-  | And
-  | Or
-  | StringConcat
-  | NullCoalesce
+// BinOp is OWNED by v2_5.std.syntax (universal operator identity, target-
+// independent) — imported above. Codex #3 disposition (review #15165): identity
+// lives in syntax, per-target REALIZATION (symbol + precedence) lives in
+// BinOpRule here. The canonical BinOp arms are
+// Add | Sub | Mul | Div | Mod | Eq | Ne | Lt | Gt | Le | Ge | And | Or
+// | NullCoalesce (note: Ne not Neq; Le/Ge not Lte/Gte; no StringConcat — the
+// first-draft local declaration that diverged from the canonical set has been
+// removed in favour of the syntax import).
 
 type BinOpRule {
   op: BinOp
