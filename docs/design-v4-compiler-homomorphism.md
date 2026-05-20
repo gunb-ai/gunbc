@@ -1166,7 +1166,7 @@ If a worker encounters a deeper scaffold-vs-design contradiction not catalogued 
 
 ### Ratified Q0 — Lens architecture (2026-05-20)
 
-**Resolved.** Lenses are a side-channel over `InferredTree`, sharing the `fold_node` primitive, with multi-lens dependency-management and a project-mandatory wrapper preserving the THESIS "by construction" guarantee. Six commitments per P3 above; B-style vs C-style surface is a non-load-bearing implementation choice. The new substrate question this raises is **Open Q6 — multi-lens dependency management** (below).
+**Resolved.** Lenses are a side-channel over `InferredTree`, sharing the `fold_node` primitive, with multi-lens dependency-management and a project-mandatory wrapper preserving the THESIS "by construction" guarantee. Six commitments per P3 above; B-style vs C-style surface is a non-load-bearing implementation choice. The new substrate question this raises is **Ratified Q6 — multi-lens execution derives from `fold_node` with a composed-lens-algebra** (below).
 
 ### Ratified Q1 — `HostModel` is `Q1a + factored ModelCore` (2026-05-20)
 
@@ -1271,7 +1271,7 @@ Clean success is `Accepted(value, None)`. No `Produced` vs `Accepted` split; no 
 
 ### Ratified Q12 — Grammar bidirectional law is target-parse-after-serialize (2026-05-20)
 
-**Resolved Q12b** as the default. Grammar law: `parse_target(serialize_target(target_node)) == target_node`. Serialize is canonicalizing (picks one canonical form for whitespace/comments/optional syntax); parse recovers the substrate Node from any valid concrete representation. Already in the primitive set table (line 636).
+**Resolved Q12b** as the default. Grammar law: `parse_target(serialize_target(target_node)) == target_node`. Serialize is canonicalizing (picks one canonical form for whitespace/comments/optional syntax); parse recovers the substrate Node from any valid concrete representation. Already in the primitive set table (see the `Grammar-as-bidirectional-data` row under "The primitive set — the things the compiler IS").
 
 **Q12c (source-text-faithful round-tripping)** is **opt-in** for round-trip code-mod tooling that needs trivia preservation. NOT the compiler default; lives in tooling that wants it. Q12a (full bidirectionality both ways) is rejected — parsing is many-to-one for most languages.
 
