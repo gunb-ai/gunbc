@@ -1,0 +1,29 @@
+// src/v2.5/std/syntax.dag
+// Scope: v2.5 shared syntactic-spec types — universal operator identity.
+// Owns: BinaryOperator, UnaryOperator.
+// Consumes: none.
+// Status: v2.5 std draft.
+
+module v2_5.std.syntax
+
+// 🟢 coproduct dissolution
+type BinaryOperator
+  = BinAdd
+  | BinSub
+  | BinMul
+  | BinDiv
+  | BinMod
+  | BinEq
+  | BinNe
+  | BinLt
+  | BinGt
+  | BinLe
+  | BinGe
+  | BinAnd
+  | BinOr
+  | BinNullCoalesce
+
+// 🟢 coproduct dissolution
+type UnaryOperator
+  = UnaryNot
+  | UnaryNeg
