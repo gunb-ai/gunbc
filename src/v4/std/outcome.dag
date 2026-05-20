@@ -14,13 +14,11 @@ import v4.std.diagnostic {
   Accepted,
   Diagnostic,
   ExternalContractUnknown,
-  NonEmptyDiagnostics,
   Outcome,
   PortLocus,
   Produced,
   Rejected,
-  RejectedSingular,
-  Singleton,
+  RejectedAccumulating,
   Unavailable
 }
 import v4.std.node { Edge, Node }
@@ -91,29 +89,23 @@ fn traverse_node_not_realized_diagnostic() -> Diagnostic {
 
 
 fn traverse_node<R>(n: Node, algebra: NodeOutcomeFold<R>) -> Outcome<R> {
-  Rejected {
-    diagnostics: Singleton { diagnostic: traverse_node_not_realized_diagnostic() }
-  }
+  Rejected { diagnostic: traverse_node_not_realized_diagnostic() }
 }
 
 
 fn sequence_node<R>(nodes: List<Node>, algebra: NodeOutcomeFold<R>) -> Outcome<List<R>> {
-  Rejected {
-    diagnostics: Singleton { diagnostic: traverse_node_not_realized_diagnostic() }
-  }
+  Rejected { diagnostic: traverse_node_not_realized_diagnostic() }
 }
 
 
 fn map_node_outcome<T, U>(o: Outcome<T>, f: fn(T) -> Outcome<U>) -> Outcome<U> {
   match o {
-    Rejected { diagnostics: d } => Rejected { diagnostics: d }
-    RejectedSingular { diagnostic: d } =>
-      Rejected { diagnostics: Singleton { diagnostic: d } }
+    Rejected { diagnostic: d } => Rejected { diagnostic: d }
+    RejectedAccumulating { diagnostics: d } => RejectedAccumulating { diagnostics: d }
     Produced { value: v } => f(v)
     Accepted { value: v, diagnostics: ds } => match f(v) {
-      Rejected { diagnostics: d } => Rejected { diagnostics: d }
-      RejectedSingular { diagnostic: d } =>
-        Rejected { diagnostics: Singleton { diagnostic: d } }
+      Rejected { diagnostic: d } => Rejected { diagnostic: d }
+      RejectedAccumulating { diagnostics: d } => RejectedAccumulating { diagnostics: d }
       Produced { value: u } => Accepted { value: u, diagnostics: ds }
       Accepted { value: u, diagnostics: ds2 } =>
         Accepted {
@@ -129,14 +121,12 @@ fn traverse_outcome<T, U>(xs: List<T>, f: fn(T) -> Outcome<U>) -> Outcome<List<U
   match xs {
     Empty => Accepted { value: Empty, diagnostics: Empty }
     Cons { head: h, tail: t } => match f(h) {
-      Rejected { diagnostics: d } => Rejected { diagnostics: d }
-      RejectedSingular { diagnostic: d } =>
-        Rejected { diagnostics: Singleton { diagnostic: d } }
+      Rejected { diagnostic: d } => Rejected { diagnostic: d }
+      RejectedAccumulating { diagnostics: d } => RejectedAccumulating { diagnostics: d }
       Produced { value: u } =>
         match traverse_outcome(xs: t, f: f) {
-          Rejected { diagnostics: d } => Rejected { diagnostics: d }
-          RejectedSingular { diagnostic: d } =>
-            Rejected { diagnostics: Singleton { diagnostic: d } }
+          Rejected { diagnostic: d } => Rejected { diagnostic: d }
+          RejectedAccumulating { diagnostics: d } => RejectedAccumulating { diagnostics: d }
           Produced { value: rest } =>
             Accepted { value: Cons { head: u, tail: rest }, diagnostics: Empty }
           Accepted { value: rest, diagnostics: ds } =>
@@ -144,9 +134,8 @@ fn traverse_outcome<T, U>(xs: List<T>, f: fn(T) -> Outcome<U>) -> Outcome<List<U
         }
       Accepted { value: u, diagnostics: ds } =>
         match traverse_outcome(xs: t, f: f) {
-          Rejected { diagnostics: d } => Rejected { diagnostics: d }
-          RejectedSingular { diagnostic: d } =>
-            Rejected { diagnostics: Singleton { diagnostic: d } }
+          Rejected { diagnostic: d } => Rejected { diagnostic: d }
+          RejectedAccumulating { diagnostics: d } => RejectedAccumulating { diagnostics: d }
           Produced { value: rest } =>
             Accepted { value: Cons { head: u, tail: rest }, diagnostics: ds }
           Accepted { value: rest, diagnostics: ds2 } =>
@@ -162,9 +151,8 @@ fn traverse_outcome<T, U>(xs: List<T>, f: fn(T) -> Outcome<U>) -> Outcome<List<U
 
 fn map_outcome<T, U>(o: Outcome<T>, f: fn(T) -> U) -> Outcome<U> {
   match o {
-    Rejected { diagnostics: d } => Rejected { diagnostics: d }
-    RejectedSingular { diagnostic: d } =>
-      Rejected { diagnostics: Singleton { diagnostic: d } }
+    Rejected { diagnostic: d } => Rejected { diagnostic: d }
+    RejectedAccumulating { diagnostics: d } => RejectedAccumulating { diagnostics: d }
     Produced { value: v } => Accepted { value: f(v), diagnostics: Empty }
     Accepted { value: v, diagnostics: ds } => Accepted { value: f(v), diagnostics: ds }
   }
@@ -173,14 +161,12 @@ fn map_outcome<T, U>(o: Outcome<T>, f: fn(T) -> U) -> Outcome<U> {
 
 fn bind_outcome<T, U>(o: Outcome<T>, f: fn(T) -> Outcome<U>) -> Outcome<U> {
   match o {
-    Rejected { diagnostics: d } => Rejected { diagnostics: d }
-    RejectedSingular { diagnostic: d } =>
-      Rejected { diagnostics: Singleton { diagnostic: d } }
+    Rejected { diagnostic: d } => Rejected { diagnostic: d }
+    RejectedAccumulating { diagnostics: d } => RejectedAccumulating { diagnostics: d }
     Produced { value: v } => f(v)
     Accepted { value: v, diagnostics: ds } => match f(v) {
-      Rejected { diagnostics: d } => Rejected { diagnostics: d }
-      RejectedSingular { diagnostic: d } =>
-        Rejected { diagnostics: Singleton { diagnostic: d } }
+      Rejected { diagnostic: d } => Rejected { diagnostic: d }
+      RejectedAccumulating { diagnostics: d } => RejectedAccumulating { diagnostics: d }
       Produced { value: u } => Accepted { value: u, diagnostics: ds }
       Accepted { value: u, diagnostics: ds2 } =>
         Accepted {

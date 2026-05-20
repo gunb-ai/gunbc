@@ -38,10 +38,9 @@ type NonEmptyDiagnostics
   = Singleton { diagnostic: Diagnostic }
   | Cons { head: Diagnostic, tail: List<Diagnostic> }
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
-// Reconciliation: Accepted{value, diagnostics} is canonical; Produced{value} ≡ Accepted with empty diagnostics.
-// Rejected{diagnostics: NonEmptyDiagnostics} is canonical; RejectedSingular{diagnostic} is legacy single-diagnostic terminal.
+// Reconciliation: Accepted / RejectedAccumulating are new canonical terminals; Produced / Rejected are legacy unchanged.
 type Outcome<T>
-  = Accepted { value: T, diagnostics: List<Diagnostic> }
-  | Rejected { diagnostics: NonEmptyDiagnostics }
-  | Produced { value: T }
-  | RejectedSingular { diagnostic: Diagnostic }
+  = Produced { value: T }
+  | Rejected { diagnostic: Diagnostic }
+  | Accepted { value: T, diagnostics: List<Diagnostic> }
+  | RejectedAccumulating { diagnostics: NonEmptyDiagnostics }

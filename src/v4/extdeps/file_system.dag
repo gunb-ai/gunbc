@@ -15,7 +15,6 @@ import v4.std.diagnostic {
   Outcome,
   PortLocus,
   Rejected,
-  Singleton,
   Unavailable
 }
 import v4.std.machine { Byte }
@@ -170,9 +169,7 @@ fn file_read(
   ops: FileSystemOperations
 ) -> Outcome<FileContent> {
   Rejected {
-    diagnostics: Singleton {
-      diagnostic: file_effect_not_wired_diagnostic(reason: file_read_effect_not_wired)
-    }
+    diagnostic: file_effect_not_wired_diagnostic(reason: file_read_effect_not_wired)
   }
 }
 
@@ -183,8 +180,6 @@ fn file_write(
   ops: FileSystemOperations
 ) -> Outcome<FileWriteWitness> {
   Rejected {
-    diagnostics: Singleton {
-      diagnostic: file_effect_not_wired_diagnostic(reason: file_write_effect_not_wired)
-    }
+    diagnostic: file_effect_not_wired_diagnostic(reason: file_write_effect_not_wired)
   }
 }

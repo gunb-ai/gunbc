@@ -19,7 +19,6 @@ import v4.std.diagnostic {
   Outcome,
   PortLocus,
   Rejected,
-  Singleton,
   Unavailable
 }
 import v4.std.node { Node, Symbol }
@@ -64,10 +63,8 @@ fn infer_coercion_fold_not_realized_diagnostic(at: Locus) -> Diagnostic {
 
 fn infer(tree: ResolvedTree) -> Outcome<InferredTree> {
   Rejected {
-    diagnostics: Singleton {
-      diagnostic: infer_coercion_fold_not_realized_diagnostic(
-        at: PortLocus { port: infer_stage_locus_port }
-      )
-    }
+    diagnostic: infer_coercion_fold_not_realized_diagnostic(
+      at: PortLocus { port: infer_stage_locus_port }
+    )
   }
 }
