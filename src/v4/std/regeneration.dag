@@ -65,6 +65,18 @@ type ArtifactKind
   | WitnessBundle
 
 
+// RULING-1: 🟡 feature:projection-identity-ref consumer:v4.std.regeneration::Projection dissolve-on: AffectedSet.projections carries Projection rows or ProjectionRef substrate (bounds: AffectedSet.projections only; owner: Wave-2 P8 substrate PR after #3439).
+type ProjectionIdentityRef = Symbol
+
+
+// RULING-1: 🟡 feature:recompute-cache-key consumer:v4.std.regeneration::RecomputePlan dissolve-on: CacheKey carrier replaces Symbol in RecomputePlan.cached (bounds: RecomputePlan.cached only; owner: Wave-2 P8 substrate PR after #3439).
+type CacheKey = Symbol
+
+
+// RULING-1: 🟡 feature:recompute-invalidation-key consumer:v4.std.regeneration::RecomputePlan dissolve-on: InvalidationKey carrier replaces Symbol in RecomputePlan.invalidated (bounds: RecomputePlan.invalidated only; owner: Wave-2 P8 substrate PR after #3439).
+type InvalidationKey = Symbol
+
+
 // RULING-1: 🟢 pretty-much-done — invalidation evidence carriers for AffectedSet.
 type InvalidationReason
   = DirectChange { change: Change }
@@ -78,18 +90,6 @@ type ArtifactRef {
   kind: ArtifactKind
   identity: Symbol
 }
-
-
-// RULING-1: 🟡 feature:projection-identity-ref consumer:v4.std.regeneration::Projection dissolve-on: AffectedSet.projections carries Projection rows or ProjectionRef substrate (bounds: AffectedSet.projections only; owner: Wave-2 P8 substrate PR after #3439).
-type ProjectionIdentityRef = Symbol
-
-
-// RULING-1: 🟡 feature:recompute-cache-key consumer:v4.std.regeneration::RecomputePlan dissolve-on: CacheKey carrier replaces Symbol in RecomputePlan.cached (bounds: RecomputePlan.cached only; owner: Wave-2 P8 substrate PR after #3439).
-type CacheKey = Symbol
-
-
-// RULING-1: 🟡 feature:recompute-invalidation-key consumer:v4.std.regeneration::RecomputePlan dissolve-on: InvalidationKey carrier replaces Symbol in RecomputePlan.invalidated (bounds: RecomputePlan.invalidated only; owner: Wave-2 P8 substrate PR after #3439).
-type InvalidationKey = Symbol
 
 
 type AffectedSet {
