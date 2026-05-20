@@ -1,7 +1,7 @@
 // src/v4/std/dependency.dag
 // Scope: P6 dependency graph substrate — domains, edges, witnesses, SCC, topological plan.
-// Owns: DependencySubject, ArtifactDependencyEndpoint, Program/TargetPlan/ArtifactDependencyCause (stage-contract projection), Program/TargetPlan/ArtifactSchedulingReason (edge evidence), scheduling/containment edges, ClosedWorldDependencyWitness, IndependenceAttempt, IndependenceClaim, DependencyDiagnostic, TopologicalPlan.
-// Consumes: v4.std.collection, v4.std.node.
+// Owns: DependencySubject, ArtifactDependencyEndpoint, Program/TargetPlan/ArtifactSchedulingReason (sole dependency-cause axis), scheduling/containment edges, ClosedWorldDependencyWitness, IndependenceAttempt, IndependenceClaim, DependencyDiagnostic, TopologicalPlan.
+// Consumes: v4.std.collection, v4.std.node, v4.std.witness.
 // Status: Wave-1 Worker A strict substrate.
 
 
@@ -9,7 +9,8 @@ module v4.std.dependency
 
 
 import v4.std.collection { List }
-import v4.std.node { Path, Symbol }
+import v4.std.node { Hash, Path, Symbol }
+import v4.std.witness { Witness }
 
 
 // 🟢 coproduct dissolution
@@ -25,58 +26,49 @@ type DependencySubject
   | ArtifactEndpoint { endpoint: ArtifactDependencyEndpoint }
 
 
-// 🟢 coproduct dissolution — stage-contract cause tags (no witness; not edge evidence).
-type ProgramDependencyCause
-  = BindsTo
-  | TypeDependsOn
-  | DataDependsOn
-  | EffectDependsOn
-  | ResourceDependsOn
-  | ModuleDependsOn
+// 🟢 coproduct dissolution
+type ProgramSchedulingWitness
+  = ContractSummary
+  | EdgeEvidence { ref: Symbol }
 
 
-// 🟢 coproduct dissolution — scheduling-edge evidence (witness required).
+// 🟢 coproduct dissolution — sole program dependency-cause authority (contract vs edge witness).
 type ProgramSchedulingReason
-  = BindsTo { binding_witness: Symbol }
-  | TypeDependsOn { type_witness: Symbol }
-  | DataDependsOn { dataflow_witness: Symbol }
-  | EffectDependsOn { effect_order_witness: Symbol }
-  | ResourceDependsOn { resource_conflict_witness: Symbol }
-  | ModuleDependsOn { module_import_witness: Symbol }
+  = BindsTo { witness: ProgramSchedulingWitness }
+  | TypeDependsOn { witness: ProgramSchedulingWitness }
+  | DataDependsOn { witness: ProgramSchedulingWitness }
+  | EffectDependsOn { witness: ProgramSchedulingWitness }
+  | ResourceDependsOn { witness: ProgramSchedulingWitness }
+  | ModuleDependsOn { witness: ProgramSchedulingWitness }
 
 
 // 🟢 coproduct dissolution
-type TargetPlanDependencyCause
-  = PlacementConstraint
-  | TransferDependsOn
-  | BarrierBefore
+type TargetPlanSchedulingWitness
+  = ContractSummary
+  | EdgeEvidence { ref: Symbol }
 
 
 // 🟢 coproduct dissolution
 type TargetPlanSchedulingReason
-  = PlacementConstraint { placement_witness: Symbol }
-  | TransferDependsOn { transfer_witness: Symbol }
-  | BarrierBefore { barrier_witness: Symbol }
+  = PlacementConstraint { witness: TargetPlanSchedulingWitness }
+  | TransferDependsOn { witness: TargetPlanSchedulingWitness }
+  | BarrierBefore { witness: TargetPlanSchedulingWitness }
 
 
 // 🟢 coproduct dissolution
-type ArtifactDependencyCause
-  = ModelDependsOn
-  | ProjectionDependsOn
-  | GeneratedFrom
-  | VerifiedBy
-  | BootstrapDependsOn
-  | PromotionDependsOn
+type ArtifactSchedulingWitness
+  = ContractSummary
+  | EdgeEvidence { ref: Symbol }
 
 
 // 🟢 coproduct dissolution
 type ArtifactSchedulingReason
-  = ModelDependsOn { model_witness: Symbol }
-  | ProjectionDependsOn { projection_witness: Symbol }
-  | GeneratedFrom { provenance_witness: Symbol }
-  | VerifiedBy { verifier_witness: Symbol }
-  | BootstrapDependsOn { stage_witness: Symbol }
-  | PromotionDependsOn { promotion_witness: Symbol }
+  = ModelDependsOn { witness: ArtifactSchedulingWitness }
+  | ProjectionDependsOn { witness: ArtifactSchedulingWitness }
+  | GeneratedFrom { witness: ArtifactSchedulingWitness }
+  | VerifiedBy { witness: ArtifactSchedulingWitness }
+  | BootstrapDependsOn { witness: ArtifactSchedulingWitness }
+  | PromotionDependsOn { witness: ArtifactSchedulingWitness }
 
 
 type ProgramSchedulingEdge {
@@ -125,14 +117,51 @@ type DependencyGraph {
 }
 
 
-type ProgramSemanticFactsComplete {}
-type EffectFactsComplete {}
-type ResourceFactsComplete {}
-type PlacementFactsComplete {}
-type TransferFactsComplete {}
-type BarrierFactsComplete {}
-type ArtifactGraphFactsComplete {}
-type ArtifactProvenanceFactsComplete {}
+type DependencyCompletenessReceipt {
+  region: Symbol
+  graph_revision: Hash
+  checker: Symbol
+}
+
+
+type ProgramSemanticFactsComplete {
+  receipt: DependencyCompletenessReceipt
+}
+
+
+type EffectFactsComplete {
+  receipt: DependencyCompletenessReceipt
+}
+
+
+type ResourceFactsComplete {
+  receipt: DependencyCompletenessReceipt
+}
+
+
+type PlacementFactsComplete {
+  receipt: DependencyCompletenessReceipt
+}
+
+
+type TransferFactsComplete {
+  receipt: DependencyCompletenessReceipt
+}
+
+
+type BarrierFactsComplete {
+  receipt: DependencyCompletenessReceipt
+}
+
+
+type ArtifactGraphFactsComplete {
+  receipt: DependencyCompletenessReceipt
+}
+
+
+type ArtifactProvenanceFactsComplete {
+  receipt: DependencyCompletenessReceipt
+}
 
 
 type ProgramCompletenessFacts {
@@ -142,14 +171,16 @@ type ProgramCompletenessFacts {
 }
 
 
-type ProgramClosedWorldWitness {
+type ProgramClosedWorldEvidence {
   region: Symbol
+  graph_revision: Hash
   completeness: ProgramCompletenessFacts
+  covered_paths: List<Path>
 }
 
 
 type ProgramIndependenceClaim {
-  witness: ProgramClosedWorldWitness
+  witness: Witness<ProgramClosedWorldEvidence>
   left: Path
   right: Path
 }
@@ -162,14 +193,16 @@ type TargetPlanCompletenessFacts {
 }
 
 
-type TargetPlanClosedWorldWitness {
+type TargetPlanClosedWorldEvidence {
   region: Symbol
+  graph_revision: Hash
   completeness: TargetPlanCompletenessFacts
+  covered_paths: List<Path>
 }
 
 
 type TargetPlanIndependenceClaim {
-  witness: TargetPlanClosedWorldWitness
+  witness: Witness<TargetPlanClosedWorldEvidence>
   left: Path
   right: Path
 }
@@ -181,14 +214,16 @@ type ArtifactCompletenessFacts {
 }
 
 
-type ArtifactClosedWorldWitness {
+type ArtifactClosedWorldEvidence {
   region: Symbol
+  graph_revision: Hash
   completeness: ArtifactCompletenessFacts
+  covered_endpoints: List<ArtifactDependencyEndpoint>
 }
 
 
 type ArtifactIndependenceClaim {
-  witness: ArtifactClosedWorldWitness
+  witness: Witness<ArtifactClosedWorldEvidence>
   left: ArtifactDependencyEndpoint
   right: ArtifactDependencyEndpoint
 }
@@ -196,9 +231,9 @@ type ArtifactIndependenceClaim {
 
 // 🟢 coproduct dissolution
 type ClosedWorldDependencyWitness
-  = Program { witness: ProgramClosedWorldWitness }
-  | TargetPlan { witness: TargetPlanClosedWorldWitness }
-  | Artifact { witness: ArtifactClosedWorldWitness }
+  = Program { evidence: ProgramClosedWorldEvidence }
+  | TargetPlan { evidence: TargetPlanClosedWorldEvidence }
+  | Artifact { evidence: ArtifactClosedWorldEvidence }
 
 
 // 🟢 coproduct dissolution
