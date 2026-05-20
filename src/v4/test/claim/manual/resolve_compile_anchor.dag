@@ -1,7 +1,7 @@
 // src/v4/test/claim/manual/resolve_compile_anchor.dag
 //
-// Scope: Tier-1 v2-bootstrap compile anchor for `resolve` + surface LM `canonical_symbols` (ledger: DECISIONS CP-1b item 10).
-// Owns: anchor_resolve_surface_prelude_full_service_atom; anchor_resolve_surface_empty_prelude_service_atom.
+// Scope: Tier-1 v2-bootstrap compile anchor for `resolve` + LM `canonical_symbols` (TASKS T-8).
+// Owns: anchor_resolve_wave1_service_atom_via_canonical_symbols; anchor_resolve_wave1_empty_prelude_service_atom; anchor_resolve_wave1_multi_edge_conj_via_canonical_symbols; anchor_resolve_wave1_bind_binder_use.
 // Consumes: compiler/03_resolve.dag, extdeps/languages/dag.dag, std/diagnostic.dag, std/node.dag.
 // Status: scaffold — compile-only until T-22; `v2 run` TestClaims per MOVE1_COVERAGE.txt.
 // Anchor: https://en.wikipedia.org/wiki/Name_resolution_(programming_languages)
@@ -11,58 +11,137 @@ module v4.test.claim.manual.resolve_compile_anchor
 
 import v4.compiler.resolve { resolve, ResolvedTree }
 import v4.extdeps.languages.dag {
+  dag_c3_surface_sugar_fn,
   dag_c3_surface_sugar_service,
+  dag_c3_surface_sugar_type,
   dag_language_model_surface_empty_prelude,
-  dag_language_model_surface_prelude_full
+  dag_language_model_wave1_void
 }
 import v4.std.diagnostic { Outcome }
 import v4.std.node {
   Atom,
+  Bind,
+  ComputationNode,
   Conj,
   Edge,
+  Named,
   Node,
   Positional,
+  Symbol,
   TypeNode
 }
 
 
-fn anchor_resolve_surface_prelude_full_service_atom() -> Outcome<ResolvedTree> {
-  resolve(
-    tree: Node {
-      kind: TypeNode { connective: Conj },
-      children: [
-        Edge {
-          label: Positional,
-          target: Node {
-            kind: TypeNode {
-              connective: Atom { identity: dag_c3_surface_sugar_service }
-            },
-            children: []
-          }
+data anchor_decl_first: Symbol = anchor_decl_first
+data anchor_decl_second: Symbol = anchor_decl_second
+
+
+fn service_atom_conj_tree() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Positional,
+        target: Node {
+          kind: TypeNode {
+            connective: Atom { identity: dag_c3_surface_sugar_service }
+          },
+          children: []
         }
-      ]
-    },
-    lm: dag_language_model_surface_prelude_full()
+      }
+    ]
+  }
+}
+
+
+fn anchor_resolve_wave1_service_atom_via_canonical_symbols() -> Outcome<ResolvedTree> {
+  resolve(
+    tree: service_atom_conj_tree(),
+    lm: dag_language_model_wave1_void()
   )
 }
 
 
-fn anchor_resolve_surface_empty_prelude_service_atom() -> Outcome<ResolvedTree> {
+fn anchor_resolve_wave1_empty_prelude_service_atom() -> Outcome<ResolvedTree> {
+  resolve(
+    tree: service_atom_conj_tree(),
+    lm: dag_language_model_surface_empty_prelude()
+  )
+}
+
+
+fn anchor_resolve_wave1_multi_edge_conj_via_canonical_symbols() -> Outcome<ResolvedTree> {
   resolve(
     tree: Node {
       kind: TypeNode { connective: Conj },
       children: [
         Edge {
-          label: Positional,
+          label: Named { name: anchor_decl_first },
           target: Node {
             kind: TypeNode {
               connective: Atom { identity: dag_c3_surface_sugar_service }
             },
             children: []
           }
+        },
+        Edge {
+          label: Named { name: anchor_decl_second },
+          target: Node {
+            kind: TypeNode {
+              connective: Atom { identity: dag_c3_surface_sugar_type }
+            },
+            children: []
+          }
         }
       ]
     },
-    lm: dag_language_model_surface_empty_prelude()
+    lm: dag_language_model_wave1_void()
+  )
+}
+
+
+fn anchor_resolve_wave1_bind_binder_use() -> Outcome<ResolvedTree> {
+  resolve(
+    tree: Node {
+      kind: TypeNode { connective: Conj },
+      children: [
+        Edge {
+          label: Named { name: anchor_decl_first },
+          target: Node {
+            kind: ComputationNode { behavior: Bind },
+            children: [
+              Edge {
+                label: Positional,
+                target: Node {
+                  kind: TypeNode {
+                    connective: Atom { identity: dag_c3_surface_sugar_fn }
+                  },
+                  children: []
+                }
+              },
+              Edge {
+                label: Positional,
+                target: Node {
+                  kind: TypeNode {
+                    connective: Atom { identity: dag_c3_surface_sugar_service }
+                  },
+                  children: []
+                }
+              },
+              Edge {
+                label: Positional,
+                target: Node {
+                  kind: TypeNode {
+                    connective: Atom { identity: dag_c3_surface_sugar_fn }
+                  },
+                  children: []
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    lm: dag_language_model_wave1_void()
   )
 }
