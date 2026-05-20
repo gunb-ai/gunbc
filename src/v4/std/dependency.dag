@@ -115,10 +115,17 @@ type DependencyCompletenessFact
   | ArtifactGraphFactsComplete
 
 
+// RULING-1: 🟢 pretty-much-done — at least one completeness fact (empty list not representable).
+type CompletenessFacts {
+  first: DependencyCompletenessFact
+  rest: List<DependencyCompletenessFact>
+}
+
+
 type ClosedWorldDependencyWitness {
   region: Symbol
   domain: DependencyDomain
-  completeness: List<DependencyCompletenessFact>
+  completeness: CompletenessFacts
 }
 
 
@@ -167,6 +174,7 @@ type TopologicalLayer {
 }
 
 
+// RULING-1: 🟢 pretty-much-done — value only; Witness<TopologicalPlan> lives on RecomputePlan.schedule.
 type TopologicalPlan {
   condensation: SccCondensation
   layers: List<TopologicalLayer>
