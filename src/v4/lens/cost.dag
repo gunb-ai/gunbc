@@ -41,6 +41,7 @@ import v4.std.algebra {
   Monoid,
   Semigroup
 }
+import v4.std.cardinality { NonZeroNat }
 import v4.std.diagnostic {
   AmbiguousIntent,
   Diagnostic,
@@ -69,10 +70,12 @@ import v4.std.node {
   Value,
   fold_node
 }
+import v4.std.nat { Nat, Succ, Zero }
 import v4.std.witness { Holds, Violates, Witness }
 
 
 data cost_reason_unmodeled_symbolic_cost: Symbol = cost_reason_unmodeled_symbolic_cost
+data cost_lattice_top_reason: String = "lattice-top-unknown-cost"
 
 // U2/T-12: this is the single cost carrier. Complexity imports the
 // `asymptotic_class_of_cost` projection below and does not re-walk `Node`.
@@ -81,14 +84,26 @@ type SizeVariable {
   source: Node
 }
 
+type PolynomialDegree {
+  predecessor_after_linear: NonZeroNat
+}
+
+type PolyLogExponent {
+  predecessor_after_log: NonZeroNat
+}
+
+type ExponentialBase {
+  predecessor_after_one: NonZeroNat
+}
+
 // 🟢 coproduct dissolution — T-12-COST-CARRIER.
 type SymbolicCost
   = ConstantCost { value: Int }
   | LinearCost { variable: SizeVariable }
   | LogCost { variable: SizeVariable }
-  | PolynomialCost { variable: SizeVariable, degree: Int }
-  | PolyLogCost { variable: SizeVariable, exponent: Int }
-  | ExponentialCost { variable: SizeVariable, base: Int }
+  | PolynomialCost { variable: SizeVariable, degree: PolynomialDegree }
+  | PolyLogCost { variable: SizeVariable, exponent: PolyLogExponent }
+  | ExponentialCost { variable: SizeVariable, base: ExponentialBase }
   | FactorialCost { variable: SizeVariable }
   | SumCost { lhs: SymbolicCost, rhs: SymbolicCost }
   | ProductCost { lhs: SymbolicCost, rhs: SymbolicCost }
@@ -100,8 +115,8 @@ type AsymptoticClass
   | ClassLog
   | ClassLinear
   | ClassLinearithmic
-  | ClassPolynomial { degree: Int }
-  | ClassPolyLog { exponent: Int }
+  | ClassPolynomial { degree: PolynomialDegree }
+  | ClassPolyLog { exponent: PolyLogExponent }
   | ClassExponential
   | ClassFactorial
   | ClassUnknown
@@ -130,6 +145,18 @@ fn zero_cost() -> SymbolicCost {
 
 fn unit_cost() -> SymbolicCost {
   constant_cost(value: 1)
+}
+
+fn nonzero_one() -> NonZeroNat {
+  NonZeroNat { prev: Zero }
+}
+
+fn polynomial_degree_two() -> PolynomialDegree {
+  PolynomialDegree { predecessor_after_linear: nonzero_one() }
+}
+
+fn polylog_exponent_two() -> PolyLogExponent {
+  PolyLogExponent { predecessor_after_log: nonzero_one() }
 }
 
 fn size_of_node(n: Node) -> SizeVariable {
@@ -247,7 +274,98 @@ fn symbolic_product(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
 }
 
 fn symbolic_max(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
-  if symbolic_cost_dominates(a: a, b: b) {
+  match a {
+    ConstantCost { value: 0 } => b
+    _ =>
+      match b {
+        ConstantCost { value: 0 } => a
+        _ =>
+          if symbolic_cost_dominates(a: a, b: b) {
+            a
+          } else {
+            b
+          }
+      }
+  }
+}
+
+fn polynomial_degree_dominates(a: PolynomialDegree, b: PolynomialDegree) -> Bool {
+  nonzero_nat_dominates(a: a.predecessor_after_linear, b: b.predecessor_after_linear)
+}
+
+fn polylog_exponent_dominates(a: PolyLogExponent, b: PolyLogExponent) -> Bool {
+  nonzero_nat_dominates(a: a.predecessor_after_log, b: b.predecessor_after_log)
+}
+
+fn nonzero_nat_dominates(a: NonZeroNat, b: NonZeroNat) -> Bool {
+  nat_dominates(a: a.prev, b: b.prev)
+}
+
+fn nat_dominates(a: Nat, b: Nat) -> Bool {
+  match a {
+    Zero =>
+      match b {
+        Zero => true
+        Succ { prev: _ } => false
+      }
+    Succ { prev: ap } =>
+      match b {
+        Zero => true
+        Succ { prev: bp } => nat_dominates(a: ap, b: bp)
+      }
+  }
+}
+
+fn add_nonzero_nat(a: NonZeroNat, b: NonZeroNat) -> NonZeroNat {
+  NonZeroNat { prev: Succ { prev: add_nat(a: a.prev, b: b.prev) } }
+}
+
+fn add_nat(a: Nat, b: Nat) -> Nat {
+  match a {
+    Zero => b
+    Succ { prev: ap } => Succ { prev: add_nat(a: ap, b: b) }
+  }
+}
+
+fn add_polynomial_degree(a: PolynomialDegree, b: PolynomialDegree) -> PolynomialDegree {
+  PolynomialDegree {
+    predecessor_after_linear: add_nonzero_nat(
+      a: a.predecessor_after_linear,
+      b: b.predecessor_after_linear
+    )
+  }
+}
+
+fn increment_polynomial_degree(d: PolynomialDegree) -> PolynomialDegree {
+  PolynomialDegree {
+    predecessor_after_linear: NonZeroNat { prev: Succ { prev: d.predecessor_after_linear.prev } }
+  }
+}
+
+fn increment_polylog_exponent(e: PolyLogExponent) -> PolyLogExponent {
+  PolyLogExponent {
+    predecessor_after_log: NonZeroNat { prev: Succ { prev: e.predecessor_after_log.prev } }
+  }
+}
+
+fn polynomial_degree_to_polylog_exponent(d: PolynomialDegree) -> PolyLogExponent {
+  PolyLogExponent { predecessor_after_log: d.predecessor_after_linear }
+}
+
+fn polylog_exponent_to_polynomial_degree(e: PolyLogExponent) -> PolynomialDegree {
+  PolynomialDegree { predecessor_after_linear: e.predecessor_after_log }
+}
+
+fn max_polynomial_degree(a: PolynomialDegree, b: PolynomialDegree) -> PolynomialDegree {
+  if polynomial_degree_dominates(a: a, b: b) {
+    a
+  } else {
+    b
+  }
+}
+
+fn max_polylog_exponent(a: PolyLogExponent, b: PolyLogExponent) -> PolyLogExponent {
+  if polylog_exponent_dominates(a: a, b: b) {
     a
   } else {
     b
@@ -332,7 +450,7 @@ fn asymptotic_class_dominates(a: AsymptoticClass, b: AsymptoticClass) -> Bool {
         ClassLog => true
         ClassLinear => true
         ClassLinearithmic => true
-        ClassPolynomial { degree: bd } => ad >= bd
+        ClassPolynomial { degree: bd } => polynomial_degree_dominates(a: ad, b: bd)
         ClassPolyLog { exponent: _ } => true
         _ => false
       }
@@ -356,7 +474,7 @@ fn asymptotic_class_dominates(a: AsymptoticClass, b: AsymptoticClass) -> Bool {
       match b {
         ClassConstant => true
         ClassLog => true
-        ClassPolyLog { exponent: be } => ae >= be
+        ClassPolyLog { exponent: be } => polylog_exponent_dominates(a: ae, b: be)
         _ => false
       }
     ClassLog =>
@@ -374,10 +492,22 @@ fn asymptotic_class_dominates(a: AsymptoticClass, b: AsymptoticClass) -> Bool {
 }
 
 fn symbolic_cost_dominates(a: SymbolicCost, b: SymbolicCost) -> Bool {
-  asymptotic_class_dominates(
-    a: asymptotic_class_of_cost(cost: a),
-    b: asymptotic_class_of_cost(cost: b)
-  )
+  match a {
+    ConstantCost { value: av } =>
+      match b {
+        ConstantCost { value: bv } => av >= bv
+        _ => false
+      }
+    _ =>
+      match b {
+        ConstantCost { value: 0 } => true
+        _ =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+      }
+  }
 }
 
 fn multiply_classes(a: AsymptoticClass, b: AsymptoticClass) -> AsymptoticClass {
@@ -393,11 +523,13 @@ fn multiply_classes(a: AsymptoticClass, b: AsymptoticClass) -> AsymptoticClass {
     ClassPolynomial { degree: ad } =>
       match b {
         ClassConstant => a
-        ClassLog => ClassLinearithmic
-        ClassLinear => ClassPolynomial { degree: ad + 1 }
-        ClassLinearithmic => ClassPolynomial { degree: ad + 1 }
-        ClassPolynomial { degree: bd } => ClassPolynomial { degree: ad + bd }
-        ClassPolyLog { exponent: _ } => a
+        ClassLog => ClassPolynomial { degree: increment_polynomial_degree(d: ad) }
+        ClassLinear => ClassPolynomial { degree: increment_polynomial_degree(d: ad) }
+        ClassLinearithmic => ClassPolynomial { degree: increment_polynomial_degree(d: ad) }
+        ClassPolynomial { degree: bd } =>
+          ClassPolynomial { degree: add_polynomial_degree(a: ad, b: bd) }
+        ClassPolyLog { exponent: _ } =>
+          ClassPolynomial { degree: increment_polynomial_degree(d: ad) }
         ClassExponential => ClassExponential
         ClassFactorial => ClassFactorial
         ClassUnknown => ClassUnknown
@@ -406,9 +538,10 @@ fn multiply_classes(a: AsymptoticClass, b: AsymptoticClass) -> AsymptoticClass {
       match b {
         ClassConstant => ClassLinear
         ClassLog => ClassLinearithmic
-        ClassLinear => ClassPolynomial { degree: 2 }
-        ClassLinearithmic => ClassPolynomial { degree: 2 }
-        ClassPolynomial { degree: bd } => ClassPolynomial { degree: bd + 1 }
+        ClassLinear => ClassPolynomial { degree: polynomial_degree_two() }
+        ClassLinearithmic => ClassPolynomial { degree: polynomial_degree_two() }
+        ClassPolynomial { degree: bd } =>
+          ClassPolynomial { degree: increment_polynomial_degree(d: bd) }
         ClassPolyLog { exponent: _ } => ClassLinear
         ClassExponential => ClassExponential
         ClassFactorial => ClassFactorial
@@ -418,9 +551,10 @@ fn multiply_classes(a: AsymptoticClass, b: AsymptoticClass) -> AsymptoticClass {
       match b {
         ClassConstant => ClassLinearithmic
         ClassLog => ClassLinearithmic
-        ClassLinear => ClassPolynomial { degree: 2 }
-        ClassLinearithmic => ClassPolynomial { degree: 2 }
-        ClassPolynomial { degree: bd } => ClassPolynomial { degree: bd + 1 }
+        ClassLinear => ClassPolynomial { degree: polynomial_degree_two() }
+        ClassLinearithmic => ClassPolynomial { degree: polynomial_degree_two() }
+        ClassPolynomial { degree: bd } =>
+          ClassPolynomial { degree: increment_polynomial_degree(d: bd) }
         ClassPolyLog { exponent: _ } => ClassLinearithmic
         ClassExponential => ClassExponential
         ClassFactorial => ClassFactorial
@@ -433,7 +567,11 @@ fn multiply_classes(a: AsymptoticClass, b: AsymptoticClass) -> AsymptoticClass {
         ClassPolyLog { exponent: _ } => a
         ClassLinear => ClassLinear
         ClassLinearithmic => ClassLinearithmic
-        ClassPolynomial { degree: _ } => b
+        ClassPolynomial { degree: pd } =>
+          ClassPolynomial { degree: max_polynomial_degree(
+            a: pd,
+            b: polylog_exponent_to_polynomial_degree(e: e)
+          ) }
         ClassExponential => ClassExponential
         ClassFactorial => ClassFactorial
         ClassUnknown => ClassUnknown
@@ -441,8 +579,9 @@ fn multiply_classes(a: AsymptoticClass, b: AsymptoticClass) -> AsymptoticClass {
     ClassLog =>
       match b {
         ClassConstant => ClassLog
-        ClassLog => ClassPolyLog { exponent: 2 }
-        ClassPolyLog { exponent: e } => ClassPolyLog { exponent: e + 1 }
+        ClassLog => ClassPolyLog { exponent: polylog_exponent_two() }
+        ClassPolyLog { exponent: e } =>
+          ClassPolyLog { exponent: increment_polylog_exponent(e: e) }
         ClassLinear => ClassLinearithmic
         ClassLinearithmic => ClassLinearithmic
         ClassPolynomial { degree: _ } => b
@@ -498,7 +637,7 @@ data symbolic_cost_lattice: BoundedLattice<SymbolicCost> = BoundedLattice {
     meet: cost_lattice_meet,
     join: cost_lattice_join
   },
-  top: UnknownCost { reason: "" },
+  top: UnknownCost { reason: cost_lattice_top_reason },
   bottom: ConstantCost { value: 0 }
 }
 
