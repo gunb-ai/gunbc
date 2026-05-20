@@ -13,6 +13,7 @@ type SourceSpan {
   end: Int
 }
 
+// 🟡 feature:v2_5-std-diagnostic-reasons
 type DiagnosticReason
   = UnexpectedCharacter
   | UnterminatedString
@@ -25,10 +26,12 @@ type Diagnostic {
   lexeme: String
 }
 
+// 🟡 feature:v2_5-std-diagnostic-outcome
 type Outcome<T>
   = Produced { value: T }
   | Rejected { diagnostic: Diagnostic }
 
+// 🟡 feature:v2_5-syntax-spec-keywords
 type Keyword
   = ModuleKeyword
   | ImportKeyword
@@ -66,17 +69,20 @@ type Keyword
   | ReadonlyKeyword
   | HermeticKeyword
 
+// 🟢 coproduct dissolution
 type LiteralKind
   = StringLiteral
   | IntLiteral
   | FloatLiteral
 
+// 🟢 coproduct dissolution
 type CharacterClass
   = DigitClass
   | IdentStartClass
   | IdentContinueClass
   | WhitespaceClass
 
+// 🟡 feature:v2_5-syntax-spec-operators
 type Punctuation
   = LBrace
   | RBrace
@@ -110,6 +116,7 @@ type Punctuation
   | Pipe
   | PipeArrow
 
+// 🟡 feature:v2_5-token-boundary-spec
 type TokenKind
   = KeywordToken { keyword: Keyword }
   | IdentifierToken
@@ -181,6 +188,7 @@ type ScanOutcome
   = Scanned { step: ScanStep }
   | ScanRejected { diagnostic: Diagnostic }
 
+// 🟢 coproduct dissolution
 type TokenizeExpectation
   = ExpectProduced
   | ExpectRejected { reason: DiagnosticReason }
