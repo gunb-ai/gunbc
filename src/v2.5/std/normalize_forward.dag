@@ -1,0 +1,1120 @@
+// src/v2.5/std/normalize_forward.dag
+// Scope: structural Resolved* -> Normalized* projection (facts flow forward).
+// Owns: normalize_item_core and supporting normalize_resolved_* helpers.
+// Consumes: v2_5.std.stage_types, v2_5.std.diagnostic.
+
+module v2_5.std.normalize_forward
+
+
+import v2_5.std.diagnostic { Outcome }
+import v2_5.std.stage_types {
+  BoundName,
+  NormalizedArg,
+  NormalizedBlock,
+  NormalizedDataDecl,
+  NormalizedExpr,
+  NormalizedFieldBinding,
+  NormalizedFieldInit,
+  NormalizedFn,
+  NormalizedFunc,
+  NormalizedItem,
+  NormalizedMatchArm,
+  NormalizedOperation,
+  NormalizedOtherItem,
+  NormalizedParam,
+  NormalizedPattern,
+  NormalizedResourceUse,
+  NormalizedService,
+  NormalizedStringPart,
+  NormalizedTypeDecl,
+  NormalizedTypeExpr,
+  NormalizedTypeField,
+  NormalizedTypeVariant,
+  NormalizedTransport,
+  NormalizedTransportFile,
+  NormalizedTransportLocal,
+  NormalizedTransportProperty,
+  NormalizedTransportRest,
+  NormalizedTransportShell,
+  ResolvedArg,
+  ResolvedBlock,
+  ResolvedDataDecl,
+  ResolvedExpr,
+  ResolvedFieldBinding,
+  ResolvedFieldInit,
+  ResolvedFn,
+  ResolvedFunc,
+  ResolvedItemCore,
+  ResolvedMatchArm,
+  ResolvedOperation,
+  ResolvedOtherItem,
+  ResolvedParam,
+  ResolvedPattern,
+  ResolvedResourceUse,
+  ResolvedService,
+  ResolvedStringPart,
+  ResolvedTypeDecl,
+  ResolvedTypeExpr,
+  ResolvedTypeField,
+  ResolvedTypeVariant,
+  ResolvedTransport,
+  ResolvedTransportFile,
+  ResolvedTransportLocal,
+  ResolvedTransportProperty,
+  ResolvedTransportRest,
+  ResolvedTransportShell,
+  ResolvedTypeAtom,
+  ResolvedTypeArrow,
+  ResolvedTypeConj,
+  ResolvedTypeDisj,
+  ResolvedTypeError,
+  NormalizedTypeAtom,
+  NormalizedTypeArrow,
+  NormalizedTypeConj,
+  NormalizedTypeDisj,
+  NormalizedTypeError,
+  ResolvedPatBind,
+  ResolvedPatLit,
+  ResolvedPatVariant,
+  ResolvedPatWildcard,
+  NormalizedPatBind,
+  NormalizedPatLit,
+  NormalizedPatVariant,
+  NormalizedPatWildcard,
+  ResolvedLit,
+  ResolvedError,
+  ResolvedVar,
+  ResolvedFieldAccess,
+  ResolvedCall,
+  ResolvedMethodCall,
+  ResolvedMatch,
+  ResolvedIf,
+  ResolvedLet,
+  ResolvedRecordLit,
+  ResolvedListLit,
+  ResolvedBinOp,
+  ResolvedUnaryOp,
+  ResolvedLambda,
+  ResolvedStringInterp,
+  ResolvedBlock,
+  ResolvedCast,
+  ResolvedForEach,
+  ResolvedIndex,
+  ResolvedSlice,
+  ResolvedReturn,
+  NormalizedLit,
+  NormalizedError,
+  NormalizedVar,
+  NormalizedFieldAccess,
+  NormalizedCall,
+  NormalizedMethodCall,
+  NormalizedMatch,
+  NormalizedIf,
+  NormalizedLet,
+  NormalizedRecordLit,
+  NormalizedListLit,
+  NormalizedBinOp,
+  NormalizedUnaryOp,
+  NormalizedLambda,
+  NormalizedStringInterp,
+  NormalizedBlock,
+  NormalizedCast,
+  NormalizedForEach,
+  NormalizedIndex,
+  NormalizedSlice,
+  NormalizedReturn,
+  ResolvedStrText,
+  ResolvedStrInterp,
+  NormalizedStrText,
+  NormalizedStrInterp,
+  SourceSpan
+}
+
+
+fn normalize_resolved_type_expr(expr: ResolvedTypeExpr) -> Outcome<NormalizedTypeExpr> {
+  match expr {
+    ResolvedTypeAtom { name: name } =>
+      Produced { value: NormalizedTypeAtom { name: name } }
+    ResolvedTypeConj { fields: fields } =>
+      match normalize_resolved_type_fields(fields: fields) {
+        Produced { value: nfs } =>
+          Produced { value: NormalizedTypeConj { fields: nfs } }
+        Rejected { diagnostic: d } => Rejected { diagnostic: d }
+      }
+    ResolvedTypeDisj { variants: variants } =>
+      match normalize_resolved_type_variants(variants: variants) {
+        Produced { value: nvs } =>
+          Produced { value: NormalizedTypeDisj { variants: nvs } }
+        Rejected { diagnostic: d } => Rejected { diagnostic: d }
+      }
+    ResolvedTypeArrow { params: params, return_type: return_type } =>
+      match normalize_resolved_params(params: params) {
+        Produced { value: nparams } =>
+          match normalize_resolved_type_expr(expr: return_type) {
+            Produced { value: nreturn } =>
+              Produced {
+                value: NormalizedTypeArrow {
+                  params: nparams,
+                  return_type: nreturn
+                }
+              }
+            Rejected { diagnostic: d } => Rejected { diagnostic: d }
+          }
+        Rejected { diagnostic: d } => Rejected { diagnostic: d }
+      }
+    ResolvedTypeError { message: message, span: span } =>
+      Produced {
+        value: NormalizedTypeError { message: message, span: span }
+      }
+  }
+}
+
+
+fn normalize_resolved_type_expr_opt(expr: ResolvedTypeExpr?) -> Outcome<NormalizedTypeExpr?> {
+  match expr {
+    Some { value: e } =>
+      match normalize_resolved_type_expr(expr: e) {
+        Produced { value: ne } => Produced { value: Some { value: ne } }
+        Rejected { diagnostic: d } => Rejected { diagnostic: d }
+      }
+    None => Produced { value: None }
+  }
+}
+
+
+fn normalize_resolved_expr_opt(expr: ResolvedExpr?) -> Outcome<NormalizedExpr?> {
+  match expr {
+    Some { value: e } =>
+      match normalize_resolved_expr(expr: e) {
+        Produced { value: ne } => Produced { value: Some { value: ne } }
+        Rejected { diagnostic: d } => Rejected { diagnostic: d }
+      }
+    None => Produced { value: None }
+  }
+}
+
+
+fn normalize_resolved_block_opt(block: ResolvedBlock?) -> Outcome<NormalizedBlock?> {
+  match block {
+    Some { value: b } =>
+      match normalize_resolved_block(block: b) {
+        Produced { value: nb } => Produced { value: Some { value: nb } }
+        Rejected { diagnostic: d } => Rejected { diagnostic: d }
+      }
+    None => Produced { value: None }
+  }
+}
+
+
+fn empty_normalized_type_fields() -> Outcome<List<NormalizedTypeField>> {
+  Produced { value: Empty }
+}
+
+
+fn normalize_resolved_type_fields(fields: List<ResolvedTypeField>) -> Outcome<List<NormalizedTypeField>> {
+  fold(fields, init: empty_normalized_type_fields(), f: fn(acc, field) {
+    match acc {
+      Rejected { diagnostic: d } => Rejected { diagnostic: d }
+      Produced { value: done } =>
+        match normalize_resolved_type_field(field: field) {
+          Produced { value: nf } =>
+            Produced { value: list_push(done, nf) }
+          Rejected { diagnostic: d } => Rejected { diagnostic: d }
+        }
+    }
+  })
+}
+
+
+fn normalize_resolved_type_field(field: ResolvedTypeField) -> Outcome<NormalizedTypeField> {
+  match normalize_resolved_type_expr(expr: field.type_expr) {
+    Produced { value: ntype } =>
+      match normalize_resolved_expr_opt(expr: field.default_expr) {
+        Produced { value: ndefault } =>
+          Produced {
+            value: NormalizedTypeField {
+              name: field.name,
+              type_expr: ntype,
+              cardinality: field.cardinality,
+              default_expr: ndefault,
+              from_key: field.from_key
+            }
+          }
+        Rejected { diagnostic: d } => Rejected { diagnostic: d }
+      }
+    Rejected { diagnostic: d } => Rejected { diagnostic: d }
+  }
+}
+
+
+fn empty_normalized_type_variants() -> Outcome<List<NormalizedTypeVariant>> {
+  Produced { value: Empty }
+}
+
+
+fn normalize_resolved_type_variants(
+  variants: List<ResolvedTypeVariant>
+) -> Outcome<List<NormalizedTypeVariant>> {
+  fold(variants, init: empty_normalized_type_variants(), f: fn(acc, variant) {
+    match acc {
+      Rejected { diagnostic: d } => Rejected { diagnostic: d }
+      Produced { value: done } =>
+        match normalize_resolved_type_variant(variant: variant) {
+          Produced { value: nv } =>
+            Produced { value: list_push(done, nv) }
+          Rejected { diagnostic: d } => Rejected { diagnostic: d }
+        }
+    }
+  })
+}
+
+
+fn normalize_resolved_type_variant(variant: ResolvedTypeVariant) -> Outcome<NormalizedTypeVariant> {
+  match normalize_resolved_type_fields(fields: variant.fields) {
+    Produced { value: nfields } =>
+      Produced {
+        value: NormalizedTypeVariant {
+          name: variant.name,
+          fields: nfields
+        }
+      }
+    Rejected { diagnostic: d } => Rejected { diagnostic: d }
+  }
+}
+
+
+fn empty_normalized_params() -> Outcome<List<NormalizedParam>> {
+  Produced { value: Empty }
+}
+
+
+fn normalize_resolved_params(params: List<ResolvedParam>) -> Outcome<List<NormalizedParam>> {
+  fold(params, init: empty_normalized_params(), f: fn(acc, param) {
+    match acc {
+      Rejected { diagnostic: d } => Rejected { diagnostic: d }
+      Produced { value: done } =>
+        match normalize_resolved_param(param: param) {
+          Produced { value: np } =>
+            Produced { value: list_push(done, np) }
+          Rejected { diagnostic: d } => Rejected { diagnostic: d }
+        }
+    }
+  })
+}
+
+
+fn normalize_resolved_param(param: ResolvedParam) -> Outcome<NormalizedParam> {
+  match normalize_resolved_type_expr(expr: param.type_expr) {
+    Produced { value: ntype } =>
+      match normalize_resolved_expr_opt(expr: param.default_expr) {
+        Produced { value: ndefault } =>
+          Produced {
+            value: NormalizedParam {
+              name: param.name,
+              type_expr: ntype,
+              default_expr: ndefault,
+              cardinality: param.cardinality
+            }
+          }
+        Rejected { diagnostic: d } => Rejected { diagnostic: d }
+      }
+    Rejected { diagnostic: d } => Rejected { diagnostic: d }
+  }
+}
+
+
+fn empty_normalized_exprs() -> Outcome<List<NormalizedExpr>> {
+  Produced { value: Empty }
+}
+
+
+fn normalize_resolved_exprs(exprs: List<ResolvedExpr>) -> Outcome<List<NormalizedExpr>> {
+  fold(exprs, init: empty_normalized_exprs(), f: fn(acc, expr) {
+    match acc {
+      Rejected { diagnostic: d } => Rejected { diagnostic: d }
+      Produced { value: done } =>
+        match normalize_resolved_expr(expr: expr) {
+          Produced { value: ne } =>
+            Produced { value: list_push(done, ne) }
+          Rejected { diagnostic: d } => Rejected { diagnostic: d }
+        }
+    }
+  })
+}
+
+
+fn normalize_resolved_block(block: ResolvedBlock) -> Outcome<NormalizedBlock> {
+  match normalize_resolved_exprs(exprs: block.statements) {
+    Produced { value: nstmts } =>
+      Produced {
+        value: NormalizedBlock {
+          statements: nstmts,
+          span: block.span
+        }
+      }
+    Rejected { diagnostic: d } => Rejected { diagnostic: d }
+  }
+}
+
+
+fn normalize_resolved_expr(expr: ResolvedExpr) -> Outcome<NormalizedExpr> {
+  match expr {
+    ResolvedLit { value: value, span: span } =>
+      Produced { value: NormalizedLit { value: value, span: span } }
+    ResolvedError { kind: kind, message: message, span: span } =>
+      Produced {
+        value: NormalizedError { kind: kind, message: message, span: span }
+      }
+    ResolvedVar { name: name } =>
+      Produced { value: NormalizedVar { name: name } }
+    ResolvedFieldAccess { receiver: receiver, field: field } =>
+      match normalize_resolved_expr(expr: receiver) {
+        Produced { value: nrecv } =>
+          Produced {
+            value: NormalizedFieldAccess {
+              receiver: nrecv,
+              field: field
+            }
+          }
+        Rejected { diagnostic: d } => Rejected { diagnostic: d }
+      }
+    ResolvedCall { callee: callee, args: args } =>
+      match normalize_resolved_args(args: args) {
+        Produced { value: nargs } =>
+          Produced {
+            value: NormalizedCall { callee: callee, args: nargs }
+          }
+        Rejected { diagnostic: d } => Rejected { diagnostic: d }
+      }
+    ResolvedMethodCall { receiver: receiver, method: method, args: args } =>
+      match normalize_resolved_expr(expr: receiver) {
+        Produced { value: nrecv } =>
+          match normalize_resolved_args(args: args) {
+            Produced { value: nargs } =>
+              Produced {
+                value: NormalizedMethodCall {
+                  receiver: nrecv,
+                  method: method,
+                  args: nargs
+                }
+              }
+            Rejected { diagnostic: d } => Rejected { diagnostic: d }
+          }
+        Rejected { diagnostic: d } => Rejected { diagnostic: d }
+      }
+    ResolvedMatch { scrutinee: scrutinee, arms: arms } =>
+      match normalize_resolved_expr(expr: scrutinee) {
+        Produced { value: nscrut } =>
+          match normalize_resolved_match_arms(arms: arms) {
+            Produced { value: narms } =>
+              Produced {
+                value: NormalizedMatch {
+                  scrutinee: nscrut,
+                  arms: narms
+                }
+              }
+            Rejected { diagnostic: d } => Rejected { diagnostic: d }
+          }
+        Rejected { diagnostic: d } => Rejected { diagnostic: d }
+      }
+    ResolvedIf { condition: condition, then_expr: then_expr, else_expr: else_expr } =>
+      match normalize_resolved_expr(expr: condition) {
+        Produced { value: ncond } =>
+          match normalize_resolved_expr(expr: then_expr) {
+            Produced { value: nthen } =>
+              match normalize_resolved_expr(expr: else_expr) {
+                Produced { value: nelse } =>
+                  Produced {
+                    value: NormalizedIf {
+                      condition: ncond,
+                      then_expr: nthen,
+                      else_expr: nelse
+                    }
+                  }
+                Rejected { diagnostic: d } => Rejected { diagnostic: d }
+              }
+            Rejected { diagnostic: d } => Rejected { diagnostic: d }
+          }
+        Rejected { diagnostic: d } => Rejected { diagnostic: d }
+      }
+    ResolvedLet { name: name, value: value, body: body } =>
+      match normalize_resolved_expr(expr: value) {
+        Produced { value: nvalue } =>
+          match normalize_resolved_expr(expr: body) {
+            Produced { value: nbody } =>
+              Produced {
+                value: NormalizedLet {
+                  name: name,
+                  value: nvalue,
+                  body: nbody
+                }
+              }
+            Rejected { diagnostic: d } => Rejected { diagnostic: d }
+          }
+        Rejected { diagnostic: d } => Rejected { diagnostic: d }
+      }
+    ResolvedRecordLit { type_name: type_name, fields: fields } =>
+      match normalize_resolved_field_inits(fields: fields) {
+        Produced { value: nfields } =>
+          Produced {
+            value: NormalizedRecordLit {
+              type_name: type_name,
+              fields: nfields
+            }
+          }
+        Rejected { diagnostic: d } => Rejected { diagnostic: d }
+      }
+    ResolvedListLit { elements: elements } =>
+      match normalize_resolved_exprs(exprs: elements) {
+        Produced { value: nelems } =>
+          Produced { value: NormalizedListLit { elements: nelems } }
+        Rejected { diagnostic: d } => Rejected { diagnostic: d }
+      }
+    ResolvedBinOp { op: op, left: left, right: right, algebra_field: algebra_field } =>
+      match normalize_resolved_expr(expr: left) {
+        Produced { value: nleft } =>
+          match normalize_resolved_expr(expr: right) {
+            Produced { value: nright } =>
+              Produced {
+                value: NormalizedBinOp {
+                  op: op,
+                  left: nleft,
+                  right: nright,
+                  algebra_field: algebra_field
+                }
+              }
+            Rejected { diagnostic: d } => Rejected { diagnostic: d }
+          }
+        Rejected { diagnostic: d } => Rejected { diagnostic: d }
+      }
+    ResolvedUnaryOp { op: op, operand: operand } =>
+      match normalize_resolved_expr(expr: operand) {
+        Produced { value: noperand } =>
+          Produced {
+            value: NormalizedUnaryOp { op: op, operand: noperand }
+          }
+        Rejected { diagnostic: d } => Rejected { diagnostic: d }
+      }
+    ResolvedLambda { params: params, body: body } =>
+      match normalize_resolved_params(params: params) {
+        Produced { value: nparams } =>
+          match normalize_resolved_expr(expr: body) {
+            Produced { value: nbody } =>
+              Produced {
+                value: NormalizedLambda {
+                  params: nparams,
+                  body: nbody
+                }
+              }
+            Rejected { diagnostic: d } => Rejected { diagnostic: d }
+          }
+        Rejected { diagnostic: d } => Rejected { diagnostic: d }
+      }
+    ResolvedStringInterp { parts: parts } =>
+      match normalize_resolved_string_parts(parts: parts) {
+        Produced { value: nparts } =>
+          Produced { value: NormalizedStringInterp { parts: nparts } }
+        Rejected { diagnostic: d } => Rejected { diagnostic: d }
+      }
+    ResolvedBlock { statements: statements } =>
+      match normalize_resolved_exprs(exprs: statements) {
+        Produced { value: nstmts } =>
+          Produced { value: NormalizedBlock { statements: nstmts } }
+        Rejected { diagnostic: d } => Rejected { diagnostic: d }
+      }
+    ResolvedCast { expr: expr, target_type: target_type } =>
+      match normalize_resolved_expr(expr: expr) {
+        Produced { value: nexpr } =>
+          match normalize_resolved_type_expr(expr: target_type) {
+            Produced { value: ntarget } =>
+              Produced {
+                value: NormalizedCast {
+                  expr: nexpr,
+                  target_type: ntarget
+                }
+              }
+            Rejected { diagnostic: d } => Rejected { diagnostic: d }
+          }
+        Rejected { diagnostic: d } => Rejected { diagnostic: d }
+      }
+    ResolvedForEach { variable: variable, iterable: iterable, body: body } =>
+      match normalize_resolved_expr(expr: iterable) {
+        Produced { value: niter } =>
+          match normalize_resolved_expr(expr: body) {
+            Produced { value: nbody } =>
+              Produced {
+                value: NormalizedForEach {
+                  variable: variable,
+                  iterable: niter,
+                  body: nbody
+                }
+              }
+            Rejected { diagnostic: d } => Rejected { diagnostic: d }
+          }
+        Rejected { diagnostic: d } => Rejected { diagnostic: d }
+      }
+    ResolvedIndex { base: base, index: index } =>
+      match normalize_resolved_expr(expr: base) {
+        Produced { value: nbase } =>
+          match normalize_resolved_expr(expr: index) {
+            Produced { value: nindex } =>
+              Produced {
+                value: NormalizedIndex { base: nbase, index: nindex }
+              }
+            Rejected { diagnostic: d } => Rejected { diagnostic: d }
+          }
+        Rejected { diagnostic: d } => Rejected { diagnostic: d }
+      }
+    ResolvedSlice { base: base, start: start, end: end } =>
+      match normalize_resolved_expr(expr: base) {
+        Produced { value: nbase } =>
+          match normalize_resolved_expr_opt(expr: start) {
+            Produced { value: nstart } =>
+              match normalize_resolved_expr_opt(expr: end) {
+                Produced { value: nend } =>
+                  Produced {
+                    value: NormalizedSlice {
+                      base: nbase,
+                      start: nstart,
+                      end: nend
+                    }
+                  }
+                Rejected { diagnostic: d } => Rejected { diagnostic: d }
+              }
+            Rejected { diagnostic: d } => Rejected { diagnostic: d }
+          }
+        Rejected { diagnostic: d } => Rejected { diagnostic: d }
+      }
+    ResolvedReturn { value: value } =>
+      match normalize_resolved_expr_opt(expr: value) {
+        Produced { value: nvalue } =>
+          Produced { value: NormalizedReturn { value: nvalue } }
+        Rejected { diagnostic: d } => Rejected { diagnostic: d }
+      }
+  }
+}
+
+
+fn empty_normalized_args() -> Outcome<List<NormalizedArg>> {
+  Produced { value: Empty }
+}
+
+
+fn normalize_resolved_args(args: List<ResolvedArg>) -> Outcome<List<NormalizedArg>> {
+  fold(args, init: empty_normalized_args(), f: fn(acc, arg) {
+    match acc {
+      Rejected { diagnostic: d } => Rejected { diagnostic: d }
+      Produced { value: done } =>
+        match normalize_resolved_arg(arg: arg) {
+          Produced { value: na } =>
+            Produced { value: list_push(done, na) }
+          Rejected { diagnostic: d } => Rejected { diagnostic: d }
+        }
+    }
+  })
+}
+
+
+fn normalize_resolved_arg(arg: ResolvedArg) -> Outcome<NormalizedArg> {
+  match normalize_resolved_expr(expr: arg.value) {
+    Produced { value: nvalue } =>
+      Produced {
+        value: NormalizedArg { name: arg.name, value: nvalue }
+      }
+    Rejected { diagnostic: d } => Rejected { diagnostic: d }
+  }
+}
+
+
+fn empty_normalized_field_inits() -> Outcome<List<NormalizedFieldInit>> {
+  Produced { value: Empty }
+}
+
+
+fn normalize_resolved_field_inits(
+  fields: List<ResolvedFieldInit>
+) -> Outcome<List<NormalizedFieldInit>> {
+  fold(fields, init: empty_normalized_field_inits(), f: fn(acc, field) {
+    match acc {
+      Rejected { diagnostic: d } => Rejected { diagnostic: d }
+      Produced { value: done } =>
+        match normalize_resolved_field_init(field: field) {
+          Produced { value: nf } =>
+            Produced { value: list_push(done, nf) }
+          Rejected { diagnostic: d } => Rejected { diagnostic: d }
+        }
+    }
+  })
+}
+
+
+fn normalize_resolved_field_init(field: ResolvedFieldInit) -> Outcome<NormalizedFieldInit> {
+  match normalize_resolved_expr(expr: field.value) {
+    Produced { value: nvalue } =>
+      Produced {
+        value: NormalizedFieldInit { name: field.name, value: nvalue }
+      }
+    Rejected { diagnostic: d } => Rejected { diagnostic: d }
+  }
+}
+
+
+fn empty_normalized_match_arms() -> Outcome<List<NormalizedMatchArm>> {
+  Produced { value: Empty }
+}
+
+
+fn normalize_resolved_match_arms(arms: List<ResolvedMatchArm>) -> Outcome<List<NormalizedMatchArm>> {
+  fold(arms, init: empty_normalized_match_arms(), f: fn(acc, arm) {
+    match acc {
+      Rejected { diagnostic: d } => Rejected { diagnostic: d }
+      Produced { value: done } =>
+        match normalize_resolved_match_arm(arm: arm) {
+          Produced { value: na } =>
+            Produced { value: list_push(done, na) }
+          Rejected { diagnostic: d } => Rejected { diagnostic: d }
+        }
+    }
+  })
+}
+
+
+fn normalize_resolved_match_arm(arm: ResolvedMatchArm) -> Outcome<NormalizedMatchArm> {
+  match normalize_resolved_pattern(pattern: arm.pattern) {
+    Produced { value: npattern } =>
+      match normalize_resolved_expr_opt(expr: arm.guard) {
+        Produced { value: nguard } =>
+          match normalize_resolved_expr(expr: arm.body) {
+            Produced { value: nbody } =>
+              Produced {
+                value: NormalizedMatchArm {
+                  pattern: npattern,
+                  guard: nguard,
+                  body: nbody
+                }
+              }
+            Rejected { diagnostic: d } => Rejected { diagnostic: d }
+          }
+        Rejected { diagnostic: d } => Rejected { diagnostic: d }
+      }
+    Rejected { diagnostic: d } => Rejected { diagnostic: d }
+  }
+}
+
+
+fn normalize_resolved_pattern(pattern: ResolvedPattern) -> Outcome<NormalizedPattern> {
+  match pattern {
+    ResolvedPatBind { name: name } =>
+      Produced { value: NormalizedPatBind { name: name } }
+    ResolvedPatLit { value: value } =>
+      Produced { value: NormalizedPatLit { value: value } }
+    ResolvedPatVariant {
+      name: name,
+      parent_enum: parent_enum,
+      field_bindings: field_bindings
+    } =>
+      match normalize_resolved_field_bindings(bindings: field_bindings) {
+        Produced { value: nbindings } =>
+          Produced {
+            value: NormalizedPatVariant {
+              name: name,
+              parent_enum: parent_enum,
+              field_bindings: nbindings
+            }
+          }
+        Rejected { diagnostic: d } => Rejected { diagnostic: d }
+      }
+    ResolvedPatWildcard =>
+      Produced { value: NormalizedPatWildcard }
+  }
+}
+
+
+fn empty_normalized_field_bindings() -> Outcome<List<NormalizedFieldBinding>> {
+  Produced { value: Empty }
+}
+
+
+fn normalize_resolved_field_bindings(
+  bindings: List<ResolvedFieldBinding>
+) -> Outcome<List<NormalizedFieldBinding>> {
+  fold(bindings, init: empty_normalized_field_bindings(), f: fn(acc, binding) {
+    match acc {
+      Rejected { diagnostic: d } => Rejected { diagnostic: d }
+      Produced { value: done } =>
+        match normalize_resolved_field_binding(binding: binding) {
+          Produced { value: nb } =>
+            Produced { value: list_push(done, nb) }
+          Rejected { diagnostic: d } => Rejected { diagnostic: d }
+        }
+    }
+  })
+}
+
+
+fn normalize_resolved_field_binding(binding: ResolvedFieldBinding) -> Outcome<NormalizedFieldBinding> {
+  match normalize_resolved_pattern(pattern: binding.pattern) {
+    Produced { value: npattern } =>
+      Produced {
+        value: NormalizedFieldBinding {
+          field: binding.field,
+          pattern: npattern
+        }
+      }
+    Rejected { diagnostic: d } => Rejected { diagnostic: d }
+  }
+}
+
+
+fn empty_normalized_string_parts() -> Outcome<List<NormalizedStringPart>> {
+  Produced { value: Empty }
+}
+
+
+fn normalize_resolved_string_parts(
+  parts: List<ResolvedStringPart>
+) -> Outcome<List<NormalizedStringPart>> {
+  fold(parts, init: empty_normalized_string_parts(), f: fn(acc, part) {
+    match acc {
+      Rejected { diagnostic: d } => Rejected { diagnostic: d }
+      Produced { value: done } =>
+        match normalize_resolved_string_part(part: part) {
+          Produced { value: np } =>
+            Produced { value: list_push(done, np) }
+          Rejected { diagnostic: d } => Rejected { diagnostic: d }
+        }
+    }
+  })
+}
+
+
+fn normalize_resolved_string_part(part: ResolvedStringPart) -> Outcome<NormalizedStringPart> {
+  match part {
+    ResolvedStrText { value: value } =>
+      Produced { value: NormalizedStrText { value: value } }
+    ResolvedStrInterp { expr: expr } =>
+      match normalize_resolved_expr(expr: expr) {
+        Produced { value: nexpr } =>
+          Produced { value: NormalizedStrInterp { expr: nexpr } }
+        Rejected { diagnostic: d } => Rejected { diagnostic: d }
+      }
+  }
+}
+
+
+fn normalize_resolved_transport(transport: ResolvedTransport) -> Outcome<NormalizedTransport> {
+  match transport {
+    ResolvedTransportRest { properties: properties } =>
+      match normalize_resolved_transport_properties(properties: properties) {
+        Produced { value: nprops } =>
+          Produced {
+            value: NormalizedTransportRest { properties: nprops }
+          }
+        Rejected { diagnostic: d } => Rejected { diagnostic: d }
+      }
+    ResolvedTransportShell { properties: properties } =>
+      match normalize_resolved_transport_properties(properties: properties) {
+        Produced { value: nprops } =>
+          Produced {
+            value: NormalizedTransportShell { properties: nprops }
+          }
+        Rejected { diagnostic: d } => Rejected { diagnostic: d }
+      }
+    ResolvedTransportFile { properties: properties } =>
+      match normalize_resolved_transport_properties(properties: properties) {
+        Produced { value: nprops } =>
+          Produced {
+            value: NormalizedTransportFile { properties: nprops }
+          }
+        Rejected { diagnostic: d } => Rejected { diagnostic: d }
+      }
+    ResolvedTransportLocal { properties: properties } =>
+      match normalize_resolved_transport_properties(properties: properties) {
+        Produced { value: nprops } =>
+          Produced {
+            value: NormalizedTransportLocal { properties: nprops }
+          }
+        Rejected { diagnostic: d } => Rejected { diagnostic: d }
+      }
+  }
+}
+
+
+fn empty_normalized_transport_properties() -> Outcome<List<NormalizedTransportProperty>> {
+  Produced { value: Empty }
+}
+
+
+fn normalize_resolved_transport_properties(
+  properties: List<ResolvedTransportProperty>
+) -> Outcome<List<NormalizedTransportProperty>> {
+  fold(properties, init: empty_normalized_transport_properties(), f: fn(acc, prop) {
+    match acc {
+      Rejected { diagnostic: d } => Rejected { diagnostic: d }
+      Produced { value: done } =>
+        match normalize_resolved_transport_property(prop: prop) {
+          Produced { value: np } =>
+            Produced { value: list_push(done, np) }
+          Rejected { diagnostic: d } => Rejected { diagnostic: d }
+        }
+    }
+  })
+}
+
+
+fn normalize_resolved_transport_property(
+  prop: ResolvedTransportProperty
+) -> Outcome<NormalizedTransportProperty> {
+  match normalize_resolved_expr(expr: prop.value) {
+    Produced { value: nvalue } =>
+      Produced {
+        value: NormalizedTransportProperty {
+          key: prop.key,
+          value: nvalue
+        }
+      }
+    Rejected { diagnostic: d } => Rejected { diagnostic: d }
+  }
+}
+
+
+fn empty_normalized_operations() -> Outcome<List<NormalizedOperation>> {
+  Produced { value: Empty }
+}
+
+
+fn normalize_resolved_operations(
+  operations: List<ResolvedOperation>
+) -> Outcome<List<NormalizedOperation>> {
+  fold(operations, init: empty_normalized_operations(), f: fn(acc, op) {
+    match acc {
+      Rejected { diagnostic: d } => Rejected { diagnostic: d }
+      Produced { value: done } =>
+        match normalize_resolved_operation(op: op) {
+          Produced { value: nop } =>
+            Produced { value: list_push(done, nop) }
+          Rejected { diagnostic: d } => Rejected { diagnostic: d }
+        }
+    }
+  })
+}
+
+
+fn normalize_resolved_operation(op: ResolvedOperation) -> Outcome<NormalizedOperation> {
+  match normalize_resolved_params(params: op.params) {
+    Produced { value: nparams } =>
+      match normalize_resolved_params(params: op.outputs) {
+        Produced { value: noutputs } =>
+          match normalize_resolved_block_opt(block: op.body) {
+            Produced { value: nbody } =>
+              Produced {
+                value: NormalizedOperation {
+                  name: op.name,
+                  params: nparams,
+                  outputs: noutputs,
+                  modifiers: op.modifiers,
+                  body: nbody
+                }
+              }
+            Rejected { diagnostic: d } => Rejected { diagnostic: d }
+          }
+        Rejected { diagnostic: d } => Rejected { diagnostic: d }
+      }
+    Rejected { diagnostic: d } => Rejected { diagnostic: d }
+  }
+}
+
+
+fn empty_normalized_resource_uses() -> Outcome<List<NormalizedResourceUse>> {
+  Produced { value: Empty }
+}
+
+
+fn normalize_resolved_resource_uses(
+  uses: List<ResolvedResourceUse>
+) -> Outcome<List<NormalizedResourceUse>> {
+  fold(uses, init: empty_normalized_resource_uses(), f: fn(acc, use) {
+    match acc {
+      Rejected { diagnostic: d } => Rejected { diagnostic: d }
+      Produced { value: done } =>
+        match normalize_resolved_resource_use(use: use) {
+          Produced { value: nu } =>
+            Produced { value: list_push(done, nu) }
+          Rejected { diagnostic: d } => Rejected { diagnostic: d }
+        }
+    }
+  })
+}
+
+
+fn normalize_resolved_resource_use(use: ResolvedResourceUse) -> Outcome<NormalizedResourceUse> {
+  match normalize_resolved_type_expr(expr: use.resource_type) {
+    Produced { value: ntype } =>
+      Produced {
+        value: NormalizedResourceUse {
+          name: use.name,
+          resource_type: ntype
+        }
+      }
+    Rejected { diagnostic: d } => Rejected { diagnostic: d }
+  }
+}
+
+
+fn normalize_item_core(item: ResolvedItemCore) -> Outcome<NormalizedItem> {
+  match item {
+    ResolvedOtherItem { keyword: keyword, raw_span: raw_span } =>
+      Produced {
+        value: NormalizedOtherItem {
+          keyword: keyword,
+          raw_span: raw_span
+        }
+      }
+    ResolvedFn {
+      name: name,
+      type_params: type_params,
+      params: params,
+      return_type: return_type,
+      uses: uses,
+      body: body,
+      span: span
+    } =>
+      match normalize_resolved_params(params: type_params) {
+        Produced { value: ntype_params } =>
+          match normalize_resolved_params(params: params) {
+            Produced { value: nparams } =>
+              match normalize_resolved_type_expr_opt(expr: return_type) {
+                Produced { value: nreturn } =>
+                  match normalize_resolved_resource_uses(uses: uses) {
+                    Produced { value: nuses } =>
+                      match normalize_resolved_block(block: body) {
+                        Produced { value: nbody } =>
+                          Produced {
+                            value: NormalizedFn {
+                              name: name,
+                              type_params: ntype_params,
+                              params: nparams,
+                              return_type: nreturn,
+                              uses: nuses,
+                              body: nbody,
+                              span: span
+                            }
+                          }
+                        Rejected { diagnostic: d } => Rejected { diagnostic: d }
+                      }
+                    Rejected { diagnostic: d } => Rejected { diagnostic: d }
+                  }
+                Rejected { diagnostic: d } => Rejected { diagnostic: d }
+              }
+            Rejected { diagnostic: d } => Rejected { diagnostic: d }
+          }
+        Rejected { diagnostic: d } => Rejected { diagnostic: d }
+      }
+    ResolvedFunc {
+      name: name,
+      type_params: type_params,
+      params: params,
+      return_type: return_type,
+      uses: uses,
+      body: body,
+      span: span
+    } =>
+      match normalize_resolved_params(params: type_params) {
+        Produced { value: ntype_params } =>
+          match normalize_resolved_params(params: params) {
+            Produced { value: nparams } =>
+              match normalize_resolved_type_expr_opt(expr: return_type) {
+                Produced { value: nreturn } =>
+                  match normalize_resolved_resource_uses(uses: uses) {
+                    Produced { value: nuses } =>
+                      match normalize_resolved_block(block: body) {
+                        Produced { value: nbody } =>
+                          Produced {
+                            value: NormalizedFunc {
+                              name: name,
+                              type_params: ntype_params,
+                              params: nparams,
+                              return_type: nreturn,
+                              uses: nuses,
+                              body: nbody,
+                              span: span
+                            }
+                          }
+                        Rejected { diagnostic: d } => Rejected { diagnostic: d }
+                      }
+                    Rejected { diagnostic: d } => Rejected { diagnostic: d }
+                  }
+                Rejected { diagnostic: d } => Rejected { diagnostic: d }
+              }
+            Rejected { diagnostic: d } => Rejected { diagnostic: d }
+          }
+        Rejected { diagnostic: d } => Rejected { diagnostic: d }
+      }
+    ResolvedTypeDecl {
+      name: name,
+      type_params: type_params,
+      definition: definition,
+      span: span
+    } =>
+      match normalize_resolved_params(params: type_params) {
+        Produced { value: ntype_params } =>
+          match normalize_resolved_type_expr(expr: definition) {
+            Produced { value: ndefinition } =>
+              Produced {
+                value: NormalizedTypeDecl {
+                  name: name,
+                  type_params: ntype_params,
+                  definition: ndefinition,
+                  span: span
+                }
+              }
+            Rejected { diagnostic: d } => Rejected { diagnostic: d }
+          }
+        Rejected { diagnostic: d } => Rejected { diagnostic: d }
+      }
+    ResolvedDataDecl {
+      name: name,
+      type_annotation: type_annotation,
+      value: value,
+      span: span
+    } =>
+      match normalize_resolved_type_expr(expr: type_annotation) {
+        Produced { value: nannotation } =>
+          match normalize_resolved_expr(expr: value) {
+            Produced { value: nvalue } =>
+              Produced {
+                value: NormalizedDataDecl {
+                  name: name,
+                  type_annotation: nannotation,
+                  value: nvalue,
+                  span: span
+                }
+              }
+            Rejected { diagnostic: d } => Rejected { diagnostic: d }
+          }
+        Rejected { diagnostic: d } => Rejected { diagnostic: d }
+      }
+    ResolvedService {
+      name: name,
+      transport: transport,
+      operations: operations,
+      span: span
+    } =>
+      match normalize_resolved_transport(transport: transport) {
+        Produced { value: ntransport } =>
+          match normalize_resolved_operations(operations: operations) {
+            Produced { value: noperations } =>
+              Produced {
+                value: NormalizedService {
+                  name: name,
+                  transport: ntransport,
+                  operations: noperations,
+                  span: span
+                }
+              }
+            Rejected { diagnostic: d } => Rejected { diagnostic: d }
+          }
+        Rejected { diagnostic: d } => Rejected { diagnostic: d }
+      }
+  }
+}
