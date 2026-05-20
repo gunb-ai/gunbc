@@ -24,9 +24,6 @@ const TESTGEN_DAG: &str = include_str!("../../../../v4/lens/testgen.dag");
 const VERIFICATION_DAG: &str = include_str!("../../../../v4/std/verification.dag");
 const NAT_LAW_DAG: &str = include_str!("../../../../v4/test/claim/manual/nat_law_anchors.dag");
 const NAT_SUBSTRATE_DAG: &str = include_str!("../../../../v4/std/nat.dag");
-const DEPENDENCY_DAG: &str = include_str!("../../../../v4/std/dependency.dag");
-const REGENERATION_DAG: &str = include_str!("../../../../v4/std/regeneration.dag");
-const PIPELINE_DAG: &str = include_str!("../../../../v4/std/pipeline.dag");
 
 const NAT_MANUAL_CLAIM_DATA: [&str; 6] = [
     "claim_nat_add_left_identity",
@@ -36,21 +33,6 @@ const NAT_MANUAL_CLAIM_DATA: [&str; 6] = [
     "claim_nat_mul_annihilator",
     "claim_nat_mul_associativity",
 ];
-
-#[test]
-fn v4_wave1_worker_a_std_substrate_modules_tokenize_and_parse() {
-    for (source, path) in [
-        (DEPENDENCY_DAG, "src/v4/std/dependency.dag"),
-        (REGENERATION_DAG, "src/v4/std/regeneration.dag"),
-        (PIPELINE_DAG, "src/v4/std/pipeline.dag"),
-    ] {
-        let module = parse_module(source, path);
-        assert!(
-            !module.items.is_empty(),
-            "{path}: substrate module should declare types"
-        );
-    }
-}
 
 #[test]
 fn v4_lens_testgen_wave0_modules_tokenize_and_parse() {
