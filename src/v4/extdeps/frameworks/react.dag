@@ -7,47 +7,47 @@
 module v4.extdeps.frameworks.react
 
 // Anchor: https://react.dev/learn/referencing-values-with-refs
-// 🟡 authority fork — DECISIONS.md#react-p4-cross-decl-ref
+// 🟡 authority fork
 type ReactCrossDeclRef
 
 // Anchor: https://react.dev/reference/react/useEffect
-// 🟢 coproduct dissolution — DECISIONS.md#react-p4-optref
+// 🟢 coproduct dissolution
 type ReactOptRef
   = RefPresent { ref: ReactCrossDeclRef }
   | RefAbsent
 
 // Anchor: https://react.dev/reference/react/createElement
-// 🟢 coproduct dissolution — DECISIONS.md#react-p4-opt-key
+// 🟢 coproduct dissolution
 type ReactOptKey
   = KeyPresent { key_ref: ReactCrossDeclRef }
   | KeyAbsent
 
 // Anchor: https://react.dev/reference/react/hooks
-// 🟢 coproduct dissolution — DECISIONS.md#react-p4-opt-value
+// 🟢 coproduct dissolution
 type ReactOptValue
   = ValuePresent { value_ref: ReactCrossDeclRef }
   | ValueAbsent
 
 // Anchor: https://react.dev/reference/react/useEffect
-// 🟢 coproduct dissolution — DECISIONS.md#react-p4-effect-cleanup-site
+// 🟢 coproduct dissolution
 type ReactEffectCleanupSite
   = NoCleanup
   | CleanupBody { cleanup_body_ref: ReactCrossDeclRef }
 
 // Anchor: https://react.dev/reference/react/useEffect
-// 🟢 coproduct dissolution — DECISIONS.md#react-p4-hook-inline-deps
+// 🟢 coproduct dissolution
 type ReactHookInlineDependenciesArgument
   = DependenciesArgOmitted
   | DependenciesArgPresent { dependency_refs: List<ReactCrossDeclRef> }
 
 // Anchor: https://react.dev/reference/rsc/server-components
-// 🟢 coproduct dissolution — DECISIONS.md#react-p4-module-surface
+// 🟢 coproduct dissolution
 type ReactModuleSurface
   = ReactClientModule
   | ReactServerComponentsModule
 
 // Anchor: https://react.dev/reference/react/hooks
-// 🟡 coproduct dissolution — DECISIONS.md#react-p4-hook-site
+// 🟡 coproduct dissolution
 type ReactHookSite
   = UseState { initial_ref: ReactCrossDeclRef }
   | UseReducer {
@@ -142,20 +142,20 @@ type ReactCompositeElement {
 }
 
 // Anchor: https://react.dev/reference/react/createElement
-// 🟢 coproduct dissolution — DECISIONS.md#react-p4-element
+// 🟢 coproduct dissolution
 type ReactElement
   = Host { host: ReactHostElement }
   | Composite { composite: ReactCompositeElement }
   | Fragment { key: ReactOptKey, children: List<ReactCreateElementChild> }
 
 // Anchor: https://react.dev/reference/react/createElement
-// 🟡 coproduct dissolution — DECISIONS.md#react-p4-node
+// 🟡 coproduct dissolution
 type ReactCreateElementChild
   = Element { element: ReactElement }
   | Text { text_value_ref: ReactCrossDeclRef }
 
 // Anchor: https://react.dev/reference/react/createContext
-// 🟢 — DECISIONS.md#react-p4-context-binding
+// 🟢
 type ReactContextBinding {
   context_ref: ReactCrossDeclRef
   default_value_ref: ReactCrossDeclRef
