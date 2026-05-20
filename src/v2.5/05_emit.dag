@@ -485,8 +485,10 @@ fn render_binop(op: BinOp, left: String, right: String, spec: LanguageSpec) -> O
         InfixSymbol { symbol: s, precedence: _ } =>
           Produced { value: concat(left, s, right) }
         RightMethodCall { method_name: m, open: o, close: c } =>
-          // `lhs.method(rhs)` — Rust's .unwrap_or pattern.
-          Produced { value: concat(left, ".", m, o, right, c) }
+          // `lhs.method(rhs)` — Rust's .unwrap_or pattern. The method-call
+          // separator is the same axis InferredMethodCall reads from spec —
+          // single authority (cursor review #15228 finding 2).
+          Produced { value: concat(left, spec.expressions.method_call_separator, m, o, right, c) }
         PrefixFunction { function_name: fname, open: o, separator: sep, close: c } =>
           // `fn(lhs, rhs)` — e.g. some targets emit comparisons as a function.
           Produced { value: concat(fname, o, left, sep, right, c) }
@@ -605,13 +607,20 @@ fn render_service(name: BoundName, transport: InferredTransport, operations: Lis
 // hides the discipline. Inlining the small ones makes the per-variant render
 // strategy explicit + the LanguageSpec field reads visible.
 
+// render_literal reads all per-target spellings from spec.literals; the
+// framework owns the LiteralValue dispatch shape, the spellings are data
+// (cursor review #15228 finding 1 — earlier draft hardcoded "\"" + "true"
+// / "false" while the file claims per-target syntax lives only in
+// LanguageSpec).
 fn render_literal(value: LiteralValue, spec: LanguageSpec) -> String {
   match value {
-    LitStr { value: s } => concat("\"", s, "\"")
+    LitStr { value: s } =>
+      concat(spec.literals.string_open, s, spec.literals.string_close)
     LitInt { value: i } => int_to_string(i: i)
     LitFloat { value: f } => f
-    LitBool { value: b } => if b { "true" } else { "false" }
-    LitNull => spec.expressions.null_literal
+    LitBool { value: b } =>
+      if b { spec.literals.bool_true } else { spec.literals.bool_false }
+    LitNull => spec.literals.null_literal
   }
 }
 

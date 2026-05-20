@@ -59,6 +59,7 @@ type LanguageSpec {
   identifiers: IdentifierRules
   items: ItemSyntax
   expressions: ExpressionSyntax
+  literals: LiteralSyntax
   patterns: PatternSyntax
   strings: StringInterpSyntax
   types: TypeRenderRules
@@ -172,7 +173,20 @@ type ExpressionSyntax {
   arg_separator: String
   named_arg_separator: String
   let_binding: LetBindingSyntax
-  null_literal: String
+}
+
+// LiteralSyntax — per-target spellings for LiteralValue arms. Cursor review
+// #15228 finding 1 — earlier draft hardcoded `"\""` (string delimiter) and
+// `"true"`/`"false"` (bool spellings) in render_literal. They belong on the
+// spec: targets differ (Python: `True`/`False`; Lua: `nil` not `None`; etc.).
+// null_literal was previously under ExpressionSyntax; relocated here with the
+// other literal-spelling facts for coherent grouping.
+type LiteralSyntax {
+  string_open: String     // "\"" in Rust/Go/Python; "'" in some
+  string_close: String    // usually equals string_open
+  bool_true: String       // "true" in Rust/Go; "True" in Python
+  bool_false: String      // "false" in Rust/Go; "False" in Python
+  null_literal: String    // "None" in Rust (Option::None); "None" in Python; "nil" elsewhere
 }
 
 // LetBindingSyntax — per-target keywords and separators for a value-binding

@@ -39,6 +39,7 @@ import v2_5.std.language_spec {
   BracedBlock,
   ExpressionSyntax,
   LetBindingSyntax,
+  LiteralSyntax,
   BinOpRule,
   BinOpRender,
   InfixSymbol,
@@ -368,7 +369,13 @@ fn rust_spec() -> LanguageSpec {
         let_keyword: "let ",
         assignment_separator: " = ",
         binding_terminator: ";\n"
-      },
+      }
+    },
+    literals: LiteralSyntax {
+      string_open: "\"",
+      string_close: "\"",
+      bool_true: "true",
+      bool_false: "false",
       null_literal: "None"
     },
     patterns: PatternSyntax {
