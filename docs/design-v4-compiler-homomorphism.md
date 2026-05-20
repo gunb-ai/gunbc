@@ -319,6 +319,61 @@ For edges that are naturally references (Atom binding), the edge payload may car
 
 `PlacementDependsOn` from the initial taxonomy is a **TargetPlan-tier concept** unless the source language explicitly declares placement (rare). Most placement decisions belong to target / runtime policy, not source `InferredTree`.
 
+### P8 — The compiler is not exempt from its own discipline
+
+> **Ratified 2026-05-20** (reviewer-proposed, operator-direct).
+
+The v4 compiler must receive the same structural benefits it provides to user programs. **Compiler stages, language models, lenses, test generation, target models, diagnostics, and glue derivation are themselves modeled as dependency graphs over the same substrate primitives.**
+
+A change to an upstream model — Node shape, grammar productions, `LanguageModel`, `ModelCore`, dependency kind, lens contract, coercion-fold witness shape, or `HostModel` — must produce a `ChangeSet`. The system computes the affected downstream compiler artifacts (via T-21 `affected_set`) and regenerates them where derivable. If a downstream artifact cannot be regenerated from the updated model, the compiler **fails closed** with an explicit diagnostic.
+
+**No compiler layer may depend on another layer through:**
+- Implicit convention.
+- Manual synchronization (developer chases the change across layers by hand).
+- Hidden emitter (executable emitter logic smuggled into a model file).
+- Hidden parser (token-by-token recognition that bypasses grammar-as-data).
+- Hidden test generator (special-case test-emission code outside the lens framework).
+- Hidden integration updater (per-pair language adapter code that should be derived).
+- Hidden layer-specific patcher (ad hoc walker fixing up stale output of an upstream stage).
+- Ad hoc Node traversal outside `fold_node` / `traverse_node` / `apply_diff` / lens primitives (Practice 10 row 1 violation, applied to compiler internals).
+
+**Every compiler-internal artifact must be one of:**
+- A substrate primitive (declared in `std/`).
+- A declared algebra over a substrate primitive.
+- A lens (in the read/edit framework).
+- A projection (P3 commitment 1; output of a lens).
+- A target/runtime policy (declared in `extdeps/`).
+
+**The slogan.** *The compiler is the first consumer of its own modeling discipline.* If implementation workers find themselves writing ad hoc code to keep compiler layers in sync, that is a **STOP condition** — escalate, do not patch.
+
+**Worked example: testgen self-regeneration.** Suppose `Refinement<T>` (in `std/refinement.dag`) gains a new field. A v2-style compiler would require manual updates to every place that emits boundary-tests-for-refinements, every target-language test renderer, every fixture template. The v4 compiler:
+
+1. `affected_set` computes the downstream artifacts whose inputs include `Refinement<T>` (TestClaimLens, BoundaryTestLens, every TargetTestProjection that reads boundary tests).
+2. Each affected projection regenerates from the new `Refinement<T>` shape via its declared lens algebra.
+3. If a projection's algebra can't accommodate the new shape (e.g., needs a fact the new model doesn't carry), it surfaces as a diagnostic, NOT a silent breakage.
+
+**Worked example: language-model self-regeneration.** Suppose `LanguageModel` is extended with a new field (e.g., effect-semantics declarations per Open Q10). The compiler:
+
+1. `affected_set` computes which compiler stages / lenses depend on `LanguageModel`'s shape (resolve consults binding rules; ground consults inhabitance; translate consults grammar; …).
+2. Each affected stage's algebra extends or fails-closed on the new field.
+3. Existing `rust.dag` / `python.dag` / etc. fail-closed-or-default on the new field until updated.
+
+There is no manual sync. The compiler is rebuilt from its models the same way user programs are rebuilt from theirs.
+
+### Named regeneration substrate (needed but not yet declared)
+
+To operationalize P0 + P8, the substrate needs explicit concepts for change-consequence machinery. Most are missing today (T-21 `affected_set` is the partial exception):
+
+| Concept | Purpose | Status |
+|---|---|---|
+| **`ChangeSet`** | A diff between two model versions (changed Nodes, edges, facts, witnesses, grammar productions, LanguageModel declarations, lens contracts). | Not declared. Likely `std/change.dag`. |
+| **`AffectedSet`** | Downstream artifacts requiring recomputation given a `ChangeSet` + dependency graph + projection graph. | Partially: T-21 `affected_set` is the lens-frontier specialization; full `AffectedSet` for arbitrary projection graphs not yet declared. |
+| **`Projection`** | A declared projection-as-data: name, input carrier, output artifact, dependency requirements, regeneration algebra, validation lens set. | Not declared. Likely `std/projection.dag`. |
+| **`Artifact`** | An emitted artifact (generated source file, test file, schema, diagnostic table, compiler stage table) with its provenance (which projection produced it from which model state). | Not declared. Likely `std/artifact.dag`. |
+| **`RecomputePlan`** | Topological schedule + SCC/fixpoint groups + cached-vs-invalidated artifacts + regeneration ordering. The "how to recompute" data given an `AffectedSet`. | Not declared. |
+
+Implementation order: these probably land alongside or after the multi-lens dependency-management primitive (Open Q6); they share substrate.
+
 ### P7 — Lawful rewrite witnesses for structure-changing lowerings
 
 > **Ratified 2026-05-20** (reviewer-proposed, operator-direct).
@@ -573,23 +628,53 @@ Per P0 + P3, **every downstream artifact is a projection of `InferredTree`** com
 
 The compiler core does NOT name any of these specific projections (P3 commitment 4). Each lens is plug-in data; the compiler's job is to enable the fold mechanism and the candidate-state gate.
 
-### Testgen as a lens
+### Testgen as a lens family
 
-The current name `lens/testgen.dag` is historical — predates the lens reframe. Conceptually, testgen IS a lens family that produces `TestClaim` Witnesses as projections of `InferredTree`. Different "levels" of testgen are different invocations of the same lens (or sibling lenses sharing a library):
+The current name `lens/testgen.dag` is historical — predates the lens reframe. Conceptually, **testgen is a lens family that produces test artifacts as projections of `InferredTree`.** Different "levels" of testgen are different invocations, profiles, or dependent lenses over the same verification substrate.
 
-| Invocation | Source of test cases | Example |
+**Three-layer structure** (per reviewer 2026-05-20):
+
+| Layer | Lens | Input | Output |
+|---|---|---|---|
+| **Abstract claims** | `TestClaimLens` | `InferredTree` | `TestClaim` Witnesses — roundtrip-law claims, refinement-boundary claims, algebra-law claims, protocol-compatibility claims, effect/idempotency claims |
+| **Concrete cases** | `TestCaseLens` | `TestClaim` Witnesses | `TestCase` Witnesses — examples, boundary cases, property-test generators, fuzz seeds, regression fixtures (lowering of abstract claims) |
+| **Target-specific files** | `TargetTestProjection` | `TestCase` Witnesses + target `LanguageModel` | `TargetSource` for tests (Rust `#[test]`, Python pytest, TS Jest, integration harness, …) — uses translate's homomorphism applied to test data |
+
+The pipeline:
+```
+InferredTree ── TestClaimLens ──> TestClaims
+TestClaims    ── TestCaseLens ──> TestCases
+TestCases     ── TargetTestProjection(target_lang) ──> target test source
+```
+
+Each step is a fold (P3 + lens framework); each step's output is data consumable by the next.
+
+**Profile invocations** are different lens parameters / dependent lenses on the same family:
+
+| Profile | Reads | Example |
 |---|---|---|
+| `testgen.smoke` | typeshape + binding | "every public function has a smoke test that calls it with default-typed args" |
 | `testgen.boundary` | refinement predicates declared on types | `Refined<String, uuid_format>` → "valid UUID test, invalid UUID tests" |
 | `testgen.property` | algebraic laws declared on inhabitances | `OrderedRing<Int>` → "addition is commutative", "addition has identity" |
-| `testgen.integration` | protocol models + service boundaries | `service.via rest::post(path)` → "client/server contract roundtrip test" |
+| `testgen.algebra_law` | algebra-law-subject declarations | "associativity holds for this monoid" |
+| `testgen.effect` | `EffectDependsOn` edges + idempotency lens output | "idempotent service `f` called twice produces same result" |
+| `testgen.integration` | protocol models + service boundaries | `service.via rest::post(path)` → "client/server contract roundtrip" |
 | `testgen.roundtrip` | grammar-as-bidir-data law | serialize-then-parse equals identity for the target language |
-| `testgen.equivalence` | cross-target inhabitance witnesses | "Rust emit + Python emit produce equivalent results for this input" |
+| `testgen.equivalence` | cross-target inhabitance witnesses | "Rust + Python + TS emit produce equivalent results" |
 | `testgen.fuzz` | cardinality + disjunction boundaries | "for each variant of this Disj type, generate a sample" |
 | `testgen.regression` | prior failing inputs (from `TestClaim` registry) | "this past failure must still pass" |
 
-All produce `TestClaim` Witnesses against `InferredTree`. The compiler's job is the fold mechanism + canonical `TestClaim` carrier; the *which tests* is lens authoring. Renaming `lens/testgen.dag` to align with the lens-family naming is small follow-up bookkeeping.
+All profiles share the **same substrate**:
+- `std/verification.dag` (TestClaim carriers) — landed.
+- `std/refinement.dag` (refinement substrate, T-25-core) — landed.
+- `std/dependency.dag` (P6 dep edges) — not yet declared.
+- `std/testgen.dag` (lens family library) — exists as `lens/testgen.dag`; pending the rename to fit the lens-family naming convention.
 
-**Important boundary (P0 implication):** tests are projections OF the model; the model is not derived from tests. The slogan: *"tests are generated from the model as behavioral probes; they are not the source of truth for the model."*
+**Lens-to-lens dependencies** are first-class (Open Q6 multi-lens primitive): `testgen.property` may depend on `testgen.algebra_law`'s output; `testgen.integration` may depend on `testgen.roundtrip`. These compose via the lens-dependency DAG (P3 commitment 5), not via ad hoc calls — Practice 10 row 1 applies to lens internals too.
+
+**Important boundary (P0 implication):** tests are projections OF the model; the model is NOT derived from tests. Tests are **behavioral probes** generated from the source-of-truth model. The slogan: *"tests are generated from the model as behavioral probes; they are not the source of truth for the model."*
+
+**Self-regeneration:** when a model fact changes (e.g., `Refinement<T>` shape changes per P8's worked example), `affected_set` computes which TestClaims/TestCases/target test files need regeneration; the relevant lens family invocations re-fire automatically on the affected subgraph. No manual sync.
 
 ### Dry-run as a lens-composed projection
 
@@ -949,7 +1034,7 @@ Recommendation: Q14c default + Q14d opt-in for advanced surface. Q14b is the "le
 
 ## Process for amending this doc
 
-- A change to a ratified premise (P0 / P1 / P2 / P3 / P4 / P5 / P6 / P7) requires explicit operator ratification + reconcile of any downstream substrate.
+- A change to a ratified premise (P0 / P1 / P2 / P3 / P4 / P5 / P6 / P7 / P8) requires explicit operator ratification + reconcile of any downstream substrate.
 - Resolution of an Open Q is recorded inline (move from "Open" section to a new "Ratified" subsection with date).
 - Implementation that contradicts a premise is a STOP — escalate, do not improvise.
 
@@ -1001,3 +1086,11 @@ Recommendation: Q14c default + Q14d opt-in for advanced surface. Q14b is the "le
 | **projection (lens output)** | Per P0 + P3, every downstream artifact (tests, dimensional facts, glue, schemas, migration plans, docs, dry-run results) is a *projection* of `InferredTree` computed by a lens. The compiler core produces InferredTree; lenses fan out into the projection family. |
 | **testgen** | A lens family that produces `TestClaim` Witnesses as projections of `InferredTree`. Historical name predating the lens reframe; different "levels" (boundary / property / integration / roundtrip / equivalence / fuzz / regression) are different invocations of the same family. Tests are projections of the model, NOT the source of truth for the model. |
 | **dry-run** | A lens-composed projection: `io_boundary_lens` identifies the I/O sites; a `LawfulRewriteWitness` substitutes mock stubs; `eval(mock_host_model)` runs the substituted tree. No new compiler primitive; composes lens + rewrite + eval-with-host-variant. Variations: record, assert, replay, fuzz. |
+| **`TestClaimLens`** | Lens layer 1 of testgen — produces abstract behavioral claims (roundtrip / refinement-boundary / algebra-law / protocol-compatibility / effect-idempotency) as `TestClaim` Witnesses. |
+| **`TestCaseLens`** | Lens layer 2 of testgen — lowers `TestClaim` Witnesses into concrete `TestCase` Witnesses (examples, boundary cases, property-test generators, fuzz seeds, regression fixtures). |
+| **`TargetTestProjection`** | Lens layer 3 of testgen — translates `TestCase` Witnesses into target-language test source via translate's homomorphism. |
+| **`ChangeSet`** | A diff between two model versions (changed Nodes / edges / facts / witnesses / grammar productions / LanguageModel fields / lens contracts). Substrate for P0 + P8 consequence-recomputation. Not yet declared (`std/change.dag`). |
+| **`AffectedSet`** | Downstream artifacts requiring recomputation given a `ChangeSet`. T-21 `affected_set` is the lens-frontier specialization; full `AffectedSet` over arbitrary projection graphs not yet declared. |
+| **`Projection`** | Declared projection-as-data: name + input carrier + output artifact + dependency requirements + regeneration algebra + validation lens set. Not yet declared (`std/projection.dag`). |
+| **`Artifact`** | An emitted artifact (source file, test file, schema, diagnostic table, compiler stage table) with its provenance (which projection produced it from which model state). Not yet declared (`std/artifact.dag`). |
+| **`RecomputePlan`** | Topological schedule + SCC/fixpoint groups + cached-vs-invalidated artifacts. The "how to recompute" data given an `AffectedSet`. Not yet declared. |
