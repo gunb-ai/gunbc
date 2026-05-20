@@ -319,6 +319,170 @@ For edges that are naturally references (Atom binding), the edge payload may car
 
 `PlacementDependsOn` from the initial taxonomy is a **TargetPlan-tier concept** unless the source language explicitly declares placement (rare). Most placement decisions belong to target / runtime policy, not source `InferredTree`.
 
+### P9 — Bootstrap is stratified; stage0 is a generated artifact, not self-modifying code
+
+> **Ratified 2026-05-20** (reviewer-proposed, operator-direct).
+
+The compiler may model and regenerate its own implementation, **including stage0**, but **no running compiler generation mutates itself in place**. The "compiler edits itself" framing from earlier sections is precise only in this stratified sense:
+
+> The compiler can **derive and verify a replacement stage0** from `Stage0Spec`. It cannot arbitrarily rewrite itself at runtime.
+
+This precision matters. v2's pain was largely: "compiler contract changes → generated code changes → stage0 cannot regenerate enough of the compiler → manual stage0 edit required." v4 must structurally prevent that failure mode without falling into the opposite failure mode of free runtime self-modification (which is intractable to reason about).
+
+### Three pipelines, not one
+
+The architecture has **three distinct pipelines** that must not be collapsed:
+
+| Pipeline | Input | Output | Surface |
+|---|---|---|---|
+| **1. Semantic compile pipeline** | user/source text (or `CoreNode` directly) | target source / eval Value | Per the rest of this doc — parse→normalize→resolve→ground→translate/serialize OR eval. The "compile" surface most users see. |
+| **2. Artifact projection pipeline** | `InferredGraph` (the compiler's own modeled state, OR any user program) | generated compiler code / tests / docs / schemas / glue / diagnostics tables / stage1 compiler source | Lenses + projections per P3 + P8. Everything downstream of a model that's *not* the user-program target output. |
+| **3. Bootstrap promotion pipeline** | current `stage0[k]` + candidate-next-compiler artifacts | `stage0[k+1]` (or rejection diagnostic) | The protocol that **replaces the active seed**. Guarded by `BootstrapWitness` + `FixedPointWitness` + promotion checks. |
+
+The mistake is collapsing all three into "the compiler edits itself." The right model:
+- The compiler **models** itself (pipeline 1 reads `.dag` source of any program, including the compiler's own source).
+- The compiler **generates artifacts representing** itself (pipeline 2 produces a candidate next-compiler as a projection).
+- The compiler **verifies** those artifacts (pipeline 2 also runs lenses + testgen + fixed-point checks).
+- **Only the build/promote protocol replaces the active stage0** (pipeline 3).
+
+### What `stage0` is — and isn't
+
+**stage0 should NOT be "the whole compiler, but worse."** It should be a **minimal seed runner** whose contract is explicitly modeled.
+
+`Stage0Contract` declares:
+- Load a canonical `CorePackage`.
+- Understand a stable `Node` / Core schema.
+- Run the minimal `fold_node` / `traverse_node` machinery needed to build `stage1`.
+- Report diagnostics fail-closed.
+- Emit one bootstrap target artifact.
+- Verify content hashes / witnesses.
+
+**stage0 does NOT necessarily parse the full evolving `.dag` surface language.** This is the key decoupling. A lot of v2 pain came from "stage0 must understand the same evolving contracts as the compiler" — that creates constant manual patch pressure. In v4:
+
+```
+compiler.dag         // human-authored source of truth
+compiler.corepkg     // generated canonical bootstrap package (stable schema)
+stage0               // seed that reads compiler.corepkg, NOT arbitrary surface syntax
+```
+
+`compiler.corepkg` is generated and checked by the real compiler pipeline, but `stage0` only needs the **stable canonical representation**. Surface syntax, parser, normalizer, lenses, testgen levels, language-model polish all evolve without breaking stage0 — because stage0 doesn't consume them, it consumes the canonical package.
+
+### The bootstrap epoch loop
+
+```
+Epoch k:
+  Stage0[k] + CorePackage[k] ──> Stage1[k]
+  Stage1[k] + SourceModels[k] ──> Stage1'[k]
+  verify(Stage1[k] == Stage1'[k]) ──> FixedPointWitness[k]
+
+Upgrade k → k+1 (when an upstream model changes):
+  Edit SourceModels[k+1]
+  current compiler computes:
+    ChangeSet[k → k+1] + AffectedSet + RecomputePlan
+  Stage0[k] + Bridge/CorePackage[k → k+1] ──> Stage1[k+1]
+  Stage1[k+1] ──> Stage0Candidate[k+1] + Stage1Candidate[k+1]
+  verify:
+    Stage0Candidate[k+1] can produce Stage1Candidate[k+1]
+    Stage1Candidate[k+1] is equivalent / fixed-point
+    witnesses / tests / lenses pass
+  promote:
+    Stage0[k+1] = Stage0Candidate[k+1]
+```
+
+The **active compiler never mutates itself in place**. The only "back edge" is a **promotion edge**, and it is guarded by:
+- Candidate generated.
+- Candidate verified (fixed-point + witnesses + tests).
+- Candidate promoted via an explicit promotion protocol.
+
+### Three cases for compiler-contract changes
+
+| Case | Change shape | Bootstrap impact |
+|---|---|---|
+| **1. Normal downstream change** | Add target language; change testgen profile; change cost lens; change grammar sugar; change a non-bootstrap-touching algebra. | No stage0 change required. Affected artifacts recomputed via `affected_set` per P0+P8; stage0 untouched. |
+| **2. Bootstrap-compatible stage0 change** | `Stage0Spec` changes, but the change is expressible in the existing CorePackage schema. | Current compiler generates `Stage0Candidate`; verify; promote. **No manual edit.** |
+| **3. Bootstrap-breaking change** | The new model can't be consumed by the current stage0 (e.g., Node schema fundamentally changes). | Requires a modeled `Bridge[k → k+1]` (a migration package). If the bridge can't be generated, the system **fails closed** with `BootstrapBreak: current stage0 cannot consume CorePackage[k+1]; required bridge missing; affected contracts: ...`. Much better than discovering as a random manual patch later. |
+
+Manual edits to stage0 are architecture violations except as explicitly declared emergency seed resets (documented and time-bounded).
+
+### Critical invariant
+
+> **At no point does an artifact become source of truth merely because it is needed for bootstrapping.**
+
+Even if `stage0.rs`, `compiler.corepkg`, generated compiler source, and generated tests are checked in, they are **NOT authorities**. They are generated artifacts with hashes/witnesses. The source of truth remains:
+- `.dag` models.
+- `Stage0Contract`.
+- `CorePackageSchema`.
+- `Projection` definitions.
+
+Generated artifacts that have drifted from their model are stale, not authoritative — the regeneration mechanism re-derives them, and a stale artifact whose model has changed is invalidated by the affected-set machinery.
+
+### The conceptual stack
+
+```
+Layer 4 — Verification / promotion
+  fixed-point check, homomorphism witness, bootstrap witness,
+  generated-test execution, promotion of candidate stage0/stage1
+
+Layer 3 — Generated compiler artifacts
+  stage1 compiler, target serializers, generated tests,
+  diagnostics tables, runtime/eval artifacts
+
+Layer 2 — Compiler models (.dag, source of truth)
+  parse / normalize / resolve / ground / translate / serialize / eval algebras
+  lens algebras (including testgen lens family)
+
+Layer 1 — Substrate models (.dag, source of truth)
+  Node, fold_node, traverse, Outcome/Diagnostic/Locus,
+  grammar-as-data, dependency graph, coercion fold,
+  change/artifact/bootstrap substrate
+
+Layer 0 — Seed
+  stage0 executable. Minimal, boring, audited.
+  Consumes canonical CorePackage, NOT arbitrary surface syntax.
+```
+
+Only **Layer 0 is hand-seeded** (and even that is regenerable via the promotion protocol).
+Layers 1-2 are the **source of truth**.
+Layer 3 is **disposable** (regeneratable from Layers 1-2).
+Layer 4 is **procedural and conservative** (the gatekeeper).
+
+### Two distinct dependency graphs
+
+P6 names dependency edges over user programs. Bootstrap requires the **same idea applied to compiler artifacts** — but it's a *separate graph*:
+
+| Graph | Edges | What it tracks |
+|---|---|---|
+| **Program dependency graph** (P6) | `Contains`, `BindsTo`, `TypeDependsOn`, `DataDependsOn`, `EffectDependsOn`, `ResourceDependsOn`, `ModuleDependsOn`, `BarrierBefore`, `PlacementConstraint` | The program being compiled. |
+| **Build / bootstrap dependency graph** (new) | `ModelDependsOn`, `ProjectionDependsOn`, `GeneratedFrom`, `VerifiedBy`, `PromotedBy`, `BootstrapDependsOn` | Compiler artifacts and their provenance. |
+
+Keeping them separate prevents the confusion "does the compiler's own resolver depend on the resolver it is resolving?" — answer: at epoch k, `Stage0[k]` resolves `model[k]` enough to build `Stage1[k]`. No active stage depends on its own output. The two graphs use the same substrate ideas but model different relationships.
+
+### New bootstrap substrate (needed but not yet declared)
+
+| Concept | Purpose | Status |
+|---|---|---|
+| **`Stage0Contract`** | What stage0 promises to do (consume canonical CorePackage; run minimal fold_node + traverse; fail-closed diagnostics; emit verified artifact). | Not declared. Likely `std/bootstrap.dag`. |
+| **`BootstrapEpoch`** | The k-indexed snapshot of (stage0, CorePackage, SourceModels). | Not declared. |
+| **`CorePackage`** | The stable canonical bootstrap package consumed by stage0. | Not declared. |
+| **`CorePackageSchema`** | The schema describing what CorePackage carries (changes here are bootstrap-breaking per Case 3). | Not declared. |
+| **`Bridge`** | Migration package for bootstrap-breaking changes (Case 3 of bootstrap-impact taxonomy). | Not declared. |
+| **`BootstrapWitness`** | Proof that Stage0Candidate[k+1] can produce Stage1Candidate[k+1]. | Not declared. |
+| **`FixedPointWitness`** | Proof that Stage1[k] compiles to itself (compiler self-emits, THESIS facet 2). | Not declared. |
+| **`PromotionPlan`** | The procedural step from candidate to active stage0. | Not declared. |
+| **`PromotionDiagnostic`** / **`BootstrapBreak`** | Fail-closed diagnostic shape for un-promotable candidates. | Not declared. |
+
+These compose with the regeneration substrate from P8 (`ChangeSet`, `AffectedSet`, `Projection`, `Artifact`, `RecomputePlan`) — bootstrap substrate is a specialization for compiler artifacts. Likely implementation order: declare in `std/bootstrap.dag` alongside the P8 regeneration concepts.
+
+### What this rules out
+
+If implementation workers find themselves writing:
+- Code that lets stage0 directly edit itself at runtime.
+- A "bootstrap workaround" that's a hand-authored stage0 patch outside the candidate/promotion path.
+- A "well, we know this change is safe" that skips fixed-point verification.
+- Generated-artifact files treated as authorities (e.g., editing the generated stage0 source to fix a bug instead of editing the model).
+
+…that is a **STOP condition**. Escalate. The bootstrap layer is intentionally conservative; bypassing it produces v2's pain.
+
 ### P8 — The compiler is not exempt from its own discipline
 
 > **Ratified 2026-05-20** (reviewer-proposed, operator-direct).
@@ -711,7 +875,9 @@ Each is a different mock_host_model + optionally different lens for what counts 
 
 ## Self-modification, stage0, self-edit
 
-The compiler is itself authored in `.dag`. Self-modification — the compiler editing its own source — is therefore a natural composition of the EDIT direction (read/edit pipeline) and the COMPILE direction (this doc). This section addresses the specific question the read/edit doc reviewer raised: "how will the compiler edit itself?"
+> **Important framing (per P9):** the phrase "compiler editing itself" is loose. The precise framing is: the compiler **models** itself; the compiler **generates a candidate next-compiler** as an artifact; the candidate is **verified**; only the **promotion protocol** replaces the active stage0. The active compiler does NOT mutate itself in place at runtime. See P9 ("Bootstrap is stratified") for the full discipline; this section walks through the mechanics.
+
+The compiler is itself authored in `.dag`. Self-modification — the compiler updating its own source — is therefore a natural composition of the EDIT direction (read/edit pipeline), the COMPILE direction (this doc), AND the bootstrap promotion pipeline (P9). This section addresses the specific question the read/edit doc reviewer raised: "how will the compiler edit itself?"
 
 ### The compiler reading its own source
 
@@ -744,7 +910,7 @@ This is why P1 (Languages are I/O integration surfaces) and self-hosting are not
 
 ### Candidate-state for self-modification safety
 
-When the compiler proposes a change to itself, the candidate-state pattern from the read/edit pipeline is what makes self-modification **safe**:
+When the compiler proposes a change to itself, the candidate-state pattern from the read/edit pipeline is what makes self-modification **safe** — and per P9, this is the *only* path: candidate generation + verification + promotion. The active running compiler is never the candidate.
 
 ```
 candidate_self = apply_diff(self, proposed_diff)
@@ -1034,7 +1200,7 @@ Recommendation: Q14c default + Q14d opt-in for advanced surface. Q14b is the "le
 
 ## Process for amending this doc
 
-- A change to a ratified premise (P0 / P1 / P2 / P3 / P4 / P5 / P6 / P7 / P8) requires explicit operator ratification + reconcile of any downstream substrate.
+- A change to a ratified premise (P0 / P1 / P2 / P3 / P4 / P5 / P6 / P7 / P8 / P9) requires explicit operator ratification + reconcile of any downstream substrate.
 - Resolution of an Open Q is recorded inline (move from "Open" section to a new "Ratified" subsection with date).
 - Implementation that contradicts a premise is a STOP — escalate, do not improvise.
 
@@ -1094,3 +1260,9 @@ Recommendation: Q14c default + Q14d opt-in for advanced surface. Q14b is the "le
 | **`Projection`** | Declared projection-as-data: name + input carrier + output artifact + dependency requirements + regeneration algebra + validation lens set. Not yet declared (`std/projection.dag`). |
 | **`Artifact`** | An emitted artifact (source file, test file, schema, diagnostic table, compiler stage table) with its provenance (which projection produced it from which model state). Not yet declared (`std/artifact.dag`). |
 | **`RecomputePlan`** | Topological schedule + SCC/fixpoint groups + cached-vs-invalidated artifacts. The "how to recompute" data given an `AffectedSet`. Not yet declared. |
+| **`Stage0Contract`** | What stage0 promises (consume canonical CorePackage; minimal fold_node + traverse; fail-closed; emit verified artifact). Per P9. Not yet declared. |
+| **`CorePackage` / `CorePackageSchema`** | The stable canonical bootstrap package stage0 consumes (per P9). NOT the evolving surface language — decoupled from it. Not yet declared. |
+| **`BootstrapEpoch`** | k-indexed snapshot of (stage0, CorePackage, SourceModels). Per P9. Not yet declared. |
+| **`Bridge`** | Migration package for bootstrap-breaking changes (Case 3 of P9's bootstrap-impact taxonomy). Not yet declared. |
+| **`BootstrapWitness` / `FixedPointWitness`** | Verification artifacts for the promotion step (P9). Not yet declared. |
+| **promotion protocol** | The guarded step that replaces `Stage0[k]` with `Stage0[k+1]`. Per P9 — the *only* "back edge" in the system. Not yet implemented. |
