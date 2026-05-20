@@ -30,3 +30,55 @@
 
 module v4.lens.complexity
 
+
+import v4.lens.cost {
+  AsymptoticClass,
+  ClassConstant,
+  ClassUnknown,
+  SymbolicCost,
+  asymptotic_class_dominates,
+  asymptotic_class_of_cost,
+  symbolic_cost_of
+}
+import v4.std.diagnostic {
+  AmbiguousIntent,
+  Diagnostic,
+  NodeLocus,
+  Unavailable
+}
+import v4.std.node { Node, Symbol }
+import v4.std.witness { Holds, Violates, Witness }
+
+
+data complexity_reason_unmodeled_cost_projection: Symbol = complexity_reason_unmodeled_cost_projection
+
+type ComplexityBound {
+  class: AsymptoticClass
+}
+
+fn complexity_bound_from_cost(cost: SymbolicCost) -> ComplexityBound {
+  ComplexityBound {
+    class: asymptotic_class_of_cost(cost: cost)
+  }
+}
+
+fn complexity_projection_diagnostic(n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: complexity_reason_unmodeled_cost_projection,
+    at: NodeLocus { node: n },
+    correction: Unavailable { reason: AmbiguousIntent }
+  }
+}
+
+fn complexity_of(n: Node) -> Witness<ComplexityBound> {
+  match symbolic_cost_of(n: n) {
+    Holds { value: cost } =>
+      Holds { value: complexity_bound_from_cost(cost: cost) }
+    Violates { diagnostic: d } =>
+      Violates { diagnostic: d }
+  }
+}
+
+fn complexity_bound_dominates(a: ComplexityBound, b: ComplexityBound) -> Bool {
+  asymptotic_class_dominates(a: a.class, b: b.class)
+}
