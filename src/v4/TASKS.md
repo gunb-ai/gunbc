@@ -209,10 +209,12 @@ Close-the-loop + late substrate:
         single-target compiler. Architecture must not preclude, but no
         implementation in the initial single-target compiler"). Language-
         orthogonal: transport declares its own wire-format type system;
-        LanguageModel ⊗ TransportModel composition is T-16's responsibility,
-        not this substrate's. Single-authority for the activation gate
-        lives in the task body's "Out of scope for the initial single-
-        target compiler" section — see T-4.15.]
+        LanguageModel ⊗ TransportModel composition is the future-omni-stack-
+        expansion's responsibility (beyond T-16's current OpenAPI scope —
+        T-16's `[needs]` does NOT include T-4.15 today), not this
+        substrate's. Single-authority for the activation gate lives in
+        the task body's "Out of scope for the initial single-target
+        compiler" section — see T-4.15.]
   (T-33 std/model_core.dag is NOT in this "late substrate" bucket —
    see the side-branch feeders block at the top of this file. T-33 is a
    watch-item T-4 prerequisite, not slack; the side branch goes critical
@@ -911,7 +913,7 @@ All 5 artifacts share ONE Node tree (per gate #28 omni_layers_share_one_node_tre
 **Why load-bearing**: THESIS:225 — `dag run` is THE primary execution path. eval is not an afterthought to emit; it is the default. Sibling of `05_emit.dag` (same `InferredTree` input; eval executes, emit projects to target languages).
 
 **Modeling decisions**:
-- `eval: (InferredTree, Inputs) -> Result<Value, Diagnostic>` shape
+- `eval: (InferredTree, HostModel, Inputs) -> Result<Value, Diagnostic>` shape (HostModel parameter added 2026-05-20 per Ratified Q1 — eval interprets primitives against the HostModel substrate; see T-34)
 - Bounded-execution enforcement (INVARIANTS P4 — no unbounded loops; how does the evaluator structurally refuse non-termination?)
 - The shared substrate three consumers compose over: `workflow/bootstrap.dag` (interpreted, not compiled), TestClaim evaluation, lens dry-run
 - Concept-unification (THESIS:188): interpreter runtime = language spec = transport spec — eval reads the same `extdeps/languages/*.dag` carriers emit does
