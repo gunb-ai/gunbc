@@ -102,10 +102,7 @@ The v4 compiler is:
    - **`LawfulRewriteWitness`** (P7) — witness primitive for structure-changing lowerings (parallel-map, tree-reduce, CUDA, MapReduce). Rewrites are declared by target/runtime models with precondition algebra laws; rewritten plan groundings then go through the coercion fold's exact check.
    - **Typed dependency graph + topological/SCC machinery** — per P6, dependencies are first-class typed edges carried alongside containment.
    - **`apply_diff`** (write-side primitive, symmetric to `fold_node`) — structural mutation of a Node graph via a `Diff = List<Edit { at: Path, replacement: Node }>`. Fail-closed all-or-nothing. The agent-side mutation primitive. The substrate is **read/write-symmetric** at the primitive layer: reads are folds, writes are `apply_diff`. See [`docs/design-read-edit-pipeline.md`](design-read-edit-pipeline.md) for the full surface.
-3. **Plus boundary actions:**
-   - **Compile-core boundary actions:** write output text (or execute), report diagnostics. Two actions; compile-core is otherwise pure data-in / data-out.
-   - **Ingest-layer boundary actions (separable):** read input text (only when ingesting from a text source). Other ingest paths — programmatic, query-driven, IDE-driven — have no text boundary.
-   - The earlier "project" boundary-action mention from the original draft is removed — it was an artifact of the rescinded lens-as-compile-mode framing.
+3. **Compile-core has no boundary actions.** The compile core is **purely data-in / data-out**: `CoreNode + LanguageModel + CompileMode → Outcome<Output>`. No implicit text-reading, no implicit text-writing, no implicit "execute." All real-world I/O — reading source from disk, writing target source to disk, executing on a host, reporting diagnostics to stderr — is **modeled as effects against modeled resources** (`extdeps/file_system.dag` for files, `extdeps/process.dag` for shell/OS, `extdeps/network.dag` for network, etc.), composed by *peripheral shims* outside the compile-core surface. The architecture itself doesn't think about text/files/processes; those are orthogonal concerns modeled independently.
 
 Everything else — every "pass," every "stage," every "language-specific" anything — is an **algebra** plugged into `fold_node` or another declared substrate primitive. The compiler knows no specific language code (Rust, Python, even `.dag` itself, beyond an irreducible bootstrap-seed for `dag.dag`); language-specific *data* lives in `LanguageModel` declarations under `extdeps/languages/`.
 
@@ -119,10 +116,10 @@ The doc that follows defines what `compile()` takes and returns, why each piece 
 
 ## End-to-end I/O — the compile function
 
-> **Text/data separation (ratified 2026-05-20, operator-direct).** Compilation operates on **data** (a canonical `CoreNode` graph), not text. Text-to-Node is a *separate* ingest layer — useful when text is the input source, but skippable for programmatic, query-driven, or IDE-driven inputs. The substrate is data-first; text is one of several entry points.
+> **Text/data separation + I/O via modeled effects (ratified 2026-05-20, operator-direct).** Compilation operates on **data** (`CoreNode`), not text. Text, files, and shell/OS are **orthogonal concepts modeled independently** in `extdeps/` — there's a small shim to ingest text into `CoreNode`, but the compiler core never sees text or files. **The architecturally pure approach:** all real-world I/O is a modeled effect against a modeled resource (file_system.dag, process.dag, network.dag, …), composed by peripheral shims outside the compile-core surface.
 
 ```
-// === Compile core — operates on Node data ===
+// === Compile core — pure data-in / data-out, no I/O ===
 compile(
   source: CoreNode,                    // canonical substrate Node graph (data, not text)
   input_lang: LanguageModel,           // for resolve's scope rules + ground's inhabitance
@@ -130,17 +127,47 @@ compile(
 ) -> Outcome<Output>
 
 where CompileMode =
-  | TranslateTo(target_lang: LanguageModel)    // produce target source
-  | Eval(host_interp: HostModel)               // execute on host runtime
-
-// === Text ingest — one of several entry points to CoreNode ===
-ingest_text(
-  input_text: Text,
-  input_lang: LanguageModel             // grammar + sugar dissolutions
-) -> Outcome<CoreNode>
+  | TranslateTo(target_lang: LanguageModel)    // produce TargetSource (data)
+  | Eval(host_interp: HostModel)               // produce Value (data)
 ```
 
-That is the full external surface of the compiler-core. Three arguments to `compile`; one fail-closed `Outcome`. **Text is not a compile-core concern** — it's the boundary of the ingest layer, which is separable.
+That is the full external surface of compile-core. **Three arguments; one fail-closed Outcome. No I/O.** Text, files, processes, network are NOT compile-core concerns.
+
+### Peripheral shims for text and file I/O
+
+If a user wants to compile a `.dag` source file from disk to a Rust source file on disk, they compose modeled effects with compile-core. Each step is its own substrate-modeled operation:
+
+```
+// Each line is a modeled effect / pure transform — NOT a compile-core boundary action.
+
+source_text   = file_read(path)              // effect against extdeps/file_system.dag
+core_node     = ingest_text(source_text,     // shim — composes parse + normalize
+                            input_lang)
+result        = compile(core_node,           // pure data-in/data-out — compile-core
+                        input_lang,
+                        TranslateTo(rust_lang))
+target_text   = unwrap(result)               // TargetSource is just bytes
+file_write(out_path, target_text)            // effect against extdeps/file_system.dag
+```
+
+- **`file_read` / `file_write`** are modeled effects in `extdeps/file_system.dag` — operations against the modeled file-system resource (carrying `ResourceDependsOn` edges per P6, fail-closed-or-explicit-modeled-default per P3).
+- **`ingest_text`** is a peripheral shim — NOT a substrate primitive. Composes parse (using input_lang's grammar) + normalize (using input_lang's sugar dissolutions). The shim exists because text-on-disk is a common user-facing input format, but the compile architecture itself stops at CoreNode.
+- **`compile`** is pure. No file handle. No text. No process. Just `CoreNode + LanguageModel + CompileMode → Outcome<Output>`.
+
+**Other ingest paths** (no text involved at all):
+- Programmatic: a client builds a `CoreNode` via substrate constructors (IDE plugins, code generators).
+- Query-driven: `affected_set + apply_diff` produces a new `CoreNode` from an existing one (read/edit pipeline).
+- Round-trip: a `TargetNodeTree` from a prior translate is parsed back via the grammar's inverse direction.
+
+All paths produce `CoreNode`; compile takes it from there. **The compile contract doesn't know how the CoreNode was produced.**
+
+### Why this matters architecturally
+
+P0 + P8 (consequence recomputation + the compiler obeys its own discipline) plus the operator's I/O-as-modeled-effect rule together imply: **there are NO hidden side effects anywhere in the architecture**. Every read, every write, every execute is a modeled effect against a modeled resource, carrying typed dependency edges (P6) and visible to lenses.
+
+This is what makes dry-run work as composition (lens identifies I/O → LawfulRewriteWitness substitutes → eval against mock_host_model). It's also what makes incremental rebuild work (every artifact's provenance is modeled; affected_set walks the typed effect dependencies). It's what makes self-modification safe (the compiler editing its own source goes through modeled `apply_diff`, not implicit file writes).
+
+**The slogan.** *No implicit I/O. Files are not the architecture. Effects are modeled, not assumed.*
 
 ### Why text/data are separated
 
@@ -1264,6 +1291,8 @@ Recommendation: Q14c default + Q14d opt-in for advanced surface. Q14b is the "le
 | **projection (lens output)** | Per P0 + P3, every downstream artifact (tests, dimensional facts, glue, schemas, migration plans, docs, dry-run results) is a *projection* of `InferredTree` computed by a lens. The compiler core produces InferredTree; lenses fan out into the projection family. |
 | **testgen** | A lens family that produces `TestClaim` Witnesses as projections of `InferredTree`. Historical name predating the lens reframe; different "levels" (boundary / property / integration / roundtrip / equivalence / fuzz / regression) are different invocations of the same family. Tests are projections of the model, NOT the source of truth for the model. |
 | **dry-run** | A lens-composed projection: `io_boundary_lens` identifies the I/O sites; a `LawfulRewriteWitness` substitutes mock stubs; `eval(mock_host_model)` runs the substituted tree. No new compiler primitive; composes lens + rewrite + eval-with-host-variant. Variations: record, assert, replay, fuzz. |
+| **peripheral shim** | A user-facing convenience that composes modeled effects with compile-core. Examples: `ingest_text` (file_read + parse + normalize), `compile_file_to_file` (file_read + ingest_text + compile + file_write). Shims are NOT substrate primitives — they live outside the architecture's load-bearing surface. |
+| **modeled effect** | A real-world I/O operation declared as substrate data in `extdeps/` (file_read, file_write, network call, process spawn, …) — carries `EffectDependsOn` / `ResourceDependsOn` edges per P6; visible to lenses; substitutable by `LawfulRewriteWitness` for dry-run. There are no implicit side effects in the architecture. |
 | **`TestClaimLens`** | Lens layer 1 of testgen — produces abstract behavioral claims (roundtrip / refinement-boundary / algebra-law / protocol-compatibility / effect-idempotency) as `TestClaim` Witnesses. |
 | **`TestCaseLens`** | Lens layer 2 of testgen — lowers `TestClaim` Witnesses into concrete `TestCase` Witnesses (examples, boundary cases, property-test generators, fuzz seeds, regression fixtures). |
 | **`TargetTestProjection`** | Lens layer 3 of testgen — translates `TestCase` Witnesses into target-language test source via translate's homomorphism. |
