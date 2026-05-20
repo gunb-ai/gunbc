@@ -66,7 +66,10 @@ The v4 compiler is:
    - **The coercion fold** — a mechanical zip-fold over two canonical-Node groundings that checks **exact** structure preservation. Per `src/v4/TASKS.md` T-9, decidable by construction, never a search.
    - **`LawfulRewriteWitness`** (P7) — witness primitive for structure-changing lowerings (parallel-map, tree-reduce, CUDA, MapReduce). Rewrites are declared by target/runtime models with precondition algebra laws; rewritten plan groundings then go through the coercion fold's exact check.
    - **Typed dependency graph + topological/SCC machinery** — per P6, dependencies are first-class typed edges carried alongside containment.
-3. **Plus three irreducible boundary actions** — read input text, write output text (or execute), report diagnostics. (The earlier "project" boundary-action mention from the original draft is removed — it was an artifact of the rescinded lens-as-compile-mode framing.)
+3. **Plus boundary actions:**
+   - **Compile-core boundary actions:** write output text (or execute), report diagnostics. Two actions; compile-core is otherwise pure data-in / data-out.
+   - **Ingest-layer boundary actions (separable):** read input text (only when ingesting from a text source). Other ingest paths — programmatic, query-driven, IDE-driven — have no text boundary.
+   - The earlier "project" boundary-action mention from the original draft is removed — it was an artifact of the rescinded lens-as-compile-mode framing.
 
 Everything else — every "pass," every "stage," every "language-specific" anything — is an **algebra** plugged into `fold_node` or another declared substrate primitive. The compiler knows no specific language code (Rust, Python, even `.dag` itself, beyond an irreducible bootstrap-seed for `dag.dag`); language-specific *data* lives in `LanguageModel` declarations under `extdeps/languages/`.
 
@@ -80,21 +83,50 @@ The doc that follows defines what `compile()` takes and returns, why each piece 
 
 ## End-to-end I/O — the compile function
 
+> **Text/data separation (ratified 2026-05-20, operator-direct).** Compilation operates on **data** (a canonical `CoreNode` graph), not text. Text-to-Node is a *separate* ingest layer — useful when text is the input source, but skippable for programmatic, query-driven, or IDE-driven inputs. The substrate is data-first; text is one of several entry points.
+
 ```
+// === Compile core — operates on Node data ===
 compile(
-  input_text: Text,
-  input_lang: LanguageModel,           // the parse-side language model
+  source: CoreNode,                    // canonical substrate Node graph (data, not text)
+  input_lang: LanguageModel,           // for resolve's scope rules + ground's inhabitance
   mode: CompileMode
 ) -> Outcome<Output>
 
 where CompileMode =
   | TranslateTo(target_lang: LanguageModel)    // produce target source
   | Eval(host_interp: HostModel)               // execute on host runtime
+
+// === Text ingest — one of several entry points to CoreNode ===
+ingest_text(
+  input_text: Text,
+  input_lang: LanguageModel             // grammar + sugar dissolutions
+) -> Outcome<CoreNode>
 ```
 
-That is the full external surface of the compiler. **Three arguments** (`input_text` + two semantic parameters: `input_lang` and `mode`); one fail-closed `Outcome`. The `input_text` boundary is text-in (a side-effect at the system boundary, not part of the semantic configuration).
+That is the full external surface of the compiler-core. Three arguments to `compile`; one fail-closed `Outcome`. **Text is not a compile-core concern** — it's the boundary of the ingest layer, which is separable.
 
-**`LanguageModel`** is a `.dag` model in `extdeps/languages/X.dag` — a fact-bundle declaring X's grammar (bidirectional), primitive types with their facts (width, signedness, range, …), algebra inhabitance (this type inhabits this algebra), and sugar dissolutions (how the language's surface forms reduce to substrate primitives).
+### Why text/data are separated
+
+There are multiple legitimate entry points to a `CoreNode` graph:
+
+| Entry point | How `CoreNode` is produced |
+|---|---|
+| **Text ingest** | `ingest_text(text, input_lang)` — text → parse → normalize → `CoreNode`. The standard `.dag` source-file path. |
+| **Programmatic / API** | A client builds the `CoreNode` directly via substrate constructors. IDE plugins, code generators, build systems. |
+| **Query-driven rewrite** | `affected_set` + a node-graph transformation produces a new `CoreNode` from an existing one. Future query languages (e.g., write-via-query against an existing program graph) operate here. |
+| **Round-trip from translate** | A `TargetNodeTree` from a prior translate can be parsed back via the grammar's inverse direction and ingested as `CoreNode` (for cross-language refactoring / round-trip workflows). |
+
+All paths produce `CoreNode`; `compile` takes it from there. This matters because:
+- The lens / affected-set / query story (much of the v4 wishlist) operates on Node data, not text. Forcing every entry through text would either require lossless code-mod tooling or constrain the substrate's expressiveness.
+- The compile pipeline stays pure data-in / data-out. Text I/O is at the ingest/serialize boundaries only.
+- The substrate model is uniform: a `CoreNode` is a `CoreNode` regardless of how it was authored. The compile contract doesn't care which entry point produced it.
+
+### Carrier types in this signature
+
+**`CoreNode`** is the substrate-canonical Node — six connectives + five behaviors only, sugar dissolved. This is what compile's `source` parameter consumes. (See "Carrier taxonomy" below — `CoreNode` is the post-normalize shape, distinct from `SurfaceNode` and `TargetSurfaceNode`.)
+
+**`LanguageModel`** is a `.dag` model in `extdeps/languages/X.dag` — a fact-bundle declaring X's grammar (bidirectional), primitive types with their facts (width, signedness, range, …), algebra inhabitance (this type inhabits this algebra), sugar dissolutions, binding/scope rules, and version metadata. `compile` consults it for resolve's scope rules and ground's inhabitance declarations; `ingest_text` consults it for grammar + sugar.
 
 **`HostModel`** is a **distinct substrate type, peer of `LanguageModel`** — both extend a shared `ModelCore` (primitive types, algebra inhabitance, laws, effect / partiality semantics). `HostModel` declares host-side concerns that have no emit-side analog: runtime value representation, primitive operation interpretation, execution semantics, resource / effect boundary. **Ratified Q1** below; full carrier breakdown in "Carrier shapes — `ModelCore` / `LanguageModel` / `HostModel`."
 
@@ -275,29 +307,44 @@ That is the full compiler-primitive surface. **Eight things.** Every stage, ever
 ## The pipeline — stages as named algebras
 
 ```
-                                  ┌─── pure middle (folds over Node) ───┐
+  ┌───── INGEST LAYER (separable, multiple entry points) ─────┐  ┌──── COMPILE CORE (data → data) ────┐
 
-  text ── parse(input_lang) ── normalize ── resolve ── ground ──┬── translate(target_lang) ── serialize(target_lang.grammar) ── target_text
-                                                                 └── eval(host_model) ── execute(host)
+  text ── parse(input_lang) ── normalize ─────┐               ┌────── resolve ── ground ──┬── translate(target_lang) ── serialize(target_lang.grammar) ── target_text
+  (or)                                        ├──> CoreNode ──┤                            └── eval(host_model) ── execute(host)
+  programmatic / API ─────────────────────────┤
+  (or)                                        │
+  query-driven rewrite (e.g. affected_set) ───┤
+  (or)                                        │
+  round-trip ingest of a prior TargetNodeTree ┘
 ```
+
+The **ingest layer** is separable: text is one of several legitimate entry points. The **compile core** operates on `CoreNode` regardless of how it was produced.
 
 Each stage is a fold/traverse over Node (potentially with a higher-order, effectful, or constraint-bearing carrier per P5). Facts flow forward (Practice 3, strong form): **each stage performs at most one disciplined fold/traverse over the current carrier and monotonically extends it. Facts are monotonic** — later stages extend or consume prior annotations rather than discarding and reconstructing semantic state. Resolve adds BindsTo edges; ground adds typeshape + inhabitance witnesses + the broader P6 dependency-graph edges. No stage re-derives facts from raw text or from a duplicated source-of-truth.
 
-| Stage | Algebra produces | Where the algebra lives |
-|---|---|---|
-| `parse(input_lang)` | Node tree in input_lang's grammar | `input_lang.dag` (grammar productions) |
-| `normalize` | canonical Node (surface sugar dissolved to substrate primitives) | `input_lang.dag` (sugar dissolutions) — possibly fused with parse, see Open Q3 |
-| `resolve` | bound Node (every Atom → Decl reference) | scope-resolution algebra (likely substrate, may consult input_lang for binding rules) |
-| `ground` | **`InferredTree`** — each Node carries algebra-inhabitance witness + typeshape + the P6 semantic dependency graph. **Canonical-grounding invariant:** ground must produce *exactly one* canonical grounding per Node (with witness), OR an ambiguity diagnostic. Translate never receives an ambiguous source grounding. | substrate's `solve_constraints` primitive + algebra-inhabitance machinery |
-| `translate(target_lang)` | Target Node tree | optional `LawfulRewriteWitness` step (per P7, for structure-changing lowerings declared by `target_lang` / target runtime); then **the coercion fold** — exact zip-fold over (rewritten canonical grounding, target_lang's closed declared candidate inhabitants) |
-| `serialize(grammar)` | target source text | target_lang.dag (grammar productions, inverse direction) |
-| `eval(host_model)` | host Value | host_model's interpretation algebra |
+| Stage | Layer | Algebra produces | Where the algebra lives |
+|---|---|---|---|
+| `parse(input_lang)` | INGEST | `SurfaceNode` (Node tree in input_lang's grammar) | `input_lang.dag` (grammar productions) |
+| `normalize` | INGEST | `CoreNode` (canonical substrate Node; surface sugar dissolved) | `input_lang.dag` (sugar dissolutions) — possibly fused with parse, see Ratified Q3 |
+| `resolve` | COMPILE-CORE | `ResolvedCoreNode` (every Atom → Decl reference; BindsTo + ModuleDependsOn edges added per P6) | scope-resolution algebra (likely substrate, consults input_lang for binding rules per Ratified Q5) |
+| `ground` | COMPILE-CORE | **`InferredTree`** — each Node carries algebra-inhabitance witness + typeshape + the P6 semantic dependency graph. **Canonical-grounding invariant:** ground must produce *exactly one* canonical grounding per Node (with witness), OR an ambiguity diagnostic. Translate never receives an ambiguous source grounding. | substrate's `solve_constraints` primitive + algebra-inhabitance machinery |
+| `translate(target_lang)` | COMPILE-CORE | Target Node tree | optional `LawfulRewriteWitness` step (per P7, for structure-changing lowerings declared by `target_lang` / target runtime); then **the coercion fold** — exact zip-fold over (rewritten canonical grounding, target_lang's closed declared candidate inhabitants) |
+| `serialize(grammar)` | COMPILE-CORE | target source text | target_lang.dag (grammar productions, inverse direction) |
+| `eval(host_model)` | COMPILE-CORE | host Value | host_model's interpretation algebra |
 
 **Carrier shape progression:**
 ```
-Text → ParseTree → NormalizedTree → ResolvedTree → InferredTree
-                                                   ├─→ TargetNodeTree → TargetSource  (TranslateTo mode)
-                                                   └─→ Value                          (Eval mode)
+INGEST LAYER (separable, multiple entry points):
+  Text → ParseTree (SurfaceNode) → NormalizedTree (CoreNode)
+  (or)
+  Programmatic builder       ─────→  CoreNode
+  (or)
+  Query-driven rewrite       ─────→  CoreNode
+
+COMPILE CORE (data → data):
+  CoreNode → ResolvedTree (ResolvedCoreNode) → InferredTree (InferredCoreNode)
+                                              ├─→ TargetNodeTree → TargetSource  (TranslateTo mode)
+                                              └─→ Value                          (Eval mode)
 ```
 
 **Carrier taxonomy clarification.** "Node" can mean three different things depending on which carrier you're holding; the type-system distinction matters and the doc should be explicit:
@@ -665,3 +712,5 @@ Recommendation: Q14c default + Q14d opt-in for advanced surface. Q14b is the "le
 | **`ConstraintGraph`** | Intermediate carrier produced by the grounding fold, consumed by `solve_constraints` to produce the canonical `InferredTree`. |
 | **`ClosedWorldDependencyWitness`** | Substrate witness that a region's dependency classification is complete; required before absence-of-edge can be interpreted as independence (e.g., for parallelism). |
 | **canonical (source) grounding** | The unique, witnessed normalization of a Node's algebra-inhabitance facts. The coercion fold operates only on canonical groundings; ambiguity surfaces as a diagnostic in ground, never as multiple downstream candidates. |
+| **ingest** | The (separable) layer that produces a `CoreNode` from a source (text, programmatic builder, query-driven rewrite, round-trip). The compile-core takes `CoreNode` and does not know how it was produced. |
+| **ingest_text** | The text-to-`CoreNode` ingest path: `ingest_text(text, input_lang) → Outcome<CoreNode>`. Parse + normalize composed. Uses the grammar-as-bidirectional-data primitive (forward direction). |
