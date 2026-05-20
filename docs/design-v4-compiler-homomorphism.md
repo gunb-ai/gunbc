@@ -323,13 +323,18 @@ The compiler does NOT treat DAG-ness as an incidental property of syntactic cont
 | `ModuleDependsOn` | module/import dependency — for incremental rebuild and visibility |
 | `BarrierBefore` | synchronization / fence requirement (relevant for concurrent targets like CUDA, MapReduce) |
 | `PlacementDependsOn` | host/device / partition / shard placement constraint |
+| `ModelDependsOn` | artifact-tier — this artifact's regeneration requires that model to be the input authority (P8) |
+| `ProjectionDependsOn` | artifact-tier — this artifact was produced by that projection's lens algebra (P3 + P8) |
+| `GeneratedFrom` | artifact-tier — this artifact's content is a function of that model node's state (provenance edge) |
+| `VerifiedBy` | artifact-tier — this artifact's correctness requires that lens / witness to validate it before consumption |
+| `BootstrapDependsOn` | bootstrap-tier — promotion gate requirement (per P9; an artifact in the bootstrap candidate path that other artifacts in the path require) |
 
 **Stage obligations** — each stage extends substrate facts that the dependency lens then classifies as the corresponding `DependencyKind`. The stages don't author `DependencyKind` labels directly; they extend substrate (containment, binding annotations, type/data facts) that the lens reads.
 - `parse` produces the structural containment substrate (Node-DAG Edges); the lens classifies these as `Contains`.
 - `resolve` monotonically extends substrate with `BindsTo`-grounding facts (Atom → Decl bindings, module-import facts); the lens classifies them as `BindsTo` and `ModuleDependsOn`.
 - `ground` (infer) monotonically extends substrate with type-resolution facts, dataflow facts, and (where the source language declares them) effect/resource facts; the lens classifies them as `TypeDependsOn`, `DataDependsOn`, `EffectDependsOn`, `ResourceDependsOn`.
-- `translate` to a target consumes the dependency graph. A translation is valid **only if** it preserves the dependency partial order, OR if the target model supplies a **checkable witness** that a reordering, fusion, parallelization, or placement change is semantics-preserving (e.g., a witness that `map` is independent per element + has no non-commuting effects → safe to parallelize).
-- `eval` schedules only according to satisfied dependencies. Parallelism is the default where the dependency graph permits it.
+- `translate` to a target consumes the **lens-projected view** of the dependency graph (a fold over the substrate via `dependency_lens`). A translation is valid **only if** it preserves the dependency partial order projected by the lens, OR if the target model supplies a **checkable witness** that a reordering, fusion, parallelization, or placement change is semantics-preserving (e.g., a witness that `map` is independent per element + has no non-commuting effects → safe to parallelize).
+- `eval` schedules only according to satisfied dependencies projected by the lens. Parallelism is the default where the lens-projected dependency view permits it.
 
 **Cycles are not all rejected.** Mutually recursive functions, recursive types, fixed-point definitions, loops, and feedback systems are valid cyclic dependency structures. The substrate must classify each cycle:
 - Valid fixed-point / SCC structure with productive witness → permitted; condensed to a strongly-connected component for topological purposes.
@@ -1265,11 +1270,11 @@ Q9b (ambiguity surface for multiple valid candidates) is folded into **Ratified 
 
 ### Open Q10 — Partiality and effects in `ModelCore` (deferred-with-trigger)
 
-**Deferred.** Effect / partiality modeling is substantive substrate work that the strict-review correction #4 (DependencyReason / DependencySubject restructure) implicitly pulls in. Resolution lands when:
-- **Trigger:** first primitive operation in `std/` that declares non-trivial effect/partiality (e.g., a `divide` operation that must declare division-by-zero partiality + an effect signature). At that point, the substrate representation decision (effect-types-as-fact-bundles vs effect-rows-in-type-system vs effect-graph-as-P6-edges) must be ratified.
-- **Pending: representation candidate names** are `EffectSignature` / `ResourceAccess` / `CommutationWitness` / `ConflictWitness` per strict-review correction #4 + the P6 edge-evidence requirement.
+**Deferred.** Effect / partiality modeling is substantive substrate work that the dependency substrate work pulls in as a sub-question (per the P6 lens-over-substrate sharpening 2026-05-20). Resolution lands when:
+- **Trigger:** first primitive operation in `std/` that declares non-trivial effect/partiality (e.g., a `divide` operation that must declare division-by-zero partiality + an effect signature). At that point, the substrate representation decision (effect-types-as-fact-bundles vs effect-rows-in-type-system vs effect-as-substrate-usage-classified-by-the-dependency-lens) must be ratified.
+- **Pending: representation candidate names** are `EffectSignature` / `ResourceAccess` / `CommutationWitness` / `ConflictWitness`.
 
-The "EffectDependsOn / ResourceDependsOn as label vs as derived classification" decision IS the answer: edges are *derived classifications* of underlying `EffectSignature` / `ResourceAccess` facts, not labels in their own right.
+The "EffectDependsOn / ResourceDependsOn as label vs as derived classification" decision IS the answer per the P6 sharpening: they are *lens classifications* of underlying `EffectSignature` / `ResourceAccess` substrate facts, not labels authored as a parallel data structure.
 
 ### Ratified Q11 — `Outcome<T>` per-stage policy via `StageDiagnosticPolicy` (2026-05-20)
 
@@ -1345,7 +1350,7 @@ Defer trigger: first attempt to compile against a non-current version (e.g., Pyt
 | **D2 reversal** | A 2026-05-17 operator-ratified design course correction (recorded in `src/v4/TASKS.md`) that reshaped how language fact-bundles and the coercion fold are framed. The current "coercion fold (not search)" framing is post-D2. |
 | **fail-closed** | A discipline (Practice 1): every failure path produces a structured Diagnostic; no silent `None`s or panics. |
 | **`ModelCore`** | The shared substrate of `LanguageModel` and `HostModel` (per Ratified Q1) — primitive types, algebra inhabitance, laws, effect semantics, partiality. |
-| **DependencyEdge / DependencyKind** | Typed edge in the P6 dependency graph; kinds include `Contains`, `BindsTo`, `TypeDependsOn`, `DataDependsOn`, `EffectDependsOn`, `ResourceDependsOn`, `ModuleDependsOn`, `BarrierBefore`, `PlacementDependsOn`. |
+| **`DependencyKind` / `DependencyView`** | Per P6 (sharpened 2026-05-20): `DependencyKind` is the **classification taxonomy** the dependency lens maps substrate usage patterns into; `DependencyView` is the **lens-output tuple** `(source, dependent, kind)` emitted by the `dependency_lens` fold over the substrate. **NOT** an authored `DependencyEdge` carrier — the substrate's usage graph (imports, field refs, function calls, Edge-on-`Node`) IS the dependency graph; the lens classifies and projects. Kinds (program-tier): `Contains`, `BindsTo`, `TypeDependsOn`, `DataDependsOn`, `EffectDependsOn`, `ResourceDependsOn`, `ModuleDependsOn`, `BarrierBefore`, `PlacementDependsOn`. Kinds (artifact-tier): `ModelDependsOn`, `ProjectionDependsOn`, `GeneratedFrom`, `VerifiedBy`, `BootstrapDependsOn`. |
 | **synthesized attribute** | A fact computed bottom-up from a Node's children (e.g., typeshape, content_hash). Naturally fits `fold_node`. |
 | **inherited attribute** | A fact propagated top-down from a Node's parent / context (e.g., scope environment in resolve). Requires a higher-order algebra carrier per P5. |
 | **SCC condensation** | Strongly-connected-component reduction: collapsing valid cycles in a dependency graph into single nodes so the result is a DAG. Used to handle mutually-recursive definitions and other cyclic-but-valid structures. |
