@@ -61,7 +61,7 @@ fn append_dependency_views(left: List<DependencyView>, right: List<DependencyVie
 fn dependency_lens(root: Node) -> List<DependencyView> {
   fold_node(
     n: root,
-    algebra: NodeFold {
+    algebra: NodeFold<DependencyFoldState> {
       init: fn(n) {
         DependencyFoldState {
           current: n,
@@ -94,7 +94,7 @@ type ReadinessFoldState {
 fn ready_set(graph_node: Node) -> List<Node> {
   fold_node(
     n: graph_node,
-    algebra: NodeFold {
+    algebra: NodeFold<ReadinessFoldState> {
       init: fn(n) {
         ReadinessFoldState {
           current: n,
@@ -122,7 +122,7 @@ fn append_nodes(left: List<Node>, right: List<Node>) -> List<Node> {
 fn topological_layers(graph_node: Node) -> List<ReadinessLayer> {
   fold_node(
     n: graph_node,
-    algebra: NodeFold {
+    algebra: NodeFold<ReadinessFoldState> {
       init: fn(n) {
         ReadinessFoldState {
           current: n,
