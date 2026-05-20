@@ -93,11 +93,6 @@ type FilePath {
 // Effect payload for read results.
 type FileContent = FileBody
 
-// Effect markers — distinguish read vs write for affected_set granularity (B-5).
-type FileRead {}
-
-type FileWrite {}
-
 type FileWriteWitness {
   resource: FileResource
   path: FilePath
@@ -108,9 +103,11 @@ type NodeFileBinding {
   path: FilePath
 }
 
+// 🟡 coproduct dissolution — W-TRAVERSE-OUTCOME-FILE-EFFECT-WITNESS.
+// Trigger: ResourceDependsOn/EffectDependsOn wiring when std/dependency.dag lands (Worker A A1).
 type FileEffectWitness
-  = ReadWitness { effect: FileRead, path: FilePath, content: FileContent }
-  | WriteWitness { effect: FileWrite, path: FilePath, witness: FileWriteWitness }
+  = ReadWitness { path: FilePath, content: FileContent }
+  | WriteWitness { path: FilePath, witness: FileWriteWitness }
 
 data file_effect_dependency_wiring_deferred: Symbol = file_effect_dependency_wiring_deferred
 

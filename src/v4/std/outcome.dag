@@ -1,6 +1,6 @@
 // src/v4/std/outcome.dag
 // Scope: Outcome traverse combinators + diagnostic policy carriers + traverse law witnesses.
-// Owns: DiagnosticAccumulationPolicy, StageDiagnosticPolicy, NodeOutcomeFold, traverse_node, sequence_node, map_node_outcome, traverse_outcome, map_outcome, bind_outcome, TraverseIdentityLaw, TraverseCompositionLaw, TraverseFailureMonotonicityLaw.
+// Owns: DiagnosticAccumulationPolicy, StageDiagnosticPolicy, NodeOutcomeFold, traverse_node, sequence_node, map_node_outcome, traverse_outcome, map_outcome, bind_outcome, append_non_empty, merge_accepted_diagnostics, TraverseIdentityLaw, TraverseCompositionLaw, TraverseFailureMonotonicityLaw.
 // Consumes: std diagnostic, std node, std collection, std algebra.
 // Status: W-TraverseOutcome substrate (design-v4-compiler-homomorphism Ratified Q4 companion).
 
@@ -14,7 +14,11 @@ import v4.std.diagnostic {
   Accepted,
   Diagnostic,
   ExternalContractUnknown,
+  More,
+  NonEmptyDiagnostics,
+  One,
   Outcome,
+  PluralDiagnostics,
   PortLocus,
   Produced,
   Rejected,
@@ -24,6 +28,8 @@ import v4.std.diagnostic {
 import v4.std.node { Edge, Node, Symbol }
 
 
+// 🟡 coproduct dissolution — W-TRAVERSE-OUTCOME-DIAGNOSTIC-POLICY.
+// Trigger: per-stage policy drives accumulate vs short-circuit in traverse_node fill.
 type DiagnosticAccumulationPolicy
   = Accumulate
   | ShortCircuit
@@ -52,20 +58,22 @@ type TraverseCompositionLaw {}
 type TraverseFailureMonotonicityLaw {}
 
 
-fn append_diagnostics(front: List<Diagnostic>, back: List<Diagnostic>) -> List<Diagnostic> {
+fn append_non_empty(front: NonEmptyDiagnostics, back: NonEmptyDiagnostics) -> NonEmptyDiagnostics {
   match front {
-    Empty => back
-    Cons { head: h, tail: t } =>
-      Cons { head: h, tail: append_diagnostics(front: t, back: back) }
+    One { diagnostic: d } => match back {
+      One { diagnostic: d2 } => More { head: d, tail: One { diagnostic: d2 } }
+      More { head: h, tail: t } => More { head: d, tail: More { head: h, tail: t } }
+    }
+    More { head: h, tail: t } => More { head: h, tail: append_non_empty(front: t, back: back) }
   }
 }
 
 
 fn merge_accepted_diagnostics(
-  prior: List<Diagnostic>,
-  next: List<Diagnostic>
-) -> List<Diagnostic> {
-  append_diagnostics(front: prior, back: next)
+  prior: NonEmptyDiagnostics,
+  next: NonEmptyDiagnostics
+) -> NonEmptyDiagnostics {
+  append_non_empty(front: prior, back: next)
 }
 
 
