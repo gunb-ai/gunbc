@@ -1,6 +1,6 @@
 // src/v4/std/dependency.dag
 // Scope: P6 dependency graph substrate — domains, edges, witnesses, SCC, topological plan.
-// Owns: DependencySubject, ArtifactDependencyEndpoint, scheduling/containment edges, ClosedWorldDependencyWitness, IndependenceClaim, TopologicalPlan.
+// Owns: DependencySubject, ArtifactDependencyEndpoint, Program/TargetPlan/ArtifactSchedulingReason, scheduling/containment edges, ClosedWorldDependencyWitness, IndependenceClaim, TopologicalPlan.
 // Consumes: v4.std.collection, v4.std.node.
 // Status: Wave-1 Worker A strict substrate.
 
@@ -59,32 +59,22 @@ type DependencySubject
   | ArtifactEndpoint { endpoint: ArtifactDependencyEndpoint }
 
 
-// 🟢 coproduct dissolution
-type ProgramSchedulingReason
-  = BindingReason { fact: Symbol }
-  | TypeReason { constraint: Symbol }
-  | DataflowReason { flow: Symbol }
-  | EffectReason { effect_order_witness: Symbol }
-  | ResourceReason { resource_conflict_witness: Symbol }
-  | ModuleReason { module_import: Symbol }
+type ProgramSchedulingReason {
+  kind: ProgramDependencyKind
+  witness: Symbol
+}
 
 
-// 🟢 coproduct dissolution
-type TargetPlanSchedulingReason
-  = PlacementReason { placement_witness: Symbol }
-  | TransferReason { transfer_witness: Symbol }
-  | BarrierReason { barrier_witness: Symbol }
+type TargetPlanSchedulingReason {
+  kind: TargetPlanDependencyKind
+  witness: Symbol
+}
 
 
-// 🟢 coproduct dissolution
-type ArtifactSchedulingReason
-  = ArtifactReason { provenance: Symbol }
-  | ModelReason { model_ref: Symbol }
-  | ProjectionReason { projection_ref: Symbol }
-  | GeneratedFromReason { source: Symbol }
-  | VerifiedByReason { verifier: Symbol }
-  | BootstrapReason { stage: Symbol }
-  | PromotionReason { promotion_witness: Symbol }
+type ArtifactSchedulingReason {
+  kind: ArtifactDependencyKind
+  witness: Symbol
+}
 
 
 type ProgramSchedulingEdge {
