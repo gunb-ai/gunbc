@@ -392,23 +392,23 @@ fn seed_edit_fold_acc_live(
               edit: edit
             )
           }
-        Rejected { diagnostics: r } =>
+        Rejected { diagnostics: nds } =>
           AffectedFoldAcc {
             dag: acc.dag,
-            frontier: mark_whole_dag_diagnostic(diagnostic: d)
+            frontier: mark_whole_dag_diagnostic(diagnostic: nds.head)
           }
       }
-    BoundaryUnknown { reason: r } =>
+    BoundaryUnknown { reason: boundary_reason } =>
       match post_edit_dag(acc.dag, edit).outcome {
         Accepted { value: _, diagnostics: None } =>
           AffectedFoldAcc {
             dag: acc.dag,
-            frontier: mark_whole_dag(reason: r)
+            frontier: mark_whole_dag(reason: boundary_reason)
           }
-        Rejected { diagnostics: r } =>
+        Rejected { diagnostics: nds } =>
           AffectedFoldAcc {
             dag: acc.dag,
-            frontier: mark_whole_dag_diagnostic(diagnostic: d)
+            frontier: mark_whole_dag_diagnostic(diagnostic: nds.head)
           }
       }
   }
