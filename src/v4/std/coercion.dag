@@ -79,7 +79,8 @@ fn declared_candidates_for_algebra(
             evidence: target_model
           }
         }
-      }
+      },
+      kind: NoTargetCandidate
     )
   )
 }
