@@ -111,7 +111,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
     }, {
       id: "ci",
       name: none,
-      runner: SelfHosted { labels: ["ubicloud-standard-2"] },
+      runner: RunsOnExpression { expression: "${{ needs.affected.outputs.v4 == 'true' && 'ubicloud-standard-8' || 'ubicloud-standard-2' }}" },
       steps: [UsesStep {
           name: Some { value: "Checkout" },
           id: none,

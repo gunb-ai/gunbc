@@ -399,8 +399,8 @@ substrate imported them, so the cut is a pure scope reduction.
 - The sugar-name authority is the `LanguageModel`'s, consumed — never
   re-minted in this stage (single-authority, Practice 5).
 - **CP-1b bucket C (native `.dag` LM):** `DagLanguageModel` carries
-  `canonical_symbols: Set<Symbol>` as declared data; resolve reads that field
-  only—no inferring the native C3 prelude `Set` from void lex/grammar shape
+  `canonical_symbols: Set<Symbol>` as declared data; resolve reads it only via
+  `dag_language_model_canonical_symbols/1`—no inferring the native C3 prelude `Set` from void lex/grammar shape
   inside `03_resolve.dag` (TASKS T-8 / CP-1b bucket C).
 
 **Reference**:

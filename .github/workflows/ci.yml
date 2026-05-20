@@ -69,9 +69,8 @@ jobs:
   ci:
     if: github.event.pull_request.draft != true
     needs: [affected]
-    runs-on: ubicloud-standard-2
-    # Includes folded v4 bootstrap gate when `affected.outputs.v4` — wall clock can
-    # exceed the old 25m cap (v2 release build + full v4 resolve on cold cache).
+  # v4 bootstrap compile needs standard-8 wall; standard-2 kills emit ~2m (SIGTERM 143).
+    runs-on: ${{ needs.affected.outputs.v4 == 'true' && 'ubicloud-standard-8' || 'ubicloud-standard-2' }}
     timeout-minutes: 40
     steps:
     - name: Checkout
