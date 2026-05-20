@@ -526,17 +526,17 @@ There is no manual sync. The compiler is rebuilt from its models the same way us
 
 ### Named regeneration substrate (needed but not yet declared)
 
-To operationalize P0 + P8, the substrate needs explicit concepts for change-consequence machinery. Most are missing today (T-21 `affected_set` is the partial exception):
+To operationalize P0 + P8, the substrate needs explicit concepts for change-consequence machinery. **These must land as a coherent unified declaration, not piecemeal.** T-21 `affected_set` is a *specialization* of `AffectedSet` (lens-frontier only); declaring the rest piecemeal while leaving regeneration authority split across declared+undeclared concepts is itself a P2 boundary violation. The substrate listed below is one unit — `std/regeneration.dag` (or a tightly-related cluster) authoring it as a coherent declaration so the regeneration authority is single-sourced:
 
 | Concept | Purpose | Status |
 |---|---|---|
-| **`ChangeSet`** | A diff between two model versions (changed Nodes, edges, facts, witnesses, grammar productions, LanguageModel declarations, lens contracts). | Not declared. Likely `std/change.dag`. |
-| **`AffectedSet`** | Downstream artifacts requiring recomputation given a `ChangeSet` + dependency graph + projection graph. | Partially: T-21 `affected_set` is the lens-frontier specialization; full `AffectedSet` for arbitrary projection graphs not yet declared. |
-| **`Projection`** | A declared projection-as-data: name, input carrier, output artifact, dependency requirements, regeneration algebra, validation lens set. | Not declared. Likely `std/projection.dag`. |
-| **`Artifact`** | An emitted artifact (generated source file, test file, schema, diagnostic table, compiler stage table) with its provenance (which projection produced it from which model state). | Not declared. Likely `std/artifact.dag`. |
+| **`ChangeSet`** | A diff between two model versions (changed Nodes, edges, facts, witnesses, grammar productions, LanguageModel declarations, lens contracts). | Not declared. Likely `std/change.dag` (or part of unified `std/regeneration.dag`). |
+| **`AffectedSet`** | Downstream artifacts requiring recomputation given a `ChangeSet` + dependency graph + projection graph. The **general** substrate; T-21 `affected_set` is the lens-frontier specialization and must be hoisted into this general definition once it lands (not maintained as a parallel authority). | T-21 specialization landed; general `AffectedSet` not declared. **The two MUST unify** — split authority is a P2 violation. |
+| **`Projection`** | A declared projection-as-data: name, input carrier, output artifact, dependency requirements, regeneration algebra, validation lens set. | Not declared. |
+| **`Artifact`** | An emitted artifact (generated source file, test file, schema, diagnostic table, compiler stage table) with its provenance (which projection produced it from which model state). | Not declared. |
 | **`RecomputePlan`** | Topological schedule + SCC/fixpoint groups + cached-vs-invalidated artifacts + regeneration ordering. The "how to recompute" data given an `AffectedSet`. | Not declared. |
 
-Implementation order: these probably land alongside or after the multi-lens dependency-management primitive (Open Q6); they share substrate.
+**Implementation order:** declare the regeneration substrate as a unified cluster (likely `std/regeneration.dag` + the bootstrap substrate in `std/bootstrap.dag`); land alongside or after the multi-lens dependency-management primitive (Open Q6). T-21's `affected_set` must be **migrated** to the unified `AffectedSet` shape, not left as a parallel concept — the unified declaration is the single source of authority.
 
 ### P7 — Lawful rewrite witnesses for structure-changing lowerings
 
@@ -894,17 +894,29 @@ There is no "self-edit special case." Self-edit is `apply_diff(self, Diff)` wher
 
 ### stage0 regeneration as a compile of self
 
-The hand-Rust-to-zero trajectory (per [`docs/design-pure-bootstrap-zero.md`](design-pure-bootstrap-zero.md)) requires the compiler to **emit its own Rust bootstrap**. Structurally this is a self-targeting compile:
+The hand-Rust-to-zero trajectory (per [`docs/design-pure-bootstrap-zero.md`](design-pure-bootstrap-zero.md)) requires the compiler to **emit its own Rust bootstrap**. Structurally this is a self-targeting compile, expressed as the composition of `ingest_text` + `compile` per the text/data separation — **compile-core consumes `CoreNode`, not text** (per Open Q-text-data ratification):
 
 ```
-compile(
-  source: self_compiler_dag_as_corenode,        // the compiler's own .dag source
-  input_lang: dag_lang,                          // .dag is the input language
-  mode: TranslateTo(target_lang: rust_lang)      // Rust is the target
-) -> Outcome<TargetSource>                       // the emitted Rust bootstrap source
+// Explicit composition: ingest is separate from compile-core.
+self_corenode = ingest_text(
+  input_text: read_file("compiler.dag"),    // boundary action: read text
+  input_lang: dag_lang                       // grammar + sugar dissolutions
+) -> Outcome<CoreNode>
+
+stage0_source = compile(
+  source: self_corenode,                     // already CoreNode — never text
+  input_lang: dag_lang,                       // for resolve + ground
+  mode: TranslateTo(target_lang: rust_lang)   // Rust is the target
+) -> Outcome<TargetSource>                    // the emitted Rust bootstrap source
 ```
 
-There is **no special "regenerate stage0" mode**. stage0 regeneration is a `TranslateTo(rust_lang)` compile where the input happens to be the compiler's own source. The homomorphism mechanic applies identically: parse + normalize + resolve + ground the `.dag` source; coercion-fold against `rust.dag`'s declared inhabitants; serialize via Rust's grammar. The output is the Rust bootstrap that THESIS facet 2 ("compiler self-emits, fixed-point") requires.
+There is **no special "regenerate stage0" mode** and **no parse-and-normalize folded back into compile**. The pipeline is the same uniform composition as any other compile: `ingest_text` produces the CoreNode (at the system boundary, separable per the text/data ratification); `compile` consumes the CoreNode (pure data-in/data-out). The homomorphism mechanic applies identically: resolve + ground the `.dag`-substrate Node graph; coercion-fold against `rust.dag`'s declared inhabitants; serialize via Rust's grammar. The output is the Rust bootstrap that THESIS facet 2 ("compiler self-emits, fixed-point") requires.
+
+**Equivalent paths** for stage0 regeneration (per P9's stratified bootstrap):
+- `compile.dag` already loaded as `CoreNode` from prior ingest (cached) → `compile(self_corenode, dag_lang, TranslateTo(rust_lang))`.
+- Programmatic compiler-model construction (e.g., from a `Diff`-derived candidate) → `compile(candidate_corenode, dag_lang, TranslateTo(rust_lang))`.
+
+All paths go through `compile()` taking a `CoreNode`. The ingest boundary is explicit and separable.
 
 This is why P1 (Languages are I/O integration surfaces) and self-hosting are not orthogonal: self-hosting IS the compiler taking itself as input and emitting itself as output, with both sides using the same `LanguageModel` substrate. The trajectory of hand-Rust-to-zero IS the same compile loop closing on itself.
 
