@@ -107,7 +107,8 @@ type FileReadWitness {
 
 // 🟢 grounded.
 type FileWriteWitness {
-  request: FileWrite
+  request: FileWrite,
+  resource: FileResource
 }
 
 // 🟢 coproduct dissolution — Wave-2-C2.
@@ -117,7 +118,7 @@ type FileEffectWitness
 
 type FileReadResult = Outcome<FileContent>
 
-type FileWriteResult = Outcome<FileWriteWitness>
+type FileWriteResult = Outcome<FileResource>
 
 // Canonical modeled-effect surface (request carriers above; wiring deferred — M1(2.8) extdeps fn bodies).
 type ModeledFileEffects {

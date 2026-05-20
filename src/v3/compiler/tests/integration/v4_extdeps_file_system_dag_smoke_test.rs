@@ -182,8 +182,28 @@ fn v4_extdeps_file_system_dag_wave2_c2_modeled_effects_and_witness_shape() {
         record_field_type_map(type_record_fields(&module, "FileWriteWitness"));
     assert_eq!(
         write_witness_fields,
-        BTreeSet::from([("request", "FileWrite".to_string())]),
-        "FileWriteWitness must embed the write request only"
+        BTreeSet::from([
+            ("request", "FileWrite".to_string()),
+            ("resource", "FileResource".to_string()),
+        ]),
+        "FileWriteWitness must thread post-write FileResource (facts-forward write shape)"
+    );
+
+    let write_result_alias = module
+        .items
+        .iter()
+        .find_map(|item| match item {
+            SurfaceItem::TypeAlias {
+                name: item_name,
+                target,
+                ..
+            } if item_name == "FileWriteResult" => Some(surface_type_name(target)),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("missing type alias FileWriteResult"));
+    assert_eq!(
+        write_result_alias, "Outcome<FileResource>",
+        "file_write must return modified resource per THESIS unenumerated-effects write shape"
     );
 
     let modeled = record_field_type_map(type_record_fields(&module, "ModeledFileEffects"));
