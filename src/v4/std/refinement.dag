@@ -1,0 +1,44 @@
+// src/v4/std/refinement.dag
+// Scope: value-predicate refinement substrate — base type plus fail-closed validation obligation discharged at a named constructor boundary.
+// Owns: Validation, Refined, refine, refined_base.
+// Consumes: std diagnostic, std node.
+// Status: T-25-core modeled.
+// Anchor: https://en.wikipedia.org/wiki/Refinement_type
+
+
+module v4.std.refinement
+
+
+import v4.std.diagnostic {
+  Correction,
+  Diagnostic,
+  Locus,
+  NoCorrectionReason,
+  Outcome
+}
+import v4.std.node { Symbol }
+type Validation<B> {
+  reason: Symbol
+  admits: fn(B) -> Bool
+}
+// erasure-eligible: transparent newtype, representationally identical to B once refine discharges (T-25-tail erases proven refinements).
+type Refined<B> {
+  base: B
+}
+fn refine<B>(base: B, by: Validation<B>, at: Locus) -> Outcome<Refined<B>> {
+  let admits = by.admits
+  if admits(base) {
+    Produced { value: Refined { base: base } }
+  } else {
+    Rejected {
+      diagnostic: Diagnostic {
+        reason: by.reason,
+        at: at,
+        correction: Unavailable { reason: UserInputBoundary }
+      }
+    }
+  }
+}
+fn refined_base<B>(r: Refined<B>) -> B {
+  r.base
+}
