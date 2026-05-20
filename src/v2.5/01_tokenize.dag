@@ -1,82 +1,23 @@
 module v2_5.compiler.tokenize
 
-type Symbol
+import v2_5.std.node { Symbol }
+import v2_5.std.identity { SourceSpan }
+import v2_5.std.diagnostic {
+  ByteRange,
+  Diagnostic,
+  Outcome,
+  Textual,
+  Unavailable,
+  UserInputBoundary
+}
+import v2_5.std.token { Token, TokenShape, TokenStream }
 
 // 🟡 feature:v2_5-source-text-carrier
 type Source {
-  file: Symbol
+  file: String
+  file_symbol: Symbol
   text: String
 }
-
-// 🟡 feature:v2_5-std-diagnostic-locus
-type SourceSpan {
-  file: Symbol
-  start: Int
-  end: Int
-}
-
-// 🟡 feature:v2_5-std-diagnostic-reasons
-type DiagnosticReason
-  = UnexpectedCharacter
-  | UnterminatedString
-  | UnterminatedInterpolation
-  | LexicalProgressExhausted
-
-// 🟡 feature:v2_5-std-diagnostic-outcome
-type Diagnostic {
-  reason: DiagnosticReason
-  span: SourceSpan
-  lexeme: String
-}
-
-// 🟡 feature:v2_5-std-diagnostic-outcome
-type Outcome<T>
-  = Produced { value: T }
-  | Rejected { diagnostic: Diagnostic }
-
-// 🟡 feature:v2_5-syntax-spec-keywords
-type Keyword
-  = ModuleKeyword
-  | ImportKeyword
-  | TypeKeyword
-  | FnKeyword
-  | FuncKeyword
-  | ResourceKeyword
-  | ServiceKeyword
-  | DataKeyword
-  | InterfaceKeyword
-  | PipelineKeyword
-  | ProfileKeyword
-  | PatternKeyword
-  | LetKeyword
-  | ReturnKeyword
-  | MatchKeyword
-  | IfKeyword
-  | ThenKeyword
-  | ElseKeyword
-  | ForKeyword
-  | InKeyword
-  | WhereKeyword
-  | WithKeyword
-  | TrueKeyword
-  | FalseKeyword
-  | NoneKeyword
-  | NullKeyword
-  | AcquireKeyword
-  | ReleaseKeyword
-  | CapabilityKeyword
-  | OperationKeyword
-  | InputKeyword
-  | OutputKeyword
-  | IdempotentKeyword
-  | ReadonlyKeyword
-  | HermeticKeyword
-
-// 🟢 coproduct dissolution
-type LiteralKind
-  = StringLiteral
-  | IntLiteral
-  | FloatLiteral
 
 // 🟢 coproduct dissolution
 type CharacterClass
@@ -84,62 +25,6 @@ type CharacterClass
   | IdentStartClass
   | IdentContinueClass
   | WhitespaceClass
-
-// 🟡 feature:v2_5-syntax-spec-operators
-type Punctuation
-  = LBrace
-  | RBrace
-  | LParen
-  | RParen
-  | LBracket
-  | RBracket
-  | Lt
-  | Gt
-  | Le
-  | Ge
-  | FatArrow
-  | Arrow
-  | Colon
-  | Comma
-  | Dot
-  | DotDot
-  | Eq
-  | EqEq
-  | Ne
-  | Plus
-  | Minus
-  | Star
-  | Slash
-  | Percent
-  | Bang
-  | And
-  | Or
-  | Question
-  | NullCoalesce
-  | Pipe
-  | PipeArrow
-
-// 🟡 feature:v2_5-token-boundary-spec
-type TokenKind
-  = KeywordToken { keyword: Keyword }
-  | IdentifierToken
-  | LiteralToken { literal: LiteralKind }
-  | PunctuationToken { punctuation: Punctuation }
-  | StringBeginToken
-  | StringMiddleToken
-  | StringEndToken
-  | NewlineToken
-  | EofToken
-
-type Token {
-  kind: TokenKind
-  lexeme: String
-  span: SourceSpan
-}
-
-type TokenStream {
-  tokens: List<Token>
-}
 
 type IndexedChar {
   index: Int
@@ -194,7 +79,7 @@ type ScanOutcome
 // 🟢 coproduct dissolution
 type TokenizeExpectation
   = ExpectProduced
-  | ExpectRejected { reason: DiagnosticReason }
+  | ExpectRejected { reason: Symbol }
 
 type TokenizeRegression {
   name: Symbol
@@ -203,40 +88,40 @@ type TokenizeRegression {
 }
 
 // 🟡 feature:v2_5-syntax-spec-keywords
-data keyword_table: Map<String, Keyword> = {
-  "module": ModuleKeyword, "import": ImportKeyword,
-  "type": TypeKeyword, "fn": FnKeyword, "func": FuncKeyword,
-  "resource": ResourceKeyword, "service": ServiceKeyword, "data": DataKeyword,
-  "interface": InterfaceKeyword, "pipeline": PipelineKeyword, "profile": ProfileKeyword,
-  "pattern": PatternKeyword,
-  "let": LetKeyword, "return": ReturnKeyword, "match": MatchKeyword,
-  "if": IfKeyword, "then": ThenKeyword, "else": ElseKeyword,
-  "for": ForKeyword, "in": InKeyword, "where": WhereKeyword, "with": WithKeyword,
-  "true": TrueKeyword, "false": FalseKeyword, "none": NoneKeyword, "null": NullKeyword,
-  "acquire": AcquireKeyword, "release": ReleaseKeyword,
-  "capability": CapabilityKeyword, "operation": OperationKeyword,
-  "input": InputKeyword, "output": OutputKeyword,
-  "idempotent": IdempotentKeyword, "readonly": ReadonlyKeyword, "hermetic": HermeticKeyword
+data keyword_table: Map<String, Bool> = {
+  "module": true, "import": true,
+  "type": true, "fn": true, "func": true,
+  "resource": true, "service": true, "data": true,
+  "interface": true, "pipeline": true, "profile": true,
+  "pattern": true,
+  "let": true, "return": true, "match": true,
+  "if": true, "then": true, "else": true,
+  "for": true, "in": true, "where": true, "with": true,
+  "true": true, "false": true, "none": true, "null": true,
+  "acquire": true, "release": true,
+  "capability": true, "operation": true,
+  "input": true, "output": true,
+  "idempotent": true, "readonly": true, "hermetic": true
 }
 
 // 🟡 feature:v2_5-syntax-spec-operators
-data single_punct: Map<String, Punctuation> = {
-  "(": LParen, ")": RParen,
-  "[": LBracket, "]": RBracket,
-  ":": Colon, ",": Comma, ".": Dot,
-  "+": Plus, "*": Star, "%": Percent, "/": Slash,
-  "=": Eq, "<": Lt, ">": Gt, "-": Minus,
-  "!": Bang, "?": Question, "|": Pipe
+data single_punct: Map<String, TokenShape> = {
+  "(": ShLParen, ")": ShRParen,
+  "[": ShLBracket, "]": ShRBracket,
+  ":": ShColon, ",": ShComma, ".": ShDot,
+  "+": ShPlus, "*": ShStar, "%": ShPercent, "/": ShSlash,
+  "=": ShEq, "<": ShLt, ">": ShGt, "-": ShMinus,
+  "!": ShBang, "?": ShQuestion, "|": ShPipe
 }
 
 // 🟡 feature:v2_5-syntax-spec-operators
-data double_punct: Map<String, Punctuation> = {
-  "=>": FatArrow, "->": Arrow,
-  "==": EqEq, "!=": Ne,
-  "<=": Le, ">=": Ge,
-  "&&": And, "||": Or,
-  "|>": PipeArrow, "??": NullCoalesce,
-  "..": DotDot
+data double_punct: Map<String, TokenShape> = {
+  "=>": ShFatArrow, "->": ShArrow,
+  "==": ShEqEq, "!=": ShNe,
+  "<=": ShLe, ">=": ShGe,
+  "&&": ShAnd, "||": ShOr,
+  "|>": ShPipeArrow, "??": ShNullCoalesce,
+  "..": ShDotDot
 }
 
 fn span(source: Source, start: Int, end: Int) -> SourceSpan {
