@@ -61,21 +61,21 @@ data infer_carrier_closure: List<InferCarrierClosure> = [
 
 fn infer(module: NormalizedModule) -> InferredModule {
   match infer_readiness {
-    AwaitingTier1StageTypes { gate: gate } =>
-      infer_unavailable(module: module, keyword: gate)
-    AwaitingRecursiveExprFold { gate: gate } =>
-      infer_unavailable(module: module, keyword: gate)
+    AwaitingTier1StageTypes { gate: _ } =>
+      infer_unavailable(module: module, keyword: "infer-awaiting-tier1-stage-types")
+    AwaitingRecursiveExprFold { gate: _ } =>
+      infer_unavailable(module: module, keyword: "infer-awaiting-recursive-expression-fold")
     BoundToTier1StageTypes =>
-      infer_unavailable(module: module, keyword: recursive_expr_fold_gate)
+      infer_unavailable(module: module, keyword: "infer-bound-without-recursive-expression-fold")
   }
 }
 
-fn infer_unavailable(module: NormalizedModule, keyword: Symbol) -> InferredModule {
+fn infer_unavailable(module: NormalizedModule, keyword: String) -> InferredModule {
   InferredModule {
     name: module.name,
     imports: [],
     items: [InferredOtherItem {
-      keyword: "infer-awaiting-recursive-expression-fold",
+      keyword: keyword,
       raw_span: module.span
     }],
     span: module.span
