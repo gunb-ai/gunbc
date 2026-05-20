@@ -1,0 +1,60 @@
+// src/v4/test/claim/lens_complexity/while_external_condition.dag
+// Scope: T-12 worked claim — non-structural loop bounds fail closed.
+// Owns: while_external_condition_claim.
+// Consumes: lens cost, lens complexity, std diagnostic, std node.
+// Status: scaffold — compile-only until T-19/T-22 generated claim execution.
+
+module v4.test.claim.lens_complexity.while_external_condition
+
+import v4.lens.complexity { ComplexityBound, Unknown, complexity_lens }
+import v4.lens.cost { SymbolicCost, UnknownCost, cost_lens }
+import v4.std.diagnostic {
+  AmbiguousIntent,
+  Diagnostic,
+  Textual,
+  Unavailable,
+  WholeFile
+}
+import v4.std.node {
+  ComputationNode,
+  Loop,
+  Node,
+  Symbol
+}
+import v4.std.witness { Witness }
+
+data while_external_condition_file: Symbol = while_external_condition_file
+data while_external_condition_reason: Symbol = while_external_condition_reason
+
+type LensComplexityClaim {
+  input: Node
+  expected_cost: SymbolicCost
+  expected_complexity: ComplexityBound
+  falsification: Diagnostic
+}
+
+data while_external_condition_input: Node = Node {
+  kind: ComputationNode { behavior: Loop },
+  children: []
+}
+
+data while_external_condition_diagnostic: Diagnostic = Diagnostic {
+  reason: while_external_condition_reason,
+  at: Textual { file: while_external_condition_file, extent: WholeFile },
+  correction: Unavailable { reason: AmbiguousIntent }
+}
+
+data while_external_condition_claim: LensComplexityClaim = LensComplexityClaim {
+  input: while_external_condition_input,
+  expected_cost: UnknownCost { reason: "T-9-not-landed: loop bound" },
+  expected_complexity: Unknown { diagnostic: while_external_condition_diagnostic },
+  falsification: while_external_condition_diagnostic
+}
+
+fn while_external_condition_actual_cost() -> Witness<SymbolicCost> {
+  cost_lens(n: while_external_condition_input)
+}
+
+fn while_external_condition_actual_complexity() -> Witness<ComplexityBound> {
+  complexity_lens(n: while_external_condition_input)
+}
