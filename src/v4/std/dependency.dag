@@ -32,14 +32,21 @@ type ProgramSchedulingWitness
   | EdgeEvidence { ref: Symbol }
 
 
-// 🟢 coproduct dissolution — sole program dependency-cause authority (contract vs edge witness).
-type ProgramSchedulingReason
-  = BindsTo { witness: ProgramSchedulingWitness }
-  | TypeDependsOn { witness: ProgramSchedulingWitness }
-  | DataDependsOn { witness: ProgramSchedulingWitness }
-  | EffectDependsOn { witness: ProgramSchedulingWitness }
-  | ResourceDependsOn { witness: ProgramSchedulingWitness }
-  | ModuleDependsOn { witness: ProgramSchedulingWitness }
+// 🟢 coproduct dissolution — closed program dependency-cause label axis.
+type ProgramSchedulingKind
+  = BindsTo
+  | TypeDependsOn
+  | DataDependsOn
+  | EffectDependsOn
+  | ResourceDependsOn
+  | ModuleDependsOn
+
+
+// Practice 4 variant-is-data — kind axis + shared witness coordinate (not same-payload coproduct).
+type ProgramSchedulingReason {
+  kind: ProgramSchedulingKind
+  witness: ProgramSchedulingWitness
+}
 
 
 // 🟢 coproduct dissolution
@@ -49,10 +56,16 @@ type TargetPlanSchedulingWitness
 
 
 // 🟢 coproduct dissolution
-type TargetPlanSchedulingReason
-  = PlacementConstraint { witness: TargetPlanSchedulingWitness }
-  | TransferDependsOn { witness: TargetPlanSchedulingWitness }
-  | BarrierBefore { witness: TargetPlanSchedulingWitness }
+type TargetPlanSchedulingKind
+  = PlacementConstraint
+  | TransferDependsOn
+  | BarrierBefore
+
+
+type TargetPlanSchedulingReason {
+  kind: TargetPlanSchedulingKind
+  witness: TargetPlanSchedulingWitness
+}
 
 
 // 🟢 coproduct dissolution
@@ -62,13 +75,19 @@ type ArtifactSchedulingWitness
 
 
 // 🟢 coproduct dissolution
-type ArtifactSchedulingReason
-  = ModelDependsOn { witness: ArtifactSchedulingWitness }
-  | ProjectionDependsOn { witness: ArtifactSchedulingWitness }
-  | GeneratedFrom { witness: ArtifactSchedulingWitness }
-  | VerifiedBy { witness: ArtifactSchedulingWitness }
-  | BootstrapDependsOn { witness: ArtifactSchedulingWitness }
-  | PromotionDependsOn { witness: ArtifactSchedulingWitness }
+type ArtifactSchedulingKind
+  = ModelDependsOn
+  | ProjectionDependsOn
+  | GeneratedFrom
+  | VerifiedBy
+  | BootstrapDependsOn
+  | PromotionDependsOn
+
+
+type ArtifactSchedulingReason {
+  kind: ArtifactSchedulingKind
+  witness: ArtifactSchedulingWitness
+}
 
 
 type ProgramSchedulingEdge {
