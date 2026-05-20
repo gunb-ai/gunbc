@@ -617,11 +617,14 @@ These are valid under the algebra's laws (map's per-element independence, reduce
 
 ```
 canonical source grounding
-  ── find_witness(source, declared_rewrites, lawful_rewrite_precondition) ──>
+  ── find_witness(source, declared_rewrites, lawful_rewrite_precondition,
+                  MultiplicityPolicy::RewritePolicy(...))  ──>
 target-plan grounding + HomomorphismWitness<lawful_rewrite>
-  ── find_witness(plan, target_inhabitants, exact_structural_equality) ──>
+  ── find_witness(plan, target_inhabitants, exact_structural_equality,
+                  MultiplicityPolicy::TargetSelection(target_lang.target_selection_policy)) ──>
 target Node tree + HomomorphismWitness<exact_equality>
 ```
+(The first `find_witness` invocation — lawful-rewrite — is P7-gated and NOT in MVP; this diagram documents the future pipeline shape only. The second — exact coercion — is in MVP scope.)
 
 The `HomomorphismWitness<lawful_rewrite>` is the witness that proves a structure-changing rewrite preserves semantics under declared algebraic laws. Each rewrite is **declared by the target/runtime model** (e.g., `extdeps/runtimes/cuda.dag` declares "sequential map over Vec<T> may rewrite to CUDA kernel iff per-element function is pure + has no cross-element data deps"). Searches and rewrites remain **closed and decidable** — candidates are declared, every rewrite produces a checkable witness, none is heuristic.
 
