@@ -1,22 +1,8 @@
-// v2.5 phase-typed pipeline interface kit (Tier 1).
-// Each stage owns a distinct closed-sum root type. No optional fields acting
-// as kind discriminators; no inferred? on pre-infer phases; no NodeId side tables.
-//
-// Phase AST shapes live here; substrate is v2_5.std.node only (PR #3422, cool-bee-832).
-// NodeKind = TypeForm | Computation (2-variant, THESIS-faithful). Declarations, wrappers,
-// and module structure are stage-level variants (ParseItem, ParseExpr, …), not substrate.
-// Reconcile: calm-crane-724 normalize seam (Seam* types).
-// Lowering: phase AST → Node { kind, children: List<Edge> } at stage boundaries.
-//
-// Pipeline (type signatures are the contract):
-//   tokenize : SourceText -> TokenStream
-//   parse    : TokenStream -> Outcome<ParseModule>
-//   resolve  : ParseModule -> Outcome<ResolvedModule>
-//   normalize: ResolvedModule -> Outcome<NormalizedModule>
-//   infer    : NormalizedModule -> Outcome<InferredModule>
-//   emit     : (InferredModule, TargetModel) -> Outcome<TargetSource>
-// Stage boundary failures use Outcome/Rejected + Diagnostic; recovery-shaped
-// *Error expr variants inside Produced modules are v2 parity only (🟡 gated).
+// src/v2.5/std/stage_types.dag
+// Scope: Tier-1 phase-typed pipeline AST and stage ports.
+// Owns: Parse*/Resolved*/Normalized*/Inferred* roots, Seam*, stage port records.
+// Consumes: v2_5.std.{diagnostic,identity,node,syntax,token}.
+// Status: Tier-1 interface kit; failures only via Outcome::Rejected at stage ports.
 
 module v2_5.std.stage_types
 
@@ -34,7 +20,6 @@ import v2_5.std.syntax {
   UnaryOpKind,
   LiteralValue,
   OperationModifier,
-  ExprErrorKind,
   AlgebraFieldKind
 }
 import v2_5.std.token { TokenStream }
@@ -131,14 +116,9 @@ type ParseTypeExpr
       params: List<ParseParam>
       return_type: ParseTypeExpr
     }
-  // 🟡 coproduct dissolution — feature:v2-recovery-expr-carrier
-  | ParseTypeError { message: String, span: SourceSpan }
-
 // 🟢 coproduct dissolution
 type ParseExpr
   = ParseLit { value: LiteralValue, span: SourceSpan }
-  // 🟡 coproduct dissolution — feature:v2-recovery-expr-carrier
-  | ParseError { kind: ExprErrorKind, message: String, span: SourceSpan }
   | ParseVar { name: AuthoredName }
   | ParseFieldAccess {
       receiver: ParseExpr
@@ -357,14 +337,9 @@ type ResolvedTypeExpr
       params: List<ResolvedParam>
       return_type: ResolvedTypeExpr
     }
-  // 🟡 coproduct dissolution — feature:v2-recovery-expr-carrier
-  | ResolvedTypeError { message: String, span: SourceSpan }
-
 // 🟢 coproduct dissolution
 type ResolvedExpr
   = ResolvedLit { value: LiteralValue, span: SourceSpan }
-  // 🟡 coproduct dissolution — feature:v2-recovery-expr-carrier
-  | ResolvedError { kind: ExprErrorKind, message: String, span: SourceSpan }
   | ResolvedVar { name: BoundName }
   | ResolvedFieldAccess {
       receiver: ResolvedExpr
@@ -592,14 +567,9 @@ type NormalizedTypeExpr
       params: List<NormalizedParam>
       return_type: NormalizedTypeExpr
     }
-  // 🟡 coproduct dissolution — feature:v2-recovery-expr-carrier
-  | NormalizedTypeError { message: String, span: SourceSpan }
-
 // 🟢 coproduct dissolution
 type NormalizedExpr
   = NormalizedLit { value: LiteralValue, span: SourceSpan }
-  // 🟡 coproduct dissolution — feature:v2-recovery-expr-carrier
-  | NormalizedError { kind: ExprErrorKind, message: String, span: SourceSpan }
   | NormalizedVar { name: BoundName }
   | NormalizedFieldAccess {
       receiver: NormalizedExpr
@@ -760,8 +730,6 @@ type NormalizedModule {
 // 🟢 coproduct dissolution
 type InferredType
   = InferredTypeOk { form: TypeForm }
-  // 🟡 coproduct dissolution — feature:v2-recovery-expr-carrier
-  | InferredTypeError { message: String, span: SourceSpan }
   | InferredTypeVariable { id: Symbol }
 
 // 🟢 coproduct dissolution
@@ -841,13 +809,6 @@ type InferredMatchArm {
 // 🟢 coproduct dissolution
 type InferredExpr
   = InferredLit { value: LiteralValue, span: SourceSpan, expr_type: InferredType }
-  // 🟡 coproduct dissolution — feature:v2-recovery-expr-carrier
-  | InferredError {
-      kind: ExprErrorKind
-      message: String
-      span: SourceSpan
-      expr_type: InferredType
-    }
   | InferredVar { name: BoundName, expr_type: InferredType }
   | InferredFieldAccess {
       receiver: InferredExpr
@@ -1159,28 +1120,13 @@ type SeamNormalizedModule {
   items: List<SeamNormalizedItem>
 }
 
-// 🟡 coproduct dissolution — feature:ast-to-node-lowering
+// 🟡 coproduct dissolution — feature:ast-to-node-lowering — owner:PR #3418 Tier-2; trigger:stage lowering to Node; follow-up:dissolve Seam* after full AST projection
 type SeamResolvedNode
   = SeamResolvedModuleNode { module: SeamResolvedModule }
   | SeamResolvedItemNode { item: SeamResolvedItem }
 
-// 🟡 coproduct dissolution — feature:ast-to-node-lowering
+// 🟡 coproduct dissolution — feature:ast-to-node-lowering — owner:PR #3418 Tier-2; trigger:stage lowering to Node; follow-up:dissolve Seam* after full AST projection
 type SeamNormalizedNode
   = SeamNormalizedModuleNode { module: SeamNormalizedModule }
   | SeamNormalizedItemNode { item: SeamNormalizedItem }
 
-// =========================================================================
-// v2 field → v2.5 variant mapping (reference for stage workers)
-// =========================================================================
-//
-// v2 Node.expr_data (22 cases) → ParseExpr / ResolvedExpr / ... (one variant each)
-// v2 Node.match_pattern → ParseMatchArm.pattern (not a field on expr nodes)
-// v2 Node.params/body/transport/uses → ParseCallable | ParseService variants
-// v2 Node.inferred? → eliminated; InferredExpr.expr_type is required per variant
-// v2 is_self_recursive / has_non_tail_self_call → InferredCallable.recursion only
-// v2 item_kind() cascade → ParseItem closed sum (ParseCallable | …)
-// v2 block expr → *BlockExpr { block: *Block } — single block record authority per phase
-// v2 connective on flat Node → ParseTypeExpr | TypeForm (phase AST; lower to Connective+Edge)
-// calm-crane-724 SeamResolvedNode → normalize sugar strip → SeamNormalizedNode
-// full pipeline: ResolvedSugared / ResolvedCore → NormalizedItem (core only)
-// node.dag (PR #3422): NodeKind = TypeForm | Computation; Node { kind, children: List<Edge> }

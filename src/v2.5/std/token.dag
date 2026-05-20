@@ -5,7 +5,7 @@ module v2_5.std.token
 
 import v2_5.std.identity { SourceSpan }
 
-// 🟡 coproduct dissolution — feature:01_tokenize-landing
+// 🟡 coproduct dissolution — feature:01-tokenize-landing — owner:sunny-otter-371; trigger:01_tokenize.dag lands; follow-up:replace interim TokenShape with tokenizer authority
 type TokenShape
   = ShKeyword
   | ShLBrace | ShRBrace | ShLParen | ShRParen | ShLBracket | ShRBracket

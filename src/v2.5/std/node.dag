@@ -85,28 +85,18 @@ fn behavior_edge_discipline(b: Behavior) -> EdgeDiscipline {
   }
 }
 
-// 🟡 predicate dissolution — feature:substrate-edge-label-query
-fn edge_is_named(e: Edge) -> Bool {
-  match e.label {
-    Named { name: _ } => true
-    Positional => false
-  }
-}
-
-// 🟡 predicate dissolution — feature:substrate-edge-label-query
-fn edge_is_positional(e: Edge) -> Bool {
-  match e.label {
-    Named { name: _ } => false
-    Positional => true
-  }
-}
-
 fn all_edges_named(children: List<Edge>) -> Bool {
-  fold(children, init: true, f: (acc, e) => acc && edge_is_named(e: e))
+  fold(children, init: true, f: (acc, e) => match e.label {
+    Named { name: _ } => acc
+    Positional => false
+  })
 }
 
 fn all_edges_positional(children: List<Edge>) -> Bool {
-  fold(children, init: true, f: (acc, e) => acc && edge_is_positional(e: e))
+  fold(children, init: true, f: (acc, e) => match e.label {
+    Named { name: _ } => false
+    Positional => acc
+  })
 }
 
 fn name_occurrences(name: Symbol, children: List<Edge>) -> Int {
