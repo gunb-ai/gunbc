@@ -116,13 +116,18 @@ fn diagnostic_tail_eq(a: List<Diagnostic>, b: List<Diagnostic>) -> Bool {
   if count(a) != count(b) {
     false
   } else {
-    match first(a) {
-      None => true
-      Some { value: da } => match first(b) {
-        Some { value: db } => diagnostic_eq(a: da, b: db)
-        None => false
-      }
-    }
+    fold(a, init: true, f: fn(acc, da) {
+      acc
+        && fold(b, init: false, f: fn(found, db) {
+          found || diagnostic_eq(a: da, b: db)
+        })
+    })
+      && fold(b, init: true, f: fn(acc, db) {
+        acc
+          && fold(a, init: false, f: fn(found, da) {
+            found || diagnostic_eq(a: da, b: db)
+          })
+      })
   }
 }
 fn non_empty_diagnostics_eq(a: NonEmptyDiagnostics, b: NonEmptyDiagnostics) -> Bool {
