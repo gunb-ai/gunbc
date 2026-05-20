@@ -1,0 +1,12 @@
+// Tier 2 stub — emit stage worker pending.
+
+module v2_5.compiler.emit
+
+import v2_5.std.diagnostic { Outcome, Produced }
+import v2_5.std.stage_types { InferredModule, TargetSource }
+import v2_5.compiler.ports { TargetSpec }
+import v2_5.compiler.artifact { ArtifactPlan }
+
+fn emit(inferred: InferredModule, spec: TargetSpec, plan: ArtifactPlan) -> Outcome<TargetSource> {
+  Produced { value: TargetSource { artifacts: [] } }
+}

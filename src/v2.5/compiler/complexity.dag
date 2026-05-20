@@ -1,0 +1,30 @@
+// Tier 2 stub — complexity stage worker pending.
+
+module v2_5.compiler.complexity
+
+import v2_5.std.diagnostic { Diagnostic, Outcome, Produced }
+import v2_5.std.stage_types { InferredModule }
+
+type ComplexityReport {
+  violations: List<Diagnostic>
+}
+
+type ComplexityStageResult {
+  report: ComplexityReport
+  blocks_emit: Bool
+  diagnostics: List<Diagnostic>
+}
+
+fn empty_complexity_report() -> ComplexityReport {
+  ComplexityReport { violations: [] }
+}
+
+fn complexity_analyze(inferred: InferredModule) -> Outcome<ComplexityStageResult> {
+  Produced {
+    value: ComplexityStageResult {
+      report: empty_complexity_report(),
+      blocks_emit: false,
+      diagnostics: []
+    }
+  }
+}

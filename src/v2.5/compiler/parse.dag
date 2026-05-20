@@ -1,0 +1,13 @@
+// Tier 2 stub — parse stage worker pending.
+
+module v2_5.compiler.parse
+
+import v2_5.std.diagnostic { Outcome, Produced }
+import v2_5.std.token { TokenStream }
+import v2_5.std.stage_types { ParseModule }
+import v2_5.compiler.ports { SourceText }
+import v2_5.compiler.stub_common { empty_parse_module }
+
+fn parse(tokens: TokenStream, source: SourceText) -> Outcome<ParseModule> {
+  Produced { value: empty_parse_module() }
+}

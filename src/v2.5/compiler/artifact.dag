@@ -1,0 +1,19 @@
+// Tier 2 stub — artifact plan stage worker pending.
+
+module v2_5.compiler.artifact
+
+import v2_5.std.diagnostic { Outcome, Produced }
+import v2_5.std.stage_types { InferredModule }
+import v2_5.compiler.ports { TargetSpec }
+
+type ArtifactPlan {
+  artifacts: List<String>
+}
+
+fn empty_artifact_plan() -> ArtifactPlan {
+  ArtifactPlan { artifacts: [] }
+}
+
+fn default_artifact_plan(inferred: InferredModule, spec: TargetSpec) -> Outcome<ArtifactPlan> {
+  Produced { value: empty_artifact_plan() }
+}

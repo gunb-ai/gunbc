@@ -1,0 +1,11 @@
+// Tier 2 stub — normalize stage worker pending.
+
+module v2_5.compiler.normalize
+
+import v2_5.std.diagnostic { Outcome, Produced }
+import v2_5.std.stage_types { ResolvedModule, NormalizedModule }
+import v2_5.compiler.stub_common { empty_normalized_module }
+
+fn normalize(resolved: ResolvedModule) -> Outcome<NormalizedModule> {
+  Produced { value: empty_normalized_module() }
+}

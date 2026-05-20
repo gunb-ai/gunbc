@@ -1,0 +1,26 @@
+// Tier 2 stub — ownership stage worker pending.
+
+module v2_5.compiler.ownership
+
+import v2_5.std.diagnostic { Diagnostic, Outcome, Produced }
+import v2_5.std.stage_types { InferredModule }
+
+type OwnershipProof {
+  fn_name: String
+}
+
+type OwnershipStageResult {
+  proofs: List<OwnershipProof>
+  blocks_emit: Bool
+  diagnostics: List<Diagnostic>
+}
+
+fn ownership_analyze(inferred: InferredModule) -> Outcome<OwnershipStageResult> {
+  Produced {
+    value: OwnershipStageResult {
+      proofs: [],
+      blocks_emit: false,
+      diagnostics: []
+    }
+  }
+}

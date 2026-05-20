@@ -1,0 +1,23 @@
+// Tier 2 stub — infer stage worker pending.
+
+module v2_5.compiler.infer
+
+import v2_5.std.diagnostic { Diagnostic, Outcome, Produced }
+import v2_5.std.stage_types { NormalizedModule, InferredModule }
+import v2_5.compiler.stub_common { empty_inferred_module }
+
+type InferResult {
+  module: InferredModule
+  blocks_emit: Bool
+  diagnostics: List<Diagnostic>
+}
+
+fn infer(normalized: NormalizedModule) -> Outcome<InferResult> {
+  Produced {
+    value: InferResult {
+      module: empty_inferred_module(),
+      blocks_emit: false,
+      diagnostics: []
+    }
+  }
+}

@@ -1,0 +1,42 @@
+// Shared scaffold values for Tier 2 stage stubs (orchestrator compile gate only).
+
+module v2_5.compiler.stub_common
+
+import v2_5.std.identity { SourceSpan, AuthoredName, BoundName }
+import v2_5.std.node { Symbol }
+import v2_5.std.stage_types {
+  ParseModule,
+  ResolvedModule,
+  NormalizedModule,
+  InferredModule
+}
+
+data stub_symbol: Symbol = stub_symbol
+
+fn stub_span() -> SourceSpan {
+  SourceSpan { start: 0, end: 0, file: "" }
+}
+
+fn stub_authored_name() -> AuthoredName {
+  AuthoredName { text: "", span: stub_span() }
+}
+
+fn stub_bound_name() -> BoundName {
+  BoundName { symbol: stub_symbol, span: stub_span() }
+}
+
+fn empty_parse_module() -> ParseModule {
+  ParseModule { name: stub_authored_name(), imports: [], items: [], span: stub_span() }
+}
+
+fn empty_resolved_module() -> ResolvedModule {
+  ResolvedModule { name: stub_bound_name(), imports: [], items: [], span: stub_span() }
+}
+
+fn empty_normalized_module() -> NormalizedModule {
+  NormalizedModule { name: stub_bound_name(), imports: [], items: [], span: stub_span() }
+}
+
+fn empty_inferred_module() -> InferredModule {
+  InferredModule { name: stub_bound_name(), imports: [], items: [], span: stub_span() }
+}

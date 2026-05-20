@@ -1,0 +1,13 @@
+// v2.5 orchestrator I/O — interim until tokenize/emit stages own these types.
+// Tier 2 workers should move SourceText into 01_tokenize.dag and TargetSpec into emit.
+
+module v2_5.compiler.ports
+
+type SourceText {
+  path: String
+  content: String
+}
+
+type TargetSpec {
+  target: String
+}

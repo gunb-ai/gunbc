@@ -1,0 +1,11 @@
+// Tier 2 stub — resolve stage worker pending.
+
+module v2_5.compiler.resolve
+
+import v2_5.std.diagnostic { Outcome, Produced }
+import v2_5.std.stage_types { ParseModule, ResolvedModule }
+import v2_5.compiler.stub_common { empty_resolved_module }
+
+fn resolve(parsed: ParseModule) -> Outcome<ResolvedModule> {
+  Produced { value: empty_resolved_module() }
+}
