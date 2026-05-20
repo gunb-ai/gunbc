@@ -120,9 +120,33 @@ fn append_nodes(left: List<Node>, right: List<Node>) -> List<Node> {
 }
 
 fn topological_layers(graph_node: Node) -> List<ReadinessLayer> {
-  [
-    ReadinessLayer {
-      ready: ready_set(graph_node: graph_node)
+  fold_node(
+    n: graph_node,
+    algebra: NodeFold {
+      init: fn(n) {
+        ReadinessFoldState {
+          current: n,
+          ready: [n],
+          layers: [
+            ReadinessLayer {
+              ready: [n]
+            }
+          ]
+        }
+      },
+      step: fn(acc, _, child_state) {
+        ReadinessFoldState {
+          current: acc.current,
+          ready: append_nodes(left: acc.ready, right: child_state.ready),
+          layers: append_readiness_layers(left: acc.layers, right: child_state.layers)
+        }
+      }
     }
-  ]
+  ).layers
+}
+
+fn append_readiness_layers(left: List<ReadinessLayer>, right: List<ReadinessLayer>) -> List<ReadinessLayer> {
+  fold(right, init: left, f: fn(acc, item) {
+    list_push(acc, item)
+  })
 }

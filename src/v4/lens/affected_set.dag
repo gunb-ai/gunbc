@@ -518,16 +518,138 @@ fn seed_edit_fold_acc(
 }
 
 
+fn expand_affected_dimension(
+  read_model: AffectedSetRead,
+  dag: Dag,
+  acc: AffectedSetFoldAcc,
+  edit: Edit,
+  dimension: AffectedDimension
+) -> AffectedSetFoldAcc {
+  match frontier_receipt(read_model: read_model, dag: dag, edit: edit, dimension: dimension) {
+    FrontierProduced { dependencies: dependencies } =>
+      fold(dependencies, init: acc, f: fn(acc2, dependency) {
+        match propagation_receipt(
+          read_model: read_model,
+          dag: dag,
+          edit: edit,
+          dimension: dimension,
+          dependency: dependency
+        ) {
+          Propagates =>
+            record_affected_dependency(
+              acc: acc2,
+              change: change_for_edit(edit: edit),
+              dependency: dependency
+            )
+          DoesNotPropagate { proof: _ } => acc2
+          PropagationUnknown { reason: _ } =>
+            record_affected_dependency(
+              acc: acc2,
+              change: change_for_edit(edit: edit),
+              dependency: dependency
+            )
+        }
+      })
+    FrontierUnknown { reason: _ } => acc
+    FrontierRejected { diagnostic: _ } => acc
+  }
+}
+
+
+fn expand_affected_dimensions(
+  read_model: AffectedSetRead,
+  boundary_dag: Dag,
+  frontier_dag: Dag,
+  acc: AffectedSetFoldAcc,
+  edit: Edit
+) -> AffectedSetFoldAcc {
+  match read_model.boundary.changed_dimension_receipt(boundary_dag, edit) {
+    ChangedDimensions { first: first_dimension, rest: rest_dimensions } =>
+      fold(rest_dimensions, init: expand_affected_dimension(
+        read_model: read_model,
+        dag: frontier_dag,
+        acc: acc,
+        edit: edit,
+        dimension: first_dimension
+      ), f: fn(acc2, dimension) {
+        expand_affected_dimension(
+          read_model: read_model,
+          dag: frontier_dag,
+          acc: acc2,
+          edit: edit,
+          dimension: dimension
+        )
+      })
+    ChangedDimensionsUnknown { reason: _ } => acc
+  }
+}
+
+
+fn seed_affected_set_fold_acc_live(
+  read_model: AffectedSetRead,
+  post_edit_dag: fn(Dag, Edit) -> AffectedPostEditDagRead,
+  acc: AffectedSetFoldAcc,
+  edit: Edit
+) -> AffectedSetFoldAcc {
+  let change = change_for_edit(edit: edit)
+  let acc_with_change = AffectedSetFoldAcc {
+    dag: acc.dag,
+    changes: append_change(changes: acc.changes, change: change),
+    affected: acc.affected
+  }
+  match boundary_receipt(
+    read_model: read_model,
+    dag: acc.dag,
+    path: edit.at,
+    replacement: edit.replacement
+  ) {
+    BoundaryPruned { proof: _ } => acc_with_change
+    BoundaryExpands =>
+      match post_edit_dag(acc.dag, edit).outcome {
+        Produced { value: next_dag } =>
+          expand_affected_dimensions(
+            read_model: read_model,
+            boundary_dag: acc.dag,
+            frontier_dag: next_dag,
+            acc: AffectedSetFoldAcc {
+              dag: next_dag,
+              changes: acc_with_change.changes,
+              affected: acc_with_change.affected
+            },
+            edit: edit
+          )
+        Rejected { diagnostic: _ } => acc_with_change
+      }
+    BoundaryUnknown { reason: _ } => acc_with_change
+  }
+}
+
+
+fn seed_affected_set_fold_acc(
+  read_model: AffectedSetRead,
+  post_edit_dag: fn(Dag, Edit) -> AffectedPostEditDagRead,
+  acc: AffectedSetFoldAcc,
+  edit: Edit
+) -> AffectedSetFoldAcc {
+  seed_affected_set_fold_acc_live(
+    read_model: read_model,
+    post_edit_dag: post_edit_dag,
+    acc: acc,
+    edit: edit
+  )
+}
+
+
 fn affected_set(
   read_model: AffectedSetRead,
   post_edit_dag: fn(Dag, Edit) -> AffectedPostEditDagRead,
   dag: Dag,
   diff: Diff
-) -> Witness<ReExecFrontier> {
+) -> Witness<AffectedSet> {
   Holds {
-    value: frontier_from_fold_acc(
-      acc: fold(diff.edits, init: empty_affected_fold_acc(dag: dag), f: fn(acc, edit) {
-        seed_edit_fold_acc(
+    value: affected_set_from_fold_acc(
+      acc: fold(diff.edits, init: empty_affected_set_fold_acc(dag: dag), f: fn(acc, edit) {
+        seed_affected_set_fold_acc(
           read_model: read_model,
           post_edit_dag: post_edit_dag,
           acc: acc,
