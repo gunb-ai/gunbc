@@ -209,6 +209,8 @@ fn v4_extdeps_file_system_dag_legacy_consumer_exports_remain() {
         "FileSystemOperations",
         "ReadFileRequest",
         "WriteFileRequest",
+        "ListDirRequest",
+        "FileKindRequest",
     ] {
         assert!(
             surface_declares_type(&module, legacy),
