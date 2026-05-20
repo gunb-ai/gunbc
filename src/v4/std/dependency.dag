@@ -165,7 +165,9 @@ type ProgramIndependenceClaim {
 
 // RULING-1: 🟢 pretty-much-done — target-plan-tier closed-world completeness (P6 TargetPlan).
 type TargetPlanCompletenessFact
-  = TargetPlanFactsComplete
+  = PlacementFactsComplete
+  | TransferFactsComplete
+  | BarrierFactsComplete
 
 
 type TargetPlanCompletenessFacts {
@@ -197,6 +199,7 @@ type ArtifactDependencyEndpoint
 // RULING-1: 🟢 pretty-much-done — artifact-tier closed-world completeness (P6 Artifact).
 type ArtifactCompletenessFact
   = ArtifactGraphFactsComplete
+  | ArtifactProvenanceFactsComplete
 
 
 type ArtifactCompletenessFacts {
