@@ -174,6 +174,34 @@ All paths produce `CoreNode`; `compile` takes it from there. This matters becaus
 
 ## Architectural premises (ratified — these inform implementation briefs)
 
+### P0 — The compiler exists to make change consequences computable
+
+> **Ratified 2026-05-20** (reviewer-proposed, operator-direct).
+
+**The problem this compiler solves is not text-to-text code generation.** It's that in ordinary codebases, interface / integration / effect / resource / protocol dependencies are scattered, implicit, and manually synchronized. A small upstream change can break distant downstream behavior without a structural explanation; developers chase fallout via runtime failures, broken tests, and grep.
+
+The v4 architecture's answer:
+
+1. **Model the system as a typed dependency graph.** Interfaces, integrations, protocols, resources, effects, and transformations are first-class typed nodes/edges (P6), not implicit in arbitrary code.
+2. **Ground it canonically.** `InferredTree` is the canonical post-grounding graph; ambiguity is a diagnostic, never a downstream surprise (canonical-grounding invariant).
+3. **Code, tests, glue, schemas, runtime plans, diagnostics — all are projections of the grounded graph.** Not the source of truth. When a modeled fact changes, the compiler computes the affected dependency subgraph (T-21 `affected_set`) and **recomputes** all downstream projections whose inputs changed.
+4. **If a projection can no longer be derived** by homomorphism or a declared `LawfulRewriteWitness`, compile fails-closed with a diagnostic.
+
+**Source-of-truth inversion.** This compiler inverts the traditional relationship:
+
+| Traditional codebase | This architecture |
+|---|---|
+| Code is source of truth | Model is source of truth |
+| Interfaces are scattered | Interfaces are typed Nodes |
+| Dependencies are implicit | Dependencies are typed edges (P6) |
+| Tests detect drift after the fact | Tests are projections; drift is structural |
+| Build failures reveal dependencies | Compile-time analysis enumerates affected sites |
+| Manually patched cascade after a change | Compiler computes affected subgraph + regenerates projections; non-derivable consequences surface as diagnostics |
+
+**Closed-world questions become decidable.** The compiler does NOT claim "all programming becomes decidable." It claims a **specific bounded set of system-level questions** becomes decidable *because the input structure is constrained*: the coercion fold is decidable-by-construction over a closed candidate set; parallelism is provable when dependency/effect/resource facts are complete; interface fidelity is structural because both sides derive from the same Node. See P5 (constraint solving), P6 (dependency taxonomy), P7 (lawful rewrites) for the mechanics; the resulting decidability is bounded and named, not universal.
+
+**The slogan.** *Code is not manually synchronized; consequences are recomputed.*
+
 ### P1 — Languages are I/O integration surfaces, not compiler concerns
 
 Both source and target languages are `LanguageModel` data passed in as parameters. The same `rust.dag` model is consumed when emitting Rust AND when parsing Rust as input (bidirectional grammar-as-data). There is no per-target emitter; `emit_rust` does not exist as compiler code. The Rust knowledge lives entirely in `extdeps/languages/rust.dag`.
@@ -527,6 +555,73 @@ Per [`docs/design-read-edit-pipeline.md`](design-read-edit-pipeline.md) § 6.10:
 
 Per the read/edit doc § 6, every L1.x dissolution lens is structurally a `(find, transform)` pair: the lens's Signature is the find half, the Clean shape is the transform half. The read/edit doc's § 6.7b "**(f) mechanical refactor**" hero case is the worked example most relevant to this compiler architecture: a single intent → uniform per-site transform → atomic apply via the candidate-state pattern. PR #3338's canonical-B refactor (across 6 languages + 7 ratchet dissolutions) is the worked example. This is also what `compile`-level rewrites (e.g., self-modification, see below) decompose into.
 
+### Projections — what lenses produce
+
+Per P0 + P3, **every downstream artifact is a projection of `InferredTree`** computed by a lens (a fold over the tree). The compiler core produces `InferredTree`; lenses fan out into the projection family. Naming things by their function rather than historical accident:
+
+| Projection | Lens (kind) | Output | Notes |
+|---|---|---|---|
+| Target source code | `translate(target_lang)` + `serialize` | `TargetSource` | The compile direction; NOT a lens — it's the homomorphism (P1). Listed here because conceptually it's "one projection among many." |
+| Host evaluation | `eval(host_model)` | `Value` | Same — homomorphism with terminal = execute (P2). |
+| Dimensional facts (cost / complexity / ownership / parallelism / termination / idempotency / effect) | dimensional lens family | `DimensionFact` Witnesses | All consume InferredTree; produce side-channel facts (P3 commitment 3). |
+| **Test cases** | **testgen lens(es)** | `TestClaim` Witnesses | **Reframed:** testgen is a lens, not a separate compiler concept. Historical naming. The various flavors of test generation (boundary tests from refinements, property tests from algebraic laws, integration tests from protocol models, serialization roundtrip tests, target-equivalence tests, fuzz cases from cardinality boundaries, …) are **different invocations of the same lens family** parameterized by which structural facts to project. Tests are NOT the source of truth for the model; they are **behavioral probes** generated FROM the model. See "Testgen as a lens" below. |
+| **Dry-run / simulated execution** | **lens-identifies + `LawfulRewriteWitness`-substitutes + Eval(mock_host_model)** | `Value` (in a sandboxed eval) | **Reframed:** dry-run is composition of three primitives we already have, not a new compiler concept. See "Dry-run as a lens-composed projection" below. |
+| Inter-module glue (REST client/server, marshaling, schemas) | composed homomorphism via shared transport model (P4) | per-module `TargetSource` + glue artifacts | The omni-stack story. Cross-link to P4. |
+| Migration / API-compat plans | diff-over-Trees + affected-set fold | structural change report + per-site remediation | Change-consequence story; uses `affected_set` (T-21). |
+| Affected-rebuild set | `affected_set(dag, Diff)` | `Witness<ReExecFrontier>` | Incrementality primitive; consumed by ALL projection regeneration. |
+| Documentation / API docs | a doc-projection lens | structured doc data + rendered text | A projection like any other; not a separate tool. |
+
+The compiler core does NOT name any of these specific projections (P3 commitment 4). Each lens is plug-in data; the compiler's job is to enable the fold mechanism and the candidate-state gate.
+
+### Testgen as a lens
+
+The current name `lens/testgen.dag` is historical — predates the lens reframe. Conceptually, testgen IS a lens family that produces `TestClaim` Witnesses as projections of `InferredTree`. Different "levels" of testgen are different invocations of the same lens (or sibling lenses sharing a library):
+
+| Invocation | Source of test cases | Example |
+|---|---|---|
+| `testgen.boundary` | refinement predicates declared on types | `Refined<String, uuid_format>` → "valid UUID test, invalid UUID tests" |
+| `testgen.property` | algebraic laws declared on inhabitances | `OrderedRing<Int>` → "addition is commutative", "addition has identity" |
+| `testgen.integration` | protocol models + service boundaries | `service.via rest::post(path)` → "client/server contract roundtrip test" |
+| `testgen.roundtrip` | grammar-as-bidir-data law | serialize-then-parse equals identity for the target language |
+| `testgen.equivalence` | cross-target inhabitance witnesses | "Rust emit + Python emit produce equivalent results for this input" |
+| `testgen.fuzz` | cardinality + disjunction boundaries | "for each variant of this Disj type, generate a sample" |
+| `testgen.regression` | prior failing inputs (from `TestClaim` registry) | "this past failure must still pass" |
+
+All produce `TestClaim` Witnesses against `InferredTree`. The compiler's job is the fold mechanism + canonical `TestClaim` carrier; the *which tests* is lens authoring. Renaming `lens/testgen.dag` to align with the lens-family naming is small follow-up bookkeeping.
+
+**Important boundary (P0 implication):** tests are projections OF the model; the model is not derived from tests. The slogan: *"tests are generated from the model as behavioral probes; they are not the source of truth for the model."*
+
+### Dry-run as a lens-composed projection
+
+**Dry-run / simulated testing** — running a program without committing its I/O side effects — is NOT a new compiler concept. It's the composition of three primitives we already have:
+
+1. **A lens identifies the I/O boundaries.** `io_boundary_lens(InferredTree) → Witness<List<IOBoundary>>` — fold over the tree, find every Node whose inhabitance involves an effectful primitive (network call, DB write, file I/O, time, randomness, host syscall). The lens reads `EffectDependsOn` / `ResourceDependsOn` edges from P6 to determine what counts as I/O.
+2. **A `LawfulRewriteWitness` substitutes mock stubs.** The substitution is target-declared: `dry_run.dag` (a runtime/policy model) declares "for each I/O primitive in the source's effect algebra, the rewrite produces a mock-host call that records-and-returns a canned value." The rewrite is witnessed by a "this preserves observable semantics modulo committed I/O" law per P7.
+3. **Eval with a mock host model.** `eval(mock_host_model)` runs the rewritten tree. The mock host's interpretation of the substituted operations records and returns mock values; nothing actually hits the real I/O surface.
+
+```
+InferredTree
+  ── io_boundary_lens(Introspect) ──> List<IOBoundary>
+  ── LawfulRewriteWitness(dry_run substitution) ──> InferredTree' (with stubs)
+  ── eval(mock_host_model) ──> Value + recorded_io_log
+```
+
+No new compiler primitive needed. Dry-run is a **lens-composed projection**: lens identifies, rewrite substitutes, eval runs against a different host.
+
+**The operator's intuition was right** — the actual interception happens via codegen-style substitution (the `LawfulRewriteWitness` produces an InferredTree with stub nodes where the I/O primitives were), not "the lens itself intercepts at runtime." Lenses are pure folds; they cannot intercept execution. But they CAN identify what needs intercepting; a rewrite witness does the substitution; eval runs the result.
+
+**Variations** (different lens invocations / different mock_host_model):
+- `dry_run.record` — execute, log every would-be I/O, return mock results.
+- `dry_run.assert` — execute against pre-declared expected I/O sequence; diagnostic if mismatch.
+- `dry_run.replay` — execute with prior I/O log as inputs (deterministic replay).
+- `dry_run.fuzz` — execute with random / boundary mock values; collect outcomes.
+
+Each is a different mock_host_model + optionally different lens for what counts as I/O (e.g., only network I/O vs all I/O). The compiler core machinery is unchanged.
+
+### How tests and dry-run compose
+
+`testgen` produces TestClaim Witnesses; `dry_run` provides a sandboxed execution of an InferredTree. A natural composition: `testgen` generates a set of TestClaim cases; `dry_run.assert` executes each against the implementation; failures become diagnostics. This is what the THESIS Tier 3 ("verification from structure") + the v4 `verification.dag` substrate enable — but composed from existing primitives, not as a special "test runner" subsystem.
+
 ---
 
 ## Self-modification, stage0, self-edit
@@ -854,7 +949,7 @@ Recommendation: Q14c default + Q14d opt-in for advanced surface. Q14b is the "le
 
 ## Process for amending this doc
 
-- A change to a ratified premise (P1 / P2 / P3 / P4 / P5 / P6 / P7) requires explicit operator ratification + reconcile of any downstream substrate.
+- A change to a ratified premise (P0 / P1 / P2 / P3 / P4 / P5 / P6 / P7) requires explicit operator ratification + reconcile of any downstream substrate.
 - Resolution of an Open Q is recorded inline (move from "Open" section to a new "Ratified" subsection with date).
 - Implementation that contradicts a premise is a STOP — escalate, do not improvise.
 
@@ -903,3 +998,6 @@ Recommendation: Q14c default + Q14d opt-in for advanced surface. Q14b is the "le
 | **candidate-state pattern** | The read/edit pipeline's invariant: gates run against `candidate_dag = apply_diff(dag, Diff)`, NOT against the pre-edit graph. Validates against the state that will be committed, not against a state already known to be valid. |
 | **`affected_set`** | T-21 substrate primitive: `affected_set(dag, Diff) → Witness<ReExecFrontier>`. Incremental re-execution frontier; consumed by the read/edit pipeline's gate step + by incremental rebuild. |
 | **self-edit / stage0** | The compiler editing its own source via `apply_diff(self, Diff)`. Self-hosting (stage0 regeneration) is `compile(self, dag_lang, TranslateTo(rust_lang))` — no special mode. See "Self-modification" section. |
+| **projection (lens output)** | Per P0 + P3, every downstream artifact (tests, dimensional facts, glue, schemas, migration plans, docs, dry-run results) is a *projection* of `InferredTree` computed by a lens. The compiler core produces InferredTree; lenses fan out into the projection family. |
+| **testgen** | A lens family that produces `TestClaim` Witnesses as projections of `InferredTree`. Historical name predating the lens reframe; different "levels" (boundary / property / integration / roundtrip / equivalence / fuzz / regression) are different invocations of the same family. Tests are projections of the model, NOT the source of truth for the model. |
+| **dry-run** | A lens-composed projection: `io_boundary_lens` identifies the I/O sites; a `LawfulRewriteWitness` substitutes mock stubs; `eval(mock_host_model)` runs the substituted tree. No new compiler primitive; composes lens + rewrite + eval-with-host-variant. Variations: record, assert, replay, fuzz. |
