@@ -91,7 +91,7 @@ data expected_affected_set_excluded_proofs: ReExecFrontier = ChangedSubgraphFron
       },
       rest: [
         DimensionNotRead {
-          producer: affected_set_example_path,
+          usage_site: affected_set_example_node,
           changed_dimension: affected_set_example_dimension
         }
       ]

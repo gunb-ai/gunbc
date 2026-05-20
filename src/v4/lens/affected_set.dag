@@ -1,13 +1,14 @@
 // src/v4/lens/affected_set.dag
 // Scope: canonical affected-set authority for CI/incremental re-execution; fail-closed B-4/B-5 node frontier.
 // Owns: Dag, AffectedDimension, ExclusionKey, ExclusionProof, PropagationExclusionProof, BoundaryExclusionProof, BoundaryExclusion, WholeDagFailClosedEvidence, FrontierDecision, ReExecFrontier, AffectedSetRead, HashReceipt, ChangedDimensionReceipt, FrontierReceipt, affected_set.
-// Consumes: List, Map, Diagnostic, Diff, Edit, Hash, Node, Path, Symbol, Witness; B1 content_hash receipts; B-4 resolved Symbol equality; B-5 per-Arrow signature effects.
+// Consumes: List, Map, Diagnostic, Diff, Edit, Hash, Node, Path, Symbol, Witness, DependencyView; B1 content_hash receipts; B-4 resolved Symbol equality; B-5 per-Arrow signature effects.
 // Status: Wave-0 front: bounded changed-subgraph frontier fold landed; dissolves when CI use and .dag TestClaims land.
 
 module v4.lens.affected_set
 
 
 import v4.std.collection { List, Map }
+import v4.std.dependency { DependencyView }
 import v4.std.diagnostic { Diagnostic, Outcome, Produced, Rejected }
 import v4.std.node { Diff, Edit, Hash, Node, Path, Symbol }
 import v4.std.witness { Holds, Witness }
@@ -22,16 +23,8 @@ type AffectedDimension = Symbol
 
 // RULING-1: 🟢 pretty-much-done — frontier carrier.
 type ExclusionKey {
-  at: Path
+  at: Node
   dimension: AffectedDimension
-}
-
-
-// RULING-1: 🟢 pretty-much-done — frontier carrier.
-type FrontierEdge {
-  producer: Path
-  consumer: Path
-  consumer_dimension: AffectedDimension
 }
 
 
@@ -39,14 +32,6 @@ type FrontierEdge {
 type EditDimension {
   edit: Edit
   dimension: AffectedDimension
-}
-
-
-// RULING-1: 🟢 pretty-much-done — frontier carrier.
-type EditFrontierEdge {
-  edit: Edit
-  changed_dimension: AffectedDimension
-  edge: FrontierEdge
 }
 
 
@@ -59,7 +44,7 @@ type ExclusionProof
 // 🟡 coproduct dissolution — #3153-subsumed
 // RULING-1: 🟡 needs-more-work — scaffold carrier.
 type PropagationExclusionProof
-  = DimensionNotRead { producer: Path, changed_dimension: AffectedDimension }
+  = DimensionNotRead { usage_site: Node, changed_dimension: AffectedDimension }
 
 
 // 🟡 coproduct dissolution — #3153-subsumed
@@ -141,14 +126,14 @@ type PropagationReceipt
 // RULING-1: 🟡 needs-more-work — frontier read.
 // 🟡 coproduct dissolution — #3153-subsumed; proves transitive frontier or fails closed.
 type FrontierReceipt
-  = FrontierProduced { edges: List<FrontierEdge> }
+  = FrontierProduced { dependencies: List<DependencyView> }
   | FrontierUnknown { reason: Symbol }
   | FrontierRejected { diagnostic: Diagnostic }
 
 
 // RULING-1: 🟡 needs-more-work — frontier read.
 type AffectedFrontierRead {
-  proven_transitive_changed_subgraph_frontier: fn(Dag, EditDimension) -> FrontierReceipt
+  proven_transitive_dependency_frontier: fn(Dag, EditDimension) -> FrontierReceipt
 }
 
 
@@ -163,7 +148,7 @@ type AffectedBoundaryRead {
 type AffectedSetRead {
   boundary: AffectedBoundaryRead
   frontier: AffectedFrontierRead,
-  propagation_receipt: fn(Dag, EditFrontierEdge) -> PropagationReceipt
+  propagation_receipt: fn(Dag, EditDimension, DependencyView) -> PropagationReceipt
 }
 
 
@@ -201,18 +186,18 @@ fn frontier_from_fold_acc(acc: AffectedFoldAcc) -> ReExecFrontier {
 }
 
 
-fn root_key(path: Path, dimension: AffectedDimension) -> ExclusionKey {
+fn root_key(subject: Node, dimension: AffectedDimension) -> ExclusionKey {
   ExclusionKey {
-    at: path,
+    at: subject,
     dimension: dimension
   }
 }
 
 
-fn edge_key(edge: FrontierEdge) -> ExclusionKey {
+fn dependency_key(dependency: DependencyView, dimension: AffectedDimension) -> ExclusionKey {
   ExclusionKey {
-    at: edge.consumer,
-    dimension: edge.consumer_dimension
+    at: dependency.dependent,
+    dimension: dimension
   }
 }
 
@@ -296,7 +281,7 @@ fn frontier_receipt(
   edit: Edit,
   dimension: AffectedDimension
 ) -> FrontierReceipt {
-  read_model.frontier.proven_transitive_changed_subgraph_frontier(
+  read_model.frontier.proven_transitive_dependency_frontier(
     dag,
     EditDimension { edit: edit, dimension: dimension }
   )
@@ -308,15 +293,12 @@ fn propagation_receipt(
   dag: Dag,
   edit: Edit,
   dimension: AffectedDimension,
-  edge: FrontierEdge
+  dependency: DependencyView
 ) -> PropagationReceipt {
   read_model.propagation_receipt(
     dag,
-    EditFrontierEdge {
-      edit: edit,
-      changed_dimension: dimension,
-      edge: edge
-    }
+    EditDimension { edit: edit, dimension: dimension },
+    dependency
   )
 }
 
@@ -332,8 +314,8 @@ fn expand_dimension(
     WholeDagFailClosed { evidence: e } => WholeDagFailClosed { evidence: e }
     ChangedSubgraphFrontier { boundary_exclusions: _, decisions: _ } =>
       match frontier_receipt(read_model: read_model, dag: dag, edit: edit, dimension: dimension) {
-        FrontierProduced { edges: edges } =>
-          fold(edges, init: frontier, f: fn(acc2, edge) {
+        FrontierProduced { dependencies: dependencies } =>
+          fold(dependencies, init: frontier, f: fn(acc2, dependency) {
             match acc2 {
               WholeDagFailClosed { evidence: e } => WholeDagFailClosed { evidence: e }
               ChangedSubgraphFrontier { boundary_exclusions: _, decisions: _ } =>
@@ -342,12 +324,12 @@ fn expand_dimension(
                   dag: dag,
                   edit: edit,
                   dimension: dimension,
-                  edge: edge
+                  dependency: dependency
                 ) {
                   Propagates =>
-                    mark_rerun(frontier: acc2, key: edge_key(edge: edge))
+                    mark_rerun(frontier: acc2, key: dependency_key(dependency: dependency, dimension: dimension))
                   DoesNotPropagate { proof: p } =>
-                    mark_excluded(frontier: acc2, key: edge_key(edge: edge), proof: p)
+                    mark_excluded(frontier: acc2, key: dependency_key(dependency: dependency, dimension: dimension), proof: p)
                   PropagationUnknown { reason: r } =>
                     mark_whole_dag(reason: r)
                 }
@@ -427,14 +409,14 @@ fn expand_changed_dimensions(
       fold(rest_dimensions, init: expand_dimension(
         read_model: read_model,
         dag: frontier_dag,
-        frontier: mark_rerun(frontier: frontier, key: root_key(path: edit.at, dimension: first_dimension)),
+        frontier: mark_rerun(frontier: frontier, key: root_key(subject: edit.replacement, dimension: first_dimension)),
         edit: edit,
         dimension: first_dimension
       ), f: fn(acc2, dimension) {
         expand_dimension(
           read_model: read_model,
           dag: frontier_dag,
-          frontier: mark_rerun(frontier: acc2, key: root_key(path: edit.at, dimension: dimension)),
+          frontier: mark_rerun(frontier: acc2, key: root_key(subject: edit.replacement, dimension: dimension)),
           edit: edit,
           dimension: dimension
         )

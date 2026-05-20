@@ -1,0 +1,70 @@
+// src/v4/std/dependency.dag
+// Scope: P6 dependency taxonomy and lens-over-substrate dependency view.
+// Owns: DependencyKind, DependencyView, DependencyLensRead, dependency_lens.
+// Consumes: v4.std.collection, v4.std.node.
+// Status: Wave-2-A substrate: dependency facts are projected from Node edges, not authored as a parallel graph.
+
+module v4.std.dependency
+
+import v4.std.collection { List }
+import v4.std.node { Edge, Node, NodeFold, fold_node }
+
+// 🟢 closed set — P6 dependency classification taxonomy.
+type DependencyKind
+  = Contains
+  | BindsTo
+  | TypeDependsOn
+  | DataDependsOn
+  | EffectDependsOn
+  | ResourceDependsOn
+  | ModuleDependsOn
+  | BarrierBefore
+  | PlacementDependsOn
+  | ModelDependsOn
+  | ProjectionDependsOn
+  | GeneratedFrom
+  | VerifiedBy
+  | BootstrapDependsOn
+
+type DependencyView {
+  source: Node
+  dependent: Node
+  kind: DependencyKind
+  usage_site: Node
+}
+
+type DependencyLensRead {
+  classify_usage: fn(Node, Edge) -> DependencyKind
+}
+
+fn dependency_view_for_edge(read_model: DependencyLensRead, parent: Node, edge: Edge) -> DependencyView {
+  DependencyView {
+    source: parent,
+    dependent: edge.target,
+    kind: read_model.classify_usage(parent, edge),
+    usage_site: edge.target
+  }
+}
+
+fn append_dependency_views(left: List<DependencyView>, right: List<DependencyView>) -> List<DependencyView> {
+  fold(right, init: left, f: fn(acc, item) {
+    list_push(acc, item)
+  })
+}
+
+fn dependency_lens(read_model: DependencyLensRead, root: Node) -> List<DependencyView> {
+  fold_node(
+    n: root,
+    algebra: NodeFold {
+      init: fn(_) {
+        []
+      },
+      step: fn(acc, edge, child_views) {
+        append_dependency_views(
+          left: list_push(acc, dependency_view_for_edge(read_model: read_model, parent: root, edge: edge)),
+          right: child_views
+        )
+      }
+    }
+  )
+}
