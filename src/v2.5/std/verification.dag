@@ -1,15 +1,17 @@
 // src/v2.5/std/verification.dag
 // Scope: closed TestClaim schema for v2.5 fork-local verification rows.
-// Owns: CompilerStage, AssertKind, TestgenTier, TestgenLayer, TestClassification,
-// ImpossibleBugClass, T19ManualAnchorKey, TestClaim, TestSuite.
+// Owns: CompilerStage, TestSource, AssertKind, TestgenTier, TestgenLayer,
+// TestClassification, ImpossibleBugClass, T19ManualAnchorKey, TestClaim,
+// TestSuite.
 // Consumes: v2_5.std.node, v2_5.std.diagnostic.
 // Status: v2.5 Tier 0 supporting substrate.
 
 module v2_5.std.verification
 
 import v2_5.std.node { Symbol }
-import v2_5.std.diagnostic { Diagnostic, Outcome }
+import v2_5.std.diagnostic { Diagnostic }
 
+// 🟢 coproduct dissolution
 type CompilerStage
   = Tokenize
   | Parse
@@ -19,17 +21,25 @@ type CompilerStage
   | Emit
   | Compile
 
-type AssertKind<T>
-  = Equals { actual: T, expected: T }
-  | DiagnosticAssert { actual: Outcome<T>, expected: Diagnostic }
-  | Compiles { actual: Outcome<T> }
-  | RoundTrips { initial: T, final: T }
+// 🟢 coproduct dissolution
+type TestSource<T>
+  = SourceText { file: Symbol, text: String }
+  | ModeledInput { input: T }
 
+// 🟢 coproduct dissolution
+type AssertKind<T>
+  = Equals { expected: T }
+  | DiagnosticAssert { expected: Diagnostic }
+  | Compiles
+  | RoundTrips { expected: T }
+
+// 🟢 coproduct dissolution
 type TestgenTier
   = Tier1
   | Tier2
   | Tier3
 
+// 🟢 coproduct dissolution
 type TestgenLayer
   = Unit
   | Integration
@@ -40,6 +50,7 @@ type TestClassification {
   layer: TestgenLayer
 }
 
+// 🟢 coproduct dissolution
 type ImpossibleBugClass
   = SuboptimalComplexity
   | IdempotencyContract
@@ -48,6 +59,7 @@ type ImpossibleBugClass
   | UnenumeratedEffects
   | UnhandledDiagnosticPaths
 
+// 🟡 coproduct dissolution — consumer:t19-generated-corpus-anchors
 type T19ManualAnchorKey
   = T19ManualTcConjEmpty
   | T19ManualTcDisjEmpty
@@ -63,15 +75,27 @@ type T19ManualAnchorKey
   | T19ManualNatMulAssociativity
   | T19ManualAnchorAbsent
 
-type TestClaim<T> {
-  label: Symbol
+type TestClaim<Input, Output> {
+  name: String
   stage: CompilerStage
-  assertion: AssertKind<T>
+  source: TestSource<Input>
+  predicate: AssertKind<Output>
   t19_anchor: T19ManualAnchorKey
   classification: TestClassification
 }
 
-type TestSuite<T> {
-  label: Symbol
-  claims: List<TestClaim<T>>
+type TestSuite<Input, Output> {
+  name: String
+  claims: List<TestClaim<Input, Output>>
+}
+
+data verification_schema_smoke_file: Symbol = verification_schema_smoke_file
+
+data verification_schema_smoke: TestClaim<String, String> = TestClaim {
+  name: "verification_schema_smoke",
+  stage: Compile,
+  source: SourceText { file: verification_schema_smoke_file, text: "module smoke" },
+  predicate: Equals { expected: "module smoke" },
+  t19_anchor: T19ManualAnchorAbsent,
+  classification: TestClassification { tier: Tier1, layer: Unit }
 }
