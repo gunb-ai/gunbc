@@ -161,13 +161,13 @@ fn symbolic_cost_witness(c: SymbolicCost, n: Node) -> Witness<SymbolicCost> {
   }
 }
 
-fn base_cost_for_connective(c: Connective) -> SymbolicCost {
+fn base_cost_for_connective(c: Connective, n: Node) -> SymbolicCost {
   match c {
     Atom { identity: _ } => zero_cost()
     Conj => zero_cost()
     Disj => zero_cost()
     Arrow => unit_cost()
-    Cardinality => unit_cost()
+    Cardinality => linear_in_node(n: n)
     Instantiation => unit_cost()
   }
 }
@@ -177,7 +177,7 @@ fn base_cost_for_behavior(b: Behavior) -> SymbolicCost {
     Value => zero_cost()
     Transform => unit_cost()
     Branch => unit_cost()
-    Loop => unit_cost()
+    Loop => unknown_cost(reason: "T-9-not-landed: loop bound")
     Bind => zero_cost()
   }
 }
@@ -208,7 +208,7 @@ fn cost_fold_init(n: Node) -> SymbolicCostFoldState {
     TypeNode { connective: c } =>
       SymbolicCostFoldState {
         mode: cost_mode_for_connective(c: c),
-        cost: base_cost_for_connective(c: c)
+        cost: base_cost_for_connective(c: c, n: n)
       }
     ComputationNode { behavior: b } =>
       SymbolicCostFoldState {
@@ -284,9 +284,12 @@ fn symbolic_cost_fold() -> NodeFold<SymbolicCostFoldState> {
   }
 }
 
+fn symbolic_cost_fold_state(n: Node) -> SymbolicCostFoldState {
+  fold_node(n: n, algebra: symbolic_cost_fold())
+}
+
 fn symbolic_cost_of_node(n: Node) -> SymbolicCost {
-  let folded = fold_node(n: n, algebra: symbolic_cost_fold())
-  folded.cost
+  symbolic_cost_fold_state(n: n).cost
 }
 
 fn cost_lens(n: Node) -> Witness<SymbolicCost> {
