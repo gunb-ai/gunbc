@@ -59,7 +59,8 @@ data c3_surface_sugar_type: Symbol = c3_surface_sugar_type
 data c3_surface_sugar_operation: Symbol = c3_surface_sugar_operation
 
 // THESIS-faithful discrimination (stage-types only; substrate stays TypeForm | Computation):
-//   ParseModule / ParseImport / ParseFn / ParseTypeDecl / ParseService → ParseItem variants
+//   ParseModule / ParseImport / ParseCallable / ParseTypeDecl / ParseService → ParseItem variants
+//   fn/func surface sugar → ResolvedSugared { sugar: FnSugar, … } until normalize strips wrapper
 //   ParseMatchArm / ParsePattern / ParseArg / ParseFieldInit → nested under ParseExpr
 //   Lowering to substrate: module items → TypeForm { connective: Conj }; expr bodies → Computation
 
@@ -248,16 +249,7 @@ type ParseImport
 
 // 🟢 coproduct dissolution
 type ParseItem
-  = ParseFn {
-      name: AuthoredName
-      type_params: List<ParseParam>
-      params: List<ParseParam>
-      return_type: ParseTypeExpr?
-      uses: List<ParseResourceUse>
-      body: ParseBlock
-      span: SourceSpan
-    }
-  | ParseFunc {
+  = ParseCallable {
       name: AuthoredName
       type_params: List<ParseParam>
       params: List<ParseParam>
@@ -414,7 +406,7 @@ type ResolvedExpr
   | ResolvedStringInterp {
       parts: List<ResolvedStringPart>
     }
-  | ResolvedBlock { statements: List<ResolvedExpr> }
+  | ResolvedBlockExpr { block: ResolvedBlock }
   | ResolvedCast {
       expr: ResolvedExpr
       target_type: ResolvedTypeExpr
@@ -481,16 +473,7 @@ type ResolvedImport
 
 // 🟢 coproduct dissolution
 type ResolvedItemCore
-  = ResolvedFn {
-      name: BoundName
-      type_params: List<ResolvedParam>
-      params: List<ResolvedParam>
-      return_type: ResolvedTypeExpr?
-      uses: List<ResolvedResourceUse>
-      body: ResolvedBlock
-      span: SourceSpan
-    }
-  | ResolvedFunc {
+  = ResolvedCallable {
       name: BoundName
       type_params: List<ResolvedParam>
       params: List<ResolvedParam>
@@ -656,7 +639,7 @@ type NormalizedExpr
   | NormalizedStringInterp {
       parts: List<NormalizedStringPart>
     }
-  | NormalizedBlock { statements: List<NormalizedExpr> }
+  | NormalizedBlockExpr { block: NormalizedBlock }
   | NormalizedCast {
       expr: NormalizedExpr
       target_type: NormalizedTypeExpr
@@ -723,16 +706,7 @@ type NormalizedImport
 
 // 🟢 coproduct dissolution
 type NormalizedItem
-  = NormalizedFn {
-      name: BoundName
-      type_params: List<NormalizedParam>
-      params: List<NormalizedParam>
-      return_type: NormalizedTypeExpr?
-      uses: List<NormalizedResourceUse>
-      body: NormalizedBlock
-      span: SourceSpan
-    }
-  | NormalizedFunc {
+  = NormalizedCallable {
       name: BoundName
       type_params: List<NormalizedParam>
       params: List<NormalizedParam>
@@ -928,8 +902,8 @@ type InferredExpr
       parts: List<InferredStringPart>
       expr_type: InferredType
     }
-  | InferredBlock {
-      statements: List<InferredExpr>
+  | InferredBlockExpr {
+      block: InferredBlock
       expr_type: InferredType
     }
   | InferredCast {
@@ -1006,17 +980,7 @@ type InferredImport
 
 // 🟢 coproduct dissolution
 type InferredItem
-  = InferredFn {
-      name: BoundName
-      type_params: List<InferredParam>
-      params: List<InferredParam>
-      return_type: InferredType
-      uses: List<InferredResourceUse>
-      body: InferredBlock
-      recursion: TailRecursionFacts
-      span: SourceSpan
-    }
-  | InferredFunc {
+  = InferredCallable {
       name: BoundName
       type_params: List<InferredParam>
       params: List<InferredParam>
@@ -1201,10 +1165,11 @@ type SeamNormalizedNode
 //
 // v2 Node.expr_data (22 cases) → ParseExpr / ResolvedExpr / ... (one variant each)
 // v2 Node.match_pattern → ParseMatchArm.pattern (not a field on expr nodes)
-// v2 Node.params/body/transport/uses → ParseFn | ParseFunc | ParseService variants
+// v2 Node.params/body/transport/uses → ParseCallable | ParseService variants
 // v2 Node.inferred? → eliminated; InferredExpr.expr_type is required per variant
-// v2 is_self_recursive / has_non_tail_self_call → InferredFn.recursion only
-// v2 item_kind() cascade → ParseItem closed sum (ParseFn | ParseFunc | ...)
+// v2 is_self_recursive / has_non_tail_self_call → InferredCallable.recursion only
+// v2 item_kind() cascade → ParseItem closed sum (ParseCallable | …)
+// v2 block expr → *BlockExpr { block: *Block } — single block record authority per phase
 // v2 connective on flat Node → ParseTypeExpr | TypeForm (phase AST; lower to Connective+Edge)
 // calm-crane-724 SeamResolvedNode → normalize sugar strip → SeamNormalizedNode
 // full pipeline: ResolvedSugared / ResolvedCore → NormalizedItem (core only)
