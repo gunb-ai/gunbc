@@ -170,7 +170,21 @@ type ExpressionSyntax {
   call_open: String
   call_close: String
   arg_separator: String
+  named_arg_separator: String
+  let_binding: LetBindingSyntax
   null_literal: String
+}
+
+// LetBindingSyntax — per-target keywords and separators for a value-binding
+// expression form (`let x = v; body` / `x = v\nbody` / etc.). Lifted from
+// hard-coded fragments in the InferredLet arm (cursor review #15221 finding 2:
+// the prior `concat("let ", name, " = ", value, ";\n", body)` baked Rust-
+// specific tokens into the framework when the file claims per-target syntax
+// lives only in LanguageSpec).
+type LetBindingSyntax {
+  let_keyword: String          // "let " in Rust; "" in Python (assignment is the keyword-free form)
+  assignment_separator: String // " = " in Rust/Python; ":=" in some targets
+  binding_terminator: String   // ";\n" in Rust; "\n" in Python
 }
 
 // BinOp is OWNED by v2_5.std.syntax (universal operator identity, target-

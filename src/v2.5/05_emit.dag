@@ -216,16 +216,20 @@ fn emit(module: InferredModule, spec: LanguageSpec) -> Outcome<TargetSource> {
 // =============================================================================
 
 fn emit_module(module: InferredModule, spec: LanguageSpec) -> Outcome<List<TargetFile>> {
-  let import_block = render_imports(used_imports: module.imports, spec: spec)
-  let item_outcomes = module.items |> map(i => render_item(item: i, spec: spec))
-  match collect_outcomes(items: item_outcomes) {
-    Produced { value: item_texts } => {
-      let body = item_texts |> join(separator: spec.items.item_separator)
-      let content = concat(import_block, body)
-      let file_path = render_module_path(name: module.name, spec: spec)
-      Produced { value: [TargetFile { path: file_path, content: content }] }
-    }
+  match render_imports(used_imports: module.imports, spec: spec) {
     Rejected { diagnostic: d } => Rejected { diagnostic: d }
+    Produced { value: import_block } => {
+      let item_outcomes = module.items |> map(i => render_item(item: i, spec: spec))
+      match collect_outcomes(items: item_outcomes) {
+        Produced { value: item_texts } => {
+          let body = item_texts |> join(separator: spec.items.item_separator)
+          let content = concat(import_block, body)
+          let file_path = render_module_path(name: module.name, spec: spec)
+          Produced { value: [TargetFile { path: file_path, content: content }] }
+        }
+        Rejected { diagnostic: d } => Rejected { diagnostic: d }
+      }
+    }
   }
 }
 
@@ -349,9 +353,17 @@ fn render_expr(expr: InferredExpr, spec: LanguageSpec) -> Outcome<String> {
     InferredLet { name: name, value: value, body: body, expr_type: _ } =>
       bind_outcome(o: render_expr(expr: value, spec: spec), f: fn(value_text) {
         bind_outcome(o: render_expr(expr: body, spec: spec), f: fn(body_text) {
+          // All per-target fragments read from spec.expressions.let_binding
+          // (cursor review #15221 finding 2). The framework owns the
+          // structural shape "<kw> <name> <sep> <value> <term> <body>"; the
+          // fragments are data.
           Produced {
-            value: concat("let ", emit_ident(name: name, rules: spec.identifiers), " = ",
-                          value_text, ";\n", body_text)
+            value: concat(spec.expressions.let_binding.let_keyword,
+                          emit_ident(name: name, rules: spec.identifiers),
+                          spec.expressions.let_binding.assignment_separator,
+                          value_text,
+                          spec.expressions.let_binding.binding_terminator,
+                          body_text)
           }
         })
       })
@@ -522,13 +534,19 @@ fn render_block(block: BlockSyntax, statements: List<String>) -> Outcome<String>
 
 
 // render_arg — InferredArg carries optional name (for keyword args) + value.
-// Named args render `name: value` (target-syntax-dependent — defaults to the
-// param-type separator); positional args render just the value.
+// Named args render `name<sep>value` where `<sep>` is the per-target named-arg
+// separator from spec.expressions.named_arg_separator (Python: "=", Rust:
+// ": "). Cursor review #15221 finding 1 — the prior hardcoded ": " was a
+// second authority for name/value punctuation; lifted to spec.
 fn render_arg(arg: InferredArg, spec: LanguageSpec) -> Outcome<String> {
   bind_outcome(o: render_expr(expr: arg.value, spec: spec), f: fn(value_text) {
     match arg.name {
       Some { value: name } =>
-        Produced { value: concat(emit_ident(name: name, rules: spec.identifiers), ": ", value_text) }
+        Produced {
+          value: concat(emit_ident(name: name, rules: spec.identifiers),
+                        spec.expressions.named_arg_separator,
+                        value_text)
+        }
       None =>
         Produced { value: value_text }
     }
@@ -599,16 +617,27 @@ fn render_literal(value: LiteralValue, spec: LanguageSpec) -> String {
 
 
 // render_imports — filter rules by trigger, emit one import line per match.
-// The framing comes from spec.imports (import_keyword + path_open + path_close);
+// Framing comes from spec.imports (import_keyword + path_open + path_close);
 // each rule supplies only the path body. Codex review #15207 finding 2 — the
 // previous shape carried fully-rendered "use ...;" strings AND framing fields;
 // now the rule path is bare and the framework composes the line.
-fn render_imports(used_imports: List<InferredImport>, spec: LanguageSpec) -> String {
+//
+// Lifted to Outcome<String> per cursor review #15221 finding 3 — earlier draft
+// returned "" silently when used_imports was non-empty, which was asymmetric
+// with the per-variant render_pending() discipline elsewhere in this file. A
+// non-empty used_imports with no trigger-matching body present now fails
+// closed via emit_under_refined instead of emitting a silent empty block.
+fn render_imports(used_imports: List<InferredImport>, spec: LanguageSpec) -> Outcome<String> {
   // 🟡 trigger-matching against used_imports is a follow-on commit (needs the
-  // Tier 1 InferredImport coproduct to be walked to extract the used name set
-  // that triggers each rule). For now this returns an empty import block; the
-  // per-rule line shape compositional structure is the relevant design fact.
-  ""
+  // Tier 1 InferredImport coproduct to be walked + cross-referenced against
+  // spec.imports.rules' typed triggers). Until that lands, an empty
+  // used_imports correctly produces an empty block; a non-empty one surfaces
+  // the gap explicitly rather than emitting silently.
+  if count(used_imports) == 0 {
+    Produced { value: "" }
+  } else {
+    Rejected { diagnostic: emit_diagnostic(reason: emit_under_refined) }
+  }
 }
 
 
