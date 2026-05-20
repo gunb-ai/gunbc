@@ -401,7 +401,7 @@ substrate imported them, so the cut is a pure scope reduction.
 - **CP-1b bucket C (native `.dag` LM):** `DagLanguageModel` carries
   `canonical_symbols: Set<Symbol>` as declared data; resolve reads that field
   only—no inferring the native C3 prelude `Set` from void lex/grammar shape
-  inside `03_resolve.dag` (DECISIONS §CP-1b item 2).
+  inside `03_resolve.dag` (TASKS T-8 / CP-1b bucket C).
 
 **Reference**:
 - v2: `src/v2/03_normalize.dag`, `src/v2/03_resolve.dag`

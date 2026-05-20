@@ -42,7 +42,7 @@ fn dag_wave1_g0_void_grammar() -> Grammar {
 }
 
 
-// DECISIONS.md §CP-1b (item 1).
+// wave-1 void LM canonical prelude atoms (TASKS T-8 / CP-1b bucket C).
 fn dag_language_model_surface_prelude_atoms() -> Set<Symbol> {
   Set {
     member: fn(sym) {
@@ -74,7 +74,7 @@ fn dag_language_model_wave1_void() -> DagLanguageModel {
 }
 
 
-// DECISIONS.md §CP-1b item 2 (compile-anchor empty prelude; same language_identity as wave1_void).
+// compile-anchor empty prelude; same language_identity as wave1_void (TASKS T-8 / CP-1b bucket C).
 fn dag_language_model_surface_empty_prelude() -> DagLanguageModel {
   DagLanguageModel {
     lex: dag_wave1_e0_void_lex(),

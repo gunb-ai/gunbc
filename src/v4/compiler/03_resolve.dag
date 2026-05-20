@@ -50,19 +50,19 @@ type Namespace {
 }
 
 
-// 🟡 coproduct dissolution — CP-1b item 7 (Scope).
+// 🟡 coproduct dissolution — feature:T-8-lexical-scope-chain — scaffold:TASKS T-8; dissolve-on-arrival: CP-1b/T-8→T-9 close (Scope).
 type Scope
   = ScopeRoot { module: Namespace }
   | ScopeFrame { locals: Map<Symbol, Symbol>, outer: Scope }
 
 
-// 🟡 coproduct dissolution — CP-1b item 8 (ResolveResult).
+// 🟡 coproduct dissolution — feature:K-1-per-node-resolve-outcome — scaffold:TASKS T-8; dissolve-on-arrival: CP-1b/T-8→T-9 close (ResolveResult).
 type ResolveResult
   = ResolvedNode { node: Node }
   | ResolveRejected { diagnostic: Diagnostic }
 
 
-// 🟡 coproduct dissolution — CP-1b item 9 (ResolveChildrenResult).
+// 🟡 coproduct dissolution — feature:T-8-edge-resolve-fold-outcome — scaffold:TASKS T-8; dissolve-on-arrival: CP-1b/T-8→T-9 close (ResolveChildrenResult).
 type ResolveChildrenResult
   = ResolvedChildren { children: List<Edge> }
   | ResolveChildrenRejected { diagnostic: Diagnostic }
@@ -402,7 +402,7 @@ fn resolve_edges_first_outer_then_inner(
 }
 
 
-// §CP-1b (item 3).
+// bind-binder-target projection (TASKS T-8 / CP-1b item 3).
 fn resolve_bind_binder_target(t: Node) -> ResolveResult {
   match t.kind {
     TypeNode { connective: Atom { identity: id } } =>
