@@ -7,7 +7,7 @@
 module v4.std.dependency
 
 import v4.std.collection { List }
-import v4.std.node { Edge, Node, NodeFold, fold_node }
+import v4.std.node { Edge, Node }
 
 // 🟢 closed set — P6 dependency classification taxonomy.
 type DependencyKind
@@ -53,18 +53,10 @@ fn append_dependency_views(left: List<DependencyView>, right: List<DependencyVie
 }
 
 fn dependency_lens(read_model: DependencyLensRead, root: Node) -> List<DependencyView> {
-  fold_node(
-    n: root,
-    algebra: NodeFold {
-      init: fn(_) {
-        []
-      },
-      step: fn(acc, edge, child_views) {
-        append_dependency_views(
-          left: list_push(acc, dependency_view_for_edge(read_model: read_model, parent: root, edge: edge)),
-          right: child_views
-        )
-      }
-    }
-  )
+  fold(root.children, init: [], f: fn(acc, edge) {
+    append_dependency_views(
+      left: list_push(acc, dependency_view_for_edge(read_model: read_model, parent: root, edge: edge)),
+      right: dependency_lens(read_model: read_model, root: edge.target)
+    )
+  })
 }

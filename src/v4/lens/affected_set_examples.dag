@@ -73,7 +73,7 @@ data expected_affected_set_dimension_seed: ReExecFrontier = ChangedSubgraphFront
   boundary_exclusions: [],
   decisions: map_insert(
     empty_map(),
-    ExclusionKey { at: affected_set_example_path, dimension: affected_set_example_dimension },
+    ExclusionKey { at: affected_set_example_node, dimension: affected_set_example_dimension },
     Rerun
   )
 }
@@ -83,10 +83,10 @@ data expected_affected_set_excluded_proofs: ReExecFrontier = ChangedSubgraphFron
   boundary_exclusions: [],
   decisions: map_insert(
     empty_map(),
-    ExclusionKey { at: affected_set_example_path, dimension: affected_set_example_dimension },
+    ExclusionKey { at: affected_set_example_node, dimension: affected_set_example_dimension },
     Excluded {
       first: DimensionNotRead {
-        producer: affected_set_example_path,
+        usage_site: affected_set_example_node,
         changed_dimension: affected_set_example_dimension
       },
       rest: [
