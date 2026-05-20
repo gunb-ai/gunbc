@@ -29,11 +29,19 @@ def unprotect_frontier(text: str, tokens: list[str]) -> str:
 
 
 def migrate_imports(text: str) -> str:
+    uses_outcome_surface = (
+        "Outcome" in text
+        or "Accepted {" in text
+        or "Rejected {" in text
+        or "Produced {" in text
+        or "Rejected { diagnostic" in text
+    )
+
     def fix_block(m: re.Match[str]) -> str:
         names = [n.strip() for n in m.group(1).split(",") if n.strip()]
         names = [n for n in names if n not in ("Produced", "Rejected")]
-        if "Outcome" in m.group(0) or "Outcome" in names:
-            for add in ("Accepted", "None", "diagnostics_singleton"):
+        if uses_outcome_surface:
+            for add in ("Accepted", "Rejected", "None", "diagnostics_singleton"):
                 if add not in names:
                     names.append(add)
         return "import v4.std.diagnostic {" + ", ".join(names) + "}"
@@ -112,8 +120,13 @@ def replace_produced(text: str) -> str:
                 depth -= 1
             k += 1
         value = text[val_start:k].strip()
-        out.append(f"Accepted {{ value: {value}, diagnostics: None }}")
-        i = k + 1
+        tail = text[k : k + 40]
+        if re.match(r"\s*,\s*diagnostics:\s*", tail):
+            out.append(f"Accepted {{ value: {value}")
+            i = k
+        else:
+            out.append(f"Accepted {{ value: {value}, diagnostics: None }}")
+            i = k + 1
     return "".join(out)
 
 

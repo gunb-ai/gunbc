@@ -12,10 +12,12 @@ module v4.std.coercion
 
 import v4.std.constraints { CanonicalGrounding, CanonicalGroundingWitness }
 import v4.std.diagnostic {
+  Accepted,
   Diagnostic,
   ExternalContractUnknown,
   NodeLocus,
   Outcome,
+  Rejected,
   Unavailable,
   outcome_rejected
 }

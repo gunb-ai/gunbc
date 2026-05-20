@@ -14,6 +14,14 @@ module v4.std.diagnostic
 
 import v4.std.collection { List }
 import v4.std.node { Edge, Node }
+data traverse_children_not_realized: Symbol = traverse_children_not_realized
+fn traverse_children_not_realized_diagnostic(n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: traverse_children_not_realized,
+    at: NodeLocus { node: n },
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type Extent
   = WholeFile
@@ -187,7 +195,15 @@ type NodeOutcomeFold<R> {
 }
 fn bind_outcome<T, U>(o: Outcome<T>, f: fn(T) -> Outcome<U>) -> Outcome<U> {
   match o {
-    Accepted { value: v, diagnostics: _ } => f(v)
+    Accepted { value: v, diagnostics: od } =>
+      match f(v) {
+        Accepted { value: u, diagnostics: ud } =>
+          Accepted {
+            value: u,
+            diagnostics: diagnostics_merge(outer: od, inner: ud)
+          }
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      }
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
 }
@@ -196,9 +212,14 @@ fn traverse_node<R>(
   algebra: NodeOutcomeFold<R>,
   policy: StageDiagnosticPolicy,
 ) -> Outcome<R> {
-  match policy.accumulation {
-    Accumulate => algebra.init(n)
-    ShortCircuit => algebra.init(n)
+  match algebra.init(n) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: seed, diagnostics: d0 } =>
+      if count(n.children) == 0 {
+        Accepted { value: seed, diagnostics: d0 }
+      } else {
+        outcome_rejected(traverse_children_not_realized_diagnostic(n: n))
+      }
   }
 }
 fn sequence_node<R>(
