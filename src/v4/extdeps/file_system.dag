@@ -1,109 +1,45 @@
-// src/v4/extdeps/file_system.dag
-// Scope: file system substrate — paths, file kinds, read/write/list/kind operations.
-// Owns: PosixByteString, NamedPathComponent, PathComponent, AbsolutePath, RelativePathHead, RelativePath, Path, FileKind, FileKindResolutionPolicy, Filesystem, FileBody, file-system request/result/operation carriers.
-// Consumes: Diagnostic, Outcome, Byte, FreeMonoid, List.
-// Status: T-4.5 modeled 2026-05-16.
-
 module v4.extdeps.file_system
 
-
 import v4.std.algebra { FreeMonoid }
-import v4.std.diagnostic { Outcome }
+import v4.std.diagnostic {
+  Diagnostic,
+  ExternalContractUnknown,
+  Outcome,
+  PortLocus,
+  Rejected,
+  Unavailable
+}
 import v4.std.machine { Byte }
 
+type FileResource {}
+type FilePath {}
+type FileContent = FreeMonoid<Byte>
+type FileRead { resource: FileResource, path: FilePath }
+type FileWrite { resource: FileResource, path: FilePath, content: FileContent }
+type FileReadWitness { request: FileRead, content: FileContent }
+type FileWriteWitness { request: FileWrite }
+type FileEffectWitness
+  = ReadWitness { witness: FileReadWitness }
+  | WriteWitness { witness: FileWriteWitness }
 
-// Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/V1_chap03.html#tag_03_241
-// coincides: finite POSIX byte sequence.
-type PosixByteString = FreeMonoid<Byte>
+data file_read_not_wired: Symbol = file_read_not_wired
 
-// tag: named pathname component spelling.
-// scaffold: POSIX byte refinements; trigger T-25-core/T-30.
-type NamedPathComponent {
-  bytes: PosixByteString
+fn file_read(req: FileRead) -> Outcome<FileContent> {
+  Rejected {
+    diagnostic: Diagnostic {
+      reason: file_read_not_wired,
+      at: PortLocus { port: file_read_not_wired },
+      correction: Unavailable { reason: ExternalContractUnknown }
+    }
+  }
 }
 
-// 🟡 coproduct dissolution — OS-1.
-type PathComponent
-  = CurrentComponent
-  | ParentComponent
-  | NamedComponent { component: NamedPathComponent }
-
-
-// Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/V1_chap03.html#tag_03_271
-type AbsolutePath {
-  components: List<PathComponent>
-}
-
-// 🟡 coproduct dissolution — OS-1.
-type RelativePathHead
-  = ParentHead
-  | NamedHead { component: NamedPathComponent }
-
-// 🟡 coproduct dissolution — OS-1.
-type RelativePath
-  = CurrentDirectory
-  | CurrentDescendant { first: RelativePathHead, rest: List<PathComponent> }
-  | RelativeDescendant { first: RelativePathHead, rest: List<PathComponent> }
-
-// 🟡 coproduct dissolution — OS-1.
-type Path
-  = Absolute { path: AbsolutePath }
-  | Relative { path: RelativePath }
-
-
-// Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/sys_stat.h.html
-// 🟡 coproduct dissolution — OS-1.
-type FileKind
-  = RegularFile
-  | Directory
-  | Symlink
-
-// tag: stat/lstat symlink policy.
-// 🟡 coproduct dissolution — OS-1.
-type FileKindResolutionPolicy
-  = FollowSymlinks
-  | DoNotFollowSymlinks
-
-
-// Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/functions/read.html + https://pubs.opengroup.org/onlinepubs/9799919799/functions/write.html + https://pubs.opengroup.org/onlinepubs/9799919799/functions/readdir.html
-type Filesystem
-
-// coincides: finite POSIX byte sequence.
-type FileBody = FreeMonoid<Byte>
-
-type ReadFileRequest {
-  filesystem: Filesystem
-  path: AbsolutePath
-}
-
-type ReadFileResult = Outcome<FileBody>
-
-type WriteFileRequest {
-  filesystem: Filesystem
-  path: AbsolutePath
-  body: FileBody
-}
-
-type WriteFileResult = Outcome<Filesystem>
-
-type ListDirRequest {
-  filesystem: Filesystem
-  path: AbsolutePath
-}
-
-type ListDirResult = Outcome<List<PathComponent>>
-
-type FileKindRequest {
-  filesystem: Filesystem
-  path: AbsolutePath
-  resolution: FileKindResolutionPolicy
-}
-
-type FileKindResult = Outcome<FileKind>
-
-type FileSystemOperations {
-  read_file: fn(ReadFileRequest) -> ReadFileResult
-  write_file: fn(WriteFileRequest) -> WriteFileResult
-  list_dir: fn(ListDirRequest) -> ListDirResult
-  file_kind: fn(FileKindRequest) -> FileKindResult
+fn file_write(req: FileWrite) -> Outcome<FileWriteWitness> {
+  Rejected {
+    diagnostic: Diagnostic {
+      reason: file_read_not_wired,
+      at: PortLocus { port: file_read_not_wired },
+      correction: Unavailable { reason: ExternalContractUnknown }
+    }
+  }
 }
