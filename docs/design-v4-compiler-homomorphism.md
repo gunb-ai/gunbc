@@ -6,7 +6,7 @@
 
 A design reference for the **v4 compiler** in the `gunbc` project, written before implementation of the compiler's middle and back stages (the ones that turn parsed source into typed source, then into target output or evaluated values). It captures the architectural decisions we want to commit to before code is written, so implementation does not cement the wrong shape.
 
-This doc supplements but does not replace [`THESIS.md`](../THESIS.md) (the project's goals) or [`docs/modeling-discipline.md`](modeling-discipline.md) (the modeling rules). It exists to make one specific question concrete: **what is the compiler, mechanically, if we take "The derived homomorphism" claim in THESIS literally?**
+This doc supplements but does not replace the foundational + ratified design docs listed below. It exists to make one specific question concrete: **what is the compiler, mechanically, if we take "The derived homomorphism" claim in THESIS literally?**
 
 Intended audience:
 - Project insiders deciding T-9 / T-10 / T-22 implementation shape.
@@ -14,6 +14,41 @@ Intended audience:
 - Reviewers checking architectural commitments against THESIS, MODELING, and INVARIANTS.
 
 You can read it cold without prior context — the next two sections give that context. If you already know the project, skim to "TL;DR".
+
+## Load-bearing references
+
+This doc composes with — and must stay consistent with — these existing artifacts. Treat any contradiction between this doc and a ratified one of these as a STOP signal.
+
+**Foundational (every change to this doc reviewed against these):**
+- [`THESIS.md`](../THESIS.md) — the project's goals + complete claim list. "The derived homomorphism" is the parent thesis this doc operationalizes.
+- [`MODELING.md`](../MODELING.md) — modeling rules (M1–M10), especially M9 (DFS the concept DAG).
+- [`docs/modeling-discipline.md`](modeling-discipline.md) — the ten practices (Practice 1 fail-closed, Practice 8 fact-bundle, Practice 9 no-prose, Practice 10 derived operations / no walker dissolution).
+- [`INVARIANTS.md`](../INVARIANTS.md) — five governing principles (P1 Modeling Faithfulness, P2 Boundary Discipline, P3 Fail-Closed, P5 Progress-Is-Dissolution).
+- [`src/v4/TASKS.md`](../src/v4/TASKS.md) — task graph + ratified-decision authority for T-1…T-30+. **T-9 line 418 is the source of the coercion-fold ratification (D2 reversal 2026-05-17).**
+
+**Adjacent ratified design (this doc composes with — read for the EDIT direction and self-modification stories):**
+- [`docs/design-read-edit-pipeline.md`](design-read-edit-pipeline.md) — **the EDIT-direction companion to this doc.** Defines the agent-side read/edit surface: `apply_lens(lens, scope, mode)`, `apply_diff(root, Diff)`, the seven-step read→edit pipeline, candidate-state gating, library-first agent surface, Layer 0–6 build order. **PR #3364 merged 2026-05-19.** This doc's "ingest paths" table refers to it for the query-driven rewrite mechanism; this doc's EDIT-direction section (below) is a summary; the read-edit-pipeline doc is the authority.
+- [`docs/design-emit-stage-l25-model.md`](design-emit-stage-l25-model.md) — emit-stage L2.5 model, the substrate-side specification for what this doc names as `translate` + `serialize` (T-10).
+- [`docs/design-infer-stage-l25-model.md`](design-infer-stage-l25-model.md) — infer-stage L2.5 model, the substrate-side specification for what this doc names as `ground` (T-9).
+- [`docs/design-lens-application-surface.md`](design-lens-application-surface.md) — the substrate-level lens-application surface; defines the `Lens / SectionRef / Witness / Outcome` shapes this doc's P3 commits to.
+- [`docs/design-lens-framework.md`](design-lens-framework.md) — the lens framework as a whole.
+- [`docs/design-affected-set-lens.md`](design-affected-set-lens.md) — `affected_set` (T-21), the incremental-rebuild + lens-frontier primitive consumed by both this doc's pipeline diagram and the read/edit pipeline's gating step.
+- [`docs/design-dissolution-lens.md`](design-dissolution-lens.md) — the dissolution-pattern lens family (L1.x), Practice 10's auto-fix substrate. The (find, transform) convolution view in the read/edit doc's § 6 builds on this.
+- [`docs/v4-close-interrogation.md`](v4-close-interrogation.md) — v4 program framing + scope.
+- [`docs/v4-dag-rationale.md`](v4-dag-rationale.md) — rationale for `.dag` as the language.
+- [`docs/design-pure-bootstrap-zero.md`](design-pure-bootstrap-zero.md) — the hand-Rust-to-zero trajectory; informs the self-modification / stage0 story below.
+- [`docs/design-substrate-lambda-calculus-grounding.md`](design-substrate-lambda-calculus-grounding.md) — substrate grounding semantics.
+- [`docs/design-bootstrap-fact-model.md`](design-bootstrap-fact-model.md) — bootstrap fact model.
+
+**Lens-specific design docs** (consult when discussing the lens family for a specific dimension):
+- [`docs/design-complexity-lens-behavioral-completeness.md`](design-complexity-lens-behavioral-completeness.md)
+- [`docs/design-complexity-tightness-lens.md`](design-complexity-tightness-lens.md)
+- [`docs/design-cost-lens-sizevar-dimension-wiring.md`](design-cost-lens-sizevar-dimension-wiring.md)
+- [`docs/design-timing-lens.md`](design-timing-lens.md)
+- [`docs/design-effect-enumeration-resource-threading.md`](design-effect-enumeration-resource-threading.md)
+- [`docs/l1.5-clean-bootstrap-design.md`](l1.5-clean-bootstrap-design.md)
+
+This list is **not exhaustive** — see `docs/design-*.md` for the full set. The doc above names what's load-bearing for the architecture in *this* doc.
 
 ---
 
@@ -58,7 +93,7 @@ This doc operationalizes that claim.
 The v4 compiler is:
 
 1. **One structural primitive** — `fold_node` (catamorphism over Node).
-2. **Plus seven substrate operations** that aren't `fold_node` but are needed:
+2. **Plus eight substrate operations** that aren't `fold_node` but are needed:
    - A **diagnostic carrier** (`Diagnostic + Locus`, fail-closed reporting).
    - **Grammar-as-bidirectional-data** — one declarative grammar model that drives both parsing and serialization. Default law: `parse_target(serialize_target(node)) == node`.
    - **`traverse`** over the diagnostic-effect carrier (a Node fold/traverse that short-circuits or accumulates over `Outcome<T>` without re-derived match ladders).
@@ -66,6 +101,7 @@ The v4 compiler is:
    - **The coercion fold** — a mechanical zip-fold over two canonical-Node groundings that checks **exact** structure preservation. Per `src/v4/TASKS.md` T-9, decidable by construction, never a search.
    - **`LawfulRewriteWitness`** (P7) — witness primitive for structure-changing lowerings (parallel-map, tree-reduce, CUDA, MapReduce). Rewrites are declared by target/runtime models with precondition algebra laws; rewritten plan groundings then go through the coercion fold's exact check.
    - **Typed dependency graph + topological/SCC machinery** — per P6, dependencies are first-class typed edges carried alongside containment.
+   - **`apply_diff`** (write-side primitive, symmetric to `fold_node`) — structural mutation of a Node graph via a `Diff = List<Edit { at: Path, replacement: Node }>`. Fail-closed all-or-nothing. The agent-side mutation primitive. The substrate is **read/write-symmetric** at the primitive layer: reads are folds, writes are `apply_diff`. See [`docs/design-read-edit-pipeline.md`](design-read-edit-pipeline.md) for the full surface.
 3. **Plus boundary actions:**
    - **Compile-core boundary actions:** write output text (or execute), report diagnostics. Two actions; compile-core is otherwise pure data-in / data-out.
    - **Ingest-layer boundary actions (separable):** read input text (only when ingesting from a text source). Other ingest paths — programmatic, query-driven, IDE-driven — have no text boundary.
@@ -297,8 +333,9 @@ This preserves the "coercion fold is not heuristic search" principle while leavi
 | **`LawfulRewriteWitness`** | Per P7. Witness primitive for structure-changing target lowerings — sequential→parallel map, left-fold→tree-reduce, CPU loop→CUDA kernel, sequential reduce→MapReduce. Each rewrite is declared by the target/runtime model (e.g., `extdeps/runtimes/cuda.dag`) with its precondition algebra laws (per-element independence, associativity, etc.). The witness composes with the coercion fold: rewrite first, then exact-zip-fold check on the rewritten plan grounding. Keeps "not heuristic search" while supporting structure-changing lowerings. | **Not yet declared.** Substrate-design work; likely lands in `std/rewrite.dag` or similar. Out of scope for the initial single-target compiler but architecturally enabled. |
 | **Diagnostic + Locus carrier** | Fail-closed reporting (Practice 1). Every failure path goes through a structured `Diagnostic` with source `Locus`. | **Landed** in `src/v4/std/diagnostic.dag`. |
 | **Typed dependency graph + topological/SCC machinery** | Per P6, dependencies are first-class typed edges (not incidental containment). The substrate declares `DependencyEdge`, `DependencyKind`, `DependencyGraph`, `AcyclicityWitness`, SCC condensation, topological-order derivation. Carriers (post-resolve onward) carry the graph alongside the containment tree. | **Not yet declared.** Probably lands in `src/v4/std/dependency.dag`. T-21's `affected_set.dag` is the incremental-rebuild specialization — built on the same substrate. |
+| **`apply_diff` (write-side primitive)** | The structural-edit primitive symmetric to `fold_node`. Takes a `Node` and a `Diff` (a `List<Edit>` where `Edit = { at: Path, replacement: Node }` and `Path` is a structural address into the Node graph). Folds the edits sequentially into a candidate Node; **fail-closed all-or-nothing** if any Path fails to resolve. The agent-side mutation primitive. Used by query-driven rewrite, mechanical refactor, self-modification, and the candidate-state gate pattern. See [`docs/design-read-edit-pipeline.md`](design-read-edit-pipeline.md) for the full read/edit pipeline. | **Vocabulary ratified** (`Path / Edit / Diff` in `src/v4/std/node.dag` per PR #3162). **Operations scaffold** in `src/v4/lens/application.dag`; T-23 fills them. |
 
-That is the full compiler-primitive surface. **Eight things.** Every stage, every pass, every translation, every eval, every glue derivation is structurally `fold_node + traverse + (one or more of the other six) + an algebra-as-data`.
+That is the full compiler-primitive surface. **Nine things.** Every stage, every pass, every translation, every eval, every glue derivation, every read/edit operation is structurally `fold_node + traverse + (one or more of the other seven) + an algebra-as-data`. **Reads** are folds (via `fold_node` / lens algebras); **writes** are `apply_diff`; the substrate is read/write-symmetric at the primitive layer.
 
 **Why this terminology shift matters (coercion fold vs. "search"):** an earlier framing called the homomorphism step an "algebra-homomorphism search" or "inhabitance search," which suggests an open-ended search algorithm with potentially intractable complexity. The ratified position is the opposite: the candidate set is **closed and declared** (by the target language model), the source's grounding is **canonical and unique**, and the check is a **mechanical structural zip** — closer to type unification than to logic-programming search. If you find yourself reasoning about it as a search, that's a signal you're solving the wrong problem.
 
