@@ -10,9 +10,9 @@ module v4.std.pipeline
 
 import v4.std.collection { List }
 import v4.std.dependency {
-  ArtifactDependencyKind,
-  ProgramDependencyKind,
-  TargetPlanDependencyKind
+  ArtifactSchedulingReason,
+  ProgramSchedulingReason,
+  TargetPlanSchedulingReason
 }
 import v4.std.node { Symbol }
 
@@ -40,18 +40,21 @@ type StageDiagnosticPolicy = DiagnosticAccumulationPolicy
 
 
 type StageRequirements {
-  program: List<ProgramDependencyKind>
-  target_plan: List<TargetPlanDependencyKind>
-  artifact: List<ArtifactDependencyKind>
+  program: List<ProgramSchedulingReason>
+  target_plan: List<TargetPlanSchedulingReason>
+  artifact: List<ArtifactSchedulingReason>
 }
 
 
 type StageEffects {
   adds_containment_spine: Bool
-  program: List<ProgramDependencyKind>
-  target_plan: List<TargetPlanDependencyKind>
-  artifact: List<ArtifactDependencyKind>
+  program: List<ProgramSchedulingReason>
+  target_plan: List<TargetPlanSchedulingReason>
+  artifact: List<ArtifactSchedulingReason>
 }
+
+
+data stage_contract_summary_witness: Symbol = stage_contract_summary_witness
 
 
 type StageDependencyContract {
@@ -149,7 +152,10 @@ fn resolve_contract() -> StageDependencyContract {
     },
     effects: StageEffects {
       adds_containment_spine: false,
-      program: [BindsTo, ModuleDependsOn],
+      program: [
+        BindsTo { binding_witness: stage_contract_summary_witness },
+        ModuleDependsOn { module_import_witness: stage_contract_summary_witness }
+      ],
       target_plan: [],
       artifact: []
     }
@@ -160,17 +166,20 @@ fn resolve_contract() -> StageDependencyContract {
 fn ground_contract() -> StageDependencyContract {
   StageDependencyContract {
     requirements: StageRequirements {
-      program: [BindsTo, ModuleDependsOn],
+      program: [
+        BindsTo { binding_witness: stage_contract_summary_witness },
+        ModuleDependsOn { module_import_witness: stage_contract_summary_witness }
+      ],
       target_plan: [],
       artifact: []
     },
     effects: StageEffects {
       adds_containment_spine: false,
       program: [
-        TypeDependsOn,
-        DataDependsOn,
-        EffectDependsOn,
-        ResourceDependsOn
+        TypeDependsOn { type_witness: stage_contract_summary_witness },
+        DataDependsOn { dataflow_witness: stage_contract_summary_witness },
+        EffectDependsOn { effect_order_witness: stage_contract_summary_witness },
+        ResourceDependsOn { resource_conflict_witness: stage_contract_summary_witness }
       ],
       target_plan: [],
       artifact: []
@@ -183,12 +192,12 @@ fn translate_contract() -> StageDependencyContract {
   StageDependencyContract {
     requirements: StageRequirements {
       program: [
-        BindsTo,
-        TypeDependsOn,
-        DataDependsOn,
-        EffectDependsOn,
-        ResourceDependsOn,
-        ModuleDependsOn
+        BindsTo { binding_witness: stage_contract_summary_witness },
+        TypeDependsOn { type_witness: stage_contract_summary_witness },
+        DataDependsOn { dataflow_witness: stage_contract_summary_witness },
+        EffectDependsOn { effect_order_witness: stage_contract_summary_witness },
+        ResourceDependsOn { resource_conflict_witness: stage_contract_summary_witness },
+        ModuleDependsOn { module_import_witness: stage_contract_summary_witness }
       ],
       target_plan: [],
       artifact: []
@@ -196,7 +205,11 @@ fn translate_contract() -> StageDependencyContract {
     effects: StageEffects {
       adds_containment_spine: false,
       program: [],
-      target_plan: [PlacementConstraint, TransferDependsOn, BarrierBefore],
+      target_plan: [
+        PlacementConstraint { placement_witness: stage_contract_summary_witness },
+        TransferDependsOn { transfer_witness: stage_contract_summary_witness },
+        BarrierBefore { barrier_witness: stage_contract_summary_witness }
+      ],
       artifact: []
     }
   }
@@ -207,7 +220,11 @@ fn serialize_contract() -> StageDependencyContract {
   StageDependencyContract {
     requirements: StageRequirements {
       program: [],
-      target_plan: [PlacementConstraint, TransferDependsOn, BarrierBefore],
+      target_plan: [
+        PlacementConstraint { placement_witness: stage_contract_summary_witness },
+        TransferDependsOn { transfer_witness: stage_contract_summary_witness },
+        BarrierBefore { barrier_witness: stage_contract_summary_witness }
+      ],
       artifact: []
     },
     effects: StageEffects {
@@ -224,12 +241,12 @@ fn eval_contract() -> StageDependencyContract {
   StageDependencyContract {
     requirements: StageRequirements {
       program: [
-        BindsTo,
-        TypeDependsOn,
-        DataDependsOn,
-        EffectDependsOn,
-        ResourceDependsOn,
-        ModuleDependsOn
+        BindsTo { binding_witness: stage_contract_summary_witness },
+        TypeDependsOn { type_witness: stage_contract_summary_witness },
+        DataDependsOn { dataflow_witness: stage_contract_summary_witness },
+        EffectDependsOn { effect_order_witness: stage_contract_summary_witness },
+        ResourceDependsOn { resource_conflict_witness: stage_contract_summary_witness },
+        ModuleDependsOn { module_import_witness: stage_contract_summary_witness }
       ],
       target_plan: [],
       artifact: []

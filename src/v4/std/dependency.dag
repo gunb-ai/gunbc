@@ -1,6 +1,6 @@
 // src/v4/std/dependency.dag
 // Scope: P6 dependency graph substrate — domains, edges, witnesses, SCC, topological plan.
-// Owns: DependencySubject, ArtifactDependencyEndpoint, Program/TargetPlan/ArtifactSchedulingReason, scheduling/containment edges, ClosedWorldDependencyWitness, IndependenceAttempt, IndependenceClaim, DependencyDiagnostic, TopologicalPlan.
+// Owns: DependencySubject, ArtifactDependencyEndpoint, Program/TargetPlan/ArtifactSchedulingReason (sole dependency-cause axis per domain), scheduling/containment edges, ClosedWorldDependencyWitness, IndependenceAttempt, IndependenceClaim, DependencyDiagnostic, TopologicalPlan.
 // Consumes: v4.std.collection, v4.std.node.
 // Status: Wave-1 Worker A strict substrate.
 
@@ -10,33 +10,6 @@ module v4.std.dependency
 
 import v4.std.collection { List }
 import v4.std.node { Path, Symbol }
-
-
-// 🟢 coproduct dissolution
-type ProgramDependencyKind
-  = BindsTo
-  | TypeDependsOn
-  | DataDependsOn
-  | EffectDependsOn
-  | ResourceDependsOn
-  | ModuleDependsOn
-
-
-// 🟢 coproduct dissolution
-type TargetPlanDependencyKind
-  = PlacementConstraint
-  | TransferDependsOn
-  | BarrierBefore
-
-
-// 🟢 coproduct dissolution
-type ArtifactDependencyKind
-  = ModelDependsOn
-  | ProjectionDependsOn
-  | GeneratedFrom
-  | VerifiedBy
-  | BootstrapDependsOn
-  | PromotionDependsOn
 
 
 // 🟢 coproduct dissolution
