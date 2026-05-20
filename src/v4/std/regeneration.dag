@@ -1,0 +1,141 @@
+// src/v4/std/regeneration.dag
+// Scope: change-consequence substrate (P8) — ChangeSet, AffectedSet, Projection, Artifact, RecomputePlan.
+// Anchor: docs/design-v4-compiler-homomorphism.md P8; T-21 lens/affected_set.dag is a frontier specialization (see A4 report).
+// Owns: ChangeKind, Change, ChangeSet, AffectedSet, InvalidationReason, ProjectionKind, Projection, ArtifactKind, Artifact, RecomputePlan.
+// Consumes: v4.std.collection, v4.std.dependency, v4.std.node, v4.std.witness.
+// Status: Wave-1 Worker A — strict substrate (bootstrap artifact kinds reserved; no promotion protocol).
+
+
+module v4.std.regeneration
+
+
+import v4.std.collection { List }
+import v4.std.dependency { DependencyEdge, DependencyGraph, TopologicalPlan }
+import v4.std.node { Hash, Path, Symbol }
+import v4.std.witness { Witness }
+
+
+// RULING-1: 🟢 pretty-much-done — unified change taxonomy (model, grammar, pipeline, bootstrap contract).
+type ChangeKind
+  = NodeChanged
+  | EdgeChanged
+  | FactChanged
+  | WitnessChanged
+  | GrammarChanged
+  | LanguageModelChanged
+  | HostModelChanged
+  | PipelineStageChanged
+  | LensContractChanged
+  | ProjectionChanged
+  | Stage0ContractChanged
+  | CorePackageSchemaChanged
+
+
+type Change {
+  kind: ChangeKind
+  at: Path
+  subject: Symbol
+}
+
+
+type ChangeSet {
+  from_revision: Hash
+  to_revision: Hash
+  changes: List<Change>
+}
+
+
+// RULING-1: 🟢 pretty-much-done — general affected-set authority (artifact/projection invalidation).
+type InvalidationReason
+  = DirectChange { change: Change }
+  | DependencyPropagation { edge: DependencyEdge }
+  | ProjectionInputChanged { projection: Symbol }
+  | LensContractChanged { lens: Symbol }
+  | PipelineStageContractChanged { stage: Symbol }
+
+
+type ArtifactRef {
+  kind: ArtifactKind
+  identity: Symbol
+}
+
+
+type AffectedSet {
+  source: ChangeSet
+  graph: DependencyGraph
+  invalidations: List<InvalidationReason>
+  projections: List<Symbol>
+  artifacts: List<ArtifactRef>
+}
+
+
+// RULING-1: 🟢 pretty-much-done — projection-as-data (P3 commitment 1).
+type ProjectionKind
+  = LensProjection
+  | TargetTestProjection
+  | CompilerSourceProjection
+  | SchemaProjection
+  | DocumentationProjection
+  | DiagnosticTableProjection
+
+
+type Projection {
+  name: Symbol
+  kind: ProjectionKind
+  input_carrier: Symbol
+  output_artifact_kind: ArtifactKind
+  depends_on: List<Symbol>
+  algebra_ref: Symbol
+}
+
+
+// RULING-1: 🟢 pretty-much-done — bootstrap-related kinds reserved; protocol not implemented here.
+type ArtifactKind
+  = TargetSource
+  | TestSource
+  | Schema
+  | Documentation
+  | DiagnosticTable
+  | CompilerSource
+  | CorePackage
+  | Stage0Candidate
+  | Stage1Candidate
+  | WitnessBundle
+
+
+type Artifact {
+  kind: ArtifactKind
+  identity: Symbol
+  content_hash: Hash
+  produced_by: Symbol
+  provenance: Symbol
+}
+
+
+// RULING-1: 🟢 pretty-much-done — recompute schedule data (topo plan is witness-bearing data, not an executor).
+type RecomputePlan {
+  affected: AffectedSet
+  schedule: TopologicalPlan
+  cached: List<Symbol>
+  invalidated: List<Symbol>
+}
+
+
+fn empty_change_set(from_revision: Hash, to_revision: Hash) -> ChangeSet {
+  ChangeSet {
+    from_revision: from_revision,
+    to_revision: to_revision,
+    changes: []
+  }
+}
+
+
+fn empty_affected_set(source: ChangeSet, graph: DependencyGraph) -> AffectedSet {
+  AffectedSet {
+    source: source,
+    graph: graph,
+    invalidations: [],
+    projections: [],
+    artifacts: []
+  }
+}

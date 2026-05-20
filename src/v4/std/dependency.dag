@@ -1,0 +1,195 @@
+// src/v4/std/dependency.dag
+// Scope: typed dependency graph substrate (P6) — domains, edges, witnesses, SCC/topo data.
+// Anchor: docs/design-v4-compiler-homomorphism.md P6; edge orientation required_before → dependent_after.
+// Owns: DependencyDomain, Program/TargetPlan/Artifact dependency kinds, DependencyEdge, DependencyGraph, ClosedWorldDependencyWitness, CycleClassification, Scc, SccCondensation, TopologicalPlan, DependencyDiagnostic.
+// Consumes: v4.std.collection, v4.std.diagnostic, v4.std.node, v4.std.witness.
+// Status: Wave-1 Worker A — strict substrate (data contracts only; no stage implementations).
+
+
+module v4.std.dependency
+
+
+import v4.std.collection { List }
+import v4.std.diagnostic { Diagnostic }
+import v4.std.node { Path, Symbol }
+import v4.std.witness { Witness }
+
+
+// RULING-1: 🟢 pretty-much-done — P6 domain partition (program vs target-plan vs artifact).
+type DependencyDomain
+  = Program
+  | TargetPlan
+  | Artifact
+
+
+// RULING-1: 🟢 pretty-much-done — source/core semantic edges (parse/resolve/ground).
+type ProgramDependencyKind
+  = Contains
+  | BindsTo
+  | TypeDependsOn
+  | DataDependsOn
+  | EffectDependsOn
+  | ResourceDependsOn
+  | ModuleDependsOn
+
+
+// RULING-1: 🟢 pretty-much-done — target-plan tier; not source/core semantics by default.
+type TargetPlanDependencyKind
+  = PlacementConstraint
+  | TransferDependsOn
+  | BarrierBefore
+
+
+// RULING-1: 🟢 pretty-much-done — artifact/projection/bootstrap graph edges.
+type ArtifactDependencyKind
+  = ModelDependsOn
+  | ProjectionDependsOn
+  | GeneratedFrom
+  | VerifiedBy
+  | BootstrapDependsOn
+  | PromotionDependsOn
+
+
+// RULING-1: 🟢 pretty-much-done — orientation: required_before must be satisfied before dependent_after.
+type ProgramDependencyEdge {
+  kind: ProgramDependencyKind
+  required_before: Path
+  dependent_after: Path
+}
+
+
+type TargetPlanDependencyEdge {
+  kind: TargetPlanDependencyKind
+  required_before: Path
+  dependent_after: Path
+}
+
+
+type ArtifactDependencyEdge {
+  kind: ArtifactDependencyKind
+  required_before: Path
+  dependent_after: Path
+}
+
+
+// RULING-1: 🟢 pretty-much-done — tagged edge preserves domain + kind authority (no untyped merge).
+type DependencyEdge
+  = ProgramEdge { edge: ProgramDependencyEdge }
+  | TargetPlanEdge { edge: TargetPlanDependencyEdge }
+  | ArtifactEdge { edge: ArtifactDependencyEdge }
+
+
+// RULING-1: 🟢 pretty-much-done — carrier for post-resolve onward; tree spine + typed sidecar edges.
+type DependencyGraph {
+  program_edges: List<ProgramDependencyEdge>
+  target_plan_edges: List<TargetPlanDependencyEdge>
+  artifact_edges: List<ArtifactDependencyEdge>
+}
+
+
+// RULING-1: 🟢 pretty-much-done — absence-of-edge independence requires explicit closed-world witness.
+type DependencyCompletenessFact
+  = ProgramSemanticFactsComplete
+  | EffectFactsComplete
+  | ResourceFactsComplete
+  | ArtifactGraphFactsComplete
+
+
+type ClosedWorldDependencyWitness {
+  region: Symbol
+  domain: DependencyDomain
+  completeness: DependencyCompletenessFact
+}
+
+
+type IndependenceClaim {
+  witness: ClosedWorldDependencyWitness
+  left: Path
+  right: Path
+}
+
+
+// RULING-1: 🟢 pretty-much-done — cycles classified, not blindly rejected (P6).
+type CycleClassification
+  = Acyclic
+  | ValidFixedPoint { witness: Symbol }
+  | InvalidCycle { diagnostic: DependencyDiagnostic }
+
+
+type DependencyDiagnostic {
+  reason: Symbol
+  edge: DependencyEdge
+}
+
+
+// RULING-1: 🟢 pretty-much-done — strongly connected component member set.
+type Scc {
+  id: Symbol
+  members: List<Path>
+  classification: CycleClassification
+}
+
+
+// RULING-1: 🟢 pretty-much-done — condensation DAG over SCC ids (data for topo derivation).
+type SccCondensation {
+  components: List<Scc>
+  order_edges: List<SccOrderEdge>
+}
+
+
+type SccOrderEdge {
+  required_before: Symbol
+  dependent_after: Symbol
+}
+
+
+// RULING-1: 🟢 pretty-much-done — schedule artifact only (no hidden executor).
+type TopologicalLayer {
+  ready_after: List<Symbol>
+  members: List<Path>
+}
+
+
+type TopologicalPlan {
+  condensation: SccCondensation
+  layers: List<TopologicalLayer>
+  witness: Witness<TopologicalPlan>
+}
+
+
+data dependency_unknown_effect_fact: Symbol = dependency_unknown_effect_fact
+data dependency_unknown_resource_fact: Symbol = dependency_unknown_resource_fact
+data dependency_independence_without_witness: Symbol = dependency_independence_without_witness
+data dependency_invalid_cycle: Symbol = dependency_invalid_cycle
+
+
+fn dependency_diagnostic(reason: Symbol, edge: DependencyEdge) -> DependencyDiagnostic {
+  DependencyDiagnostic {
+    reason: reason,
+    edge: edge
+  }
+}
+
+
+fn program_edge(
+  kind: ProgramDependencyKind,
+  required_before: Path,
+  dependent_after: Path
+) -> DependencyEdge {
+  ProgramEdge {
+    edge: ProgramDependencyEdge {
+      kind: kind,
+      required_before: required_before,
+      dependent_after: dependent_after
+    }
+  }
+}
+
+
+fn empty_dependency_graph() -> DependencyGraph {
+  DependencyGraph {
+    program_edges: [],
+    target_plan_edges: [],
+    artifact_edges: []
+  }
+}
