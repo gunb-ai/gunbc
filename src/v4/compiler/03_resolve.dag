@@ -1,7 +1,7 @@
 // src/v4/compiler/03_resolve.dag
 //
 // Scope: Stage 3b — NormalizedTree→ResolvedTree; K-1 Atom use→def.
-// Owns: ResolvedTree; Namespace; Scope; BindEdgeAcc; ResolveResult; ResolveChildrenResult; resolve; Symbol reasons.
+// Owns: ResolvedTree; Namespace; Scope; BindEdgeAcc; resolve; Symbol reasons.
 // Consumes: std/node.dag, std/diagnostic.dag, std/collection.dag, compiler/03_normalize.dag, extdeps/languages/dag.dag (DagLanguageModel for canonical_symbols).
 // Status: scaffold — TASKS T-8.
 // Anchor: https://en.wikipedia.org/wiki/Name_resolution_(programming_languages)
@@ -19,6 +19,8 @@ import v4.std.diagnostic {
   Diagnostic,
   NodeLocus,
   Outcome,
+  Produced,
+  Rejected,
   UserInputBoundary
 }
 import v4.std.node {
@@ -56,24 +58,17 @@ type Scope
   | ScopeFrame { locals: Map<Symbol, Symbol>, outer: Scope }
 
 
-// 🟡 coproduct dissolution — feature:K-1-per-node-resolve-outcome — scaffold:TASKS T-8; dissolve-on-arrival: CP-1b/T-8→T-9 close (ResolveResult).
-type ResolveResult
-  = ResolvedNode { node: Node }
-  | ResolveRejected { diagnostic: Diagnostic }
-
-
-// 🟡 coproduct dissolution — feature:T-8-edge-resolve-fold-outcome — scaffold:TASKS T-8; dissolve-on-arrival: CP-1b/T-8→T-9 close (ResolveChildrenResult).
-type ResolveChildrenResult
-  = ResolvedChildren { children: List<Edge> }
-  | ResolveChildrenRejected { diagnostic: Diagnostic }
-
-
 type EdgeResolveAcc
-  = EdgeResolveAccMk { have_seen_first: Bool, acc: ResolveChildrenResult }
+  = EdgeResolveAccMk { have_seen_first: Bool, acc: Outcome<List<Edge>> }
 
 
 type BindEdgeAcc
-  = BindEdgeAccMk { idx: Int, acc: ResolveChildrenResult }
+  = BindEdgeAccMk { idx: Int, acc: Outcome<List<Edge>> }
+
+
+fn empty_edge_list() -> List<Edge> {
+  []
+}
 
 
 fn empty_namespace() -> Namespace {
@@ -247,26 +242,26 @@ fn canonical_atom(identity: Symbol) -> Node {
 }
 
 
-fn resolve_atom(n: Node, scope: Scope, identity: Symbol) -> ResolveResult {
+fn resolve_atom(n: Node, scope: Scope, identity: Symbol) -> Outcome<Node> {
   match lookup_chain(s: scope, name: identity) {
     Some { value: canonical } =>
-      ResolvedNode {
-        node: canonical_atom(identity: canonical)
+      Produced {
+        value: canonical_atom(identity: canonical)
       }
     None =>
       if namespace_has_canonical_symbol(
         namespace: scope_root_module(s: scope),
         name: identity
       ) {
-        ResolvedNode { node: canonical_atom(identity: identity) }
+        Produced { value: canonical_atom(identity: identity) }
       } else {
-        ResolveRejected { diagnostic: unbound_symbol_diagnostic(n: n) }
+        Rejected { diagnostic: unbound_symbol_diagnostic(n: n) }
       }
   }
 }
 
 
-fn resolve_node(n: Node, scope: Scope) -> ResolveResult {
+fn resolve_node(n: Node, scope: Scope) -> Outcome<Node> {
   match n.kind {
     TypeNode { connective: Atom { identity: id } } =>
       resolve_atom(n: n, scope: scope, identity: id)
@@ -279,10 +274,10 @@ fn resolve_node(n: Node, scope: Scope) -> ResolveResult {
           outer: scope
         }
       ) {
-        ResolveChildrenRejected { diagnostic: d } => ResolveRejected { diagnostic: d }
-        ResolvedChildren { children: resolved_children } =>
-          ResolvedNode {
-            node: Node {
+        Rejected { diagnostic: d } => Rejected { diagnostic: d }
+        Produced { value: resolved_children } =>
+          Produced {
+            value: Node {
               kind: n.kind,
               children: resolved_children
             }
@@ -298,18 +293,18 @@ fn resolve_node(n: Node, scope: Scope) -> ResolveResult {
 }
 
 
-fn resolve_children_homogeneous_scope(n: Node, scope: Scope) -> ResolveResult {
-  match fold(n.children, init: ResolvedChildren { children: [] }, f: fn(acc, e) {
+fn resolve_children_homogeneous_scope(n: Node, scope: Scope) -> Outcome<Node> {
+  match fold(n.children, init: Produced { value: empty_edge_list() }, f: fn(acc, e) {
     match acc {
-      ResolveChildrenRejected { diagnostic: d } =>
-        ResolveChildrenRejected { diagnostic: d }
-      ResolvedChildren { children: done } =>
+      Rejected { diagnostic: d } =>
+        Rejected { diagnostic: d }
+      Produced { value: done } =>
         match resolve_node(n: e.target, scope: scope) {
-          ResolveRejected { diagnostic: d } =>
-            ResolveChildrenRejected { diagnostic: d }
-          ResolvedNode { node: resolved_target } =>
-            ResolvedChildren {
-              children: list_push(done, Edge {
+          Rejected { diagnostic: d } =>
+            Rejected { diagnostic: d }
+          Produced { value: resolved_target } =>
+            Produced {
+              value: list_push(done, Edge {
                 label: e.label,
                 target: resolved_target
               })
@@ -317,10 +312,10 @@ fn resolve_children_homogeneous_scope(n: Node, scope: Scope) -> ResolveResult {
         }
     }
   }) {
-    ResolveChildrenRejected { diagnostic: d } => ResolveRejected { diagnostic: d }
-    ResolvedChildren { children: resolved_children } =>
-      ResolvedNode {
-        node: Node {
+    Rejected { diagnostic: d } => Rejected { diagnostic: d }
+    Produced { value: resolved_children } =>
+      Produced {
+        value: Node {
           kind: n.kind,
           children: resolved_children
         }
@@ -333,35 +328,35 @@ fn resolve_edges_first_outer_then_inner(
   edges: List<Edge>,
   scope_outer: Scope,
   scope_inner: Scope
-) -> ResolveChildrenResult {
+) -> Outcome<List<Edge>> {
   match fold(
     edges,
     init: EdgeResolveAccMk {
       have_seen_first: false,
-      acc: ResolvedChildren { children: [] }
+      acc: Produced { value: empty_edge_list() }
     },
     f: fn(state, e) {
       match state {
         EdgeResolveAccMk { have_seen_first: seen, acc: acc_state } =>
           match acc_state {
-            ResolveChildrenRejected { diagnostic: d } =>
+            Rejected { diagnostic: d } =>
               EdgeResolveAccMk {
                 have_seen_first: true,
-                acc: ResolveChildrenRejected { diagnostic: d }
+                acc: Rejected { diagnostic: d }
               }
-            ResolvedChildren { children: done } =>
+            Produced { value: done } =>
               if seen {
                 match resolve_node(n: e.target, scope: scope_inner) {
-                  ResolveRejected { diagnostic: d } =>
+                  Rejected { diagnostic: d } =>
                     EdgeResolveAccMk {
                       have_seen_first: true,
-                      acc: ResolveChildrenRejected { diagnostic: d }
+                      acc: Rejected { diagnostic: d }
                     }
-                  ResolvedNode { node: resolved_target } =>
+                  Produced { value: resolved_target } =>
                     EdgeResolveAccMk {
                       have_seen_first: true,
-                      acc: ResolvedChildren {
-                        children: list_push(
+                      acc: Produced {
+                        value: list_push(
                           done,
                           Edge {
                             label: e.label,
@@ -373,16 +368,16 @@ fn resolve_edges_first_outer_then_inner(
                 }
               } else {
                 match resolve_node(n: e.target, scope: scope_outer) {
-                  ResolveRejected { diagnostic: d } =>
+                  Rejected { diagnostic: d } =>
                     EdgeResolveAccMk {
                       have_seen_first: true,
-                      acc: ResolveChildrenRejected { diagnostic: d }
+                      acc: Rejected { diagnostic: d }
                     }
-                  ResolvedNode { node: resolved_target } =>
+                  Produced { value: resolved_target } =>
                     EdgeResolveAccMk {
                       have_seen_first: true,
-                      acc: ResolvedChildren {
-                        children: list_push(
+                      acc: Produced {
+                        value: list_push(
                           done,
                           Edge {
                             label: e.label,
@@ -403,14 +398,14 @@ fn resolve_edges_first_outer_then_inner(
 
 
 // bind-binder-target projection (TASKS T-8 / CP-1b item 3).
-fn resolve_bind_binder_target(t: Node) -> ResolveResult {
+fn resolve_bind_binder_target(t: Node) -> Outcome<Node> {
   match t.kind {
     TypeNode { connective: Atom { identity: id } } =>
-      ResolvedNode {
-        node: canonical_atom(identity: id)
+      Produced {
+        value: canonical_atom(identity: id)
       }
     _ =>
-      ResolveRejected {
+      Rejected {
         diagnostic: malformed_tree_diagnostic(n: t)
       }
   }
@@ -421,35 +416,35 @@ fn resolve_bind_edges(
   edges: List<Edge>,
   scope_outer: Scope,
   scope_inner: Scope
-) -> ResolveChildrenResult {
+) -> Outcome<List<Edge>> {
   match fold(
     edges,
     init: BindEdgeAccMk {
       idx: 0,
-      acc: ResolvedChildren { children: [] }
+      acc: Produced { value: empty_edge_list() }
     },
     f: fn(state, e) {
       match state {
         BindEdgeAccMk { idx: i, acc: acc_state } =>
           match acc_state {
-            ResolveChildrenRejected { diagnostic: d } =>
+            Rejected { diagnostic: d } =>
               BindEdgeAccMk {
                 idx: i + 1,
-                acc: ResolveChildrenRejected { diagnostic: d }
+                acc: Rejected { diagnostic: d }
               }
-            ResolvedChildren { children: done } =>
+            Produced { value: done } =>
               if i == 0 {
                 match resolve_bind_binder_target(t: e.target) {
-                  ResolveRejected { diagnostic: d } =>
+                  Rejected { diagnostic: d } =>
                     BindEdgeAccMk {
                       idx: i + 1,
-                      acc: ResolveChildrenRejected { diagnostic: d }
+                      acc: Rejected { diagnostic: d }
                     }
-                  ResolvedNode { node: rt } =>
+                  Produced { value: rt } =>
                     BindEdgeAccMk {
                       idx: i + 1,
-                      acc: ResolvedChildren {
-                        children: list_push(
+                      acc: Produced {
+                        value: list_push(
                           done,
                           Edge {
                             label: e.label,
@@ -462,16 +457,16 @@ fn resolve_bind_edges(
               } else {
                 if i == 1 {
                   match resolve_node(n: e.target, scope: scope_outer) {
-                    ResolveRejected { diagnostic: d } =>
+                    Rejected { diagnostic: d } =>
                       BindEdgeAccMk {
                         idx: i + 1,
-                        acc: ResolveChildrenRejected { diagnostic: d }
+                        acc: Rejected { diagnostic: d }
                       }
-                    ResolvedNode { node: rt } =>
+                    Produced { value: rt } =>
                       BindEdgeAccMk {
                         idx: i + 1,
-                        acc: ResolvedChildren {
-                          children: list_push(
+                        acc: Produced {
+                          value: list_push(
                             done,
                             Edge {
                               label: e.label,
@@ -483,16 +478,16 @@ fn resolve_bind_edges(
                   }
                 } else {
                   match resolve_node(n: e.target, scope: scope_inner) {
-                    ResolveRejected { diagnostic: d } =>
+                    Rejected { diagnostic: d } =>
                       BindEdgeAccMk {
                         idx: i + 1,
-                        acc: ResolveChildrenRejected { diagnostic: d }
+                        acc: Rejected { diagnostic: d }
                       }
-                    ResolvedNode { node: rt } =>
+                    Produced { value: rt } =>
                       BindEdgeAccMk {
                         idx: i + 1,
-                        acc: ResolvedChildren {
-                          children: list_push(
+                        acc: Produced {
+                          value: list_push(
                             done,
                             Edge {
                               label: e.label,
@@ -513,7 +508,7 @@ fn resolve_bind_edges(
 }
 
 
-fn resolve_bind_node(n: Node, scope: Scope) -> ResolveResult {
+fn resolve_bind_node(n: Node, scope: Scope) -> Outcome<Node> {
   if count(n.children) == 3 {
     match resolve_bind_edges(
       edges: n.children,
@@ -523,17 +518,17 @@ fn resolve_bind_node(n: Node, scope: Scope) -> ResolveResult {
         outer: scope
       }
     ) {
-      ResolveChildrenRejected { diagnostic: d } => ResolveRejected { diagnostic: d }
-      ResolvedChildren { children: resolved_children } =>
-        ResolvedNode {
-          node: Node {
+      Rejected { diagnostic: d } => Rejected { diagnostic: d }
+      Produced { value: resolved_children } =>
+        Produced {
+          value: Node {
             kind: n.kind,
             children: resolved_children
           }
         }
     }
   } else {
-    ResolveRejected {
+    Rejected {
       diagnostic: malformed_tree_diagnostic(n: n)
     }
   }
@@ -550,10 +545,7 @@ fn resolve(tree: NormalizedTree, lm: DagLanguageModel) -> Outcome<ResolvedTree> 
 
 fn resolve_with_namespace(tree: NormalizedTree, namespace: Namespace) -> Outcome<ResolvedTree> {
   if node_well_formed(n: tree) {
-    match resolve_node(n: tree, scope: scope_from_namespace(namespace: namespace)) {
-      ResolveRejected { diagnostic: d } => Rejected { diagnostic: d }
-      ResolvedNode { node: resolved } => Produced { value: resolved }
-    }
+    resolve_node(n: tree, scope: scope_from_namespace(namespace: namespace))
   } else {
     Rejected { diagnostic: malformed_tree_diagnostic(n: tree) }
   }
