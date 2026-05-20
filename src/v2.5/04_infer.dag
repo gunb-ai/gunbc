@@ -1,32 +1,10 @@
 module v2_5.compiler.infer
 
 import v2_5.std.node { Symbol }
-import v2_5.std.identity { SourceSpan, BoundName }
-import v2_5.std.syntax { LiteralValue, ExprErrorKind, InternalExprError, LitBool, LitInt, LitFloat, LitStr, LitNull }
 import v2_5.std.stage_types {
-  ParamCardinality,
-  NormalizedModule, NormalizedImport, NormalizedItem, NormalizedExpr,
-  NormalizedTypeExpr, NormalizedTypeField, NormalizedTypeVariant, NormalizedParam,
-  NormalizedArg, NormalizedFieldInit, NormalizedMatchArm, NormalizedPattern,
-  NormalizedFieldBinding, NormalizedStringPart, NormalizedBlock, NormalizedTransport,
-  NormalizedTransportProperty, NormalizedOperation, NormalizedResourceUse,
-  InferredModule, InferredImport, InferredItem, InferredExpr,
-  InferredType, TypeForm, InferredTypeField, InferredTypeVariant, InferredTypeParam,
-  InferredParam, InferredArg, InferredFieldInit, InferredMatchArm, InferredPattern,
-  InferredFieldBinding, InferredStringPart, InferredBlock, InferredTransport,
-  InferredTransportProperty, InferredOperation, InferredResourceUse, TailRecursionFacts,
-  InferredTypeOk, InferredTypeError, InferredTypeVariable,
-  TypeAtom, TypeConj, TypeDisj, TypeArrow,
-  InferredLit, InferredError, InferredVar, InferredFieldAccess, InferredCall,
-  InferredMethodCall, InferredMatch, InferredIf, InferredLet, InferredRecordLit,
-  InferredListLit, InferredBinOp, InferredUnaryOp, InferredLambda, InferredStringInterp,
-  InferredCast, InferredForEach, InferredIndex, InferredSlice, InferredReturn,
-  InferredPatBind, InferredPatLit, InferredPatVariant, InferredPatWildcard,
-  InferredStrText, InferredStrInterp,
-  InferredImportAll, InferredImportNames,
-  InferredFn, InferredFunc, InferredTypeDecl, InferredDataDecl, InferredService,
-  InferredOtherItem, InferredTransportRest, InferredTransportShell, InferredTransportFile,
-  InferredTransportLocal, NotRecursive
+  NormalizedModule,
+  InferredModule,
+  InferredOtherItem
 }
 
 type ExprDataDissolution
@@ -57,551 +35,49 @@ type InferCarrierClosure
   = ClosedExprDataDissolution
   | ClosedInferReadiness
   | ClosedBinderScopeFold
-  | ClosedTypeProjection
+  | ClosedRecursiveExprFold
 
 type InferReadiness
   = AwaitingTier1StageTypes { gate: Symbol }
+  | AwaitingRecursiveExprFold { gate: Symbol }
   | BoundToTier1StageTypes
 
 type BinderScopeFold
   = AwaitingPreChildScopeHook { gate: Symbol }
   | HasPreChildScopeHook
 
-type TypeEnv {
-  bindings: List<InferredParam>
-}
-
 data v25_infer_tier1_gate: Symbol = v25_infer_tier1_gate
+data recursive_expr_fold_gate: Symbol = recursive_expr_fold_gate
 data binder_scope_fold_gate: Symbol = binder_scope_fold_gate
-data infer_readiness: InferReadiness = BoundToTier1StageTypes
+
+data infer_readiness: InferReadiness = AwaitingRecursiveExprFold { gate: recursive_expr_fold_gate }
 data binder_scope_fold_status: BinderScopeFold = AwaitingPreChildScopeHook { gate: binder_scope_fold_gate }
 data infer_carrier_closure: List<InferCarrierClosure> = [
   ClosedExprDataDissolution,
   ClosedInferReadiness,
   ClosedBinderScopeFold,
-  ClosedTypeProjection
+  ClosedRecursiveExprFold
 ]
-data infer_internal_file: String = "src/v2.5/04_infer.dag"
-data infer_unknown_symbol: Symbol = infer_unknown_symbol
-data infer_unknown_name: BoundName = BoundName {
-  symbol: infer_unknown_symbol,
-  span: empty_span()
-}
-data infer_unknown_type: InferredType = InferredTypeError {
-  message: "v2.5 infer type unresolved",
-  span: empty_span()
-}
 
 fn infer(module: NormalizedModule) -> InferredModule {
   match infer_readiness {
-    AwaitingTier1StageTypes { gate: _ } =>
-      InferredModule {
-        name: module.name,
-        imports: map(module.imports, f: infer_import),
-        items: [InferredOtherItem { keyword: "infer-awaiting-tier1", raw_span: module.span }],
-        span: module.span
-      }
+    AwaitingTier1StageTypes { gate: gate } =>
+      infer_unavailable(module: module, keyword: gate)
+    AwaitingRecursiveExprFold { gate: gate } =>
+      infer_unavailable(module: module, keyword: gate)
     BoundToTier1StageTypes =>
-      infer_module(module: module)
+      infer_unavailable(module: module, keyword: recursive_expr_fold_gate)
   }
 }
 
-fn infer_module(module: NormalizedModule) -> InferredModule {
+fn infer_unavailable(module: NormalizedModule, keyword: Symbol) -> InferredModule {
   InferredModule {
     name: module.name,
-    imports: map(module.imports, f: infer_import),
-    items: map(module.items, f: item => infer_item(item: item, env: empty_env())),
+    imports: [],
+    items: [InferredOtherItem {
+      keyword: "infer-awaiting-recursive-expression-fold",
+      raw_span: module.span
+    }],
     span: module.span
-  }
-}
-
-fn infer_import(import: NormalizedImport) -> InferredImport {
-  match import {
-    NormalizedImportAll { module_path: module_path, span: span } =>
-      InferredImportAll { module_path: module_path, span: span }
-    NormalizedImportNames { module_path: module_path, names: names, span: span } =>
-      InferredImportNames { module_path: module_path, names: names, span: span }
-  }
-}
-
-fn infer_item(item: NormalizedItem, env: TypeEnv) -> InferredItem {
-  match item {
-    NormalizedFn {
-      name: name,
-      type_params: type_params,
-      params: params,
-      return_type: return_type,
-      uses: uses,
-      body: body,
-      span: span
-    } =>
-      let inferred_params = map(params, f: infer_param)
-      let body_env = extend_env_all(env: env, params: inferred_params)
-      let inferred_body = infer_block(block: body, env: body_env)
-      InferredFn {
-        name: name,
-        type_params: map(type_params, f: infer_param),
-        params: inferred_params,
-        return_type: optional_return_type(return_type: return_type, body_type: inferred_body.block_type, span: span),
-        uses: map(uses, f: infer_resource_use),
-        body: inferred_body,
-        recursion: NotRecursive,
-        span: span
-      }
-    NormalizedFunc {
-      name: name,
-      type_params: type_params,
-      params: params,
-      return_type: return_type,
-      uses: uses,
-      body: body,
-      span: span
-    } =>
-      let inferred_params = map(params, f: infer_param)
-      let body_env = extend_env_all(env: env, params: inferred_params)
-      let inferred_body = infer_block(block: body, env: body_env)
-      InferredFunc {
-        name: name,
-        type_params: map(type_params, f: infer_param),
-        params: inferred_params,
-        return_type: optional_return_type(return_type: return_type, body_type: inferred_body.block_type, span: span),
-        uses: map(uses, f: infer_resource_use),
-        body: inferred_body,
-        recursion: NotRecursive,
-        span: span
-      }
-    NormalizedTypeDecl { name: name, type_params: type_params, definition: definition, span: span } =>
-      InferredTypeDecl {
-        name: name,
-        type_params: map(type_params, f: infer_param),
-        definition: infer_type_expr(expr: definition),
-        span: span
-      }
-    NormalizedDataDecl { name: name, type_annotation: type_annotation, value: value, span: span } =>
-      InferredDataDecl {
-        name: name,
-        type_annotation: infer_type_expr(expr: type_annotation),
-        value: infer_expr(expr: value, env: env),
-        span: span
-      }
-    NormalizedService { name: name, transport: transport, operations: operations, span: span } =>
-      InferredService {
-        name: name,
-        transport: infer_transport(transport: transport, env: env),
-        operations: map(operations, f: op => infer_operation(operation: op, env: env)),
-        span: span
-      }
-    NormalizedOtherItem { keyword: keyword, raw_span: raw_span } =>
-      InferredOtherItem { keyword: keyword, raw_span: raw_span }
-  }
-}
-
-fn infer_expr(expr: NormalizedExpr, env: TypeEnv) -> InferredExpr {
-  match expr {
-    NormalizedLit { value: value, span: span } =>
-      InferredLit { value: value, span: span, expr_type: literal_type(value: value, span: span) }
-    NormalizedError { kind: kind, message: message, span: span } =>
-      InferredError { kind: kind, message: message, span: span }
-    NormalizedVar { name: name } =>
-      InferredVar { name: name, expr_type: lookup_type(env: env, name: name) }
-    NormalizedFieldAccess { receiver: receiver, field: field } =>
-      InferredFieldAccess {
-        receiver: infer_expr(expr: receiver, env: env),
-        field: field,
-        expr_type: infer_unknown_type
-      }
-    NormalizedCall { callee: callee, args: args } =>
-      InferredCall {
-        callee: callee,
-        args: map(args, f: arg => infer_arg(arg: arg, env: env)),
-        expr_type: lookup_type(env: env, name: callee)
-      }
-    NormalizedMethodCall { receiver: receiver, method: method, args: args } =>
-      InferredMethodCall {
-        receiver: infer_expr(expr: receiver, env: env),
-        method: method,
-        args: map(args, f: arg => infer_arg(arg: arg, env: env)),
-        expr_type: infer_unknown_type
-      }
-    NormalizedMatch { scrutinee: scrutinee, arms: arms } =>
-      let inferred_arms = map(arms, f: arm => infer_match_arm(arm: arm, env: env))
-      InferredMatch {
-        scrutinee: infer_expr(expr: scrutinee, env: env),
-        arms: inferred_arms,
-        expr_type: match_result_type(arms: inferred_arms)
-      }
-    NormalizedIf { condition: condition, then_expr: then_expr, else_expr: else_expr } =>
-      let inferred_then = infer_expr(expr: then_expr, env: env)
-      let inferred_else = infer_expr(expr: else_expr, env: env)
-      InferredIf {
-        condition: infer_expr(expr: condition, env: env),
-        then_expr: inferred_then,
-        else_expr: inferred_else,
-        expr_type: branch_result_type(then_expr: inferred_then, else_expr: inferred_else)
-      }
-    NormalizedLet { name: name, value: value, body: body } =>
-      infer_binder_error(span: name.span)
-    NormalizedRecordLit { type_name: type_name, fields: fields } =>
-      InferredRecordLit {
-        type_name: type_name,
-        fields: map(fields, f: field => infer_field_init(field: field, env: env)),
-        expr_type: infer_unknown_type
-      }
-    NormalizedListLit { elements: elements } =>
-      let inferred = map(elements, f: element => infer_expr(expr: element, env: env))
-      InferredListLit { elements: inferred, expr_type: list_type(elements: inferred) }
-    NormalizedBinOp { op: op, left: left, right: right, algebra_field: algebra_field } =>
-      let inferred_left = infer_expr(expr: left, env: env)
-      InferredBinOp {
-        op: op,
-        left: inferred_left,
-        right: infer_expr(expr: right, env: env),
-        algebra_field: algebra_field,
-        expr_type: expr_type(expr: inferred_left)
-      }
-    NormalizedUnaryOp { op: op, operand: operand } =>
-      let inferred_operand = infer_expr(expr: operand, env: env)
-      InferredUnaryOp { op: op, operand: inferred_operand, expr_type: expr_type(expr: inferred_operand) }
-    NormalizedLambda { params: params, body: body } =>
-      infer_binder_error(span: first_param_span(params: params))
-    NormalizedStringInterp { parts: parts } =>
-      InferredStringInterp {
-        parts: map(parts, f: part => infer_string_part(part: part, env: env)),
-        expr_type: atom_type(name: infer_unknown_name)
-      }
-    NormalizedBlock { statements: statements } =>
-      let inferred = map(statements, f: statement => infer_expr(expr: statement, env: env))
-      InferredBlock { statements: inferred, expr_type: last_expr_type(exprs: inferred) }
-    NormalizedCast { expr: value, target_type: target_type } =>
-      let inferred_target = infer_type_expr(expr: target_type)
-      InferredCast {
-        expr: infer_expr(expr: value, env: env),
-        target_type: inferred_target,
-        expr_type: inferred_target
-      }
-    NormalizedForEach { variable: variable, iterable: iterable, body: body } =>
-      infer_binder_error(span: variable.span)
-    NormalizedIndex { base: base, index: index } =>
-      InferredIndex {
-        base: infer_expr(expr: base, env: env),
-        index: infer_expr(expr: index, env: env),
-        expr_type: infer_unknown_type
-      }
-    NormalizedSlice { base: base, start: start, end: end } =>
-      InferredSlice {
-        base: infer_expr(expr: base, env: env),
-        start: map_optional_expr(expr: start, env: env),
-        end: map_optional_expr(expr: end, env: env),
-        expr_type: infer_unknown_type
-      }
-    NormalizedReturn { value: value } =>
-      InferredReturn {
-        value: map_optional_expr(expr: value, env: env),
-        expr_type: optional_expr_type(expr: value, env: env)
-      }
-  }
-}
-
-fn infer_type_expr(expr: NormalizedTypeExpr) -> InferredType {
-  match expr {
-    NormalizedTypeAtom { name: name } => atom_type(name: name)
-    NormalizedTypeConj { fields: fields } =>
-      InferredTypeOk { form: TypeConj { fields: map(fields, f: infer_type_field) } }
-    NormalizedTypeDisj { variants: variants } =>
-      InferredTypeOk { form: TypeDisj { variants: map(variants, f: infer_type_variant) } }
-    NormalizedTypeArrow { params: params, return_type: return_type } =>
-      InferredTypeOk {
-        form: TypeArrow {
-          params: map(params, f: infer_type_param),
-          return_type: type_form_or_atom(type_ref: infer_type_expr(expr: return_type))
-        }
-      }
-    NormalizedTypeError { message: message, span: span } =>
-      InferredTypeError { message: message, span: span }
-  }
-}
-
-fn infer_type_field(field: NormalizedTypeField) -> InferredTypeField {
-  InferredTypeField {
-    name: field.name,
-    field_type: infer_type_expr(expr: field.type_expr),
-    cardinality: field.cardinality
-  }
-}
-
-fn infer_type_variant(variant: NormalizedTypeVariant) -> InferredTypeVariant {
-  InferredTypeVariant {
-    name: variant.name,
-    fields: map(variant.fields, f: infer_type_field)
-  }
-}
-
-fn infer_type_param(param: NormalizedParam) -> InferredTypeParam {
-  InferredTypeParam {
-    name: param.name,
-    param_type: infer_type_expr(expr: param.type_expr),
-    cardinality: param.cardinality
-  }
-}
-
-fn infer_param(param: NormalizedParam) -> InferredParam {
-  InferredParam {
-    name: param.name,
-    type_expr: infer_type_expr(expr: param.type_expr),
-    default_expr: map_optional_expr(expr: param.default_expr, env: empty_env()),
-    cardinality: param.cardinality
-  }
-}
-
-fn infer_arg(arg: NormalizedArg, env: TypeEnv) -> InferredArg {
-  InferredArg {
-    name: arg.name,
-    value: infer_expr(expr: arg.value, env: env)
-  }
-}
-
-fn infer_field_init(field: NormalizedFieldInit, env: TypeEnv) -> InferredFieldInit {
-  InferredFieldInit {
-    name: field.name,
-    value: infer_expr(expr: field.value, env: env)
-  }
-}
-
-fn infer_match_arm(arm: NormalizedMatchArm, env: TypeEnv) -> InferredMatchArm {
-  InferredMatchArm {
-    pattern: infer_pattern(pattern: arm.pattern),
-    guard: map_optional_expr(expr: arm.guard, env: env),
-    body: infer_expr(expr: arm.body, env: env)
-  }
-}
-
-fn infer_pattern(pattern: NormalizedPattern) -> InferredPattern {
-  match pattern {
-    NormalizedPatBind { name: name } =>
-      InferredPatBind { name: name, pattern_type: infer_unknown_type }
-    NormalizedPatLit { value: value } =>
-      InferredPatLit { value: value, pattern_type: literal_type(value: value, span: empty_span()) }
-    NormalizedPatVariant { name: name, parent_enum: parent_enum, field_bindings: field_bindings } =>
-      InferredPatVariant {
-        name: name,
-        parent_enum: parent_enum,
-        field_bindings: map(field_bindings, f: infer_field_binding),
-        pattern_type: infer_unknown_type
-      }
-    NormalizedPatWildcard =>
-      InferredPatWildcard { pattern_type: infer_unknown_type }
-  }
-}
-
-fn infer_field_binding(binding: NormalizedFieldBinding) -> InferredFieldBinding {
-  InferredFieldBinding {
-    field: binding.field,
-    pattern: infer_pattern(pattern: binding.pattern)
-  }
-}
-
-fn infer_string_part(part: NormalizedStringPart, env: TypeEnv) -> InferredStringPart {
-  match part {
-    NormalizedStrText { value: value } => InferredStrText { value: value }
-    NormalizedStrInterp { expr: expr } => InferredStrInterp { expr: infer_expr(expr: expr, env: env) }
-  }
-}
-
-fn infer_block(block: NormalizedBlock, env: TypeEnv) -> InferredBlock {
-  let statements = map(block.statements, f: statement => infer_expr(expr: statement, env: env))
-  InferredBlock {
-    statements: statements,
-    span: block.span,
-    block_type: last_expr_type(exprs: statements)
-  }
-}
-
-fn infer_transport(transport: NormalizedTransport, env: TypeEnv) -> InferredTransport {
-  match transport {
-    NormalizedTransportRest { properties: properties } =>
-      InferredTransportRest { properties: map(properties, f: p => infer_transport_property(property: p, env: env)) }
-    NormalizedTransportShell { properties: properties } =>
-      InferredTransportShell { properties: map(properties, f: p => infer_transport_property(property: p, env: env)) }
-    NormalizedTransportFile { properties: properties } =>
-      InferredTransportFile { properties: map(properties, f: p => infer_transport_property(property: p, env: env)) }
-    NormalizedTransportLocal { properties: properties } =>
-      InferredTransportLocal { properties: map(properties, f: p => infer_transport_property(property: p, env: env)) }
-  }
-}
-
-fn infer_transport_property(property: NormalizedTransportProperty, env: TypeEnv) -> InferredTransportProperty {
-  InferredTransportProperty {
-    key: property.key,
-    value: infer_expr(expr: property.value, env: env)
-  }
-}
-
-fn infer_operation(operation: NormalizedOperation, env: TypeEnv) -> InferredOperation {
-  let params = map(operation.params, f: infer_param)
-  let outputs = map(operation.outputs, f: infer_param)
-  InferredOperation {
-    name: operation.name,
-    params: params,
-    outputs: outputs,
-    modifiers: operation.modifiers,
-    body: map_optional_block(block: operation.body, env: extend_env_all(env: env, params: params))
-  }
-}
-
-fn infer_resource_use(use: NormalizedResourceUse) -> InferredResourceUse {
-  InferredResourceUse {
-    name: use.name,
-    resource_type: infer_type_expr(expr: use.resource_type)
-  }
-}
-
-fn empty_span() -> SourceSpan {
-  SourceSpan { start: 0, end: 0, file: infer_internal_file }
-}
-
-fn empty_env() -> TypeEnv {
-  TypeEnv { bindings: [] }
-}
-
-fn extend_env(env: TypeEnv, param: InferredParam) -> TypeEnv {
-  TypeEnv { bindings: list_push(env.bindings, param) }
-}
-
-fn extend_env_all(env: TypeEnv, params: List<InferredParam>) -> TypeEnv {
-  fold(params, init: env, f: (acc, param) => extend_env(env: acc, param: param))
-}
-
-fn lookup_type(env: TypeEnv, name: BoundName) -> InferredType {
-  match env.bindings |> find(binding => binding.name.symbol == name.symbol) {
-    Some { value: binding } => binding.type_expr
-    None => infer_unknown_type
-  }
-}
-
-fn atom_type(name: BoundName) -> InferredType {
-  InferredTypeOk { form: TypeAtom { name: name } }
-}
-
-fn literal_type(value: LiteralValue, span: SourceSpan) -> InferredType {
-  match value {
-    LitStr { value: _ } => atom_type(name: infer_unknown_name)
-    LitInt { value: _ } => atom_type(name: infer_unknown_name)
-    LitFloat { value: _ } => atom_type(name: infer_unknown_name)
-    LitBool { value: _ } => atom_type(name: infer_unknown_name)
-    LitNull => InferredTypeError { message: "null literal has no inferred type yet", span: span }
-  }
-}
-
-fn type_form_or_atom(type_ref: InferredType) -> TypeForm {
-  match type_ref {
-    InferredTypeOk { form: form } => form
-    InferredTypeError { message: _, span: _ } => TypeAtom { name: infer_unknown_name }
-    InferredTypeVariable { id: _ } => TypeAtom { name: infer_unknown_name }
-  }
-}
-
-fn expr_type(expr: InferredExpr) -> InferredType {
-  match expr {
-    InferredLit { value: _, span: _, expr_type: expr_type } => expr_type
-    InferredError { kind: _, message: message, span: span } =>
-      InferredTypeError { message: message, span: span }
-    InferredVar { name: _, expr_type: expr_type } => expr_type
-    InferredFieldAccess { receiver: _, field: _, expr_type: expr_type } => expr_type
-    InferredCall { callee: _, args: _, expr_type: expr_type } => expr_type
-    InferredMethodCall { receiver: _, method: _, args: _, expr_type: expr_type } => expr_type
-    InferredMatch { scrutinee: _, arms: _, expr_type: expr_type } => expr_type
-    InferredIf { condition: _, then_expr: _, else_expr: _, expr_type: expr_type } => expr_type
-    InferredLet { name: _, value: _, body: _, expr_type: expr_type } => expr_type
-    InferredRecordLit { type_name: _, fields: _, expr_type: expr_type } => expr_type
-    InferredListLit { elements: _, expr_type: expr_type } => expr_type
-    InferredBinOp { op: _, left: _, right: _, algebra_field: _, expr_type: expr_type } => expr_type
-    InferredUnaryOp { op: _, operand: _, expr_type: expr_type } => expr_type
-    InferredLambda { params: _, body: _, expr_type: expr_type } => expr_type
-    InferredStringInterp { parts: _, expr_type: expr_type } => expr_type
-    InferredBlock { statements: _, expr_type: expr_type } => expr_type
-    InferredCast { expr: _, target_type: _, expr_type: expr_type } => expr_type
-    InferredForEach { variable: _, iterable: _, body: _, expr_type: expr_type } => expr_type
-    InferredIndex { base: _, index: _, expr_type: expr_type } => expr_type
-    InferredSlice { base: _, start: _, end: _, expr_type: expr_type } => expr_type
-    InferredReturn { value: _, expr_type: expr_type } => expr_type
-  }
-}
-
-fn branch_result_type(then_expr: InferredExpr, else_expr: InferredExpr) -> InferredType {
-  let then_type = expr_type(expr: then_expr)
-  let else_type = expr_type(expr: else_expr)
-  if then_type == else_type { then_type } else { infer_unknown_type }
-}
-
-fn match_result_type(arms: List<InferredMatchArm>) -> InferredType {
-  match arms |> first {
-    Some { value: arm } => expr_type(expr: arm.body)
-    None => infer_unknown_type
-  }
-}
-
-fn list_type(elements: List<InferredExpr>) -> InferredType {
-  match elements |> first {
-    Some { value: element } => expr_type(expr: element)
-    None => infer_unknown_type
-  }
-}
-
-fn last_expr_type(exprs: List<InferredExpr>) -> InferredType {
-  match exprs |> last {
-    Some { value: expr } => expr_type(expr: expr)
-    None => infer_unknown_type
-  }
-}
-
-fn optional_return_type(return_type: NormalizedTypeExpr?, body_type: InferredType, span: SourceSpan) -> InferredType {
-  match return_type {
-    Some { value: type_expr } => infer_type_expr(expr: type_expr)
-    None => body_type
-  }
-}
-
-fn map_optional_expr(expr: NormalizedExpr?, env: TypeEnv) -> InferredExpr? {
-  match expr {
-    Some { value: value } => Some { value: infer_expr(expr: value, env: env) }
-    None => none
-  }
-}
-
-fn optional_expr_type(expr: NormalizedExpr?, env: TypeEnv) -> InferredType {
-  match map_optional_expr(expr: expr, env: env) {
-    Some { value: value } => expr_type(expr: value)
-    None => infer_unknown_type
-  }
-}
-
-fn map_optional_block(block: NormalizedBlock?, env: TypeEnv) -> InferredBlock? {
-  match block {
-    Some { value: value } => Some { value: infer_block(block: value, env: env) }
-    None => none
-  }
-}
-
-fn first_param_span(params: List<NormalizedParam>) -> SourceSpan {
-  match params |> first {
-    Some { value: param } => param.name.span
-    None => empty_span()
-  }
-}
-
-fn infer_binder_error(span: SourceSpan) -> InferredExpr {
-  match binder_scope_fold_status {
-    AwaitingPreChildScopeHook { gate: _ } =>
-      InferredError {
-        kind: InternalExprError,
-        message: "binder expression requires pre-child scope fold hook",
-        span: span
-      }
-    HasPreChildScopeHook =>
-      InferredError {
-        kind: InternalExprError,
-        message: "binder hook advertised but not implemented in 04_infer prototype",
-        span: span
-      }
   }
 }
