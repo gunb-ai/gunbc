@@ -133,7 +133,7 @@ Substrate / extdeps fan-out:
   T-4.12 extdeps/languages/llvm_ir.dag   [needs T-1, T-2; B2-OMNI probe — generalize DOWN the stack (SSA IR)]
   T-4.13 extdeps/languages/machine_code.dag  [needs T-3 machine + T-4 LanguageModel shape; B2-OMNI probe — bottom of stack; disassembly = extreme fail-closed]
   T-4.14 extdeps/languages/ptx.dag       [needs T-1, T-2; B2-OMNI + IN-B probe — SIMT data-parallel vs the 5 behaviors]
-  T-4.15 extdeps/protocols/{rest,graphql,grpc}.dag   [needs T-3, T-26, T-4; P4 substrate from `docs/design-v4-compiler-homomorphism.md` (Ratified 2026-05-20). Out-of-scope for the initial single-target compiler; in-scope for the architecture so glue derivation (T-16 omni-stack) is not foreclosed.]
+  T-4.15 extdeps/protocols/{rest,graphql,grpc}.dag   [needs T-3, T-26; P4 substrate from `docs/design-v4-compiler-homomorphism.md` (Ratified 2026-05-20). Language-orthogonal per P4 — transport declares its own wire-format type system; LanguageModel bindings happen at T-16 composition time, not on this substrate. Out-of-scope for the initial single-target compiler; in-scope for the architecture so glue derivation (T-16 omni-stack) is not foreclosed.]
   T-5   REMOVED 2026-05-15 (operator-ratified) — work-direction meta-layer
         cut; only workflow/bootstrap.dag (T-20) + workflow/ci.dag (T-24) remain
 
@@ -1312,10 +1312,19 @@ does not exist on main; this task is its first authoring. The
   `CoordinationSemantics` (HTTP / REST is the immediate consumer in
   omni-stack scenarios).
 
-**Dependencies — `[needs T-3, T-26, T-4]`.** Numeric and string vocabulary
-from T-3; HttpMethod / Url / NetworkAddress from T-26; language carriers
-from T-4 because protocols often parameterize over the host language's
-type system (e.g., gRPC service definitions reference language types).
+**Dependencies — `[needs T-3, T-26]`. Language-orthogonal per P4.**
+Numeric and string vocabulary from T-3 for wire-format primitives;
+HttpMethod / Url / NetworkAddress from T-26 for REST grounding. **NOT
+T-4.** The transport substrate declares its OWN wire-format type system
+(REST: structured HTTP bodies + headers; gRPC: protobuf wire format with
+its own primitive/message types; GraphQL: GraphQL type system).
+LanguageModel bindings happen downstream at *composition time* — T-16's
+omni-stack glue derivation composes `LanguageModel(source) ∘
+TransportModel ∘ LanguageModel(target)` via the coercion fold, P4's
+"applied twice through a shared transport model." Co-locating
+language-binding facts on this substrate would collapse the shared
+transport model back into language-specific concerns — the opposite of
+the P4 framing.
 
 **Scope discipline — L-2 holds.** Model the versioned transport SPEC
 (IETF RFCs for REST / HTTP semantics, the GraphQL spec, the gRPC HTTP/2
