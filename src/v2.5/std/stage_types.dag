@@ -6,18 +6,11 @@
 // Reconcile: calm-crane-724 normalize seam (Seam* types); cool-bee-832 Tier 0
 // (Node + List<Edge>, 6-case Connective, 4-variant NodeKind).
 // Phase types stay parallel sums (not Node bags); lowering to Node uses node.dag.
-//
-// Pipeline (type signatures are the contract):
-//   tokenize : SourceText -> TokenStream
-//   parse    : TokenStream -> ParseModule
-//   resolve  : ParseModule -> ResolvedModule
-//   normalize: ResolvedModule -> NormalizedModule
-//   infer    : NormalizedModule -> InferredModule
-//   emit     : InferredModule -> TargetSource
 
 module v2_5.std.stage_types
 
 import v2_5.std.identity { SourceSpan, AuthoredName, BoundName }
+import v2_5.std.diagnostic { Outcome }
 import v2_5.std.node {
   Symbol,
   Connective,
@@ -1011,9 +1004,9 @@ type InferredModule {
   span: SourceSpan
 }
 
-// =========================================================================
-// Pipeline stage ports — distinct types enforce phase ordering
-// =========================================================================
+type TokenizeStageOut {
+  tokens: Outcome<TokenStream>
+}
 
 type ParseStageIn {
   tokens: TokenStream

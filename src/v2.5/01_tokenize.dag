@@ -12,14 +12,12 @@ import v2_5.std.diagnostic {
 }
 import v2_5.std.token { Token, TokenShape, TokenStream }
 
-// 🟡 feature:v2_5-source-text-carrier
 type Source {
   file: String
   file_symbol: Symbol
   text: String
 }
 
-// 🟢 coproduct dissolution
 type CharacterClass
   = DigitClass
   | IdentStartClass
@@ -43,28 +41,23 @@ type LexerFrame {
   eof_emitted: Bool
 }
 
-// 🟢 coproduct dissolution
 type LexerState
   = Lexing { frame: LexerFrame }
   | LexFailed { diagnostic: Diagnostic }
 
-// 🟢 coproduct dissolution
 type ClassScanState
   = ClassOpen { end: Int }
   | ClassClosed { end: Int }
 
-// 🟢 coproduct dissolution
 type LineScanState
   = LineOpen { end: Int }
   | LineClosed { end: Int }
 
-// 🟢 coproduct dissolution
 type StringBodyState
   = StringOpen { cursor: Int, acc: String, escaped: Bool }
   | StringClosed { content: String, end_pos: Int }
   | StringInterpolation { content: String, end_pos: Int }
 
-// 🟢 coproduct dissolution
 type StringTokenRole
   = WholeString
   | InterpolationBegin
@@ -77,12 +70,10 @@ type ScanStep {
   interpolation_depth: List<Int>
 }
 
-// 🟢 coproduct dissolution
 type ScanOutcome
   = Scanned { step: ScanStep }
   | ScanRejected { diagnostic: Diagnostic }
 
-// 🟢 coproduct dissolution
 type TokenizeExpectation
   = ExpectProduced
   | ExpectRejected { reason: Symbol }
@@ -98,7 +89,6 @@ data unterminated_string: Symbol = unterminated_string
 data unterminated_interpolation: Symbol = unterminated_interpolation
 data lexical_progress_exhausted: Symbol = lexical_progress_exhausted
 
-// 🟡 feature:v2_5-syntax-spec-keywords
 data keyword_table: Map<String, Bool> = {
   "module": true, "import": true,
   "type": true, "fn": true, "func": true,
@@ -115,7 +105,6 @@ data keyword_table: Map<String, Bool> = {
   "idempotent": true, "readonly": true, "hermetic": true
 }
 
-// 🟡 feature:v2_5-syntax-spec-operators
 data single_punct: Map<String, TokenShape> = {
   "(": ShLParen, ")": ShRParen,
   "[": ShLBracket, "]": ShRBracket,
@@ -125,7 +114,6 @@ data single_punct: Map<String, TokenShape> = {
   "!": ShBang, "?": ShQuestion, "|": ShPipe
 }
 
-// 🟡 feature:v2_5-syntax-spec-operators
 data double_punct: Map<String, TokenShape> = {
   "=>": ShFatArrow, "->": ShArrow,
   "==": ShEqEq, "!=": ShNe,
