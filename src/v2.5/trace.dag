@@ -1,19 +1,11 @@
 module v2_5.compiler.trace
 
 import v2_5.std.identity { SourceSpan, AuthoredName, BoundName }
-import v2_5.std.node { Node, Symbol }
+import v2_5.std.node { Node, Symbol, Path }
 import v2_5.std.stage_types {
   ParseModule, ResolvedModule, NormalizedModule, InferredModule,
   ParseExpr, ResolvedExpr, NormalizedExpr, InferredExpr,
   ParseItem, ResolvedModuleItem, NormalizedItem, InferredItem
-}
-
-type TracePathStep
-  = TraceNamedEdge { name: Symbol }
-  | TracePositionalEdge { index: Int }
-
-type TraceNodePath {
-  steps: List<TracePathStep>
 }
 
 type TraceNodeRoot
@@ -36,12 +28,12 @@ type TracePhaseNode
 type TraceLocus
   = TraceRootLocus {
       root: TraceNodeRoot
-      path: TraceNodePath
+      path: Path
       span: SourceSpan
     }
   | TracePhaseLocus {
       node: TracePhaseNode
-      path: TraceNodePath
+      path: Path
       span: SourceSpan
     }
   | TraceGeneratedLocus {
@@ -144,7 +136,7 @@ type SpanRange {
 }
 
 type TraceFilter {
-  phase_path: TraceNodePath?
+  phase_path: Path?
   span: SpanRange?
   event_kind: TraceEventKind?
 }
@@ -153,7 +145,7 @@ fn trace_filter_all() -> TraceFilter {
   TraceFilter { phase_path: none, span: none, event_kind: none }
 }
 
-fn trace_filter_by_path(path: TraceNodePath) -> TraceFilter {
+fn trace_filter_by_path(path: Path) -> TraceFilter {
   TraceFilter { phase_path: Some { value: path }, span: none, event_kind: none }
 }
 
@@ -195,12 +187,12 @@ fn trace_locus_span(locus: TraceLocus) -> SourceSpan {
   }
 }
 
-fn trace_locus_path(locus: TraceLocus) -> TraceNodePath {
+fn trace_locus_path(locus: TraceLocus) -> Path {
   match locus {
     TraceRootLocus { root: _, path: p, span: _ } => p
     TracePhaseLocus { node: _, path: p, span: _ } => p
     TraceGeneratedLocus { generated_file: _, position: _, source_span: _ } =>
-      TraceNodePath { steps: [] }
+      Path { steps: [] }
   }
 }
 
@@ -212,7 +204,7 @@ fn trace_point_span(point: TracePoint) -> SourceSpan {
   trace_locus_span(locus: trace_point_locus(point: point))
 }
 
-fn trace_point_path(point: TracePoint) -> TraceNodePath {
+fn trace_point_path(point: TracePoint) -> Path {
   trace_locus_path(locus: trace_point_locus(point: point))
 }
 
@@ -221,7 +213,7 @@ fn event_matches_span_range(event: TraceEvent, range: SpanRange) -> Bool {
   span.start >= range.start && span.start < range.end
 }
 
-fn event_matches_path_filter(event: TraceEvent, phase_path: TraceNodePath?) -> Bool {
+fn event_matches_path_filter(event: TraceEvent, phase_path: Path?) -> Bool {
   match phase_path {
     Some { value: p } => trace_point_path(point: trace_event_point(event: event)) == p
     None => true
