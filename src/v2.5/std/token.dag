@@ -5,6 +5,7 @@ module v2_5.std.token
 
 import v2_5.std.identity { SourceSpan }
 
+// 🟡 coproduct dissolution — feature:01_tokenize-landing
 type TokenShape
   = ShKeyword
   | ShLBrace | ShRBrace | ShLParen | ShRParen | ShLBracket | ShRBracket

@@ -1,17 +1,16 @@
-// v2.5 syntax carriers — closed sums for operators and literals.
-// Authority for expression/type surface metadata used by stage_types.
-// Does not import v2, v3, v4, or dsl.
+// v2.5 syntax carriers — self-contained fork tree.
+// Shape-reference: dsl/std/syntax.dag (BinOp, LiteralValue, AlgebraFieldKind transcribed;
+// no import from dsl/, src/v2/, src/v3/, or src/v4/).
 
 module v2_5.std.syntax
 
+// 🟢 coproduct dissolution — shape-ref: std.syntax BinOp
 type BinOp
   = Add | Sub | Mul | Div | Mod
   | Eq | Ne | Lt | Gt | Le | Ge
   | And | Or | NullCoalesce
 
-type UnaryOpKind
-  = Not | Neg
-
+// 🟢 coproduct dissolution — shape-ref: std.syntax LiteralValue
 type LiteralValue
   = LitStr { value: String }
   | LitInt { value: Int }
@@ -19,11 +18,18 @@ type LiteralValue
   | LitBool { value: Bool }
   | LitNull
 
+// 🟢 coproduct dissolution — shape-ref: std.syntax AlgebraFieldKind
+type AlgebraFieldKind
+  = AlgAdd | AlgMul | AlgReciprocal | AlgQuotient | AlgRemainder | AlgCompare | AlgMeet | AlgJoin
+
+// 🟢 coproduct dissolution — v2 surface (not yet in dsl/std/syntax.dag)
+type UnaryOpKind
+  = Not | Neg
+
+// 🟢 coproduct dissolution
 type OperationModifier
   = Idempotent | Readonly | Hermetic
 
+// 🟢 coproduct dissolution
 type ExprErrorKind
   = ParseRecoveryError | SemanticExprError | InternalExprError
-
-type AlgebraFieldKind
-  = AlgAdd | AlgMul | AlgReciprocal | AlgQuotient | AlgRemainder | AlgCompare | AlgMeet | AlgJoin

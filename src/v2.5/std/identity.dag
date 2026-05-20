@@ -1,14 +1,19 @@
 // v2.5 identity and provenance — shared across all pipeline phases.
 // Parse phases use AuthoredName; post-resolve phases use Symbol (from node).
+// Shape-reference: dsl/std/types.dag SourceSpan/FilePath (transcribed; no cross-tree import).
 
 module v2_5.std.identity
 
 import v2_5.std.node { Symbol }
 
+// Shape-ref: std.types FilePath (non_empty refinement deferred in fork).
+type FilePath = String
+
+// Shape-ref: std.types SourceSpan
 type SourceSpan {
+  file: FilePath
   start: Int
   end: Int
-  file: String
 }
 
 type AuthoredName {

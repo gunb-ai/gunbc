@@ -10,24 +10,35 @@
 
 module v2_5.std.stage_types
 
-import v2_5.std.identity { SourceSpan, AuthoredName, BoundName }
 import v2_5.std.diagnostic { Outcome }
+import v2_5.std.identity { SourceSpan, AuthoredName, BoundName }
 import v2_5.std.node {
   Symbol,
+  Node,
   Connective,
   Behavior,
   EdgeLabel
 }
 import v2_5.std.syntax {
-  BinOp, UnaryOpKind, LiteralValue, OperationModifier, ExprErrorKind, AlgebraFieldKind
+  BinOp,
+  UnaryOpKind,
+  LiteralValue,
+  OperationModifier,
+  ExprErrorKind,
+  AlgebraFieldKind
 }
 import v2_5.std.token { TokenStream }
 
+// v4-aligned emit target (LanguageSpec subtree encoded in target Node).
+type TargetModel = Node
+
 // Param presence (v2 Required/CardOptional) — distinct from Connective::Cardinality.
+// 🟢 coproduct dissolution
 type ParamCardinality
   = Required
   | CardOptional
 
+// 🟢 coproduct dissolution
 type SurfaceSugarKind
   = ServiceSugar
   | FnSugar
@@ -48,6 +59,7 @@ data c3_surface_sugar_operation: Symbol = c3_surface_sugar_operation
 // Parse phase — syntax only, no binding or typing
 // =========================================================================
 
+// 🟢 coproduct dissolution
 type ParsePattern
   = ParsePatBind { name: AuthoredName }
   | ParsePatLit { value: LiteralValue }
@@ -99,6 +111,7 @@ type ParseTypeVariant {
   fields: List<ParseTypeField>
 }
 
+// 🟢 coproduct dissolution
 type ParseTypeExpr
   = ParseTypeAtom { name: AuthoredName }
   | ParseTypeConj { fields: List<ParseTypeField> }
@@ -109,6 +122,7 @@ type ParseTypeExpr
     }
   | ParseTypeError { message: String, span: SourceSpan }
 
+// 🟢 coproduct dissolution
 type ParseExpr
   = ParseLit { value: LiteralValue, span: SourceSpan }
   | ParseError { kind: ExprErrorKind, message: String, span: SourceSpan }
@@ -180,6 +194,7 @@ type ParseExpr
     }
   | ParseReturn { value: ParseExpr? }
 
+// 🟢 coproduct dissolution
 type ParseStringPart
   = ParseStrText { value: String }
   | ParseStrInterp { expr: ParseExpr }
@@ -189,6 +204,7 @@ type ParseBlock {
   span: SourceSpan
 }
 
+// 🟢 coproduct dissolution
 type ParseTransport
   = ParseTransportRest { properties: List<ParseTransportProperty> }
   | ParseTransportShell { properties: List<ParseTransportProperty> }
@@ -213,6 +229,7 @@ type ParseResourceUse {
   resource_type: ParseTypeExpr
 }
 
+// 🟢 coproduct dissolution
 type ParseImport
   = ParseImportAll { module_path: String, span: SourceSpan }
   | ParseImportNames {
@@ -221,6 +238,7 @@ type ParseImport
       span: SourceSpan
     }
 
+// 🟢 coproduct dissolution
 type ParseItem
   = ParseFn {
       name: AuthoredName
@@ -274,6 +292,7 @@ type ParseModule {
 // Resolve phase — names bound; still no typing
 // =========================================================================
 
+// 🟢 coproduct dissolution
 type ResolvedPattern
   = ResolvedPatBind { name: BoundName }
   | ResolvedPatLit { value: LiteralValue }
@@ -325,6 +344,7 @@ type ResolvedTypeVariant {
   fields: List<ResolvedTypeField>
 }
 
+// 🟢 coproduct dissolution
 type ResolvedTypeExpr
   = ResolvedTypeAtom { name: BoundName }
   | ResolvedTypeConj { fields: List<ResolvedTypeField> }
@@ -335,6 +355,7 @@ type ResolvedTypeExpr
     }
   | ResolvedTypeError { message: String, span: SourceSpan }
 
+// 🟢 coproduct dissolution
 type ResolvedExpr
   = ResolvedLit { value: LiteralValue, span: SourceSpan }
   | ResolvedError { kind: ExprErrorKind, message: String, span: SourceSpan }
@@ -406,6 +427,7 @@ type ResolvedExpr
     }
   | ResolvedReturn { value: ResolvedExpr? }
 
+// 🟢 coproduct dissolution
 type ResolvedStringPart
   = ResolvedStrText { value: String }
   | ResolvedStrInterp { expr: ResolvedExpr }
@@ -415,6 +437,7 @@ type ResolvedBlock {
   span: SourceSpan
 }
 
+// 🟢 coproduct dissolution
 type ResolvedTransport
   = ResolvedTransportRest { properties: List<ResolvedTransportProperty> }
   | ResolvedTransportShell { properties: List<ResolvedTransportProperty> }
@@ -439,6 +462,7 @@ type ResolvedResourceUse {
   resource_type: ResolvedTypeExpr
 }
 
+// 🟢 coproduct dissolution
 type ResolvedImport
   = ResolvedImportAll { module_path: Symbol, span: SourceSpan }
   | ResolvedImportNames {
@@ -447,6 +471,7 @@ type ResolvedImport
       span: SourceSpan
     }
 
+// 🟢 coproduct dissolution
 type ResolvedItemCore
   = ResolvedFn {
       name: BoundName
@@ -489,6 +514,7 @@ type ResolvedItemCore
       raw_span: SourceSpan
     }
 
+// 🟢 coproduct dissolution
 type ResolvedModuleItem
   = ResolvedSugared {
       sugar: SurfaceSugarKind
@@ -508,6 +534,7 @@ type ResolvedModule {
 // Normalize phase — surface sugar stripped; items are ResolvedItemCore only
 // =========================================================================
 
+// 🟢 coproduct dissolution
 type NormalizedPattern
   = NormalizedPatBind { name: BoundName }
   | NormalizedPatLit { value: LiteralValue }
@@ -559,6 +586,7 @@ type NormalizedTypeVariant {
   fields: List<NormalizedTypeField>
 }
 
+// 🟢 coproduct dissolution
 type NormalizedTypeExpr
   = NormalizedTypeAtom { name: BoundName }
   | NormalizedTypeConj { fields: List<NormalizedTypeField> }
@@ -569,6 +597,7 @@ type NormalizedTypeExpr
     }
   | NormalizedTypeError { message: String, span: SourceSpan }
 
+// 🟢 coproduct dissolution
 type NormalizedExpr
   = NormalizedLit { value: LiteralValue, span: SourceSpan }
   | NormalizedError { kind: ExprErrorKind, message: String, span: SourceSpan }
@@ -640,6 +669,7 @@ type NormalizedExpr
     }
   | NormalizedReturn { value: NormalizedExpr? }
 
+// 🟢 coproduct dissolution
 type NormalizedStringPart
   = NormalizedStrText { value: String }
   | NormalizedStrInterp { expr: NormalizedExpr }
@@ -649,6 +679,7 @@ type NormalizedBlock {
   span: SourceSpan
 }
 
+// 🟢 coproduct dissolution
 type NormalizedTransport
   = NormalizedTransportRest { properties: List<NormalizedTransportProperty> }
   | NormalizedTransportShell { properties: List<NormalizedTransportProperty> }
@@ -673,6 +704,7 @@ type NormalizedResourceUse {
   resource_type: NormalizedTypeExpr
 }
 
+// 🟢 coproduct dissolution
 type NormalizedImport
   = NormalizedImportAll { module_path: Symbol, span: SourceSpan }
   | NormalizedImportNames {
@@ -681,6 +713,7 @@ type NormalizedImport
       span: SourceSpan
     }
 
+// 🟢 coproduct dissolution
 type NormalizedItem
   = NormalizedFn {
       name: BoundName
@@ -734,11 +767,13 @@ type NormalizedModule {
 // Infer phase — typing is structural fact on every expression variant
 // =========================================================================
 
+// 🟢 coproduct dissolution
 type InferredType
   = InferredTypeOk { form: TypeForm }
   | InferredTypeError { message: String, span: SourceSpan }
   | InferredTypeVariable { id: Symbol }
 
+// 🟢 coproduct dissolution
 type TypeForm
   = TypeAtom { name: BoundName }
   | TypeConj { fields: List<InferredTypeField> }
@@ -752,6 +787,8 @@ type InferredTypeField {
   name: BoundName
   field_type: InferredType
   cardinality: ParamCardinality
+  default_expr: InferredExpr?
+  from_key: BoundName?
 }
 
 type InferredTypeVariant {
@@ -765,10 +802,12 @@ type InferredTypeParam {
   cardinality: ParamCardinality
 }
 
+// 🟢 coproduct dissolution
 type TailRecursionFacts
   = NotRecursive
   | SelfRecursive { tail_only: Bool }
 
+// 🟢 coproduct dissolution
 type InferredPattern
   = InferredPatBind { name: BoundName, pattern_type: InferredType }
   | InferredPatLit { value: LiteralValue, pattern_type: InferredType }
@@ -808,9 +847,15 @@ type InferredMatchArm {
   body: InferredExpr
 }
 
+// 🟢 coproduct dissolution
 type InferredExpr
   = InferredLit { value: LiteralValue, span: SourceSpan, expr_type: InferredType }
-  | InferredError { kind: ExprErrorKind, message: String, span: SourceSpan }
+  | InferredError {
+      kind: ExprErrorKind
+      message: String
+      span: SourceSpan
+      expr_type: InferredType
+    }
   | InferredVar { name: BoundName, expr_type: InferredType }
   | InferredFieldAccess {
       receiver: InferredExpr
@@ -906,6 +951,7 @@ type InferredExpr
       expr_type: InferredType
     }
 
+// 🟢 coproduct dissolution
 type InferredStringPart
   = InferredStrText { value: String }
   | InferredStrInterp { expr: InferredExpr }
@@ -916,6 +962,7 @@ type InferredBlock {
   block_type: InferredType
 }
 
+// 🟢 coproduct dissolution
 type InferredTransport
   = InferredTransportRest { properties: List<InferredTransportProperty> }
   | InferredTransportShell { properties: List<InferredTransportProperty> }
@@ -940,6 +987,7 @@ type InferredResourceUse {
   resource_type: InferredType
 }
 
+// 🟢 coproduct dissolution
 type InferredImport
   = InferredImportAll { module_path: Symbol, span: SourceSpan }
   | InferredImportNames {
@@ -948,6 +996,7 @@ type InferredImport
       span: SourceSpan
     }
 
+// 🟢 coproduct dissolution
 type InferredItem
   = InferredFn {
       name: BoundName
@@ -1037,6 +1086,7 @@ type InferStageOut {
 
 type EmitStageIn {
   module: InferredModule
+  target: TargetModel
 }
 
 type TargetArtifact {
@@ -1049,7 +1099,7 @@ type TargetSource {
 }
 
 type EmitStageOut {
-  output: TargetSource
+  outcome: Outcome<TargetSource>
 }
 
 // =========================================================================
@@ -1068,6 +1118,7 @@ type SeamNormalizedEdge {
   target: SeamNormalizedNode
 }
 
+// 🟢 coproduct dissolution
 type ResolvedTypeForm
   = ResolvedSugarForm {
       kind: SurfaceSugarKind
@@ -1101,6 +1152,7 @@ type SeamResolvedItem {
   form: SeamResolvedItemForm
 }
 
+// 🟢 coproduct dissolution
 type SeamResolvedItemForm
   = SeamItemType { type_form: ResolvedTypeForm }
   | SeamItemComputation { computation_form: ResolvedComputationForm }
@@ -1110,6 +1162,7 @@ type SeamNormalizedItem {
   form: SeamNormalizedItemForm
 }
 
+// 🟢 coproduct dissolution
 type SeamNormalizedItemForm
   = SeamItemType { type_form: NormalizedTypeForm }
   | SeamItemComputation { computation_form: NormalizedComputationForm }
@@ -1124,10 +1177,12 @@ type SeamNormalizedModule {
   items: List<SeamNormalizedItem>
 }
 
+// 🟢 coproduct dissolution
 type SeamResolvedNode
   = SeamResolvedModuleNode { module: SeamResolvedModule }
   | SeamResolvedItemNode { item: SeamResolvedItem }
 
+// 🟢 coproduct dissolution
 type SeamNormalizedNode
   = SeamNormalizedModuleNode { module: SeamNormalizedModule }
   | SeamNormalizedItemNode { item: SeamNormalizedItem }
