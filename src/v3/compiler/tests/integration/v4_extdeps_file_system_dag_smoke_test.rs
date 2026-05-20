@@ -183,11 +183,9 @@ fn v4_extdeps_file_system_dag_file_path_is_posix_grounded_record() {
 #[test]
 fn v4_extdeps_file_system_dag_wave2_c2_modeled_effects_and_witness_shape() {
     let module = file_system_surface_or_panic();
-    let witness_arms = variant_name_set(type_sum_variants(&module, "FileEffectWitness"));
-    assert_eq!(
-        witness_arms,
-        BTreeSet::from(["ReadWitness", "WriteWitness"]),
-        "FileEffectWitness must distinguish read vs write receipt arms"
+    assert!(
+        !surface_declares_type(&module, "FileEffectWitness"),
+        "read/write authority is signature-derived via ModeledFileEffects only (THESIS unenumerated effects — no parallel taxonomy)"
     );
 
     let read_witness_fields = record_field_type_map(type_record_fields(&module, "FileReadWitness"));

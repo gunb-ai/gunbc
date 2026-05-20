@@ -1,6 +1,6 @@
 // src/v4/extdeps/file_system.dag
 // Scope: External file-system resource model + modeled file effects (read/write).
-// Owns: PosixByteString, NamedPathComponent, PathComponent, AbsolutePath, RelativePathHead, RelativePath, FilesystemPath, FileKind, FileKindResolutionPolicy, Filesystem, FileBody, FileResource, FilePath, FileContent, FileRead, FileWrite, FileReadWitness, FileWriteWitness, FileEffectWitness, FileReadResult, FileWriteResult, ReadFileRequest, WriteFileRequest, ListDirRequest, FileKindRequest, FileSystemOperations, ModeledFileEffects.
+// Owns: PosixByteString, NamedPathComponent, PathComponent, AbsolutePath, RelativePathHead, RelativePath, FilesystemPath, FileKind, FileKindResolutionPolicy, Filesystem, FileBody, FileResource, FilePath, FileContent, FileRead, FileWrite, FileReadWitness, FileWriteWitness, FileReadResult, FileWriteResult, ReadFileRequest, WriteFileRequest, ListDirRequest, FileKindRequest, FileSystemOperations, ModeledFileEffects.
 // Consumes: v4.std.algebra, v4.std.diagnostic, v4.std.machine.
 // Status: scaffold — Wave-2 fail-closed boundary (POSIX substrate retained for process/testgen consumers).
 
@@ -110,11 +110,6 @@ type FileWriteWitness {
   request: FileWrite,
   resource: FileResource
 }
-
-// 🟢 coproduct dissolution — Wave-2-C2.
-type FileEffectWitness
-  = ReadWitness { witness: FileReadWitness }
-  | WriteWitness { witness: FileWriteWitness }
 
 type FileReadResult = Outcome<FileContent>
 
