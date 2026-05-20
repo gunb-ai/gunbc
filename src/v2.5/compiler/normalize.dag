@@ -4,7 +4,7 @@
 // Owns: normalize, normalize_seam, c3 sugar rule application.
 // Consumes: v2_5.std.stage_types (PR #3418), v2_5.std.sugar_rules, v2_5.std.diagnostic,
 //   v2_5.compiler.normalize_forward (Resolved* -> Normalized* item projection).
-// Seam carriers use node.dag EdgeLabel (Named | Positional) per Tier 1 reconcile (#3418 dfb926f8c).
+// Seam edge checks: import edge_is_named / edge_is_positional from v2_5.std.node (no local match).
 // Authority: src/v4/TASKS.md §T-8 (C3 desugar).
 
 module v2_5.compiler.normalize

@@ -75,6 +75,7 @@ fn connective_edge_discipline(c: Connective) -> EdgeDiscipline {
   }
 }
 
+// 🟢 EdgeLabel projection (canonical substrate accessor; stage consumers import)
 fn edge_is_named(label: EdgeLabel) -> Bool {
   match label {
     Named { name: _ } => true
