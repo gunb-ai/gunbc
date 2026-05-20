@@ -1,6 +1,6 @@
 // src/v4/std/regeneration.dag
 // Scope: P8 change-consequence substrate — ChangeSet, AffectedSet, Projection, Artifact, RecomputePlan.
-// Owns: Change, ChangeSet, AffectedSet, InvalidationReason, Projection, ArtifactKind, Artifact, RecomputePlan.
+// Owns: Change, ChangeSet, AffectedConsequence, AffectedSet, InvalidationReason, Projection, ArtifactKind, Artifact, RecomputePlan.
 // Consumes: v4.std.collection, v4.std.dependency, v4.std.node, v4.std.witness.
 // Status: Wave-1 Worker A strict substrate.
 
@@ -21,31 +21,31 @@ import v4.std.pipeline { CarrierKind }
 import v4.std.witness { Witness }
 
 
-// 🟡 feature:projection-identity-ref consumer:v4.std.regeneration::Projection dissolve-on: Projection rows replace Symbol in AffectedSet.projections (bounds: projections field; owner: P8-typed-carrier PR post-#3439 per homomorphism.md §568-578; prerequisite to src/v4/TASKS.md T-21 §847).
+// 🟡 feature:projection-identity-ref consumer:v4.std.regeneration::Projection dissolve-on: Projection substrate rows in AffectedConsequence (bounds: AffectedProjection.projection; owner: src/v4/TASKS.md T-21 §847).
 type ProjectionIdentityRef = Symbol
 
 
-// 🟡 feature:recompute-cache-key consumer:v4.std.regeneration::RecomputePlan dissolve-on: CacheKey carrier in RecomputePlan.cached (bounds: cached field; owner: P8-typed-carrier PR post-#3439 per homomorphism.md §568-578; prerequisite to src/v4/TASKS.md T-21 §847).
+// 🟡 feature:recompute-cache-key consumer:v4.std.regeneration::RecomputePlan dissolve-on: CacheKey in RecomputePlan.cached (bounds: cached field; owner: src/v4/TASKS.md T-20 §802).
 type CacheKey = Symbol
 
 
-// 🟡 feature:recompute-invalidation-key consumer:v4.std.regeneration::RecomputePlan dissolve-on: InvalidationKey carrier in RecomputePlan.invalidated (bounds: invalidated field; owner: P8-typed-carrier PR post-#3439 per homomorphism.md §568-578; prerequisite to src/v4/TASKS.md T-21 §847).
+// 🟡 feature:recompute-invalidation-key consumer:v4.std.regeneration::RecomputePlan dissolve-on: InvalidationKey in RecomputePlan.invalidated (bounds: invalidated field; owner: src/v4/TASKS.md T-20 §802).
 type InvalidationKey = Symbol
 
 
-// 🟡 feature:lens-contract-ref consumer:v4.lens::LensContract dissolve-on: LensContract authority in InvalidationFromLensContract (bounds: lens field; owner: src/v4/TASKS.md T-21 §847 hoist PR).
+// 🟡 feature:lens-contract-ref consumer:v4.lens::LensContract dissolve-on: LensContract in InvalidationFromLensContract (bounds: lens field; owner: src/v4/TASKS.md T-21 §847).
 type LensContractRef = Symbol
 
 
-// 🟡 feature:pipeline-stage-name consumer:v4.std.pipeline::PipelineStage dissolve-on: PipelineStage.name in PipelineStageContractChanged (bounds: stage field; owner: src/v4/std/pipeline.dag semantic_compile_pipeline stage rows).
+// 🟡 feature:pipeline-stage-name consumer:v4.std.pipeline::PipelineStage dissolve-on: PipelineStage.name in PipelineStageContractChanged (bounds: stage field; owner: src/v4/std/pipeline.dag semantic_compile_pipeline).
 type PipelineStageName = Symbol
 
 
-// 🟡 feature:stage0-contract-ref consumer:v4.std.regeneration::Stage0Contract dissolve-on: Stage0Contract carrier in Stage0ContractChanged (bounds: contract field; owner: docs/design-v4-compiler-homomorphism.md §934 stage0 regeneration contract PR).
+// 🟡 feature:stage0-contract-ref consumer:v4.std.regeneration::Stage0Contract dissolve-on: Stage0Contract in Stage0ContractChanged (bounds: contract field; owner: src/v4/TASKS.md T-20 §802 workflow/bootstrap.dag).
 type Stage0ContractRef = Symbol
 
 
-// 🟡 feature:core-package-schema-ref consumer:v4.std.regeneration::CorePackageSchema dissolve-on: CorePackageSchema carrier in CorePackageSchemaChanged (bounds: schema field; owner: P8-typed-carrier PR post-#3439 per homomorphism.md §568-578 CorePackage row).
+// 🟡 feature:core-package-schema-ref consumer:v4.std.regeneration::CorePackageSchema dissolve-on: CorePackageSchema in CorePackageSchemaChanged (bounds: schema field; owner: docs/design-v4-compiler-homomorphism.md §P9 Stage0Contract ~391).
 type CorePackageSchemaRef = Symbol
 
 
@@ -104,12 +104,20 @@ type ArtifactRef {
 }
 
 
+// 🟢 coproduct dissolution
+type AffectedConsequence
+  = Invalidation { reason: InvalidationReason }
+  | AffectedProjection {
+      projection: ProjectionIdentityRef,
+      because: InvalidationReason
+    }
+  | AffectedArtifact { artifact: ArtifactRef, because: InvalidationReason }
+
+
 type AffectedSet {
   source: ChangeSet
   graph: DependencyGraph
-  invalidations: List<InvalidationReason>
-  projections: List<ProjectionIdentityRef>
-  artifacts: List<ArtifactRef>
+  consequences: List<AffectedConsequence>
 }
 
 
@@ -155,8 +163,6 @@ fn empty_affected_set(source: ChangeSet, graph: DependencyGraph) -> AffectedSet 
   AffectedSet {
     source: source,
     graph: graph,
-    invalidations: [],
-    projections: [],
-    artifacts: []
+    consequences: []
   }
 }
