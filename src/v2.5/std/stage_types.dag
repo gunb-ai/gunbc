@@ -2,10 +2,11 @@
 // Each stage owns a distinct closed-sum root type. No optional fields acting
 // as kind discriminators; no inferred? on pre-infer phases; no NodeId side tables.
 //
-// Phase AST shapes live here; substrate algebra in v2_5.std.node (PR #3422).
-// Reconcile: calm-crane-724 normalize seam (Seam* types); cool-bee-832 Tier 0
-// (Node + List<Edge>, 6-case Connective, 4-variant NodeKind).
-// Phase types stay parallel sums (not Node bags); lowering to Node uses node.dag.
+// Phase AST shapes live here; substrate is v2_5.std.node only (PR #3422, cool-bee-832).
+// NodeKind = TypeForm | Computation (2-variant, THESIS-faithful). Declarations, wrappers,
+// and module structure are stage-level variants (ParseItem, ParseExpr, …), not substrate.
+// Reconcile: calm-crane-724 normalize seam (Seam* types).
+// Lowering: phase AST → Node { kind, children: List<Edge> } at stage boundaries.
 //
 // Pipeline (type signatures are the contract):
 //   tokenize : SourceText -> TokenStream
@@ -22,9 +23,7 @@ import v2_5.std.node {
   Symbol,
   Connective,
   Behavior,
-  EdgeLabel,
-  DeclarationKind,
-  CompositeRole
+  EdgeLabel
 }
 import v2_5.std.syntax {
   BinOp, UnaryOpKind, LiteralValue, OperationModifier, ExprErrorKind, AlgebraFieldKind
@@ -47,14 +46,10 @@ data c3_surface_sugar_fn: Symbol = c3_surface_sugar_fn
 data c3_surface_sugar_type: Symbol = c3_surface_sugar_type
 data c3_surface_sugar_operation: Symbol = c3_surface_sugar_operation
 
-// DeclarationKind / CompositeRole (node.dag) ↔ phase variant mapping:
-//   ParseTypeDecl / ResolvedTypeDecl → DeclarationKind::TypeDecl
-//   ParseFn / ParseFunc → FnDecl; ParseService → (OperationSugar + service body)
-//   ParseImport* → ImportDecl; ParseModule → ModuleDecl
-//   ParseMatchArm → CompositeRole::MatchArm; ParsePattern → Pattern
-//   ParseStringInterp → StringInterp
-// Tier-1 🟡: Arg / FieldInit / Param wrappers — propose ArgSlot | FieldInitSlot |
-//   ParamSlot extensions to CompositeRole when cool-bee-832 expands substrate.
+// THESIS-faithful discrimination (stage-types only; substrate stays TypeForm | Computation):
+//   ParseModule / ParseImport / ParseFn / ParseTypeDecl / ParseService → ParseItem variants
+//   ParseMatchArm / ParsePattern / ParseArg / ParseFieldInit → nested under ParseExpr
+//   Lowering to substrate: module items → TypeForm { connective: Conj }; expr bodies → Computation
 
 // =========================================================================
 // Parse phase — syntax only, no binding or typing
@@ -1157,4 +1152,4 @@ type SeamNormalizedNode
 // v2 connective on flat Node → ParseTypeExpr | TypeForm (phase AST; lower to Connective+Edge)
 // calm-crane-724 SeamResolvedNode → normalize sugar strip → SeamNormalizedNode
 // full pipeline: ResolvedSugared / ResolvedCore → NormalizedItem (core only)
-// node.dag: Node { kind: NodeKind, children: List<Edge> } — substrate target for lowering
+// node.dag (PR #3422): NodeKind = TypeForm | Computation; Node { kind, children: List<Edge> }
