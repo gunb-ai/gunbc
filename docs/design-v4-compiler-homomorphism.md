@@ -1152,7 +1152,7 @@ If a worker encounters a deeper scaffold-vs-design contradiction not catalogued 
 
 - **Glue derivation / omni-stack** — orthogonal substrate (P4). Architecture must not preclude, but no implementation in the initial single-target compiler.
 - **`extdeps/protocols/`** — missing substrate; deferred until glue is in scope.
-- **Lens framework implementation** — out of initial compiler-core scope. The lens consumption contract is **ratified by P3 + Ratified Q0**; the multi-lens dependency-management substrate primitive remains Open Q6.
+- **Lens framework implementation** — out of initial compiler-core scope. The lens consumption contract is **ratified by P3 + Ratified Q0**; the `LensAlgebra<F>` + composed-lens-algebra substrate work is ratified by Q6 (NOT a separate primitive; derives from `fold_node`).
 - **Per-target emitters** — does not exist (P1). Each new target is one new `LanguageModel`.
 - **Multi-module compilation** — single-module first; module decomposition substrate (`std/system.dag`) is a follow-on.
 
