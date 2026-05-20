@@ -2,7 +2,8 @@
 // Scope: fail-closed diagnostic schema.
 // Anchor: THESIS.md "show the correct code" + INVARIANTS P3; design-v4-compiler-homomorphism.md Ratified Q11.
 // Owns: Diagnostic, Outcome, Diagnostics, NonEmptyDiagnostics, StageDiagnosticPolicy, NodeOutcomeFold,
-//       traverse_node, sequence_node, bind_outcome, Locus, Extent, Correction, NoCorrectionReason.
+//       traverse_node, sequence_node, bind_outcome, outcome_node_eq, diagnostic_eq, diagnostics_eq,
+//       Locus, Extent, Correction, NoCorrectionReason.
 // Consumes: std node, std collection.
 // Status: T-3 modeled; Wave-2-BC3 Outcome ratification (Ratified Q11).
 
@@ -111,13 +112,21 @@ fn diagnostic_eq(a: Diagnostic, b: Diagnostic) -> Bool {
     && locus_eq(a: a.at, b: b.at)
     && correction_eq(a: a.correction, b: b.correction)
 }
+fn diagnostic_tail_eq(a: List<Diagnostic>, b: List<Diagnostic>) -> Bool {
+  if count(a) != count(b) {
+    false
+  } else {
+    match first(a) {
+      None => true
+      Some { value: da } => match first(b) {
+        Some { value: db } => diagnostic_eq(a: da, b: db)
+        None => false
+      }
+    }
+  }
+}
 fn non_empty_diagnostics_eq(a: NonEmptyDiagnostics, b: NonEmptyDiagnostics) -> Bool {
-  diagnostic_eq(a: a.head, b: b.head)
-    && fold(a.tail, init: true, f: fn(acc, d) {
-      acc && fold(b.tail, init: false, f: fn(_, bd) {
-        diagnostic_eq(a: d, b: bd)
-      })
-    })
+  diagnostic_eq(a: a.head, b: b.head) && diagnostic_tail_eq(a: a.tail, b: b.tail)
 }
 fn diagnostics_eq(a: Diagnostics, b: Diagnostics) -> Bool {
   match a {
