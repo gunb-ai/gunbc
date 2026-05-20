@@ -94,7 +94,7 @@ That is the full external surface of the compiler. **Three arguments** (`input_t
 
 **`LanguageModel`** is a `.dag` model in `extdeps/languages/X.dag` — a fact-bundle declaring X's grammar (bidirectional), primitive types with their facts (width, signedness, range, …), algebra inhabitance (this type inhabits this algebra), and sugar dissolutions (how the language's surface forms reduce to substrate primitives).
 
-**`HostModel`** is structurally the same shape as `LanguageModel` minus the grammar — execution is the terminal action, not text emission. Whether it's a distinct substrate type or a LanguageModel variant is **Open Q1** below.
+**`HostModel`** is a **distinct substrate type, peer of `LanguageModel`** — both extend a shared `ModelCore` (primitive types, algebra inhabitance, laws, effect / partiality semantics). `HostModel` declares host-side concerns that have no emit-side analog: runtime value representation, primitive operation interpretation, execution semantics, resource / effect boundary. **Ratified Q1** below; full carrier breakdown in "Carrier shapes — `ModelCore` / `LanguageModel` / `HostModel`."
 
 **`Output`** is mode-dependent: `TargetSource` (bytes/text) for `TranslateTo`, `Value` (host representation) for `Eval`.
 
@@ -491,13 +491,17 @@ Preferred: declarative-data-only. Every part of a `LanguageModel` should be insp
 
 But declarative-only is hard for some concerns (e.g., scoping rules in languages with macros that rewrite scope). Need to decide: are macro-handling languages out of scope, or does `LanguageModel` permit a typed-predicate dialect for them?
 
-### Open Q8 — Coercion-fold completeness vs fail-closed-incomplete
+### Open Q8 — Diagnostic shape on coercion-fold failure
 
-When the coercion fold cannot find a target inhabitant for a source structure, is the failure:
-- **Q8a.** "No homomorphism exists" (complete: the search proved exhaustively that no inhabitant works), OR
-- **Q8b.** "Search could not find one" (incomplete: the search bounded by reasonable depth, may have missed something).
+> **Note:** the prior draft of this Q proposed a "Q8a complete vs Q8b incomplete-bounded" fork. This was wrong and was struck — per `src/v4/TASKS.md` T-9 (D2 reversal ratification), the coercion fold is **decidable by construction over the closed declared candidate set**; there is no "search may have missed something" mode. Empty candidate ⇒ Diagnostic, always. The legitimate open question is the *shape* of that diagnostic, not whether incompleteness is allowed.
 
-Diagnostics must distinguish these. Q8b is acceptable IF the diagnostic surface tells the user "the compiler could not establish a homomorphism; this is not proof of impossibility — consider X / Y / Z workarounds." Q8a is stronger but may not always be achievable.
+When the coercion fold fails (no target inhabitant exists for a source structure in the target's closed candidate set), the diagnostic must carry actionable provenance. The open sub-questions:
+
+- **Q8a.** What structural mismatch caused the failure? The diagnostic should name WHICH algebra inhabitance the source required, WHICH target inhabitants were considered, and WHERE in the zip-fold the structural inequality first surfaced — not a generic "no inhabitant found."
+- **Q8b.** Does the diagnostic include a *near-miss* — the target inhabitant that came closest, with a structural-diff explanation? Useful for IDE quick-fix suggestions; possibly costly to compute.
+- **Q8c.** Is the diagnostic differentiated by *reason*: structural-shape-mismatch vs missing-algebra-inhabitance vs effect/partiality-mismatch vs version-dialect-mismatch? Each is a different user-facing remediation.
+
+These are diagnostic-UX questions, not correctness questions. The coercion fold's correctness is settled (decidable-by-construction per T-9).
 
 ### Open Q9 — Independent witness checking
 
