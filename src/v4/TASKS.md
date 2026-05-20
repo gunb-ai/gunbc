@@ -133,9 +133,12 @@ Substrate / extdeps fan-out:
   T-4.12 extdeps/languages/llvm_ir.dag   [needs T-1, T-2; B2-OMNI probe — generalize DOWN the stack (SSA IR)]
   T-4.13 extdeps/languages/machine_code.dag  [needs T-3 machine + T-4 LanguageModel shape; B2-OMNI probe — bottom of stack; disassembly = extreme fail-closed]
   T-4.14 extdeps/languages/ptx.dag       [needs T-1, T-2; B2-OMNI + IN-B probe — SIMT data-parallel vs the 5 behaviors]
-  T-4.15 extdeps/protocols/{rest,graphql,grpc}.dag   [needs T-3, T-26; P4 substrate from `docs/design-v4-compiler-homomorphism.md` (Ratified 2026-05-20). Language-orthogonal per P4 — transport declares its own wire-format type system; LanguageModel bindings happen at T-16 composition time, not on this substrate. Out-of-scope for the initial single-target compiler; in-scope for the architecture so glue derivation (T-16 omni-stack) is not foreclosed.]
   T-5   REMOVED 2026-05-15 (operator-ratified) — work-direction meta-layer
         cut; only workflow/bootstrap.dag (T-20) + workflow/ci.dag (T-24) remain
+  (T-4.15 protocols substrate is NOT in this "instant parallel fill" block —
+   see "Close-the-loop + late substrate" below. It is scheduled-but-deferred:
+   file authoring activates when omni-stack glue work activates, per P4
+   "Out of scope for the initial single-target compiler.")
 
 Test + bootstrap substrate (schedule early — every later task benefits):
   T-19  lens/testgen.dag                 [needs T-1, T-2, T-3]
@@ -199,6 +202,17 @@ Close-the-loop + late substrate:
   T-26  std/ boundary carriers (HttpMethod / URL / NetworkAddress port)
         [needs T-3] — feeds T-4.6 (openapi's HttpMethod/Url) and the T-16
         wire contract; genuine slack (T-4.6 itself has slack).
+  T-4.15 extdeps/protocols/{rest,graphql,grpc}.dag — transport substrate
+        (Ratified P4)
+        [needs T-3, T-26; scheduled-but-deferred — file authoring activates
+        with omni-stack glue work per P4 ("Out of scope for the initial
+        single-target compiler. Architecture must not preclude, but no
+        implementation in the initial single-target compiler"). Language-
+        orthogonal: transport declares its own wire-format type system;
+        LanguageModel ⊗ TransportModel composition is T-16's responsibility,
+        not this substrate's. Single-authority for the activation gate
+        lives in the task body's "Out of scope for the initial single-
+        target compiler" section — see T-4.15.]
   T-33  std/model_core.dag — shared substrate factoring (Ratified Q1)
         [needs T-1, T-2, T-3] — the shared base carrying primitive types,
         algebra inhabitance, laws, effect / partiality semantics; consumed
