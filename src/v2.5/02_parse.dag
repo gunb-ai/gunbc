@@ -13,6 +13,7 @@ import v2_5.std.node { EdgeLabel, Symbol }
 import v2_5.std.stage_types { ParseNode, Token }
 
 
+// 🟡 feature:grammar-walker — dissolves when grammar productions are consumed by the parser homomorphism.
 type GrammarExpr
   = Empty
   | Terminal { token_class: Symbol, capture: Symbol }
@@ -31,11 +32,13 @@ type GrammarProduction {
 }
 
 
+// 🟡 feature:tier1-stage-types — dissolves when builders construct concrete ParseNode variants from the stage-type kit.
 type ParseBuilder
   = BuildParseNode { kind: ParseNodeKind, fields: List<ParseFieldBinding> }
   | ForwardCapture { capture: Symbol }
 
 
+// 🟡 feature:tier1-stage-types — dissolves when ParseNode exposes these closed variants directly.
 type ParseNodeKind
   = ParseModule
   | ParseImport
@@ -69,12 +72,14 @@ type ParseFieldBinding {
 }
 
 
+// 🟡 feature:grammar-walker — dissolves when capture binding is interpreted by the grammar walker.
 type ParseCapture
   = CapturedToken { name: Symbol }
   | CapturedNode { name: Symbol }
   | CapturedNodes { name: Symbol }
 
 
+// 🟢 terminal — associativity has the irreducible left/right/non-associative parser cases.
 type OperatorAssociativity
   = LeftAssociative
   | RightAssociative
