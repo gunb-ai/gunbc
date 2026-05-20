@@ -1,7 +1,7 @@
 // src/v4/compiler/04_infer.dag
 // Scope: Stage 4 — ResolvedTree -> InferredTree; bounded Find phase (DECISIONS C1 / IR-1).
 // Owns: AlgebraRef, InferredFacts, InferredTree, infer_stage_locus_port, infer_coercion_fold_not_realized, infer_coercion_fold_not_realized_diagnostic, infer.
-// Consumes: v4.compiler.resolve, v4.lens.cost, v4.std.cardinality, v4.std.collection, v4.std.diagnostic, v4.std.node.
+// Consumes: v4.compiler.resolve, v4.std.cardinality, v4.std.collection, v4.std.diagnostic, v4.std.node.
 // Status: scaffold — TASKS T-9; Wave-1 fail-closed boundary.
 // Anchor: https://en.wikipedia.org/wiki/Type_inference
 
