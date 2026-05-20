@@ -43,23 +43,28 @@ type LexerFrame {
   eof_emitted: Bool
 }
 
+// 🟢 coproduct dissolution
 type LexerState
   = Lexing { frame: LexerFrame }
   | LexFailed { diagnostic: Diagnostic }
 
+// 🟢 coproduct dissolution
 type ClassScanState
   = ClassOpen { end: Int }
   | ClassClosed { end: Int }
 
+// 🟢 coproduct dissolution
 type LineScanState
   = LineOpen { end: Int }
   | LineClosed { end: Int }
 
+// 🟢 coproduct dissolution
 type StringBodyState
   = StringOpen { cursor: Int, acc: String, escaped: Bool }
   | StringClosed { content: String, end_pos: Int }
   | StringInterpolation { content: String, end_pos: Int }
 
+// 🟢 coproduct dissolution
 type StringTokenRole
   = WholeString
   | InterpolationBegin
@@ -72,6 +77,7 @@ type ScanStep {
   interpolation_depth: List<Int>
 }
 
+// 🟢 coproduct dissolution
 type ScanOutcome
   = Scanned { step: ScanStep }
   | ScanRejected { diagnostic: Diagnostic }
@@ -603,9 +609,9 @@ fn tokenize_expectation_holds(source: Source, expected: TokenizeExpectation) -> 
 
 data nested_brace_interpolation_regression: TokenizeRegression = TokenizeRegression {
   name: nested_brace_interpolation_regression,
-	  source: Source {
-	    file: "nested_brace_interpolation_regression",
-	    file_symbol: nested_brace_interpolation_regression,
+  source: Source {
+    file: "nested_brace_interpolation_regression",
+    file_symbol: nested_brace_interpolation_regression,
     text: concat(
       "\"x ",
       concat(
@@ -637,13 +643,13 @@ data nested_brace_interpolation_regression: TokenizeRegression = TokenizeRegress
 
 data unterminated_interpolation_regression: TokenizeRegression = TokenizeRegression {
   name: unterminated_interpolation_regression,
-	  source: Source {
-	    file: "unterminated_interpolation_regression",
-	    file_symbol: unterminated_interpolation_regression,
+  source: Source {
+    file: "unterminated_interpolation_regression",
+    file_symbol: unterminated_interpolation_regression,
     text: concat("\"x ", concat(from_code_point(cp: code_point("{")), "name"))
   },
-	  expected: ExpectRejected { reason: unterminated_interpolation }
-	}
+  expected: ExpectRejected { reason: unterminated_interpolation }
+}
 
 data nested_brace_interpolation_regression_holds: Bool = tokenize_expectation_holds(
     source: nested_brace_interpolation_regression.source,
