@@ -1,15 +1,25 @@
 // src/v4/extdeps/file_system.dag
-// Scope: file system substrate — paths, file kinds, read/write/list/kind operations.
-// Owns: PosixByteString, NamedPathComponent, PathComponent, AbsolutePath, RelativePathHead, RelativePath, Path, FileKind, FileKindResolutionPolicy, Filesystem, FileBody, file-system request/result/operation carriers.
-// Consumes: Diagnostic, Outcome, Byte, FreeMonoid, List.
-// Status: T-4.5 modeled 2026-05-16.
+// Scope: file system substrate — paths, file kinds, modeled peripheral I/O effects.
+// Owns: PosixByteString, NamedPathComponent, PathComponent, AbsolutePath, RelativePathHead, RelativePath, Path, FileKind, FileKindResolutionPolicy, Filesystem, FileBody, FileResource, FilePath, FileContent, FileRead, FileWrite, NodeFileBinding, FileEffectWitness, FileWriteWitness, file-system request/result/operation carriers, file_read, file_write.
+// Consumes: std diagnostic, std outcome, std node, std algebra, std machine.
+// Status: T-4.5 modeled; peripheral effect surface per design-v4-compiler-homomorphism (not compile-core).
+
 
 module v4.extdeps.file_system
 
 
 import v4.std.algebra { FreeMonoid }
-import v4.std.diagnostic { Outcome }
+import v4.std.diagnostic {
+  Diagnostic,
+  ExternalContractUnknown,
+  Outcome,
+  PortLocus,
+  Rejected,
+  Singleton,
+  Unavailable
+}
 import v4.std.machine { Byte }
+import v4.std.node { Node, Symbol }
 
 
 // Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/V1_chap03.html#tag_03_241
@@ -71,6 +81,40 @@ type Filesystem
 // coincides: finite POSIX byte sequence.
 type FileBody = FreeMonoid<Byte>
 
+// Modeled resource — effects are explicit parameters against this carrier (B-5 DI).
+type FileResource {
+  filesystem: Filesystem
+}
+
+// Peripheral effect path coordinate (absolute path for MVP shims).
+type FilePath {
+  absolute: AbsolutePath
+}
+
+// Effect payload for read results.
+type FileContent = FileBody
+
+// Effect markers — distinguish read vs write for affected_set granularity (B-5).
+type FileRead {}
+
+type FileWrite {}
+
+type FileWriteWitness {
+  resource: FileResource
+  path: FilePath
+}
+
+type NodeFileBinding {
+  node: Node
+  path: FilePath
+}
+
+type FileEffectWitness
+  = ReadWitness { effect: FileRead, path: FilePath, content: FileContent }
+  | WriteWitness { effect: FileWrite, path: FilePath, witness: FileWriteWitness }
+
+data file_effect_dependency_wiring_deferred: Symbol = file_effect_dependency_wiring_deferred
+
 type ReadFileRequest {
   filesystem: Filesystem
   path: AbsolutePath
@@ -106,4 +150,41 @@ type FileSystemOperations {
   write_file: fn(WriteFileRequest) -> WriteFileResult
   list_dir: fn(ListDirRequest) -> ListDirResult
   file_kind: fn(FileKindRequest) -> FileKindResult
+}
+
+data file_read_effect_not_wired: Symbol = file_read_effect_not_wired
+
+data file_write_effect_not_wired: Symbol = file_write_effect_not_wired
+
+fn file_effect_not_wired_diagnostic(reason: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: PortLocus { port: reason },
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn file_read(
+  resource: FileResource,
+  path: FilePath,
+  ops: FileSystemOperations
+) -> Outcome<FileContent> {
+  Rejected {
+    diagnostics: Singleton {
+      diagnostic: file_effect_not_wired_diagnostic(reason: file_read_effect_not_wired)
+    }
+  }
+}
+
+fn file_write(
+  resource: FileResource,
+  path: FilePath,
+  content: FileContent,
+  ops: FileSystemOperations
+) -> Outcome<FileWriteWitness> {
+  Rejected {
+    diagnostics: Singleton {
+      diagnostic: file_effect_not_wired_diagnostic(reason: file_write_effect_not_wired)
+    }
+  }
 }

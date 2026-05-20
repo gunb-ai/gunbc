@@ -10,12 +10,14 @@ module v4.std.node
 
 
 import v4.std.diagnostic {
+  Accepted,
   Diagnostic,
   ExternalContractUnknown,
-  NonEmptyDiagnostics,
   Outcome,
   PortLocus,
+  Produced,
   Rejected,
+  RejectedSingular,
   Singleton,
   Unavailable
 }

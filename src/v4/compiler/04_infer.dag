@@ -1,8 +1,8 @@
 // src/v4/compiler/04_infer.dag
 // Scope: Stage 4 — ResolvedTree -> InferredTree; bounded Find phase (DECISIONS C1 / IR-1).
 // Owns: AlgebraRef, InferredFacts, InferredTree, infer_stage_locus_port, infer_coercion_fold_not_realized, infer_coercion_fold_not_realized_diagnostic, infer.
-// Consumes: v4.compiler.resolve, v4.lens.cost, v4.std.cardinality, v4.std.collection, v4.std.diagnostic, v4.std.node.
-// Status: scaffold — TASKS T-9; Wave-1 fail-closed boundary.
+// Consumes: v4.compiler.resolve, v4.std.cardinality, v4.std.collection, v4.std.diagnostic, v4.std.node.
+// Status: scaffold — TASKS T-9; Wave-1 fail-closed boundary; no lens imports (P3 commitment 4).
 // Anchor: https://en.wikipedia.org/wiki/Type_inference
 
 
@@ -10,7 +10,6 @@ module v4.compiler.infer
 
 
 import v4.compiler.resolve { ResolvedTree }
-import v4.lens.cost { SymbolicCost }
 import v4.std.cardinality { TerminationProof }
 import v4.std.collection { Map }
 import v4.std.diagnostic {
@@ -19,6 +18,8 @@ import v4.std.diagnostic {
   Locus,
   Outcome,
   PortLocus,
+  Rejected,
+  Singleton,
   Unavailable
 }
 import v4.std.node { Node, Symbol }
@@ -31,11 +32,10 @@ type AlgebraRef {
 }
 
 
-// RULING-1: needs-more-work — cost/inhabitance coordinates remain T-9/T-12 bridged.
+// RULING-1: needs-more-work — compiler-core semantic facts only; dimensional cost is lens-side (P3).
 type InferredFacts {
   resolved_type: Node
   inhabits: AlgebraRef
-  cost: SymbolicCost
   descent: TerminationProof
 }
 
@@ -64,8 +64,10 @@ fn infer_coercion_fold_not_realized_diagnostic(at: Locus) -> Diagnostic {
 
 fn infer(tree: ResolvedTree) -> Outcome<InferredTree> {
   Rejected {
-    diagnostic: infer_coercion_fold_not_realized_diagnostic(
-      at: PortLocus { port: infer_stage_locus_port }
-    )
+    diagnostics: Singleton {
+      diagnostic: infer_coercion_fold_not_realized_diagnostic(
+        at: PortLocus { port: infer_stage_locus_port }
+      )
+    }
   }
 }
