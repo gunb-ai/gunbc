@@ -1,6 +1,6 @@
 // Scope: v2.5 pipeline orchestrator — phase-typed stage composition as first-class data.
 // Owns: PipelineStageKind, PipelineStageRow, v2_5_compile_pipeline, PipelineCarrier,
-//       CompilePipelineState, compile_pipeline_io_ok, outcome_bind, run_compile_pipeline_fold, compile.
+//       CompilePipelineState, compile_pipeline_io_ok, run_compile_pipeline_fold, compile.
 // Consumes: v2_5.std.diagnostic + v2_5.std.node (Tier 0, PR #3422 — in tree),
 //           v2_5.std.stage_types (Tier 1 — vivid-lynx-807, pending),
 //           v2_5.compiler.{tokenize,parse,resolve,normalize,infer,complexity,ownership,artifact,emit} (Tier 2 — pending).
@@ -135,6 +135,8 @@ fn pipeline_row_emit() -> PipelineStageRow {
   PipelineStageRow { stage: StageEmit, gate: BlockingOnErrors, consumes: inferred_node_type, produces: target_source_type }
 }
 
+// 🟡 Scaffold receipt only — row builders == table by construction today; real mis-wiring
+// should become unrepresentable when Tier 1 gives phase-typed PipelineStageRow constructors.
 fn compile_pipeline_io_ok() -> Bool {
   let r0 = pipeline_row_tokenize()
   let r1 = pipeline_row_parse()
@@ -164,23 +166,33 @@ fn compile_pipeline_io_ok() -> Bool {
     && pipeline_adjacent_link_ok(prev: r7, next: r8)
 }
 
+// Single authority for row shape — compile_pipeline_io_ok() checks these builders match the table.
 data v2_5_compile_pipeline: List<PipelineStageRow> = [
-  PipelineStageRow { stage: StageTokenize, gate: BlockingOnErrors, consumes: source_type, produces: token_stream_type },
-  PipelineStageRow { stage: StageParse, gate: BlockingOnErrors, consumes: token_stream_type, produces: parse_node_type },
-  PipelineStageRow { stage: StageResolve, gate: BlockingOnErrors, consumes: parse_node_type, produces: resolved_node_type },
-  PipelineStageRow { stage: StageNormalize, gate: BlockingOnErrors, consumes: resolved_node_type, produces: normalized_node_type },
-  PipelineStageRow { stage: StageInfer, gate: BlockingOnErrors, consumes: normalized_node_type, produces: inferred_node_type },
-  PipelineStageRow { stage: StageComplexity, gate: SurfaceOnly, consumes: inferred_node_type, produces: inferred_node_type },
-  PipelineStageRow { stage: StageOwnership, gate: BlockingOnErrors, consumes: inferred_node_type, produces: inferred_node_type },
-  PipelineStageRow { stage: StageArtifactPlan, gate: BlockingOnErrors, consumes: inferred_node_type, produces: inferred_node_type },
-  PipelineStageRow { stage: StageEmit, gate: BlockingOnErrors, consumes: inferred_node_type, produces: target_source_type }
+  pipeline_row_tokenize(),
+  pipeline_row_parse(),
+  pipeline_row_resolve(),
+  pipeline_row_normalize(),
+  pipeline_row_infer(),
+  pipeline_row_complexity(),
+  pipeline_row_ownership(),
+  pipeline_row_artifact_plan(),
+  pipeline_row_emit()
 ]
 
 data compile_pipeline_mis_wired: Symbol = compile_pipeline_mis_wired
+data compile_pipeline_carrier_mismatch: Symbol = compile_pipeline_carrier_mismatch
 
 fn compile_pipeline_mis_wired_diagnostic() -> Diagnostic {
   Diagnostic {
     reason: compile_pipeline_mis_wired,
+    at: PortLocus { port: compile_pipeline_mis_wired },
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn compile_pipeline_carrier_mismatch_diagnostic(stage: PipelineStageKind) -> Diagnostic {
+  Diagnostic {
+    reason: compile_pipeline_carrier_mismatch,
     at: PortLocus { port: compile_pipeline_mis_wired },
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -191,17 +203,6 @@ fn pipeline_table_well_formed() -> Outcome<List<PipelineStageRow>> {
     Produced { value: v2_5_compile_pipeline }
   } else {
     Rejected { diagnostic: compile_pipeline_mis_wired_diagnostic() }
-  }
-}
-
-// =========================================================================
-// Outcome bind — short-circuit without per-stage hand-rolled match chains
-// =========================================================================
-
-fn outcome_bind<T, U>(step: Outcome<T>, continue: fn(T) -> Outcome<U>) -> Outcome<U> {
-  match step {
-    Produced { value: v } => continue(v)
-    Rejected { diagnostic: d } => Rejected { diagnostic: d }
   }
 }
 
@@ -257,6 +258,10 @@ fn pipeline_state_halted(state: CompilePipelineState, diagnostics: List<Diagnost
   }
 }
 
+fn pipeline_state_carrier_mismatch(state: CompilePipelineState, stage: PipelineStageKind) -> CompilePipelineState {
+  pipeline_state_halted(state: state, diagnostics: [compile_pipeline_carrier_mismatch_diagnostic(stage: stage)])
+}
+
 fn pipeline_carrier_is_halted(carrier: PipelineCarrier) -> Bool {
   match carrier {
     CarrierHalted { diagnostics: _ } => true
@@ -291,7 +296,7 @@ fn apply_pipeline_stage(state: CompilePipelineState, row: PipelineStageRow) -> C
             Rejected { diagnostic: d } =>
               pipeline_state_halted(state: state, diagnostics: [d])
           }
-        _ => pipeline_state_halted(state: state, diagnostics: [])
+        _ => pipeline_state_carrier_mismatch(state: state, stage: row.stage)
       }
     StageParse =>
       match state.carrier {
@@ -311,7 +316,7 @@ fn apply_pipeline_stage(state: CompilePipelineState, row: PipelineStageRow) -> C
             Rejected { diagnostic: d } =>
               pipeline_state_halted(state: state, diagnostics: [d])
           }
-        _ => pipeline_state_halted(state: state, diagnostics: [])
+        _ => pipeline_state_carrier_mismatch(state: state, stage: row.stage)
       }
     StageResolve =>
       match state.carrier {
@@ -331,7 +336,7 @@ fn apply_pipeline_stage(state: CompilePipelineState, row: PipelineStageRow) -> C
             Rejected { diagnostic: d } =>
               pipeline_state_halted(state: state, diagnostics: [d])
           }
-        _ => pipeline_state_halted(state: state, diagnostics: [])
+        _ => pipeline_state_carrier_mismatch(state: state, stage: row.stage)
       }
     StageNormalize =>
       match state.carrier {
@@ -357,7 +362,7 @@ fn apply_pipeline_stage(state: CompilePipelineState, row: PipelineStageRow) -> C
             Rejected { diagnostic: d } =>
               pipeline_state_halted(state: state, diagnostics: [d])
           }
-        _ => pipeline_state_halted(state: state, diagnostics: [])
+        _ => pipeline_state_carrier_mismatch(state: state, stage: row.stage)
       }
     StageInfer =>
       match state.carrier {
@@ -386,7 +391,7 @@ fn apply_pipeline_stage(state: CompilePipelineState, row: PipelineStageRow) -> C
             Rejected { diagnostic: d } =>
               pipeline_state_halted(state: state, diagnostics: [d])
           }
-        _ => pipeline_state_halted(state: state, diagnostics: [])
+        _ => pipeline_state_carrier_mismatch(state: state, stage: row.stage)
       }
     StageComplexity =>
       if state.emit_blocked {
@@ -418,7 +423,7 @@ fn apply_pipeline_stage(state: CompilePipelineState, row: PipelineStageRow) -> C
               Rejected { diagnostic: d } =>
                 pipeline_state_halted(state: state, diagnostics: [d])
             }
-          _ => pipeline_state_halted(state: state, diagnostics: [])
+          _ => pipeline_state_carrier_mismatch(state: state, stage: row.stage)
         }
       }
     StageOwnership =>
@@ -451,7 +456,7 @@ fn apply_pipeline_stage(state: CompilePipelineState, row: PipelineStageRow) -> C
               Rejected { diagnostic: d } =>
                 pipeline_state_halted(state: state, diagnostics: [d])
             }
-          _ => pipeline_state_halted(state: state, diagnostics: [])
+          _ => pipeline_state_carrier_mismatch(state: state, stage: row.stage)
         }
       }
     StageArtifactPlan =>
@@ -483,7 +488,7 @@ fn apply_pipeline_stage(state: CompilePipelineState, row: PipelineStageRow) -> C
               Rejected { diagnostic: d } =>
                 pipeline_state_halted(state: state, diagnostics: [d])
             }
-          _ => pipeline_state_halted(state: state, diagnostics: [])
+          _ => pipeline_state_carrier_mismatch(state: state, stage: row.stage)
         }
       }
     StageEmit =>
@@ -507,13 +512,13 @@ fn apply_pipeline_stage(state: CompilePipelineState, row: PipelineStageRow) -> C
               Rejected { diagnostic: d } =>
                 pipeline_state_halted(state: state, diagnostics: [d])
             }
-          _ => pipeline_state_halted(state: state, diagnostics: [])
+          _ => pipeline_state_carrier_mismatch(state: state, stage: row.stage)
         }
       }
   }
 }
 
-fn run_compile_pipeline_fold(source: Source, spec: TargetSpec, run_emit: Bool) -> CompilePipelineState {
+fn run_compile_pipeline_fold(pipeline: List<PipelineStageRow>, source: Source, spec: TargetSpec, run_emit: Bool) -> CompilePipelineState {
   let initial = CompilePipelineState {
     carrier: CarrierSource { source: source },
     spec: spec,
@@ -524,7 +529,7 @@ fn run_compile_pipeline_fold(source: Source, spec: TargetSpec, run_emit: Bool) -
     artifact_plan: empty_artifact_plan(),
     stage_diags: []
   }
-  fold(v2_5_compile_pipeline, init: initial, f: (state, row) => apply_pipeline_stage(state: state, row: row))
+  fold(pipeline, init: initial, f: (state, row) => apply_pipeline_stage(state: state, row: row))
 }
 
 // =========================================================================
@@ -551,8 +556,8 @@ fn compile_pipeline_state_to_outcome(state: CompilePipelineState) -> Outcome<Tar
 
 fn compile(source: Source, spec: TargetSpec) -> Outcome<TargetSource> {
   match pipeline_table_well_formed() {
-    Produced { value: _table } =>
-      let state = run_compile_pipeline_fold(source: source, spec: spec, run_emit: true)
+    Produced { value: pipeline } =>
+      let state = run_compile_pipeline_fold(pipeline: pipeline, source: source, spec: spec, run_emit: true)
       compile_pipeline_state_to_outcome(state: state)
     Rejected { diagnostic: d } => Rejected { diagnostic: d }
   }
@@ -560,8 +565,8 @@ fn compile(source: Source, spec: TargetSpec) -> Outcome<TargetSource> {
 
 fn compile_to_inferred(source: Source, spec: TargetSpec) -> Outcome<InferredNode> {
   match pipeline_table_well_formed() {
-    Produced { value: _table } =>
-      let state = run_compile_pipeline_fold(source: source, spec: spec, run_emit: false)
+    Produced { value: pipeline } =>
+      let state = run_compile_pipeline_fold(pipeline: pipeline, source: source, spec: spec, run_emit: false)
       match state.carrier {
         CarrierInferred { inferred: inferred } =>
           if state.emit_blocked {
