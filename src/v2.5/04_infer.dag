@@ -75,6 +75,14 @@ type ExprDataDissolution
   | SliceCase
   | ReturnCase
 
+type InferCarrierClosure
+  = ClosedTypeRef
+  | ClosedCardinality
+  | ClosedAlgebraEvidence
+  | ClosedDescentEvidence
+  | ClosedTypeKitGate
+  | ClosedInferDiagnostic
+
 type TypeKitGate
   = AwaitingStageTypes { gate: Symbol }
   | BoundToStageTypes
@@ -104,6 +112,7 @@ type InferDiagnostic
   | NonBooleanCondition { actual: TypeRef }
   | BranchTypeMismatch { then_type: TypeRef, else_type: TypeRef }
   | EmptyMatch
+  | DuplicateField { field: Symbol }
   | UnimplementedTypeKitBinding { missing: Symbol }
 
 type SubstitutionPair {
@@ -133,6 +142,11 @@ type InferredExprEdge {
   target: InferredExpr
 }
 
+type InferredRecordField {
+  name: Symbol
+  value: InferredExpr
+}
+
 type ItemInference {
   item: InferredItem
   diagnostics: List<InferDiagnostic>
@@ -153,6 +167,16 @@ data float_symbol: Symbol = float_symbol
 data unknown_type_kit_binding: Symbol = unknown_type_kit_binding
 data v25_stage_type_kit_gate: Symbol = v25_stage_type_kit_gate
 data stage_type_kit_status: TypeKitGate = AwaitingStageTypes { gate: v25_stage_type_kit_gate }
+data binder_scope_fold_gate: Symbol = binder_scope_fold_gate
+data binder_scope_fold_status: TypeKitGate = AwaitingStageTypes { gate: binder_scope_fold_gate }
+data infer_carrier_closure: List<InferCarrierClosure> = [
+  ClosedTypeRef,
+  ClosedCardinality,
+  ClosedAlgebraEvidence,
+  ClosedDescentEvidence,
+  ClosedTypeKitGate,
+  ClosedInferDiagnostic
+]
 
 fn required_facts(result_type: TypeRef, algebra: AlgebraEvidence) -> InferredFacts {
   InferredFacts {
@@ -211,7 +235,7 @@ fn facts_of(expr: InferredExpr) -> InferredFacts {
     InferredMatch { facts: facts, scrutinee: _, arms: _ } => facts
     InferredIf { facts: facts, condition: _, then_branch: _, else_branch: _ } => facts
     InferredLet { facts: facts, binding: _, value: _, body: _ } => facts
-    InferredRecordLit { facts: facts, type_ref: _, fields: _ } => facts
+    InferredRecordLit { facts: facts, type_ref: _, entries: _ } => facts
     InferredListLit { facts: facts, elements: _ } => facts
     InferredBinOp { facts: facts, op: _, left: _, right: _ } => facts
     InferredUnaryOp { facts: facts, op: _, operand: _ } => facts
@@ -631,6 +655,22 @@ fn type_variable_symbol(type_ref: TypeRef) -> Symbol {
   }
 }
 
+fn zip_record_fields(fields: List<Symbol>, values: List<InferredExpr>) -> List<InferredRecordField> {
+  zip(fields, values) |> map(pair =>
+    InferredRecordField {
+      name: pair.first,
+      value: pair.second
+    }
+  )
+}
+
+fn first_duplicate_field(fields: List<Symbol>) -> Symbol? {
+  match fields |> find(field => count(fields |> filter(candidate => candidate == field)) > 1) {
+    Some { value: field } => Some { value: field }
+    None => none
+  }
+}
+
 fn first_expr(children: List<InferredExprEdge>) -> InferredExpr {
   match children |> first {
     Some { value: edge } => edge.target
@@ -698,7 +738,7 @@ fn child_expr_node(node: InferredNode) -> InferredExpr {
       infer_error(diagnostic: UnimplementedTypeKitBinding { missing: unknown_type_kit_binding }).expr
     InferredTransportDecl { name: _, transport: _ } =>
       infer_error(diagnostic: UnimplementedTypeKitBinding { missing: unknown_type_kit_binding }).expr
-    InferredExprNode { expr: expr } => expr
+    InferredExprNode { expr: expr, diagnostics: _ } => expr
   }
 }
 
@@ -720,7 +760,7 @@ fn item_result_node(result: ItemInference) -> InferredNode {
 }
 
 fn expr_result_node(result: ExprInference) -> InferredNode {
-  InferredExprNode { expr: result.expr }
+  InferredExprNode { expr: result.expr, diagnostics: result.diagnostics }
 }
 
 fn infer_match(expr: NormalizedExpr, scrutinee: InferredExpr, arms: List<NormalizedNode>, arm_results: List<InferredExpr>) -> ExprInference {
@@ -744,34 +784,52 @@ fn infer_match(expr: NormalizedExpr, scrutinee: InferredExpr, arms: List<Normali
 }
 
 fn infer_let(expr: NormalizedExpr, binding: BindingFacts, value: InferredExpr, body: InferredExpr, scope: InferScope) -> ExprInference {
-  let body_scope = extend_scope(scope: scope, binding: binding)
-  let scoped_binding = binding_from_scope(scope: body_scope, binding: binding)
-  let value_check = unify_all(pairs: [
-    SubstitutionPair {
-      variable: scoped_binding.name,
-      expected: scoped_binding.type_ref,
-      replacement: facts_of(expr: value).result_type
+  match binder_scope_fold_status {
+    AwaitingStageTypes { gate: gate } =>
+      infer_error(diagnostic: UnimplementedTypeKitBinding { missing: gate })
+    BoundToStageTypes =>
+      let body_scope = extend_scope(scope: scope, binding: binding)
+      let scoped_binding = binding_from_scope(scope: body_scope, binding: binding)
+      let value_check = unify_all(pairs: [
+        SubstitutionPair {
+          variable: scoped_binding.name,
+          expected: scoped_binding.type_ref,
+          replacement: facts_of(expr: value).result_type
+        }
+      ])
+      if value_check.diagnostics |> count > 0 {
+        infer_error(diagnostic: first_diagnostic(diagnostics: value_check.diagnostics))
+      } else {
+        let facts = facts_of(expr: body)
+        let diagnostics = diagnostics_of(expr: body)
+        ExprInference {
+          expr: InferredLet { binding: scoped_binding, value: value, body: body, facts: facts },
+          diagnostics: diagnostics,
+          facts: facts
+        }
+      }
     }
-  ])
-  if value_check.diagnostics |> count > 0 {
-    infer_error(diagnostic: first_diagnostic(diagnostics: value_check.diagnostics))
-  } else {
-    let facts = facts_of(expr: body)
-    let diagnostics = diagnostics_of(expr: body)
-    ExprInference {
-      expr: InferredLet { binding: scoped_binding, value: value, body: body, facts: facts },
-      diagnostics: diagnostics,
-      facts: facts
-    }
-  }
 }
 
 fn infer_record_lit(expr: NormalizedExpr, type_ref: TypeRef, fields: List<Symbol>, values: List<InferredExpr>) -> ExprInference {
-  let facts = required_facts(result_type: type_ref, algebra: AlgebraKnown { algebra: literal_algebra(type_ref: type_ref) })
-  ExprInference {
-    expr: InferredRecordLit { type_ref: type_ref, fields: values, facts: facts },
-    diagnostics: [],
-    facts: facts
+  let expected = fields |> count
+  let actual = values |> count
+  if expected != actual {
+    infer_error(diagnostic: ArityMismatch { expected: expected, actual: actual })
+  } else {
+    match first_duplicate_field(fields: fields) {
+      Some { value: field } =>
+        infer_error(diagnostic: DuplicateField { field: field })
+      None =>
+        let entries = zip_record_fields(fields: fields, values: values)
+        let facts = required_facts(result_type: type_ref, algebra: AlgebraKnown { algebra: literal_algebra(type_ref: type_ref) })
+        let diagnostics = diagnostics_from_exprs(exprs: values)
+        ExprInference {
+          expr: InferredRecordLit { type_ref: type_ref, entries: entries, facts: facts },
+          diagnostics: diagnostics,
+          facts: facts
+        }
+    }
   }
 }
 
@@ -783,9 +841,16 @@ fn infer_list_lit(expr: NormalizedExpr, elements: List<InferredExpr>) -> ExprInf
 }
 
 fn infer_lambda(expr: NormalizedExpr, params: List<BindingFacts>, body: InferredExpr, scope: InferScope) -> ExprInference {
-  let result_type = CallableType { params: map(params, f: p => p.type_ref), result: facts_of(expr: body).result_type }
-  let facts = required_facts(result_type: result_type, algebra: AlgebraKnown { algebra: lambda_symbol })
-  ExprInference { expr: InferredLambda { params: params, body: body, facts: facts }, diagnostics: [], facts: facts }
+  match binder_scope_fold_status {
+    AwaitingStageTypes { gate: gate } =>
+      infer_error(diagnostic: UnimplementedTypeKitBinding { missing: gate })
+    BoundToStageTypes =>
+      let body_scope = fold(params, init: scope, f: (acc, param) => extend_scope(scope: acc, binding: param))
+      let result_type = CallableType { params: map(params, f: p => p.type_ref), result: facts_of(expr: body).result_type }
+      let facts = required_facts(result_type: result_type, algebra: AlgebraKnown { algebra: lambda_symbol })
+      let diagnostics = diagnostics_of(expr: body)
+      ExprInference { expr: InferredLambda { params: params, body: body, facts: facts }, diagnostics: diagnostics, facts: facts }
+  }
 }
 
 fn infer_string_interp(expr: NormalizedExpr, parts: List<InferredExpr>) -> ExprInference {
@@ -806,8 +871,14 @@ fn infer_cast(expr: NormalizedExpr, value: InferredExpr, target: TypeRef) -> Exp
 }
 
 fn infer_for_each(expr: NormalizedExpr, binding: BindingFacts, collection: InferredExpr, body: InferredExpr) -> ExprInference {
-  let facts = facts_of(expr: body)
-  ExprInference { expr: InferredForEach { binding: binding, collection: collection, body: body, facts: facts }, diagnostics: [], facts: facts }
+  match binder_scope_fold_status {
+    AwaitingStageTypes { gate: gate } =>
+      infer_error(diagnostic: UnimplementedTypeKitBinding { missing: gate })
+    BoundToStageTypes =>
+      let facts = facts_of(expr: body)
+      let diagnostics = merge_diagnostics(left: diagnostics_of(expr: collection), right: diagnostics_of(expr: body))
+      ExprInference { expr: InferredForEach { binding: binding, collection: collection, body: body, facts: facts }, diagnostics: diagnostics, facts: facts }
+  }
 }
 
 fn infer_index(expr: NormalizedExpr, base: InferredExpr, index: InferredExpr) -> ExprInference {
