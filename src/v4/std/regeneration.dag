@@ -1,7 +1,7 @@
 // src/v4/std/regeneration.dag
 // Scope: change-consequence substrate (P8) — ChangeSet, AffectedSet, Projection, Artifact, RecomputePlan.
 // Anchor: docs/design-v4-compiler-homomorphism.md P8; T-21 lens/affected_set.dag is a frontier specialization (see A4 report).
-// Owns: ChangeKind, Change, ChangeSet, AffectedSet, InvalidationReason, ProjectionKind, Projection, ArtifactKind, Artifact, RecomputePlan.
+// Owns: ChangeKind, Change, ChangeSet, AffectedSet, InvalidationReason, Projection, ArtifactKind, Artifact, RecomputePlan.
 // Consumes: v4.std.collection, v4.std.dependency, v4.std.node, v4.std.witness.
 // Status: Wave-1 Worker A — strict substrate (bootstrap artifact kinds reserved; no promotion protocol).
 
@@ -64,7 +64,7 @@ type InvalidationReason
   = DirectChange { change: Change }
   | DependencyPropagation { edge: DependencyEdge }
   | ProjectionInputChanged { projection: Symbol }
-  | LensContractChanged { lens: Symbol }
+  | InvalidationFromLensContract { lens: Symbol }
   | PipelineStageContractChanged { stage: Symbol }
 
 
@@ -83,24 +83,44 @@ type AffectedSet {
 }
 
 
-// RULING-1: 🟢 pretty-much-done — projection-as-data (P3 commitment 1).
-type ProjectionKind
-  = LensProjection
-  | TargetTestProjection
-  | CompilerSourceProjection
-  | SchemaProjection
-  | DocumentationProjection
-  | DiagnosticTableProjection
-
-
-type Projection {
-  name: Symbol
-  kind: ProjectionKind
-  input_carrier: Symbol
-  output_artifact_kind: ArtifactKind
-  depends_on: List<Symbol>
-  algebra_ref: Symbol
-}
+// RULING-1: 🟢 pretty-much-done — each variant structurally fixes its output artifact kind (no independent fields).
+type Projection
+  = LensProjection {
+      name: Symbol,
+      input_carrier: Symbol,
+      depends_on: List<Symbol>,
+      algebra_ref: Symbol
+    }
+  | TargetTestProjection {
+      name: Symbol,
+      input_carrier: Symbol,
+      depends_on: List<Symbol>,
+      algebra_ref: Symbol
+    }
+  | CompilerSourceProjection {
+      name: Symbol,
+      input_carrier: Symbol,
+      depends_on: List<Symbol>,
+      algebra_ref: Symbol
+    }
+  | SchemaProjection {
+      name: Symbol,
+      input_carrier: Symbol,
+      depends_on: List<Symbol>,
+      algebra_ref: Symbol
+    }
+  | DocumentationProjection {
+      name: Symbol,
+      input_carrier: Symbol,
+      depends_on: List<Symbol>,
+      algebra_ref: Symbol
+    }
+  | DiagnosticTableProjection {
+      name: Symbol,
+      input_carrier: Symbol,
+      depends_on: List<Symbol>,
+      algebra_ref: Symbol
+    }
 
 
 type Artifact {
@@ -112,10 +132,10 @@ type Artifact {
 }
 
 
-// RULING-1: 🟢 pretty-much-done — recompute schedule data (topo plan is witness-bearing data, not an executor).
+// RULING-1: 🟢 pretty-much-done — topo validation is Witness<TopologicalPlan> on the producer, not embedded in the plan.
 type RecomputePlan {
   affected: AffectedSet
-  schedule: TopologicalPlan
+  schedule: Witness<TopologicalPlan>
   cached: List<Symbol>
   invalidated: List<Symbol>
 }

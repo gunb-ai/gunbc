@@ -2,7 +2,7 @@
 // Scope: typed dependency graph substrate (P6) — domains, edges, witnesses, SCC/topo data.
 // Anchor: docs/design-v4-compiler-homomorphism.md P6; edge orientation required_before → dependent_after.
 // Owns: DependencyDomain, Program/TargetPlan/Artifact dependency kinds, DependencyEdge, DependencyGraph, ClosedWorldDependencyWitness, CycleClassification, Scc, SccCondensation, TopologicalPlan, DependencyDiagnostic.
-// Consumes: v4.std.collection, v4.std.diagnostic, v4.std.node, v4.std.witness.
+// Consumes: v4.std.collection, v4.std.node.
 // Status: Wave-1 Worker A — strict substrate (data contracts only; no stage implementations).
 
 
@@ -11,7 +11,6 @@ module v4.std.dependency
 
 import v4.std.collection { List }
 import v4.std.node { Path, Symbol }
-import v4.std.witness { Witness }
 
 
 // RULING-1: 🟢 pretty-much-done — P6 domain partition (program vs target-plan vs artifact).
@@ -142,17 +141,17 @@ type SccOrderEdge {
 }
 
 
-// RULING-1: 🟢 pretty-much-done — schedule artifact only (no hidden executor).
+// RULING-1: 🟢 pretty-much-done — schedule boundary uses SCC identity; Path expansion is downstream only.
 type TopologicalLayer {
-  ready_after: List<Symbol>
-  members: List<Path>
+  ready_after_scc_ids: List<Symbol>
+  scheduled_scc_ids: List<Symbol>
 }
 
 
+// RULING-1: 🟢 pretty-much-done — validated value only; producers return Witness<TopologicalPlan> separately.
 type TopologicalPlan {
   condensation: SccCondensation
   layers: List<TopologicalLayer>
-  witness: Witness<TopologicalPlan>
 }
 
 
