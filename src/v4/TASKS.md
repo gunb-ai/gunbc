@@ -403,6 +403,10 @@ substrate imported them, so the cut is a pure scope reduction.
   only—no inferring the native C3 prelude `Set` from void lex/grammar shape
   inside `03_resolve.dag` (per CP-1b/T-8 dispatch row above and merged
   T-8 closeout PR #3436).
+- **CI emit-wall bridge (tracked):** when Ubicloud SIGTERMs v2 emit after a clean resolve,
+  `scripts/v4-bootstrap-resolve-posture-gate.sh` is the sole bridge authority (structured receipt +
+  `V4_BOOTSTRAP_ALLOW_RESOLVE_POSTURE_BRIDGE=1`); dissolves when a typed resolve-only compiler gate
+  lands or emit reaches `compiled:` on standard-8 without host SIGTERM.
 
 **Reference**:
 - v2: `src/v2/03_normalize.dag`, `src/v2/03_resolve.dag`
