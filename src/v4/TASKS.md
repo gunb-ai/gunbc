@@ -1300,11 +1300,17 @@ this carrier landing.
 ### T-4.15 — extdeps/protocols/{rest,graphql,grpc}.dag — transport substrate  [SCHEDULED]
 **Operator-ratified 2026-05-20 (PR #3437, P4 — "Glue derivation is
 composed homomorphism, orthogonal to the compiler").** Transport
-semantics substrate — the carrier shape the eventual T-16 omni-stack
+semantics substrate — the carrier shape that a **future omni-stack
+expansion** (beyond T-16's current OpenAPI-based wire-contract scope)
 glue derivation composes over. Inter-module marshaling is structurally a
 **composed homomorphism**: source → wire-format model → target. Same
 primitive (the coercion fold), applied twice through a shared transport
-model.
+model. **Note on the T-16 edge:** T-16's authoritative `[needs]` does
+NOT include T-4.15 — T-16's current scope is the OpenAPI demo (via
+T-4.6 `openapi.dag` + T-4.8 `coordination.dag`'s WireContract), not the
+full REST/GraphQL/gRPC transport substrate. Co-scheduling T-4.15 with
+T-16 would assert a consumer edge T-16 does not actually carry in its
+current scope.
 
 **Files:** `src/v4/extdeps/protocols/{rest,graphql,grpc}.dag` — directory
 does not exist on main; this task is its first authoring. The
@@ -1332,13 +1338,14 @@ HttpMethod / Url / NetworkAddress from T-26 for REST grounding. **NOT
 T-4.** The transport substrate declares its OWN wire-format type system
 (REST: structured HTTP bodies + headers; gRPC: protobuf wire format with
 its own primitive/message types; GraphQL: GraphQL type system).
-LanguageModel bindings happen downstream at *composition time* — T-16's
-omni-stack glue derivation composes `LanguageModel(source) ∘
-TransportModel ∘ LanguageModel(target)` via the coercion fold, P4's
-"applied twice through a shared transport model." Co-locating
-language-binding facts on this substrate would collapse the shared
-transport model back into language-specific concerns — the opposite of
-the P4 framing.
+LanguageModel bindings happen downstream at *composition time* — a
+**future-expanded omni-stack glue derivation** (beyond T-16's current
+OpenAPI scope; not part of T-16's current `[needs]`) composes
+`LanguageModel(source) ∘ TransportModel ∘ LanguageModel(target)` via the
+coercion fold, P4's "applied twice through a shared transport model."
+Co-locating language-binding facts on this substrate would collapse the
+shared transport model back into language-specific concerns — the
+opposite of the P4 framing.
 
 **Scope discipline — L-2 holds.** Model the versioned transport SPEC
 (IETF RFCs for REST / HTTP semantics, the GraphQL spec, the gRPC HTTP/2
@@ -1351,7 +1358,8 @@ names this explicitly: "Glue derivation / omni-stack — orthogonal
 substrate (P4). Architecture must not preclude, but no implementation in
 the initial single-target compiler." This task is scheduled because the
 substrate slot is named; the file authoring waits until omni-stack glue
-work activates (T-16 timeline), not part of the critical-path single-target
+work activates *beyond T-16's current OpenAPI scope* (a future expansion;
+T-16's `[needs]` does NOT list T-4.15 today), not part of the critical-path single-target
 MVP.
 
 **Related substrate slot (NOT bundled here).** The design doc also names
