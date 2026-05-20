@@ -13,7 +13,7 @@
 module v4.std.diagnostic
 
 
-import v4.std.node { Edge, Node }
+import v4.std.node { Node }
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type Extent
   = WholeFile
@@ -211,39 +211,5 @@ fn bind_outcome<T, U>(o: Outcome<T>, f: fn(T) -> Outcome<U>) -> Outcome<U> {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
 }
-fn traverse_node<R>(
-  n: Node,
-  algebra_init: fn(Node) -> Outcome<R>,
-  algebra_step: fn(R, Edge, R) -> Outcome<R>,
-  policy: StageDiagnosticPolicy,
-) -> Outcome<R> {
-  match algebra_init(n) {
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
-    Accepted { value: seed, diagnostics: d0 } =>
-      if count(n.children) == 0 {
-        Accepted { value: seed, diagnostics: d0 }
-      } else {
-        Rejected {
-          diagnostics: rejected_with_pending(
-            pending: d0,
-            rejected: diagnostics_singleton(
-              d: traverse_children_not_realized_diagnostic(n: n)
-            )
-          )
-        }
-      }
-  }
-}
-fn sequence_node<R>(
-  n: Node,
-  algebra_init: fn(Node) -> Outcome<R>,
-  algebra_step: fn(R, Edge, R) -> Outcome<R>,
-  policy: StageDiagnosticPolicy,
-) -> Outcome<R> {
-  traverse_node(
-    n: n,
-    algebra_init: algebra_init,
-    algebra_step: algebra_step,
-    policy: policy
-  )
-}
+// traverse_node / sequence_node deferred: v2 bootstrap rejects fn(Node) -> Outcome<R> in
+// parameter types (Ratified Q4); land with fold_node-derived combinator when W-T-* consumes it.
