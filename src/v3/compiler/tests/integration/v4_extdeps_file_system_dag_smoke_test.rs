@@ -16,7 +16,7 @@ use std::collections::BTreeSet;
 
 use v3_compiler::parse_for_test;
 use v3_compiler::parse_surface::{
-    SurfaceField, SurfaceItem, SurfaceType, SurfaceVariant, TypeAngleArg,
+    SurfaceField, SurfaceItem, SurfaceType, TypeAngleArg,
 };
 use v3_compiler::tokenize_for_test;
 
@@ -59,24 +59,6 @@ fn type_record_fields<'a>(
             _ => None,
         })
         .unwrap_or_else(|| panic!("missing type record {name}"))
-}
-
-fn type_sum_variants<'a>(
-    module: &'a v3_compiler::parse_surface::SurfaceModule,
-    name: &str,
-) -> &'a [SurfaceVariant] {
-    module
-        .items
-        .iter()
-        .find_map(|item| match item {
-            SurfaceItem::TypeSum {
-                name: item_name,
-                variants,
-                ..
-            } if item_name == name => Some(variants.as_slice()),
-            _ => None,
-        })
-        .unwrap_or_else(|| panic!("missing type sum {name}"))
 }
 
 fn surface_type_name(ty: &SurfaceType) -> String {
@@ -124,13 +106,6 @@ fn record_field_type_map(fields: &[SurfaceField]) -> BTreeSet<(&str, String)> {
     fields
         .iter()
         .map(|field| (field.name.as_str(), surface_type_name(&field.ty)))
-        .collect()
-}
-
-fn variant_name_set(variants: &[SurfaceVariant]) -> BTreeSet<&str> {
-    variants
-        .iter()
-        .map(|variant| variant.name.as_str())
         .collect()
 }
 
