@@ -1,16 +1,25 @@
 // src/v4/std/witness.dag
-// Scope: fail-closed proof/read carrier.
-// Anchor: INVARIANTS.md P3.
-// Owns: Witness.
-// Consumes: std diagnostic.
-// Status: T-3 modeled.
+// Scope: fail-closed proof/read carrier + unified witness taxonomy (Pass B).
+// Anchor: INVARIANTS.md P3; design-v4-compiler-homomorphism.md witness taxonomy.
+// Owns: Witness, StructuralPropertyWitness, HomomorphismWitness.
+// Consumes: std diagnostic, std node.
+// Status: T-3 modeled; Wave-2-BC3 taxonomy extension.
 
 
 module v4.std.witness
 
 
 import v4.std.diagnostic { Diagnostic }
+import v4.std.node { Node, Symbol }
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type Witness<C>
   = Holds { value: C }
   | Violates { diagnostic: Diagnostic }
+type StructuralPropertyWitness {
+  property: Symbol
+  evidence: Node
+}
+type HomomorphismWitness {
+  rule: Symbol
+  evidence: Node
+}
