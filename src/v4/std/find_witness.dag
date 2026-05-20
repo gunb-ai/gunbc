@@ -2,13 +2,14 @@
 // Scope: unified candidate-enumeration-and-check primitive (Pass B unification).
 // Anchor: docs/design-v4-compiler-homomorphism.md — find_witness primitive row; Practice 11.
 // Owns: CandidateSet, PreservationPredicate, FindWitnessResult, MultiplicityPolicy, find_witness, verify_witness.
-// Consumes: std diagnostic, std node.
+// Consumes: std collection, std diagnostic, std node.
 // Status: Wave-2-BC3 modeled; enumeration body scaffold until stage consumers land.
 
 
 module v4.std.find_witness
 
 
+import v4.std.collection { List }
 import v4.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,

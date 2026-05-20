@@ -2,7 +2,8 @@
 // Scope: fail-closed diagnostic schema.
 // Anchor: THESIS.md "show the correct code" + INVARIANTS P3; design-v4-compiler-homomorphism.md Ratified Q11.
 // Owns: Diagnostic, Outcome, Diagnostics, NonEmptyDiagnostics, StageDiagnosticPolicy, NodeOutcomeFold,
-//       traverse_node, sequence_node, bind_outcome, outcome_node_eq, diagnostic_eq, diagnostics_eq,
+//       traverse_node, sequence_node, bind_outcome, diagnostics_merge, outcome_node_eq, diagnostic_eq,
+//       diagnostics_eq, non_empty_diagnostics_append,
 //       Locus, Extent, Correction, NoCorrectionReason.
 // Consumes: std node, std collection.
 // Status: T-3 modeled; Wave-2-BC3 Outcome ratification (Ratified Q11).
@@ -132,6 +133,29 @@ fn diagnostic_tail_eq(a: List<Diagnostic>, b: List<Diagnostic>) -> Bool {
 }
 fn non_empty_diagnostics_eq(a: NonEmptyDiagnostics, b: NonEmptyDiagnostics) -> Bool {
   diagnostic_eq(a: a.head, b: b.head) && diagnostic_tail_eq(a: a.tail, b: b.tail)
+}
+fn non_empty_diagnostics_append(
+  a: NonEmptyDiagnostics,
+  b: NonEmptyDiagnostics,
+) -> NonEmptyDiagnostics {
+  NonEmptyDiagnostics {
+    head: a.head,
+    tail: fold(b.tail, init: list_push(a.tail, b.head), f: fn(acc, d) {
+      list_push(acc, d)
+    })
+  }
+}
+fn diagnostics_merge(outer: Diagnostics, inner: Diagnostics) -> Diagnostics {
+  match outer {
+    None => inner
+    Some { diagnostics: oa } => match inner {
+      None => Some { diagnostics: oa }
+      Some { diagnostics: ib } =>
+        Some {
+          diagnostics: non_empty_diagnostics_append(a: oa, b: ib)
+        }
+    }
+  }
 }
 fn diagnostics_eq(a: Diagnostics, b: Diagnostics) -> Bool {
   match a {
