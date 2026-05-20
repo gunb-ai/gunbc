@@ -59,13 +59,12 @@ fn constraints_not_realized_diagnostic(graph: ConstraintGraph) -> Diagnostic {
   }
 }
 fn canonical_grounding_candidates(
-  graph: ConstraintGraph,
   policy: ConstraintSolvePolicy,
 ) -> Outcome<CanonicalGroundingCandidateSet> {
-  outcome_rejected(constraints_not_realized_diagnostic(graph: graph))
+  outcome_rejected(constraints_not_realized_diagnostic(graph: policy.graph))
 }
 fn solve_constraints(policy: ConstraintSolvePolicy) -> Outcome<CanonicalGrounding> {
-  match canonical_grounding_candidates(graph: policy.graph, policy: policy) {
+  match canonical_grounding_candidates(policy: policy) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: grounding_candidates, diagnostics: _ } =>
       match find_witness(
