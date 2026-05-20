@@ -789,17 +789,19 @@ Terminal output. `TargetSource` is target-grammar-serialized text + diagnostics.
 
 This doc is primarily about the **compile direction** (CoreNode → target). But the substrate is read/write symmetric: `apply_diff` is the **write-side derived combinator** (post-Pass B unification — `apply_diff = fold_node(root, substitute_at_paths(diff))`, an instance of `fold_node` with the substitution algebra). It mutates a `CoreNode` graph. The full **EDIT direction** is documented in [`docs/design-read-edit-pipeline.md`](design-read-edit-pipeline.md) (PR #3364, merged 2026-05-19, operator-ratified); this section summarizes the architecture that compile must compose with.
 
-### Read/edit primitives
+### Read/edit vocabulary (substrate types + derived combinators)
 
-| Primitive | Purpose | Where |
+Note: `apply_diff` / `subterm_at` / `apply_lens` / `affected_set` are **derived combinators** post-Pass B unification (`fold_node` instances or compositions thereof), NOT primitives. Listed here as the vocabulary the read/edit pipeline exposes; their primitive-set status is per the main primitive table above (5 primitives total).
+
+| Vocabulary | Purpose | Where |
 |---|---|---|
-| **`Path`** | A structural address to a sub-Node — `Path { steps: List<Symbol> }`. NOT a filesystem path; the Node graph's own coordinates. | `src/v4/std/node.dag` (ratified PR #3162) |
-| **`Edit`** | A structural rewrite: `Edit { at: Path, replacement: Node }`. **Replacement only** — no separate insert/delete variants. Insertions/deletions decompose into parent-replacement. | `src/v4/std/node.dag` |
-| **`Diff`** | An ordered sequential rewrite program: `Diff { edits: List<Edit> }`. Sequential composition, NOT parallel. | `src/v4/std/node.dag` |
-| **`apply_diff(root, Diff) → Result<Node, Diagnostic>`** | Folds Edits in order; fail-closed all-or-nothing. Any unresolved Path ⇒ whole Diff fails with one Diagnostic. | `src/v4/lens/application.dag` (scaffold; T-23) |
-| **`subterm_at(root, Path) → Result<Node, Diagnostic>`** | Inverse of substitution — fetch the Node at a Path. | `src/v4/lens/application.dag` |
-| **`apply_lens(lens, scope, mode) → Witness<finding> \| Outcome<()>`** | The read-side lens application surface — Introspect or Enforce. `scope: SectionRef = DeclarationScope \| NodeScope`. | `src/v4/lens/application.dag` |
-| **`affected_set(dag, Diff) → Witness<ReExecFrontier>`** | Incremental re-execution frontier — what needs re-validation given a Diff. The substrate's lens-frontier primitive. | `src/v4/lens/affected_set.dag` (T-21) |
+| **`Path`** *(carrier type)* | A structural address to a sub-Node — `Path { steps: List<Symbol> }`. NOT a filesystem path; the Node graph's own coordinates. | `src/v4/std/node.dag` (ratified PR #3162) |
+| **`Edit`** *(carrier type)* | A structural rewrite: `Edit { at: Path, replacement: Node }`. **Replacement only** — no separate insert/delete variants. Insertions/deletions decompose into parent-replacement. | `src/v4/std/node.dag` |
+| **`Diff`** *(carrier type)* | An ordered sequential rewrite program: `Diff { edits: List<Edit> }`. Sequential composition, NOT parallel. | `src/v4/std/node.dag` |
+| **`apply_diff(root, Diff) → Outcome<Node>`** *(derived combinator)* | `fold_node(root, substitute_at_paths(diff))`. Folds Edits in order; fail-closed all-or-nothing. Any unresolved Path ⇒ whole Diff fails. | `src/v4/lens/application.dag` (scaffold; T-23) |
+| **`subterm_at(root, Path) → Outcome<Node>`** *(derived combinator)* | `fold_node` instance — inverse of substitution; fetch the Node at a Path. | `src/v4/lens/application.dag` |
+| **`apply_lens(lens, scope, mode) → Witness<finding> \| Outcome<()>`** *(derived combinator)* | `fold_node` with the lens's algebra; combinator owns `StageDiagnosticPolicy`. Introspect or Enforce. `scope: SectionRef = DeclarationScope \| NodeScope`. | `src/v4/lens/application.dag` |
+| **`affected_set(dag, Diff) → Witness<ReExecFrontier>`** *(derived combinator + specialization)* | `fold_node` over the dependency graph using the change-propagation algebra. Lens-frontier specialization of the general `AffectedSet` (per Ratified Q6 + Pass B unification — T-21 is a specialization, not a parallel primitive). | `src/v4/lens/affected_set.dag` (T-21) |
 
 ### The seven-step read→edit pipeline
 
@@ -1237,7 +1239,7 @@ Substrate that needs to land: the `LensAlgebra<F>` carrier shape + the composed-
 
 **Resolved.** The `find_witness` primitive's output (candidate + witness pair) is **independently checkable**. A separate `verify_witness(source_facts, candidate, preservation_predicate, witness) -> Bool` consumes the witness and re-proves the preservation predicate without re-running candidate enumeration.
 
-Discipline: **the derivation is untrusted; the witness check is trusted.** The compiler doesn't have to trust its own search/fold; the witness is verifiable by inspection. Benefits:
+Discipline: **the derivation is untrusted; the witness check is trusted.** The compiler doesn't have to trust its own candidate-enumeration; the witness is verifiable by inspection. Benefits:
 - Downstream tooling has a cheap re-validation path (IDE, build cache, distributed verification).
 - Clean abstraction boundary: "find the candidate" (production) vs "verify the candidate satisfies the predicate" (verification).
 - Applies uniformly across all `find_witness` instances: solve_constraints witnesses are check-by-replaying constraint-satisfaction; coercion-fold witnesses are check-by-replaying the structural-equality zip-fold; lawful-rewrite witnesses are check-by-replaying the rewrite-law verification.
@@ -1335,7 +1337,7 @@ Defer trigger: first attempt to compile against a non-current version (e.g., Pyt
 | **coercion fold** (DERIVED, not primitive) | `find_witness(canonical_source_grounding, target_lang.declared_inhabitants, exact_structural_equality_zip_fold)`. Verifies homomorphism via the unified primitive. T-9 ratification preserves the "coercion fold" name; conceptually it's `find_witness`. |
 | **`LawfulRewriteWitness`** (DERIVED, not primitive) | `find_witness(source_grounding, candidate_rewrites_declared_by_target, lawful_rewrite_precondition_predicate)`. Structure-changing lowerings (parallel-map, tree-reduce, CUDA, MapReduce). Different rewrites = different predicates over `find_witness`. |
 | **`ConstraintGraph`** | Intermediate carrier produced by the grounding fold, consumed by `solve_constraints` to produce the canonical `InferredTree`. |
-| **`ClosedWorldDependencyWitness`** | Substrate witness that a region's dependency classification is complete; required before absence-of-edge can be interpreted as independence (e.g., for parallelism). |
+| **`ClosedWorldDependencyWitness`** *(collapsed into `StructuralPropertyWitness<P>` per Pass B witness taxonomy — instance with `P = being-completely-classified`)* | The structural-property witness asserting "this region's dependency classification is complete." Required before absence-of-edge can be interpreted as independence (e.g., for parallelism). |
 | **canonical (source) grounding** | The unique, witnessed normalization of a Node's algebra-inhabitance facts. The coercion fold operates only on canonical groundings; ambiguity surfaces as a diagnostic in ground, never as multiple downstream candidates. |
 | **ingest** | The (separable) layer that produces a `CoreNode` from a source (text, programmatic builder, query-driven rewrite, round-trip). The compile-core takes `CoreNode` and does not know how it was produced. |
 | **ingest_text** | The text-to-`CoreNode` ingest path: `ingest_text(text, input_lang) → Outcome<CoreNode>`. Parse + normalize composed. Uses the grammar-as-bidirectional-data primitive (forward direction). |
