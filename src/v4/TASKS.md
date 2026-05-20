@@ -916,7 +916,7 @@ All 5 artifacts share ONE Node tree (per gate #28 omni_layers_share_one_node_tre
 - `eval: (InferredTree, HostModel, Inputs) -> Result<Value, Diagnostic>` shape (HostModel parameter added 2026-05-20 per Ratified Q1 — eval interprets primitives against the HostModel substrate; see T-34)
 - Bounded-execution enforcement (INVARIANTS P4 — no unbounded loops; how does the evaluator structurally refuse non-termination?)
 - The shared substrate three consumers compose over: `workflow/bootstrap.dag` (interpreted, not compiled), TestClaim evaluation, lens dry-run
-- Concept-unification (THESIS:188): interpreter runtime = language spec = transport spec — eval reads the same `extdeps/languages/*.dag` carriers emit does
+- Concept-unification (THESIS:188): under Ratified Q1, eval reads **HostModel** (T-34) for primitive interpretation, execution semantics, and host value representation — NOT LanguageModel. LanguageModel is for ingest grammar + emit serialization; HostModel is for runtime. They share `ModelCore` (T-33) for primitive-type / algebra-inhabitance / laws / effect / partiality facts; the split on what's specific to each carrier is exactly the Q1 factoring. The earlier "eval reads the same `extdeps/languages/*.dag` carriers emit does" framing predates Q1 and is superseded
 - **`BehaviorValueSubject` naming vs eval slice (T-19 → T-22):** The identifier anchors the T-19 **L1 `Value`** placement under `type_construction` (T-19 Phase-1.5); the payload is still the **closed** `Behavior` sum (all five behaviors—not Value-only structurally). When T-22 binds testgen/type-construction to execution, re-audit the name with the real consumer: either keep it as the Value-slice carrier of `Behavior` facts or rename (e.g. to `BehaviorSubject`) if the eval path is behavior-wide with no residual Value reading; fold the decision into the T-22 close gate so names cannot silently drift from semantics.
 
 **Incremental Re-Test requirement set — held (IRT-3; see T-21 for the full IRT-1..4 set + rationale).**
@@ -1215,6 +1215,12 @@ The shared base substrate that both `LanguageModel` (T-4) and `HostModel`
 (T-34) extend. `ModelCore` is the categorical floor for primitive-type
 and algebra-inhabitance declarations to stay consistent across language
 and host targets without duplicate authority.
+
+**Dependencies — `[needs T-1, T-2, T-3]`.** Numeric and string vocabulary
+(T-3 scalar/numeric stack); algebra carriers (T-2); the Node substrate
+root (T-1). Low-dependency — no upstream-feeder watch items — but a hard
+T-4 / T-34 prerequisite per the side-branch graph at the top of this
+file.
 
 **File:** `src/v4/std/model_core.dag` — does not exist on main; this task
 is its first authoring.
