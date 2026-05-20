@@ -1,0 +1,47 @@
+// src/v4/std/change.dag
+// Scope: change-consequence substrate and recomputation plan carrier.
+// Owns: ChangeKind, Change, ChangeSet, AffectedDependency, AffectedSet, RecomputePlan.
+// Consumes: v4.std.collection, v4.std.dependency, v4.std.diagnostic, v4.std.node.
+// Status: Wave-2-A substrate.
+
+module v4.std.change
+
+import v4.std.collection { List }
+import v4.std.dependency { DependencyKind, DependencyView, ReadinessLayer }
+import v4.std.diagnostic { Diagnostic, Outcome }
+import v4.std.node { Node, Path, Symbol }
+
+// 🟢 closed set — change shapes consumed by consequence recomputation.
+type ChangeKind
+  = NodeChanged
+  | NodeAdded
+  | NodeRemoved
+  | ProjectionChanged
+  | ArtifactChanged
+
+type Change {
+  kind: ChangeKind
+  subject: Node
+  at: Path
+}
+
+type ChangeSet {
+  changes: List<Change>
+}
+
+type AffectedDependency {
+  change: Change
+  dependency: DependencyView
+}
+
+type AffectedSet {
+  changes: ChangeSet
+  affected: List<AffectedDependency>
+  restricted_to: List<DependencyKind>
+}
+
+type RecomputePlan {
+  affected: AffectedSet
+  layers: List<ReadinessLayer>
+  diagnostic: Outcome<Symbol>
+}

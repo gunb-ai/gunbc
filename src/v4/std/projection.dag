@@ -1,0 +1,25 @@
+// src/v4/std/projection.dag
+// Scope: projection-as-data substrate.
+// Owns: ProjectionKind, Projection.
+// Consumes: v4.std.artifact, v4.std.node.
+// Status: Wave-2-A substrate.
+
+module v4.std.projection
+
+import v4.std.artifact { ArtifactKind }
+import v4.std.node { Node, Symbol }
+
+// 🟢 closed set — projection kinds named by v4 architecture.
+type ProjectionKind
+  = TestClaimLens
+  | BoundaryTestLens
+  | TargetTestProjection
+  | EmitProjection
+  | DiagnosticProjection
+
+type Projection {
+  id: Symbol
+  kind: ProjectionKind
+  input: Node
+  output_kind: ArtifactKind
+}
