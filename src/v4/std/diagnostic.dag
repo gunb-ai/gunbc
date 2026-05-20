@@ -34,16 +34,19 @@ type Diagnostic {
   at: Locus
   correction: Correction
 }
+// 🟡 coproduct dissolution — W-TRAVERSE-OUTCOME-NON-EMPTY-DIAGNOSTICS.
+// Trigger: dissolve to substrate NonEmptyList refinement (T-25-core); until then recursive
+// NonEmptyDiagnostics (no List tail) so Singleton ≠ Cons{_, Empty}.
 type NonEmptyDiagnostics
-  = Singleton { diagnostic: Diagnostic }
-  | Cons { head: Diagnostic, tail: List<Diagnostic> }
+  = One { diagnostic: Diagnostic }
+  | More { head: Diagnostic, tail: NonEmptyDiagnostics }
 // 🟡 coproduct dissolution — W-TRAVERSE-OUTCOME-LEGACY-PRODUCED.
 // Trigger: migrate all Outcome consumers to Accepted/RejectedAccumulating; retire Produced/Rejected variants.
-// Until trigger closes: legacy Produced/Rejected remain parse-compatible (Worker B #3440); outcome.dag
-// combinators preserve legacy on map/bind/map_node paths; traverse_outcome alone may introduce Accepted
-// at list-fold boundaries when assembling accumulated diagnostics.
+// Until trigger closes: legacy Produced/Rejected remain parse-compatible (Worker B #3440).
+// Authority split: Produced = success without diagnostics; Accepted = success with ≥1 diagnostic;
+// Rejected = single failure; RejectedAccumulating = ≥2 diagnostics (More-only; never One).
 type Outcome<T>
   = Produced { value: T }
   | Rejected { diagnostic: Diagnostic }
-  | Accepted { value: T, diagnostics: List<Diagnostic> }
+  | Accepted { value: T, diagnostics: NonEmptyDiagnostics }
   | RejectedAccumulating { diagnostics: NonEmptyDiagnostics }
