@@ -107,7 +107,7 @@ type NodeFileBinding {
 // Trigger: ResourceDependsOn/EffectDependsOn wiring when std/dependency.dag lands (Worker A A1).
 type FileEffectWitness
   = ReadWitness { path: FilePath, content: FileContent }
-  | WriteWitness { path: FilePath, witness: FileWriteWitness }
+  | WriteWitness { witness: FileWriteWitness }
 
 data file_effect_dependency_wiring_deferred: Symbol = file_effect_dependency_wiring_deferred
 
