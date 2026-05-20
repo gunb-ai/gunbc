@@ -6,18 +6,18 @@
 
 module v2_5.std.diagnostic
 
-import v2_5.std.node { Symbol, Node }
+import v2_5.std.node { Symbol, Nat, Node, Path }
 
-// 🟢 coproduct dissolution
+// 🟡 coproduct dissolution — feature:byte-range-ordering-witness
 type Extent
   = WholeFile
-  | ByteRange { start: Int, end: Int }
+  | ByteRange { start: Nat, end: Nat }
 
 // 🟢 coproduct dissolution
 type Locus
   = Textual { file: Symbol, extent: Extent }
   | NodeLocus { node: Node }
-  | PortLocus { port: Symbol }
+  | PortLocus { path: Path }
 
 // 🟢 coproduct dissolution
 type NoCorrectionReason
