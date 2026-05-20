@@ -1,0 +1,75 @@
+// src/v2.5/extdeps/languages/rust.dag
+// Scope: Rust target-primitive fact bundle — scalar / reference / visibility / cost
+//        carriers for the v2.5 fork. Analog of src/v4/extdeps/languages/rust.dag
+//        (T-4 rust-slice target facts); NOT the LanguageSpec emission surface
+//        (src/v2.5/languages/rust.dag — crisp-dove-396 / PR #3429).
+// Owns: RustIntKind, RustIntWidth, RustFloatWidth, RustScalar, RustReferenceKind,
+//       NamedSegment, PubInPath, RustVisibility, RustReference, RustCost.
+// Consumes: v2_5.std.node (Node, Symbol); kernel-ambient Int, List.
+// Status: DESIGN SCAFFOLD. Tier 0 substrate (v2_5.std.node) not yet on main in this
+//         worktree; the dag compiler will not exercise this file until that lands.
+//         Carrier shapes are the substantive content — byte-aligned with the v4
+//         rust-slice fact bundle at HEAD.
+// Anchor: https://doc.rust-lang.org/reference/
+
+module v2_5.extdeps.languages.rust
+
+import v2_5.std.node { Node, Symbol }
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL (v4 parity).
+type RustIntKind
+  = Signed
+  | Unsigned
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL (v4 parity).
+type RustIntWidth
+  = Bits8
+  | Bits16
+  | Bits32
+  | Bits64
+  | Bits128
+  | Pointer
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL (v4 parity).
+type RustFloatWidth
+  = Bits32
+  | Bits64
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL (v4 parity).
+type RustScalar
+  = IntScalar { kind: RustIntKind, width: RustIntWidth }
+  | FloatScalar { width: RustFloatWidth }
+  | BoolScalar
+  | CharScalar
+  | StrScalar
+  | NeverScalar
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL (v4 parity).
+type RustReferenceKind
+  = Shared
+  | Exclusive
+
+type NamedSegment {
+  id: Symbol
+}
+
+type PubInPath {
+  resolved_path: List<NamedSegment>
+}
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL (v4 parity).
+type RustVisibility
+  = Private
+  | Pub
+  | PubIn { path: PubInPath }
+
+type RustReference {
+  kind: RustReferenceKind
+  lifetime: Symbol
+  referent: Node
+}
+
+type RustCost {
+  instruction_cost: Int
+  allocation_cost: Int
+}
