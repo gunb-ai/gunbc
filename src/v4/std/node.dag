@@ -4,7 +4,7 @@
 // Owns: Symbol, Hash, Connective, Behavior, NodeKind, EdgeLabel, Edge, Node, NodeFold, fold_node, EdgeDiscipline, ...
 // Consumes: none.
 // Status: T-1 modeled; substrate-extension rule in src/v4/STRUCTURE.md.
-// Note: NodeOutcomeFold + traverse_node / sequence_node / bind_outcome live in v4.std.diagnostic
+// Note: traverse_node / sequence_node / bind_outcome live in v4.std.diagnostic (init/step fn params, not a carrier type — v2 rejects Outcome<R> in type fields)
 // (Ratified Q4) — avoids diagnostic↔node import cycle while keeping fold_node here.
 
 

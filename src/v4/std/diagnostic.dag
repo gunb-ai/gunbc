@@ -1,7 +1,7 @@
 // src/v4/std/diagnostic.dag
 // Scope: fail-closed diagnostic schema.
 // Anchor: THESIS.md "show the correct code" + INVARIANTS P3; design-v4-compiler-homomorphism.md Ratified Q11.
-// Owns: Diagnostic, Outcome, Diagnostics, NonEmptyDiagnostics, StageDiagnosticPolicy, NodeOutcomeFold,
+// Owns: Diagnostic, Outcome, Diagnostics, NonEmptyDiagnostics, StageDiagnosticPolicy,
 //       traverse_node, sequence_node, bind_outcome, diagnostics_merge, outcome_node_eq, diagnostic_eq,
 //       diagnostics_eq, non_empty_diagnostics_append,
 //       Locus, Extent, Correction, NoCorrectionReason.
@@ -188,30 +188,32 @@ fn outcome_node_eq(a: Outcome<Node>, b: Outcome<Node>) -> Bool {
     }
   }
 }
-type NodeOutcomeFold<R> {
-  init: fn(Node) -> Outcome<R>
-  step: fn(R, Edge, R) -> Outcome<R>
+fn outcome_with_diagnostics<U>(value: U, diagnostics: Diagnostics) -> Outcome<U> {
+  Accepted { value: value, diagnostics: diagnostics }
+}
+fn bind_outcome_accepted<U>(od: Diagnostics, inner: Outcome<U>) -> Outcome<U> {
+  match inner {
+    Accepted { value: u, diagnostics: ud } =>
+      outcome_with_diagnostics(
+        value: u,
+        diagnostics: diagnostics_merge(outer: od, inner: ud)
+      )
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
 }
 fn bind_outcome<T, U>(o: Outcome<T>, f: fn(T) -> Outcome<U>) -> Outcome<U> {
   match o {
-    Accepted { value: v, diagnostics: od } =>
-      match f(v) {
-        Accepted { value: u, diagnostics: ud } =>
-          Accepted {
-            value: u,
-            diagnostics: diagnostics_merge(outer: od, inner: ud)
-          }
-        Rejected { diagnostics: r } => Rejected { diagnostics: r }
-      }
+    Accepted { value: v, diagnostics: od } => bind_outcome_accepted(od: od, inner: f(v))
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
 }
 fn traverse_node<R>(
   n: Node,
-  algebra: NodeOutcomeFold<R>,
+  init: fn(Node) -> Outcome<R>,
+  step: fn(R, Edge, R) -> Outcome<R>,
   policy: StageDiagnosticPolicy,
 ) -> Outcome<R> {
-  match algebra.init(n) {
+  match init(n) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: seed, diagnostics: d0 } =>
       if count(n.children) == 0 {
@@ -223,8 +225,9 @@ fn traverse_node<R>(
 }
 fn sequence_node<R>(
   n: Node,
-  algebra: NodeOutcomeFold<R>,
+  init: fn(Node) -> Outcome<R>,
+  step: fn(R, Edge, R) -> Outcome<R>,
   policy: StageDiagnosticPolicy,
 ) -> Outcome<R> {
-  traverse_node(n: n, algebra: algebra, policy: policy)
+  traverse_node(n: n, init: init, step: step, policy: policy)
 }
