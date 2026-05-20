@@ -41,12 +41,9 @@ import v4.std.algebra {
   Monoid,
   Semigroup
 }
-import v4.std.collection { List }
 import v4.std.diagnostic {
   AmbiguousIntent,
-  Correction,
   Diagnostic,
-  Locus,
   NodeLocus,
   Unavailable
 }
@@ -93,8 +90,8 @@ type SymbolicCost
   | PolyLogCost { variable: SizeVariable, exponent: Int }
   | ExponentialCost { variable: SizeVariable, base: Int }
   | FactorialCost { variable: SizeVariable }
-  | SumCost { terms: List<SymbolicCost> }
-  | ProductCost { factors: List<SymbolicCost> }
+  | SumCost { lhs: SymbolicCost, rhs: SymbolicCost }
+  | ProductCost { lhs: SymbolicCost, rhs: SymbolicCost }
   | UnknownCost { reason: String }
 
 // 🟢 coproduct dissolution — T-12-COMPLEXITY-PROJECTION.
@@ -229,7 +226,7 @@ fn symbolic_sequential(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
       match b {
         ConstantCost { value: 0 } => a
         UnknownCost { reason: _ } => b
-        _ => SumCost { terms: [a, b] }
+        _ => SumCost { lhs: a, rhs: b }
       }
   }
 }
@@ -244,7 +241,7 @@ fn symbolic_product(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
         ConstantCost { value: 0 } => zero_cost()
         ConstantCost { value: 1 } => a
         UnknownCost { reason: _ } => b
-        _ => ProductCost { factors: [a, b] }
+        _ => ProductCost { lhs: a, rhs: b }
       }
   }
 }
@@ -288,10 +285,11 @@ fn symbolic_cost_fold() -> NodeFold<SymbolicCostFoldState> {
 }
 
 fn symbolic_cost_of_node(n: Node) -> SymbolicCost {
-  fold_node(n: n, algebra: symbolic_cost_fold()).cost
+  let folded = fold_node(n: n, algebra: symbolic_cost_fold())
+  folded.cost
 }
 
-fn symbolic_cost_of(n: Node) -> Witness<SymbolicCost> {
+fn cost_lens(n: Node) -> Witness<SymbolicCost> {
   symbolic_cost_witness(c: symbolic_cost_of_node(n: n), n: n)
 }
 
@@ -379,12 +377,6 @@ fn symbolic_cost_dominates(a: SymbolicCost, b: SymbolicCost) -> Bool {
   )
 }
 
-fn fold_join_cost_classes(terms: List<SymbolicCost>) -> AsymptoticClass {
-  fold(terms, init: ClassConstant, f: fn(acc, term) {
-    asymptotic_class_join(a: acc, b: asymptotic_class_of_cost(cost: term))
-  })
-}
-
 fn multiply_classes(a: AsymptoticClass, b: AsymptoticClass) -> AsymptoticClass {
   match a {
     ClassConstant => b
@@ -436,22 +428,26 @@ fn multiply_classes(a: AsymptoticClass, b: AsymptoticClass) -> AsymptoticClass {
         ClassConstant => a
         ClassLog => a
         ClassPolyLog { exponent: _ } => a
-        _ => multiply_classes(a: b, b: a)
+        ClassLinear => ClassLinear
+        ClassLinearithmic => ClassLinearithmic
+        ClassPolynomial { degree: _ } => b
+        ClassExponential => ClassExponential
+        ClassFactorial => ClassFactorial
+        ClassUnknown => ClassUnknown
       }
     ClassLog =>
       match b {
         ClassConstant => ClassLog
         ClassLog => ClassPolyLog { exponent: 2 }
         ClassPolyLog { exponent: e } => ClassPolyLog { exponent: e + 1 }
-        _ => multiply_classes(a: b, b: a)
+        ClassLinear => ClassLinearithmic
+        ClassLinearithmic => ClassLinearithmic
+        ClassPolynomial { degree: _ } => b
+        ClassExponential => ClassExponential
+        ClassFactorial => ClassFactorial
+        ClassUnknown => ClassUnknown
       }
   }
-}
-
-fn fold_product_cost_classes(factors: List<SymbolicCost>) -> AsymptoticClass {
-  fold(factors, init: ClassConstant, f: fn(acc, factor) {
-    multiply_classes(a: acc, b: asymptotic_class_of_cost(cost: factor))
-  })
 }
 
 fn asymptotic_class_of_cost(cost: SymbolicCost) -> AsymptoticClass {
@@ -463,8 +459,16 @@ fn asymptotic_class_of_cost(cost: SymbolicCost) -> AsymptoticClass {
     PolyLogCost { variable: _, exponent: e } => ClassPolyLog { exponent: e }
     ExponentialCost { variable: _, base: _ } => ClassExponential
     FactorialCost { variable: _ } => ClassFactorial
-    SumCost { terms: terms } => fold_join_cost_classes(terms: terms)
-    ProductCost { factors: factors } => fold_product_cost_classes(factors: factors)
+    SumCost { lhs: lhs, rhs: rhs } =>
+      asymptotic_class_join(
+        a: asymptotic_class_of_cost(cost: lhs),
+        b: asymptotic_class_of_cost(cost: rhs)
+      )
+    ProductCost { lhs: lhs, rhs: rhs } =>
+      multiply_classes(
+        a: asymptotic_class_of_cost(cost: lhs),
+        b: asymptotic_class_of_cost(cost: rhs)
+      )
     UnknownCost { reason: _ } => ClassUnknown
   }
 }
@@ -491,7 +495,7 @@ data symbolic_cost_lattice: BoundedLattice<SymbolicCost> = BoundedLattice {
     meet: cost_lattice_meet,
     join: cost_lattice_join
   },
-  top: UnknownCost { reason: [] },
+  top: UnknownCost { reason: "" },
   bottom: ConstantCost { value: 0 }
 }
 

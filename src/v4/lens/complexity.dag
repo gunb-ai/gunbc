@@ -33,17 +33,25 @@ module v4.lens.complexity
 
 import v4.lens.cost {
   AsymptoticClass,
-  ClassConstant,
-  ClassUnknown,
+  ClassExponential,
+  ClassFactorial,
+  ClassLinear,
+  ClassLinearithmic,
+  ClassLog,
+  ClassPolynomial,
+  ClassPolyLog,
   SymbolicCost,
+  SizeVariable,
   asymptotic_class_dominates,
   asymptotic_class_of_cost,
-  symbolic_cost_of
+  cost_lens
 }
 import v4.std.diagnostic {
   AmbiguousIntent,
   Diagnostic,
   NodeLocus,
+  Textual,
+  WholeFile,
   Unavailable
 }
 import v4.std.node { Node, Symbol }
@@ -51,27 +59,66 @@ import v4.std.witness { Holds, Violates, Witness }
 
 
 data complexity_reason_unmodeled_cost_projection: Symbol = complexity_reason_unmodeled_cost_projection
+data complexity_projection_virtual_file: Symbol = complexity_projection_virtual_file
 
-type ComplexityBound {
-  class: AsymptoticClass
+// ComplexityBound is the asymptotic projection of `SymbolicCost`. The
+// `class` relation remains owned by `cost.dag`; this carrier packages the
+// projected user-facing bound without adding another cost mechanism.
+// 🟢 coproduct dissolution — T-12-COMPLEXITY-PROJECTION.
+type ComplexityBound
+  = Constant
+  | Logarithmic { size_var: SizeVariable }
+  | Linear { size_var: SizeVariable }
+  | Polynomial { size_var: SizeVariable, degree: Int }
+  | Exponential { size_var: SizeVariable }
+  | Factorial { size_var: SizeVariable }
+  | Unknown { diagnostic: Diagnostic }
+
+fn unknown_complexity() -> ComplexityBound {
+  Unknown { diagnostic: complexity_projection_diagnostic() }
 }
 
 fn complexity_bound_from_cost(cost: SymbolicCost) -> ComplexityBound {
-  ComplexityBound {
-    class: asymptotic_class_of_cost(cost: cost)
+  match cost {
+    ConstantCost { value: _ } => Constant
+    LogCost { variable: v } => Logarithmic { size_var: v }
+    LinearCost { variable: v } => Linear { size_var: v }
+    PolynomialCost { variable: v, degree: d } => Polynomial { size_var: v, degree: d }
+    PolyLogCost { variable: _, exponent: _ } => unknown_complexity()
+    ExponentialCost { variable: v, base: _ } => Exponential { size_var: v }
+    FactorialCost { variable: v } => Factorial { size_var: v }
+    SumCost { lhs: lhs, rhs: rhs } =>
+      dominant_complexity_bound(
+        a: complexity_bound_from_cost(cost: lhs),
+        b: complexity_bound_from_cost(cost: rhs)
+      )
+    ProductCost { lhs: lhs, rhs: rhs } =>
+      multiply_complexity_bounds(
+        a: complexity_bound_from_cost(cost: lhs),
+        b: complexity_bound_from_cost(cost: rhs)
+      )
+    UnknownCost { reason: _ } => unknown_complexity()
   }
 }
 
-fn complexity_projection_diagnostic(n: Node) -> Diagnostic {
+fn dominant_complexity_bound(a: ComplexityBound, b: ComplexityBound) -> ComplexityBound {
+  if complexity_bound_dominates(a: a, b: b) {
+    a
+  } else {
+    b
+  }
+}
+
+fn complexity_projection_diagnostic() -> Diagnostic {
   Diagnostic {
     reason: complexity_reason_unmodeled_cost_projection,
-    at: NodeLocus { node: n },
+    at: Textual { file: complexity_projection_virtual_file, extent: WholeFile },
     correction: Unavailable { reason: AmbiguousIntent }
   }
 }
 
-fn complexity_of(n: Node) -> Witness<ComplexityBound> {
-  match symbolic_cost_of(n: n) {
+fn asymptotic_projection(cost_witness: Witness<SymbolicCost>) -> Witness<ComplexityBound> {
+  match cost_witness {
     Holds { value: cost } =>
       Holds { value: complexity_bound_from_cost(cost: cost) }
     Violates { diagnostic: d } =>
@@ -79,6 +126,69 @@ fn complexity_of(n: Node) -> Witness<ComplexityBound> {
   }
 }
 
+fn complexity_lens(n: Node) -> Witness<ComplexityBound> {
+  asymptotic_projection(cost_witness: cost_lens(n: n))
+}
+
+fn complexity_bound_class(b: ComplexityBound) -> AsymptoticClass {
+  match b {
+    Constant => ClassConstant
+    Logarithmic { size_var: _ } => ClassLog
+    Linear { size_var: _ } => ClassLinear
+    Polynomial { size_var: _, degree: d } => ClassPolynomial { degree: d }
+    Exponential { size_var: _ } => ClassExponential
+    Factorial { size_var: _ } => ClassFactorial
+    Unknown { diagnostic: _ } => ClassUnknown
+  }
+}
+
 fn complexity_bound_dominates(a: ComplexityBound, b: ComplexityBound) -> Bool {
-  asymptotic_class_dominates(a: a.class, b: b.class)
+  asymptotic_class_dominates(
+    a: complexity_bound_class(b: a),
+    b: complexity_bound_class(b: b)
+  )
+}
+
+fn multiply_complexity_bounds(a: ComplexityBound, b: ComplexityBound) -> ComplexityBound {
+  match a {
+    Constant => b
+    Unknown { diagnostic: _ } => a
+    Factorial { size_var: _ } => a
+    Exponential { size_var: _ } =>
+      match b {
+        Factorial { size_var: _ } => b
+        Unknown { diagnostic: _ } => b
+        _ => a
+      }
+    Polynomial { size_var: v, degree: ad } =>
+      match b {
+        Constant => a
+        Logarithmic { size_var: _ } => a
+        Linear { size_var: _ } => Polynomial { size_var: v, degree: ad + 1 }
+        Polynomial { size_var: _, degree: bd } => Polynomial { size_var: v, degree: ad + bd }
+        Exponential { size_var: _ } => b
+        Factorial { size_var: _ } => b
+        Unknown { diagnostic: _ } => b
+      }
+    Linear { size_var: v } =>
+      match b {
+        Constant => a
+        Logarithmic { size_var: _ } => Polynomial { size_var: v, degree: 2 }
+        Linear { size_var: _ } => Polynomial { size_var: v, degree: 2 }
+        Polynomial { size_var: _, degree: bd } => Polynomial { size_var: v, degree: bd + 1 }
+        Exponential { size_var: _ } => b
+        Factorial { size_var: _ } => b
+        Unknown { diagnostic: _ } => b
+      }
+    Logarithmic { size_var: v } =>
+      match b {
+        Constant => a
+        Logarithmic { size_var: _ } => Polynomial { size_var: v, degree: 1 }
+        Linear { size_var: bv } => Polynomial { size_var: bv, degree: 2 }
+        Polynomial { size_var: _, degree: _ } => b
+        Exponential { size_var: _ } => b
+        Factorial { size_var: _ } => b
+        Unknown { diagnostic: _ } => b
+      }
+  }
 }
