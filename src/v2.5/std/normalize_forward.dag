@@ -96,7 +96,6 @@ import v2_5.std.stage_types {
   ResolvedUnaryOp,
   ResolvedLambda,
   ResolvedStringInterp,
-  ResolvedBlock,
   ResolvedCast,
   ResolvedForEach,
   ResolvedIndex,

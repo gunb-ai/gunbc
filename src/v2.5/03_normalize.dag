@@ -24,39 +24,18 @@ import v2_5.std.stage_types {
   EdgeLabel,
   NamedEdge,
   NormalizedComputationForm,
-  NormalizedDataDecl,
-  NormalizedError,
-  NormalizedFn,
-  NormalizedFunc,
   NormalizedItem,
   NormalizedModule,
-  NormalizedOtherItem,
-  NormalizedService,
-  NormalizedTypeDecl,
-  NormalizedTypeError,
   NormalizedTypeForm,
-  NormalizedTypeExpr,
-  NormalizedBlock,
-  NormalizedTransportRest,
   PositionalEdge,
   ResolvedComputationForm,
   ResolvedCore,
   ResolvedCoreForm,
-  ResolvedDataDecl,
-  ResolvedFn,
-  ResolvedFunc,
-  ResolvedItemCore,
   ResolvedModule,
   ResolvedModuleItem,
-  ResolvedOtherItem,
-  ResolvedService,
   ResolvedSugarForm,
   ResolvedSugared,
-  ResolvedTypeDecl,
-  ResolvedTypeError,
   ResolvedTypeForm,
-  ResolvedTypeExpr,
-  ResolvedBlock,
   SeamItemComputation,
   SeamItemType,
   SeamNormalizedEdge,
@@ -81,7 +60,7 @@ import v2_5.std.stage_types {
   c3_surface_sugar_service,
   c3_surface_sugar_type
 }
-import v2_5.std.syntax { InternalExprError }
+import v2_5.std.normalize_forward { normalize_item_core }
 import v2_5.std.sugar_rules {
   PeelSinglePositionalChild,
   ReplaceWithArrow,
@@ -399,98 +378,6 @@ fn normalize_seam_node(n: SeamResolvedNode) -> Outcome<SeamNormalizedNode> {
 
 fn normalize_seam(resolved: SeamResolvedNode) -> Outcome<SeamNormalizedNode> {
   normalize_seam_node(n: resolved)
-}
-
-
-fn resolved_type_expr_stub(span: SourceSpan) -> ResolvedTypeExpr {
-  ResolvedTypeError {
-    message: "normalize-item-core-stub",
-    span: span
-  }
-}
-
-
-fn normalized_type_expr_stub(span: SourceSpan) -> NormalizedTypeExpr {
-  NormalizedTypeError {
-    message: "normalize-item-core-stub",
-    span: span
-  }
-}
-
-
-fn normalized_block_stub(span: SourceSpan) -> NormalizedBlock {
-  NormalizedBlock {
-    statements: Empty,
-    span: span
-  }
-}
-
-
-fn normalize_item_core(item: ResolvedItemCore) -> Outcome<NormalizedItem> {
-  match item {
-    ResolvedOtherItem { keyword: keyword, raw_span: raw_span } =>
-      Produced {
-        value: NormalizedOtherItem {
-          keyword: keyword,
-          raw_span: raw_span
-        }
-      }
-    ResolvedFn { name: name, span: span, type_params: _, params: _, return_type: _, uses: _, body: _ } =>
-      Produced {
-        value: NormalizedFn {
-          name: name,
-          type_params: Empty,
-          params: Empty,
-          return_type: None,
-          uses: Empty,
-          body: normalized_block_stub(span: span),
-          span: span
-        }
-      }
-    ResolvedFunc { name: name, span: span, type_params: _, params: _, return_type: _, uses: _, body: _ } =>
-      Produced {
-        value: NormalizedFunc {
-          name: name,
-          type_params: Empty,
-          params: Empty,
-          return_type: None,
-          uses: Empty,
-          body: normalized_block_stub(span: span),
-          span: span
-        }
-      }
-    ResolvedTypeDecl { name: name, span: span, type_params: _, definition: _ } =>
-      Produced {
-        value: NormalizedTypeDecl {
-          name: name,
-          type_params: Empty,
-          definition: normalized_type_expr_stub(span: span),
-          span: span
-        }
-      }
-    ResolvedDataDecl { name: name, span: span, type_annotation: _, value: _ } =>
-      Produced {
-        value: NormalizedDataDecl {
-          name: name,
-          type_annotation: normalized_type_expr_stub(span: span),
-          value: NormalizedError {
-            kind: InternalExprError,
-            message: "normalize-item-core-stub",
-            span: span
-          },
-          span: span
-        }
-      }
-    ResolvedService { name: name, span: span, transport: _, operations: _ } =>
-      Produced {
-        value: NormalizedService {
-          name: name,
-          transport: NormalizedTransportRest { properties: Empty },
-          operations: Empty,
-          span: span
-        }
-      }
-  }
 }
 
 
