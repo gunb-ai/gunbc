@@ -119,7 +119,7 @@ type TestCase {
 // test node. This older dsl projection keeps Milliseconds until the v3
 // TimingBudget / TimingMeasurement authority converges into shared std.
 type TestNodeRef
-  = TestCaseNode(TestCase)
+  = TestCaseNode { test_case: TestCase }
 
 type TestNodeCostDimension {
   node: TestNodeRef
