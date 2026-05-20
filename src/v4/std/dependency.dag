@@ -1,6 +1,6 @@
 // src/v4/std/dependency.dag
 // Scope: P6 dependency graph substrate — domains, edges, witnesses, SCC, topological plan.
-// Owns: DependencySubject, ArtifactDependencyEndpoint, Program/TargetPlan/ArtifactSchedulingKind+Reason (sole dependency-cause axis), ClosedWorldScope, scheduling/containment edges, ClosedWorldDependencyWitness, IndependenceAttempt, IndependenceClaim, DependencyDiagnostic, TopologicalPlan.
+// Owns: DependencySubject, ArtifactDependencyEndpoint, Program/TargetPlan/ArtifactSchedulingKind+Reason (sole dependency-cause axis), ClosedWorldScope, scheduling/containment edges, ClosedWorldDependencyWitness, IndependenceAttempt, IndependenceClaim, DependencyDiagnostic, SchedulableScc, InvalidCycleScc, TopologicalPlan.
 // Consumes: v4.std.collection, v4.std.node, v4.std.witness.
 // Status: Wave-1 Worker A strict substrate.
 
