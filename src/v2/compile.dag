@@ -261,11 +261,13 @@ fn dag_collect_insert(node: Node, acc: DagCollectAcc) -> DagCollectAcc {
   let key = dag_node_key(node: node)
   match map_get(acc.seen, key) {
     Some { value: _ } => acc
-    None =>
-      DagCollectAcc {
+    None => {
+      let acc1 = DagCollectAcc {
         seen: map_insert(acc.seen, key, true),
         order: list_push(acc.order, node)
-      } |> dag_collect_node_tree(node: node)
+      }
+      dag_collect_node_tree(node: node, acc: acc1)
+    }
   }
 }
 
@@ -276,12 +278,8 @@ fn dag_collect_from_module(module: TypedModule, acc: DagCollectAcc) -> DagCollec
 }
 
 fn collect_dag_nodes(typed: ResolvedGraph) -> List<Node> {
-  typed.modules
+  let acc = typed.modules
     |> fold(init: DagCollectAcc { seen: empty_map(), order: [] }, f: (acc, m) => dag_collect_from_module(module: m, acc: acc))
-    |> dag_collect_acc_order
-}
-
-fn dag_collect_acc_order(acc: DagCollectAcc) -> List<Node> {
   acc.order
 }
 
