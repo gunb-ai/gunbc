@@ -119,9 +119,11 @@ fn run_pipeline_assert(
       diagnostic: eval_diagnostic(reason: eval_rejected_roundtrip_deferred, node: input)
     }
     DiagnosticAssert => match actual {
-      Rejected { diagnostics: _ } => match expected {
-        Rejected { diagnostics: _ } =>
-          if outcome_node_eq(a: actual, b: expected) { Pass } else { Fail { actual: actual } }
+      Rejected { diagnostics: d } => match expected {
+        Rejected { diagnostics: _ } => {
+          let comparable = Rejected { diagnostics: d }
+          if outcome_node_eq(a: comparable, b: expected) { Pass } else { Fail { actual: actual } }
+        }
         _ => Fail { actual: actual }
       }
       _ => Fail { actual: actual }
