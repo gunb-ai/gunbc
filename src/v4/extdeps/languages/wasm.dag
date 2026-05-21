@@ -19,15 +19,13 @@ import v4.std.model_core {
   primitive_fact_axis_encoding,
   primitive_fact_axis_overflow_disposition,
   primitive_fact_axis_signedness,
+  primitive_fact_axis_std_projection,
   primitive_fact_axis_surface_spelling,
   primitive_fact_axis_width
 }
 import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
 import v4.std.logic { Bool }
 import v4.std.algebra { free_monoid_fold }
-
-// WebAssembly integer value types are sign-agnostic at the type layer (Core §2.3.1.1).
-type WasmSignAgnosticKind
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type WasmIntWidth
@@ -38,9 +36,6 @@ type WasmIntWidth
 type WasmFloatWidth
   = WasmFloatBits32
   | WasmFloatBits64
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
-type WasmModularWrap
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type WasmScalar
@@ -96,15 +91,12 @@ data wasm_inhabitant_field_f32: Symbol = wasm_inhabitant_field_f32
 data wasm_inhabitant_field_f64: Symbol = wasm_inhabitant_field_f64
 
 data wasm_facts_field_surface_spelling: Symbol = wasm_facts_field_surface_spelling
-data wasm_facts_field_kind: Symbol = wasm_facts_field_kind
 data wasm_facts_field_width: Symbol = wasm_facts_field_width
-data wasm_facts_field_overflow_release: Symbol = wasm_facts_field_overflow_release
 data wasm_facts_field_std_projection: Symbol = wasm_facts_field_std_projection
 data wasm_facts_field_scalar_classifier: Symbol = wasm_facts_field_scalar_classifier
 data wasm_facts_field_ieee754_binary: Symbol = wasm_facts_field_ieee754_binary
 
 data wasm_scalar_field_classifier: Symbol = wasm_scalar_field_classifier
-data wasm_scalar_field_kind: Symbol = wasm_scalar_field_kind
 data wasm_scalar_field_width: Symbol = wasm_scalar_field_width
 
 data wasm_tag_sign_agnostic_modular: Symbol = wasm_tag_sign_agnostic_modular
@@ -410,6 +402,10 @@ fn wasm_primitive_bundle_from_integer_facts(facts: WasmIntegerPrimitiveFacts) ->
       wasm_primitive_axis_binding(
         axis: primitive_fact_axis_overflow_disposition,
         fact: wasm_inhabitant_atom(id: wasm_tag_modular_wrap)
+      ),
+      wasm_primitive_axis_binding(
+        axis: primitive_fact_axis_std_projection,
+        fact: wasm_inhabitant_atom(id: facts.std_projection)
       )
     ]
   }
@@ -430,6 +426,10 @@ fn wasm_primitive_bundle_from_float_facts(facts: WasmFloatPrimitiveFacts) -> Pri
       wasm_primitive_axis_binding(
         axis: primitive_fact_axis_encoding,
         fact: wasm_inhabitant_atom(id: facts.ieee754_binary)
+      ),
+      wasm_primitive_axis_binding(
+        axis: primitive_fact_axis_std_projection,
+        fact: wasm_inhabitant_atom(id: facts.std_projection)
       )
     ]
   }

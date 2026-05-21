@@ -399,39 +399,16 @@ type SpiceValue {
 }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// Physical-quantity axes (fact-bundle wave — grounding-worked-examples.md §4).
-//
-// SPICE node voltages are physical quantities: magnitude + unit, not bare
-// floats. `std/` does not yet land shared `Dimension` / exact-real carriers
-// (T-3 Phase-2 vocabulary — TASKS.md); this file owns the SPICE-specific
-// facts honestly:
-//   - `SpiceApproxVoltage` — approximate magnitude (lexeme scaffold) + a
-//     typed `Volt` unit fact (must be supplied at coercion boundaries —
-//     never fabricated from a unitless source).
-//   - `SpiceExactVoltageGap` — named fail-closed authority for exact-
-//     continuum voltage until an exact-real carrier exists in std/.
-//
-// `NodeVoltageBinding.value` remains `SpiceValue` (lexical deck surface).
-// Consumers that interpret bindings as physical quantities project through
-// `SpiceApproxVoltage` (or reject via `spice_exact_voltage_missing_carrier`).
-//
-// Coproduct dissolution (Practice 4) — classification: 🟢 GREEN (terminal).
-// Ledger: Volt is the only SPICE3 electrical base unit modeled in wave-1;
-// alternative units (Ampere for current sources) are a named 🟡 follow-up
-// tied to the same T-3 dissolution trigger as exact-real.
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type SpiceVoltUnit
 
-// Approximate node voltage — magnitude stays lexeme-level until std/
-// `ApproximateField` binds; unit is structural (not inferred from spelling).
+// 🟡 needs-more-work — feature:spice-approx-voltage-consumer — dissolve-on: NodeVoltageBinding consumer projects through SpiceApproxVoltage (T-4 wave-2) · ledger: T-4
 type SpiceApproxVoltage {
   magnitude_lexeme: String
   unit: SpiceVoltUnit
 }
 
-// Named fail-closed gap carrier — coercions to exact voltage return
-// `Rejected { reason: spice_exact_voltage_missing_carrier }` until std/
-// provides an exact-real / quantity substrate (grounding-worked-examples.md §4).
+// 🟡 needs-more-work — feature:spice-exact-voltage-gap — dissolve-on: std/ exact-real / Dimension substrate (T-3) · ledger: T-4
 type SpiceExactVoltageGap {}
 
 data spice_unit_volt: Symbol = spice_unit_volt

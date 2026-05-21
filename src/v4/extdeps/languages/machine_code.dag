@@ -19,6 +19,7 @@ import v4.std.model_core {
   primitive_fact_axis_encoding,
   primitive_fact_axis_overflow_disposition,
   primitive_fact_axis_signedness,
+  primitive_fact_axis_std_projection,
   primitive_fact_axis_surface_spelling,
   primitive_fact_axis_width
 }
@@ -349,6 +350,7 @@ data mc_tag_wrap_modulo: Symbol = mc_tag_wrap_modulo
 data mc_tag_trap_on_overflow: Symbol = mc_tag_trap_on_overflow
 data mc_tag_undefined_by_isa: Symbol = mc_tag_undefined_by_isa
 data mc_repr_twos_complement: Symbol = mc_repr_twos_complement
+data mc_facts_field_std_projection: Symbol = mc_facts_field_std_projection
 
 data mc_facts_int8: MachineIntegerPrimitiveFacts = MachineIntegerPrimitiveFacts {
   surface_spelling: mc_surface_spelling_int8,
@@ -462,6 +464,10 @@ fn mc_integer_facts_node(facts: MachineIntegerPrimitiveFacts) -> Node {
       Edge {
         label: Named { name: primitive_fact_axis_encoding },
         target: mc_inhabitant_atom(id: mc_repr_twos_complement)
+      },
+      Edge {
+        label: Named { name: mc_facts_field_std_projection },
+        target: mc_inhabitant_atom(id: facts.std_projection)
       }
     ]
   }
@@ -504,6 +510,10 @@ fn mc_primitive_bundle_from_integer_facts(facts: MachineIntegerPrimitiveFacts) -
       mc_primitive_axis_binding(
         axis: primitive_fact_axis_overflow_disposition,
         fact: mc_overflow_node(overflow: facts.overflow_release)
+      ),
+      mc_primitive_axis_binding(
+        axis: primitive_fact_axis_std_projection,
+        fact: mc_inhabitant_atom(id: facts.std_projection)
       )
     ]
   }
