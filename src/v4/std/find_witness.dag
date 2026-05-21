@@ -103,22 +103,20 @@ fn preservation_predicate_holds(
   candidate: Node,
   predicate: PreservationPredicate
 ) -> Bool {
-  if predicate.preservation_rule == preservation_rule_constraint_satisfaction {
-    constraint_satisfaction_preservation_holds(
-      source_facts: source_facts,
-      candidate: candidate,
-      algebra: predicate.algebra
-    )
-  } else {
-    if predicate.preservation_rule == preservation_rule_exact_structural_equality_zip_fold {
+  match predicate.preservation_rule {
+    preservation_rule_constraint_satisfaction =>
+      constraint_satisfaction_preservation_holds(
+        source_facts: source_facts,
+        candidate: candidate,
+        algebra: predicate.algebra
+      )
+    preservation_rule_exact_structural_equality_zip_fold =>
       identity_mvp_preservation_holds(
         source_facts: source_facts,
         candidate: candidate,
         algebra: predicate.algebra
       )
-    } else {
-      false
-    }
+    _ => false
   }
 }
 // Only called from find_witness_realized / verify_witness_realized after rule dispatch; unknown rules reject at entry via find_witness_not_realized.
