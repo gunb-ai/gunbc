@@ -238,9 +238,7 @@ fn structural_resolution_dependency_facts_eq(
     false
   } else {
     fold(left, init: true, f: fn(acc, item) {
-      acc
-        && (structural_resolution_dependency_count(xs: left, item: item)
-          == structural_resolution_dependency_count(xs: right, item: item))
+      acc && (structural_resolution_dependency_count(xs: left, item: item) == structural_resolution_dependency_count(xs: right, item: item))
     })
   }
 }
