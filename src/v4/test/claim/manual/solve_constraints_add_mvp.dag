@@ -1,0 +1,87 @@
+// src/v4/test/claim/manual/solve_constraints_add_mvp.dag
+// Scope: MVP-1 constraint_satisfaction path — solve_constraints Accepted on add-shaped graph root.
+// Owns: fixture_add_constraint_graph, anchor_solve_constraints_add_mvp, claim rows.
+// Consumes: test/claim/manual/infer_ground_add_mvp.dag, std/constraints.dag, std/verification.dag.
+// Status: behavior receipt for canonical_grounding_candidates + constraint_satisfaction_holds.
+
+
+module v4.test.claim.manual.solve_constraints_add_mvp
+
+
+import v4.std.constraints {
+  CanonicalGrounding,
+  ConstraintGraph,
+  ConstraintSolvePolicy,
+  constraint_property_candidate_set_closedness,
+  solve_constraints
+}
+import v4.std.diagnostic {
+  Accepted,
+  None,
+  Outcome
+}
+import v4.std.find_witness { preservation_rule_constraint_satisfaction }
+import v4.std.node { Node }
+import v4.test.claim.manual.infer_ground_add_mvp { fixture_add_resolved_tree }
+import v4.std.verification {
+  Compiles,
+  Equals,
+  T19ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit
+}
+fn fixture_add_constraint_graph() -> ConstraintGraph {
+  ConstraintGraph { root: fixture_add_resolved_tree() }
+}
+
+
+fn anchor_solve_constraints_add_mvp() -> Outcome<CanonicalGrounding> {
+  solve_constraints(
+    policy: ConstraintSolvePolicy {
+      graph: fixture_add_constraint_graph()
+    }
+  )
+}
+
+
+data witness_solve_constraints_add_accepts: Bool = match anchor_solve_constraints_add_mvp() {
+  Accepted { value: g, diagnostics: d } =>
+    (g.node == fixture_add_resolved_tree())
+      && (g.witness.structural.property == preservation_rule_constraint_satisfaction)
+      && (g.witness.structural.evidence == fixture_add_resolved_tree())
+      && (g.witness.closedness.property == constraint_property_candidate_set_closedness)
+      && (d == None)
+  Rejected { diagnostics: _ } => false
+}
+
+
+fn solve_constraints_claim_input(_ok: Bool) -> Node {
+  fixture_add_resolved_tree()
+}
+
+
+fn solve_constraints_claim_expected() -> Outcome<Node> {
+  Accepted { value: fixture_add_resolved_tree(), diagnostics: None }
+}
+
+
+data claim_solve_constraints_add_mvp_compiles: TestClaim = TestClaim {
+  kind: Compiles,
+  label: "manual/solve_constraints_add_mvp: constraint path module compiles",
+  t19_anchor: T19ManualAnchorAbsent,
+  input: fixture_add_resolved_tree(),
+  expected: solve_constraints_claim_expected(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+
+data claim_solve_constraints_add_accepts: TestClaim = TestClaim {
+  kind: Equals,
+  label: "manual/solve_constraints_add_mvp: solve_constraints Accepted on add graph root",
+  t19_anchor: T19ManualAnchorAbsent,
+  input: solve_constraints_claim_input(ok: witness_solve_constraints_add_accepts),
+  expected: solve_constraints_claim_expected(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
