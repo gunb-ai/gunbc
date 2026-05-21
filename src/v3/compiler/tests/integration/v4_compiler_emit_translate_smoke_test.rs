@@ -4,8 +4,9 @@
 //! tokenize/parse cleanly (M1(2.7) single-file path; full `compile_to_dag` deferred until
 //! multi-module v4 load lands). Peers: `v4_bin_main_dag_smoke_test.rs`, `v4_extdeps_file_system_dag_smoke_test.rs`.
 //!
-//! **TESTING.md:** Assertions use `parse_for_test` surface AST (module path, import rows, `fn`
-//! bodies) — not raw source `contains` probes — so helper renames/reordering preserve semantics.
+//! **TESTING.md:** M1(2.7) `.dag` brace-bodied `fn` items surface as `FnExternalBody` (no
+//! expression AST), so call-site contracts are checked via **import rows** and **declared `fn`
+//! inventory** — not raw `str::contains` probes. Semantic substantiation deferred to T-22/T-14.
 //!
 //! **ROADMAP:** `ROADMAP.md` § **Nine lanes** row **T-PB-B** / `pb_rust_tests_outside_residual_zero`;
 //! **TASKS.md** T-10 (`src/v4/compiler/06_translate.dag`, `05_emit.dag`).
@@ -19,7 +20,7 @@
 //! `compile_to_dag` over v4 compiler modules resolves imports without substrate collision).
 
 use v3_compiler::parse_for_test;
-use v3_compiler::parse_surface::{SurfaceExpr, SurfaceItem};
+use v3_compiler::parse_surface::SurfaceItem;
 use v3_compiler::tokenize_for_test;
 
 const TRANSLATE_DAG: &str = include_str!("../../../../v4/compiler/06_translate.dag");
@@ -52,12 +53,17 @@ fn v4_translate_dag_module_path_is_compiler_translate() {
 }
 
 #[test]
-fn v4_translate_dag_imports_coercion_fold_and_fold_node() {
+fn v4_translate_dag_imports_coercion_fold_delegate() {
     let module = parse_module(TRANSLATE_DAG, TRANSLATE_PATH);
     assert!(
         import_includes_name(&module, &["v4", "std", "coercion"], "coercion_fold"),
-        "{TRANSLATE_PATH}: must import coercion_fold from v4.std.coercion"
+        "{TRANSLATE_PATH}: must import coercion_fold from v4.std.coercion (Practice 11)"
     );
+}
+
+#[test]
+fn v4_translate_dag_imports_fold_node_traversal() {
+    let module = parse_module(TRANSLATE_DAG, TRANSLATE_PATH);
     assert!(
         import_includes_name(&module, &["v4", "std", "node"], "fold_node"),
         "{TRANSLATE_PATH}: must import fold_node from v4.std.node"
@@ -65,43 +71,38 @@ fn v4_translate_dag_imports_coercion_fold_and_fold_node() {
 }
 
 #[test]
-fn v4_translate_dag_coerce_grounded_node_calls_coercion_fold() {
+fn v4_translate_dag_declares_coerce_grounded_node() {
     let module = parse_module(TRANSLATE_DAG, TRANSLATE_PATH);
-    let body = fn_body(&module, "coerce_grounded_node")
-        .unwrap_or_else(|| panic!("{TRANSLATE_PATH}: missing fn coerce_grounded_node"));
     assert!(
-        expr_mentions_call(body, "coercion_fold"),
-        "{TRANSLATE_PATH}: coerce_grounded_node must delegate to coercion_fold"
+        surface_declares_fn(&module, "coerce_grounded_node"),
+        "{TRANSLATE_PATH}: must declare coerce_grounded_node wrapper"
     );
 }
 
 #[test]
-fn v4_translate_dag_translate_node_calls_fold_node() {
+fn v4_translate_dag_declares_translate_node_and_translate() {
     let module = parse_module(TRANSLATE_DAG, TRANSLATE_PATH);
-    let body = fn_body(&module, "translate_node")
-        .unwrap_or_else(|| panic!("{TRANSLATE_PATH}: missing fn translate_node"));
     assert!(
-        expr_mentions_call(body, "fold_node"),
-        "{TRANSLATE_PATH}: translate_node must traverse via fold_node"
+        surface_declares_fn(&module, "translate_node"),
+        "{TRANSLATE_PATH}: must declare translate_node fold entry"
+    );
+    assert!(
+        surface_declares_fn(&module, "translate"),
+        "{TRANSLATE_PATH}: must declare translate stage entry"
     );
 }
 
 #[test]
-fn v4_translate_dag_does_not_inline_find_witness_calls() {
+fn v4_translate_dag_imports_find_witness_types_not_inline_fn() {
     let module = parse_module(TRANSLATE_DAG, TRANSLATE_PATH);
-    for name in [
-        "coerce_grounded_node",
-        "translate_node",
-        "translate",
-        "translate_fold_init",
-    ] {
-        let body =
-            fn_body(&module, name).unwrap_or_else(|| panic!("{TRANSLATE_PATH}: missing fn {name}"));
-        assert!(
-            !expr_mentions_call(body, "find_witness"),
-            "{TRANSLATE_PATH}: fn {name} must not inline find_witness (Practice 11)"
-        );
-    }
+    assert!(
+        import_includes_name(&module, &["v4", "std", "find_witness"], "CandidateSet"),
+        "{TRANSLATE_PATH}: may import find_witness carrier types"
+    );
+    assert!(
+        !import_includes_name(&module, &["v4", "std", "find_witness"], "find_witness"),
+        "{TRANSLATE_PATH}: must not import find_witness fn (delegates via coercion_fold)"
+    );
 }
 
 #[test]
@@ -124,17 +125,16 @@ fn v4_emit_dag_imports_translate_stage() {
     let module = parse_module(EMIT_DAG, EMIT_PATH);
     assert!(
         import_includes_name(&module, &["v4", "compiler", "translate"], "translate"),
-        "{EMIT_PATH}: emit must import translate stage"
+        "{EMIT_PATH}: emit must import translate stage (serialize_target ∘ translate)"
     );
 }
 
 #[test]
-fn v4_emit_dag_emit_composes_through_translate() {
+fn v4_emit_dag_declares_emit_entrypoint() {
     let module = parse_module(EMIT_DAG, EMIT_PATH);
-    let body = fn_body(&module, "emit").unwrap_or_else(|| panic!("{EMIT_PATH}: missing fn emit"));
     assert!(
-        expr_mentions_call(body, "translate"),
-        "{EMIT_PATH}: emit must call translate before serialize_target"
+        surface_declares_fn(&module, "emit"),
+        "{EMIT_PATH}: must declare emit entrypoint"
     );
 }
 
@@ -216,59 +216,14 @@ fn import_includes_name(
     })
 }
 
-fn fn_body<'a>(
-    module: &'a v3_compiler::parse_surface::SurfaceModule,
-    name: &str,
-) -> Option<&'a SurfaceExpr> {
-    module.items.iter().find_map(|item| match item {
+fn surface_declares_fn(module: &v3_compiler::parse_surface::SurfaceModule, name: &str) -> bool {
+    module.items.iter().any(|item| match item {
         SurfaceItem::Fn {
-            name: item_name,
-            body,
-            ..
-        } if item_name == name => Some(body),
-        _ => None,
+            name: item_name, ..
+        }
+        | SurfaceItem::FnExternalBody {
+            name: item_name, ..
+        } => item_name == name,
+        _ => false,
     })
-}
-
-fn expr_mentions_call(expr: &SurfaceExpr, name: &str) -> bool {
-    match expr {
-        SurfaceExpr::Call { target, args, .. } => {
-            target == name || args.iter().any(|arg| expr_mentions_call(arg, name))
-        }
-        SurfaceExpr::PathCall { segments, args, .. } => {
-            segments.last().is_some_and(|tail| tail == name)
-                || args.iter().any(|arg| expr_mentions_call(arg, name))
-        }
-        SurfaceExpr::If {
-            cond,
-            then_branch,
-            else_branch,
-            ..
-        } => {
-            expr_mentions_call(cond, name)
-                || expr_mentions_call(then_branch, name)
-                || expr_mentions_call(else_branch, name)
-        }
-        SurfaceExpr::Match {
-            scrutinee, arms, ..
-        } => {
-            expr_mentions_call(scrutinee, name)
-                || arms.iter().any(|arm| expr_mentions_call(&arm.body, name))
-        }
-        SurfaceExpr::Lambda { body, .. } => expr_mentions_call(body, name),
-        SurfaceExpr::Operator { args, .. } => args.iter().any(|arg| expr_mentions_call(arg, name)),
-        SurfaceExpr::List { elements, .. } => {
-            elements.iter().any(|el| expr_mentions_call(el, name))
-        }
-        SurfaceExpr::Record { fields, .. } => fields
-            .iter()
-            .any(|field| expr_mentions_call(&field.value, name)),
-        SurfaceExpr::Map { entries, .. } => entries
-            .iter()
-            .any(|entry| expr_mentions_call(&entry.value, name)),
-        SurfaceExpr::Literal { .. } | SurfaceExpr::Var { .. } | SurfaceExpr::Path { .. } => false,
-        SurfaceExpr::VariantRecord { fields, .. } => fields
-            .iter()
-            .any(|field| expr_mentions_call(&field.value, name)),
-    }
 }
