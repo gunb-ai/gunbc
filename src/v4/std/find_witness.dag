@@ -31,15 +31,12 @@ import v4.std.node {
   Conj,
   Connective,
   Disj,
-  Edge,
   Arrow,
   Instantiation,
   Node,
-  NodeFold,
   NodeKind,
   Symbol,
   TypeNode,
-  fold_node,
   well_formed
 }
 import v4.std.witness { StructuralPropertyWitness }
@@ -117,34 +114,11 @@ fn zip_fold_kind_shape(k: NodeKind) -> NodeKind {
     ComputationNode { behavior: b } => ComputationNode { behavior: b }
   }
 }
-fn zip_fold_node_init(n: Node) -> Node {
-  Node {
-    kind: zip_fold_kind_shape(k: n.kind),
-    children: []
-  }
-}
-fn zip_fold_node_step(acc: Node, edge: Edge, child_shape: Node) -> Node {
-  Node {
-    kind: acc.kind,
-    children: list_push(
-      acc.children,
-      Edge { label: edge.label, target: child_shape }
-    )
-  }
-}
-fn zip_fold_node_shape(n: Node) -> Node {
-  fold_node(
-    n: n,
-    algebra: NodeFold {
-      init: zip_fold_node_init,
-      step: zip_fold_node_step
-    }
-  )
-}
 fn exact_structural_equality_zip_fold(source_facts: Node, candidate: Node) -> Bool {
   well_formed(n: source_facts)
     && well_formed(n: candidate)
-    && (zip_fold_node_shape(n: source_facts) == zip_fold_node_shape(n: candidate))
+    && (zip_fold_kind_shape(k: source_facts.kind) == zip_fold_kind_shape(k: candidate.kind))
+    && (count(source_facts.children) == count(candidate.children))
 }
 fn preservation_predicate_holds(
   source_facts: Node,
