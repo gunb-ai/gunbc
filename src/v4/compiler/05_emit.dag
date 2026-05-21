@@ -16,8 +16,8 @@ import v4.compiler.infer { InferredTree }
 import v4.compiler.translate {
   TargetNodeTree,
   target_model_edge_serialize_emitted,
-  target_model_edge_serialize_source,
   target_bundle_child,
+  target_serialize_source_from_model,
   translate
 }
 import v4.std.diagnostic {
@@ -59,7 +59,7 @@ fn serialize_source_for_emitted(
     o: target_bundle_child(target: target, edge_name: target_model_edge_serialize_emitted),
     f: fn(expected_emitted) {
       if emitted == expected_emitted {
-        target_bundle_child(target: target, edge_name: target_model_edge_serialize_source)
+        target_serialize_source_from_model(target: target)
       } else {
         outcome_rejected(emit_serialize_emitted_mismatch_diagnostic(
           emitted: emitted,
