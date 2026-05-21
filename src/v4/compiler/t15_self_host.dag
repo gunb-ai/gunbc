@@ -1,12 +1,11 @@
 // src/v4/compiler/t15_self_host.dag
 // Scope: T-15 self-host fixed-point validation runner shape; body is scaffolded fail-closed until T-22/T-34 and Stage1Candidate generation land.
 // Owns: CoreNode, SourceModels, StructurallyEqual, StageEmissionEquality, self_host_fixed_point_validate.
-// Consumes: v4.compiler.compile, v4.std.coercion, v4.std.diagnostic, v4.std.node, v4.std.witness.
+// Consumes: v4.std.coercion, v4.std.diagnostic, v4.std.node, v4.std.witness.
 // Status: scaffold-against-contract; runner body returns T15RunnerNotRealized.
 
 module v4.compiler.t15_self_host
 
-import v4.compiler.compile { Source }
 import v4.std.coercion { homomorphism_rule_exact_structural_equality }
 import v4.std.collection { List }
 import v4.std.diagnostic {
@@ -31,7 +30,7 @@ type CoreNode = Node
 
 
 type SourceModels {
-  model_corpus: List<Source>
+  model_corpus: List<CoreNode>
 }
 
 

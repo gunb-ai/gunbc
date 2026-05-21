@@ -10,7 +10,6 @@ import v4.compiler.t15_self_host {
   PromotionWitness,
   SourceModels,
   self_host_fixed_point_validate,
-  t15_runner_not_realized,
   t15_runner_not_realized_diagnostic
 }
 import v4.std.diagnostic {
@@ -48,14 +47,6 @@ data t15_runner_scaffold_result: Outcome<PromotionWitness> = self_host_fixed_poi
   source_models: t15_rejects_until_substrate_source_models,
   reference_stage1: t15_rejects_until_substrate_subject
 )
-
-
-fn t15_runner_scaffold_rejects() -> Bool {
-  match t15_runner_scaffold_result {
-    Rejected { diagnostics: ds } => ds.head.reason == t15_runner_not_realized
-    _ => false
-  }
-}
 
 
 data claim_t15_rejects_until_substrate: TestClaim = TestClaim {
