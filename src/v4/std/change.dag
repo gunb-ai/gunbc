@@ -1,6 +1,6 @@
 // src/v4/std/change.dag
 // Scope: change-consequence substrate and recomputation plan carrier.
-// Owns: ChangeKind, Change, ChangeSet, AffectedDependency, AffectedSetEvidence, AffectedSet, RecomputePlan.
+// Owns: ChangeKind, Change, ChangeSet, AffectedDependency, AffectedExclusion, AffectedSetEvidence, AffectedSet, RecomputePlan.
 // Consumes: v4.std.collection, v4.std.dependency, v4.std.diagnostic, v4.std.node.
 // Status: Wave-2-A substrate.
 
@@ -34,6 +34,13 @@ type AffectedDependency {
   dependency: DependencyView
 }
 
+type AffectedExclusion {
+  change: Change
+  dependency: DependencyView
+  usage_site: Node
+  changed_dimension: Symbol
+}
+
 // 🟡 coproduct dissolution — feature:t21-affected-set-testclaims.
 type AffectedSetEvidence
   = AffectedSetReason { reason: Symbol }
@@ -44,6 +51,7 @@ type AffectedSet
   = AffectedSetProduced {
       changes: ChangeSet,
       affected: List<AffectedDependency>,
+      exclusions: List<AffectedExclusion>,
       restricted_to: List<DependencyKind>
     }
   | AffectedSetFailClosed {

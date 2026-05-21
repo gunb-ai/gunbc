@@ -10,6 +10,7 @@ module v4.lens.affected_set
 import v4.std.collection { List, Map }
 import v4.std.change {
   AffectedDependency,
+  AffectedExclusion,
   AffectedSet,
   AffectedSetDiagnostic,
   AffectedSetEvidence,
@@ -181,7 +182,8 @@ type AffectedSetFoldAcc
   = AffectedSetActive {
       dag: Dag,
       changes: ChangeSet,
-      affected: List<AffectedDependency>
+      affected: List<AffectedDependency>,
+      exclusions: List<AffectedExclusion>
     }
   | AffectedSetFailed {
       changes: ChangeSet,
@@ -209,7 +211,8 @@ fn empty_affected_set_fold_acc(dag: Dag) -> AffectedSetFoldAcc {
   AffectedSetActive {
     dag: dag,
     changes: ChangeSet { changes: [] },
-    affected: []
+    affected: [],
+    exclusions: []
   }
 }
 
@@ -239,6 +242,7 @@ fn affected_set_from_fold_acc(acc: AffectedSetFoldAcc) -> AffectedSet {
       AffectedSetProduced {
         changes: changes,
         affected: affected,
+        exclusions: [],
         restricted_to: lens_frontier_dependency_kinds()
       }
     AffectedSetFailed { changes: changes, evidence: evidence } =>
