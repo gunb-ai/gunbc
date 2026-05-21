@@ -2,7 +2,7 @@
 // Scope: effect lens — effects derived from type-signature shape (B3 single-authority); no parallel taxonomy.
 // Owns: EffectClassification, EffectFact, effect_witness, effect_classify.
 // Consumes: v4.std.dependency (ClassifiedDependencyView<C>), v4.std.witness, v4.compiler.infer.
-// Status: T-13 family ratchet — projection-only over `List<DependencyView>` via parametric `ClassifiedDependencyView<EffectClassification>`; no copied endpoints. `EffectClassification` is the minimal per-edge slot per Practice 11 — refining it to the full signature-derived effect kind set is a separate downstream lane (B3 / #3468 BLOCKING follow-up).
+// Status: T-13 family ratchet — projection-only over `List<DependencyView>` via parametric `ClassifiedDependencyView<EffectClassification>`. `EffectClassification` is a single-variant signature-deferred slot: the per-edge row carries the typed dependency reference and routes the effect-kind question to the signature via `tree.facts.lookup(dependency.source)` at use-sites. The dependency kind is NOT the effect authority (B3 / INVARIANTS P2 / Practice 5) — re-authoring effect kinds from `DependencyKind` would be a second authority, exactly the parallel-payload defect this ratchet dissolves. Closing the signature-derived effect kind set is the #3468 BLOCKING follow-up lane.
 
 
 module v4.lens.effect
@@ -10,69 +10,32 @@ module v4.lens.effect
 import v4.compiler.infer { InferredTree }
 import v4.std.collection { List }
 import v4.std.dependency {
-  BarrierBefore,
-  BindsTo,
-  BootstrapDependsOn,
   ClassifiedDependencyView,
-  Contains,
-  DataDependsOn,
   DependencyView,
-  EffectDependsOn,
-  GeneratedFrom,
-  ModelDependsOn,
-  ModuleDependsOn,
-  PlacementDependsOn,
-  ProjectionDependsOn,
-  PromotedBy,
-  ResourceDependsOn,
-  TypeDependsOn,
-  VerifiedBy,
   classified_dependency_view_eq
 }
 import v4.std.integer { Int }
 import v4.std.logic { Bool }
 import v4.std.witness { Holds, Witness }
 
-// 🟡 minimal projection — fail-closed slot for the per-edge effect kind.
-// `RequiresSignatureWitness` is the open variant routing to InferredFacts
-// per B3 (the type signature is the effect authority); refining to the
-// closed signature-derived set is a tracked follow-up to the #3468
-// codex BLOCKING reviews. The point of this row today is endpoint
-// single-authority via ClassifiedDependencyView (Practice 11 sub-rule).
-type EffectClassification
-  = WriteEffect
-  | ReadEffect
-  | BarrierEffect
-  | RequiresSignatureWitness
+// 🟡 signature-deferred slot. B3: the type signature is the effect
+// authority. The row carries `EffectClassification` as an empty
+// signature-deferred marker; the actual effect kind is read at use-sites
+// from `tree.facts.lookup(dependency.source)`, never re-derived from
+// `DependencyKind` (re-deriving would be a second authority — exactly
+// the parallel-payload defect this ratchet dissolves). Closing the
+// signature-derived effect kind set (decoding `InferredFacts` into a
+// closed effect-kind carrier) is the #3468 BLOCKING follow-up lane.
+type EffectClassification {}
 
 type EffectFact {
   dependencies: List<ClassifiedDependencyView<EffectClassification>>
 }
 
-fn effect_classification_for_dependency(view: DependencyView) -> EffectClassification {
-  match view.kind {
-    EffectDependsOn => WriteEffect
-    ResourceDependsOn => WriteEffect
-    DataDependsOn => ReadEffect
-    BarrierBefore => BarrierEffect
-    Contains => RequiresSignatureWitness
-    BindsTo => RequiresSignatureWitness
-    TypeDependsOn => RequiresSignatureWitness
-    ModuleDependsOn => RequiresSignatureWitness
-    PlacementDependsOn => RequiresSignatureWitness
-    ModelDependsOn => RequiresSignatureWitness
-    ProjectionDependsOn => RequiresSignatureWitness
-    GeneratedFrom => RequiresSignatureWitness
-    VerifiedBy => RequiresSignatureWitness
-    PromotedBy => RequiresSignatureWitness
-    BootstrapDependsOn => RequiresSignatureWitness
-  }
-}
-
 fn effect_classify(view: DependencyView) -> ClassifiedDependencyView<EffectClassification> {
   ClassifiedDependencyView {
     dependency: view,
-    classification: effect_classification_for_dependency(view: view)
+    classification: EffectClassification {}
   }
 }
 
@@ -91,24 +54,7 @@ fn effect_witness(tree: InferredTree, dependencies: List<DependencyView>) -> Wit
 }
 
 fn effect_classification_eq(a: EffectClassification, b: EffectClassification) -> Bool {
-  match a {
-    WriteEffect => match b {
-      WriteEffect => true
-      _ => false
-    }
-    ReadEffect => match b {
-      ReadEffect => true
-      _ => false
-    }
-    BarrierEffect => match b {
-      BarrierEffect => true
-      _ => false
-    }
-    RequiresSignatureWitness => match b {
-      RequiresSignatureWitness => true
-      _ => false
-    }
-  }
+  true
 }
 
 fn effect_classified_eq(
