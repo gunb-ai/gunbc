@@ -1178,6 +1178,21 @@ import/alias of the resolver's authoritative shape.
     similarly-shaped types as legitimately distinct concepts in
     different namespaces (e.g., `network.Result` vs
     `compiler.normalize.Result`) — outcome (3) directly.
+  - **Template → generated artifact.** A generated `.dag` produced by
+    `build.rs` (or any structural emission step) from a template
+    authority is, by construction, a derivative of the authority —
+    not an independent reinvention. The substrate carries the
+    generation edge explicitly (template header marker + `build.rs`
+    splice site, or in the long term a `GeneratedFrom` registry
+    row). The lens reads the generation edge as a resolution shape
+    — same flow as outcome (1) alias-identity, scoped to mechanical
+    generation. Firing on a generated artifact vs its template is a
+    false positive by construction; reading the generation edge
+    prevents it. Worked example: `r1_gates.dag` is generated from
+    `r1_gates.template.dag` via `build.rs emit_r1_gates_fixture`
+    splicing `src/v3/lenses/named_function_count.dag` into the
+    `source:` field — the pair is a template→generated relationship,
+    not parallel authority.
 
 - *Decidability boundary (explicit):* (C1) and (C2) are mechanical and
   decidable over parsed substrate; (C3) is triage and never fires
@@ -1212,16 +1227,24 @@ import/alias of the resolver's authoritative shape.
   algebra-binding names before commit.
 
 - *Kills (real corpus):*
-  - **`count_named_bind` quadruplet.** Identical
+  - **`count_named_bind` corpus.** Identical
     `fn count_named_bind(behavior: Behavior) -> Int = match behavior
-    { Value(v) => 0; Transform(t) => 0; Branch(b) => 0; ... }` in
-    `src/v3/compiler/tests/fixtures/r1_gates.template.dag:139`,
-    `src/v3/compiler/tests/fixtures/r1_gates.dag:139`,
-    `src/v3/compiler/tests/t_demo/t_demo_fixtures.dag:28`, and
-    `src/v3/lenses/named_function_count.dag:15`. Fires on (C1) —
-    four declarations with identical signature shape and identical
-    body. Practice-11-parameterized clean shape: one canonical home
-    (likely `lenses/named_function_count.dag`), three import-aliases.
+    { Value(v) => 0; Transform(t) => 0; Branch(b) => 0; ... }`
+    appears in four places, but only two are independent declarations:
+    - `src/v3/lenses/named_function_count.dag:15` — canonical lens
+      (the program-text authority).
+    - `src/v3/compiler/tests/t_demo/t_demo_fixtures.dag:28` —
+      hand-authored test fixture: **fires on (C1)** as an
+      independent declaration with identical shape and body.
+    - `src/v3/compiler/tests/fixtures/r1_gates.template.dag:139` and
+      `src/v3/compiler/tests/fixtures/r1_gates.dag:139` — a
+      template→generated pair (build.rs splices the lens source into
+      the template). **Resolved by the template-generated Escape rule
+      above**, not a parallel-authority finding. Cited here to show
+      the boundary works in practice.
+    Practice-11-parameterized clean shape: one canonical home
+    (`lenses/named_function_count.dag`), one import-alias from
+    `t_demo_fixtures.dag`. The template→generated pair stays as-is.
   - **`RegisterStateSpace` parallel to `StateSpace`** in
     `src/v4/extdeps/languages/ptx.dag:34` and `:102`. `StateSpace`
     enumerates `Reg | SReg | Const | Global | Local | ...`;
