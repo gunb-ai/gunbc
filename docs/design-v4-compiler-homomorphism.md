@@ -1074,27 +1074,46 @@ self_corenode = ingest_text(
   input_lang: dag_lang                       // grammar + sugar dissolutions
 ) -> Outcome<CoreNode>
 
-compiler_graph = ground(
+compiler_grounding = ground(
   plan: IngestionPlan {
     subject: self_corenode,
     producer: ingest_explicit_language,
     params: dag_language_params
   }
 ) -> Outcome<InferredTree>
+if compiler_grounding is Rejected:
+  reject with diagnostics
 
-stage0_source = project(
+compiler_graph = unwrap(compiler_grounding)
+bootstrap_lens_report = observe(
+  inferred: compiler_graph,
+  plan: bootstrap_lens_plan
+) -> LensReport
+
+stage0_projection_report = project(
   inferred: compiler_graph,
   plan: rust_stage0_projection_plan
-) -> Outcome<TargetSource>                    // the emitted Rust bootstrap source
+) -> ProjectionReport
+
+stage0_terminal = authorize(
+  policy: stage0_terminal_policy,
+  lenses: bootstrap_lens_report,
+  projections: stage0_projection_report
+) -> Outcome<Validated<ArtifactSet>>
+
+stage0_promotion = promote_stage0(
+  candidate: stage0_terminal,
+  gate: p9_promotion_gate
+) -> Outcome<PromotionWitness>
 ```
 
-There is **no special "regenerate stage0" mode** and **no parse-and-normalize folded back into projection**. The pipeline is the same uniform composition as any other session: `ingest_text` produces the CoreNode (at the system boundary), `ground` produces the inferred graph, and a projection producer emits Rust source. The homomorphism mechanic applies inside the projection producer: coercion-fold against `rust.dag`'s declared inhabitants; serialize via Rust's grammar. The output is the Rust bootstrap that THESIS facet 2 ("compiler self-emits, fixed-point") requires.
+There is **no special "regenerate stage0" mode** and **no parse-and-normalize folded back into projection**. The pipeline is the same uniform composition as any other session: `ingest_text` produces the CoreNode (at the system boundary), `ground` produces the inferred graph, and a projection producer contributes a Rust-source artifact entry to `ProjectionReport`. The homomorphism mechanic applies inside the projection producer: coercion-fold against `rust.dag`'s declared inhabitants; serialize via Rust's grammar. The Rust bootstrap is usable only after terminal authorization produces a `Validated<ArtifactSet>` and the P9 promotion gate accepts the candidate.
 
 **Equivalent paths** for stage0 regeneration (per P9's stratified bootstrap):
-- `compile.dag` already grounded as `InferredTree` from prior ingest (cached) → `project(self_graph, rust_stage0_projection_plan)`.
-- Programmatic compiler-model construction (e.g., from a `Diff`-derived candidate) → `ground(candidate_ingestion_plan)` then `project(candidate_graph, rust_stage0_projection_plan)`.
+- `compile.dag` already grounded as `InferredTree` from prior ingest (cached) → `project(self_graph, rust_stage0_projection_plan)` yields a `ProjectionReport` containing the candidate stage0 artifact; `authorize(...)` and the P9 promotion gate decide whether it can replace the active seed.
+- Programmatic compiler-model construction (e.g., from a `Diff`-derived candidate) → `ground(candidate_ingestion_plan)` then `project(candidate_graph, rust_stage0_projection_plan)` yields the same report-shaped candidate artifact; no source is usable before terminal authorization and promotion.
 
-All paths go through `ground` to produce the graph, then through the requested projection producer. The ingest boundary is explicit and separable.
+All paths go through `ground` to produce the graph, then through the requested projection producer, then through terminal authorization / P9 promotion before the generated Rust can be treated as a bootstrap replacement. The ingest boundary is explicit and separable.
 
 This is why P1 (Languages are I/O integration surfaces) and self-hosting are not independent concerns: self-hosting is the compiler grounding its own source into a graph and projecting a bootstrap artifact from that graph, with both sides using the same `LanguageModel` substrate. The trajectory of hand-Rust-to-zero is the same graph-consumer loop closing on itself.
 
@@ -1122,6 +1141,7 @@ readings = observe(candidate_graph, self_edit_lens_plan)
 if project_policy_accepts(readings):
   self := candidate_self     // atomic commit
   // optionally: project(candidate_graph, rust_stage0_projection_plan)
+  //             -> authorize(...) -> P9 promotion gate before stage0 use
 else:
   reject with diagnostics
 ```
@@ -1131,8 +1151,8 @@ Self-modification can never produce a broken substrate because the candidate is 
 ### Implications
 
 - **No new substrate is needed for self-edit.** `apply_diff` + lens readings + caller policy are the mechanism. The compiler's `.dag` source is just data; the same primitives that handle user data handle compiler data.
-- **Self-hosting is one specific projection over the grounded compiler graph.** `ground(self_ingestion_plan)` produces the graph; `project(self_graph, rust_stage0_projection_plan)` produces stage0 Rust. `project(self_graph, host_eval_projection_plan)` evaluates the compiler on the host. Other target/compiler artifacts are additional projection requests, not separate compile modes.
-- **The "Rust shrinks to zero" trajectory IS the loop closing.** When stage0 Rust is reliably regenerable from `ground(self_ingestion_plan)` + `project(self_graph, rust_stage0_projection_plan)`, the hand-maintained surface shrinks; per [`docs/design-pure-bootstrap-zero.md`](design-pure-bootstrap-zero.md), the target is zero hand-authored Rust.
+- **Self-hosting is one specific projection over the grounded compiler graph.** `ground(self_ingestion_plan)` produces the graph; `project(self_graph, rust_stage0_projection_plan)` produces a `ProjectionReport` with a candidate stage0 Rust artifact; `authorize(...)` yields the `Validated<ArtifactSet>`; the P9 promotion gate decides whether it replaces the active seed. `project(self_graph, host_eval_projection_plan)` evaluates the compiler on the host through the same report boundary. Other target/compiler artifacts are additional projection requests, not separate compile modes.
+- **The "Rust shrinks to zero" trajectory IS the loop closing.** When stage0 Rust is reliably regenerable from `ground(self_ingestion_plan)` + `project(self_graph, rust_stage0_projection_plan)` + `authorize(...)` + P9 promotion, the hand-maintained surface shrinks; per [`docs/design-pure-bootstrap-zero.md`](design-pure-bootstrap-zero.md), the target is zero hand-authored Rust.
 
 ---
 
@@ -1484,7 +1504,7 @@ Defer trigger: first attempt to compile against a non-current version (e.g., Pyt
 | **`RegionRef`** | Low-level region reference shared by graph consumers. It is not a universal `SubgraphScope`; lenses and projections refine it into their own scope/subject shapes. |
 | **candidate-state pattern** | The read/edit invariant: readings and policy evaluate the accepted candidate from `apply_diff(dag, Diff)`, NOT the pre-edit graph. `apply_diff` is an `Outcome`; if it rejects, the candidate flow fails closed before readings run. |
 | **`affected_set`** | T-21 derived combinator + lens-frontier specialization: `affected_set(dag, Diff) → Witness<ReExecFrontier>`. Incremental re-execution frontier derived from `fold_node` over dependency facts; consumed by caller/session policy and projection regeneration. |
-| **self-edit / stage0** | The compiler editing its own source via `apply_diff(self, Diff)`. Self-hosting (stage0 regeneration) is `project(self_graph, rust_stage0_projection_plan)` — no special compile mode. See "Self-modification" section. |
+| **self-edit / stage0** | The compiler editing its own source via `apply_diff(self, Diff)`. Self-hosting (stage0 regeneration) is `project(self_graph, rust_stage0_projection_plan)` yielding a `ProjectionReport`, then `authorize(...)` + the P9 promotion gate before the generated artifact can replace the active seed — no special compile mode. See "Self-modification" section. |
 | **projection** | Per P0 + P3, every downstream artifact (tests, glue, schemas, migration plans, docs, dry-run results) is a projection of `InferredTree` computed by a projection producer and reported through `ProjectionReport`. Lens readings may feed projection producers, but they do not own artifact materialization. |
 | **testgen** | A projection family that produces `TestClaim` / `TestCase` artifacts from `InferredTree`, optionally consuming lens readings. Historical location/name predates the projection split. Tests are projections of the model, NOT the source of truth for the model. |
 | **dry-run** | A projection over graph readings: `io_boundary_lens` identifies the I/O sites; a `LawfulRewriteWitness` substitutes mock stubs; `eval(mock_host_model)` runs the substituted tree. No new compiler primitive; composes lens reading + rewrite + eval projection. Variations: record, assert, replay, fuzz. |
