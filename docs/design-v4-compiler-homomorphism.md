@@ -111,7 +111,7 @@ Everything else — every "pass," every "stage," every "language-specific" anyth
 
 **Dependency management is inherent to the substrate but only under enforced discipline (P6).** Synthesized (child→parent) facts ride `fold_node`'s natural order. Inherited (parent→child) facts ride higher-order carriers (P5). Memoization and incrementality ride content-addressed Node identity. The inherent property breaks the moment any pass walks Nodes outside the declared primitives — Practice 10 enforces this.
 
-The doc that follows defines what `compile()` takes and returns, why each piece is shaped that way, what's already in the codebase, and what's still open for design.
+The doc that follows defines the orthogonal operation surfaces, why each piece is shaped that way, what's already in the codebase, and what's still open for design.
 
 ---
 
@@ -159,7 +159,7 @@ file_write(out_path, target_text)            // effect against extdeps/file_syst
 - Query-driven: `affected_set + apply_diff` produces a new `CoreNode` from an existing one (read/edit pipeline).
 - Round-trip: a `TargetNodeTree` from a prior translate is parsed back via the grammar's inverse direction.
 
-All paths produce `CoreNode`; compile takes it from there. **The compile contract doesn't know how the CoreNode was produced.**
+All paths produce `CoreNode`; Node-in operations take it from there. **Translate, eval, lenses, and artifact projections don't know how the CoreNode was produced.**
 
 ### Why this matters architecturally
 
@@ -180,7 +180,7 @@ There are multiple legitimate entry points to a `CoreNode` graph:
 | **Query-driven rewrite** | `affected_set` + a node-graph transformation produces a new `CoreNode` from an existing one. Future query languages (e.g., write-via-query against an existing program graph) operate here. |
 | **Round-trip from translate** | A `TargetNodeTree` from a prior translate can be parsed back via the grammar's inverse direction and ingested as `CoreNode` (for cross-language refactoring / round-trip workflows). |
 
-All paths produce `CoreNode`; `compile` takes it from there. This matters because:
+All paths produce `CoreNode`; Node-in operations take it from there. This matters because:
 - The lens / affected-set / query story (much of the v4 wishlist) operates on Node data, not text. Forcing every entry through text would either require lossless code-mod tooling or constrain the substrate's expressiveness.
 - The compile pipeline stays pure data-in / data-out. Text I/O is at the ingest/serialize boundaries only.
 - The substrate model is uniform: a `CoreNode` is a `CoreNode` regardless of how it was authored. The compile contract doesn't care which entry point produced it.
@@ -831,13 +831,13 @@ Per [`docs/design-read-edit-pipeline.md`](design-read-edit-pipeline.md) § 4, th
 3. Propose    →  produce Diff
 4. Candidate  →  candidate_dag = apply_diff(dag, Diff)   # uncommitted candidate
 5. Policy     →  caller/project policy evaluates readings over candidate nodes
-6. Commit     →  dag := candidate_dag                    # only if all gates pass
+6. Commit     →  dag := candidate_dag                    # only if policy accepts
 7. Re-emit    →  emit per target language                # files are a downstream effect
 ```
 
-**The candidate-state pattern is structurally important.** Gates run against the **post-edit candidate state**, NOT the pre-edit graph. Reasoning: gating the pre-edit graph and applying the Diff afterward would let a Diff introduce a post-edit invariant violation that never gets enforced. The candidate pattern keeps the fail-closed promise honest: validation happens against the state that will be committed/emitted, not against a state already known to be valid.
+**The candidate-state pattern is structurally important.** Policy reads run against the **post-edit candidate state**, NOT the pre-edit graph. Reasoning: reading the pre-edit graph and applying the Diff afterward would let a Diff introduce a post-edit invariant violation that was never observed. The candidate pattern keeps the fail-closed promise honest: validation happens against the state that will be committed/emitted, not against a state already known to be valid.
 
-The `scope_in(root, ref)` helper binds a frontier ref to a specific root, making the candidate-vs-pre-edit context structurally explicit in every gate call — a worker can't accidentally validate against the wrong root.
+The root Node passed to each read binds the candidate-vs-pre-edit context structurally — a worker can't accidentally validate against the wrong root by relying on ambient scope.
 
 **This is the same monotonic-facts invariant** as the compile direction's Practice 3 (P3 stage-by-stage facts), but applied to mutation: facts flow forward through the candidate; the commit either lands all of them or none.
 
@@ -875,7 +875,7 @@ Per P0 + P3, **every downstream artifact is a projection of `InferredTree`** com
 | Affected-rebuild set | `affected_set(dag, Diff)` | `Witness<ReExecFrontier>` | Incrementality primitive; consumed by ALL projection regeneration. |
 | Documentation / API docs | a doc-projection lens | structured doc data + rendered text | A projection like any other; not a separate tool. |
 
-The compiler core does NOT name any of these specific projections (P3 commitment 4). Each lens is plug-in data; the compiler's job is to enable the fold mechanism and the candidate-state gate.
+The compiler core does NOT name any of these specific projections (P3 commitment 4). Each lens is plug-in data; the compiler's job is to enable the fold mechanism and let caller policy consume readings.
 
 ### Testgen as a lens family
 
@@ -923,7 +923,7 @@ All profiles share the **same substrate**:
 
 **Important boundary (P0 implication):** tests are projections OF the model; the model is NOT derived from tests. Tests are **behavioral probes** generated from the source-of-truth model. The slogan: *"tests are generated from the model as behavioral probes; they are not the source of truth for the model."*
 
-**Self-regeneration:** when a model fact changes (e.g., `Refinement<T>` shape changes per P8's worked example), `affected_set` computes which TestClaims/TestCases/target test files need regeneration; the relevant lens family invocations re-fire automatically on the affected subgraph. No manual sync.
+**Self-regeneration:** when a model fact changes (e.g., `Refinement<T>` shape changes per P8's worked example), `affected_set` computes which TestClaims/TestCases/target test files need regeneration; the relevant lens family invocations re-fire automatically on the affected Node frontier. No manual sync.
 
 ### Dry-run as a lens-composed projection
 
@@ -966,7 +966,7 @@ The compiler is itself authored in `.dag`. Self-modification — the compiler up
 
 ### The compiler reading its own source
 
-The compiler's own pipeline (`compile.dag` / `parse.dag` / `infer.dag` / `emit.dag` / `eval.dag` / `normalize.dag` / `resolve.dag`, all in `src/v4/compiler/`) is itself a set of `.dag` programs. To the substrate, they are `CoreNode` graphs like any other. The compiler reads them by `apply_lens(lens, scope, mode)` on the relevant `DeclarationScope` or `NodeScope`. Reading the compiler's own source uses the **same lens surface** as reading any user program — there is no special introspection mechanism.
+The compiler's own pipeline (`compile.dag` / `parse.dag` / `infer.dag` / `emit.dag` / `eval.dag` / `normalize.dag` / `resolve.dag`, all in `src/v4/compiler/`) is itself a set of `.dag` programs. To the substrate, they are `CoreNode` graphs like any other. The compiler reads them by applying lenses to the relevant `Node`. Reading the compiler's own source uses the **same lens surface** as reading any user program — there is no special introspection mechanism.
 
 ### The compiler writing to its own source
 
@@ -1011,27 +1011,27 @@ When the compiler proposes a change to itself, the candidate-state pattern from 
 
 ```
 candidate_self = apply_diff(self, proposed_diff)
-// Validate the candidate against all relevant lenses:
-gates = [
-  apply_lens(L_practice_10, scope_in(candidate_self, ...), Enforce),  // no walker dissolutions
-  apply_lens(L_practice_9,  scope_in(candidate_self, ...), Enforce),  // no-prose discipline
-  apply_lens(L_correctness, scope_in(candidate_self, ...), Enforce),  // substrate invariants
-  // ... whatever lenses the project policy requires
+// Read the candidate with all relevant lenses:
+readings = [
+  read_lens(L_practice_10, candidate_self),  // no walker dissolutions
+  read_lens(L_practice_9,  candidate_self),  // no-prose discipline
+  read_lens(L_correctness, candidate_self),  // substrate invariants
+  // ... whatever readings the project policy requires
 ]
-if all_passed(gates):
+if project_policy_accepts(readings):
   self := candidate_self     // atomic commit
-  // optionally: regenerate stage0 via compile(self, dag_lang, TranslateTo(rust_lang))
+  // optionally: regenerate stage0 via translate(self, rust_lang)
 else:
   reject with diagnostics
 ```
 
-Self-modification can never produce a broken substrate because the candidate is validated against the same lens framework that validates user code. If a self-edit would break Practice 10 / Practice 9 / a substrate invariant, the lenses fire on the candidate and the commit fails. **The compiler cannot break itself silently** — the candidate-state + lens-gate pattern makes that fail-closed.
+Self-modification can never produce a broken substrate because the candidate is checked through the same read/policy composition used for user code, and structural invariants should move into types wherever possible. If a self-edit would break Practice 10 / Practice 9 / a substrate invariant, the candidate readings expose it and project policy rejects the commit. **The compiler cannot break itself silently** — the candidate-state pattern makes the checked state explicit.
 
 ### Implications
 
-- **No new substrate is needed for self-edit.** `apply_diff` + lens-gate is the mechanism. The compiler's `.dag` source is just data; the same primitives that handle user data handle compiler data.
-- **Self-hosting is one specific compile invocation.** `compile(self, dag, TranslateTo(rust))` produces stage0 Rust. `compile(self, dag, Eval(host))` evaluates the compiler on the host. `compile(self, dag, TranslateTo(other_lang))` would emit the compiler in some other language — the substrate makes this trivial in principle.
-- **The "Rust shrinks to zero" trajectory IS the loop closing.** When stage0 Rust is reliably regenerable from `compile(self, dag, TranslateTo(rust))`, the hand-maintained surface shrinks; per [`docs/design-pure-bootstrap-zero.md`](design-pure-bootstrap-zero.md), the target is zero hand-authored Rust.
+- **No new substrate is needed for self-edit.** `apply_diff` + lens readings + caller policy are the mechanism. The compiler's `.dag` source is just data; the same primitives that handle user data handle compiler data.
+- **Self-hosting is one specific translate invocation.** `translate(self, rust)` produces stage0 Rust. `eval(self, host)` evaluates the compiler on the host. `translate(self, other_lang)` would emit the compiler in some other language — the substrate makes this trivial in principle.
+- **The "Rust shrinks to zero" trajectory IS the loop closing.** When stage0 Rust is reliably regenerable from `translate(self, rust)`, the hand-maintained surface shrinks; per [`docs/design-pure-bootstrap-zero.md`](design-pure-bootstrap-zero.md), the target is zero hand-authored Rust.
 
 ---
 
@@ -1151,7 +1151,7 @@ If a worker encounters a deeper scaffold-vs-design contradiction not catalogued 
 
 **The MVP is one endpoint, not three (rescoped 2026-05-20 — strict amendment per P2 boundary discipline; multiple valid terminuses for one boundary was a soft framing):**
 
-> Given a `CoreNode` representing a small `.dag` program (the canonical `add(x, y) = x + y` worked example), `compile(source, dag_lang, TranslateTo(rust_lang))` produces a `TargetSource` containing valid Rust source code for the equivalent program, via the homomorphism mechanic. Pure data-in / data-out at the compile-core boundary; no shims required.
+> Given a `Node` representing a small `.dag` program (the canonical `add(x, y) = x + y` worked example), `translate(node, rust_lang)` produces a `TargetSource` containing valid Rust source code for the equivalent program, via the homomorphism mechanic. Pure data-in / data-out at the translate boundary; no shims required.
 
 **Required substrate + implementation for MVP** (post-Pass B unification — all derived operations are `find_witness` or `fold_node` invocations with specific algebras-as-data):
 - `std/dependency.dag` (the **lens-over-substrate** dependency substrate per sharpened P6: `DependencyKind` classification taxonomy + `dependency_lens` fold algebra + `DependencyView { source, dependent, kind, usage_site }` lens-output type. **NO** authored `DependencyEdge` / `DependencyReason` / `DependencyGraph` carriers — the substrate's usage graph IS the dependency graph; the lens classifies and emits Node references back to substrate, never duplicates substrate facts as parallel payload. — Worker A).
