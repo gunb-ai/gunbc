@@ -10153,7 +10153,7 @@ pub fn rust_struct_field_type_node(
             field_name,
             scope.type_env.clone().source_indices.clone(),
         ) {
-            Some(field_node) => Some(child_type_node(&field_node_type_expr(&field_node))),
+            Some(field_node) => Some(field_node_type_expr(&field_node)),
             None => None,
         },
         None => None,
