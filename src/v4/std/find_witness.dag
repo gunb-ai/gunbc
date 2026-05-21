@@ -23,7 +23,7 @@ import v4.std.diagnostic {
   Unavailable,
   outcome_rejected
 }
-import v4.std.node { Edge, EdgeLabel, Node, Symbol, TypeNode, Atom, well_formed }
+import v4.std.node { Node, NodeFold, Symbol, TypeNode, Atom, well_formed }
 import v4.std.witness { StructuralPropertyWitness }
 data find_witness_reason_no_candidate: Symbol = find_witness_reason_no_candidate
 data find_witness_reason_ambiguous_candidate: Symbol = find_witness_reason_ambiguous_candidate
@@ -78,9 +78,33 @@ fn find_witness_not_realized_diagnostic(source_facts: Node) -> Diagnostic {
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
-// 🟡 coproduct dissolution — scaffold:exact-structural-preservation-distinct-node-mvp · dissolve-on: W-T-10 recursive edge-wise structural zip-fold predicate algebra.
-fn exact_structural_leaf_coincides(source_facts: Node, candidate: Node) -> Bool {
-  match source_facts.kind {
+data exact_structural_atom_leaf: Symbol = exact_structural_atom_leaf
+// 🟡 coproduct dissolution — scaffold:exact-structural-preservation-distinct-node-mvp · dissolve-on: W-T-10 canonical Node grounding algebra from source/target declarations.
+fn exact_structural_canonical_node(n: Node) -> Node {
+  fold_node(
+    n: n,
+    algebra: NodeFold {
+      init: fn(n0) {
+        Node {
+          kind: match n0.kind {
+            TypeNode { connective: Atom { identity: _ } } => TypeNode { connective: Atom { identity: exact_structural_atom_leaf } }
+            _ => n0.kind
+          },
+          children: []
+        }
+      },
+      step: fn(acc, edge, child) {
+        Node {
+          kind: acc.kind,
+          children: list_push(acc.children, Edge { label: edge.label, target: child })
+        }
+      }
+    }
+  )
+}
+fn exact_structural_equality_zip_fold(source_facts: Node, candidate: Node) -> Bool {
+  exact_structural_canonical_node(n: source_facts) == exact_structural_canonical_node(n: candidate)
+}
     TypeNode { connective: Atom { identity: _ } } => match candidate.kind {
       TypeNode { connective: Atom { identity: _ } } => true
       _ => source_facts.kind == candidate.kind
