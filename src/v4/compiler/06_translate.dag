@@ -182,13 +182,10 @@ fn coercion_candidates_from_target_model(
   bind_outcome(
     o: target_bundle_child(target: target, edge_name: target_model_edge_declared_inhabitants),
     f: fn(inhabitants_root) {
-      Accepted {
-        value: coercion_candidate_set_from_declared_inhabitants(
-          inhabitants_root: inhabitants_root,
-          closedness_property: target_model_edge_declared_inhabitants
-        ),
-        diagnostics: None
-      }
+      coercion_candidate_set_from_declared_inhabitants(
+        inhabitants_root: inhabitants_root,
+        closedness_property: target_model_edge_declared_inhabitants
+      )
     }
   )
 }
