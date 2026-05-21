@@ -2405,11 +2405,12 @@ fn infer_variant_constructor_call(func_name: String, call_args: List<Node>, span
               if variant_has_positional_payload_shape(variant: variant_node, source_indices: si) && call_args |> count == 1 {
                 match call_args |> first {
                   Some { value: arg } =>
+                    let payload_expr = arg_value(n: arg)
                     let payload_init = make_field_init_node(
                       name: "0",
-                      value: arg,
-                      span: arg.span,
-                      name_span: node_name_span(n: arg)
+                      value: payload_expr,
+                      span: payload_expr.span,
+                      name_span: node_name_span(n: payload_expr)
                     )
                     Some { value: infer_record_lit(
                       type_name: Some { value: func_name },
