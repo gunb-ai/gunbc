@@ -140,6 +140,7 @@ type TestClaimRun<T> {
 type EvalFoldState {
   node: Node
   processed_children: Int
+  structural: Outcome<Node>
   child_values: Outcome<List<HostValue>>
   value: Outcome<HostValue>
 }
@@ -225,6 +226,38 @@ fn inferred_facts_for_eval(tree: InferredTree, node: Node) -> Outcome<InferredFa
       }
     Violates { diagnostic: d } =>
       Rejected { diagnostics: diagnostics_singleton(d: d) }
+  }
+}
+
+
+fn eval_structural_node_for_eval(tree: InferredTree, node: Node) -> Outcome<Node> {
+  bind_outcome(
+    o: inferred_facts_for_eval(tree: tree, node: node),
+    f: fn(_facts) {
+      Accepted { value: node, diagnostics: None }
+    }
+  )
+}
+
+
+fn eval_absorb_structural_child(
+  acc: Outcome<Node>,
+  child: Outcome<Node>
+) -> Outcome<Node> {
+  match acc {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: n, diagnostics: ad } =>
+      match child {
+        Rejected { diagnostics: cr } =>
+          Rejected {
+            diagnostics: rejected_with_pending(pending: ad, rejected: cr)
+          }
+        Accepted { value: _, diagnostics: cd } =>
+          Accepted {
+            value: n,
+            diagnostics: diagnostics_merge(outer: ad, inner: cd)
+          }
+      }
   }
 }
 
@@ -385,7 +418,7 @@ fn eval_fold_state_value(state: EvalFoldState) -> Outcome<HostValue> {
 
 fn eval_absorb_child_diagnostics(
   acc: Outcome<List<HostValue>>,
-  child: Outcome<HostValue>
+  child: Outcome<Node>
 ) -> Outcome<List<HostValue>> {
   match acc {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -443,6 +476,7 @@ fn eval_fold_init(
   EvalFoldState {
     node: node,
     processed_children: 0,
+    structural: eval_structural_node_for_eval(tree: tree, node: node),
     child_values: Accepted { value: empty_host_values(), diagnostics: None },
     value: if count(node.children) == 0 {
       eval_interpret_node(
@@ -490,27 +524,34 @@ fn eval_fold_step(
   host: HostModel,
   environment: HostEnvironment
 ) -> EvalFoldState {
+  let structural = eval_absorb_structural_child(acc: acc.structural, child: child.structural)
   let next_args = if eval_edge_is_runtime_argument(edge: edge) {
     eval_append_child_value(acc: acc.child_values, child: child.value)
   } else {
-    eval_absorb_child_diagnostics(acc: acc.child_values, child: child.value)
+    eval_absorb_child_diagnostics(acc: acc.child_values, child: child.structural)
   }
   let processed_children = acc.processed_children + 1
   EvalFoldState {
     node: acc.node,
     processed_children: processed_children,
+    structural: structural,
     child_values: next_args,
     value: bind_outcome(
-      o: next_args,
-      f: fn(args) {
-        eval_maybe_complete_node(
-          node: acc.node,
-          processed_children: processed_children,
-          args: args,
-          tree: tree,
-          host: host,
-          environment: environment,
-          pending: acc.value
+      o: structural,
+      f: fn(_) {
+        bind_outcome(
+          o: next_args,
+          f: fn(args) {
+            eval_maybe_complete_node(
+              node: acc.node,
+              processed_children: processed_children,
+              args: args,
+              tree: tree,
+              host: host,
+              environment: environment,
+              pending: acc.value
+            )
+          }
         )
       }
     )
