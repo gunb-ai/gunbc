@@ -168,15 +168,14 @@ data witness_find_witness_other_rule_rejects: Bool = rejected_for_no_candidate(
     multiplicity_policy: UniqueOnly
   )
 )
-data witness_find_witness_unique_only_ambiguous_rejects: Bool =
-  rejected_for_ambiguous_candidate(
-    o: find_witness(
-      source_facts: identity_source_node(),
-      candidates: candidate_set_identity_duplicate(),
-      predicate: exact_identity_predicate(),
-      multiplicity_policy: UniqueOnly
-    )
+data witness_find_witness_unique_only_ambiguous_rejects: Bool = rejected_for_ambiguous_candidate(
+  o: find_witness(
+    source_facts: identity_source_node(),
+    candidates: candidate_set_identity_duplicate(),
+    predicate: exact_identity_predicate(),
+    multiplicity_policy: UniqueOnly
   )
+)
 data witness_find_witness_selected_invalid_rejects: Bool = rejected_for_no_candidate(
   o: find_witness(
     source_facts: identity_source_node(),
@@ -187,17 +186,16 @@ data witness_find_witness_selected_invalid_rejects: Bool = rejected_for_no_candi
     }
   )
 )
-data witness_find_witness_user_selected_invalid_rejects: Bool =
-  rejected_for_no_candidate(
-    o: find_witness(
-      source_facts: identity_source_node(),
-      candidates: candidate_set_identity_duplicate(),
-      predicate: exact_identity_predicate(),
-      multiplicity_policy: TargetSelection {
-        policy: UserSelected { selection: identity_other_node() }
-      }
-    )
+data witness_find_witness_user_selected_invalid_rejects: Bool = rejected_for_no_candidate(
+  o: find_witness(
+    source_facts: identity_source_node(),
+    candidates: candidate_set_identity_duplicate(),
+    predicate: exact_identity_predicate(),
+    multiplicity_policy: TargetSelection {
+      policy: UserSelected { selection: identity_other_node() }
+    }
   )
+)
 data witness_verify_witness_accepts: Bool = match verify_witness(
   source_facts: identity_source_node(),
   candidate: identity_source_node(),
