@@ -573,8 +573,8 @@ fn java_named_edge(name: Symbol, target: Node) -> Edge {
 // Declared-inhabitant Conj root for `target_model_edge_declared_inhabitants`. T-10 staging
 // (`coercion_candidates_from_target_model`) passes this whole Conj as one aggregate
 // `CandidateSet.candidates` entry — not a flat List of per-primitive nodes. find_witness
-// enumeration inside the root is forward work (W-T-10). Coercion fixture pins i32 via
-// `TargetDeclaredPriority` on `java_inhabitant_i32_node`, not via inhabitants-root walk.
+// enumeration inside the root is forward work (W-T-10). Coercion fixture pins int via
+// `TargetDeclaredPriority` on `java_inhabitant_int_node`, not via inhabitants-root walk.
 fn java_declared_inhabitants_root() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
