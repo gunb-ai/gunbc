@@ -2,7 +2,7 @@
 // Scope: ISO/IEC 9075 SQL relational/DDL surface; Shape-B checked format — T-4.6 dsl extdeps port (migration.dag) + ISO spec.
 // Owns: SqlDialect, SqlIdentifier, SqlDataType, SqlColumnConstraints, SqlColumnDefault, SqlColumnDefinition, SqlTableConstraint, SqlPrimaryKeySlot, SqlTableDefinition, SqlSchemaOperation, SqlMigrationStep, SqlMigrationScript, SqlMigrationEmissionTarget, SqlStatementKind, SqlParameterStyle, SqlTransactionMode, SqlResultFormat, SqlTransportConfig, SqlIntegerWidth, SqlFloatWidth, SqlIntegerPrimitiveFacts, SqlFloatPrimitiveFacts, SqlNonNumericPrimitiveFacts, sql_facts_*, sql_*_facts_catalog, sql_wave1_primitive_fact_bundles
 // Consumes: std/node.dag, std/diagnostic.dag, std/collection.dag, std/nat.dag, std/cardinality.dag, std/model_core.dag
-// Status: T-4.6 scaffold + SqlDataType primitive fact-bundle wave-1 (constant arms only; parametric NUMERIC/CHARACTER/CHARACTER_VARYING stay outside the catalog).
+// Status: T-4.6 scaffold + SqlDataType primitive fact-bundle wave-1.
 // Anchor: https://www.iso.org/standard/76583.html
 
 module v4.extdeps.formats.sql
@@ -177,16 +177,9 @@ type SqlTransportConfig {
 }
 
 
-// SqlDataType primitive fact-bundles — wave-1.
-//
-// Scope: constant SqlDataType arms only (BOOLEAN, SMALLINT, INTEGER, BIGINT, REAL,
-// DOUBLE PRECISION, CHARACTER LARGE OBJECT, DATE, TIME, TIMESTAMP, TIMESTAMP WITH
-// TIME ZONE). Parametric arms (NUMERIC{precision,scale}, CHARACTER{length},
-// CHARACTER VARYING{length}) stay as type-constructor variants of SqlDataType
-// outside the catalog — they admit per-(precision,scale)/per-length instances,
-// not fixed primitive bundles. Operator-confirmed via parent 2026-05-21.
-//
-// Pattern: mirrors src/v4/extdeps/languages/rust.dag (T-4 fact-bundle pattern).
+// SqlDataType primitive fact-bundles — wave-1: constant SqlDataType arms only.
+// Parametric arms (NUMERIC / CHARACTER / CHARACTER VARYING) stay as
+// type-constructor variants of SqlDataType outside the catalog.
 
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
@@ -475,9 +468,6 @@ fn sql_primitive_bundle_from_nonnumeric_facts(
   }
 }
 
-// Order-preserving snoc/append over List as FreeMonoid — mirrors rust.dag's
-// catalog → bundle list fold so `sql_wave1_primitive_fact_bundles` derives from
-// the three fact catalogs (single authority — P2 / Practice 5).
 fn sql_list_snoc<T>(xs: List<T>, item: T) -> List<T> {
   free_monoid_fold(
     xs: xs,
