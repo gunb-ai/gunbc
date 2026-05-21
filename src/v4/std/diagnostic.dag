@@ -18,9 +18,8 @@ import v4.std.node { Node }
 type Extent
   = WholeFile
   | ByteRange { start: Int, end: Int }
-type LocusAnchor<A> {
-  at: A
-}
+type LocusAnchor<A>
+  = Anchored { at: A }
 type NodeLocusAnchor = LocusAnchor<Node>
 type PortLocusAnchor = LocusAnchor<Symbol>
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
@@ -89,15 +88,15 @@ fn locus_eq(a: Locus, b: Locus) -> Bool {
       NodeLocus { anchor: _ } => false
       PortLocus { anchor: _ } => false
     }
-    NodeLocus { anchor: LocusAnchor { at: na } } => match b {
+    NodeLocus { anchor: Anchored { at: na } } => match b {
       Textual { file: _, extent: _ } => false
-      NodeLocus { anchor: LocusAnchor { at: nb } } => na == nb
+      NodeLocus { anchor: Anchored { at: nb } } => na == nb
       PortLocus { anchor: _ } => false
     }
-    PortLocus { anchor: LocusAnchor { at: pa } } => match b {
+    PortLocus { anchor: Anchored { at: pa } } => match b {
       Textual { file: _, extent: _ } => false
       NodeLocus { anchor: _ } => false
-      PortLocus { anchor: LocusAnchor { at: pb } } => pa == pb
+      PortLocus { anchor: Anchored { at: pb } } => pa == pb
     }
   }
 }
