@@ -1868,13 +1868,9 @@ fn emit_variant_from_child(child: Node, recursive_types: Set<String>, shared_typ
     if tuple_style {
       match child.children |> first {
         Some { value: f } =>
-          // Positional payload types are authored as `Variant(Type)`; render from
-          // the parse-time type_expr (preserves `LocusAnchor<String>`) without Rc.
-          let type_node = if positional_payload {
-            field_node_type_expr(n: f)
-          } else {
-            resolved_type(n: f)
-          }
+          // Positional payload enum variants: render inferred payload type without
+          // shared Rc wrapping (values still get Rc at constructor/match sites).
+          let type_node = resolved_type(n: f)
           let ty_shared = if positional_payload { empty_set() } else { shared_types }
           let ty = render_rust_type(n: type_node, shared_types: ty_shared, source_indices: env.source_indices)
           let final_ty = if needs_box_wrapping(n: type_node, recursive_types: recursive_types, shared_types: ty_shared, source_indices: env.source_indices) {
