@@ -10299,13 +10299,7 @@ pub fn lookup_struct_field_type_node(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     match find_child_named(struct_node, field_name, source_indices) {
-        Some(field_child) => {
-            if (field_child.inferred.clone() != None) {
-                Some(resolved_type(field_child.clone()))
-            } else {
-                None
-            }
-        }
+        Some(field_child) => Some(child_type_node(&field_child)),
         None => None,
     }
 }
