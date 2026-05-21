@@ -405,6 +405,22 @@ fn node_at_at(x: Locus) -> String {
         "expected no bogus VariantNotFound on generic sub-carrier, got: {:?}",
         diags
     );
+    let rs = find_file(&result, "src/generic_locus_anchor.rs");
+    assert!(
+        rs.contains("NodeAt(LocusAnchor"),
+        "expected tuple-style NodeAt pattern in emitted Rust, got:\n{}",
+        rs
+    );
+    assert!(
+        !rs.contains("NodeAt { 0:"),
+        "positional payload must not emit record-style NodeAt {{ 0: ... }}, got:\n{}",
+        rs
+    );
+    assert!(
+        rs.contains("NodeAt(LocusAnchor<String>)"),
+        "expected tuple-style NodeAt variant decl, got:\n{}",
+        rs
+    );
 }
 
 // ── Match pattern binding tests ─────────────────────────────────────────
