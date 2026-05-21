@@ -23,6 +23,7 @@ import extdeps.github.actions { GitHubActionsRuntime }
 import extdeps.runtime.local { LocalDevRuntime }
 import extdeps.shell
 
+// 🟢 terminal coproduct: consumer-owned auth runtime choice; each payload lives in its discrete concern home.
 type AuthRuntime
   = GitHubActions { runtime: GitHubActionsRuntime }
   | GcpMetadata { runtime: MetadataRuntime }
