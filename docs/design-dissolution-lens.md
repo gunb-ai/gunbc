@@ -161,7 +161,7 @@ they are not interchangeable:
 | L1.1 Discriminant-predicate | derive |
 | L1.2 Degenerate-type | witness |
 | L1.3 Hollow-type | witness |
-| L1.4 Carrier-clone | canonical-home / witness |
+| L1.4 Carrier-clone *(lens family — see §5.0 exception)*: parent (whole-carrier clone), L1.4.b `VariantParameterClone` (intra-carrier variant-level type-only differences) | canonical-home / witness |
 | L1.5 Catamorphism | derive |
 | L1.6 *(merged into L1.10 — Textual-bypass)* | — |
 | L1.7 Off-substrate-fact | witness |
@@ -190,6 +190,7 @@ enumeration.
 | L1.2 Degenerate-type | `coverage_defect_degenerate_type` |
 | L1.3 Hollow-type | `coverage_defect_hollow_type` |
 | L1.4 Carrier-clone | `coverage_defect_carrier_clone` |
+| **L1.4.b** `VariantParameterClone` (sub-signature of Carrier-clone family) | `coverage_defect_carrier_clone` *(shared with parent — sub-signature contributes findings into the same acceptance key; diagnostic payload carries a `CarrierCloneTrigger` discriminator distinguishing whole-carrier-clone from variant-clone)* |
 | L1.5 Catamorphism | `coverage_defect_catamorphism` |
 | ~~L1.6 Emit/template~~ | **retired — see L1.10.a below; no `coverage_defect_emit_template` key** |
 | L1.7 Off-substrate-fact | `coverage_defect_off_substrate_fact` |
@@ -380,6 +381,153 @@ fn normalize_children(...) -> Outcome<List<Edge>> { ... }
 A coproduct that genuinely *can't* be expressed by the std carrier
 passes — e.g. a three-variant `Cached | Produced | Rejected` where
 `Cached` carries information `Outcome<T>` doesn't model.
+
+#### L1.4.b Variant-parameter-clone — kills *variant-level type-only differences within one coproduct*
+
+> **Status: reserved-proposed.** Sub-signature of L1.4 at a finer grain:
+> the parent catches a *whole coproduct* that clones a `std/` carrier;
+> L1.4.b catches *variants WITHIN one coproduct* that are structurally
+> identical modulo field-name nickname, differing only in field type.
+> The field type IS the discriminator — which is precisely the case
+> parametric carriers are designed for. Practice 11 (parameterize-
+> don't-duplicate) applied at the variant level. **Enforcement gate**
+> (parallel to L1.13 / L1.12.b): not active until (a)
+> `v4.lens.structural_similarity` lands carrying per-variant
+> field-shape facts, (b) the L1.4 diagnostic payload distinguishes
+> whole-carrier-clone (parent) from variant-clone (this signature),
+> (c) the substrate has at least one Practice-11-parameterized
+> dissolution shape landed as the migration target (the Locus rework
+> below, or equivalent).
+
+- *Signature:* a coproduct contains two or more variants whose
+  **field structures are isomorphic modulo field-type substitution**.
+  After α-renaming variant-bound names by canonical position (per
+  field role, not by spelled name), the variant skeletons are
+  structurally identical with only the field-type identity differing.
+  The variants discriminate on type, not on independent semantic
+  shape — the variant-axis is doing parameterization-by-hand.
+
+- *Decidable:* yes — substrate-readable per-variant field-shape
+  facts (from `v4.lens.structural_similarity`'s `TypeShape.variant_set`,
+  see §10.2). The lens compares VariantShapes pairwise within each
+  coproduct, applying field-name α-renaming. Same mechanical contract
+  as L1.13 (skeleton extraction), at variant scope instead of
+  match-arm scope.
+
+- *Verdict:* hard error.
+
+- *Escape (clean 🟢):*
+  - **ConceptDisambiguation row.** If the variants represent
+    semantically distinct concepts that happen to share a structural
+    shape (e.g., legitimate cases where Node-id and Symbol-id are
+    different domain notions despite both being single-field
+    records), a `ConceptDisambiguation` row marks them as distinct.
+    Same resolution shape (R3) as parent L1.12.
+  - **Carrier already parametric.** The lens never fires on a
+    parametric carrier's instantiations — those ARE the
+    parameterization. Only fires on non-parametric coproducts with
+    variant-level type-only redundancy.
+  - **Variant carries non-type-only difference.** If two variants
+    have the same field shape AND same field types but different
+    auxiliary structure (e.g., one variant carries an additional
+    refinement clause, attribute, or pragma), that auxiliary
+    structure is genuine variant-axis information; the lens does
+    not fire. The trigger requires the type-substitution to be the
+    SOLE structural difference.
+
+- *Clearing receipt (single authoritative resolution table — same R1–R5 inherited from L1.12 family):*
+  the substrate carries one of the inherited resolution shapes:
+  (R1) alias-identity rewrite for the redundant variants (parametric
+  carrier replaces them), (R3) `ConceptDisambiguation` row marking
+  them as distinct, (R4) refinement edge declaring the relationship,
+  or the dissolution rewrite which removes the trigger entirely.
+
+- *Fix-confidence: templated auto-apply* — two clean-shape templates
+  the lens emits as candidate `Diff`s, reviewer picks before commit:
+  - **(Pattern A) Type-level parameterization.** Lift the whole
+    carrier to a parametric form when the discriminator is purely
+    type-level:
+    ```dag
+    // Before:
+    type Locator = NodeLocator { node: Node } | PortLocator { port: Symbol }
+    // After (Pattern A):
+    type Locator<T> = Locator { at: T }
+    // Callers thread the parameter: Locator<Node>, Locator<Symbol>.
+    ```
+    Use when callers don't need to enumerate the variant-axis at a
+    single site (i.e., the discriminator can be carried at the type
+    level by the calling context).
+  - **(Pattern B) Parametric sub-carrier lift.** When the parent
+    coproduct has asymmetric variants that DON'T fit one parametric
+    shape, lift only the shared shape into a parametric sub-carrier
+    and keep the coproduct discriminator for the asymmetric cases:
+    ```dag
+    // Before:
+    type Locus
+      = Textual { file: Symbol, extent: Extent }
+      | NodeLocus { node: Node }
+      | PortLocus { port: Symbol }
+    // After (Pattern B):
+    type Anchored<T> { at: T }
+    type Locus
+      = TextualLocus { file: Symbol, extent: Extent }
+      | NodeAt(Anchored<Node>)
+      | PortAt(Anchored<Symbol>)
+    ```
+    Use when callers DO enumerate variants at a site (e.g., a
+    match-over-Locus that handles file ranges differently from
+    anchored references); the parametric sub-carrier eliminates the
+    intra-anchor variant redundancy while keeping the coproduct
+    discriminator for the asymmetric variant.
+
+  Reviewer picks pattern at the candidate-state stage; same flow as
+  any typed-Diff. The auto-fix can emit both candidate forms and let
+  the reviewer choose, since (A) and (B) commit to different call-site
+  ergonomics.
+
+- *Decidability boundary (explicit):* the lens catches variants whose
+  field structures are bijection-isomorphic with type-only differences.
+  It does **not** catch:
+  - Variants whose field structures differ in arity or nesting (no
+    skeleton bijection).
+  - Variants whose field types differ but ALSO carry distinct
+    structural information (e.g., a refinement carrier attached).
+  - Cross-coproduct variant-skeleton matches — L1.4.b is intra-
+    coproduct only. Variants of one coproduct whose shape matches
+    variants of an unrelated coproduct are caught by L1.4 (whole-
+    carrier clone) or L1.12.b (cross-decl structural similarity)
+    instead.
+
+  The lens output is restricted to within-one-decl findings to keep
+  the trigger mechanically tight; broader matches escalate to the
+  appropriate sibling lens.
+
+- *Kills (real corpus — seed examples; full sweep deferred to a
+  modeling-lane sweep PR):*
+  - **`Locus.NodeLocus` / `Locus.PortLocus`** in `src/v4/std/diagnostic.dag:22`.
+    `NodeLocus { node: Node }` and `PortLocus { port: Symbol }` are
+    both single-field anchored records discriminating only on field
+    type (Node vs Symbol). The field names (`node`, `port`) are
+    nicknames for the anchor type, not independent semantic role.
+    The asymmetric Textual variant (`{ file: Symbol, extent: Extent }`)
+    doesn't fit a uniform parametric shape — Pattern B is the natural
+    fix: lift `Anchored<T> { at: T }` and rewrite the two redundant
+    variants to use it; keep TextualLocus distinct. Cited as seed for
+    the modeling-lane sweep.
+  - **(Additional kills TBD by the modeling-lane sweep.)** L1.4.b's
+    enforcement gate is (c) "the substrate has at least one
+    Practice-11-parameterized dissolution shape landed as the
+    migration target" — that target is the Locus rework. Once that
+    lands, the lens binding is honest (it has a worked precedent for
+    the dissolution shape).
+
+- *Producer stage (see §10):* L1.4.b consumes
+  `v4.lens.structural_similarity`'s `TypeShape.variant_set` — the
+  same per-variant `VariantShape` records used by L1.12.b's type-scope
+  (C1). No new producer stage needed; the structural-shape index is
+  the single source of variant-shape facts, consumed by both
+  cross-decl (L1.12.b) and intra-decl (L1.4.b) lenses. Facts Flow
+  Forward / P2: one mechanism, multiple downstream projections.
 
 ### L1.5 Catamorphism lens — kills *walker / traverse dissolution*
 
