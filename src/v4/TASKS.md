@@ -1293,7 +1293,13 @@ first authoring. Named explicitly in the design doc's MVP-B substrate row
 
 **Dependencies — `[needs T-33]`.** Cannot author the HostModel carrier
 shape until ModelCore is named (Q1 ratification factored ModelCore out
-*because* HostModel and LanguageModel needed a shared base).
+*because* HostModel and LanguageModel needed a shared base). While T-33 is
+being authored in parallel, T-34 may carry a local `ModelCore` forward
+declaration only as a marked pre-merge bridge: the declaration must cite the
+T-33 feature, bind to the T-34 work node, and dissolve to
+`import v4.std.model_core { ModelCore }` when `std/model_core.dag` lands.
+That bridge does not create a second ModelCore authority; it is the explicit
+schedule-edge receipt for the concurrent T-33/T-34 handoff.
 
 **Why a sibling, not a LanguageModel variant.** Q1c ("eval =
 translate-to-machine-code + execute") was rejected because host execution
