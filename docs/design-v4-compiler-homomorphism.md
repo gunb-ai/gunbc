@@ -142,15 +142,21 @@ If a user wants to compile a `.dag` source file from disk to a Rust source file 
 source_text   = file_read(path)              // effect against extdeps/file_system.dag
 core_node     = ingest_text(source_text,     // shim — composes parse + normalize
                             input_lang)
-target_source = translate(core_node,         // pure data-in/data-out
-                          rust_lang)
-target_text   = unwrap(target_source)        // TargetSource is just bytes
+grounded      = ground(IngestionPlan {
+                 subject: core_node,
+                 producer: ingest_explicit_language,
+                 params: dag_language_params
+               })
+readings      = observe(grounded, lens_plan)
+artifacts     = project(grounded, rust_projection_plan)
+release       = authorize(policy, readings, artifacts)
+target_text   = unwrap(release.artifacts[rust_source_artifact])
 file_write(out_path, target_text)            // effect against extdeps/file_system.dag
 ```
 
 - **`file_read` / `file_write`** are modeled effects in `extdeps/file_system.dag` — operations against the modeled file-system resource (carrying `ResourceDependsOn` edges per P6, fail-closed-or-explicit-modeled-default per P3).
 - **`ingest_text`** is a peripheral shim — NOT a substrate primitive. Composes parse (using input_lang's grammar) + normalize (using input_lang's sugar dissolutions). The shim exists because text-on-disk is a common user-facing input format, but the compile architecture itself stops at CoreNode.
-- **`translate` / `eval` / artifact projections** are pure. No file handle. No text. No process. Each takes a `Node` plus its own operation-specific model/config and returns its own typed result.
+- **`ground` / `observe` / `project` / `authorize`** are pure session phases. No file handle. No text. No process. `project` may use a translation producer internally, but the file-to-file shim writes only an authorized artifact from the session result.
 
 **Other ingest paths** (no text involved at all):
 - Programmatic: a client builds a `CoreNode` via substrate constructors (IDE plugins, code generators).
@@ -185,13 +191,13 @@ All paths produce `CoreNode`; Node-in operations take it from there. This matter
 
 ### Carrier types in this signature
 
-**`CoreNode`** is the substrate-canonical Node — six connectives + five behaviors only, sugar dissolved. This is what translate/eval/lens/artifact operations consume. (See "Carrier taxonomy" below — `CoreNode` is the post-normalize shape, distinct from `SurfaceNode` and `TargetSurfaceNode`.)
+**`CoreNode`** is the substrate-canonical Node — six connectives + five behaviors only, sugar dissolved. This is what `ground(IngestionPlan)` consumes. Lens and projection operations consume the grounded graph (`InferredTree` / future `InferredGraph`) that `ground` returns, not the raw `CoreNode`. (See "Carrier taxonomy" below — `CoreNode` is the post-normalize shape, distinct from `SurfaceNode` and `TargetSurfaceNode`.)
 
 **`LanguageModel`** is a `.dag` model in `extdeps/languages/X.dag` — a fact-bundle declaring X's grammar (bidirectional), primitive types with their facts (width, signedness, range, …), algebra inhabitance (this type inhabits this algebra), sugar dissolutions, binding/scope rules, and version metadata. Resolve/ground/translate consult it for scope rules, inhabitance declarations, and target realization; `ingest_text` consults it for grammar + sugar.
 
 **`HostModel`** is a **distinct substrate type, peer of `LanguageModel`** — both extend a shared `ModelCore` (primitive types, algebra inhabitance, laws, effect / partiality semantics). `HostModel` declares host-side concerns that have no emit-side analog: runtime value representation, primitive operation interpretation, execution semantics, resource / effect boundary. **Ratified Q1** below; full carrier breakdown in "Carrier shapes — `ModelCore` / `LanguageModel` / `HostModel`."
 
-Each operation has its own output carrier: `TargetSource` for `translate`, host `Value` / `EvalResult` for `eval`, and artifact-specific carriers for projections.
+Each operation has its own output carrier: `InferredTree` for `ground`, `LensReport` for `observe`, `ProjectionReport` for `project`, and `Validated<ArtifactSet>` for terminal `authorize`. Target source and host results are artifact payloads inside projection reports and authorized artifact sets, not direct file-write authority.
 
 > **Note on Lens mode:** the original draft of this doc proposed a third `CompileMode` for running lenses (the analysis framework for complexity / cost / ownership / effects / user-defined dimensions). That remains rejected. **Resolved 2026-05-21 — see P3 below.** Lenses are pure data-producing reads over the grounded graph; enforcement is terminal policy over those readings, not a compile-core mode and not a mechanical compile error.
 
@@ -1466,7 +1472,7 @@ Defer trigger: first attempt to compile against a non-current version (e.g., Pyt
 | **projection (lens output)** | Per P0 + P3, every downstream artifact (tests, dimensional facts, glue, schemas, migration plans, docs, dry-run results) is a *projection* of `InferredTree` computed by a lens. The compiler core produces InferredTree; lenses fan out into the projection family. |
 | **testgen** | A lens family that produces `TestClaim` Witnesses as projections of `InferredTree`. Historical name predating the lens reframe; different "levels" (boundary / property / integration / roundtrip / equivalence / fuzz / regression) are different invocations of the same family. Tests are projections of the model, NOT the source of truth for the model. |
 | **dry-run** | A lens-composed projection: `io_boundary_lens` identifies the I/O sites; a `LawfulRewriteWitness` substitutes mock stubs; `eval(mock_host_model)` runs the substituted tree. No new compiler primitive; composes lens + rewrite + eval-with-host-variant. Variations: record, assert, replay, fuzz. |
-| **peripheral shim** | A user-facing convenience that composes modeled effects with compile-core. Examples: `ingest_text` (file_read + parse + normalize), `compile_file_to_file` (file_read + ingest_text + compile + file_write). Shims are NOT substrate primitives — they live outside the architecture's load-bearing surface. |
+| **peripheral shim** | A user-facing convenience that composes modeled effects with session phases. Examples: `ingest_text` (file_read + parse + normalize), `compile_file_to_file` (file_read + ingest_text + ground + observe + project + authorize + file_write). Shims are NOT substrate primitives — they live outside the architecture's load-bearing surface. |
 | **modeled effect** | A real-world I/O operation declared as substrate data in `extdeps/` (file_read, file_write, network call, process spawn, …) — carries `EffectDependsOn` / `ResourceDependsOn` edges per P6; visible to lenses; substitutable by `LawfulRewriteWitness` for dry-run. There are no implicit side effects in the architecture. |
 | **`TestClaimLens`** | Lens layer 1 of testgen — produces abstract behavioral claims (roundtrip / refinement-boundary / algebra-law / protocol-compatibility / effect-idempotency) as `TestClaim` Witnesses. |
 | **`TestCaseLens`** | Lens layer 2 of testgen — lowers `TestClaim` Witnesses into concrete `TestCase` Witnesses (examples, boundary cases, property-test generators, fuzz seeds, regression fixtures). |
