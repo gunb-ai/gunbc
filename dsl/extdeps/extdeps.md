@@ -564,7 +564,7 @@ Targets (28 modules):
 - `secrets/*` — cite provider-specific docs
 - `git.dag` — cite https://git-scm.com/docs or Pro Git
 - `cargo.dag` — cite https://doc.rust-lang.org/cargo/reference/
-- `shell.dag` — cite POSIX.1 shell/utilities (not bash)
+- `shell.dag` — cite POSIX.1 for find/printenv and `-c`; common-utility docs for `which`; bash/zsh (or host `sh` implementation) for login-shell `-l` on `sh -lc`
 - `yaml.dag` — cite https://yaml.org/spec/1.2.2/
 - `tools/rust_toolchain.dag` — cite https://rust-lang.github.io/rustup/
 - `transports/sql.dag` — cite ISO SQL plus concrete prepared-statement docs
