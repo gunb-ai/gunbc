@@ -21,7 +21,7 @@ pub use crate::v2_compiler_infer_service::{
 pub use crate::v2_compiler_infer_sigs::{ResolvedFuncEnv, ResolvedFuncSig};
 pub use crate::v2_compiler_infer_types::{
     child_type_node, emit_map_has, enrich_kernel_type, method_receiver_element_node,
-    node_is_keyed_collection, nominal_type_ref, normalize_access_type_node,
+    node_is_keyed_collection, node_is_set_collection, nominal_type_ref, normalize_access_type_node,
 };
 use crate::v2_rt;
 use crate::v2_std_core::Cardinality::{CardOptional, Required};
@@ -283,6 +283,24 @@ pub fn map_key_type_in_env(type_node: Rc<Node>, env: &Rc<TypeEnv>) -> Option<Rc<
         {
             match map_type.children.clone().first().cloned() {
                 Some(key_type) => Some(key_type.clone()),
+                None => None,
+            }
+        } else {
+            None
+        }
+    }
+}
+
+pub fn set_element_type_in_env(type_node: Rc<Node>, env: &Rc<TypeEnv>) -> Option<Rc<Node>> {
+    {
+        let normed = normalize_access_type_node(type_node);
+        let resolved = resolve_scrutinee_type_node(env.clone(), normed);
+        let set_type = normalize_access_type_node(resolved);
+        if (node_is_set_collection(&set_type, &env.source_indices.clone())
+            && ((set_type.children.clone().len() as i64) >= 1))
+        {
+            match set_type.children.clone().first().cloned() {
+                Some(elem_type) => Some(elem_type.clone()),
                 None => None,
             }
         } else {
