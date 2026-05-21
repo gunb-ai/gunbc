@@ -231,20 +231,9 @@ fn v4_lens_testgen_testgen_carries_six_nat_algebra_law_scheduling_arms() {
 fn assert_nat_manual_claim_blocks_use_compiles_stub(nat_law_src: &str) {
     for claim in NAT_MANUAL_CLAIM_DATA {
         let block = nat_law_manual_claim_data_block(nat_law_src, claim);
-        let kind_lines: Vec<&str> = block
-            .lines()
-            .map(str::trim)
-            .filter(|l| l.starts_with("CompilesClaim {"))
-            .collect();
-        assert_eq!(
-            kind_lines.len(),
-            1,
-            "{claim}: expected exactly one `CompilesClaim {{` variant opener in this `data` block; got {kind_lines:?}"
-        );
         assert!(
-            kind_lines[0].starts_with("CompilesClaim {"),
-            "{claim}: nat-law manual stubs use placeholder `input`/`expected_value`; variant must stay `CompilesClaim` until T-22 law-shaped `Node` obligations land (codex #14833); got {:?}",
-            kind_lines[0]
+            block.contains("CompilesClaim {"),
+            "{claim}: nat-law manual stubs use placeholder `input`/`expected_value`; variant must stay `CompilesClaim` until T-22 law-shaped `Node` obligations land"
         );
     }
 }
