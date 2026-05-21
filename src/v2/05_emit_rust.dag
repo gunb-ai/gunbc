@@ -4094,7 +4094,7 @@ fn rust_struct_field_type_node(scope: InferScope, struct_name: String, field_nam
   match lookup_type_by_name(env: scope.type_env, name: struct_name) {
     Some { value: struct_node } =>
       match find_child_named(n: struct_node, name: field_name, source_indices: scope.type_env.source_indices) {
-        Some { value: field_node } => Some { value: child_type_node(ch: field_node_type_expr(n: field_node)) }
+        Some { value: field_node } => Some { value: field_node_type_expr(n: field_node) }
         None => none
       }
     None => none
