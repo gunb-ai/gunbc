@@ -316,6 +316,26 @@ fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept>
       Accepted { value: TypeConstruction {
           subject: ConnectiveKernel { connective: Instantiation },
         }, diagnostics: None }
+    T19ManualTcArrowEmpty =>
+      Accepted { value: TypeConstruction {
+          subject: ConnectiveKernel { connective: Arrow },
+        }, diagnostics: None }
+    T19ManualTcTransformEmpty =>
+      Accepted { value: TypeConstruction {
+          subject: BehaviorValueSubject { behavior: Transform },
+        }, diagnostics: None }
+    T19ManualTcBranchEmpty =>
+      Accepted { value: TypeConstruction {
+          subject: BehaviorValueSubject { behavior: Branch },
+        }, diagnostics: None }
+    T19ManualTcLoopEmpty =>
+      Accepted { value: TypeConstruction {
+          subject: BehaviorValueSubject { behavior: Loop },
+        }, diagnostics: None }
+    T19ManualTcBindZeroChildren =>
+      Accepted { value: TypeConstruction {
+          subject: BehaviorValueSubject { behavior: Bind },
+        }, diagnostics: None }
     T19ManualTcConjEqualsRefl =>
       Accepted { value: TypeConstruction {
           subject: ConnectiveKernel { connective: Conj },
