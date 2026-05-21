@@ -46,7 +46,9 @@ import v4.std.verification {
 
 data proven_nonzero_divisor_symbol: Symbol = proven_nonzero_divisor_symbol
 data proven_index_in_range_symbol: Symbol = proven_index_in_range_symbol
+data proven_optional_present_symbol: Symbol = proven_optional_present_symbol
 data total_division_symbol: Symbol = total_division_symbol
+data total_unwrap_symbol: Symbol = total_unwrap_symbol
 data unchecked_division_symbol: Symbol = unchecked_division_symbol
 data checked_index_symbol: Symbol = checked_index_symbol
 data unchecked_index_symbol: Symbol = unchecked_index_symbol
@@ -78,6 +80,9 @@ data total_division_input: Node = safety_subject(op: total_division_symbol, witn
 
 
 data checked_index_input: Node = safety_subject(op: checked_index_symbol, witness: proven_index_in_range_symbol)
+
+
+data total_unwrap_input: Node = safety_subject(op: total_unwrap_symbol, witness: proven_optional_present_symbol)
 
 
 data falsification_division_by_zero_unhandled: Node = safety_subject(op: unchecked_division_symbol, witness: force_unwrap_symbol)
@@ -119,7 +124,7 @@ data claim_unproven_division_rejected: TestClaim = TestClaim {
       d: Diagnostic {
         reason: unhandled_division_reason,
         at: NodeLocus { node: falsification_division_by_zero_unhandled },
-        correction: Suggested { node: total_division_input }
+        correction: Suggested { node: total_unwrap_input }
       }
     )
   },
