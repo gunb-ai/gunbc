@@ -1,0 +1,138 @@
+//! **Layer:** integration
+//!
+//! T-33 receipt: `src/v4/std/model_core.dag` tokenizes and parses cleanly — Ratified Q1
+//! `ModelCore` carrier (primitive fact bundles, algebra inhabitance, laws, effect/partiality
+//! scaffolds). Full `compile_to_dag` on this module alone does not resolve `import v4.std.*`
+//! peers under today's M1(2.7) single-file path (same posture as `v4_lens_testgen_dag_smoke_test`).
+
+use v3_compiler::parse_for_test;
+use v3_compiler::parse_surface::{SurfaceField, SurfaceItem, SurfaceType};
+use v3_compiler::tokenize_for_test;
+
+const MODEL_CORE_DAG: &str = include_str!("../../../../v4/std/model_core.dag");
+const MODEL_CORE_PATH: &str = "src/v4/std/model_core.dag";
+
+fn model_core_surface_or_panic() -> v3_compiler::parse_surface::SurfaceModule {
+    let tokens = tokenize_for_test(MODEL_CORE_DAG, MODEL_CORE_PATH)
+        .unwrap_or_else(|e| panic!("{MODEL_CORE_PATH}: tokenize: {e:?}"));
+    parse_for_test(&tokens, MODEL_CORE_PATH)
+        .unwrap_or_else(|e| panic!("{MODEL_CORE_PATH}: parse: {e:?}"))
+}
+
+fn surface_declares_type(module: &v3_compiler::parse_surface::SurfaceModule, name: &str) -> bool {
+    module.items.iter().any(|item| {
+        matches!(
+            item,
+            SurfaceItem::TypeSum { name: decl_name, .. }
+                | SurfaceItem::TypeRecord { name: decl_name, .. }
+                | SurfaceItem::TypeAlias { name: decl_name, .. }
+                | SurfaceItem::TypeAtom { name: decl_name, .. }
+                if decl_name == name
+        )
+    })
+}
+
+fn type_record_fields<'a>(
+    module: &'a v3_compiler::parse_surface::SurfaceModule,
+    name: &str,
+) -> &'a [SurfaceField] {
+    module
+        .items
+        .iter()
+        .find_map(|item| match item {
+            SurfaceItem::TypeRecord {
+                name: item_name,
+                fields,
+                ..
+            } if item_name == name => Some(fields.as_slice()),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("missing type record {name}"))
+}
+
+fn surface_type_name(ty: &SurfaceType) -> String {
+    match ty {
+        SurfaceType::Named { name, .. } => name.clone(),
+        SurfaceType::Parameterized { name, args, .. } => {
+            let rendered = args
+                .iter()
+                .map(|arg| match arg {
+                    v3_compiler::parse_surface::TypeAngleArg::TypeExpr { ty } => {
+                        surface_type_name(ty)
+                    }
+                    v3_compiler::parse_surface::TypeAngleArg::WidthNatLiteral { decimal, .. } => {
+                        decimal.clone()
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("{name}<{rendered}>")
+        }
+        SurfaceType::Optional { inner, .. } => format!("?{}", surface_type_name(inner)),
+        SurfaceType::Arrow { .. } => "fn".to_string(),
+    }
+}
+
+#[test]
+fn v4_std_model_core_dag_tokenizes_and_parses() {
+    let module = model_core_surface_or_panic();
+    assert_eq!(
+        module.path,
+        vec!["v4", "std", "model_core"],
+        "T-33 authority module should remain v4.std.model_core"
+    );
+}
+
+#[test]
+fn v4_std_model_core_declares_ratified_q1_carriers() {
+    let module = model_core_surface_or_panic();
+    for name in [
+        "ModelCore",
+        "PrimitiveFactBundle",
+        "AlgebraInhabitanceDecl",
+        "AlgebraLawObligation",
+        "EffectSemanticsDecl",
+        "PartialitySemanticsDecl",
+    ] {
+        assert!(
+            surface_declares_type(&module, name),
+            "T-33 must declare `{name}`"
+        );
+    }
+}
+
+#[test]
+fn v4_std_model_core_bundles_five_facets() {
+    let module = model_core_surface_or_panic();
+    let fields: Vec<String> = type_record_fields(&module, "ModelCore")
+        .iter()
+        .map(|f| f.name.clone())
+        .collect();
+    assert_eq!(
+        fields,
+        vec![
+            "primitives".to_string(),
+            "inhabitance".to_string(),
+            "laws".to_string(),
+            "effects".to_string(),
+            "partiality".to_string(),
+        ],
+        "ModelCore must bundle primitive/inhabitance/law/effect/partiality facets"
+    );
+    assert_eq!(
+        surface_type_name(&type_record_fields(&module, "ModelCore")[0].ty),
+        "List<PrimitiveFactBundle>"
+    );
+}
+
+#[test]
+fn v4_std_model_core_wave1_void_constructor_present() {
+    let module = model_core_surface_or_panic();
+    assert!(
+        module.items.iter().any(|item| matches!(
+            item,
+            SurfaceItem::FnDecl { name, .. } if name == "model_core_wave1_void"
+        )),
+        "wave-1 void ModelCore scaffold for downstream LanguageModel/HostModel extension"
+    );
+}

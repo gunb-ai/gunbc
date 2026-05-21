@@ -1,0 +1,97 @@
+// src/v4/std/model_core.dag
+// Scope: shared substrate factoring (Ratified Q1) — categorical floor for LanguageModel + HostModel.
+// Owns: ModelCore, PrimitiveFactBundle, AlgebraInhabitanceDecl, AlgebraLawObligation,
+//       EffectSemanticsDecl, PartialitySemanticsDecl, PartialOperationDecl, PartialityDischarge,
+//       model_core_primitive_fact_axis_*, model_core_wave1_void.
+// Consumes: std/node, std/collection, std/algebra (T-1, T-2, T-3).
+// Status: T-33 modeled; LanguageModel/HostModel extension wiring is downstream (T-4 / T-34).
+// Anchor: docs/design-v4-compiler-homomorphism.md §"ModelCore (shared substrate, factored per ratified Q1)".
+
+
+module v4.std.model_core
+
+
+import v4.std.collection { List }
+import v4.std.node { Node, Symbol }
+
+
+// Practice-8 fact-bundle axis labels — conj field names until T-3 lands Signedness / Representation carriers.
+data model_core_primitive_fact_axis_width: Symbol = model_core_primitive_fact_axis_width
+data model_core_primitive_fact_axis_signedness: Symbol = model_core_primitive_fact_axis_signedness
+data model_core_primitive_fact_axis_range: Symbol = model_core_primitive_fact_axis_range
+data model_core_primitive_fact_axis_encoding: Symbol = model_core_primitive_fact_axis_encoding
+
+
+// Each primitive is a substrate-carrier reference plus a spec-read fact conj (width, signedness, range, encoding, …).
+type PrimitiveFactBundle {
+  substrate_carrier: Node
+  spec_facts: Node
+}
+
+
+// Algebra inhabitance — consumed by T-9 coercion fold / infer's inhabitance coordinate.
+type AlgebraInhabitanceDecl {
+  algebra: Node
+  inhabitant: Node
+  witness: Node
+}
+
+
+// Law / proof obligation scheduling — associativity, commutativity, … for preservation checks.
+type AlgebraLawObligation {
+  algebra: Symbol
+  inhabitant: Symbol
+  law: Symbol
+}
+
+
+type PrimitiveOperationRef {
+  operation: Symbol
+  effect_signature: Node
+}
+
+
+// 🟡 needs-more-work — Open Q10 deferred-with-trigger (design-v4-compiler-homomorphism.md) — feature:model-core-effect-semantics — dissolve-on: first std/ primitive declares non-trivial effect; ratify EffectSignature / ResourceAccess representation.
+type EffectSemanticsDecl {
+  operations: List<PrimitiveOperationRef>
+}
+
+
+type PartialOperationDecl {
+  operation: Symbol
+  precondition: Node
+  discharge: PartialityDischarge
+}
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type PartialityDischarge
+  = FailClosedAtBoundary { reason: Symbol }
+  | RefinementHonoring { validation: Node }
+
+
+// 🟡 needs-more-work — Open Q10 deferred-with-trigger — feature:model-core-partiality-semantics — dissolve-on: per-operator partiality substrate ratified (integer divide is the trigger exemplar in std/integer.dag).
+type PartialitySemanticsDecl {
+  operations: List<PartialOperationDecl>
+}
+
+
+// Shared base both LanguageModel and HostModel extend (Ratified Q1).
+type ModelCore {
+  primitives: List<PrimitiveFactBundle>
+  inhabitance: List<AlgebraInhabitanceDecl>
+  laws: List<AlgebraLawObligation>
+  effects: EffectSemanticsDecl
+  partiality: PartialitySemanticsDecl
+}
+
+
+fn model_core_wave1_void() -> ModelCore {
+  ModelCore {
+    primitives: [],
+    inhabitance: [],
+    laws: [],
+    effects: EffectSemanticsDecl { operations: [] },
+    partiality: PartialitySemanticsDecl { operations: [] }
+  }
+}
