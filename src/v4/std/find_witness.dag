@@ -17,19 +17,38 @@ import v4.std.diagnostic {
   Diagnostic,
   Diagnostics,
   ExternalContractUnknown,
+  None,
   NodeLocus,
   Outcome,
   Unavailable,
   outcome_rejected,
   outcome_with_diagnostics
 }
-import v4.std.node { Node, Symbol }
+import v4.std.node {
+  Atom,
+  Cardinality,
+  ComputationNode,
+  Conj,
+  Connective,
+  Disj,
+  Edge,
+  Arrow,
+  Instantiation,
+  Node,
+  NodeFold,
+  NodeKind,
+  Symbol,
+  TypeNode,
+  fold_node,
+  well_formed
+}
 import v4.std.witness { StructuralPropertyWitness }
 data find_witness_reason_no_candidate: Symbol = find_witness_reason_no_candidate
 data find_witness_reason_ambiguous_candidate: Symbol = find_witness_reason_ambiguous_candidate
 data find_witness_reason_not_realized: Symbol = find_witness_reason_not_realized
 data preservation_rule_constraint_satisfaction: Symbol = preservation_rule_constraint_satisfaction
 data preservation_rule_exact_structural_equality_zip_fold: Symbol = preservation_rule_exact_structural_equality_zip_fold
+data exact_structural_zip_fold_atom: Symbol = exact_structural_zip_fold_atom
 type CandidateSet {
   candidates: List<Node>
   closedness: StructuralPropertyWitness
@@ -82,19 +101,59 @@ fn find_witness_not_realized_diagnostic(source_facts: Node) -> Diagnostic {
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
+fn zip_fold_connective_shape(c: Connective) -> Connective {
+  match c {
+    Atom { identity: _ } => Atom { identity: exact_structural_zip_fold_atom }
+    Conj => Conj
+    Disj => Disj
+    Arrow => Arrow
+    Cardinality => Cardinality
+    Instantiation => Instantiation
+  }
+}
+fn zip_fold_kind_shape(k: NodeKind) -> NodeKind {
+  match k {
+    TypeNode { connective: c } => TypeNode { connective: zip_fold_connective_shape(c: c) }
+    ComputationNode { behavior: b } => ComputationNode { behavior: b }
+  }
+}
+fn zip_fold_node_init(n: Node) -> Node {
+  Node {
+    kind: zip_fold_kind_shape(k: n.kind),
+    children: []
+  }
+}
+fn zip_fold_node_step(acc: Node, edge: Edge, child_shape: Node) -> Node {
+  Node {
+    kind: acc.kind,
+    children: list_push(
+      acc.children,
+      Edge { label: edge.label, target: child_shape }
+    )
+  }
+}
+fn zip_fold_node_shape(n: Node) -> Node {
+  fold_node(
+    n: n,
+    algebra: NodeFold {
+      init: zip_fold_node_init,
+      step: zip_fold_node_step
+    }
+  )
+}
 fn exact_structural_equality_zip_fold(source_facts: Node, candidate: Node) -> Bool {
-  source_facts == candidate
+  well_formed(n: source_facts)
+    && well_formed(n: candidate)
+    && (zip_fold_node_shape(n: source_facts) == zip_fold_node_shape(n: candidate))
 }
 fn preservation_predicate_holds(
   source_facts: Node,
   candidate: Node,
   predicate: PreservationPredicate,
 ) -> Bool {
-  if predicate.preservation_rule == preservation_rule_exact_structural_equality_zip_fold {
-    exact_structural_equality_zip_fold(source_facts: source_facts, candidate: candidate)
-  } else {
-    false
-  }
+  well_formed(n: predicate.algebra)
+    && (predicate.preservation_rule == preservation_rule_exact_structural_equality_zip_fold)
+    && exact_structural_equality_zip_fold(source_facts: source_facts, candidate: candidate)
 }
 fn find_witness_result_for_candidate(
   candidate: Node,
