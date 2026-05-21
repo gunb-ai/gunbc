@@ -121,6 +121,7 @@ fn preservation_predicate_holds(
     }
   }
 }
+// Only called from find_witness_realized / verify_witness_realized after rule dispatch; unknown rules reject at entry via find_witness_not_realized.
 fn passing_candidate_count(
   source_facts: Node,
   candidates: CandidateSet,
@@ -252,6 +253,10 @@ fn find_witness_realized(
   predicate: PreservationPredicate,
   multiplicity_policy: MultiplicityPolicy
 ) -> Outcome<FindWitnessResult> {
+  if (predicate.preservation_rule != preservation_rule_constraint_satisfaction)
+    && (predicate.preservation_rule != preservation_rule_exact_structural_equality_zip_fold) {
+    outcome_rejected(find_witness_not_realized_diagnostic(source_facts: source_facts))
+  } else {
   let passing_count = passing_candidate_count(
     source_facts: source_facts,
     candidates: candidates,
@@ -291,6 +296,7 @@ fn find_witness_realized(
           )
       }
     }
+  }
   }
 }
 fn verify_witness(
