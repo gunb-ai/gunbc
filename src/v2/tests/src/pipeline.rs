@@ -4431,6 +4431,90 @@ fn make() -> Outer {
     );
 }
 
+#[test]
+fn bounded_lattice_data_literals_emit_generic_inhabitant_storage() {
+    let source = "\
+module test_bounded_lattice_emit
+
+type BoundedLattice<T> {
+  meet: fn(T, T) -> T
+  join: fn(T, T) -> T
+  top: T
+  bottom: T
+}
+
+type Encoding = ASCII | Unknown
+type DescentEvidence = Strict | DescentUnknown
+type FermiDepth = Xs | Xl
+
+fn encoding_meet(a: Encoding, b: Encoding) -> Encoding { a }
+fn encoding_join(a: Encoding, b: Encoding) -> Encoding { b }
+fn descent_meet(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence { a }
+fn descent_join(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence { b }
+fn fermi_meet(a: FermiDepth, b: FermiDepth) -> FermiDepth { a }
+fn fermi_join(a: FermiDepth, b: FermiDepth) -> FermiDepth { b }
+
+data encoding_bounded_lattice: BoundedLattice<Encoding> = {
+  meet: encoding_meet
+  join: encoding_join
+  top: Unknown
+  bottom: ASCII
+}
+
+data descent_evidence_bounded_lattice: BoundedLattice<DescentEvidence> = {
+  meet: descent_meet
+  join: descent_join
+  top: Strict
+  bottom: DescentUnknown
+}
+
+data fermi_bounded_lattice: BoundedLattice<FermiDepth> = {
+  meet: fermi_meet
+  join: fermi_join
+  top: Xl
+  bottom: Xs
+}
+";
+    let result = compile_dag_target(source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/test_bounded_lattice_emit.rs");
+
+    for (fn_name, ty_name) in [
+        ("encoding_bounded_lattice", "Encoding"),
+        ("descent_evidence_bounded_lattice", "DescentEvidence"),
+        ("fermi_bounded_lattice", "FermiDepth"),
+    ] {
+        let expected_sig = format!("pub fn {fn_name}() -> Rc<BoundedLattice<{ty_name}>>");
+        assert!(
+            content.contains(&expected_sig),
+            "{fn_name} should emit a generic BoundedLattice<{ty_name}> data accessor, got:\n{content}"
+        );
+    }
+
+    for fn_name in [
+        "encoding_meet",
+        "encoding_join",
+        "descent_meet",
+        "descent_join",
+        "fermi_meet",
+        "fermi_join",
+    ] {
+        let expected_field = format!("Rc::new({fn_name})");
+        assert!(
+            content.contains(&expected_field),
+            "{fn_name} should be stored as an Rc callable field, got:\n{content}"
+        );
+    }
+
+    for variant in ["Unknown", "ASCII", "Strict", "DescentUnknown", "Xl", "Xs"] {
+        let expected_value = format!("Box::new({variant})");
+        assert!(
+            content.contains(&expected_value),
+            "{variant} should be stored as a boxed generic lattice value, got:\n{content}"
+        );
+    }
+}
+
 // ── DEBUG: Callable field rendering ───────────────────────────────────
 
 #[test]
