@@ -100,7 +100,7 @@ fn run_pipeline_assert(
 ) -> Verdict<CiPipeline> {
   let expected = test_claim_expected_outcome(c: claim)
   match claim {
-    DiagnosticClaim { .. } =>
+    DiagnosticClaim { label: _, t19_anchor: _, input: _, expected_outcome: _, classification: _ } =>
       match actual {
         Rejected { diagnostics: r } => {
           let comparable = Rejected { diagnostics: r }

@@ -106,36 +106,38 @@ type TestClaim
 
 fn test_claim_input(c: TestClaim) -> Node {
   match c {
-    CompilesClaim { input: n, .. } => n
-    DiagnosticClaim { input: n, .. } => n
-    EqualsClaim { lhs: n, .. } => n
-    RoundTripClaim { input: n, .. } => n
+    CompilesClaim { input: n, label: _, t19_anchor: _, expected_value: _, classification: _ } => n
+    DiagnosticClaim { input: n, label: _, t19_anchor: _, expected_outcome: _, classification: _ } => n
+    EqualsClaim { lhs: n, label: _, t19_anchor: _, rhs: _, classification: _ } => n
+    RoundTripClaim { input: n, label: _, t19_anchor: _, classification: _ } => n
   }
 }
 
 fn test_claim_t19_anchor(c: TestClaim) -> T19ManualAnchorKey {
   match c {
-    CompilesClaim { t19_anchor: k, .. } => k
-    DiagnosticClaim { t19_anchor: k, .. } => k
-    EqualsClaim { t19_anchor: k, .. } => k
-    RoundTripClaim { t19_anchor: k, .. } => k
+    CompilesClaim { t19_anchor: k, label: _, input: _, expected_value: _, classification: _ } => k
+    DiagnosticClaim { t19_anchor: k, label: _, input: _, expected_outcome: _, classification: _ } => k
+    EqualsClaim { t19_anchor: k, label: _, lhs: _, rhs: _, classification: _ } => k
+    RoundTripClaim { t19_anchor: k, label: _, input: _, classification: _ } => k
   }
 }
 
 fn test_claim_classification(c: TestClaim) -> TestClassification {
   match c {
-    CompilesClaim { classification: c, .. } => c
-    DiagnosticClaim { classification: c, .. } => c
-    EqualsClaim { classification: c, .. } => c
-    RoundTripClaim { classification: c, .. } => c
+    CompilesClaim { classification: c, label: _, t19_anchor: _, input: _, expected_value: _ } => c
+    DiagnosticClaim { classification: c, label: _, t19_anchor: _, input: _, expected_outcome: _ } => c
+    EqualsClaim { classification: c, label: _, t19_anchor: _, lhs: _, rhs: _ } => c
+    RoundTripClaim { classification: c, label: _, t19_anchor: _, input: _ } => c
   }
 }
 
 fn test_claim_expected_outcome(c: TestClaim) -> Outcome<Node> {
   match c {
-    CompilesClaim { expected_value: e, .. } => e
-    DiagnosticClaim { expected_outcome: e, .. } => e
-    EqualsClaim { lhs: _, rhs: r, .. } => Accepted { value: r, diagnostics: None }
-    RoundTripClaim { input: n, .. } => Accepted { value: n, diagnostics: None }
+    CompilesClaim { expected_value: e, label: _, t19_anchor: _, input: _, classification: _ } => e
+    DiagnosticClaim { expected_outcome: e, label: _, t19_anchor: _, input: _, classification: _ } => e
+    EqualsClaim { rhs: r, label: _, t19_anchor: _, lhs: _, classification: _ } =>
+      Accepted { value: r, diagnostics: None }
+    RoundTripClaim { input: n, label: _, t19_anchor: _, classification: _ } =>
+      Accepted { value: n, diagnostics: None }
   }
 }

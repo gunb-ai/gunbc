@@ -152,23 +152,23 @@ fn run_test_claim_assert(
   at: Node
 ) -> Verdict<Node> {
   match claim {
-    EqualsClaim { lhs: _, rhs: rhs, .. } =>
+    EqualsClaim { rhs: rhs, label: _, t19_anchor: _, lhs: _, classification: _ } =>
       if outcome_node_eq(a: actual, b: Accepted { value: rhs, diagnostics: None }) {
         Pass
       } else {
         Fail { actual: actual }
       }
-    CompilesClaim { expected_value: expected, .. } =>
+    CompilesClaim { expected_value: expected, label: _, t19_anchor: _, input: _, classification: _ } =>
       match actual {
         Accepted { value: _, diagnostics: _ } => Pass
         Rejected { diagnostics: _ } => Fail { actual: actual }
       }
-    RoundTripClaim { input: input, .. } =>
+    RoundTripClaim { input: input, label: _, t19_anchor: _, classification: _ } =>
       Deferred {
         actual: actual,
         diagnostic: eval_diagnostic(reason: eval_rejected_roundtrip_deferred, node: input)
       }
-    DiagnosticClaim { expected_outcome: expected, input: input, .. } =>
+    DiagnosticClaim { expected_outcome: expected, input: input, label: _, t19_anchor: _, classification: _ } =>
       match actual {
         Rejected { diagnostics: _ } =>
           if outcome_node_eq(a: actual, b: expected) { Pass } else { Fail { actual: actual } }
