@@ -901,6 +901,42 @@ fn dag_artifact_multi_module_names_resolve() {
     );
 }
 
+#[test]
+fn dag_artifact_module_imports_not_serialized_as_params() {
+    let source = "module imp_test\nimport std { Int }\n\nfn f() -> Int { 0 }\n";
+    let result = compile_dag_named("imp_test.dag", source, RenderTarget::Dag);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "dag-artifact.json");
+    let artifact: Value =
+        serde_json::from_str(&content).expect("dag artifact should be valid JSON");
+    let nodes = artifact
+        .get("nodes")
+        .and_then(Value::as_object)
+        .expect("dag artifact should have a nodes object");
+    let module_record = nodes.values().find(|v| {
+        v.get("name")
+            .and_then(Value::as_str)
+            .is_some_and(|n| n == "imp_test")
+    });
+    let module_record = module_record.expect("module node record should exist in nodes table");
+    let imports = module_record
+        .get("imports")
+        .and_then(Value::as_array)
+        .expect("module record should have imports array");
+    assert!(
+        !imports.is_empty(),
+        "module record should serialize imports via imports field"
+    );
+    let params = module_record
+        .get("params")
+        .and_then(Value::as_array)
+        .expect("module record should have params array");
+    assert!(
+        params.is_empty(),
+        "module imports must not be duplicated as callable params (role-aware serialization)"
+    );
+}
+
 // ── Multi-module tests ──────────────────────────────────────────────────
 
 #[test]

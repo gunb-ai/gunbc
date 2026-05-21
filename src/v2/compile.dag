@@ -837,6 +837,33 @@ fn serialize_param(param: Node, source_indices: Map<String, NewlineIndex>, key_t
     "}")
 }
 
+// Import nodes (module_node params) vs param nodes (callable params) share Node.params; imports
+// are serialized only via serialize_module_imports_json, not serialize_param.
+fn is_import_node(n: Node) -> Bool {
+  if import_is_all(n: n) {
+    true
+  } else if n.params |> count > 0 {
+    false
+  } else {
+    match n.children |> first {
+      None => true
+      Some { value: first } => first.expr_data == NoExprData && first.params |> count == 0
+    }
+  }
+}
+
+fn node_params_are_module_imports(n: Node) -> Bool {
+  n.params |> all(p => is_import_node(p: p))
+}
+
+fn serialize_node_params_json(node: Node, source_indices: Map<String, NewlineIndex>, key_to_id: Map<String, String>) -> String {
+  if node_params_are_module_imports(n: node) {
+    "[]"
+  } else {
+    json_list(items: node.params |> map(param => serialize_param(param: param, source_indices: source_indices, key_to_id: key_to_id)))
+  }
+}
+
 fn serialize_module_imports_json(node: Node, source_indices: Map<String, NewlineIndex>) -> String {
   let imports = module_imports(n: node)
   if imports |> count == 0 {
@@ -862,7 +889,7 @@ fn serialize_node_record(node: Node, source_indices: Map<String, NewlineIndex>, 
       NoConnective => "null"
       Arrow => json_quote(s: connective_name(value: Arrow))
     },
-    ", \"params\": ", json_list(items: node.params |> map(param => serialize_param(param: param, source_indices: source_indices, key_to_id: key_to_id))),
+    ", \"params\": ", serialize_node_params_json(node: node, source_indices: source_indices, key_to_id: key_to_id),
     ", \"inferred\": ", json_optional_inferred_node_ref(value: node.inferred, key_to_id: key_to_id),
     ", \"return_cardinality\": ", json_quote(s: cardinality_name(value: node.return_cardinality)),
     ", \"uses\": ", json_list(items: node.uses |> map(item => serialize_resource_use(resource_use: item, source_indices: source_indices, key_to_id: key_to_id))),

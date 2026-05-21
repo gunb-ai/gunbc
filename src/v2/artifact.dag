@@ -121,23 +121,23 @@ fn default_artifact_plan(root_modules: List<String>, target: RenderTarget) -> Ar
 //
 // testcase: dag_artifact_shares_one_node_record (pipeline.rs)
 
-// 🟡 needs-more-work — DagNodeId is file+span+ident until v4 content_hash; duplicate keys alias (shared subgraph).
+// 🟡 needs-more-work — feature:v2-dag-node-content-hash — dissolve-on: v4 Node/content_hash is DagNodeId authority (audit v2-dag-artifact-zip-fold-hang-2026-05-21.md Practice 11).
 type DagNodeId = String
 
-// 🟡 needs-more-work — JSON mirror of InferredNode; typed record emission is follow-up.
+// 🟡 needs-more-work — feature:v2-dag-typed-inferred-record — dissolve-on: emit_dag_artifact constructs DagInferredRecord instead of inferred JSON strings.
 type DagInferredRecord
   = ResolvedRef { node: DagNodeId }
   | TypeVariableRef { id: String }
   | CompilerErrorRecord { message: String, span: SourceSpan }
 
-// 🟡 needs-more-work — module/items cite nodes table; item_registry_keys stay string keys.
+// 🟡 needs-more-work — feature:v2-dag-typed-module-ref — dissolve-on: serialize_typed_module returns DagModuleRef (modules[] stops using raw JSON strings).
 type DagModuleRef {
   module: DagNodeId
   items: List<DagNodeId>
   item_registry_keys: List<String>
 }
 
-// 🟡 needs-more-work — diagnostic rows remain JSON strings until ErrorNode projection lands.
+// 🟡 needs-more-work — feature:v2-dag-typed-diagnostic-record — dissolve-on: typed ErrorNode projection populates DagDiagnosticRecord in DagArtifact.
 type DagDiagnosticRecord {
   severity: String
   message: String
@@ -146,7 +146,7 @@ type DagDiagnosticRecord {
   category: String?
 }
 
-// 🟡 needs-more-work — nodes map holds per-node JSON records; modules list holds module refs.
+// 🟡 needs-more-work — feature:v2-dag-typed-artifact-emit — dissolve-on: emit_dag_artifact returns DagArtifact (JSON encoder walks carrier, not string concat).
 type DagArtifact {
   version: String
   nodes: Map<DagNodeId, String>
