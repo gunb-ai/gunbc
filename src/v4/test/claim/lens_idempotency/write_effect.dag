@@ -1,0 +1,93 @@
+// src/v4/test/claim/lens_idempotency/write_effect.dag
+// Scope: T-13 worked claim — write effects project to non-idempotent facts.
+// Owns: idempotency_write_effect_claim.
+// Consumes: lens idempotency, compiler infer, std dependency, std node.
+// Status: scaffold — compile-only until generated claim execution.
+
+module v4.test.claim.lens_idempotency.write_effect
+
+import v4.compiler.infer { AlgebraRef, InferredFacts, InferredTree }
+import v4.lens.idempotency {
+  IdempotencyFact,
+  idempotency_fact_from_effect_dependencies,
+  idempotency_witness
+}
+import v4.std.cardinality { RankingDimension, TerminationProof }
+import v4.std.collection { Map }
+import v4.std.dependency { DependencyView, EffectDependsOn }
+import v4.std.node { Atom, Edge, Hash, Named, Node, Symbol, TypeNode }
+import v4.std.witness { Holds, Witness }
+
+data idempotency_root_symbol: Symbol = idempotency_root_symbol
+data idempotency_child_symbol: Symbol = idempotency_child_symbol
+data idempotency_edge_symbol: Symbol = idempotency_edge_symbol
+data idempotency_type_symbol: Symbol = idempotency_type_symbol
+data idempotency_algebra_symbol: Symbol = idempotency_algebra_symbol
+data idempotency_algebra_witness_symbol: Symbol = idempotency_algebra_witness_symbol
+data idempotency_descent_symbol: Symbol = idempotency_descent_symbol
+data idempotency_claim_hash: Hash = idempotency_claim_hash
+
+fn idempotency_claim_node(s: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: s } },
+    children: []
+  }
+}
+
+data idempotency_child: Node = idempotency_claim_node(s: idempotency_child_symbol)
+
+data idempotency_root: Node = Node {
+  kind: TypeNode { connective: Atom { identity: idempotency_root_symbol } },
+  children: [
+    Edge { label: Named { name: idempotency_edge_symbol }, target: idempotency_child }
+  ]
+}
+
+data idempotency_dependency: DependencyView = DependencyView {
+  source: idempotency_root,
+  dependent: idempotency_child,
+  kind: EffectDependsOn,
+  usage_site: idempotency_child
+}
+
+fn idempotency_claim_facts() -> InferredFacts {
+  InferredFacts {
+    resolved_type: idempotency_claim_node(s: idempotency_type_symbol),
+    inhabits: AlgebraRef {
+      algebra: idempotency_claim_node(s: idempotency_algebra_symbol),
+      witness: idempotency_claim_node(s: idempotency_algebra_witness_symbol)
+    },
+    descent: TerminationProof {
+      non_increasing: [],
+      strict: RankingDimension { measured: idempotency_descent_symbol }
+    }
+  }
+}
+
+fn idempotency_claim_fact_map(facts: InferredFacts) -> Map<Node, InferredFacts> {
+  Map {
+    lookup: fn(_) {
+      Holds { value: facts }
+    }
+  }
+}
+
+fn idempotency_claim_tree() -> InferredTree {
+  let facts = idempotency_claim_facts()
+  InferredTree {
+    root: idempotency_root,
+    facts: idempotency_claim_fact_map(facts: facts)
+  }
+}
+
+type LensIdempotencyClaim {
+  input: InferredTree
+  expected: IdempotencyFact
+  actual: Witness<IdempotencyFact>
+}
+
+data idempotency_write_effect_claim: LensIdempotencyClaim = LensIdempotencyClaim {
+  input: idempotency_claim_tree(),
+  expected: idempotency_fact_from_effect_dependencies(dependencies: [idempotency_dependency]),
+  actual: idempotency_witness(tree: idempotency_claim_tree())
+}

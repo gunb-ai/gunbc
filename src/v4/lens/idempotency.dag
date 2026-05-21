@@ -26,8 +26,10 @@ import v4.lens.effect {
   PureEffect,
   ReadEffect,
   WriteEffect,
-  effect_fact
+  effect_fact,
+  effect_fact_from_dependencies
 }
+import v4.std.dependency { DependencyView }
 import v4.std.node { Node }
 import v4.std.witness { Holds, Witness }
 
@@ -67,6 +69,15 @@ fn idempotency_effect_fact(effect: EffectDependencyFact) -> IdempotencyEffectFac
 
 fn idempotency_fact(tree: InferredTree) -> IdempotencyFact {
   let effects = effect_fact(tree: tree)
+  IdempotencyFact {
+    effects: fold(effects.dependencies, init: [], f: fn(acc, effect) {
+      list_push(acc, idempotency_effect_fact(effect: effect))
+    })
+  }
+}
+
+fn idempotency_fact_from_effect_dependencies(dependencies: List<DependencyView>) -> IdempotencyFact {
+  let effects = effect_fact_from_dependencies(dependencies: dependencies)
   IdempotencyFact {
     effects: fold(effects.dependencies, init: [], f: fn(acc, effect) {
       list_push(acc, idempotency_effect_fact(effect: effect))

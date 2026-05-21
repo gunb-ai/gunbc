@@ -1,0 +1,89 @@
+// src/v4/test/claim/lens_effect/effect_depends_on.dag
+// Scope: T-13 worked claim — EffectDependsOn projects to a write effect.
+// Owns: effect_depends_on_claim.
+// Consumes: lens effect, compiler infer, std dependency, std node.
+// Status: scaffold — compile-only until generated claim execution.
+
+module v4.test.claim.lens_effect.effect_depends_on
+
+import v4.compiler.infer { AlgebraRef, InferredFacts, InferredTree }
+import v4.lens.effect { EffectFact, effect_fact_from_dependencies, effect_witness }
+import v4.std.cardinality { RankingDimension, TerminationProof }
+import v4.std.collection { Map }
+import v4.std.dependency { DependencyView, EffectDependsOn }
+import v4.std.node { Atom, Edge, Hash, Named, Node, Symbol, TypeNode }
+import v4.std.witness { Holds, Witness }
+
+data effect_root_symbol: Symbol = effect_root_symbol
+data effect_child_symbol: Symbol = effect_child_symbol
+data effect_edge_symbol: Symbol = effect_edge_symbol
+data effect_type_symbol: Symbol = effect_type_symbol
+data effect_algebra_symbol: Symbol = effect_algebra_symbol
+data effect_algebra_witness_symbol: Symbol = effect_algebra_witness_symbol
+data effect_descent_symbol: Symbol = effect_descent_symbol
+data effect_claim_hash: Hash = effect_claim_hash
+
+fn effect_claim_node(s: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: s } },
+    children: []
+  }
+}
+
+data effect_child: Node = effect_claim_node(s: effect_child_symbol)
+
+data effect_root: Node = Node {
+  kind: TypeNode { connective: Atom { identity: effect_root_symbol } },
+  children: [
+    Edge { label: Named { name: effect_edge_symbol }, target: effect_child }
+  ]
+}
+
+data effect_dependency: DependencyView = DependencyView {
+  source: effect_root,
+  dependent: effect_child,
+  kind: EffectDependsOn,
+  usage_site: effect_child
+}
+
+fn effect_claim_facts() -> InferredFacts {
+  InferredFacts {
+    resolved_type: effect_claim_node(s: effect_type_symbol),
+    inhabits: AlgebraRef {
+      algebra: effect_claim_node(s: effect_algebra_symbol),
+      witness: effect_claim_node(s: effect_algebra_witness_symbol)
+    },
+    descent: TerminationProof {
+      non_increasing: [],
+      strict: RankingDimension { measured: effect_descent_symbol }
+    }
+  }
+}
+
+fn effect_claim_fact_map(facts: InferredFacts) -> Map<Node, InferredFacts> {
+  Map {
+    lookup: fn(_) {
+      Holds { value: facts }
+    }
+  }
+}
+
+fn effect_claim_tree() -> InferredTree {
+  let facts = effect_claim_facts()
+  InferredTree {
+    root: effect_root,
+    facts: effect_claim_fact_map(facts: facts)
+  }
+}
+
+type LensEffectClaim {
+  input: InferredTree
+  expected: EffectFact
+  actual: Witness<EffectFact>
+}
+
+data effect_depends_on_claim: LensEffectClaim = LensEffectClaim {
+  input: effect_claim_tree(),
+  expected: effect_fact_from_dependencies(dependencies: [effect_dependency]),
+  actual: effect_witness(tree: effect_claim_tree())
+}
