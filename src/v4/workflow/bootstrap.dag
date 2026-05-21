@@ -75,8 +75,12 @@ fn bs_diagnostic(reason: Symbol) -> Diagnostic {
 fn bs_list_eq(a: List<Symbol>, b: List<Symbol>) -> Bool {
   (length(xs: a) == length(xs: b))
     && for_all(xs: a, predicate: fn(x) {
-         (count_equal(xs: a, item: x, eq: fn(left, right) { left == right })
-           == count_equal(xs: b, item: x, eq: fn(left, right) { left == right }))
+         if count_equal(xs: a, item: x, eq: fn(left, right) { left == right })
+              != count_equal(xs: b, item: x, eq: fn(left, right) { left == right }) {
+           false
+         } else {
+           true
+         }
        })
 }
 
