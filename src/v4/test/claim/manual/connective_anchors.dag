@@ -69,7 +69,7 @@ data claim_conj_empty_compiles: TestClaim = CompilesClaim {
   label: "manual/connective: empty Conj type-node is structurally inhabitable",
   t19_anchor: T19ManualTcConjEmpty,
   input: stub_empty_conj,
-  expected_value: Accepted { value: stub_empty_conj, diagnostics: None },
+  expected_value: stub_empty_conj,
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
@@ -78,7 +78,7 @@ data claim_disj_empty_compiles: TestClaim = CompilesClaim {
   label: "manual/connective: empty Disj type-node is structurally inhabitable",
   t19_anchor: T19ManualTcDisjEmpty,
   input: stub_empty_disj,
-  expected_value: Accepted { value: stub_empty_disj, diagnostics: None },
+  expected_value: stub_empty_disj,
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
@@ -87,7 +87,7 @@ data claim_arrow_two_conj_compiles: TestClaim = CompilesClaim {
   label: "manual/connective: Arrow with two positional Conj leaves (no Atom)",
   t19_anchor: T19ManualTcArrowTwoConj,
   input: stub_arrow_pair,
-  expected_value: Accepted { value: stub_arrow_pair, diagnostics: None },
+  expected_value: stub_arrow_pair,
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
@@ -96,11 +96,9 @@ data claim_cardinality_empty_rejected: TestClaim = DiagnosticClaim {
   label: "manual/connective: empty Cardinality type-node fails well-formedness (A1 arity)",
   t19_anchor: T19ManualTcCardinalityEmpty,
   input: stub_empty_cardinality,
-  expected_outcome: Rejected {
-    diagnostics: diagnostics_singleton(
+  expected_rejection: diagnostics_singleton(
       d: eval_diagnostic(reason: eval_rejected_invalid_node, node: stub_empty_cardinality)
-    )
-  },
+    ),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
@@ -109,11 +107,9 @@ data claim_instantiation_empty_rejected: TestClaim = DiagnosticClaim {
   label: "manual/connective: empty Instantiation type-node fails well-formedness (A1 arity)",
   t19_anchor: T19ManualTcInstantiationEmpty,
   input: stub_empty_instantiation,
-  expected_outcome: Rejected {
-    diagnostics: diagnostics_singleton(
+  expected_rejection: diagnostics_singleton(
       d: eval_diagnostic(reason: eval_rejected_invalid_node, node: stub_empty_instantiation)
-    )
-  },
+    ),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 

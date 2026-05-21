@@ -115,7 +115,7 @@ fn infer_receipt_claim(case: InferReceiptCase) -> TestClaim {
         label: case.label,
         t19_anchor: T19ManualAnchorAbsent,
         input: case.input,
-        expected_value: Accepted { value: v, diagnostics: d },
+        expected_value: v,
         classification: TestClassification { tier: Tier1, layer: Unit }
       }
   }

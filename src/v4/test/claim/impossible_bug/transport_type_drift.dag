@@ -91,7 +91,7 @@ data claim_shared_declaration_compiles_both_sides: TestClaim = CompilesClaim {
   label: "shared transport declaration compiles client and server sides",
   t19_anchor: T19ManualAnchorAbsent,
   input: shared_wire_contract_input,
-  expected_value: Accepted { value: shared_wire_contract_input, diagnostics: None },
+  expected_value: shared_wire_contract_input,
   classification: TestClassification { tier: Tier1, layer: Integration }
 }
 
@@ -100,15 +100,13 @@ data claim_target_contract_drift_impossible: TestClaim = DiagnosticClaim {
   label: "transport field drift rejects target-side parallel authority",
   t19_anchor: T19ManualAnchorAbsent,
   input: falsification_target_contract_drift,
-  expected_outcome: Rejected {
-    diagnostics: diagnostics_singleton(
+  expected_rejection: diagnostics_singleton(
       d: Diagnostic {
         reason: target_transport_drift_reason,
         at: NodeLocus { node: falsification_target_contract_drift },
         correction: Suggested { node: shared_wire_contract_input }
       }
-    )
-  },
+    ),
   classification: TestClassification { tier: Tier1, layer: Integration }
 }
 
@@ -117,14 +115,12 @@ data claim_wire_contract_drift_impossible: TestClaim = DiagnosticClaim {
   label: "transport field drift rejects parallel client server authority",
   t19_anchor: T19ManualAnchorAbsent,
   input: falsification_wire_contract_drift,
-  expected_outcome: Rejected {
-    diagnostics: diagnostics_singleton(
+  expected_rejection: diagnostics_singleton(
       d: Diagnostic {
         reason: transport_drift_reason,
         at: NodeLocus { node: falsification_wire_contract_drift },
         correction: Suggested { node: shared_wire_contract_input }
       }
-    )
-  },
+    ),
   classification: TestClassification { tier: Tier1, layer: Integration }
 }

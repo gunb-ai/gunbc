@@ -142,7 +142,7 @@ data claim_validate_then_compile_module_compiles: TestClaim = CompilesClaim {
   label: "manual/wave-5-a: validate_then_compile public terminal module compiles",
   t19_anchor: T19ManualAnchorAbsent,
   input: claim_validate_then_compile_module,
-  expected_value: Accepted { value: claim_validate_then_compile_module, diagnostics: None },
+  expected_value: claim_validate_then_compile_module,
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 

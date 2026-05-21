@@ -228,7 +228,7 @@ fn pipeline_rejection_claim(label: String, input: Node, expected_reason: Symbol)
     label: label,
     t19_anchor: T19ManualAnchorAbsent,
     input: input,
-    expected_outcome: Rejected { diagnostics: diagnostics_singleton(d: ci_diagnostic(reason: expected_reason)) },
+    expected_rejection: diagnostics_singleton(d: ci_diagnostic(reason: expected_reason)) },
     classification: TestClassification { tier: Tier1, layer: Unit }
   }
 }

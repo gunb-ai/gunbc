@@ -111,7 +111,7 @@ data claim_within_structural_bound_passes: TestClaim = CompilesClaim {
   label: "complexity bound accepts lens-derived in-bound body",
   t19_anchor: T19ManualAnchorAbsent,
   input: within_bound_input,
-  expected_value: Accepted { value: within_bound_input, diagnostics: None },
+  expected_value: within_bound_input,
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 

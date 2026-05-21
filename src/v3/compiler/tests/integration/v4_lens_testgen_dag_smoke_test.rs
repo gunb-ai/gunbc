@@ -70,6 +70,11 @@ fn v4_lens_testgen_wave0_modules_tokenize_and_parse() {
 fn v4_lens_testgen_wave0_verification_manual_anchor_key_only() {
     let verification = parse_module(VERIFICATION_DAG, "src/v4/std/verification.dag");
     assert!(
+        import_names_for_path(&verification, &["v4", "std", "node"])
+            .is_some_and(|names| names.iter().any(|n| n == "Symbol")),
+        "verification.dag must import Symbol for diagnostic reason carriers (P2 resolve)"
+    );
+    assert!(
         module_declares_type_sum_named(&verification, "T19ManualAnchorKey"),
         "substrate must declare `type T19ManualAnchorKey` (parsed `TypeSum`)"
     );

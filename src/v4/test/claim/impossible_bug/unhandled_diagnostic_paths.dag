@@ -100,7 +100,7 @@ data claim_division_by_zero_total_or_proven_safe: TestClaim = CompilesClaim {
   label: "division uses total form when nonzero proof is present",
   t19_anchor: T19ManualAnchorAbsent,
   input: total_division_input,
-  expected_value: Accepted { value: total_division_input, diagnostics: None },
+  expected_value: total_division_input,
   classification: TestClassification { tier: Tier2, layer: Unit }
 }
 
@@ -109,7 +109,7 @@ data claim_oob_index_total_or_proven_safe: TestClaim = CompilesClaim {
   label: "indexing uses total form when range proof is present",
   t19_anchor: T19ManualAnchorAbsent,
   input: checked_index_input,
-  expected_value: Accepted { value: checked_index_input, diagnostics: None },
+  expected_value: checked_index_input,
   classification: TestClassification { tier: Tier2, layer: Unit }
 }
 
@@ -118,15 +118,13 @@ data claim_unproven_division_rejected: TestClaim = DiagnosticClaim {
   label: "unproven divisor cannot lower as partial division",
   t19_anchor: T19ManualAnchorAbsent,
   input: falsification_division_by_zero_unhandled,
-  expected_outcome: Rejected {
-    diagnostics: diagnostics_singleton(
+  expected_rejection: diagnostics_singleton(
       d: Diagnostic {
         reason: unhandled_division_reason,
         at: NodeLocus { node: falsification_division_by_zero_unhandled },
         correction: Suggested { node: total_division_input }
       }
-    )
-  },
+    ),
   classification: TestClassification { tier: Tier2, layer: Unit }
 }
 
@@ -135,15 +133,13 @@ data claim_unproven_oob_index_rejected: TestClaim = DiagnosticClaim {
   label: "unproven index cannot lower as partial lookup",
   t19_anchor: T19ManualAnchorAbsent,
   input: falsification_oob_index_unhandled,
-  expected_outcome: Rejected {
-    diagnostics: diagnostics_singleton(
+  expected_rejection: diagnostics_singleton(
       d: Diagnostic {
         reason: unhandled_index_reason,
         at: NodeLocus { node: falsification_oob_index_unhandled },
         correction: Suggested { node: checked_index_input }
       }
-    )
-  },
+    ),
   classification: TestClassification { tier: Tier2, layer: Unit }
 }
 
@@ -152,14 +148,12 @@ data claim_force_unwrap_count_zero: TestClaim = DiagnosticClaim {
   label: "force unwrap does not survive outside user input boundary",
   t19_anchor: T19ManualAnchorAbsent,
   input: falsification_force_unwrap_survives,
-  expected_outcome: Rejected {
-    diagnostics: diagnostics_singleton(
+  expected_rejection: diagnostics_singleton(
       d: Diagnostic {
         reason: force_unwrap_reason,
         at: NodeLocus { node: falsification_force_unwrap_survives },
         correction: Suggested { node: total_unwrap_input }
       }
-    )
-  },
+    ),
   classification: TestClassification { tier: Tier2, layer: Unit }
 }

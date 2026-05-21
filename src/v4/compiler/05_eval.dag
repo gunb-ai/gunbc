@@ -160,7 +160,10 @@ fn run_test_claim_assert(
         Fail { actual: actual }
       }
     CompilesClaim { expected_value: expected, label: _, t19_anchor: _, input: _, classification: _ } =>
-      if outcome_node_eq(a: actual, b: expected) {
+      if outcome_node_eq(
+        a: actual,
+        b: Accepted { value: expected, diagnostics: None }
+      ) {
         Pass
       } else {
         Fail { actual: actual }
@@ -170,10 +173,14 @@ fn run_test_claim_assert(
         actual: actual,
         diagnostic: eval_diagnostic(reason: eval_rejected_roundtrip_deferred, node: input)
       }
-    DiagnosticClaim { expected_outcome: expected, input: input, label: _, t19_anchor: _, classification: _ } =>
+    DiagnosticClaim { expected_rejection: expected, input: input, label: _, t19_anchor: _, classification: _ } =>
       match actual {
         Rejected { diagnostics: _ } =>
-          if outcome_node_eq(a: actual, b: expected) { Pass } else { Fail { actual: actual } }
+          if outcome_node_eq(a: actual, b: Rejected { diagnostics: expected }) {
+            Pass
+          } else {
+            Fail { actual: actual }
+          }
         _ => Fail { actual: actual }
       }
   }

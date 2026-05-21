@@ -7,11 +7,12 @@
 module v4.std.verification
 
 
-import v4.std.node { Node }
+import v4.std.node { Node, Symbol }
 import v4.std.diagnostic {
   Accepted,
   Diagnostic,
   Extent,
+  NonEmptyDiagnostics,
   Outcome,
   Rejected,
   Textual,
@@ -100,14 +101,14 @@ type TestClaim
       label: String
       t19_anchor: T19ManualAnchorKey
       input: Node
-      expected_value: Outcome<Node>
+      expected_value: Node
       classification: TestClassification
     }
   | DiagnosticClaim {
       label: String
       t19_anchor: T19ManualAnchorKey
       input: Node
-      expected_outcome: Outcome<Node>
+      expected_rejection: NonEmptyDiagnostics
       classification: TestClassification
     }
   | EqualsClaim {
@@ -128,7 +129,7 @@ type TestClaim
 fn test_claim_input(c: TestClaim) -> Node {
   match c {
     CompilesClaim { input: n, label: _, t19_anchor: _, expected_value: _, classification: _ } => n
-    DiagnosticClaim { input: n, label: _, t19_anchor: _, expected_outcome: _, classification: _ } => n
+    DiagnosticClaim { input: n, label: _, t19_anchor: _, expected_rejection: _, classification: _ } => n
     EqualsClaim { lhs: n, label: _, t19_anchor: _, rhs: _, classification: _ } => n
     RoundTripClaim { input: n, label: _, t19_anchor: _, classification: _ } => n
   }
@@ -137,7 +138,7 @@ fn test_claim_input(c: TestClaim) -> Node {
 fn test_claim_t19_anchor(c: TestClaim) -> T19ManualAnchorKey {
   match c {
     CompilesClaim { t19_anchor: k, label: _, input: _, expected_value: _, classification: _ } => k
-    DiagnosticClaim { t19_anchor: k, label: _, input: _, expected_outcome: _, classification: _ } => k
+    DiagnosticClaim { t19_anchor: k, label: _, input: _, expected_rejection: _, classification: _ } => k
     EqualsClaim { t19_anchor: k, label: _, lhs: _, rhs: _, classification: _ } => k
     RoundTripClaim { t19_anchor: k, label: _, input: _, classification: _ } => k
   }
@@ -146,7 +147,7 @@ fn test_claim_t19_anchor(c: TestClaim) -> T19ManualAnchorKey {
 fn test_claim_classification(c: TestClaim) -> TestClassification {
   match c {
     CompilesClaim { classification: c, label: _, t19_anchor: _, input: _, expected_value: _ } => c
-    DiagnosticClaim { classification: c, label: _, t19_anchor: _, input: _, expected_outcome: _ } => c
+    DiagnosticClaim { classification: c, label: _, t19_anchor: _, input: _, expected_rejection: _ } => c
     EqualsClaim { classification: c, label: _, t19_anchor: _, lhs: _, rhs: _ } => c
     RoundTripClaim { classification: c, label: _, t19_anchor: _, input: _ } => c
   }
@@ -157,9 +158,15 @@ fn test_claim_classification(c: TestClaim) -> TestClassification {
 fn test_claim_expected_outcome(c: TestClaim) -> Outcome<Outcome<Node>> {
   match c {
     CompilesClaim { expected_value: e, label: _, t19_anchor: _, input: _, classification: _ } =>
-      Accepted { value: e, diagnostics: None }
-    DiagnosticClaim { expected_outcome: e, label: _, t19_anchor: _, input: _, classification: _ } =>
-      Accepted { value: e, diagnostics: None }
+      Accepted {
+        value: Accepted { value: e, diagnostics: None },
+        diagnostics: None
+      }
+    DiagnosticClaim { expected_rejection: e, label: _, t19_anchor: _, input: _, classification: _ } =>
+      Accepted {
+        value: Rejected { diagnostics: e },
+        diagnostics: None
+      }
     EqualsClaim { rhs: r, label: _, t19_anchor: _, lhs: _, classification: _ } =>
       Accepted {
         value: Accepted { value: r, diagnostics: None },

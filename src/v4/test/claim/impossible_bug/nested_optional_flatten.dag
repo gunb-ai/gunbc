@@ -89,7 +89,7 @@ data claim_optional_chaining_no_double_unwrap: TestClaim = CompilesClaim {
   label: "optional cardinality refinement keeps accessor surface single-layer",
   t19_anchor: T19ManualAnchorAbsent,
   input: flattened_optional_input,
-  expected_value: Accepted { value: flattened_optional_input, diagnostics: None },
+  expected_value: flattened_optional_input,
   classification: TestClassification { tier: Tier2, layer: Unit }
 }
 
@@ -98,15 +98,13 @@ data claim_optional_double_unwrap_rejected: TestClaim = DiagnosticClaim {
   label: "optional accessor surface rejects double unwrap shape",
   t19_anchor: T19ManualAnchorAbsent,
   input: falsification_optional_double_unwrap,
-  expected_outcome: Rejected {
-    diagnostics: diagnostics_singleton(
+  expected_rejection: diagnostics_singleton(
       d: Diagnostic {
         reason: double_unwrap_reason,
         at: NodeLocus { node: falsification_optional_double_unwrap },
         correction: Suggested { node: flattened_optional_input }
       }
-    )
-  },
+    ),
   classification: TestClassification { tier: Tier2, layer: Unit }
 }
 
@@ -115,14 +113,12 @@ data claim_nested_optional_collapses: TestClaim = DiagnosticClaim {
   label: "nested optional cardinality collapses to one refinement",
   t19_anchor: T19ManualAnchorAbsent,
   input: falsification_nested_optional,
-  expected_outcome: Rejected {
-    diagnostics: diagnostics_singleton(
+  expected_rejection: diagnostics_singleton(
       d: Diagnostic {
         reason: nested_optional_reason,
         at: NodeLocus { node: falsification_nested_optional },
         correction: Suggested { node: flattened_optional_input }
       }
-    )
-  },
+    ),
   classification: TestClassification { tier: Tier2, layer: Unit }
 }

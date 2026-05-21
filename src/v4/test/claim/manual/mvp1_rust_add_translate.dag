@@ -49,13 +49,13 @@ data claim_mvp1_translate_module_compiles: TestClaim = CompilesClaim {
   label: "manual/mvp1: translate stage module + coercion_fold call-site compiles",
   t19_anchor: T19ManualAnchorAbsent,
   input: mvp_add_arrow_node,
-  expected_value: Accepted { value: mvp_add_arrow_node, diagnostics: None },
+  expected_value: mvp_add_arrow_node,
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 data claim_mvp1_emit_module_compiles: TestClaim = CompilesClaim {
   label: "manual/mvp1: emit stage module (serialize_target o translate) compiles",
   t19_anchor: T19ManualAnchorAbsent,
   input: mvp_add_arrow_node,
-  expected_value: Accepted { value: mvp_add_arrow_node, diagnostics: None },
+  expected_value: mvp_add_arrow_node,
   classification: TestClassification { tier: Tier1, layer: Unit }
 }

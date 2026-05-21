@@ -35,6 +35,6 @@ data claim_runner_compiles: TestClaim = CompilesClaim {
   label: "self-host fixed-point runner shape compiles",
   t19_anchor: T19ManualAnchorAbsent,
   input: runner_compiles_subject,
-  expected_value: Accepted { value: runner_compiles_subject, diagnostics: None },
+  expected_value: runner_compiles_subject,
   classification: TestClassification { tier: Tier1, layer: Integration }
 }
