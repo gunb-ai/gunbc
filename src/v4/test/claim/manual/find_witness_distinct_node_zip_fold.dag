@@ -113,6 +113,24 @@ fn distinct_wrong_subtree_node() -> Node {
     ]
   }
 }
+fn distinct_source_nested_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: [
+      Edge { label: Positional, target: distinct_source_add_node() },
+      Edge { label: Positional, target: distinct_source_leaf() }
+    ]
+  }
+}
+fn distinct_target_nested_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: [
+      Edge { label: Positional, target: distinct_target_add_node() },
+      Edge { label: Positional, target: distinct_target_leaf() }
+    ]
+  }
+}
 fn distinct_fail_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -146,6 +164,18 @@ fn distinct_wrong_arity_candidate_set() -> CandidateSet {
 fn distinct_wrong_subtree_candidate_set() -> CandidateSet {
   CandidateSet {
     candidates: [distinct_wrong_subtree_node()],
+    closedness: distinct_closedness()
+  }
+}
+fn distinct_nested_predicate() -> PreservationPredicate {
+  PreservationPredicate {
+    algebra: distinct_source_nested_node(),
+    preservation_rule: preservation_rule_exact_structural_equality_zip_fold
+  }
+}
+fn distinct_nested_candidate_set() -> CandidateSet {
+  CandidateSet {
+    candidates: [distinct_target_nested_node()],
     closedness: distinct_closedness()
   }
 }
@@ -190,6 +220,15 @@ data witness_find_witness_wrong_subtree_rejects: Bool = match find_witness(
 ) {
   Accepted { value: _, diagnostics: _ } => false
   Rejected { diagnostics: _ } => true
+}
+data witness_find_witness_nested_distinct_node_accepts: Bool = match find_witness(
+  source_facts: distinct_source_nested_node(),
+  candidates: distinct_nested_candidate_set(),
+  predicate: distinct_nested_predicate(),
+  multiplicity_policy: UniqueOnly
+) {
+  Accepted { value: fw, diagnostics: _ } => fw.candidate == distinct_target_nested_node()
+  Rejected { diagnostics: _ } => false
 }
 fn distinct_grounding() -> CanonicalGrounding {
   CanonicalGrounding {
@@ -262,6 +301,14 @@ data claim_find_witness_wrong_subtree_rejects: TestClaim = TestClaim {
   label: "manual/find_witness_distinct_node_zip_fold: same root arity wrong subtree rejects",
   t19_anchor: T19ManualAnchorAbsent,
   input: distinct_witness_claim_input(ok: witness_find_witness_wrong_subtree_rejects),
+  expected: distinct_witness_expected(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+data claim_find_witness_nested_distinct_node_accepts: TestClaim = TestClaim {
+  kind: Equals,
+  label: "manual/find_witness_distinct_node_zip_fold: nested distinct-node candidate accepts",
+  t19_anchor: T19ManualAnchorAbsent,
+  input: distinct_witness_claim_input(ok: witness_find_witness_nested_distinct_node_accepts),
   expected: distinct_witness_expected(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
