@@ -5,6 +5,10 @@ use self::EdgeKind::*;
 use self::OwnershipDecision::*;
 pub use crate::v2_compiler_emit::to_string;
 use crate::v2_rt;
+use crate::v2_rt::rc_empty_set as empty_set;
+use crate::v2_rt::rc_set_insert as set_insert;
+use crate::v2_rt::rc_set_union as set_union;
+use crate::v2_rt::set_contains;
 use crate::v2_std_core::Cardinality::Required;
 use crate::v2_std_core::ExprData::{
     ExprBlock, ExprCall, ExprError, ExprFieldAccess, ExprForEach, ExprIf, ExprLambda, ExprLet,
@@ -21,7 +25,6 @@ pub use crate::v2_std_core::{
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -727,7 +730,7 @@ pub fn build_read_only_params(
             .iter()
             .cloned()
         {
-            if (((v2_rt::set_contains(&param_names, usage.name.clone())
+            if (((v2_rt::set_contains(param_names.clone(), usage.name.clone())
                 && is_owned_local(usage.binding_kind.clone()))
                 && (binding_fan_out(usage.clone()) > 1))
                 && {
@@ -773,9 +776,7 @@ pub fn collect_callable_refs(
                 Some(VarBindingKind::FunctionValueBinding) => {
                     let n = expr_var_name_at(texpr.clone(), si.clone());
                     v2_rt::rc_set_insert(
-                        compile_error!(
-                            "empty_set: element type  does not satisfy Rust Ord for BTreeSet"
-                        ),
+                        v2_rt::rc_empty_set::<_>(), /* BRIDGE: empty_set element type unresolved */
                         n,
                     )
                 }
