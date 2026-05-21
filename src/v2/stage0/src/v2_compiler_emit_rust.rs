@@ -4712,6 +4712,21 @@ pub fn is_string_lit_pattern(p: Rc<MatchPattern>) -> bool {
     }
 }
 
+pub fn positional_payload_string_guard(fb_pat: Rc<MatchPattern>) -> String {
+    match (*fb_pat).clone() {
+        MatchPattern::LitPattern { ref value, .. } => {
+            let LiteralValue::LitStr { value: s, .. } = value.as_ref() else {
+                unreachable!()
+            };
+            v2_rt::concat(
+                "__pos0_val == ".to_string(),
+                emit_string_literal(s.clone(), "".to_string()),
+            )
+        }
+        _ => "".to_string(),
+    }
+}
+
 pub fn collect_field_binding_string_guards(
     field_bindings: Rc<Vec<Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -4724,27 +4739,36 @@ pub fn collect_field_binding_string_guards(
                     (*{
                         let fb_pat = field_binding_pattern(fb.clone());
                         if is_string_lit_pattern(fb_pat.clone()) {
-                            match (*fb_pat.clone()).clone() {
-                                MatchPattern::LitPattern { ref value, .. } => {
-                                    let LiteralValue::LitStr { value: s, .. } = value.as_ref()
-                                    else {
-                                        unreachable!()
-                                    };
-                                    Rc::new(vec![v2_rt::concat(
-                                        v2_rt::concat(
-                                            emit_ident(
-                                                field_binding_name_at(
-                                                    fb.clone(),
-                                                    source_indices.clone(),
-                                                ),
-                                                RenderTarget::Rust,
-                                            ),
-                                            " == ".to_string(),
-                                        ),
-                                        emit_string_literal(s.clone(), "".to_string()),
-                                    )])
+                            if (field_binding_name_at(fb.clone(), source_indices.clone()).as_str()
+                                == "0".to_string().as_str())
+                            {
+                                match positional_payload_string_guard(fb_pat.clone()) {
+                                    ref __s if __s == "" => Rc::new(vec![]),
+                                    guard => Rc::new(vec![guard.clone()]),
                                 }
-                                _ => Rc::new(vec![]),
+                            } else {
+                                match (*fb_pat.clone()).clone() {
+                                    MatchPattern::LitPattern { ref value, .. } => {
+                                        let LiteralValue::LitStr { value: s, .. } = value.as_ref()
+                                        else {
+                                            unreachable!()
+                                        };
+                                        Rc::new(vec![v2_rt::concat(
+                                            v2_rt::concat(
+                                                emit_ident(
+                                                    field_binding_name_at(
+                                                        fb.clone(),
+                                                        source_indices.clone(),
+                                                    ),
+                                                    RenderTarget::Rust,
+                                                ),
+                                                " == ".to_string(),
+                                            ),
+                                            emit_string_literal(s.clone(), "".to_string()),
+                                        )])
+                                    }
+                                    _ => Rc::new(vec![]),
+                                }
                             }
                         } else {
                             {
@@ -4816,7 +4840,40 @@ pub fn collect_pattern_string_guards(
                         }
                     }
                 } else {
-                    break collect_field_binding_string_guards(fbs.clone(), source_indices);
+                    if ((fbs.clone().len() as i64) == 1) {
+                        match fbs.clone().first().cloned() {
+                            Some(fb) => {
+                                if (field_binding_name_at(fb.clone(), source_indices.clone())
+                                    .as_str()
+                                    == "0".to_string().as_str())
+                                {
+                                    let fb_pat = field_binding_pattern(fb.clone());
+                                    if is_string_lit_pattern(fb_pat.clone()) {
+                                        break positional_payload_string_guard(fb_pat.clone());
+                                    } else {
+                                        {
+                                            let __tco_0 = fb_pat.clone();
+                                            pattern = __tco_0;
+                                            continue;
+                                        }
+                                    }
+                                } else {
+                                    break collect_field_binding_string_guards(
+                                        fbs.clone(),
+                                        source_indices.clone(),
+                                    );
+                                }
+                            }
+                            None => {
+                                break "".to_string();
+                            }
+                        }
+                    } else {
+                        break collect_field_binding_string_guards(
+                            fbs.clone(),
+                            source_indices.clone(),
+                        );
+                    }
                 }
             }
             _ => {
@@ -5028,27 +5085,34 @@ pub fn emit_variant_pattern(
                             == "0".to_string().as_str())
                         {
                             {
-                                let payload_scrut = positional_payload_scrut_type(
-                                    resolved_parent.clone(),
-                                    name.clone(),
-                                    fb.clone(),
-                                    emit_info.clone(),
-                                    source_indices.clone(),
-                                );
-                                let inner_pat = emit_pattern(
-                                    field_binding_pattern(fb.clone()),
-                                    shared_types.clone(),
-                                    payload_scrut,
-                                    source_indices.clone(),
-                                    emit_info.clone(),
-                                );
-                                v2_rt::concat(
-                                    v2_rt::concat(
-                                        v2_rt::concat(qualified.clone(), "(".to_string()),
-                                        inner_pat,
-                                    ),
-                                    ")".to_string(),
-                                )
+                                let fb_pat = field_binding_pattern(fb.clone());
+                                if is_string_lit_pattern(fb_pat.clone()) {
+                                    v2_rt::concat(qualified.clone(), "(ref __pos0_val)".to_string())
+                                } else {
+                                    {
+                                        let payload_scrut = positional_payload_scrut_type(
+                                            resolved_parent.clone(),
+                                            name.clone(),
+                                            fb.clone(),
+                                            emit_info.clone(),
+                                            source_indices.clone(),
+                                        );
+                                        let inner_pat = emit_pattern(
+                                            fb_pat.clone(),
+                                            shared_types.clone(),
+                                            payload_scrut,
+                                            source_indices.clone(),
+                                            emit_info.clone(),
+                                        );
+                                        v2_rt::concat(
+                                            v2_rt::concat(
+                                                v2_rt::concat(qualified.clone(), "(".to_string()),
+                                                inner_pat,
+                                            ),
+                                            ")".to_string(),
+                                        )
+                                    }
+                                }
                             }
                         } else {
                             {
@@ -5570,35 +5634,42 @@ pub fn emit_variant_pattern_rc_aware(
                             == "0".to_string().as_str())
                         {
                             {
-                                let payload_scrut = positional_payload_scrut_type(
-                                    resolved_parent.clone(),
-                                    name.clone(),
-                                    fb.clone(),
-                                    emit_info.clone(),
-                                    source_indices.clone(),
-                                );
-                                let inner_analysis = analyze_rc_pattern(
-                                    field_binding_pattern(fb.clone()),
-                                    payload_scrut.clone(),
-                                    &shared_types,
-                                    &emit_info,
-                                    source_indices.clone(),
-                                );
-                                let inner_pat = emit_pattern_rc_aware(
-                                    field_binding_pattern(fb.clone()),
-                                    inner_analysis.clone(),
-                                    shared_types.clone(),
-                                    payload_scrut.clone(),
-                                    source_indices.clone(),
-                                    emit_info.clone(),
-                                );
-                                v2_rt::concat(
-                                    v2_rt::concat(
-                                        v2_rt::concat(qualified.clone(), "(".to_string()),
-                                        inner_pat,
-                                    ),
-                                    ")".to_string(),
-                                )
+                                let fb_pat = field_binding_pattern(fb.clone());
+                                if is_string_lit_pattern(fb_pat.clone()) {
+                                    v2_rt::concat(qualified.clone(), "(ref __pos0_val)".to_string())
+                                } else {
+                                    {
+                                        let payload_scrut = positional_payload_scrut_type(
+                                            resolved_parent.clone(),
+                                            name.clone(),
+                                            fb.clone(),
+                                            emit_info.clone(),
+                                            source_indices.clone(),
+                                        );
+                                        let inner_analysis = analyze_rc_pattern(
+                                            fb_pat.clone(),
+                                            payload_scrut.clone(),
+                                            &shared_types,
+                                            &emit_info,
+                                            source_indices.clone(),
+                                        );
+                                        let inner_pat = emit_pattern_rc_aware(
+                                            fb_pat.clone(),
+                                            inner_analysis.clone(),
+                                            shared_types.clone(),
+                                            payload_scrut.clone(),
+                                            source_indices.clone(),
+                                            emit_info.clone(),
+                                        );
+                                        v2_rt::concat(
+                                            v2_rt::concat(
+                                                v2_rt::concat(qualified.clone(), "(".to_string()),
+                                                inner_pat,
+                                            ),
+                                            ")".to_string(),
+                                        )
+                                    }
+                                }
                             }
                         } else {
                             {
