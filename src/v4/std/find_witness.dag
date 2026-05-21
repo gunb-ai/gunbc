@@ -3,9 +3,8 @@
 // Anchor: docs/design-v4-compiler-homomorphism.md (Pass B unification row); docs/modeling-discipline.md Practice 11.
 // Owns: CandidateSet, PreservationPredicate, FindWitnessResult, TargetSelectionPolicy, MultiplicityPolicy,
 //       find_witness, verify_witness.
-// Consumes: std collection, std diagnostic, std node.
-// Status: Wave-2-BC3 modeled; enumeration body scaffold until stage consumers land.
-// 🟡 coproduct dissolution — scaffold:find_witness-enum · dissolve-on: W-T-10 wires find_witness/verify_witness bodies.
+// Consumes: std collection, std diagnostic, std node, std witness.
+// Status: W-T-10 — identity-MVP exact structural equality + Conj inhabitants-root expansion + constraint_satisfaction.
 
 
 module v4.std.find_witness
@@ -23,7 +22,7 @@ import v4.std.diagnostic {
   Unavailable,
   outcome_rejected
 }
-import v4.std.node { Node, Symbol, well_formed }
+import v4.std.node { Conj, Node, Symbol, TypeNode, well_formed }
 import v4.std.witness { StructuralPropertyWitness }
 data find_witness_reason_no_candidate: Symbol = find_witness_reason_no_candidate
 data find_witness_reason_ambiguous_candidate: Symbol = find_witness_reason_ambiguous_candidate
@@ -38,7 +37,6 @@ type PreservationPredicate {
   algebra: Node
   preservation_rule: Symbol
 }
-// 🟡 coproduct dissolution — scaffold:find-witness-result-witness · dissolve-on: W-T-10 typed witness carriers per caller.
 type FindWitnessResult {
   candidate: Node
   witness: StructuralPropertyWitness
@@ -78,25 +76,50 @@ fn find_witness_not_realized_diagnostic(source_facts: Node) -> Diagnostic {
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
-// 🟡 coproduct dissolution — scaffold:exact-structural-preservation-identity-mvp · dissolve-on: W-T-10 structural zip-fold predicate algebra; exact_structural_equality accepts only source-identical Node evidence and other preservation rules fail closed.
+fn append_candidate_nodes(left: List<Node>, right: List<Node>) -> List<Node> {
+  fold(right, init: left, f: fn(acc, item) {
+    list_push(acc, item)
+  })
+}
+fn conj_declared_inhabitant_children(root: Node) -> List<Node> {
+  match root.kind {
+    TypeNode { connective: Conj } =>
+      fold(root.children, init: [], f: fn(acc, e) {
+        append_candidate_nodes(left: acc, right: [e.target])
+      })
+    _ => [root]
+  }
+}
+fn expand_candidate_set_entries(candidates: List<Node>) -> List<Node> {
+  fold(candidates, init: [], f: fn(acc, entry) {
+    append_candidate_nodes(left: acc, right: conj_declared_inhabitant_children(root: entry))
+  })
+}
+fn expanded_candidate_list(candidates: CandidateSet) -> List<Node> {
+  expand_candidate_set_entries(candidates: candidates.candidates)
+}
 fn preservation_predicate_holds(
   source_facts: Node,
   candidate: Node,
-  predicate: PreservationPredicate,
+  predicate: PreservationPredicate
 ) -> Bool {
-  well_formed(n: source_facts)
-    && well_formed(n: predicate.algebra)
-    && well_formed(n: candidate)
-    && (predicate.preservation_rule == preservation_rule_exact_structural_equality_zip_fold)
-    && (predicate.algebra == source_facts)
-    && (candidate == source_facts)
+  if !well_formed(n: source_facts) || !well_formed(n: predicate.algebra) || !well_formed(n: candidate) {
+    false
+  } else {
+    match predicate.preservation_rule {
+      preservation_rule_constraint_satisfaction => source_facts == candidate
+      preservation_rule_exact_structural_equality_zip_fold =>
+        (predicate.algebra == source_facts) && (candidate == source_facts)
+      _ => false
+    }
+  }
 }
 fn passing_candidate_count(
   source_facts: Node,
   candidates: CandidateSet,
-  predicate: PreservationPredicate,
+  predicate: PreservationPredicate
 ) -> Int {
-  fold(candidates.candidates, init: 0, f: fn(acc, candidate) {
+  fold(expanded_candidate_list(candidates: candidates), init: 0, f: fn(acc, candidate) {
     if preservation_predicate_holds(
       source_facts: source_facts,
       candidate: candidate,
@@ -111,9 +134,9 @@ fn passing_candidate_count(
 fn only_passing_candidate(
   source_facts: Node,
   candidates: CandidateSet,
-  predicate: PreservationPredicate,
+  predicate: PreservationPredicate
 ) -> Outcome<Node> {
-  match fold(candidates.candidates, init: NoPassingCandidate, f: fn(acc, candidate) {
+  match fold(expanded_candidate_list(candidates: candidates), init: NoPassingCandidate, f: fn(acc, candidate) {
     if preservation_predicate_holds(
       source_facts: source_facts,
       candidate: candidate,
@@ -140,9 +163,9 @@ fn selected_candidate_count(
   source_facts: Node,
   candidates: CandidateSet,
   predicate: PreservationPredicate,
-  selection: Node,
+  selection: Node
 ) -> Int {
-  fold(candidates.candidates, init: 0, f: fn(acc, candidate) {
+  fold(expanded_candidate_list(candidates: candidates), init: 0, f: fn(acc, candidate) {
     if (candidate == selection) && preservation_predicate_holds(
       source_facts: source_facts,
       candidate: candidate,
@@ -157,7 +180,7 @@ fn selected_candidate_count(
 fn accepted_witness_result(
   candidate: Node,
   candidates: CandidateSet,
-  predicate: PreservationPredicate,
+  predicate: PreservationPredicate
 ) -> Outcome<FindWitnessResult> {
   Accepted {
     value: FindWitnessResult {
@@ -175,7 +198,7 @@ fn resolve_selected_candidate(
   source_facts: Node,
   candidates: CandidateSet,
   predicate: PreservationPredicate,
-  selection: Node,
+  selection: Node
 ) -> Outcome<FindWitnessResult> {
   match selected_candidate_count(
     source_facts: source_facts,
@@ -196,7 +219,7 @@ fn find_witness(
   source_facts: Node,
   candidates: CandidateSet,
   predicate: PreservationPredicate,
-  multiplicity_policy: MultiplicityPolicy,
+  multiplicity_policy: MultiplicityPolicy
 ) -> Outcome<FindWitnessResult> {
   let passing_count = passing_candidate_count(
     source_facts: source_facts,
@@ -243,7 +266,7 @@ fn verify_witness(
   source_facts: Node,
   candidate: Node,
   predicate: PreservationPredicate,
-  witness: StructuralPropertyWitness,
+  witness: StructuralPropertyWitness
 ) -> Outcome<StructuralPropertyWitness> {
   if preservation_predicate_holds(
     source_facts: source_facts,
