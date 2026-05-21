@@ -287,6 +287,7 @@ fn translate_node(
     }
   )
 }
+// input_lang threaded at stage boundary; translate_node ignores until T-4 rust.dag bundle lands.
 fn translate(
   tree: InferredTree,
   target: TargetModel,
