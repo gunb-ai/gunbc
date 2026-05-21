@@ -202,7 +202,7 @@ fn compile_inferred_translate(
 ) -> Outcome<TargetSource> {
   bind_outcome(
     o: outcome_accepted(value: input_lang),
-    f: fn(_input_lang: LanguageModel) {
+    f: fn(lang: LanguageModel) {
       emit(tree: inferred, target: target_lang)
     }
   )
