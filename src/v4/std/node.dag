@@ -116,6 +116,7 @@ fn edges_conform(children: List<Edge>, d: EdgeDiscipline) -> Bool {
     PositionalEdges => all_edges_positional(children: children)
   }
 }
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: node-connective-arity-well-formed — bind node://adhoc-c28e191d-684 — dissolve-on-arrival: substrate Connective arity query over positional child count; forbidden: parallel ad-hoc arity predicates outside well_formed.
 fn connective_edges_conform(children: List<Edge>, c: Connective) -> Bool {
   match c {
     Atom { identity: _ } => edges_conform(children: children, d: NoEdges)
@@ -129,6 +130,7 @@ fn connective_edges_conform(children: List<Edge>, c: Connective) -> Bool {
       edges_conform(children: children, d: PositionalEdges) && (count(children) >= 1)
   }
 }
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: node-behavior-arity-well-formed — bind node://adhoc-c28e191d-684 — dissolve-on-arrival: substrate Behavior arity query over positional child count; forbidden: parallel ad-hoc arity predicates outside well_formed.
 fn behavior_edges_conform(children: List<Edge>, b: Behavior) -> Bool {
   match b {
     Value => count(children) == 0

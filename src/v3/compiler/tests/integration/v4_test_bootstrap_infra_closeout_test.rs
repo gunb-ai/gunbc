@@ -52,6 +52,11 @@ fn t22_eval_diagnostic_assert_not_deferred_in_substrate() {
         EVAL_DAG.contains("verdict: aggregate_verdicts(") && EVAL_DAG.contains("rs: ["),
         "run_test_claim must route through aggregate_verdicts"
     );
+    assert!(
+        EVAL_DAG.contains("CompilesClaim { expected_value: expected")
+            && EVAL_DAG.contains("outcome_node_eq(a: actual, b: expected)"),
+        "CompilesClaim must compare actual against declared expected_value (P2/P3 fail-closed)"
+    );
 }
 
 #[test]
@@ -197,12 +202,14 @@ fn t20_bootstrap_plan_keeps_self_hosting_chain_as_data() {
         "v4_stage1_binary",
         ("v4_stage1_hash", "v4_stage1_hash_pin"),
         "v4_stage2_binary",
-        ("v4_stage2_hash", "v4_stage2_hash_pin"),
-        (
-            "pinned_v4_fixed_point_hash",
-            "pinned_v4_fixed_point_hash_pin",
-        ),
+        ("v4_stage1_hash", "v4_stage2_hash_pin"),
+        ("v4_stage1_hash", "pinned_v4_fixed_point_hash_pin"),
         "bit_identical_check",
+    );
+    assert!(
+        BOOTSTRAP_DAG.contains("p.fixpt.left_hash.digest == p.fixpt.right_hash.digest")
+            && BOOTSTRAP_DAG.contains("p.fixpt.left_hash.digest == p.fixpt.pinned_hash.digest"),
+        "bootstrap_plan_well_formed must enforce fixpt digest equality (A2+A3); ratchet aligns on unified v4_stage1_hash digest literals in bootstrap_plan data"
     );
 }
 

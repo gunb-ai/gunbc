@@ -47,8 +47,7 @@ import v4.std.node {
   TypeNode
 }
 import v4.std.verification {
-  Compiles,
-  Equals,
+  CompilesClaim,
   T19ManualAnchorAbsent,
   TestClaim,
   TestClassification,
@@ -255,91 +254,90 @@ fn identity_witness_claim_input(ok: Bool) -> Node {
 fn identity_witness_expected() -> Outcome<Node> {
   Accepted { value: identity_source_node(), diagnostics: None }
 }
-data claim_find_witness_identity_mvp_module_compiles: TestClaim = TestClaim {
-  kind: Compiles,
+data claim_find_witness_identity_mvp_module_compiles: TestClaim = CompilesClaim {
   label: "manual/find_witness_identity_mvp: identity-MVP behavior anchors compile",
   t19_anchor: T19ManualAnchorAbsent,
   input: identity_source_node(),
-  expected: identity_witness_expected(),
+  expected_value: identity_witness_expected(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
-data claim_find_witness_identity_accepts: TestClaim = TestClaim {
-  kind: Equals,
+
+data claim_find_witness_identity_accepts: TestClaim = CompilesClaim {
   label: "manual/find_witness_identity_mvp: identity candidate accepts",
   t19_anchor: T19ManualAnchorAbsent,
   input: identity_witness_claim_input(ok: witness_find_witness_identity_accepts),
-  expected: identity_witness_expected(),
+  expected_value: identity_witness_expected(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
-data claim_find_witness_non_identity_rejects: TestClaim = TestClaim {
-  kind: Equals,
+
+data claim_find_witness_non_identity_rejects: TestClaim = CompilesClaim {
   label: "manual/find_witness_identity_mvp: non-identity candidate rejects",
   t19_anchor: T19ManualAnchorAbsent,
   input: identity_witness_claim_input(ok: witness_find_witness_non_identity_rejects),
-  expected: identity_witness_expected(),
+  expected_value: identity_witness_expected(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
-data claim_find_witness_other_rule_rejects: TestClaim = TestClaim {
-  kind: Equals,
+
+data claim_find_witness_other_rule_rejects: TestClaim = CompilesClaim {
   label: "manual/find_witness_identity_mvp: non-exact rule remains fail-closed",
   t19_anchor: T19ManualAnchorAbsent,
   input: identity_witness_claim_input(ok: witness_find_witness_other_rule_rejects),
-  expected: identity_witness_expected(),
+  expected_value: identity_witness_expected(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
-data claim_find_witness_unique_only_ambiguous_rejects: TestClaim = TestClaim {
-  kind: Equals,
+
+data claim_find_witness_unique_only_ambiguous_rejects: TestClaim = CompilesClaim {
   label: "manual/find_witness_identity_mvp: UniqueOnly ambiguity rejects",
   t19_anchor: T19ManualAnchorAbsent,
   input: identity_witness_claim_input(ok: witness_find_witness_unique_only_ambiguous_rejects),
-  expected: identity_witness_expected(),
+  expected_value: identity_witness_expected(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
-data claim_find_witness_selected_invalid_rejects: TestClaim = TestClaim {
-  kind: Equals,
+
+data claim_find_witness_selected_invalid_rejects: TestClaim = CompilesClaim {
   label: "manual/find_witness_identity_mvp: invalid declared priority rejects",
   t19_anchor: T19ManualAnchorAbsent,
   input: identity_witness_claim_input(ok: witness_find_witness_selected_invalid_rejects),
-  expected: identity_witness_expected(),
+  expected_value: identity_witness_expected(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
-data claim_find_witness_user_selected_invalid_rejects: TestClaim = TestClaim {
-  kind: Equals,
+
+data claim_find_witness_user_selected_invalid_rejects: TestClaim = CompilesClaim {
   label: "manual/find_witness_identity_mvp: invalid user selection rejects",
   t19_anchor: T19ManualAnchorAbsent,
   input: identity_witness_claim_input(ok: witness_find_witness_user_selected_invalid_rejects),
-  expected: identity_witness_expected(),
+  expected_value: identity_witness_expected(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
-data claim_verify_witness_accepts: TestClaim = TestClaim {
-  kind: Equals,
+
+data claim_verify_witness_accepts: TestClaim = CompilesClaim {
   label: "manual/find_witness_identity_mvp: verify_witness accepts matching witness",
   t19_anchor: T19ManualAnchorAbsent,
   input: identity_witness_claim_input(ok: witness_verify_witness_accepts),
-  expected: identity_witness_expected(),
+  expected_value: identity_witness_expected(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
-data claim_verify_witness_property_mismatch_rejects: TestClaim = TestClaim {
-  kind: Equals,
+
+data claim_verify_witness_property_mismatch_rejects: TestClaim = CompilesClaim {
   label: "manual/find_witness_identity_mvp: verify_witness rejects property mismatch",
   t19_anchor: T19ManualAnchorAbsent,
   input: identity_witness_claim_input(ok: witness_verify_witness_property_mismatch_rejects),
-  expected: identity_witness_expected(),
+  expected_value: identity_witness_expected(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
-data claim_verify_witness_evidence_mismatch_rejects: TestClaim = TestClaim {
-  kind: Equals,
+
+data claim_verify_witness_evidence_mismatch_rejects: TestClaim = CompilesClaim {
   label: "manual/find_witness_identity_mvp: verify_witness rejects evidence mismatch",
   t19_anchor: T19ManualAnchorAbsent,
   input: identity_witness_claim_input(ok: witness_verify_witness_evidence_mismatch_rejects),
-  expected: identity_witness_expected(),
+  expected_value: identity_witness_expected(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
-data claim_coercion_fold_identity_accepts: TestClaim = TestClaim {
-  kind: Equals,
+
+data claim_coercion_fold_identity_accepts: TestClaim = CompilesClaim {
   label: "manual/find_witness_identity_mvp: coercion_fold identity accepts",
   t19_anchor: T19ManualAnchorAbsent,
   input: identity_witness_claim_input(ok: witness_coercion_fold_identity_accepts),
-  expected: identity_witness_expected(),
+  expected_value: identity_witness_expected(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }

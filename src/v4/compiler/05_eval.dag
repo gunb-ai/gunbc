@@ -159,9 +159,10 @@ fn run_test_claim_assert(
         Fail { actual: actual }
       }
     CompilesClaim { expected_value: expected, label: _, t19_anchor: _, input: _, classification: _ } =>
-      match actual {
-        Accepted { value: _, diagnostics: _ } => Pass
-        Rejected { diagnostics: _ } => Fail { actual: actual }
+      if outcome_node_eq(a: actual, b: expected) {
+        Pass
+      } else {
+        Fail { actual: actual }
       }
     RoundTripClaim { input: input, label: _, t19_anchor: _, classification: _ } =>
       Deferred {
