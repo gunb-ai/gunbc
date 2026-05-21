@@ -71,7 +71,6 @@ type StructuralResolutionStatus
   | OutOfScopeDependencyKind
 
 type StructuralResolutionDependencyFact {
-  at: Node
   dependency: DependencyView
   source_facts: Witness<InferredFacts>
   dependent_facts: Witness<InferredFacts>
@@ -92,6 +91,8 @@ fn witness_reason_is(w: Witness<InferredFacts>, reason: Symbol) -> Bool {
   }
 }
 
+// 🟡 staged — resolve→infer witness bridge (T-9): UnboundSymbolAtUse reads resolve reason
+// on InferredFacts only when producers forward resolve Violates into the fact table.
 fn status_for_binding_facts(dependent_facts: Witness<InferredFacts>) -> StructuralResolutionStatus {
   if witness_reason_is(w: dependent_facts, reason: resolve_reason_unbound_symbol) {
     UnboundSymbolAtUse
