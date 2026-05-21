@@ -1,6 +1,6 @@
 // src/v4/lens/affected_set.dag
 // Scope: canonical affected-set authority for CI/incremental re-execution; fail-closed B-4/B-5 node frontier.
-// Owns: Dag, AffectedDimension, ExclusionKey, ExclusionProof, PropagationExclusionProof, BoundaryExclusionProof, BoundaryExclusion, FailClosedReason, FrontierDecision, ReExecFrontier, AffectedSetRead, HashReceipt, ChangedDimensionReceipt, FrontierReceipt, affected_set.
+// Owns: Dag, AffectedDimension, ExclusionKey, ExclusionProof, PropagationExclusionProof, BoundaryExclusionProof, BoundaryExclusion, FailClosedReason, FrontierDecision, ReExecFrontier, RerunNodeSet, AffectedSetRead, HashReceipt, ChangedDimensionReceipt, FrontierReceipt, affected_set.
 // Consumes: List, Map, Diagnostic, Diff, Edit, Hash, Node, Path, Symbol, Witness, DependencyView; B1 content_hash receipts; B-4 resolved Symbol equality; B-5 per-Arrow signature effects.
 // Status: Wave-0 front: bounded changed-subgraph frontier fold landed; dissolves when CI use and .dag TestClaims land.
 
@@ -202,6 +202,16 @@ type AffectedSetFoldAcc
     }
 
 
+// 🟢 coproduct dissolution — T-21 edit/rebuild projection; preserves fail-closed evidence.
+type RerunNodeSet
+  = RerunNodeSetProduced {
+      nodes: List<Node>
+    }
+  | RerunNodeSetFailClosed {
+      evidence: AffectedSetEvidence
+    }
+
+
 fn empty_frontier() -> ReExecFrontier {
   ChangedSubgraphFrontier {
     boundary_exclusions: [],
@@ -345,6 +355,37 @@ fn dependency_in_lens_frontier(dependency: DependencyView) -> Bool {
     ProjectionDependsOn => true
     VerifiedBy => true
     _ => false
+  }
+}
+
+
+fn append_changed_node_subjects(nodes: List<Node>, changes: ChangeSet) -> List<Node> {
+  fold(changes.changes, init: nodes, f: fn(acc, change) {
+    list_push(acc, change.subject)
+  })
+}
+
+
+fn append_affected_dependency_nodes(nodes: List<Node>, affected: List<AffectedDependency>) -> List<Node> {
+  fold(affected, init: nodes, f: fn(acc, row) {
+    list_push(acc, row.dependency.dependent)
+  })
+}
+
+
+fn affected_set_rerun_nodes(affected_set_value: AffectedSet) -> RerunNodeSet {
+  match affected_set_value {
+    AffectedSetProduced { changes: changes, affected: affected, exclusions: _, restricted_to: _ } =>
+      RerunNodeSetProduced {
+        nodes: append_affected_dependency_nodes(
+          nodes: append_changed_node_subjects(nodes: [], changes: changes),
+          affected: affected
+        )
+      }
+    AffectedSetFailClosed { changes: _, evidence: evidence } =>
+      RerunNodeSetFailClosed {
+        evidence: evidence
+      }
   }
 }
 
