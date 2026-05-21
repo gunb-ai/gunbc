@@ -15,7 +15,7 @@ import v4.compiler.compile {
   compile_lens_gate_rejected_diagnostic
 }
 import v4.compiler.infer { InferredTree }
-import v4.std.diagnostic { Outcome, PortLocus, Rejected, outcome_rejected }
+import v4.std.diagnostic { Accepted, Outcome, PortLocus, Rejected, outcome_rejected }
 import v4.std.logic { Bool }
 import v4.std.node { Atom, Conj, Node, Symbol, TypeNode }
 import v4.std.verification {

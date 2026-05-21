@@ -15,7 +15,7 @@ import v4.compiler.compile {
   validate_then_compile
 }
 import v4.compiler.target_carriers { TargetModel }
-import v4.std.diagnostic { Accepted, Outcome, Rejected }
+import v4.std.diagnostic { Accepted, NonEmptyDiagnostics, Outcome, Rejected }
 import v4.std.logic { Bool }
 import v4.std.node { Atom, Conj, Node, Symbol, TypeNode }
 import v4.std.verification {
@@ -45,6 +45,16 @@ data empty_lenses_authority_node: Node = Node {
   children: []
 }
 
+fn non_empty_diagnostics_contain_reason(d: NonEmptyDiagnostics, reason: Symbol) -> Bool {
+  if d.head.reason == reason {
+    true
+  } else {
+    fold(d.tail, init: false, f: fn(acc, diag) {
+      acc || (diag.reason == reason)
+    })
+  }
+}
+
 fn empty_required_lenses_skip_gate_claim_holds() -> Bool {
   match validate_then_compile(
     source: fixture_add_resolved_tree(),
@@ -52,7 +62,8 @@ fn empty_required_lenses_skip_gate_claim_holds() -> Bool {
     lenses: [],
     mode: TranslateTo { target: empty_lenses_target_model_stub }
   ) {
-    Rejected { diagnostics: r } => r.head.reason != compile_lens_gate_rejected
+    Rejected { diagnostics: r } =>
+      !non_empty_diagnostics_contain_reason(d: r, reason: compile_lens_gate_rejected)
     Accepted { value: v, diagnostics: _ } =>
       match v.value {
         TranslateResult { source: _ } => true
