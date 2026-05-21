@@ -14,18 +14,6 @@ import v4.lens.idempotency {
   idempotency_fact_eq,
   idempotency_witness
 }
-<<<<<<< HEAD
-import v4.std.cardinality { RankingDimension, TerminationProof }
-import v4.std.collection { Map }
-import v4.std.constraints {
-  CanonicalGroundingWitness,
-  constraint_property_being_canonical,
-  constraint_property_candidate_set_closedness
-}
-import v4.std.dependency { DependencyView, EffectDependsOn }
-import v4.std.node { Atom, Edge, Hash, Named, Node, Symbol, TypeNode }
-import v4.std.witness { Holds, StructuralPropertyWitness, Witness }
-=======
 import v4.std.dependency {
   ClassifiedDependencyView,
   DependencyView,
@@ -39,7 +27,6 @@ import v4.test.claim.lens_common.infer_fixture {
   claim_inferred_facts,
   claim_inferred_tree
 }
->>>>>>> origin/main
 
 data idempotency_root_symbol: Symbol = idempotency_root_symbol
 data idempotency_child_symbol: Symbol = idempotency_child_symbol
@@ -69,39 +56,6 @@ data idempotency_dependency: DependencyView = DependencyView {
 }
 
 fn idempotency_claim_facts() -> InferredFacts {
-<<<<<<< HEAD
-  InferredFacts {
-    resolved_type: idempotency_claim_node(s: idempotency_type_symbol),
-    inhabits: AlgebraRef {
-      algebra: idempotency_claim_node(s: idempotency_algebra_symbol),
-      witness: idempotency_claim_node(s: idempotency_algebra_witness_symbol)
-    },
-    descent: Holds {
-      value: TerminationProof {
-        non_increasing: [],
-        strict: RankingDimension { measured: idempotency_descent_symbol }
-      }
-    },
-    canonical: CanonicalGroundingWitness {
-      structural: StructuralPropertyWitness {
-        property: constraint_property_being_canonical,
-        evidence: idempotency_claim_node(s: idempotency_type_symbol)
-      },
-      closedness: StructuralPropertyWitness {
-        property: constraint_property_candidate_set_closedness,
-        evidence: idempotency_claim_node(s: idempotency_type_symbol)
-      }
-    }
-  }
-}
-
-fn idempotency_claim_fact_map(facts: InferredFacts) -> Map<Node, InferredFacts> {
-  Map {
-    lookup: fn(_) {
-      Holds { value: facts }
-    }
-  }
-=======
   claim_inferred_facts(
     type_symbol: idempotency_type_symbol,
     algebra_symbol: idempotency_algebra_symbol,
@@ -111,7 +65,6 @@ fn idempotency_claim_fact_map(facts: InferredFacts) -> Map<Node, InferredFacts> 
     canonical_closedness_symbol: idempotency_canonical_closedness_symbol,
     canonical_evidence_symbol: idempotency_canonical_evidence_symbol
   )
->>>>>>> origin/main
 }
 
 fn idempotency_claim_tree() -> InferredTree {

@@ -14,18 +14,6 @@ import v4.lens.ownership {
   ownership_fact_eq,
   ownership_witness
 }
-<<<<<<< HEAD
-import v4.std.cardinality { RankingDimension, TerminationProof }
-import v4.std.collection { Map }
-import v4.std.constraints {
-  CanonicalGroundingWitness,
-  constraint_property_being_canonical,
-  constraint_property_candidate_set_closedness
-}
-import v4.std.dependency { DependencyView, ResourceDependsOn }
-import v4.std.node { Atom, Edge, Hash, Named, Node, Symbol, TypeNode }
-import v4.std.witness { Holds, StructuralPropertyWitness, Witness }
-=======
 import v4.std.dependency {
   ClassifiedDependencyView,
   DependencyView,
@@ -39,7 +27,6 @@ import v4.test.claim.lens_common.infer_fixture {
   claim_inferred_facts,
   claim_inferred_tree
 }
->>>>>>> origin/main
 
 data ownership_root_symbol: Symbol = ownership_root_symbol
 data ownership_child_symbol: Symbol = ownership_child_symbol
@@ -69,39 +56,6 @@ data ownership_dependency: DependencyView = DependencyView {
 }
 
 fn ownership_claim_facts() -> InferredFacts {
-<<<<<<< HEAD
-  InferredFacts {
-    resolved_type: ownership_claim_node(s: ownership_type_symbol),
-    inhabits: AlgebraRef {
-      algebra: ownership_claim_node(s: ownership_algebra_symbol),
-      witness: ownership_claim_node(s: ownership_algebra_witness_symbol)
-    },
-    descent: Holds {
-      value: TerminationProof {
-        non_increasing: [],
-        strict: RankingDimension { measured: ownership_descent_symbol }
-      }
-    },
-    canonical: CanonicalGroundingWitness {
-      structural: StructuralPropertyWitness {
-        property: constraint_property_being_canonical,
-        evidence: ownership_claim_node(s: ownership_type_symbol)
-      },
-      closedness: StructuralPropertyWitness {
-        property: constraint_property_candidate_set_closedness,
-        evidence: ownership_claim_node(s: ownership_type_symbol)
-      }
-    }
-  }
-}
-
-fn ownership_claim_fact_map(facts: InferredFacts) -> Map<Node, InferredFacts> {
-  Map {
-    lookup: fn(_) {
-      Holds { value: facts }
-    }
-  }
-=======
   claim_inferred_facts(
     type_symbol: ownership_type_symbol,
     algebra_symbol: ownership_algebra_symbol,
@@ -111,7 +65,6 @@ fn ownership_claim_fact_map(facts: InferredFacts) -> Map<Node, InferredFacts> {
     canonical_closedness_symbol: ownership_canonical_closedness_symbol,
     canonical_evidence_symbol: ownership_canonical_evidence_symbol
   )
->>>>>>> origin/main
 }
 
 fn ownership_claim_tree() -> InferredTree {

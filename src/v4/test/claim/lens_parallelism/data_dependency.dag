@@ -14,18 +14,6 @@ import v4.lens.parallelism {
   parallelism_fact_eq,
   parallelism_witness
 }
-<<<<<<< HEAD
-import v4.std.cardinality { RankingDimension, TerminationProof }
-import v4.std.collection { Map }
-import v4.std.constraints {
-  CanonicalGroundingWitness,
-  constraint_property_being_canonical,
-  constraint_property_candidate_set_closedness
-}
-import v4.std.dependency { DataDependsOn, DependencyView }
-import v4.std.node { Atom, Edge, Hash, Named, Node, Symbol, TypeNode }
-import v4.std.witness { Holds, StructuralPropertyWitness, Witness }
-=======
 import v4.std.dependency {
   ClassifiedDependencyView,
   DataDependsOn,
@@ -39,7 +27,6 @@ import v4.test.claim.lens_common.infer_fixture {
   claim_inferred_facts,
   claim_inferred_tree
 }
->>>>>>> origin/main
 
 data parallelism_root_symbol: Symbol = parallelism_root_symbol
 data parallelism_child_symbol: Symbol = parallelism_child_symbol
@@ -69,39 +56,6 @@ data parallelism_dependency: DependencyView = DependencyView {
 }
 
 fn parallelism_claim_facts() -> InferredFacts {
-<<<<<<< HEAD
-  InferredFacts {
-    resolved_type: parallelism_claim_node(s: parallelism_type_symbol),
-    inhabits: AlgebraRef {
-      algebra: parallelism_claim_node(s: parallelism_algebra_symbol),
-      witness: parallelism_claim_node(s: parallelism_algebra_witness_symbol)
-    },
-    descent: Holds {
-      value: TerminationProof {
-        non_increasing: [],
-        strict: RankingDimension { measured: parallelism_descent_symbol }
-      }
-    },
-    canonical: CanonicalGroundingWitness {
-      structural: StructuralPropertyWitness {
-        property: constraint_property_being_canonical,
-        evidence: parallelism_claim_node(s: parallelism_type_symbol)
-      },
-      closedness: StructuralPropertyWitness {
-        property: constraint_property_candidate_set_closedness,
-        evidence: parallelism_claim_node(s: parallelism_type_symbol)
-      }
-    }
-  }
-}
-
-fn parallelism_claim_fact_map(facts: InferredFacts) -> Map<Node, InferredFacts> {
-  Map {
-    lookup: fn(_) {
-      Holds { value: facts }
-    }
-  }
-=======
   claim_inferred_facts(
     type_symbol: parallelism_type_symbol,
     algebra_symbol: parallelism_algebra_symbol,
@@ -111,7 +65,6 @@ fn parallelism_claim_fact_map(facts: InferredFacts) -> Map<Node, InferredFacts> 
     canonical_closedness_symbol: parallelism_canonical_closedness_symbol,
     canonical_evidence_symbol: parallelism_canonical_evidence_symbol
   )
->>>>>>> origin/main
 }
 
 fn parallelism_claim_tree() -> InferredTree {
