@@ -1564,7 +1564,7 @@ fn parse_positional_variant_type_fields(tokens: List<Token>, ctx: ParseContext) 
       fields: [],
       tokens: __ec,
       ctx: r.ctx,
-      err: Some { value: parse_error(msg: "positional variant payload accepts a single type only (comma-separated fields not supported yet)", span: token_span(tok: comma_tok)) }
+      err: Some { value: parse_error(msg: "positional variant payload accepts a single type only (comma-separated fields not supported yet)", span: token_span(tok: Some { value: comma_tok })) }
     }
   EatUnchanged { tokens: __eu } =>
     FieldsResult { fields: [field], tokens: r.tokens, ctx: r.ctx, err: none }
