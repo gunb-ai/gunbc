@@ -235,9 +235,7 @@ data gate_lbe_conj_run_test_claim_pass: Verdict<TestClaimRun<Node>> = match run_
 }
 
 
-data witness_testgen_schedules_three_lbe_generators: Bool =
-  (length(xs: testgen_scheduled_language_behavior_generators()) == 3)
+data witness_testgen_schedules_three_lbe_generators: Bool = (length(xs: testgen_scheduled_language_behavior_generators()) == 3)
 
 
-data witness_dag_surface_language_identity: Bool =
-  (dag_language_model_surface_id == dag_language_model_surface_id)
+data witness_dag_surface_language_identity: Bool = (dag_language_model_surface_id == dag_language_model_surface_id)
