@@ -300,7 +300,7 @@ data run_lbe_transform_via_run_test_claim: TestClaimRun<Node> = lbe_test_claim_r
 )
 
 
-data witness_testgen_schedules_three_lbe_generators: Bool = (length(xs: testgen_scheduled_language_behavior_generators()) == 3)
+data witness_testgen_schedules_three_lbe_generators: Bool = length(xs: testgen_scheduled_language_behavior_generators()) == 3
 
 
-data witness_dag_surface_language_identity: Bool = (lbe_io_mock_conj_dag_surface().snapshot.language == dag_language_model_surface_id)
+data witness_dag_surface_language_identity: Bool = lbe_io_mock_conj_dag_surface().snapshot.language == dag_language_model_surface_id
