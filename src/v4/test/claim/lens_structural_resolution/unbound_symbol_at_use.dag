@@ -65,9 +65,23 @@ data sr_unbound_dependency: DependencyView = DependencyView {
   usage_site: sr_unbound_child
 }
 
+fn sr_unbound_canonical_witness(resolved: Node) -> CanonicalGroundingWitness {
+  CanonicalGroundingWitness {
+    structural: StructuralPropertyWitness {
+      property: constraint_property_being_canonical,
+      evidence: resolved
+    },
+    closedness: StructuralPropertyWitness {
+      property: constraint_property_candidate_set_closedness,
+      evidence: resolved
+    }
+  }
+}
+
 fn sr_unbound_resolved_facts() -> InferredFacts {
+  let resolved = sr_unbound_claim_node(s: sr_unbound_type_symbol)
   InferredFacts {
-    resolved_type: sr_unbound_claim_node(s: sr_unbound_type_symbol),
+    resolved_type: resolved,
     inhabits: AlgebraRef {
       algebra: sr_unbound_claim_node(s: sr_unbound_algebra_symbol),
       witness: sr_unbound_claim_node(s: sr_unbound_algebra_witness_symbol)
@@ -75,7 +89,8 @@ fn sr_unbound_resolved_facts() -> InferredFacts {
     descent: TerminationProof {
       non_increasing: [],
       strict: RankingDimension { measured: sr_unbound_descent_symbol }
-    }
+    },
+    canonical: sr_unbound_canonical_witness(resolved: resolved)
   }
 }
 
