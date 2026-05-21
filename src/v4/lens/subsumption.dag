@@ -52,16 +52,33 @@ type DissolutionSubsumption {
 }
 
 
-fn affected_set_irt1_subsumed_fixes() -> Set<DiffId> {
+fn diff_id_list_contains(fixes: List<DiffId>, fix: DiffId) -> Bool {
+  fold(fixes, init: false, f: fn(found, candidate) {
+    found || (candidate.id == fix.id)
+  })
+}
+
+
+fn diff_id_set_from_list(fixes: List<DiffId>) -> Set<DiffId> {
   Set {
     member: fn(fix) {
-      (fix.id == affected_set_hash_receipt_leaf_fix) ||
-        (fix.id == affected_set_boundary_receipt_leaf_fix) ||
-        (fix.id == affected_set_dimension_receipt_leaf_fix) ||
-        (fix.id == affected_set_propagation_receipt_leaf_fix) ||
-        (fix.id == affected_set_frontier_receipt_leaf_fix)
+      diff_id_list_contains(fixes: fixes, fix: fix)
     }
   }
+}
+
+
+data affected_set_irt1_subsumed_fix_list: List<DiffId> = [
+  DiffId { id: affected_set_hash_receipt_leaf_fix },
+  DiffId { id: affected_set_boundary_receipt_leaf_fix },
+  DiffId { id: affected_set_dimension_receipt_leaf_fix },
+  DiffId { id: affected_set_propagation_receipt_leaf_fix },
+  DiffId { id: affected_set_frontier_receipt_leaf_fix }
+]
+
+
+fn affected_set_irt1_subsumed_fixes() -> Set<DiffId> {
+  diff_id_set_from_list(fixes: affected_set_irt1_subsumed_fix_list)
 }
 
 
@@ -74,12 +91,14 @@ data affected_set_irt1_subsumption: DissolutionSubsumption = {
 }
 
 
+data concept_home_subsumed_fix_list: List<DiffId> = [
+  DiffId { id: wrong_home_alias_leaf_fix },
+  DiffId { id: duplicate_home_leaf_fix }
+]
+
+
 fn concept_home_subsumed_fixes() -> Set<DiffId> {
-  Set {
-    member: fn(fix) {
-      (fix.id == wrong_home_alias_leaf_fix) || (fix.id == duplicate_home_leaf_fix)
-    }
-  }
+  diff_id_set_from_list(fixes: concept_home_subsumed_fix_list)
 }
 
 
