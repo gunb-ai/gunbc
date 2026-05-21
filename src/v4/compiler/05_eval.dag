@@ -76,7 +76,7 @@ import v4.std.verification {
 import v4.std.witness { Holds, Violates, Witness }
 
 
-// RULING-1: needs-more-work — evaluator body remains structural until T-9.
+// RULING-1: pretty-much-done — eval input root remains arbitrary-node shaped for IRT-3; host interpretation lives in eval.
 type Inputs {
   root: Node
 }
