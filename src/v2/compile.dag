@@ -253,7 +253,7 @@ fn expr_data_variant(data: ExprData) -> String {
   }
 }
 
-fn dag_node_fingerprint(node: Node) -> String {
+fn dag_node_surface_fingerprint(node: Node) -> String {
   let child_names = node.children |> map(c => c.name) |> join(separator: ",")
   let param_names = node.params |> map(p => p.name) |> join(separator: ",")
   concat(
@@ -265,23 +265,28 @@ fn dag_node_fingerprint(node: Node) -> String {
     param_names)
 }
 
+// Canonical fingerprint: Resolved wrappers share the target's identity (back-link revisits).
+fn dag_node_fingerprint(node: Node) -> String {
+  match node.inferred {
+    Some { value: Resolved { node: target } } => dag_node_surface_fingerprint(node: target)
+    _ => dag_node_surface_fingerprint(node: node)
+  }
+}
+
 fn dag_node_key_collision_error(key: String, span: SourceSpan) -> ErrorNode {
+  let synthetic = span.start == 0 && span.end == 0
+  let detail = if synthetic {
+    " (synthetic 0..0 span; provisional key cannot alias distinct scaffold nodes)"
+  } else {
+    ""
+  }
   make_error_node(
     diagnostic: InternalError {
-      message: concat("dag artifact: distinct nodes share identity key ", json_quote(s: key)),
+      message: concat("dag artifact: distinct nodes share identity key ", json_quote(s: key), detail),
       span: span
     },
     module_name: ""
   )
-}
-
-// Resolved wrappers can re-enter collection under the same location key as their target;
-// treat that as a back-link revisit, not a distinct-node collision.
-fn is_resolved_alias_revisit(node: Node, prior_fp: String) -> Bool {
-  match node.inferred {
-    Some { value: Resolved { node: target } } => dag_node_fingerprint(node: target) == prior_fp
-    _ => false
-  }
 }
 
 fn dag_node_missing_ref_error(node: Node) -> ErrorNode {
@@ -380,15 +385,8 @@ fn dag_collect_insert(node: Node, acc: DagCollectAcc) -> DagCollectAcc {
   let fp = dag_node_fingerprint(node: node)
   match map_get(acc.seen, key) {
     Some { value: prior } =>
-      if prior == fp || is_resolved_alias_revisit(node: node, prior_fp: prior) {
+      if prior == fp {
         acc
-      } else if node.span.start == 0 && node.span.end == 0 {
-        // Synthetic placeholder spans (infer/type scaffolding): never alias silently.
-        DagCollectAcc {
-          seen: acc.seen,
-          order: acc.order,
-          collision_errors: list_push(acc.collision_errors, dag_node_key_collision_error(key: key, span: node.span))
-        }
       } else {
         DagCollectAcc {
           seen: acc.seen,
