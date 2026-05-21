@@ -28,20 +28,24 @@ pub struct CallGraphAdjacencyViews {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DfsFinishAcc {
-    pub visited: Rc<std::collections::BTreeSet<String>>,
+    pub visited: Rc<HashMap<String, bool>>,
     pub order: Rc<Vec<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SccComponentAcc {
-    pub visited: Rc<std::collections::BTreeSet<String>>,
+    pub visited: Rc<HashMap<String, bool>>,
     pub members: Rc<Vec<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SccCycleAcc {
-    pub visited: Rc<std::collections::BTreeSet<String>>,
+    pub visited: Rc<HashMap<String, bool>>,
     pub has_cycle: bool,
+}
+
+pub fn set_has(m: Rc<HashMap<String, bool>>, key: String) -> bool {
+    (v2_rt::map_get(&m, key) != None)
 }
 
 pub fn seed_adjacency_map(names: Rc<Vec<String>>) -> Rc<HashMap<String, Rc<Vec<String>>>> {
@@ -142,11 +146,11 @@ pub fn dfs_finish_order(
     acc: &Rc<DfsFinishAcc>,
 ) -> Rc<DfsFinishAcc> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        if set_contains(acc.visited.clone(), node.clone()) {
+        if set_has(acc.visited.clone(), node.clone()) {
             acc.clone()
         } else {
             {
-                let next_visited = set_insert(acc.visited.clone(), node.clone());
+                let next_visited = v2_rt::rc_map_insert(acc.visited.clone(), node.clone(), true);
                 let neighbors = match v2_rt::map_get(&adjacency, node.clone()) {
                     Some(ns) => ns.clone(),
                     None => Rc::new(vec![]),
@@ -175,11 +179,11 @@ pub fn dfs_collect_component(
     acc: &Rc<SccComponentAcc>,
 ) -> Rc<SccComponentAcc> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        if set_contains(acc.visited.clone(), node.clone()) {
+        if set_has(acc.visited.clone(), node.clone()) {
             acc.clone()
         } else {
             {
-                let next_visited = set_insert(acc.visited.clone(), node.clone());
+                let next_visited = v2_rt::rc_map_insert(acc.visited.clone(), node.clone(), true);
                 let next_members = v2_rt::rc_list_push(acc.members.clone(), node.clone());
                 let neighbors = match v2_rt::map_get(&adjacency, node.clone()) {
                     Some(ns) => ns.clone(),
@@ -204,7 +208,7 @@ pub fn graph_has_multi_node_scc(names: &Rc<Vec<String>>, graph: Rc<CallGraph>) -
         let adjacency = build_adjacency_views(&names, graph);
         let finish = names.clone().iter().cloned().fold(
             Rc::new(DfsFinishAcc {
-                visited: empty_set(),
+                visited: v2_rt::rc_empty_map::<String, bool>(),
                 order: Rc::new(vec![]),
             }),
             |acc: Rc<DfsFinishAcc>, name: String| {
@@ -213,11 +217,11 @@ pub fn graph_has_multi_node_scc(names: &Rc<Vec<String>>, graph: Rc<CallGraph>) -
         );
         let result = v2_rt::reverse(finish.order.clone()).iter().cloned().fold(
             Rc::new(SccCycleAcc {
-                visited: empty_set(),
+                visited: v2_rt::rc_empty_map::<String, bool>(),
                 has_cycle: false,
             }),
             |acc: Rc<SccCycleAcc>, name: String| {
-                if (acc.has_cycle.clone() || set_contains(acc.visited.clone(), name.clone())) {
+                if (acc.has_cycle.clone() || set_has(acc.visited.clone(), name.clone())) {
                     acc.clone()
                 } else {
                     {
