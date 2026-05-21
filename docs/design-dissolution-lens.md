@@ -1328,9 +1328,22 @@ fn derive_effect_shape(...) -> Outcome<EffectShape> {
 > Algebraically identical to L1.11 — missing fact fabricates a
 > plausible answer — but the RHS is a `String` / `Int` / `Bool`
 > rather than a constructor. **Enforcement gate**: not active until
-> `v4.lens.target_syntax_string_shape` lands carrying the use-site
-> classification for string RHSes (i.e., the downstream classification
-> of how the scalar gets used — as target syntax, identifier, etc.).
+> (a) `v4.lens.decision_tree_shape` lands (for the `missing_behavior`
+> arm detection that locates None-arm scalar RHSes), AND (b)
+> `v4.lens.scalar_authority_use_shape` lands (for the per-scalar
+> use-site authority-role classification — TargetSyntaxUse /
+> IdentifierUse / UrlUse / HeaderNameUse / FilePathUse /
+> ResourceCoordinateUse / DataStringUse / UnknownUse). The
+> `scalar_authority_use_registry` substrate carrier must declare at
+> least one row per ScalarUseRole variant before the corresponding
+> sub-class of L1.11.b can fire. `v4.lens.target_syntax_string_shape`
+> is NOT a prerequisite — it classifies what is being BUILT at the
+> production site (L1.10.d's axis); L1.11.b consumes the orthogonal
+> use-site-role axis from `scalar_authority_use_shape`. The
+> `target_syntax_string_shape` producer is only referenced as a
+> cross-reference for the `TargetSyntaxUse` role variant (it's where
+> a use-site-classifier might cross-check what production-site
+> classification the consumer's caller sees).
 
 - *Signature:* a `None =>` / unhandled arm of a closed-vocab decision
   tree (per `DecisionTreeShape`) returns a non-diagnostic scalar
@@ -3278,8 +3291,15 @@ roots:
   serializer" — applying this single transformation subsumes the
   bulk of L1.10.d, L1.5.b, L1.10.c findings.
 - **R-root-B**: "lift the serde-policy + auth-defaults + transport-
-  fallback decision-trees into substrate `TotalMap` rows" — subsumes
-  L1.13.c + L1.11.b findings.
+  fallback decision-trees into substrate table rows — `TotalMap<K, V>`
+  for finite payload-free tables, `TotalPolicy<K, Context, RowTemplate>`
+  for payload-bearing policies (per the L1.13.c payload-aware
+  refinement)" — subsumes L1.13.c + L1.11.b findings. The
+  serde-policy case is specifically a `TotalPolicy` shape (because
+  `VariantNaming` includes payload-bearing constructors like
+  `StripPrefixAndSnakeCase { prefix }`); the auth-defaults case may
+  be `TotalMap` or `TotalPolicy` depending on whether the auth-source
+  vocabulary has payload fields.
 - **R-root-C**: "rewrite name-as-discriminant dispatch to use
   resolved `KeyVocabulary`" — subsumes L1.10.c findings not closed
   by R-root-A.
