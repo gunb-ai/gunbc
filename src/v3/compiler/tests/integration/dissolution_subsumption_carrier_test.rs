@@ -30,7 +30,10 @@ fn dissolution_subsumption_carrier_shape_locked() {
     assert_record_fields(
         &module.items,
         "ProducerStageDerivationPath",
-        &[("head", "ProducerStageId"), ("tail", "List<ProducerStageId>")],
+        &[
+            ("head", "ProducerStageId"),
+            ("tail", "List<ProducerStageId>"),
+        ],
     );
     assert_sum_variants(
         &module.items,
@@ -101,7 +104,7 @@ fn dissolution_subsumption_first_row_is_producer_stage_derived() {
     assert_eq!(
         elements.len(),
         0,
-        "{SUBSUMPTION_PATH}: first subsumption row should name exactly one additional producer stage"
+        "{SUBSUMPTION_PATH}: first subsumption row should not name additional producer stages"
     );
 }
 
@@ -261,7 +264,9 @@ fn producer_stage_id_symbol(expr: &SurfaceExpr) -> &str {
     let fields = assert_variant_record(expr, "ProducerStageId");
     let id = field_value(fields, "id");
     let SurfaceExpr::Var { name, .. } = id else {
-        panic!("{SUBSUMPTION_PATH}: ProducerStageId.id must name a symbolic stage handle, got {id:?}");
+        panic!(
+            "{SUBSUMPTION_PATH}: ProducerStageId.id must name a symbolic stage handle, got {id:?}"
+        );
     };
     name
 }
