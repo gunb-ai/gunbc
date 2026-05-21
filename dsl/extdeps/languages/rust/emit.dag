@@ -191,6 +191,7 @@ data rt_function_registry: List<RuntimeFunction> = [
   { name: "empty_set",          bridge_name: "rc_empty_set",     passes_by_ref: false, wraps_result: false },
   { name: "set_insert",         bridge_name: "rc_set_insert",    passes_by_ref: false, wraps_result: false },
   { name: "set_union",          bridge_name: "rc_set_union",     passes_by_ref: false, wraps_result: false },
+  // passes_by_ref: v2_rt::set_contains takes AsRef<BTreeSet<T>> (Rc-wrapped sets pass &rc)
   { name: "set_contains",       bridge_name: "set_contains",     passes_by_ref: true,  wraps_result: false },
   { name: "map_insert",         bridge_name: "rc_map_insert",    passes_by_ref: false, wraps_result: false },
   { name: "map_merge",          bridge_name: "rc_map_merge",     passes_by_ref: false, wraps_result: false },
