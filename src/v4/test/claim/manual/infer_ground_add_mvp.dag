@@ -111,6 +111,14 @@ fn infer_receipt_symbol_node(s: Symbol) -> Node {
 }
 
 
+fn infer_receipt_case_input(case: InferReceiptCase) -> Node {
+  match case {
+    InferDiagnosticReceiptCase { input: input, label: _, input_symbol: _, expected_rejection: _ } => input
+    InferCompilesReceiptCase { input: input, label: _, input_symbol: _, expected_value: _ } => input
+  }
+}
+
+
 fn infer_receipt_claim(case: InferReceiptCase) -> TestClaim {
   match case {
     InferDiagnosticReceiptCase {
@@ -170,8 +178,8 @@ fn infer_receipt_subject(case: InferReceiptCase) -> TestClaimEvalSubject<Node> {
   TestClaimEvalSubject {
     claim: infer_receipt_claim(case: case),
     context: infer_receipt_context(),
-    tree: infer_receipt_empty_tree(root: case.input),
-    input: TestClaimTypedInput { evaluator_input: case.input }
+    tree: infer_receipt_empty_tree(root: infer_receipt_case_input(case: case)),
+    input: TestClaimTypedInput { evaluator_input: infer_receipt_case_input(case: case) }
   }
 }
 

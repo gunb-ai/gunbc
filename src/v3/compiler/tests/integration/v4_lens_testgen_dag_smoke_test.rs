@@ -43,11 +43,11 @@ fn v4_lens_testgen_p9_registry_owner_claim_parses_and_checks_registry_exclusivit
     parse_module(P9_REGISTRY_OWNER_DAG, P9_REGISTRY_OWNER_PATH);
     assert!(
         P9_REGISTRY_OWNER_DAG.contains("lens_owned_fn_registry_v0")
-            && P9_REGISTRY_OWNER_DAG.contains("p9_registry_fn_names_unique()")
-            && P9_REGISTRY_OWNER_DAG.contains("p9_registry_llvm_instruction_cost_row_count()")
-            && P9_REGISTRY_OWNER_DAG.contains("data p9_owner_module_path: String = lens_owned_fn_llvm_instruction_cost.owner_module_path")
+            && P9_REGISTRY_OWNER_DAG.contains("p9_owned_fn_row_eq")
+            && P9_REGISTRY_OWNER_DAG.contains("count_equal(")
+            && P9_REGISTRY_OWNER_DAG.contains("item: lens_owned_fn_llvm_instruction_cost")
             && P9_REGISTRY_OWNER_DAG.contains("EqualsClaim {"),
-        "P9 receipt must prove registry-row exclusivity + owner_module_path pin (B1)"
+        "P9 receipt must prove exactly one full registry row matches canonical fn+owner (B1)"
     );
 }
 

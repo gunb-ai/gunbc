@@ -1,6 +1,6 @@
 // src/v4/test/claim/lens_cost/p9_llvm_instruction_cost_registry_owner.dag
-// Scope: B1 structural receipt — exactly one LensOwnedFnV0 registry row names llvm_instruction_cost
-//   with owner_module_path v4.lens.cost (closed lens_owned_fn_registry_v0 enumeration).
+// Scope: B1 structural receipt — exactly one LensOwnedFnV0 registry row equals the canonical
+//   llvm_instruction_cost authority (fn_name + owner_module_path on the same row).
 // Does not corpus-scan for shadow fn defs elsewhere in v4 (deferred T-22 / M2 reflection).
 // Owns: claim_p9_llvm_instruction_cost_registry_owner
 // Consumes: v4.lens.registry, v4.std.algebra, v4.std.verification, v4.std.node
@@ -14,7 +14,7 @@ import v4.lens.registry {
   lens_owned_fn_registry_v0,
   symbol_llvm_instruction_cost
 }
-import v4.std.algebra { count_where, unique }
+import v4.std.algebra { count_equal, unique }
 import v4.std.verification {
   EqualsClaim,
   TestClaim,
@@ -24,10 +24,6 @@ import v4.std.verification {
   Unit
 }
 import v4.std.node { Atom, Conj, Node, TypeNode }
-
-
-data p9_expected_owner_module_path: String = "v4.lens.cost"
-data p9_owner_module_path: String = lens_owned_fn_llvm_instruction_cost.owner_module_path
 
 
 data p9_registry_owner_authority_node: Node = Node {
@@ -41,16 +37,8 @@ fn p9_owned_fn_name_eq(left: LensOwnedFnV0, right: LensOwnedFnV0) -> Bool {
 }
 
 
-fn p9_registry_row_names_llvm_instruction_cost(row: LensOwnedFnV0) -> Bool {
-  row.fn_name == symbol_llvm_instruction_cost
-}
-
-
-fn p9_registry_llvm_instruction_cost_row_count() -> Int {
-  count_where(
-    xs: lens_owned_fn_registry_v0,
-    predicate: p9_registry_row_names_llvm_instruction_cost
-  )
+fn p9_owned_fn_row_eq(left: LensOwnedFnV0, right: LensOwnedFnV0) -> Bool {
+  left.fn_name == right.fn_name && left.owner_module_path == right.owner_module_path
 }
 
 
@@ -59,15 +47,17 @@ fn p9_registry_fn_names_unique() -> Bool {
 }
 
 
-fn p9_owner_module_paths_equal() -> Bool {
-  p9_owner_module_path == p9_expected_owner_module_path
+fn p9_registry_canonical_row_count() -> Int {
+  count_equal(
+    xs: lens_owned_fn_registry_v0,
+    item: lens_owned_fn_llvm_instruction_cost,
+    eq: p9_owned_fn_row_eq
+  )
 }
 
 
 fn p9_registry_owner_receipt_holds() -> Bool {
-  p9_registry_fn_names_unique()
-    && p9_registry_llvm_instruction_cost_row_count() == 1
-    && p9_owner_module_paths_equal()
+  p9_registry_fn_names_unique() && p9_registry_canonical_row_count() == 1
 }
 
 
@@ -84,7 +74,7 @@ fn p9_registry_owner_receipt_rhs() -> Node {
 
 
 data claim_p9_llvm_instruction_cost_registry_owner: TestClaim = EqualsClaim {
-  label: "P9: llvm_instruction_cost has exactly one LensOwnedFnV0 registry row owned by v4.lens.cost",
+  label: "P9: llvm_instruction_cost registry has exactly one canonical LensOwnedFnV0 row (fn + owner)",
   t19_anchor: T19ManualAnchorAbsent,
   lhs: p9_registry_owner_authority_node,
   rhs: p9_registry_owner_receipt_rhs(),
