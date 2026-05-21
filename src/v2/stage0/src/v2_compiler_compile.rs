@@ -6,7 +6,8 @@ use crate::std_induction::RecursionShape::{
 };
 use crate::std_induction::ShrinkFactor::{ConstantShrink, ProportionalShrink, UnitShrink};
 use crate::std_induction::SubValueRelation::{
-    IteratedSubValue, PreservedValue, StrictSubValue, SubValueUnknown,
+    ArithmeticDescent, IteratedSubValue, MixedTop, NonIncreasingValue, PreservedValue,
+    StrictAxisErased, StrictSubValue, SubValueUnknown,
 };
 pub use crate::std_induction::{InductiveField, RecursionShape, ShrinkFactor, SubValueRelation};
 use crate::std_termination::PositiveDescentAmount::{AdditionalStep, OneStep};
