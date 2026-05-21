@@ -28,7 +28,7 @@ import v2.std.core {
   authored_name_at, NewlineIndex, has_child_named, build_newline_index,
   module_node, module_imports, module_items, import_is_all,
   make_param_node, param_node_name_at, param_node_type_expr,
-  field_node_type_expr,
+  field_node_type_expr, field_node_name_at,
   Connective, Conj, Disj, NoConnective, Arrow,
   ExprData, NoExprData,
   ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
