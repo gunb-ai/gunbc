@@ -1135,7 +1135,11 @@ import/alias of the resolver's authoritative shape.
     **Dissolution:** delete the match; the operation doesn't depend on
     the variant. (Rare — usually a real bug.) **Clearing receipt:** the
     match is deleted OR replaced with the single shared RHS at the call
-    site.
+    site. **Fix-confidence: direct auto-apply.** Lens emits a typed `Diff`
+    (PR #3364 vocabulary) replacing the `match` expression with its
+    single arm's RHS. No naming decisions, no human-design hooks. Diff
+    enters the candidate-state gate, runs lenses on candidate, commits
+    if green.
   - **Outlier** — `K = 2`, histogram = `[N-1, 1]` (one base case + one
     uniform group). `N ≥ 3`. The match is performing a binary
     discriminator dressed as N-way dispatch. **Dissolution:** consume
@@ -1153,7 +1157,12 @@ import/alias of the resolver's authoritative shape.
     `connective_spec_fact` (6 arms → 2 skeletons, 5:1) — resolved via
     inline match-pattern with guard (`Atom { identity: id } if
     is_kernel_ambient(id) => ...; _ => default`), NOT via a named
-    `Bool` helper.
+    `Bool` helper. **Fix-confidence: direct auto-apply.** Lens emits a
+    typed `Diff` rewriting the N-arm match to a 2-arm form: the
+    singleton arm's pattern + RHS preserved, the N-1 uniform arms
+    collapsed to `_ => <uniform_RHS_with_constructor_substituted_by_wildcard>`.
+    No naming decisions; the structural fix is unambiguous from the
+    histogram.
   - **MultiOutlier** — `K ≥ 2`, histogram contains both singleton(s)
     AND non-singleton group(s). `N ≥ 4`. Multiple base-cases + one or
     more uniform groups. Covers F14 (1:5:6 — one singleton +
@@ -1171,6 +1180,17 @@ import/alias of the resolver's authoritative shape.
     a new name). Recent precedent: PR #3452 `complexity_bound_from_class`
     (9 arms → 3 skeletons, 1:1:7); F14 `feature_disposition`
     (`llvm_ir.dag:570-585`, 12 arms → 3 skeletons, 1:5:6).
+    **Fix-confidence: templated auto-apply (name-templated, structure-direct).**
+    Structural transform is unambiguous from the histogram (singleton →
+    own top-level variant; uniform group → wrapped variant carrying a
+    sub-coproduct). Lens emits a typed `Diff` with templated holes for
+    NEW type names (wrapping variant name, sub-coproduct name, sub-variant
+    names). Default templates derive from existing constructor names —
+    e.g. F14's `Modeled` disposition + uniform group → wrapping variant
+    `ModeledFeature` with sub-coproduct `ModeledKind`. Reviewer may
+    override names before the candidate-state commit; same flow as any
+    typo-fix Diff. Auto-apply when reviewer accepts default templates;
+    one round of reviewer-edit when names need to differ.
   - **Categorical** — `K ≥ 2`, histogram contains ONLY non-singleton
     groups (every group size ≥ 2). `K ≤ ⌊N/2⌋`, `N ≥ 4`. Pure category
     projection with no singleton base case. Rarer than MultiOutlier in
@@ -1179,6 +1199,10 @@ import/alias of the resolver's authoritative shape.
     wraps one of K sub-coproducts). **Clearing receipt:** identical
     discipline to MultiOutlier — the categorization lives in the input
     type's structure, not in a parallel hand-rolled projection function.
+    **Fix-confidence: templated auto-apply (same as MultiOutlier).**
+    Each uniform group → one wrapped variant carrying a sub-coproduct;
+    templated names derive from group composition. Reviewer reviews the
+    candidate `Diff`'s names before commit.
   - **Mixed** — `K` close to `N` (i.e., does NOT meet any of the four
     classifier thresholds above). Each arm does distinguishable work.
     **No finding** — legitimate per-variant dispatch.
