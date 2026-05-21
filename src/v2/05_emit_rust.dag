@@ -2840,7 +2840,8 @@ fn rust_type_node_is_json_carrier(elem_node: Node, source_indices: Map<String, N
   let name = authored_name_at(source_indices: source_indices, node: normalize_access_type_node(n: elem_node))
   if name == "Json" { true }
   else {
-    match name |> split(delimiter: ".") |> last {
+    let parts = name |> split(delimiter: ".")
+    match parts |> last {
       Some { value: last } => last == "Json"
       None => false
     }
