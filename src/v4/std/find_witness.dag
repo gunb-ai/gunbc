@@ -23,7 +23,7 @@ import v4.std.diagnostic {
   Unavailable,
   outcome_rejected
 }
-import v4.std.node { Node, Symbol, well_formed }
+import v4.std.node { Edge, Node, Symbol, TypeNode, Atom, well_formed }
 import v4.std.witness { StructuralPropertyWitness }
 data find_witness_reason_no_candidate: Symbol = find_witness_reason_no_candidate
 data find_witness_reason_ambiguous_candidate: Symbol = find_witness_reason_ambiguous_candidate
@@ -79,9 +79,41 @@ fn find_witness_not_realized_diagnostic(source_facts: Node) -> Diagnostic {
   }
 }
 // 🟡 coproduct dissolution — scaffold:exact-structural-preservation-distinct-node-mvp · dissolve-on: W-T-10 recursive edge-wise structural zip-fold predicate algebra.
+fn exact_structural_leaf_coincides(source_facts: Node, candidate: Node) -> Bool {
+  match source_facts.kind {
+    TypeNode { connective: Atom { identity: _ } } => match candidate.kind {
+      TypeNode { connective: Atom { identity: _ } } => true
+      _ => source_facts.kind == candidate.kind
+    }
+    _ => source_facts.kind == candidate.kind
+  }
+}
+fn exact_structural_edge_zip_fold(left: List<Edge>, right: List<Edge>) -> Bool {
+  match left {
+    Empty => match right {
+      Empty => true
+      Cons { head: _, tail: _ } => false
+    }
+    Cons { head: left_edge, tail: left_tail } => match right {
+      Empty => false
+      Cons { head: right_edge, tail: right_tail } =>
+        (left_edge.label == right_edge.label)
+          && exact_structural_equality_zip_fold(
+            source_facts: left_edge.target,
+            candidate: right_edge.target
+          )
+          && exact_structural_edge_zip_fold(left: left_tail, right: right_tail)
+    }
+  }
+}
 fn exact_structural_equality_zip_fold(source_facts: Node, candidate: Node) -> Bool {
-  (source_facts.kind == candidate.kind)
-    && (count(source_facts.children) == count(candidate.children))
+  if (count(source_facts.children) == 0) && (count(candidate.children) == 0) {
+    exact_structural_leaf_coincides(source_facts: source_facts, candidate: candidate)
+  } else {
+    (source_facts.kind == candidate.kind)
+      && (count(source_facts.children) == count(candidate.children))
+      && exact_structural_edge_zip_fold(left: source_facts.children, right: candidate.children)
+  }
 }
 fn preservation_predicate_holds(
   source_facts: Node,

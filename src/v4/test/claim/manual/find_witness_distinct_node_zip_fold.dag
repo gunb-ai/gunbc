@@ -103,6 +103,16 @@ fn distinct_wrong_arity_node() -> Node {
     ]
   }
 }
+fn distinct_wrong_subtree_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: [
+      Edge { label: Positional, target: distinct_wrong_arity_node() },
+      Edge { label: Positional, target: distinct_target_leaf() },
+      Edge { label: Positional, target: distinct_target_leaf() }
+    ]
+  }
+}
 fn distinct_fail_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -133,6 +143,12 @@ fn distinct_wrong_arity_candidate_set() -> CandidateSet {
     closedness: distinct_closedness()
   }
 }
+fn distinct_wrong_subtree_candidate_set() -> CandidateSet {
+  CandidateSet {
+    candidates: [distinct_wrong_subtree_node()],
+    closedness: distinct_closedness()
+  }
+}
 fn distinct_valid_witness() -> StructuralPropertyWitness {
   StructuralPropertyWitness {
     property: preservation_rule_exact_structural_equality_zip_fold,
@@ -160,6 +176,15 @@ data witness_verify_witness_distinct_node_accepts: Bool = match verify_witness(
 data witness_find_witness_wrong_arity_rejects: Bool = match find_witness(
   source_facts: distinct_source_add_node(),
   candidates: distinct_wrong_arity_candidate_set(),
+  predicate: distinct_exact_predicate(),
+  multiplicity_policy: UniqueOnly
+) {
+  Accepted { value: _, diagnostics: _ } => false
+  Rejected { diagnostics: _ } => true
+}
+data witness_find_witness_wrong_subtree_rejects: Bool = match find_witness(
+  source_facts: distinct_source_add_node(),
+  candidates: distinct_wrong_subtree_candidate_set(),
   predicate: distinct_exact_predicate(),
   multiplicity_policy: UniqueOnly
 ) {
@@ -229,6 +254,14 @@ data claim_find_witness_wrong_arity_rejects: TestClaim = TestClaim {
   label: "manual/find_witness_distinct_node_zip_fold: wrong arity rejects",
   t19_anchor: T19ManualAnchorAbsent,
   input: distinct_witness_claim_input(ok: witness_find_witness_wrong_arity_rejects),
+  expected: distinct_witness_expected(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+data claim_find_witness_wrong_subtree_rejects: TestClaim = TestClaim {
+  kind: Equals,
+  label: "manual/find_witness_distinct_node_zip_fold: same root arity wrong subtree rejects",
+  t19_anchor: T19ManualAnchorAbsent,
+  input: distinct_witness_claim_input(ok: witness_find_witness_wrong_subtree_rejects),
   expected: distinct_witness_expected(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
