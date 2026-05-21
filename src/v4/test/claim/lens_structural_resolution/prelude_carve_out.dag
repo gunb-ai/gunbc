@@ -10,8 +10,8 @@ import v4.compiler.infer { AlgebraRef, InferredFacts, InferredTree }
 import v4.lens.structural_resolution {
   StructuralResolutionDependencyFact,
   StructuralResolutionFact,
-  fact_eq,
-  witness
+  at,
+  fact_eq
 }
 import v4.std.cardinality { RankingDimension, TerminationProof }
 import v4.std.collection { Map }
@@ -20,7 +20,11 @@ import v4.std.constraints {
   constraint_property_being_canonical,
   constraint_property_candidate_set_closedness
 }
-import v4.std.dependency { DependencyView, ModuleDependsOn }
+import v4.std.dependency {
+  DependencyView,
+  ModuleDependsOn,
+  dependency_module_import_edge
+}
 import v4.std.node { Atom, Edge, Hash, Named, Node, Symbol, TypeNode }
 import v4.std.witness { Holds, StructuralPropertyWitness, Witness }
 
@@ -45,7 +49,7 @@ data sr_mod_child: Node = sr_mod_claim_node(s: sr_mod_child_symbol)
 data sr_mod_root: Node = Node {
   kind: TypeNode { connective: Atom { identity: sr_mod_root_symbol } },
   children: [
-    Edge { label: Named { name: sr_mod_edge_symbol }, target: sr_mod_child }
+    Edge { label: Named { name: dependency_module_import_edge }, target: sr_mod_child }
   ]
 }
 
@@ -119,7 +123,7 @@ data prelude_carve_out_claim: LensStructuralResolutionClaim = LensStructuralReso
       }
     ]
   },
-  actual: witness(tree: sr_mod_claim_tree(), dependencies: [sr_mod_dependency])
+  actual: at(tree: sr_mod_claim_tree())
 }
 
 fn prelude_carve_out_claim_holds() -> Bool {

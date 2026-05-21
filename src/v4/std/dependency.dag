@@ -7,7 +7,21 @@
 module v4.std.dependency
 
 import v4.std.collection { List }
-import v4.std.node { Edge, Node, NodeFold, fold_node }
+import v4.std.node {
+  Bind,
+  ComputationNode,
+  Edge,
+  Named,
+  Node,
+  NodeFold,
+  TypeNode,
+  fold_node
+}
+
+// Substrate-visible edge labels for resolve-stage dependency kinds (Wave-2-A).
+// TestClaims and lenses consume these via dependency_lens — not hand-authored DependencyView rows.
+data dependency_module_import_edge: Symbol = dependency_module_import_edge
+data dependency_bootstrap_depends_edge: Symbol = dependency_bootstrap_depends_edge
 
 // 🟢 closed set — P6 dependency classification taxonomy.
 type DependencyKind
@@ -40,8 +54,27 @@ type DependencyFoldState {
 }
 
 // 🟡 predicate dissolution — feature:dependency-usage-classifier-consumes-resolve-ground-facts.
+// Structural rules today: Bind-parent → BindsTo; TypeNode Named field/ref → BindsTo; marked import/bootstrap labels.
+fn classify_named_edge_usage(parent: Node) -> DependencyKind {
+  match parent.kind {
+    ComputationNode { behavior: Bind } => BindsTo
+    TypeNode { connective: _ } => BindsTo
+    _ => Contains
+  }
+}
+
 fn classify_node_edge_usage(parent: Node, edge: Edge) -> DependencyKind {
-  Contains
+  match edge.label {
+    Named { name: sym } =>
+      if sym == dependency_module_import_edge {
+        ModuleDependsOn
+      } else if sym == dependency_bootstrap_depends_edge {
+        BootstrapDependsOn
+      } else {
+        classify_named_edge_usage(parent: parent)
+      }
+    Positional => Contains
+  }
 }
 
 fn dependency_view_for_edge(parent: Node, edge: Edge) -> DependencyView {

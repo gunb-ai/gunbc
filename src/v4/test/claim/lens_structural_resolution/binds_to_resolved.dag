@@ -10,8 +10,8 @@ import v4.compiler.infer { AlgebraRef, InferredFacts, InferredTree }
 import v4.lens.structural_resolution {
   StructuralResolutionDependencyFact,
   StructuralResolutionFact,
-  fact_eq,
-  witness
+  at,
+  fact_eq
 }
 import v4.std.cardinality { RankingDimension, TerminationProof }
 import v4.std.collection { Map }
@@ -119,7 +119,7 @@ data binds_to_resolved_claim: LensStructuralResolutionClaim = LensStructuralReso
       }
     ]
   },
-  actual: witness(tree: sr_claim_tree(), dependencies: [sr_dependency])
+  actual: at(tree: sr_claim_tree())
 }
 
 fn binds_to_resolved_claim_holds() -> Bool {

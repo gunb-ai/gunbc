@@ -13,8 +13,8 @@ import v4.compiler.resolve {
 import v4.lens.structural_resolution {
   StructuralResolutionDependencyFact,
   StructuralResolutionFact,
-  fact_eq,
-  witness
+  at,
+  fact_eq
 }
 import v4.std.cardinality { RankingDimension, TerminationProof }
 import v4.std.collection { Map }
@@ -146,7 +146,7 @@ data unbound_symbol_at_use_claim: LensStructuralResolutionClaim = LensStructural
       }
     ]
   },
-  actual: witness(tree: sr_unbound_claim_tree(), dependencies: [sr_unbound_dependency])
+  actual: at(tree: sr_unbound_claim_tree())
 }
 
 fn unbound_symbol_at_use_claim_holds() -> Bool {

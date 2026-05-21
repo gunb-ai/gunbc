@@ -4,8 +4,9 @@
 //        unbound references projected from InferredTree + dependency graph.
 // Anchor: https://en.wikipedia.org/wiki/Name_resolution_(programming_languages)
 //
-// Reads T-8 resolve binding facts already carried on InferredTree and classifies
-// BindsTo / module / bootstrap dependency projections. Does NOT perform
+// Reads T-8 resolve binding facts on InferredTree and classifies dependency_lens
+// projections (BindsTo / module / bootstrap edge labels in std/dependency.dag).
+// Does NOT perform
 // resolution (resolve stage owns that). Practice 11: one mechanism — dependency
 // lens + infer lookup witnesses; no parallel resolution substrate.
 //
