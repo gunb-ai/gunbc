@@ -34,6 +34,7 @@ import v4.std.find_witness {
 import v4.std.node { Node, Symbol }
 import v4.std.witness { StructuralPropertyWitness }
 data constraint_property_being_canonical: Symbol = constraint_property_being_canonical
+data constraint_property_candidate_set_closedness: Symbol = constraint_property_candidate_set_closedness
 data constraints_not_realized: Symbol = constraints_not_realized
 // 🟡 coproduct dissolution — scaffold:T-9-ground · dissolve-on: W-T-9-impl consumes graph carriers.
 type ConstraintGraph {

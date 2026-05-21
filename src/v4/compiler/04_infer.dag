@@ -14,6 +14,7 @@ import v4.std.cardinality { TerminationProof }
 import v4.std.collection { List, Map }
 import v4.std.constraints {
   CanonicalGrounding,
+  CanonicalGroundingWitness,
   ConstraintGraph,
   ConstraintSolvePolicy,
   solve_constraints
@@ -54,7 +55,7 @@ type InferredFacts {
   resolved_type: Node
   inhabits: AlgebraRef
   descent: Witness<TerminationProof>
-  canonical: StructuralPropertyWitness
+  canonical: CanonicalGroundingWitness
 }
 
 
@@ -123,7 +124,7 @@ fn inferred_facts_from_grounding(
     resolved_type: grounding.node,
     inhabits: algebra_ref_from_grounding(grounding: grounding),
     descent: descent,
-    canonical: grounding.witness.structural
+    canonical: grounding.witness
   }
 }
 

@@ -28,7 +28,11 @@ import v4.std.diagnostic {
   Unavailable
 }
 import v4.std.node { Conj, Node, Symbol, TypeNode }
-import v4.std.constraints { constraint_property_being_canonical }
+import v4.std.constraints {
+  CanonicalGroundingWitness,
+  constraint_property_being_canonical,
+  constraint_property_candidate_set_closedness
+}
 import v4.std.witness { StructuralPropertyWitness, Violates, Witness }
 
 
@@ -54,9 +58,15 @@ data anchor_facts_map_lookup_not_realized: Symbol = anchor_facts_map_lookup_not_
 data anchor_stub_descent_not_derived: Symbol = anchor_stub_descent_not_derived
 
 
-data anchor_stub_canonical_witness: StructuralPropertyWitness = StructuralPropertyWitness {
-  property: constraint_property_being_canonical,
-  evidence: anchor_stub_empty_conj
+data anchor_stub_canonical_witness: CanonicalGroundingWitness = CanonicalGroundingWitness {
+  structural: StructuralPropertyWitness {
+    property: constraint_property_being_canonical,
+    evidence: anchor_stub_empty_conj
+  },
+  closedness: StructuralPropertyWitness {
+    property: constraint_property_candidate_set_closedness,
+    evidence: anchor_stub_empty_conj
+  }
 }
 
 
