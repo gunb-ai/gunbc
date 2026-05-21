@@ -37,11 +37,10 @@ type AlgebraInhabitanceDecl {
 }
 
 
-// Law / proof obligation scheduling — associativity, commutativity, … for preservation checks.
+// Law / proof obligation — preservation-check scheduling over a modeled inhabitance row (algebra + inhabitant + witness), not name-keyed Symbols.
 type AlgebraLawObligation {
-  algebra: Symbol
-  inhabitant: Symbol
-  law: Symbol
+  inhabitance: AlgebraInhabitanceDecl
+  law: Node
 }
 
 
