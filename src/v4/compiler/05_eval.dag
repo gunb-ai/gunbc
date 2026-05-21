@@ -1,20 +1,42 @@
 // src/v4/compiler/05_eval.dag
 // Scope: primary evaluation path over inferred tree/input subgraphs and TestClaim runner substrate.
-// Owns: Inputs, EvalContext, TestClaimTypedInput, TestClaimEvalSubject, TestClaimCacheKey, TestClaimCacheReceipt, Verdict, TestClaimRun, eval_node, run_test_claim, aggregate_verdicts.
-// Consumes: v4.compiler.infer, v4.std.node, v4.std.diagnostic, v4.std.verification.
-// Status: Wave-0 substrate; evaluator bodies remain structural until T-9 inferred-tree semantics.
+// Owns: Inputs, EvalContext, TestClaimTypedInput, TestClaimEvalSubject, TestClaimCacheKey, TestClaimCacheReceipt, Verdict, TestClaimRun, EvalFoldState, eval, eval_node, run_test_claim, aggregate_verdicts.
+// Consumes: v4.compiler.infer, v4.std.host, v4.std.node, v4.std.diagnostic, v4.std.verification.
+// Status: T-22 eval consumes HostModel interpretation algebra; TestClaim runner remains Node-shaped.
 
 module v4.compiler.eval
 
 
 import v4.compiler.infer {
+  InferredFacts,
   InferredTree
 }
-import v4.std.collection { List, non_empty }
+import v4.std.collection { List, Map, non_empty }
+import v4.std.host {
+  HostContinue,
+  HostEnvironment,
+  HostModel,
+  HostRaise,
+  HostReturn,
+  HostSuspend,
+  HostControlTransfer,
+  HostValue
+}
 import v4.std.node {
+  Behavior,
+  Bind,
+  Branch,
+  ComputationNode,
+  Edge,
   Hash,
+  Loop,
   Node,
+  NodeFold,
   Symbol,
+  Transform,
+  TypeNode,
+  Value,
+  fold_node,
   well_formed
 }
 import v4.std.diagnostic {
@@ -27,9 +49,13 @@ import v4.std.diagnostic {
   Unavailable,
   Accepted,
   None,
+  Rejected,
+  bind_outcome,
+  diagnostics_merge,
   diagnostics_singleton,
   outcome_node_eq,
-  outcome_rejected
+  outcome_rejected,
+  rejected_with_pending
 }
 import v4.std.verification {
   AssertKind,
@@ -39,6 +65,7 @@ import v4.std.verification {
   RoundTrips,
   TestClaim
 }
+import v4.std.witness { Holds, Violates }
 
 
 // RULING-1: needs-more-work — evaluator body remains structural until T-9.
@@ -102,6 +129,13 @@ type TestClaimRun<T> {
 }
 
 
+type EvalFoldState {
+  node: Node
+  child_values: Outcome<List<HostValue>>
+  value: Outcome<HostValue>
+}
+
+
 fn test_claim_cache_receipt<T>(
   subject: TestClaimEvalSubject<T>,
   claim_hash: Hash,
@@ -124,11 +158,241 @@ fn test_claim_cache_receipt<T>(
 data eval_rejected_invalid_node: Symbol = eval_rejected_invalid_node
 data eval_rejected_roundtrip_deferred: Symbol = eval_rejected_roundtrip_deferred
 data eval_empty_verdict_list: Symbol = eval_empty_verdict_list
+data eval_rejected_type_node: Symbol = eval_rejected_type_node
+data eval_rejected_branch_not_realized: Symbol = eval_rejected_branch_not_realized
+data eval_rejected_bind_not_realized: Symbol = eval_rejected_bind_not_realized
+data eval_rejected_suspended_not_terminal: Symbol = eval_rejected_suspended_not_terminal
+data eval_rejected_host_binding_lookup_miss: Symbol = eval_rejected_host_binding_lookup_miss
 fn eval_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
   Diagnostic {
     reason: reason,
     at: NodeLocus { node: node },
     correction: Unavailable { reason: AmbiguousIntent }
+  }
+}
+
+
+fn empty_host_environment() -> HostEnvironment {
+  HostEnvironment {
+    bindings: Map {
+      lookup: fn(key) {
+        Violates {
+          diagnostic: eval_diagnostic(
+            reason: eval_rejected_host_binding_lookup_miss,
+            node: key.declaration
+          )
+        }
+      }
+    }
+  }
+}
+
+
+fn inferred_facts_for_eval(tree: InferredTree, node: Node) -> Outcome<InferredFacts> {
+  match tree.facts.lookup(node) {
+    Holds { value: facts } =>
+      Accepted { value: facts, diagnostics: None }
+    Violates { diagnostic: d } =>
+      Rejected { diagnostics: diagnostics_singleton(d: d) }
+  }
+}
+
+
+fn host_control_transfer_value(control: HostControlTransfer, node: Node) -> Outcome<HostValue> {
+  match control {
+    HostContinue { value: v } =>
+      Accepted { value: v, diagnostics: None }
+    HostReturn { value: v } =>
+      Accepted { value: v, diagnostics: None }
+    HostRaise { diagnostic: d } =>
+      Rejected { diagnostics: diagnostics_singleton(d: d) }
+    HostSuspend { continuation: frame } =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: eval_diagnostic(reason: eval_rejected_suspended_not_terminal, node: frame.current)
+        )
+      }
+  }
+}
+
+
+fn eval_computation_node(
+  behavior: Behavior,
+  node: Node,
+  args: List<HostValue>,
+  host: HostModel,
+  environment: HostEnvironment
+) -> Outcome<HostValue> {
+  match behavior {
+    Value =>
+      host.interpretation.value.allocate_literal(node, environment)
+    Transform =>
+      host.interpretation.transform.call_primitive(node, args, environment)
+    Branch =>
+      outcome_rejected(
+        d: eval_diagnostic(reason: eval_rejected_branch_not_realized, node: node)
+      )
+    Loop =>
+      bind_outcome(
+        o: host.interpretation.loop.step_loop(node, environment),
+        f: fn(control) {
+          host_control_transfer_value(control: control, node: node)
+        }
+      )
+    Bind =>
+      outcome_rejected(
+        d: eval_diagnostic(reason: eval_rejected_bind_not_realized, node: node)
+      )
+  }
+}
+
+
+fn eval_interpret_node(
+  node: Node,
+  args: List<HostValue>,
+  tree: InferredTree,
+  host: HostModel,
+  environment: HostEnvironment
+) -> Outcome<HostValue> {
+  bind_outcome(
+    o: inferred_facts_for_eval(tree: tree, node: node),
+    f: fn(facts) {
+      match node.kind {
+        ComputationNode { behavior: b } =>
+          eval_computation_node(
+            behavior: b,
+            node: node,
+            args: args,
+            host: host,
+            environment: environment
+          )
+        TypeNode { connective: _ } =>
+          outcome_rejected(
+            d: eval_diagnostic(reason: eval_rejected_type_node, node: node)
+          )
+      }
+    }
+  )
+}
+
+
+fn eval_append_child_value(
+  acc: Outcome<List<HostValue>>,
+  child: Outcome<HostValue>
+) -> Outcome<List<HostValue>> {
+  match acc {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: values, diagnostics: ad } =>
+      match child {
+        Rejected { diagnostics: cr } =>
+          Rejected {
+            diagnostics: rejected_with_pending(pending: ad, rejected: cr)
+          }
+        Accepted { value: child_value, diagnostics: cd } =>
+          Accepted {
+            value: list_push(values, child_value),
+            diagnostics: diagnostics_merge(outer: ad, inner: cd)
+          }
+      }
+  }
+}
+
+
+fn eval_fold_init(
+  node: Node,
+  tree: InferredTree,
+  host: HostModel,
+  environment: HostEnvironment
+) -> EvalFoldState {
+  EvalFoldState {
+    node: node,
+    child_values: Accepted { value: [], diagnostics: None },
+    value: eval_interpret_node(
+      node: node,
+      args: [],
+      tree: tree,
+      host: host,
+      environment: environment
+    )
+  }
+}
+
+
+fn eval_fold_step(
+  acc: EvalFoldState,
+  edge: Edge,
+  child: EvalFoldState,
+  tree: InferredTree,
+  host: HostModel,
+  environment: HostEnvironment
+) -> EvalFoldState {
+  let next_args = eval_append_child_value(acc: acc.child_values, child: child.value)
+  EvalFoldState {
+    node: acc.node,
+    child_values: next_args,
+    value: bind_outcome(
+      o: next_args,
+      f: fn(args) {
+        eval_interpret_node(
+          node: acc.node,
+          args: args,
+          tree: tree,
+          host: host,
+          environment: environment
+        )
+      }
+    )
+  }
+}
+
+
+fn eval_host_node(
+  node: Node,
+  tree: InferredTree,
+  host: HostModel,
+  environment: HostEnvironment
+) -> Outcome<HostValue> {
+  let folded = fold_node(
+    n: node,
+    algebra: NodeFold {
+      init: fn(n0) {
+        eval_fold_init(
+          node: n0,
+          tree: tree,
+          host: host,
+          environment: environment
+        )
+      },
+      step: fn(acc, e, child) {
+        eval_fold_step(
+          acc: acc,
+          edge: e,
+          child: child,
+          tree: tree,
+          host: host,
+          environment: environment
+        )
+      }
+    }
+  )
+  folded.value
+}
+
+
+fn eval(tree: InferredTree, host: HostModel, inputs: Inputs) -> Outcome<HostValue> {
+  if well_formed(n: tree.root) {
+    if well_formed(n: inputs.root) {
+      eval_host_node(
+        node: inputs.root,
+        tree: tree,
+        host: host,
+        environment: empty_host_environment()
+      )
+    } else {
+      Rejected { diagnostics: diagnostics_singleton(d: eval_diagnostic(reason: eval_rejected_invalid_node, node: inputs.root)) }
+    }
+  } else {
+    Rejected { diagnostics: diagnostics_singleton(d: eval_diagnostic(reason: eval_rejected_invalid_node, node: tree.root)) }
   }
 }
 
