@@ -1,5 +1,5 @@
 // src/v4/test/claim/lens_effect/effect_depends_on.dag
-// Scope: T-13 worked claim — EffectDependsOn classifies as RequiresSignatureWitness over `ClassifiedDependencyView<EffectClassification>` (B3 — dependency kind is not the effect authority; the per-edge slot routes to the signature via `tree.facts.lookup`).
+// Scope: T-13 worked claim — every dependency kind classifies as the signature-deferred marker `EffectClassification` (B3 — dependency kind is not the effect authority; the per-edge slot routes to the signature via `tree.facts.lookup`).
 // Owns: effect_depends_on_claim.
 // Consumes: lens effect, std dependency, lens_common fixture.
 // Status: T-13 family-ratchet claim shape (Phase-1 substrate migration).
@@ -83,7 +83,7 @@ data effect_depends_on_claim: LensEffectClaim = LensEffectClaim {
     dependencies: [
       ClassifiedDependencyView {
         dependency: effect_dependency,
-        classification: RequiresSignatureWitness
+        classification: EffectClassification {}
       }
     ]
   },
