@@ -36,6 +36,8 @@ module v4.lens.cost
 import v4.extdeps.languages.llvm_ir { LlvmInstruction }
 import v4.std.algebra {
   BoundedLattice,
+  Equal,
+  Greater,
   Lattice,
   Magma,
   Monoid,
@@ -70,7 +72,7 @@ import v4.std.node {
   Value,
   fold_node
 }
-import v4.std.nat { Nat, Succ, Zero }
+import v4.std.nat { Nat, Succ, Zero, nat_add, nat_compare }
 import v4.std.witness { Holds, Violates, Witness }
 
 
@@ -310,29 +312,15 @@ fn nonzero_nat_dominates(a: NonZeroNat, b: NonZeroNat) -> Bool {
 }
 
 fn nat_dominates(a: Nat, b: Nat) -> Bool {
-  match a {
-    Zero =>
-      match b {
-        Zero => true
-        Succ { prev: _ } => false
-      }
-    Succ { prev: ap } =>
-      match b {
-        Zero => true
-        Succ { prev: bp } => nat_dominates(a: ap, b: bp)
-      }
+  match nat_compare(a: a, b: b) {
+    Greater => true
+    Equal => true
+    _ => false
   }
 }
 
 fn add_nonzero_nat(a: NonZeroNat, b: NonZeroNat) -> NonZeroNat {
-  NonZeroNat { prev: Succ { prev: add_nat(a: a.prev, b: b.prev) } }
-}
-
-fn add_nat(a: Nat, b: Nat) -> Nat {
-  match a {
-    Zero => b
-    Succ { prev: ap } => Succ { prev: add_nat(a: ap, b: b) }
-  }
+  NonZeroNat { prev: Succ { prev: nat_add(a: a.prev, b: b.prev) } }
 }
 
 fn add_polynomial_degree(a: PolynomialDegree, b: PolynomialDegree) -> PolynomialDegree {
