@@ -2249,18 +2249,15 @@ fn collect_field_binding_string_guards(field_bindings: List<Node>, path_prefix: 
     let fb_name = field_binding_name_at(n: fb, source_indices: source_indices)
     let fb_pat = field_binding_pattern(n: fb)
     if is_string_lit_pattern(p: fb_pat) {
-      if fb_name == "0" {
-        let bind_name = pattern_string_binding_name(path: list_push(path_prefix, "0"))
-        match positional_payload_string_guard(fb_pat: fb_pat, bind_name: bind_name) {
-          "" => []
-          guard => [guard]
-        }
+      let field_path = if fb_name == "0" {
+        list_push(path_prefix, "0")
       } else {
-        let bind_name = pattern_string_binding_name(path: list_push(path_prefix, fb_name))
-        match positional_payload_string_guard(fb_pat: fb_pat, bind_name: bind_name) {
-          "" => []
-          guard => [guard]
-        }
+        list_push(path_prefix, fb_name)
+      }
+      let bind_name = pattern_string_binding_name(path: field_path)
+      match positional_payload_string_guard(fb_pat: fb_pat, bind_name: bind_name) {
+        "" => []
+        guard => [guard]
       }
     } else {
       let nested_path = list_push(path_prefix, fb_name)
@@ -2661,7 +2658,8 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
           let fb_name = field_binding_name_at(n: fb, source_indices: source_indices)
           let fb_pat = field_binding_pattern(n: fb)
           if is_string_lit_pattern(p: fb_pat) {
-            concat(qualified, " { ref ", emit_ident(name: fb_name, target: Rust), ", .. }")
+            let bind_name = pattern_string_binding_name(path: list_push(list_push(path_prefix, name), fb_name))
+            concat(qualified, " { ref ", bind_name, ", .. }")
           } else if field_needs_rc_ref(field_name: fb_name, rc_analysis: rc_analysis) {
             concat(qualified, " { ref ", emit_ident(name: fb_name, target: Rust), ", .. }")
           } else {
@@ -2706,12 +2704,13 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
         let fb_name = field_binding_name_at(n: fb, source_indices: source_indices)
         let fb_pat = field_binding_pattern(n: fb)
         if is_string_lit_pattern(p: fb_pat) {
-          if fb_name == "0" {
-            let bind_name = pattern_string_binding_name(path: list_push(list_push(path_prefix, name), "0"))
-            concat("ref ", bind_name)
+          let field_path = if fb_name == "0" {
+            list_push(list_push(path_prefix, name), "0")
           } else {
-            concat("ref ", emit_ident(name: fb_name, target: Rust))
+            list_push(list_push(path_prefix, name), fb_name)
           }
+          let bind_name = pattern_string_binding_name(path: field_path)
+          concat("ref ", bind_name)
         } else {
           if field_needs_rc_ref(field_name: fb_name, rc_analysis: rc_analysis) {
             concat("ref ", emit_ident(name: fb_name, target: Rust))
