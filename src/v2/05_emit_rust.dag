@@ -1901,13 +1901,12 @@ fn emit_variant_from_child(child: Node, enum_name: String, recursive_types: Set<
           let type_node = if positional_payload {
             enum_variant_field_type_node(env: env, enum_name: enum_name, variant_name: child_text, field_name: "0", fallback: fallback, source_indices: env.source_indices)
           } else { fallback }
-          let ty_shared = if positional_payload { empty_set() } else { shared_types }
           let ty = if positional_payload {
-            render_variant_payload_type(n: type_node, shared_types: ty_shared, source_indices: env.source_indices)
+            render_variant_payload_type(n: type_node, shared_types: shared_types, source_indices: env.source_indices)
           } else {
-            render_rust_type(n: type_node, shared_types: ty_shared, source_indices: env.source_indices)
+            render_rust_type(n: type_node, shared_types: shared_types, source_indices: env.source_indices)
           }
-          let final_ty = if needs_box_wrapping(n: type_node, recursive_types: recursive_types, shared_types: ty_shared, source_indices: env.source_indices) {
+          let final_ty = if needs_box_wrapping(n: type_node, recursive_types: recursive_types, shared_types: shared_types, source_indices: env.source_indices) {
             concat("Box<", ty, ">")
           } else { ty }
           concat(rename_attr, "    ", child_text, "(", final_ty, "),")
@@ -2226,8 +2225,8 @@ fn is_string_lit_pattern(p: MatchPattern) -> Bool {
   }
 }
 
-// Unique scratch binding for positional payload string literals (field "0" has no Rust field name).
-fn positional_payload_binding_name(path: List<String>) -> String {
+// Path-derived scratch binding for string-literal subpatterns (field "0" and named nested carriers).
+fn pattern_string_binding_name(path: List<String>) -> String {
   if path |> count == 0 {
     "__pos0_val"
   } else {
@@ -2251,16 +2250,16 @@ fn collect_field_binding_string_guards(field_bindings: List<Node>, path_prefix: 
     let fb_pat = field_binding_pattern(n: fb)
     if is_string_lit_pattern(p: fb_pat) {
       if fb_name == "0" {
-        let bind_name = positional_payload_binding_name(path: list_push(path_prefix, "0"))
+        let bind_name = pattern_string_binding_name(path: list_push(path_prefix, "0"))
         match positional_payload_string_guard(fb_pat: fb_pat, bind_name: bind_name) {
           "" => []
           guard => [guard]
         }
       } else {
-        match fb_pat {
-          LitPattern { value: LitStr { value: s } } =>
-            [concat(emit_ident(name: fb_name, target: Rust), " == ", emit_string_literal(s: s, suffix: ""))]
-          _ => []
+        let bind_name = pattern_string_binding_name(path: list_push(path_prefix, fb_name))
+        match positional_payload_string_guard(fb_pat: fb_pat, bind_name: bind_name) {
+          "" => []
+          guard => [guard]
         }
       }
     } else {
@@ -2301,7 +2300,7 @@ fn collect_pattern_string_guards(pattern: MatchPattern, path_prefix: List<String
               let fb_pat = field_binding_pattern(n: fb)
               let pos_path = list_push(list_push(path_prefix, n), "0")
               if is_string_lit_pattern(p: fb_pat) {
-                positional_payload_string_guard(fb_pat: fb_pat, bind_name: positional_payload_binding_name(path: pos_path))
+                positional_payload_string_guard(fb_pat: fb_pat, bind_name: pattern_string_binding_name(path: pos_path))
               } else {
                 collect_pattern_string_guards(pattern: fb_pat, path_prefix: pos_path, source_indices: source_indices)
               }
@@ -2424,7 +2423,7 @@ fn emit_variant_pattern(name: String, parent_enum: String?, field_bindings: List
         if field_binding_name_at(n: fb, source_indices: source_indices) == "0" {
           let fb_pat = field_binding_pattern(n: fb)
           let pos_path = list_push(list_push(path_prefix, name), "0")
-          let bind_name = positional_payload_binding_name(path: pos_path)
+          let bind_name = pattern_string_binding_name(path: pos_path)
           if is_string_lit_pattern(p: fb_pat) {
             concat(qualified, "(ref ", bind_name, ")")
           } else {
@@ -2436,7 +2435,8 @@ fn emit_variant_pattern(name: String, parent_enum: String?, field_bindings: List
           let fb_name = field_binding_name_at(n: fb, source_indices: source_indices)
           let fb_pat = field_binding_pattern(n: fb)
           if is_string_lit_pattern(p: fb_pat) {
-            concat(qualified, " { ref ", emit_ident(name: fb_name, target: Rust), ", .. }")
+            let bind_name = pattern_string_binding_name(path: list_push(list_push(path_prefix, name), fb_name))
+            concat(qualified, " { ref ", bind_name, ", .. }")
           } else {
             let pat_str = emit_pattern(pattern: fb_pat, path_prefix: list_push(list_push(path_prefix, name), fb_name), shared_types: shared_types, scrut_type: "", source_indices: source_indices, emit_info: emit_info)
             concat(qualified, " { ", concat(emit_ident(name: fb_name, target: Rust), ": ", pat_str), ", .. }")
@@ -2478,12 +2478,13 @@ fn emit_variant_pattern(name: String, parent_enum: String?, field_bindings: List
         let fb_name = field_binding_name_at(n: fb, source_indices: source_indices)
         let fb_pat = field_binding_pattern(n: fb)
         if is_string_lit_pattern(p: fb_pat) {
-          if fb_name == "0" {
-            let bind_name = positional_payload_binding_name(path: list_push(list_push(path_prefix, name), "0"))
-            concat("ref ", bind_name)
+          let field_path = if fb_name == "0" {
+            list_push(list_push(path_prefix, name), "0")
           } else {
-            concat("ref ", emit_ident(name: fb_name, target: Rust))
+            list_push(list_push(path_prefix, name), fb_name)
           }
+          let bind_name = pattern_string_binding_name(path: field_path)
+          concat("ref ", bind_name)
         } else {
             let is_shorthand = match fb_pat { Bind { name: n } => n == fb_name  _ => false }
             if is_shorthand { emit_ident(name: fb_name, target: Rust) }
@@ -2647,7 +2648,7 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
         if field_binding_name_at(n: fb, source_indices: source_indices) == "0" {
           let fb_pat = field_binding_pattern(n: fb)
           let pos_path = list_push(list_push(path_prefix, name), "0")
-          let bind_name = positional_payload_binding_name(path: pos_path)
+          let bind_name = pattern_string_binding_name(path: pos_path)
           if is_string_lit_pattern(p: fb_pat) {
             concat(qualified, "(ref ", bind_name, ")")
           } else {
@@ -2706,7 +2707,7 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
         let fb_pat = field_binding_pattern(n: fb)
         if is_string_lit_pattern(p: fb_pat) {
           if fb_name == "0" {
-            let bind_name = positional_payload_binding_name(path: list_push(list_push(path_prefix, name), "0"))
+            let bind_name = pattern_string_binding_name(path: list_push(list_push(path_prefix, name), "0"))
             concat("ref ", bind_name)
           } else {
             concat("ref ", emit_ident(name: fb_name, target: Rust))
