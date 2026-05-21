@@ -1,29 +1,17 @@
 // src/v4/test/claim/lens_cost/nested_product.dag
 // Scope: T-12 worked claim — nested cardinalities compose by iterative product.
-// Owns: nested_product_claim.
-// Consumes: lens cost, std diagnostic, std node.
+// Owns: claim_nested_product.
+// Consumes: lens cost, std node, std verification.
 // Status: scaffold — compile-only until T-19/T-22 generated claim execution.
 
 module v4.test.claim.lens_cost.nested_product
 
-import v4.lens.cost {
-  LinearCost,
-  ProductCost,
-  SizeVariable,
-  SymbolicCost,
-  cost_lens
-}
-import v4.std.diagnostic {
-  AmbiguousIntent,
-  Diagnostic,
-  Textual,
-  Unavailable,
-  WholeFile
-}
+import v4.lens.cost { LinearCost, ProductCost, SizeVariable, cost_lens }
 import v4.std.logic { Bool }
 import v4.std.node {
   Cardinality,
   ComputationNode,
+  Conj,
   Edge,
   Node,
   Positional,
@@ -31,16 +19,15 @@ import v4.std.node {
   Transform,
   TypeNode
 }
-import v4.std.witness { Holds, Witness }
-
-data nested_product_claim_file: Symbol = nested_product_claim_file
-data nested_product_claim_reason: Symbol = nested_product_claim_reason
-
-type LensCostClaim {
-  input: Node
-  expected: SymbolicCost
-  falsification: Diagnostic
+import v4.std.verification {
+  EqualsClaim,
+  TestClaim,
+  TestClassification,
+  T19ManualAnchorAbsent,
+  Tier1,
+  Unit
 }
+import v4.std.witness { Holds }
 
 data nested_product_body: Node = Node {
   kind: ComputationNode { behavior: Transform },
@@ -61,24 +48,32 @@ data nested_product_input: Node = Node {
   ]
 }
 
-data nested_product_claim: LensCostClaim = LensCostClaim {
-  input: nested_product_input,
-  expected: ProductCost {
-    lhs: LinearCost { variable: SizeVariable { source: nested_product_input } },
-    rhs: LinearCost { variable: SizeVariable { source: nested_product_inner } }
-  },
-  falsification: Diagnostic {
-    reason: nested_product_claim_reason,
-    at: Textual { file: nested_product_claim_file, extent: WholeFile },
-    correction: Unavailable { reason: AmbiguousIntent }
-  }
-}
-
 fn nested_product_claim_holds() -> Bool {
-  match cost_lens(n: nested_product_claim.input) {
-    Holds { value: actual } => actual == nested_product_claim.expected
+  match cost_lens(n: nested_product_input) {
+    Holds { value: actual } =>
+      actual == ProductCost {
+        lhs: LinearCost { variable: SizeVariable { source: nested_product_input } },
+        rhs: LinearCost { variable: SizeVariable { source: nested_product_inner } }
+      }
     _ => false
   }
 }
 
-data nested_product_claim_passes: Bool = nested_product_claim_holds()
+fn nested_product_claim_rhs() -> Node {
+  if nested_product_claim_holds() {
+    nested_product_input
+  } else {
+    Node {
+      kind: TypeNode { connective: Conj },
+      children: []
+    }
+  }
+}
+
+data claim_nested_product: TestClaim = EqualsClaim {
+  label: "lens_cost/nested_product: nested cardinality composes as product cost",
+  t19_anchor: T19ManualAnchorAbsent,
+  lhs: nested_product_input,
+  rhs: nested_product_claim_rhs(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}

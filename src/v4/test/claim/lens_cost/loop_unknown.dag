@@ -1,52 +1,51 @@
 // src/v4/test/claim/lens_cost/loop_unknown.dag
-// Scope: T-12 worked claim — non-structural loop bounds surface unknown symbolic cost.
-// Owns: loop_unknown_claim.
-// Consumes: lens cost, std diagnostic, std node.
+// Scope: T-12 worked claim — non-structural loop bounds fail closed on cost_lens.
+// Owns: claim_loop_unknown.
+// Consumes: lens cost, std node, std verification.
 // Status: scaffold — compile-only until T-19/T-22 generated claim execution.
 
 module v4.test.claim.lens_cost.loop_unknown
 
-import v4.lens.cost { SymbolicCost, UnknownCost, cost_lens }
-import v4.std.diagnostic {
-  AmbiguousIntent,
-  Diagnostic,
-  Textual,
-  Unavailable,
-  WholeFile
-}
+import v4.lens.cost { cost_lens }
 import v4.std.logic { Bool }
-import v4.std.node { ComputationNode, Loop, Node, Symbol }
-import v4.std.witness { Violates, Witness }
-
-data loop_unknown_claim_file: Symbol = loop_unknown_claim_file
-data loop_unknown_claim_reason: Symbol = loop_unknown_claim_reason
-
-type LensCostClaim {
-  input: Node
-  expected: SymbolicCost
-  falsification: Diagnostic
+import v4.std.node { ComputationNode, Conj, Loop, Node, TypeNode }
+import v4.std.verification {
+  EqualsClaim,
+  TestClaim,
+  TestClassification,
+  T19ManualAnchorAbsent,
+  Tier1,
+  Unit
 }
+import v4.std.witness { Violates }
 
 data loop_unknown_input: Node = Node {
   kind: ComputationNode { behavior: Loop },
   children: []
 }
 
-data loop_unknown_claim: LensCostClaim = LensCostClaim {
-  input: loop_unknown_input,
-  expected: UnknownCost { reason: "T-9-not-landed: loop bound" },
-  falsification: Diagnostic {
-    reason: loop_unknown_claim_reason,
-    at: Textual { file: loop_unknown_claim_file, extent: WholeFile },
-    correction: Unavailable { reason: AmbiguousIntent }
-  }
-}
-
 fn loop_unknown_claim_holds() -> Bool {
-  match cost_lens(n: loop_unknown_claim.input) {
+  match cost_lens(n: loop_unknown_input) {
     Violates { diagnostic: _ } => true
     _ => false
   }
 }
 
-data loop_unknown_claim_passes: Bool = loop_unknown_claim_holds()
+fn loop_unknown_claim_rhs() -> Node {
+  if loop_unknown_claim_holds() {
+    loop_unknown_input
+  } else {
+    Node {
+      kind: TypeNode { connective: Conj },
+      children: []
+    }
+  }
+}
+
+data claim_loop_unknown: TestClaim = EqualsClaim {
+  label: "lens_cost/loop_unknown: loop without bound fails closed",
+  t19_anchor: T19ManualAnchorAbsent,
+  lhs: loop_unknown_input,
+  rhs: loop_unknown_claim_rhs(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
