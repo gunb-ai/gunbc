@@ -11,6 +11,7 @@ module v4.std.coercion
 
 
 import v4.std.collection { List }
+import v4.std.canonical_grounding { canonical_nodes_identical }
 import v4.std.constraints { CanonicalGrounding, CanonicalGroundingWitness }
 import v4.std.diagnostic {
   Accepted,
@@ -156,6 +157,13 @@ fn coercion_homomorphism_evidence(
     ]
   }
 }
+fn coercion_quality_for_exact_structural_match(source: Node, target: Node) -> CoercionQuality {
+  if canonical_nodes_identical(left: source, right: target) {
+    Identity
+  } else {
+    Exact
+  }
+}
 fn coercion_fold(
   source: CanonicalGrounding,
   candidates: CoercionCandidateSet,
@@ -174,8 +182,7 @@ fn coercion_fold(
       Accepted {
         value: CoercionResult {
           target: fw.candidate,
-          // 🟡 coproduct dissolution — scaffold:coercion-quality-identity-mvp · dissolve-on: zip-fold predicate distinguishes Exact vs Identity.
-          quality: Identity,
+          quality: coercion_quality_for_exact_structural_match(source: source.node, target: fw.candidate),
           witness: CoercionWitness {
             homomorphism: HomomorphismWitness {
               rule: homomorphism_rule_exact_structural_equality,

@@ -1,0 +1,197 @@
+// src/v4/std/canonical_grounding.dag
+// Scope: W-T-10 canonical Node grounding + edge-wise zip-fold predicate algebra.
+// Anchor: TASKS.md T-9 coercion fold; docs/modeling/grounding-worked-examples.md §0.
+// Owns: CanonicalNodeGrounding, NodeZipFoldResult, canonical_node_zip_fold_result, canonical_nodes_coincide.
+// Consumes: std node, std collection.
+// Status: W-T-10 modeled; leaf coincidence is fail-closed on declared Atom identity.
+
+module v4.std.canonical_grounding
+
+import v4.std.collection { List }
+import v4.std.node {
+  Atom,
+  Behavior,
+  Cardinality,
+  ComputationNode,
+  Conj,
+  Connective,
+  Disj,
+  Edge,
+  EdgeLabel,
+  Hash,
+  Instantiation,
+  Named,
+  NoEdges,
+  Node,
+  NodeKind,
+  Positional,
+  PositionalEdges,
+  Symbol,
+  TypeNode,
+  LabeledEdges,
+  behavior_edges_conform,
+  connective_edge_discipline,
+  well_formed
+}
+
+type CanonicalNodeGrounding {
+  canonical: Node
+  content_hash: Hash
+}
+
+// 🟢 W-T-10 predicate algebra. `Exact` is canonical coincidence without raw Node equality.
+type NodeZipFoldResult
+  = ZipFoldIdentity
+  | ZipFoldExact
+  | ZipFoldMismatch
+
+fn zip_fold_result_accepts(r: NodeZipFoldResult) -> Bool {
+  match r {
+    ZipFoldIdentity => true
+    ZipFoldExact => true
+    ZipFoldMismatch => false
+  }
+}
+
+fn zip_fold_result_combine(a: NodeZipFoldResult, b: NodeZipFoldResult) -> NodeZipFoldResult {
+  match a {
+    ZipFoldMismatch => ZipFoldMismatch
+    ZipFoldExact => match b {
+      ZipFoldMismatch => ZipFoldMismatch
+      _ => ZipFoldExact
+    }
+    ZipFoldIdentity => b
+  }
+}
+
+fn node_zip_fold_identity_or_exact(
+  left: Node,
+  right: Node,
+  child_result: NodeZipFoldResult,
+) -> NodeZipFoldResult {
+  match child_result {
+    ZipFoldMismatch => ZipFoldMismatch
+    ZipFoldExact => ZipFoldExact
+    ZipFoldIdentity =>
+      if left == right { ZipFoldIdentity } else { ZipFoldExact }
+  }
+}
+
+fn named_child_target(name: Symbol, children: List<Edge>) -> Node? {
+  match children {
+    Empty => None
+    Cons { head: e, tail: rest } =>
+      match e.label {
+        Named { name: n } =>
+          if n == name {
+            Some { value: e.target }
+          } else {
+            named_child_target(name: name, children: rest)
+          }
+        Positional => named_child_target(name: name, children: rest)
+      }
+  }
+}
+
+fn canonical_named_edges_zip_fold(left: List<Edge>, right: List<Edge>) -> NodeZipFoldResult {
+  if count(left) != count(right) {
+    ZipFoldMismatch
+  } else {
+    fold(left, init: ZipFoldIdentity, f: fn(acc, e) {
+      match acc {
+        ZipFoldMismatch => ZipFoldMismatch
+        _ => match e.label {
+          Named { name: n } => match named_child_target(name: n, children: right) {
+            Some { value: target } =>
+              zip_fold_result_combine(
+                a: acc,
+                b: canonical_node_zip_fold_result(left: e.target, right: target)
+              )
+            None => ZipFoldMismatch
+          }
+          Positional => ZipFoldMismatch
+        }
+      }
+    })
+  }
+}
+
+fn canonical_positional_edges_zip_fold(left: List<Edge>, right: List<Edge>) -> NodeZipFoldResult {
+  match left {
+    Empty => match right {
+      Empty => ZipFoldIdentity
+      Cons { head: _, tail: _ } => ZipFoldMismatch
+    }
+    Cons { head: le, tail: lt } => match right {
+      Empty => ZipFoldMismatch
+      Cons { head: re, tail: rt } =>
+        zip_fold_result_combine(
+          a: canonical_node_zip_fold_result(left: le.target, right: re.target),
+          b: canonical_positional_edges_zip_fold(left: lt, right: rt)
+        )
+    }
+  }
+}
+
+fn canonical_type_node_zip_fold(
+  left: Node,
+  right: Node,
+  connective: Connective,
+) -> NodeZipFoldResult {
+  match connective_edge_discipline(c: connective) {
+    NoEdges =>
+      node_zip_fold_identity_or_exact(left: left, right: right, child_result: ZipFoldIdentity)
+    LabeledEdges =>
+      node_zip_fold_identity_or_exact(
+        left: left,
+        right: right,
+        child_result: canonical_named_edges_zip_fold(left: left.children, right: right.children)
+      )
+    PositionalEdges =>
+      node_zip_fold_identity_or_exact(
+        left: left,
+        right: right,
+        child_result: canonical_positional_edges_zip_fold(left: left.children, right: right.children)
+      )
+  }
+}
+
+fn canonical_computation_node_zip_fold(
+  left: Node,
+  right: Node,
+  behavior: Behavior,
+) -> NodeZipFoldResult {
+  if behavior_edges_conform(children: left.children, b: behavior) {
+    node_zip_fold_identity_or_exact(
+      left: left,
+      right: right,
+      child_result: canonical_positional_edges_zip_fold(left: left.children, right: right.children)
+    )
+  } else {
+    ZipFoldMismatch
+  }
+}
+
+fn canonical_node_zip_fold_result(left: Node, right: Node) -> NodeZipFoldResult {
+  if !well_formed(n: left) || !well_formed(n: right) || (left.kind != right.kind) {
+    ZipFoldMismatch
+  } else {
+    match left.kind {
+      TypeNode { connective: c } =>
+        canonical_type_node_zip_fold(left: left, right: right, connective: c)
+      ComputationNode { behavior: b } =>
+        canonical_computation_node_zip_fold(left: left, right: right, behavior: b)
+    }
+  }
+}
+
+fn canonical_nodes_coincide(left: Node, right: Node) -> Bool {
+  zip_fold_result_accepts(r: canonical_node_zip_fold_result(left: left, right: right))
+}
+
+fn canonical_nodes_identical(left: Node, right: Node) -> Bool {
+  match canonical_node_zip_fold_result(left: left, right: right) {
+    ZipFoldIdentity => true
+    _ => false
+  }
+}

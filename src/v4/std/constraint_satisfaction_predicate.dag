@@ -10,7 +10,7 @@ module v4.std.constraint_satisfaction_predicate
 
 
 import v4.std.node { Node, well_formed }
-// 🟡 coproduct dissolution — scaffold:identity-mvp-preservation · dissolve-on: each rule's real predicate semantics land — constraint_satisfaction via T-9/T-25-tail; exact_structural_equality_zip_fold via W-T-10 zip-fold predicate algebra.
+// 🟡 coproduct dissolution — scaffold:identity-mvp-preservation · dissolve-on: constraint_satisfaction real predicate semantics land via T-9/T-25-tail.
 fn identity_mvp_preservation_holds(
   source_facts: Node,
   candidate: Node,

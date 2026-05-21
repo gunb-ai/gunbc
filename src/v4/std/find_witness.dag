@@ -11,6 +11,7 @@ module v4.std.find_witness
 
 
 import v4.std.collection { List }
+import v4.std.canonical_grounding { canonical_nodes_coincide }
 import v4.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -23,8 +24,7 @@ import v4.std.diagnostic {
   outcome_rejected
 }
 import v4.std.constraint_satisfaction_predicate {
-  constraint_satisfaction_preservation_holds,
-  identity_mvp_preservation_holds
+  constraint_satisfaction_preservation_holds
 }
 import v4.std.node { Node, Symbol, well_formed }
 import v4.std.witness { StructuralPropertyWitness }
@@ -97,7 +97,15 @@ fn enumeration_candidate_list(
 ) -> List<Node> {
   candidates.candidates
 }
-// Identity-MVP branches: identity_mvp_preservation_holds (scaffold:identity-mvp-preservation in constraint_satisfaction_predicate.dag).
+fn exact_structural_equality_zip_fold_preservation_holds(
+  source_facts: Node,
+  candidate: Node,
+  algebra: Node,
+) -> Bool {
+  well_formed(n: algebra)
+    && canonical_nodes_coincide(left: algebra, right: source_facts)
+    && canonical_nodes_coincide(left: source_facts, right: candidate)
+}
 fn preservation_predicate_holds(
   source_facts: Node,
   candidate: Node,
@@ -111,7 +119,7 @@ fn preservation_predicate_holds(
         algebra: predicate.algebra
       )
     preservation_rule_exact_structural_equality_zip_fold =>
-      identity_mvp_preservation_holds(
+      exact_structural_equality_zip_fold_preservation_holds(
         source_facts: source_facts,
         candidate: candidate,
         algebra: predicate.algebra
