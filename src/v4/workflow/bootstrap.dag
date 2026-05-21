@@ -1,19 +1,18 @@
 // src/v4/workflow/bootstrap.dag
 // Scope: v4-owned bootstrap orchestration AS DATA — four stages (seed→stage0→stage1→stage2, fixpt stage1==stage2). compiled_by = stage compiler-of-record: seed←v2 (seed used once), self0←stage0, self1←stage1; v2 is never in the loop again (STRUCTURE.md "Seed used once" :404-405, SELF_HOSTING.md §meta-circular). The fixed-point binary is content-addressed by the pinned stage1/stage2 hash. Hash pin Symbols are placeholder identities unified by bootstrap_plan_well_formed.
-// Owns: CompileStage, FixptStage1Stage2, BootstrapPlan, BootstrapRunner, FixedPointVerificationProtocol, bootstrap_stage_output, bootstrap_plan_well_formed, fixed_point_verification_protocol_well_formed, bootstrap_plan, t15_fixed_point_protocol
+// Owns: CompileStage, FixptStage1Stage2, BootstrapPlan, bootstrap_stage_output, bootstrap_plan_well_formed, bootstrap_plan
 // Consumes: v4.std.node, v4.std.diagnostic, v4.std.algebra
-// Status: filled — compiler-of-record is the self-hosting structural fact; T-15 runner/protocol surface is non-executing until T-22/T-34.
+// Status: filled — compiler-of-record is the self-hosting structural fact; structural gate only.
 
 module v4.workflow.bootstrap
 
-import v4.std.node { Atom, Hash, Node, Symbol, TypeNode }
+import v4.std.node { Hash, Symbol }
 import v4.std.algebra {
   count_equal,
   for_all,
   length
 }
 import v4.std.diagnostic {Correction, Diagnostic, Extent, Locus, NoCorrectionReason, Outcome, Accepted, None, diagnostics_singleton}
-import v4.std.witness { PromotionWitness, StructuralPropertyWitness }
 
 data v4_dag_source: Symbol = v4_dag_source
 data v4_stage0_binary: Symbol = v4_stage0_binary
@@ -25,11 +24,6 @@ data v4_stage0_hash_pin: Symbol = v4_stage0_hash_pin
 data v4_stage1_hash_pin: Symbol = v4_stage1_hash_pin
 data v4_stage2_hash_pin: Symbol = v4_stage2_hash_pin
 data pinned_v4_fixed_point_hash_pin: Symbol = pinned_v4_fixed_point_hash_pin
-data v4_fixed_point_runner: Symbol = v4_fixed_point_runner
-data t22_eval_runner_gate: Symbol = t22_eval_runner_gate
-data t34_host_model_gate: Symbol = t34_host_model_gate
-data bootstrap_chain_property: Symbol = bootstrap_chain_property
-data fixed_point_property: Symbol = fixed_point_property
 // RULING-1: 🟡 needs-more-work — symbolic hash pins.
 data v4_stage0_hash: Hash = v4_stage0_hash
 data v4_stage1_hash: Hash = v4_stage1_hash
@@ -67,20 +61,6 @@ type BootstrapPlan {
   fixpt: FixptStage1Stage2
 }
 
-// RULING-1: 🟡 needs-more-work — runner identity only; execution waits on T-22 eval + T-34 HostModel.
-type BootstrapRunner {
-  id: Symbol
-  eval_gate: Symbol
-  host_model_gate: Symbol
-}
-
-// RULING-1: 🟡 needs-more-work — T-15 protocol shape; no host execution in this file.
-type FixedPointVerificationProtocol {
-  runner: BootstrapRunner
-  plan: Outcome<BootstrapPlan>
-  promotion: PromotionWitness
-}
-
 data bootstrap_mis_wired: Symbol = bootstrap_mis_wired
 data bootstrap_workflow_file: Symbol = bootstrap_workflow_file
 
@@ -90,10 +70,6 @@ fn bs_diagnostic(reason: Symbol) -> Diagnostic {
     at: Textual { file: bootstrap_workflow_file, extent: WholeFile },
     correction: Unavailable { reason: AmbiguousIntent }
   }
-}
-
-fn bs_atom_node(s: Symbol) -> Node {
-  Node { kind: TypeNode { connective: Atom { identity: s } }, children: [] }
 }
 
 fn bs_list_eq(a: List<Symbol>, b: List<Symbol>) -> Bool {
@@ -141,34 +117,6 @@ fn bootstrap_plan_well_formed(p: BootstrapPlan) -> Outcome<BootstrapPlan> {
   }
 }
 
-fn t15_promotion_witness() -> PromotionWitness {
-  PromotionWitness {
-    bootstrap: StructuralPropertyWitness {
-      property: bootstrap_chain_property,
-      evidence: bs_atom_node(s: bootstrap_chain_property)
-    },
-    fixed_point: StructuralPropertyWitness {
-      property: fixed_point_property,
-      evidence: bs_atom_node(s: fixed_point_property)
-    }
-  }
-}
-
-fn fixed_point_verification_protocol_well_formed(p: FixedPointVerificationProtocol) -> Outcome<FixedPointVerificationProtocol> {
-  if (p.runner.id == v4_fixed_point_runner)
-       && (p.runner.eval_gate == t22_eval_runner_gate)
-       && (p.runner.host_model_gate == t34_host_model_gate)
-       && (p.promotion.bootstrap.property == bootstrap_chain_property)
-       && (p.promotion.fixed_point.property == fixed_point_property) {
-    match p.plan {
-      Accepted { value: _, diagnostics: _ } => Accepted { value: p, diagnostics: None }
-      Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
-    }
-  } else {
-    Rejected { diagnostics: diagnostics_singleton(d: bs_diagnostic(reason: bootstrap_mis_wired)) }
-  }
-}
-
 data bootstrap_plan: Outcome<BootstrapPlan> = bootstrap_plan_well_formed(p: BootstrapPlan {
   seed: CompileStage {
     consumes: [v4_dag_source],
@@ -196,14 +144,4 @@ data bootstrap_plan: Outcome<BootstrapPlan> = bootstrap_plan_well_formed(p: Boot
     pinned_hash: BootstrapHashPin { digest: pinned_v4_fixed_point_hash, pin: pinned_v4_fixed_point_hash_pin },
     via: bit_identical_check
   }
-})
-
-data t15_fixed_point_protocol: Outcome<FixedPointVerificationProtocol> = fixed_point_verification_protocol_well_formed(p: FixedPointVerificationProtocol {
-  runner: BootstrapRunner {
-    id: v4_fixed_point_runner,
-    eval_gate: t22_eval_runner_gate,
-    host_model_gate: t34_host_model_gate
-  },
-  plan: bootstrap_plan,
-  promotion: t15_promotion_witness()
 })

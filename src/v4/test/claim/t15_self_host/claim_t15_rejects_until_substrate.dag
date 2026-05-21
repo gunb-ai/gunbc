@@ -7,6 +7,7 @@
 module v4.test.claim.t15_self_host.claim_t15_rejects_until_substrate
 
 import v4.compiler.t15_self_host {
+  PromotionWitness,
   SourceModels,
   self_host_fixed_point_validate,
   t15_runner_not_realized,
@@ -26,7 +27,6 @@ import v4.std.verification {
   Tier1,
   Integration
 }
-import v4.std.witness { PromotionWitness }
 
 
 data t15_rejects_until_substrate_subject_symbol: Symbol = t15_rejects_until_substrate_subject_symbol

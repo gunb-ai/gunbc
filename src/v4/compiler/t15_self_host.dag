@@ -22,8 +22,6 @@ import v4.std.diagnostic {
 }
 import v4.std.node { Node, Symbol }
 import v4.std.witness {
-  Holds,
-  PromotionWitness,
   StructuralPropertyWitness,
   Witness
 }
@@ -48,6 +46,12 @@ type StageEmissionEquality
 // 🟡 coproduct dissolution — scaffold:t15-stage-emission-equality
   = StructuralEqual { witness: Witness<StructurallyEqual> }
   | Diverged { divergence_locus: Locus, diagnostic: Diagnostic }
+
+
+type PromotionWitness {
+  candidate_bootstrap_roundtrip_sub_check: StructuralPropertyWitness
+  candidate_fixed_point_sub_check: StructuralPropertyWitness
+}
 
 
 data t15_runner_not_realized: Symbol = t15_runner_not_realized
@@ -92,11 +96,11 @@ fn candidate_promotion_witness(
   reference_stage1: CoreNode
 ) -> PromotionWitness {
   PromotionWitness {
-    bootstrap: candidate_bootstrap_roundtrip_witness(
+    candidate_bootstrap_roundtrip_sub_check: candidate_bootstrap_roundtrip_witness(
       stage1_candidate: stage1_candidate,
       reference_stage1: reference_stage1
     ),
-    fixed_point: candidate_fixed_point_witness(
+    candidate_fixed_point_sub_check: candidate_fixed_point_witness(
       stage1_candidate: stage1_candidate,
       reference_stage1: reference_stage1
     )
