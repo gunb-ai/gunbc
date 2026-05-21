@@ -18,7 +18,8 @@ import v4.std.constraints {
 import v4.std.diagnostic {
   Accepted,
   None,
-  Outcome
+  Outcome,
+  Rejected
 }
 import v4.std.find_witness { preservation_rule_constraint_satisfaction }
 import v4.std.node { Atom, Node, Symbol, TypeNode }
