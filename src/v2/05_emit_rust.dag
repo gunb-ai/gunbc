@@ -29,6 +29,7 @@ import v2.std.core {
   ExprStringInterp, ExprBlock, ExprCast, ExprForEach,
   ExprIndex, ExprSlice, ExprReturn,
   make_expr_node,
+  field_node_type_expr,
   FieldSummary,
   StoredField, EnumAccessor, OptionalUnwrap, TupleFirst, TupleSecond, OptionalValue,
   VarBindingKind, LocalValueBinding, FunctionValueBinding, VariantValueBinding, MatchBoundBinding,
@@ -4171,7 +4172,7 @@ fn lookup_struct_field_type_name(struct_node: Node, field_name: String, variant_
 
 fn lookup_struct_field_type_node(struct_node: Node, field_name: String, source_indices: Map<String, NewlineIndex>) -> Node? {
   match find_child_named(n: struct_node, name: field_name, source_indices: source_indices) {
-    Some { value: field_child } => Some { value: child_type_node(ch: field_child) }
+    Some { value: field_child } => Some { value: child_type_node(ch: field_node_type_expr(n: field_child)) }
     None => none
   }
 }
