@@ -10,7 +10,7 @@ import v4.compiler.t15_self_host {
   SourceModels,
   self_host_fixed_point_validate
 }
-import v4.std.diagnostic { Accepted, None }
+import v4.std.diagnostic { Accepted, None, Outcome }
 import v4.std.node { Atom, Node, Symbol, TypeNode }
 import v4.std.verification {
   Compiles,
@@ -20,6 +20,7 @@ import v4.std.verification {
   Tier1,
   Integration
 }
+import v4.std.witness { PromotionWitness }
 
 
 data t15_runner_compiles_subject_symbol: Symbol = t15_runner_compiles_subject_symbol
@@ -35,8 +36,7 @@ data t15_runner_empty_source_models: SourceModels = SourceModels {
   model_corpus: []
 }
 
-
-data t15_runner_shape_result = self_host_fixed_point_validate(
+data t15_runner_shape_result: Outcome<PromotionWitness> = self_host_fixed_point_validate(
   stage1_candidate: t15_runner_compiles_subject,
   source_models: t15_runner_empty_source_models,
   reference_stage1: t15_runner_compiles_subject
