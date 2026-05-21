@@ -4152,14 +4152,14 @@ fn rust_field_value_for_struct(raw_value: String, struct_node: Node, field_name:
   match lookup_struct_field_type_node(struct_node: struct_node, field_name: field_name, source_indices: scope.type_env.source_indices) {
     Some { value: field_type } =>
       if field_type.connective == Arrow {
-        apply_type_template1(template: "Rc::new({0})", arg0: raw_value)
+        concat(concat(concat("Rc", "::"), "new("), concat(raw_value, ")"))
       } else {
         let field_is_type_var = match field_type.inferred {
           Some { value: inf } => is_type_variable(inferred: inf)
           None => false
         }
         if field_is_type_var {
-          apply_type_template1(template: "Box::new({0})", arg0: raw_value)
+          concat(concat(concat("Box", "::"), "new("), concat(raw_value, ")"))
         } else { raw_value }
       }
     None => raw_value
