@@ -36,31 +36,30 @@ import v4.std.node {
 import v4.std.logic { Bool, bool_boolean_algebra }
 import v4.std.algebra { BooleanAlgebra, free_monoid_fold }
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 // WebAssembly integer value types are sign-agnostic at the type layer (Core §2.3.1.1).
-type WasmIntegerKind
-  = SignAgnosticModular
+type WasmSignAgnosticKind
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type WasmIntWidth
-  = Bits32
-  | Bits64
+  = WasmIntBits32
+  | WasmIntBits64
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type WasmFloatWidth
-  = Bits32
-  | Bits64
+  = WasmFloatBits32
+  | WasmFloatBits64
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type WasmModularWrap
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type WasmScalar
-  = IntScalar { kind: WasmIntegerKind, width: WasmIntWidth }
+  = IntScalar { kind: WasmSignAgnosticKind, width: WasmIntWidth }
   | FloatScalar { width: WasmFloatWidth }
 
 type WasmIntegerPrimitiveFacts {
   surface_spelling: Symbol
-  kind: WasmIntegerKind
   width: WasmIntWidth
-  overflow_release: WasmModularWrap
   std_projection: Symbol
 }
 
@@ -70,9 +69,6 @@ type WasmFloatPrimitiveFacts {
   ieee754_binary: Symbol
   std_projection: Symbol
 }
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
-type WasmModularWrap
 
 type WasmLanguageModel {
   lex: LexRules
@@ -133,30 +129,26 @@ data wasm_inhabitant_field_facts: Symbol = wasm_inhabitant_field_facts
 
 data wasm_facts_i32: WasmIntegerPrimitiveFacts = WasmIntegerPrimitiveFacts {
   surface_spelling: wasm_surface_spelling_i32,
-  kind: SignAgnosticModular,
-  width: Bits32,
-  overflow_release: WasmModularWrap,
+  width: WasmIntBits32,
   std_projection: wasm_std_projection_i32,
 }
 
 data wasm_facts_i64: WasmIntegerPrimitiveFacts = WasmIntegerPrimitiveFacts {
   surface_spelling: wasm_surface_spelling_i64,
-  kind: SignAgnosticModular,
-  width: Bits64,
-  overflow_release: WasmModularWrap,
+  width: WasmIntBits64,
   std_projection: wasm_std_projection_i64,
 }
 
 data wasm_facts_f32: WasmFloatPrimitiveFacts = WasmFloatPrimitiveFacts {
   surface_spelling: wasm_surface_spelling_f32,
-  width: Bits32,
+  width: WasmFloatBits32,
   ieee754_binary: wasm_ieee754_binary32,
   std_projection: wasm_std_projection_f32,
 }
 
 data wasm_facts_f64: WasmFloatPrimitiveFacts = WasmFloatPrimitiveFacts {
   surface_spelling: wasm_surface_spelling_f64,
-  width: Bits64,
+  width: WasmFloatBits64,
   ieee754_binary: wasm_ieee754_binary64,
   std_projection: wasm_std_projection_f64,
 }
@@ -178,23 +170,21 @@ fn wasm_inhabitant_atom(id: Symbol) -> Node {
   }
 }
 
-fn wasm_int_kind_node(kind: WasmIntegerKind) -> Node {
-  match kind {
-    SignAgnosticModular => wasm_inhabitant_atom(id: wasm_tag_sign_agnostic_modular)
-  }
+fn wasm_int_kind_node(kind: WasmSignAgnosticKind) -> Node {
+  wasm_inhabitant_atom(id: wasm_tag_sign_agnostic_modular)
 }
 
 fn wasm_int_width_node(width: WasmIntWidth) -> Node {
   match width {
-    Bits32 => wasm_inhabitant_atom(id: wasm_tag_bits32)
-    Bits64 => wasm_inhabitant_atom(id: wasm_tag_bits64)
+    WasmIntBits32 => wasm_inhabitant_atom(id: wasm_tag_bits32)
+    WasmIntBits64 => wasm_inhabitant_atom(id: wasm_tag_bits64)
   }
 }
 
 fn wasm_float_width_node(width: WasmFloatWidth) -> Node {
   match width {
-    Bits32 => wasm_inhabitant_atom(id: wasm_tag_bits32)
-    Bits64 => wasm_inhabitant_atom(id: wasm_tag_bits64)
+    WasmFloatBits32 => wasm_inhabitant_atom(id: wasm_tag_bits32)
+    WasmFloatBits64 => wasm_inhabitant_atom(id: wasm_tag_bits64)
   }
 }
 
@@ -237,16 +227,8 @@ fn wasm_integer_facts_node(facts: WasmIntegerPrimitiveFacts) -> Node {
         target: wasm_inhabitant_atom(id: facts.surface_spelling)
       ),
       wasm_named_edge(
-        name: wasm_facts_field_kind,
-        target: wasm_int_kind_node(kind: facts.kind)
-      ),
-      wasm_named_edge(
         name: wasm_facts_field_width,
         target: wasm_int_width_node(width: facts.width)
-      ),
-      wasm_named_edge(
-        name: wasm_facts_field_overflow_release,
-        target: wasm_overflow_node(overflow: facts.overflow_release)
       ),
       wasm_named_edge(
         name: wasm_facts_field_std_projection,
@@ -255,7 +237,7 @@ fn wasm_integer_facts_node(facts: WasmIntegerPrimitiveFacts) -> Node {
       wasm_named_edge(
         name: wasm_facts_field_scalar_classifier,
         target: wasm_scalar_node(
-          scalar: IntScalar { kind: facts.kind, width: facts.width }
+          scalar: IntScalar { kind: WasmSignAgnosticKind, width: facts.width }
         )
       )
     ]
@@ -440,7 +422,11 @@ fn wasm_primitive_bundle_from_integer_facts(facts: WasmIntegerPrimitiveFacts) ->
       ),
       wasm_primitive_axis_binding(
         axis: primitive_fact_axis_signedness,
-        fact: wasm_int_kind_node(kind: facts.kind)
+        fact: wasm_int_kind_node(kind: WasmSignAgnosticKind)
+      ),
+      wasm_primitive_axis_binding(
+        axis: primitive_fact_axis_overflow_disposition,
+        fact: wasm_overflow_node(overflow: WasmModularWrap)
       ),
       wasm_primitive_axis_binding(
         axis: primitive_fact_axis_encoding,
