@@ -1890,8 +1890,18 @@ produces: Map<DeclId, StructuralShape>
 //   body_normalized: BodyShape,             // α-renamed body expression tree (parameter slots + bound
 //                                           //   names normalized by canonical position); compared structurally.
 //                                           //   REQUIRED for (C1) fn-scope; signature-only-match is NOT a fire.
-//   catamorphism_form: CatamorphismForm,    // None | StructuralFoldOver(TypeId)
+//   catamorphism_form: CatamorphismForm,    // None | StructuralFoldOver { type_id, algebra }
 //   token_set: Set<Token>,                  // identifier + variant/field names (C3 triage only)
+// }
+// CatamorphismForm = None | StructuralFoldOver { type_id: TypeId, algebra: AlgebraShape }
+// AlgebraShape = {
+//   per_variant: Map<VariantId, NormalizedArmBody>,
+//                                           // one entry per variant of type_id; NormalizedArmBody is the arm's
+//                                           // RHS expression tree after α-renaming pattern-bound names by canonical
+//                                           // position. Consumed by the (C2) auto-fix to emit the fold_T call
+//                                           // with the extracted algebra structurally — no re-walking of the fn body.
+//   recursive_positions: Set<VariantField>, // which variant fields recurse (drives fold_T's recursive-position
+//                                           // contract); empty when the fold is fully consuming.
 // }
 // SignatureShape comparison: bijection on parameter slots preserving
 // type identity (NOT names); output type by coproduct identity.
@@ -1901,7 +1911,14 @@ produces: Map<DeclId, StructuralShape>
 // fns sharing a `(T) -> U` shape is expected steady-state).
 // CatamorphismForm extraction: scan fn body for one-arm-per-T-variant
 // match with recursive calls only at T-variant positions; classify
-// `StructuralFoldOver(T)` if so, `None` otherwise.
+// `StructuralFoldOver { type_id: T, algebra: extracted-algebra }`
+// (carrying the per-variant arm bodies + recursive-position set as
+// substrate facts) if so; `None` otherwise. The algebra extraction
+// is the SAME fold-walk that classifies the form — extracted in
+// the same pass, emitted in the same record. Facts Flow Forward
+// (Practice 3 / P2): the (C2) auto-fix consumes the algebra
+// directly from this record; no consumer re-walks the fn body or
+// re-extracts the algebra.
 // Facts Flow Forward (Practice 3): the lens emits everything L1.12.b
 // needs for (C1) signature-match, (C2) catamorphism-equivalence, and
 // (C3) token-vocabulary triage. No consumer re-walks declarations or
