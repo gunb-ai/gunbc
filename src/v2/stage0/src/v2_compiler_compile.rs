@@ -1874,6 +1874,55 @@ pub fn serialize_param(
     )
 }
 
+pub fn is_import_node(n: &Rc<Node>) -> bool {
+    if import_is_all(n.clone()) {
+        true
+    } else {
+        if ((n.params.clone().len() as i64) > 0) {
+            false
+        } else {
+            match n.children.clone().first().cloned() {
+                None => true,
+                Some(first) => {
+                    ((first.expr_data.clone() == Rc::new(ExprData::NoExprData))
+                        && ((first.params.clone().len() as i64) == 0))
+                }
+            }
+        }
+    }
+}
+
+pub fn node_params_are_module_imports(n: Rc<Node>) -> bool {
+    {
+        let mut __all = true;
+        for p in n.params.clone().iter().cloned() {
+            if !(is_import_node(&p)) {
+                __all = false;
+                break;
+            }
+        }
+        __all
+    }
+}
+
+pub fn serialize_node_params_json(
+    node: &Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    key_to_id: Rc<HashMap<String, String>>,
+) -> String {
+    if node_params_are_module_imports(node.clone()) {
+        "[]".to_string()
+    } else {
+        json_list(Rc::new({
+            let mut __result = Vec::new();
+            for param in node.params.clone().iter().cloned() {
+                __result.push(serialize_param(&param, source_indices.clone(), &key_to_id));
+            }
+            __result
+        }))
+    }
+}
+
 pub fn serialize_module_imports_json(
     node: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -1917,7 +1966,7 @@ pub fn serialize_node_record(
     Connective::Disj => json_quote(connective_name(Connective::Disj)),
     Connective::NoConnective => "null".to_string(),
     Connective::Arrow => json_quote(connective_name(Connective::Arrow)),
-}), ", \"params\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for param in node.params.clone().iter().cloned() { __result.push(serialize_param(&param, source_indices.clone(), &key_to_id)); } __result }))), ", \"inferred\": ".to_string()), json_optional_inferred_node_ref(node.inferred.clone(), key_to_id.clone())), ", \"return_cardinality\": ".to_string()), json_quote(cardinality_name(node.return_cardinality.clone()))), ", \"uses\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for item in node.uses.clone().iter().cloned() { __result.push(serialize_resource_use(&item, source_indices.clone(), key_to_id.clone())); } __result }))), ", \"body\": ".to_string()), json_optional_node_ref(node.body.clone(), key_to_id.clone())), ", \"transport\": ".to_string()), json_optional_node_ref(node.transport.clone(), key_to_id.clone())), ", \"properties\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for prop in node.properties.clone().iter().cloned() { __result.push(serialize_field_init(&prop, source_indices.clone(), key_to_id.clone())); } __result }))), ", \"type_annotation\": ".to_string()), json_optional_node_ref(node.type_annotation.clone(), key_to_id.clone())), ", \"is_self_recursive\": ".to_string()), json_bool(node.is_self_recursive.clone())), ", \"has_non_tail_self_call\": ".to_string()), json_bool(node.has_non_tail_self_call.clone())), ", \"expr_data\": ".to_string()), serialize_expr_data(&node, &source_indices, &key_to_id)), "}".to_string())
+}), ", \"params\": ".to_string()), serialize_node_params_json(&node, source_indices.clone(), key_to_id.clone())), ", \"inferred\": ".to_string()), json_optional_inferred_node_ref(node.inferred.clone(), key_to_id.clone())), ", \"return_cardinality\": ".to_string()), json_quote(cardinality_name(node.return_cardinality.clone()))), ", \"uses\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for item in node.uses.clone().iter().cloned() { __result.push(serialize_resource_use(&item, source_indices.clone(), key_to_id.clone())); } __result }))), ", \"body\": ".to_string()), json_optional_node_ref(node.body.clone(), key_to_id.clone())), ", \"transport\": ".to_string()), json_optional_node_ref(node.transport.clone(), key_to_id.clone())), ", \"properties\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for prop in node.properties.clone().iter().cloned() { __result.push(serialize_field_init(&prop, source_indices.clone(), key_to_id.clone())); } __result }))), ", \"type_annotation\": ".to_string()), json_optional_node_ref(node.type_annotation.clone(), key_to_id.clone())), ", \"is_self_recursive\": ".to_string()), json_bool(node.is_self_recursive.clone())), ", \"has_non_tail_self_call\": ".to_string()), json_bool(node.has_non_tail_self_call.clone())), ", \"expr_data\": ".to_string()), serialize_expr_data(&node, &source_indices, &key_to_id)), "}".to_string())
 }
 
 pub fn serialize_typed_module(
