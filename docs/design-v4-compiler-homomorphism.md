@@ -150,7 +150,8 @@ grounded      = ground(IngestionPlan {
 readings      = observe(grounded, lens_plan)
 artifacts     = project(grounded, rust_projection_plan)
 release       = authorize(policy, readings, artifacts)
-target_text   = unwrap(release.artifacts[rust_source_artifact])
+validated     = unwrap(release)              // Validated<ArtifactSet>
+target_text   = unwrap(validated.artifacts[rust_source_artifact])
 file_write(out_path, target_text)            // effect against extdeps/file_system.dag
 ```
 
@@ -1053,7 +1054,7 @@ When a `.dag` substrate type changes — say `std/node.dag`'s `NodeFold<R>` carr
 1. **Hand-authored Diff via the read/edit pipeline.** The operator (or an agent) declares the change as a `Diff` against the substrate-typed Node graph. `apply_diff` mutates; the seven-step candidate-state pattern validates against the candidate. Commit lands. This is exactly the read/edit doc's "(f) mechanical refactor" hero case applied to the compiler's own source.
 2. **Mechanical refactor from upstream change.** When a substrate type evolves, a lens (e.g., an L1.x dissolution lens, or a custom interface-cascade lens like read/edit doc § 6.5) computes the affected sites + the per-site transform. The substrate handles N affected sites in the compiler's own code the same way it handles N user-code sites. Atomic apply via candidate-state.
 
-There is no "self-edit special case." Self-edit is `apply_diff(self, Diff)` where `self` is the compiler's own CoreNode graph. The substrate's read/write-symmetric mechanism (`fold_node` reads; `apply_diff` writes via sequential `sequence_outcome` over `Diff.edits` with per-Edit `fold_node` substitution against the intermediate candidate) means there's no hidden machinery — same primitive set, applied to the compiler's source.
+There is no "self-edit special case." Self-edit is `apply_diff(self, Diff)` where `self` is the compiler's own `CoreNode` source value before grounding. The substrate's read/write-symmetric mechanism (`fold_node` reads; `apply_diff` writes via sequential `sequence_outcome` over `Diff.edits` with per-Edit `fold_node` substitution against the intermediate candidate) means there's no hidden machinery — same primitive set, applied to the compiler's source.
 
 ### stage0 regeneration as a projection of self
 
@@ -1088,7 +1089,7 @@ There is **no special "regenerate stage0" mode** and **no parse-and-normalize fo
 
 All paths go through `ground` to produce the graph, then through the requested projection producer. The ingest boundary is explicit and separable.
 
-This is why P1 (Languages are I/O integration surfaces) and self-hosting are not independent concerns: self-hosting is the compiler taking itself as graph input and projecting a bootstrap artifact, with both sides using the same `LanguageModel` substrate. The trajectory of hand-Rust-to-zero is the same graph-consumer loop closing on itself.
+This is why P1 (Languages are I/O integration surfaces) and self-hosting are not independent concerns: self-hosting is the compiler grounding its own source into a graph and projecting a bootstrap artifact from that graph, with both sides using the same `LanguageModel` substrate. The trajectory of hand-Rust-to-zero is the same graph-consumer loop closing on itself.
 
 ### Candidate-state for self-modification safety
 
@@ -1216,7 +1217,7 @@ The compiler scaffolds in `src/v4/compiler/` were authored across several ratifi
 |---|---|---|---|
 | `00_compile.dag` `validate_then_compile` | `validate_then_compile(source, input_lang, lenses, mode) -> Outcome<Validated<CompileOutput>>`; manual TestClaims assert empty-lens bypass and rejecting-lens blocks. | Session terminal: `ground(IngestionPlan) -> observe -> project(ProjectionPlan) -> authorize`, with `authorize(...) -> Outcome<Validated<ArtifactSet>>`. Lens readings feed policy, not compile-core. | **Conflict in ownership/framing.** Keep `Validated<T>` as terminal-policy carrier, but move ownership out of compile-core and replace scalar language/mode inputs with `IngestionPlan`, `LensPlan` / `LensReport`, and `ProjectionPlan`. |
 | `00_compile.dag` `CompileMode` | `CompileMode = TranslateTo { target } | Eval { host_interp }`, passed to `compile` and `validate_then_compile`. | Projection registry: `ProjectionRequest { producer: ProjectionProducerRef, subject, params, requirement }`. No closed compile/production enum. | **Conflict.** Split compile-core from projection planning; replace `CompileMode` with projection requests in the session layer. |
-| `00_compile.dag` legacy ingest | `Source = String` survives only for `compile_ingest_staging`. | Text is a peripheral `ingest_text` shim producing `Node`; compile-family operations consume `Node`. | **Staged.** Dissolve when `ingest_text` lands as a peripheral shim. |
+| `00_compile.dag` legacy ingest | `Source = String` survives only for `compile_ingest_staging`. | Text is a peripheral `ingest_text` shim producing `CoreNode`; `ground(IngestionPlan)` consumes that input and returns the grounded graph consumed by lenses and projections. | **Staged.** Dissolve when `ingest_text` lands as a peripheral shim. |
 | `04_infer.dag` | No `v4.lens.*` import. `InferredFacts` carries `resolved_type`, `inhabits`, `descent`, and `canonical`. | No lens import in compiler core (P3 commitment 4). Cost and other dimensions are lens outputs over `InferredTree`, not infer facts. | **Lens-import violation resolved.** Keep this invariant: compiler core must not name a specific lens. |
 | `04_infer.dag` | `InferredFacts.canonical` carries a `CanonicalGroundingWitness`; the full P6 semantic dependency graph is not yet present on `InferredTree`. | Must produce *exactly one* canonical grounding per Node + the full P6 semantic dependency graph (`BindsTo`, `TypeDependsOn`, `DataDependsOn`, `EffectDependsOn`, `ResourceDependsOn`, `ModuleDependsOn`) | Canonical witness carrier is staged; finish producer semantics and add the P6 dependency graph facts. Surface ambiguity as a diagnostic in ground; translate never receives ambiguous source. |
 | `05_emit.dag` | `emit = serialize_target ∘ translate`; `serialize_source_for_emitted` is a fail-closed equality/stub pending inverse grammar walk. | Translate by exact coercion fold, then serialize via target grammar. P7 `LawfulRewriteWitness` is the future extension point for structure-changing lowerings. | **Staged, shape aligned.** Replace the emitted-tree equality stub with grammar-as-bidirectional-data serialization when C5 inverse grammar walk lands. |
@@ -1236,7 +1237,7 @@ If a worker encounters a deeper scaffold-vs-design contradiction not catalogued 
 
 **The MVP is one endpoint, not three (rescoped 2026-05-20 — strict amendment per P2 boundary discipline; multiple valid terminuses for one boundary was a soft framing):**
 
-> Given a `Node` representing a small `.dag` program (the canonical `add(x, y) = x + y` worked example), `translate(node, rust_lang)` produces a `TargetSource` containing valid Rust source code for the equivalent program, via the homomorphism mechanic. Pure data-in / data-out at the translate boundary; no shims required.
+> Given an `IngestionPlan` for a small `.dag` program (the canonical `add(x, y) = x + y` worked example), `ground(plan)` produces the canonical `InferredTree`, and `project(inferred, rust_projection_plan)` produces an artifact containing valid Rust source code for the equivalent program via the homomorphism mechanic. The caller may then pass the projection result through `authorize(...)` before treating it as a releasable artifact set.
 
 **Required substrate + implementation for MVP** (post-Pass B unification — all derived operations are `find_witness` or `fold_node` invocations with specific algebras-as-data):
 - `std/dependency.dag` (the **lens-over-substrate** dependency substrate per sharpened P6: `DependencyKind` classification taxonomy + `dependency_lens` fold algebra + `DependencyView { source, dependent, kind, usage_site }` lens-output type. **NO** authored `DependencyEdge` / `DependencyReason` / `DependencyGraph` carriers — the substrate's usage graph IS the dependency graph; the lens classifies and emits Node references back to substrate, never duplicates substrate facts as parallel payload. — Worker A).
@@ -1258,13 +1259,13 @@ If a worker encounters a deeper scaffold-vs-design contradiction not catalogued 
 
 **Out of scope for MVP** (deferred to follow-on waves; explicit defer with trigger):
 - **Eval / host interpretation** — `std/host.dag` + W-T-22-impl + W-EvalShim. Defer trigger: after MVP lands, when first end-to-end execution case (not codegen) is needed.
-- **File-to-file shim** — `extdeps/file_system.dag` refresh + W-EmitShim. Defer trigger: when MVP's `compile_test_fixture(corenode) -> targetsource` round-trips clean, file-to-file convenience is a small follow-on.
+- **File-to-file shim** — `extdeps/file_system.dag` refresh + W-EmitShim. Defer trigger: when MVP's `ground(test_ingestion_plan) -> project(test_graph, rust_projection_plan) -> authorize(...)` round-trips clean, file-to-file convenience is a small follow-on.
 - **Multi-target translate** — Python/Go/TypeScript/C++ targets. Defer trigger: after Rust MVP, language-by-language follow-on.
 - **Lawful rewrites + structure-changing lowerings** — `LawfulRewriteWitness` substrate (P7). Defer trigger: first MapReduce / CUDA / parallel-map case.
 - **`LensAlgebra<F>` carrier shape + composed-lens-algebra construction** (the substrate work Ratified Q6 names; this is NOT a "multi-lens primitive" — Q6 explicitly ratifies that there is no new substrate primitive, since multi-lens execution derives from `fold_node` with a composed-lens-algebra). Defer trigger: first multi-lens scheduling case beyond a single lens.
 - **Bootstrap promotion + stage0 candidate generation** (P9). Defer trigger: first `project(self_graph, rust_stage0_projection_plan)` invocation when source-of-truth migration to `.dag` is in scope.
 
-**Why one MVP and not three:** the homomorphism mechanic is the load-bearing claim. One end-to-end demonstration of it (CoreNode → coercion fold → TargetSource) validates everything; adding shims and eval routes BEFORE the core mechanic works is premature scope. P2 boundary discipline: name the single MVP terminus, demonstrate it, then extend.
+**Why one MVP and not three:** the homomorphism mechanic is the load-bearing claim. One end-to-end demonstration of it (IngestionPlan → InferredTree → projection artifact → authorized artifact set) validates the canonical-grounding and release boundary; adding shims and eval routes BEFORE the core mechanic works is premature scope. P2 boundary discipline: name the single MVP terminus, demonstrate it, then extend.
 
 ## What's NOT in scope for this design
 
