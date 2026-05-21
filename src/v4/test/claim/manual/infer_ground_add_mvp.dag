@@ -1,14 +1,24 @@
 // src/v4/test/claim/manual/infer_ground_add_mvp.dag
-// Scope: T-9 worked fixture — ResolvedTree for MVP add-shaped Arrow; anchor_infer_add_mvp exercises infer (fail-closed until descent derived).
-// Owns: fixture_add_resolved_tree, anchor_infer_add_mvp, claim_infer_add_mvp_compiles, infer_descent_witness_contract_node, claim_infer_descent_witness_fail_closed.
-// Consumes: compiler/04_infer.dag, std/diagnostic.dag, std/node.dag, std/verification.dag.
-// Status: compile anchor on ResolvedTree datum + fail-closed infer receipt; infer rejects infer_descent_not_derived before solve_constraints until TerminationProof is derived.
+// Scope: T-9 worked fixture — ResolvedTree for MVP add-shaped Arrow; executable infer/descent receipts.
+// Owns: fixture_add_resolved_tree, anchor_infer_add_mvp, infer_descent_witness_contract_node, claim rows, TestClaimRun receipts.
+// Consumes: compiler/04_infer.dag, compiler/05_eval.dag, std/diagnostic.dag, std/node.dag, std/verification.dag.
+// Status: infer rejects infer_descent_not_derived before solve_constraints until TerminationProof is derived.
 // Anchor: design-v4-compiler-homomorphism.md MVP add(x,y)=x+y
 
 
 module v4.test.claim.manual.infer_ground_add_mvp
 
 
+import v4.compiler.eval {
+  EvalContext,
+  TestClaimEvalSubject,
+  TestClaimRun,
+  TestClaimTypedInput,
+  Verdict,
+  Fail,
+  Pass,
+  test_claim_cache_receipt
+}
 import v4.compiler.infer {
   infer,
   infer_descent_not_derived_diagnostic,
@@ -16,18 +26,21 @@ import v4.compiler.infer {
   InferredTree
 }
 import v4.compiler.resolve { ResolvedTree }
+import v4.std.collection { Map }
 import v4.std.diagnostic {
   Accepted,
   None,
   Outcome,
   Rejected,
-  diagnostics_singleton
+  diagnostics_singleton,
+  outcome_node_eq
 }
 import v4.std.node {
   Arrow,
   Atom,
   Conj,
   Edge,
+  Hash,
   Named,
   Node,
   Positional,
@@ -35,7 +48,6 @@ import v4.std.node {
   TypeNode
 }
 import v4.std.verification {
-  Compiles,
   Equals,
   T19ManualAnchorAbsent,
   TestClaim,
@@ -49,12 +61,140 @@ import v4.std.witness { Holds, Violates }
 data fixture_add_name: Symbol = fixture_add_name
 data fixture_add_int_atom: Symbol = fixture_add_int_atom
 data fixture_add_body_int_atom: Symbol = fixture_add_body_int_atom
+data infer_receipt_evaluator: Symbol = infer_receipt_evaluator
+data infer_receipt_resources: Symbol = infer_receipt_resources
+data infer_receipt_extdeps: Symbol = infer_receipt_extdeps
+data infer_receipt_input_infer_add_mvp: Symbol = infer_receipt_input_infer_add_mvp
+data infer_receipt_input_descent_witness: Symbol = infer_receipt_input_descent_witness
+// 🟡 cache-hash scaffold — T22-EVAL-CACHE-HASHES
+data claim_hash_placeholder: Hash = claim_hash_placeholder
+data evaluator_hash_placeholder: Hash = evaluator_hash_placeholder
+data resources_hash_placeholder: Hash = resources_hash_placeholder
+data extdeps_hash_placeholder: Hash = extdeps_hash_placeholder
+
+
+type InferReceiptCase {
+  label: String
+  input_symbol: Symbol
+  input: Node
+  expected: Outcome<Node>
+}
 
 
 fn fixture_int_type_node(atom: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: atom } },
     children: []
+  }
+}
+
+
+fn infer_receipt_symbol_node(s: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: s } },
+    children: []
+  }
+}
+
+
+fn infer_receipt_claim(case: InferReceiptCase) -> TestClaim {
+  TestClaim {
+    kind: Equals,
+    label: case.label,
+    t19_anchor: T19ManualAnchorAbsent,
+    input: case.input,
+    expected: case.expected,
+    classification: TestClassification { tier: Tier1, layer: Unit }
+  }
+}
+
+
+fn infer_receipt_context() -> EvalContext {
+  EvalContext {
+    evaluator: infer_receipt_symbol_node(s: infer_receipt_evaluator),
+    resources: infer_receipt_symbol_node(s: infer_receipt_resources),
+    extdeps: infer_receipt_symbol_node(s: infer_receipt_extdeps)
+  }
+}
+
+
+fn infer_receipt_empty_tree(root: Node) -> InferredTree {
+  InferredTree {
+    root: root,
+    facts: Map {
+      lookup: fn(_) {
+        Violates {
+          diagnostic: infer_descent_not_derived_diagnostic(n: root)
+        }
+      }
+    }
+  }
+}
+
+
+fn infer_receipt_subject(case: InferReceiptCase) -> TestClaimEvalSubject<Node> {
+  TestClaimEvalSubject {
+    claim: infer_receipt_claim(case: case),
+    context: infer_receipt_context(),
+    tree: infer_receipt_empty_tree(root: case.input),
+    input: TestClaimTypedInput { evaluator_input: case.input }
+  }
+}
+
+
+fn infer_add_mvp_receipt_run(
+  subject: TestClaimEvalSubject<Node>,
+) -> TestClaimRun<Node> {
+  let actual = anchor_infer_add_mvp()
+  TestClaimRun {
+    cache: test_claim_cache_receipt(
+      subject: subject,
+      claim_hash: claim_hash_placeholder,
+      evaluator_hash: evaluator_hash_placeholder,
+      resources_hash: resources_hash_placeholder,
+      extdeps_hash: extdeps_hash_placeholder
+    ),
+    verdict: match actual {
+      Rejected { diagnostics: r } =>
+        if outcome_node_eq(
+          a: Rejected { diagnostics: r },
+          b: subject.claim.expected
+        ) {
+          Pass
+        } else {
+          Fail { actual: Rejected { diagnostics: r } }
+        }
+      Accepted { value: _, diagnostics: ad } =>
+        Fail { actual: Accepted { value: subject.claim.input, diagnostics: ad } }
+    }
+  }
+}
+
+
+fn infer_descent_witness_receipt_run(
+  subject: TestClaimEvalSubject<Node>,
+) -> TestClaimRun<Node> {
+  let actual = infer_descent_witness_contract_node(n: subject.input.evaluator_input)
+  TestClaimRun {
+    cache: test_claim_cache_receipt(
+      subject: subject,
+      claim_hash: claim_hash_placeholder,
+      evaluator_hash: evaluator_hash_placeholder,
+      resources_hash: resources_hash_placeholder,
+      extdeps_hash: extdeps_hash_placeholder
+    ),
+    verdict: match actual {
+      Accepted { value: v, diagnostics: d } =>
+        if outcome_node_eq(
+          a: Accepted { value: v, diagnostics: d },
+          b: subject.claim.expected
+        ) {
+          Pass
+        } else {
+          Fail { actual: actual }
+        }
+      Rejected { diagnostics: r } => Fail { actual: Rejected { diagnostics: r } }
+    }
   }
 }
 
@@ -108,24 +248,43 @@ fn infer_descent_witness_contract_node(n: Node) -> Outcome<Node> {
 }
 
 
-data claim_infer_add_mvp_compiles: TestClaim = TestClaim {
-  kind: Compiles,
-  label: "manual/infer: MVP add ResolvedTree compile-anchor (datum Compiles; infer via anchor_infer_add_mvp rejects until descent derived)",
-  t19_anchor: T19ManualAnchorAbsent,
+data case_infer_add_mvp_fail_closed: InferReceiptCase = InferReceiptCase {
+  label: "manual/infer: infer(fixture_add_resolved_tree) rejects infer_descent_not_derived before solve_constraints",
+  input_symbol: infer_receipt_input_infer_add_mvp,
   input: fixture_add_resolved_tree(),
-  expected: Accepted { value: fixture_add_resolved_tree(), diagnostics: None },
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  expected: Rejected {
+    diagnostics: diagnostics_singleton(
+      d: infer_descent_not_derived_diagnostic(n: fixture_add_resolved_tree())
+    )
+  }
 }
 
 
-data claim_infer_descent_witness_fail_closed: TestClaim = TestClaim {
-  kind: Equals,
-  label: "manual/infer: descent Witness Violates until derived (no fabricated TerminationProof on Accepted path)",
-  t19_anchor: T19ManualAnchorAbsent,
+data subject_infer_add_mvp_fail_closed: TestClaimEvalSubject<Node> = infer_receipt_subject(case: case_infer_add_mvp_fail_closed)
+
+
+data run_infer_add_mvp_fail_closed: TestClaimRun<Node> = infer_add_mvp_receipt_run(subject: subject_infer_add_mvp_fail_closed)
+
+
+data case_infer_descent_witness_fail_closed: InferReceiptCase = InferReceiptCase {
+  label: "manual/infer: infer_descent_witness_contract_node accepts only Violates descent (no fabricated TerminationProof)",
+  input_symbol: infer_receipt_input_descent_witness,
   input: fixture_int_type_node(atom: fixture_add_int_atom),
   expected: Accepted {
     value: fixture_int_type_node(atom: fixture_add_int_atom),
     diagnostics: None
-  },
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  }
 }
+
+
+data subject_infer_descent_witness_fail_closed: TestClaimEvalSubject<Node> = infer_receipt_subject(case: case_infer_descent_witness_fail_closed)
+
+
+data run_infer_descent_witness_fail_closed: TestClaimRun<Node> = infer_descent_witness_receipt_run(subject: subject_infer_descent_witness_fail_closed)
+
+
+data claim_infer_add_mvp_compiles: TestClaim = infer_receipt_claim(case: case_infer_add_mvp_fail_closed)
+
+
+data claim_infer_descent_witness_fail_closed: TestClaim = infer_receipt_claim(case: case_infer_descent_witness_fail_closed)
+

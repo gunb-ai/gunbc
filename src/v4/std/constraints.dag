@@ -54,7 +54,7 @@ type CanonicalGroundingCandidateSet {
 }
 type CanonicalGroundingWitness {
   structural: StructuralPropertyWitness
-  // Parallel slot to structural; values may coincide at scaffold seams until closedness authority diverges.
+  // 🟡 coproduct dissolution — scaffold:T-9-closedness-bridge · dissolve-on: W-T-10 find_witness closedness authority supplies evidence distinct from structural witness.
   closedness: StructuralPropertyWitness
 }
 fn constraints_not_realized_diagnostic(graph: ConstraintGraph) -> Diagnostic {
