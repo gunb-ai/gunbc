@@ -18,3 +18,161 @@
 
 module v4.lens.ownership
 
+import v4.compiler.infer { InferredFacts, InferredTree }
+import v4.std.dependency {
+  BarrierBefore,
+  BindsTo,
+  BootstrapDependsOn,
+  Contains,
+  DataDependsOn,
+  DependencyView,
+  EffectDependsOn,
+  GeneratedFrom,
+  ModelDependsOn,
+  ModuleDependsOn,
+  PlacementDependsOn,
+  ProjectionDependsOn,
+  PromotedBy,
+  ResourceDependsOn,
+  TypeDependsOn,
+  VerifiedBy
+}
+import v4.std.node { Node }
+import v4.std.witness { Holds, Witness }
+
+// 🟢 projection carrier — ownership is read from dependency/resource shape.
+// Broad dependency kinds do not prove access or alias mode; resource/effect
+// edges route to the access witness rather than claiming exclusive mutation.
+type OwnershipMode
+  = OwnedContainment
+  | SharedRead
+  | RequiresAccessWitness
+  | BorrowedDependency
+  | UnknownOwnership
+
+type OwnershipDependencyFact {
+  owner: Node
+  subject: Node
+  dependency: DependencyView
+  owner_facts: Witness<InferredFacts>
+  subject_facts: Witness<InferredFacts>
+  mode: OwnershipMode
+}
+
+type OwnershipFact {
+  dependencies: List<OwnershipDependencyFact>
+}
+
+fn ownership_mode_for_dependency(view: DependencyView) -> OwnershipMode {
+  match view.kind {
+    Contains => OwnedContainment
+    BindsTo => BorrowedDependency
+    DataDependsOn => SharedRead
+    EffectDependsOn => RequiresAccessWitness
+    ResourceDependsOn => RequiresAccessWitness
+    BarrierBefore => UnknownOwnership
+    TypeDependsOn => UnknownOwnership
+    ModuleDependsOn => UnknownOwnership
+    PlacementDependsOn => UnknownOwnership
+    ModelDependsOn => UnknownOwnership
+    ProjectionDependsOn => UnknownOwnership
+    GeneratedFrom => UnknownOwnership
+    VerifiedBy => UnknownOwnership
+    PromotedBy => UnknownOwnership
+    BootstrapDependsOn => UnknownOwnership
+  }
+}
+
+fn ownership_inferred_facts_for_node(tree: InferredTree, node: Node) -> Witness<InferredFacts> {
+  tree.facts.lookup(node)
+}
+
+fn ownership_dependency_fact(tree: InferredTree, view: DependencyView) -> OwnershipDependencyFact {
+  OwnershipDependencyFact {
+    owner: view.source,
+    subject: view.dependent,
+    dependency: view,
+    owner_facts: ownership_inferred_facts_for_node(tree: tree, node: view.source),
+    subject_facts: ownership_inferred_facts_for_node(tree: tree, node: view.dependent),
+    mode: ownership_mode_for_dependency(view: view)
+  }
+}
+
+fn ownership_fact_from_dependencies(tree: InferredTree, dependencies: List<DependencyView>) -> OwnershipFact {
+  OwnershipFact {
+    dependencies: fold(dependencies, init: [], f: fn(acc, view) {
+      list_push(acc, ownership_dependency_fact(tree: tree, view: view))
+    })
+  }
+}
+
+fn ownership_fact(tree: InferredTree, dependencies: List<DependencyView>) -> OwnershipFact {
+  ownership_fact_from_dependencies(tree: tree, dependencies: dependencies)
+}
+
+fn ownership_witness(tree: InferredTree, dependencies: List<DependencyView>) -> Witness<OwnershipFact> {
+  Holds {
+    value: ownership_fact(tree: tree, dependencies: dependencies)
+  }
+}
+
+fn ownership_mode_eq(a: OwnershipMode, b: OwnershipMode) -> Bool {
+  match a {
+    OwnedContainment => match b {
+      OwnedContainment => true
+      _ => false
+    }
+    SharedRead => match b {
+      SharedRead => true
+      _ => false
+    }
+    RequiresAccessWitness => match b {
+      RequiresAccessWitness => true
+      _ => false
+    }
+    BorrowedDependency => match b {
+      BorrowedDependency => true
+      _ => false
+    }
+    UnknownOwnership => match b {
+      UnknownOwnership => true
+      _ => false
+    }
+  }
+}
+
+fn ownership_dependency_fact_eq(a: OwnershipDependencyFact, b: OwnershipDependencyFact) -> Bool {
+  (a.owner == b.owner)
+    && (a.subject == b.subject)
+    && (a.dependency == b.dependency)
+    && (a.owner_facts == b.owner_facts)
+    && (a.subject_facts == b.subject_facts)
+    && ownership_mode_eq(a: a.mode, b: b.mode)
+}
+
+fn ownership_dependency_count(xs: List<OwnershipDependencyFact>, item: OwnershipDependencyFact) -> Int {
+  fold(xs, init: 0, f: fn(acc, candidate) {
+    if ownership_dependency_fact_eq(a: candidate, b: item) {
+      acc + 1
+    } else {
+      acc
+    }
+  })
+}
+
+fn ownership_dependency_facts_eq(
+  left: List<OwnershipDependencyFact>,
+  right: List<OwnershipDependencyFact>
+) -> Bool {
+  if count(left) != count(right) {
+    false
+  } else {
+    fold(left, init: true, f: fn(acc, item) {
+      acc && (ownership_dependency_count(xs: left, item: item) == ownership_dependency_count(xs: right, item: item))
+    })
+  }
+}
+
+fn ownership_fact_eq(a: OwnershipFact, b: OwnershipFact) -> Bool {
+  ownership_dependency_facts_eq(left: a.dependencies, right: b.dependencies)
+}

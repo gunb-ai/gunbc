@@ -1,9 +1,13 @@
 // src/v4/compiler/05_emit.dag
-// Scope: Stage 5 — InferredTree + TargetModel -> TargetSource; omni-emission, inverse-grammar walk (DECISIONS C5).
-// Owns: emit_stage_locus_port, emit_inverse_grammar_walk_not_realized, emit_inverse_grammar_walk_not_realized_diagnostic, emit.
-// Consumes: std/diagnostic.dag, std/node.dag, compiler/00_compile.dag, compiler/04_infer.dag.
-// Status: scaffold — TASKS T-10; Wave-1 fail-closed boundary.
-// Anchor: https://en.wikipedia.org/wiki/Code_generation_(compiler)
+// Scope: Stage 5b — T-10 emit surface + fail-closed staging (not grammar-bidir serialize yet).
+// Owns: emit_stage_locus_port, serialize_source_for_emitted, serialize_target, emit.
+// Consumes: target_model_edge_serialize_emitted, target_model_edge_serialize_source
+//       (edge-name symbols defined in compiler/06_translate.dag).
+// Consumes: compiler/00_compile.dag, compiler/04_infer.dag, compiler/06_translate.dag, std/diagnostic.dag,
+//           std/node.dag, std/text.dag.
+// Status: W-T-10-impl staging — emit = serialize_target ∘ translate; serialize_source_for_emitted
+// is emitted-node equality check + fail-closed source stub (inverse grammar walk deferred).
+// Anchor: docs/design-v4-compiler-homomorphism.md Stage 5b + Ratified Q11.
 
 
 module v4.compiler.emit
@@ -11,39 +15,67 @@ module v4.compiler.emit
 
 import v4.compiler.compile { TargetModel, TargetSource }
 import v4.compiler.infer { InferredTree }
+import v4.compiler.translate {
+  TargetNodeTree,
+  target_model_edge_serialize_emitted,
+  target_bundle_child,
+  target_serialize_source_from_model,
+  translate
+}
 import v4.std.diagnostic {
+  Accepted,
   Diagnostic,
   ExternalContractUnknown,
-  Locus,
+  NodeLocus,
   Outcome,
-  PortLocus,
+  Rejected,
   Unavailable,
-  diagnostics_singleton
+  bind_outcome,
+  diagnostics_singleton,
+  outcome_rejected
 }
-import v4.std.node { Symbol }
-
-
+import v4.std.node { Node, Symbol }
 data emit_stage_locus_port: Symbol = emit_stage_locus_port
-
-
-data emit_inverse_grammar_walk_not_realized: Symbol = emit_inverse_grammar_walk_not_realized
-
-
-fn emit_inverse_grammar_walk_not_realized_diagnostic(at: Locus) -> Diagnostic {
+data emit_serialize_emitted_mismatch: Symbol = emit_serialize_emitted_mismatch
+fn emit_serialize_emitted_mismatch_diagnostic(emitted: Node, target: TargetModel) -> Diagnostic {
   Diagnostic {
-    reason: emit_inverse_grammar_walk_not_realized,
-    at: at,
+    reason: emit_serialize_emitted_mismatch,
+    at: NodeLocus { node: emitted },
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
-
-
-fn emit(tree: InferredTree, target: TargetModel) -> Outcome<TargetSource> {
-  Rejected {
-    diagnostics: diagnostics_singleton(
-      d: emit_inverse_grammar_walk_not_realized_diagnostic(
-        at: PortLocus { port: emit_stage_locus_port }
-      )
-    )
+// Staging only: compare emitted tree to bundle `serialize_emitted` fixture, then fail-closed source
+// lookup — not grammar-as-bidirectional inverse walk (DECISIONS C5 deferred).
+fn serialize_source_for_emitted(
+  emitted: TargetNodeTree,
+  target: TargetModel
+) -> Outcome<TargetSource> {
+  bind_outcome(
+    o: target_bundle_child(target: target, edge_name: target_model_edge_serialize_emitted),
+    f: fn(expected_emitted) {
+      if emitted == expected_emitted {
+        target_serialize_source_from_model(target: target)
+      } else {
+        outcome_rejected(emit_serialize_emitted_mismatch_diagnostic(
+          emitted: emitted,
+          target: target
+        ))
+      }
+    }
+  )
+}
+fn serialize_target(tree: TargetNodeTree, target: TargetModel) -> Outcome<TargetSource> {
+  match serialize_source_for_emitted(emitted: tree, target: target) {
+    Accepted { value: source, diagnostics: d } =>
+      Accepted { value: source, diagnostics: d }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
+}
+fn emit(tree: InferredTree, target: TargetModel) -> Outcome<TargetSource> {
+  bind_outcome(
+    o: translate(tree: tree, target: target),
+    f: fn(target_tree) {
+      serialize_target(tree: target_tree, target: target)
+    }
+  )
 }
