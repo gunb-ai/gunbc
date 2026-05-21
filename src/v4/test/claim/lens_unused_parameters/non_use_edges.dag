@@ -1,0 +1,183 @@
+// src/v4/test/claim/lens_unused_parameters/non_use_edges.dag
+// Scope: T-13 worked claim — non-USE edges classify as their non-USE
+//        relations (negative-case complement to binds_to_edge.dag's
+//        positive BindsTo ⇒ IsUseOfDeclaration claim). Covers:
+//          - Contains       ⇒ IsStructuralComposition
+//          - DataDependsOn  ⇒ IsNonUseDependency
+//          - GeneratedFrom  ⇒ RequiresResolutionWitness (fail-closed)
+//        Together with binds_to_edge.dag, this pins the four-way
+//        UseRelation partition so a regression that broadened/narrowed
+//        the USE set would fail at least one claim.
+// Owns: unused_parameters_non_use_edges_claim.
+// Consumes: lens unused_parameters, compiler infer, std dependency, std node.
+// Status: scaffold — compile-only until generated claim execution.
+
+module v4.test.claim.lens_unused_parameters.non_use_edges
+
+import v4.compiler.infer { AlgebraRef, InferredFacts, InferredTree }
+import v4.lens.unused_parameters {
+  IsNonUseDependency,
+  IsStructuralComposition,
+  RequiresResolutionWitness,
+  UnusedParametersDependencyFact,
+  UnusedParametersFact,
+  unused_parameters_fact_eq,
+  unused_parameters_witness
+}
+import v4.std.cardinality { RankingDimension, TerminationProof }
+import v4.std.collection { Map }
+import v4.std.constraints { CanonicalGroundingWitness }
+import v4.std.dependency {
+  Contains,
+  DataDependsOn,
+  DependencyView,
+  GeneratedFrom
+}
+import v4.std.node { Atom, Edge, Hash, Named, Node, Symbol, TypeNode }
+import v4.std.witness { Holds, StructuralPropertyWitness, Witness }
+
+data unused_parameters_non_use_root_symbol: Symbol = unused_parameters_non_use_root_symbol
+data unused_parameters_non_use_child_symbol: Symbol = unused_parameters_non_use_child_symbol
+data unused_parameters_non_use_edge_symbol: Symbol = unused_parameters_non_use_edge_symbol
+data unused_parameters_non_use_type_symbol: Symbol = unused_parameters_non_use_type_symbol
+data unused_parameters_non_use_algebra_symbol: Symbol = unused_parameters_non_use_algebra_symbol
+data unused_parameters_non_use_algebra_witness_symbol: Symbol = unused_parameters_non_use_algebra_witness_symbol
+data unused_parameters_non_use_descent_symbol: Symbol = unused_parameters_non_use_descent_symbol
+data unused_parameters_non_use_canonical_structural_symbol: Symbol = unused_parameters_non_use_canonical_structural_symbol
+data unused_parameters_non_use_canonical_closedness_symbol: Symbol = unused_parameters_non_use_canonical_closedness_symbol
+data unused_parameters_non_use_canonical_evidence_symbol: Symbol = unused_parameters_non_use_canonical_evidence_symbol
+
+fn unused_parameters_non_use_node(s: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: s } },
+    children: []
+  }
+}
+
+data unused_parameters_non_use_child: Node = unused_parameters_non_use_node(s: unused_parameters_non_use_child_symbol)
+
+data unused_parameters_non_use_root: Node = Node {
+  kind: TypeNode { connective: Atom { identity: unused_parameters_non_use_root_symbol } },
+  children: [
+    Edge { label: Named { name: unused_parameters_non_use_edge_symbol }, target: unused_parameters_non_use_child }
+  ]
+}
+
+data unused_parameters_contains_dependency: DependencyView = DependencyView {
+  source: unused_parameters_non_use_root,
+  dependent: unused_parameters_non_use_child,
+  kind: Contains,
+  usage_site: unused_parameters_non_use_child
+}
+
+data unused_parameters_data_dependency: DependencyView = DependencyView {
+  source: unused_parameters_non_use_root,
+  dependent: unused_parameters_non_use_child,
+  kind: DataDependsOn,
+  usage_site: unused_parameters_non_use_child
+}
+
+data unused_parameters_generated_from_dependency: DependencyView = DependencyView {
+  source: unused_parameters_non_use_root,
+  dependent: unused_parameters_non_use_child,
+  kind: GeneratedFrom,
+  usage_site: unused_parameters_non_use_child
+}
+
+fn unused_parameters_non_use_facts() -> InferredFacts {
+  InferredFacts {
+    resolved_type: unused_parameters_non_use_node(s: unused_parameters_non_use_type_symbol),
+    inhabits: AlgebraRef {
+      algebra: unused_parameters_non_use_node(s: unused_parameters_non_use_algebra_symbol),
+      witness: unused_parameters_non_use_node(s: unused_parameters_non_use_algebra_witness_symbol)
+    },
+    descent: Holds {
+      value: TerminationProof {
+        non_increasing: [],
+        strict: RankingDimension { measured: unused_parameters_non_use_descent_symbol }
+      }
+    },
+    canonical: CanonicalGroundingWitness {
+      structural: StructuralPropertyWitness {
+        property: unused_parameters_non_use_canonical_structural_symbol,
+        evidence: unused_parameters_non_use_node(s: unused_parameters_non_use_canonical_evidence_symbol)
+      },
+      closedness: StructuralPropertyWitness {
+        property: unused_parameters_non_use_canonical_closedness_symbol,
+        evidence: unused_parameters_non_use_node(s: unused_parameters_non_use_canonical_evidence_symbol)
+      }
+    }
+  }
+}
+
+fn unused_parameters_non_use_fact_map(facts: InferredFacts) -> Map<Node, InferredFacts> {
+  Map {
+    lookup: fn(_) {
+      Holds { value: facts }
+    }
+  }
+}
+
+fn unused_parameters_non_use_tree() -> InferredTree {
+  let facts = unused_parameters_non_use_facts()
+  InferredTree {
+    root: unused_parameters_non_use_root,
+    facts: unused_parameters_non_use_fact_map(facts: facts)
+  }
+}
+
+type LensUnusedParametersNonUseClaim {
+  input: InferredTree
+  expected: UnusedParametersFact
+  actual: Witness<UnusedParametersFact>
+}
+
+data unused_parameters_non_use_edges_claim: LensUnusedParametersNonUseClaim = LensUnusedParametersNonUseClaim {
+  input: unused_parameters_non_use_tree(),
+  expected: UnusedParametersFact {
+    dependencies: [
+      UnusedParametersDependencyFact {
+        use_site: unused_parameters_non_use_child,
+        declaration: unused_parameters_non_use_root,
+        dependency: unused_parameters_contains_dependency,
+        use_site_facts: Holds { value: unused_parameters_non_use_facts() },
+        declaration_facts: Holds { value: unused_parameters_non_use_facts() },
+        relation: IsStructuralComposition
+      },
+      UnusedParametersDependencyFact {
+        use_site: unused_parameters_non_use_child,
+        declaration: unused_parameters_non_use_root,
+        dependency: unused_parameters_data_dependency,
+        use_site_facts: Holds { value: unused_parameters_non_use_facts() },
+        declaration_facts: Holds { value: unused_parameters_non_use_facts() },
+        relation: IsNonUseDependency
+      },
+      UnusedParametersDependencyFact {
+        use_site: unused_parameters_non_use_child,
+        declaration: unused_parameters_non_use_root,
+        dependency: unused_parameters_generated_from_dependency,
+        use_site_facts: Holds { value: unused_parameters_non_use_facts() },
+        declaration_facts: Holds { value: unused_parameters_non_use_facts() },
+        relation: RequiresResolutionWitness
+      }
+    ]
+  },
+  actual: unused_parameters_witness(
+    tree: unused_parameters_non_use_tree(),
+    dependencies: [
+      unused_parameters_contains_dependency,
+      unused_parameters_data_dependency,
+      unused_parameters_generated_from_dependency
+    ]
+  )
+}
+
+fn unused_parameters_non_use_edges_claim_holds() -> Bool {
+  match unused_parameters_non_use_edges_claim.actual {
+    Holds { value: actual } =>
+      unused_parameters_fact_eq(a: actual, b: unused_parameters_non_use_edges_claim.expected)
+    _ => false
+  }
+}
+
+data unused_parameters_non_use_edges_claim_passes: Bool = unused_parameters_non_use_edges_claim_holds()
