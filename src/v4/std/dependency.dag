@@ -1,12 +1,13 @@
 // src/v4/std/dependency.dag
 // Scope: P6 dependency taxonomy and lens-over-substrate dependency view.
-// Owns: DependencyKind, DependencyView, ReadinessLayer, dependency_lens, ready_set, topological_layers.
+// Owns: DependencyKind, DependencyView, ClassifiedDependencyView, ReadinessLayer, dependency_lens, ready_set, topological_layers.
 // Consumes: v4.std.collection, v4.std.node.
 // Status: Wave-2-A staged classifier — dissolve-on: T-9 resolve writes BindsTo substrate facts inline.
 
 module v4.std.dependency
 
 import v4.std.collection { List }
+<<<<<<< HEAD
 import v4.std.node {
   Bind,
   ComputationNode,
@@ -25,6 +26,10 @@ import v4.std.node {
 data dependency_binds_to_edge: Symbol = dependency_binds_to_edge
 data dependency_module_import_edge: Symbol = dependency_module_import_edge
 data dependency_bootstrap_depends_edge: Symbol = dependency_bootstrap_depends_edge
+=======
+import v4.std.logic { Bool }
+import v4.std.node { Edge, Node, NodeFold, fold_node }
+>>>>>>> origin/main
 
 // 🟢 closed set — P6 dependency classification taxonomy.
 type DependencyKind
@@ -49,6 +54,41 @@ type DependencyView {
   dependent: Node
   kind: DependencyKind
   usage_site: Node
+}
+
+// 🟢 parametric T-13 lens row — one carrier for every lens that projects
+// a per-edge classification over `DependencyView`. The dependency edge is
+// the single endpoint authority; classification is the lens-specific
+// projection. Practice 11 sub-rule (parallel-payload vs typed-reference):
+// no parallel `source`/`dependent`/`at`/`owner`/`use_site` fields — those
+// are read through `dependency.*` accessors below, never duplicated on
+// the row. Per-node InferredFacts are read at use-sites via
+// `tree.facts.lookup(...)`, NOT stored on the row (Practice 3 — facts
+// flow forward by reference). Concept-home is here in v4.std.dependency
+// (M9 / Practice 11 concept-home discipline).
+type ClassifiedDependencyView<C> {
+  dependency: DependencyView
+  classification: C
+}
+
+fn classified_source<C>(view: ClassifiedDependencyView<C>) -> Node {
+  view.dependency.source
+}
+
+fn classified_dependent<C>(view: ClassifiedDependencyView<C>) -> Node {
+  view.dependency.dependent
+}
+
+fn classified_usage_site<C>(view: ClassifiedDependencyView<C>) -> Node {
+  view.dependency.usage_site
+}
+
+fn classified_dependency_view_eq<C>(
+  a: ClassifiedDependencyView<C>,
+  b: ClassifiedDependencyView<C>,
+  classification_eq: fn(C, C) -> Bool
+) -> Bool {
+  (a.dependency == b.dependency) && classification_eq(a.classification, b.classification)
 }
 
 type DependencyFoldState {

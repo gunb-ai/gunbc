@@ -45,12 +45,24 @@ fn t22_eval_diagnostic_assert_not_deferred_in_substrate() {
         "removed deferred scaffold must not return"
     );
     assert!(
-        EVAL_DAG.contains("DiagnosticAssert => match actual"),
-        "DiagnosticAssert must execute, not defer"
+        EVAL_DAG.contains("DiagnosticClaim { expected_rejection: expected")
+            && EVAL_DAG.contains("Rejected { diagnostics: expected }"),
+        "DiagnosticClaim must execute with polarity-specific rejection carrier (P2)"
     );
     assert!(
         EVAL_DAG.contains("verdict: aggregate_verdicts(") && EVAL_DAG.contains("rs: ["),
         "run_test_claim must route through aggregate_verdicts"
+    );
+    assert!(
+        EVAL_DAG.contains("CompilesClaim { expected_value: expected")
+            && EVAL_DAG.contains("Accepted { value: expected, diagnostics: None }"),
+        "CompilesClaim must compare actual against declared accepted Node (P2/P3 fail-closed)"
+    );
+    assert!(
+        EVAL_DAG.contains("RoundTripClaim { input: input")
+            && EVAL_DAG.contains("Deferred {")
+            && EVAL_DAG.contains("eval_rejected_roundtrip_deferred"),
+        "RoundTripClaim eval authority must stay Deferred (single authority; verification must not synthesize expected Outcome<Node>)"
     );
 }
 
@@ -73,11 +85,10 @@ fn t19_testgen_concept_surface_stays_closed_and_classified() {
         record_field_type_map(type_record(&module, "Generator")),
         expected_field_type_map(&[
             ("classification", "TestClassification"),
-            ("kind", "AssertKind"),
             ("t19_anchor", "T19ManualAnchorKey"),
             ("slot", "C"),
         ]),
-        "Generator<C> must carry the claim kind, anchor, classification, and parameterized slot"
+        "Generator<C> must carry anchor, classification, and parameterized slot (assertion shape lives on TestClaim coproduct)"
     );
 }
 
@@ -92,8 +103,8 @@ fn t19_manual_manifest_matches_claim_anchor_discriminants() {
 
     assert_eq!(
         manifest_keys.len(),
-        12,
-        "T-19 manifest is the twelve live anchors"
+        17,
+        "T-19 manifest is the seventeen live anchors"
     );
     assert_eq!(
         claim_keys, manifest_keys,
@@ -101,7 +112,7 @@ fn t19_manual_manifest_matches_claim_anchor_discriminants() {
     );
     assert!(
         !claim_keys.contains("T19ManualAnchorAbsent"),
-        "the twelve live manual anchors must not route through the absent sentinel"
+        "the seventeen live manual anchors must not route through the absent sentinel"
     );
 }
 
@@ -190,7 +201,7 @@ fn t20_bootstrap_plan_keeps_self_hosting_chain_as_data() {
         record_field_expr(bootstrap_plan_fields, "self1"),
         &["v4_dag_source", "v4_stage1_binary"],
         "v4_stage2_binary",
-        ("v4_stage2_hash", "v4_stage2_hash_pin"),
+        ("v4_stage1_hash", "v4_stage2_hash_pin"),
         "v4_stage1_binary",
     );
     assert_fixpt(
@@ -198,12 +209,47 @@ fn t20_bootstrap_plan_keeps_self_hosting_chain_as_data() {
         "v4_stage1_binary",
         ("v4_stage1_hash", "v4_stage1_hash_pin"),
         "v4_stage2_binary",
-        ("v4_stage2_hash", "v4_stage2_hash_pin"),
-        (
-            "pinned_v4_fixed_point_hash",
-            "pinned_v4_fixed_point_hash_pin",
-        ),
+        ("v4_stage1_hash", "v4_stage2_hash_pin"),
+        ("v4_stage1_hash", "pinned_v4_fixed_point_hash_pin"),
         "bit_identical_check",
+    );
+    assert!(
+        BOOTSTRAP_DAG.contains("data v4_stage2_hash: Hash = v4_stage2_hash")
+            && BOOTSTRAP_DAG.contains(
+                "data pinned_v4_fixed_point_hash: Hash = pinned_v4_fixed_point_hash"
+            ),
+        "bootstrap must declare stage-2 and pinned digest carriers as independent Hash facts (A2+A3)"
+    );
+    assert!(
+        BOOTSTRAP_DAG.contains("p.self0.produces_hash.digest == p.self1.produces_hash.digest")
+            && BOOTSTRAP_DAG
+                .contains("p.fixpt.left_hash.digest == p.self0.produces_hash.digest")
+            && BOOTSTRAP_DAG
+                .contains("p.fixpt.right_hash.digest == p.self1.produces_hash.digest")
+            && BOOTSTRAP_DAG
+                .contains("p.fixpt.pinned_hash.digest == p.self0.produces_hash.digest"),
+        "bootstrap_plan_well_formed must enforce digest convergence via stage outputs, not data aliases (A2+A3)"
+    );
+    assert!(
+        !BOOTSTRAP_DAG.contains("p.fixpt.left_hash.pin == p.fixpt.right_hash.pin")
+            && !BOOTSTRAP_DAG.contains("p.fixpt.left_hash.pin == p.fixpt.pinned_hash.pin"),
+        "fixpt pins identify independent carrier slots; digest equality proves convergence (A2+A3)"
+    );
+    const CONNECTIVE_ANCHORS: &str =
+        include_str!("../../../../v4/test/claim/manual/connective_anchors.dag");
+    assert!(
+        CONNECTIVE_ANCHORS.contains("claim_arrow_empty_rejected")
+            && CONNECTIVE_ANCHORS.contains("claim_transform_empty_rejected")
+            && CONNECTIVE_ANCHORS.contains("claim_branch_empty_rejected")
+            && CONNECTIVE_ANCHORS.contains("claim_loop_empty_rejected")
+            && CONNECTIVE_ANCHORS.contains("claim_bind_zero_children_rejected"),
+        "A1 arity gate must pin rejection receipts for Arrow/Transform/Branch/Loop/Bind shapes (TESTING.md regression discipline)"
+    );
+    assert!(
+        BOOTSTRAP_DAG.contains("bootstrap_plan_fixpt_digest_mismatch_rejects")
+            && BOOTSTRAP_DAG.contains("produces_hash: BootstrapHashPin { digest: v4_stage2_hash, pin: v4_stage2_hash_pin")
+            && BOOTSTRAP_DAG.contains("right_hash: BootstrapHashPin { digest: v4_stage2_hash, pin: v4_stage2_hash_pin"),
+        "mismatch regression must wire stage-2 and fixpt.right through v4_stage2_hash (not an unrelated seed digest)"
     );
 }
 
@@ -326,17 +372,37 @@ fn claim_anchor_values<'a>(modules: &[&'a SurfaceModule]) -> BTreeSet<&'a str> {
         .filter_map(|item| match item {
             SurfaceItem::Data {
                 ty: SurfaceType::Named { name: ty_name, .. },
-                body: Some(SurfaceExpr::VariantRecord { fields, .. }),
+                body: Some(body),
                 ..
-            } if ty_name == "TestClaim" => match record_field_expr(fields, "t19_anchor") {
-                SurfaceExpr::Var { name, .. } => Some(name.as_str()),
-                other => {
-                    panic!("TestClaim.t19_anchor must be a discriminant var, got {other:?}")
-                }
-            },
+            } if ty_name == "TestClaim" => Some(claim_t19_anchor_name(body)),
             _ => None,
         })
         .collect()
+}
+
+fn claim_t19_anchor_name(body: &SurfaceExpr) -> &str {
+    let anchor_expr = match body {
+        SurfaceExpr::VariantRecord { fields, .. } => record_field_expr(fields, "t19_anchor"),
+        SurfaceExpr::Call { target, args, .. } if target == "arity_rejection_claim" => {
+            let SurfaceExpr::Record { fields, .. } = args
+                .first()
+                .unwrap_or_else(|| panic!("arity_rejection_claim must take one named-arg record"))
+            else {
+                panic!(
+                    "arity_rejection_claim args must desugar to Record, got {:?}",
+                    args.first()
+                );
+            };
+            record_field_expr(fields, "anchor")
+        }
+        other => panic!(
+            "TestClaim data body must be variant record or arity_rejection_claim, got {other:?}"
+        ),
+    };
+    match anchor_expr {
+        SurfaceExpr::Var { name, .. } => name.as_str(),
+        other => panic!("TestClaim.t19_anchor must be a discriminant var, got {other:?}"),
+    }
 }
 
 fn record_field_expr<'a>(fields: &'a [SurfaceRecordField], name: &str) -> &'a SurfaceExpr {

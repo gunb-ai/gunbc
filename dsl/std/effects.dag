@@ -208,19 +208,6 @@ fn compose_effects(effects: List<OperationEffect>) -> CompositionVerdict {
 // Effect derivation implementation
 // =========================================================================
 
-// HttpMethod imported from std.types (single authority, RFC 9110).
-
-fn parse_http_method(raw: String) -> HttpMethod? {
-  if raw == "GET" { Some { value: GET } }
-  else if raw == "PUT" { Some { value: PUT } }
-  else if raw == "POST" { Some { value: POST } }
-  else if raw == "DELETE" { Some { value: DELETE } }
-  else if raw == "PATCH" { Some { value: PATCH } }
-  else if raw == "HEAD" { Some { value: HEAD } }
-  else if raw == "OPTIONS" { Some { value: OPTIONS } }
-  else { none }
-}
-
 type DerivedOpEffect {
   operation_name: String
   method: HttpMethod
@@ -236,7 +223,6 @@ type DerivedOpEffect {
 // carrier and this local v2 bridge result can collapse away.
 type DeriveOpEffectResult
   = DerivedEffect { effect: DerivedOpEffect }
-  | UnknownHttpMethodInput { operation_name: String, method_str: String }
   | MalformedPathInput {
       operation_name: String,
       method: HttpMethod,
