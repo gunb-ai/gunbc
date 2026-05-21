@@ -2100,10 +2100,11 @@ import/alias of the resolver's authoritative shape.
   related but *distinct* pattern (see "Borderline case" below) — it
   passes the strict L1.13 decidability rule (Mixed) because the
   per-arm `claim_<name>` references are distinct literals; recognizing
-  it as a finding requires either a sub-signature (proposed L1.13.b)
-  that detects the arm-name-parameterizes-reference pattern, or a
-  separate lens for the match-as-typed-table shape. Listed as a
-  borderline case, NOT a current L1.13 kill.
+  it as a finding requires the **L1.13.c Table decision-tree**
+  sub-signature (formerly described as a future L1.13.b sub-signature
+  OR a separate "match-as-typed-table" lens — both pointers unified
+  under L1.13.c per the 2026-05-21 producer-shape factoring). Listed
+  as a borderline case, NOT a current L1.13 kill.
 
 **Decidability boundary (explicit):** RHS skeleton extraction collapses
 the leading constructor name to a hole AND α-renames bound field names,
@@ -2223,14 +2224,20 @@ NOT bound by the arm constructor — under the strict rule, K = N → Mixed
 Recognized as a borderline because the human pattern recognition does
 catch it: the references follow a `claim_<arm_constructor_lower_case>`
 naming convention that PARAMETERIZES BY the arm constructor. Catching
-this structurally requires either:
-- A sub-signature **L1.13.b** (future) that recognizes
-  per-arm-named references as bound parameterizations (the lens would
-  detect "every arm references a single `data` declaration whose name
-  encodes the arm constructor"), OR
-- A separate lens entry — "match-as-typed-table" — whose signature is
-  "N arms each referencing N distinct typed `data` declarations with
-  one-to-one correspondence to the matched variants."
+this structurally is the job of **L1.13.c Table decision-tree** (see
+below): when the per-arm RHSes are references to N distinct typed
+`data` declarations with one-to-one correspondence to the matched
+variants, the match IS a typed table indexed by the closed variant
+set; the substrate carrier is `TotalMap<K, V>` (or `TotalPolicy` for
+payload-bearing variants per the operator-direct refinement
+2026-05-21).
+
+(Historical note for traceability: the borderline case was originally
+described as resolving to a "future L1.13.b sub-signature" OR a
+"separate match-as-typed-table lens." Both pointers have been unified
+under **L1.13.c**. L1.13.b now binds a different mechanism — the
+decision-tree-collapse generalization beyond match expressions. See
+the L1.13.b and L1.13.c sub-sections after the L1.13 base.)
 
 The clean shape for the F16 pattern (sketched below) is what either
 of those future lenses would target. F16 is documented here as a
@@ -2787,11 +2794,13 @@ produces: Map<MatchExprId, SkeletonReport>
 //                                                // MultiOutlier/Categorical wrapping-variant default)
 // }
 // Facts Flow Forward (Practice 3): the lens emits everything the L1.13
-// auto-fix and any future L1.13.b sub-signature need. No consumer
+// auto-fix needs (and the L1.13.c table-decision-tree sub-signature
+// reuses it for per-arm-RHS-referencing-typed-data cases). No consumer
 // re-walks the arms or re-derives skeleton equivalence — single
 // authority (P2), one mechanism, multiple downstream projections.
-// reusable by: L1.13, future L1.13.b (per-arm-name-parameterized-reference sub-signature),
-// future match-as-typed-table lens
+// reusable by: L1.13 (base, MatchExpr-scoped), L1.13.c (table
+// decision-tree — per-arm references to typed `data` declarations
+// with one-to-one correspondence to the matched variants)
 // Algorithm: tree-walk each arm's RHS, α-rename pattern-bound names,
 //   substitute every occurrence of the matched-arm constructor identity
 //   with a per-arm hole, structurally compare; group arms by skeleton
@@ -2878,8 +2887,10 @@ produces: Map<DecisionTreeId, DecisionTreeShape>
 // L1.13.c table decision-tree) read the same record. No
 // consumer re-walks source expressions or re-classifies if-else as
 // decision-tree.
-// reusable by: L1.13, L1.13.b, L1.13.c, L1.10.c, future
-//   match-as-typed-table sub-signature
+// reusable by: L1.13 (base, MatchExpr-scoped), L1.13.b (decision-tree
+// collapse — generalized beyond match), L1.13.c (table decision-tree
+// — function-as-table dissolution), L1.10.c (name-discriminant-bypass
+// — string-equality dispatch where resolved identity is available)
 // Algorithm: walk each fn body's expression tree; identify
 //   subgraphs that branch over a closed coproduct's resolved
 //   constructor-identity set (whether spelled as `match`,
