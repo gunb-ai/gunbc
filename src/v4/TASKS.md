@@ -1268,6 +1268,25 @@ is `Q1a + factored ModelCore` (2026-05-20)".
 
 ---
 
+### T-33-Q10 — std/model_core.dag effect / partiality carriers  [SCHEDULED]
+**Owner:** ModelCore substrate follow-up. **Authority:** `docs/design-v4-compiler-homomorphism.md`
+§"Open Q10 — Partiality and effects in `ModelCore`".
+
+Lands the ModelCore-owned effect / resource / partiality carrier names
+currently deferred by Q10: `EffectSignature`, `ResourceAccess`, and any
+ratified companion witnesses (`CommutationWitness`, `ConflictWitness`, or
+their replacement shape). This is the concrete dissolve-on-arrival owner
+for any pre-merge T-34 forward declaration of `EffectSignature` /
+`ResourceAccess`.
+
+**Trigger:** first primitive operation in `std/` that declares non-trivial
+effect or partiality, or the first consumer that needs to validate host
+resource/effect boundaries against those facts. When this task lands,
+`src/v4/std/host.dag` must replace its local forward declarations with
+imports from `v4.std.model_core`.
+
+---
+
 ### T-34 — std/host.dag — HostModel substrate  [SCHEDULED]
 **Operator-ratified 2026-05-20 (PR #3437, Ratified Q1).** A `HostModel`
 that is a **distinct peer of `LanguageModel`**, both extending the shared
@@ -1293,7 +1312,19 @@ first authoring. Named explicitly in the design doc's MVP-B substrate row
 
 **Dependencies — `[needs T-33]`.** Cannot author the HostModel carrier
 shape until ModelCore is named (Q1 ratification factored ModelCore out
-*because* HostModel and LanguageModel needed a shared base).
+*because* HostModel and LanguageModel needed a shared base). While T-33 is
+being authored in parallel, T-34 may carry a local `ModelCore` forward
+declaration only as a marked pre-merge bridge: the declaration must cite the
+T-33 feature, bind to the T-34 work node, and dissolve to
+`import v4.std.model_core { ModelCore }` when `std/model_core.dag` lands.
+That bridge does not create a second ModelCore authority; it is the explicit
+schedule-edge receipt for the concurrent T-33/T-34 handoff.
+The same pre-merge bridge may name T-33-Q10 `EffectSignature` /
+`ResourceAccess` carriers only as forward declarations for the
+`HostResourceEffectBoundary`: each host boundary coordinate must consume
+those signature/resource facts and dissolve to the ModelCore-owned imports
+when T-33-Q10 lands. A duplicateable ambient capability row list is not
+allowed.
 
 **Why a sibling, not a LanguageModel variant.** Q1c ("eval =
 translate-to-machine-code + execute") was rejected because host execution
