@@ -239,11 +239,18 @@ pub type DissolutionDiffId = String;
 /// Structural mirror of `v4.lens.subsumption.TestClaimId` for Lens-CI rerun evidence.
 pub type DissolutionTestClaimId = String;
 
+/// Structural mirror of `v4.lens.subsumption.ProducerStageId` for Lens-CI row evidence.
+pub type DissolutionProducerStageId = String;
+
 /// Structural mirror of `v4.lens.subsumption.SubsumptionVerification`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SubsumptionVerificationRuntime {
-    MechanicalReverification { test_claim: DissolutionTestClaimId },
-    ProducerStageDerivation,
+    MechanicalReverification {
+        test_claim: DissolutionTestClaimId,
+    },
+    ProducerStageDerivation {
+        derivation_path: Vec<DissolutionProducerStageId>,
+    },
 }
 
 /// Structural mirror of one `v4.lens.subsumption.DissolutionSubsumption` row.
@@ -252,6 +259,45 @@ pub struct DissolutionSubsumptionRuntimeRow {
     pub root_fix: DissolutionDiffId,
     pub subsumed_fixes: BTreeSet<DissolutionDiffId>,
     pub verification: SubsumptionVerificationRuntime,
+}
+
+/// Typed Lens-CI host rows for `v4.lens.subsumption.DissolutionSubsumption`.
+pub fn lens_ci_dissolution_subsumption_rows() -> Vec<DissolutionSubsumptionRuntimeRow> {
+    vec![
+        affected_set_subsumption_runtime_row(),
+        concept_home_rewrite_subsumption_runtime_row(),
+    ]
+}
+
+/// Runtime consumer row for `affected_set_irt1_subsumption`.
+pub fn affected_set_subsumption_runtime_row() -> DissolutionSubsumptionRuntimeRow {
+    DissolutionSubsumptionRuntimeRow {
+        root_fix: "affected_set_irt1_frontier_root_fix".into(),
+        subsumed_fixes: BTreeSet::from([
+            "affected_set_hash_receipt_leaf_fix".into(),
+            "affected_set_boundary_receipt_leaf_fix".into(),
+            "affected_set_dimension_receipt_leaf_fix".into(),
+            "affected_set_propagation_receipt_leaf_fix".into(),
+            "affected_set_frontier_receipt_leaf_fix".into(),
+        ]),
+        verification: SubsumptionVerificationRuntime::MechanicalReverification {
+            test_claim: "affected_set_irt1_mechanical_reverification_claim".into(),
+        },
+    }
+}
+
+/// Runtime consumer row for `concept_home_rewrite_subsumption`.
+pub fn concept_home_rewrite_subsumption_runtime_row() -> DissolutionSubsumptionRuntimeRow {
+    DissolutionSubsumptionRuntimeRow {
+        root_fix: "concept_home_rewrite_root_fix".into(),
+        subsumed_fixes: BTreeSet::from([
+            "wrong_home_alias_leaf_fix".into(),
+            "duplicate_home_leaf_fix".into(),
+        ]),
+        verification: SubsumptionVerificationRuntime::ProducerStageDerivation {
+            derivation_path: vec!["concept_home_producer_stage".into()],
+        },
+    }
 }
 
 /// Lens-CI evidence from applying `root_fix` and rerunning the lens suite for one TestClaim row.
@@ -306,7 +352,7 @@ pub fn verify_mechanical_reverification(
 ) -> Result<(), MechanicalReverificationError> {
     let expected_claim = match &row.verification {
         SubsumptionVerificationRuntime::MechanicalReverification { test_claim } => test_claim,
-        SubsumptionVerificationRuntime::ProducerStageDerivation => {
+        SubsumptionVerificationRuntime::ProducerStageDerivation { .. } => {
             return Err(MechanicalReverificationError::NonMechanicalRow);
         }
     };
@@ -408,8 +454,6 @@ fn topo_sort_subset(
 mod tests {
     use super::*;
 
-    const SUBSUMPTION_DAG: &str = include_str!("../../../v4/lens/subsumption.dag");
-
     fn demo_ci_dag() -> CiWorkflowDagInput {
         CiWorkflowDagInput {
             gates: vec![
@@ -439,24 +483,8 @@ mod tests {
         }
     }
 
-    fn affected_set_subsumption_row() -> DissolutionSubsumptionRuntimeRow {
-        DissolutionSubsumptionRuntimeRow {
-            root_fix: "affected_set_irt1_frontier_root_fix".into(),
-            subsumed_fixes: BTreeSet::from([
-                "affected_set_hash_receipt_leaf_fix".into(),
-                "affected_set_boundary_receipt_leaf_fix".into(),
-                "affected_set_dimension_receipt_leaf_fix".into(),
-                "affected_set_propagation_receipt_leaf_fix".into(),
-                "affected_set_frontier_receipt_leaf_fix".into(),
-            ]),
-            verification: SubsumptionVerificationRuntime::MechanicalReverification {
-                test_claim: "affected_set_irt1_mechanical_reverification_claim".into(),
-            },
-        }
-    }
-
     fn successful_affected_set_reverification() -> MechanicalReverificationRun {
-        let row = affected_set_subsumption_row();
+        let row = affected_set_subsumption_runtime_row();
         MechanicalReverificationRun {
             test_claim: "affected_set_irt1_mechanical_reverification_claim".into(),
             applied_root_fix: "affected_set_irt1_frontier_root_fix".into(),
@@ -700,38 +728,40 @@ mod tests {
     }
 
     #[test]
-    fn subsumption_dag_carries_mechanical_reverification_row_for_lens_ci() {
-        assert!(
-            SUBSUMPTION_DAG.contains("module v4.lens.subsumption"),
-            "subsumption carrier must remain in the v4 lens namespace"
+    fn lens_ci_subsumption_rows_include_mechanical_runtime_row() {
+        let rows = lens_ci_dissolution_subsumption_rows();
+        let row = rows
+            .iter()
+            .find(|row| row.root_fix == "affected_set_irt1_frontier_root_fix")
+            .expect("affected-set subsumption row");
+        let SubsumptionVerificationRuntime::MechanicalReverification { test_claim } =
+            &row.verification
+        else {
+            panic!("affected-set subsumption row must use MechanicalReverification");
+        };
+        assert_eq!(
+            test_claim,
+            "affected_set_irt1_mechanical_reverification_claim"
         );
-        assert!(
-            SUBSUMPTION_DAG.contains("type DissolutionSubsumption"),
-            "subsumption carrier type must stay authored in substrate"
-        );
-        assert!(
-            SUBSUMPTION_DAG.contains("type SubsumptionVerification")
-                && SUBSUMPTION_DAG
-                    .contains("= MechanicalReverification { test_claim: TestClaimId }")
-                && SUBSUMPTION_DAG.contains(
-                    "| ProducerStageDerivation { derivation_path: List<ProducerStageId> }"
-                ),
-            "SubsumptionVerification must expose both design-spec verification modes"
-        );
-        let row_start = SUBSUMPTION_DAG
-            .find("data affected_set_irt1_subsumption")
-            .expect("affected-set IRT-1 subsumption row");
-        let row = &SUBSUMPTION_DAG[row_start..];
-        assert!(
-            row.contains("verification: MechanicalReverification")
-                && row.contains("affected_set_irt1_mechanical_reverification_claim"),
-            "affected_set_irt1_subsumption must be a MechanicalReverification row consumed by Lens-CI"
+        assert!(row
+            .subsumed_fixes
+            .contains("affected_set_hash_receipt_leaf_fix"));
+    }
+
+    #[test]
+    fn producer_stage_rows_preserve_derivation_path() {
+        let row = concept_home_rewrite_subsumption_runtime_row();
+        assert_eq!(
+            row.verification,
+            SubsumptionVerificationRuntime::ProducerStageDerivation {
+                derivation_path: vec!["concept_home_producer_stage".into()]
+            }
         );
     }
 
     #[test]
     fn mechanical_reverification_accepts_when_subsumed_fixes_clear() {
-        let row = affected_set_subsumption_row();
+        let row = affected_set_subsumption_runtime_row();
         let run = successful_affected_set_reverification();
         assert_eq!(verify_mechanical_reverification(&row, &run), Ok(()));
         assert_eq!(
@@ -742,7 +772,7 @@ mod tests {
 
     #[test]
     fn mechanical_reverification_rejects_surviving_subsumed_fix() {
-        let row = affected_set_subsumption_row();
+        let row = affected_set_subsumption_runtime_row();
         let mut run = successful_affected_set_reverification();
         run.findings_after
             .insert("affected_set_hash_receipt_leaf_fix".into());
@@ -766,7 +796,7 @@ mod tests {
 
     #[test]
     fn mechanical_reverification_rejects_unobserved_subsumed_fix() {
-        let row = affected_set_subsumption_row();
+        let row = affected_set_subsumption_runtime_row();
         let mut run = successful_affected_set_reverification();
         run.findings_before
             .remove("affected_set_frontier_receipt_leaf_fix");
@@ -788,7 +818,7 @@ mod tests {
 
     #[test]
     fn mechanical_reverification_rejects_wrong_claim_or_root() {
-        let row = affected_set_subsumption_row();
+        let row = affected_set_subsumption_runtime_row();
         let mut wrong_claim = successful_affected_set_reverification();
         wrong_claim.test_claim = "other_claim".into();
         assert_eq!(
@@ -812,11 +842,7 @@ mod tests {
 
     #[test]
     fn mechanical_reverification_rejects_producer_stage_rows() {
-        let row = DissolutionSubsumptionRuntimeRow {
-            root_fix: "concept_home_rewrite_root_fix".into(),
-            subsumed_fixes: BTreeSet::from(["wrong_home_alias_leaf_fix".into()]),
-            verification: SubsumptionVerificationRuntime::ProducerStageDerivation,
-        };
+        let row = concept_home_rewrite_subsumption_runtime_row();
         let run = MechanicalReverificationRun {
             test_claim: "concept_home_rewrite_claim".into(),
             applied_root_fix: "concept_home_rewrite_root_fix".into(),
