@@ -33,15 +33,10 @@ module v4.lens.complexity
 
 import v4.lens.cost {
   AsymptoticClass,
-  ClassExponential,
-  ClassFactorial,
   ClassConstant,
   ClassUnknown,
   ClassLinear,
-  ClassLinearithmic,
-  ClassLog,
   ClassPolynomial,
-  ClassPolyLog,
   ConstantCost,
   ExponentialCost,
   FactorialCost,
@@ -80,18 +75,31 @@ data complexity_projection_virtual_file: Symbol = complexity_projection_virtual_
 // projected user-facing bound without adding another cost mechanism.
 // 🟢 coproduct dissolution — T-12-COMPLEXITY-PROJECTION.
 type ComplexityBound
-  = Constant
-  | Logarithmic { size_var: SizeVariable }
-  | Linear { size_var: SizeVariable }
-  | Linearithmic { size_var: SizeVariable }
-  | PolyLogarithmic { size_var: SizeVariable, exponent: PolyLogExponent }
-  | Polynomial { size_var: SizeVariable, degree: PolynomialDegree }
-  | Exponential { size_var: SizeVariable }
-  | Factorial { size_var: SizeVariable }
-  | Unknown { diagnostic: Diagnostic }
+  = ConstantComplexity
+  | SizedComplexity { class: AsymptoticClass, size_var: SizeVariable }
+  | UnknownComplexity { diagnostic: Diagnostic }
 
 fn unknown_complexity() -> ComplexityBound {
-  Unknown { diagnostic: complexity_projection_diagnostic() }
+  UnknownComplexity { diagnostic: complexity_projection_diagnostic() }
+}
+
+fn sized_complexity(class: AsymptoticClass, size_var: SizeVariable) -> ComplexityBound {
+  SizedComplexity { class: class, size_var: size_var }
+}
+
+fn linear_complexity(size_var: SizeVariable) -> ComplexityBound {
+  sized_complexity(class: ClassLinear, size_var: size_var)
+}
+
+fn polynomial_complexity(
+  size_var: SizeVariable,
+  degree: PolynomialDegree
+) -> ComplexityBound {
+  sized_complexity(class: ClassPolynomial { degree: degree }, size_var: size_var)
+}
+
+fn unknown_complexity_with_diagnostic(diagnostic: Diagnostic) -> ComplexityBound {
+  UnknownComplexity { diagnostic: diagnostic }
 }
 
 fn representative_size_variable(cost: SymbolicCost) -> Witness<SizeVariable> {
@@ -124,43 +132,13 @@ fn complexity_bound_from_class(
   size_var: Witness<SizeVariable>
 ) -> ComplexityBound {
   match class {
-    ClassConstant => Constant
-    ClassLog =>
-      match size_var {
-        Holds { value: v } => Logarithmic { size_var: v }
-        Violates { diagnostic: _ } => unknown_complexity()
-      }
-    ClassLinear =>
-      match size_var {
-        Holds { value: v } => Linear { size_var: v }
-        Violates { diagnostic: _ } => unknown_complexity()
-      }
-    ClassLinearithmic =>
-      match size_var {
-        Holds { value: v } => Linearithmic { size_var: v }
-        Violates { diagnostic: _ } => unknown_complexity()
-      }
-    ClassPolyLog { exponent: e } =>
-      match size_var {
-        Holds { value: v } => PolyLogarithmic { size_var: v, exponent: e }
-        Violates { diagnostic: _ } => unknown_complexity()
-      }
-    ClassPolynomial { degree: d } =>
-      match size_var {
-        Holds { value: v } => Polynomial { size_var: v, degree: d }
-        Violates { diagnostic: _ } => unknown_complexity()
-      }
-    ClassExponential =>
-      match size_var {
-        Holds { value: v } => Exponential { size_var: v }
-        Violates { diagnostic: _ } => unknown_complexity()
-      }
-    ClassFactorial =>
-      match size_var {
-        Holds { value: v } => Factorial { size_var: v }
-        Violates { diagnostic: _ } => unknown_complexity()
-      }
+    ClassConstant => ConstantComplexity
     ClassUnknown => unknown_complexity()
+    _ =>
+      match size_var {
+        Holds { value: v } => SizedComplexity { class: class, size_var: v }
+        Violates { diagnostic: _ } => unknown_complexity()
+      }
   }
 }
 
@@ -194,15 +172,9 @@ fn complexity_lens(n: Node) -> Witness<ComplexityBound> {
 
 fn complexity_bound_class(b: ComplexityBound) -> AsymptoticClass {
   match b {
-    Constant => ClassConstant
-    Logarithmic { size_var: _ } => ClassLog
-    Linear { size_var: _ } => ClassLinear
-    Linearithmic { size_var: _ } => ClassLinearithmic
-    PolyLogarithmic { size_var: _, exponent: e } => ClassPolyLog { exponent: e }
-    Polynomial { size_var: _, degree: d } => ClassPolynomial { degree: d }
-    Exponential { size_var: _ } => ClassExponential
-    Factorial { size_var: _ } => ClassFactorial
-    Unknown { diagnostic: _ } => ClassUnknown
+    ConstantComplexity => ClassConstant
+    SizedComplexity { class: c, size_var: _ } => c
+    UnknownComplexity { diagnostic: _ } => ClassUnknown
   }
 }
 

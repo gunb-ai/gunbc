@@ -6,7 +6,11 @@
 
 module v4.test.claim.lens_complexity.while_external_condition
 
-import v4.lens.complexity { ComplexityBound, Unknown, complexity_lens }
+import v4.lens.complexity {
+  ComplexityBound,
+  complexity_lens,
+  unknown_complexity_with_diagnostic
+}
 import v4.lens.cost { SymbolicCost, UnknownCost, cost_lens }
 import v4.std.diagnostic {
   AmbiguousIntent,
@@ -47,7 +51,9 @@ data while_external_condition_diagnostic: Diagnostic = Diagnostic {
 data while_external_condition_claim: LensComplexityClaim = LensComplexityClaim {
   input: while_external_condition_input,
   expected_cost: UnknownCost { reason: "T-9-not-landed: loop bound" },
-  expected_complexity: Unknown { diagnostic: while_external_condition_diagnostic },
+  expected_complexity: unknown_complexity_with_diagnostic(
+    diagnostic: while_external_condition_diagnostic
+  ),
   falsification: while_external_condition_diagnostic
 }
 
