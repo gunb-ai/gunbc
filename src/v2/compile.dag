@@ -203,11 +203,11 @@ fn json_optional_string(value: String?) -> String {
 type DagCollectAcc {
   seen: Map<String, Bool>
   order: List<Node>
-  collision_errors: List<ErrorNode>
 }
 
-// Provisional identity until v4 content_hash: file+span+ident. Synthetic nodes that
-// share the same triple collide; dag_collect_insert fails closed on collision.
+// Provisional identity until v4 content_hash: file+span+ident. Re-visits with the same
+// key share one nodes-table record (required for Resolved back-links). Distinct nodes
+// that accidentally share a key would alias — documented 🟡 risk on DagNodeId.
 fn dag_node_key(node: Node) -> String {
   concat(
     node.span.file, ":", to_string(i: node.span.start), "..", to_string(i: node.span.end),
@@ -215,20 +215,6 @@ fn dag_node_key(node: Node) -> String {
       Some { value: id } => concat(":", to_string(i: id))
       None => ""
     })
-}
-
-fn dag_node_key_collision_error(node: Node) -> ErrorNode {
-  make_error_node(
-    diagnostic: InternalError {
-      message: concat(
-        "dag artifact: distinct nodes share identity key (",
-        dag_node_key(node: node),
-        "); wait for v4 content_hash or disambiguate spans"
-      ),
-      span: node.span
-    },
-    module_name: ""
-  )
 }
 
 fn dag_node_missing_ref_error(node: Node) -> ErrorNode {
@@ -325,17 +311,11 @@ fn dag_collect_node_tree(node: Node, acc: DagCollectAcc) -> DagCollectAcc {
 fn dag_collect_insert(node: Node, acc: DagCollectAcc) -> DagCollectAcc {
   let key = dag_node_key(node: node)
   match map_get(acc.seen, key) {
-    Some { value: _ } =>
-      DagCollectAcc {
-        seen: acc.seen,
-        order: acc.order,
-        collision_errors: list_push(acc.collision_errors, dag_node_key_collision_error(node: node))
-      }
+    Some { value: _ } => acc
     None => {
       let acc1 = DagCollectAcc {
         seen: map_insert(acc.seen, key, true),
-        order: list_push(acc.order, node),
-        collision_errors: acc.collision_errors
+        order: list_push(acc.order, node)
       }
       dag_collect_node_tree(node: node, acc: acc1)
     }
@@ -348,12 +328,10 @@ fn dag_collect_from_module(module: TypedModule, acc: DagCollectAcc) -> DagCollec
   module.items |> fold(init: acc, f: (a, item) => dag_collect_insert(node: item, acc: a))
 }
 
-fn collect_dag_nodes(typed: ResolvedGraph) -> DagCollectAcc {
-  typed.modules
-    |> fold(
-      init: DagCollectAcc { seen: empty_map(), order: [], collision_errors: [] },
-      f: (acc, m) => dag_collect_from_module(module: m, acc: acc)
-    )
+fn collect_dag_nodes(typed: ResolvedGraph) -> List<Node> {
+  let acc = typed.modules
+    |> fold(init: DagCollectAcc { seen: empty_map(), order: [] }, f: (acc, m) => dag_collect_from_module(module: m, acc: acc))
+  acc.order
 }
 
 fn build_dag_key_to_id(order: List<Node>) -> Map<String, String> {
@@ -929,11 +907,7 @@ fn serialize_diagnostic(diagnostic: ErrorNode) -> String {
 // DAG backend: bounded DagArtifact JSON (v0.2.0 nodes table + $ref).
 // JSON shape matches v2.compiler.artifact.DagArtifact; string concat is the v0.2 emitter.
 fn emit_dag_artifact(typed: ResolvedGraph) -> EmitResult {
-  let collected = collect_dag_nodes(typed: typed)
-  if collected.collision_errors |> count > 0 {
-    return EmitResult { files: [], diagnostics: collected.collision_errors }
-  }
-  let order = collected.order
+  let order = collect_dag_nodes(typed: typed)
   let key_to_id = build_dag_key_to_id(order: order)
   let ref_errors = dag_emit_ref_errors(order: order, key_to_id: key_to_id)
   if ref_errors |> count > 0 {
