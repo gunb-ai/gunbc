@@ -28,6 +28,7 @@ import v4.std.coercion {
   coercion_fold,
   coercion_fold_with_declared_priority
 }
+import v4.std.find_witness { CandidateSet }
 import v4.std.constraints { CanonicalGrounding }
 import v4.std.diagnostic {
   Accepted,
