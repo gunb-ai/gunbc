@@ -4150,7 +4150,7 @@ fn lookup_struct_field_type_node(struct_node: Node, field_name: String, source_i
 
 fn rust_field_value_for_struct(raw_value: String, struct_node: Node, field_name: String, scope: InferScope) -> String {
   match lookup_struct_field_type_node(struct_node: struct_node, field_name: field_name, source_indices: scope.type_env.source_indices) {
-    Some { value: field_type } =>
+    Some { value: field_type } => {
       if field_type.connective == Arrow {
         return (["Rc", "::", "new(", raw_value, ")"] |> join(separator: ""))
       }
@@ -4162,6 +4162,7 @@ fn rust_field_value_for_struct(raw_value: String, struct_node: Node, field_name:
         return (["Box", "::", "new(", raw_value, ")"] |> join(separator: ""))
       }
       raw_value
+    }
     None => raw_value
   }
 }
