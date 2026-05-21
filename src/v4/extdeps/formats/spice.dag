@@ -420,14 +420,13 @@ type SpiceValue {
 // Ledger: Volt is the only SPICE3 electrical base unit modeled in wave-1;
 // alternative units (Ampere for current sources) are a named 🟡 follow-up
 // tied to the same T-3 dissolution trigger as exact-real.
-type SpicePhysicalUnit
-  = VoltUnit
+type SpiceVoltUnit
 
 // Approximate node voltage — magnitude stays lexeme-level until std/
 // `ApproximateField` binds; unit is structural (not inferred from spelling).
 type SpiceApproxVoltage {
   magnitude_lexeme: String
-  unit: SpicePhysicalUnit
+  unit: SpiceVoltUnit
 }
 
 // Named fail-closed gap carrier — coercions to exact voltage return
