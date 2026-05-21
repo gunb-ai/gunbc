@@ -9,7 +9,8 @@
 module v4.test.claim.manual.infer_emit_compile_anchor
 
 
-import v4.compiler.compile { Source, TargetModel, TargetSource, compile }
+import v4.compiler.compile { Source, compile_ingest_staging }
+import v4.compiler.target_carriers { LanguageModel, TargetModel, TargetSource }
 import v4.compiler.emit { emit }
 import v4.compiler.infer {
   AlgebraRef,
@@ -43,6 +44,7 @@ data anchor_stub_empty_conj: Node = Node {
 
 
 data anchor_stub_target_model: TargetModel = anchor_stub_empty_conj
+data anchor_stub_input_lang: LanguageModel = anchor_stub_empty_conj
 
 
 data anchor_stub_source: Source = Empty
@@ -109,10 +111,14 @@ fn anchor_infer_rejects() -> Outcome<InferredTree> {
 
 
 fn anchor_emit_rejects() -> Outcome<TargetSource> {
-  emit(tree: anchor_stub_inferred_tree, target: anchor_stub_target_model)
+  emit(
+    tree: anchor_stub_inferred_tree,
+    target: anchor_stub_target_model,
+    input_lang: anchor_stub_input_lang
+  )
 }
 
 
 fn anchor_compile_rejects() -> Outcome<TargetSource> {
-  compile(source: anchor_stub_source, target: anchor_stub_target_model)
+  compile_ingest_staging(source: anchor_stub_source, target: anchor_stub_target_model)
 }

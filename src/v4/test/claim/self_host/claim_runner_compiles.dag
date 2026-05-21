@@ -1,0 +1,40 @@
+// src/v4/test/claim/self_host/claim_runner_compiles.dag
+// Scope: scaffold claim — runner shape is parse/compile visible.
+// Owns: claim_runner_compiles.
+// Consumes: v4.compiler.self_host, v4.std.verification, v4.std.diagnostic, v4.std.node.
+// Status: scaffold-against-contract; execution deferred to future substrate.
+
+module v4.test.claim.self_host.claim_runner_compiles
+
+import v4.compiler.self_host {
+  self_host_fixed_point_validate
+}
+import v4.std.diagnostic { Accepted, None }
+import v4.std.node { Atom, Node, Symbol, TypeNode }
+import v4.std.verification {
+  Compiles,
+  T19ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Integration
+}
+
+
+data runner_compiles_subject_symbol: Symbol = runner_compiles_subject_symbol
+
+
+data runner_compiles_subject: Node = Node {
+  kind: TypeNode { connective: Atom { identity: runner_compiles_subject_symbol } },
+  children: []
+}
+
+
+data claim_runner_compiles: TestClaim = TestClaim {
+  kind: Compiles,
+  label: "self-host fixed-point runner shape compiles",
+  t19_anchor: T19ManualAnchorAbsent,
+  input: runner_compiles_subject,
+  expected: Accepted { value: runner_compiles_subject, diagnostics: None },
+  classification: TestClassification { tier: Tier1, layer: Integration }
+}
