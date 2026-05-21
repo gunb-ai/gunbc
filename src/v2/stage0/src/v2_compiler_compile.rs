@@ -34,6 +34,9 @@ pub use crate::v2_compiler_parse::{parse_with_table, ParseResult};
 pub use crate::v2_compiler_resolve::{resolve_modules, ModuleGraph};
 pub use crate::v2_compiler_tokenize::tokenize;
 use crate::v2_rt;
+use crate::v2_rt::{
+    rc_empty_set as empty_set, rc_set_insert as set_insert, rc_set_union as set_union, set_contains,
+};
 use crate::v2_std_core::BinOp::*;
 use crate::v2_std_core::CallSemantics::*;
 use crate::v2_std_core::Cardinality::*;

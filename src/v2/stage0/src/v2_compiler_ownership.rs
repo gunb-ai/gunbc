@@ -712,9 +712,9 @@ pub fn build_movable_set(proof: Rc<OwnershipProof>) -> Rc<std::collections::BTre
     .iter()
     .cloned()
     .fold(
-        empty_set(),
+        v2_rt::rc_empty_set(),
         |acc: Rc<std::collections::BTreeSet<String>>, usage: Rc<BindingUsage>| {
-            set_insert(acc, usage.name.clone())
+            v2_rt::rc_set_insert(acc, usage.name.clone())
         },
     )
 }
@@ -729,7 +729,7 @@ pub fn build_read_only_params(
             .iter()
             .cloned()
         {
-            if (((set_contains(param_names.clone(), usage.name.clone())
+            if (((v2_rt::set_contains(&param_names, usage.name.clone())
                 && is_owned_local(usage.binding_kind.clone()))
                 && (binding_fan_out(usage.clone()) > 1))
                 && {
@@ -756,9 +756,9 @@ pub fn build_read_only_params(
     .iter()
     .cloned()
     .fold(
-        empty_set(),
+        v2_rt::rc_empty_set(),
         |acc: Rc<std::collections::BTreeSet<String>>, usage: Rc<BindingUsage>| {
-            set_insert(acc, usage.name.clone())
+            v2_rt::rc_set_insert(acc, usage.name.clone())
         },
     )
 }
@@ -774,18 +774,18 @@ pub fn collect_callable_refs(
             } => match bk.clone().as_deref().cloned() {
                 Some(VarBindingKind::FunctionValueBinding) => {
                     let n = expr_var_name_at(texpr.clone(), si.clone());
-                    set_insert(empty_set(), n)
+                    v2_rt::rc_set_insert(v2_rt::rc_empty_set(), n)
                 }
-                _ => empty_set(),
+                _ => v2_rt::rc_empty_set(),
             },
-            ExprData::ExprLiteral { .. } => empty_set(),
+            ExprData::ExprLiteral { .. } => v2_rt::rc_empty_set(),
             ExprData::ExprFieldAccess { .. } => {
                 collect_callable_refs(&field_access_base(texpr.clone()), &si)
             }
             ExprData::ExprCall { .. } => texpr.children.clone().iter().cloned().fold(
-                empty_set(),
+                v2_rt::rc_empty_set(),
                 |acc: Rc<std::collections::BTreeSet<String>>, a: Rc<Node>| {
-                    set_union(acc, collect_callable_refs(&arg_value(&a), &si))
+                    v2_rt::rc_set_union(acc, collect_callable_refs(&arg_value(&a), &si))
                 },
             ),
             ExprData::ExprMethodCall { .. } => {
@@ -793,7 +793,7 @@ pub fn collect_callable_refs(
                 method_arg_nodes(texpr.clone()).iter().cloned().fold(
                     recv.clone(),
                     |acc: Rc<std::collections::BTreeSet<String>>, a: Rc<Node>| {
-                        set_union(acc, collect_callable_refs(&arg_value(&a), &si))
+                        v2_rt::rc_set_union(acc, collect_callable_refs(&arg_value(&a), &si))
                     },
                 )
             }
@@ -802,51 +802,51 @@ pub fn collect_callable_refs(
                 let then_br = collect_callable_refs(&if_then_branch(texpr.clone()), &si);
                 let else_br = match if_else_branch(texpr.clone()) {
                     Some(eb) => collect_callable_refs(&eb, &si),
-                    None => empty_set(),
+                    None => v2_rt::rc_empty_set(),
                 };
-                set_union(set_union(cond, then_br), else_br)
+                v2_rt::rc_set_union(v2_rt::rc_set_union(cond, then_br), else_br)
             }
             ExprData::ExprMatch => {
                 let scrut = collect_callable_refs(&match_scrutinee(texpr.clone()), &si);
                 match_arm_nodes(texpr.clone()).iter().cloned().fold(
                     scrut.clone(),
                     |acc: Rc<std::collections::BTreeSet<String>>, arm: Rc<Node>| {
-                        set_union(acc, collect_callable_refs(&arm_body(&arm), &si))
+                        v2_rt::rc_set_union(acc, collect_callable_refs(&arm_body(&arm), &si))
                     },
                 )
             }
             ExprData::ExprLet => {
                 let val = collect_callable_refs(&let_value(texpr.clone()), &si);
                 match let_body(texpr.clone()) {
-                    Some(lb) => set_union(val, collect_callable_refs(&lb, &si)),
+                    Some(lb) => v2_rt::rc_set_union(val, collect_callable_refs(&lb, &si)),
                     None => val,
                 }
             }
             ExprData::ExprBlock => texpr.children.clone().iter().cloned().fold(
-                empty_set(),
+                v2_rt::rc_empty_set(),
                 |acc: Rc<std::collections::BTreeSet<String>>, child: Rc<Node>| {
-                    set_union(acc, collect_callable_refs(&child, &si))
+                    v2_rt::rc_set_union(acc, collect_callable_refs(&child, &si))
                 },
             ),
             ExprData::ExprReturn => match texpr.children.clone().first().cloned() {
                 Some(child) => collect_callable_refs(&child, &si),
-                None => empty_set(),
+                None => v2_rt::rc_empty_set(),
             },
             ExprData::ExprLambda => collect_callable_refs(&lambda_body(texpr.clone()), &si),
             ExprData::ExprForEach => {
                 let col = collect_callable_refs(&foreach_collection(texpr.clone()), &si);
-                set_union(
+                v2_rt::rc_set_union(
                     col,
                     collect_callable_refs(&foreach_body(texpr.clone()), &si),
                 )
             }
             ExprData::ExprRecordLit { .. } => texpr.children.clone().iter().cloned().fold(
-                empty_set(),
+                v2_rt::rc_empty_set(),
                 |acc: Rc<std::collections::BTreeSet<String>>, field: Rc<Node>| {
-                    set_union(acc, collect_callable_refs(&arg_value(&field), &si))
+                    v2_rt::rc_set_union(acc, collect_callable_refs(&arg_value(&field), &si))
                 },
             ),
-            _ => empty_set(),
+            _ => v2_rt::rc_empty_set(),
         }
     })
 }

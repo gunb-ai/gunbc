@@ -3,6 +3,9 @@
 
 pub use crate::std_types::kernel_type_set;
 use crate::v2_rt;
+use crate::v2_rt::{
+    rc_empty_set as empty_set, rc_set_insert as set_insert, rc_set_union as set_union, set_contains,
+};
 use crate::v2_std_core::CompilerDiagnostic::{
     CircularDependency, DuplicateModule, MissingExport, UnresolvedImport,
 };

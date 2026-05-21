@@ -1784,7 +1784,7 @@ pub fn emit_node_type(
     target: RenderTarget,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    render_node_type(&n, &target, &empty_set(), &source_indices)
+    render_node_type(&n, &target, &v2_rt::rc_empty_set(), &source_indices)
 }
 
 pub fn render_node_type(
@@ -1836,7 +1836,7 @@ pub fn render_node_type(
                     }
                     __result
                 });
-                let param_str = param_strs.join(&repr.param_separator.clone());
+                let param_str = param_strs.clone().join(&repr.param_separator.clone());
                 let ret_str = match n.inferred.clone().as_deref().cloned() {
                     Some(InferredNode::Resolved { node: rt, .. }) => {
                         render_node_type(&rt, &target, &shared_types, &source_indices)
@@ -1894,7 +1894,7 @@ pub fn render_node_type(
         }
         let is_conj = (n.connective.clone() == Connective::Conj);
         let is_disj = (n.connective.clone() == Connective::Disj);
-        let shared = set_contains(shared_types.clone(), tn.clone());
+        let shared = v2_rt::set_contains(&shared_types, tn.clone());
         if is_disj {
             {
                 let base = if (n.ident_span.clone() != None) {
@@ -2036,7 +2036,7 @@ pub fn render_node_type(
                     if bare_is_collection {
                         emit_container(&to_snake(tn.clone()), "_".to_string(), &target)
                     } else {
-                        if (has_container_template && (param_count == 1)) {
+                        if (has_container_template && (param_count.clone() == 1)) {
                             {
                                 let inner = match n.params.clone().first().cloned() {
                                     Some(p) => render_node_type(
@@ -2050,7 +2050,7 @@ pub fn render_node_type(
                                 emit_container(&to_snake(tn.clone()), inner, &target)
                             }
                         } else {
-                            if (param_count > 0) {
+                            if (param_count.clone() > 0) {
                                 {
                                     let param_strs = Rc::new({
                                         let mut __result = Vec::new();
@@ -2071,15 +2071,17 @@ pub fn render_node_type(
                                                 coerce_primitive_type(target.clone(), tn.clone()),
                                                 spec.type_arg_open.clone(),
                                             ),
-                                            param_strs.join(&", ".to_string()),
+                                            param_strs.clone().join(&", ".to_string()),
                                         ),
                                         spec.type_arg_close.clone(),
                                     )
                                 }
-                            } else if (tn.clone().as_str() == tuple_type_name().as_str()) {
-                                render_tuple_parts(&Rc::new(vec![]), target.clone())
                             } else {
-                                coerce_primitive_type(target.clone(), tn.clone())
+                                if (tn.clone().as_str() == tuple_type_name().as_str()) {
+                                    render_tuple_parts(&Rc::new(vec![]), target.clone())
+                                } else {
+                                    coerce_primitive_type(target.clone(), tn.clone())
+                                }
                             }
                         }
                     }

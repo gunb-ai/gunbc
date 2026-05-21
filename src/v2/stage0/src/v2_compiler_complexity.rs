@@ -6976,7 +6976,7 @@ pub fn build_scc_index(
         let reverse_graph = reverse_adjacency(names.clone(), graph.clone());
         let finish = names.clone().iter().cloned().fold(
             Rc::new(DfsFinishAcc {
-                visited: empty_set(),
+                visited: v2_rt::rc_empty_set(),
                 order: Rc::new(vec![]),
             }),
             |acc: Rc<DfsFinishAcc>, name: String| dfs_finish_order(&name, &adjacency, &acc),
@@ -6984,11 +6984,11 @@ pub fn build_scc_index(
         let topo_order = v2_rt::reverse(finish.order.clone());
         let result = topo_order.clone().iter().cloned().fold(
             Rc::new(SccBuildAcc {
-                assigned: empty_set(),
+                assigned: v2_rt::rc_empty_set(),
                 index: v2_rt::rc_empty_map::<String, Rc<SccInfo>>(),
             }),
             |acc: Rc<SccBuildAcc>, name: String| {
-                if set_contains(acc.assigned.clone(), name.clone()) {
+                if v2_rt::set_contains(&acc.assigned.clone(), name.clone()) {
                     acc.clone()
                 } else {
                     {
@@ -7000,16 +7000,17 @@ pub fn build_scc_index(
                                 members: Rc::new(vec![]),
                             }),
                         );
-                        let member_set = component.members.clone().iter().cloned().fold(
-                            empty_set(),
-                            |inner: Rc<std::collections::BTreeSet<String>>, member: String| {
-                                set_insert(inner, member.clone())
-                            },
-                        );
+                        let member_set =
+                            component.members.clone().iter().cloned().fold(
+                                v2_rt::rc_empty_set(),
+                                |inner: _, member: String| {
+                                    v2_rt::rc_set_insert(inner, member.clone())
+                                },
+                            );
                         let members = Rc::new({
                             let mut __result = Vec::new();
                             for member in names.clone().iter().cloned() {
-                                if set_contains(member_set.clone(), member.clone()) {
+                                if v2_rt::set_contains(&member_set, member.clone()) {
                                     __result.push(member);
                                 }
                             }
@@ -9393,7 +9394,10 @@ pub fn build_complexity_report(
                             );
                             let info = Rc::new(SccInfo {
                                 members: Rc::new(vec![entry.name.clone()]),
-                                member_set: set_insert(empty_set(), entry.name.clone()),
+                                member_set: v2_rt::rc_set_insert(
+                                    v2_rt::rc_empty_set(),
+                                    entry.name.clone(),
+                                ),
                                 pattern: pattern.clone(),
                             });
                             v2_rt::rc_map_insert(acc.clone(), entry.name.clone(), info.clone())

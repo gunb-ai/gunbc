@@ -547,7 +547,7 @@ pub fn classify_field_recursion(
                     };
                     let is_recursive_element = ((value_type.clone().as_str()
                         == parent_name.clone().as_str())
-                        || set_contains(recursive_type_set, value_type.clone()));
+                        || v2_rt::set_contains(&recursive_type_set, value_type.clone()));
                     if is_recursive_element {
                         {
                             let elem =
@@ -577,7 +577,7 @@ pub fn classify_field_recursion(
                     }
                 }
             } else {
-                if set_contains(recursive_type_set, field_type_name.clone()) {
+                if v2_rt::set_contains(&recursive_type_set, field_type_name.clone()) {
                     match field_node.return_cardinality.clone() {
                         Cardinality::CardOptional => Some(Rc::new(FieldRecursionResult {
                             shape: RecursionShape::OptionalRecursion,
@@ -10235,12 +10235,13 @@ pub fn build_type_env(
             cycle_set_str.clone(),
             Rc::new(v2_rt::map_keys(&compiler_recursive_types())),
         );
-        let cross_type_set_str = cross_type_all_names.clone().iter().cloned().fold(
-            empty_set(),
-            |acc: Rc<std::collections::BTreeSet<String>>, name: String| {
-                set_insert(acc, name.clone())
-            },
-        );
+        let cross_type_set_str = cross_type_all_names
+            .clone()
+            .iter()
+            .cloned()
+            .fold(v2_rt::rc_empty_set(), |acc: _, name: String| {
+                v2_rt::rc_set_insert(acc, name.clone())
+            });
         let cross_type_set = cross_type_all_names.clone().iter().cloned().fold(
             v2_rt::rc_empty_map::<i64, bool>(),
             |acc: Rc<HashMap<i64, bool>>, name: String| {
@@ -10696,12 +10697,13 @@ pub fn build_type_env_unresolved(
             cycle_set_str.clone(),
             Rc::new(v2_rt::map_keys(&compiler_recursive_types())),
         );
-        let cross_type_set_str = cross_type_all_names.clone().iter().cloned().fold(
-            empty_set(),
-            |acc: Rc<std::collections::BTreeSet<String>>, name: String| {
-                set_insert(acc, name.clone())
-            },
-        );
+        let cross_type_set_str = cross_type_all_names
+            .clone()
+            .iter()
+            .cloned()
+            .fold(v2_rt::rc_empty_set(), |acc: _, name: String| {
+                v2_rt::rc_set_insert(acc, name.clone())
+            });
         let cross_type_set = cross_type_all_names.clone().iter().cloned().fold(
             v2_rt::rc_empty_map::<i64, bool>(),
             |acc: Rc<HashMap<i64, bool>>, name: String| {
@@ -11349,12 +11351,13 @@ pub fn topo_resolve_types(
                 diagnostics: diagnostics.clone(),
             });
         }
-        let remaining_set = remaining.clone().iter().cloned().fold(
-            empty_set(),
-            |acc: Rc<std::collections::BTreeSet<String>>, name: String| {
-                set_insert(acc, name.clone())
-            },
-        );
+        let remaining_set = remaining
+            .clone()
+            .iter()
+            .cloned()
+            .fold(v2_rt::rc_empty_set(), |acc: _, name: String| {
+                v2_rt::rc_set_insert(acc, name.clone())
+            });
         let ready = Rc::new({
             let mut __result = Vec::new();
             for name in remaining.clone().iter().cloned() {
@@ -11366,7 +11369,7 @@ pub fn topo_resolve_types(
                                 || (dep.clone().as_str() == "None".to_string().as_str()))
                                 || (dep.clone().as_str() == "".to_string().as_str()))
                                 || is_recursive_type_by_name(&env, dep.clone()))
-                                || (set_contains(remaining_set.clone(), dep.clone()) == false))
+                                || (v2_rt::set_contains(&remaining_set, dep.clone()) == false))
                             {
                                 __all = false;
                                 break;
@@ -11569,58 +11572,59 @@ pub fn build_fielded_variants(
     type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
 ) -> Rc<std::collections::BTreeSet<String>> {
     {
-        let result = modules.iter().cloned().fold(
-            empty_set(),
-            |acc: Rc<std::collections::BTreeSet<String>>, m: Rc<TypedModule>| {
-                let items = m.items.clone();
-                let si = m.type_env.clone().source_indices.clone();
-                items.clone().iter().cloned().fold(
-                    acc,
-                    |inner: Rc<std::collections::BTreeSet<String>>, item: Rc<Node>| {
-                        let is_enum = match v2_rt::map_get(
-                            &type_summaries,
-                            authored_name_at(si.clone(), &item),
-                        ) {
-                            Some(summary) => match (*summary.repr.clone()).clone() {
-                                TypeRepr::EnumRepr { .. } => true,
-                                _ => false,
-                            },
-                            None => false,
-                        };
-                        if is_enum.clone() {
-                            {
-                                let enum_name = authored_name_at(si.clone(), &item);
-                                let variants = item.children.clone();
-                                variants.clone().iter().cloned().fold(
-                                    inner.clone(),
-                                    |vacc: Rc<std::collections::BTreeSet<String>>,
-                                     variant: Rc<Node>| {
-                                        let has_fields =
-                                            ((variant.children.clone().len() as i64) > 0);
-                                        if has_fields.clone() {
-                                            set_insert(
-                                                vacc.clone(),
-                                                v2_rt::concat(
+        let result =
+            modules
+                .iter()
+                .cloned()
+                .fold(v2_rt::rc_empty_set(), |acc: _, m: Rc<TypedModule>| {
+                    let items = m.items.clone();
+                    let si = m.type_env.clone().source_indices.clone();
+                    items
+                        .clone()
+                        .iter()
+                        .cloned()
+                        .fold(acc, |inner: _, item: Rc<Node>| {
+                            let is_enum = match v2_rt::map_get(
+                                &type_summaries,
+                                authored_name_at(si.clone(), &item),
+                            ) {
+                                Some(summary) => match (*summary.repr.clone()).clone() {
+                                    TypeRepr::EnumRepr { .. } => true,
+                                    _ => false,
+                                },
+                                None => false,
+                            };
+                            if is_enum.clone() {
+                                {
+                                    let enum_name = authored_name_at(si.clone(), &item);
+                                    let variants = item.children.clone();
+                                    variants.clone().iter().cloned().fold(
+                                        inner.clone(),
+                                        |vacc: _, variant: Rc<Node>| {
+                                            let has_fields =
+                                                ((variant.children.clone().len() as i64) > 0);
+                                            if has_fields.clone() {
+                                                v2_rt::rc_set_insert(
+                                                    vacc.clone(),
                                                     v2_rt::concat(
-                                                        enum_name.clone(),
-                                                        "::".to_string(),
+                                                        v2_rt::concat(
+                                                            enum_name.clone(),
+                                                            "::".to_string(),
+                                                        ),
+                                                        authored_name_at(si.clone(), &variant),
                                                     ),
-                                                    authored_name_at(si.clone(), &variant),
-                                                ),
-                                            )
-                                        } else {
-                                            vacc.clone()
-                                        }
-                                    },
-                                )
+                                                )
+                                            } else {
+                                                vacc.clone()
+                                            }
+                                        },
+                                    )
+                                }
+                            } else {
+                                inner.clone()
                             }
-                        } else {
-                            inner.clone()
-                        }
-                    },
-                )
-            },
-        );
+                        })
+                });
         result
     }
 }
@@ -11646,22 +11650,19 @@ pub fn build_emit_graph_info(modules: &Rc<Vec<Rc<TypedModule>>>) -> Rc<EmitGraph
             },
         );
         let all_recursive = modules.clone().iter().cloned().fold(
-            empty_set(),
-            |acc: Rc<std::collections::BTreeSet<String>>, m: Rc<TypedModule>| {
+            v2_rt::rc_empty_set(),
+            |acc: _, m: Rc<TypedModule>| {
                 Rc::new(v2_rt::map_keys(
                     &m.type_env.clone().recursive_type_set.clone(),
                 ))
                 .iter()
                 .cloned()
-                .fold(
-                    acc,
-                    |inner: Rc<std::collections::BTreeSet<String>>, ident: i64| {
-                        set_insert(
-                            inner,
-                            intern_str(m.type_env.clone().intern_table.clone(), ident.clone()),
-                        )
-                    },
-                )
+                .fold(acc, |inner: _, ident: i64| {
+                    v2_rt::rc_set_insert(
+                        inner,
+                        intern_str(m.type_env.clone().intern_table.clone(), ident.clone()),
+                    )
+                })
             },
         );
         let fielded = build_fielded_variants(modules.clone(), built.type_summaries.clone());
@@ -11670,17 +11671,17 @@ pub fn build_emit_graph_info(modules: &Rc<Vec<Rc<TypedModule>>>) -> Rc<EmitGraph
             type_summaries: built.type_summaries.clone(),
             recursive_type_set: all_recursive,
             fielded_variants: fielded,
-            shared_types: empty_set(),
+            shared_types: v2_rt::rc_empty_set(),
             ownership_index: v2_rt::rc_empty_map::<String, Rc<std::collections::BTreeSet<String>>>(
             ),
-            movable: empty_set(),
+            movable: v2_rt::rc_empty_set(),
             variant_to_enum: vtoe,
-            owned_bindings: empty_set(),
+            owned_bindings: v2_rt::rc_empty_set(),
             read_only_params_index: v2_rt::rc_empty_map::<
                 String,
                 Rc<std::collections::BTreeSet<String>>,
             >(),
-            read_only_params: empty_set(),
+            read_only_params: v2_rt::rc_empty_set(),
         })
     }
 }
