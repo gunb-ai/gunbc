@@ -1617,6 +1617,8 @@ fn e_p_runtime_mirror_matches_induction_carrier_shape() {
                 vec![String::from("param"), String::from("factor")]
             ),
             (String::from("PreservedValue"), vec![]),
+            (String::from("NonIncreasingValue"), vec![]),
+            (String::from("IncomparableValue"), vec![]),
             (String::from("SubValueUnknown"), vec![]),
         ],
         "Rust SubValueRelation mirror in dag.rs must stay aligned with src/v3/std/induction.dag"
