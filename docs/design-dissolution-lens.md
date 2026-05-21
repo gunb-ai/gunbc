@@ -2066,9 +2066,12 @@ uses.
 | Import graph + target existence | `v4.compiler.02_parse` | L0.8, L1.8 |
 | Return-type → fail-closed-carrier? | `v4.compiler.03_resolve` | L0.14, L1.11 |
 | Match-arm RHS skeleton + per-arm group membership + per-skeleton constructor-hole presence (normalized RHS after α-renaming + matched-arm constructor substitution; groups expose arm-ids so the auto-fix consumes them as facts, not by re-walking) | `v4.lens.match_arm_skeleton` (new derived stage — see §10.2) | L1.13 |
-| Per-decl structural-shape facts (type-decl: variant set + per-variant field shape; fn-decl: signature shape + body catamorphism-form classifier + identifier token-set) | `v4.lens.structural_similarity` (new derived stage — see §10.2) | L1.12.b |
+| Per-decl structural-shape facts (type-decl: variant set + per-variant field shape; fn-decl: signature shape + body catamorphism-form classifier + identifier token-set) | `v4.lens.structural_similarity` (new derived stage — see §10.2) | L1.12.b, L1.4.b, L1.4.c |
+| Normalized decision-tree shape (closed-vocab branch dispatch over resolved constructor identities — exposes per-branch skeleton + missing-key behavior, REGARDLESS of source spelling as `match` / `if-else` / string-equality chain) | `v4.lens.decision_tree_shape` (new derived stage — see §10.2) | L1.13.b, L1.10.c, L1.4.c |
+| Generated-forest shape (`map`/`fold` over a closed coproduct's variant-set that emits per-variant target artifacts — exposes per-generated-arm skeleton + variant-iteration evidence) | `v4.lens.generated_forest_shape` (new derived stage — see §10.2) | L1.5.b |
+| Target-syntax string-construction shape (string-build graph classified as data-strings vs target-grammar-token sequences, gated by a `TargetGrammarTokenSet` substrate carrier per target) | `v4.lens.target_syntax_string_shape` (new derived stage — see §10.2) | L1.10.d, L1.11.b (scalar-RHS detection extension) |
 
-### 10.2 Five small derived stages cover what the pipeline doesn't already expose
+### 10.2 Eight small derived stages cover what the pipeline doesn't already expose
 
 These are themselves `.dag` stages — small folds with declared
 `consumes:` edges — and they're reusable across multiple lenses:
