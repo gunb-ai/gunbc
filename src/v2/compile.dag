@@ -224,12 +224,42 @@ fn dag_node_missing_ref_error(node: Node) -> ErrorNode {
   )
 }
 
-fn dag_validate_nodes_table(order: List<Node>, key_to_id: Map<String, String>) -> List<ErrorNode> {
-  order |> flat_map(n =>
-    match map_get(key_to_id, dag_node_key(node: n)) {
-      Some { value: _ } => []
-      None => [dag_node_missing_ref_error(node: n)]
-    })
+fn dag_emit_check_ref_target(node: Node, key_to_id: Map<String, String>) -> List<ErrorNode> {
+  match map_get(key_to_id, dag_node_key(node: node)) {
+    Some { value: _ } => []
+    None => [dag_node_missing_ref_error(node: node)]
+  }
+}
+
+fn dag_emit_check_optional_ref_target(value: Node?, key_to_id: Map<String, String>) -> List<ErrorNode> {
+  match value {
+    Some { value: inner } => dag_emit_check_ref_target(node: inner, key_to_id: key_to_id)
+    None => []
+  }
+}
+
+fn dag_emit_check_inferred_ref_target(value: InferredNode?, key_to_id: Map<String, String>) -> List<ErrorNode> {
+  match value {
+    Some { value: Resolved { node: n } } => dag_emit_check_ref_target(node: n, key_to_id: key_to_id)
+    _ => []
+  }
+}
+
+fn dag_emit_check_node_refs(node: Node, key_to_id: Map<String, String>) -> List<ErrorNode> {
+  concat(
+    node.children |> flat_map(c => dag_emit_check_ref_target(node: c, key_to_id: key_to_id)),
+    node.params |> flat_map(p => dag_emit_check_ref_target(node: p, key_to_id: key_to_id)),
+    node.uses |> flat_map(u => dag_emit_check_ref_target(node: u, key_to_id: key_to_id)),
+    dag_emit_check_optional_ref_target(value: node.body, key_to_id: key_to_id),
+    dag_emit_check_optional_ref_target(value: node.transport, key_to_id: key_to_id),
+    node.properties |> flat_map(p => dag_emit_check_ref_target(node: p, key_to_id: key_to_id)),
+    dag_emit_check_optional_ref_target(value: node.type_annotation, key_to_id: key_to_id),
+    dag_emit_check_inferred_ref_target(value: node.inferred, key_to_id: key_to_id)
+  )
+}
+
+fn dag_emit_ref_errors(order: List<Node>, key_to_id: Map<String, String>) -> List<ErrorNode> {
+  order |> flat_map(n => dag_emit_check_node_refs(node: n, key_to_id: key_to_id))
 }
 
 fn dag_collect_nodes_list(nodes: List<Node>, acc: DagCollectAcc) -> DagCollectAcc {
@@ -313,11 +343,11 @@ fn dag_graph_source_indices(typed: ResolvedGraph) -> Map<String, NewlineIndex> {
   )
 }
 
-// Precondition: emit_dag_artifact validates key_to_id before calling.
+// Only called after dag_emit_ref_errors passes (fail-closed preflight).
 fn serialize_node_ref(node: Node, key_to_id: Map<String, String>) -> String {
   match map_get(key_to_id, dag_node_key(node: node)) {
     Some { value: id } => concat("{\"$ref\": ", json_quote(s: id), "}")
-    None => concat("{\"$ref\": ", json_quote(s: ""), "}")
+    None => "{\"$ref\": null}"
   }
 }
 
@@ -877,9 +907,9 @@ fn serialize_diagnostic(diagnostic: ErrorNode) -> String {
 fn emit_dag_artifact(typed: ResolvedGraph) -> EmitResult {
   let order = collect_dag_nodes(typed: typed)
   let key_to_id = build_dag_key_to_id(order: order)
-  let table_errors = dag_validate_nodes_table(order: order, key_to_id: key_to_id)
-  if table_errors |> count > 0 {
-    return EmitResult { files: [], diagnostics: table_errors }
+  let ref_errors = dag_emit_ref_errors(order: order, key_to_id: key_to_id)
+  if ref_errors |> count > 0 {
+    return EmitResult { files: [], diagnostics: ref_errors }
   }
   let source_indices = dag_graph_source_indices(typed: typed)
   let nodes_json = serialize_dag_nodes_table(order: order, source_indices: source_indices, key_to_id: key_to_id)

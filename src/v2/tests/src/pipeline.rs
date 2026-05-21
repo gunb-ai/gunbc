@@ -836,6 +836,57 @@ fn dag_pipeline_smoke() {
     );
 }
 
+/// Regression for recursive by-value DAG serialization: shared subgraphs must
+/// appear once in `nodes` and be cited via multiple `$ref`s (see artifact.dag).
+#[test]
+fn dag_artifact_shares_one_node_record() {
+    let source = "module share_test\n\ntype Box { value: Int }\n\nfn twice(x: Box) -> Box { x }\n";
+    let result = compile_dag_named("share_test.dag", source, RenderTarget::Dag);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "dag-artifact.json");
+    assert!(
+        !content.contains("\"$ref\": null"),
+        "missing refs must fail emit, not serialize null refs"
+    );
+    assert!(
+        !content.contains("\"$ref\": \"\""),
+        "missing refs must not serialize empty ref ids"
+    );
+
+    let artifact: Value =
+        serde_json::from_str(&content).expect("dag artifact should be valid JSON");
+    let nodes = artifact
+        .get("nodes")
+        .and_then(Value::as_object)
+        .expect("dag artifact should have a nodes object");
+
+    for id in nodes.keys() {
+        let record_marker = format!("\"{id}\": {{");
+        assert_eq!(
+            content.matches(&record_marker).count(),
+            1,
+            "node id {id} should appear exactly once in the nodes table"
+        );
+    }
+
+    let modules_tail = content
+        .split("\"modules\":")
+        .nth(1)
+        .expect("dag artifact should have modules");
+    let mut shared = false;
+    for id in nodes.keys() {
+        let needle = format!("\"$ref\": \"{id}\"");
+        if modules_tail.matches(&needle).count() >= 2 {
+            shared = true;
+            break;
+        }
+    }
+    assert!(
+        shared,
+        "expected at least one nodes-table id cited twice via $ref in modules payload"
+    );
+}
+
 // ── Multi-module tests ──────────────────────────────────────────────────
 
 #[test]
