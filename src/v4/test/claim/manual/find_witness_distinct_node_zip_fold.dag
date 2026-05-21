@@ -1,0 +1,252 @@
+// src/v4/test/claim/manual/find_witness_distinct_node_zip_fold.dag
+// Scope: W-T-10 distinct-node exact structural zip-fold receipts.
+// Owns: swapped named-edge acceptance, wrong leaf rejection, verify_witness acceptance, coercion Exact quality.
+// Consumes: std/canonical_grounding.dag, std/find_witness.dag, std/coercion.dag, std/verification.dag.
+// Status: manual behavior receipt until T-19 derives the same coverage from TestClaim generation.
+
+module v4.test.claim.manual.find_witness_distinct_node_zip_fold
+
+import v4.std.coercion {
+  CoercionCandidateSet,
+  CoercionQuality,
+  Exact,
+  Identity,
+  coercion_fold
+}
+import v4.std.constraints {
+  CanonicalGrounding,
+  CanonicalGroundingWitness
+}
+import v4.std.diagnostic {
+  Accepted,
+  None,
+  Outcome,
+  Rejected
+}
+import v4.std.find_witness {
+  CandidateSet,
+  FindWitnessResult,
+  PreservationPredicate,
+  TargetDeclaredPriority,
+  UniqueOnly,
+  find_witness,
+  find_witness_reason_no_candidate,
+  preservation_rule_exact_structural_equality_zip_fold,
+  verify_witness
+}
+import v4.std.node {
+  Atom,
+  Conj,
+  Edge,
+  Named,
+  Node,
+  Symbol,
+  TypeNode
+}
+import v4.std.verification {
+  CompilesClaim,
+  T19ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit
+}
+import v4.std.witness { StructuralPropertyWitness }
+
+data zip_fold_left_field: Symbol = zip_fold_left_field
+data zip_fold_right_field: Symbol = zip_fold_right_field
+data zip_fold_left_atom: Symbol = zip_fold_left_atom
+data zip_fold_right_atom: Symbol = zip_fold_right_atom
+data zip_fold_wrong_atom: Symbol = zip_fold_wrong_atom
+data zip_fold_closed_candidates: Symbol = zip_fold_closed_candidates
+
+fn zip_fold_atom(identity: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: identity } },
+    children: []
+  }
+}
+
+fn zip_fold_named_edge(name: Symbol, target: Node) -> Edge {
+  Edge { label: Named { name: name }, target: target }
+}
+
+fn zip_fold_source_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      zip_fold_named_edge(name: zip_fold_left_field, target: zip_fold_atom(identity: zip_fold_left_atom)),
+      zip_fold_named_edge(name: zip_fold_right_field, target: zip_fold_atom(identity: zip_fold_right_atom))
+    ]
+  }
+}
+
+fn zip_fold_swapped_candidate_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      zip_fold_named_edge(name: zip_fold_right_field, target: zip_fold_atom(identity: zip_fold_right_atom)),
+      zip_fold_named_edge(name: zip_fold_left_field, target: zip_fold_atom(identity: zip_fold_left_atom))
+    ]
+  }
+}
+
+fn zip_fold_wrong_leaf_candidate_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      zip_fold_named_edge(name: zip_fold_right_field, target: zip_fold_atom(identity: zip_fold_wrong_atom)),
+      zip_fold_named_edge(name: zip_fold_left_field, target: zip_fold_atom(identity: zip_fold_left_atom))
+    ]
+  }
+}
+
+fn zip_fold_closedness() -> StructuralPropertyWitness {
+  StructuralPropertyWitness {
+    property: zip_fold_closed_candidates,
+    evidence: zip_fold_source_node()
+  }
+}
+
+fn zip_fold_predicate() -> PreservationPredicate {
+  PreservationPredicate {
+    algebra: zip_fold_source_node(),
+    preservation_rule: preservation_rule_exact_structural_equality_zip_fold
+  }
+}
+
+fn zip_fold_swapped_candidate_set() -> CandidateSet {
+  CandidateSet {
+    candidates: [zip_fold_swapped_candidate_node()],
+    closedness: zip_fold_closedness()
+  }
+}
+
+fn zip_fold_wrong_leaf_candidate_set() -> CandidateSet {
+  CandidateSet {
+    candidates: [zip_fold_wrong_leaf_candidate_node()],
+    closedness: zip_fold_closedness()
+  }
+}
+
+fn zip_fold_valid_witness() -> StructuralPropertyWitness {
+  StructuralPropertyWitness {
+    property: preservation_rule_exact_structural_equality_zip_fold,
+    evidence: zip_fold_swapped_candidate_node()
+  }
+}
+
+fn zip_fold_grounding() -> CanonicalGrounding {
+  CanonicalGrounding {
+    node: zip_fold_source_node(),
+    witness: CanonicalGroundingWitness {
+      structural: zip_fold_valid_witness(),
+      closedness: zip_fold_closedness()
+    }
+  }
+}
+
+fn zip_fold_coercion_candidates() -> CoercionCandidateSet {
+  CoercionCandidateSet { set: zip_fold_swapped_candidate_set() }
+}
+
+fn quality_is_exact(q: CoercionQuality) -> Bool {
+  match q {
+    Identity => false
+    Exact => true
+  }
+}
+
+fn rejected_for_no_candidate(o: Outcome<FindWitnessResult>) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: r } => r.head.reason == find_witness_reason_no_candidate
+  }
+}
+
+data witness_find_witness_swapped_named_edges_accepts: Bool = match find_witness(
+  source_facts: zip_fold_source_node(),
+  candidates: zip_fold_swapped_candidate_set(),
+  predicate: zip_fold_predicate(),
+  multiplicity_policy: UniqueOnly
+) {
+  Accepted { value: fw, diagnostics: _ } => fw.candidate == zip_fold_swapped_candidate_node()
+  Rejected { diagnostics: _ } => false
+}
+
+data witness_find_witness_wrong_leaf_rejects: Bool = rejected_for_no_candidate(
+  o: find_witness(
+    source_facts: zip_fold_source_node(),
+    candidates: zip_fold_wrong_leaf_candidate_set(),
+    predicate: zip_fold_predicate(),
+    multiplicity_policy: UniqueOnly
+  )
+)
+
+data witness_verify_witness_swapped_named_edges_accepts: Bool = match verify_witness(
+  source_facts: zip_fold_source_node(),
+  candidate: zip_fold_swapped_candidate_node(),
+  predicate: zip_fold_predicate(),
+  witness: zip_fold_valid_witness()
+) {
+  Accepted { value: _, diagnostics: _ } => true
+  Rejected { diagnostics: _ } => false
+}
+
+data witness_coercion_fold_swapped_named_edges_exact: Bool = match coercion_fold(
+  source: zip_fold_grounding(),
+  candidates: zip_fold_coercion_candidates(),
+  policy: TargetDeclaredPriority { priority: zip_fold_swapped_candidate_node() }
+) {
+  Accepted { value: r, diagnostics: _ } =>
+    (r.target == zip_fold_swapped_candidate_node()) && quality_is_exact(q: r.quality)
+  Rejected { diagnostics: _ } => false
+}
+
+fn zip_fold_claim_input(ok: Bool) -> Node {
+  if ok {
+    zip_fold_source_node()
+  } else {
+    zip_fold_wrong_leaf_candidate_node()
+  }
+}
+
+data claim_find_witness_distinct_node_zip_fold_module_compiles: TestClaim = CompilesClaim {
+  label: "manual/find_witness_distinct_node_zip_fold: W-T-10 receipts compile",
+  t19_anchor: T19ManualAnchorAbsent,
+  input: zip_fold_source_node(),
+  expected_value: zip_fold_source_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_find_witness_swapped_named_edges_accepts: TestClaim = CompilesClaim {
+  label: "manual/find_witness_distinct_node_zip_fold: swapped named edges accept",
+  t19_anchor: T19ManualAnchorAbsent,
+  input: zip_fold_claim_input(ok: witness_find_witness_swapped_named_edges_accepts),
+  expected_value: zip_fold_source_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_find_witness_wrong_leaf_rejects: TestClaim = CompilesClaim {
+  label: "manual/find_witness_distinct_node_zip_fold: wrong atom leaf rejects",
+  t19_anchor: T19ManualAnchorAbsent,
+  input: zip_fold_claim_input(ok: witness_find_witness_wrong_leaf_rejects),
+  expected_value: zip_fold_source_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_verify_witness_swapped_named_edges_accepts: TestClaim = CompilesClaim {
+  label: "manual/find_witness_distinct_node_zip_fold: verify_witness accepts swapped named edges",
+  t19_anchor: T19ManualAnchorAbsent,
+  input: zip_fold_claim_input(ok: witness_verify_witness_swapped_named_edges_accepts),
+  expected_value: zip_fold_source_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_coercion_fold_swapped_named_edges_exact: TestClaim = CompilesClaim {
+  label: "manual/find_witness_distinct_node_zip_fold: coercion_fold reports Exact",
+  t19_anchor: T19ManualAnchorAbsent,
+  input: zip_fold_claim_input(ok: witness_coercion_fold_swapped_named_edges_exact),
+  expected_value: zip_fold_source_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
