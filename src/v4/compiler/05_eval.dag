@@ -1,6 +1,6 @@
 // src/v4/compiler/05_eval.dag
 // Scope: primary evaluation path over inferred tree/input subgraphs and TestClaim runner substrate.
-// Owns: Inputs, EvalContext, TestClaimTypedInput, TestClaimEvalSubject, TestClaimCacheKey, TestClaimCacheReceipt, Verdict, TestClaimRun, EvalFoldState, eval, eval_node, run_test_claim, aggregate_verdicts.
+// Owns: Inputs, EvalContext, TestClaimTypedInput, TestClaimEvalSubject, TestClaimCacheKey, TestClaimCacheReceipt, Verdict, TestClaimRun, EvalFoldState, eval, run_test_claim, aggregate_verdicts.
 // Consumes: v4.compiler.infer, v4.std.host, v4.std.node, v4.std.diagnostic, v4.std.verification.
 // Status: T-22 eval consumes HostModel interpretation algebra; TestClaim runner remains Node-shaped. Local control terminalization, host-value conformance, behavior dispatch, Outcome accumulation, and fold progress sentinels are staged below with explicit dissolution targets.
 // CompilesClaim: run_test_claim_assert compares actual to expected_value via outcome_node_eq (tighter than legacy AssertKind Compiles, which Pass'd on any Accepted).
@@ -82,11 +82,9 @@ type Inputs {
 }
 
 
-// RULING-1: pretty-much-done — explicit evaluator/resource/extdeps authority bundle.
+// RULING-1: pretty-much-done — explicit runtime host authority bundle.
 type EvalContext {
-  evaluator: Node
-  resources: Node
-  extdeps: Node
+  host: HostModel
 }
 
 
@@ -109,9 +107,7 @@ type TestClaimEvalSubject<T> {
 type TestClaimCacheKey<T> {
   eval_subject: TestClaimEvalSubject<T>
   claim_hash: Hash
-  evaluator_hash: Hash
-  resources_hash: Hash
-  extdeps_hash: Hash
+  host_hash: Hash
 }
 
 
@@ -149,17 +145,13 @@ type EvalFoldState {
 fn test_claim_cache_receipt<T>(
   subject: TestClaimEvalSubject<T>,
   claim_hash: Hash,
-  evaluator_hash: Hash,
-  resources_hash: Hash,
-  extdeps_hash: Hash
+  host_hash: Hash
 ) -> TestClaimCacheReceipt<T> {
   TestClaimCacheReceipt {
     key: TestClaimCacheKey {
       eval_subject: subject,
       claim_hash: claim_hash,
-      evaluator_hash: evaluator_hash,
-      resources_hash: resources_hash,
-      extdeps_hash: extdeps_hash
+      host_hash: host_hash
     }
   }
 }
@@ -596,16 +588,17 @@ fn eval(tree: InferredTree, host: HostModel, inputs: Inputs) -> Outcome<HostValu
 }
 
 
-fn eval_node(tree: InferredTree, inputs: Inputs) -> Outcome<Node> {
-  if well_formed(n: tree.root) {
-    if well_formed(n: inputs.root) {
-      Accepted { value: inputs.root, diagnostics: None }
-    } else {
-      Rejected { diagnostics: diagnostics_singleton(d: eval_diagnostic(reason: eval_rejected_invalid_node, node: inputs.root)) }
+fn eval_test_claim_actual(
+  tree: InferredTree,
+  host: HostModel,
+  inputs: Inputs
+) -> Outcome<Node> {
+  bind_outcome(
+    o: eval(tree: tree, host: host, inputs: inputs),
+    f: fn(value) {
+      Accepted { value: host_value_resolved_type(value: value), diagnostics: None }
     }
-  } else {
-    Rejected { diagnostics: diagnostics_singleton(d: eval_diagnostic(reason: eval_rejected_invalid_node, node: tree.root)) }
-  }
+  )
 }
 
 
@@ -677,12 +670,11 @@ fn aggregate_verdicts<T>(rs: List<Verdict<T>>, at: Node) -> Verdict<T> {
 fn run_test_claim(
   subject: TestClaimEvalSubject<Node>,
   claim_hash: Hash,
-  evaluator_hash: Hash,
-  resources_hash: Hash,
-  extdeps_hash: Hash
+  host_hash: Hash
 ) -> TestClaimRun<Node> {
-  let actual = eval_node(
+  let actual = eval_test_claim_actual(
     tree: subject.tree,
+    host: subject.context.host,
     inputs: Inputs { root: subject.input.evaluator_input }
   )
   let at = test_claim_input(c: subject.claim)
@@ -690,9 +682,7 @@ fn run_test_claim(
     cache: test_claim_cache_receipt(
       subject: subject,
       claim_hash: claim_hash,
-      evaluator_hash: evaluator_hash,
-      resources_hash: resources_hash,
-      extdeps_hash: extdeps_hash
+      host_hash: host_hash
     ),
     verdict: aggregate_verdicts(
       rs: [run_test_claim_assert(claim: subject.claim, actual: actual, at: at)],
