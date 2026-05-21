@@ -66,13 +66,15 @@ fn connective_edge_discipline(c: Connective) -> EdgeDiscipline {
     Instantiation => PositionalEdges
   }
 }
-fn edge_is_named(e: Edge) -> Bool {
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: coproduct variant-discriminant predicate substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived EdgeLabel Named-variant discriminant projection; forbidden: fold laundering.
+fn is_named(e: Edge) -> Bool {
   match e.label {
     Named { name: _ } => true
     Positional => false
   }
 }
-fn edge_is_positional(e: Edge) -> Bool {
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: coproduct variant-discriminant predicate substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived EdgeLabel Positional-variant discriminant projection; forbidden: fold laundering.
+fn is_positional(e: Edge) -> Bool {
   match e.label {
     Named { name: _ } => false
     Positional => true
@@ -81,13 +83,13 @@ fn edge_is_positional(e: Edge) -> Bool {
 
 fn all_edges_named(children: List<Edge>) -> Bool {
   fold(children, init: true, f: fn(acc, e) {
-    acc && edge_is_named(e: e)
+    acc && is_named(e: e)
   })
 }
 
 fn all_edges_positional(children: List<Edge>) -> Bool {
   fold(children, init: true, f: fn(acc, e) {
-    acc && edge_is_positional(e: e)
+    acc && is_positional(e: e)
   })
 }
 fn name_occurrences(name: Symbol, children: List<Edge>) -> Int {
@@ -114,19 +116,19 @@ fn edges_conform(children: List<Edge>, d: EdgeDiscipline) -> Bool {
     PositionalEdges => all_edges_positional(children: children)
   }
 }
-fn node_locally_well_formed(n: Node) -> Bool {
+fn locally_well_formed(n: Node) -> Bool {
   match n.kind {
     TypeNode { connective: c } =>
       edges_conform(children: n.children, d: connective_edge_discipline(c: c))
     ComputationNode { behavior: _ } => true
   }
 }
-fn node_well_formed(n: Node) -> Bool {
+fn well_formed(n: Node) -> Bool {
   fold_node(
     n: n,
     algebra: NodeFold {
       init: fn(n0) {
-        node_locally_well_formed(n: n0)
+        locally_well_formed(n: n0)
       },
       step: fn(acc, _, child_ok) {
         acc && child_ok

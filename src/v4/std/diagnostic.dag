@@ -3,7 +3,7 @@
 // Anchor: THESIS.md "show the correct code" + INVARIANTS P3; design-v4-compiler-homomorphism.md Ratified Q11.
 // Owns: Diagnostic, Outcome, Diagnostics, NonEmptyDiagnostics, StageDiagnosticPolicy,
 //       bind_outcome, diagnostics_merge, rejected_with_pending,
-//       outcome_node_eq, diagnostic_eq,
+//       eq, locus_eq, correction_eq, diagnostic_eq, outcome_node_eq,
 //       diagnostics_eq, non_empty_diagnostics_append,
 //       Locus, Extent, Correction, NoCorrectionReason.
 // Consumes: std node (List/fold/count are prelude — no collection import; avoids diagnostic↔witness cycle).
@@ -65,7 +65,7 @@ fn outcome_accepted<T>(value: T) -> Outcome<T> {
 fn outcome_rejected<T>(d: Diagnostic) -> Outcome<T> {
   Rejected { diagnostics: diagnostics_singleton(d: d) }
 }
-fn extent_eq(a: Extent, b: Extent) -> Bool {
+fn eq(a: Extent, b: Extent) -> Bool {
   match a {
     WholeFile => match b {
       WholeFile => true
@@ -80,7 +80,7 @@ fn extent_eq(a: Extent, b: Extent) -> Bool {
 fn locus_eq(a: Locus, b: Locus) -> Bool {
   match a {
     Textual { file: fa, extent: ea } => match b {
-      Textual { file: fb, extent: eb } => (fa == fb) && extent_eq(a: ea, b: eb)
+      Textual { file: fb, extent: eb } => (fa == fb) && eq(a: ea, b: eb)
       NodeLocus { node: _ } => false
       PortLocus { port: _ } => false
     }

@@ -38,7 +38,7 @@ import v4.std.node {
   Symbol,
   TypeNode,
   fold_node,
-  node_well_formed
+  well_formed
 }
 
 
@@ -551,7 +551,7 @@ fn resolve(tree: NormalizedTree, lm: DagLanguageModel) -> Outcome<ResolvedTree> 
 
 
 fn resolve_with_namespace(tree: NormalizedTree, namespace: Namespace) -> Outcome<ResolvedTree> {
-  if node_well_formed(n: tree) {
+  if well_formed(n: tree) {
     resolve_node(n: tree, scope: scope_from_namespace(namespace: namespace))
   } else {
     Rejected { diagnostics: diagnostics_singleton(d: malformed_tree_diagnostic(n: tree)) }

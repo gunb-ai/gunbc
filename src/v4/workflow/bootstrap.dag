@@ -8,9 +8,9 @@ module v4.workflow.bootstrap
 
 import v4.std.node { Hash, Symbol }
 import v4.std.algebra {
-  free_monoid_count_equal,
-  free_monoid_forall,
-  free_monoid_length
+  count_equal,
+  for_all,
+  length
 }
 import v4.std.diagnostic {Correction, Diagnostic, Extent, Locus, NoCorrectionReason, Outcome, Accepted, None, diagnostics_singleton}
 
@@ -73,12 +73,12 @@ fn bs_diagnostic(reason: Symbol) -> Diagnostic {
 }
 
 fn bs_list_eq(a: List<Symbol>, b: List<Symbol>) -> Bool {
-  (free_monoid_length(xs: a) == free_monoid_length(xs: b))
-    && free_monoid_forall(xs: a, predicate: fn(x) {
-         free_monoid_count_equal(xs: b, item: x, eq: fn(left, right) { left == right }) != 0
+  (length(xs: a) == length(xs: b))
+    && for_all(xs: a, predicate: fn(x) {
+         count_equal(xs: b, item: x, eq: fn(left, right) { left == right }) != 0
        })
-    && free_monoid_forall(xs: b, predicate: fn(y) {
-         free_monoid_count_equal(xs: a, item: y, eq: fn(left, right) { left == right }) != 0
+    && for_all(xs: b, predicate: fn(y) {
+         count_equal(xs: a, item: y, eq: fn(left, right) { left == right }) != 0
        })
 }
 

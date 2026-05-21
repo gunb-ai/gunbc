@@ -15,7 +15,7 @@ import v4.std.node {
   Hash,
   Node,
   Symbol,
-  node_well_formed
+  well_formed
 }
 import v4.std.diagnostic {
   AmbiguousIntent,
@@ -134,8 +134,8 @@ fn eval_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
 
 
 fn eval_node(tree: InferredTree, inputs: Inputs) -> Outcome<Node> {
-  if node_well_formed(n: tree.root) {
-    if node_well_formed(n: inputs.root) {
+  if well_formed(n: tree.root) {
+    if well_formed(n: inputs.root) {
       Accepted { value: inputs.root, diagnostics: None }
     } else {
       Rejected { diagnostics: diagnostics_singleton(d: eval_diagnostic(reason: eval_rejected_invalid_node, node: inputs.root)) }

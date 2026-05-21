@@ -10,11 +10,11 @@ module v4.workflow.ci
 import v4.std.node { Symbol }
 import v4.std.diagnostic {Correction, Diagnostic, Extent, Locus, NoCorrectionReason, Outcome, Accepted, None, diagnostics_singleton}
 import v4.std.algebra {
-  free_monoid_count_equal,
-  free_monoid_count_where,
-  free_monoid_forall,
-  free_monoid_length,
-  free_monoid_unique
+  count_equal,
+  count_where,
+  for_all,
+  length,
+  unique
 }
 import v4.workflow.bootstrap { v4_stage0_binary, bootstrap_plan, bootstrap_stage_output }
 
@@ -94,7 +94,7 @@ fn ci_gate_job_ids(gates: List<CiGate>) -> List<Symbol> {
 }
 
 fn ci_member(s: Symbol, ids: List<Symbol>) -> Bool {
-  free_monoid_count_equal(xs: ids, item: s, eq: fn(left, right) { left == right }) != 0
+  count_equal(xs: ids, item: s, eq: fn(left, right) { left == right }) != 0
 }
 
 fn ci_symbol_resolves(s: Symbol, jobs: List<CiJob>) -> Bool {
@@ -102,23 +102,23 @@ fn ci_symbol_resolves(s: Symbol, jobs: List<CiJob>) -> Bool {
 }
 
 fn ci_all_job_ids_unique(jobs: List<CiJob>) -> Bool {
-  free_monoid_unique(xs: ci_job_ids(jobs: jobs), eq: fn(left, right) { left == right })
+  unique(xs: ci_job_ids(jobs: jobs), eq: fn(left, right) { left == right })
 }
 
 fn ci_all_gate_ids_unique(gates: List<CiGate>) -> Bool {
-  free_monoid_unique(xs: ci_gate_ids(gates: gates), eq: fn(left, right) { left == right })
+  unique(xs: ci_gate_ids(gates: gates), eq: fn(left, right) { left == right })
 }
 
 fn ci_all_needs_resolve(jobs: List<CiJob>) -> Bool {
   fold(jobs, init: true, f: fn(acc, j) {
-    acc && free_monoid_forall(xs: j.needs, predicate: fn(n) {
+    acc && for_all(xs: j.needs, predicate: fn(n) {
       ci_symbol_resolves(s: n, jobs: jobs)
     })
   })
 }
 
 fn ci_all_gate_jobs_resolve(gates: List<CiGate>, jobs: List<CiJob>) -> Bool {
-  free_monoid_forall(xs: ci_gate_job_ids(gates: gates), predicate: fn(job_sym) {
+  for_all(xs: ci_gate_job_ids(gates: gates), predicate: fn(job_sym) {
     ci_symbol_resolves(s: job_sym, jobs: jobs)
   })
 }
@@ -130,7 +130,7 @@ fn ci_job_needs(id: Symbol, jobs: List<CiJob>) -> List<Symbol> {
 }
 
 fn ci_blocked(id: Symbol, remaining: List<Symbol>, jobs: List<CiJob>) -> Bool {
-  free_monoid_count_where(xs: ci_job_needs(id: id, jobs: jobs), predicate: fn(n) {
+  count_where(xs: ci_job_needs(id: id, jobs: jobs), predicate: fn(n) {
     ci_member(s: n, ids: remaining)
   }) != 0
 }
@@ -152,7 +152,7 @@ fn ci_kahn_fixpoint(jobs: List<CiJob>) -> List<Symbol> {
 }
 
 fn ci_acyclic(jobs: List<CiJob>) -> Bool {
-  free_monoid_length(xs: ci_kahn_fixpoint(jobs: jobs)) == 0
+  length(xs: ci_kahn_fixpoint(jobs: jobs)) == 0
 }
 
 // 🟡 negative-coverage plan-bound (T-22) — LB-T22-3213
