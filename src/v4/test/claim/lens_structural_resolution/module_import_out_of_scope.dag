@@ -1,14 +1,14 @@
-// src/v4/test/claim/lens_structural_resolution/prelude_carve_out.dag
-// Scope: T-13 worked claim — ModuleDependsOn projects PreludeCarveOut (prelude reservation).
-// Owns: prelude_carve_out_claim.
+// src/v4/test/claim/lens_structural_resolution/module_import_out_of_scope.dag
+// Scope: T-13 worked claim — ModuleDependsOn is out of binding-resolution lens scope.
+// Owns: module_import_out_of_scope_claim.
 // Consumes: lens structural_resolution, compiler infer, std dependency, std node.
-// Status: scaffold — compile-only until generated claim execution.
+// Status: 🟡 scaffold — dissolve-on: T-13 lens driver executes TestClaim rows (r4-lane-a §3 B2); owner: lens family batch.
 
-module v4.test.claim.lens_structural_resolution.prelude_carve_out
+module v4.test.claim.lens_structural_resolution.module_import_out_of_scope
 
 import v4.compiler.infer { AlgebraRef, InferredFacts, InferredTree }
 import v4.lens.structural_resolution {
-  PreludeCarveOut,
+  OutOfScopeDependencyKind,
   StructuralResolutionDependencyFact,
   StructuralResolutionFact,
   at,
@@ -114,7 +114,7 @@ type LensStructuralResolutionClaim {
   actual: Witness<StructuralResolutionFact>
 }
 
-data prelude_carve_out_claim: LensStructuralResolutionClaim = LensStructuralResolutionClaim {
+data module_import_out_of_scope_claim: LensStructuralResolutionClaim = LensStructuralResolutionClaim {
   input: sr_mod_claim_tree(),
   expected: StructuralResolutionFact {
     dependencies: [
@@ -128,13 +128,16 @@ data prelude_carve_out_claim: LensStructuralResolutionClaim = LensStructuralReso
   actual: at(tree: sr_mod_claim_tree())
 }
 
-fn prelude_carve_out_claim_holds() -> Bool {
-  match prelude_carve_out_claim.actual {
+fn module_import_out_of_scope_claim_holds() -> Bool {
+  match module_import_out_of_scope_claim.actual {
     Holds { value: actual } =>
-      fact_eq(a: actual, b: prelude_carve_out_claim.expected)
-        && fact_single_dependency_projects_status(fact: actual, expected: PreludeCarveOut)
+      fact_eq(a: actual, b: module_import_out_of_scope_claim.expected)
+        && fact_single_dependency_projects_status(
+          fact: actual,
+          expected: OutOfScopeDependencyKind
+        )
     _ => false
   }
 }
 
-data prelude_carve_out_claim_passes: Bool = prelude_carve_out_claim_holds()
+data module_import_out_of_scope_claim_passes: Bool = module_import_out_of_scope_claim_holds()

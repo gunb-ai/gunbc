@@ -2,7 +2,7 @@
 // Scope: T-13 worked claim — BindsTo + resolve unbound witness projects UnboundSymbolAtUse.
 // Owns: unbound_symbol_at_use_claim.
 // Consumes: lens structural_resolution, compiler infer, compiler resolve, std dependency, std node.
-// Status: scaffold — compile-only until generated claim execution.
+// Status: 🟡 scaffold — dissolve-on: T-13 lens driver executes TestClaim rows (r4-lane-a §3 B2); owner: lens family batch.
 
 module v4.test.claim.lens_structural_resolution.unbound_symbol_at_use
 

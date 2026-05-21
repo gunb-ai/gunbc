@@ -1,28 +1,16 @@
 // src/v4/lens/structural_resolution.dag
 //
-// Scope: structural resolution lens — unresolved symbols, dangling bindings,
-//        unbound references projected from InferredTree + dependency graph.
+// Scope: structural resolution lens — binding status from InferredTree + dependency_lens.
 // Anchor: https://en.wikipedia.org/wiki/Name_resolution_(programming_languages)
-//
-// Reads T-8 resolve binding facts on InferredTree and classifies dependency_lens
-// projections (BindsTo / module / bootstrap edge labels in std/dependency.dag).
-// Does NOT perform
-// resolution (resolve stage owns that). Practice 11: one mechanism — dependency
-// lens + infer lookup witnesses; no parallel resolution substrate.
-//
-// Prelude / monomorphism carve-out: BootstrapDependsOn and ModuleDependsOn
-// edges are PreludeCarveOut (canonical prelude reservation), not user-range
-// binding failures.
 //
 // Owns:
 //   - lens read: (InferredTree, List<DependencyView>) -> Witness<StructuralResolutionFact>
 //
 // Consumes:
-//   - compiler/infer, compiler/resolve (reason symbols only)
+//   - compiler/infer, compiler/resolve (reason symbols)
 //   - std/dependency, std/node, std/witness
 //
-// Status: registry filled; BindsTo via marked use edges (not bind-edge-0 binder target); module/bootstrap T-9.
-// Brief: r4-lane-a-lens-interface-freeze-pin §3 structural_resolution row
+// Status: T-13 registry fill — BindsTo use edges only; module/bootstrap out of lens scope until T-9.
 
 
 module v4.lens.structural_resolution
@@ -60,14 +48,11 @@ import v4.std.logic { Bool }
 import v4.std.node { Node, Symbol }
 import v4.std.witness { Holds, Violates, Witness }
 
-// 🟢 projection carrier — Practice 11: binding resolution status is read from
-// infer witnesses on dependency endpoints, not a second resolution graph.
 type StructuralResolutionStatus
   = BindingResolved
   | UnboundSymbolAtUse
   | FactsLookupMiss
   | UnresolvedInferWitness
-  | PreludeCarveOut
   | OutOfScopeDependencyKind
 
 type StructuralResolutionDependencyFact {
@@ -84,26 +69,18 @@ fn inferred_facts_for_node(tree: InferredTree, node: Node) -> Witness<InferredFa
   tree.facts.lookup(node)
 }
 
-fn witness_reason_is(w: Witness<InferredFacts>, reason: Symbol) -> Bool {
-  match w {
-    Violates { diagnostic: d } => d.reason == reason
-    Holds { value: _ } => false
-  }
-}
-
-// 🟡 staged — resolve→infer witness bridge (T-9): UnboundSymbolAtUse reads resolve reason
-// on InferredFacts only when producers forward resolve Violates into the fact table.
+// 🟡 staged — dissolve-on: T-9 resolve→infer witness bridge lands resolve Violates on fact table.
 fn status_for_binding_facts(dependent_facts: Witness<InferredFacts>) -> StructuralResolutionStatus {
-  if witness_reason_is(w: dependent_facts, reason: resolve_reason_unbound_symbol) {
-    UnboundSymbolAtUse
-  } else if witness_reason_is(w: dependent_facts, reason: infer_facts_lookup_miss) {
-    FactsLookupMiss
-  } else {
-    match dependent_facts {
-      Holds { value: _ } => BindingResolved
-      // Fail-closed: infer Violates whose reason is not unbound/lookup-miss — never BindingResolved.
-      Violates { diagnostic: _ } => UnresolvedInferWitness
-    }
+  match dependent_facts {
+    Violates { diagnostic: d } =>
+      if d.reason == resolve_reason_unbound_symbol {
+        UnboundSymbolAtUse
+      } else if d.reason == infer_facts_lookup_miss {
+        FactsLookupMiss
+      } else {
+        UnresolvedInferWitness
+      }
+    Holds { value: _ } => BindingResolved
   }
 }
 
@@ -113,8 +90,8 @@ fn status_for_dependency(
 ) -> StructuralResolutionStatus {
   match view.kind {
     BindsTo => status_for_binding_facts(dependent_facts: dependent_facts)
-    ModuleDependsOn => PreludeCarveOut
-    BootstrapDependsOn => PreludeCarveOut
+    ModuleDependsOn => OutOfScopeDependencyKind
+    BootstrapDependsOn => OutOfScopeDependencyKind
     Contains => OutOfScopeDependencyKind
     TypeDependsOn => OutOfScopeDependencyKind
     DataDependsOn => OutOfScopeDependencyKind
@@ -173,43 +150,12 @@ fn at(tree: InferredTree) -> Witness<StructuralResolutionFact> {
   witness(tree: tree, dependencies: dependency_lens(root: tree.root))
 }
 
-// 🟢 terminal — TestClaim status projection ratchet (closed sum equality for claims only).
-fn status_eq(a: StructuralResolutionStatus, b: StructuralResolutionStatus) -> Bool {
-  match a {
-    BindingResolved => match b {
-      BindingResolved => true
-      _ => false
-    }
-    UnboundSymbolAtUse => match b {
-      UnboundSymbolAtUse => true
-      _ => false
-    }
-    FactsLookupMiss => match b {
-      FactsLookupMiss => true
-      _ => false
-    }
-    UnresolvedInferWitness => match b {
-      UnresolvedInferWitness => true
-      _ => false
-    }
-    PreludeCarveOut => match b {
-      PreludeCarveOut => true
-      _ => false
-    }
-    OutOfScopeDependencyKind => match b {
-      OutOfScopeDependencyKind => true
-      _ => false
-    }
-  }
-}
-
 fn fact_projects_status(fact: StructuralResolutionFact, expected: StructuralResolutionStatus) -> Bool {
   fold(fact.dependencies, init: false, f: fn(acc, dep) {
-    acc || status_eq(a: status_of_dependency_fact(fact: dep), b: expected)
+    acc || (status_of_dependency_fact(fact: dep) == expected)
   })
 }
 
-// Single-dependency TestClaim ratchet: proves status_of_dependency_fact, not only field equality.
 fn fact_single_dependency_projects_status(
   fact: StructuralResolutionFact,
   expected: StructuralResolutionStatus
@@ -217,14 +163,12 @@ fn fact_single_dependency_projects_status(
   if count(fact.dependencies) != 1 {
     false
   } else {
-    // count == 1: fold acc is unused; single dep is the only status ratchet site.
     fold(fact.dependencies, init: false, f: fn(_acc, dep) {
-      status_eq(a: status_of_dependency_fact(fact: dep), b: expected)
+      status_of_dependency_fact(fact: dep) == expected
     })
   }
 }
 
-// TestClaim equality: compare authoritative fields; status ratcheted separately via fact_projects_status.
 fn dependency_fact_eq(
   a: StructuralResolutionDependencyFact,
   b: StructuralResolutionDependencyFact
