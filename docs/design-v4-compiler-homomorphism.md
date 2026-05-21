@@ -1100,9 +1100,13 @@ stage0_terminal = authorize(
   lenses: bootstrap_lens_report,
   projections: stage0_projection_report
 ) -> Outcome<Validated<ArtifactSet>>
+if stage0_terminal is Rejected:
+  reject with diagnostics
+
+stage0_artifacts = unwrap(stage0_terminal)
 
 stage0_promotion = promote_stage0(
-  candidate: stage0_terminal,
+  candidate: stage0_artifacts,
   gate: p9_promotion_gate
 ) -> Outcome<PromotionWitness>
 ```
