@@ -205,13 +205,9 @@ jobs:
         fi
         echo "error: v4 bootstrap compile failed and resolve-posture bridge did not pass" >&2
         exit 1
-    - name: 'T-22 host eval receipt — eval(tree, runtime, inputs)'
+    - name: 'T-22 host eval receipt — eval(tree, interpretation, inputs)'
       if: needs.affected.outputs.v4 == 'true'
-      run: |
-        set -euo pipefail
-        cargo test -p v3-compiler --test integration v4_test_bootstrap_infra_closeout_test::t22_eval_entry_consumes_tree_runtime_and_inputs -- --exact --quiet
-        cargo test -p v3-compiler --test integration v4_test_bootstrap_infra_closeout_test::t22_eval_runtime_mvp_witness_parse -- --exact --quiet
-        cargo test -p v3-compiler --test integration v4_compiler_compile_public_terminal_smoke_test::v4_compile_dag_eval_mode_routes_to_eval_runtime -- --exact --quiet
+      run: python3 scripts/check-v4-host-eval-receipt.py
   # v2 fixed-point — runs only when src/v2/ is affected. v2 is restored as
   # comparison artifact + v4 bootstrap source (frozen-buildable). Verifies
   # that any modification to v2 preserves the self-host fixed-point property.

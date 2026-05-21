@@ -105,33 +105,6 @@ fn v4_compile_dag_imports_target_carriers_not_emit_cycle() {
 }
 
 #[test]
-fn v4_compile_dag_eval_mode_routes_to_eval_runtime() {
-    let module = parse_module(COMPILE_DAG, COMPILE_PATH);
-    assert!(
-        import_includes_name(&module, &["v4", "compiler", "eval"], "eval"),
-        "{COMPILE_PATH}: Eval mode must route through compiler/05_eval.dag"
-    );
-    assert!(
-        import_includes_name(&module, &["v4", "compiler", "eval"], "Inputs"),
-        "{COMPILE_PATH}: Eval mode must pass explicit Inputs to eval"
-    );
-    assert!(
-        import_includes_name(
-            &module,
-            &["v4", "extdeps", "runtimes", "v4_evaluator"],
-            "V4EvaluatorRuntime"
-        ),
-        "{COMPILE_PATH}: RuntimeTarget must be the concrete v4 evaluator runtime fact bundle"
-    );
-    assert!(
-        COMPILE_DAG.contains("Eval { runtime }")
-            && COMPILE_DAG.contains("eval(tree: inferred, runtime: runtime, inputs: Inputs { root: source })")
-            && COMPILE_DAG.contains("EvalResult { value: value }"),
-        "{COMPILE_PATH}: compile-core Eval must evaluate source through eval(tree, runtime, inputs)"
-    );
-}
-
-#[test]
 fn v4_compile_dag_does_not_import_specific_lens_modules() {
     let module = parse_module(COMPILE_DAG, COMPILE_PATH);
     let lens_imports: Vec<_> = import_paths(&module)

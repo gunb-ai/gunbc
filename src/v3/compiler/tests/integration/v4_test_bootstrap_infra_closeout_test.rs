@@ -2,8 +2,7 @@
 //!
 //! Closeout ratchets for the v4 T-19/T-20/T-22 test/bootstrap-infra lane. These
 //! checks stay at the parse-surface boundary: they prove structural authorities
-//! exist and remain joined; the T-22 runtime row pins the modeled eval call shape
-//! until generated TestClaim execution owns the same receipt.
+//! exist and remain joined; T-22 rows are parse/substrate ratchets only (not execution).
 //! This hand-Rust ratchet retires when T-22 generated harness coverage
 //! expresses the same bootstrap closeout checks as `.dag` `TestClaim` rows.
 
@@ -32,39 +31,11 @@ const T19_MANIFEST_PATH: &str = "src/v4/test/claim/manual/t19_manual_anchor_mani
 const DIAGNOSTIC_ASSERT_EVAL_DAG: &str =
     include_str!("../../../../v4/test/claim/manual/diagnostic_assert_eval.dag");
 const DIAGNOSTIC_ASSERT_EVAL_PATH: &str = "src/v4/test/claim/manual/diagnostic_assert_eval.dag";
-const EVAL_RUNTIME_MVP_DAG: &str =
-    include_str!("../../../../v4/test/claim/manual/eval_runtime_mvp.dag");
-const EVAL_RUNTIME_MVP_PATH: &str = "src/v4/test/claim/manual/eval_runtime_mvp.dag";
 const EVAL_DAG: &str = include_str!("../../../../v4/compiler/05_eval.dag");
 
 #[test]
 fn t22_diagnostic_assert_eval_witnesses_parse() {
     parse_module(DIAGNOSTIC_ASSERT_EVAL_DAG, DIAGNOSTIC_ASSERT_EVAL_PATH);
-}
-
-#[test]
-fn t22_eval_runtime_mvp_witness_parse() {
-    parse_module(EVAL_RUNTIME_MVP_DAG, EVAL_RUNTIME_MVP_PATH);
-}
-
-#[test]
-fn t22_eval_entry_consumes_tree_runtime_and_inputs() {
-    assert!(
-        EVAL_DAG.contains(
-            "fn eval(tree: InferredTree, runtime: V4EvaluatorRuntime, inputs: Inputs) -> Outcome<RuntimeValue>"
-        ),
-        "eval entrypoint must consume the inferred tree, concrete runtime bundle, and arbitrary input subgraph"
-    );
-    assert!(
-        EVAL_DAG.contains("interpretation: runtime.interpretation"),
-        "eval must obtain interpretation through the concrete runtime fact bundle"
-    );
-    assert!(
-        EVAL_RUNTIME_MVP_DAG.contains("fn eval_mvp2_runtime() -> V4EvaluatorRuntime")
-            && EVAL_RUNTIME_MVP_DAG.contains("runtime: eval_mvp2_runtime()")
-            && EVAL_RUNTIME_MVP_DAG.contains("inputs: Inputs { root: eval_mvp2_add_subgraph() }"),
-        "T-22 MVP fixture must receipt eval(tree, runtime, inputs), not just compile/emit"
-    );
 }
 
 #[test]

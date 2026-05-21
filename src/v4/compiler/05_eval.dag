@@ -1,7 +1,7 @@
 // src/v4/compiler/05_eval.dag
 // Scope: primary evaluation path over inferred tree/input subgraphs and TestClaim runner substrate.
 // Owns: Inputs, EvalContext, TestClaimTypedInput, TestClaimEvalSubject, TestClaimCacheKey, TestClaimCacheReceipt, Verdict, TestClaimRun, EvalFoldState, eval, eval_node, run_test_claim, aggregate_verdicts.
-// Consumes: v4.compiler.infer, v4.extdeps.runtimes.v4_evaluator, v4.std.runtime, v4.std.node, v4.std.diagnostic, v4.std.verification.
+// Consumes: v4.compiler.infer, v4.std.runtime, v4.std.node, v4.std.diagnostic, v4.std.verification.
 // Status: T-22 eval consumes decomposed runtime interpretation algebra; TestClaim runner remains Node-shaped. Local control terminalization, runtime-value conformance, behavior dispatch, Outcome accumulation, and fold progress sentinels are staged below with explicit dissolution targets.
 // CompilesClaim: run_test_claim_assert compares actual to expected_value via outcome_node_eq (tighter than legacy AssertKind Compiles, which Pass'd on any Accepted).
 
@@ -15,7 +15,6 @@ import v4.compiler.infer {
   inferred_facts_inhabitance_well_grounded,
   inferred_facts_resolved_type_matches
 }
-import v4.extdeps.runtimes.v4_evaluator { V4EvaluatorRuntime }
 import v4.std.collection { List, Map, non_empty }
 import v4.std.runtime {
   EnvironmentBindingKey,
@@ -579,13 +578,13 @@ fn eval_runtime_node(
 }
 
 
-fn eval(tree: InferredTree, runtime: V4EvaluatorRuntime, inputs: Inputs) -> Outcome<RuntimeValue> {
+fn eval(tree: InferredTree, interpretation: InterpretationAlgebra, inputs: Inputs) -> Outcome<RuntimeValue> {
   if well_formed(n: tree.root) {
     if well_formed(n: inputs.root) {
       eval_runtime_node(
         node: inputs.root,
         tree: tree,
-        interpretation: runtime.interpretation,
+        interpretation: interpretation,
         environment: empty_evaluation_environment()
       )
     } else {
