@@ -48,6 +48,21 @@ fn function_count(module: &v3_compiler::parse_surface::SurfaceModule, name: &str
         .count()
 }
 
+fn surface_declares_data(
+    module: &v3_compiler::parse_surface::SurfaceModule,
+    name: &str,
+    ty_name: &str,
+) -> bool {
+    module.items.iter().any(|item| match item {
+        SurfaceItem::Data {
+            name: decl_name,
+            ty,
+            ..
+        } => decl_name == name && surface_type_name(ty) == ty_name,
+        _ => false,
+    })
+}
+
 fn surface_declares_type(module: &v3_compiler::parse_surface::SurfaceModule, name: &str) -> bool {
     module.items.iter().any(|item| {
         matches!(
@@ -118,6 +133,7 @@ fn v4_std_model_core_declares_ratified_q1_carriers() {
     for name in [
         "ModelCore",
         "PrimitiveFactBundle",
+        "PrimitiveFactAxisBinding",
         "AlgebraInhabitanceDecl",
         "AlgebraLawObligation",
         "EffectSemanticsDecl",
@@ -190,6 +206,52 @@ fn v4_std_model_core_effect_partiality_ops_use_node_authority() {
         assert_eq!(
             ty, "Node",
             "{type_name}.{field_name} must reference modeled operation Node authority, not Symbol"
+        );
+    }
+}
+
+#[test]
+fn v4_std_model_core_primitive_fact_bundle_uses_axis_keyed_spec_facts() {
+    let module = model_core_surface_or_panic();
+    let bundle_fields: Vec<(String, String)> = type_record_fields(&module, "PrimitiveFactBundle")
+        .iter()
+        .map(|f| (f.name.clone(), surface_type_name(&f.ty)))
+        .collect();
+    assert_eq!(
+        bundle_fields,
+        vec![
+            ("substrate_carrier".to_string(), "Node".to_string()),
+            (
+                "spec_facts".to_string(),
+                "List<PrimitiveFactAxisBinding>".to_string(),
+            ),
+        ],
+        "PrimitiveFactBundle.spec_facts must be a structured axis-keyed bundle, not an opaque Node"
+    );
+    let axis_fields: Vec<(String, String)> =
+        type_record_fields(&module, "PrimitiveFactAxisBinding")
+            .iter()
+            .map(|f| (f.name.clone(), surface_type_name(&f.ty)))
+            .collect();
+    assert_eq!(
+        axis_fields,
+        vec![
+            ("axis".to_string(), "Symbol".to_string()),
+            ("fact".to_string(), "Node".to_string()),
+        ],
+        "PrimitiveFactAxisBinding pairs a declared axis Symbol with a substrate fact Node"
+    );
+    for axis in [
+        "primitive_fact_axis_width",
+        "primitive_fact_axis_signedness",
+        "primitive_fact_axis_range",
+        "primitive_fact_axis_encoding",
+        "primitive_fact_axis_surface_spelling",
+        "primitive_fact_axis_overflow_disposition",
+    ] {
+        assert!(
+            surface_declares_data(&module, axis, "Symbol"),
+            "declared axis Symbol `{axis}` is the canonical key for PrimitiveFactAxisBinding.axis"
         );
     }
 }
