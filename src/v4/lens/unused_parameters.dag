@@ -116,19 +116,27 @@ fn use_classification_witness(tree: InferredTree, dependencies: List<DependencyV
 // IsUseOfDeclaration`. Roll-up scope is derived from the existing
 // classification (feedback_scope_from_query_not_type_tag — scope is a
 // query fact, not a substrate tag).
-fn use_relation_is_use(relation: UseRelation) -> Bool {
+// Fail-closed: a relation BLOCKS the unused-verdict if it is either a
+// proven use (`IsUseOfDeclaration`) or unresolved-use evidence
+// (`RequiresResolutionWitness` — the lens couldn't classify the edge
+// kind, so the conservative answer is "uncertain, don't claim unused").
+// `IsStructuralComposition` and `IsNonUseDependency` are positive
+// non-use evidence and do not block.
+fn use_relation_blocks_unused(relation: UseRelation) -> Bool {
   match relation {
     IsUseOfDeclaration => true
-    _ => false
+    RequiresResolutionWitness => true
+    IsStructuralComposition => false
+    IsNonUseDependency => false
   }
 }
 
-fn declaration_has_use(uses: List<ClassifiedDependencyView<UseRelation>>, declaration: Node) -> Bool {
+fn declaration_has_use_or_unresolved(uses: List<ClassifiedDependencyView<UseRelation>>, declaration: Node) -> Bool {
   fold(uses, init: false, f: fn(acc, classified) {
     if acc {
       acc
     } else {
-      (classified.dependency.source == declaration) && use_relation_is_use(relation: classified.classification)
+      (classified.dependency.source == declaration) && use_relation_blocks_unused(relation: classified.classification)
     }
   })
 }
@@ -170,7 +178,7 @@ fn rollup_unused(use_fact: UseClassificationFact) -> UnusedParametersFact {
         if already_in_unused(unused: acc, declaration: candidate) {
           acc
         } else {
-          if declaration_has_use(uses: use_fact.uses, declaration: candidate) {
+          if declaration_has_use_or_unresolved(uses: use_fact.uses, declaration: candidate) {
             acc
           } else {
             list_push(acc, unused_parameter_for_declaration(declaration: candidate))
