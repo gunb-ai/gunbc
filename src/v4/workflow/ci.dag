@@ -74,33 +74,51 @@ fn ci_diagnostic(reason: Symbol) -> Diagnostic {
   }
 }
 
-fn ci_symbol_resolves(s: Symbol, jobs: List<CiJob>) -> Bool {
-  free_monoid_count_where(xs: jobs, predicate: fn(j) { j.id == s }) != 0
+fn ci_job_ids(jobs: List<CiJob>) -> List<Symbol> {
+  fold(jobs, init: [], f: fn(acc, j) {
+    concat([j.id], acc)
+  })
+}
+
+fn ci_gate_ids(gates: List<CiGate>) -> List<Symbol> {
+  fold(gates, init: [], f: fn(acc, g) {
+    concat([g.id], acc)
+  })
+}
+
+fn ci_gate_job_ids(gates: List<CiGate>) -> List<Symbol> {
+  fold(gates, init: [], f: fn(acc, g) {
+    concat([g.job], acc)
+  })
 }
 
 fn ci_member(s: Symbol, ids: List<Symbol>) -> Bool {
   free_monoid_count_equal(xs: ids, item: s, eq: fn(left, right) { left == right }) != 0
 }
 
+fn ci_symbol_resolves(s: Symbol, jobs: List<CiJob>) -> Bool {
+  ci_member(s: s, ids: ci_job_ids(jobs: jobs))
+}
+
 fn ci_all_job_ids_unique(jobs: List<CiJob>) -> Bool {
-  free_monoid_unique(xs: jobs, eq: fn(left, right) { left.id == right.id })
+  free_monoid_unique(xs: ci_job_ids(jobs: jobs), eq: fn(left, right) { left == right })
 }
 
 fn ci_all_gate_ids_unique(gates: List<CiGate>) -> Bool {
-  free_monoid_unique(xs: gates, eq: fn(left, right) { left.id == right.id })
+  free_monoid_unique(xs: ci_gate_ids(gates: gates), eq: fn(left, right) { left == right })
 }
 
 fn ci_all_needs_resolve(jobs: List<CiJob>) -> Bool {
-  free_monoid_forall(xs: jobs, predicate: fn(j) {
-    free_monoid_forall(xs: j.needs, predicate: fn(n) {
+  fold(jobs, init: true, f: fn(acc, j) {
+    acc && free_monoid_forall(xs: j.needs, predicate: fn(n) {
       ci_symbol_resolves(s: n, jobs: jobs)
     })
   })
 }
 
 fn ci_all_gate_jobs_resolve(gates: List<CiGate>, jobs: List<CiJob>) -> Bool {
-  free_monoid_forall(xs: gates, predicate: fn(g) {
-    ci_symbol_resolves(s: g.job, jobs: jobs)
+  free_monoid_forall(xs: ci_gate_job_ids(gates: gates), predicate: fn(job_sym) {
+    ci_symbol_resolves(s: job_sym, jobs: jobs)
   })
 }
 
@@ -147,8 +165,8 @@ fn ci_command_authority_ok(c: CiCommand) -> Bool {
 }
 
 fn ci_all_commands_authority_ok(jobs: List<CiJob>) -> Bool {
-  free_monoid_forall(xs: jobs, predicate: fn(j) {
-    ci_command_authority_ok(c: j.command)
+  fold(jobs, init: true, f: fn(acc, j) {
+    acc && ci_command_authority_ok(c: j.command)
   })
 }
 
