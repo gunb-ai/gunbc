@@ -2,7 +2,7 @@
 
 use crate::helpers::*;
 use serde_json::Value;
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::rc::Rc;
 use v2_compiler::v2_compiler_artifact::RenderTarget;
 use v2_compiler::v2_compiler_compile::SourceFile;
@@ -458,7 +458,9 @@ fn f(x: LocusAnchor<String>) -> String {
     let result = compile_dag(source);
     let diags = diagnostic_messages(&result);
     assert!(
-        diags.iter().any(|d| d.contains("variant 'LocusAnchor' not found")),
+        diags
+            .iter()
+            .any(|d| d.contains("variant 'LocusAnchor' not found")),
         "bare record-name pattern must fail closed, got: {:?}",
         diags
     );

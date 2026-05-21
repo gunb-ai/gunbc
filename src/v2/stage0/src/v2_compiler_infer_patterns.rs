@@ -188,6 +188,7 @@ pub fn lookup_variant_in_type(
     variant_name: &String,
     module_name: String,
     source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    field_binding_count: i64,
 ) -> Rc<NodeLookupResult> {
     match (*scrut).clone() {
         PatternSubject::PatternLookupBlocked => node_lookup_failed(Rc::new(vec![])),
@@ -217,7 +218,8 @@ pub fn lookup_variant_in_type(
                         variant_name.clone(),
                         source_indices.clone(),
                     );
-                    let record_destructure = ((scrut_node.connective.clone() == Connective::Conj)
+                    let record_destructure = (((field_binding_count > 0)
+                        && (scrut_node.connective.clone() == Connective::Conj))
                         && (authored_name_at(source_indices.clone(), &scrut_node).as_str()
                             == variant_name.clone().as_str()));
                     let fallback = if (scrut_opt.clone()

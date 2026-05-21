@@ -1285,6 +1285,7 @@ pub fn annotate_pattern_parent_enums(
                     &variant_name,
                     scope.module_name.clone(),
                     &scope.type_env.clone().source_indices.clone(),
+                    (bindings.clone().len() as i64),
                 );
                 let variant_subject = lookup_result_subject(variant_lookup);
                 let annotated_bindings = Rc::new({
@@ -1567,6 +1568,7 @@ pub fn extend_scope_with_pattern_node(
                 &vname,
                 scope.module_name.clone(),
                 &scope.type_env.clone().source_indices.clone(),
+                (bindings.clone().len() as i64),
             );
             let variant_subject = lookup_result_subject(variant_lookup.clone());
             let variant_diags = variant_lookup.diagnostics.clone();
