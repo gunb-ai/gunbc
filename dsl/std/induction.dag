@@ -559,15 +559,26 @@ fn compose_sub_value_relations(arg_rel: SubValueRelation, callee_rel: SubValueRe
     StrictAxisErased =>
       match arg_rel {
         SubValueUnknown => SubValueUnknown
-        // The callee returned axis-erased strict; arg=Preserved means we still know
-        // strict-along-some-axis. arg=Strict_f / Iter_f could pin an axis from the
-        // caller side, but we cannot identify which (callee's axis was erased) — keep
-        // StrictAxisErased rather than fabricating a specific axis.
-        _ => StrictAxisErased
+        // Preserved arg + strict-axis-erased callee = strict-axis-erased composed.
+        PreservedValue => StrictAxisErased
+        // Strict-style caller-side witnesses on the SAME composition path: keep at
+        // axis-erased (cannot identify which axis since the callee's axis is erased).
+        StrictSubValue { field: _, factor: _ } => StrictAxisErased
+        IteratedSubValue { field: _ } => StrictAxisErased
+        ArithmeticDescent { param: _, factor: _ } => StrictAxisErased
+        StrictAxisErased => StrictAxisErased
+        // Non-strict caller-side relations cannot be strengthened by a strict-axis-erased
+        // callee — flow at the caller-side lattice level (codex review #16089 fix).
+        NonIncreasingValue => NonIncreasingValue
+        MixedTop => MixedTop
       }
     MixedTop =>
       match arg_rel {
         SubValueUnknown => SubValueUnknown
+        // MixedTop projects to NonIncreasing — any caller-side arg composed with it
+        // cannot exceed NonIncreasing evidence. Flow at min(caller, MixedTop) by
+        // returning the caller-side inhabitant when it is at NonIncreasing or lower.
+        NonIncreasingValue => NonIncreasingValue
         _ => MixedTop
       }
     StrictSubValue { field: _, factor: _ } =>

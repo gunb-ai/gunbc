@@ -451,11 +451,19 @@ fn compose_sub_value_relations(arg_rel: SubValueRelation, callee_rel: SubValueRe
     StrictAxisErased =>
       match arg_rel {
         SubValueUnknown => SubValueUnknown
-        _ => StrictAxisErased
+        PreservedValue => StrictAxisErased
+        StrictSubValue { field: _, factor: _ } => StrictAxisErased
+        IteratedSubValue { field: _ } => StrictAxisErased
+        ArithmeticDescent { param: _, factor: _ } => StrictAxisErased
+        StrictAxisErased => StrictAxisErased
+        // See `dsl/std/induction.dag` — non-strict caller-side cannot be strengthened.
+        NonIncreasingValue => NonIncreasingValue
+        MixedTop => MixedTop
       }
     MixedTop =>
       match arg_rel {
         SubValueUnknown => SubValueUnknown
+        NonIncreasingValue => NonIncreasingValue
         _ => MixedTop
       }
     StrictSubValue { field: _, factor: _ } =>
