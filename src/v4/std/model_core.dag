@@ -32,7 +32,7 @@ type AlgebraInhabitanceDecl {
 
 
 type AlgebraLawObligation {
-  inhabitance: AlgebraInhabitanceDecl
+  inhabitance_witness: Node
   law: Node
 }
 

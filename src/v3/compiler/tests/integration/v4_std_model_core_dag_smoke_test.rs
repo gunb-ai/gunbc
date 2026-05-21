@@ -164,10 +164,10 @@ fn v4_std_model_core_algebra_law_obligation_structural() {
     assert_eq!(
         fields,
         vec![
-            ("inhabitance".to_string(), "AlgebraInhabitanceDecl".to_string()),
+            ("inhabitance_witness".to_string(), "Node".to_string()),
             ("law".to_string(), "Node".to_string()),
         ],
-        "law obligations must reference modeled inhabitance (algebra/inhabitant/witness), not Symbol labels"
+        "law obligations must reference canonical inhabitance via witness Node, not embed a parallel AlgebraInhabitanceDecl copy"
     );
 }
 
