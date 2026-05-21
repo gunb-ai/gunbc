@@ -35,6 +35,12 @@ type ProducerStageId {
 }
 
 
+type SubsumedFixes {
+  first: DiffId
+  rest: List<DiffId>
+}
+
+
 // 🟡 coproduct dissolution — feature:lens-subsumption-mechanical-runtime; task:node://adhoc-0a13e0b0-dff; dissolve-on:.dag TestClaim runner consumes MechanicalReverification rows.
 type SubsumptionVerification
   = MechanicalReverification { test_claim: TestClaimId }
@@ -43,23 +49,25 @@ type SubsumptionVerification
 
 type DissolutionSubsumption {
   root_fix: DiffId
-  subsumed_fixes: List<DiffId>
+  subsumed_fixes: SubsumedFixes
   verification: SubsumptionVerification
 }
 
 
-data affected_set_irt1_subsumed_fix_list: List<DiffId> = [
-  DiffId { id: affected_set_hash_receipt_leaf_fix },
-  DiffId { id: affected_set_boundary_receipt_leaf_fix },
-  DiffId { id: affected_set_dimension_receipt_leaf_fix },
-  DiffId { id: affected_set_propagation_receipt_leaf_fix },
-  DiffId { id: affected_set_frontier_receipt_leaf_fix }
-]
+data affected_set_irt1_subsumed_fixes: SubsumedFixes = SubsumedFixes {
+  first: DiffId { id: affected_set_hash_receipt_leaf_fix },
+  rest: [
+    DiffId { id: affected_set_boundary_receipt_leaf_fix },
+    DiffId { id: affected_set_dimension_receipt_leaf_fix },
+    DiffId { id: affected_set_propagation_receipt_leaf_fix },
+    DiffId { id: affected_set_frontier_receipt_leaf_fix }
+  ]
+}
 
 
 data affected_set_irt1_subsumption: DissolutionSubsumption = {
   root_fix: DiffId { id: affected_set_irt1_frontier_root_fix },
-  subsumed_fixes: affected_set_irt1_subsumed_fix_list,
+  subsumed_fixes: affected_set_irt1_subsumed_fixes,
   verification: MechanicalReverification {
     test_claim: TestClaimId { id: affected_set_irt1_mechanical_reverification_claim }
   }

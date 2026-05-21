@@ -280,11 +280,24 @@ pub enum SubsumptionVerificationRuntime {
     },
 }
 
+/// Non-empty mirror of `v4.lens.subsumption.SubsumedFixes`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SubsumedFixesRuntime {
+    pub first: DissolutionDiffId,
+    pub rest: Vec<DissolutionDiffId>,
+}
+
+impl SubsumedFixesRuntime {
+    fn iter(&self) -> impl Iterator<Item = &DissolutionDiffId> {
+        std::iter::once(&self.first).chain(self.rest.iter())
+    }
+}
+
 /// Structural mirror of one `v4.lens.subsumption.DissolutionSubsumption` row.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DissolutionSubsumptionRuntimeRow {
     pub root_fix: DissolutionDiffId,
-    pub subsumed_fixes: Vec<DissolutionDiffId>,
+    pub subsumed_fixes: SubsumedFixesRuntime,
     pub verification: SubsumptionVerificationRuntime,
 }
 
@@ -390,7 +403,7 @@ pub fn verify_mechanical_reverification(
         );
     }
 
-    for fix in &row.subsumed_fixes {
+    for fix in row.subsumed_fixes.iter() {
         if !run.findings_before.contains(fix) {
             return Err(MechanicalReverificationError::SubsumedFixMissingBefore {
                 fix: fix.clone(),
@@ -518,11 +531,13 @@ mod tests {
     fn demo_mechanical_subsumption_row_fixture() -> DissolutionSubsumptionRuntimeRow {
         DissolutionSubsumptionRuntimeRow {
             root_fix: diff_id("demo_mechanical_root_fix"),
-            subsumed_fixes: vec![
-                diff_id("demo_mechanical_leaf_fix_a"),
-                diff_id("demo_mechanical_leaf_fix_b"),
-                diff_id("demo_mechanical_leaf_fix_c"),
-            ],
+            subsumed_fixes: SubsumedFixesRuntime {
+                first: diff_id("demo_mechanical_leaf_fix_a"),
+                rest: vec![
+                    diff_id("demo_mechanical_leaf_fix_b"),
+                    diff_id("demo_mechanical_leaf_fix_c"),
+                ],
+            },
             verification: SubsumptionVerificationRuntime::MechanicalReverification {
                 test_claim: test_claim_id("demo_mechanical_reverification_claim"),
             },
@@ -532,7 +547,10 @@ mod tests {
     fn demo_producer_stage_subsumption_row_fixture() -> DissolutionSubsumptionRuntimeRow {
         DissolutionSubsumptionRuntimeRow {
             root_fix: diff_id("demo_producer_stage_root_fix"),
-            subsumed_fixes: vec![diff_id("demo_producer_stage_leaf_fix")],
+            subsumed_fixes: SubsumedFixesRuntime {
+                first: diff_id("demo_producer_stage_leaf_fix"),
+                rest: Vec::new(),
+            },
             verification: SubsumptionVerificationRuntime::ProducerStageDerivation {
                 derivation_path: vec![producer_stage_id("demo_producer_stage")],
             },
@@ -547,7 +565,7 @@ mod tests {
             execution: MechanicalReverificationExecution::Completed {
                 report_authority: MechanicalReverificationReportAuthority::LensCiTestClaimRunner,
             },
-            findings_before: row.subsumed_fixes.into_iter().collect(),
+            findings_before: row.subsumed_fixes.iter().cloned().collect(),
             findings_after: BTreeSet::new(),
         }
     }
@@ -798,9 +816,10 @@ mod tests {
             test_claim,
             &test_claim_id("demo_mechanical_reverification_claim")
         );
-        assert!(row
-            .subsumed_fixes
-            .contains(&diff_id("demo_mechanical_leaf_fix_a")));
+        assert_eq!(
+            row.subsumed_fixes.first,
+            diff_id("demo_mechanical_leaf_fix_a")
+        );
     }
 
     #[test]
