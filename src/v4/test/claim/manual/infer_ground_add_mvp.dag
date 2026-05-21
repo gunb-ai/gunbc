@@ -86,7 +86,7 @@ data fixture_add_body_int_atom: Symbol = fixture_add_body_int_atom
 data infer_receipt_evaluator: Symbol = infer_receipt_evaluator
 data infer_receipt_resources: Symbol = infer_receipt_resources
 data infer_receipt_extdeps: Symbol = infer_receipt_extdeps
-data infer_receipt_runtime_value: Symbol = infer_receipt_runtime_value
+data infer_receipt_runtime_value_symbol: Symbol = infer_receipt_runtime_value_symbol
 data infer_receipt_input_infer_add_mvp: Symbol = infer_receipt_input_infer_add_mvp
 data infer_receipt_input_descent_witness: Symbol = infer_receipt_input_descent_witness
 // 🟡 cache-hash scaffold — T22-EVAL-CACHE-HASHES
@@ -131,7 +131,7 @@ fn infer_receipt_symbol_node(s: Symbol) -> Node {
 fn infer_receipt_runtime_value() -> RuntimeValue {
   RuntimePrimitive {
     value: RuntimePrimitiveValue {
-      primitive_type: infer_receipt_symbol_node(s: infer_receipt_runtime_value),
+      primitive_type: infer_receipt_symbol_node(s: infer_receipt_runtime_value_symbol),
       bytes: []
     }
   }
