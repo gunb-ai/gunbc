@@ -15,9 +15,14 @@ import v4.lens.structural_resolution {
 }
 import v4.std.cardinality { RankingDimension, TerminationProof }
 import v4.std.collection { Map }
+import v4.std.constraints {
+  CanonicalGroundingWitness,
+  constraint_property_being_canonical,
+  constraint_property_candidate_set_closedness
+}
 import v4.std.dependency { BindsTo, DependencyView }
 import v4.std.node { Atom, Edge, Hash, Named, Node, Symbol, TypeNode }
-import v4.std.witness { Holds, Witness }
+import v4.std.witness { Holds, StructuralPropertyWitness, Witness }
 
 data sr_root_symbol: Symbol = sr_root_symbol
 data sr_child_symbol: Symbol = sr_child_symbol
@@ -51,9 +56,23 @@ data sr_dependency: DependencyView = DependencyView {
   usage_site: sr_child
 }
 
+fn sr_claim_canonical_witness(resolved: Node) -> CanonicalGroundingWitness {
+  CanonicalGroundingWitness {
+    structural: StructuralPropertyWitness {
+      property: constraint_property_being_canonical,
+      evidence: resolved
+    },
+    closedness: StructuralPropertyWitness {
+      property: constraint_property_candidate_set_closedness,
+      evidence: resolved
+    }
+  }
+}
+
 fn sr_claim_facts() -> InferredFacts {
+  let resolved = sr_claim_node(s: sr_type_symbol)
   InferredFacts {
-    resolved_type: sr_claim_node(s: sr_type_symbol),
+    resolved_type: resolved,
     inhabits: AlgebraRef {
       algebra: sr_claim_node(s: sr_algebra_symbol),
       witness: sr_claim_node(s: sr_algebra_witness_symbol)
@@ -61,7 +80,8 @@ fn sr_claim_facts() -> InferredFacts {
     descent: TerminationProof {
       non_increasing: [],
       strict: RankingDimension { measured: sr_descent_symbol }
-    }
+    },
+    canonical: sr_claim_canonical_witness(resolved: resolved)
   }
 }
 

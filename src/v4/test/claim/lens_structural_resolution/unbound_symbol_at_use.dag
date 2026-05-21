@@ -18,6 +18,11 @@ import v4.lens.structural_resolution {
 }
 import v4.std.cardinality { RankingDimension, TerminationProof }
 import v4.std.collection { Map }
+import v4.std.constraints {
+  CanonicalGroundingWitness,
+  constraint_property_being_canonical,
+  constraint_property_candidate_set_closedness
+}
 import v4.std.dependency { BindsTo, DependencyView }
 import v4.std.diagnostic {
   Diagnostic,
@@ -26,7 +31,7 @@ import v4.std.diagnostic {
   Unavailable
 }
 import v4.std.node { Atom, Edge, Hash, Named, Node, Symbol, TypeNode }
-import v4.std.witness { Holds, Violates, Witness }
+import v4.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
 
 data sr_unbound_root_symbol: Symbol = sr_unbound_root_symbol
 data sr_unbound_child_symbol: Symbol = sr_unbound_child_symbol
