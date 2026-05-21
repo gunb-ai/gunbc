@@ -312,7 +312,10 @@ fn sub_value_structural_eq(a: SubValueRelation, b: SubValueRelation) -> Bool {
           (pa == pb) && shrink_factor_eq(a: fac_a, b: fac_b)
         _ => false
       }
-    _ => false
+    PreservedValue => match b { PreservedValue => true, _ => false }
+    NonIncreasingValue => match b { NonIncreasingValue => true, _ => false }
+    IncomparableValue => match b { IncomparableValue => true, _ => false }
+    SubValueUnknown => match b { SubValueUnknown => true, _ => false }
   }
 }
 

@@ -125,3 +125,22 @@ fn meet_join_arithmetic_same_param_mismatched_factors_lands_in_lawful_lattice() 
         SubValueRelation::IncomparableValue
     ));
 }
+
+#[test]
+fn lattice_idempotence_on_non_parameterized_variants() {
+    // BoundedLattice idempotence: meet(a, a) = a, join(a, a) = a for every inhabitant.
+    // The non-parameterised variants (PreservedValue, NonIncreasingValue, IncomparableValue,
+    // SubValueUnknown) have no payload but still need reflexive structural equality so
+    // sub_value_structural_eq's short-circuit fires; without it, meet(Preserved, Preserved)
+    // would fall through level analysis to NonIncreasingValue, breaking idempotence.
+    let cases = [
+        Rc::new(SubValueRelation::PreservedValue),
+        Rc::new(SubValueRelation::NonIncreasingValue),
+        Rc::new(SubValueRelation::IncomparableValue),
+        Rc::new(SubValueRelation::SubValueUnknown),
+    ];
+    for r in cases.iter() {
+        assert_eq!(*meet_sub_value(r.clone(), r.clone()), **r);
+        assert_eq!(*join_sub_value(r.clone(), r.clone()), **r);
+    }
+}
