@@ -48,6 +48,11 @@ import v4.std.logic { Bool }
 import v4.std.node { Node, Symbol }
 import v4.std.witness { Holds, Violates, Witness }
 
+// 🟢 projection carrier — Practice 11: binding status is computed from
+// `dependency.kind` + `usage_site` `Witness<InferredFacts>` (P2/P3); not
+// authored as a parallel substrate tag. Variants are irreducible use-site
+// outcomes (`BindingResolved` / `UnboundSymbolAtUse` / lookup-miss /
+// fail-closed infer witness / out-of-scope dependency kind for this lens).
 type StructuralResolutionStatus
   = BindingResolved
   | UnboundSymbolAtUse
