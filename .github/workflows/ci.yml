@@ -172,6 +172,9 @@ jobs:
     - name: Build v2 compiler (v4 bootstrap gate)
       if: needs.affected.outputs.v4 == 'true' && steps.v4-v2-bin.outputs.cache-hit != 'true'
       run: cargo build -p v2-compiler --release
+    - name: MVP-1 v4 add end-to-end gate (add.dag → rust → cargo run)
+      if: needs.affected.outputs.v4 == 'true'
+      run: bash scripts/v4-mvp1-e2e-gate.sh
     - name: v2 → v4 bootstrap compile (fail-closed full)
       if: needs.affected.outputs.v4 == 'true'
       id: v4_bootstrap_compile

@@ -28,7 +28,7 @@ if [[ ! -x "$bin" ]]; then
   exit 1
 fi
 
-entry_root="src/v4/test/mvp1/add"
+entry_root="fixtures/v4-mvp1/add"
 if [[ ! -f "${entry_root}/add.dag" ]]; then
   echo "error: missing MVP-1 entry fixture ${entry_root}/add.dag" >&2
   exit 1
@@ -100,11 +100,7 @@ fn main() {
 }
 EOF
 
-if ! grep -q '^\[\[bin\]\]' "$cargo_toml"; then
-  printf '\n[[bin]]\nname = "mvp1_gate"\npath = "src/bin/mvp1_gate.rs"\n' >> "$cargo_toml"
-else
-  printf '\n[[bin]]\nname = "mvp1_gate"\npath = "src/bin/mvp1_gate.rs"\n' >> "$cargo_toml"
-fi
+printf '\n[[bin]]\nname = "mvp1_gate"\npath = "src/bin/mvp1_gate.rs"\n' >> "$cargo_toml"
 
 echo "=== MVP-1: cargo build mvp1_gate ==="
 (
