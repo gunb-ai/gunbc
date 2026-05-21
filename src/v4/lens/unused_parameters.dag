@@ -73,6 +73,9 @@
 module v4.lens.unused_parameters
 
 import v4.compiler.infer { InferredFacts, InferredTree }
+import v4.std.collection { List }
+import v4.std.integer { Int }
+import v4.std.logic { Bool }
 import v4.std.dependency {
   BarrierBefore,
   BindsTo,
@@ -144,12 +147,15 @@ fn unused_parameters_inferred_facts_for_node(tree: InferredTree, node: Node) -> 
 }
 
 fn unused_parameters_dependency_fact(tree: InferredTree, view: DependencyView) -> UnusedParametersDependencyFact {
+  // P6 orientation: BindsTo carries Declaration → AtomUse, so `view.source`
+  // is the declaration that must be present before the use, and `view.dependent`
+  // is the use site.
   UnusedParametersDependencyFact {
-    use_site: view.source,
-    declaration: view.dependent,
+    use_site: view.dependent,
+    declaration: view.source,
     dependency: view,
-    use_site_facts: unused_parameters_inferred_facts_for_node(tree: tree, node: view.source),
-    declaration_facts: unused_parameters_inferred_facts_for_node(tree: tree, node: view.dependent),
+    use_site_facts: unused_parameters_inferred_facts_for_node(tree: tree, node: view.dependent),
+    declaration_facts: unused_parameters_inferred_facts_for_node(tree: tree, node: view.source),
     relation: use_relation_for_dependency(view: view)
   }
 }

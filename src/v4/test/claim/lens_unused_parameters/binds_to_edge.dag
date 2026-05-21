@@ -16,9 +16,10 @@ import v4.lens.unused_parameters {
 }
 import v4.std.cardinality { RankingDimension, TerminationProof }
 import v4.std.collection { Map }
+import v4.std.constraints { CanonicalGroundingWitness }
 import v4.std.dependency { BindsTo, DependencyView }
 import v4.std.node { Atom, Edge, Hash, Named, Node, Symbol, TypeNode }
-import v4.std.witness { Holds, Witness }
+import v4.std.witness { Holds, StructuralPropertyWitness, Witness }
 
 data unused_parameters_root_symbol: Symbol = unused_parameters_root_symbol
 data unused_parameters_child_symbol: Symbol = unused_parameters_child_symbol
