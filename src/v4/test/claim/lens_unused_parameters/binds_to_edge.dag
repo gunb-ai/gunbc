@@ -28,6 +28,9 @@ data unused_parameters_type_symbol: Symbol = unused_parameters_type_symbol
 data unused_parameters_algebra_symbol: Symbol = unused_parameters_algebra_symbol
 data unused_parameters_algebra_witness_symbol: Symbol = unused_parameters_algebra_witness_symbol
 data unused_parameters_descent_symbol: Symbol = unused_parameters_descent_symbol
+data unused_parameters_canonical_structural_symbol: Symbol = unused_parameters_canonical_structural_symbol
+data unused_parameters_canonical_closedness_symbol: Symbol = unused_parameters_canonical_closedness_symbol
+data unused_parameters_canonical_evidence_symbol: Symbol = unused_parameters_canonical_evidence_symbol
 data unused_parameters_claim_hash: Hash = unused_parameters_claim_hash
 
 fn unused_parameters_claim_node(s: Symbol) -> Node {
@@ -60,9 +63,21 @@ fn unused_parameters_claim_facts() -> InferredFacts {
       algebra: unused_parameters_claim_node(s: unused_parameters_algebra_symbol),
       witness: unused_parameters_claim_node(s: unused_parameters_algebra_witness_symbol)
     },
-    descent: TerminationProof {
-      non_increasing: [],
-      strict: RankingDimension { measured: unused_parameters_descent_symbol }
+    descent: Holds {
+      value: TerminationProof {
+        non_increasing: [],
+        strict: RankingDimension { measured: unused_parameters_descent_symbol }
+      }
+    },
+    canonical: CanonicalGroundingWitness {
+      structural: StructuralPropertyWitness {
+        property: unused_parameters_canonical_structural_symbol,
+        evidence: unused_parameters_claim_node(s: unused_parameters_canonical_evidence_symbol)
+      },
+      closedness: StructuralPropertyWitness {
+        property: unused_parameters_canonical_closedness_symbol,
+        evidence: unused_parameters_claim_node(s: unused_parameters_canonical_evidence_symbol)
+      }
     }
   }
 }
@@ -93,9 +108,10 @@ data unused_parameters_binds_to_edge_claim: LensUnusedParametersClaim = LensUnus
   input: unused_parameters_claim_tree(),
   expected: UnusedParametersFact {
     dependencies: [
+      // P6 orientation: source = declaration, dependent = use_site.
       UnusedParametersDependencyFact {
-        use_site: unused_parameters_root,
-        declaration: unused_parameters_child,
+        use_site: unused_parameters_child,
+        declaration: unused_parameters_root,
         dependency: unused_parameters_dependency,
         use_site_facts: Holds { value: unused_parameters_claim_facts() },
         declaration_facts: Holds { value: unused_parameters_claim_facts() },
