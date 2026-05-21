@@ -146,7 +146,24 @@ import v2.compiler.emit {
 }
 
 fn render_rust_type(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
-  render_node_type(n: n, target: Rust, shared_types: shared_types, source_indices: source_indices)
+  if node_is_set_collection(n: n, source_indices: source_indices) {
+    match n.children |> first {
+      Some { value: elem_child } =>
+        let elem_node = child_type_node(ch: elem_child)
+        let elem_is_type_var = if elem_node.inferred != none { is_type_variable(inferred: elem_node.inferred.value) } else { false }
+        if elem_is_type_var {
+          emit_rust_compile_error_expr(message: "Set element type unresolved")
+        } else if !rust_btree_set_element_ord_eligible(elem_node: elem_node, source_indices: source_indices) {
+          let elem_name = authored_name_at(source_indices: source_indices, node: elem_node)
+          emit_rust_compile_error_expr(message: concat("Set element type ", elem_name, " is not Ord-eligible for BTreeSet"))
+        } else {
+          render_node_type(n: n, target: Rust, shared_types: shared_types, source_indices: source_indices)
+        }
+      None => emit_rust_compile_error_expr(message: "Set missing element type")
+    }
+  } else {
+    render_node_type(n: n, target: Rust, shared_types: shared_types, source_indices: source_indices)
+  }
 }
 
 fn type_variable_node(id: String) -> Node {
