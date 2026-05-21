@@ -54,6 +54,7 @@ type CanonicalGroundingCandidateSet {
 }
 type CanonicalGroundingWitness {
   structural: StructuralPropertyWitness
+  // Parallel slot to structural; values may coincide at scaffold seams until closedness authority diverges.
   closedness: StructuralPropertyWitness
 }
 fn constraints_not_realized_diagnostic(graph: ConstraintGraph) -> Diagnostic {
