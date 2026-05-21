@@ -3099,6 +3099,17 @@ fn emit_typed_call_expr(func: String, args: List<Node>, inferred: InferredNode?,
         }
       _ => "Rc::new(HashMap::new()) /* BRIDGE: empty_map return type unresolved */"
     }
+  } else if func == "empty_set" {
+    match inferred {
+      Some { value: Resolved { node: ret_type } } =>
+        let elem_type_str = rust_empty_set_element_type_str(set_type: ret_type, shared_types: shared_types, source_indices: scope.type_env.source_indices)
+        if elem_type_str != "" && !contains(elem_type_str, "UNRESOLVED_TypeVariable") {
+          concat("v2_rt::rc_empty_set::<", elem_type_str, ">()")
+        } else {
+          "v2_rt::rc_empty_set::<_>() /* BRIDGE: empty_set element type unresolved */"
+        }
+      _ => "v2_rt::rc_empty_set::<_>() /* BRIDGE: empty_set return type unresolved */"
+    }
   } else {
     emit_typed_call(func: func, args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
   }
@@ -3608,17 +3619,17 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
             } else {
               "Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */"
             }
-          } else if init_func == "empty_set" && acc_type_str != "_" && acc_type_str != "" && !acc_has_unit_child {
+          } else if init_func == "empty_set" && acc_type_str != "_" && acc_type_str != "" && !contains(acc_type_str, "UNRESOLVED_TypeVariable") && !acc_has_unit_child {
             let elem_type_str = rust_empty_set_element_type_str(set_type: acc_type_node, shared_types: shared_types, source_indices: scope.type_env.source_indices)
-            if elem_type_str != "" {
+            if elem_type_str != "" && !contains(elem_type_str, "UNRESOLVED_TypeVariable") {
               concat("v2_rt::rc_empty_set::<", elem_type_str, ">()")
             } else {
-              "v2_rt::rc_empty_set() /* BRIDGE: fold empty_set element type unresolved */"
+              "v2_rt::rc_empty_set::<_>() /* BRIDGE: fold empty_set element type unresolved */"
             }
           } else if init_func == "empty_map" {
             "Rc::new(HashMap::new()) /* BRIDGE: fold empty_map accumulator type unresolved */"
           } else if init_func == "empty_set" {
-            "v2_rt::rc_empty_set() /* BRIDGE: fold empty_set accumulator type unresolved */"
+            "v2_rt::rc_empty_set::<_>() /* BRIDGE: fold empty_set accumulator type unresolved */"
           } else {
             emit_typed_expr(texpr: arg_value(n: init_arg), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: fold_emit_info, fuel: 1024)
           }

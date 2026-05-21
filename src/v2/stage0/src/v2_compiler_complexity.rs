@@ -7002,10 +7002,10 @@ pub fn build_scc_index(
                             }),
                         );
                         let member_set = component.members.clone().iter().cloned().fold(
-                            v2_rt::rc_empty_set::<compile_error!("UNRESOLVED_TypeVariable")>(),
+                            v2_rt::rc_empty_set::<String>(),
                             |inner: Rc<
                                 std::collections::BTreeSet<
-                                    compile_error!("UNRESOLVED_TypeVariable"),
+                                    String,
                                 >,
                             >,
                              member: String| {
