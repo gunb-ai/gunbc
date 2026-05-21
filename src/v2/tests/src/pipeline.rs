@@ -512,7 +512,7 @@ fn f(x: Row) -> String {
         rs
     );
     assert!(
-        rs.contains("__pos_pair_left_mk_0_val = ") && rs.contains("__pos_pair_right_mk_0_val = "),
+        rs.contains("__pos_pair_left_mk_0_val == ") && rs.contains("__pos_pair_right_mk_0_val == "),
         "expected distinct positional string-literal guards, got:\n{}",
         rs
     );
