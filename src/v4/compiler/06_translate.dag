@@ -37,7 +37,6 @@ import v4.std.diagnostic {
   Unavailable,
   bind_outcome,
   diagnostics_merge,
-  diagnostics_singleton,
   outcome_rejected,
   rejected_with_pending
 }

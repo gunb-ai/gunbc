@@ -34,7 +34,6 @@ import v4.std.diagnostic {
   outcome_rejected
 }
 import v4.std.node { Node, Symbol }
-import v4.std.text { String }
 data emit_stage_locus_port: Symbol = emit_stage_locus_port
 data emit_serialize_emitted_mismatch: Symbol = emit_serialize_emitted_mismatch
 fn emit_serialize_emitted_mismatch_diagnostic(emitted: Node, target: TargetModel) -> Diagnostic {
