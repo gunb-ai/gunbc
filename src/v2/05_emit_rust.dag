@@ -1849,8 +1849,8 @@ fn emit_variant_from_child(child: Node, recursive_types: Set<String>, shared_typ
     // Unit variant -- no fields
     concat(rename_attr, "    ", child_text, ",")
   } else if child.children |> count == 1 {
-    let tuple_style = variant_is_synthetic_positional_payload(fields: child.children, source_indices: env.source_indices)
-      || (serde_policy.enum_attr == "#[serde(untagged)]")
+    let positional_payload = variant_is_synthetic_positional_payload(fields: child.children, source_indices: env.source_indices)
+    let tuple_style = positional_payload || (serde_policy.enum_attr == "#[serde(untagged)]")
     if tuple_style {
       match child.children |> first {
         Some { value: f } =>
