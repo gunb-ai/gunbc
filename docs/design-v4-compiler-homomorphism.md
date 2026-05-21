@@ -103,7 +103,7 @@ The v4 compiler is:
 - **`traverse_node` / `sequence_node` / `bind_outcome`** are `fold_node` invocations with an Outcome-threading algebra; the combinator (not the algebra) interprets `StageDiagnosticPolicy` to thread failures. The algebra is pure-success-accumulator: `fn(R, Edge, R) -> Outcome<R>` (matches the landed `NodeFold<R>.step` shape — third parameter is the already-folded child result `R`, NOT the raw child `Node`; the Outcome wrapping is the only difference from the pure-catamorphism primitive). Single authority for failure handling = combinator. See "Derived combinators" below.
 - **`apply_diff`** is `sequence_outcome(diff.edits, fn(edit, candidate) -> fold_node(candidate, substitute_at(edit.at, edit.replacement)))` — sequential Outcome-bind-fold over the Diff's ordered Edits list, threading the candidate root through, with each Edit applied to the *current intermediate state* via `fold_node` substitution. **Sequential semantics matter**: each later Edit's Path resolves against the post-prior-Edit state, NOT the original root; if any Path fails to resolve in the current candidate, the whole Diff fails-closed (P3, per read/edit pipeline doc requirement). The agent-side mutation surface; composes with `fold_node` + `sequence_outcome`, not parallel to them.
 - **`LawfulRewriteWitness`** (P7, when implemented) is `find_witness` with an algebra-preserving precondition law as the `preservation_predicate`. Different lawful rewrites = different predicates over `find_witness`, not a separate primitive.
-3. **Compile-core has no boundary actions.** The compile core is **purely data-in / data-out**: `CoreNode + LanguageModel + CompileMode → Outcome<Output>`. No implicit text-reading, no implicit text-writing, no implicit "execute." All real-world I/O — reading source from disk, writing target source to disk, executing on a host, reporting diagnostics to stderr — is **modeled as effects against modeled resources** (`extdeps/file_system.dag` for files, `extdeps/process.dag` for shell/OS, `extdeps/network.dag` for network, etc.), composed by *peripheral shims* outside the compile-core surface. The architecture itself doesn't think about text/files/processes; those are orthogonal concerns modeled independently.
+3. **Compile-core has no boundary actions and no global terminal mode.** Compile-family operations are **pure data-in / data-out** functions over `Node`: `translate(node, target_lang)`, `eval(node, host_model)`, and future artifact/interface projections are separate calls with separate contracts. No implicit text-reading, no implicit text-writing, no implicit "execute," and no public `CompileMode` aggregator that chooses among unrelated operations. All real-world I/O — reading source from disk, writing target source to disk, executing on a host, reporting diagnostics to stderr — is **modeled as effects against modeled resources** (`extdeps/file_system.dag` for files, `extdeps/process.dag` for shell/OS, `extdeps/network.dag`, etc.), composed by *peripheral shims* outside the compile-core surface. The architecture itself doesn't think about text/files/processes; those are orthogonal concerns modeled independently.
 
 Everything else — every "pass," every "stage," every "language-specific" anything — is an **algebra** plugged into `fold_node` or another declared substrate primitive. The compiler knows no specific language code (Rust, Python, even `.dag` itself, beyond an irreducible bootstrap-seed for `dag.dag`); language-specific *data* lives in `LanguageModel` declarations under `extdeps/languages/`.
 
@@ -115,24 +115,24 @@ The doc that follows defines what `compile()` takes and returns, why each piece 
 
 ---
 
-## End-to-end I/O — the compile function
+## End-to-end I/O — orthogonal operations
 
 > **Text/data separation + I/O via modeled effects (ratified 2026-05-20, operator-direct).** Compilation operates on **data** (`CoreNode`), not text. Text, files, and shell/OS are **orthogonal concepts modeled independently** in `extdeps/` — there's a small shim to ingest text into `CoreNode`, but the compiler core never sees text or files. **The architecturally pure approach:** all real-world I/O is a modeled effect against a modeled resource (file_system.dag, process.dag, network.dag, …), composed by peripheral shims outside the compile-core surface.
 
-```
-// === Compile core — pure data-in / data-out, no I/O ===
-compile(
-  source: CoreNode,                    // canonical substrate Node graph (data, not text)
-  input_lang: LanguageModel,           // for resolve's scope rules + ground's inhabitance
-  mode: CompileMode
-) -> Outcome<Output>
+> **Orthogonality amendment (2026-05-21, operator-direct).** Compilation, target/artifact generation, and lens readings are separate operations over the same language: `Node`. A `Node` is already a graph; whether the caller passes the whole program, one function, or a leaf is not a substrate type distinction. Do **not** add `Subgraph` / `SubgraphScope` as a carrier. The old "one `compile(..., mode)` public terminal" framing is superseded for public API design; `CompileMode` in `00_compile.dag` is a current scaffold conflict inventoried below.
 
-where CompileMode =
-  | TranslateTo(target_lang: LanguageModel)    // produce TargetSource (data)
-  | Eval(host_interp: HostModel)               // produce Value (data)
+```
+// === Orthogonal pure operations — data-in / data-out, no I/O ===
+translate(node: Node, target_lang: TargetModel) -> Outcome<TargetSource>
+eval(node: Node, host: HostModel) -> Outcome<EvalResult>
+generate_interface(node: Node, kind: InterfaceKind) -> Outcome<Interface>
+
+// === Lens reads — data, not errors ===
+complexity(node: Node) -> ComplexityReading
+unused_parameters(node: Node) -> UnusedParametersReading
 ```
 
-That is the full external surface of compile-core. **Three arguments; one fail-closed Outcome. No I/O.** Text, files, processes, network are NOT compile-core concerns.
+Each operation defines its own scoping/interface over `Node`. The caller composes whichever operations it needs. There is no `CompileResult` aggregator bundling compile output, lens readings, and artifacts into one authority.
 
 ### Peripheral shims for text and file I/O
 
@@ -144,16 +144,15 @@ If a user wants to compile a `.dag` source file from disk to a Rust source file 
 source_text   = file_read(path)              // effect against extdeps/file_system.dag
 core_node     = ingest_text(source_text,     // shim — composes parse + normalize
                             input_lang)
-result        = compile(core_node,           // pure data-in/data-out — compile-core
-                        input_lang,
-                        TranslateTo(rust_lang))
+target_source = translate(core_node,         // pure data-in/data-out
+                          rust_lang)
 target_text   = unwrap(result)               // TargetSource is just bytes
 file_write(out_path, target_text)            // effect against extdeps/file_system.dag
 ```
 
 - **`file_read` / `file_write`** are modeled effects in `extdeps/file_system.dag` — operations against the modeled file-system resource (carrying `ResourceDependsOn` edges per P6, fail-closed-or-explicit-modeled-default per P3).
 - **`ingest_text`** is a peripheral shim — NOT a substrate primitive. Composes parse (using input_lang's grammar) + normalize (using input_lang's sugar dissolutions). The shim exists because text-on-disk is a common user-facing input format, but the compile architecture itself stops at CoreNode.
-- **`compile`** is pure. No file handle. No text. No process. Just `CoreNode + LanguageModel + CompileMode → Outcome<Output>`.
+- **`translate` / `eval` / artifact projections** are pure. No file handle. No text. No process. Each takes a `Node` plus its own operation-specific model/config and returns its own typed result.
 
 **Other ingest paths** (no text involved at all):
 - Programmatic: a client builds a `CoreNode` via substrate constructors (IDE plugins, code generators).
@@ -196,7 +195,7 @@ All paths produce `CoreNode`; `compile` takes it from there. This matters becaus
 
 **`Output`** is mode-dependent: `TargetSource` (bytes/text) for `TranslateTo`, `Value` (host representation) for `Eval`.
 
-> **Note on Lens mode:** the original draft of this doc proposed a third `CompileMode` for running lenses (the analysis framework for complexity / cost / ownership / effects / user-defined dimensions). This was flagged as contradicting THESIS by an automated review. **Resolved 2026-05-20 — see P3 below.** Lenses are a side-channel over `InferredTree`, orthogonal to the emission/eval homomorphism. They're invoked via a project-mandatory wrapper (`validate_then_compile`-style) that gates emit/eval on lens pass; whether the lens fold runs inside or outside the bare `compile()` is a non-load-bearing surface choice.
+> **Note on Lens mode:** the original draft of this doc proposed a third `CompileMode` for running lenses (the analysis framework for complexity / cost / ownership / effects / user-defined dimensions). That remains rejected. **Resolved 2026-05-21 — see P3 below.** Lenses are pure data-producing reads over `Node`; enforcement is a caller or project policy layered over those readings, not a compile-core mode and not a mechanical compile error.
 
 ---
 
@@ -242,27 +241,23 @@ Evaluation is structurally the same operation as translation, with the host runt
 
 `HostModel` shape is **ratified per Q1**: distinct `HostModel` as a peer of `LanguageModel`, both over shared `ModelCore`.
 
-### P3 — Lenses are a side-channel over `InferredTree`
+### P3 — Lenses are pure readings over `Node`
 
-> **Ratified 2026-05-20** (operator-direct, resolving the codex-flagged conflict between the prior draft's lens stance and THESIS lines 105 + 342). The earlier "lenses entirely external to compile" framing was too strong; THESIS's "by construction" guarantee must hold. The reconciling insight: lens enforcement is **orthogonal to the homomorphism** — lenses observe the program; they don't participate in translate/eval. The right architectural question is the consumption *contract*, not the surface invocation.
+> **Amended 2026-05-21** (operator-direct). The 2026-05-20 `validate_then_compile` / `Validated<Output>` framing was too bundled: it made lens policy look like the public compile terminal. The standing rule is stricter and simpler: compilation, target/artifact generation, and lens readings are orthogonal calls over `Node`.
 
-Lens enforcement is **orthogonal to the emission/eval homomorphism.** The compiler's pipeline produces `InferredTree` as the **raw primitive layer where the program's full structure is visible.** Lenses are **folds over that tree** that produce dimension facts as side-channel output — they do NOT modify the tree, do NOT feed downstream stages of the homomorphism, and are not a third `CompileMode`. THESIS's "by construction" guarantee is preserved by project-mandatory invocation of the lens pass, regardless of where the fold physically runs.
+Lenses are **data-producing reads**. A lens takes a `Node` and returns a typed reading for that node's shape: `complexity(node) -> ComplexityReading`, `effect(node) -> EffectReading`, `unused_parameters(node) -> UnusedParametersReading`. The same interface applies whether the node is the whole program, one declaration, one expression, or a leaf. A `Node` is already a graph; do not introduce `Subgraph` or `SubgraphScope` to express "part of a graph."
 
-**Blocking vs participation.** "Orthogonal" means lens facts are not inputs to translate/eval's structure-preserving map. It does **not** mean lens enforcement is optional at the public terminal. The public wrapper may block terminal emission/eval when `apply_lens(_, Enforce)` rejects, but that block happens **before** the homomorphism terminal is invoked; it is a gate over `InferredTree`, not a stage inside translate/eval. Bare `compile()` remains internal/advanced; public terminal output is `Validated<Output>`.
+**Lens output is not a compile error.** A compile error says "this operation could not be performed" — parse failed, name resolution failed, type grounding was ambiguous, target translation could not be derived. A lens reading says "this is what the lens observed." A caller or project policy may decide that a reading blocks shipment, but that decision is downstream policy over data, not the lens itself becoming an error path.
 
 **Six commitments:**
-1. **`InferredTree` is the lens consumption point** — a stable public contract. The lens framework binds to it.
-2. **Lenses are folds over `InferredTree`** sharing the `fold_node` primitive (Practice 10 row 1).
-3. **Lens outputs are side-channel** — `DimensionFact` / diagnostics. Translate/eval do NOT depend on lens output. Lens output does NOT feed downstream stages of the homomorphism.
+1. **`Node` is the lens consumption point** — no separate whole-graph vs subgraph carrier.
+2. **Lenses are folds over `Node`** sharing the `fold_node` primitive (Practice 10 row 1).
+3. **Lens outputs are readings** — typed values/reports. Translate/eval do NOT depend on lens output. Lens output does NOT feed downstream stages of the homomorphism.
 4. **Built-in and user-defined lenses share one algebra contract.** The compiler core does NOT import or name any specific lens. The former `04_infer.dag` import of `v4.lens.cost { SymbolicCost }` is resolved as of the 2026-05-21 audit; reintroducing any specific lens import in compiler core would violate this commitment.
-5. **Multi-lens execution is dependency-managed.** Lenses with no interdependencies are coalesced into a shared traversal. Lenses with dependencies (e.g., complexity reads cost) are scheduled by a **lens-dependency DAG**; each stage coalesces all lenses whose inputs are available. No lens may trigger an ad hoc unmanaged re-walk. See Ratified Q6 below — derives from `fold_node` + composed-lens-algebra; NO new substrate primitive.
-6. **"By construction" guarantee — type-enforced at the public terminal.** Lens output does not feed the homomorphism and bare compile-core does not consume lens output. **`validate_then_compile` (or equivalent) is the project's public terminal API**; bare `compile(source, input_lang, mode)` is **explicitly marked as internal / non-terminal** — accessible to advanced consumers (lens framework, build tooling, the compiler itself for self-edit), but NOT the everyday user surface. The distinction is **type-level**, not convention-level: a `Validated<Output>` carrier (or similar) discharged only by the wrapper enforces the gate at the type system, so a bare `compile()` invocation cannot accidentally bypass lens enforcement at terminal emit/eval. Project policy decides the wrapper's lens set; the wrapper-as-terminal pattern is invariant.
+5. **Multi-lens execution is dependency-managed.** Lenses with no interdependencies may be coalesced into a shared traversal. Lenses with dependencies (e.g., complexity reads cost) are scheduled by a **lens-dependency DAG**; each stage coalesces all lenses whose inputs are available. No lens may trigger an ad hoc unmanaged re-walk. See Ratified Q6 below — derives from `fold_node` + composed-lens-algebra; NO new substrate primitive.
+6. **Correct-by-construction before policy gates.** If a "lens" is actually checking a structural invariant that can be encoded in the type of `InferredTree` or an earlier carrier, push it into that type/model instead of making it a runtime gate. Measurement and report lenses (complexity, cost, effect reads, synthesis reports) remain pure readings. Policy enforcement is a caller composition over readings, not a public `Validated<Output>` compile terminal.
 
-**Surface choice (B vs C) is not architecturally load-bearing.** Given commitments 1–6, two implementation surfaces are equivalent:
-- **B-style:** lenses fold inside `compile(text, input_lang, lenses, mode)`.
-- **C-style:** lenses fold outside compile, in a thin wrapper that calls `ground` + the lens fold + `compile_terminal`.
-
-Both honor 1–6 identically. The `InferredTree` contract is the same; the lens algebra contract is the same; the dependency-management discipline is the same. **Refactoring B↔C is a mechanical change**, not an architectural one. Initial implementation will land one of them; the choice can be revisited without architectural cost.
+**Surface consequence.** `validate_then_compile(source, input_lang, lenses, mode) -> Outcome<Validated<Output>>` is not the architectural destination. It is a current scaffold that bundles three concerns: inference/translation, lens reading, and policy gating. The migration target is separate calls: infer/ground as needed, read lenses over `Node`, and call translate/eval/artifact projection explicitly. A project may still author a wrapper that performs those calls in sequence, but the wrapper is policy, not the compiler's public type-enforced terminal.
 
 **The hard substrate work** that 1–6 imply:
 - A `LensAlgebra<F>` carrier shape that both built-ins and user-defined lenses satisfy.
