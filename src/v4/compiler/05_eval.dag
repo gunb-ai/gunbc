@@ -206,7 +206,12 @@ fn inferred_facts_witness_for_eval(tree: InferredTree, node: Node) -> Witness<In
 fn inferred_facts_for_eval(tree: InferredTree, node: Node) -> Outcome<InferredFacts> {
   match inferred_facts_witness_for_eval(tree: tree, node: node) {
     Holds { value: facts } =>
-      Accepted { value: facts, diagnostics: None }
+      match facts.descent {
+        Holds { value: _ } =>
+          Accepted { value: facts, diagnostics: None }
+        Violates { diagnostic: d } =>
+          Rejected { diagnostics: diagnostics_singleton(d: d) }
+      }
     Violates { diagnostic: d } =>
       Rejected { diagnostics: diagnostics_singleton(d: d) }
   }
