@@ -592,9 +592,20 @@ fn feature_disposition(f: FidelityFeature) -> FidelityDisposition<FidelityFeatur
 
 // ── Wave-1 numeric fact-bundles (LLVM LangRef sign-agnostic integers + float kinds).
 // Anchor: https://releases.llvm.org/18.1.8/docs/LangRef.html#integer-type
+//
+// Wave-1 float facts use `LlvmWave1FloatKind` (half/single/double only) — not the
+// full `FloatKind` coproduct above — so BFloat/Fp128/X86Fp80/PpcFp128 are
+// structurally unrepresentable in `LlvmFloatPrimitiveFacts` until a follow-up sweep.
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL · SL-3229-LLVM-WAVE1-INT-WIDTH.
 type LlvmIntegerWidth
   = Bits32
   | Bits64
+
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL · SL-3229-LLVM-WAVE1-FLOAT-KIND.
+type LlvmWave1FloatKind
+  = Wave1HalfFloat
+  | Wave1SingleFloat
+  | Wave1DoubleFloat
 
 type LlvmIntegerPrimitiveFacts {
   surface_spelling: Symbol
@@ -604,7 +615,7 @@ type LlvmIntegerPrimitiveFacts {
 
 type LlvmFloatPrimitiveFacts {
   surface_spelling: Symbol
-  kind: FloatKind
+  kind: LlvmWave1FloatKind
   std_projection: Symbol
 }
 
@@ -650,19 +661,19 @@ data llvm_integer_facts_catalog: List<LlvmIntegerPrimitiveFacts> = [
 
 data llvm_facts_half: LlvmFloatPrimitiveFacts = LlvmFloatPrimitiveFacts {
   surface_spelling: llvm_surface_spelling_half,
-  kind: HalfFloat,
+  kind: Wave1HalfFloat,
   std_projection: llvm_std_projection_half,
 }
 
 data llvm_facts_float: LlvmFloatPrimitiveFacts = LlvmFloatPrimitiveFacts {
   surface_spelling: llvm_surface_spelling_float,
-  kind: SingleFloat,
+  kind: Wave1SingleFloat,
   std_projection: llvm_std_projection_float,
 }
 
 data llvm_facts_double: LlvmFloatPrimitiveFacts = LlvmFloatPrimitiveFacts {
   surface_spelling: llvm_surface_spelling_double,
-  kind: DoubleFloat,
+  kind: Wave1DoubleFloat,
   std_projection: llvm_std_projection_double,
 }
 
@@ -686,15 +697,11 @@ fn llvm_integer_width_node(width: LlvmIntegerWidth) -> Node {
   }
 }
 
-fn llvm_float_kind_node(kind: FloatKind) -> Node {
+fn llvm_wave1_float_kind_node(kind: LlvmWave1FloatKind) -> Node {
   match kind {
-    HalfFloat => llvm_inhabitant_atom(id: llvm_tag_float_kind_half)
-    BFloatFloat => llvm_inhabitant_atom(id: llvm_tag_float_kind_bfloat)
-    SingleFloat => llvm_inhabitant_atom(id: llvm_tag_float_kind_single)
-    DoubleFloat => llvm_inhabitant_atom(id: llvm_tag_float_kind_double)
-    Fp128Float => llvm_inhabitant_atom(id: llvm_tag_float_kind_fp128)
-    X86Fp80Float => llvm_inhabitant_atom(id: llvm_tag_float_kind_x86_fp80)
-    PpcFp128Float => llvm_inhabitant_atom(id: llvm_tag_float_kind_ppc_fp128)
+    Wave1HalfFloat => llvm_inhabitant_atom(id: llvm_tag_float_kind_half)
+    Wave1SingleFloat => llvm_inhabitant_atom(id: llvm_tag_float_kind_single)
+    Wave1DoubleFloat => llvm_inhabitant_atom(id: llvm_tag_float_kind_double)
   }
 }
 
