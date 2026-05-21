@@ -210,7 +210,8 @@ pub fn parse_segment_tokens(seg: &String) -> Rc<PathSegmentTokensResult> {
                 None => {
                     return Rc::new(PathSegmentTokensResult::MalformedPathSegment {
                         segment: seg.clone(),
-                        reason: "internal: missing parameter name after closing-brace split".to_string(),
+                        reason: "internal: missing parameter name after closing-brace split"
+                            .to_string(),
                     });
                 }
             };

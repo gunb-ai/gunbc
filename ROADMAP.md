@@ -381,7 +381,7 @@ Per-row tagging is a scheduled follow-up sweep — **trigger:** post-merge of th
 
 ### P1 — fabrication / fail-open boundaries
 
-- **http_path.dag `None => ""` fabrications**: `dsl/std/http_path.dag:37-69` silently normalizes malformed `{...}` segments to empty strings. Dissolution: parser returns `Option` / `Result`, caller handles.
+- **http_path.dag `None => ""` fabrications**: Retired in this implementation PR. `dsl/std/http_path.dag:93-111` no longer substitutes empty strings on structurally unreachable split `None` arms; each arm returns the existing typed `MalformedPathSegment` coproduct, and `src/v2/tests/src/effects.rs::parse_path_malformed_segments_propagate_typed_failure` pins reachable malformed-segment propagation through `PathTemplateParseResult::MalformedPathTemplate`.
 - **effects.dag reconstructs `HttpMethod` and `PathTemplate` from strings**: `dsl/std/effects.dag:214-223, 270-287` reparses already-modeled structures. Dissolution: `derive_op_effect` parameterized by the typed transport declaration, not `(method_str, path_str)`.
 - **`ResourceHandle` forgeable despite opacity claim**: `dsl/std/resources.dag:18-25` documents "only compiler's acquire nodes can mint these" but carries plain-record fields (user code can construct arbitrary handles). Dissolution: witness-carrier + private constructor, or typed opaque handle per Track 9 pattern.
 
