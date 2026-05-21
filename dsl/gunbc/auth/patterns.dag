@@ -8,7 +8,7 @@ module gunbc.auth.patterns
 
 import std.resources { Filesystem, Network, AuthContext }
 import std.cloud { CloudRuntime }
-import std.runtime.github_actions { GitHubActionsRuntime }
+import std.cloud_runtime.github_actions { GitHubActionsRuntime }
 import std.types {
   AccessToken,
   AuthScheme,

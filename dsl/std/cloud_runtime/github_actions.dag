@@ -1,6 +1,6 @@
-// std/runtime/github_actions.dag -- GitHub Actions execution-runtime facts.
+// std/cloud_runtime/github_actions.dag -- GitHub Actions cloud-runtime facts.
 
-module std.runtime.github_actions
+module std.cloud_runtime.github_actions
 
 import std.types { NonEmptyStr }
 

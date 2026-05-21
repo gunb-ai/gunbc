@@ -2,9 +2,9 @@
 
 module std.cloud
 
-import std.runtime.github_actions { GitHubActionsRuntime }
-import std.runtime.local_dev { LocalDevRuntime }
-import std.runtime.metadata { MetadataRuntime }
+import std.cloud_runtime.github_actions { GitHubActionsRuntime }
+import std.cloud_runtime.local_dev { LocalDevRuntime }
+import std.cloud_runtime.metadata { MetadataRuntime }
 
 type CloudRuntime
   = GitHubActions { runtime: GitHubActionsRuntime }

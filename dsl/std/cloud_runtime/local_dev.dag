@@ -1,6 +1,6 @@
-// std/runtime/local_dev.dag -- local developer execution-runtime facts.
+// std/cloud_runtime/local_dev.dag -- local developer cloud-runtime facts.
 
-module std.runtime.local_dev
+module std.cloud_runtime.local_dev
 
 import std.types { NonEmptyStr }
 

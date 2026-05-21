@@ -1,6 +1,6 @@
-// std/runtime/metadata.dag -- cloud metadata execution-runtime facts.
+// std/cloud_runtime/metadata.dag -- cloud metadata-runtime facts.
 
-module std.runtime.metadata
+module std.cloud_runtime.metadata
 
 import std.types { NonEmptyStr }
 
