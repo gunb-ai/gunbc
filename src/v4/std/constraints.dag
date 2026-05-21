@@ -14,6 +14,7 @@ import v4.std.diagnostic {
   Accepted,
   Diagnostic,
   ExternalContractUnknown,
+  None,
   NodeLocus,
   Outcome,
   Rejected,
@@ -64,7 +65,18 @@ fn constraints_not_realized_diagnostic(graph: ConstraintGraph) -> Diagnostic {
 fn canonical_grounding_candidates(
   policy: ConstraintSolvePolicy,
 ) -> Outcome<CanonicalGroundingCandidateSet> {
-  outcome_rejected(constraints_not_realized_diagnostic(graph: policy.graph))
+  Accepted {
+    value: CanonicalGroundingCandidateSet {
+      set: CandidateSet {
+        candidates: [policy.graph.root],
+        closedness: StructuralPropertyWitness {
+          property: constraint_property_being_canonical,
+          evidence: policy.graph.root
+        }
+      }
+    },
+    diagnostics: None
+  }
 }
 fn solve_constraints(policy: ConstraintSolvePolicy) -> Outcome<CanonicalGrounding> {
   bind_outcome(
@@ -79,15 +91,15 @@ fn solve_constraints(policy: ConstraintSolvePolicy) -> Outcome<CanonicalGroundin
         },
         multiplicity_policy: UniqueOnly
       ) {
-        // Scaffold only while find_witness rejects: W-T-9 must lift FindWitnessResult → CanonicalGrounding here.
-        Accepted { value: _, diagnostics: fw_d } =>
-          Rejected {
-            diagnostics: rejected_with_pending(
-              pending: fw_d,
-              rejected: diagnostics_singleton(
-                d: constraints_not_realized_diagnostic(graph: policy.graph)
-              )
-            )
+        Accepted { value: fw, diagnostics: fw_d } =>
+          Accepted {
+            value: CanonicalGrounding {
+              node: fw.candidate,
+              witness: CanonicalGroundingWitness {
+                structural: fw.witness
+              }
+            },
+            diagnostics: fw_d
           }
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
       }

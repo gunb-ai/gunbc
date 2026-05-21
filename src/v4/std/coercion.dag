@@ -15,6 +15,7 @@ import v4.std.diagnostic {
   Accepted,
   Diagnostic,
   ExternalContractUnknown,
+  None,
   NodeLocus,
   Outcome,
   Rejected,
@@ -112,15 +113,19 @@ fn coercion_fold(
     },
     multiplicity_policy: TargetSelection { policy: policy }
   ) {
-    // Scaffold only while find_witness rejects: W-T-10 must lift FindWitnessResult → CoercionResult here.
-    Accepted { value: _, diagnostics: fw_d } =>
-      Rejected {
-        diagnostics: rejected_with_pending(
-          pending: fw_d,
-          rejected: diagnostics_singleton(
-            d: coercion_not_realized_diagnostic(source: source, kind: NoTargetCandidate)
-          )
-        )
+    Accepted { value: fw, diagnostics: fw_d } =>
+      Accepted {
+        value: CoercionResult {
+          target: fw.candidate,
+          quality: if fw.candidate == source.node { Identity } else { Exact },
+          witness: CoercionWitness {
+            homomorphism: HomomorphismWitness {
+              rule: homomorphism_rule_exact_structural_equality,
+              evidence: fw.candidate
+            }
+          }
+        },
+        diagnostics: fw_d
       }
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
