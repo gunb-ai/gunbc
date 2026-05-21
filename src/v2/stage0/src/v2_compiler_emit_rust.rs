@@ -15067,38 +15067,75 @@ pub fn emit_data_def_body(
                     }
                 }
             } else {
-                {
-                    let val_str = emit_typed_expr(
-                        value.clone(),
-                        registry.clone(),
-                        &scope,
-                        depth.clone(),
-                        shared_types.clone(),
-                        emit_info.clone(),
-                        1024,
-                    );
-                    let is_already_wrapped = match (*value.expr_data.clone()).clone() {
-                        ExprData::ExprRecordLit { .. } => true,
-                        ExprData::ExprListLit => true,
-                        _ => false,
-                    };
-                    let wrap_start = if (needs_rc.clone() && !is_already_wrapped.clone()) {
-                        "Rc::new(".to_string()
-                    } else {
-                        "".to_string()
-                    };
-                    let wrap_end = if (needs_rc.clone() && !is_already_wrapped.clone()) {
-                        ")".to_string()
-                    } else {
-                        "".to_string()
-                    };
-                    v2_rt::concat(
+                match (*value.expr_data.clone()).clone() {
+                    ExprData::ExprRecordLit {
+                        parent_enum: pe, ..
+                    } => {
+                        let data_type_name = authored_name_at(
+                            scope.type_env.clone().source_indices.clone(),
+                            &type_node,
+                        );
+                        let raw_record = emit_typed_record_lit(
+                            &Some(data_type_name),
+                            &value.children.clone(),
+                            &pe,
+                            &type_node,
+                            registry.clone(),
+                            &scope,
+                            depth.clone(),
+                            &shared_types,
+                            &emit_info,
+                        );
+                        let wrap_start = if needs_rc.clone() {
+                            "Rc::new(".to_string()
+                        } else {
+                            "".to_string()
+                        };
+                        let wrap_end = if needs_rc.clone() {
+                            ")".to_string()
+                        } else {
+                            "".to_string()
+                        };
                         v2_rt::concat(
-                            v2_rt::concat("            ".to_string(), wrap_start),
-                            val_str.clone(),
-                        ),
-                        wrap_end,
-                    )
+                            v2_rt::concat(
+                                v2_rt::concat("            ".to_string(), wrap_start),
+                                raw_record,
+                            ),
+                            wrap_end,
+                        )
+                    }
+                    _ => {
+                        let val_str = emit_typed_expr(
+                            value.clone(),
+                            registry.clone(),
+                            &scope,
+                            depth.clone(),
+                            shared_types.clone(),
+                            emit_info.clone(),
+                            1024,
+                        );
+                        let is_already_wrapped = match (*value.expr_data.clone()).clone() {
+                            ExprData::ExprListLit => true,
+                            _ => false,
+                        };
+                        let wrap_start = if (needs_rc.clone() && !is_already_wrapped.clone()) {
+                            "Rc::new(".to_string()
+                        } else {
+                            "".to_string()
+                        };
+                        let wrap_end = if (needs_rc.clone() && !is_already_wrapped.clone()) {
+                            ")".to_string()
+                        } else {
+                            "".to_string()
+                        };
+                        v2_rt::concat(
+                            v2_rt::concat(
+                                v2_rt::concat("            ".to_string(), wrap_start),
+                                val_str.clone(),
+                            ),
+                            wrap_end,
+                        )
+                    }
                 }
             }
         }
