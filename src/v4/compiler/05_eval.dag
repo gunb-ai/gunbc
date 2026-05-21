@@ -339,18 +339,17 @@ fn eval_fold_init(
   EvalFoldState {
     node: node,
     child_values: Accepted { value: empty_host_values(), diagnostics: None },
-    value:
-      if count(node.children) == 0 {
-        eval_interpret_node(
-          node: node,
-          args: empty_host_values(),
-          tree: tree,
-          host: host,
-          environment: environment
-        )
-      } else {
-        eval_pending_children(node: node)
-      }
+    value: if count(node.children) == 0 {
+      eval_interpret_node(
+        node: node,
+        args: empty_host_values(),
+        tree: tree,
+        host: host,
+        environment: environment
+      )
+    } else {
+      eval_pending_children(node: node)
+    }
   }
 }
 
