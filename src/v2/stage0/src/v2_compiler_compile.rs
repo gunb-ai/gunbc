@@ -452,10 +452,18 @@ pub fn dag_node_surface_fingerprint(node: &Rc<Node>) -> String {
     }
 }
 
-pub fn dag_node_fingerprint(node: &Rc<Node>) -> String {
-    match node.inferred.clone().as_deref().cloned() {
-        Some(InferredNode::Resolved { node: target, .. }) => dag_node_surface_fingerprint(&target),
-        _ => dag_node_surface_fingerprint(&node),
+pub fn dag_node_fingerprint(mut node: Rc<Node>) -> String {
+    loop {
+        match node.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: target, .. }) => {
+                let __tco_0 = target.clone();
+                node = __tco_0;
+                continue;
+            }
+            _ => {
+                break dag_node_surface_fingerprint(&node);
+            }
+        }
     }
 }
 
@@ -681,7 +689,7 @@ pub fn dag_collect_node_tree(node: &Rc<Node>, acc: &Rc<DagCollectAcc>) -> Rc<Dag
 pub fn dag_collect_insert(node: &Rc<Node>, acc: &Rc<DagCollectAcc>) -> Rc<DagCollectAcc> {
     {
         let key = dag_node_key(&node);
-        let fp = dag_node_fingerprint(&node);
+        let fp = dag_node_fingerprint(node.clone());
         match v2_rt::map_get(&acc.seen.clone(), key.clone()) {
             Some(prior) => {
                 if (prior.clone().as_str() == fp.as_str()) {
@@ -2014,35 +2022,30 @@ pub fn serialize_param(
     )
 }
 
-pub fn is_import_node(n: &Rc<Node>) -> bool {
-    if import_is_all(n.clone()) {
-        true
-    } else {
-        if ((n.params.clone().len() as i64) > 0) {
-            false
-        } else {
-            match n.children.clone().first().cloned() {
-                None => true,
-                Some(first) => {
-                    ((first.expr_data.clone() == Rc::new(ExprData::NoExprData))
-                        && ((first.params.clone().len() as i64) == 0))
+pub fn is_module_shell_node(n: &Rc<Node>) -> bool {
+    (((((((n.inferred.clone() == None)
+        && (n.expr_data.clone() == Rc::new(ExprData::NoExprData)))
+        && (n.connective.clone() == Connective::NoConnective))
+        && (n.body.clone() == None))
+        && (n.transport.clone() == None))
+        && ((n.uses.clone().len() as i64) == 0))
+        && {
+            let mut __all = true;
+            for p in n.params.clone().iter().cloned() {
+                if !(is_import_slot_node(&p)) {
+                    __all = false;
+                    break;
                 }
             }
-        }
-    }
+            __all
+        })
 }
 
-pub fn node_params_are_module_imports(n: Rc<Node>) -> bool {
-    {
-        let mut __all = true;
-        for p in n.params.clone().iter().cloned() {
-            if !(is_import_node(&p)) {
-                __all = false;
-                break;
-            }
-        }
-        __all
-    }
+pub fn is_import_slot_node(n: &Rc<Node>) -> bool {
+    (import_is_all(n.clone())
+        || (((((n.params.clone().len() as i64) == 0) && (n.ident_span.clone() != None))
+            && (n.body.clone() == None))
+            && (n.expr_data.clone() == Rc::new(ExprData::NoExprData))))
 }
 
 pub fn serialize_node_params_json(
@@ -2050,7 +2053,7 @@ pub fn serialize_node_params_json(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     key_to_id: Rc<HashMap<String, String>>,
 ) -> String {
-    if node_params_are_module_imports(node.clone()) {
+    if is_module_shell_node(&node) {
         "[]".to_string()
     } else {
         json_list(Rc::new({
