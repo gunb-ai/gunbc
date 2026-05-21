@@ -177,11 +177,6 @@ type SqlTransportConfig {
 }
 
 
-// SqlDataType primitive fact-bundles — wave-1: constant SqlDataType arms only.
-// Parametric arms (NUMERIC / CHARACTER / CHARACTER VARYING) stay as
-// type-constructor variants of SqlDataType outside the catalog.
-
-
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type SqlIntegerWidth
   = Bits16
