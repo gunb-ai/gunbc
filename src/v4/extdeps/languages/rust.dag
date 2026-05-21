@@ -1147,6 +1147,10 @@ fn rust_primitive_bundle_from_integer_facts(facts: RustIntegerPrimitiveFacts) ->
     substrate_carrier: rust_integer_facts_node(facts: facts),
     spec_facts: [
       rust_primitive_axis_binding(
+        axis: primitive_fact_axis_surface_spelling,
+        fact: rust_inhabitant_atom(id: facts.surface_spelling)
+      ),
+      rust_primitive_axis_binding(
         axis: primitive_fact_axis_width,
         fact: rust_int_width_node(width: facts.width)
       ),
@@ -1155,8 +1159,12 @@ fn rust_primitive_bundle_from_integer_facts(facts: RustIntegerPrimitiveFacts) ->
         fact: rust_int_kind_node(kind: facts.signedness)
       ),
       rust_primitive_axis_binding(
-        axis: primitive_fact_axis_range,
+        axis: primitive_fact_axis_overflow_disposition,
         fact: rust_overflow_node(overflow: facts.overflow_release)
+      ),
+      rust_primitive_axis_binding(
+        axis: primitive_fact_axis_std_projection,
+        fact: rust_inhabitant_atom(id: facts.std_projection)
       )
     ]
   }
@@ -1167,12 +1175,20 @@ fn rust_primitive_bundle_from_float_facts(facts: RustFloatPrimitiveFacts) -> Pri
     substrate_carrier: rust_float_facts_node(facts: facts),
     spec_facts: [
       rust_primitive_axis_binding(
+        axis: primitive_fact_axis_surface_spelling,
+        fact: rust_inhabitant_atom(id: facts.surface_spelling)
+      ),
+      rust_primitive_axis_binding(
         axis: primitive_fact_axis_width,
         fact: rust_float_width_node(width: facts.width)
       ),
       rust_primitive_axis_binding(
         axis: primitive_fact_axis_encoding,
         fact: rust_inhabitant_atom(id: facts.ieee754_binary)
+      ),
+      rust_primitive_axis_binding(
+        axis: primitive_fact_axis_std_projection,
+        fact: rust_inhabitant_atom(id: facts.std_projection)
       )
     ]
   }
@@ -1185,8 +1201,16 @@ fn rust_primitive_bundle_from_noninteger_facts(
     substrate_carrier: rust_noninteger_facts_node(facts: facts),
     spec_facts: [
       rust_primitive_axis_binding(
+        axis: primitive_fact_axis_surface_spelling,
+        fact: rust_inhabitant_atom(id: facts.surface_spelling)
+      ),
+      rust_primitive_axis_binding(
         axis: primitive_fact_axis_encoding,
         fact: rust_inhabitant_atom(id: facts.representation)
+      ),
+      rust_primitive_axis_binding(
+        axis: primitive_fact_axis_std_projection,
+        fact: rust_inhabitant_atom(id: facts.std_projection)
       )
     ]
   }

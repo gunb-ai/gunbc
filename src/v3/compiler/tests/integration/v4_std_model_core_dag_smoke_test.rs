@@ -246,6 +246,9 @@ fn v4_std_model_core_primitive_fact_bundle_uses_axis_keyed_spec_facts() {
         "primitive_fact_axis_signedness",
         "primitive_fact_axis_range",
         "primitive_fact_axis_encoding",
+        "primitive_fact_axis_surface_spelling",
+        "primitive_fact_axis_overflow_disposition",
+        "primitive_fact_axis_std_projection",
     ] {
         assert!(
             surface_declares_data(&module, axis, "Symbol"),
