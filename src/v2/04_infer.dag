@@ -1537,7 +1537,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
                   diagnostics: arg_diags
                 }
               } else {
-                let empty_set_diags = concat(arg_diags, [inference_error(message: "empty_set expected type is not a Set collection", span: span, module_name: scope.module_name)])
+                let empty_set_diags = concat(arg_diags, [inference_error(message: "empty_set(): expected type is not Set<...>", span: span, module_name: scope.module_name)])
                 match bare_s {
                   Some { value: set_t } =>
                     InferResult {
