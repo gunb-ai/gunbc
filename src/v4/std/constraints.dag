@@ -14,7 +14,7 @@ import v4.std.diagnostic {
   Accepted,
   Diagnostic,
   ExternalContractUnknown,
-  NodeLocus,
+  node_locus,
   Outcome,
   Rejected,
   Unavailable,
@@ -61,7 +61,7 @@ type CanonicalGroundingWitness {
 fn constraints_not_realized_diagnostic(graph: ConstraintGraph) -> Diagnostic {
   Diagnostic {
     reason: constraints_not_realized,
-    at: NodeLocus { node: graph.root },
+    at: node_locus(node: graph.root),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }

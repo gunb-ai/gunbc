@@ -27,7 +27,7 @@ import v4.std.diagnostic {
   ExternalContractUnknown,
   Locus,
   Outcome,
-  PortLocus,
+  port_locus,
   Rejected,
   Unavailable,
   bind_outcome,
@@ -217,7 +217,7 @@ fn compile_inferred(
     Eval { host_interp: _ } =>
       outcome_rejected(
         compile_eval_not_realized_diagnostic(
-          at: PortLocus { port: compile_stage_locus_port }
+          at: port_locus(port: compile_stage_locus_port)
         )
       )
   }
@@ -290,7 +290,7 @@ fn compile_ingest_staging(source: Source, target: TargetModel) -> Outcome<Target
   Rejected {
     diagnostics: diagnostics_singleton(
       d: compile_pipeline_not_realized_diagnostic(
-        at: PortLocus { port: compile_stage_locus_port }
+        at: port_locus(port: compile_stage_locus_port)
       )
     )
   }
