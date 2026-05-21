@@ -1221,11 +1221,13 @@ import/alias of the resolver's authoritative shape.
     sub-coproduct). Lens emits a typed `Diff` with templated holes for
     NEW type names (wrapping variant name, sub-coproduct name, sub-variant
     names). Default templates derive from existing constructor names —
-    e.g. F14's `Modeled` disposition + uniform group → wrapping variant
-    `ModeledFeature` with sub-coproduct `ModeledKind`. Reviewer may
-    override names before the candidate-state commit; same flow as any
-    typo-fix Diff. Auto-apply when reviewer accepts default templates;
-    one round of reviewer-edit when names need to differ.
+    e.g. F14's `DeclaredNormalized` uniform group (5 variants) → wrapping
+    variant `NormalizedFeature` with sub-coproduct `NormalizedKind`.
+    Singleton groups stay fieldless (no `{ kind: ... }` wrapper) per
+    the dissolution rule below — only non-singleton groups get wrapped.
+    Reviewer may override names before the candidate-state commit; same
+    flow as any typo-fix Diff. Auto-apply when reviewer accepts default
+    templates; one round of reviewer-edit when names need to differ.
   - **Categorical** — `K ≥ 2`, histogram contains ONLY non-singleton
     groups (every group size ≥ 2). `K ≤ ⌊N/2⌋`, `N ≥ 4`. Pure category
     projection with no singleton base case. Rarer than MultiOutlier in
