@@ -50,13 +50,18 @@ type DissolutionSubsumption {
 }
 
 
-data concept_home_rewrite_subsumption: DissolutionSubsumption = {
-  root_fix: DiffId { id: concept_home_rewrite_root_fix },
-  subsumed_fixes: Set {
+fn concept_home_subsumed_fixes() -> Set<DiffId> {
+  Set {
     member: fn(fix) {
       (fix.id == wrong_home_alias_leaf_fix) || (fix.id == duplicate_home_leaf_fix)
     }
-  },
+  }
+}
+
+
+data concept_home_rewrite_subsumption: DissolutionSubsumption = {
+  root_fix: DiffId { id: concept_home_rewrite_root_fix },
+  subsumed_fixes: concept_home_subsumed_fixes(),
   verification: ProducerStageDerivation {
     derivation_path: [
       ProducerStageId { id: concept_home_producer_stage }

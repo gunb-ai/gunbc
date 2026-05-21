@@ -65,7 +65,17 @@ fn dissolution_subsumption_first_row_is_producer_stage_derived() {
     assert_variant_record(root_fix, "DiffId");
 
     let subsumed = field_value(row, "subsumed_fixes");
-    assert_variant_record(subsumed, "Set");
+    let SurfaceExpr::Call { target, args, .. } = subsumed else {
+        panic!("{SUBSUMPTION_PATH}: subsumed_fixes must call the named Set producer");
+    };
+    assert_eq!(
+        target, "concept_home_subsumed_fixes",
+        "{SUBSUMPTION_PATH}: subsumed_fixes must use the named Set producer"
+    );
+    assert!(
+        args.is_empty(),
+        "{SUBSUMPTION_PATH}: subsumed_fixes producer call should not take arguments"
+    );
 
     let verification = field_value(row, "verification");
     let fields = assert_variant_record(verification, "ProducerStageDerivation");
