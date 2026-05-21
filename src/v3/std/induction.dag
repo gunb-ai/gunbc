@@ -88,7 +88,8 @@ import std.computation {
   tree_size_bound
 }
 import std.algebra {
-  SymbolicCost, ConstantCost, UnknownCost
+  SymbolicCost, ConstantCost, UnknownCost,
+  BoundedLattice
 }
 
 

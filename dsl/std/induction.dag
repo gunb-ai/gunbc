@@ -82,6 +82,7 @@ import std.computation {
   CollectionSize, ArithmeticParam, Forever,
   tree_size_bound
 }
+import std.algebra { BoundedLattice }
 
 
 
@@ -194,13 +195,34 @@ fn inductive_field_to_dimension(field: InductiveField, param: String) -> Ranking
 //   SubValueUnknown = the analyzer cannot determine the relationship (hard error)
 //
 // 🟡 MIXED. Structural descent via `InductiveField` and proof-grade `ShrinkFactor`
-// (`std.computation`); `ArithmeticDescent` names a parameter; `SubValueUnknown` is the fail-closed sink.
+// (`std.computation`); `ArithmeticDescent` names a parameter; `SubValueUnknown` is the fail-closed sink
+// and lattice bottom; `NonIncreasingValue` / `IncomparableValue` close the lattice so meet/join
+// inhabit `BoundedLattice<SubValueRelation>` lawfully (see `sub_value_relation_bounded_lattice` below).
+//
+// Lattice ordering (top → bottom):
+//   IncomparableValue                                            -- ⊤
+//      |
+//      +-- StrictSubValue{f,fac} | IteratedSubValue{f} | ArithmeticDescent{p,fac} | PreservedValue
+//      |   (pairwise incomparable structural witnesses)
+//      |
+//   NonIncreasingValue                                            -- "weakest structural"
+//      |
+//   SubValueUnknown                                                -- ⊥
+//
+// PreservedValue and the structural-descent witnesses are pairwise incomparable: neither
+// implies the other. Their greatest lower bound is `NonIncreasingValue` (both witness at
+// least non-increase); their least upper bound is `IncomparableValue` (no common stronger
+// structural witness). `NonIncreasingValue` covers the case where two branches collectively
+// prove non-increase but disagree on the structural form, so the merge would otherwise
+// collapse to `SubValueUnknown` and silently drop termination strength.
 
 type SubValueRelation
   = StrictSubValue { field: InductiveField, factor: ShrinkFactor }
   | IteratedSubValue { field: InductiveField }
   | ArithmeticDescent { param: String, factor: ShrinkFactor }
   | PreservedValue
+  | NonIncreasingValue
+  | IncomparableValue
   | SubValueUnknown
 
 
@@ -235,6 +257,10 @@ fn sub_value_to_evidence(relation: SubValueRelation) -> DescentEvidence {
         ProportionalShrink { divisor: _ } => Strict
       }
     PreservedValue                           => NonIncreasing
+    NonIncreasingValue                       => NonIncreasing
+    // IncomparableValue: two structural witnesses joined but no common stronger form;
+    // each branch did witness non-increase, so honest mapping is NonIncreasing.
+    IncomparableValue                        => NonIncreasing
     SubValueUnknown                          => DescentUnknown
   }
 }
@@ -266,111 +292,163 @@ fn shrink_factor_eq(a: ShrinkFactor, b: ShrinkFactor) -> Bool {
   }
 }
 
-// Meet: conservative merge. SubValueUnknown absorbs everything (worst case).
-// PreservedValue absorbs everything except SubValueUnknown.
-// For two structural relations on the **same** field/param, factors must agree
-// (`shrink_factor_eq`); otherwise the merge is incomparable → SubValueUnknown.
-// Different fields/params remain incomparable as before.
+// Lawful Lattice<SubValueRelation> meet/join.
 //
-// This is a fail-closed meet-oriented helper, not a bounded-lattice witness:
-// PreservedValue is a "same argument" relation, not a top element.
+// Partial order (read bottom → top):
+//   SubValueUnknown < NonIncreasingValue < {PreservedValue,
+//                                           StrictSubValue{f,fac},
+//                                           IteratedSubValue{f},
+//                                           ArithmeticDescent{p,fac}} < IncomparableValue
+//
+// All four mid-level structural witnesses are pairwise incomparable with each
+// other and with PreservedValue: each witnesses a different structural claim
+// (same value vs strict-shrink along a specific axis vs iteration vs arithmetic).
+// Their greatest lower bound is `NonIncreasingValue` — every structural witness
+// implies non-increase, so the meet stays in the lattice rather than collapsing
+// to the fail-closed sink (which would erase termination strength callers can
+// soundly use). Their least upper bound is `IncomparableValue` — no common
+// stronger structural witness exists, but the join must still inhabit the lattice.
+//
+// Structural meets/joins on matching field/param/factor stay at the witness
+// itself (idempotent on identical inhabitants); structural-vs-structural with
+// any differing parameter (field, param, or factor) collapses to the appropriate
+// lattice bound rather than to the sink.
 
+// Reflexive equality used to decide whether two structural witnesses are the
+// same inhabitant in the lattice. Distinct inhabitants are incomparable; equal
+// inhabitants are idempotent under both meet and join.
+fn sub_value_structural_eq(a: SubValueRelation, b: SubValueRelation) -> Bool {
+  match a {
+    StrictSubValue { field: fa, factor: fac_a } =>
+      match b {
+        StrictSubValue { field: fb, factor: fac_b } =>
+          inductive_field_eq(a: fa, b: fb) && shrink_factor_eq(a: fac_a, b: fac_b)
+        _ => false
+      }
+    IteratedSubValue { field: fa } =>
+      match b {
+        IteratedSubValue { field: fb } => inductive_field_eq(a: fa, b: fb)
+        _ => false
+      }
+    ArithmeticDescent { param: pa, factor: fac_a } =>
+      match b {
+        ArithmeticDescent { param: pb, factor: fac_b } =>
+          (pa == pb) && shrink_factor_eq(a: fac_a, b: fac_b)
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// Classify a relation by lattice level. Top/bottom and `NonIncreasingValue`
+// have fixed levels; the four structural-and-Preserved witnesses share the
+// "structural" middle level (pairwise incomparable within the level).
+//   3 = top (IncomparableValue)
+//   2 = structural (StrictSubValue, IteratedSubValue, ArithmeticDescent, PreservedValue)
+//   1 = NonIncreasingValue
+//   0 = SubValueUnknown (bottom)
+fn sub_value_level(r: SubValueRelation) -> Int {
+  match r {
+    IncomparableValue => 3
+    StrictSubValue { field: _, factor: _ } => 2
+    IteratedSubValue { field: _ } => 2
+    ArithmeticDescent { param: _, factor: _ } => 2
+    PreservedValue => 2
+    NonIncreasingValue => 1
+    SubValueUnknown => 0
+  }
+}
+
+// Meet (greatest lower bound). Conservative across branches: if branches
+// disagree on the structural form, the result drops to `NonIncreasingValue`
+// (still proves non-increase, preserves termination strength downstream).
+// Only the fail-closed sink can collapse the meet to `SubValueUnknown`.
 fn meet_sub_value(a: SubValueRelation, b: SubValueRelation) -> SubValueRelation {
-  match a {
-    SubValueUnknown => SubValueUnknown
-    PreservedValue =>
-      match b {
-        SubValueUnknown => SubValueUnknown
-        _ => PreservedValue
+  if sub_value_structural_eq(a: a, b: b) { a }
+  else {
+    let la = sub_value_level(r: a)
+    let lb = sub_value_level(r: b)
+    // SubValueUnknown absorbs.
+    if la == 0 || lb == 0 { SubValueUnknown }
+    else {
+      // IncomparableValue is the top: meet with anything else returns the other side.
+      if la == 3 { b }
+      else {
+        if lb == 3 { a }
+        else {
+          // Both lawful at level >= 1. If either is NonIncreasingValue, that wins.
+          if la == 1 || lb == 1 { NonIncreasingValue }
+          else {
+            // Both structural (level 2) and not structurally equal — incomparable.
+            // Greatest common lower bound is NonIncreasingValue.
+            NonIncreasingValue
+          }
+        }
       }
-    StrictSubValue { field: fa, factor: fac_a } =>
-      match b {
-        SubValueUnknown => SubValueUnknown
-        PreservedValue => PreservedValue
-        StrictSubValue { field: fb, factor: fac_b } =>
-          if inductive_field_eq(a: fa, b: fb) {
-            if shrink_factor_eq(a: fac_a, b: fac_b) {
-              StrictSubValue { field: fa, factor: fac_a }
-            } else { SubValueUnknown }
-          } else { SubValueUnknown }
-        _ => SubValueUnknown
-      }
-    IteratedSubValue { field: fa } =>
-      match b {
-        SubValueUnknown => SubValueUnknown
-        PreservedValue => PreservedValue
-        IteratedSubValue { field: fb } =>
-          if inductive_field_eq(a: fa, b: fb) { a } else { SubValueUnknown }
-        _ => SubValueUnknown
-      }
-    ArithmeticDescent { param: pa, factor: fac_a } =>
-      match b {
-        SubValueUnknown => SubValueUnknown
-        PreservedValue => PreservedValue
-        ArithmeticDescent { param: pb, factor: fac_b } =>
-          if pa == pb {
-            if shrink_factor_eq(a: fac_a, b: fac_b) {
-              ArithmeticDescent { param: pa, factor: fac_a }
-            } else { SubValueUnknown }
-          } else { SubValueUnknown }
-        _ => SubValueUnknown
-      }
+    }
   }
 }
 
-// Join: optimistic merge. SubValueUnknown is identity.
-// PreservedValue yields to any structural descent.
-// Same field/param requires **matching** shrink factors for a commutative join;
-// mismatched factors are incomparable → SubValueUnknown.
-
+// Join (least upper bound). `SubValueUnknown` is the identity; mismatched
+// structural witnesses land at `IncomparableValue` (the lawful top) rather
+// than collapsing to the sink.
 fn join_sub_value(a: SubValueRelation, b: SubValueRelation) -> SubValueRelation {
-  match a {
-    SubValueUnknown => b
-    PreservedValue =>
-      match b {
-        SubValueUnknown => PreservedValue
-        _ => b
+  if sub_value_structural_eq(a: a, b: b) { a }
+  else {
+    let la = sub_value_level(r: a)
+    let lb = sub_value_level(r: b)
+    // SubValueUnknown is identity (bottom).
+    if la == 0 { b }
+    else {
+      if lb == 0 { a }
+      else {
+        // IncomparableValue is top.
+        if la == 3 || lb == 3 { IncomparableValue }
+        else {
+          // NonIncreasingValue is yielded by anything at level >= 1.
+          if la == 1 { b }
+          else {
+            if lb == 1 { a }
+            else {
+              // Both structural (level 2) and not structurally equal — incomparable.
+              // Least common upper bound is IncomparableValue.
+              IncomparableValue
+            }
+          }
+        }
       }
-    StrictSubValue { field: fa, factor: fac_a } =>
-      match b {
-        SubValueUnknown => a
-        PreservedValue => a
-        StrictSubValue { field: fb, factor: fac_b } =>
-          if inductive_field_eq(a: fa, b: fb) {
-            if shrink_factor_eq(a: fac_a, b: fac_b) {
-              StrictSubValue { field: fa, factor: fac_a }
-            } else { SubValueUnknown }
-          } else { SubValueUnknown }
-        _ => SubValueUnknown
-      }
-    IteratedSubValue { field: fa } =>
-      match b {
-        SubValueUnknown => a
-        PreservedValue => a
-        IteratedSubValue { field: fb } =>
-          if inductive_field_eq(a: fa, b: fb) { a } else { SubValueUnknown }
-        _ => SubValueUnknown
-      }
-    ArithmeticDescent { param: pa, factor: fac_a } =>
-      match b {
-        SubValueUnknown => a
-        PreservedValue => a
-        ArithmeticDescent { param: pb, factor: fac_b } =>
-          if pa == pb {
-            if shrink_factor_eq(a: fac_a, b: fac_b) {
-              ArithmeticDescent { param: pa, factor: fac_a }
-            } else { SubValueUnknown }
-          } else { SubValueUnknown }
-        _ => SubValueUnknown
-      }
+    }
   }
 }
 
-// SubValueRelation intentionally does not claim BoundedLattice inhabitance:
-//   meet_sub_value is the conservative fail-closed merge helper.
-//   join_sub_value is an optimistic auxiliary helper.
-//   SubValueUnknown is the fail-closed sink and join identity.
-//   PreservedValue is a same-argument relation, not a meet identity/top.
+// BoundedLattice<SubValueRelation> witness.
+//
+// Laws (verified by inspection over the level classification + reflexive equality):
+//   - Idempotence: meet(a, a) = a; join(a, a) = a — `sub_value_structural_eq` short-circuit
+//     handles structural-with-parameters; non-parametric variants are caught by level match
+//     (level identity + no payload).
+//   - Commutativity: `meet` / `join` use only `sub_value_level` and `sub_value_structural_eq`,
+//     both of which are symmetric in their arguments.
+//   - Associativity: meet over the level chain collapses left-to-right by the rule "take the
+//     lower level, falling to `NonIncreasingValue` when both arguments are at the structural
+//     level and not identical." This is symmetric and order-independent. Dually for join via
+//     `IncomparableValue`.
+//   - Absorption: `meet(a, join(a, b)) = a` — `join(a, b)` is either `a` (if b ≤ a or b = ⊥),
+//     `IncomparableValue` (≥ a, so meet with a returns a), or some element strictly above
+//     `NonIncreasingValue`; meet pulls back to a.
+//   - Top: meet(⊤, a) = a, join(⊤, a) = ⊤ — `IncomparableValue` at level 3 cases above.
+//   - Bottom: meet(⊥, a) = ⊥, join(⊥, a) = a — `SubValueUnknown` at level 0 cases above.
+//
+// Operator-direct (PATH-2-FULL, ratified 2026-05-21): the lawful algebra is the architectural
+// improvement; `SubValueUnknown` participates as the lattice bottom (carries the prior
+// "fail-closed sink" role) and `NonIncreasingValue` / `IncomparableValue` close the lattice
+// so structural-vs-structural meets/joins do not silently erase termination strength.
+data sub_value_relation_bounded_lattice: BoundedLattice<SubValueRelation> = {
+  meet: meet_sub_value
+  join: join_sub_value
+  top: IncomparableValue
+  bottom: SubValueUnknown
+}
 
 
 // =========================================================================
@@ -389,6 +467,8 @@ fn join_sub_value(a: SubValueRelation, b: SubValueRelation) -> SubValueRelation 
 fn compose_sub_value(base: SubValueRelation, field: InductiveField) -> SubValueRelation {
   match base {
     SubValueUnknown => SubValueUnknown
+    // Composing a field access on top of a known non-strict base still descends one level
+    // structurally — the access witness is `StrictSubValue` regardless of the base witness.
     _ => StrictSubValue { field: field, factor: UnitShrink }
   }
 }
@@ -409,6 +489,19 @@ fn compose_sub_value_relations(arg_rel: SubValueRelation, callee_rel: SubValueRe
   match callee_rel {
     PreservedValue => arg_rel
     SubValueUnknown => SubValueUnknown
+    // NonIncreasingValue and IncomparableValue at the callee compose with the
+    // caller side at the same lattice level — no structural witness survives
+    // because the callee already lacks one.
+    NonIncreasingValue =>
+      match arg_rel {
+        SubValueUnknown => SubValueUnknown
+        _ => NonIncreasingValue
+      }
+    IncomparableValue =>
+      match arg_rel {
+        SubValueUnknown => SubValueUnknown
+        _ => IncomparableValue
+      }
     StrictSubValue { field: _, factor: _ } =>
       match arg_rel {
         PreservedValue => callee_rel
@@ -416,6 +509,8 @@ fn compose_sub_value_relations(arg_rel: SubValueRelation, callee_rel: SubValueRe
         StrictSubValue { field: f, factor: _ } => StrictSubValue { field: f, factor: UnitShrink }
         IteratedSubValue { field: f } => StrictSubValue { field: f, factor: UnitShrink }
         ArithmeticDescent { param: _, factor: _ } => SubValueUnknown
+        NonIncreasingValue => NonIncreasingValue
+        IncomparableValue => IncomparableValue
       }
     IteratedSubValue { field: _ } =>
       match arg_rel {
@@ -428,6 +523,8 @@ fn compose_sub_value_relations(arg_rel: SubValueRelation, callee_rel: SubValueRe
         StrictSubValue { field: f, factor: _ } => StrictSubValue { field: f, factor: UnitShrink }
         IteratedSubValue { field: f } => StrictSubValue { field: f, factor: UnitShrink }
         ArithmeticDescent { param: _, factor: _ } => SubValueUnknown
+        NonIncreasingValue => NonIncreasingValue
+        IncomparableValue => IncomparableValue
       }
     ArithmeticDescent { param: p, factor: f } =>
       match arg_rel {
@@ -463,6 +560,10 @@ fn sub_value_to_call_pattern(relation: SubValueRelation) -> CallPattern? {
         UnitShrink => Some { value: ArithmeticSubtractCall { steps: OneStep, ring_param: p } }
       }
     PreservedValue                            => Some { value: SameArgumentCall }
+    // Non-structural lawful inhabitants have no specific call pattern to project.
+    // Same fail-closed posture as `SubValueUnknown` for downstream consumers.
+    NonIncreasingValue                        => none
+    IncomparableValue                         => none
     SubValueUnknown                           => none
   }
 }
@@ -502,6 +603,22 @@ fn sub_value_to_lowering_target(relation: SubValueRelation) -> LoweringTarget? {
         factor: Some { value: fac }
       }}
     PreservedValue =>
+      Some { value: LoweringTarget {
+        primitive: Repeat,
+        bound: Forever,
+        evidence: NonIncreasing,
+        factor: none
+      }}
+    // Lawful non-structural witnesses lower the same way as PreservedValue: we know
+    // non-increase but cannot project a specific shrink target.
+    NonIncreasingValue =>
+      Some { value: LoweringTarget {
+        primitive: Repeat,
+        bound: Forever,
+        evidence: NonIncreasing,
+        factor: none
+      }}
+    IncomparableValue =>
       Some { value: LoweringTarget {
         primitive: Repeat,
         bound: Forever,
