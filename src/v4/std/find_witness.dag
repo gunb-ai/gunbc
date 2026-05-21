@@ -36,8 +36,7 @@ import v4.std.node {
   Node,
   NodeKind,
   Symbol,
-  TypeNode,
-  well_formed
+  TypeNode
 }
 import v4.std.witness { StructuralPropertyWitness }
 data find_witness_reason_no_candidate: Symbol = find_witness_reason_no_candidate
@@ -115,9 +114,7 @@ fn zip_fold_kind_shape(k: NodeKind) -> NodeKind {
   }
 }
 fn exact_structural_equality_zip_fold(source_facts: Node, candidate: Node) -> Bool {
-  well_formed(n: source_facts)
-    && well_formed(n: candidate)
-    && (zip_fold_kind_shape(k: source_facts.kind) == zip_fold_kind_shape(k: candidate.kind))
+  (zip_fold_kind_shape(k: source_facts.kind) == zip_fold_kind_shape(k: candidate.kind))
     && (count(source_facts.children) == count(candidate.children))
 }
 fn preservation_predicate_holds(
@@ -125,8 +122,7 @@ fn preservation_predicate_holds(
   candidate: Node,
   predicate: PreservationPredicate,
 ) -> Bool {
-  well_formed(n: predicate.algebra)
-    && (predicate.preservation_rule == preservation_rule_exact_structural_equality_zip_fold)
+  (predicate.preservation_rule == preservation_rule_exact_structural_equality_zip_fold)
     && exact_structural_equality_zip_fold(source_facts: source_facts, candidate: candidate)
 }
 fn find_witness_result_for_candidate(
