@@ -30,7 +30,7 @@ import v4.std.diagnostic {
   Suggested,
   diagnostics_singleton
 }
-import v4.std.node { Edge, Named, Node, Symbol, TypeNode, Atom, Cardinality }
+import v4.std.node { Edge, Named, Node, Positional, Symbol, TypeNode, Atom, Cardinality }
 import v4.std.verification {
   Compiles,
   Equals,
@@ -63,11 +63,11 @@ data falsification_nested_optional: Node = Node {
   kind: TypeNode { connective: Cardinality },
   children: [
     Edge {
-      label: Named { name: optional_outer },
+      label: Positional,
       target: Node {
         kind: TypeNode { connective: Cardinality },
         children: [
-          Edge { label: Named { name: optional_inner }, target: atom_node(s: optional_value_symbol) },
+          Edge { label: Positional, target: atom_node(s: optional_value_symbol) },
         ]
       }
     },
@@ -78,7 +78,7 @@ data falsification_nested_optional: Node = Node {
 data falsification_optional_double_unwrap: Node = Node {
   kind: TypeNode { connective: Cardinality },
   children: [
-    Edge { label: Named { name: optional_outer }, target: atom_node(s: double_unwrap_symbol) },
+    Edge { label: Positional, target: atom_node(s: double_unwrap_symbol) },
   ]
 }
 

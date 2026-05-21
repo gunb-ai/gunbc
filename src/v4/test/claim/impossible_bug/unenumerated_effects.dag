@@ -35,7 +35,7 @@ import v4.std.diagnostic {
   Unavailable,
   diagnostics_singleton
 }
-import v4.std.node { Edge, Named, Node, Symbol, TypeNode, Atom, Arrow, Conj }
+import v4.std.node { Edge, Named, Node, Positional, Symbol, TypeNode, Atom, Arrow, Conj }
 import v4.std.verification {
   Compiles,
   Equals,
@@ -64,8 +64,8 @@ fn effect_subject(signature: Node, body: Node) -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge { label: Named { name: effect_signature_field }, target: signature },
-      Edge { label: Named { name: effect_body_field }, target: body },
+      Edge { label: Positional, target: signature },
+      Edge { label: Positional, target: body },
     ]
   }
 }
