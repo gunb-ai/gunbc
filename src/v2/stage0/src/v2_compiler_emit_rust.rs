@@ -1595,7 +1595,7 @@ pub struct OwnershipBuildResult {
 pub fn build_ownership_results(modules: &Rc<Vec<Rc<TypedModule>>>) -> Rc<OwnershipBuildResult> {
     {
         let callable_set = modules.clone().iter().cloned().fold(
-            compile_error!("empty_set element type unresolved"),
+            v2_rt::rc_empty_set::<String>(),
             |acc: _, m: Rc<TypedModule>| {
                 Rc::new({
                     let mut __result = Vec::new();
@@ -1639,7 +1639,7 @@ pub fn build_ownership_results(modules: &Rc<Vec<Rc<TypedModule>>>) -> Rc<Ownersh
                         {
                             __result.push({
                                 let pnames = item.params.clone().iter().cloned().fold(
-                                    compile_error!("empty_set element type unresolved"),
+                                    v2_rt::rc_empty_set::<String>(),
                                     |acc: _, p: Rc<Node>| {
                                         v2_rt::rc_set_insert(
                                             acc,
