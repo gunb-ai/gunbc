@@ -10,7 +10,8 @@ use crate::std_induction::RecursionShape::{
 };
 use crate::std_induction::ShrinkFactor::{ConstantShrink, ProportionalShrink, UnitShrink};
 use crate::std_induction::SubValueRelation::{
-    ArithmeticDescent, IteratedSubValue, PreservedValue, StrictSubValue, SubValueUnknown,
+    ArithmeticDescent, IncomparableValue, IteratedSubValue, NonIncreasingValue, PreservedValue,
+    StrictSubValue, SubValueUnknown,
 };
 pub use crate::std_induction::{
     compose_sub_value, compose_sub_value_relations, join_sub_value, meet_sub_value,

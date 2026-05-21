@@ -188,7 +188,22 @@ pub fn sub_value_structural_eq(a: Rc<SubValueRelation>, b: Rc<SubValueRelation>)
             }
             _ => false,
         },
-        _ => false,
+        SubValueRelation::PreservedValue => match (*b).clone() {
+            SubValueRelation::PreservedValue => true,
+            _ => false,
+        },
+        SubValueRelation::NonIncreasingValue => match (*b).clone() {
+            SubValueRelation::NonIncreasingValue => true,
+            _ => false,
+        },
+        SubValueRelation::IncomparableValue => match (*b).clone() {
+            SubValueRelation::IncomparableValue => true,
+            _ => false,
+        },
+        SubValueRelation::SubValueUnknown => match (*b).clone() {
+            SubValueRelation::SubValueUnknown => true,
+            _ => false,
+        },
     }
 }
 
