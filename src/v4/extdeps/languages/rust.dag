@@ -989,9 +989,11 @@ fn rust_grammar_atom(id: Symbol) -> Node {
   rust_inhabitant_atom(id: id)
 }
 
-fn rust_grammar_production_fn_item() -> GrammarProduction {
+// 🟡 wave-1 grammar stub — `fn ident i32 +` only; does not parse MVP source `fn add(...)`.
+// dissolve-on: full fn-item production matching rust_mvp1_source_text token sequence.
+fn rust_grammar_production_wave1_fn_stub() -> GrammarProduction {
   GrammarProduction {
-    name: rust_production_fn_item,
+    name: rust_production_wave1_fn_stub,
     expression: Sequence {
       left: Sequence {
         left: Sequence {
@@ -1007,7 +1009,7 @@ fn rust_grammar_production_fn_item() -> GrammarProduction {
 }
 
 fn rust_wave1_grammar_root() -> GrammarRoot {
-  GrammarRoot { start: rust_grammar_production_fn_item() }
+  GrammarRoot { start: rust_grammar_production_wave1_fn_stub() }
 }
 
 fn rust_wave1_grammar() -> Grammar {
@@ -1028,13 +1030,13 @@ fn rust_language_model_canonical_symbols() -> Set<Symbol> {
 }
 
 fn rust_language_model_wave1() -> RustLanguageModel {
-  let _integer_facts = rust_integer_facts_catalog
-  let _float_facts = rust_float_facts_catalog
-  let _noninteger_facts = rust_noninteger_facts_catalog
   RustLanguageModel {
     lex: rust_wave1_lex(),
     grammar: rust_wave1_grammar(),
     language_identity: rust_language_model_surface_id,
-    canonical_symbols: rust_language_model_canonical_symbols()
+    canonical_symbols: rust_language_model_canonical_symbols(),
+    integer_facts_catalog: rust_integer_facts_catalog,
+    float_facts_catalog: rust_float_facts_catalog,
+    noninteger_facts_catalog: rust_noninteger_facts_catalog
   }
 }
