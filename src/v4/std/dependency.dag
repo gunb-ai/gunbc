@@ -58,18 +58,17 @@ type DependencyFoldState {
 
 // 🟡 predicate dissolution — feature:dependency-usage-classifier-consumes-resolve-ground-facts
 // dissolve-on: T-9 resolve writes ModuleDependsOn / BootstrapDependsOn labels inline (BindsTo partial).
-// Staged: `dependency_binds_to_edge` is stamped on resolve bind-edge-0 (`03_resolve.dag` resolve_bind_edges).
+// Staged: resolve will stamp `dependency_binds_to_edge` on Atom→Decl USE edges only (not bind-edge-0
+// binder target — `03_resolve.dag` resolve_bind_binder_target). Until T-9, claims mark use edges explicitly.
 // Module/bootstrap markers remain claim-only until import/bootstrap producers land.
-// Bind nodes are NOT all BindsTo — resolve treats edge 0 (binder target), edge 1 (outer scope),
-// and later edges (inner scope) differently (`03_resolve.dag` resolve_bind_edges).
+// Bind nodes are NOT all BindsTo — edge 0 is binder target; edges 1+ are scope bodies (`resolve_bind_edges`).
 // Ordinary TypeNode Named record fields remain Contains (composition, not use).
-// BindsTo: symbol + Bind parent (resolve bind-edge-0 producer path only).
-// Module/bootstrap symbols: 🟡 claim/protocol until import producers gate parent shape.
+// BindsTo: marked use edge on non-Bind parent (Decl → Atom reference / use site).
 fn classify_named_edge_usage(parent: Node, sym: Symbol) -> DependencyKind {
   if sym == dependency_binds_to_edge {
     match parent.kind {
-      ComputationNode { behavior: Bind } => BindsTo
-      _ => Contains
+      ComputationNode { behavior: Bind } => Contains
+      _ => BindsTo
     }
   } else if sym == dependency_module_import_edge {
     ModuleDependsOn

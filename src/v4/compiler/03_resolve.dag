@@ -15,7 +15,6 @@ import v4.extdeps.languages.dag {
   dag_language_model_canonical_symbols
 }
 import v4.std.collection { Set }
-import v4.std.dependency { dependency_binds_to_edge }
 import v4.std.diagnostic {
   Diagnostic,
   NodeLocus,
@@ -34,7 +33,6 @@ import v4.std.node {
   ComputationNode,
   Conj,
   Edge,
-  Named,
   Node,
   NodeFold,
   Symbol,
@@ -416,7 +414,6 @@ fn resolve_bind_binder_target(t: Node) -> Outcome<Node> {
 }
 
 
-// 🟡 staged producer — bind-edge-0 stamps dependency_binds_to_edge for dependency_lens BindsTo classification.
 fn resolve_bind_edges(
   edges: List<Edge>,
   scope_outer: Scope,
@@ -451,11 +448,10 @@ fn resolve_bind_edges(
                     BindEdgeAccMk {
                       idx: i + 1,
                       acc: Accepted {
-                        // Bind-edge-0: replace e.label — incoming label is positional scaffold only.
                         value: list_push(
                           done,
                           Edge {
-                            label: Named { name: dependency_binds_to_edge },
+                            label: e.label,
                             target: rt
                           }
                         ),
