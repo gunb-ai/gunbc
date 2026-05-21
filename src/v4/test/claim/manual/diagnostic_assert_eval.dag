@@ -1,0 +1,144 @@
+// src/v4/test/claim/manual/diagnostic_assert_eval.dag
+// Scope: T-22 DiagnosticAssert + aggregate_verdicts behavior witnesses.
+// Owns: Pass/Fail receipts for matching/mismatching rejected diagnostics; Deferred blocks Pass.
+// Consumes: v4.compiler.eval, v4.std.diagnostic, v4.test.claim.manual.connective_anchors.
+// Status: Wave-0 eval regression anchor.
+
+
+module v4.test.claim.manual.diagnostic_assert_eval
+
+
+import v4.compiler.eval {
+  Pass,
+  Fail,
+  Deferred,
+  Verdict,
+  aggregate_verdicts,
+  eval_diagnostic,
+  run_node_assert
+}
+import v4.std.diagnostic {
+  AmbiguousIntent,
+  Diagnostic,
+  NodeLocus,
+  Outcome,
+  Accepted,
+  Rejected,
+  None,
+  Unavailable,
+  diagnostics_singleton,
+  outcome_node_eq
+}
+import v4.std.collection { List }
+import v4.std.node { Node, Symbol }
+import v4.std.verification { DiagnosticAssert }
+import v4.test.claim.manual.connective_anchors { stub_empty_conj }
+
+
+data diag_assert_reason: Symbol = diag_assert_reason
+data diag_assert_other: Symbol = diag_assert_other
+
+
+fn diag_assert_node() -> Node {
+  stub_empty_conj
+}
+
+
+fn diag_assert_d() -> Diagnostic {
+  Diagnostic {
+    reason: diag_assert_reason,
+    at: NodeLocus { node: diag_assert_node() },
+    correction: Unavailable { reason: AmbiguousIntent }
+  }
+}
+
+
+fn diag_assert_other_d() -> Diagnostic {
+  Diagnostic {
+    reason: diag_assert_other,
+    at: NodeLocus { node: diag_assert_node() },
+    correction: Unavailable { reason: AmbiguousIntent }
+  }
+}
+
+
+data rejected_expected: Outcome<Node> = Rejected {
+  diagnostics: diagnostics_singleton(d: diag_assert_d())
+}
+
+
+data rejected_same: Outcome<Node> = rejected_expected
+
+
+data rejected_other: Outcome<Node> = Rejected {
+  diagnostics: diagnostics_singleton(d: diag_assert_other_d())
+}
+
+
+data accepted_actual: Outcome<Node> = Accepted {
+  value: diag_assert_node(),
+  diagnostics: None
+}
+
+
+data witness_diagnostic_assert_match_pass: Bool = match run_node_assert(
+  kind: DiagnosticAssert,
+  actual: rejected_same,
+  expected: rejected_expected,
+  input: diag_assert_node()
+) {
+  Pass => true
+  Fail { actual: _ } => false
+  Deferred { actual: _, diagnostic: _ } => false
+}
+
+
+data witness_diagnostic_assert_mismatch_fail: Bool = match run_node_assert(
+  kind: DiagnosticAssert,
+  actual: rejected_other,
+  expected: rejected_expected,
+  input: diag_assert_node()
+) {
+  Pass => false
+  Fail { actual: _ } => true
+  Deferred { actual: _, diagnostic: _ } => false
+}
+
+
+fn empty_node_verdicts() -> List<Verdict<Node>> {
+  []
+}
+
+
+data witness_diagnostic_assert_accepted_fail: Bool = match run_node_assert(
+  kind: DiagnosticAssert,
+  actual: accepted_actual,
+  expected: rejected_expected,
+  input: diag_assert_node()
+) {
+  Pass => false
+  Fail { actual: _ } => true
+  Deferred { actual: _, diagnostic: _ } => false
+}
+
+
+data witness_aggregate_empty_fail: Bool = match aggregate_verdicts(rs: empty_node_verdicts(), at: diag_assert_node()) {
+  Pass => false
+  Fail { actual: _ } => true
+  Deferred { actual: _, diagnostic: _ } => false
+}
+
+
+fn deferred_verdict() -> Verdict<Node> {
+  Deferred {
+    actual: rejected_same,
+    diagnostic: eval_diagnostic(reason: diag_assert_reason, node: diag_assert_node())
+  }
+}
+
+
+data witness_aggregate_deferred_blocks_pass: Bool = match aggregate_verdicts(rs: [Pass, deferred_verdict()], at: diag_assert_node()) {
+  Pass => false
+  Fail { actual: _ } => false
+  Deferred { actual: _, diagnostic: _ } => true
+}
