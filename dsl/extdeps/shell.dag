@@ -1,6 +1,9 @@
-// extdeps/shell.dag -- Generic OS/POSIX shell utilities.
+// extdeps/shell.dag -- Host shell utilities (POSIX sh + common extensions).
 //
-// Operations wrapping POSIX commands: find, which, env/printenv.
+// find, printenv: POSIX.1 utilities.
+// which: common extension (not POSIX; POSIX uses `command -v`).
+// Exec: POSIX `sh -lc` — not bash; scripts must avoid bash-only syntax.
+//
 // These are facts about the host OS, not about any specific
 // external service.
 //
