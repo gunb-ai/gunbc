@@ -4,6 +4,22 @@
 # MVP-1 end-to-end receipt: add.dag → v2-compiler (--target rust) → emitted Rust
 # → cargo build/run → assert add(2, 3) == 5.
 #
+# 🟡 scaffold — feature:mvp1-ci-e2e-receipt — INVARIANTS §P5 (Progress Is Dissolution)
+# Roadmap: ROADMAP.md § Nine lanes / T-PB-B (`pb_rust_tests_outside_residual_zero`);
+#   TASKS.md T-10 / Wave-3-B; design-v4-compiler-homomorphism.md §MVP (ground→project interim:
+#   v2-bootstrap compile path until full src/v4 closure cargo-builds).
+# Dissolve-on-arrival (delete this script, the ci.yml step, and scripts-owned mvp1_gate.rs)
+#   when ANY of:
+#   (a) `.dag` TestClaim + generated harness owns the same receipt without scripts append —
+#       authority: `src/v4/test/claim/manual/mvp1_rust_add_translate.dag` (+ sibling MVP add
+#       claims) and T-22 eval `TestClaimRun` when `ground→project` emits cargo-clean Rust;
+#   (b) `src/v4/workflow/ci.dag` (or `dsl/gunbc/ci.dag`) models this gate as `CiGate` data
+#       (T-24 workflow-as-data; no shell harness);
+#   (c) full `src/v4` dep pool emits cargo-build-clean Rust for the add-shaped program and
+#       v4 `project(inferred, rust_projection_plan)` is the sole compile→run authority.
+# Exit condition: removal when (a) is green on main CI for 14 consecutive days, or (b) lands
+#   with parity harness deleting (a)'s shell bridge.
+#
 # Fail-closed. Does NOT use --target dag (known broken on full graphs).
 #
 # Usage (repo root):
@@ -104,7 +120,9 @@ if grep -qE '^\[\[bin\]\]' "$cargo_toml"; then
 fi
 mkdir -p "${out}/src/bin"
 cat > "${out}/src/bin/mvp1_gate.rs" <<EOF
-// MVP-1 CI harness — not emitted; scripts/v4-mvp1-e2e-gate.sh authority.
+// MVP-1 CI harness — scripts-owned interim (INVARIANTS §P5).
+// Dissolution: delete when (a) TestClaim/generated harness or (b) workflow/ci.dag owns
+// compile→rust→run assert; see scripts/v4-mvp1-e2e-gate.sh header.
 use ${crate_name}::v4_test_mvp1_add::add;
 
 fn main() {
