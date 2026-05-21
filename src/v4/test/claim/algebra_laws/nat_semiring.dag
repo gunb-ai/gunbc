@@ -23,6 +23,14 @@ import v4.std.nat {
   nat_algebra_law_subject_symbol_commutative_semiring,
   nat_algebra_law_subject_symbol_inhabitant_nat
 }
+import v4.lens.testgen {
+  t19_law_nat_add_left_identity,
+  t19_law_nat_add_right_identity,
+  t19_law_nat_add_associativity,
+  t19_law_nat_mul_left_identity,
+  t19_law_nat_mul_annihilator,
+  t19_law_nat_mul_associativity
+}
 import v4.std.node { Edge, Named, Node, Symbol, TypeNode, Atom, Conj }
 import v4.std.verification {
   Equals,
@@ -34,15 +42,9 @@ import v4.std.verification {
 }
 
 
-data algebra_law_algebra_field: Symbol = algebra_law_algebra_field
-data algebra_law_inhabitant_field: Symbol = algebra_law_inhabitant_field
-data algebra_law_name_field: Symbol = algebra_law_name_field
-data nat_add_left_identity_law: Symbol = nat_add_left_identity_law
-data nat_add_right_identity_law: Symbol = nat_add_right_identity_law
-data nat_add_associativity_law: Symbol = nat_add_associativity_law
-data nat_mul_left_identity_law: Symbol = nat_mul_left_identity_law
-data nat_mul_annihilator_law: Symbol = nat_mul_annihilator_law
-data nat_mul_associativity_law: Symbol = nat_mul_associativity_law
+data algebra_law_algebra_field: Symbol = algebra
+data algebra_law_inhabitant_field: Symbol = inhabitant
+data algebra_law_name_field: Symbol = law
 data nat_law_wrong_identity_symbol: Symbol = nat_law_wrong_identity_symbol
 data algebra_law_violation_reason: Symbol = algebra_law_violation_reason
 
@@ -82,12 +84,12 @@ fn nat_mul_law(law: Symbol) -> Node {
 }
 
 
-data nat_add_left_identity_input: Node = nat_add_law(law: nat_add_left_identity_law)
-data nat_add_right_identity_input: Node = nat_add_law(law: nat_add_right_identity_law)
-data nat_add_associativity_input: Node = nat_add_law(law: nat_add_associativity_law)
-data nat_mul_left_identity_input: Node = nat_mul_law(law: nat_mul_left_identity_law)
-data nat_mul_annihilator_input: Node = nat_mul_law(law: nat_mul_annihilator_law)
-data nat_mul_associativity_input: Node = nat_mul_law(law: nat_mul_associativity_law)
+data nat_add_left_identity_input: Node = nat_add_law(law: t19_law_nat_add_left_identity)
+data nat_add_right_identity_input: Node = nat_add_law(law: t19_law_nat_add_right_identity)
+data nat_add_associativity_input: Node = nat_add_law(law: t19_law_nat_add_associativity)
+data nat_mul_left_identity_input: Node = nat_mul_law(law: t19_law_nat_mul_left_identity)
+data nat_mul_annihilator_input: Node = nat_mul_law(law: t19_law_nat_mul_annihilator)
+data nat_mul_associativity_input: Node = nat_mul_law(law: t19_law_nat_mul_associativity)
 
 
 data falsification_nat_add_wrong_identity: Node = nat_add_law(law: nat_law_wrong_identity_symbol)
