@@ -64,6 +64,14 @@ fn t22_eval_diagnostic_assert_not_deferred_in_substrate() {
             && EVAL_DAG.contains("eval_rejected_roundtrip_deferred"),
         "RoundTripClaim eval authority must stay Deferred (single authority; verification must not synthesize expected Outcome<Node>)"
     );
+    assert!(
+        !EVAL_DAG.contains("Accepted { value: inputs.root"),
+        "eval_node must not fabricate Accepted{{value:inputs.root}} on unrealized eval (CI-signal-integrity: would falsely Pass CompilesClaim/EqualsClaim where expected==input)"
+    );
+    assert!(
+        EVAL_DAG.contains("eval_node_unrealized"),
+        "eval_node must surface an explicit unrealized-eval diagnostic until eval's Outcome<RuntimeValue> projects to Outcome<Node>"
+    );
 }
 
 #[test]

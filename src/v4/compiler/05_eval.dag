@@ -166,6 +166,8 @@ fn test_claim_cache_receipt<T>(
 
 
 data eval_rejected_invalid_node: Symbol = eval_rejected_invalid_node
+// 🟡 gated — feature:T22-eval-node-runtime-value-to-node-projection — bind node://adhoc-721e9758-07b — dissolve-on: eval_node projects eval's Outcome<RuntimeValue> through a runtime-value→Node projection so realized eval results flow into TestClaim assertions; forbidden: returning Accepted{value:inputs.root} as a stand-in for an unrealized eval, which fabricates Pass for CompilesClaim/EqualsClaim where expected==input.
+data eval_node_unrealized: Symbol = eval_node_unrealized
 data eval_rejected_roundtrip_deferred: Symbol = eval_rejected_roundtrip_deferred
 data eval_empty_verdict_list: Symbol = eval_empty_verdict_list
 data eval_rejected_type_node: Symbol = eval_rejected_type_node
@@ -596,10 +598,14 @@ fn eval(tree: InferredTree, interpretation: InterpretationAlgebra, inputs: Input
 }
 
 
+// Fail-closed: well-formedness preconditions still short-circuit to invalid_node,
+// but a passing precondition does NOT fabricate Accepted{value:inputs.root} — eval_node
+// is not yet wired to project eval's Outcome<RuntimeValue> to Outcome<Node>, so the
+// honest verdict for a realized precondition is Rejected{eval_node_unrealized}.
 fn eval_node(tree: InferredTree, inputs: Inputs) -> Outcome<Node> {
   if well_formed(n: tree.root) {
     if well_formed(n: inputs.root) {
-      Accepted { value: inputs.root, diagnostics: None }
+      Rejected { diagnostics: diagnostics_singleton(d: eval_diagnostic(reason: eval_node_unrealized, node: inputs.root)) }
     } else {
       Rejected { diagnostics: diagnostics_singleton(d: eval_diagnostic(reason: eval_rejected_invalid_node, node: inputs.root)) }
     }
