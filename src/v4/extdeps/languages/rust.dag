@@ -31,6 +31,18 @@ import v4.compiler.tokenize {
   TokenRule
 }
 import v4.std.collection { List, Set }
+import v4.std.model_core {
+  EffectSemanticsDecl,
+  ModelCore,
+  PartialitySemanticsDecl,
+  PrimitiveFactBundle
+}
+import v4.std.target_model {
+  target_model_edge_declared_inhabitants,
+  target_model_edge_selection_policy,
+  target_model_edge_serialize_emitted,
+  target_model_edge_serialize_source
+}
 import v4.std.node {
   Arrow,
   Atom,
@@ -140,18 +152,12 @@ type OverflowDisposition<IRCarrier>
   = MustPanicOnOverflow
   | MayPanicOrTwoComplementWrap
 
-// T-33 gate: `core: ModelCore` replaces the three `*_facts_catalog` fields when std/model_core.dag lands.
 type RustLanguageModel {
   lex: LexRules
   grammar: Grammar
   language_identity: Symbol
   canonical_symbols: Set<Symbol>
-  // 🟡 pre-T-33 catalog carrier · dissolve-on: std/model_core.dag `core: ModelCore` (#3474)
-  integer_facts_catalog: List<RustIntegerPrimitiveFacts>
-  // 🟡 pre-T-33 catalog carrier · dissolve-on: std/model_core.dag `core: ModelCore` (#3474)
-  float_facts_catalog: List<RustFloatPrimitiveFacts>
-  // 🟡 pre-T-33 catalog carrier · dissolve-on: std/model_core.dag `core: ModelCore` (#3474)
-  noninteger_facts_catalog: List<RustNonIntegerPrimitiveFacts>
+  core: ModelCore
 }
 
 data rust_language_model_surface_id: Symbol = rust_language_model_surface_id
@@ -243,11 +249,6 @@ data rust_inhabitant_field_char: Symbol = rust_inhabitant_field_char
 data rust_inhabitant_field_str: Symbol = rust_inhabitant_field_str
 data rust_inhabitant_field_unit: Symbol = rust_inhabitant_field_unit
 data rust_inhabitant_field_never: Symbol = rust_inhabitant_field_never
-
-data target_model_edge_selection_policy: Symbol = target_model_edge_selection_policy
-data target_model_edge_declared_inhabitants: Symbol = target_model_edge_declared_inhabitants
-data target_model_edge_serialize_emitted: Symbol = target_model_edge_serialize_emitted
-data target_model_edge_serialize_source: Symbol = target_model_edge_serialize_source
 
 data rust_token_kw_fn: Symbol = rust_token_kw_fn
 data rust_token_ident: Symbol = rust_token_ident
@@ -788,8 +789,11 @@ fn rust_named_edge(name: Symbol, target: Node) -> Edge {
   Edge { label: Named { name: name }, target: target }
 }
 
-// T-10 `coercion_candidates_from_target_model` (06_translate.dag) wraps this Conj as one
-// closed candidate-set root; find_witness enumerates inside the root — not per-child candidates here.
+// Declared-inhabitant Conj root for `target_model_edge_declared_inhabitants`. T-10 staging
+// (`coercion_candidates_from_target_model`) passes this whole Conj as one aggregate
+// `CandidateSet.candidates` entry — not a flat List of per-primitive nodes. find_witness
+// enumeration inside the root is forward work (W-T-10). Coercion fixture pins i32 via
+// `TargetDeclaredPriority` on `rust_inhabitant_i32_node`, not via inhabitants-root walk.
 fn rust_declared_inhabitants_root() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -1049,14 +1053,52 @@ fn rust_language_model_canonical_symbols() -> Set<Symbol> {
   }
 }
 
+fn rust_primitive_fact_bundle(facts_node: Node) -> PrimitiveFactBundle {
+  PrimitiveFactBundle {
+    substrate_carrier: facts_node,
+    spec_facts: facts_node
+  }
+}
+
+fn rust_model_core_wave1() -> ModelCore {
+  ModelCore {
+    primitives: [
+      rust_primitive_fact_bundle(facts_node: rust_integer_facts_node(facts: rust_facts_i8)),
+      rust_primitive_fact_bundle(facts_node: rust_integer_facts_node(facts: rust_facts_i16)),
+      rust_primitive_fact_bundle(facts_node: rust_integer_facts_node(facts: rust_facts_i32)),
+      rust_primitive_fact_bundle(facts_node: rust_integer_facts_node(facts: rust_facts_i64)),
+      rust_primitive_fact_bundle(facts_node: rust_integer_facts_node(facts: rust_facts_i128)),
+      rust_primitive_fact_bundle(facts_node: rust_integer_facts_node(facts: rust_facts_u8)),
+      rust_primitive_fact_bundle(facts_node: rust_integer_facts_node(facts: rust_facts_u16)),
+      rust_primitive_fact_bundle(facts_node: rust_integer_facts_node(facts: rust_facts_u32)),
+      rust_primitive_fact_bundle(facts_node: rust_integer_facts_node(facts: rust_facts_u64)),
+      rust_primitive_fact_bundle(facts_node: rust_integer_facts_node(facts: rust_facts_u128)),
+      rust_primitive_fact_bundle(facts_node: rust_integer_facts_node(facts: rust_facts_isize)),
+      rust_primitive_fact_bundle(facts_node: rust_integer_facts_node(facts: rust_facts_usize)),
+      rust_primitive_fact_bundle(facts_node: rust_float_facts_node(facts: rust_facts_f32)),
+      rust_primitive_fact_bundle(facts_node: rust_float_facts_node(facts: rust_facts_f64)),
+      rust_primitive_fact_bundle(facts_node: rust_noninteger_facts_node(facts: rust_facts_bool)),
+      rust_primitive_fact_bundle(facts_node: rust_noninteger_facts_node(facts: rust_facts_char)),
+      rust_primitive_fact_bundle(facts_node: rust_noninteger_facts_node(facts: rust_facts_str)),
+      rust_primitive_fact_bundle(facts_node: rust_noninteger_facts_node(facts: rust_facts_unit)),
+      rust_primitive_fact_bundle(facts_node: rust_noninteger_facts_node(facts: rust_facts_never))
+    ],
+    inhabitance: [],
+    laws: [],
+    effects: EffectSemanticsDecl { operations: [] },
+    partiality: PartialitySemanticsDecl { operations: [] }
+  }
+}
+
 fn rust_language_model_wave1() -> RustLanguageModel {
+  let _integer_catalog = rust_integer_facts_catalog
+  let _float_catalog = rust_float_facts_catalog
+  let _noninteger_catalog = rust_noninteger_facts_catalog
   RustLanguageModel {
     lex: rust_wave1_lex(),
     grammar: rust_wave1_grammar(),
     language_identity: rust_language_model_surface_id,
     canonical_symbols: rust_language_model_canonical_symbols(),
-    integer_facts_catalog: rust_integer_facts_catalog,
-    float_facts_catalog: rust_float_facts_catalog,
-    noninteger_facts_catalog: rust_noninteger_facts_catalog
+    core: rust_model_core_wave1()
   }
 }
