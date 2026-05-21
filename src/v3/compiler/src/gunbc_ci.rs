@@ -483,40 +483,35 @@ mod tests {
         }
     }
 
-    fn affected_set_subsumption_row_fixture() -> DissolutionSubsumptionRuntimeRow {
+    fn demo_mechanical_subsumption_row_fixture() -> DissolutionSubsumptionRuntimeRow {
         DissolutionSubsumptionRuntimeRow {
-            root_fix: diff_id("affected_set_irt1_frontier_root_fix"),
+            root_fix: diff_id("demo_mechanical_root_fix"),
             subsumed_fixes: BTreeSet::from([
-                diff_id("affected_set_hash_receipt_leaf_fix"),
-                diff_id("affected_set_boundary_receipt_leaf_fix"),
-                diff_id("affected_set_dimension_receipt_leaf_fix"),
-                diff_id("affected_set_propagation_receipt_leaf_fix"),
-                diff_id("affected_set_frontier_receipt_leaf_fix"),
+                diff_id("demo_mechanical_leaf_fix_a"),
+                diff_id("demo_mechanical_leaf_fix_b"),
+                diff_id("demo_mechanical_leaf_fix_c"),
             ]),
             verification: SubsumptionVerificationRuntime::MechanicalReverification {
-                test_claim: test_claim_id("affected_set_irt1_mechanical_reverification_claim"),
+                test_claim: test_claim_id("demo_mechanical_reverification_claim"),
             },
         }
     }
 
-    fn producer_stage_subsumption_row_fixture() -> DissolutionSubsumptionRuntimeRow {
+    fn demo_producer_stage_subsumption_row_fixture() -> DissolutionSubsumptionRuntimeRow {
         DissolutionSubsumptionRuntimeRow {
-            root_fix: diff_id("concept_home_rewrite_root_fix"),
-            subsumed_fixes: BTreeSet::from([
-                diff_id("wrong_home_alias_leaf_fix"),
-                diff_id("duplicate_home_leaf_fix"),
-            ]),
+            root_fix: diff_id("demo_producer_stage_root_fix"),
+            subsumed_fixes: BTreeSet::from([diff_id("demo_producer_stage_leaf_fix")]),
             verification: SubsumptionVerificationRuntime::ProducerStageDerivation {
-                derivation_path: vec![producer_stage_id("concept_home_producer_stage")],
+                derivation_path: vec![producer_stage_id("demo_producer_stage")],
             },
         }
     }
 
-    fn successful_affected_set_reverification() -> MechanicalReverificationRun {
-        let row = affected_set_subsumption_row_fixture();
+    fn successful_demo_reverification() -> MechanicalReverificationRun {
+        let row = demo_mechanical_subsumption_row_fixture();
         MechanicalReverificationRun {
-            test_claim: test_claim_id("affected_set_irt1_mechanical_reverification_claim"),
-            applied_root_fix: diff_id("affected_set_irt1_frontier_root_fix"),
+            test_claim: test_claim_id("demo_mechanical_reverification_claim"),
+            applied_root_fix: diff_id("demo_mechanical_root_fix"),
             findings_before: row.subsumed_fixes,
             findings_after: BTreeSet::new(),
         }
@@ -758,36 +753,36 @@ mod tests {
 
     #[test]
     fn mechanical_row_fixture_uses_nominal_runtime_ids() {
-        let row = affected_set_subsumption_row_fixture();
+        let row = demo_mechanical_subsumption_row_fixture();
         let SubsumptionVerificationRuntime::MechanicalReverification { test_claim } =
             &row.verification
         else {
-            panic!("affected-set subsumption row must use MechanicalReverification");
+            panic!("demo subsumption row must use MechanicalReverification");
         };
         assert_eq!(
             test_claim,
-            &test_claim_id("affected_set_irt1_mechanical_reverification_claim")
+            &test_claim_id("demo_mechanical_reverification_claim")
         );
         assert!(row
             .subsumed_fixes
-            .contains(&diff_id("affected_set_hash_receipt_leaf_fix")));
+            .contains(&diff_id("demo_mechanical_leaf_fix_a")));
     }
 
     #[test]
     fn producer_stage_rows_preserve_derivation_path() {
-        let row = producer_stage_subsumption_row_fixture();
+        let row = demo_producer_stage_subsumption_row_fixture();
         assert_eq!(
             row.verification,
             SubsumptionVerificationRuntime::ProducerStageDerivation {
-                derivation_path: vec![producer_stage_id("concept_home_producer_stage")]
+                derivation_path: vec![producer_stage_id("demo_producer_stage")]
             }
         );
     }
 
     #[test]
     fn mechanical_reverification_accepts_when_subsumed_fixes_clear() {
-        let row = affected_set_subsumption_row_fixture();
-        let run = successful_affected_set_reverification();
+        let row = demo_mechanical_subsumption_row_fixture();
+        let run = successful_demo_reverification();
         assert_eq!(verify_mechanical_reverification(&row, &run), Ok(()));
         assert_eq!(
             mechanical_reverification_verdict(&row, &run),
@@ -797,15 +792,15 @@ mod tests {
 
     #[test]
     fn mechanical_reverification_rejects_surviving_subsumed_fix() {
-        let row = affected_set_subsumption_row_fixture();
-        let mut run = successful_affected_set_reverification();
+        let row = demo_mechanical_subsumption_row_fixture();
+        let mut run = successful_demo_reverification();
         run.findings_after
-            .insert(diff_id("affected_set_hash_receipt_leaf_fix"));
+            .insert(diff_id("demo_mechanical_leaf_fix_a"));
         assert_eq!(
             verify_mechanical_reverification(&row, &run),
             Err(
                 MechanicalReverificationError::SubsumedFixStillPresentAfter {
-                    fix: diff_id("affected_set_hash_receipt_leaf_fix")
+                    fix: diff_id("demo_mechanical_leaf_fix_a")
                 }
             )
         );
@@ -813,7 +808,7 @@ mod tests {
             mechanical_reverification_verdict(&row, &run),
             MechanicalReverificationVerdict::NotVerified {
                 diagnostic: MechanicalReverificationError::SubsumedFixStillPresentAfter {
-                    fix: diff_id("affected_set_hash_receipt_leaf_fix")
+                    fix: diff_id("demo_mechanical_leaf_fix_a")
                 }
             }
         );
@@ -821,21 +816,21 @@ mod tests {
 
     #[test]
     fn mechanical_reverification_rejects_unobserved_subsumed_fix() {
-        let row = affected_set_subsumption_row_fixture();
-        let mut run = successful_affected_set_reverification();
+        let row = demo_mechanical_subsumption_row_fixture();
+        let mut run = successful_demo_reverification();
         run.findings_before
-            .remove(&diff_id("affected_set_frontier_receipt_leaf_fix"));
+            .remove(&diff_id("demo_mechanical_leaf_fix_c"));
         assert_eq!(
             verify_mechanical_reverification(&row, &run),
             Err(MechanicalReverificationError::SubsumedFixMissingBefore {
-                fix: diff_id("affected_set_frontier_receipt_leaf_fix")
+                fix: diff_id("demo_mechanical_leaf_fix_c")
             })
         );
         assert_eq!(
             mechanical_reverification_verdict(&row, &run),
             MechanicalReverificationVerdict::Unverifiable {
                 diagnostic: MechanicalReverificationError::SubsumedFixMissingBefore {
-                    fix: diff_id("affected_set_frontier_receipt_leaf_fix")
+                    fix: diff_id("demo_mechanical_leaf_fix_c")
                 }
             }
         );
@@ -843,23 +838,23 @@ mod tests {
 
     #[test]
     fn mechanical_reverification_rejects_wrong_claim_or_root() {
-        let row = affected_set_subsumption_row_fixture();
-        let mut wrong_claim = successful_affected_set_reverification();
+        let row = demo_mechanical_subsumption_row_fixture();
+        let mut wrong_claim = successful_demo_reverification();
         wrong_claim.test_claim = test_claim_id("other_claim");
         assert_eq!(
             verify_mechanical_reverification(&row, &wrong_claim),
             Err(MechanicalReverificationError::TestClaimMismatch {
-                expected: test_claim_id("affected_set_irt1_mechanical_reverification_claim"),
+                expected: test_claim_id("demo_mechanical_reverification_claim"),
                 observed: test_claim_id("other_claim"),
             })
         );
 
-        let mut wrong_root = successful_affected_set_reverification();
+        let mut wrong_root = successful_demo_reverification();
         wrong_root.applied_root_fix = diff_id("other_root");
         assert_eq!(
             verify_mechanical_reverification(&row, &wrong_root),
             Err(MechanicalReverificationError::RootFixMismatch {
-                expected: diff_id("affected_set_irt1_frontier_root_fix"),
+                expected: diff_id("demo_mechanical_root_fix"),
                 observed: diff_id("other_root"),
             })
         );
@@ -867,11 +862,11 @@ mod tests {
 
     #[test]
     fn mechanical_reverification_rejects_producer_stage_rows() {
-        let row = producer_stage_subsumption_row_fixture();
+        let row = demo_producer_stage_subsumption_row_fixture();
         let run = MechanicalReverificationRun {
-            test_claim: test_claim_id("concept_home_rewrite_claim"),
-            applied_root_fix: diff_id("concept_home_rewrite_root_fix"),
-            findings_before: BTreeSet::from([diff_id("wrong_home_alias_leaf_fix")]),
+            test_claim: test_claim_id("demo_producer_stage_claim"),
+            applied_root_fix: diff_id("demo_producer_stage_root_fix"),
+            findings_before: BTreeSet::from([diff_id("demo_producer_stage_leaf_fix")]),
             findings_after: BTreeSet::new(),
         };
         assert_eq!(
