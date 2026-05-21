@@ -51,7 +51,7 @@ Closed identifiers are **not** modeled as free `String` in substrate: **`LensIdV
 | `idempotency` | `Idempotency` | `v4.lens.idempotency` | |
 | `provenance` | `Provenance` | `v4.lens.ownership` | structural-readers batch; module name = ownership.dag today. |
 | `unused_parameters` | `UnusedParameters` | `v4.lens.unused_parameters` | |
-| `structural_resolution` | `StructuralResolution` | *(TBD v4 module)* | placeholder — ratify module path before impl. |
+| `structural_resolution` | `StructuralResolution` | `v4.lens.structural_resolution` | T-13 mirror — InferredTree + dependency projection. |
 
 **Substrate home-of-record (P2-staging — INVARIANTS §P2 / Practice 5):** **`src/v4/lens/registry.dag`** is the **canonical `.dag` surface** for closed rows: **`lens_id: LensIdV0`** (M4 closed set) plus **`module_path: LensModulePathV0`** as `Bound { path: … }` vs `Unbound`. A **landed** compiler **single authority** in the §P2 sense (declaration + realization + **generated** consumer) **does not exist yet** — same staging posture as `src/v4/std/fact_density.dag` until mechanical read; the paired **`v4_lens_registry_dag_smoke_test.rs`** receipt is **parse + inference cleanliness only** (INVARIANTS §P2 staging). The §3 markdown table is a **human mirror**; amend the `.dag` first, then align this table on operator-signed pin revision. Rows whose ratified v4 module is not yet fixed use **`Unbound`** in the substrate (same intent as *(TBD v4 module)* in the table); **never** encode that state as a fake `v4.lens.*` string or other string sentinel inside `path`.
 

@@ -1,0 +1,204 @@
+// src/v4/lens/structural_resolution.dag
+//
+// Scope: structural resolution lens — unresolved symbols, dangling bindings,
+//        unbound references projected from InferredTree + dependency graph.
+// Anchor: https://en.wikipedia.org/wiki/Name_resolution_(programming_languages)
+//
+// Reads T-8 resolve binding facts already carried on InferredTree and classifies
+// BindsTo / module / bootstrap dependency projections. Does NOT perform
+// resolution (resolve stage owns that). Practice 11: one mechanism — dependency
+// lens + infer lookup witnesses; no parallel resolution substrate.
+//
+// Prelude / monomorphism carve-out: BootstrapDependsOn and ModuleDependsOn
+// edges are PreludeCarveOut (canonical prelude reservation), not user-range
+// binding failures.
+//
+// Owns:
+//   - lens read: (InferredTree, List<DependencyView>) -> Witness<StructuralResolutionFact>
+//
+// Consumes:
+//   - compiler/infer, compiler/resolve (reason symbols only)
+//   - std/dependency, std/node, std/witness
+//
+// Status: filled — registry T-23 / T-13 mirror
+// Brief: r4-lane-a-lens-interface-freeze-pin §3 structural_resolution row
+
+
+module v4.lens.structural_resolution
+
+import v4.compiler.infer {
+  InferredFacts,
+  InferredTree,
+  infer_facts_lookup_miss
+}
+import v4.compiler.resolve {
+  resolve_reason_unbound_symbol
+}
+import v4.std.dependency {
+  BootstrapDependsOn,
+  BindsTo,
+  DependencyView,
+  ModuleDependsOn,
+  dependency_lens
+}
+import v4.std.node { Node }
+import v4.std.witness { Holds, Violates, Witness }
+
+// 🟢 projection carrier — Practice 11: binding resolution status is read from
+// infer witnesses on dependency endpoints, not a second resolution graph.
+type StructuralResolutionStatus
+  = BindingResolved
+  | UnboundSymbolAtUse
+  | FactsLookupMiss
+  | PreludeCarveOut
+
+type StructuralResolutionDependencyFact {
+  at: Node
+  dependency: DependencyView
+  source_facts: Witness<InferredFacts>
+  dependent_facts: Witness<InferredFacts>
+  status: StructuralResolutionStatus
+}
+
+type StructuralResolutionFact {
+  dependencies: List<StructuralResolutionDependencyFact>
+}
+
+fn inferred_facts_for_node(tree: InferredTree, node: Node) -> Witness<InferredFacts> {
+  tree.facts.lookup(node)
+}
+
+fn witness_reason_is(w: Witness<InferredFacts>, reason: Symbol) -> Bool {
+  match w {
+    Violates { diagnostic: d } => d.reason == reason
+    Holds { value: _ } => false
+  }
+}
+
+fn status_for_binding_facts(dependent_facts: Witness<InferredFacts>) -> StructuralResolutionStatus {
+  if witness_reason_is(w: dependent_facts, reason: resolve_reason_unbound_symbol) {
+    UnboundSymbolAtUse
+  } else if witness_reason_is(w: dependent_facts, reason: infer_facts_lookup_miss) {
+    FactsLookupMiss
+  } else {
+    match dependent_facts {
+      Holds { value: _ } => BindingResolved
+      Violates { diagnostic: _ } => FactsLookupMiss
+    }
+  }
+}
+
+fn status_for_dependency(
+  view: DependencyView,
+  dependent_facts: Witness<InferredFacts>
+) -> StructuralResolutionStatus {
+  match view.kind {
+    BootstrapDependsOn => PreludeCarveOut
+    ModuleDependsOn => PreludeCarveOut
+    BindsTo => status_for_binding_facts(dependent_facts: dependent_facts)
+    _ => BindingResolved
+  }
+}
+
+fn dependency_fact(
+  tree: InferredTree,
+  view: DependencyView
+) -> StructuralResolutionDependencyFact {
+  StructuralResolutionDependencyFact {
+    at: view.usage_site,
+    dependency: view,
+    source_facts: inferred_facts_for_node(tree: tree, node: view.source),
+    dependent_facts: inferred_facts_for_node(tree: tree, node: view.dependent),
+    status: status_for_dependency(
+      view: view,
+      dependent_facts: inferred_facts_for_node(tree: tree, node: view.dependent)
+    )
+  }
+}
+
+fn fact_from_dependencies(
+  tree: InferredTree,
+  dependencies: List<DependencyView>
+) -> StructuralResolutionFact {
+  StructuralResolutionFact {
+    dependencies: fold(dependencies, init: [], f: fn(acc, view) {
+      list_push(acc, dependency_fact(tree: tree, view: view))
+    })
+  }
+}
+
+fn fact(tree: InferredTree, dependencies: List<DependencyView>) -> StructuralResolutionFact {
+  fact_from_dependencies(tree: tree, dependencies: dependencies)
+}
+
+fn witness(tree: InferredTree, dependencies: List<DependencyView>) -> Witness<StructuralResolutionFact> {
+  Holds {
+    value: fact(tree: tree, dependencies: dependencies)
+  }
+}
+
+fn at(tree: InferredTree) -> Witness<StructuralResolutionFact> {
+  witness(tree: tree, dependencies: dependency_lens(root: tree.root))
+}
+
+fn status_eq(a: StructuralResolutionStatus, b: StructuralResolutionStatus) -> Bool {
+  match a {
+    BindingResolved => match b {
+      BindingResolved => true
+      _ => false
+    }
+    UnboundSymbolAtUse => match b {
+      UnboundSymbolAtUse => true
+      _ => false
+    }
+    FactsLookupMiss => match b {
+      FactsLookupMiss => true
+      _ => false
+    }
+    PreludeCarveOut => match b {
+      PreludeCarveOut => true
+      _ => false
+    }
+  }
+}
+
+fn dependency_fact_eq(
+  a: StructuralResolutionDependencyFact,
+  b: StructuralResolutionDependencyFact
+) -> Bool {
+  (a.at == b.at)
+    && (a.dependency == b.dependency)
+    && (a.source_facts == b.source_facts)
+    && (a.dependent_facts == b.dependent_facts)
+    && status_eq(a: a.status, b: b.status)
+}
+
+fn dependency_count(
+  xs: List<StructuralResolutionDependencyFact>,
+  item: StructuralResolutionDependencyFact
+) -> Int {
+  fold(xs, init: 0, f: fn(acc, candidate) {
+    if dependency_fact_eq(a: candidate, b: item) {
+      acc + 1
+    } else {
+      acc
+    }
+  })
+}
+
+fn dependency_facts_eq(
+  left: List<StructuralResolutionDependencyFact>,
+  right: List<StructuralResolutionDependencyFact>
+) -> Bool {
+  if count(left) != count(right) {
+    false
+  } else {
+    fold(left, init: true, f: fn(acc, item) {
+      acc && (dependency_count(xs: left, item: item) == dependency_count(xs: right, item: item))
+    })
+  }
+}
+
+fn fact_eq(a: StructuralResolutionFact, b: StructuralResolutionFact) -> Bool {
+  dependency_facts_eq(left: a.dependencies, right: b.dependencies)
+}

@@ -58,5 +58,5 @@ data lens_registry_v0_unused_parameters: LensRegistryEntryV0 = {
 
 data lens_registry_v0_structural_resolution: LensRegistryEntryV0 = {
   lens_id: StructuralResolution
-  module_path: Unbound
+  module_path: Bound { path: "v4.lens.structural_resolution" }
 }

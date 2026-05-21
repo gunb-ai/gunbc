@@ -1,0 +1,115 @@
+// src/v4/test/claim/lens_structural_resolution/binds_to_resolved.dag
+// Scope: T-13 worked claim — BindsTo with held infer facts projects BindingResolved.
+// Owns: binds_to_resolved_claim.
+// Consumes: lens structural_resolution, compiler infer, std dependency, std node.
+// Status: scaffold — compile-only until generated claim execution.
+
+module v4.test.claim.lens_structural_resolution.binds_to_resolved
+
+import v4.compiler.infer { AlgebraRef, InferredFacts, InferredTree }
+import v4.lens.structural_resolution {
+  BindingResolved,
+  StructuralResolutionDependencyFact,
+  StructuralResolutionFact,
+  fact_eq,
+  witness
+}
+import v4.std.cardinality { RankingDimension, TerminationProof }
+import v4.std.collection { Map }
+import v4.std.dependency { BindsTo, DependencyView }
+import v4.std.node { Atom, Edge, Hash, Named, Node, Symbol, TypeNode }
+import v4.std.witness { Holds, Witness }
+
+data sr_root_symbol: Symbol = sr_root_symbol
+data sr_child_symbol: Symbol = sr_child_symbol
+data sr_edge_symbol: Symbol = sr_edge_symbol
+data sr_type_symbol: Symbol = sr_type_symbol
+data sr_algebra_symbol: Symbol = sr_algebra_symbol
+data sr_algebra_witness_symbol: Symbol = sr_algebra_witness_symbol
+data sr_descent_symbol: Symbol = sr_descent_symbol
+data sr_claim_hash: Hash = sr_claim_hash
+
+fn sr_claim_node(s: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: s } },
+    children: []
+  }
+}
+
+data sr_child: Node = sr_claim_node(s: sr_child_symbol)
+
+data sr_root: Node = Node {
+  kind: TypeNode { connective: Atom { identity: sr_root_symbol } },
+  children: [
+    Edge { label: Named { name: sr_edge_symbol }, target: sr_child }
+  ]
+}
+
+data sr_dependency: DependencyView = DependencyView {
+  source: sr_root,
+  dependent: sr_child,
+  kind: BindsTo,
+  usage_site: sr_child
+}
+
+fn sr_claim_facts() -> InferredFacts {
+  InferredFacts {
+    resolved_type: sr_claim_node(s: sr_type_symbol),
+    inhabits: AlgebraRef {
+      algebra: sr_claim_node(s: sr_algebra_symbol),
+      witness: sr_claim_node(s: sr_algebra_witness_symbol)
+    },
+    descent: TerminationProof {
+      non_increasing: [],
+      strict: RankingDimension { measured: sr_descent_symbol }
+    }
+  }
+}
+
+fn sr_claim_fact_map(facts: InferredFacts) -> Map<Node, InferredFacts> {
+  Map {
+    lookup: fn(_) {
+      Holds { value: facts }
+    }
+  }
+}
+
+fn sr_claim_tree() -> InferredTree {
+  let facts = sr_claim_facts()
+  InferredTree {
+    root: sr_root,
+    facts: sr_claim_fact_map(facts: facts)
+  }
+}
+
+type LensStructuralResolutionClaim {
+  input: InferredTree
+  expected: StructuralResolutionFact
+  actual: Witness<StructuralResolutionFact>
+}
+
+data binds_to_resolved_claim: LensStructuralResolutionClaim = LensStructuralResolutionClaim {
+  input: sr_claim_tree(),
+  expected: StructuralResolutionFact {
+    dependencies: [
+      StructuralResolutionDependencyFact {
+        at: sr_child,
+        dependency: sr_dependency,
+        source_facts: Holds { value: sr_claim_facts() },
+        dependent_facts: Holds { value: sr_claim_facts() },
+        status: BindingResolved
+      }
+    ]
+  },
+  actual: witness(tree: sr_claim_tree(), dependencies: [sr_dependency])
+}
+
+fn binds_to_resolved_claim_holds() -> Bool {
+  match binds_to_resolved_claim.actual {
+    Holds { value: actual } =>
+      fact_eq(a: actual, b: binds_to_resolved_claim.expected)
+    _ => false
+  }
+}
+
+data binds_to_resolved_claim_passes: Bool = binds_to_resolved_claim_holds()

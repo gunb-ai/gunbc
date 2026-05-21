@@ -1,0 +1,142 @@
+// src/v4/test/claim/lens_structural_resolution/unbound_symbol_at_use.dag
+// Scope: T-13 worked claim — BindsTo + resolve unbound witness projects UnboundSymbolAtUse.
+// Owns: unbound_symbol_at_use_claim.
+// Consumes: lens structural_resolution, compiler infer, compiler resolve, std dependency, std node.
+// Status: scaffold — compile-only until generated claim execution.
+
+module v4.test.claim.lens_structural_resolution.unbound_symbol_at_use
+
+import v4.compiler.infer { AlgebraRef, InferredFacts, InferredTree }
+import v4.compiler.resolve {
+  resolve_reason_unbound_symbol
+}
+import v4.lens.structural_resolution {
+  StructuralResolutionDependencyFact,
+  StructuralResolutionFact,
+  UnboundSymbolAtUse,
+  fact_eq,
+  witness
+}
+import v4.std.cardinality { RankingDimension, TerminationProof }
+import v4.std.collection { Map }
+import v4.std.dependency { BindsTo, DependencyView }
+import v4.std.diagnostic {
+  Diagnostic,
+  ExternalContractUnknown,
+  NodeLocus,
+  Unavailable
+}
+import v4.std.node { Atom, Edge, Hash, Named, Node, Symbol, TypeNode }
+import v4.std.witness { Holds, Violates, Witness }
+
+data sr_unbound_root_symbol: Symbol = sr_unbound_root_symbol
+data sr_unbound_child_symbol: Symbol = sr_unbound_child_symbol
+data sr_unbound_edge_symbol: Symbol = sr_unbound_edge_symbol
+data sr_unbound_type_symbol: Symbol = sr_unbound_type_symbol
+data sr_unbound_algebra_symbol: Symbol = sr_unbound_algebra_symbol
+data sr_unbound_algebra_witness_symbol: Symbol = sr_unbound_algebra_witness_symbol
+data sr_unbound_descent_symbol: Symbol = sr_unbound_descent_symbol
+data sr_unbound_claim_hash: Hash = sr_unbound_claim_hash
+
+fn sr_unbound_claim_node(s: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: s } },
+    children: []
+  }
+}
+
+data sr_unbound_child: Node = sr_unbound_claim_node(s: sr_unbound_child_symbol)
+
+data sr_unbound_root: Node = Node {
+  kind: TypeNode { connective: Atom { identity: sr_unbound_root_symbol } },
+  children: [
+    Edge { label: Named { name: sr_unbound_edge_symbol }, target: sr_unbound_child }
+  ]
+}
+
+data sr_unbound_dependency: DependencyView = DependencyView {
+  source: sr_unbound_root,
+  dependent: sr_unbound_child,
+  kind: BindsTo,
+  usage_site: sr_unbound_child
+}
+
+fn sr_unbound_resolved_facts() -> InferredFacts {
+  InferredFacts {
+    resolved_type: sr_unbound_claim_node(s: sr_unbound_type_symbol),
+    inhabits: AlgebraRef {
+      algebra: sr_unbound_claim_node(s: sr_unbound_algebra_symbol),
+      witness: sr_unbound_claim_node(s: sr_unbound_algebra_witness_symbol)
+    },
+    descent: TerminationProof {
+      non_increasing: [],
+      strict: RankingDimension { measured: sr_unbound_descent_symbol }
+    }
+  }
+}
+
+fn sr_unbound_symbol_diagnostic(n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: resolve_reason_unbound_symbol,
+    at: NodeLocus { node: n },
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn sr_unbound_dependent_witness() -> Witness<InferredFacts> {
+  Violates {
+    diagnostic: sr_unbound_symbol_diagnostic(n: sr_unbound_child)
+  }
+}
+
+fn sr_unbound_claim_fact_map() -> Map<Node, InferredFacts> {
+  let resolved = sr_unbound_resolved_facts()
+  Map {
+    lookup: fn(key) {
+      if key == sr_unbound_child {
+        sr_unbound_dependent_witness()
+      } else {
+        Holds { value: resolved }
+      }
+    }
+  }
+}
+
+fn sr_unbound_claim_tree() -> InferredTree {
+  InferredTree {
+    root: sr_unbound_root,
+    facts: sr_unbound_claim_fact_map()
+  }
+}
+
+type LensStructuralResolutionClaim {
+  input: InferredTree
+  expected: StructuralResolutionFact
+  actual: Witness<StructuralResolutionFact>
+}
+
+data unbound_symbol_at_use_claim: LensStructuralResolutionClaim = LensStructuralResolutionClaim {
+  input: sr_unbound_claim_tree(),
+  expected: StructuralResolutionFact {
+    dependencies: [
+      StructuralResolutionDependencyFact {
+        at: sr_unbound_child,
+        dependency: sr_unbound_dependency,
+        source_facts: Holds { value: sr_unbound_resolved_facts() },
+        dependent_facts: sr_unbound_dependent_witness(),
+        status: UnboundSymbolAtUse
+      }
+    ]
+  },
+  actual: witness(tree: sr_unbound_claim_tree(), dependencies: [sr_unbound_dependency])
+}
+
+fn unbound_symbol_at_use_claim_holds() -> Bool {
+  match unbound_symbol_at_use_claim.actual {
+    Holds { value: actual } =>
+      fact_eq(a: actual, b: unbound_symbol_at_use_claim.expected)
+    _ => false
+  }
+}
+
+data unbound_symbol_at_use_claim_passes: Bool = unbound_symbol_at_use_claim_holds()
