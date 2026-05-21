@@ -92,11 +92,11 @@ fn parse_segment_tokens(seg: String) -> PathSegmentTokensResult {
     }
     let prefix = match before_and_rest |> first {
       Some { value: p } => p
-      None => ""
+      None => return MalformedPathSegment { segment: seg, reason: "internal: missing prefix after opening-brace split" }
     }
     let after_open = match before_and_rest |> skip(1) |> first {
       Some { value: r } => r
-      None => ""
+      None => return MalformedPathSegment { segment: seg, reason: "internal: missing tail after opening-brace split" }
     }
     let name_and_suffix = after_open |> split(delimiter: "}")
     if prefix |> contains("}") || count(name_and_suffix) != 2 {
@@ -104,11 +104,11 @@ fn parse_segment_tokens(seg: String) -> PathSegmentTokensResult {
     }
     let param_name = match name_and_suffix |> first {
       Some { value: p } => p
-      None => ""
+      None => return MalformedPathSegment { segment: seg, reason: "internal: missing parameter name after closing-brace split" }
     }
     let suffix = match name_and_suffix |> skip(1) |> first {
       Some { value: s } => s
-      None => ""
+      None => return MalformedPathSegment { segment: seg, reason: "internal: missing suffix after closing-brace split" }
     }
     let prefix_tokens = if prefix != "" {
       [LiteralToken { text: prefix }]
