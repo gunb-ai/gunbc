@@ -1,4 +1,8 @@
 // extdeps/cloud/gcp/errors.dag -- GCP API error envelope shape.
+//
+// Spec: https://cloud.google.com/apis/design/errors#http_mapping
+// (Google APIs canonical RPC-status envelope; OAuth2 token endpoints
+// emit RFC 6749 `{error, error_description}` instead — not modeled here.)
 
 module extdeps.cloud.gcp.errors
 

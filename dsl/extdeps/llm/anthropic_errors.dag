@@ -1,4 +1,7 @@
 // extdeps/llm/anthropic_errors.dag -- Anthropic Messages API error envelope shape.
+//
+// Spec: https://docs.anthropic.com/en/api/errors
+// API version: 2023-06-01 (anthropic-version header)
 
 module extdeps.llm.anthropic_errors
 
