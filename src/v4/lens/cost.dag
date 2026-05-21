@@ -98,7 +98,7 @@ type ExponentialBase {
 
 // 🟢 coproduct dissolution — T-12-COST-CARRIER.
 type SymbolicCost
-  = ConstantCost { value: Int }
+  = ConstantCost { value: Nat }
   | LinearCost { variable: SizeVariable }
   | LogCost { variable: SizeVariable }
   | PolynomialCost { variable: SizeVariable, degree: PolynomialDegree }
@@ -135,16 +135,16 @@ type SymbolicCostFoldState {
   cost: SymbolicCost
 }
 
-fn constant_cost(value: Int) -> SymbolicCost {
+fn constant_cost(value: Nat) -> SymbolicCost {
   ConstantCost { value: value }
 }
 
 fn zero_cost() -> SymbolicCost {
-  constant_cost(value: 0)
+  constant_cost(value: Zero)
 }
 
 fn unit_cost() -> SymbolicCost {
-  constant_cost(value: 1)
+  constant_cost(value: Succ { prev: Zero })
 }
 
 fn nonzero_one() -> NonZeroNat {
@@ -247,11 +247,11 @@ fn cost_fold_init(n: Node) -> SymbolicCostFoldState {
 
 fn symbolic_sequential(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
   match a {
-    ConstantCost { value: 0 } => b
+    ConstantCost { value: Zero } => b
     UnknownCost { reason: _ } => a
     _ =>
       match b {
-        ConstantCost { value: 0 } => a
+        ConstantCost { value: Zero } => a
         UnknownCost { reason: _ } => b
         _ => SumCost { lhs: a, rhs: b }
       }
@@ -260,13 +260,13 @@ fn symbolic_sequential(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
 
 fn symbolic_product(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
   match a {
-    ConstantCost { value: 0 } => zero_cost()
-    ConstantCost { value: 1 } => b
+    ConstantCost { value: Zero } => zero_cost()
+    ConstantCost { value: Succ { prev: Zero } } => b
     UnknownCost { reason: _ } => a
     _ =>
       match b {
-        ConstantCost { value: 0 } => zero_cost()
-        ConstantCost { value: 1 } => a
+        ConstantCost { value: Zero } => zero_cost()
+        ConstantCost { value: Succ { prev: Zero } } => a
         UnknownCost { reason: _ } => b
         _ => ProductCost { lhs: a, rhs: b }
       }
@@ -275,10 +275,10 @@ fn symbolic_product(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
 
 fn symbolic_max(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
   match a {
-    ConstantCost { value: 0 } => b
+    ConstantCost { value: Zero } => b
     _ =>
       match b {
-        ConstantCost { value: 0 } => a
+        ConstantCost { value: Zero } => a
         _ =>
           if a == b {
             a
@@ -512,12 +512,12 @@ fn symbolic_cost_dominates(a: SymbolicCost, b: SymbolicCost) -> Bool {
   match a {
     ConstantCost { value: av } =>
       match b {
-        ConstantCost { value: bv } => av >= bv
+        ConstantCost { value: bv } => nat_dominates(a: av, b: bv)
         _ => false
       }
     _ =>
       match b {
-        ConstantCost { value: 0 } => true
+        ConstantCost { value: Zero } => true
         _ =>
           asymptotic_class_dominates(
             a: asymptotic_class_of_cost(cost: a),
@@ -641,7 +641,7 @@ fn cost_lattice_join(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
 
 data symbolic_cost_sequential_monoid: Monoid<SymbolicCost> = Monoid {
   semigroup: Semigroup { magma: Magma { op: symbolic_sequential } },
-  identity: ConstantCost { value: 0 }
+  identity: ConstantCost { value: Zero }
 }
 
 data symbolic_cost_lattice: BoundedLattice<SymbolicCost> = BoundedLattice {
@@ -650,7 +650,7 @@ data symbolic_cost_lattice: BoundedLattice<SymbolicCost> = BoundedLattice {
     join: cost_lattice_join
   },
   top: UnknownCost { reason: cost_lattice_top_reason },
-  bottom: ConstantCost { value: 0 }
+  bottom: ConstantCost { value: Zero }
 }
 
 data asymptotic_class_lattice: BoundedLattice<AsymptoticClass> = BoundedLattice {
