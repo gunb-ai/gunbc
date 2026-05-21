@@ -20,7 +20,7 @@ import v2.std.core {
   param_node_type_expr, param_node_default_value,
   authored_name_at, NewlineIndex, find_child_named,
   expr_var_name_at, expr_call_func_at, field_access_field_at,
-  param_node_name_at, resource_use_name_at, field_binding_name_at, field_node_name_at, field_node_type_expr, generic_param_name_at,
+  param_node_name_at, resource_use_name_at, field_binding_name_at, field_node_name_at, generic_param_name_at,
   LiteralValue,
   ExprData, NoExprData,
   ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall,
@@ -1685,7 +1685,7 @@ fn enum_derives(children: List<Node>) -> String {
 
 fn emit_enum_from_children(name: String, type_params: String, children: List<Node>, recursive_types: Set<String>, shared_types: Set<String>, env: TypeEnv, serde_policy: RustEnumWireSerde) -> String {
   let derives = enum_derives(children: children)
-  let variant_lines = children |> map(child => emit_variant_from_child(child: child, recursive_types: recursive_types, shared_types: shared_types, env: env, serde_policy: serde_policy))
+  let variant_lines = children |> map(child => emit_variant_from_child(child: child, enum_name: name, recursive_types: recursive_types, shared_types: shared_types, env: env, serde_policy: serde_policy))
   let variants_str = variant_lines |> join(separator: "\n")
   // Wire contract: serde_enum_tag is "" for StringVariant/AsAuthored,
   // a rename_all attribute for SnakeCase, or the default _variant tag.
@@ -1844,6 +1844,35 @@ fn variant_rename_validations_for_policy(children: List<Node>, env: TypeEnv, ser
     |> join(separator: "\n")
 }
 
+// Field "0" type from topo-resolved enum binding (TypeEnv authority), not item.children snapshot.
+fn enum_variant_field_type_node(env: TypeEnv, enum_name: String, variant_name: String, field_name: String, fallback: Node, source_indices: Map<String, NewlineIndex>) -> Node {
+  match lookup_type_by_name(env: env, name: enum_name) {
+    Some { value: enum_node } =>
+      match find_child_named(n: enum_node, name: variant_name, source_indices: source_indices) {
+        Some { value: variant } =>
+          match find_child_named(n: variant, name: field_name, source_indices: source_indices) {
+            Some { value: field } =>
+              if field.inferred != none { resolved_type(n: field) } else { fallback }
+            None => fallback
+          }
+        None => fallback
+      }
+    None => fallback
+  }
+}
+
+// Render generic application surface (`LocusAnchor<String>`) for enum variant payload slots.
+fn render_variant_payload_type(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
+  if n.connective == NoConnective && n.children |> count > 0 {
+    let tn = authored_name_at(source_indices: source_indices, node: n)
+    let args = n.children |> map(c => render_rust_type(n: child_type_node(ch: c), shared_types: shared_types, source_indices: source_indices))
+    let spec = language_spec(target: Rust)
+    concat(coerce_primitive_type(target: Rust, dag_name: tn), spec.type_arg_open, args |> join(separator: ", "), spec.type_arg_close)
+  } else {
+    render_rust_type(n: n, shared_types: shared_types, source_indices: source_indices)
+  }
+}
+
 // Single synthetic field "0" marks a positional sum-variant payload (parse authority).
 fn variant_is_synthetic_positional_payload(fields: List<Node>, source_indices: Map<String, NewlineIndex>) -> Bool {
   if fields |> count != 1 {
@@ -1856,7 +1885,7 @@ fn variant_is_synthetic_positional_payload(fields: List<Node>, source_indices: M
   }
 }
 
-fn emit_variant_from_child(child: Node, recursive_types: Set<String>, shared_types: Set<String>, env: TypeEnv, serde_policy: RustEnumWireSerde) -> String {
+fn emit_variant_from_child(child: Node, enum_name: String, recursive_types: Set<String>, shared_types: Set<String>, env: TypeEnv, serde_policy: RustEnumWireSerde) -> String {
   let child_text = authored_name(env: env, node: child)
   let rename_attr = wire_variant_rename_attr_for_policy(authored: child_text, policy: serde_policy)
   if child.children |> count == 0 {
@@ -1868,11 +1897,16 @@ fn emit_variant_from_child(child: Node, recursive_types: Set<String>, shared_typ
     if tuple_style {
       match child.children |> first {
         Some { value: f } =>
-          // Positional payload enum variants: render inferred payload type without
-          // shared Rc wrapping (values still get Rc at constructor/match sites).
-          let type_node = resolved_type(n: f)
+          let fallback = resolved_type(n: f)
+          let type_node = if positional_payload {
+            enum_variant_field_type_node(env: env, enum_name: enum_name, variant_name: child_text, field_name: "0", fallback: fallback, source_indices: env.source_indices)
+          } else { fallback }
           let ty_shared = if positional_payload { empty_set() } else { shared_types }
-          let ty = render_rust_type(n: type_node, shared_types: ty_shared, source_indices: env.source_indices)
+          let ty = if positional_payload {
+            render_variant_payload_type(n: type_node, shared_types: ty_shared, source_indices: env.source_indices)
+          } else {
+            render_rust_type(n: type_node, shared_types: ty_shared, source_indices: env.source_indices)
+          }
           let final_ty = if needs_box_wrapping(n: type_node, recursive_types: recursive_types, shared_types: ty_shared, source_indices: env.source_indices) {
             concat("Box<", ty, ">")
           } else { ty }
