@@ -9,10 +9,6 @@ pub use crate::v2_compiler_infer_types::{
     child_type_node, emit_map_has, extract_optional_inner_node,
 };
 use crate::v2_rt;
-use crate::v2_rt::rc_empty_set as empty_set;
-use crate::v2_rt::rc_set_insert as set_insert;
-use crate::v2_rt::rc_set_union as set_union;
-use crate::v2_rt::set_contains;
 use crate::v2_std_core::Cardinality::{CardOptional, Required};
 use crate::v2_std_core::CompilerDiagnostic::{FieldNotFound, NonExhaustiveMatch, VariantNotFound};
 use crate::v2_std_core::Connective::{Disj, NoConnective};
@@ -217,6 +213,9 @@ pub fn lookup_variant_in_type(
                         variant_name.clone(),
                         source_indices.clone(),
                     );
+                    let record_destructure = ((scrut_node.connective.clone() == Connective::Conj)
+                        && (authored_name_at(source_indices.clone(), &scrut_node).as_str()
+                            == variant_name.clone().as_str()));
                     let fallback = if (scrut_opt.clone()
                         && (variant_name.clone().as_str() == "Some".to_string().as_str()))
                     {
@@ -227,12 +226,16 @@ pub fn lookup_variant_in_type(
                         {
                             node_lookup_resolved(none_type())
                         } else {
-                            variant_not_found_result(
-                                &scrut_node,
-                                variant_name.clone(),
-                                module_name,
-                                source_indices.clone(),
-                            )
+                            if record_destructure {
+                                node_lookup_resolved(scrut_node.clone())
+                            } else {
+                                variant_not_found_result(
+                                    &scrut_node,
+                                    variant_name.clone(),
+                                    module_name,
+                                    source_indices.clone(),
+                                )
+                            }
                         }
                     };
                     match direct_match {

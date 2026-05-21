@@ -370,6 +370,43 @@ fn generic_single_param() {
     assert_no_diagnostics(&result);
 }
 
+/// Sum variants may carry positional generic type payloads (`NodeAt(LocusAnchor<T>)`);
+/// nested record patterns on instantiated generic sub-carriers must not report
+/// spurious `variant 'LocusAnchor' not found in type 'LocusAnchor'`.
+#[test]
+fn generic_variant_positional_payload_nested_record_pattern() {
+    let source = r#"module test.generic_locus_anchor
+
+type LocusAnchor<A> { at: A }
+
+type Locus
+  = Textual { file: String, extent: String }
+  | NodeAt(LocusAnchor<String>)
+  | PortAt(LocusAnchor<String>)
+
+fn node_at_at(x: Locus) -> String {
+  match x {
+    NodeAt(LocusAnchor { at: p }) => p
+    PortAt(LocusAnchor { at: p }) => p
+    Textual { file: f, extent: _ } => f
+  }
+}
+"#;
+    let result = compile_dag(source);
+    let diags = diagnostic_messages(&result);
+    for d in &diags {
+        eprintln!("  diag: {}", d);
+    }
+    assert_no_diagnostics(&result);
+    assert!(
+        !diags
+            .iter()
+            .any(|d| d.contains("variant 'LocusAnchor' not found")),
+        "expected no bogus VariantNotFound on generic sub-carrier, got: {:?}",
+        diags
+    );
+}
+
 // ── Match pattern binding tests ─────────────────────────────────────────
 
 #[test]
@@ -10168,7 +10205,7 @@ fn count_ownership_violations(
 
     for proof in result.ownership.iter() {
         let movable = build_movable_set(proof.clone());
-        for (name, _) in movable.iter() {
+        for name in movable.iter() {
             // The proof says this binding should move.
             // Check if the emitted code clones it instead.
             let clone_pattern = format!("{}.clone()", name);

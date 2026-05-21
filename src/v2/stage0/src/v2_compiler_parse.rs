@@ -16,10 +16,6 @@ pub use crate::v2_compiler_languages::{
     BodyKind, ItemForm, ItemFormKind, OperatorSpec, SyntaxSpec,
 };
 use crate::v2_rt;
-use crate::v2_rt::rc_empty_set as empty_set;
-use crate::v2_rt::rc_set_insert as set_insert;
-use crate::v2_rt::rc_set_union as set_union;
-use crate::v2_rt::set_contains;
 use crate::v2_std_core::BinOp::{
     Add, And, Div, Eq, Ge, Gt, Le, Lt, Mod, Mul, Ne, NullCoalesce, Or, Sub,
 };
@@ -49,7 +45,7 @@ pub use crate::v2_std_core::{
     arg_name_at, arg_value, authored_name_at, empty_intern_table, error_type, expr_call_func_at,
     expr_var_name_at, field_access_field_at, field_binding_pattern, field_node_cardinality,
     field_node_default_value, field_node_from_key, field_node_name_at, field_node_type_expr,
-    file_transport_node, import_node, intern, is_compiler_error, is_container_type,
+    file_transport_node, import_node, intern, is_compiler_error, is_container_type, kernel_span,
     leaf_node_with_span, local_transport_node, make_arg_node, make_arm_node, make_error_node,
     make_expr_error_node, make_expr_node, make_field_binding_node, make_field_init_node,
     make_field_node, make_interp_part_node, make_named_expr_node, make_param_node,
@@ -3303,7 +3299,8 @@ pub fn parse_type_body_after_eq(
                 let first_name = r.name.clone();
                 let first_name_span = r.span.clone();
                 let tokens = skip_newlines(r.tokens.clone());
-                if (tok_is_lbrace(tokens.clone().first().cloned())
+                if ((tok_is_lbrace(tokens.clone().first().cloned())
+                    || tok_is_lparen(tokens.clone().first().cloned()))
                     || tok_is_pipe(tokens.clone().first().cloned()))
                 {
                     {
@@ -4101,6 +4098,48 @@ pub fn parse_single_named_int(
     }
 }
 
+pub fn parse_positional_variant_type_fields(
+    tokens: Rc<Vec<Rc<Token>>>,
+    ctx: Rc<ParseContext>,
+) -> Rc<FieldsResult> {
+    let tokens = skip_newlines(tokens);
+    let r = parse_type_expr(&tokens, &ctx);
+    if has_err(r.err.clone()) {
+        return Rc::new(FieldsResult {
+            fields: Rc::new(vec![]),
+            tokens: r.tokens.clone(),
+            ctx: r.ctx.clone(),
+            err: r.err.clone(),
+        });
+    }
+    let field = make_field_node(
+        &"0".to_string(),
+        r.type_expr.clone(),
+        Cardinality::Required,
+        None,
+        None,
+        r.type_expr.clone().span.clone(),
+        kernel_span(&"0".to_string()),
+    );
+    match (*eat(&r.tokens, Rc::new(ExpectedToken::ExpectComma))).clone() {
+        EatResult::EatConsumed { token: comma_tok, tokens: __ec, .. } => Rc::new(FieldsResult {
+            fields: Rc::new(vec![]),
+            tokens: __ec,
+            ctx: r.ctx.clone(),
+            err: Some(parse_error(
+                "positional variant payload accepts a single type only (comma-separated fields not supported yet)".to_string(),
+                token_span(Some(comma_tok)),
+            )),
+        }),
+        EatResult::EatUnchanged { .. } => Rc::new(FieldsResult {
+            fields: Rc::new(vec![field]),
+            tokens: r.tokens.clone(),
+            ctx: r.ctx.clone(),
+            err: None,
+        }),
+    }
+}
+
 pub fn parse_variant_fields(
     tokens: &Rc<Vec<Rc<Token>>>,
     ctx: Rc<ParseContext>,
@@ -4154,18 +4193,64 @@ pub fn parse_variant_fields(
                 })
             }
             EatResult::EatUnchanged { tokens: __eu, .. } => {
-                let v = make_variant_node(
-                    &vname,
-                    Rc::new(vec![]),
-                    vname_span.clone(),
-                    vname_span.clone(),
-                );
-                Rc::new(VariantResult {
-                    variant: v,
-                    tokens: tokens.clone(),
-                    ctx: ctx,
-                    err: None,
-                })
+                match (*eat(&tokens, Rc::new(ExpectedToken::ExpectLParen))).clone() {
+                    EatResult::EatConsumed { tokens: __ec, .. } => {
+                        let r = parse_positional_variant_type_fields(__ec.clone(), ctx);
+                        if has_err(r.err.clone()) {
+                            return Rc::new(VariantResult {
+                                variant: make_variant_node(
+                                    &vname,
+                                    Rc::new(vec![]),
+                                    start_span.clone(),
+                                    vname_span.clone(),
+                                ),
+                                tokens: r.tokens.clone(),
+                                ctx: r.ctx.clone(),
+                                err: r.err.clone(),
+                            });
+                        }
+                        let r2 = expect(&r.tokens.clone(), &Rc::new(ExpectedToken::ExpectRParen));
+                        if has_err(r2.err.clone()) {
+                            return Rc::new(VariantResult {
+                                variant: make_variant_node(
+                                    &vname,
+                                    Rc::new(vec![]),
+                                    start_span.clone(),
+                                    vname_span.clone(),
+                                ),
+                                tokens: r2.tokens.clone(),
+                                ctx: r.ctx.clone(),
+                                err: r2.err.clone(),
+                            });
+                        }
+                        let v = make_variant_node(
+                            &vname,
+                            r.fields.clone(),
+                            start_span.clone(),
+                            vname_span.clone(),
+                        );
+                        Rc::new(VariantResult {
+                            variant: v,
+                            tokens: r2.tokens.clone(),
+                            ctx: r.ctx.clone(),
+                            err: None,
+                        })
+                    }
+                    EatResult::EatUnchanged { tokens: __eu2, .. } => {
+                        let v = make_variant_node(
+                            &vname,
+                            Rc::new(vec![]),
+                            vname_span.clone(),
+                            vname_span.clone(),
+                        );
+                        Rc::new(VariantResult {
+                            variant: v,
+                            tokens: tokens.clone(),
+                            ctx: ctx,
+                            err: None,
+                        })
+                    }
+                }
             }
         }
     }
@@ -12535,8 +12620,8 @@ pub fn parse_variant_pattern(
                     let fb = make_field_binding_node(
                         &"0".to_string(),
                         r.pattern.clone(),
-                        span.clone(),
-                        span.clone(),
+                        span,
+                        kernel_span(&"0".to_string()),
                     );
                     Rc::new(PatternResult {
                         pattern: Rc::new(MatchPattern::VariantPattern {
