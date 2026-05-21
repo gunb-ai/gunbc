@@ -142,7 +142,6 @@ fn dependency_fact(
   view: DependencyView
 ) -> StructuralResolutionDependencyFact {
   StructuralResolutionDependencyFact {
-    at: view.usage_site,
     dependency: view,
     source_facts: inferred_facts_for_node(tree: tree, node: view.source),
     dependent_facts: inferred_facts_for_node(tree: tree, node: view.dependent)
@@ -230,8 +229,7 @@ fn dependency_fact_eq(
   a: StructuralResolutionDependencyFact,
   b: StructuralResolutionDependencyFact
 ) -> Bool {
-  (a.at == b.at)
-    && (a.dependency == b.dependency)
+  (a.dependency == b.dependency)
     && (a.source_facts == b.source_facts)
     && (a.dependent_facts == b.dependent_facts)
 }
