@@ -4303,11 +4303,12 @@ pub fn infer_variant_constructor_call(
                             {
                                 match call_args.clone().first().cloned() {
                                     Some(arg) => {
+                                        let payload_expr = arg_value(&arg);
                                         let payload_init = make_field_init_node(
                                             &"0".to_string(),
-                                            arg.clone(),
-                                            arg.span.clone(),
-                                            node_name_span(&arg),
+                                            payload_expr.clone(),
+                                            payload_expr.span.clone(),
+                                            node_name_span(&payload_expr),
                                         );
                                         Some(infer_record_lit(
                                             &Some(func_name.clone()),
