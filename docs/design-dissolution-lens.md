@@ -1108,27 +1108,35 @@ import/alias of the resolver's authoritative shape.
     exists) and refinements declared as parallel coproducts
     (`RegisterStateSpace` enumerating a refined subset of
     `StateSpace` instead of binding via refinement).
-  - **Fn-scope.** A `fn helper(…) -> …` whose body is structurally
-    equivalent to an existing `std/` fn after parameter-rename + body
-    α-renaming. Catches helper nicknames (a hand-rolled `find_*`
-    that's `find_witness` with refinement; a hand-rolled `lookup_*`
-    that's `fold_right` over a chain).
+  - **Fn-scope.** A `fn helper(…) -> …` matches an existing `std/`
+    fn under the layer rules below. The lens fires under EITHER
+    (C1) — signature-shape match **AND** α-renamed body equality
+    (parameter-bijection on the signature, plus body normalization
+    that compares for structural identity after parameter + bound-name
+    α-renaming) — OR (C2) — catamorphism-equivalence over a
+    `std/`-registered type with a known `fold_T`. (C1)-alone-by-
+    signature is a deliberate non-fire: two fns with the same
+    signature and different bodies are not nicknames.
 
 - *Decidable:* yes — three mechanically-distinct layers, ordered by
   workhorse-first. The lens fires when **any** layer's structural
   fact crosses its threshold; the 5-outcome resolution table from
   L1.12 then resolves.
-  - **(C1) Signature-shape match (workhorse).** For type-scope: the
-    parsed model carries the carrier's **variant set + per-variant
-    field shape**; two carriers match when there's a bijection
-    between their variant sets preserving field arity + field-type
-    coproduct identity (modulo coproduct-of-leaves identity per
-    Practice 11). For fn-scope: the parsed model carries the fn's
-    **signature shape** (input coproduct, output coproduct,
-    parameter-arity, return-type identity); two signatures match
-    when there's a parameter-bijection preserving type identity.
-    Substrate-readable, no heuristic — fires when the signature is
-    an exact structural match against a known `std/` carrier.
+  - **(C1) Structural-identity match (workhorse).** For type-scope:
+    the parsed model carries the carrier's **variant set + per-variant
+    field shape**; two carriers match when there's a bijection between
+    their variant sets preserving field arity + field-type coproduct
+    identity (modulo coproduct-of-leaves identity per Practice 11).
+    For fn-scope: the parsed model carries the fn's **signature shape
+    AND α-normalized body shape**; two fn-decls match when (i) there's
+    a parameter-bijection on the signature preserving type identity
+    AND (ii) the bodies, after α-renaming parameter slots and pattern-
+    bound names by canonical position, are structurally identical
+    expression trees. Both conjuncts are required for (C1) to fire on
+    a fn-pair — signature-only match is explicitly NOT a fire (two
+    unrelated fns with the same `fn (T) -> U` signature is the
+    expected steady-state, not a nickname). Substrate-readable, no
+    heuristic.
   - **(C2) Catamorphism-equivalence (stricter sub-rule for
     fold-shape fns).** A fn that performs structural recursion over
     `T` (one arm per `T`-variant, recursive calls only at
@@ -1178,21 +1186,34 @@ import/alias of the resolver's authoritative shape.
     similarly-shaped types as legitimately distinct concepts in
     different namespaces (e.g., `network.Result` vs
     `compiler.normalize.Result`) — outcome (3) directly.
-  - **Template → generated artifact.** A generated `.dag` produced by
-    `build.rs` (or any structural emission step) from a template
-    authority is, by construction, a derivative of the authority —
-    not an independent reinvention. The substrate carries the
-    generation edge explicitly (template header marker + `build.rs`
-    splice site, or in the long term a `GeneratedFrom` registry
-    row). The lens reads the generation edge as a resolution shape
-    — same flow as outcome (1) alias-identity, scoped to mechanical
-    generation. Firing on a generated artifact vs its template is a
-    false positive by construction; reading the generation edge
-    prevents it. Worked example: `r1_gates.dag` is generated from
-    `r1_gates.template.dag` via `build.rs emit_r1_gates_fixture`
-    splicing `src/v3/lenses/named_function_count.dag` into the
-    `source:` field — the pair is a template→generated relationship,
-    not parallel authority.
+  - **Template → generated artifact (structural resolution required).**
+    A generated `.dag` produced by `build.rs` (or any structural
+    emission step) from a template authority is a derivative, not an
+    independent reinvention — but **only when the generation edge is
+    recorded structurally**. The resolution shape is a `GeneratedFrom`
+    registry row in the substrate:
+    ```dag
+    data r1_gates_generated_from: GeneratedFrom = {
+      generated:  src.v3.compiler.tests.fixtures.r1_gates,
+      authority:  src.v3.compiler.tests.fixtures.r1_gates_template,
+      emitter:    build_rs_emit_r1_gates_fixture,
+    }
+    ```
+    The lens reads `GeneratedFrom` rows as the resolution shape —
+    same discipline as outcome (1) alias-identity and outcome (2)
+    `HistoricalDeclaration` retirement: substrate data, not comment
+    prose. **Header comment markers and `build.rs` files alone do
+    NOT satisfy the escape** — that would re-introduce a prose-shaped
+    authority path and conflict with the parent L1.12's "No
+    comment/prose inspection" rule and the no-prose discipline. The
+    `GeneratedFrom` row must land. Worked example: until a
+    `r1_gates_generated_from: GeneratedFrom` row is committed, the
+    `r1_gates.template.dag`/`r1_gates.dag` pair will fire L1.12.b
+    today (as it should — the substrate has not taken a structural
+    position on the relationship); landing the row resolves it. The
+    pair's existing prose header (`// **Authority:** Hand-edit ...
+    // Companion is generated ...`) is informational only and does
+    not satisfy the escape.
 
 - *Decidability boundary (explicit):* (C1) and (C2) are mechanical and
   decidable over parsed substrate; (C3) is triage and never fires
@@ -1823,11 +1844,18 @@ produces: Map<DeclId, StructuralShape>
 // }
 // FnShape = {
 //   signature: SignatureShape,              // input coproduct identity, output coproduct identity, parameter arity
+//   body_normalized: BodyShape,             // α-renamed body expression tree (parameter slots + bound
+//                                           //   names normalized by canonical position); compared structurally.
+//                                           //   REQUIRED for (C1) fn-scope; signature-only-match is NOT a fire.
 //   catamorphism_form: CatamorphismForm,    // None | StructuralFoldOver(TypeId)
 //   token_set: Set<Token>,                  // identifier + variant/field names (C3 triage only)
 // }
 // SignatureShape comparison: bijection on parameter slots preserving
 // type identity (NOT names); output type by coproduct identity.
+// BodyShape comparison: structural identity of the α-renamed
+// expression tree. Two fns match under (C1) iff signature AND body
+// shape BOTH match — signature-only is a deliberate non-fire (two
+// fns sharing a `(T) -> U` shape is expected steady-state).
 // CatamorphismForm extraction: scan fn body for one-arm-per-T-variant
 // match with recursive calls only at T-variant positions; classify
 // `StructuralFoldOver(T)` if so, `None` otherwise.
