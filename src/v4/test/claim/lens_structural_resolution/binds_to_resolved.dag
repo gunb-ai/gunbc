@@ -27,24 +27,11 @@ import v4.std.dependency {
   DependencyView,
   dependency_binds_to_edge
 }
-import v4.std.node {
-  Atom,
-  Bind,
-  ComputationNode,
-  Edge,
-  Hash,
-  Named,
-  Node,
-  Positional,
-  Symbol,
-  TypeNode
-}
+import v4.std.node { Atom, Edge, Hash, Named, Node, Symbol, TypeNode }
 import v4.std.witness { Holds, StructuralPropertyWitness, Witness }
 
 data sr_root_symbol: Symbol = sr_root_symbol
 data sr_child_symbol: Symbol = sr_child_symbol
-data sr_bind_outer_symbol: Symbol = sr_bind_outer_symbol
-data sr_bind_inner_symbol: Symbol = sr_bind_inner_symbol
 data sr_type_symbol: Symbol = sr_type_symbol
 data sr_algebra_symbol: Symbol = sr_algebra_symbol
 data sr_algebra_witness_symbol: Symbol = sr_algebra_witness_symbol
@@ -60,15 +47,10 @@ fn sr_claim_node(s: Symbol) -> Node {
 
 data sr_child: Node = sr_claim_node(s: sr_child_symbol)
 
-data sr_bind_outer: Node = sr_claim_node(s: sr_bind_outer_symbol)
-data sr_bind_inner: Node = sr_claim_node(s: sr_bind_inner_symbol)
-
 data sr_root: Node = Node {
-  kind: ComputationNode { behavior: Bind },
+  kind: TypeNode { connective: Atom { identity: sr_root_symbol } },
   children: [
-    Edge { label: Named { name: dependency_binds_to_edge }, target: sr_child },
-    Edge { label: Positional, target: sr_bind_outer },
-    Edge { label: Positional, target: sr_bind_inner }
+    Edge { label: Named { name: dependency_binds_to_edge }, target: sr_child }
   ]
 }
 
