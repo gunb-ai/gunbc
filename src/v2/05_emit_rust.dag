@@ -1754,7 +1754,7 @@ fn emit_enum_shared_accessors(name: String, type_params: String, children: List<
       if child.children |> count == 0 {
         concat("            ", name, "::", child_text, " => panic!(\"no ", fname, " on unit variant\"),")
       } else if variant_is_synthetic_positional_payload(fields: child.children, source_indices: env.source_indices) {
-        concat("            ", name, "::", child_text, "(ref __val) => ", apply_type_template1(template: sharing.clone_value, arg0: "__val"), ",")
+        concat("            ", name, "::", child_text, "(_) => panic!(\"no ", fname, " on positional-payload variant\"),")
       } else {
         concat("            ", name, "::", child_text, " { ", emit_ident(name: fname, target: Rust), ": __val, .. } => ", apply_type_template1(template: sharing.clone_value, arg0: "__val"), ",")
       }
@@ -4504,11 +4504,20 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
           None => false
         }
         if is_positional_ctor {
+          let variant_summary_name = match effective_parent {
+            Some { value: parent } => variant_summary_key(enum_name: parent, variant_name: tn)
+            None => tn
+          }
           match fields |> first {
             Some { value: f } =>
               let f_value = field_init_node_value(n: f)
               let val_str = emit_field_value_with_context(field_value: f_value, struct_node: resolved_type, outer_type_name: type_name, field_name: "0", registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
-              concat(display_tn, "(", val_str, ")")
+              let needs_wrap = is_optional_struct_field(emit_info: emit_info, struct_name: variant_summary_name, field_name: "0")
+                && is_already_optional(texpr: f_value, emit_info: emit_info, scope: scope) == false
+              let field_val = if needs_wrap {
+                concat("Some(", val_str, ")")
+              } else { val_str }
+              concat(display_tn, "(", field_val, ")")
             None => concat(display_tn, "()")
           }
         } else {
