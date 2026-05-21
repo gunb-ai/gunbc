@@ -176,13 +176,32 @@ The only mechanical merge in this layout is **L1.6 → L1.10** — the
 prior doc already stated that L1.10 generalizes L1.6, so the two were
 sibling labels for one consolidated signature space.
 
-### 5.1 Canonical L1.x acceptance-key names (rebase target for downstream consumers)
+### 5.1 L1.x acceptance-key names — substrate registry pointer
 
-Downstream consumers that need to register acceptance / coverage rows
-per Layer-1 lens (e.g. `src/v4/lens/coverage.dag`'s `coverage_defect_*`
-rows) MUST use the canonical key names enumerated here. The lens suite
-is the single authority; key sets in other files are projections of this
-enumeration.
+**Authority pointer (not authority itself).** The canonical
+`coverage_defect_*` key set is **substrate data** — declared as rows
+in `src/v4/lens/coverage.dag`. That file is the authoritative
+registry; this design document **describes** the registry but does
+NOT own it. If the table below and `src/v4/lens/coverage.dag`
+disagree, **the substrate wins** and this section is stale (open an
+issue / PR to reconcile the doc, not the substrate).
+
+This framing follows the no-prose-ledger discipline: a maintained
+doc table re-listing facts whose source of truth is substrate data
+is a parallel-authority anti-pattern (Practice 9 / INVARIANTS P2;
+operator-direct standing 2026-05-19 retiring the maintained-ledger-
+doc class). The table is kept inline here as **reading scaffold**
+for readers walking the lens family — it lets a reader see at a
+glance which acceptance key each L1.x sub-signature contributes to
+and which Trigger discriminator the diagnostic payload carries.
+Treat each row as a **claim about substrate state at this revision**,
+not a definitional rule.
+
+**Downstream-consumer guidance.** Code that needs to register
+acceptance / coverage rows (e.g. external coverage trackers, test
+harnesses that join coverage receipts) reads the keys from
+`src/v4/lens/coverage.dag` directly — NOT from this table.
+Substrate-driven projection, not doc-rebase-driven.
 
 | Lens / sub-signature | Canonical acceptance-key name |
 |---|---|
@@ -218,9 +237,10 @@ enumeration.
   rows `coverage_defect_template_hole` AND
   `coverage_defect_canonical_carrier`. L1.10 itself is no longer
   a single mechanical unit — it's a lens family per §5.0's exception.
-- These names are stable as of this revision; further changes to the
-  L1.x taxonomy will require a corresponding update to this enumeration
-  and a coordinated downstream rebase.
+- Further changes to the L1.x taxonomy update the substrate
+  `src/v4/lens/coverage.dag` rows first; this table follows
+  (substrate-first, doc-second). Treat any stale-table reports as
+  doc-update opportunities, not substrate-rebase opportunities.
 
 ### L1.1 Discriminant-predicate lens — kills *predicate dissolution*
 
