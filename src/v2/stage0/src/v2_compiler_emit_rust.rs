@@ -10046,13 +10046,13 @@ pub fn rust_struct_field_type_node(
     struct_name: String,
     field_name: String,
 ) -> Option<Rc<Node>> {
-    match lookup_type_by_name(&scope.type_env, struct_name) {
+    match lookup_type_by_name(&scope.type_env.clone(), struct_name) {
         Some(struct_node) => match find_child_named(
-            struct_node,
+            struct_node.clone(),
             field_name,
             scope.type_env.clone().source_indices.clone(),
         ) {
-            Some(field_node) => Some(resolved_type(field_node)),
+            Some(field_node) => Some(resolved_type(field_node.clone())),
             None => None,
         },
         None => None,
@@ -10060,14 +10060,12 @@ pub fn rust_struct_field_type_node(
 }
 
 pub fn rust_record_field_needs_fn_rc(
-    scope: &Rc<InferScope>,
+    scope: Rc<InferScope>,
     struct_name: String,
     field_name: String,
 ) -> bool {
-    match rust_struct_field_type_node(scope, struct_name, field_name) {
-        Some(field_type) => {
-            field_type.connective.clone() == crate::v2_std_core::Connective::Arrow
-        }
+    match rust_struct_field_type_node(&scope, struct_name, field_name) {
+        Some(field_type) => (field_type.connective.clone() == Connective::Arrow),
         None => false,
     }
 }
@@ -10079,9 +10077,9 @@ pub fn rust_record_field_needs_box(
     struct_name: String,
     field_name: String,
 ) -> bool {
-    match rust_struct_field_type_node(scope, struct_name, field_name) {
+    match rust_struct_field_type_node(&scope, struct_name, field_name) {
         Some(field_type) => needs_box_wrapping(
-            field_type,
+            field_type.clone(),
             emit_info.recursive_type_set.clone(),
             shared_types,
             scope.type_env.clone().source_indices.clone(),
@@ -10095,21 +10093,23 @@ pub fn wrap_rust_record_field_value(
     scope: &Rc<InferScope>,
     emit_info: Rc<EmitGraphInfo>,
     shared_types: Rc<std::collections::BTreeSet<String>>,
-    struct_name: String,
-    field_name: String,
+    struct_name: &String,
+    field_name: &String,
 ) -> String {
-    if rust_record_field_needs_fn_rc(scope, struct_name.clone(), field_name.clone()) {
+    if rust_record_field_needs_fn_rc(scope.clone(), struct_name.clone(), field_name.clone()) {
         v2_rt::concat(v2_rt::concat("Rc::new(".to_string(), raw), ")".to_string())
-    } else if rust_record_field_needs_box(
-        scope,
-        emit_info,
-        shared_types,
-        struct_name,
-        field_name,
-    ) {
-        v2_rt::concat(v2_rt::concat("Box::new(".to_string(), raw), ")".to_string())
     } else {
-        raw
+        if rust_record_field_needs_box(
+            &scope,
+            emit_info,
+            shared_types,
+            struct_name.clone(),
+            field_name.clone(),
+        ) {
+            v2_rt::concat(v2_rt::concat("Box::new(".to_string(), raw), ")".to_string())
+        } else {
+            raw
+        }
     }
 }
 
@@ -10727,8 +10727,8 @@ pub fn emit_typed_record_lit(
                                             &scope,
                                             emit_info.clone(),
                                             shared_types.clone(),
-                                            tn.clone(),
-                                            f_name.clone(),
+                                            &tn,
+                                            &f_name,
                                         );
                                         v2_rt::concat(
                                             v2_rt::concat(

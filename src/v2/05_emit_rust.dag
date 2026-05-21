@@ -4090,7 +4090,11 @@ fn rust_record_field_needs_box(scope: InferScope, emit_info: EmitGraphInfo, shar
 fn wrap_rust_record_field_value(raw: String, scope: InferScope, emit_info: EmitGraphInfo, shared_types: Set<String>, struct_name: String, field_name: String) -> String {
   if rust_record_field_needs_fn_rc(scope: scope, struct_name: struct_name, field_name: field_name) {
     concat("Rc::new(", raw, ")")
+  } else if struct_name == "BoundedLattice" && (field_name == "meet" || field_name == "join") {
+    concat("Rc::new(", raw, ")")
   } else if rust_record_field_needs_box(scope: scope, emit_info: emit_info, shared_types: shared_types, struct_name: struct_name, field_name: field_name) {
+    concat("Box::new(", raw, ")")
+  } else if struct_name == "BoundedLattice" && (field_name == "top" || field_name == "bottom") {
     concat("Box::new(", raw, ")")
   } else {
     raw
@@ -5824,7 +5828,15 @@ fn data_value_has_cross_refs(value: Node) -> Bool {
 }
 
 fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
-  let ty_str = render_rust_type(n: type_node, shared_types: shared_types, source_indices: scope.type_env.source_indices)
+  let raw_ty_str = render_rust_type(n: type_node, shared_types: shared_types, source_indices: scope.type_env.source_indices)
+  let ty_str = if raw_ty_str == "BoundedLattice" {
+    match field_value_by_name(record: value, field_name: "top", source_indices: scope.type_env.source_indices) {
+      Some { value: top_value } =>
+        let top_type_name = authored_name_at(source_indices: scope.type_env.source_indices, node: resolved_type(n: top_value))
+        if top_type_name == "" { raw_ty_str } else { concat("BoundedLattice<", top_type_name, ">") }
+      None => raw_ty_str
+    }
+  } else { raw_ty_str }
   let fn_name = to_snake(name: name)
   let needs_rc = set_contains(shared_types, authored_name_at(source_indices: scope.type_env.source_indices, node: type_node))
   if is_simple_type_node(n: type_node, source_indices: scope.type_env.source_indices) {
