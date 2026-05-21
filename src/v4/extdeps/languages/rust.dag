@@ -853,21 +853,42 @@ fn rust_mvp1_positional_token_edge(token_class: Symbol) -> Edge {
   }
 }
 
-fn rust_list_append_edge(edges: List<Edge>, token_class: Symbol) -> List<Edge> {
+// Compile-time list snoc for fixed MVP-1 length; dissolve-on: T-10 grammar-emitted edge list.
+fn rust_list_snoc_item<T>(xs: List<T>, item: T) -> List<T> {
   free_monoid_fold(
-    xs: edges,
-    empty: Cons {
-      head: rust_mvp1_positional_token_edge(token_class: token_class),
-      tail: Empty
-    },
-    cons: fn(rest, edge) {
-      Cons { head: edge, tail: rest }
+    xs: xs,
+    empty: Cons { head: item, tail: Empty },
+    cons: fn(rest, existing) {
+      Cons { head: existing, tail: rest }
     }
   )
 }
 
-fn rust_mvp1_serialize_source_children() -> List<Edge> {
-  let prefix = Cons {
+fn rust_list_append<T>(left: List<T>, right: List<T>) -> List<T> {
+  free_monoid_fold(
+    xs: right,
+    empty: left,
+    cons: fn(acc, item) {
+      rust_list_snoc_item(xs: acc, item: item)
+    }
+  )
+}
+
+fn rust_mvp1_positional_edges_from_token_classes() -> List<Edge> {
+  free_monoid_fold(
+    xs: rust_mvp1_source_token_classes,
+    empty: Empty,
+    cons: fn(acc, token_class) {
+      rust_list_snoc_item(
+        xs: acc,
+        item: rust_mvp1_positional_token_edge(token_class: token_class)
+      )
+    }
+  )
+}
+
+fn rust_mvp1_serialize_source_prefix_edges() -> List<Edge> {
+  Cons {
     head: rust_named_edge(
       name: rust_mvp1_source_text_field,
       target: rust_inhabitant_atom(id: rust_mvp1_source_literal)
@@ -880,12 +901,12 @@ fn rust_mvp1_serialize_source_children() -> List<Edge> {
       tail: Empty
     }
   }
-  free_monoid_fold(
-    xs: rust_mvp1_source_token_classes,
-    empty: prefix,
-    cons: fn(acc, token_class) {
-      rust_list_append_edge(edges: acc, token_class: token_class)
-    }
+}
+
+fn rust_mvp1_serialize_source_children() -> List<Edge> {
+  rust_list_append(
+    left: rust_mvp1_serialize_source_prefix_edges(),
+    right: rust_mvp1_positional_edges_from_token_classes()
   )
 }
 
@@ -1091,9 +1112,6 @@ fn rust_model_core_wave1() -> ModelCore {
 }
 
 fn rust_language_model_wave1() -> RustLanguageModel {
-  let _integer_catalog = rust_integer_facts_catalog
-  let _float_catalog = rust_float_facts_catalog
-  let _noninteger_catalog = rust_noninteger_facts_catalog
   RustLanguageModel {
     lex: rust_wave1_lex(),
     grammar: rust_wave1_grammar(),
