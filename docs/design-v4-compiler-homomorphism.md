@@ -570,7 +570,7 @@ Layer 3 — Generated compiler artifacts
 
 Layer 2 — Compiler models (.dag, source of truth)
   parse / normalize / resolve / ground / translate / serialize / eval algebras
-  lens algebras (including testgen lens family)
+  lens algebras, projection producers (including testgen projection family)
 
 Layer 1 — Substrate models (.dag, source of truth)
   Node, fold_node, find_witness (unified Pass B primitive),
@@ -671,7 +671,7 @@ A change to an upstream model — Node shape, grammar productions, `LanguageMode
 
 **Worked example: testgen self-regeneration.** Suppose `Refinement<T>` (in `std/refinement.dag`) gains a new field. A v2-style compiler would require manual updates to every place that emits boundary-tests-for-refinements, every target-language test renderer, every fixture template. The v4 compiler:
 
-1. `affected_set` computes the downstream artifacts whose inputs include `Refinement<T>` (TestClaimLens, BoundaryTestLens, every TargetTestProjection that reads boundary tests).
+1. `affected_set` computes the downstream artifacts whose inputs include `Refinement<T>` (TestClaimProjection, BoundaryTestProjection, every TargetTestProjection that reads boundary tests).
 2. Each affected projection regenerates from the new `Refinement<T>` shape via its declared projection producer.
 3. If a projection's algebra can't accommodate the new shape (e.g., needs a fact the new model doesn't carry), it surfaces as a diagnostic, NOT a silent breakage.
 
