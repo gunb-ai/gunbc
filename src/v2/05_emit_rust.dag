@@ -142,12 +142,28 @@ import v2.compiler.emit {
   ServiceFieldSet, compute_service_fields, service_field_decls, service_field_ctors,
   extract_modifier_names,
   seed_bindings,
-  emit_typed_if_shared, emit_typed_let_shared,
-  rust_btree_set_element_ord_eligible
+  emit_typed_if_shared, emit_typed_let_shared
 }
 
 fn render_rust_type(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
-  render_node_type(n: n, target: Rust, shared_types: shared_types, source_indices: source_indices)
+  if node_is_set_collection(n: n, source_indices: source_indices) {
+    match n.children |> first {
+      Some { value: elem_child } =>
+        let elem_node = child_type_node(ch: elem_child)
+        let elem_is_type_var = if elem_node.inferred != none { is_type_variable(inferred: elem_node.inferred.value) } else { false }
+        if elem_is_type_var {
+          emit_rust_compile_error_expr(message: "Set element type unresolved")
+        } else if !rust_btree_set_element_ord_eligible(elem_node: elem_node, source_indices: source_indices) {
+          let elem_name = authored_name_at(source_indices: source_indices, node: elem_node)
+          emit_rust_compile_error_expr(message: concat("Set element type ", elem_name, " is not Ord-eligible for BTreeSet"))
+        } else {
+          render_node_type(n: n, target: Rust, shared_types: shared_types, source_indices: source_indices)
+        }
+      None => emit_rust_compile_error_expr(message: "Set missing element type")
+    }
+  } else {
+    render_node_type(n: n, target: Rust, shared_types: shared_types, source_indices: source_indices)
+  }
 }
 
 fn type_variable_node(id: String) -> Node {
@@ -2835,6 +2851,14 @@ fn type_node_child_is_type_variable(c: Node) -> Bool {
   if ch.inferred != none { is_type_variable(inferred: ch.inferred.value) } else { false }
 }
 
+// BTreeSet requires T: Ord. Whitelist kernel types with known Ord Rust carriers;
+// Float (no total Ord), Json (serde_json::Value), and nominal types fail-closed.
+fn rust_btree_set_element_ord_eligible(elem_node: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  let elem_name = authored_name_at(source_indices: source_indices, node: elem_node)
+  elem_name == "String" || elem_name == "Int" || elem_name == "Bool" || elem_name == "Unit"
+    || elem_name == "Secret" || elem_name == "Bytes"
+}
+
 fn rust_empty_set_element_type_str(set_type: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
   match set_type.children |> first {
     Some { value: elem_child } =>
@@ -2858,8 +2882,8 @@ fn emit_rust_empty_set_expr(set_type: Node, shared_types: Set<String>, source_in
       if elem_is_type_var {
         emit_rust_compile_error_expr(message: "empty_set element type unresolved")
       } else if !rust_btree_set_element_ord_eligible(elem_node: elem_node, source_indices: source_indices) {
-        let carrier = render_node_type(n: elem_node, target: Rust, shared_types: shared_types, source_indices: source_indices)
-        emit_rust_compile_error_expr(message: concat("empty_set Rust carrier ", carrier, " is not Ord-eligible as BTreeSet"))
+        let elem_name = authored_name_at(source_indices: source_indices, node: elem_node)
+        emit_rust_compile_error_expr(message: concat("empty_set element type ", elem_name, " is not Ord-eligible for BTreeSet"))
       } else {
         let elem_str = rust_empty_set_element_type_str(set_type: set_type, shared_types: shared_types, source_indices: source_indices)
         if elem_str != "" {
