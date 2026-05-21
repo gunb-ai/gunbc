@@ -531,13 +531,12 @@ fn multiply_classes(a: AsymptoticClass, b: AsymptoticClass) -> AsymptoticClass {
     ClassPolynomial { degree: ad } =>
       match b {
         ClassConstant => a
-        ClassLog => ClassPolynomial { degree: increment_polynomial_degree(d: ad) }
+        ClassLog => ClassUnknown
         ClassLinear => ClassPolynomial { degree: increment_polynomial_degree(d: ad) }
-        ClassLinearithmic => ClassPolynomial { degree: increment_polynomial_degree(d: ad) }
+        ClassLinearithmic => ClassUnknown
         ClassPolynomial { degree: bd } =>
           ClassPolynomial { degree: add_polynomial_degree(a: ad, b: bd) }
-        ClassPolyLog { exponent: _ } =>
-          ClassPolynomial { degree: increment_polynomial_degree(d: ad) }
+        ClassPolyLog { exponent: _ } => ClassUnknown
         ClassExponential => ClassExponential
         ClassFactorial => ClassFactorial
         ClassUnknown => ClassUnknown
@@ -547,10 +546,10 @@ fn multiply_classes(a: AsymptoticClass, b: AsymptoticClass) -> AsymptoticClass {
         ClassConstant => ClassLinear
         ClassLog => ClassLinearithmic
         ClassLinear => ClassPolynomial { degree: polynomial_degree_two() }
-        ClassLinearithmic => ClassPolynomial { degree: polynomial_degree_two() }
+        ClassLinearithmic => ClassUnknown
         ClassPolynomial { degree: bd } =>
           ClassPolynomial { degree: increment_polynomial_degree(d: bd) }
-        ClassPolyLog { exponent: _ } => ClassPolynomial { degree: polynomial_degree_two() }
+        ClassPolyLog { exponent: _ } => ClassUnknown
         ClassExponential => ClassExponential
         ClassFactorial => ClassFactorial
         ClassUnknown => ClassUnknown
@@ -558,12 +557,11 @@ fn multiply_classes(a: AsymptoticClass, b: AsymptoticClass) -> AsymptoticClass {
     ClassLinearithmic =>
       match b {
         ClassConstant => ClassLinearithmic
-        ClassLog => ClassPolynomial { degree: polynomial_degree_two() }
-        ClassLinear => ClassPolynomial { degree: polynomial_degree_two() }
-        ClassLinearithmic => ClassPolynomial { degree: polynomial_degree_two() }
-        ClassPolynomial { degree: bd } =>
-          ClassPolynomial { degree: increment_polynomial_degree(d: bd) }
-        ClassPolyLog { exponent: _ } => ClassPolynomial { degree: polynomial_degree_two() }
+        ClassLog => ClassUnknown
+        ClassLinear => ClassUnknown
+        ClassLinearithmic => ClassUnknown
+        ClassPolynomial { degree: _ } => ClassUnknown
+        ClassPolyLog { exponent: _ } => ClassUnknown
         ClassExponential => ClassExponential
         ClassFactorial => ClassFactorial
         ClassUnknown => ClassUnknown
@@ -571,15 +569,12 @@ fn multiply_classes(a: AsymptoticClass, b: AsymptoticClass) -> AsymptoticClass {
     ClassPolyLog { exponent: e } =>
       match b {
         ClassConstant => a
-        ClassLog => a
-        ClassPolyLog { exponent: _ } => a
-        ClassLinear => ClassLinear
-        ClassLinearithmic => ClassPolynomial { degree: polynomial_degree_two() }
-        ClassPolynomial { degree: pd } =>
-          ClassPolynomial { degree: max_polynomial_degree(
-            a: pd,
-            b: polylog_exponent_to_polynomial_degree(e: e)
-          ) }
+        ClassLog => ClassPolyLog { exponent: increment_polylog_exponent(e: e) }
+        ClassPolyLog { exponent: be } =>
+          ClassPolyLog { exponent: add_polylog_exponent(a: e, b: be) }
+        ClassLinear => ClassUnknown
+        ClassLinearithmic => ClassUnknown
+        ClassPolynomial { degree: _ } => ClassUnknown
         ClassExponential => ClassExponential
         ClassFactorial => ClassFactorial
         ClassUnknown => ClassUnknown
@@ -591,9 +586,8 @@ fn multiply_classes(a: AsymptoticClass, b: AsymptoticClass) -> AsymptoticClass {
         ClassPolyLog { exponent: e } =>
           ClassPolyLog { exponent: increment_polylog_exponent(e: e) }
         ClassLinear => ClassLinearithmic
-        ClassLinearithmic => ClassLinearithmic
-        ClassPolynomial { degree: bd } =>
-          ClassPolynomial { degree: increment_polynomial_degree(d: bd) }
+        ClassLinearithmic => ClassUnknown
+        ClassPolynomial { degree: _ } => ClassUnknown
         ClassExponential => ClassExponential
         ClassFactorial => ClassFactorial
         ClassUnknown => ClassUnknown
