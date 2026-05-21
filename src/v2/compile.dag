@@ -265,10 +265,10 @@ fn dag_node_surface_fingerprint(node: Node) -> String {
     param_names)
 }
 
-// Canonical fingerprint: Resolved wrappers share the target's identity (back-link revisits).
+// Canonical fingerprint: peel Resolved chains so back-links share one identity.
 fn dag_node_fingerprint(node: Node) -> String {
   match node.inferred {
-    Some { value: Resolved { node: target } } => dag_node_surface_fingerprint(node: target)
+    Some { value: Resolved { node: target } } => dag_node_fingerprint(node: target)
     _ => dag_node_surface_fingerprint(node: node)
   }
 }
