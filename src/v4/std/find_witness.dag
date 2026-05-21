@@ -4,7 +4,7 @@
 // Owns: CandidateSet, PreservationPredicate, FindWitnessResult, TargetSelectionPolicy, MultiplicityPolicy,
 //       find_witness, verify_witness.
 // Consumes: std collection, std diagnostic, std node, std witness.
-// Status: W-T-10 — identity-MVP exact structural equality; candidate lists are substrate-closed (no Conj re-walk).
+// Status: W-T-10 — identity-MVP exact structural equality; distinct-node exactness stays fail-closed until canonical grounding supplies leaf-coincidence evidence.
 
 
 module v4.std.find_witness
@@ -98,6 +98,7 @@ fn enumeration_candidate_list(
   candidates.candidates
 }
 // Identity-MVP branches: identity_mvp_preservation_holds (scaffold:identity-mvp-preservation in constraint_satisfaction_predicate.dag).
+// Same-shape distinct Nodes must keep rejecting here; W-T-10 owns canonical grounding + edge-wise zip-fold evidence.
 fn preservation_predicate_holds(
   source_facts: Node,
   candidate: Node,
