@@ -720,21 +720,6 @@ fn seed_affected_set_fold_acc_live(
 }
 
 
-fn seed_affected_set_fold_acc(
-  read_model: AffectedSetRead,
-  post_edit_dag: fn(Dag, Edit) -> AffectedPostEditDagRead,
-  acc: AffectedSetFoldAcc,
-  edit: Edit
-) -> AffectedSetFoldAcc {
-  seed_affected_set_fold_acc_live(
-    read_model: read_model,
-    post_edit_dag: post_edit_dag,
-    acc: acc,
-    edit: edit
-  )
-}
-
-
 fn affected_set(
   read_model: AffectedSetRead,
   post_edit_dag: fn(Dag, Edit) -> AffectedPostEditDagRead,
@@ -744,7 +729,7 @@ fn affected_set(
   Holds {
     value: affected_set_from_fold_acc(
       acc: fold(diff.edits, init: empty_affected_set_fold_acc(dag: dag), f: fn(acc, edit) {
-        seed_affected_set_fold_acc(
+        seed_affected_set_fold_acc_live(
           read_model: read_model,
           post_edit_dag: post_edit_dag,
           acc: acc,

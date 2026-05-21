@@ -179,6 +179,7 @@ fn readiness_fold_layers(state: ReadinessFoldState) -> List<ReadinessLayer> {
   state.layers
 }
 
+// 🟡 predicate dissolution — feature:readiness-rank-layer-merge.
 fn topological_layers(graph_node: Node) -> List<ReadinessLayer> {
   readiness_fold_layers(
     state: fold_node(
