@@ -34,6 +34,10 @@ import v4.std.node {
   Cardinality,
   Instantiation,
   Behavior,
+  Transform,
+  Branch,
+  Loop,
+  Bind,
   Symbol
 }
 import v4.extdeps.file_system {
@@ -60,6 +64,11 @@ import v4.std.verification {
   T19ManualTcConjEqualsRefl,
   T19ManualTcDisjEmpty,
   T19ManualTcInstantiationEmpty,
+  T19ManualTcArrowEmpty,
+  T19ManualTcTransformEmpty,
+  T19ManualTcBranchEmpty,
+  T19ManualTcLoopEmpty,
+  T19ManualTcBindZeroChildren,
   test_claim_classification,
   test_claim_t19_anchor
 }
@@ -69,7 +78,12 @@ import v4.test.claim.manual.connective_anchors {
   claim_conj_empty_compiles,
   claim_conj_equals_refl,
   claim_disj_empty_compiles,
-  claim_instantiation_empty_rejected
+  claim_instantiation_empty_rejected,
+  claim_arrow_empty_rejected,
+  claim_transform_empty_rejected,
+  claim_branch_empty_rejected,
+  claim_loop_empty_rejected,
+  claim_bind_zero_children_rejected
 }
 import v4.test.claim.manual.nat_law_anchors {
   claim_nat_add_associativity,
@@ -262,6 +276,11 @@ fn manual_test_claim_for_manual_anchor(key: T19ManualAnchorKey) -> Outcome<TestC
     T19ManualTcArrowTwoConj => Accepted { value: claim_arrow_two_conj_compiles, diagnostics: None }
     T19ManualTcCardinalityEmpty => Accepted { value: claim_cardinality_empty_rejected, diagnostics: None }
     T19ManualTcInstantiationEmpty => Accepted { value: claim_instantiation_empty_rejected, diagnostics: None }
+    T19ManualTcArrowEmpty => Accepted { value: claim_arrow_empty_rejected, diagnostics: None }
+    T19ManualTcTransformEmpty => Accepted { value: claim_transform_empty_rejected, diagnostics: None }
+    T19ManualTcBranchEmpty => Accepted { value: claim_branch_empty_rejected, diagnostics: None }
+    T19ManualTcLoopEmpty => Accepted { value: claim_loop_empty_rejected, diagnostics: None }
+    T19ManualTcBindZeroChildren => Accepted { value: claim_bind_zero_children_rejected, diagnostics: None }
     T19ManualTcConjEqualsRefl => Accepted { value: claim_conj_equals_refl, diagnostics: None }
     T19ManualNatAddLeftIdentity => Accepted { value: claim_nat_add_left_identity, diagnostics: None }
     T19ManualNatAddRightIdentity => Accepted { value: claim_nat_add_right_identity, diagnostics: None }

@@ -83,6 +83,11 @@ type T19ManualAnchorKey
   | T19ManualTcArrowTwoConj
   | T19ManualTcCardinalityEmpty
   | T19ManualTcInstantiationEmpty
+  | T19ManualTcArrowEmpty
+  | T19ManualTcTransformEmpty
+  | T19ManualTcBranchEmpty
+  | T19ManualTcLoopEmpty
+  | T19ManualTcBindZeroChildren
   | T19ManualTcConjEqualsRefl
   | T19ManualNatAddLeftIdentity
   | T19ManualNatAddRightIdentity

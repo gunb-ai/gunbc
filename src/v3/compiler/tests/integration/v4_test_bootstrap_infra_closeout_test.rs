@@ -103,8 +103,8 @@ fn t19_manual_manifest_matches_claim_anchor_discriminants() {
 
     assert_eq!(
         manifest_keys.len(),
-        12,
-        "T-19 manifest is the twelve live anchors"
+        17,
+        "T-19 manifest is the seventeen live anchors"
     );
     assert_eq!(
         claim_keys, manifest_keys,
@@ -112,7 +112,7 @@ fn t19_manual_manifest_matches_claim_anchor_discriminants() {
     );
     assert!(
         !claim_keys.contains("T19ManualAnchorAbsent"),
-        "the twelve live manual anchors must not route through the absent sentinel"
+        "the seventeen live manual anchors must not route through the absent sentinel"
     );
 }
 
@@ -234,6 +234,16 @@ fn t20_bootstrap_plan_keeps_self_hosting_chain_as_data() {
         !BOOTSTRAP_DAG.contains("p.fixpt.left_hash.pin == p.fixpt.right_hash.pin")
             && !BOOTSTRAP_DAG.contains("p.fixpt.left_hash.pin == p.fixpt.pinned_hash.pin"),
         "fixpt pins identify independent carrier slots; digest equality proves convergence (A2+A3)"
+    );
+    const CONNECTIVE_ANCHORS: &str =
+        include_str!("../../../../v4/test/claim/manual/connective_anchors.dag");
+    assert!(
+        CONNECTIVE_ANCHORS.contains("claim_arrow_empty_rejected")
+            && CONNECTIVE_ANCHORS.contains("claim_transform_empty_rejected")
+            && CONNECTIVE_ANCHORS.contains("claim_branch_empty_rejected")
+            && CONNECTIVE_ANCHORS.contains("claim_loop_empty_rejected")
+            && CONNECTIVE_ANCHORS.contains("claim_bind_zero_children_rejected"),
+        "A1 arity gate must pin rejection receipts for Arrow/Transform/Branch/Loop/Bind shapes (TESTING.md regression discipline)"
     );
     assert!(
         BOOTSTRAP_DAG.contains("bootstrap_plan_fixpt_digest_mismatch_rejects")

@@ -24,12 +24,32 @@ import v4.std.verification {
   T19ManualTcArrowTwoConj,
   T19ManualTcCardinalityEmpty,
   T19ManualTcInstantiationEmpty,
+  T19ManualTcArrowEmpty,
+  T19ManualTcTransformEmpty,
+  T19ManualTcBranchEmpty,
+  T19ManualTcLoopEmpty,
+  T19ManualTcBindZeroChildren,
   T19ManualTcConjEqualsRefl,
   CompilesClaim,
   DiagnosticClaim,
-  EqualsClaim
+  EqualsClaim,
+  T19ManualAnchorKey
 }
-import v4.std.node { Node, TypeNode, Conj, Disj, Arrow, Cardinality, Instantiation, Edge }
+import v4.std.node {
+  Arrow,
+  Bind,
+  Branch,
+  Cardinality,
+  ComputationNode,
+  Conj,
+  Disj,
+  Edge,
+  Instantiation,
+  Loop,
+  Node,
+  Transform,
+  TypeNode
+}
 
 
 data stub_empty_conj: Node = Node {
@@ -65,6 +85,49 @@ data stub_empty_instantiation: Node = Node {
 }
 
 
+data stub_empty_arrow: Node = Node {
+  kind: TypeNode { connective: Arrow },
+  children: []
+}
+
+
+data stub_empty_transform: Node = Node {
+  kind: ComputationNode { behavior: Transform },
+  children: []
+}
+
+
+data stub_empty_branch: Node = Node {
+  kind: ComputationNode { behavior: Branch },
+  children: []
+}
+
+
+data stub_empty_loop: Node = Node {
+  kind: ComputationNode { behavior: Loop },
+  children: []
+}
+
+
+data stub_bind_zero_children: Node = Node {
+  kind: ComputationNode { behavior: Bind },
+  children: []
+}
+
+
+fn arity_rejection_claim(label: String, input: Node, anchor: T19ManualAnchorKey) -> TestClaim {
+  DiagnosticClaim {
+    label: label,
+    t19_anchor: anchor,
+    input: input,
+    expected_rejection: diagnostics_singleton(
+      d: eval_diagnostic(reason: eval_rejected_invalid_node, node: input)
+    ),
+    classification: TestClassification { tier: Tier1, layer: Unit }
+  }
+}
+
+
 data claim_conj_empty_compiles: TestClaim = CompilesClaim {
   label: "manual/connective: empty Conj type-node is structurally inhabitable",
   t19_anchor: T19ManualTcConjEmpty,
@@ -92,26 +155,53 @@ data claim_arrow_two_conj_compiles: TestClaim = CompilesClaim {
 }
 
 
-data claim_cardinality_empty_rejected: TestClaim = DiagnosticClaim {
+data claim_cardinality_empty_rejected: TestClaim = arity_rejection_claim(
   label: "manual/connective: empty Cardinality type-node fails well-formedness (A1 arity)",
-  t19_anchor: T19ManualTcCardinalityEmpty,
   input: stub_empty_cardinality,
-  expected_rejection: diagnostics_singleton(
-      d: eval_diagnostic(reason: eval_rejected_invalid_node, node: stub_empty_cardinality)
-    ),
-  classification: TestClassification { tier: Tier1, layer: Unit }
-}
+  anchor: T19ManualTcCardinalityEmpty
+)
 
 
-data claim_instantiation_empty_rejected: TestClaim = DiagnosticClaim {
+data claim_instantiation_empty_rejected: TestClaim = arity_rejection_claim(
   label: "manual/connective: empty Instantiation type-node fails well-formedness (A1 arity)",
-  t19_anchor: T19ManualTcInstantiationEmpty,
   input: stub_empty_instantiation,
-  expected_rejection: diagnostics_singleton(
-      d: eval_diagnostic(reason: eval_rejected_invalid_node, node: stub_empty_instantiation)
-    ),
-  classification: TestClassification { tier: Tier1, layer: Unit }
-}
+  anchor: T19ManualTcInstantiationEmpty
+)
+
+
+data claim_arrow_empty_rejected: TestClaim = arity_rejection_claim(
+  label: "manual/connective: empty Arrow type-node fails well-formedness (A1 arity)",
+  input: stub_empty_arrow,
+  anchor: T19ManualTcArrowEmpty
+)
+
+
+data claim_transform_empty_rejected: TestClaim = arity_rejection_claim(
+  label: "manual/connective: empty Transform computation-node fails well-formedness (A1 arity)",
+  input: stub_empty_transform,
+  anchor: T19ManualTcTransformEmpty
+)
+
+
+data claim_branch_empty_rejected: TestClaim = arity_rejection_claim(
+  label: "manual/connective: empty Branch computation-node fails well-formedness (A1 arity)",
+  input: stub_empty_branch,
+  anchor: T19ManualTcBranchEmpty
+)
+
+
+data claim_loop_empty_rejected: TestClaim = arity_rejection_claim(
+  label: "manual/connective: empty Loop computation-node fails well-formedness (A1 arity)",
+  input: stub_empty_loop,
+  anchor: T19ManualTcLoopEmpty
+)
+
+
+data claim_bind_zero_children_rejected: TestClaim = arity_rejection_claim(
+  label: "manual/connective: Bind with zero children fails well-formedness (A1 arity == 3)",
+  input: stub_bind_zero_children,
+  anchor: T19ManualTcBindZeroChildren
+)
 
 
 data claim_conj_equals_refl: TestClaim = EqualsClaim {
