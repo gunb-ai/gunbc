@@ -406,7 +406,7 @@ The compiler does NOT treat DAG-ness as an incidental property of syntactic cont
 | `BarrierBefore` | synchronization / fence requirement (relevant for concurrent targets like CUDA, MapReduce) |
 | `PlacementDependsOn` | host/device / partition / shard placement constraint |
 | `ModelDependsOn` | artifact-tier — this artifact's regeneration requires that model to be the input authority (P8) |
-| `ProjectionDependsOn` | artifact-tier — this artifact was produced by that projection's lens algebra (P3 + P8) |
+| `ProjectionDependsOn` | artifact-tier — this artifact was produced by that projection producer (P3 + P8) |
 | `GeneratedFrom` | artifact-tier — this artifact's content is a function of that model node's state (provenance edge) |
 | `VerifiedBy` | artifact-tier — this artifact's correctness requires that lens / witness to validate it before consumption |
 | `PromotedBy` | bootstrap-tier — promotion-protocol provenance edge (per P9; `Stage0[k+1]` was promoted by *this* `PromotionWitness` instance — distinct from `BootstrapDependsOn` which carries "what artifacts the promotion requires," whereas `PromotedBy` carries "which witness authorized the promotion") |
@@ -655,7 +655,7 @@ A change to an upstream model — Node shape, grammar productions, `LanguageMode
 - Manual synchronization (developer chases the change across layers by hand).
 - Hidden emitter (executable emitter logic smuggled into a model file).
 - Hidden parser (token-by-token recognition that bypasses grammar-as-data).
-- Hidden test generator (special-case test-emission code outside the lens framework).
+- Hidden test generator (special-case test-emission code outside the projection framework).
 - Hidden integration updater (per-pair language adapter code that should be derived).
 - Hidden layer-specific patcher (ad hoc walker fixing up stale output of an upstream stage).
 - Ad hoc Node traversal outside `fold_node` / `traverse_node` / `apply_diff` / lens primitives (Practice 10 row 1 violation, applied to compiler internals).
@@ -664,7 +664,7 @@ A change to an upstream model — Node shape, grammar productions, `LanguageMode
 - A substrate primitive (declared in `std/`).
 - A declared algebra over a substrate primitive.
 - A lens (in the read/edit framework).
-- A projection (P3 commitment 1; output of a lens).
+- A projection producer / artifact projection (P3 commitment 1; output of `project`, not `observe`).
 - A target/runtime policy (declared in `extdeps/`).
 
 **The slogan.** *The compiler is the first consumer of its own modeling discipline.* If implementation workers find themselves writing ad hoc code to keep compiler layers in sync, that is a **STOP condition** — escalate, do not patch.
@@ -672,7 +672,7 @@ A change to an upstream model — Node shape, grammar productions, `LanguageMode
 **Worked example: testgen self-regeneration.** Suppose `Refinement<T>` (in `std/refinement.dag`) gains a new field. A v2-style compiler would require manual updates to every place that emits boundary-tests-for-refinements, every target-language test renderer, every fixture template. The v4 compiler:
 
 1. `affected_set` computes the downstream artifacts whose inputs include `Refinement<T>` (TestClaimLens, BoundaryTestLens, every TargetTestProjection that reads boundary tests).
-2. Each affected projection regenerates from the new `Refinement<T>` shape via its declared lens algebra.
+2. Each affected projection regenerates from the new `Refinement<T>` shape via its declared projection producer.
 3. If a projection's algebra can't accommodate the new shape (e.g., needs a fact the new model doesn't carry), it surfaces as a diagnostic, NOT a silent breakage.
 
 **Worked example: language-model self-regeneration.** Suppose `LanguageModel` is extended with a new field (e.g., effect-semantics declarations per Open Q10). The compiler:
@@ -691,7 +691,7 @@ To operationalize P0 + P8, the substrate needs explicit concepts for change-cons
 |---|---|---|
 | **`ChangeSet`** | A diff between two model versions (changed Nodes, edges, facts, witnesses, grammar productions, LanguageModel declarations, lens contracts). | Not declared. Likely `std/change.dag` (or part of unified `std/regeneration.dag`). |
 | **`AffectedSet`** | Downstream artifacts requiring recomputation given a `ChangeSet` + dependency graph + projection graph. The **general** substrate; T-21 `affected_set` is the lens-frontier specialization and must be hoisted into this general definition once it lands (not maintained as a parallel authority). | T-21 specialization landed; general `AffectedSet` not declared. **The two MUST unify** — split authority is a P2 violation. |
-| **`Projection`** | A declared projection-as-data: name, input carrier, output artifact, dependency requirements, regeneration algebra, validation lens set. | Not declared. |
+| **`Projection`** | A declared projection-as-data: name, input carrier, output artifact, dependency requirements, regeneration producer, validation policy inputs. | Not declared. |
 | **`Artifact`** | An emitted artifact (generated source file, test file, schema, diagnostic table, compiler stage table) with its provenance (which projection produced it from which model state). **`ArtifactKind` reserves bootstrap-related variants up front** — `Stage0Candidate`, `CorePackage`, `WitnessBundle` — so P9 bootstrap substrate can land later without forcing an artifact/projection refactor. | Narrow substrate declared in `src/v4/std/artifact.dag` (`ArtifactKind`, `Artifact`, `NodeArtifactProvenance`). General regeneration integration with `Projection` / `AffectedSet` / `RecomputePlan` is not declared. |
 | **`RecomputePlan`** | Topological schedule + SCC/fixpoint groups + cached-vs-invalidated artifacts + regeneration ordering. The "how to recompute" data given an `AffectedSet`. | Not declared. |
 
@@ -944,46 +944,46 @@ Amended from [`docs/design-read-edit-pipeline.md`](design-read-edit-pipeline.md)
 
 Per the read/edit doc § 6, every L1.x dissolution lens is structurally a `(find, transform)` pair: the lens's Signature is the find half, the Clean shape is the transform half. The read/edit doc's § 6.7b "**(f) mechanical refactor**" hero case is the worked example most relevant to this compiler architecture: a single intent → uniform per-site transform → atomic apply via the candidate-state pattern. PR #3338's canonical-B refactor (across 6 languages + 7 ratchet dissolutions) is the worked example. This is also what compiler-source rewrites (e.g., self-modification, see below) decompose into.
 
-### Projections — what lenses produce
+### Artifact projections and lens readings
 
-Per P0 + P3, **every downstream artifact is a projection of `InferredTree`** computed by a lens (a fold over the tree). The compiler core produces `InferredTree`; lenses fan out into the projection family. Naming things by their function rather than historical accident:
+Per P0 + P3, **every downstream artifact is a projection of `InferredTree`**, but artifact projection is not lens ownership. The compiler core produces `InferredTree`; `observe` runs lenses and returns readings, while `project` runs projection producers and returns artifacts. Naming things by their function rather than historical accident:
 
-| Projection | Lens (kind) | Output | Notes |
+| Consumer | Producer / Reading | Output | Notes |
 |---|---|---|---|
-| Target source code | `translate(target_lang)` + `serialize` | `TargetSource` | The compile direction; NOT a lens — it's the homomorphism (P1). Listed here because conceptually it's "one projection among many." |
-| Host evaluation | `eval(host_model)` | `Value` | Same — homomorphism with terminal = execute (P2). |
-| Dimensional facts (cost / complexity / ownership / parallelism / termination / idempotency / effect) | dimensional lens family | `DimensionFact` Witnesses | All consume InferredTree; produce side-channel facts (P3 commitment 3). |
-| **Test cases** | **testgen lens(es)** | `TestClaim` Witnesses | **Reframed:** testgen is a lens, not a separate compiler concept. Historical naming. The various flavors of test generation (boundary tests from refinements, property tests from algebraic laws, integration tests from protocol models, serialization roundtrip tests, target-equivalence tests, fuzz cases from cardinality boundaries, …) are **different invocations of the same lens family** parameterized by which structural facts to project. Tests are NOT the source of truth for the model; they are **behavioral probes** generated FROM the model. See "Testgen as a lens" below. |
-| **Dry-run / simulated execution** | **lens-identifies + `LawfulRewriteWitness`-substitutes + Eval(mock_host_model)** | `Value` (in a sandboxed eval) | **Reframed:** dry-run is composition of three primitives we already have, not a new compiler concept. See "Dry-run as a lens-composed projection" below. |
-| Inter-module glue (REST client/server, marshaling, schemas) | composed homomorphism via shared transport model (P4) | per-module `TargetSource` + glue artifacts | The omni-stack story. Cross-link to P4. |
-| Migration / API-compat plans | diff-over-Trees + affected-set fold | structural change report + per-site remediation | Change-consequence story; uses `affected_set` (T-21). |
-| Affected-rebuild set | `affected_set(dag, Diff)` | `Witness<ReExecFrontier>` | Incrementality primitive; consumed by ALL projection regeneration. |
-| Documentation / API docs | a doc-projection lens | structured doc data + rendered text | A projection like any other; not a separate tool. |
+| Target source code | projection producer: `translate(target_lang)` + `serialize` | `TargetSource` artifact | The compile direction uses the homomorphism (P1) inside a projection producer; it is not a lens reading. |
+| Host evaluation | projection producer: `eval(host_model)` | `Value` / eval artifact | Same homomorphism, terminal action = execute (P2). |
+| Dimensional facts (cost / complexity / ownership / parallelism / termination / idempotency / effect) | lens family | `DimensionFact` readings | All consume `InferredTree`; produce side-channel readings (P3 commitment 3). |
+| **Test cases** | projection producer fed by test-claim readings | `TestClaim` / `TestCase` artifacts | Test generation may consult lens readings, but artifact materialization belongs to `project`, not to the lens read itself. Tests are NOT the source of truth for the model; they are behavioral probes generated FROM the model. See "Testgen as a projection family" below. |
+| **Dry-run / simulated execution** | projection producer: `io_boundary` reading + `LawfulRewriteWitness` substitution + `eval(mock_host_model)` | `Value` / dry-run artifact | Dry-run is composition of graph reading, lawful rewrite, and eval projection. It is not a new compiler primitive and not a lens-owned artifact. |
+| Inter-module glue (REST client/server, marshaling, schemas) | projection producer over shared transport model (P4) | per-module `TargetSource` + glue artifacts | The omni-stack story. Cross-link to P4. |
+| Migration / API-compat plans | projection producer using diff-over-trees + affected-set fold | structural change report + per-site remediation | Change-consequence story; uses `affected_set` (T-21). |
+| Affected-rebuild set | `affected_set(dag, Diff)` reading | `Witness<ReExecFrontier>` | Incrementality reading; consumed by projection regeneration. |
+| Documentation / API docs | documentation projection producer | structured doc data + rendered text | A projection like any other; not a separate tool. |
 
-The compiler core does NOT name any of these specific projections (P3 commitment 4). Each lens is plug-in data; the compiler's job is to enable the fold mechanism and let caller policy consume readings.
+The compiler core does NOT name any of these specific projections or lenses (P3 commitment 4). Lenses are plug-in graph readings consumed by caller policy or projection producers; artifact producers belong to the projection registry and report through `ProjectionReport`.
 
-### Testgen as a lens family
+### Testgen as a projection family
 
-The current name `lens/testgen.dag` is historical — predates the lens reframe. Conceptually, **testgen is a lens family that produces test artifacts as projections of `InferredTree`.** Different "levels" of testgen are different invocations, profiles, or dependent lenses over the same verification substrate.
+The current name `lens/testgen.dag` is historical — predates the projection split. Conceptually, **testgen is a projection family that may consume lens readings while producing test artifacts from `InferredTree`.** Different "levels" of testgen are different projection profiles or dependent readings over the same verification substrate.
 
 **Three-layer structure** (per reviewer 2026-05-20):
 
-| Layer | Lens | Input | Output |
+| Layer | Consumer | Input | Output |
 |---|---|---|---|
-| **Abstract claims** | `TestClaimLens` | `InferredTree` | `TestClaim` Witnesses — roundtrip-law claims, refinement-boundary claims, algebra-law claims, protocol-compatibility claims, effect/idempotency claims |
-| **Concrete cases** | `TestCaseLens` | `TestClaim` Witnesses | `TestCase` Witnesses — examples, boundary cases, property-test generators, fuzz seeds, regression fixtures (lowering of abstract claims) |
+| **Abstract claims** | `TestClaimProjection` | `InferredTree` | `TestClaim` Witnesses — roundtrip-law claims, refinement-boundary claims, algebra-law claims, protocol-compatibility claims, effect/idempotency claims |
+| **Concrete cases** | `TestCaseProjection` | `TestClaim` Witnesses | `TestCase` Witnesses — examples, boundary cases, property-test generators, fuzz seeds, regression fixtures (lowering of abstract claims) |
 | **Target-specific files** | `TargetTestProjection` | `TestCase` Witnesses + target `LanguageModel` | `TargetSource` for tests (Rust `#[test]`, Python pytest, TS Jest, integration harness, …) — uses translate's homomorphism applied to test data |
 
 The pipeline:
 ```
-InferredTree ── TestClaimLens ──> TestClaims
-TestClaims    ── TestCaseLens ──> TestCases
+InferredTree ── TestClaimProjection ──> TestClaims
+TestClaims    ── TestCaseProjection ──> TestCases
 TestCases     ── TargetTestProjection(target_lang) ──> target test source
 ```
 
-Each step is a fold (P3 + lens framework); each step's output is data consumable by the next.
+Each step is a declared projection over grounded graph data or prior projection output; each step's output is data consumable by the next.
 
-**Profile invocations** are different lens parameters / dependent lenses on the same family:
+**Profile invocations** are different projection parameters / dependent readings on the same family:
 
 | Profile | Reads | Example |
 |---|---|---|
@@ -1002,15 +1002,15 @@ All profiles share the **same substrate**:
 - `std/verification.dag` (TestClaim carriers) — landed.
 - `std/refinement.dag` (refinement substrate, T-25-core) — landed.
 - `std/dependency.dag` (P6 dep edges) — not yet declared.
-- `std/testgen.dag` (lens family library) — exists as `lens/testgen.dag`; pending the rename to fit the lens-family naming convention.
+- `std/testgen.dag` (projection family library) — exists as `lens/testgen.dag`; pending the rename to fit the projection-family naming convention.
 
-**Lens-to-lens dependencies** are first-class (per Ratified Q6 — composed-lens-algebra derived from `fold_node`; NOT a separate primitive): `testgen.property` may depend on `testgen.algebra_law`'s output; `testgen.integration` may depend on `testgen.roundtrip`. These compose via the lens-dependency DAG (P3 commitment 5), not via ad hoc calls — Practice 10 row 1 applies to lens internals too.
+**Projection dependencies** are first-class: `testgen.property` may depend on `testgen.algebra_law`'s output; `testgen.integration` may depend on `testgen.roundtrip`. These compose through projection dependencies and any required lens-reading dependencies, not via ad hoc calls — Practice 10 row 1 still applies to any lens internals they consume.
 
 **Important boundary (P0 implication):** tests are projections OF the model; the model is NOT derived from tests. Tests are **behavioral probes** generated from the source-of-truth model. The slogan: *"tests are generated from the model as behavioral probes; they are not the source of truth for the model."*
 
-**Self-regeneration:** when a model fact changes (e.g., `Refinement<T>` shape changes per P8's worked example), `affected_set` computes which TestClaims/TestCases/target test files need regeneration; the relevant lens family invocations re-fire automatically on the affected Node frontier. No manual sync.
+**Self-regeneration:** when a model fact changes (e.g., `Refinement<T>` shape changes per P8's worked example), `affected_set` computes which TestClaims/TestCases/target test files need regeneration; the relevant projection producers re-fire automatically on the affected Node frontier. No manual sync.
 
-### Dry-run as a lens-composed projection
+### Dry-run as a projection over graph readings
 
 **Dry-run / simulated testing** — running a program without committing its I/O side effects — is NOT a new compiler concept. It's the composition of three primitives we already have:
 
@@ -1025,7 +1025,7 @@ InferredTree
   ── eval(mock_host_model) ──> Value + recorded_io_log
 ```
 
-No new compiler primitive needed. Dry-run is a **lens-composed projection**: lens identifies, rewrite substitutes, eval runs against a different host.
+No new compiler primitive needed. Dry-run is a **projection over graph readings**: a lens identifies, rewrite substitutes, eval runs against a different host.
 
 **The operator's intuition was right** — the actual interception happens via codegen-style substitution (the `LawfulRewriteWitness` produces an InferredTree with stub nodes where the I/O primitives were), not "the lens itself intercepts at runtime." Lenses are pure folds; they cannot intercept execution. But they CAN identify what needs intercepting; a rewrite witness does the substitution; eval runs the result.
 
@@ -1051,7 +1051,7 @@ The compiler is itself authored in `.dag`. Self-modification — the compiler up
 
 ### The compiler reading its own source
 
-The compiler's own pipeline (`compile.dag` / `parse.dag` / `infer.dag` / `emit.dag` / `eval.dag` / `normalize.dag` / `resolve.dag`, all in `src/v4/compiler/`) is itself a set of `.dag` programs. To the substrate, they are `CoreNode` graphs like any other. The compiler reads them by applying lenses to the relevant `Node`. Reading the compiler's own source uses the **same lens surface** as reading any user program — there is no special introspection mechanism.
+The compiler's own pipeline (`compile.dag` / `parse.dag` / `infer.dag` / `emit.dag` / `eval.dag` / `normalize.dag` / `resolve.dag`, all in `src/v4/compiler/`) is itself a set of `.dag` programs. To the substrate, they are source values that first ground into `InferredTree` graphs like any other program. The compiler reads them by observing the grounded graph. Reading the compiler's own source uses the **same graph-reading surface** as reading any user program — there is no special introspection mechanism.
 
 ### The compiler writing to its own source
 
@@ -1103,21 +1103,20 @@ When the compiler proposes a change to itself, the candidate-state pattern from 
 
 ```
 candidate_self = apply_diff(self, proposed_diff)
-// Read the candidate with all relevant lenses:
-readings = [
-  read_lens(L_practice_10, candidate_self),  // no walker dissolutions
-  read_lens(L_practice_9,  candidate_self),  // no-prose discipline
-  read_lens(L_correctness, candidate_self),  // substrate invariants
-  // ... whatever readings the project policy requires
-]
+candidate_grounding = ground(candidate_ingestion_plan)
+if candidate_grounding is Rejected:
+  reject with diagnostics
+
+candidate_graph = unwrap(candidate_grounding)
+readings = observe(candidate_graph, self_edit_lens_plan)
 if project_policy_accepts(readings):
   self := candidate_self     // atomic commit
-  // optionally: ground(candidate_ingestion_plan), then project(..., rust_stage0_projection_plan)
+  // optionally: project(candidate_graph, rust_stage0_projection_plan)
 else:
   reject with diagnostics
 ```
 
-Self-modification can never produce a broken substrate because the candidate is checked through the same read/policy composition used for user code, and structural invariants should move into types wherever possible. If a self-edit would break Practice 10 / Practice 9 / a substrate invariant, the candidate readings expose it and project policy rejects the commit. **The compiler cannot break itself silently** — the candidate-state pattern makes the checked state explicit.
+Self-modification can never produce a broken substrate because the candidate is grounded before readings or policy run, and structural invariants should move into types wherever possible. If a self-edit would break Practice 10 / Practice 9 / a substrate invariant, grounding rejects or candidate-graph readings expose it and project policy rejects the commit. **The compiler cannot break itself silently** — the candidate-state pattern makes the checked grounded state explicit.
 
 ### Implications
 
@@ -1476,17 +1475,17 @@ Defer trigger: first attempt to compile against a non-current version (e.g., Pyt
 | **candidate-state pattern** | The read/edit invariant: readings and policy evaluate `candidate_dag = apply_diff(dag, Diff)`, NOT the pre-edit graph. Validates against the state that will be committed, not against a state already known to be valid. |
 | **`affected_set`** | T-21 substrate primitive: `affected_set(dag, Diff) → Witness<ReExecFrontier>`. Incremental re-execution frontier; consumed by caller/session policy and projection regeneration. |
 | **self-edit / stage0** | The compiler editing its own source via `apply_diff(self, Diff)`. Self-hosting (stage0 regeneration) is `project(self_graph, rust_stage0_projection_plan)` — no special compile mode. See "Self-modification" section. |
-| **projection (lens output)** | Per P0 + P3, every downstream artifact (tests, dimensional facts, glue, schemas, migration plans, docs, dry-run results) is a *projection* of `InferredTree` computed by a lens. The compiler core produces InferredTree; lenses fan out into the projection family. |
-| **testgen** | A lens family that produces `TestClaim` Witnesses as projections of `InferredTree`. Historical name predating the lens reframe; different "levels" (boundary / property / integration / roundtrip / equivalence / fuzz / regression) are different invocations of the same family. Tests are projections of the model, NOT the source of truth for the model. |
-| **dry-run** | A lens-composed projection: `io_boundary_lens` identifies the I/O sites; a `LawfulRewriteWitness` substitutes mock stubs; `eval(mock_host_model)` runs the substituted tree. No new compiler primitive; composes lens + rewrite + eval-with-host-variant. Variations: record, assert, replay, fuzz. |
+| **projection** | Per P0 + P3, every downstream artifact (tests, glue, schemas, migration plans, docs, dry-run results) is a projection of `InferredTree` computed by a projection producer and reported through `ProjectionReport`. Lens readings may feed projection producers, but they do not own artifact materialization. |
+| **testgen** | A projection family that produces `TestClaim` / `TestCase` artifacts from `InferredTree`, optionally consuming lens readings. Historical location/name predates the projection split. Tests are projections of the model, NOT the source of truth for the model. |
+| **dry-run** | A projection over graph readings: `io_boundary_lens` identifies the I/O sites; a `LawfulRewriteWitness` substitutes mock stubs; `eval(mock_host_model)` runs the substituted tree. No new compiler primitive; composes lens reading + rewrite + eval projection. Variations: record, assert, replay, fuzz. |
 | **peripheral shim** | A user-facing convenience that composes modeled effects with session phases. Examples: `ingest_text` (file_read + parse + normalize), `compile_file_to_file` (file_read + ingest_text + ground + observe + project + authorize + file_write). Shims are NOT substrate primitives — they live outside the architecture's load-bearing surface. |
 | **modeled effect** | A real-world I/O operation declared as substrate data in `extdeps/` (file_read, file_write, network call, process spawn, …) — carries `EffectDependsOn` / `ResourceDependsOn` edges per P6; visible to lenses; substitutable by `LawfulRewriteWitness` for dry-run. There are no implicit side effects in the architecture. |
-| **`TestClaimLens`** | Lens layer 1 of testgen — produces abstract behavioral claims (roundtrip / refinement-boundary / algebra-law / protocol-compatibility / effect-idempotency) as `TestClaim` Witnesses. |
-| **`TestCaseLens`** | Lens layer 2 of testgen — lowers `TestClaim` Witnesses into concrete `TestCase` Witnesses (examples, boundary cases, property-test generators, fuzz seeds, regression fixtures). |
+| **`TestClaimProjection`** | Projection layer 1 of testgen — produces abstract behavioral claims (roundtrip / refinement-boundary / algebra-law / protocol-compatibility / effect-idempotency) as `TestClaim` Witnesses. |
+| **`TestCaseProjection`** | Projection layer 2 of testgen — lowers `TestClaim` Witnesses into concrete `TestCase` Witnesses (examples, boundary cases, property-test generators, fuzz seeds, regression fixtures). |
 | **`TargetTestProjection`** | Lens layer 3 of testgen — translates `TestCase` Witnesses into target-language test source via translate's homomorphism. |
 | **`ChangeSet`** | A diff between two model versions (changed Nodes / edges / facts / witnesses / grammar productions / LanguageModel fields / lens contracts). Substrate for P0 + P8 consequence-recomputation. Not yet declared (`std/change.dag`). |
 | **`AffectedSet`** | Downstream artifacts requiring recomputation given a `ChangeSet`. T-21 `affected_set` is the lens-frontier specialization; full `AffectedSet` over arbitrary projection graphs not yet declared. |
-| **`Projection`** | Declared projection-as-data: name + input carrier + output artifact + dependency requirements + regeneration algebra + validation lens set. Not yet declared (`std/projection.dag`). |
+| **`Projection`** | Declared projection-as-data: name + input carrier + output artifact + dependency requirements + regeneration producer + validation policy inputs. Not yet declared (`std/projection.dag`). |
 | **`Artifact`** | An emitted artifact (source file, test file, schema, diagnostic table, compiler stage table) with its provenance (which projection produced it from which model state). Narrow identity/provenance substrate is declared in `src/v4/std/artifact.dag`; full P8 regeneration integration with `Projection`, general `AffectedSet`, and `RecomputePlan` is not yet declared. |
 | **`RecomputePlan`** | Topological schedule + SCC/fixpoint groups + cached-vs-invalidated artifacts. The "how to recompute" data given an `AffectedSet`. Not yet declared. |
 | **`Stage0Contract`** | What stage0 promises (consume canonical CorePackage; minimal `fold_node` + derived `traverse_node` combinator; fail-closed; emit verified artifact). Per P9. Not yet declared. |
