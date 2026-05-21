@@ -862,16 +862,6 @@ fn rust_list_append_edge(edges: List<Edge>, token_class: Symbol) -> List<Edge> {
   )
 }
 
-fn rust_mvp1_positional_edges_from_token_classes() -> List<Edge> {
-  free_monoid_fold(
-    xs: rust_mvp1_source_token_classes,
-    empty: Empty,
-    cons: fn(acc, token_class) {
-      rust_list_append_edge(edges: acc, token_class: token_class)
-    }
-  )
-}
-
 fn rust_mvp1_serialize_source_children() -> List<Edge> {
   let prefix = Cons {
     head: rust_named_edge(
