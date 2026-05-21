@@ -15,9 +15,14 @@ import v4.lens.effect {
 }
 import v4.std.cardinality { RankingDimension, TerminationProof }
 import v4.std.collection { Map }
+import v4.std.constraints {
+  CanonicalGroundingWitness,
+  constraint_property_being_canonical,
+  constraint_property_candidate_set_closedness
+}
 import v4.std.dependency { DependencyView, EffectDependsOn }
 import v4.std.node { Atom, Edge, Hash, Named, Node, Symbol, TypeNode }
-import v4.std.witness { Holds, Witness }
+import v4.std.witness { Holds, StructuralPropertyWitness, Witness }
 
 data effect_root_symbol: Symbol = effect_root_symbol
 data effect_child_symbol: Symbol = effect_child_symbol
@@ -58,9 +63,21 @@ fn effect_claim_facts() -> InferredFacts {
       algebra: effect_claim_node(s: effect_algebra_symbol),
       witness: effect_claim_node(s: effect_algebra_witness_symbol)
     },
-    descent: TerminationProof {
-      non_increasing: [],
-      strict: RankingDimension { measured: effect_descent_symbol }
+    descent: Holds {
+      value: TerminationProof {
+        non_increasing: [],
+        strict: RankingDimension { measured: effect_descent_symbol }
+      }
+    },
+    canonical: CanonicalGroundingWitness {
+      structural: StructuralPropertyWitness {
+        property: constraint_property_being_canonical,
+        evidence: effect_claim_node(s: effect_type_symbol)
+      },
+      closedness: StructuralPropertyWitness {
+        property: constraint_property_candidate_set_closedness,
+        evidence: effect_claim_node(s: effect_type_symbol)
+      }
     }
   }
 }

@@ -16,9 +16,14 @@ import v4.lens.parallelism {
 }
 import v4.std.cardinality { RankingDimension, TerminationProof }
 import v4.std.collection { Map }
+import v4.std.constraints {
+  CanonicalGroundingWitness,
+  constraint_property_being_canonical,
+  constraint_property_candidate_set_closedness
+}
 import v4.std.dependency { DataDependsOn, DependencyView }
 import v4.std.node { Atom, Edge, Hash, Named, Node, Symbol, TypeNode }
-import v4.std.witness { Holds, Witness }
+import v4.std.witness { Holds, StructuralPropertyWitness, Witness }
 
 data parallelism_root_symbol: Symbol = parallelism_root_symbol
 data parallelism_child_symbol: Symbol = parallelism_child_symbol
@@ -59,9 +64,21 @@ fn parallelism_claim_facts() -> InferredFacts {
       algebra: parallelism_claim_node(s: parallelism_algebra_symbol),
       witness: parallelism_claim_node(s: parallelism_algebra_witness_symbol)
     },
-    descent: TerminationProof {
-      non_increasing: [],
-      strict: RankingDimension { measured: parallelism_descent_symbol }
+    descent: Holds {
+      value: TerminationProof {
+        non_increasing: [],
+        strict: RankingDimension { measured: parallelism_descent_symbol }
+      }
+    },
+    canonical: CanonicalGroundingWitness {
+      structural: StructuralPropertyWitness {
+        property: constraint_property_being_canonical,
+        evidence: parallelism_claim_node(s: parallelism_type_symbol)
+      },
+      closedness: StructuralPropertyWitness {
+        property: constraint_property_candidate_set_closedness,
+        evidence: parallelism_claim_node(s: parallelism_type_symbol)
+      }
     }
   }
 }

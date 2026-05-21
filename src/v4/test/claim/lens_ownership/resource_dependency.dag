@@ -16,9 +16,14 @@ import v4.lens.ownership {
 }
 import v4.std.cardinality { RankingDimension, TerminationProof }
 import v4.std.collection { Map }
+import v4.std.constraints {
+  CanonicalGroundingWitness,
+  constraint_property_being_canonical,
+  constraint_property_candidate_set_closedness
+}
 import v4.std.dependency { DependencyView, ResourceDependsOn }
 import v4.std.node { Atom, Edge, Hash, Named, Node, Symbol, TypeNode }
-import v4.std.witness { Holds, Witness }
+import v4.std.witness { Holds, StructuralPropertyWitness, Witness }
 
 data ownership_root_symbol: Symbol = ownership_root_symbol
 data ownership_child_symbol: Symbol = ownership_child_symbol
@@ -59,9 +64,21 @@ fn ownership_claim_facts() -> InferredFacts {
       algebra: ownership_claim_node(s: ownership_algebra_symbol),
       witness: ownership_claim_node(s: ownership_algebra_witness_symbol)
     },
-    descent: TerminationProof {
-      non_increasing: [],
-      strict: RankingDimension { measured: ownership_descent_symbol }
+    descent: Holds {
+      value: TerminationProof {
+        non_increasing: [],
+        strict: RankingDimension { measured: ownership_descent_symbol }
+      }
+    },
+    canonical: CanonicalGroundingWitness {
+      structural: StructuralPropertyWitness {
+        property: constraint_property_being_canonical,
+        evidence: ownership_claim_node(s: ownership_type_symbol)
+      },
+      closedness: StructuralPropertyWitness {
+        property: constraint_property_candidate_set_closedness,
+        evidence: ownership_claim_node(s: ownership_type_symbol)
+      }
     }
   }
 }

@@ -17,9 +17,14 @@ import v4.lens.idempotency {
 }
 import v4.std.cardinality { RankingDimension, TerminationProof }
 import v4.std.collection { Map }
+import v4.std.constraints {
+  CanonicalGroundingWitness,
+  constraint_property_being_canonical,
+  constraint_property_candidate_set_closedness
+}
 import v4.std.dependency { DependencyView, EffectDependsOn }
 import v4.std.node { Atom, Edge, Hash, Named, Node, Symbol, TypeNode }
-import v4.std.witness { Holds, Witness }
+import v4.std.witness { Holds, StructuralPropertyWitness, Witness }
 
 data idempotency_root_symbol: Symbol = idempotency_root_symbol
 data idempotency_child_symbol: Symbol = idempotency_child_symbol
@@ -60,9 +65,21 @@ fn idempotency_claim_facts() -> InferredFacts {
       algebra: idempotency_claim_node(s: idempotency_algebra_symbol),
       witness: idempotency_claim_node(s: idempotency_algebra_witness_symbol)
     },
-    descent: TerminationProof {
-      non_increasing: [],
-      strict: RankingDimension { measured: idempotency_descent_symbol }
+    descent: Holds {
+      value: TerminationProof {
+        non_increasing: [],
+        strict: RankingDimension { measured: idempotency_descent_symbol }
+      }
+    },
+    canonical: CanonicalGroundingWitness {
+      structural: StructuralPropertyWitness {
+        property: constraint_property_being_canonical,
+        evidence: idempotency_claim_node(s: idempotency_type_symbol)
+      },
+      closedness: StructuralPropertyWitness {
+        property: constraint_property_candidate_set_closedness,
+        evidence: idempotency_claim_node(s: idempotency_type_symbol)
+      }
     }
   }
 }
