@@ -1,0 +1,81 @@
+// src/v4/test/claim/lens_application/rejecting_lens_blocks_before_compile.dag
+// Scope: T-23 negative claim — required rejecting lens blocks validate_then_compile before compile-core.
+// Owns: rejecting_lens_blocks_before_compile_claim.
+// Consumes: compiler compile, manual infer fixture.
+// Status: scaffold — compile-only until T-22 generated claim execution.
+
+module v4.test.claim.lens_application.rejecting_lens_blocks_before_compile
+
+import v4.compiler.compile {
+  CompileOutput,
+  Lens,
+  TranslateTo,
+  Validated,
+  compile_lens_gate_rejected,
+  compile_lens_gate_rejected_diagnostic,
+  validate_then_compile
+}
+import v4.compiler.infer { InferredTree }
+import v4.compiler.target_carriers { TargetModel }
+import v4.std.diagnostic {
+  Outcome,
+  PortLocus,
+  Rejected,
+  outcome_rejected
+}
+import v4.std.logic { Bool }
+import v4.std.node { Conj, Node, TypeNode }
+import v4.std.witness { Witness }
+import v4.test.claim.manual.infer_ground_add_mvp { fixture_add_resolved_tree }
+
+data rejecting_lens_language_model_stub: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: []
+}
+
+data rejecting_lens_target_model_stub: TargetModel = Node {
+  kind: TypeNode { connective: Conj },
+  children: []
+}
+
+data rejecting_lens_gate_at: Symbol = rejecting_lens_gate_at
+
+fn rejecting_lens_gate(_tree: InferredTree) -> Outcome<Witness<Node>> {
+  outcome_rejected(
+    compile_lens_gate_rejected_diagnostic(at: PortLocus { port: rejecting_lens_gate_at })
+  )
+}
+
+data rejecting_lens: Lens = Lens {
+  gate: rejecting_lens_gate
+}
+
+type LensApplicationPipelineClaim {
+  expected_gate_rejected: Bool
+}
+
+data rejecting_lens_blocks_before_compile_claim: LensApplicationPipelineClaim =
+  LensApplicationPipelineClaim {
+    expected_gate_rejected: true
+  }
+
+fn rejecting_lens_outcome() -> Outcome<Validated<CompileOutput>> {
+  validate_then_compile(
+    source: fixture_add_resolved_tree(),
+    input_lang: rejecting_lens_language_model_stub,
+    lenses: [rejecting_lens],
+    mode: TranslateTo { target: rejecting_lens_target_model_stub }
+  )
+}
+
+fn rejecting_lens_blocks_before_compile_claim_holds() -> Bool {
+  match rejecting_lens_outcome() {
+    Rejected { diagnostics: r } =>
+      rejecting_lens_blocks_before_compile_claim.expected_gate_rejected &&
+        r.head.reason == compile_lens_gate_rejected
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+data rejecting_lens_blocks_before_compile_claim_passes: Bool =
+  rejecting_lens_blocks_before_compile_claim_holds()

@@ -1,0 +1,94 @@
+// src/v4/test/claim/lens_application/enforce_rejecting_gate_fires.dag
+// Scope: T-23 worked claim — Enforce apply_lens surfaces compile_lens_gate_rejected on violation.
+// Owns: enforce_rejecting_gate_fires_claim.
+// Consumes: compiler compile, std diagnostic, lens_common fixture.
+// Status: scaffold — compile-only until T-22 generated claim execution.
+
+module v4.test.claim.lens_application.enforce_rejecting_gate_fires
+
+import v4.compiler.compile {
+  Lens,
+  LensApplicationMode,
+  LensEnforce,
+  apply_lens,
+  compile_lens_gate_rejected
+}
+import v4.compiler.infer { InferredFacts, InferredTree }
+import v4.std.diagnostic {
+  Accepted,
+  Outcome,
+  PortLocus,
+  Rejected,
+  outcome_rejected
+}
+import v4.std.logic { Bool }
+import v4.std.node { Atom, Node, Symbol, TypeNode }
+import v4.std.witness { Witness }
+import v4.test.claim.lens_common.infer_fixture {
+  claim_atom_node,
+  claim_inferred_facts,
+  claim_inferred_tree
+}
+import v4.compiler.compile { compile_lens_gate_rejected_diagnostic }
+
+data enforce_reject_root_symbol: Symbol = enforce_reject_root_symbol
+data enforce_reject_gate_at: Symbol = enforce_reject_gate_at
+data enforce_reject_type_symbol: Symbol = enforce_reject_type_symbol
+data enforce_reject_algebra_symbol: Symbol = enforce_reject_algebra_symbol
+data enforce_reject_algebra_witness_symbol: Symbol = enforce_reject_algebra_witness_symbol
+data enforce_reject_descent_symbol: Symbol = enforce_reject_descent_symbol
+data enforce_reject_canonical_structural_symbol: Symbol = enforce_reject_canonical_structural_symbol
+data enforce_reject_canonical_closedness_symbol: Symbol = enforce_reject_canonical_closedness_symbol
+data enforce_reject_canonical_evidence_symbol: Symbol = enforce_reject_canonical_evidence_symbol
+
+data enforce_reject_root: Node = claim_atom_node(s: enforce_reject_root_symbol)
+
+fn enforce_reject_tree() -> InferredTree {
+  claim_inferred_tree(
+    root: enforce_reject_root,
+    facts: claim_inferred_facts(
+      type_symbol: enforce_reject_type_symbol,
+      algebra_symbol: enforce_reject_algebra_symbol,
+      algebra_witness_symbol: enforce_reject_algebra_witness_symbol,
+      descent_symbol: enforce_reject_descent_symbol,
+      canonical_structural_symbol: enforce_reject_canonical_structural_symbol,
+      canonical_closedness_symbol: enforce_reject_canonical_closedness_symbol,
+      canonical_evidence_symbol: enforce_reject_canonical_evidence_symbol
+    )
+  )
+}
+
+fn enforce_rejecting_gate(_tree: InferredTree) -> Outcome<Witness<Node>> {
+  outcome_rejected(
+    compile_lens_gate_rejected_diagnostic(at: PortLocus { port: enforce_reject_gate_at })
+  )
+}
+
+data enforce_rejecting_lens: Lens = Lens {
+  gate: enforce_rejecting_gate
+}
+
+type LensApplicationClaim {
+  mode: LensApplicationMode
+  expected_rejects: Bool
+}
+
+data enforce_rejecting_gate_fires_claim: LensApplicationClaim = LensApplicationClaim {
+  mode: LensEnforce,
+  expected_rejects: true
+}
+
+fn enforce_rejecting_gate_fires_claim_holds() -> Bool {
+  match apply_lens(
+    lens: enforce_rejecting_lens,
+    inferred: enforce_reject_tree(),
+    mode: enforce_rejecting_gate_fires_claim.mode
+  ) {
+    Rejected { diagnostics: r } =>
+      enforce_rejecting_gate_fires_claim.expected_rejects &&
+        r.head.reason == compile_lens_gate_rejected
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+data enforce_rejecting_gate_fires_claim_passes: Bool = enforce_rejecting_gate_fires_claim_holds()

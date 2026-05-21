@@ -1,0 +1,65 @@
+// src/v4/test/claim/lens_application/empty_required_lenses_skip_gate.dag
+// Scope: T-23 negative claim — empty required-lens list does not emit compile_lens_gate_rejected.
+// Owns: empty_required_lenses_skip_gate_claim.
+// Consumes: compiler compile, manual infer fixture.
+// Status: scaffold — compile-only until T-22 generated claim execution.
+
+module v4.test.claim.lens_application.empty_required_lenses_skip_gate
+
+import v4.compiler.compile {
+  CompileOutput,
+  TranslateResult,
+  TranslateTo,
+  Validated,
+  compile_lens_gate_rejected,
+  validate_then_compile
+}
+import v4.compiler.target_carriers { TargetModel }
+import v4.std.diagnostic { Accepted, Outcome, Rejected }
+import v4.std.logic { Bool }
+import v4.std.node { Conj, Node, TypeNode }
+import v4.test.claim.manual.infer_ground_add_mvp { fixture_add_resolved_tree }
+
+data empty_lenses_language_model_stub: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: []
+}
+
+data empty_lenses_target_model_stub: TargetModel = Node {
+  kind: TypeNode { connective: Conj },
+  children: []
+}
+
+type LensApplicationPipelineClaim {
+  expected_gate_rejected: Bool
+}
+
+data empty_required_lenses_skip_gate_claim: LensApplicationPipelineClaim =
+  LensApplicationPipelineClaim {
+    expected_gate_rejected: false
+  }
+
+fn empty_required_lenses_outcome() -> Outcome<Validated<CompileOutput>> {
+  validate_then_compile(
+    source: fixture_add_resolved_tree(),
+    input_lang: empty_lenses_language_model_stub,
+    lenses: [],
+    mode: TranslateTo { target: empty_lenses_target_model_stub }
+  )
+}
+
+fn empty_required_lenses_skip_gate_claim_holds() -> Bool {
+  match empty_required_lenses_outcome() {
+    Rejected { diagnostics: r } =>
+      r.head.reason == compile_lens_gate_rejected ==
+        empty_required_lenses_skip_gate_claim.expected_gate_rejected
+    Accepted { value: v, diagnostics: _ } =>
+      !empty_required_lenses_skip_gate_claim.expected_gate_rejected &&
+        match v.value {
+          TranslateResult { source: _ } => true
+          _ => false
+        }
+  }
+}
+
+data empty_required_lenses_skip_gate_claim_passes: Bool = empty_required_lenses_skip_gate_claim_holds()
