@@ -361,8 +361,8 @@ pub fn dag_node_key(node: &Rc<Node>) -> String {
 pub fn inferred_fingerprint(value: Option<Rc<InferredNode>>) -> String {
     match value.as_deref().cloned() {
         None => "none".to_string(),
-        Some(InferredNode::Resolved { .. }) => "Resolved".to_string(),
-        Some(InferredNode::TypeVariable { id, .. }) => {
+        Some(InferredNode::Resolved { node: _, .. }) => "Resolved".to_string(),
+        Some(InferredNode::TypeVariable { id: id, .. }) => {
             v2_rt::concat("TypeVariable:".to_string(), id.clone())
         }
         Some(InferredNode::CompilerError { message: m, .. }) => {
@@ -374,19 +374,24 @@ pub fn inferred_fingerprint(value: Option<Rc<InferredNode>>) -> String {
 pub fn expr_data_variant(data: Rc<ExprData>) -> String {
     match (*data).clone() {
         ExprData::NoExprData => "NoExprData".to_string(),
-        ExprData::ExprLiteral { .. } => "ExprLiteral".to_string(),
+        ExprData::ExprLiteral { value: _, .. } => "ExprLiteral".to_string(),
         ExprData::ExprError { .. } => "ExprError".to_string(),
-        ExprData::ExprVar { .. } => "ExprVar".to_string(),
-        ExprData::ExprFieldAccess { .. } => "ExprFieldAccess".to_string(),
+        ExprData::ExprVar {
+            binding_kind: _, ..
+        } => "ExprVar".to_string(),
+        ExprData::ExprFieldAccess { summary: _, .. } => "ExprFieldAccess".to_string(),
         ExprData::ExprCall { .. } => "ExprCall".to_string(),
-        ExprData::ExprMethodCall { .. } => "ExprMethodCall".to_string(),
+        ExprData::ExprMethodCall {
+            method_semantics: _,
+            ..
+        } => "ExprMethodCall".to_string(),
         ExprData::ExprMatch => "ExprMatch".to_string(),
         ExprData::ExprIf => "ExprIf".to_string(),
         ExprData::ExprLet => "ExprLet".to_string(),
-        ExprData::ExprRecordLit { .. } => "ExprRecordLit".to_string(),
+        ExprData::ExprRecordLit { parent_enum: _, .. } => "ExprRecordLit".to_string(),
         ExprData::ExprListLit => "ExprListLit".to_string(),
         ExprData::ExprBinOp { .. } => "ExprBinOp".to_string(),
-        ExprData::ExprUnaryOp { .. } => "ExprUnaryOp".to_string(),
+        ExprData::ExprUnaryOp { op: _, .. } => "ExprUnaryOp".to_string(),
         ExprData::ExprLambda => "ExprLambda".to_string(),
         ExprData::ExprStringInterp => "ExprStringInterp".to_string(),
         ExprData::ExprBlock => "ExprBlock".to_string(),
@@ -398,7 +403,7 @@ pub fn expr_data_variant(data: Rc<ExprData>) -> String {
     }
 }
 
-pub fn dag_node_fingerprint(node: &Rc<Node>) -> String {
+pub fn dag_node_surface_fingerprint(node: &Rc<Node>) -> String {
     {
         let child_names = Rc::new({
             let mut __result = Vec::new();
@@ -447,25 +452,35 @@ pub fn dag_node_fingerprint(node: &Rc<Node>) -> String {
     }
 }
 
-pub fn dag_node_key_collision_error(key: String, span: Rc<SourceSpan>) -> Rc<ErrorNode> {
-    make_error_node(
-        Rc::new(CompilerDiagnostic::InternalError {
-            message: v2_rt::concat(
-                "dag artifact: distinct nodes share identity key ".to_string(),
-                json_quote(key),
-            ),
-            span: span,
-        }),
-        "".to_string(),
-    )
+pub fn dag_node_fingerprint(node: &Rc<Node>) -> String {
+    match node.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::Resolved { node: target, .. }) => dag_node_surface_fingerprint(&target),
+        _ => dag_node_surface_fingerprint(&node),
+    }
 }
 
-pub fn is_resolved_alias_revisit(node: Rc<Node>, prior_fp: String) -> bool {
-    match node.inferred.clone().as_deref().cloned() {
-        Some(InferredNode::Resolved { node: target, .. }) => {
-            (dag_node_fingerprint(&target).as_str() == prior_fp.as_str())
-        }
-        _ => false,
+pub fn dag_node_key_collision_error(key: String, span: &Rc<SourceSpan>) -> Rc<ErrorNode> {
+    {
+        let synthetic = ((span.start.clone() == 0) && (span.end.clone() == 0));
+        let detail = if synthetic {
+            " (synthetic 0..0 span; provisional key cannot alias distinct scaffold nodes)"
+                .to_string()
+        } else {
+            "".to_string()
+        };
+        make_error_node(
+            Rc::new(CompilerDiagnostic::InternalError {
+                message: v2_rt::concat(
+                    v2_rt::concat(
+                        "dag artifact: distinct nodes share identity key ".to_string(),
+                        json_quote(key),
+                    ),
+                    detail,
+                ),
+                span: span.clone(),
+            }),
+            "".to_string(),
+        )
     }
 }
 
@@ -633,8 +648,8 @@ pub fn dag_collect_match_pattern(
     acc: Rc<DagCollectAcc>,
 ) -> Rc<DagCollectAcc> {
     match (*pattern).clone() {
-        MatchPattern::Bind { .. } => acc,
-        MatchPattern::LitPattern { .. } => acc,
+        MatchPattern::Bind { name: _, .. } => acc,
+        MatchPattern::LitPattern { value: _, .. } => acc,
         MatchPattern::VariantPattern { field_bindings, .. } => field_bindings
             .clone()
             .iter()
@@ -669,32 +684,17 @@ pub fn dag_collect_insert(node: &Rc<Node>, acc: &Rc<DagCollectAcc>) -> Rc<DagCol
         let fp = dag_node_fingerprint(&node);
         match v2_rt::map_get(&acc.seen.clone(), key.clone()) {
             Some(prior) => {
-                if ((prior.clone().as_str() == fp.as_str())
-                    || is_resolved_alias_revisit(node.clone(), prior.clone()))
-                {
+                if (prior.clone().as_str() == fp.as_str()) {
                     acc.clone()
                 } else {
-                    if ((node.span.clone().start.clone() == 0)
-                        && (node.span.clone().end.clone() == 0))
-                    {
-                        Rc::new(DagCollectAcc {
-                            seen: acc.seen.clone(),
-                            order: acc.order.clone(),
-                            collision_errors: v2_rt::rc_list_push(
-                                acc.collision_errors.clone(),
-                                dag_node_key_collision_error(key.clone(), node.span.clone()),
-                            ),
-                        })
-                    } else {
-                        Rc::new(DagCollectAcc {
-                            seen: acc.seen.clone(),
-                            order: acc.order.clone(),
-                            collision_errors: v2_rt::rc_list_push(
-                                acc.collision_errors.clone(),
-                                dag_node_key_collision_error(key.clone(), node.span.clone()),
-                            ),
-                        })
-                    }
+                    Rc::new(DagCollectAcc {
+                        seen: acc.seen.clone(),
+                        order: acc.order.clone(),
+                        collision_errors: v2_rt::rc_list_push(
+                            acc.collision_errors.clone(),
+                            dag_node_key_collision_error(key.clone(), &node.span.clone()),
+                        ),
+                    })
                 }
             }
             None => {
