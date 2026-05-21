@@ -466,6 +466,61 @@ fn make_bad(s: String) -> Locus {
     );
 }
 
+/// Known positional variant constructors fail closed on wrong arity (no type-ctor fallback).
+#[test]
+fn generic_variant_positional_constructor_rejects_wrong_arity() {
+    let source = r#"module test.positional_ctor_wrong_arity
+
+type Box = Box(Int)
+
+fn make_bad(a: Int, b: Int) -> Box {
+  Box(a, b)
+}
+"#;
+    let result = compile_dag(source);
+    let diags = diagnostic_messages(&result);
+    assert!(
+        diags.iter().any(|d| d.contains("expects exactly one argument") && d.contains("Box")),
+        "positional variant constructor must fail closed on wrong arity, got: {:?}",
+        diags
+    );
+}
+
+/// Two nested positional string-literal subpatterns get distinct scratch bindings and guards.
+#[test]
+fn generic_variant_positional_dual_string_literal_bindings() {
+    let source = r#"module test.positional_dual_str_pat
+
+type Tag<A> = Mk(A)
+
+type PairRow = { left: Tag<String>, right: Tag<String> }
+
+fn f(x: PairRow) -> String {
+  match x {
+    { left: Mk("a"), right: Mk("b") } => "ok"
+  }
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let rs = find_file(&result, "src/test_positional_dual_str_pat.rs");
+    assert!(
+        rs.contains("__pos_left_Mk_0_val") && rs.contains("__pos_right_Mk_0_val"),
+        "expected distinct positional string-literal bindings, got:\n{}",
+        rs
+    );
+    assert!(
+        rs.contains("__pos_left_Mk_0_val = ") && rs.contains("__pos_right_Mk_0_val = "),
+        "expected distinct positional string-literal guards, got:\n{}",
+        rs
+    );
+    assert!(
+        !rs.contains("__pos0_val"),
+        "must not collapse positional string literals to a single __pos0_val, got:\n{}",
+        rs
+    );
+}
+
 /// Bare record-name patterns (no `{…}`) must not use the Conj record-destructure fallback.
 #[test]
 fn generic_record_bare_name_pattern_reports_variant_not_found() {
