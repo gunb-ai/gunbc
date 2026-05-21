@@ -426,11 +426,13 @@ pub fn dag_collect_insert(node: &Rc<Node>, acc: &Rc<DagCollectAcc>) -> Rc<DagCol
         let key = dag_node_key(&node);
         match v2_rt::map_get(&acc.seen.clone(), key.clone()) {
             Some(_) => acc.clone(),
-            None => Rc::new(DagCollectAcc {
-                seen: v2_rt::rc_map_insert(acc.seen.clone(), key.clone(), true),
-                order: v2_rt::rc_list_push(acc.order.clone(), node.clone()),
-            })
-            .dag_collect_node_tree(node.clone()),
+            None => {
+                let acc1 = Rc::new(DagCollectAcc {
+                    seen: v2_rt::rc_map_insert(acc.seen.clone(), key.clone(), true),
+                    order: v2_rt::rc_list_push(acc.order.clone(), node.clone()),
+                });
+                dag_collect_node_tree(node.clone(), acc1)
+            }
         }
     }
 }
@@ -454,7 +456,7 @@ pub fn dag_collect_from_module(
 }
 
 pub fn collect_dag_nodes(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<Node>>> {
-    typed
+    let acc = typed
         .modules
         .clone()
         .iter()
@@ -465,8 +467,8 @@ pub fn collect_dag_nodes(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<Node>>> {
                 order: Rc::new(vec![]),
             }),
             |acc: Rc<DagCollectAcc>, m: Rc<TypedModule>| dag_collect_from_module(&m, &acc),
-        )
-        .dag_collect_acc_order()
+        );
+    acc.order.clone()
 }
 
 pub fn dag_collect_acc_order(acc: Rc<DagCollectAcc>) -> Rc<Vec<Rc<Node>>> {
