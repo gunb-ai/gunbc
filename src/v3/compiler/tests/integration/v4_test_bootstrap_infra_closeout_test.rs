@@ -59,7 +59,8 @@ fn t19_language_behavior_equivalence_run_test_claim_receipts_present() {
     assert!(
         TESTGEN_DAG.contains("LanguageBehaviorEquivalence {")
             && TESTGEN_DAG.contains("type FrozenLanguageBehaviorSnapshot")
-            && TESTGEN_DAG.contains("fn testgen_emit_language_behavior_equivalence_claim"),
+            && TESTGEN_DAG.contains("fn testgen_emit_language_behavior_equivalence_claim")
+            && TESTGEN_DAG.contains("t19_lbe_label_conj_dag_surface"),
         "testgen lens must emit LBE claims with frozen snapshot + I/O mock carriers"
     );
 }

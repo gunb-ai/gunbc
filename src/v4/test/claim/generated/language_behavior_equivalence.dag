@@ -32,8 +32,7 @@ import v4.std.diagnostic {
   Accepted,
   None,
   Outcome,
-  Rejected,
-  diagnostics_singleton
+  Rejected
 }
 import v4.std.node { Atom, Hash, Node, Symbol, TypeNode }
 import v4.std.constraints {
