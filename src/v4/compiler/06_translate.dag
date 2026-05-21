@@ -96,16 +96,23 @@ fn target_bundle_child_lookup_step(
   edge_name: Symbol
 ) -> TargetBundleChildLookup {
   match acc {
-    BundleChildInvalidEdge | BundleChildDuplicate => acc
-    BundleChildMissing | BundleChildFound { value: _ } =>
+    BundleChildInvalidEdge => acc
+    BundleChildDuplicate => acc
+    BundleChildMissing =>
       match e.label {
         Named { name: n } =>
           if n == edge_name {
-            match acc {
-              BundleChildMissing =>
-                BundleChildFound { value: e.target }
-              BundleChildFound { value: _ } => BundleChildDuplicate
-            }
+            BundleChildFound { value: e.target }
+          } else {
+            acc
+          }
+        Positional => BundleChildInvalidEdge
+      }
+    BundleChildFound { value: _ } =>
+      match e.label {
+        Named { name: n } =>
+          if n == edge_name {
+            BundleChildDuplicate
           } else {
             acc
           }
