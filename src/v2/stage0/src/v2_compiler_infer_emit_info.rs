@@ -65,7 +65,6 @@ pub struct EmitGraphInfo {
     pub type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
     pub recursive_type_set: Rc<std::collections::BTreeSet<String>>,
     pub fielded_variants: Rc<std::collections::BTreeSet<String>>,
-    pub positional_payload_variants: Rc<std::collections::BTreeSet<String>>,
     pub shared_types: Rc<std::collections::BTreeSet<String>>,
     pub ownership_index: Rc<HashMap<String, Rc<std::collections::BTreeSet<String>>>>,
     pub movable: Rc<std::collections::BTreeSet<String>>,
@@ -85,7 +84,6 @@ pub fn empty_emit_graph_info() -> Rc<EmitGraphInfo> {
         type_summaries: v2_rt::rc_empty_map::<String, Rc<TypeSummary>>(),
         recursive_type_set: v2_rt::rc_empty_set::<String>(),
         fielded_variants: v2_rt::rc_empty_set::<String>(),
-        positional_payload_variants: v2_rt::rc_empty_set::<String>(),
         shared_types: v2_rt::rc_empty_set::<String>(),
         ownership_index: v2_rt::rc_empty_map::<String, Rc<std::collections::BTreeSet<String>>>(),
         movable: v2_rt::rc_empty_set::<String>(),
@@ -106,21 +104,6 @@ pub fn variant_has_fields(
         let key = v2_rt::concat(v2_rt::concat(enum_name, "::".to_string()), variant_name);
         v2_rt::set_contains(emit_info.fielded_variants.clone(), key)
     }
-}
-
-pub fn variant_has_positional_payload(
-    emit_info: Rc<EmitGraphInfo>,
-    enum_name: String,
-    variant_name: String,
-) -> bool {
-    {
-        let key = variant_summary_key(enum_name, variant_name);
-        v2_rt::set_contains(emit_info.positional_payload_variants.clone(), key)
-    }
-}
-
-pub fn variant_summary_key(enum_name: String, variant_name: String) -> String {
-    v2_rt::concat(v2_rt::concat(enum_name, "::".to_string()), variant_name)
 }
 
 pub fn lookup_emit_type_summary(
@@ -589,13 +572,11 @@ pub fn add_emit_item_summary(
                                     __found
                                 };
                                 let vname = authored_name_at(source_indices.clone(), &variant);
-                                let qualified_vname =
-                                    variant_summary_key(summary.name.clone(), vname.clone());
                                 v2_rt::rc_map_insert(
                                     acc.clone(),
-                                    qualified_vname.clone(),
+                                    vname.clone(),
                                     Rc::new(TypeSummary {
-                                        name: qualified_vname.clone(),
+                                        name: vname.clone(),
                                         repr: Rc::new(TypeRepr::StructRepr),
                                         field_summaries: build_struct_field_summaries(
                                             &variant,
