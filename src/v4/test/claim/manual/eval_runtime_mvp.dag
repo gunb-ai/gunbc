@@ -35,17 +35,12 @@ import v4.std.diagnostic {
   Unavailable,
   diagnostics_singleton
 }
-import v4.std.model_core {
-  ModelCore,
-  PrimitiveOperationRef
-}
 import v4.std.runtime {
   RuntimeAggregate,
   RuntimeAggregateValue,
   AllocationSemantics,
   BindInterpreter,
   EnvironmentBindingKey,
-  BoundaryAllowance,
   BranchInterpreter,
   EvaluationCall,
   CallSemantics,
@@ -65,15 +60,13 @@ import v4.std.runtime {
   RuntimePrimitiveValue,
   RuntimeReference,
   RuntimeReferenceValue,
-  ResourceEffectBoundary,
   Return,
   TransformInterpreter,
   RuntimeUnit,
   RuntimeUnitValue,
   RuntimeValue,
   ValueInterpreter,
-  ValueRepresentationModel,
-  ResourceAccess
+  ValueRepresentationModel
 }
 import v4.std.machine { Byte }
 import v4.std.node {
@@ -105,8 +98,6 @@ data eval_mvp2_witness_symbol: Symbol = eval_mvp2_witness_symbol
 data eval_mvp2_descent_not_derived: Symbol = eval_mvp2_descent_not_derived
 data eval_mvp2_args_not_two_literals: Symbol = eval_mvp2_args_not_two_literals
 data eval_mvp2_descent_dimension: Symbol = eval_mvp2_descent_dimension
-data eval_mvp2_model_core: ModelCore = eval_mvp2_model_core
-data eval_mvp2_resource_access: ResourceAccess = eval_mvp2_resource_access
 
 
 fn eval_mvp2_byte() -> Byte {
