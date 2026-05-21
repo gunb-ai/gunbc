@@ -2,7 +2,7 @@
 // Scope: Rust Reference LanguageModel — scalar fact-bundles, inhabitants, bidirectional grammar data.
 // Owns: RustScalar, RustIntegerPrimitiveFacts, RustFloatPrimitiveFacts, RustNonIntegerPrimitiveFacts, RustLanguageModel, rust_*_facts, rust_*_inhabitant_node, rust_declared_inhabitants_root, rust_mvp1_target_model, rust_wave1_* grammar/lex.
 // Consumes: v4.compiler.parse, v4.compiler.tokenize, v4.std.collection, v4.std.node, v4.std.logic, v4.std.algebra, v4.std.cardinality, v4.std.text.
-// Status: T-4 rust slice — LanguageModel inhabitants + fact catalogs on carrier; wave-1 lex/grammar + MVP serialize_source are 🟡 scaffolds (not full fn-item parse / grammar-as-bidir); `core: ModelCore` blocked on T-33 (#3474); bool/`!` canonical-B decl-ref — 🟡 E-6(b) staging.
+// Status: T-4 rust slice — Rust Reference primitives only (not std::string::String); inhabitants + fact catalogs on carrier; wave-1 lex/grammar + MVP serialize_source are 🟡 scaffolds; `core: ModelCore` blocked on T-33 (#3474); bool/`!` canonical-B decl-ref — 🟡 E-6(b) staging.
 // Anchor: https://doc.rust-lang.org/reference/types.html
 
 module v4.extdeps.languages.rust
@@ -67,7 +67,6 @@ type RustScalar
   | BoolScalar
   | CharScalar
   | StrScalar
-  | StringScalar
   | UnitScalar
   | NeverScalar
 
@@ -168,7 +167,6 @@ data rust_std_projection_float64: Symbol = rust_std_projection_float64
 data rust_std_projection_bool: Symbol = rust_std_projection_bool
 data rust_std_projection_char: Symbol = rust_std_projection_char
 data rust_std_projection_str: Symbol = rust_std_projection_str
-data rust_std_projection_string: Symbol = rust_std_projection_string
 data rust_std_projection_unit: Symbol = rust_std_projection_unit
 data rust_std_projection_never: Symbol = rust_std_projection_never
 
@@ -189,14 +187,12 @@ data rust_surface_spelling_f64: Symbol = rust_surface_spelling_f64
 data rust_surface_spelling_bool: Symbol = rust_surface_spelling_bool
 data rust_surface_spelling_char: Symbol = rust_surface_spelling_char
 data rust_surface_spelling_str: Symbol = rust_surface_spelling_str
-data rust_surface_spelling_string: Symbol = rust_surface_spelling_string
 data rust_surface_spelling_unit: Symbol = rust_surface_spelling_unit
 data rust_surface_spelling_never: Symbol = rust_surface_spelling_never
 
 data rust_ieee754_binary32: Symbol = rust_ieee754_binary32
 data rust_ieee754_binary64: Symbol = rust_ieee754_binary64
 data rust_str_unsized: Symbol = rust_str_unsized
-data rust_string_owned_utf8: Symbol = rust_string_owned_utf8
 data rust_char_unicode_scalar: Symbol = rust_char_unicode_scalar
 data rust_repr_bool: Symbol = rust_repr_bool
 data rust_repr_unit: Symbol = rust_repr_unit
@@ -219,7 +215,6 @@ data rust_inhabitant_f64: Symbol = rust_inhabitant_f64
 data rust_inhabitant_bool: Symbol = rust_inhabitant_bool
 data rust_inhabitant_char: Symbol = rust_inhabitant_char
 data rust_inhabitant_str: Symbol = rust_inhabitant_str
-data rust_inhabitant_string: Symbol = rust_inhabitant_string
 data rust_inhabitant_unit: Symbol = rust_inhabitant_unit
 data rust_inhabitant_never: Symbol = rust_inhabitant_never
 
@@ -240,7 +235,6 @@ data rust_inhabitant_field_f64: Symbol = rust_inhabitant_field_f64
 data rust_inhabitant_field_bool: Symbol = rust_inhabitant_field_bool
 data rust_inhabitant_field_char: Symbol = rust_inhabitant_field_char
 data rust_inhabitant_field_str: Symbol = rust_inhabitant_field_str
-data rust_inhabitant_field_string: Symbol = rust_inhabitant_field_string
 data rust_inhabitant_field_unit: Symbol = rust_inhabitant_field_unit
 data rust_inhabitant_field_never: Symbol = rust_inhabitant_field_never
 
@@ -298,7 +292,6 @@ data rust_tag_scalar_float: Symbol = rust_tag_scalar_float
 data rust_tag_scalar_bool: Symbol = rust_tag_scalar_bool
 data rust_tag_scalar_char: Symbol = rust_tag_scalar_char
 data rust_tag_scalar_str: Symbol = rust_tag_scalar_str
-data rust_tag_scalar_string: Symbol = rust_tag_scalar_string
 data rust_tag_scalar_unit: Symbol = rust_tag_scalar_unit
 data rust_tag_scalar_never: Symbol = rust_tag_scalar_never
 
@@ -473,13 +466,6 @@ data rust_facts_str: RustNonIntegerPrimitiveFacts = RustNonIntegerPrimitiveFacts
   representation: rust_str_unsized
 }
 
-data rust_facts_string: RustNonIntegerPrimitiveFacts = RustNonIntegerPrimitiveFacts {
-  surface_spelling: rust_surface_spelling_string,
-  scalar_classifier: StringScalar,
-  std_projection: rust_std_projection_string,
-  representation: rust_string_owned_utf8
-}
-
 data rust_facts_unit: RustNonIntegerPrimitiveFacts = RustNonIntegerPrimitiveFacts {
   surface_spelling: rust_surface_spelling_unit,
   scalar_classifier: UnitScalar,
@@ -514,11 +500,11 @@ data rust_float_facts_catalog: List<RustFloatPrimitiveFacts> = [
   rust_facts_f64
 ]
 
+// Reference primitives only — `str` (unsized), not std::string::String (library type; program Node later).
 data rust_noninteger_facts_catalog: List<RustNonIntegerPrimitiveFacts> = [
   rust_facts_bool,
   rust_facts_char,
   rust_facts_str,
-  rust_facts_string,
   rust_facts_unit,
   rust_facts_never
 ]
@@ -594,7 +580,6 @@ fn rust_scalar_node(scalar: RustScalar) -> Node {
     BoolScalar => rust_inhabitant_atom(id: rust_tag_scalar_bool)
     CharScalar => rust_inhabitant_atom(id: rust_tag_scalar_char)
     StrScalar => rust_inhabitant_atom(id: rust_tag_scalar_str)
-    StringScalar => rust_inhabitant_atom(id: rust_tag_scalar_string)
     UnitScalar => rust_inhabitant_atom(id: rust_tag_scalar_unit)
     NeverScalar => rust_inhabitant_atom(id: rust_tag_scalar_never)
   }
@@ -785,10 +770,6 @@ fn rust_inhabitant_str_node() -> Node {
   rust_noninteger_inhabitant_node(id: rust_inhabitant_str, facts: rust_facts_str)
 }
 
-fn rust_inhabitant_string_node() -> Node {
-  rust_noninteger_inhabitant_node(id: rust_inhabitant_string, facts: rust_facts_string)
-}
-
 fn rust_inhabitant_unit_node() -> Node {
   rust_noninteger_inhabitant_node(id: rust_inhabitant_unit, facts: rust_facts_unit)
 }
@@ -824,7 +805,6 @@ fn rust_declared_inhabitants_root() -> Node {
       rust_named_edge(name: rust_inhabitant_field_bool, target: rust_inhabitant_bool_node()),
       rust_named_edge(name: rust_inhabitant_field_char, target: rust_inhabitant_char_node()),
       rust_named_edge(name: rust_inhabitant_field_str, target: rust_inhabitant_str_node()),
-      rust_named_edge(name: rust_inhabitant_field_string, target: rust_inhabitant_string_node()),
       rust_named_edge(name: rust_inhabitant_field_unit, target: rust_inhabitant_unit_node()),
       rust_named_edge(name: rust_inhabitant_field_never, target: rust_inhabitant_never_node())
     ]
