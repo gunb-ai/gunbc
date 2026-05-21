@@ -27,7 +27,18 @@ import v4.std.dependency {
   DependencyView,
   dependency_binds_to_edge
 }
-import v4.std.node { Atom, Edge, Hash, Named, Node, Symbol, TypeNode }
+import v4.std.node {
+  Atom,
+  Bind,
+  ComputationNode,
+  Edge,
+  Hash,
+  Named,
+  Node,
+  Positional,
+  Symbol,
+  TypeNode
+}
 import v4.std.witness { Holds, StructuralPropertyWitness, Witness }
 
 data sr_root_symbol: Symbol = sr_root_symbol
