@@ -29,8 +29,12 @@ type HostFieldValue {
   value: HostValue
 }
 
+type HostBindingKey {
+  declaration: Node
+}
+
 type HostEnvironment {
-  bindings: Map<Symbol, HostValue>
+  bindings: Map<HostBindingKey, HostValue>
 }
 
 type HostPrimitiveValue {
@@ -125,7 +129,7 @@ type HostLoopInterpreter {
 }
 
 type HostBindInterpreter {
-  bind_value: fn(Symbol, HostValue, HostEnvironment) -> Outcome<HostEnvironment>
+  bind_value: fn(HostBindingKey, HostValue, HostEnvironment) -> Outcome<HostEnvironment>
 }
 
 type HostInterpretationAlgebra {
