@@ -175,11 +175,21 @@ pub fn parse_segment_tokens(seg: &String) -> Rc<PathSegmentTokensResult> {
             }
             let prefix = match before_and_rest.clone().first().cloned() {
                 Some(p) => p.clone(),
-                None => "".to_string(),
+                None => {
+                    return Rc::new(PathSegmentTokensResult::MalformedPathSegment {
+                        segment: seg.clone(),
+                        reason: "internal: missing prefix after opening-brace split".to_string(),
+                    })
+                }
             };
             let after_open = match before_and_rest.clone().get(1 as usize).cloned() {
                 Some(r) => r.clone(),
-                None => "".to_string(),
+                None => {
+                    return Rc::new(PathSegmentTokensResult::MalformedPathSegment {
+                        segment: seg.clone(),
+                        reason: "internal: missing tail after opening-brace split".to_string(),
+                    })
+                }
             };
             let name_and_suffix = Rc::new(
                 after_open
@@ -197,11 +207,22 @@ pub fn parse_segment_tokens(seg: &String) -> Rc<PathSegmentTokensResult> {
             }
             let param_name = match name_and_suffix.clone().first().cloned() {
                 Some(p) => p.clone(),
-                None => "".to_string(),
+                None => {
+                    return Rc::new(PathSegmentTokensResult::MalformedPathSegment {
+                        segment: seg.clone(),
+                        reason: "internal: missing parameter name after closing-brace split"
+                            .to_string(),
+                    })
+                }
             };
             let suffix = match name_and_suffix.clone().get(1 as usize).cloned() {
                 Some(s) => s.clone(),
-                None => "".to_string(),
+                None => {
+                    return Rc::new(PathSegmentTokensResult::MalformedPathSegment {
+                        segment: seg.clone(),
+                        reason: "internal: missing suffix after closing-brace split".to_string(),
+                    })
+                }
             };
             let prefix_tokens = if (prefix.clone().as_str() != "".to_string().as_str()) {
                 Rc::new(vec![Rc::new(UrlPathToken::LiteralToken {
