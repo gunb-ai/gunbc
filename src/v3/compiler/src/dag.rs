@@ -1344,7 +1344,8 @@ pub enum SubValueRelation {
     },
     PreservedValue,
     NonIncreasingValue,
-    IncomparableValue,
+    StrictAxisErased,
+    MixedTop,
     SubValueUnknown,
 }
 
@@ -1605,7 +1606,8 @@ fn call_pattern_from_relations_with_index(
             // same fail-closed posture as `SubValueUnknown` for downstream consumers; matches
             // the dsl/std/induction.dag `sub_value_to_call_pattern` mapping for these arms.
             SubValueRelation::NonIncreasingValue => None,
-            SubValueRelation::IncomparableValue => None,
+            SubValueRelation::StrictAxisErased => None,
+            SubValueRelation::MixedTop => None,
             SubValueRelation::SubValueUnknown => None,
         }
     };

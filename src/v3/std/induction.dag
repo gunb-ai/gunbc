@@ -201,20 +201,17 @@ fn inductive_field_to_dimension(field: InductiveField, param: String) -> Ranking
 //   PreservedValue = the argument IS the parameter (no descent, bounded by Forever)
 //   SubValueUnknown = the analyzer cannot determine the relationship (hard error)
 //
-// 🟡 MIXED. Structural descent via `InductiveField` and proof-grade `ShrinkFactor`
-// (`std.computation`); `ArithmeticDescent` names a parameter; `SubValueUnknown` is the fail-closed sink
-// and lattice bottom; `NonIncreasingValue` / `IncomparableValue` close the lattice so meet/join
-// inhabit `BoundedLattice<SubValueRelation>` lawfully (see `sub_value_relation_bounded_lattice` below).
+// 🟡 MIXED. Mirror of `dsl/std/induction.dag` carrier — see that file for the full Inc-split
+// rationale (option (A), operator-ratified 2026-05-21, codex #15892 vs #15942 resolution).
 //
 // Lattice ordering (top → bottom):
-//   IncomparableValue                                            -- ⊤
-//      |
-//      +-- StrictSubValue{f,fac} | IteratedSubValue{f} | ArithmeticDescent{p,fac} | PreservedValue
-//      |   (pairwise incomparable structural witnesses)
-//      |
-//   NonIncreasingValue                                            -- "weakest structural"
-//      |
-//   SubValueUnknown                                                -- ⊥
+//   MixedTop                                                       -- ⊤
+//   < StrictAxisErased < { StrictSubValue / IteratedSubValue / ArithmeticDescent }
+//   MixedTop > PreservedValue
+//   < NonIncreasingValue < SubValueUnknown
+//
+// StrictAxisErased projects to Strict; MixedTop projects to NonIncreasing — see
+// sub_value_to_evidence and the inline comments at the bridge functions below.
 
 type SubValueRelation
   = StrictSubValue { field: InductiveField, factor: ShrinkFactor }
@@ -222,7 +219,8 @@ type SubValueRelation
   | ArithmeticDescent { param: String, factor: ShrinkFactor }
   | PreservedValue
   | NonIncreasingValue
-  | IncomparableValue
+  | StrictAxisErased
+  | MixedTop
   | SubValueUnknown
 
 
@@ -258,10 +256,9 @@ fn sub_value_to_evidence(relation: SubValueRelation) -> DescentEvidence {
       }
     PreservedValue                           => NonIncreasing
     NonIncreasingValue                       => NonIncreasing
-    // See `dsl/std/induction.dag` — IncomparableValue projects to `Strict` for evidence-
-    // projection monotonicity vs the lattice order (it is the lattice top reachable only
-    // from the join of distinct structural-strict witnesses, so "strict, axis erased").
-    IncomparableValue                        => Strict
+    // See `dsl/std/induction.dag` Inc-split rationale.
+    StrictAxisErased                         => Strict
+    MixedTop                                 => NonIncreasing
     SubValueUnknown                          => DescentUnknown
   }
 }
@@ -317,14 +314,26 @@ fn sub_value_structural_eq(a: SubValueRelation, b: SubValueRelation) -> Bool {
       }
     PreservedValue => match b { PreservedValue => true, _ => false }
     NonIncreasingValue => match b { NonIncreasingValue => true, _ => false }
-    IncomparableValue => match b { IncomparableValue => true, _ => false }
+    StrictAxisErased => match b { StrictAxisErased => true, _ => false }
+    MixedTop => match b { MixedTop => true, _ => false }
     SubValueUnknown => match b { SubValueUnknown => true, _ => false }
+  }
+}
+
+fn is_strict_style_structural(r: SubValueRelation) -> Bool {
+  match r {
+    StrictSubValue { field: _, factor: _ } => true
+    IteratedSubValue { field: _ } => true
+    ArithmeticDescent { param: _, factor: _ } => true
+    StrictAxisErased => true
+    _ => false
   }
 }
 
 fn sub_value_level(r: SubValueRelation) -> Int {
   match r {
-    IncomparableValue => 3
+    MixedTop => 4
+    StrictAxisErased => 3
     StrictSubValue { field: _, factor: _ } => 2
     IteratedSubValue { field: _ } => 2
     ArithmeticDescent { param: _, factor: _ } => 2
@@ -341,13 +350,21 @@ fn meet_sub_value(a: SubValueRelation, b: SubValueRelation) -> SubValueRelation 
     let lb = sub_value_level(r: b)
     if la == 0 || lb == 0 { SubValueUnknown }
     else {
-      if la == 3 { b }
+      if la == 4 { b }
       else {
-        if lb == 3 { a }
+        if lb == 4 { a }
         else {
-          // See `dsl/std/induction.dag` — both lawful at level ≥ 1, neither ⊤,
-          // greatest common lower bound is uniformly `NonIncreasingValue`.
-          NonIncreasingValue
+          if la == 3 {
+            if is_strict_style_structural(r: b) { b }
+            else { NonIncreasingValue }
+          }
+          else {
+            if lb == 3 {
+              if is_strict_style_structural(r: a) { a }
+              else { NonIncreasingValue }
+            }
+            else { NonIncreasingValue }
+          }
         }
       }
     }
@@ -363,12 +380,16 @@ fn join_sub_value(a: SubValueRelation, b: SubValueRelation) -> SubValueRelation 
     else {
       if lb == 0 { a }
       else {
-        if la == 3 || lb == 3 { IncomparableValue }
+        if la == 4 || lb == 4 { MixedTop }
         else {
           if la == 1 { b }
           else {
             if lb == 1 { a }
-            else { IncomparableValue }
+            else {
+              if is_strict_style_structural(r: a) && is_strict_style_structural(r: b) {
+                StrictAxisErased
+              } else { MixedTop }
+            }
           }
         }
       }
@@ -427,10 +448,15 @@ fn compose_sub_value_relations(arg_rel: SubValueRelation, callee_rel: SubValueRe
         SubValueUnknown => SubValueUnknown
         _ => NonIncreasingValue
       }
-    IncomparableValue =>
+    StrictAxisErased =>
       match arg_rel {
         SubValueUnknown => SubValueUnknown
-        _ => IncomparableValue
+        _ => StrictAxisErased
+      }
+    MixedTop =>
+      match arg_rel {
+        SubValueUnknown => SubValueUnknown
+        _ => MixedTop
       }
     StrictSubValue { field: _, factor: _ } =>
       match arg_rel {
@@ -440,31 +466,27 @@ fn compose_sub_value_relations(arg_rel: SubValueRelation, callee_rel: SubValueRe
         IteratedSubValue { field: f } => StrictSubValue { field: f, factor: UnitShrink }
         ArithmeticDescent { param: _, factor: _ } => SubValueUnknown
         NonIncreasingValue => NonIncreasingValue
-        IncomparableValue => IncomparableValue
+        StrictAxisErased => StrictAxisErased
+        MixedTop => MixedTop
       }
     IteratedSubValue { field: _ } =>
       match arg_rel {
         PreservedValue => callee_rel
         SubValueUnknown => SubValueUnknown
-        // Conservative: StrictSubValue, not IteratedSubValue. The outer
-        // field may be OptionalRecursion (not iterable). Iteration evidence
-        // is only valid at the site that observes the list, not through
-        // cross-call composition.
         StrictSubValue { field: f, factor: _ } => StrictSubValue { field: f, factor: UnitShrink }
         IteratedSubValue { field: f } => StrictSubValue { field: f, factor: UnitShrink }
         ArithmeticDescent { param: _, factor: _ } => SubValueUnknown
         NonIncreasingValue => NonIncreasingValue
-        IncomparableValue => IncomparableValue
+        StrictAxisErased => StrictAxisErased
+        MixedTop => MixedTop
       }
     ArithmeticDescent { param: p, factor: f } =>
       match arg_rel {
         PreservedValue => ArithmeticDescent { param: p, factor: f }
         SubValueUnknown => SubValueUnknown
-        // Lawful non-structural inhabitants flow through at lattice level (same
-        // posture as the `StrictSubValue` / `IteratedSubValue` callee arms above);
-        // see `dsl/std/induction.dag` for the rationale.
         NonIncreasingValue => NonIncreasingValue
-        IncomparableValue => IncomparableValue
+        StrictAxisErased => StrictAxisErased
+        MixedTop => MixedTop
         _ => SubValueUnknown
       }
   }
@@ -497,7 +519,8 @@ fn sub_value_to_call_pattern(relation: SubValueRelation) -> CallPattern? {
       }
     PreservedValue                            => Some { value: SameArgumentCall }
     NonIncreasingValue                        => none
-    IncomparableValue                         => none
+    StrictAxisErased                          => none
+    MixedTop                                  => none
     SubValueUnknown                           => none
   }
 }
@@ -550,10 +573,10 @@ fn sub_value_to_lowering_target(relation: SubValueRelation) -> LoweringTarget? {
         evidence: NonIncreasing,
         factor: none
       }}
-    // See `dsl/std/induction.dag` — IncomparableValue evidence-projects to `Strict`,
-    // but the lowering target has no usable axis for a finite bound, so the honest
-    // projection is `none` (same as `sub_value_to_call_pattern(IncomparableValue)`).
-    IncomparableValue => none
+    // StrictAxisErased / MixedTop: see `dsl/std/induction.dag` — neither has a usable axis
+    // for a finite lowering bound, so both project to `none` (same fail-closed posture).
+    StrictAxisErased => none
+    MixedTop => none
     SubValueUnknown => none
   }
 }

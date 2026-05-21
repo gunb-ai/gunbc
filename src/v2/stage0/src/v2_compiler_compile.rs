@@ -928,7 +928,8 @@ pub fn serialize_sub_value_relation(rel: Rc<SubValueRelation>) -> String {
         SubValueRelation::NonIncreasingValue => {
             "{\"_variant\": \"NonIncreasingValue\"}".to_string()
         }
-        SubValueRelation::IncomparableValue => "{\"_variant\": \"IncomparableValue\"}".to_string(),
+        SubValueRelation::StrictAxisErased => "{\"_variant\": \"StrictAxisErased\"}".to_string(),
+        SubValueRelation::MixedTop => "{\"_variant\": \"MixedTop\"}".to_string(),
         SubValueRelation::SubValueUnknown => "{\"_variant\": \"SubValueUnknown\"}".to_string(),
     }
 }

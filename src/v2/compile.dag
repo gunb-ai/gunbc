@@ -489,7 +489,8 @@ fn serialize_sub_value_relation(rel: SubValueRelation) -> String {
       concat("{\"_variant\": \"ArithmeticDescent\", \"param\": ", json_quote(s: p), ", \"factor\": ", serialize_shrink_factor(factor: fac), "}")
     PreservedValue => "{\"_variant\": \"PreservedValue\"}"
     NonIncreasingValue => "{\"_variant\": \"NonIncreasingValue\"}"
-    IncomparableValue => "{\"_variant\": \"IncomparableValue\"}"
+    StrictAxisErased => "{\"_variant\": \"StrictAxisErased\"}"
+    MixedTop => "{\"_variant\": \"MixedTop\"}"
     SubValueUnknown => "{\"_variant\": \"SubValueUnknown\"}"
   }
 }

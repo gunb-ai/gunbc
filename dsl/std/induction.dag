@@ -486,17 +486,17 @@ fn join_sub_value(a: SubValueRelation, b: SubValueRelation) -> SubValueRelation 
 //   - Commutativity: `meet` / `join` use only `sub_value_level` and `sub_value_structural_eq`,
 //     both symmetric in their arguments.
 //   - Associativity: take the lower level (meet) or higher level (join), falling to
-//     `NonIncreasingValue` / `IncomparableValue` when both arguments are at the structural
-//     level and not identical. Symmetric and order-independent.
-//   - Absorption: `meet(a, join(a, b)) = a` — `join(a, b)` is either `a` (if b ≤ a),
-//     `IncomparableValue` (≥ a, so meet returns a), or some element ≥ a; meet pulls back.
-//   - Top: meet(⊤, a) = a, join(⊤, a) = ⊤ — `IncomparableValue` at level 3.
+//     `NonIncreasingValue` (meet of pairwise-incomparable structurals) or to `StrictAxisErased`
+//     / `MixedTop` (join of strict-style-only / mixed structurals respectively) when arguments
+//     are at the structural level and not identical. Symmetric and order-independent.
+//   - Absorption: `meet(a, join(a, b)) = a` — `join(a, b)` is either `a` (if b ≤ a) or some
+//     element ≥ a (StrictAxisErased or MixedTop), and meet pulls back to a.
+//   - Top: meet(⊤, a) = a, join(⊤, a) = ⊤ — `MixedTop` at level 4.
 //   - Bottom: meet(⊥, a) = ⊥, join(⊥, a) = a — `SubValueUnknown` at level 0.
 //
-// Operator-direct (PATH-2-FULL, ratified 2026-05-21): the lawful algebra is the architectural
-// improvement; `SubValueUnknown` participates as the lattice bottom (carries the prior
-// "fail-closed sink" role) and `NonIncreasingValue` / `IncomparableValue` close the lattice
-// so structural-vs-structural meets/joins do not silently erase termination strength.
+// Operator-direct (PATH-2-FULL → option (A) split, ratified 2026-05-21): the two top inhabitants
+// `StrictAxisErased` and `MixedTop` resolve the codex #15892 vs #15942 contradiction that a
+// single `IncomparableValue` top could not satisfy. See file header for the Inc-split rationale.
 //
 // 🟡 P5 STAGE0-GENERATOR-GAP. A `data sub_value_relation_bounded_lattice: BoundedLattice<SubValueRelation>`
 // declaration is held until the stage0 Rust emitter handles `BoundedLattice<T>` instances where
@@ -504,12 +504,11 @@ fn join_sub_value(a: SubValueRelation, b: SubValueRelation) -> SubValueRelation 
 // `InductiveField` / `ShrinkFactor`, which the stage0 layer materialises behind `Rc`).
 // Current stage0 emission produces `meet: Rc::new(meet_sub_value)` against a struct field
 // typed `Rc<dyn Fn(T, T) -> T>` with `T = SubValueRelation` (not `Rc<SubValueRelation>`),
-// and `top: Box::new(Rc::new(SubValueRelation::IncomparableValue))` against a `Box<T>`
-// field — both type-mismatch. Encoding / FermiDepth / DescentEvidence sidestep this
-// because they are bare enums with no payload. Dissolution trigger: stage0 lattice-witness
-// emission grows `Rc<T>`-aware instantiation (separate substrate-feature lane). Until then,
-// the lawful algebra is consumed via the free functions `meet_sub_value` / `join_sub_value`
-// directly — same denotational content, no algebra-inhabitance discoverability.
+// and `top: Box::new(Rc::new(SubValueRelation::MixedTop))` against a `Box<T>` field — both
+// type-mismatch. Encoding / FermiDepth / DescentEvidence sidestep this because they are bare
+// enums with no payload. Dissolution trigger: stage0 lattice-witness emission grows
+// `Rc<T>`-aware instantiation (separate substrate-feature lane). Until then, the lawful
+// algebra is consumed via the free functions `meet_sub_value` / `join_sub_value` directly.
 
 
 // =========================================================================
@@ -550,18 +549,26 @@ fn compose_sub_value_relations(arg_rel: SubValueRelation, callee_rel: SubValueRe
   match callee_rel {
     PreservedValue => arg_rel
     SubValueUnknown => SubValueUnknown
-    // NonIncreasingValue and IncomparableValue at the callee compose with the
-    // caller side at the same lattice level — no structural witness survives
-    // because the callee already lacks one.
+    // Lawful non-structural callees flow at lattice level — the callee already
+    // lacks a structural witness, so the composed result cannot strengthen one.
     NonIncreasingValue =>
       match arg_rel {
         SubValueUnknown => SubValueUnknown
         _ => NonIncreasingValue
       }
-    IncomparableValue =>
+    StrictAxisErased =>
       match arg_rel {
         SubValueUnknown => SubValueUnknown
-        _ => IncomparableValue
+        // The callee returned axis-erased strict; arg=Preserved means we still know
+        // strict-along-some-axis. arg=Strict_f / Iter_f could pin an axis from the
+        // caller side, but we cannot identify which (callee's axis was erased) — keep
+        // StrictAxisErased rather than fabricating a specific axis.
+        _ => StrictAxisErased
+      }
+    MixedTop =>
+      match arg_rel {
+        SubValueUnknown => SubValueUnknown
+        _ => MixedTop
       }
     StrictSubValue { field: _, factor: _ } =>
       match arg_rel {
@@ -571,7 +578,8 @@ fn compose_sub_value_relations(arg_rel: SubValueRelation, callee_rel: SubValueRe
         IteratedSubValue { field: f } => StrictSubValue { field: f, factor: UnitShrink }
         ArithmeticDescent { param: _, factor: _ } => SubValueUnknown
         NonIncreasingValue => NonIncreasingValue
-        IncomparableValue => IncomparableValue
+        StrictAxisErased => StrictAxisErased
+        MixedTop => MixedTop
       }
     IteratedSubValue { field: _ } =>
       match arg_rel {
@@ -585,23 +593,21 @@ fn compose_sub_value_relations(arg_rel: SubValueRelation, callee_rel: SubValueRe
         IteratedSubValue { field: f } => StrictSubValue { field: f, factor: UnitShrink }
         ArithmeticDescent { param: _, factor: _ } => SubValueUnknown
         NonIncreasingValue => NonIncreasingValue
-        IncomparableValue => IncomparableValue
+        StrictAxisErased => StrictAxisErased
+        MixedTop => MixedTop
       }
     ArithmeticDescent { param: p, factor: f } =>
       match arg_rel {
         PreservedValue => ArithmeticDescent { param: p, factor: f }
         SubValueUnknown => SubValueUnknown
         // Lawful non-structural inhabitants on the arg side cannot strengthen back
-        // to `ArithmeticDescent` (the structural witness requires the arg to be the
-        // callee's exact parameter, which only `PreservedValue` certifies), so they
-        // flow through at the same lattice level rather than collapsing to ⊥ — same
-        // posture as the `StrictSubValue` / `IteratedSubValue` callee arms above.
+        // to `ArithmeticDescent`; flow at lattice level.
         NonIncreasingValue => NonIncreasingValue
-        IncomparableValue => IncomparableValue
+        StrictAxisErased => StrictAxisErased
+        MixedTop => MixedTop
         // Cross-axis structural composition (caller-side structural witness on a
         // different dimension than the callee's arithmetic dimension) preserves the
-        // prior fail-closed posture — a separate composition-semantics question from
-        // the lattice-lawfulness reshape this PR ratified.
+        // prior fail-closed posture.
         _ => SubValueUnknown
       }
   }
@@ -636,7 +642,8 @@ fn sub_value_to_call_pattern(relation: SubValueRelation) -> CallPattern? {
     // Non-structural lawful inhabitants have no specific call pattern to project.
     // Same fail-closed posture as `SubValueUnknown` for downstream consumers.
     NonIncreasingValue                        => none
-    IncomparableValue                         => none
+    StrictAxisErased                          => none
+    MixedTop                                  => none
     SubValueUnknown                           => none
   }
 }
@@ -691,15 +698,15 @@ fn sub_value_to_lowering_target(relation: SubValueRelation) -> LoweringTarget? {
         evidence: NonIncreasing,
         factor: none
       }}
-    // IncomparableValue evidence-projects to `Strict` (strict descent along some axis,
+    // StrictAxisErased evidence-projects to `Strict` (strict descent along some axis,
     // axis erased — see `sub_value_to_evidence`). The lowering target has no usable axis
-    // to mint a finite `bound` (no `tree_size_bound`, no `CollectionSize`, no
-    // `ArithmeticParam` — all require a specific param/field), so the honest projection
-    // is `none` — same posture as `sub_value_to_call_pattern(IncomparableValue) = none`.
-    // Returning `Forever + NonIncreasing` would contradict the `Strict` evidence (P2 /
-    // Practice 3 single-authority); returning `Forever + Strict` would claim a bound the
-    // lowering cannot actually enforce. Fail-closed is the only consistent projection.
-    IncomparableValue => none
+    // for a finite `bound`, so the honest projection is `none` — same posture as
+    // `sub_value_to_call_pattern(StrictAxisErased) = none`.
+    StrictAxisErased => none
+    // MixedTop evidence-projects to `NonIncreasing` (sound for joins that crossed the
+    // strict / non-strict boundary). The lowering target has no usable axis here either —
+    // mixed-origin joins cannot project a specific shrink target.
+    MixedTop => none
     SubValueUnknown => none
   }
 }

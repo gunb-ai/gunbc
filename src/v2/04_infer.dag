@@ -105,7 +105,7 @@ import v2.compiler.infer_env {
 import std.node { compiler_inductive_fields, compiler_recursive_types }
 import std.induction {
   InductiveField, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion, SetRecursion, MapValueRecursion,
-  SubValueRelation, StrictSubValue, IteratedSubValue, ArithmeticDescent, PreservedValue, NonIncreasingValue, IncomparableValue, SubValueUnknown,
+  SubValueRelation, StrictSubValue, IteratedSubValue, ArithmeticDescent, PreservedValue, NonIncreasingValue, StrictAxisErased, MixedTop, SubValueUnknown,
   ShrinkFactor, UnitShrink, ConstantShrink, ProportionalShrink,
   sub_value_to_evidence, meet_sub_value, join_sub_value, compose_sub_value, compose_sub_value_relations
 }
@@ -3290,7 +3290,8 @@ fn classify_argument(arg_expr: Node, param_name: String, ctx: DescentContext) ->
             // Lawful non-structural inhabitants flow through unchanged: an accessor
             // application that does not strengthen evidence keeps the lattice level.
             NonIncreasingValue => NonIncreasingValue
-            IncomparableValue => IncomparableValue
+            StrictAxisErased => StrictAxisErased
+            MixedTop => MixedTop
             SubValueUnknown => SubValueUnknown
           }
         None => SubValueUnknown

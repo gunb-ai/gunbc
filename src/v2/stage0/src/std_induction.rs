@@ -110,7 +110,8 @@ pub enum SubValueRelation {
     },
     PreservedValue,
     NonIncreasingValue,
-    IncomparableValue,
+    StrictAxisErased,
+    MixedTop,
     SubValueUnknown,
 }
 
@@ -129,7 +130,8 @@ pub fn sub_value_to_evidence(relation: Rc<SubValueRelation>) -> DescentEvidence 
         },
         SubValueRelation::PreservedValue => DescentEvidence::NonIncreasing,
         SubValueRelation::NonIncreasingValue => DescentEvidence::NonIncreasing,
-        SubValueRelation::IncomparableValue => DescentEvidence::Strict,
+        SubValueRelation::StrictAxisErased => DescentEvidence::Strict,
+        SubValueRelation::MixedTop => DescentEvidence::NonIncreasing,
         SubValueRelation::SubValueUnknown => DescentEvidence::DescentUnknown,
     }
 }
@@ -196,8 +198,12 @@ pub fn sub_value_structural_eq(a: Rc<SubValueRelation>, b: Rc<SubValueRelation>)
             SubValueRelation::NonIncreasingValue => true,
             _ => false,
         },
-        SubValueRelation::IncomparableValue => match (*b).clone() {
-            SubValueRelation::IncomparableValue => true,
+        SubValueRelation::StrictAxisErased => match (*b).clone() {
+            SubValueRelation::StrictAxisErased => true,
+            _ => false,
+        },
+        SubValueRelation::MixedTop => match (*b).clone() {
+            SubValueRelation::MixedTop => true,
             _ => false,
         },
         SubValueRelation::SubValueUnknown => match (*b).clone() {
@@ -207,9 +213,20 @@ pub fn sub_value_structural_eq(a: Rc<SubValueRelation>, b: Rc<SubValueRelation>)
     }
 }
 
+pub fn is_strict_style_structural(r: Rc<SubValueRelation>) -> bool {
+    match (*r).clone() {
+        SubValueRelation::StrictSubValue { .. } => true,
+        SubValueRelation::IteratedSubValue { .. } => true,
+        SubValueRelation::ArithmeticDescent { .. } => true,
+        SubValueRelation::StrictAxisErased => true,
+        _ => false,
+    }
+}
+
 pub fn sub_value_level(r: Rc<SubValueRelation>) -> i64 {
     match (*r).clone() {
-        SubValueRelation::IncomparableValue => 3,
+        SubValueRelation::MixedTop => 4,
+        SubValueRelation::StrictAxisErased => 3,
         SubValueRelation::StrictSubValue { .. } => 2,
         SubValueRelation::IteratedSubValue { .. } => 2,
         SubValueRelation::ArithmeticDescent { .. } => 2,
@@ -229,13 +246,29 @@ pub fn meet_sub_value(a: Rc<SubValueRelation>, b: Rc<SubValueRelation>) -> Rc<Su
             if ((la.clone() == 0) || (lb.clone() == 0)) {
                 Rc::new(SubValueRelation::SubValueUnknown)
             } else {
-                if (la.clone() == 3) {
+                if (la.clone() == 4) {
                     b.clone()
                 } else {
-                    if (lb.clone() == 3) {
+                    if (lb.clone() == 4) {
                         a.clone()
                     } else {
-                        Rc::new(SubValueRelation::NonIncreasingValue)
+                        if (la.clone() == 3) {
+                            if is_strict_style_structural(b.clone()) {
+                                b.clone()
+                            } else {
+                                Rc::new(SubValueRelation::NonIncreasingValue)
+                            }
+                        } else {
+                            if (lb.clone() == 3) {
+                                if is_strict_style_structural(a.clone()) {
+                                    a.clone()
+                                } else {
+                                    Rc::new(SubValueRelation::NonIncreasingValue)
+                                }
+                            } else {
+                                Rc::new(SubValueRelation::NonIncreasingValue)
+                            }
+                        }
                     }
                 }
             }
@@ -256,8 +289,8 @@ pub fn join_sub_value(a: Rc<SubValueRelation>, b: Rc<SubValueRelation>) -> Rc<Su
                 if (lb.clone() == 0) {
                     a.clone()
                 } else {
-                    if ((la.clone() == 3) || (lb.clone() == 3)) {
-                        Rc::new(SubValueRelation::IncomparableValue)
+                    if ((la.clone() == 4) || (lb.clone() == 4)) {
+                        Rc::new(SubValueRelation::MixedTop)
                     } else {
                         if (la.clone() == 1) {
                             b.clone()
@@ -265,7 +298,13 @@ pub fn join_sub_value(a: Rc<SubValueRelation>, b: Rc<SubValueRelation>) -> Rc<Su
                             if (lb.clone() == 1) {
                                 a.clone()
                             } else {
-                                Rc::new(SubValueRelation::IncomparableValue)
+                                if (is_strict_style_structural(a.clone())
+                                    && is_strict_style_structural(b.clone()))
+                                {
+                                    Rc::new(SubValueRelation::StrictAxisErased)
+                                } else {
+                                    Rc::new(SubValueRelation::MixedTop)
+                                }
                             }
                         }
                     }
@@ -299,9 +338,13 @@ pub fn compose_sub_value_relations(
             SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
             _ => Rc::new(SubValueRelation::NonIncreasingValue),
         },
-        SubValueRelation::IncomparableValue => match (*arg_rel).clone() {
+        SubValueRelation::StrictAxisErased => match (*arg_rel).clone() {
             SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
-            _ => Rc::new(SubValueRelation::IncomparableValue),
+            _ => Rc::new(SubValueRelation::StrictAxisErased),
+        },
+        SubValueRelation::MixedTop => match (*arg_rel).clone() {
+            SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
+            _ => Rc::new(SubValueRelation::MixedTop),
         },
         SubValueRelation::StrictSubValue { .. } => match (*arg_rel).clone() {
             SubValueRelation::PreservedValue => callee_rel.clone(),
@@ -322,7 +365,8 @@ pub fn compose_sub_value_relations(
                 Rc::new(SubValueRelation::SubValueUnknown)
             }
             SubValueRelation::NonIncreasingValue => Rc::new(SubValueRelation::NonIncreasingValue),
-            SubValueRelation::IncomparableValue => Rc::new(SubValueRelation::IncomparableValue),
+            SubValueRelation::StrictAxisErased => Rc::new(SubValueRelation::StrictAxisErased),
+            SubValueRelation::MixedTop => Rc::new(SubValueRelation::MixedTop),
         },
         SubValueRelation::IteratedSubValue { .. } => match (*arg_rel).clone() {
             SubValueRelation::PreservedValue => callee_rel.clone(),
@@ -343,7 +387,8 @@ pub fn compose_sub_value_relations(
                 Rc::new(SubValueRelation::SubValueUnknown)
             }
             SubValueRelation::NonIncreasingValue => Rc::new(SubValueRelation::NonIncreasingValue),
-            SubValueRelation::IncomparableValue => Rc::new(SubValueRelation::IncomparableValue),
+            SubValueRelation::StrictAxisErased => Rc::new(SubValueRelation::StrictAxisErased),
+            SubValueRelation::MixedTop => Rc::new(SubValueRelation::MixedTop),
         },
         SubValueRelation::ArithmeticDescent {
             param: p,
@@ -356,7 +401,8 @@ pub fn compose_sub_value_relations(
             }),
             SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
             SubValueRelation::NonIncreasingValue => Rc::new(SubValueRelation::NonIncreasingValue),
-            SubValueRelation::IncomparableValue => Rc::new(SubValueRelation::IncomparableValue),
+            SubValueRelation::StrictAxisErased => Rc::new(SubValueRelation::StrictAxisErased),
+            SubValueRelation::MixedTop => Rc::new(SubValueRelation::MixedTop),
             _ => Rc::new(SubValueRelation::SubValueUnknown),
         },
     }
@@ -398,7 +444,8 @@ pub fn sub_value_to_call_pattern(relation: Rc<SubValueRelation>) -> Option<Rc<Ca
         },
         SubValueRelation::PreservedValue => Some(Rc::new(CallPattern::SameArgumentCall)),
         SubValueRelation::NonIncreasingValue => None,
-        SubValueRelation::IncomparableValue => None,
+        SubValueRelation::StrictAxisErased => None,
+        SubValueRelation::MixedTop => None,
         SubValueRelation::SubValueUnknown => None,
     }
 }
@@ -445,7 +492,8 @@ pub fn sub_value_to_lowering_target(relation: Rc<SubValueRelation>) -> Option<Rc
             evidence: DescentEvidence::NonIncreasing,
             factor: None,
         })),
-        SubValueRelation::IncomparableValue => None,
+        SubValueRelation::StrictAxisErased => None,
+        SubValueRelation::MixedTop => None,
         SubValueRelation::SubValueUnknown => None,
     }
 }
