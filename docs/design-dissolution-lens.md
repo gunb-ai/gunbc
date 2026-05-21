@@ -1243,25 +1243,44 @@ import/alias of the resolver's authoritative shape.
   else routes through operator judgment via the parent's resolution
   table.
 
-- *Clearing receipt:* the substrate carries one of the parent's
-  five resolution shapes (alias edge / retirement record /
-  disambiguation row / canonical-concept row with one of the prior
-  three / deletion) OR (for template→generated) a `GeneratedFrom`
-  registry row. The lens re-fires on the same head until the
-  resolution lands. **Fix-confidence: templated auto-apply** for
-  the firing-today cases only — for (C1) type-scope hits (full
-  variant-set bijection), the alias-identity rewrite is mechanical
-  (the lens emits a `Diff` rewriting the redeclaration into an
-  `import` + `type T = canonical.T`); for (C1) fn-scope hits
-  (signature + body match), the rewrite is the alias `fn helper(…) ->
-  … = canonical.helper(…)`; for (C2) hits, the rewrite is the
-  `fold_T` call with the algebra extracted from the original arms
-  (the L1.5 catamorphism-derivation pattern, applied here as the
-  fix shape). Reviewer overrides the canonical-home or
-  algebra-binding names before commit. The refinement-subset case
-  (RegisterStateSpace-shape) has **no auto-fix today** — it's part
-  of the (C1') future sub-layer; resolution requires operator
-  judgment.
+- *Clearing receipt (single authoritative resolution table):* the
+  substrate carries **one of the five passing resolution shapes
+  below** — three inherited from parent L1.12 plus two added by
+  this sub-signature. The five together are the complete table for
+  the L1.12 family (parent + L1.12.b); the lens re-fires on the
+  same head until one of these resolution shapes lands or the
+  declaration is deleted (deletion removes the trigger condition
+  entirely, so the lens never engages — not a sixth resolution
+  shape, just trigger absence).
+  | # | Resolution shape | Source | Substrate carrier |
+  |---|---|---|---|
+  | (R1) | Alias-identity edge | parent L1.12, outcome (1) | `import` + `type T = canonical.T` redeclaration rewrite |
+  | (R2) | Retirement record | parent L1.12, outcome (2) | `HistoricalDeclaration` row |
+  | (R3) | ConceptDisambiguation row | parent L1.12, outcome (3) | `ConceptDisambiguation` row naming declarations as distinct concepts |
+  | (R4) | Refinement edge | L1.12.b Escape (Refinement-not-parallel) | substrate `Refinement` carrier declaring the relationship (`type Sub = Super refined { … }` or equivalent) |
+  | (R5) | Generated-artifact binding | L1.12.b Escape (Template → generated) | `GeneratedArtifactBinding` registry row (working name; see naming note in the Escape rule) |
+
+  Parent outcomes (4) `CanonicalConcept`-without-resolution and (5)
+  silence are FIRES, not resolutions — they're the cases the lens
+  acts on, and resolution requires the substrate to add one of
+  (R1)–(R5). All five resolution shapes are substrate data — no
+  comment/prose path satisfies any of them (the no-prose discipline
+  applies uniformly across the table).
+
+- *Fix-confidence: templated auto-apply* for the firing-today cases
+  only — for (C1) type-scope hits (full variant-set bijection), the
+  (R1) alias-identity rewrite is mechanical (the lens emits a
+  `Diff` rewriting the redeclaration into an `import` + `type T =
+  canonical.T`); for (C1) fn-scope hits (signature + body match),
+  the rewrite is the alias `fn helper(…) -> … = canonical.helper(…)`;
+  for (C2) hits, the rewrite is the `fold_T` call with the algebra
+  extracted from the original arms (the L1.5 catamorphism-derivation
+  pattern, applied here as the fix shape). Reviewer overrides the
+  canonical-home or algebra-binding names before commit. The
+  refinement-subset case (RegisterStateSpace-shape) has **no
+  auto-fix today** — it's part of the (C1') future sub-layer;
+  resolution requires operator judgment landing one of (R3) (R4)
+  via human-designed substrate carrier shape.
 
 - *Kills (real corpus):*
   - **`count_named_bind` corpus.** Identical
