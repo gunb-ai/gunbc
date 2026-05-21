@@ -7005,7 +7005,7 @@ pub fn build_scc_index(
                             v2_rt::rc_empty_set(),
                             |inner: Rc<
                                 std::collections::BTreeSet<
-                                    compile_error!("UNRESOLVED_TypeVariable"),
+                                    String,
                                 >,
                             >,
                              member: String| {
@@ -7015,7 +7015,7 @@ pub fn build_scc_index(
                         let members = Rc::new({
                             let mut __result = Vec::new();
                             for member in names.clone().iter().cloned() {
-                                if v2_rt::set_contains(&member_set, member.clone()) {
+                                if v2_rt::set_contains(member_set.clone(), member.clone()) {
                                     __result.push(member);
                                 }
                             }
