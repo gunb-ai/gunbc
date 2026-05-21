@@ -21,7 +21,7 @@ Header-level audit of `src/v4/extdeps/**` and the five Shape-A language files un
 
 **Conclusion:** three of five Shape-A slices are on the green terminal ledger called out in headers; **cpp** and **typescript** remain explicitly gated. This does **not** satisfy a literal reading of “all five fact-bundles ratified (B).” The **keystone HOLD** on T-4 in `r4-program-dispatch-plan.md` (P1-KEYSTONE / T-25-core / T-30 / T-29 cluster, residual [#3277](https://github.com/gunb-ai/gunbc/pull/3277) per that plan) remains consistent with `TASKS.md` — no de-classification claimed here.
 
-### T-4.5 — `process.dag` + `file_system.dag`
+### T-4.5 — `posix.dag` + `file_system.dag`
 
 Both headers claim **T-4.5 modeled 2026-05-16** with POSIX anchors; `file_system.dag` retains **🟡** coproduct markers under `DECISIONS.md` OS-1 (expected until refinement / fact-density work lands).
 

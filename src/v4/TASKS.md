@@ -101,8 +101,9 @@ critical. T-4 is no longer a schedule-anytime leaf — see T-4.
                 refinement-bearing carriers need it. Sits near T-3 — see
                 T-25. (T-25-tail, the predicate prover, is post-T-9
                 parallel fill, not a feeder.)
-  T-33  std/model_core.dag — shared substrate factoring (Ratified Q1).
-                LanguageModel (T-4) and HostModel (T-34) both extend it;
+  T-33  std/model_core.dag — shared substrate factoring (Option C).
+                LanguageModel (T-4) and concrete runtime extdeps (T-34)
+                both consume it;
                 T-4's fact-bundle authoring cannot ground primitives + algebra
                 inhabitance + laws against ModelCore until the carrier file
                 exists. Low-dependency (needs only T-1, T-2, T-3) but a hard
@@ -168,9 +169,9 @@ Interpreter + lens dimensions (each needs T-9):
         The interpreter — THE PRIMARY execution path (THESIS:225).
         Sibling of emit (same InferredTree input). workflow/bootstrap.dag
         + TestClaim eval + lens dry-run all compose over it.
-        T-34 added 2026-05-20 (Ratified Q1) — eval(InferredTree, HostModel,
-        Inputs) takes the HostModel parameter; eval cannot be authored
-        before the host-semantics carrier exists.
+        T-34 superseded 2026-05-21 (Option C) — eval consumes decomposed
+        runtime carriers plus a concrete runtime extdep; eval cannot be
+        authored before the runtime carriers exist.
   T-12  lens/complexity.dag + lens/cost.dag      [needs T-9]
   T-13  lens/{parallelism,effect,ownership,idempotency}.dag   [needs T-9]
   T-17  lens/synthesis.dag + std/report.dag  (cross-algorithm complexity, C7;
@@ -219,10 +220,11 @@ Close-the-loop + late substrate:
    see the side-branch feeders block at the top of this file. T-33 is a
    watch-item T-4 prerequisite, not slack; the side branch goes critical
    if T-33 slips.)
-  T-34  std/host.dag — HostModel substrate (Ratified Q1)
-        [needs T-33] — structural peer of LanguageModel over the same
-        ModelCore; carries host value representation, primitive operation
-        interpretation, execution semantics, resource / effect boundary.
+  T-34  std/runtime.dag + extdeps/runtimes/*.dag — runtime substrate (Option C)
+        [needs T-33] — std/ owns abstract runtime carriers; extdeps/runtimes/
+        owns concrete runtime bundles over the same ModelCore. Carries runtime
+        value representation, primitive operation interpretation, execution
+        semantics, resource / effect boundary.
         Consumed by T-22 (eval) and the MVP-B route.
   (T-28 module-graph substrate is bundled into T-8 — it is critical-path
    work inside T-8, not a standalone parallel-fill item; see T-28. T-29
@@ -339,14 +341,14 @@ flat — dispatch in waves):
 
 ---
 
-### T-4.5: extdeps/process.dag + extdeps/file_system.dag
+### T-4.5: extdeps/posix.dag + extdeps/file_system.dag
 
 **File**: 2 files in `src/v4/extdeps/`
 **Why bundled**: both are OS-interaction substrate; both are required for v4 to function as a self-hosting compiler (read source files, write emitted files, ExecuteCommand for boundary tests per THESIS facet 3).
 **Why anchored**: each file carries a `# Anchor:` to its canonical reference (Wikipedia/POSIX). Reviewers validate the modeling against the reference — no invented vocabulary.
 
 **Modeling decisions**:
-- `process.dag`: how to model parent/child relationships? Signal handling depth (full POSIX signal set vs minimal {SIGTERM, SIGKILL, SIGINT})? Pipe model for capture (live-streaming vs buffered)?
+- `posix.dag`: how to model parent/child relationships? Signal handling depth (full POSIX signal set vs minimal {SIGTERM, SIGKILL, SIGINT})? Pipe model for capture (live-streaming vs buffered)?
 - `file_system.dag`: AbsolutePath vs RelativePath as Disj sum or refinement on Path? Symlink target as recursive Path or opaque? Read failure modes (NotFound vs PermissionDenied vs IOError) as distinct Diagnostic `reason` name-references (`Symbol`, per std/diagnostic.dag — `reason` is an opaque name-reference, not a closed enum).
 
 **Reference**:
@@ -918,10 +920,10 @@ All 5 artifacts share ONE Node tree (per gate #28 omni_layers_share_one_node_tre
 **Why load-bearing**: THESIS:225 — `dag run` is THE primary execution path. eval is not an afterthought to emit; it is the default. Sibling of `05_emit.dag` (same `InferredTree` input; eval executes, emit projects to target languages).
 
 **Modeling decisions**:
-- `eval: (InferredTree, HostModel, Inputs) -> Result<Value, Diagnostic>` shape (HostModel parameter added 2026-05-20 per Ratified Q1 — eval interprets primitives against the HostModel substrate; see T-34)
+- `eval: (InferredTree, runtime carriers, Inputs) -> Result<RuntimeValue, Diagnostic>` shape (Option C supersession 2026-05-21 — eval interprets primitives against decomposed runtime carriers plus a concrete runtime extdep; see T-34)
 - Bounded-execution enforcement (INVARIANTS P4 — no unbounded loops; how does the evaluator structurally refuse non-termination?)
 - The shared substrate three consumers compose over: `workflow/bootstrap.dag` (interpreted, not compiled), TestClaim evaluation, lens dry-run
-- Concept-unification (THESIS:188): under Ratified Q1, eval reads **HostModel** (T-34) for primitive interpretation, execution semantics, and host value representation — NOT LanguageModel. LanguageModel is for ingest grammar + emit serialization; HostModel is for runtime. They share `ModelCore` (T-33) for primitive-type / algebra-inhabitance / laws / effect / partiality facts; the split on what's specific to each carrier is exactly the Q1 factoring. The earlier "eval reads the same `extdeps/languages/*.dag` carriers emit does" framing predates Q1 and is superseded
+- Concept-unification (THESIS:188): under Option C, eval reads **runtime carriers** (T-34) for primitive interpretation, execution semantics, and runtime value representation — NOT LanguageModel. LanguageModel is for ingest grammar + emit serialization. Concrete runtimes live under `extdeps/runtimes/` and consume `ModelCore` (T-33) for primitive-type / algebra-inhabitance / laws / effect / partiality facts. The earlier "eval reads the same `extdeps/languages/*.dag` carriers emit does" framing predates Q1 and is superseded
 - **`BehaviorValueSubject` naming vs eval slice (T-19 → T-22):** The identifier anchors the T-19 **L1 `Value`** placement under `type_construction` (T-19 Phase-1.5); the payload is still the **closed** `Behavior` sum (all five behaviors—not Value-only structurally). When T-22 binds testgen/type-construction to execution, re-audit the name with the real consumer: either keep it as the Value-slice carrier of `Behavior` facts or rename (e.g. to `BehaviorSubject`) if the eval path is behavior-wide with no residual Value reading; fold the decision into the T-22 close gate so names cannot silently drift from semantics.
 
 **Incremental Re-Test requirement set — held (IRT-3; see T-21 for the full IRT-1..4 set + rationale).**
@@ -1193,7 +1195,7 @@ kernel-ambient exemption is already pinned in tests and docs).
   `ExecuteCommand`-based `TestClaim`s; v4 models the boundary via a
   simulator `Node` + the closed 4 `AssertKind`s. Disposition:
   confirm-only — T-19/T-14 verify `ExecuteCommand`-shaped TestClaims are
-  expressible via `process.dag` + `eval` with no lost predicate surface
+  expressible via `posix.dag` + `eval` with no lost predicate surface
   vs v3; if a gap surfaces, escalate. No planning edit pending the
   confirm.
 
@@ -1215,11 +1217,11 @@ Phase-1 execution). Theme-A missed-planning debt is **closed** — no fork
 remains open.
 
 ### T-33 — std/model_core.dag — shared substrate factoring  [SCHEDULED]
-**Operator-ratified 2026-05-20 (PR #3437, "Ratified Q1 — `HostModel` is `Q1a + factored ModelCore`").**
-The shared base substrate that both `LanguageModel` (T-4) and `HostModel`
-(T-34) extend. `ModelCore` is the categorical floor for primitive-type
+**Operator-ratified 2026-05-21 (Option C runtime split).** The shared base
+substrate that both `LanguageModel` (T-4) and concrete runtime extdeps
+(T-34) consume. `ModelCore` is the categorical floor for primitive-type
 and algebra-inhabitance declarations to stay consistent across language
-and host targets without duplicate authority.
+and runtime targets without duplicate authority.
 
 **Dependencies — `[needs T-1, T-2, T-3]`.** Numeric and string vocabulary
 (T-3 scalar/numeric stack); algebra carriers (T-2); the Node substrate
@@ -1247,8 +1249,8 @@ vocabulary (Signedness / Representation / the numeric stack); ModelCore is
 one layer up — the named carrier that *bundles* a primitive's facts +
 inhabitance + laws + effects under a single substrate type. It consumes
 T-3 vocabulary; it does not duplicate it. Authored as its own file so
-LanguageModel and HostModel both have a single named carrier to extend
-(rather than each re-declaring the bundle shape).
+LanguageModel and concrete runtime extdeps both have a single named carrier
+to consume (rather than each re-declaring the bundle shape).
 
 **Dependencies — what this PR DOES vs DOES NOT touch in T-4.** This PR
 adds T-33 to T-4's authoritative dependency contract:
@@ -1257,14 +1259,13 @@ update recording that LanguageModel cannot be authored before ModelCore
 exists; single-authority for the dependency fact lives in T-4's `[needs
 …]` line, not in this T-33 prose. What this PR does NOT do: re-express
 T-4's fact-bundle *authoring contract* (the body prose under T-4) in
-terms of "LanguageModel extends ModelCore". That authoring reframe is
+terms of "LanguageModel consumes ModelCore". That authoring reframe is
 its own commit train, after T-33 lands. The Q1 ratification established
 the SHAPE; the schedule edge belongs in `[needs …]`; the authoring
 reframe is a separate edit.
 
-**Reference:** `docs/design-v4-compiler-homomorphism.md` §"`ModelCore`
-(shared substrate, factored per ratified Q1)" + §"Ratified Q1 — `HostModel`
-is `Q1a + factored ModelCore` (2026-05-20)".
+**Reference:** `docs/design-v4-compiler-homomorphism.md` §"`ModelCore`" +
+§"Ratified Q1 supersession — option C runtime split".
 
 ---
 
@@ -1280,64 +1281,57 @@ for any pre-merge T-34 forward declaration of `EffectSignature` /
 `ResourceAccess`.
 
 **Trigger:** first primitive operation in `std/` that declares non-trivial
-effect or partiality, or the first consumer that needs to validate host
+effect or partiality, or the first consumer that needs to validate runtime
 resource/effect boundaries against those facts. When this task lands,
-`src/v4/std/host.dag` must replace its local forward declarations with
+`src/v4/std/runtime.dag` must replace any local forward declarations with
 imports from `v4.std.model_core`.
 
 ---
 
-### T-34 — std/host.dag — HostModel substrate  [SCHEDULED]
-**Operator-ratified 2026-05-20 (PR #3437, Ratified Q1).** A `HostModel`
-that is a **distinct peer of `LanguageModel`**, both extending the shared
-`ModelCore` (T-33). Host-side concerns (allocation, execution model,
-runtime values, resource limits) are categorically different from
-emit-side concerns (grammar, serialization) and live only on `HostModel`;
-the rejected `VoidGrammar` variant (Q1b) conflated them.
+### T-34 — std/runtime.dag + extdeps/runtimes/*.dag — runtime substrate  [SCHEDULED]
+**Operator-ratified 2026-05-21 (Option C).** The former `HostModel`
+umbrella is decomposed. Abstract runtime carriers live in
+`src/v4/std/runtime.dag`; concrete runtime fact-bundles live in
+`src/v4/extdeps/runtimes/*.dag` and consume those carriers plus
+`ModelCore` (T-33). Runtime-side concerns (allocation, execution model,
+runtime values, resource limits) remain categorically different from
+emit-side concerns (grammar, serialization), but concrete runtimes are
+external dependency models rather than a `std/` umbrella abstraction.
 
-**File:** `src/v4/std/host.dag` — does not exist on main; this task is its
-first authoring. Named explicitly in the design doc's MVP-B substrate row
-(`std/host.dag` (Ratified Q1)).
+**Files:**
+- `src/v4/std/runtime.dag` — abstract runtime carriers only.
+- `src/v4/extdeps/runtimes/v4_evaluator.dag` — concrete v4 evaluator
+  runtime bundle.
 
-**Carrier shape (per `docs/design-v4-compiler-homomorphism.md` §"`HostModel`
-(extends `ModelCore`, ratified Q1a)"):** in addition to whatever
-`ModelCore` carries —
-- **Host value representation** — how a substrate primitive is
+**Carrier shape (per Option C):**
+- **Runtime value representation** — how a substrate primitive is
   represented at runtime.
-- **Primitive operation interpretation** — Transform → host function
-  call; Branch → host if-expression; Value → host literal allocation.
+- **Primitive operation interpretation** — Transform → runtime function
+  call; Branch → runtime branch choice; Value → runtime literal allocation.
 - **Execution semantics** — call/return, allocation, control transfer.
-- **Resource / effect boundary** — FFI, host exceptions, async /
-  concurrency model, identity / reference semantics.
+- **Resource / effect boundary** — FFI, exceptions, async / concurrency
+  model, identity / reference semantics.
 
-**Dependencies — `[needs T-33]`.** Cannot author the HostModel carrier
-shape until ModelCore is named (Q1 ratification factored ModelCore out
-*because* HostModel and LanguageModel needed a shared base). While T-33 is
-being authored in parallel, T-34 may carry a local `ModelCore` forward
-declaration only as a marked pre-merge bridge: the declaration must cite the
-T-33 feature, bind to the T-34 work node, and dissolve to
-`import v4.std.model_core { ModelCore }` when `std/model_core.dag` lands.
-That bridge does not create a second ModelCore authority; it is the explicit
-schedule-edge receipt for the concurrent T-33/T-34 handoff.
-The same pre-merge bridge may name T-33-Q10 `EffectSignature` /
-`ResourceAccess` carriers only as forward declarations for the
-`HostResourceEffectBoundary`: each host boundary coordinate must consume
-those signature/resource facts and dissolve to the ModelCore-owned imports
-when T-33-Q10 lands. A duplicateable ambient capability row list is not
-allowed.
+**Dependencies — `[needs T-33]`.** Abstract runtime carriers import
+`ModelCore` directly. T-33-Q10 effect/resource refinement remains the
+dissolve-on-arrival owner for richer operation/resource facts; until then
+`std/runtime.dag` references the landed `PrimitiveOperationRef` and a
+minimal `ResourceAccess { resource: Node }` carrier rather than declaring a
+second ambient capability table.
 
-**Why a sibling, not a LanguageModel variant.** Q1c ("eval =
-translate-to-machine-code + execute") was rejected because host execution
-involves real process state, runtime values, and failure modes that the
-emit-side `LanguageModel` does not model. A distinct `HostModel` is
-the operator-ratified discipline; do not collapse them.
+**Why extdeps, not a runtime umbrella.** Q1c ("eval =
+translate-to-machine-code + execute") is still rejected because direct
+evaluation involves runtime values, process state, and failure modes.
+Option C keeps that split while removing the misleading `Host*` `std/`
+umbrella: `std/` states the abstract runtime contract, and each concrete
+runtime is an external system model under `extdeps/runtimes/`.
 
-**Consumer:** T-22 (`compiler/05_eval.dag`) — eval takes a `HostModel` to
-interpret primitives. The MVP-B route (`eval(host_model)`) depends on
-this carrier landing.
+**Consumer:** T-22 (`compiler/05_eval.dag`) — eval consumes the runtime
+carriers it needs plus a concrete runtime extdep. The MVP-B route
+(`eval(runtime)`) depends on this carrier set landing.
 
-**Reference:** `docs/design-v4-compiler-homomorphism.md` §"`HostModel`
-(extends `ModelCore`, ratified Q1a)" + §"Ratified Q1".
+**Reference:** `docs/design-v4-compiler-homomorphism.md` §"Runtime
+carriers (option C)" + §"Ratified Q1 supersession — option C runtime split".
 
 ---
 

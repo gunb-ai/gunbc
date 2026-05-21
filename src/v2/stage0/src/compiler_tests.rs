@@ -181,9 +181,11 @@ mod compiler_tests {
     fn gist_sources() -> Vec<std::rc::Rc<crate::v2_compiler_compile::SourceFile>> {
         let gist_deps = &[
             "dsl/extdeps/cloud/cloud.dag",
+            "dsl/extdeps/cloud/gcp/errors.dag",
             "dsl/extdeps/cloud/gcp/gcp.dag",
             "dsl/extdeps/git.dag",
             "dsl/extdeps/github/auth.dag",
+            "dsl/extdeps/github/errors.dag",
             "dsl/extdeps/github/gists.dag",
             "dsl/extdeps/github/github.dag",
             "dsl/gunbc/auth/credentials.dag",
@@ -191,7 +193,6 @@ mod compiler_tests {
             "dsl/std/error_primitives.dag",
             "dsl/std/algebra.dag",
             "dsl/std/encoding.dag",
-            "dsl/std/errors.dag",
             "dsl/std/filesystem.dag",
             "dsl/std/resources.dag",
             "dsl/std/serialization.dag",
