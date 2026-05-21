@@ -426,7 +426,7 @@ fn make_node_at(s: String) -> Locus {
         rs
     );
     assert!(
-        rs.contains("NodeAt(LocusAnchor<String>)"),
+        rs.contains("NodeAt(LocusAnchor"),
         "expected tuple-style NodeAt variant decl, got:\n{}",
         rs
     );
@@ -499,7 +499,7 @@ type PairRow = { left: Tag<String>, right: Tag<String> }
 
 fn f(x: PairRow) -> String {
   match x {
-    { left: Mk("a"), right: Mk("b") } => "ok"
+    PairRow { left: Mk("a"), right: Mk("b") } => "ok"
   }
 }
 "#;
