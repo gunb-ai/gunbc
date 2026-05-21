@@ -141,8 +141,11 @@ type RustLanguageModel {
   grammar: Grammar
   language_identity: Symbol
   canonical_symbols: Set<Symbol>
+  // 🟡 pre-T-33 catalog carrier · dissolve-on: std/model_core.dag `core: ModelCore` (#3474)
   integer_facts_catalog: List<RustIntegerPrimitiveFacts>
+  // 🟡 pre-T-33 catalog carrier · dissolve-on: std/model_core.dag `core: ModelCore` (#3474)
   float_facts_catalog: List<RustFloatPrimitiveFacts>
+  // 🟡 pre-T-33 catalog carrier · dissolve-on: std/model_core.dag `core: ModelCore` (#3474)
   noninteger_facts_catalog: List<RustNonIntegerPrimitiveFacts>
 }
 
@@ -298,6 +301,28 @@ data rust_tag_scalar_never: Symbol = rust_tag_scalar_never
 
 data rust_mvp1_serialize_source_anchor: Symbol = rust_mvp1_serialize_source_anchor
 data rust_mvp1_source_text_field: Symbol = rust_mvp1_source_text_field
+// Positional Conj edge names for MVP serialize_source scaffold; paired 1:1 with
+// `rust_mvp1_source_token_classes` (dissolve-on: grammar-emitted token stream, T-10).
+data rust_mvp1_source_token_classes: List<Symbol> = [
+  rust_token_kw_fn,
+  rust_token_ident,
+  rust_token_lparen,
+  rust_token_ident,
+  rust_token_colon,
+  rust_token_ty_i32,
+  rust_token_comma,
+  rust_token_ident,
+  rust_token_colon,
+  rust_token_ty_i32,
+  rust_token_rparen,
+  rust_token_arrow,
+  rust_token_ty_i32,
+  rust_token_lbrace,
+  rust_token_ident,
+  rust_token_plus,
+  rust_token_ident,
+  rust_token_rbrace
+]
 data rust_mvp1_source_tok_0: Symbol = rust_mvp1_source_tok_0
 data rust_mvp1_source_tok_1: Symbol = rust_mvp1_source_tok_1
 data rust_mvp1_source_tok_2: Symbol = rust_mvp1_source_tok_2
@@ -848,6 +873,7 @@ fn rust_mvp1_source_token_node(token_class: Symbol) -> Node {
 
 fn rust_mvp1_serialize_source_node() -> Node {
   let _authority = rust_mvp1_source_text_authority()
+  let _token_classes = rust_mvp1_source_token_classes
   Node {
     kind: TypeNode { connective: Conj },
     children: [
@@ -1016,6 +1042,8 @@ fn rust_wave1_grammar() -> Grammar {
   ModeledGrammar { root: rust_wave1_grammar_root() }
 }
 
+// Wave-1 resolve/ground smoke set — NOT catalog-derived; not authoritative canonical surface.
+// dissolve-on: membership derived from ModelCore + fact catalogs (T-33) or translate consumer contract.
 fn rust_language_model_canonical_symbols() -> Set<Symbol> {
   Set {
     member: fn(sym) {
