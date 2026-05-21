@@ -172,7 +172,7 @@ Interpreter + lens dimensions (each needs T-9):
         Inputs) takes the HostModel parameter; eval cannot be authored
         before the host-semantics carrier exists.
   T-12  lens/complexity.dag + lens/cost.dag      [needs T-9]
-  T-13  lens/{parallelism,effect,ownership,idempotency}.dag   [needs T-9]
+  T-13  lens/{parallelism,effect,ownership,idempotency,structural_resolution}.dag   [needs T-9]
   T-17  lens/synthesis.dag + std/report.dag  (cross-algorithm complexity, C7;
          XL scope, research-tier risk)              [needs T-12 for current-complexity input]
   T-18  lens/coverage.dag  (meta-lens: L6/L7/impossible-bug/testgen coverage
@@ -544,7 +544,7 @@ if any emission step cannot be expressed as inverse grammar-data.)
 
 ---
 
-### T-13: lens/{parallelism,effect,ownership,idempotency}.dag
+### T-13: lens/{parallelism,effect,ownership,idempotency,structural_resolution}.dag
 
 **I/O**: `Node -> Witness<...>` per lens
 
