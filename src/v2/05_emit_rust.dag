@@ -20,7 +20,7 @@ import v2.std.core {
   param_node_type_expr, param_node_default_value,
   authored_name_at, NewlineIndex, find_child_named,
   expr_var_name_at, expr_call_func_at, field_access_field_at,
-  param_node_name_at, resource_use_name_at, field_binding_name_at, field_node_name_at, generic_param_name_at,
+  param_node_name_at, resource_use_name_at, field_binding_name_at, field_node_name_at, field_node_type_expr, generic_param_name_at,
   LiteralValue,
   ExprData, NoExprData,
   ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall,
@@ -1868,9 +1868,16 @@ fn emit_variant_from_child(child: Node, recursive_types: Set<String>, shared_typ
     if tuple_style {
       match child.children |> first {
         Some { value: f } =>
-          let rt_f = resolved_type(n: f)
-          let ty = render_rust_type(n: rt_f, shared_types: shared_types, source_indices: env.source_indices)
-          let final_ty = if needs_box_wrapping(n: rt_f, recursive_types: recursive_types, shared_types: shared_types, source_indices: env.source_indices) {
+          // Positional payload types are authored as `Variant(Type)`; render from
+          // the parse-time type_expr (preserves `LocusAnchor<String>`) without Rc.
+          let type_node = if positional_payload {
+            field_node_type_expr(n: f)
+          } else {
+            resolved_type(n: f)
+          }
+          let ty_shared = if positional_payload { empty_set() } else { shared_types }
+          let ty = render_rust_type(n: type_node, shared_types: ty_shared, source_indices: env.source_indices)
+          let final_ty = if needs_box_wrapping(n: type_node, recursive_types: recursive_types, shared_types: ty_shared, source_indices: env.source_indices) {
             concat("Box<", ty, ">")
           } else { ty }
           concat(rename_attr, "    ", child_text, "(", final_ty, "),")
@@ -4562,15 +4569,15 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
         // emit_typed_record_lit produces raw struct expressions.
         empty_raw
       } else {
+        let variant_summary_name = match effective_parent {
+          Some { value: parent } => variant_summary_key(enum_name: parent, variant_name: tn)
+          None => tn
+        }
         let is_positional_ctor = fields |> count == 1 && match fields |> first {
           Some { value: f } => field_init_node_name_at(n: f, source_indices: si) == "0"
           None => false
         }
         if is_positional_ctor {
-          let variant_summary_name = match effective_parent {
-            Some { value: parent } => variant_summary_key(enum_name: parent, variant_name: tn)
-            None => tn
-          }
           match fields |> first {
             Some { value: f } =>
               let f_value = field_init_node_value(n: f)
@@ -4584,10 +4591,6 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
             None => concat(display_tn, "()")
           }
         } else {
-        let variant_summary_name = match effective_parent {
-          Some { value: parent } => variant_summary_key(enum_name: parent, variant_name: tn)
-          None => tn
-        }
         let field_strs = fields |> map(f =>
           let f_name = field_init_node_name_at(n: f, source_indices: scope.type_env.source_indices)
           let f_value = field_init_node_value(n: f)
