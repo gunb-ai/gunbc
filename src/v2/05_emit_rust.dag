@@ -2189,15 +2189,31 @@ fn is_string_lit_pattern(p: MatchPattern) -> Bool {
   }
 }
 
+// Synthetic binding for positional payload string literals (field "0" has no Rust name).
+fn positional_payload_string_guard(fb_pat: MatchPattern) -> String {
+  match fb_pat {
+    LitPattern { value: LitStr { value: s } } =>
+      concat("__pos0_val == ", emit_string_literal(s: s, suffix: ""))
+    _ => ""
+  }
+}
+
 // Guards from one variant's field bindings, recursing into nested carrier patterns.
 fn collect_field_binding_string_guards(field_bindings: List<Node>, source_indices: Map<String, NewlineIndex>) -> String {
   let parts = field_bindings |> flat_map(fb =>
     let fb_pat = field_binding_pattern(n: fb)
     if is_string_lit_pattern(p: fb_pat) {
-      match fb_pat {
-        LitPattern { value: LitStr { value: s } } =>
-          [concat(emit_ident(name: field_binding_name_at(n: fb, source_indices: source_indices), target: Rust), " == ", emit_string_literal(s: s, suffix: ""))]
-        _ => []
+      if field_binding_name_at(n: fb, source_indices: source_indices) == "0" {
+        match positional_payload_string_guard(fb_pat: fb_pat) {
+          "" => []
+          guard => [guard]
+        }
+      } else {
+        match fb_pat {
+          LitPattern { value: LitStr { value: s } } =>
+            [concat(emit_ident(name: field_binding_name_at(n: fb, source_indices: source_indices), target: Rust), " == ", emit_string_literal(s: s, suffix: ""))]
+          _ => []
+        }
       }
     } else {
       let nested = collect_pattern_string_guards(pattern: fb_pat, source_indices: source_indices)
@@ -2226,6 +2242,21 @@ fn collect_pattern_string_guards(pattern: MatchPattern, source_indices: Map<Stri
               }
             } else {
               collect_pattern_string_guards(pattern: fb_pat, source_indices: source_indices)
+            }
+          None => ""
+        }
+      } else if fbs |> count == 1 {
+        match fbs |> first {
+          Some { value: fb } =>
+            if field_binding_name_at(n: fb, source_indices: source_indices) == "0" {
+              let fb_pat = field_binding_pattern(n: fb)
+              if is_string_lit_pattern(p: fb_pat) {
+                positional_payload_string_guard(fb_pat: fb_pat)
+              } else {
+                collect_pattern_string_guards(pattern: fb_pat, source_indices: source_indices)
+              }
+            } else {
+              collect_field_binding_string_guards(field_bindings: fbs, source_indices: source_indices)
             }
           None => ""
         }
@@ -2341,9 +2372,14 @@ fn emit_variant_pattern(name: String, parent_enum: String?, field_bindings: List
     match field_bindings |> first {
       Some { value: fb } =>
         if field_binding_name_at(n: fb, source_indices: source_indices) == "0" {
-          let payload_scrut = positional_payload_scrut_type(parent_enum: resolved_parent, variant_name: name, field_binding: fb, emit_info: emit_info, source_indices: source_indices)
-          let inner_pat = emit_pattern(pattern: field_binding_pattern(n: fb), shared_types: shared_types, scrut_type: payload_scrut, source_indices: source_indices, emit_info: emit_info)
-          concat(qualified, "(", inner_pat, ")")
+          let fb_pat = field_binding_pattern(n: fb)
+          if is_string_lit_pattern(p: fb_pat) {
+            concat(qualified, "(ref __pos0_val)")
+          } else {
+            let payload_scrut = positional_payload_scrut_type(parent_enum: resolved_parent, variant_name: name, field_binding: fb, emit_info: emit_info, source_indices: source_indices)
+            let inner_pat = emit_pattern(pattern: fb_pat, shared_types: shared_types, scrut_type: payload_scrut, source_indices: source_indices, emit_info: emit_info)
+            concat(qualified, "(", inner_pat, ")")
+          }
         } else {
           let fb_name = field_binding_name_at(n: fb, source_indices: source_indices)
           let fb_pat = field_binding_pattern(n: fb)
@@ -2547,10 +2583,15 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
     match field_bindings |> first {
       Some { value: fb } =>
         if field_binding_name_at(n: fb, source_indices: source_indices) == "0" {
-          let payload_scrut = positional_payload_scrut_type(parent_enum: resolved_parent, variant_name: name, field_binding: fb, emit_info: emit_info, source_indices: source_indices)
-          let inner_analysis = analyze_rc_pattern(pattern: field_binding_pattern(n: fb), scrut_type: payload_scrut, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
-          let inner_pat = emit_pattern_rc_aware(pattern: field_binding_pattern(n: fb), rc_analysis: inner_analysis, shared_types: shared_types, scrut_type: payload_scrut, source_indices: source_indices, emit_info: emit_info)
-          concat(qualified, "(", inner_pat, ")")
+          let fb_pat = field_binding_pattern(n: fb)
+          if is_string_lit_pattern(p: fb_pat) {
+            concat(qualified, "(ref __pos0_val)")
+          } else {
+            let payload_scrut = positional_payload_scrut_type(parent_enum: resolved_parent, variant_name: name, field_binding: fb, emit_info: emit_info, source_indices: source_indices)
+            let inner_analysis = analyze_rc_pattern(pattern: fb_pat, scrut_type: payload_scrut, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
+            let inner_pat = emit_pattern_rc_aware(pattern: fb_pat, rc_analysis: inner_analysis, shared_types: shared_types, scrut_type: payload_scrut, source_indices: source_indices, emit_info: emit_info)
+            concat(qualified, "(", inner_pat, ")")
+          }
         } else {
           let fb_name = field_binding_name_at(n: fb, source_indices: source_indices)
           let fb_pat = field_binding_pattern(n: fb)
