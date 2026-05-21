@@ -91,14 +91,14 @@ type EffectKind
   | WriteEffect
   | BarrierEffect
 
-type EffectFact {
+type EffectDependencyFact {
   at: Node
   dependency: DependencyView
   effect: EffectKind
 }
 
-type EffectMap {
-  facts: List<EffectFact>
+type EffectFact {
+  dependencies: List<EffectDependencyFact>
 }
 
 fn effect_kind_for_dependency(view: DependencyView) -> EffectKind {
@@ -111,28 +111,28 @@ fn effect_kind_for_dependency(view: DependencyView) -> EffectKind {
   }
 }
 
-fn effect_fact_for_dependency(view: DependencyView) -> EffectFact {
-  EffectFact {
+fn effect_dependency_fact(view: DependencyView) -> EffectDependencyFact {
+  EffectDependencyFact {
     at: view.source,
     dependency: view,
     effect: effect_kind_for_dependency(view: view)
   }
 }
 
-fn effect_map_from_dependencies(dependencies: List<DependencyView>) -> EffectMap {
-  EffectMap {
-    facts: fold(dependencies, init: [], f: fn(acc, view) {
-      list_push(acc, effect_fact_for_dependency(view: view))
+fn effect_fact_from_dependencies(dependencies: List<DependencyView>) -> EffectFact {
+  EffectFact {
+    dependencies: fold(dependencies, init: [], f: fn(acc, view) {
+      list_push(acc, effect_dependency_fact(view: view))
     })
   }
 }
 
-fn effect_map(tree: InferredTree) -> EffectMap {
-  effect_map_from_dependencies(dependencies: dependency_lens(root: tree.root))
+fn effect_fact(tree: InferredTree) -> EffectFact {
+  effect_fact_from_dependencies(dependencies: dependency_lens(root: tree.root))
 }
 
-fn effect_witness(tree: InferredTree) -> Witness<EffectMap> {
+fn effect_witness(tree: InferredTree) -> Witness<EffectFact> {
   Holds {
-    value: effect_map(tree: tree)
+    value: effect_fact(tree: tree)
   }
 }

@@ -134,15 +134,15 @@ type ParallelismRelation
   | EffectCoupled
   | BarrierCoupled
 
-type ParallelismFact {
+type ParallelismDependencyFact {
   source: Node
   dependent: Node
   dependency: DependencyView
   relation: ParallelismRelation
 }
 
-type ParallelismMap {
-  facts: List<ParallelismFact>
+type ParallelismFact {
+  dependencies: List<ParallelismDependencyFact>
 }
 
 fn parallelism_relation_for_dependency(view: DependencyView) -> ParallelismRelation {
@@ -161,8 +161,8 @@ fn parallelism_relation_for_dependency(view: DependencyView) -> ParallelismRelat
   }
 }
 
-fn parallelism_fact_for_dependency(view: DependencyView) -> ParallelismFact {
-  ParallelismFact {
+fn parallelism_dependency_fact(view: DependencyView) -> ParallelismDependencyFact {
+  ParallelismDependencyFact {
     source: view.source,
     dependent: view.dependent,
     dependency: view,
@@ -170,20 +170,20 @@ fn parallelism_fact_for_dependency(view: DependencyView) -> ParallelismFact {
   }
 }
 
-fn parallelism_map_from_dependencies(dependencies: List<DependencyView>) -> ParallelismMap {
-  ParallelismMap {
-    facts: fold(dependencies, init: [], f: fn(acc, view) {
-      list_push(acc, parallelism_fact_for_dependency(view: view))
+fn parallelism_fact_from_dependencies(dependencies: List<DependencyView>) -> ParallelismFact {
+  ParallelismFact {
+    dependencies: fold(dependencies, init: [], f: fn(acc, view) {
+      list_push(acc, parallelism_dependency_fact(view: view))
     })
   }
 }
 
-fn parallelism_map(tree: InferredTree) -> ParallelismMap {
-  parallelism_map_from_dependencies(dependencies: dependency_lens(root: tree.root))
+fn parallelism_fact(tree: InferredTree) -> ParallelismFact {
+  parallelism_fact_from_dependencies(dependencies: dependency_lens(root: tree.root))
 }
 
-fn parallelism_witness(tree: InferredTree) -> Witness<ParallelismMap> {
+fn parallelism_witness(tree: InferredTree) -> Witness<ParallelismFact> {
   Holds {
-    value: parallelism_map(tree: tree)
+    value: parallelism_fact(tree: tree)
   }
 }

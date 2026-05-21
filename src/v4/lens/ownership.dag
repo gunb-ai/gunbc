@@ -40,15 +40,15 @@ type OwnershipMode
   | ExclusiveMutation
   | BorrowedDependency
 
-type OwnershipFact {
+type OwnershipDependencyFact {
   owner: Node
   subject: Node
   dependency: DependencyView
   mode: OwnershipMode
 }
 
-type OwnershipMap {
-  facts: List<OwnershipFact>
+type OwnershipFact {
+  dependencies: List<OwnershipDependencyFact>
 }
 
 fn ownership_mode_for_dependency(view: DependencyView) -> OwnershipMode {
@@ -62,8 +62,8 @@ fn ownership_mode_for_dependency(view: DependencyView) -> OwnershipMode {
   }
 }
 
-fn ownership_fact_for_dependency(view: DependencyView) -> OwnershipFact {
-  OwnershipFact {
+fn ownership_dependency_fact(view: DependencyView) -> OwnershipDependencyFact {
+  OwnershipDependencyFact {
     owner: view.source,
     subject: view.dependent,
     dependency: view,
@@ -71,20 +71,20 @@ fn ownership_fact_for_dependency(view: DependencyView) -> OwnershipFact {
   }
 }
 
-fn ownership_map_from_dependencies(dependencies: List<DependencyView>) -> OwnershipMap {
-  OwnershipMap {
-    facts: fold(dependencies, init: [], f: fn(acc, view) {
-      list_push(acc, ownership_fact_for_dependency(view: view))
+fn ownership_fact_from_dependencies(dependencies: List<DependencyView>) -> OwnershipFact {
+  OwnershipFact {
+    dependencies: fold(dependencies, init: [], f: fn(acc, view) {
+      list_push(acc, ownership_dependency_fact(view: view))
     })
   }
 }
 
-fn ownership_map(tree: InferredTree) -> OwnershipMap {
-  ownership_map_from_dependencies(dependencies: dependency_lens(root: tree.root))
+fn ownership_fact(tree: InferredTree) -> OwnershipFact {
+  ownership_fact_from_dependencies(dependencies: dependency_lens(root: tree.root))
 }
 
-fn ownership_witness(tree: InferredTree) -> Witness<OwnershipMap> {
+fn ownership_witness(tree: InferredTree) -> Witness<OwnershipFact> {
   Holds {
-    value: ownership_map(tree: tree)
+    value: ownership_fact(tree: tree)
   }
 }
