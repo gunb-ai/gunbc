@@ -144,32 +144,8 @@ fn at(tree: InferredTree) -> Witness<StructuralResolutionFact> {
   witness(tree: tree, dependencies: dependency_lens(root: tree.root))
 }
 
-// 🟢 terminal — TestClaim equality over closed status sum (T-13 mirror: parallelism_relation_eq).
-fn status_eq(a: StructuralResolutionStatus, b: StructuralResolutionStatus) -> Bool {
-  match a {
-    BindingResolved => match b {
-      BindingResolved => true
-      _ => false
-    }
-    UnboundSymbolAtUse => match b {
-      UnboundSymbolAtUse => true
-      _ => false
-    }
-    FactsLookupMiss => match b {
-      FactsLookupMiss => true
-      _ => false
-    }
-    UnresolvedInferWitness => match b {
-      UnresolvedInferWitness => true
-      _ => false
-    }
-    PreludeCarveOut => match b {
-      PreludeCarveOut => true
-      _ => false
-    }
-  }
-}
-
+// TestClaim equality: status is a derived projection (status_of_dependency_fact);
+// compare authoritative fields only — no hand-rolled coproduct equality (Practice 10).
 fn dependency_fact_eq(
   a: StructuralResolutionDependencyFact,
   b: StructuralResolutionDependencyFact
@@ -178,10 +154,6 @@ fn dependency_fact_eq(
     && (a.dependency == b.dependency)
     && (a.source_facts == b.source_facts)
     && (a.dependent_facts == b.dependent_facts)
-    && status_eq(
-      a: status_of_dependency_fact(fact: a),
-      b: status_of_dependency_fact(fact: b)
-    )
 }
 
 fn dependency_count(
