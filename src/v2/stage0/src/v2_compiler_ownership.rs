@@ -5,10 +5,6 @@ use self::EdgeKind::*;
 use self::OwnershipDecision::*;
 pub use crate::v2_compiler_emit::to_string;
 use crate::v2_rt;
-use crate::v2_rt::rc_empty_set as empty_set;
-use crate::v2_rt::rc_set_insert as set_insert;
-use crate::v2_rt::rc_set_union as set_union;
-use crate::v2_rt::set_contains;
 use crate::v2_std_core::Cardinality::Required;
 use crate::v2_std_core::ExprData::{
     ExprBlock, ExprCall, ExprError, ExprFieldAccess, ExprForEach, ExprIf, ExprLambda, ExprLet,
@@ -25,6 +21,7 @@ pub use crate::v2_std_core::{
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
+use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -775,10 +772,7 @@ pub fn collect_callable_refs(
             } => match bk.clone().as_deref().cloned() {
                 Some(VarBindingKind::FunctionValueBinding) => {
                     let n = expr_var_name_at(texpr.clone(), si.clone());
-                    v2_rt::rc_set_insert(
-                        v2_rt::rc_empty_set::<_>(), /* BRIDGE: empty_set element type unresolved */
-                        n,
-                    )
+                    v2_rt::rc_set_insert(compile_error!("empty_set element type unresolved"), n)
                 }
                 _ => v2_rt::rc_empty_set::<String>(),
             },
