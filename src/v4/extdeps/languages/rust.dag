@@ -1,24 +1,20 @@
 // src/v4/extdeps/languages/rust.dag
 // Scope: Rust Reference LanguageModel — scalar fact-bundles, inhabitants, bidirectional grammar data.
 // Owns: RustScalar, RustIntegerPrimitiveFacts, RustFloatPrimitiveFacts, RustNonIntegerPrimitiveFacts, RustLanguageModel, rust_*_facts, rust_*_inhabitant_node, rust_declared_inhabitants_root, rust_mvp1_target_model, rust_wave1_* grammar/lex.
-// Consumes: v4.compiler.parse, v4.compiler.tokenize, v4.std.collection, v4.std.node, v4.std.logic, v4.std.algebra, v4.std.cardinality, v4.std.integer, v4.std.machine, v4.std.float, v4.std.text.
+// Consumes: v4.compiler.parse, v4.compiler.tokenize, v4.std.collection, v4.std.node, v4.std.logic, v4.std.algebra, v4.std.cardinality, v4.std.text.
 // Status: T-4 rust slice — LanguageModel inhabitants + grammar productions (MVP-1 translate authority); bool/`!` canonical-B decl-ref — 🟡 E-6(b) staging.
 // Anchor: https://doc.rust-lang.org/reference/types.html
 
 module v4.extdeps.languages.rust
 
 import v4.compiler.parse {
-  Choice,
   Grammar,
   GrammarExpr,
   GrammarProduction,
   GrammarRoot,
   ModeledGrammar,
-  Optional,
-  Repeat,
   Sequence,
-  Terminal,
-  VoidGrammar
+  Terminal
 }
 import v4.compiler.tokenize {
   LexRule,
@@ -26,8 +22,7 @@ import v4.compiler.tokenize {
   LexRules,
   LiteralPattern,
   ModeledLexRules,
-  TokenRule,
-  VoidLexRules
+  TokenRule
 }
 import v4.std.collection { Set }
 import v4.std.node {
@@ -255,15 +250,16 @@ data rust_token_comma: Symbol = rust_token_comma
 data rust_token_colon: Symbol = rust_token_colon
 
 data rust_production_fn_item: Symbol = rust_production_fn_item
-data rust_production_type_i32: Symbol = rust_production_type_i32
-data rust_production_bin_add: Symbol = rust_production_bin_add
 
 data rust_surface_fn_item: Symbol = rust_surface_fn_item
 data rust_surface_type_i32: Symbol = rust_surface_type_i32
 data rust_surface_bin_add: Symbol = rust_surface_bin_add
-data rust_surface_ident: Symbol = rust_surface_ident
+
+data rust_inhabitant_field_atom: Symbol = rust_inhabitant_field_atom
+data rust_inhabitant_field_facts: Symbol = rust_inhabitant_field_facts
 
 data rust_mvp1_serialize_source_anchor: Symbol = rust_mvp1_serialize_source_anchor
+data rust_mvp1_source_text_field: Symbol = rust_mvp1_source_text_field
 data rust_mvp1_source_text: String = "fn add(x: i32, y: i32) -> i32 { x + y }"
 
 data rust_facts_i8: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
@@ -432,6 +428,35 @@ data rust_facts_never: RustNonIntegerPrimitiveFacts = RustNonIntegerPrimitiveFac
   representation: rust_std_projection_never
 }
 
+data rust_integer_facts_catalog: List<RustIntegerPrimitiveFacts> = [
+  rust_facts_i8,
+  rust_facts_i16,
+  rust_facts_i32,
+  rust_facts_i64,
+  rust_facts_i128,
+  rust_facts_u8,
+  rust_facts_u16,
+  rust_facts_u32,
+  rust_facts_u64,
+  rust_facts_u128,
+  rust_facts_isize,
+  rust_facts_usize
+]
+
+data rust_float_facts_catalog: List<RustFloatPrimitiveFacts> = [
+  rust_facts_f32,
+  rust_facts_f64
+]
+
+data rust_noninteger_facts_catalog: List<RustNonIntegerPrimitiveFacts> = [
+  rust_facts_bool,
+  rust_facts_char,
+  rust_facts_str,
+  rust_facts_string,
+  rust_facts_unit,
+  rust_facts_never
+]
+
 // 🟡 canonical-B decl-ref · E-6(b) bounded-exception · scaffold feature:canonical-b-grounding-consumer · dissolve-on: B1-CANON+zip-fold consume (ledger: B1·T-9/C1 · grounding-worked-examples.md §0)
 data rust_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
 
@@ -446,83 +471,122 @@ fn rust_inhabitant_atom(id: Symbol) -> Node {
 }
 
 fn rust_inhabitant_i8_node() -> Node {
-  rust_inhabitant_atom(id: rust_inhabitant_i8)
+  rust_integer_inhabitant_node(id: rust_inhabitant_i8, facts: rust_facts_i8)
 }
 
 fn rust_inhabitant_i16_node() -> Node {
-  rust_inhabitant_atom(id: rust_inhabitant_i16)
+  rust_integer_inhabitant_node(id: rust_inhabitant_i16, facts: rust_facts_i16)
+}
+
+fn rust_integer_inhabitant_node(id: Symbol, facts: RustIntegerPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      rust_named_edge(name: rust_inhabitant_field_atom, target: rust_inhabitant_atom(id: id)),
+      rust_named_edge(
+        name: rust_inhabitant_field_facts,
+        target: rust_inhabitant_atom(id: facts.surface_spelling)
+      )
+    ]
+  }
+}
+
+fn rust_float_inhabitant_node(id: Symbol, facts: RustFloatPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      rust_named_edge(name: rust_inhabitant_field_atom, target: rust_inhabitant_atom(id: id)),
+      rust_named_edge(
+        name: rust_inhabitant_field_facts,
+        target: rust_inhabitant_atom(id: facts.surface_spelling)
+      )
+    ]
+  }
+}
+
+fn rust_noninteger_inhabitant_node(id: Symbol, facts: RustNonIntegerPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      rust_named_edge(name: rust_inhabitant_field_atom, target: rust_inhabitant_atom(id: id)),
+      rust_named_edge(
+        name: rust_inhabitant_field_facts,
+        target: rust_inhabitant_atom(id: facts.surface_spelling)
+      )
+    ]
+  }
 }
 
 fn rust_inhabitant_i32_node() -> Node {
-  rust_inhabitant_atom(id: rust_inhabitant_i32)
+  rust_integer_inhabitant_node(id: rust_inhabitant_i32, facts: rust_facts_i32)
 }
 
 fn rust_inhabitant_i64_node() -> Node {
-  rust_inhabitant_atom(id: rust_inhabitant_i64)
+  rust_integer_inhabitant_node(id: rust_inhabitant_i64, facts: rust_facts_i64)
 }
 
 fn rust_inhabitant_i128_node() -> Node {
-  rust_inhabitant_atom(id: rust_inhabitant_i128)
+  rust_integer_inhabitant_node(id: rust_inhabitant_i128, facts: rust_facts_i128)
 }
 
 fn rust_inhabitant_u8_node() -> Node {
-  rust_inhabitant_atom(id: rust_inhabitant_u8)
+  rust_integer_inhabitant_node(id: rust_inhabitant_u8, facts: rust_facts_u8)
 }
 
 fn rust_inhabitant_u16_node() -> Node {
-  rust_inhabitant_atom(id: rust_inhabitant_u16)
+  rust_integer_inhabitant_node(id: rust_inhabitant_u16, facts: rust_facts_u16)
 }
 
 fn rust_inhabitant_u32_node() -> Node {
-  rust_inhabitant_atom(id: rust_inhabitant_u32)
+  rust_integer_inhabitant_node(id: rust_inhabitant_u32, facts: rust_facts_u32)
 }
 
 fn rust_inhabitant_u64_node() -> Node {
-  rust_inhabitant_atom(id: rust_inhabitant_u64)
+  rust_integer_inhabitant_node(id: rust_inhabitant_u64, facts: rust_facts_u64)
 }
 
 fn rust_inhabitant_u128_node() -> Node {
-  rust_inhabitant_atom(id: rust_inhabitant_u128)
+  rust_integer_inhabitant_node(id: rust_inhabitant_u128, facts: rust_facts_u128)
 }
 
 fn rust_inhabitant_isize_node() -> Node {
-  rust_inhabitant_atom(id: rust_inhabitant_isize)
+  rust_integer_inhabitant_node(id: rust_inhabitant_isize, facts: rust_facts_isize)
 }
 
 fn rust_inhabitant_usize_node() -> Node {
-  rust_inhabitant_atom(id: rust_inhabitant_usize)
+  rust_integer_inhabitant_node(id: rust_inhabitant_usize, facts: rust_facts_usize)
 }
 
 fn rust_inhabitant_f32_node() -> Node {
-  rust_inhabitant_atom(id: rust_inhabitant_f32)
+  rust_float_inhabitant_node(id: rust_inhabitant_f32, facts: rust_facts_f32)
 }
 
 fn rust_inhabitant_f64_node() -> Node {
-  rust_inhabitant_atom(id: rust_inhabitant_f64)
+  rust_float_inhabitant_node(id: rust_inhabitant_f64, facts: rust_facts_f64)
 }
 
 fn rust_inhabitant_bool_node() -> Node {
-  rust_inhabitant_atom(id: rust_inhabitant_bool)
+  rust_noninteger_inhabitant_node(id: rust_inhabitant_bool, facts: rust_facts_bool)
 }
 
 fn rust_inhabitant_char_node() -> Node {
-  rust_inhabitant_atom(id: rust_inhabitant_char)
+  rust_noninteger_inhabitant_node(id: rust_inhabitant_char, facts: rust_facts_char)
 }
 
 fn rust_inhabitant_str_node() -> Node {
-  rust_inhabitant_atom(id: rust_inhabitant_str)
+  rust_noninteger_inhabitant_node(id: rust_inhabitant_str, facts: rust_facts_str)
 }
 
 fn rust_inhabitant_string_node() -> Node {
-  rust_inhabitant_atom(id: rust_inhabitant_string)
+  rust_noninteger_inhabitant_node(id: rust_inhabitant_string, facts: rust_facts_string)
 }
 
 fn rust_inhabitant_unit_node() -> Node {
-  rust_inhabitant_atom(id: rust_inhabitant_unit)
+  rust_noninteger_inhabitant_node(id: rust_inhabitant_unit, facts: rust_facts_unit)
 }
 
 fn rust_inhabitant_never_node() -> Node {
-  rust_inhabitant_atom(id: rust_inhabitant_never)
+  rust_noninteger_inhabitant_node(id: rust_inhabitant_never, facts: rust_facts_never)
 }
 
 fn rust_named_edge(name: Symbol, target: Node) -> Edge {
@@ -572,11 +636,25 @@ fn rust_mvp1_emitted_add_fn_node() -> Node {
   }
 }
 
+fn rust_mvp1_source_text_authority() -> String {
+  rust_mvp1_source_text
+}
+
 fn rust_mvp1_serialize_source_node() -> Node {
-  rust_inhabitant_atom(id: rust_mvp1_serialize_source_anchor)
+  let _expected_source = rust_mvp1_source_text_authority()
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      rust_named_edge(
+        name: rust_mvp1_source_text_field,
+        target: rust_inhabitant_atom(id: rust_mvp1_serialize_source_anchor)
+      )
+    ]
+  }
 }
 
 fn rust_mvp1_target_model() -> Node {
+  let _source_authority = rust_mvp1_source_text_authority();
   Node {
     kind: TypeNode { connective: Conj },
     children: [
@@ -633,28 +711,18 @@ fn rust_grammar_atom(id: Symbol) -> Node {
   rust_inhabitant_atom(id: id)
 }
 
-fn rust_grammar_production_type_i32() -> GrammarProduction {
-  GrammarProduction {
-    name: rust_production_type_i32,
-    expression: Terminal { token_class: rust_token_ty_i32 },
-    emitted: rust_grammar_atom(id: rust_surface_type_i32)
-  }
-}
-
-fn rust_grammar_production_bin_add() -> GrammarProduction {
-  GrammarProduction {
-    name: rust_production_bin_add,
-    expression: Terminal { token_class: rust_token_plus },
-    emitted: rust_grammar_atom(id: rust_surface_bin_add)
-  }
-}
-
 fn rust_grammar_production_fn_item() -> GrammarProduction {
   GrammarProduction {
     name: rust_production_fn_item,
     expression: Sequence {
-      left: Terminal { token_class: rust_token_kw_fn },
-      right: Terminal { token_class: rust_token_ident }
+      left: Sequence {
+        left: Sequence {
+          left: Terminal { token_class: rust_token_kw_fn },
+          right: Terminal { token_class: rust_token_ident }
+        },
+        right: Terminal { token_class: rust_token_ty_i32 }
+      },
+      right: Terminal { token_class: rust_token_plus }
     },
     emitted: rust_grammar_atom(id: rust_surface_fn_item)
   }
@@ -682,6 +750,9 @@ fn rust_language_model_canonical_symbols() -> Set<Symbol> {
 }
 
 fn rust_language_model_wave1() -> RustLanguageModel {
+  let _integer_facts = rust_integer_facts_catalog;
+  let _float_facts = rust_float_facts_catalog;
+  let _noninteger_facts = rust_noninteger_facts_catalog;
   RustLanguageModel {
     lex: rust_wave1_lex(),
     grammar: rust_wave1_grammar(),
