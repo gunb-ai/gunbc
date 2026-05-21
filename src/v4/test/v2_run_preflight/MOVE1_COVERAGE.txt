@@ -30,11 +30,11 @@ NOT COVERED by v2 `run` (runtime) — honest gaps
 
 Interpretation
 --------------
-v2 `compile` is the reliable pre-T-22 bridge; v2 `run` is **not** a truthful
+v2 `compile` is the reliable bootstrap bridge; v2 `run` is **not** a truthful
 execution oracle for v4 substrate yet. Phase 2 testing that requires
-evaluating v4 programs + TestClaims must wait on **T-22 (v4 compiler/05_eval
-and claim runner)** — dissolution trigger for an automated `v2-compiler run`
-TestClaim CI lane.
+evaluating v4 programs + TestClaims is now represented by the **T-22 host eval
+receipt** in `.github/workflows/ci.yml`: the v3 integration harness pins
+`eval(tree, runtime, inputs)` and the `eval_runtime_mvp.dag` fixture.
 
 There is **no** `ProcessExit` duplicate under `src/v4/` — canonical carrier
 remains **`dsl/std/process.dag`** only (P2 single authority). A prior test-only
@@ -42,16 +42,14 @@ shim was removed once it had zero consumers; reintroduce only with an explicit
 Practice-4 receipt **and** a real `dag run` entry consumer, or after T-22 when
 v4 owns eval without cross-root duplication.
 
-Interim CI (Move 3)
--------------------
-Per brief: **DEFERRED** — no required `v2-compiler run` gate on TestClaim
-execution until T-22. The `v4` workflow adds a **non-blocking informational**
-step after bootstrap viability (`.github/workflows/ci.yml`): it sets
-`V2_PREFLIGHT_SKIP_COMPILE=1` and runs `scripts/v2-run-preflight.sh`, which
-**skips** a second `v2-compiler compile` (the prior step already compiled
-`src/v4`) and only emits the GitHub `::notice::` tying deferral to **T-22** —
-visible in logs, not a silent drop. The step is **not** `continue-on-error`
-(the script always exits 0; the flag was redundant and removed).
+Interim CI (Move 3) — retired by T-22 host eval receipt
+-------------------------------------------------------
+The former `v2-run-preflight.sh` notice step has been replaced by the required
+T-22 host eval receipt in the `ci` job. The receipt executes narrow integration
+tests for the eval entrypoint shape, the MVP runtime fixture, and compile-core
+Eval-mode routing. The bootstrap compile remains the full-graph parse/resolve
+authority; the host receipt is the CI guard that evaluation is wired, not merely
+emission.
 
 Atom-shaped manual TestClaims
 -----------------------------

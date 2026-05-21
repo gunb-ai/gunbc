@@ -205,11 +205,13 @@ jobs:
         fi
         echo "error: v4 bootstrap compile failed and resolve-posture bridge did not pass" >&2
         exit 1
-    - name: 'INTERIM (T-24 bridge) — v4 v2-run-preflight notice (run gate deferred T-22)'
+    - name: 'T-22 host eval receipt — eval(tree, runtime, inputs)'
       if: needs.affected.outputs.v4 == 'true'
-      env:
-        V2_PREFLIGHT_SKIP_COMPILE: "1"
-      run: bash scripts/v2-run-preflight.sh
+      run: |
+        set -euo pipefail
+        cargo test -p v3-compiler --test integration v4_test_bootstrap_infra_closeout_test::t22_eval_entry_consumes_tree_runtime_and_inputs -- --exact --quiet
+        cargo test -p v3-compiler --test integration v4_test_bootstrap_infra_closeout_test::t22_eval_runtime_mvp_witness_parse -- --exact --quiet
+        cargo test -p v3-compiler --test integration v4_compiler_compile_public_terminal_smoke_test::v4_compile_dag_eval_mode_routes_to_eval_runtime -- --exact --quiet
   # v2 fixed-point — runs only when src/v2/ is affected. v2 is restored as
   # comparison artifact + v4 bootstrap source (frozen-buildable). Verifies
   # that any modification to v2 preserves the self-host fixed-point property.
@@ -253,7 +255,7 @@ jobs:
     steps:
     - name: v4 receipt (bootstrap gate runs in ci job)
       run: |
-        echo "::notice::v4 bootstrap viability + v2-run-preflight ran inside the ci job when v4 is affected."
+        echo "::notice::v4 bootstrap viability + T-22 host eval receipt ran inside the ci job when v4 is affected."
   # v3 — FROZEN 2026-05-15 pending v4 program. Runs only when src/v3/ or dsl/
   # is affected (or on push-to-main for trunk verification). v3 is no longer
   # the active compiler; v4 program supersedes it (see PR #3147).
