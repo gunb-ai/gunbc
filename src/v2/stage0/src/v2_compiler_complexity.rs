@@ -426,9 +426,7 @@ pub fn parser_state_base_var(
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprFieldAccess { .. } => match expr.children.clone().first().cloned() {
             Some(base) => match (*base.expr_data.clone()).clone() {
-                ExprData::ExprVar {
-                    binding_kind: _, ..
-                } => Some(expr_var_name_at(base.clone(), si)),
+                ExprData::ExprVar { .. } => Some(expr_var_name_at(base.clone(), si)),
                 _ => None,
             },
             None => None,
@@ -523,9 +521,7 @@ pub fn parser_state_expr_progress(
 ) -> DescentEvidence {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*expr.expr_data.clone()).clone() {
-            ExprData::ExprVar {
-                binding_kind: _, ..
-            } => {
+            ExprData::ExprVar { .. } => {
                 let name = expr_var_name_at(expr.clone(), si.clone());
                 if (name.clone().as_str() == state_param.name.clone().as_str()) {
                     DescentEvidence::NonIncreasing
@@ -747,12 +743,12 @@ pub fn parser_result_source_for_expr(
                         input: input_progress.clone(),
                     })
                 }
-                ParserResultWitness::ParserWitnessCall { callee: callee, .. } => {
+                ParserResultWitness::ParserWitnessCall { callee, .. } => {
                     match (*callee.clone()).clone() {
-                        ParserCallIdentity::ParserCallHelper { helper: _, .. } => {
+                        ParserCallIdentity::ParserCallHelper { .. } => {
                             Rc::new(ParserResultSource::ParserResultOpaque)
                         }
-                        ParserCallIdentity::ParserCallFunction { name: name, .. } => {
+                        ParserCallIdentity::ParserCallFunction { name, .. } => {
                             match input_progress.clone() {
                                 DescentEvidence::DescentUnknown => {
                                     Rc::new(ParserResultSource::ParserResultOpaque)
@@ -1201,9 +1197,7 @@ pub fn parser_success_progress(
                 &consumed_true_set,
                 &si,
             ),
-            ExprData::ExprVar {
-                binding_kind: _, ..
-            } => match v2_rt::map_get(
+            ExprData::ExprVar { .. } => match v2_rt::map_get(
                 &env.result_sources.clone(),
                 expr_var_name_at(expr.clone(), si.clone()),
             ) {
@@ -1228,7 +1222,7 @@ pub fn parser_success_progress(
                 consumed_true_set.clone(),
                 "".to_string(),
             ),
-            ExprData::ExprRecordLit { parent_enum: _, .. } => {
+            ExprData::ExprRecordLit { .. } => {
                 match parser_record_field_value(expr.clone(), "err".to_string(), si.clone()) {
                     Some(err_expr) => {
                         if parser_expr_is_none(err_expr.clone()) {
@@ -1884,10 +1878,7 @@ pub fn max_path_self_calls_with_cont(
                     max_path_self_calls_with_cont(&stmt, &func_name, acc, &si)
                 },
             ),
-            ExprData::ExprMethodCall {
-                method_semantics: _,
-                ..
-            } => {
+            ExprData::ExprMethodCall { .. } => {
                 let recv_calls = max_path_self_calls_with_cont(
                     &method_receiver(body.clone()),
                     &func_name,
@@ -2094,10 +2085,7 @@ pub fn max_path_target_calls_with_cont(
                     max_path_target_calls_with_cont(&stmt, &target_set, acc, &si)
                 },
             ),
-            ExprData::ExprMethodCall {
-                method_semantics: _,
-                ..
-            } => {
+            ExprData::ExprMethodCall { .. } => {
                 let recv_calls = max_path_target_calls_with_cont(
                     &method_receiver(body.clone()),
                     &target_set,
@@ -2310,9 +2298,7 @@ pub fn expr_descending_witness_source(
 ) -> Option<String> {
     loop {
         match (*expr.expr_data.clone()).clone() {
-            ExprData::ExprVar {
-                binding_kind: _, ..
-            } => {
+            ExprData::ExprVar { .. } => {
                 break v2_rt::map_get(
                     &descending_witness_names,
                     expr_var_name_at(expr.clone(), si),
@@ -2347,9 +2333,7 @@ pub fn condition_param_names(
 ) -> Rc<HashMap<String, String>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*expr.expr_data.clone()).clone() {
-            ExprData::ExprVar {
-                binding_kind: _, ..
-            } => {
+            ExprData::ExprVar { .. } => {
                 let name = expr_var_name_at(expr.clone(), si.clone());
                 match v2_rt::map_get(&param_set, name.clone()) {
                     Some(_) => seed_string_map(name.clone(), name.clone()),
@@ -2480,15 +2464,11 @@ pub fn is_descending_expr(expr: &Rc<Node>) -> bool {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprBinOp { op, .. } => match op.clone() {
             BinOp::Sub => match (*binop_left(expr.clone()).expr_data.clone()).clone() {
-                ExprData::ExprVar {
-                    binding_kind: _, ..
-                } => true,
+                ExprData::ExprVar { .. } => true,
                 _ => false,
             },
             BinOp::Div => match (*binop_left(expr.clone()).expr_data.clone()).clone() {
-                ExprData::ExprVar {
-                    binding_kind: _, ..
-                } => true,
+                ExprData::ExprVar { .. } => true,
                 _ => false,
             },
             _ => false,
@@ -2563,9 +2543,7 @@ pub fn is_accessor_of_param(
                 let mut __found = false;
                 for arg_node in expr.children.clone().iter().cloned() {
                     if match (*arg_value(&arg_node).expr_data.clone()).clone() {
-                        ExprData::ExprVar {
-                            binding_kind: _, ..
-                        } => {
+                        ExprData::ExprVar { .. } => {
                             let vname = expr_var_name_at(arg_value(&arg_node), si.clone());
                             ((vname.clone().as_str() == param_name.clone().as_str())
                                 || set_has(vars.clone(), vname.clone()))
@@ -2596,18 +2574,14 @@ pub fn is_children_of_param(
                 let field = field_access_field_at(expr.clone(), si.clone());
                 break (is_children_list_field(field)
                     && match (*base.expr_data.clone()).clone() {
-                        ExprData::ExprVar {
-                            binding_kind: _, ..
-                        } => {
+                        ExprData::ExprVar { .. } => {
                             (expr_var_name_at(base.clone(), si.clone()).as_str()
                                 == param_name.as_str())
                         }
                         _ => false,
                     });
             }
-            ExprData::ExprVar {
-                binding_kind: _, ..
-            } => {
+            ExprData::ExprVar { .. } => {
                 break set_has(vars, expr_var_name_at(expr.clone(), si.clone()));
             }
             ExprData::ExprMethodCall {
@@ -2644,9 +2618,9 @@ pub fn is_structural_children(
                     let field = field_access_field_at(expr.clone(), si.clone());
                     (is_children_list_field(field)
                         && match (*base.expr_data.clone()).clone() {
-                            ExprData::ExprVar {
-                                binding_kind: _, ..
-                            } => set_has(vars.clone(), expr_var_name_at(base.clone(), si.clone())),
+                            ExprData::ExprVar { .. } => {
+                                set_has(vars.clone(), expr_var_name_at(base.clone(), si.clone()))
+                            }
                             _ => false,
                         })
                 }
@@ -2753,9 +2727,7 @@ pub fn is_list_shrink_expr(
             };
             ((is_shrink
                 && match (*method_receiver(expr.clone()).expr_data.clone()).clone() {
-                    ExprData::ExprVar {
-                        binding_kind: _, ..
-                    } => {
+                    ExprData::ExprVar { .. } => {
                         (expr_var_name_at(method_receiver(expr.clone()), si).as_str()
                             == param_name.as_str())
                     }
@@ -2763,10 +2735,7 @@ pub fn is_list_shrink_expr(
                 })
                 && match method_arg_nodes(expr.clone()).first().cloned() {
                     Some(arg_node) => match (*arg_value(&arg_node).expr_data.clone()).clone() {
-                        ExprData::ExprLiteral {
-                            value: LiteralValue::LitInt { value: n, .. },
-                            ..
-                        } => {
+                        ExprData::ExprLiteral { ref value, .. } => {
                             let LiteralValue::LitInt { value: n, .. } = value.as_ref() else {
                                 unreachable!()
                             };
@@ -2794,10 +2763,7 @@ pub fn is_generalized_shrink(expr: &Rc<Node>, si: Rc<HashMap<String, Rc<NewlineI
             (is_shrink
                 && match method_arg_nodes(expr.clone()).first().cloned() {
                     Some(arg_node) => match (*arg_value(&arg_node).expr_data.clone()).clone() {
-                        ExprData::ExprLiteral {
-                            value: LiteralValue::LitInt { value: n, .. },
-                            ..
-                        } => {
+                        ExprData::ExprLiteral { ref value, .. } => {
                             let LiteralValue::LitInt { value: n, .. } = value.as_ref() else {
                                 unreachable!()
                             };
@@ -2878,9 +2844,7 @@ pub fn is_tokens_input_expr(
 ) -> bool {
     loop {
         match (*expr.expr_data.clone()).clone() {
-            ExprData::ExprVar {
-                binding_kind: _, ..
-            } => {
+            ExprData::ExprVar { .. } => {
                 let vname = expr_var_name_at(expr.clone(), si.clone());
                 break ((vname.clone().as_str() == param_name.clone().as_str())
                     || set_has(vars, vname.clone()));
@@ -2892,9 +2856,7 @@ pub fn is_tokens_input_expr(
                 } else {
                     let base = field_access_base(expr.clone());
                     match (*base.expr_data.clone()).clone() {
-                        ExprData::ExprVar {
-                            binding_kind: _, ..
-                        } => {
+                        ExprData::ExprVar { .. } => {
                             let bname = expr_var_name_at(base.clone(), si.clone());
                             break ((bname.clone().as_str() == param_name.clone().as_str())
                                 || set_has(vars, bname.clone()));
@@ -2959,9 +2921,7 @@ pub fn is_descent_arg(
     si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     match (*expr.expr_data.clone()).clone() {
-        ExprData::ExprVar {
-            binding_kind: _, ..
-        } => {
+        ExprData::ExprVar { .. } => {
             let vname = expr_var_name_at(expr.clone(), si.clone());
             set_has(descent_vars, vname)
         }
@@ -3018,17 +2978,15 @@ pub fn expr_contains_descent(
                     ),
                     None => false,
                 },
-                ExprData::ExprVar {
-                    binding_kind: _, ..
-                } => set_has(vars.clone(), expr_var_name_at(expr.clone(), si.clone())),
+                ExprData::ExprVar { .. } => {
+                    set_has(vars.clone(), expr_var_name_at(expr.clone(), si.clone()))
+                }
                 ExprData::ExprFieldAccess { .. } => {
                     let field = field_access_field_at(expr.clone(), si.clone());
                     let base = field_access_base(expr.clone());
                     (is_sub_value_field(field)
                         && match (*base.expr_data.clone()).clone() {
-                            ExprData::ExprVar {
-                                binding_kind: _, ..
-                            } => {
+                            ExprData::ExprVar { .. } => {
                                 let bname = expr_var_name_at(base.clone(), si.clone());
                                 ((bname.clone().as_str() == param_name.clone().as_str())
                                     || set_has(vars.clone(), bname.clone()))
@@ -3121,9 +3079,7 @@ pub fn is_if_option_descent(
             );
             let else_is_none = match if_else_branch(val.clone()) {
                 Some(eb) => match (*eb.expr_data.clone()).clone() {
-                    ExprData::ExprVar {
-                        binding_kind: _, ..
-                    } => {
+                    ExprData::ExprVar { .. } => {
                         (expr_var_name_at(eb.clone(), si.clone()).as_str()
                             == "none".to_string().as_str())
                     }
@@ -3172,9 +3128,7 @@ pub fn is_match_option_descent(
                                     );
                                     let arm_b = arm_body(&arm_node);
                                     match (*arm_b.expr_data.clone()).clone() {
-                                        ExprData::ExprVar {
-                                            binding_kind: _, ..
-                                        } => set_has(
+                                        ExprData::ExprVar { .. } => set_has(
                                             binding_names.clone(),
                                             expr_var_name_at(arm_b.clone(), si.clone()),
                                         ),
@@ -3195,9 +3149,7 @@ pub fn is_match_option_descent(
                             if !({
                                 let arm_b = arm_body(&arm_node);
                                 match (*arm_b.expr_data.clone()).clone() {
-                                    ExprData::ExprVar {
-                                        binding_kind: _, ..
-                                    } => {
+                                    ExprData::ExprVar { .. } => {
                                         (expr_var_name_at(arm_b.clone(), si.clone()).as_str()
                                             != param_name.clone().as_str())
                                     }
@@ -3237,9 +3189,9 @@ pub fn collect_descent_vars(
                     || (check_list.clone()
                         && is_list_shrink_expr(&val, param_name.clone(), si.clone())));
                 let is_descent_var = match (*val.expr_data.clone()).clone() {
-                    ExprData::ExprVar {
-                        binding_kind: _, ..
-                    } => set_has(vars.clone(), expr_var_name_at(val.clone(), si.clone())),
+                    ExprData::ExprVar { .. } => {
+                        set_has(vars.clone(), expr_var_name_at(val.clone(), si.clone()))
+                    }
                     _ => false,
                 };
                 let is_option_descent = is_if_option_descent(
@@ -3266,9 +3218,9 @@ pub fn collect_descent_vars(
                             || (check_list.clone()
                                 && is_list_shrink_expr(&inner, param_name.clone(), si.clone())));
                         let inner_is_var = match (*inner.expr_data.clone()).clone() {
-                            ExprData::ExprVar {
-                                binding_kind: _, ..
-                            } => set_has(vars.clone(), expr_var_name_at(inner.clone(), si.clone())),
+                            ExprData::ExprVar { .. } => {
+                                set_has(vars.clone(), expr_var_name_at(inner.clone(), si.clone()))
+                            }
                             _ => false,
                         };
                         (inner_is_descent.clone() || inner_is_var.clone())
@@ -3284,15 +3236,13 @@ pub fn collect_descent_vars(
                             || (check_list.clone()
                                 && is_list_shrink_expr(&inner, param_name.clone(), si.clone())));
                         let inner_is_var = match (*inner.expr_data.clone()).clone() {
-                            ExprData::ExprVar {
-                                binding_kind: _, ..
-                            } => set_has(vars.clone(), expr_var_name_at(inner.clone(), si.clone())),
+                            ExprData::ExprVar { .. } => {
+                                set_has(vars.clone(), expr_var_name_at(inner.clone(), si.clone()))
+                            }
                             _ => false,
                         };
                         let inner_is_param = match (*inner.expr_data.clone()).clone() {
-                            ExprData::ExprVar {
-                                binding_kind: _, ..
-                            } => {
+                            ExprData::ExprVar { .. } => {
                                 (expr_var_name_at(inner.clone(), si.clone()).as_str()
                                     == param_name.clone().as_str())
                             }
@@ -3309,9 +3259,7 @@ pub fn collect_descent_vars(
                         let field = field_access_field_at(val.clone(), si.clone());
                         (is_children_list_field(field)
                             && match (*base.expr_data.clone()).clone() {
-                                ExprData::ExprVar {
-                                    binding_kind: _, ..
-                                } => {
+                                ExprData::ExprVar { .. } => {
                                     let bname = expr_var_name_at(base.clone(), si.clone());
                                     ((bname.clone().as_str() == param_name.clone().as_str())
                                         || set_has(vars.clone(), bname.clone()))
@@ -3333,9 +3281,7 @@ pub fn collect_descent_vars(
                                         si.clone(),
                                     )))
                                 || match (*inner.expr_data.clone()).clone() {
-                                    ExprData::ExprVar {
-                                        binding_kind: _, ..
-                                    } => set_has(
+                                    ExprData::ExprVar { .. } => set_has(
                                         vars.clone(),
                                         expr_var_name_at(inner.clone(), si.clone()),
                                     ),
@@ -3389,9 +3335,7 @@ pub fn collect_descent_vars(
                     &si,
                 );
                 let scrut_is_param = match (*scrut.expr_data.clone()).clone() {
-                    ExprData::ExprVar {
-                        binding_kind: _, ..
-                    } => {
+                    ExprData::ExprVar { .. } => {
                         let sname = expr_var_name_at(scrut.clone(), si.clone());
                         ((sname.clone().as_str() == param_name.clone().as_str())
                             || set_has(vars.clone(), sname.clone()))
@@ -3543,9 +3487,9 @@ pub fn all_self_calls_descend_inc(
                     || (check_list.clone()
                         && is_list_shrink_expr(&val, param_name.clone(), si.clone())));
                 let is_var = match (*val.expr_data.clone()).clone() {
-                    ExprData::ExprVar {
-                        binding_kind: _, ..
-                    } => set_has(vars.clone(), expr_var_name_at(val.clone(), si.clone())),
+                    ExprData::ExprVar { .. } => {
+                        set_has(vars.clone(), expr_var_name_at(val.clone(), si.clone()))
+                    }
                     _ => false,
                 };
                 let is_option = is_if_option_descent(
@@ -3562,9 +3506,7 @@ pub fn all_self_calls_descend_inc(
                         let field = field_access_field_at(val.clone(), si.clone());
                         (is_children_list_field(field)
                             && match (*base.expr_data.clone()).clone() {
-                                ExprData::ExprVar {
-                                    binding_kind: _, ..
-                                } => {
+                                ExprData::ExprVar { .. } => {
                                     let bname = expr_var_name_at(base.clone(), si.clone());
                                     ((bname.clone().as_str() == param_name.clone().as_str())
                                         || set_has(vars.clone(), bname.clone()))
@@ -3617,9 +3559,7 @@ pub fn all_self_calls_descend_inc(
                     &si,
                 );
                 let scrut_is_param = match (*scrut.expr_data.clone()).clone() {
-                    ExprData::ExprVar {
-                        binding_kind: _, ..
-                    } => {
+                    ExprData::ExprVar { .. } => {
                         let sname = expr_var_name_at(scrut.clone(), si.clone());
                         ((sname.clone().as_str() == param_name.clone().as_str())
                             || set_has(vars.clone(), sname.clone()))
@@ -3955,9 +3895,7 @@ pub fn matches_on_sub_value_field(
                     let field = field_access_field_at(scrut.clone(), si.clone());
                     (is_sub_value_field(field)
                         && match (*base.expr_data.clone()).clone() {
-                            ExprData::ExprVar {
-                                binding_kind: _, ..
-                            } => {
+                            ExprData::ExprVar { .. } => {
                                 (expr_var_name_at(base.clone(), si.clone()).as_str()
                                     == param_name.as_str())
                             }
@@ -4038,15 +3976,10 @@ pub fn is_arithmetic_descent_expr(
             let left = binop_left(expr.clone());
             let right = binop_right(expr.clone());
             match (*left.expr_data.clone()).clone() {
-                ExprData::ExprVar {
-                    binding_kind: _, ..
-                } => {
+                ExprData::ExprVar { .. } => {
                     ((expr_var_name_at(left.clone(), si).as_str() == param_name.as_str())
                         && match (*right.expr_data.clone()).clone() {
-                            ExprData::ExprLiteral {
-                                value: LiteralValue::LitInt { value: n, .. },
-                                ..
-                            } => {
+                            ExprData::ExprLiteral { ref value, .. } => {
                                 let LiteralValue::LitInt { value: n, .. } = value.as_ref() else {
                                     unreachable!()
                                 };
@@ -4087,9 +4020,7 @@ pub fn classify_self_call_evidence(
                     DescentEvidence::Strict
                 } else {
                     match (*arg_expr.expr_data.clone()).clone() {
-                        ExprData::ExprVar {
-                            binding_kind: _, ..
-                        } => {
+                        ExprData::ExprVar { .. } => {
                             let vname = expr_var_name_at(arg_expr.clone(), si.clone());
                             if set_has(descent_vars.clone(), vname.clone()) {
                                 DescentEvidence::Strict
@@ -4154,9 +4085,7 @@ pub fn classify_self_call_evidence(
                         ExprData::ExprFieldAccess { .. } => {
                             let base = field_access_base(arg_expr.clone());
                             match (*base.expr_data.clone()).clone() {
-                                ExprData::ExprVar {
-                                    binding_kind: _, ..
-                                } => {
+                                ExprData::ExprVar { .. } => {
                                     let bname = expr_var_name_at(base.clone(), si.clone());
                                     if (set_has(descent_vars.clone(), bname.clone())
                                         || (bname.clone().as_str() == param_name.clone().as_str()))
@@ -4289,9 +4218,9 @@ pub fn collect_evidence_incremental(
                     || (check_list.clone()
                         && is_list_shrink_expr(&val, param_name.clone(), si.clone())));
                 let is_var = match (*val.expr_data.clone()).clone() {
-                    ExprData::ExprVar {
-                        binding_kind: _, ..
-                    } => set_has(vars.clone(), expr_var_name_at(val.clone(), si.clone())),
+                    ExprData::ExprVar { .. } => {
+                        set_has(vars.clone(), expr_var_name_at(val.clone(), si.clone()))
+                    }
                     _ => false,
                 };
                 let is_option = is_if_option_descent(
@@ -4318,9 +4247,9 @@ pub fn collect_evidence_incremental(
                             || (check_list.clone()
                                 && is_list_shrink_expr(&inner, param_name.clone(), si.clone())));
                         let inner_v = match (*inner.expr_data.clone()).clone() {
-                            ExprData::ExprVar {
-                                binding_kind: _, ..
-                            } => set_has(vars.clone(), expr_var_name_at(inner.clone(), si.clone())),
+                            ExprData::ExprVar { .. } => {
+                                set_has(vars.clone(), expr_var_name_at(inner.clone(), si.clone()))
+                            }
                             _ => false,
                         };
                         (inner_d.clone() || inner_v.clone())
@@ -4336,15 +4265,13 @@ pub fn collect_evidence_incremental(
                             || (check_list.clone()
                                 && is_list_shrink_expr(&inner, param_name.clone(), si.clone())));
                         let inner_v = match (*inner.expr_data.clone()).clone() {
-                            ExprData::ExprVar {
-                                binding_kind: _, ..
-                            } => set_has(vars.clone(), expr_var_name_at(inner.clone(), si.clone())),
+                            ExprData::ExprVar { .. } => {
+                                set_has(vars.clone(), expr_var_name_at(inner.clone(), si.clone()))
+                            }
                             _ => false,
                         };
                         let inner_p = match (*inner.expr_data.clone()).clone() {
-                            ExprData::ExprVar {
-                                binding_kind: _, ..
-                            } => {
+                            ExprData::ExprVar { .. } => {
                                 (expr_var_name_at(inner.clone(), si.clone()).as_str()
                                     == param_name.clone().as_str())
                             }
@@ -4361,9 +4288,7 @@ pub fn collect_evidence_incremental(
                         let field = field_access_field_at(val.clone(), si.clone());
                         (is_children_list_field(field)
                             && match (*base.expr_data.clone()).clone() {
-                                ExprData::ExprVar {
-                                    binding_kind: _, ..
-                                } => {
+                                ExprData::ExprVar { .. } => {
                                     let bname = expr_var_name_at(base.clone(), si.clone());
                                     ((bname.clone().as_str() == param_name.clone().as_str())
                                         || set_has(vars.clone(), bname.clone()))
@@ -4385,9 +4310,7 @@ pub fn collect_evidence_incremental(
                                         si.clone(),
                                     )))
                                 || match (*inner.expr_data.clone()).clone() {
-                                    ExprData::ExprVar {
-                                        binding_kind: _, ..
-                                    } => set_has(
+                                    ExprData::ExprVar { .. } => set_has(
                                         vars.clone(),
                                         expr_var_name_at(inner.clone(), si.clone()),
                                     ),
@@ -4453,9 +4376,7 @@ pub fn collect_evidence_incremental(
                     &si,
                 );
                 let scrut_is_param = match (*scrut.expr_data.clone()).clone() {
-                    ExprData::ExprVar {
-                        binding_kind: _, ..
-                    } => {
+                    ExprData::ExprVar { .. } => {
                         let sname = expr_var_name_at(scrut.clone(), si.clone());
                         ((sname.clone().as_str() == param_name.clone().as_str())
                             || set_has(vars.clone(), sname.clone()))
@@ -5122,7 +5043,7 @@ pub fn classify_recursion_pattern(
                             for rel in call_ev.clone().iter().cloned() {
                                 if match (*rel.clone()).clone() {
                                     SubValueRelation::StrictSubValue { .. } => true,
-                                    SubValueRelation::IteratedSubValue { field: _, .. } => true,
+                                    SubValueRelation::IteratedSubValue { .. } => true,
                                     SubValueRelation::ArithmeticDescent { .. } => true,
                                     _ => false,
                                 } {
@@ -5149,10 +5070,7 @@ pub fn classify_recursion_pattern(
                                         for rel in call_ev.clone().iter().cloned() {
                                             if match (*rel.clone()).clone() {
                                                 SubValueRelation::StrictSubValue { .. } => true,
-                                                SubValueRelation::IteratedSubValue {
-                                                    field: _,
-                                                    ..
-                                                } => true,
+                                                SubValueRelation::IteratedSubValue { .. } => true,
                                                 _ => false,
                                             } {
                                                 __found = true;
@@ -5221,7 +5139,7 @@ pub fn classify_recursion_pattern(
                                                     for rel in call_ev.clone().iter().cloned() {
                                                         if match (*rel.clone()).clone() {
     SubValueRelation::StrictSubValue { .. } => true,
-    SubValueRelation::IteratedSubValue { field: _, .. } => true,
+    SubValueRelation::IteratedSubValue { .. } => true,
     _ => false,
 } { __result.push(rel); }
                                                     }
@@ -5301,10 +5219,8 @@ pub fn classify_recursion_pattern(
                                         let mut __all = true;
                                         for dim in p.dimensions.clone().iter().cloned() {
                                             if !(match (*dim.clone()).clone() {
-                                                RankingDimension::TreeSize { param: _, .. } => true,
-                                                RankingDimension::ListLength {
-                                                    param: _, ..
-                                                } => true,
+                                                RankingDimension::TreeSize { .. } => true,
+                                                RankingDimension::ListLength { .. } => true,
                                                 _ => false,
                                             }) {
                                                 __all = false;
@@ -5337,10 +5253,8 @@ pub fn classify_recursion_pattern(
                                         let mut __all = true;
                                         for dim in bp.dimensions.clone().iter().cloned() {
                                             if !(match (*dim.clone()).clone() {
-                                                RankingDimension::TreeSize { param: _, .. } => true,
-                                                RankingDimension::ListLength {
-                                                    param: _, ..
-                                                } => true,
+                                                RankingDimension::TreeSize { .. } => true,
+                                                RankingDimension::ListLength { .. } => true,
                                                 _ => false,
                                             }) {
                                                 __all = false;
@@ -5456,7 +5370,7 @@ pub fn bounded_scc_cost(
 
 pub fn is_unknown_cost(expr: Rc<CostExpr>) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || match (*expr).clone() {
-        CostExpr::CostUnknown { reason: _, .. } => true,
+        CostExpr::CostUnknown { .. } => true,
         CostExpr::CostAdd {
             left: l, right: r, ..
         } => (is_unknown_cost(l.clone()) || is_unknown_cost(r.clone())),
@@ -5657,9 +5571,7 @@ pub fn classify_scc_call_progress(
                 DescentEvidence::Strict
             } else {
                 match (*arg_expr.expr_data.clone()).clone() {
-                    ExprData::ExprVar {
-                        binding_kind: _, ..
-                    } => {
+                    ExprData::ExprVar { .. } => {
                         let vname = expr_var_name_at(arg_expr.clone(), si.clone());
                         if set_has(descent_vars.clone(), vname.clone()) {
                             DescentEvidence::Strict
@@ -5713,9 +5625,7 @@ pub fn classify_scc_call_progress(
                     ExprData::ExprFieldAccess { .. } => {
                         let base = field_access_base(arg_expr.clone());
                         match (*base.expr_data.clone()).clone() {
-                            ExprData::ExprVar {
-                                binding_kind: _, ..
-                            } => {
+                            ExprData::ExprVar { .. } => {
                                 let bname = expr_var_name_at(base.clone(), si.clone());
                                 if (set_has(descent_vars.clone(), bname.clone())
                                     || (bname.clone().as_str() == param_name.clone().as_str()))
@@ -5970,9 +5880,7 @@ pub fn collect_scc_child_edges(
                     || (check_list.clone()
                         && is_list_shrink_expr(&val, param_name.clone(), si.clone())));
                 let is_var = match (*val.expr_data.clone()).clone() {
-                    ExprData::ExprVar {
-                        binding_kind: _, ..
-                    } => set_has(
+                    ExprData::ExprVar { .. } => set_has(
                         descent_vars.clone(),
                         expr_var_name_at(val.clone(), si.clone()),
                     ),
@@ -6002,9 +5910,7 @@ pub fn collect_scc_child_edges(
                             || (check_list.clone()
                                 && is_list_shrink_expr(&inner, param_name.clone(), si.clone())));
                         let inner_v = match (*inner.expr_data.clone()).clone() {
-                            ExprData::ExprVar {
-                                binding_kind: _, ..
-                            } => set_has(
+                            ExprData::ExprVar { .. } => set_has(
                                 descent_vars.clone(),
                                 expr_var_name_at(inner.clone(), si.clone()),
                             ),
@@ -6023,18 +5929,14 @@ pub fn collect_scc_child_edges(
                             || (check_list.clone()
                                 && is_list_shrink_expr(&inner, param_name.clone(), si.clone())));
                         let inner_v = match (*inner.expr_data.clone()).clone() {
-                            ExprData::ExprVar {
-                                binding_kind: _, ..
-                            } => set_has(
+                            ExprData::ExprVar { .. } => set_has(
                                 descent_vars.clone(),
                                 expr_var_name_at(inner.clone(), si.clone()),
                             ),
                             _ => false,
                         };
                         let inner_p = match (*inner.expr_data.clone()).clone() {
-                            ExprData::ExprVar {
-                                binding_kind: _, ..
-                            } => {
+                            ExprData::ExprVar { .. } => {
                                 (expr_var_name_at(inner.clone(), si.clone()).as_str()
                                     == param_name.clone().as_str())
                             }
@@ -6051,9 +5953,7 @@ pub fn collect_scc_child_edges(
                         let field = field_access_field_at(val.clone(), si.clone());
                         (is_children_list_field(field)
                             && match (*base.expr_data.clone()).clone() {
-                                ExprData::ExprVar {
-                                    binding_kind: _, ..
-                                } => {
+                                ExprData::ExprVar { .. } => {
                                     let bname = expr_var_name_at(base.clone(), si.clone());
                                     ((bname.clone().as_str() == param_name.clone().as_str())
                                         || set_has(descent_vars.clone(), bname.clone()))
@@ -6075,9 +5975,7 @@ pub fn collect_scc_child_edges(
                                         si.clone(),
                                     )))
                                 || match (*inner.expr_data.clone()).clone() {
-                                    ExprData::ExprVar {
-                                        binding_kind: _, ..
-                                    } => set_has(
+                                    ExprData::ExprVar { .. } => set_has(
                                         descent_vars.clone(),
                                         expr_var_name_at(inner.clone(), si.clone()),
                                     ),
@@ -6591,7 +6489,7 @@ pub fn collect_scc_cx_l2_tree_edges(
 let self_has_calls = ((self_evidence.clone().len() as i64) > 0);
 let self_all_structural = (self_has_calls.clone() && { let mut __all = true; for call_ev in self_evidence.clone().iter().cloned() { if !({ let mut __found = false; for rel in call_ev.clone().iter().cloned() { if match (*rel.clone()).clone() {
     SubValueRelation::StrictSubValue { .. } => true,
-    SubValueRelation::IteratedSubValue { field: _, .. } => true,
+    SubValueRelation::IteratedSubValue { .. } => true,
     SubValueRelation::ArithmeticDescent { .. } => true,
     _ => false,
 } { __found = true; break; } } __found }) { __all = false; break; } } __all });
@@ -7224,8 +7122,7 @@ pub fn receiver_size_var(
                 });
             }
             ExprData::ExprMethodCall {
-                method_semantics: method_semantics,
-                ..
+                method_semantics, ..
             } => {
                 let inner_recv = match recv.children.clone().first().cloned() {
                     Some(r) => r.clone(),
@@ -7531,7 +7428,7 @@ pub fn empty_complexity_report() -> Rc<ComplexityReport> {
 pub fn simplify_cost(expr: Rc<CostExpr>) -> Rc<CostExpr> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*expr.clone()).clone() {
-            CostExpr::CostConst { value: _, .. } => expr.clone(),
+            CostExpr::CostConst { .. } => expr.clone(),
             CostExpr::CostAdd {
                 left: l, right: r, ..
             } => {
@@ -7639,8 +7536,8 @@ pub fn simplify_cost(expr: Rc<CostExpr>) -> Rc<CostExpr> {
                 base: b.clone(),
                 argument: a.clone(),
             }),
-            CostExpr::CostExtern { name: _, .. } => expr.clone(),
-            CostExpr::CostUnknown { reason: _, .. } => expr.clone(),
+            CostExpr::CostExtern { .. } => expr.clone(),
+            CostExpr::CostUnknown { .. } => expr.clone(),
         }
     })
 }
@@ -7693,16 +7590,14 @@ pub fn normalize_asymptotic(expr: Rc<CostExpr>) -> Rc<CostExpr> {
                 } else {
                     match (*nl.clone()).clone() {
                         CostExpr::CostConst { value: 0, .. } => nr.clone(),
-                        CostExpr::CostConst { value: _, .. } => match (*nr.clone()).clone() {
+                        CostExpr::CostConst { .. } => match (*nr.clone()).clone() {
                             CostExpr::CostConst { value: 0, .. } => nl.clone(),
-                            CostExpr::CostConst { value: _, .. } => {
-                                Rc::new(CostExpr::CostConst { value: 1 })
-                            }
+                            CostExpr::CostConst { .. } => Rc::new(CostExpr::CostConst { value: 1 }),
                             _ => nr.clone(),
                         },
                         _ => match (*nr.clone()).clone() {
                             CostExpr::CostConst { value: 0, .. } => nl.clone(),
-                            CostExpr::CostConst { value: _, .. } => nl.clone(),
+                            CostExpr::CostConst { .. } => nl.clone(),
                             _ => Rc::new(CostExpr::CostAdd {
                                 left: nl.clone(),
                                 right: nr.clone(),
@@ -7721,16 +7616,14 @@ pub fn normalize_asymptotic(expr: Rc<CostExpr>) -> Rc<CostExpr> {
                 } else {
                     match (*nl.clone()).clone() {
                         CostExpr::CostConst { value: 0, .. } => nr.clone(),
-                        CostExpr::CostConst { value: _, .. } => match (*nr.clone()).clone() {
+                        CostExpr::CostConst { .. } => match (*nr.clone()).clone() {
                             CostExpr::CostConst { value: 0, .. } => nl.clone(),
-                            CostExpr::CostConst { value: _, .. } => {
-                                Rc::new(CostExpr::CostConst { value: 1 })
-                            }
+                            CostExpr::CostConst { .. } => Rc::new(CostExpr::CostConst { value: 1 }),
                             _ => nr.clone(),
                         },
                         _ => match (*nr.clone()).clone() {
                             CostExpr::CostConst { value: 0, .. } => nl.clone(),
-                            CostExpr::CostConst { value: _, .. } => nl.clone(),
+                            CostExpr::CostConst { .. } => nl.clone(),
                             _ => Rc::new(CostExpr::CostMax {
                                 left: nl.clone(),
                                 right: nr.clone(),
@@ -7748,12 +7641,12 @@ pub fn normalize_asymptotic(expr: Rc<CostExpr>) -> Rc<CostExpr> {
                     CostExpr::CostConst { value: 0, .. } => {
                         Rc::new(CostExpr::CostConst { value: 0 })
                     }
-                    CostExpr::CostConst { value: _, .. } => nr.clone(),
+                    CostExpr::CostConst { .. } => nr.clone(),
                     _ => match (*nr.clone()).clone() {
                         CostExpr::CostConst { value: 0, .. } => {
                             Rc::new(CostExpr::CostConst { value: 0 })
                         }
-                        CostExpr::CostConst { value: _, .. } => nl.clone(),
+                        CostExpr::CostConst { .. } => nl.clone(),
                         _ => Rc::new(CostExpr::CostMul {
                             left: nl.clone(),
                             right: nr.clone(),
@@ -7773,7 +7666,7 @@ pub fn normalize_asymptotic(expr: Rc<CostExpr>) -> Rc<CostExpr> {
                         Rc::new(CostExpr::CostConst { value: 0 })
                     }
                     _ => match (*u.clone()).clone() {
-                        SizeExpr::SizeConst { value: _, .. } => nbd.clone(),
+                        SizeExpr::SizeConst { .. } => nbd.clone(),
                         _ => Rc::new(CostExpr::CostSum {
                             binder: b.clone(),
                             upper: u.clone(),
@@ -7790,24 +7683,24 @@ pub fn normalize_asymptotic(expr: Rc<CostExpr>) -> Rc<CostExpr> {
                 base: b.clone(),
                 argument: a.clone(),
             }),
-            CostExpr::CostExtern { name: _, .. } => expr.clone(),
-            CostExpr::CostUnknown { reason: _, .. } => expr.clone(),
+            CostExpr::CostExtern { .. } => expr.clone(),
+            CostExpr::CostUnknown { .. } => expr.clone(),
         }
     })
 }
 
 pub fn format_cost_class(expr: Rc<CostExpr>) -> String {
     match (*expr).clone() {
-        CostExpr::CostConst { value: _, .. } => "O(1)".to_string(),
+        CostExpr::CostConst { .. } => "O(1)".to_string(),
         CostExpr::CostExtern { name: n, .. } => v2_rt::concat(
             v2_rt::concat("O(extern(".to_string(), n.clone()),
             "))".to_string(),
         ),
-        CostExpr::CostUnknown { reason: _, .. } => "O(?)".to_string(),
+        CostExpr::CostUnknown { .. } => "O(?)".to_string(),
         CostExpr::CostSum {
             upper: u, body: bd, ..
         } => match (*bd.clone()).clone() {
-            CostExpr::CostConst { value: _, .. } => v2_rt::concat(
+            CostExpr::CostConst { .. } => v2_rt::concat(
                 v2_rt::concat("O(".to_string(), format_size(u.clone())),
                 ")".to_string(),
             ),
@@ -7867,11 +7760,11 @@ pub fn format_cost_class(expr: Rc<CostExpr>) -> String {
 
 pub fn format_cost_inner(expr: Rc<CostExpr>) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || match (*expr).clone() {
-        CostExpr::CostConst { value: _, .. } => "1".to_string(),
+        CostExpr::CostConst { .. } => "1".to_string(),
         CostExpr::CostSum {
             upper: u, body: bd, ..
         } => match (*bd.clone()).clone() {
-            CostExpr::CostConst { value: _, .. } => format_size(u.clone()),
+            CostExpr::CostConst { .. } => format_size(u.clone()),
             _ => v2_rt::concat(
                 v2_rt::concat(format_size(u.clone()), " * ".to_string()),
                 format_cost_inner(bd.clone()),
@@ -7921,7 +7814,7 @@ pub fn format_cost_inner(expr: Rc<CostExpr>) -> String {
             v2_rt::concat("extern(".to_string(), n.clone()),
             ")".to_string(),
         ),
-        CostExpr::CostUnknown { reason: _, .. } => "?".to_string(),
+        CostExpr::CostUnknown { .. } => "?".to_string(),
     })
 }
 
@@ -8087,7 +7980,7 @@ pub fn substitute_size(size: Rc<SizeExpr>, legend: &Rc<HashMap<String, String>>)
                 left: substitute_size(l.clone(), &legend),
                 right: substitute_size(r.clone(), &legend),
             }),
-            SizeExpr::SizeConst { value: _, .. } => size.clone(),
+            SizeExpr::SizeConst { .. } => size.clone(),
         }
     })
 }
@@ -8095,7 +7988,7 @@ pub fn substitute_size(size: Rc<SizeExpr>, legend: &Rc<HashMap<String, String>>)
 pub fn substitute_cost(expr: Rc<CostExpr>, legend: &Rc<HashMap<String, String>>) -> Rc<CostExpr> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*expr.clone()).clone() {
-            CostExpr::CostConst { value: _, .. } => expr.clone(),
+            CostExpr::CostConst { .. } => expr.clone(),
             CostExpr::CostAdd {
                 left: l, right: r, ..
             } => Rc::new(CostExpr::CostAdd {
@@ -8132,8 +8025,8 @@ pub fn substitute_cost(expr: Rc<CostExpr>, legend: &Rc<HashMap<String, String>>)
                 base: b.clone(),
                 argument: substitute_size(a.clone(), &legend),
             }),
-            CostExpr::CostExtern { name: _, .. } => expr.clone(),
-            CostExpr::CostUnknown { reason: _, .. } => expr.clone(),
+            CostExpr::CostExtern { .. } => expr.clone(),
+            CostExpr::CostUnknown { .. } => expr.clone(),
         }
     })
 }
@@ -8274,7 +8167,7 @@ pub fn cost_of_expr(
 ) -> Rc<SummaryResult> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*texpr.expr_data.clone()).clone() {
-            ExprData::ExprLiteral { value: _, .. } => Rc::new(SummaryResult {
+            ExprData::ExprLiteral { .. } => Rc::new(SummaryResult {
                 summary: Rc::new(ComplexitySummary {
                     work: Rc::new(CostExpr::CostConst { value: 1 }),
                     span: Rc::new(CostExpr::CostConst { value: 1 }),
@@ -9214,7 +9107,7 @@ pub fn max_path_descending(
                             match evidence.clone().get(param_index.clone() as usize).cloned() {
                                 Some(rel) => match (*rel.clone()).clone() {
                                     SubValueRelation::StrictSubValue { .. } => 1,
-                                    SubValueRelation::IteratedSubValue { field: _, .. } => 1,
+                                    SubValueRelation::IteratedSubValue { .. } => 1,
                                     SubValueRelation::ArithmeticDescent { .. } => 1,
                                     _ => 0,
                                 },
@@ -9381,7 +9274,7 @@ pub fn analyze_structural_bounds(
                                                     )
                                                 }
                                             }
-                                            ShrinkFactor::ConstantShrink { steps: _, .. } => {
+                                            ShrinkFactor::ConstantShrink { .. } => {
                                                 let distinct_fields = distinct_descended_fields(
                                                     all_calls.clone(),
                                                     param_index.clone(),
@@ -9397,14 +9290,14 @@ pub fn analyze_structural_bounds(
                                                     )
                                                 }
                                             }
-                                            ShrinkFactor::ProportionalShrink {
-                                                divisor: _, ..
-                                            } => derive_bound(
-                                                param_name.clone(),
-                                                branches.clone(),
-                                                factor.clone(),
-                                                0,
-                                            ),
+                                            ShrinkFactor::ProportionalShrink { .. } => {
+                                                derive_bound(
+                                                    param_name.clone(),
+                                                    branches.clone(),
+                                                    factor.clone(),
+                                                    0,
+                                                )
+                                            }
                                         };
                                         let stack_bound = if entry.is_tail_recursive.clone() {
                                             Rc::new(CostBound::ConstantBound)
