@@ -837,12 +837,12 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // T-10 / Wave-3-B: tokenize/parse smoke on `06_translate.dag`, `05_emit.dag`, MVP-1 claim.
     // SG-0 + INVARIANTS §P5(b) receipt; dissolves when `.dag` TestClaim / generated harness replaces probe.
     "src/v3/compiler/tests/integration/v4_compiler_emit_translate_smoke_test.rs",
+    // Wave-2-C2 / T-4.5: extdeps/file_system.dag pure resource model (Practice 11 companion).
+    "src/v3/compiler/tests/integration/v4_extdeps_file_system_dag_smoke_test.rs",
     // T-4.7 React framework substrate: `compile_to_dag` smoke on
     // `src/v4/extdeps/frameworks/react.dag` (zero module diagnostics).
     // SG-0 ratchet per INVARIANTS §P5(b) + typescript extdeps precedent.
     "src/v3/compiler/tests/integration/v4_extdeps_react_dag_smoke_test.rs",
-    // Wave-2-C2 / T-4.5: extdeps/file_system.dag pure resource model (Practice 11 companion).
-    "src/v3/compiler/tests/integration/v4_extdeps_file_system_dag_smoke_test.rs",
     // PREFIX T-23 v0: `compile_to_dag` smoke on `src/v4/lens/registry.dag` (P2-staging
     // `LensIdV0` + `LensModulePathV0`; no generated consumer yet). SG-0 + INVARIANTS §P5(b) receipt.
     "src/v3/compiler/tests/integration/v4_lens_registry_dag_smoke_test.rs",
