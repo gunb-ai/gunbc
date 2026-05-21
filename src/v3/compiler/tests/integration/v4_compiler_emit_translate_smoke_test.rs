@@ -95,8 +95,8 @@ fn v4_translate_dag_does_not_inline_find_witness_calls() {
         "translate",
         "translate_fold_init",
     ] {
-        let body = fn_body(&module, name)
-            .unwrap_or_else(|| panic!("{TRANSLATE_PATH}: missing fn {name}"));
+        let body =
+            fn_body(&module, name).unwrap_or_else(|| panic!("{TRANSLATE_PATH}: missing fn {name}"));
         assert!(
             !expr_mentions_call(body, "find_witness"),
             "{TRANSLATE_PATH}: fn {name} must not inline find_witness (Practice 11)"
@@ -249,26 +249,26 @@ fn expr_mentions_call(expr: &SurfaceExpr, name: &str) -> bool {
                 || expr_mentions_call(then_branch, name)
                 || expr_mentions_call(else_branch, name)
         }
-        SurfaceExpr::Match { scrutinee, arms, .. } => {
+        SurfaceExpr::Match {
+            scrutinee, arms, ..
+        } => {
             expr_mentions_call(scrutinee, name)
-                || arms
-                    .iter()
-                    .any(|arm| expr_mentions_call(&arm.body, name))
+                || arms.iter().any(|arm| expr_mentions_call(&arm.body, name))
         }
         SurfaceExpr::Lambda { body, .. } => expr_mentions_call(body, name),
         SurfaceExpr::Operator { args, .. } => args.iter().any(|arg| expr_mentions_call(arg, name)),
         SurfaceExpr::List { elements, .. } => {
             elements.iter().any(|el| expr_mentions_call(el, name))
         }
-        SurfaceExpr::Record { fields, .. } => {
-            fields.iter().any(|field| expr_mentions_call(&field.value, name))
-        }
+        SurfaceExpr::Record { fields, .. } => fields
+            .iter()
+            .any(|field| expr_mentions_call(&field.value, name)),
         SurfaceExpr::Map { entries, .. } => entries
             .iter()
             .any(|entry| expr_mentions_call(&entry.value, name)),
         SurfaceExpr::Literal { .. } | SurfaceExpr::Var { .. } | SurfaceExpr::Path { .. } => false,
-        SurfaceExpr::VariantRecord { fields, .. } => {
-            fields.iter().any(|field| expr_mentions_call(&field.value, name))
-        }
+        SurfaceExpr::VariantRecord { fields, .. } => fields
+            .iter()
+            .any(|field| expr_mentions_call(&field.value, name)),
     }
 }
