@@ -39,7 +39,8 @@ import v4.std.node {
   Node,
   NodeFold,
   Symbol,
-  fold_node
+  fold_node,
+  well_formed
 }
 import v4.std.witness { Holds, Violates, Witness }
 
@@ -75,12 +76,20 @@ type InferredFactsEntry {
 
 data infer_descent_not_derived: Symbol = infer_descent_not_derived
 data infer_facts_lookup_miss: Symbol = infer_facts_lookup_miss
+data infer_canonical_grounding_incoherent: Symbol = infer_canonical_grounding_incoherent
 
 
 fn infer_facts_lookup_miss_diagnostic(key: Node) -> Diagnostic {
   Diagnostic {
     reason: infer_facts_lookup_miss,
     at: NodeLocus { node: key },
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+fn infer_canonical_grounding_incoherent_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: infer_canonical_grounding_incoherent,
+    at: NodeLocus { node: node },
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
@@ -202,19 +211,37 @@ fn facts_map_from_entries(entries: List<InferredFactsEntry>) -> Map<Node, Inferr
 fn inferred_facts_witness_for_node(tree: InferredTree, node: Node) -> Witness<InferredFacts> {
   tree.facts.lookup(node)
 }
+// P2: InferredFacts fields are independently constructible; reject illegal pairings before export.
+fn inferred_facts_canonical_grounding_coherent(facts: InferredFacts) -> Bool {
+  well_formed(n: facts.resolved_type)
+    && well_formed(n: facts.inhabits.witness)
+    && well_formed(n: facts.inhabits.algebra)
+    && (facts.resolved_type == facts.inhabits.witness)
+    && (facts.canonical.structural.evidence == facts.inhabits.algebra)
+}
+fn canonical_grounding_from_inferred_facts(
+  node: Node,
+  facts: InferredFacts,
+) -> Outcome<CanonicalGrounding> {
+  if inferred_facts_canonical_grounding_coherent(facts: facts) {
+    Accepted {
+      value: CanonicalGrounding {
+        node: facts.resolved_type,
+        witness: facts.canonical
+      },
+      diagnostics: None
+    }
+  } else {
+    outcome_rejected(infer_canonical_grounding_incoherent_diagnostic(node: node))
+  }
+}
 
 
 // RULING-1: infer-authored canonical witness only — no compiler-side fabrication (INVARIANTS P3).
 fn canonical_grounding_for_node(tree: InferredTree, node: Node) -> Outcome<CanonicalGrounding> {
   match inferred_facts_witness_for_node(tree: tree, node: node) {
     Holds { value: facts } =>
-      Accepted {
-        value: CanonicalGrounding {
-          node: facts.resolved_type,
-          witness: facts.canonical
-        },
-        diagnostics: None
-      }
+      canonical_grounding_from_inferred_facts(node: node, facts: facts)
     Violates { diagnostic: d } =>
       outcome_rejected(d)
   }
