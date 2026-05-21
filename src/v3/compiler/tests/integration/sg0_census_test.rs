@@ -834,6 +834,9 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/v2_oracle_no_remaining_test_consumers_test.rs",
     // T-15: tokenize/parse smoke on `src/v4/bin/main.dag` + trampoline source anchors (see harness module docs).
     "src/v3/compiler/tests/integration/v4_bin_main_dag_smoke_test.rs",
+    // T-10 / Wave-3-B: tokenize/parse smoke on `06_translate.dag`, `05_emit.dag`, MVP-1 claim.
+    // SG-0 + INVARIANTS §P5(b) receipt; dissolves when `.dag` TestClaim / generated harness replaces probe.
+    "src/v3/compiler/tests/integration/v4_compiler_emit_translate_smoke_test.rs",
     // T-4.7 React framework substrate: `compile_to_dag` smoke on
     // `src/v4/extdeps/frameworks/react.dag` (zero module diagnostics).
     // SG-0 ratchet per INVARIANTS §P5(b) + typescript extdeps precedent.
