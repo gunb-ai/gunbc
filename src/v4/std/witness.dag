@@ -1,7 +1,7 @@
 // src/v4/std/witness.dag
 // Scope: fail-closed proof/read carrier + unified witness taxonomy (Pass B).
 // Anchor: INVARIANTS.md P3; design-v4-compiler-homomorphism.md witness taxonomy.
-// Owns: Witness, StructuralPropertyWitness, HomomorphismWitness, PromotionWitness.
+// Owns: Witness, StructuralPropertyWitness, HomomorphismWitness.
 // Consumes: std diagnostic, std node.
 // Status: T-3 modeled; Wave-2-BC3 taxonomy extension.
 
@@ -22,10 +22,4 @@ type StructuralPropertyWitness {
 type HomomorphismWitness {
   rule: Symbol
   evidence: Node
-}
-
-// RULING-1: needs-more-work — composed promotion gate carrier.
-type PromotionWitness {
-  bootstrap: StructuralPropertyWitness
-  fixed_point: StructuralPropertyWitness
 }
