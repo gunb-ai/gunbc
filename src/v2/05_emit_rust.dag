@@ -2916,24 +2916,6 @@ fn emit_rust_empty_set_expr(set_type: Node, shared_types: Set<String>, source_in
   }
 }
 
-fn emit_rust_empty_set_expr_PLACEHOLDER_REMOVE(set_type: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
-  match set_type.children |> first {
-    Some { value: elem_child } =>
-      let elem_node = child_type_node(ch: elem_child)
-      if false {
-        emit_rust_compile_error_expr(message: "REMOVE")
-      } else {
-        let elem_str = rust_empty_set_element_type_str(set_type: set_type, shared_types: shared_types, source_indices: source_indices)
-        if elem_str != "" {
-          concat("v2_rt::rc_empty_set::<", elem_str, ">()")
-        } else {
-          emit_rust_compile_error_expr(message: "empty_set element type unresolved")
-        }
-      }
-    None => emit_rust_compile_error_expr(message: "empty_set element type unresolved")
-  }
-}
-
 // rust_runtime_bridge_wraps_result_in_rc: DELETED.
 // With shared_types as single authority, map values are already Rc-wrapped
 // for non-Copy types. lookup/map_get return the correct type directly.
