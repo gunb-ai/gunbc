@@ -9,24 +9,23 @@ module v4.compiler.eval
 
 import v4.compiler.infer {
   InferredFacts,
-  InferredTree
+  InferredTree,
+  inferred_facts_canonical_flows_to_eval,
+  inferred_facts_inhabitance_flows_to_eval,
+  inferred_facts_resolved_type_matches_host_value
 }
 import v4.std.collection { List, Map, non_empty }
 import v4.std.host {
-  HostAggregate,
   HostBindingKey,
-  HostClosure,
   HostContinue,
   HostEnvironment,
   HostModel,
-  HostPrimitive,
   HostRaise,
-  HostReference,
   HostReturn,
   HostSuspend,
-  HostUnit,
   HostControlTransfer,
-  HostValue
+  HostValue,
+  host_value_resolved_type
 }
 import v4.std.node {
   Behavior,
@@ -282,37 +281,24 @@ fn host_control_transfer_value(control: HostControlTransfer, node: Node) -> Outc
 }
 
 
-fn host_value_resolved_type(value: HostValue) -> Node {
-  match value {
-    HostPrimitive { value: p } => p.primitive_type
-    HostAggregate { value: a } => a.aggregate_type
-    HostReference { value: r } => r.reference_type
-    HostClosure { value: c } => c.arrow_type
-    HostUnit { value: u } => u.unit_type
-  }
-}
-
-
-fn eval_canonical_facts_match_resolved_type(facts: InferredFacts) -> Bool {
-  (facts.canonical.structural.evidence == facts.resolved_type)
-    && (facts.canonical.closedness.evidence == facts.resolved_type)
-}
-
-
 fn eval_accept_host_value_with_facts(
   node: Node,
   facts: InferredFacts,
   value: HostValue
 ) -> Outcome<HostValue> {
-  if host_value_resolved_type(value: value) != facts.resolved_type {
+  let host_resolved_type = host_value_resolved_type(value: value)
+  if !inferred_facts_resolved_type_matches_host_value(
+    facts: facts,
+    host_resolved_type: host_resolved_type
+  ) {
     outcome_rejected(
       d: eval_diagnostic(reason: eval_rejected_resolved_type_mismatch, node: node)
     )
-  } else if facts.inhabits.witness != facts.resolved_type {
+  } else if !inferred_facts_inhabitance_flows_to_eval(facts: facts) {
     outcome_rejected(
       d: eval_diagnostic(reason: eval_rejected_inhabitance_mismatch, node: node)
     )
-  } else if !eval_canonical_facts_match_resolved_type(facts: facts) {
+  } else if !inferred_facts_canonical_flows_to_eval(facts: facts) {
     outcome_rejected(
       d: eval_diagnostic(reason: eval_rejected_canonical_mismatch, node: node)
     )

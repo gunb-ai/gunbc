@@ -366,7 +366,7 @@ fn eval_mvp2_facts() -> InferredFacts {
     canonical: CanonicalGroundingWitness {
       structural: StructuralPropertyWitness {
         property: constraint_property_being_canonical,
-        evidence: eval_mvp2_i64_node()
+        evidence: eval_mvp2_algebra_node()
       },
       closedness: StructuralPropertyWitness {
         property: constraint_property_candidate_set_closedness,
