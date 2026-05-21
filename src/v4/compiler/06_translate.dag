@@ -3,7 +3,7 @@
 // Owns: TargetNodeTree, TargetBundleChildLookup, target_model_edge_selection_policy,
 //       target_model_edge_declared_inhabitants, target_model_edge_serialize_emitted,
 //       target_model_edge_serialize_source, target_bundle_child, target_bundle_child_lookup_step,
-//       target_selection_policy_from_model, coercion_candidates_from_target_model,
+//       target_selection_priority_from_model, coercion_candidates_from_target_model,
 //       target_serialize_source_from_model, translate_target_source_not_realized,
 //       translate_canonical_grounding_not_realized, canonical_grounding_for_node,
 //       coerce_grounded_node, translate_fold_init, translate_fold_step,
@@ -11,7 +11,8 @@
 // Consumes: compiler/04_infer.dag, compiler/07_target_carriers.dag, std/coercion.dag, std/constraints.dag,
 //           std/find_witness.dag, std/diagnostic.dag, std/node.dag, std/witness.dag, std/collection.dag.
 // Status: W-T-10-impl staging — fold_node + coercion_fold call-shape; canonical_grounding and
-// coercion_fold bodies fail closed until T-9 (#3464) + find_witness + T-4 rust.dag land.
+// coercion_fold now delegates to find_witness; translate still fails closed where canonical grounding
+// or target serialization scaffolds lack substrate facts.
 // Anchor: docs/design-v4-compiler-homomorphism.md Stage 5a; Ratified Q14.
 
 
@@ -23,7 +24,9 @@ import v4.compiler.infer { InferredTree }
 import v4.std.coercion {
   CoercionCandidateSet,
   CoercionResult,
-  coercion_fold
+  coercion_candidate_set_from_declared_inhabitants,
+  coercion_fold,
+  coercion_fold_with_declared_priority
 }
 import v4.std.constraints { CanonicalGrounding }
 import v4.std.diagnostic {
@@ -41,11 +44,7 @@ import v4.std.diagnostic {
   outcome_rejected,
   rejected_with_pending
 }
-import v4.std.find_witness {
-  CandidateSet,
-  TargetDeclaredPriority,
-  TargetSelectionPolicy
-}
+import v4.std.find_witness { CandidateSet }
 import v4.std.node {
   Conj,
   Edge,
@@ -57,6 +56,12 @@ import v4.std.node {
   TypeNode,
   fold_node
 }
+import v4.std.target_model {
+  target_model_edge_declared_inhabitants,
+  target_model_edge_selection_policy,
+  target_model_edge_serialize_emitted,
+  target_model_edge_serialize_source
+}
 import v4.std.witness { StructuralPropertyWitness }
 type TargetNodeTree = Node
 // Single-authority lookup state for TargetModel Conj bundles (P2/P3 fail-closed).
@@ -65,10 +70,6 @@ type TargetBundleChildLookup
   | BundleChildFound { value: Node }
   | BundleChildDuplicate
   | BundleChildInvalidEdge
-data target_model_edge_selection_policy: Symbol = target_model_edge_selection_policy
-data target_model_edge_declared_inhabitants: Symbol = target_model_edge_declared_inhabitants
-data target_model_edge_serialize_emitted: Symbol = target_model_edge_serialize_emitted
-data target_model_edge_serialize_source: Symbol = target_model_edge_serialize_source
 data translate_target_bundle_malformed: Symbol = translate_target_bundle_malformed
 data translate_target_bundle_duplicate_edge: Symbol = translate_target_bundle_duplicate_edge
 data translate_stage_locus_port: Symbol = translate_stage_locus_port
@@ -166,38 +167,29 @@ fn target_bundle_child(target: TargetModel, edge_name: Symbol) -> Outcome<Node> 
       outcome_rejected(translate_target_bundle_malformed_diagnostic(target: target))
   }
 }
-fn target_selection_policy_from_model(target: TargetModel) -> Outcome<TargetSelectionPolicy> {
+fn target_selection_priority_from_model(target: TargetModel) -> Outcome<Node> {
   bind_outcome(
     o: target_bundle_child(target: target, edge_name: target_model_edge_selection_policy),
     f: fn(priority_node) {
       Accepted {
-        value: TargetDeclaredPriority { priority: priority_node },
+        value: priority_node,
         diagnostics: None
       }
     }
   )
 }
 // `declared_inhabitants` edge names one closed candidate-set root Node on the target bundle;
-// find_witness enumerates inside that root when its body lands — not container-child traversal here.
+// std/coercion constructs the closed candidate list consumed by find_witness.
 fn coercion_candidates_from_target_model(
-  target: TargetModel,
-  closedness_evidence: Node
+  target: TargetModel
 ) -> Outcome<CoercionCandidateSet> {
   bind_outcome(
     o: target_bundle_child(target: target, edge_name: target_model_edge_declared_inhabitants),
     f: fn(inhabitants_root) {
-      Accepted {
-        value: CoercionCandidateSet {
-          set: CandidateSet {
-            candidates: [inhabitants_root],
-            closedness: StructuralPropertyWitness {
-              property: target_model_edge_declared_inhabitants,
-              evidence: closedness_evidence
-            }
-          }
-        },
-        diagnostics: None
-      }
+      coercion_candidate_set_from_declared_inhabitants(
+        inhabitants_root: inhabitants_root,
+        closedness_property: target_model_edge_declared_inhabitants
+      )
     }
   )
 }
@@ -215,18 +207,17 @@ fn coerce_grounded_node(
     o: canonical_grounding_for_node(tree: tree, node: source),
     f: fn(grounding) {
       bind_outcome(
-        o: target_selection_policy_from_model(target: target),
-        f: fn(policy) {
+        o: target_selection_priority_from_model(target: target),
+        f: fn(priority) {
           bind_outcome(
             o: coercion_candidates_from_target_model(
-              target: target,
-              closedness_evidence: grounding.node
+              target: target
             ),
             f: fn(candidates) {
-              coercion_fold(
+              coercion_fold_with_declared_priority(
                 source: grounding,
                 candidates: candidates,
-                policy: policy
+                priority: priority
               )
             }
           )
