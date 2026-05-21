@@ -1215,6 +1215,14 @@ import/alias of the resolver's authoritative shape.
     pair's existing prose header (`// **Authority:** Hand-edit ...
     // Companion is generated ...`) is informational only and does
     not satisfy the escape.
+    **Implementation-time naming note:** the carrier name
+    `GeneratedFrom` collides semantically with the existing
+    `DependencyKind::GeneratedFrom` variant in
+    `src/v4/std/dependency.dag:25`. When this Escape's registry
+    carrier lands, name it explicitly (e.g.,
+    `GeneratedArtifactBinding`) to avoid the collision; this entry
+    uses the short `GeneratedFrom` form for design-doc clarity but
+    the implementation should pick a non-colliding identifier.
 
 - *Decidability boundary (explicit):* (C1) and (C2) are mechanical and
   decidable over parsed substrate; (C3) is triage and never fires
