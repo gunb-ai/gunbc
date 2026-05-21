@@ -18,11 +18,13 @@ import v4.compiler.infer {
   infer
 }
 import v4.std.algebra { Empty }
-import v4.std.cardinality { RankingDimension, TerminationProof }
+import v4.std.cardinality { TerminationProof }
+import v4.std.witness { Violates, Witness }
 import v4.std.collection { Map }
 import v4.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,
+  NodeLocus,
   Outcome,
   PortLocus,
   Unavailable
@@ -44,27 +46,14 @@ data anchor_stub_target_model: TargetModel = anchor_stub_empty_conj
 data anchor_stub_source: Source = Empty
 
 
-data anchor_stub_ranking_symbol: Symbol = anchor_stub_ranking_symbol
-
-
 data anchor_stub_algebra_ref: AlgebraRef = AlgebraRef {
   algebra: anchor_stub_empty_conj,
   witness: anchor_stub_empty_conj
 }
 
 
-data anchor_stub_ranking_dim: RankingDimension = RankingDimension {
-  measured: anchor_stub_ranking_symbol
-}
-
-
-data anchor_stub_termination_proof: TerminationProof = TerminationProof {
-  non_increasing: [],
-  strict: anchor_stub_ranking_dim
-}
-
-
 data anchor_facts_map_lookup_not_realized: Symbol = anchor_facts_map_lookup_not_realized
+data anchor_stub_descent_not_derived: Symbol = anchor_stub_descent_not_derived
 
 
 data anchor_stub_canonical_witness: StructuralPropertyWitness = StructuralPropertyWitness {
@@ -76,7 +65,13 @@ data anchor_stub_canonical_witness: StructuralPropertyWitness = StructuralProper
 data anchor_stub_inferred_facts: InferredFacts = InferredFacts {
   resolved_type: anchor_stub_empty_conj,
   inhabits: anchor_stub_algebra_ref,
-  descent: anchor_stub_termination_proof,
+  descent: Violates {
+    diagnostic: Diagnostic {
+      reason: anchor_stub_descent_not_derived,
+      at: NodeLocus { node: anchor_stub_empty_conj },
+      correction: Unavailable { reason: ExternalContractUnknown }
+    }
+  },
   canonical: anchor_stub_canonical_witness
 }
 

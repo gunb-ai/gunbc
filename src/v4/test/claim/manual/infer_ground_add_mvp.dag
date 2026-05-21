@@ -1,17 +1,28 @@
 // src/v4/test/claim/manual/infer_ground_add_mvp.dag
 // Scope: T-9 worked fixture — ResolvedTree for MVP add-shaped Arrow; infer via solve_constraints.
-// Owns: fixture_add_int_atom, fixture_add_resolved_tree, anchor_infer_add_mvp, claim_infer_add_mvp_compiles.
+// Owns: fixture_add_resolved_tree, anchor_infer_add_mvp, claim_infer_add_mvp_compiles, infer_descent_witness_contract_node, claim_infer_descent_witness_fail_closed.
 // Consumes: compiler/04_infer.dag, std/diagnostic.dag, std/node.dag, std/verification.dag.
-// Status: compile anchor — Accepted outcome blocked until std canonical_grounding_candidates + find_witness bodies land.
+// Status: compile anchor; infer rejects infer_descent_not_derived until TerminationProof is derived.
 // Anchor: design-v4-compiler-homomorphism.md MVP add(x,y)=x+y
 
 
 module v4.test.claim.manual.infer_ground_add_mvp
 
 
-import v4.compiler.infer { infer, InferredTree }
+import v4.compiler.infer {
+  infer,
+  infer_descent_not_derived_diagnostic,
+  infer_descent_witness_for_node,
+  InferredTree
+}
 import v4.compiler.resolve { ResolvedTree }
-import v4.std.diagnostic { Accepted, None, Outcome }
+import v4.std.diagnostic {
+  Accepted,
+  None,
+  Outcome,
+  Rejected,
+  diagnostics_singleton
+}
 import v4.std.node {
   Arrow,
   Atom,
@@ -25,12 +36,14 @@ import v4.std.node {
 }
 import v4.std.verification {
   Compiles,
+  Equals,
   T19ManualAnchorAbsent,
   TestClaim,
   TestClassification,
   Tier1,
   Unit
 }
+import v4.std.witness { Holds, Violates }
 
 
 data fixture_add_name: Symbol = fixture_add_name
@@ -81,11 +94,38 @@ fn anchor_infer_add_mvp() -> Outcome<InferredTree> {
 }
 
 
+// Behavior receipt: descent must Violates (not Holds with a fabricated proof) until cardinality propagation lands.
+fn infer_descent_witness_contract_node(n: Node) -> Outcome<Node> {
+  match infer_descent_witness_for_node(n: n) {
+    Violates { diagnostic: _ } => Accepted { value: n, diagnostics: None }
+    Holds { value: _ } =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: infer_descent_not_derived_diagnostic(n: n)
+        )
+      }
+  }
+}
+
+
 data claim_infer_add_mvp_compiles: TestClaim = TestClaim {
   kind: Compiles,
   label: "manual/infer: MVP add ResolvedTree ground stage pipeline compiles",
   t19_anchor: T19ManualAnchorAbsent,
   input: fixture_add_resolved_tree(),
   expected: Accepted { value: fixture_add_resolved_tree(), diagnostics: None },
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+
+data claim_infer_descent_witness_fail_closed: TestClaim = TestClaim {
+  kind: Equals,
+  label: "manual/infer: descent Witness Violates until derived (no fabricated TerminationProof on Accepted path)",
+  t19_anchor: T19ManualAnchorAbsent,
+  input: fixture_int_type_node(atom: fixture_add_int_atom),
+  expected: Accepted {
+    value: fixture_int_type_node(atom: fixture_add_int_atom),
+    diagnostics: None
+  },
   classification: TestClassification { tier: Tier1, layer: Unit }
 }

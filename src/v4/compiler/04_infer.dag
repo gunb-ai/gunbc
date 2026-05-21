@@ -10,10 +10,7 @@ module v4.compiler.infer
 
 
 import v4.compiler.resolve { ResolvedTree }
-import v4.std.cardinality {
-  RankingDimension,
-  TerminationProof
-}
+import v4.std.cardinality { TerminationProof }
 import v4.std.collection { List, Map }
 import v4.std.constraints {
   CanonicalGrounding,
@@ -55,7 +52,7 @@ type AlgebraRef {
 type InferredFacts {
   resolved_type: Node
   inhabits: AlgebraRef
-  descent: TerminationProof
+  descent: Witness<TerminationProof>
   canonical: StructuralPropertyWitness
 }
 
@@ -73,7 +70,7 @@ type InferredFactsEntry {
 }
 
 
-data infer_descent_ranking_symbol: Symbol = infer_descent_ranking_symbol
+data infer_descent_not_derived: Symbol = infer_descent_not_derived
 data infer_facts_lookup_miss: Symbol = infer_facts_lookup_miss
 
 
@@ -86,11 +83,19 @@ fn infer_facts_lookup_miss_diagnostic(key: Node) -> Diagnostic {
 }
 
 
-// 🟡 coproduct dissolution — scaffold:T-9-descent-bridge · dissolve-on: canonical_grounding_candidates + find_witness bodies land (cardinality propagation).
-fn infer_default_termination_proof() -> TerminationProof {
-  TerminationProof {
-    non_increasing: [],
-    strict: RankingDimension { measured: infer_descent_ranking_symbol }
+fn infer_descent_not_derived_diagnostic(n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: infer_descent_not_derived,
+    at: NodeLocus { node: n },
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+
+// 🟡 coproduct dissolution — scaffold:T-9-descent-bridge · dissolve-on: cardinality propagation derives TerminationProof per node.
+fn infer_descent_witness_for_node(n: Node) -> Witness<TerminationProof> {
+  Violates {
+    diagnostic: infer_descent_not_derived_diagnostic(n: n)
   }
 }
 
@@ -108,11 +113,15 @@ fn infer_constraint_graph(n: Node) -> ConstraintGraph {
 }
 
 
-fn inferred_facts_from_grounding(n: Node, grounding: CanonicalGrounding) -> InferredFacts {
+fn inferred_facts_from_grounding(
+  n: Node,
+  grounding: CanonicalGrounding,
+  descent: Witness<TerminationProof>,
+) -> InferredFacts {
   InferredFacts {
     resolved_type: grounding.node,
     inhabits: algebra_ref_from_grounding(grounding: grounding),
-    descent: infer_default_termination_proof(),
+    descent: descent,
     canonical: grounding.witness.structural
   }
 }
@@ -129,19 +138,28 @@ fn concat_inferred_facts_entries(
 
 
 fn infer_node_facts(n: Node) -> Outcome<InferredFacts> {
-  bind_outcome(
-    o: solve_constraints(
-      policy: ConstraintSolvePolicy {
-        graph: infer_constraint_graph(n: n)
-      }
-    ),
-    f: fn(grounding) {
-      Accepted {
-        value: inferred_facts_from_grounding(n: n, grounding: grounding),
-        diagnostics: None
-      }
-    }
-  )
+  match infer_descent_witness_for_node(n: n) {
+    Violates { diagnostic: d } =>
+      Rejected { diagnostics: diagnostics_singleton(d: d) }
+    Holds { value: descent_proof } =>
+      bind_outcome(
+        o: solve_constraints(
+          policy: ConstraintSolvePolicy {
+            graph: infer_constraint_graph(n: n)
+          }
+        ),
+        f: fn(grounding) {
+          Accepted {
+            value: inferred_facts_from_grounding(
+              n: n,
+              grounding: grounding,
+              descent: Holds { value: descent_proof }
+            ),
+            diagnostics: None
+          }
+        }
+      )
+  }
 }
 
 
