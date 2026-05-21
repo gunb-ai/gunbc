@@ -543,11 +543,13 @@ passes — e.g. a three-variant `Cached | Produced | Rejected` where
       dissolution candidate the parametric form preserves
       discrimination over).
     This is the operator-direct refinement (2026-05-21, granularity
-    sharpened per openai-pro REQUEST_CHANGES same day) tightening
-    the bar from "identical arity is enough" to "identical arity
-    AND payload signatures pairwise-distinct." Without this guard,
-    the lens would
-    over-recommend parameterization that loses information.
+    sharpened per openai-pro REQUEST_CHANGES same day; equivalence-
+    class scope sharpened per codex BLOCKING #15978 same day)
+    tightening the bar from "identical arity is enough" to
+    "identical arity AND equivalence-class-wide payload-signature
+    injectivity" (i.e., `|{signature(v) | v in class}| == |class|`).
+    Without this guard, the lens would over-recommend parameterization
+    that loses information.
 
 - *Clearing receipt (single authoritative resolution table — same R1–R5 inherited from L1.12 family):*
   the substrate carries one of the inherited resolution shapes:
