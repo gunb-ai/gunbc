@@ -2,7 +2,7 @@
 // Scope: Stage 4 — ResolvedTree -> InferredTree; bounded Find phase (DECISIONS C1 / IR-1).
 // Owns: AlgebraRef, InferredFacts, InferredTree, infer.
 // Consumes: v4.compiler.resolve, v4.std.cardinality, v4.std.collection, v4.std.constraints, v4.std.diagnostic, v4.std.node, v4.std.witness.
-// Status: Wave-3-A T-9 — ground body via solve_constraints → find_witness(UniqueOnly); algebra-inhabitance AlgebraRef bridge.
+// Status: Wave-3-A T-9 — staged fail-closed: descent Violates per node before solve_constraints; Holds path wires solve_constraints → find_witness(UniqueOnly) + AlgebraRef bridge (live once cardinality propagation lands).
 // Anchor: https://en.wikipedia.org/wiki/Type_inference
 
 
@@ -29,6 +29,7 @@ import v4.std.diagnostic {
   Rejected,
   bind_outcome,
   diagnostics_merge,
+  diagnostics_singleton,
   rejected_with_pending
 }
 import v4.std.node {

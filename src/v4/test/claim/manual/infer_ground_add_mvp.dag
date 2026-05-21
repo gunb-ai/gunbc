@@ -1,8 +1,8 @@
 // src/v4/test/claim/manual/infer_ground_add_mvp.dag
-// Scope: T-9 worked fixture — ResolvedTree for MVP add-shaped Arrow; infer via solve_constraints.
+// Scope: T-9 worked fixture — ResolvedTree for MVP add-shaped Arrow; anchor_infer_add_mvp exercises infer (fail-closed until descent derived).
 // Owns: fixture_add_resolved_tree, anchor_infer_add_mvp, claim_infer_add_mvp_compiles, infer_descent_witness_contract_node, claim_infer_descent_witness_fail_closed.
 // Consumes: compiler/04_infer.dag, std/diagnostic.dag, std/node.dag, std/verification.dag.
-// Status: compile anchor; infer rejects infer_descent_not_derived until TerminationProof is derived.
+// Status: compile anchor on ResolvedTree datum + fail-closed infer receipt; infer rejects infer_descent_not_derived before solve_constraints until TerminationProof is derived.
 // Anchor: design-v4-compiler-homomorphism.md MVP add(x,y)=x+y
 
 
@@ -110,7 +110,7 @@ fn infer_descent_witness_contract_node(n: Node) -> Outcome<Node> {
 
 data claim_infer_add_mvp_compiles: TestClaim = TestClaim {
   kind: Compiles,
-  label: "manual/infer: MVP add ResolvedTree ground stage pipeline compiles",
+  label: "manual/infer: MVP add ResolvedTree compile-anchor (datum Compiles; infer via anchor_infer_add_mvp rejects until descent derived)",
   t19_anchor: T19ManualAnchorAbsent,
   input: fixture_add_resolved_tree(),
   expected: Accepted { value: fixture_add_resolved_tree(), diagnostics: None },
