@@ -137,24 +137,22 @@ fn distinct_block_rejected_for_no_candidate(o: Outcome<FindWitnessResult>) -> Bo
     Rejected { diagnostics: r } => r.head.reason == find_witness_reason_no_candidate
   }
 }
-data witness_find_witness_same_shape_distinct_leaf_rejects: Bool =
-  distinct_block_rejected_for_no_candidate(
-    o: find_witness(
-      source_facts: distinct_block_source_arrow(),
-      candidates: distinct_block_candidate_set(),
-      predicate: distinct_block_exact_predicate(),
-      multiplicity_policy: UniqueOnly
-    )
+data witness_find_witness_same_shape_distinct_leaf_rejects: Bool = distinct_block_rejected_for_no_candidate(
+  o: find_witness(
+    source_facts: distinct_block_source_arrow(),
+    candidates: distinct_block_candidate_set(),
+    predicate: distinct_block_exact_predicate(),
+    multiplicity_policy: UniqueOnly
   )
-data witness_find_witness_nested_distinct_node_rejects: Bool =
-  distinct_block_rejected_for_no_candidate(
-    o: find_witness(
-      source_facts: distinct_block_source_nested(),
-      candidates: distinct_block_nested_candidate_set(),
-      predicate: distinct_block_nested_predicate(),
-      multiplicity_policy: UniqueOnly
-    )
+)
+data witness_find_witness_nested_distinct_node_rejects: Bool = distinct_block_rejected_for_no_candidate(
+  o: find_witness(
+    source_facts: distinct_block_source_nested(),
+    candidates: distinct_block_nested_candidate_set(),
+    predicate: distinct_block_nested_predicate(),
+    multiplicity_policy: UniqueOnly
   )
+)
 data witness_verify_witness_same_shape_distinct_leaf_rejects: Bool = match verify_witness(
   source_facts: distinct_block_source_arrow(),
   candidate: distinct_block_target_arrow(),
