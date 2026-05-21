@@ -44,7 +44,7 @@ type TsEcma262PrimitiveOperationSemantics
 
 // 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type TsNumberWidth
-  = Bits64
+  = TsBits64
 
 type TsNumberPrimitiveFacts {
   surface_spelling: Symbol
@@ -117,7 +117,7 @@ data ts_facts_number: TsNumberPrimitiveFacts = TsNumberPrimitiveFacts {
   kind: TsNumberPrimitive,
   arithmetic_semantics: TsNumberIeee754Binary64Semantics,
   bitwise_semantics: TsNumberBitwiseInt32Uint32Semantics,
-  width: Bits64,
+  width: TsBits64,
   ieee754_binary: ts_ieee754_binary64,
   std_projection: ts_std_projection_float64,
 }
@@ -170,7 +170,7 @@ fn ts_operation_semantics_node(sem: TsEcma262PrimitiveOperationSemantics) -> Nod
 
 fn ts_number_width_node(width: TsNumberWidth) -> Node {
   match width {
-    Bits64 => ts_inhabitant_atom(id: ts_tag_bits64)
+    TsBits64 => ts_inhabitant_atom(id: ts_tag_bits64)
   }
 }
 
@@ -288,16 +288,6 @@ fn ts_list_snoc_item<T>(xs: List<T>, item: T) -> List<T> {
     empty: Cons { head: item, tail: Empty },
     cons: fn(rest, existing) {
       Cons { head: existing, tail: rest }
-    }
-  )
-}
-
-fn ts_list_append<T>(left: List<T>, right: List<T>) -> List<T> {
-  free_monoid_fold(
-    xs: right,
-    empty: left,
-    cons: fn(acc, item) {
-      ts_list_snoc_item(xs: acc, item: item)
     }
   )
 }
