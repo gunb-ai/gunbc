@@ -58,7 +58,13 @@ fn atom_node(s: Symbol) -> Node {
 }
 
 
-data shared_wire_contract_input: Node = atom_node(s: shared_wire_contract_symbol)
+data shared_wire_contract_input: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [
+    Edge { label: Named { name: client_field }, target: atom_node(s: shared_wire_contract_symbol) },
+    Edge { label: Named { name: server_field }, target: atom_node(s: shared_wire_contract_symbol) },
+  ]
+}
 
 
 data falsification_wire_contract_drift: Node = Node {

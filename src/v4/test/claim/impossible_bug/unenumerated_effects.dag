@@ -53,6 +53,8 @@ data explicit_reread_symbol: Symbol = explicit_reread_symbol
 data redundant_read_reason: Symbol = redundant_read_reason
 data effect_signature_field: Symbol = effect_signature_field
 data effect_body_field: Symbol = effect_body_field
+data effect_read_subject_field: Symbol = effect_read_subject_field
+data effect_write_subject_field: Symbol = effect_write_subject_field
 
 
 fn atom_node(s: Symbol) -> Node {
@@ -71,7 +73,19 @@ fn effect_subject(signature: Node, body: Node) -> Node {
 }
 
 
-data effect_derived_from_signature_input: Node = effect_subject(signature: atom_node(s: write_signature_symbol), body: atom_node(s: write_signature_symbol))
+data effect_derived_from_signature_input: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [
+    Edge {
+      label: Named { name: effect_read_subject_field },
+      target: effect_subject(signature: atom_node(s: read_signature_symbol), body: atom_node(s: read_signature_symbol))
+    },
+    Edge {
+      label: Named { name: effect_write_subject_field },
+      target: effect_subject(signature: atom_node(s: write_signature_symbol), body: atom_node(s: write_signature_symbol))
+    },
+  ]
+}
 
 
 data explicit_reread_input: Node = effect_subject(signature: atom_node(s: read_signature_symbol), body: atom_node(s: explicit_reread_symbol))

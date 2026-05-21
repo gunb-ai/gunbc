@@ -45,6 +45,7 @@ import v4.std.verification {
 
 
 data proven_nonzero_divisor_symbol: Symbol = proven_nonzero_divisor_symbol
+data proven_index_in_range_symbol: Symbol = proven_index_in_range_symbol
 data total_division_symbol: Symbol = total_division_symbol
 data unchecked_division_symbol: Symbol = unchecked_division_symbol
 data checked_index_symbol: Symbol = checked_index_symbol
@@ -76,7 +77,7 @@ fn safety_subject(op: Symbol, witness: Symbol) -> Node {
 data total_division_input: Node = safety_subject(op: total_division_symbol, witness: proven_nonzero_divisor_symbol)
 
 
-data checked_index_input: Node = safety_subject(op: checked_index_symbol, witness: proven_nonzero_divisor_symbol)
+data checked_index_input: Node = safety_subject(op: checked_index_symbol, witness: proven_index_in_range_symbol)
 
 
 data falsification_division_by_zero_unhandled: Node = safety_subject(op: unchecked_division_symbol, witness: force_unwrap_symbol)
