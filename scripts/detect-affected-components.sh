@@ -25,7 +25,9 @@
 #                    script (affects which jobs run, including Gate #103), or the
 #                    Gate #103 path-regex ratchet scripts changed. Independent of
 #                    v2/v3/v4: PRs that touch only `.github/workflows/ci.yml` must still
-#                    run fail-closed workflow policy checks (INVARIANTS P2/P3).
+#                    run fail-closed workflow policy checks (INVARIANTS P2/P3) and the
+#                    MVP-1 end-to-end gate when its ci.yml wiring changes (ci job gates
+#                    MVP-1 on workflow_policy || v4).
 #
 # Why this lives in a script (not inline in ci.yml):
 # Gate #103 (`ci_uses_affected_set_selection`) policy forbids path-selection
