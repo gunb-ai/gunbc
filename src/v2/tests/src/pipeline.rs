@@ -4506,11 +4506,17 @@ data fermi_bounded_lattice: BoundedLattice<FermiDepth> = {
         );
     }
 
-    for variant in ["Unknown", "ASCII", "Strict", "DescentUnknown", "Xl", "Xs"] {
-        let expected_value = format!("Box::new({variant})");
+    for expected_value in [
+        "top: Box::new(Encoding::Unknown)",
+        "bottom: Box::new(Encoding::ASCII)",
+        "top: Box::new(DescentEvidence::Strict)",
+        "bottom: Box::new(DescentEvidence::DescentUnknown)",
+        "top: Box::new(FermiDepth::Xl)",
+        "bottom: Box::new(FermiDepth::Xs)",
+    ] {
         assert!(
             content.contains(&expected_value),
-            "{variant} should be stored as a boxed generic lattice value, got:\n{content}"
+            "{expected_value} should be emitted for boxed generic lattice storage, got:\n{content}"
         );
     }
 }
