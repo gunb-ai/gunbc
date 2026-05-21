@@ -27,10 +27,21 @@ import v4.lens.effect {
 }
 import v4.std.dependency {
   BarrierBefore,
+  BindsTo,
+  BootstrapDependsOn,
+  Contains,
   DataDependsOn,
   DependencyView,
   EffectDependsOn,
-  ResourceDependsOn
+  GeneratedFrom,
+  ModelDependsOn,
+  ModuleDependsOn,
+  PlacementDependsOn,
+  ProjectionDependsOn,
+  PromotedBy,
+  ResourceDependsOn,
+  TypeDependsOn,
+  VerifiedBy
 }
 import v4.std.node { Node }
 import v4.std.witness { Holds, Witness }
@@ -55,11 +66,21 @@ type IdempotencyFact {
 
 fn idempotency_verdict_for_effect(effect: EffectDependencyFact) -> IdempotencyVerdict {
   match effect.dependency.kind {
+    Contains => RequiresAlgebraWitness
+    BindsTo => RequiresAlgebraWitness
+    TypeDependsOn => RequiresAlgebraWitness
     DataDependsOn => Idempotent
     BarrierBefore => Idempotent
     EffectDependsOn => RequiresAlgebraWitness
     ResourceDependsOn => RequiresAlgebraWitness
-    _ => Idempotent
+    ModuleDependsOn => RequiresAlgebraWitness
+    PlacementDependsOn => RequiresAlgebraWitness
+    ModelDependsOn => RequiresAlgebraWitness
+    ProjectionDependsOn => RequiresAlgebraWitness
+    GeneratedFrom => RequiresAlgebraWitness
+    VerifiedBy => RequiresAlgebraWitness
+    PromotedBy => RequiresAlgebraWitness
+    BootstrapDependsOn => RequiresAlgebraWitness
   }
 }
 
