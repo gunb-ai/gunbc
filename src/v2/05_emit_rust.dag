@@ -2834,11 +2834,12 @@ fn type_node_child_is_type_variable(c: Node) -> Bool {
   if ch.inferred != none { is_type_variable(inferred: ch.inferred.value) } else { false }
 }
 
-// BTreeSet requires T: Ord. Fail-closed at emit for Float and non-kernel element types
-// until target grounding carries an Ord witness (types.dag BooleanAlgebra → BTreeSet).
+// BTreeSet requires T: Ord. Whitelist kernel types with known Ord Rust carriers;
+// Float (no total Ord), Json (serde_json::Value), and nominal types fail-closed.
 fn rust_btree_set_element_ord_eligible(elem_node: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   let elem_name = authored_name_at(source_indices: source_indices, node: elem_node)
-  elem_name != "Float" && is_kernel_type(name: elem_name)
+  elem_name == "String" || elem_name == "Int" || elem_name == "Bool" || elem_name == "Unit"
+    || elem_name == "Secret" || elem_name == "Bytes"
 }
 
 fn rust_empty_set_element_type_str(set_type: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {

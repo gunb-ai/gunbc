@@ -642,6 +642,14 @@ fn set_kernel_ty_from_element(element: Node) -> KernelListTyDiag {
   KernelListTyDiag { ty: b.ty, miss_diags: b.diagnostics }
 }
 
+fn set_builtin_receiver_is_set(receiver_arg: Node, scope: InferScope) -> Bool {
+  match arg_value(n: receiver_arg).inferred {
+    Some { value: Resolved { node: receiver_type } } =>
+      node_is_set_collection(n: receiver_type, source_indices: scope.type_env.source_indices)
+    _ => false
+  }
+}
+
 type Tier2bBt {
   bt: Node
   kernel_diags: List<ErrorNode>
@@ -718,31 +726,39 @@ fn infer_tier2b_builtin_with_kernel_diags(func_name: String, typed_args: List<No
         None => none
       }
     }
+    let recv_is_set = match typed_args |> first {
+      Some { value: receiver_arg } => set_builtin_receiver_is_set(receiver_arg: receiver_arg, scope: scope)
+      None => false
+    }
+    let wrong_receiver_diags = if recv_is_set { [] } else {
+      [inference_error(message: concat(func_name, ": receiver must be Set<...>"), span: span, module_name: scope.module_name)]
+    }
     let result_bt = match typed_args |> first {
       Some { value: receiver_arg } =>
-        match arg_value(n: receiver_arg).inferred {
-          Some { value: Resolved { node: receiver_type } } =>
-            match set_element_type_in_env(type_node: receiver_type, env: scope.type_env) {
-              Some { value: _ } => receiver_type
-              None =>
-                match operand_elem {
-                  Some { value: element } => set_kernel_ty_from_element(element: element).ty
-                  None => resolve_builtin_call_type(name: func_name)
-                }
-            }
-          _ =>
-            match operand_elem {
-              Some { value: element } => set_kernel_ty_from_element(element: element).ty
-              None => resolve_builtin_call_type(name: func_name)
-            }
+        if recv_is_set {
+          match arg_value(n: receiver_arg).inferred {
+            Some { value: Resolved { node: receiver_type } } =>
+              match set_element_type_in_env(type_node: receiver_type, env: scope.type_env) {
+                Some { value: _ } => receiver_type
+                None =>
+                  match operand_elem {
+                    Some { value: element } => set_kernel_ty_from_element(element: element).ty
+                    None => resolve_builtin_call_type(name: func_name)
+                  }
+              }
+            _ => resolve_builtin_call_type(name: func_name)
+          }
+        } else {
+          resolve_builtin_call_type(name: func_name)
         }
       None => resolve_builtin_call_type(name: func_name)
     }
     let build_diags = match operand_elem {
-      Some { value: element } => set_kernel_ty_from_element(element: element).miss_diags
+      Some { value: element } =>
+        if recv_is_set { set_kernel_ty_from_element(element: element).miss_diags } else { [] }
       None => []
     }
-    Tier2bBt { bt: result_bt, kernel_diags: build_diags }
+    Tier2bBt { bt: result_bt, kernel_diags: concat(wrong_receiver_diags, build_diags) }
   } else {
     Tier2bBt { bt: resolve_builtin_call_type(name: func_name), kernel_diags: [] }
   }
