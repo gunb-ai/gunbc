@@ -1,22 +1,24 @@
 // src/v4/test/claim/lens_application/apply_lens_enforce_introspect_same_gate_today.dag
-// Scope: T-23 worked claim — apply_lens stub routes both modes through gate until application.dag demotes introspect.
-// Owns: apply_lens_enforce_introspect_same_gate_today_claim.
-// Consumes: compiler compile, lens_common fixture.
+// Scope: T-23 worked claim — apply_lens stub routes both modes through gate until introspect demotion.
+// Owns: claim_apply_lens_enforce_introspect_same_gate_today.
+// Consumes: compiler compile, lens_common fixture, std verification.
 // Status: scaffold — compile-only until application.dag fills introspect demotion.
 
 module v4.test.claim.lens_application.apply_lens_enforce_introspect_same_gate_today
 
-import v4.compiler.compile {
-  Lens,
-  LensApplicationMode,
-  LensEnforce,
-  LensIntrospect,
-  apply_lens
-}
+import v4.compiler.compile { Lens, LensEnforce, LensIntrospect, apply_lens }
 import v4.compiler.infer { InferredTree }
 import v4.std.diagnostic { Accepted, Outcome }
 import v4.std.logic { Bool }
-import v4.std.node { Node, Symbol }
+import v4.std.node { Atom, Conj, Node, Symbol, TypeNode }
+import v4.std.verification {
+  EqualsClaim,
+  TestClaim,
+  TestClassification,
+  T19ManualAnchorAbsent,
+  Tier1,
+  Unit
+}
 import v4.std.witness { Holds, Witness }
 import v4.test.claim.lens_common.infer_fixture {
   claim_atom_node,
@@ -24,7 +26,7 @@ import v4.test.claim.lens_common.infer_fixture {
   claim_inferred_tree
 }
 
-data apply_lens_mode_root_symbol: Symbol = apply_lens_mode_root_symbol
+data apply_lens_mode_symbol: Symbol = apply_lens_mode_symbol
 data apply_lens_mode_type_symbol: Symbol = apply_lens_mode_type_symbol
 data apply_lens_mode_algebra_symbol: Symbol = apply_lens_mode_algebra_symbol
 data apply_lens_mode_algebra_witness_symbol: Symbol = apply_lens_mode_algebra_witness_symbol
@@ -33,7 +35,7 @@ data apply_lens_mode_canonical_structural_symbol: Symbol = apply_lens_mode_canon
 data apply_lens_mode_canonical_closedness_symbol: Symbol = apply_lens_mode_canonical_closedness_symbol
 data apply_lens_mode_canonical_evidence_symbol: Symbol = apply_lens_mode_canonical_evidence_symbol
 
-data apply_lens_mode_root: Node = claim_atom_node(s: apply_lens_mode_root_symbol)
+data apply_lens_mode_root: Node = claim_atom_node(s: apply_lens_mode_symbol)
 
 fn apply_lens_mode_tree() -> InferredTree {
   claim_inferred_tree(
@@ -58,30 +60,39 @@ data apply_lens_mode_lens: Lens = Lens {
   gate: apply_lens_mode_gate
 }
 
-type LensApplicationModeParityClaim {
-  enforce_accepts: Bool
-  introspect_accepts: Bool
+fn apply_lens_mode_accepts_enforce() -> Bool {
+  match apply_lens(lens: apply_lens_mode_lens, inferred: apply_lens_mode_tree(), mode: LensEnforce) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
 }
 
-data apply_lens_enforce_introspect_same_gate_today_claim: LensApplicationModeParityClaim =
-  LensApplicationModeParityClaim {
-    enforce_accepts: true,
-    introspect_accepts: true
-  }
-
-fn apply_lens_mode_accepts(mode: LensApplicationMode) -> Bool {
-  match apply_lens(lens: apply_lens_mode_lens, inferred: apply_lens_mode_tree(), mode: mode) {
+fn apply_lens_mode_accepts_introspect() -> Bool {
+  match apply_lens(lens: apply_lens_mode_lens, inferred: apply_lens_mode_tree(), mode: LensIntrospect) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
 }
 
 fn apply_lens_enforce_introspect_same_gate_today_claim_holds() -> Bool {
-  apply_lens_mode_accepts(mode: LensEnforce) ==
-    apply_lens_enforce_introspect_same_gate_today_claim.enforce_accepts &&
-    apply_lens_mode_accepts(mode: LensIntrospect) ==
-      apply_lens_enforce_introspect_same_gate_today_claim.introspect_accepts
+  apply_lens_mode_accepts_enforce() && apply_lens_mode_accepts_introspect()
 }
 
-data apply_lens_enforce_introspect_same_gate_today_claim_passes: Bool =
-  apply_lens_enforce_introspect_same_gate_today_claim_holds()
+fn apply_lens_enforce_introspect_same_gate_today_claim_rhs() -> Node {
+  if apply_lens_enforce_introspect_same_gate_today_claim_holds() {
+    apply_lens_mode_root
+  } else {
+    Node {
+      kind: TypeNode { connective: Conj },
+      children: []
+    }
+  }
+}
+
+data claim_apply_lens_enforce_introspect_same_gate_today: TestClaim = EqualsClaim {
+  label: "lens_application/apply_lens_enforce_introspect_same_gate_today: both modes accept today",
+  t19_anchor: T19ManualAnchorAbsent,
+  lhs: apply_lens_mode_root,
+  rhs: apply_lens_enforce_introspect_same_gate_today_claim_rhs(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}

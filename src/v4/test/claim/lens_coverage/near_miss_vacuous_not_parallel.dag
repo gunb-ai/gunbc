@@ -1,37 +1,56 @@
 // src/v4/test/claim/lens_coverage/near_miss_vacuous_not_parallel.dag
-// Scope: T-18 negative claim — VacuousArm acceptance does not match ParallelAuthority (near-miss).
-// Owns: near_miss_vacuous_not_parallel_claim.
-// Consumes: lens coverage.
+// Scope: T-18 negative claim — VacuousArm acceptance does not match ParallelAuthority.
+// Owns: claim_near_miss_vacuous_not_parallel.
+// Consumes: lens coverage, std node, std verification.
 // Status: scaffold — compile-only until T-22 generated claim execution.
 
 module v4.test.claim.lens_coverage.near_miss_vacuous_not_parallel
 
 import v4.lens.coverage {
-  CoverageDefectAcceptanceKey,
   ParallelAuthority,
   VacuousArm,
   coverage_defect_parallel_authority,
   coverage_defect_vacuous_arm
 }
 import v4.std.logic { Bool }
-
-type LensCoverageSiblingClaim {
-  lhs: CoverageDefectAcceptanceKey
-  rhs: CoverageDefectAcceptanceKey
-  expected_distinct: Bool
+import v4.std.node { Atom, Conj, Node, Symbol, TypeNode }
+import v4.std.verification {
+  EqualsClaim,
+  TestClaim,
+  TestClassification,
+  T19ManualAnchorAbsent,
+  Tier1,
+  Unit
 }
 
-data near_miss_vacuous_not_parallel_claim: LensCoverageSiblingClaim = LensCoverageSiblingClaim {
-  lhs: coverage_defect_vacuous_arm.concern,
-  rhs: coverage_defect_parallel_authority.concern,
-  expected_distinct: true
+data near_miss_vacuous_symbol: Symbol = near_miss_vacuous_symbol
+
+data near_miss_vacuous_node: Node = Node {
+  kind: TypeNode { connective: Atom { identity: near_miss_vacuous_symbol } },
+  children: []
 }
 
 fn near_miss_vacuous_not_parallel_claim_holds() -> Bool {
-  (near_miss_vacuous_not_parallel_claim.lhs.lens == VacuousArm) &&
-    (near_miss_vacuous_not_parallel_claim.rhs.lens == ParallelAuthority) &&
-    (near_miss_vacuous_not_parallel_claim.lhs.lens != near_miss_vacuous_not_parallel_claim.rhs.lens) ==
-      near_miss_vacuous_not_parallel_claim.expected_distinct
+  coverage_defect_vacuous_arm.concern.lens == VacuousArm &&
+    coverage_defect_parallel_authority.concern.lens == ParallelAuthority &&
+    coverage_defect_vacuous_arm.concern.lens != coverage_defect_parallel_authority.concern.lens
 }
 
-data near_miss_vacuous_not_parallel_claim_passes: Bool = near_miss_vacuous_not_parallel_claim_holds()
+fn near_miss_vacuous_not_parallel_claim_rhs() -> Node {
+  if near_miss_vacuous_not_parallel_claim_holds() {
+    near_miss_vacuous_node
+  } else {
+    Node {
+      kind: TypeNode { connective: Conj },
+      children: []
+    }
+  }
+}
+
+data claim_near_miss_vacuous_not_parallel: TestClaim = EqualsClaim {
+  label: "lens_coverage/near_miss_vacuous_not_parallel: VacuousArm not ParallelAuthority",
+  t19_anchor: T19ManualAnchorAbsent,
+  lhs: near_miss_vacuous_node,
+  rhs: near_miss_vacuous_not_parallel_claim_rhs(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}

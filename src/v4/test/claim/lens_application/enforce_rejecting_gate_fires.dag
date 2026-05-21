@@ -1,36 +1,38 @@
 // src/v4/test/claim/lens_application/enforce_rejecting_gate_fires.dag
-// Scope: T-23 worked claim — Enforce apply_lens surfaces compile_lens_gate_rejected on violation.
-// Owns: enforce_rejecting_gate_fires_claim.
-// Consumes: compiler compile, std diagnostic, lens_common fixture.
-// Status: scaffold — compile-only until T-22 generated claim execution.
+// Scope: T-23 worked claim — Enforce apply_lens surfaces compile_lens_gate_rejected.
+// Owns: claim_enforce_rejecting_gate_fires.
+// Consumes: compiler compile, lens_common fixture, std verification.
+// Status: scaffold — compile-only until application.dag fills.
 
 module v4.test.claim.lens_application.enforce_rejecting_gate_fires
 
 import v4.compiler.compile {
   Lens,
-  LensApplicationMode,
   LensEnforce,
   apply_lens,
   compile_lens_gate_rejected,
   compile_lens_gate_rejected_diagnostic
 }
-import v4.compiler.infer { InferredFacts, InferredTree }
-import v4.std.diagnostic {
-  Accepted,
-  Outcome,
-  PortLocus,
-  Rejected,
-  outcome_rejected
-}
+import v4.compiler.infer { InferredTree }
+import v4.std.diagnostic { Outcome, PortLocus, Rejected, outcome_rejected }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Conj, Node, Symbol, TypeNode }
+import v4.std.verification {
+  EqualsClaim,
+  TestClaim,
+  TestClassification,
+  T19ManualAnchorAbsent,
+  Tier1,
+  Unit
+}
 import v4.std.witness { Witness }
 import v4.test.claim.lens_common.infer_fixture {
   claim_atom_node,
   claim_inferred_facts,
   claim_inferred_tree
 }
-data enforce_reject_root_symbol: Symbol = enforce_reject_root_symbol
+
+data enforce_reject_symbol: Symbol = enforce_reject_symbol
 data enforce_reject_gate_at: Symbol = enforce_reject_gate_at
 data enforce_reject_type_symbol: Symbol = enforce_reject_type_symbol
 data enforce_reject_algebra_symbol: Symbol = enforce_reject_algebra_symbol
@@ -40,7 +42,7 @@ data enforce_reject_canonical_structural_symbol: Symbol = enforce_reject_canonic
 data enforce_reject_canonical_closedness_symbol: Symbol = enforce_reject_canonical_closedness_symbol
 data enforce_reject_canonical_evidence_symbol: Symbol = enforce_reject_canonical_evidence_symbol
 
-data enforce_reject_root: Node = claim_atom_node(s: enforce_reject_root_symbol)
+data enforce_reject_root: Node = claim_atom_node(s: enforce_reject_symbol)
 
 fn enforce_reject_tree() -> InferredTree {
   claim_inferred_tree(
@@ -67,27 +69,28 @@ data enforce_rejecting_lens: Lens = Lens {
   gate: enforce_rejecting_gate
 }
 
-type LensApplicationClaim {
-  mode: LensApplicationMode
-  expected_rejects: Bool
-}
-
-data enforce_rejecting_gate_fires_claim: LensApplicationClaim = LensApplicationClaim {
-  mode: LensEnforce,
-  expected_rejects: true
-}
-
 fn enforce_rejecting_gate_fires_claim_holds() -> Bool {
-  match apply_lens(
-    lens: enforce_rejecting_lens,
-    inferred: enforce_reject_tree(),
-    mode: enforce_rejecting_gate_fires_claim.mode
-  ) {
-    Rejected { diagnostics: r } =>
-      enforce_rejecting_gate_fires_claim.expected_rejects &&
-        r.head.reason == compile_lens_gate_rejected
+  match apply_lens(lens: enforce_rejecting_lens, inferred: enforce_reject_tree(), mode: LensEnforce) {
+    Rejected { diagnostics: r } => r.head.reason == compile_lens_gate_rejected
     Accepted { value: _, diagnostics: _ } => false
   }
 }
 
-data enforce_rejecting_gate_fires_claim_passes: Bool = enforce_rejecting_gate_fires_claim_holds()
+fn enforce_rejecting_gate_fires_claim_rhs() -> Node {
+  if enforce_rejecting_gate_fires_claim_holds() {
+    enforce_reject_root
+  } else {
+    Node {
+      kind: TypeNode { connective: Conj },
+      children: []
+    }
+  }
+}
+
+data claim_enforce_rejecting_gate_fires: TestClaim = EqualsClaim {
+  label: "lens_application/enforce_rejecting_gate_fires: Enforce apply_lens rejects gate",
+  t19_anchor: T19ManualAnchorAbsent,
+  lhs: enforce_reject_root,
+  rhs: enforce_rejecting_gate_fires_claim_rhs(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
