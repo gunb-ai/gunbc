@@ -154,32 +154,38 @@ fn v4_extdeps_file_system_dag_file_path_is_posix_grounded_record() {
 }
 
 #[test]
-fn v4_extdeps_file_system_dag_wave2_c2_modeled_effects_and_witness_shape() {
+fn v4_extdeps_file_system_dag_wave2_c2_modeled_effects_and_receipt_shape() {
     let module = file_system_surface_or_panic();
     assert!(
-        !surface_declares_type(&module, "FileEffectWitness"),
+        !surface_declares_type(&module, "FileEffectReceipt"),
         "read/write authority is signature-derived via ModeledFileEffects only (THESIS unenumerated effects — no parallel taxonomy)"
     );
+    for forbidden_witness_name in ["FileReadWitness", "FileWriteWitness", "FileEffectWitness"] {
+        assert!(
+            !surface_declares_type(&module, forbidden_witness_name),
+            "extdeps effect attestation uses Receipt, not Witness (Practice 11 — distinct from std/witness.dag Witness<C>)"
+        );
+    }
 
-    let read_witness_fields = record_field_type_map(type_record_fields(&module, "FileReadWitness"));
+    let read_receipt_fields = record_field_type_map(type_record_fields(&module, "FileReadReceipt"));
     assert_eq!(
-        read_witness_fields,
+        read_receipt_fields,
         BTreeSet::from([
             ("request", "FileRead".to_string()),
             ("content", "FileContent".to_string()),
         ]),
-        "FileReadWitness must embed the read request (Practice 11 — no duplicated resource/path fields)"
+        "FileReadReceipt must embed the read request (Practice 11 — no duplicated resource/path fields)"
     );
 
-    let write_witness_fields =
-        record_field_type_map(type_record_fields(&module, "FileWriteWitness"));
+    let write_receipt_fields =
+        record_field_type_map(type_record_fields(&module, "FileWriteReceipt"));
     assert_eq!(
-        write_witness_fields,
+        write_receipt_fields,
         BTreeSet::from([
             ("request", "FileWrite".to_string()),
             ("resource", "FileResource".to_string()),
         ]),
-        "FileWriteWitness must thread post-write FileResource (facts-forward write shape)"
+        "FileWriteReceipt must thread post-write FileResource (facts-forward write shape)"
     );
 
     let write_result_alias = module

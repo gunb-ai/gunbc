@@ -1,6 +1,6 @@
 // src/v4/extdeps/file_system.dag
 // Scope: External file-system resource model + modeled file effects (read/write).
-// Owns: PosixByteString, NamedPathComponent, PathComponent, AbsolutePath, RelativePathHead, RelativePath, FilesystemPath, FileKind, FileKindResolutionPolicy, Filesystem, FileBody, FileResource, FilePath, FileContent, FileRead, FileWrite, FileReadWitness, FileWriteWitness, FileReadResult, FileWriteResult, ReadFileRequest, WriteFileRequest, ListDirRequest, FileKindRequest, FileSystemOperations, ModeledFileEffects.
+// Owns: PosixByteString, NamedPathComponent, PathComponent, AbsolutePath, RelativePathHead, RelativePath, FilesystemPath, FileKind, FileKindResolutionPolicy, Filesystem, FileBody, FileResource, FilePath, FileContent, FileRead, FileWrite, FileReadReceipt, FileWriteReceipt, FileReadResult, FileWriteResult, ReadFileRequest, WriteFileRequest, ListDirRequest, FileKindRequest, FileSystemOperations, ModeledFileEffects.
 // Consumes: v4.std.algebra, v4.std.diagnostic, v4.std.machine.
 // Status: scaffold — Wave-2 fail-closed boundary (POSIX substrate retained for process/testgen consumers).
 
@@ -99,14 +99,14 @@ type FileWrite {
   content: FileContent
 }
 
-// 🟢 grounded.
-type FileReadWitness {
+// 🟢 grounded — effect receipt (not std/witness.dag Witness<C>; Practice 11 concept-home).
+type FileReadReceipt {
   request: FileRead,
   content: FileContent
 }
 
-// 🟢 grounded.
-type FileWriteWitness {
+// 🟢 grounded — effect receipt (not std/witness.dag Witness<C>; Practice 11 concept-home).
+type FileWriteReceipt {
   request: FileWrite,
   resource: FileResource
 }
