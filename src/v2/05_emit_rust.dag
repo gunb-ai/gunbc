@@ -2251,7 +2251,7 @@ fn collect_field_binding_string_guards(field_bindings: List<Node>, path_prefix: 
     let fb_pat = field_binding_pattern(n: fb)
     if is_string_lit_pattern(p: fb_pat) {
       if fb_name == "0" {
-        let bind_name = positional_payload_binding_name(path: path_prefix)
+        let bind_name = positional_payload_binding_name(path: list_push(path_prefix, "0"))
         match positional_payload_string_guard(fb_pat: fb_pat, bind_name: bind_name) {
           "" => []
           guard => [guard]
@@ -2611,17 +2611,17 @@ fn analyze_rc_match(scrutinee: Node, arms: List<Node>, scrut_type: String, share
   }
 }
 
-fn emit_pattern_rc_aware(pattern: MatchPattern, rc_analysis: RcPatternAnalysis, shared_types: Set<String>, scrut_type: String, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
+fn emit_pattern_rc_aware(pattern: MatchPattern, path_prefix: List<String>, rc_analysis: RcPatternAnalysis, shared_types: Set<String>, scrut_type: String, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
   match pattern {
     Bind { name: n } => emit_ident(name: n, target: Rust)
     LitPattern { value: v } => rust_literal_for_pattern(value: v)
     VariantPattern { name: n, parent_enum: parent_enum, field_bindings: fbs } =>
-      emit_variant_pattern_rc_aware(name: n, parent_enum: parent_enum, field_bindings: fbs, rc_analysis: rc_analysis, shared_types: shared_types, scrut_type: scrut_type, source_indices: source_indices, emit_info: emit_info)
+      emit_variant_pattern_rc_aware(name: n, parent_enum: parent_enum, field_bindings: fbs, path_prefix: path_prefix, rc_analysis: rc_analysis, shared_types: shared_types, scrut_type: scrut_type, source_indices: source_indices, emit_info: emit_info)
     Wildcard => "_"
   }
 }
 
-fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindings: List<Node>, rc_analysis: RcPatternAnalysis, shared_types: Set<String>, scrut_type: String, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
+fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindings: List<Node>, path_prefix: List<String>, rc_analysis: RcPatternAnalysis, shared_types: Set<String>, scrut_type: String, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
   let resolved_parent = if name == "Some" || name == "None" { none }
     else { pattern_parent_enum(name: name, parent_enum: parent_enum, scrut_type: scrut_type, type_summaries: emit_info.type_summaries) }
   let qualified = match resolved_parent {
@@ -2636,7 +2636,7 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
           "Some(ref __some_val)"
         } else {
           let inner_analysis = analyze_rc_pattern(pattern: fb_pat, scrut_type: scrut_type, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
-          let inner_pat = emit_pattern_rc_aware(pattern: fb_pat, rc_analysis: inner_analysis, shared_types: shared_types, scrut_type: scrut_type, source_indices: source_indices, emit_info: emit_info)
+          let inner_pat = emit_pattern_rc_aware(pattern: fb_pat, path_prefix: list_push(path_prefix, name), rc_analysis: inner_analysis, shared_types: shared_types, scrut_type: scrut_type, source_indices: source_indices, emit_info: emit_info)
           concat("Some(", inner_pat, ")")
         }
       None => qualified
@@ -2646,12 +2646,14 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
       Some { value: fb } =>
         if field_binding_name_at(n: fb, source_indices: source_indices) == "0" {
           let fb_pat = field_binding_pattern(n: fb)
+          let pos_path = list_push(list_push(path_prefix, name), "0")
+          let bind_name = positional_payload_binding_name(path: pos_path)
           if is_string_lit_pattern(p: fb_pat) {
-            concat(qualified, "(ref __pos0_val)")
+            concat(qualified, "(ref ", bind_name, ")")
           } else {
             let payload_scrut = positional_payload_scrut_type(parent_enum: resolved_parent, variant_name: name, field_binding: fb, emit_info: emit_info, source_indices: source_indices)
             let inner_analysis = analyze_rc_pattern(pattern: fb_pat, scrut_type: payload_scrut, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
-            let inner_pat = emit_pattern_rc_aware(pattern: fb_pat, rc_analysis: inner_analysis, shared_types: shared_types, scrut_type: payload_scrut, source_indices: source_indices, emit_info: emit_info)
+            let inner_pat = emit_pattern_rc_aware(pattern: fb_pat, path_prefix: pos_path, rc_analysis: inner_analysis, shared_types: shared_types, scrut_type: payload_scrut, source_indices: source_indices, emit_info: emit_info)
             concat(qualified, "(", inner_pat, ")")
           }
         } else {
@@ -2663,7 +2665,7 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
             concat(qualified, " { ref ", emit_ident(name: fb_name, target: Rust), ", .. }")
           } else {
             let inner_analysis = analyze_rc_pattern(pattern: fb_pat, scrut_type: scrut_type, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
-            let pat_str = emit_pattern_rc_aware(pattern: fb_pat, rc_analysis: inner_analysis, shared_types: shared_types, scrut_type: "", source_indices: source_indices, emit_info: emit_info)
+            let pat_str = emit_pattern_rc_aware(pattern: fb_pat, path_prefix: list_push(list_push(path_prefix, name), fb_name), rc_analysis: inner_analysis, shared_types: shared_types, scrut_type: "", source_indices: source_indices, emit_info: emit_info)
             concat(qualified, " { ", concat(emit_ident(name: fb_name, target: Rust), ": ", pat_str), ", .. }")
           }
         }
@@ -2703,7 +2705,12 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
         let fb_name = field_binding_name_at(n: fb, source_indices: source_indices)
         let fb_pat = field_binding_pattern(n: fb)
         if is_string_lit_pattern(p: fb_pat) {
-          concat("ref ", emit_ident(name: fb_name, target: Rust))
+          if fb_name == "0" {
+            let bind_name = positional_payload_binding_name(path: list_push(list_push(path_prefix, name), "0"))
+            concat("ref ", bind_name)
+          } else {
+            concat("ref ", emit_ident(name: fb_name, target: Rust))
+          }
         } else {
           if field_needs_rc_ref(field_name: fb_name, rc_analysis: rc_analysis) {
             concat("ref ", emit_ident(name: fb_name, target: Rust))
@@ -2711,8 +2718,13 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
             let is_shorthand = match fb_pat { Bind { name: n } => n == fb_name  _ => false }
             if is_shorthand { emit_ident(name: fb_name, target: Rust) }
             else {
+              let field_path = if fb_name == "0" {
+                list_push(list_push(path_prefix, name), "0")
+              } else {
+                list_push(list_push(path_prefix, name), fb_name)
+              }
               let inner_analysis = analyze_rc_pattern(pattern: fb_pat, scrut_type: "", shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
-              let pat_str = emit_pattern_rc_aware(pattern: fb_pat, rc_analysis: inner_analysis, shared_types: shared_types, scrut_type: "", source_indices: source_indices, emit_info: emit_info)
+              let pat_str = emit_pattern_rc_aware(pattern: fb_pat, path_prefix: field_path, rc_analysis: inner_analysis, shared_types: shared_types, scrut_type: "", source_indices: source_indices, emit_info: emit_info)
               concat(emit_ident(name: fb_name, target: Rust), ": ", pat_str)
             }
           }
@@ -2747,7 +2759,7 @@ fn rc_pattern_preludes(pattern: MatchPattern, rc_analysis: RcPatternAnalysis, sh
             let inner_preludes = rc_pattern_preludes(pattern: field_binding_pattern(n: fb), rc_analysis: inner_analysis, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
             if inner_preludes == "" { [] } else { [inner_preludes] }
           } else if field_needs_rc_ref(field_name: fb_name, rc_analysis: rc_analysis) {
-            [concat("let ", emit_pattern(pattern: field_binding_pattern(n: fb), shared_types: shared_types, scrut_type: "", source_indices: source_indices, emit_info: emit_info), " = ", emit_ident(name: fb_name, target: Rust), ".as_ref() else { unreachable!() };")]
+            [concat("let ", emit_pattern(pattern: field_binding_pattern(n: fb), path_prefix: list_push(list_push([], n), fb_name), shared_types: shared_types, scrut_type: "", source_indices: source_indices, emit_info: emit_info), " = ", emit_ident(name: fb_name, target: Rust), ".as_ref() else { unreachable!() };")]
           } else { [] }
         )
         preludes |> join(separator: " ")
@@ -4241,15 +4253,15 @@ fn emit_typed_match_arm(arm: Node, registry: Map<String, ItemInfo>, scope: Infer
         LitStr { value: s } => concat("ref __s if __s == \"", escape_string_literal_body(s: s), "\"")
         _ => rust_literal_for_pattern(value: v)
       }
-      _ => emit_pattern(pattern: arm_pat, shared_types: shared_types, scrut_type: scrut_type, source_indices: si, emit_info: emit_info)
+      _ => emit_pattern(pattern: arm_pat, path_prefix: [], shared_types: shared_types, scrut_type: scrut_type, source_indices: si, emit_info: emit_info)
     }
   } else if rc_analysis.needs_rc_pattern {
-    emit_pattern_rc_aware(pattern: arm_pat, rc_analysis: rc_analysis, shared_types: shared_types, scrut_type: scrut_type, source_indices: si, emit_info: emit_info)
+    emit_pattern_rc_aware(pattern: arm_pat, path_prefix: [], rc_analysis: rc_analysis, shared_types: shared_types, scrut_type: scrut_type, source_indices: si, emit_info: emit_info)
   } else {
-    emit_pattern(pattern: arm_pat, shared_types: shared_types, scrut_type: scrut_type, source_indices: si, emit_info: emit_info)
+    emit_pattern(pattern: arm_pat, path_prefix: [], shared_types: shared_types, scrut_type: scrut_type, source_indices: si, emit_info: emit_info)
   }
   // Collect guards from string literal field bindings (ref field + guard).
-  let field_guards = collect_pattern_string_guards(pattern: arm_pat, source_indices: si)
+  let field_guards = collect_pattern_string_guards(pattern: arm_pat, path_prefix: [], source_indices: si)
   let arm_guard_str = match arm_g {
     Some { value: g } => emit_typed_expr(texpr: g, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
     None => ""
@@ -4975,12 +4987,12 @@ fn emit_typed_tco_match_arm(arm: Node, fn_name: String, params: List<Node>, regi
   let si = scope.type_env.source_indices
   let rc_analysis = analyze_rc_pattern(pattern: arm_pat, scrut_type: scrut_type, shared_types: shared_types, emit_info: emit_info, source_indices: si)
   let pat_str = if rc_analysis.needs_rc_pattern {
-    emit_pattern_rc_aware(pattern: arm_pat, rc_analysis: rc_analysis, shared_types: shared_types, scrut_type: scrut_type, source_indices: si, emit_info: emit_info)
+    emit_pattern_rc_aware(pattern: arm_pat, path_prefix: [], rc_analysis: rc_analysis, shared_types: shared_types, scrut_type: scrut_type, source_indices: si, emit_info: emit_info)
   } else {
-    emit_pattern(pattern: arm_pat, shared_types: shared_types, scrut_type: scrut_type, source_indices: si, emit_info: emit_info)
+    emit_pattern(pattern: arm_pat, path_prefix: [], shared_types: shared_types, scrut_type: scrut_type, source_indices: si, emit_info: emit_info)
   }
   // Collect guards from string literal field bindings (ref field + guard).
-  let field_guards = collect_pattern_string_guards(pattern: arm_pat, source_indices: si)
+  let field_guards = collect_pattern_string_guards(pattern: arm_pat, path_prefix: [], source_indices: si)
   let arm_guard_str = match arm_g {
     Some { value: g } => emit_typed_expr(texpr: g, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
     None => ""
