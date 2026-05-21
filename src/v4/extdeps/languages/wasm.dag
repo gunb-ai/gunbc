@@ -54,7 +54,7 @@ type WasmModularWrap
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type WasmScalar
-  = IntScalar { kind: WasmSignAgnosticKind, width: WasmIntWidth }
+  = IntScalar { width: WasmIntWidth }
   | FloatScalar { width: WasmFloatWidth }
 
 type WasmIntegerPrimitiveFacts {
@@ -194,14 +194,13 @@ fn wasm_overflow_node(overflow: WasmModularWrap) -> Node {
 
 fn wasm_scalar_node(scalar: WasmScalar) -> Node {
   match scalar {
-    IntScalar { kind, width } => Node {
+    IntScalar { width } => Node {
       kind: TypeNode { connective: Conj },
       children: [
         wasm_named_edge(
           name: wasm_scalar_field_classifier,
           target: wasm_inhabitant_atom(id: wasm_tag_scalar_int)
         ),
-        wasm_named_edge(name: wasm_scalar_field_kind, target: wasm_int_kind_node(kind: kind)),
         wasm_named_edge(name: wasm_scalar_field_width, target: wasm_int_width_node(width: width))
       ]
     }
@@ -236,9 +235,7 @@ fn wasm_integer_facts_node(facts: WasmIntegerPrimitiveFacts) -> Node {
       ),
       wasm_named_edge(
         name: wasm_facts_field_scalar_classifier,
-        target: wasm_scalar_node(
-          scalar: IntScalar { kind: WasmSignAgnosticKind, width: facts.width }
-        )
+        target: wasm_scalar_node(scalar: IntScalar { width: facts.width })
       )
     ]
   }
@@ -422,11 +419,7 @@ fn wasm_primitive_bundle_from_integer_facts(facts: WasmIntegerPrimitiveFacts) ->
       ),
       wasm_primitive_axis_binding(
         axis: primitive_fact_axis_signedness,
-        fact: wasm_int_kind_node(kind: WasmSignAgnosticKind)
-      ),
-      wasm_primitive_axis_binding(
-        axis: primitive_fact_axis_overflow_disposition,
-        fact: wasm_overflow_node(overflow: WasmModularWrap)
+        fact: wasm_inhabitant_atom(id: wasm_tag_sign_agnostic_modular)
       ),
       wasm_primitive_axis_binding(
         axis: primitive_fact_axis_encoding,
@@ -434,7 +427,7 @@ fn wasm_primitive_bundle_from_integer_facts(facts: WasmIntegerPrimitiveFacts) ->
       ),
       wasm_primitive_axis_binding(
         axis: primitive_fact_axis_overflow_disposition,
-        fact: wasm_overflow_node(overflow: facts.overflow_release)
+        fact: wasm_inhabitant_atom(id: wasm_tag_modular_wrap)
       )
     ]
   }
