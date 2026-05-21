@@ -1,7 +1,7 @@
 // src/v4/compiler/00_compile.dag
 // Scope: B2-OMNI orchestrator — public terminal `validate_then_compile` (P3 commitment 6);
 //       internal `compile` over CoreNode + CompileMode; legacy Source staging until ingest lands.
-// Owns: CoreNode, LanguageModel, HostModel, CompileMode, CompileOutput, Lens, LensApplicationMode,
+// Owns: CoreNode, LanguageModel, CompileMode, CompileOutput, Lens, LensApplicationMode,
 //       apply_lens, LensGateWitness, Validated, compile_stage_locus_port, compile_pipeline_not_realized,
 //       compile_lens_gate_rejected, compile_eval_not_realized, compile_ingest_staging,
 //       compile_pipeline_not_realized_diagnostic, compile_lens_gate_rejected_diagnostic,
@@ -9,7 +9,7 @@
 //       compile_inferred, compile, validate_then_compile.
 // Consumes: compiler/04_infer.dag, compiler/05_emit.dag, compiler/07_target_carriers.dag,
 //           std/collection.dag, std/diagnostic.dag,
-//           std/node.dag, std/text.dag, std/witness.dag.
+//           std/host.dag, std/node.dag, std/text.dag, std/witness.dag.
 // Status: Wave-5-A — validate_then_compile: infer once → lens gates on InferredTree → compile_inferred (TranslateTo: emit).
 // Anchor: docs/design-v4-compiler-homomorphism.md P3 commitment 6 + Ratified Q11.
 
@@ -36,6 +36,7 @@ import v4.std.diagnostic {
   outcome_accepted,
   outcome_rejected
 }
+import v4.std.host { HostModel }
 import v4.std.node { Node, Symbol }
 import v4.std.text { String }
 import v4.std.witness { Witness }
@@ -43,10 +44,6 @@ import v4.std.witness { Witness }
 
 // 🟢 grounded — post-normalize substrate graph; Theme-A #9 forward until named ModelCore bundle lands.
 type CoreNode = Node
-
-
-// 🟢 grounded — host interpretation model peer (Ratified Q1); Eval terminal only.
-type HostModel = Node
 
 
 // 🟢 grounded — pre-ingest text slot; legacy staging only (not compile-core).
