@@ -74,6 +74,9 @@ type EmitGraphInfo {
   // Used by pattern emission to decide Variant vs Variant { .. }.
   // Keys are "EnumName::VariantName" for variants that carry fields.
   fielded_variants: Set<String>
+  // Tuple-payload variants (synthetic field "0" at parse). Pattern/ctor emission
+  // uses tuple syntax; bare scrutinee patterns need a payload slot (e.g. NodeAt(_)).
+  positional_payload_variants: Set<String>
   // Per-type sharing decision: type names that need shared-pointer
   // wrapping (Rc in Rust). Computed from type_summaries ×
   // recursive_type_set. The Rust emitter also adds collection types.
@@ -117,6 +120,7 @@ fn empty_emit_graph_info() -> EmitGraphInfo {
     type_summaries: empty_map(),
     recursive_type_set: empty_set(),
     fielded_variants: empty_set(),
+    positional_payload_variants: empty_set(),
     shared_types: empty_set(),
     ownership_index: empty_map(),
     movable: empty_set(),
@@ -135,6 +139,11 @@ fn empty_emit_graph_info() -> EmitGraphInfo {
 fn variant_has_fields(emit_info: EmitGraphInfo, enum_name: String, variant_name: String) -> Bool {
   let key = concat(enum_name, "::", variant_name)
   set_contains(emit_info.fielded_variants, key)
+}
+
+fn variant_has_positional_payload(emit_info: EmitGraphInfo, enum_name: String, variant_name: String) -> Bool {
+  let key = concat(enum_name, "::", variant_name)
+  set_contains(emit_info.positional_payload_variants, key)
 }
 
 fn lookup_emit_type_summary(emit_info: EmitGraphInfo, type_name: String) -> TypeSummary? {

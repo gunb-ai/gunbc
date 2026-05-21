@@ -5960,6 +5960,35 @@ fn build_fielded_variants(modules: List<TypedModule>, type_summaries: Map<String
   result
 }
 
+fn build_positional_payload_variants(modules: List<TypedModule>, type_summaries: Map<String, TypeSummary>) -> Set<String> {
+  modules |> fold(init: empty_set(), f: (acc, m) =>
+    let items = m.items
+    let si = m.type_env.source_indices
+    items |> fold(init: acc, f: (inner, item) =>
+      let is_enum = match map_get(type_summaries, authored_name_at(source_indices: si, node: item)) {
+        Some { value: summary } => match summary.repr {
+          EnumRepr { unit_only: _ } => true
+          _ => false
+        }
+        None => false
+      }
+      if is_enum {
+        let enum_name = authored_name_at(source_indices: si, node: item)
+        let variants = item.children
+        variants |> fold(init: inner, f: (vacc, variant) =>
+          let is_positional_payload = variant.children |> count == 1 && match variant.children |> first {
+            Some { value: f } => field_node_name_at(n: f, source_indices: si) == "0"
+            None => false
+          }
+          if is_positional_payload {
+            set_insert(vacc, concat(enum_name, "::", authored_name_at(source_indices: si, node: variant)))
+          } else { vacc }
+        )
+      } else { inner }
+    )
+  )
+}
+
 fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
   let init = EmitInfoBuildState {
     type_summaries: empty_map()
@@ -5976,11 +6005,13 @@ fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
     )
   )
   let fielded = build_fielded_variants(modules: modules, type_summaries: built.type_summaries)
+  let positional = build_positional_payload_variants(modules: modules, type_summaries: built.type_summaries)
   let vtoe = derive_variant_to_enum(type_summaries: built.type_summaries)
   EmitGraphInfo {
     type_summaries: built.type_summaries,
     recursive_type_set: all_recursive,
     fielded_variants: fielded,
+    positional_payload_variants: positional,
     shared_types: empty_set(),
     ownership_index: empty_map(),
     movable: empty_set(),
