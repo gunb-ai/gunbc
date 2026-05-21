@@ -2,7 +2,7 @@
 
 use crate::helpers::*;
 use serde_json::Value;
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::rc::Rc;
 use v2_compiler::v2_compiler_artifact::RenderTarget;
 use v2_compiler::v2_compiler_compile::SourceFile;
@@ -368,6 +368,209 @@ fn generic_single_param() {
     let source = "module box_gen\n\ntype Box<T> { value: T }\n\nfn wrap(x: Int) -> Box<Int> {\n  Box { value: x }\n}\n\nfn unwrap(b: Box<Int>) -> Int {\n  b.value\n}\n";
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
+}
+
+/// Sum variants may carry positional generic type payloads (`NodeAt(LocusAnchor<T>)`);
+/// nested record patterns on instantiated generic sub-carriers must not report
+/// spurious `variant 'LocusAnchor' not found in type 'LocusAnchor'`.
+#[test]
+fn generic_variant_positional_payload_nested_record_pattern() {
+    let source = r#"module test.generic_locus_anchor
+
+type LocusAnchor<A> { at: A }
+
+type Locus
+  = Textual { file: String, extent: String }
+  | NodeAt(LocusAnchor<String>)
+  | PortAt(LocusAnchor<String>)
+
+fn node_at_at(x: Locus) -> String {
+  match x {
+    NodeAt(LocusAnchor { at: p }) => p
+    PortAt(LocusAnchor { at: p }) => p
+    Textual { file: f, extent: _ } => f
+  }
+}
+
+fn make_node_at(s: String) -> Locus {
+  NodeAt(LocusAnchor { at: s })
+}
+"#;
+    let result = compile_dag(source);
+    let diags = diagnostic_messages(&result);
+    for d in &diags {
+        eprintln!("  diag: {}", d);
+    }
+    assert_no_diagnostics(&result);
+    assert!(
+        !diags
+            .iter()
+            .any(|d| d.contains("variant 'LocusAnchor' not found")),
+        "expected no bogus VariantNotFound on generic sub-carrier, got: {:?}",
+        diags
+    );
+    let rs = find_file(&result, "src/test_generic_locus_anchor.rs");
+    assert!(
+        rs.contains("NodeAt(LocusAnchor"),
+        "expected tuple-style NodeAt pattern in emitted Rust, got:\n{}",
+        rs
+    );
+    assert!(
+        !rs.contains("Locus::LocusAnchor"),
+        "nested payload pattern must not over-qualify with outer enum scrutinee, got:\n{}",
+        rs
+    );
+    assert!(
+        !rs.contains("NodeAt { 0:"),
+        "positional payload must not emit record-style NodeAt {{ 0: ... }}, got:\n{}",
+        rs
+    );
+    assert!(
+        rs.contains("NodeAt(LocusAnchor"),
+        "expected tuple-style NodeAt variant decl, got:\n{}",
+        rs
+    );
+    assert!(
+        rs.contains("Locus::NodeAt(LocusAnchor"),
+        "expected tuple-style NodeAt constructor, got:\n{}",
+        rs
+    );
+    assert!(
+        !rs.contains("Locus::NodeAt { 0:") && !rs.contains("NodeAt { 0:"),
+        "positional payload constructor must not emit record-style NodeAt {{ 0: ... }}, got:\n{}",
+        rs
+    );
+}
+
+/// Positional variant constructors reject named call arguments (`NodeAt(bad: x)`).
+#[test]
+fn generic_variant_positional_constructor_rejects_named_arg() {
+    let source = r#"module test.positional_ctor_named_arg
+
+type LocusAnchor<A> { at: A }
+
+type Locus = NodeAt(LocusAnchor<String>)
+
+fn make_bad(s: String) -> Locus {
+  NodeAt(bad: LocusAnchor { at: s })
+}
+"#;
+    let result = compile_dag(source);
+    let diags = diagnostic_messages(&result);
+    assert!(
+        diags
+            .iter()
+            .any(|d| { d.contains("does not accept named arguments") && d.contains("bad") }),
+        "positional variant constructor must fail closed on named args, got: {:?}",
+        diags
+    );
+}
+
+/// Known positional variant constructors fail closed on wrong arity (no type-ctor fallback).
+#[test]
+fn generic_variant_positional_constructor_rejects_wrong_arity() {
+    let source = r#"module test.positional_ctor_wrong_arity
+
+type Box = Box(Int)
+
+fn make_bad(a: Int, b: Int) -> Box {
+  Box(a, b)
+}
+"#;
+    let result = compile_dag(source);
+    let diags = diagnostic_messages(&result);
+    assert!(
+        diags
+            .iter()
+            .any(|d| d.contains("expects exactly one argument") && d.contains("Box")),
+        "positional variant constructor must fail closed on wrong arity, got: {:?}",
+        diags
+    );
+}
+
+/// Two nested positional string-literal subpatterns get distinct scratch bindings and guards.
+#[test]
+fn generic_variant_positional_dual_string_literal_bindings() {
+    let source = r#"module test.positional_dual_str_pat
+
+type Tag<A> = Mk(A)
+
+type Row = Pair { left: Tag<String>, right: Tag<String> }
+
+fn f(x: Row) -> String {
+  match x {
+    Pair { left: Mk("a"), right: Mk("b") } => "ok"
+  }
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let rs = find_file(&result, "src/test_positional_dual_str_pat.rs");
+    assert!(
+        rs.contains("__pos_pair_left_mk_0_val")
+            && rs.contains("__pos_pair_right_mk_0_val")
+            && rs.contains("__pos_pair_left_mk_0_val == \"a\"")
+            && rs.contains("__pos_pair_right_mk_0_val == \"b\""),
+        "expected distinct positional string-literal bindings and guards, got:\n{}",
+        rs
+    );
+    assert!(
+        !rs.contains("__pos0_val"),
+        "must not collapse positional string literals to a single __pos0_val, got:\n{}",
+        rs
+    );
+}
+
+/// Nested named-field string literals with the same field name get path-distinct bindings.
+#[test]
+fn generic_variant_nested_same_field_string_literal_bindings() {
+    let source = r#"module test.nested_same_field_str_pat
+
+type Inner = Has { tag: String }
+
+type Row = Pair { left: Inner, right: Inner }
+
+fn f(x: Row) -> String {
+  match x {
+    Pair { left: Has { tag: "a" }, right: Has { tag: "b" } } => "ok"
+  }
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let rs = find_file(&result, "src/test_nested_same_field_str_pat.rs");
+    assert!(
+        rs.contains("__pos_pair_left_has_tag_val")
+            && rs.contains("__pos_pair_right_has_tag_val")
+            && rs.contains("__pos_pair_left_has_tag_val == \"a\"")
+            && rs.contains("__pos_pair_right_has_tag_val == \"b\""),
+        "expected path-distinct bindings for repeated nested field names, got:\n{}",
+        rs
+    );
+}
+
+/// Bare record-name patterns (no `{…}`) must not use the Conj record-destructure fallback.
+#[test]
+fn generic_record_bare_name_pattern_reports_variant_not_found() {
+    let source = r#"module test.bare_record_pat
+
+type LocusAnchor<A> { at: A }
+
+fn f(x: LocusAnchor<String>) -> String {
+  match x {
+    LocusAnchor => "bad"
+  }
+}
+"#;
+    let result = compile_dag(source);
+    let diags = diagnostic_messages(&result);
+    assert!(
+        diags
+            .iter()
+            .any(|d| d.contains("variant 'LocusAnchor' not found")),
+        "bare record-name pattern must fail closed, got: {:?}",
+        diags
+    );
 }
 
 // ── Match pattern binding tests ─────────────────────────────────────────
@@ -4505,7 +4708,7 @@ fn type_rendering_bare_list_not_map() {
     use v2_compiler::v2_compiler_emit::render_node_type;
 
     let list_node = test_leaf_node("List");
-    let shared_types = Rc::new(HashMap::from([("List".to_string(), true)]));
+    let shared_types = Rc::new(BTreeSet::from(["List".to_string()]));
 
     let rendered = render_node_type(
         &list_node,
@@ -4531,7 +4734,7 @@ fn type_rendering_bare_map_stays_hashmap() {
     use v2_compiler::v2_compiler_emit::render_node_type;
 
     let map_node = test_leaf_node("Map");
-    let shared_types = Rc::new(HashMap::from([("Map".to_string(), true)]));
+    let shared_types = Rc::new(BTreeSet::from(["Map".to_string()]));
 
     let rendered = render_node_type(
         &map_node,
@@ -4562,7 +4765,7 @@ fn type_rendering_named_conj_with_container_template() {
         })),
         ..(*test_leaf_node("")).clone()
     });
-    let shared_types = Rc::new(HashMap::from([("FreeMonoid".to_string(), true)]));
+    let shared_types = Rc::new(BTreeSet::from(["FreeMonoid".to_string()]));
 
     let rendered = render_node_type(
         &free_monoid_conj,
@@ -9960,10 +10163,16 @@ fn diag_emitter_scc() {
         eprintln!("  Pattern: {:?}", info.pattern);
 
         // Collect CX-L2 tree edges
+        let scc_name_set = Rc::new(
+            info.member_set
+                .iter()
+                .map(|m| (m.clone(), true))
+                .collect::<HashMap<String, bool>>(),
+        );
         let edges = collect_scc_cx_l2_tree_edges(
             &info.members,
             &func_index,
-            Rc::new(info.member_set.as_ref().clone()),
+            scc_name_set,
             &Rc::new(HashMap::new()),
         );
         eprintln!("\n  CX-L2 tree edges ({}):", edges.len());
@@ -10165,7 +10374,7 @@ fn count_ownership_violations(
 
     for proof in result.ownership.iter() {
         let movable = build_movable_set(proof.clone());
-        for (name, _) in movable.iter() {
+        for name in movable.iter() {
             // The proof says this binding should move.
             // Check if the emitted code clones it instead.
             let clone_pattern = format!("{}.clone()", name);

@@ -413,10 +413,14 @@ passes — e.g. a three-variant `Cached | Produced | Rejected` where
 > **Status: reserved-proposed.** Sub-signature of L1.4 at a finer grain:
 > the parent catches a *whole coproduct* that clones a `std/` carrier;
 > L1.4.b catches *variants WITHIN one coproduct* that are structurally
-> identical modulo field-name nickname, differing only in field type.
-> The field type IS the discriminator — which is precisely the case
-> parametric carriers are designed for. Practice 11 (parameterize-
-> don't-duplicate) applied at the variant level. **Enforcement gate**
+> identical modulo field-name nickname, differing only in field type
+> AND the field type unambiguously recovers the variant tag (per the
+> tag-recoverability check below — operator-direct refinement
+> 2026-05-21). The field type IS the discriminator AND must
+> distinguish the variants from each other for parameterization to
+> preserve information — which is precisely the case parametric
+> carriers are designed for. Practice 11 (parameterize-don't-duplicate)
+> applied at the variant level. **Enforcement gate**
 > (parallel to L1.13 / L1.12.b): not active until (a)
 > `v4.lens.structural_similarity` lands carrying per-variant
 > field-shape facts, (b) the L1.4 diagnostic payload distinguishes
@@ -426,12 +430,16 @@ passes — e.g. a three-variant `Cached | Produced | Rejected` where
 > below, or equivalent).
 
 - *Signature:* a coproduct contains two or more variants whose
-  **field structures are isomorphic modulo field-type substitution**.
-  After α-renaming variant-bound names by canonical position (per
-  field role, not by spelled name), the variant skeletons are
-  structurally identical with only the field-type identity differing.
-  The variants discriminate on type, not on independent semantic
-  shape — the variant-axis is doing parameterization-by-hand.
+  **field structures are isomorphic modulo field-type substitution**
+  AND **the variant tag is recoverable from the payload type**. After
+  α-renaming variant-bound names by canonical position (per field
+  role, not by spelled name), the variant skeletons are structurally
+  identical with only the field-type identity differing, AND the
+  field-type identity itself unambiguously distinguishes which
+  variant constructed the value. Both conjuncts are required — the
+  variants must discriminate on type (so the parametric form
+  `Locus<T>` preserves enough information to recover the variant
+  tag from `T`), not just be isomorphic in shape.
 
 - *Decidable:* yes — substrate-readable per-variant field-shape
   facts (from `v4.lens.structural_similarity`'s `TypeShape.variant_set`,
@@ -439,6 +447,60 @@ passes — e.g. a three-variant `Cached | Produced | Rejected` where
   coproduct, applying field-name α-renaming. Same mechanical contract
   as L1.13 (skeleton extraction), at variant scope instead of
   match-arm scope.
+  **Tag-recoverability check (load-bearing, per operator-direct
+  refinement 2026-05-21; granularity sharpened per openai-pro
+  REQUEST_CHANGES 2026-05-21; equivalence-class scope sharpened per
+  codex BLOCKING #15978 2026-05-21):** after the variant-skeleton
+  comparison identifies all variants sharing a skeleton (the
+  **skeleton-equivalence class**), the lens checks that the
+  **canonical payload signatures across the ENTIRE equivalence class
+  are pairwise-distinct as a whole set** — NOT pairwise per candidate
+  pair. The variant-tag projection from the payload-signature *product*
+  (the full ordered tuple of field types, by canonical-position
+  normalization) into the equivalence class's variant subset must be
+  injective over the class. Why pairwise-over-the-set rather than
+  pairwise-per-pair: with three variants `V1 { x: A }`, `V2 { x: A }`,
+  `V3 { x: B }`, the pair (V1, V3) has distinct signatures and the
+  pair (V2, V3) has distinct signatures, but the class as a whole
+  contains the duplicate `(A,)` shared by V1+V2. Pairwise-per-pair
+  would falsely PASS on (V1, V3) and (V2, V3) and propose `Locus<T>`
+  that erases the V1-V2 distinction; equivalence-class injectivity
+  correctly FAILS the whole class. Mechanically: the check is
+  "let S = {payload-signature(v) | v in equivalence-class}; |S| ==
+  |equivalence-class|."
+  The check is at **payload-signature granularity**, NOT at per-field-
+  type granularity:
+  - **Single-field variants** (the original Locus motivating case):
+    payload signature reduces to the single field type. `V1 { x: A }`
+    + `V2 { x: A }` share signature `(A,)` → FAIL (same payload
+    signature; variant tag not recoverable). `V1 { x: A }` +
+    `V2 { x: B }` have signatures `(A,)` vs `(B,)` → PASS.
+  - **Multi-field variants:** signature is the full ordered tuple.
+    `V1 { shared: A, side: B }` + `V2 { shared: A, side: C }` have
+    signatures `(A, B)` vs `(A, C)` — DISTINCT signatures even though
+    field `shared` shares type `A`. PASS — parametric form preserves
+    the discrimination via `side`'s type; per-field uniqueness would
+    have falsely failed this case.
+  - **Degenerate same-signature multi-field:** `V1 { a: A, b: B }` +
+    `V2 { c: A, d: B }` (different field names, same ordered type
+    tuple under canonical-position normalization) share signature
+    `(A, B)` → FAIL (per-field-name renaming doesn't add discrimination
+    if the type tuple is identical).
+
+  Without equivalence-class-wide payload-signature-injective tag-
+  recoverability, parameterizing would erase information the original
+  coproduct represented; the lens cannot honestly recommend the
+  dissolution.
+
+  (Earlier wording history: original draft specified "field types
+  pairwise-distinct" which over-constrained at per-field granularity
+  (openai-pro caught — under-fired on multi-field cases). Subsequent
+  revision said "pairwise-distinct between candidate variants" which
+  under-constrained at the pairwise-per-pair scope (codex caught —
+  a 3-variant class with two duplicates would let the lens fire on
+  the non-duplicate pairs while leaving the duplicate-pair erasure
+  in place). Current spec is **equivalence-class-wide payload-
+  signature injectivity** — the honest endpoint.)
 
 - *Verdict:* hard error.
 
@@ -460,6 +522,34 @@ passes — e.g. a three-variant `Cached | Produced | Rejected` where
     structure is genuine variant-axis information; the lens does
     not fire. The trigger requires the type-substitution to be the
     SOLE structural difference.
+  - **Tag-not-recoverable from payload signature (equivalence-class-
+    wide check).** If **any two variants in the skeleton-equivalence
+    class** share the **same canonical payload signature** (the full
+    ordered tuple of field types under canonical-position normalization),
+    parameterizing would ERASE the variant tag for those two variants —
+    the original coproduct carried information the parametric form
+    cannot preserve. The lens does NOT fire on **the entire class**;
+    every variant in the class stays as a distinct case (no partial
+    dissolution — partial would leave the duplicate-pair erasure
+    in place). Examples:
+    - `V1 { x: A }` + `V2 { x: A }` — both signatures `(A,)` →
+      FAIL tag-recoverability → STAY.
+    - `V1 { a: A, b: B }` + `V2 { c: A, d: B }` — both signatures
+      `(A, B)` (field-name α-renaming doesn't change the type
+      tuple) → FAIL → STAY.
+    - `V1 { shared: A, side: B }` + `V2 { shared: A, side: C }` —
+      signatures `(A, B)` vs `(A, C)` are distinct → PASS
+      tag-recoverability → lens fires (this is a multi-field
+      dissolution candidate the parametric form preserves
+      discrimination over).
+    This is the operator-direct refinement (2026-05-21, granularity
+    sharpened per openai-pro REQUEST_CHANGES same day; equivalence-
+    class scope sharpened per codex BLOCKING #15978 same day)
+    tightening the bar from "identical arity is enough" to
+    "identical arity AND equivalence-class-wide payload-signature
+    injectivity" (i.e., `|{signature(v) | v in class}| == |class|`).
+    Without this guard, the lens would over-recommend parameterization
+    that loses information.
 
 - *Clearing receipt (single authoritative resolution table — same R1–R5 inherited from L1.12 family):*
   the substrate carries one of the inherited resolution shapes:

@@ -8,8 +8,13 @@
 //
 module extdeps.llm.anthropic
 
+<<<<<<< HEAD
 import extdeps.llm.llm { llm_snake_wire_contract }
 import std.errors { AnthropicErrorShape }
+=======
+import extdeps.llm.llm { TokenUsage, llm_snake_wire_contract, ImageSource }
+import extdeps.llm.anthropic_errors { AnthropicErrorShape }
+>>>>>>> origin/main
 import std.credentials { CredentialSource, EnvVar }
 import std.serialization { CoproductWireContract, VariantEncoding }
 import std.types { HttpMethod }
