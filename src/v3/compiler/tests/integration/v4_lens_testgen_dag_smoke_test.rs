@@ -22,10 +22,10 @@ use v3_compiler::tokenize_for_test;
 
 const TESTGEN_DAG: &str = include_str!("../../../../v4/lens/testgen.dag");
 const VERIFICATION_DAG: &str = include_str!("../../../../v4/std/verification.dag");
-const P9_SINGLE_OWNER_DAG: &str =
-    include_str!("../../../../v4/test/claim/lens_cost/p9_llvm_instruction_cost_single_owner.dag");
-const P9_SINGLE_OWNER_PATH: &str =
-    "src/v4/test/claim/lens_cost/p9_llvm_instruction_cost_single_owner.dag";
+const P9_REGISTRY_OWNER_DAG: &str =
+    include_str!("../../../../v4/test/claim/lens_cost/p9_llvm_instruction_cost_registry_owner.dag");
+const P9_REGISTRY_OWNER_PATH: &str =
+    "src/v4/test/claim/lens_cost/p9_llvm_instruction_cost_registry_owner.dag";
 const NAT_LAW_DAG: &str = include_str!("../../../../v4/test/claim/manual/nat_law_anchors.dag");
 const NAT_SUBSTRATE_DAG: &str = include_str!("../../../../v4/std/nat.dag");
 
@@ -39,14 +39,15 @@ const NAT_MANUAL_CLAIM_DATA: [&str; 6] = [
 ];
 
 #[test]
-fn v4_lens_testgen_p9_single_owner_claim_parses_and_checks_registry_owner() {
-    parse_module(P9_SINGLE_OWNER_DAG, P9_SINGLE_OWNER_PATH);
+fn v4_lens_testgen_p9_registry_owner_claim_parses_and_checks_registry_exclusivity() {
+    parse_module(P9_REGISTRY_OWNER_DAG, P9_REGISTRY_OWNER_PATH);
     assert!(
-        P9_SINGLE_OWNER_DAG.contains("data p9_owner_module_path: String = lens_owned_fn_llvm_instruction_cost.owner_module_path")
-            && P9_SINGLE_OWNER_DAG.contains("data p9_expected_owner_module_path: String = \"v4.lens.cost\"")
-            && P9_SINGLE_OWNER_DAG.contains("EqualsClaim {")
-            && P9_SINGLE_OWNER_DAG.contains("p9_owner_module_paths_equal()"),
-        "P9 receipt must project registry owner_module_path and fail-closed EqualsClaim witness (B1)"
+        P9_REGISTRY_OWNER_DAG.contains("lens_owned_fn_registry_v0")
+            && P9_REGISTRY_OWNER_DAG.contains("p9_registry_fn_names_unique()")
+            && P9_REGISTRY_OWNER_DAG.contains("p9_registry_llvm_instruction_cost_row_count()")
+            && P9_REGISTRY_OWNER_DAG.contains("data p9_owner_module_path: String = lens_owned_fn_llvm_instruction_cost.owner_module_path")
+            && P9_REGISTRY_OWNER_DAG.contains("EqualsClaim {"),
+        "P9 receipt must prove registry-row exclusivity + owner_module_path pin (B1)"
     );
 }
 

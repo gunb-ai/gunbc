@@ -22,7 +22,7 @@ type LensRegistryEntryV0 {
   module_path: LensModulePathV0
 }
 
-// P9 single-owner: fn authority pinned in registry (feature:p9-llvm-instruction-cost-single-owner).
+// P9 registry-owned-fn authority: closed v0 enumeration (feature:p9-llvm-instruction-cost-registry-owner).
 type LensOwnedFnV0 {
   fn_name: Symbol
   owner_module_path: String
@@ -34,6 +34,11 @@ data lens_owned_fn_llvm_instruction_cost: LensOwnedFnV0 = {
   fn_name: symbol_llvm_instruction_cost,
   owner_module_path: "v4.lens.cost"
 }
+
+// Closed registry surface for P9 receipts — exclusivity is over this list until M2 fn-def scan lands.
+data lens_owned_fn_registry_v0: List<LensOwnedFnV0> = [
+  lens_owned_fn_llvm_instruction_cost
+]
 
 data lens_registry_v0_complexity: LensRegistryEntryV0 = {
   lens_id: Complexity
