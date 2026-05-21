@@ -3,6 +3,7 @@
 // Owns: Nat additive and multiplicative law TestClaim rows.
 // Consumes: v4.std.verification v4.std.diagnostic v4.std.node v4.std.nat
 // Status: T-14 corpus rows; execution deferred to T-22 runner bridge.
+// Discovery: T-22 runner enumerates src/v4/test/claim/** recursively.
 
 
 module v4.test.claim.algebra_laws.nat_semiring
@@ -32,6 +33,7 @@ import v4.lens.testgen {
   t19_law_nat_mul_associativity
 }
 import v4.std.node { Edge, Named, Node, Symbol, TypeNode, Atom, Conj }
+import v4.std.text { String }
 import v4.std.verification {
   Equals,
   T19ManualAnchorAbsent,

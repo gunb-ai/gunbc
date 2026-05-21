@@ -15,6 +15,7 @@
 //   - std/verification.dag, std/diagnostic.dag, std/cardinality.dag
 //
 // Status: T-14 corpus rows; execution deferred to T-22 runner bridge.
+// Discovery: T-22 runner enumerates src/v4/test/claim/** recursively.
 
 
 module v4.test.claim.impossible_bug.nested_optional_flatten
