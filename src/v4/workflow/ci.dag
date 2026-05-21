@@ -1,7 +1,7 @@
 // src/v4/workflow/ci.dag
 // Scope: CI pipeline AS DATA; gunbc job/gate DAG + eager well-formedness; ci.yml projection deferred.
 // Owns: CiCommand, CiJob, CiGate, CiPipeline, ci_pipeline_well_formed, ci_pipeline
-// Consumes: v4.std.node, v4.std.diagnostic, v4.workflow.bootstrap
+// Consumes: v4.std.node, v4.std.diagnostic, v4.std.algebra, v4.workflow.bootstrap
 // Status: filled — declarative core + eager well-formedness; structural v2 gate only.
 
 module v4.workflow.ci
@@ -9,16 +9,22 @@ module v4.workflow.ci
 
 import v4.std.node { Symbol }
 import v4.std.diagnostic {Correction, Diagnostic, Extent, Locus, NoCorrectionReason, Outcome, Accepted, None, diagnostics_singleton}
+import v4.std.algebra {
+  free_monoid_count_equal,
+  free_monoid_count_where,
+  free_monoid_forall,
+  free_monoid_length,
+  free_monoid_unique
+}
 import v4.workflow.bootstrap { v4_stage0_binary, bootstrap_plan, bootstrap_stage_output }
 
 
-// 🟡 coproduct dissolution — LB-P4-3213.
+// 🟡 coproduct dissolution — LB-P4-3213
 type CiCommand
   = LintCommand
   | TestCommand
   | IgnoredTestCommand { test_name: String }
   | BootstrapStageCompile { produces: Symbol }
-  | ShellCommand { command: String }
 
 type CiJob {
   id: Symbol
@@ -69,54 +75,51 @@ fn ci_diagnostic(reason: Symbol) -> Diagnostic {
   }
 }
 
-// 🟡 List-op dissolution (Practice 10) — LB-P10-3213
-fn ci_id_occurrences(id: Symbol, jobs: List<CiJob>) -> Int {
-  fold(jobs, init: 0, f: fn(acc, j) {
-    if j.id == id { acc + 1 } else { acc }
+fn ci_job_ids(jobs: List<CiJob>) -> List<Symbol> {
+  fold(jobs, init: [], f: fn(acc, j) {
+    concat([j.id], acc)
   })
 }
 
-fn ci_symbol_resolves(s: Symbol, jobs: List<CiJob>) -> Bool {
-  fold(jobs, init: false, f: fn(acc, j) {
-    acc || (j.id == s)
+fn ci_gate_ids(gates: List<CiGate>) -> List<Symbol> {
+  fold(gates, init: [], f: fn(acc, g) {
+    concat([g.id], acc)
+  })
+}
+
+fn ci_gate_job_ids(gates: List<CiGate>) -> List<Symbol> {
+  fold(gates, init: [], f: fn(acc, g) {
+    concat([g.job], acc)
   })
 }
 
 fn ci_member(s: Symbol, ids: List<Symbol>) -> Bool {
-  fold(ids, init: false, f: fn(acc, x) {
-    acc || (x == s)
-  })
+  free_monoid_count_equal(xs: ids, item: s, eq: fn(left, right) { left == right }) != 0
+}
+
+fn ci_symbol_resolves(s: Symbol, jobs: List<CiJob>) -> Bool {
+  ci_member(s: s, ids: ci_job_ids(jobs: jobs))
 }
 
 fn ci_all_job_ids_unique(jobs: List<CiJob>) -> Bool {
-  fold(jobs, init: true, f: fn(acc, j) {
-    acc && (ci_id_occurrences(id: j.id, jobs: jobs) == 1)
-  })
-}
-
-fn ci_gate_id_occurrences(id: Symbol, gates: List<CiGate>) -> Int {
-  fold(gates, init: 0, f: fn(acc, g) {
-    if g.id == id { acc + 1 } else { acc }
-  })
+  free_monoid_unique(xs: ci_job_ids(jobs: jobs), eq: fn(left, right) { left == right })
 }
 
 fn ci_all_gate_ids_unique(gates: List<CiGate>) -> Bool {
-  fold(gates, init: true, f: fn(acc, g) {
-    acc && (ci_gate_id_occurrences(id: g.id, gates: gates) == 1)
-  })
+  free_monoid_unique(xs: ci_gate_ids(gates: gates), eq: fn(left, right) { left == right })
 }
 
 fn ci_all_needs_resolve(jobs: List<CiJob>) -> Bool {
   fold(jobs, init: true, f: fn(acc, j) {
-    acc && fold(j.needs, init: true, f: fn(acc2, n) {
-      acc2 && ci_symbol_resolves(s: n, jobs: jobs)
+    acc && free_monoid_forall(xs: j.needs, predicate: fn(n) {
+      ci_symbol_resolves(s: n, jobs: jobs)
     })
   })
 }
 
 fn ci_all_gate_jobs_resolve(gates: List<CiGate>, jobs: List<CiJob>) -> Bool {
-  fold(gates, init: true, f: fn(acc, g) {
-    acc && ci_symbol_resolves(s: g.job, jobs: jobs)
+  free_monoid_forall(xs: ci_gate_job_ids(gates: gates), predicate: fn(job_sym) {
+    ci_symbol_resolves(s: job_sym, jobs: jobs)
   })
 }
 
@@ -127,9 +130,9 @@ fn ci_job_needs(id: Symbol, jobs: List<CiJob>) -> List<Symbol> {
 }
 
 fn ci_blocked(id: Symbol, remaining: List<Symbol>, jobs: List<CiJob>) -> Bool {
-  fold(ci_job_needs(id: id, jobs: jobs), init: false, f: fn(acc, n) {
-    acc || ci_member(s: n, ids: remaining)
-  })
+  free_monoid_count_where(xs: ci_job_needs(id: id, jobs: jobs), predicate: fn(n) {
+    ci_member(s: n, ids: remaining)
+  }) != 0
 }
 
 fn ci_eliminate_pass(remaining: List<Symbol>, jobs: List<CiJob>) -> List<Symbol> {
@@ -149,7 +152,7 @@ fn ci_kahn_fixpoint(jobs: List<CiJob>) -> List<Symbol> {
 }
 
 fn ci_acyclic(jobs: List<CiJob>) -> Bool {
-  count(ci_kahn_fixpoint(jobs: jobs)) == 0
+  free_monoid_length(xs: ci_kahn_fixpoint(jobs: jobs)) == 0
 }
 
 // 🟡 negative-coverage plan-bound (T-22) — LB-T22-3213
@@ -159,7 +162,6 @@ fn ci_command_authority_ok(c: CiCommand) -> Bool {
     TestCommand => true
     IgnoredTestCommand { test_name: _ } => true
     BootstrapStageCompile { produces: pr } => bootstrap_stage_output(plan: bootstrap_plan, s: pr)
-    ShellCommand { command: _ } => true
   }
 }
 
