@@ -114,12 +114,11 @@ data claim_oob_index_total_or_proven_safe: TestClaim = CompilesClaim {
 }
 
 
-data claim_unproven_division_rejected: TestClaim = TestClaim {
-  kind: Equals,
+data claim_unproven_division_rejected: TestClaim = DiagnosticClaim {
   label: "unproven divisor cannot lower as partial division",
   t19_anchor: T19ManualAnchorAbsent,
   input: falsification_division_by_zero_unhandled,
-  expected: Rejected {
+  expected_outcome: Rejected {
     diagnostics: diagnostics_singleton(
       d: Diagnostic {
         reason: unhandled_division_reason,
@@ -132,12 +131,11 @@ data claim_unproven_division_rejected: TestClaim = TestClaim {
 }
 
 
-data claim_unproven_oob_index_rejected: TestClaim = TestClaim {
-  kind: Equals,
+data claim_unproven_oob_index_rejected: TestClaim = DiagnosticClaim {
   label: "unproven index cannot lower as partial lookup",
   t19_anchor: T19ManualAnchorAbsent,
   input: falsification_oob_index_unhandled,
-  expected: Rejected {
+  expected_outcome: Rejected {
     diagnostics: diagnostics_singleton(
       d: Diagnostic {
         reason: unhandled_index_reason,
@@ -150,12 +148,11 @@ data claim_unproven_oob_index_rejected: TestClaim = TestClaim {
 }
 
 
-data claim_force_unwrap_count_zero: TestClaim = TestClaim {
-  kind: Equals,
+data claim_force_unwrap_count_zero: TestClaim = DiagnosticClaim {
   label: "force unwrap does not survive outside user input boundary",
   t19_anchor: T19ManualAnchorAbsent,
   input: falsification_force_unwrap_survives,
-  expected: Rejected {
+  expected_outcome: Rejected {
     diagnostics: diagnostics_singleton(
       d: Diagnostic {
         reason: force_unwrap_reason,

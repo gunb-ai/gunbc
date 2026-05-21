@@ -43,7 +43,8 @@ import v4.extdeps.file_system {
   FileSystemOperations,
   Filesystem
 }
-import v4.std.verification {TestClaim,
+import v4.std.verification {
+  TestClaim,
   TestClassification,
   T19ManualAnchorAbsent,
   T19ManualAnchorKey,
@@ -59,17 +60,16 @@ import v4.std.verification {TestClaim,
   T19ManualTcConjEqualsRefl,
   T19ManualTcDisjEmpty,
   T19ManualTcInstantiationEmpty,
-  CompilesClaim,
-  DiagnosticClaim,
-  EqualsClaim,
-  RoundTripClaim}
+  test_claim_classification,
+  test_claim_t19_anchor
+}
 import v4.test.claim.manual.connective_anchors {
   claim_arrow_two_conj_compiles,
-  claim_cardinality_empty_compiles,
+  claim_cardinality_empty_rejected,
   claim_conj_empty_compiles,
   claim_conj_equals_refl,
   claim_disj_empty_compiles,
-  claim_instantiation_empty_compiles
+  claim_instantiation_empty_rejected
 }
 import v4.test.claim.manual.nat_law_anchors {
   claim_nat_add_associativity,
@@ -116,7 +116,6 @@ type TestgenConcept
 
 type Generator<C> {
   classification: TestClassification
-  kind: AssertKind
   t19_anchor: T19ManualAnchorKey
   slot: C
 }
@@ -261,8 +260,8 @@ fn manual_test_claim_for_manual_anchor(key: T19ManualAnchorKey) -> Outcome<TestC
     T19ManualTcConjEmpty => Accepted { value: claim_conj_empty_compiles, diagnostics: None }
     T19ManualTcDisjEmpty => Accepted { value: claim_disj_empty_compiles, diagnostics: None }
     T19ManualTcArrowTwoConj => Accepted { value: claim_arrow_two_conj_compiles, diagnostics: None }
-    T19ManualTcCardinalityEmpty => Accepted { value: claim_cardinality_empty_compiles, diagnostics: None }
-    T19ManualTcInstantiationEmpty => Accepted { value: claim_instantiation_empty_compiles, diagnostics: None }
+    T19ManualTcCardinalityEmpty => Accepted { value: claim_cardinality_empty_rejected, diagnostics: None }
+    T19ManualTcInstantiationEmpty => Accepted { value: claim_instantiation_empty_rejected, diagnostics: None }
     T19ManualTcConjEqualsRefl => Accepted { value: claim_conj_equals_refl, diagnostics: None }
     T19ManualNatAddLeftIdentity => Accepted { value: claim_nat_add_left_identity, diagnostics: None }
     T19ManualNatAddRightIdentity => Accepted { value: claim_nat_add_right_identity, diagnostics: None }
@@ -367,7 +366,6 @@ fn bootstrap_claim_generator_for_manual_anchor(
           Accepted {
             value: Generator {
               classification: test_claim_classification(c: claim),
-              kind: test_claim_t19_anchor(c: claim),
               t19_anchor: test_claim_t19_anchor(c: claim),
               slot: slot
             },

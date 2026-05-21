@@ -47,15 +47,17 @@ import v4.std.node {
   Symbol,
   TypeNode
 }
-import v4.std.verification {T19ManualAnchorAbsent,
+import v4.std.verification {
+  T19ManualAnchorAbsent,
   TestClaim,
   TestClassification,
   Tier1,
   Unit,
   CompilesClaim,
   DiagnosticClaim,
-  EqualsClaim,
-  RoundTripClaim}
+  test_claim_expected_outcome,
+  test_claim_input
+}
 import v4.std.witness { Holds, Violates }
 
 
@@ -99,7 +101,23 @@ fn infer_receipt_symbol_node(s: Symbol) -> Node {
 
 
 fn infer_receipt_claim(case: InferReceiptCase) -> TestClaim {
-  EqualsClaim { label: case.label, t19_anchor: T19ManualAnchorAbsent, lhs: case.input, rhs: case.input, classification: TestClassification { tier: Tier1, layer: Unit  }
+  match case.expected {
+    Rejected { diagnostics: _ } =>
+      DiagnosticClaim {
+        label: case.label,
+        t19_anchor: T19ManualAnchorAbsent,
+        input: case.input,
+        expected_outcome: case.expected,
+        classification: TestClassification { tier: Tier1, layer: Unit }
+      }
+    Accepted { value: v, diagnostics: d } =>
+      CompilesClaim {
+        label: case.label,
+        t19_anchor: T19ManualAnchorAbsent,
+        input: case.input,
+        expected_value: Accepted { value: v, diagnostics: d },
+        classification: TestClassification { tier: Tier1, layer: Unit }
+      }
   }
 }
 
@@ -160,7 +178,7 @@ fn infer_add_mvp_receipt_run(
           Fail { actual: Rejected { diagnostics: r } }
         }
       Accepted { value: _, diagnostics: ad } =>
-        Fail { actual: Accepted { value: subject.test_claim_input(c: claim), diagnostics: ad } }
+        Fail { actual: Accepted { value: test_claim_input(c: subject.claim), diagnostics: ad } }
     }
   }
 }

@@ -102,12 +102,11 @@ data claim_idempotent_inhabitant_passes: TestClaim = CompilesClaim {
 }
 
 
-data claim_repeated_append_in_idempotent_position_caught: TestClaim = TestClaim {
-  kind: Equals,
+data claim_repeated_append_in_idempotent_position_caught: TestClaim = DiagnosticClaim {
   label: "idempotent algebra inhabitance rejects repeated append composition",
   t19_anchor: T19ManualAnchorAbsent,
   input: falsification_repeated_append_in_idempotent_position,
-  expected: Rejected {
+  expected_outcome: Rejected {
     diagnostics: diagnostics_singleton(
       d: Diagnostic {
         reason: idempotency_repetition_reason,
@@ -120,12 +119,11 @@ data claim_repeated_append_in_idempotent_position_caught: TestClaim = TestClaim 
 }
 
 
-data claim_nonidempotent_in_idempotent_position_caught: TestClaim = TestClaim {
-  kind: Equals,
+data claim_nonidempotent_in_idempotent_position_caught: TestClaim = DiagnosticClaim {
   label: "idempotent algebra inhabitance rejects non-idempotent composition",
   t19_anchor: T19ManualAnchorAbsent,
   input: falsification_nonidempotent_in_idempotent_position,
-  expected: Rejected {
+  expected_outcome: Rejected {
     diagnostics: diagnostics_singleton(
       d: Diagnostic {
         reason: idempotency_violation_reason,

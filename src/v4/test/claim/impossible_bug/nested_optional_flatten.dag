@@ -94,12 +94,11 @@ data claim_optional_chaining_no_double_unwrap: TestClaim = CompilesClaim {
 }
 
 
-data claim_optional_double_unwrap_rejected: TestClaim = TestClaim {
-  kind: Equals,
+data claim_optional_double_unwrap_rejected: TestClaim = DiagnosticClaim {
   label: "optional accessor surface rejects double unwrap shape",
   t19_anchor: T19ManualAnchorAbsent,
   input: falsification_optional_double_unwrap,
-  expected: Rejected {
+  expected_outcome: Rejected {
     diagnostics: diagnostics_singleton(
       d: Diagnostic {
         reason: double_unwrap_reason,
@@ -112,12 +111,11 @@ data claim_optional_double_unwrap_rejected: TestClaim = TestClaim {
 }
 
 
-data claim_nested_optional_collapses: TestClaim = TestClaim {
-  kind: Equals,
+data claim_nested_optional_collapses: TestClaim = DiagnosticClaim {
   label: "nested optional cardinality collapses to one refinement",
   t19_anchor: T19ManualAnchorAbsent,
   input: falsification_nested_optional,
-  expected: Rejected {
+  expected_outcome: Rejected {
     diagnostics: diagnostics_singleton(
       d: Diagnostic {
         reason: nested_optional_reason,

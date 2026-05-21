@@ -96,12 +96,11 @@ data claim_shared_declaration_compiles_both_sides: TestClaim = CompilesClaim {
 }
 
 
-data claim_target_contract_drift_impossible: TestClaim = TestClaim {
-  kind: Equals,
+data claim_target_contract_drift_impossible: TestClaim = DiagnosticClaim {
   label: "transport field drift rejects target-side parallel authority",
   t19_anchor: T19ManualAnchorAbsent,
   input: falsification_target_contract_drift,
-  expected: Rejected {
+  expected_outcome: Rejected {
     diagnostics: diagnostics_singleton(
       d: Diagnostic {
         reason: target_transport_drift_reason,
@@ -114,12 +113,11 @@ data claim_target_contract_drift_impossible: TestClaim = TestClaim {
 }
 
 
-data claim_wire_contract_drift_impossible: TestClaim = TestClaim {
-  kind: Equals,
+data claim_wire_contract_drift_impossible: TestClaim = DiagnosticClaim {
   label: "transport field drift rejects parallel client server authority",
   t19_anchor: T19ManualAnchorAbsent,
   input: falsification_wire_contract_drift,
-  expected: Rejected {
+  expected_outcome: Rejected {
     diagnostics: diagnostics_singleton(
       d: Diagnostic {
         reason: transport_drift_reason,

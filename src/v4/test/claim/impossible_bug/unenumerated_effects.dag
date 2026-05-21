@@ -118,12 +118,11 @@ data claim_explicit_reread_passes: TestClaim = CompilesClaim {
 }
 
 
-data claim_redundant_read_caught: TestClaim = TestClaim {
-  kind: Equals,
+data claim_redundant_read_caught: TestClaim = DiagnosticClaim {
   label: "redundant read without intervening write is rejected by effect lens",
   t19_anchor: T19ManualAnchorAbsent,
   input: falsification_redundant_read,
-  expected: Rejected {
+  expected_outcome: Rejected {
     diagnostics: diagnostics_singleton(
       d: Diagnostic {
         reason: redundant_read_reason,

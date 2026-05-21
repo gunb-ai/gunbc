@@ -110,12 +110,11 @@ data falsification_external_contract_without_reason: Node = atom_node(s: correct
 data falsification_user_boundary_without_reason: Node = atom_node(s: correction_english_boundary_symbol)
 
 
-data claim_complexity_diagnostic_suggests_correct_code: TestClaim = TestClaim {
-  kind: Equals,
+data claim_complexity_diagnostic_suggests_correct_code: TestClaim = DiagnosticClaim {
   label: "complexity diagnostic suggests structurally correct replacement",
   t19_anchor: T19ManualAnchorAbsent,
   input: falsification_complexity_diagnostic_without_correct_code,
-  expected: Rejected {
+  expected_outcome: Rejected {
     diagnostics: diagnostics_singleton(
       d: Diagnostic {
         reason: correction_complexity_reason,
@@ -128,12 +127,11 @@ data claim_complexity_diagnostic_suggests_correct_code: TestClaim = TestClaim {
 }
 
 
-data claim_transport_diagnostic_suggests_shared_contract: TestClaim = TestClaim {
-  kind: Equals,
+data claim_transport_diagnostic_suggests_shared_contract: TestClaim = DiagnosticClaim {
   label: "transport diagnostic suggests shared declaration replacement",
   t19_anchor: T19ManualAnchorAbsent,
   input: falsification_transport_diagnostic_without_correct_code,
-  expected: Rejected {
+  expected_outcome: Rejected {
     diagnostics: diagnostics_singleton(
       d: Diagnostic {
         reason: correction_transport_reason,
@@ -146,12 +144,11 @@ data claim_transport_diagnostic_suggests_shared_contract: TestClaim = TestClaim 
 }
 
 
-data claim_ambiguous_boundary_diagnostic_names_no_correction_reason: TestClaim = TestClaim {
-  kind: Equals,
+data claim_ambiguous_boundary_diagnostic_names_no_correction_reason: TestClaim = DiagnosticClaim {
   label: "ambiguous boundary diagnostic carries explicit unavailable correction reason",
   t19_anchor: T19ManualAnchorAbsent,
   input: falsification_ambiguous_boundary_without_unavailable_reason,
-  expected: Rejected {
+  expected_outcome: Rejected {
     diagnostics: diagnostics_singleton(
       d: Diagnostic {
         reason: correction_ambiguous_boundary_reason,
@@ -164,12 +161,11 @@ data claim_ambiguous_boundary_diagnostic_names_no_correction_reason: TestClaim =
 }
 
 
-data claim_textual_diagnostic_carries_whole_file_locus: TestClaim = TestClaim {
-  kind: Equals,
+data claim_textual_diagnostic_carries_whole_file_locus: TestClaim = DiagnosticClaim {
   label: "textual diagnostic carries whole-file locus and suggested correction",
   t19_anchor: T19ManualAnchorAbsent,
   input: falsification_textual_whole_file_without_locus,
-  expected: Rejected {
+  expected_outcome: Rejected {
     diagnostics: diagnostics_singleton(
       d: Diagnostic {
         reason: correction_textual_reason,
@@ -182,12 +178,11 @@ data claim_textual_diagnostic_carries_whole_file_locus: TestClaim = TestClaim {
 }
 
 
-data claim_textual_diagnostic_carries_byte_range_locus: TestClaim = TestClaim {
-  kind: Equals,
+data claim_textual_diagnostic_carries_byte_range_locus: TestClaim = DiagnosticClaim {
   label: "textual diagnostic carries byte-range locus and suggested correction",
   t19_anchor: T19ManualAnchorAbsent,
   input: falsification_textual_byte_range_without_locus,
-  expected: Rejected {
+  expected_outcome: Rejected {
     diagnostics: diagnostics_singleton(
       d: Diagnostic {
         reason: correction_textual_reason,
@@ -200,12 +195,11 @@ data claim_textual_diagnostic_carries_byte_range_locus: TestClaim = TestClaim {
 }
 
 
-data claim_port_diagnostic_carries_port_locus: TestClaim = TestClaim {
-  kind: Equals,
+data claim_port_diagnostic_carries_port_locus: TestClaim = DiagnosticClaim {
   label: "port diagnostic carries port locus and suggested correction",
   t19_anchor: T19ManualAnchorAbsent,
   input: falsification_port_diagnostic_without_locus,
-  expected: Rejected {
+  expected_outcome: Rejected {
     diagnostics: diagnostics_singleton(
       d: Diagnostic {
         reason: correction_port_reason,
@@ -218,12 +212,11 @@ data claim_port_diagnostic_carries_port_locus: TestClaim = TestClaim {
 }
 
 
-data claim_external_contract_diagnostic_names_no_correction_reason: TestClaim = TestClaim {
-  kind: Equals,
+data claim_external_contract_diagnostic_names_no_correction_reason: TestClaim = DiagnosticClaim {
   label: "external contract diagnostic carries explicit unavailable correction reason",
   t19_anchor: T19ManualAnchorAbsent,
   input: falsification_external_contract_without_reason,
-  expected: Rejected {
+  expected_outcome: Rejected {
     diagnostics: diagnostics_singleton(
       d: Diagnostic {
         reason: correction_external_contract_reason,
@@ -236,12 +229,11 @@ data claim_external_contract_diagnostic_names_no_correction_reason: TestClaim = 
 }
 
 
-data claim_user_boundary_diagnostic_names_no_correction_reason: TestClaim = TestClaim {
-  kind: Equals,
+data claim_user_boundary_diagnostic_names_no_correction_reason: TestClaim = DiagnosticClaim {
   label: "user boundary diagnostic carries explicit unavailable correction reason",
   t19_anchor: T19ManualAnchorAbsent,
   input: falsification_user_boundary_without_reason,
-  expected: Rejected {
+  expected_outcome: Rejected {
     diagnostics: diagnostics_singleton(
       d: Diagnostic {
         reason: correction_user_boundary_reason,
