@@ -4283,7 +4283,18 @@ fn expr_resolves_to_arrow(texpr: Node) -> Bool {
 
 fn type_node_is_generic_param(type_node: Node, summary: TypeSummary, source_indices: Map<String, NewlineIndex>) -> Bool {
   let type_name = authored_name_at(source_indices: source_indices, node: type_node)
-  summary.generic_param_names |> any(param_name => param_name == type_name)
+  let type_var_id = match type_node.inferred {
+    Some { value: TypeVariable { id: id } } => Some { value: id }
+    Some { value: Resolved { node: rt } } =>
+      match rt.inferred {
+        Some { value: TypeVariable { id: id } } => Some { value: id }
+        _ => none
+      }
+    _ => none
+  }
+  summary.generic_param_names |> any(param_name =>
+    param_name == type_name || match type_var_id { Some { value: id } => param_name == id  None => false }
+  )
 }
 
 fn rust_field_value_for_struct(raw_value: String, field_value: Node, struct_node: Node, struct_name: String, field_name: String, scope: InferScope, emit_info: EmitGraphInfo) -> String {
