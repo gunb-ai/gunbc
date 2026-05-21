@@ -235,11 +235,7 @@ pub fn meet_sub_value(a: Rc<SubValueRelation>, b: Rc<SubValueRelation>) -> Rc<Su
                     if (lb.clone() == 3) {
                         a.clone()
                     } else {
-                        if ((la.clone() == 1) || (lb.clone() == 1)) {
-                            Rc::new(SubValueRelation::NonIncreasingValue)
-                        } else {
-                            Rc::new(SubValueRelation::NonIncreasingValue)
-                        }
+                        Rc::new(SubValueRelation::NonIncreasingValue)
                     }
                 }
             }
