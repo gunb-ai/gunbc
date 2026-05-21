@@ -1,0 +1,127 @@
+#!/usr/bin/env bash
+# scripts/v4-mvp1-e2e-gate.sh
+#
+# MVP-1 end-to-end receipt: add.dag → v2-compiler (--target rust) → emitted Rust
+# → cargo build/run → assert add(2, 3) == 5.
+#
+# Fail-closed. Does NOT use --target dag (known broken on full graphs).
+#
+# Usage (repo root):
+#   bash scripts/v4-mvp1-e2e-gate.sh
+#
+# Env:
+#   V2_COMPILER   — path to v2-compiler binary (default: target/release/v2-compiler)
+#   MVP1_OUT_DIR  — compile output directory (default: /tmp/v4-mvp1-out)
+
+set -euo pipefail
+
+root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+cd "$root"
+
+bin="${V2_COMPILER:-target/release/v2-compiler}"
+if [[ ! -x "$bin" ]]; then
+  echo "=== MVP-1: build v2-compiler (release) ==="
+  cargo build -p v2-compiler --release
+fi
+if [[ ! -x "$bin" ]]; then
+  echo "error: v2-compiler not found at $bin after build" >&2
+  exit 1
+fi
+
+entry_root="src/v4/test/mvp1/add"
+if [[ ! -f "${entry_root}/add.dag" ]]; then
+  echo "error: missing MVP-1 entry fixture ${entry_root}/add.dag" >&2
+  exit 1
+fi
+
+out="${MVP1_OUT_DIR:-/tmp/v4-mvp1-out}"
+log="${MVP1_LOG:-/tmp/v4-mvp1.log}"
+rm -rf "$out"
+mkdir -p "$out"
+
+echo "=== MVP-1: compile ${entry_root}/add.dag (--target rust) ==="
+set +e
+"$bin" compile \
+  --source-root "$entry_root" \
+  --source-root src/v4 \
+  --output-dir "$out" \
+  --target rust 2>&1 | tee "$log"
+status=${PIPESTATUS[0]}
+set -e
+
+if [[ "$status" -ne 0 ]]; then
+  echo "error: MVP-1 compile exited $status (log: $log)" >&2
+  exit "$status"
+fi
+
+if ! grep -E '^compiled: [0-9]+ files emitted, 0 diagnostics$' "$log" >/dev/null; then
+  echo "error: MVP-1 compile did not emit a clean compiled receipt" >&2
+  exit 1
+fi
+
+mod_rs="${out}/src/v4_test_mvp1_add.rs"
+if [[ ! -s "$mod_rs" ]]; then
+  echo "error: expected emitted module at $mod_rs" >&2
+  exit 1
+fi
+
+if ! grep -q 'fn add(' "$mod_rs"; then
+  echo "error: emitted Rust missing fn add (see $mod_rs)" >&2
+  exit 1
+fi
+
+if ! grep -Eq 'i32|int_add' "$mod_rs"; then
+  echo "error: emitted add module missing i32/int_add lowering (see $mod_rs)" >&2
+  exit 1
+fi
+
+cargo_toml="${out}/Cargo.toml"
+if [[ ! -f "$cargo_toml" ]]; then
+  echo "error: compile produced no Cargo.toml at $cargo_toml" >&2
+  exit 1
+fi
+
+crate_name="$(grep -E '^name = ' "$cargo_toml" | head -1 | sed 's/^name = "\(.*\)"/\1/')"
+if [[ -z "$crate_name" ]]; then
+  echo "error: could not parse crate name from $cargo_toml" >&2
+  exit 1
+fi
+
+# Orchestration harness (scripts-owned): invoke emitted add from a bin target.
+mkdir -p "${out}/src/bin"
+cat > "${out}/src/bin/mvp1_gate.rs" <<EOF
+// MVP-1 CI harness — not emitted; scripts/v4-mvp1-e2e-gate.sh authority.
+use ${crate_name}::v4_test_mvp1_add::add;
+
+fn main() {
+    let sum = add(2, 3);
+    assert_eq!(sum, 5, "add(2, 3) must equal 5");
+    println!("mvp1-ok: add(2, 3) = {}", sum);
+}
+EOF
+
+if ! grep -q '^\[\[bin\]\]' "$cargo_toml"; then
+  printf '\n[[bin]]\nname = "mvp1_gate"\npath = "src/bin/mvp1_gate.rs"\n' >> "$cargo_toml"
+else
+  printf '\n[[bin]]\nname = "mvp1_gate"\npath = "src/bin/mvp1_gate.rs"\n' >> "$cargo_toml"
+fi
+
+echo "=== MVP-1: cargo build mvp1_gate ==="
+(
+  cd "$out"
+  cargo build --bin mvp1_gate 2>&1
+)
+
+echo "=== MVP-1: cargo run mvp1_gate (assert add(2,3)==5) ==="
+run_out="$(
+  cd "$out"
+  cargo run --quiet --bin mvp1_gate 2>&1
+)"
+echo "$run_out"
+
+if ! grep -q 'mvp1-ok: add(2, 3) = 5' <<<"$run_out"; then
+  echo "error: MVP-1 run did not print expected receipt (got above)" >&2
+  exit 1
+fi
+
+echo "MVP-1 end-to-end gate OK (add.dag → rust → cargo run → add(2,3)==5)"
