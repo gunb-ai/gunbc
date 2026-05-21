@@ -404,9 +404,7 @@ pub fn var_binding_kind_name(value: Rc<VarBindingKind>) -> String {
     match (*value).clone() {
         VarBindingKind::LocalValueBinding => "LocalValueBinding".to_string(),
         VarBindingKind::FunctionValueBinding => "FunctionValueBinding".to_string(),
-        VarBindingKind::VariantValueBinding { parent_enum: _, .. } => {
-            "VariantValueBinding".to_string()
-        }
+        VarBindingKind::VariantValueBinding { .. } => "VariantValueBinding".to_string(),
         VarBindingKind::MatchBoundBinding => "MatchBoundBinding".to_string(),
     }
 }
@@ -953,7 +951,7 @@ pub fn serialize_expr_data(
         let name = authored_name_at(source_indices.clone(), &expr_node);
         match (*expr_node.expr_data.clone()).clone() {
             ExprData::NoExprData => "{\"kind\": \"NoExprData\"}".to_string(),
-            ExprData::ExprLiteral { value: value, .. } => v2_rt::concat(
+            ExprData::ExprLiteral { value, .. } => v2_rt::concat(
                 v2_rt::concat(
                     "{\"kind\": \"ExprLiteral\", \"value\": ".to_string(),
                     serialize_literal(value.clone()),
@@ -973,10 +971,7 @@ pub fn serialize_expr_data(
                 ),
                 "}".to_string(),
             ),
-            ExprData::ExprVar {
-                binding_kind: binding_kind,
-                ..
-            } => v2_rt::concat(
+            ExprData::ExprVar { binding_kind, .. } => v2_rt::concat(
                 v2_rt::concat(
                     v2_rt::concat(
                         v2_rt::concat(
@@ -993,13 +988,12 @@ pub fn serialize_expr_data(
                                     json_quote(var_binding_kind_name(inner.clone())),
                                 ),
                                 match (*inner.clone()).clone() {
-                                    VarBindingKind::VariantValueBinding {
-                                        parent_enum: parent_enum,
-                                        ..
-                                    } => v2_rt::concat(
-                                        ", \"parent_enum\": ".to_string(),
-                                        json_quote(parent_enum.clone()),
-                                    ),
+                                    VarBindingKind::VariantValueBinding { parent_enum, .. } => {
+                                        v2_rt::concat(
+                                            ", \"parent_enum\": ".to_string(),
+                                            json_quote(parent_enum.clone()),
+                                        )
+                                    }
                                     _ => "".to_string(),
                                 },
                             ),
@@ -1010,9 +1004,7 @@ pub fn serialize_expr_data(
                 ),
                 "}".to_string(),
             ),
-            ExprData::ExprFieldAccess {
-                summary: summary, ..
-            } => {
+            ExprData::ExprFieldAccess { summary, .. } => {
                 let field = field_access_field_at(expr_node.clone(), source_indices.clone());
                 v2_rt::concat(
                     v2_rt::concat(
@@ -1082,8 +1074,7 @@ pub fn serialize_expr_data(
                 )
             }
             ExprData::ExprMethodCall {
-                method_semantics: method_semantics,
-                ..
+                method_semantics, ..
             } => {
                 let method = expr_method_name_at(expr_node.clone(), source_indices.clone());
                 v2_rt::concat(
@@ -1147,7 +1138,7 @@ pub fn serialize_expr_data(
                 ),
                 "}".to_string(),
             ),
-            ExprData::ExprUnaryOp { op: op, .. } => v2_rt::concat(
+            ExprData::ExprUnaryOp { op, .. } => v2_rt::concat(
                 v2_rt::concat(
                     v2_rt::concat(
                         v2_rt::concat(
@@ -1213,10 +1204,7 @@ pub fn serialize_expr_data(
                 ),
                 "}".to_string(),
             ),
-            ExprData::ExprRecordLit {
-                parent_enum: parent_enum,
-                ..
-            } => {
+            ExprData::ExprRecordLit { parent_enum, .. } => {
                 let type_name = record_lit_type_name_at(expr_node.clone(), source_indices.clone());
                 v2_rt::concat(
                     v2_rt::concat(
@@ -1419,7 +1407,7 @@ pub fn serialize_inferred_node(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     match (*inferred).clone() {
-        InferredNode::Resolved { node: node, .. } => v2_rt::concat(
+        InferredNode::Resolved { node, .. } => v2_rt::concat(
             v2_rt::concat(
                 "{\"kind\": \"Resolved\", \"node\": ".to_string(),
                 serialize_node(&node, &source_indices),
@@ -1439,7 +1427,7 @@ pub fn serialize_inferred_node(
             ),
             "}".to_string(),
         ),
-        InferredNode::TypeVariable { id: id, .. } => v2_rt::concat(
+        InferredNode::TypeVariable { id, .. } => v2_rt::concat(
             v2_rt::concat(
                 "{\"kind\": \"TypeVariable\", \"id\": ".to_string(),
                 json_quote(id.clone()),
