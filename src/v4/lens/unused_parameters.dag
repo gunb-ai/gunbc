@@ -51,10 +51,14 @@ type UseClassificationFact {
 
 // BEHAVIORAL OUTPUT — registry-aligned (`LensIdV0::UnusedParameters` /
 // v3 declaration-centric query). Derived from `UseClassificationFact`
-// via `rollup_unused`; no parallel mechanism.
+// via `rollup_unused`; no parallel mechanism. The row holds the typed
+// reference (`declaration`) only — per-node `InferredFacts` flow forward
+// by reference via `tree.facts.lookup(declaration)` at use-sites
+// (Practice 3 / P2 — facts must not be copied onto carriers, even on
+// the registry-aligned row, otherwise the same parallel-payload defect
+// this ratchet dissolves leaks through the back door).
 type UnusedParameterFact {
   declaration: Node
-  declaration_facts: Witness<InferredFacts>
 }
 
 type UnusedParametersFact {
@@ -129,10 +133,9 @@ fn declaration_has_use(uses: List<ClassifiedDependencyView<UseRelation>>, declar
   })
 }
 
-fn unused_parameter_for_declaration(tree: InferredTree, declaration: Node) -> UnusedParameterFact {
+fn unused_parameter_for_declaration(declaration: Node) -> UnusedParameterFact {
   UnusedParameterFact {
-    declaration: declaration,
-    declaration_facts: tree.facts.lookup(declaration)
+    declaration: declaration
   }
 }
 
@@ -170,7 +173,7 @@ fn rollup_unused(use_fact: UseClassificationFact, tree: InferredTree) -> UnusedP
           if declaration_has_use(uses: use_fact.uses, declaration: candidate) {
             acc
           } else {
-            list_push(acc, unused_parameter_for_declaration(tree: tree, declaration: candidate))
+            list_push(acc, unused_parameter_for_declaration(declaration: candidate))
           }
         }
       } else {
@@ -249,7 +252,7 @@ fn use_classification_fact_eq(a: UseClassificationFact, b: UseClassificationFact
 }
 
 fn unused_parameter_fact_eq(a: UnusedParameterFact, b: UnusedParameterFact) -> Bool {
-  (a.declaration == b.declaration) && (a.declaration_facts == b.declaration_facts)
+  a.declaration == b.declaration
 }
 
 fn unused_parameter_count(xs: List<UnusedParameterFact>, item: UnusedParameterFact) -> Int {
