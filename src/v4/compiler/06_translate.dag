@@ -1,5 +1,5 @@
 // src/v4/compiler/06_translate.dag
-// Scope: Stage 5a — T-10 surface + fail-closed staging (not live translate on InferredTree yet).
+// Scope: Stage 5a — T-10 translate: fold_node + coercion_fold over infer-authored canonical grounding.
 // Owns: TargetNodeTree, TargetBundleChildLookup, target_model_edge_selection_policy,
 //       target_model_edge_declared_inhabitants, target_model_edge_serialize_emitted,
 //       target_model_edge_serialize_source, target_bundle_child, target_bundle_child_lookup_step,
@@ -10,9 +10,9 @@
 //       translate_node, translate.
 // Consumes: compiler/04_infer.dag, compiler/07_target_carriers.dag, std/coercion.dag, std/constraints.dag,
 //           std/find_witness.dag, std/diagnostic.dag, std/node.dag, std/witness.dag, std/collection.dag.
-// Status: W-T-10-impl staging — fold_node + coercion_fold call-shape; canonical_grounding and
-// coercion_fold now delegates to find_witness; translate still fails closed where canonical grounding
-// or target serialization scaffolds lack substrate facts.
+// Status: W-T-10 MVP-1 — live translate_node/coerce_grounded_node; canonical grounding from
+// InferredTree.facts (T-9); coercion via find_witness + declared_inhabitants (T-4 rust TargetModel).
+// serialize_source remains fail-closed until grammar-bidir inverse walk lands.
 // Anchor: docs/design-v4-compiler-homomorphism.md Stage 5a; Ratified Q14.
 
 
@@ -44,7 +44,6 @@ import v4.std.diagnostic {
   outcome_rejected,
   rejected_with_pending
 }
-import v4.std.find_witness { CandidateSet }
 import v4.std.node {
   Conj,
   Edge,
@@ -62,7 +61,7 @@ import v4.std.target_model {
   target_model_edge_serialize_emitted,
   target_model_edge_serialize_source
 }
-import v4.std.witness { StructuralPropertyWitness }
+import v4.std.witness { Holds, StructuralPropertyWitness, Violates }
 type TargetNodeTree = Node
 // Single-authority lookup state for TargetModel Conj bundles (P2/P3 fail-closed).
 type TargetBundleChildLookup
@@ -178,8 +177,8 @@ fn target_selection_priority_from_model(target: TargetModel) -> Outcome<Node> {
     }
   )
 }
-// `declared_inhabitants` edge names one closed candidate-set root Node on the target bundle;
-// std/coercion constructs the closed candidate list consumed by find_witness.
+// `declared_inhabitants` edge names one Conj root on the target bundle; std/coercion builds the
+// closed candidate list; find_witness expands Conj roots to per-primitive children.
 fn coercion_candidates_from_target_model(
   target: TargetModel
 ) -> Outcome<CoercionCandidateSet> {
@@ -193,10 +192,20 @@ fn coercion_candidates_from_target_model(
     }
   )
 }
-// RULING-1: needs-more-work — T-9 `infer` must author grounding via solve_constraints / enriched
-// InferredFacts; no Map-presence or compiler-side witness fabrication (INVARIANTS P3).
+// RULING-1: infer-authored canonical witness only — no compiler-side fabrication (INVARIANTS P3).
 fn canonical_grounding_for_node(tree: InferredTree, node: Node) -> Outcome<CanonicalGrounding> {
-  outcome_rejected(translate_canonical_grounding_not_realized_diagnostic(node: node))
+  match tree.facts.lookup(node) {
+    Holds { value: facts } =>
+      Accepted {
+        value: CanonicalGrounding {
+          node: facts.resolved_type,
+          witness: facts.canonical
+        },
+        diagnostics: None
+      }
+    Violates { diagnostic: _ } =>
+      outcome_rejected(translate_canonical_grounding_not_realized_diagnostic(node: node))
+  }
 }
 fn coerce_grounded_node(
   source: Node,
@@ -278,7 +287,7 @@ fn translate_node(
     }
   )
 }
-// input_lang threaded at stage boundary; translate_node ignores until T-4 rust.dag bundle lands.
+// input_lang threaded at stage boundary (LanguageModel carrier); coercion uses TargetModel only.
 fn translate(
   tree: InferredTree,
   target: TargetModel,

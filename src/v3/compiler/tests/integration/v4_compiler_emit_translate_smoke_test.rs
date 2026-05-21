@@ -23,6 +23,8 @@ use v3_compiler::parse_for_test;
 use v3_compiler::parse_surface::SurfaceItem;
 use v3_compiler::tokenize_for_test;
 
+const FIND_WITNESS_DAG: &str = include_str!("../../../../v4/std/find_witness.dag");
+const FIND_WITNESS_PATH: &str = "src/v4/std/find_witness.dag";
 const TRANSLATE_DAG: &str = include_str!("../../../../v4/compiler/06_translate.dag");
 const TRANSLATE_PATH: &str = "src/v4/compiler/06_translate.dag";
 const EMIT_DAG: &str = include_str!("../../../../v4/compiler/05_emit.dag");
