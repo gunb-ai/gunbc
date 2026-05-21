@@ -36,7 +36,7 @@ import v4.std.diagnostic {
   NodeLocus,
   Unavailable
 }
-import v4.std.node { Atom, Edge, Hash, Named, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Conj, Edge, Hash, Named, Node, Symbol, TypeNode }
 import v4.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
 
 data sr_unbound_use_symbol: Symbol = sr_unbound_use_symbol
@@ -47,19 +47,19 @@ data sr_unbound_algebra_witness_symbol: Symbol = sr_unbound_algebra_witness_symb
 data sr_unbound_descent_symbol: Symbol = sr_unbound_descent_symbol
 data sr_unbound_claim_hash: Hash = sr_unbound_claim_hash
 
-fn sr_unbound_claim_node(s: Symbol) -> Node {
+fn sr_unbound_claim_atom(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },
     children: []
   }
 }
 
-data sr_unbound_decl: Node = sr_unbound_claim_node(s: sr_unbound_decl_symbol)
+data sr_unbound_use: Node = sr_unbound_claim_atom(s: sr_unbound_use_symbol)
 
-data sr_unbound_use: Node = Node {
-  kind: TypeNode { connective: Atom { identity: sr_unbound_use_symbol } },
+data sr_unbound_decl: Node = Node {
+  kind: TypeNode { connective: Conj },
   children: [
-    Edge { label: Named { name: dependency_binds_to_edge }, target: sr_unbound_decl }
+    Edge { label: Named { name: dependency_binds_to_edge }, target: sr_unbound_use }
   ]
 }
 
@@ -84,12 +84,12 @@ fn sr_unbound_canonical_witness(resolved: Node) -> CanonicalGroundingWitness {
 }
 
 fn sr_unbound_resolved_facts() -> InferredFacts {
-  let resolved = sr_unbound_claim_node(s: sr_unbound_type_symbol)
+  let resolved = sr_unbound_claim_atom(s: sr_unbound_type_symbol)
   InferredFacts {
     resolved_type: resolved,
     inhabits: AlgebraRef {
-      algebra: sr_unbound_claim_node(s: sr_unbound_algebra_symbol),
-      witness: sr_unbound_claim_node(s: sr_unbound_algebra_witness_symbol)
+      algebra: sr_unbound_claim_atom(s: sr_unbound_algebra_symbol),
+      witness: sr_unbound_claim_atom(s: sr_unbound_algebra_witness_symbol)
     },
     descent: Holds {
       value: TerminationProof {
@@ -130,7 +130,7 @@ fn sr_unbound_claim_fact_map() -> Map<Node, InferredFacts> {
 
 fn sr_unbound_claim_tree() -> InferredTree {
   InferredTree {
-    root: sr_unbound_use,
+    root: sr_unbound_decl,
     facts: sr_unbound_claim_fact_map()
   }
 }

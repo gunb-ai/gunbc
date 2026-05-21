@@ -58,8 +58,9 @@ type DependencyFoldState {
 
 // 🟡 predicate dissolution — feature:dependency-usage-classifier-consumes-resolve-ground-facts
 // dissolve-on: T-9 resolve writes ModuleDependsOn / BootstrapDependsOn labels inline (BindsTo partial).
-// Staged: resolve will stamp `dependency_binds_to_edge` on Atom→Decl USE edges only (not bind-edge-0
-// binder target — `03_resolve.dag` resolve_bind_binder_target). Until T-9, claims mark use edges explicitly.
+// Staged: resolve will stamp `dependency_binds_to_edge` on declaration-container edges whose
+// target is the Atom reference (P6 Decl→AtomUse). Atom has NoEdges — it cannot be edge parent.
+// Not bind-edge-0 binder target (`03_resolve.dag` resolve_bind_binder_target). Claims mark explicitly until T-9.
 // Module/bootstrap markers remain claim-only until import/bootstrap producers land.
 // Bind nodes are NOT all BindsTo — edge 0 is binder target; edges 1+ are scope bodies (`resolve_bind_edges`).
 // Ordinary TypeNode Named record fields remain Contains (composition, not use).
@@ -87,16 +88,15 @@ fn classify_node_edge_usage(parent: Node, edge: Edge) -> DependencyKind {
 }
 
 // P6 BindsTo: declaration (source) before Atom use (dependent / usage_site).
-// Resolve stamps `dependency_binds_to_edge` on Atom→Decl use edges: parent = use site,
-// target = referenced declaration — not Decl→child composition.
+// Substrate edge: parent = decl container (Conj/LabeledEdges), target = Atom reference.
 fn dependency_view_for_edge(parent: Node, edge: Edge) -> DependencyView {
   let kind = classify_node_edge_usage(parent: parent, edge: edge)
   match kind {
     BindsTo => DependencyView {
-      source: edge.target,
-      dependent: parent,
+      source: parent,
+      dependent: edge.target,
       kind: BindsTo,
-      usage_site: parent
+      usage_site: edge.target
     }
     _ => DependencyView {
       source: parent,
