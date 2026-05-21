@@ -58,7 +58,7 @@ type StructuralResolutionStatus
 type StructuralResolutionDependencyFact {
   dependency: DependencyView
   source_facts: Witness<InferredFacts>
-  dependent_facts: Witness<InferredFacts>
+  usage_site_facts: Witness<InferredFacts>
 }
 
 type StructuralResolutionFact {
@@ -70,8 +70,9 @@ fn inferred_facts_for_node(tree: InferredTree, node: Node) -> Witness<InferredFa
 }
 
 // 🟡 staged — dissolve-on: T-9 resolve→infer witness bridge lands resolve Violates on fact table.
-fn status_for_binding_facts(dependent_facts: Witness<InferredFacts>) -> StructuralResolutionStatus {
-  match dependent_facts {
+// BindsTo status reads infer/resolve witnesses at the use site (P3), not declaration facts.
+fn status_for_binding_facts(usage_site_facts: Witness<InferredFacts>) -> StructuralResolutionStatus {
+  match usage_site_facts {
     Violates { diagnostic: d } =>
       if d.reason == resolve_reason_unbound_symbol {
         UnboundSymbolAtUse
@@ -86,10 +87,10 @@ fn status_for_binding_facts(dependent_facts: Witness<InferredFacts>) -> Structur
 
 fn status_for_dependency(
   view: DependencyView,
-  dependent_facts: Witness<InferredFacts>
+  usage_site_facts: Witness<InferredFacts>
 ) -> StructuralResolutionStatus {
   match view.kind {
-    BindsTo => status_for_binding_facts(dependent_facts: dependent_facts)
+    BindsTo => status_for_binding_facts(usage_site_facts: usage_site_facts)
     ModuleDependsOn => OutOfScopeDependencyKind
     BootstrapDependsOn => OutOfScopeDependencyKind
     Contains => OutOfScopeDependencyKind
@@ -110,7 +111,7 @@ fn status_for_dependency(
 fn status_of_dependency_fact(fact: StructuralResolutionDependencyFact) -> StructuralResolutionStatus {
   status_for_dependency(
     view: fact.dependency,
-    dependent_facts: fact.dependent_facts
+    usage_site_facts: fact.usage_site_facts
   )
 }
 
@@ -121,7 +122,7 @@ fn dependency_fact(
   StructuralResolutionDependencyFact {
     dependency: view,
     source_facts: inferred_facts_for_node(tree: tree, node: view.source),
-    dependent_facts: inferred_facts_for_node(tree: tree, node: view.dependent)
+    usage_site_facts: inferred_facts_for_node(tree: tree, node: view.usage_site)
   }
 }
 
@@ -175,7 +176,7 @@ fn dependency_fact_eq(
 ) -> Bool {
   (a.dependency == b.dependency)
     && (a.source_facts == b.source_facts)
-    && (a.dependent_facts == b.dependent_facts)
+    && (a.usage_site_facts == b.usage_site_facts)
 }
 
 fn dependency_count(

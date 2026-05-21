@@ -30,8 +30,8 @@ import v4.std.dependency {
 import v4.std.node { Atom, Edge, Hash, Named, Node, Symbol, TypeNode }
 import v4.std.witness { Holds, StructuralPropertyWitness, Witness }
 
-data sr_root_symbol: Symbol = sr_root_symbol
-data sr_child_symbol: Symbol = sr_child_symbol
+data sr_use_symbol: Symbol = sr_use_symbol
+data sr_decl_symbol: Symbol = sr_decl_symbol
 data sr_type_symbol: Symbol = sr_type_symbol
 data sr_algebra_symbol: Symbol = sr_algebra_symbol
 data sr_algebra_witness_symbol: Symbol = sr_algebra_witness_symbol
@@ -45,20 +45,21 @@ fn sr_claim_node(s: Symbol) -> Node {
   }
 }
 
-data sr_child: Node = sr_claim_node(s: sr_child_symbol)
+// Atom use site → referenced declaration (T-9 production edge orientation).
+data sr_decl: Node = sr_claim_node(s: sr_decl_symbol)
 
-data sr_root: Node = Node {
-  kind: TypeNode { connective: Atom { identity: sr_root_symbol } },
+data sr_use: Node = Node {
+  kind: TypeNode { connective: Atom { identity: sr_use_symbol } },
   children: [
-    Edge { label: Named { name: dependency_binds_to_edge }, target: sr_child }
+    Edge { label: Named { name: dependency_binds_to_edge }, target: sr_decl }
   ]
 }
 
 data sr_dependency: DependencyView = DependencyView {
-  source: sr_root,
-  dependent: sr_child,
+  source: sr_decl,
+  dependent: sr_use,
   kind: BindsTo,
-  usage_site: sr_child
+  usage_site: sr_use
 }
 
 fn sr_claim_canonical_witness(resolved: Node) -> CanonicalGroundingWitness {
@@ -103,7 +104,7 @@ fn sr_claim_fact_map(facts: InferredFacts) -> Map<Node, InferredFacts> {
 fn sr_claim_tree() -> InferredTree {
   let facts = sr_claim_facts()
   InferredTree {
-    root: sr_root,
+    root: sr_use,
     facts: sr_claim_fact_map(facts: facts)
   }
 }
@@ -121,7 +122,7 @@ data binds_to_resolved_claim: LensStructuralResolutionClaim = LensStructuralReso
       StructuralResolutionDependencyFact {
         dependency: sr_dependency,
         source_facts: Holds { value: sr_claim_facts() },
-        dependent_facts: Holds { value: sr_claim_facts() }
+        usage_site_facts: Holds { value: sr_claim_facts() }
       }
     ]
   },

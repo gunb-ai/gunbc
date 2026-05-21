@@ -39,8 +39,8 @@ import v4.std.diagnostic {
 import v4.std.node { Atom, Edge, Hash, Named, Node, Symbol, TypeNode }
 import v4.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
 
-data sr_unbound_root_symbol: Symbol = sr_unbound_root_symbol
-data sr_unbound_child_symbol: Symbol = sr_unbound_child_symbol
+data sr_unbound_use_symbol: Symbol = sr_unbound_use_symbol
+data sr_unbound_decl_symbol: Symbol = sr_unbound_decl_symbol
 data sr_unbound_type_symbol: Symbol = sr_unbound_type_symbol
 data sr_unbound_algebra_symbol: Symbol = sr_unbound_algebra_symbol
 data sr_unbound_algebra_witness_symbol: Symbol = sr_unbound_algebra_witness_symbol
@@ -54,20 +54,20 @@ fn sr_unbound_claim_node(s: Symbol) -> Node {
   }
 }
 
-data sr_unbound_child: Node = sr_unbound_claim_node(s: sr_unbound_child_symbol)
+data sr_unbound_decl: Node = sr_unbound_claim_node(s: sr_unbound_decl_symbol)
 
-data sr_unbound_root: Node = Node {
-  kind: TypeNode { connective: Atom { identity: sr_unbound_root_symbol } },
+data sr_unbound_use: Node = Node {
+  kind: TypeNode { connective: Atom { identity: sr_unbound_use_symbol } },
   children: [
-    Edge { label: Named { name: dependency_binds_to_edge }, target: sr_unbound_child }
+    Edge { label: Named { name: dependency_binds_to_edge }, target: sr_unbound_decl }
   ]
 }
 
 data sr_unbound_dependency: DependencyView = DependencyView {
-  source: sr_unbound_root,
-  dependent: sr_unbound_child,
+  source: sr_unbound_decl,
+  dependent: sr_unbound_use,
   kind: BindsTo,
-  usage_site: sr_unbound_child
+  usage_site: sr_unbound_use
 }
 
 fn sr_unbound_canonical_witness(resolved: Node) -> CanonicalGroundingWitness {
@@ -109,9 +109,9 @@ fn sr_unbound_symbol_diagnostic(n: Node) -> Diagnostic {
   }
 }
 
-fn sr_unbound_dependent_witness() -> Witness<InferredFacts> {
+fn sr_unbound_usage_site_witness() -> Witness<InferredFacts> {
   Violates {
-    diagnostic: sr_unbound_symbol_diagnostic(n: sr_unbound_child)
+    diagnostic: sr_unbound_symbol_diagnostic(n: sr_unbound_use)
   }
 }
 
@@ -119,8 +119,8 @@ fn sr_unbound_claim_fact_map() -> Map<Node, InferredFacts> {
   let resolved = sr_unbound_resolved_facts()
   Map {
     lookup: fn(key) {
-      if key == sr_unbound_child {
-        sr_unbound_dependent_witness()
+      if key == sr_unbound_use {
+        sr_unbound_usage_site_witness()
       } else {
         Holds { value: resolved }
       }
@@ -130,7 +130,7 @@ fn sr_unbound_claim_fact_map() -> Map<Node, InferredFacts> {
 
 fn sr_unbound_claim_tree() -> InferredTree {
   InferredTree {
-    root: sr_unbound_root,
+    root: sr_unbound_use,
     facts: sr_unbound_claim_fact_map()
   }
 }
@@ -148,7 +148,7 @@ data unbound_symbol_at_use_claim: LensStructuralResolutionClaim = LensStructural
       StructuralResolutionDependencyFact {
         dependency: sr_unbound_dependency,
         source_facts: Holds { value: sr_unbound_resolved_facts() },
-        dependent_facts: sr_unbound_dependent_witness()
+        usage_site_facts: sr_unbound_usage_site_witness()
       }
     ]
   },

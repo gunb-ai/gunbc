@@ -121,7 +121,7 @@ data module_import_out_of_scope_claim: LensStructuralResolutionClaim = LensStruc
       StructuralResolutionDependencyFact {
         dependency: sr_mod_dependency,
         source_facts: Holds { value: sr_mod_claim_facts() },
-        dependent_facts: Holds { value: sr_mod_claim_facts() }
+        usage_site_facts: Holds { value: sr_mod_claim_facts() }
       }
     ]
   },

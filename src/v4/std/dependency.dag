@@ -86,12 +86,25 @@ fn classify_node_edge_usage(parent: Node, edge: Edge) -> DependencyKind {
   }
 }
 
+// P6 BindsTo: declaration (source) before Atom use (dependent / usage_site).
+// Resolve stamps `dependency_binds_to_edge` on Atom→Decl use edges: parent = use site,
+// target = referenced declaration — not Decl→child composition.
 fn dependency_view_for_edge(parent: Node, edge: Edge) -> DependencyView {
-  DependencyView {
-    source: parent,
-    dependent: edge.target,
-    kind: classify_node_edge_usage(parent: parent, edge: edge),
-    usage_site: edge.target
+  let kind = classify_node_edge_usage(parent: parent, edge: edge)
+  if kind == BindsTo {
+    DependencyView {
+      source: edge.target,
+      dependent: parent,
+      kind: BindsTo,
+      usage_site: parent
+    }
+  } else {
+    DependencyView {
+      source: parent,
+      dependent: edge.target,
+      kind: kind,
+      usage_site: edge.target
+    }
   }
 }
 
