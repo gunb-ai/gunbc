@@ -18,7 +18,6 @@ import v4.compiler.infer {
   infer
 }
 import v4.std.algebra { Empty }
-import v4.std.cardinality { TerminationProof }
 import v4.std.witness { Violates, Witness }
 import v4.std.collection { Map }
 import v4.std.diagnostic {
