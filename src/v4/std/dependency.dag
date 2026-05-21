@@ -8,8 +8,6 @@ module v4.std.dependency
 
 import v4.std.collection { List }
 import v4.std.node {
-  Bind,
-  ComputationNode,
   Edge,
   Named,
   Node,
