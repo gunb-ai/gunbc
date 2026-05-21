@@ -7,7 +7,7 @@
 module v4.test.claim.lens_effect.effect_depends_on
 
 import v4.compiler.infer { AlgebraRef, InferredFacts, InferredTree }
-import v4.lens.effect { EffectFact, effect_fact_from_dependencies, effect_witness }
+import v4.lens.effect { EffectFact, effect_fact_eq, effect_fact_from_dependencies, effect_witness }
 import v4.std.cardinality { RankingDimension, TerminationProof }
 import v4.std.collection { Map }
 import v4.std.dependency { DependencyView, EffectDependsOn }
@@ -85,5 +85,13 @@ type LensEffectClaim {
 data effect_depends_on_claim: LensEffectClaim = LensEffectClaim {
   input: effect_claim_tree(),
   expected: effect_fact_from_dependencies(dependencies: [effect_dependency]),
-  actual: effect_witness(tree: effect_claim_tree())
+  actual: effect_witness(tree: effect_claim_tree(), dependencies: [effect_dependency])
+}
+
+fn effect_depends_on_claim_holds() -> Bool {
+  match effect_depends_on_claim.actual {
+    Holds { value: actual } =>
+      effect_fact_eq(a: actual, b: effect_depends_on_claim.expected)
+    _ => false
+  }
 }

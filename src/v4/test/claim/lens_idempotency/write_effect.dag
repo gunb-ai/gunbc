@@ -9,6 +9,7 @@ module v4.test.claim.lens_idempotency.write_effect
 import v4.compiler.infer { AlgebraRef, InferredFacts, InferredTree }
 import v4.lens.idempotency {
   IdempotencyFact,
+  idempotency_fact_eq,
   idempotency_fact_from_effect_dependencies,
   idempotency_witness
 }
@@ -89,5 +90,13 @@ type LensIdempotencyClaim {
 data idempotency_write_effect_claim: LensIdempotencyClaim = LensIdempotencyClaim {
   input: idempotency_claim_tree(),
   expected: idempotency_fact_from_effect_dependencies(dependencies: [idempotency_dependency]),
-  actual: idempotency_witness(tree: idempotency_claim_tree())
+  actual: idempotency_witness(tree: idempotency_claim_tree(), dependencies: [idempotency_dependency])
+}
+
+fn idempotency_write_effect_claim_holds() -> Bool {
+  match idempotency_write_effect_claim.actual {
+    Holds { value: actual } =>
+      idempotency_fact_eq(a: actual, b: idempotency_write_effect_claim.expected)
+    _ => false
+  }
 }

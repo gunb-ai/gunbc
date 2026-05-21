@@ -7,7 +7,12 @@
 module v4.test.claim.lens_ownership.resource_dependency
 
 import v4.compiler.infer { AlgebraRef, InferredFacts, InferredTree }
-import v4.lens.ownership { OwnershipFact, ownership_fact_from_dependencies, ownership_witness }
+import v4.lens.ownership {
+  OwnershipFact,
+  ownership_fact_eq,
+  ownership_fact_from_dependencies,
+  ownership_witness
+}
 import v4.std.cardinality { RankingDimension, TerminationProof }
 import v4.std.collection { Map }
 import v4.std.dependency { DependencyView, ResourceDependsOn }
@@ -85,5 +90,13 @@ type LensOwnershipClaim {
 data ownership_resource_dependency_claim: LensOwnershipClaim = LensOwnershipClaim {
   input: ownership_claim_tree(),
   expected: ownership_fact_from_dependencies(dependencies: [ownership_dependency]),
-  actual: ownership_witness(tree: ownership_claim_tree())
+  actual: ownership_witness(tree: ownership_claim_tree(), dependencies: [ownership_dependency])
+}
+
+fn ownership_resource_dependency_claim_holds() -> Bool {
+  match ownership_resource_dependency_claim.actual {
+    Holds { value: actual } =>
+      ownership_fact_eq(a: actual, b: ownership_resource_dependency_claim.expected)
+    _ => false
+  }
 }
