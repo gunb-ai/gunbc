@@ -67,6 +67,9 @@ pub use crate::v2_compiler_ownership::{
 };
 pub use crate::v2_compiler_runtime_rust::rust_runtime_source;
 use crate::v2_rt;
+use crate::v2_rt::{
+    rc_empty_set as empty_set, rc_set_insert as set_insert, rc_set_union as set_union, set_contains,
+};
 use crate::v2_std_core::AlgebraFieldKind::*;
 use crate::v2_std_core::BinOp::*;
 use crate::v2_std_core::CallSemantics::{LookupCallSemantics, PlainCallSemantics};
@@ -1588,8 +1591,7 @@ pub fn build_ownership_results(modules: &Rc<Vec<Rc<TypedModule>>>) -> Rc<Ownersh
     {
         let callable_set = modules.clone().iter().cloned().fold(
             empty_set(),
-            |acc: Rc<std::collections::BTreeSet<compile_error!("UNRESOLVED_TypeVariable")>>,
-             m: Rc<TypedModule>| {
+            |acc: Rc<std::collections::BTreeSet<String>>, m: Rc<TypedModule>| {
                 Rc::new({
                     let mut __result = Vec::new();
                     for item in m.items.clone().iter().cloned() {
@@ -1603,10 +1605,7 @@ pub fn build_ownership_results(modules: &Rc<Vec<Rc<TypedModule>>>) -> Rc<Ownersh
                 .cloned()
                 .fold(
                     acc,
-                    |inner: Rc<
-                        std::collections::BTreeSet<compile_error!("UNRESOLVED_TypeVariable")>,
-                    >,
-                     item: Rc<Node>| {
+                    |inner: Rc<std::collections::BTreeSet<String>>, item: Rc<Node>| {
                         set_union(
                             inner,
                             collect_callable_refs(
@@ -1639,12 +1638,7 @@ pub fn build_ownership_results(modules: &Rc<Vec<Rc<TypedModule>>>) -> Rc<Ownersh
                             __result.push({
                                 let pnames = item.params.clone().iter().cloned().fold(
                                     empty_set(),
-                                    |acc: Rc<
-                                        std::collections::BTreeSet<
-                                            compile_error!("UNRESOLVED_TypeVariable"),
-                                        >,
-                                    >,
-                                     p: Rc<Node>| {
+                                    |acc: Rc<std::collections::BTreeSet<String>>, p: Rc<Node>| {
                                         set_insert(
                                             acc,
                                             param_node_name_at(
@@ -2616,7 +2610,7 @@ pub fn emit_imports(
 pub fn emit_prelude() -> String {
     {
         let use_line =
-            "use std::collections::HashMap;\nuse std::rc::Rc;\nuse crate::v2_rt;".to_string();
+            "use std::collections::HashMap;\nuse std::rc::Rc;\nuse crate::v2_rt;\nuse crate::v2_rt::{rc_empty_set as empty_set, rc_set_insert as set_insert, rc_set_union as set_union, set_contains};".to_string();
         let wrapper_use = "use crate::NonEmptyVec;\nuse crate::NonEmptyBTreeSet;".to_string();
         v2_rt::concat(v2_rt::concat(use_line, "\n".to_string()), wrapper_use)
     }
@@ -4887,16 +4881,8 @@ pub fn emit_variant_pattern(
                         None => name.clone(),
                     };
                     let is_fielded =
-                        match v2_rt::map_get(&emit_info.fielded_variants.clone(), fielded_key) {
-                            Some(true) => true,
-                            _ => match v2_rt::map_get(
-                                &emit_info.fielded_variants.clone(),
-                                qualified.clone(),
-                            ) {
-                                Some(true) => true,
-                                _ => false,
-                            },
-                        };
+                        (set_contains(emit_info.fielded_variants.clone(), fielded_key)
+                            || set_contains(emit_info.fielded_variants.clone(), qualified.clone()));
                     if is_fielded {
                         v2_rt::concat(qualified.clone(), " { .. }".to_string())
                     } else {
@@ -4926,19 +4912,12 @@ pub fn emit_variant_pattern(
                                 ),
                                 None => name.clone(),
                             };
-                            let is_fielded2 = match v2_rt::map_get(
-                                &emit_info.fielded_variants.clone(),
-                                fielded_key2,
-                            ) {
-                                Some(true) => true,
-                                _ => match v2_rt::map_get(
-                                    &emit_info.fielded_variants.clone(),
-                                    qualified.clone(),
-                                ) {
-                                    Some(true) => true,
-                                    _ => false,
-                                },
-                            };
+                            let is_fielded2 =
+                                (set_contains(emit_info.fielded_variants.clone(), fielded_key2)
+                                    || set_contains(
+                                        emit_info.fielded_variants.clone(),
+                                        qualified.clone(),
+                                    ));
                             if is_fielded2 {
                                 v2_rt::concat(qualified.clone(), " { .. }".to_string())
                             } else {
@@ -5320,16 +5299,8 @@ pub fn emit_variant_pattern_rc_aware(
                         None => name.clone(),
                     };
                     let is_fielded =
-                        match v2_rt::map_get(&emit_info.fielded_variants.clone(), fielded_key) {
-                            Some(true) => true,
-                            _ => match v2_rt::map_get(
-                                &emit_info.fielded_variants.clone(),
-                                qualified.clone(),
-                            ) {
-                                Some(true) => true,
-                                _ => false,
-                            },
-                        };
+                        (set_contains(emit_info.fielded_variants.clone(), fielded_key)
+                            || set_contains(emit_info.fielded_variants.clone(), qualified.clone()));
                     if is_fielded {
                         v2_rt::concat(qualified.clone(), " { .. }".to_string())
                     } else {
@@ -5359,19 +5330,12 @@ pub fn emit_variant_pattern_rc_aware(
                                 ),
                                 None => name.clone(),
                             };
-                            let is_fielded2 = match v2_rt::map_get(
-                                &emit_info.fielded_variants.clone(),
-                                fielded_key2,
-                            ) {
-                                Some(true) => true,
-                                _ => match v2_rt::map_get(
-                                    &emit_info.fielded_variants.clone(),
-                                    qualified.clone(),
-                                ) {
-                                    Some(true) => true,
-                                    _ => false,
-                                },
-                            };
+                            let is_fielded2 =
+                                (set_contains(emit_info.fielded_variants.clone(), fielded_key2)
+                                    || set_contains(
+                                        emit_info.fielded_variants.clone(),
+                                        qualified.clone(),
+                                    ));
                             if is_fielded2 {
                                 v2_rt::concat(qualified.clone(), " { .. }".to_string())
                             } else {
@@ -8028,6 +7992,7 @@ pub fn emit_typed_fold_lambda(
                 == "Rc<Vec<()>>".to_string().as_str())
                 || (acc_type_str.clone().as_str() == "Vec<()>".to_string().as_str()))
                 || (acc_type_str.clone().as_str() == "Option<()>".to_string().as_str()))
+                || acc_type_str.contains("compile_error!")
             {
                 "_".to_string()
             } else {
@@ -8280,10 +8245,9 @@ pub fn emit_rust_fold_method_call(
                             ownership_index: emit_info.ownership_index.clone(),
                             movable: emit_info.movable.clone(),
                             variant_to_enum: emit_info.variant_to_enum.clone(),
-                            owned_bindings: v2_rt::rc_map_insert(
+                            owned_bindings: set_insert(
                                 emit_info.owned_bindings.clone(),
                                 acc_name.clone(),
-                                true,
                             ),
                             read_only_params_index: emit_info.read_only_params_index.clone(),
                             read_only_params: emit_info.read_only_params.clone(),
@@ -8308,11 +8272,7 @@ pub fn emit_rust_fold_method_call(
                                 fielded_variants: emit_info.fielded_variants.clone(),
                                 shared_types: emit_info.shared_types.clone(),
                                 ownership_index: emit_info.ownership_index.clone(),
-                                movable: v2_rt::rc_map_insert(
-                                    emit_info.movable.clone(),
-                                    acc_name.clone(),
-                                    true,
-                                ),
+                                movable: set_insert(emit_info.movable.clone(), acc_name.clone()),
                                 variant_to_enum: emit_info.variant_to_enum.clone(),
                                 owned_bindings: emit_info.owned_bindings.clone(),
                                 read_only_params_index: emit_info.read_only_params_index.clone(),

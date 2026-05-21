@@ -49,6 +49,9 @@ pub use crate::v2_compiler_languages::{
     TcoSyntax, TestConventions, TestNameStyle, VariantPatternSyntax, VisibilitySpec,
 };
 use crate::v2_rt;
+use crate::v2_rt::{
+    rc_empty_set as empty_set, rc_set_insert as set_insert, rc_set_union as set_union, set_contains,
+};
 use crate::v2_std_core::AlgebraFieldKind::*;
 use crate::v2_std_core::BinOp::NullCoalesce;
 use crate::v2_std_core::Cardinality::CardOptional;
@@ -2047,7 +2050,33 @@ pub fn render_node_type(
                                 emit_container(&to_snake(tn.clone()), inner, &target)
                             }
                         } else {
-                            if (tn.clone().as_str() == tuple_type_name().as_str()) {
+                            if (param_count > 0) {
+                                {
+                                    let param_strs = Rc::new({
+                                        let mut __result = Vec::new();
+                                        for p in n.params.clone().iter().cloned() {
+                                            __result.push(render_node_type(
+                                                &param_node_type_expr(&p),
+                                                &target,
+                                                &shared_types,
+                                                &source_indices,
+                                            ));
+                                        }
+                                        __result
+                                    });
+                                    let spec = language_spec(target.clone());
+                                    v2_rt::concat(
+                                        v2_rt::concat(
+                                            v2_rt::concat(
+                                                coerce_primitive_type(target.clone(), tn.clone()),
+                                                spec.type_arg_open.clone(),
+                                            ),
+                                            param_strs.join(&", ".to_string()),
+                                        ),
+                                        spec.type_arg_close.clone(),
+                                    )
+                                }
+                            } else if (tn.clone().as_str() == tuple_type_name().as_str()) {
                                 render_tuple_parts(&Rc::new(vec![]), target.clone())
                             } else {
                                 coerce_primitive_type(target.clone(), tn.clone())

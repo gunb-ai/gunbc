@@ -63,6 +63,9 @@ pub use crate::v2_compiler_parse::{
     ParserCallIdentity, ParserResultWitness,
 };
 use crate::v2_rt;
+use crate::v2_rt::{
+    rc_empty_set as empty_set, rc_set_insert as set_insert, rc_set_union as set_union, set_contains,
+};
 use crate::v2_std_core::BinOp::{Div, Sub};
 use crate::v2_std_core::ExprData::{
     ExprBinOp, ExprBlock, ExprCall, ExprError, ExprFieldAccess, ExprForEach, ExprIf, ExprLambda,
@@ -6999,12 +7002,7 @@ pub fn build_scc_index(
                         );
                         let member_set = component.members.clone().iter().cloned().fold(
                             empty_set(),
-                            |inner: Rc<
-                                std::collections::BTreeSet<
-                                    compile_error!("UNRESOLVED_TypeVariable"),
-                                >,
-                            >,
-                             member: String| {
+                            |inner: Rc<std::collections::BTreeSet<String>>, member: String| {
                                 set_insert(inner, member.clone())
                             },
                         );
