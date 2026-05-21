@@ -48,7 +48,8 @@ pub use crate::v2_compiler_infer_items::{
 pub use crate::v2_compiler_infer_lookup::{
     field_summary_for_type, lookup_coproduct_common_field_node, lookup_field_type_node,
     lookup_func_sig, lookup_in_scope, map_key_type_in_env, map_value_type_in_env,
-    resolve_known_method_node, resolve_scrutinee_type_node, KnownMethodResolution,
+    resolve_known_method_node, resolve_scrutinee_type_node, set_element_type_in_env,
+    KnownMethodResolution,
 };
 pub use crate::v2_compiler_infer_method::{
     builtin_kernel_seed_diagnostics, infer_builtin_call_type, resolve_builtin_call_type,
@@ -71,16 +72,21 @@ pub use crate::v2_compiler_infer_sigs::{
     resolve_func_sigs, ResolveFuncSigsResult, ResolvedFuncEnv, ResolvedFuncSig,
 };
 pub use crate::v2_compiler_infer_types::{
-    bare_map_node, callable_inferred, child_type_node, emit_map_has, extract_optional_inner_node,
-    for_each_element_type_node, infer_binop_type_node, infer_literal_node, is_fully_resolved,
-    make_callable_type, make_container_type, method_receiver_element_node, node_is_collection,
-    node_is_element_collection, node_is_keyed_collection, node_type_compatible, node_type_deps,
+    bare_map_node, bare_set_node, callable_inferred, child_type_node, emit_map_has,
+    extract_optional_inner_node, for_each_element_type_node, infer_binop_type_node,
+    infer_literal_node, is_fully_resolved, make_callable_type, make_container_type,
+    method_receiver_element_node, node_is_collection, node_is_element_collection,
+    node_is_keyed_collection, node_is_set_collection, node_type_compatible, node_type_deps,
     node_type_equals, node_type_shape, nominal_type_ref, normalize_access_type_node,
     prefer_specific_type, resolve_type_variables_from_template, resolved_type,
     template_return_has_variables, template_return_is_receiver_self, KernelTypeBuild,
 };
 pub use crate::v2_compiler_resolve::{ModuleGraph, ResolvedImport, ResolvedModule};
 use crate::v2_rt;
+use crate::v2_rt::rc_empty_set as empty_set;
+use crate::v2_rt::rc_set_insert as set_insert;
+use crate::v2_rt::rc_set_union as set_union;
+use crate::v2_rt::set_contains;
 use crate::v2_std_core::BinOp::{
     Add, And, Div, Eq, Ge, Gt, Le, Lt, Mod, Mul, Ne, NullCoalesce, Or, Sub,
 };
@@ -494,13 +500,6 @@ pub fn nominal_type_binding(name: &String) -> Rc<TypeBinding> {
     })
 }
 
-pub fn set_has(m: Rc<HashMap<String, bool>>, key: String) -> bool {
-    match v2_rt::map_get(&m, key) {
-        Some(_) => true,
-        None => false,
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FieldRecursionResult {
     pub shape: RecursionShape,
@@ -510,7 +509,7 @@ pub struct FieldRecursionResult {
 pub fn classify_field_recursion(
     field_node: &Rc<Node>,
     parent_name: &String,
-    recursive_type_set: Rc<HashMap<String, bool>>,
+    recursive_type_set: Rc<std::collections::BTreeSet<String>>,
     source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<FieldRecursionResult>> {
     {
@@ -549,7 +548,7 @@ pub fn classify_field_recursion(
                     };
                     let is_recursive_element = ((value_type.clone().as_str()
                         == parent_name.clone().as_str())
-                        || set_has(recursive_type_set, value_type.clone()));
+                        || v2_rt::set_contains(recursive_type_set, value_type.clone()));
                     if is_recursive_element {
                         {
                             let elem =
@@ -579,7 +578,7 @@ pub fn classify_field_recursion(
                     }
                 }
             } else {
-                if set_has(recursive_type_set, field_type_name.clone()) {
+                if v2_rt::set_contains(recursive_type_set, field_type_name.clone()) {
                     match field_node.return_cardinality.clone() {
                         Cardinality::CardOptional => Some(Rc::new(FieldRecursionResult {
                             shape: RecursionShape::OptionalRecursion,
@@ -602,7 +601,7 @@ pub fn collect_fields_inductive(
     fields: Rc<Vec<Rc<Node>>>,
     parent_name: String,
     variant_name: String,
-    recursive_type_set: Rc<HashMap<String, bool>>,
+    recursive_type_set: Rc<std::collections::BTreeSet<String>>,
     acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
@@ -631,7 +630,7 @@ pub fn collect_fields_inductive(
 
 pub fn collect_item_inductive_fields(
     item: &Rc<Node>,
-    recursive_type_set: Rc<HashMap<String, bool>>,
+    recursive_type_set: Rc<std::collections::BTreeSet<String>>,
     source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
     {
@@ -666,7 +665,7 @@ pub fn collect_item_inductive_fields(
 
 pub fn build_item_inductive_fields(
     items: Rc<Vec<Rc<Node>>>,
-    recursive_type_set: Rc<HashMap<String, bool>>,
+    recursive_type_set: Rc<std::collections::BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
     items.iter().cloned().fold(
@@ -1029,10 +1028,33 @@ pub fn infer_tier2b_builtin_with_kernel_diags(
                     }),
                 }
             } else {
-                Rc::new(Tier2bBt {
-                    bt: resolve_builtin_call_type(func_name.clone()),
-                    kernel_diags: Rc::new(vec![]),
-                })
+                if ((func_name.clone().as_str() == "set_insert".to_string().as_str())
+                    || (func_name.clone().as_str() == "set_union".to_string().as_str()))
+                {
+                    Rc::new(Tier2bBt {
+                        bt: match typed_args.first().cloned() {
+                            Some(receiver_arg) => match arg_value(&receiver_arg)
+                                .inferred
+                                .clone()
+                                .as_deref()
+                                .cloned()
+                            {
+                                Some(InferredNode::Resolved {
+                                    node: receiver_type,
+                                    ..
+                                }) => receiver_type.clone(),
+                                _ => resolve_builtin_call_type(func_name.clone()),
+                            },
+                            None => resolve_builtin_call_type(func_name.clone()),
+                        },
+                        kernel_diags: Rc::new(vec![]),
+                    })
+                } else {
+                    Rc::new(Tier2bBt {
+                        bt: resolve_builtin_call_type(func_name.clone()),
+                        kernel_diags: Rc::new(vec![]),
+                    })
+                }
             }
         }
     }
@@ -2680,129 +2702,183 @@ match bare_m {
 }
                                 }
                             } else {
-                                if (infer_builtin_call_type(func_name.clone()) != None) {
+                                if (func_name.clone().as_str() == "empty_set".to_string().as_str())
+                                {
                                     {
-                                        let tier2b = infer_tier2b_builtin_with_kernel_diags(
-                                            &func_name,
-                                            typed_args.clone(),
-                                            scope.clone(),
-                                            span.clone(),
-                                        );
-                                        let bt = tier2b.bt.clone();
-                                        let call_semantics = if (func_name.clone().as_str()
-                                            == "lookup".to_string().as_str())
-                                        {
-                                            Some(CallSemantics::LookupCallSemantics)
-                                        } else {
-                                            Some(CallSemantics::PlainCallSemantics)
-                                        };
+                                        let bare_s = bare_set_node();
+                                        match expected.clone() {
+    Some(exp) => if node_is_set_collection(&exp, &scope.type_env.clone().source_indices.clone()) {
                                         Rc::new(InferResult {
-                                            typed: make_named_expr_node(
-                                                &func_name,
-                                                Rc::new(ExprData::ExprCall {
-                                                    call_semantics: call_semantics,
-                                                    descent_evidence: None,
-                                                }),
-                                                typed_arg_nodes,
-                                                Some(Rc::new(InferredNode::Resolved { node: bt })),
-                                                span.clone(),
-                                                node_name_span(&texpr),
-                                            ),
-                                            diagnostics: v2_rt::concat(
-                                                arg_diags,
-                                                tier2b.kernel_diags.clone(),
-                                            ),
-                                        })
+    typed: make_named_expr_node(&func_name, Rc::new(ExprData::ExprCall {
+    call_semantics: Some(CallSemantics::PlainCallSemantics),
+    descent_evidence: None,
+}), typed_arg_nodes, Some(Rc::new(InferredNode::Resolved {
+    node: exp.clone(),
+})), span.clone(), node_name_span(&texpr)),
+    diagnostics: arg_diags,
+})
+                                    } else {
+                                        {
+                                            let empty_set_diags = v2_rt::concat(arg_diags, Rc::new(vec![inference_error("empty_set(): expected type is not Set<...>".to_string(), span.clone(), scope.module_name.clone())]));
+match bare_s {
+    Some(set_t) => Rc::new(InferResult {
+    typed: make_named_expr_node(&func_name, Rc::new(ExprData::ExprCall {
+    call_semantics: Some(CallSemantics::PlainCallSemantics),
+    descent_evidence: None,
+}), typed_arg_nodes, Some(Rc::new(InferredNode::Resolved {
+    node: set_t.clone(),
+})), span.clone(), node_name_span(&texpr)),
+    diagnostics: empty_set_diags,
+}),
+    None => Rc::new(InferResult {
+    typed: make_named_expr_node(&func_name, Rc::new(ExprData::ExprCall {
+    call_semantics: Some(CallSemantics::PlainCallSemantics),
+    descent_evidence: None,
+}), typed_arg_nodes, Some(Rc::new(InferredNode::CompilerError {
+    message: "empty_set(): Set kernel container profile missing (compiler misconfigured)".to_string(),
+    span: span.clone(),
+})), span.clone(), node_name_span(&texpr)),
+    diagnostics: v2_rt::concat(empty_set_diags, Rc::new(vec![inference_error("empty_set(): Set kernel container profile missing".to_string(), span.clone(), scope.module_name.clone())])),
+}),
+}
+}
+                                    },
+    None => match bare_s {
+    Some(set_t) => Rc::new(InferResult {
+    typed: make_named_expr_node(&func_name, Rc::new(ExprData::ExprCall {
+    call_semantics: Some(CallSemantics::PlainCallSemantics),
+    descent_evidence: None,
+}), typed_arg_nodes, Some(Rc::new(InferredNode::Resolved {
+    node: set_t.clone(),
+})), span.clone(), node_name_span(&texpr)),
+    diagnostics: arg_diags,
+}),
+    None => Rc::new(InferResult {
+    typed: make_named_expr_node(&func_name, Rc::new(ExprData::ExprCall {
+    call_semantics: Some(CallSemantics::PlainCallSemantics),
+    descent_evidence: None,
+}), typed_arg_nodes, Some(Rc::new(InferredNode::CompilerError {
+    message: "empty_set(): Set kernel container profile missing (compiler misconfigured)".to_string(),
+    span: span.clone(),
+})), span.clone(), node_name_span(&texpr)),
+    diagnostics: v2_rt::concat(arg_diags, Rc::new(vec![inference_error("empty_set(): Set kernel container profile missing".to_string(), span.clone(), scope.module_name.clone())])),
+}),
+},
+}
                                     }
                                 } else {
-                                    {
-                                        let callable_local = match v2_rt::map_get(
-                                            &scope.locals.clone(),
-                                            func_name.clone(),
-                                        ) {
-                                            Some(binding) => {
-                                                if ((binding.resolved.clone().params.clone().len()
-                                                    as i64)
-                                                    > 0)
-                                                {
-                                                    Some(binding.resolved.clone())
-                                                } else {
-                                                    None
+                                    if (infer_builtin_call_type(func_name.clone()) != None) {
+                                        {
+                                            let tier2b = infer_tier2b_builtin_with_kernel_diags(
+                                                &func_name,
+                                                typed_args.clone(),
+                                                scope.clone(),
+                                                span.clone(),
+                                            );
+                                            let bt = tier2b.bt.clone();
+                                            let call_semantics = if (func_name.clone().as_str()
+                                                == "lookup".to_string().as_str())
+                                            {
+                                                Some(CallSemantics::LookupCallSemantics)
+                                            } else {
+                                                Some(CallSemantics::PlainCallSemantics)
+                                            };
+                                            Rc::new(InferResult {
+                                                typed: make_named_expr_node(
+                                                    &func_name,
+                                                    Rc::new(ExprData::ExprCall {
+                                                        call_semantics: call_semantics,
+                                                        descent_evidence: None,
+                                                    }),
+                                                    typed_arg_nodes,
+                                                    Some(Rc::new(InferredNode::Resolved {
+                                                        node: bt,
+                                                    })),
+                                                    span.clone(),
+                                                    node_name_span(&texpr),
+                                                ),
+                                                diagnostics: v2_rt::concat(
+                                                    arg_diags,
+                                                    tier2b.kernel_diags.clone(),
+                                                ),
+                                            })
+                                        }
+                                    } else {
+                                        {
+                                            let callable_local = match v2_rt::map_get(
+                                                &scope.locals.clone(),
+                                                func_name.clone(),
+                                            ) {
+                                                Some(binding) => {
+                                                    if ((binding
+                                                        .resolved
+                                                        .clone()
+                                                        .params
+                                                        .clone()
+                                                        .len()
+                                                        as i64)
+                                                        > 0)
+                                                    {
+                                                        Some(binding.resolved.clone())
+                                                    } else {
+                                                        None
+                                                    }
                                                 }
-                                            }
-                                            None => None,
-                                        };
-                                        if (callable_local.clone() != None) {
-                                            {
-                                                let callable_type = match callable_local.clone() {
-                                                    Some(ct) => ct.clone(),
-                                                    None => error_type(),
-                                                };
-                                                let resolved_type =
-                                                    callable_inferred(&callable_type);
-                                                Rc::new(InferResult {
-                                                    typed: make_named_expr_node(
-                                                        &func_name,
-                                                        Rc::new(ExprData::ExprCall {
-                                                            call_semantics: Some(
-                                                                CallSemantics::PlainCallSemantics,
-                                                            ),
-                                                            descent_evidence: None,
-                                                        }),
-                                                        typed_arg_nodes,
-                                                        Some(Rc::new(InferredNode::Resolved {
-                                                            node: resolved_type,
-                                                        })),
-                                                        span.clone(),
-                                                        node_name_span(&texpr),
-                                                    ),
-                                                    diagnostics: arg_diags,
-                                                })
-                                            }
-                                        } else {
-                                            {
-                                                let type_match = lookup_type_by_name(
-                                                    &scope.type_env.clone(),
-                                                    func_name.clone(),
-                                                );
-                                                let resolved_type = match type_match.clone() {
-                                                    Some(tn) => tn.clone(),
-                                                    None => error_type(),
-                                                };
-                                                let call_diags = match type_match.clone() {
-                                                    Some(_) => Rc::new(vec![]),
-                                                    None => Rc::new(vec![inference_error(
-                                                        v2_rt::concat(
+                                                None => None,
+                                            };
+                                            if (callable_local.clone() != None) {
+                                                {
+                                                    let callable_type = match callable_local.clone()
+                                                    {
+                                                        Some(ct) => ct.clone(),
+                                                        None => error_type(),
+                                                    };
+                                                    let resolved_type =
+                                                        callable_inferred(&callable_type);
+                                                    Rc::new(InferResult {
+    typed: make_named_expr_node(&func_name, Rc::new(ExprData::ExprCall {
+    call_semantics: Some(CallSemantics::PlainCallSemantics),
+    descent_evidence: None,
+}), typed_arg_nodes, Some(Rc::new(InferredNode::Resolved {
+    node: resolved_type,
+})), span.clone(), node_name_span(&texpr)),
+    diagnostics: arg_diags,
+})
+                                                }
+                                            } else {
+                                                {
+                                                    let type_match = lookup_type_by_name(
+                                                        &scope.type_env.clone(),
+                                                        func_name.clone(),
+                                                    );
+                                                    let resolved_type = match type_match.clone() {
+                                                        Some(tn) => tn.clone(),
+                                                        None => error_type(),
+                                                    };
+                                                    let call_diags = match type_match.clone() {
+                                                        Some(_) => Rc::new(vec![]),
+                                                        None => Rc::new(vec![inference_error(
                                                             v2_rt::concat(
-                                                                "function '".to_string(),
-                                                                func_name.clone(),
+                                                                v2_rt::concat(
+                                                                    "function '".to_string(),
+                                                                    func_name.clone(),
+                                                                ),
+                                                                "' not found in scope".to_string(),
                                                             ),
-                                                            "' not found in scope".to_string(),
-                                                        ),
-                                                        span.clone(),
-                                                        scope.module_name.clone(),
-                                                    )]),
-                                                };
-                                                Rc::new(InferResult {
-                                                    typed: make_named_expr_node(
-                                                        &func_name,
-                                                        Rc::new(ExprData::ExprCall {
-                                                            call_semantics: Some(
-                                                                CallSemantics::PlainCallSemantics,
-                                                            ),
-                                                            descent_evidence: None,
-                                                        }),
-                                                        typed_arg_nodes,
-                                                        Some(Rc::new(InferredNode::Resolved {
-                                                            node: resolved_type,
-                                                        })),
-                                                        span.clone(),
-                                                        node_name_span(&texpr),
-                                                    ),
-                                                    diagnostics: v2_rt::concat(
-                                                        arg_diags, call_diags,
-                                                    ),
-                                                })
+                                                            span.clone(),
+                                                            scope.module_name.clone(),
+                                                        )]),
+                                                    };
+                                                    Rc::new(InferResult {
+    typed: make_named_expr_node(&func_name, Rc::new(ExprData::ExprCall {
+    call_semantics: Some(CallSemantics::PlainCallSemantics),
+    descent_evidence: None,
+}), typed_arg_nodes, Some(Rc::new(InferredNode::Resolved {
+    node: resolved_type,
+})), span.clone(), node_name_span(&texpr)),
+    diagnostics: v2_rt::concat(arg_diags, call_diags),
+})
+                                                }
                                             }
                                         }
                                     }
@@ -10156,25 +10232,23 @@ pub fn build_type_env(
             }
             __result
         });
-        let cycle_map = cycle_set_str.clone().iter().cloned().fold(
-            v2_rt::rc_empty_map::<String, bool>(),
-            |acc: Rc<HashMap<String, bool>>, name: String| {
-                v2_rt::rc_map_insert(acc, name.clone(), true)
+        let cross_type_all_names = v2_rt::concat(
+            cycle_set_str.clone(),
+            Rc::new(v2_rt::map_keys(&compiler_recursive_types())),
+        );
+        let cross_type_set_str = cross_type_all_names.clone().iter().cloned().fold(
+            v2_rt::rc_empty_set::<_>(), /* BRIDGE: fold empty_set accumulator type unresolved */
+            |acc: _, name: String| v2_rt::rc_set_insert(acc, name.clone()),
+        );
+        let cross_type_set = cross_type_all_names.clone().iter().cloned().fold(
+            v2_rt::rc_empty_map::<i64, bool>(),
+            |acc: Rc<HashMap<i64, bool>>, name: String| {
+                v2_rt::rc_map_insert(acc, intern(&intern_table, &name).id.clone(), true)
             },
         );
-        let cross_type_set_str = v2_rt::rc_map_merge(cycle_map, compiler_recursive_types());
-        let cross_type_set = Rc::new(v2_rt::map_keys(&cross_type_set_str))
-            .iter()
-            .cloned()
-            .fold(
-                v2_rt::rc_empty_map::<i64, bool>(),
-                |acc: Rc<HashMap<i64, bool>>, name: String| {
-                    v2_rt::rc_map_insert(acc, intern(&intern_table, &name).id.clone(), true)
-                },
-            );
         let local_inductive_fields = build_item_inductive_fields(
             module_items(module.module.clone()),
-            cross_type_set_str.clone(),
+            cross_type_set_str,
             source_indices.clone(),
         );
         let merged_inductive_fields =
@@ -10617,25 +10691,23 @@ pub fn build_type_env_unresolved(
             }
             __result
         });
-        let cycle_map = cycle_set_str.clone().iter().cloned().fold(
-            v2_rt::rc_empty_map::<String, bool>(),
-            |acc: Rc<HashMap<String, bool>>, name: String| {
-                v2_rt::rc_map_insert(acc, name.clone(), true)
+        let cross_type_all_names = v2_rt::concat(
+            cycle_set_str.clone(),
+            Rc::new(v2_rt::map_keys(&compiler_recursive_types())),
+        );
+        let cross_type_set_str = cross_type_all_names.clone().iter().cloned().fold(
+            v2_rt::rc_empty_set::<_>(), /* BRIDGE: fold empty_set accumulator type unresolved */
+            |acc: _, name: String| v2_rt::rc_set_insert(acc, name.clone()),
+        );
+        let cross_type_set = cross_type_all_names.clone().iter().cloned().fold(
+            v2_rt::rc_empty_map::<i64, bool>(),
+            |acc: Rc<HashMap<i64, bool>>, name: String| {
+                v2_rt::rc_map_insert(acc, intern(&intern_table, &name).id.clone(), true)
             },
         );
-        let cross_type_set_str = v2_rt::rc_map_merge(cycle_map, compiler_recursive_types());
-        let cross_type_set = Rc::new(v2_rt::map_keys(&cross_type_set_str))
-            .iter()
-            .cloned()
-            .fold(
-                v2_rt::rc_empty_map::<i64, bool>(),
-                |acc: Rc<HashMap<i64, bool>>, name: String| {
-                    v2_rt::rc_map_insert(acc, intern(&intern_table, &name).id.clone(), true)
-                },
-            );
         let local_inductive_fields = build_item_inductive_fields(
             module_items(module.module.clone()),
-            cross_type_set_str.clone(),
+            cross_type_set_str,
             source_indices.clone(),
         );
         let merged_inductive_fields =
@@ -11275,10 +11347,8 @@ pub fn topo_resolve_types(
             });
         }
         let remaining_set = remaining.clone().iter().cloned().fold(
-            v2_rt::rc_empty_map::<String, bool>(),
-            |acc: Rc<HashMap<String, bool>>, name: String| {
-                v2_rt::rc_map_insert(acc, name.clone(), true)
-            },
+            v2_rt::rc_empty_set::<_>(), /* BRIDGE: fold empty_set accumulator type unresolved */
+            |acc: _, name: String| v2_rt::rc_set_insert(acc, name.clone()),
         );
         let ready = Rc::new({
             let mut __result = Vec::new();
@@ -11291,7 +11361,8 @@ pub fn topo_resolve_types(
                                 || (dep.clone().as_str() == "None".to_string().as_str()))
                                 || (dep.clone().as_str() == "".to_string().as_str()))
                                 || is_recursive_type_by_name(&env, dep.clone()))
-                                || (emit_map_has(remaining_set.clone(), dep.clone()) == false))
+                                || (v2_rt::set_contains(remaining_set.clone(), dep.clone())
+                                    == false))
                             {
                                 __all = false;
                                 break;
@@ -11492,16 +11563,18 @@ pub fn collect_parent_envs(
 pub fn build_fielded_variants(
     modules: Rc<Vec<Rc<TypedModule>>>,
     type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
-) -> Rc<HashMap<String, bool>> {
+) -> Rc<std::collections::BTreeSet<String>> {
     {
         let result = modules.iter().cloned().fold(
-            v2_rt::rc_empty_map::<String, bool>(),
-            |acc: Rc<HashMap<String, bool>>, m: Rc<TypedModule>| {
+            v2_rt::rc_empty_set::<_>(), /* BRIDGE: fold empty_set accumulator type unresolved */
+            |acc: _, m: Rc<TypedModule>| {
                 let items = m.items.clone();
                 let si = m.type_env.clone().source_indices.clone();
-                items.clone().iter().cloned().fold(
-                    acc,
-                    |inner: Rc<HashMap<String, bool>>, item: Rc<Node>| {
+                items
+                    .clone()
+                    .iter()
+                    .cloned()
+                    .fold(acc, |inner: _, item: Rc<Node>| {
                         let is_enum = match v2_rt::map_get(
                             &type_summaries,
                             authored_name_at(si.clone(), &item),
@@ -11518,11 +11591,11 @@ pub fn build_fielded_variants(
                                 let variants = item.children.clone();
                                 variants.clone().iter().cloned().fold(
                                     inner.clone(),
-                                    |vacc: Rc<HashMap<String, bool>>, variant: Rc<Node>| {
+                                    |vacc: _, variant: Rc<Node>| {
                                         let has_fields =
                                             ((variant.children.clone().len() as i64) > 0);
                                         if has_fields.clone() {
-                                            v2_rt::rc_map_insert(
+                                            v2_rt::rc_set_insert(
                                                 vacc.clone(),
                                                 v2_rt::concat(
                                                     v2_rt::concat(
@@ -11531,7 +11604,6 @@ pub fn build_fielded_variants(
                                                     ),
                                                     authored_name_at(si.clone(), &variant),
                                                 ),
-                                                true,
                                             )
                                         } else {
                                             vacc.clone()
@@ -11542,8 +11614,7 @@ pub fn build_fielded_variants(
                         } else {
                             inner.clone()
                         }
-                    },
-                )
+                    })
             },
         );
         result
@@ -11571,18 +11642,17 @@ pub fn build_emit_graph_info(modules: &Rc<Vec<Rc<TypedModule>>>) -> Rc<EmitGraph
             },
         );
         let all_recursive = modules.clone().iter().cloned().fold(
-            v2_rt::rc_empty_map::<String, bool>(),
-            |acc: Rc<HashMap<String, bool>>, m: Rc<TypedModule>| {
+            v2_rt::rc_empty_set::<_>(), /* BRIDGE: fold empty_set accumulator type unresolved */
+            |acc: _, m: Rc<TypedModule>| {
                 Rc::new(v2_rt::map_keys(
                     &m.type_env.clone().recursive_type_set.clone(),
                 ))
                 .iter()
                 .cloned()
-                .fold(acc, |inner: Rc<HashMap<String, bool>>, ident: i64| {
-                    v2_rt::rc_map_insert(
+                .fold(acc, |inner: _, ident: i64| {
+                    v2_rt::rc_set_insert(
                         inner,
                         intern_str(m.type_env.clone().intern_table.clone(), ident.clone()),
-                        true,
                     )
                 })
             },
@@ -11593,13 +11663,17 @@ pub fn build_emit_graph_info(modules: &Rc<Vec<Rc<TypedModule>>>) -> Rc<EmitGraph
             type_summaries: built.type_summaries.clone(),
             recursive_type_set: all_recursive,
             fielded_variants: fielded,
-            shared_types: v2_rt::rc_empty_map::<String, bool>(),
-            ownership_index: v2_rt::rc_empty_map::<String, Rc<HashMap<String, bool>>>(),
-            movable: v2_rt::rc_empty_map::<String, bool>(),
+            shared_types: v2_rt::rc_empty_set::<String>(),
+            ownership_index: v2_rt::rc_empty_map::<String, Rc<std::collections::BTreeSet<String>>>(
+            ),
+            movable: v2_rt::rc_empty_set::<String>(),
             variant_to_enum: vtoe,
-            owned_bindings: v2_rt::rc_empty_map::<String, bool>(),
-            read_only_params_index: v2_rt::rc_empty_map::<String, Rc<HashMap<String, bool>>>(),
-            read_only_params: v2_rt::rc_empty_map::<String, bool>(),
+            owned_bindings: v2_rt::rc_empty_set::<String>(),
+            read_only_params_index: v2_rt::rc_empty_map::<
+                String,
+                Rc<std::collections::BTreeSet<String>>,
+            >(),
+            read_only_params: v2_rt::rc_empty_set::<String>(),
         })
     }
 }

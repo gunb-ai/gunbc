@@ -6,9 +6,13 @@ use self::DescentSource::*;
 use self::PositiveDescentAmount::*;
 use self::ProportionalDivisor::*;
 use self::RankingDimension::*;
-pub use crate::std_algebra::Ordering;
 use crate::std_algebra::Ordering::*;
+pub use crate::std_algebra::{BoundedLattice, Ordering};
 use crate::v2_rt;
+use crate::v2_rt::rc_empty_set as empty_set;
+use crate::v2_rt::rc_set_insert as set_insert;
+use crate::v2_rt::rc_set_union as set_union;
+use crate::v2_rt::set_contains;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use std::collections::HashMap;
@@ -30,7 +34,7 @@ pub fn evidence_rank(e: DescentEvidence) -> i64 {
     }
 }
 
-pub fn merge_evidence(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence {
+pub fn descent_evidence_lattice_meet(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence {
     match a {
         DescentEvidence::Strict => match b {
             DescentEvidence::Strict => DescentEvidence::Strict,
@@ -46,7 +50,7 @@ pub fn merge_evidence(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence
     }
 }
 
-pub fn join_evidence(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence {
+pub fn descent_evidence_lattice_join(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence {
     match a {
         DescentEvidence::DescentUnknown => b,
         DescentEvidence::NonIncreasing => match b {
@@ -55,6 +59,20 @@ pub fn join_evidence(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence 
         },
         DescentEvidence::Strict => DescentEvidence::Strict,
     }
+}
+
+pub fn descent_evidence_bounded_lattice() -> Rc<BoundedLattice<DescentEvidence>> {
+    thread_local! {
+        static CACHED: Rc<BoundedLattice<DescentEvidence>> = {
+            Rc::new(BoundedLattice {
+                meet: Rc::new(descent_evidence_lattice_meet),
+                join: Rc::new(descent_evidence_lattice_join),
+                top: Box::new(DescentEvidence::Strict),
+                bottom: Box::new(DescentEvidence::DescentUnknown),
+            })
+        };
+    }
+    CACHED.with(|c| c.clone())
 }
 
 pub fn promote_to_strict(evidence: DescentEvidence) -> DescentEvidence {
@@ -73,7 +91,7 @@ pub fn optional_evidence_meet(
         None => b,
         Some(va) => match b {
             None => a.clone(),
-            Some(vb) => Some(merge_evidence(va.clone(), vb.clone())),
+            Some(vb) => Some(descent_evidence_lattice_meet(va.clone(), vb.clone())),
         },
     }
 }
@@ -87,7 +105,7 @@ pub fn map_evidence_merge_at(
         Some(existing) => v2_rt::rc_map_insert(
             base.clone(),
             key.clone(),
-            merge_evidence(existing.clone(), new_val),
+            descent_evidence_lattice_meet(existing.clone(), new_val),
         ),
         None => v2_rt::rc_map_insert(base.clone(), key.clone(), new_val),
     }

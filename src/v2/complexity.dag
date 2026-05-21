@@ -27,7 +27,7 @@ import std.termination {
   RankingDimension, TreeSize, ListLength, ArithmeticValue, TokenPosition, SetCardinality,
   DescentSource, ChildAccessor, ListShrink, ArithmeticSubtractDescent, ArithmeticDivideDescent, ParserAdvance, SetRemoval, FoldIteration,
   TerminationProof, ProofEdge,
-  merge_evidence, join_evidence, evidence_rank,
+  descent_evidence_lattice_meet, evidence_rank,
   optional_evidence_meet, map_evidence_merge_at,
   OneStep
 }
@@ -375,8 +375,8 @@ fn set_has(m: Map<String, Bool>, key: String) -> Bool {
   map_get(m, key) != none
 }
 
-// `merge_evidence` / `join_evidence` / … live in `std.termination` (single authority for the
-// `DescentEvidence` lattice). Parser-progress paths in this module use
+// `descent_evidence_bounded_lattice` / lifted helpers live in `std.termination`
+// (single authority for the `DescentEvidence` lattice). Parser-progress paths in this module use
 // `strict_after_parser_witness` (below) — they do not import `promote_to_strict` anymore.
 //
 // P5: `promote_to_strict` remains in `std.termination` for bootstrap / mirror parity and
@@ -542,7 +542,7 @@ fn parser_state_expr_progress(expr: Node, state_param: ParserStateParam, env: Pa
           si: si)
         None => DescentUnknown
       }
-      merge_evidence(a: then_progress, b: else_progress)
+      descent_evidence_lattice_meet(a: then_progress, b: else_progress)
 
     ExprLet =>
       let next_env = parser_env_with_binding(
@@ -578,7 +578,7 @@ fn parser_state_expr_progress(expr: Node, state_param: ParserStateParam, env: Pa
       match arm_progresses |> first {
         Some { value: initial } =>
           arm_progresses |> fold(init: initial, f: (acc, p) =>
-            merge_evidence(a: acc, b: p)
+            descent_evidence_lattice_meet(a: acc, b: p)
           )
         None => DescentUnknown
       }
@@ -1015,7 +1015,7 @@ fn parser_success_progress(expr: Node, state_param: ParserStateParam, env: Parse
           si: si)
         None => DescentUnknown
       }
-      merge_evidence(a: then_progress, b: else_progress)
+      descent_evidence_lattice_meet(a: then_progress, b: else_progress)
 
     ExprLet =>
       let next_env = parser_env_with_binding(
@@ -3739,7 +3739,7 @@ fn collect_scc_cx_l2_tree_edges(members: List<String>, func_index: Map<String, F
                 let ev = sub_value_to_evidence(relation: rel)
                 match ev { Strict => Strict  _ => match best { Strict => Strict  _ => ev } }
               )
-              merge_evidence(a: worst, b: call_best)
+              descent_evidence_lattice_meet(a: worst, b: call_best)
             )
             [ProofEdge { caller: name, callee: name, evidence: [derived] }]
           } else {
@@ -5170,7 +5170,7 @@ fn collect_callee_evidence(body: Node, callee_name: String, si: Map<String, Newl
 }
 
 // Derive best DescentEvidence from a list of call evidence vectors.
-// Best per call (any Strict → Strict), worst across calls (merge_evidence).
+// Best per call (any Strict → Strict), worst across calls (lattice meet).
 // Accepts PreservedValue as NonIncreasing.
 fn derive_edge_evidence(all_calls: List<List<SubValueRelation>>) -> DescentEvidence {
   all_calls |> fold(init: Strict, f: (worst, call_ev) =>
@@ -5186,7 +5186,7 @@ fn derive_edge_evidence(all_calls: List<List<SubValueRelation>>) -> DescentEvide
         }
       }
     )
-    merge_evidence(a: worst, b: call_best)
+    descent_evidence_lattice_meet(a: worst, b: call_best)
   )
 }
 
@@ -5196,7 +5196,7 @@ fn derive_edge_evidence(all_calls: List<List<SubValueRelation>>) -> DescentEvide
 fn merge_param_evidence(all_calls: List<List<SubValueRelation>>, param_index: Int) -> DescentEvidence {
   all_calls |> fold(init: Strict, f: (acc, call_evidence) =>
     match call_evidence |> skip(param_index) |> first {
-      Some { value: rel } => merge_evidence(a: acc, b: sub_value_to_evidence(relation: rel))
+      Some { value: rel } => descent_evidence_lattice_meet(a: acc, b: sub_value_to_evidence(relation: rel))
       None => acc
     }
   )

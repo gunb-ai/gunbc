@@ -6,6 +6,10 @@ pub use crate::v2_compiler_infer_types::{
     child_type_node, emit_map_has, node_type_equals, normalize_access_type_node,
 };
 use crate::v2_rt;
+use crate::v2_rt::rc_empty_set as empty_set;
+use crate::v2_rt::rc_set_insert as set_insert;
+use crate::v2_rt::rc_set_union as set_union;
+use crate::v2_rt::set_contains;
 use crate::v2_std_core::Cardinality::CardOptional;
 use crate::v2_std_core::Connective::{Arrow, Conj, NoConnective};
 use crate::v2_std_core::FieldAccessStyle::{EnumAccessor, StoredField, TupleFirst, TupleSecond};
@@ -59,15 +63,15 @@ pub struct TypeSummary {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EmitGraphInfo {
     pub type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
-    pub recursive_type_set: Rc<HashMap<String, bool>>,
-    pub fielded_variants: Rc<HashMap<String, bool>>,
-    pub shared_types: Rc<HashMap<String, bool>>,
-    pub ownership_index: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
-    pub movable: Rc<HashMap<String, bool>>,
+    pub recursive_type_set: Rc<std::collections::BTreeSet<String>>,
+    pub fielded_variants: Rc<std::collections::BTreeSet<String>>,
+    pub shared_types: Rc<std::collections::BTreeSet<String>>,
+    pub ownership_index: Rc<HashMap<String, Rc<std::collections::BTreeSet<String>>>>,
+    pub movable: Rc<std::collections::BTreeSet<String>>,
     pub variant_to_enum: Rc<HashMap<String, String>>,
-    pub owned_bindings: Rc<HashMap<String, bool>>,
-    pub read_only_params_index: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
-    pub read_only_params: Rc<HashMap<String, bool>>,
+    pub owned_bindings: Rc<std::collections::BTreeSet<String>>,
+    pub read_only_params_index: Rc<HashMap<String, Rc<std::collections::BTreeSet<String>>>>,
+    pub read_only_params: Rc<std::collections::BTreeSet<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -78,15 +82,16 @@ pub struct EmitInfoBuildState {
 pub fn empty_emit_graph_info() -> Rc<EmitGraphInfo> {
     Rc::new(EmitGraphInfo {
         type_summaries: v2_rt::rc_empty_map::<String, Rc<TypeSummary>>(),
-        recursive_type_set: v2_rt::rc_empty_map::<String, bool>(),
-        fielded_variants: v2_rt::rc_empty_map::<String, bool>(),
-        shared_types: v2_rt::rc_empty_map::<String, bool>(),
-        ownership_index: v2_rt::rc_empty_map::<String, Rc<HashMap<String, bool>>>(),
-        movable: v2_rt::rc_empty_map::<String, bool>(),
+        recursive_type_set: v2_rt::rc_empty_set::<String>(),
+        fielded_variants: v2_rt::rc_empty_set::<String>(),
+        shared_types: v2_rt::rc_empty_set::<String>(),
+        ownership_index: v2_rt::rc_empty_map::<String, Rc<std::collections::BTreeSet<String>>>(),
+        movable: v2_rt::rc_empty_set::<String>(),
         variant_to_enum: v2_rt::rc_empty_map::<String, String>(),
-        owned_bindings: v2_rt::rc_empty_map::<String, bool>(),
-        read_only_params_index: v2_rt::rc_empty_map::<String, Rc<HashMap<String, bool>>>(),
-        read_only_params: v2_rt::rc_empty_map::<String, bool>(),
+        owned_bindings: v2_rt::rc_empty_set::<String>(),
+        read_only_params_index: v2_rt::rc_empty_map::<String, Rc<std::collections::BTreeSet<String>>>(
+        ),
+        read_only_params: v2_rt::rc_empty_set::<String>(),
     })
 }
 
@@ -97,10 +102,7 @@ pub fn variant_has_fields(
 ) -> bool {
     {
         let key = v2_rt::concat(v2_rt::concat(enum_name, "::".to_string()), variant_name);
-        match v2_rt::map_get(&emit_info.fielded_variants.clone(), key) {
-            Some(v) => v.clone(),
-            None => false,
-        }
+        v2_rt::set_contains(emit_info.fielded_variants.clone(), key)
     }
 }
 

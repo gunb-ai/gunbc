@@ -1117,6 +1117,10 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Set<String>, so
         None => "_"
       }
       emit_container(kind: to_snake(name: tn), inner: inner, target: target)
+    } else if param_count > 0 {
+      let param_strs = n.params |> map(p => render_node_type(n: param_node_type_expr(n: p), target: target, shared_types: shared_types, source_indices: source_indices))
+      let spec = language_spec(target: target)
+      concat(coerce_primitive_type(target: target, dag_name: tn), spec.type_arg_open, param_strs |> join(separator: ", "), spec.type_arg_close)
     } else if tn == tuple_type_name {
       render_tuple_parts(parts: [], target: target)
     } else {
