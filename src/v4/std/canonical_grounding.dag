@@ -68,22 +68,26 @@ fn node_zip_fold_identity_or_exact(
   }
 }
 
+fn canonical_node_init(n: Node) -> Node {
+  Node { kind: n.kind, children: [] }
+}
+
+fn canonical_node_step(acc: Node, e: Edge, child: Node) -> Node {
+  Node {
+    kind: acc.kind,
+    children: list_push(
+      acc.children,
+      Edge { label: e.label, target: child }
+    )
+  }
+}
+
 fn canonical_node(n: Node) -> Node {
   fold_node(
     n: n,
     algebra: NodeFold {
-      init: fn(n0) {
-        Node { kind: n0.kind, children: [] }
-      },
-      step: fn(acc, e, child) {
-        Node {
-          kind: acc.kind,
-          children: list_push(
-            acc.children,
-            Edge { label: e.label, target: child }
-          )
-        }
-      }
+      init: canonical_node_init,
+      step: canonical_node_step
     }
   )
 }
