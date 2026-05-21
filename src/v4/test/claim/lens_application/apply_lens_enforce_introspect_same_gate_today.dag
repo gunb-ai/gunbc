@@ -8,7 +8,7 @@ module v4.test.claim.lens_application.apply_lens_enforce_introspect_same_gate_to
 
 import v4.compiler.compile { Lens, LensEnforce, LensIntrospect, apply_lens }
 import v4.compiler.infer { InferredTree }
-import v4.std.diagnostic { Accepted, Outcome }
+import v4.std.diagnostic { Accepted, None, Outcome, Rejected }
 import v4.std.logic { Bool }
 import v4.std.node { Atom, Conj, Node, Symbol, TypeNode }
 import v4.std.verification {

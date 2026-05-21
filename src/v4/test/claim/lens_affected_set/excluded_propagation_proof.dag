@@ -10,6 +10,7 @@ import v4.lens.affected_set {
   DimensionNotRead,
   ExclusionKey,
   PropagationExclusionProof,
+  ReExecFrontier,
   empty_frontier,
   mark_excluded
 }
