@@ -120,7 +120,7 @@ fn coercion_fold(
       Accepted {
         value: CoercionResult {
           target: fw.candidate,
-          quality: Exact,
+          quality: if fw.candidate == source.node { Identity } else { Exact },
           witness: CoercionWitness {
             homomorphism: HomomorphismWitness {
               rule: homomorphism_rule_exact_structural_equality,
