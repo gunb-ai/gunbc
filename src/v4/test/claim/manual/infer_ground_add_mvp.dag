@@ -1,0 +1,91 @@
+// src/v4/test/claim/manual/infer_ground_add_mvp.dag
+// Scope: T-9 worked fixture — ResolvedTree for MVP add-shaped Arrow; infer via solve_constraints.
+// Owns: fixture_add_int_atom, fixture_add_resolved_tree, anchor_infer_add_mvp, claim_infer_add_mvp_compiles.
+// Consumes: compiler/04_infer.dag, std/diagnostic.dag, std/node.dag, std/verification.dag.
+// Status: compile anchor — Accepted outcome blocked until std canonical_grounding_candidates + find_witness bodies land.
+// Anchor: design-v4-compiler-homomorphism.md MVP add(x,y)=x+y
+
+
+module v4.test.claim.manual.infer_ground_add_mvp
+
+
+import v4.compiler.infer { infer, InferredTree }
+import v4.compiler.resolve { ResolvedTree }
+import v4.std.diagnostic { Accepted, None, Outcome }
+import v4.std.node {
+  Arrow,
+  Atom,
+  Conj,
+  Edge,
+  Named,
+  Node,
+  Positional,
+  Symbol,
+  TypeNode
+}
+import v4.std.verification {
+  Compiles,
+  T19ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit
+}
+
+
+data fixture_add_name: Symbol = fixture_add_name
+data fixture_add_int_atom: Symbol = fixture_add_int_atom
+data fixture_add_body_int_atom: Symbol = fixture_add_body_int_atom
+
+
+fn fixture_int_type_node(atom: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: atom } },
+    children: []
+  }
+}
+
+
+// MVP add(x: Int, y: Int) -> Int = x + y as a resolved CoreNode-shaped Arrow (domain, codomain, body).
+fn fixture_add_resolved_tree() -> ResolvedTree {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: fixture_add_name },
+        target: Node {
+          kind: TypeNode { connective: Arrow },
+          children: [
+            Edge {
+              label: Positional,
+              target: fixture_int_type_node(atom: fixture_add_int_atom)
+            },
+            Edge {
+              label: Positional,
+              target: fixture_int_type_node(atom: fixture_add_int_atom)
+            },
+            Edge {
+              label: Positional,
+              target: fixture_int_type_node(atom: fixture_add_body_int_atom)
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
+
+
+fn anchor_infer_add_mvp() -> Outcome<InferredTree> {
+  infer(tree: fixture_add_resolved_tree())
+}
+
+
+data claim_infer_add_mvp_compiles: TestClaim = TestClaim {
+  kind: Compiles,
+  label: "manual/infer: MVP add ResolvedTree ground stage pipeline compiles",
+  t19_anchor: T19ManualAnchorAbsent,
+  input: fixture_add_resolved_tree(),
+  expected: Accepted { value: fixture_add_resolved_tree(), diagnostics: None },
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}

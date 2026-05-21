@@ -28,7 +28,8 @@ import v4.std.diagnostic {
   Unavailable
 }
 import v4.std.node { Conj, Node, Symbol, TypeNode }
-import v4.std.witness { Violates, Witness }
+import v4.std.constraints { constraint_property_being_canonical }
+import v4.std.witness { StructuralPropertyWitness, Violates, Witness }
 
 
 data anchor_stub_empty_conj: Node = Node {
@@ -66,10 +67,17 @@ data anchor_stub_termination_proof: TerminationProof = TerminationProof {
 data anchor_facts_map_lookup_not_realized: Symbol = anchor_facts_map_lookup_not_realized
 
 
+data anchor_stub_canonical_witness: StructuralPropertyWitness = StructuralPropertyWitness {
+  property: constraint_property_being_canonical,
+  evidence: anchor_stub_empty_conj
+}
+
+
 data anchor_stub_inferred_facts: InferredFacts = InferredFacts {
   resolved_type: anchor_stub_empty_conj,
   inhabits: anchor_stub_algebra_ref,
-  descent: anchor_stub_termination_proof
+  descent: anchor_stub_termination_proof,
+  canonical: anchor_stub_canonical_witness
 }
 
 

@@ -19,6 +19,7 @@ import v4.std.constraints {
   CanonicalGrounding,
   ConstraintGraph,
   ConstraintSolvePolicy,
+  constraint_property_being_canonical,
   solve_constraints
 }
 import v4.std.diagnostic {
@@ -43,7 +44,7 @@ import v4.std.node {
   Symbol,
   fold_node
 }
-import v4.std.witness { Holds, Violates, Witness }
+import v4.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
 
 
 // RULING-1: needs-more-work — typed bridge until algebra inhabitance authority lands.
@@ -58,6 +59,7 @@ type InferredFacts {
   resolved_type: Node
   inhabits: AlgebraRef
   descent: TerminationProof
+  canonical: StructuralPropertyWitness
 }
 
 
@@ -115,12 +117,31 @@ fn algebra_ref_from_grounding(grounding: CanonicalGrounding) -> AlgebraRef {
 }
 
 
+fn infer_constraint_graph(n: Node) -> ConstraintGraph {
+  ConstraintGraph { root: n }
+}
+
+
 fn inferred_facts_from_grounding(n: Node, grounding: CanonicalGrounding) -> InferredFacts {
   InferredFacts {
     resolved_type: grounding.node,
     inhabits: algebra_ref_from_grounding(grounding: grounding),
-    descent: infer_default_termination_proof()
+    descent: infer_default_termination_proof(),
+    canonical: StructuralPropertyWitness {
+      property: constraint_property_being_canonical,
+      evidence: grounding.node
+    }
   }
+}
+
+
+fn concat_inferred_facts_entries(
+  a: List<InferredFactsEntry>,
+  b: List<InferredFactsEntry>,
+) -> List<InferredFactsEntry> {
+  fold(b, init: a, f: fn(acc, entry) {
+    list_push(acc, entry)
+  })
 }
 
 
@@ -128,7 +149,7 @@ fn infer_node_facts(n: Node) -> Outcome<InferredFacts> {
   bind_outcome(
     o: solve_constraints(
       policy: ConstraintSolvePolicy {
-        graph: ConstraintGraph { root: n }
+        graph: infer_constraint_graph(n: n)
       }
     ),
     f: fn(grounding) {
@@ -201,7 +222,7 @@ fn infer_entries_fold_step(
           }
         Accepted { value: child_entries, diagnostics: cd } =>
           Accepted {
-            value: list_concat(acc_entries, child_entries),
+            value: concat_inferred_facts_entries(a: acc_entries, b: child_entries),
             diagnostics: diagnostics_merge(outer: ad, inner: cd)
           }
       }

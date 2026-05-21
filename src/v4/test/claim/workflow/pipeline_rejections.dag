@@ -59,7 +59,8 @@ import v4.std.verification {
   Tier1,
   Unit
 }
-import v4.std.witness { Holds }
+import v4.std.constraints { constraint_property_being_canonical }
+import v4.std.witness { Holds, StructuralPropertyWitness }
 import v4.workflow.bootstrap { v4_stage0_binary }
 import v4.workflow.ci {
   BootstrapStageCompile,
@@ -188,12 +189,17 @@ fn workflow_inferred_algebra_ref() -> AlgebraRef {
 
 
 fn workflow_inferred_facts() -> InferredFacts {
+  let resolved = pipeline_symbol_node(s: inferred_type_symbol)
   InferredFacts {
-    resolved_type: pipeline_symbol_node(s: inferred_type_symbol),
+    resolved_type: resolved,
     inhabits: workflow_inferred_algebra_ref(),
     descent: TerminationProof {
       non_increasing: [],
       strict: RankingDimension { measured: inferred_descent_symbol }
+    },
+    canonical: StructuralPropertyWitness {
+      property: constraint_property_being_canonical,
+      evidence: resolved
     }
   }
 }
