@@ -1,0 +1,187 @@
+// src/v4/lens/subsumption.dag
+// Scope: dissolution-lens subsumption ordering carrier for root fixes that mechanically close leaf fixes.
+// Owns: DiffId, TestClaimId, SubsumptionVerification, DissolutionSubsumption, rust_language_model_emit_subsumption, rust_language_model_emit_subsumption_run.
+// Consumes: v4.compiler.eval, v4.compiler.infer, v4.std.collection, v4.std.diagnostic, v4.std.node, v4.std.verification, v4.std.witness.
+// Status: Wave-5 lens-CI runtime receipt; mechanical row replaces producer-stage-only staging.
+
+module v4.lens.subsumption
+
+
+import v4.compiler.eval {
+  EvalContext,
+  TestClaimEvalSubject,
+  TestClaimRun,
+  TestClaimTypedInput,
+  run_test_claim
+}
+import v4.compiler.infer {
+  InferredTree,
+  infer_descent_not_derived_diagnostic
+}
+import v4.std.collection { Map, Set }
+import v4.std.diagnostic { Accepted, None, Outcome }
+import v4.std.node {
+  Atom,
+  Conj,
+  Edge,
+  Hash,
+  Named,
+  Node,
+  Symbol,
+  TypeNode
+}
+import v4.std.verification {
+  Equals,
+  T19ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Integration
+}
+import v4.std.witness { Violates }
+
+
+data rust_language_model_emit_root_fix: Symbol = rust_language_model_emit_root_fix
+data emit_rust_string_template_leaf_fix: Symbol = emit_rust_string_template_leaf_fix
+data emit_rust_name_dispatch_leaf_fix: Symbol = emit_rust_name_dispatch_leaf_fix
+data rust_language_model_emit_reverification_claim_id: Symbol = rust_language_model_emit_reverification_claim_id
+data rust_language_model_emit_reverification_subject: Symbol = rust_language_model_emit_reverification_subject
+data rust_language_model_emit_root_edge: Symbol = rust_language_model_emit_root_edge
+data emit_rust_template_leaf_edge: Symbol = emit_rust_template_leaf_edge
+data emit_rust_dispatch_leaf_edge: Symbol = emit_rust_dispatch_leaf_edge
+data subsumption_runtime_evaluator: Symbol = subsumption_runtime_evaluator
+data subsumption_runtime_resources: Symbol = subsumption_runtime_resources
+data subsumption_runtime_extdeps: Symbol = subsumption_runtime_extdeps
+// 🟡 cache-hash scaffold — T22-EVAL-CACHE-HASHES.
+data subsumption_claim_hash_placeholder: Hash = subsumption_claim_hash_placeholder
+data subsumption_evaluator_hash_placeholder: Hash = subsumption_evaluator_hash_placeholder
+data subsumption_resources_hash_placeholder: Hash = subsumption_resources_hash_placeholder
+data subsumption_extdeps_hash_placeholder: Hash = subsumption_extdeps_hash_placeholder
+
+
+type DiffId {
+  id: Symbol
+}
+
+
+type TestClaimId {
+  id: Symbol
+}
+
+
+// 🟢 coproduct dissolution — feature:lens-subsumption-mechanical-runtime.
+type SubsumptionVerification
+  = MechanicalReverification { test_claim: TestClaimId }
+  | ProducerStageDerivation { derivation_path: List<Symbol> }
+
+
+type DissolutionSubsumption {
+  root_fix: DiffId
+  subsumed_fixes: Set<DiffId>
+  verification: SubsumptionVerification
+}
+
+
+fn rust_language_model_emit_subsumed_fixes() -> Set<DiffId> {
+  Set {
+    member: fn(fix) {
+      (fix.id == emit_rust_string_template_leaf_fix)
+        || (fix.id == emit_rust_name_dispatch_leaf_fix)
+    }
+  }
+}
+
+
+fn subsumption_symbol_node(s: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: s } },
+    children: []
+  }
+}
+
+
+fn rust_language_model_emit_reverification_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: rust_language_model_emit_root_edge },
+        target: subsumption_symbol_node(s: rust_language_model_emit_root_fix)
+      },
+      Edge {
+        label: Named { name: emit_rust_template_leaf_edge },
+        target: subsumption_symbol_node(s: emit_rust_string_template_leaf_fix)
+      },
+      Edge {
+        label: Named { name: emit_rust_dispatch_leaf_edge },
+        target: subsumption_symbol_node(s: emit_rust_name_dispatch_leaf_fix)
+      }
+    ]
+  }
+}
+
+
+data rust_language_model_emit_subsumption_claim: TestClaim = TestClaim {
+  kind: Equals,
+  label: "lens/subsumption: rust LanguageModel emit root mechanically closes emit_rust leaves",
+  t19_anchor: T19ManualAnchorAbsent,
+  input: rust_language_model_emit_reverification_node(),
+  expected: Accepted {
+    value: rust_language_model_emit_reverification_node(),
+    diagnostics: None
+  },
+  classification: TestClassification { tier: Tier1, layer: Integration }
+}
+
+
+fn subsumption_runtime_context() -> EvalContext {
+  EvalContext {
+    evaluator: subsumption_symbol_node(s: subsumption_runtime_evaluator),
+    resources: subsumption_symbol_node(s: subsumption_runtime_resources),
+    extdeps: subsumption_symbol_node(s: subsumption_runtime_extdeps)
+  }
+}
+
+
+fn subsumption_runtime_tree(root: Node) -> InferredTree {
+  InferredTree {
+    root: root,
+    facts: Map {
+      lookup: fn(_) {
+        Violates {
+          diagnostic: infer_descent_not_derived_diagnostic(n: root)
+        }
+      }
+    }
+  }
+}
+
+
+fn rust_language_model_emit_subsumption_subject() -> TestClaimEvalSubject<Node> {
+  TestClaimEvalSubject {
+    claim: rust_language_model_emit_subsumption_claim,
+    context: subsumption_runtime_context(),
+    tree: subsumption_runtime_tree(root: rust_language_model_emit_reverification_node()),
+    input: TestClaimTypedInput {
+      evaluator_input: rust_language_model_emit_reverification_node()
+    }
+  }
+}
+
+
+data rust_language_model_emit_subsumption: DissolutionSubsumption = DissolutionSubsumption {
+  root_fix: DiffId { id: rust_language_model_emit_root_fix },
+  subsumed_fixes: rust_language_model_emit_subsumed_fixes(),
+  verification: MechanicalReverification {
+    test_claim: TestClaimId { id: rust_language_model_emit_reverification_claim_id }
+  }
+}
+
+
+data rust_language_model_emit_subsumption_run: TestClaimRun<Node> = run_test_claim(
+  subject: rust_language_model_emit_subsumption_subject(),
+  claim_hash: subsumption_claim_hash_placeholder,
+  evaluator_hash: subsumption_evaluator_hash_placeholder,
+  resources_hash: subsumption_resources_hash_placeholder,
+  extdeps_hash: subsumption_extdeps_hash_placeholder
+)
