@@ -19,7 +19,6 @@ import v4.std.constraints {
   CanonicalGrounding,
   ConstraintGraph,
   ConstraintSolvePolicy,
-  constraint_property_being_canonical,
   solve_constraints
 }
 import v4.std.diagnostic {
@@ -114,10 +113,7 @@ fn inferred_facts_from_grounding(n: Node, grounding: CanonicalGrounding) -> Infe
     resolved_type: grounding.node,
     inhabits: algebra_ref_from_grounding(grounding: grounding),
     descent: infer_default_termination_proof(),
-    canonical: StructuralPropertyWitness {
-      property: constraint_property_being_canonical,
-      evidence: grounding.node
-    }
+    canonical: grounding.witness.structural
   }
 }
 

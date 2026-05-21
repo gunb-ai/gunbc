@@ -54,6 +54,7 @@ type CanonicalGroundingCandidateSet {
 }
 type CanonicalGroundingWitness {
   structural: StructuralPropertyWitness
+  closedness: StructuralPropertyWitness
 }
 fn constraints_not_realized_diagnostic(graph: ConstraintGraph) -> Diagnostic {
   Diagnostic {
@@ -85,7 +86,8 @@ fn solve_constraints(policy: ConstraintSolvePolicy) -> Outcome<CanonicalGroundin
             value: CanonicalGrounding {
               node: fw.candidate,
               witness: CanonicalGroundingWitness {
-                structural: fw.witness
+                structural: fw.witness,
+                closedness: fw.closedness
               }
             },
             diagnostics: fw_d

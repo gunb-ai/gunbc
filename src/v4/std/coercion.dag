@@ -91,6 +91,10 @@ fn declared_candidates_for_algebra(
           structural: StructuralPropertyWitness {
             property: coercion_property_closed_candidate_set,
             evidence: target_model
+          },
+          closedness: StructuralPropertyWitness {
+            property: coercion_property_closed_candidate_set,
+            evidence: target_model
           }
         }
       },

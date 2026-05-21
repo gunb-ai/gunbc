@@ -54,6 +54,10 @@ fn int_source_grounding_fixture() -> CanonicalGrounding {
       structural: StructuralPropertyWitness {
         property: fixture_property_closed_candidates,
         evidence: int_source_node()
+      },
+      closedness: StructuralPropertyWitness {
+        property: fixture_property_closed_candidates,
+        evidence: int_source_node()
       }
     }
   }
