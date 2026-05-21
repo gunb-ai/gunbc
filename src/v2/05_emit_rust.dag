@@ -4294,7 +4294,8 @@ fn rust_field_value_for_struct(raw_value: String, field_value: Node, struct_node
           _ =>
             match lookup_emit_type_summary(emit_info: emit_info, type_name: base_struct_name) {
               Some { value: summary } =>
-                if type_node_is_generic_param(type_node: field_type, summary: summary, source_indices: scope.type_env.source_indices) {
+                if type_node_is_generic_param(type_node: field_type, summary: summary, source_indices: scope.type_env.source_indices)
+                    || ((summary.generic_param_names |> count) > 0 && !map_contains_key(summary.field_type_map, field_name)) {
                   rust_box_new_value(raw_value)
                 } else {
                   match field_type.inferred {
