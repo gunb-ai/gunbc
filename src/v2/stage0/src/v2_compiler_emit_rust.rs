@@ -136,6 +136,7 @@ pub fn render_rust_data_type(
     type_node: &Rc<Node>,
     shared_types: &Rc<std::collections::BTreeSet<String>>,
     source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
         let tn = authored_name_at(source_indices.clone(), &type_node);
@@ -169,11 +170,85 @@ pub fn render_rust_data_type(
                 }
             }
         } else {
-            render_rust_type(
-                type_node.clone(),
-                shared_types.clone(),
-                source_indices.clone(),
-            )
+            if ((type_node.children.clone().len() as i64) > 0) {
+                {
+                    let generic_arity = match lookup_emit_type_summary(emit_info, tn.clone()) {
+                        Some(summary) => (summary.generic_param_names.clone().len() as i64),
+                        None => 0,
+                    };
+                    if (generic_arity == 1) {
+                        {
+                            let carrier = Rc::new({
+                                let mut __result = Vec::new();
+                                for rt in Rc::new({
+                                    let mut __result = Vec::new();
+                                    for ch in type_node.children.clone().iter().cloned() {
+                                        __result.push(resolved_type(ch.clone()));
+                                    }
+                                    __result
+                                })
+                                .iter()
+                                .cloned()
+                                {
+                                    if (rt.connective.clone() != Connective::Arrow) {
+                                        __result.push(rt);
+                                    }
+                                }
+                                __result
+                            })
+                            .first()
+                            .cloned();
+                            match carrier {
+                                Some(carrier_type) => {
+                                    let carrier_str = render_rust_type(
+                                        carrier_type.clone(),
+                                        shared_types.clone(),
+                                        source_indices.clone(),
+                                    );
+                                    let applied = v2_rt::concat(
+                                        v2_rt::concat(
+                                            v2_rt::concat(
+                                                coerce_primitive_type(
+                                                    RenderTarget::Rust,
+                                                    tn.clone(),
+                                                ),
+                                                "<".to_string(),
+                                            ),
+                                            carrier_str,
+                                        ),
+                                        ">".to_string(),
+                                    );
+                                    if v2_rt::set_contains(&shared_types, tn.clone()) {
+                                        v2_rt::concat(
+                                            v2_rt::concat("Rc<".to_string(), applied),
+                                            ">".to_string(),
+                                        )
+                                    } else {
+                                        applied
+                                    }
+                                }
+                                None => render_rust_type(
+                                    type_node.clone(),
+                                    shared_types.clone(),
+                                    source_indices.clone(),
+                                ),
+                            }
+                        }
+                    } else {
+                        render_rust_type(
+                            type_node.clone(),
+                            shared_types.clone(),
+                            source_indices.clone(),
+                        )
+                    }
+                }
+            } else {
+                render_rust_type(
+                    type_node.clone(),
+                    shared_types.clone(),
+                    source_indices.clone(),
+                )
+            }
         }
     }
 }
@@ -2809,7 +2884,7 @@ pub fn emit_typed_item(
                                 &scope,
                                 0,
                                 &shared_types,
-                                emit_info.clone(),
+                                &emit_info,
                             )
                         } else {
                             if is_service_def_item(&item) {
@@ -14581,13 +14656,14 @@ pub fn emit_data_def(
     scope: &Rc<InferScope>,
     depth: i64,
     shared_types: &Rc<std::collections::BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
+    emit_info: &Rc<EmitGraphInfo>,
 ) -> String {
     {
         let ty_str = render_rust_data_type(
             &type_node,
             &shared_types,
             &scope.type_env.clone().source_indices.clone(),
+            emit_info.clone(),
         );
         let fn_name = to_snake(name);
         let needs_rc = v2_rt::set_contains(
@@ -14605,7 +14681,7 @@ pub fn emit_data_def(
                     &scope,
                     depth,
                     shared_types.clone(),
-                    emit_info,
+                    emit_info.clone(),
                     1024,
                 );
                 let kw = rust_items().func_keyword.clone();
@@ -14641,7 +14717,7 @@ pub fn emit_data_def(
                     &scope,
                     depth,
                     shared_types.clone(),
-                    emit_info,
+                    emit_info.clone(),
                     &needs_rc,
                 );
                 let kw = rust_items().func_keyword.clone();
