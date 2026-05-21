@@ -17,6 +17,7 @@ import v4.compiler.compile {
   CompileOutput,
   Lens,
   TranslateResult,
+  TranslateTo,
   Validated,
   compile_lens_gate_rejected,
   compile_lens_gate_rejected_diagnostic,

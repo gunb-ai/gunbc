@@ -3,7 +3,8 @@
 // Owns: emit_stage_locus_port, serialize_source_for_emitted, serialize_target, emit.
 // Consumes: target_model_edge_serialize_emitted, target_model_edge_serialize_source
 //       (edge-name symbols defined in compiler/06_translate.dag).
-// Consumes: compiler/00_compile.dag, compiler/04_infer.dag, compiler/06_translate.dag, std/diagnostic.dag,
+// Consumes: compiler/04_infer.dag, compiler/06_translate.dag, compiler/07_target_carriers.dag,
+//           std/diagnostic.dag,
 //           std/node.dag, std/text.dag.
 // Status: W-T-10-impl staging — emit = serialize_target ∘ translate; serialize_source_for_emitted
 // is emitted-node equality check + fail-closed source stub (inverse grammar walk deferred).
@@ -13,7 +14,7 @@
 module v4.compiler.emit
 
 
-import v4.compiler.compile { TargetModel, TargetSource }
+import v4.compiler.target_carriers { TargetModel, TargetSource }
 import v4.compiler.infer { InferredTree }
 import v4.compiler.translate {
   TargetNodeTree,

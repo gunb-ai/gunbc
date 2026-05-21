@@ -7,7 +7,8 @@
 //       compile_pipeline_not_realized_diagnostic, compile_lens_gate_rejected_diagnostic,
 //       compile_eval_not_realized_diagnostic, apply_lens, run_required_lens_gates,
 //       grounding_sanity_lens, compile_inferred, compile, validate_then_compile.
-// Consumes: compiler/04_infer.dag, compiler/05_emit.dag, std/collection.dag, std/diagnostic.dag,
+// Consumes: compiler/04_infer.dag, compiler/05_emit.dag, compiler/07_target_carriers.dag,
+//           std/collection.dag, std/diagnostic.dag,
 //           std/node.dag, std/text.dag, std/witness.dag.
 // Status: Wave-5-A — validate_then_compile: infer once → lens gates on InferredTree → compile_inferred (TranslateTo: emit).
 // Anchor: docs/design-v4-compiler-homomorphism.md P3 commitment 6 + Ratified Q11.
@@ -18,6 +19,7 @@ module v4.compiler.compile
 
 import v4.compiler.emit { emit }
 import v4.compiler.infer { infer, InferredTree }
+import v4.compiler.target_carriers { TargetModel, TargetSource }
 import v4.std.collection { List }
 import v4.std.diagnostic {
   Accepted,
@@ -49,14 +51,6 @@ type LanguageModel = Node
 
 // 🟢 grounded — host interpretation model peer (Ratified Q1); Eval terminal only.
 type HostModel = Node
-
-
-// 🟢 grounded — testcase: emit returns Outcome<TargetSource> in anchor_emit_rejects
-type TargetModel = Node
-
-
-// 🟢 grounded — testcase: emit returns Outcome<TargetSource> in anchor_emit_rejects
-type TargetSource = String
 
 
 // 🟢 grounded — pre-ingest text slot; legacy staging only (not compile-core).
@@ -201,6 +195,20 @@ data grounding_sanity_lens: Lens = Lens {
 }
 
 
+fn compile_inferred_translate(
+  inferred: InferredTree,
+  input_lang: LanguageModel,
+  target_lang: TargetModel
+) -> Outcome<TargetSource> {
+  bind_outcome(
+    o: outcome_accepted(value: input_lang),
+    f: fn(_input_lang: LanguageModel) {
+      emit(tree: inferred, target: target_lang)
+    }
+  )
+}
+
+
 fn compile_inferred(
   inferred: InferredTree,
   input_lang: LanguageModel,
@@ -209,7 +217,11 @@ fn compile_inferred(
   match mode {
     TranslateTo { target_lang } =>
       bind_outcome(
-        o: emit(tree: inferred, target: target_lang),
+        o: compile_inferred_translate(
+          inferred: inferred,
+          input_lang: input_lang,
+          target_lang: target_lang
+        ),
         f: fn(target_source: TargetSource) {
           outcome_accepted(TranslateResult { source: target_source })
         }

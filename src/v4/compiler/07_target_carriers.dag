@@ -1,0 +1,21 @@
+// src/v4/compiler/07_target_carriers.dag
+// Scope: Shared translate/emit target carriers — breaks compile ↔ emit import cycle.
+// Owns: TargetModel, TargetSource.
+// Consumes: std/node.dag, std/text.dag.
+// Status: Wave-5-A — single authority for target projection carriers (P3 Stage 5a/5b).
+// Anchor: docs/design-v4-compiler-homomorphism.md TargetSource / TargetModel
+
+
+module v4.compiler.target_carriers
+
+
+import v4.std.node { Node }
+import v4.std.text { String }
+
+
+// 🟢 grounded — target language model bundle (Node projection per Theme-A #9).
+type TargetModel = Node
+
+
+// 🟢 grounded — serialized target text (bytes-as-data terminal for TranslateTo).
+type TargetSource = String
