@@ -2835,12 +2835,23 @@ fn type_node_child_is_type_variable(c: Node) -> Bool {
 }
 
 // BTreeSet requires T: Ord. Reject only carriers known to lack Ord (Float, Json);
-// otherwise require a successful Rust type render (covers Option<T>, List<T>, nominals, etc.).
+// otherwise require a successful Rust type render (covers Option, List, nominals, etc.).
+fn rust_type_node_is_json_carrier(elem_node: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  let name = authored_name_at(source_indices: source_indices, node: normalize_access_type_node(n: elem_node))
+  if name == "Json" { true }
+  else {
+    match name |> split(delimiter: ".") |> last {
+      Some { value: last } => last == "Json"
+      None => false
+    }
+  }
+}
+
 fn rust_type_node_rejects_btree_set_ord(elem_node: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   let normed = normalize_access_type_node(n: elem_node)
   let name = authored_name_at(source_indices: source_indices, node: normed)
   if name == "Float" { true }
-  else if is_json_wire_declaration_type(t: normed, source_indices: source_indices) { true }
+  else if rust_type_node_is_json_carrier(elem_node: normed, source_indices: source_indices) { true }
   else if node_is_element_collection(n: normed, source_indices: source_indices) {
     match normed.children |> first {
       Some { value: ch } =>
@@ -2889,7 +2900,7 @@ fn emit_rust_empty_set_expr(set_type: Node, shared_types: Set<String>, source_in
         emit_rust_compile_error_expr(message: "empty_set element type unresolved")
       } else if !rust_btree_set_element_ord_eligible(elem_node: elem_node, shared_types: shared_types, source_indices: source_indices) {
         let carrier = render_rust_type(n: elem_node, shared_types: shared_types, source_indices: source_indices)
-        emit_rust_compile_error_expr(message: concat("empty_set: Rust carrier ", carrier, " is not Ord-eligible for BTreeSet"))
+        emit_rust_compile_error_expr(message: concat("empty_set Rust carrier ", carrier, " is not Ord-eligible for BTreeSet"))
       } else {
         let elem_str = rust_empty_set_element_type_str(set_type: set_type, shared_types: shared_types, source_indices: source_indices)
         if elem_str != "" {
