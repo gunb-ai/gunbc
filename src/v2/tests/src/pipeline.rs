@@ -442,6 +442,30 @@ fn make_node_at(s: String) -> Locus {
     );
 }
 
+/// Positional variant constructors reject named call arguments (`NodeAt(bad: x)`).
+#[test]
+fn generic_variant_positional_constructor_rejects_named_arg() {
+    let source = r#"module test.positional_ctor_named_arg
+
+type LocusAnchor<A> { at: A }
+
+type Locus = NodeAt(LocusAnchor<String>)
+
+fn make_bad(s: String) -> Locus {
+  NodeAt(bad: LocusAnchor { at: s })
+}
+"#;
+    let result = compile_dag(source);
+    let diags = diagnostic_messages(&result);
+    assert!(
+        diags.iter().any(|d| {
+            d.contains("does not accept named arguments") && d.contains("bad")
+        }),
+        "positional variant constructor must fail closed on named args, got: {:?}",
+        diags
+    );
+}
+
 /// Bare record-name patterns (no `{…}`) must not use the Conj record-destructure fallback.
 #[test]
 fn generic_record_bare_name_pattern_reports_variant_not_found() {
