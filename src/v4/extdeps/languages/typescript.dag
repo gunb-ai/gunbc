@@ -1,7 +1,7 @@
 // src/v4/extdeps/languages/typescript.dag
 // Scope: TypeScript 5.9 + ECMA-262 ES2025 numeric primitive fact-bundles and ModelCore wave-1.
-// Owns: TsEcma262NumericPrimitiveKind, TsEcma262PrimitiveOperationSemantics, TsNumberPrimitiveFacts, TsBigIntPrimitiveFacts, TsLanguageModel, ts_*_facts, ts_*_inhabitant_node, ts_declared_inhabitants_root, ts_wave1_* ModelCore, ts_bool_grounding.
-// Consumes: v4.std.collection, v4.std.node, v4.std.logic, v4.std.algebra, v4.std.model_core.
+// Owns: TsEcma262PrimitiveOperationSemantics, TsNumberPrimitiveFacts, TsBigIntPrimitiveFacts, TsEcma262NumericPrimitiveFactsUnion, TsLanguageModel, ts_*_facts, ts_*_inhabitant_node, ts_declared_inhabitants_root, ts_wave1_* ModelCore, ts_bool_grounding.
+// Consumes: v4.std.collection, v4.std.node, v4.std.logic, v4.std.algebra, v4.std.model_core, v4.std.target_model.
 // Status: T-4 typescript slice — ECMA `number` (IEEE-754 binary64) + `bigint` (exact unbounded ℤ) fact-bundles; `core: ModelCore` primitives from `ts_numeric_facts_catalog` via fold; canonical_symbols = catalog surface spellings; bool canonical-B decl-ref — 🟡 E-6(b) staging; wave-1 lex/grammar deferred.
 // Anchor: https://www.typescriptlang.org/docs/handbook/2/everyday-types.html — ECMA-262 https://tc39.es/ecma262/2025/multipage/
 // Ledger: CP-3229-GREEN-TERMINAL.
@@ -30,11 +30,7 @@ import v4.std.node {
 }
 import v4.std.logic { Bool, bool_boolean_algebra }
 import v4.std.algebra { BooleanAlgebra, free_monoid_fold }
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
-type TsEcma262NumericPrimitiveKind
-  = TsNumberPrimitive
-  | TsBigIntPrimitive
+import v4.std.target_model { target_model_edge_declared_inhabitants }
 
 // 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type TsEcma262PrimitiveOperationSemantics
@@ -44,7 +40,6 @@ type TsEcma262PrimitiveOperationSemantics
 
 type TsNumberPrimitiveFacts {
   surface_spelling: Symbol
-  kind: TsEcma262NumericPrimitiveKind
   arithmetic_semantics: TsEcma262PrimitiveOperationSemantics
   bitwise_semantics: TsEcma262PrimitiveOperationSemantics
   ieee754_binary: Symbol
@@ -53,7 +48,6 @@ type TsNumberPrimitiveFacts {
 
 type TsBigIntPrimitiveFacts {
   surface_spelling: Symbol
-  kind: TsEcma262NumericPrimitiveKind
   operation_semantics: TsEcma262PrimitiveOperationSemantics
   std_projection: Symbol
   encoding: Symbol
@@ -72,6 +66,7 @@ type TsLanguageModel {
 
 data ts_language_model_surface_id: Symbol = ts_language_model_surface_id
 
+// M9 coincidence keys (rust.dag wave-1 pattern): number → v4.std.float.Float64, bigint → v4.std.integer.Int.
 data ts_std_projection_float64: Symbol = ts_std_projection_float64
 data ts_std_projection_bigint: Symbol = ts_std_projection_bigint
 
@@ -91,7 +86,6 @@ data ts_inhabitant_field_atom: Symbol = ts_inhabitant_field_atom
 data ts_inhabitant_field_facts: Symbol = ts_inhabitant_field_facts
 
 data ts_facts_field_surface_spelling: Symbol = ts_facts_field_surface_spelling
-data ts_facts_field_kind: Symbol = ts_facts_field_kind
 data ts_facts_field_arithmetic_semantics: Symbol = ts_facts_field_arithmetic_semantics
 data ts_facts_field_bitwise_semantics: Symbol = ts_facts_field_bitwise_semantics
 data ts_facts_field_operation_semantics: Symbol = ts_facts_field_operation_semantics
@@ -100,8 +94,6 @@ data ts_facts_field_ieee754_binary: Symbol = ts_facts_field_ieee754_binary
 data ts_facts_field_std_projection: Symbol = ts_facts_field_std_projection
 data ts_facts_field_encoding: Symbol = ts_facts_field_encoding
 
-data ts_tag_number_primitive: Symbol = ts_tag_number_primitive
-data ts_tag_bigint_primitive: Symbol = ts_tag_bigint_primitive
 data ts_tag_bits64: Symbol = ts_tag_bits64
 data ts_tag_number_ieee754_binary64: Symbol = ts_tag_number_ieee754_binary64
 data ts_tag_number_bitwise_int32_uint32: Symbol = ts_tag_number_bitwise_int32_uint32
@@ -109,7 +101,6 @@ data ts_tag_bigint_exact_unbounded: Symbol = ts_tag_bigint_exact_unbounded
 
 data ts_facts_number: TsNumberPrimitiveFacts = TsNumberPrimitiveFacts {
   surface_spelling: ts_surface_spelling_number,
-  kind: TsNumberPrimitive,
   arithmetic_semantics: TsNumberIeee754Binary64Semantics,
   bitwise_semantics: TsNumberBitwiseInt32Uint32Semantics,
   ieee754_binary: ts_ieee754_binary64,
@@ -118,7 +109,6 @@ data ts_facts_number: TsNumberPrimitiveFacts = TsNumberPrimitiveFacts {
 
 data ts_facts_bigint: TsBigIntPrimitiveFacts = TsBigIntPrimitiveFacts {
   surface_spelling: ts_surface_spelling_bigint,
-  kind: TsBigIntPrimitive,
   operation_semantics: TsBigIntExactUnboundedSemantics,
   std_projection: ts_std_projection_bigint,
   encoding: ts_repr_bigint_exact_unbounded,
@@ -144,13 +134,6 @@ fn ts_named_edge(name: Symbol, target: Node) -> Edge {
   Edge { label: Named { name: name }, target: target }
 }
 
-fn ts_numeric_kind_node(kind: TsEcma262NumericPrimitiveKind) -> Node {
-  match kind {
-    TsNumberPrimitive => ts_inhabitant_atom(id: ts_tag_number_primitive)
-    TsBigIntPrimitive => ts_inhabitant_atom(id: ts_tag_bigint_primitive)
-  }
-}
-
 fn ts_operation_semantics_node(sem: TsEcma262PrimitiveOperationSemantics) -> Node {
   match sem {
     TsNumberIeee754Binary64Semantics =>
@@ -169,10 +152,6 @@ fn ts_number_facts_node(facts: TsNumberPrimitiveFacts) -> Node {
       ts_named_edge(
         name: ts_facts_field_surface_spelling,
         target: ts_inhabitant_atom(id: facts.surface_spelling)
-      ),
-      ts_named_edge(
-        name: ts_facts_field_kind,
-        target: ts_numeric_kind_node(kind: facts.kind)
       ),
       ts_named_edge(
         name: ts_facts_field_arithmetic_semantics,
@@ -205,10 +184,6 @@ fn ts_bigint_facts_node(facts: TsBigIntPrimitiveFacts) -> Node {
       ts_named_edge(
         name: ts_facts_field_surface_spelling,
         target: ts_inhabitant_atom(id: facts.surface_spelling)
-      ),
-      ts_named_edge(
-        name: ts_facts_field_kind,
-        target: ts_numeric_kind_node(kind: facts.kind)
       ),
       ts_named_edge(
         name: ts_facts_field_operation_semantics,
@@ -266,6 +241,20 @@ fn ts_declared_inhabitants_root() -> Node {
     children: [
       ts_named_edge(name: ts_inhabitant_field_number, target: ts_inhabitant_number_node()),
       ts_named_edge(name: ts_inhabitant_field_bigint, target: ts_inhabitant_bigint_node())
+    ]
+  }
+}
+
+// Declared-inhabitant Conj for `target_model_edge_declared_inhabitants` (rust.dag ~838–1100).
+// Not ModelCore.inhabitance (algebra witness rows); wave-1 binds only this target_model edge.
+fn ts_wave1_target_model() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      ts_named_edge(
+        name: target_model_edge_declared_inhabitants,
+        target: ts_declared_inhabitants_root()
+      )
     ]
   }
 }

@@ -11,7 +11,8 @@ import v4.extdeps.languages.typescript {
   ts_declared_inhabitants_root,
   ts_inhabitant_bigint_node,
   ts_inhabitant_number_node,
-  ts_language_model_wave1
+  ts_language_model_wave1,
+  ts_wave1_target_model
 }
 import v4.std.node { Node }
 
@@ -21,3 +22,4 @@ data ts_anchor_wave1: ts_anchor_language_model = ts_language_model_wave1()
 data ts_anchor_number: Node = ts_inhabitant_number_node()
 data ts_anchor_bigint: Node = ts_inhabitant_bigint_node()
 data ts_anchor_inhabitants: Node = ts_declared_inhabitants_root()
+data ts_anchor_target_model: Node = ts_wave1_target_model()
