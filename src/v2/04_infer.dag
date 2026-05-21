@@ -2410,7 +2410,7 @@ fn infer_variant_constructor_call(func_name: String, call_args: List<Node>, span
                       name: "0",
                       value: payload_expr,
                       span: payload_expr.span,
-                      name_span: node_name_span(n: payload_expr)
+                      name_span: kernel_span(name: "0")
                     )
                     Some { value: infer_record_lit(
                       type_name: Some { value: func_name },
