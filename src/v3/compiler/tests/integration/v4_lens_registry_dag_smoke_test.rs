@@ -1,34 +1,101 @@
 //! **Layer:** integration
 //!
-//! **P2 / Practice 5 (single authority):** This harness proves **parse + inference cleanliness**
-//! for `src/v4/lens/registry.dag` only (`compile_to_dag`, empty diagnostics) — it does **not**
-//! claim a **generated** substrate consumer for `LensRegistryEntryV0` / `LensIdV0` / `LensModulePathV0`
-//! (INVARIANTS §P2: declaration without generated consumer = staging; see `STRUCTURE.md` and
-//! `docs/briefs/r4-lane-a-lens-interface-freeze-pin.md` §3). The operator pin’s §3 markdown
-//! table remains a human mirror until a mechanical reader lands.
+//! **P2 / Practice 5 (single authority):** This harness proves `src/v4/lens/registry.dag`
+//! parses and exposes the registry-backed query surface that `src/v4/workflow/ci.dag`
+//! consumes for Lens-CI activation. It intentionally stays at parse level because M1(2.8)
+//! still rejects v4 block-bodied functions in isolated `compile_to_dag` smokes.
 //!
 //! **INVARIANTS §P5 Dispatch-Discipline Mechanism (b):** this path’s SG-0 census line + matching
 //! `INVARIANTS.md` table row land in the same PR as the harness (home-of-record for the
 //! hand-Rust receipt).
 
-use v3_compiler::compile_to_dag;
-use v3_compiler::CompileError;
+use v3_compiler::parse_for_test;
+use v3_compiler::parse_surface::SurfaceItem;
+use v3_compiler::tokenize_for_test;
 
 const REGISTRY_DAG: &str = include_str!("../../../../v4/lens/registry.dag");
 const REGISTRY_PATH: &str = "src/v4/lens/registry.dag";
+const CI_DAG: &str = include_str!("../../../../v4/workflow/ci.dag");
+const CI_PATH: &str = "src/v4/workflow/ci.dag";
+
+fn parse_module(source: &str, path: &str) -> v3_compiler::parse_surface::SurfaceModule {
+    let tokens =
+        tokenize_for_test(source, path).unwrap_or_else(|e| panic!("{path}: tokenize: {e:?}"));
+    parse_for_test(&tokens, path).unwrap_or_else(|e| panic!("{path}: parse: {e:?}"))
+}
+
+fn surface_declares_fn(module: &v3_compiler::parse_surface::SurfaceModule, name: &str) -> bool {
+    module.items.iter().any(|item| match item {
+        SurfaceItem::Fn {
+            name: item_name, ..
+        }
+        | SurfaceItem::FnExternalBody {
+            name: item_name, ..
+        } => item_name == name,
+        _ => false,
+    })
+}
+
+fn surface_declares_data(module: &v3_compiler::parse_surface::SurfaceModule, name: &str) -> bool {
+    module.items.iter().any(|item| match item {
+        SurfaceItem::Data {
+            name: item_name, ..
+        } => item_name == name,
+        _ => false,
+    })
+}
+
+fn import_includes_name(
+    module: &v3_compiler::parse_surface::SurfaceModule,
+    path: &[&str],
+    name: &str,
+) -> bool {
+    module.items.iter().any(|item| match item {
+        SurfaceItem::Import {
+            path: item_path,
+            names,
+            ..
+        } => {
+            item_path.iter().map(String::as_str).eq(path.iter().copied())
+                && names.iter().any(|n| n == name)
+        }
+        _ => false,
+    })
+}
 
 #[test]
 fn v4_lens_registry_dag_compiles() {
-    match compile_to_dag(REGISTRY_DAG, REGISTRY_PATH) {
-        Ok(dag) => assert!(
-            dag.diagnostics().is_empty(),
-            "{REGISTRY_PATH}: expected empty diagnostics, got {:?}",
-            dag.diagnostics().iter().collect::<Vec<_>>()
+    let module = parse_module(REGISTRY_DAG, REGISTRY_PATH);
+    assert!(
+        surface_declares_data(&module, "lens_registry_v0"),
+        "{REGISTRY_PATH}: registry list must be the LensIdV0 row authority"
+    );
+    assert!(
+        surface_declares_fn(&module, "lens_registry_ids_resolve"),
+        "{REGISTRY_PATH}: registry must expose the required-lens resolution query"
+    );
+    assert!(
+        surface_declares_fn(&module, "lens_registry_bound_row_count"),
+        "{REGISTRY_PATH}: registry must count bound rows for fail-closed singleton resolution"
+    );
+}
+
+#[test]
+fn v4_ci_workflow_consumes_lens_registry_for_lens_ci_signal() {
+    let module = parse_module(CI_DAG, CI_PATH);
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "lens", "registry"],
+            "lens_registry_ids_resolve"
         ),
-        Err(CompileError::Semantic(dag)) => panic!(
-            "{REGISTRY_PATH}: semantic errors: {:?}",
-            dag.diagnostics().iter().collect::<Vec<_>>()
-        ),
-        Err(other) => panic!("{REGISTRY_PATH}: {other:?}"),
-    }
+        "{CI_PATH}: Lens-CI command must consume the registry query, not a parallel list"
+    );
+    assert!(
+        CI_DAG.contains("LensCiCommand { required_lenses: List<LensIdV0> }")
+            && CI_DAG.contains("lens_ci_required_lenses")
+            && CI_DAG.contains("lens_ci_registry_signal")
+            && CI_DAG.contains("lens_registry_ids_resolve(lens_ids: required_lenses)"),
+        "{CI_PATH}: Lens-CI job/gate must be LensIdV0-driven and registry-checked"
+    );
 }
