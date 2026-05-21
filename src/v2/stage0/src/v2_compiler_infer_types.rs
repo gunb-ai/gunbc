@@ -118,14 +118,6 @@ pub fn node_is_element_collection(
     (node_is_collection(&n, source_indices) && ((n.children.clone().len() as i64) == 1))
 }
 
-pub fn node_is_set_collection(
-    n: &Rc<Node>,
-    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    (node_is_element_collection(&n, source_indices.clone())
-        && (authored_name_at(source_indices.clone(), &n).as_str() == "Set".to_string().as_str()))
-}
-
 pub fn is_product_type(n: Rc<Node>) -> bool {
     (n.connective.clone() == Connective::Conj)
 }
@@ -249,53 +241,6 @@ pub fn bare_map_node() -> Option<Rc<Node>> {
             })),
             None => None,
         },
-        None => None,
-    }
-}
-
-pub fn bare_set_node() -> Option<Rc<Node>> {
-    match container_param_name("Set".to_string(), 0) {
-        Some(elem_id) => Some(Rc::new(Node {
-            name: "Set".to_string(),
-            span: make_span(0, 0),
-            ident_span: Some(make_span(0, 0)),
-            children: Rc::new(vec![Rc::new(Node {
-                name: elem_id.clone(),
-                span: make_span(0, 0),
-                ident_span: Some(make_span(0, 0)),
-                children: Rc::new(vec![]),
-                connective: Connective::NoConnective,
-                params: Rc::new(vec![]),
-                inferred: Some(Rc::new(InferredNode::Resolved {
-                    node: type_variable_node(elem_id.clone()),
-                })),
-                return_cardinality: Cardinality::Required,
-                uses: Rc::new(vec![]),
-                body: None,
-                transport: None,
-                properties: Rc::new(vec![]),
-                type_annotation: None,
-                is_self_recursive: false,
-                has_non_tail_self_call: false,
-                match_pattern: None,
-                expr_data: Rc::new(ExprData::NoExprData),
-                ident: None,
-            })]),
-            connective: Connective::NoConnective,
-            params: Rc::new(vec![]),
-            inferred: None,
-            return_cardinality: Cardinality::Required,
-            uses: Rc::new(vec![]),
-            body: None,
-            transport: None,
-            properties: Rc::new(vec![]),
-            type_annotation: None,
-            is_self_recursive: false,
-            has_non_tail_self_call: false,
-            match_pattern: None,
-            expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
-        })),
         None => None,
     }
 }

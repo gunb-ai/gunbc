@@ -100,7 +100,9 @@ pub enum CompositionVerdict {
 impl CompositionVerdict {
     pub fn first_breaker(&self) -> Rc<OperationEffect> {
         match self {
-            CompositionVerdict::IdempotentComposition => panic!("no first_breaker on unit variant"),
+            CompositionVerdict::IdempotentComposition => {
+                panic!("no first_breaker on unit variant")
+            }
             CompositionVerdict::BrokenBy {
                 first_breaker: __val,
                 ..
@@ -220,20 +222,18 @@ pub fn derive_effect_shape(method: HttpMethod, path: Rc<PathTemplate>) -> Rc<Eff
 
 pub fn derive_op_effect(
     operation_name: String,
-    method: &HttpMethod,
-    path: &Rc<PathTemplate>,
+    method: HttpMethod,
+    path: Rc<PathTemplate>,
 ) -> Rc<DeriveOpEffectResult> {
-    {
-        let shape = derive_effect_shape(method.clone(), path.clone());
-        Rc::new(DeriveOpEffectResult::DerivedEffect {
-            effect: Rc::new(DerivedOpEffect {
-                operation_name: operation_name,
-                method: method.clone(),
-                path_template: path.clone(),
-                shape: shape,
-            }),
-        })
-    }
+    let shape = derive_effect_shape(method.clone(), path.clone());
+    Rc::new(DeriveOpEffectResult::DerivedEffect {
+        effect: Rc::new(DerivedOpEffect {
+            operation_name: operation_name,
+            method: method.clone(),
+            path_template: path.clone(),
+            shape: shape,
+        }),
+    })
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

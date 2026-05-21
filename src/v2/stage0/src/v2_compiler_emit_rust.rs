@@ -123,7 +123,7 @@ use std::rc::Rc;
 
 pub fn render_rust_type(
     n: Rc<Node>,
-    shared_types: Rc<std::collections::BTreeSet<String>>,
+    shared_types: Rc<HashMap<String, bool>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     render_node_type(&n, &RenderTarget::Rust, &shared_types, &source_indices)
@@ -627,15 +627,13 @@ pub fn resolve_wire_serde_policy_from_encoding_node(
             } else {
                 if (encoding_name.clone().as_str() == "UntaggedVariant".to_string().as_str()) {
                     rust_untagged_policy()
+                } else if (encoding_name.clone().as_str() == "TaggedVariant".to_string().as_str()) {
+                    rust_tagged_object_policy()
                 } else {
-                    if (encoding_name.clone().as_str() == "TaggedVariant".to_string().as_str()) {
-                        rust_tagged_object_policy()
-                    } else {
-                        rust_serde_error_policy(v2_rt::concat(
-                            "unsupported VariantEncoding: ".to_string(),
-                            encoding_name.clone(),
-                        ))
-                    }
+                    rust_serde_error_policy(v2_rt::concat(
+                        "unsupported VariantEncoding: ".to_string(),
+                        encoding_name.clone(),
+                    ))
                 }
             }
         }
@@ -1308,7 +1306,7 @@ pub fn emit_rust_block_stmts(
     mut scope: Rc<InferScope>,
     mut registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     mut depth: i64,
-    mut shared_types: Rc<std::collections::BTreeSet<String>>,
+    mut shared_types: Rc<HashMap<String, bool>>,
     mut emit_info: Rc<EmitGraphInfo>,
 ) -> Rc<BlockEmitState> {
     loop {
@@ -1356,7 +1354,7 @@ pub fn emit_rust_init_block_stmts(
     mut scope: Rc<InferScope>,
     mut registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     mut depth: i64,
-    mut shared_types: Rc<std::collections::BTreeSet<String>>,
+    mut shared_types: Rc<HashMap<String, bool>>,
     mut emit_info: Rc<EmitGraphInfo>,
 ) -> Rc<BlockEmitState> {
     loop {
@@ -1460,10 +1458,10 @@ pub fn is_dag_value_type_name(name: String) -> bool {
 
 pub fn is_type_constant(
     summary: &Rc<TypeSummary>,
-    recursive_type_set: Rc<std::collections::BTreeSet<String>>,
+    recursive_type_set: Rc<HashMap<String, bool>>,
 ) -> bool {
     {
-        let is_recursive = set_contains(recursive_type_set, summary.name.clone());
+        let is_recursive = v2_rt::map_contains_key(&recursive_type_set, summary.name.clone());
         let has_generics = ((summary.generic_param_names.clone().len() as i64) > 0);
         match (*summary.repr.clone()).clone() {
             TypeRepr::EnumRepr { unit_only, .. } => {
@@ -1506,11 +1504,11 @@ pub fn is_type_constant(
 }
 
 pub fn maybe_mark_shared_type(
-    acc: Rc<std::collections::BTreeSet<String>>,
+    acc: Rc<HashMap<String, bool>>,
     summary: &Rc<TypeSummary>,
-    recursive_type_set: Rc<std::collections::BTreeSet<String>>,
+    recursive_type_set: Rc<HashMap<String, bool>>,
     target_needs_sharing: bool,
-) -> Rc<std::collections::BTreeSet<String>> {
+) -> Rc<HashMap<String, bool>> {
     {
         let needs_sharing = (target_needs_sharing
             && match (*summary.repr.clone()).clone() {
@@ -1518,7 +1516,7 @@ pub fn maybe_mark_shared_type(
                 TypeRepr::EnumRepr { unit_only, .. } => (unit_only.clone() == false),
             });
         if (needs_sharing && !is_type_constant(&summary, recursive_type_set)) {
-            set_insert(acc, summary.name.clone())
+            v2_rt::rc_map_insert(acc, summary.name.clone(), true)
         } else {
             acc
         }
@@ -1527,17 +1525,17 @@ pub fn maybe_mark_shared_type(
 
 pub fn build_shared_types(
     type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
-    recursive_type_set: Rc<std::collections::BTreeSet<String>>,
+    recursive_type_set: Rc<HashMap<String, bool>>,
     target: RenderTarget,
-) -> Rc<std::collections::BTreeSet<String>> {
+) -> Rc<HashMap<String, bool>> {
     {
         let sharing = sharing_for_target(target);
         let user_shared = Rc::new(v2_rt::map_values(&type_summaries))
             .iter()
             .cloned()
             .fold(
-                empty_set(),
-                |acc: Rc<std::collections::BTreeSet<String>>, summary: Rc<TypeSummary>| {
+                v2_rt::rc_empty_map::<String, bool>(),
+                |acc: Rc<HashMap<String, bool>>, summary: Rc<TypeSummary>| {
                     maybe_mark_shared_type(
                         acc,
                         &summary,
@@ -1563,9 +1561,9 @@ pub fn build_shared_types(
         });
         collection_keys.iter().cloned().fold(
             user_shared.clone(),
-            |acc: Rc<std::collections::BTreeSet<String>>, key: String| {
+            |acc: Rc<HashMap<String, bool>>, key: String| {
                 let pascal = to_pascal(key.clone());
-                set_insert(acc, pascal.clone())
+                v2_rt::rc_map_insert(acc, pascal.clone(), true)
             },
         )
     }
@@ -1575,21 +1573,20 @@ pub fn build_shared_types(
 pub struct OwnershipProofEntry {
     pub name: String,
     pub proof: Rc<OwnershipProof>,
-    pub param_names: Rc<std::collections::BTreeSet<String>>,
+    pub param_names: Rc<HashMap<String, bool>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OwnershipBuildResult {
-    pub ownership_index: Rc<HashMap<String, Rc<std::collections::BTreeSet<String>>>>,
-    pub read_only_params_index: Rc<HashMap<String, Rc<std::collections::BTreeSet<String>>>>,
+    pub ownership_index: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
+    pub read_only_params_index: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
 }
 
 pub fn build_ownership_results(modules: &Rc<Vec<Rc<TypedModule>>>) -> Rc<OwnershipBuildResult> {
     {
         let callable_set = modules.clone().iter().cloned().fold(
-            empty_set(),
-            |acc: Rc<std::collections::BTreeSet<compile_error!("UNRESOLVED_TypeVariable")>>,
-             m: Rc<TypedModule>| {
+            v2_rt::rc_empty_map::<String, bool>(),
+            |acc: Rc<HashMap<String, bool>>, m: Rc<TypedModule>| {
                 Rc::new({
                     let mut __result = Vec::new();
                     for item in m.items.clone().iter().cloned() {
@@ -1601,21 +1598,15 @@ pub fn build_ownership_results(modules: &Rc<Vec<Rc<TypedModule>>>) -> Rc<Ownersh
                 })
                 .iter()
                 .cloned()
-                .fold(
-                    acc,
-                    |inner: Rc<
-                        std::collections::BTreeSet<compile_error!("UNRESOLVED_TypeVariable")>,
-                    >,
-                     item: Rc<Node>| {
-                        set_union(
-                            inner,
-                            collect_callable_refs(
-                                &item.body.clone().clone().unwrap(),
-                                &m.type_env.clone().source_indices.clone(),
-                            ),
-                        )
-                    },
-                )
+                .fold(acc, |inner: Rc<HashMap<String, bool>>, item: Rc<Node>| {
+                    v2_rt::rc_map_merge(
+                        inner,
+                        collect_callable_refs(
+                            &item.body.clone().clone().unwrap(),
+                            &m.type_env.clone().source_indices.clone(),
+                        ),
+                    )
+                })
             },
         );
         let proofs = Rc::new({
@@ -1638,19 +1629,15 @@ pub fn build_ownership_results(modules: &Rc<Vec<Rc<TypedModule>>>) -> Rc<Ownersh
                         {
                             __result.push({
                                 let pnames = item.params.clone().iter().cloned().fold(
-                                    empty_set(),
-                                    |acc: Rc<
-                                        std::collections::BTreeSet<
-                                            compile_error!("UNRESOLVED_TypeVariable"),
-                                        >,
-                                    >,
-                                     p: Rc<Node>| {
-                                        set_insert(
+                                    v2_rt::rc_empty_map::<String, bool>(),
+                                    |acc: Rc<HashMap<String, bool>>, p: Rc<Node>| {
+                                        v2_rt::rc_map_insert(
                                             acc,
                                             param_node_name_at(
                                                 p.clone(),
                                                 m.type_env.clone().source_indices.clone(),
                                             ),
+                                            true,
                                         )
                                     },
                                 );
@@ -1684,23 +1671,17 @@ pub fn build_ownership_results(modules: &Rc<Vec<Rc<TypedModule>>>) -> Rc<Ownersh
         });
         proofs.iter().cloned().fold(
             Rc::new(OwnershipBuildResult {
-                ownership_index: v2_rt::rc_empty_map::<
-                    String,
-                    Rc<std::collections::BTreeSet<String>>,
-                >(),
-                read_only_params_index: v2_rt::rc_empty_map::<
-                    String,
-                    Rc<std::collections::BTreeSet<String>>,
-                >(),
+                ownership_index: v2_rt::rc_empty_map::<String, Rc<HashMap<String, bool>>>(),
+                read_only_params_index: v2_rt::rc_empty_map::<String, Rc<HashMap<String, bool>>>(),
             }),
             |acc: Rc<OwnershipBuildResult>, entry: Rc<OwnershipProofEntry>| {
                 let acc = Rc::try_unwrap(acc).unwrap_or_else(|rc| (*rc).clone());
                 {
-                    let read_only = if set_contains(
-                        callable_set.clone(),
+                    let read_only = if v2_rt::map_contains_key(
+                        &callable_set,
                         entry.proof.clone().func_name.clone(),
                     ) {
-                        empty_set()
+                        v2_rt::rc_empty_map::<String, bool>()
                     } else {
                         build_read_only_params(entry.proof.clone(), entry.param_names.clone())
                     };
@@ -1738,11 +1719,11 @@ pub fn emit_rust(typed: &Rc<ResolvedGraph>) -> Rc<EmitResult> {
             fielded_variants: base_info.fielded_variants.clone(),
             shared_types: shared,
             ownership_index: ownership.ownership_index.clone(),
-            movable: empty_set(),
+            movable: v2_rt::rc_empty_map::<String, bool>(),
             variant_to_enum: base_info.variant_to_enum.clone(),
-            owned_bindings: empty_set(),
+            owned_bindings: v2_rt::rc_empty_map::<String, bool>(),
             read_only_params_index: ownership.read_only_params_index.clone(),
-            read_only_params: empty_set(),
+            read_only_params: v2_rt::rc_empty_map::<String, bool>(),
         });
         let shared_types = emit_info.shared_types.clone();
         let registry = typed.item_registry.clone();
@@ -1995,9 +1976,9 @@ pub fn emit_module(
             ownership_index: base_info.ownership_index.clone(),
             movable: base_info.movable.clone(),
             variant_to_enum: base_info.variant_to_enum.clone(),
-            owned_bindings: empty_set(),
+            owned_bindings: v2_rt::rc_empty_map::<String, bool>(),
             read_only_params_index: base_info.read_only_params_index.clone(),
-            read_only_params: empty_set(),
+            read_only_params: v2_rt::rc_empty_map::<String, bool>(),
         });
         let shared_types = emit_info.shared_types.clone();
         emit_module_full(
@@ -2015,7 +1996,7 @@ pub fn emit_module_full(
     typed_module: &Rc<TypedModule>,
     registry: &Rc<HashMap<String, Rc<ItemInfo>>>,
     emit_info: &Rc<EmitGraphInfo>,
-    shared_types: Rc<std::collections::BTreeSet<String>>,
+    shared_types: Rc<HashMap<String, bool>>,
     svc_module_map: Rc<HashMap<String, String>>,
     data_items: Rc<HashMap<String, Rc<Node>>>,
 ) -> Rc<TextFile> {
@@ -2635,7 +2616,7 @@ pub fn emit_typed_item(
     module_name: String,
     registry: &Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: &Rc<InferScope>,
-    shared_types: Rc<std::collections::BTreeSet<String>>,
+    shared_types: Rc<HashMap<String, bool>>,
     emit_info: &Rc<EmitGraphInfo>,
     wire_contract_item: Option<Rc<Node>>,
     data_items: Rc<HashMap<String, Rc<Vec<Rc<Node>>>>>,
@@ -2697,7 +2678,7 @@ pub fn emit_typed_item(
                                 qualified_name.clone(),
                             ) {
                                 Some(m) => m.clone(),
-                                None => empty_set(),
+                                None => v2_rt::rc_empty_map::<String, bool>(),
                             };
                             let item_is_tco = is_tco_eligible(
                                 &authored_name(env.clone(), item.clone()),
@@ -2706,14 +2687,14 @@ pub fn emit_typed_item(
                                 &env.source_indices.clone(),
                             );
                             let fn_read_only = if item_is_tco {
-                                empty_set()
+                                v2_rt::rc_empty_map::<String, bool>()
                             } else {
                                 match v2_rt::map_get(
                                     &emit_info.read_only_params_index.clone(),
                                     qualified_name.clone(),
                                 ) {
                                     Some(m) => m.clone(),
-                                    None => empty_set(),
+                                    None => v2_rt::rc_empty_map::<String, bool>(),
                                 }
                             };
                             let fn_emit_info = Rc::new(EmitGraphInfo {
@@ -2724,7 +2705,7 @@ pub fn emit_typed_item(
                                 ownership_index: emit_info.ownership_index.clone(),
                                 movable: fn_movable,
                                 variant_to_enum: emit_info.variant_to_enum.clone(),
-                                owned_bindings: empty_set(),
+                                owned_bindings: v2_rt::rc_empty_map::<String, bool>(),
                                 read_only_params_index: emit_info.read_only_params_index.clone(),
                                 read_only_params: fn_read_only,
                             });
@@ -2801,17 +2782,17 @@ pub fn emit_typed_item(
 
 pub fn needs_box_wrapping(
     mut n: Rc<Node>,
-    mut recursive_types: Rc<std::collections::BTreeSet<String>>,
-    mut shared_types: Rc<std::collections::BTreeSet<String>>,
+    mut recursive_types: Rc<HashMap<String, bool>>,
+    mut shared_types: Rc<HashMap<String, bool>>,
     mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     loop {
         if ((n.children.clone().len() as i64) == 0) {
             let name = authored_name_at(source_indices, &n);
-            if set_contains(shared_types, name.clone()) {
+            if emit_map_has(shared_types, name.clone()) {
                 break false;
             } else {
-                break set_contains(recursive_types, name.clone());
+                break emit_map_has(recursive_types, name.clone());
             }
         } else {
             let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
@@ -2902,8 +2883,8 @@ pub fn function_type_params_have_collision(type_params: Rc<Vec<Rc<Node>>>) -> bo
 
 pub fn emit_type_def_from_connective(
     item: &Rc<Node>,
-    recursive_types: Rc<std::collections::BTreeSet<String>>,
-    shared_types: Rc<std::collections::BTreeSet<String>>,
+    recursive_types: Rc<HashMap<String, bool>>,
+    shared_types: Rc<HashMap<String, bool>>,
     env: &Rc<TypeEnv>,
     emit_info: Rc<EmitGraphInfo>,
     wire_contract_item: &Option<Rc<Node>>,
@@ -3008,8 +2989,8 @@ pub fn emit_struct_from_children(
     name: &String,
     type_params: String,
     children: &Rc<Vec<Rc<Node>>>,
-    recursive_types: Rc<std::collections::BTreeSet<String>>,
-    shared_types: &Rc<std::collections::BTreeSet<String>>,
+    recursive_types: Rc<HashMap<String, bool>>,
+    shared_types: &Rc<HashMap<String, bool>>,
     env: Rc<TypeEnv>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
@@ -3021,7 +3002,7 @@ pub fn emit_struct_from_children(
         let derives = if has_fn_fields {
             "#[derive(Clone)]".to_string()
         } else {
-            if set_contains(shared_types.clone(), name.clone()) {
+            if emit_map_has(shared_types.clone(), name.clone()) {
                 rust_struct_derives_text()
             } else {
                 rust_struct_derives_copy_text()
@@ -3094,8 +3075,8 @@ pub fn emit_struct_from_children(
 
 pub fn emit_struct_field_from_child(
     child: &Rc<Node>,
-    recursive_types: Rc<std::collections::BTreeSet<String>>,
-    shared_types: &Rc<std::collections::BTreeSet<String>>,
+    recursive_types: Rc<HashMap<String, bool>>,
+    shared_types: &Rc<HashMap<String, bool>>,
     env: &Rc<TypeEnv>,
 ) -> String {
     {
@@ -3130,7 +3111,7 @@ pub fn emit_struct_field_from_child(
                                     ),
                                     ">".to_string(),
                                 );
-                                if set_contains(shared_types.clone(), rt_child_name.clone()) {
+                                if emit_map_has(shared_types.clone(), rt_child_name.clone()) {
                                     v2_rt::concat(
                                         v2_rt::concat("Rc<".to_string(), with_params),
                                         ">".to_string(),
@@ -3272,8 +3253,8 @@ pub fn emit_enum_from_children(
     name: &String,
     type_params: &String,
     children: &Rc<Vec<Rc<Node>>>,
-    recursive_types: &Rc<std::collections::BTreeSet<String>>,
-    shared_types: &Rc<std::collections::BTreeSet<String>>,
+    recursive_types: &Rc<HashMap<String, bool>>,
+    shared_types: &Rc<HashMap<String, bool>>,
     env: &Rc<TypeEnv>,
     serde_policy: &Rc<RustEnumWireSerde>,
 ) -> String {
@@ -3285,9 +3266,9 @@ pub fn emit_enum_from_children(
                 __result.push(emit_variant_from_child(
                     &child,
                     recursive_types.clone(),
-                    &shared_types,
+                    shared_types.clone(),
                     &env,
-                    &serde_policy,
+                    serde_policy.clone(),
                 ));
             }
             __result
@@ -3405,8 +3386,8 @@ pub fn emit_enum_shared_accessors(
     name: &String,
     type_params: &String,
     children: &Rc<Vec<Rc<Node>>>,
-    recursive_types: Rc<std::collections::BTreeSet<String>>,
-    shared_types: Rc<std::collections::BTreeSet<String>>,
+    recursive_types: Rc<HashMap<String, bool>>,
+    shared_types: Rc<HashMap<String, bool>>,
     env: &Rc<TypeEnv>,
 ) -> String {
     {
@@ -3780,10 +3761,10 @@ pub fn variant_rename_validations_for_policy(
 
 pub fn emit_variant_from_child(
     child: &Rc<Node>,
-    recursive_types: Rc<std::collections::BTreeSet<String>>,
-    shared_types: &Rc<std::collections::BTreeSet<String>>,
+    recursive_types: Rc<HashMap<String, bool>>,
+    shared_types: Rc<HashMap<String, bool>>,
     env: &Rc<TypeEnv>,
-    serde_policy: &Rc<RustEnumWireSerde>,
+    serde_policy: Rc<RustEnumWireSerde>,
 ) -> String {
     {
         let child_text = authored_name(env.clone(), child.clone());
@@ -3796,106 +3777,99 @@ pub fn emit_variant_from_child(
                 ),
                 ",".to_string(),
             )
-        } else {
-            if ((serde_policy.enum_attr.clone().as_str()
-                == "#[serde(untagged)]".to_string().as_str())
-                && ((child.children.clone().len() as i64) == 1))
-            {
-                {
-                    let f = child.children.clone().first().cloned().clone().unwrap();
-                    let rt_f = resolved_type(f.clone());
-                    let ty = render_rust_type(
-                        rt_f.clone(),
-                        shared_types.clone(),
-                        env.source_indices.clone(),
-                    );
-                    let final_ty = if needs_box_wrapping(
-                        rt_f.clone(),
-                        recursive_types.clone(),
-                        shared_types.clone(),
-                        env.source_indices.clone(),
-                    ) {
-                        v2_rt::concat(
-                            v2_rt::concat("Box<".to_string(), ty.clone()),
-                            ">".to_string(),
-                        )
-                    } else {
-                        ty.clone()
-                    };
-                    v2_rt::concat(
-                        v2_rt::concat(
-                            v2_rt::concat(
-                                v2_rt::concat(
-                                    v2_rt::concat(rename_attr, "    ".to_string()),
-                                    child_text.clone(),
-                                ),
-                                "(".to_string(),
-                            ),
-                            final_ty.clone(),
-                        ),
-                        "),".to_string(),
-                    )
-                }
+        } else if (serde_policy.enum_attr.clone().as_str()
+            == "#[serde(untagged)]".to_string().as_str())
+            && ((child.children.clone().len() as i64) == 1)
+        {
+            let f = child.children[0].clone();
+            let rt_f = resolved_type(f.clone());
+            let ty = render_rust_type(
+                rt_f.clone(),
+                shared_types.clone(),
+                env.source_indices.clone(),
+            );
+            let final_ty = if needs_box_wrapping(
+                rt_f.clone(),
+                recursive_types.clone(),
+                shared_types.clone(),
+                env.source_indices.clone(),
+            ) {
+                v2_rt::concat(
+                    v2_rt::concat("Box<".to_string(), ty.clone()),
+                    ">".to_string(),
+                )
             } else {
-                {
-                    let field_lines = Rc::new({
-                        let mut __result = Vec::new();
-                        for f in child.children.clone().iter().cloned() {
-                            __result.push({
-                                let rt_f = resolved_type(f.clone());
-                                let ty = render_rust_type(
-                                    rt_f.clone(),
-                                    shared_types.clone(),
-                                    env.source_indices.clone(),
-                                );
-                                let final_ty = if needs_box_wrapping(
-                                    rt_f.clone(),
-                                    recursive_types.clone(),
-                                    shared_types.clone(),
-                                    env.source_indices.clone(),
-                                ) {
-                                    v2_rt::concat(
-                                        v2_rt::concat("Box<".to_string(), ty.clone()),
-                                        ">".to_string(),
-                                    )
-                                } else {
-                                    ty.clone()
-                                };
+                ty.clone()
+            };
+            v2_rt::concat(
+                v2_rt::concat(
+                    v2_rt::concat(
+                        v2_rt::concat(rename_attr, "    ".to_string()),
+                        child_text.clone(),
+                    ),
+                    "(".to_string(),
+                ),
+                v2_rt::concat(final_ty, "),".to_string()),
+            )
+        } else {
+            {
+                let field_lines = Rc::new({
+                    let mut __result = Vec::new();
+                    for f in child.children.clone().iter().cloned() {
+                        __result.push({
+                            let rt_f = resolved_type(f.clone());
+                            let ty = render_rust_type(
+                                rt_f.clone(),
+                                shared_types.clone(),
+                                env.source_indices.clone(),
+                            );
+                            let final_ty = if needs_box_wrapping(
+                                rt_f.clone(),
+                                recursive_types.clone(),
+                                shared_types.clone(),
+                                env.source_indices.clone(),
+                            ) {
+                                v2_rt::concat(
+                                    v2_rt::concat("Box<".to_string(), ty.clone()),
+                                    ">".to_string(),
+                                )
+                            } else {
+                                ty.clone()
+                            };
+                            v2_rt::concat(
                                 v2_rt::concat(
                                     v2_rt::concat(
                                         v2_rt::concat(
-                                            v2_rt::concat(
-                                                "        ".to_string(),
-                                                emit_ident(
-                                                    authored_name(env.clone(), f.clone()),
-                                                    RenderTarget::Rust,
-                                                ),
+                                            "        ".to_string(),
+                                            emit_ident(
+                                                authored_name(env.clone(), f.clone()),
+                                                RenderTarget::Rust,
                                             ),
-                                            ": ".to_string(),
                                         ),
-                                        final_ty.clone(),
+                                        ": ".to_string(),
                                     ),
-                                    ",".to_string(),
-                                )
-                            });
-                        }
-                        __result
-                    });
-                    let fields_str = field_lines.join(&"\n".to_string());
+                                    final_ty.clone(),
+                                ),
+                                ",".to_string(),
+                            )
+                        });
+                    }
+                    __result
+                });
+                let fields_str = field_lines.join(&"\n".to_string());
+                v2_rt::concat(
                     v2_rt::concat(
                         v2_rt::concat(
                             v2_rt::concat(
-                                v2_rt::concat(
-                                    v2_rt::concat(rename_attr, "    ".to_string()),
-                                    child_text.clone(),
-                                ),
-                                " {\n".to_string(),
+                                v2_rt::concat(rename_attr, "    ".to_string()),
+                                child_text.clone(),
                             ),
-                            fields_str,
+                            " {\n".to_string(),
                         ),
-                        "\n    },".to_string(),
-                    )
-                }
+                        fields_str,
+                    ),
+                    "\n    },".to_string(),
+                )
             }
         }
     }
@@ -3908,7 +3882,7 @@ pub fn emit_fn_def(
     body: &Rc<Node>,
     registry: &Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: &Rc<InferScope>,
-    shared_types: &Rc<std::collections::BTreeSet<String>>,
+    shared_types: &Rc<HashMap<String, bool>>,
     emit_info: &Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -4014,7 +3988,7 @@ pub fn emit_fn_def_non_tco(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<std::collections::BTreeSet<String>>,
+    shared_types: Rc<HashMap<String, bool>>,
     emit_info: Rc<EmitGraphInfo>,
     needs_stacker: bool,
 ) -> String {
@@ -4143,7 +4117,7 @@ pub fn emit_func_def(
     body: Rc<Node>,
     registry: &Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: &Rc<InferScope>,
-    shared_types: &Rc<std::collections::BTreeSet<String>>,
+    shared_types: &Rc<HashMap<String, bool>>,
     emit_info: &Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -4235,7 +4209,7 @@ pub fn emit_func_body(
     registry: &Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: &Rc<InferScope>,
     depth: i64,
-    shared_types: &Rc<std::collections::BTreeSet<String>>,
+    shared_types: &Rc<HashMap<String, bool>>,
     emit_info: &Rc<EmitGraphInfo>,
 ) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
@@ -4377,7 +4351,7 @@ pub fn emit_func_body(
 
 pub fn emit_tco_params(
     params: Rc<Vec<Rc<Node>>>,
-    shared_types: Rc<std::collections::BTreeSet<String>>,
+    shared_types: Rc<HashMap<String, bool>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
@@ -4394,7 +4368,7 @@ pub fn emit_tco_params(
 
 pub fn emit_tco_param(
     param: &Rc<Node>,
-    shared_types: Rc<std::collections::BTreeSet<String>>,
+    shared_types: Rc<HashMap<String, bool>>,
     source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
@@ -4420,9 +4394,9 @@ pub fn emit_func_params(
     params: Rc<Vec<Rc<Node>>>,
     uses: Rc<Vec<Rc<Node>>>,
     service_names: Rc<Vec<String>>,
-    shared_types: Rc<std::collections::BTreeSet<String>>,
+    shared_types: Rc<HashMap<String, bool>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    read_only_params: Rc<std::collections::BTreeSet<String>>,
+    read_only_params: Rc<HashMap<String, bool>>,
 ) -> String {
     {
         let param_strs = Rc::new({
@@ -4474,7 +4448,7 @@ pub fn emit_func_params(
 
 pub fn emit_func_inferred(
     inferred: Rc<Node>,
-    shared_types: Rc<std::collections::BTreeSet<String>>,
+    shared_types: Rc<HashMap<String, bool>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     v2_rt::concat(
@@ -4488,9 +4462,9 @@ pub fn emit_func_inferred(
 
 pub fn emit_params(
     params: Rc<Vec<Rc<Node>>>,
-    shared_types: Rc<std::collections::BTreeSet<String>>,
+    shared_types: Rc<HashMap<String, bool>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    read_only_params: Rc<std::collections::BTreeSet<String>>,
+    read_only_params: Rc<HashMap<String, bool>>,
 ) -> String {
     {
         let strs = Rc::new({
@@ -4511,7 +4485,7 @@ pub fn emit_params(
 
 pub fn emit_rust_param_type(
     n: &Rc<Node>,
-    shared_types: &Rc<std::collections::BTreeSet<String>>,
+    shared_types: &Rc<HashMap<String, bool>>,
     source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     if ((n.params.clone().len() as i64) > 0) {
@@ -4552,16 +4526,16 @@ pub fn emit_rust_param_type(
 
 pub fn emit_param(
     param: &Rc<Node>,
-    shared_types: Rc<std::collections::BTreeSet<String>>,
+    shared_types: Rc<HashMap<String, bool>>,
     source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
-    read_only_params: Rc<std::collections::BTreeSet<String>>,
+    read_only_params: Rc<HashMap<String, bool>>,
 ) -> String {
     {
         let n = param_node_type_expr(&param);
         let ty = emit_rust_param_type(&n, &shared_types, &source_indices);
         let pname = param_node_name_at(param.clone(), source_indices.clone());
         let is_callable_param = ((n.params.clone().len() as i64) > 0);
-        let is_borrowable = ((set_contains(read_only_params, pname.clone())
+        let is_borrowable = ((v2_rt::map_contains_key(&read_only_params, pname.clone())
             && (is_callable_param == false))
             && needs_reference_node(&n, source_indices.clone()));
         let final_ty = if is_borrowable {
@@ -4586,7 +4560,7 @@ pub fn emit_param(
 
 pub fn emit_inferred(
     inferred: Rc<Node>,
-    shared_types: Rc<std::collections::BTreeSet<String>>,
+    shared_types: Rc<HashMap<String, bool>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     v2_rt::concat(
@@ -4772,7 +4746,7 @@ pub fn has_string_lit_with_bind(arms: &Rc<Vec<Rc<Node>>>) -> bool {
 
 pub fn emit_pattern(
     pattern: Rc<MatchPattern>,
-    shared_types: Rc<std::collections::BTreeSet<String>>,
+    shared_types: Rc<HashMap<String, bool>>,
     scrut_type: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     emit_info: Rc<EmitGraphInfo>,
@@ -4825,7 +4799,7 @@ pub fn emit_variant_pattern(
     name: &String,
     parent_enum: Option<String>,
     field_bindings: &Rc<Vec<Rc<Node>>>,
-    shared_types: Rc<std::collections::BTreeSet<String>>,
+    shared_types: Rc<HashMap<String, bool>>,
     scrut_type: &String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     emit_info: &Rc<EmitGraphInfo>,
@@ -5054,7 +5028,7 @@ pub fn field_needs_rc_ref(field_name: String, rc_analysis: Rc<RcPatternAnalysis>
 pub fn analyze_rc_pattern(
     pattern: Rc<MatchPattern>,
     scrut_type: String,
-    shared_types: &Rc<std::collections::BTreeSet<String>>,
+    shared_types: &Rc<HashMap<String, bool>>,
     emit_info: &Rc<EmitGraphInfo>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<RcPatternAnalysis> {
@@ -5100,7 +5074,7 @@ pub fn analyze_rc_pattern(
                         &scrut_type,
                         emit_info.type_summaries.clone(),
                     ) {
-                        Some(enum_name) => set_contains(shared_types.clone(), enum_name.clone()),
+                        Some(enum_name) => emit_map_has(shared_types.clone(), enum_name.clone()),
                         None => false,
                     };
                     let ref_bound_fields = Rc::new({
@@ -5147,7 +5121,7 @@ pub fn analyze_rc_match(
     scrutinee: &Rc<Node>,
     arms: Rc<Vec<Rc<Node>>>,
     scrut_type: String,
-    shared_types: &Rc<std::collections::BTreeSet<String>>,
+    shared_types: &Rc<HashMap<String, bool>>,
     emit_info: Rc<EmitGraphInfo>,
     source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> RcMatchAnalysis {
@@ -5174,7 +5148,7 @@ pub fn analyze_rc_match(
         let scrutinee_is_rc_wrapped = match scrutinee.inferred.clone().as_deref().cloned() {
             Some(InferredNode::Resolved { node: rt, .. }) => {
                 if (((rt.children.clone().len() as i64) == 0) && (rt.ident_span.clone() != None)) {
-                    set_contains(
+                    emit_map_has(
                         shared_types.clone(),
                         authored_name_at(source_indices.clone(), &rt),
                     )
@@ -5218,7 +5192,7 @@ pub fn analyze_rc_match(
 pub fn emit_pattern_rc_aware(
     pattern: Rc<MatchPattern>,
     rc_analysis: Rc<RcPatternAnalysis>,
-    shared_types: Rc<std::collections::BTreeSet<String>>,
+    shared_types: Rc<HashMap<String, bool>>,
     scrut_type: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     emit_info: Rc<EmitGraphInfo>,
@@ -5250,7 +5224,7 @@ pub fn emit_variant_pattern_rc_aware(
     parent_enum: Option<String>,
     field_bindings: &Rc<Vec<Rc<Node>>>,
     rc_analysis: Rc<RcPatternAnalysis>,
-    shared_types: &Rc<std::collections::BTreeSet<String>>,
+    shared_types: &Rc<HashMap<String, bool>>,
     scrut_type: &String,
     source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
     emit_info: &Rc<EmitGraphInfo>,
@@ -5474,7 +5448,7 @@ pub fn emit_variant_pattern_rc_aware(
 pub fn rc_pattern_preludes(
     mut pattern: Rc<MatchPattern>,
     mut rc_analysis: Rc<RcPatternAnalysis>,
-    mut shared_types: Rc<std::collections::BTreeSet<String>>,
+    mut shared_types: Rc<HashMap<String, bool>>,
     mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     mut emit_info: Rc<EmitGraphInfo>,
 ) -> String {
@@ -5570,7 +5544,7 @@ pub fn rc_pattern_preludes(
 pub fn explicit_record_struct_name(
     type_name: Option<String>,
     inferred_node: &Rc<Node>,
-    shared_types: Rc<std::collections::BTreeSet<String>>,
+    shared_types: Rc<HashMap<String, bool>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<String> {
     {
@@ -5716,7 +5690,7 @@ pub fn emit_var_ref(
     name: &String,
     binding_kind: &Option<Rc<VarBindingKind>>,
     resolved_type: &Option<Rc<InferredNode>>,
-    shared_types: Rc<std::collections::BTreeSet<String>>,
+    shared_types: Rc<HashMap<String, bool>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     emit_info: &Rc<EmitGraphInfo>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -5732,7 +5706,7 @@ pub fn emit_var_ref(
             emit_keyword(name.clone(), RenderTarget::Rust)
         } else {
             {
-                let moves_by_value = set_contains(emit_info.movable.clone(), name.clone());
+                let moves_by_value = emit_map_has(emit_info.movable.clone(), name.clone());
                 let sharing = language_spec(RenderTarget::Rust).sharing.clone();
                 let variant_parent = effective_variant_parent(
                     &name,
@@ -5747,7 +5721,7 @@ pub fn emit_var_ref(
                             v2_rt::concat(enum_name.clone(), "::".to_string()),
                             name.clone(),
                         );
-                        if set_contains(shared_types, enum_name.clone()) {
+                        if emit_map_has(shared_types, enum_name.clone()) {
                             v2_rt::concat(
                                 v2_rt::concat("Rc::new(".to_string(), qualified),
                                 ")".to_string(),
@@ -5815,7 +5789,7 @@ pub fn emit_typed_expr_base(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: &Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<std::collections::BTreeSet<String>>,
+    shared_types: Rc<HashMap<String, bool>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -5847,7 +5821,7 @@ pub fn emit_typed_expr_base(
                                         v2_rt::concat(enum_name.clone(), "::".to_string()),
                                         n.clone(),
                                     );
-                                    if set_contains(shared_types, enum_name.clone()) {
+                                    if emit_map_has(shared_types, enum_name.clone()) {
                                         v2_rt::concat(
                                             v2_rt::concat("Rc::new(".to_string(), qualified),
                                             ")".to_string(),
@@ -5892,7 +5866,7 @@ pub fn emit_typed_field_access(
     registry: &Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: &Rc<InferScope>,
     depth: i64,
-    shared_types: &Rc<std::collections::BTreeSet<String>>,
+    shared_types: &Rc<HashMap<String, bool>>,
     emit_info: &Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -6010,7 +5984,7 @@ pub fn emit_typed_field_access(
                                         base.clone(),
                                         scope.type_env.clone().source_indices.clone(),
                                     );
-                                    set_contains(emit_info.owned_bindings.clone(), base_name)
+                                    emit_map_has(emit_info.owned_bindings.clone(), base_name)
                                 }
                                 _ => false,
                             };
@@ -6136,7 +6110,7 @@ pub fn rust_runtime_bridge_name(function_name: String) -> String {
 
 pub fn rust_empty_map_value_type_str(
     map_type: Rc<Node>,
-    shared_types: Rc<std::collections::BTreeSet<String>>,
+    shared_types: Rc<HashMap<String, bool>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     match map_type.children.clone().get(1 as usize).cloned() {
@@ -6155,7 +6129,7 @@ pub fn rust_empty_map_value_type_str(
 
 pub fn rust_empty_map_kv_type_str(
     map_type: &Rc<Node>,
-    shared_types: &Rc<std::collections::BTreeSet<String>>,
+    shared_types: &Rc<HashMap<String, bool>>,
     source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
@@ -6225,7 +6199,7 @@ pub fn rust_wrap_runtime_collection_result(
 pub fn emit_rust_expr_var(
     expr: &Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    shared_types: Rc<std::collections::BTreeSet<String>>,
+    shared_types: Rc<HashMap<String, bool>>,
     emit_info: Rc<EmitGraphInfo>,
     source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
@@ -6254,7 +6228,7 @@ pub fn emit_rust_expr_field_access(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: &Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<std::collections::BTreeSet<String>>,
+    shared_types: Rc<HashMap<String, bool>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -6309,7 +6283,7 @@ pub fn emit_rust_expr_call(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: &Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<std::collections::BTreeSet<String>>,
+    shared_types: Rc<HashMap<String, bool>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*expr.expr_data.clone()).clone() {
@@ -6338,7 +6312,7 @@ pub fn emit_rust_expr_method_call(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: &Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<std::collections::BTreeSet<String>>,
+    shared_types: Rc<HashMap<String, bool>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*expr.expr_data.clone()).clone() {
@@ -6375,7 +6349,7 @@ pub fn emit_rust_expr_match(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<std::collections::BTreeSet<String>>,
+    shared_types: Rc<HashMap<String, bool>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*expr.expr_data.clone()).clone() {
@@ -6404,7 +6378,7 @@ pub fn emit_rust_expr_if(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<std::collections::BTreeSet<String>>,
+    shared_types: Rc<HashMap<String, bool>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*expr.expr_data.clone()).clone() {
@@ -6426,7 +6400,7 @@ pub fn emit_rust_expr_let(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: &Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<std::collections::BTreeSet<String>>,
+    shared_types: Rc<HashMap<String, bool>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*expr.expr_data.clone()).clone() {
@@ -6458,7 +6432,7 @@ pub fn emit_rust_expr_record_lit(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: &Rc<InferScope>,
     depth: i64,
-    shared_types: &Rc<std::collections::BTreeSet<String>>,
+    shared_types: &Rc<HashMap<String, bool>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*expr.expr_data.clone()).clone() {
@@ -6487,7 +6461,7 @@ pub fn emit_rust_expr_record_lit(
                 },
             };
             if ((rc_name.clone().as_str() != "".to_string().as_str())
-                && set_contains(shared_types.clone(), rc_name.clone()))
+                && emit_map_has(shared_types.clone(), rc_name.clone()))
             {
                 v2_rt::concat(v2_rt::concat("Rc::new(".to_string(), raw), ")".to_string())
             } else {
@@ -6506,7 +6480,7 @@ pub fn emit_rust_expr_string_interp(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<std::collections::BTreeSet<String>>,
+    shared_types: Rc<HashMap<String, bool>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*expr.expr_data.clone()).clone() {
@@ -6544,7 +6518,7 @@ pub fn emit_rust_expr_block(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<std::collections::BTreeSet<String>>,
+    shared_types: Rc<HashMap<String, bool>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*expr.expr_data.clone()).clone() {
@@ -6568,7 +6542,7 @@ pub fn emit_rust_expr_cast(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: &Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<std::collections::BTreeSet<String>>,
+    shared_types: Rc<HashMap<String, bool>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*expr.expr_data.clone()).clone() {
@@ -6601,7 +6575,7 @@ pub fn emit_rust_expr_for_each(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: &Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<std::collections::BTreeSet<String>>,
+    shared_types: Rc<HashMap<String, bool>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*expr.expr_data.clone()).clone() {
@@ -6633,7 +6607,7 @@ pub fn emit_rust_expr_index(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<std::collections::BTreeSet<String>>,
+    shared_types: Rc<HashMap<String, bool>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*expr.expr_data.clone()).clone() {
@@ -6654,7 +6628,7 @@ pub fn emit_rust_expr_slice(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<std::collections::BTreeSet<String>>,
+    shared_types: Rc<HashMap<String, bool>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*expr.expr_data.clone()).clone() {
@@ -6685,7 +6659,7 @@ pub fn emit_rust_expr_bin_op(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<std::collections::BTreeSet<String>>,
+    shared_types: Rc<HashMap<String, bool>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*expr.expr_data.clone()).clone() {
@@ -6716,7 +6690,7 @@ pub fn emit_typed_expr(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: &Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<std::collections::BTreeSet<String>>,
+    shared_types: Rc<HashMap<String, bool>>,
     emit_info: Rc<EmitGraphInfo>,
     fuel: i64,
 ) -> String {
@@ -6895,7 +6869,7 @@ pub fn emit_cloned_arg(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<std::collections::BTreeSet<String>>,
+    shared_types: Rc<HashMap<String, bool>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     emit_typed_expr(
@@ -6972,7 +6946,7 @@ pub fn emit_typed_call_expr(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<std::collections::BTreeSet<String>>,
+    shared_types: Rc<HashMap<String, bool>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -7028,7 +7002,7 @@ pub fn emit_typed_call(
     registry: &Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: &Rc<InferScope>,
     depth: i64,
-    shared_types: &Rc<std::collections::BTreeSet<String>>,
+    shared_types: &Rc<HashMap<String, bool>>,
     emit_info: &Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -7144,7 +7118,7 @@ pub fn emit_typed_call(
                     )]),
                 };
                 let fields_str = field_strs.join(&", ".to_string());
-                let needs_rc = set_contains(shared_types.clone(), type_name.clone());
+                let needs_rc = emit_map_has(shared_types.clone(), type_name.clone());
                 let sharing = language_spec(RenderTarget::Rust).sharing.clone();
                 let spread = if needs_rc.clone() {
                     apply_type_template1(sharing.deref_clone.clone(), base_str)
@@ -7257,7 +7231,7 @@ pub fn emit_typed_call(
         let callee_read_only =
             match v2_rt::map_get(&emit_info.read_only_params_index.clone(), callee_qualified) {
                 Some(m) => m.clone(),
-                None => empty_set(),
+                None => v2_rt::rc_empty_map::<String, bool>(),
             };
         let callee_is_tco = match callee.clone() {
             Some(info) => {
@@ -7290,7 +7264,7 @@ pub fn emit_typed_call(
                         let n = param_node_type_expr(&pair.1.clone());
                         let is_callable = ((n.params.clone().len() as i64) > 0);
                         let is_borrowable =
-                            ((set_contains(callee_read_only.clone(), pname.clone())
+                            ((v2_rt::map_contains_key(&callee_read_only, pname.clone())
                                 && (is_callable.clone() == false))
                                 && needs_reference_node(
                                     &n,
@@ -7444,7 +7418,7 @@ pub fn fill_default_args(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<std::collections::BTreeSet<String>>,
+    shared_types: Rc<HashMap<String, bool>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> Rc<Vec<Rc<Node>>> {
     match callee {
@@ -7520,7 +7494,7 @@ pub fn fill_op_default_args(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<std::collections::BTreeSet<String>>,
+    shared_types: Rc<HashMap<String, bool>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> Rc<Vec<Rc<Node>>> {
     {
@@ -7579,7 +7553,7 @@ pub fn fill_op_default_args(
 pub fn emit_nested_rt_concat(
     mut remaining: Rc<Vec<String>>,
     mut acc: String,
-    mut shared_types: Rc<std::collections::BTreeSet<String>>,
+    mut shared_types: Rc<HashMap<String, bool>>,
 ) -> String {
     loop {
         match remaining.clone().first().cloned() {
@@ -7626,7 +7600,7 @@ pub fn emit_typed_for_each(
     registry: &Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: &Rc<InferScope>,
     depth: i64,
-    shared_types: &Rc<std::collections::BTreeSet<String>>,
+    shared_types: &Rc<HashMap<String, bool>>,
     emit_info: &Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -7673,7 +7647,7 @@ pub fn emit_typed_index(
     registry: &Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: &Rc<InferScope>,
     depth: i64,
-    shared_types: &Rc<std::collections::BTreeSet<String>>,
+    shared_types: &Rc<HashMap<String, bool>>,
     emit_info: &Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -7729,7 +7703,7 @@ pub fn emit_typed_slice(
     registry: &Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: &Rc<InferScope>,
     depth: i64,
-    shared_types: &Rc<std::collections::BTreeSet<String>>,
+    shared_types: &Rc<HashMap<String, bool>>,
     emit_info: &Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -7784,7 +7758,7 @@ pub fn emit_typed_slice(
 
 pub fn collection_element_type(
     receiver_type: Option<Rc<InferredNode>>,
-    shared_types: Rc<std::collections::BTreeSet<String>>,
+    shared_types: Rc<HashMap<String, bool>>,
     source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     match receiver_type.as_deref().cloned() {
@@ -7865,7 +7839,7 @@ pub fn lambda_param_type_strs(
     params: Rc<Vec<String>>,
     param_nodes: Rc<Vec<Rc<Node>>>,
     fallback_types: Rc<Vec<String>>,
-    shared_types: Rc<std::collections::BTreeSet<String>>,
+    shared_types: Rc<HashMap<String, bool>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<String>> {
     Rc::new({
@@ -7944,7 +7918,7 @@ pub fn emit_typed_collection_lambda(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: &Rc<InferScope>,
     depth: i64,
-    shared_types: &Rc<std::collections::BTreeSet<String>>,
+    shared_types: &Rc<HashMap<String, bool>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*lambda_expr.expr_data.clone()).clone() {
@@ -8005,7 +7979,7 @@ pub fn emit_typed_fold_lambda(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: &Rc<InferScope>,
     depth: i64,
-    shared_types: &Rc<std::collections::BTreeSet<String>>,
+    shared_types: &Rc<HashMap<String, bool>>,
     emit_info: &Rc<EmitGraphInfo>,
 ) -> String {
     match (*lambda_expr.expr_data.clone()).clone() {
@@ -8077,7 +8051,7 @@ pub fn emit_typed_fold_lambda(
                 None => "".to_string(),
             };
             let needs_unwrap = ((acc_name.clone().as_str() != "".to_string().as_str())
-                && set_contains(emit_info.owned_bindings.clone(), acc_name.clone()));
+                && emit_map_has(emit_info.owned_bindings.clone(), acc_name.clone()));
             if needs_unwrap {
                 {
                     let acc_ident = emit_ident(acc_name.clone(), RenderTarget::Rust);
@@ -8132,7 +8106,7 @@ pub fn emit_rust_fold_method_call(
     registry: &Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: &Rc<InferScope>,
     depth: i64,
-    shared_types: &Rc<std::collections::BTreeSet<String>>,
+    shared_types: &Rc<HashMap<String, bool>>,
     emit_info: &Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -8263,7 +8237,7 @@ pub fn emit_rust_fold_method_call(
         let structural_move =
             (fold_proof.eligible.clone() && fold_proof.whole_acc_single_use.clone());
         let acc_unwrap =
-            (structural_unwrap && set_contains(shared_types.clone(), acc_type_name.clone()));
+            (structural_unwrap && emit_map_has(shared_types.clone(), acc_type_name.clone()));
         let fold_emit_info = if acc_unwrap {
             match (*fold_lambda_node.expr_data.clone()).clone() {
                 ExprData::ExprLambda => {
@@ -8464,7 +8438,7 @@ pub fn emit_rust_sort_by_method_call(
     registry: &Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: &Rc<InferScope>,
     depth: i64,
-    shared_types: &Rc<std::collections::BTreeSet<String>>,
+    shared_types: &Rc<HashMap<String, bool>>,
     emit_info: &Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -8531,7 +8505,7 @@ pub fn emit_rust_map_method_call(
     registry: &Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: &Rc<InferScope>,
     depth: i64,
-    shared_types: &Rc<std::collections::BTreeSet<String>>,
+    shared_types: &Rc<HashMap<String, bool>>,
     emit_info: &Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -8698,7 +8672,7 @@ pub fn emit_rust_higher_order_method(
     registry: &Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: &Rc<InferScope>,
     depth: i64,
-    shared_types: &Rc<std::collections::BTreeSet<String>>,
+    shared_types: &Rc<HashMap<String, bool>>,
     emit_info: &Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -8823,7 +8797,7 @@ pub fn emit_rust_get_method_call(
     registry: &Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: &Rc<InferScope>,
     depth: i64,
-    shared_types: &Rc<std::collections::BTreeSet<String>>,
+    shared_types: &Rc<HashMap<String, bool>>,
     emit_info: &Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -8888,7 +8862,7 @@ pub fn emit_rust_with_method_call(
     registry: &Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: &Rc<InferScope>,
     depth: i64,
-    shared_types: &Rc<std::collections::BTreeSet<String>>,
+    shared_types: &Rc<HashMap<String, bool>>,
     emit_info: &Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -8959,7 +8933,7 @@ pub fn emit_rust_with_method_call(
             )]),
         };
         let fields_str = field_strs.join(&", ".to_string());
-        let needs_rc = set_contains(shared_types.clone(), type_name.clone());
+        let needs_rc = emit_map_has(shared_types.clone(), type_name.clone());
         let sharing = language_spec(RenderTarget::Rust).sharing.clone();
         let spread = if needs_rc.clone() {
             apply_type_template1(sharing.deref_clone.clone(), base_str)
@@ -8992,7 +8966,7 @@ pub fn emit_rust_first_method_call(
     registry: &Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: &Rc<InferScope>,
     depth: i64,
-    shared_types: &Rc<std::collections::BTreeSet<String>>,
+    shared_types: &Rc<HashMap<String, bool>>,
     emit_info: &Rc<EmitGraphInfo>,
 ) -> String {
     match (*receiver.expr_data.clone()).clone() {
@@ -9067,7 +9041,7 @@ pub fn emit_rust_generic_method_call(
     registry: &Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: &Rc<InferScope>,
     depth: i64,
-    shared_types: &Rc<std::collections::BTreeSet<String>>,
+    shared_types: &Rc<HashMap<String, bool>>,
     emit_info: &Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -9144,7 +9118,7 @@ pub fn emit_typed_method_call(
     registry: &Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: &Rc<InferScope>,
     depth: i64,
-    shared_types: &Rc<std::collections::BTreeSet<String>>,
+    shared_types: &Rc<HashMap<String, bool>>,
     emit_info: &Rc<EmitGraphInfo>,
 ) -> String {
     if (method_semantics.clone() != None) {
@@ -9559,7 +9533,7 @@ pub fn emit_typed_first_arg(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<std::collections::BTreeSet<String>>,
+    shared_types: Rc<HashMap<String, bool>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match args.first().cloned() {
@@ -9582,7 +9556,7 @@ pub fn emit_typed_match(
     registry: &Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: &Rc<InferScope>,
     depth: i64,
-    shared_types: &Rc<std::collections::BTreeSet<String>>,
+    shared_types: &Rc<HashMap<String, bool>>,
     emit_info: &Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -9743,7 +9717,7 @@ pub fn emit_typed_match_arm(
     registry: &Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: &Rc<InferScope>,
     depth: i64,
-    shared_types: &Rc<std::collections::BTreeSet<String>>,
+    shared_types: &Rc<HashMap<String, bool>>,
     emit_info: &Rc<EmitGraphInfo>,
     scrut_type: &String,
     match_result_type: Rc<Node>,
@@ -9926,7 +9900,7 @@ pub fn emit_typed_if(
     registry: &Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: &Rc<InferScope>,
     depth: i64,
-    shared_types: &Rc<std::collections::BTreeSet<String>>,
+    shared_types: &Rc<HashMap<String, bool>>,
     emit_info: &Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -9969,7 +9943,7 @@ pub fn emit_typed_let(
     registry: &Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: &Rc<InferScope>,
     depth: i64,
-    shared_types: &Rc<std::collections::BTreeSet<String>>,
+    shared_types: &Rc<HashMap<String, bool>>,
     emit_info: &Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -10210,7 +10184,7 @@ pub fn emit_field_value_with_context(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: &Rc<InferScope>,
     depth: i64,
-    shared_types: &Rc<std::collections::BTreeSet<String>>,
+    shared_types: &Rc<HashMap<String, bool>>,
     emit_info: &Rc<EmitGraphInfo>,
 ) -> String {
     match (*field_value.expr_data.clone()).clone() {
@@ -10282,7 +10256,7 @@ pub fn emit_field_value_with_context(
                         None => variant_name.clone(),
                     };
                     if ((rc_name.clone().as_str() != "".to_string().as_str())
-                        && set_contains(shared_types.clone(), rc_name.clone()))
+                        && emit_map_has(shared_types.clone(), rc_name.clone()))
                     {
                         v2_rt::concat(v2_rt::concat("Rc::new(".to_string(), raw), ")".to_string())
                     } else {
@@ -10367,7 +10341,7 @@ pub fn emit_typed_record_lit(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: &Rc<InferScope>,
     depth: i64,
-    shared_types: &Rc<std::collections::BTreeSet<String>>,
+    shared_types: &Rc<HashMap<String, bool>>,
     emit_info: &Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -10474,7 +10448,7 @@ pub fn emit_typed_record_lit(
                                         ),
                                         "\n}".to_string(),
                                     );
-                                    if set_contains(shared_types.clone(), resolved_sn.clone()) {
+                                    if emit_map_has(shared_types.clone(), resolved_sn.clone()) {
                                         v2_rt::concat(
                                             v2_rt::concat("Rc::new(".to_string(), struct_lit),
                                             ")".to_string(),
@@ -10771,7 +10745,7 @@ pub fn emit_typed_bin_op(
     registry: &Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: &Rc<InferScope>,
     depth: i64,
-    shared_types: &Rc<std::collections::BTreeSet<String>>,
+    shared_types: &Rc<HashMap<String, bool>>,
     emit_info: &Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -10935,7 +10909,7 @@ pub fn emit_typed_string_interp(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<std::collections::BTreeSet<String>>,
+    shared_types: Rc<HashMap<String, bool>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -11021,7 +10995,7 @@ pub fn typed_interp_format_part(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<std::collections::BTreeSet<String>>,
+    shared_types: Rc<HashMap<String, bool>>,
     emit_info: Rc<EmitGraphInfo>,
     has_interpolations: bool,
 ) -> Rc<InterpPart> {
@@ -11057,7 +11031,7 @@ pub fn emit_typed_block(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<std::collections::BTreeSet<String>>,
+    shared_types: Rc<HashMap<String, bool>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -11086,7 +11060,7 @@ pub fn emit_tco_init_block_stmts(
     mut scope: Rc<InferScope>,
     mut registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     mut depth: i64,
-    mut shared_types: Rc<std::collections::BTreeSet<String>>,
+    mut shared_types: Rc<HashMap<String, bool>>,
     mut emit_info: Rc<EmitGraphInfo>,
     mut params: Rc<Vec<Rc<Node>>>,
 ) -> Rc<BlockEmitState> {
@@ -11147,7 +11121,7 @@ pub fn emit_tco_init_stmt(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: &Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<std::collections::BTreeSet<String>>,
+    shared_types: Rc<HashMap<String, bool>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*stmt.expr_data.clone()).clone() {
@@ -11204,7 +11178,7 @@ pub fn emit_typed_tco_body(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<std::collections::BTreeSet<String>>,
+    shared_types: Rc<HashMap<String, bool>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -11231,7 +11205,7 @@ pub fn emit_typed_tco_body(
 pub fn emit_rust_tco_non_self_call(
     frame: &Rc<TcoFrame>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    shared_types: Rc<std::collections::BTreeSet<String>>,
+    shared_types: Rc<HashMap<String, bool>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*frame.expr.clone().expr_data.clone()).clone() {
@@ -11266,7 +11240,7 @@ pub fn emit_rust_tco_if(
     fn_name: &String,
     params: &Rc<Vec<Rc<Node>>>,
     registry: &Rc<HashMap<String, Rc<ItemInfo>>>,
-    shared_types: &Rc<std::collections::BTreeSet<String>>,
+    shared_types: &Rc<HashMap<String, bool>>,
     emit_info: &Rc<EmitGraphInfo>,
 ) -> String {
     match (*frame.expr.clone().expr_data.clone()).clone() {
@@ -11355,7 +11329,7 @@ pub fn emit_rust_tco_match(
     fn_name: String,
     params: Rc<Vec<Rc<Node>>>,
     registry: &Rc<HashMap<String, Rc<ItemInfo>>>,
-    shared_types: &Rc<std::collections::BTreeSet<String>>,
+    shared_types: &Rc<HashMap<String, bool>>,
     emit_info: &Rc<EmitGraphInfo>,
 ) -> String {
     match (*frame.expr.clone().expr_data.clone()).clone() {
@@ -11493,7 +11467,7 @@ pub fn emit_rust_tco_let(
     fn_name: String,
     params: &Rc<Vec<Rc<Node>>>,
     registry: &Rc<HashMap<String, Rc<ItemInfo>>>,
-    shared_types: &Rc<std::collections::BTreeSet<String>>,
+    shared_types: &Rc<HashMap<String, bool>>,
     emit_info: &Rc<EmitGraphInfo>,
 ) -> String {
     match (*frame.expr.clone().expr_data.clone()).clone() {
@@ -11587,7 +11561,7 @@ pub fn emit_rust_tco_block(
     fn_name: String,
     params: &Rc<Vec<Rc<Node>>>,
     registry: &Rc<HashMap<String, Rc<ItemInfo>>>,
-    shared_types: &Rc<std::collections::BTreeSet<String>>,
+    shared_types: &Rc<HashMap<String, bool>>,
     emit_info: &Rc<EmitGraphInfo>,
 ) -> String {
     match (*frame.expr.clone().expr_data.clone()).clone() {
@@ -11644,7 +11618,7 @@ pub fn emit_rust_tco_block(
 pub fn emit_rust_tco_default_return(
     frame: &Rc<TcoFrame>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    shared_types: Rc<std::collections::BTreeSet<String>>,
+    shared_types: Rc<HashMap<String, bool>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -11671,7 +11645,7 @@ pub fn emit_typed_tco_expr(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<std::collections::BTreeSet<String>>,
+    shared_types: Rc<HashMap<String, bool>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     emit_shared_tco_expr(
@@ -11758,7 +11732,7 @@ pub fn emit_typed_tco_match_arm(
     registry: &Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: &Rc<InferScope>,
     depth: i64,
-    shared_types: &Rc<std::collections::BTreeSet<String>>,
+    shared_types: &Rc<HashMap<String, bool>>,
     emit_info: &Rc<EmitGraphInfo>,
     scrut_type: &String,
 ) -> String {
@@ -11911,7 +11885,7 @@ pub fn emit_typed_tco_reassign(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: &Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<std::collections::BTreeSet<String>>,
+    shared_types: Rc<HashMap<String, bool>>,
     emit_info: &Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -12005,7 +11979,7 @@ pub fn emit_typed_tco_reassign(
         let tco_movable =
             filtered_params.clone().iter().cloned().fold(
                 emit_info.movable.clone(),
-                |m: Rc<std::collections::BTreeSet<String>>, p: Rc<Node>| {
+                |m: Rc<HashMap<String, bool>>, p: Rc<Node>| {
                     let pname = param_node_name_at(p.clone(), si.clone());
                     let ref_count = filtered_arg_values.clone().iter().cloned().fold(
                         0,
@@ -12018,7 +11992,7 @@ pub fn emit_typed_tco_reassign(
                         },
                     );
                     if (ref_count.clone() <= 1) {
-                        set_insert(m.clone(), pname.clone())
+                        v2_rt::rc_map_insert(m.clone(), pname.clone(), true)
                     } else {
                         m.clone()
                     }
@@ -12076,7 +12050,7 @@ pub fn emit_typed_tco_reassign(
 pub fn emit_service_def(
     item: &Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    shared_types: Rc<std::collections::BTreeSet<String>>,
+    shared_types: Rc<HashMap<String, bool>>,
     env: &Rc<TypeEnv>,
 ) -> String {
     {
@@ -12174,7 +12148,7 @@ pub fn emit_service_impl(
     transport: &Rc<Node>,
     op_children: &Rc<Vec<Rc<Node>>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    shared_types: Rc<std::collections::BTreeSet<String>>,
+    shared_types: Rc<HashMap<String, bool>>,
     env: &Rc<TypeEnv>,
     service_item: &Rc<Node>,
 ) -> String {
@@ -12394,7 +12368,7 @@ pub fn emit_operation_method(
     op_node: &Rc<Node>,
     registry: &Rc<HashMap<String, Rc<ItemInfo>>>,
     depth: i64,
-    shared_types: &Rc<std::collections::BTreeSet<String>>,
+    shared_types: &Rc<HashMap<String, bool>>,
     env: &Rc<TypeEnv>,
     service_item: Rc<Node>,
 ) -> String {
@@ -12546,7 +12520,7 @@ pub fn emit_dry_run_branch_from_props(
     source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
     op_node: &Rc<Node>,
     env: Rc<TypeEnv>,
-    shared_types: Rc<std::collections::BTreeSet<String>>,
+    shared_types: Rc<HashMap<String, bool>>,
 ) -> String {
     {
         let log_line = v2_rt::concat(
@@ -12650,7 +12624,7 @@ pub fn emit_transport_call(
     service_item: Rc<Node>,
     op_node: Rc<Node>,
     source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
-    shared_types: Rc<std::collections::BTreeSet<String>>,
+    shared_types: Rc<HashMap<String, bool>>,
     env: Rc<TypeEnv>,
 ) -> String {
     if is_rest_transport(transport.clone(), source_indices.clone()) {
@@ -12694,7 +12668,7 @@ pub fn emit_rest_call(
     service_item: Rc<Node>,
     op_node: Rc<Node>,
     source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
-    shared_types: Rc<std::collections::BTreeSet<String>>,
+    shared_types: Rc<HashMap<String, bool>>,
     env: Rc<TypeEnv>,
 ) -> String {
     {
@@ -13523,7 +13497,7 @@ pub fn emit_json_value_extract(
 pub fn emit_from_key_extraction(
     op_node: &Rc<Node>,
     source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
-    shared_types: Rc<std::collections::BTreeSet<String>>,
+    shared_types: Rc<HashMap<String, bool>>,
     env: Rc<TypeEnv>,
 ) -> String {
     {
@@ -13661,7 +13635,7 @@ pub fn emit_response_code_handling(
     op_node: &Rc<Node>,
     transport: Rc<Node>,
     source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
-    shared_types: Rc<std::collections::BTreeSet<String>>,
+    shared_types: Rc<HashMap<String, bool>>,
     env: Rc<TypeEnv>,
 ) -> String {
     {
@@ -13729,7 +13703,7 @@ pub fn emit_response_arm(
     use_from_key: bool,
     transport: Rc<Node>,
     source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
-    shared_types: Rc<std::collections::BTreeSet<String>>,
+    shared_types: Rc<HashMap<String, bool>>,
     env: Rc<TypeEnv>,
 ) -> String {
     {
@@ -14345,7 +14319,7 @@ pub fn emit_local_call(op_name: String) -> String {
 
 pub fn emit_resource_def(
     item: &Rc<Node>,
-    shared_types: Rc<std::collections::BTreeSet<String>>,
+    shared_types: Rc<HashMap<String, bool>>,
     env: &Rc<TypeEnv>,
 ) -> String {
     {
@@ -14393,7 +14367,7 @@ pub fn emit_resource_def(
 
 pub fn emit_capability_method(
     cap_node: &Rc<Node>,
-    shared_types: &Rc<std::collections::BTreeSet<String>>,
+    shared_types: &Rc<HashMap<String, bool>>,
     env: &Rc<TypeEnv>,
 ) -> String {
     {
@@ -14496,7 +14470,7 @@ pub fn emit_data_def(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: &Rc<InferScope>,
     depth: i64,
-    shared_types: &Rc<std::collections::BTreeSet<String>>,
+    shared_types: &Rc<HashMap<String, bool>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -14506,8 +14480,8 @@ pub fn emit_data_def(
             scope.type_env.clone().source_indices.clone(),
         );
         let fn_name = to_snake(name);
-        let needs_rc = set_contains(
-            shared_types.clone(),
+        let needs_rc = v2_rt::map_contains_key(
+            &shared_types,
             authored_name_at(scope.type_env.clone().source_indices.clone(), &type_node),
         );
         if is_simple_type_node(
@@ -14573,7 +14547,7 @@ pub fn emit_data_def_body(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: &Rc<InferScope>,
     depth: i64,
-    shared_types: Rc<std::collections::BTreeSet<String>>,
+    shared_types: Rc<HashMap<String, bool>>,
     emit_info: Rc<EmitGraphInfo>,
     needs_rc: &bool,
 ) -> String {
@@ -14776,7 +14750,7 @@ pub fn rust_test_signature_comment(projection: &Rc<TestProjection>) -> String {
                     ),
                     emit_rust_param_type(
                         &param_node_type_expr(&p),
-                        &empty_set(),
+                        &v2_rt::rc_empty_map::<String, bool>(),
                         &projection.source_indices.clone(),
                     ),
                 ));
@@ -14995,7 +14969,7 @@ pub struct WorkflowFunc {
     pub uses: Rc<Vec<Rc<Node>>>,
     pub service_names: Rc<Vec<String>>,
     pub resolved_defaults: Rc<HashMap<String, String>>,
-    pub read_only_params: Rc<std::collections::BTreeSet<String>>,
+    pub read_only_params: Rc<HashMap<String, bool>>,
     pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 }
 
@@ -15063,7 +15037,7 @@ pub fn to_workflow_func(
     registry: &Rc<HashMap<String, Rc<ItemInfo>>>,
     module_items: Rc<Vec<Rc<Node>>>,
     source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
-    read_only_params_index: Rc<HashMap<String, Rc<std::collections::BTreeSet<String>>>>,
+    read_only_params_index: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
 ) -> Rc<WorkflowFunc> {
     {
         let item_name = authored_name_at(source_indices.clone(), &item);
@@ -15093,7 +15067,7 @@ pub fn to_workflow_func(
         );
         let ro_params = match v2_rt::map_get(&read_only_params_index, qualified) {
             Some(m) => m.clone(),
-            None => empty_set(),
+            None => v2_rt::rc_empty_map::<String, bool>(),
         };
         Rc::new(WorkflowFunc {
             name: item_name.clone(),
@@ -15134,7 +15108,7 @@ pub fn is_workflow_item(
 pub fn collect_workflow_funcs(
     modules: Rc<Vec<Rc<TypedModule>>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    read_only_params_index: Rc<HashMap<String, Rc<std::collections::BTreeSet<String>>>>,
+    read_only_params_index: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
 ) -> Rc<Vec<Rc<WorkflowFunc>>> {
     Rc::new({
         let mut __result = Vec::new();
@@ -15956,7 +15930,7 @@ pub fn emit_main_call_args(wf: &Rc<WorkflowFunc>, has_services: bool) -> String 
                     let ident = emit_ident(pname.clone(), RenderTarget::Rust);
                     let n = param_node_type_expr(&p);
                     let is_borrowable =
-                        ((set_contains(wf.read_only_params.clone(), pname.clone())
+                        ((v2_rt::map_contains_key(&wf.read_only_params.clone(), pname.clone())
                             && ((n.params.clone().len() as i64) == 0))
                             && needs_reference_node(&n, wf.source_indices.clone()));
                     if is_borrowable.clone() {
