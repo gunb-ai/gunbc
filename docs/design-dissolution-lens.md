@@ -1560,8 +1560,9 @@ uses.
 | Refinement-clause index (type → length / domain refinements) | `v4.compiler.04_infer` | L1.7 |
 | Import graph + target existence | `v4.compiler.02_parse` | L0.8, L1.8 |
 | Return-type → fail-closed-carrier? | `v4.compiler.03_resolve` | L0.14, L1.11 |
+| Match-arm RHS skeleton + histogram (per-arm normalized RHS after α-renaming + matched-arm constructor substitution; group sizes per distinct skeleton) | `v4.lens.match_arm_skeleton` (new derived stage — see §10.2) | L1.13 |
 
-### 10.2 Three small derived stages cover what the pipeline doesn't already expose
+### 10.2 Four small derived stages cover what the pipeline doesn't already expose
 
 These are themselves `.dag` stages — small folds with declared
 `consumes:` edges — and they're reusable across multiple lenses:
@@ -1581,11 +1582,24 @@ module v4.lens.concept_home
 consumes: v4.compiler.03_resolve, v4.lens.canonical_observations_index
 produces: Map<FnId, File>               // each fn's primary-concept home file
 // reusable by: L1.8
+
+module v4.lens.match_arm_skeleton
+consumes: v4.compiler.02_parse, v4.compiler.03_resolve
+produces: Map<MatchExprId, SkeletonReport>  // {arm_count, distinct_skeletons, histogram, classifier_shape}
+// reusable by: L1.13, future L1.13.b (per-arm-name-parameterized-reference sub-signature),
+// future match-as-typed-table lens
+// Algorithm: tree-walk each arm's RHS, α-rename pattern-bound names,
+//   substitute every occurrence of the matched-arm constructor identity
+//   with a per-arm hole, structurally compare; group arms by skeleton;
+//   sort group sizes (largest first) to form histogram; classify
+//   distribution-shape per L1.13's thresholds (PureTemplate / Outlier /
+//   MultiOutlier / Categorical / Mixed).
 ```
 
 Each is a single deterministic fold. Once landed, multiple lenses
 share the result — landing `match_arm_shape` unblocks five lenses,
-not one.
+`match_arm_skeleton` unblocks L1.13 + the future L1.13.b and
+match-as-typed-table sub-signatures.
 
 ### 10.3 A lens is a stage with declared dependencies
 
