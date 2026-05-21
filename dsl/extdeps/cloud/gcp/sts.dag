@@ -9,7 +9,7 @@
 
 module extdeps.cloud.gcp.sts
 
-import std.types { Url, HttpMethod, AuthScheme, NonEmptyStr }
+import std.types { Url, HttpMethod, AuthScheme }
 import std.errors { GcpErrorShape, GitHubErrorShape }
 
 // -- Token types ---------------------------------------------------
@@ -48,13 +48,9 @@ type GitHubOidcToken200Body {
   count: Int
 }
 
-type MetadataRuntime {
-  identity_token_endpoint: NonEmptyStr
-}
+type MetadataRuntime {}
 
-data metadata_runtime: MetadataRuntime = {
-  identity_token_endpoint: "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity"
-}
+data metadata_runtime: MetadataRuntime = {}
 
 // -- Constants -----------------------------------------------------
 
