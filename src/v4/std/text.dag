@@ -1,7 +1,7 @@
 // src/v4/std/text.dag
 // Scope: Unicode text carriers.
 // Anchor: https://en.wikipedia.org/wiki/Unicode
-// Owns: Char, String, string_is_empty.
+// Owns: Char, String, is_empty.
 // Consumes: std nat, std algebra.
 // Status: T-3 modeled.
 
@@ -13,6 +13,3 @@ import v4.std.algebra { FreeMonoid, is_empty }
 import v4.std.nat { Nat }
 type Char = Nat
 type String = FreeMonoid<Char>
-fn string_is_empty(s: String) -> Bool {
-  is_empty(xs: s)
-}
