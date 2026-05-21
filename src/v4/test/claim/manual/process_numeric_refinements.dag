@@ -10,7 +10,9 @@ module v4.test.claim.manual.process_numeric_refinements
 
 import v4.extdeps.process {
   exit_code_out_of_range,
-  make_exit_code
+  make_exit_code,
+  make_process_id,
+  process_id_out_of_range
 }
 import v4.std.diagnostic {
   Accepted,
@@ -40,7 +42,14 @@ fn witness_exit_code_256_rejects() -> Bool {
   }
 }
 
-fn exit_code_rejection_claim_input(ok: Bool) -> Node {
+fn witness_process_id_zero_rejects() -> Bool {
+  match make_process_id(value: 0, at: NodeLocus { node: stub_empty_conj }) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics } => diagnostics.head.reason == process_id_out_of_range
+  }
+}
+
+fn process_refinement_claim_input(ok: Bool) -> Node {
   if ok {
     stub_empty_conj
   } else {
@@ -52,7 +61,16 @@ data claim_exit_code_256_rejects: TestClaim = TestClaim {
   kind: Equals,
   label: "manual/process: make_exit_code rejects 256",
   t19_anchor: T19ManualAnchorAbsent,
-  input: exit_code_rejection_claim_input(ok: witness_exit_code_256_rejects()),
+  input: process_refinement_claim_input(ok: witness_exit_code_256_rejects()),
+  expected: Accepted { value: stub_empty_conj, diagnostics: None },
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_process_id_zero_rejects: TestClaim = TestClaim {
+  kind: Equals,
+  label: "manual/process: make_process_id rejects 0",
+  t19_anchor: T19ManualAnchorAbsent,
+  input: process_refinement_claim_input(ok: witness_process_id_zero_rejects()),
   expected: Accepted { value: stub_empty_conj, diagnostics: None },
   classification: TestClassification { tier: Tier1, layer: Unit }
 }

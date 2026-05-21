@@ -35,7 +35,7 @@ data exit_code_out_of_range: Symbol = exit_code_out_of_range
 data signal_num_out_of_range: Symbol = signal_num_out_of_range
 
 fn process_id_admits(value: Int) -> Bool {
-  value >= 0
+  value > 0
 }
 
 fn exit_code_admits(value: Int) -> Bool {
