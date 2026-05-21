@@ -132,6 +132,52 @@ pub fn render_rust_type(
     render_node_type(&n, &RenderTarget::Rust, &shared_types, &source_indices)
 }
 
+pub fn render_rust_data_type(
+    type_node: &Rc<Node>,
+    shared_types: &Rc<std::collections::BTreeSet<String>>,
+    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    {
+        let tn = authored_name_at(source_indices.clone(), &type_node);
+        if ((type_node.params.clone().len() as i64) > 0) {
+            {
+                let param_strs = Rc::new({
+                    let mut __result = Vec::new();
+                    for p in type_node.params.clone().iter().cloned() {
+                        __result.push(render_rust_type(
+                            param_node_type_expr(&p),
+                            shared_types.clone(),
+                            source_indices.clone(),
+                        ));
+                    }
+                    __result
+                });
+                let applied = v2_rt::concat(
+                    v2_rt::concat(
+                        v2_rt::concat(
+                            coerce_primitive_type(RenderTarget::Rust, tn.clone()),
+                            "<".to_string(),
+                        ),
+                        param_strs.join(&", ".to_string()),
+                    ),
+                    ">".to_string(),
+                );
+                if v2_rt::set_contains(&shared_types, tn.clone()) {
+                    v2_rt::concat(v2_rt::concat("Rc<".to_string(), applied), ">".to_string())
+                } else {
+                    applied
+                }
+            }
+        } else {
+            render_rust_type(
+                type_node.clone(),
+                shared_types.clone(),
+                source_indices.clone(),
+            )
+        }
+    }
+}
+
 pub fn type_variable_node(id: String) -> Rc<Node> {
     Rc::new(Node {
         name: "".to_string(),
@@ -14538,10 +14584,10 @@ pub fn emit_data_def(
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
-        let ty_str = render_rust_type(
-            type_node.clone(),
-            shared_types.clone(),
-            scope.type_env.clone().source_indices.clone(),
+        let ty_str = render_rust_data_type(
+            &type_node,
+            &shared_types,
+            &scope.type_env.clone().source_indices.clone(),
         );
         let fn_name = to_snake(name);
         let needs_rc = v2_rt::set_contains(
