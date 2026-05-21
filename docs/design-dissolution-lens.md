@@ -1176,12 +1176,28 @@ import/alias of the resolver's authoritative shape.
     `connective_spec_fact` (6 arms → 2 skeletons, 5:1) — resolved via
     inline match-pattern with guard (`Atom { identity: id } if
     is_kernel_ambient(id) => ...; _ => default`), NOT via a named
-    `Bool` helper. **Fix-confidence: direct auto-apply.** Lens emits a
-    typed `Diff` rewriting the N-arm match to a 2-arm form: the
-    singleton arm's pattern + RHS preserved, the N-1 uniform arms
-    collapsed to `_ => <uniform_RHS_with_constructor_substituted_by_wildcard>`.
-    No naming decisions; the structural fix is unambiguous from the
-    histogram.
+    `Bool` helper. **Fix-confidence: split by RHS form** — skeleton
+    equivalence is a comparison-time notion, not executable syntax, so
+    the auto-fix has to materialize an actual replacement that compiles:
+    - **(a) Constructor identity does NOT appear in the uniform RHS**
+      (e.g. PR #3359 `connective_spec_fact`'s 5 uniform arms all
+      executing `classify_density(facts)` — the matched constructor
+      doesn't show up in the RHS at all). **Direct auto-apply:** the
+      catch-all is literally `_ => <uniform_RHS>`; no constructor
+      reconstruction needed.
+    - **(b) Constructor identity DOES appear in the uniform RHS** (e.g.
+      RHSes like `Disposition { feature: <matched_constructor> }` —
+      this is more naturally a MultiOutlier shape, but Outlier
+      examples exist). **Templated auto-apply:** bind the matched
+      value in the catch-all (e.g. `c => <RHS_with_c_substituted_for_the_constructor>`)
+      so the executable replacement is a real value-binding, NOT a
+      skeleton hole. The lens emits the Diff with the binding name
+      templated (default `c`/`x`/etc.; reviewer may override).
+    - The naive "substitute the constructor with a wildcard `_`" form
+      is a skeleton-equality device for COMPARING arms, not for
+      generating executable replacement code; cases that require it
+      should downgrade from direct-auto-apply to templated-auto-apply,
+      not emit syntactically invalid `_ => Foo { field: _ }` RHSes.
   - **MultiOutlier** — `K ≥ 2`, histogram contains both singleton(s)
     AND non-singleton group(s). `N ≥ 4`. Multiple base-cases + one or
     more uniform groups. Covers F14 (1:5:6 — one singleton +
@@ -1205,11 +1221,13 @@ import/alias of the resolver's authoritative shape.
     sub-coproduct). Lens emits a typed `Diff` with templated holes for
     NEW type names (wrapping variant name, sub-coproduct name, sub-variant
     names). Default templates derive from existing constructor names —
-    e.g. F14's `Modeled` disposition + uniform group → wrapping variant
-    `ModeledFeature` with sub-coproduct `ModeledKind`. Reviewer may
-    override names before the candidate-state commit; same flow as any
-    typo-fix Diff. Auto-apply when reviewer accepts default templates;
-    one round of reviewer-edit when names need to differ.
+    e.g. F14's `DeclaredNormalized` uniform group (5 variants) → wrapping
+    variant `NormalizedFeature` with sub-coproduct `NormalizedKind`.
+    Singleton groups stay fieldless (no `{ kind: ... }` wrapper) per
+    the dissolution rule below — only non-singleton groups get wrapped.
+    Reviewer may override names before the candidate-state commit; same
+    flow as any typo-fix Diff. Auto-apply when reviewer accepts default
+    templates; one round of reviewer-edit when names need to differ.
   - **Categorical** — `K ≥ 2`, histogram contains ONLY non-singleton
     groups (every group size ≥ 2). `K ≤ ⌊N/2⌋`, `N ≥ 4`. Pure category
     projection with no singleton base case. Rarer than MultiOutlier in
@@ -1306,24 +1324,41 @@ fn feature_disposition(f: FidelityFeature) -> FidelityDisposition {
 12 arms, 3 distinct skeletons: `Modeled` (1), `DeclaredNormalized { feature: <constructor> }` (5),
 `FailClosed { feature: <constructor> }` (6). **MultiOutlier, 1:5:6** (one singleton + two uniform groups; per the classifier definition above, Categorical requires non-singleton-only groups — the `Modeled` arm is a singleton, so this is MultiOutlier).
 
-**Clean shape:** push the categorization into `FidelityFeature`:
+**Clean shape:** push the categorization into `FidelityFeature`.
+**Singleton groups become fieldless top-level variants** (no `{ kind: _ }`
+wrapping — a sub-coproduct of one element is empty overhead); **only
+non-singleton groups get `{ kind: ... }` wrappers** carrying their
+sub-coproduct:
 ```dag
 type FidelityFeature
-  = ModeledFeature       { kind: ModeledKind }       // StructuralCore
-  | NormalizedFeature    { kind: NormalizedKind }    // 5 normalized variants
-  | UnmodeledFeature     { kind: UnmodeledKind }     // 6 fail-closed variants
+  = ModeledFeature                                 // singleton (StructuralCore) — fieldless
+  | NormalizedFeature    { kind: NormalizedKind }  // 5 normalized variants
+  | UnmodeledFeature     { kind: UnmodeledKind }   // 6 fail-closed variants
+
+type NormalizedKind
+  = SsaValueSpelling | BlockTextualOrder | LexicalTrivia
+  | TargetConfigToken | AdvisoryMetadata
+
+type UnmodeledKind
+  = UnmodeledInlineAsm | UnmodeledSemanticAttribute | UnmodeledType
+  | UnmodeledInstruction | UnmodeledConstExpr | MalformedStructure
 
 fn feature_disposition(f: FidelityFeature) -> FidelityDisposition {
   match f {
-    ModeledFeature    { kind: _ }    => Modeled
-    NormalizedFeature { kind: _ }    => DeclaredNormalized { feature: f }
-    UnmodeledFeature  { kind: _ }    => FailClosed         { feature: f }
+    ModeledFeature                  => Modeled
+    NormalizedFeature { kind: _ }   => DeclaredNormalized { feature: f }
+    UnmodeledFeature  { kind: _ }   => FailClosed         { feature: f }
   }
 }
 ```
 3 arms instead of 12. The N-to-3 projection lives in `FidelityFeature`'s
 type definition (its correct home — the category IS a property of the
-feature), not as a hand-rolled function.
+feature), not as a hand-rolled function. **General rule for the
+MultiOutlier / Categorical dissolution** — applies to every shape with
+mixed singletons + non-singleton groups: singleton-group variants are
+fieldless; only non-singleton groups carry `{ kind: <SubKind> }`
+wrappers. Wrapping a singleton is pure structural overhead with no
+discrimination work to do.
 
 **Concrete match — F15 (PR #3452 `complexity_bound_from_class`):**
 9 arms over `AsymptoticClass`, 3 distinct skeletons: `Constant` (1),
@@ -1560,8 +1595,9 @@ uses.
 | Refinement-clause index (type → length / domain refinements) | `v4.compiler.04_infer` | L1.7 |
 | Import graph + target existence | `v4.compiler.02_parse` | L0.8, L1.8 |
 | Return-type → fail-closed-carrier? | `v4.compiler.03_resolve` | L0.14, L1.11 |
+| Match-arm RHS skeleton + per-arm group membership + per-skeleton constructor-hole presence (normalized RHS after α-renaming + matched-arm constructor substitution; groups expose arm-ids so the auto-fix consumes them as facts, not by re-walking) | `v4.lens.match_arm_skeleton` (new derived stage — see §10.2) | L1.13 |
 
-### 10.2 Three small derived stages cover what the pipeline doesn't already expose
+### 10.2 Four small derived stages cover what the pipeline doesn't already expose
 
 These are themselves `.dag` stages — small folds with declared
 `consumes:` edges — and they're reusable across multiple lenses:
@@ -1581,11 +1617,48 @@ module v4.lens.concept_home
 consumes: v4.compiler.03_resolve, v4.lens.canonical_observations_index
 produces: Map<FnId, File>               // each fn's primary-concept home file
 // reusable by: L1.8
+
+module v4.lens.match_arm_skeleton
+consumes: v4.compiler.02_parse, v4.compiler.03_resolve
+produces: Map<MatchExprId, SkeletonReport>
+// SkeletonReport = {
+//   arm_count: Nat,
+//   distinct_skeletons: Nat,
+//   histogram: [Nat],                // sorted group-sizes, largest first
+//   classifier_shape: ClassifierShape, // PureTemplate | Outlier | MultiOutlier | Categorical | Mixed
+//   groups: [SkeletonGroup],         // one entry per distinct skeleton — per-arm membership
+// }
+// SkeletonGroup = {
+//   skeleton: RhsSkeleton,                       // the normalized RHS expression tree
+//   arm_ids: [MatchArmId],                       // arms in this skeleton-equivalence class
+//   constructor_hole_present: Bool,              // does the skeleton contain the constructor-hole at any
+//                                                // position? (distinguishes Outlier sub-cases a/b
+//                                                // without re-walking — drives Direct vs Templated
+//                                                // auto-apply per the L1.13 entry above)
+//   matched_constructors: [ConstructorId],       // the constructors whose arms collapsed to this skeleton
+//                                                // (lens reads to derive templated names for the
+//                                                // MultiOutlier/Categorical wrapping-variant default)
+// }
+// Facts Flow Forward (Practice 3): the lens emits everything the L1.13
+// auto-fix and any future L1.13.b sub-signature need. No consumer
+// re-walks the arms or re-derives skeleton equivalence — single
+// authority (P2), one mechanism, multiple downstream projections.
+// reusable by: L1.13, future L1.13.b (per-arm-name-parameterized-reference sub-signature),
+// future match-as-typed-table lens
+// Algorithm: tree-walk each arm's RHS, α-rename pattern-bound names,
+//   substitute every occurrence of the matched-arm constructor identity
+//   with a per-arm hole, structurally compare; group arms by skeleton
+//   (each group records arm_ids + matched_constructors + whether the
+//   skeleton contains the constructor-hole anywhere); sort group sizes
+//   (largest first) to form histogram; classify distribution-shape per
+//   L1.13's thresholds (PureTemplate / Outlier / MultiOutlier /
+//   Categorical / Mixed).
 ```
 
 Each is a single deterministic fold. Once landed, multiple lenses
 share the result — landing `match_arm_shape` unblocks five lenses,
-not one.
+`match_arm_skeleton` unblocks L1.13 + the future L1.13.b and
+match-as-typed-table sub-signatures.
 
 ### 10.3 A lens is a stage with declared dependencies
 
@@ -1596,6 +1669,7 @@ consumes:
   v4.compiler.03_resolve
   v4.compiler.04_infer
   v4.lens.match_arm_shape
+  v4.lens.match_arm_skeleton
   v4.lens.closed_vocab_scan
   v4.lens.concept_home
 produces:
