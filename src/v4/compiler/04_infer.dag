@@ -1,6 +1,7 @@
 // src/v4/compiler/04_infer.dag
 // Scope: Stage 4 — ResolvedTree -> InferredTree; bounded Find phase (DECISIONS C1 / IR-1).
 // Owns: AlgebraRef, InferredFacts, InferredTree, infer_stage_locus_port, infer_coercion_fold_not_realized, infer_coercion_fold_not_realized_diagnostic, infer.
+// Note: infer_coercion_fold_* symbols are Wave-1 boundary leftovers; coercion fold is translate-time (std/coercion.dag), not ground.
 // Consumes: v4.compiler.resolve, v4.std.cardinality, v4.std.collection, v4.std.constraints, v4.std.diagnostic, v4.std.node, v4.std.witness.
 // Status: Wave-3-A T-9 — ground body via solve_constraints → find_witness(UniqueOnly); algebra-inhabitance AlgebraRef bridge.
 // Anchor: https://en.wikipedia.org/wiki/Type_inference
@@ -80,7 +81,6 @@ data infer_stage_locus_port: Symbol = infer_stage_locus_port
 data infer_coercion_fold_not_realized: Symbol = infer_coercion_fold_not_realized
 data infer_descent_ranking_symbol: Symbol = infer_descent_ranking_symbol
 data infer_facts_lookup_miss: Symbol = infer_facts_lookup_miss
-data infer_property_algebra_inhabitance: Symbol = infer_property_algebra_inhabitance
 
 
 fn infer_coercion_fold_not_realized_diagnostic(at: Locus) -> Diagnostic {
@@ -101,6 +101,7 @@ fn infer_facts_lookup_miss_diagnostic(key: Node) -> Diagnostic {
 }
 
 
+// 🟡 coproduct dissolution — scaffold:T-9-descent-bridge · dissolve-on: canonical_grounding_candidates + find_witness bodies land (cardinality propagation).
 fn infer_default_termination_proof() -> TerminationProof {
   TerminationProof {
     non_increasing: [],
