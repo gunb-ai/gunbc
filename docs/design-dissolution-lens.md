@@ -413,10 +413,14 @@ passes — e.g. a three-variant `Cached | Produced | Rejected` where
 > **Status: reserved-proposed.** Sub-signature of L1.4 at a finer grain:
 > the parent catches a *whole coproduct* that clones a `std/` carrier;
 > L1.4.b catches *variants WITHIN one coproduct* that are structurally
-> identical modulo field-name nickname, differing only in field type.
-> The field type IS the discriminator — which is precisely the case
-> parametric carriers are designed for. Practice 11 (parameterize-
-> don't-duplicate) applied at the variant level. **Enforcement gate**
+> identical modulo field-name nickname, differing only in field type
+> AND the field type unambiguously recovers the variant tag (per the
+> tag-recoverability check below — operator-direct refinement
+> 2026-05-21). The field type IS the discriminator AND must
+> distinguish the variants from each other for parameterization to
+> preserve information — which is precisely the case parametric
+> carriers are designed for. Practice 11 (parameterize-don't-duplicate)
+> applied at the variant level. **Enforcement gate**
 > (parallel to L1.13 / L1.12.b): not active until (a)
 > `v4.lens.structural_similarity` lands carrying per-variant
 > field-shape facts, (b) the L1.4 diagnostic payload distinguishes
