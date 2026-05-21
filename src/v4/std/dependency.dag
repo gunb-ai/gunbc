@@ -7,7 +7,7 @@
 module v4.std.dependency
 
 import v4.std.collection { List }
-<<<<<<< HEAD
+import v4.std.logic { Bool }
 import v4.std.node {
   Bind,
   ComputationNode,
@@ -22,14 +22,10 @@ import v4.std.node {
 }
 
 // Substrate-visible edge labels for resolve-stage dependency kinds (Wave-2-A staged).
-// Ordinary Named record fields stay Contains; only marked labels or Bind parents become BindsTo.
+// Ordinary Named record fields stay Contains; only marked dependency_*_edge labels classify.
 data dependency_binds_to_edge: Symbol = dependency_binds_to_edge
 data dependency_module_import_edge: Symbol = dependency_module_import_edge
 data dependency_bootstrap_depends_edge: Symbol = dependency_bootstrap_depends_edge
-=======
-import v4.std.logic { Bool }
-import v4.std.node { Edge, Node, NodeFold, fold_node }
->>>>>>> origin/main
 
 // 🟢 closed set — P6 dependency classification taxonomy.
 type DependencyKind
