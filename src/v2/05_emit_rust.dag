@@ -149,12 +149,32 @@ fn render_rust_type(n: Node, shared_types: Set<String>, source_indices: Map<Stri
   render_node_type(n: n, target: Rust, shared_types: shared_types, source_indices: source_indices)
 }
 
-fn render_rust_data_type(type_node: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
+fn render_rust_data_type(type_node: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
   let tn = authored_name_at(source_indices: source_indices, node: type_node)
   if type_node.params |> count > 0 {
     let param_strs = type_node.params |> map(p => render_rust_type(n: param_node_type_expr(n: p), shared_types: shared_types, source_indices: source_indices))
     let applied = concat(coerce_primitive_type(target: Rust, dag_name: tn), "<", param_strs |> join(separator: ", "), ">")
     if set_contains(shared_types, tn) { concat("Rc<", applied, ">") } else { applied }
+  } else if type_node.children |> count > 0 {
+    let generic_arity = match lookup_emit_type_summary(emit_info: emit_info, type_name: tn) {
+      Some { value: summary } => summary.generic_param_names |> count
+      None => 0
+    }
+    if generic_arity == 1 {
+      let carrier = type_node.children
+        |> map(ch => resolved_type(n: ch))
+        |> filter(rt => rt.connective != Arrow)
+        |> first
+      match carrier {
+        Some { value: carrier_type } =>
+          let carrier_str = render_rust_type(n: carrier_type, shared_types: shared_types, source_indices: source_indices)
+          let applied = concat(coerce_primitive_type(target: Rust, dag_name: tn), "<", carrier_str, ">")
+          if set_contains(shared_types, tn) { concat("Rc<", applied, ">") } else { applied }
+        None => render_rust_type(n: type_node, shared_types: shared_types, source_indices: source_indices)
+      }
+    } else {
+      render_rust_type(n: type_node, shared_types: shared_types, source_indices: source_indices)
+    }
   } else {
     render_rust_type(n: type_node, shared_types: shared_types, source_indices: source_indices)
   }
@@ -5800,7 +5820,7 @@ fn data_value_has_cross_refs(value: Node) -> Bool {
 }
 
 fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
-  let ty_str = render_rust_data_type(type_node: type_node, shared_types: shared_types, source_indices: scope.type_env.source_indices)
+  let ty_str = render_rust_data_type(type_node: type_node, shared_types: shared_types, source_indices: scope.type_env.source_indices, emit_info: emit_info)
   let fn_name = to_snake(name: name)
   let needs_rc = set_contains(shared_types, authored_name_at(source_indices: scope.type_env.source_indices, node: type_node))
   if is_simple_type_node(n: type_node, source_indices: scope.type_env.source_indices) {
