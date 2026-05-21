@@ -1,8 +1,8 @@
 // src/v4/std/runtime.dag
-// Scope: Abstract runtime carriers for v4 eval/runtime interpretation.
-// Owns: RuntimeValue, RuntimeInterpretationAlgebra, RuntimeExecutionSemantics, RuntimeResourceEffectBoundary.
+// Scope: Abstract runtime carriers for v4 evaluation.
+// Owns: RuntimeValue, EvaluationEnvironment, ValueRepresentationModel, InterpretationAlgebra, ExecutionSemantics, ResourceEffectBoundary.
 // Consumes: v4.std.collection, v4.std.diagnostic, v4.std.logic, v4.std.machine, v4.std.model_core, v4.std.node.
-// Status: T-34 option-C modeled; concrete runtime bundles live under v4.extdeps.runtimes.*.
+// Status: Option-C abstract runtime substrate; concrete runtime bundles live under v4.extdeps.runtimes.*.
 
 module v4.std.runtime
 
@@ -26,12 +26,12 @@ type RuntimeFieldValue {
   value: RuntimeValue
 }
 
-type RuntimeBindingKey {
+type EnvironmentBindingKey {
   declaration: Node
 }
 
-type RuntimeEnvironment {
-  bindings: Map<RuntimeBindingKey, RuntimeValue>
+type EvaluationEnvironment {
+  bindings: Map<EnvironmentBindingKey, RuntimeValue>
 }
 
 type RuntimePrimitiveValue {
@@ -53,7 +53,7 @@ type RuntimeReferenceValue {
 type RuntimeClosureValue {
   arrow_type: Node
   arrow: Node
-  environment: RuntimeEnvironment
+  environment: EvaluationEnvironment
 }
 
 type RuntimeUnitValue {
@@ -67,88 +67,84 @@ type RuntimeValue
   | RuntimeClosure { value: RuntimeClosureValue }
   | RuntimeUnit { value: RuntimeUnitValue }
 
-type RuntimeValueRepresentation {
-  represent_literal: fn(Node, RuntimeEnvironment) -> Outcome<RuntimeValue>
+type ValueRepresentationModel {
+  represent_literal: fn(Node, EvaluationEnvironment) -> Outcome<RuntimeValue>
   represent_result: fn(RuntimeValue) -> Outcome<RuntimeValue>
 }
 
-type RuntimeFrame {
+type EvaluationFrame {
   current: Node
-  environment: RuntimeEnvironment
+  environment: EvaluationEnvironment
 }
 
-type RuntimeCall {
+type EvaluationCall {
   callee: Node
   arguments: List<RuntimeValue>
 }
 
-type RuntimeControlTransfer
-  = RuntimeContinue { value: RuntimeValue }
-  | RuntimeReturn { value: RuntimeValue }
-  | RuntimeRaise { diagnostic: Diagnostic }
-  | RuntimeSuspend { continuation: RuntimeFrame }
+type ControlTransfer
+  = Continue { value: RuntimeValue }
+  | Return { value: RuntimeValue }
+  | Raise { diagnostic: Diagnostic }
+  | Suspend { continuation: EvaluationFrame }
 
-type RuntimeAllocationSemantics {
+type AllocationSemantics {
   allocate: fn(RuntimeValue) -> Outcome<RuntimeValue>
 }
 
-type RuntimeCallSemantics {
-  call: fn(RuntimeCall, RuntimeFrame) -> Outcome<RuntimeControlTransfer>
-  return_value: fn(RuntimeValue, RuntimeFrame) -> Outcome<RuntimeControlTransfer>
+type CallSemantics {
+  call: fn(EvaluationCall, EvaluationFrame) -> Outcome<ControlTransfer>
+  return_value: fn(RuntimeValue, EvaluationFrame) -> Outcome<ControlTransfer>
 }
 
-type RuntimeControlSemantics {
-  transfer: fn(RuntimeControlTransfer, RuntimeFrame) -> Outcome<RuntimeFrame>
+type ControlSemantics {
+  transfer: fn(ControlTransfer, EvaluationFrame) -> Outcome<EvaluationFrame>
 }
 
-type RuntimeExecutionSemantics {
-  allocation: RuntimeAllocationSemantics
-  calls: RuntimeCallSemantics
-  control: RuntimeControlSemantics
+type ExecutionSemantics {
+  allocation: AllocationSemantics
+  calls: CallSemantics
+  control: ControlSemantics
 }
 
-type RuntimeValueInterpreter {
-  allocate_literal: fn(Node, RuntimeEnvironment) -> Outcome<RuntimeValue>
+type ValueInterpreter {
+  allocate_literal: fn(Node, EvaluationEnvironment) -> Outcome<RuntimeValue>
 }
 
-type RuntimeTransformInterpreter {
-  call_primitive: fn(Node, List<RuntimeValue>, RuntimeEnvironment) -> Outcome<RuntimeValue>
+type TransformInterpreter {
+  call_primitive: fn(Node, List<RuntimeValue>, EvaluationEnvironment) -> Outcome<RuntimeValue>
 }
 
-type RuntimeBranchInterpreter {
-  choose_branch: fn(Node, RuntimeValue, RuntimeEnvironment) -> Outcome<Node>
+type BranchInterpreter {
+  choose_branch: fn(Node, RuntimeValue, EvaluationEnvironment) -> Outcome<Node>
 }
 
-type RuntimeLoopInterpreter {
-  step_loop: fn(Node, RuntimeEnvironment) -> Outcome<RuntimeControlTransfer>
+type LoopInterpreter {
+  step_loop: fn(Node, EvaluationEnvironment) -> Outcome<ControlTransfer>
 }
 
-type RuntimeBindInterpreter {
-  bind_value: fn(RuntimeBindingKey, RuntimeValue, RuntimeEnvironment) -> Outcome<RuntimeEnvironment>
+type BindInterpreter {
+  bind_value: fn(EnvironmentBindingKey, RuntimeValue, EvaluationEnvironment) -> Outcome<EvaluationEnvironment>
 }
 
-type RuntimeInterpretationAlgebra {
-  value: RuntimeValueInterpreter
-  transform: RuntimeTransformInterpreter
-  branch: RuntimeBranchInterpreter
-  loop: RuntimeLoopInterpreter
-  bind: RuntimeBindInterpreter
+type InterpretationAlgebra {
+  value: ValueInterpreter
+  transform: TransformInterpreter
+  branch: BranchInterpreter
+  loop: LoopInterpreter
+  bind: BindInterpreter
 }
 
-type RuntimeBoundaryAllowance {
+type BoundaryAllowance {
   operation: PrimitiveOperationRef
   resource: ResourceAccess
   allowed: Bool
 }
 
-type RuntimeResourceEffectBoundary {
-  ffi: RuntimeBoundaryAllowance
-  exceptions: RuntimeBoundaryAllowance
-  async: RuntimeBoundaryAllowance
-  concurrency: RuntimeBoundaryAllowance
-  identity_reference: RuntimeBoundaryAllowance
-}
-
-type RuntimeCoreBinding {
-  core: ModelCore
+type ResourceEffectBoundary {
+  ffi: BoundaryAllowance
+  exceptions: BoundaryAllowance
+  async: BoundaryAllowance
+  concurrency: BoundaryAllowance
+  identity_reference: BoundaryAllowance
 }
