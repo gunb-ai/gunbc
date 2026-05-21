@@ -23,7 +23,7 @@ import v4.std.diagnostic {
   Unavailable,
   outcome_rejected
 }
-import v4.std.node { Edge, Node, NodeFold, Symbol, fold_node, well_formed }
+import v4.std.node { Node, Symbol, well_formed }
 import v4.std.witness { StructuralPropertyWitness }
 data find_witness_reason_no_candidate: Symbol = find_witness_reason_no_candidate
 data find_witness_reason_ambiguous_candidate: Symbol = find_witness_reason_ambiguous_candidate
@@ -78,34 +78,7 @@ fn find_witness_not_realized_diagnostic(source_facts: Node) -> Diagnostic {
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
-// 🟡 coproduct dissolution — scaffold:exact-structural-preservation-distinct-node-mvp · leaf coincidence stays fail-closed on Atom identity until W-T-10 canonical Node grounding algebra supplies source/target declaration evidence.
-fn exact_structural_canonical_init(n: Node) -> Node {
-  Node {
-    kind: n.kind,
-    children: []
-  }
-}
-fn exact_structural_canonical_step(acc: Node, edge: Edge, child: Node) -> Node {
-  Node {
-    kind: acc.kind,
-    children: list_push(acc.children, Edge { label: edge.label, target: child })
-  }
-}
-fn exact_structural_canonical_algebra() -> NodeFold<Node> {
-  NodeFold {
-    init: exact_structural_canonical_init,
-    step: exact_structural_canonical_step
-  }
-}
-fn exact_structural_canonical_node(n: Node) -> Node {
-  fold_node(
-    n: n,
-    algebra: exact_structural_canonical_algebra()
-  )
-}
-fn exact_structural_equality_zip_fold(source_facts: Node, candidate: Node) -> Bool {
-  exact_structural_canonical_node(n: source_facts) == exact_structural_canonical_node(n: candidate)
-}
+// 🟡 coproduct dissolution — scaffold:exact-structural-preservation-identity-mvp · dissolve-on: W-T-10 structural zip-fold predicate algebra; exact_structural_equality accepts only source-identical Node evidence and other preservation rules fail closed.
 fn preservation_predicate_holds(
   source_facts: Node,
   candidate: Node,
@@ -116,7 +89,7 @@ fn preservation_predicate_holds(
     && well_formed(n: candidate)
     && (predicate.preservation_rule == preservation_rule_exact_structural_equality_zip_fold)
     && (predicate.algebra == source_facts)
-    && exact_structural_equality_zip_fold(source_facts: source_facts, candidate: candidate)
+    && (candidate == source_facts)
 }
 fn passing_candidate_count(
   source_facts: Node,
