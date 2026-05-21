@@ -1,6 +1,6 @@
 // src/v4/compiler/05_eval.dag
 // Scope: primary evaluation path over inferred tree/input subgraphs and TestClaim runner substrate.
-// Owns: Inputs, EvalContext, TestClaimTypedInput, TestClaimEvalSubject, TestClaimCacheKey, TestClaimCacheReceipt, Verdict, TestClaimRun, eval_node, run_test_claim.
+// Owns: Inputs, EvalContext, TestClaimTypedInput, TestClaimEvalSubject, TestClaimCacheKey, TestClaimCacheReceipt, Verdict, TestClaimRun, eval_node, run_test_claim, aggregate_verdicts.
 // Consumes: v4.compiler.infer, v4.std.node, v4.std.diagnostic, v4.std.verification.
 // Status: Wave-0 substrate; evaluator bodies remain structural until T-9 inferred-tree semantics.
 
@@ -10,6 +10,7 @@ module v4.compiler.eval
 import v4.compiler.infer {
   InferredTree
 }
+import v4.std.collection { List }
 import v4.std.node {
   Hash,
   Node,
@@ -120,7 +121,6 @@ fn test_claim_cache_receipt<T>(
 
 
 data eval_rejected_invalid_node: Symbol = eval_rejected_invalid_node
-data eval_rejected_assert_kind_deferred: Symbol = eval_rejected_assert_kind_deferred
 data eval_rejected_roundtrip_deferred: Symbol = eval_rejected_roundtrip_deferred
 fn eval_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
   Diagnostic {
@@ -160,11 +160,31 @@ fn run_node_assert(
       actual: actual,
       diagnostic: eval_diagnostic(reason: eval_rejected_roundtrip_deferred, node: input)
     }
-    DiagnosticAssert => Deferred {
-      actual: actual,
-      diagnostic: eval_diagnostic(reason: eval_rejected_assert_kind_deferred, node: input)
+    DiagnosticAssert => match actual {
+      Rejected { diagnostics: _ } => match expected {
+        Rejected { diagnostics: _ } =>
+          if outcome_node_eq(a: actual, b: expected) { Pass } else { Fail { actual: actual } }
+        _ => Fail { actual: actual }
+      }
+      _ => Fail { actual: actual }
     }
   }
+}
+
+
+// Fail-closed: any Deferred or Fail in the list blocks Pass; [] is Pass (vacuous).
+fn aggregate_verdicts<T>(rs: List<Verdict<T>>) -> Verdict<T> {
+  fold(rs, init: Pass, f: fn(acc, v) {
+    match acc {
+      Fail { actual: a } => Fail { actual: a }
+      Deferred { actual: a, diagnostic: d } => match v {
+        Fail { actual: ra } => Fail { actual: ra }
+        Deferred { actual: _, diagnostic: _ } => Deferred { actual: a, diagnostic: d }
+        Pass => Deferred { actual: a, diagnostic: d }
+      }
+      Pass => v
+    }
+  })
 }
 
 
