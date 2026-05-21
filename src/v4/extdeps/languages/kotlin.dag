@@ -28,19 +28,19 @@ import v4.std.algebra { BooleanAlgebra, free_monoid_fold }
 
 // Kotlin's specification defines only signed built-in integer types; unsigned
 // integers are not built-in classifier types in this spec section.
-// Green-terminal coproduct: alternatives are one-at-a-time scalar widths.
+// 🟢 coproduct dissolution — alternatives are one-at-a-time scalar widths.
 type KotlinIntWidth
   = Bits8
   | Bits16
   | Bits32
   | Bits64
 
-// Green-terminal coproduct: alternatives are one-at-a-time floating widths.
+// 🟢 coproduct dissolution — alternatives are one-at-a-time floating widths.
 type KotlinFloatWidth
   = Bits32
   | Bits64
 
-// Green-terminal coproduct: platform representation is a spec-stated fact,
+// 🟢 coproduct dissolution — platform representation is a spec-stated fact,
 // not a language-defined fixed encoding.
 type KotlinRuntimeRepresentation
   = PlatformSpecificRuntimeRepresentation
@@ -51,7 +51,7 @@ type KotlinRuntimeRepresentation
   | SingletonObject
   | UninhabitedControlFlow
 
-// Green-terminal coproduct: one scalar classifier at a time.
+// 🟢 coproduct dissolution — one scalar classifier at a time.
 type KotlinScalar
   = IntScalar { width: KotlinIntWidth }
   | FloatScalar { width: KotlinFloatWidth }
@@ -76,7 +76,7 @@ type KotlinFloatPrimitiveFacts {
   std_projection: Symbol
 }
 
-// Green-terminal coproduct: nonnumeric built-in classifiers are disjoint.
+// 🟢 coproduct dissolution — nonnumeric built-in classifiers are disjoint.
 type KotlinNonNumericScalar
   = BoolScalar
   | CharScalar
