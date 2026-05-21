@@ -10461,10 +10461,13 @@ pub fn build_type_env(
             cycle_set_str.clone(),
             Rc::new(v2_rt::map_keys(&compiler_recursive_types())),
         );
-        let cross_type_set_str = cross_type_all_names.clone().iter().cloned().fold(
-            v2_rt::rc_empty_set::<String>(),
-            |acc: _, name: String| v2_rt::rc_set_insert(acc, name.clone()),
-        );
+        let cross_type_set_str = cross_type_all_names
+            .clone()
+            .iter()
+            .cloned()
+            .fold(v2_rt::rc_empty_set::<String>(), |acc: _, name: String| {
+                v2_rt::rc_set_insert(acc, name.clone())
+            });
         let cross_type_set = cross_type_all_names.clone().iter().cloned().fold(
             v2_rt::rc_empty_map::<i64, bool>(),
             |acc: Rc<HashMap<i64, bool>>, name: String| {
@@ -10920,10 +10923,13 @@ pub fn build_type_env_unresolved(
             cycle_set_str.clone(),
             Rc::new(v2_rt::map_keys(&compiler_recursive_types())),
         );
-        let cross_type_set_str = cross_type_all_names.clone().iter().cloned().fold(
-            v2_rt::rc_empty_set::<String>(),
-            |acc: _, name: String| v2_rt::rc_set_insert(acc, name.clone()),
-        );
+        let cross_type_set_str = cross_type_all_names
+            .clone()
+            .iter()
+            .cloned()
+            .fold(v2_rt::rc_empty_set::<String>(), |acc: _, name: String| {
+                v2_rt::rc_set_insert(acc, name.clone())
+            });
         let cross_type_set = cross_type_all_names.clone().iter().cloned().fold(
             v2_rt::rc_empty_map::<i64, bool>(),
             |acc: Rc<HashMap<i64, bool>>, name: String| {
@@ -11571,10 +11577,13 @@ pub fn topo_resolve_types(
                 diagnostics: diagnostics.clone(),
             });
         }
-        let remaining_set = remaining.clone().iter().cloned().fold(
-            v2_rt::rc_empty_set::<String>(),
-            |acc: _, name: String| v2_rt::rc_set_insert(acc, name.clone()),
-        );
+        let remaining_set = remaining
+            .clone()
+            .iter()
+            .cloned()
+            .fold(v2_rt::rc_empty_set::<String>(), |acc: _, name: String| {
+                v2_rt::rc_set_insert(acc, name.clone())
+            });
         let ready = Rc::new({
             let mut __result = Vec::new();
             for name in remaining.clone().iter().cloned() {
