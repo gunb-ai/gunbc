@@ -18,13 +18,14 @@ import extdeps.cloud.gcp.gcp
 import extdeps.cloud.gcp.secret_manager
 import extdeps.cloud.gcp.iam
 import extdeps.cloud.gcp.sts
+import extdeps.cloud.gcp.sts { MetadataRuntime }
 import extdeps.github.actions { GitHubActionsRuntime }
 import extdeps.runtime.local { LocalDevRuntime }
 import extdeps.shell
 
 type AuthRuntime
   = GitHubActions { runtime: GitHubActionsRuntime }
-  | GcpMetadata { runtime: gcp.MetadataRuntime }
+  | GcpMetadata { runtime: MetadataRuntime }
   | LocalDev { runtime: LocalDevRuntime }
 
 // Acquire a subject token based on runtime environment.
