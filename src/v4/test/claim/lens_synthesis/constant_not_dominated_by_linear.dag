@@ -1,5 +1,5 @@
 // src/v4/test/claim/lens_synthesis/constant_not_dominated_by_linear.dag
-// Scope: T-17 negative claim — linear lower bound does not dominate constant realization.
+// Scope: T-17 negative claim — constant realization not dominated by linear lower bound (!symbolic_cost_dominates(constant, linear)).
 // Owns: claim_constant_not_dominated_by_linear.
 // Consumes: lens cost, std node, std verification.
 // Status: scaffold — compile-only until T-17 synthesis lens lands.
