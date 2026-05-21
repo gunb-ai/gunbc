@@ -1,7 +1,7 @@
 // src/v4/test/claim/lens_affected_set/node_precision.dag
 // Scope: affected-set reading claim for Node-level edit/rebuild precision.
 // Owns: affected_set_node_precision_claim.
-// Consumes: v4.lens.affected_set, v4.compiler.infer, v4.std.node.
+// Consumes: v4.lens.affected_set, v4.compiler.infer, v4.std.dependency, v4.std.node.
 // Status: T-21 claim data; runner execution lands with generated TestClaim harness.
 
 
@@ -9,6 +9,7 @@ module v4.test.claim.lens_affected_set.node_precision
 
 import v4.compiler.infer { InferredFacts, InferredTree }
 import v4.lens.affected_set { AffectedSetReading, affected_set }
+import v4.std.dependency { Contains, DependencyView }
 import v4.std.logic { Bool }
 import v4.std.node { Atom, Edge, Named, Node, Symbol, TypeNode }
 import v4.test.claim.lens_common.infer_fixture {
@@ -62,6 +63,13 @@ fn affected_set_claim_tree() -> InferredTree {
   claim_inferred_tree(root: affected_set_root, facts: affected_set_claim_facts())
 }
 
+data affected_set_mid_to_leaf_dependency: DependencyView = DependencyView {
+  source: affected_set_mid,
+  dependent: affected_set_leaf,
+  kind: Contains,
+  usage_site: affected_set_leaf
+}
+
 type LensAffectedSetClaim {
   input: InferredTree
   edit_locus: Node
@@ -75,7 +83,7 @@ data affected_set_node_precision_claim: LensAffectedSetClaim = LensAffectedSetCl
   expected: AffectedSetReading {
     edit_locus: affected_set_mid,
     affected: [affected_set_mid, affected_set_leaf],
-    dependencies: []
+    dependencies: [affected_set_mid_to_leaf_dependency]
   },
   actual: affected_set(graph: affected_set_claim_tree(), edit_locus: affected_set_mid)
 }
@@ -83,6 +91,7 @@ data affected_set_node_precision_claim: LensAffectedSetClaim = LensAffectedSetCl
 fn affected_set_node_precision_claim_holds() -> Bool {
   affected_set_node_precision_claim.actual.edit_locus == affected_set_node_precision_claim.expected.edit_locus
     && affected_set_node_precision_claim.actual.affected == affected_set_node_precision_claim.expected.affected
+    && affected_set_node_precision_claim.actual.dependencies == affected_set_node_precision_claim.expected.dependencies
 }
 
 data affected_set_node_precision_claim_passes: Bool = affected_set_node_precision_claim_holds()
