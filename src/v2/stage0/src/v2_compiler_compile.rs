@@ -431,7 +431,7 @@ pub fn dag_collect_insert(node: &Rc<Node>, acc: &Rc<DagCollectAcc>) -> Rc<DagCol
                     seen: v2_rt::rc_map_insert(acc.seen.clone(), key.clone(), true),
                     order: v2_rt::rc_list_push(acc.order.clone(), node.clone()),
                 });
-                dag_collect_node_tree(node.clone(), acc1)
+                dag_collect_node_tree(node, &acc1)
             }
         }
     }
