@@ -30,6 +30,7 @@ import v4.std.node {
 import v4.std.witness { StructuralPropertyWitness }
 data fixture_int_atom: Symbol = fixture_int_atom
 data fixture_property_closed_candidates: Symbol = fixture_property_closed_candidates
+data fixture_property_candidate_set_closedness: Symbol = fixture_property_candidate_set_closedness
 data fixture_rust_i32_atom: Symbol = fixture_rust_i32_atom
 fn int_source_node() -> Node {
   Node {
@@ -54,6 +55,10 @@ fn int_source_grounding_fixture() -> CanonicalGrounding {
       structural: StructuralPropertyWitness {
         property: fixture_property_closed_candidates,
         evidence: int_source_node()
+      },
+      closedness: StructuralPropertyWitness {
+        property: fixture_property_candidate_set_closedness,
+        evidence: int_source_node()
       }
     }
   }
@@ -63,7 +68,7 @@ fn rust_i32_candidate_fixture() -> CoercionCandidateSet {
     set: CandidateSet {
       candidates: [rust_i32_inhabitant_node()],
       closedness: StructuralPropertyWitness {
-        property: fixture_property_closed_candidates,
+        property: fixture_property_candidate_set_closedness,
         evidence: int_source_node()
       }
     }

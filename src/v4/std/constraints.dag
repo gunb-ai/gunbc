@@ -19,7 +19,14 @@ import v4.std.diagnostic {
   Rejected,
   Unavailable,
   bind_outcome,
+<<<<<<< HEAD
   outcome_rejected
+=======
+  diagnostics_singleton,
+  outcome_rejected,
+  outcome_with_diagnostics,
+  rejected_with_pending
+>>>>>>> origin/main
 }
 import v4.std.find_witness {
   CandidateSet,
@@ -31,6 +38,7 @@ import v4.std.find_witness {
 import v4.std.node { Node, Symbol }
 import v4.std.witness { StructuralPropertyWitness }
 data constraint_property_being_canonical: Symbol = constraint_property_being_canonical
+data constraint_property_candidate_set_closedness: Symbol = constraint_property_candidate_set_closedness
 data constraints_not_realized: Symbol = constraints_not_realized
 // 🟡 coproduct dissolution — scaffold:T-9-ground · dissolve-on: W-T-9-impl consumes graph carriers.
 type ConstraintGraph {
@@ -51,6 +59,8 @@ type CanonicalGroundingCandidateSet {
 }
 type CanonicalGroundingWitness {
   structural: StructuralPropertyWitness
+  // 🟡 coproduct dissolution — scaffold:T-9-closedness-bridge · dissolve-on: W-T-10 find_witness closedness authority supplies evidence distinct from structural witness.
+  closedness: StructuralPropertyWitness
 }
 fn constraints_not_realized_diagnostic(graph: ConstraintGraph) -> Diagnostic {
   Diagnostic {
@@ -78,6 +88,7 @@ fn solve_constraints(policy: ConstraintSolvePolicy) -> Outcome<CanonicalGroundin
         multiplicity_policy: UniqueOnly
       ) {
         Accepted { value: fw, diagnostics: fw_d } =>
+<<<<<<< HEAD
           Accepted {
             value: CanonicalGrounding {
               node: fw.candidate,
@@ -87,6 +98,18 @@ fn solve_constraints(policy: ConstraintSolvePolicy) -> Outcome<CanonicalGroundin
             },
             diagnostics: fw_d
           }
+=======
+          outcome_with_diagnostics(
+            value: CanonicalGrounding {
+              node: fw.candidate,
+              witness: CanonicalGroundingWitness {
+                structural: fw.witness,
+                closedness: fw.closedness
+              }
+            },
+            diagnostics: fw_d
+          )
+>>>>>>> origin/main
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
       }
     }
