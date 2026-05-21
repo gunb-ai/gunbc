@@ -118,16 +118,23 @@ type CppScalar
 type CppIntegerPrimitiveFacts {
   surface_spelling: Symbol
   scalar: Node
+  width_fact: Node
+  signedness_fact: Node
+  encoding_fact: Node
+  overflow_fact: Node
 }
 
 type CppCharacterPrimitiveFacts {
   surface_spelling: Symbol
   scalar: Node
+  width_fact: Node
+  encoding_fact: Node
 }
 
 type CppBoolPrimitiveFacts {
   surface_spelling: Symbol
   scalar: Node
+  encoding_fact: Node
 }
 
 type CppModeledTargetProfile {
@@ -271,19 +278,17 @@ fn cpp_signed_integer_facts(
   target_profile: CppModeledTargetProfile
 ) -> CppIntegerPrimitiveFacts {
   let _profile = target_profile.profile
+  let width_fact = cpp_width_selection_node(
+    spelling: cpp_signed_integer_spelling_node(spelling: spelling),
+    target_profile: target_profile
+  )
   CppIntegerPrimitiveFacts {
     surface_spelling: surface_spelling,
     scalar: Node {
       kind: TypeNode { connective: Conj },
       children: [
         cpp_named_edge(name: cpp_field_scalar, target: cpp_atom(id: cpp_tag_signed_integer)),
-        cpp_named_edge(
-          name: cpp_field_width_selection,
-          target: cpp_width_selection_node(
-            spelling: cpp_signed_integer_spelling_node(spelling: spelling),
-            target_profile: target_profile
-          )
-        ),
+        cpp_named_edge(name: cpp_field_width_selection, target: width_fact),
         cpp_named_edge(
           name: cpp_field_signed_representation,
           target: cpp_atom(id: cpp_tag_twos_complement)
@@ -293,7 +298,11 @@ fn cpp_signed_integer_facts(
           target: cpp_atom(id: cpp_tag_representable_result_required)
         )
       ]
-    }
+    },
+    width_fact: width_fact,
+    signedness_fact: cpp_atom(id: cpp_tag_signed_integer),
+    encoding_fact: cpp_atom(id: cpp_tag_twos_complement),
+    overflow_fact: cpp_atom(id: cpp_tag_representable_result_required)
   }
 }
 
@@ -303,25 +312,27 @@ fn cpp_unsigned_integer_facts(
   target_profile: CppModeledTargetProfile
 ) -> CppIntegerPrimitiveFacts {
   let _profile = target_profile.profile
+  let width_fact = cpp_width_selection_node(
+    spelling: cpp_unsigned_integer_spelling_node(spelling: spelling),
+    target_profile: target_profile
+  )
   CppIntegerPrimitiveFacts {
     surface_spelling: surface_spelling,
     scalar: Node {
       kind: TypeNode { connective: Conj },
       children: [
         cpp_named_edge(name: cpp_field_scalar, target: cpp_atom(id: cpp_tag_unsigned_integer)),
-        cpp_named_edge(
-          name: cpp_field_width_selection,
-          target: cpp_width_selection_node(
-            spelling: cpp_unsigned_integer_spelling_node(spelling: spelling),
-            target_profile: target_profile
-          )
-        ),
+        cpp_named_edge(name: cpp_field_width_selection, target: width_fact),
         cpp_named_edge(
           name: cpp_field_overflow_disposition,
           target: cpp_atom(id: cpp_tag_unsigned_modulo_arithmetic)
         )
       ]
-    }
+    },
+    width_fact: width_fact,
+    signedness_fact: cpp_atom(id: cpp_tag_unsigned_integer),
+    encoding_fact: cpp_atom(id: cpp_tag_unsigned_modulo_arithmetic),
+    overflow_fact: cpp_atom(id: cpp_tag_unsigned_modulo_arithmetic)
   }
 }
 
@@ -382,6 +393,26 @@ fn cpp_integer_facts_catalog(target_profile: CppModeledTargetProfile) -> List<Cp
 
 fn cpp_character_facts_catalog(target_profile: CppModeledTargetProfile) -> List<CppCharacterPrimitiveFacts> {
   let _profile = target_profile.profile
+  let char_width_fact = cpp_width_selection_node(
+    spelling: cpp_atom(id: cpp_surface_spelling_char),
+    target_profile: target_profile
+  )
+  let wchar_t_width_fact = cpp_width_selection_node(
+    spelling: cpp_atom(id: cpp_surface_spelling_wchar_t),
+    target_profile: target_profile
+  )
+  let char8_t_width_fact = cpp_width_selection_node(
+    spelling: cpp_atom(id: cpp_surface_spelling_char8_t),
+    target_profile: target_profile
+  )
+  let char16_t_width_fact = cpp_width_selection_node(
+    spelling: cpp_atom(id: cpp_surface_spelling_char16_t),
+    target_profile: target_profile
+  )
+  let char32_t_width_fact = cpp_width_selection_node(
+    spelling: cpp_atom(id: cpp_surface_spelling_char32_t),
+    target_profile: target_profile
+  )
   [
     CppCharacterPrimitiveFacts {
       surface_spelling: cpp_surface_spelling_char,
@@ -389,15 +420,11 @@ fn cpp_character_facts_catalog(target_profile: CppModeledTargetProfile) -> List<
         kind: TypeNode { connective: Conj },
         children: [
           cpp_named_edge(name: cpp_field_scalar, target: cpp_atom(id: cpp_tag_plain_char)),
-          cpp_named_edge(
-            name: cpp_field_width_selection,
-            target: cpp_width_selection_node(
-              spelling: cpp_atom(id: cpp_surface_spelling_char),
-              target_profile: target_profile
-            )
-          )
+          cpp_named_edge(name: cpp_field_width_selection, target: char_width_fact)
         ]
-      }
+      },
+      width_fact: char_width_fact,
+      encoding_fact: cpp_atom(id: cpp_tag_plain_char)
     },
     CppCharacterPrimitiveFacts {
       surface_spelling: cpp_surface_spelling_wchar_t,
@@ -405,15 +432,11 @@ fn cpp_character_facts_catalog(target_profile: CppModeledTargetProfile) -> List<
         kind: TypeNode { connective: Conj },
         children: [
           cpp_named_edge(name: cpp_field_scalar, target: cpp_atom(id: cpp_tag_wchar_t)),
-          cpp_named_edge(
-            name: cpp_field_width_selection,
-            target: cpp_width_selection_node(
-              spelling: cpp_atom(id: cpp_surface_spelling_wchar_t),
-              target_profile: target_profile
-            )
-          )
+          cpp_named_edge(name: cpp_field_width_selection, target: wchar_t_width_fact)
         ]
-      }
+      },
+      width_fact: wchar_t_width_fact,
+      encoding_fact: cpp_atom(id: cpp_tag_wchar_t)
     },
     CppCharacterPrimitiveFacts {
       surface_spelling: cpp_surface_spelling_char8_t,
@@ -424,19 +447,15 @@ fn cpp_character_facts_catalog(target_profile: CppModeledTargetProfile) -> List<
             name: cpp_field_scalar,
             target: cpp_atom(id: cpp_tag_fixed_unsigned_code_unit_integer)
           ),
-          cpp_named_edge(
-            name: cpp_field_width_selection,
-            target: cpp_width_selection_node(
-              spelling: cpp_atom(id: cpp_surface_spelling_char8_t),
-              target_profile: target_profile
-            )
-          ),
+          cpp_named_edge(name: cpp_field_width_selection, target: char8_t_width_fact),
           cpp_named_edge(
             name: cpp_field_unsigned_modulo_arithmetic,
             target: cpp_atom(id: cpp_tag_unsigned_modulo_arithmetic)
           )
         ]
-      }
+      },
+      width_fact: char8_t_width_fact,
+      encoding_fact: cpp_atom(id: cpp_tag_unsigned_modulo_arithmetic)
     },
     CppCharacterPrimitiveFacts {
       surface_spelling: cpp_surface_spelling_char16_t,
@@ -447,19 +466,15 @@ fn cpp_character_facts_catalog(target_profile: CppModeledTargetProfile) -> List<
             name: cpp_field_scalar,
             target: cpp_atom(id: cpp_tag_fixed_unsigned_code_unit_integer)
           ),
-          cpp_named_edge(
-            name: cpp_field_width_selection,
-            target: cpp_width_selection_node(
-              spelling: cpp_atom(id: cpp_surface_spelling_char16_t),
-              target_profile: target_profile
-            )
-          ),
+          cpp_named_edge(name: cpp_field_width_selection, target: char16_t_width_fact),
           cpp_named_edge(
             name: cpp_field_unsigned_modulo_arithmetic,
             target: cpp_atom(id: cpp_tag_unsigned_modulo_arithmetic)
           )
         ]
-      }
+      },
+      width_fact: char16_t_width_fact,
+      encoding_fact: cpp_atom(id: cpp_tag_unsigned_modulo_arithmetic)
     },
     CppCharacterPrimitiveFacts {
       surface_spelling: cpp_surface_spelling_char32_t,
@@ -470,19 +485,15 @@ fn cpp_character_facts_catalog(target_profile: CppModeledTargetProfile) -> List<
             name: cpp_field_scalar,
             target: cpp_atom(id: cpp_tag_fixed_unsigned_code_unit_integer)
           ),
-          cpp_named_edge(
-            name: cpp_field_width_selection,
-            target: cpp_width_selection_node(
-              spelling: cpp_atom(id: cpp_surface_spelling_char32_t),
-              target_profile: target_profile
-            )
-          ),
+          cpp_named_edge(name: cpp_field_width_selection, target: char32_t_width_fact),
           cpp_named_edge(
             name: cpp_field_unsigned_modulo_arithmetic,
             target: cpp_atom(id: cpp_tag_unsigned_modulo_arithmetic)
           )
         ]
-      }
+      },
+      width_fact: char32_t_width_fact,
+      encoding_fact: cpp_atom(id: cpp_tag_unsigned_modulo_arithmetic)
     }
   ]
 }
@@ -491,7 +502,8 @@ fn cpp_bool_facts_catalog() -> List<CppBoolPrimitiveFacts> {
   [
     CppBoolPrimitiveFacts {
       surface_spelling: cpp_surface_spelling_bool,
-      scalar: cpp_atom(id: cpp_tag_bool)
+      scalar: cpp_atom(id: cpp_tag_bool),
+      encoding_fact: cpp_atom(id: cpp_tag_bool)
     }
   ]
 }
@@ -598,19 +610,19 @@ fn cpp_primitive_bundle_from_integer_facts(facts: CppIntegerPrimitiveFacts) -> P
       ),
       cpp_primitive_axis_binding(
         axis: primitive_fact_axis_width,
-        fact: facts.scalar
+        fact: facts.width_fact
       ),
       cpp_primitive_axis_binding(
         axis: primitive_fact_axis_signedness,
-        fact: facts.scalar
+        fact: facts.signedness_fact
       ),
       cpp_primitive_axis_binding(
         axis: primitive_fact_axis_encoding,
-        fact: facts.scalar
+        fact: facts.encoding_fact
       ),
       cpp_primitive_axis_binding(
         axis: primitive_fact_axis_overflow_disposition,
-        fact: facts.scalar
+        fact: facts.overflow_fact
       )
     ]
   }
@@ -628,11 +640,11 @@ fn cpp_primitive_bundle_from_character_facts(
       ),
       cpp_primitive_axis_binding(
         axis: primitive_fact_axis_width,
-        fact: facts.scalar
+        fact: facts.width_fact
       ),
       cpp_primitive_axis_binding(
         axis: primitive_fact_axis_encoding,
-        fact: facts.scalar
+        fact: facts.encoding_fact
       )
     ]
   }
@@ -648,7 +660,7 @@ fn cpp_primitive_bundle_from_bool_facts(facts: CppBoolPrimitiveFacts) -> Primiti
       ),
       cpp_primitive_axis_binding(
         axis: primitive_fact_axis_encoding,
-        fact: facts.scalar
+        fact: facts.encoding_fact
       )
     ]
   }
