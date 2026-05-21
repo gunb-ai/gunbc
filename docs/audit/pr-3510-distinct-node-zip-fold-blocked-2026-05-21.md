@@ -9,6 +9,8 @@ Relevant revert: `678c3db8bfe355b1087edc9626f17b02b5991ec1`
 
 sunny-newt-545's final analysis on PR #3510 is correct.
 
+This document is a bounded work-item audit receipt, not a new substrate authority. The live technical authorities remain the inline `.dag` scaffold markers and the ratified task/design rows they cite. This receipt exists only to close the resurrected PR #3510 question and route the follow-up correctly.
+
 The exact structural preservation path is still the identity-MVP scaffold. `src/v4/std/find_witness.dag` dispatches `preservation_rule_exact_structural_equality_zip_fold` to `identity_mvp_preservation_holds` in `src/v4/std/constraint_satisfaction_predicate.dag`. That helper requires:
 
 - `well_formed(source_facts)`
@@ -87,3 +89,9 @@ T-25-tail should not be treated as the unblocker for this PR. It may help prove/
 Close PR #3510 with a comment pointing at this audit. Keep current `find_witness` identity-MVP behavior unchanged until W-T-10 lands the modeled coincidence authority.
 
 Route follow-up as W-T-10 substrate work, not as another PR #3510 implementation attempt.
+
+## Lifecycle
+
+Owner for dissolution: the future W-T-10 canonical Node grounding / edge-wise zip-fold predicate dispatch.
+
+Dissolution trigger: once W-T-10 lands a modeled exact-structural zip-fold predicate with typed source/target leaf-coincidence evidence and updates the canonical task/design authority, this audit should be treated as historical PR disposition only. It must not be used as the active source of truth for `find_witness`, `coercion_fold`, T-25-tail, or W-T-10 scope after that point.
