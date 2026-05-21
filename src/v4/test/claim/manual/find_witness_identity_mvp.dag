@@ -251,8 +251,8 @@ fn identity_witness_claim_input(ok: Bool) -> Node {
     identity_other_node()
   }
 }
-fn identity_witness_expected() -> Outcome<Node> {
-  Accepted { value: identity_source_node(), diagnostics: None }
+fn identity_witness_expected() -> Node {
+  identity_source_node()
 }
 data claim_find_witness_identity_mvp_module_compiles: TestClaim = CompilesClaim {
   label: "manual/find_witness_identity_mvp: identity-MVP behavior anchors compile",

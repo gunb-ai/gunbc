@@ -75,6 +75,11 @@ fn v4_lens_testgen_wave0_verification_manual_anchor_key_only() {
         "verification.dag must import Symbol for diagnostic reason carriers (P2 resolve)"
     );
     assert!(
+        VERIFICATION_DAG.contains("expected_value: Node")
+            && VERIFICATION_DAG.contains("expected_rejection: NonEmptyDiagnostics"),
+        "TestClaim variants must use polarity-specific carriers, not Outcome<Node> (P2 illegal-states)"
+    );
+    assert!(
         module_declares_type_sum_named(&verification, "T19ManualAnchorKey"),
         "substrate must declare `type T19ManualAnchorKey` (parsed `TypeSum`)"
     );

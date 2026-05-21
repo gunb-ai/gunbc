@@ -45,8 +45,9 @@ fn t22_eval_diagnostic_assert_not_deferred_in_substrate() {
         "removed deferred scaffold must not return"
     );
     assert!(
-        EVAL_DAG.contains("DiagnosticClaim { expected_outcome:"),
-        "DiagnosticClaim must execute, not defer"
+        EVAL_DAG.contains("DiagnosticClaim { expected_rejection: expected")
+            && EVAL_DAG.contains("Rejected { diagnostics: expected }"),
+        "DiagnosticClaim must execute with polarity-specific rejection carrier (P2)"
     );
     assert!(
         EVAL_DAG.contains("verdict: aggregate_verdicts(") && EVAL_DAG.contains("rs: ["),
@@ -54,8 +55,8 @@ fn t22_eval_diagnostic_assert_not_deferred_in_substrate() {
     );
     assert!(
         EVAL_DAG.contains("CompilesClaim { expected_value: expected")
-            && EVAL_DAG.contains("outcome_node_eq(a: actual, b: expected)"),
-        "CompilesClaim must compare actual against declared expected_value (P2/P3 fail-closed)"
+            && EVAL_DAG.contains("Accepted { value: expected, diagnostics: None }"),
+        "CompilesClaim must compare actual against declared accepted Node (P2/P3 fail-closed)"
     );
     assert!(
         EVAL_DAG.contains("RoundTripClaim { input: input")
