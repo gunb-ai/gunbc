@@ -2,7 +2,7 @@
 
 use crate::helpers::*;
 use serde_json::Value;
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::rc::Rc;
 use v2_compiler::v2_compiler_artifact::RenderTarget;
 use v2_compiler::v2_compiler_compile::SourceFile;
@@ -4505,7 +4505,7 @@ fn type_rendering_bare_list_not_map() {
     use v2_compiler::v2_compiler_emit::render_node_type;
 
     let list_node = test_leaf_node("List");
-    let shared_types = Rc::new(HashMap::from([("List".to_string(), true)]));
+    let shared_types = Rc::new(BTreeSet::from(["List".to_string()]));
 
     let rendered = render_node_type(
         &list_node,
@@ -4531,7 +4531,7 @@ fn type_rendering_bare_map_stays_hashmap() {
     use v2_compiler::v2_compiler_emit::render_node_type;
 
     let map_node = test_leaf_node("Map");
-    let shared_types = Rc::new(HashMap::from([("Map".to_string(), true)]));
+    let shared_types = Rc::new(BTreeSet::from(["Map".to_string()]));
 
     let rendered = render_node_type(
         &map_node,
@@ -4562,7 +4562,7 @@ fn type_rendering_named_conj_with_container_template() {
         })),
         ..(*test_leaf_node("")).clone()
     });
-    let shared_types = Rc::new(HashMap::from([("FreeMonoid".to_string(), true)]));
+    let shared_types = Rc::new(BTreeSet::from(["FreeMonoid".to_string()]));
 
     let rendered = render_node_type(
         &free_monoid_conj,
@@ -9966,7 +9966,12 @@ fn diag_emitter_scc() {
         let edges = collect_scc_cx_l2_tree_edges(
             &info.members,
             &func_index,
-            Rc::new(info.member_set.as_ref().clone()),
+            Rc::new(
+                info.member_set
+                    .iter()
+                    .map(|name| (name.clone(), true))
+                    .collect(),
+            ),
             &Rc::new(HashMap::new()),
         );
         eprintln!("\n  CX-L2 tree edges ({}):", edges.len());
@@ -10168,7 +10173,7 @@ fn count_ownership_violations(
 
     for proof in result.ownership.iter() {
         let movable = build_movable_set(proof.clone());
-        for (name, _) in movable.iter() {
+        for name in movable.iter() {
             // The proof says this binding should move.
             // Check if the emitted code clones it instead.
             let clone_pattern = format!("{}.clone()", name);
