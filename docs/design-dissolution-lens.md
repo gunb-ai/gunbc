@@ -1098,6 +1098,25 @@ import/alias of the resolver's authoritative shape.
 > Practice 11 stops parametric duplication at design time; L1.13 catches
 > the symptom when Practice 11 was missed at design time.
 
+> **(find, transform) discipline — auto-fix per dissolution.** Per §6
+> convolution view: every L1.x lens is structurally a `(find, transform)`
+> pair. L1.13's `find` half is the distribution-shape classifier; its
+> `transform` half is the per-shape dissolution. Where the transform
+> is **mechanically unambiguous from the find** (no human-design hooks
+> needed), the lens emits a typed `Diff` (PR #3364 vocabulary —
+> `Diff = List<Edit { at: Path, replacement: Node }>`) that goes into
+> the candidate-state gate: `candidate_dag = apply_diff(dag, Diff)`,
+> run lenses on candidate, commit if green. This is the auto-fix flow
+> the operator framed: "every diagnostic can generate the correct code
+> solution (and eventually apply it) — assuming we can safely infer
+> user intent." Each distribution shape below carries an explicit
+> **Fix-confidence** field stating whether the auto-fix is *direct*
+> (no naming decisions, fully specified Diff), *templated* (Diff with
+> name-holes the reviewer can override before commit), or — in future
+> sub-signatures — *structural sketch* (lens identifies the kind of
+> transform; concrete Diff requires human design). The fix-confidence
+> axis is what makes L1.13 actionable rather than just diagnostic.
+
 - *Signature:* a `match` expression over a closed coproduct with `N` arms
   whose RHSes collapse to `K` distinct skeletons under the substitution
   rule below, with a distribution shape meeting one of the four
