@@ -17,32 +17,27 @@ data duplicate_home_leaf_fix: Symbol = duplicate_home_leaf_fix
 data concept_home_producer_stage: Symbol = concept_home_producer_stage
 
 
-// RULING-1: 🟡 needs-more-work — symbolic fix handle; testcase: dissolution_subsumption_carrier_shape_locked.
 type DiffId {
   id: Symbol
 }
 
 
-// RULING-1: 🟡 needs-more-work — symbolic claim handle until lens-CI TestClaim execution authors rerunnable rows; testcase: dissolution_subsumption_carrier_shape_locked.
 type TestClaimId {
   id: Symbol
 }
 
 
-// RULING-1: 🟡 needs-more-work — symbolic producer-stage handle until consumes graphs are first-class stage facts; testcase: dissolution_subsumption_carrier_shape_locked.
 type ProducerStageId {
   id: Symbol
 }
 
 
 // 🟡 coproduct dissolution — feature:lens-subsumption-mechanical-runtime.
-// RULING-1: 🟡 needs-more-work — MechanicalReverification is declared but awaits lens-CI runtime; testcase: dissolution_subsumption_carrier_shape_locked.
 type SubsumptionVerification
   = MechanicalReverification { test_claim: TestClaimId }
   | ProducerStageDerivation { derivation_path: List<ProducerStageId> }
 
 
-// RULING-1: 🟡 needs-more-work — first row is producer-stage-derived; diagnostic ordering consumer lands later; testcase: dissolution_subsumption_first_row_is_producer_stage_derived.
 type DissolutionSubsumption {
   root_fix: DiffId
   subsumed_fixes: Set<DiffId>
