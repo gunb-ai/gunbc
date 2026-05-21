@@ -654,7 +654,7 @@ fn rust_mvp1_serialize_source_node() -> Node {
 }
 
 fn rust_mvp1_target_model() -> Node {
-  let _source_authority = rust_mvp1_source_text_authority();
+  let _source_authority = rust_mvp1_source_text_authority()
   Node {
     kind: TypeNode { connective: Conj },
     children: [
@@ -750,9 +750,9 @@ fn rust_language_model_canonical_symbols() -> Set<Symbol> {
 }
 
 fn rust_language_model_wave1() -> RustLanguageModel {
-  let _integer_facts = rust_integer_facts_catalog;
-  let _float_facts = rust_float_facts_catalog;
-  let _noninteger_facts = rust_noninteger_facts_catalog;
+  let _integer_facts = rust_integer_facts_catalog
+  let _float_facts = rust_float_facts_catalog
+  let _noninteger_facts = rust_noninteger_facts_catalog
   RustLanguageModel {
     lex: rust_wave1_lex(),
     grammar: rust_wave1_grammar(),
