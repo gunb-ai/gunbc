@@ -136,6 +136,7 @@ data refinement_affected_set: AffectedSet = AffectedSetProduced {
       dependency: target_projection_dependency
     }
   ],
+  exclusions: [],
   restricted_to: [ProjectionDependsOn, VerifiedBy]
 }
 
