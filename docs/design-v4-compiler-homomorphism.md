@@ -27,12 +27,12 @@ This doc composes with — and must stay consistent with — these existing arti
 - [`src/v4/TASKS.md`](../src/v4/TASKS.md) — task graph + ratified-decision authority for T-1…T-30+. **T-9 line 418 is the source of the coercion-fold ratification (D2 reversal 2026-05-17).**
 
 **Adjacent ratified design (this doc composes with — read for the EDIT direction and self-modification stories):**
-- [`docs/design-read-edit-pipeline.md`](design-read-edit-pipeline.md) — **the EDIT-direction companion to this doc.** Defines the agent-side read/edit surface: `apply_lens(lens, scope, mode)`, `apply_diff(root, Diff)`, the seven-step read→edit pipeline, candidate-state gating, library-first agent surface, Layer 0–6 build order. **PR #3364 merged 2026-05-19.** This doc's "ingest paths" table refers to it for the query-driven rewrite mechanism; this doc's EDIT-direction section (below) is a summary; the read-edit-pipeline doc is the authority.
+- [`docs/design-read-edit-pipeline.md`](design-read-edit-pipeline.md) — **the EDIT-direction companion to this doc.** Defines the agent-side read/edit surface as it existed before the 2026-05-21 orthogonality amendment (`apply_lens(lens, scope, mode)`, `apply_diff(root, Diff)`, candidate-state gating, library-first agent surface, Layer 0–6 build order). This doc now supersedes the lens/gate portions toward Node-in readings + caller policy; `apply_diff` and candidate-state remain authoritative.
 - [`docs/design-emit-stage-l25-model.md`](design-emit-stage-l25-model.md) — emit-stage L2.5 model, the substrate-side specification for what this doc names as `translate` + `serialize` (T-10).
 - [`docs/design-infer-stage-l25-model.md`](design-infer-stage-l25-model.md) — infer-stage L2.5 model, the substrate-side specification for what this doc names as `ground` (T-9).
-- [`docs/design-lens-application-surface.md`](design-lens-application-surface.md) — the substrate-level lens-application surface; defines the `Lens / SectionRef / Witness / Outcome` shapes this doc's P3 commits to.
+- [`docs/design-lens-application-surface.md`](design-lens-application-surface.md) — the pre-amendment substrate-level lens-application surface. Its `Lens / SectionRef / Witness / Outcome` gate shape is inventoried below as a follow-up reshape toward `Node -> Reading`.
 - [`docs/design-lens-framework.md`](design-lens-framework.md) — the lens framework as a whole.
-- [`docs/design-affected-set-lens.md`](design-affected-set-lens.md) — `affected_set` (T-21), the incremental-rebuild + lens-frontier primitive consumed by both this doc's pipeline diagram and the read/edit pipeline's gating step.
+- [`docs/design-affected-set-lens.md`](design-affected-set-lens.md) — `affected_set` (T-21), the incremental-rebuild + lens-frontier primitive consumed by this doc's pipeline diagram and by caller policy over candidate-state readings.
 - [`docs/design-dissolution-lens.md`](design-dissolution-lens.md) — the dissolution-pattern lens family (L1.x), Practice 10's auto-fix substrate. The (find, transform) convolution view in the read/edit doc's § 6 builds on this.
 - [`docs/v4-close-interrogation.md`](v4-close-interrogation.md) — v4 program framing + scope.
 - [`docs/v4-dag-rationale.md`](v4-dag-rationale.md) — rationale for `.dag` as the language.
@@ -119,20 +119,19 @@ The doc that follows defines the orthogonal operation surfaces, why each piece i
 
 > **Text/data separation + I/O via modeled effects (ratified 2026-05-20, operator-direct).** Compilation operates on **data** (`CoreNode`), not text. Text, files, and shell/OS are **orthogonal concepts modeled independently** in `extdeps/` — there's a small shim to ingest text into `CoreNode`, but the compiler core never sees text or files. **The architecturally pure approach:** all real-world I/O is a modeled effect against a modeled resource (file_system.dag, process.dag, network.dag, …), composed by peripheral shims outside the compile-core surface.
 
-> **Orthogonality amendment (2026-05-21, operator-direct).** Compilation, target/artifact generation, and lens readings are separate operations over the same language: `Node`. A `Node` is already a graph; whether the caller passes the whole program, one function, or a leaf is not a substrate type distinction. Do **not** add `Subgraph` / `SubgraphScope` as a carrier. The old "one `compile(..., mode)` public terminal" framing is superseded for public API design; `CompileMode` in `00_compile.dag` is a current scaffold conflict inventoried below.
+> **Orthogonality amendment (2026-05-21, operator-direct).** Compilation, lens analysis, artifact projection, and terminal authorization are separate graph consumers. They may consume the same grounded graph and may be orchestrated by one build/session layer, but they are not sub-modes of one another. Do **not** add one universal `SubgraphScope` carrier. The public session shape is a four-phase split: `ground`, `observe`, `project`, `authorize`.
 
 ```
-// === Orthogonal pure operations — data-in / data-out, no I/O ===
-translate(node: Node, target_lang: TargetModel) -> Outcome<TargetSource>
-eval(node: Node, host: HostModel) -> Outcome<EvalResult>
-generate_interface(node: Node, kind: InterfaceKind) -> Outcome<Interface>
-
-// === Lens reads — data, not errors ===
-complexity(node: Node) -> ComplexityReading
-unused_parameters(node: Node) -> UnusedParametersReading
+// === Orthogonal graph consumers — data-in / data-out, no I/O ===
+compile_graph(graph: Graph, input_lang: LanguageModel, target: LanguageModel)
+  -> Outcome<CompileArtifact>
+apply_lens(graph: Graph, lens: Lens) -> Outcome<LensReading>
+project_artifact(graph: Graph, projection: ArtifactProjection) -> Outcome<Artifact>
+authorize(policy: TerminalPolicy, lenses: LensReport, projections: ProjectionReport)
+  -> Outcome<Validated<ArtifactSet>>
 ```
 
-Each operation defines its own scoping/interface over `Node`. The caller composes whichever operations it needs. There is no `CompileResult` aggregator bundling compile output, lens readings, and artifacts into one authority.
+Each operation defines its own graph-consumer interface. The caller composes whichever operations it needs through a session layer. There is no closed `CompileMode` / `ProductionGoal` enum bundling unrelated operations into one compile-owned authority.
 
 ### Peripheral shims for text and file I/O
 
@@ -187,13 +186,13 @@ All paths produce `CoreNode`; Node-in operations take it from there. This matter
 
 ### Carrier types in this signature
 
-**`CoreNode`** is the substrate-canonical Node — six connectives + five behaviors only, sugar dissolved. This is what compile's `source` parameter consumes. (See "Carrier taxonomy" below — `CoreNode` is the post-normalize shape, distinct from `SurfaceNode` and `TargetSurfaceNode`.)
+**`CoreNode`** is the substrate-canonical Node — six connectives + five behaviors only, sugar dissolved. This is what translate/eval/lens/artifact operations consume. (See "Carrier taxonomy" below — `CoreNode` is the post-normalize shape, distinct from `SurfaceNode` and `TargetSurfaceNode`.)
 
-**`LanguageModel`** is a `.dag` model in `extdeps/languages/X.dag` — a fact-bundle declaring X's grammar (bidirectional), primitive types with their facts (width, signedness, range, …), algebra inhabitance (this type inhabits this algebra), sugar dissolutions, binding/scope rules, and version metadata. `compile` consults it for resolve's scope rules and ground's inhabitance declarations; `ingest_text` consults it for grammar + sugar.
+**`LanguageModel`** is a `.dag` model in `extdeps/languages/X.dag` — a fact-bundle declaring X's grammar (bidirectional), primitive types with their facts (width, signedness, range, …), algebra inhabitance (this type inhabits this algebra), sugar dissolutions, binding/scope rules, and version metadata. Resolve/ground/translate consult it for scope rules, inhabitance declarations, and target realization; `ingest_text` consults it for grammar + sugar.
 
 **`HostModel`** is a **distinct substrate type, peer of `LanguageModel`** — both extend a shared `ModelCore` (primitive types, algebra inhabitance, laws, effect / partiality semantics). `HostModel` declares host-side concerns that have no emit-side analog: runtime value representation, primitive operation interpretation, execution semantics, resource / effect boundary. **Ratified Q1** below; full carrier breakdown in "Carrier shapes — `ModelCore` / `LanguageModel` / `HostModel`."
 
-**`Output`** is mode-dependent: `TargetSource` (bytes/text) for `TranslateTo`, `Value` (host representation) for `Eval`.
+Each operation has its own output carrier: `TargetSource` for `translate`, host `Value` / `EvalResult` for `eval`, and artifact-specific carriers for projections.
 
 > **Note on Lens mode:** the original draft of this doc proposed a third `CompileMode` for running lenses (the analysis framework for complexity / cost / ownership / effects / user-defined dimensions). That remains rejected. **Resolved 2026-05-21 — see P3 below.** Lenses are pure data-producing reads over `Node`; enforcement is a caller or project policy layered over those readings, not a compile-core mode and not a mechanical compile error.
 
@@ -211,7 +210,7 @@ The v4 architecture's answer:
 
 1. **Model the system as a typed dependency graph.** Interfaces, integrations, protocols, resources, effects, and transformations are first-class typed nodes/edges (P6), not implicit in arbitrary code.
 2. **Ground it canonically.** `InferredTree` is the canonical post-grounding graph; ambiguity is a diagnostic, never a downstream surprise (canonical-grounding invariant).
-3. **Code, tests, glue, schemas, runtime plans, diagnostics — all are projections of the grounded graph.** Not the source of truth. When a modeled fact changes, the compiler computes the affected dependency subgraph (T-21 `affected_set`) and **recomputes** all downstream projections whose inputs changed.
+3. **Code, tests, glue, schemas, runtime plans, diagnostics — all are projections of the grounded graph.** Not the source of truth. When a modeled fact changes, the compiler computes the affected dependency frontier (T-21 `affected_set`) and **recomputes** all downstream projections whose inputs changed.
 4. **If a projection can no longer be derived** by homomorphism or a declared `LawfulRewriteWitness`, compile fails-closed with a diagnostic.
 
 **Source-of-truth inversion.** This compiler inverts the traditional relationship:
@@ -223,7 +222,7 @@ The v4 architecture's answer:
 | Dependencies are implicit | Dependencies are typed edges (P6) |
 | Tests detect drift after the fact | Tests are projections; drift is structural |
 | Build failures reveal dependencies | Compile-time analysis enumerates affected sites |
-| Manually patched cascade after a change | Compiler computes affected subgraph + regenerates projections; non-derivable consequences surface as diagnostics |
+| Manually patched cascade after a change | Compiler computes the affected Node frontier + regenerates projections; non-derivable consequences surface as diagnostics |
 
 **Closed-world questions become decidable.** The compiler does NOT claim "all programming becomes decidable." It claims a **specific bounded set of system-level questions** becomes decidable *because the input structure is constrained*: the coercion fold is decidable-by-construction over a closed candidate set; parallelism is provable when dependency/effect/resource facts are complete; interface fidelity is structural because both sides derive from the same Node. See P5 (constraint solving), P6 (dependency taxonomy), P7 (lawful rewrites) for the mechanics; the resulting decidability is bounded and named, not universal.
 
@@ -1195,7 +1194,7 @@ If a worker encounters a deeper scaffold-vs-design contradiction not catalogued 
 
 ### Ratified Q0 — Lens architecture (2026-05-20)
 
-**Resolved.** Lenses are a side-channel over `InferredTree`, sharing the `fold_node` primitive, with multi-lens dependency-management and a project-mandatory wrapper preserving the THESIS "by construction" guarantee. Six commitments per P3 above; B-style vs C-style surface is a non-load-bearing implementation choice. The new substrate question this raises is **Ratified Q6 — multi-lens execution derives from `fold_node` with a composed-lens-algebra** (below).
+**Amended.** Lenses are pure readings over `Node`, sharing the `fold_node` primitive, with multi-lens dependency-management. Six commitments per P3 above; the old B-style/C-style wrapper question is superseded because caller policy, not compile-core, owns enforcement. The remaining substrate question is **Ratified Q6 — multi-lens execution derives from `fold_node` with a composed-lens-algebra** (below).
 
 ### Ratified Q1 — `HostModel` is `Q1a + factored ModelCore` (2026-05-20)
 
