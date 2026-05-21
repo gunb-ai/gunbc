@@ -161,7 +161,7 @@ they are not interchangeable:
 | L1.1 Discriminant-predicate | derive |
 | L1.2 Degenerate-type | witness |
 | L1.3 Hollow-type | witness |
-| L1.4 Carrier-clone *(lens family — see §5.0 exception)*: parent (whole-carrier clone), L1.4.b `VariantParameterClone` (intra-carrier variant-level type-only differences), L1.4.c `PolicyTableAsFunctions` (function body IS a typed table that should be substrate data) | canonical-home / witness |
+| L1.4 Carrier-clone *(lens family — see §5.0 exception)*: parent (whole-carrier clone), L1.4.b `VariantParameterClone` (intra-carrier variant-level type-only differences) | canonical-home / witness |
 | L1.5 Catamorphism *(lens family — see §5.0 exception)*: parent (data-scope walker dissolution), L1.5.b `GeneratedForestCollapse` (emission-scope meta-walk that emits per-variant target artifacts collapsing to K skeletons) | derive |
 | L1.6 *(merged into L1.10 — Textual-bypass)* | — |
 | L1.7 Off-substrate-fact | witness |
@@ -170,7 +170,7 @@ they are not interchangeable:
 | L1.10 Textual-bypass *(lens family — see §5.0 exception)*: L1.10.a `TemplateHole`, L1.10.b `CanonicalCarrier`, L1.10.c `NameDiscriminantBypass` (spelled-name dispatch where resolved identity is available), L1.10.d `TargetSyntaxByConcat` (grammar-token concat that should be a `TargetSurfaceNode`) | witness / canonical-home |
 | L1.11 Plausible-fallback *(lens family — see §5.0 exception)*: parent (constructor-fabricated fallthrough), L1.11.b `PlausibleScalarFallback` (scalar literal fabricates target-authority value) | fail-closed |
 | L1.12 Parallel-authority *(lens family — see §5.0 exception)*: parent triggers (lexical / `CanonicalConcept`), L1.12.b `StructuralSimilarity` (different-lexical-name nickname case) | canonical-home |
-| L1.13 Skeleton-collapse *(lens family — see §5.0 exception)*: parent (`MatchExpr`-scoped), L1.13.b `DecisionTreeCollapse` (generalized beyond match — any closed-vocab decision tree: match / if-else / string-equality) | derive / canonical-home |
+| L1.13 Skeleton-collapse *(lens family — see §5.0 exception)*: parent (`MatchExpr`-scoped), L1.13.b `DecisionTreeCollapse` (generalized beyond match — any closed-vocab decision tree: match / if-else / string-equality), L1.13.c `TableDecisionTree` (function-encoded total tables over closed vocabularies that should be substrate `TotalMap` / `TotalPolicy` rows) | derive / canonical-home |
 
 The only mechanical merge in this layout is **L1.6 → L1.10** — the
 prior doc already stated that L1.10 generalizes L1.6, so the two were
@@ -191,12 +191,12 @@ enumeration.
 | L1.3 Hollow-type | `coverage_defect_hollow_type` |
 | L1.4 Carrier-clone | `coverage_defect_carrier_clone` |
 | **L1.4.b** `VariantParameterClone` (sub-signature of Carrier-clone family) | `coverage_defect_carrier_clone` *(shared with parent — sub-signature contributes findings into the same acceptance key; diagnostic payload carries a `CarrierCloneTrigger` discriminator distinguishing whole-carrier-clone from variant-clone)* |
-| **L1.4.c** `PolicyTableAsFunctions` (sub-signature of Carrier-clone family) | `coverage_defect_carrier_clone` *(shared with parent + L1.4.b — `CarrierCloneTrigger` discriminator extended with a `PolicyTable` variant distinguishing function-as-table from whole-carrier-clone and variant-clone)* |
 | **L1.5.b** `GeneratedForestCollapse` (sub-signature of Catamorphism family) | `coverage_defect_catamorphism` *(shared with parent — diagnostic payload carries a `CatamorphismScopeTrigger` discriminator distinguishing data-scope walker (parent) from emission-scope meta-walk (this sub-signature))* |
 | **L1.10.c** `NameDiscriminantBypass` (sub-signature of Textual-bypass family) | `coverage_defect_template_hole` *(shared with the textual-bypass family — diagnostic payload carries a `TextualBypassKind` discriminator distinguishing the four sub-signatures a/b/c/d)* |
 | **L1.10.d** `TargetSyntaxByConcat` (sub-signature of Textual-bypass family) | `coverage_defect_template_hole` *(shared with the textual-bypass family — same `TextualBypassKind` discriminator)* |
 | **L1.11.b** `PlausibleScalarFallback` (sub-signature of Plausible-fallback family) | `coverage_defect_plausible_fallback` *(shared with parent — diagnostic payload carries a `PlausibleFallbackKind` discriminator distinguishing constructor-fabrication (parent) from scalar-fabrication (this sub-signature))* |
-| **L1.13.b** `DecisionTreeCollapse` (sub-signature of Skeleton-collapse family) | `coverage_defect_skeleton_collapse` *(shared with parent — diagnostic payload carries a `SkeletonCollapseScopeTrigger` discriminator distinguishing `MatchExpr` (parent) from `DecisionTreeGeneralized` (this sub-signature))* |
+| **L1.13.b** `DecisionTreeCollapse` (sub-signature of Skeleton-collapse family) | `coverage_defect_skeleton_collapse` *(shared with parent — diagnostic payload carries a `SkeletonCollapseScopeTrigger` discriminator distinguishing `MatchExpr` (parent) from `DecisionTreeGeneralized` (this sub-signature) and `TableDecisionTree` (L1.13.c))* |
+| **L1.13.c** `TableDecisionTree` (sub-signature of Skeleton-collapse family) | `coverage_defect_skeleton_collapse` *(shared with parent + L1.13.b — `SkeletonCollapseScopeTrigger` discriminator extended with `TableDecisionTree` distinguishing function-as-table from match-collapse and decision-tree-generalized)* |
 | L1.5 Catamorphism | `coverage_defect_catamorphism` |
 | ~~L1.6 Emit/template~~ | **retired — see L1.10.a below; no `coverage_defect_emit_template` key** |
 | L1.7 Off-substrate-fact | `coverage_defect_off_substrate_fact` |
@@ -535,107 +535,13 @@ passes — e.g. a three-variant `Cached | Produced | Rejected` where
   cross-decl (L1.12.b) and intra-decl (L1.4.b) lenses. Facts Flow
   Forward / P2: one mechanism, multiple downstream projections.
 
-#### L1.4.c Policy-table-as-functions — kills *function-encoded total tables that should be substrate data rows*
-
-> **Status: reserved-proposed.** Sub-signature of L1.4 at the third
-> grain: parent catches whole-coproduct clones; L1.4.b catches
-> intra-coproduct variant-level redundancy; L1.4.c catches **functions
-> whose body IS a total table over a closed vocabulary** — closed-key
-> dispatch returning a typed record per key, where the function is
-> doing what a `data row: TotalMap<Key, Value>` substrate carrier
-> would. Practice 11 applied to function-as-table: the table is the
-> substrate authority; the function is the un-derived projection.
-> **Enforcement gate** (parallel to L1.12.b / L1.4.b): not active until
-> (a) `v4.lens.decision_tree_shape` lands carrying per-branch resolved
-> identity + body-shape facts, (b) the substrate carrier
-> `TotalMap<K, V>` is available as a closed-coproduct-K substrate type,
-> (c) at least one Practice-11-parameterized dissolution shape lands
-> as the migration target (a worked-example serde-policy rewrite is
-> the natural seed).
-
-- *Signature:* a fn whose body is a closed-vocab decision tree (per
-  `DecisionTreeShape`) returning a typed record per key, where the
-  per-key bodies differ only in the record's field values (NOT in
-  their structure). The fn IS a typed table; the substrate should
-  carry the table as data and the fn (if it survives) should be a
-  one-line `TotalMap` lookup. Catches the `rust_string_policy_for_naming`
-  vs `rust_internal_policy_for_naming` shape — two near-parallel
-  decision trees over the same closed vocabulary differing only by a
-  context parameter; both are tables in disguise.
-
-- *Decidable:* yes — substrate-readable from `decision_tree_shape`:
-  - `key_set` is closed (substrate-resolved coproduct).
-  - All branches reach a record literal of the same type (the table's
-    value type).
-  - Per-branch bodies, after α-renaming, differ ONLY in scalar/literal
-    field values — no structural divergence beyond the parameterization
-    the table would express.
-  - `missing_keys = ∅` (the table is total over the key set; partial
-    tables are different defects, caught by L1.9).
-
-- *Verdict:* hard error.
-
-- *Escape (clean 🟢):*
-  - **Already a substrate row.** A `data t: TotalMap<K, V> = ...` row
-    exists with the same key-set and value type; the fn is the
-    canonical accessor. Passes — that's the (R1) alias-identity case.
-  - **Branch bodies differ structurally.** If two branches' bodies
-    differ in shape beyond field values (e.g., one branch wraps in an
-    Option, another returns a different record-type union), the fn is
-    NOT a pure table; the L1.4.c trigger doesn't fire.
-  - **Context-parameterized table.** Two fns over the same closed
-    vocabulary differing only by a context parameter (e.g.,
-    `rust_string_policy_for_naming` vs `rust_internal_policy_for_naming`)
-    are a context-table dissolution — see Fix-confidence below.
-
-- *Clearing receipt:* substrate carries a `TotalMap<K, V>` data row;
-  the fn (if retained) calls it. R1 (alias-identity) applies — the fn
-  becomes a one-line lookup over the table.
-
-- *Fix-confidence: templated auto-apply.* Two candidate clean shapes,
-  reviewer picks:
-  - **(Pattern A) Pure total table.** Substrate row + one-line accessor:
-    ```dag
-    data rust_serde_policy_table: TotalMap<VariantNamingContext, RustEnumWireSerde> = TotalMap { ... }
-    fn rust_serde_policy(context: VariantNamingContext) -> RustEnumWireSerde =
-      total_map_lookup(rust_serde_policy_table, context)
-    ```
-  - **(Pattern B) Context-keyed table.** When two near-parallel fns
-    differ only by a context parameter, lift to one table keyed on the
-    context-product:
-    ```dag
-    type SerdeNamingContext = StringVariantContext | InternallyTaggedContext { tag_field: String }
-    data rust_serde_policy_table: TotalMap<SerdeNamingContextProduct, RustEnumWireSerde> = TotalMap { ... }
-    ```
-
-- *Decidability boundary (explicit):* L1.4.c fires on **total tables**
-  over closed vocabularies. It does **not** catch:
-  - Partial tables — those are L1.9 vacuous-arm territory.
-  - Tables with structurally-divergent branch bodies — those are
-    legitimate per-variant dispatch (L1.13 Mixed escape).
-  - Non-total dispatch where the missing-key behavior matters semantically
-    — those are L1.11 plausible-fallback territory (or, for scalar-RHS,
-    L1.11.b).
-
-- *Kills (real corpus — seed examples):*
-  - **`rust_string_policy_for_naming` / `rust_internal_policy_for_naming`**
-    pair (`src/v2/05_emit_rust.dag`, operator-identified). Two near-
-    parallel decision trees over `VariantNaming = AsAuthored |
-    SnakeCase | StripPrefixAndSnakeCase | ...` differing only in the
-    `enum_attr` field (empty vs `#[serde(tag = "...")]`). Fires on
-    L1.4.c with the (Pattern B) context-keyed table as clean shape.
-    Cited as seed for the broader emit_rust.dag dissolution work.
-  - **`build_call_kind_dispatch_for_func_*` shapes** (call-kind dispatch
-    over a closed-vocab built-in identifier set) are likely L1.4.c
-    candidates pending the substrate-fill sweep that ratifies the
-    built-in-fn vocabulary as closed.
-
-- *Producer stage (see §10):* L1.4.c consumes `decision_tree_shape`
-  (carrier-level vocabulary + per-branch body shape) — the same record
-  L1.13.b consumes for closed-vocab dispatch detection. No new producer
-  stage; the decision-tree-shape index is the single source of branch-
-  dispatch facts, consumed by both pure-collapse (L1.13.b) and
-  table-as-function (L1.4.c). Facts Flow Forward / P2.
+*(Moved: L1.4.c originally drafted here as Policy-table-as-functions.
+On operator review the binding was relocated under L1.13's Skeleton-
+collapse family as **L1.13.c TableDecisionTree** — see that section.
+Rationale: "function body is a typed table" is algebraically closed-
+vocab decision-table dissolution, not whole-carrier clone. The
+mechanism is `decision_tree_shape` (same as L1.13.b), not the type-
+declaration-shape mechanism that grounds L1.4 + L1.4.b.)*
 
 ### L1.5 Catamorphism lens — kills *walker / traverse dissolution*
 
@@ -734,10 +640,24 @@ side-table — falls under *reviewer-confirm* rather than hard-error.
   - **Already a typed projection.** A `data ... : Projection<T, U>`
     substrate row exists with the same source-coproduct + target-artifact
     pairing; the fn is the canonical projection. Passes via (R1).
-  - **Asymmetric coverage.** When the forest deliberately covers a
-    strict subset of variants (e.g., only the fielded variants of a
-    sum-with-units), the asymmetry is genuine variant-axis information
-    and the forest doesn't collapse parametrically.
+  - **Asymmetric coverage with substrate-derived subset witness.**
+    When the forest deliberately covers a strict subset of variants
+    (e.g., only the fielded variants of a sum-with-units), the
+    asymmetry is genuine variant-axis information AND the substrate
+    must carry a `VariantCoverage` row citing a substrate-derived
+    subset predicate:
+    ```dag
+    data fielded_only_coverage: VariantCoverage = {
+      carrier: T,
+      subset:  FieldedVariants,             // substrate-recognized predicate over variant shapes
+      witness: DerivedFromVariantShape,     // names the structural derivation (variant has ≥1 field, etc.)
+    }
+    ```
+    Local unregistered filters (`children |> filter(child => child.children |> count > 0)`)
+    do **NOT** pass — the filter IS the new hand-rolled discriminator
+    the lens is supposed to catch. The escape requires structural
+    authority; otherwise the case is L1.5.b / L1.10.c / L1.13.b
+    territory depending on the filter's shape.
 
 - *Clearing receipt:* substrate carries the parametric projection
   (a `data table: Projection<Source, Target> = ...` row); the fn
@@ -1223,11 +1143,15 @@ type CiCommand = ... | ShellCommand { command: process.Command }
 
 - *Signature:* a string-producing sub-expression whose
   `TargetSyntaxStringShape.classification = TargetGrammarTokenSequence`
-  for some target language — i.e., the substrate's `TargetGrammarTokenSet`
-  matched grammar tokens (keywords / delimiters / attribute markers /
-  type-name prefixes) in the string-construction graph above the
-  classification threshold. The function is assembling target syntax
-  by hand instead of consuming the grammar substrate.
+  for some target language. The classification is the **closed
+  four-case structural predicate** from `target_syntax_string_shape`'s
+  §10.2 spec — no numeric token-density threshold. Specifically: the
+  target has a `TargetGrammarTokenSet`, at least one emitted literal
+  segment IS a grammar token or delimiter, the enclosing sink is
+  target source / `TargetSurfaceNode` serialization / emitted-artifact
+  text, AND the nonliteral holes are typed model values that would be
+  children of a `TargetSurfaceNode`. The function is assembling target
+  syntax by hand instead of consuming the grammar substrate.
 
 - *Decidable:* yes — `target_syntax_string_shape` carries the
   classification + per-substring grammar-token evidence + the
@@ -1397,11 +1321,18 @@ fn derive_effect_shape(...) -> Outcome<EffectShape> {
 
 - *Decidable:* yes — `decision_tree_shape.missing_behavior` records
   the None-arm RHS shape; cross-referenced against
-  `target_syntax_string_shape` for downstream use-site classification
-  (when the scalar is a String). For non-String scalars (`Int`/`Bool`),
-  the use-site classification reads from `04_infer` — does the
-  consumer treat this scalar as a typed authority that should have
-  been Rejected when absent?
+  `scalar_authority_use_shape` for per-scalar use-site role
+  classification (TargetSyntaxUse / IdentifierUse / UrlUse /
+  HeaderNameUse / FilePathUse / ResourceCoordinateUse / DataStringUse
+  / UnknownUse). L1.11.b fires when the scalar's role is anything
+  other than `DataStringUse` AND `UnknownUse`. `target_syntax_string_shape`
+  classifies what is being BUILT at the production site (target-grammar
+  tokens vs data strings); `scalar_authority_use_shape` classifies
+  what role the scalar FILLS at the consumer call-site — different
+  axes. Without the use-site classifier, L1.11.b would overclaim by
+  smuggling scalar-authority-bearing through the target-syntax
+  classifier (which only knows about target-grammar tokens, not
+  header names / URLs / file paths / resource coordinates).
 
 - *Verdict:* hard error.
 
@@ -1456,10 +1387,11 @@ fn derive_effect_shape(...) -> Outcome<EffectShape> {
 
 - *Producer stage (see §10):* L1.11.b consumes
   `v4.lens.decision_tree_shape` (for the `missing_behavior` arm
-  detection) + `v4.lens.target_syntax_string_shape` (for the use-site
-  classification of String-typed RHSes). No new producer; reuses
-  L1.11's existing missing-key extraction extended via the two new
-  shared indices.
+  detection) + `v4.lens.scalar_authority_use_shape` (for per-scalar
+  use-site role classification). Does NOT consume
+  `target_syntax_string_shape` (that producer classifies target-
+  grammar tokens at the production site, which is L1.10.d's axis —
+  L1.11.b needs the orthogonal use-site-role axis).
 
 ### L1.12 Parallel-authority lens — kills *unmarked duplicate concept homes* (proposed)
 
@@ -2349,18 +2281,20 @@ directly (not `Option<ManualTestClaim>`) because `TotalMap`'s
 well-formedness check makes the absence case unrepresentable. No
 "unreachable" arm guarded by comment.
 
-**Substrate dependency (scoped to L1.4.c Policy-table-as-functions, NOT base L1.13).**
-`TotalMap<K, V>` for closed-coproduct K is a typed primitive whose
-well-formedness check is "every K-variant appears as a key." This
-primitive is **load-bearing for L1.4.c** (Policy-table-as-functions —
-the lens that catches the F16 match-as-typed-table pattern, now bound
-under the Carrier-clone family per the producer-shape factoring) —
-it is NOT a dependency of base L1.13. Base L1.13 (PureTemplate /
-Outlier / MultiOutlier / Categorical on F14 + F15) has enough substrate
-to run today via `fold_node` + skeleton extraction; it does NOT need
-`TotalMap` to fire or clear. Scoping `TotalMap` to L1.4.c prevents
-table-cleanup substrate work from blocking enforcement of the simpler
-base lens.
+**Substrate dependency (scoped to L1.13.c Table decision-tree, NOT base L1.13).**
+`TotalMap<K, V>` for finite payload-free closed-coproduct K (and
+`TotalPolicy<K, Context, RowTemplate>` for payload-bearing K) are typed
+primitives whose well-formedness check is "every K-variant appears as
+a key." These primitives are **load-bearing for L1.13.c** (Table
+decision-tree — the lens that catches the F16 match-as-typed-table
+pattern, bound under the Skeleton-collapse family per the producer-
+shape factoring + payload-aware refinement) — they are NOT a dependency
+of base L1.13. Base L1.13 (PureTemplate / Outlier / MultiOutlier /
+Categorical on F14 + F15) has enough substrate to run today via
+`fold_node` + skeleton extraction; it does NOT need `TotalMap` /
+`TotalPolicy` to fire or clear. Scoping the table primitives to
+L1.13.c prevents table-cleanup substrate work from blocking enforcement
+of the simpler base lens.
 
 #### L1.13.b Decision-tree collapse — kills *closed-vocab dispatch collapse regardless of source spelling (match / if-else / string-equality)*
 
@@ -2373,7 +2307,7 @@ base lens.
 > the keys resolve to a closed coproduct's constructor identity set
 > (per `KeyVocabulary`). The same K/N skeleton-collapse classification
 > fires regardless of source spelling.
-> **Enforcement gate** (parallel to L1.12.b / L1.4.b / L1.4.c): not
+> **Enforcement gate** (parallel to L1.12.b / L1.4.b / L1.13.c): not
 > active until `v4.lens.decision_tree_shape` lands, plus the L1.13
 > diagnostic payload carries a `SkeletonCollapseScopeTrigger`
 > discriminator distinguishing `MatchExpr` (parent) from
@@ -2428,13 +2362,157 @@ base lens.
   - **Parallel decision-tree shapes** in `src/v2/05_emit_rust.dag`:
     `rust_string_policy_for_naming` vs `rust_internal_policy_for_naming`
     (operator-identified). When the per-branch bodies are themselves
-    parameterizable across the two context-fns (which is L1.4.c's
-    territory), the L1.13.b finding co-fires with L1.4.c on the same
-    shape — see §11 Subsumption below: L1.4.c is the root fix
+    parameterizable across the two context-fns (which is L1.13.c's
+    territory), the L1.13.b finding co-fires with L1.13.c on the same
+    shape — see §11 Subsumption below: L1.13.c is the root fix
     subsuming L1.13.b's individual decision-tree findings.
 
 - *Producer stage (see §10):* L1.13.b consumes
-  `v4.lens.decision_tree_shape` — the same record L1.4.c + L1.10.c
+  `v4.lens.decision_tree_shape` — the same record L1.13.c + L1.10.c
+  consume. Facts Flow Forward / P2: one decision-tree-shape index,
+  multiple downstream lens projections.
+
+#### L1.13.c Table decision-tree — kills *function-encoded total tables over closed vocabularies that should be substrate data rows*
+
+> **Status: reserved-proposed.** Sub-signature of L1.13 (Skeleton-
+> collapse) at the **table-row** scope. Parent L1.13 catches K
+> distinct skeletons over N match-arms (parametric duplication);
+> L1.13.b generalizes to any closed-vocab decision tree; L1.13.c is
+> the limiting case where **every branch produces a typed record of
+> the same shape, differing ONLY in field-value-templates** — the
+> function IS a typed table indexed by the closed key set.
+>
+> Originally drafted as L1.4.c under the Carrier-clone family; moved
+> here on operator review (2026-05-21). Rationale: the mechanism is
+> closed-vocab decision-table dissolution (same producer-stage
+> `decision_tree_shape` as L1.13.b), not type-declaration carrier-
+> clone. Practice 11 applied to function-as-table: the table is the
+> substrate authority; the function is the un-derived projection.
+>
+> **Enforcement gate** (parallel to L1.13.b): not active until (a)
+> `v4.lens.decision_tree_shape` lands carrying per-branch resolved
+> identity + body-shape facts, (b) the substrate has at least one of
+> `TotalMap<K, V>` (for finite payload-free tables) or `TotalPolicy<K,
+> Context, RowTemplate>` (for payload-bearing key vocabularies — see
+> Clean shapes below), (c) at least one Practice-11-parameterized
+> dissolution shape lands as the migration target.
+
+- *Signature:* a fn whose body is a closed-vocab decision tree (per
+  `DecisionTreeShape`) returning a typed record per key, where the
+  per-key bodies differ only in **field-value-templates parameterized
+  by the key's payload** (not in structural shape). The fn IS a typed
+  table; the substrate should carry it as data.
+
+- *Decidable:* yes — substrate-readable from `decision_tree_shape`:
+  - `key_set` is closed (substrate-resolved coproduct, possibly with
+    payload-bearing constructors).
+  - All branches reach a record literal of the same type (the table's
+    row type).
+  - Per-branch bodies, after α-renaming parameter slots and key-
+    payload-bound names by canonical position, differ ONLY in
+    field-value-templates whose parameters are exactly the key's
+    payload fields — no structural divergence beyond what the
+    payload-template parameterization expresses.
+  - `missing_keys = ∅` (the table is total over the key set; partial
+    tables are L1.9 vacuous-arm territory).
+
+- *Verdict:* hard error.
+
+- *Escape (clean 🟢):*
+  - **Already a substrate row.** A `data t: TotalMap<K, V>` or
+    `data t: TotalPolicy<...>` row exists with the same key set and
+    row type; the fn is the canonical accessor. Passes via (R1).
+  - **Branch bodies differ structurally.** If two branches' bodies
+    differ in shape beyond payload-parameterized field values (e.g.,
+    one branch wraps in an Option, another returns a different
+    record-type union), the fn is NOT a pure table; L1.13.c does
+    not fire.
+  - **Context-parameterized table.** Two fns over the same closed
+    vocabulary differing only by a context parameter are a context-
+    table dissolution — see Fix-confidence below.
+
+- *Clearing receipt:* substrate carries a `TotalMap<K, V>` or
+  `TotalPolicy<K, Context, RowTemplate>` data row; the fn (if
+  retained) is a one-line lookup. R1 applies.
+
+- *Fix-confidence: templated auto-apply.* The lens emits two candidate
+  clean shapes per the operator's payload-aware refinement
+  (2026-05-21):
+
+  - **(Pattern A) `TotalMap<K, V>` — finite payload-free keys, fully
+    materialized values.** When the key vocabulary has no payload
+    fields (every constructor is a 0-field tag) and the row type
+    contains no key-derived field values, a literal `TotalMap` over
+    fully materialized values is honest:
+    ```dag
+    data finite_naming_policy_table: TotalMap<FinitePolicyKey, FinitePolicyRow> =
+      TotalMap { ... }
+    ```
+
+  - **(Pattern B) `TotalPolicy<K, Context, RowTemplate>` — payload-
+    bearing key vocabularies.** When the key vocabulary has
+    payload-bearing constructors (e.g., `StripPrefixAndSnakeCase {
+    prefix: String }`, `StripSuffixAndSnakeCase { suffix: String }`,
+    or contexts like `InternallyTaggedContext { tag_field: String }`),
+    a literal `TotalMap<K, V>` would imply an infinite table over
+    arbitrary payload values — that's NOT honest. The substrate
+    carrier for this case is `TotalPolicy`:
+    ```dag
+    type RowTemplate { ... }                              // record shape with parameterizable fields
+    data rust_serde_policy_table:
+      TotalPolicy<VariantNamingConstructor, SerdeContext, RowTemplate> = TotalPolicy {
+        // one row template per CLOSED CONSTRUCTOR (not per concrete payload value);
+        // the row template references the constructor's payload fields by name and
+        // is materialized per-call by substituting the runtime payload into the
+        // template's holes.
+      }
+    fn rust_serde_policy(
+      constructor: VariantNamingConstructor,
+      payload:     VariantNamingPayload,
+      context:     SerdeContext,
+    ) -> RustEnumWireSerde =
+      total_policy_apply(rust_serde_policy_table, constructor, payload, context)
+    ```
+    Pattern B is the right shape when ANY key has payload fields the
+    row's value-templates project. Pattern A is the right shape only
+    when EVERY key is payload-free AND every row value is independent
+    of any payload (the literal finite-table case).
+
+  Reviewer overrides which pattern at the candidate-Diff stage. The
+  auto-fix infers the pattern from `decision_tree_shape`'s
+  `KeyVocabulary` payload-bearing-ness.
+
+- *Decidability boundary (explicit):* L1.13.c fires on **total tables**
+  over closed vocabularies. It does **not** catch:
+  - Partial tables — L1.9 vacuous-arm territory.
+  - Tables with structurally-divergent branch bodies — legitimate
+    per-variant dispatch (L1.13 Mixed escape).
+  - Non-total dispatch where the missing-key behavior matters
+    semantically — L1.11 plausible-fallback territory (or, for
+    scalar-RHS, L1.11.b).
+  - Open-vocabulary "tables" — when the key vocabulary is open or
+    ambiguous (per `decision_tree_shape`'s typed-subject rule), the
+    lens does not fire; this is the L1.10.c open-vocabulary escape
+    extended to L1.13.c.
+
+- *Kills (real corpus — seed examples):*
+  - **`rust_string_policy_for_naming` / `rust_internal_policy_for_naming`**
+    pair (`src/v2/05_emit_rust.dag`, operator-identified). Two near-
+    parallel decision trees over `VariantNaming = AsAuthored |
+    SnakeCase | StripPrefixAndSnakeCase { prefix } | StripSuffixAndSnakeCase { suffix } | ...`
+    differing only in the `enum_attr` field (empty vs `#[serde(tag =
+    "...")]`). The key vocabulary has **payload-bearing constructors**
+    (`prefix`, `suffix`, `tag_field`) — Pattern A `TotalMap<K,V>` would
+    imply an infinite table; Pattern B `TotalPolicy` is the honest
+    clean shape. Cited as seed for the broader emit_rust.dag
+    dissolution work.
+  - **`build_call_kind_dispatch_for_func_*` shapes** (call-kind
+    dispatch over a closed-vocab built-in identifier set) are likely
+    L1.13.c candidates pending the substrate-fill sweep that ratifies
+    the built-in-fn vocabulary as closed.
+
+- *Producer stage (see §10):* L1.13.c consumes
+  `v4.lens.decision_tree_shape` — the same record L1.13.b + L1.10.c
   consume. Facts Flow Forward / P2: one decision-tree-shape index,
   multiple downstream lens projections.
 
@@ -2574,12 +2652,13 @@ uses.
 | Import graph + target existence | `v4.compiler.02_parse` | L0.8, L1.8 |
 | Return-type → fail-closed-carrier? | `v4.compiler.03_resolve` | L0.14, L1.11 |
 | Match-arm RHS skeleton + per-arm group membership + per-skeleton constructor-hole presence (normalized RHS after α-renaming + matched-arm constructor substitution; groups expose arm-ids so the auto-fix consumes them as facts, not by re-walking) | `v4.lens.match_arm_skeleton` (new derived stage — see §10.2) | L1.13 |
-| Per-decl structural-shape facts (type-decl: variant set + per-variant field shape; fn-decl: signature shape + body catamorphism-form classifier + identifier token-set) | `v4.lens.structural_similarity` (new derived stage — see §10.2) | L1.12.b, L1.4.b, L1.4.c |
-| Normalized decision-tree shape (closed-vocab branch dispatch over resolved constructor identities — exposes per-branch skeleton + missing-key behavior, REGARDLESS of source spelling as `match` / `if-else` / string-equality chain) | `v4.lens.decision_tree_shape` (new derived stage — see §10.2) | L1.13.b, L1.10.c, L1.4.c |
+| Per-decl structural-shape facts (type-decl: variant set + per-variant field shape; fn-decl: signature shape + body catamorphism-form classifier + identifier token-set) | `v4.lens.structural_similarity` (new derived stage — see §10.2) | L1.12.b, L1.4.b |
+| Normalized decision-tree shape (closed-vocab branch dispatch over resolved constructor identities — exposes per-branch skeleton + missing-key behavior, REGARDLESS of source spelling as `match` / `if-else` / string-equality chain; ALSO carries typed-subject requirement: `StringEqChain` produces `KeyVocabulary` only when subject has unique resolved closed carrier per `04_infer`) | `v4.lens.decision_tree_shape` (new derived stage — see §10.2) | L1.13.b, L1.13.c, L1.10.c |
 | Generated-forest shape (`map`/`fold` over a closed coproduct's variant-set that emits per-variant target artifacts — exposes per-generated-arm skeleton + variant-iteration evidence) | `v4.lens.generated_forest_shape` (new derived stage — see §10.2) | L1.5.b |
-| Target-syntax string-construction shape (string-build graph classified as data-strings vs target-grammar-token sequences, gated by a `TargetGrammarTokenSet` substrate carrier per target) | `v4.lens.target_syntax_string_shape` (new derived stage — see §10.2) | L1.10.d, L1.11.b (scalar-RHS detection extension) |
+| Target-syntax string-construction shape (string-build graph classified as data-strings vs target-grammar-token sequences vs Unknown, gated by a `TargetGrammarTokenSet` substrate carrier per target — closed structural predicate, no numeric threshold) | `v4.lens.target_syntax_string_shape` (new derived stage — see §10.2) | L1.10.d |
+| Scalar use-site authority-role classification (per-scalar set of consumer roles: TargetSyntaxUse / IdentifierUse / UrlUse / HeaderNameUse / FilePathUse / ResourceCoordinateUse / DataStringUse / UnknownUse, gated by a `scalar_authority_use_registry` substrate carrier) | `v4.lens.scalar_authority_use_shape` (new derived stage — see §10.2) | L1.11.b |
 
-### 10.2 Eight small derived stages cover what the pipeline doesn't already expose
+### 10.2 Nine small derived stages cover what the pipeline doesn't already expose
 
 These are themselves `.dag` stages — small folds with declared
 `consumes:` edges — and they're reusable across multiple lenses:
@@ -2725,7 +2804,7 @@ produces: Map<MatchExprId, SkeletonReport>
 
 ```dag
 module v4.lens.decision_tree_shape
-consumes: v4.compiler.02_parse, v4.compiler.03_resolve
+consumes: v4.compiler.02_parse, v4.compiler.03_resolve, v4.compiler.04_infer
 produces: Map<DecisionTreeId, DecisionTreeShape>
 // DecisionTreeShape normalizes branch dispatch over a closed vocabulary,
 // REGARDLESS of source-level spelling (match / if-else chain /
@@ -2743,6 +2822,17 @@ produces: Map<DecisionTreeId, DecisionTreeShape>
 //                                                     //   match would. That's how the producer catches
 //                                                     //   name-as-discriminant cases (L1.10.c) at the same algebraic
 //                                                     //   shape as match-over-coproduct cases (L1.13).
+//                                                     // **Typed-subject requirement (load-bearing):** a StringEqChain
+//                                                     //   produces a KeyVocabulary ONLY when the compared subject
+//                                                     //   has a UNIQUE resolved closed carrier via 04_infer. A
+//                                                     //   string comparison like `name == "StringVariant"` resolves
+//                                                     //   to a KeyVocabulary iff 04_infer says the subject expression's
+//                                                     //   type is exactly one closed coproduct whose variant set
+//                                                     //   contains the matched spelling. If the subject's resolved
+//                                                     //   type is ambiguous across namespaces, open, or unresolved,
+//                                                     //   source_form is `OpenOrAmbiguousNameDispatch` (not
+//                                                     //   StringEqChain) and downstream lenses (L1.10.c) do NOT
+//                                                     //   auto-fire — open-vocabulary escape preserved.
 //   branches:         [BranchShape],                  // one entry per detected branch; sorted by key for
 //                                                     //   stable comparison.
 //   missing_keys:     Set<KeyId>,                     // closed-vocab keys absent from the tree (drives
@@ -2751,11 +2841,17 @@ produces: Map<DecisionTreeId, DecisionTreeShape>
 //   missing_behavior: MissingKeyBehavior,             // FailClosed | DefaultArm(BranchShape) | Unhandled
 //                                                     //   (= silently fall through). Drives plausible-fallback
 //                                                     //   sub-signatures' detection of None=>literal patterns.
-//   source_form:      DecisionTreeSourceForm,         // MatchExpr | IfElseChain | StringEqChain | NestedMix.
-//                                                     //   Recorded as fact (for the diagnostic surface only) —
-//                                                     //   downstream lens semantics are UNIFORM regardless of
-//                                                     //   source-form; the field exists to point reviewers at
-//                                                     //   the actual source span when a finding fires.
+//   source_form:      DecisionTreeSourceForm,         // MatchExpr | IfElseChain | StringEqChain | NestedMix |
+//                                                     //   OpenOrAmbiguousNameDispatch (see KeyVocabulary above —
+//                                                     //   this last variant fires when name-equality dispatch
+//                                                     //   does NOT resolve to a unique closed carrier; carries
+//                                                     //   no KeyVocabulary; lens consumers SHOULD NOT auto-fire
+//                                                     //   on it). Recorded as fact (for the diagnostic surface
+//                                                     //   only) for MatchExpr / IfElseChain / StringEqChain /
+//                                                     //   NestedMix — downstream lens semantics are UNIFORM
+//                                                     //   regardless of source-form for those four; the field
+//                                                     //   exists to point reviewers at the actual source span
+//                                                     //   when a finding fires.
 // }
 // KeyVocabulary = {
 //   carrier:   TypeId,                                // the closed coproduct being dispatched on (must resolve
@@ -2779,10 +2875,10 @@ produces: Map<DecisionTreeId, DecisionTreeShape>
 // Facts Flow Forward (Practice 3 / P2): one producer captures the
 // canonical form of every closed-vocab decision tree; consumers
 // (L1.13 generalized, L1.13.b new, L1.10.c name-discriminant-bypass,
-// L1.4.c policy-table-as-functions) read the same record. No
+// L1.13.c table decision-tree) read the same record. No
 // consumer re-walks source expressions or re-classifies if-else as
 // decision-tree.
-// reusable by: L1.13, L1.13.b, L1.10.c, L1.4.c, future
+// reusable by: L1.13, L1.13.b, L1.13.c, L1.10.c, future
 //   match-as-typed-table sub-signature
 // Algorithm: walk each fn body's expression tree; identify
 //   subgraphs that branch over a closed coproduct's resolved
@@ -2859,11 +2955,38 @@ produces: Map<StringConstructionId, TargetSyntaxStringShape>
 //   construction_graph: StringConstructionGraph,      // the AST sub-tree of String-producing operations
 //                                                     //   (concat / format! / explicit literals).
 //   classification:     StringClassification,         // DataString | TargetGrammarTokenSequence { target: LangId }
-//                                                     //   | Unknown (no TargetGrammarTokenSet for the target).
+//                                                     //   | Unknown.
+//                                                     //   Classification semantics — closed predicate, no
+//                                                     //   numeric threshold:
+//                                                     //
+//                                                     //   (1) No TargetGrammarTokenSet exists for any target the
+//                                                     //       string might reach → Unknown. (NOT DataString —
+//                                                     //       absence of substrate is not evidence of data; it's
+//                                                     //       absence of evidence.)
+//                                                     //   (2) Known TargetGrammarTokenSet AND no emitted literal
+//                                                     //       segment matches a grammar token/delimiter AND the
+//                                                     //       enclosing sink is a data-string sink (log, message,
+//                                                     //       file-path-as-data, diagnostic, etc.) → DataString.
+//                                                     //   (3) Known TargetGrammarTokenSet AND at least one
+//                                                     //       emitted literal segment IS a grammar token or
+//                                                     //       delimiter AND the enclosing sink is target source /
+//                                                     //       TargetSurfaceNode serialization / emitted artifact
+//                                                     //       text AND the nonliteral holes are typed model values
+//                                                     //       that would be children of a TargetSurfaceNode →
+//                                                     //       TargetGrammarTokenSequence.
+//                                                     //   (4) Any other case (ambiguous, partial, sink unknown) →
+//                                                     //       Unknown.
+//                                                     //
+//                                                     //   Each of (1)-(4) is a closed structural test; no numeric
+//                                                     //   density / token-count threshold. Lenses (L1.10.d) treat
+//                                                     //   Unknown as non-fire (fail-closed: no false positives).
 //   grammar_evidence:   [GrammarTokenMatch],          // per-substring evidence from TargetGrammarTokenSet
 //                                                     //   matches (keyword / delimiter / attribute / type-name
 //                                                     //   prefix / etc.) when classification =
 //                                                     //   TargetGrammarTokenSequence.
+//   sink_classification: SinkClassification,          // DataStringSink | TargetSourceSink | EmittedArtifactSink |
+//                                                     //   UnknownSink. Drives the sink-test in classification
+//                                                     //   rules (2) and (3) above.
 //   missing_typed_path: Optional<TargetSurfaceNodeId>,
 //                                                     // when classification = TargetGrammarTokenSequence AND
 //                                                     //   a substrate TargetSurfaceNode would naturally model
@@ -2871,30 +2994,96 @@ produces: Map<StringConstructionId, TargetSyntaxStringShape>
 //                                                     //   would close the bypass. Drives L1.10.d's clean-shape
 //                                                     //   recommendation.
 // }
-// reusable by: L1.10.d, L1.11.b (scalar-RHS detection extension for
-//   string-typed RHSes), future grammar-bidirectional lenses
+// reusable by: L1.10.d, future grammar-bidirectional lenses
 // Algorithm: walk each fn body's expression tree; identify String-
 //   producing sub-expressions; for each, query the per-target
-//   TargetGrammarTokenSet registry for token-match evidence; classify
-//   per the table above; emit the produced record. Conservative:
-//   absence of TargetGrammarTokenSet evidence → DataString;
-//   presence above threshold → TargetGrammarTokenSequence; in-between
-//   ambiguous cases → Unknown.
+//   TargetGrammarTokenSet registry for token-match evidence AND the
+//   enclosing sink classification; apply the four-case closed predicate
+//   above; emit the produced record. Absence of TargetGrammarTokenSet
+//   → Unknown (NOT DataString — corrects a pre-rev1 inconsistency).
+
+module v4.lens.scalar_authority_use_shape
+consumes: v4.compiler.02_parse, v4.compiler.03_resolve, v4.compiler.04_infer,
+          scalar_authority_use_registry  // see substrate-carrier note below
+produces: Map<ScalarRhsId, ScalarAuthorityUseShape>
+// ScalarAuthorityUseShape classifies the USE-SITE of a scalar RHS
+// (String / Int / Bool literal returned from a closed-vocab decision
+// tree's missing/None arm). The same scalar `""`, `"Authorization"`,
+// `"http://localhost"`, `0`, `false` can be benign (a data field) or
+// fabricating-target-authority (HTTP header coordinate, URL,
+// identifier, file path, resource coordinate). The lens L1.11.b needs
+// the USE-SITE classification — what role does the consumer treat
+// this scalar as? — NOT just the production-site shape.
+// ScalarAuthorityUseShape = {
+//   rhs_locus: ScalarRhsId,                            // the scalar literal's site (in a None=>/default arm).
+//   uses:      Set<UseSite>,                           // each downstream consumer of this scalar's value.
+// }
+// UseSite = {
+//   use_locus:   UseSiteId,                            // where the scalar is consumed.
+//   role:        ScalarUseRole,                        // closed coproduct — see below.
+// }
+// ScalarUseRole
+//   = TargetSyntaxUse              { target: LangId }   // consumed as target-grammar source (cross-references
+//                                                       //   target_syntax_string_shape's classification at the
+//                                                       //   USE site).
+//   | IdentifierUse                { id_kind: IdentifierKind }
+//                                                       // consumed as a symbolic identifier (variable name,
+//                                                       //   function name, module name) where the substrate would
+//                                                       //   carry a typed Symbol/Name.
+//   | UrlUse                       { url_kind: UrlKind } // consumed as a URL / network coordinate.
+//   | HeaderNameUse                { protocol: ProtocolId }
+//                                                       // consumed as a wire-protocol header name (HTTP header,
+//                                                       //   etc.) — typically a substrate-typed enum.
+//   | FilePathUse                  { path_kind: FilePathKind }
+//                                                       // consumed as a file-system path or path fragment.
+//   | ResourceCoordinateUse        { resource: ResourceKind }
+//                                                       // consumed as a typed resource coordinate (queue name,
+//                                                       //   service endpoint, etc.).
+//   | DataStringUse                                     // consumed as data (log message, diagnostic body,
+//                                                       //   user-facing text) — the BENIGN case.
+//   | UnknownUse                                        // no substrate carrier in scalar_authority_use_registry
+//                                                       //   declares the consumer's role; conservatively
+//                                                       //   classify as Unknown (lens fails closed).
+// SUBSTRATE PREREQUISITE: a `scalar_authority_use_registry` substrate
+// carrier MUST exist before this producer fires. The registry declares
+// per-consumer the ScalarUseRole the consumer's parameter / field
+// expects. Without the registry, the producer returns Unknown for all
+// uses; L1.11.b treats Unknown as non-fire (fail-closed). The registry
+// can be populated incrementally as call-sites are classified —
+// HTTP-transport consumers, URL parsers, file-system primitives, etc.
+// each declare their authoritative parameter roles. Until at least one
+// registry row exists per ScalarUseRole variant, the corresponding
+// L1.11.b sub-class doesn't fire.
+// Facts Flow Forward (Practice 3 / P2): one producer captures every
+// scalar's use-site role classifications via the registry; L1.11.b
+// consumes this directly. L1.10.d consumes target_syntax_string_shape
+// for TARGET-SYNTAX classification at the PRODUCTION site (different
+// classification axis: what is being built, not what role the scalar
+// fills).
+// reusable by: L1.11.b, future authority-sink-classification lenses
+// Algorithm: walk each fn body's expression tree; identify scalar
+//   literal sub-expressions (especially those reached from a closed-
+//   vocab decision tree's missing/None arm per decision_tree_shape);
+//   for each scalar, walk its data-flow to consumer call sites; query
+//   the scalar_authority_use_registry for each consumer's declared
+//   ScalarUseRole; emit the produced record with the union of uses.
 
 ```
 
 Each is a single deterministic fold. Once landed, multiple lenses
 share the result — landing `match_arm_shape` unblocks five lenses,
-`match_arm_skeleton` unblocks L1.13 + the future L1.13.b and
-match-as-typed-table sub-signatures, `structural_similarity` unblocks
-L1.12.b + L1.4.b + L1.4.c, `decision_tree_shape` unblocks the
-generalized L1.13 + L1.13.b + L1.10.c + L1.4.c family (replaces
-match-only detection with shape-detection-regardless-of-syntax),
-`generated_forest_shape` unblocks L1.5.b, and
-`target_syntax_string_shape` unblocks L1.10.d + L1.11.b's
-string-RHS detection (gated on per-target TargetGrammarTokenSet
-substrate landing — `rust.dag` LanguageModel from PR #3476 is the
-canonical first instance).
+`match_arm_skeleton` unblocks L1.13 (base) and L1.13.b's match-arm
+sub-cases, `structural_similarity` unblocks L1.12.b + L1.4.b,
+`decision_tree_shape` unblocks the generalized L1.13.b + L1.13.c +
+L1.10.c family (replaces match-only detection with shape-detection-
+regardless-of-syntax, gated on typed-subject identity from
+`04_infer`), `generated_forest_shape` unblocks L1.5.b,
+`target_syntax_string_shape` unblocks L1.10.d (gated on per-target
+TargetGrammarTokenSet substrate landing — `rust.dag` LanguageModel
+from PR #3476 is the canonical first instance), and
+`scalar_authority_use_shape` unblocks L1.11.b (gated on per-consumer
+`scalar_authority_use_registry` rows declaring authoritative
+parameter roles).
 
 ### 10.3 A lens is a stage with declared dependencies
 
@@ -2910,6 +3099,7 @@ consumes:
   v4.lens.decision_tree_shape
   v4.lens.generated_forest_shape
   v4.lens.target_syntax_string_shape
+  v4.lens.scalar_authority_use_shape
   v4.lens.closed_vocab_scan
   v4.lens.concept_home
 produces:
@@ -2962,7 +3152,7 @@ independently, the diagnostic surface enumerates every finding
 separately. A file like `src/v2/05_emit_rust.dag` (6876 lines, 240
 match expressions, 300 fn declarations) would surface dozens of
 findings simultaneously — L1.5 × many, L1.10.d × many, L1.13.b ×
-several, L1.4.c × handful, L1.5.b × handful — when **the minimal
+several, L1.13.c × handful, L1.5.b × handful — when **the minimal
 fix is one Diff: "consume the substrate `LanguageModel` via a
 grammar-driven serializer"** that mechanically closes ALL of them.
 
@@ -3050,7 +3240,7 @@ ordered by subsumption DAG topology:
 ### 11.4 Canonical worked example — `src/v2/05_emit_rust.dag`
 
 The file surfaces (will surface, once L1.5.b / L1.10.c / L1.10.d /
-L1.13.b / L1.4.c / L1.11.b enforcement gates are met) on the order
+L1.13.b / L1.13.c / L1.11.b enforcement gates are met) on the order
 of 100+ individual findings across six families. The subsumption
 roots:
 - **R-root-A**: "consume `rust.dag` LanguageModel via a grammar-driven
@@ -3058,7 +3248,7 @@ roots:
   bulk of L1.10.d, L1.5.b, L1.10.c findings.
 - **R-root-B**: "lift the serde-policy + auth-defaults + transport-
   fallback decision-trees into substrate `TotalMap` rows" — subsumes
-  L1.4.c + L1.11.b findings.
+  L1.13.c + L1.11.b findings.
 - **R-root-C**: "rewrite name-as-discriminant dispatch to use
   resolved `KeyVocabulary`" — subsumes L1.10.c findings not closed
   by R-root-A.
