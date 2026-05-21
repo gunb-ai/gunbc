@@ -791,19 +791,32 @@ fn seed_affected_set_fold_acc_live(
         }
         BoundaryExpands =>
           match post_edit_dag(active_dag, edit).outcome {
-            Accepted { value: next_dag, diagnostics: _ } =>
-              expand_affected_dimensions(
-                read_model: read_model,
-                boundary_dag: active_dag,
-                frontier_dag: next_dag,
-                acc: AffectedSetActive {
-                  dag: next_dag,
-                  changes: active_changes,
-                  affected: active_affected,
-                  exclusions: active_exclusions
-                },
-                edit: edit
-              )
+            Accepted { value: next_dag, diagnostics: ad } =>
+              match ad {
+                Some { diagnostics: nds } =>
+                  fail_affected_set_with_diagnostics(
+                    acc: AffectedSetActive {
+                      dag: next_dag,
+                      changes: active_changes,
+                      affected: active_affected,
+                      exclusions: active_exclusions
+                    },
+                    diagnostics: nds
+                  )
+                None =>
+                  expand_affected_dimensions(
+                    read_model: read_model,
+                    boundary_dag: active_dag,
+                    frontier_dag: next_dag,
+                    acc: AffectedSetActive {
+                      dag: next_dag,
+                      changes: active_changes,
+                      affected: active_affected,
+                      exclusions: active_exclusions
+                    },
+                    edit: edit
+                  )
+              }
             Rejected { diagnostics: nds } =>
               fail_affected_set_with_diagnostics(
                 acc: AffectedSetActive {
