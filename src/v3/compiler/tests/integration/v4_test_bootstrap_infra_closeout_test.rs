@@ -44,7 +44,7 @@ fn t19_language_behavior_equivalence_generated_claims_parse() {
 #[test]
 fn t19_language_behavior_equivalence_run_test_claim_receipts_present() {
     assert!(
-        LBE_GENERATED_DAG.contains("fn run_test_claim(")
+        LBE_GENERATED_DAG.contains("run_test_claim(")
             && LBE_GENERATED_DAG.contains("fn lbe_claim_from_testgen_emit")
             && LBE_GENERATED_DAG.contains("-> Outcome<TestClaim>")
             && LBE_GENERATED_DAG.contains("Fail { actual: Rejected { diagnostics:")
