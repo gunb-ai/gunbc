@@ -122,16 +122,15 @@ The doc that follows defines the orthogonal operation surfaces, why each piece i
 > **Orthogonality amendment (2026-05-21, operator-direct).** Compilation, lens analysis, artifact projection, and terminal authorization are separate graph consumers. They may consume the same grounded graph and may be orchestrated by one build/session layer, but they are not sub-modes of one another. Do **not** add one universal `SubgraphScope` carrier. The public session shape is a four-phase split: `ground`, `observe`, `project`, `authorize`.
 
 ```
-// === Orthogonal graph consumers — data-in / data-out, no I/O ===
-compile_graph(graph: Graph, input_lang: LanguageModel, target: LanguageModel)
-  -> Outcome<CompileArtifact>
-apply_lens(graph: Graph, lens: Lens) -> Outcome<LensReading>
-project_artifact(graph: Graph, projection: ArtifactProjection) -> Outcome<Artifact>
+// === Four-phase session split — data-in / data-out, no I/O ===
+ground(source: CoreNode, input_lang: LanguageModel) -> Outcome<InferredTree>
+observe(inferred: InferredTree, plan: LensPlan) -> LensReport
+project(inferred: InferredTree, plan: ProjectionPlan) -> ProjectionReport
 authorize(policy: TerminalPolicy, lenses: LensReport, projections: ProjectionReport)
   -> Outcome<Validated<ArtifactSet>>
 ```
 
-Each operation defines its own graph-consumer interface. The caller composes whichever operations it needs through a session layer. There is no closed `CompileMode` / `ProductionGoal` enum bundling unrelated operations into one compile-owned authority.
+Each phase defines its own graph-consumer interface. The caller composes whichever operations it needs through a session layer. There is no closed `CompileMode` / `ProductionGoal` enum bundling unrelated operations into one compile-owned authority.
 
 ### Peripheral shims for text and file I/O
 
@@ -1092,7 +1091,7 @@ readings = [
 ]
 if project_policy_accepts(readings):
   self := candidate_self     // atomic commit
-  // optionally: regenerate stage0 via translate(self, rust_lang)
+  // optionally: ground(candidate_self, dag_lang), then project(..., rust_stage0_projection_plan)
 else:
   reject with diagnostics
 ```
@@ -1102,8 +1101,8 @@ Self-modification can never produce a broken substrate because the candidate is 
 ### Implications
 
 - **No new substrate is needed for self-edit.** `apply_diff` + lens readings + caller policy are the mechanism. The compiler's `.dag` source is just data; the same primitives that handle user data handle compiler data.
-- **Self-hosting is one specific translate invocation.** `translate(self, rust)` produces stage0 Rust. `eval(self, host)` evaluates the compiler on the host. `translate(self, other_lang)` would emit the compiler in some other language — the substrate makes this trivial in principle.
-- **The "Rust shrinks to zero" trajectory IS the loop closing.** When stage0 Rust is reliably regenerable from `translate(self, rust)`, the hand-maintained surface shrinks; per [`docs/design-pure-bootstrap-zero.md`](design-pure-bootstrap-zero.md), the target is zero hand-authored Rust.
+- **Self-hosting is one specific projection over the grounded compiler graph.** `ground(self, dag_lang)` produces the graph; `project(self_graph, rust_stage0_projection_plan)` produces stage0 Rust. `project(self_graph, host_eval_projection_plan)` evaluates the compiler on the host. Other target/compiler artifacts are additional projection requests, not separate compile modes.
+- **The "Rust shrinks to zero" trajectory IS the loop closing.** When stage0 Rust is reliably regenerable from `ground(self, dag_lang)` + `project(self_graph, rust_stage0_projection_plan)`, the hand-maintained surface shrinks; per [`docs/design-pure-bootstrap-zero.md`](design-pure-bootstrap-zero.md), the target is zero hand-authored Rust.
 
 ---
 
