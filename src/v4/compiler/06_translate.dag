@@ -60,11 +60,17 @@ import v4.std.node {
 }
 import v4.std.witness { StructuralPropertyWitness }
 type TargetNodeTree = Node
+// Single-authority lookup state for TargetModel Conj bundles (P2/P3 fail-closed).
+type TargetBundleChildLookup
+  = BundleChildMissing
+  | BundleChildFound { value: Node }
+  | BundleChildDuplicate
 data target_model_edge_selection_policy: Symbol = target_model_edge_selection_policy
 data target_model_edge_declared_inhabitants: Symbol = target_model_edge_declared_inhabitants
 data target_model_edge_serialize_emitted: Symbol = target_model_edge_serialize_emitted
 data target_model_edge_serialize_source: Symbol = target_model_edge_serialize_source
 data translate_target_bundle_malformed: Symbol = translate_target_bundle_malformed
+data translate_target_bundle_duplicate_edge: Symbol = translate_target_bundle_duplicate_edge
 data translate_target_source_unknown: Symbol = translate_target_source_unknown
 data translate_facts_lookup_missing: Symbol = translate_facts_lookup_missing
 // 🟡 gated — feature: mvp1-rust-add-source-registry · dissolve-on: extdeps/languages/rust.dag LanguageModel serialize table.
@@ -75,6 +81,36 @@ fn translate_target_bundle_malformed_diagnostic(target: TargetModel) -> Diagnost
     reason: translate_target_bundle_malformed,
     at: NodeLocus { node: target },
     correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+fn translate_target_bundle_duplicate_edge_diagnostic(
+  target: TargetModel,
+  edge_name: Symbol
+) -> Diagnostic {
+  Diagnostic {
+    reason: translate_target_bundle_duplicate_edge,
+    at: NodeLocus { node: target },
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+fn target_bundle_child_lookup_step(
+  acc: TargetBundleChildLookup,
+  e: Edge,
+  edge_name: Symbol
+) -> TargetBundleChildLookup {
+  match e.label {
+    Named { name: n } =>
+      if n == edge_name {
+        match acc {
+          BundleChildMissing =>
+            BundleChildFound { value: e.target }
+          BundleChildFound { value: _ } => BundleChildDuplicate
+          BundleChildDuplicate => BundleChildDuplicate
+        }
+      } else {
+        acc
+      }
+    Positional => acc
   }
 }
 fn translate_target_source_unknown_diagnostic(key: Symbol) -> Diagnostic {
@@ -117,23 +153,25 @@ fn target_serialize_source_from_model(target: TargetModel) -> Outcome<TargetSour
 fn target_bundle_child(target: TargetModel, edge_name: Symbol) -> Outcome<Node> {
   match target.kind {
     TypeNode { connective: Conj } =>
-      fold(
+      match fold(
         target.children,
-        init: outcome_rejected(
-          translate_target_bundle_malformed_diagnostic(target: target)
-        ),
+        init: BundleChildMissing,
         f: fn(acc, e) {
-          match e.label {
-            Named { name: n } =>
-              if n == edge_name {
-                Accepted { value: e.target, diagnostics: None }
-              } else {
-                acc
-              }
-            Positional => acc
-          }
+          target_bundle_child_lookup_step(acc: acc, e: e, edge_name: edge_name)
         }
-      )
+      ) {
+        BundleChildFound { value: child } =>
+          Accepted { value: child, diagnostics: None }
+        BundleChildMissing =>
+          outcome_rejected(translate_target_bundle_malformed_diagnostic(target: target))
+        BundleChildDuplicate =>
+          outcome_rejected(
+            translate_target_bundle_duplicate_edge_diagnostic(
+              target: target,
+              edge_name: edge_name
+            )
+          )
+      }
     _ =>
       outcome_rejected(translate_target_bundle_malformed_diagnostic(target: target))
   }
