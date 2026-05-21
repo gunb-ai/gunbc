@@ -75,21 +75,21 @@ type InferredFactsEntry {
 }
 
 
-fn inferred_facts_resolved_type_matches_host_value(
+fn inferred_facts_resolved_type_matches(
   facts: InferredFacts,
-  host_resolved_type: Node
+  candidate_type: Node
 ) -> Bool {
-  host_resolved_type == facts.resolved_type
+  candidate_type == facts.resolved_type
 }
 
 
-fn inferred_facts_inhabitance_flows_to_eval(facts: InferredFacts) -> Bool {
+fn inferred_facts_inhabitance_well_grounded(facts: InferredFacts) -> Bool {
   (facts.inhabits.witness == facts.resolved_type)
     && (facts.inhabits.algebra == facts.canonical.structural.evidence)
 }
 
 
-fn inferred_facts_canonical_flows_to_eval(facts: InferredFacts) -> Bool {
+fn inferred_facts_canonical_well_grounded(facts: InferredFacts) -> Bool {
   (facts.canonical.structural.property == constraint_property_being_canonical)
     && (facts.canonical.closedness.property == constraint_property_candidate_set_closedness)
     && (facts.canonical.closedness.evidence == facts.resolved_type)

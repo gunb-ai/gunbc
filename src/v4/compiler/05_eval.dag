@@ -10,9 +10,9 @@ module v4.compiler.eval
 import v4.compiler.infer {
   InferredFacts,
   InferredTree,
-  inferred_facts_canonical_flows_to_eval,
-  inferred_facts_inhabitance_flows_to_eval,
-  inferred_facts_resolved_type_matches_host_value
+  inferred_facts_canonical_well_grounded,
+  inferred_facts_inhabitance_well_grounded,
+  inferred_facts_resolved_type_matches
 }
 import v4.std.collection { List, Map, non_empty }
 import v4.std.host {
@@ -286,19 +286,19 @@ fn eval_accept_host_value_with_facts(
   facts: InferredFacts,
   value: HostValue
 ) -> Outcome<HostValue> {
-  let host_resolved_type = host_value_resolved_type(value: value)
-  if !inferred_facts_resolved_type_matches_host_value(
+  let candidate_type = host_value_resolved_type(value: value)
+  if !inferred_facts_resolved_type_matches(
     facts: facts,
-    host_resolved_type: host_resolved_type
+    candidate_type: candidate_type
   ) {
     outcome_rejected(
       d: eval_diagnostic(reason: eval_rejected_resolved_type_mismatch, node: node)
     )
-  } else if !inferred_facts_inhabitance_flows_to_eval(facts: facts) {
+  } else if !inferred_facts_inhabitance_well_grounded(facts: facts) {
     outcome_rejected(
       d: eval_diagnostic(reason: eval_rejected_inhabitance_mismatch, node: node)
     )
-  } else if !inferred_facts_canonical_flows_to_eval(facts: facts) {
+  } else if !inferred_facts_canonical_well_grounded(facts: facts) {
     outcome_rejected(
       d: eval_diagnostic(reason: eval_rejected_canonical_mismatch, node: node)
     )
