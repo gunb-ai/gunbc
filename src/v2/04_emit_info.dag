@@ -142,8 +142,13 @@ fn variant_has_fields(emit_info: EmitGraphInfo, enum_name: String, variant_name:
 }
 
 fn variant_has_positional_payload(emit_info: EmitGraphInfo, enum_name: String, variant_name: String) -> Bool {
-  let key = concat(enum_name, "::", variant_name)
+  let key = variant_summary_key(enum_name: enum_name, variant_name: variant_name)
   set_contains(emit_info.positional_payload_variants, key)
+}
+
+// Per-variant type_summaries and emit facts use EnumName::VariantName, not bare variant.
+fn variant_summary_key(enum_name: String, variant_name: String) -> String {
+  concat(enum_name, "::", variant_name)
 }
 
 fn lookup_emit_type_summary(emit_info: EmitGraphInfo, type_name: String) -> TypeSummary? {
@@ -374,8 +379,9 @@ fn add_emit_item_summary(state: EmitInfoBuildState, item: Node, source_indices: 
                 }
               )
               let vname = authored_name_at(source_indices: source_indices, node: variant)
-              map_insert(acc, vname, TypeSummary {
-                name: vname,
+              let qualified_vname = variant_summary_key(enum_name: summary.name, variant_name: vname)
+              map_insert(acc, qualified_vname, TypeSummary {
+                name: qualified_vname,
                 repr: StructRepr,
                 field_summaries: build_struct_field_summaries(parent: variant, source_indices: source_indices),
                 field_type_map: build_field_type_map(children: variant.children, source_indices: source_indices),

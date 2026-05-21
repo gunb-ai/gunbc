@@ -108,7 +108,7 @@ import v2.compiler.infer {
 import v2.compiler.infer_emit_info {
   EmitGraphInfo, TypeSummary, StructRepr, EnumRepr,
   lookup_emit_type_summary, is_enum_in_summaries, find_variant_parent, is_known_variant,
-  variant_belongs_to_enum
+  variant_belongs_to_enum, variant_summary_key
 }
 import v2.compiler.ownership { OwnershipProof, analyze_ownership, analyze_single_fold, build_movable_set, build_read_only_params, collect_callable_refs }
 import std.induction { SubValueUnknown }
@@ -2269,10 +2269,14 @@ fn pattern_parent_enum(name: String, parent_enum: String?, scrut_type: String, t
   }
 }
 
-// Resolved subject type for synthetic field "0" — from per-variant field_type_map
-// (build_emit_graph_info authority), not the outer match scrutinee.
-fn positional_payload_scrut_type(variant_name: String, field_binding: Node, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String {
-  match lookup_emit_type_summary(emit_info: emit_info, type_name: variant_name) {
+// Resolved subject type for synthetic field "0" — from per-variant field_type_map keyed
+// by EnumName::VariantName (build_emit_graph_info authority), not outer match scrutinee.
+fn positional_payload_scrut_type(parent_enum: String?, variant_name: String, field_binding: Node, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String {
+  let type_key = match parent_enum {
+    Some { value: parent } => variant_summary_key(enum_name: parent, variant_name: variant_name)
+    None => variant_name
+  }
+  match lookup_emit_type_summary(emit_info: emit_info, type_name: type_key) {
     Some { value: summary } =>
       match map_get(summary.field_type_map, "0") {
         Some { value: payload_type } => payload_type
@@ -2319,7 +2323,7 @@ fn emit_variant_pattern(name: String, parent_enum: String?, field_bindings: List
     match field_bindings |> first {
       Some { value: fb } =>
         if field_binding_name_at(n: fb, source_indices: source_indices) == "0" {
-          let payload_scrut = positional_payload_scrut_type(variant_name: name, field_binding: fb, emit_info: emit_info, source_indices: source_indices)
+          let payload_scrut = positional_payload_scrut_type(parent_enum: resolved_parent, variant_name: name, field_binding: fb, emit_info: emit_info, source_indices: source_indices)
           let inner_pat = emit_pattern(pattern: field_binding_pattern(n: fb), shared_types: shared_types, scrut_type: payload_scrut, source_indices: source_indices, emit_info: emit_info)
           concat(qualified, "(", inner_pat, ")")
         } else {
@@ -2520,7 +2524,7 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
     match field_bindings |> first {
       Some { value: fb } =>
         if field_binding_name_at(n: fb, source_indices: source_indices) == "0" {
-          let payload_scrut = positional_payload_scrut_type(variant_name: name, field_binding: fb, emit_info: emit_info, source_indices: source_indices)
+          let payload_scrut = positional_payload_scrut_type(parent_enum: resolved_parent, variant_name: name, field_binding: fb, emit_info: emit_info, source_indices: source_indices)
           let inner_analysis = analyze_rc_pattern(pattern: field_binding_pattern(n: fb), scrut_type: payload_scrut, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
           let inner_pat = emit_pattern_rc_aware(pattern: field_binding_pattern(n: fb), rc_analysis: inner_analysis, shared_types: shared_types, scrut_type: payload_scrut, source_indices: source_indices, emit_info: emit_info)
           concat(qualified, "(", inner_pat, ")")
