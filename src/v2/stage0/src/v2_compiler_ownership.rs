@@ -5,6 +5,7 @@ use self::EdgeKind::*;
 use self::OwnershipDecision::*;
 pub use crate::v2_compiler_emit::to_string;
 use crate::v2_rt;
+use crate::v2_rt::{rc_empty_set as empty_set, rc_set_insert as set_insert, rc_set_union as set_union, set_contains};
 use crate::v2_std_core::Cardinality::Required;
 use crate::v2_std_core::ExprData::{
     ExprBlock, ExprCall, ExprError, ExprFieldAccess, ExprForEach, ExprIf, ExprLambda, ExprLet,

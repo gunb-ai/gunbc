@@ -1327,7 +1327,7 @@ fn emit_prelude() -> String {
   // Serde import removed — derives don't include Serialize/Deserialize (emit.dag:70-72).
   // serde_json stays as a runtime dep for JSON operations only.
   // NonEmptyVec/NonEmptyBTreeSet emitted once in lib.rs, imported here.
-  let use_line = "use std::collections::HashMap;\nuse std::rc::Rc;\nuse crate::v2_rt;"
+  let use_line = "use std::collections::HashMap;\nuse std::rc::Rc;\nuse crate::v2_rt;\nuse crate::v2_rt::{rc_empty_set as empty_set, rc_set_insert as set_insert, rc_set_union as set_union, set_contains};"
   let wrapper_use = "use crate::NonEmptyVec;\nuse crate::NonEmptyBTreeSet;"
   concat(use_line, "\n", wrapper_use)
 }
@@ -2266,15 +2266,8 @@ fn emit_variant_pattern(name: String, parent_enum: String?, field_bindings: List
       Some { value: parent } => concat(parent, "::", name)
       None => name
     }
-    let is_fielded = match map_get(emit_info.fielded_variants, fielded_key) {
-      Some { value: true } => true
-      _ =>
-        // Strict: also check display-qualified name. No suffix scanning.
-        match map_get(emit_info.fielded_variants, qualified) {
-          Some { value: true } => true
-          _ => false
-        }
-    }
+    let is_fielded = set_contains(emit_info.fielded_variants, fielded_key)
+      || set_contains(emit_info.fielded_variants, qualified)
     if is_fielded { concat(qualified, " { .. }") } else { qualified }
   } else {
     let effective_bindings = field_bindings |> filter(fb =>
@@ -2286,14 +2279,8 @@ fn emit_variant_pattern(name: String, parent_enum: String?, field_bindings: List
         Some { value: parent } => concat(parent, "::", name)
         None => name
       }
-      let is_fielded2 = match map_get(emit_info.fielded_variants, fielded_key2) {
-        Some { value: true } => true
-        _ =>
-          match map_get(emit_info.fielded_variants, qualified) {
-            Some { value: true } => true
-            _ => false
-          }
-      }
+      let is_fielded2 = set_contains(emit_info.fielded_variants, fielded_key2)
+        || set_contains(emit_info.fielded_variants, qualified)
       if is_fielded2 { concat(qualified, " { .. }") } else { qualified }
     } else {
       let binding_strs = effective_bindings |> map(fb =>
@@ -2455,15 +2442,8 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
       Some { value: parent } => concat(parent, "::", name)
       None => name
     }
-    let is_fielded = match map_get(emit_info.fielded_variants, fielded_key) {
-      Some { value: true } => true
-      _ =>
-        // Strict: also check display-qualified name. No suffix scanning.
-        match map_get(emit_info.fielded_variants, qualified) {
-          Some { value: true } => true
-          _ => false
-        }
-    }
+    let is_fielded = set_contains(emit_info.fielded_variants, fielded_key)
+      || set_contains(emit_info.fielded_variants, qualified)
     if is_fielded { concat(qualified, " { .. }") } else { qualified }
   } else {
     let effective_bindings = field_bindings |> filter(fb =>
@@ -2475,14 +2455,8 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
         Some { value: parent } => concat(parent, "::", name)
         None => name
       }
-      let is_fielded2 = match map_get(emit_info.fielded_variants, fielded_key2) {
-        Some { value: true } => true
-        _ =>
-          match map_get(emit_info.fielded_variants, qualified) {
-            Some { value: true } => true
-            _ => false
-          }
-      }
+      let is_fielded2 = set_contains(emit_info.fielded_variants, fielded_key2)
+        || set_contains(emit_info.fielded_variants, qualified)
       if is_fielded2 { concat(qualified, " { .. }") } else { qualified }
     } else {
       let binding_strs = effective_bindings |> map(fb =>
@@ -3576,7 +3550,7 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
               ownership_index: emit_info.ownership_index,
               movable: emit_info.movable,
               variant_to_enum: emit_info.variant_to_enum,
-              owned_bindings: map_insert(emit_info.owned_bindings, acc_name, true),
+              owned_bindings: set_insert(emit_info.owned_bindings, acc_name),
               read_only_params_index: emit_info.read_only_params_index,
               read_only_params: emit_info.read_only_params
             }
@@ -3596,7 +3570,7 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
               fielded_variants: emit_info.fielded_variants,
               shared_types: emit_info.shared_types,
               ownership_index: emit_info.ownership_index,
-              movable: map_insert(emit_info.movable, acc_name, true),
+              movable: set_insert(emit_info.movable, acc_name),
               variant_to_enum: emit_info.variant_to_enum,
               owned_bindings: emit_info.owned_bindings,
               read_only_params_index: emit_info.read_only_params_index,

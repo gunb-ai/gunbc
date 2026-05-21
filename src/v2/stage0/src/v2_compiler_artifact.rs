@@ -6,6 +6,7 @@ use self::BoundaryKind::*;
 use self::PartitionRule::*;
 use self::RenderTarget::*;
 use crate::v2_rt;
+use crate::v2_rt::{rc_empty_set as empty_set, rc_set_insert as set_insert, rc_set_union as set_union, set_contains};
 pub use crate::v2_std_core::TextFile;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;

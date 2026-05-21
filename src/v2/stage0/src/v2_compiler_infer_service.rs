@@ -6,6 +6,7 @@ use crate::v2_compiler_infer_items::ItemKind::FuncItem;
 pub use crate::v2_compiler_infer_items::{inferred_to_outputs, ItemInfo, ItemKind, TypedModule};
 pub use crate::v2_compiler_infer_types::{emit_map_has, nominal_type_ref};
 use crate::v2_rt;
+use crate::v2_rt::{rc_empty_set as empty_set, rc_set_insert as set_insert, rc_set_union as set_union, set_contains};
 use crate::v2_std_core::Cardinality::Required;
 use crate::v2_std_core::Connective::{Conj, NoConnective};
 use crate::v2_std_core::ExprData::{
