@@ -2,7 +2,7 @@
 // Scope: Rust Reference LanguageModel — scalar fact-bundles, inhabitants, bidirectional grammar data.
 // Owns: RustScalar, RustIntegerPrimitiveFacts, RustFloatPrimitiveFacts, RustNonIntegerPrimitiveFacts, RustLanguageModel, rust_*_facts, rust_*_inhabitant_node, rust_declared_inhabitants_root, rust_mvp1_target_model, rust_wave1_* grammar/lex.
 // Consumes: v4.compiler.parse, v4.compiler.tokenize, v4.std.collection, v4.std.node, v4.std.logic, v4.std.algebra, v4.std.cardinality, v4.std.text.
-// Status: T-4 rust slice — Rust Reference primitives only (not std::string::String); inhabitants + fact catalogs on carrier; wave-1 lex/grammar + MVP serialize_source are 🟡 scaffolds; `core: ModelCore` blocked on T-33 (#3474); bool/`!` canonical-B decl-ref — 🟡 E-6(b) staging.
+// Status: T-4 rust slice — Rust Reference primitives (not std::string::String); catalog-derived canonical_symbols; MVP-1 grammar/token substrate for T-10 (literal Node round-trip still 🟡); `core: ModelCore` blocked on T-33 (#3474); bool/`!` canonical-B decl-ref — 🟡 E-6(b) staging.
 // Anchor: https://doc.rust-lang.org/reference/types.html
 
 module v4.extdeps.languages.rust
@@ -17,11 +17,17 @@ import v4.compiler.parse {
   Terminal
 }
 import v4.compiler.tokenize {
+  CharClassPattern,
+  IdentContinueChar,
+  IdentStartChar,
+  LexPattern,
   LexRule,
   LexRuleSet,
   LexRules,
   LiteralPattern,
   ModeledLexRules,
+  RepeatPattern,
+  SequencePattern,
   TokenRule
 }
 import v4.std.collection { List, Set }
@@ -255,7 +261,7 @@ data rust_token_rparen: Symbol = rust_token_rparen
 data rust_token_comma: Symbol = rust_token_comma
 data rust_token_colon: Symbol = rust_token_colon
 
-data rust_production_wave1_fn_stub: Symbol = rust_production_wave1_fn_stub
+data rust_production_mvp1_fn_add: Symbol = rust_production_mvp1_fn_add
 
 data rust_surface_fn_item: Symbol = rust_surface_fn_item
 data rust_surface_type_i32: Symbol = rust_surface_type_i32
@@ -295,8 +301,9 @@ data rust_tag_scalar_str: Symbol = rust_tag_scalar_str
 data rust_tag_scalar_unit: Symbol = rust_tag_scalar_unit
 data rust_tag_scalar_never: Symbol = rust_tag_scalar_never
 
-data rust_mvp1_serialize_source_anchor: Symbol = rust_mvp1_serialize_source_anchor
+data rust_mvp1_source_literal: Symbol = rust_mvp1_source_literal
 data rust_mvp1_source_text_field: Symbol = rust_mvp1_source_text_field
+data rust_mvp1_source_grammar_field: Symbol = rust_mvp1_source_grammar_field
 // Sole token-sequence authority for MVP serialize_source; Positional child order in
 // `rust_mvp1_serialize_source_node` matches indices 0..17 (dissolve-on: T-10 grammar).
 data rust_mvp1_source_token_classes: List<Symbol> = [
@@ -830,8 +837,8 @@ fn rust_mvp1_source_text_authority() -> String {
   rust_mvp1_source_text
 }
 
-// 🟡 MVP serialize_source scaffold — token-class sequence only; not grammar-as-bidir text round-trip.
-// dissolve-on: T-10 ingest/emit carries source via bidirectional grammar + literal projection.
+// MVP serialize_source — literal symbol + grammar production + token sequence (aligned with source text).
+// dissolve-on: T-10 literal Node + bidirectional grammar-as-bidir emit/ingest round-trip.
 fn rust_mvp1_source_token_node(token_class: Symbol) -> Node {
   rust_inhabitant_atom(id: token_class)
 }
@@ -844,16 +851,20 @@ fn rust_mvp1_positional_token_edge(token_class: Symbol) -> Edge {
 }
 
 fn rust_mvp1_serialize_source_node() -> Node {
-  // liveness anchor — keeps `rust_mvp1_source_text` reachable; drops with T-10 grammar-as-bidir
+  // liveness anchor — `rust_mvp1_source_literal` pairs with `rust_mvp1_source_text` until literal Node lands
   let _authority = rust_mvp1_source_text_authority()
-  // liveness anchor — sole List authority for token order; Positional edges match indices 0..17
+  // structural authority — same token order as `rust_mvp1_source_token_classes` / grammar production
   let _token_classes = rust_mvp1_source_token_classes
   Node {
     kind: TypeNode { connective: Conj },
     children: [
       rust_named_edge(
         name: rust_mvp1_source_text_field,
-        target: rust_inhabitant_atom(id: rust_mvp1_serialize_source_anchor)
+        target: rust_inhabitant_atom(id: rust_mvp1_source_literal)
+      ),
+      rust_named_edge(
+        name: rust_mvp1_source_grammar_field,
+        target: rust_inhabitant_atom(id: rust_production_mvp1_fn_add)
       ),
       rust_mvp1_positional_token_edge(token_class: rust_token_kw_fn),
       rust_mvp1_positional_token_edge(token_class: rust_token_ident),
@@ -910,11 +921,25 @@ fn rust_lex_rule(token_class: Symbol, text: String) -> LexRule {
   }
 }
 
+fn rust_ident_lex_pattern() -> LexPattern {
+  SequencePattern {
+    left: CharClassPattern { class: IdentStartChar },
+    right: RepeatPattern { element: CharClassPattern { class: IdentContinueChar } }
+  }
+}
+
+fn rust_ident_lex_rule() -> LexRule {
+  TokenRule {
+    token_class: rust_token_ident,
+    pattern: rust_ident_lex_pattern()
+  }
+}
+
 fn rust_wave1_lex_rules() -> LexRuleSet {
   LexRuleSet {
     rules: [
       rust_lex_rule(token_class: rust_token_kw_fn, text: "fn"),
-      rust_lex_rule(token_class: rust_token_ident, text: "ident"),
+      rust_ident_lex_rule(),
       rust_lex_rule(token_class: rust_token_ty_i32, text: "i32"),
       rust_lex_rule(token_class: rust_token_plus, text: "+"),
       rust_lex_rule(token_class: rust_token_arrow, text: "->"),
@@ -936,44 +961,140 @@ fn rust_grammar_atom(id: Symbol) -> Node {
   rust_inhabitant_atom(id: id)
 }
 
-// 🟡 wave-1 grammar stub — `fn ident i32 +` only; does not parse MVP source `fn add(...)`.
-// dissolve-on: full fn-item production matching rust_mvp1_source_text token sequence.
-fn rust_grammar_production_wave1_fn_stub() -> GrammarProduction {
+// MVP-1 fn add production — terminal sequence matches `rust_mvp1_source_token_classes` / source text.
+fn rust_grammar_mvp1_add_expr() -> GrammarExpr {
+  let e17 = Terminal { token_class: rust_token_rbrace }
+  let e16 = Sequence {
+    left: Terminal { token_class: rust_token_ident },
+    right: e17
+  }
+  let e15 = Sequence {
+    left: Terminal { token_class: rust_token_plus },
+    right: e16
+  }
+  let e14 = Sequence {
+    left: Terminal { token_class: rust_token_ident },
+    right: e15
+  }
+  let e13 = Sequence {
+    left: Terminal { token_class: rust_token_lbrace },
+    right: e14
+  }
+  let e12 = Sequence {
+    left: Terminal { token_class: rust_token_ty_i32 },
+    right: e13
+  }
+  let e11 = Sequence {
+    left: Terminal { token_class: rust_token_arrow },
+    right: e12
+  }
+  let e10 = Sequence {
+    left: Terminal { token_class: rust_token_rparen },
+    right: e11
+  }
+  let e9 = Sequence {
+    left: Terminal { token_class: rust_token_ty_i32 },
+    right: e10
+  }
+  let e8 = Sequence {
+    left: Terminal { token_class: rust_token_colon },
+    right: e9
+  }
+  let e7 = Sequence {
+    left: Terminal { token_class: rust_token_ident },
+    right: e8
+  }
+  let e6 = Sequence {
+    left: Terminal { token_class: rust_token_comma },
+    right: e7
+  }
+  let e5 = Sequence {
+    left: Terminal { token_class: rust_token_ty_i32 },
+    right: e6
+  }
+  let e4 = Sequence {
+    left: Terminal { token_class: rust_token_colon },
+    right: e5
+  }
+  let e3 = Sequence {
+    left: Terminal { token_class: rust_token_ident },
+    right: e4
+  }
+  let e2 = Sequence {
+    left: Terminal { token_class: rust_token_lparen },
+    right: e3
+  }
+  let e1 = Sequence {
+    left: Terminal { token_class: rust_token_ident },
+    right: e2
+  }
+  Sequence {
+    left: Terminal { token_class: rust_token_kw_fn },
+    right: e1
+  }
+}
+
+fn rust_grammar_production_mvp1_fn_add() -> GrammarProduction {
   GrammarProduction {
-    name: rust_production_wave1_fn_stub,
-    expression: Sequence {
-      left: Sequence {
-        left: Sequence {
-          left: Terminal { token_class: rust_token_kw_fn },
-          right: Terminal { token_class: rust_token_ident }
-        },
-        right: Terminal { token_class: rust_token_ty_i32 }
-      },
-      right: Terminal { token_class: rust_token_plus }
-    },
+    name: rust_production_mvp1_fn_add,
+    expression: rust_grammar_mvp1_add_expr(),
     emitted: rust_grammar_atom(id: rust_surface_fn_item)
   }
 }
 
 fn rust_wave1_grammar_root() -> GrammarRoot {
-  GrammarRoot { start: rust_grammar_production_wave1_fn_stub() }
+  GrammarRoot { start: rust_grammar_production_mvp1_fn_add() }
 }
 
 fn rust_wave1_grammar() -> Grammar {
   ModeledGrammar { root: rust_wave1_grammar_root() }
 }
 
-// Wave-1 resolve/ground smoke set — NOT catalog-derived; not authoritative canonical surface.
-// dissolve-on: membership derived from ModelCore + fact catalogs (T-33) or translate consumer contract.
+fn rust_catalog_surface_symbol(sym: Symbol) -> Bool {
+  sym == rust_surface_spelling_i8 ||
+    sym == rust_surface_spelling_i16 ||
+    sym == rust_surface_spelling_i32 ||
+    sym == rust_surface_spelling_i64 ||
+    sym == rust_surface_spelling_i128 ||
+    sym == rust_surface_spelling_u8 ||
+    sym == rust_surface_spelling_u16 ||
+    sym == rust_surface_spelling_u32 ||
+    sym == rust_surface_spelling_u64 ||
+    sym == rust_surface_spelling_u128 ||
+    sym == rust_surface_spelling_isize ||
+    sym == rust_surface_spelling_usize ||
+    sym == rust_surface_spelling_f32 ||
+    sym == rust_surface_spelling_f64 ||
+    sym == rust_surface_spelling_bool ||
+    sym == rust_surface_spelling_char ||
+    sym == rust_surface_spelling_str ||
+    sym == rust_surface_spelling_unit ||
+    sym == rust_surface_spelling_never
+}
+
+fn rust_wave1_lex_token_symbol(sym: Symbol) -> Bool {
+  sym == rust_token_kw_fn ||
+    sym == rust_token_ident ||
+    sym == rust_token_ty_i32 ||
+    sym == rust_token_plus ||
+    sym == rust_token_arrow ||
+    sym == rust_token_lbrace ||
+    sym == rust_token_rbrace ||
+    sym == rust_token_lparen ||
+    sym == rust_token_rparen ||
+    sym == rust_token_comma ||
+    sym == rust_token_colon
+}
+
+// Single symbol authority: fact-catalog surface spellings + wave-1 lex/grammar/MVP symbols.
 fn rust_language_model_canonical_symbols() -> Set<Symbol> {
   Set {
     member: fn(sym) {
-      sym == rust_surface_spelling_i32 ||
-        sym == rust_surface_spelling_i64 ||
-        sym == rust_surface_spelling_i128 ||
-        sym == rust_surface_spelling_bool ||
-        sym == rust_token_kw_fn ||
-        sym == rust_surface_fn_item
+      rust_catalog_surface_symbol(sym: sym) ||
+        rust_wave1_lex_token_symbol(sym: sym) ||
+        sym == rust_surface_fn_item ||
+        sym == rust_production_mvp1_fn_add ||
+        sym == rust_mvp1_source_literal
     }
   }
 }
