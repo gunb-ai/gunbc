@@ -121,7 +121,7 @@ fn default_artifact_plan(root_modules: List<String>, target: RenderTarget) -> Ar
 //
 // testcase: dag_artifact_shares_one_node_record (pipeline.rs)
 
-// 🟡 needs-more-work — DagNodeId is file+span+ident string until v4 content_hash lands.
+// 🟡 needs-more-work — DagNodeId is file+span+ident until v4 content_hash; duplicate keys fail closed at collect.
 type DagNodeId = String
 
 // 🟡 needs-more-work — JSON mirror of InferredNode; typed record emission is follow-up.

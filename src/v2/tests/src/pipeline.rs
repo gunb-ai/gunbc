@@ -883,6 +883,24 @@ fn dag_artifact_shares_one_node_record() {
     );
 }
 
+#[test]
+fn dag_artifact_multi_module_names_resolve() {
+    let files = &[
+        ("lib.dag", "module lib\n\nfn helper() -> Int { 0 }\n"),
+        (
+            "main.dag",
+            "module main\nimport lib { helper }\n\nfn main() -> Int { helper() }\n",
+        ),
+    ];
+    let result = compile_multi_target(files, RenderTarget::Dag);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "dag-artifact.json");
+    assert!(
+        content.contains("lib") && content.contains("helper") && content.contains("main"),
+        "multi-module dag artifact should preserve authored names from merged source_indices"
+    );
+}
+
 // ── Multi-module tests ──────────────────────────────────────────────────
 
 #[test]
