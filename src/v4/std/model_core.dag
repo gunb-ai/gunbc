@@ -38,7 +38,7 @@ type AlgebraLawObligation {
 
 
 type PrimitiveOperationRef {
-  operation: Symbol
+  operation: Node
   effect_signature: Node
 }
 
@@ -50,7 +50,7 @@ type EffectSemanticsDecl {
 
 
 type PartialOperationDecl {
-  operation: Symbol
+  operation: Node
   precondition: Node
   discharge: PartialityDischarge
 }
