@@ -21,6 +21,7 @@ import v4.std.diagnostic {
   bind_outcome,
   diagnostics_singleton,
   outcome_rejected,
+  outcome_with_diagnostics,
   rejected_with_pending
 }
 import v4.std.find_witness {
@@ -33,6 +34,7 @@ import v4.std.find_witness {
 import v4.std.node { Node, Symbol }
 import v4.std.witness { StructuralPropertyWitness }
 data constraint_property_being_canonical: Symbol = constraint_property_being_canonical
+data constraint_property_candidate_set_closedness: Symbol = constraint_property_candidate_set_closedness
 data constraints_not_realized: Symbol = constraints_not_realized
 // 🟡 coproduct dissolution — scaffold:T-9-ground · dissolve-on: W-T-9-impl consumes graph carriers.
 type ConstraintGraph {
@@ -53,6 +55,8 @@ type CanonicalGroundingCandidateSet {
 }
 type CanonicalGroundingWitness {
   structural: StructuralPropertyWitness
+  // 🟡 coproduct dissolution — scaffold:T-9-closedness-bridge · dissolve-on: W-T-10 find_witness closedness authority supplies evidence distinct from structural witness.
+  closedness: StructuralPropertyWitness
 }
 fn constraints_not_realized_diagnostic(graph: ConstraintGraph) -> Diagnostic {
   Diagnostic {
@@ -79,16 +83,17 @@ fn solve_constraints(policy: ConstraintSolvePolicy) -> Outcome<CanonicalGroundin
         },
         multiplicity_policy: UniqueOnly
       ) {
-        // Scaffold only while find_witness rejects: W-T-9 must lift FindWitnessResult → CanonicalGrounding here.
-        Accepted { value: _, diagnostics: fw_d } =>
-          Rejected {
-            diagnostics: rejected_with_pending(
-              pending: fw_d,
-              rejected: diagnostics_singleton(
-                d: constraints_not_realized_diagnostic(graph: policy.graph)
-              )
-            )
-          }
+        Accepted { value: fw, diagnostics: fw_d } =>
+          outcome_with_diagnostics(
+            value: CanonicalGrounding {
+              node: fw.candidate,
+              witness: CanonicalGroundingWitness {
+                structural: fw.witness,
+                closedness: fw.closedness
+              }
+            },
+            diagnostics: fw_d
+          )
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
       }
     }
