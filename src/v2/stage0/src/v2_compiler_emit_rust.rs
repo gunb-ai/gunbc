@@ -4888,16 +4888,7 @@ pub fn emit_variant_pattern(
                         None => name.clone(),
                     };
                     let is_fielded =
-                        match v2_rt::map_get(&emit_info.fielded_variants.clone(), fielded_key) {
-                            Some(true) => true,
-                            _ => match v2_rt::map_get(
-                                &emit_info.fielded_variants.clone(),
-                                qualified.clone(),
-                            ) {
-                                Some(true) => true,
-                                _ => false,
-                            },
-                        };
+                        v2_rt::set_contains(&emit_info.fielded_variants, fielded_key) || v2_rt::set_contains(&emit_info.fielded_variants, qualified.clone());
                     if is_fielded {
                         v2_rt::concat(qualified.clone(), " { .. }".to_string())
                     } else {
@@ -4927,19 +4918,7 @@ pub fn emit_variant_pattern(
                                 ),
                                 None => name.clone(),
                             };
-                            let is_fielded2 = match v2_rt::map_get(
-                                &emit_info.fielded_variants.clone(),
-                                fielded_key2,
-                            ) {
-                                Some(true) => true,
-                                _ => match v2_rt::map_get(
-                                    &emit_info.fielded_variants.clone(),
-                                    qualified.clone(),
-                                ) {
-                                    Some(true) => true,
-                                    _ => false,
-                                },
-                            };
+                            let is_fielded2 = v2_rt::set_contains(&emit_info.fielded_variants, fielded_key2) || v2_rt::set_contains(&emit_info.fielded_variants, qualified.clone());
                             if is_fielded2 {
                                 v2_rt::concat(qualified.clone(), " { .. }".to_string())
                             } else {
@@ -5321,16 +5300,7 @@ pub fn emit_variant_pattern_rc_aware(
                         None => name.clone(),
                     };
                     let is_fielded =
-                        match v2_rt::map_get(&emit_info.fielded_variants.clone(), fielded_key) {
-                            Some(true) => true,
-                            _ => match v2_rt::map_get(
-                                &emit_info.fielded_variants.clone(),
-                                qualified.clone(),
-                            ) {
-                                Some(true) => true,
-                                _ => false,
-                            },
-                        };
+                        v2_rt::set_contains(&emit_info.fielded_variants, fielded_key) || v2_rt::set_contains(&emit_info.fielded_variants, qualified.clone());
                     if is_fielded {
                         v2_rt::concat(qualified.clone(), " { .. }".to_string())
                     } else {
@@ -5360,19 +5330,7 @@ pub fn emit_variant_pattern_rc_aware(
                                 ),
                                 None => name.clone(),
                             };
-                            let is_fielded2 = match v2_rt::map_get(
-                                &emit_info.fielded_variants.clone(),
-                                fielded_key2,
-                            ) {
-                                Some(true) => true,
-                                _ => match v2_rt::map_get(
-                                    &emit_info.fielded_variants.clone(),
-                                    qualified.clone(),
-                                ) {
-                                    Some(true) => true,
-                                    _ => false,
-                                },
-                            };
+                            let is_fielded2 = v2_rt::set_contains(&emit_info.fielded_variants, fielded_key2) || v2_rt::set_contains(&emit_info.fielded_variants, qualified.clone());
                             if is_fielded2 {
                                 v2_rt::concat(qualified.clone(), " { .. }".to_string())
                             } else {
@@ -8281,11 +8239,7 @@ pub fn emit_rust_fold_method_call(
                             ownership_index: emit_info.ownership_index.clone(),
                             movable: emit_info.movable.clone(),
                             variant_to_enum: emit_info.variant_to_enum.clone(),
-                            owned_bindings: v2_rt::rc_map_insert(
-                                emit_info.owned_bindings.clone(),
-                                acc_name.clone(),
-                                true,
-                            ),
+                            owned_bindings: v2_rt::rc_set_insert(emit_info.owned_bindings.clone(), acc_name.clone()),
                             read_only_params_index: emit_info.read_only_params_index.clone(),
                             read_only_params: emit_info.read_only_params.clone(),
                         }),
@@ -8309,11 +8263,7 @@ pub fn emit_rust_fold_method_call(
                                 fielded_variants: emit_info.fielded_variants.clone(),
                                 shared_types: emit_info.shared_types.clone(),
                                 ownership_index: emit_info.ownership_index.clone(),
-                                movable: v2_rt::rc_map_insert(
-                                    emit_info.movable.clone(),
-                                    acc_name.clone(),
-                                    true,
-                                ),
+                                movable: v2_rt::rc_set_insert(emit_info.movable.clone(), acc_name.clone()),
                                 variant_to_enum: emit_info.variant_to_enum.clone(),
                                 owned_bindings: emit_info.owned_bindings.clone(),
                                 read_only_params_index: emit_info.read_only_params_index.clone(),
