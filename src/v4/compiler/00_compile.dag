@@ -15,7 +15,8 @@ import v4.std.diagnostic {
   Locus,
   Outcome,
   PortLocus,
-  Unavailable
+  Unavailable,
+  diagnostics_singleton
 }
 import v4.std.node { Node, Symbol }
 import v4.std.text { String }
@@ -49,8 +50,10 @@ fn compile_pipeline_not_realized_diagnostic(at: Locus) -> Diagnostic {
 
 fn compile(source: Source, target: TargetModel) -> Outcome<TargetSource> {
   Rejected {
-    diagnostic: compile_pipeline_not_realized_diagnostic(
-      at: PortLocus { port: compile_stage_locus_port }
+    diagnostics: diagnostics_singleton(
+      d: compile_pipeline_not_realized_diagnostic(
+        at: PortLocus { port: compile_stage_locus_port }
+      )
     )
   }
 }
