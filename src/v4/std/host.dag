@@ -70,6 +70,16 @@ type HostValue
   | HostClosure { value: HostClosureValue }
   | HostUnit { value: HostUnitValue }
 
+fn host_value_resolved_type(value: HostValue) -> Node {
+  match value {
+    HostPrimitive { value: p } => p.primitive_type
+    HostAggregate { value: a } => a.aggregate_type
+    HostReference { value: r } => r.reference_type
+    HostClosure { value: c } => c.arrow_type
+    HostUnit { value: u } => u.unit_type
+  }
+}
+
 type HostValueRepresentationModel {
   represent_literal: fn(Node, HostEnvironment) -> Outcome<HostValue>
   represent_result: fn(HostValue) -> Outcome<HostValue>
