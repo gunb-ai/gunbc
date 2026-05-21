@@ -51,15 +51,6 @@ Example — `std/coordination.dag` defines CAS without knowing GCS exists:
 type CasMechanism = GenerationBased | ETagBased | VersionId | RowVersion
 ```
 
-Example — `extdeps/github/errors.dag` defines the GitHub error envelope shape without knowing individual operations:
-
-```dag
-type GitHubErrorShape {
-  message: String
-  documentation_url: String?
-}
-```
-
 Example — `std/rate_limit.dag` defines retry semantics without knowing any API:
 
 ```dag
