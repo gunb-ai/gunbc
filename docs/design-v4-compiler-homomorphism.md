@@ -240,23 +240,92 @@ Evaluation is structurally the same operation as translation, with the host runt
 
 `HostModel` shape is **ratified per Q1**: distinct `HostModel` as a peer of `LanguageModel`, both over shared `ModelCore`.
 
-### P3 — Lenses are pure readings over `Node`
+### P3 — Lenses are pure readings over graphs
 
-> **Amended 2026-05-21** (operator-direct). The 2026-05-20 `validate_then_compile` / `Validated<Output>` framing was too bundled: it made lens policy look like the public compile terminal. The standing rule is stricter and simpler: compilation, target/artifact generation, and lens readings are orthogonal calls over `Node`.
+> **Amended 2026-05-21** (operator-direct). The 2026-05-20 `validate_then_compile` framing was too compile-owned: it made lenses look like inputs to compile-core. The corrected shape keeps compile-core narrow and moves orchestration to a session layer: ground, observe, project, authorize.
 
-Lenses are **data-producing reads**. A lens takes a `Node` and returns a typed reading for that node's shape: `complexity(node) -> ComplexityReading`, `effect(node) -> EffectReading`, `unused_parameters(node) -> UnusedParametersReading`. The same interface applies whether the node is the whole program, one declaration, one expression, or a leaf. A `Node` is already a graph; do not introduce `Subgraph` or `SubgraphScope` to express "part of a graph."
+Lenses are **data-producing reads**. A lens takes a graph and returns a typed reading for that graph's shape: `complexity_lens(function_graph) -> ComplexityReading`, `complexity_lens(whole_program_graph) -> ComplexityReading`, `complexity_lens(single_node_graph) -> ComplexityReading`. Same interface, different graph extent. Do not introduce one generic `SubgraphScope` carrier to express "part of a graph."
 
-**Lens output is not a compile error.** A compile error says "this operation could not be performed" — parse failed, name resolution failed, type grounding was ambiguous, target translation could not be derived. A lens reading says "this is what the lens observed." A caller or project policy may decide that a reading blocks shipment, but that decision is downstream policy over data, not the lens itself becoming an error path.
+**Lens output is not a compile error.** A compile error says "this operation could not be performed" — parse failed, name resolution failed, type grounding was ambiguous, target translation could not be derived. A lens reading says "this is what the lens observed." Terminal policy may decide that a reading blocks release, but that decision belongs in `authorize`, not in the lens and not in compile-core.
 
 **Six commitments:**
-1. **`Node` is the lens consumption point** — no separate whole-graph vs subgraph carrier.
-2. **Lenses are folds over `Node`** sharing the `fold_node` primitive (Practice 10 row 1).
+1. **The grounded graph is the lens consumption point** — no separate whole-graph vs subgraph carrier. Current v4 names this `InferredTree`; see the Graph naming note below.
+2. **Lenses are folds over the graph** sharing the `fold_node` primitive (Practice 10 row 1).
 3. **Lens outputs are readings** — typed values/reports. Translate/eval do NOT depend on lens output. Lens output does NOT feed downstream stages of the homomorphism.
 4. **Built-in and user-defined lenses share one algebra contract.** The compiler core does NOT import or name any specific lens. The former `04_infer.dag` import of `v4.lens.cost { SymbolicCost }` is resolved as of the 2026-05-21 audit; reintroducing any specific lens import in compiler core would violate this commitment.
 5. **Multi-lens execution is dependency-managed.** Lenses with no interdependencies may be coalesced into a shared traversal. Lenses with dependencies (e.g., complexity reads cost) are scheduled by a **lens-dependency DAG**; each stage coalesces all lenses whose inputs are available. No lens may trigger an ad hoc unmanaged re-walk. See Ratified Q6 below — derives from `fold_node` + composed-lens-algebra; NO new substrate primitive.
-6. **Correct-by-construction before policy gates.** If a "lens" is actually checking a structural invariant that can be encoded in the type of `InferredTree` or an earlier carrier, push it into that type/model instead of making it a runtime gate. Measurement and report lenses (complexity, cost, effect reads, synthesis reports) remain pure readings. Policy enforcement is a caller composition over readings, not a public `Validated<Output>` compile terminal.
+6. **Correct-by-construction before policy gates.** If a "lens" is actually checking a structural invariant that can be encoded in the type of `InferredTree` or an earlier carrier, push it into that type/model instead of making it a runtime gate. Measurement and report lenses (complexity, cost, effect reads, synthesis reports) remain pure readings. Terminal authorization may still return `Outcome<Validated<ArtifactSet>>`; that carrier belongs to policy over lens readings + projection results, not to compile-core.
 
-**Surface consequence.** `validate_then_compile(source, input_lang, lenses, mode) -> Outcome<Validated<Output>>` is not the architectural destination. It is a current scaffold that bundles three concerns: inference/translation, lens reading, and policy gating. The migration target is separate calls: infer/ground as needed, read lenses over `Node`, and call translate/eval/artifact projection explicitly. A project may still author a wrapper that performs those calls in sequence, but the wrapper is policy, not the compiler's public type-enforced terminal.
+**Surface consequence.** `validate_then_compile(source, input_lang, lenses, mode) -> Outcome<Validated<Output>>` is not the architectural destination because it makes compile own lenses and terminal policy. The migration target is a session result exposing four distinct outcomes: grounding, lens report, projection report, and terminal authorization. `Validated<T>` remains valid at the terminal authorization phase, reframed as `Validated<ArtifactSet>`.
+
+### Orthogonal Graph Consumers
+
+The public build/session layer is a composition of four phases:
+
+```
+ground(source: CoreNode, input_lang: LanguageModel) -> Outcome<InferredTree>
+observe(inferred: InferredTree, plan: LensPlan) -> LensReport
+project(inferred: InferredTree, plan: ProjectionPlan) -> ProjectionReport
+authorize(policy: TerminalPolicy, lenses: LensReport, projections: ProjectionReport)
+  -> Outcome<Validated<ArtifactSet>>
+```
+
+`ground` is the mechanical compiler boundary: if it rejects, there is no meaningful graph for lenses or projections to consume. `observe` reads the grounded graph and returns lens data. `project` produces artifacts independently per request. `authorize` is the policy gate over readings and projection results.
+
+```
+compile_session(
+  source: CoreNode,
+  input_lang: LanguageModel,
+  lens_plan: LensPlan,
+  projection_plan: ProjectionPlan,
+  policy: TerminalPolicy
+) -> CompileSessionResult
+
+type CompileSessionResult {
+  grounding: Outcome<InferredTree>
+  lens_report: LensReport
+  projection_report: ProjectionReport
+  terminal: Outcome<Validated<ArtifactSet>>
+}
+```
+
+`compile_session` is not compile-core. It is the public terminal / build-session orchestrator.
+
+**Graph naming judgment.** The operator question is whether the common carrier should be called `Graph` or whether the existing `InferredTree` / `InferredGraph` should be formalized. My judgment: use `InferredTree` as the current implementation name, but document it as the **public grounded graph carrier** and plan a later rename to `InferredGraph` when the semantic dependency sidecar becomes explicit. Introducing a brand-new `Graph` beside `InferredTree` today risks duplicate authority; using `Graph` as prose keeps the principle clear without adding a second carrier.
+
+**Projection requests use a registry, not a closed enum.** Do not replace `CompileMode` with a larger closed `ProductionGoal = TranslateTo | Eval | GenerateInterface | ...` enum. Projection requests point at a producer reference:
+
+```
+type ProjectionRequest {
+  id: ArtifactRequestId
+  subject: ProjectionSubject
+  producer: ProjectionProducerRef
+  params: Node
+  requirement: ArtifactRequirement
+}
+```
+
+Examples: `emit_rust_source`, `eval_on_host`, `generate_rest_glue`, `generate_test_claims`, `generate_docs`. Each producer owns typed params and a projection subject. Compile-core does not name the registry entries.
+
+**RegionRef is low-level; subjects are refined per concern.** A low-level region reference can be shared, but lens scopes and projection subjects are not one universal `SubgraphScope`:
+
+```
+type RegionRef
+  = WholeTree
+  | DeclarationRegion { decl: DeclId }
+  | BoundaryRegion { boundary: SystemBoundaryId }
+  | DependencyClosedRegion { root: Node, witness: DependencyClosureWitness }
+
+type LensScope { region: RegionRef }
+
+type ProjectionSubject
+  = WholeProgramSubject
+  | DeclarationSubject { decl: DeclId, closure: DependencyClosureWitness }
+  | BoundarySubject { boundary: SystemBoundaryId, protocol: ProtocolModel }
+  | ClaimSetSubject { profile: TestProjectionProfile }
+```
+
+A lens can often run over any selected graph. An artifact projection cannot always be produced from any arbitrary region; its subject type records the extra closure/protocol/profile facts it requires.
 
 **The hard substrate work** that 1–6 imply:
 - A `LensAlgebra<F>` carrier shape that both built-ins and user-defined lenses satisfy.
@@ -1128,16 +1197,16 @@ The compiler scaffolds in `src/v4/compiler/` were authored across several ratifi
 
 | Scaffold | Current tree state | This doc's ratified contract | Status / migration |
 |---|---|---|---|
-| `00_compile.dag` `validate_then_compile` | `validate_then_compile(source, input_lang, lenses, mode) -> Outcome<Validated<CompileOutput>>`; manual TestClaims assert empty-lens bypass and rejecting-lens blocks. | No type-enforced lens-gated public terminal. Lens readings are data; project policy gates outside compile. | **Conflict.** Retire `Validated<T>`, `LensGateWitness`, and built-in gate semantics in a follow-up source reshape. |
-| `00_compile.dag` `CompileMode` | `CompileMode = TranslateTo { target } | Eval { host_interp }`, passed to `compile` and `validate_then_compile`. | Separate `translate(node, target)`, `eval(node, host)`, and artifact/interface projection functions. No public global mode enum. | **Conflict.** Split public surfaces first; retain internal staging only until callers migrate. |
+| `00_compile.dag` `validate_then_compile` | `validate_then_compile(source, input_lang, lenses, mode) -> Outcome<Validated<CompileOutput>>`; manual TestClaims assert empty-lens bypass and rejecting-lens blocks. | Session terminal: `ground -> observe -> project -> authorize`, with `authorize(...) -> Outcome<Validated<ArtifactSet>>`. Lens readings feed policy, not compile-core. | **Conflict in ownership/framing.** Keep `Validated<T>` as terminal-policy carrier, but move ownership out of compile-core and replace lens-as-compile-input with `LensPlan` / `LensReport`. |
+| `00_compile.dag` `CompileMode` | `CompileMode = TranslateTo { target } | Eval { host_interp }`, passed to `compile` and `validate_then_compile`. | Projection registry: `ProjectionRequest { producer: ProjectionProducerRef, subject, params, requirement }`. No closed compile/production enum. | **Conflict.** Split compile-core from projection planning; replace `CompileMode` with projection requests in the session layer. |
 | `00_compile.dag` legacy ingest | `Source = String` survives only for `compile_ingest_staging`. | Text is a peripheral `ingest_text` shim producing `Node`; compile-family operations consume `Node`. | **Staged.** Dissolve when `ingest_text` lands as a peripheral shim. |
 | `04_infer.dag` | No `v4.lens.*` import. `InferredFacts` carries `resolved_type`, `inhabits`, `descent`, and `canonical`. | No lens import in compiler core (P3 commitment 4). Cost and other dimensions are lens outputs over `InferredTree`, not infer facts. | **Lens-import violation resolved.** Keep this invariant: compiler core must not name a specific lens. |
 | `04_infer.dag` | `InferredFacts.canonical` carries a `CanonicalGroundingWitness`; the full P6 semantic dependency graph is not yet present on `InferredTree`. | Must produce *exactly one* canonical grounding per Node + the full P6 semantic dependency graph (`BindsTo`, `TypeDependsOn`, `DataDependsOn`, `EffectDependsOn`, `ResourceDependsOn`, `ModuleDependsOn`) | Canonical witness carrier is staged; finish producer semantics and add the P6 dependency graph facts. Surface ambiguity as a diagnostic in ground; translate never receives ambiguous source. |
 | `05_emit.dag` | `emit = serialize_target ∘ translate`; `serialize_source_for_emitted` is a fail-closed equality/stub pending inverse grammar walk. | Translate by exact coercion fold, then serialize via target grammar. P7 `LawfulRewriteWitness` is the future extension point for structure-changing lowerings. | **Staged, shape aligned.** Replace the emitted-tree equality stub with grammar-as-bidirectional-data serialization when C5 inverse grammar walk lands. |
 | `05_eval.dag` | Standalone "primary execution path" with TestClaim runner | `eval(host_model)` — structurally `translate-to-host` per P2; differs from translate only in the terminal action (execute, not serialize) | Share the homomorphism mechanic with translate. Eval-specific machinery is only the host-interpretation algebra + the terminal `execute` action. |
-| `lens/application.dag` | `apply_lens(lens, SectionRef, Introspect/Enforce)` is framed as the only advisory-to-fail-closed bridge; `SectionRef = DeclarationScope | NodeScope`. | Lens read should be `Node -> Reading`; caller chooses policy. No special subgraph/scope carrier for whole-vs-part. | **Conflict.** Collapse scope to the `Node` argument and move enforcement to caller policy composition. |
-| T-12/T-13 lens family | Cost/complexity headers already say `Node -> Witness<...>`; effect/parallelism/idempotency implementations currently take `InferredTree` plus dependency lists in helper functions. | Lens API takes a `Node` and returns a typed reading. Required inferred/dependency facts should be reachable through the node's carried facts or explicit reading context, not a separate gate shape. | **Mixed.** Preserve Node-read direction; rename/reshape `Witness`-as-gate framing into readings where it is only reporting. |
-| `affected_set.dag` / TASKS prose | Several carriers and comments name changed "subgraphs." | A changed region is represented by a `Node` frontier; no `Subgraph` substrate type. | **Terminology/audit follow-up.** Avoid introducing a `Subgraph` carrier; existing names are local frontier vocabulary until reshaped. |
+| `lens/application.dag` | `apply_lens(lens, SectionRef, Introspect/Enforce)` is framed as the only advisory-to-fail-closed bridge; `SectionRef = DeclarationScope | NodeScope`. | `observe(inferred, LensPlan) -> LensReport`; lens applications are data-producing reads. Authorization owns gating. | **Conflict.** Reframe `apply_lens` as graph read; move `Enforce` semantics to terminal policy. |
+| T-12/T-13 lens family | Cost/complexity headers already say `Node -> Witness<...>`; effect/parallelism/idempotency implementations currently take `InferredTree` plus dependency lists in helper functions. | Lens consumers take the grounded graph (`InferredTree` / future `InferredGraph`) and return typed readings. | **Mixed.** Preserve graph-read direction; distinguish proof witnesses from lens readings. |
+| `affected_set.dag` / TASKS prose | Several carriers and comments name changed "subgraphs." | Shared low-level `RegionRef`; refined `LensScope` / `ProjectionSubject`; no universal `SubgraphScope`. | **Terminology/audit follow-up.** Avoid introducing a universal subgraph carrier; existing names are local frontier vocabulary until reshaped. |
 | `std/artifact.dag` | Declares `ArtifactKind`, `Artifact`, and `NodeArtifactProvenance`. | Artifact identity exists as a narrow substrate; P8 regeneration still needs unified `Projection` / general `AffectedSet` / `RecomputePlan`. | **Declared narrow, not complete.** Do not claim full regeneration substrate until the unified cluster lands. |
 
 **This is not a STOP on T-9 / T-10 / T-22 implementation** — workers implementing those tasks should land the design-ratified contract, not preserve any staged placeholder against this doc. Where a row is marked resolved, do not reintroduce the old stale shape.
@@ -1159,16 +1228,16 @@ If a worker encounters a deeper scaffold-vs-design contradiction not catalogued 
 - `W-T-9-impl` (ground stage body — invokes `find_witness` with constraint-satisfaction predicate).
 - `W-T-10-impl` (translate body — invokes `find_witness` with exact-structural-equality predicate; plus serialize via grammar-as-bidir-data).
 - Outcome-shape migration (43 bootstrap/lens/compiler callsites — Worker C corrected scope).
-- Scaffold reconciles per the migration plan: split `00_compile` public surfaces, retire `Validated<T>` lens gating, collapse `apply_lens` toward Node-in readings, finish canonical/dependency facts in `04_infer`, land inverse grammar serialization in `05_emit`, integrate eval-to-host, and dissolve legacy ingest staging.
+- Scaffold reconciles per the migration plan: introduce the session four-phase split, reframe `Validated<T>` as terminal authorization over `ArtifactSet`, move lens enforcement to policy, replace `CompileMode` with projection registry requests, finish canonical/dependency facts in `04_infer`, land inverse grammar serialization in `05_emit`, integrate eval-to-host as a projection producer, and dissolve legacy ingest staging.
 
 ## Migration order — orthogonality reshape
 
-1. **Design-lock the read shape.** Define the lens surface as `Node -> Reading` and name which existing `Witness<T>` carriers are real structural proof witnesses versus readings currently shaped as witnesses.
-2. **Split public compile surfaces.** Replace public `compile(..., CompileMode)` / `validate_then_compile(...)` with separate translate/eval/artifact calls over `Node`. Keep internal staging only as long as needed for call-site migration.
-3. **Move gating to caller policy.** Retire `Validated<T>`, `LensGateWitness`, and rejecting-lens-as-compile-error semantics. A project wrapper may still block on readings, but the wrapper owns that policy.
-4. **Collapse lens scope vocabulary to Node.** Remove any need for a special whole-graph/subgraph distinction. If a caller wants a function-level reading, it passes that function's `Node`.
-5. **Prefer type-level invariants.** For checks like unused-parameter validity that can become refinements on `InferredTree` or earlier carriers, model the invariant directly. Keep measurement/report concerns as lens readings.
-6. **Then reshape artifacts.** Artifact generation remains a separate projection family over `Node` with `std/artifact.dag` as the identity/provenance home; do not bundle artifacts into compile results.
+1. **Name the public graph carrier.** Treat current `InferredTree` as the grounded graph carrier; decide whether the implementation rename to `InferredGraph` waits until P6 dependency facts are explicit.
+2. **Introduce session reports.** Add design/source follow-up for `LensPlan`, `LensReport`, `ProjectionPlan`, `ProjectionReport`, `TerminalPolicy`, `ArtifactSet`, and `CompileSessionResult`.
+3. **Reframe validation.** Keep `Validated<T>`, but move it to `authorize(policy, lens_report, projection_report) -> Outcome<Validated<ArtifactSet>>`. Retire `validate_then_compile` as compile-owned lens gating.
+4. **Replace `CompileMode`.** Add projection requests with `ProjectionProducerRef` registry entries and typed params; do not add a larger closed enum.
+5. **Refine scopes by concern.** Add/shared low-level `RegionRef`, then refine into `LensScope` and `ProjectionSubject` according to each consumer's constraints.
+6. **Prefer type-level invariants.** For checks like unused-parameter validity that can become refinements on `InferredTree` or earlier carriers, model the invariant directly. Keep measurement/report concerns as lens readings.
 
 **Out of scope for MVP** (deferred to follow-on waves; explicit defer with trigger):
 - **Eval / host interpretation** — `std/host.dag` + W-T-22-impl + W-EvalShim. Defer trigger: after MVP lands, when first end-to-end execution case (not codegen) is needed.
