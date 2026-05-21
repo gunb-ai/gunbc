@@ -114,14 +114,13 @@ fn declared_inhabitant_candidates(inhabitants_root: Node) -> List<Node> {
 fn coercion_candidate_set_from_declared_inhabitants(
   inhabitants_root: Node,
   closedness_property: Symbol,
-  closedness_evidence: Node,
 ) -> CoercionCandidateSet {
   CoercionCandidateSet {
     set: CandidateSet {
       candidates: declared_inhabitant_candidates(inhabitants_root: inhabitants_root),
       closedness: StructuralPropertyWitness {
         property: closedness_property,
-        evidence: closedness_evidence
+        evidence: inhabitants_root
       }
     }
   }

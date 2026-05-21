@@ -177,8 +177,7 @@ fn target_selection_priority_from_model(target: TargetModel) -> Outcome<Node> {
 // `declared_inhabitants` edge names one closed candidate-set root Node on the target bundle;
 // std/coercion constructs the closed candidate list consumed by find_witness.
 fn coercion_candidates_from_target_model(
-  target: TargetModel,
-  closedness_evidence: Node
+  target: TargetModel
 ) -> Outcome<CoercionCandidateSet> {
   bind_outcome(
     o: target_bundle_child(target: target, edge_name: target_model_edge_declared_inhabitants),
@@ -186,8 +185,7 @@ fn coercion_candidates_from_target_model(
       Accepted {
         value: coercion_candidate_set_from_declared_inhabitants(
           inhabitants_root: inhabitants_root,
-          closedness_property: target_model_edge_declared_inhabitants,
-          closedness_evidence: closedness_evidence
+          closedness_property: target_model_edge_declared_inhabitants
         ),
         diagnostics: None
       }
@@ -212,8 +210,7 @@ fn coerce_grounded_node(
         f: fn(priority) {
           bind_outcome(
             o: coercion_candidates_from_target_model(
-              target: target,
-              closedness_evidence: grounding.node
+              target: target
             ),
             f: fn(candidates) {
               coercion_fold_with_declared_priority(
