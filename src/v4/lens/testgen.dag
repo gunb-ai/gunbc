@@ -289,6 +289,15 @@ data t19_law_nat_mul_annihilator: Symbol = t19_law_nat_mul_annihilator
 data t19_law_nat_mul_associativity: Symbol = t19_law_nat_mul_associativity
 
 
+data t19_lbe_label_conj_dag_surface: String = "generated/lbe: Conj type-node matches dag LanguageModel surface (frozen snapshot)"
+
+
+data t19_lbe_label_disj_dag_surface: String = "generated/lbe: Disj type-node matches dag LanguageModel surface (frozen snapshot)"
+
+
+data t19_lbe_label_transform_dag_surface: String = "generated/lbe: Transform computation-node matches dag LanguageModel surface (frozen snapshot)"
+
+
 data t19_testgen_lens_file: Symbol = t19_testgen_lens_file
 
 
@@ -471,19 +480,19 @@ fn manual_test_claim_for_manual_anchor(key: T19ManualAnchorKey) -> Outcome<TestC
     T19ManualLbeConjDagSurface =>
       testgen_emit_language_behavior_equivalence_claim(
         anchor: T19ManualLbeConjDagSurface,
-        label: "generated/lbe: Conj type-node matches dag LanguageModel surface (frozen snapshot)",
+        label: t19_lbe_label_conj_dag_surface,
         mock: lbe_io_mock_conj_dag_surface()
       )
     T19ManualLbeDisjDagSurface =>
       testgen_emit_language_behavior_equivalence_claim(
         anchor: T19ManualLbeDisjDagSurface,
-        label: "generated/lbe: Disj type-node matches dag LanguageModel surface (frozen snapshot)",
+        label: t19_lbe_label_disj_dag_surface,
         mock: lbe_io_mock_disj_dag_surface()
       )
     T19ManualLbeTransformDagSurface =>
       testgen_emit_language_behavior_equivalence_claim(
         anchor: T19ManualLbeTransformDagSurface,
-        label: "generated/lbe: Transform computation-node matches dag LanguageModel surface (frozen snapshot)",
+        label: t19_lbe_label_transform_dag_surface,
         mock: lbe_io_mock_transform_dag_surface()
       )
   }

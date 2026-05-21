@@ -1,8 +1,8 @@
 // src/v4/test/claim/generated/language_behavior_equivalence.dag
 // Scope: T-19 LanguageBehaviorEquivalence — testgen-emitted claims with I/O mock + frozen snapshot runner receipts.
-// Owns: three LBE TestClaim families (Conj / Disj / Transform × dag surface), TestClaimRun rows, pass gates.
+// Owns: lbe_generated_*_claim (via testgen_emit), TestClaimRun rows, pass gates.
 // Consumes: v4.compiler.eval, v4.compiler.infer, v4.lens.testgen, v4.std.verification, v4.test.claim.manual.connective_anchors.
-// Status: generated corpus — bijection with testgen_scheduled_language_behavior_generators / testgen_emit_language_behavior_equivalence_claim.
+// Status: generated corpus — claims are testgen_emit output (not parallel literals); true codegen dissolves this module.
 
 module v4.test.claim.generated.language_behavior_equivalence
 
@@ -32,6 +32,7 @@ import v4.std.diagnostic {
   Accepted,
   None,
   Outcome,
+  Rejected,
   diagnostics_singleton
 }
 import v4.std.node { Atom, Hash, Node, Symbol, TypeNode }
@@ -47,15 +48,20 @@ import v4.lens.testgen {
   lbe_io_mock_conj_dag_surface,
   lbe_io_mock_disj_dag_surface,
   lbe_io_mock_transform_dag_surface,
+  t19_lbe_label_conj_dag_surface,
+  t19_lbe_label_disj_dag_surface,
+  t19_lbe_label_transform_dag_surface,
+  testgen_emit_language_behavior_equivalence_claim,
   testgen_scheduled_language_behavior_generators
 }
 import v4.std.verification {
   CompilesClaim,
   TestClaim,
-  TestClassification,
+  T19ManualAnchorKey,
   T19ManualLbeConjDagSurface,
   T19ManualLbeDisjDagSurface,
   T19ManualLbeTransformDagSurface,
+  TestClassification,
   Tier1,
   Unit,
   test_claim_input
@@ -75,8 +81,6 @@ data lbe_evaluator: Symbol = lbe_evaluator
 data lbe_resources: Symbol = lbe_resources
 data lbe_extdeps: Symbol = lbe_extdeps
 data eval_rejected_lbe_projection_deferred: Symbol = eval_rejected_lbe_projection_deferred
-
-
 fn lbe_symbol_node(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },
@@ -128,6 +132,52 @@ fn lbe_eval_context() -> EvalContext {
 }
 
 
+fn lbe_claim_from_testgen_emit(
+  anchor: T19ManualAnchorKey,
+  label: String,
+  mock: LanguageBehaviorIoMock
+) -> TestClaim {
+  match testgen_emit_language_behavior_equivalence_claim(anchor: anchor, label: label, mock: mock) {
+    Accepted { value: claim, diagnostics: None } => claim
+    Rejected { diagnostics: _ } =>
+      CompilesClaim {
+        label: label,
+        t19_anchor: anchor,
+        input: mock.snapshot.input_node,
+        expected_value: mock.snapshot.input_node,
+        classification: TestClassification { tier: Tier1, layer: Unit }
+      }
+  }
+}
+
+
+fn lbe_generated_conj_claim() -> TestClaim {
+  lbe_claim_from_testgen_emit(
+    anchor: T19ManualLbeConjDagSurface,
+    label: t19_lbe_label_conj_dag_surface,
+    mock: lbe_io_mock_conj_dag_surface()
+  )
+}
+
+
+fn lbe_generated_disj_claim() -> TestClaim {
+  lbe_claim_from_testgen_emit(
+    anchor: T19ManualLbeDisjDagSurface,
+    label: t19_lbe_label_disj_dag_surface,
+    mock: lbe_io_mock_disj_dag_surface()
+  )
+}
+
+
+fn lbe_generated_transform_claim() -> TestClaim {
+  lbe_claim_from_testgen_emit(
+    anchor: T19ManualLbeTransformDagSurface,
+    label: t19_lbe_label_transform_dag_surface,
+    mock: lbe_io_mock_transform_dag_surface()
+  )
+}
+
+
 fn lbe_mock_actual(mock: LanguageBehaviorIoMock) -> Outcome<Node> {
   Accepted {
     value: mock.snapshot.expected_value,
@@ -148,35 +198,8 @@ fn lbe_run_test_claim_assert_from_mock(
 }
 
 
-data generated_lbe_conj_claim: TestClaim = CompilesClaim {
-  label: "generated/lbe: Conj type-node matches dag LanguageModel surface (frozen snapshot)",
-  t19_anchor: T19ManualLbeConjDagSurface,
-  input: stub_empty_conj,
-  expected_value: stub_empty_conj,
-  classification: TestClassification { tier: Tier1, layer: Unit }
-}
-
-
-data generated_lbe_disj_claim: TestClaim = CompilesClaim {
-  label: "generated/lbe: Disj type-node matches dag LanguageModel surface (frozen snapshot)",
-  t19_anchor: T19ManualLbeDisjDagSurface,
-  input: stub_empty_disj,
-  expected_value: stub_empty_disj,
-  classification: TestClassification { tier: Tier1, layer: Unit }
-}
-
-
-data generated_lbe_transform_claim: TestClaim = CompilesClaim {
-  label: "generated/lbe: Transform computation-node matches dag LanguageModel surface (frozen snapshot)",
-  t19_anchor: T19ManualLbeTransformDagSurface,
-  input: stub_empty_transform,
-  expected_value: stub_empty_transform,
-  classification: TestClassification { tier: Tier1, layer: Unit }
-}
-
-
 data witness_lbe_conj_snapshot_pass: Bool = match lbe_run_test_claim_assert_from_mock(
-  claim: generated_lbe_conj_claim,
+  claim: lbe_generated_conj_claim(),
   mock: lbe_io_mock_conj_dag_surface()
 ) {
   Pass => true
@@ -186,7 +209,7 @@ data witness_lbe_conj_snapshot_pass: Bool = match lbe_run_test_claim_assert_from
 
 
 data witness_lbe_disj_snapshot_pass: Bool = match lbe_run_test_claim_assert_from_mock(
-  claim: generated_lbe_disj_claim,
+  claim: lbe_generated_disj_claim(),
   mock: lbe_io_mock_disj_dag_surface()
 ) {
   Pass => true
@@ -196,7 +219,7 @@ data witness_lbe_disj_snapshot_pass: Bool = match lbe_run_test_claim_assert_from
 
 
 data witness_lbe_transform_snapshot_pass: Bool = match lbe_run_test_claim_assert_from_mock(
-  claim: generated_lbe_transform_claim,
+  claim: lbe_generated_transform_claim(),
   mock: lbe_io_mock_transform_dag_surface()
 ) {
   Pass => true
@@ -216,26 +239,27 @@ fn lbe_subject_from_claim(claim: TestClaim) -> TestClaimEvalSubject<Node> {
 }
 
 
-data run_lbe_conj_via_run_test_claim: TestClaimRun<Node> = run_test_claim(
-  subject: lbe_subject_from_claim(claim: generated_lbe_conj_claim),
-  claim_hash: claim_hash_placeholder,
-  evaluator_hash: evaluator_hash_placeholder,
-  resources_hash: resources_hash_placeholder,
-  extdeps_hash: extdeps_hash_placeholder
-)
-
-
-data gate_lbe_conj_run_test_claim_pass: Verdict<TestClaimRun<Node>> = match run_lbe_conj_via_run_test_claim.verdict {
-  Pass => Pass
-  Fail { actual: _ } => Fail { actual: run_lbe_conj_via_run_test_claim.verdict }
-  Deferred { actual: _, diagnostic: _ } => Deferred {
-    actual: run_lbe_conj_via_run_test_claim.verdict,
-    diagnostic: eval_diagnostic(reason: eval_rejected_lbe_projection_deferred, node: stub_empty_conj)
-  }
+fn lbe_run_via_test_claim(claim: TestClaim) -> TestClaimRun<Node> {
+  run_test_claim(
+    subject: lbe_subject_from_claim(claim: claim),
+    claim_hash: claim_hash_placeholder,
+    evaluator_hash: evaluator_hash_placeholder,
+    resources_hash: resources_hash_placeholder,
+    extdeps_hash: extdeps_hash_placeholder
+  )
 }
+
+
+data run_lbe_conj_via_run_test_claim: TestClaimRun<Node> = lbe_run_via_test_claim(claim: lbe_generated_conj_claim())
+
+
+data run_lbe_disj_via_run_test_claim: TestClaimRun<Node> = lbe_run_via_test_claim(claim: lbe_generated_disj_claim())
+
+
+data run_lbe_transform_via_run_test_claim: TestClaimRun<Node> = lbe_run_via_test_claim(claim: lbe_generated_transform_claim())
 
 
 data witness_testgen_schedules_three_lbe_generators: Bool = (length(xs: testgen_scheduled_language_behavior_generators()) == 3)
 
 
-data witness_dag_surface_language_identity: Bool = (dag_language_model_surface_id == dag_language_model_surface_id)
+data witness_dag_surface_language_identity: Bool = (lbe_io_mock_conj_dag_surface().snapshot.language == dag_language_model_surface_id)

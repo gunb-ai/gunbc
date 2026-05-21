@@ -45,7 +45,10 @@ fn t19_language_behavior_equivalence_generated_claims_parse() {
 fn t19_language_behavior_equivalence_run_test_claim_receipts_present() {
     assert!(
         LBE_GENERATED_DAG.contains("fn run_test_claim(")
+            && LBE_GENERATED_DAG.contains("fn lbe_claim_from_testgen_emit")
             && LBE_GENERATED_DAG.contains("data run_lbe_conj_via_run_test_claim: TestClaimRun<Node>")
+            && LBE_GENERATED_DAG.contains("data run_lbe_disj_via_run_test_claim: TestClaimRun<Node>")
+            && LBE_GENERATED_DAG.contains("data run_lbe_transform_via_run_test_claim: TestClaimRun<Node>")
             && LBE_GENERATED_DAG.contains("run_test_claim_assert(")
             && LBE_GENERATED_DAG.contains("witness_lbe_conj_snapshot_pass")
             && LBE_GENERATED_DAG.contains("witness_lbe_disj_snapshot_pass")
