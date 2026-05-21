@@ -2,7 +2,7 @@
 // Scope: dissolution-lens subsumption ordering carrier for root fixes that mechanically close leaf fixes.
 // Owns: DiffId, TestClaimId, ProducerStageId, SubsumptionVerification, DissolutionSubsumption, concept_home_rewrite_subsumption.
 // Consumes: v4.std.collection, v4.std.node.
-// Status: scaffold — producer-stage row lands first; MechanicalReverification rows wait for lens-CI runtime.
+// Status: scaffold; gated coproduct binding is on SubsumptionVerification.
 
 module v4.lens.subsumption
 
@@ -32,7 +32,7 @@ type ProducerStageId {
 }
 
 
-// 🟡 coproduct dissolution — feature:lens-subsumption-mechanical-runtime.
+// 🟡 coproduct dissolution — feature:lens-subsumption-mechanical-runtime; task:node://adhoc-0a13e0b0-dff; dissolve-on:node://adhoc-f3d84232-824 converts to 🟢 after MechanicalReverification rows land.
 type SubsumptionVerification
   = MechanicalReverification { test_claim: TestClaimId }
   | ProducerStageDerivation { derivation_path: List<ProducerStageId> }
