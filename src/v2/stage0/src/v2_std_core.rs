@@ -158,15 +158,15 @@ pub fn inferred_to_node(inferred: Rc<InferredNode>) -> Option<Rc<Node>> {
     match (*inferred).clone() {
         InferredNode::Resolved { node: n, .. } => Some(n.clone()),
         InferredNode::CompilerError { .. } => None,
-        InferredNode::TypeVariable { .. } => None,
+        InferredNode::TypeVariable { id: _, .. } => None,
     }
 }
 
 pub fn is_compiler_error(inferred: Rc<InferredNode>) -> bool {
     match (*inferred).clone() {
-        InferredNode::Resolved { .. } => false,
+        InferredNode::Resolved { node: _, .. } => false,
         InferredNode::CompilerError { .. } => true,
-        InferredNode::TypeVariable { .. } => false,
+        InferredNode::TypeVariable { id: _, .. } => false,
     }
 }
 
@@ -1493,7 +1493,7 @@ pub fn is_tree_size_preserving(func_name: String) -> bool {
         .cloned()
     {
         Some(FunctionSizeEffect::TreeSizePreserving) => true,
-        Some(FunctionSizeEffect::PropertyContraction { .. }) => true,
+        Some(FunctionSizeEffect::PropertyContraction { domain_size: _, .. }) => true,
         _ => false,
     }
 }
@@ -1513,7 +1513,7 @@ pub fn is_property_contraction(func_name: String) -> bool {
         .as_deref()
         .cloned()
     {
-        Some(FunctionSizeEffect::PropertyContraction { .. }) => true,
+        Some(FunctionSizeEffect::PropertyContraction { domain_size: _, .. }) => true,
         _ => false,
     }
 }
@@ -2152,7 +2152,10 @@ pub fn find_property_string(
 ) -> Option<String> {
     match find_property(props, prop_name, source_indices) {
         Some(n) => match (*n.expr_data.clone()).clone() {
-            ExprData::ExprLiteral { ref value, .. } => {
+            ExprData::ExprLiteral {
+                value: LiteralValue::LitStr { value: s, .. },
+                ..
+            } => {
                 let LiteralValue::LitStr { value: s, .. } = value.as_ref() else {
                     unreachable!()
                 };
@@ -2485,9 +2488,11 @@ pub fn expr_has_non_tail_self_call(
                 }
             }
             ExprData::ExprError { .. } => false,
-            ExprData::ExprVar { .. } => false,
-            ExprData::ExprLiteral { .. } => false,
-            ExprData::ExprFieldAccess { .. } => {
+            ExprData::ExprVar {
+                binding_kind: _, ..
+            } => false,
+            ExprData::ExprLiteral { value: _, .. } => false,
+            ExprData::ExprFieldAccess { summary: _, .. } => {
                 let mut __found = false;
                 for child in texpr.children.clone().iter().cloned() {
                     if expr_has_non_tail_self_call(&child, &fn_name, false, &source_indices) {
@@ -2497,7 +2502,10 @@ pub fn expr_has_non_tail_self_call(
                 }
                 __found
             }
-            ExprData::ExprMethodCall { .. } => {
+            ExprData::ExprMethodCall {
+                method_semantics: _,
+                ..
+            } => {
                 let mut __found = false;
                 for child in texpr.children.clone().iter().cloned() {
                     if expr_has_non_tail_self_call(&child, &fn_name, false, &source_indices) {
