@@ -535,6 +535,18 @@ fn compose_sub_value_relations(arg_rel: SubValueRelation, callee_rel: SubValueRe
     ArithmeticDescent { param: p, factor: f } =>
       match arg_rel {
         PreservedValue => ArithmeticDescent { param: p, factor: f }
+        SubValueUnknown => SubValueUnknown
+        // Lawful non-structural inhabitants on the arg side cannot strengthen back
+        // to `ArithmeticDescent` (the structural witness requires the arg to be the
+        // callee's exact parameter, which only `PreservedValue` certifies), so they
+        // flow through at the same lattice level rather than collapsing to ⊥ — same
+        // posture as the `StrictSubValue` / `IteratedSubValue` callee arms above.
+        NonIncreasingValue => NonIncreasingValue
+        IncomparableValue => IncomparableValue
+        // Cross-axis structural composition (caller-side structural witness on a
+        // different dimension than the callee's arithmetic dimension) preserves the
+        // prior fail-closed posture — a separate composition-semantics question from
+        // the lattice-lawfulness reshape this PR ratified.
         _ => SubValueUnknown
       }
   }
