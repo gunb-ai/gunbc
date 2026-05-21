@@ -119,7 +119,6 @@ data prelude_carve_out_claim: LensStructuralResolutionClaim = LensStructuralReso
   expected: StructuralResolutionFact {
     dependencies: [
       StructuralResolutionDependencyFact {
-        at: sr_mod_child,
         dependency: sr_mod_dependency,
         source_facts: Holds { value: sr_mod_claim_facts() },
         dependent_facts: Holds { value: sr_mod_claim_facts() }

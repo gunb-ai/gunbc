@@ -52,6 +52,8 @@ import v4.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
 
 data sr_unbound_root_symbol: Symbol = sr_unbound_root_symbol
 data sr_unbound_child_symbol: Symbol = sr_unbound_child_symbol
+data sr_unbound_bind_outer_symbol: Symbol = sr_unbound_bind_outer_symbol
+data sr_unbound_bind_inner_symbol: Symbol = sr_unbound_bind_inner_symbol
 data sr_unbound_type_symbol: Symbol = sr_unbound_type_symbol
 data sr_unbound_algebra_symbol: Symbol = sr_unbound_algebra_symbol
 data sr_unbound_algebra_witness_symbol: Symbol = sr_unbound_algebra_witness_symbol
@@ -67,10 +69,15 @@ fn sr_unbound_claim_node(s: Symbol) -> Node {
 
 data sr_unbound_child: Node = sr_unbound_claim_node(s: sr_unbound_child_symbol)
 
+data sr_unbound_bind_outer: Node = sr_unbound_claim_node(s: sr_unbound_bind_outer_symbol)
+data sr_unbound_bind_inner: Node = sr_unbound_claim_node(s: sr_unbound_bind_inner_symbol)
+
 data sr_unbound_root: Node = Node {
-  kind: TypeNode { connective: Atom { identity: sr_unbound_root_symbol } },
+  kind: ComputationNode { behavior: Bind },
   children: [
-    Edge { label: Named { name: dependency_binds_to_edge }, target: sr_unbound_child }
+    Edge { label: Named { name: dependency_binds_to_edge }, target: sr_unbound_child },
+    Edge { label: Positional, target: sr_unbound_bind_outer },
+    Edge { label: Positional, target: sr_unbound_bind_inner }
   ]
 }
 
