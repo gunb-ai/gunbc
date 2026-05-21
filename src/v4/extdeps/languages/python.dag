@@ -1,8 +1,8 @@
 // src/v4/extdeps/languages/python.dag
-// Scope: Python 3.14 Reference LanguageModel wave-1 — scalar fact-bundles + ModelCore (no lex/grammar/MVP yet — that lives behind T-11 rust-first specialization).
+// Scope: Python 3.14 Reference primitive fact-bundles + a wave-1 ModelCore staging carrier (no PythonLanguageModel / lex / grammar / MVP yet — those land behind T-11 rust-first specialization). `python_model_core_wave1` is an E-6(b) consumer-less scaffold, marked at its declaration with the dissolution trigger.
 // Owns: PythonSingletonKind, PythonScalar, PythonCost, PythonIntegerPrimitiveFacts, PythonFloatPrimitiveFacts, PythonComplexPrimitiveFacts, PythonBoolPrimitiveFacts, PythonSingletonPrimitiveFacts, python_*_facts, python_*_facts_catalog, python_facts_node, python_*_primitive_bundle, python_model_core_wave1, py_bool_grounding.
 // Consumes: v4.std.model_core (ModelCore + axis symbols), v4.std.collection, v4.std.node, v4.std.logic, v4.std.algebra.
-// Status: T-4 python slice — Python Reference primitives (not CPython library types); int is honestly width-axis-omitted (unbounded — see C-PYINT below); ModelCore.primitives filled via fold; inhabitance/laws/effects/partiality empty (wave-2+). canonical-B bool decl-ref is 🟡 E-6(b) staging (mirrors rust slice).
+// Status: T-4 python slice — Python Reference primitives (not CPython library types); int is honestly width-axis-omitted (unbounded — see C-PYINT below); ModelCore.primitives filled via fold; inhabitance/laws/effects/partiality empty (wave-2+); `python_model_core_wave1` itself is 🟡 E-6(b) consumer-less until PythonLanguageModel lands (wave-2). canonical-B bool decl-ref is 🟡 E-6(b) staging (mirrors rust slice).
 // Anchor: https://docs.python.org/3.14/reference/datamodel.html
 //
 // C-PYINT — Python `int` carries no `width` / `signedness` / `overflow_disposition` axis.
@@ -502,9 +502,13 @@ fn python_wave1_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
   )
 }
 
-// 🟡 wave-1 ModelCore — inhabitance / laws / effects / partiality empty (dissolve-on: T-9
-// infer + per-operator partiality discharge bind under T-33 effect/partiality substrate;
-// pattern mirrors `rust_model_core_wave1`).
+// 🟡 needs-more-work — feature:python-language-model-wave1-consumer — E-6(b) bounded
+// exception — scaffold: T-4 python slice has no PythonLanguageModel carrier yet (lex /
+// grammar / MVP / canonical_symbols / language_identity are T-11 rust-first specialization
+// follow-on work), so this ModelCore is consumer-less in-tree. Dissolve-on: PythonLanguageModel
+// (mirroring RustLanguageModel) lands and binds `core: python_model_core_wave1()`.
+// Inhabitance / laws / effects / partiality stay empty until T-9 infer + T-33
+// effect/partiality substrate bind per-operator (separate, additive dissolution).
 fn python_model_core_wave1() -> ModelCore {
   ModelCore {
     primitives: python_wave1_primitive_fact_bundles(),
