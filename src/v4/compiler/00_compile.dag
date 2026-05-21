@@ -52,7 +52,7 @@ fn compile(source: Source, target: TargetModel) -> Outcome<TargetSource> {
   Rejected {
     diagnostics: diagnostics_singleton(
       d: compile_pipeline_not_realized_diagnostic(
-        at: PortLocus { port: compile_stage_locus_port }
+        at: PortLocus { anchor: LocusAnchor { at: compile_stage_locus_port } }
       )
     )
   }

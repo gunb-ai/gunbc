@@ -76,7 +76,7 @@ data anchor_stub_inferred_facts: InferredFacts = InferredFacts {
   descent: Violates {
     diagnostic: Diagnostic {
       reason: anchor_stub_descent_not_derived,
-      at: NodeLocus { node: anchor_stub_empty_conj },
+      at: NodeLocus { anchor: LocusAnchor { at: anchor_stub_empty_conj } },
       correction: Unavailable { reason: ExternalContractUnknown }
     }
   },
@@ -89,7 +89,7 @@ data anchor_stub_empty_facts_map: Map<Node, InferredFacts> = Map {
     Violates {
       diagnostic: Diagnostic {
         reason: anchor_facts_map_lookup_not_realized,
-        at: PortLocus { port: anchor_facts_map_lookup_not_realized },
+        at: PortLocus { anchor: LocusAnchor { at: anchor_facts_map_lookup_not_realized } },
         correction: Unavailable { reason: ExternalContractUnknown }
       }
     }

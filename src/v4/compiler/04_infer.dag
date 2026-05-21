@@ -79,7 +79,7 @@ data infer_facts_lookup_miss: Symbol = infer_facts_lookup_miss
 fn infer_facts_lookup_miss_diagnostic(key: Node) -> Diagnostic {
   Diagnostic {
     reason: infer_facts_lookup_miss,
-    at: NodeLocus { node: key },
+    at: NodeLocus { anchor: LocusAnchor { at: key } },
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
@@ -88,7 +88,7 @@ fn infer_facts_lookup_miss_diagnostic(key: Node) -> Diagnostic {
 fn infer_descent_not_derived_diagnostic(n: Node) -> Diagnostic {
   Diagnostic {
     reason: infer_descent_not_derived,
-    at: NodeLocus { node: n },
+    at: NodeLocus { anchor: LocusAnchor { at: n } },
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }

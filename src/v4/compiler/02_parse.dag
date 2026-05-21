@@ -211,7 +211,7 @@ fn grammar_to_node(grammar: Grammar) -> Node {
 
 fn parse(tokens: TokenStream, grammar: Grammar) -> Outcome<ParseTree> {
   let at = PortLocus {
-    port: parse_stage_locus_port
+    anchor: LocusAnchor { at: parse_stage_locus_port }
   }
   let ntok = count(tokens.tokens)
   let grammar_node = grammar_to_node(grammar: grammar)

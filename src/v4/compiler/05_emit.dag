@@ -40,7 +40,7 @@ data emit_serialize_emitted_mismatch: Symbol = emit_serialize_emitted_mismatch
 fn emit_serialize_emitted_mismatch_diagnostic(emitted: Node, target: TargetModel) -> Diagnostic {
   Diagnostic {
     reason: emit_serialize_emitted_mismatch,
-    at: NodeLocus { node: emitted },
+    at: NodeLocus { anchor: LocusAnchor { at: emitted } },
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }

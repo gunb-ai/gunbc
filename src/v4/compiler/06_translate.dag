@@ -76,7 +76,7 @@ data translate_canonical_grounding_not_realized: Symbol = translate_canonical_gr
 fn translate_target_bundle_malformed_diagnostic(target: TargetModel) -> Diagnostic {
   Diagnostic {
     reason: translate_target_bundle_malformed,
-    at: NodeLocus { node: target },
+    at: NodeLocus { anchor: LocusAnchor { at: target } },
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
@@ -86,7 +86,7 @@ fn translate_target_bundle_duplicate_edge_diagnostic(
 ) -> Diagnostic {
   Diagnostic {
     reason: translate_target_bundle_duplicate_edge,
-    at: NodeLocus { node: target },
+    at: NodeLocus { anchor: LocusAnchor { at: target } },
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
@@ -123,14 +123,14 @@ fn target_bundle_child_lookup_step(
 fn translate_target_source_not_realized_diagnostic() -> Diagnostic {
   Diagnostic {
     reason: translate_target_source_not_realized,
-    at: PortLocus { port: translate_stage_locus_port },
+    at: PortLocus { anchor: LocusAnchor { at: translate_stage_locus_port } },
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 fn translate_canonical_grounding_not_realized_diagnostic(node: Node) -> Diagnostic {
   Diagnostic {
     reason: translate_canonical_grounding_not_realized,
-    at: NodeLocus { node: node },
+    at: NodeLocus { anchor: LocusAnchor { at: node } },
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }

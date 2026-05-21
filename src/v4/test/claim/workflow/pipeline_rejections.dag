@@ -200,7 +200,7 @@ fn workflow_inferred_facts() -> InferredFacts {
     descent: Violates {
       diagnostic: Diagnostic {
         reason: inferred_descent_not_derived,
-        at: NodeLocus { node: resolved },
+        at: NodeLocus { anchor: LocusAnchor { at: resolved } },
         correction: Unavailable { reason: ExternalContractUnknown }
       }
     },

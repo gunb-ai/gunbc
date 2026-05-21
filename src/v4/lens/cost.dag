@@ -176,7 +176,7 @@ fn unknown_cost(reason: String) -> SymbolicCost {
 fn symbolic_cost_diagnostic(n: Node) -> Diagnostic {
   Diagnostic {
     reason: cost_reason_unmodeled_symbolic_cost,
-    at: NodeLocus { node: n },
+    at: NodeLocus { anchor: LocusAnchor { at: n } },
     correction: Unavailable { reason: AmbiguousIntent }
   }
 }

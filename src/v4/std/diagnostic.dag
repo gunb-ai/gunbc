@@ -5,7 +5,7 @@
 //       bind_outcome, diagnostics_merge, rejected_with_pending,
 //       eq, locus_eq, correction_eq, diagnostic_eq, outcome_node_eq,
 //       diagnostics_eq, non_empty_diagnostics_append,
-//       Locus, Extent, Correction, NoCorrectionReason.
+//       Locus, LocusAnchor, Extent, Correction, NoCorrectionReason.
 // Consumes: std node (List/fold/count are prelude — no collection import; avoids diagnostic↔witness cycle).
 // Status: T-3 modeled; Wave-2-BC3 Outcome ratification (Ratified Q11).
 
@@ -18,11 +18,14 @@ import v4.std.node { Node }
 type Extent
   = WholeFile
   | ByteRange { start: Int, end: Int }
+type LocusAnchor<A> {
+  at: A
+}
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type Locus
   = Textual { file: Symbol, extent: Extent }
-  | NodeLocus { node: Node }
-  | PortLocus { port: Symbol }
+  | NodeLocus { anchor: LocusAnchor<Node> }
+  | PortLocus { anchor: LocusAnchor<Symbol> }
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type NoCorrectionReason
   = UserInputBoundary
@@ -81,18 +84,18 @@ fn locus_eq(a: Locus, b: Locus) -> Bool {
   match a {
     Textual { file: fa, extent: ea } => match b {
       Textual { file: fb, extent: eb } => (fa == fb) && eq(a: ea, b: eb)
-      NodeLocus { node: _ } => false
-      PortLocus { port: _ } => false
+      NodeLocus { anchor: _ } => false
+      PortLocus { anchor: _ } => false
     }
-    NodeLocus { node: na } => match b {
+    NodeLocus { anchor: LocusAnchor { at: na } } => match b {
       Textual { file: _, extent: _ } => false
-      NodeLocus { node: nb } => na == nb
-      PortLocus { port: _ } => false
+      NodeLocus { anchor: LocusAnchor { at: nb } } => na == nb
+      PortLocus { anchor: _ } => false
     }
-    PortLocus { port: pa } => match b {
+    PortLocus { anchor: LocusAnchor { at: pa } } => match b {
       Textual { file: _, extent: _ } => false
-      NodeLocus { node: _ } => false
-      PortLocus { port: pb } => pa == pb
+      NodeLocus { anchor: _ } => false
+      PortLocus { anchor: LocusAnchor { at: pb } } => pa == pb
     }
   }
 }
