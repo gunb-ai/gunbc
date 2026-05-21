@@ -2,7 +2,7 @@
 // Scope: Java SE Language Specification (JLS) LanguageModel — scalar fact-bundles, inhabitants, bidirectional grammar data.
 // Owns: JavaScalar, JavaIntegerPrimitiveFacts, JavaFloatPrimitiveFacts, JavaNonIntegerPrimitiveFacts, JavaLanguageModel, java_*_facts, java_*_inhabitant_node, java_declared_inhabitants_root, java_mvp1_target_model, java_wave1_* grammar/lex.
 // Consumes: v4.compiler.parse, v4.compiler.tokenize, v4.std.collection, v4.std.model_core, v4.std.target_model, v4.std.node, v4.std.logic, v4.std.algebra, v4.std.text.
-// Status: T-4 java slice — JLS §4.2 primitives (byte/short/int/long/float/double/boolean/char; not java.lang.String) plus `void` in declared-inhabitant catalogs only (`VoidScalar` is a return-type keyword per JLS §4.3, not a §4.2 primitive — rust.dag `UnitScalar` parity for target-model scaffolding); `core: ModelCore` (#3474) primitives + surface-symbol membership from `java_*_facts_catalog` via fold; canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/target_model.dag; MVP-1 grammar/token substrate for T-10 (literal Node round-trip still 🟡); bool canonical-B decl-ref — 🟡 E-6(b) staging.
+// Status: T-4 java slice — JLS §4.2 primitives (byte/short/int/long/float/double/boolean/char integral per §4.2.1; not java.lang.String); `void` declared-inhabitant-only (JLS §4.3, excluded from ModelCore.primitives); `core: ModelCore` (#3474) primitives + surface-symbol membership from `java_*_facts_catalog` via fold; canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/target_model.dag; MVP-1 grammar/token substrate for T-10 (literal Node round-trip still 🟡); bool canonical-B decl-ref — 🟡 E-6(b) staging.
 // Anchor: https://docs.oracle.com/javase/specs/jls/se21/html/jls-4.html#jls-4.2
 
 module v4.extdeps.languages.java
@@ -110,8 +110,6 @@ type JavaFloatPrimitiveFacts {
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type JavaNonIntegerScalar
   = BoolScalar
-  | CharScalar
-  | VoidScalar
 
 type JavaNonIntegerPrimitiveFacts {
   surface_spelling: Symbol
@@ -337,19 +335,13 @@ data java_facts_boolean: JavaNonIntegerPrimitiveFacts = JavaNonIntegerPrimitiveF
   representation: java_repr_boolean,
 }
 
-data java_facts_char: JavaNonIntegerPrimitiveFacts = JavaNonIntegerPrimitiveFacts {
+// JLS §4.2.1 — char is a 16-bit unsigned integral type (UTF-16 code unit).
+data java_facts_char: JavaIntegerPrimitiveFacts = JavaIntegerPrimitiveFacts {
   surface_spelling: java_surface_spelling_char,
-  scalar: CharScalar,
+  signedness: Unsigned,
+  width: Bits16,
+  overflow_release: TwoComplementWrap,
   std_projection: java_std_projection_char,
-  representation: java_char_utf16_code_unit,
-}
-
-// `void` — return-type keyword (JLS §4.3), not a §4.2 primitive; cataloged for declared-inhabitants / target-model parity with rust `UnitScalar`.
-data java_facts_void: JavaNonIntegerPrimitiveFacts = JavaNonIntegerPrimitiveFacts {
-  surface_spelling: java_surface_spelling_void,
-  scalar: VoidScalar,
-  std_projection: java_std_projection_void,
-  representation: java_repr_void,
 }
 
 // Sole primitive-fact list authorities — ModelCore.primitives and catalog surface_symbol membership derive via fold.
@@ -358,6 +350,7 @@ data java_integer_facts_catalog: List<JavaIntegerPrimitiveFacts> = [
   java_facts_short,
   java_facts_int,
   java_facts_long,
+  java_facts_char,
 ]
 
 data java_float_facts_catalog: List<JavaFloatPrimitiveFacts> = [
@@ -365,11 +358,9 @@ data java_float_facts_catalog: List<JavaFloatPrimitiveFacts> = [
   java_facts_double,
 ]
 
-// §4.2 non-integer primitives (boolean, char) + `void` scaffolding (see `java_facts_void` comment).
+// §4.2 boolean only — char is integral (integer catalog); void is declared-inhabitant-only (not ModelCore).
 data java_noninteger_facts_catalog: List<JavaNonIntegerPrimitiveFacts> = [
   java_facts_boolean,
-  java_facts_char,
-  java_facts_void,
 ]
 
 // 🟡 canonical-B decl-ref · E-6(b) bounded-exception · scaffold feature:canonical-b-grounding-consumer · dissolve-on: B1-CANON+zip-fold consume (ledger: B1·T-9/C1 · grounding-worked-examples.md §0)
@@ -436,7 +427,6 @@ fn java_scalar_node(scalar: JavaScalar) -> Node {
       ]
     }
     BoolScalar => java_inhabitant_atom(id: java_tag_scalar_bool)
-    CharScalar => java_inhabitant_atom(id: java_tag_scalar_char)
     VoidScalar => java_inhabitant_atom(id: java_tag_scalar_void)
   }
 }
@@ -444,8 +434,13 @@ fn java_scalar_node(scalar: JavaScalar) -> Node {
 fn java_noninteger_scalar_as_java_scalar(scalar: JavaNonIntegerScalar) -> JavaScalar {
   match scalar {
     BoolScalar => BoolScalar
-    CharScalar => CharScalar
-    VoidScalar => VoidScalar
+  }
+}
+
+fn java_integer_encoding_fact(facts: JavaIntegerPrimitiveFacts) -> Node {
+  match facts.signedness {
+    Unsigned => java_inhabitant_atom(id: java_char_utf16_code_unit)
+    Signed => java_inhabitant_atom(id: java_repr_integer_twos_complement)
   }
 }
 
@@ -580,8 +575,19 @@ fn java_inhabitant_long_node() -> Node { java_integer_inhabitant_node(id: java_i
 fn java_inhabitant_float_node() -> Node { java_float_inhabitant_node(id: java_inhabitant_float, facts: java_facts_float) }
 fn java_inhabitant_double_node() -> Node { java_float_inhabitant_node(id: java_inhabitant_double, facts: java_facts_double) }
 fn java_inhabitant_boolean_node() -> Node { java_noninteger_inhabitant_node(id: java_inhabitant_boolean, facts: java_facts_boolean) }
-fn java_inhabitant_char_node() -> Node { java_noninteger_inhabitant_node(id: java_inhabitant_char, facts: java_facts_char) }
-fn java_inhabitant_void_node() -> Node { java_noninteger_inhabitant_node(id: java_inhabitant_void, facts: java_facts_void) }
+fn java_inhabitant_char_node() -> Node { java_integer_inhabitant_node(id: java_inhabitant_char, facts: java_facts_char) }
+fn java_void_declared_inhabitant_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      java_named_edge(name: java_inhabitant_field_atom, target: java_inhabitant_atom(id: java_inhabitant_void)),
+      java_named_edge(
+        name: java_inhabitant_field_facts,
+        target: java_scalar_node(scalar: VoidScalar)
+      )
+    ]
+  }
+}
 
 fn java_named_edge(name: Symbol, target: Node) -> Edge {
   Edge { label: Named { name: name }, target: target }
@@ -604,7 +610,7 @@ fn java_declared_inhabitants_root() -> Node {
       java_named_edge(name: java_inhabitant_field_double, target: java_inhabitant_double_node()),
       java_named_edge(name: java_inhabitant_field_boolean, target: java_inhabitant_boolean_node()),
       java_named_edge(name: java_inhabitant_field_char, target: java_inhabitant_char_node()),
-      java_named_edge(name: java_inhabitant_field_void, target: java_inhabitant_void_node()),
+      java_named_edge(name: java_inhabitant_field_void, target: java_void_declared_inhabitant_node()),
     ]
   }
 }
@@ -681,16 +687,12 @@ fn java_mvp1_positional_token_edge(token: JavaConcreteSyntaxToken) -> Edge {
   }
 }
 
-// Order-preserving snoc: free_monoid_fold visits tail→head but cons(empty, h) builds forward order.
-// Compile-time list snoc for fixed MVP-1 length; dissolve-on: T-10 grammar-emitted edge list.
+// Append preserving source order: free_monoid_fold visits head→tail (v4.std.algebra Cons unfold).
 fn java_list_snoc_item<T>(xs: List<T>, item: T) -> List<T> {
-  free_monoid_fold(
-    xs: xs,
-    empty: Cons { head: item, tail: Empty },
-    cons: fn(rest, existing) {
-      Cons { head: existing, tail: rest }
-    }
-  )
+  match xs {
+    Empty => Cons { head: item, tail: Empty }
+    Cons { head: h, tail: t } => Cons { head: h, tail: java_list_snoc_item(xs: t, item: item) }
+  }
 }
 
 fn java_list_append<T>(left: List<T>, right: List<T>) -> List<T> {
@@ -758,8 +760,8 @@ fn java_grammar_sequence_fold_step(acc: GrammarExpr, token: JavaConcreteSyntaxTo
     acc
   } else {
     Sequence {
-      left: java_grammar_terminal(token_class: token_class),
-      right: acc
+      left: acc,
+      right: java_grammar_terminal(token_class: token_class)
     }
   }
 }
@@ -999,6 +1001,7 @@ fn java_language_model_canonical_symbols() -> Set<Symbol> {
   Set {
     member: fn(sym) {
       java_catalog_surface_symbol(sym: sym) ||
+        sym == java_surface_spelling_void ||
         java_wave1_lex_token_symbol(sym: sym) ||
         sym == java_surface_method_item ||
         sym == java_production_mvp1_method_add ||
@@ -1029,7 +1032,7 @@ fn java_primitive_bundle_from_integer_facts(facts: JavaIntegerPrimitiveFacts) ->
       ),
       java_primitive_axis_binding(
         axis: primitive_fact_axis_encoding,
-        fact: java_inhabitant_atom(id: java_repr_integer_twos_complement)
+        fact: java_integer_encoding_fact(facts: facts)
       )
     ]
   }
