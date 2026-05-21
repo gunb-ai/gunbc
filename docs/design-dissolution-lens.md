@@ -1669,6 +1669,7 @@ consumes:
   v4.compiler.03_resolve
   v4.compiler.04_infer
   v4.lens.match_arm_shape
+  v4.lens.match_arm_skeleton
   v4.lens.closed_vocab_scan
   v4.lens.concept_home
 produces:
