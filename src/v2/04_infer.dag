@@ -25,7 +25,7 @@ import std.coercion { dag_can_cast, is_dag_cast_domain_type }
 import v2.std.core {
   Node, InternTable,
   intern, intern_str,
-  authored_name_at, NewlineIndex, has_child_named, build_newline_index,
+  authored_name_at, NewlineIndex, find_child_named, has_child_named, build_newline_index,
   module_node, module_imports, module_items, import_is_all,
   make_param_node, param_node_name_at, param_node_type_expr,
   field_node_type_expr, field_node_name_at,
