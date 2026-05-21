@@ -68,7 +68,7 @@ pub fn extract_rest_routes(dag: &Dag) -> Result<BTreeSet<RestRoute>, ProjectOpen
                 "endpoint",
                 endpoint,
             )?;
-            let method = ingest_http_method(
+            let method = parse_http_method(
                 dag,
                 schema,
                 decl.name.as_deref().unwrap_or("<anonymous>"),
@@ -500,7 +500,7 @@ fn field_type(fields: &[crate::dag::Field], label: &str) -> Option<DeclarationId
         .map(|field| field.ty)
 }
 
-fn ingest_http_method(
+fn parse_http_method(
     dag: &Dag,
     schema: RestRouteSchema,
     declaration: &str,
