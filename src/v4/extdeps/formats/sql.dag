@@ -1,6 +1,6 @@
 // src/v4/extdeps/formats/sql.dag
 // Scope: ISO/IEC 9075 SQL relational/DDL surface; Shape-B checked format — T-4.6 dsl extdeps port (migration.dag) + ISO spec.
-// Owns: SqlDialect, SqlIdentifier, SqlDataType, SqlColumnConstraints, SqlColumnDefault, SqlColumnDefinition, SqlTableConstraint, SqlPrimaryKeySlot, SqlTableDefinition, SqlSchemaOperation, SqlMigrationStep, SqlMigrationScript, SqlMigrationEmissionTarget, SqlStatementKind, SqlParameterStyle, SqlTransactionMode, SqlResultFormat, SqlTransportConfig, SqlIntegerWidth, SqlFloatWidth, SqlIntegerPrimitiveFacts, SqlFloatPrimitiveFacts, SqlNonNumericPrimitiveFacts, sql_facts_*, sql_*_facts_catalog, sql_wave1_primitive_fact_bundles
+// Owns: SqlDialect, SqlIdentifier, SqlDataType, SqlColumnConstraints, SqlColumnDefault, SqlColumnDefinition, SqlTableConstraint, SqlPrimaryKeySlot, SqlTableDefinition, SqlSchemaOperation, SqlMigrationStep, SqlMigrationScript, SqlMigrationEmissionTarget, SqlStatementKind, SqlParameterStyle, SqlTransactionMode, SqlResultFormat, SqlTransportConfig, SqlIntegerPrimitiveFacts, SqlFloatPrimitiveFacts, SqlNonNumericPrimitiveFacts, sql_facts_*, sql_*_facts_catalog, sql_wave1_primitive_fact_bundles
 // Consumes: std/node.dag, std/diagnostic.dag, std/collection.dag, std/nat.dag, std/cardinality.dag, std/model_core.dag
 // Status: T-4.6 scaffold + SqlDataType primitive fact-bundle wave-1.
 // Anchor: https://www.iso.org/standard/76583.html
@@ -18,8 +18,7 @@ import v4.std.model_core {
   PrimitiveFactBundle,
   primitive_fact_axis_encoding,
   primitive_fact_axis_signedness,
-  primitive_fact_axis_surface_spelling,
-  primitive_fact_axis_width
+  primitive_fact_axis_surface_spelling
 }
 
 
@@ -177,29 +176,19 @@ type SqlTransportConfig {
 }
 
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
-type SqlIntegerWidth
-  = Bits16
-  | Bits32
-  | Bits64
-
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
-type SqlFloatWidth
-  = Bits32
-  | Bits64
-
+// ISO/IEC 9075 §6 specifies SMALLINT/INTEGER/BIGINT as signed exact numeric
+// types with implementation-defined precision, and REAL/DOUBLE PRECISION as
+// approximate numerics with implementation-defined precision and encoding.
+// Width and IEEE-754 binding are therefore implementation facts, not spec
+// facts, and are deliberately not carried on these records.
 
 type SqlIntegerPrimitiveFacts {
   surface_spelling: Symbol
-  width: SqlIntegerWidth
 }
 
 
 type SqlFloatPrimitiveFacts {
   surface_spelling: Symbol
-  width: SqlFloatWidth
-  ieee754_binary: Symbol
 }
 
 
@@ -223,10 +212,9 @@ data sql_surface_spelling_timestamp: Symbol = sql_surface_spelling_timestamp
 data sql_surface_spelling_timestamp_with_time_zone: Symbol = sql_surface_spelling_timestamp_with_time_zone
 
 
-// Encoding/representation identities — IEEE 754 for approximate numerics;
-// ISO/IEC 9075 §4 semantics for boolean (three-valued) / datetime / LOB.
-data sql_ieee754_binary32: Symbol = sql_ieee754_binary32
-data sql_ieee754_binary64: Symbol = sql_ieee754_binary64
+// Representation identities — ISO/IEC 9075 §4 semantics (boolean three-valued,
+// datetime, character large object). Approximate-numeric and exact-numeric
+// representations are NOT bound (implementation-defined per ISO §6).
 data sql_repr_boolean_three_valued: Symbol = sql_repr_boolean_three_valued
 data sql_repr_character_large_object: Symbol = sql_repr_character_large_object
 data sql_repr_date_calendar: Symbol = sql_repr_date_calendar
@@ -235,40 +223,28 @@ data sql_repr_timestamp: Symbol = sql_repr_timestamp
 data sql_repr_timestamp_with_time_zone: Symbol = sql_repr_timestamp_with_time_zone
 
 
-// Atoms for width / signedness axis projections.
-data sql_tag_bits16: Symbol = sql_tag_bits16
-data sql_tag_bits32: Symbol = sql_tag_bits32
-data sql_tag_bits64: Symbol = sql_tag_bits64
+// Signedness — ISO/IEC 9075 §6 specifies SMALLINT/INTEGER/BIGINT as signed.
 data sql_tag_signed: Symbol = sql_tag_signed
 
 
-// 🟡 needs-more-work — feature:sql-integer-width-iso-floor — scaffold:T-4.6-sql-primitive-fact-bundles · dissolve-on: SqlIntegerPrimitiveFacts carries an ISO-floor-vs-exact discriminator (ISO/IEC 9075 §6 specifies minimum widths, not exact); wave-1 binds width to the conventional minimum.
 data sql_facts_smallint: SqlIntegerPrimitiveFacts = SqlIntegerPrimitiveFacts {
   surface_spelling: sql_surface_spelling_smallint,
-  width: Bits16,
 }
 
 data sql_facts_integer: SqlIntegerPrimitiveFacts = SqlIntegerPrimitiveFacts {
   surface_spelling: sql_surface_spelling_integer,
-  width: Bits32,
 }
 
 data sql_facts_bigint: SqlIntegerPrimitiveFacts = SqlIntegerPrimitiveFacts {
   surface_spelling: sql_surface_spelling_bigint,
-  width: Bits64,
 }
 
-// 🟡 needs-more-work — feature:sql-approximate-numeric-precision-implementation-defined — scaffold:T-4.6-sql-primitive-fact-bundles · dissolve-on: SqlFloatPrimitiveFacts carries an approximate-precision discriminator (ISO/IEC 9075 §6 defines REAL / DOUBLE PRECISION precision as implementation-defined, not exact IEEE 754); wave-1 binds width / encoding to the conventional IEEE 754 binary32 / binary64 realization.
 data sql_facts_real: SqlFloatPrimitiveFacts = SqlFloatPrimitiveFacts {
   surface_spelling: sql_surface_spelling_real,
-  width: Bits32,
-  ieee754_binary: sql_ieee754_binary32,
 }
 
 data sql_facts_double_precision: SqlFloatPrimitiveFacts = SqlFloatPrimitiveFacts {
   surface_spelling: sql_surface_spelling_double_precision,
-  width: Bits64,
-  ieee754_binary: sql_ieee754_binary64,
 }
 
 data sql_facts_boolean: SqlNonNumericPrimitiveFacts = SqlNonNumericPrimitiveFacts {
@@ -334,21 +310,6 @@ fn sql_named_edge(name: Symbol, target: Node) -> Edge {
   Edge { label: Named { name: name }, target: target }
 }
 
-fn sql_int_width_node(width: SqlIntegerWidth) -> Node {
-  match width {
-    Bits16 => sql_inhabitant_atom(id: sql_tag_bits16)
-    Bits32 => sql_inhabitant_atom(id: sql_tag_bits32)
-    Bits64 => sql_inhabitant_atom(id: sql_tag_bits64)
-  }
-}
-
-fn sql_float_width_node(width: SqlFloatWidth) -> Node {
-  match width {
-    Bits32 => sql_inhabitant_atom(id: sql_tag_bits32)
-    Bits64 => sql_inhabitant_atom(id: sql_tag_bits64)
-  }
-}
-
 fn sql_integer_facts_node(facts: SqlIntegerPrimitiveFacts) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -356,10 +317,6 @@ fn sql_integer_facts_node(facts: SqlIntegerPrimitiveFacts) -> Node {
       sql_named_edge(
         name: primitive_fact_axis_surface_spelling,
         target: sql_inhabitant_atom(id: facts.surface_spelling),
-      ),
-      sql_named_edge(
-        name: primitive_fact_axis_width,
-        target: sql_int_width_node(width: facts.width),
       ),
     ],
   }
@@ -372,14 +329,6 @@ fn sql_float_facts_node(facts: SqlFloatPrimitiveFacts) -> Node {
       sql_named_edge(
         name: primitive_fact_axis_surface_spelling,
         target: sql_inhabitant_atom(id: facts.surface_spelling),
-      ),
-      sql_named_edge(
-        name: primitive_fact_axis_width,
-        target: sql_float_width_node(width: facts.width),
-      ),
-      sql_named_edge(
-        name: primitive_fact_axis_encoding,
-        target: sql_inhabitant_atom(id: facts.ieee754_binary),
       ),
     ],
   }
@@ -414,10 +363,6 @@ fn sql_primitive_bundle_from_integer_facts(facts: SqlIntegerPrimitiveFacts) -> P
         fact: sql_inhabitant_atom(id: facts.surface_spelling),
       ),
       sql_primitive_axis_binding(
-        axis: primitive_fact_axis_width,
-        fact: sql_int_width_node(width: facts.width),
-      ),
-      sql_primitive_axis_binding(
         axis: primitive_fact_axis_signedness,
         fact: sql_inhabitant_atom(id: sql_tag_signed),
       ),
@@ -432,14 +377,6 @@ fn sql_primitive_bundle_from_float_facts(facts: SqlFloatPrimitiveFacts) -> Primi
       sql_primitive_axis_binding(
         axis: primitive_fact_axis_surface_spelling,
         fact: sql_inhabitant_atom(id: facts.surface_spelling),
-      ),
-      sql_primitive_axis_binding(
-        axis: primitive_fact_axis_width,
-        fact: sql_float_width_node(width: facts.width),
-      ),
-      sql_primitive_axis_binding(
-        axis: primitive_fact_axis_encoding,
-        fact: sql_inhabitant_atom(id: facts.ieee754_binary),
       ),
     ],
   }
