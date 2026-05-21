@@ -706,7 +706,10 @@ fn infer_tier2b_builtin_with_kernel_diags(func_name: String, typed_args: List<No
       Some { value: receiver_arg } =>
         match arg_value(n: receiver_arg).inferred {
           Some { value: Resolved { node: receiver_type } } =>
-            set_element_type_in_env(type_node: receiver_type, env: scope.type_env)
+            match set_element_type_in_env(type_node: receiver_type, env: scope.type_env) {
+              Some { value: elem_slot } => Some { value: child_type_node(ch: elem_slot) }
+              None => none
+            }
           _ => none
         }
       None => none
@@ -725,7 +728,10 @@ fn infer_tier2b_builtin_with_kernel_diags(func_name: String, typed_args: List<No
         Some { value: other_arg } =>
           match arg_value(n: other_arg).inferred {
             Some { value: Resolved { node: other_type } } =>
-              set_element_type_in_env(type_node: other_type, env: scope.type_env)
+              match set_element_type_in_env(type_node: other_type, env: scope.type_env) {
+                Some { value: elem_slot } => Some { value: child_type_node(ch: elem_slot) }
+                None => none
+              }
             _ => none
           }
         None => none
