@@ -4767,7 +4767,11 @@ fn type_rendering_bare_list_not_map() {
     use v2_compiler::v2_compiler_emit::render_node_type;
 
     let list_node = test_leaf_node("List");
+<<<<<<< HEAD
     let shared_types = Rc::new(BTreeSet::from(["List".to_string()]));
+=======
+    let shared_types = Rc::new(std::collections::BTreeSet::from(["List".to_string()]));
+>>>>>>> 569d59dc1 (WIP: v2 dag-serializer fix — recursive by-value serialization regression on s)
 
     let rendered = render_node_type(
         &list_node,
@@ -4793,7 +4797,11 @@ fn type_rendering_bare_map_stays_hashmap() {
     use v2_compiler::v2_compiler_emit::render_node_type;
 
     let map_node = test_leaf_node("Map");
+<<<<<<< HEAD
     let shared_types = Rc::new(BTreeSet::from(["Map".to_string()]));
+=======
+    let shared_types = Rc::new(std::collections::BTreeSet::from(["Map".to_string()]));
+>>>>>>> 569d59dc1 (WIP: v2 dag-serializer fix — recursive by-value serialization regression on s)
 
     let rendered = render_node_type(
         &map_node,
@@ -4824,7 +4832,11 @@ fn type_rendering_named_conj_with_container_template() {
         })),
         ..(*test_leaf_node("")).clone()
     });
+<<<<<<< HEAD
     let shared_types = Rc::new(BTreeSet::from(["FreeMonoid".to_string()]));
+=======
+    let shared_types = Rc::new(std::collections::BTreeSet::from(["FreeMonoid".to_string()]));
+>>>>>>> 569d59dc1 (WIP: v2 dag-serializer fix — recursive by-value serialization regression on s)
 
     let rendered = render_node_type(
         &free_monoid_conj,
@@ -10234,7 +10246,16 @@ fn diag_emitter_scc() {
         let edges = collect_scc_cx_l2_tree_edges(
             &info.members,
             &func_index,
+<<<<<<< HEAD
             scc_name_set,
+=======
+            Rc::new(
+                info.member_set
+                    .iter()
+                    .map(|name| (name.clone(), true))
+                    .collect::<HashMap<_, _>>(),
+            ),
+>>>>>>> 569d59dc1 (WIP: v2 dag-serializer fix — recursive by-value serialization regression on s)
             &Rc::new(HashMap::new()),
         );
         eprintln!("\n  CX-L2 tree edges ({}):", edges.len());
