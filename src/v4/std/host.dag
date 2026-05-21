@@ -16,6 +16,10 @@ import v4.std.node { Node, Symbol }
 // 🟡 gated — T-33 forward declaration — feature:std-model-core-carrier — bind node://adhoc-bb4d69eb-43c — dissolve-on-arrival: import v4.std.model_core { ModelCore } after T-33 lands.
 type ModelCore
 
+// 🟡 gated — Open Q10 forward declarations — feature:model-core-effect-partiality-carriers — bind node://adhoc-bb4d69eb-43c — dissolve-on-arrival: import the ModelCore-owned EffectSignature / ResourceAccess carriers after Open Q10 lands.
+type EffectSignature
+type ResourceAccess
+
 type HostIdentity {
   identity: Symbol
 }
@@ -29,22 +33,43 @@ type HostEnvironment {
   bindings: Map<Symbol, HostValue>
 }
 
-// 🟢 closed set — runtime value representation forms are host-side alternatives, not LanguageModel grammar variants.
-type HostValueRepresentation
-  = HostPrimitiveBytes { primitive: Node, bytes: List<Byte> }
-  | HostAggregate { fields: List<HostFieldValue> }
-  | HostReference { identity: HostIdentity, referent_type: Node }
-  | HostClosure { arrow: Node, environment: HostEnvironment }
-  | HostUnit
-
-type HostValue {
-  type_node: Node
-  representation: HostValueRepresentation
+type HostPrimitiveValue {
+  primitive_type: Node
+  bytes: List<Byte>
 }
 
+type HostAggregateValue {
+  aggregate_type: Node
+  fields: List<HostFieldValue>
+}
+
+type HostReferenceValue {
+  reference_type: Node
+  identity: HostIdentity
+  referent_type: Node
+}
+
+type HostClosureValue {
+  arrow_type: Node
+  arrow: Node
+  environment: HostEnvironment
+}
+
+type HostUnitValue {
+  unit_type: Node
+}
+
+// 🟢 closed set — each runtime representation carries its own type witness; no outer type_node can disagree.
+type HostValue
+  = HostPrimitive { value: HostPrimitiveValue }
+  | HostAggregate { value: HostAggregateValue }
+  | HostReference { value: HostReferenceValue }
+  | HostClosure { value: HostClosureValue }
+  | HostUnit { value: HostUnitValue }
+
 type HostValueRepresentationModel {
-  represent_literal: fn(Node, HostEnvironment) -> Outcome<HostValueRepresentation>
-  represent_result: fn(Node, HostValueRepresentation) -> Outcome<HostValue>
+  represent_literal: fn(Node, HostEnvironment) -> Outcome<HostValue>
+  represent_result: fn(HostValue) -> Outcome<HostValue>
 }
 
 type HostFrame {
@@ -65,7 +90,7 @@ type HostControlTransfer
   | HostSuspend { continuation: HostFrame }
 
 type HostAllocationSemantics {
-  allocate: fn(Node, HostValueRepresentation) -> Outcome<HostValue>
+  allocate: fn(HostValue) -> Outcome<HostValue>
 }
 
 type HostCallSemantics {
@@ -111,21 +136,18 @@ type HostInterpretationAlgebra {
   bind: HostBindInterpreter
 }
 
-// 🟢 closed set — boundary capabilities are host runtime concerns, not emit-side syntax.
-type HostBoundaryCapability
-  = HostFfi
-  | HostException
-  | HostAsync
-  | HostConcurrency
-  | HostIdentityReference
-
-type HostBoundaryPolicy {
-  capability: HostBoundaryCapability
+type HostBoundaryAllowance {
+  effect: EffectSignature
+  resource: ResourceAccess
   allowed: Bool
 }
 
 type HostResourceEffectBoundary {
-  policies: List<HostBoundaryPolicy>
+  ffi: HostBoundaryAllowance
+  exceptions: HostBoundaryAllowance
+  async: HostBoundaryAllowance
+  concurrency: HostBoundaryAllowance
+  identity_reference: HostBoundaryAllowance
 }
 
 type HostModel {

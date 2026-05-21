@@ -1300,6 +1300,11 @@ T-33 feature, bind to the T-34 work node, and dissolve to
 `import v4.std.model_core { ModelCore }` when `std/model_core.dag` lands.
 That bridge does not create a second ModelCore authority; it is the explicit
 schedule-edge receipt for the concurrent T-33/T-34 handoff.
+The same pre-merge bridge may name Open-Q10 `EffectSignature` /
+`ResourceAccess` carriers only as forward declarations for the
+`HostResourceEffectBoundary`: each host boundary coordinate must consume
+those signature/resource facts and dissolve to the ModelCore-owned imports
+when Q10 lands. A duplicateable ambient capability row list is not allowed.
 
 **Why a sibling, not a LanguageModel variant.** Q1c ("eval =
 translate-to-machine-code + execute") was rejected because host execution
