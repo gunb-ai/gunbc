@@ -391,6 +391,10 @@ fn node_at_at(x: Locus) -> String {
     Textual { file: f, extent: _ } => f
   }
 }
+
+fn make_node_at(s: String) -> Locus {
+  NodeAt(LocusAnchor { at: s })
+}
 "#;
     let result = compile_dag(source);
     let diags = diagnostic_messages(&result);
@@ -419,6 +423,16 @@ fn node_at_at(x: Locus) -> String {
     assert!(
         rs.contains("NodeAt(LocusAnchor<String>)"),
         "expected tuple-style NodeAt variant decl, got:\n{}",
+        rs
+    );
+    assert!(
+        rs.contains("Locus::NodeAt(LocusAnchor"),
+        "expected tuple-style NodeAt constructor, got:\n{}",
+        rs
+    );
+    assert!(
+        !rs.contains("Locus::NodeAt { 0:") && !rs.contains("NodeAt { 0:"),
+        "positional payload constructor must not emit record-style NodeAt {{ 0: ... }}, got:\n{}",
         rs
     );
 }

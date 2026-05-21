@@ -4435,6 +4435,19 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
         // emit_typed_record_lit produces raw struct expressions.
         empty_raw
       } else {
+        let is_positional_ctor = fields |> count == 1 && match fields |> first {
+          Some { value: f } => field_init_node_name_at(n: f, source_indices: si) == "0"
+          None => false
+        }
+        if is_positional_ctor {
+          match fields |> first {
+            Some { value: f } =>
+              let f_value = field_init_node_value(n: f)
+              let val_str = emit_field_value_with_context(field_value: f_value, struct_node: resolved_type, outer_type_name: type_name, field_name: "0", registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+              concat(display_tn, "(", val_str, ")")
+            None => concat(display_tn, "()")
+          }
+        } else {
         let field_strs = fields |> map(f =>
           let f_name = field_init_node_name_at(n: f, source_indices: scope.type_env.source_indices)
           let f_value = field_init_node_value(n: f)
@@ -4489,6 +4502,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
         // Rc wrapping is the caller's responsibility (data_decl_body, emit_typed_expr, etc.).
         // emit_typed_record_lit produces raw struct expressions.
         raw
+        }
       }
   }
 }
