@@ -2617,7 +2617,7 @@ pub fn emit_imports(
 pub fn emit_prelude() -> String {
     {
         let use_line =
-            "use std::collections::HashMap;\nuse std::rc::Rc;\nuse crate::v2_rt;\nuse crate::v2_rt::{rc_empty_set as empty_set, rc_set_insert as set_insert, rc_set_union as set_union, set_contains};".to_string();
+            "use std::collections::HashMap;\nuse std::rc::Rc;\nuse crate::v2_rt;\nuse crate::v2_rt::rc_empty_set as empty_set;\nuse crate::v2_rt::rc_set_insert as set_insert;\nuse crate::v2_rt::rc_set_union as set_union;\nuse crate::v2_rt::set_contains;".to_string();
         let wrapper_use = "use crate::NonEmptyVec;\nuse crate::NonEmptyBTreeSet;".to_string();
         v2_rt::concat(v2_rt::concat(use_line, "\n".to_string()), wrapper_use)
     }
