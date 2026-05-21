@@ -2821,6 +2821,15 @@ fn rust_empty_map_kv_type_str(map_type: Node, shared_types: Set<String>, source_
   } else { "" }
 }
 
+fn rust_empty_set_element_type_str(set_type: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
+  match set_type.children |> first {
+    Some { value: elem_child } =>
+      let rendered = render_rust_type(n: child_type_node(ch: elem_child), shared_types: shared_types, source_indices: source_indices)
+      if rendered == "" { "" } else { rendered }
+    None => ""
+  }
+}
+
 // rust_runtime_bridge_wraps_result_in_rc: DELETED.
 // With shared_types as single authority, map values are already Rc-wrapped
 // for non-Copy types. lookup/map_get return the correct type directly.
@@ -3599,8 +3608,17 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
             } else {
               "Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */"
             }
+          } else if init_func == "empty_set" && acc_type_str != "_" && acc_type_str != "" && !acc_has_unit_child {
+            let elem_type_str = rust_empty_set_element_type_str(set_type: acc_type_node, shared_types: shared_types, source_indices: scope.type_env.source_indices)
+            if elem_type_str != "" {
+              concat("v2_rt::rc_empty_set::<", elem_type_str, ">()")
+            } else {
+              "v2_rt::rc_empty_set() /* BRIDGE: fold empty_set element type unresolved */"
+            }
           } else if init_func == "empty_map" {
             "Rc::new(HashMap::new()) /* BRIDGE: fold empty_map accumulator type unresolved */"
+          } else if init_func == "empty_set" {
+            "v2_rt::rc_empty_set() /* BRIDGE: fold empty_set accumulator type unresolved */"
           } else {
             emit_typed_expr(texpr: arg_value(n: init_arg), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: fold_emit_info, fuel: 1024)
           }

@@ -1589,7 +1589,7 @@ pub fn build_ownership_results(modules: &Rc<Vec<Rc<TypedModule>>>) -> Rc<Ownersh
     {
         let callable_set = modules.clone().iter().cloned().fold(
             empty_set(),
-            |acc: Rc<std::collections::BTreeSet<compile_error!("UNRESOLVED_TypeVariable")>>,
+            |acc: Rc<std::collections::BTreeSet<String>>,
              m: Rc<TypedModule>| {
                 Rc::new({
                     let mut __result = Vec::new();
@@ -1605,7 +1605,7 @@ pub fn build_ownership_results(modules: &Rc<Vec<Rc<TypedModule>>>) -> Rc<Ownersh
                 .fold(
                     acc,
                     |inner: Rc<
-                        std::collections::BTreeSet<compile_error!("UNRESOLVED_TypeVariable")>,
+                        std::collections::BTreeSet<String>,
                     >,
                      item: Rc<Node>| {
                         set_union(
@@ -1642,7 +1642,7 @@ pub fn build_ownership_results(modules: &Rc<Vec<Rc<TypedModule>>>) -> Rc<Ownersh
                                     empty_set(),
                                     |acc: Rc<
                                         std::collections::BTreeSet<
-                                            compile_error!("UNRESOLVED_TypeVariable"),
+                                            String,
                                         >,
                                     >,
                                      p: Rc<Node>| {

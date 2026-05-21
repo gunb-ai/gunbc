@@ -7002,7 +7002,7 @@ pub fn build_scc_index(
                             empty_set(),
                             |inner: Rc<
                                 std::collections::BTreeSet<
-                                    compile_error!("UNRESOLVED_TypeVariable"),
+                                    String,
                                 >,
                             >,
                              member: String| {
