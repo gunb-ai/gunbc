@@ -21,10 +21,10 @@ module v4.compiler.translate
 
 import v4.compiler.compile { TargetModel, TargetSource }
 import v4.compiler.infer { InferredTree }
-import v4.std.collection { List }
 import v4.std.coercion {
   CoercionCandidateSet,
   CoercionResult,
+  coercion_candidate_set_from_declared_inhabitants,
   coercion_fold
 }
 import v4.std.constraints { CanonicalGrounding }
@@ -42,11 +42,7 @@ import v4.std.diagnostic {
   outcome_rejected,
   rejected_with_pending
 }
-import v4.std.find_witness {
-  CandidateSet,
-  TargetDeclaredPriority,
-  TargetSelectionPolicy
-}
+import v4.std.find_witness { TargetDeclaredPriority, TargetSelectionPolicy }
 import v4.std.node {
   Conj,
   Edge,
@@ -58,7 +54,6 @@ import v4.std.node {
   TypeNode,
   fold_node
 }
-import v4.std.witness { StructuralPropertyWitness }
 type TargetNodeTree = Node
 // Single-authority lookup state for TargetModel Conj bundles (P2/P3 fail-closed).
 type TargetBundleChildLookup
@@ -178,11 +173,8 @@ fn target_selection_policy_from_model(target: TargetModel) -> Outcome<TargetSele
     }
   )
 }
-fn declared_inhabitant_candidates(inhabitants_root: Node) -> List<Node> {
-  map(inhabitants_root.children, fn(e) { e.target })
-}
 // `declared_inhabitants` edge names one closed candidate-set root Node on the target bundle;
-// translate flattens that root's children into the closed candidate list consumed by find_witness.
+// std/coercion constructs the closed candidate list consumed by find_witness.
 fn coercion_candidates_from_target_model(
   target: TargetModel,
   closedness_evidence: Node
@@ -191,15 +183,11 @@ fn coercion_candidates_from_target_model(
     o: target_bundle_child(target: target, edge_name: target_model_edge_declared_inhabitants),
     f: fn(inhabitants_root) {
       Accepted {
-        value: CoercionCandidateSet {
-          set: CandidateSet {
-            candidates: declared_inhabitant_candidates(inhabitants_root: inhabitants_root),
-            closedness: StructuralPropertyWitness {
-              property: target_model_edge_declared_inhabitants,
-              evidence: closedness_evidence
-            }
-          }
-        },
+        value: coercion_candidate_set_from_declared_inhabitants(
+          inhabitants_root: inhabitants_root,
+          closedness_property: target_model_edge_declared_inhabitants,
+          closedness_evidence: closedness_evidence
+        ),
         diagnostics: None
       }
     }

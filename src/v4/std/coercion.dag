@@ -10,6 +10,7 @@
 module v4.std.coercion
 
 
+import v4.std.collection { List }
 import v4.std.constraints { CanonicalGrounding, CanonicalGroundingWitness }
 import v4.std.diagnostic {
   Accepted,
@@ -105,6 +106,24 @@ fn declared_candidates_for_algebra(
       kind: NoTargetCandidate
     )
   )
+}
+fn declared_inhabitant_candidates(inhabitants_root: Node) -> List<Node> {
+  map(inhabitants_root.children, fn(e) { e.target })
+}
+fn coercion_candidate_set_from_declared_inhabitants(
+  inhabitants_root: Node,
+  closedness_property: Symbol,
+  closedness_evidence: Node,
+) -> CoercionCandidateSet {
+  CoercionCandidateSet {
+    set: CandidateSet {
+      candidates: declared_inhabitant_candidates(inhabitants_root: inhabitants_root),
+      closedness: StructuralPropertyWitness {
+        property: closedness_property,
+        evidence: closedness_evidence
+      }
+    }
+  }
 }
 fn coercion_homomorphism_evidence(
   source: CanonicalGrounding,
