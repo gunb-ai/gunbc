@@ -530,21 +530,23 @@ fn assert_disj_lockstep(type_name: &str) {
 }
 
 fn assert_llm_disj_lockstep(type_name: &str) {
-    let mut variants = v2_llm_disj_variants(type_name);
-    if type_name == "ImageSource" {
-        for (variant, payload) in &mut variants {
-            if variant == "Base64Image" {
-                if let Some(fields) = payload {
-                    for (label, _, _) in fields {
-                        if label == "data" {
-                            *label = "base64".to_string();
-                        }
+    assert_disj_lockstep_against(type_name, v2_llm_disj_variants(type_name));
+}
+
+fn assert_anthropic_image_source_lockstep() {
+    let mut variants = v2_disj_variants("ImageSource");
+    for (variant, payload) in &mut variants {
+        if variant == "Base64Image" {
+            if let Some(fields) = payload {
+                for (label, _, _) in fields {
+                    if label == "data" {
+                        *label = "base64".to_string();
                     }
                 }
             }
         }
     }
-    assert_disj_lockstep_against(type_name, variants);
+    assert_disj_lockstep_against("ImageSource", variants);
 }
 
 fn assert_anthropic_disj_lockstep(type_name: &str) {
@@ -708,8 +710,8 @@ fn anthropic_tool_result_plain_text_document_source_lockstep() {
 }
 
 #[test]
-fn shared_image_source_lockstep() {
-    assert_llm_disj_lockstep("ImageSource");
+fn anthropic_image_source_lockstep() {
+    assert_anthropic_image_source_lockstep();
 }
 
 #[test]

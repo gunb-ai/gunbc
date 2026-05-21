@@ -8,7 +8,7 @@
 //
 module extdeps.llm.anthropic
 
-import extdeps.llm.llm { TokenUsage, llm_snake_wire_contract, ImageSource }
+import extdeps.llm.llm { TokenUsage, llm_snake_wire_contract }
 import std.errors { AnthropicErrorShape }
 import std.credentials { CredentialSource, EnvVar }
 import std.serialization { CoproductWireContract, VariantEncoding }
@@ -46,7 +46,7 @@ data anthropic_tool_result_content_wire_contract: CoproductWireContract = {
 
 // Nested blocks inside `ToolResultBlocks`: each row is a flat `{"type": ...}` object
 // (same tagging discipline as user message content blocks; distinct carrier so shared
-// `ContentBlock` in llm.dag stays provider-neutral).
+// shared `ContentBlock` in llm.dag stays text-only / provider-neutral).
 data anthropic_tool_result_block_wire_contract: CoproductWireContract = {
   coproduct: "AnthropicToolResultBlock",
   encoding: InternallyTaggedObject { tag_field: "type", naming: StripPrefixSuffixAndSnakeCase { prefix: "Anthropic", suffix: "Block" } }
@@ -73,8 +73,15 @@ data models: List<AnthropicModelSpec> = [
 ]
 
 // -- Anthropic content blocks (provider-specific) ---------------------
-// Tool-use / tool-result surfaces are Anthropic-specific; shared multimodal
-// primitives (`ImageSource`, …) import from `extdeps.llm.llm`.
+// Tool-use / tool-result surfaces are Anthropic-specific. `ImageSource`
+// models Anthropic Messages API image `source` shapes (base64 / url).
+
+// Anthropic image block `source` carrier (Messages API + tool-result nested blocks).
+// v3's Anthropic callable precursor mirrors `Base64Image.data` as `base64`
+// because `data` is a v3 keyword; lockstep maps that label explicitly.
+type ImageSource
+  = Base64Image { media_type: String, data: String }
+  | UrlImage { url: String }
 
 // 🟢 TERMINAL provider-domain coproduct for tool-result content. Anthropic accepts
 // either a scalar JSON string (`ToolResultText`) or a JSON array of nested blocks
@@ -83,9 +90,8 @@ data models: List<AnthropicModelSpec> = [
 // untagged emission maps directly (string vs block array) without an extra object
 // wrapper around the array arm.
 //
-// Nested block shapes use `AnthropicToolResultBlock` (below) so shared
-// `extdeps.llm.llm.ContentBlock` stays cross-provider; text/image arms mirror that
-// shared surface as Anthropic-prefixed variants for flat wire tagging.
+// Nested block shapes use `AnthropicToolResultBlock` (below). Text arms mirror
+// shared `extdeps.llm.llm.ContentBlock::TextContent`; image arms use `ImageSource`.
 type AnthropicToolResultContent
   = ToolResultText(String)
   | ToolResultBlocks(List<AnthropicToolResultBlock>)

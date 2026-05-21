@@ -28,19 +28,11 @@ data wire_contract: VariantEncoding = llm_snake_wire_contract
 type Role = System | User | Assistant | Tool
 
 // -- Content blocks (shared across providers) ----------------------
-// Both Anthropic and OpenAI support rich multimodal content.
-// Provider-specific block types (tool use, etc.) live in
-// anthropic.dag / openai.dag.
-
-type ImageSource
-  // v3's Anthropic callable precursor mirrors this field as `base64`
-  // because `data` is a v3 keyword; lockstep maps that label explicitly.
-  = Base64Image { media_type: String, data: String }
-  | UrlImage { url: String }
+// Text-only intersection of provider message bodies. Image and other
+// multimodal carriers are provider-specific (`anthropic.dag`, `openai.dag).
 
 type ContentBlock
   = TextContent { text: String }
-  | ImageContent { source: ImageSource }
 
 type LlmMessage {
   role: Role
