@@ -76,6 +76,8 @@ fn inferred_facts_for_node(tree: InferredTree, node: Node) -> Witness<InferredFa
 
 // 🟡 staged — dissolve-on: T-9 resolve→infer witness bridge lands resolve Violates on fact table.
 // BindsTo status reads infer/resolve witnesses at the use site (P3), not declaration facts.
+// BindingResolved on `Holds` means use-site infer succeeded structurally only — not that resolve
+// stamped the symbol; until T-9 inline resolve stamps, treat as staged posture not load-bearing.
 fn status_for_binding_facts(usage_site_facts: Witness<InferredFacts>) -> StructuralResolutionStatus {
   match usage_site_facts {
     Violates { diagnostic: d } =>
