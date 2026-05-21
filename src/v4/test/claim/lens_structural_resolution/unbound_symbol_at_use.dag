@@ -13,7 +13,6 @@ import v4.compiler.resolve {
 import v4.lens.structural_resolution {
   StructuralResolutionDependencyFact,
   StructuralResolutionFact,
-  UnboundSymbolAtUse,
   fact_eq,
   witness
 }
@@ -123,8 +122,7 @@ data unbound_symbol_at_use_claim: LensStructuralResolutionClaim = LensStructural
         at: sr_unbound_child,
         dependency: sr_unbound_dependency,
         source_facts: Holds { value: sr_unbound_resolved_facts() },
-        dependent_facts: sr_unbound_dependent_witness(),
-        status: UnboundSymbolAtUse
+        dependent_facts: sr_unbound_dependent_witness()
       }
     ]
   },

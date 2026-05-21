@@ -8,7 +8,6 @@ module v4.test.claim.lens_structural_resolution.binds_to_resolved
 
 import v4.compiler.infer { AlgebraRef, InferredFacts, InferredTree }
 import v4.lens.structural_resolution {
-  BindingResolved,
   StructuralResolutionDependencyFact,
   StructuralResolutionFact,
   fact_eq,
@@ -96,8 +95,7 @@ data binds_to_resolved_claim: LensStructuralResolutionClaim = LensStructuralReso
         at: sr_child,
         dependency: sr_dependency,
         source_facts: Holds { value: sr_claim_facts() },
-        dependent_facts: Holds { value: sr_claim_facts() },
-        status: BindingResolved
+        dependent_facts: Holds { value: sr_claim_facts() }
       }
     ]
   },

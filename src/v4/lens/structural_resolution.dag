@@ -58,7 +58,6 @@ type StructuralResolutionDependencyFact {
   dependency: DependencyView
   source_facts: Witness<InferredFacts>
   dependent_facts: Witness<InferredFacts>
-  status: StructuralResolutionStatus
 }
 
 type StructuralResolutionFact {
@@ -101,6 +100,13 @@ fn status_for_dependency(
   }
 }
 
+fn status_of_dependency_fact(fact: StructuralResolutionDependencyFact) -> StructuralResolutionStatus {
+  status_for_dependency(
+    view: fact.dependency,
+    dependent_facts: fact.dependent_facts
+  )
+}
+
 fn dependency_fact(
   tree: InferredTree,
   view: DependencyView
@@ -109,11 +115,7 @@ fn dependency_fact(
     at: view.usage_site,
     dependency: view,
     source_facts: inferred_facts_for_node(tree: tree, node: view.source),
-    dependent_facts: inferred_facts_for_node(tree: tree, node: view.dependent),
-    status: status_for_dependency(
-      view: view,
-      dependent_facts: inferred_facts_for_node(tree: tree, node: view.dependent)
-    )
+    dependent_facts: inferred_facts_for_node(tree: tree, node: view.dependent)
   }
 }
 
@@ -176,7 +178,10 @@ fn dependency_fact_eq(
     && (a.dependency == b.dependency)
     && (a.source_facts == b.source_facts)
     && (a.dependent_facts == b.dependent_facts)
-    && status_eq(a: a.status, b: b.status)
+    && status_eq(
+      a: status_of_dependency_fact(fact: a),
+      b: status_of_dependency_fact(fact: b)
+    )
 }
 
 fn dependency_count(
