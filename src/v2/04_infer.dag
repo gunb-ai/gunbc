@@ -650,6 +650,26 @@ fn set_builtin_receiver_is_set(receiver_arg: Node, scope: InferScope) -> Bool {
   }
 }
 
+fn set_element_type_from_receiver(receiver_type: Node, scope: InferScope) -> Node? {
+  match set_element_type_in_env(type_node: receiver_type, env: scope.type_env) {
+    Some { value: elem_slot } => Some { value: child_type_node(ch: elem_slot) }
+    None => none
+  }
+}
+
+fn set_element_type_is_concrete(elem: Node) -> Bool {
+  match elem.inferred {
+    Some { value: inf } => !is_type_variable(inferred: inf)
+    None => true
+  }
+}
+
+fn set_element_types_mismatch(recv_elem: Node, operand_elem: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  set_element_type_is_concrete(elem: recv_elem)
+    && set_element_type_is_concrete(elem: operand_elem)
+    && authored_name_at(source_indices: source_indices, node: recv_elem) != authored_name_at(source_indices: source_indices, node: operand_elem)
+}
+
 type Tier2bBt {
   bt: Node
   kernel_diags: List<ErrorNode>
@@ -730,15 +750,36 @@ fn infer_tier2b_builtin_with_kernel_diags(func_name: String, typed_args: List<No
       Some { value: receiver_arg } => set_builtin_receiver_is_set(receiver_arg: receiver_arg, scope: scope)
       None => false
     }
+    let recv_elem = match typed_args |> first {
+      Some { value: receiver_arg } =>
+        match arg_value(n: receiver_arg).inferred {
+          Some { value: Resolved { node: receiver_type } } =>
+            set_element_type_from_receiver(receiver_type: receiver_type, scope: scope)
+          _ => none
+        }
+      None => none
+    }
+    let elem_mismatch = match recv_elem {
+      Some { value: re } =>
+        match operand_elem {
+          Some { value: oe } =>
+            set_element_types_mismatch(recv_elem: re, operand_elem: oe, source_indices: scope.type_env.source_indices)
+          None => false
+        }
+      None => false
+    }
     let wrong_receiver_diags = if recv_is_set { [] } else {
       [inference_error(message: concat(func_name, ": receiver must be Set<...>"), span: span, module_name: scope.module_name)]
     }
+    let mismatch_diags = if elem_mismatch {
+      [inference_error(message: concat(func_name, ": incompatible set element types"), span: span, module_name: scope.module_name)]
+    } else { [] }
     let result_bt = match typed_args |> first {
       Some { value: receiver_arg } =>
-        if recv_is_set {
+        if recv_is_set && !elem_mismatch {
           match arg_value(n: receiver_arg).inferred {
             Some { value: Resolved { node: receiver_type } } =>
-              match set_element_type_in_env(type_node: receiver_type, env: scope.type_env) {
+              match recv_elem {
                 Some { value: _ } => receiver_type
                 None =>
                   match operand_elem {
@@ -755,10 +796,10 @@ fn infer_tier2b_builtin_with_kernel_diags(func_name: String, typed_args: List<No
     }
     let build_diags = match operand_elem {
       Some { value: element } =>
-        if recv_is_set { set_kernel_ty_from_element(element: element).miss_diags } else { [] }
+        if recv_is_set && !elem_mismatch { set_kernel_ty_from_element(element: element).miss_diags } else { [] }
       None => []
     }
-    Tier2bBt { bt: result_bt, kernel_diags: concat(wrong_receiver_diags, build_diags) }
+    Tier2bBt { bt: result_bt, kernel_diags: concat(wrong_receiver_diags, concat(mismatch_diags, build_diags)) }
   } else {
     Tier2bBt { bt: resolve_builtin_call_type(name: func_name), kernel_diags: [] }
   }
