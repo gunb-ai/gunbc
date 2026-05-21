@@ -2,7 +2,7 @@
 // Scope: Rust Reference LanguageModel — scalar fact-bundles, inhabitants, bidirectional grammar data.
 // Owns: RustScalar, RustIntegerPrimitiveFacts, RustFloatPrimitiveFacts, RustNonIntegerPrimitiveFacts, RustLanguageModel, rust_*_facts, rust_*_inhabitant_node, rust_declared_inhabitants_root, rust_mvp1_target_model, rust_wave1_* grammar/lex.
 // Consumes: v4.compiler.parse, v4.compiler.tokenize, v4.std.collection, v4.std.node, v4.std.logic, v4.std.algebra, v4.std.cardinality, v4.std.text.
-// Status: T-4 rust slice — Rust Reference primitives (not std::string::String); `core: ModelCore` (#3474); catalog-derived canonical_symbols; target_model edge keys from std/target_model.dag; MVP-1 grammar/token substrate for T-10 (literal Node round-trip still 🟡); bool/`!` canonical-B decl-ref — 🟡 E-6(b) staging.
+// Status: T-4 rust slice — Rust Reference primitives (not std::string::String); `core: ModelCore` (#3474) primitives + surface-symbol membership from `rust_*_facts_catalog` via fold; canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/target_model.dag; MVP-1 grammar/token substrate for T-10 (literal Node round-trip still 🟡); bool/`!` canonical-B decl-ref — 🟡 E-6(b) staging.
 // Anchor: https://doc.rust-lang.org/reference/types.html
 
 module v4.extdeps.languages.rust
@@ -487,6 +487,7 @@ data rust_facts_never: RustNonIntegerPrimitiveFacts = RustNonIntegerPrimitiveFac
   representation: rust_repr_never
 }
 
+// Sole primitive-fact list authorities — ModelCore.primitives and catalog surface_symbol membership derive via fold.
 data rust_integer_facts_catalog: List<RustIntegerPrimitiveFacts> = [
   rust_facts_i8,
   rust_facts_i16,
@@ -1033,26 +1034,64 @@ fn rust_wave1_grammar() -> Grammar {
   ModeledGrammar { root: rust_wave1_grammar_root() }
 }
 
+fn rust_integer_catalog_surface_symbol_step(
+  sym: Symbol,
+  acc: Bool,
+  facts: RustIntegerPrimitiveFacts
+) -> Bool {
+  acc || sym == facts.surface_spelling
+}
+
+fn rust_float_catalog_surface_symbol_step(
+  sym: Symbol,
+  acc: Bool,
+  facts: RustFloatPrimitiveFacts
+) -> Bool {
+  acc || sym == facts.surface_spelling
+}
+
+fn rust_noninteger_catalog_surface_symbol_step(
+  sym: Symbol,
+  acc: Bool,
+  facts: RustNonIntegerPrimitiveFacts
+) -> Bool {
+  acc || sym == facts.surface_spelling
+}
+
+fn rust_integer_catalog_surface_symbol(sym: Symbol) -> Bool {
+  free_monoid_fold(
+    xs: rust_integer_facts_catalog,
+    empty: false,
+    cons: fn(acc, facts) {
+      rust_integer_catalog_surface_symbol_step(sym: sym, acc: acc, facts: facts)
+    }
+  )
+}
+
+fn rust_float_catalog_surface_symbol(sym: Symbol) -> Bool {
+  free_monoid_fold(
+    xs: rust_float_facts_catalog,
+    empty: false,
+    cons: fn(acc, facts) {
+      rust_float_catalog_surface_symbol_step(sym: sym, acc: acc, facts: facts)
+    }
+  )
+}
+
+fn rust_noninteger_catalog_surface_symbol(sym: Symbol) -> Bool {
+  free_monoid_fold(
+    xs: rust_noninteger_facts_catalog,
+    empty: false,
+    cons: fn(acc, facts) {
+      rust_noninteger_catalog_surface_symbol_step(sym: sym, acc: acc, facts: facts)
+    }
+  )
+}
+
 fn rust_catalog_surface_symbol(sym: Symbol) -> Bool {
-  sym == rust_surface_spelling_i8 ||
-    sym == rust_surface_spelling_i16 ||
-    sym == rust_surface_spelling_i32 ||
-    sym == rust_surface_spelling_i64 ||
-    sym == rust_surface_spelling_i128 ||
-    sym == rust_surface_spelling_u8 ||
-    sym == rust_surface_spelling_u16 ||
-    sym == rust_surface_spelling_u32 ||
-    sym == rust_surface_spelling_u64 ||
-    sym == rust_surface_spelling_u128 ||
-    sym == rust_surface_spelling_isize ||
-    sym == rust_surface_spelling_usize ||
-    sym == rust_surface_spelling_f32 ||
-    sym == rust_surface_spelling_f64 ||
-    sym == rust_surface_spelling_bool ||
-    sym == rust_surface_spelling_char ||
-    sym == rust_surface_spelling_str ||
-    sym == rust_surface_spelling_unit ||
-    sym == rust_surface_spelling_never
+  rust_integer_catalog_surface_symbol(sym: sym) ||
+    rust_float_catalog_surface_symbol(sym: sym) ||
+    rust_noninteger_catalog_surface_symbol(sym: sym)
 }
 
 fn rust_wave1_lex_token_symbol(sym: Symbol) -> Bool {
@@ -1089,29 +1128,72 @@ fn rust_primitive_fact_bundle(facts_node: Node) -> PrimitiveFactBundle {
   }
 }
 
+fn rust_primitive_bundle_from_integer_facts(facts: RustIntegerPrimitiveFacts) -> PrimitiveFactBundle {
+  rust_primitive_fact_bundle(facts_node: rust_integer_facts_node(facts: facts))
+}
+
+fn rust_primitive_bundle_from_float_facts(facts: RustFloatPrimitiveFacts) -> PrimitiveFactBundle {
+  rust_primitive_fact_bundle(facts_node: rust_float_facts_node(facts: facts))
+}
+
+fn rust_primitive_bundle_from_noninteger_facts(
+  facts: RustNonIntegerPrimitiveFacts
+) -> PrimitiveFactBundle {
+  rust_primitive_fact_bundle(facts_node: rust_noninteger_facts_node(facts: facts))
+}
+
+fn rust_primitive_bundles_from_integer_catalog() -> List<PrimitiveFactBundle> {
+  free_monoid_fold(
+    xs: rust_integer_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      rust_list_snoc_item(
+        xs: acc,
+        item: rust_primitive_bundle_from_integer_facts(facts: facts)
+      )
+    }
+  )
+}
+
+fn rust_primitive_bundles_from_float_catalog() -> List<PrimitiveFactBundle> {
+  free_monoid_fold(
+    xs: rust_float_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      rust_list_snoc_item(
+        xs: acc,
+        item: rust_primitive_bundle_from_float_facts(facts: facts)
+      )
+    }
+  )
+}
+
+fn rust_primitive_bundles_from_noninteger_catalog() -> List<PrimitiveFactBundle> {
+  free_monoid_fold(
+    xs: rust_noninteger_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      rust_list_snoc_item(
+        xs: acc,
+        item: rust_primitive_bundle_from_noninteger_facts(facts: facts)
+      )
+    }
+  )
+}
+
+fn rust_wave1_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
+  rust_list_append(
+    left: rust_list_append(
+      left: rust_primitive_bundles_from_integer_catalog(),
+      right: rust_primitive_bundles_from_float_catalog()
+    ),
+    right: rust_primitive_bundles_from_noninteger_catalog()
+  )
+}
+
 fn rust_model_core_wave1() -> ModelCore {
   ModelCore {
-    primitives: [
-      rust_primitive_fact_bundle(facts_node: rust_integer_facts_node(facts: rust_facts_i8)),
-      rust_primitive_fact_bundle(facts_node: rust_integer_facts_node(facts: rust_facts_i16)),
-      rust_primitive_fact_bundle(facts_node: rust_integer_facts_node(facts: rust_facts_i32)),
-      rust_primitive_fact_bundle(facts_node: rust_integer_facts_node(facts: rust_facts_i64)),
-      rust_primitive_fact_bundle(facts_node: rust_integer_facts_node(facts: rust_facts_i128)),
-      rust_primitive_fact_bundle(facts_node: rust_integer_facts_node(facts: rust_facts_u8)),
-      rust_primitive_fact_bundle(facts_node: rust_integer_facts_node(facts: rust_facts_u16)),
-      rust_primitive_fact_bundle(facts_node: rust_integer_facts_node(facts: rust_facts_u32)),
-      rust_primitive_fact_bundle(facts_node: rust_integer_facts_node(facts: rust_facts_u64)),
-      rust_primitive_fact_bundle(facts_node: rust_integer_facts_node(facts: rust_facts_u128)),
-      rust_primitive_fact_bundle(facts_node: rust_integer_facts_node(facts: rust_facts_isize)),
-      rust_primitive_fact_bundle(facts_node: rust_integer_facts_node(facts: rust_facts_usize)),
-      rust_primitive_fact_bundle(facts_node: rust_float_facts_node(facts: rust_facts_f32)),
-      rust_primitive_fact_bundle(facts_node: rust_float_facts_node(facts: rust_facts_f64)),
-      rust_primitive_fact_bundle(facts_node: rust_noninteger_facts_node(facts: rust_facts_bool)),
-      rust_primitive_fact_bundle(facts_node: rust_noninteger_facts_node(facts: rust_facts_char)),
-      rust_primitive_fact_bundle(facts_node: rust_noninteger_facts_node(facts: rust_facts_str)),
-      rust_primitive_fact_bundle(facts_node: rust_noninteger_facts_node(facts: rust_facts_unit)),
-      rust_primitive_fact_bundle(facts_node: rust_noninteger_facts_node(facts: rust_facts_never))
-    ],
+    primitives: rust_wave1_primitive_fact_bundles(),
     inhabitance: [],
     laws: [],
     effects: EffectSemanticsDecl { operations: [] },
