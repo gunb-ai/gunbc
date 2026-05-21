@@ -32,9 +32,16 @@ fn ingest_rest_transport_method(method: &str) -> Option<HttpMethod> {
     }
 }
 
+<<<<<<< HEAD
 fn method_ok(method: &str) -> HttpMethod {
     ingest_rest_transport_method(method)
         .unwrap_or_else(|| panic!("unknown REST transport HTTP method `{method}`"))
+=======
+fn derive_result(name: &str, method: &str, path: &str) -> Rc<DeriveOpEffectResult> {
+    let method = parse_method_ok(method);
+    let path = parse_ok(path);
+    derive_op_effect(name.to_string(), &method, &path)
+>>>>>>> aba039eb4 (WIP: v4 parser/lowering substrate upgrade — generic type applications in vari)
 }
 
 fn derive_result(name: &str, method: HttpMethod, path: &str) -> Rc<DeriveOpEffectResult> {
