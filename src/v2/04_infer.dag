@@ -1633,29 +1633,33 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
               diagnostics: arg_diags
             }
           } else {
-          // Tier 3: type constructor or unknown
-          let type_match = lookup_type_by_name(env: scope.type_env, name: func_name)
-          let resolved_type = match type_match {
-            Some { value: tn } => tn
-            None => error_type
-          }
-          let call_diags = match type_match {
-            Some { value: _ } => []
-            None => [inference_error(
-              message: concat("function '", func_name, "' not found in scope"),
-              span: span,
-              module_name: scope.module_name
-            )]
-          }
-          InferResult {
-            typed: make_named_expr_node(
-              name: func_name, expr_data: ExprCall { call_semantics: Some { value: PlainCallSemantics }, descent_evidence: none },
-              children: typed_arg_nodes,
-              inferred: Some { value: Resolved { node: resolved_type } },
-              span: span,
-              name_span: node_name_span(n: texpr)
-            ),
-            diagnostics: concat(arg_diags, call_diags)
+          // Tier 3: variant constructor (`NodeAt(payload)`), type constructor, or unknown
+          match infer_variant_constructor_call(func_name: func_name, call_args: call_args, span: span, name_span: node_name_span(n: texpr), scope: scope) {
+            Some { value: ctor_result } => ctor_result
+            None =>
+              let type_match = lookup_type_by_name(env: scope.type_env, name: func_name)
+              let resolved_type = match type_match {
+                Some { value: tn } => tn
+                None => error_type
+              }
+              let call_diags = match type_match {
+                Some { value: _ } => []
+                None => [inference_error(
+                  message: concat("function '", func_name, "' not found in scope"),
+                  span: span,
+                  module_name: scope.module_name
+                )]
+              }
+              InferResult {
+                typed: make_named_expr_node(
+                  name: func_name, expr_data: ExprCall { call_semantics: Some { value: PlainCallSemantics }, descent_evidence: none },
+                  children: typed_arg_nodes,
+                  inferred: Some { value: Resolved { node: resolved_type } },
+                  span: span,
+                  name_span: node_name_span(n: texpr)
+                ),
+                diagnostics: concat(arg_diags, call_diags)
+              }
           }
         }
         }
@@ -2384,6 +2388,42 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           span: span,
           module_name: scope.module_name
         )]
+      }
+  }
+}
+
+// `NodeAt(payload)` parses as ExprCall; route known positional variant constructors to record-lit inference.
+fn infer_variant_constructor_call(func_name: String, call_args: List<Node>, span: SourceSpan, name_span: SourceSpan, scope: InferScope) -> InferResult? {
+  match lookup_variant_parent_enum(scope: scope, name: func_name) {
+    None => none
+    Some { value: parent_enum } =>
+      let si = scope.type_env.source_indices
+      match lookup_type_by_name(env: scope.type_env, name: parent_enum) {
+        Some { value: parent_node } =>
+          match find_child_named(n: parent_node, name: func_name, source_indices: si) {
+            Some { value: variant_node } =>
+              if variant_has_positional_payload_shape(variant: variant_node, source_indices: si) && call_args |> count == 1 {
+                match call_args |> first {
+                  Some { value: arg } =>
+                    let payload_init = make_field_init_node(
+                      name: "0",
+                      value: arg,
+                      span: arg.span,
+                      name_span: node_name_span(n: arg)
+                    )
+                    Some { value: infer_record_lit(
+                      type_name: Some { value: func_name },
+                      field_inits: [payload_init],
+                      span: span,
+                      name_span: name_span,
+                      scope: scope
+                    ) }
+                  None => none
+                }
+              } else { none }
+            None => none
+          }
+        None => none
       }
   }
 }
