@@ -26,9 +26,7 @@ module v4.test.claim.impossible_bug.unenumerated_effects
 
 import v4.std.diagnostic {
   Accepted,
-  Diagnostic,
-  LocusAnchor,
-  NodeLocus,
+  Diagnostic,  node_locus,
   None,
   Outcome,
   Rejected,
@@ -129,7 +127,7 @@ data claim_redundant_read_caught: TestClaim = TestClaim {
     diagnostics: diagnostics_singleton(
       d: Diagnostic {
         reason: redundant_read_reason,
-        at: NodeLocus { anchor: LocusAnchor { at: falsification_redundant_read } },
+        at: node_locus(node: falsification_redundant_read),
         correction: Suggested { node: explicit_reread_input }
       }
     )

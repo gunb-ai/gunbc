@@ -25,9 +25,7 @@ module v4.test.claim.impossible_bug.unhandled_diagnostic_paths
 
 import v4.std.diagnostic {
   Accepted,
-  Diagnostic,
-  LocusAnchor,
-  NodeLocus,
+  Diagnostic,  node_locus,
   None,
   Outcome,
   Rejected,
@@ -125,7 +123,7 @@ data claim_unproven_division_rejected: TestClaim = TestClaim {
     diagnostics: diagnostics_singleton(
       d: Diagnostic {
         reason: unhandled_division_reason,
-        at: NodeLocus { anchor: LocusAnchor { at: falsification_division_by_zero_unhandled } },
+        at: node_locus(node: falsification_division_by_zero_unhandled),
         correction: Suggested { node: total_division_input }
       }
     )
@@ -143,7 +141,7 @@ data claim_unproven_oob_index_rejected: TestClaim = TestClaim {
     diagnostics: diagnostics_singleton(
       d: Diagnostic {
         reason: unhandled_index_reason,
-        at: NodeLocus { anchor: LocusAnchor { at: falsification_oob_index_unhandled } },
+        at: node_locus(node: falsification_oob_index_unhandled),
         correction: Suggested { node: checked_index_input }
       }
     )
@@ -161,7 +159,7 @@ data claim_force_unwrap_count_zero: TestClaim = TestClaim {
     diagnostics: diagnostics_singleton(
       d: Diagnostic {
         reason: force_unwrap_reason,
-        at: NodeLocus { anchor: LocusAnchor { at: falsification_force_unwrap_survives } },
+        at: node_locus(node: falsification_force_unwrap_survives),
         correction: Suggested { node: total_unwrap_input }
       }
     )

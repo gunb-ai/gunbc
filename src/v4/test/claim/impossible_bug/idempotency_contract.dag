@@ -37,9 +37,7 @@ module v4.test.claim.impossible_bug.idempotency_contract
 
 import v4.std.diagnostic {
   Accepted,
-  Diagnostic,
-  LocusAnchor,
-  NodeLocus,
+  Diagnostic,  node_locus,
   None,
   Outcome,
   Rejected,
@@ -112,7 +110,7 @@ data claim_repeated_append_in_idempotent_position_caught: TestClaim = TestClaim 
     diagnostics: diagnostics_singleton(
       d: Diagnostic {
         reason: idempotency_repetition_reason,
-        at: NodeLocus { anchor: LocusAnchor { at: falsification_repeated_append_in_idempotent_position } },
+        at: node_locus(node: falsification_repeated_append_in_idempotent_position),
         correction: Suggested { node: idempotent_inhabitant_input }
       }
     )
@@ -130,7 +128,7 @@ data claim_nonidempotent_in_idempotent_position_caught: TestClaim = TestClaim {
     diagnostics: diagnostics_singleton(
       d: Diagnostic {
         reason: idempotency_violation_reason,
-        at: NodeLocus { anchor: LocusAnchor { at: falsification_nonidempotent_in_idempotent_position } },
+        at: node_locus(node: falsification_nonidempotent_in_idempotent_position),
         correction: Suggested { node: idempotent_inhabitant_input }
       }
     )

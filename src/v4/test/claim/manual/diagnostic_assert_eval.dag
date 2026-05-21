@@ -19,9 +19,7 @@ import v4.compiler.eval {
 }
 import v4.std.diagnostic {
   AmbiguousIntent,
-  Diagnostic,
-  LocusAnchor,
-  NodeLocus,
+  Diagnostic,  node_locus,
   Outcome,
   Accepted,
   Rejected,
@@ -48,7 +46,7 @@ fn diag_assert_node() -> Node {
 fn diag_assert_d() -> Diagnostic {
   Diagnostic {
     reason: diag_assert_reason,
-    at: NodeLocus { anchor: LocusAnchor { at: diag_assert_node() } },
+    at: node_locus(node: diag_assert_node()),
     correction: Unavailable { reason: AmbiguousIntent }
   }
 }
@@ -57,7 +55,7 @@ fn diag_assert_d() -> Diagnostic {
 fn diag_assert_other_d() -> Diagnostic {
   Diagnostic {
     reason: diag_assert_other,
-    at: NodeLocus { anchor: LocusAnchor { at: diag_assert_node() } },
+    at: node_locus(node: diag_assert_node()),
     correction: Unavailable { reason: AmbiguousIntent }
   }
 }

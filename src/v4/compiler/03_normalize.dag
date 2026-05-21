@@ -17,9 +17,7 @@ import v4.extdeps.languages.dag {
   dag_c3_surface_sugar_type
 }
 import v4.std.diagnostic {
-  Diagnostic,
-  LocusAnchor,
-  NodeLocus,
+  Diagnostic,  node_locus,
   Outcome,
   UserInputBoundary,
   Accepted,
@@ -94,7 +92,7 @@ fn classify_sugar(n: Node) -> SurfaceSugarKind? {
 fn malformed_sugar_diagnostic(n: Node) -> Diagnostic {
   Diagnostic {
     reason: normalize_reason_malformed_sugar,
-    at: NodeLocus { anchor: LocusAnchor { at: n } },
+    at: node_locus(node: n),
     correction: Unavailable { reason: UserInputBoundary }
   }
 }
@@ -103,7 +101,7 @@ fn malformed_sugar_diagnostic(n: Node) -> Diagnostic {
 fn post_normalize_not_well_formed_diagnostic(n: Node) -> Diagnostic {
   Diagnostic {
     reason: normalize_reason_post_normalize_not_well_formed,
-    at: NodeLocus { anchor: LocusAnchor { at: n } },
+    at: node_locus(node: n),
     correction: Unavailable { reason: UserInputBoundary }
   }
 }

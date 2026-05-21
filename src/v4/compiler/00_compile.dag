@@ -13,9 +13,7 @@ import v4.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,
   Locus,
-  Outcome,
-  LocusAnchor,
-  PortLocus,
+  Outcome,  port_locus,
   Unavailable,
   diagnostics_singleton
 }
@@ -53,7 +51,7 @@ fn compile(source: Source, target: TargetModel) -> Outcome<TargetSource> {
   Rejected {
     diagnostics: diagnostics_singleton(
       d: compile_pipeline_not_realized_diagnostic(
-        at: PortLocus { anchor: LocusAnchor { at: compile_stage_locus_port } }
+        at: port_locus(port: compile_stage_locus_port)
       )
     )
   }

@@ -37,9 +37,7 @@ import v4.std.node {
 }
 import v4.std.diagnostic {
   Diagnostic,
-  ExternalContractUnknown,
-  LocusAnchor,
-  NodeLocus,
+  ExternalContractUnknown,  node_locus,
   Outcome,
   Accepted,
   None,
@@ -201,7 +199,7 @@ fn workflow_inferred_facts() -> InferredFacts {
     descent: Violates {
       diagnostic: Diagnostic {
         reason: inferred_descent_not_derived,
-        at: NodeLocus { anchor: LocusAnchor { at: resolved } },
+        at: node_locus(node: resolved),
         correction: Unavailable { reason: ExternalContractUnknown }
       }
     },

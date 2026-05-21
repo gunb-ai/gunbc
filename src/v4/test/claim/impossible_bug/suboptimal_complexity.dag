@@ -41,9 +41,7 @@ module v4.test.claim.impossible_bug.suboptimal_complexity
 
 import v4.std.diagnostic {
   Accepted,
-  Diagnostic,
-  LocusAnchor,
-  NodeLocus,
+  Diagnostic,  node_locus,
   None,
   Outcome,
   Rejected,
@@ -93,7 +91,7 @@ fn expected_complexity_rejection(input: Node, reason: Symbol, correction: Node) 
     diagnostics: diagnostics_singleton(
       d: Diagnostic {
         reason: reason,
-        at: NodeLocus { anchor: LocusAnchor { at: input } },
+        at: node_locus(node: input),
         correction: Suggested { node: correction }
       }
     )

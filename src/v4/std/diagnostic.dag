@@ -5,7 +5,7 @@
 //       bind_outcome, diagnostics_merge, rejected_with_pending,
 //       eq, locus_eq, correction_eq, diagnostic_eq, outcome_node_eq,
 //       diagnostics_eq, non_empty_diagnostics_append,
-//       Locus, LocusAnchor, Extent, Correction, NoCorrectionReason.
+//       Locus, LocusAnchor, node_locus, port_locus, Extent, Correction, NoCorrectionReason.
 // Consumes: std node (List/fold/count are prelude — no collection import; avoids diagnostic↔witness cycle).
 // Status: T-3 modeled; Wave-2-BC3 Outcome ratification (Ratified Q11).
 
@@ -58,6 +58,12 @@ type DiagnosticAccumulation
   | ShortCircuit
 type StageDiagnosticPolicy {
   accumulation: DiagnosticAccumulation
+}
+fn node_locus(node: Node) -> Locus {
+  NodeLocus { anchor: LocusAnchor { at: node } }
+}
+fn port_locus(port: Symbol) -> Locus {
+  PortLocus { anchor: LocusAnchor { at: port } }
 }
 fn diagnostics_singleton(d: Diagnostic) -> NonEmptyDiagnostics {
   NonEmptyDiagnostics { head: d, tail: [] }

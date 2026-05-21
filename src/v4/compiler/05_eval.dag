@@ -21,9 +21,7 @@ import v4.std.diagnostic {
   AmbiguousIntent,
   Correction,
   Diagnostic,
-  NoCorrectionReason,
-  LocusAnchor,
-  NodeLocus,
+  NoCorrectionReason,  node_locus,
   Outcome,
   Unavailable,
   Accepted,
@@ -128,7 +126,7 @@ data eval_empty_verdict_list: Symbol = eval_empty_verdict_list
 fn eval_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
   Diagnostic {
     reason: reason,
-    at: NodeLocus { anchor: LocusAnchor { at: node } },
+    at: node_locus(node: node),
     correction: Unavailable { reason: AmbiguousIntent }
   }
 }

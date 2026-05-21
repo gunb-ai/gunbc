@@ -14,9 +14,7 @@ import v4.std.constraints { CanonicalGrounding, CanonicalGroundingWitness }
 import v4.std.diagnostic {
   Accepted,
   Diagnostic,
-  ExternalContractUnknown,
-  LocusAnchor,
-  NodeLocus,
+  ExternalContractUnknown,  node_locus,
   Outcome,
   Rejected,
   Unavailable,
@@ -77,7 +75,7 @@ fn coercion_not_realized_diagnostic(
 ) -> Diagnostic {
   Diagnostic {
     reason: coercion_mismatch_reason(kind: kind),
-    at: NodeLocus { anchor: LocusAnchor { at: source.node } },
+    at: node_locus(node: source.node),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
