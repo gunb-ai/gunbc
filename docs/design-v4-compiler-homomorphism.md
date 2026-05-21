@@ -32,7 +32,7 @@ This doc composes with — and must stay consistent with — these existing arti
 - [`docs/design-infer-stage-l25-model.md`](design-infer-stage-l25-model.md) — infer-stage L2.5 model, the substrate-side specification for what this doc names as `ground` (T-9).
 - [`docs/design-lens-application-surface.md`](design-lens-application-surface.md) — the pre-amendment substrate-level lens-application surface. Its `Lens / SectionRef / Witness / Outcome` gate shape is inventoried below as a follow-up reshape toward graph-in readings.
 - [`docs/design-lens-framework.md`](design-lens-framework.md) — the lens framework as a whole.
-- [`docs/design-affected-set-lens.md`](design-affected-set-lens.md) — `affected_set` (T-21), the incremental-rebuild + lens-frontier primitive consumed by this doc's pipeline diagram and by caller policy over candidate-state readings.
+- [`docs/design-affected-set-lens.md`](design-affected-set-lens.md) — `affected_set` (T-21), the incremental-rebuild + lens-frontier specialization consumed by this doc's pipeline diagram and by caller policy over candidate-state readings.
 - [`docs/design-dissolution-lens.md`](design-dissolution-lens.md) — the dissolution-pattern lens family (L1.x), Practice 10's auto-fix substrate. The (find, transform) convolution view in the read/edit doc's § 6 builds on this.
 - [`docs/v4-close-interrogation.md`](v4-close-interrogation.md) — v4 program framing + scope.
 - [`docs/v4-dag-rationale.md`](v4-dag-rationale.md) — rationale for `.dag` as the language.
@@ -914,10 +914,11 @@ Amended from [`docs/design-read-edit-pipeline.md`](design-read-edit-pipeline.md)
 1. Read       →  read_lens(lens, node)
 2. Diagnose   →  reasoning over the facts (LLM or human)
 3. Propose    →  produce Diff
-4. Candidate  →  candidate_dag = apply_diff(dag, Diff)   # uncommitted candidate
-5. Policy     →  caller/project policy evaluates readings over candidate nodes
-6. Commit     →  dag := candidate_dag                    # only if policy accepts
-7. Re-emit    →  emit per target language                # files are a downstream effect
+4. Candidate  →  candidate_result = apply_diff(dag, Diff) # Outcome; reject before readings if failed
+5. Observe    →  candidate_dag = unwrap(candidate_result); read_lens(lens, candidate_dag)
+6. Policy     →  caller/project policy evaluates readings over candidate nodes
+7. Commit     →  dag := candidate_dag                     # only if policy accepts
+8. Re-project →  project per projection plan              # files are a downstream effect
 ```
 
 **The candidate-state pattern is structurally important.** Policy reads run against the **post-edit candidate state**, NOT the pre-edit graph. Reasoning: reading the pre-edit graph and applying the Diff afterward would let a Diff introduce a post-edit invariant violation that was never observed. The candidate pattern keeps the fail-closed promise honest: validation happens against the state that will be committed/emitted, not against a state already known to be valid.
@@ -1217,7 +1218,7 @@ Every failure carries source position. No silent drops. No partial outputs.
 - `src/v4/compiler/04_infer.dag`, `05_emit.dag`, `05_eval.dag`, `00_compile.dag` — scaffolds with mixed reconciliation state — see "Scaffold-vs-design audit" below. `00_compile.dag` currently carries the now-superseded `validate_then_compile` / `Validated<T>` gate and `CompileMode`; `04_infer.dag` no longer imports a specific lens; stage bodies remain scaffolded / partial.
 - `src/v4/std/artifact.dag` — narrow artifact identity substrate (`ArtifactKind`, `Artifact`, `NodeArtifactProvenance`); not yet the full P8 regeneration substrate.
 - `src/v4/lens/application.dag` — `apply_lens` + `apply_diff` operations (scaffold; T-23).
-- `src/v4/lens/affected_set.dag` — incremental-rebuild + lens-frontier primitive (T-21).
+- `src/v4/lens/affected_set.dag` — incremental-rebuild + lens-frontier specialization (T-21).
 
 Falsification probes (not load-bearing for the initial homomorphism):
 - `src/v4/extdeps/languages/` — verilog, llvm_ir, machine_code, ptx, lean (probes the 5-behavior thesis across heterogeneous domains).
@@ -1481,8 +1482,8 @@ Defer trigger: first attempt to compile against a non-current version (e.g., Pyt
 | **`apply_diff`** (DERIVED, not primitive) | The structural-edit **derived combinator** = `sequence_outcome(diff.edits, fn(edit, candidate) -> fold_node(candidate, substitute_at(edit.at, edit.replacement)))`. **Sequential** Outcome-bind-fold over the Diff's ordered Edits list — each Edit's Path resolves against the intermediate candidate (post-prior-Edit state), NOT the original root; fail-closed on any unresolved Path in the intermediate state. The agent-side mutation operation; composes with `fold_node` + `sequence_outcome`. |
 | **`apply_lens`** (current scaffold; target is `observe`) | Current `lens/application.dag` surface: `apply_lens(lens, scope, mode) → Witness<finding> \| Outcome<()>`. Audit disposition: reframe as graph-in lens reading that contributes to `LensReport`; `Enforce` semantics move to `authorize`. |
 | **`RegionRef`** | Low-level region reference shared by graph consumers. It is not a universal `SubgraphScope`; lenses and projections refine it into their own scope/subject shapes. |
-| **candidate-state pattern** | The read/edit invariant: readings and policy evaluate `candidate_dag = apply_diff(dag, Diff)`, NOT the pre-edit graph. Validates against the state that will be committed, not against a state already known to be valid. |
-| **`affected_set`** | T-21 substrate primitive: `affected_set(dag, Diff) → Witness<ReExecFrontier>`. Incremental re-execution frontier; consumed by caller/session policy and projection regeneration. |
+| **candidate-state pattern** | The read/edit invariant: readings and policy evaluate the accepted candidate from `apply_diff(dag, Diff)`, NOT the pre-edit graph. `apply_diff` is an `Outcome`; if it rejects, the candidate flow fails closed before readings run. |
+| **`affected_set`** | T-21 derived combinator + lens-frontier specialization: `affected_set(dag, Diff) → Witness<ReExecFrontier>`. Incremental re-execution frontier derived from `fold_node` over dependency facts; consumed by caller/session policy and projection regeneration. |
 | **self-edit / stage0** | The compiler editing its own source via `apply_diff(self, Diff)`. Self-hosting (stage0 regeneration) is `project(self_graph, rust_stage0_projection_plan)` — no special compile mode. See "Self-modification" section. |
 | **projection** | Per P0 + P3, every downstream artifact (tests, glue, schemas, migration plans, docs, dry-run results) is a projection of `InferredTree` computed by a projection producer and reported through `ProjectionReport`. Lens readings may feed projection producers, but they do not own artifact materialization. |
 | **testgen** | A projection family that produces `TestClaim` / `TestCase` artifacts from `InferredTree`, optionally consuming lens readings. Historical location/name predates the projection split. Tests are projections of the model, NOT the source of truth for the model. |
@@ -1491,7 +1492,7 @@ Defer trigger: first attempt to compile against a non-current version (e.g., Pyt
 | **modeled effect** | A real-world I/O operation declared as substrate data in `extdeps/` (file_read, file_write, network call, process spawn, …) — carries `EffectDependsOn` / `ResourceDependsOn` edges per P6; visible to lenses; substitutable by `LawfulRewriteWitness` for dry-run. There are no implicit side effects in the architecture. |
 | **`TestClaimProjection`** | Projection layer 1 of testgen — produces abstract behavioral claims (roundtrip / refinement-boundary / algebra-law / protocol-compatibility / effect-idempotency) as `TestClaim` Witnesses. |
 | **`TestCaseProjection`** | Projection layer 2 of testgen — lowers `TestClaim` Witnesses into concrete `TestCase` Witnesses (examples, boundary cases, property-test generators, fuzz seeds, regression fixtures). |
-| **`TargetTestProjection`** | Lens layer 3 of testgen — translates `TestCase` Witnesses into target-language test source via translate's homomorphism. |
+| **`TargetTestProjection`** | Projection layer 3 of testgen — translates `TestCase` Witnesses into target-language test source via translate's homomorphism. |
 | **`ChangeSet`** | A diff between two model versions (changed Nodes / edges / facts / witnesses / grammar productions / LanguageModel fields / lens contracts). Substrate for P0 + P8 consequence-recomputation. Not yet declared (`std/change.dag`). |
 | **`AffectedSet`** | Downstream artifacts requiring recomputation given a `ChangeSet`. T-21 `affected_set` is the lens-frontier specialization; full `AffectedSet` over arbitrary projection graphs not yet declared. |
 | **`Projection`** | Declared projection-as-data: name + input carrier + output artifact + dependency requirements + regeneration producer + validation policy inputs. Not yet declared (`std/projection.dag`). |
