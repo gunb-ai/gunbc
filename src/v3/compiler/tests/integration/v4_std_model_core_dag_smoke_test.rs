@@ -89,9 +89,9 @@ fn surface_type_name(ty: &SurfaceType) -> String {
                     v3_compiler::parse_surface::TypeAngleArg::TypeExpr { ty } => {
                         surface_type_name(ty)
                     }
-                    v3_compiler::parse_surface::TypeAngleArg::WidthNatLiteral { decimal, .. } => {
-                        decimal.clone()
-                    }
+                    v3_compiler::parse_surface::TypeAngleArg::WidthNatLiteral {
+                        decimal, ..
+                    } => decimal.clone(),
                 })
                 .collect::<Vec<_>>()
                 .join(", ");
