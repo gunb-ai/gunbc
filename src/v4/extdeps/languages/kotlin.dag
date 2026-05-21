@@ -2,7 +2,7 @@
 // Scope: Kotlin language specification LanguageModel — built-in scalar fact-bundles, catalog-derived canonical symbols, ModelCore primitive bundles.
 // Owns: KotlinIntWidth, KotlinScalar, KotlinIntegerPrimitiveFacts, KotlinFloatPrimitiveFacts, KotlinNonNumericPrimitiveFacts, KotlinLanguageModel, kotlin_*_facts, kotlin_model_core_wave1, kotlin_language_model_wave1.
 // Consumes: v4.compiler.parse, v4.compiler.tokenize, v4.std.collection, v4.std.model_core, v4.std.node, v4.std.logic, v4.std.algebra.
-// Status: T-4 Kotlin wave-1; built-in classifier types from the Kotlin spec; runtime representation remains platform-specific where the spec says so; bool canonical-B decl-ref — E-6(b) staging.
+// Status: T-4 Kotlin wave-1; built-in classifier types from Kotlin language specification Version 1.9-rfc+0.1; runtime representation remains platform-specific where the spec says so; bool canonical-B decl-ref — E-6(b) staging.
 // Anchor: https://kotlinlang.org/spec/built-in-types-and-their-semantics.html
 
 module v4.extdeps.languages.kotlin
@@ -22,9 +22,9 @@ import v4.std.model_core {
   primitive_fact_axis_surface_spelling,
   primitive_fact_axis_width
 }
-import v4.std.node { Atom, Edge, Named, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
 import v4.std.logic { Bool, bool_boolean_algebra }
-import v4.std.algebra { BooleanAlgebra, free_monoid_fold }
+import v4.std.algebra { BooleanAlgebra, Cons, Empty, free_monoid_fold }
 
 // Kotlin's specification defines only signed built-in integer types; unsigned
 // integers are not built-in classifier types in this spec section.
@@ -66,14 +66,12 @@ type KotlinIntegerPrimitiveFacts {
   width: KotlinIntWidth
   overflow: Symbol
   representation: KotlinRuntimeRepresentation
-  std_projection: Symbol
 }
 
 type KotlinFloatPrimitiveFacts {
   surface_spelling: Symbol
   width: KotlinFloatWidth
   representation: KotlinRuntimeRepresentation
-  std_projection: Symbol
 }
 
 // 🟢 coproduct dissolution — nonnumeric built-in classifiers are disjoint.
@@ -88,7 +86,6 @@ type KotlinNonNumericPrimitiveFacts {
   surface_spelling: Symbol
   scalar: KotlinNonNumericScalar
   representation: KotlinRuntimeRepresentation
-  std_projection: Symbol
 }
 
 type KotlinLanguageModel {
@@ -113,24 +110,11 @@ data kotlin_surface_spelling_string: Symbol = kotlin_surface_spelling_string
 data kotlin_surface_spelling_unit: Symbol = kotlin_surface_spelling_unit
 data kotlin_surface_spelling_nothing: Symbol = kotlin_surface_spelling_nothing
 
-data kotlin_std_projection_int8: Symbol = kotlin_std_projection_int8
-data kotlin_std_projection_int16: Symbol = kotlin_std_projection_int16
-data kotlin_std_projection_int32: Symbol = kotlin_std_projection_int32
-data kotlin_std_projection_int64: Symbol = kotlin_std_projection_int64
-data kotlin_std_projection_float32: Symbol = kotlin_std_projection_float32
-data kotlin_std_projection_float64: Symbol = kotlin_std_projection_float64
-data kotlin_std_projection_bool: Symbol = kotlin_std_projection_bool
-data kotlin_std_projection_char: Symbol = kotlin_std_projection_char
-data kotlin_std_projection_string: Symbol = kotlin_std_projection_string
-data kotlin_std_projection_unit: Symbol = kotlin_std_projection_unit
-data kotlin_std_projection_never: Symbol = kotlin_std_projection_never
-
 data kotlin_facts_field_surface_spelling: Symbol = kotlin_facts_field_surface_spelling
 data kotlin_facts_field_width: Symbol = kotlin_facts_field_width
 data kotlin_facts_field_signedness: Symbol = kotlin_facts_field_signedness
 data kotlin_facts_field_overflow: Symbol = kotlin_facts_field_overflow
 data kotlin_facts_field_representation: Symbol = kotlin_facts_field_representation
-data kotlin_facts_field_std_projection: Symbol = kotlin_facts_field_std_projection
 data kotlin_facts_field_scalar_classifier: Symbol = kotlin_facts_field_scalar_classifier
 
 data kotlin_tag_signed: Symbol = kotlin_tag_signed
@@ -159,7 +143,6 @@ data kotlin_facts_byte: KotlinIntegerPrimitiveFacts = KotlinIntegerPrimitiveFact
   width: Bits8,
   overflow: kotlin_tag_overflow_unspecified,
   representation: PlatformSpecificRuntimeRepresentation,
-  std_projection: kotlin_std_projection_int8,
 }
 
 data kotlin_facts_short: KotlinIntegerPrimitiveFacts = KotlinIntegerPrimitiveFacts {
@@ -167,7 +150,6 @@ data kotlin_facts_short: KotlinIntegerPrimitiveFacts = KotlinIntegerPrimitiveFac
   width: Bits16,
   overflow: kotlin_tag_overflow_unspecified,
   representation: PlatformSpecificRuntimeRepresentation,
-  std_projection: kotlin_std_projection_int16,
 }
 
 data kotlin_facts_int: KotlinIntegerPrimitiveFacts = KotlinIntegerPrimitiveFacts {
@@ -175,7 +157,6 @@ data kotlin_facts_int: KotlinIntegerPrimitiveFacts = KotlinIntegerPrimitiveFacts
   width: Bits32,
   overflow: kotlin_tag_overflow_unspecified,
   representation: PlatformSpecificRuntimeRepresentation,
-  std_projection: kotlin_std_projection_int32,
 }
 
 data kotlin_facts_long: KotlinIntegerPrimitiveFacts = KotlinIntegerPrimitiveFacts {
@@ -183,56 +164,48 @@ data kotlin_facts_long: KotlinIntegerPrimitiveFacts = KotlinIntegerPrimitiveFact
   width: Bits64,
   overflow: kotlin_tag_overflow_unspecified,
   representation: PlatformSpecificRuntimeRepresentation,
-  std_projection: kotlin_std_projection_int64,
 }
 
 data kotlin_facts_float: KotlinFloatPrimitiveFacts = KotlinFloatPrimitiveFacts {
   surface_spelling: kotlin_surface_spelling_float,
   width: Bits32,
   representation: Ieee754Binary32,
-  std_projection: kotlin_std_projection_float32,
 }
 
 data kotlin_facts_double: KotlinFloatPrimitiveFacts = KotlinFloatPrimitiveFacts {
   surface_spelling: kotlin_surface_spelling_double,
   width: Bits64,
   representation: Ieee754Binary64,
-  std_projection: kotlin_std_projection_float64,
 }
 
 data kotlin_facts_boolean: KotlinNonNumericPrimitiveFacts = KotlinNonNumericPrimitiveFacts {
   surface_spelling: kotlin_surface_spelling_boolean,
   scalar: BoolScalar,
   representation: PlatformSpecificRuntimeRepresentation,
-  std_projection: kotlin_std_projection_bool,
 }
 
 data kotlin_facts_char: KotlinNonNumericPrimitiveFacts = KotlinNonNumericPrimitiveFacts {
   surface_spelling: kotlin_surface_spelling_char,
   scalar: CharScalar,
   representation: Ucs2CodeUnit,
-  std_projection: kotlin_std_projection_char,
 }
 
 data kotlin_facts_string: KotlinNonNumericPrimitiveFacts = KotlinNonNumericPrimitiveFacts {
   surface_spelling: kotlin_surface_spelling_string,
   scalar: StringScalar,
   representation: Ucs2CodeUnitSequence,
-  std_projection: kotlin_std_projection_string,
 }
 
 data kotlin_facts_unit: KotlinNonNumericPrimitiveFacts = KotlinNonNumericPrimitiveFacts {
   surface_spelling: kotlin_surface_spelling_unit,
   scalar: UnitScalar,
   representation: SingletonObject,
-  std_projection: kotlin_std_projection_unit,
 }
 
 data kotlin_facts_nothing: KotlinNonNumericPrimitiveFacts = KotlinNonNumericPrimitiveFacts {
   surface_spelling: kotlin_surface_spelling_nothing,
   scalar: NothingScalar,
   representation: UninhabitedControlFlow,
-  std_projection: kotlin_std_projection_never,
 }
 
 data kotlin_integer_facts_catalog: List<KotlinIntegerPrimitiveFacts> = [
@@ -361,10 +334,6 @@ fn kotlin_integer_facts_node(facts: KotlinIntegerPrimitiveFacts) -> Node {
         target: kotlin_runtime_representation_node(representation: facts.representation)
       ),
       kotlin_named_edge(
-        name: kotlin_facts_field_std_projection,
-        target: kotlin_atom(id: facts.std_projection)
-      ),
-      kotlin_named_edge(
         name: kotlin_facts_field_scalar_classifier,
         target: kotlin_scalar_node(scalar: IntScalar { width: facts.width })
       )
@@ -386,10 +355,6 @@ fn kotlin_float_facts_node(facts: KotlinFloatPrimitiveFacts) -> Node {
         target: kotlin_runtime_representation_node(representation: facts.representation)
       ),
       kotlin_named_edge(
-        name: kotlin_facts_field_std_projection,
-        target: kotlin_atom(id: facts.std_projection)
-      ),
-      kotlin_named_edge(
         name: kotlin_facts_field_scalar_classifier,
         target: kotlin_scalar_node(scalar: FloatScalar { width: facts.width })
       )
@@ -408,10 +373,6 @@ fn kotlin_nonnumeric_facts_node(facts: KotlinNonNumericPrimitiveFacts) -> Node {
       kotlin_named_edge(
         name: kotlin_facts_field_representation,
         target: kotlin_runtime_representation_node(representation: facts.representation)
-      ),
-      kotlin_named_edge(
-        name: kotlin_facts_field_std_projection,
-        target: kotlin_atom(id: facts.std_projection)
       ),
       kotlin_named_edge(
         name: kotlin_facts_field_scalar_classifier,
