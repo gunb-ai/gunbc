@@ -57,6 +57,12 @@ fn t22_eval_diagnostic_assert_not_deferred_in_substrate() {
             && EVAL_DAG.contains("outcome_node_eq(a: actual, b: expected)"),
         "CompilesClaim must compare actual against declared expected_value (P2/P3 fail-closed)"
     );
+    assert!(
+        EVAL_DAG.contains("RoundTripClaim { input: input")
+            && EVAL_DAG.contains("Deferred {")
+            && EVAL_DAG.contains("eval_rejected_roundtrip_deferred"),
+        "RoundTripClaim eval authority must stay Deferred (single authority; verification must not synthesize expected Outcome<Node>)"
+    );
 }
 
 #[test]

@@ -107,6 +107,12 @@ fn v4_lens_testgen_wave0_function_inventory_matches_wave0() {
         0,
         "lens/testgen must not host a mirrored present-key conversion table (codex duplicate-authority fix)"
     );
+    let expected_outcome_rt = fn_return_type(&verification, "test_claim_expected_outcome")
+        .expect("test_claim_expected_outcome should have an explicit return type");
+    assert!(
+        type_is_outcome_outcome_named(expected_outcome_rt, "Node"),
+        "RoundTripClaim has no declared expected outcome: projection must fail-close as `Outcome<Outcome<Node>>`, not fabricate `Outcome<Node>`; got {expected_outcome_rt:?}"
+    );
 }
 
 #[test]
@@ -394,6 +400,19 @@ fn type_is_generator_testgen_concept(ty: &SurfaceType) -> bool {
         inner.as_ref(),
         SurfaceType::Named { name: slot, .. } if slot == "TestgenConcept"
     )
+}
+
+fn type_is_outcome_outcome_named(ty: &SurfaceType, inner_name: &str) -> bool {
+    let SurfaceType::Parameterized { name, args, .. } = ty else {
+        return false;
+    };
+    if name != "Outcome" || args.len() != 1 {
+        return false;
+    }
+    let TypeAngleArg::TypeExpr { ty: outer_inner } = &args[0] else {
+        return false;
+    };
+    type_is_outcome_named(outer_inner.as_ref(), inner_name)
 }
 
 fn type_is_outcome_named(ty: &SurfaceType, inner_name: &str) -> bool {
