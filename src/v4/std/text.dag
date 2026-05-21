@@ -9,7 +9,7 @@
 module v4.std.text
 
 
-import v4.std.algebra { FreeMonoid, is_empty }
+import v4.std.algebra { FreeMonoid }
 import v4.std.nat { Nat }
 type Char = Nat
 type String = FreeMonoid<Char>
