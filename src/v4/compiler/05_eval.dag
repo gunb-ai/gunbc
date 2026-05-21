@@ -13,13 +13,18 @@ import v4.compiler.infer {
 }
 import v4.std.collection { List, Map, non_empty }
 import v4.std.host {
+  HostAggregate,
   HostBindingKey,
+  HostClosure,
   HostContinue,
   HostEnvironment,
   HostModel,
+  HostPrimitive,
   HostRaise,
+  HostReference,
   HostReturn,
   HostSuspend,
+  HostUnit,
   HostControlTransfer,
   HostValue
 }
@@ -134,6 +139,7 @@ type TestClaimRun<T> {
 
 type EvalFoldState {
   node: Node
+  processed_children: Int
   child_values: Outcome<List<HostValue>>
   value: Outcome<HostValue>
 }
@@ -167,6 +173,9 @@ data eval_rejected_bind_not_realized: Symbol = eval_rejected_bind_not_realized
 data eval_rejected_pending_children: Symbol = eval_rejected_pending_children
 data eval_rejected_suspended_not_terminal: Symbol = eval_rejected_suspended_not_terminal
 data eval_rejected_host_binding_lookup_miss: Symbol = eval_rejected_host_binding_lookup_miss
+data eval_rejected_resolved_type_mismatch: Symbol = eval_rejected_resolved_type_mismatch
+data eval_rejected_inhabitance_mismatch: Symbol = eval_rejected_inhabitance_mismatch
+data eval_rejected_canonical_mismatch: Symbol = eval_rejected_canonical_mismatch
 fn eval_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
   Diagnostic {
     reason: reason,
@@ -238,34 +247,80 @@ fn host_control_transfer_value(control: HostControlTransfer, node: Node) -> Outc
 }
 
 
+fn host_value_resolved_type(value: HostValue) -> Node {
+  match value {
+    HostPrimitive { value: p } => p.primitive_type
+    HostAggregate { value: a } => a.aggregate_type
+    HostReference { value: r } => r.reference_type
+    HostClosure { value: c } => c.arrow_type
+    HostUnit { value: u } => u.unit_type
+  }
+}
+
+
+fn eval_canonical_facts_match_resolved_type(facts: InferredFacts) -> Bool {
+  (facts.canonical.structural.evidence == facts.resolved_type)
+    && (facts.canonical.closedness.evidence == facts.resolved_type)
+}
+
+
+fn eval_accept_host_value_with_facts(
+  node: Node,
+  facts: InferredFacts,
+  value: HostValue
+) -> Outcome<HostValue> {
+  if host_value_resolved_type(value: value) != facts.resolved_type {
+    outcome_rejected(
+      d: eval_diagnostic(reason: eval_rejected_resolved_type_mismatch, node: node)
+    )
+  } else if facts.inhabits.algebra != facts.resolved_type {
+    outcome_rejected(
+      d: eval_diagnostic(reason: eval_rejected_inhabitance_mismatch, node: node)
+    )
+  } else if !eval_canonical_facts_match_resolved_type(facts: facts) {
+    outcome_rejected(
+      d: eval_diagnostic(reason: eval_rejected_canonical_mismatch, node: node)
+    )
+  } else {
+    Accepted { value: value, diagnostics: None }
+  }
+}
+
+
 fn eval_computation_node(
   behavior: Behavior,
   node: Node,
   args: List<HostValue>,
+  facts: InferredFacts,
   host: HostModel,
   environment: HostEnvironment
 ) -> Outcome<HostValue> {
-  match behavior {
-    Value =>
-      host.interpretation.value.allocate_literal(node, environment)
-    Transform =>
-      host.interpretation.transform.call_primitive(node, args, environment)
-    Branch =>
-      outcome_rejected(
-        d: eval_diagnostic(reason: eval_rejected_branch_not_realized, node: node)
-      )
-    Loop =>
-      bind_outcome(
-        o: host.interpretation.loop.step_loop(node, environment),
-        f: fn(control) {
-          host_control_transfer_value(control: control, node: node)
-        }
-      )
-    Bind =>
-      outcome_rejected(
-        d: eval_diagnostic(reason: eval_rejected_bind_not_realized, node: node)
-      )
-  }
+  bind_outcome(
+    o: match behavior {
+      Value =>
+        host.interpretation.value.allocate_literal(node, environment)
+      Transform =>
+        host.interpretation.transform.call_primitive(node, args, environment)
+      Branch =>
+        outcome_rejected(
+          d: eval_diagnostic(reason: eval_rejected_branch_not_realized, node: node)
+        )
+      Loop =>
+        bind_outcome(
+          o: host.interpretation.loop.step_loop(node, environment),
+          f: fn(control) {
+            host_control_transfer_value(control: control, node: node)
+          }
+        )
+      Bind =>
+        outcome_rejected(
+          d: eval_diagnostic(reason: eval_rejected_bind_not_realized, node: node)
+        )
+    },
+    f: fn(value) {
+      eval_accept_host_value_with_facts(node: node, facts: facts, value: value)
+    }
+  )
 }
 
 
@@ -278,13 +333,14 @@ fn eval_interpret_node(
 ) -> Outcome<HostValue> {
   bind_outcome(
     o: inferred_facts_for_eval(tree: tree, node: node),
-    f: fn(_facts) {
+    f: fn(facts) {
       match node.kind {
         ComputationNode { behavior: b } =>
           eval_computation_node(
             behavior: b,
             node: node,
             args: args,
+            facts: facts,
             host: host,
             environment: environment
           )
@@ -327,6 +383,28 @@ fn eval_fold_state_value(state: EvalFoldState) -> Outcome<HostValue> {
 }
 
 
+fn eval_absorb_child_diagnostics(
+  acc: Outcome<List<HostValue>>,
+  child: Outcome<HostValue>
+) -> Outcome<List<HostValue>> {
+  match acc {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: values, diagnostics: ad } =>
+      match child {
+        Rejected { diagnostics: cr } =>
+          Rejected {
+            diagnostics: rejected_with_pending(pending: ad, rejected: cr)
+          }
+        Accepted { value: _, diagnostics: cd } =>
+          Accepted {
+            value: values,
+            diagnostics: diagnostics_merge(outer: ad, inner: cd)
+          }
+      }
+  }
+}
+
+
 fn eval_append_child_value(
   acc: Outcome<List<HostValue>>,
   child: Outcome<HostValue>
@@ -364,8 +442,9 @@ fn eval_fold_init(
 ) -> EvalFoldState {
   EvalFoldState {
     node: node,
+    processed_children: 0,
     child_values: Accepted { value: empty_host_values(), diagnostics: None },
-    value: if eval_runtime_argument_count(children: node.children) == 0 {
+    value: if count(node.children) == 0 {
       eval_interpret_node(
         node: node,
         args: empty_host_values(),
@@ -382,13 +461,14 @@ fn eval_fold_init(
 
 fn eval_maybe_complete_node(
   node: Node,
+  processed_children: Int,
   args: List<HostValue>,
   tree: InferredTree,
   host: HostModel,
   environment: HostEnvironment,
   pending: Outcome<HostValue>
 ) -> Outcome<HostValue> {
-  if count(args) == eval_runtime_argument_count(children: node.children) {
+  if processed_children == count(node.children) {
     eval_interpret_node(
       node: node,
       args: args,
@@ -413,16 +493,19 @@ fn eval_fold_step(
   let next_args = if eval_edge_is_runtime_argument(edge: edge) {
     eval_append_child_value(acc: acc.child_values, child: child.value)
   } else {
-    acc.child_values
+    eval_absorb_child_diagnostics(acc: acc.child_values, child: child.value)
   }
+  let processed_children = acc.processed_children + 1
   EvalFoldState {
     node: acc.node,
+    processed_children: processed_children,
     child_values: next_args,
     value: bind_outcome(
       o: next_args,
       f: fn(args) {
         eval_maybe_complete_node(
           node: acc.node,
+          processed_children: processed_children,
           args: args,
           tree: tree,
           host: host,
