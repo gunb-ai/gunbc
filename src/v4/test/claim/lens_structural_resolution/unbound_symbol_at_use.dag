@@ -164,7 +164,6 @@ data unbound_symbol_at_use_claim: LensStructuralResolutionClaim = LensStructural
   expected: StructuralResolutionFact {
     dependencies: [
       StructuralResolutionDependencyFact {
-        at: sr_unbound_child,
         dependency: sr_unbound_dependency,
         source_facts: Holds { value: sr_unbound_resolved_facts() },
         dependent_facts: sr_unbound_dependent_witness()
