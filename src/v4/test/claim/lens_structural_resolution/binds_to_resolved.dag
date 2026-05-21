@@ -8,10 +8,12 @@ module v4.test.claim.lens_structural_resolution.binds_to_resolved
 
 import v4.compiler.infer { AlgebraRef, InferredFacts, InferredTree }
 import v4.lens.structural_resolution {
+  BindingResolved,
   StructuralResolutionDependencyFact,
   StructuralResolutionFact,
   at,
-  fact_eq
+  fact_eq,
+  fact_projects_status
 }
 import v4.std.cardinality { RankingDimension, TerminationProof }
 import v4.std.collection { Map }
@@ -126,6 +128,7 @@ fn binds_to_resolved_claim_holds() -> Bool {
   match binds_to_resolved_claim.actual {
     Holds { value: actual } =>
       fact_eq(a: actual, b: binds_to_resolved_claim.expected)
+        && fact_projects_status(fact: actual, expected: BindingResolved)
     _ => false
   }
 }

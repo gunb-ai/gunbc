@@ -42,7 +42,7 @@ import v4.std.dependency {
   ModuleDependsOn,
   dependency_lens
 }
-import v4.std.node { Node }
+import v4.std.node { Node, Symbol }
 import v4.std.witness { Holds, Violates, Witness }
 
 // 🟢 projection carrier — Practice 11: binding resolution status is read from
@@ -145,8 +145,39 @@ fn at(tree: InferredTree) -> Witness<StructuralResolutionFact> {
   witness(tree: tree, dependencies: dependency_lens(root: tree.root))
 }
 
-// TestClaim equality: status is a derived projection (status_of_dependency_fact);
-// compare authoritative fields only — no hand-rolled coproduct equality (Practice 10).
+// 🟢 terminal — TestClaim status projection ratchet (closed sum equality for claims only).
+fn status_eq(a: StructuralResolutionStatus, b: StructuralResolutionStatus) -> Bool {
+  match a {
+    BindingResolved => match b {
+      BindingResolved => true
+      _ => false
+    }
+    UnboundSymbolAtUse => match b {
+      UnboundSymbolAtUse => true
+      _ => false
+    }
+    FactsLookupMiss => match b {
+      FactsLookupMiss => true
+      _ => false
+    }
+    UnresolvedInferWitness => match b {
+      UnresolvedInferWitness => true
+      _ => false
+    }
+    PreludeCarveOut => match b {
+      PreludeCarveOut => true
+      _ => false
+    }
+  }
+}
+
+fn fact_projects_status(fact: StructuralResolutionFact, expected: StructuralResolutionStatus) -> Bool {
+  fold(fact.dependencies, init: false, f: fn(acc, dep) {
+    acc || status_eq(a: status_of_dependency_fact(fact: dep), b: expected)
+  })
+}
+
+// TestClaim equality: compare authoritative fields; status ratcheted separately via fact_projects_status.
 fn dependency_fact_eq(
   a: StructuralResolutionDependencyFact,
   b: StructuralResolutionDependencyFact

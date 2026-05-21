@@ -13,8 +13,10 @@ import v4.compiler.resolve {
 import v4.lens.structural_resolution {
   StructuralResolutionDependencyFact,
   StructuralResolutionFact,
+  UnboundSymbolAtUse,
   at,
-  fact_eq
+  fact_eq,
+  fact_projects_status
 }
 import v4.std.cardinality { RankingDimension, TerminationProof }
 import v4.std.collection { Map }
@@ -153,6 +155,7 @@ fn unbound_symbol_at_use_claim_holds() -> Bool {
   match unbound_symbol_at_use_claim.actual {
     Holds { value: actual } =>
       fact_eq(a: actual, b: unbound_symbol_at_use_claim.expected)
+        && fact_projects_status(fact: actual, expected: UnboundSymbolAtUse)
     _ => false
   }
 }
