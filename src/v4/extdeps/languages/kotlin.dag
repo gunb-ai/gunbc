@@ -51,11 +51,6 @@ type KotlinRuntimeRepresentation
   | SingletonObject
   | UninhabitedControlFlow
 
-// Green-terminal coproduct: Kotlin integer overflow is unspecified by the
-// language spec; platform implementations may refine it later.
-type KotlinIntegerOverflowDisposition
-  = ArithmeticOverflowUnspecified
-
 // Green-terminal coproduct: one scalar classifier at a time.
 type KotlinScalar
   = IntScalar { width: KotlinIntWidth }
@@ -69,7 +64,7 @@ type KotlinScalar
 type KotlinIntegerPrimitiveFacts {
   surface_spelling: Symbol
   width: KotlinIntWidth
-  overflow: KotlinIntegerOverflowDisposition
+  overflow: Symbol
   representation: KotlinRuntimeRepresentation
   std_projection: Symbol
 }
@@ -162,7 +157,7 @@ data kotlin_tag_scalar_nothing: Symbol = kotlin_tag_scalar_nothing
 data kotlin_facts_byte: KotlinIntegerPrimitiveFacts = KotlinIntegerPrimitiveFacts {
   surface_spelling: kotlin_surface_spelling_byte,
   width: Bits8,
-  overflow: ArithmeticOverflowUnspecified,
+  overflow: kotlin_tag_overflow_unspecified,
   representation: PlatformSpecificRuntimeRepresentation,
   std_projection: kotlin_std_projection_int8,
 }
@@ -170,7 +165,7 @@ data kotlin_facts_byte: KotlinIntegerPrimitiveFacts = KotlinIntegerPrimitiveFact
 data kotlin_facts_short: KotlinIntegerPrimitiveFacts = KotlinIntegerPrimitiveFacts {
   surface_spelling: kotlin_surface_spelling_short,
   width: Bits16,
-  overflow: ArithmeticOverflowUnspecified,
+  overflow: kotlin_tag_overflow_unspecified,
   representation: PlatformSpecificRuntimeRepresentation,
   std_projection: kotlin_std_projection_int16,
 }
@@ -178,7 +173,7 @@ data kotlin_facts_short: KotlinIntegerPrimitiveFacts = KotlinIntegerPrimitiveFac
 data kotlin_facts_int: KotlinIntegerPrimitiveFacts = KotlinIntegerPrimitiveFacts {
   surface_spelling: kotlin_surface_spelling_int,
   width: Bits32,
-  overflow: ArithmeticOverflowUnspecified,
+  overflow: kotlin_tag_overflow_unspecified,
   representation: PlatformSpecificRuntimeRepresentation,
   std_projection: kotlin_std_projection_int32,
 }
@@ -186,7 +181,7 @@ data kotlin_facts_int: KotlinIntegerPrimitiveFacts = KotlinIntegerPrimitiveFacts
 data kotlin_facts_long: KotlinIntegerPrimitiveFacts = KotlinIntegerPrimitiveFacts {
   surface_spelling: kotlin_surface_spelling_long,
   width: Bits64,
-  overflow: ArithmeticOverflowUnspecified,
+  overflow: kotlin_tag_overflow_unspecified,
   representation: PlatformSpecificRuntimeRepresentation,
   std_projection: kotlin_std_projection_int64,
 }
@@ -290,10 +285,8 @@ fn kotlin_float_width_node(width: KotlinFloatWidth) -> Node {
   }
 }
 
-fn kotlin_overflow_node(overflow: KotlinIntegerOverflowDisposition) -> Node {
-  match overflow {
-    ArithmeticOverflowUnspecified => kotlin_atom(id: kotlin_tag_overflow_unspecified)
-  }
+fn kotlin_overflow_node(overflow: Symbol) -> Node {
+  kotlin_atom(id: overflow)
 }
 
 fn kotlin_runtime_representation_node(representation: KotlinRuntimeRepresentation) -> Node {
