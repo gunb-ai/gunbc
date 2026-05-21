@@ -82,16 +82,16 @@ pub struct EmitInfoBuildState {
 pub fn empty_emit_graph_info() -> Rc<EmitGraphInfo> {
     Rc::new(EmitGraphInfo {
         type_summaries: v2_rt::rc_empty_map::<String, Rc<TypeSummary>>(),
-        recursive_type_set: v2_rt::rc_empty_set(),
-        fielded_variants: v2_rt::rc_empty_set(),
-        shared_types: v2_rt::rc_empty_set(),
+        recursive_type_set: v2_rt::rc_empty_set::<String>(),
+        fielded_variants: v2_rt::rc_empty_set::<String>(),
+        shared_types: v2_rt::rc_empty_set::<String>(),
         ownership_index: v2_rt::rc_empty_map::<String, Rc<std::collections::BTreeSet<String>>>(),
-        movable: v2_rt::rc_empty_set(),
+        movable: v2_rt::rc_empty_set::<String>(),
         variant_to_enum: v2_rt::rc_empty_map::<String, String>(),
-        owned_bindings: v2_rt::rc_empty_set(),
+        owned_bindings: v2_rt::rc_empty_set::<String>(),
         read_only_params_index: v2_rt::rc_empty_map::<String, Rc<std::collections::BTreeSet<String>>>(
         ),
-        read_only_params: v2_rt::rc_empty_set(),
+        read_only_params: v2_rt::rc_empty_set::<String>(),
     })
 }
 

@@ -208,7 +208,7 @@ pub fn graph_has_multi_node_scc(names: &Rc<Vec<String>>, graph: Rc<CallGraph>) -
         let adjacency = build_adjacency_views(&names, graph);
         let finish = names.clone().iter().cloned().fold(
             Rc::new(DfsFinishAcc {
-                visited: v2_rt::rc_empty_set(),
+                visited: v2_rt::rc_empty_set::<String>(),
                 order: Rc::new(vec![]),
             }),
             |acc: Rc<DfsFinishAcc>, name: String| {
@@ -217,7 +217,7 @@ pub fn graph_has_multi_node_scc(names: &Rc<Vec<String>>, graph: Rc<CallGraph>) -
         );
         let result = v2_rt::reverse(finish.order.clone()).iter().cloned().fold(
             Rc::new(SccCycleAcc {
-                visited: v2_rt::rc_empty_set(),
+                visited: v2_rt::rc_empty_set::<String>(),
                 has_cycle: false,
             }),
             |acc: Rc<SccCycleAcc>, name: String| {

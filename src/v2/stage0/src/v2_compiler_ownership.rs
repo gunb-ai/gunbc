@@ -775,11 +775,14 @@ pub fn collect_callable_refs(
             } => match bk.clone().as_deref().cloned() {
                 Some(VarBindingKind::FunctionValueBinding) => {
                     let n = expr_var_name_at(texpr.clone(), si.clone());
-                    v2_rt::rc_set_insert(v2_rt::rc_empty_set(), n)
+                    v2_rt::rc_set_insert(
+                        v2_rt::rc_empty_set::<_>(), /* BRIDGE: empty_set element type unresolved */
+                        n,
+                    )
                 }
-                _ => v2_rt::rc_empty_set(),
+                _ => v2_rt::rc_empty_set::<String>(),
             },
-            ExprData::ExprLiteral { .. } => v2_rt::rc_empty_set(),
+            ExprData::ExprLiteral { .. } => v2_rt::rc_empty_set::<String>(),
             ExprData::ExprFieldAccess { .. } => {
                 collect_callable_refs(&field_access_base(texpr.clone()), &si)
             }
@@ -803,7 +806,7 @@ pub fn collect_callable_refs(
                 let then_br = collect_callable_refs(&if_then_branch(texpr.clone()), &si);
                 let else_br = match if_else_branch(texpr.clone()) {
                     Some(eb) => collect_callable_refs(&eb, &si),
-                    None => v2_rt::rc_empty_set(),
+                    None => v2_rt::rc_empty_set::<String>(),
                 };
                 v2_rt::rc_set_union(v2_rt::rc_set_union(cond, then_br), else_br)
             }
@@ -831,7 +834,7 @@ pub fn collect_callable_refs(
             ),
             ExprData::ExprReturn => match texpr.children.clone().first().cloned() {
                 Some(child) => collect_callable_refs(&child, &si),
-                None => v2_rt::rc_empty_set(),
+                None => v2_rt::rc_empty_set::<String>(),
             },
             ExprData::ExprLambda => collect_callable_refs(&lambda_body(texpr.clone()), &si),
             ExprData::ExprForEach => {
@@ -847,7 +850,7 @@ pub fn collect_callable_refs(
                     v2_rt::rc_set_union(acc, collect_callable_refs(&arg_value(&field), &si))
                 },
             ),
-            _ => v2_rt::rc_empty_set(),
+            _ => v2_rt::rc_empty_set::<String>(),
         }
     })
 }

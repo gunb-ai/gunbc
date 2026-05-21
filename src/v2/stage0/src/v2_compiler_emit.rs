@@ -1785,7 +1785,12 @@ pub fn emit_node_type(
     target: RenderTarget,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    render_node_type(&n, &target, &v2_rt::rc_empty_set(), &source_indices)
+    render_node_type(
+        &n,
+        &target,
+        &v2_rt::rc_empty_set::<String>(),
+        &source_indices,
+    )
 }
 
 pub fn render_node_type(

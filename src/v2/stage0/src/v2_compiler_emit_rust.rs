@@ -1591,7 +1591,7 @@ pub struct OwnershipBuildResult {
 pub fn build_ownership_results(modules: &Rc<Vec<Rc<TypedModule>>>) -> Rc<OwnershipBuildResult> {
     {
         let callable_set = modules.clone().iter().cloned().fold(
-            v2_rt::rc_empty_set::<String>(),
+            v2_rt::rc_empty_set::<_>(), /* BRIDGE: fold empty_set accumulator type unresolved */
             |acc: _, m: Rc<TypedModule>| {
                 Rc::new({
                     let mut __result = Vec::new();
@@ -1618,60 +1618,16 @@ pub fn build_ownership_results(modules: &Rc<Vec<Rc<TypedModule>>>) -> Rc<Ownersh
         let proofs = Rc::new({
             let mut __result = Vec::new();
             for m in modules.clone().iter().cloned() {
-                __result.extend(
-                    (*Rc::new({
-                        let mut __result = Vec::new();
-                        for item in Rc::new({
-                            let mut __result = Vec::new();
-                            for item in m.items.clone().iter().cloned() {
-                                if (item.body.clone() != None) {
-                                    __result.push(item);
-                                }
-                            }
-                            __result
-                        })
-                        .iter()
-                        .cloned()
-                        {
-                            __result.push({
-                                let pnames =
-                                    item.params.clone().iter().cloned().fold(
-                                        v2_rt::rc_empty_set::<String>(),
-                                        |acc: _, p: Rc<Node>| {
-                                            v2_rt::rc_set_insert(
-                                                acc,
-                                                param_node_name_at(
-                                                    p.clone(),
-                                                    m.type_env.clone().source_indices.clone(),
-                                                ),
-                                            )
-                                        },
-                                    );
-                                let si = m.type_env.clone().source_indices.clone();
-                                let qualified = v2_rt::concat(
-                                    v2_rt::concat(
-                                        authored_name_at(si.clone(), &m.module.clone()),
-                                        ".".to_string(),
-                                    ),
-                                    authored_name_at(si.clone(), &item),
-                                );
-                                Rc::new(OwnershipProofEntry {
-                                    name: qualified.clone(),
-                                    proof: analyze_ownership(
-                                        authored_name_at(si.clone(), &item),
-                                        item.params.clone(),
-                                        item.body.clone().clone().unwrap(),
-                                        &si,
-                                    ),
-                                    param_names: pnames.clone(),
-                                })
-                            });
-                        }
-                        __result
-                    }))
-                    .iter()
-                    .cloned(),
-                );
+                __result.extend((*Rc::new({ let mut __result = Vec::new(); for item in Rc::new({ let mut __result = Vec::new(); for item in m.items.clone().iter().cloned() { if (item.body.clone() != None) { __result.push(item); } } __result }).iter().cloned() { __result.push({
+            let pnames = item.params.clone().iter().cloned().fold(v2_rt::rc_empty_set::<_>() /* BRIDGE: fold empty_set accumulator type unresolved */, |acc: _, p: Rc<Node>| v2_rt::rc_set_insert(acc, param_node_name_at(p.clone(), m.type_env.clone().source_indices.clone())));
+let si = m.type_env.clone().source_indices.clone();
+let qualified = v2_rt::concat(v2_rt::concat(authored_name_at(si.clone(), &m.module.clone()), ".".to_string()), authored_name_at(si.clone(), &item));
+Rc::new(OwnershipProofEntry {
+    name: qualified.clone(),
+    proof: analyze_ownership(authored_name_at(si.clone(), &item), item.params.clone(), item.body.clone().clone().unwrap(), &si),
+    param_names: pnames.clone(),
+})
+}); } __result })).iter().cloned());
             }
             __result
         });
@@ -1693,7 +1649,7 @@ pub fn build_ownership_results(modules: &Rc<Vec<Rc<TypedModule>>>) -> Rc<Ownersh
                         callable_set.clone(),
                         entry.proof.clone().func_name.clone(),
                     ) {
-                        v2_rt::rc_empty_set()
+                        v2_rt::rc_empty_set::<String>()
                     } else {
                         build_read_only_params(entry.proof.clone(), entry.param_names.clone())
                     };
@@ -1731,11 +1687,11 @@ pub fn emit_rust(typed: &Rc<ResolvedGraph>) -> Rc<EmitResult> {
             fielded_variants: base_info.fielded_variants.clone(),
             shared_types: shared,
             ownership_index: ownership.ownership_index.clone(),
-            movable: v2_rt::rc_empty_set(),
+            movable: v2_rt::rc_empty_set::<String>(),
             variant_to_enum: base_info.variant_to_enum.clone(),
-            owned_bindings: v2_rt::rc_empty_set(),
+            owned_bindings: v2_rt::rc_empty_set::<String>(),
             read_only_params_index: ownership.read_only_params_index.clone(),
-            read_only_params: v2_rt::rc_empty_set(),
+            read_only_params: v2_rt::rc_empty_set::<String>(),
         });
         let shared_types = emit_info.shared_types.clone();
         let registry = typed.item_registry.clone();
@@ -1988,9 +1944,9 @@ pub fn emit_module(
             ownership_index: base_info.ownership_index.clone(),
             movable: base_info.movable.clone(),
             variant_to_enum: base_info.variant_to_enum.clone(),
-            owned_bindings: v2_rt::rc_empty_set(),
+            owned_bindings: v2_rt::rc_empty_set::<String>(),
             read_only_params_index: base_info.read_only_params_index.clone(),
-            read_only_params: v2_rt::rc_empty_set(),
+            read_only_params: v2_rt::rc_empty_set::<String>(),
         });
         let shared_types = emit_info.shared_types.clone();
         emit_module_full(
@@ -2689,7 +2645,7 @@ pub fn emit_typed_item(
                                 qualified_name.clone(),
                             ) {
                                 Some(m) => m.clone(),
-                                None => v2_rt::rc_empty_set(),
+                                None => v2_rt::rc_empty_set::<String>(),
                             };
                             let item_is_tco = is_tco_eligible(
                                 &authored_name(env.clone(), item.clone()),
@@ -2698,14 +2654,14 @@ pub fn emit_typed_item(
                                 &env.source_indices.clone(),
                             );
                             let fn_read_only = if item_is_tco {
-                                v2_rt::rc_empty_set()
+                                v2_rt::rc_empty_set::<String>()
                             } else {
                                 match v2_rt::map_get(
                                     &emit_info.read_only_params_index.clone(),
                                     qualified_name.clone(),
                                 ) {
                                     Some(m) => m.clone(),
-                                    None => v2_rt::rc_empty_set(),
+                                    None => v2_rt::rc_empty_set::<String>(),
                                 }
                             };
                             let fn_emit_info = Rc::new(EmitGraphInfo {
@@ -2716,7 +2672,7 @@ pub fn emit_typed_item(
                                 ownership_index: emit_info.ownership_index.clone(),
                                 movable: fn_movable,
                                 variant_to_enum: emit_info.variant_to_enum.clone(),
-                                owned_bindings: v2_rt::rc_empty_set(),
+                                owned_bindings: v2_rt::rc_empty_set::<String>(),
                                 read_only_params_index: emit_info.read_only_params_index.clone(),
                                 read_only_params: fn_read_only,
                             });
@@ -7281,7 +7237,7 @@ pub fn emit_typed_call(
         let callee_read_only =
             match v2_rt::map_get(&emit_info.read_only_params_index.clone(), callee_qualified) {
                 Some(m) => m.clone(),
-                None => v2_rt::rc_empty_set(),
+                None => v2_rt::rc_empty_set::<String>(),
             };
         let callee_is_tco = match callee.clone() {
             Some(info) => {
@@ -14843,7 +14799,7 @@ pub fn rust_test_signature_comment(projection: &Rc<TestProjection>) -> String {
                     ),
                     emit_rust_param_type(
                         &param_node_type_expr(&p),
-                        &v2_rt::rc_empty_set(),
+                        &v2_rt::rc_empty_set::<String>(),
                         &projection.source_indices.clone(),
                     ),
                 ));
@@ -15160,7 +15116,7 @@ pub fn to_workflow_func(
         );
         let ro_params = match v2_rt::map_get(&read_only_params_index, qualified) {
             Some(m) => m.clone(),
-            None => v2_rt::rc_empty_set(),
+            None => v2_rt::rc_empty_set::<String>(),
         };
         Rc::new(WorkflowFunc {
             name: item_name.clone(),
