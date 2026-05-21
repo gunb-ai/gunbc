@@ -33,14 +33,15 @@ import v4.std.diagnostic {
 }
 import v4.std.node { Edge, Named, Node, Symbol, TypeNode, Atom, Conj }
 import v4.std.verification {
-  Compiles,
-  Equals,
   T19ManualAnchorAbsent,
   TestClaim,
   TestClassification,
   Tier1,
-  Integration
-}
+  Integration,
+  CompilesClaim,
+  DiagnosticClaim,
+  EqualsClaim,
+  RoundTripClaim}
 
 
 data shared_wire_contract_symbol: Symbol = shared_wire_contract_symbol
@@ -86,47 +87,40 @@ data falsification_target_contract_drift: Node = Node {
 }
 
 
-data claim_shared_declaration_compiles_both_sides: TestClaim = TestClaim {
-  kind: Compiles,
+data claim_shared_declaration_compiles_both_sides: TestClaim = CompilesClaim {
   label: "shared transport declaration compiles client and server sides",
   t19_anchor: T19ManualAnchorAbsent,
   input: shared_wire_contract_input,
-  expected: Accepted { value: shared_wire_contract_input, diagnostics: None },
+  expected_value: shared_wire_contract_input,
   classification: TestClassification { tier: Tier1, layer: Integration }
 }
 
 
-data claim_target_contract_drift_impossible: TestClaim = TestClaim {
-  kind: Equals,
+data claim_target_contract_drift_impossible: TestClaim = DiagnosticClaim {
   label: "transport field drift rejects target-side parallel authority",
   t19_anchor: T19ManualAnchorAbsent,
   input: falsification_target_contract_drift,
-  expected: Rejected {
-    diagnostics: diagnostics_singleton(
+  expected_rejection: diagnostics_singleton(
       d: Diagnostic {
         reason: target_transport_drift_reason,
         at: NodeLocus { node: falsification_target_contract_drift },
         correction: Suggested { node: shared_wire_contract_input }
       }
-    )
-  },
+    ),
   classification: TestClassification { tier: Tier1, layer: Integration }
 }
 
 
-data claim_wire_contract_drift_impossible: TestClaim = TestClaim {
-  kind: Equals,
+data claim_wire_contract_drift_impossible: TestClaim = DiagnosticClaim {
   label: "transport field drift rejects parallel client server authority",
   t19_anchor: T19ManualAnchorAbsent,
   input: falsification_wire_contract_drift,
-  expected: Rejected {
-    diagnostics: diagnostics_singleton(
+  expected_rejection: diagnostics_singleton(
       d: Diagnostic {
         reason: transport_drift_reason,
         at: NodeLocus { node: falsification_wire_contract_drift },
         correction: Suggested { node: shared_wire_contract_input }
       }
-    )
-  },
+    ),
   classification: TestClassification { tier: Tier1, layer: Integration }
 }

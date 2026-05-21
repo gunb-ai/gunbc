@@ -22,6 +22,10 @@ use v3_compiler::tokenize_for_test;
 
 const TESTGEN_DAG: &str = include_str!("../../../../v4/lens/testgen.dag");
 const VERIFICATION_DAG: &str = include_str!("../../../../v4/std/verification.dag");
+const P9_REGISTRY_OWNER_DAG: &str =
+    include_str!("../../../../v4/test/claim/lens_cost/p9_llvm_instruction_cost_registry_owner.dag");
+const P9_REGISTRY_OWNER_PATH: &str =
+    "src/v4/test/claim/lens_cost/p9_llvm_instruction_cost_registry_owner.dag";
 const NAT_LAW_DAG: &str = include_str!("../../../../v4/test/claim/manual/nat_law_anchors.dag");
 const NAT_SUBSTRATE_DAG: &str = include_str!("../../../../v4/std/nat.dag");
 
@@ -33,6 +37,19 @@ const NAT_MANUAL_CLAIM_DATA: [&str; 6] = [
     "claim_nat_mul_annihilator",
     "claim_nat_mul_associativity",
 ];
+
+#[test]
+fn v4_lens_testgen_p9_registry_owner_claim_parses_and_checks_registry_exclusivity() {
+    parse_module(P9_REGISTRY_OWNER_DAG, P9_REGISTRY_OWNER_PATH);
+    assert!(
+        P9_REGISTRY_OWNER_DAG.contains("lens_owned_fn_registry_v0")
+            && P9_REGISTRY_OWNER_DAG.contains("p9_owned_fn_row_eq")
+            && P9_REGISTRY_OWNER_DAG.contains("count_equal(")
+            && P9_REGISTRY_OWNER_DAG.contains("item: lens_owned_fn_llvm_instruction_cost")
+            && P9_REGISTRY_OWNER_DAG.contains("EqualsClaim {"),
+        "P9 receipt must prove exactly one full registry row matches canonical fn+owner (B1)"
+    );
+}
 
 #[test]
 fn v4_lens_testgen_wave0_modules_tokenize_and_parse() {
@@ -53,6 +70,16 @@ fn v4_lens_testgen_wave0_modules_tokenize_and_parse() {
 #[test]
 fn v4_lens_testgen_wave0_verification_manual_anchor_key_only() {
     let verification = parse_module(VERIFICATION_DAG, "src/v4/std/verification.dag");
+    assert!(
+        import_names_for_path(&verification, &["v4", "std", "node"])
+            .is_some_and(|names| names.iter().any(|n| n == "Symbol")),
+        "verification.dag must import Symbol for diagnostic reason carriers (P2 resolve)"
+    );
+    assert!(
+        VERIFICATION_DAG.contains("expected_value: Node")
+            && VERIFICATION_DAG.contains("expected_rejection: NonEmptyDiagnostics"),
+        "TestClaim variants must use polarity-specific carriers, not Outcome<Node> (P2 illegal-states)"
+    );
     assert!(
         module_declares_type_sum_named(&verification, "T19ManualAnchorKey"),
         "substrate must declare `type T19ManualAnchorKey` (parsed `TypeSum`)"
@@ -90,7 +117,7 @@ fn v4_lens_testgen_wave0_function_inventory_matches_wave0() {
     assert_eq!(
         function_count(&testgen, "bootstrap_assert_kind_for_manual_anchor"),
         0,
-        "AssertKind must not be re-authored in testgen; use manual `TestClaim.kind`"
+        "AssertKind must not be re-authored in testgen; assertion shape lives on TestClaim coproduct"
     );
     assert_eq!(
         function_count(&verification, "t19_present_manual_anchor_key"),
@@ -106,6 +133,12 @@ fn v4_lens_testgen_wave0_function_inventory_matches_wave0() {
         function_count(&testgen, "t19_present_manual_anchor_key_for_claim"),
         0,
         "lens/testgen must not host a mirrored present-key conversion table (codex duplicate-authority fix)"
+    );
+    let expected_outcome_rt = fn_return_type(&verification, "test_claim_expected_outcome")
+        .expect("test_claim_expected_outcome should have an explicit return type");
+    assert!(
+        type_is_outcome_outcome_named(expected_outcome_rt, "Node"),
+        "RoundTripClaim has no declared expected outcome: projection must fail-close as `Outcome<Outcome<Node>>`, not fabricate `Outcome<Node>`; got {expected_outcome_rt:?}"
     );
 }
 
@@ -180,20 +213,20 @@ fn v4_lens_testgen_wave0_generator_t19_anchor_field_is_manual_key() {
 fn v4_lens_testgen_wave0_concept_projection_matches_claim_t19_anchor() {
     assert!(
         TESTGEN_DAG.contains("fn testgen_concept_for_manual_claim")
-            && TESTGEN_DAG.contains("match claim.t19_anchor"),
-        "concept projection must match on `claim.t19_anchor` (single authority path with manual claim)"
+            && TESTGEN_DAG.contains("match test_claim_t19_anchor(c: claim)"),
+        "concept projection must match on `test_claim_t19_anchor(c: claim)` (single authority path with manual claim)"
     );
 }
 
 #[test]
-fn v4_lens_testgen_wave0_generator_carries_claim_kind_and_classification() {
+fn v4_lens_testgen_wave0_generator_carries_claim_classification_and_anchor() {
     assert!(
-        TESTGEN_DAG.contains("classification: claim.classification"),
-        "Generator must take classification from manual TestClaim"
+        TESTGEN_DAG.contains("classification: test_claim_classification(c: claim)"),
+        "Generator must take classification from manual TestClaim via substrate helper"
     );
     assert!(
-        TESTGEN_DAG.contains("kind: claim.kind"),
-        "Generator must take AssertKind from manual TestClaim.kind"
+        TESTGEN_DAG.contains("t19_anchor: test_claim_t19_anchor(c: claim)"),
+        "Generator must take T19ManualAnchorKey from manual TestClaim via substrate helper"
     );
 }
 
@@ -204,8 +237,8 @@ fn v4_lens_testgen_wave0_bootstrap_threads_claim_anchor_into_generator() {
         "bootstrap must not use a mirrored present-key conversion helper"
     );
     assert!(
-        TESTGEN_DAG.contains("t19_anchor: claim.t19_anchor"),
-        "Generator must wire `t19_anchor` from the manual `TestClaim` row (single authority)"
+        TESTGEN_DAG.contains("t19_anchor: test_claim_t19_anchor(c: claim)"),
+        "Generator must wire `t19_anchor` from the manual `TestClaim` row via substrate helper (single authority)"
     );
     assert!(
         TESTGEN_DAG.contains("match testgen_concept_for_manual_claim(claim: claim)"),
@@ -231,20 +264,9 @@ fn v4_lens_testgen_testgen_carries_six_nat_algebra_law_scheduling_arms() {
 fn assert_nat_manual_claim_blocks_use_compiles_stub(nat_law_src: &str) {
     for claim in NAT_MANUAL_CLAIM_DATA {
         let block = nat_law_manual_claim_data_block(nat_law_src, claim);
-        let kind_lines: Vec<&str> = block
-            .lines()
-            .map(str::trim)
-            .filter(|l| l.starts_with("kind:"))
-            .collect();
-        assert_eq!(
-            kind_lines.len(),
-            1,
-            "{claim}: expected exactly one `kind:` field in this `data` block; got {kind_lines:?}"
-        );
         assert!(
-            kind_lines[0].starts_with("kind: Compiles"),
-            "{claim}: nat-law manual stubs use placeholder `input`/`expected`; `kind` must stay `Compiles` until T-22 law-shaped `Node` obligations land (codex #14833); got {:?}",
-            kind_lines[0]
+            block.contains("CompilesClaim {"),
+            "{claim}: nat-law manual stubs use placeholder `input`/`expected_value`; variant must stay `CompilesClaim` until T-22 law-shaped `Node` obligations land"
         );
     }
 }
@@ -405,6 +427,19 @@ fn type_is_generator_testgen_concept(ty: &SurfaceType) -> bool {
         inner.as_ref(),
         SurfaceType::Named { name: slot, .. } if slot == "TestgenConcept"
     )
+}
+
+fn type_is_outcome_outcome_named(ty: &SurfaceType, inner_name: &str) -> bool {
+    let SurfaceType::Parameterized { name, args, .. } = ty else {
+        return false;
+    };
+    if name != "Outcome" || args.len() != 1 {
+        return false;
+    }
+    let TypeAngleArg::TypeExpr { ty: outer_inner } = &args[0] else {
+        return false;
+    };
+    type_is_outcome_named(outer_inner.as_ref(), inner_name)
 }
 
 fn type_is_outcome_named(ty: &SurfaceType, inner_name: &str) -> bool {
