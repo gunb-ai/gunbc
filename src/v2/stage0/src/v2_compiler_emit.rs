@@ -1842,7 +1842,7 @@ pub fn render_node_type(
                     }
                     __result
                 });
-                let param_str = param_strs.join(&repr.param_separator.clone());
+                let param_str = param_strs.clone().join(&repr.param_separator.clone());
                 let ret_str = match n.inferred.clone().as_deref().cloned() {
                     Some(InferredNode::Resolved { node: rt, .. }) => {
                         render_node_type(&rt, &target, &shared_types, &source_indices)
@@ -2042,7 +2042,7 @@ pub fn render_node_type(
                     if bare_is_collection {
                         emit_container(&to_snake(tn.clone()), "_".to_string(), &target)
                     } else {
-                        if (has_container_template && (param_count == 1)) {
+                        if (has_container_template && (param_count.clone() == 1)) {
                             {
                                 let inner = match n.params.clone().first().cloned() {
                                     Some(p) => render_node_type(
@@ -2056,10 +2056,38 @@ pub fn render_node_type(
                                 emit_container(&to_snake(tn.clone()), inner, &target)
                             }
                         } else {
-                            if (tn.clone().as_str() == tuple_type_name().as_str()) {
-                                render_tuple_parts(&Rc::new(vec![]), target.clone())
+                            if (param_count.clone() > 0) {
+                                {
+                                    let param_strs = Rc::new({
+                                        let mut __result = Vec::new();
+                                        for p in n.params.clone().iter().cloned() {
+                                            __result.push(render_node_type(
+                                                &param_node_type_expr(&p),
+                                                &target,
+                                                &shared_types,
+                                                &source_indices,
+                                            ));
+                                        }
+                                        __result
+                                    });
+                                    let spec = language_spec(target.clone());
+                                    v2_rt::concat(
+                                        v2_rt::concat(
+                                            v2_rt::concat(
+                                                coerce_primitive_type(target.clone(), tn.clone()),
+                                                spec.type_arg_open.clone(),
+                                            ),
+                                            param_strs.clone().join(&", ".to_string()),
+                                        ),
+                                        spec.type_arg_close.clone(),
+                                    )
+                                }
                             } else {
-                                coerce_primitive_type(target.clone(), tn.clone())
+                                if (tn.clone().as_str() == tuple_type_name().as_str()) {
+                                    render_tuple_parts(&Rc::new(vec![]), target.clone())
+                                } else {
+                                    coerce_primitive_type(target.clone(), tn.clone())
+                                }
                             }
                         }
                     }
