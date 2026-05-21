@@ -7,6 +7,7 @@
 module v4.extdeps.languages.lean
 
 
+import v4.extdeps.languages.fidelity { FidelityDisposition }
 import v4.std.collection { List }
 import v4.std.logic { Bool, bool_boolean_algebra }
 import v4.std.algebra { BooleanAlgebra }
@@ -165,11 +166,7 @@ type LeanFidelityFeature
   | LeanUnsupportedTheoremClass
 
 
-// 🟢 coproduct dissolution — P4-3208.
-type LeanFidelityDisposition
-  = LeanModeled
-  | LeanDeclaredNormalized { feature: LeanFidelityFeature }
-  | LeanFailClosed { feature: LeanFidelityFeature }
+type LeanFidelityDisposition = FidelityDisposition<LeanFidelityFeature>
 
 
 // Anchor: https://lean-lang.org/doc/reference/4.20.0/
