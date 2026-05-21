@@ -14,6 +14,7 @@ consume:
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import tempfile
 from pathlib import Path
@@ -31,6 +32,11 @@ class ReceiptError(Exception):
 def require(source: str, needle: str, path: Path, label: str) -> None:
     if needle not in source:
         raise ReceiptError(f"{path}: missing {label}: {needle}")
+
+
+def require_regex(source: str, pattern: str, path: Path, label: str) -> None:
+    if re.search(pattern, source, re.MULTILINE) is None:
+        raise ReceiptError(f"{path}: missing {label}: /{pattern}/")
 
 
 def require_order(source: str, needles: list[str], path: Path, label: str) -> None:
@@ -140,8 +146,12 @@ def run_v4_compile(output_dir: Path) -> None:
             f"stderr:\n{proc.stderr}"
         )
     output = proc.stdout + proc.stderr
-    require(output, "compiled:", Path("v2-compiler"), "successful v4 Rust emission")
-    require(output, "0 diagnostics", Path("v2-compiler"), "zero-diagnostic compile")
+    require_regex(
+        output,
+        r"^compiled: [0-9]+ files emitted, 0 diagnostics$",
+        Path("v2-compiler"),
+        "zero-diagnostic v4 Rust emission",
+    )
 
 
 def check_generated_eval(eval_rs: Path) -> None:
