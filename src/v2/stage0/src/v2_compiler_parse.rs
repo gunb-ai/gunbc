@@ -16,6 +16,10 @@ pub use crate::v2_compiler_languages::{
     BodyKind, ItemForm, ItemFormKind, OperatorSpec, SyntaxSpec,
 };
 use crate::v2_rt;
+use crate::v2_rt::rc_empty_set as empty_set;
+use crate::v2_rt::rc_set_insert as set_insert;
+use crate::v2_rt::rc_set_union as set_union;
+use crate::v2_rt::set_contains;
 use crate::v2_std_core::BinOp::{
     Add, And, Div, Eq, Ge, Gt, Le, Lt, Mod, Mul, Ne, NullCoalesce, Or, Sub,
 };
@@ -4099,44 +4103,43 @@ pub fn parse_single_named_int(
 }
 
 pub fn parse_positional_variant_type_fields(
-    tokens: Rc<Vec<Rc<Token>>>,
+    tokens: &Rc<Vec<Rc<Token>>>,
     ctx: Rc<ParseContext>,
 ) -> Rc<FieldsResult> {
-    let tokens = skip_newlines(tokens);
-    let r = parse_type_expr(&tokens, &ctx);
-    if has_err(r.err.clone()) {
-        return Rc::new(FieldsResult {
-            fields: Rc::new(vec![]),
-            tokens: r.tokens.clone(),
-            ctx: r.ctx.clone(),
-            err: r.err.clone(),
-        });
-    }
-    let field = make_field_node(
-        &"0".to_string(),
-        r.type_expr.clone(),
-        Cardinality::Required,
-        None,
-        None,
-        r.type_expr.clone().span.clone(),
-        kernel_span(&"0".to_string()),
-    );
-    match (*eat(&r.tokens, Rc::new(ExpectedToken::ExpectComma))).clone() {
-        EatResult::EatConsumed { token: comma_tok, tokens: __ec, .. } => Rc::new(FieldsResult {
-            fields: Rc::new(vec![]),
-            tokens: __ec,
-            ctx: r.ctx.clone(),
-            err: Some(parse_error(
-                "positional variant payload accepts a single type only (comma-separated fields not supported yet)".to_string(),
-                token_span(Some(comma_tok)),
-            )),
-        }),
-        EatResult::EatUnchanged { .. } => Rc::new(FieldsResult {
-            fields: Rc::new(vec![field]),
-            tokens: r.tokens.clone(),
-            ctx: r.ctx.clone(),
-            err: None,
-        }),
+    {
+        let tokens = skip_newlines(tokens.clone());
+        let r = parse_type_expr(&tokens, &ctx);
+        if has_err(r.err.clone()) {
+            return Rc::new(FieldsResult {
+                fields: Rc::new(vec![]),
+                tokens: r.tokens.clone(),
+                ctx: r.ctx.clone(),
+                err: r.err.clone(),
+            });
+        }
+        let field = make_field_node(
+            &"0".to_string(),
+            r.type_expr.clone(),
+            Cardinality::Required,
+            None,
+            None,
+            r.type_expr.clone().span.clone(),
+            kernel_span(&"0".to_string()),
+        );
+        match (*eat(&r.tokens.clone(), Rc::new(ExpectedToken::ExpectComma))).clone() {
+    EatResult::EatConsumed { token: comma_tok, tokens: __ec, .. } => Rc::new(FieldsResult {
+    fields: Rc::new(vec![]),
+    tokens: __ec.clone(),
+    ctx: r.ctx.clone(),
+    err: Some(parse_error("positional variant payload accepts a single type only (comma-separated fields not supported yet)".to_string(), token_span(comma_tok.clone()))),
+}),
+    EatResult::EatUnchanged { tokens: __eu, .. } => Rc::new(FieldsResult {
+    fields: Rc::new(vec![field]),
+    tokens: r.tokens.clone(),
+    ctx: r.ctx.clone(),
+    err: None,
+}),
+}
     }
 }
 
@@ -4195,7 +4198,7 @@ pub fn parse_variant_fields(
             EatResult::EatUnchanged { tokens: __eu, .. } => {
                 match (*eat(&tokens, Rc::new(ExpectedToken::ExpectLParen))).clone() {
                     EatResult::EatConsumed { tokens: __ec, .. } => {
-                        let r = parse_positional_variant_type_fields(__ec.clone(), ctx);
+                        let r = parse_positional_variant_type_fields(&__ec, ctx);
                         if has_err(r.err.clone()) {
                             return Rc::new(VariantResult {
                                 variant: make_variant_node(
