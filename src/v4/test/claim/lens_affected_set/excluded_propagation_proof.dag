@@ -9,6 +9,7 @@ module v4.test.claim.lens_affected_set.excluded_propagation_proof
 import v4.lens.affected_set {
   DimensionNotRead,
   ExclusionKey,
+  PropagationExclusionProof,
   empty_frontier,
   mark_excluded
 }
@@ -33,7 +34,7 @@ data excluded_propagation_key: ExclusionKey = ExclusionKey {
   dimension: affected_set_example_dimension
 }
 
-data excluded_propagation_proof: DimensionNotRead = DimensionNotRead {
+data excluded_propagation_proof: PropagationExclusionProof = DimensionNotRead {
   usage_site: affected_set_example_node,
   changed_dimension: affected_set_example_dimension
 }
