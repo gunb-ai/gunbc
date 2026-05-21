@@ -2,8 +2,8 @@
 // Scope: shared substrate factoring (Ratified Q1) — categorical floor for LanguageModel + HostModel.
 // Owns: ModelCore, PrimitiveFactBundle, AlgebraInhabitanceDecl, AlgebraLawObligation,
 //       EffectSemanticsDecl, PartialitySemanticsDecl, PartialOperationDecl, PartialityDischarge,
-//       model_core_primitive_fact_axis_*, model_core_wave1_void.
-// Consumes: std/node, std/collection, std/algebra (T-1, T-2, T-3).
+//       primitive_fact_axis_*, wave1_void.
+// Consumes: std/node, std/collection (T-1, T-3); structural dep on std/algebra (T-2) for inhabitance/law shapes.
 // Status: T-33 modeled; LanguageModel/HostModel extension wiring is downstream (T-4 / T-34).
 // Anchor: docs/design-v4-compiler-homomorphism.md §"ModelCore (shared substrate, factored per ratified Q1)".
 
@@ -16,10 +16,10 @@ import v4.std.node { Node, Symbol }
 
 
 // Practice-8 fact-bundle axis labels — conj field names until T-3 lands Signedness / Representation carriers.
-data model_core_primitive_fact_axis_width: Symbol = model_core_primitive_fact_axis_width
-data model_core_primitive_fact_axis_signedness: Symbol = model_core_primitive_fact_axis_signedness
-data model_core_primitive_fact_axis_range: Symbol = model_core_primitive_fact_axis_range
-data model_core_primitive_fact_axis_encoding: Symbol = model_core_primitive_fact_axis_encoding
+data primitive_fact_axis_width: Symbol = primitive_fact_axis_width
+data primitive_fact_axis_signedness: Symbol = primitive_fact_axis_signedness
+data primitive_fact_axis_range: Symbol = primitive_fact_axis_range
+data primitive_fact_axis_encoding: Symbol = primitive_fact_axis_encoding
 
 
 // Each primitive is a substrate-carrier reference plus a spec-read fact conj (width, signedness, range, encoding, …).
@@ -86,7 +86,7 @@ type ModelCore {
 }
 
 
-fn model_core_wave1_void() -> ModelCore {
+fn wave1_void() -> ModelCore {
   ModelCore {
     primitives: [],
     inhabitance: [],

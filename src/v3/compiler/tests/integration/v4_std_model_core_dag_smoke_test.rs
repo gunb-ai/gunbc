@@ -19,6 +19,35 @@ fn model_core_surface_or_panic() -> v3_compiler::parse_surface::SurfaceModule {
         .unwrap_or_else(|e| panic!("{MODEL_CORE_PATH}: parse: {e:?}"))
 }
 
+fn module_paths(module: &v3_compiler::parse_surface::SurfaceModule) -> Vec<Vec<&str>> {
+    module
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            SurfaceItem::Module { path, .. } => {
+                Some(path.iter().map(String::as_str).collect::<Vec<_>>())
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+fn function_count(module: &v3_compiler::parse_surface::SurfaceModule, name: &str) -> usize {
+    module
+        .items
+        .iter()
+        .filter(|item| match item {
+            SurfaceItem::Fn {
+                name: item_name, ..
+            }
+            | SurfaceItem::FnExternalBody {
+                name: item_name, ..
+            } => item_name == name,
+            _ => false,
+        })
+        .count()
+}
+
 fn surface_declares_type(module: &v3_compiler::parse_surface::SurfaceModule, name: &str) -> bool {
     module.items.iter().any(|item| {
         matches!(
@@ -77,8 +106,8 @@ fn surface_type_name(ty: &SurfaceType) -> String {
 fn v4_std_model_core_dag_tokenizes_and_parses() {
     let module = model_core_surface_or_panic();
     assert_eq!(
-        module.path,
-        vec!["v4", "std", "model_core"],
+        module_paths(&module),
+        vec![vec!["v4", "std", "model_core"]],
         "T-33 authority module should remain v4.std.model_core"
     );
 }
@@ -128,11 +157,9 @@ fn v4_std_model_core_bundles_five_facets() {
 #[test]
 fn v4_std_model_core_wave1_void_constructor_present() {
     let module = model_core_surface_or_panic();
-    assert!(
-        module.items.iter().any(|item| matches!(
-            item,
-            SurfaceItem::FnDecl { name, .. } if name == "model_core_wave1_void"
-        )),
+    assert_eq!(
+        function_count(&module, "wave1_void"),
+        1,
         "wave-1 void ModelCore scaffold for downstream LanguageModel/HostModel extension"
     );
 }
