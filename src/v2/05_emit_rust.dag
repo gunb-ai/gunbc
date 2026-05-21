@@ -2851,10 +2851,6 @@ fn type_node_child_is_type_variable(c: Node) -> Bool {
   if ch.inferred != none { is_type_variable(inferred: ch.inferred.value) } else { false }
 }
 
-fn rust_kernel_type_ord_eligible(name: String) -> Bool {
-  name == "String" || name == "Int" || name == "Bool" || name == "Unit" || name == "Secret" || name == "Bytes"
-}
-
 fn rust_btree_set_element_ord_eligible(elem_node: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   let elem_is_type_var = if elem_node.inferred != none { is_type_variable(inferred: elem_node.inferred.value) } else { false }
   let elem_is_error = if elem_node.inferred != none { is_compiler_error(inferred: elem_node.inferred.value) } else { false }
@@ -2874,8 +2870,9 @@ fn rust_btree_set_element_ord_eligible(elem_node: Node, source_indices: Map<Stri
     else if normed.return_cardinality == CardOptional {
       rust_btree_set_element_ord_eligible(elem_node: with_required_cardinality(n: normed), source_indices: source_indices)
     }
-    else if is_kernel_type(name: name) { rust_kernel_type_ord_eligible(name: name) }
-    else { false }
+    else {
+      name == "String" || name == "Int" || name == "Bool" || name == "Unit" || name == "Secret" || name == "Bytes"
+    }
   }
 }
 
