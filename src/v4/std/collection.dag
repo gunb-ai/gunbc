@@ -1,7 +1,7 @@
 // src/v4/std/collection.dag
 // Scope: container carriers grounded in algebraic constructions.
 // Anchor: https://en.wikipedia.org/wiki/Free_monoid
-// Owns: List, non_empty, Set, Map.
+// Owns: List, non_empty, list_snoc_item, list_append, Set, Map.
 // Consumes: std algebra, std witness.
 // Status: T-3 modeled; substrate-extension rule in src/v4/STRUCTURE.md.
 
@@ -9,7 +9,7 @@
 module v4.std.collection
 
 
-import v4.std.algebra { FreeMonoid, PointwisePower, is_empty }
+import v4.std.algebra { FreeMonoid, PointwisePower, free_monoid_fold, is_empty }
 import v4.std.witness { Witness }
 type List<T> = FreeMonoid<T>
 fn non_empty<T>(xs: List<T>) -> Bool {
@@ -17,6 +17,24 @@ fn non_empty<T>(xs: List<T>) -> Bool {
     true => false
     false => true
   }
+}
+fn list_snoc_item<T>(xs: List<T>, item: T) -> List<T> {
+  free_monoid_fold(
+    xs: xs,
+    empty: Cons { head: item, tail: Empty },
+    cons: fn(rest, existing) {
+      Cons { head: existing, tail: rest }
+    }
+  )
+}
+fn list_append<T>(left: List<T>, right: List<T>) -> List<T> {
+  free_monoid_fold(
+    xs: right,
+    empty: left,
+    cons: fn(acc, item) {
+      list_snoc_item(xs: acc, item: item)
+    }
+  )
 }
 type Set<T> = PointwisePower<T>
 type Map<K, V> {

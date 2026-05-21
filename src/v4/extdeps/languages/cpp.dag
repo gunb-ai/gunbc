@@ -9,7 +9,7 @@ module v4.extdeps.languages.cpp
 
 import v4.std.logic { Bool, bool_boolean_algebra }
 import v4.std.algebra { BooleanAlgebra, free_monoid_fold }
-import v4.std.collection { List, Set }
+import v4.std.collection { List, Set, list_append, list_snoc_item }
 import v4.std.model_core {
   EffectSemanticsDecl,
   ModelCore,
@@ -117,7 +117,6 @@ type CppScalar
 
 type CppIntegerPrimitiveFacts {
   surface_spelling: Symbol
-  scalar: Node
   width_fact: Node
   signedness_fact: Node
   encoding_fact: Node
@@ -126,14 +125,13 @@ type CppIntegerPrimitiveFacts {
 
 type CppCharacterPrimitiveFacts {
   surface_spelling: Symbol
-  scalar: Node
   width_fact: Node
+  signedness_fact: Node
   encoding_fact: Node
 }
 
 type CppBoolPrimitiveFacts {
   surface_spelling: Symbol
-  scalar: Node
   encoding_fact: Node
 }
 
@@ -174,6 +172,8 @@ data cpp_tag_plain_char_representation: Symbol = cpp_tag_plain_char_representati
 data cpp_tag_wchar_t_representation: Symbol = cpp_tag_wchar_t_representation
 data cpp_tag_unsigned_code_unit_representation: Symbol = cpp_tag_unsigned_code_unit_representation
 data cpp_tag_bool_representation: Symbol = cpp_tag_bool_representation
+data cpp_tag_plain_char_signedness_selection: Symbol = cpp_tag_plain_char_signedness_selection
+data cpp_tag_wchar_t_signedness_selection: Symbol = cpp_tag_wchar_t_signedness_selection
 data cpp_tag_representable_result_required: Symbol = cpp_tag_representable_result_required
 data cpp_tag_unsigned_modulo_arithmetic: Symbol = cpp_tag_unsigned_modulo_arithmetic
 data cpp_tag_width_selection: Symbol = cpp_tag_width_selection
@@ -242,12 +242,45 @@ fn cpp_width_selection_node(spelling: Node, target_profile: Node) -> Node {
   }
 }
 
+fn cpp_target_profile_selection_node(kind: Symbol, target_profile: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      cpp_named_edge(name: cpp_field_scalar, target: cpp_atom(id: kind)),
+      cpp_named_edge(name: cpp_field_target_profile, target: target_profile)
+    ]
+  }
+}
+
+fn cpp_integer_scalar_fact_node(facts: CppIntegerPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      cpp_named_edge(name: cpp_field_scalar, target: facts.signedness_fact),
+      cpp_named_edge(name: cpp_field_width_selection, target: facts.width_fact),
+      cpp_named_edge(name: cpp_field_signed_representation, target: facts.encoding_fact),
+      cpp_named_edge(name: cpp_field_overflow_disposition, target: facts.overflow_fact)
+    ]
+  }
+}
+
+fn cpp_character_scalar_fact_node(facts: CppCharacterPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      cpp_named_edge(name: cpp_field_scalar, target: facts.signedness_fact),
+      cpp_named_edge(name: cpp_field_width_selection, target: facts.width_fact),
+      cpp_named_edge(name: cpp_field_signed_representation, target: facts.encoding_fact)
+    ]
+  }
+}
+
 fn cpp_integer_facts_node(facts: CppIntegerPrimitiveFacts) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
       cpp_named_edge(name: cpp_field_surface_spelling, target: cpp_atom(id: facts.surface_spelling)),
-      cpp_named_edge(name: cpp_field_scalar, target: facts.scalar)
+      cpp_named_edge(name: cpp_field_scalar, target: cpp_integer_scalar_fact_node(facts: facts))
     ]
   }
 }
@@ -257,7 +290,7 @@ fn cpp_character_facts_node(facts: CppCharacterPrimitiveFacts) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       cpp_named_edge(name: cpp_field_surface_spelling, target: cpp_atom(id: facts.surface_spelling)),
-      cpp_named_edge(name: cpp_field_scalar, target: facts.scalar)
+      cpp_named_edge(name: cpp_field_scalar, target: cpp_character_scalar_fact_node(facts: facts))
     ]
   }
 }
@@ -267,7 +300,8 @@ fn cpp_bool_facts_node(facts: CppBoolPrimitiveFacts) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       cpp_named_edge(name: cpp_field_surface_spelling, target: cpp_atom(id: facts.surface_spelling)),
-      cpp_named_edge(name: cpp_field_scalar, target: facts.scalar)
+      cpp_named_edge(name: cpp_field_scalar, target: cpp_atom(id: cpp_tag_bool)),
+      cpp_named_edge(name: cpp_field_signed_representation, target: facts.encoding_fact)
     ]
   }
 }
@@ -413,83 +447,38 @@ fn cpp_character_facts_catalog(target_profile: Node) -> List<CppCharacterPrimiti
   [
     CppCharacterPrimitiveFacts {
       surface_spelling: cpp_surface_spelling_char,
-      scalar: Node {
-        kind: TypeNode { connective: Conj },
-        children: [
-          cpp_named_edge(name: cpp_field_scalar, target: cpp_atom(id: cpp_tag_plain_char)),
-          cpp_named_edge(name: cpp_field_width_selection, target: char_width_fact)
-        ]
-      },
       width_fact: char_width_fact,
+      signedness_fact: cpp_target_profile_selection_node(
+        kind: cpp_tag_plain_char_signedness_selection,
+        target_profile: target_profile
+      ),
       encoding_fact: cpp_atom(id: cpp_tag_plain_char_representation)
     },
     CppCharacterPrimitiveFacts {
       surface_spelling: cpp_surface_spelling_wchar_t,
-      scalar: Node {
-        kind: TypeNode { connective: Conj },
-        children: [
-          cpp_named_edge(name: cpp_field_scalar, target: cpp_atom(id: cpp_tag_wchar_t)),
-          cpp_named_edge(name: cpp_field_width_selection, target: wchar_t_width_fact)
-        ]
-      },
       width_fact: wchar_t_width_fact,
+      signedness_fact: cpp_target_profile_selection_node(
+        kind: cpp_tag_wchar_t_signedness_selection,
+        target_profile: target_profile
+      ),
       encoding_fact: cpp_atom(id: cpp_tag_wchar_t_representation)
     },
     CppCharacterPrimitiveFacts {
       surface_spelling: cpp_surface_spelling_char8_t,
-      scalar: Node {
-        kind: TypeNode { connective: Conj },
-        children: [
-          cpp_named_edge(
-            name: cpp_field_scalar,
-            target: cpp_atom(id: cpp_tag_fixed_unsigned_code_unit_integer)
-          ),
-          cpp_named_edge(name: cpp_field_width_selection, target: char8_t_width_fact),
-          cpp_named_edge(
-            name: cpp_field_unsigned_modulo_arithmetic,
-            target: cpp_atom(id: cpp_tag_unsigned_modulo_arithmetic)
-          )
-        ]
-      },
       width_fact: char8_t_width_fact,
+      signedness_fact: cpp_atom(id: cpp_tag_unsigned_integer),
       encoding_fact: cpp_atom(id: cpp_tag_unsigned_code_unit_representation)
     },
     CppCharacterPrimitiveFacts {
       surface_spelling: cpp_surface_spelling_char16_t,
-      scalar: Node {
-        kind: TypeNode { connective: Conj },
-        children: [
-          cpp_named_edge(
-            name: cpp_field_scalar,
-            target: cpp_atom(id: cpp_tag_fixed_unsigned_code_unit_integer)
-          ),
-          cpp_named_edge(name: cpp_field_width_selection, target: char16_t_width_fact),
-          cpp_named_edge(
-            name: cpp_field_unsigned_modulo_arithmetic,
-            target: cpp_atom(id: cpp_tag_unsigned_modulo_arithmetic)
-          )
-        ]
-      },
       width_fact: char16_t_width_fact,
+      signedness_fact: cpp_atom(id: cpp_tag_unsigned_integer),
       encoding_fact: cpp_atom(id: cpp_tag_unsigned_code_unit_representation)
     },
     CppCharacterPrimitiveFacts {
       surface_spelling: cpp_surface_spelling_char32_t,
-      scalar: Node {
-        kind: TypeNode { connective: Conj },
-        children: [
-          cpp_named_edge(
-            name: cpp_field_scalar,
-            target: cpp_atom(id: cpp_tag_fixed_unsigned_code_unit_integer)
-          ),
-          cpp_named_edge(name: cpp_field_width_selection, target: char32_t_width_fact),
-          cpp_named_edge(
-            name: cpp_field_unsigned_modulo_arithmetic,
-            target: cpp_atom(id: cpp_tag_unsigned_modulo_arithmetic)
-          )
-        ]
-      },
       width_fact: char32_t_width_fact,
+      signedness_fact: cpp_atom(id: cpp_tag_unsigned_integer),
       encoding_fact: cpp_atom(id: cpp_tag_unsigned_code_unit_representation)
     }
   ]
@@ -499,7 +488,6 @@ fn cpp_bool_facts_catalog() -> List<CppBoolPrimitiveFacts> {
   [
     CppBoolPrimitiveFacts {
       surface_spelling: cpp_surface_spelling_bool,
-      scalar: cpp_atom(id: cpp_tag_bool),
       encoding_fact: cpp_atom(id: cpp_tag_bool_representation)
     }
   ]
@@ -573,26 +561,6 @@ fn cpp_language_model_canonical_symbols(target_profile: Node) -> Set<Symbol> {
   }
 }
 
-fn cpp_list_snoc_item<T>(xs: List<T>, item: T) -> List<T> {
-  free_monoid_fold(
-    xs: xs,
-    empty: Cons { head: item, tail: Empty },
-    cons: fn(rest, existing) {
-      Cons { head: existing, tail: rest }
-    }
-  )
-}
-
-fn cpp_list_append<T>(left: List<T>, right: List<T>) -> List<T> {
-  free_monoid_fold(
-    xs: right,
-    empty: left,
-    cons: fn(acc, item) {
-      cpp_list_snoc_item(xs: acc, item: item)
-    }
-  )
-}
-
 fn cpp_primitive_axis_binding(axis: Symbol, fact: Node) -> PrimitiveFactAxisBinding {
   PrimitiveFactAxisBinding { axis: axis, fact: fact }
 }
@@ -640,6 +608,10 @@ fn cpp_primitive_bundle_from_character_facts(
         fact: facts.width_fact
       ),
       cpp_primitive_axis_binding(
+        axis: primitive_fact_axis_signedness,
+        fact: facts.signedness_fact
+      ),
+      cpp_primitive_axis_binding(
         axis: primitive_fact_axis_encoding,
         fact: facts.encoding_fact
       )
@@ -670,7 +642,7 @@ fn cpp_primitive_bundles_from_integer_catalog(
     xs: cpp_integer_facts_catalog(target_profile: target_profile),
     empty: Empty,
     cons: fn(acc, facts) {
-      cpp_list_snoc_item(
+      list_snoc_item(
         xs: acc,
         item: cpp_primitive_bundle_from_integer_facts(facts: facts)
       )
@@ -685,7 +657,7 @@ fn cpp_primitive_bundles_from_character_catalog(
     xs: cpp_character_facts_catalog(target_profile: target_profile),
     empty: Empty,
     cons: fn(acc, facts) {
-      cpp_list_snoc_item(
+      list_snoc_item(
         xs: acc,
         item: cpp_primitive_bundle_from_character_facts(facts: facts)
       )
@@ -698,7 +670,7 @@ fn cpp_primitive_bundles_from_bool_catalog() -> List<PrimitiveFactBundle> {
     xs: cpp_bool_facts_catalog(),
     empty: Empty,
     cons: fn(acc, facts) {
-      cpp_list_snoc_item(
+      list_snoc_item(
         xs: acc,
         item: cpp_primitive_bundle_from_bool_facts(facts: facts)
       )
@@ -709,8 +681,8 @@ fn cpp_primitive_bundles_from_bool_catalog() -> List<PrimitiveFactBundle> {
 fn cpp_wave1_primitive_fact_bundles(
   target_profile: Node
 ) -> List<PrimitiveFactBundle> {
-  cpp_list_append(
-    left: cpp_list_append(
+  list_append(
+    left: list_append(
       left: cpp_primitive_bundles_from_integer_catalog(target_profile: target_profile),
       right: cpp_primitive_bundles_from_character_catalog(target_profile: target_profile)
     ),
