@@ -29,6 +29,7 @@ import v4.compiler.resolve { ResolvedTree }
 import v4.std.collection { Map }
 import v4.std.diagnostic {
   Accepted,
+  NonEmptyDiagnostics,
   None,
   Outcome,
   Rejected,
@@ -76,12 +77,20 @@ data resources_hash_placeholder: Hash = resources_hash_placeholder
 data extdeps_hash_placeholder: Hash = extdeps_hash_placeholder
 
 
-type InferReceiptCase {
-  label: String
-  input_symbol: Symbol
-  input: Node
-  expected: Outcome<Node>
-}
+// Receipt bridge: polarity-specific carriers (no broad Outcome<Node> after TestClaim split).
+type InferReceiptCase
+  = InferDiagnosticReceiptCase {
+      label: String
+      input_symbol: Symbol
+      input: Node
+      expected_rejection: NonEmptyDiagnostics
+    }
+  | InferCompilesReceiptCase {
+      label: String
+      input_symbol: Symbol
+      input: Node
+      expected_value: Node
+    }
 
 
 fn fixture_int_type_node(atom: Symbol) -> Node {
@@ -101,20 +110,30 @@ fn infer_receipt_symbol_node(s: Symbol) -> Node {
 
 
 fn infer_receipt_claim(case: InferReceiptCase) -> TestClaim {
-  match case.expected {
-    Rejected { diagnostics: r } =>
+  match case {
+    InferDiagnosticReceiptCase {
+      label: label,
+      input_symbol: _,
+      input: input,
+      expected_rejection: r
+    } =>
       DiagnosticClaim {
-        label: case.label,
+        label: label,
         t19_anchor: T19ManualAnchorAbsent,
-        input: case.input,
+        input: input,
         expected_rejection: r,
         classification: TestClassification { tier: Tier1, layer: Unit }
       }
-    Accepted { value: v, diagnostics: d } =>
+    InferCompilesReceiptCase {
+      label: label,
+      input_symbol: _,
+      input: input,
+      expected_value: v
+    } =>
       CompilesClaim {
-        label: case.label,
+        label: label,
         t19_anchor: T19ManualAnchorAbsent,
-        input: case.input,
+        input: input,
         expected_value: v,
         classification: TestClassification { tier: Tier1, layer: Unit }
       }
@@ -263,15 +282,13 @@ fn infer_descent_witness_contract_node(n: Node) -> Outcome<Node> {
 }
 
 
-data case_infer_add_mvp_fail_closed: InferReceiptCase = InferReceiptCase {
+data case_infer_add_mvp_fail_closed: InferReceiptCase = InferDiagnosticReceiptCase {
   label: "manual/infer: infer(fixture_add_resolved_tree) rejects infer_descent_not_derived before solve_constraints",
   input_symbol: infer_receipt_input_infer_add_mvp,
   input: fixture_add_resolved_tree(),
-  expected: Rejected {
-    diagnostics: diagnostics_singleton(
-      d: infer_descent_not_derived_diagnostic(n: fixture_add_resolved_tree())
-    )
-  }
+  expected_rejection: diagnostics_singleton(
+    d: infer_descent_not_derived_diagnostic(n: fixture_add_resolved_tree())
+  )
 }
 
 
@@ -281,14 +298,11 @@ data subject_infer_add_mvp_fail_closed: TestClaimEvalSubject<Node> = infer_recei
 data run_infer_add_mvp_fail_closed: TestClaimRun<Node> = infer_add_mvp_receipt_run(subject: subject_infer_add_mvp_fail_closed)
 
 
-data case_infer_descent_witness_fail_closed: InferReceiptCase = InferReceiptCase {
+data case_infer_descent_witness_fail_closed: InferReceiptCase = InferCompilesReceiptCase {
   label: "manual/infer: infer_descent_witness_contract_node accepts only Violates descent (no fabricated TerminationProof)",
   input_symbol: infer_receipt_input_descent_witness,
   input: fixture_int_type_node(atom: fixture_add_int_atom),
-  expected: Accepted {
-    value: fixture_int_type_node(atom: fixture_add_int_atom),
-    diagnostics: None
-  }
+  expected_value: fixture_int_type_node(atom: fixture_add_int_atom)
 }
 
 
