@@ -202,14 +202,22 @@ fn t20_bootstrap_plan_keeps_self_hosting_chain_as_data() {
         "v4_stage1_binary",
         ("v4_stage1_hash", "v4_stage1_hash_pin"),
         "v4_stage2_binary",
-        ("v4_stage1_hash", "v4_stage2_hash_pin"),
-        ("v4_stage1_hash", "pinned_v4_fixed_point_hash_pin"),
+        ("v4_stage2_hash", "v4_stage2_hash_pin"),
+        (
+            "pinned_v4_fixed_point_hash",
+            "pinned_v4_fixed_point_hash_pin",
+        ),
         "bit_identical_check",
     );
     assert!(
         BOOTSTRAP_DAG.contains("p.fixpt.left_hash.digest == p.fixpt.right_hash.digest")
             && BOOTSTRAP_DAG.contains("p.fixpt.left_hash.digest == p.fixpt.pinned_hash.digest"),
-        "bootstrap_plan_well_formed must enforce fixpt digest equality (A2+A3); ratchet aligns on unified v4_stage1_hash digest literals in bootstrap_plan data"
+        "bootstrap_plan_well_formed must enforce fixpt digest equality across independent carriers (A2+A3)"
+    );
+    assert!(
+        BOOTSTRAP_DAG.contains("right_hash: BootstrapHashPin { digest: v4_stage2_hash")
+            && BOOTSTRAP_DAG.contains("pinned_hash: BootstrapHashPin { digest: pinned_v4_fixed_point_hash"),
+        "fixpt must wire stage-2 and pinned digests through their own carriers, not by reusing v4_stage1_hash on every pin"
     );
 }
 
