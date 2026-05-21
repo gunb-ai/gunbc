@@ -1,16 +1,20 @@
 // src/v4/std/diagnostic.dag
 // Scope: fail-closed diagnostic schema.
-// Anchor: THESIS.md "show the correct code" + INVARIANTS P3.
-// Owns: Diagnostic, Outcome, Locus, Extent, Correction, NoCorrectionReason.
-// Consumes: std node.
-// Status: T-3 modeled.
+// Anchor: THESIS.md "show the correct code" + INVARIANTS P3; design-v4-compiler-homomorphism.md Ratified Q11.
+// Owns: Diagnostic, Outcome, Diagnostics, NonEmptyDiagnostics, StageDiagnosticPolicy,
+//       bind_outcome, diagnostics_merge, rejected_with_pending,
+//       outcome_node_eq, diagnostic_eq,
+//       diagnostics_eq, non_empty_diagnostics_append,
+//       Locus, Extent, Correction, NoCorrectionReason.
+// Consumes: std node (List/fold/count are prelude — no collection import; avoids diagnostic↔witness cycle).
+// Status: T-3 modeled; Wave-2-BC3 Outcome ratification (Ratified Q11).
 
 
 module v4.std.diagnostic
 
 
 import v4.std.node { Node }
-// 🟡 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type Extent
   = WholeFile
   | ByteRange { start: Int, end: Int }
@@ -33,7 +37,179 @@ type Diagnostic {
   at: Locus
   correction: Correction
 }
+type NonEmptyDiagnostics {
+  head: Diagnostic
+  tail: List<Diagnostic>
+}
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type Diagnostics
+  = None
+  | Some { diagnostics: NonEmptyDiagnostics }
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type Outcome<T>
-  = Produced { value: T }
-  | Rejected { diagnostic: Diagnostic }
+  = Accepted { value: T, diagnostics: Diagnostics }
+  | Rejected { diagnostics: NonEmptyDiagnostics }
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type DiagnosticAccumulation
+  = Accumulate
+  | ShortCircuit
+type StageDiagnosticPolicy {
+  accumulation: DiagnosticAccumulation
+}
+fn diagnostics_singleton(d: Diagnostic) -> NonEmptyDiagnostics {
+  NonEmptyDiagnostics { head: d, tail: [] }
+}
+fn outcome_accepted<T>(value: T) -> Outcome<T> {
+  Accepted { value: value, diagnostics: None }
+}
+fn outcome_rejected<T>(d: Diagnostic) -> Outcome<T> {
+  Rejected { diagnostics: diagnostics_singleton(d: d) }
+}
+fn extent_eq(a: Extent, b: Extent) -> Bool {
+  match a {
+    WholeFile => match b {
+      WholeFile => true
+      ByteRange { start: _, end: _ } => false
+    }
+    ByteRange { start: sa, end: ea } => match b {
+      WholeFile => false
+      ByteRange { start: sb, end: eb } => (sa == sb) && (ea == eb)
+    }
+  }
+}
+fn locus_eq(a: Locus, b: Locus) -> Bool {
+  match a {
+    Textual { file: fa, extent: ea } => match b {
+      Textual { file: fb, extent: eb } => (fa == fb) && extent_eq(a: ea, b: eb)
+      NodeLocus { node: _ } => false
+      PortLocus { port: _ } => false
+    }
+    NodeLocus { node: na } => match b {
+      Textual { file: _, extent: _ } => false
+      NodeLocus { node: nb } => na == nb
+      PortLocus { port: _ } => false
+    }
+    PortLocus { port: pa } => match b {
+      Textual { file: _, extent: _ } => false
+      NodeLocus { node: _ } => false
+      PortLocus { port: pb } => pa == pb
+    }
+  }
+}
+fn correction_eq(a: Correction, b: Correction) -> Bool {
+  match a {
+    Suggested { node: na } => match b {
+      Suggested { node: nb } => na == nb
+      Unavailable { reason: _ } => false
+    }
+    Unavailable { reason: ra } => match b {
+      Suggested { node: _ } => false
+      Unavailable { reason: rb } => ra == rb
+    }
+  }
+}
+fn diagnostic_eq(a: Diagnostic, b: Diagnostic) -> Bool {
+  (a.reason == b.reason)
+    && locus_eq(a: a.at, b: b.at)
+    && correction_eq(a: a.correction, b: b.correction)
+}
+fn diagnostic_count_in(xs: List<Diagnostic>, item: Diagnostic) -> Int {
+  fold(xs, init: 0, f: fn(acc, d) {
+    if diagnostic_eq(a: d, b: item) {
+      acc + 1
+    } else {
+      acc
+    }
+  })
+}
+// Tail bag/multiset equality (order-insensitive); equal lengths + per-element counts match.
+fn diagnostic_tail_eq(a: List<Diagnostic>, b: List<Diagnostic>) -> Bool {
+  if count(a) != count(b) {
+    false
+  } else {
+    fold(a, init: true, f: fn(acc, da) {
+      acc && (diagnostic_count_in(xs: a, item: da) == diagnostic_count_in(xs: b, item: da))
+    })
+  }
+}
+fn non_empty_diagnostics_eq(a: NonEmptyDiagnostics, b: NonEmptyDiagnostics) -> Bool {
+  diagnostic_eq(a: a.head, b: b.head) && diagnostic_tail_eq(a: a.tail, b: b.tail)
+}
+fn non_empty_diagnostics_append(
+  a: NonEmptyDiagnostics,
+  b: NonEmptyDiagnostics,
+) -> NonEmptyDiagnostics {
+  NonEmptyDiagnostics {
+    head: a.head,
+    tail: fold(b.tail, init: list_push(a.tail, b.head), f: fn(acc, d) {
+      list_push(acc, d)
+    })
+  }
+}
+fn diagnostics_merge(outer: Diagnostics, inner: Diagnostics) -> Diagnostics {
+  match outer {
+    None => inner
+    Some { diagnostics: oa } => match inner {
+      None => Some { diagnostics: oa }
+      Some { diagnostics: ib } =>
+        Some {
+          diagnostics: non_empty_diagnostics_append(a: oa, b: ib)
+        }
+    }
+  }
+}
+fn rejected_with_pending(
+  pending: Diagnostics,
+  rejected: NonEmptyDiagnostics,
+) -> NonEmptyDiagnostics {
+  match pending {
+    None => rejected
+    Some { diagnostics: p } => non_empty_diagnostics_append(a: p, b: rejected)
+  }
+}
+fn diagnostics_eq(a: Diagnostics, b: Diagnostics) -> Bool {
+  match a {
+    None => match b {
+      None => true
+      Some { diagnostics: _ } => false
+    }
+    Some { diagnostics: da } => match b {
+      None => false
+      Some { diagnostics: db } => non_empty_diagnostics_eq(a: da, b: db)
+    }
+  }
+}
+fn outcome_node_eq(a: Outcome<Node>, b: Outcome<Node>) -> Bool {
+  match a {
+    Accepted { value: av, diagnostics: ad } => match b {
+      Accepted { value: bv, diagnostics: bd } => (av == bv) && diagnostics_eq(a: ad, b: bd)
+      Rejected { diagnostics: _ } => false
+    }
+    Rejected { diagnostics: ar } => match b {
+      Accepted { value: _, diagnostics: _ } => false
+      Rejected { diagnostics: br } => non_empty_diagnostics_eq(a: ar, b: br)
+    }
+  }
+}
+fn outcome_with_diagnostics<U>(value: U, diagnostics: Diagnostics) -> Outcome<U> {
+  Accepted { value: value, diagnostics: diagnostics }
+}
+fn bind_outcome_accepted<U>(od: Diagnostics, inner: Outcome<U>) -> Outcome<U> {
+  match inner {
+    Accepted { value: u, diagnostics: ud } =>
+      outcome_with_diagnostics(
+        value: u,
+        diagnostics: diagnostics_merge(outer: od, inner: ud)
+      )
+    Rejected { diagnostics: r } =>
+      Rejected { diagnostics: rejected_with_pending(pending: od, rejected: r) }
+  }
+}
+fn bind_outcome<T, U>(o: Outcome<T>, f: fn(T) -> Outcome<U>) -> Outcome<U> {
+  match o {
+    Accepted { value: v, diagnostics: od } => bind_outcome_accepted(od: od, inner: f(v))
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+// traverse_node / sequence_node deferred: v2 bootstrap rejects fn(Node) -> Outcome<R> in
+// parameter types (Ratified Q4); land with fold_node-derived combinator when W-T-* consumes it.

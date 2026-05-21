@@ -1,0 +1,127 @@
+// src/v4/std/coercion.dag
+// Scope: target coercion fold via find_witness + TargetSelection (T-9/T-10 wrapper).
+// Anchor: design-v4-compiler-homomorphism.md Ratified Q14; TASKS.md T-9; docs/modeling-discipline.md Practice 11.
+// Owns: CoercionCandidateSet, CoercionQuality, CoercionMismatchKind,
+//       CoercionResult, CoercionWitness, coercion_fold, declared_candidates_for_algebra.
+// Consumes: std find_witness, std constraints, std diagnostic, std witness, std node.
+// Status: Wave-2-BC3 modeled; coercion_fold delegates to find_witness.
+
+
+module v4.std.coercion
+
+
+import v4.std.constraints { CanonicalGrounding, CanonicalGroundingWitness }
+import v4.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  NodeLocus,
+  Outcome,
+  Rejected,
+  Unavailable,
+  diagnostics_singleton,
+  outcome_rejected,
+  rejected_with_pending
+}
+import v4.std.find_witness {
+  CandidateSet,
+  PreservationPredicate,
+  TargetSelection,
+  TargetSelectionPolicy,
+  find_witness,
+  preservation_rule_exact_structural_equality_zip_fold
+}
+import v4.std.node { Node, Symbol }
+import v4.std.witness { HomomorphismWitness, StructuralPropertyWitness }
+data coercion_property_closed_candidate_set: Symbol = coercion_property_closed_candidate_set
+data homomorphism_rule_exact_structural_equality: Symbol = homomorphism_rule_exact_structural_equality
+data coercion_not_realized: Symbol = coercion_not_realized
+data coercion_mismatch_no_target: Symbol = coercion_mismatch_no_target
+data coercion_mismatch_ambiguous: Symbol = coercion_mismatch_ambiguous
+data coercion_mismatch_structural: Symbol = coercion_mismatch_structural
+data coercion_mismatch_would_lose: Symbol = coercion_mismatch_would_lose
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type CoercionQuality
+  = Identity
+  | Exact
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type CoercionMismatchKind
+  = NoTargetCandidate
+  | AmbiguousTargetCandidate
+  | StructuralMismatch
+  | WouldLoseInformation
+type CoercionCandidateSet {
+  set: CandidateSet
+}
+type CoercionResult {
+  target: Node
+  quality: CoercionQuality
+  witness: CoercionWitness
+}
+type CoercionWitness {
+  homomorphism: HomomorphismWitness
+}
+fn coercion_mismatch_reason(kind: CoercionMismatchKind) -> Symbol {
+  match kind {
+    NoTargetCandidate => coercion_mismatch_no_target
+    AmbiguousTargetCandidate => coercion_mismatch_ambiguous
+    StructuralMismatch => coercion_mismatch_structural
+    WouldLoseInformation => coercion_mismatch_would_lose
+  }
+}
+fn coercion_not_realized_diagnostic(
+  source: CanonicalGrounding,
+  kind: CoercionMismatchKind,
+) -> Diagnostic {
+  Diagnostic {
+    reason: coercion_mismatch_reason(kind: kind),
+    at: NodeLocus { node: source.node },
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+fn declared_candidates_for_algebra(
+  target_model: Node,
+  algebra_instance: Node,
+) -> Outcome<CoercionCandidateSet> {
+  outcome_rejected(
+    coercion_not_realized_diagnostic(
+      source: CanonicalGrounding {
+        node: algebra_instance,
+        witness: CanonicalGroundingWitness {
+          structural: StructuralPropertyWitness {
+            property: coercion_property_closed_candidate_set,
+            evidence: target_model
+          }
+        }
+      },
+      kind: NoTargetCandidate
+    )
+  )
+}
+fn coercion_fold(
+  source: CanonicalGrounding,
+  candidates: CoercionCandidateSet,
+  policy: TargetSelectionPolicy,
+) -> Outcome<CoercionResult> {
+  match find_witness(
+    source_facts: source.node,
+    candidates: candidates.set,
+    predicate: PreservationPredicate {
+      algebra: source.node,
+      preservation_rule: preservation_rule_exact_structural_equality_zip_fold
+    },
+    multiplicity_policy: TargetSelection { policy: policy }
+  ) {
+    // Scaffold only while find_witness rejects: W-T-10 must lift FindWitnessResult → CoercionResult here.
+    Accepted { value: _, diagnostics: fw_d } =>
+      Rejected {
+        diagnostics: rejected_with_pending(
+          pending: fw_d,
+          rejected: diagnostics_singleton(
+            d: coercion_not_realized_diagnostic(source: source, kind: NoTargetCandidate)
+          )
+        )
+      }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
