@@ -91,15 +91,14 @@ fn classify_node_edge_usage(parent: Node, edge: Edge) -> DependencyKind {
 // target = referenced declaration — not Decl→child composition.
 fn dependency_view_for_edge(parent: Node, edge: Edge) -> DependencyView {
   let kind = classify_node_edge_usage(parent: parent, edge: edge)
-  if kind == BindsTo {
-    DependencyView {
+  match kind {
+    BindsTo => DependencyView {
       source: edge.target,
       dependent: parent,
       kind: BindsTo,
       usage_site: parent
     }
-  } else {
-    DependencyView {
+    _ => DependencyView {
       source: parent,
       dependent: edge.target,
       kind: kind,
