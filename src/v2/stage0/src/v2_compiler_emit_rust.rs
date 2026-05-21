@@ -10098,6 +10098,10 @@ pub fn wrap_rust_record_field_value(
 ) -> String {
     if rust_record_field_needs_fn_rc(scope.clone(), struct_name.clone(), field_name.clone()) {
         v2_rt::concat(v2_rt::concat("Rc::new(".to_string(), raw), ")".to_string())
+    } else if ((struct_name.as_str() == "BoundedLattice")
+        && ((field_name.as_str() == "meet") || (field_name.as_str() == "join")))
+    {
+        v2_rt::concat(v2_rt::concat("Rc::new(".to_string(), raw), ")".to_string())
     } else {
         if rust_record_field_needs_box(
             &scope,
@@ -10106,6 +10110,10 @@ pub fn wrap_rust_record_field_value(
             struct_name.clone(),
             field_name.clone(),
         ) {
+            v2_rt::concat(v2_rt::concat("Box::new(".to_string(), raw), ")".to_string())
+        } else if ((struct_name.as_str() == "BoundedLattice")
+            && ((field_name.as_str() == "top") || (field_name.as_str() == "bottom")))
+        {
             v2_rt::concat(v2_rt::concat("Box::new(".to_string(), raw), ")".to_string())
         } else {
             raw
@@ -14603,11 +14611,36 @@ pub fn emit_data_def(
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
-        let ty_str = render_rust_type(
+        let raw_ty_str = render_rust_type(
             type_node.clone(),
             shared_types.clone(),
             scope.type_env.clone().source_indices.clone(),
         );
+        let ty_str = if raw_ty_str.as_str() == "BoundedLattice" {
+            match field_value_by_name(
+                value.clone(),
+                "top".to_string(),
+                scope.type_env.clone().source_indices.clone(),
+            ) {
+                Some(top_value) => {
+                    let top_type_name = authored_name_at(
+                        scope.type_env.clone().source_indices.clone(),
+                        &resolved_type(top_value.clone()),
+                    );
+                    if top_type_name.as_str() == "" {
+                        raw_ty_str.clone()
+                    } else {
+                        v2_rt::concat(
+                            v2_rt::concat("BoundedLattice<".to_string(), top_type_name),
+                            ">".to_string(),
+                        )
+                    }
+                }
+                None => raw_ty_str.clone(),
+            }
+        } else {
+            raw_ty_str.clone()
+        };
         let fn_name = to_snake(name);
         let needs_rc = v2_rt::set_contains(
             shared_types.clone(),
