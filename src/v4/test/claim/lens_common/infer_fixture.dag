@@ -1,0 +1,80 @@
+// src/v4/test/claim/lens_common/infer_fixture.dag
+// Scope: T-13 test-claim TEMPLATE — shared InferredTree fixture so per-lens
+//   claims stop duplicating the same `Atom`/`TypeNode`/`InferredFacts`
+//   construction. Owns one constructor for each piece of the fixture so
+//   migrations to substrate (e.g. InferredFacts shape changes in
+//   04_infer.dag) need a single edit, not one per claim file
+//   (cost-of-change = 1).
+// Owns: claim_atom_node, claim_inferred_facts, claim_inferred_facts_map, claim_inferred_tree, claim_inferred_facts_for_tree.
+// Consumes: v4.compiler.infer, v4.std.cardinality, v4.std.collection, v4.std.constraints, v4.std.node, v4.std.witness.
+// Status: introduced as Phase-1 ratchet test-claim template (crisp-boar-896).
+
+
+module v4.test.claim.lens_common.infer_fixture
+
+import v4.compiler.infer { AlgebraRef, InferredFacts, InferredTree }
+import v4.std.cardinality { RankingDimension, TerminationProof }
+import v4.std.collection { Map }
+import v4.std.constraints { CanonicalGroundingWitness }
+import v4.std.node { Atom, Node, Symbol, TypeNode }
+import v4.std.witness { Holds, StructuralPropertyWitness, Witness }
+
+fn claim_atom_node(s: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: s } },
+    children: []
+  }
+}
+
+fn claim_inferred_facts(
+  type_symbol: Symbol,
+  algebra_symbol: Symbol,
+  algebra_witness_symbol: Symbol,
+  descent_symbol: Symbol,
+  canonical_structural_symbol: Symbol,
+  canonical_closedness_symbol: Symbol,
+  canonical_evidence_symbol: Symbol
+) -> InferredFacts {
+  InferredFacts {
+    resolved_type: claim_atom_node(s: type_symbol),
+    inhabits: AlgebraRef {
+      algebra: claim_atom_node(s: algebra_symbol),
+      witness: claim_atom_node(s: algebra_witness_symbol)
+    },
+    descent: Holds {
+      value: TerminationProof {
+        non_increasing: [],
+        strict: RankingDimension { measured: descent_symbol }
+      }
+    },
+    canonical: CanonicalGroundingWitness {
+      structural: StructuralPropertyWitness {
+        property: canonical_structural_symbol,
+        evidence: claim_atom_node(s: canonical_evidence_symbol)
+      },
+      closedness: StructuralPropertyWitness {
+        property: canonical_closedness_symbol,
+        evidence: claim_atom_node(s: canonical_evidence_symbol)
+      }
+    }
+  }
+}
+
+fn claim_inferred_facts_map(facts: InferredFacts) -> Map<Node, InferredFacts> {
+  Map {
+    lookup: fn(_) {
+      Holds { value: facts }
+    }
+  }
+}
+
+fn claim_inferred_tree(root: Node, facts: InferredFacts) -> InferredTree {
+  InferredTree {
+    root: root,
+    facts: claim_inferred_facts_map(facts: facts)
+  }
+}
+
+fn claim_inferred_facts_for_tree(tree: InferredTree, node: Node) -> Witness<InferredFacts> {
+  tree.facts.lookup(node)
+}
