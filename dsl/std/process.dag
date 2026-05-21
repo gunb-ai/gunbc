@@ -5,6 +5,8 @@
 // signal to translate a .dag function's return value into a process
 // exit code.
 //
+// Spec: POSIX exit(3) — https://pubs.opengroup.org/onlinepubs/9699919799/functions/exit.html
+//
 // Why this exists:
 //   .dag functions return rich result types (PipelineResult, L1RatchetResult,
 //   FreshnessCheckResult, ...). When such a function is the entry point
@@ -28,7 +30,7 @@
 
 module std.process
 
-import std.posix { exit_code_general_error }
+import std.types { NonEmptyStr }
 
 // ── Process exit ────────────────────────────────────────────────────
 
@@ -37,6 +39,12 @@ import std.posix { exit_code_general_error }
 type ProcessExit
   = ExitSuccess
   | ExitFailure { code: Int, reason: String }
+
+// Standard exit codes for common failure modes. POSIX leaves most
+// values application-defined; these are conventions.
+data exit_code_success: Int = 0
+data exit_code_general_error: Int = 1
+data exit_code_misuse: Int = 2
 
 // Convenience: a generic failure with code 1 and a string reason.
 fn exit_failure(reason: String) -> ProcessExit {
