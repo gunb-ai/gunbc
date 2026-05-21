@@ -124,7 +124,7 @@ data claim_unproven_division_rejected: TestClaim = TestClaim {
       d: Diagnostic {
         reason: unhandled_division_reason,
         at: NodeLocus { node: falsification_division_by_zero_unhandled },
-        correction: Suggested { node: total_unwrap_input }
+        correction: Suggested { node: total_division_input }
       }
     )
   },
@@ -160,7 +160,7 @@ data claim_force_unwrap_count_zero: TestClaim = TestClaim {
       d: Diagnostic {
         reason: force_unwrap_reason,
         at: NodeLocus { node: falsification_force_unwrap_survives },
-        correction: Suggested { node: total_division_input }
+        correction: Suggested { node: total_unwrap_input }
       }
     )
   },
