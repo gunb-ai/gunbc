@@ -196,9 +196,19 @@ fn inductive_field_to_dimension(field: InductiveField, param: String) -> Ranking
 // 🟡 MIXED. Structural descent via `InductiveField` and proof-grade `ShrinkFactor`
 // (`std.computation`); `ArithmeticDescent` names a parameter; `SubValueUnknown` is the fail-closed sink
 // and lattice bottom; `NonIncreasingValue` / `StrictAxisErased` / `MixedTop` close the lattice so
-// meet/join over the seven lawful inhabitants form a lawful BoundedLattice with codex-#15892
-// meet-monotonicity AND codex-#15942 join-projection-safety BOTH satisfied (operator-ratified
-// option-(A) split, 2026-05-21 — see "Inc-split rationale" below).
+// meet/join over the seven lawful inhabitants form a BoundedLattice (operator-ratified
+// option-(A) split, 2026-05-21 — see "Inc-split rationale" below). The split satisfies:
+//   - codex #15942 join-projection-safety FULLY: `join(PreservedValue, StrictSubValue{f}) = MixedTop`,
+//     `proj(MixedTop) = NonIncreasing`, never fabricates Strict from a non-strict join operand.
+//   - codex #15892 meet-monotonicity WITHIN the strict cone: `meet(StrictAxisErased, Strict_f) = Strict_f`,
+//     both project to Strict — no strengthening.
+//   - `meet(MixedTop, X)` returning X for X in the lower cones is an ACCEPTED TRADE-OFF — the lattice-
+//     top-identity property would strengthen `proj(meet)` from `NonIncreasing` (proj MixedTop) to
+//     `proj(X)` when X is strict-style. The operator-ratified option (A) treats this as operationally
+//     a refinement of the top by the more specific second operand, not a fabrication, because MixedTop
+//     arises only from joins crossing the strict/non-strict boundary and meet against it does not
+//     introduce new strict witnesses — it merely refines back to an existing operand. See test
+//     `meet_mixed_top_acts_as_lattice_top_identity` for the explicit covering case.
 //
 // Lattice ordering (top → bottom):
 //   MixedTop                                                      -- ⊤ (axis-erased OR non-strict)
@@ -506,9 +516,14 @@ fn join_sub_value(a: SubValueRelation, b: SubValueRelation) -> SubValueRelation 
 // typed `Rc<dyn Fn(T, T) -> T>` with `T = SubValueRelation` (not `Rc<SubValueRelation>`),
 // and `top: Box::new(Rc::new(SubValueRelation::MixedTop))` against a `Box<T>` field — both
 // type-mismatch. Encoding / FermiDepth / DescentEvidence sidestep this because they are bare
-// enums with no payload. Dissolution trigger: stage0 lattice-witness emission grows
-// `Rc<T>`-aware instantiation (separate substrate-feature lane). Until then, the lawful
-// algebra is consumed via the free functions `meet_sub_value` / `join_sub_value` directly.
+// enums with no payload. Dissolution trigger anchored at **ROADMAP.md:390** — "Four hand-rolled
+// `BoundedLattice<T>` / `Lattice<T>` instances": that row tracks the migration from named
+// meet/join helpers to generic-algebra-surface consumption ("function-valued algebra fields /
+// generic lattice lifting consumable from generated code"); when that infrastructure lands,
+// the stage0 emitter gains the `Rc<T>`-aware `BoundedLattice<T>` instantiation that lets the
+// `data sub_value_relation_bounded_lattice` declaration round-trip cleanly. Until then, the
+// lawful algebra is consumed via the free functions `meet_sub_value` / `join_sub_value`
+// directly — same denotational content, no algebra-inhabitance discoverability.
 
 
 // =========================================================================
