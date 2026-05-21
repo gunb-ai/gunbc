@@ -5,7 +5,6 @@
 //       target_model_edge_serialize_source, target_bundle_child, target_bundle_child_lookup_step,
 //       target_selection_priority_from_model, coercion_candidates_from_target_model,
 //       target_serialize_source_from_model, translate_target_source_not_realized,
-//       translate_canonical_grounding_not_realized, canonical_grounding_for_node,
 //       coerce_grounded_node, translate_fold_init, translate_fold_step,
 //       translate_node, translate.
 // Consumes: compiler/04_infer.dag, compiler/07_target_carriers.dag, std/coercion.dag, std/constraints.dag,
@@ -74,7 +73,6 @@ data translate_target_bundle_malformed: Symbol = translate_target_bundle_malform
 data translate_target_bundle_duplicate_edge: Symbol = translate_target_bundle_duplicate_edge
 data translate_stage_locus_port: Symbol = translate_stage_locus_port
 data translate_target_source_not_realized: Symbol = translate_target_source_not_realized
-data translate_canonical_grounding_not_realized: Symbol = translate_canonical_grounding_not_realized
 fn translate_target_bundle_malformed_diagnostic(target: TargetModel) -> Diagnostic {
   Diagnostic {
     reason: translate_target_bundle_malformed,
@@ -126,13 +124,6 @@ fn translate_target_source_not_realized_diagnostic() -> Diagnostic {
   Diagnostic {
     reason: translate_target_source_not_realized,
     at: PortLocus { port: translate_stage_locus_port },
-    correction: Unavailable { reason: ExternalContractUnknown }
-  }
-}
-fn translate_canonical_grounding_not_realized_diagnostic(node: Node) -> Diagnostic {
-  Diagnostic {
-    reason: translate_canonical_grounding_not_realized,
-    at: NodeLocus { node: node },
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
