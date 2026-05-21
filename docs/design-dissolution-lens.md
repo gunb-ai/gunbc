@@ -958,7 +958,7 @@ in `std/node.dag` and dispatch both arms uniformly.
 
 > **Status: proposed.** Derived from findings F6
 > (`CiCommand::ShellCommand { command: String }` while
-> `extdeps/process.dag` already models a typed
+> `extdeps/posix.dag` already models a typed
 > `Command { program, argv0, args, env }`) and F8 (string-template
 > emitters such as `list_template: "Vec<{0}>"` in
 > `dsl/std/languages.dag`). Absorbs the original L1.6 as a
@@ -1029,8 +1029,8 @@ atom) pass — they're data, not a templated emitter.
   substrate. A typed carrier declares its coverage — the set of field
   names it claims authority over — as a structural witness:
   ```dag
-  // in src/v4/extdeps/process.dag
-  data process_command_canonical: CanonicalCarrier<process.Command> = {
+  // in src/v4/extdeps/posix.dag
+  data posix_command_canonical: CanonicalCarrier<posix.Command> = {
     supersedes_string_at_field_named: { command, shell_command, invocation }
   }
   ```
@@ -1066,16 +1066,16 @@ type CiCommand
   | BootstrapStageCompile { produces: Symbol }
   | ShellCommand { command: String }    // ← unannotated; field name = `command`
 ```
-With `data process_command_canonical: CanonicalCarrier<process.Command> = { supersedes_string_at_field_named: { command, ... } }`
-in `extdeps/process.dag`, the lens reads the registry, sees that any
+With `data posix_command_canonical: CanonicalCarrier<posix.Command> = { supersedes_string_at_field_named: { command, ... } }`
+in `extdeps/posix.dag`, the lens reads the registry, sees that any
 `String` field named `command` has a typed canonical home in scope
-(`process.Command`), and fires — independent of whether the author
+(`posix.Command`), and fires — independent of whether the author
 opted in to any annotation.
 
 **Clean shape:** consume the typed carrier directly.
 ```dag
-import v4.extdeps.process as process
-type CiCommand = ... | ShellCommand { command: process.Command }
+import v4.extdeps.posix as posix
+type CiCommand = ... | ShellCommand { command: posix.Command }
 ```
 
 #### L1.10.c Name-discriminant-bypass — kills *string-spelling used as dispatch authority where resolved identity is available*
@@ -2626,7 +2626,7 @@ from real evidence, not speculation.
 | 2026-05-18 | ingest | `Word64 { bytes: List<Byte> }`, `Float32`/`Float64` share unconstrained `FloatBody` (`src/v4/std/{machine,float}.dag`) | cardinality / width is a refinement, not a name | L1.7 (proposed) |
 | 2026-05-18 | ingest | `ResourceHandle` is a freely-constructible record under prose claiming opacity (`dsl/std/resources.dag:17-25`) | non-forgeability is a constructor restriction, not a comment | L1.7 (proposed) |
 | 2026-05-18 | ingest | `nat_compare(Nat, Nat)` defined in `src/v4/std/float.dag:52-62` while `nat.dag` and `algebra.dag` exist | an operation lives in its argument-type's home (M9 / DFS the concept DAG) | L1.8 (proposed) |
-| 2026-05-18 | ingest | `CiCommand::ShellCommand { command: String }` while `extdeps/process.dag` models a typed `Command` (`src/v4/workflow/ci.dag:23-28`) | String escape hatch for a domain that has a typed model in scope | L1.10.b `CanonicalCarrier` (proposed) |
+| 2026-05-18 | ingest | `CiCommand::ShellCommand { command: String }` while `extdeps/posix.dag` models a typed `Command` (`src/v4/workflow/ci.dag:23-28`) | String escape hatch for a domain that has a typed model in scope | L1.10.b `CanonicalCarrier` (proposed) |
 | 2026-05-18 | ingest | `list_template: "Vec<{0}>"`, `optional_template: "Option<{0}>"`, `map_template: "HashMap<{0}, {1}>"` etc. in `dsl/std/languages.dag` + per-language emit tables | string literal with positional placeholders used as emitter; grammar-as-bidirectional-data belongs | L1.10.a `TemplateHole` (proposed; absorbs original L1.6) |
 | 2026-05-18 | ingest | `derive_effect_shape` `DELETE/PUT/PATCH None => CreateEffect` (`dsl/std/effects.dag:268-282`) | missing info must escalate through `Outcome::Rejected`, not return a different valid sibling | L1.11 (proposed) |
 | 2026-05-18 | ingest | `Bool`, `Char`, `Url`, machine words declared in both `dsl/std/` and `src/v4/std/` (`type T = ...` redeclared, no structural alias/retirement/migration) | one concept must have one home (structural alias, retirement-ledger row, or migration) | L1.12 (proposed) |
