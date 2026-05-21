@@ -38,7 +38,7 @@ fn dissolution_subsumption_carrier_shape_locked() {
         "DissolutionSubsumption",
         &[
             ("root_fix", "DiffId"),
-            ("subsumed_fixes", "Set<DiffId>"),
+            ("subsumed_fixes", "List<DiffId>"),
             ("verification", "SubsumptionVerification"),
         ],
     );
@@ -53,16 +53,16 @@ fn dissolution_subsumption_first_row_is_producer_stage_derived() {
     assert_variant_record(root_fix, "DiffId");
 
     let subsumed = field_value(row, "subsumed_fixes");
-    let SurfaceExpr::Call { target, args, .. } = subsumed else {
-        panic!("{SUBSUMPTION_PATH}: subsumed_fixes must call the named Set producer");
+    let SurfaceExpr::List { elements, .. } = subsumed else {
+        panic!("{SUBSUMPTION_PATH}: subsumed_fixes must carry a finite DiffId list");
     };
+    let observed_leaf_ids = elements.iter().map(diff_id_symbol).collect::<BTreeSet<_>>();
+    let expected_leaf_ids = ["duplicate_home_leaf_fix", "wrong_home_alias_leaf_fix"]
+        .into_iter()
+        .collect::<BTreeSet<_>>();
     assert_eq!(
-        target, "concept_home_subsumed_fixes",
-        "{SUBSUMPTION_PATH}: subsumed_fixes must use the named Set producer"
-    );
-    assert!(
-        args.is_empty(),
-        "{SUBSUMPTION_PATH}: subsumed_fixes producer call should not take arguments"
+        observed_leaf_ids, expected_leaf_ids,
+        "{SUBSUMPTION_PATH}: first subsumption row leaf fixes drifted"
     );
 
     let verification = field_value(row, "verification");
@@ -186,6 +186,15 @@ fn assert_variant_record<'a>(expr: &'a SurfaceExpr, target: &str) -> &'a [Surfac
     fields
 }
 
+fn diff_id_symbol(expr: &SurfaceExpr) -> &str {
+    let fields = assert_variant_record(expr, "DiffId");
+    let id = field_value(fields, "id");
+    let SurfaceExpr::Var { name, .. } = id else {
+        panic!("{SUBSUMPTION_PATH}: DiffId.id must name a symbolic fix handle, got {id:?}");
+    };
+    name
+}
+
 fn type_expr_text(expr: &SurfaceType) -> &'static str {
     match expr {
         SurfaceType::Named { name, .. } => match name.as_str() {
@@ -202,33 +211,17 @@ fn type_expr_text(expr: &SurfaceType) -> &'static str {
                 "{SUBSUMPTION_PATH}: List should have one type argument"
             );
             match &args[0] {
-                v3_compiler::parse_surface::TypeAngleArg::TypeExpr { ty }
-                    if matches!(
-                        ty.as_ref(),
-                        SurfaceType::Named { name, .. } if name == "ProducerStageId"
-                    ) =>
-                {
-                    "List<ProducerStageId>"
+                v3_compiler::parse_surface::TypeAngleArg::TypeExpr { ty } => {
+                    let SurfaceType::Named { name, .. } = ty.as_ref() else {
+                        panic!("{SUBSUMPTION_PATH}: unexpected List argument {ty:?}");
+                    };
+                    match name.as_str() {
+                        "DiffId" => "List<DiffId>",
+                        "ProducerStageId" => "List<ProducerStageId>",
+                        other => panic!("{SUBSUMPTION_PATH}: unexpected List argument {other}"),
+                    }
                 }
                 other => panic!("{SUBSUMPTION_PATH}: unexpected List argument {other:?}"),
-            }
-        }
-        SurfaceType::Parameterized { name, args, .. } if name == "Set" => {
-            assert_eq!(
-                args.len(),
-                1,
-                "{SUBSUMPTION_PATH}: Set should have one type argument"
-            );
-            match &args[0] {
-                v3_compiler::parse_surface::TypeAngleArg::TypeExpr { ty }
-                    if matches!(
-                        ty.as_ref(),
-                        SurfaceType::Named { name, .. } if name == "DiffId"
-                    ) =>
-                {
-                    "Set<DiffId>"
-                }
-                other => panic!("{SUBSUMPTION_PATH}: unexpected Set argument {other:?}"),
             }
         }
         other => panic!("{SUBSUMPTION_PATH}: unexpected type expression {other:?}"),
