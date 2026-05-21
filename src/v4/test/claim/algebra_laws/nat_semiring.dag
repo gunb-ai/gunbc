@@ -49,9 +49,9 @@ import v4.std.verification {
 }
 
 
-data algebra_law_algebra_field: Symbol = algebra_law_subject_algebra_field
-data algebra_law_inhabitant_field: Symbol = algebra_law_subject_inhabitant_field
-data algebra_law_name_field: Symbol = algebra_law_subject_law_field
+data algebra_law_subject_algebra_field: Symbol = algebra_law_subject_algebra_field
+data algebra_law_subject_inhabitant_field: Symbol = algebra_law_subject_inhabitant_field
+data algebra_law_subject_law_field: Symbol = algebra_law_subject_law_field
 data nat_law_wrong_identity_symbol: Symbol = nat_law_wrong_identity_symbol
 data algebra_law_violation_reason: Symbol = algebra_law_violation_reason
 
@@ -65,9 +65,9 @@ fn algebra_law_subject(algebra: Symbol, inhabitant: Symbol, law: Symbol) -> Node
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: algebra_law_algebra_field }, target: atom_node(s: algebra) },
-      Edge { label: Named { name: algebra_law_inhabitant_field }, target: atom_node(s: inhabitant) },
-      Edge { label: Named { name: algebra_law_name_field }, target: atom_node(s: law) },
+      Edge { label: Named { name: algebra_law_subject_algebra_field }, target: atom_node(s: algebra) },
+      Edge { label: Named { name: algebra_law_subject_inhabitant_field }, target: atom_node(s: inhabitant) },
+      Edge { label: Named { name: algebra_law_subject_law_field }, target: atom_node(s: law) },
     ]
   }
 }
