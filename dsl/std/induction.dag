@@ -378,6 +378,19 @@ fn sub_value_structural_eq(a: SubValueRelation, b: SubValueRelation) -> Bool {
 // `is_strict_style_structural` distinguishes "strict-side" inhabitants (whose evidence
 // projection is `Strict`) from the non-strict PreservedValue / NonIncreasingValue. Used by
 // join to decide whether two operands meet under StrictAxisErased or escalate to MixedTop.
+//
+// 🟡 PRACTICE 10 DISSOLUTION DISPOSITION: this is a hand-rolled boolean projection of
+// `sub_value_to_evidence(r) == Strict` over the lattice carrier. Dissolution trigger:
+// when the substrate gains derived-predicate-from-projection (a `derive_from`-style
+// reflected helper that lets `is_strict_style_structural(r) := sub_value_to_evidence(r) == Strict`
+// be generated from the evidence-projection definition rather than re-stated), this
+// helper retires and the join/compose call sites read the derived form directly. Until
+// then, the by-hand match keeps the carrier's strict-cone classification co-located with
+// the lattice operations that need it (per CODING.md "pure functions, data + free functions"
+// — derive the predicate from `sub_value_to_evidence` is the homomorphism, but the
+// substrate cannot yet express that derivation). Same family as the held
+// `data sub_value_relation_bounded_lattice` (ROADMAP.md:390 — function-valued algebra
+// fields / generic lattice lifting).
 fn is_strict_style_structural(r: SubValueRelation) -> Bool {
   match r {
     StrictSubValue { field: _, factor: _ } => true
