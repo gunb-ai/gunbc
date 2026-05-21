@@ -442,6 +442,28 @@ fn make_node_at(s: String) -> Locus {
     );
 }
 
+/// Bare record-name patterns (no `{…}`) must not use the Conj record-destructure fallback.
+#[test]
+fn generic_record_bare_name_pattern_reports_variant_not_found() {
+    let source = r#"module test.bare_record_pat
+
+type LocusAnchor<A> { at: A }
+
+fn f(x: LocusAnchor<String>) -> String {
+  match x {
+    LocusAnchor => "bad"
+  }
+}
+"#;
+    let result = compile_dag(source);
+    let diags = diagnostic_messages(&result);
+    assert!(
+        diags.iter().any(|d| d.contains("variant 'LocusAnchor' not found")),
+        "bare record-name pattern must fail closed, got: {:?}",
+        diags
+    );
+}
+
 // ── Match pattern binding tests ─────────────────────────────────────────
 
 #[test]
@@ -4577,7 +4599,7 @@ fn type_rendering_bare_list_not_map() {
     use v2_compiler::v2_compiler_emit::render_node_type;
 
     let list_node = test_leaf_node("List");
-    let shared_types = Rc::new(HashMap::from([("List".to_string(), true)]));
+    let shared_types = Rc::new(BTreeSet::from(["List".to_string()]));
 
     let rendered = render_node_type(
         &list_node,
@@ -4603,7 +4625,7 @@ fn type_rendering_bare_map_stays_hashmap() {
     use v2_compiler::v2_compiler_emit::render_node_type;
 
     let map_node = test_leaf_node("Map");
-    let shared_types = Rc::new(HashMap::from([("Map".to_string(), true)]));
+    let shared_types = Rc::new(BTreeSet::from(["Map".to_string()]));
 
     let rendered = render_node_type(
         &map_node,
@@ -4634,7 +4656,7 @@ fn type_rendering_named_conj_with_container_template() {
         })),
         ..(*test_leaf_node("")).clone()
     });
-    let shared_types = Rc::new(HashMap::from([("FreeMonoid".to_string(), true)]));
+    let shared_types = Rc::new(BTreeSet::from(["FreeMonoid".to_string()]));
 
     let rendered = render_node_type(
         &free_monoid_conj,
@@ -10035,10 +10057,16 @@ fn diag_emitter_scc() {
         eprintln!("  Pattern: {:?}", info.pattern);
 
         // Collect CX-L2 tree edges
+        let scc_name_set = Rc::new(
+            info.member_set
+                .iter()
+                .map(|m| (m.clone(), true))
+                .collect::<HashMap<String, bool>>(),
+        );
         let edges = collect_scc_cx_l2_tree_edges(
             &info.members,
             &func_index,
-            Rc::new(info.member_set.as_ref().clone()),
+            scc_name_set,
             &Rc::new(HashMap::new()),
         );
         eprintln!("\n  CX-L2 tree edges ({}):", edges.len());
