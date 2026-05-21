@@ -1,0 +1,255 @@
+// src/v4/compiler/06_translate.dag
+// Scope: Stage 5a — InferredTree + TargetModel -> TargetNodeTree via coercion fold (T-10 / W-T-10-impl).
+// Owns: TargetNodeTree, target_model_edge_selection_policy, target_model_edge_declared_inhabitants,
+//       target_model_edge_serialize_emitted, target_model_edge_serialize_source,
+//       target_bundle_child, target_selection_policy_from_model, coercion_candidates_from_target_model,
+//       canonical_grounding_for_node, coerce_grounded_node, translate_children, translate_edge,
+//       translate_node, translate.
+// Consumes: compiler/04_infer.dag, compiler/00_compile.dag, std/coercion.dag, std/constraints.dag,
+//           std/find_witness.dag, std/diagnostic.dag, std/node.dag, std/witness.dag, std/collection.dag.
+// Status: W-T-10-impl — fold_node translate + coercion_fold wrapper; serialize in 05_emit.dag.
+// Anchor: docs/design-v4-compiler-homomorphism.md Stage 5a; Ratified Q14.
+
+
+module v4.compiler.translate
+
+
+import v4.compiler.compile { TargetModel }
+import v4.compiler.infer { InferredTree }
+import v4.std.coercion {
+  CoercionCandidateSet,
+  CoercionResult,
+  coercion_fold
+}
+import v4.std.collection { List }
+import v4.std.constraints {
+  CanonicalGrounding,
+  CanonicalGroundingWitness,
+  constraint_property_being_canonical
+}
+import v4.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  NodeLocus,
+  Outcome,
+  Rejected,
+  Unavailable,
+  bind_outcome,
+  diagnostics_merge,
+  diagnostics_singleton,
+  outcome_rejected,
+  rejected_with_pending
+}
+import v4.std.find_witness {
+  CandidateSet,
+  TargetDeclaredPriority,
+  TargetSelectionPolicy
+}
+import v4.std.node {
+  Conj,
+  Edge,
+  Named,
+  Node,
+  Positional,
+  Symbol,
+  TypeNode
+}
+import v4.std.witness { Holds, StructuralPropertyWitness, Violates }
+type TargetNodeTree = Node
+data target_model_edge_selection_policy: Symbol = target_model_edge_selection_policy
+data target_model_edge_declared_inhabitants: Symbol = target_model_edge_declared_inhabitants
+data target_model_edge_serialize_emitted: Symbol = target_model_edge_serialize_emitted
+data target_model_edge_serialize_source: Symbol = target_model_edge_serialize_source
+data translate_target_bundle_malformed: Symbol = translate_target_bundle_malformed
+data translate_inferred_facts_missing: Symbol = translate_inferred_facts_missing
+data translate_coercion_rejected: Symbol = translate_coercion_rejected
+fn translate_target_bundle_malformed_diagnostic(target: TargetModel) -> Diagnostic {
+  Diagnostic {
+    reason: translate_target_bundle_malformed,
+    at: NodeLocus { node: target },
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+fn translate_inferred_facts_missing_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: translate_inferred_facts_missing,
+    at: NodeLocus { node: node },
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+fn target_bundle_child(target: TargetModel, edge_name: Symbol) -> Outcome<Node> {
+  match target.kind {
+    TypeNode { connective: Conj } =>
+      fold(
+        target.children,
+        init: outcome_rejected(
+          translate_target_bundle_malformed_diagnostic(target: target)
+        ),
+        f: fn(acc, e) {
+          match e.label {
+            Named { name: n } =>
+              if n == edge_name {
+                Accepted { value: e.target, diagnostics: None }
+              } else {
+                acc
+              }
+            Positional => acc
+          }
+        }
+      )
+    _ =>
+      outcome_rejected(translate_target_bundle_malformed_diagnostic(target: target))
+  }
+}
+fn target_selection_policy_from_model(target: TargetModel) -> Outcome<TargetSelectionPolicy> {
+  bind_outcome(
+    o: target_bundle_child(target: target, edge_name: target_model_edge_selection_policy),
+    f: fn(priority_node) {
+      Accepted {
+        value: TargetDeclaredPriority { priority: priority_node },
+        diagnostics: None
+      }
+    }
+  )
+}
+fn coercion_candidates_from_target_model(
+  target: TargetModel,
+  closedness_evidence: Node,
+) -> Outcome<CoercionCandidateSet> {
+  bind_outcome(
+    o: target_bundle_child(target: target, edge_name: target_model_edge_declared_inhabitants),
+    f: fn(inhabitants_root) {
+      Accepted {
+        value: CoercionCandidateSet {
+          set: CandidateSet {
+            candidates: [inhabitants_root],
+            closedness: StructuralPropertyWitness {
+              property: target_model_edge_declared_inhabitants,
+              evidence: closedness_evidence
+            }
+          }
+        },
+        diagnostics: None
+      }
+    }
+  )
+}
+fn canonical_grounding_for_node(tree: InferredTree, node: Node) -> Outcome<CanonicalGrounding> {
+  match tree.facts.lookup(node) {
+    Holds { value: _facts } =>
+      Accepted {
+        value: CanonicalGrounding {
+          node: node,
+          witness: CanonicalGroundingWitness {
+            structural: StructuralPropertyWitness {
+              property: constraint_property_being_canonical,
+              evidence: node
+            }
+          }
+        },
+        diagnostics: None
+      }
+    Violates { diagnostic: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
+  }
+}
+fn coerce_grounded_node(
+  source: Node,
+  tree: InferredTree,
+  target: TargetModel,
+) -> Outcome<CoercionResult> {
+  bind_outcome(
+    o: canonical_grounding_for_node(tree: tree, node: source),
+    f: fn(grounding) {
+      bind_outcome(
+        o: target_selection_policy_from_model(target: target),
+        f: fn(policy) {
+          bind_outcome(
+            o: coercion_candidates_from_target_model(
+              target: target,
+              closedness_evidence: grounding.node
+            ),
+            f: fn(candidates) {
+              coercion_fold(
+                source: grounding,
+                candidates: candidates,
+                policy: policy
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+fn empty_translated_edges() -> Outcome<List<Edge>> {
+  Accepted { value: Empty, diagnostics: None }
+}
+fn translate_children(
+  children: List<Edge>,
+  tree: InferredTree,
+  target: TargetModel,
+) -> Outcome<List<Edge>> {
+  fold(children, init: empty_translated_edges(), f: fn(acc, e) {
+    match acc {
+      Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      Accepted { value: done, diagnostics: ad } =>
+        match translate_edge(edge: e, tree: tree, target: target) {
+          Accepted { value: translated_edge, diagnostics: ed } =>
+            Accepted {
+              value: list_push(done, translated_edge),
+              diagnostics: diagnostics_merge(outer: ad, inner: ed)
+            }
+          Rejected { diagnostics: r } =>
+            Rejected {
+              diagnostics: rejected_with_pending(pending: ad, rejected: r)
+            }
+        }
+    }
+  })
+}
+fn translate_edge(
+  edge: Edge,
+  tree: InferredTree,
+  target: TargetModel,
+) -> Outcome<Edge> {
+  match translate_node(node: edge.target, tree: tree, target: target) {
+    Accepted { value: translated_target, diagnostics: d } =>
+      Accepted {
+        value: Edge { label: edge.label, target: translated_target },
+        diagnostics: d
+      }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+fn translate_node(
+  node: Node,
+  tree: InferredTree,
+  target: TargetModel,
+) -> Outcome<Node> {
+  match translate_children(children: node.children, tree: tree, target: target) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: translated_children, diagnostics: cd } =>
+      match coerce_grounded_node(source: node, tree: tree, target: target) {
+        Accepted { value: coerced, diagnostics: d } =>
+          Accepted {
+            value: Node {
+              kind: coerced.target.kind,
+              children: translated_children
+            },
+            diagnostics: diagnostics_merge(outer: cd, inner: d)
+          }
+        Rejected { diagnostics: r } =>
+          Rejected {
+            diagnostics: rejected_with_pending(pending: cd, rejected: r)
+          }
+      }
+  }
+}
+fn translate(tree: InferredTree, target: TargetModel) -> Outcome<TargetNodeTree> {
+  match translate_node(node: tree.root, tree: tree, target: target) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: root, diagnostics: d } =>
+      Accepted { value: root, diagnostics: d }
+  }
+}
