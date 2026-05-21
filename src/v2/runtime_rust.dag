@@ -130,7 +130,7 @@ fn rt_collection_ops() -> String {
     "    }\n",
     "    out\n",
     "}\n\n",
-    "pub fn set_contains<T: Ord>(s: &BTreeSet<T>, x: T) -> bool {\n",
+    "pub fn set_contains<T: Ord>(s: Rc<BTreeSet<T>>, x: T) -> bool {\n",
     "    s.contains(&x)\n",
     "}\n\n",
     "pub fn reverse<T: Clone>(list: Rc<Vec<T>>) -> Rc<Vec<T>> {\n",
