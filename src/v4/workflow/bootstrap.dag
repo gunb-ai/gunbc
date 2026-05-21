@@ -75,10 +75,8 @@ fn bs_diagnostic(reason: Symbol) -> Diagnostic {
 fn bs_list_eq(a: List<Symbol>, b: List<Symbol>) -> Bool {
   (length(xs: a) == length(xs: b))
     && for_all(xs: a, predicate: fn(x) {
-         count_equal(xs: b, item: x, eq: fn(left, right) { left == right }) != 0
-       })
-    && for_all(xs: b, predicate: fn(y) {
-         count_equal(xs: a, item: y, eq: fn(left, right) { left == right }) != 0
+         count_equal(xs: a, item: x, eq: fn(left, right) { left == right })
+           == count_equal(xs: b, item: x, eq: fn(left, right) { left == right })
        })
 }
 
@@ -110,6 +108,8 @@ fn bootstrap_plan_well_formed(p: BootstrapPlan) -> Outcome<BootstrapPlan> {
        && (p.fixpt.left_hash.pin == p.fixpt.right_hash.pin)
        && (p.fixpt.pinned_hash.pin == pinned_v4_fixed_point_hash_pin)
        && (p.fixpt.left_hash.pin == p.fixpt.pinned_hash.pin)
+       && (p.fixpt.left_hash.digest == p.fixpt.right_hash.digest)
+       && (p.fixpt.left_hash.digest == p.fixpt.pinned_hash.digest)
        && (p.fixpt.via == bit_identical_check) {
     Accepted { value: p, diagnostics: None }
   } else {
@@ -140,8 +140,8 @@ data bootstrap_plan: Outcome<BootstrapPlan> = bootstrap_plan_well_formed(p: Boot
     left: v4_stage1_binary,
     left_hash: BootstrapHashPin { digest: v4_stage1_hash, pin: v4_stage1_hash_pin },
     right: v4_stage2_binary,
-    right_hash: BootstrapHashPin { digest: v4_stage2_hash, pin: v4_stage2_hash_pin },
-    pinned_hash: BootstrapHashPin { digest: pinned_v4_fixed_point_hash, pin: pinned_v4_fixed_point_hash_pin },
+    right_hash: BootstrapHashPin { digest: v4_stage1_hash, pin: v4_stage2_hash_pin },
+    pinned_hash: BootstrapHashPin { digest: v4_stage1_hash, pin: pinned_v4_fixed_point_hash_pin },
     via: bit_identical_check
   }
 })

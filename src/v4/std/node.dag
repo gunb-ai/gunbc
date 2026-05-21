@@ -116,11 +116,32 @@ fn edges_conform(children: List<Edge>, d: EdgeDiscipline) -> Bool {
     PositionalEdges => all_edges_positional(children: children)
   }
 }
+fn connective_edges_conform(children: List<Edge>, c: Connective) -> Bool {
+  match c {
+    Atom { identity: _ } => edges_conform(children: children, d: NoEdges)
+    Conj => edges_conform(children: children, d: LabeledEdges)
+    Disj => edges_conform(children: children, d: LabeledEdges)
+    Arrow =>
+      edges_conform(children: children, d: PositionalEdges) && (count(children) >= 1)
+    Cardinality =>
+      edges_conform(children: children, d: PositionalEdges) && (count(children) >= 1)
+    Instantiation =>
+      edges_conform(children: children, d: PositionalEdges) && (count(children) >= 1)
+  }
+}
+fn behavior_edges_conform(children: List<Edge>, b: Behavior) -> Bool {
+  match b {
+    Value => count(children) == 0
+    Transform => edges_conform(children: children, d: PositionalEdges) && (count(children) >= 1)
+    Branch => edges_conform(children: children, d: PositionalEdges) && (count(children) >= 1)
+    Loop => edges_conform(children: children, d: PositionalEdges) && (count(children) >= 1)
+    Bind => edges_conform(children: children, d: PositionalEdges) && (count(children) == 3)
+  }
+}
 fn locally_well_formed(n: Node) -> Bool {
   match n.kind {
-    TypeNode { connective: c } =>
-      edges_conform(children: n.children, d: connective_edge_discipline(c: c))
-    ComputationNode { behavior: _ } => true
+    TypeNode { connective: c } => connective_edges_conform(children: n.children, c: c)
+    ComputationNode { behavior: b } => behavior_edges_conform(children: n.children, b: b)
   }
 }
 fn well_formed(n: Node) -> Bool {
