@@ -2189,6 +2189,24 @@ fn is_string_lit_pattern(p: MatchPattern) -> Bool {
   }
 }
 
+// Guards from one variant's field bindings, recursing into nested carrier patterns.
+fn collect_field_binding_string_guards(field_bindings: List<Node>, source_indices: Map<String, NewlineIndex>) -> String {
+  let parts = field_bindings |> flat_map(fb =>
+    let fb_pat = field_binding_pattern(n: fb)
+    if is_string_lit_pattern(p: fb_pat) {
+      match fb_pat {
+        LitPattern { value: LitStr { value: s } } =>
+          [concat(emit_ident(name: field_binding_name_at(n: fb, source_indices: source_indices), target: Rust), " == ", emit_string_literal(s: s, suffix: ""))]
+        _ => []
+      }
+    } else {
+      let nested = collect_pattern_string_guards(pattern: fb_pat, source_indices: source_indices)
+      if nested == "" { [] } else { [nested] }
+    }
+  )
+  parts |> join(separator: " && ")
+}
+
 // Collect guard conditions from string literal field bindings in a pattern.
 // Returns "" if no string literal fields, or "f1 == \"v1\" && f2 == \"v2\"".
 // This is needed because Rust can't match String fields with &str literals
@@ -2212,15 +2230,7 @@ fn collect_pattern_string_guards(pattern: MatchPattern, source_indices: Map<Stri
           None => ""
         }
       } else {
-        let str_bindings = fbs |> filter(fb => is_string_lit_pattern(p: field_binding_pattern(n: fb)))
-        let guards = str_bindings |> map(fb =>
-          match field_binding_pattern(n: fb) {
-            LitPattern { value: LitStr { value: s } } =>
-              concat(emit_ident(name: field_binding_name_at(n: fb, source_indices: source_indices), target: Rust), " == ", emit_string_literal(s: s, suffix: ""))
-            _ => ""
-          }
-        )
-        guards |> join(separator: " && ")
+        collect_field_binding_string_guards(field_bindings: fbs, source_indices: source_indices)
       }
     _ => ""
   }
@@ -2451,13 +2461,18 @@ fn analyze_rc_pattern(pattern: MatchPattern, scrut_type: String, shared_types: S
           }
         } else { empty_rc_pattern_analysis() }
       } else {
-        let matches_rc_variant = match pattern_parent_enum(name: n, parent_enum: parent_enum, scrut_type: scrut_type, type_summaries: emit_info.type_summaries) {
+        let resolved_parent = pattern_parent_enum(name: n, parent_enum: parent_enum, scrut_type: scrut_type, type_summaries: emit_info.type_summaries)
+        let matches_rc_variant = match resolved_parent {
           Some { value: enum_name } => set_contains(shared_types, enum_name)
           None => false
         }
         let ref_bound_fields = fbs |> flat_map(fb =>
-          if analyze_rc_pattern(pattern: field_binding_pattern(n: fb), scrut_type: "", shared_types: shared_types, emit_info: emit_info, source_indices: source_indices).matches_rc_variant {
-            [field_binding_name_at(n: fb, source_indices: source_indices)]
+          let fb_name = field_binding_name_at(n: fb, source_indices: source_indices)
+          let inner_scrut = if fb_name == "0" {
+            positional_payload_scrut_type(parent_enum: resolved_parent, variant_name: n, field_binding: fb, emit_info: emit_info, source_indices: source_indices)
+          } else { "" }
+          if analyze_rc_pattern(pattern: field_binding_pattern(n: fb), scrut_type: inner_scrut, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices).matches_rc_variant {
+            [fb_name]
           } else { [] }
         )
         RcPatternAnalysis {
@@ -2608,7 +2623,7 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
 
 fn rc_pattern_preludes(pattern: MatchPattern, rc_analysis: RcPatternAnalysis, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
   match pattern {
-    VariantPattern { name: n, parent_enum: _, field_bindings: fbs } =>
+    VariantPattern { name: n, parent_enum: parent_enum, field_bindings: fbs } =>
       if n == "Some" || n == "None" {
         if fbs |> count == 1 {
           match fbs |> first {
@@ -2620,9 +2635,16 @@ fn rc_pattern_preludes(pattern: MatchPattern, rc_analysis: RcPatternAnalysis, sh
           }
         } else { "" }
       } else {
+        let resolved_parent = pattern_parent_enum(name: n, parent_enum: parent_enum, scrut_type: "", type_summaries: emit_info.type_summaries)
         let preludes = fbs |> flat_map(fb =>
-          if field_needs_rc_ref(field_name: field_binding_name_at(n: fb, source_indices: source_indices), rc_analysis: rc_analysis) {
-            [concat("let ", emit_pattern(pattern: field_binding_pattern(n: fb), shared_types: shared_types, scrut_type: "", source_indices: source_indices, emit_info: emit_info), " = ", emit_ident(name: field_binding_name_at(n: fb, source_indices: source_indices), target: Rust), ".as_ref() else { unreachable!() };")]
+          let fb_name = field_binding_name_at(n: fb, source_indices: source_indices)
+          if fb_name == "0" {
+            let payload_scrut = positional_payload_scrut_type(parent_enum: resolved_parent, variant_name: n, field_binding: fb, emit_info: emit_info, source_indices: source_indices)
+            let inner_analysis = analyze_rc_pattern(pattern: field_binding_pattern(n: fb), scrut_type: payload_scrut, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
+            let inner_preludes = rc_pattern_preludes(pattern: field_binding_pattern(n: fb), rc_analysis: inner_analysis, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
+            if inner_preludes == "" { [] } else { [inner_preludes] }
+          } else if field_needs_rc_ref(field_name: fb_name, rc_analysis: rc_analysis) {
+            [concat("let ", emit_pattern(pattern: field_binding_pattern(n: fb), shared_types: shared_types, scrut_type: "", source_indices: source_indices, emit_info: emit_info), " = ", emit_ident(name: fb_name, target: Rust), ".as_ref() else { unreachable!() };")]
           } else { [] }
         )
         preludes |> join(separator: " ")
