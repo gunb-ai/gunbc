@@ -46,7 +46,7 @@ import v4.std.diagnostic {
   diagnostics_singleton
 }
 import v4.std.node { Edge, Named, Node, Symbol, TypeNode, Atom, Conj }
-import v4.std.verification {Equals,
+import v4.std.verification {
   T19ManualAnchorAbsent,
   TestClaim,
   TestClassification,
