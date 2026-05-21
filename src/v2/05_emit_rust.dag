@@ -4214,27 +4214,29 @@ fn rust_field_value_for_struct(raw_value: String, field_value: Node, struct_node
     Some { value: field_type } =>
       if value_is_fn {
         rust_rc_new_value(raw_value)
-      } else match field_type.connective {
-        Arrow => rust_rc_new_value(raw_value)
-        _ =>
-          match lookup_emit_type_summary(emit_info: emit_info, type_name: struct_name) {
-            Some { value: summary } =>
-              if type_node_is_generic_param(type_node: field_type, summary: summary, source_indices: scope.type_env.source_indices) {
-                rust_box_new_value(raw_value)
-              } else {
+      } else {
+        match field_type.connective {
+          Arrow => rust_rc_new_value(raw_value)
+          _ =>
+            match lookup_emit_type_summary(emit_info: emit_info, type_name: struct_name) {
+              Some { value: summary } =>
+                if type_node_is_generic_param(type_node: field_type, summary: summary, source_indices: scope.type_env.source_indices) {
+                  rust_box_new_value(raw_value)
+                } else {
+                  match field_type.inferred {
+                    Some { value: inf } =>
+                      if is_type_variable(inferred: inf) { rust_box_new_value(raw_value) } else { raw_value }
+                    None => raw_value
+                  }
+                }
+              None =>
                 match field_type.inferred {
                   Some { value: inf } =>
                     if is_type_variable(inferred: inf) { rust_box_new_value(raw_value) } else { raw_value }
                   None => raw_value
                 }
-              }
-            None =>
-              match field_type.inferred {
-                Some { value: inf } =>
-                  if is_type_variable(inferred: inf) { rust_box_new_value(raw_value) } else { raw_value }
-                None => raw_value
-              }
-          }
+            }
+        }
       }
     None =>
       match lookup_emit_type_summary(emit_info: emit_info, type_name: struct_name) {
