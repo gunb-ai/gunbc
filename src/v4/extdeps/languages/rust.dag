@@ -198,6 +198,9 @@ data rust_ieee754_binary64: Symbol = rust_ieee754_binary64
 data rust_str_unsized: Symbol = rust_str_unsized
 data rust_string_owned_utf8: Symbol = rust_string_owned_utf8
 data rust_char_unicode_scalar: Symbol = rust_char_unicode_scalar
+data rust_repr_bool: Symbol = rust_repr_bool
+data rust_repr_unit: Symbol = rust_repr_unit
+data rust_repr_never: Symbol = rust_repr_never
 
 data rust_inhabitant_i8: Symbol = rust_inhabitant_i8
 data rust_inhabitant_i16: Symbol = rust_inhabitant_i16
@@ -301,8 +304,8 @@ data rust_tag_scalar_never: Symbol = rust_tag_scalar_never
 
 data rust_mvp1_serialize_source_anchor: Symbol = rust_mvp1_serialize_source_anchor
 data rust_mvp1_source_text_field: Symbol = rust_mvp1_source_text_field
-// Positional Conj edge names for MVP serialize_source scaffold; paired 1:1 with
-// `rust_mvp1_source_token_classes` (dissolve-on: grammar-emitted token stream, T-10).
+// Sole token-sequence authority for MVP serialize_source; Positional child order in
+// `rust_mvp1_serialize_source_node` matches indices 0..17 (dissolve-on: T-10 grammar).
 data rust_mvp1_source_token_classes: List<Symbol> = [
   rust_token_kw_fn,
   rust_token_ident,
@@ -323,24 +326,6 @@ data rust_mvp1_source_token_classes: List<Symbol> = [
   rust_token_ident,
   rust_token_rbrace
 ]
-data rust_mvp1_source_tok_0: Symbol = rust_mvp1_source_tok_0
-data rust_mvp1_source_tok_1: Symbol = rust_mvp1_source_tok_1
-data rust_mvp1_source_tok_2: Symbol = rust_mvp1_source_tok_2
-data rust_mvp1_source_tok_3: Symbol = rust_mvp1_source_tok_3
-data rust_mvp1_source_tok_4: Symbol = rust_mvp1_source_tok_4
-data rust_mvp1_source_tok_5: Symbol = rust_mvp1_source_tok_5
-data rust_mvp1_source_tok_6: Symbol = rust_mvp1_source_tok_6
-data rust_mvp1_source_tok_7: Symbol = rust_mvp1_source_tok_7
-data rust_mvp1_source_tok_8: Symbol = rust_mvp1_source_tok_8
-data rust_mvp1_source_tok_9: Symbol = rust_mvp1_source_tok_9
-data rust_mvp1_source_tok_10: Symbol = rust_mvp1_source_tok_10
-data rust_mvp1_source_tok_11: Symbol = rust_mvp1_source_tok_11
-data rust_mvp1_source_tok_12: Symbol = rust_mvp1_source_tok_12
-data rust_mvp1_source_tok_13: Symbol = rust_mvp1_source_tok_13
-data rust_mvp1_source_tok_14: Symbol = rust_mvp1_source_tok_14
-data rust_mvp1_source_tok_15: Symbol = rust_mvp1_source_tok_15
-data rust_mvp1_source_tok_16: Symbol = rust_mvp1_source_tok_16
-data rust_mvp1_source_tok_17: Symbol = rust_mvp1_source_tok_17
 data rust_mvp1_source_text: String = "fn add(x: i32, y: i32) -> i32 { x + y }"
 
 data rust_facts_i8: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
@@ -471,7 +456,7 @@ data rust_facts_bool: RustNonIntegerPrimitiveFacts = RustNonIntegerPrimitiveFact
   surface_spelling: rust_surface_spelling_bool,
   scalar_classifier: BoolScalar,
   std_projection: rust_std_projection_bool,
-  representation: rust_std_projection_bool
+  representation: rust_repr_bool
 }
 
 data rust_facts_char: RustNonIntegerPrimitiveFacts = RustNonIntegerPrimitiveFacts {
@@ -499,14 +484,14 @@ data rust_facts_unit: RustNonIntegerPrimitiveFacts = RustNonIntegerPrimitiveFact
   surface_spelling: rust_surface_spelling_unit,
   scalar_classifier: UnitScalar,
   std_projection: rust_std_projection_unit,
-  representation: rust_std_projection_unit
+  representation: rust_repr_unit
 }
 
 data rust_facts_never: RustNonIntegerPrimitiveFacts = RustNonIntegerPrimitiveFacts {
   surface_spelling: rust_surface_spelling_never,
   scalar_classifier: NeverScalar,
   std_projection: rust_std_projection_never,
-  representation: rust_std_projection_never
+  representation: rust_repr_never
 }
 
 data rust_integer_facts_catalog: List<RustIntegerPrimitiveFacts> = [
@@ -871,8 +856,17 @@ fn rust_mvp1_source_token_node(token_class: Symbol) -> Node {
   rust_inhabitant_atom(id: token_class)
 }
 
+fn rust_mvp1_positional_token_edge(token_class: Symbol) -> Edge {
+  Edge {
+    label: Positional,
+    target: rust_mvp1_source_token_node(token_class: token_class)
+  }
+}
+
 fn rust_mvp1_serialize_source_node() -> Node {
+  // liveness anchor — keeps `rust_mvp1_source_text` reachable; drops with T-10 grammar-as-bidir
   let _authority = rust_mvp1_source_text_authority()
+  // liveness anchor — sole List authority for token order; Positional edges match indices 0..17
   let _token_classes = rust_mvp1_source_token_classes
   Node {
     kind: TypeNode { connective: Conj },
@@ -881,83 +875,30 @@ fn rust_mvp1_serialize_source_node() -> Node {
         name: rust_mvp1_source_text_field,
         target: rust_inhabitant_atom(id: rust_mvp1_serialize_source_anchor)
       ),
-      rust_named_edge(
-        name: rust_mvp1_source_tok_0,
-        target: rust_mvp1_source_token_node(token_class: rust_token_kw_fn)
-      ),
-      rust_named_edge(
-        name: rust_mvp1_source_tok_1,
-        target: rust_mvp1_source_token_node(token_class: rust_token_ident)
-      ),
-      rust_named_edge(
-        name: rust_mvp1_source_tok_2,
-        target: rust_mvp1_source_token_node(token_class: rust_token_lparen)
-      ),
-      rust_named_edge(
-        name: rust_mvp1_source_tok_3,
-        target: rust_mvp1_source_token_node(token_class: rust_token_ident)
-      ),
-      rust_named_edge(
-        name: rust_mvp1_source_tok_4,
-        target: rust_mvp1_source_token_node(token_class: rust_token_colon)
-      ),
-      rust_named_edge(
-        name: rust_mvp1_source_tok_5,
-        target: rust_mvp1_source_token_node(token_class: rust_token_ty_i32)
-      ),
-      rust_named_edge(
-        name: rust_mvp1_source_tok_6,
-        target: rust_mvp1_source_token_node(token_class: rust_token_comma)
-      ),
-      rust_named_edge(
-        name: rust_mvp1_source_tok_7,
-        target: rust_mvp1_source_token_node(token_class: rust_token_ident)
-      ),
-      rust_named_edge(
-        name: rust_mvp1_source_tok_8,
-        target: rust_mvp1_source_token_node(token_class: rust_token_colon)
-      ),
-      rust_named_edge(
-        name: rust_mvp1_source_tok_9,
-        target: rust_mvp1_source_token_node(token_class: rust_token_ty_i32)
-      ),
-      rust_named_edge(
-        name: rust_mvp1_source_tok_10,
-        target: rust_mvp1_source_token_node(token_class: rust_token_rparen)
-      ),
-      rust_named_edge(
-        name: rust_mvp1_source_tok_11,
-        target: rust_mvp1_source_token_node(token_class: rust_token_arrow)
-      ),
-      rust_named_edge(
-        name: rust_mvp1_source_tok_12,
-        target: rust_mvp1_source_token_node(token_class: rust_token_ty_i32)
-      ),
-      rust_named_edge(
-        name: rust_mvp1_source_tok_13,
-        target: rust_mvp1_source_token_node(token_class: rust_token_lbrace)
-      ),
-      rust_named_edge(
-        name: rust_mvp1_source_tok_14,
-        target: rust_mvp1_source_token_node(token_class: rust_token_ident)
-      ),
-      rust_named_edge(
-        name: rust_mvp1_source_tok_15,
-        target: rust_mvp1_source_token_node(token_class: rust_token_plus)
-      ),
-      rust_named_edge(
-        name: rust_mvp1_source_tok_16,
-        target: rust_mvp1_source_token_node(token_class: rust_token_ident)
-      ),
-      rust_named_edge(
-        name: rust_mvp1_source_tok_17,
-        target: rust_mvp1_source_token_node(token_class: rust_token_rbrace)
-      )
+      rust_mvp1_positional_token_edge(token_class: rust_token_kw_fn),
+      rust_mvp1_positional_token_edge(token_class: rust_token_ident),
+      rust_mvp1_positional_token_edge(token_class: rust_token_lparen),
+      rust_mvp1_positional_token_edge(token_class: rust_token_ident),
+      rust_mvp1_positional_token_edge(token_class: rust_token_colon),
+      rust_mvp1_positional_token_edge(token_class: rust_token_ty_i32),
+      rust_mvp1_positional_token_edge(token_class: rust_token_comma),
+      rust_mvp1_positional_token_edge(token_class: rust_token_ident),
+      rust_mvp1_positional_token_edge(token_class: rust_token_colon),
+      rust_mvp1_positional_token_edge(token_class: rust_token_ty_i32),
+      rust_mvp1_positional_token_edge(token_class: rust_token_rparen),
+      rust_mvp1_positional_token_edge(token_class: rust_token_arrow),
+      rust_mvp1_positional_token_edge(token_class: rust_token_ty_i32),
+      rust_mvp1_positional_token_edge(token_class: rust_token_lbrace),
+      rust_mvp1_positional_token_edge(token_class: rust_token_ident),
+      rust_mvp1_positional_token_edge(token_class: rust_token_plus),
+      rust_mvp1_positional_token_edge(token_class: rust_token_ident),
+      rust_mvp1_positional_token_edge(token_class: rust_token_rbrace)
     ]
   }
 }
 
 fn rust_mvp1_target_model() -> Node {
+  // liveness anchor — pairs target_model with `rust_mvp1_source_text`; drops with T-10
   let _authority = rust_mvp1_source_text_authority()
   Node {
     kind: TypeNode { connective: Conj },
