@@ -101,12 +101,12 @@ type CppUnsignedModuloArithmetic
 type CppScalar
   = SignedIntegerScalar {
       width_selection: CppSignedIntegerWidthSelection,
-      signed_representation: CppTwosComplementWitness,
-      overflow_disposition: CppRepresentableResultRequiredWitness
+      signed_representation: CppTwosComplement,
+      overflow_disposition: CppRepresentableResultRequired
     }
   | UnsignedIntegerScalar {
       width_selection: CppUnsignedIntegerWidthSelection,
-      overflow_disposition: CppUnsignedModuloArithmeticWitness
+      overflow_disposition: CppUnsignedModuloArithmetic
     }
   | PlainCharScalar {
       width_selection: CppPlainCharWidthSelection
@@ -376,8 +376,8 @@ fn cpp_signed_integer_facts(
         spelling: spelling,
         target_profile: target_profile
       },
-      signed_representation: CppTwosComplement,
-      overflow_disposition: CppRepresentableResultRequired
+      signed_representation: CppTwosComplementWitness,
+      overflow_disposition: CppRepresentableResultRequiredWitness
     }
   }
 }
@@ -394,7 +394,7 @@ fn cpp_unsigned_integer_facts(
         spelling: spelling,
         target_profile: target_profile
       },
-      overflow_disposition: CppUnsignedModuloArithmetic
+      overflow_disposition: CppUnsignedModuloArithmeticWitness
     }
   }
 }
