@@ -3,7 +3,8 @@
 
 #![allow(unused_variables, dead_code)]
 
-use std::collections::{BTreeSet, HashMap};
+use std::collections::BTreeSet;
+use std::collections::HashMap;
 use std::rc::Rc;
 
 pub trait V2Concat {
@@ -198,7 +199,7 @@ pub fn rc_set_union<T: Ord + Clone>(a: Rc<BTreeSet<T>>, b: Rc<BTreeSet<T>>) -> R
     out
 }
 
-pub fn set_contains<T: Ord>(s: Rc<BTreeSet<T>>, x: T) -> bool {
+pub fn set_contains<T: Ord>(s: &BTreeSet<T>, x: T) -> bool {
     s.contains(&x)
 }
 

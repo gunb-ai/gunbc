@@ -83,7 +83,10 @@ pub use crate::v2_compiler_infer_types::{
 };
 pub use crate::v2_compiler_resolve::{ModuleGraph, ResolvedImport, ResolvedModule};
 use crate::v2_rt;
-use crate::v2_rt::{rc_empty_set as empty_set, rc_set_insert as set_insert, rc_set_union as set_union, set_contains};
+use crate::v2_rt::rc_empty_set as empty_set;
+use crate::v2_rt::rc_set_insert as set_insert;
+use crate::v2_rt::rc_set_union as set_union;
+use crate::v2_rt::set_contains;
 use crate::v2_std_core::BinOp::{
     Add, And, Div, Eq, Ge, Gt, Le, Lt, Mod, Mul, Ne, NullCoalesce, Or, Sub,
 };
@@ -545,7 +548,7 @@ pub fn classify_field_recursion(
                     };
                     let is_recursive_element = ((value_type.clone().as_str()
                         == parent_name.clone().as_str())
-                        || set_contains(recursive_type_set, value_type.clone()));
+                        || v2_rt::set_contains(&recursive_type_set, value_type.clone()));
                     if is_recursive_element {
                         {
                             let elem =
@@ -575,7 +578,7 @@ pub fn classify_field_recursion(
                     }
                 }
             } else {
-                if set_contains(recursive_type_set, field_type_name.clone()) {
+                if v2_rt::set_contains(&recursive_type_set, field_type_name.clone()) {
                     match field_node.return_cardinality.clone() {
                         Cardinality::CardOptional => Some(Rc::new(FieldRecursionResult {
                             shape: RecursionShape::OptionalRecursion,
@@ -10234,9 +10237,9 @@ pub fn build_type_env(
             Rc::new(v2_rt::map_keys(&compiler_recursive_types())),
         );
         let cross_type_set_str = cross_type_all_names.clone().iter().cloned().fold(
-            empty_set(),
-            |acc: Rc<std::collections::BTreeSet<String>>,
-             name: String| set_insert(acc, name.clone()),
+            v2_rt::rc_empty_set(),
+            |acc: Rc<std::collections::BTreeSet<compile_error!("UNRESOLVED_TypeVariable")>>,
+             name: String| v2_rt::rc_set_insert(acc, name.clone()),
         );
         let cross_type_set = cross_type_all_names.clone().iter().cloned().fold(
             v2_rt::rc_empty_map::<i64, bool>(),
@@ -10694,9 +10697,9 @@ pub fn build_type_env_unresolved(
             Rc::new(v2_rt::map_keys(&compiler_recursive_types())),
         );
         let cross_type_set_str = cross_type_all_names.clone().iter().cloned().fold(
-            empty_set(),
-            |acc: Rc<std::collections::BTreeSet<String>>,
-             name: String| set_insert(acc, name.clone()),
+            v2_rt::rc_empty_set(),
+            |acc: Rc<std::collections::BTreeSet<compile_error!("UNRESOLVED_TypeVariable")>>,
+             name: String| v2_rt::rc_set_insert(acc, name.clone()),
         );
         let cross_type_set = cross_type_all_names.clone().iter().cloned().fold(
             v2_rt::rc_empty_map::<i64, bool>(),
@@ -11346,9 +11349,9 @@ pub fn topo_resolve_types(
             });
         }
         let remaining_set = remaining.clone().iter().cloned().fold(
-            empty_set(),
-            |acc: Rc<std::collections::BTreeSet<String>>,
-             name: String| set_insert(acc, name.clone()),
+            v2_rt::rc_empty_set(),
+            |acc: Rc<std::collections::BTreeSet<compile_error!("UNRESOLVED_TypeVariable")>>,
+             name: String| v2_rt::rc_set_insert(acc, name.clone()),
         );
         let ready = Rc::new({
             let mut __result = Vec::new();
@@ -11361,7 +11364,7 @@ pub fn topo_resolve_types(
                                 || (dep.clone().as_str() == "None".to_string().as_str()))
                                 || (dep.clone().as_str() == "".to_string().as_str()))
                                 || is_recursive_type_by_name(&env, dep.clone()))
-                                || (set_contains(remaining_set.clone(), dep.clone()) == false))
+                                || (v2_rt::set_contains(&remaining_set, dep.clone()) == false))
                             {
                                 __all = false;
                                 break;
@@ -11565,15 +11568,15 @@ pub fn build_fielded_variants(
 ) -> Rc<std::collections::BTreeSet<String>> {
     {
         let result = modules.iter().cloned().fold(
-            empty_set(),
-            |acc: Rc<std::collections::BTreeSet<String>>,
+            v2_rt::rc_empty_set(),
+            |acc: Rc<std::collections::BTreeSet<compile_error!("UNRESOLVED_TypeVariable")>>,
              m: Rc<TypedModule>| {
                 let items = m.items.clone();
                 let si = m.type_env.clone().source_indices.clone();
                 items.clone().iter().cloned().fold(
                     acc,
                     |inner: Rc<
-                        std::collections::BTreeSet<String>,
+                        std::collections::BTreeSet<compile_error!("UNRESOLVED_TypeVariable")>,
                     >,
                      item: Rc<Node>| {
                         let is_enum = match v2_rt::map_get(
@@ -11594,14 +11597,14 @@ pub fn build_fielded_variants(
                                     inner.clone(),
                                     |vacc: Rc<
                                         std::collections::BTreeSet<
-                                            String,
+                                            compile_error!("UNRESOLVED_TypeVariable"),
                                         >,
                                     >,
                                      variant: Rc<Node>| {
                                         let has_fields =
                                             ((variant.children.clone().len() as i64) > 0);
                                         if has_fields.clone() {
-                                            set_insert(
+                                            v2_rt::rc_set_insert(
                                                 vacc.clone(),
                                                 v2_rt::concat(
                                                     v2_rt::concat(
@@ -11649,8 +11652,8 @@ pub fn build_emit_graph_info(modules: &Rc<Vec<Rc<TypedModule>>>) -> Rc<EmitGraph
             },
         );
         let all_recursive = modules.clone().iter().cloned().fold(
-            empty_set(),
-            |acc: Rc<std::collections::BTreeSet<String>>,
+            v2_rt::rc_empty_set(),
+            |acc: Rc<std::collections::BTreeSet<compile_error!("UNRESOLVED_TypeVariable")>>,
              m: Rc<TypedModule>| {
                 Rc::new(v2_rt::map_keys(
                     &m.type_env.clone().recursive_type_set.clone(),
@@ -11660,10 +11663,10 @@ pub fn build_emit_graph_info(modules: &Rc<Vec<Rc<TypedModule>>>) -> Rc<EmitGraph
                 .fold(
                     acc,
                     |inner: Rc<
-                        std::collections::BTreeSet<String>,
+                        std::collections::BTreeSet<compile_error!("UNRESOLVED_TypeVariable")>,
                     >,
                      ident: i64| {
-                        set_insert(
+                        v2_rt::rc_set_insert(
                             inner,
                             intern_str(m.type_env.clone().intern_table.clone(), ident.clone()),
                         )
@@ -11677,17 +11680,17 @@ pub fn build_emit_graph_info(modules: &Rc<Vec<Rc<TypedModule>>>) -> Rc<EmitGraph
             type_summaries: built.type_summaries.clone(),
             recursive_type_set: all_recursive,
             fielded_variants: fielded,
-            shared_types: empty_set(),
+            shared_types: v2_rt::rc_empty_set(),
             ownership_index: v2_rt::rc_empty_map::<String, Rc<std::collections::BTreeSet<String>>>(
             ),
-            movable: empty_set(),
+            movable: v2_rt::rc_empty_set(),
             variant_to_enum: vtoe,
-            owned_bindings: empty_set(),
+            owned_bindings: v2_rt::rc_empty_set(),
             read_only_params_index: v2_rt::rc_empty_map::<
                 String,
                 Rc<std::collections::BTreeSet<String>>,
             >(),
-            read_only_params: empty_set(),
+            read_only_params: v2_rt::rc_empty_set(),
         })
     }
 }

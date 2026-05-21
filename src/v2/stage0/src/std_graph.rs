@@ -4,7 +4,10 @@
 use crate::std_termination::DescentEvidence::{DescentUnknown, NonIncreasing, Strict};
 pub use crate::std_termination::{DescentEvidence, ProofEdge, TerminationProof};
 use crate::v2_rt;
-use crate::v2_rt::{rc_empty_set as empty_set, rc_set_insert as set_insert, rc_set_union as set_union, set_contains};
+use crate::v2_rt::rc_empty_set as empty_set;
+use crate::v2_rt::rc_set_insert as set_insert;
+use crate::v2_rt::rc_set_union as set_union;
+use crate::v2_rt::set_contains;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use std::collections::HashMap;
@@ -143,11 +146,11 @@ pub fn dfs_finish_order(
     acc: &Rc<DfsFinishAcc>,
 ) -> Rc<DfsFinishAcc> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        if set_contains(acc.visited.clone(), node.clone()) {
+        if v2_rt::set_contains(&acc.visited.clone(), node.clone()) {
             acc.clone()
         } else {
             {
-                let next_visited = set_insert(acc.visited.clone(), node.clone());
+                let next_visited = v2_rt::rc_set_insert(acc.visited.clone(), node.clone());
                 let neighbors = match v2_rt::map_get(&adjacency, node.clone()) {
                     Some(ns) => ns.clone(),
                     None => Rc::new(vec![]),
@@ -176,11 +179,11 @@ pub fn dfs_collect_component(
     acc: &Rc<SccComponentAcc>,
 ) -> Rc<SccComponentAcc> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        if set_contains(acc.visited.clone(), node.clone()) {
+        if v2_rt::set_contains(&acc.visited.clone(), node.clone()) {
             acc.clone()
         } else {
             {
-                let next_visited = set_insert(acc.visited.clone(), node.clone());
+                let next_visited = v2_rt::rc_set_insert(acc.visited.clone(), node.clone());
                 let next_members = v2_rt::rc_list_push(acc.members.clone(), node.clone());
                 let neighbors = match v2_rt::map_get(&adjacency, node.clone()) {
                     Some(ns) => ns.clone(),
@@ -205,7 +208,7 @@ pub fn graph_has_multi_node_scc(names: &Rc<Vec<String>>, graph: Rc<CallGraph>) -
         let adjacency = build_adjacency_views(&names, graph);
         let finish = names.clone().iter().cloned().fold(
             Rc::new(DfsFinishAcc {
-                visited: empty_set(),
+                visited: v2_rt::rc_empty_set(),
                 order: Rc::new(vec![]),
             }),
             |acc: Rc<DfsFinishAcc>, name: String| {
@@ -214,11 +217,13 @@ pub fn graph_has_multi_node_scc(names: &Rc<Vec<String>>, graph: Rc<CallGraph>) -
         );
         let result = v2_rt::reverse(finish.order.clone()).iter().cloned().fold(
             Rc::new(SccCycleAcc {
-                visited: empty_set(),
+                visited: v2_rt::rc_empty_set(),
                 has_cycle: false,
             }),
             |acc: Rc<SccCycleAcc>, name: String| {
-                if (acc.has_cycle.clone() || set_contains(acc.visited.clone(), name.clone())) {
+                if (acc.has_cycle.clone()
+                    || v2_rt::set_contains(&acc.visited.clone(), name.clone()))
+                {
                     acc.clone()
                 } else {
                     {
