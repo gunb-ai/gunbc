@@ -18,7 +18,7 @@
 
 module v4.lens.ownership
 
-import v4.compiler.infer { InferredTree }
+import v4.compiler.infer { InferredFacts, InferredTree }
 import v4.std.dependency {
   BindsTo,
   Contains,
@@ -43,6 +43,8 @@ type OwnershipDependencyFact {
   owner: Node
   subject: Node
   dependency: DependencyView
+  owner_facts: Witness<InferredFacts>
+  subject_facts: Witness<InferredFacts>
   mode: OwnershipMode
 }
 
@@ -61,25 +63,31 @@ fn ownership_mode_for_dependency(view: DependencyView) -> OwnershipMode {
   }
 }
 
-fn ownership_dependency_fact(view: DependencyView) -> OwnershipDependencyFact {
+fn ownership_inferred_facts_for_node(tree: InferredTree, node: Node) -> Witness<InferredFacts> {
+  tree.facts.lookup(node)
+}
+
+fn ownership_dependency_fact(tree: InferredTree, view: DependencyView) -> OwnershipDependencyFact {
   OwnershipDependencyFact {
     owner: view.source,
     subject: view.dependent,
     dependency: view,
+    owner_facts: ownership_inferred_facts_for_node(tree: tree, node: view.source),
+    subject_facts: ownership_inferred_facts_for_node(tree: tree, node: view.dependent),
     mode: ownership_mode_for_dependency(view: view)
   }
 }
 
-fn ownership_fact_from_dependencies(dependencies: List<DependencyView>) -> OwnershipFact {
+fn ownership_fact_from_dependencies(tree: InferredTree, dependencies: List<DependencyView>) -> OwnershipFact {
   OwnershipFact {
     dependencies: fold(dependencies, init: [], f: fn(acc, view) {
-      list_push(acc, ownership_dependency_fact(view: view))
+      list_push(acc, ownership_dependency_fact(tree: tree, view: view))
     })
   }
 }
 
 fn ownership_fact(tree: InferredTree, dependencies: List<DependencyView>) -> OwnershipFact {
-  ownership_fact_from_dependencies(dependencies: dependencies)
+  ownership_fact_from_dependencies(tree: tree, dependencies: dependencies)
 }
 
 fn ownership_witness(tree: InferredTree, dependencies: List<DependencyView>) -> Witness<OwnershipFact> {
@@ -113,6 +121,8 @@ fn ownership_dependency_fact_eq(a: OwnershipDependencyFact, b: OwnershipDependen
   (a.owner == b.owner)
     && (a.subject == b.subject)
     && (a.dependency == b.dependency)
+    && (a.owner_facts == b.owner_facts)
+    && (a.subject_facts == b.subject_facts)
     && ownership_mode_eq(a: a.mode, b: b.mode)
 }
 

@@ -8,9 +8,10 @@ module v4.test.claim.lens_ownership.resource_dependency
 
 import v4.compiler.infer { AlgebraRef, InferredFacts, InferredTree }
 import v4.lens.ownership {
+  ExclusiveMutation,
+  OwnershipDependencyFact,
   OwnershipFact,
   ownership_fact_eq,
-  ownership_fact_from_dependencies,
   ownership_witness
 }
 import v4.std.cardinality { RankingDimension, TerminationProof }
@@ -89,7 +90,18 @@ type LensOwnershipClaim {
 
 data ownership_resource_dependency_claim: LensOwnershipClaim = LensOwnershipClaim {
   input: ownership_claim_tree(),
-  expected: ownership_fact_from_dependencies(dependencies: [ownership_dependency]),
+  expected: OwnershipFact {
+    dependencies: [
+      OwnershipDependencyFact {
+        owner: ownership_root,
+        subject: ownership_child,
+        dependency: ownership_dependency,
+        owner_facts: Holds { value: ownership_claim_facts() },
+        subject_facts: Holds { value: ownership_claim_facts() },
+        mode: ExclusiveMutation
+      }
+    ]
+  },
   actual: ownership_witness(tree: ownership_claim_tree(), dependencies: [ownership_dependency])
 }
 

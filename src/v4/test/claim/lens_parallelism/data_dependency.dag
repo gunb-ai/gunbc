@@ -8,9 +8,10 @@ module v4.test.claim.lens_parallelism.data_dependency
 
 import v4.compiler.infer { AlgebraRef, InferredFacts, InferredTree }
 import v4.lens.parallelism {
+  DataDependent,
+  ParallelismDependencyFact,
   ParallelismFact,
   parallelism_fact_eq,
-  parallelism_fact_from_dependencies,
   parallelism_witness
 }
 import v4.std.cardinality { RankingDimension, TerminationProof }
@@ -89,7 +90,18 @@ type LensParallelismClaim {
 
 data parallelism_data_dependency_claim: LensParallelismClaim = LensParallelismClaim {
   input: parallelism_claim_tree(),
-  expected: parallelism_fact_from_dependencies(dependencies: [parallelism_dependency]),
+  expected: ParallelismFact {
+    dependencies: [
+      ParallelismDependencyFact {
+        source: parallelism_root,
+        dependent: parallelism_child,
+        dependency: parallelism_dependency,
+        source_facts: Holds { value: parallelism_claim_facts() },
+        dependent_facts: Holds { value: parallelism_claim_facts() },
+        relation: DataDependent
+      }
+    ]
+  },
   actual: parallelism_witness(tree: parallelism_claim_tree(), dependencies: [parallelism_dependency])
 }
 

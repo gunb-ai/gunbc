@@ -7,10 +7,12 @@
 module v4.test.claim.lens_idempotency.write_effect
 
 import v4.compiler.infer { AlgebraRef, InferredFacts, InferredTree }
+import v4.lens.effect { EffectDependencyFact, WriteEffect }
 import v4.lens.idempotency {
+  IdempotencyEffectFact,
   IdempotencyFact,
+  NonIdempotent,
   idempotency_fact_eq,
-  idempotency_fact_from_effect_dependencies,
   idempotency_witness
 }
 import v4.std.cardinality { RankingDimension, TerminationProof }
@@ -89,7 +91,21 @@ type LensIdempotencyClaim {
 
 data idempotency_write_effect_claim: LensIdempotencyClaim = LensIdempotencyClaim {
   input: idempotency_claim_tree(),
-  expected: idempotency_fact_from_effect_dependencies(dependencies: [idempotency_dependency]),
+  expected: IdempotencyFact {
+    effects: [
+      IdempotencyEffectFact {
+        at: idempotency_root,
+        effect: EffectDependencyFact {
+          at: idempotency_root,
+          dependency: idempotency_dependency,
+          source_facts: Holds { value: idempotency_claim_facts() },
+          dependent_facts: Holds { value: idempotency_claim_facts() },
+          effect: WriteEffect
+        },
+        verdict: NonIdempotent
+      }
+    ]
+  },
   actual: idempotency_witness(tree: idempotency_claim_tree(), dependencies: [idempotency_dependency])
 }
 

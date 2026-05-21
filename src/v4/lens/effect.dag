@@ -70,7 +70,7 @@
 
 module v4.lens.effect
 
-import v4.compiler.infer { InferredTree }
+import v4.compiler.infer { InferredFacts, InferredTree }
 import v4.std.dependency {
   BarrierBefore,
   DataDependsOn,
@@ -93,6 +93,8 @@ type EffectKind
 type EffectDependencyFact {
   at: Node
   dependency: DependencyView
+  source_facts: Witness<InferredFacts>
+  dependent_facts: Witness<InferredFacts>
   effect: EffectKind
 }
 
@@ -110,24 +112,30 @@ fn effect_kind_for_dependency(view: DependencyView) -> EffectKind {
   }
 }
 
-fn effect_dependency_fact(view: DependencyView) -> EffectDependencyFact {
+fn inferred_facts_for_node(tree: InferredTree, node: Node) -> Witness<InferredFacts> {
+  tree.facts.lookup(node)
+}
+
+fn effect_dependency_fact(tree: InferredTree, view: DependencyView) -> EffectDependencyFact {
   EffectDependencyFact {
     at: view.source,
     dependency: view,
+    source_facts: inferred_facts_for_node(tree: tree, node: view.source),
+    dependent_facts: inferred_facts_for_node(tree: tree, node: view.dependent),
     effect: effect_kind_for_dependency(view: view)
   }
 }
 
-fn effect_fact_from_dependencies(dependencies: List<DependencyView>) -> EffectFact {
+fn effect_fact_from_dependencies(tree: InferredTree, dependencies: List<DependencyView>) -> EffectFact {
   EffectFact {
     dependencies: fold(dependencies, init: [], f: fn(acc, view) {
-      list_push(acc, effect_dependency_fact(view: view))
+      list_push(acc, effect_dependency_fact(tree: tree, view: view))
     })
   }
 }
 
 fn effect_fact(tree: InferredTree, dependencies: List<DependencyView>) -> EffectFact {
-  effect_fact_from_dependencies(dependencies: dependencies)
+  effect_fact_from_dependencies(tree: tree, dependencies: dependencies)
 }
 
 fn effect_witness(tree: InferredTree, dependencies: List<DependencyView>) -> Witness<EffectFact> {
@@ -160,6 +168,8 @@ fn effect_kind_eq(a: EffectKind, b: EffectKind) -> Bool {
 fn effect_dependency_fact_eq(a: EffectDependencyFact, b: EffectDependencyFact) -> Bool {
   (a.at == b.at)
     && (a.dependency == b.dependency)
+    && (a.source_facts == b.source_facts)
+    && (a.dependent_facts == b.dependent_facts)
     && effect_kind_eq(a: a.effect, b: b.effect)
 }
 
