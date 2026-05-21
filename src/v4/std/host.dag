@@ -16,7 +16,7 @@ import v4.std.node { Node, Symbol }
 // 🟡 gated — T-33 forward declaration — feature:std-model-core-carrier — bind node://adhoc-bb4d69eb-43c — dissolve-on-arrival: import v4.std.model_core { ModelCore } after T-33 lands.
 type ModelCore
 
-// 🟡 gated — Open Q10 forward declarations — feature:model-core-effect-partiality-carriers — bind node://adhoc-bb4d69eb-43c — dissolve-on-arrival: import the ModelCore-owned EffectSignature / ResourceAccess carriers after Open Q10 lands.
+// 🟡 gated — T-33-Q10 forward declarations — feature:model-core-effect-partiality-carriers — bind node://adhoc-bb4d69eb-43c — dissolve-on-arrival: import the ModelCore-owned EffectSignature / ResourceAccess carriers after src/v4/TASKS.md T-33-Q10 lands.
 type EffectSignature
 type ResourceAccess
 
