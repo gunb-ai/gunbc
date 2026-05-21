@@ -24,7 +24,8 @@ import v4.std.diagnostic {
   outcome_rejected
 }
 import v4.std.constraint_satisfaction_predicate {
-  constraint_satisfaction_preservation_holds
+  constraint_satisfaction_preservation_holds,
+  identity_mvp_preservation_holds
 }
 import v4.std.node { Node, Symbol, well_formed }
 import v4.std.witness { StructuralPropertyWitness }
