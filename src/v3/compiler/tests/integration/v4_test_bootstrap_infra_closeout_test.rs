@@ -73,11 +73,10 @@ fn t19_testgen_concept_surface_stays_closed_and_classified() {
         record_field_type_map(type_record(&module, "Generator")),
         expected_field_type_map(&[
             ("classification", "TestClassification"),
-            ("kind", "AssertKind"),
             ("t19_anchor", "T19ManualAnchorKey"),
             ("slot", "C"),
         ]),
-        "Generator<C> must carry the claim kind, anchor, classification, and parameterized slot"
+        "Generator<C> must carry anchor, classification, and parameterized slot (assertion shape lives on TestClaim coproduct)"
     );
 }
 
