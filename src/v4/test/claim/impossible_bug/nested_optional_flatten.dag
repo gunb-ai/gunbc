@@ -127,5 +127,3 @@ data claim_nested_optional_collapses: TestClaim = TestClaim {
   },
   classification: TestClassification { tier: Tier2, layer: Unit }
 }
-
-module v4.test.claim.impossible_bug.nested_optional_flatten

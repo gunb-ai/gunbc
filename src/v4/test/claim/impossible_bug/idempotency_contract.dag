@@ -82,16 +82,13 @@ fn idempotency_contract(body: Node) -> Node {
 }
 
 
-data idempotent_inhabitant_input: Node =
-  idempotency_contract(body: atom_node(s: idempotent_effect_symbol))
+data idempotent_inhabitant_input: Node = idempotency_contract(body: atom_node(s: idempotent_effect_symbol))
 
 
-data falsification_nonidempotent_in_idempotent_position: Node =
-  idempotency_contract(body: atom_node(s: non_idempotent_effect_symbol))
+data falsification_nonidempotent_in_idempotent_position: Node = idempotency_contract(body: atom_node(s: non_idempotent_effect_symbol))
 
 
-data falsification_repeated_append_in_idempotent_position: Node =
-  idempotency_contract(body: atom_node(s: repeated_append_effect_symbol))
+data falsification_repeated_append_in_idempotent_position: Node = idempotency_contract(body: atom_node(s: repeated_append_effect_symbol))
 
 
 data claim_idempotent_inhabitant_passes: TestClaim = TestClaim {
@@ -138,5 +135,3 @@ data claim_nonidempotent_in_idempotent_position_caught: TestClaim = TestClaim {
   },
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
-
-module v4.test.claim.impossible_bug.idempotency_contract

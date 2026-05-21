@@ -73,20 +73,16 @@ fn safety_subject(op: Symbol, witness: Symbol) -> Node {
 }
 
 
-data total_division_input: Node =
-  safety_subject(op: total_division_symbol, witness: proven_nonzero_divisor_symbol)
+data total_division_input: Node = safety_subject(op: total_division_symbol, witness: proven_nonzero_divisor_symbol)
 
 
-data checked_index_input: Node =
-  safety_subject(op: checked_index_symbol, witness: proven_nonzero_divisor_symbol)
+data checked_index_input: Node = safety_subject(op: checked_index_symbol, witness: proven_nonzero_divisor_symbol)
 
 
-data falsification_division_by_zero_unhandled: Node =
-  safety_subject(op: unchecked_division_symbol, witness: force_unwrap_symbol)
+data falsification_division_by_zero_unhandled: Node = safety_subject(op: unchecked_division_symbol, witness: force_unwrap_symbol)
 
 
-data falsification_oob_index_unhandled: Node =
-  safety_subject(op: unchecked_index_symbol, witness: force_unwrap_symbol)
+data falsification_oob_index_unhandled: Node = safety_subject(op: unchecked_index_symbol, witness: force_unwrap_symbol)
 
 
 data falsification_force_unwrap_survives: Node = atom_node(s: force_unwrap_symbol)
@@ -164,5 +160,3 @@ data claim_force_unwrap_count_zero: TestClaim = TestClaim {
   },
   classification: TestClassification { tier: Tier2, layer: Unit }
 }
-
-module v4.test.claim.impossible_bug.unhandled_diagnostic_paths

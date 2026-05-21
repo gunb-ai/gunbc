@@ -123,5 +123,3 @@ data claim_wire_contract_drift_impossible: TestClaim = TestClaim {
   },
   classification: TestClassification { tier: Tier1, layer: Integration }
 }
-
-module v4.test.claim.impossible_bug.transport_type_drift

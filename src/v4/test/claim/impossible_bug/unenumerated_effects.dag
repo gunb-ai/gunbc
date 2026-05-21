@@ -71,12 +71,10 @@ fn effect_subject(signature: Node, body: Node) -> Node {
 }
 
 
-data effect_derived_from_signature_input: Node =
-  effect_subject(signature: atom_node(s: write_signature_symbol), body: atom_node(s: write_signature_symbol))
+data effect_derived_from_signature_input: Node = effect_subject(signature: atom_node(s: write_signature_symbol), body: atom_node(s: write_signature_symbol))
 
 
-data explicit_reread_input: Node =
-  effect_subject(signature: atom_node(s: read_signature_symbol), body: atom_node(s: explicit_reread_symbol))
+data explicit_reread_input: Node = effect_subject(signature: atom_node(s: read_signature_symbol), body: atom_node(s: explicit_reread_symbol))
 
 
 data falsification_redundant_read: Node = Node {
@@ -124,5 +122,3 @@ data claim_redundant_read_caught: TestClaim = TestClaim {
   },
   classification: TestClassification { tier: Tier2, layer: Unit }
 }
-
-module v4.test.claim.impossible_bug.unenumerated_effects

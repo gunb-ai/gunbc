@@ -60,30 +60,25 @@ fn pair_node(left: Symbol, right: Symbol) -> Node {
 }
 
 
-data complexity_correction_input: Node =
-  pair_node(left: correction_bad_complexity_symbol, right: correction_good_complexity_symbol)
+data complexity_correction_input: Node = pair_node(left: correction_bad_complexity_symbol, right: correction_good_complexity_symbol)
 
 
-data complexity_correction_expected_node: Node =
-  atom_node(s: correction_good_complexity_symbol)
+data complexity_correction_expected_node: Node = atom_node(s: correction_good_complexity_symbol)
 
 
 data falsification_complexity_diagnostic_without_correct_code: Node = complexity_correction_input
 
 
-data transport_correction_input: Node =
-  pair_node(left: correction_drift_client_symbol, right: correction_drift_server_symbol)
+data transport_correction_input: Node = pair_node(left: correction_drift_client_symbol, right: correction_drift_server_symbol)
 
 
-data transport_correction_expected_node: Node =
-  atom_node(s: correction_shared_contract_symbol)
+data transport_correction_expected_node: Node = atom_node(s: correction_shared_contract_symbol)
 
 
 data falsification_transport_diagnostic_without_correct_code: Node = transport_correction_input
 
 
-data falsification_ambiguous_boundary_without_unavailable_reason: Node =
-  atom_node(s: correction_english_boundary_symbol)
+data falsification_ambiguous_boundary_without_unavailable_reason: Node = atom_node(s: correction_english_boundary_symbol)
 
 
 data claim_complexity_diagnostic_suggests_correct_code: TestClaim = TestClaim {

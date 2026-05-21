@@ -105,28 +105,22 @@ fn accepted_claim(label: String, input: Node) -> TestClaim {
 }
 
 
-data claim_nat_add_left_identity: TestClaim =
-  accepted_claim(label: "Nat addition left identity law", input: nat_add_left_identity_input)
+data claim_nat_add_left_identity: TestClaim = accepted_claim(label: "Nat addition left identity law", input: nat_add_left_identity_input)
 
 
-data claim_nat_add_right_identity: TestClaim =
-  accepted_claim(label: "Nat addition right identity law", input: nat_add_right_identity_input)
+data claim_nat_add_right_identity: TestClaim = accepted_claim(label: "Nat addition right identity law", input: nat_add_right_identity_input)
 
 
-data claim_nat_add_associativity: TestClaim =
-  accepted_claim(label: "Nat addition associativity law", input: nat_add_associativity_input)
+data claim_nat_add_associativity: TestClaim = accepted_claim(label: "Nat addition associativity law", input: nat_add_associativity_input)
 
 
-data claim_nat_mul_left_identity: TestClaim =
-  accepted_claim(label: "Nat multiplication left identity law", input: nat_mul_left_identity_input)
+data claim_nat_mul_left_identity: TestClaim = accepted_claim(label: "Nat multiplication left identity law", input: nat_mul_left_identity_input)
 
 
-data claim_nat_mul_annihilator: TestClaim =
-  accepted_claim(label: "Nat multiplication annihilator law", input: nat_mul_annihilator_input)
+data claim_nat_mul_annihilator: TestClaim = accepted_claim(label: "Nat multiplication annihilator law", input: nat_mul_annihilator_input)
 
 
-data claim_nat_mul_associativity: TestClaim =
-  accepted_claim(label: "Nat multiplication associativity law", input: nat_mul_associativity_input)
+data claim_nat_mul_associativity: TestClaim = accepted_claim(label: "Nat multiplication associativity law", input: nat_mul_associativity_input)
 
 
 data claim_nat_add_wrong_identity_falsifies_law: TestClaim = TestClaim {

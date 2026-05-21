@@ -103,8 +103,7 @@ fn expected_complexity_rejection(input: Node, reason: Symbol, correction: Node) 
 data within_bound_input: Node = complexity_contract(body: atom_node(s: complexity_body_linear_symbol))
 
 
-data falsification_overcost_against_structural_bound: Node =
-  complexity_contract(body: atom_node(s: complexity_body_quadratic_symbol))
+data falsification_overcost_against_structural_bound: Node = complexity_contract(body: atom_node(s: complexity_body_quadratic_symbol))
 
 
 data claim_within_structural_bound_passes: TestClaim = TestClaim {
@@ -131,8 +130,7 @@ data claim_overcost_against_structural_bound_violates: TestClaim = TestClaim {
 }
 
 
-data falsification_cost_contradicts_inhabitance: Node =
-  complexity_contract(body: atom_node(s: complexity_body_quadratic_symbol))
+data falsification_cost_contradicts_inhabitance: Node = complexity_contract(body: atom_node(s: complexity_body_quadratic_symbol))
 
 
 data claim_cost_contradicts_inhabitance_caught: TestClaim = TestClaim {
@@ -147,5 +145,3 @@ data claim_cost_contradicts_inhabitance_caught: TestClaim = TestClaim {
   ),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
-
-module v4.test.claim.impossible_bug.suboptimal_complexity
