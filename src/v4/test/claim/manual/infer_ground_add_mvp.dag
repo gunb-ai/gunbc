@@ -78,7 +78,9 @@ data extdeps_hash_placeholder: Hash = extdeps_hash_placeholder
 
 
 // Receipt bridge: polarity-specific carriers (no broad Outcome<Node> after TestClaim split).
+// 🟡 coproduct dissolution — LB-P4-3212 — feature: infer-receipt-testclaim-bridge — bind node://adhoc-c28e191d-684 — dissolve-on-arrival: direct TestClaim constructors per receipt row (forbidden: Outcome<Node> bridge that drops diagnostics).
 type InferReceiptCase
+// 🟡 coproduct dissolution — LB-P4-3212
   = InferDiagnosticReceiptCase {
       label: String
       input_symbol: Symbol
