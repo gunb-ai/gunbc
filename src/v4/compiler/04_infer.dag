@@ -1,8 +1,8 @@
 // src/v4/compiler/04_infer.dag
 // Scope: Stage 4 — ResolvedTree -> InferredTree; bounded Find phase (DECISIONS C1 / IR-1).
 // Owns: AlgebraRef, InferredFacts, InferredTree, infer_stage_locus_port, infer_coercion_fold_not_realized, infer_coercion_fold_not_realized_diagnostic, infer.
-// Consumes: v4.compiler.resolve, v4.std.cardinality, v4.std.collection, v4.std.diagnostic, v4.std.node.
-// Status: scaffold — TASKS T-9; Wave-1 fail-closed boundary.
+// Consumes: v4.compiler.resolve, v4.std.cardinality, v4.std.collection, v4.std.constraints, v4.std.diagnostic, v4.std.node, v4.std.witness.
+// Status: Wave-3-A T-9 — ground body via solve_constraints → find_witness(UniqueOnly); algebra-inhabitance AlgebraRef bridge.
 // Anchor: https://en.wikipedia.org/wiki/Type_inference
 
 
@@ -10,18 +10,40 @@ module v4.compiler.infer
 
 
 import v4.compiler.resolve { ResolvedTree }
-import v4.std.cardinality { TerminationProof }
-import v4.std.collection { Map }
+import v4.std.cardinality {
+  RankingDimension,
+  TerminationProof
+}
+import v4.std.collection { List, Map }
+import v4.std.constraints {
+  CanonicalGrounding,
+  ConstraintGraph,
+  ConstraintSolvePolicy,
+  solve_constraints
+}
 import v4.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,
   Locus,
+  NodeLocus,
   Outcome,
   PortLocus,
   Unavailable,
-  diagnostics_singleton
+  Accepted,
+  None,
+  Rejected,
+  bind_outcome,
+  diagnostics_merge,
+  rejected_with_pending
 }
-import v4.std.node { Node, Symbol }
+import v4.std.node {
+  Edge,
+  Node,
+  NodeFold,
+  Symbol,
+  fold_node
+}
+import v4.std.witness { Holds, Violates, Witness }
 
 
 // RULING-1: needs-more-work — typed bridge until algebra inhabitance authority lands.
@@ -46,10 +68,17 @@ type InferredTree {
 }
 
 
+type InferredFactsEntry {
+  node: Node
+  facts: InferredFacts
+}
+
+
 data infer_stage_locus_port: Symbol = infer_stage_locus_port
-
-
 data infer_coercion_fold_not_realized: Symbol = infer_coercion_fold_not_realized
+data infer_descent_ranking_symbol: Symbol = infer_descent_ranking_symbol
+data infer_facts_lookup_miss: Symbol = infer_facts_lookup_miss
+data infer_property_algebra_inhabitance: Symbol = infer_property_algebra_inhabitance
 
 
 fn infer_coercion_fold_not_realized_diagnostic(at: Locus) -> Diagnostic {
@@ -61,12 +90,150 @@ fn infer_coercion_fold_not_realized_diagnostic(at: Locus) -> Diagnostic {
 }
 
 
+fn infer_facts_lookup_miss_diagnostic(key: Node) -> Diagnostic {
+  Diagnostic {
+    reason: infer_facts_lookup_miss,
+    at: NodeLocus { node: key },
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+
+fn infer_default_termination_proof() -> TerminationProof {
+  TerminationProof {
+    non_increasing: [],
+    strict: RankingDimension { measured: infer_descent_ranking_symbol }
+  }
+}
+
+
+fn algebra_ref_from_grounding(grounding: CanonicalGrounding) -> AlgebraRef {
+  AlgebraRef {
+    algebra: grounding.witness.structural.evidence,
+    witness: grounding.node
+  }
+}
+
+
+fn inferred_facts_from_grounding(n: Node, grounding: CanonicalGrounding) -> InferredFacts {
+  InferredFacts {
+    resolved_type: grounding.node,
+    inhabits: algebra_ref_from_grounding(grounding: grounding),
+    descent: infer_default_termination_proof()
+  }
+}
+
+
+fn infer_node_facts(n: Node) -> Outcome<InferredFacts> {
+  bind_outcome(
+    o: solve_constraints(
+      policy: ConstraintSolvePolicy {
+        graph: ConstraintGraph { root: n }
+      }
+    ),
+    f: fn(grounding) {
+      Accepted {
+        value: inferred_facts_from_grounding(n: n, grounding: grounding),
+        diagnostics: None
+      }
+    }
+  )
+}
+
+
+fn lookup_inferred_facts_in_entries(
+  entries: List<InferredFactsEntry>,
+  key: Node,
+) -> Witness<InferredFacts> {
+  fold(
+    entries,
+    init: Violates {
+      diagnostic: infer_facts_lookup_miss_diagnostic(key: key)
+    },
+    f: fn(acc, entry) {
+      match acc {
+        Holds { value: _ } => acc
+        Violates { diagnostic: _ } =>
+          if entry.node == key {
+            Holds { value: entry.facts }
+          } else {
+            acc
+          }
+      }
+    }
+  )
+}
+
+
+fn facts_map_from_entries(entries: List<InferredFactsEntry>) -> Map<Node, InferredFacts> {
+  Map {
+    lookup: fn(key) {
+      lookup_inferred_facts_in_entries(entries: entries, key: key)
+    }
+  }
+}
+
+
+fn infer_entries_fold_init(n: Node) -> Outcome<List<InferredFactsEntry>> {
+  match infer_node_facts(n: n) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: facts, diagnostics: d } =>
+      Accepted {
+        value: [InferredFactsEntry { node: n, facts: facts }],
+        diagnostics: d
+      }
+  }
+}
+
+
+fn infer_entries_fold_step(
+  acc: Outcome<List<InferredFactsEntry>>,
+  e: Edge,
+  child: Outcome<List<InferredFactsEntry>>,
+) -> Outcome<List<InferredFactsEntry>> {
+  match acc {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: acc_entries, diagnostics: ad } =>
+      match child {
+        Rejected { diagnostics: cr } =>
+          Rejected {
+            diagnostics: rejected_with_pending(pending: ad, rejected: cr)
+          }
+        Accepted { value: child_entries, diagnostics: cd } =>
+          Accepted {
+            value: list_concat(acc_entries, child_entries),
+            diagnostics: diagnostics_merge(outer: ad, inner: cd)
+          }
+      }
+  }
+}
+
+
+fn infer_entries_for_tree(tree: ResolvedTree) -> Outcome<List<InferredFactsEntry>> {
+  fold_node(
+    n: tree,
+    algebra: NodeFold {
+      init: fn(n0) {
+        infer_entries_fold_init(n: n0)
+      },
+      step: fn(acc, e, child) {
+        infer_entries_fold_step(acc: acc, e: e, child: child)
+      }
+    }
+  )
+}
+
+
 fn infer(tree: ResolvedTree) -> Outcome<InferredTree> {
-  Rejected {
-    diagnostics: diagnostics_singleton(
-      d: infer_coercion_fold_not_realized_diagnostic(
-        at: PortLocus { port: infer_stage_locus_port }
-      )
-    )
+  match infer_entries_for_tree(tree: tree) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: entries, diagnostics: d } =>
+      Accepted {
+        value: InferredTree {
+          root: tree,
+          facts: facts_map_from_entries(entries: entries)
+        },
+        diagnostics: d
+      }
   }
 }

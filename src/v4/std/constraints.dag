@@ -21,6 +21,7 @@ import v4.std.diagnostic {
   bind_outcome,
   diagnostics_singleton,
   outcome_rejected,
+  outcome_with_diagnostics,
   rejected_with_pending
 }
 import v4.std.find_witness {
@@ -79,16 +80,16 @@ fn solve_constraints(policy: ConstraintSolvePolicy) -> Outcome<CanonicalGroundin
         },
         multiplicity_policy: UniqueOnly
       ) {
-        // Scaffold only while find_witness rejects: W-T-9 must lift FindWitnessResult → CanonicalGrounding here.
-        Accepted { value: _, diagnostics: fw_d } =>
-          Rejected {
-            diagnostics: rejected_with_pending(
-              pending: fw_d,
-              rejected: diagnostics_singleton(
-                d: constraints_not_realized_diagnostic(graph: policy.graph)
-              )
-            )
-          }
+        Accepted { value: fw, diagnostics: fw_d } =>
+          outcome_with_diagnostics(
+            value: CanonicalGrounding {
+              node: fw.candidate,
+              witness: CanonicalGroundingWitness {
+                structural: fw.witness
+              }
+            },
+            diagnostics: fw_d
+          )
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
       }
     }
