@@ -208,7 +208,7 @@ type DagCollectAcc {
 
 fn dag_node_key(node: Node) -> String {
   concat(
-    to_string(i: node.span.start), "..", to_string(i: node.span.end),
+    node.span.file, ":", to_string(i: node.span.start), "..", to_string(i: node.span.end),
     match node.ident {
       Some { value: id } => concat(":", to_string(i: id))
       None => ""
@@ -287,9 +287,32 @@ fn dag_collect_acc_order(acc: DagCollectAcc) -> List<Node> {
   acc.order
 }
 
-fn build_dag_key_to_id(order: List<Node>) -> Map<String, String> {
-  order |> enumerate |> fold(init: empty_map(), f: (acc, pair) =>
-    map_insert(acc, dag_node_key(node: pair.second), concat("n", to_string(i: pair.first)))
+type DagKeyBuildAcc {
+  key_to_id: Map<String, String>
+  diags: List<ErrorNode>
+}
+
+fn build_dag_key_to_id(order: List<Node>) -> DagKeyBuildAcc {
+  order |> enumerate |> fold(
+    init: DagKeyBuildAcc { key_to_id: empty_map(), diags: [] },
+    f: (acc, pair) => {
+      let key = dag_node_key(node: pair.second)
+      match map_get(acc.key_to_id, key) {
+        Some { value: _ } =>
+          DagKeyBuildAcc {
+            key_to_id: acc.key_to_id,
+            diags: list_push(
+              acc.diags,
+              compile_bundle_error(message: concat("dag artifact duplicate node key ", key))
+            )
+          }
+        None =>
+          DagKeyBuildAcc {
+            key_to_id: map_insert(acc.key_to_id, key, concat("n", to_string(i: pair.first))),
+            diags: acc.diags
+          }
+      }
+    }
   )
 }
 
@@ -302,8 +325,49 @@ fn dag_graph_source_indices(typed: ResolvedGraph) -> Map<String, NewlineIndex> {
 fn serialize_node_ref(node: Node, key_to_id: Map<String, String>) -> String {
   match map_get(key_to_id, dag_node_key(node: node)) {
     Some { value: id } => concat("{\"$ref\": ", json_quote(s: id), "}")
-    None => concat("{\"$ref\": ", json_quote(s: "n0"), "}")
+    None => concat("{\"$ref\": ", json_quote(s: "__DAG_REF_MISSING__"), "}")
   }
+}
+
+fn dag_node_missing_diags(node: Node, key_to_id: Map<String, String>, acc: List<ErrorNode>) -> List<ErrorNode> {
+  let acc = match map_get(key_to_id, dag_node_key(node: node)) {
+    None =>
+      list_push(acc, compile_bundle_error(message: concat("dag artifact missing node ref ", dag_node_key(node: node))))
+    Some { value: _ } => acc
+  }
+  let acc = node.children |> fold(init: acc, f: (a, c) => dag_node_missing_diags(node: c, key_to_id: key_to_id, acc: a))
+  let acc = node.params |> fold(init: acc, f: (a, c) => dag_node_missing_diags(node: c, key_to_id: key_to_id, acc: a))
+  let acc = node.uses |> fold(init: acc, f: (a, c) => dag_node_missing_diags(node: c, key_to_id: key_to_id, acc: a))
+  let acc = match node.body {
+    Some { value: inner } => dag_node_missing_diags(node: inner, key_to_id: key_to_id, acc: acc)
+    None => acc
+  }
+  let acc = match node.transport {
+    Some { value: inner } => dag_node_missing_diags(node: inner, key_to_id: key_to_id, acc: acc)
+    None => acc
+  }
+  let acc = node.properties |> fold(init: acc, f: (a, c) => dag_node_missing_diags(node: c, key_to_id: key_to_id, acc: a))
+  let acc = match node.type_annotation {
+    Some { value: inner } => dag_node_missing_diags(node: inner, key_to_id: key_to_id, acc: acc)
+    None => acc
+  }
+  let acc = match node.inferred {
+    Some { value: Resolved { node: rn } } => dag_node_missing_diags(node: rn, key_to_id: key_to_id, acc: acc)
+    _ => acc
+  }
+  match node.match_pattern {
+    Some { value: VariantPattern { name: _, parent_enum: _, field_bindings: fbs } } =>
+      fbs |> fold(init: acc, f: (a, fb) => dag_node_missing_diags(node: fb, key_to_id: key_to_id, acc: a))
+    _ => acc
+  }
+}
+
+fn dag_emit_missing_ref_diags(typed: ResolvedGraph, key_to_id: Map<String, String>) -> List<ErrorNode> {
+  typed.modules |> fold(init: [], f: (acc, m) => {
+    let acc = dag_node_missing_diags(node: m.module, key_to_id: key_to_id, acc: acc)
+    let acc = module_imports(n: m.module) |> fold(init: acc, f: (a, imp) => dag_node_missing_diags(node: imp, key_to_id: key_to_id, acc: a))
+    m.items |> fold(init: acc, f: (a, item) => dag_node_missing_diags(node: item, key_to_id: key_to_id, acc: a))
+  })
 }
 
 fn json_optional_node_ref(value: Node?, key_to_id: Map<String, String>) -> String {
@@ -859,7 +923,15 @@ fn serialize_diagnostic(diagnostic: ErrorNode) -> String {
 // v0.2.0: nodes are collected once and cited by $ref from modules.
 fn emit_dag_artifact(typed: ResolvedGraph) -> EmitResult {
   let order = collect_dag_nodes(typed: typed)
-  let key_to_id = build_dag_key_to_id(order: order)
+  let key_build = build_dag_key_to_id(order: order)
+  if key_build.diags |> count > 0 {
+    return EmitResult { files: [], diagnostics: key_build.diags }
+  }
+  let key_to_id = key_build.key_to_id
+  let missing_diags = dag_emit_missing_ref_diags(typed: typed, key_to_id: key_to_id)
+  if missing_diags |> count > 0 {
+    return EmitResult { files: [], diagnostics: missing_diags }
+  }
   let source_indices = dag_graph_source_indices(typed: typed)
   let nodes_json = serialize_dag_nodes_table(order: order, source_indices: source_indices, key_to_id: key_to_id)
   let modules_json = typed.modules |> map(m => serialize_typed_module(module: m, key_to_id: key_to_id)) |> join(separator: ", ")
