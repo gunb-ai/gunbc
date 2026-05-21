@@ -116,12 +116,17 @@ fn use_classification_witness(tree: InferredTree, dependencies: List<DependencyV
 // IsUseOfDeclaration`. Roll-up scope is derived from the existing
 // classification (feedback_scope_from_query_not_type_tag — scope is a
 // query fact, not a substrate tag).
+// 🟡 predicate dissolution — feature:variant-tag-partition-predicate.
 // Fail-closed: a relation BLOCKS the unused-verdict if it is either a
 // proven use (`IsUseOfDeclaration`) or unresolved-use evidence
 // (`RequiresResolutionWitness` — the lens couldn't classify the edge
 // kind, so the conservative answer is "uncertain, don't claim unused").
 // `IsStructuralComposition` and `IsNonUseDependency` are positive
-// non-use evidence and do not block.
+// non-use evidence and do not block. Dissolves on arrival of a
+// substrate variant-tag partition primitive (Practice 10 — currently
+// no parametric "partition variants of <Coproduct> by <classifier>"
+// primitive exists, so the match is hand-rolled with the dissolution
+// obligation tracked here).
 fn use_relation_blocks_unused(relation: UseRelation) -> Bool {
   match relation {
     IsUseOfDeclaration => true
@@ -153,13 +158,6 @@ fn already_in_unused(unused: List<UnusedParameterFact>, declaration: Node) -> Bo
   })
 }
 
-fn classification_is_structural_composition(relation: UseRelation) -> Bool {
-  match relation {
-    IsStructuralComposition => true
-    _ => false
-  }
-}
-
 // P6 + P2 boundary discipline: a declaration candidate is a node that
 // the dependency model positions AS a declaration. Containment-children
 // (parameters/locals contained in their declaring scope) are the
@@ -173,7 +171,7 @@ fn classification_is_structural_composition(relation: UseRelation) -> Bool {
 fn rollup_unused(use_fact: UseClassificationFact) -> UnusedParametersFact {
   UnusedParametersFact {
     unused: fold(use_fact.uses, init: [], f: fn(acc, classified) {
-      if classification_is_structural_composition(relation: classified.classification) {
+      if use_relation_eq(a: classified.classification, b: IsStructuralComposition) {
         let candidate = classified.dependency.dependent
         if already_in_unused(unused: acc, declaration: candidate) {
           acc
