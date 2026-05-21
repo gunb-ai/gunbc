@@ -1,5 +1,5 @@
 // src/v4/test/claim/lens_ownership/resource_dependency.dag
-// Scope: T-13 worked claim — ResourceDependsOn projects to exclusive mutation.
+// Scope: T-13 worked claim — ResourceDependsOn requires access evidence.
 // Owns: ownership_resource_dependency_claim.
 // Consumes: lens ownership, compiler infer, std dependency, std node.
 // Status: scaffold — compile-only until generated claim execution.
@@ -8,9 +8,9 @@ module v4.test.claim.lens_ownership.resource_dependency
 
 import v4.compiler.infer { AlgebraRef, InferredFacts, InferredTree }
 import v4.lens.ownership {
-  ExclusiveMutation,
   OwnershipDependencyFact,
   OwnershipFact,
+  RequiresAccessWitness,
   ownership_fact_eq,
   ownership_witness
 }
@@ -98,7 +98,7 @@ data ownership_resource_dependency_claim: LensOwnershipClaim = LensOwnershipClai
         dependency: ownership_dependency,
         owner_facts: Holds { value: ownership_claim_facts() },
         subject_facts: Holds { value: ownership_claim_facts() },
-        mode: ExclusiveMutation
+        mode: RequiresAccessWitness
       }
     ]
   },

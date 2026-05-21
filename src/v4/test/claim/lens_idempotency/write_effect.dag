@@ -1,5 +1,5 @@
 // src/v4/test/claim/lens_idempotency/write_effect.dag
-// Scope: T-13 worked claim — write effects project to non-idempotent facts.
+// Scope: T-13 worked claim — effect dependencies require algebraic law evidence.
 // Owns: idempotency_write_effect_claim.
 // Consumes: lens idempotency, compiler infer, std dependency, std node.
 // Status: scaffold — compile-only until generated claim execution.

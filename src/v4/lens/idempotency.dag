@@ -19,7 +19,7 @@
 
 module v4.lens.idempotency
 
-import v4.compiler.infer { InferredTree }
+import v4.compiler.infer { InferredFacts, InferredTree }
 import v4.lens.effect {
   EffectDependencyFact,
   effect_dependency_fact_eq,
@@ -47,11 +47,10 @@ import v4.std.node { Node }
 import v4.std.witness { Holds, Witness }
 
 // 🟢 projection carrier — idempotency/cancellation/redundancy read the
-// effect projection and algebraic laws; this slice preserves one lens
-// mechanism and avoids a parallel cancellation taxonomy.
+// effect projection and algebraic laws. A dependency edge alone never
+// proves the positive algebraic law; it only routes to the witness need.
 type IdempotencyVerdict
-  = Idempotent
-  | NonIdempotent
+  = AlgebraicIdempotenceProven { law: Witness<InferredFacts> }
   | RequiresAlgebraWitness
 
 type IdempotencyEffectFact {
@@ -69,8 +68,8 @@ fn idempotency_verdict_for_effect(effect: EffectDependencyFact) -> IdempotencyVe
     Contains => RequiresAlgebraWitness
     BindsTo => RequiresAlgebraWitness
     TypeDependsOn => RequiresAlgebraWitness
-    DataDependsOn => Idempotent
-    BarrierBefore => Idempotent
+    DataDependsOn => RequiresAlgebraWitness
+    BarrierBefore => RequiresAlgebraWitness
     EffectDependsOn => RequiresAlgebraWitness
     ResourceDependsOn => RequiresAlgebraWitness
     ModuleDependsOn => RequiresAlgebraWitness
@@ -109,12 +108,8 @@ fn idempotency_witness(tree: InferredTree, dependencies: List<DependencyView>) -
 
 fn idempotency_verdict_eq(a: IdempotencyVerdict, b: IdempotencyVerdict) -> Bool {
   match a {
-    Idempotent => match b {
-      Idempotent => true
-      _ => false
-    }
-    NonIdempotent => match b {
-      NonIdempotent => true
+    AlgebraicIdempotenceProven { law: a_law } => match b {
+      AlgebraicIdempotenceProven { law: b_law } => a_law == b_law
       _ => false
     }
     RequiresAlgebraWitness => match b {

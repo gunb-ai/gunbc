@@ -133,11 +133,10 @@ import v4.std.node { Node }
 import v4.std.witness { Holds, Witness }
 
 // 🟢 projection carrier — no scheduling decision and no parallel node.
-// The map reports which dependency-projection edges block independence;
-// absence-of-edge reasoning remains a consumer of the same projection.
+// A dependency edge can only witness a blocker or an unknown coupling;
+// pairwise independence is a separate graph non-edge proof.
 type ParallelismRelation
-  = StructurallyIndependent
-  | DataDependent
+  = DataDependent
   | EffectCoupled
   | BarrierCoupled
   | UnknownCoupling
@@ -210,10 +209,6 @@ fn parallelism_witness(tree: InferredTree, dependencies: List<DependencyView>) -
 
 fn parallelism_relation_eq(a: ParallelismRelation, b: ParallelismRelation) -> Bool {
   match a {
-    StructurallyIndependent => match b {
-      StructurallyIndependent => true
-      _ => false
-    }
     DataDependent => match b {
       DataDependent => true
       _ => false

@@ -41,12 +41,12 @@ import v4.std.node { Node }
 import v4.std.witness { Holds, Witness }
 
 // 🟢 projection carrier — ownership is read from dependency/resource shape.
-// This lens does not model a target-specific borrow checker; emit/eval
-// consume this map when they realize the target memory model.
+// Broad dependency kinds do not prove access or alias mode; resource/effect
+// edges route to the access witness rather than claiming exclusive mutation.
 type OwnershipMode
   = OwnedContainment
   | SharedRead
-  | ExclusiveMutation
+  | RequiresAccessWitness
   | BorrowedDependency
   | UnknownOwnership
 
@@ -68,8 +68,8 @@ fn ownership_mode_for_dependency(view: DependencyView) -> OwnershipMode {
     Contains => OwnedContainment
     BindsTo => BorrowedDependency
     DataDependsOn => SharedRead
-    EffectDependsOn => ExclusiveMutation
-    ResourceDependsOn => ExclusiveMutation
+    EffectDependsOn => RequiresAccessWitness
+    ResourceDependsOn => RequiresAccessWitness
     BarrierBefore => UnknownOwnership
     TypeDependsOn => UnknownOwnership
     ModuleDependsOn => UnknownOwnership
@@ -126,8 +126,8 @@ fn ownership_mode_eq(a: OwnershipMode, b: OwnershipMode) -> Bool {
       SharedRead => true
       _ => false
     }
-    ExclusiveMutation => match b {
-      ExclusiveMutation => true
+    RequiresAccessWitness => match b {
+      RequiresAccessWitness => true
       _ => false
     }
     BorrowedDependency => match b {
