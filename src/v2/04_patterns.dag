@@ -143,6 +143,8 @@ fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, module_na
         let direct_match = find_child_named(n: scrut_node, name: variant_name, source_indices: source_indices)
         // Record / generic-record destructuring: `LocusAnchor { at: x }` against
         // `LocusAnchor<A>` (Conj) or an instantiated generic use site with the same name.
+        // Name match (not node identity): upstream resolution already fixed scrut_type; direct_match
+        // on enum variant children still wins when the scrutinee is a real sum variant.
         let record_destructure = scrut_node.connective == Conj && authored_name_at(source_indices: source_indices, node: scrut_node) == variant_name
         let fallback = if scrut_opt && variant_name == "Some" {
           node_lookup_resolved(node: synthesize_optional_some_variant(scrut: scrut_node))
