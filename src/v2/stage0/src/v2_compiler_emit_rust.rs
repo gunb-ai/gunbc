@@ -10318,11 +10318,26 @@ pub fn rust_box_new_value(raw_value: String) -> String {
     )
 }
 
+pub fn expr_is_function_value(texpr: Rc<Node>) -> bool {
+    match (*texpr.expr_data.clone()).clone() {
+        ExprData::ExprVar {
+            binding_kind: bk, ..
+        } => match bk.clone().as_deref().cloned() {
+            Some(VarBindingKind::FunctionValueBinding) => true,
+            _ => false,
+        },
+        _ => false,
+    }
+}
+
 pub fn rust_field_value_for_struct(
     raw_value: String,
+    field_value: Rc<Node>,
     struct_node: Rc<Node>,
+    struct_name: String,
     field_name: String,
     scope: Rc<InferScope>,
+    emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match lookup_struct_field_type_node(
         struct_node,
@@ -10342,7 +10357,22 @@ pub fn rust_field_value_for_struct(
                 None => raw_value,
             },
         },
-        None => raw_value,
+        None => match lookup_emit_type_summary(emit_info, struct_name) {
+            Some(summary) => {
+                if expr_is_function_value(field_value) {
+                    rust_rc_new_value(raw_value)
+                } else {
+                    if (summary.has_fn_fields.clone()
+                        && ((summary.generic_param_names.clone().len() as i64) > 0))
+                    {
+                        rust_box_new_value(raw_value)
+                    } else {
+                        raw_value
+                    }
+                }
+            }
+            None => raw_value,
+        },
     }
 }
 
@@ -10765,9 +10795,12 @@ pub fn emit_typed_record_lit(
                                         ) == false));
                                         let shaped_val = rust_field_value_for_struct(
                                             val_str.clone(),
+                                            f_value.clone(),
                                             resolved_type.clone(),
+                                            tn.clone(),
                                             f_name.clone(),
                                             scope.clone(),
+                                            emit_info.clone(),
                                         );
                                         let field_val = if needs_wrap.clone() {
                                             v2_rt::concat(
