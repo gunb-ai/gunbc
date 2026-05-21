@@ -262,7 +262,7 @@ Lenses are **data-producing reads**. A lens takes a graph and returns a typed re
 5. **Multi-lens execution is dependency-managed.** Lenses with no interdependencies may be coalesced into a shared traversal. Lenses with dependencies (e.g., complexity reads cost) are scheduled by a **lens-dependency DAG**; each stage coalesces all lenses whose inputs are available. No lens may trigger an ad hoc unmanaged re-walk. See Ratified Q6 below — derives from `fold_node` + composed-lens-algebra; NO new substrate primitive.
 6. **Correct-by-construction before policy gates.** If a "lens" is actually checking a structural invariant that can be encoded in the type of `InferredTree` or an earlier carrier, push it into that type/model instead of making it a runtime gate. Measurement and report lenses (complexity, cost, effect reads, synthesis reports) remain pure readings. Terminal authorization may still return `Outcome<Validated<ArtifactSet>>`; that carrier belongs to policy over lens readings + projection results, not to compile-core.
 
-**Surface consequence.** `validate_then_compile(source, input_lang, lenses, mode) -> Outcome<Validated<Output>>` is not the architectural destination because it makes compile own lenses and terminal policy. The migration target is a session result exposing four distinct outcomes: grounding, lens report, projection report, and terminal authorization. `Validated<T>` remains valid at the terminal authorization phase, reframed as `Validated<ArtifactSet>`.
+**Surface consequence.** `validate_then_compile(source, input_lang, lenses, mode) -> Outcome<Validated<Output>>` is not the architectural destination because it makes compile own lenses and terminal policy. The migration target is a session result exposing four distinct phases: grounding, lens report, projection report, and terminal authorization. The latter three phases are present only under accepted grounding. `Validated<T>` remains valid at the terminal authorization phase, reframed as `Validated<ArtifactSet>`.
 
 ### Orthogonal Graph Consumers
 
@@ -292,13 +292,19 @@ compile_session(
   policy: TerminalPolicy
 ) -> CompileSessionResult
 
-type CompileSessionResult {
-  grounding: Outcome<InferredTree>
-  lens_report: LensReport
-  projection_report: ProjectionReport
-  terminal: Outcome<Validated<ArtifactSet>>
-}
+type CompileSessionResult
+  = GroundingRejected {
+      diagnostics: List<Diagnostic>
+    }
+  | GroundedSession {
+      graph: InferredTree
+      lens_report: LensReport
+      projection_report: ProjectionReport
+      terminal: Outcome<Validated<ArtifactSet>>
+    }
 ```
+
+The result carrier is fail-closed by construction: `GroundingRejected` has no lens report, projection report, or terminal release because there is no `InferredTree` for those phases to consume. Only `GroundedSession` may expose readings, projections, or authorization.
 
 `compile_session` is not compile-core. It is the public terminal / build-session orchestrator.
 
