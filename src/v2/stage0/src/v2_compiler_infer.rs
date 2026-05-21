@@ -4308,7 +4308,7 @@ pub fn infer_variant_constructor_call(
                                             &"0".to_string(),
                                             payload_expr.clone(),
                                             payload_expr.span.clone(),
-                                            node_name_span(&payload_expr),
+                                            kernel_span(&"0".to_string()),
                                         );
                                         Some(infer_record_lit(
                                             &Some(func_name.clone()),
