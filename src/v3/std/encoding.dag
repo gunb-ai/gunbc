@@ -1,0 +1,33 @@
+// std.encoding -- v3-staged character encoding lattice.
+//
+// Authority for v3: the carrier inhabits `BoundedLattice<Encoding>` directly.
+// The legacy `dsl/std/encoding.dag` helper functions remain only for v2's
+// compatibility surface until `dsl/` can author `type ... inhabits ... =`.
+
+module std.encoding
+
+import std.algebra { BoundedLattice }
+
+// Partial order:
+//   ASCII <: UTF8 <: Text <: Unknown
+//   ASCII <: Latin1 <: Text <: Unknown
+//   Binary <: Unknown
+//
+// `ASCII` is bottom, `Unknown` is top. Text and Binary are incomparable.
+type Encoding inhabits BoundedLattice<Encoding>
+  = ASCII
+  | UTF8
+  | Latin1
+  | Text
+  | Binary
+  | Unknown
+
+fn is_text_encoding_value(e: Encoding) -> Bool =
+  match e {
+    ASCII => True
+    UTF8 => True
+    Latin1 => True
+    Text => True
+    Binary => False
+    Unknown => False
+  }
