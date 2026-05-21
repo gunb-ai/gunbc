@@ -271,7 +271,7 @@ fn eval_interpret_node(
 ) -> Outcome<HostValue> {
   bind_outcome(
     o: inferred_facts_for_eval(tree: tree, node: node),
-    f: fn(facts) {
+    f: fn(_facts) {
       match node.kind {
         ComputationNode { behavior: b } =>
           eval_computation_node(

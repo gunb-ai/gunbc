@@ -10,8 +10,7 @@ module v4.test.claim.manual.eval_host_model_mvp
 import v4.compiler.eval {
   Inputs,
   eval,
-  eval_diagnostic,
-  eval_rejected_invalid_node
+  eval_diagnostic
 }
 import v4.compiler.infer {
   AlgebraRef,
@@ -101,6 +100,7 @@ data eval_mvp2_right_symbol: Symbol = eval_mvp2_right_symbol
 data eval_mvp2_i64_symbol: Symbol = eval_mvp2_i64_symbol
 data eval_mvp2_algebra_symbol: Symbol = eval_mvp2_algebra_symbol
 data eval_mvp2_witness_symbol: Symbol = eval_mvp2_witness_symbol
+data eval_mvp2_descent_not_derived: Symbol = eval_mvp2_descent_not_derived
 data eval_mvp2_model_core: ModelCore = eval_mvp2_model_core
 data eval_mvp2_effect_signature: EffectSignature = eval_mvp2_effect_signature
 data eval_mvp2_resource_access: ResourceAccess = eval_mvp2_resource_access
@@ -292,7 +292,7 @@ fn eval_mvp2_host_model() -> HostModel {
 
 
 fn eval_mvp2_diagnostic(n: Node) -> Diagnostic {
-  eval_diagnostic(reason: eval_rejected_invalid_node, node: n)
+  eval_diagnostic(reason: eval_mvp2_descent_not_derived, node: n)
 }
 
 
