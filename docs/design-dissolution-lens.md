@@ -170,6 +170,7 @@ they are not interchangeable:
 | L1.10 Textual-bypass *(lens family — see §5.0 exception)*: L1.10.a `TemplateHole`, L1.10.b `CanonicalCarrier` | witness / canonical-home |
 | L1.11 Plausible-fallback | fail-closed |
 | L1.12 Parallel-authority | canonical-home |
+| L1.13 Skeleton-collapse | derive / canonical-home |
 
 The only mechanical merge in this layout is **L1.6 → L1.10** — the
 prior doc already stated that L1.10 generalizes L1.6, so the two were
@@ -198,6 +199,7 @@ enumeration.
 | **L1.10.b** `CanonicalCarrier` (sub-signature of Textual-bypass family) | `coverage_defect_canonical_carrier` |
 | L1.11 Plausible-fallback | `coverage_defect_plausible_fallback` |
 | L1.12 Parallel-authority | `coverage_defect_parallel_authority` |
+| L1.13 Skeleton-collapse | `coverage_defect_skeleton_collapse` |
 
 **Migration notes for existing downstream consumers:**
 - Any consumer carrying `coverage_defect_emit_template` is **stale**;
