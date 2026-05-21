@@ -13,13 +13,13 @@ import v4.compiler.infer {
   infer_descent_not_derived
 }
 import v4.lens.structural_resolution {
-  StructuralResolutionDependencyFact,
   StructuralResolutionFact,
   UnresolvedInferWitness,
   at,
   fact_eq,
   fact_single_dependency_projects_status
 }
+import v4.std.dependency { ClassifiedDependencyView }
 import v4.test.claim.lens_structural_resolution.claim_carrier { LensStructuralResolutionClaim }
 import v4.std.cardinality { RankingDimension, TerminationProof }
 import v4.std.collection { Map }
@@ -142,10 +142,9 @@ data unresolved_infer_witness_claim: LensStructuralResolutionClaim = LensStructu
   input: sr_infer_claim_tree(),
   expected: StructuralResolutionFact {
     dependencies: [
-      StructuralResolutionDependencyFact {
+      ClassifiedDependencyView {
         dependency: sr_infer_dependency,
-        source_facts: Holds { value: sr_infer_resolved_facts() },
-        usage_site_facts: sr_infer_usage_site_witness()
+        classification: UnresolvedInferWitness
       }
     ]
   },

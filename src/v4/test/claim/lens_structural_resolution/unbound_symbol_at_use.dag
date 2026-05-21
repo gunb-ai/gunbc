@@ -11,13 +11,13 @@ import v4.compiler.resolve {
   resolve_reason_unbound_symbol
 }
 import v4.lens.structural_resolution {
-  StructuralResolutionDependencyFact,
   StructuralResolutionFact,
   UnboundSymbolAtUse,
   at,
   fact_eq,
   fact_single_dependency_projects_status
 }
+import v4.std.dependency { ClassifiedDependencyView }
 import v4.test.claim.lens_structural_resolution.claim_carrier { LensStructuralResolutionClaim }
 import v4.std.cardinality { RankingDimension, TerminationProof }
 import v4.std.collection { Map }
@@ -140,10 +140,9 @@ data unbound_symbol_at_use_claim: LensStructuralResolutionClaim = LensStructural
   input: sr_unbound_claim_tree(),
   expected: StructuralResolutionFact {
     dependencies: [
-      StructuralResolutionDependencyFact {
+      ClassifiedDependencyView {
         dependency: sr_unbound_dependency,
-        source_facts: Holds { value: sr_unbound_resolved_facts() },
-        usage_site_facts: sr_unbound_usage_site_witness()
+        classification: UnboundSymbolAtUse
       }
     ]
   },

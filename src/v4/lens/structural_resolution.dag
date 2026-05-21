@@ -10,7 +10,10 @@
 //   - compiler/infer, compiler/resolve (reason symbols)
 //   - std/dependency, std/node, std/witness
 //
-// Status: T-13 registry fill — BindsTo use edges only; module/bootstrap out of lens scope until T-9.
+// Status: T-13 family ratchet — projection-only over `List<DependencyView>` via
+//   parametric `ClassifiedDependencyView<StructuralResolutionStatus>`; per-node
+//   `InferredFacts` read at classify time via `tree.facts.lookup(usage_site)`, not
+//   stored on the row (Practice 11 / INVARIANTS P2 parallel-payload dissolution).
 
 
 module v4.lens.structural_resolution
@@ -28,6 +31,7 @@ import v4.std.dependency {
   BarrierBefore,
   BindsTo,
   BootstrapDependsOn,
+  ClassifiedDependencyView,
   Contains,
   DataDependsOn,
   DependencyView,
@@ -41,11 +45,12 @@ import v4.std.dependency {
   ResourceDependsOn,
   TypeDependsOn,
   VerifiedBy,
+  classified_dependency_view_eq,
   dependency_lens
 }
 import v4.std.integer { Int }
 import v4.std.logic { Bool }
-import v4.std.node { Node, Symbol }
+import v4.std.node { Node }
 import v4.std.witness { Holds, Violates, Witness }
 
 // 🟢 projection carrier — Practice 11: binding status is computed from
@@ -60,14 +65,8 @@ type StructuralResolutionStatus
   | UnresolvedInferWitness
   | OutOfScopeDependencyKind
 
-type StructuralResolutionDependencyFact {
-  dependency: DependencyView
-  source_facts: Witness<InferredFacts>
-  usage_site_facts: Witness<InferredFacts>
-}
-
 type StructuralResolutionFact {
-  dependencies: List<StructuralResolutionDependencyFact>
+  dependencies: List<ClassifiedDependencyView<StructuralResolutionStatus>>
 }
 
 fn inferred_facts_for_node(tree: InferredTree, node: Node) -> Witness<InferredFacts> {
@@ -115,37 +114,39 @@ fn status_for_dependency(
   }
 }
 
-fn status_of_dependency_fact(fact: StructuralResolutionDependencyFact) -> StructuralResolutionStatus {
+fn structural_resolution_status_for_view(
+  tree: InferredTree,
+  view: DependencyView
+) -> StructuralResolutionStatus {
   status_for_dependency(
-    view: fact.dependency,
-    usage_site_facts: fact.usage_site_facts
+    view: view,
+    usage_site_facts: inferred_facts_for_node(tree: tree, node: view.usage_site)
   )
 }
 
-fn dependency_fact(
+fn structural_resolution_classify(
   tree: InferredTree,
   view: DependencyView
-) -> StructuralResolutionDependencyFact {
-  StructuralResolutionDependencyFact {
+) -> ClassifiedDependencyView<StructuralResolutionStatus> {
+  ClassifiedDependencyView {
     dependency: view,
-    source_facts: inferred_facts_for_node(tree: tree, node: view.source),
-    usage_site_facts: inferred_facts_for_node(tree: tree, node: view.usage_site)
+    classification: structural_resolution_status_for_view(tree: tree, view: view)
   }
 }
 
-fn fact_from_dependencies(
+fn structural_resolution_fact(
   tree: InferredTree,
   dependencies: List<DependencyView>
 ) -> StructuralResolutionFact {
   StructuralResolutionFact {
     dependencies: fold(dependencies, init: [], f: fn(acc, view) {
-      list_push(acc, dependency_fact(tree: tree, view: view))
+      list_push(acc, structural_resolution_classify(tree: tree, view: view))
     })
   }
 }
 
 fn fact(tree: InferredTree, dependencies: List<DependencyView>) -> StructuralResolutionFact {
-  fact_from_dependencies(tree: tree, dependencies: dependencies)
+  structural_resolution_fact(tree: tree, dependencies: dependencies)
 }
 
 fn witness(tree: InferredTree, dependencies: List<DependencyView>) -> Witness<StructuralResolutionFact> {
@@ -160,7 +161,7 @@ fn at(tree: InferredTree) -> Witness<StructuralResolutionFact> {
 
 fn fact_projects_status(fact: StructuralResolutionFact, expected: StructuralResolutionStatus) -> Bool {
   fold(fact.dependencies, init: false, f: fn(acc, dep) {
-    acc || (status_of_dependency_fact(fact: dep) == expected)
+    acc || (dep.classification == expected)
   })
 }
 
@@ -172,29 +173,56 @@ fn fact_single_dependency_projects_status(
     false
   } else {
     fold(fact.dependencies, init: false, f: fn(_acc, dep) {
-      status_of_dependency_fact(fact: dep) == expected
+      dep.classification == expected
     })
   }
 }
 
-// 🟡 gated — feature:T-13-lens-claim-equality-scaffold
-// dissolve-on-arrival: T-13 lens driver / generated TestClaim supplies canonical
-// equality or content_hash for lens facts; multiset compare is compile-only until B2.
-fn dependency_fact_eq(
-  a: StructuralResolutionDependencyFact,
-  b: StructuralResolutionDependencyFact
+fn structural_resolution_status_eq(
+  a: StructuralResolutionStatus,
+  b: StructuralResolutionStatus
 ) -> Bool {
-  (a.dependency == b.dependency)
-    && (a.source_facts == b.source_facts)
-    && (a.usage_site_facts == b.usage_site_facts)
+  match a {
+    BindingResolved => match b {
+      BindingResolved => true
+      _ => false
+    }
+    UnboundSymbolAtUse => match b {
+      UnboundSymbolAtUse => true
+      _ => false
+    }
+    FactsLookupMiss => match b {
+      FactsLookupMiss => true
+      _ => false
+    }
+    UnresolvedInferWitness => match b {
+      UnresolvedInferWitness => true
+      _ => false
+    }
+    OutOfScopeDependencyKind => match b {
+      OutOfScopeDependencyKind => true
+      _ => false
+    }
+  }
 }
 
-fn dependency_count(
-  xs: List<StructuralResolutionDependencyFact>,
-  item: StructuralResolutionDependencyFact
+fn structural_resolution_classified_eq(
+  a: ClassifiedDependencyView<StructuralResolutionStatus>,
+  b: ClassifiedDependencyView<StructuralResolutionStatus>
+) -> Bool {
+  classified_dependency_view_eq(
+    a: a,
+    b: b,
+    classification_eq: structural_resolution_status_eq
+  )
+}
+
+fn structural_resolution_dependency_count(
+  xs: List<ClassifiedDependencyView<StructuralResolutionStatus>>,
+  item: ClassifiedDependencyView<StructuralResolutionStatus>
 ) -> Int {
   fold(xs, init: 0, f: fn(acc, candidate) {
-    if dependency_fact_eq(a: candidate, b: item) {
+    if structural_resolution_classified_eq(a: candidate, b: item) {
       acc + 1
     } else {
       acc
@@ -202,19 +230,24 @@ fn dependency_count(
   })
 }
 
-fn dependency_facts_eq(
-  left: List<StructuralResolutionDependencyFact>,
-  right: List<StructuralResolutionDependencyFact>
+fn structural_resolution_dependency_facts_eq(
+  left: List<ClassifiedDependencyView<StructuralResolutionStatus>>,
+  right: List<ClassifiedDependencyView<StructuralResolutionStatus>>
 ) -> Bool {
   if count(left) != count(right) {
     false
   } else {
     fold(left, init: true, f: fn(acc, item) {
-      acc && (dependency_count(xs: left, item: item) == dependency_count(xs: right, item: item))
+      acc
+        && (structural_resolution_dependency_count(xs: left, item: item)
+          == structural_resolution_dependency_count(xs: right, item: item))
     })
   }
 }
 
+// 🟡 gated — feature:T-13-lens-claim-equality-scaffold
+// dissolve-on-arrival: T-13 lens driver / generated TestClaim supplies canonical
+// equality or content_hash for lens facts; multiset compare is compile-only until B2.
 fn fact_eq(a: StructuralResolutionFact, b: StructuralResolutionFact) -> Bool {
-  dependency_facts_eq(left: a.dependencies, right: b.dependencies)
+  structural_resolution_dependency_facts_eq(left: a.dependencies, right: b.dependencies)
 }

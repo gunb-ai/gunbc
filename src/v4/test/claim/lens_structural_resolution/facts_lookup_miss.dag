@@ -14,12 +14,12 @@ import v4.compiler.infer {
 }
 import v4.lens.structural_resolution {
   FactsLookupMiss,
-  StructuralResolutionDependencyFact,
   StructuralResolutionFact,
   at,
   fact_eq,
   fact_single_dependency_projects_status
 }
+import v4.std.dependency { ClassifiedDependencyView }
 import v4.test.claim.lens_structural_resolution.claim_carrier { LensStructuralResolutionClaim }
 import v4.std.cardinality { RankingDimension, TerminationProof }
 import v4.std.collection { Map }
@@ -142,10 +142,9 @@ data facts_lookup_miss_claim: LensStructuralResolutionClaim = LensStructuralReso
   input: sr_lookup_claim_tree(),
   expected: StructuralResolutionFact {
     dependencies: [
-      StructuralResolutionDependencyFact {
+      ClassifiedDependencyView {
         dependency: sr_lookup_dependency,
-        source_facts: Holds { value: sr_lookup_resolved_facts() },
-        usage_site_facts: sr_lookup_usage_site_witness()
+        classification: FactsLookupMiss
       }
     ]
   },

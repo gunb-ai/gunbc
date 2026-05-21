@@ -9,12 +9,12 @@ module v4.test.claim.lens_structural_resolution.binds_to_resolved
 import v4.compiler.infer { AlgebraRef, InferredFacts, InferredTree }
 import v4.lens.structural_resolution {
   BindingResolved,
-  StructuralResolutionDependencyFact,
   StructuralResolutionFact,
   at,
   fact_eq,
   fact_single_dependency_projects_status
 }
+import v4.std.dependency { ClassifiedDependencyView }
 import v4.test.claim.lens_structural_resolution.claim_carrier { LensStructuralResolutionClaim }
 import v4.std.cardinality { RankingDimension, TerminationProof }
 import v4.std.collection { Map }
@@ -114,10 +114,9 @@ data binds_to_resolved_claim: LensStructuralResolutionClaim = LensStructuralReso
   input: sr_claim_tree(),
   expected: StructuralResolutionFact {
     dependencies: [
-      StructuralResolutionDependencyFact {
+      ClassifiedDependencyView {
         dependency: sr_dependency,
-        source_facts: Holds { value: sr_claim_facts() },
-        usage_site_facts: Holds { value: sr_claim_facts() }
+        classification: BindingResolved
       }
     ]
   },
