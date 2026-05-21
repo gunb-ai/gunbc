@@ -18,10 +18,10 @@ fn non_empty<T>(xs: List<T>) -> Bool {
     false => true
   }
 }
-fn list_snoc_item<T>(xs: List<T>, item: T) -> List<T> {
+fn list_snoc_item<T>(xs: FreeMonoid<T>, item: T) -> FreeMonoid<T> {
   list_append(left: xs, right: Cons { head: item, tail: Empty })
 }
-fn list_append<T>(left: List<T>, right: List<T>) -> List<T> {
+fn list_append<T>(left: FreeMonoid<T>, right: FreeMonoid<T>) -> FreeMonoid<T> {
   match left {
     Empty => right
     Cons { head: h, tail: t } => Cons {
