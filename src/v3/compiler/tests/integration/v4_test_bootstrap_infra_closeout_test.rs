@@ -1,8 +1,8 @@
 //! **Layer:** integration
 //!
-//! Closeout ratchets for the v4 T-19/T-20 test/bootstrap-infra lane. These
-//! checks stay at the parse-surface boundary: they prove the structural
-//! authorities exist and remain joined without claiming T-22 execution.
+//! Closeout ratchets for the v4 T-19/T-20/T-22 test/bootstrap-infra lane. These
+//! checks stay at the parse-surface boundary: they prove structural authorities
+//! exist and remain joined; T-22 rows are parse/substrate ratchets only (not execution).
 //! This hand-Rust ratchet retires when T-22 generated harness coverage
 //! expresses the same bootstrap closeout checks as `.dag` `TestClaim` rows.
 
@@ -28,6 +28,31 @@ const NAT_LAW_ANCHORS_PATH: &str = "src/v4/test/claim/manual/nat_law_anchors.dag
 const T19_MANIFEST_DAG: &str =
     include_str!("../../../../v4/test/claim/manual/t19_manual_anchor_manifest.dag");
 const T19_MANIFEST_PATH: &str = "src/v4/test/claim/manual/t19_manual_anchor_manifest.dag";
+const DIAGNOSTIC_ASSERT_EVAL_DAG: &str =
+    include_str!("../../../../v4/test/claim/manual/diagnostic_assert_eval.dag");
+const DIAGNOSTIC_ASSERT_EVAL_PATH: &str = "src/v4/test/claim/manual/diagnostic_assert_eval.dag";
+const EVAL_DAG: &str = include_str!("../../../../v4/compiler/05_eval.dag");
+
+#[test]
+fn t22_diagnostic_assert_eval_witnesses_parse() {
+    parse_module(DIAGNOSTIC_ASSERT_EVAL_DAG, DIAGNOSTIC_ASSERT_EVAL_PATH);
+}
+
+#[test]
+fn t22_eval_diagnostic_assert_not_deferred_in_substrate() {
+    assert!(
+        !EVAL_DAG.contains("eval_rejected_assert_kind_deferred"),
+        "removed deferred scaffold must not return"
+    );
+    assert!(
+        EVAL_DAG.contains("DiagnosticAssert => match actual"),
+        "DiagnosticAssert must execute, not defer"
+    );
+    assert!(
+        EVAL_DAG.contains("aggregate_verdicts(rs:"),
+        "run_test_claim must route through aggregate_verdicts"
+    );
+}
 
 #[test]
 fn t19_testgen_concept_surface_stays_closed_and_classified() {
