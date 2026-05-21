@@ -32,18 +32,9 @@ fn ingest_rest_transport_method(method: &str) -> Option<HttpMethod> {
     }
 }
 
-<<<<<<< HEAD
 fn method_ok(method: &str) -> HttpMethod {
     ingest_rest_transport_method(method)
         .unwrap_or_else(|| panic!("unknown REST transport HTTP method `{method}`"))
-=======
-fn derive_result(name: &str, method: &str, path: &str) -> Rc<DeriveOpEffectResult> {
-    derive_op_effect(
-        name.to_string(),
-        &parse_method_ok(method),
-        &parse_ok(path),
-    )
->>>>>>> 569d59dc1 (WIP: v2 dag-serializer fix — recursive by-value serialization regression on s)
 }
 
 fn derive_result(name: &str, method: HttpMethod, path: &str) -> Rc<DeriveOpEffectResult> {
