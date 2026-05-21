@@ -1,10 +1,16 @@
-// extdeps/llm/llm.dag — reserved for genuine cross-provider LLM abstractions.
+// extdeps/llm/llm.dag — cross-provider LLM facts only.
 //
-// Each provider has its own discrete modeling home today:
+// Provider-shaped types live in discrete homes:
 //   extdeps/llm/anthropic.dag — Anthropic Messages API
 //   extdeps/llm/openai.dag    — OpenAI Chat Completions / Responses
 //
-// Do not reintroduce provider-shaped types here; wait until a fact is
-// structurally shared across providers before landing it in this module.
+// Land a row here only when the fact is structurally shared across providers.
 
 module extdeps.llm.llm
+
+import std.serialization { VariantEncoding, StringVariant, VariantNaming, SnakeCase }
+
+// Wire contract: Anthropic and OpenAI APIs return enum values as snake_case strings.
+// Single authority for the shared `VariantEncoding` value; each provider module binds
+// its own module-scoped `wire_contract` name for the emitter (`05_emit_rust.dag`).
+data llm_snake_wire_contract: VariantEncoding = StringVariant { naming: SnakeCase }
