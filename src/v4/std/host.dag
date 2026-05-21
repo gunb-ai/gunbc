@@ -1,6 +1,5 @@
 // src/v4/std/host.dag
 // Scope: HostModel substrate for v4 eval/runtime interpretation.
-// Anchor: docs/design-v4-compiler-homomorphism.md Ratified Q1; src/v4/TASKS.md T-34.
 // Owns: HostModel, HostValue, HostInterpretationAlgebra, HostExecutionSemantics, HostResourceEffectBoundary.
 // Consumes: v4.std.node, v4.std.collection, v4.std.diagnostic, v4.std.machine.
 // Status: T-34 modeled; ModelCore forward declaration dissolves when T-33 std/model_core.dag lands.
