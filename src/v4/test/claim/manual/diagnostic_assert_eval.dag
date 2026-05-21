@@ -1,5 +1,5 @@
 // src/v4/test/claim/manual/diagnostic_assert_eval.dag
-// Scope: T-22 DiagnosticAssert + aggregate_verdicts behavior witnesses.
+// Scope: T-22 DiagnosticClaim + aggregate_verdicts behavior witnesses.
 // Owns: Pass/Fail receipts for matching/mismatching rejected diagnostics; Deferred blocks Pass.
 // Consumes: v4.compiler.eval, v4.std.diagnostic, v4.test.claim.manual.connective_anchors.
 // Status: Wave-0 eval regression anchor.
@@ -15,7 +15,7 @@ import v4.compiler.eval {
   Verdict,
   aggregate_verdicts,
   eval_diagnostic,
-  run_node_assert
+  run_test_claim_assert
 }
 import v4.std.diagnostic {
   AmbiguousIntent,
@@ -31,7 +31,13 @@ import v4.std.diagnostic {
 }
 import v4.std.collection { List }
 import v4.std.node { Node, Symbol }
-import v4.std.verification { DiagnosticAssert }
+import v4.std.verification {
+  DiagnosticClaim,
+  T19ManualAnchorAbsent,
+  TestClassification,
+  Tier1,
+  Unit
+}
 import v4.test.claim.manual.connective_anchors { stub_empty_conj }
 
 
@@ -81,11 +87,37 @@ data accepted_actual: Outcome<Node> = Accepted {
 }
 
 
-data witness_diagnostic_assert_match_pass: Bool = match run_node_assert(
-  kind: DiagnosticAssert,
+data witness_diagnostic_claim_match: DiagnosticClaim = DiagnosticClaim {
+  label: "witness: diagnostic claim match",
+  t19_anchor: T19ManualAnchorAbsent,
+  input: diag_assert_node(),
+  expected_outcome: rejected_expected,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+
+data witness_diagnostic_claim_mismatch: DiagnosticClaim = DiagnosticClaim {
+  label: "witness: diagnostic claim mismatch",
+  t19_anchor: T19ManualAnchorAbsent,
+  input: diag_assert_node(),
+  expected_outcome: rejected_expected,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+
+data witness_diagnostic_claim_accepted_fail: DiagnosticClaim = DiagnosticClaim {
+  label: "witness: diagnostic claim accepted fail",
+  t19_anchor: T19ManualAnchorAbsent,
+  input: diag_assert_node(),
+  expected_outcome: rejected_expected,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+
+data witness_diagnostic_assert_match_pass: Bool = match run_test_claim_assert(
+  claim: witness_diagnostic_claim_match,
   actual: rejected_same,
-  expected: rejected_expected,
-  input: diag_assert_node()
+  at: diag_assert_node()
 ) {
   Pass => true
   Fail { actual: _ } => false
@@ -93,11 +125,10 @@ data witness_diagnostic_assert_match_pass: Bool = match run_node_assert(
 }
 
 
-data witness_diagnostic_assert_mismatch_fail: Bool = match run_node_assert(
-  kind: DiagnosticAssert,
+data witness_diagnostic_assert_mismatch_fail: Bool = match run_test_claim_assert(
+  claim: witness_diagnostic_claim_mismatch,
   actual: rejected_other,
-  expected: rejected_expected,
-  input: diag_assert_node()
+  at: diag_assert_node()
 ) {
   Pass => false
   Fail { actual: _ } => true
@@ -110,11 +141,10 @@ fn empty_node_verdicts() -> List<Verdict<Node>> {
 }
 
 
-data witness_diagnostic_assert_accepted_fail: Bool = match run_node_assert(
-  kind: DiagnosticAssert,
+data witness_diagnostic_assert_accepted_fail: Bool = match run_test_claim_assert(
+  claim: witness_diagnostic_claim_accepted_fail,
   actual: accepted_actual,
-  expected: rejected_expected,
-  input: diag_assert_node()
+  at: diag_assert_node()
 ) {
   Pass => false
   Fail { actual: _ } => true

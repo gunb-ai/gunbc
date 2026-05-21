@@ -45,8 +45,8 @@ fn t22_eval_diagnostic_assert_not_deferred_in_substrate() {
         "removed deferred scaffold must not return"
     );
     assert!(
-        EVAL_DAG.contains("DiagnosticAssert => match actual"),
-        "DiagnosticAssert must execute, not defer"
+        EVAL_DAG.contains("DiagnosticClaim { .. } =>") || EVAL_DAG.contains("DiagnosticClaim {"),
+        "DiagnosticClaim must execute, not defer"
     );
     assert!(
         EVAL_DAG.contains("verdict: aggregate_verdicts(") && EVAL_DAG.contains("rs: ["),

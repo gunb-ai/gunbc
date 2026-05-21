@@ -20,10 +20,14 @@ import v4.std.diagnostic {
   WholeFile
 }
 import v4.std.node {
+  Atom,
   ComputationNode,
+  Edge,
   Loop,
   Node,
-  Symbol
+  Positional,
+  Symbol,
+  TypeNode
 }
 import v4.std.witness { Witness }
 
@@ -37,9 +41,18 @@ type LensComplexityClaim {
   falsification: Diagnostic
 }
 
+data while_loop_body_atom: Symbol = while_loop_body_atom
+
+data while_loop_body_leaf: Node = Node {
+  kind: TypeNode { connective: Atom { identity: while_loop_body_atom } },
+  children: []
+}
+
 data while_external_condition_input: Node = Node {
   kind: ComputationNode { behavior: Loop },
-  children: []
+  children: [
+    Edge { label: Positional, target: while_loop_body_leaf }
+  ]
 }
 
 data while_external_condition_diagnostic: Diagnostic = Diagnostic {

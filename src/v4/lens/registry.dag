@@ -7,6 +7,7 @@
 
 module v4.lens.registry
 
+import v4.std.node { Symbol }
 import v4.std.text { String }
 
 // 🟢 closed set — MODELING.md M4 / PREFIX-T-23-registry (`LensIdV0`).
@@ -19,6 +20,19 @@ type LensModulePathV0 = Bound { path: String } | Unbound
 type LensRegistryEntryV0 {
   lens_id: LensIdV0
   module_path: LensModulePathV0
+}
+
+// P9 single-owner: fn authority pinned in registry (feature:p9-llvm-instruction-cost-single-owner).
+type LensOwnedFnV0 {
+  fn_name: Symbol
+  owner_module_path: String
+}
+
+data symbol_llvm_instruction_cost: Symbol = symbol_llvm_instruction_cost
+
+data lens_owned_fn_llvm_instruction_cost: LensOwnedFnV0 = {
+  fn_name: symbol_llvm_instruction_cost,
+  owner_module_path: "v4.lens.cost"
 }
 
 data lens_registry_v0_complexity: LensRegistryEntryV0 = {

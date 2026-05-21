@@ -1,0 +1,33 @@
+// src/v4/test/claim/lens_cost/p9_llvm_instruction_cost_single_owner.dag
+// Scope: B1 structural receipt — P9 llvm_instruction_cost single-owner pinned in lens registry.
+// Owns: claim_p9_llvm_instruction_cost_registry_owner
+// Consumes: v4.lens.registry, v4.std.verification, v4.test.claim.manual.connective_anchors
+// Status: compile-only registry receipt until T-22 corpus execution.
+
+module v4.test.claim.lens_cost.p9_llvm_instruction_cost_single_owner
+
+import v4.lens.registry {
+  lens_owned_fn_llvm_instruction_cost,
+  symbol_llvm_instruction_cost
+}
+import v4.std.verification {
+  CompilesClaim,
+  TestClaim,
+  TestClassification,
+  T19ManualAnchorAbsent,
+  Tier1,
+  Unit
+}
+import v4.std.diagnostic { Accepted, None }
+import v4.test.claim.manual.connective_anchors { stub_empty_conj }
+
+
+data claim_p9_llvm_instruction_cost_registry_owner: TestClaim = CompilesClaim {
+  label: "P9: llvm_instruction_cost owner pinned in v4.lens.registry (v4.lens.cost)",
+  t19_anchor: T19ManualAnchorAbsent,
+  input: stub_empty_conj,
+  expected_value: Accepted { value: stub_empty_conj, diagnostics: None },
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data p9_owner_module_path: String = lens_owned_fn_llvm_instruction_cost.owner_module_path
