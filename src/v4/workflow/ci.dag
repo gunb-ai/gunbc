@@ -19,6 +19,7 @@ import v4.std.algebra {
 import v4.workflow.bootstrap { v4_stage0_binary, bootstrap_plan, bootstrap_stage_output }
 
 
+// 🟡 coproduct dissolution — LB-P4-3213
 type CiCommand
   = LintCommand
   | TestCommand
