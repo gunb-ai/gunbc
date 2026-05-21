@@ -200,6 +200,6 @@ fn v4_std_model_core_wave1_void_constructor_present() {
     assert_eq!(
         function_count(&module, "wave1_void"),
         1,
-        "wave-1 void ModelCore scaffold for downstream LanguageModel/HostModel extension"
+        "wave1_void is a tracked 🟡 scaffold (feature:model-core-wave1-void-scaffold); not a silent default ModelCore"
     );
 }

@@ -77,6 +77,7 @@ type ModelCore {
 }
 
 
+// 🟡 needs-more-work — feature:model-core-wave1-void-scaffold — dissolve-on: LanguageModel or HostModel carries first non-empty ModelCore (T-4 / T-34)
 fn wave1_void() -> ModelCore {
   ModelCore {
     primitives: [],
