@@ -10172,6 +10172,65 @@ pub fn lookup_struct_field_type_name(
     }
 }
 
+pub fn lookup_struct_field_type_node(
+    struct_node: Rc<Node>,
+    field_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<Rc<Node>> {
+    match find_child_named(struct_node, field_name, source_indices) {
+        Some(field_child) => {
+            if (field_child.inferred.clone() != None) {
+                Some(resolved_type(field_child.clone()))
+            } else {
+                None
+            }
+        }
+        None => None,
+    }
+}
+
+pub fn rust_rc_new_value(raw_value: String) -> String {
+    v2_rt::concat(
+        v2_rt::concat("Rc::new(".to_string(), raw_value),
+        ")".to_string(),
+    )
+}
+
+pub fn rust_box_new_value(raw_value: String) -> String {
+    v2_rt::concat(
+        v2_rt::concat("Box::new(".to_string(), raw_value),
+        ")".to_string(),
+    )
+}
+
+pub fn rust_field_value_for_struct(
+    raw_value: String,
+    struct_node: Rc<Node>,
+    field_name: String,
+    scope: Rc<InferScope>,
+) -> String {
+    match lookup_struct_field_type_node(
+        struct_node,
+        field_name,
+        scope.type_env.clone().source_indices.clone(),
+    ) {
+        Some(field_type) => match field_type.connective.clone() {
+            Connective::Arrow => rust_rc_new_value(raw_value),
+            _ => match field_type.inferred.clone() {
+                Some(inf) => {
+                    if is_type_variable(inf.clone()) {
+                        rust_box_new_value(raw_value)
+                    } else {
+                        raw_value
+                    }
+                }
+                None => raw_value,
+            },
+        },
+        None => raw_value,
+    }
+}
+
 pub fn emit_field_value_with_context(
     field_value: &Rc<Node>,
     struct_node: &Rc<Node>,
@@ -10589,13 +10648,22 @@ pub fn emit_typed_record_lit(
                                             emit_info.clone(),
                                             &scope,
                                         ) == false));
+                                        let shaped_val = rust_field_value_for_struct(
+                                            val_str.clone(),
+                                            resolved_type.clone(),
+                                            f_name.clone(),
+                                            scope.clone(),
+                                        );
                                         let field_val = if needs_wrap.clone() {
                                             v2_rt::concat(
-                                                v2_rt::concat("Some(".to_string(), val_str.clone()),
+                                                v2_rt::concat(
+                                                    "Some(".to_string(),
+                                                    shaped_val.clone(),
+                                                ),
                                                 ")".to_string(),
                                             )
                                         } else {
-                                            val_str.clone()
+                                            shaped_val.clone()
                                         };
                                         v2_rt::concat(
                                             v2_rt::concat(
