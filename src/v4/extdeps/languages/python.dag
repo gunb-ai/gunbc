@@ -55,15 +55,23 @@ type PythonIntegerPrimitiveFacts {
   std_projection: Symbol
 }
 
+// Python Reference §3.2: "These represent machine-level double precision floating point
+// numbers. You are at the mercy of the underlying machine architecture (and C or Java
+// implementation) for the accepted range and handling of overflow." — so the reference
+// pins "machine-level double precision", not IEEE 754 binary64 specifically. We track the
+// reference wording; tightening to a specific binary standard is a CPython/ABI implementation
+// fact for a separate carrier (future work).
 type PythonFloatPrimitiveFacts {
   surface_spelling: Symbol
-  ieee754_binary: Symbol
+  machine_representation: Symbol
   std_projection: Symbol
 }
 
+// Python Reference §3.2: "These represent complex numbers as a pair of machine-level double
+// precision floating point numbers." Component representation likewise tracks reference wording.
 type PythonComplexPrimitiveFacts {
   surface_spelling: Symbol
-  component_ieee754_binary: Symbol
+  component_machine_representation: Symbol
   std_projection: Symbol
 }
 
@@ -97,14 +105,15 @@ data python_std_projection_ellipsis: Symbol = python_std_projection_ellipsis
 
 // Encoding-axis values, each grounded in the Python Language Reference §3 (datamodel).
 data python_repr_int_arbitrary_precision: Symbol = python_repr_int_arbitrary_precision
-data python_ieee754_binary64: Symbol = python_ieee754_binary64
+data python_repr_float_machine_double_precision: Symbol = python_repr_float_machine_double_precision
+data python_repr_complex_pair_machine_double_precision: Symbol = python_repr_complex_pair_machine_double_precision
 data python_repr_bool_int_subtype: Symbol = python_repr_bool_int_subtype
 data python_repr_singleton_sole_inhabitant: Symbol = python_repr_singleton_sole_inhabitant
 
 data python_facts_field_surface_spelling: Symbol = python_facts_field_surface_spelling
 data python_facts_field_encoding: Symbol = python_facts_field_encoding
-data python_facts_field_ieee754_binary: Symbol = python_facts_field_ieee754_binary
-data python_facts_field_component_ieee754_binary: Symbol = python_facts_field_component_ieee754_binary
+data python_facts_field_machine_representation: Symbol = python_facts_field_machine_representation
+data python_facts_field_component_machine_representation: Symbol = python_facts_field_component_machine_representation
 data python_facts_field_std_projection: Symbol = python_facts_field_std_projection
 data python_facts_field_singleton_kind: Symbol = python_facts_field_singleton_kind
 
@@ -120,13 +129,13 @@ data python_facts_int: PythonIntegerPrimitiveFacts = PythonIntegerPrimitiveFacts
 
 data python_facts_float: PythonFloatPrimitiveFacts = PythonFloatPrimitiveFacts {
   surface_spelling: python_surface_spelling_float,
-  ieee754_binary: python_ieee754_binary64,
+  machine_representation: python_repr_float_machine_double_precision,
   std_projection: python_std_projection_float
 }
 
 data python_facts_complex: PythonComplexPrimitiveFacts = PythonComplexPrimitiveFacts {
   surface_spelling: python_surface_spelling_complex,
-  component_ieee754_binary: python_ieee754_binary64,
+  component_machine_representation: python_repr_complex_pair_machine_double_precision,
   std_projection: python_std_projection_complex
 }
 
@@ -229,8 +238,8 @@ fn python_float_facts_node(facts: PythonFloatPrimitiveFacts) -> Node {
         target: python_inhabitant_atom(id: facts.surface_spelling)
       ),
       python_named_edge(
-        name: python_facts_field_ieee754_binary,
-        target: python_inhabitant_atom(id: facts.ieee754_binary)
+        name: python_facts_field_machine_representation,
+        target: python_inhabitant_atom(id: facts.machine_representation)
       ),
       python_named_edge(
         name: python_facts_field_std_projection,
@@ -249,8 +258,8 @@ fn python_complex_facts_node(facts: PythonComplexPrimitiveFacts) -> Node {
         target: python_inhabitant_atom(id: facts.surface_spelling)
       ),
       python_named_edge(
-        name: python_facts_field_component_ieee754_binary,
-        target: python_inhabitant_atom(id: facts.component_ieee754_binary)
+        name: python_facts_field_component_machine_representation,
+        target: python_inhabitant_atom(id: facts.component_machine_representation)
       ),
       python_named_edge(
         name: python_facts_field_std_projection,
@@ -336,7 +345,7 @@ fn python_primitive_bundle_from_float_facts(
       ),
       python_primitive_axis_binding(
         axis: primitive_fact_axis_encoding,
-        fact: python_inhabitant_atom(id: facts.ieee754_binary)
+        fact: python_inhabitant_atom(id: facts.machine_representation)
       )
     ]
   }
@@ -354,7 +363,7 @@ fn python_primitive_bundle_from_complex_facts(
       ),
       python_primitive_axis_binding(
         axis: primitive_fact_axis_encoding,
-        fact: python_inhabitant_atom(id: facts.component_ieee754_binary)
+        fact: python_inhabitant_atom(id: facts.component_machine_representation)
       )
     ]
   }
