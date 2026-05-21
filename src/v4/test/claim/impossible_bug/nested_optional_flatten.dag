@@ -14,8 +14,117 @@
 // Consumes:
 //   - std/verification.dag, std/diagnostic.dag, std/cardinality.dag
 //
-// Status: scaffold — fill per TASKS.md T-14
-// Brief: see BRIEF_TEMPLATE.md.
+// Status: T-14 corpus rows; execution deferred to T-22 runner bridge.
+// Discovery: T-22 runner enumerates src/v4/test/claim/** recursively.
+
 
 module v4.test.claim.impossible_bug.nested_optional_flatten
 
+
+import v4.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  NodeLocus,
+  None,
+  Outcome,
+  Rejected,
+  Suggested,
+  diagnostics_singleton
+}
+import v4.std.node { Edge, Named, Node, Positional, Symbol, TypeNode, Atom, Cardinality }
+import v4.std.verification {
+  Compiles,
+  Equals,
+  T19ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier2,
+  Unit
+}
+
+
+data optional_value_symbol: Symbol = optional_value_symbol
+data flattened_optional_symbol: Symbol = flattened_optional_symbol
+data double_unwrap_symbol: Symbol = double_unwrap_symbol
+data nested_optional_reason: Symbol = nested_optional_reason
+data double_unwrap_reason: Symbol = double_unwrap_reason
+data optional_inner: Symbol = optional_inner
+data optional_outer: Symbol = optional_outer
+
+
+fn atom_node(s: Symbol) -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: s } }, children: [] }
+}
+
+
+data flattened_optional_input: Node = atom_node(s: flattened_optional_symbol)
+
+
+data falsification_nested_optional: Node = Node {
+  kind: TypeNode { connective: Cardinality },
+  children: [
+    Edge {
+      label: Positional,
+      target: Node {
+        kind: TypeNode { connective: Cardinality },
+        children: [
+          Edge { label: Positional, target: atom_node(s: optional_value_symbol) },
+        ]
+      }
+    },
+  ]
+}
+
+
+data falsification_optional_double_unwrap: Node = Node {
+  kind: TypeNode { connective: Cardinality },
+  children: [
+    Edge { label: Positional, target: atom_node(s: double_unwrap_symbol) },
+  ]
+}
+
+
+data claim_optional_chaining_no_double_unwrap: TestClaim = TestClaim {
+  kind: Compiles,
+  label: "optional cardinality refinement keeps accessor surface single-layer",
+  t19_anchor: T19ManualAnchorAbsent,
+  input: flattened_optional_input,
+  expected: Accepted { value: flattened_optional_input, diagnostics: None },
+  classification: TestClassification { tier: Tier2, layer: Unit }
+}
+
+
+data claim_optional_double_unwrap_rejected: TestClaim = TestClaim {
+  kind: Equals,
+  label: "optional accessor surface rejects double unwrap shape",
+  t19_anchor: T19ManualAnchorAbsent,
+  input: falsification_optional_double_unwrap,
+  expected: Rejected {
+    diagnostics: diagnostics_singleton(
+      d: Diagnostic {
+        reason: double_unwrap_reason,
+        at: NodeLocus { node: falsification_optional_double_unwrap },
+        correction: Suggested { node: flattened_optional_input }
+      }
+    )
+  },
+  classification: TestClassification { tier: Tier2, layer: Unit }
+}
+
+
+data claim_nested_optional_collapses: TestClaim = TestClaim {
+  kind: Equals,
+  label: "nested optional cardinality collapses to one refinement",
+  t19_anchor: T19ManualAnchorAbsent,
+  input: falsification_nested_optional,
+  expected: Rejected {
+    diagnostics: diagnostics_singleton(
+      d: Diagnostic {
+        reason: nested_optional_reason,
+        at: NodeLocus { node: falsification_nested_optional },
+        correction: Suggested { node: flattened_optional_input }
+      }
+    )
+  },
+  classification: TestClassification { tier: Tier2, layer: Unit }
+}
