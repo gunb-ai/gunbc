@@ -111,7 +111,6 @@
 module v4.lens.parallelism
 
 import v4.compiler.infer { InferredFacts, InferredTree }
-import v4.lens.effect { BarrierEffect, NonEffectDependency, WriteEffect, effect_kind_for_dependency }
 import v4.std.dependency {
   BarrierBefore,
   BindsTo,
@@ -126,9 +125,9 @@ import v4.std.dependency {
   PlacementDependsOn,
   ProjectionDependsOn,
   PromotedBy,
-  ResourceDependsOn
+  ResourceDependsOn,
   TypeDependsOn,
-  VerifiedBy,
+  VerifiedBy
 }
 import v4.std.node { Node }
 import v4.std.witness { Holds, Witness }
