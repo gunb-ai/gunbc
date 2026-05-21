@@ -1108,9 +1108,10 @@ import/alias of the resolver's authoritative shape.
   α-renaming bound names, and replacing the leading constructor identity
   with a hole. Equality of skeletons is structural. Distribution
   histogram (arm count per skeleton) is then a simple count.
-- *Verdict:* hard error on substrate / lens / extdeps files; advisory on
-  test fixtures and compile-time data tables (those legitimately
-  enumerate per-variant constants).
+- *Verdict:* hard error (🔴 dissolve-now). Per the universal three-disposition
+  rule (§5.0 / Practices 4 + 10 — 🔴/🟡/🟢, "there is no fourth"), L1.13
+  produces exactly one of those three. No "advisory" tier; legitimate
+  exceptions pass via Escape (clean 🟢) below, not via a softer verdict.
 - *Distribution shapes (closed enumeration of dissolution-relevant cases):*
   - **PureTemplate** — `K = 1`, `N > 1`. All arms identical-modulo-constructor.
     The dispatch is doing zero work. **Dissolution:** delete the match;
@@ -1134,15 +1135,34 @@ import/alias of the resolver's authoritative shape.
     `complexity_bound_from_class` (9 arms → 3 skeletons, 1:1:7).
   - **Mixed** — `K` close to `N`. Each arm does distinguishable work.
     **No finding** — legitimate per-variant dispatch.
-- *Escape:* `Mixed` distribution passes. Also passes: matches whose
-  arms differ by call-arguments rather than constructor identity (the
-  "skeleton" parameter-substitutes the constructor, not its fields, so
-  matches that genuinely use different constructor fields per arm are
-  not collapsed — see decidability boundary below).
-- *Kills:* `feature_disposition` (`llvm_ir.dag:570-585`),
-  `complexity_bound_from_class` (PR #3452),
-  `manual_test_claim_for_manual_anchor` (`testgen.dag:253-270`) as
-  the F-level findings table cites.
+- *Escape (clean 🟢):* `Mixed` distribution passes — distinct skeletons
+  per arm IS legitimate per-variant dispatch. Two other clean-🟢 cases
+  follow directly from the decidability rule:
+  - **Per-arm distinct literal data.** A match whose arms each construct
+    distinct literal data via per-arm references (e.g., test fixtures or
+    compile-time data tables where arm `Variant_X` references
+    `data variant_x_constant: T = ...`) is Mixed under skeleton
+    extraction — each arm's literal IS a distinct skeleton because the
+    reference is a free name, not bound by the arm constructor. Such
+    matches are legitimate-per-variant enumeration and pass naturally;
+    no separate verdict tier needed.
+  - **Distinct call arguments per arm.** Matches whose arms call the
+    same function with different concrete arguments (literals or distinct
+    references) are Mixed for the same reason — the skeleton
+    parameter-substitutes the leading constructor only, not call
+    arguments (see decidability boundary below).
+- *Kills:* `feature_disposition` (`llvm_ir.dag:570-585` — Categorical
+  1:5:6, arm-constructor name echoed in RHS) and `complexity_bound_from_class`
+  (PR #3452 — Categorical 1:1:7, inner `match size_var` block shared
+  across 7 arms with only the outer `Bound` constructor differing).
+  `manual_test_claim_for_manual_anchor` (`testgen.dag:253-270`) is a
+  related but *distinct* pattern (see "Borderline cases" below) — it
+  passes the strict L1.13 decidability rule (Mixed) because the
+  per-arm `claim_<name>` references are distinct literals; recognizing
+  it as a finding requires either a sub-signature that detects the
+  arm-name-parameterizes-reference pattern, or a separate lens for the
+  match-as-typed-table shape. Listed as a borderline case, NOT a
+  current L1.13 kill.
 
 **Decidability boundary (explicit):** RHS skeleton extraction collapses
 the leading constructor name to a hole AND α-renames bound field names,
@@ -1232,8 +1252,29 @@ type ComplexityBound
 Function collapses from 9 arms to 4. Full worked example in the PR
 review at #3452 comment.
 
-**Concrete match — F16 (`src/v4/lens/testgen.dag:253-270`):**
-13 arms, 2 distinct skeletons: `Rejected { diagnostic: ... }` (1), `Produced { value: claim_<name> }` (12). **Outlier, 1:12 — extreme case.**
+**Borderline case — F16 (`src/v4/lens/testgen.dag:253-270`):**
+13 arms over `T19ManualAnchorKey`. Strict skeleton extraction (per the
+decidability boundary above) treats each arm's RHS as a distinct skeleton
+because the per-arm `claim_<name>` references are distinct free literals
+NOT bound by the arm constructor — under the strict rule, K = N → Mixed
+→ **not an L1.13 finding as the lens is currently signed**.
+
+Recognized as a borderline because the human pattern recognition does
+catch it: the references follow a `claim_<arm_constructor_lower_case>`
+naming convention that PARAMETERIZES BY the arm constructor. Catching
+this structurally requires either:
+- A sub-signature **L1.13.b** (future) that recognizes
+  per-arm-named references as bound parameterizations (the lens would
+  detect "every arm references a single `data` declaration whose name
+  encodes the arm constructor"), OR
+- A separate lens entry — "match-as-typed-table" — whose signature is
+  "N arms each referencing N distinct typed `data` declarations with
+  one-to-one correspondence to the matched variants."
+
+The clean shape for the F16 pattern (sketched below) is what either
+of those future lenses would target. F16 is documented here as a
+related-pattern example so the boundary stays explicit, NOT as a
+current L1.13 kill.
 
 
 **Clean shape:** the 12 identical-skeleton arms are a typed registry
