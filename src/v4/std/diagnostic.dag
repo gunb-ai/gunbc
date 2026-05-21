@@ -5,7 +5,7 @@
 //       bind_outcome, diagnostics_merge, rejected_with_pending,
 //       eq, locus_eq, correction_eq, diagnostic_eq, outcome_node_eq,
 //       diagnostics_eq, non_empty_diagnostics_append,
-//       Locus, LocusAnchor, Extent, Correction, NoCorrectionReason.
+//       Locus, LocusAnchor, NodeLocusAnchor, PortLocusAnchor, Extent, Correction, NoCorrectionReason.
 // Consumes: std node (List/fold/count are prelude — no collection import; avoids diagnostic↔witness cycle).
 // Status: T-3 modeled; Wave-2-BC3 Outcome ratification (Ratified Q11).
 
@@ -21,11 +21,13 @@ type Extent
 type LocusAnchor<A> {
   at: A
 }
+type NodeLocusAnchor = LocusAnchor<Node>
+type PortLocusAnchor = LocusAnchor<Symbol>
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type Locus
   = Textual { file: Symbol, extent: Extent }
-  | NodeLocus { anchor: LocusAnchor<Node> }
-  | PortLocus { anchor: LocusAnchor<Symbol> }
+  | NodeLocus { anchor: NodeLocusAnchor }
+  | PortLocus { anchor: PortLocusAnchor }
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type NoCorrectionReason
   = UserInputBoundary
