@@ -12,7 +12,7 @@ ground/observe/project/authorize split, compile-core vs lens/artifact ownership,
 
 | Check | Live state | Disposition |
 |---|---|---|
-| Compile core signature | `00_compile.dag` declares `compile(source: CoreNode, input_lang: LanguageModel, mode: CompileMode) -> Outcome<CompileOutput>`. | Current scaffold conflict: `CompileMode` is a closed global mode enum. Target shape is `ground -> observe -> project -> authorize`, with projection requests using `ProjectionProducerRef` registry entries. |
+| Compile core signature | `00_compile.dag` declares `compile(source: CoreNode, input_lang: LanguageModel, mode: CompileMode) -> Outcome<CompileOutput>`. | Current scaffold conflict: `input_lang` and `CompileMode` are scalar knobs on compile. Target shape is `ground(IngestionPlan) -> observe -> project(ProjectionPlan) -> authorize`, with ingestion/projection requests using producer references and typed params. |
 | Public lens gate | `validate_then_compile` runs `infer`, then `run_required_lens_gates`, then `compile_inferred`, returning `Validated<CompileOutput>`. Manual TestClaims assert empty-lens bypass and rejecting-lens block. | Current scaffold conflict in ownership: lenses are inputs to session policy, not compile-core. Keep `Validated<T>`, but reframe as terminal authorization over `ArtifactSet`. |
 | Specific lens imports in core | `04_infer.dag` imports no `v4.lens.*` module. | Prior `v4.lens.cost.SymbolicCost` violation is resolved; design-doc stale row corrected. |
 | Inferred facts | `InferredFacts` carries canonical grounding witness but not the full P6 semantic dependency graph. | Remaining T-9 gap kept in design-doc migration table. |
