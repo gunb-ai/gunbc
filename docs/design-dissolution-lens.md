@@ -1595,7 +1595,7 @@ uses.
 | Refinement-clause index (type → length / domain refinements) | `v4.compiler.04_infer` | L1.7 |
 | Import graph + target existence | `v4.compiler.02_parse` | L0.8, L1.8 |
 | Return-type → fail-closed-carrier? | `v4.compiler.03_resolve` | L0.14, L1.11 |
-| Match-arm RHS skeleton + histogram (per-arm normalized RHS after α-renaming + matched-arm constructor substitution; group sizes per distinct skeleton) | `v4.lens.match_arm_skeleton` (new derived stage — see §10.2) | L1.13 |
+| Match-arm RHS skeleton + per-arm group membership + per-skeleton constructor-hole presence (normalized RHS after α-renaming + matched-arm constructor substitution; groups expose arm-ids so the auto-fix consumes them as facts, not by re-walking) | `v4.lens.match_arm_skeleton` (new derived stage — see §10.2) | L1.13 |
 
 ### 10.2 Four small derived stages cover what the pipeline doesn't already expose
 
@@ -1620,15 +1620,39 @@ produces: Map<FnId, File>               // each fn's primary-concept home file
 
 module v4.lens.match_arm_skeleton
 consumes: v4.compiler.02_parse, v4.compiler.03_resolve
-produces: Map<MatchExprId, SkeletonReport>  // {arm_count, distinct_skeletons, histogram, classifier_shape}
+produces: Map<MatchExprId, SkeletonReport>
+// SkeletonReport = {
+//   arm_count: Nat,
+//   distinct_skeletons: Nat,
+//   histogram: [Nat],                // sorted group-sizes, largest first
+//   classifier_shape: ClassifierShape, // PureTemplate | Outlier | MultiOutlier | Categorical | Mixed
+//   groups: [SkeletonGroup],         // one entry per distinct skeleton — per-arm membership
+// }
+// SkeletonGroup = {
+//   skeleton: RhsSkeleton,                       // the normalized RHS expression tree
+//   arm_ids: [MatchArmId],                       // arms in this skeleton-equivalence class
+//   constructor_hole_present: Bool,              // does the skeleton contain the constructor-hole at any
+//                                                // position? (distinguishes Outlier sub-cases a/b
+//                                                // without re-walking — drives Direct vs Templated
+//                                                // auto-apply per the L1.13 entry above)
+//   matched_constructors: [ConstructorId],       // the constructors whose arms collapsed to this skeleton
+//                                                // (lens reads to derive templated names for the
+//                                                // MultiOutlier/Categorical wrapping-variant default)
+// }
+// Facts Flow Forward (Practice 3): the lens emits everything the L1.13
+// auto-fix and any future L1.13.b sub-signature need. No consumer
+// re-walks the arms or re-derives skeleton equivalence — single
+// authority (P2), one mechanism, multiple downstream projections.
 // reusable by: L1.13, future L1.13.b (per-arm-name-parameterized-reference sub-signature),
 // future match-as-typed-table lens
 // Algorithm: tree-walk each arm's RHS, α-rename pattern-bound names,
 //   substitute every occurrence of the matched-arm constructor identity
-//   with a per-arm hole, structurally compare; group arms by skeleton;
-//   sort group sizes (largest first) to form histogram; classify
-//   distribution-shape per L1.13's thresholds (PureTemplate / Outlier /
-//   MultiOutlier / Categorical / Mixed).
+//   with a per-arm hole, structurally compare; group arms by skeleton
+//   (each group records arm_ids + matched_constructors + whether the
+//   skeleton contains the constructor-hole anywhere); sort group sizes
+//   (largest first) to form histogram; classify distribution-shape per
+//   L1.13's thresholds (PureTemplate / Outlier / MultiOutlier /
+//   Categorical / Mixed).
 ```
 
 Each is a single deterministic fold. Once landed, multiple lenses
