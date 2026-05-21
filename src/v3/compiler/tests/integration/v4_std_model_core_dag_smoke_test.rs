@@ -172,6 +172,29 @@ fn v4_std_model_core_algebra_law_obligation_structural() {
 }
 
 #[test]
+fn v4_std_model_core_effect_partiality_ops_use_node_authority() {
+    let module = model_core_surface_or_panic();
+    for (type_name, field_name) in [
+        ("PrimitiveOperationRef", "operation"),
+        ("PartialOperationDecl", "operation"),
+    ] {
+        let fields: Vec<(String, String)> = type_record_fields(&module, type_name)
+            .iter()
+            .map(|f| (f.name.clone(), surface_type_name(&f.ty)))
+            .collect();
+        let ty = fields
+            .iter()
+            .find(|(n, _)| n == field_name)
+            .map(|(_, t)| t.as_str())
+            .unwrap_or("missing");
+        assert_eq!(
+            ty, "Node",
+            "{type_name}.{field_name} must reference modeled operation Node authority, not Symbol"
+        );
+    }
+}
+
+#[test]
 fn v4_std_model_core_wave1_void_constructor_present() {
     let module = model_core_surface_or_panic();
     assert_eq!(
