@@ -1,7 +1,7 @@
 // src/v4/test/claim/lens_application/empty_required_lenses_skip_gate.dag
 // Scope: T-23 negative claim — empty required-lens list does not emit compile_lens_gate_rejected.
-// Owns: empty_required_lenses_skip_gate_claim.
-// Consumes: compiler compile, manual infer fixture.
+// Owns: claim_empty_required_lenses_skip_gate.
+// Consumes: compiler compile, manual infer fixture, std verification.
 // Status: scaffold — compile-only until T-22 generated claim execution.
 
 module v4.test.claim.lens_application.empty_required_lenses_skip_gate
@@ -17,8 +17,18 @@ import v4.compiler.compile {
 import v4.compiler.target_carriers { TargetModel }
 import v4.std.diagnostic { Accepted, Outcome, Rejected }
 import v4.std.logic { Bool }
-import v4.std.node { Conj, Node, TypeNode }
+import v4.std.node { Atom, Conj, Node, Symbol, TypeNode }
+import v4.std.verification {
+  EqualsClaim,
+  TestClaim,
+  TestClassification,
+  T19ManualAnchorAbsent,
+  Tier1,
+  Unit
+}
 import v4.test.claim.manual.infer_ground_add_mvp { fixture_add_resolved_tree }
+
+data empty_lenses_claim_symbol: Symbol = empty_lenses_claim_symbol
 
 data empty_lenses_language_model_stub: Node = Node {
   kind: TypeNode { connective: Conj },
@@ -30,36 +40,42 @@ data empty_lenses_target_model_stub: TargetModel = Node {
   children: []
 }
 
-type LensApplicationPipelineClaim {
-  expected_gate_rejected: Bool
+data empty_lenses_authority_node: Node = Node {
+  kind: TypeNode { connective: Atom { identity: empty_lenses_claim_symbol } },
+  children: []
 }
 
-data empty_required_lenses_skip_gate_claim: LensApplicationPipelineClaim =
-  LensApplicationPipelineClaim {
-    expected_gate_rejected: false
-  }
-
-fn empty_required_lenses_outcome() -> Outcome<Validated<CompileOutput>> {
-  validate_then_compile(
+fn empty_required_lenses_skip_gate_claim_holds() -> Bool {
+  match validate_then_compile(
     source: fixture_add_resolved_tree(),
     input_lang: empty_lenses_language_model_stub,
     lenses: [],
     mode: TranslateTo { target: empty_lenses_target_model_stub }
-  )
-}
-
-fn empty_required_lenses_skip_gate_claim_holds() -> Bool {
-  match empty_required_lenses_outcome() {
-    Rejected { diagnostics: r } =>
-      r.head.reason == compile_lens_gate_rejected ==
-        empty_required_lenses_skip_gate_claim.expected_gate_rejected
+  ) {
+    Rejected { diagnostics: r } => r.head.reason != compile_lens_gate_rejected
     Accepted { value: v, diagnostics: _ } =>
-      !empty_required_lenses_skip_gate_claim.expected_gate_rejected &&
-        match v.value {
-          TranslateResult { source: _ } => true
-          _ => false
-        }
+      match v.value {
+        TranslateResult { source: _ } => true
+        _ => false
+      }
   }
 }
 
-data empty_required_lenses_skip_gate_claim_passes: Bool = empty_required_lenses_skip_gate_claim_holds()
+fn empty_required_lenses_skip_gate_claim_rhs() -> Node {
+  if empty_required_lenses_skip_gate_claim_holds() {
+    empty_lenses_authority_node
+  } else {
+    Node {
+      kind: TypeNode { connective: Conj },
+      children: []
+    }
+  }
+}
+
+data claim_empty_required_lenses_skip_gate: TestClaim = EqualsClaim {
+  label: "lens_application/empty_required_lenses_skip_gate: empty lens list skips gate reject",
+  t19_anchor: T19ManualAnchorAbsent,
+  lhs: empty_lenses_authority_node,
+  rhs: empty_required_lenses_skip_gate_claim_rhs(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}

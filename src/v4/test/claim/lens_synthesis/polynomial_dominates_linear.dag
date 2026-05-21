@@ -1,7 +1,7 @@
 // src/v4/test/claim/lens_synthesis/polynomial_dominates_linear.dag
-// Scope: T-17 worked claim — quadratic symbolic cost dominates linear (cross-algorithm gap witness).
-// Owns: polynomial_dominates_linear_claim.
-// Consumes: lens cost (synthesis compare substrate until synthesis.dag fills).
+// Scope: T-17 worked claim — quadratic symbolic cost dominates linear lower bound.
+// Owns: claim_polynomial_dominates_linear.
+// Consumes: lens cost, std node, std verification.
 // Status: scaffold — compile-only until T-17 synthesis lens lands.
 
 module v4.test.claim.lens_synthesis.polynomial_dominates_linear
@@ -11,22 +11,23 @@ import v4.lens.cost {
   PolynomialCost,
   PolynomialDegree,
   SizeVariable,
-  SymbolicCost,
   symbolic_cost_dominates
 }
 import v4.std.cardinality { NonZeroNat }
 import v4.std.logic { Bool }
-import v4.std.nat { Succ, Zero }
-import v4.std.node { Atom, Node, Symbol, TypeNode }
+import v4.std.nat { Zero }
+import v4.std.node { Atom, Conj, Node, Symbol, TypeNode }
+import v4.std.verification {
+  EqualsClaim,
+  TestClaim,
+  TestClassification,
+  T19ManualAnchorAbsent,
+  Tier1,
+  Unit
+}
 
 data synthesis_poly_x_symbol: Symbol = synthesis_poly_x_symbol
 data synthesis_poly_y_symbol: Symbol = synthesis_poly_y_symbol
-
-type LensSynthesisDominanceClaim {
-  realization: SymbolicCost
-  lower_bound: SymbolicCost
-  expected_dominates: Bool
-}
 
 data synthesis_poly_x: Node = Node {
   kind: TypeNode { connective: Atom { identity: synthesis_poly_x_symbol } },
@@ -38,24 +39,31 @@ data synthesis_poly_y: Node = Node {
   children: []
 }
 
-data polynomial_degree_two: PolynomialDegree = PolynomialDegree {
-  predecessor_after_linear: NonZeroNat { prev: Zero }
-}
-
-data polynomial_dominates_linear_claim: LensSynthesisDominanceClaim = LensSynthesisDominanceClaim {
-  realization: PolynomialCost {
-    variable: SizeVariable { source: synthesis_poly_x },
-    degree: polynomial_degree_two
-  },
-  lower_bound: LinearCost { variable: SizeVariable { source: synthesis_poly_y } },
-  expected_dominates: true
-}
-
 fn polynomial_dominates_linear_claim_holds() -> Bool {
   symbolic_cost_dominates(
-    a: polynomial_dominates_linear_claim.realization,
-    b: polynomial_dominates_linear_claim.lower_bound
-  ) == polynomial_dominates_linear_claim.expected_dominates
+    a: PolynomialCost {
+      variable: SizeVariable { source: synthesis_poly_x },
+      degree: PolynomialDegree { predecessor_after_linear: NonZeroNat { prev: Zero } }
+    },
+    b: LinearCost { variable: SizeVariable { source: synthesis_poly_y } }
+  )
 }
 
-data polynomial_dominates_linear_claim_passes: Bool = polynomial_dominates_linear_claim_holds()
+fn polynomial_dominates_linear_claim_rhs() -> Node {
+  if polynomial_dominates_linear_claim_holds() {
+    synthesis_poly_x
+  } else {
+    Node {
+      kind: TypeNode { connective: Conj },
+      children: []
+    }
+  }
+}
+
+data claim_polynomial_dominates_linear: TestClaim = EqualsClaim {
+  label: "lens_synthesis/polynomial_dominates_linear: quadratic dominates linear",
+  t19_anchor: T19ManualAnchorAbsent,
+  lhs: synthesis_poly_x,
+  rhs: polynomial_dominates_linear_claim_rhs(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
