@@ -67,10 +67,6 @@ pub use crate::v2_compiler_ownership::{
 };
 pub use crate::v2_compiler_runtime_rust::rust_runtime_source;
 use crate::v2_rt;
-use crate::v2_rt::rc_empty_set as empty_set;
-use crate::v2_rt::rc_set_insert as set_insert;
-use crate::v2_rt::rc_set_union as set_union;
-use crate::v2_rt::set_contains;
 use crate::v2_std_core::AlgebraFieldKind::*;
 use crate::v2_std_core::BinOp::*;
 use crate::v2_std_core::CallSemantics::{LookupCallSemantics, PlainCallSemantics};
@@ -122,6 +118,7 @@ pub use crate::v2_std_core::{
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
+use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -1474,7 +1471,7 @@ pub fn is_type_constant(
     recursive_type_set: Rc<std::collections::BTreeSet<String>>,
 ) -> bool {
     {
-        let is_recursive = v2_rt::set_contains(recursive_type_set, summary.name.clone());
+        let is_recursive = v2_rt::set_contains(&recursive_type_set, summary.name.clone());
         let has_generics = ((summary.generic_param_names.clone().len() as i64) > 0);
         match (*summary.repr.clone()).clone() {
             TypeRepr::EnumRepr { unit_only, .. } => {
@@ -1598,7 +1595,7 @@ pub struct OwnershipBuildResult {
 pub fn build_ownership_results(modules: &Rc<Vec<Rc<TypedModule>>>) -> Rc<OwnershipBuildResult> {
     {
         let callable_set = modules.clone().iter().cloned().fold(
-            v2_rt::rc_empty_set::<_>(), /* BRIDGE: fold empty_set accumulator type unresolved */
+            compile_error!("empty_set element type unresolved"),
             |acc: _, m: Rc<TypedModule>| {
                 Rc::new({
                     let mut __result = Vec::new();
@@ -1625,16 +1622,59 @@ pub fn build_ownership_results(modules: &Rc<Vec<Rc<TypedModule>>>) -> Rc<Ownersh
         let proofs = Rc::new({
             let mut __result = Vec::new();
             for m in modules.clone().iter().cloned() {
-                __result.extend((*Rc::new({ let mut __result = Vec::new(); for item in Rc::new({ let mut __result = Vec::new(); for item in m.items.clone().iter().cloned() { if (item.body.clone() != None) { __result.push(item); } } __result }).iter().cloned() { __result.push({
-            let pnames = item.params.clone().iter().cloned().fold(v2_rt::rc_empty_set::<_>() /* BRIDGE: fold empty_set accumulator type unresolved */, |acc: _, p: Rc<Node>| v2_rt::rc_set_insert(acc, param_node_name_at(p.clone(), m.type_env.clone().source_indices.clone())));
-let si = m.type_env.clone().source_indices.clone();
-let qualified = v2_rt::concat(v2_rt::concat(authored_name_at(si.clone(), &m.module.clone()), ".".to_string()), authored_name_at(si.clone(), &item));
-Rc::new(OwnershipProofEntry {
-    name: qualified.clone(),
-    proof: analyze_ownership(authored_name_at(si.clone(), &item), item.params.clone(), item.body.clone().clone().unwrap(), &si),
-    param_names: pnames.clone(),
-})
-}); } __result })).iter().cloned());
+                __result.extend(
+                    (*Rc::new({
+                        let mut __result = Vec::new();
+                        for item in Rc::new({
+                            let mut __result = Vec::new();
+                            for item in m.items.clone().iter().cloned() {
+                                if (item.body.clone() != None) {
+                                    __result.push(item);
+                                }
+                            }
+                            __result
+                        })
+                        .iter()
+                        .cloned()
+                        {
+                            __result.push({
+                                let pnames = item.params.clone().iter().cloned().fold(
+                                    compile_error!("empty_set element type unresolved"),
+                                    |acc: _, p: Rc<Node>| {
+                                        v2_rt::rc_set_insert(
+                                            acc,
+                                            param_node_name_at(
+                                                p.clone(),
+                                                m.type_env.clone().source_indices.clone(),
+                                            ),
+                                        )
+                                    },
+                                );
+                                let si = m.type_env.clone().source_indices.clone();
+                                let qualified = v2_rt::concat(
+                                    v2_rt::concat(
+                                        authored_name_at(si.clone(), &m.module.clone()),
+                                        ".".to_string(),
+                                    ),
+                                    authored_name_at(si.clone(), &item),
+                                );
+                                Rc::new(OwnershipProofEntry {
+                                    name: qualified.clone(),
+                                    proof: analyze_ownership(
+                                        authored_name_at(si.clone(), &item),
+                                        item.params.clone(),
+                                        item.body.clone().clone().unwrap(),
+                                        &si,
+                                    ),
+                                    param_names: pnames.clone(),
+                                })
+                            });
+                        }
+                        __result
+                    }))
+                    .iter()
+                    .cloned(),
+                );
             }
             __result
         });
@@ -1653,7 +1693,7 @@ Rc::new(OwnershipProofEntry {
                 let acc = Rc::try_unwrap(acc).unwrap_or_else(|rc| (*rc).clone());
                 {
                     let read_only = if v2_rt::set_contains(
-                        callable_set.clone(),
+                        &callable_set,
                         entry.proof.clone().func_name.clone(),
                     ) {
                         v2_rt::rc_empty_set::<String>()
@@ -2772,10 +2812,10 @@ pub fn needs_box_wrapping(
     loop {
         if ((n.children.clone().len() as i64) == 0) {
             let name = authored_name_at(source_indices, &n);
-            if v2_rt::set_contains(shared_types, name.clone()) {
+            if v2_rt::set_contains(&shared_types, name.clone()) {
                 break false;
             } else {
-                break v2_rt::set_contains(recursive_types, name.clone());
+                break v2_rt::set_contains(&recursive_types, name.clone());
             }
         } else {
             let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
@@ -2985,7 +3025,7 @@ pub fn emit_struct_from_children(
         let derives = if has_fn_fields {
             "#[derive(Clone)]".to_string()
         } else {
-            if v2_rt::set_contains(shared_types.clone(), name.clone()) {
+            if v2_rt::set_contains(&shared_types, name.clone()) {
                 rust_struct_derives_text()
             } else {
                 rust_struct_derives_copy_text()
@@ -3094,8 +3134,7 @@ pub fn emit_struct_field_from_child(
                                     ),
                                     ">".to_string(),
                                 );
-                                if v2_rt::set_contains(shared_types.clone(), rt_child_name.clone())
-                                {
+                                if v2_rt::set_contains(&shared_types, rt_child_name.clone()) {
                                     v2_rt::concat(
                                         v2_rt::concat("Rc<".to_string(), with_params),
                                         ">".to_string(),
@@ -4526,7 +4565,7 @@ pub fn emit_param(
         let ty = emit_rust_param_type(&n, &shared_types, &source_indices);
         let pname = param_node_name_at(param.clone(), source_indices.clone());
         let is_callable_param = ((n.params.clone().len() as i64) > 0);
-        let is_borrowable = ((v2_rt::set_contains(read_only_params, pname.clone())
+        let is_borrowable = ((v2_rt::set_contains(&read_only_params, pname.clone())
             && (is_callable_param == false))
             && needs_reference_node(&n, source_indices.clone()));
         let final_ty = if is_borrowable {
@@ -4852,9 +4891,9 @@ pub fn emit_variant_pattern(
                         None => name.clone(),
                     };
                     let is_fielded =
-                        (v2_rt::set_contains(emit_info.fielded_variants.clone(), fielded_key)
+                        (v2_rt::set_contains(&emit_info.fielded_variants.clone(), fielded_key)
                             || v2_rt::set_contains(
-                                emit_info.fielded_variants.clone(),
+                                &emit_info.fielded_variants.clone(),
                                 qualified.clone(),
                             ));
                     if is_fielded {
@@ -4887,10 +4926,10 @@ pub fn emit_variant_pattern(
                                 None => name.clone(),
                             };
                             let is_fielded2 = (v2_rt::set_contains(
-                                emit_info.fielded_variants.clone(),
+                                &emit_info.fielded_variants.clone(),
                                 fielded_key2,
                             ) || v2_rt::set_contains(
-                                emit_info.fielded_variants.clone(),
+                                &emit_info.fielded_variants.clone(),
                                 qualified.clone(),
                             ));
                             if is_fielded2 {
@@ -5054,9 +5093,7 @@ pub fn analyze_rc_pattern(
                         &scrut_type,
                         emit_info.type_summaries.clone(),
                     ) {
-                        Some(enum_name) => {
-                            v2_rt::set_contains(shared_types.clone(), enum_name.clone())
-                        }
+                        Some(enum_name) => v2_rt::set_contains(&shared_types, enum_name.clone()),
                         None => false,
                     };
                     let ref_bound_fields = Rc::new({
@@ -5131,7 +5168,7 @@ pub fn analyze_rc_match(
             Some(InferredNode::Resolved { node: rt, .. }) => {
                 if (((rt.children.clone().len() as i64) == 0) && (rt.ident_span.clone() != None)) {
                     v2_rt::set_contains(
-                        shared_types.clone(),
+                        &shared_types,
                         authored_name_at(source_indices.clone(), &rt),
                     )
                 } else {
@@ -5276,9 +5313,9 @@ pub fn emit_variant_pattern_rc_aware(
                         None => name.clone(),
                     };
                     let is_fielded =
-                        (v2_rt::set_contains(emit_info.fielded_variants.clone(), fielded_key)
+                        (v2_rt::set_contains(&emit_info.fielded_variants.clone(), fielded_key)
                             || v2_rt::set_contains(
-                                emit_info.fielded_variants.clone(),
+                                &emit_info.fielded_variants.clone(),
                                 qualified.clone(),
                             ));
                     if is_fielded {
@@ -5311,10 +5348,10 @@ pub fn emit_variant_pattern_rc_aware(
                                 None => name.clone(),
                             };
                             let is_fielded2 = (v2_rt::set_contains(
-                                emit_info.fielded_variants.clone(),
+                                &emit_info.fielded_variants.clone(),
                                 fielded_key2,
                             ) || v2_rt::set_contains(
-                                emit_info.fielded_variants.clone(),
+                                &emit_info.fielded_variants.clone(),
                                 qualified.clone(),
                             ));
                             if is_fielded2 {
@@ -5677,7 +5714,7 @@ pub fn emit_var_ref(
             emit_keyword(name.clone(), RenderTarget::Rust)
         } else {
             {
-                let moves_by_value = v2_rt::set_contains(emit_info.movable.clone(), name.clone());
+                let moves_by_value = v2_rt::set_contains(&emit_info.movable.clone(), name.clone());
                 let sharing = language_spec(RenderTarget::Rust).sharing.clone();
                 let variant_parent = effective_variant_parent(
                     &name,
@@ -5692,7 +5729,7 @@ pub fn emit_var_ref(
                             v2_rt::concat(enum_name.clone(), "::".to_string()),
                             name.clone(),
                         );
-                        if v2_rt::set_contains(shared_types, enum_name.clone()) {
+                        if v2_rt::set_contains(&shared_types, enum_name.clone()) {
                             v2_rt::concat(
                                 v2_rt::concat("Rc::new(".to_string(), qualified),
                                 ")".to_string(),
@@ -5792,7 +5829,7 @@ pub fn emit_typed_expr_base(
                                         v2_rt::concat(enum_name.clone(), "::".to_string()),
                                         n.clone(),
                                     );
-                                    if v2_rt::set_contains(shared_types, enum_name.clone()) {
+                                    if v2_rt::set_contains(&shared_types, enum_name.clone()) {
                                         v2_rt::concat(
                                             v2_rt::concat("Rc::new(".to_string(), qualified),
                                             ")".to_string(),
@@ -5955,7 +5992,10 @@ pub fn emit_typed_field_access(
                                         base.clone(),
                                         scope.type_env.clone().source_indices.clone(),
                                     );
-                                    v2_rt::set_contains(emit_info.owned_bindings.clone(), base_name)
+                                    v2_rt::set_contains(
+                                        &emit_info.owned_bindings.clone(),
+                                        base_name,
+                                    )
                                 }
                                 _ => false,
                             };
@@ -6180,7 +6220,12 @@ pub fn rust_empty_set_element_type_str(
                 if !rust_btree_set_element_ord_eligible(elem_node.clone(), source_indices.clone()) {
                     "".to_string()
                 } else {
-                    render_rust_type(elem_node.clone(), shared_types, source_indices.clone())
+                    render_node_type(
+                        &elem_node,
+                        &RenderTarget::Rust,
+                        &shared_types,
+                        &source_indices,
+                    )
                 }
             }
         }
@@ -6208,8 +6253,8 @@ pub fn emit_rust_empty_set_expr(
                     {
                         let elem_name = authored_name_at(source_indices.clone(), &elem_node);
                         emit_rust_compile_error_expr(v2_rt::concat(
-                            v2_rt::concat("empty_set: element type ".to_string(), elem_name),
-                            " does not satisfy Rust Ord for BTreeSet".to_string(),
+                            v2_rt::concat("empty_set element type ".to_string(), elem_name),
+                            " is not Ord-eligible for BTreeSet".to_string(),
                         ))
                     }
                 } else {
@@ -6542,7 +6587,7 @@ pub fn emit_rust_expr_record_lit(
                 },
             };
             if ((rc_name.clone().as_str() != "".to_string().as_str())
-                && v2_rt::set_contains(shared_types.clone(), rc_name.clone()))
+                && v2_rt::set_contains(&shared_types, rc_name.clone()))
             {
                 v2_rt::concat(v2_rt::concat("Rc::new(".to_string(), raw), ")".to_string())
             } else {
@@ -7214,7 +7259,7 @@ pub fn emit_typed_call(
                     )]),
                 };
                 let fields_str = field_strs.join(&", ".to_string());
-                let needs_rc = v2_rt::set_contains(shared_types.clone(), type_name.clone());
+                let needs_rc = v2_rt::set_contains(&shared_types, type_name.clone());
                 let sharing = language_spec(RenderTarget::Rust).sharing.clone();
                 let spread = if needs_rc.clone() {
                     apply_type_template1(sharing.deref_clone.clone(), base_str)
@@ -7360,7 +7405,7 @@ pub fn emit_typed_call(
                         let n = param_node_type_expr(&pair.1.clone());
                         let is_callable = ((n.params.clone().len() as i64) > 0);
                         let is_borrowable =
-                            ((v2_rt::set_contains(callee_read_only.clone(), pname.clone())
+                            ((v2_rt::set_contains(&callee_read_only, pname.clone())
                                 && (is_callable.clone() == false))
                                 && needs_reference_node(
                                     &n,
@@ -8147,7 +8192,7 @@ pub fn emit_typed_fold_lambda(
                 None => "".to_string(),
             };
             let needs_unwrap = ((acc_name.clone().as_str() != "".to_string().as_str())
-                && v2_rt::set_contains(emit_info.owned_bindings.clone(), acc_name.clone()));
+                && v2_rt::set_contains(&emit_info.owned_bindings.clone(), acc_name.clone()));
             if needs_unwrap {
                 {
                     let acc_ident = emit_ident(acc_name.clone(), RenderTarget::Rust);
@@ -8343,7 +8388,7 @@ pub fn emit_rust_fold_method_call(
         let structural_move =
             (fold_proof.eligible.clone() && fold_proof.whole_acc_single_use.clone());
         let acc_unwrap =
-            (structural_unwrap && v2_rt::set_contains(shared_types.clone(), acc_type_name.clone()));
+            (structural_unwrap && v2_rt::set_contains(&shared_types, acc_type_name.clone()));
         let fold_emit_info = if acc_unwrap {
             match (*fold_lambda_node.expr_data.clone()).clone() {
                 ExprData::ExprLambda => {
@@ -9073,7 +9118,7 @@ pub fn emit_rust_with_method_call(
             )]),
         };
         let fields_str = field_strs.join(&", ".to_string());
-        let needs_rc = v2_rt::set_contains(shared_types.clone(), type_name.clone());
+        let needs_rc = v2_rt::set_contains(&shared_types, type_name.clone());
         let sharing = language_spec(RenderTarget::Rust).sharing.clone();
         let spread = if needs_rc.clone() {
             apply_type_template1(sharing.deref_clone.clone(), base_str)
@@ -10486,7 +10531,7 @@ pub fn emit_field_value_with_context(
                         None => variant_name.clone(),
                     };
                     if ((rc_name.clone().as_str() != "".to_string().as_str())
-                        && v2_rt::set_contains(shared_types.clone(), rc_name.clone()))
+                        && v2_rt::set_contains(&shared_types, rc_name.clone()))
                     {
                         v2_rt::concat(v2_rt::concat("Rc::new(".to_string(), raw), ")".to_string())
                     } else {
@@ -10678,10 +10723,7 @@ pub fn emit_typed_record_lit(
                                         ),
                                         "\n}".to_string(),
                                     );
-                                    if v2_rt::set_contains(
-                                        shared_types.clone(),
-                                        resolved_sn.clone(),
-                                    ) {
+                                    if v2_rt::set_contains(&shared_types, resolved_sn.clone()) {
                                         v2_rt::concat(
                                             v2_rt::concat("Rc::new(".to_string(), struct_lit),
                                             ")".to_string(),
@@ -14761,7 +14803,7 @@ pub fn emit_data_def(
         };
         let fn_name = to_snake(name);
         let needs_rc = v2_rt::set_contains(
-            shared_types.clone(),
+            &shared_types,
             authored_name_at(scope.type_env.clone().source_indices.clone(), &type_node),
         );
         if is_simple_type_node(
@@ -16298,7 +16340,7 @@ pub fn emit_main_call_args(wf: &Rc<WorkflowFunc>, has_services: bool) -> String 
                     let ident = emit_ident(pname.clone(), RenderTarget::Rust);
                     let n = param_node_type_expr(&p);
                     let is_borrowable =
-                        ((v2_rt::set_contains(wf.read_only_params.clone(), pname.clone())
+                        ((v2_rt::set_contains(&wf.read_only_params.clone(), pname.clone())
                             && ((n.params.clone().len() as i64) == 0))
                             && needs_reference_node(&n, wf.source_indices.clone()));
                     if is_borrowable.clone() {
