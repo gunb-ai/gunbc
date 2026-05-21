@@ -41,7 +41,6 @@ import v4.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
 
 data sr_unbound_root_symbol: Symbol = sr_unbound_root_symbol
 data sr_unbound_child_symbol: Symbol = sr_unbound_child_symbol
-data sr_unbound_edge_symbol: Symbol = sr_unbound_edge_symbol
 data sr_unbound_type_symbol: Symbol = sr_unbound_type_symbol
 data sr_unbound_algebra_symbol: Symbol = sr_unbound_algebra_symbol
 data sr_unbound_algebra_witness_symbol: Symbol = sr_unbound_algebra_witness_symbol
