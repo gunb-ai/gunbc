@@ -9,9 +9,17 @@ module v4.std.verification
 
 import v4.std.node { Node }
 import v4.std.diagnostic {
+  AmbiguousIntent,
   Diagnostic,
-  Outcome
+  NodeLocus,
+  Outcome,
+  Rejected,
+  Unavailable,
+  diagnostics_singleton
 }
+
+
+data test_claim_roundtrip_has_no_declared_outcome: Symbol = test_claim_roundtrip_has_no_declared_outcome
 
 
 // RULING-1: pretty-much-done — closed TestClaim tier set.
@@ -138,6 +146,14 @@ fn test_claim_expected_outcome(c: TestClaim) -> Outcome<Node> {
     EqualsClaim { rhs: r, label: _, t19_anchor: _, lhs: _, classification: _ } =>
       Accepted { value: r, diagnostics: None }
     RoundTripClaim { input: n, label: _, t19_anchor: _, classification: _ } =>
-      Accepted { value: n, diagnostics: None }
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: Diagnostic {
+            reason: test_claim_roundtrip_has_no_declared_outcome,
+            at: NodeLocus { node: n },
+            correction: Unavailable { reason: AmbiguousIntent }
+          }
+        )
+      }
   }
 }

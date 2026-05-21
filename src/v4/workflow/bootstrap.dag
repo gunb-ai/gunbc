@@ -23,14 +23,11 @@ data v4_stage0_hash_pin: Symbol = v4_stage0_hash_pin
 data v4_stage1_hash_pin: Symbol = v4_stage1_hash_pin
 data v4_stage2_hash_pin: Symbol = v4_stage2_hash_pin
 data pinned_v4_fixed_point_hash_pin: Symbol = pinned_v4_fixed_point_hash_pin
-// RULING-1: 🟡 needs-more-work — symbolic hash pins (B1 content_hash operands land later).
-// Stage-1 output digest carrier (self0.produces_hash / fixpt.left_hash).
+// RULING-1: 🟡 needs-more-work — opaque digest tags (B1 content_hash operands land later).
 data v4_stage0_hash: Hash = v4_stage0_hash
 data v4_stage1_hash: Hash = v4_stage1_hash
-// Stage-2 output digest carrier (self1.produces_hash / fixpt.right_hash); at fixpoint equals stage-1.
-data v4_stage2_hash: Hash = v4_stage1_hash
-// Pinned fixed-point digest carrier (fixpt.pinned_hash); at fixpoint equals stage-1 output hash.
-data pinned_v4_fixed_point_hash: Hash = v4_stage1_hash
+data v4_stage2_hash: Hash = v4_stage2_hash
+data pinned_v4_fixed_point_hash: Hash = pinned_v4_fixed_point_hash
 
 type BootstrapHashPin {
   digest: Hash
@@ -116,8 +113,10 @@ fn bootstrap_plan_well_formed(p: BootstrapPlan) -> Outcome<BootstrapPlan> {
        && (p.fixpt.left_hash.pin == p.fixpt.right_hash.pin)
        && (p.fixpt.pinned_hash.pin == pinned_v4_fixed_point_hash_pin)
        && (p.fixpt.left_hash.pin == p.fixpt.pinned_hash.pin)
-       && (p.fixpt.left_hash.digest == p.fixpt.right_hash.digest)
-       && (p.fixpt.left_hash.digest == p.fixpt.pinned_hash.digest)
+       && (p.self0.produces_hash.digest == p.self1.produces_hash.digest)
+       && (p.fixpt.left_hash.digest == p.self0.produces_hash.digest)
+       && (p.fixpt.right_hash.digest == p.self1.produces_hash.digest)
+       && (p.fixpt.pinned_hash.digest == p.self0.produces_hash.digest)
        && (p.fixpt.via == bit_identical_check) {
     Accepted { value: p, diagnostics: None }
   } else {
@@ -172,15 +171,15 @@ data bootstrap_plan: Outcome<BootstrapPlan> = bootstrap_plan_well_formed(p: Boot
   self1: CompileStage {
     consumes: [v4_dag_source, v4_stage1_binary],
     produces: v4_stage2_binary,
-    produces_hash: BootstrapHashPin { digest: v4_stage2_hash, pin: v4_stage2_hash_pin },
+    produces_hash: BootstrapHashPin { digest: v4_stage1_hash, pin: v4_stage2_hash_pin },
     compiled_by: v4_stage1_binary
   },
   fixpt: FixptStage1Stage2 {
     left: v4_stage1_binary,
     left_hash: BootstrapHashPin { digest: v4_stage1_hash, pin: v4_stage1_hash_pin },
     right: v4_stage2_binary,
-    right_hash: BootstrapHashPin { digest: v4_stage2_hash, pin: v4_stage2_hash_pin },
-    pinned_hash: BootstrapHashPin { digest: pinned_v4_fixed_point_hash, pin: pinned_v4_fixed_point_hash_pin },
+    right_hash: BootstrapHashPin { digest: v4_stage1_hash, pin: v4_stage2_hash_pin },
+    pinned_hash: BootstrapHashPin { digest: v4_stage1_hash, pin: pinned_v4_fixed_point_hash_pin },
     via: bit_identical_check
   }
 })
