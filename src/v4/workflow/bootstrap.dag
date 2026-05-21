@@ -8,6 +8,7 @@ module v4.workflow.bootstrap
 
 import v4.std.node { Hash, Symbol }
 import v4.std.algebra {
+  count_equal,
   length
 }
 import v4.std.diagnostic {Correction, Diagnostic, Extent, Locus, NoCorrectionReason, Outcome, Accepted, None, diagnostics_singleton}
@@ -70,20 +71,14 @@ fn bs_diagnostic(reason: Symbol) -> Diagnostic {
   }
 }
 
-fn bs_count_in(xs: List<Symbol>, item: Symbol) -> Int {
-  fold(xs, init: 0, f: fn(acc, s) {
-    if s == item {
-      acc + 1
-    } else {
-      acc
-    }
-  })
+fn bs_symbol_eq(left: Symbol, right: Symbol) -> Bool {
+  left == right
 }
 
 fn bs_list_eq(a: List<Symbol>, b: List<Symbol>) -> Bool {
   if length(xs: a) == length(xs: b) {
     fold(a, init: true, f: fn(acc, x) {
-      acc && (bs_count_in(xs: a, item: x) == bs_count_in(xs: b, item: x))
+      acc && (count_equal(xs: a, item: x, eq: bs_symbol_eq) == count_equal(xs: b, item: x, eq: bs_symbol_eq))
     })
   } else {
     false
