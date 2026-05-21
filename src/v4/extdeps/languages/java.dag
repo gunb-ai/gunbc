@@ -1,8 +1,8 @@
 // src/v4/extdeps/languages/java.dag
 // Scope: Java SE Language Specification (JLS) LanguageModel — scalar fact-bundles, inhabitants, bidirectional grammar data.
 // Owns: JavaScalar, JavaIntegerPrimitiveFacts, JavaFloatPrimitiveFacts, JavaNonIntegerPrimitiveFacts, JavaLanguageModel, java_*_facts, java_*_inhabitant_node, java_declared_inhabitants_root, java_mvp1_target_model, java_wave1_* grammar/lex.
-// Consumes: v4.compiler.parse, v4.compiler.tokenize, v4.std.collection, v4.std.node, v4.std.logic, v4.std.algebra, v4.std.model_core, v4.std.target_model, v4.std.text.
-// Status: T-4 java slice — JLS §4.2 primitive types (not java.lang.String); `core: ModelCore` primitives + surface-symbol membership from catalogs via fold; canonical_symbols = catalog + wave-1 lex/grammar/MVP; MVP-1 grammar/token substrate for T-10; bool canonical-B decl-ref — 🟡 E-6(b) staging.
+// Consumes: v4.compiler.parse, v4.compiler.tokenize, v4.std.collection, v4.std.node, v4.std.logic, v4.std.algebra, v4.std.cardinality, v4.std.text.
+// Status: T-4 java slice — JLS §4.2 primitive types (not java.lang.String); `core: ModelCore` (#3474) primitives + surface-symbol membership from `java_*_facts_catalog` via fold; canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/target_model.dag; MVP-1 grammar/token substrate for T-10 (literal Node round-trip still 🟡); bool canonical-B decl-ref — 🟡 E-6(b) staging.
 // Anchor: https://docs.oracle.com/javase/specs/jls/se21/html/jls-4.html#jls-4.2
 
 module v4.extdeps.languages.java
@@ -39,6 +39,7 @@ import v4.std.model_core {
   PrimitiveFactAxisBinding,
   PrimitiveFactBundle,
   primitive_fact_axis_encoding,
+  primitive_fact_axis_overflow_disposition,
   primitive_fact_axis_signedness,
   primitive_fact_axis_surface_spelling,
   primitive_fact_axis_width
@@ -75,6 +76,7 @@ type JavaIntWidth
   | Bits16
   | Bits32
   | Bits64
+
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type JavaFloatWidth
@@ -121,14 +123,6 @@ type JavaNonIntegerPrimitiveFacts {
 type OverflowAction
   = TwoComplementWrap
 
-type JavaLanguageModel {
-  lex: LexRules
-  grammar: Grammar
-  language_identity: Symbol
-  canonical_symbols: Set<Symbol>
-  core: ModelCore
-}
-
 // T-11 java grammar relation row: fixed terminals and bound terminals share
 // the Java grammar production instead of an operator string template.
 type JavaConcreteSyntaxToken
@@ -147,20 +141,29 @@ data java_std_projection_byte: Symbol = java_std_projection_byte
 data java_std_projection_short: Symbol = java_std_projection_short
 data java_std_projection_int: Symbol = java_std_projection_int
 data java_std_projection_long: Symbol = java_std_projection_long
+data java_std_projection_float: Symbol = java_std_projection_float
+data java_std_projection_double: Symbol = java_std_projection_double
+data java_std_projection_boolean: Symbol = java_std_projection_boolean
+data java_std_projection_char: Symbol = java_std_projection_char
+data java_std_projection_void: Symbol = java_std_projection_void
+
 data java_surface_spelling_byte: Symbol = java_surface_spelling_byte
 data java_surface_spelling_short: Symbol = java_surface_spelling_short
 data java_surface_spelling_int: Symbol = java_surface_spelling_int
 data java_surface_spelling_long: Symbol = java_surface_spelling_long
-data java_std_projection_float: Symbol = java_std_projection_float
-data java_std_projection_double: Symbol = java_std_projection_double
 data java_surface_spelling_float: Symbol = java_surface_spelling_float
 data java_surface_spelling_double: Symbol = java_surface_spelling_double
+data java_surface_spelling_boolean: Symbol = java_surface_spelling_boolean
+data java_surface_spelling_char: Symbol = java_surface_spelling_char
+data java_surface_spelling_void: Symbol = java_surface_spelling_void
+
 data java_ieee754_binary32: Symbol = java_ieee754_binary32
 data java_ieee754_binary64: Symbol = java_ieee754_binary64
 data java_char_utf16_code_unit: Symbol = java_char_utf16_code_unit
 data java_repr_boolean: Symbol = java_repr_boolean
 data java_repr_void: Symbol = java_repr_void
 data java_repr_integer_twos_complement: Symbol = java_repr_integer_twos_complement
+
 data java_inhabitant_byte: Symbol = java_inhabitant_byte
 data java_inhabitant_short: Symbol = java_inhabitant_short
 data java_inhabitant_int: Symbol = java_inhabitant_int
@@ -170,6 +173,7 @@ data java_inhabitant_double: Symbol = java_inhabitant_double
 data java_inhabitant_boolean: Symbol = java_inhabitant_boolean
 data java_inhabitant_char: Symbol = java_inhabitant_char
 data java_inhabitant_void: Symbol = java_inhabitant_void
+
 data java_inhabitant_field_byte: Symbol = java_inhabitant_field_byte
 data java_inhabitant_field_short: Symbol = java_inhabitant_field_short
 data java_inhabitant_field_int: Symbol = java_inhabitant_field_int
@@ -179,11 +183,11 @@ data java_inhabitant_field_double: Symbol = java_inhabitant_field_double
 data java_inhabitant_field_boolean: Symbol = java_inhabitant_field_boolean
 data java_inhabitant_field_char: Symbol = java_inhabitant_field_char
 data java_inhabitant_field_void: Symbol = java_inhabitant_field_void
+
 data java_token_kw_static: Symbol = java_token_kw_static
 data java_token_kw_int: Symbol = java_token_kw_int
 data java_token_kw_return: Symbol = java_token_kw_return
 data java_token_ident: Symbol = java_token_ident
-data java_token_ty_int: Symbol = java_token_ty_int
 data java_token_plus: Symbol = java_token_plus
 data java_token_lbrace: Symbol = java_token_lbrace
 data java_token_rbrace: Symbol = java_token_rbrace
@@ -191,13 +195,16 @@ data java_token_lparen: Symbol = java_token_lparen
 data java_token_rparen: Symbol = java_token_rparen
 data java_token_comma: Symbol = java_token_comma
 data java_token_semicolon: Symbol = java_token_semicolon
+
 data java_production_mvp1_method_add: Symbol = java_production_mvp1_method_add
+
 data java_surface_method_item: Symbol = java_surface_method_item
 data java_surface_type_int: Symbol = java_surface_type_int
 data java_surface_bin_add: Symbol = java_surface_bin_add
 data java_binding_method_add: Symbol = java_binding_method_add
 data java_binding_param_x: Symbol = java_binding_param_x
 data java_binding_param_y: Symbol = java_binding_param_y
+
 data java_relation_field_production: Symbol = java_relation_field_production
 data java_relation_field_emitted: Symbol = java_relation_field_emitted
 data java_relation_field_tokens: Symbol = java_relation_field_tokens
@@ -207,8 +214,10 @@ data java_relation_field_token_kind: Symbol = java_relation_field_token_kind
 data java_relation_token_fixed: Symbol = java_relation_token_fixed
 data java_relation_token_bound: Symbol = java_relation_token_bound
 data java_relation_rule_mvp1_method_add: Symbol = java_relation_rule_mvp1_method_add
+
 data java_inhabitant_field_atom: Symbol = java_inhabitant_field_atom
 data java_inhabitant_field_facts: Symbol = java_inhabitant_field_facts
+
 data java_facts_field_surface_spelling: Symbol = java_facts_field_surface_spelling
 data java_facts_field_signedness: Symbol = java_facts_field_signedness
 data java_facts_field_width: Symbol = java_facts_field_width
@@ -217,9 +226,11 @@ data java_facts_field_std_projection: Symbol = java_facts_field_std_projection
 data java_facts_field_scalar_classifier: Symbol = java_facts_field_scalar_classifier
 data java_facts_field_ieee754_binary: Symbol = java_facts_field_ieee754_binary
 data java_facts_field_representation: Symbol = java_facts_field_representation
+
 data java_scalar_field_classifier: Symbol = java_scalar_field_classifier
 data java_scalar_field_kind: Symbol = java_scalar_field_kind
 data java_scalar_field_width: Symbol = java_scalar_field_width
+
 data java_tag_signed: Symbol = java_tag_signed
 data java_tag_bits8: Symbol = java_tag_bits8
 data java_tag_bits16: Symbol = java_tag_bits16
@@ -231,10 +242,13 @@ data java_tag_scalar_float: Symbol = java_tag_scalar_float
 data java_tag_scalar_bool: Symbol = java_tag_scalar_bool
 data java_tag_scalar_char: Symbol = java_tag_scalar_char
 data java_tag_scalar_void: Symbol = java_tag_scalar_void
+
 data java_mvp1_source_literal: Symbol = java_mvp1_source_literal
 data java_mvp1_source_text_field: Symbol = java_mvp1_source_text_field
 data java_mvp1_source_grammar_field: Symbol = java_mvp1_source_grammar_field
 
+data java_mvp1_source_grammar_field: Symbol = java_mvp1_source_grammar_field
+// Sole MVP-1 concrete-syntax authority — grammar and serialize_source project from this relation.
 fn java_mvp1_concrete_tokens() -> List<JavaConcreteSyntaxToken> {
   [
     JavaFixedToken { token_class: java_token_kw_static },
@@ -257,7 +271,6 @@ fn java_mvp1_concrete_tokens() -> List<JavaConcreteSyntaxToken> {
   ]
 }
 data java_mvp1_source_text: String = "static int add(int x, int y) { return x + y; }"
-
 
 data java_facts_byte: JavaIntegerPrimitiveFacts = JavaIntegerPrimitiveFacts {
   surface_spelling: java_surface_spelling_byte,
@@ -309,36 +322,46 @@ data java_facts_boolean: JavaNonIntegerPrimitiveFacts = JavaNonIntegerPrimitiveF
   surface_spelling: java_surface_spelling_boolean,
   scalar: BoolScalar,
   std_projection: java_std_projection_boolean,
-  representation: java_repr_boolean
+  representation: java_repr_boolean,
 }
 
 data java_facts_char: JavaNonIntegerPrimitiveFacts = JavaNonIntegerPrimitiveFacts {
   surface_spelling: java_surface_spelling_char,
   scalar: CharScalar,
   std_projection: java_std_projection_char,
-  representation: java_char_utf16_code_unit
+  representation: java_char_utf16_code_unit,
 }
 
 data java_facts_void: JavaNonIntegerPrimitiveFacts = JavaNonIntegerPrimitiveFacts {
   surface_spelling: java_surface_spelling_void,
   scalar: VoidScalar,
   std_projection: java_std_projection_void,
-  representation: java_repr_void
+  representation: java_repr_void,
 }
 
-data java_integer_facts_catalog: List<JavaIntegerPrimitiveFacts> = [java_facts_byte, java_facts_short, java_facts_int, java_facts_long]
-data java_float_facts_catalog: List<JavaFloatPrimitiveFacts> = [java_facts_float, java_facts_double]
-data java_noninteger_facts_catalog: List<JavaNonIntegerPrimitiveFacts> = [java_facts_boolean, java_facts_char, java_facts_void]
+// Sole primitive-fact list authorities — ModelCore.primitives and catalog surface_symbol membership derive via fold.
+data java_integer_facts_catalog: List<JavaIntegerPrimitiveFacts> = [
+  java_facts_byte,
+  java_facts_short,
+  java_facts_int,
+  java_facts_long,
+]
+
+data java_float_facts_catalog: List<JavaFloatPrimitiveFacts> = [
+  java_facts_float,
+  java_facts_double,
+]
+
+// Reference primitives only — not java.lang.String (library type; program Node later).
+data java_noninteger_facts_catalog: List<JavaNonIntegerPrimitiveFacts> = [
+  java_facts_boolean,
+  java_facts_char,
+  java_facts_void,
+]
+
+// 🟡 canonical-B decl-ref · E-6(b) bounded-exception · scaffold feature:canonical-b-grounding-consumer · dissolve-on: B1-CANON+zip-fold consume (ledger: B1·T-9/C1 · grounding-worked-examples.md §0)
 data java_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
-fn java_inhabitant_byte_node() -> Node { java_integer_inhabitant_node(id: java_inhabitant_byte, facts: java_facts_byte) }
-fn java_inhabitant_short_node() -> Node { java_integer_inhabitant_node(id: java_inhabitant_short, facts: java_facts_short) }
-fn java_inhabitant_int_node() -> Node { java_integer_inhabitant_node(id: java_inhabitant_int, facts: java_facts_int) }
-fn java_inhabitant_long_node() -> Node { java_integer_inhabitant_node(id: java_inhabitant_long, facts: java_facts_long) }
-fn java_inhabitant_float_node() -> Node { java_float_inhabitant_node(id: java_inhabitant_float, facts: java_facts_float) }
-fn java_inhabitant_double_node() -> Node { java_float_inhabitant_node(id: java_inhabitant_double, facts: java_facts_double) }
-fn java_inhabitant_boolean_node() -> Node { java_noninteger_inhabitant_node(id: java_inhabitant_boolean, facts: java_facts_boolean) }
-fn java_inhabitant_char_node() -> Node { java_noninteger_inhabitant_node(id: java_inhabitant_char, facts: java_facts_char) }
-fn java_inhabitant_void_node() -> Node { java_noninteger_inhabitant_node(id: java_inhabitant_void, facts: java_facts_void) }
+
 fn java_inhabitant_atom(id: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: id } },
@@ -397,6 +420,7 @@ fn java_scalar_node(scalar: JavaScalar) -> Node {
     }
     BoolScalar => java_inhabitant_atom(id: java_tag_scalar_bool)
     CharScalar => java_inhabitant_atom(id: java_tag_scalar_char)
+    VoidScalar => java_inhabitant_atom(id: java_tag_scalar_void)
   }
 }
 
@@ -532,47 +556,15 @@ fn java_noninteger_inhabitant_node(id: Symbol, facts: JavaNonIntegerPrimitiveFac
   }
 }
 
-}
-
-}
-
-}
-
-}
-
-}
-
-}
-
-}
-
-}
-
-}
-
-}
-
-}
-
-}
-
-}
-
-}
-
-fn java_inhabitant_bool_node() -> Node {
-  java_noninteger_inhabitant_node(id: java_inhabitant_bool, facts: java_facts_bool)
-}
-
-fn java_inhabitant_char_node() -> Node {
-  java_noninteger_inhabitant_node(id: java_inhabitant_char, facts: java_facts_char)
-}
-
-}
-
-}
-
-}
+fn java_inhabitant_byte_node() -> Node { java_integer_inhabitant_node(id: java_inhabitant_byte, facts: java_facts_byte) }
+fn java_inhabitant_short_node() -> Node { java_integer_inhabitant_node(id: java_inhabitant_short, facts: java_facts_short) }
+fn java_inhabitant_int_node() -> Node { java_integer_inhabitant_node(id: java_inhabitant_int, facts: java_facts_int) }
+fn java_inhabitant_long_node() -> Node { java_integer_inhabitant_node(id: java_inhabitant_long, facts: java_facts_long) }
+fn java_inhabitant_float_node() -> Node { java_float_inhabitant_node(id: java_inhabitant_float, facts: java_facts_float) }
+fn java_inhabitant_double_node() -> Node { java_float_inhabitant_node(id: java_inhabitant_double, facts: java_facts_double) }
+fn java_inhabitant_boolean_node() -> Node { java_noninteger_inhabitant_node(id: java_inhabitant_boolean, facts: java_facts_boolean) }
+fn java_inhabitant_char_node() -> Node { java_noninteger_inhabitant_node(id: java_inhabitant_char, facts: java_facts_char) }
+fn java_inhabitant_void_node() -> Node { java_noninteger_inhabitant_node(id: java_inhabitant_void, facts: java_facts_void) }
 
 fn java_named_edge(name: Symbol, target: Node) -> Edge {
   Edge { label: Named { name: name }, target: target }
@@ -581,6 +573,8 @@ fn java_named_edge(name: Symbol, target: Node) -> Edge {
 // Declared-inhabitant Conj root for `target_model_edge_declared_inhabitants`. T-10 staging
 // (`coercion_candidates_from_target_model`) passes this whole Conj as one aggregate
 // `CandidateSet.candidates` entry — not a flat List of per-primitive nodes. find_witness
+// enumeration inside the root is forward work (W-T-10). Coercion fixture pins i32 via
+// `TargetDeclaredPriority` on `java_inhabitant_i32_node`, not via inhabitants-root walk.
 fn java_declared_inhabitants_root() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -599,12 +593,16 @@ fn java_declared_inhabitants_root() -> Node {
 }
 
 fn java_mvp1_selection_policy_node() -> Node {
+  java_inhabitant_int_node()
 }
 
-fn java_mvp1_emitted_add_fn_node() -> Node {
+fn java_mvp1_emitted_add_method_node() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
+      Edge { label: Positional, target: java_inhabitant_int_node() },
+      Edge { label: Positional, target: java_inhabitant_int_node() },
+      Edge { label: Positional, target: java_inhabitant_int_node() }
     ]
   }
 }
@@ -710,7 +708,7 @@ fn java_mvp1_serialize_source_prefix_edges() -> List<Edge> {
     tail: Cons {
       head: java_named_edge(
         name: java_mvp1_source_grammar_field,
-        target: java_inhabitant_atom(id: java_production_mvp1_fn_add)
+        target: java_inhabitant_atom(id: java_production_mvp1_method_add)
       ),
       tail: Empty
     }
@@ -739,7 +737,7 @@ fn java_grammar_terminal(token_class: Symbol) -> GrammarExpr {
 
 fn java_grammar_sequence_fold_step(acc: GrammarExpr, token: JavaConcreteSyntaxToken) -> GrammarExpr {
   let token_class = java_concrete_token_class(token: token)
-  if token_class == java_token_kw_fn {
+  if token_class == java_token_kw_static {
     acc
   } else {
     Sequence {
@@ -752,7 +750,7 @@ fn java_grammar_sequence_fold_step(acc: GrammarExpr, token: JavaConcreteSyntaxTo
 fn java_grammar_sequence_from_token_classes() -> GrammarExpr {
   free_monoid_fold(
     xs: java_mvp1_concrete_tokens(),
-    empty: java_grammar_terminal(token_class: java_token_kw_fn),
+    empty: java_grammar_terminal(token_class: java_token_kw_static),
     cons: fn(acc, token) {
       java_grammar_sequence_fold_step(acc: acc, token: token)
     }
@@ -761,8 +759,8 @@ fn java_grammar_sequence_from_token_classes() -> GrammarExpr {
 
 fn java_mvp1_grammar_relation_row() -> JavaGrammarRelationRow {
   JavaGrammarRelationRow {
-    production: java_grammar_production_mvp1_fn_add(),
-    emitted: java_mvp1_emitted_add_fn_node(),
+    production: java_grammar_production_mvp1_method_add(),
+    emitted: java_mvp1_emitted_add_method_node(),
     tokens: java_mvp1_concrete_tokens()
   }
 }
@@ -805,7 +803,7 @@ fn java_mvp1_translation_rules_node() -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       java_named_edge(
-        name: java_relation_rule_mvp1_fn_add,
+        name: java_relation_rule_mvp1_method_add,
         target: java_grammar_relation_row_node(row: java_mvp1_grammar_relation_row())
       )
     ]
@@ -832,7 +830,7 @@ fn java_mvp1_target_model() -> Node {
       ),
       java_named_edge(
         name: target_model_edge_serialize_emitted,
-        target: java_mvp1_emitted_add_fn_node()
+        target: java_mvp1_emitted_add_method_node()
       ),
       java_named_edge(
         name: target_model_edge_serialize_source,
@@ -866,16 +864,17 @@ fn java_ident_lex_rule() -> LexRule {
 fn java_wave1_lex_rules() -> LexRuleSet {
   LexRuleSet {
     rules: [
-      java_lex_rule(token_class: java_token_kw_fn, text: "fn"),
+      java_lex_rule(token_class: java_token_kw_static, text: "static"),
+      java_lex_rule(token_class: java_token_kw_int, text: "int"),
+      java_lex_rule(token_class: java_token_kw_return, text: "return"),
       java_ident_lex_rule(),
       java_lex_rule(token_class: java_token_plus, text: "+"),
-      java_lex_rule(token_class: java_token_arrow, text: "->"),
       java_lex_rule(token_class: java_token_lbrace, text: "{"),
       java_lex_rule(token_class: java_token_rbrace, text: "}"),
       java_lex_rule(token_class: java_token_lparen, text: "("),
       java_lex_rule(token_class: java_token_rparen, text: ")"),
       java_lex_rule(token_class: java_token_comma, text: ","),
-      java_lex_rule(token_class: java_token_colon, text: ":")
+      java_lex_rule(token_class: java_token_semicolon, text: ";")
     ]
   }
 }
@@ -888,16 +887,16 @@ fn java_grammar_atom(id: Symbol) -> Node {
   java_inhabitant_atom(id: id)
 }
 
-fn java_grammar_production_mvp1_fn_add() -> GrammarProduction {
+fn java_grammar_production_mvp1_method_add() -> GrammarProduction {
   GrammarProduction {
-    name: java_production_mvp1_fn_add,
+    name: java_production_mvp1_method_add,
     expression: java_grammar_sequence_from_token_classes(),
-    emitted: java_grammar_atom(id: java_surface_fn_item)
+    emitted: java_grammar_atom(id: java_surface_method_item)
   }
 }
 
 fn java_wave1_grammar_root() -> GrammarRoot {
-  GrammarRoot { start: java_grammar_production_mvp1_fn_add() }
+  GrammarRoot { start: java_grammar_production_mvp1_method_add() }
 }
 
 fn java_wave1_grammar() -> Grammar {
@@ -968,14 +967,14 @@ fn java_wave1_lex_token_symbol(sym: Symbol) -> Bool {
   sym == java_token_kw_static ||
     sym == java_token_ident ||
     sym == java_token_kw_int ||
+    sym == java_token_kw_return ||
     sym == java_token_plus ||
     sym == java_token_lbrace ||
     sym == java_token_rbrace ||
     sym == java_token_lparen ||
     sym == java_token_rparen ||
     sym == java_token_comma ||
-    sym == java_token_semicolon ||
-    sym == java_token_kw_return
+    sym == java_token_semicolon
 }
 
 // Single symbol authority: fact-catalog surface spellings + wave-1 lex/grammar/MVP symbols.
@@ -997,6 +996,7 @@ fn java_primitive_axis_binding(axis: Symbol, fact: Node) -> PrimitiveFactAxisBin
 
 fn java_primitive_bundle_from_integer_facts(facts: JavaIntegerPrimitiveFacts) -> PrimitiveFactBundle {
   PrimitiveFactBundle {
+    substrate_carrier: java_integer_facts_node(facts: facts),
     spec_facts: [
       java_primitive_axis_binding(
         axis: primitive_fact_axis_surface_spelling,
@@ -1020,6 +1020,7 @@ fn java_primitive_bundle_from_integer_facts(facts: JavaIntegerPrimitiveFacts) ->
 
 fn java_primitive_bundle_from_float_facts(facts: JavaFloatPrimitiveFacts) -> PrimitiveFactBundle {
   PrimitiveFactBundle {
+    substrate_carrier: java_float_facts_node(facts: facts),
     spec_facts: [
       java_primitive_axis_binding(
         axis: primitive_fact_axis_surface_spelling,
@@ -1041,6 +1042,7 @@ fn java_primitive_bundle_from_noninteger_facts(
   facts: JavaNonIntegerPrimitiveFacts
 ) -> PrimitiveFactBundle {
   PrimitiveFactBundle {
+    substrate_carrier: java_noninteger_facts_node(facts: facts),
     spec_facts: [
       java_primitive_axis_binding(
         axis: primitive_fact_axis_surface_spelling,
