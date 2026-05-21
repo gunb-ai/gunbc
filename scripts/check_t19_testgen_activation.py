@@ -87,7 +87,7 @@ def main() -> None:
             "witness_lbe_transform_snapshot_pass",
             "witness_testgen_schedules_three_lbe_generators",
             "lbe_io_mock_conj_dag_surface",
-            "FrozenLanguageBehaviorSnapshot",
+            "LanguageBehaviorIoMock",
         ),
     )
 
