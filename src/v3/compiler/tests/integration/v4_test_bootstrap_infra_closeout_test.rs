@@ -49,7 +49,7 @@ fn t22_eval_diagnostic_assert_not_deferred_in_substrate() {
         "DiagnosticAssert must execute, not defer"
     );
     assert!(
-        EVAL_DAG.contains("aggregate_verdicts(rs:"),
+        EVAL_DAG.contains("verdict: aggregate_verdicts(") && EVAL_DAG.contains("rs: ["),
         "run_test_claim must route through aggregate_verdicts"
     );
 }
