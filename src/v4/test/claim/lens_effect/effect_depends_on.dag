@@ -95,3 +95,5 @@ fn effect_depends_on_claim_holds() -> Bool {
     _ => false
   }
 }
+
+data effect_depends_on_claim_passes: Bool = effect_depends_on_claim_holds()

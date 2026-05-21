@@ -100,3 +100,5 @@ fn parallelism_data_dependency_claim_holds() -> Bool {
     _ => false
   }
 }
+
+data parallelism_data_dependency_claim_passes: Bool = parallelism_data_dependency_claim_holds()

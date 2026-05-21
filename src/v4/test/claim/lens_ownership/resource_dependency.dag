@@ -100,3 +100,5 @@ fn ownership_resource_dependency_claim_holds() -> Bool {
     _ => false
   }
 }
+
+data ownership_resource_dependency_claim_passes: Bool = ownership_resource_dependency_claim_holds()
