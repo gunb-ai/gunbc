@@ -10441,6 +10441,26 @@ pub fn rust_box_new_value(raw_value: String) -> String {
     )
 }
 
+pub fn rust_struct_base_name(struct_name: String) -> String {
+    if v2_rt::contains(struct_name.clone(), "<".to_string()) {
+        match Rc::new(
+            struct_name
+                .clone()
+                .split(&"<".to_string())
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>(),
+        )
+        .first()
+        .cloned()
+        {
+            Some(base) => base.clone(),
+            None => struct_name.clone(),
+        }
+    } else {
+        struct_name.clone()
+    }
+}
+
 pub fn expr_is_function_value(texpr: Rc<Node>) -> bool {
     match (*texpr.expr_data.clone()).clone() {
         ExprData::ExprVar {
@@ -10486,7 +10506,7 @@ pub fn rust_field_value_for_struct(
     raw_value: String,
     field_value: &Rc<Node>,
     struct_node: Rc<Node>,
-    struct_name: &String,
+    struct_name: String,
     field_name: &String,
     scope: &Rc<InferScope>,
     emit_info: Rc<EmitGraphInfo>,
@@ -10494,8 +10514,10 @@ pub fn rust_field_value_for_struct(
     {
         let value_is_fn = (expr_is_function_value(field_value.clone())
             || expr_resolves_to_arrow(field_value.clone()));
+        let base_struct_name = rust_struct_base_name(struct_name);
         let storage_field_type =
-            match rust_struct_field_type_node(&scope, struct_name.clone(), field_name.clone()) {
+            match rust_struct_field_type_node(&scope, base_struct_name.clone(), field_name.clone())
+            {
                 Some(decl_field_type) => Some(decl_field_type.clone()),
                 None => lookup_struct_field_type_node(
                     struct_node,
@@ -10510,7 +10532,7 @@ pub fn rust_field_value_for_struct(
                 } else {
                     match field_type.connective.clone() {
                         Connective::Arrow => rust_rc_new_value(raw_value),
-                        _ => match lookup_emit_type_summary(emit_info, struct_name.clone()) {
+                        _ => match lookup_emit_type_summary(emit_info, base_struct_name.clone()) {
                             Some(summary) => {
                                 if type_node_is_generic_param(
                                     field_type.clone(),
@@ -10545,7 +10567,7 @@ pub fn rust_field_value_for_struct(
                     }
                 }
             }
-            None => match lookup_emit_type_summary(emit_info, struct_name.clone()) {
+            None => match lookup_emit_type_summary(emit_info, base_struct_name.clone()) {
                 Some(summary) => {
                     if value_is_fn {
                         rust_rc_new_value(raw_value)
@@ -10989,7 +11011,7 @@ pub fn emit_typed_record_lit(
                                             val_str.clone(),
                                             &f_value,
                                             resolved_type.clone(),
-                                            &tn,
+                                            tn.clone(),
                                             &f_name,
                                             &scope,
                                             emit_info.clone(),
