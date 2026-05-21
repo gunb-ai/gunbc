@@ -42,16 +42,11 @@ type TsEcma262PrimitiveOperationSemantics
   | TsNumberBitwiseInt32Uint32Semantics
   | TsBigIntExactUnboundedSemantics
 
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
-type TsNumberWidth
-  = TsBits64
-
 type TsNumberPrimitiveFacts {
   surface_spelling: Symbol
   kind: TsEcma262NumericPrimitiveKind
   arithmetic_semantics: TsEcma262PrimitiveOperationSemantics
   bitwise_semantics: TsEcma262PrimitiveOperationSemantics
-  width: TsNumberWidth
   ieee754_binary: Symbol
   std_projection: Symbol
 }
@@ -117,7 +112,6 @@ data ts_facts_number: TsNumberPrimitiveFacts = TsNumberPrimitiveFacts {
   kind: TsNumberPrimitive,
   arithmetic_semantics: TsNumberIeee754Binary64Semantics,
   bitwise_semantics: TsNumberBitwiseInt32Uint32Semantics,
-  width: TsBits64,
   ieee754_binary: ts_ieee754_binary64,
   std_projection: ts_std_projection_float64,
 }
@@ -168,12 +162,6 @@ fn ts_operation_semantics_node(sem: TsEcma262PrimitiveOperationSemantics) -> Nod
   }
 }
 
-fn ts_number_width_node(width: TsNumberWidth) -> Node {
-  match width {
-    TsBits64 => ts_inhabitant_atom(id: ts_tag_bits64)
-  }
-}
-
 fn ts_number_facts_node(facts: TsNumberPrimitiveFacts) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -196,7 +184,7 @@ fn ts_number_facts_node(facts: TsNumberPrimitiveFacts) -> Node {
       ),
       ts_named_edge(
         name: ts_facts_field_width,
-        target: ts_number_width_node(width: facts.width)
+        target: ts_inhabitant_atom(id: ts_tag_bits64)
       ),
       ts_named_edge(
         name: ts_facts_field_ieee754_binary,
@@ -331,7 +319,7 @@ fn ts_primitive_bundle_from_number_facts(facts: TsNumberPrimitiveFacts) -> Primi
       ),
       ts_primitive_axis_binding(
         axis: primitive_fact_axis_width,
-        fact: ts_number_width_node(width: facts.width)
+        fact: ts_inhabitant_atom(id: ts_tag_bits64)
       ),
       ts_primitive_axis_binding(
         axis: primitive_fact_axis_encoding,
