@@ -9901,6 +9901,12 @@ fn diag_render_node_type_evidence() {
                     v2_compiler::std_induction::SubValueRelation::PreservedValue => {
                         "PreservedValue"
                     }
+                    v2_compiler::std_induction::SubValueRelation::NonIncreasingValue => {
+                        "NonIncreasingValue"
+                    }
+                    v2_compiler::std_induction::SubValueRelation::IncomparableValue => {
+                        "IncomparableValue"
+                    }
                     v2_compiler::std_induction::SubValueRelation::SubValueUnknown => {
                         "SubValueUnknown"
                     }
