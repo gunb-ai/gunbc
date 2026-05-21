@@ -216,7 +216,7 @@ pub fn sub_value_structural_eq(a: Rc<SubValueRelation>, b: Rc<SubValueRelation>)
 pub fn is_strict_style_structural(r: Rc<SubValueRelation>) -> bool {
     match (*r).clone() {
         SubValueRelation::StrictSubValue { .. } => true,
-        SubValueRelation::IteratedSubValue { .. } => true,
+        SubValueRelation::IteratedSubValue { field: _, .. } => true,
         SubValueRelation::ArithmeticDescent { .. } => true,
         SubValueRelation::StrictAxisErased => true,
         _ => false,
@@ -228,7 +228,7 @@ pub fn sub_value_level(r: Rc<SubValueRelation>) -> i64 {
         SubValueRelation::MixedTop => 4,
         SubValueRelation::StrictAxisErased => 3,
         SubValueRelation::StrictSubValue { .. } => 2,
-        SubValueRelation::IteratedSubValue { .. } => 2,
+        SubValueRelation::IteratedSubValue { field: _, .. } => 2,
         SubValueRelation::ArithmeticDescent { .. } => 2,
         SubValueRelation::PreservedValue => 2,
         SubValueRelation::NonIncreasingValue => 1,
@@ -342,7 +342,7 @@ pub fn compose_sub_value_relations(
             SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
             SubValueRelation::PreservedValue => Rc::new(SubValueRelation::StrictAxisErased),
             SubValueRelation::StrictSubValue { .. } => Rc::new(SubValueRelation::StrictAxisErased),
-            SubValueRelation::IteratedSubValue { .. } => {
+            SubValueRelation::IteratedSubValue { field: _, .. } => {
                 Rc::new(SubValueRelation::StrictAxisErased)
             }
             SubValueRelation::ArithmeticDescent { .. } => {
