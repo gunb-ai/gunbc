@@ -33,6 +33,7 @@ import v4.std.collection { List }
 import v4.std.node { Node, Symbol }
 import v4.std.verification {
   DiagnosticClaim,
+  TestClaim,
   T19ManualAnchorAbsent,
   TestClassification,
   Tier1,
@@ -87,7 +88,7 @@ data accepted_actual: Outcome<Node> = Accepted {
 }
 
 
-data witness_diagnostic_claim_match: DiagnosticClaim = DiagnosticClaim {
+data witness_diagnostic_claim_match: TestClaim = DiagnosticClaim {
   label: "witness: diagnostic claim match",
   t19_anchor: T19ManualAnchorAbsent,
   input: diag_assert_node(),

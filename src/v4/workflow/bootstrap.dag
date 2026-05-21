@@ -8,8 +8,6 @@ module v4.workflow.bootstrap
 
 import v4.std.node { Hash, Symbol }
 import v4.std.algebra {
-  count_equal,
-  for_all,
   length
 }
 import v4.std.diagnostic {Correction, Diagnostic, Extent, Locus, NoCorrectionReason, Outcome, Accepted, None, diagnostics_singleton}

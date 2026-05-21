@@ -36,7 +36,7 @@ import v4.std.diagnostic {
   outcome_rejected
 }
 import v4.std.node { Atom, Conj, Node, Symbol, TypeNode }
-import v4.std.verification {Equals,
+import v4.std.verification {
   T19ManualAnchorAbsent,
   TestClaim,
   TestClassification,
@@ -44,8 +44,8 @@ import v4.std.verification {Equals,
   Unit,
   CompilesClaim,
   DiagnosticClaim,
-  EqualsClaim,
-  RoundTripClaim}
+  EqualsClaim
+}
 import v4.std.witness { Holds, Witness }
 
 
