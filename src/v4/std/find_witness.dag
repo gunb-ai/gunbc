@@ -85,6 +85,7 @@ fn preservation_rule_is_realized(rule: Symbol) -> Bool {
 }
 // P2: enumerate substrate-closed CandidateSet entries only — coercion/authored lists flatten
 // declared_inhabitants; find_witness must not Conj-expand entries (would drop aggregate carriers).
+// `predicate` is retained for call-site symmetry; rule realization is gated at find_witness entry.
 fn enumeration_candidate_list(
   candidates: CandidateSet,
   predicate: PreservationPredicate
@@ -100,6 +101,7 @@ fn preservation_predicate_holds(
     && well_formed(n: source_facts)
     && well_formed(n: predicate.algebra)
     && well_formed(n: candidate) {
+    // Arms must stay in lockstep with preservation_rule_is_realized (no default arm).
     match predicate.preservation_rule {
       preservation_rule_constraint_satisfaction => source_facts == candidate
       preservation_rule_exact_structural_equality_zip_fold =>
