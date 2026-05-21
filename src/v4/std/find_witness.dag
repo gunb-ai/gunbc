@@ -43,6 +43,11 @@ type FindWitnessResult {
   witness: StructuralPropertyWitness
   closedness: StructuralPropertyWitness
 }
+// 🟢 coproduct dissolution — local fold state for fail-closed unique candidate selection.
+type PassingCandidateFold
+  = NoPassingCandidate
+  | OnePassingCandidate { candidate: Node }
+  | ManyPassingCandidates
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type TargetSelectionPolicy
   = TargetDeclaredPriority { priority: Node }
@@ -106,18 +111,29 @@ fn only_passing_candidate(
   source_facts: Node,
   candidates: CandidateSet,
   predicate: PreservationPredicate,
-) -> Node {
-  fold(candidates.candidates, init: source_facts, f: fn(acc, candidate) {
+) -> Outcome<Node> {
+  match fold(candidates.candidates, init: NoPassingCandidate, f: fn(acc, candidate) {
     if preservation_predicate_holds(
       source_facts: source_facts,
       candidate: candidate,
       predicate: predicate
     ) {
-      candidate
+      match acc {
+        NoPassingCandidate => OnePassingCandidate { candidate: candidate }
+        OnePassingCandidate { candidate: _ } => ManyPassingCandidates
+        ManyPassingCandidates => ManyPassingCandidates
+      }
     } else {
       acc
     }
-  })
+  }) {
+    NoPassingCandidate =>
+      outcome_rejected(find_witness_no_candidate_diagnostic(source_facts: source_facts))
+    OnePassingCandidate { candidate: only } =>
+      Accepted { value: only, diagnostics: None }
+    ManyPassingCandidates =>
+      outcome_rejected(find_witness_ambiguous_candidate_diagnostic(source_facts: source_facts))
+  }
 }
 fn selected_candidate_count(
   source_facts: Node,
@@ -188,15 +204,18 @@ fn find_witness(
   )
   match passing_count {
     0 => outcome_rejected(find_witness_no_candidate_diagnostic(source_facts: source_facts))
-    1 => accepted_witness_result(
-      candidate: only_passing_candidate(
-        source_facts: source_facts,
-        candidates: candidates,
-        predicate: predicate
-      ),
+    1 => match only_passing_candidate(
+      source_facts: source_facts,
       candidates: candidates,
       predicate: predicate
-    )
+    ) {
+      Accepted { value: only, diagnostics: _ } => accepted_witness_result(
+        candidate: only,
+        candidates: candidates,
+        predicate: predicate
+      )
+      Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    }
     _ => match multiplicity_policy {
       UniqueOnly =>
         outcome_rejected(find_witness_ambiguous_candidate_diagnostic(source_facts: source_facts))
