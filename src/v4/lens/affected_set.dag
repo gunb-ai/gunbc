@@ -8,7 +8,16 @@ module v4.lens.affected_set
 
 
 import v4.std.collection { List, Map }
-import v4.std.diagnostic { Diagnostic, Outcome, Produced, Rejected }
+import v4.std.diagnostic {
+  Diagnostic,
+  Diagnostics,
+  NonEmptyDiagnostics,
+  Outcome,
+  Accepted,
+  None,
+  diagnostics_merge,
+  diagnostics_singleton
+}
 import v4.std.node { Diff, Edit, Hash, Node, Path, Symbol }
 import v4.std.witness { Holds, Witness }
 
@@ -80,7 +89,7 @@ type BoundaryExclusion {
 // 🟡 coproduct dissolution — #3153-subsumed.
 type WholeDagFailClosedEvidence
   = WholeDagReason { reason: Symbol }
-  | WholeDagDiagnostic { diagnostic: Diagnostic }
+  | WholeDagDiagnostics { diagnostics: NonEmptyDiagnostics }
 
 
 // 🟡 coproduct dissolution — #3153-subsumed
@@ -177,6 +186,7 @@ type AffectedPostEditDagRead {
 type AffectedFoldAcc {
   dag: Dag
   frontier: ReExecFrontier
+  pending: Diagnostics
 }
 
 
@@ -191,13 +201,26 @@ fn empty_frontier() -> ReExecFrontier {
 fn empty_affected_fold_acc(dag: Dag) -> AffectedFoldAcc {
   AffectedFoldAcc {
     dag: dag,
-    frontier: empty_frontier()
+    frontier: empty_frontier(),
+    pending: None
   }
 }
 
 
+fn fold_pending(acc: AffectedFoldAcc, next: Diagnostics) -> Diagnostics {
+  diagnostics_merge(outer: acc.pending, inner: next)
+}
+
+
+// Pending accepted diagnostics escalate to whole-DAG fail-closed (conservative Q11 policy).
+// When both a WholeDagReason and pending diagnostics exist, diagnostics evidence wins.
 fn frontier_from_fold_acc(acc: AffectedFoldAcc) -> ReExecFrontier {
-  acc.frontier
+  match acc.pending {
+    Some { diagnostics: nds } => WholeDagFailClosed {
+      evidence: WholeDagDiagnostics { diagnostics: nds }
+    }
+    None => acc.frontier
+  }
 }
 
 
@@ -271,8 +294,13 @@ fn mark_whole_dag(reason: Symbol) -> ReExecFrontier {
 }
 
 
+fn mark_whole_dag_diagnostics(diagnostics: NonEmptyDiagnostics) -> ReExecFrontier {
+  WholeDagFailClosed { evidence: WholeDagDiagnostics { diagnostics: diagnostics } }
+}
 fn mark_whole_dag_diagnostic(diagnostic: Diagnostic) -> ReExecFrontier {
-  WholeDagFailClosed { evidence: WholeDagDiagnostic { diagnostic: diagnostic } }
+  mark_whole_dag_diagnostics(
+    diagnostics: diagnostics_singleton(d: diagnostic)
+  )
 }
 
 
@@ -377,11 +405,12 @@ fn seed_edit_fold_acc_live(
     BoundaryPruned { proof: p } =>
       AffectedFoldAcc {
         dag: acc.dag,
-        frontier: mark_boundary_excluded(frontier: acc.frontier, edit: edit, proof: p)
+        frontier: mark_boundary_excluded(frontier: acc.frontier, edit: edit, proof: p),
+        pending: acc.pending
       }
     BoundaryExpands =>
       match post_edit_dag(acc.dag, edit).outcome {
-        Produced { value: next_dag } =>
+        Accepted { value: next_dag, diagnostics: ad } =>
           AffectedFoldAcc {
             dag: next_dag,
             frontier: expand_changed_dimensions(
@@ -390,25 +419,29 @@ fn seed_edit_fold_acc_live(
               frontier_dag: next_dag,
               frontier: acc.frontier,
               edit: edit
-            )
+            ),
+            pending: fold_pending(acc: acc, next: ad)
           }
-        Rejected { diagnostic: d } =>
+        Rejected { diagnostics: nds } =>
           AffectedFoldAcc {
             dag: acc.dag,
-            frontier: mark_whole_dag_diagnostic(diagnostic: d)
+            frontier: mark_whole_dag_diagnostics(diagnostics: nds),
+            pending: acc.pending
           }
       }
-    BoundaryUnknown { reason: r } =>
+    BoundaryUnknown { reason: boundary_reason } =>
       match post_edit_dag(acc.dag, edit).outcome {
-        Produced { value: _ } =>
+        Accepted { value: next_dag, diagnostics: ad } =>
           AffectedFoldAcc {
-            dag: acc.dag,
-            frontier: mark_whole_dag(reason: r)
+            dag: next_dag,
+            frontier: mark_whole_dag(reason: boundary_reason),
+            pending: fold_pending(acc: acc, next: ad)
           }
-        Rejected { diagnostic: d } =>
+        Rejected { diagnostics: nds } =>
           AffectedFoldAcc {
             dag: acc.dag,
-            frontier: mark_whole_dag_diagnostic(diagnostic: d)
+            frontier: mark_whole_dag_diagnostics(diagnostics: nds),
+            pending: acc.pending
           }
       }
   }

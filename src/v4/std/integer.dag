@@ -20,13 +20,7 @@ import v4.std.algebra {
   Ring,
   Semigroup
 }
-import v4.std.diagnostic {
-  Correction,
-  Diagnostic,
-  Locus,
-  NoCorrectionReason,
-  Outcome
-}
+import v4.std.diagnostic {Correction, Diagnostic, Locus, NoCorrectionReason, Outcome, Accepted, None, diagnostics_singleton}
 import v4.std.node { Symbol }
 import v4.std.machine {
   MachineWidth,
@@ -125,19 +119,19 @@ fn integer_modulo_by_zero_diagnostic(at: Locus) -> Diagnostic {
 fn int_div(a: Int, b: Int, at: Locus) -> Outcome<Int> {
   if int_is_zero(a: b) {
     Rejected {
-      diagnostic: integer_divide_by_zero_diagnostic(at: at)
+      diagnostics: diagnostics_singleton(d: integer_divide_by_zero_diagnostic(at: at))
     }
   } else {
-    Produced { value: a / b }
+    Accepted { value: a / b, diagnostics: None }
   }
 }
 
 fn int_mod(a: Int, b: Int, at: Locus) -> Outcome<Int> {
   if int_is_zero(a: b) {
     Rejected {
-      diagnostic: integer_modulo_by_zero_diagnostic(at: at)
+      diagnostics: diagnostics_singleton(d: integer_modulo_by_zero_diagnostic(at: at))
     }
   } else {
-    Produced { value: a % b }
+    Accepted { value: a % b, diagnostics: None }
   }
 }

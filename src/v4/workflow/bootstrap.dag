@@ -12,14 +12,7 @@ import v4.std.algebra {
   free_monoid_forall,
   free_monoid_length
 }
-import v4.std.diagnostic {
-  Correction,
-  Diagnostic,
-  Extent,
-  Locus,
-  NoCorrectionReason,
-  Outcome
-}
+import v4.std.diagnostic {Correction, Diagnostic, Extent, Locus, NoCorrectionReason, Outcome, Accepted, None, diagnostics_singleton}
 
 data v4_dag_source: Symbol = v4_dag_source
 data v4_stage0_binary: Symbol = v4_stage0_binary
@@ -91,8 +84,9 @@ fn bs_list_eq(a: List<Symbol>, b: List<Symbol>) -> Bool {
 
 fn bootstrap_stage_output(plan: Outcome<BootstrapPlan>, s: Symbol) -> Bool {
   match plan {
-    Produced { value: bp } => (s == bp.seed.produces) || (s == bp.self0.produces) || (s == bp.self1.produces)
-    Rejected { diagnostic: _ } => false
+    Accepted { value: bp, diagnostics: _ } =>
+      (s == bp.seed.produces) || (s == bp.self0.produces) || (s == bp.self1.produces)
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -117,9 +111,9 @@ fn bootstrap_plan_well_formed(p: BootstrapPlan) -> Outcome<BootstrapPlan> {
        && (p.fixpt.pinned_hash.pin == pinned_v4_fixed_point_hash_pin)
        && (p.fixpt.left_hash.pin == p.fixpt.pinned_hash.pin)
        && (p.fixpt.via == bit_identical_check) {
-    Produced { value: p }
+    Accepted { value: p, diagnostics: None }
   } else {
-    Rejected { diagnostic: bs_diagnostic(reason: bootstrap_mis_wired) }
+    Rejected { diagnostics: diagnostics_singleton(d: bs_diagnostic(reason: bootstrap_mis_wired)) }
   }
 }
 

@@ -9,13 +9,7 @@
 module v4.std.refinement
 
 
-import v4.std.diagnostic {
-  Correction,
-  Diagnostic,
-  Locus,
-  NoCorrectionReason,
-  Outcome
-}
+import v4.std.diagnostic {Correction, Diagnostic, Locus, NoCorrectionReason, Outcome, Accepted, None, diagnostics_singleton}
 import v4.std.node { Symbol }
 type Validation<B> {
   reason: Symbol
@@ -28,14 +22,16 @@ type Refined<B> {
 fn refine<B>(base: B, by: Validation<B>, at: Locus) -> Outcome<Refined<B>> {
   let admits = by.admits
   if admits(base) {
-    Produced { value: Refined { base: base } }
+    Accepted { value: Refined { base: base }, diagnostics: None }
   } else {
     Rejected {
-      diagnostic: Diagnostic {
-        reason: by.reason,
-        at: at,
-        correction: Unavailable { reason: UserInputBoundary }
-      }
+      diagnostics: diagnostics_singleton(
+        d: Diagnostic {
+          reason: by.reason,
+          at: at,
+          correction: Unavailable { reason: UserInputBoundary }
+        }
+      )
     }
   }
 }

@@ -20,7 +20,7 @@ import v4.std.verification {
   T19ManualTcInstantiationEmpty,
   T19ManualTcConjEqualsRefl
 }
-import v4.std.diagnostic { Produced }
+import v4.std.diagnostic { Accepted, None, Outcome }
 import v4.std.node { Node, TypeNode, Conj, Disj, Arrow, Cardinality, Instantiation, Edge }
 
 
@@ -62,7 +62,7 @@ data claim_conj_empty_compiles: TestClaim = TestClaim {
   label: "manual/connective: empty Conj type-node is structurally inhabitable",
   t19_anchor: T19ManualTcConjEmpty,
   input: stub_empty_conj,
-  expected: Produced { value: stub_empty_conj },
+  expected: Accepted { value: stub_empty_conj, diagnostics: None },
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
@@ -72,7 +72,7 @@ data claim_disj_empty_compiles: TestClaim = TestClaim {
   label: "manual/connective: empty Disj type-node is structurally inhabitable",
   t19_anchor: T19ManualTcDisjEmpty,
   input: stub_empty_disj,
-  expected: Produced { value: stub_empty_disj },
+  expected: Accepted { value: stub_empty_disj, diagnostics: None },
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
@@ -82,7 +82,7 @@ data claim_arrow_two_conj_compiles: TestClaim = TestClaim {
   label: "manual/connective: Arrow with two positional Conj leaves (no Atom)",
   t19_anchor: T19ManualTcArrowTwoConj,
   input: stub_arrow_pair,
-  expected: Produced { value: stub_arrow_pair },
+  expected: Accepted { value: stub_arrow_pair, diagnostics: None },
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
@@ -92,7 +92,7 @@ data claim_cardinality_empty_compiles: TestClaim = TestClaim {
   label: "manual/connective: Cardinality connective with zero positional children",
   t19_anchor: T19ManualTcCardinalityEmpty,
   input: stub_empty_cardinality,
-  expected: Produced { value: stub_empty_cardinality },
+  expected: Accepted { value: stub_empty_cardinality, diagnostics: None },
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
@@ -102,7 +102,7 @@ data claim_instantiation_empty_compiles: TestClaim = TestClaim {
   label: "manual/connective: Instantiation connective with zero positional children",
   t19_anchor: T19ManualTcInstantiationEmpty,
   input: stub_empty_instantiation,
-  expected: Produced { value: stub_empty_instantiation },
+  expected: Accepted { value: stub_empty_instantiation, diagnostics: None },
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
@@ -112,6 +112,6 @@ data claim_conj_equals_refl: TestClaim = TestClaim {
   label: "manual/connective: Equals reflexivity on empty Conj stub",
   t19_anchor: T19ManualTcConjEqualsRefl,
   input: stub_empty_conj,
-  expected: Produced { value: stub_empty_conj },
+  expected: Accepted { value: stub_empty_conj, diagnostics: None },
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
