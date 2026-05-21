@@ -42,13 +42,17 @@ fn fermi_eq(lhs: FermiDepth, rhs: FermiDepth) -> Bool {
   fermi_ordinal(depth: lhs) == fermi_ordinal(depth: rhs)
 }
 
+fn fermi_lattice_meet(lhs: FermiDepth, rhs: FermiDepth) -> FermiDepth {
+  if fermi_gt(lhs: lhs, rhs: rhs) { rhs } else { lhs }
+}
+
+fn fermi_lattice_join(lhs: FermiDepth, rhs: FermiDepth) -> FermiDepth {
+  if fermi_gt(lhs: lhs, rhs: rhs) { lhs } else { rhs }
+}
+
 data fermi_lattice: Lattice<FermiDepth> = Lattice {
-  meet: fn(lhs, rhs) {
-    if fermi_gt(lhs: lhs, rhs: rhs) { rhs } else { lhs }
-  }
-  join: fn(lhs, rhs) {
-    if fermi_gt(lhs: lhs, rhs: rhs) { lhs } else { rhs }
-  }
+  meet: fermi_lattice_meet
+  join: fermi_lattice_join
 }
 
 // Historical alias retained for callers that still use magnitude vocabulary.

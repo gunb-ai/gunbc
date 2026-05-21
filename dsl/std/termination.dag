@@ -87,34 +87,38 @@ fn evidence_rank(e: DescentEvidence) -> Int {
 
 // DescentEvidence inhabits BoundedLattice:
 //   top = Strict, bottom = DescentUnknown
-data descent_evidence_bounded_lattice: BoundedLattice<DescentEvidence> = BoundedLattice {
-  // Conservative meet: keep only evidence proven on every branch.
-  meet: fn(a, b) {
-    match a {
-      Strict => match b {
-        Strict => Strict
-        NonIncreasing => NonIncreasing
-        _ => DescentUnknown
-      }
-      NonIncreasing => match b {
-        Strict => NonIncreasing
-        NonIncreasing => NonIncreasing
-        _ => DescentUnknown
-      }
+// Conservative meet: keep only evidence proven on every branch.
+fn descent_evidence_lattice_meet(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence {
+  match a {
+    Strict => match b {
+      Strict => Strict
+      NonIncreasing => NonIncreasing
       _ => DescentUnknown
     }
-  }
-  // Optimistic join: keep the strongest evidence seen on any branch.
-  join: fn(a, b) {
-    match a {
-      DescentUnknown => b
-      NonIncreasing => match b {
-        Strict => Strict
-        _ => NonIncreasing
-      }
-      Strict => Strict
+    NonIncreasing => match b {
+      Strict => NonIncreasing
+      NonIncreasing => NonIncreasing
+      _ => DescentUnknown
     }
+    _ => DescentUnknown
   }
+}
+
+// Optimistic join: keep the strongest evidence seen on any branch.
+fn descent_evidence_lattice_join(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence {
+  match a {
+    DescentUnknown => b
+    NonIncreasing => match b {
+      Strict => Strict
+      _ => NonIncreasing
+    }
+    Strict => Strict
+  }
+}
+
+data descent_evidence_bounded_lattice: BoundedLattice<DescentEvidence> = BoundedLattice {
+  meet: descent_evidence_lattice_meet
+  join: descent_evidence_lattice_join
   top: Strict
   bottom: DescentUnknown
 }
