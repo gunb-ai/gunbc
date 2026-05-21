@@ -179,7 +179,7 @@ only in `DECISIONS.md` Part 6 (PR #3229)** — not here.
 // to the 5 L1 behaviors. It does NOT validate:
 //   - that a synthesizer actually produces gates from `emit`'s output
 //     (the "clear win" in the header — that requires invoking a
-//     synthesizer process, an `extdeps/process.dag` consumer
+//     synthesizer process, an `extdeps/posix.dag` consumer
 //     boundary, not modeled here).
 //   - the expression sub-grammar of `assign net = expr;` right-hand
 //     sides and procedural statement bodies (verbatim lexemes at
