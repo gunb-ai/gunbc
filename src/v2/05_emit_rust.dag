@@ -2445,19 +2445,7 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
     Some { value: parent } => concat(parent, "::", name)
     None => name
   }
-  // Positional payload (synthetic field "0"): tuple-style pattern, same as emit_variant_pattern.
-  if field_bindings |> count == 1 && match field_bindings |> first {
-    Some { value: fb } => field_binding_name_at(n: fb, source_indices: source_indices) == "0"
-    None => false
-  } {
-    match field_bindings |> first {
-      Some { value: fb } =>
-        let inner_analysis = analyze_rc_pattern(pattern: field_binding_pattern(n: fb), scrut_type: scrut_type, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
-        let inner_pat = emit_pattern_rc_aware(pattern: field_binding_pattern(n: fb), rc_analysis: inner_analysis, shared_types: shared_types, scrut_type: scrut_type, source_indices: source_indices, emit_info: emit_info)
-        concat(qualified, "(", inner_pat, ")")
-      None => qualified
-    }
-  } else if name == "Some" && field_bindings |> count == 1 {
+  if name == "Some" && field_bindings |> count == 1 {
     match field_bindings |> first {
       Some { value: fb } =>
         let fb_pat = field_binding_pattern(n: fb)
@@ -2467,6 +2455,22 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
           let inner_analysis = analyze_rc_pattern(pattern: fb_pat, scrut_type: scrut_type, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
           let inner_pat = emit_pattern_rc_aware(pattern: fb_pat, rc_analysis: inner_analysis, shared_types: shared_types, scrut_type: scrut_type, source_indices: source_indices, emit_info: emit_info)
           concat("Some(", inner_pat, ")")
+        }
+      None => qualified
+    }
+  } else if field_bindings |> count == 1 {
+    match field_bindings |> first {
+      Some { value: fb } =>
+        if field_binding_name_at(n: fb, source_indices: source_indices) == "0" {
+          let inner_analysis = analyze_rc_pattern(pattern: field_binding_pattern(n: fb), scrut_type: scrut_type, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
+          let inner_pat = emit_pattern_rc_aware(pattern: field_binding_pattern(n: fb), rc_analysis: inner_analysis, shared_types: shared_types, scrut_type: scrut_type, source_indices: source_indices, emit_info: emit_info)
+          concat(qualified, "(", inner_pat, ")")
+        } else {
+          let fb_name = field_binding_name_at(n: fb, source_indices: source_indices)
+          let fb_pat = field_binding_pattern(n: fb)
+          let inner_analysis = analyze_rc_pattern(pattern: fb_pat, scrut_type: scrut_type, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
+          let pat_str = emit_pattern_rc_aware(pattern: fb_pat, rc_analysis: inner_analysis, shared_types: shared_types, scrut_type: "", source_indices: source_indices, emit_info: emit_info)
+          concat(qualified, " { ", concat(emit_ident(name: fb_name, target: Rust), ": ", pat_str), ", .. }")
         }
       None => qualified
     }
