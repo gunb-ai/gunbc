@@ -38,6 +38,7 @@ module v4.test.claim.impossible_bug.idempotency_contract
 import v4.std.diagnostic {
   Accepted,
   Diagnostic,
+  LocusAnchor,
   NodeLocus,
   None,
   Outcome,

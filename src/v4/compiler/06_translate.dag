@@ -30,6 +30,7 @@ import v4.std.diagnostic {
   Accepted,
   Diagnostic,
   ExternalContractUnknown,
+  LocusAnchor,
   NodeLocus,
   Outcome,
   PortLocus,

@@ -27,6 +27,7 @@ module v4.test.claim.impossible_bug.unenumerated_effects
 import v4.std.diagnostic {
   Accepted,
   Diagnostic,
+  LocusAnchor,
   NodeLocus,
   None,
   Outcome,

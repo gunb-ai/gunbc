@@ -12,6 +12,7 @@ module v4.test.claim.algebra_laws.nat_semiring
 import v4.std.diagnostic {
   Accepted,
   Diagnostic,
+  LocusAnchor,
   NodeLocus,
   None,
   Outcome,

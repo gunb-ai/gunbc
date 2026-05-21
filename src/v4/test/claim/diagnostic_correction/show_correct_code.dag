@@ -14,6 +14,7 @@ import v4.std.diagnostic {
   ByteRange,
   Diagnostic,
   ExternalContractUnknown,
+  LocusAnchor,
   NodeLocus,
   Outcome,
   PortLocus,

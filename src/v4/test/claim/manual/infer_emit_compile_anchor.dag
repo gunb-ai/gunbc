@@ -22,6 +22,7 @@ import v4.std.collection { Map }
 import v4.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,
+  LocusAnchor,
   NodeLocus,
   Outcome,
   PortLocus,

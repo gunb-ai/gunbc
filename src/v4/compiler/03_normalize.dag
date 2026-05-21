@@ -18,6 +18,7 @@ import v4.extdeps.languages.dag {
 }
 import v4.std.diagnostic {
   Diagnostic,
+  LocusAnchor,
   NodeLocus,
   Outcome,
   UserInputBoundary,

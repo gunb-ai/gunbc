@@ -20,6 +20,7 @@ import v4.compiler.eval {
 import v4.std.diagnostic {
   AmbiguousIntent,
   Diagnostic,
+  LocusAnchor,
   NodeLocus,
   Outcome,
   Accepted,

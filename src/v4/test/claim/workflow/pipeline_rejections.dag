@@ -38,6 +38,7 @@ import v4.std.node {
 import v4.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,
+  LocusAnchor,
   NodeLocus,
   Outcome,
   Accepted,

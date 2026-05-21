@@ -24,6 +24,7 @@ module v4.test.claim.impossible_bug.nested_optional_flatten
 import v4.std.diagnostic {
   Accepted,
   Diagnostic,
+  LocusAnchor,
   NodeLocus,
   None,
   Outcome,

@@ -42,6 +42,7 @@ module v4.test.claim.impossible_bug.suboptimal_complexity
 import v4.std.diagnostic {
   Accepted,
   Diagnostic,
+  LocusAnchor,
   NodeLocus,
   None,
   Outcome,

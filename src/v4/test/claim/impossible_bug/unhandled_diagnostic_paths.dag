@@ -26,6 +26,7 @@ module v4.test.claim.impossible_bug.unhandled_diagnostic_paths
 import v4.std.diagnostic {
   Accepted,
   Diagnostic,
+  LocusAnchor,
   NodeLocus,
   None,
   Outcome,

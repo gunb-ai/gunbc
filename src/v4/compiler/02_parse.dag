@@ -10,7 +10,7 @@ module v4.compiler.parse
 
 
 import v4.compiler.tokenize { TokenStream }
-import v4.std.diagnostic {Correction, Diagnostic, ExternalContractUnknown, Locus, Outcome, PortLocus, UserInputBoundary, Accepted, None, diagnostics_singleton}
+import v4.std.diagnostic {Correction, Diagnostic, ExternalContractUnknown, Locus, Outcome, LocusAnchor, PortLocus, UserInputBoundary, Accepted, None, diagnostics_singleton}
 import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, well_formed }
 
 

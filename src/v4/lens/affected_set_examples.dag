@@ -8,6 +8,7 @@ module v4.lens.affected_set_examples
 
 import v4.std.diagnostic {
   Diagnostic,
+  LocusAnchor,
   NodeLocus,
   Unavailable,
   ExternalContractUnknown,

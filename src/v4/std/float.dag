@@ -11,7 +11,7 @@ module v4.std.float
 
 
 import v4.std.algebra { Ordering, Less, Equal, Greater }
-import v4.std.diagnostic {Diagnostic, Outcome, PortLocus, Unavailable, UserInputBoundary, Accepted, None, diagnostics_singleton}
+import v4.std.diagnostic {Diagnostic, Outcome, LocusAnchor, PortLocus, Unavailable, UserInputBoundary, Accepted, None, diagnostics_singleton}
 import v4.std.logic { Bool }
 import v4.std.machine { Bit, Word32, Word64 }
 import v4.std.nat { Nat, nat_compare, is_zero }

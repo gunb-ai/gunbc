@@ -15,6 +15,7 @@ import v4.std.collection { List }
 import v4.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,
+  LocusAnchor,
   NodeLocus,
   Outcome,
   Unavailable,
