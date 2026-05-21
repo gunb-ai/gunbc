@@ -76,6 +76,13 @@ fn find_witness_not_realized_diagnostic(source_facts: Node) -> Diagnostic {
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
+fn preservation_rule_is_realized(rule: Symbol) -> Bool {
+  match rule {
+    preservation_rule_constraint_satisfaction => true
+    preservation_rule_exact_structural_equality_zip_fold => true
+    _ => false
+  }
+}
 // P2: enumerate substrate-closed CandidateSet entries only — coercion/authored lists flatten
 // declared_inhabitants; find_witness must not Conj-expand entries (would drop aggregate carriers).
 fn enumeration_candidate_list(
@@ -89,12 +96,14 @@ fn preservation_predicate_holds(
   candidate: Node,
   predicate: PreservationPredicate
 ) -> Bool {
-  if well_formed(n: source_facts) && well_formed(n: predicate.algebra) && well_formed(n: candidate) {
+  if preservation_rule_is_realized(rule: predicate.preservation_rule)
+    && well_formed(n: source_facts)
+    && well_formed(n: predicate.algebra)
+    && well_formed(n: candidate) {
     match predicate.preservation_rule {
       preservation_rule_constraint_satisfaction => source_facts == candidate
       preservation_rule_exact_structural_equality_zip_fold =>
         (predicate.algebra == source_facts) && (candidate == source_facts)
-      _ => false
     }
   } else {
     false
@@ -207,6 +216,23 @@ fn find_witness(
   predicate: PreservationPredicate,
   multiplicity_policy: MultiplicityPolicy
 ) -> Outcome<FindWitnessResult> {
+  if preservation_rule_is_realized(rule: predicate.preservation_rule) {
+    find_witness_realized(
+      source_facts: source_facts,
+      candidates: candidates,
+      predicate: predicate,
+      multiplicity_policy: multiplicity_policy
+    )
+  } else {
+    outcome_rejected(find_witness_not_realized_diagnostic(source_facts: source_facts))
+  }
+}
+fn find_witness_realized(
+  source_facts: Node,
+  candidates: CandidateSet,
+  predicate: PreservationPredicate,
+  multiplicity_policy: MultiplicityPolicy
+) -> Outcome<FindWitnessResult> {
   let passing_count = passing_candidate_count(
     source_facts: source_facts,
     candidates: candidates,
@@ -249,6 +275,23 @@ fn find_witness(
   }
 }
 fn verify_witness(
+  source_facts: Node,
+  candidate: Node,
+  predicate: PreservationPredicate,
+  witness: StructuralPropertyWitness
+) -> Outcome<StructuralPropertyWitness> {
+  if preservation_rule_is_realized(rule: predicate.preservation_rule) {
+    verify_witness_realized(
+      source_facts: source_facts,
+      candidate: candidate,
+      predicate: predicate,
+      witness: witness
+    )
+  } else {
+    outcome_rejected(find_witness_not_realized_diagnostic(source_facts: source_facts))
+  }
+}
+fn verify_witness_realized(
   source_facts: Node,
   candidate: Node,
   predicate: PreservationPredicate,
