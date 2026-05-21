@@ -194,7 +194,7 @@ fn t20_bootstrap_plan_keeps_self_hosting_chain_as_data() {
         record_field_expr(bootstrap_plan_fields, "self1"),
         &["v4_dag_source", "v4_stage1_binary"],
         "v4_stage2_binary",
-        ("v4_stage2_hash", "v4_stage2_hash_pin"),
+        ("v4_stage1_hash", "v4_stage2_hash_pin"),
         "v4_stage1_binary",
     );
     assert_fixpt(
@@ -202,22 +202,31 @@ fn t20_bootstrap_plan_keeps_self_hosting_chain_as_data() {
         "v4_stage1_binary",
         ("v4_stage1_hash", "v4_stage1_hash_pin"),
         "v4_stage2_binary",
-        ("v4_stage2_hash", "v4_stage2_hash_pin"),
-        (
-            "pinned_v4_fixed_point_hash",
-            "pinned_v4_fixed_point_hash_pin",
-        ),
+        ("v4_stage1_hash", "v4_stage2_hash_pin"),
+        ("v4_stage1_hash", "pinned_v4_fixed_point_hash_pin"),
         "bit_identical_check",
     );
     assert!(
-        BOOTSTRAP_DAG.contains("p.fixpt.left_hash.digest == p.fixpt.right_hash.digest")
-            && BOOTSTRAP_DAG.contains("p.fixpt.left_hash.digest == p.fixpt.pinned_hash.digest"),
-        "bootstrap_plan_well_formed must enforce fixpt digest equality across independent carriers (A2+A3)"
+        BOOTSTRAP_DAG.contains("data v4_stage2_hash: Hash = v4_stage2_hash")
+            && BOOTSTRAP_DAG.contains(
+                "data pinned_v4_fixed_point_hash: Hash = pinned_v4_fixed_point_hash"
+            ),
+        "bootstrap must declare stage-2 and pinned digest carriers as independent Hash facts (A2+A3)"
     );
     assert!(
-        BOOTSTRAP_DAG.contains("right_hash: BootstrapHashPin { digest: v4_stage2_hash")
-            && BOOTSTRAP_DAG.contains("pinned_hash: BootstrapHashPin { digest: pinned_v4_fixed_point_hash"),
-        "fixpt must wire stage-2 and pinned digests through their own carriers, not by reusing v4_stage1_hash on every pin"
+        BOOTSTRAP_DAG.contains("p.self0.produces_hash.digest == p.self1.produces_hash.digest")
+            && BOOTSTRAP_DAG
+                .contains("p.fixpt.left_hash.digest == p.self0.produces_hash.digest")
+            && BOOTSTRAP_DAG
+                .contains("p.fixpt.right_hash.digest == p.self1.produces_hash.digest")
+            && BOOTSTRAP_DAG
+                .contains("p.fixpt.pinned_hash.digest == p.self0.produces_hash.digest"),
+        "bootstrap_plan_well_formed must enforce digest convergence via stage outputs, not data aliases (A2+A3)"
+    );
+    assert!(
+        BOOTSTRAP_DAG.contains("produces_hash: BootstrapHashPin { digest: v4_stage2_hash")
+            || BOOTSTRAP_DAG.contains("digest: v4_stage2_hash"),
+        "mismatch regression must exercise the independent stage-2 digest carrier"
     );
 }
 

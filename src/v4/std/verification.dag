@@ -9,6 +9,7 @@ module v4.std.verification
 
 import v4.std.node { Node }
 import v4.std.diagnostic {
+  Accepted,
   AmbiguousIntent,
   Diagnostic,
   NodeLocus,
