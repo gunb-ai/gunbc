@@ -18,7 +18,6 @@ import v4.extdeps.process {
 }
 import v4.std.diagnostic {
   Accepted,
-  None,
   Rejected,
   NodeLocus
 }
