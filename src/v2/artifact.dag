@@ -10,7 +10,7 @@
 
 module v2.compiler.artifact
 
-import v2.std.core { TextFile }
+import v2.std.core { TextFile, SourceSpan }
 
 // =========================================================================
 // Render target -- which language the emitter produces.
@@ -110,4 +110,48 @@ fn default_artifact_plan(root_modules: List<String>, target: RenderTarget) -> Ar
     entry_modules: root_modules,
     dependencies: []
   }] })
+}
+
+// =========================================================================
+// DAG artifact substrate (post-infer typed graph JSON, --target dag)
+// =========================================================================
+//
+// Practice 11: v4 Node/content_hash is the long-term authority; this v2 carrier
+// cites nodes by DagNodeId in JSON ($ref) instead of embedding Node by value.
+//
+// testcase: dag_artifact_shares_one_node_record (pipeline.rs)
+
+// 🟡 needs-more-work — feature:v2-dag-node-content-hash — dissolve-on: v4 Node/content_hash is DagNodeId authority (audit v2-dag-artifact-zip-fold-hang-2026-05-21.md Practice 11).
+type DagNodeId = String
+
+// 🟡 needs-more-work — feature:v2-dag-typed-inferred-record — dissolve-on: emit_dag_artifact constructs DagInferredRecord instead of inferred JSON strings.
+type DagInferredRecord
+  = ResolvedRef { node: DagNodeId }
+  | TypeVariableRef { id: String }
+  | CompilerErrorRecord { message: String, span: SourceSpan }
+
+// 🟡 needs-more-work — feature:v2-dag-typed-module-ref — dissolve-on: serialize_typed_module returns DagModuleRef (modules[] stops using raw JSON strings).
+type DagModuleRef {
+  module: DagNodeId
+  items: List<DagNodeId>
+  item_registry_keys: List<String>
+}
+
+// 🟡 needs-more-work — feature:v2-dag-typed-diagnostic-record — dissolve-on: typed ErrorNode projection populates DagDiagnosticRecord in DagArtifact.
+type DagDiagnosticRecord {
+  severity: String
+  message: String
+  span: SourceSpan
+  module_name: String?
+  category: String?
+}
+
+// 🟡 needs-more-work — feature:v2-dag-typed-artifact-emit — dissolve-on: emit_dag_artifact returns DagArtifact (JSON encoder walks carrier, not string concat).
+type DagArtifact {
+  version: String
+  nodes: Map<DagNodeId, String>
+  modules: List<String>
+  item_registry_keys: List<String>
+  diagnostics: List<String>
+  files: List<String>
 }
