@@ -21,6 +21,7 @@ import v4.compiler.infer {
   InferredFacts,
   InferredTree
 }
+<<<<<<< HEAD
 import v4.std.cardinality { RankingDimension, TerminationProof }
 import v4.std.collection { List, Map }
 import v4.std.constraints {
@@ -79,6 +80,10 @@ import v4.std.host {
   ResourceAccess
 }
 import v4.std.machine { Byte }
+=======
+import v4.std.collection { Map }
+import v4.std.host { HostModel }
+>>>>>>> a70da099a (WIP: HostModel integration into TestClaim substrate — IRT-3 / Practice 11 ali)
 import v4.std.node {
   Atom,
   ComputationNode,
@@ -138,10 +143,28 @@ fn eval_mvp2_i64_node() -> Node {
 }
 
 
+<<<<<<< HEAD
 fn eval_mvp2_algebra_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: eval_mvp2_algebra_symbol } },
     children: []
+=======
+data eval_host_model_mvp_input: Node = eval_host_model_mvp_node(s: eval_host_model_mvp_input_symbol)
+
+
+data claim_eval_host_model_mvp: TestClaim = EqualsClaim {
+  label: "eval routes TestClaim through HostModel",
+  t19_anchor: T19ManualAnchorAbsent,
+  lhs: eval_host_model_mvp_input,
+  rhs: eval_host_model_mvp_input,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+
+fn eval_host_model_mvp_context() -> EvalContext {
+  EvalContext {
+    host: eval_host_model_mvp_host
+>>>>>>> a70da099a (WIP: HostModel integration into TestClaim substrate — IRT-3 / Practice 11 ali)
   }
 }
 
