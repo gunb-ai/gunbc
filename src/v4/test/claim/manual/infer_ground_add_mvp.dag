@@ -256,6 +256,9 @@ fn infer_descent_witness_receipt_run(
 
 
 // MVP add(x: Int, y: Int) -> Int = x + y as a resolved CoreNode-shaped Arrow (domain, codomain, body).
+fn fixture_add_resolved_node() -> Node {
+  fixture_add_resolved_tree()
+}
 fn fixture_add_resolved_tree() -> ResolvedTree {
   Node {
     kind: TypeNode { connective: Conj },
