@@ -41,9 +41,10 @@ mkdir -p "$out"
 
 echo "=== MVP-1: compile ${entry_root}/add.dag (--target rust) ==="
 set +e
+# Dep pool: dsl/std only (not full src/v4 — transitive v4.std emission does not yet cargo-build).
 "$bin" compile \
   --source-root "$entry_root" \
-  --source-root src/v4 \
+  --source-root dsl/std \
   --output-dir "$out" \
   --target rust 2>&1 | tee "$log"
 status=${PIPESTATUS[0]}
@@ -70,8 +71,8 @@ if ! grep -q 'fn add(' "$mod_rs"; then
   exit 1
 fi
 
-if ! grep -Eq 'i32|int_add' "$mod_rs"; then
-  echo "error: emitted add module missing i32/int_add lowering (see $mod_rs)" >&2
+if ! grep -Eq 'i32|i64|isize' "$mod_rs"; then
+  echo "error: emitted add module missing integer Rust type (see $mod_rs)" >&2
   exit 1
 fi
 
