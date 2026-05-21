@@ -1,0 +1,27 @@
+// src/v4/extdeps/runtimes/host_process.dag
+// Scope: Concrete local host-process runtime model for v4 eval.
+// Owns: HostProcessRuntime, host_process_runtime_id.
+// Consumes: v4.std.model_core, v4.std.runtime, v4.std.node.
+// Status: T-34 option-C concrete runtime extdep; std/runtime.dag owns abstract carriers.
+
+module v4.extdeps.runtimes.host_process
+
+import v4.std.model_core { ModelCore }
+import v4.std.node { Symbol }
+import v4.std.runtime {
+  RuntimeExecutionSemantics,
+  RuntimeInterpretationAlgebra,
+  RuntimeResourceEffectBoundary,
+  RuntimeValueRepresentation
+}
+
+data host_process_runtime_id: Symbol = host_process_runtime_id
+
+type HostProcessRuntime {
+  runtime_identity: Symbol
+  core: ModelCore
+  values: RuntimeValueRepresentation
+  interpretation: RuntimeInterpretationAlgebra
+  execution: RuntimeExecutionSemantics
+  boundary: RuntimeResourceEffectBoundary
+}
