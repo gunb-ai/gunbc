@@ -526,13 +526,13 @@ fn f(x: Row) -> String {
 fn generic_variant_nested_same_field_string_literal_bindings() {
     let source = r#"module test.nested_same_field_str_pat
 
-type Carrier = { tag: String }
+type Inner = Has { tag: String }
 
-type Row = Pair { left: Carrier, right: Carrier }
+type Row = Pair { left: Inner, right: Inner }
 
 fn f(x: Row) -> String {
   match x {
-    Pair { left: { tag: "a" }, right: { tag: "b" } } => "ok"
+    Pair { left: Has { tag: "a" }, right: Has { tag: "b" } } => "ok"
   }
 }
 "#;
@@ -540,10 +540,10 @@ fn f(x: Row) -> String {
     assert_no_diagnostics(&result);
     let rs = find_file(&result, "src/test_nested_same_field_str_pat.rs");
     assert!(
-        rs.contains("__pos_pair_left_tag_val")
-            && rs.contains("__pos_pair_right_tag_val")
-            && rs.contains("__pos_pair_left_tag_val == \"a\"")
-            && rs.contains("__pos_pair_right_tag_val == \"b\""),
+        rs.contains("__pos_pair_left_has_tag_val")
+            && rs.contains("__pos_pair_right_has_tag_val")
+            && rs.contains("__pos_pair_left_has_tag_val == \"a\"")
+            && rs.contains("__pos_pair_right_has_tag_val == \"b\""),
         "expected path-distinct bindings for repeated nested field names, got:\n{}",
         rs
     );
