@@ -426,12 +426,16 @@ passes — e.g. a three-variant `Cached | Produced | Rejected` where
 > below, or equivalent).
 
 - *Signature:* a coproduct contains two or more variants whose
-  **field structures are isomorphic modulo field-type substitution**.
-  After α-renaming variant-bound names by canonical position (per
-  field role, not by spelled name), the variant skeletons are
-  structurally identical with only the field-type identity differing.
-  The variants discriminate on type, not on independent semantic
-  shape — the variant-axis is doing parameterization-by-hand.
+  **field structures are isomorphic modulo field-type substitution**
+  AND **the variant tag is recoverable from the payload type**. After
+  α-renaming variant-bound names by canonical position (per field
+  role, not by spelled name), the variant skeletons are structurally
+  identical with only the field-type identity differing, AND the
+  field-type identity itself unambiguously distinguishes which
+  variant constructed the value. Both conjuncts are required — the
+  variants must discriminate on type (so the parametric form
+  `Locus<T>` preserves enough information to recover the variant
+  tag from `T`), not just be isomorphic in shape.
 
 - *Decidable:* yes — substrate-readable per-variant field-shape
   facts (from `v4.lens.structural_similarity`'s `TypeShape.variant_set`,
@@ -439,6 +443,21 @@ passes — e.g. a three-variant `Cached | Produced | Rejected` where
   coproduct, applying field-name α-renaming. Same mechanical contract
   as L1.13 (skeleton extraction), at variant scope instead of
   match-arm scope.
+  **Tag-recoverability check (load-bearing, per operator-direct
+  refinement 2026-05-21):** after the variant-skeleton comparison
+  identifies a candidate pair, the lens additionally checks that
+  the variants' field types are pairwise-distinct AND that each
+  field type's identity unambiguously names one and only one
+  variant in the coproduct's variant set. Two variants
+  `V1 { x: A }` and `V2 { x: A }` (same field type) FAIL the
+  tag-recoverability check — the variant axis carries information
+  the parametric `Locus<A>` form would erase, and the lens does
+  NOT fire (the variants STAY as distinct cases). Two variants
+  `V1 { x: A }` and `V2 { x: B }` with `A` and `B` distinct closed
+  types PASS the check — the parametric `Locus<T>` form preserves
+  the discrimination at the type level. Without tag-recoverability,
+  parameterizing would erase information the original coproduct
+  represented; the lens cannot honestly recommend the dissolution.
 
 - *Verdict:* hard error.
 
@@ -460,6 +479,18 @@ passes — e.g. a three-variant `Cached | Produced | Rejected` where
     structure is genuine variant-axis information; the lens does
     not fire. The trigger requires the type-substitution to be the
     SOLE structural difference.
+  - **Tag-not-recoverable from payload type.** If two variants
+    `V1 { x: A }` and `V2 { x: A }` share the same field type
+    (or the field types are related such that a value-of-the-type
+    doesn't uniquely identify which constructor produced it),
+    parameterizing to `Locus<A>` would ERASE the variant tag —
+    the original coproduct carried information the parametric form
+    cannot preserve. The lens does NOT fire on such pairs; the
+    variants stay as distinct cases. This is the operator-direct
+    refinement (2026-05-21) tightening the bar from "identical
+    arity is enough" to "identical arity AND tag recoverable from
+    payload type." Without this guard, the lens would
+    over-recommend parameterization that loses information.
 
 - *Clearing receipt (single authoritative resolution table — same R1–R5 inherited from L1.12 family):*
   the substrate carries one of the inherited resolution shapes:
