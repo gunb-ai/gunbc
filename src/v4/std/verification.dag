@@ -112,3 +112,21 @@ fn test_claim_input(c: TestClaim) -> Node {
     RoundTripClaim { input: n, .. } => n
   }
 }
+
+fn test_claim_t19_anchor(c: TestClaim) -> T19ManualAnchorKey {
+  match c {
+    CompilesClaim { t19_anchor: k, .. } => k
+    DiagnosticClaim { t19_anchor: k, .. } => k
+    EqualsClaim { t19_anchor: k, .. } => k
+    RoundTripClaim { t19_anchor: k, .. } => k
+  }
+}
+
+fn test_claim_classification(c: TestClaim) -> TestClassification {
+  match c {
+    CompilesClaim { classification: c, .. } => c
+    DiagnosticClaim { classification: c, .. } => c
+    EqualsClaim { classification: c, .. } => c
+    RoundTripClaim { classification: c, .. } => c
+  }
+}

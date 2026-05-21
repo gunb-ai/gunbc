@@ -32,12 +32,12 @@ import v4.std.diagnostic {
   outcome_rejected
 }
 import v4.std.verification {
-  AssertKind,
-  Compiles,
-  DiagnosticAssert,
-  Equals,
-  RoundTrips,
-  TestClaim
+  CompilesClaim,
+  DiagnosticClaim,
+  EqualsClaim,
+  RoundTripClaim,
+  TestClaim,
+  test_claim_input
 }
 
 
@@ -146,30 +146,34 @@ fn eval_node(tree: InferredTree, inputs: Inputs) -> Outcome<Node> {
 }
 
 
-fn run_node_assert(
-  kind: AssertKind,
+fn run_test_claim_assert(
+  claim: TestClaim,
   actual: Outcome<Node>,
-  expected: Outcome<Node>,
-  input: Node
+  at: Node
 ) -> Verdict<Node> {
-  match kind {
-    Equals => if outcome_node_eq(a: actual, b: expected) { Pass } else { Fail { actual: actual } }
-    Compiles => match actual {
-      Accepted { value: _, diagnostics: _ } => Pass
-      Rejected { diagnostics: _ } => Fail { actual: actual }
-    }
-    RoundTrips => Deferred {
-      actual: actual,
-      diagnostic: eval_diagnostic(reason: eval_rejected_roundtrip_deferred, node: input)
-    }
-    DiagnosticAssert => match actual {
-      Rejected { diagnostics: _ } => match expected {
+  match claim {
+    EqualsClaim { lhs: _, rhs: rhs, .. } =>
+      if outcome_node_eq(a: actual, b: Accepted { value: rhs, diagnostics: None }) {
+        Pass
+      } else {
+        Fail { actual: actual }
+      }
+    CompilesClaim { expected_value: expected, .. } =>
+      match actual {
+        Accepted { value: _, diagnostics: _ } => Pass
+        Rejected { diagnostics: _ } => Fail { actual: actual }
+      }
+    RoundTripClaim { input: input, .. } =>
+      Deferred {
+        actual: actual,
+        diagnostic: eval_diagnostic(reason: eval_rejected_roundtrip_deferred, node: input)
+      }
+    DiagnosticClaim { expected_outcome: expected, input: input, .. } =>
+      match actual {
         Rejected { diagnostics: _ } =>
           if outcome_node_eq(a: actual, b: expected) { Pass } else { Fail { actual: actual } }
         _ => Fail { actual: actual }
       }
-      _ => Fail { actual: actual }
-    }
   }
 }
 
@@ -210,6 +214,7 @@ fn run_test_claim(
     tree: subject.tree,
     inputs: Inputs { root: subject.input.evaluator_input }
   )
+  let at = test_claim_input(c: subject.claim)
   TestClaimRun {
     cache: test_claim_cache_receipt(
       subject: subject,
@@ -219,15 +224,8 @@ fn run_test_claim(
       extdeps_hash: extdeps_hash
     ),
     verdict: aggregate_verdicts(
-      rs: [
-        run_node_assert(
-          kind: subject.claim.kind,
-          actual: actual,
-          expected: subject.claim.expected,
-          input: subject.claim.input
-        )
-      ],
-      at: subject.claim.input
+      rs: [run_test_claim_assert(claim: subject.claim, actual: actual, at: at)],
+      at: at
     )
   }
 }
@@ -242,6 +240,6 @@ fn eval_test_claim_subject(
     claim: claim,
     context: context,
     tree: tree,
-    input: TestClaimTypedInput { evaluator_input: claim.input }
+    input: TestClaimTypedInput { evaluator_input: test_claim_input(c: claim) }
   }
 }
