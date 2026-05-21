@@ -76,9 +76,14 @@ data models: List<AnthropicModelSpec> = [
 // Tool-use / tool-result surfaces are Anthropic-specific. `ImageSource`
 // models Anthropic Messages API image `source` shapes (base64 / url).
 
-// Anthropic image block `source` carrier (Messages API + tool-result nested blocks).
-// v3's Anthropic callable precursor mirrors `Base64Image.data` as `base64`
-// because `data` is a v3 keyword; lockstep maps that label explicitly.
+// 🟢 TERMINAL provider-domain coproduct for Anthropic Messages image `source`
+// payloads (base64 inline vs URL reference). Dissolution receipt: the public API
+// documents exactly these two source shapes on image blocks; fact placement fails
+// because both arms bind the same `source` field on `AnthropicImageBlock`; variant-
+// is-data would demote `media_type`/`data` wire coordinates into opaque strings;
+// algebraic form has no std operation/ref target beyond serde projection of the
+// closed wire union. v3's Anthropic callable precursor mirrors `Base64Image.data`
+// as `base64` because `data` is a v3 keyword; lockstep maps that label explicitly.
 type ImageSource
   = Base64Image { media_type: String, data: String }
   | UrlImage { url: String }
