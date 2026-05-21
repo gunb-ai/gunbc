@@ -141,11 +141,6 @@ fn variant_has_fields(emit_info: EmitGraphInfo, enum_name: String, variant_name:
   set_contains(emit_info.fielded_variants, key)
 }
 
-fn variant_has_positional_payload(emit_info: EmitGraphInfo, enum_name: String, variant_name: String) -> Bool {
-  let key = variant_summary_key(enum_name: enum_name, variant_name: variant_name)
-  set_contains(emit_info.positional_payload_variants, key)
-}
-
 // Per-variant type_summaries and emit facts use EnumName::VariantName, not bare variant.
 fn variant_summary_key(enum_name: String, variant_name: String) -> String {
   concat(enum_name, "::", variant_name)
@@ -153,10 +148,6 @@ fn variant_summary_key(enum_name: String, variant_name: String) -> String {
 
 fn lookup_emit_type_summary(emit_info: EmitGraphInfo, type_name: String) -> TypeSummary? {
   map_get(emit_info.type_summaries, type_name)
-}
-
-fn lookup_variant_type_summary(emit_info: EmitGraphInfo, enum_name: String, variant_name: String) -> TypeSummary? {
-  lookup_emit_type_summary(emit_info: emit_info, type_name: variant_summary_key(enum_name: enum_name, variant_name: variant_name))
 }
 
 // Derive variant_to_enum: a module-local CACHE, not the authority.
