@@ -373,21 +373,112 @@ pub fn dag_node_missing_ref_error(node: &Rc<Node>) -> Rc<ErrorNode> {
     )
 }
 
-pub fn dag_validate_nodes_table(
+pub fn dag_emit_check_ref_target(
+    node: &Rc<Node>,
+    key_to_id: Rc<HashMap<String, String>>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    match v2_rt::map_get(&key_to_id, dag_node_key(&node)) {
+        Some(_) => Rc::new(vec![]),
+        None => Rc::new(vec![dag_node_missing_ref_error(&node)]),
+    }
+}
+
+pub fn dag_emit_check_optional_ref_target(
+    value: Option<Rc<Node>>,
+    key_to_id: Rc<HashMap<String, String>>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    match value {
+        Some(inner) => dag_emit_check_ref_target(&inner, key_to_id),
+        None => Rc::new(vec![]),
+    }
+}
+
+pub fn dag_emit_check_inferred_ref_target(
+    value: Option<Rc<InferredNode>>,
+    key_to_id: Rc<HashMap<String, String>>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    match value.as_deref().cloned() {
+        Some(InferredNode::Resolved { node: n, .. }) => dag_emit_check_ref_target(&n, key_to_id),
+        _ => Rc::new(vec![]),
+    }
+}
+
+pub fn dag_emit_check_node_refs(
+    node: &Rc<Node>,
+    key_to_id: &Rc<HashMap<String, String>>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    v2_rt::concat(
+        v2_rt::concat(
+            v2_rt::concat(
+                v2_rt::concat(
+                    v2_rt::concat(
+                        v2_rt::concat(
+                            v2_rt::concat(
+                                Rc::new({
+                                    let mut __result = Vec::new();
+                                    for c in node.children.clone().iter().cloned() {
+                                        __result.extend(
+                                            (*dag_emit_check_ref_target(&c, key_to_id.clone()))
+                                                .iter()
+                                                .cloned(),
+                                        );
+                                    }
+                                    __result
+                                }),
+                                Rc::new({
+                                    let mut __result = Vec::new();
+                                    for p in node.params.clone().iter().cloned() {
+                                        __result.extend(
+                                            (*dag_emit_check_ref_target(&p, key_to_id.clone()))
+                                                .iter()
+                                                .cloned(),
+                                        );
+                                    }
+                                    __result
+                                }),
+                            ),
+                            Rc::new({
+                                let mut __result = Vec::new();
+                                for u in node.uses.clone().iter().cloned() {
+                                    __result.extend(
+                                        (*dag_emit_check_ref_target(&u, key_to_id.clone()))
+                                            .iter()
+                                            .cloned(),
+                                    );
+                                }
+                                __result
+                            }),
+                        ),
+                        dag_emit_check_optional_ref_target(node.body.clone(), key_to_id.clone()),
+                    ),
+                    dag_emit_check_optional_ref_target(node.transport.clone(), key_to_id.clone()),
+                ),
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for p in node.properties.clone().iter().cloned() {
+                        __result.extend(
+                            (*dag_emit_check_ref_target(&p, key_to_id.clone()))
+                                .iter()
+                                .cloned(),
+                        );
+                    }
+                    __result
+                }),
+            ),
+            dag_emit_check_optional_ref_target(node.type_annotation.clone(), key_to_id.clone()),
+        ),
+        dag_emit_check_inferred_ref_target(node.inferred.clone(), key_to_id.clone()),
+    )
+}
+
+pub fn dag_emit_ref_errors(
     order: Rc<Vec<Rc<Node>>>,
     key_to_id: Rc<HashMap<String, String>>,
 ) -> Rc<Vec<Rc<ErrorNode>>> {
     Rc::new({
         let mut __result = Vec::new();
         for n in order.iter().cloned() {
-            __result.extend(
-                (*match v2_rt::map_get(&key_to_id, dag_node_key(&n)) {
-                    Some(_) => Rc::new(vec![]),
-                    None => Rc::new(vec![dag_node_missing_ref_error(&n)]),
-                })
-                .iter()
-                .cloned(),
-            );
+            __result.extend((*dag_emit_check_node_refs(&n, &key_to_id)).iter().cloned());
         }
         __result
     })
@@ -549,10 +640,7 @@ pub fn serialize_node_ref(node: Rc<Node>, key_to_id: Rc<HashMap<String, String>>
             v2_rt::concat("{\"$ref\": ".to_string(), json_quote(id.clone())),
             "}".to_string(),
         ),
-        None => v2_rt::concat(
-            v2_rt::concat("{\"$ref\": ".to_string(), json_quote("".to_string())),
-            "}".to_string(),
-        ),
+        None => "{\"$ref\": null}".to_string(),
     }
 }
 
@@ -1950,11 +2038,11 @@ pub fn emit_dag_artifact(typed: &Rc<ResolvedGraph>) -> Rc<EmitResult> {
     {
         let order = collect_dag_nodes(typed.clone());
         let key_to_id = build_dag_key_to_id(order.clone());
-        let table_errors = dag_validate_nodes_table(order.clone(), key_to_id.clone());
-        if ((table_errors.clone().len() as i64) > 0) {
+        let ref_errors = dag_emit_ref_errors(order.clone(), key_to_id.clone());
+        if ((ref_errors.clone().len() as i64) > 0) {
             return Rc::new(EmitResult {
                 files: Rc::new(vec![]),
-                diagnostics: table_errors.clone(),
+                diagnostics: ref_errors.clone(),
             });
         }
         let source_indices = dag_graph_source_indices(typed.clone());
