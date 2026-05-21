@@ -1,6 +1,6 @@
 // src/v4/test/claim/manual/process_numeric_refinements.dag
 // Scope: POSIX process numeric refinement regression witnesses.
-// Owns: manual witness that out-of-range ExitCode construction rejects.
+// Owns: manual witnesses that out-of-range POSIX numeric construction rejects.
 // Consumes: v4.extdeps.process, v4.std.diagnostic, v4.std.verification, connective stubs.
 // Status: T-25-core process refinement consumer acceptance witness; eval T-22.
 
@@ -12,7 +12,9 @@ import v4.extdeps.process {
   exit_code_out_of_range,
   make_exit_code,
   make_process_id,
-  process_id_out_of_range
+  make_signal_num,
+  process_id_out_of_range,
+  signal_num_out_of_range
 }
 import v4.std.diagnostic {
   Accepted,
@@ -49,6 +51,13 @@ fn witness_process_id_zero_rejects() -> Bool {
   }
 }
 
+fn witness_signal_num_zero_rejects() -> Bool {
+  match make_signal_num(value: 0, at: NodeLocus { node: stub_empty_conj }) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics } => diagnostics.head.reason == signal_num_out_of_range
+  }
+}
+
 fn process_refinement_claim_input(ok: Bool) -> Node {
   if ok {
     stub_empty_conj
@@ -71,6 +80,15 @@ data claim_process_id_zero_rejects: TestClaim = TestClaim {
   label: "manual/process: make_process_id rejects 0",
   t19_anchor: T19ManualAnchorAbsent,
   input: process_refinement_claim_input(ok: witness_process_id_zero_rejects()),
+  expected: Accepted { value: stub_empty_conj, diagnostics: None },
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_signal_num_zero_rejects: TestClaim = TestClaim {
+  kind: Equals,
+  label: "manual/process: make_signal_num rejects 0",
+  t19_anchor: T19ManualAnchorAbsent,
+  input: process_refinement_claim_input(ok: witness_signal_num_zero_rejects()),
   expected: Accepted { value: stub_empty_conj, diagnostics: None },
   classification: TestClassification { tier: Tier1, layer: Unit }
 }

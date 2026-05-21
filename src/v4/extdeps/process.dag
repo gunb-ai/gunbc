@@ -43,7 +43,7 @@ fn exit_code_admits(value: Int) -> Bool {
 }
 
 fn signal_num_admits(value: Int) -> Bool {
-  // POSIX signal numbers are positive; the supported upper set is platform-defined.
+  // POSIX specifies positive signal numbers; support beyond positivity is platform-defined.
   value > 0
 }
 
