@@ -2301,34 +2301,44 @@ fn emit_variant_pattern(name: String, parent_enum: String?, field_bindings: List
         } else {
           let fb_name = field_binding_name_at(n: fb, source_indices: source_indices)
           let fb_pat = field_binding_pattern(n: fb)
-          let pat_str = emit_pattern(pattern: fb_pat, shared_types: shared_types, scrut_type: "", source_indices: source_indices, emit_info: emit_info)
-          concat(qualified, " { ", concat(emit_ident(name: fb_name, target: Rust), ": ", pat_str), ", .. }")
+          if is_string_lit_pattern(p: fb_pat) {
+            concat(qualified, " { ref ", emit_ident(name: fb_name, target: Rust), ", .. }")
+          } else {
+            let pat_str = emit_pattern(pattern: fb_pat, shared_types: shared_types, scrut_type: "", source_indices: source_indices, emit_info: emit_info)
+            concat(qualified, " { ", concat(emit_ident(name: fb_name, target: Rust), ": ", pat_str), ", .. }")
+          }
         }
       None => qualified
     }
   } else if field_bindings |> count == 0 {
     // Check qualified key first, then try all enum prefixes as fallback
     // (handles cases where scrut_type is missing for field access expressions).
-    let fielded_key = match resolved_parent {
+    let shape_key = match resolved_parent {
       Some { value: parent } => concat(parent, "::", name)
       None => name
     }
-    let is_fielded = set_contains(emit_info.fielded_variants, fielded_key)
+    let is_positional = set_contains(emit_info.positional_payload_variants, shape_key)
+      || set_contains(emit_info.positional_payload_variants, qualified)
+    let is_fielded = set_contains(emit_info.fielded_variants, shape_key)
       || set_contains(emit_info.fielded_variants, qualified)
-    if is_fielded { concat(qualified, " { .. }") } else { qualified }
+    if is_positional { concat(qualified, "(_)") }
+    else if is_fielded { concat(qualified, " { .. }") } else { qualified }
   } else {
     let effective_bindings = field_bindings |> filter(fb =>
       match field_binding_pattern(n: fb) { Wildcard => false  _ => true }
     )
     if effective_bindings |> count == 0 {
-      // All bindings are wildcards — check fielded_variants (same as count == 0 branch).
-      let fielded_key2 = match resolved_parent {
+      // All bindings are wildcards — check variant shape facts (same as count == 0 branch).
+      let shape_key2 = match resolved_parent {
         Some { value: parent } => concat(parent, "::", name)
         None => name
       }
-      let is_fielded2 = set_contains(emit_info.fielded_variants, fielded_key2)
+      let is_positional2 = set_contains(emit_info.positional_payload_variants, shape_key2)
+        || set_contains(emit_info.positional_payload_variants, qualified)
+      let is_fielded2 = set_contains(emit_info.fielded_variants, shape_key2)
         || set_contains(emit_info.fielded_variants, qualified)
-      if is_fielded2 { concat(qualified, " { .. }") } else { qualified }
+      if is_positional2 { concat(qualified, "(_)") }
+      else if is_fielded2 { concat(qualified, " { .. }") } else { qualified }
     } else {
       let binding_strs = effective_bindings |> map(fb =>
         let fb_name = field_binding_name_at(n: fb, source_indices: source_indices)
@@ -2492,35 +2502,45 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
         } else {
           let fb_name = field_binding_name_at(n: fb, source_indices: source_indices)
           let fb_pat = field_binding_pattern(n: fb)
-          let inner_analysis = analyze_rc_pattern(pattern: fb_pat, scrut_type: scrut_type, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
-          let pat_str = emit_pattern_rc_aware(pattern: fb_pat, rc_analysis: inner_analysis, shared_types: shared_types, scrut_type: "", source_indices: source_indices, emit_info: emit_info)
-          concat(qualified, " { ", concat(emit_ident(name: fb_name, target: Rust), ": ", pat_str), ", .. }")
+          if is_string_lit_pattern(p: fb_pat) {
+            concat(qualified, " { ref ", emit_ident(name: fb_name, target: Rust), ", .. }")
+          } else {
+            let inner_analysis = analyze_rc_pattern(pattern: fb_pat, scrut_type: scrut_type, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
+            let pat_str = emit_pattern_rc_aware(pattern: fb_pat, rc_analysis: inner_analysis, shared_types: shared_types, scrut_type: "", source_indices: source_indices, emit_info: emit_info)
+            concat(qualified, " { ", concat(emit_ident(name: fb_name, target: Rust), ": ", pat_str), ", .. }")
+          }
         }
       None => qualified
     }
   } else if field_bindings |> count == 0 {
     // Check qualified key first, then try all enum prefixes as fallback
     // (handles cases where scrut_type is missing for field access expressions).
-    let fielded_key = match resolved_parent {
+    let shape_key = match resolved_parent {
       Some { value: parent } => concat(parent, "::", name)
       None => name
     }
-    let is_fielded = set_contains(emit_info.fielded_variants, fielded_key)
+    let is_positional = set_contains(emit_info.positional_payload_variants, shape_key)
+      || set_contains(emit_info.positional_payload_variants, qualified)
+    let is_fielded = set_contains(emit_info.fielded_variants, shape_key)
       || set_contains(emit_info.fielded_variants, qualified)
-    if is_fielded { concat(qualified, " { .. }") } else { qualified }
+    if is_positional { concat(qualified, "(_)") }
+    else if is_fielded { concat(qualified, " { .. }") } else { qualified }
   } else {
     let effective_bindings = field_bindings |> filter(fb =>
       match field_binding_pattern(n: fb) { Wildcard => false  _ => true }
     )
     if effective_bindings |> count == 0 {
-      // All bindings are wildcards — check fielded_variants (same as count == 0 branch).
-      let fielded_key2 = match resolved_parent {
+      // All bindings are wildcards — check variant shape facts (same as count == 0 branch).
+      let shape_key2 = match resolved_parent {
         Some { value: parent } => concat(parent, "::", name)
         None => name
       }
-      let is_fielded2 = set_contains(emit_info.fielded_variants, fielded_key2)
+      let is_positional2 = set_contains(emit_info.positional_payload_variants, shape_key2)
+        || set_contains(emit_info.positional_payload_variants, qualified)
+      let is_fielded2 = set_contains(emit_info.fielded_variants, shape_key2)
         || set_contains(emit_info.fielded_variants, qualified)
-      if is_fielded2 { concat(qualified, " { .. }") } else { qualified }
+      if is_positional2 { concat(qualified, "(_)") }
+      else if is_fielded2 { concat(qualified, " { .. }") } else { qualified }
     } else {
       let binding_strs = effective_bindings |> map(fb =>
         let fb_name = field_binding_name_at(n: fb, source_indices: source_indices)
