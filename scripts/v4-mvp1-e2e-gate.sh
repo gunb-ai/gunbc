@@ -71,8 +71,9 @@ if ! grep -q 'fn add(' "$mod_rs"; then
   exit 1
 fi
 
-if ! grep -Eq 'i32|i64|isize' "$mod_rs"; then
-  echo "error: emitted add module missing integer Rust type (see $mod_rs)" >&2
+# Signature pin (looser i32-in-file grep is insufficient); cargo-run assert is authoritative.
+if ! grep -Eq 'fn add\([^)]*: i(32|64|isize)' "$mod_rs"; then
+  echo "error: emitted add missing i32/i64/isize parameter types on fn add (see $mod_rs)" >&2
   exit 1
 fi
 
@@ -83,6 +84,7 @@ if [[ ! -f "$cargo_toml" ]]; then
 fi
 
 # [package] section only — avoid picking a [[bin]]/[[lib]] name= if emitter reorder tables.
+# Intentionally brittle to emitter Cargo.toml layout: a shape change should fail this gate loudly.
 crate_name="$(
   sed -n '/^\[package\]/,/^\[/p' "$cargo_toml" \
     | grep -E '^name = ' \
