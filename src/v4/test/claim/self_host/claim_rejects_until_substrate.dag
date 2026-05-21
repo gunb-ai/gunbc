@@ -1,0 +1,45 @@
+// src/v4/test/claim/self_host/claim_rejects_until_substrate.dag
+// Scope: scaffold claim — runner fails closed until execution substrate and candidate generation land.
+// Owns: claim_rejects_until_substrate.
+// Consumes: v4.compiler.self_host, v4.std.verification, v4.std.diagnostic, v4.std.node.
+// Status: scaffold-against-contract; execution deferred to future substrate.
+
+module v4.test.claim.self_host.claim_rejects_until_substrate
+
+import v4.compiler.self_host {
+  self_host_runner_not_realized_diagnostic
+}
+import v4.std.diagnostic {
+  Rejected,
+  diagnostics_singleton
+}
+import v4.std.node { Atom, Node, Symbol, TypeNode }
+import v4.std.verification {
+  DiagnosticAssert,
+  T19ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Integration
+}
+
+
+data rejects_until_substrate_subject_symbol: Symbol = rejects_until_substrate_subject_symbol
+
+
+data rejects_until_substrate_subject: Node = Node {
+  kind: TypeNode { connective: Atom { identity: rejects_until_substrate_subject_symbol } },
+  children: []
+}
+
+
+data claim_rejects_until_substrate: TestClaim = TestClaim {
+  kind: DiagnosticAssert,
+  label: "self-host fixed-point runner rejects until execution substrate lands",
+  t19_anchor: T19ManualAnchorAbsent,
+  input: rejects_until_substrate_subject,
+  expected: Rejected {
+    diagnostics: diagnostics_singleton(d: self_host_runner_not_realized_diagnostic())
+  },
+  classification: TestClassification { tier: Tier1, layer: Integration }
+}
