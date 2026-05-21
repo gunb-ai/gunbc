@@ -22,7 +22,7 @@ use super::{BoolPortRef, Dag, DeclarationId, ElementRef, NonSingletonList};
 
 /// 🟢 **TERMINAL.** HTTP verb literals — 1:1 with `std.effects` `HttpMethod`;
 /// naming authority is `effects.dag`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum HttpMethodScalar {
     Get,
     Post,

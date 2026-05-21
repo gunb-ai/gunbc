@@ -352,9 +352,9 @@ fn backend_probe(bin_path: &Path, method: &str, path: &str) -> String {
 }
 
 fn openapi_yaml_routes(yaml: &str) -> BTreeSet<RestRoute> {
-    let mut routes: BTreeMap<(String, String), BTreeSet<String>> = BTreeMap::new();
+    let mut routes: BTreeMap<(HttpMethodScalar, String), BTreeSet<String>> = BTreeMap::new();
     let mut current_path: Option<String> = None;
-    let mut current_route: Option<(String, String)> = None;
+    let mut current_route: Option<(HttpMethodScalar, String)> = None;
     for line in yaml.lines() {
         if let Some(path) = line.strip_prefix("  '").and_then(|s| s.strip_suffix("':")) {
             current_path = Some(path.replace("''", "'"));
