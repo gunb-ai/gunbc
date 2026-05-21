@@ -635,12 +635,8 @@ data llvm_repr_ieee754_float_kind: Symbol = llvm_repr_ieee754_float_kind
 data llvm_tag_width_bits32: Symbol = llvm_tag_width_bits32
 data llvm_tag_width_bits64: Symbol = llvm_tag_width_bits64
 data llvm_tag_float_kind_half: Symbol = llvm_tag_float_kind_half
-data llvm_tag_float_kind_bfloat: Symbol = llvm_tag_float_kind_bfloat
 data llvm_tag_float_kind_single: Symbol = llvm_tag_float_kind_single
 data llvm_tag_float_kind_double: Symbol = llvm_tag_float_kind_double
-data llvm_tag_float_kind_fp128: Symbol = llvm_tag_float_kind_fp128
-data llvm_tag_float_kind_x86_fp80: Symbol = llvm_tag_float_kind_x86_fp80
-data llvm_tag_float_kind_ppc_fp128: Symbol = llvm_tag_float_kind_ppc_fp128
 
 data llvm_facts_i32: LlvmIntegerPrimitiveFacts = LlvmIntegerPrimitiveFacts {
   surface_spelling: llvm_surface_spelling_i32,
@@ -735,7 +731,7 @@ fn llvm_float_facts_node(facts: LlvmFloatPrimitiveFacts) -> Node {
       },
       Edge {
         label: Named { name: primitive_fact_axis_encoding },
-        target: llvm_float_kind_node(kind: facts.kind)
+        target: llvm_wave1_float_kind_node(kind: facts.kind)
       }
     ]
   }
@@ -795,7 +791,7 @@ fn llvm_primitive_bundle_from_float_facts(facts: LlvmFloatPrimitiveFacts) -> Pri
       ),
       llvm_primitive_axis_binding(
         axis: primitive_fact_axis_encoding,
-        fact: llvm_float_kind_node(kind: facts.kind)
+        fact: llvm_wave1_float_kind_node(kind: facts.kind)
       )
     ]
   }
