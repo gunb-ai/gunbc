@@ -888,7 +888,7 @@ This doc is primarily about the **compile direction** (CoreNode → target). But
 
 ### Read/edit vocabulary (substrate types + derived combinators)
 
-Note: `apply_diff` / `subterm_at` / `apply_lens` / `affected_set` are **derived combinators** post-Pass B unification (`fold_node` instances or compositions thereof), NOT primitives. Listed here as the vocabulary the read/edit pipeline exposes; their primitive-set status is per the main primitive table above (5 primitives total).
+Note: `apply_diff` / `subterm_at` / `read_lens` / `affected_set` are **derived combinators** post-Pass B unification (`fold_node` instances or compositions thereof), NOT primitives. Listed here as the amended vocabulary the read/edit pipeline exposes; their primitive-set status is per the main primitive table above (5 primitives total).
 
 | Vocabulary | Purpose | Where |
 |---|---|---|
@@ -902,7 +902,7 @@ Note: `apply_diff` / `subterm_at` / `apply_lens` / `affected_set` are **derived 
 
 ### The seven-step read→edit pipeline
 
-Per [`docs/design-read-edit-pipeline.md`](design-read-edit-pipeline.md) § 4, the agent loop is:
+Amended from [`docs/design-read-edit-pipeline.md`](design-read-edit-pipeline.md) § 4, the agent loop is:
 
 ```
 1. Read       →  read_lens(lens, node)
@@ -926,10 +926,10 @@ In the "Ingest paths" table earlier, **"Query-driven rewrite"** — using `affec
 
 ### Library-first agent surface
 
-Per [`docs/design-read-edit-pipeline.md`](design-read-edit-pipeline.md) § 6.10:
+Amended from [`docs/design-read-edit-pipeline.md`](design-read-edit-pipeline.md) § 6.10:
 
-1. **All substrate primitives surface as library functions.** `apply_lens`, `apply_diff`, `subterm_at`, `affected_set`, `declarations_in` are library calls. Not RPC services. Not CLI-first.
-2. **CLI wraps libraries.** `gunbc apply-lens ...`, `gunbc auto-fix ...`, `gunbc refactor ...` are thin shells over library calls.
+1. **All substrate primitives and derived combinators surface as library functions.** `read_lens`, `apply_diff`, `subterm_at`, `affected_set`, `declarations_in` are library calls. Not RPC services. Not CLI-first.
+2. **CLI wraps libraries.** `gunbc read-lens ...`, `gunbc auto-fix ...`, `gunbc refactor ...` are thin shells over library calls.
 3. **The library boundary IS the agent-substrate surface.** No premature transport layer (JSON-RPC, gRPC). Network transport is a future concern that doesn't pre-date library landings.
 
 **This applies to graph consumers too.** `ground`, `observe`, `project`, and `authorize` are library calls. The same no-premature-transport principle holds — compiler/session operations are libraries, not services.
