@@ -448,20 +448,38 @@ passes — e.g. a three-variant `Cached | Produced | Rejected` where
   as L1.13 (skeleton extraction), at variant scope instead of
   match-arm scope.
   **Tag-recoverability check (load-bearing, per operator-direct
-  refinement 2026-05-21):** after the variant-skeleton comparison
-  identifies a candidate pair, the lens additionally checks that
-  the variants' field types are pairwise-distinct AND that each
-  field type's identity unambiguously names one and only one
-  variant in the coproduct's variant set. Two variants
-  `V1 { x: A }` and `V2 { x: A }` (same field type) FAIL the
-  tag-recoverability check — the variant axis carries information
-  the parametric `Locus<A>` form would erase, and the lens does
-  NOT fire (the variants STAY as distinct cases). Two variants
-  `V1 { x: A }` and `V2 { x: B }` with `A` and `B` distinct closed
-  types PASS the check — the parametric `Locus<T>` form preserves
-  the discrimination at the type level. Without tag-recoverability,
-  parameterizing would erase information the original coproduct
-  represented; the lens cannot honestly recommend the dissolution.
+  refinement 2026-05-21; granularity sharpened per openai-pro
+  REQUEST_CHANGES 2026-05-21):** after the variant-skeleton comparison
+  identifies a candidate pair, the lens additionally checks that the
+  **canonical payload signatures of the candidate variants are
+  pairwise-distinct** — that is, the variant-tag projection from the
+  payload-signature *product* (the full ordered tuple of field types,
+  by canonical-position normalization) into the coproduct's variant
+  set is injective. The check is at **payload-signature granularity**,
+  NOT at per-field-type granularity:
+  - **Single-field variants** (the original Locus motivating case):
+    payload signature reduces to the single field type. `V1 { x: A }`
+    + `V2 { x: A }` share signature `(A,)` → FAIL (same payload
+    signature; variant tag not recoverable). `V1 { x: A }` +
+    `V2 { x: B }` have signatures `(A,)` vs `(B,)` → PASS.
+  - **Multi-field variants:** signature is the full ordered tuple.
+    `V1 { shared: A, side: B }` + `V2 { shared: A, side: C }` have
+    signatures `(A, B)` vs `(A, C)` — DISTINCT signatures even though
+    field `shared` shares type `A`. PASS — parametric form preserves
+    the discrimination via `side`'s type; per-field uniqueness would
+    have falsely failed this case.
+  - **Degenerate same-signature multi-field:** `V1 { a: A, b: B }` +
+    `V2 { c: A, d: B }` (different field names, same ordered type
+    tuple under canonical-position normalization) share signature
+    `(A, B)` → FAIL (per-field-name renaming doesn't add discrimination
+    if the type tuple is identical).
+
+  Without payload-signature-injective tag-recoverability, parameterizing
+  would erase information the original coproduct represented; the lens
+  cannot honestly recommend the dissolution. (Earlier wording specified
+  "field types pairwise-distinct" which over-constrained the check at
+  per-field granularity and would have under-fired on legitimate
+  multi-field dissolution candidates.)
 
 - *Verdict:* hard error.
 
@@ -483,17 +501,28 @@ passes — e.g. a three-variant `Cached | Produced | Rejected` where
     structure is genuine variant-axis information; the lens does
     not fire. The trigger requires the type-substitution to be the
     SOLE structural difference.
-  - **Tag-not-recoverable from payload type.** If two variants
-    `V1 { x: A }` and `V2 { x: A }` share the same field type
-    (or the field types are related such that a value-of-the-type
-    doesn't uniquely identify which constructor produced it),
-    parameterizing to `Locus<A>` would ERASE the variant tag —
-    the original coproduct carried information the parametric form
-    cannot preserve. The lens does NOT fire on such pairs; the
-    variants stay as distinct cases. This is the operator-direct
-    refinement (2026-05-21) tightening the bar from "identical
-    arity is enough" to "identical arity AND tag recoverable from
-    payload type." Without this guard, the lens would
+  - **Tag-not-recoverable from payload signature.** If two variants
+    share the **same canonical payload signature** (the full ordered
+    tuple of field types under canonical-position normalization),
+    parameterizing would ERASE the variant tag — the original
+    coproduct carried information the parametric form cannot
+    preserve. The lens does NOT fire on such pairs; the variants
+    stay as distinct cases. Examples:
+    - `V1 { x: A }` + `V2 { x: A }` — both signatures `(A,)` →
+      FAIL tag-recoverability → STAY.
+    - `V1 { a: A, b: B }` + `V2 { c: A, d: B }` — both signatures
+      `(A, B)` (field-name α-renaming doesn't change the type
+      tuple) → FAIL → STAY.
+    - `V1 { shared: A, side: B }` + `V2 { shared: A, side: C }` —
+      signatures `(A, B)` vs `(A, C)` are distinct → PASS
+      tag-recoverability → lens fires (this is a multi-field
+      dissolution candidate the parametric form preserves
+      discrimination over).
+    This is the operator-direct refinement (2026-05-21, granularity
+    sharpened per openai-pro REQUEST_CHANGES same day) tightening
+    the bar from "identical arity is enough" to "identical arity
+    AND payload signatures pairwise-distinct." Without this guard,
+    the lens would
     over-recommend parameterization that loses information.
 
 - *Clearing receipt (single authoritative resolution table — same R1–R5 inherited from L1.12 family):*
