@@ -10,7 +10,7 @@ import v4.compiler.infer {
   AlgebraRef,
   InferredFacts,
   InferredTree,
-  infer_facts_lookup_miss
+  infer_facts_lookup_miss_diagnostic
 }
 import v4.lens.structural_resolution {
   FactsLookupMiss,
@@ -32,12 +32,6 @@ import v4.std.dependency {
   BindsTo,
   DependencyView,
   dependency_binds_to_edge
-}
-import v4.std.diagnostic {
-  Diagnostic,
-  ExternalContractUnknown,
-  NodeLocus,
-  Unavailable
 }
 import v4.std.node { Atom, Conj, Edge, Hash, Named, Node, Symbol, TypeNode }
 import v4.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
@@ -104,17 +98,9 @@ fn sr_lookup_resolved_facts() -> InferredFacts {
   }
 }
 
-fn sr_lookup_miss_diagnostic(n: Node) -> Diagnostic {
-  Diagnostic {
-    reason: infer_facts_lookup_miss,
-    at: NodeLocus { node: n },
-    correction: Unavailable { reason: ExternalContractUnknown }
-  }
-}
-
 fn sr_lookup_usage_site_witness() -> Witness<InferredFacts> {
   Violates {
-    diagnostic: sr_lookup_miss_diagnostic(n: sr_lookup_use)
+    diagnostic: infer_facts_lookup_miss_diagnostic(key: sr_lookup_use)
   }
 }
 

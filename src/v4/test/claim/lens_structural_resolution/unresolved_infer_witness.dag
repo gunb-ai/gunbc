@@ -10,7 +10,7 @@ import v4.compiler.infer {
   AlgebraRef,
   InferredFacts,
   InferredTree,
-  infer_descent_not_derived
+  infer_descent_not_derived_diagnostic
 }
 import v4.lens.structural_resolution {
   StructuralResolutionFact,
@@ -32,12 +32,6 @@ import v4.std.dependency {
   BindsTo,
   DependencyView,
   dependency_binds_to_edge
-}
-import v4.std.diagnostic {
-  Diagnostic,
-  ExternalContractUnknown,
-  NodeLocus,
-  Unavailable
 }
 import v4.std.node { Atom, Conj, Edge, Hash, Named, Node, Symbol, TypeNode }
 import v4.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
@@ -104,17 +98,9 @@ fn sr_infer_resolved_facts() -> InferredFacts {
   }
 }
 
-fn sr_infer_other_diagnostic(n: Node) -> Diagnostic {
-  Diagnostic {
-    reason: infer_descent_not_derived,
-    at: NodeLocus { node: n },
-    correction: Unavailable { reason: ExternalContractUnknown }
-  }
-}
-
 fn sr_infer_usage_site_witness() -> Witness<InferredFacts> {
   Violates {
-    diagnostic: sr_infer_other_diagnostic(n: sr_infer_use)
+    diagnostic: infer_descent_not_derived_diagnostic(n: sr_infer_use)
   }
 }
 

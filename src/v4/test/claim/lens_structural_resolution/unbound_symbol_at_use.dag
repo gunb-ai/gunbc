@@ -7,9 +7,7 @@
 module v4.test.claim.lens_structural_resolution.unbound_symbol_at_use
 
 import v4.compiler.infer { AlgebraRef, InferredFacts, InferredTree }
-import v4.compiler.resolve {
-  resolve_reason_unbound_symbol
-}
+import v4.compiler.resolve { unbound_symbol_diagnostic }
 import v4.lens.structural_resolution {
   StructuralResolutionFact,
   UnboundSymbolAtUse,
@@ -30,12 +28,6 @@ import v4.std.dependency {
   BindsTo,
   DependencyView,
   dependency_binds_to_edge
-}
-import v4.std.diagnostic {
-  Diagnostic,
-  ExternalContractUnknown,
-  NodeLocus,
-  Unavailable
 }
 import v4.std.node { Atom, Conj, Edge, Hash, Named, Node, Symbol, TypeNode }
 import v4.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
@@ -102,17 +94,9 @@ fn sr_unbound_resolved_facts() -> InferredFacts {
   }
 }
 
-fn sr_unbound_symbol_diagnostic(n: Node) -> Diagnostic {
-  Diagnostic {
-    reason: resolve_reason_unbound_symbol,
-    at: NodeLocus { node: n },
-    correction: Unavailable { reason: ExternalContractUnknown }
-  }
-}
-
 fn sr_unbound_usage_site_witness() -> Witness<InferredFacts> {
   Violates {
-    diagnostic: sr_unbound_symbol_diagnostic(n: sr_unbound_use)
+    diagnostic: unbound_symbol_diagnostic(n: sr_unbound_use)
   }
 }
 
