@@ -6,7 +6,12 @@
 
 module v4.test.claim.lens_coverage.parallel_authority_defect_key
 
-import v4.lens.coverage { ParallelAuthority, coverage_defect_parallel_authority }
+import v4.lens.coverage {
+  CoverageDefectAcceptance,
+  CoverageDefectAcceptanceKey,
+  ParallelAuthority,
+  coverage_defect_parallel_authority
+}
 import v4.std.logic { Bool }
 import v4.std.node { Atom, Conj, Node, Symbol, TypeNode }
 import v4.std.verification {
@@ -25,8 +30,12 @@ data parallel_authority_node: Node = Node {
   children: []
 }
 
+data expected_parallel_authority_acceptance: CoverageDefectAcceptance = {
+  concern: CoverageDefectAcceptanceKey { lens: ParallelAuthority }
+}
+
 fn parallel_authority_defect_key_claim_holds() -> Bool {
-  coverage_defect_parallel_authority.concern.lens == ParallelAuthority
+  coverage_defect_parallel_authority == expected_parallel_authority_acceptance
 }
 
 fn parallel_authority_defect_key_claim_rhs() -> Node {

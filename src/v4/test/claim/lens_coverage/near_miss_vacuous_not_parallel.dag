@@ -7,8 +7,6 @@
 module v4.test.claim.lens_coverage.near_miss_vacuous_not_parallel
 
 import v4.lens.coverage {
-  ParallelAuthority,
-  VacuousArm,
   coverage_defect_parallel_authority,
   coverage_defect_vacuous_arm
 }
@@ -31,9 +29,7 @@ data near_miss_vacuous_node: Node = Node {
 }
 
 fn near_miss_vacuous_not_parallel_claim_holds() -> Bool {
-  coverage_defect_vacuous_arm.concern.lens == VacuousArm &&
-    coverage_defect_parallel_authority.concern.lens == ParallelAuthority &&
-    coverage_defect_vacuous_arm.concern.lens != coverage_defect_parallel_authority.concern.lens
+  coverage_defect_vacuous_arm != coverage_defect_parallel_authority
 }
 
 fn near_miss_vacuous_not_parallel_claim_rhs() -> Node {

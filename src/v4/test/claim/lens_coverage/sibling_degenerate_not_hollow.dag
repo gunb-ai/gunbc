@@ -7,8 +7,6 @@
 module v4.test.claim.lens_coverage.sibling_degenerate_not_hollow
 
 import v4.lens.coverage {
-  DegenerateType,
-  HollowType,
   coverage_defect_degenerate_type,
   coverage_defect_hollow_type
 }
@@ -31,9 +29,7 @@ data sibling_degenerate_node: Node = Node {
 }
 
 fn sibling_degenerate_not_hollow_claim_holds() -> Bool {
-  coverage_defect_degenerate_type.concern.lens == DegenerateType &&
-    coverage_defect_hollow_type.concern.lens == HollowType &&
-    coverage_defect_degenerate_type.concern.lens != coverage_defect_hollow_type.concern.lens
+  coverage_defect_degenerate_type != coverage_defect_hollow_type
 }
 
 fn sibling_degenerate_not_hollow_claim_rhs() -> Node {

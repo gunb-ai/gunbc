@@ -7,6 +7,8 @@
 module v4.test.claim.lens_coverage.discriminant_predicate_defect_key
 
 import v4.lens.coverage {
+  CoverageDefectAcceptance,
+  CoverageDefectAcceptanceKey,
   DiscriminantPredicate,
   coverage_defect_discriminant_predicate
 }
@@ -28,8 +30,12 @@ data discriminant_predicate_node: Node = Node {
   children: []
 }
 
+data expected_discriminant_predicate_acceptance: CoverageDefectAcceptance = {
+  concern: CoverageDefectAcceptanceKey { lens: DiscriminantPredicate }
+}
+
 fn discriminant_predicate_defect_key_claim_holds() -> Bool {
-  coverage_defect_discriminant_predicate.concern.lens == DiscriminantPredicate
+  coverage_defect_discriminant_predicate == expected_discriminant_predicate_acceptance
 }
 
 fn discriminant_predicate_defect_key_claim_rhs() -> Node {
