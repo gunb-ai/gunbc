@@ -43,6 +43,7 @@ import v4.std.diagnostic {
   Accepted,
   Diagnostic,
   NodeLocus,
+  NonEmptyDiagnostics,
   None,
   Outcome,
   Rejected,
@@ -51,14 +52,15 @@ import v4.std.diagnostic {
 }
 import v4.std.node { Edge, Named, Node, Symbol, TypeNode, Atom, Conj }
 import v4.std.verification {
-  Compiles,
-  Equals,
   T19ManualAnchorAbsent,
   TestClaim,
   TestClassification,
   Tier1,
-  Unit
-}
+  Unit,
+  CompilesClaim,
+  DiagnosticClaim,
+  EqualsClaim,
+  RoundTripClaim}
 
 
 data complexity_contract_symbol: Symbol = complexity_contract_symbol
@@ -87,16 +89,14 @@ fn complexity_contract(body: Node) -> Node {
 }
 
 
-fn expected_complexity_rejection(input: Node, reason: Symbol, correction: Node) -> Outcome<Node> {
-  Rejected {
-    diagnostics: diagnostics_singleton(
-      d: Diagnostic {
-        reason: reason,
-        at: NodeLocus { node: input },
-        correction: Suggested { node: correction }
-      }
-    )
-  }
+fn expected_complexity_rejection(input: Node, reason: Symbol, correction: Node) -> NonEmptyDiagnostics {
+  diagnostics_singleton(
+    d: Diagnostic {
+      reason: reason,
+      at: NodeLocus { node: input },
+      correction: Suggested { node: correction }
+    }
+  )
 }
 
 
@@ -106,22 +106,20 @@ data within_bound_input: Node = complexity_contract(body: atom_node(s: complexit
 data falsification_overcost_against_structural_bound: Node = complexity_contract(body: atom_node(s: complexity_body_quadratic_symbol))
 
 
-data claim_within_structural_bound_passes: TestClaim = TestClaim {
-  kind: Compiles,
+data claim_within_structural_bound_passes: TestClaim = CompilesClaim {
   label: "complexity bound accepts lens-derived in-bound body",
   t19_anchor: T19ManualAnchorAbsent,
   input: within_bound_input,
-  expected: Accepted { value: within_bound_input, diagnostics: None },
+  expected_value: within_bound_input,
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
 
-data claim_overcost_against_structural_bound_violates: TestClaim = TestClaim {
-  kind: Equals,
+data claim_overcost_against_structural_bound_violates: TestClaim = DiagnosticClaim {
   label: "complexity bound rejects lens-derived over-cost body",
   t19_anchor: T19ManualAnchorAbsent,
   input: falsification_overcost_against_structural_bound,
-  expected: expected_complexity_rejection(
+  expected_rejection: expected_complexity_rejection(
     input: falsification_overcost_against_structural_bound,
     reason: complexity_violation_reason,
     correction: within_bound_input
@@ -133,12 +131,11 @@ data claim_overcost_against_structural_bound_violates: TestClaim = TestClaim {
 data falsification_cost_contradicts_inhabitance: Node = complexity_contract(body: atom_node(s: complexity_body_contradictory_inhabitant_symbol))
 
 
-data claim_cost_contradicts_inhabitance_caught: TestClaim = TestClaim {
-  kind: Equals,
+data claim_cost_contradicts_inhabitance_caught: TestClaim = DiagnosticClaim {
   label: "complexity inhabitance rejects contradictory body cost",
   t19_anchor: T19ManualAnchorAbsent,
   input: falsification_cost_contradicts_inhabitance,
-  expected: expected_complexity_rejection(
+  expected_rejection: expected_complexity_rejection(
     input: falsification_cost_contradicts_inhabitance,
     reason: complexity_inhabitance_reason,
     correction: within_bound_input
