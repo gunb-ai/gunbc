@@ -8,6 +8,7 @@ module gunbc.auth.patterns
 
 import std.resources { Filesystem, Network, AuthContext }
 import std.cloud { CloudRuntime }
+import std.runtime.github_actions { GitHubActionsRuntime }
 import std.types {
   AccessToken,
   AuthScheme,
@@ -31,9 +32,9 @@ pattern acquire_subject_token(
   audience: NonEmptyStr
 ) -> { token: Secret } {
   node token = match runtime {
-    GitHubActions => github_oidc(audience: audience)
-    Metadata     => metadata_oidc(audience: audience)
-    LocalDev     => metadata_oidc(audience: audience)  // placeholder: local_auth() needs if/else expression support
+    GitHubActions { runtime: github_actions } => github_oidc(audience: audience, runtime: github_actions)
+    Metadata { runtime: _ } => metadata_oidc(audience: audience)
+    LocalDev { runtime: _ } => metadata_oidc(audience: audience)  // placeholder: local_auth() needs if/else expression support
   }
   return { token: token.token }
 }
@@ -115,11 +116,11 @@ pattern credential_chain(
 // Real implementations replacing stubs. Each acquires a subject token
 // from the runtime environment using the appropriate protocol.
 
-func github_oidc(audience: String) -> { token: Secret }
+func github_oidc(audience: String, runtime: GitHubActionsRuntime) -> { token: Secret }
   uses net: Network
 {
-  url = shell.Env.Get(name: "ACTIONS_ID_TOKEN_REQUEST_URL")
-  auth = shell.Env.Get(name: "ACTIONS_ID_TOKEN_REQUEST_TOKEN")
+  url = shell.Env.Get(name: runtime.oidc_request_url_env)
+  auth = shell.Env.Get(name: runtime.oidc_request_token_env)
 
   response = github.OIDC.GetToken(
     audience: audience,

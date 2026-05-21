@@ -1,7 +1,12 @@
-// std/cloud.dag -- Cloud runtime and authentication types.
-//
-// Abstract cloud deployment and authentication classification.
+// std/cloud.dag -- Cloud runtime composition.
 
 module std.cloud
 
-type CloudRuntime = GitHubActions | Metadata | LocalDev
+import std.runtime.github_actions { GitHubActionsRuntime }
+import std.runtime.local_dev { LocalDevRuntime }
+import std.runtime.metadata { MetadataRuntime }
+
+type CloudRuntime
+  = GitHubActions { runtime: GitHubActionsRuntime }
+  | Metadata { runtime: MetadataRuntime }
+  | LocalDev { runtime: LocalDevRuntime }
