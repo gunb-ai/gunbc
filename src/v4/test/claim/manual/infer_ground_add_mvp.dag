@@ -184,9 +184,19 @@ fn infer_receipt_subject(case: InferReceiptCase) -> TestClaimEvalSubject<Node> {
 }
 
 
+// Project infer's Outcome<InferredTree> to Outcome<Node> for DiagnosticClaim rejection compare only.
+fn infer_outcome_node_projection(actual: Outcome<InferredTree>) -> Outcome<Node> {
+  match actual {
+    Accepted { value: tree, diagnostics: ad } =>
+      Accepted { value: tree.root, diagnostics: ad }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+
 fn infer_add_mvp_receipt_run(
   subject: TestClaimEvalSubject<Node>,
-) -> TestClaimRun<Node> {
+) -> TestClaimRun<InferredTree> {
   let actual = anchor_infer_add_mvp()
   TestClaimRun {
     cache: test_claim_cache_receipt(
@@ -199,16 +209,18 @@ fn infer_add_mvp_receipt_run(
     verdict: match test_claim_expected_outcome(c: subject.claim) {
       Accepted { value: expected, diagnostics: _ } =>
         match actual {
-          Rejected { diagnostics: r } =>
-            if outcome_node_eq(a: Rejected { diagnostics: r }, b: expected) {
+          Rejected { diagnostics: _ } =>
+            if outcome_node_eq(
+              a: infer_outcome_node_projection(actual: actual),
+              b: expected
+            ) {
               Pass
             } else {
-              Fail { actual: Rejected { diagnostics: r } }
+              Fail { actual: actual }
             }
-          Accepted { value: _, diagnostics: ad } =>
-            Fail { actual: Accepted { value: test_claim_input(c: subject.claim), diagnostics: ad } }
+          Accepted { value: _, diagnostics: _ } => Fail { actual: actual }
         }
-      Rejected { diagnostics: r } => Fail { actual: Rejected { diagnostics: r } }
+      Rejected { diagnostics: _ } => Fail { actual: actual }
     }
   }
 }
@@ -305,7 +317,7 @@ data case_infer_add_mvp_fail_closed: InferReceiptCase = InferDiagnosticReceiptCa
 data subject_infer_add_mvp_fail_closed: TestClaimEvalSubject<Node> = infer_receipt_subject(case: case_infer_add_mvp_fail_closed)
 
 
-data run_infer_add_mvp_fail_closed: TestClaimRun<Node> = infer_add_mvp_receipt_run(subject: subject_infer_add_mvp_fail_closed)
+data run_infer_add_mvp_fail_closed: TestClaimRun<InferredTree> = infer_add_mvp_receipt_run(subject: subject_infer_add_mvp_fail_closed)
 
 
 data case_infer_descent_witness_fail_closed: InferReceiptCase = InferCompilesReceiptCase {
