@@ -15,14 +15,11 @@ import v4.std.diagnostic {
   Accepted,
   Diagnostic,
   ExternalContractUnknown,
-  None,
   NodeLocus,
   Outcome,
   Rejected,
   Unavailable,
-  diagnostics_singleton,
-  outcome_rejected,
-  rejected_with_pending
+  outcome_rejected
 }
 import v4.std.find_witness {
   CandidateSet,

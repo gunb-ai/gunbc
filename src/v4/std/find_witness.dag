@@ -81,7 +81,7 @@ fn preservation_predicate_holds(
     (candidate == predicate.algebra) && well_formed(n: candidate)
   } else {
     if predicate.preservation_rule == preservation_rule_exact_structural_equality_zip_fold {
-      well_formed(n: source_facts) && well_formed(n: candidate)
+      (source_facts == candidate) && well_formed(n: source_facts)
     } else {
       false
     }
