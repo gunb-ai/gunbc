@@ -27,8 +27,8 @@ const MVP1_CLAIM_DAG: &str =
 const MVP1_CLAIM_PATH: &str = "src/v4/test/claim/manual/mvp1_rust_add_translate.dag";
 
 fn parse_v4_dag(source: &str, path: &str) {
-    let tokens = tokenize_for_test(source, path)
-        .unwrap_or_else(|e| panic!("{path}: tokenize: {e:?}"));
+    let tokens =
+        tokenize_for_test(source, path).unwrap_or_else(|e| panic!("{path}: tokenize: {e:?}"));
     parse_for_test(&tokens, path).unwrap_or_else(|e| panic!("{path}: parse: {e:?}"));
 }
 
