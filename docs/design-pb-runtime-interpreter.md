@@ -206,10 +206,10 @@ type BinShim {
 
 **No `PipelineStep` DSL.** Earlier drafts of this doc proposed a coproduct over `LoadDag` / `CompileLensRegistry` / `EmitRustModules` / etc. as separate pipeline-step variants. That was parallel-representation: `.dag` is already the pipeline DSL — function calls compose; records return; sequencing is structural. Reintroducing a step-DSL would duplicate the language inside itself. Codex review on PR #1176 caught this as a substrate-fact-introduction-without-P1 violation; corrected to the simpler `entry: DeclarationRef` shape.
 
-**`std.process.ProcessExit` is the existing substrate authority.** The entry function returns the live `ProcessExit` carrier already declared at `dsl/std/process.dag:39-41`:
+**`std.process.ProcessExit` is the existing substrate authority.** The entry function returns the live `ProcessExit` carrier already declared in `dsl/std/process.dag`:
 
 ```
-// dsl/std/process.dag:39-41 — live substrate authority (DO NOT redeclare).
+// dsl/std/process.dag — live substrate authority (DO NOT redeclare).
 type ProcessExit
   = ExitSuccess
   | ExitFailure { code: Int, reason: String }
@@ -217,7 +217,7 @@ type ProcessExit
 
 `std.posix` exposes standard exit-code constants (`exit_code_success: Int = 0`, `exit_code_general_error: Int = 1`, `exit_code_misuse: Int = 2`), and `std.process` exposes a convenience constructor `fn exit_failure(reason: String) -> ProcessExit`.
 
-This is the structural contract for translating `.dag` program return values into host process exit codes — exactly the contract bin-shims need. Bin-shim entry functions return `std.process.ProcessExit` directly; the host (cli_run.rs / emitted bin-shim) checks `type_name=="ProcessExit"` AND `variant_name=="ExitFailure"` to set exit code per the convention documented in `dsl/std/process.dag` lines 11-30.
+This is the structural contract for translating `.dag` program return values into host process exit codes — exactly the contract bin-shims need. Bin-shim entry functions return `std.process.ProcessExit` directly; the host (cli_run.rs / emitted bin-shim) checks `type_name=="ProcessExit"` AND `variant_name=="ExitFailure"` to set exit code per the convention documented in `dsl/std/process.dag`.
 
 **No new substrate carrier required for Item 5.** Earlier drafts of this doc claimed `std.process.ProcessExit` "does NOT yet exist" and proposed a sketch shape — that was a verification miss; the carrier already exists. Bin-shim retirement workers consume the existing authority directly.
 
