@@ -378,13 +378,13 @@ fn meet_sub_value(a: SubValueRelation, b: SubValueRelation) -> SubValueRelation 
       else {
         if lb == 3 { a }
         else {
-          // Both lawful at level >= 1. If either is NonIncreasingValue, that wins.
-          if la == 1 || lb == 1 { NonIncreasingValue }
-          else {
-            // Both structural (level 2) and not structurally equal — incomparable.
-            // Greatest common lower bound is NonIncreasingValue.
-            NonIncreasingValue
-          }
+          // Both lawful at level ≥ 1 and neither is ⊤. The only remaining cases are
+          // (NonIncreasingValue ⊓ structural), (structural ⊓ NonIncreasingValue), and
+          // (distinct structural witnesses at level 2). All three have greatest common
+          // lower bound `NonIncreasingValue` — either it is already an operand, or both
+          // operands are pairwise-incomparable structural witnesses whose meet is the
+          // weakest-structural inhabitant by definition.
+          NonIncreasingValue
         }
       }
     }

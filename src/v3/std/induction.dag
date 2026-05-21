@@ -342,8 +342,9 @@ fn meet_sub_value(a: SubValueRelation, b: SubValueRelation) -> SubValueRelation 
       else {
         if lb == 3 { a }
         else {
-          if la == 1 || lb == 1 { NonIncreasingValue }
-          else { NonIncreasingValue }
+          // See `dsl/std/induction.dag` — both lawful at level ≥ 1, neither ⊤,
+          // greatest common lower bound is uniformly `NonIncreasingValue`.
+          NonIncreasingValue
         }
       }
     }
