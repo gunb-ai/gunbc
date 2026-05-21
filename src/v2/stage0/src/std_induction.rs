@@ -445,12 +445,7 @@ pub fn sub_value_to_lowering_target(relation: Rc<SubValueRelation>) -> Option<Rc
             evidence: DescentEvidence::NonIncreasing,
             factor: None,
         })),
-        SubValueRelation::IncomparableValue => Some(Rc::new(LoweringTarget {
-            primitive: IterationPrimitive::Repeat,
-            bound: Rc::new(SizeBound::Forever),
-            evidence: DescentEvidence::NonIncreasing,
-            factor: None,
-        })),
+        SubValueRelation::IncomparableValue => None,
         SubValueRelation::SubValueUnknown => None,
     }
 }

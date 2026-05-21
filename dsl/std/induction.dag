@@ -635,8 +635,8 @@ fn sub_value_to_lowering_target(relation: SubValueRelation) -> LoweringTarget? {
         evidence: NonIncreasing,
         factor: none
       }}
-    // Lawful non-structural witnesses lower the same way as PreservedValue: we know
-    // non-increase but cannot project a specific shrink target.
+    // NonIncreasingValue lowers like PreservedValue: we know non-increase but cannot
+    // project a specific shrink target. Forever-bounded Repeat with NonIncreasing evidence.
     NonIncreasingValue =>
       Some { value: LoweringTarget {
         primitive: Repeat,
@@ -644,13 +644,15 @@ fn sub_value_to_lowering_target(relation: SubValueRelation) -> LoweringTarget? {
         evidence: NonIncreasing,
         factor: none
       }}
-    IncomparableValue =>
-      Some { value: LoweringTarget {
-        primitive: Repeat,
-        bound: Forever,
-        evidence: NonIncreasing,
-        factor: none
-      }}
+    // IncomparableValue evidence-projects to `Strict` (strict descent along some axis,
+    // axis erased — see `sub_value_to_evidence`). The lowering target has no usable axis
+    // to mint a finite `bound` (no `tree_size_bound`, no `CollectionSize`, no
+    // `ArithmeticParam` — all require a specific param/field), so the honest projection
+    // is `none` — same posture as `sub_value_to_call_pattern(IncomparableValue) = none`.
+    // Returning `Forever + NonIncreasing` would contradict the `Strict` evidence (P2 /
+    // Practice 3 single-authority); returning `Forever + Strict` would claim a bound the
+    // lowering cannot actually enforce. Fail-closed is the only consistent projection.
+    IncomparableValue => none
     SubValueUnknown => none
   }
 }
