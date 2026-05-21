@@ -1,0 +1,65 @@
+// src/v4/test/claim/lens_fact_density/conj_positional_only_no_fact.dag
+// Scope: T-30 negative claim — conj with only positional edges stays NoFact (near-miss vs named bundle).
+// Owns: conj_positional_only_no_fact_claim.
+// Consumes: lens fact_density, std node.
+// Status: scaffold — compile-only until T-22 generated claim execution.
+
+module v4.test.claim.lens_fact_density.conj_positional_only_no_fact
+
+import v4.lens.fact_density { NoFact, SourceSpecReadFact, carrier_spec_fact }
+import v4.std.diagnostic {
+  AmbiguousIntent,
+  Diagnostic,
+  Textual,
+  Unavailable,
+  WholeFile
+}
+import v4.std.logic { Bool }
+import v4.std.node {
+  Atom,
+  Conj,
+  Edge,
+  Node,
+  Positional,
+  Symbol,
+  TypeNode
+}
+
+data conj_positional_only_file: Symbol = conj_positional_only_file
+data conj_positional_only_reason: Symbol = conj_positional_only_reason
+data conj_positional_only_child_symbol: Symbol = conj_positional_only_child_symbol
+
+type LensFactDensityClaim {
+  input: Node
+  expected: SourceSpecReadFact
+  falsification: Diagnostic
+}
+
+data conj_positional_only_child: Node = Node {
+  kind: TypeNode { connective: Atom { identity: conj_positional_only_child_symbol } },
+  children: []
+}
+
+data conj_positional_only_input: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [
+    Edge { label: Positional, target: conj_positional_only_child }
+  ]
+}
+
+data conj_positional_only_no_fact_claim: LensFactDensityClaim = LensFactDensityClaim {
+  input: conj_positional_only_input,
+  expected: NoFact,
+  falsification: Diagnostic {
+    reason: conj_positional_only_reason,
+    at: Textual { file: conj_positional_only_file, extent: WholeFile },
+    correction: Unavailable { reason: AmbiguousIntent }
+  }
+}
+
+fn conj_positional_only_no_fact_claim_holds() -> Bool {
+  carrier_spec_fact(carrier: conj_positional_only_no_fact_claim.input) ==
+    conj_positional_only_no_fact_claim.expected
+}
+
+data conj_positional_only_no_fact_claim_passes: Bool = conj_positional_only_no_fact_claim_holds()

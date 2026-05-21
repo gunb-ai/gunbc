@@ -1,0 +1,102 @@
+// src/v4/test/claim/lens_cost/disj_max.dag
+// Scope: T-12 worked claim — disjunctive composition takes the dominant branch cost.
+// Owns: disj_max_claim.
+// Consumes: lens cost, std diagnostic, std node, std nat.
+// Status: scaffold — compile-only until T-19/T-22 generated claim execution.
+
+module v4.test.claim.lens_cost.disj_max
+
+import v4.lens.cost {
+  ConstantCost,
+  LinearCost,
+  SizeVariable,
+  SymbolicCost,
+  cost_lens,
+  unit_cost
+}
+import v4.std.diagnostic {
+  AmbiguousIntent,
+  Diagnostic,
+  Textual,
+  Unavailable,
+  WholeFile
+}
+import v4.std.logic { Bool }
+import v4.std.nat { Succ, Zero }
+import v4.std.node {
+  Atom,
+  Cardinality,
+  ComputationNode,
+  Disj,
+  Edge,
+  Node,
+  Positional,
+  Symbol,
+  Transform,
+  TypeNode
+}
+import v4.std.witness { Holds, Witness }
+
+data disj_max_claim_file: Symbol = disj_max_claim_file
+data disj_max_claim_reason: Symbol = disj_max_claim_reason
+data disj_max_cheap_body_atom: Symbol = disj_max_cheap_body_atom
+data disj_max_expensive_body_atom: Symbol = disj_max_expensive_body_atom
+
+type LensCostClaim {
+  input: Node
+  expected: SymbolicCost
+  falsification: Diagnostic
+}
+
+data disj_max_cheap_body: Node = Node {
+  kind: TypeNode { connective: Atom { identity: disj_max_cheap_body_atom } },
+  children: []
+}
+
+data disj_max_expensive_body: Node = Node {
+  kind: TypeNode { connective: Cardinality },
+  children: [
+    Edge {
+      label: Positional,
+      target: Node {
+        kind: ComputationNode { behavior: Transform },
+        children: [
+          Edge {
+            label: Positional,
+            target: Node {
+              kind: TypeNode { connective: Atom { identity: disj_max_expensive_body_atom } },
+              children: []
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
+
+data disj_max_input: Node = Node {
+  kind: TypeNode { connective: Disj },
+  children: [
+    Edge { label: Positional, target: disj_max_cheap_body },
+    Edge { label: Positional, target: disj_max_expensive_body }
+  ]
+}
+
+data disj_max_claim: LensCostClaim = LensCostClaim {
+  input: disj_max_input,
+  expected: LinearCost { variable: SizeVariable { source: disj_max_expensive_body } },
+  falsification: Diagnostic {
+    reason: disj_max_claim_reason,
+    at: Textual { file: disj_max_claim_file, extent: WholeFile },
+    correction: Unavailable { reason: AmbiguousIntent }
+  }
+}
+
+fn disj_max_claim_holds() -> Bool {
+  match cost_lens(n: disj_max_claim.input) {
+    Holds { value: actual } => actual == disj_max_claim.expected
+    _ => false
+  }
+}
+
+data disj_max_claim_passes: Bool = disj_max_claim_holds()

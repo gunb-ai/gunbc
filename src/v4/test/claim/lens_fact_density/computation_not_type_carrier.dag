@@ -1,0 +1,49 @@
+// src/v4/test/claim/lens_fact_density/computation_not_type_carrier.dag
+// Scope: T-30 negative claim — computation nodes are NotATypeCarrier (sibling lens escape).
+// Owns: computation_not_type_carrier_claim.
+// Consumes: lens fact_density, std node.
+// Status: scaffold — compile-only until T-22 generated claim execution.
+
+module v4.test.claim.lens_fact_density.computation_not_type_carrier
+
+import v4.lens.fact_density { NotATypeCarrier, SourceSpecReadFact, carrier_spec_fact }
+import v4.std.diagnostic {
+  AmbiguousIntent,
+  Diagnostic,
+  Textual,
+  Unavailable,
+  WholeFile
+}
+import v4.std.logic { Bool }
+import v4.std.node { ComputationNode, Node, Symbol, Transform }
+
+data computation_not_type_carrier_file: Symbol = computation_not_type_carrier_file
+data computation_not_type_carrier_reason: Symbol = computation_not_type_carrier_reason
+
+type LensFactDensityClaim {
+  input: Node
+  expected: SourceSpecReadFact
+  falsification: Diagnostic
+}
+
+data computation_not_type_carrier_input: Node = Node {
+  kind: ComputationNode { behavior: Transform },
+  children: []
+}
+
+data computation_not_type_carrier_claim: LensFactDensityClaim = LensFactDensityClaim {
+  input: computation_not_type_carrier_input,
+  expected: NotATypeCarrier,
+  falsification: Diagnostic {
+    reason: computation_not_type_carrier_reason,
+    at: Textual { file: computation_not_type_carrier_file, extent: WholeFile },
+    correction: Unavailable { reason: AmbiguousIntent }
+  }
+}
+
+fn computation_not_type_carrier_claim_holds() -> Bool {
+  carrier_spec_fact(carrier: computation_not_type_carrier_claim.input) ==
+    computation_not_type_carrier_claim.expected
+}
+
+data computation_not_type_carrier_claim_passes: Bool = computation_not_type_carrier_claim_holds()

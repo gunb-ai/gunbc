@@ -1,0 +1,46 @@
+// src/v4/test/claim/lens_affected_set/verified_by_in_frontier.dag
+// Scope: T-21 worked claim — VerifiedBy is in the lens frontier kind set.
+// Owns: verified_by_in_frontier_claim.
+// Consumes: lens affected_set, std dependency, std node.
+// Status: scaffold — compile-only until T-22 generated claim execution.
+
+module v4.test.claim.lens_affected_set.verified_by_in_frontier
+
+import v4.lens.affected_set { dependency_in_lens_frontier }
+import v4.std.dependency { DependencyView, VerifiedBy }
+import v4.std.logic { Bool }
+import v4.std.node { Atom, Node, Symbol, TypeNode }
+
+data verified_by_root_symbol: Symbol = verified_by_root_symbol
+data verified_by_child_symbol: Symbol = verified_by_child_symbol
+
+type LensAffectedSetFrontierClaim {
+  dependency: DependencyView
+  expected_in_frontier: Bool
+}
+
+fn verified_by_node(s: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: s } },
+    children: []
+  }
+}
+
+data verified_by_dependency: DependencyView = DependencyView {
+  source: verified_by_node(s: verified_by_root_symbol),
+  dependent: verified_by_node(s: verified_by_child_symbol),
+  kind: VerifiedBy,
+  usage_site: verified_by_node(s: verified_by_child_symbol)
+}
+
+data verified_by_in_frontier_claim: LensAffectedSetFrontierClaim = LensAffectedSetFrontierClaim {
+  dependency: verified_by_dependency,
+  expected_in_frontier: true
+}
+
+fn verified_by_in_frontier_claim_holds() -> Bool {
+  dependency_in_lens_frontier(dependency: verified_by_in_frontier_claim.dependency) ==
+    verified_by_in_frontier_claim.expected_in_frontier
+}
+
+data verified_by_in_frontier_claim_passes: Bool = verified_by_in_frontier_claim_holds()

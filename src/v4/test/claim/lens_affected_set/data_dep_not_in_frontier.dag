@@ -1,0 +1,46 @@
+// src/v4/test/claim/lens_affected_set/data_dep_not_in_frontier.dag
+// Scope: T-21 negative claim — DataDependsOn is outside the lens frontier (sibling-not-caught).
+// Owns: data_dep_not_in_frontier_claim.
+// Consumes: lens affected_set, std dependency, std node.
+// Status: scaffold — compile-only until T-22 generated claim execution.
+
+module v4.test.claim.lens_affected_set.data_dep_not_in_frontier
+
+import v4.lens.affected_set { dependency_in_lens_frontier }
+import v4.std.dependency { DataDependsOn, DependencyView }
+import v4.std.logic { Bool }
+import v4.std.node { Atom, Node, Symbol, TypeNode }
+
+data data_dep_root_symbol: Symbol = data_dep_root_symbol
+data data_dep_child_symbol: Symbol = data_dep_child_symbol
+
+type LensAffectedSetFrontierClaim {
+  dependency: DependencyView
+  expected_in_frontier: Bool
+}
+
+fn data_dep_node(s: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: s } },
+    children: []
+  }
+}
+
+data data_dep_dependency: DependencyView = DependencyView {
+  source: data_dep_node(s: data_dep_root_symbol),
+  dependent: data_dep_node(s: data_dep_child_symbol),
+  kind: DataDependsOn,
+  usage_site: data_dep_node(s: data_dep_child_symbol)
+}
+
+data data_dep_not_in_frontier_claim: LensAffectedSetFrontierClaim = LensAffectedSetFrontierClaim {
+  dependency: data_dep_dependency,
+  expected_in_frontier: false
+}
+
+fn data_dep_not_in_frontier_claim_holds() -> Bool {
+  dependency_in_lens_frontier(dependency: data_dep_not_in_frontier_claim.dependency) ==
+    data_dep_not_in_frontier_claim.expected_in_frontier
+}
+
+data data_dep_not_in_frontier_claim_passes: Bool = data_dep_not_in_frontier_claim_holds()

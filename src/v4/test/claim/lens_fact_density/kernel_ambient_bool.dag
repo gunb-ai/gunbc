@@ -1,0 +1,53 @@
+// src/v4/test/claim/lens_fact_density/kernel_ambient_bool.dag
+// Scope: T-30 worked claim — kernel-ambient bool atom classifies as KernelAmbientAtom.
+// Owns: kernel_ambient_bool_claim.
+// Consumes: lens fact_density, std node.
+// Status: scaffold — compile-only until T-22 generated claim execution.
+
+module v4.test.claim.lens_fact_density.kernel_ambient_bool
+
+import v4.lens.fact_density {
+  KernelAmbientAtom,
+  SourceSpecReadFact,
+  carrier_spec_fact,
+  fact_density_kernel_ambient_bool
+}
+import v4.std.diagnostic {
+  AmbiguousIntent,
+  Diagnostic,
+  Textual,
+  Unavailable,
+  WholeFile
+}
+import v4.std.logic { Bool }
+import v4.std.node { Atom, Node, TypeNode }
+
+data kernel_ambient_bool_file: Symbol = kernel_ambient_bool_file
+data kernel_ambient_bool_reason: Symbol = kernel_ambient_bool_reason
+
+type LensFactDensityClaim {
+  input: Node
+  expected: SourceSpecReadFact
+  falsification: Diagnostic
+}
+
+data kernel_ambient_bool_input: Node = Node {
+  kind: TypeNode { connective: Atom { identity: fact_density_kernel_ambient_bool } },
+  children: []
+}
+
+data kernel_ambient_bool_claim: LensFactDensityClaim = LensFactDensityClaim {
+  input: kernel_ambient_bool_input,
+  expected: KernelAmbientAtom,
+  falsification: Diagnostic {
+    reason: kernel_ambient_bool_reason,
+    at: Textual { file: kernel_ambient_bool_file, extent: WholeFile },
+    correction: Unavailable { reason: AmbiguousIntent }
+  }
+}
+
+fn kernel_ambient_bool_claim_holds() -> Bool {
+  carrier_spec_fact(carrier: kernel_ambient_bool_claim.input) == kernel_ambient_bool_claim.expected
+}
+
+data kernel_ambient_bool_claim_passes: Bool = kernel_ambient_bool_claim_holds()
