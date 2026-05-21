@@ -1,7 +1,7 @@
 // src/v4/compiler/00_compile.dag
 // Scope: B2-OMNI orchestrator — public terminal `validate_then_compile` (P3 commitment 6);
 //       internal `compile` over CoreNode + CompileMode; legacy Source staging until ingest lands.
-// Owns: CoreNode, LanguageModel, HostModel, CompileMode, CompileOutput, Lens, LensApplicationMode,
+// Owns: CoreNode, LanguageModel, RuntimeTarget, CompileMode, CompileOutput, Lens, LensApplicationMode,
 //       apply_lens, LensGateWitness, Validated, compile_stage_locus_port, compile_pipeline_not_realized,
 //       compile_lens_gate_rejected, compile_eval_not_realized, compile_ingest_staging,
 //       compile_pipeline_not_realized_diagnostic, compile_lens_gate_rejected_diagnostic,
@@ -45,8 +45,8 @@ import v4.std.witness { Witness }
 type CoreNode = Node
 
 
-// 🟢 grounded — host interpretation model peer (Ratified Q1); Eval terminal only.
-type HostModel = Node
+// 🟢 grounded — concrete runtime extdep target; Eval terminal only.
+type RuntimeTarget = Node
 
 
 // 🟢 grounded — pre-ingest text slot; legacy staging only (not compile-core).
@@ -56,7 +56,7 @@ type Source = String
 // 🟢 coproduct dissolution — ratified compile-core terminal modes (P1/P2).
 type CompileMode
   = TranslateTo { target: TargetModel }
-  | Eval { host_interp: HostModel }
+  | Eval { runtime: RuntimeTarget }
 
 
 // 🟢 coproduct dissolution — mode-dependent compile-core output (Output in design doc).
@@ -214,7 +214,7 @@ fn compile_inferred(
           outcome_accepted(TranslateResult { source: target_source })
         }
       )
-    Eval { host_interp: _ } =>
+    Eval { runtime: _ } =>
       outcome_rejected(
         compile_eval_not_realized_diagnostic(
           at: port_locus(port: compile_stage_locus_port)
