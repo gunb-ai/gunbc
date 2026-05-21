@@ -199,7 +199,7 @@ enumeration.
 | **L1.10.b** `CanonicalCarrier` (sub-signature of Textual-bypass family) | `coverage_defect_canonical_carrier` |
 | L1.11 Plausible-fallback | `coverage_defect_plausible_fallback` |
 | L1.12 Parallel-authority | `coverage_defect_parallel_authority` |
-| L1.13 Skeleton-collapse | `coverage_defect_skeleton_collapse` |
+| L1.13 Skeleton-collapse | `coverage_defect_skeleton_collapse` *(reserved-proposed — enforcement not active until skeleton extraction + classifier + clearing receipts land)* |
 
 **Migration notes for existing downstream consumers:**
 - Any consumer carrying `coverage_defect_emit_template` is **stale**;
@@ -1099,52 +1099,88 @@ import/alias of the resolver's authoritative shape.
 > the symptom when Practice 11 was missed at design time.
 
 - *Signature:* a `match` expression over a closed coproduct with `N` arms
-  whose RHSes collapse to `K` distinct skeletons under
-  α-renaming + constructor-name substitution, with `K << N` AND a
-  distribution shape indicating structural collapse. The diagnostic is
-  the **(K, distribution)** pair, not just the K/N ratio — distribution
-  shape determines which dissolution applies.
-- *Decidable:* yes — RHS skeletons are computed by tree-walking each arm,
-  α-renaming bound names, and replacing the leading constructor identity
-  with a hole. Equality of skeletons is structural. Distribution
-  histogram (arm count per skeleton) is then a simple count.
+  whose RHSes collapse to `K` distinct skeletons under the substitution
+  rule below, with a distribution shape meeting one of the four
+  classifier definitions (PureTemplate / Outlier / MultiOutlier /
+  Categorical). The diagnostic is the **(K, histogram)** pair where
+  the histogram is the sorted list of group sizes; threshold
+  definitions for each shape are exact and listed in the Distribution
+  shapes section. Only `N ≥ 4` matches are considered for findings
+  beyond PureTemplate / Outlier (smaller matches lack enough arms for
+  Categorical / MultiOutlier reads to be load-bearing).
+- *Decidable:* yes. The skeleton-extraction algorithm is:
+  - **Identity source:** the lens consumes post-resolve / `InferredTree`
+    canonical identities (qualified, alias-resolved). Source spelling
+    variation, import renames, and module-qualification differences do
+    NOT affect findings — two arms whose RHSes resolve to the same
+    canonical identity have the same skeleton at that position.
+  - **Substitution rule:** replace **every occurrence of the matched-arm
+    constructor identity** (when used as a value or constructor in the
+    RHS) with a per-arm hole; α-rename pattern-bound variables (their
+    names don't affect skeleton equality); do NOT collapse unrelated
+    free names, literals, or call arguments — those remain
+    distinguishing.
+  - **Skeleton equality:** two skeletons are equal iff they are
+    structurally identical after the above substitution + α-renaming.
+  - **Histogram:** sorted list of group sizes (largest first) where
+    each group is a maximal set of arms whose RHSes share a skeleton.
+    Distribution-shape classification below operates on the histogram.
 - *Verdict:* hard error (🔴 dissolve-now). Per the universal three-disposition
   rule (§5.0 / Practices 4 + 10 — 🔴/🟡/🟢, "there is no fourth"), L1.13
   produces exactly one of those three. No "advisory" tier; legitimate
   exceptions pass via Escape (clean 🟢) below, not via a softer verdict.
-- *Distribution shapes (closed enumeration of dissolution-relevant cases):*
-  - **PureTemplate** — `K = 1`, `N > 1`. All arms identical-modulo-constructor.
-    The dispatch is doing zero work. **Dissolution:** delete the match;
-    the operation doesn't depend on the variant. (Rare — usually a
-    real bug.)
-  - **Outlier** — `K = 2`, with one arm against `N-1` matching arms.
-    The match is performing a binary discriminator dressed as N-way
-    dispatch. **Dissolution:** consume the discriminator *structurally*
-    via match patterns + guards on the existing coproduct, OR
-    substructure the coproduct so the one-vs-many distinction becomes a
-    top-level variant. The function body becomes a 2-arm match of the
-    form `match x { <Special_pattern> => special; _ => default }`,
-    with the discriminator expressed as a sub-pattern or guard on the
-    `Special_pattern`. **DO NOT extract a named `Bool` helper** — that
-    is L1.1's predicate-dissolution anti-pattern (a `Bool`-returning fn
-    over a coproduct whose body is a single match per-variant is exactly
-    what L1.1 catches). The lens's "extract a discriminator" reflex
-    must satisfy L1.1 as well as L1.13 — the discriminant is structural
-    (the substrate knows the variant from the parsed match), not a hand-rolled
-    helper. Recent precedent: PR #3359 `connective_spec_fact` (6 arms →
-    2 skeletons, 5:1) was resolved via inline match-pattern with guard
-    (`Atom { identity: id } if is_kernel_ambient(id) => ...; _ => default`),
-    NOT via a named `Bool` helper.
-  - **Categorical** — `K` small relative to `N` (e.g., `K = 3, N = 12`),
-    with `K` groups of `N/K`-ish arms each. The match is acting as an
-    N-to-K projection that should live on the input coproduct's type.
-    **Dissolution:** push the categorization into the coproduct
-    definition — refactor the input enum to expose the `K` categories
-    as a top-level discriminator (sub-coproduct per category, or a
-    derived `category_of(x)` field). The function collapses to `K`
-    arms reading that derived structure. Recent precedent: PR #3452
-    `complexity_bound_from_class` (9 arms → 3 skeletons, 1:1:7).
-  - **Mixed** — `K` close to `N`. Each arm does distinguishable work.
+- *Distribution shapes (closed enumeration with exact thresholds):*
+  - **PureTemplate** — `K = 1`, `N > 1`. Histogram = `[N]`. All arms
+    identical-modulo-constructor; dispatch doing zero work.
+    **Dissolution:** delete the match; the operation doesn't depend on
+    the variant. (Rare — usually a real bug.) **Clearing receipt:** the
+    match is deleted OR replaced with the single shared RHS at the call
+    site.
+  - **Outlier** — `K = 2`, histogram = `[N-1, 1]` (one base case + one
+    uniform group). `N ≥ 3`. The match is performing a binary
+    discriminator dressed as N-way dispatch. **Dissolution:** consume
+    the discriminator *structurally* via match patterns + guards on the
+    existing coproduct, OR substructure the coproduct so the one-vs-many
+    distinction becomes a top-level variant. The function body becomes
+    a 2-arm match of the form `match x { <Special_pattern> => special;
+    _ => default }`, with the discriminator expressed as a sub-pattern
+    or guard on the `Special_pattern`. **DO NOT extract a named `Bool`
+    helper** — that is L1.1's predicate-dissolution anti-pattern.
+    **Clearing receipt:** the function body is a 2-arm match (or
+    pattern-with-guard) where the special/default split is *structural*
+    in the pattern or sub-coproduct definition, NOT a `Bool` helper
+    over the original coproduct. Recent precedent: PR #3359
+    `connective_spec_fact` (6 arms → 2 skeletons, 5:1) — resolved via
+    inline match-pattern with guard (`Atom { identity: id } if
+    is_kernel_ambient(id) => ...; _ => default`), NOT via a named
+    `Bool` helper.
+  - **MultiOutlier** — `K ≥ 2`, histogram contains both singleton(s)
+    AND non-singleton group(s). `N ≥ 4`. Multiple base-cases + one or
+    more uniform groups. Covers F14 (1:5:6 — one singleton +
+    two uniform groups) and F15 (1:1:7 — two singletons + one uniform
+    group). **Dissolution:** substructure the coproduct so each
+    singleton becomes its own top-level variant AND each uniform group
+    becomes a single wrapped variant (`SizedKind { kind: SizedSubKind }`
+    or similar). The function collapses to a number of arms equal to
+    the number of distinct skeletons. **Clearing receipt:** the input
+    coproduct's type definition carries the categorization
+    structurally — singleton variants exist as top-level variants;
+    uniform-group variants share a wrapping variant carrying the
+    sub-discriminator. NOT acceptable: a hand-rolled `category_of(x):
+    Category` function with N arms (just moves the L1.13 violation to
+    a new name). Recent precedent: PR #3452 `complexity_bound_from_class`
+    (9 arms → 3 skeletons, 1:1:7); F14 `feature_disposition`
+    (`llvm_ir.dag:570-585`, 12 arms → 3 skeletons, 1:5:6).
+  - **Categorical** — `K ≥ 2`, histogram contains ONLY non-singleton
+    groups (every group size ≥ 2). `K ≤ ⌊N/2⌋`, `N ≥ 4`. Pure category
+    projection with no singleton base case. Rarer than MultiOutlier in
+    practice. **Dissolution:** push the categorization into the
+    coproduct definition as N nested variants (each top-level variant
+    wraps one of K sub-coproducts). **Clearing receipt:** identical
+    discipline to MultiOutlier — the categorization lives in the input
+    type's structure, not in a parallel hand-rolled projection function.
+  - **Mixed** — `K` close to `N` (i.e., does NOT meet any of the four
+    classifier thresholds above). Each arm does distinguishable work.
     **No finding** — legitimate per-variant dispatch.
 - *Escape (clean 🟢):* `Mixed` distribution passes — distinct skeletons
   per arm IS legitimate per-variant dispatch. Two other clean-🟢 cases
@@ -1162,18 +1198,18 @@ import/alias of the resolver's authoritative shape.
     references) are Mixed for the same reason — the skeleton
     parameter-substitutes the leading constructor only, not call
     arguments (see decidability boundary below).
-- *Kills:* `feature_disposition` (`llvm_ir.dag:570-585` — Categorical
+- *Kills:* `feature_disposition` (`llvm_ir.dag:570-585` — MultiOutlier
   1:5:6, arm-constructor name echoed in RHS) and `complexity_bound_from_class`
-  (PR #3452 — Categorical 1:1:7, inner `match size_var` block shared
+  (PR #3452 — MultiOutlier 1:1:7, inner `match size_var` block shared
   across 7 arms with only the outer `Bound` constructor differing).
   `manual_test_claim_for_manual_anchor` (`testgen.dag:253-270`) is a
-  related but *distinct* pattern (see "Borderline cases" below) — it
+  related but *distinct* pattern (see "Borderline case" below) — it
   passes the strict L1.13 decidability rule (Mixed) because the
   per-arm `claim_<name>` references are distinct literals; recognizing
-  it as a finding requires either a sub-signature that detects the
-  arm-name-parameterizes-reference pattern, or a separate lens for the
-  match-as-typed-table shape. Listed as a borderline case, NOT a
-  current L1.13 kill.
+  it as a finding requires either a sub-signature (proposed L1.13.b)
+  that detects the arm-name-parameterizes-reference pattern, or a
+  separate lens for the match-as-typed-table shape. Listed as a
+  borderline case, NOT a current L1.13 kill.
 
 **Decidability boundary (explicit):** RHS skeleton extraction collapses
 the leading constructor name to a hole AND α-renames bound field names,
@@ -1331,12 +1367,17 @@ directly (not `Option<ManualTestClaim>`) because `TotalMap`'s
 well-formedness check makes the absence case unrepresentable. No
 "unreachable" arm guarded by comment.
 
-**Substrate dependency.** `TotalMap<K, V>` for closed-coproduct K is a
-typed primitive whose well-formedness check is "every K-variant appears
-as a key" — gated to land when L1.13 enforcement runs via `apply_lens`.
-Until then, the clean-shape sketch above describes the target; a transitional
-`Map + Option` form may persist in source, but `TotalMap` is the
-load-bearing receipt the lens looks for to clear the finding.
+**Substrate dependency (scoped to L1.13.b / future match-as-typed-table lens, NOT base L1.13).**
+`TotalMap<K, V>` for closed-coproduct K is a typed primitive whose
+well-formedness check is "every K-variant appears as a key." This
+primitive is **load-bearing for the future L1.13.b sub-signature** (or
+a separate match-as-typed-table lens) that would catch the F16 pattern
+— it is NOT a dependency of base L1.13. Base L1.13 (PureTemplate /
+Outlier / MultiOutlier / Categorical on F14 + F15) has enough substrate
+to run today via `fold_node` + skeleton extraction; it does NOT need
+`TotalMap` to fire or clear. Scoping `TotalMap` to L1.13.b prevents
+table-cleanup substrate work from blocking enforcement of the simpler
+base lens.
 
 ## 6. The discriminant / catamorphism distinction
 
