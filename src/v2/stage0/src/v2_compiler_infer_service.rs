@@ -50,19 +50,19 @@ pub fn is_typed_service_call_receiver(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     match (*receiver.expr_data.clone()).clone() {
-        ExprData::ExprFieldAccess { .. } => {
+        ExprData::ExprFieldAccess { summary: _, .. } => {
             let f = field_access_field_at(receiver.clone(), source_indices);
             let b = field_access_base(receiver.clone());
             match (*b.expr_data.clone()).clone() {
-                ExprData::ExprVar { .. } => {
-                    match Rc::new(f.chars().map(|c| c as i64).collect::<Vec<_>>())
-                        .first()
-                        .cloned()
-                    {
-                        Some(ch) => ((ch.clone() >= 65) && (ch.clone() <= 90)),
-                        None => false,
-                    }
-                }
+                ExprData::ExprVar {
+                    binding_kind: _, ..
+                } => match Rc::new(f.chars().map(|c| c as i64).collect::<Vec<_>>())
+                    .first()
+                    .cloned()
+                {
+                    Some(ch) => ((ch.clone() >= 65) && (ch.clone() <= 90)),
+                    None => false,
+                },
                 _ => false,
             }
         }
@@ -75,11 +75,13 @@ pub fn extract_typed_service_name(
     source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<String> {
     match (*receiver.expr_data.clone()).clone() {
-        ExprData::ExprFieldAccess { .. } => {
+        ExprData::ExprFieldAccess { summary: _, .. } => {
             let f = field_access_field_at(receiver.clone(), source_indices.clone());
             let b = field_access_base(receiver.clone());
             match (*b.expr_data.clone()).clone() {
-                ExprData::ExprVar { .. } => {
+                ExprData::ExprVar {
+                    binding_kind: _, ..
+                } => {
                     let ns = expr_var_name_at(b.clone(), source_indices.clone());
                     Some(v2_rt::concat(v2_rt::concat(ns, ".".to_string()), f))
                 }
@@ -114,7 +116,10 @@ pub fn collect_typed_service_calls_into(
 ) -> Rc<UniqueAccum> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let this_acc = match (*texpr.expr_data.clone()).clone() {
-            ExprData::ExprMethodCall { .. } => {
+            ExprData::ExprMethodCall {
+                method_semantics: _,
+                ..
+            } => {
                 let r = method_receiver(texpr.clone());
                 if is_typed_service_call_receiver(&r, source_indices.clone()) {
                     match extract_typed_service_name(&r, &source_indices) {

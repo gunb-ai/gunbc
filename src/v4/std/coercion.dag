@@ -143,6 +143,16 @@ fn coercion_candidate_set_from_declared_inhabitants(
     )
   }
 }
+fn coercion_quality_for_witness(
+  source: CanonicalGrounding,
+  fw: FindWitnessResult,
+) -> CoercionQuality {
+  if fw.candidate == source.node {
+    Identity
+  } else {
+    Exact
+  }
+}
 fn coercion_homomorphism_evidence(
   source: CanonicalGrounding,
   fw: FindWitnessResult,
@@ -174,7 +184,7 @@ fn coercion_fold(
       Accepted {
         value: CoercionResult {
           target: fw.candidate,
-          quality: if fw.candidate == source.node { Identity } else { Exact },
+          quality: coercion_quality_for_witness(source: source, fw: fw),
           witness: CoercionWitness {
             homomorphism: HomomorphismWitness {
               rule: homomorphism_rule_exact_structural_equality,
