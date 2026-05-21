@@ -228,10 +228,11 @@ fn v4_std_model_core_primitive_fact_bundle_uses_axis_keyed_spec_facts() {
         ],
         "PrimitiveFactBundle.spec_facts must be a structured axis-keyed bundle, not an opaque Node"
     );
-    let axis_fields: Vec<(String, String)> = type_record_fields(&module, "PrimitiveFactAxisBinding")
-        .iter()
-        .map(|f| (f.name.clone(), surface_type_name(&f.ty)))
-        .collect();
+    let axis_fields: Vec<(String, String)> =
+        type_record_fields(&module, "PrimitiveFactAxisBinding")
+            .iter()
+            .map(|f| (f.name.clone(), surface_type_name(&f.ty)))
+            .collect();
     assert_eq!(
         axis_fields,
         vec![
