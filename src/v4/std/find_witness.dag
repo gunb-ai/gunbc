@@ -80,7 +80,8 @@ fn preservation_predicate_holds(
   well_formed(n: source_facts)
     && well_formed(n: predicate.algebra)
     && well_formed(n: candidate)
-    && (candidate == predicate.algebra)
+    && (predicate.algebra == source_facts)
+    && (candidate == source_facts)
 }
 fn passing_candidate_count(
   source_facts: Node,
@@ -168,6 +169,7 @@ fn resolve_selected_candidate(
       candidates: candidates,
       predicate: predicate
     )
+    0 => outcome_rejected(find_witness_no_candidate_diagnostic(source_facts: source_facts))
     _ => outcome_rejected(find_witness_ambiguous_candidate_diagnostic(source_facts: source_facts))
   }
 }
