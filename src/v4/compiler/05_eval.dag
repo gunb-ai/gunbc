@@ -662,6 +662,14 @@ fn outcome_runtime_value_eq(a: Outcome<RuntimeValue>, b: Outcome<RuntimeValue>) 
 }
 
 
+fn accepted_runtime_value_outcome_eq(a: Outcome<RuntimeValue>, b: Outcome<RuntimeValue>) -> Bool {
+  match b {
+    Accepted { value: _, diagnostics: _ } => outcome_runtime_value_eq(a: a, b: b)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
 fn run_test_claim_runtime_assert(
   claim: TestClaim,
   tree: InferredTree,
@@ -672,7 +680,7 @@ fn run_test_claim_runtime_assert(
   match claim {
     EqualsClaim { rhs: rhs, label: _, t19_anchor: _, lhs: _, classification: _ } => {
       let expected = eval(tree: tree, interpretation: interpretation, inputs: Inputs { root: rhs })
-      if outcome_runtime_value_eq(a: actual, b: expected) {
+      if accepted_runtime_value_outcome_eq(a: actual, b: expected) {
         Pass
       } else {
         Fail { actual: actual }
@@ -680,7 +688,7 @@ fn run_test_claim_runtime_assert(
     }
     CompilesClaim { expected_value: expected, label: _, t19_anchor: _, input: _, classification: _ } => {
       let expected_outcome = eval(tree: tree, interpretation: interpretation, inputs: Inputs { root: expected })
-      if outcome_runtime_value_eq(a: actual, b: expected_outcome) {
+      if accepted_runtime_value_outcome_eq(a: actual, b: expected_outcome) {
         Pass
       } else {
         Fail { actual: actual }
