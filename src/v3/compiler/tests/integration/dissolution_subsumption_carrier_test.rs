@@ -19,21 +19,9 @@ const SUBSUMPTION_PATH: &str = "src/v4/lens/subsumption.dag";
 fn dissolution_subsumption_carrier_shape_locked() {
     let module = parse_module(SUBSUMPTION_DAG, SUBSUMPTION_PATH);
 
-    assert_record_fields(
-        &module.items,
-        "DiffId",
-        &[("id", "Symbol")],
-    );
-    assert_record_fields(
-        &module.items,
-        "TestClaimId",
-        &[("id", "Symbol")],
-    );
-    assert_record_fields(
-        &module.items,
-        "ProducerStageId",
-        &[("id", "Symbol")],
-    );
+    assert_record_fields(&module.items, "DiffId", &[("id", "Symbol")]);
+    assert_record_fields(&module.items, "TestClaimId", &[("id", "Symbol")]);
+    assert_record_fields(&module.items, "ProducerStageId", &[("id", "Symbol")]);
     assert_sum_variants(
         &module.items,
         "SubsumptionVerification",
@@ -95,20 +83,17 @@ fn assert_record_fields(items: &[SurfaceItem], name: &str, expected: &[(&str, &s
     let fields = items
         .iter()
         .find_map(|item| match item {
-            SurfaceItem::TypeRecord { name: item_name, fields, .. } if item_name == name => {
-                Some(fields)
-            }
+            SurfaceItem::TypeRecord {
+                name: item_name,
+                fields,
+                ..
+            } if item_name == name => Some(fields),
             _ => None,
         })
         .unwrap_or_else(|| panic!("{SUBSUMPTION_PATH}: missing record type {name}"));
     let observed = fields
         .iter()
-        .map(|field| {
-            (
-                field.name.as_str(),
-                type_expr_text(&field.ty),
-            )
-        })
+        .map(|field| (field.name.as_str(), type_expr_text(&field.ty)))
         .collect::<BTreeSet<_>>();
     let expected = expected.iter().copied().collect::<BTreeSet<_>>();
     assert_eq!(
@@ -121,9 +106,11 @@ fn assert_sum_variants(items: &[SurfaceItem], name: &str, expected: &[(&str, &[(
     let variants = items
         .iter()
         .find_map(|item| match item {
-            SurfaceItem::TypeSum { name: item_name, variants, .. } if item_name == name => {
-                Some(variants)
-            }
+            SurfaceItem::TypeSum {
+                name: item_name,
+                variants,
+                ..
+            } if item_name == name => Some(variants),
             _ => None,
         })
         .unwrap_or_else(|| panic!("{SUBSUMPTION_PATH}: missing sum type {name}"));
@@ -142,12 +129,7 @@ fn assert_sum_variants(items: &[SurfaceItem], name: &str, expected: &[(&str, &[(
         .collect::<BTreeSet<_>>();
     let expected = expected
         .iter()
-        .map(|(variant, fields)| {
-            (
-                *variant,
-                fields.iter().copied().collect::<BTreeSet<_>>(),
-            )
-        })
+        .map(|(variant, fields)| (*variant, fields.iter().copied().collect::<BTreeSet<_>>()))
         .collect::<BTreeSet<_>>();
     assert_eq!(
         observed, expected,
@@ -159,7 +141,11 @@ fn data_body<'a>(items: &'a [SurfaceItem], name: &str) -> &'a [SurfaceRecordFiel
     let body = items
         .iter()
         .find_map(|item| match item {
-            SurfaceItem::Data { name: item_name, body, .. } if item_name == name => body.as_ref(),
+            SurfaceItem::Data {
+                name: item_name,
+                body,
+                ..
+            } if item_name == name => body.as_ref(),
             _ => None,
         })
         .unwrap_or_else(|| panic!("{SUBSUMPTION_PATH}: missing data row {name}"));
@@ -189,7 +175,8 @@ fn assert_variant_record<'a>(expr: &'a SurfaceExpr, target: &str) -> &'a [Surfac
         target: observed,
         fields,
         ..
-    } = expr else {
+    } = expr
+    else {
         panic!("{SUBSUMPTION_PATH}: expected {target} constructor, got {expr:?}");
     };
     assert_eq!(
