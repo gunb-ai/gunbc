@@ -128,8 +128,8 @@ fn mvp_rust_target_bundle() -> Node {
 }
 data mvp_add_inferred_tree: InferredTree = InferredTree {
   root: mvp_add_arrow_node(),
-  facts: Map {
-    lookup: fn(_) {
+  facts: Map<Node, InferredFacts> {
+    lookup: fn(_key: Node) {
       Holds { value: mvp_stub_inferred_facts }
     }
   }
