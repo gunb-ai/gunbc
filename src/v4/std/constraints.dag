@@ -14,12 +14,12 @@ import v4.std.diagnostic {
   Accepted,
   Diagnostic,
   ExternalContractUnknown,
-  None,
   NodeLocus,
   Outcome,
   Rejected,
   Unavailable,
-  bind_outcome
+  bind_outcome,
+  outcome_rejected
 }
 import v4.std.find_witness {
   CandidateSet,
@@ -62,18 +62,7 @@ fn constraints_not_realized_diagnostic(graph: ConstraintGraph) -> Diagnostic {
 fn canonical_grounding_candidates(
   policy: ConstraintSolvePolicy,
 ) -> Outcome<CanonicalGroundingCandidateSet> {
-  Accepted {
-    value: CanonicalGroundingCandidateSet {
-      set: CandidateSet {
-        candidates: [policy.graph.root],
-        closedness: StructuralPropertyWitness {
-          property: constraint_property_being_canonical,
-          evidence: policy.graph.root
-        }
-      }
-    },
-    diagnostics: None
-  }
+  outcome_rejected(constraints_not_realized_diagnostic(graph: policy.graph))
 }
 fn solve_constraints(policy: ConstraintSolvePolicy) -> Outcome<CanonicalGrounding> {
   bind_outcome(
