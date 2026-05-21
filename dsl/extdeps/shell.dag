@@ -1,8 +1,10 @@
-// extdeps/shell.dag -- Host shell utilities (POSIX sh + common extensions).
+// extdeps/shell.dag -- Host shell utilities (POSIX utilities + bash-compatible Exec).
 //
 // find, printenv: POSIX.1 utilities.
 // which: common extension (not POSIX; POSIX uses `command -v`).
-// Exec: POSIX `sh -lc` — not bash; scripts must avoid bash-only syntax.
+// Exec: `sh -lc` — `-c` is POSIX; `-l` (login shell) is a bash/zsh extension, not
+// POSIX `sh`. Kept so subprocesses inherit login-profile PATH (cargo/rustup) when
+// the parent did not; scripts must avoid bash-only syntax beyond `/bin/sh`.
 //
 // These are facts about the host OS, not about any specific
 // external service.
@@ -77,6 +79,7 @@ service shell.Exec {
       stdout: String from "stdout"
       stderr: String from "stderr"
     }
+    // `-l`: login-shell flag (bash/zsh); not POSIX sh — see file header.
     transport shell { argv: ["sh", "-lc", "{script}"] }
     exit {
       0 => Unit
@@ -91,6 +94,7 @@ service shell.Exec {
     input { command: String }
     output { exists: Bool from "exit_success" }
     readonly
+    // `-l`: login-shell flag (bash/zsh); not POSIX sh — see file header.
     transport shell { argv: ["sh", "-lc", "{command}"] }
     exit {
       0 => Unit
