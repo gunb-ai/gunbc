@@ -4,7 +4,7 @@
 This is intentionally compiler-backed instead of a raw source-shape grep:
 the receipt first asks the bootstrap compiler to resolve and emit the v4
 program, then checks the generated evaluator/witness surface that CI would
-consume. The final assertion is over the compiled MVP behavior:
+consume:
 
   eval(tree, interpretation, inputs) evaluates two Value children to two-byte
   RuntimePrimitive values, dispatches the Transform node through the supplied
@@ -319,15 +319,6 @@ def check_generated_fixture(fixture_rs: Path) -> None:
     )
 
 
-def check_modeled_result() -> None:
-    child_values = [2, 2]
-    if child_values != [2, 2]:
-        raise ReceiptError("modeled fixture children no longer evaluate to two-byte RuntimeValues")
-    transform_result_bytes = 5 if child_values == [2, 2] else None
-    if transform_result_bytes != 5:
-        raise ReceiptError("modeled Transform interpreter did not produce five-byte RuntimeValue")
-
-
 def main() -> None:
     try:
         with tempfile.TemporaryDirectory(prefix="gunbc-v4-host-eval-") as tmp:
@@ -335,7 +326,6 @@ def main() -> None:
             run_v4_compile(output_dir)
             check_generated_eval(output_dir / "src/v4_compiler_eval.rs")
             check_generated_fixture(output_dir / "src/v4_test_claim_manual_eval_runtime_mvp.rs")
-            check_modeled_result()
     except ReceiptError as err:
         raise SystemExit(f"error: {err}") from err
 
