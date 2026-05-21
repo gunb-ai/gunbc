@@ -13,6 +13,7 @@ import v4.compiler.infer {
 }
 import v4.std.collection { List, Map, non_empty }
 import v4.std.host {
+  HostBindingKey,
   HostContinue,
   HostEnvironment,
   HostModel,
@@ -65,7 +66,7 @@ import v4.std.verification {
   RoundTrips,
   TestClaim
 }
-import v4.std.witness { Holds, Violates }
+import v4.std.witness { Holds, Violates, Witness }
 
 
 // RULING-1: needs-more-work — evaluator body remains structural until T-9.
@@ -172,24 +173,37 @@ fn eval_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
 }
 
 
-fn empty_host_environment() -> HostEnvironment {
-  HostEnvironment {
-    bindings: Map {
-      lookup: fn(key) {
-        Violates {
-          diagnostic: eval_diagnostic(
-            reason: eval_rejected_host_binding_lookup_miss,
-            node: key.declaration
-          )
-        }
-      }
-    }
+fn host_binding_lookup_miss(key: HostBindingKey) -> Witness<HostValue> {
+  Violates {
+    diagnostic: eval_diagnostic(
+      reason: eval_rejected_host_binding_lookup_miss,
+      node: key.declaration
+    )
   }
 }
 
 
+fn empty_host_bindings() -> Map<HostBindingKey, HostValue> {
+  Map {
+    lookup: host_binding_lookup_miss
+  }
+}
+
+
+fn empty_host_environment() -> HostEnvironment {
+  HostEnvironment {
+    bindings: empty_host_bindings()
+  }
+}
+
+
+fn inferred_facts_witness_for_eval(tree: InferredTree, node: Node) -> Witness<InferredFacts> {
+  tree.facts.lookup(node)
+}
+
+
 fn inferred_facts_for_eval(tree: InferredTree, node: Node) -> Outcome<InferredFacts> {
-  match tree.facts.lookup(node) {
+  match inferred_facts_witness_for_eval(tree: tree, node: node) {
     Holds { value: facts } =>
       Accepted { value: facts, diagnostics: None }
     Violates { diagnostic: d } =>
@@ -276,6 +290,16 @@ fn eval_interpret_node(
 }
 
 
+fn empty_host_values() -> List<HostValue> {
+  []
+}
+
+
+fn eval_fold_state_value(state: EvalFoldState) -> Outcome<HostValue> {
+  state.value
+}
+
+
 fn eval_append_child_value(
   acc: Outcome<List<HostValue>>,
   child: Outcome<HostValue>
@@ -306,7 +330,7 @@ fn eval_fold_init(
 ) -> EvalFoldState {
   EvalFoldState {
     node: node,
-    child_values: Accepted { value: [], diagnostics: None },
+    child_values: Accepted { value: empty_host_values(), diagnostics: None },
     value: eval_interpret_node(
       node: node,
       args: [],
@@ -375,7 +399,7 @@ fn eval_host_node(
       }
     }
   )
-  folded.value
+  eval_fold_state_value(state: folded)
 }
 
 
