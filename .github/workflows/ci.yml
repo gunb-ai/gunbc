@@ -108,6 +108,11 @@ jobs:
       run: python3 scripts/test_strict_deprose_dag.py
     - name: v4 strict-deprose allowlist (--check; merge-base + Part 6 inventory)
       run: python3 scripts/strict_deprose_dag.py --check
+    - name: T-19 testgen activation self-test (Python)
+      run: python3 scripts/test_check_t19_testgen_activation.py
+    - name: T-19 testgen activation (LBE generated claims + run_test_claim receipts)
+      if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.v3 == 'true' || needs.affected.outputs.workflow_policy == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+      run: python3 scripts/check_t19_testgen_activation.py
     - name: Release-doc authority check (P2 single-authority discipline)
       run: bash scripts/check-release-doc-authority.sh
     - name: Release-doc authority self-test (consumer not ceremonial)
@@ -162,6 +167,8 @@ jobs:
     # v4 bootstrap viability — standalone `v4` jobs hit a ~5m Ubicloud shutdown mid-emit;
     # folding into `ci` (40m job budget) keeps one runner lifecycle. The `v4` job is a
     # receipt-only stub so required check names stay stable (see main ci.yml commentary).
+    # MVP-1 + v4 bootstrap share the v2-compiler binary; workflow_policy PRs that
+    # touch gate wiring must still build/run the MVP-1 and host-eval receipts.
     - name: Cache v2-compiler binary (v4 bootstrap / host eval gate)
       if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'
       id: v4-v2-bin
@@ -172,6 +179,9 @@ jobs:
     - name: Build v2 compiler (v4 bootstrap / host eval gate)
       if: (needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true') && steps.v4-v2-bin.outputs.cache-hit != 'true'
       run: cargo build -p v2-compiler --release
+    - name: MVP-1 v4 add end-to-end gate (add.dag → rust → cargo run)
+      if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'
+      run: bash scripts/v4-mvp1-e2e-gate.sh
     - name: v2 → v4 bootstrap compile (fail-closed full)
       if: needs.affected.outputs.v4 == 'true'
       id: v4_bootstrap_compile
