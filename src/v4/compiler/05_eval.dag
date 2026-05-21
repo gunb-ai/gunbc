@@ -3,7 +3,7 @@
 // Owns: Inputs, EvalContext, TestClaimTypedInput, TestClaimEvalSubject, TestClaimCacheKey, TestClaimCacheReceipt, Verdict, TestClaimRun, EvalFoldState, eval, run_test_claim, aggregate_verdicts.
 // Consumes: v4.compiler.infer, v4.std.host, v4.std.node, v4.std.diagnostic, v4.std.verification.
 // Status: T-22 eval consumes HostModel interpretation algebra; TestClaim runner remains Node-shaped. Local control terminalization, host-value conformance, behavior dispatch, Outcome accumulation, and fold progress sentinels are staged below with explicit dissolution targets.
-// CompilesClaim: run_test_claim_assert compares actual to expected_value via outcome_node_eq (tighter than legacy AssertKind Compiles, which Pass'd on any Accepted).
+// CompilesClaim: run_test_claim_assert compares actual to expected_value through host evaluation (tighter than legacy AssertKind Compiles, which Pass'd on any Accepted).
 
 module v4.compiler.eval
 
@@ -61,7 +61,8 @@ import v4.std.diagnostic {
   bind_outcome,
   diagnostics_merge,
   diagnostics_singleton,
-  outcome_node_eq,
+  diagnostics_eq,
+  non_empty_diagnostics_eq,
   outcome_rejected,
   rejected_with_pending
 }
@@ -127,9 +128,9 @@ type Verdict<T>
 
 
 // RULING-1: needs-more-work — executable corpus runner will replace Wave-0 run rows.
-type TestClaimRun<T> {
-  cache: TestClaimCacheReceipt<T>
-  verdict: Verdict<T>
+type TestClaimRun<S, A> {
+  cache: TestClaimCacheReceipt<S>
+  verdict: Verdict<A>
 }
 
 
@@ -588,41 +589,52 @@ fn eval(tree: InferredTree, host: HostModel, inputs: Inputs) -> Outcome<HostValu
 }
 
 
-fn eval_test_claim_actual(
-  tree: InferredTree,
-  host: HostModel,
-  inputs: Inputs
-) -> Outcome<Node> {
-  bind_outcome(
-    o: eval(tree: tree, host: host, inputs: inputs),
-    f: fn(value) {
-      Accepted { value: host_value_resolved_type(value: value), diagnostics: None }
+fn host_value_eq(a: HostValue, b: HostValue) -> Bool {
+  a == b
+}
+
+
+fn outcome_host_value_eq(a: Outcome<HostValue>, b: Outcome<HostValue>) -> Bool {
+  match a {
+    Accepted { value: av, diagnostics: ad } => match b {
+      Accepted { value: bv, diagnostics: bd } => host_value_eq(a: av, b: bv) && diagnostics_eq(a: ad, b: bd)
+      Rejected { diagnostics: _ } => false
     }
-  )
+    Rejected { diagnostics: ar } => match b {
+      Accepted { value: _, diagnostics: _ } => false
+      Rejected { diagnostics: br } => non_empty_diagnostics_eq(a: ar, b: br)
+    }
+  }
 }
 
 
 fn run_test_claim_assert(
   claim: TestClaim,
-  actual: Outcome<Node>,
+  tree: InferredTree,
+  host: HostModel,
+  actual: Outcome<HostValue>,
   at: Node
-) -> Verdict<Node> {
+) -> Verdict<HostValue> {
   match claim {
-    EqualsClaim { rhs: rhs, label: _, t19_anchor: _, lhs: _, classification: _ } =>
-      if outcome_node_eq(a: actual, b: Accepted { value: rhs, diagnostics: None }) {
+    EqualsClaim { rhs: rhs, label: _, t19_anchor: _, lhs: _, classification: _ } => {
+      let expected = eval(tree: tree, host: host, inputs: Inputs { root: rhs })
+      if outcome_host_value_eq(a: actual, b: expected) {
         Pass
       } else {
         Fail { actual: actual }
       }
-    CompilesClaim { expected_value: expected, label: _, t19_anchor: _, input: _, classification: _ } =>
-      if outcome_node_eq(
+    }
+    CompilesClaim { expected_value: expected, label: _, t19_anchor: _, input: _, classification: _ } => {
+      let expected_outcome = eval(tree: tree, host: host, inputs: Inputs { root: expected })
+      if outcome_host_value_eq(
         a: actual,
-        b: Accepted { value: expected, diagnostics: None }
+        b: expected_outcome
       ) {
         Pass
       } else {
         Fail { actual: actual }
       }
+    }
     RoundTripClaim { input: input, label: _, t19_anchor: _, classification: _ } =>
       Deferred {
         actual: actual,
@@ -631,7 +643,7 @@ fn run_test_claim_assert(
     DiagnosticClaim { expected_rejection: expected, input: input, label: _, t19_anchor: _, classification: _ } =>
       match actual {
         Rejected { diagnostics: _ } =>
-          if outcome_node_eq(a: actual, b: Rejected { diagnostics: expected }) {
+          if outcome_host_value_eq(a: actual, b: Rejected { diagnostics: expected }) {
             Pass
           } else {
             Fail { actual: actual }
@@ -671,8 +683,8 @@ fn run_test_claim(
   subject: TestClaimEvalSubject<Node>,
   claim_hash: Hash,
   host_hash: Hash
-) -> TestClaimRun<Node> {
-  let actual = eval_test_claim_actual(
+) -> TestClaimRun<Node, HostValue> {
+  let actual = eval(
     tree: subject.tree,
     host: subject.context.host,
     inputs: Inputs { root: subject.input.evaluator_input }
@@ -685,7 +697,15 @@ fn run_test_claim(
       host_hash: host_hash
     ),
     verdict: aggregate_verdicts(
-      rs: [run_test_claim_assert(claim: subject.claim, actual: actual, at: at)],
+      rs: [
+        run_test_claim_assert(
+          claim: subject.claim,
+          tree: subject.tree,
+          host: subject.context.host,
+          actual: actual,
+          at: at
+        )
+      ],
       at: at
     )
   }
