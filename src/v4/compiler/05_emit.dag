@@ -53,7 +53,7 @@ fn emit_serialize_source_missing_diagnostic(target: TargetModel) -> Diagnostic {
 }
 fn serialize_source_for_emitted(
   emitted: TargetNodeTree,
-  target: TargetModel,
+  target: TargetModel
 ) -> Outcome<TargetSource> {
   bind_outcome(
     o: target_bundle_child(target: target, edge_name: target_model_edge_serialize_emitted),

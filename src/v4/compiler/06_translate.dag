@@ -143,7 +143,7 @@ fn target_selection_policy_from_model(target: TargetModel) -> Outcome<TargetSele
 }
 fn coercion_candidates_from_target_model(
   target: TargetModel,
-  closedness_evidence: Node,
+  closedness_evidence: Node
 ) -> Outcome<CoercionCandidateSet> {
   bind_outcome(
     o: target_bundle_child(target: target, edge_name: target_model_edge_declared_inhabitants),
@@ -184,7 +184,7 @@ fn canonical_grounding_for_node(tree: InferredTree, node: Node) -> Outcome<Canon
 fn coerce_grounded_node(
   source: Node,
   tree: InferredTree,
-  target: TargetModel,
+  target: TargetModel
 ) -> Outcome<CoercionResult> {
   bind_outcome(
     o: canonical_grounding_for_node(tree: tree, node: source),
@@ -213,7 +213,7 @@ fn coerce_grounded_node(
 fn translate_fold_init(
   node: Node,
   tree: InferredTree,
-  target: TargetModel,
+  target: TargetModel
 ) -> Outcome<Node> {
   match coerce_grounded_node(source: node, tree: tree, target: target) {
     Accepted { value: coerced, diagnostics: d } =>
@@ -230,7 +230,7 @@ fn translate_fold_init(
 fn translate_fold_step(
   acc: Outcome<Node>,
   edge: Edge,
-  child: Outcome<Node>,
+  child: Outcome<Node>
 ) -> Outcome<Node> {
   match acc {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -257,7 +257,7 @@ fn translate_fold_step(
 fn translate_node(
   node: Node,
   tree: InferredTree,
-  target: TargetModel,
+  target: TargetModel
 ) -> Outcome<Node> {
   fold_node(
     n: node,
