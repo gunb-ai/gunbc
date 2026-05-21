@@ -903,8 +903,14 @@ fn dag_artifact_multi_module_names_resolve() {
 
 #[test]
 fn dag_artifact_module_imports_not_serialized_as_params() {
-    let source = "module imp_test\nimport std { Int }\n\nfn f() -> Int { 0 }\n";
-    let result = compile_dag_named("imp_test.dag", source, RenderTarget::Dag);
+    let files = &[
+        ("dep.dag", "module dep\ntype Widget { label: String }\n"),
+        (
+            "imp_test.dag",
+            "module imp_test\nimport dep { Widget }\n\nfn f() -> Widget { Widget { label: \"x\" } }\n",
+        ),
+    ];
+    let result = compile_multi_target(files, RenderTarget::Dag);
     assert_no_diagnostics(&result);
     let content = find_file(&result, "dag-artifact.json");
     let artifact: Value =
