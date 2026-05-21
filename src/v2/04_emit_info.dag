@@ -155,6 +155,10 @@ fn lookup_emit_type_summary(emit_info: EmitGraphInfo, type_name: String) -> Type
   map_get(emit_info.type_summaries, type_name)
 }
 
+fn lookup_variant_type_summary(emit_info: EmitGraphInfo, enum_name: String, variant_name: String) -> TypeSummary? {
+  lookup_emit_type_summary(emit_info: emit_info, type_name: variant_summary_key(enum_name: enum_name, variant_name: variant_name))
+}
+
 // Derive variant_to_enum: a module-local CACHE, not the authority.
 // Authority is type_summaries.variant_name_set (O(1) structural check).
 // Ambiguous variants (name shared by multiple enums) get an empty-string

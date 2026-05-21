@@ -107,7 +107,7 @@ import v2.compiler.infer {
 }
 import v2.compiler.infer_emit_info {
   EmitGraphInfo, TypeSummary, StructRepr, EnumRepr,
-  lookup_emit_type_summary, is_enum_in_summaries, find_variant_parent, is_known_variant,
+  lookup_emit_type_summary, lookup_variant_type_summary, is_enum_in_summaries, find_variant_parent, is_known_variant,
   variant_belongs_to_enum, variant_summary_key
 }
 import v2.compiler.ownership { OwnershipProof, analyze_ownership, analyze_single_fold, build_movable_set, build_read_only_params, collect_callable_refs }
@@ -1698,8 +1698,11 @@ fn emit_enum_from_children(name: String, type_params: String, children: List<Nod
 }
 
 fn find_shared_enum_fields(children: List<Node>, env: TypeEnv) -> List<String> {
-  // Only consider variants with fields (skip unit variants).
-  let fielded = children |> filter(child => child.children |> count > 0)
+  // Only consider record-fielded variants (skip unit and positional-payload tuple variants).
+  let fielded = children |> filter(child =>
+    child.children |> count > 0
+      && !variant_is_synthetic_positional_payload(fields: child.children, source_indices: env.source_indices)
+  )
   if fielded |> count == 0 { return [] }
   // Get field names from first fielded variant.
   let first_fields = match fielded |> first {
@@ -1718,7 +1721,10 @@ fn emit_enum_shared_accessors(name: String, type_params: String, children: List<
   let all_shared = find_shared_enum_fields(children: children, env: env)
   if all_shared |> count == 0 { return "" }
   // Only keep fields whose type is consistent across all fielded variants.
-  let fielded = children |> filter(child => child.children |> count > 0)
+  let fielded = children |> filter(child =>
+    child.children |> count > 0
+      && !variant_is_synthetic_positional_payload(fields: child.children, source_indices: env.source_indices)
+  )
   if fielded |> count == 0 { return "compile_error!(\"enum shared accessor missing fielded variant\")" }
   let first_fielded = (fielded |> first).value
   let shared = all_shared |> filter(fname =>
@@ -1744,10 +1750,12 @@ fn emit_enum_shared_accessors(name: String, type_params: String, children: List<
     // Generate match arms for each variant.
     let arms = children |> map(child =>
       let child_text = authored_name(env: env, node: child)
+      let sharing = language_spec(target: Rust).sharing
       if child.children |> count == 0 {
         concat("            ", name, "::", child_text, " => panic!(\"no ", fname, " on unit variant\"),")
+      } else if variant_is_synthetic_positional_payload(fields: child.children, source_indices: env.source_indices) {
+        concat("            ", name, "::", child_text, "(ref __val) => ", apply_type_template1(template: sharing.clone_value, arg0: "__val"), ",")
       } else {
-        let sharing = language_spec(target: Rust).sharing
         concat("            ", name, "::", child_text, " { ", emit_ident(name: fname, target: Rust), ": __val, .. } => ", apply_type_template1(template: sharing.clone_value, arg0: "__val"), ",")
       }
     )
@@ -4502,11 +4510,15 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
             None => concat(display_tn, "()")
           }
         } else {
+        let variant_summary_name = match effective_parent {
+          Some { value: parent } => variant_summary_key(enum_name: parent, variant_name: tn)
+          None => tn
+        }
         let field_strs = fields |> map(f =>
           let f_name = field_init_node_name_at(n: f, source_indices: scope.type_env.source_indices)
           let f_value = field_init_node_value(n: f)
           let val_str = emit_field_value_with_context(field_value: f_value, struct_node: resolved_type, outer_type_name: type_name, field_name: f_name, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
-          let needs_wrap = is_optional_struct_field(emit_info: emit_info, struct_name: tn, field_name: f_name)
+          let needs_wrap = is_optional_struct_field(emit_info: emit_info, struct_name: variant_summary_name, field_name: f_name)
             && is_already_optional(texpr: f_value, emit_info: emit_info, scope: scope) == false
           let field_val = if needs_wrap {
             concat("Some(", val_str, ")")
@@ -4519,7 +4531,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
         // false positives from cross-module type name collisions in the summary registry.
         let provided_names = fields |> map(f => field_init_node_name_at(n: f, source_indices: scope.type_env.source_indices))
         let provided_set = fold(provided_names, init: empty_map(), f: (acc, n) => map_insert(acc, n, true))
-        let summary = lookup_emit_type_summary(emit_info: emit_info, type_name: tn)
+        let summary = lookup_emit_type_summary(emit_info: emit_info, type_name: variant_summary_name)
         let default_strs = match summary {
           Some { value: s } =>
             let fs = s.field_summaries
@@ -4530,11 +4542,11 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
                 Some { value: ft } => match rust_zero_value(type_name: ft) { Some { value: _ } => true, None => false }
                 None => false
               }
-              has_zv || is_optional_struct_field(emit_info: emit_info, struct_name: tn, field_name: fname)
+              has_zv || is_optional_struct_field(emit_info: emit_info, struct_name: variant_summary_name, field_name: fname)
             )
             if all_defaultable {
               missing |> flat_map(fname =>
-                if is_optional_struct_field(emit_info: emit_info, struct_name: tn, field_name: fname) {
+                if is_optional_struct_field(emit_info: emit_info, struct_name: variant_summary_name, field_name: fname) {
                   [concat("    ", emit_ident(name: fname, target: Rust), ": None,")]
                 } else {
                   match map_get(ftm, fname) {
