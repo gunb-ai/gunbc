@@ -111,15 +111,24 @@
 module v4.lens.parallelism
 
 import v4.compiler.infer { InferredFacts, InferredTree }
-import v4.lens.effect { EffectKind, BarrierEffect, WriteEffect, effect_kind_for_dependency }
+import v4.lens.effect { BarrierEffect, NonEffectDependency, WriteEffect, effect_kind_for_dependency }
 import v4.std.dependency {
   BarrierBefore,
   BindsTo,
+  BootstrapDependsOn,
   Contains,
   DataDependsOn,
   DependencyView,
   EffectDependsOn,
+  GeneratedFrom,
+  ModelDependsOn,
+  ModuleDependsOn,
+  PlacementDependsOn,
+  ProjectionDependsOn,
+  PromotedBy,
   ResourceDependsOn
+  TypeDependsOn,
+  VerifiedBy,
 }
 import v4.std.node { Node }
 import v4.std.witness { Holds, Witness }
@@ -132,6 +141,7 @@ type ParallelismRelation
   | DataDependent
   | EffectCoupled
   | BarrierCoupled
+  | UnknownCoupling
 
 type ParallelismDependencyFact {
   source: Node
@@ -154,11 +164,15 @@ fn parallelism_relation_for_dependency(view: DependencyView) -> ParallelismRelat
     EffectDependsOn => EffectCoupled
     ResourceDependsOn => EffectCoupled
     BarrierBefore => BarrierCoupled
-    _ => match effect_kind_for_dependency(view: view) {
-      WriteEffect => EffectCoupled
-      BarrierEffect => BarrierCoupled
-      _ => StructurallyIndependent
-    }
+    TypeDependsOn => UnknownCoupling
+    ModuleDependsOn => UnknownCoupling
+    PlacementDependsOn => UnknownCoupling
+    ModelDependsOn => UnknownCoupling
+    ProjectionDependsOn => UnknownCoupling
+    GeneratedFrom => UnknownCoupling
+    VerifiedBy => UnknownCoupling
+    PromotedBy => UnknownCoupling
+    BootstrapDependsOn => UnknownCoupling
   }
 }
 
@@ -211,6 +225,10 @@ fn parallelism_relation_eq(a: ParallelismRelation, b: ParallelismRelation) -> Bo
     }
     BarrierCoupled => match b {
       BarrierCoupled => true
+      _ => false
+    }
+    UnknownCoupling => match b {
+      UnknownCoupling => true
       _ => false
     }
   }

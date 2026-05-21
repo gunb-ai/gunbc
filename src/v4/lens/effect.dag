@@ -73,10 +73,22 @@ module v4.lens.effect
 import v4.compiler.infer { InferredFacts, InferredTree }
 import v4.std.dependency {
   BarrierBefore,
+  BindsTo,
+  BootstrapDependsOn,
+  Contains,
   DataDependsOn,
   DependencyView,
   EffectDependsOn,
-  ResourceDependsOn
+  GeneratedFrom,
+  ModelDependsOn,
+  ModuleDependsOn,
+  PlacementDependsOn,
+  ProjectionDependsOn,
+  PromotedBy,
+  ResourceDependsOn,
+  TypeDependsOn,
+  VerifiedBy,
+  DependencyKind
 }
 import v4.std.node { Node }
 import v4.std.witness { Holds, Witness }
@@ -85,7 +97,7 @@ import v4.std.witness { Holds, Witness }
 // dependency projection and the inferred root, not authored as a second
 // OperationEffect taxonomy.
 type EffectKind
-  = PureEffect
+  = NonEffectDependency { kind: DependencyKind }
   | ReadEffect
   | WriteEffect
   | BarrierEffect
@@ -104,11 +116,21 @@ type EffectFact {
 
 fn effect_kind_for_dependency(view: DependencyView) -> EffectKind {
   match view.kind {
+    Contains => NonEffectDependency { kind: Contains }
+    BindsTo => NonEffectDependency { kind: BindsTo }
+    TypeDependsOn => NonEffectDependency { kind: TypeDependsOn }
     DataDependsOn => ReadEffect
     EffectDependsOn => WriteEffect
     ResourceDependsOn => WriteEffect
     BarrierBefore => BarrierEffect
-    _ => PureEffect
+    ModuleDependsOn => NonEffectDependency { kind: ModuleDependsOn }
+    PlacementDependsOn => NonEffectDependency { kind: PlacementDependsOn }
+    ModelDependsOn => NonEffectDependency { kind: ModelDependsOn }
+    ProjectionDependsOn => NonEffectDependency { kind: ProjectionDependsOn }
+    GeneratedFrom => NonEffectDependency { kind: GeneratedFrom }
+    VerifiedBy => NonEffectDependency { kind: VerifiedBy }
+    PromotedBy => NonEffectDependency { kind: PromotedBy }
+    BootstrapDependsOn => NonEffectDependency { kind: BootstrapDependsOn }
   }
 }
 
@@ -144,33 +166,12 @@ fn effect_witness(tree: InferredTree, dependencies: List<DependencyView>) -> Wit
   }
 }
 
-fn effect_kind_eq(a: EffectKind, b: EffectKind) -> Bool {
-  match a {
-    PureEffect => match b {
-      PureEffect => true
-      _ => false
-    }
-    ReadEffect => match b {
-      ReadEffect => true
-      _ => false
-    }
-    WriteEffect => match b {
-      WriteEffect => true
-      _ => false
-    }
-    BarrierEffect => match b {
-      BarrierEffect => true
-      _ => false
-    }
-  }
-}
-
 fn effect_dependency_fact_eq(a: EffectDependencyFact, b: EffectDependencyFact) -> Bool {
   (a.at == b.at)
     && (a.dependency == b.dependency)
     && (a.source_facts == b.source_facts)
     && (a.dependent_facts == b.dependent_facts)
-    && effect_kind_eq(a: a.effect, b: b.effect)
+    && (a.effect == b.effect)
 }
 
 fn effect_dependency_count(xs: List<EffectDependencyFact>, item: EffectDependencyFact) -> Int {

@@ -23,7 +23,7 @@ import v4.compiler.infer { InferredTree }
 import v4.lens.effect {
   BarrierEffect,
   EffectDependencyFact,
-  PureEffect,
+  NonEffectDependency,
   ReadEffect,
   WriteEffect,
   effect_dependency_fact_eq,
@@ -39,6 +39,7 @@ import v4.std.witness { Holds, Witness }
 type IdempotencyVerdict
   = Idempotent
   | NonIdempotent
+  | RequiresAlgebraWitness
 
 type IdempotencyEffectFact {
   at: Node
@@ -52,10 +53,10 @@ type IdempotencyFact {
 
 fn idempotency_verdict_for_effect(effect: EffectDependencyFact) -> IdempotencyVerdict {
   match effect.effect {
-    PureEffect => Idempotent
+    NonEffectDependency { kind: _ } => Idempotent
     ReadEffect => Idempotent
     BarrierEffect => Idempotent
-    WriteEffect => NonIdempotent
+    WriteEffect => RequiresAlgebraWitness
   }
 }
 
@@ -90,6 +91,10 @@ fn idempotency_verdict_eq(a: IdempotencyVerdict, b: IdempotencyVerdict) -> Bool 
     }
     NonIdempotent => match b {
       NonIdempotent => true
+      _ => false
+    }
+    RequiresAlgebraWitness => match b {
+      RequiresAlgebraWitness => true
       _ => false
     }
   }
