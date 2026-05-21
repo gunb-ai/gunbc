@@ -173,6 +173,7 @@ fn run_node_assert(
 
 
 // Fail-closed: any Deferred or Fail in the list blocks Pass; [] is Pass (vacuous).
+// When acc is already Deferred, the first Deferred's diagnostic wins (no accumulation).
 fn aggregate_verdicts<T>(rs: List<Verdict<T>>) -> Verdict<T> {
   fold(rs, init: Pass, f: fn(acc, v) {
     match acc {
