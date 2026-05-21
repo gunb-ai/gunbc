@@ -1,40 +1,39 @@
 // src/v4/test/claim/lens_unused_parameters/non_use_edges.dag
-// Scope: T-13 worked claim — non-USE edges classify as their non-USE
-//        relations (negative-case complement to binds_to_edge.dag's
-//        positive BindsTo ⇒ IsUseOfDeclaration claim). Covers:
-//          - Contains       ⇒ IsStructuralComposition
-//          - DataDependsOn  ⇒ IsNonUseDependency
-//          - GeneratedFrom  ⇒ RequiresResolutionWitness (fail-closed)
-//        Together with binds_to_edge.dag, this pins the four-way
-//        UseRelation partition so a regression that broadened/narrowed
-//        the USE set would fail at least one claim.
+// Scope: T-13 worked claim (PROJECTION partition) — non-USE edges classify as their non-USE relations over `ClassifiedDependencyView<UseRelation>`. Pins the four-way UseRelation partition together with binds_to_edge.dag.
+//   Contains       ⇒ IsStructuralComposition
+//   DataDependsOn  ⇒ IsNonUseDependency
+//   GeneratedFrom  ⇒ RequiresResolutionWitness (fail-closed)
 // Owns: unused_parameters_non_use_edges_claim.
-// Consumes: lens unused_parameters, compiler infer, std dependency, std node.
-// Status: scaffold — compile-only until generated claim execution.
+// Consumes: lens unused_parameters, std dependency, lens_common fixture.
+// Status: T-13 family-ratchet claim shape (Phase-1 substrate migration).
+
 
 module v4.test.claim.lens_unused_parameters.non_use_edges
 
-import v4.compiler.infer { AlgebraRef, InferredFacts, InferredTree }
+import v4.compiler.infer { InferredFacts, InferredTree }
 import v4.lens.unused_parameters {
   IsNonUseDependency,
   IsStructuralComposition,
   RequiresResolutionWitness,
-  UnusedParametersDependencyFact,
-  UnusedParametersFact,
-  unused_parameters_fact_eq,
-  unused_parameters_witness
+  UseClassificationFact,
+  use_classification_fact_eq,
+  use_classification_witness
 }
-import v4.std.cardinality { RankingDimension, TerminationProof }
-import v4.std.collection { Map }
-import v4.std.constraints { CanonicalGroundingWitness }
 import v4.std.dependency {
+  ClassifiedDependencyView,
   Contains,
   DataDependsOn,
   DependencyView,
   GeneratedFrom
 }
-import v4.std.node { Atom, Edge, Hash, Named, Node, Symbol, TypeNode }
-import v4.std.witness { Holds, StructuralPropertyWitness, Witness }
+import v4.std.logic { Bool }
+import v4.std.node { Atom, Edge, Named, Node, Symbol, TypeNode }
+import v4.std.witness { Holds, Witness }
+import v4.test.claim.lens_common.infer_fixture {
+  claim_atom_node,
+  claim_inferred_facts,
+  claim_inferred_tree
+}
 
 data unused_parameters_non_use_root_symbol: Symbol = unused_parameters_non_use_root_symbol
 data unused_parameters_non_use_child_symbol: Symbol = unused_parameters_non_use_child_symbol
@@ -47,14 +46,7 @@ data unused_parameters_non_use_canonical_structural_symbol: Symbol = unused_para
 data unused_parameters_non_use_canonical_closedness_symbol: Symbol = unused_parameters_non_use_canonical_closedness_symbol
 data unused_parameters_non_use_canonical_evidence_symbol: Symbol = unused_parameters_non_use_canonical_evidence_symbol
 
-fn unused_parameters_non_use_node(s: Symbol) -> Node {
-  Node {
-    kind: TypeNode { connective: Atom { identity: s } },
-    children: []
-  }
-}
-
-data unused_parameters_non_use_child: Node = unused_parameters_non_use_node(s: unused_parameters_non_use_child_symbol)
+data unused_parameters_non_use_child: Node = claim_atom_node(s: unused_parameters_non_use_child_symbol)
 
 data unused_parameters_non_use_root: Node = Node {
   kind: TypeNode { connective: Atom { identity: unused_parameters_non_use_root_symbol } },
@@ -85,84 +77,46 @@ data unused_parameters_generated_from_dependency: DependencyView = DependencyVie
 }
 
 fn unused_parameters_non_use_facts() -> InferredFacts {
-  InferredFacts {
-    resolved_type: unused_parameters_non_use_node(s: unused_parameters_non_use_type_symbol),
-    inhabits: AlgebraRef {
-      algebra: unused_parameters_non_use_node(s: unused_parameters_non_use_algebra_symbol),
-      witness: unused_parameters_non_use_node(s: unused_parameters_non_use_algebra_witness_symbol)
-    },
-    descent: Holds {
-      value: TerminationProof {
-        non_increasing: [],
-        strict: RankingDimension { measured: unused_parameters_non_use_descent_symbol }
-      }
-    },
-    canonical: CanonicalGroundingWitness {
-      structural: StructuralPropertyWitness {
-        property: unused_parameters_non_use_canonical_structural_symbol,
-        evidence: unused_parameters_non_use_node(s: unused_parameters_non_use_canonical_evidence_symbol)
-      },
-      closedness: StructuralPropertyWitness {
-        property: unused_parameters_non_use_canonical_closedness_symbol,
-        evidence: unused_parameters_non_use_node(s: unused_parameters_non_use_canonical_evidence_symbol)
-      }
-    }
-  }
-}
-
-fn unused_parameters_non_use_fact_map(facts: InferredFacts) -> Map<Node, InferredFacts> {
-  Map {
-    lookup: fn(_) {
-      Holds { value: facts }
-    }
-  }
+  claim_inferred_facts(
+    type_symbol: unused_parameters_non_use_type_symbol,
+    algebra_symbol: unused_parameters_non_use_algebra_symbol,
+    algebra_witness_symbol: unused_parameters_non_use_algebra_witness_symbol,
+    descent_symbol: unused_parameters_non_use_descent_symbol,
+    canonical_structural_symbol: unused_parameters_non_use_canonical_structural_symbol,
+    canonical_closedness_symbol: unused_parameters_non_use_canonical_closedness_symbol,
+    canonical_evidence_symbol: unused_parameters_non_use_canonical_evidence_symbol
+  )
 }
 
 fn unused_parameters_non_use_tree() -> InferredTree {
-  let facts = unused_parameters_non_use_facts()
-  InferredTree {
-    root: unused_parameters_non_use_root,
-    facts: unused_parameters_non_use_fact_map(facts: facts)
-  }
+  claim_inferred_tree(root: unused_parameters_non_use_root, facts: unused_parameters_non_use_facts())
 }
 
-type LensUnusedParametersNonUseClaim {
+type LensUseClassificationPartitionClaim {
   input: InferredTree
-  expected: UnusedParametersFact
-  actual: Witness<UnusedParametersFact>
+  expected: UseClassificationFact
+  actual: Witness<UseClassificationFact>
 }
 
-data unused_parameters_non_use_edges_claim: LensUnusedParametersNonUseClaim = LensUnusedParametersNonUseClaim {
+data unused_parameters_non_use_edges_claim: LensUseClassificationPartitionClaim = LensUseClassificationPartitionClaim {
   input: unused_parameters_non_use_tree(),
-  expected: UnusedParametersFact {
-    dependencies: [
-      UnusedParametersDependencyFact {
-        use_site: unused_parameters_non_use_child,
-        declaration: unused_parameters_non_use_root,
+  expected: UseClassificationFact {
+    uses: [
+      ClassifiedDependencyView {
         dependency: unused_parameters_contains_dependency,
-        use_site_facts: Holds { value: unused_parameters_non_use_facts() },
-        declaration_facts: Holds { value: unused_parameters_non_use_facts() },
-        relation: IsStructuralComposition
+        classification: IsStructuralComposition
       },
-      UnusedParametersDependencyFact {
-        use_site: unused_parameters_non_use_child,
-        declaration: unused_parameters_non_use_root,
+      ClassifiedDependencyView {
         dependency: unused_parameters_data_dependency,
-        use_site_facts: Holds { value: unused_parameters_non_use_facts() },
-        declaration_facts: Holds { value: unused_parameters_non_use_facts() },
-        relation: IsNonUseDependency
+        classification: IsNonUseDependency
       },
-      UnusedParametersDependencyFact {
-        use_site: unused_parameters_non_use_child,
-        declaration: unused_parameters_non_use_root,
+      ClassifiedDependencyView {
         dependency: unused_parameters_generated_from_dependency,
-        use_site_facts: Holds { value: unused_parameters_non_use_facts() },
-        declaration_facts: Holds { value: unused_parameters_non_use_facts() },
-        relation: RequiresResolutionWitness
+        classification: RequiresResolutionWitness
       }
     ]
   },
-  actual: unused_parameters_witness(
+  actual: use_classification_witness(
     tree: unused_parameters_non_use_tree(),
     dependencies: [
       unused_parameters_contains_dependency,
@@ -175,7 +129,7 @@ data unused_parameters_non_use_edges_claim: LensUnusedParametersNonUseClaim = Le
 fn unused_parameters_non_use_edges_claim_holds() -> Bool {
   match unused_parameters_non_use_edges_claim.actual {
     Holds { value: actual } =>
-      unused_parameters_fact_eq(a: actual, b: unused_parameters_non_use_edges_claim.expected)
+      use_classification_fact_eq(a: actual, b: unused_parameters_non_use_edges_claim.expected)
     _ => false
   }
 }

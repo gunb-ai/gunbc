@@ -37,13 +37,14 @@ import v4.std.diagnostic {
 }
 import v4.std.node { Atom, Conj, Node, Symbol, TypeNode }
 import v4.std.verification {
-  Compiles,
-  Equals,
   T19ManualAnchorAbsent,
   TestClaim,
   TestClassification,
   Tier1,
-  Unit
+  Unit,
+  CompilesClaim,
+  DiagnosticClaim,
+  EqualsClaim
 }
 import v4.std.witness { Holds, Witness }
 
@@ -137,25 +138,20 @@ fn claim_rejecting_lens_is_compile_lens_gate_rejected(
 }
 
 
-data claim_validate_then_compile_module_compiles: TestClaim = TestClaim {
-  kind: Compiles,
+data claim_validate_then_compile_module_compiles: TestClaim = CompilesClaim {
   label: "manual/wave-5-a: validate_then_compile public terminal module compiles",
   t19_anchor: T19ManualAnchorAbsent,
   input: claim_validate_then_compile_module,
-  expected: Accepted { value: claim_validate_then_compile_module, diagnostics: None },
+  expected_value: claim_validate_then_compile_module,
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
 
-data claim_empty_lenses_skips_gate: TestClaim = TestClaim {
-  kind: Equals,
+data claim_empty_lenses_skips_gate: TestClaim = EqualsClaim {
   label: "manual/wave-5-a: empty lens list does not compile_lens_gate_reject (infer/compile-core Rejected OK)",
   t19_anchor: T19ManualAnchorAbsent,
-  input: claim_validate_then_compile_module,
-  expected: Accepted {
-    value: claim_validate_then_compile_skips_gate_passes(),
-    diagnostics: None
-  },
+  lhs: claim_validate_then_compile_module,
+  rhs: claim_validate_then_compile_skips_gate_passes(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
@@ -174,15 +170,11 @@ fn claim_validate_then_compile_skips_gate_passes() -> Node {
 }
 
 
-data claim_rejecting_lens_blocks_before_compile: TestClaim = TestClaim {
-  kind: Equals,
+data claim_rejecting_lens_blocks_before_compile: TestClaim = EqualsClaim {
   label: "manual/wave-5-a: required lens Rejected blocks before compile-core",
   t19_anchor: T19ManualAnchorAbsent,
-  input: claim_validate_then_compile_module,
-  expected: Accepted {
-    value: claim_rejecting_lens_blocks_passes(),
-    diagnostics: None
-  },
+  lhs: claim_validate_then_compile_module,
+  rhs: claim_rejecting_lens_blocks_passes(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
