@@ -137,11 +137,6 @@ type CppBoolPrimitiveFacts {
   encoding_fact: Node
 }
 
-type CppModeledTargetProfile {
-  profile: CppTargetProfile
-  profile_node: Node
-}
-
 type CppLanguageModel {
   language_identity: Symbol
   canonical_symbols: Set<Symbol>
@@ -174,6 +169,11 @@ data cpp_tag_wchar_t: Symbol = cpp_tag_wchar_t
 data cpp_tag_fixed_unsigned_code_unit_integer: Symbol = cpp_tag_fixed_unsigned_code_unit_integer
 data cpp_tag_bool: Symbol = cpp_tag_bool
 data cpp_tag_twos_complement: Symbol = cpp_tag_twos_complement
+data cpp_tag_unsigned_integer_representation: Symbol = cpp_tag_unsigned_integer_representation
+data cpp_tag_plain_char_representation: Symbol = cpp_tag_plain_char_representation
+data cpp_tag_wchar_t_representation: Symbol = cpp_tag_wchar_t_representation
+data cpp_tag_unsigned_code_unit_representation: Symbol = cpp_tag_unsigned_code_unit_representation
+data cpp_tag_bool_representation: Symbol = cpp_tag_bool_representation
 data cpp_tag_representable_result_required: Symbol = cpp_tag_representable_result_required
 data cpp_tag_unsigned_modulo_arithmetic: Symbol = cpp_tag_unsigned_modulo_arithmetic
 data cpp_tag_width_selection: Symbol = cpp_tag_width_selection
@@ -228,7 +228,7 @@ fn cpp_fixed_code_unit_spelling_node(
   }
 }
 
-fn cpp_width_selection_node(spelling: Node, target_profile: CppModeledTargetProfile) -> Node {
+fn cpp_width_selection_node(spelling: Node, target_profile: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
@@ -236,7 +236,7 @@ fn cpp_width_selection_node(spelling: Node, target_profile: CppModeledTargetProf
       cpp_named_edge(name: cpp_field_spelling, target: spelling),
       cpp_named_edge(
         name: cpp_field_target_profile,
-        target: target_profile.profile_node
+        target: target_profile
       )
     ]
   }
@@ -275,9 +275,8 @@ fn cpp_bool_facts_node(facts: CppBoolPrimitiveFacts) -> Node {
 fn cpp_signed_integer_facts(
   spelling: CppSignedIntegerSurfaceSpelling,
   surface_spelling: Symbol,
-  target_profile: CppModeledTargetProfile
+  target_profile: Node
 ) -> CppIntegerPrimitiveFacts {
-  let _profile = target_profile.profile
   let width_fact = cpp_width_selection_node(
     spelling: cpp_signed_integer_spelling_node(spelling: spelling),
     target_profile: target_profile
@@ -309,9 +308,8 @@ fn cpp_signed_integer_facts(
 fn cpp_unsigned_integer_facts(
   spelling: CppUnsignedIntegerSurfaceSpelling,
   surface_spelling: Symbol,
-  target_profile: CppModeledTargetProfile
+  target_profile: Node
 ) -> CppIntegerPrimitiveFacts {
-  let _profile = target_profile.profile
   let width_fact = cpp_width_selection_node(
     spelling: cpp_unsigned_integer_spelling_node(spelling: spelling),
     target_profile: target_profile
@@ -331,12 +329,12 @@ fn cpp_unsigned_integer_facts(
     },
     width_fact: width_fact,
     signedness_fact: cpp_atom(id: cpp_tag_unsigned_integer),
-    encoding_fact: cpp_atom(id: cpp_tag_unsigned_modulo_arithmetic),
+    encoding_fact: cpp_atom(id: cpp_tag_unsigned_integer_representation),
     overflow_fact: cpp_atom(id: cpp_tag_unsigned_modulo_arithmetic)
   }
 }
 
-fn cpp_integer_facts_catalog(target_profile: CppModeledTargetProfile) -> List<CppIntegerPrimitiveFacts> {
+fn cpp_integer_facts_catalog(target_profile: Node) -> List<CppIntegerPrimitiveFacts> {
   [
     cpp_signed_integer_facts(
       spelling: SignedChar,
@@ -391,8 +389,7 @@ fn cpp_integer_facts_catalog(target_profile: CppModeledTargetProfile) -> List<Cp
   ]
 }
 
-fn cpp_character_facts_catalog(target_profile: CppModeledTargetProfile) -> List<CppCharacterPrimitiveFacts> {
-  let _profile = target_profile.profile
+fn cpp_character_facts_catalog(target_profile: Node) -> List<CppCharacterPrimitiveFacts> {
   let char_width_fact = cpp_width_selection_node(
     spelling: cpp_atom(id: cpp_surface_spelling_char),
     target_profile: target_profile
@@ -424,7 +421,7 @@ fn cpp_character_facts_catalog(target_profile: CppModeledTargetProfile) -> List<
         ]
       },
       width_fact: char_width_fact,
-      encoding_fact: cpp_atom(id: cpp_tag_plain_char)
+      encoding_fact: cpp_atom(id: cpp_tag_plain_char_representation)
     },
     CppCharacterPrimitiveFacts {
       surface_spelling: cpp_surface_spelling_wchar_t,
@@ -436,7 +433,7 @@ fn cpp_character_facts_catalog(target_profile: CppModeledTargetProfile) -> List<
         ]
       },
       width_fact: wchar_t_width_fact,
-      encoding_fact: cpp_atom(id: cpp_tag_wchar_t)
+      encoding_fact: cpp_atom(id: cpp_tag_wchar_t_representation)
     },
     CppCharacterPrimitiveFacts {
       surface_spelling: cpp_surface_spelling_char8_t,
@@ -455,7 +452,7 @@ fn cpp_character_facts_catalog(target_profile: CppModeledTargetProfile) -> List<
         ]
       },
       width_fact: char8_t_width_fact,
-      encoding_fact: cpp_atom(id: cpp_tag_unsigned_modulo_arithmetic)
+      encoding_fact: cpp_atom(id: cpp_tag_unsigned_code_unit_representation)
     },
     CppCharacterPrimitiveFacts {
       surface_spelling: cpp_surface_spelling_char16_t,
@@ -474,7 +471,7 @@ fn cpp_character_facts_catalog(target_profile: CppModeledTargetProfile) -> List<
         ]
       },
       width_fact: char16_t_width_fact,
-      encoding_fact: cpp_atom(id: cpp_tag_unsigned_modulo_arithmetic)
+      encoding_fact: cpp_atom(id: cpp_tag_unsigned_code_unit_representation)
     },
     CppCharacterPrimitiveFacts {
       surface_spelling: cpp_surface_spelling_char32_t,
@@ -493,7 +490,7 @@ fn cpp_character_facts_catalog(target_profile: CppModeledTargetProfile) -> List<
         ]
       },
       width_fact: char32_t_width_fact,
-      encoding_fact: cpp_atom(id: cpp_tag_unsigned_modulo_arithmetic)
+      encoding_fact: cpp_atom(id: cpp_tag_unsigned_code_unit_representation)
     }
   ]
 }
@@ -503,7 +500,7 @@ fn cpp_bool_facts_catalog() -> List<CppBoolPrimitiveFacts> {
     CppBoolPrimitiveFacts {
       surface_spelling: cpp_surface_spelling_bool,
       scalar: cpp_atom(id: cpp_tag_bool),
-      encoding_fact: cpp_atom(id: cpp_tag_bool)
+      encoding_fact: cpp_atom(id: cpp_tag_bool_representation)
     }
   ]
 }
@@ -532,7 +529,7 @@ fn cpp_bool_catalog_surface_symbol_step(
   acc || sym == facts.surface_spelling
 }
 
-fn cpp_integer_catalog_surface_symbol(sym: Symbol, target_profile: CppModeledTargetProfile) -> Bool {
+fn cpp_integer_catalog_surface_symbol(sym: Symbol, target_profile: Node) -> Bool {
   free_monoid_fold(
     xs: cpp_integer_facts_catalog(target_profile: target_profile),
     empty: false,
@@ -542,7 +539,7 @@ fn cpp_integer_catalog_surface_symbol(sym: Symbol, target_profile: CppModeledTar
   )
 }
 
-fn cpp_character_catalog_surface_symbol(sym: Symbol, target_profile: CppModeledTargetProfile) -> Bool {
+fn cpp_character_catalog_surface_symbol(sym: Symbol, target_profile: Node) -> Bool {
   free_monoid_fold(
     xs: cpp_character_facts_catalog(target_profile: target_profile),
     empty: false,
@@ -562,13 +559,13 @@ fn cpp_bool_catalog_surface_symbol(sym: Symbol) -> Bool {
   )
 }
 
-fn cpp_catalog_surface_symbol(sym: Symbol, target_profile: CppModeledTargetProfile) -> Bool {
+fn cpp_catalog_surface_symbol(sym: Symbol, target_profile: Node) -> Bool {
   cpp_integer_catalog_surface_symbol(sym: sym, target_profile: target_profile) ||
     cpp_character_catalog_surface_symbol(sym: sym, target_profile: target_profile) ||
     cpp_bool_catalog_surface_symbol(sym: sym)
 }
 
-fn cpp_language_model_canonical_symbols(target_profile: CppModeledTargetProfile) -> Set<Symbol> {
+fn cpp_language_model_canonical_symbols(target_profile: Node) -> Set<Symbol> {
   Set {
     member: fn(sym) {
       cpp_catalog_surface_symbol(sym: sym, target_profile: target_profile)
@@ -667,7 +664,7 @@ fn cpp_primitive_bundle_from_bool_facts(facts: CppBoolPrimitiveFacts) -> Primiti
 }
 
 fn cpp_primitive_bundles_from_integer_catalog(
-  target_profile: CppModeledTargetProfile
+  target_profile: Node
 ) -> List<PrimitiveFactBundle> {
   free_monoid_fold(
     xs: cpp_integer_facts_catalog(target_profile: target_profile),
@@ -682,7 +679,7 @@ fn cpp_primitive_bundles_from_integer_catalog(
 }
 
 fn cpp_primitive_bundles_from_character_catalog(
-  target_profile: CppModeledTargetProfile
+  target_profile: Node
 ) -> List<PrimitiveFactBundle> {
   free_monoid_fold(
     xs: cpp_character_facts_catalog(target_profile: target_profile),
@@ -710,7 +707,7 @@ fn cpp_primitive_bundles_from_bool_catalog() -> List<PrimitiveFactBundle> {
 }
 
 fn cpp_wave1_primitive_fact_bundles(
-  target_profile: CppModeledTargetProfile
+  target_profile: Node
 ) -> List<PrimitiveFactBundle> {
   cpp_list_append(
     left: cpp_list_append(
@@ -721,7 +718,7 @@ fn cpp_wave1_primitive_fact_bundles(
   )
 }
 
-fn cpp_model_core_wave1(target_profile: CppModeledTargetProfile) -> ModelCore {
+fn cpp_model_core_wave1(target_profile: Node) -> ModelCore {
   ModelCore {
     primitives: cpp_wave1_primitive_fact_bundles(target_profile: target_profile),
     inhabitance: [],
@@ -731,7 +728,7 @@ fn cpp_model_core_wave1(target_profile: CppModeledTargetProfile) -> ModelCore {
   }
 }
 
-fn cpp_language_model_wave1(target_profile: CppModeledTargetProfile) -> CppLanguageModel {
+fn cpp_language_model_wave1(target_profile: Node) -> CppLanguageModel {
   CppLanguageModel {
     language_identity: cpp_language_model_surface_id,
     canonical_symbols: cpp_language_model_canonical_symbols(target_profile: target_profile),
