@@ -713,7 +713,7 @@ pub fn build_movable_set(proof: Rc<OwnershipProof>) -> Rc<std::collections::BTre
     .iter()
     .cloned()
     .fold(
-        v2_rt::rc_empty_set(),
+        v2_rt::rc_empty_set::<String>(),
         |acc: Rc<std::collections::BTreeSet<String>>, usage: Rc<BindingUsage>| {
             v2_rt::rc_set_insert(acc, usage.name.clone())
         },
@@ -757,7 +757,7 @@ pub fn build_read_only_params(
     .iter()
     .cloned()
     .fold(
-        v2_rt::rc_empty_set(),
+        v2_rt::rc_empty_set::<String>(),
         |acc: Rc<std::collections::BTreeSet<String>>, usage: Rc<BindingUsage>| {
             v2_rt::rc_set_insert(acc, usage.name.clone())
         },
@@ -784,7 +784,7 @@ pub fn collect_callable_refs(
                 collect_callable_refs(&field_access_base(texpr.clone()), &si)
             }
             ExprData::ExprCall { .. } => texpr.children.clone().iter().cloned().fold(
-                v2_rt::rc_empty_set(),
+                v2_rt::rc_empty_set::<String>(),
                 |acc: Rc<std::collections::BTreeSet<String>>, a: Rc<Node>| {
                     v2_rt::rc_set_union(acc, collect_callable_refs(&arg_value(&a), &si))
                 },
@@ -824,7 +824,7 @@ pub fn collect_callable_refs(
                 }
             }
             ExprData::ExprBlock => texpr.children.clone().iter().cloned().fold(
-                v2_rt::rc_empty_set(),
+                v2_rt::rc_empty_set::<String>(),
                 |acc: Rc<std::collections::BTreeSet<String>>, child: Rc<Node>| {
                     v2_rt::rc_set_union(acc, collect_callable_refs(&child, &si))
                 },
@@ -842,7 +842,7 @@ pub fn collect_callable_refs(
                 )
             }
             ExprData::ExprRecordLit { .. } => texpr.children.clone().iter().cloned().fold(
-                v2_rt::rc_empty_set(),
+                v2_rt::rc_empty_set::<String>(),
                 |acc: Rc<std::collections::BTreeSet<String>>, field: Rc<Node>| {
                     v2_rt::rc_set_union(acc, collect_callable_refs(&arg_value(&field), &si))
                 },

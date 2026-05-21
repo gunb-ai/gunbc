@@ -6989,7 +6989,7 @@ pub fn build_scc_index(
                 index: v2_rt::rc_empty_map::<String, Rc<SccInfo>>(),
             }),
             |acc: Rc<SccBuildAcc>, name: String| {
-                if v2_rt::set_contains(&acc.assigned.clone(), name.clone()) {
+                if v2_rt::set_contains(acc.assigned.clone(), name.clone()) {
                     acc.clone()
                 } else {
                     {
@@ -7002,10 +7002,10 @@ pub fn build_scc_index(
                             }),
                         );
                         let member_set = component.members.clone().iter().cloned().fold(
-                            v2_rt::rc_empty_set(),
+                            v2_rt::rc_empty_set::<compile_error!("UNRESOLVED_TypeVariable")>(),
                             |inner: Rc<
                                 std::collections::BTreeSet<
-                                    String,
+                                    compile_error!("UNRESOLVED_TypeVariable"),
                                 >,
                             >,
                              member: String| {

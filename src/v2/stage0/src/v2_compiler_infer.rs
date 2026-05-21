@@ -548,7 +548,7 @@ pub fn classify_field_recursion(
                     };
                     let is_recursive_element = ((value_type.clone().as_str()
                         == parent_name.clone().as_str())
-                        || v2_rt::set_contains(recursive_type_set.clone(), value_type.clone()));
+                        || v2_rt::set_contains(recursive_type_set, value_type.clone()));
                     if is_recursive_element {
                         {
                             let elem =
@@ -578,7 +578,7 @@ pub fn classify_field_recursion(
                     }
                 }
             } else {
-                if v2_rt::set_contains(recursive_type_set.clone(), field_type_name.clone()) {
+                if v2_rt::set_contains(recursive_type_set, field_type_name.clone()) {
                     match field_node.return_cardinality.clone() {
                         Cardinality::CardOptional => Some(Rc::new(FieldRecursionResult {
                             shape: RecursionShape::OptionalRecursion,
@@ -10237,8 +10237,8 @@ pub fn build_type_env(
             Rc::new(v2_rt::map_keys(&compiler_recursive_types())),
         );
         let cross_type_set_str = cross_type_all_names.clone().iter().cloned().fold(
-            v2_rt::rc_empty_set(),
-            |acc: Rc<std::collections::BTreeSet<String>>,
+            v2_rt::rc_empty_set::<compile_error!("UNRESOLVED_TypeVariable")>(),
+            |acc: Rc<std::collections::BTreeSet<compile_error!("UNRESOLVED_TypeVariable")>>,
              name: String| v2_rt::rc_set_insert(acc, name.clone()),
         );
         let cross_type_set = cross_type_all_names.clone().iter().cloned().fold(
@@ -10697,8 +10697,8 @@ pub fn build_type_env_unresolved(
             Rc::new(v2_rt::map_keys(&compiler_recursive_types())),
         );
         let cross_type_set_str = cross_type_all_names.clone().iter().cloned().fold(
-            v2_rt::rc_empty_set(),
-            |acc: Rc<std::collections::BTreeSet<String>>,
+            v2_rt::rc_empty_set::<compile_error!("UNRESOLVED_TypeVariable")>(),
+            |acc: Rc<std::collections::BTreeSet<compile_error!("UNRESOLVED_TypeVariable")>>,
              name: String| v2_rt::rc_set_insert(acc, name.clone()),
         );
         let cross_type_set = cross_type_all_names.clone().iter().cloned().fold(
@@ -11349,8 +11349,8 @@ pub fn topo_resolve_types(
             });
         }
         let remaining_set = remaining.clone().iter().cloned().fold(
-            v2_rt::rc_empty_set(),
-            |acc: Rc<std::collections::BTreeSet<String>>,
+            v2_rt::rc_empty_set::<compile_error!("UNRESOLVED_TypeVariable")>(),
+            |acc: Rc<std::collections::BTreeSet<compile_error!("UNRESOLVED_TypeVariable")>>,
              name: String| v2_rt::rc_set_insert(acc, name.clone()),
         );
         let ready = Rc::new({
@@ -11364,7 +11364,8 @@ pub fn topo_resolve_types(
                                 || (dep.clone().as_str() == "None".to_string().as_str()))
                                 || (dep.clone().as_str() == "".to_string().as_str()))
                                 || is_recursive_type_by_name(&env, dep.clone()))
-                                || (v2_rt::set_contains(remaining_set.clone(), dep.clone()) == false))
+                                || (v2_rt::set_contains(remaining_set.clone(), dep.clone())
+                                    == false))
                             {
                                 __all = false;
                                 break;
@@ -11568,15 +11569,15 @@ pub fn build_fielded_variants(
 ) -> Rc<std::collections::BTreeSet<String>> {
     {
         let result = modules.iter().cloned().fold(
-            v2_rt::rc_empty_set(),
-            |acc: Rc<std::collections::BTreeSet<String>>,
+            v2_rt::rc_empty_set::<compile_error!("UNRESOLVED_TypeVariable")>(),
+            |acc: Rc<std::collections::BTreeSet<compile_error!("UNRESOLVED_TypeVariable")>>,
              m: Rc<TypedModule>| {
                 let items = m.items.clone();
                 let si = m.type_env.clone().source_indices.clone();
                 items.clone().iter().cloned().fold(
                     acc,
                     |inner: Rc<
-                        std::collections::BTreeSet<String>,
+                        std::collections::BTreeSet<compile_error!("UNRESOLVED_TypeVariable")>,
                     >,
                      item: Rc<Node>| {
                         let is_enum = match v2_rt::map_get(
@@ -11597,7 +11598,7 @@ pub fn build_fielded_variants(
                                     inner.clone(),
                                     |vacc: Rc<
                                         std::collections::BTreeSet<
-                                            String,
+                                            compile_error!("UNRESOLVED_TypeVariable"),
                                         >,
                                     >,
                                      variant: Rc<Node>| {
@@ -11652,8 +11653,8 @@ pub fn build_emit_graph_info(modules: &Rc<Vec<Rc<TypedModule>>>) -> Rc<EmitGraph
             },
         );
         let all_recursive = modules.clone().iter().cloned().fold(
-            v2_rt::rc_empty_set(),
-            |acc: Rc<std::collections::BTreeSet<String>>,
+            v2_rt::rc_empty_set::<compile_error!("UNRESOLVED_TypeVariable")>(),
+            |acc: Rc<std::collections::BTreeSet<compile_error!("UNRESOLVED_TypeVariable")>>,
              m: Rc<TypedModule>| {
                 Rc::new(v2_rt::map_keys(
                     &m.type_env.clone().recursive_type_set.clone(),
@@ -11663,7 +11664,7 @@ pub fn build_emit_graph_info(modules: &Rc<Vec<Rc<TypedModule>>>) -> Rc<EmitGraph
                 .fold(
                     acc,
                     |inner: Rc<
-                        std::collections::BTreeSet<String>,
+                        std::collections::BTreeSet<compile_error!("UNRESOLVED_TypeVariable")>,
                     >,
                      ident: i64| {
                         v2_rt::rc_set_insert(
