@@ -152,7 +152,7 @@ fn optional_evidence_meet(a: DescentEvidence?, b: DescentEvidence?) -> DescentEv
     Some { value: va } =>
       match b {
         None => a
-        Some { value: vb } => Some { value: descent_evidence_bounded_lattice.meet(a: va, b: vb) }
+        Some { value: vb } => Some { value: descent_evidence_lattice_meet(a: va, b: vb) }
       }
   }
 }
@@ -160,7 +160,7 @@ fn optional_evidence_meet(a: DescentEvidence?, b: DescentEvidence?) -> DescentEv
 // map_merge_at for DescentEvidence: pointwise meet keyed by String.
 fn map_evidence_merge_at(base: Map<String, DescentEvidence>, key: String, new_val: DescentEvidence) -> Map<String, DescentEvidence> {
   match map_get(base, key) {
-    Some { value: existing } => map_insert(base, key, descent_evidence_bounded_lattice.meet(a: existing, b: new_val))
+    Some { value: existing } => map_insert(base, key, descent_evidence_lattice_meet(a: existing, b: new_val))
     None => map_insert(base, key, new_val)
   }
 }
