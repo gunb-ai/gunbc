@@ -11,13 +11,6 @@ module v4.std.coercion
 
 
 import v4.std.collection { List }
-import v4.std.canonical_grounding {
-  NodeZipFoldResult,
-  ZipFoldExact,
-  ZipFoldIdentity,
-  ZipFoldMismatch,
-  canonical_node_zip_fold_result
-}
 import v4.std.constraints { CanonicalGrounding, CanonicalGroundingWitness }
 import v4.std.diagnostic {
   Accepted,
@@ -150,6 +143,16 @@ fn coercion_candidate_set_from_declared_inhabitants(
     )
   }
 }
+fn coercion_quality_for_witness(
+  source: CanonicalGrounding,
+  fw: FindWitnessResult,
+) -> CoercionQuality {
+  if fw.candidate == source.node {
+    Identity
+  } else {
+    Exact
+  }
+}
 fn coercion_homomorphism_evidence(
   source: CanonicalGrounding,
   fw: FindWitnessResult,
@@ -162,28 +165,6 @@ fn coercion_homomorphism_evidence(
       Edge { label: Named { name: coercion_homomorphism_evidence_find_witness }, target: fw.witness.evidence }
     ]
   }
-}
-fn coercion_quality_for_zip_fold_result(
-  source: CanonicalGrounding,
-  r: NodeZipFoldResult,
-) -> Outcome<CoercionQuality> {
-  match r {
-    ZipFoldIdentity => Accepted { value: Identity, diagnostics: None }
-    ZipFoldExact => Accepted { value: Exact, diagnostics: None }
-    ZipFoldMismatch =>
-      outcome_rejected(
-        coercion_not_realized_diagnostic(
-          source: source,
-          kind: StructuralMismatch
-        )
-      )
-  }
-}
-fn coercion_quality_for_exact_structural_match(source: CanonicalGrounding, target: Node) -> Outcome<CoercionQuality> {
-  coercion_quality_for_zip_fold_result(
-    source: source,
-    r: canonical_node_zip_fold_result(left: source.node, right: target)
-  )
 }
 fn coercion_fold(
   source: CanonicalGrounding,
@@ -200,22 +181,18 @@ fn coercion_fold(
     multiplicity_policy: TargetSelection { policy: policy }
   ) {
     Accepted { value: fw, diagnostics: fw_d } =>
-      match coercion_quality_for_exact_structural_match(source: source, target: fw.candidate) {
-        Accepted { value: q, diagnostics: _ } =>
-          Accepted {
-            value: CoercionResult {
-              target: fw.candidate,
-              quality: q,
-              witness: CoercionWitness {
-                homomorphism: HomomorphismWitness {
-                  rule: homomorphism_rule_exact_structural_equality,
-                  evidence: coercion_homomorphism_evidence(source: source, fw: fw)
-                }
-              }
-            },
-            diagnostics: fw_d
+      Accepted {
+        value: CoercionResult {
+          target: fw.candidate,
+          quality: coercion_quality_for_witness(source: source, fw: fw),
+          witness: CoercionWitness {
+            homomorphism: HomomorphismWitness {
+              rule: homomorphism_rule_exact_structural_equality,
+              evidence: coercion_homomorphism_evidence(source: source, fw: fw)
+            }
           }
-        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        },
+        diagnostics: fw_d
       }
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
