@@ -13,7 +13,7 @@ import v4.lens.structural_resolution {
   StructuralResolutionFact,
   at,
   fact_eq,
-  fact_projects_status
+  fact_single_dependency_projects_status
 }
 import v4.std.cardinality { RankingDimension, TerminationProof }
 import v4.std.collection { Map }
@@ -22,7 +22,11 @@ import v4.std.constraints {
   constraint_property_being_canonical,
   constraint_property_candidate_set_closedness
 }
-import v4.std.dependency { BindsTo, DependencyView }
+import v4.std.dependency {
+  BindsTo,
+  DependencyView,
+  dependency_binds_to_edge
+}
 import v4.std.node { Atom, Edge, Hash, Named, Node, Symbol, TypeNode }
 import v4.std.witness { Holds, StructuralPropertyWitness, Witness }
 
@@ -47,7 +51,7 @@ data sr_child: Node = sr_claim_node(s: sr_child_symbol)
 data sr_root: Node = Node {
   kind: TypeNode { connective: Atom { identity: sr_root_symbol } },
   children: [
-    Edge { label: Named { name: sr_edge_symbol }, target: sr_child }
+    Edge { label: Named { name: dependency_binds_to_edge }, target: sr_child }
   ]
 }
 
@@ -79,9 +83,11 @@ fn sr_claim_facts() -> InferredFacts {
       algebra: sr_claim_node(s: sr_algebra_symbol),
       witness: sr_claim_node(s: sr_algebra_witness_symbol)
     },
-    descent: TerminationProof {
-      non_increasing: [],
-      strict: RankingDimension { measured: sr_descent_symbol }
+    descent: Holds {
+      value: TerminationProof {
+        non_increasing: [],
+        strict: RankingDimension { measured: sr_descent_symbol }
+      }
     },
     canonical: sr_claim_canonical_witness(resolved: resolved)
   }
@@ -128,7 +134,7 @@ fn binds_to_resolved_claim_holds() -> Bool {
   match binds_to_resolved_claim.actual {
     Holds { value: actual } =>
       fact_eq(a: actual, b: binds_to_resolved_claim.expected)
-        && fact_projects_status(fact: actual, expected: BindingResolved)
+        && fact_single_dependency_projects_status(fact: actual, expected: BindingResolved)
     _ => false
   }
 }

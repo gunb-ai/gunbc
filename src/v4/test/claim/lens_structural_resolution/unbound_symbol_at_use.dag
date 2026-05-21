@@ -16,7 +16,7 @@ import v4.lens.structural_resolution {
   UnboundSymbolAtUse,
   at,
   fact_eq,
-  fact_projects_status
+  fact_single_dependency_projects_status
 }
 import v4.std.cardinality { RankingDimension, TerminationProof }
 import v4.std.collection { Map }
@@ -25,7 +25,11 @@ import v4.std.constraints {
   constraint_property_being_canonical,
   constraint_property_candidate_set_closedness
 }
-import v4.std.dependency { BindsTo, DependencyView }
+import v4.std.dependency {
+  BindsTo,
+  DependencyView,
+  dependency_binds_to_edge
+}
 import v4.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,
@@ -56,7 +60,7 @@ data sr_unbound_child: Node = sr_unbound_claim_node(s: sr_unbound_child_symbol)
 data sr_unbound_root: Node = Node {
   kind: TypeNode { connective: Atom { identity: sr_unbound_root_symbol } },
   children: [
-    Edge { label: Named { name: sr_unbound_edge_symbol }, target: sr_unbound_child }
+    Edge { label: Named { name: dependency_binds_to_edge }, target: sr_unbound_child }
   ]
 }
 
@@ -88,9 +92,11 @@ fn sr_unbound_resolved_facts() -> InferredFacts {
       algebra: sr_unbound_claim_node(s: sr_unbound_algebra_symbol),
       witness: sr_unbound_claim_node(s: sr_unbound_algebra_witness_symbol)
     },
-    descent: TerminationProof {
-      non_increasing: [],
-      strict: RankingDimension { measured: sr_unbound_descent_symbol }
+    descent: Holds {
+      value: TerminationProof {
+        non_increasing: [],
+        strict: RankingDimension { measured: sr_unbound_descent_symbol }
+      }
     },
     canonical: sr_unbound_canonical_witness(resolved: resolved)
   }
@@ -155,7 +161,7 @@ fn unbound_symbol_at_use_claim_holds() -> Bool {
   match unbound_symbol_at_use_claim.actual {
     Holds { value: actual } =>
       fact_eq(a: actual, b: unbound_symbol_at_use_claim.expected)
-        && fact_projects_status(fact: actual, expected: UnboundSymbolAtUse)
+        && fact_single_dependency_projects_status(fact: actual, expected: UnboundSymbolAtUse)
     _ => false
   }
 }

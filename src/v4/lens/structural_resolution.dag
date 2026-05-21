@@ -21,7 +21,7 @@
 //   - compiler/infer, compiler/resolve (reason symbols only)
 //   - std/dependency, std/node, std/witness
 //
-// Status: filled — registry T-23 / T-13 mirror
+// Status: registry filled; dependency classifier staged until T-9 resolve-ground BindsTo facts land inline.
 // Brief: r4-lane-a-lens-interface-freeze-pin §3 structural_resolution row
 
 
@@ -35,6 +35,7 @@ import v4.compiler.infer {
 import v4.compiler.resolve {
   resolve_reason_unbound_symbol
 }
+import v4.std.collection { List }
 import v4.std.dependency {
   BootstrapDependsOn,
   BindsTo,
@@ -42,6 +43,8 @@ import v4.std.dependency {
   ModuleDependsOn,
   dependency_lens
 }
+import v4.std.integer { Int }
+import v4.std.logic { Bool }
 import v4.std.node { Node, Symbol }
 import v4.std.witness { Holds, Violates, Witness }
 
@@ -175,6 +178,20 @@ fn fact_projects_status(fact: StructuralResolutionFact, expected: StructuralReso
   fold(fact.dependencies, init: false, f: fn(acc, dep) {
     acc || status_eq(a: status_of_dependency_fact(fact: dep), b: expected)
   })
+}
+
+// Single-dependency TestClaim ratchet: proves status_of_dependency_fact, not only field equality.
+fn fact_single_dependency_projects_status(
+  fact: StructuralResolutionFact,
+  expected: StructuralResolutionStatus
+) -> Bool {
+  if count(fact.dependencies) != 1 {
+    false
+  } else {
+    fold(fact.dependencies, init: false, f: fn(_acc, dep) {
+      status_eq(a: status_of_dependency_fact(fact: dep), b: expected)
+    })
+  }
 }
 
 // TestClaim equality: compare authoritative fields; status ratcheted separately via fact_projects_status.
