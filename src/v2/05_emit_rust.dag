@@ -2860,7 +2860,10 @@ fn emit_rust_empty_set_expr(set_type: Node, shared_types: Set<String>, source_in
   match set_type.children |> first {
     Some { value: elem_child } =>
       let elem_node = child_type_node(ch: elem_child)
-      if !rust_btree_set_element_ord_eligible(elem_node: elem_node, source_indices: source_indices) {
+      let elem_is_type_var = if elem_node.inferred != none { is_type_variable(inferred: elem_node.inferred.value) } else { false }
+      if elem_is_type_var {
+        emit_rust_compile_error_expr(message: "empty_set element type unresolved")
+      } else if !rust_btree_set_element_ord_eligible(elem_node: elem_node, source_indices: source_indices) {
         let elem_name = authored_name_at(source_indices: source_indices, node: elem_node)
         emit_rust_compile_error_expr(message: concat("empty_set: element type ", elem_name, " does not satisfy Rust Ord for BTreeSet"))
       } else {
