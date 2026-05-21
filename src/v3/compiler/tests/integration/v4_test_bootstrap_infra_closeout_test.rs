@@ -236,9 +236,10 @@ fn t20_bootstrap_plan_keeps_self_hosting_chain_as_data() {
         "fixpt pins identify independent carrier slots; digest equality proves convergence (A2+A3)"
     );
     assert!(
-        BOOTSTRAP_DAG.contains("produces_hash: BootstrapHashPin { digest: v4_stage2_hash")
-            || BOOTSTRAP_DAG.contains("digest: v4_stage2_hash"),
-        "mismatch regression must exercise the independent stage-2 digest carrier"
+        BOOTSTRAP_DAG.contains("bootstrap_plan_fixpt_digest_mismatch_rejects")
+            && BOOTSTRAP_DAG.contains("produces_hash: BootstrapHashPin { digest: v4_stage2_hash, pin: v4_stage2_hash_pin")
+            && BOOTSTRAP_DAG.contains("right_hash: BootstrapHashPin { digest: v4_stage2_hash, pin: v4_stage2_hash_pin"),
+        "mismatch regression must wire stage-2 and fixpt.right through v4_stage2_hash (not an unrelated seed digest)"
     );
 }
 

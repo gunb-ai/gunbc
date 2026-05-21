@@ -146,7 +146,7 @@ data bootstrap_plan_fixpt_digest_mismatch_rejects: Outcome<BootstrapPlan> = boot
     left: v4_stage1_binary,
     left_hash: BootstrapHashPin { digest: v4_stage1_hash, pin: v4_stage1_hash_pin },
     right: v4_stage2_binary,
-    right_hash: BootstrapHashPin { digest: v4_stage0_hash, pin: v4_stage2_hash_pin },
+    right_hash: BootstrapHashPin { digest: v4_stage2_hash, pin: v4_stage2_hash_pin },
     pinned_hash: BootstrapHashPin { digest: pinned_v4_fixed_point_hash, pin: pinned_v4_fixed_point_hash_pin },
     via: bit_identical_check
   }
