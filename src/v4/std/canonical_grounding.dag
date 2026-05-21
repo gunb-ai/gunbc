@@ -16,13 +16,11 @@ import v4.std.node {
   Hash,
   NoEdges,
   Node,
-  NodeFold,
   PositionalEdges,
   TypeNode,
   LabeledEdges,
   behavior_edges_conform,
   connective_edge_discipline,
-  fold_node,
   well_formed
 }
 
@@ -37,6 +35,12 @@ type NodeZipFoldResult
   | ZipFoldExact
   | ZipFoldMismatch
 
+type PositionalZipState {
+  index: Int
+  ok: Bool
+}
+
+// 🟡 predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature:zip-fold-result-acceptance-derived-predicate — dissolve-on-arrival: generated predicate projection for accepted `NodeZipFoldResult`; forbidden: caller-local result matches.
 fn zip_fold_result_accepts(r: NodeZipFoldResult) -> Bool {
   match r {
     ZipFoldIdentity => true
@@ -68,47 +72,48 @@ fn node_zip_fold_identity_or_exact(
   }
 }
 
-fn canonical_node_init(n: Node) -> Node {
-  Node { kind: n.kind, children: [] }
+fn edge_at(children: List<Edge>, index: Int) -> Edge? {
+  first(skip(children, index))
 }
 
-fn canonical_node_step(acc: Node, e: Edge, child: Node) -> Node {
-  Node {
-    kind: acc.kind,
-    children: list_push(
-      acc.children,
-      Edge { label: e.label, target: child }
-    )
-  }
-}
-
-fn canonical_node(n: Node) -> Node {
-  fold_node(
-    n: n,
-    algebra: NodeFold {
-      init: canonical_node_init,
-      step: canonical_node_step
-    }
-  )
-}
-
-fn canonical_edge_count_in(children: List<Edge>, item: Edge) -> Int {
-  fold(children, init: 0, f: fn(acc, e) {
-    if e == item {
-      acc + 1
-    } else {
-      acc
-    }
-  })
-}
-
-fn canonical_named_edge_bag_eq(left: List<Edge>, right: List<Edge>) -> Bool {
+fn canonical_named_edges_match(left: List<Edge>, right: List<Edge>) -> Bool {
   if count(left) != count(right) {
     false
   } else {
-    fold(left, init: true, f: fn(acc, e) {
-      acc && (canonical_edge_count_in(children: left, item: e) == canonical_edge_count_in(children: right, item: e))
+    fold(left, init: true, f: fn(acc, le) {
+      acc && fold(right, init: false, f: fn(found, re) {
+        found || (
+          (le.label == re.label)
+            && zip_fold_result_accepts(
+              r: canonical_node_zip_fold_result(left: le.target, right: re.target)
+            )
+        )
+      })
     })
+  }
+}
+
+fn canonical_positional_edges_match(left: List<Edge>, right: List<Edge>) -> Bool {
+  if count(left) != count(right) {
+    false
+  } else {
+    fold(left, init: PositionalZipState { index: 0, ok: true }, f: fn(acc, le) {
+      if acc.ok {
+        match edge_at(children: right, index: acc.index) {
+          Some { value: re } =>
+            PositionalZipState {
+              index: acc.index + 1,
+              ok: (le.label == re.label)
+                && zip_fold_result_accepts(
+                  r: canonical_node_zip_fold_result(left: le.target, right: re.target)
+                )
+            }
+          None => PositionalZipState { index: acc.index + 1, ok: false }
+        }
+      } else {
+        PositionalZipState { index: acc.index + 1, ok: false }
+      }
+    }).ok
   }
 }
 
@@ -118,22 +123,9 @@ fn canonical_type_node_shapes_match(
   connective: Connective,
 ) -> Bool {
   match connective_edge_discipline(c: connective) {
-    NoEdges => left == right
-    LabeledEdges =>
-      canonical_named_edge_bag_eq(left: left.children, right: right.children)
-    PositionalEdges => left == right
-  }
-}
-
-fn canonical_computation_node_shapes_match(
-  left: Node,
-  right: Node,
-  behavior: Behavior,
-) -> Bool {
-  if behavior_edges_conform(children: left.children, b: behavior) {
-    left == right
-  } else {
-    false
+    NoEdges => count(left.children) == 0 && count(right.children) == 0
+    LabeledEdges => canonical_named_edges_match(left: left.children, right: right.children)
+    PositionalEdges => canonical_positional_edges_match(left: left.children, right: right.children)
   }
 }
 
@@ -141,13 +133,12 @@ fn canonical_node_zip_fold_result(left: Node, right: Node) -> NodeZipFoldResult 
   if !well_formed(n: left) || !well_formed(n: right) || (left.kind != right.kind) {
     ZipFoldMismatch
   } else {
-    let left_canonical = canonical_node(n: left)
-    let right_canonical = canonical_node(n: right)
-    let shapes_match = match left_canonical.kind {
+    let shapes_match = match left.kind {
       TypeNode { connective: c } =>
-        canonical_type_node_shapes_match(left: left_canonical, right: right_canonical, connective: c)
+        canonical_type_node_shapes_match(left: left, right: right, connective: c)
       ComputationNode { behavior: b } =>
-        canonical_computation_node_shapes_match(left: left_canonical, right: right_canonical, behavior: b)
+        behavior_edges_conform(children: left.children, b: b)
+          && canonical_positional_edges_match(left: left.children, right: right.children)
     }
     node_zip_fold_identity_or_exact(left: left, right: right, shapes_match: shapes_match)
   }
@@ -157,6 +148,7 @@ fn canonical_nodes_coincide(left: Node, right: Node) -> Bool {
   zip_fold_result_accepts(r: canonical_node_zip_fold_result(left: left, right: right))
 }
 
+// 🟡 predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature:zip-fold-identity-derived-predicate — dissolve-on-arrival: generated predicate projection for identity `NodeZipFoldResult`; forbidden: caller-local result matches.
 fn canonical_nodes_identical(left: Node, right: Node) -> Bool {
   match canonical_node_zip_fold_result(left: left, right: right) {
     ZipFoldIdentity => true
