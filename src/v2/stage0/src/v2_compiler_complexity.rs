@@ -46,7 +46,7 @@ use crate::std_termination::RankingDimension::{
     ArithmeticValue, ListLength, SetCardinality, TokenPosition, TreeSize,
 };
 pub use crate::std_termination::{
-    evidence_rank, join_evidence, map_evidence_merge_at, merge_evidence, optional_evidence_meet,
+    descent_evidence_lattice_meet, evidence_rank, map_evidence_merge_at, optional_evidence_meet,
     DescentEvidence, DescentSource, PositiveDescentAmount, ProofEdge, RankingDimension,
     TerminationProof,
 };
@@ -588,7 +588,7 @@ pub fn parser_state_expr_progress(
                     ),
                     None => DescentEvidence::DescentUnknown,
                 };
-                merge_evidence(then_progress, else_progress)
+                descent_evidence_lattice_meet(then_progress, else_progress)
             }
             ExprData::ExprLet => {
                 let next_env = parser_env_with_binding(
@@ -630,7 +630,9 @@ pub fn parser_state_expr_progress(
                 match arm_progresses.clone().first().cloned() {
                     Some(initial) => arm_progresses.clone().iter().cloned().fold(
                         initial.clone(),
-                        |acc: DescentEvidence, p: DescentEvidence| merge_evidence(acc, p.clone()),
+                        |acc: DescentEvidence, p: DescentEvidence| {
+                            descent_evidence_lattice_meet(acc, p.clone())
+                        },
                     ),
                     None => DescentEvidence::DescentUnknown,
                 }
@@ -1269,7 +1271,7 @@ pub fn parser_success_progress(
                     ),
                     None => DescentEvidence::DescentUnknown,
                 };
-                merge_evidence(then_progress, else_progress)
+                descent_evidence_lattice_meet(then_progress, else_progress)
             }
             ExprData::ExprLet => {
                 let next_env = parser_env_with_binding(
@@ -6514,7 +6516,7 @@ match ev.clone() {
 },
 }
 });
-merge_evidence(worst, call_best.clone())
+descent_evidence_lattice_meet(worst, call_best.clone())
 });
 Rc::new(vec![Rc::new(ProofEdge {
     caller: name.clone(),
@@ -9041,7 +9043,7 @@ pub fn derive_edge_evidence(all_calls: Rc<Vec<Rc<Vec<Rc<SubValueRelation>>>>>) -
                     }
                 },
             );
-            merge_evidence(worst, call_best.clone())
+            descent_evidence_lattice_meet(worst, call_best.clone())
         },
     )
 }
@@ -9057,7 +9059,9 @@ pub fn merge_param_evidence(
             .get(param_index.clone() as usize)
             .cloned()
         {
-            Some(rel) => merge_evidence(acc.clone(), sub_value_to_evidence(rel.clone())),
+            Some(rel) => {
+                descent_evidence_lattice_meet(acc.clone(), sub_value_to_evidence(rel.clone()))
+            }
             None => acc.clone(),
         },
     )
