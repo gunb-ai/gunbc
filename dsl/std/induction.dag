@@ -195,25 +195,41 @@ fn inductive_field_to_dimension(field: InductiveField, param: String) -> Ranking
 //
 // 🟡 MIXED. Structural descent via `InductiveField` and proof-grade `ShrinkFactor`
 // (`std.computation`); `ArithmeticDescent` names a parameter; `SubValueUnknown` is the fail-closed sink
-// and lattice bottom; `NonIncreasingValue` / `IncomparableValue` close the lattice so meet/join
-// inhabit `BoundedLattice<SubValueRelation>` lawfully (see `sub_value_relation_bounded_lattice` below).
+// and lattice bottom; `NonIncreasingValue` / `StrictAxisErased` / `MixedTop` close the lattice so
+// meet/join over the seven lawful inhabitants form a lawful BoundedLattice with codex-#15892
+// meet-monotonicity AND codex-#15942 join-projection-safety BOTH satisfied (operator-ratified
+// option-(A) split, 2026-05-21 — see "Inc-split rationale" below).
 //
 // Lattice ordering (top → bottom):
-//   IncomparableValue                                            -- ⊤
+//   MixedTop                                                      -- ⊤ (axis-erased OR non-strict)
 //      |
-//      +-- StrictSubValue{f,fac} | IteratedSubValue{f} | ArithmeticDescent{p,fac} | PreservedValue
-//      |   (pairwise incomparable structural witnesses)
+//      +-- StrictAxisErased                                        -- top-of-strict-only joins
+//      |       |
+//      |       +-- StrictSubValue{f,fac} | IteratedSubValue{f} | ArithmeticDescent{p,fac}
+//      |           (pairwise incomparable strict-structural witnesses)
 //      |
-//   NonIncreasingValue                                            -- "weakest structural"
+//      +-- PreservedValue                                          -- specific non-strict witness
+//      |
+//   NonIncreasingValue                                             -- weakest structural (≥ ⊥)
 //      |
 //   SubValueUnknown                                                -- ⊥
 //
-// PreservedValue and the structural-descent witnesses are pairwise incomparable: neither
-// implies the other. Their greatest lower bound is `NonIncreasingValue` (both witness at
-// least non-increase); their least upper bound is `IncomparableValue` (no common stronger
-// structural witness). `NonIncreasingValue` covers the case where two branches collectively
-// prove non-increase but disagree on the structural form, so the merge would otherwise
-// collapse to `SubValueUnknown` and silently drop termination strength.
+// Inc-split rationale: a single `IncomparableValue` top could not simultaneously satisfy
+// (i) meet-monotonicity (`proj(Inc) ≥ proj(StrictSubValue) = Strict` so `meet(Inc, Strict_f)`
+// returning `Strict_f` does not strengthen Inc's evidence — codex review #15892) AND
+// (ii) join-soundness (`proj(Inc) ≤ proj(PreservedValue) = NonIncreasing` because
+// `join(PreservedValue, StrictSubValue{f})` could reach Inc — codex review #15942). The split:
+//   - `StrictAxisErased` covers joins of distinct strict-style witnesses only (Strict / Iter /
+//     Arith) — proj = Strict. meet(SAE, Strict_f) = Strict_f, proj(Strict_f) = Strict =
+//     proj(SAE) — no strengthening.
+//   - `MixedTop` covers joins that span the strict/non-strict boundary (e.g. PreservedValue
+//     joined with a strict witness, or SAE joined with PreservedValue) — proj = NonIncreasing.
+//     join(PreservedValue, Strict_f) = MixedTop, proj(MixedTop) = NonIncreasing = proj(Preserved)
+//     — no fabrication beyond the weakest operand's evidence.
+//
+// PreservedValue and the strict-structural witnesses are pairwise incomparable; their meet
+// is `NonIncreasingValue` (both witness at least non-increase) and their join is `MixedTop`
+// (no common stronger claim survives the strict/non-strict boundary).
 
 type SubValueRelation
   = StrictSubValue { field: InductiveField, factor: ShrinkFactor }
@@ -221,7 +237,8 @@ type SubValueRelation
   | ArithmeticDescent { param: String, factor: ShrinkFactor }
   | PreservedValue
   | NonIncreasingValue
-  | IncomparableValue
+  | StrictAxisErased
+  | MixedTop
   | SubValueUnknown
 
 
@@ -257,17 +274,18 @@ fn sub_value_to_evidence(relation: SubValueRelation) -> DescentEvidence {
       }
     PreservedValue                           => NonIncreasing
     NonIncreasingValue                       => NonIncreasing
-    // IncomparableValue arises from the lattice join of two distinct structural-strict
-    // witnesses (e.g. join(StrictSubValue{f1}, StrictSubValue{f2}) with f1 ≠ f2) — both
-    // arms strictly decrease along *some* axis but the join cannot pin a single one.
-    // The denotation is "strict descent occurred, axis erased", so the honest evidence
-    // projection is `Strict` (axis-erased). Mapping to `NonIncreasing` would break
-    // monotonicity vs the lattice order — IncomparableValue is the lattice top and
-    // meet_sub_value(IncomparableValue, StrictSubValue{f}) returns StrictSubValue{f}
-    // (top is meet identity), which projects to Strict; an IncomparableValue projection
-    // weaker than Strict would let the meet strengthen its operand's evidence, violating
-    // fail-closed evidence projection.
-    IncomparableValue                        => Strict
+    // StrictAxisErased is the join of distinct strict-style witnesses (StrictSubValue /
+    // IteratedSubValue / ArithmeticDescent) where every operand witnesses strict descent
+    // along *some* axis — the join cannot pin a single axis, but the "strict descent
+    // occurred" claim is sound because every join operand projects to Strict.
+    StrictAxisErased                         => Strict
+    // MixedTop covers joins crossing the strict/non-strict boundary (e.g. PreservedValue
+    // ∨ StrictSubValue, or any join involving NonIncreasingValue with a strict-side
+    // structural). The weakest operand projects to NonIncreasing, so MixedTop must
+    // project to NonIncreasing or weaker to satisfy join-projection safety. NonIncreasing
+    // is the honest claim — at least one branch witnessed non-increase but the others may
+    // not have witnessed strict.
+    MixedTop                                 => NonIncreasing
     SubValueUnknown                          => DescentUnknown
   }
 }
@@ -302,28 +320,24 @@ fn shrink_factor_eq(a: ShrinkFactor, b: ShrinkFactor) -> Bool {
 // Lawful Lattice<SubValueRelation> meet/join.
 //
 // Partial order (read bottom → top):
-//   SubValueUnknown < NonIncreasingValue < {PreservedValue,
-//                                           StrictSubValue{f,fac},
-//                                           IteratedSubValue{f},
-//                                           ArithmeticDescent{p,fac}} < IncomparableValue
+//   SubValueUnknown                                                 -- ⊥
+//   < NonIncreasingValue
+//   < { StrictSubValue{f,fac} | IteratedSubValue{f} | ArithmeticDescent{p,fac} | PreservedValue }
+//   < { StrictAxisErased (above strict witnesses only — NOT above PreservedValue) }
+//   < MixedTop                                                       -- ⊤
 //
-// All four mid-level structural witnesses are pairwise incomparable with each
-// other and with PreservedValue: each witnesses a different structural claim
-// (same value vs strict-shrink along a specific axis vs iteration vs arithmetic).
-// Their greatest lower bound is `NonIncreasingValue` — every structural witness
-// implies non-increase, so the meet stays in the lattice rather than collapsing
-// to the fail-closed sink (which would erase termination strength callers can
-// soundly use). Their least upper bound is `IncomparableValue` — no common
-// stronger structural witness exists, but the join must still inhabit the lattice.
-//
-// Structural meets/joins on matching field/param/factor stay at the witness
-// itself (idempotent on identical inhabitants); structural-vs-structural with
-// any differing parameter (field, param, or factor) collapses to the appropriate
-// lattice bound rather than to the sink.
+// StrictAxisErased dominates the three strict-style structural witnesses (Strict / Iter / Arith)
+// and is incomparable with PreservedValue. MixedTop dominates everything — both StrictAxisErased
+// and PreservedValue. This split makes:
+//   - meet(StrictAxisErased, Strict_f) = Strict_f, proj(Strict_f)=Strict matches proj(SAE)=Strict
+//     → meet-monotonicity holds within the strict cone.
+//   - join(PreservedValue, Strict_f) = MixedTop (crosses the strict/non-strict boundary),
+//     proj(MixedTop)=NonIncreasing matches proj(Preserved)=NonIncreasing → join-projection
+//     safety satisfied.
 
 // Reflexive equality used to decide whether two inhabitants are the same lattice
-// element. Lattice idempotence (`meet(a, a) = a`, `join(a, a) = a`) routes through
-// this — every variant, including the non-parameterised ones, must self-equal.
+// element. Lattice idempotence routes through this — every variant, including the
+// non-parameterised ones, must self-equal.
 fn sub_value_structural_eq(a: SubValueRelation, b: SubValueRelation) -> Bool {
   match a {
     StrictSubValue { field: fa, factor: fac_a } =>
@@ -345,21 +359,38 @@ fn sub_value_structural_eq(a: SubValueRelation, b: SubValueRelation) -> Bool {
       }
     PreservedValue => match b { PreservedValue => true, _ => false }
     NonIncreasingValue => match b { NonIncreasingValue => true, _ => false }
-    IncomparableValue => match b { IncomparableValue => true, _ => false }
+    StrictAxisErased => match b { StrictAxisErased => true, _ => false }
+    MixedTop => match b { MixedTop => true, _ => false }
     SubValueUnknown => match b { SubValueUnknown => true, _ => false }
   }
 }
 
-// Classify a relation by lattice level. Top/bottom and `NonIncreasingValue`
-// have fixed levels; the four structural-and-Preserved witnesses share the
-// "structural" middle level (pairwise incomparable within the level).
-//   3 = top (IncomparableValue)
-//   2 = structural (StrictSubValue, IteratedSubValue, ArithmeticDescent, PreservedValue)
+// `is_strict_style_structural` distinguishes "strict-side" inhabitants (whose evidence
+// projection is `Strict`) from the non-strict PreservedValue / NonIncreasingValue. Used by
+// join to decide whether two operands meet under StrictAxisErased or escalate to MixedTop.
+fn is_strict_style_structural(r: SubValueRelation) -> Bool {
+  match r {
+    StrictSubValue { field: _, factor: _ } => true
+    IteratedSubValue { field: _ } => true
+    ArithmeticDescent { param: _, factor: _ } => true
+    StrictAxisErased => true
+    _ => false
+  }
+}
+
+// Classify a relation by lattice level. Levels are total but elements within a level may
+// be incomparable (the level-2 structural witnesses are pairwise incomparable; StrictAxisErased
+// and PreservedValue are incomparable at level 3-shape but the lattice meet/join encodes that
+// directly rather than via the level number).
+//   4 = MixedTop (⊤)
+//   3 = StrictAxisErased (above strict-style witnesses only)
+//   2 = StrictSubValue / IteratedSubValue / ArithmeticDescent / PreservedValue (specific)
 //   1 = NonIncreasingValue
-//   0 = SubValueUnknown (bottom)
+//   0 = SubValueUnknown (⊥)
 fn sub_value_level(r: SubValueRelation) -> Int {
   match r {
-    IncomparableValue => 3
+    MixedTop => 4
+    StrictAxisErased => 3
     StrictSubValue { field: _, factor: _ } => 2
     IteratedSubValue { field: _ } => 2
     ArithmeticDescent { param: _, factor: _ } => 2
@@ -369,10 +400,10 @@ fn sub_value_level(r: SubValueRelation) -> Int {
   }
 }
 
-// Meet (greatest lower bound). Conservative across branches: if branches
-// disagree on the structural form, the result drops to `NonIncreasingValue`
-// (still proves non-increase, preserves termination strength downstream).
-// Only the fail-closed sink can collapse the meet to `SubValueUnknown`.
+// Meet (greatest lower bound) over the 7-lawful-inhabitant lattice plus the ⊥ sink.
+// Encodes the Hasse diagram in the file header. The strict-cone (StrictAxisErased over the
+// strict witnesses) lets meet(StrictAxisErased, Strict_f) return Strict_f without strengthening
+// evidence; mixed pairs drop to the GLB along the chain.
 fn meet_sub_value(a: SubValueRelation, b: SubValueRelation) -> SubValueRelation {
   if sub_value_structural_eq(a: a, b: b) { a }
   else {
@@ -381,27 +412,38 @@ fn meet_sub_value(a: SubValueRelation, b: SubValueRelation) -> SubValueRelation 
     // SubValueUnknown absorbs.
     if la == 0 || lb == 0 { SubValueUnknown }
     else {
-      // IncomparableValue is the top: meet with anything else returns the other side.
-      if la == 3 { b }
+      // MixedTop (level 4) is the lattice ⊤: meet returns the other operand.
+      if la == 4 { b }
       else {
-        if lb == 3 { a }
+        if lb == 4 { a }
         else {
-          // Both lawful at level ≥ 1 and neither is ⊤. The only remaining cases are
-          // (NonIncreasingValue ⊓ structural), (structural ⊓ NonIncreasingValue), and
-          // (distinct structural witnesses at level 2). All three have greatest common
-          // lower bound `NonIncreasingValue` — either it is already an operand, or both
-          // operands are pairwise-incomparable structural witnesses whose meet is the
-          // weakest-structural inhabitant by definition.
-          NonIncreasingValue
+          // StrictAxisErased (level 3) dominates strict-style structurals only.
+          if la == 3 {
+            // a = StrictAxisErased; b is level 1 or 2 (not 0/3/4 here).
+            if is_strict_style_structural(r: b) { b }
+            else { NonIncreasingValue }
+          }
+          else {
+            if lb == 3 {
+              if is_strict_style_structural(r: a) { a }
+              else { NonIncreasingValue }
+            }
+            else {
+              // Both lawful at level 1 or 2 and not structurally equal — meet drops to
+              // NonIncreasingValue (every structural inhabitant ≥ NonIncreasingValue).
+              NonIncreasingValue
+            }
+          }
         }
       }
     }
   }
 }
 
-// Join (least upper bound). `SubValueUnknown` is the identity; mismatched
-// structural witnesses land at `IncomparableValue` (the lawful top) rather
-// than collapsing to the sink.
+// Join (least upper bound) over the 7-lawful-inhabitant lattice plus the ⊥ sink.
+// All-strict joins land at StrictAxisErased; any join crossing the strict/non-strict
+// boundary or involving MixedTop lands at MixedTop. This is the split that makes
+// proj(join_result) ≤ proj(each operand) for the non-strict cases — codex review #15942.
 fn join_sub_value(a: SubValueRelation, b: SubValueRelation) -> SubValueRelation {
   if sub_value_structural_eq(a: a, b: b) { a }
   else {
@@ -412,17 +454,22 @@ fn join_sub_value(a: SubValueRelation, b: SubValueRelation) -> SubValueRelation 
     else {
       if lb == 0 { a }
       else {
-        // IncomparableValue is top.
-        if la == 3 || lb == 3 { IncomparableValue }
+        // MixedTop absorbs (lattice ⊤).
+        if la == 4 || lb == 4 { MixedTop }
         else {
-          // NonIncreasingValue is yielded by anything at level >= 1.
+          // NonIncreasingValue is below every lawful inhabitant ≥ level 2; join yields the other.
           if la == 1 { b }
           else {
             if lb == 1 { a }
             else {
-              // Both structural (level 2) and not structurally equal — incomparable.
-              // Least common upper bound is IncomparableValue.
-              IncomparableValue
+              // Both operands at level 2 or 3, distinct. Decide by strict-style classification:
+              //   - both strict-style → StrictAxisErased (sound: every operand projects to Strict)
+              //   - one strict-style, one non-strict → MixedTop (mixed; proj=NonIncreasing)
+              //   - both non-strict (only Preserved is non-strict at this level — and structural_eq
+              //     would have short-circuited) → unreachable; fall through to MixedTop for safety
+              if is_strict_style_structural(r: a) && is_strict_style_structural(r: b) {
+                StrictAxisErased
+              } else { MixedTop }
             }
           }
         }
