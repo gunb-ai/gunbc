@@ -24,11 +24,7 @@ import v4.std.diagnostic {
 import v4.std.node { Node }
 import v4.std.verification {
   TestClaim,
-<<<<<<< HEAD
-  CompilesClaim,
-=======
   EqualsClaim,
->>>>>>> origin/main
   TestClassification,
   Tier1,
   Unit,
@@ -69,29 +65,6 @@ fn process_refinement_claim_input(ok: Bool) -> Node {
   }
 }
 
-<<<<<<< HEAD
-data claim_exit_code_256_rejects: TestClaim = CompilesClaim {
-  label: "manual/process: make_exit_code rejects 256",
-  t19_anchor: T19ManualAnchorAbsent,
-  input: process_refinement_claim_input(ok: witness_exit_code_256_rejects()),
-  expected_value: stub_empty_conj,
-  classification: TestClassification { tier: Tier1, layer: Unit }
-}
-
-data claim_process_id_zero_rejects: TestClaim = CompilesClaim {
-  label: "manual/process: make_process_id rejects 0",
-  t19_anchor: T19ManualAnchorAbsent,
-  input: process_refinement_claim_input(ok: witness_process_id_zero_rejects()),
-  expected_value: stub_empty_conj,
-  classification: TestClassification { tier: Tier1, layer: Unit }
-}
-
-data claim_signal_num_zero_rejects: TestClaim = CompilesClaim {
-  label: "manual/process: make_signal_num rejects 0",
-  t19_anchor: T19ManualAnchorAbsent,
-  input: process_refinement_claim_input(ok: witness_signal_num_zero_rejects()),
-  expected_value: stub_empty_conj,
-=======
 data claim_exit_code_256_rejects: TestClaim = EqualsClaim {
   label: "manual/process: make_exit_code rejects 256",
   t19_anchor: T19ManualAnchorAbsent,
@@ -113,6 +86,5 @@ data claim_signal_num_zero_rejects: TestClaim = EqualsClaim {
   t19_anchor: T19ManualAnchorAbsent,
   lhs: process_refinement_claim_input(ok: witness_signal_num_zero_rejects()),
   rhs: stub_empty_conj,
->>>>>>> origin/main
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
