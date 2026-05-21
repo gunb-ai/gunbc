@@ -1102,7 +1102,16 @@ This is why P1 (Languages are I/O integration surfaces) and self-hosting are not
 When the compiler proposes a change to itself, the candidate-state pattern from the read/edit pipeline is what makes self-modification **safe** — and per P9, this is the *only* path: candidate generation + verification + promotion. The active running compiler is never the candidate.
 
 ```
-candidate_self = apply_diff(self, proposed_diff)
+candidate_result = apply_diff(self, proposed_diff)
+if candidate_result is Rejected:
+  reject with diagnostics
+
+candidate_self = unwrap(candidate_result)
+candidate_ingestion_plan = IngestionPlan {
+  subject: candidate_self,
+  producer: self_edit_candidate,
+  params: self_edit_params
+}
 candidate_grounding = ground(candidate_ingestion_plan)
 if candidate_grounding is Rejected:
   reject with diagnostics
