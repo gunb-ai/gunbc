@@ -9,7 +9,7 @@
 module v4.std.collection
 
 
-import v4.std.algebra { FreeMonoid, PointwisePower, free_monoid_fold, is_empty }
+import v4.std.algebra { FreeMonoid, PointwisePower, is_empty }
 import v4.std.witness { Witness }
 type List<T> = FreeMonoid<T>
 fn non_empty<T>(xs: List<T>) -> Bool {
@@ -19,22 +19,16 @@ fn non_empty<T>(xs: List<T>) -> Bool {
   }
 }
 fn list_snoc_item<T>(xs: List<T>, item: T) -> List<T> {
-  free_monoid_fold(
-    xs: xs,
-    empty: Cons { head: item, tail: Empty },
-    cons: fn(rest, existing) {
-      Cons { head: existing, tail: rest }
-    }
-  )
+  list_append(left: xs, right: Cons { head: item, tail: Empty })
 }
 fn list_append<T>(left: List<T>, right: List<T>) -> List<T> {
-  free_monoid_fold(
-    xs: right,
-    empty: left,
-    cons: fn(acc, item) {
-      list_snoc_item(xs: acc, item: item)
+  match left {
+    Empty => right
+    Cons { head: h, tail: t } => Cons {
+      head: h,
+      tail: list_append(left: t, right: right)
     }
-  )
+  }
 }
 type Set<T> = PointwisePower<T>
 type Map<K, V> {

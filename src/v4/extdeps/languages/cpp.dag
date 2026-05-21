@@ -317,21 +317,6 @@ fn cpp_signed_integer_facts(
   )
   CppIntegerPrimitiveFacts {
     surface_spelling: surface_spelling,
-    scalar: Node {
-      kind: TypeNode { connective: Conj },
-      children: [
-        cpp_named_edge(name: cpp_field_scalar, target: cpp_atom(id: cpp_tag_signed_integer)),
-        cpp_named_edge(name: cpp_field_width_selection, target: width_fact),
-        cpp_named_edge(
-          name: cpp_field_signed_representation,
-          target: cpp_atom(id: cpp_tag_twos_complement)
-        ),
-        cpp_named_edge(
-          name: cpp_field_overflow_disposition,
-          target: cpp_atom(id: cpp_tag_representable_result_required)
-        )
-      ]
-    },
     width_fact: width_fact,
     signedness_fact: cpp_atom(id: cpp_tag_signed_integer),
     encoding_fact: cpp_atom(id: cpp_tag_twos_complement),
@@ -350,17 +335,6 @@ fn cpp_unsigned_integer_facts(
   )
   CppIntegerPrimitiveFacts {
     surface_spelling: surface_spelling,
-    scalar: Node {
-      kind: TypeNode { connective: Conj },
-      children: [
-        cpp_named_edge(name: cpp_field_scalar, target: cpp_atom(id: cpp_tag_unsigned_integer)),
-        cpp_named_edge(name: cpp_field_width_selection, target: width_fact),
-        cpp_named_edge(
-          name: cpp_field_overflow_disposition,
-          target: cpp_atom(id: cpp_tag_unsigned_modulo_arithmetic)
-        )
-      ]
-    },
     width_fact: width_fact,
     signedness_fact: cpp_atom(id: cpp_tag_unsigned_integer),
     encoding_fact: cpp_atom(id: cpp_tag_unsigned_integer_representation),
