@@ -128,9 +128,7 @@ fn diagnostic_tail_eq(a: List<Diagnostic>, b: List<Diagnostic>) -> Bool {
     false
   } else {
     fold(a, init: true, f: fn(acc, da) {
-      acc
-        && (diagnostic_count_in(xs: a, item: da)
-          == diagnostic_count_in(xs: b, item: da))
+      acc && (diagnostic_count_in(xs: a, item: da) == diagnostic_count_in(xs: b, item: da))
     })
   }
 }
