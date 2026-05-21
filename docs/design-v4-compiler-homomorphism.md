@@ -1235,7 +1235,7 @@ If a worker encounters a deeper scaffold-vs-design contradiction not catalogued 
 
 ## Migration order — orthogonality reshape
 
-1. **Name the public graph carrier.** Treat current `InferredTree` as the grounded graph carrier; decide whether the implementation rename to `InferredGraph` waits until P6 dependency facts are explicit.
+1. **Name the public graph carrier.** Treat current `InferredTree` as the grounded graph carrier; until an explicit rename lands, `InferredTree`, `InferredGraph`, and "grounded graph" references in this design name that same carrier. Decide whether the implementation rename to `InferredGraph` waits until P6 dependency facts are explicit.
 2. **Introduce session reports.** Add design/source follow-up for `LensPlan`, `LensReport`, `ProjectionPlan`, `ProjectionReport`, `TerminalPolicy`, `ArtifactSet`, and `CompileSessionResult`.
 3. **Reframe validation.** Keep `Validated<T>`, but move it to `authorize(policy, lens_report, projection_report) -> Outcome<Validated<ArtifactSet>>`. Retire `validate_then_compile` as compile-owned lens gating.
 4. **Replace `CompileMode`.** Add projection requests with `ProjectionProducerRef` registry entries and typed params; do not add a larger closed enum.
