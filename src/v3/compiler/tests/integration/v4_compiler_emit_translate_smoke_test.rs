@@ -23,6 +23,8 @@ use v3_compiler::parse_for_test;
 use v3_compiler::parse_surface::SurfaceItem;
 use v3_compiler::tokenize_for_test;
 
+const FIND_WITNESS_DAG: &str = include_str!("../../../../v4/std/find_witness.dag");
+const FIND_WITNESS_PATH: &str = "src/v4/std/find_witness.dag";
 const TRANSLATE_DAG: &str = include_str!("../../../../v4/compiler/06_translate.dag");
 const TRANSLATE_PATH: &str = "src/v4/compiler/06_translate.dag";
 const EMIT_DAG: &str = include_str!("../../../../v4/compiler/05_emit.dag");
@@ -35,6 +37,20 @@ fn parse_module(source: &str, path: &str) -> v3_compiler::parse_surface::Surface
     let tokens =
         tokenize_for_test(source, path).unwrap_or_else(|e| panic!("{path}: tokenize: {e:?}"));
     parse_for_test(&tokens, path).unwrap_or_else(|e| panic!("{path}: parse: {e:?}"))
+}
+
+#[test]
+fn v4_find_witness_dag_tokenizes_and_parses() {
+    let _module = parse_module(FIND_WITNESS_DAG, FIND_WITNESS_PATH);
+}
+
+#[test]
+fn v4_find_witness_dag_declares_find_witness_entrypoint() {
+    let module = parse_module(FIND_WITNESS_DAG, FIND_WITNESS_PATH);
+    assert!(
+        surface_declares_fn(&module, "find_witness"),
+        "{FIND_WITNESS_PATH}: must declare find_witness primitive"
+    );
 }
 
 #[test]
