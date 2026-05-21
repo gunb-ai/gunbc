@@ -167,7 +167,7 @@ fn run() -> Result<(), String> {
     fs::create_dir_all(fresh_dir.join("src"))
         .map_err(|e| format!("create {}: {e}", fresh_dir.display()))?;
 
-    let emitted = normalize_stage0_outputs(compile_stage0(&workspace)?);
+    let emitted = compile_stage0(&workspace)?;
     write_emitted_crate(&fresh_dir, &emitted)?;
     copy_hand_maintained_support(&stage0_src, &fresh_dir.join("src"))?;
     patch_cargo_toml_for_generated_crate(&fresh_dir)?;
@@ -273,42 +273,6 @@ fn compile_stage0(workspace: &Path) -> Result<HashMap<String, String>, String> {
     }
     let _ = fs::remove_dir_all(&generated_root);
     Ok(out)
-}
-
-fn normalize_stage0_outputs(mut files: HashMap<String, String>) -> HashMap<String, String> {
-    if let Some(std_termination) = files.get_mut("src/std_termination.rs") {
-        // Remove this bridge once generic data constants emit function-valued fields directly.
-        *std_termination = normalize_std_termination(std_termination);
-    }
-    files
-}
-
-fn normalize_std_termination(source: &str) -> String {
-    source
-        .replace(
-            "pub fn descent_evidence_bounded_lattice() -> Rc<BoundedLattice> {",
-            "pub fn descent_evidence_bounded_lattice() -> Rc<BoundedLattice<DescentEvidence>> {",
-        )
-        .replace(
-            "static CACHED: Rc<BoundedLattice> = {",
-            "static CACHED: Rc<BoundedLattice<DescentEvidence>> = {",
-        )
-        .replace(
-            "meet: descent_evidence_lattice_meet,",
-            "meet: Rc::new(descent_evidence_lattice_meet),",
-        )
-        .replace(
-            "join: descent_evidence_lattice_join,",
-            "join: Rc::new(descent_evidence_lattice_join),",
-        )
-        .replace(
-            "top: DescentEvidence::Strict,",
-            "top: Box::new(DescentEvidence::Strict),",
-        )
-        .replace(
-            "bottom: DescentEvidence::DescentUnknown,",
-            "bottom: Box::new(DescentEvidence::DescentUnknown),",
-        )
 }
 
 fn source_files_for_roots(
