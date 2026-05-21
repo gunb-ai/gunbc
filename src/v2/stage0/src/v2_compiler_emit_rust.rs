@@ -3529,14 +3529,11 @@ pub fn emit_enum_shared_accessors(
                                                         ),
                                                         child_text.clone(),
                                                     ),
-                                                    "(ref __val) => ".to_string(),
+                                                    "(_) => panic!(\"no ".to_string(),
                                                 ),
-                                                apply_type_template1(
-                                                    sharing.clone_value.clone(),
-                                                    "__val".to_string(),
-                                                ),
+                                                fname.clone(),
                                             ),
-                                            ",".to_string(),
+                                            " on positional-payload variant\"),".to_string(),
                                         )
                                     } else {
                                         v2_rt::concat(
@@ -11158,29 +11155,57 @@ pub fn emit_typed_record_lit(
                                     None => false,
                                 });
                             if is_positional_ctor {
-                                match fields.clone().first().cloned() {
-                                    Some(f) => {
-                                        let f_value = field_init_node_value(&f);
-                                        let val_str = emit_field_value_with_context(
-                                            &f_value,
-                                            &resolved_type,
-                                            type_name.clone(),
-                                            &"0".to_string(),
-                                            registry.clone(),
-                                            &scope,
-                                            depth.clone(),
-                                            &shared_types,
-                                            &emit_info,
-                                        );
-                                        v2_rt::concat(
+                                {
+                                    let variant_summary_name = match effective_parent.clone() {
+                                        Some(parent) => {
+                                            variant_summary_key(parent.clone(), tn.clone())
+                                        }
+                                        None => tn.clone(),
+                                    };
+                                    match fields.clone().first().cloned() {
+                                        Some(f) => {
+                                            let f_value = field_init_node_value(&f);
+                                            let val_str = emit_field_value_with_context(
+                                                &f_value,
+                                                &resolved_type,
+                                                type_name.clone(),
+                                                &"0".to_string(),
+                                                registry.clone(),
+                                                &scope,
+                                                depth.clone(),
+                                                &shared_types,
+                                                &emit_info,
+                                            );
+                                            let needs_wrap = (is_optional_struct_field(
+                                                emit_info.clone(),
+                                                variant_summary_name.clone(),
+                                                "0".to_string(),
+                                            ) && (is_already_optional(
+                                                &f_value,
+                                                emit_info.clone(),
+                                                &scope,
+                                            ) == false));
+                                            let field_val = if needs_wrap.clone() {
+                                                v2_rt::concat(
+                                                    v2_rt::concat(
+                                                        "Some(".to_string(),
+                                                        val_str.clone(),
+                                                    ),
+                                                    ")".to_string(),
+                                                )
+                                            } else {
+                                                val_str.clone()
+                                            };
                                             v2_rt::concat(
-                                                v2_rt::concat(display_tn, "(".to_string()),
-                                                val_str.clone(),
-                                            ),
-                                            ")".to_string(),
-                                        )
+                                                v2_rt::concat(
+                                                    v2_rt::concat(display_tn, "(".to_string()),
+                                                    field_val.clone(),
+                                                ),
+                                                ")".to_string(),
+                                            )
+                                        }
+                                        None => v2_rt::concat(display_tn, "()".to_string()),
                                     }
-                                    None => v2_rt::concat(display_tn, "()".to_string()),
                                 }
                             } else {
                                 {
