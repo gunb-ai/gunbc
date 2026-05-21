@@ -155,6 +155,23 @@ fn v4_std_model_core_bundles_five_facets() {
 }
 
 #[test]
+fn v4_std_model_core_algebra_law_obligation_structural() {
+    let module = model_core_surface_or_panic();
+    let fields: Vec<(String, String)> = type_record_fields(&module, "AlgebraLawObligation")
+        .iter()
+        .map(|f| (f.name.clone(), surface_type_name(&f.ty)))
+        .collect();
+    assert_eq!(
+        fields,
+        vec![
+            ("inhabitance".to_string(), "AlgebraInhabitanceDecl".to_string()),
+            ("law".to_string(), "Node".to_string()),
+        ],
+        "law obligations must reference modeled inhabitance (algebra/inhabitant/witness), not Symbol labels"
+    );
+}
+
+#[test]
 fn v4_std_model_core_wave1_void_constructor_present() {
     let module = model_core_surface_or_panic();
     assert_eq!(
