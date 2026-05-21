@@ -1,5 +1,5 @@
 // src/v4/test/claim/lens_affected_set/excluded_propagation_proof.dag
-// Scope: T-21 worked claim — DimensionNotRead exclusion proof accumulates under Excluded.
+// Scope: T-21 worked claim — second mark_excluded on the same key appends to Excluded.rest.
 // Owns: claim_excluded_propagation_proof.
 // Consumes: lens affected_set, lens affected_set_examples, std node, std verification.
 // Status: scaffold — compile-only until T-22 generated claim execution.
@@ -28,18 +28,30 @@ import v4.std.verification {
   Unit
 }
 
-fn excluded_propagation_proof_claim_holds() -> Bool {
+data excluded_propagation_key: ExclusionKey = ExclusionKey {
+  at: affected_set_example_node,
+  dimension: affected_set_example_dimension
+}
+
+data excluded_propagation_proof: DimensionNotRead = DimensionNotRead {
+  usage_site: affected_set_example_node,
+  changed_dimension: affected_set_example_dimension
+}
+
+fn excluded_propagation_accumulated_frontier() -> ReExecFrontier {
   mark_excluded(
-    frontier: empty_frontier(),
-    key: ExclusionKey {
-      at: affected_set_example_node,
-      dimension: affected_set_example_dimension
-    },
-    proof: DimensionNotRead {
-      usage_site: affected_set_example_node,
-      changed_dimension: affected_set_example_dimension
-    }
-  ) == expected_affected_set_excluded_proofs
+    frontier: mark_excluded(
+      frontier: empty_frontier(),
+      key: excluded_propagation_key,
+      proof: excluded_propagation_proof
+    ),
+    key: excluded_propagation_key,
+    proof: excluded_propagation_proof
+  )
+}
+
+fn excluded_propagation_proof_claim_holds() -> Bool {
+  excluded_propagation_accumulated_frontier() == expected_affected_set_excluded_proofs
 }
 
 fn excluded_propagation_proof_claim_rhs() -> Node {
@@ -54,7 +66,7 @@ fn excluded_propagation_proof_claim_rhs() -> Node {
 }
 
 data claim_excluded_propagation_proof: TestClaim = EqualsClaim {
-  label: "lens_affected_set/excluded_propagation_proof: DimensionNotRead exclusion receipts",
+  label: "lens_affected_set/excluded_propagation_proof: mark_excluded accumulates proofs in Excluded.rest",
   t19_anchor: T19ManualAnchorAbsent,
   lhs: affected_set_example_node,
   rhs: excluded_propagation_proof_claim_rhs(),
