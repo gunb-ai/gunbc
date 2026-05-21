@@ -1,7 +1,7 @@
 // src/v4/test/claim/manual/dependency_recompute_plan.dag
 // Scope: Wave-2-A dependency recomputation fixture.
 // Owns: dependency recomputation worked example rows.
-// Consumes: v4.std.change, v4.std.dependency, v4.std.diagnostic, v4.std.node, v4.lens.affected_set.
+// Consumes: v4.std.change, v4.std.dependency, v4.std.diagnostic, v4.std.node.
 // Status: manual fixture until generated TestClaim execution lands.
 
 module v4.test.claim.manual.dependency_recompute_plan
@@ -22,11 +22,6 @@ import v4.std.dependency {
   topological_layers
 }
 import v4.std.diagnostic { Accepted, None }
-import v4.lens.affected_set {
-  RerunNodeSet,
-  RerunNodeSetProduced,
-  affected_set_rerun_nodes
-}
 import v4.std.node { Atom, Conj, Edge, Named, Node, Path, Symbol, TypeNode }
 
 data refinement_subject_symbol: Symbol = refinement_subject_symbol
@@ -150,22 +145,3 @@ data refinement_recompute_plan: RecomputePlan = RecomputePlan {
   layers: topological_layers(graph_node: dependency_projection_subgraph),
   diagnostic: Accepted { value: dependency_recompute_ok, diagnostics: None }
 }
-
-data refinement_changed_only_affected_set: AffectedSet = AffectedSetProduced {
-  changes: refinement_change_set,
-  affected: [],
-  exclusions: [],
-  restricted_to: [ProjectionDependsOn, VerifiedBy]
-}
-
-data refinement_changed_only_rerun_nodes: RerunNodeSet = affected_set_rerun_nodes(
-  affected_set_value: refinement_changed_only_affected_set
-)
-
-data expected_refinement_changed_only_rerun_nodes: RerunNodeSet = RerunNodeSetProduced {
-  nodes: [refinement_after_node]
-}
-
-data refinement_dependency_rerun_nodes: RerunNodeSet = affected_set_rerun_nodes(
-  affected_set_value: refinement_affected_set
-)
