@@ -1,10 +1,11 @@
 // src/v4/compiler/05_emit.dag
-// Scope: Stage 5b — TargetNodeTree + TargetModel -> TargetSource; grammar-as-bidir serialize (DECISIONS C5).
+// Scope: Stage 5b — T-10 emit surface + fail-closed staging (not grammar-bidir serialize yet).
 // Owns: emit_stage_locus_port, target_model_edge_serialize_emitted, target_model_edge_serialize_source,
 //       serialize_source_for_emitted, serialize_target, emit.
 // Consumes: compiler/00_compile.dag, compiler/04_infer.dag, compiler/06_translate.dag, std/diagnostic.dag,
 //           std/node.dag, std/text.dag.
-// Status: W-T-10-impl — emit = serialize_target ∘ translate; no string-templated emitter.
+// Status: W-T-10-impl staging — emit = serialize_target ∘ translate; serialize_source_for_emitted
+// is emitted-node equality check + fail-closed source stub (inverse grammar walk deferred).
 // Anchor: docs/design-v4-compiler-homomorphism.md Stage 5b + Ratified Q11.
 
 
@@ -43,6 +44,8 @@ fn emit_serialize_emitted_mismatch_diagnostic(emitted: Node, target: TargetModel
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
+// Staging only: compare emitted tree to bundle `serialize_emitted` fixture, then fail-closed source
+// lookup — not grammar-as-bidirectional inverse walk (DECISIONS C5 deferred).
 fn serialize_source_for_emitted(
   emitted: TargetNodeTree,
   target: TargetModel

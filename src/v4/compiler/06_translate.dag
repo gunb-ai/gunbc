@@ -1,5 +1,5 @@
 // src/v4/compiler/06_translate.dag
-// Scope: Stage 5a — InferredTree + TargetModel -> TargetNodeTree via coercion fold (T-10 / W-T-10-impl).
+// Scope: Stage 5a — T-10 surface + fail-closed staging (not live translate on InferredTree yet).
 // Owns: TargetNodeTree, TargetBundleChildLookup, target_model_edge_selection_policy,
 //       target_model_edge_declared_inhabitants, target_model_edge_serialize_emitted,
 //       target_model_edge_serialize_source, target_bundle_child, target_bundle_child_lookup_step,
@@ -10,7 +10,8 @@
 //       translate_node, translate.
 // Consumes: compiler/04_infer.dag, compiler/00_compile.dag, std/coercion.dag, std/constraints.dag,
 //           std/find_witness.dag, std/diagnostic.dag, std/node.dag, std/witness.dag, std/collection.dag.
-// Status: W-T-10-impl — fold_node translate + coercion_fold wrapper; serialize in 05_emit.dag.
+// Status: W-T-10-impl staging — fold_node + coercion_fold call-shape; canonical_grounding and
+// coercion_fold bodies fail closed until T-9 (#3464) + find_witness + T-4 rust.dag land.
 // Anchor: docs/design-v4-compiler-homomorphism.md Stage 5a; Ratified Q14.
 
 
@@ -163,6 +164,8 @@ fn target_selection_policy_from_model(target: TargetModel) -> Outcome<TargetSele
     }
   )
 }
+// `declared_inhabitants` edge names one closed candidate-set root Node on the target bundle;
+// find_witness enumerates inside that root when its body lands — not container-child traversal here.
 fn coercion_candidates_from_target_model(
   target: TargetModel,
   closedness_evidence: Node
@@ -230,8 +233,9 @@ fn translate_fold_init(
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
 }
-// P2 single-authority: coercion_fold's `CoercionResult.target` is the target-tree authority;
-// do not rebuild children from source `Edge` labels/order (derived-homomorphism / THESIS).
+// P2 single-authority: coercion_fold's `CoercionResult.target` is the target-tree authority.
+// Exact-shape MVP: preserve coerced.target (no source-edge rebuild). Structure-changing lowerings
+// defer to P7 LawfulRewriteWitness lane — not this fold_step path.
 fn translate_fold_step(
   acc: Outcome<Node>,
   edge: Edge,
