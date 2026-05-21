@@ -30,7 +30,7 @@ This doc composes with — and must stay consistent with — these existing arti
 - [`docs/design-read-edit-pipeline.md`](design-read-edit-pipeline.md) — **the EDIT-direction companion to this doc.** Defines the agent-side read/edit surface as it existed before the 2026-05-21 orthogonality amendment (`apply_lens(lens, scope, mode)`, `apply_diff(root, Diff)`, candidate-state gating, library-first agent surface, Layer 0–6 build order). This doc now supersedes the lens/gate portions toward Node-in readings + caller policy; `apply_diff` and candidate-state remain authoritative.
 - [`docs/design-emit-stage-l25-model.md`](design-emit-stage-l25-model.md) — emit-stage L2.5 model, the substrate-side specification for what this doc names as `translate` + `serialize` (T-10).
 - [`docs/design-infer-stage-l25-model.md`](design-infer-stage-l25-model.md) — infer-stage L2.5 model, the substrate-side specification for what this doc names as `ground` (T-9).
-- [`docs/design-lens-application-surface.md`](design-lens-application-surface.md) — the pre-amendment substrate-level lens-application surface. Its `Lens / SectionRef / Witness / Outcome` gate shape is inventoried below as a follow-up reshape toward `Node -> Reading`.
+- [`docs/design-lens-application-surface.md`](design-lens-application-surface.md) — the pre-amendment substrate-level lens-application surface. Its `Lens / SectionRef / Witness / Outcome` gate shape is inventoried below as a follow-up reshape toward graph-in readings.
 - [`docs/design-lens-framework.md`](design-lens-framework.md) — the lens framework as a whole.
 - [`docs/design-affected-set-lens.md`](design-affected-set-lens.md) — `affected_set` (T-21), the incremental-rebuild + lens-frontier primitive consumed by this doc's pipeline diagram and by caller policy over candidate-state readings.
 - [`docs/design-dissolution-lens.md`](design-dissolution-lens.md) — the dissolution-pattern lens family (L1.x), Practice 10's auto-fix substrate. The (find, transform) convolution view in the read/edit doc's § 6 builds on this.
@@ -103,7 +103,7 @@ The v4 compiler is:
 - **`traverse_node` / `sequence_node` / `bind_outcome`** are `fold_node` invocations with an Outcome-threading algebra; the combinator (not the algebra) interprets `StageDiagnosticPolicy` to thread failures. The algebra is pure-success-accumulator: `fn(R, Edge, R) -> Outcome<R>` (matches the landed `NodeFold<R>.step` shape — third parameter is the already-folded child result `R`, NOT the raw child `Node`; the Outcome wrapping is the only difference from the pure-catamorphism primitive). Single authority for failure handling = combinator. See "Derived combinators" below.
 - **`apply_diff`** is `sequence_outcome(diff.edits, fn(edit, candidate) -> fold_node(candidate, substitute_at(edit.at, edit.replacement)))` — sequential Outcome-bind-fold over the Diff's ordered Edits list, threading the candidate root through, with each Edit applied to the *current intermediate state* via `fold_node` substitution. **Sequential semantics matter**: each later Edit's Path resolves against the post-prior-Edit state, NOT the original root; if any Path fails to resolve in the current candidate, the whole Diff fails-closed (P3, per read/edit pipeline doc requirement). The agent-side mutation surface; composes with `fold_node` + `sequence_outcome`, not parallel to them.
 - **`LawfulRewriteWitness`** (P7, when implemented) is `find_witness` with an algebra-preserving precondition law as the `preservation_predicate`. Different lawful rewrites = different predicates over `find_witness`, not a separate primitive.
-3. **Compile-core has no boundary actions and no global terminal mode.** Compile-family operations are **pure data-in / data-out** functions over `Node`: `translate(node, target_lang)`, `eval(node, host_model)`, and future artifact/interface projections are separate calls with separate contracts. No implicit text-reading, no implicit text-writing, no implicit "execute," and no public `CompileMode` aggregator that chooses among unrelated operations. All real-world I/O — reading source from disk, writing target source to disk, executing on a host, reporting diagnostics to stderr — is **modeled as effects against modeled resources** (`extdeps/file_system.dag` for files, `extdeps/process.dag` for shell/OS, `extdeps/network.dag`, etc.), composed by *peripheral shims* outside the compile-core surface. The architecture itself doesn't think about text/files/processes; those are orthogonal concerns modeled independently.
+3. **Compile-core has no boundary actions and no global terminal mode.** Graph consumers are **pure data-in / data-out** functions: `ground(source, lang)` produces the grounded graph, `observe(graph, lens_plan)` reads it, `project(graph, projection_plan)` produces artifacts, and `authorize(policy, lens_report, projection_report)` decides terminal release. No implicit text-reading, no implicit text-writing, no implicit "execute," and no public `CompileMode` / `ProductionGoal` enum that chooses among unrelated operations. All real-world I/O — reading source from disk, writing target source to disk, executing on a host, reporting diagnostics to stderr — is **modeled as effects against modeled resources** (`extdeps/file_system.dag` for files, `extdeps/process.dag` for shell/OS, `extdeps/network.dag`, etc.), composed by *peripheral shims* outside the compile-core surface. The architecture itself doesn't think about text/files/processes; those are orthogonal concerns modeled independently.
 
 Everything else — every "pass," every "stage," every "language-specific" anything — is an **algebra** plugged into `fold_node` or another declared substrate primitive. The compiler knows no specific language code (Rust, Python, even `.dag` itself, beyond an irreducible bootstrap-seed for `dag.dag`); language-specific *data* lives in `LanguageModel` declarations under `extdeps/languages/`.
 
@@ -194,7 +194,7 @@ All paths produce `CoreNode`; Node-in operations take it from there. This matter
 
 Each operation has its own output carrier: `TargetSource` for `translate`, host `Value` / `EvalResult` for `eval`, and artifact-specific carriers for projections.
 
-> **Note on Lens mode:** the original draft of this doc proposed a third `CompileMode` for running lenses (the analysis framework for complexity / cost / ownership / effects / user-defined dimensions). That remains rejected. **Resolved 2026-05-21 — see P3 below.** Lenses are pure data-producing reads over `Node`; enforcement is a caller or project policy layered over those readings, not a compile-core mode and not a mechanical compile error.
+> **Note on Lens mode:** the original draft of this doc proposed a third `CompileMode` for running lenses (the analysis framework for complexity / cost / ownership / effects / user-defined dimensions). That remains rejected. **Resolved 2026-05-21 — see P3 below.** Lenses are pure data-producing reads over the grounded graph; enforcement is terminal policy over those readings, not a compile-core mode and not a mechanical compile error.
 
 ---
 
@@ -921,11 +921,11 @@ Per [`docs/design-read-edit-pipeline.md`](design-read-edit-pipeline.md) § 6.10:
 2. **CLI wraps libraries.** `gunbc apply-lens ...`, `gunbc auto-fix ...`, `gunbc refactor ...` are thin shells over library calls.
 3. **The library boundary IS the agent-substrate surface.** No premature transport layer (JSON-RPC, gRPC). Network transport is a future concern that doesn't pre-date library landings.
 
-**This applies to `compile()` too.** `compile(source, input_lang, mode)` is a library call. The same no-premature-transport principle holds — compile is a library, not a service.
+**This applies to graph consumers too.** `ground`, `observe`, `project`, and `authorize` are library calls. The same no-premature-transport principle holds — compiler/session operations are libraries, not services.
 
 ### Lens as `(find, transform)` — the convolution view
 
-Per the read/edit doc § 6, every L1.x dissolution lens is structurally a `(find, transform)` pair: the lens's Signature is the find half, the Clean shape is the transform half. The read/edit doc's § 6.7b "**(f) mechanical refactor**" hero case is the worked example most relevant to this compiler architecture: a single intent → uniform per-site transform → atomic apply via the candidate-state pattern. PR #3338's canonical-B refactor (across 6 languages + 7 ratchet dissolutions) is the worked example. This is also what `compile`-level rewrites (e.g., self-modification, see below) decompose into.
+Per the read/edit doc § 6, every L1.x dissolution lens is structurally a `(find, transform)` pair: the lens's Signature is the find half, the Clean shape is the transform half. The read/edit doc's § 6.7b "**(f) mechanical refactor**" hero case is the worked example most relevant to this compiler architecture: a single intent → uniform per-site transform → atomic apply via the candidate-state pattern. PR #3338's canonical-B refactor (across 6 languages + 7 ratchet dissolutions) is the worked example. This is also what compiler-source rewrites (e.g., self-modification, see below) decompose into.
 
 ### Projections — what lenses produce
 
@@ -1045,33 +1045,37 @@ When a `.dag` substrate type changes — say `std/node.dag`'s `NodeFold<R>` carr
 
 There is no "self-edit special case." Self-edit is `apply_diff(self, Diff)` where `self` is the compiler's own CoreNode graph. The substrate's read/write-symmetric mechanism (`fold_node` reads; `apply_diff` writes via sequential `sequence_outcome` over `Diff.edits` with per-Edit `fold_node` substitution against the intermediate candidate) means there's no hidden machinery — same primitive set, applied to the compiler's source.
 
-### stage0 regeneration as a compile of self
+### stage0 regeneration as a projection of self
 
-The hand-Rust-to-zero trajectory (per [`docs/design-pure-bootstrap-zero.md`](design-pure-bootstrap-zero.md)) requires the compiler to **emit its own Rust bootstrap**. Structurally this is a self-targeting compile, expressed as the composition of `ingest_text` + `compile` per the text/data separation — **compile-core consumes `CoreNode`, not text** (per Open Q-text-data ratification):
+The hand-Rust-to-zero trajectory (per [`docs/design-pure-bootstrap-zero.md`](design-pure-bootstrap-zero.md)) requires the compiler to **emit its own Rust bootstrap**. Structurally this is a projection over the compiler's grounded graph, expressed as the composition of `ingest_text` + `ground` + `project` per the text/data separation:
 
 ```
-// Explicit composition: ingest is separate from compile-core.
+// Explicit composition: ingest is separate from grounding/projection.
 self_corenode = ingest_text(
   input_text: read_file("compiler.dag"),    // boundary action: read text
   input_lang: dag_lang                       // grammar + sugar dissolutions
 ) -> Outcome<CoreNode>
 
-stage0_source = compile(
-  source: self_corenode,                     // already CoreNode — never text
-  input_lang: dag_lang,                       // for resolve + ground
-  mode: TranslateTo(target_lang: rust_lang)   // Rust is the target
+compiler_graph = ground(
+  source: self_corenode,
+  input_lang: dag_lang
+) -> Outcome<InferredTree>
+
+stage0_source = project(
+  inferred: compiler_graph,
+  plan: rust_stage0_projection_plan
 ) -> Outcome<TargetSource>                    // the emitted Rust bootstrap source
 ```
 
-There is **no special "regenerate stage0" mode** and **no parse-and-normalize folded back into compile**. The pipeline is the same uniform composition as any other compile: `ingest_text` produces the CoreNode (at the system boundary, separable per the text/data ratification); `compile` consumes the CoreNode (pure data-in/data-out). The homomorphism mechanic applies identically: resolve + ground the `.dag`-substrate Node graph; coercion-fold against `rust.dag`'s declared inhabitants; serialize via Rust's grammar. The output is the Rust bootstrap that THESIS facet 2 ("compiler self-emits, fixed-point") requires.
+There is **no special "regenerate stage0" mode** and **no parse-and-normalize folded back into projection**. The pipeline is the same uniform composition as any other session: `ingest_text` produces the CoreNode (at the system boundary), `ground` produces the inferred graph, and a projection producer emits Rust source. The homomorphism mechanic applies inside the projection producer: coercion-fold against `rust.dag`'s declared inhabitants; serialize via Rust's grammar. The output is the Rust bootstrap that THESIS facet 2 ("compiler self-emits, fixed-point") requires.
 
 **Equivalent paths** for stage0 regeneration (per P9's stratified bootstrap):
-- `compile.dag` already loaded as `CoreNode` from prior ingest (cached) → `compile(self_corenode, dag_lang, TranslateTo(rust_lang))`.
-- Programmatic compiler-model construction (e.g., from a `Diff`-derived candidate) → `compile(candidate_corenode, dag_lang, TranslateTo(rust_lang))`.
+- `compile.dag` already grounded as `InferredTree` from prior ingest (cached) → `project(self_graph, rust_stage0_projection_plan)`.
+- Programmatic compiler-model construction (e.g., from a `Diff`-derived candidate) → `ground(candidate_corenode, dag_lang)` then `project(candidate_graph, rust_stage0_projection_plan)`.
 
-All paths go through `compile()` taking a `CoreNode`. The ingest boundary is explicit and separable.
+All paths go through `ground` to produce the graph, then through the requested projection producer. The ingest boundary is explicit and separable.
 
-This is why P1 (Languages are I/O integration surfaces) and self-hosting are not orthogonal: self-hosting IS the compiler taking itself as input and emitting itself as output, with both sides using the same `LanguageModel` substrate. The trajectory of hand-Rust-to-zero IS the same compile loop closing on itself.
+This is why P1 (Languages are I/O integration surfaces) and self-hosting are not independent concerns: self-hosting is the compiler taking itself as graph input and projecting a bootstrap artifact, with both sides using the same `LanguageModel` substrate. The trajectory of hand-Rust-to-zero is the same graph-consumer loop closing on itself.
 
 ### Candidate-state for self-modification safety
 
@@ -1245,7 +1249,7 @@ If a worker encounters a deeper scaffold-vs-design contradiction not catalogued 
 - **Multi-target translate** — Python/Go/TypeScript/C++ targets. Defer trigger: after Rust MVP, language-by-language follow-on.
 - **Lawful rewrites + structure-changing lowerings** — `LawfulRewriteWitness` substrate (P7). Defer trigger: first MapReduce / CUDA / parallel-map case.
 - **`LensAlgebra<F>` carrier shape + composed-lens-algebra construction** (the substrate work Ratified Q6 names; this is NOT a "multi-lens primitive" — Q6 explicitly ratifies that there is no new substrate primitive, since multi-lens execution derives from `fold_node` with a composed-lens-algebra). Defer trigger: first multi-lens scheduling case beyond a single lens.
-- **Bootstrap promotion + stage0 candidate generation** (P9). Defer trigger: first `compile(self_corenode, dag_lang, TranslateTo(rust_lang))` invocation when source-of-truth migration to `.dag` is in scope.
+- **Bootstrap promotion + stage0 candidate generation** (P9). Defer trigger: first `project(self_graph, rust_stage0_projection_plan)` invocation when source-of-truth migration to `.dag` is in scope.
 
 **Why one MVP and not three:** the homomorphism mechanic is the load-bearing claim. One end-to-end demonstration of it (CoreNode → coercion fold → TargetSource) validates everything; adding shims and eval routes BEFORE the core mechanic works is premature scope. P2 boundary discipline: name the single MVP terminus, demonstrate it, then extend.
 
@@ -1446,12 +1450,11 @@ Defer trigger: first attempt to compile against a non-current version (e.g., Pyt
 | **`Edit`** | A structural rewrite: `Edit { at: Path, replacement: Node }`. Replacement only — no insert/delete variants; those decompose into parent-replacement. |
 | **`Diff`** | An ordered sequential rewrite program: `Diff { edits: List<Edit> }`. Sequential composition, NOT parallel. Fail-closed all-or-nothing on `apply_diff`. |
 | **`apply_diff`** (DERIVED, not primitive) | The structural-edit **derived combinator** = `sequence_outcome(diff.edits, fn(edit, candidate) -> fold_node(candidate, substitute_at(edit.at, edit.replacement)))`. **Sequential** Outcome-bind-fold over the Diff's ordered Edits list — each Edit's Path resolves against the intermediate candidate (post-prior-Edit state), NOT the original root; fail-closed on any unresolved Path in the intermediate state. The agent-side mutation operation; composes with `fold_node` + `sequence_outcome`. |
-| **`apply_lens`** (DERIVED, not primitive) | The lens application surface: `apply_lens(lens, scope, mode) → Witness<finding> \| Outcome<()>`. **Derived combinator** post-Pass B unification — `fold_node` with the lens's algebra; combinator owns `StageDiagnosticPolicy` (per Q4). The read-side operation; composes with `fold_node`, doesn't extend the primitive set. |
-| **`SectionRef`** | The scope shape for lens application: `DeclarationScope(decl_ref) \| NodeScope(node_ref)`. Two variants only — corpus-wide application is composition over the declaration set, not a separate scope. |
-| **`scope_in`** | Helper `scope_in(root: Node, ref: NodeRef) → SectionRef` that binds a frontier ref to a specific dag root. Makes the candidate-vs-pre-edit root structurally explicit in every gate call (read/edit doc § 4). |
-| **candidate-state pattern** | The read/edit pipeline's invariant: gates run against `candidate_dag = apply_diff(dag, Diff)`, NOT against the pre-edit graph. Validates against the state that will be committed, not against a state already known to be valid. |
-| **`affected_set`** | T-21 substrate primitive: `affected_set(dag, Diff) → Witness<ReExecFrontier>`. Incremental re-execution frontier; consumed by the read/edit pipeline's gate step + by incremental rebuild. |
-| **self-edit / stage0** | The compiler editing its own source via `apply_diff(self, Diff)`. Self-hosting (stage0 regeneration) is `compile(self, dag_lang, TranslateTo(rust_lang))` — no special mode. See "Self-modification" section. |
+| **`apply_lens`** (current scaffold; target is `observe`) | Current `lens/application.dag` surface: `apply_lens(lens, scope, mode) → Witness<finding> \| Outcome<()>`. Audit disposition: reframe as graph-in lens reading that contributes to `LensReport`; `Enforce` semantics move to `authorize`. |
+| **`RegionRef`** | Low-level region reference shared by graph consumers. It is not a universal `SubgraphScope`; lenses and projections refine it into their own scope/subject shapes. |
+| **candidate-state pattern** | The read/edit invariant: readings and policy evaluate `candidate_dag = apply_diff(dag, Diff)`, NOT the pre-edit graph. Validates against the state that will be committed, not against a state already known to be valid. |
+| **`affected_set`** | T-21 substrate primitive: `affected_set(dag, Diff) → Witness<ReExecFrontier>`. Incremental re-execution frontier; consumed by caller/session policy and projection regeneration. |
+| **self-edit / stage0** | The compiler editing its own source via `apply_diff(self, Diff)`. Self-hosting (stage0 regeneration) is `project(self_graph, rust_stage0_projection_plan)` — no special compile mode. See "Self-modification" section. |
 | **projection (lens output)** | Per P0 + P3, every downstream artifact (tests, dimensional facts, glue, schemas, migration plans, docs, dry-run results) is a *projection* of `InferredTree` computed by a lens. The compiler core produces InferredTree; lenses fan out into the projection family. |
 | **testgen** | A lens family that produces `TestClaim` Witnesses as projections of `InferredTree`. Historical name predating the lens reframe; different "levels" (boundary / property / integration / roundtrip / equivalence / fuzz / regression) are different invocations of the same family. Tests are projections of the model, NOT the source of truth for the model. |
 | **dry-run** | A lens-composed projection: `io_boundary_lens` identifies the I/O sites; a `LawfulRewriteWitness` substitutes mock stubs; `eval(mock_host_model)` runs the substituted tree. No new compiler primitive; composes lens + rewrite + eval-with-host-variant. Variations: record, assert, replay, fuzz. |
