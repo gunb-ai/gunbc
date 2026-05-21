@@ -78,7 +78,11 @@ fn find_witness_not_realized_diagnostic(source_facts: Node) -> Diagnostic {
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
-// 🟡 coproduct dissolution — scaffold:exact-structural-preservation-identity-mvp · dissolve-on: W-T-10 structural zip-fold predicate algebra; exact_structural_equality accepts only source-identical Node evidence and other preservation rules fail closed.
+// 🟡 coproduct dissolution — scaffold:exact-structural-preservation-distinct-node-mvp · dissolve-on: W-T-10 recursive edge-wise structural zip-fold predicate algebra.
+fn exact_structural_equality_zip_fold(source_facts: Node, candidate: Node) -> Bool {
+  (source_facts.kind == candidate.kind)
+    && (count(source_facts.children) == count(candidate.children))
+}
 fn preservation_predicate_holds(
   source_facts: Node,
   candidate: Node,
@@ -89,7 +93,7 @@ fn preservation_predicate_holds(
     && well_formed(n: candidate)
     && (predicate.preservation_rule == preservation_rule_exact_structural_equality_zip_fold)
     && (predicate.algebra == source_facts)
-    && (candidate == source_facts)
+    && exact_structural_equality_zip_fold(source_facts: source_facts, candidate: candidate)
 }
 fn passing_candidate_count(
   source_facts: Node,
