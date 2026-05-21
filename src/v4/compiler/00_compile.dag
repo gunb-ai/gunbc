@@ -283,10 +283,10 @@ fn validate_then_compile(
               input_lang: input_lang,
               mode: mode
             ),
-            f: fn(output) {
+            f: fn(compile_out) {
               outcome_accepted(
                 value: validated_from_compile_output(
-                  output: output,
+                  output: compile_out,
                   lens_witnesses: lens_witnesses
                 )
               )
