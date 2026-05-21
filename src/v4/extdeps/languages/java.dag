@@ -687,12 +687,15 @@ fn java_mvp1_positional_token_edge(token: JavaConcreteSyntaxToken) -> Edge {
   }
 }
 
-// Append preserving source order: free_monoid_fold visits head→tail (v4.std.algebra Cons unfold).
+// Order-preserving append: free_monoid_fold visits head→tail (v4.std.algebra); cons builds forward snoc.
 fn java_list_snoc_item<T>(xs: List<T>, item: T) -> List<T> {
-  match xs {
-    Empty => Cons { head: item, tail: Empty }
-    Cons { head: h, tail: t } => Cons { head: h, tail: java_list_snoc_item(xs: t, item: item) }
-  }
+  free_monoid_fold(
+    xs: xs,
+    empty: Cons { head: item, tail: Empty },
+    cons: fn(acc, existing) {
+      Cons { head: existing, tail: acc }
+    }
+  )
 }
 
 fn java_list_append<T>(left: List<T>, right: List<T>) -> List<T> {
