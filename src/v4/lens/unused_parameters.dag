@@ -1,22 +1,39 @@
 // src/v4/lens/unused_parameters.dag
 //
-// Scope: unused-parameters lens — a declaration is "unused" iff no
-//        dependency edge of a use-classified kind has that declaration
-//        as its `dependent`. Read off the dependency-graph projection;
-//        the substrate carries no per-node "is-unused" tag (Practice 11
-//        / feedback_no_quirked_types).
+// Scope: unused-parameters lens — emits a per-edge USE classification
+//        over `List<DependencyView>` (T-13 mirror of parallelism /
+//        effect / ownership / idempotency, which all emit per-edge
+//        fact lists, not declaration roll-ups). The "declaration
+//        without callers" view is a DERIVED consumer-side filter over
+//        this projection (filter to declarations N such that no entry
+//        has `declaration == N` with `relation == IsUseOfDeclaration`),
+//        NOT a primary lens output — substrate carries no per-node
+//        "is-unused" tag (Practice 11 / feedback_no_quirked_types) and
+//        a declaration-set roll-up would require Node-iteration over
+//        `Map<Node, InferredFacts>` that is not substrate-available
+//        pre-T-9 (the only accessor today is `.lookup`).
 // Anchor: https://en.wikipedia.org/wiki/Dead_code_elimination (use-edge
-//         absence is the structural signal; a CALLER edge is one such
-//         instance — the lens reads CALLERS, not "parameters" as a
-//         distinguished substrate class)
+//         absence is the structural signal a consumer filter reads; a
+//         CALLER edge is one such instance — the lens reads CALLERS,
+//         not "parameters" as a distinguished substrate class)
 //
 // EXPECTATIONS — what the lens is and is NOT (T-13 mirror):
 //
-//   It reports per-edge USE classification, target-AGNOSTIC. The
-//   declaration-without-callers derivation falls out as the absence of
-//   a USE edge whose `dependent` is that declaration — a query over the
-//   projection, not a baked-in per-node tag. WHETHER the absence should
-//   become a Diagnostic, or be enforced as fail-closed, is a downstream
+//   PRIMARY OUTPUT: per-edge USE classification, target-AGNOSTIC. This
+//   is the lens's contract — same shape as the four T-13 siblings.
+//
+//   DERIVED VIEW (NOT lens output): the unused-declaration set falls
+//   out of the per-edge projection as a consumer-side filter; the lens
+//   does NOT emit it directly. Producing it as a lens-primary output
+//   would (a) break T-13 family shape consistency (a parallel
+//   mechanism — Practice 11 violation) and (b) require Node-iteration
+//   that has T-9 forward-decl tension. The filter belongs at the
+//   query layer (feedback_scope_from_query_not_type_tag) — Practice 3
+//   facts-flow-forward: lens emits structural facts; consumer projects
+//   what it needs.
+//
+//   WHETHER the absence of a USE edge for a declaration should become
+//   a Diagnostic or be enforced as fail-closed is a separate downstream
 //   decision (feedback_grounding_doctrine_simplified_lens_pure_advisory:
 //   the lens READS only; enforcement is a separate downstream call).
 //
