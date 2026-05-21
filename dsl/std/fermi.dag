@@ -11,9 +11,10 @@
 
 module std.fermi
 
+import std.algebra { BoundedLattice }
 import std.types { FermiDepth, Milliseconds }
 
-// FermiDepth inhabits Lattice<FermiDepth>.
+// FermiDepth inhabits BoundedLattice<FermiDepth>.
 
 // --- Ordinal mapping (like stage_ordinal in state_machines.dag) -----
 
@@ -49,11 +50,12 @@ fn fermi_lattice_join(lhs: FermiDepth, rhs: FermiDepth) -> FermiDepth {
   if fermi_gt(lhs: lhs, rhs: rhs) { lhs } else { rhs }
 }
 
-// Intended data witness:
-//   fermi_lattice: Lattice<FermiDepth>
-//   meet = fermi_lattice_meet, join = fermi_lattice_join
-// Deferred until generic data constants with function-valued fields emit
-// consumable target code.
+data fermi_bounded_lattice: BoundedLattice<FermiDepth> = {
+  meet: fermi_lattice_meet
+  join: fermi_lattice_join
+  top: Xl
+  bottom: Xs
+}
 
 // Historical alias retained for callers that still use magnitude vocabulary.
 fn fermi_max(lhs: FermiDepth, rhs: FermiDepth) -> FermiDepth {
