@@ -1,15 +1,25 @@
 // src/v4/extdeps/formats/sql.dag
-// Scope: ISO/IEC 9075 SQL relational/DDL surface; Shape-B checked format, v3 SQL port — single authority (TASKS.md T-4.6 #4).
-// Owns: SqlDialect, SqlIdentifier, SqlDataType, SqlColumnConstraints, SqlColumnDefault, SqlColumnDefinition, SqlTableConstraint, SqlPrimaryKeySlot, SqlTableDefinition, SqlSchemaOperation, SqlMigrationStep, SqlMigrationScript, SqlMigrationEmissionTarget, SqlStatementKind, SqlParameterStyle, SqlTransactionMode, SqlResultFormat, SqlTransportConfig
-// Consumes: std/node.dag, std/diagnostic.dag, std/collection.dag, std/nat.dag, std/cardinality.dag
-// Status: scaffold — TASKS.md T-4.6
+// Scope: ISO/IEC 9075 SQL relational/DDL surface; Shape-B checked format — T-4.6 dsl extdeps port (migration.dag) + ISO spec.
+// Owns: SqlDialect, SqlIdentifier, SqlDataType, SqlColumnConstraints, SqlColumnDefault, SqlColumnDefinition, SqlTableConstraint, SqlPrimaryKeySlot, SqlTableDefinition, SqlSchemaOperation, SqlMigrationStep, SqlMigrationScript, SqlMigrationEmissionTarget, SqlStatementKind, SqlParameterStyle, SqlTransactionMode, SqlResultFormat, SqlTransportConfig, SqlIntegerWidth, SqlFloatWidth, SqlIntegerPrimitiveFacts, SqlFloatPrimitiveFacts, SqlNonNumericPrimitiveFacts, sql_facts_*, sql_*_facts_catalog, sql_wave1_primitive_fact_bundles
+// Consumes: std/node.dag, std/diagnostic.dag, std/collection.dag, std/nat.dag, std/cardinality.dag, std/model_core.dag
+// Status: T-4.6 scaffold + SqlDataType primitive fact-bundle wave-1 (constant arms only; parametric NUMERIC/CHARACTER/CHARACTER_VARYING stay outside the catalog).
 // Anchor: https://www.iso.org/standard/76583.html
 
 module v4.extdeps.formats.sql
 
 
+import v4.std.collection { List }
 import v4.std.nat { Nat }
 import v4.std.cardinality { NonZeroNat }
+import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
+import v4.std.model_core {
+  PrimitiveFactAxisBinding,
+  PrimitiveFactBundle,
+  primitive_fact_axis_encoding,
+  primitive_fact_axis_signedness,
+  primitive_fact_axis_surface_spelling,
+  primitive_fact_axis_width
+}
 
 
 // 🟡 coproduct dissolution — T-4.6-P4-SqlDialect.
