@@ -1084,6 +1084,173 @@ For D2-resolver: land the planned `extdeps/languages/resolver.dag`
 canonically and rewrite `rust.dag`'s `GroundingMap` declaration into an
 import/alias of the resolver's authoritative shape.
 
+#### L1.12.b Structural-similarity trigger — closes L1.12's decidability gap (the *nickname* case)
+
+> **Status: proposed.** Closes the gap L1.12's decidability boundary
+> already names: "two homes use *different* lexical names AND no
+> `CanonicalConcept` row registers them as the same concept" — the
+> *unregistered nickname*. The boundary text itself points at "an
+> extension primitive (e.g., a structural similarity fold)" — this
+> sub-signature IS that primitive, scoped narrowly so the lens stays
+> mechanically decidable. Same 5-outcome resolution table as the
+> parent.
+
+- *Trigger C (structural similarity):* fires when a declaration's
+  structural shape matches a known `std/` (or `core/`) carrier above
+  a threshold defined by the layers below, AND no `CanonicalConcept`,
+  alias-identity edge, or `HistoricalDeclaration` row connects them.
+  Two scopes — both fire the same trigger:
+  - **Type-scope.** A `type Foo = …` declaration in a non-`std/`
+    file whose **variant set + field shape** matches an existing
+    `std/` `type Bar = …`, modulo variant renames. Catches model
+    nicknames (`data DominanceResult = Win | Lose | Tie` when
+    `Witness<Carrier>` or an existing dominance carrier already
+    exists) and refinements declared as parallel coproducts
+    (`RegisterStateSpace` enumerating a refined subset of
+    `StateSpace` instead of binding via refinement).
+  - **Fn-scope.** A `fn helper(…) -> …` whose body is structurally
+    equivalent to an existing `std/` fn after parameter-rename + body
+    α-renaming. Catches helper nicknames (a hand-rolled `find_*`
+    that's `find_witness` with refinement; a hand-rolled `lookup_*`
+    that's `fold_right` over a chain).
+
+- *Decidable:* yes — three mechanically-distinct layers, ordered by
+  workhorse-first. The lens fires when **any** layer's structural
+  fact crosses its threshold; the 5-outcome resolution table from
+  L1.12 then resolves.
+  - **(C1) Signature-shape match (workhorse).** For type-scope: the
+    parsed model carries the carrier's **variant set + per-variant
+    field shape**; two carriers match when there's a bijection
+    between their variant sets preserving field arity + field-type
+    coproduct identity (modulo coproduct-of-leaves identity per
+    Practice 11). For fn-scope: the parsed model carries the fn's
+    **signature shape** (input coproduct, output coproduct,
+    parameter-arity, return-type identity); two signatures match
+    when there's a parameter-bijection preserving type identity.
+    Substrate-readable, no heuristic — fires when the signature is
+    an exact structural match against a known `std/` carrier.
+  - **(C2) Catamorphism-equivalence (stricter sub-rule for
+    fold-shape fns).** A fn that performs structural recursion over
+    `T` (one arm per `T`-variant, recursive calls only at
+    `T`-variant positions) is, by the homomorphism heuristic,
+    equivalent to `fold_T` with its algebra. If `std/T/fold_T` (or
+    the `T` carrier's algebra carrier) is present in the registry,
+    the un-derived hand-roll IS the nickname. This is Practice 10's
+    homomorphism heuristic mechanized — same defect class, machine-
+    readable trigger.
+  - **(C3) Token-vocabulary overlap (triage, not a fire).** Names
+    of a non-`std/` decl and a `std/` decl share above a vocabulary-
+    overlap threshold (Jaccard ≥ 0.5 on the token-set extracted
+    from identifier + variant/field names), as a heuristic surface
+    for human cheap-glance. **Cheap-glance only — never fires the
+    lens by itself; presented as advisory list alongside firings.**
+    Same rule as L1.13's "advisory" tier being illegal: enforcement
+    requires (C1) or (C2) substantiation.
+
+  **Order is intentional.** (C1) fires on the structurally-identical
+  case (the workhorse); (C2) fires on the un-derived-fold case (a
+  separate defect class with its own clean resolution); (C3) is
+  triage-only. The lens never fires on (C3) alone — operator-direct
+  ruling on Practice 11 sub-rules + the no-fourth-tier rule.
+
+- *Verdict:* hard error. Same 5-outcome resolution table as the
+  parent L1.12 (alias-identity edge / retirement-record /
+  ConceptDisambiguation / CanonicalConcept-without-resolution /
+  silence-fails-closed). The substrate adds whichever resolution
+  shape is honest for the case.
+
+- *Escape (clean 🟢):*
+  - **Refinement-not-parallel.** A `type RegisterStateSpace = StateSpace
+    refined { variant ∈ {Reg, Const, Global, Local} } ∪ { ResParam { … } }`
+    declaration (or its substrate equivalent) makes the relationship
+    explicit; the parallel-coproduct nickname becomes a refinement
+    edge. Equivalent to outcome (1) "alias-identity edge" extended
+    to refinements.
+  - **Practice-11-parameterized.** If the (C1) hit is "the same fn
+    shape appears N times across files" (e.g., the `count_named_bind`
+    quadruplet — identical body across 4 files), the parameterized
+    move per Practice 11 is to define the fn once in a canonical home
+    and import it elsewhere; the redeclarations become alias-identity
+    edges (outcome (1)). Test-fixture redeclarations get the same
+    treatment — copies are not exempted from L1.12 by being in a
+    fixture file.
+  - **Distinct domains.** A `ConceptDisambiguation` row marking the
+    similarly-shaped types as legitimately distinct concepts in
+    different namespaces (e.g., `network.Result` vs
+    `compiler.normalize.Result`) — outcome (3) directly.
+
+- *Decidability boundary (explicit):* (C1) and (C2) are mechanical and
+  decidable over parsed substrate; (C3) is triage and never fires
+  alone. The lens does **not** catch:
+  - Two homes that share neither structural shape (C1 miss) nor
+    fold-shape equivalence (C2 miss) but ARE conceptually the same.
+    That residual case requires operator judgment and a
+    `CanonicalConcept` row landing post-hoc, at which point Trigger
+    B of the parent L1.12 takes over.
+  - Behavioral equivalence in the general sense (undecidable). The
+    lens does not attempt it; the homomorphism heuristic (C2) is the
+    only behavioral-shape claim made, and it is structural, not
+    semantic.
+
+  This is the honest fold-bound: (C1) catches structurally-identical
+  declarations regardless of name; (C2) catches un-derived
+  catamorphisms regardless of how the body is spelled; everything
+  else routes through operator judgment via the parent's resolution
+  table.
+
+- *Clearing receipt:* the substrate carries one of the parent's
+  five resolution shapes (alias edge / retirement record /
+  disambiguation row / canonical-concept row with one of the prior
+  three / deletion). The lens re-fires on the same head until the
+  resolution lands. **Fix-confidence: templated auto-apply** —
+  for (C1) hits, the alias-identity rewrite is mechanical (the lens
+  emits a `Diff` rewriting the redeclaration into an `import` +
+  `type T = canonical.T`); for (C2) hits, the rewrite is the
+  `fold_T` call with the algebra extracted from the original arms
+  (the L1.5 catamorphism-derivation pattern, applied here as the
+  fix shape). Reviewer overrides the canonical-home or
+  algebra-binding names before commit.
+
+- *Kills (real corpus):*
+  - **`count_named_bind` quadruplet.** Identical
+    `fn count_named_bind(behavior: Behavior) -> Int = match behavior
+    { Value(v) => 0; Transform(t) => 0; Branch(b) => 0; ... }` in
+    `src/v3/compiler/tests/fixtures/r1_gates.template.dag:139`,
+    `src/v3/compiler/tests/fixtures/r1_gates.dag:139`,
+    `src/v3/compiler/tests/t_demo/t_demo_fixtures.dag:28`, and
+    `src/v3/lenses/named_function_count.dag:15`. Fires on (C1) —
+    four declarations with identical signature shape and identical
+    body. Practice-11-parameterized clean shape: one canonical home
+    (likely `lenses/named_function_count.dag`), three import-aliases.
+  - **`RegisterStateSpace` parallel to `StateSpace`** in
+    `src/v4/extdeps/languages/ptx.dag:34` and `:102`. `StateSpace`
+    enumerates `Reg | SReg | Const | Global | Local | ...`;
+    `RegisterStateSpace` enumerates `ResReg | ResConst | ResGlobal
+    | ResLocal | ResParam{...}` — a refined subset with one
+    extension (the `ResParam` carrying scope). Fires on (C1) —
+    variant bijection holds for the shared variants; the extension
+    + refinement should be made explicit via a refinement-edge or
+    a `CanonicalConcept` row binding the two carriers. Refinement-
+    not-parallel clean shape per the Escape rule above.
+  - **`lookup_chain` (resolver) vs `fold_right` over scope chain.**
+    `src/v4/compiler/03_resolve.dag:205` defines
+    `fn lookup_chain(s: Scope, name: Symbol) -> Symbol?` as a
+    hand-rolled structural recursion over `Scope = ScopeFrame {
+    locals, outer } | ScopeRoot { module }`. Fires on (C2) — the fn
+    is exactly `fold_T` with `T = Scope`, base case at `ScopeRoot`,
+    inductive step at `ScopeFrame`, returning the first `map_get`
+    hit. Should call `fold_right` (or the `Scope` carrier's algebra)
+    instead. Note: this candidate is **(C2)-fires-only**, NOT (C1) —
+    the signature is not identical to `fold_right`'s; it's the
+    homomorphism shape that catches it.
+
+- *Producer stage (see §10):* a new derived stage
+  `v4.lens.structural_similarity` produces the shared index — the
+  per-decl structural-shape facts (C1's variant-set + field-shape
+  for types, C1's signature shape for fns, C2's catamorphism-form
+  classifier, C3's token-set) that the lens consumes facts-flow-
+  forward without re-walking declarations.
+
 ### L1.13 Skeleton-collapse lens — kills *parametric-arm duplication via constructor-name template* (proposed)
 
 > **Status: proposed.** Derived from finding F14 (`feature_disposition` at
@@ -1596,6 +1763,7 @@ uses.
 | Import graph + target existence | `v4.compiler.02_parse` | L0.8, L1.8 |
 | Return-type → fail-closed-carrier? | `v4.compiler.03_resolve` | L0.14, L1.11 |
 | Match-arm RHS skeleton + per-arm group membership + per-skeleton constructor-hole presence (normalized RHS after α-renaming + matched-arm constructor substitution; groups expose arm-ids so the auto-fix consumes them as facts, not by re-walking) | `v4.lens.match_arm_skeleton` (new derived stage — see §10.2) | L1.13 |
+| Per-decl structural-shape facts (type-decl: variant set + per-variant field shape; fn-decl: signature shape + body catamorphism-form classifier + identifier token-set) | `v4.lens.structural_similarity` (new derived stage — see §10.2) | L1.12.b |
 
 ### 10.2 Four small derived stages cover what the pipeline doesn't already expose
 
@@ -1617,6 +1785,42 @@ module v4.lens.concept_home
 consumes: v4.compiler.03_resolve, v4.lens.canonical_observations_index
 produces: Map<FnId, File>               // each fn's primary-concept home file
 // reusable by: L1.8
+
+module v4.lens.structural_similarity
+consumes: v4.compiler.02_parse, v4.compiler.03_resolve
+produces: Map<DeclId, StructuralShape>
+// StructuralShape = TypeShape | FnShape
+// TypeShape = {
+//   variant_set: [VariantShape],            // sorted; bijection-comparable
+//   total_variants: Nat,
+// }
+// VariantShape = {
+//   field_arity: Nat,
+//   field_type_idents: [TypeId],            // by coproduct identity, not by name
+// }
+// FnShape = {
+//   signature: SignatureShape,              // input coproduct identity, output coproduct identity, parameter arity
+//   catamorphism_form: CatamorphismForm,    // None | StructuralFoldOver(TypeId)
+//   token_set: Set<Token>,                  // identifier + variant/field names (C3 triage only)
+// }
+// SignatureShape comparison: bijection on parameter slots preserving
+// type identity (NOT names); output type by coproduct identity.
+// CatamorphismForm extraction: scan fn body for one-arm-per-T-variant
+// match with recursive calls only at T-variant positions; classify
+// `StructuralFoldOver(T)` if so, `None` otherwise.
+// Facts Flow Forward (Practice 3): the lens emits everything L1.12.b
+// needs for (C1) signature-match, (C2) catamorphism-equivalence, and
+// (C3) token-vocabulary triage. No consumer re-walks declarations or
+// re-derives shape equivalence — single authority (P2), one
+// mechanism, multiple downstream projections.
+// reusable by: L1.12.b, future cross-substrate-version drift lens,
+// future module-graph homomorphism lens
+// Algorithm: walk each parsed declaration; for `type` decls emit
+//   TypeShape with the sorted normalized variant set; for `fn` decls
+//   emit FnShape with signature normalized (parameter-bijection
+//   canonical form), body classified for catamorphism form, and the
+//   token-set extracted from the AST identifiers. Substrate-only,
+//   no comment/prose inspection.
 
 module v4.lens.match_arm_skeleton
 consumes: v4.compiler.02_parse, v4.compiler.03_resolve
@@ -1670,6 +1874,7 @@ consumes:
   v4.compiler.04_infer
   v4.lens.match_arm_shape
   v4.lens.match_arm_skeleton
+  v4.lens.structural_similarity
   v4.lens.closed_vocab_scan
   v4.lens.concept_home
 produces:
