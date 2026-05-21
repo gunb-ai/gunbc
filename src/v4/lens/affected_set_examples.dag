@@ -53,7 +53,7 @@ data affected_set_example_edit: Edit = Edit {
 
 data affected_set_example_invalid_edit_diagnostic: Diagnostic = Diagnostic {
   reason: affected_set_example_reason,
-  at: NodeLocus { anchor: LocusAnchor { at: affected_set_example_node } },
+  at: NodeLocus { anchor: Anchored { at: affected_set_example_node } },
   correction: Unavailable { reason: ExternalContractUnknown }
 }
 

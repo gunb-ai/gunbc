@@ -129,7 +129,7 @@ data claim_redundant_read_caught: TestClaim = TestClaim {
     diagnostics: diagnostics_singleton(
       d: Diagnostic {
         reason: redundant_read_reason,
-        at: NodeLocus { anchor: LocusAnchor { at: falsification_redundant_read } },
+        at: NodeLocus { anchor: Anchored { at: falsification_redundant_read } },
         correction: Suggested { node: explicit_reread_input }
       }
     )

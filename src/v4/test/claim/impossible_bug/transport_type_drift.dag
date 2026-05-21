@@ -106,7 +106,7 @@ data claim_target_contract_drift_impossible: TestClaim = TestClaim {
     diagnostics: diagnostics_singleton(
       d: Diagnostic {
         reason: target_transport_drift_reason,
-        at: NodeLocus { anchor: LocusAnchor { at: falsification_target_contract_drift } },
+        at: NodeLocus { anchor: Anchored { at: falsification_target_contract_drift } },
         correction: Suggested { node: shared_wire_contract_input }
       }
     )
@@ -124,7 +124,7 @@ data claim_wire_contract_drift_impossible: TestClaim = TestClaim {
     diagnostics: diagnostics_singleton(
       d: Diagnostic {
         reason: transport_drift_reason,
-        at: NodeLocus { anchor: LocusAnchor { at: falsification_wire_contract_drift } },
+        at: NodeLocus { anchor: Anchored { at: falsification_wire_contract_drift } },
         correction: Suggested { node: shared_wire_contract_input }
       }
     )

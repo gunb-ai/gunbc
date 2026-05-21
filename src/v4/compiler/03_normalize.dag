@@ -94,7 +94,7 @@ fn classify_sugar(n: Node) -> SurfaceSugarKind? {
 fn malformed_sugar_diagnostic(n: Node) -> Diagnostic {
   Diagnostic {
     reason: normalize_reason_malformed_sugar,
-    at: NodeLocus { anchor: LocusAnchor { at: n } },
+    at: NodeLocus { anchor: Anchored { at: n } },
     correction: Unavailable { reason: UserInputBoundary }
   }
 }
@@ -103,7 +103,7 @@ fn malformed_sugar_diagnostic(n: Node) -> Diagnostic {
 fn post_normalize_not_well_formed_diagnostic(n: Node) -> Diagnostic {
   Diagnostic {
     reason: normalize_reason_post_normalize_not_well_formed,
-    at: NodeLocus { anchor: LocusAnchor { at: n } },
+    at: NodeLocus { anchor: Anchored { at: n } },
     correction: Unavailable { reason: UserInputBoundary }
   }
 }

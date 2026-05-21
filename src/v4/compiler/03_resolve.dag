@@ -218,7 +218,7 @@ fn lookup_chain(s: Scope, name: Symbol) -> Symbol? {
 fn malformed_tree_diagnostic(n: Node) -> Diagnostic {
   Diagnostic {
     reason: resolve_reason_malformed_tree,
-    at: NodeLocus { anchor: LocusAnchor { at: n } },
+    at: NodeLocus { anchor: Anchored { at: n } },
     correction: Unavailable { reason: UserInputBoundary }
   }
 }
@@ -227,7 +227,7 @@ fn malformed_tree_diagnostic(n: Node) -> Diagnostic {
 fn unbound_symbol_diagnostic(n: Node) -> Diagnostic {
   Diagnostic {
     reason: resolve_reason_unbound_symbol,
-    at: NodeLocus { anchor: LocusAnchor { at: n } },
+    at: NodeLocus { anchor: Anchored { at: n } },
     correction: Unavailable { reason: UserInputBoundary }
   }
 }

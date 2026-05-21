@@ -104,7 +104,7 @@ data claim_optional_double_unwrap_rejected: TestClaim = TestClaim {
     diagnostics: diagnostics_singleton(
       d: Diagnostic {
         reason: double_unwrap_reason,
-        at: NodeLocus { anchor: LocusAnchor { at: falsification_optional_double_unwrap } },
+        at: NodeLocus { anchor: Anchored { at: falsification_optional_double_unwrap } },
         correction: Suggested { node: flattened_optional_input }
       }
     )
@@ -122,7 +122,7 @@ data claim_nested_optional_collapses: TestClaim = TestClaim {
     diagnostics: diagnostics_singleton(
       d: Diagnostic {
         reason: nested_optional_reason,
-        at: NodeLocus { anchor: LocusAnchor { at: falsification_nested_optional } },
+        at: NodeLocus { anchor: Anchored { at: falsification_nested_optional } },
         correction: Suggested { node: flattened_optional_input }
       }
     )

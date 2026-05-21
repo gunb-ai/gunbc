@@ -5,7 +5,7 @@
 //       bind_outcome, diagnostics_merge, rejected_with_pending,
 //       eq, locus_eq, correction_eq, diagnostic_eq, outcome_node_eq,
 //       diagnostics_eq, non_empty_diagnostics_append,
-//       Locus, LocusAnchor, NodeLocusAnchor, PortLocusAnchor, Extent, Correction, NoCorrectionReason.
+//       Locus, LocusAnchor, Extent, Correction, NoCorrectionReason.
 // Consumes: std node (List/fold/count are prelude — no collection import; avoids diagnostic↔witness cycle).
 // Status: T-3 modeled; Wave-2-BC3 Outcome ratification (Ratified Q11).
 
@@ -18,15 +18,14 @@ import v4.std.node { Node }
 type Extent
   = WholeFile
   | ByteRange { start: Int, end: Int }
-type LocusAnchor<A>
-  = Anchored { at: A }
-type NodeLocusAnchor = LocusAnchor<Node>
-type PortLocusAnchor = LocusAnchor<Symbol>
+type LocusAnchor<A> {
+  at: A
+}
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type Locus
   = Textual { file: Symbol, extent: Extent }
-  | NodeLocus { anchor: NodeLocusAnchor }
-  | PortLocus { anchor: PortLocusAnchor }
+  | NodeLocus { anchor: LocusAnchor<Node> }
+  | PortLocus { anchor: LocusAnchor<Symbol> }
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type NoCorrectionReason
   = UserInputBoundary
@@ -88,15 +87,15 @@ fn locus_eq(a: Locus, b: Locus) -> Bool {
       NodeLocus { anchor: _ } => false
       PortLocus { anchor: _ } => false
     }
-    NodeLocus { anchor: Anchored { at: na } } => match b {
+    NodeLocus { anchor: na } => match b {
       Textual { file: _, extent: _ } => false
-      NodeLocus { anchor: Anchored { at: nb } } => na == nb
+      NodeLocus { anchor: nb } => na.at == nb.at
       PortLocus { anchor: _ } => false
     }
-    PortLocus { anchor: Anchored { at: pa } } => match b {
+    PortLocus { anchor: pa } => match b {
       Textual { file: _, extent: _ } => false
       NodeLocus { anchor: _ } => false
-      PortLocus { anchor: Anchored { at: pb } } => pa == pb
+      PortLocus { anchor: pb } => pa.at == pb.at
     }
   }
 }

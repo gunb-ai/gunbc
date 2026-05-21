@@ -77,7 +77,7 @@ fn coercion_not_realized_diagnostic(
 ) -> Diagnostic {
   Diagnostic {
     reason: coercion_mismatch_reason(kind: kind),
-    at: NodeLocus { anchor: LocusAnchor { at: source.node } },
+    at: NodeLocus { anchor: Anchored { at: source.node } },
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
