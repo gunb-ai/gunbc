@@ -1,0 +1,31 @@
+// src/v4/std/artifact.dag
+// Scope: artifact identity and Node-to-artifact provenance.
+// Owns: ArtifactKind, Artifact, NodeArtifactProvenance.
+// Consumes: v4.std.node, v4.std.text.
+// Status: Wave-2-A substrate.
+
+module v4.std.artifact
+
+import v4.std.node { Node, Symbol }
+import v4.std.text { String }
+
+// 🟢 coproduct dissolution — Wave-2-A artifact categories; bootstrap arms are 🟡 feature:bootstrap-substrate-landed.
+type ArtifactKind
+  = SourceFile
+  | GeneratedSource
+  | TestClaimArtifact
+  | ProjectionArtifact
+  | Stage0Candidate
+  | CorePackage
+  | WitnessBundle
+
+type Artifact {
+  kind: ArtifactKind
+  id: Symbol
+  file_path: String
+}
+
+type NodeArtifactProvenance {
+  node: Node
+  artifact: Artifact
+}

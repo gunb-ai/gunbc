@@ -1,0 +1,196 @@
+// src/v4/std/dependency.dag
+// Scope: P6 dependency taxonomy and lens-over-substrate dependency view.
+// Owns: DependencyKind, DependencyView, ReadinessLayer, dependency_lens, ready_set, topological_layers.
+// Consumes: v4.std.collection, v4.std.node.
+// Status: Wave-2-A substrate: dependency facts are projected from Node edges, not authored as a parallel graph.
+
+module v4.std.dependency
+
+import v4.std.collection { List }
+import v4.std.node { Edge, Node, NodeFold, fold_node }
+
+// 🟢 closed set — P6 dependency classification taxonomy.
+type DependencyKind
+  = Contains
+  | BindsTo
+  | TypeDependsOn
+  | DataDependsOn
+  | EffectDependsOn
+  | ResourceDependsOn
+  | ModuleDependsOn
+  | BarrierBefore
+  | PlacementDependsOn
+  | ModelDependsOn
+  | ProjectionDependsOn
+  | GeneratedFrom
+  | VerifiedBy
+  | PromotedBy
+  | BootstrapDependsOn
+
+type DependencyView {
+  source: Node
+  dependent: Node
+  kind: DependencyKind
+  usage_site: Node
+}
+
+type DependencyFoldState {
+  current: Node
+  dependencies: List<DependencyView>
+}
+
+// 🟡 predicate dissolution — feature:dependency-usage-classifier-consumes-resolve-ground-facts.
+fn classify_node_edge_usage(parent: Node, edge: Edge) -> DependencyKind {
+  Contains
+}
+
+fn dependency_view_for_edge(parent: Node, edge: Edge) -> DependencyView {
+  DependencyView {
+    source: parent,
+    dependent: edge.target,
+    kind: classify_node_edge_usage(parent: parent, edge: edge),
+    usage_site: edge.target
+  }
+}
+
+fn append_dependency_views(left: List<DependencyView>, right: List<DependencyView>) -> List<DependencyView> {
+  fold(right, init: left, f: fn(acc, item) {
+    list_push(acc, item)
+  })
+}
+
+fn dependency_fold_init(n: Node) -> DependencyFoldState {
+  DependencyFoldState {
+    current: n,
+    dependencies: []
+  }
+}
+
+fn dependency_fold_step(acc: DependencyFoldState, edge: Edge, child_state: DependencyFoldState) -> DependencyFoldState {
+  DependencyFoldState {
+    current: acc.current,
+    dependencies: append_dependency_views(
+      left: list_push(acc.dependencies, dependency_view_for_edge(parent: acc.current, edge: edge)),
+      right: child_state.dependencies
+    )
+  }
+}
+
+fn dependency_fold_algebra() -> NodeFold<DependencyFoldState> {
+  NodeFold {
+    init: dependency_fold_init,
+    step: dependency_fold_step
+  }
+}
+
+fn dependency_fold_dependencies(state: DependencyFoldState) -> List<DependencyView> {
+  state.dependencies
+}
+
+fn dependency_lens(root: Node) -> List<DependencyView> {
+  dependency_fold_dependencies(
+    state: fold_node(
+      n: root,
+      algebra: dependency_fold_algebra()
+    )
+  )
+}
+
+type ReadinessLayer {
+  ready: List<Node>
+}
+
+type ReadinessFoldState {
+  current: Node
+  ready: List<Node>
+  layers: List<ReadinessLayer>
+}
+
+fn readiness_fold_init(n: Node) -> ReadinessFoldState {
+  ReadinessFoldState {
+    current: n,
+    ready: [n],
+    layers: []
+  }
+}
+
+fn ready_set_fold_step(acc: ReadinessFoldState, edge: Edge, child_state: ReadinessFoldState) -> ReadinessFoldState {
+  ReadinessFoldState {
+    current: acc.current,
+    ready: append_nodes(left: acc.ready, right: child_state.ready),
+    layers: acc.layers
+  }
+}
+
+fn ready_set_algebra() -> NodeFold<ReadinessFoldState> {
+  NodeFold {
+    init: readiness_fold_init,
+    step: ready_set_fold_step
+  }
+}
+
+fn readiness_fold_ready(state: ReadinessFoldState) -> List<Node> {
+  state.ready
+}
+
+fn ready_set(graph_node: Node) -> List<Node> {
+  readiness_fold_ready(
+    state: fold_node(
+      n: graph_node,
+      algebra: ready_set_algebra()
+    )
+  )
+}
+
+fn append_nodes(left: List<Node>, right: List<Node>) -> List<Node> {
+  fold(right, init: left, f: fn(acc, item) {
+    list_push(acc, item)
+  })
+}
+
+fn topological_layers_fold_init(n: Node) -> ReadinessFoldState {
+  ReadinessFoldState {
+    current: n,
+    ready: [n],
+    layers: [
+      ReadinessLayer {
+        ready: [n]
+      }
+    ]
+  }
+}
+
+fn topological_layers_fold_step(acc: ReadinessFoldState, edge: Edge, child_state: ReadinessFoldState) -> ReadinessFoldState {
+  ReadinessFoldState {
+    current: acc.current,
+    ready: append_nodes(left: acc.ready, right: child_state.ready),
+    layers: append_readiness_layers(left: acc.layers, right: child_state.layers)
+  }
+}
+
+fn topological_layers_algebra() -> NodeFold<ReadinessFoldState> {
+  NodeFold {
+    init: topological_layers_fold_init,
+    step: topological_layers_fold_step
+  }
+}
+
+fn readiness_fold_layers(state: ReadinessFoldState) -> List<ReadinessLayer> {
+  state.layers
+}
+
+// 🟡 predicate dissolution — feature:readiness-rank-layer-merge.
+fn topological_layers(graph_node: Node) -> List<ReadinessLayer> {
+  readiness_fold_layers(
+    state: fold_node(
+      n: graph_node,
+      algebra: topological_layers_algebra()
+    )
+  )
+}
+
+fn append_readiness_layers(left: List<ReadinessLayer>, right: List<ReadinessLayer>) -> List<ReadinessLayer> {
+  fold(right, init: left, f: fn(acc, item) {
+    list_push(acc, item)
+  })
+}
