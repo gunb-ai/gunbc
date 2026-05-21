@@ -103,7 +103,7 @@ The v4 compiler is:
 - **`traverse_node` / `sequence_node` / `bind_outcome`** are `fold_node` invocations with an Outcome-threading algebra; the combinator (not the algebra) interprets `StageDiagnosticPolicy` to thread failures. The algebra is pure-success-accumulator: `fn(R, Edge, R) -> Outcome<R>` (matches the landed `NodeFold<R>.step` shape — third parameter is the already-folded child result `R`, NOT the raw child `Node`; the Outcome wrapping is the only difference from the pure-catamorphism primitive). Single authority for failure handling = combinator. See "Derived combinators" below.
 - **`apply_diff`** is `sequence_outcome(diff.edits, fn(edit, candidate) -> fold_node(candidate, substitute_at(edit.at, edit.replacement)))` — sequential Outcome-bind-fold over the Diff's ordered Edits list, threading the candidate root through, with each Edit applied to the *current intermediate state* via `fold_node` substitution. **Sequential semantics matter**: each later Edit's Path resolves against the post-prior-Edit state, NOT the original root; if any Path fails to resolve in the current candidate, the whole Diff fails-closed (P3, per read/edit pipeline doc requirement). The agent-side mutation surface; composes with `fold_node` + `sequence_outcome`, not parallel to them.
 - **`LawfulRewriteWitness`** (P7, when implemented) is `find_witness` with an algebra-preserving precondition law as the `preservation_predicate`. Different lawful rewrites = different predicates over `find_witness`, not a separate primitive.
-3. **Compile-core has no boundary actions and no global terminal mode.** Graph consumers are **pure data-in / data-out** functions: `ground(source, ingestion_plan)` produces the grounded graph, `observe(graph, lens_plan)` reads it, `project(graph, projection_plan)` produces artifacts, and `authorize(policy, lens_report, projection_report)` decides terminal release. No implicit text-reading, no implicit text-writing, no implicit "execute," and no public `CompileMode` / `ProductionGoal` enum that chooses among unrelated operations. All real-world I/O — reading source from disk, writing target source to disk, executing on a host, reporting diagnostics to stderr — is **modeled as effects against modeled resources** (`extdeps/file_system.dag` for files, `extdeps/process.dag`, `extdeps/network.dag`, etc.), composed by *peripheral shims* outside the compile-core surface. The architecture itself doesn't think about text/files/processes; those are orthogonal concerns modeled independently.
+3. **Compile-core has no boundary actions and no global terminal mode.** Graph consumers are **pure data-in / data-out** functions: `ground(ingestion_plan)` produces the grounded graph, `observe(graph, lens_plan)` reads it, `project(graph, projection_plan)` produces artifacts, and `authorize(policy, lens_report, projection_report)` decides terminal release. No implicit text-reading, no implicit text-writing, no implicit "execute," and no public `CompileMode` / `ProductionGoal` enum that chooses among unrelated operations. All real-world I/O — reading source from disk, writing target source to disk, executing on a host, reporting diagnostics to stderr — is **modeled as effects against modeled resources** (`extdeps/file_system.dag` for files, `extdeps/process.dag`, `extdeps/network.dag`, etc.), composed by *peripheral shims* outside the compile-core surface. The architecture itself doesn't think about text/files/processes; those are orthogonal concerns modeled independently.
 
 Everything else — every "pass," every "stage," every "language-specific" anything — is an **algebra** plugged into `fold_node` or another declared substrate primitive. The compiler knows no specific language code (Rust, Python, even `.dag` itself, beyond an irreducible bootstrap-seed for `dag.dag`); language-specific *data* lives in `LanguageModel` declarations under `extdeps/languages/`.
 
@@ -123,7 +123,7 @@ The doc that follows defines the orthogonal operation surfaces, why each piece i
 
 ```
 // === Four-phase session split — data-in / data-out, no I/O ===
-ground(source: CoreNode, plan: IngestionPlan) -> Outcome<InferredTree>
+ground(plan: IngestionPlan) -> Outcome<InferredTree>
 observe(inferred: InferredTree, plan: LensPlan) -> LensReport
 project(inferred: InferredTree, plan: ProjectionPlan) -> ProjectionReport
 authorize(policy: TerminalPolicy, lenses: LensReport, projections: ProjectionReport)
@@ -262,19 +262,24 @@ Lenses are **data-producing reads**. A lens takes a graph and returns a typed re
 The public build/session layer is a composition of four phases:
 
 ```
-ground(source: CoreNode, input_lang: LanguageModel) -> Outcome<InferredTree>
+type IngestionPlan {
+  subject: CoreNode
+  producer: IngestionProducerRef
+  params: Node
+}
+
+ground(plan: IngestionPlan) -> Outcome<InferredTree>
 observe(inferred: InferredTree, plan: LensPlan) -> LensReport
 project(inferred: InferredTree, plan: ProjectionPlan) -> ProjectionReport
 authorize(policy: TerminalPolicy, lenses: LensReport, projections: ProjectionReport)
   -> Outcome<Validated<ArtifactSet>>
 ```
 
-`ground` is the mechanical compiler boundary: if it rejects, there is no meaningful graph for lenses or projections to consume. `observe` reads the grounded graph and returns lens data. `project` produces artifacts independently per request. `authorize` is the policy gate over readings and projection results.
+`ground` is the mechanical compiler boundary: if it rejects, there is no meaningful graph for lenses or projections to consume. Its input-side contract is plan-shaped for the same reason projection is plan-shaped: a producer reference plus typed `params` may carry an explicit `LanguageModel`, an inferred-language policy, or a richer ingestion/injection convention, but language selection should not be a one-off scalar beside the output plan. `observe` reads the grounded graph and returns lens data. `project` produces artifacts independently per request. `authorize` is the policy gate over readings and projection results.
 
 ```
 compile_session(
-  source: CoreNode,
-  input_lang: LanguageModel,
+  ingestion_plan: IngestionPlan,
   lens_plan: LensPlan,
   projection_plan: ProjectionPlan,
   policy: TerminalPolicy
@@ -1056,8 +1061,11 @@ self_corenode = ingest_text(
 ) -> Outcome<CoreNode>
 
 compiler_graph = ground(
-  source: self_corenode,
-  input_lang: dag_lang
+  plan: IngestionPlan {
+    subject: self_corenode,
+    producer: ingest_explicit_language,
+    params: dag_language_params
+  }
 ) -> Outcome<InferredTree>
 
 stage0_source = project(
@@ -1070,7 +1078,7 @@ There is **no special "regenerate stage0" mode** and **no parse-and-normalize fo
 
 **Equivalent paths** for stage0 regeneration (per P9's stratified bootstrap):
 - `compile.dag` already grounded as `InferredTree` from prior ingest (cached) → `project(self_graph, rust_stage0_projection_plan)`.
-- Programmatic compiler-model construction (e.g., from a `Diff`-derived candidate) → `ground(candidate_corenode, dag_lang)` then `project(candidate_graph, rust_stage0_projection_plan)`.
+- Programmatic compiler-model construction (e.g., from a `Diff`-derived candidate) → `ground(candidate_ingestion_plan)` then `project(candidate_graph, rust_stage0_projection_plan)`.
 
 All paths go through `ground` to produce the graph, then through the requested projection producer. The ingest boundary is explicit and separable.
 
@@ -1091,7 +1099,7 @@ readings = [
 ]
 if project_policy_accepts(readings):
   self := candidate_self     // atomic commit
-  // optionally: ground(candidate_self, dag_lang), then project(..., rust_stage0_projection_plan)
+  // optionally: ground(candidate_ingestion_plan), then project(..., rust_stage0_projection_plan)
 else:
   reject with diagnostics
 ```
@@ -1101,8 +1109,8 @@ Self-modification can never produce a broken substrate because the candidate is 
 ### Implications
 
 - **No new substrate is needed for self-edit.** `apply_diff` + lens readings + caller policy are the mechanism. The compiler's `.dag` source is just data; the same primitives that handle user data handle compiler data.
-- **Self-hosting is one specific projection over the grounded compiler graph.** `ground(self, dag_lang)` produces the graph; `project(self_graph, rust_stage0_projection_plan)` produces stage0 Rust. `project(self_graph, host_eval_projection_plan)` evaluates the compiler on the host. Other target/compiler artifacts are additional projection requests, not separate compile modes.
-- **The "Rust shrinks to zero" trajectory IS the loop closing.** When stage0 Rust is reliably regenerable from `ground(self, dag_lang)` + `project(self_graph, rust_stage0_projection_plan)`, the hand-maintained surface shrinks; per [`docs/design-pure-bootstrap-zero.md`](design-pure-bootstrap-zero.md), the target is zero hand-authored Rust.
+- **Self-hosting is one specific projection over the grounded compiler graph.** `ground(self_ingestion_plan)` produces the graph; `project(self_graph, rust_stage0_projection_plan)` produces stage0 Rust. `project(self_graph, host_eval_projection_plan)` evaluates the compiler on the host. Other target/compiler artifacts are additional projection requests, not separate compile modes.
+- **The "Rust shrinks to zero" trajectory IS the loop closing.** When stage0 Rust is reliably regenerable from `ground(self_ingestion_plan)` + `project(self_graph, rust_stage0_projection_plan)`, the hand-maintained surface shrinks; per [`docs/design-pure-bootstrap-zero.md`](design-pure-bootstrap-zero.md), the target is zero hand-authored Rust.
 
 ---
 
@@ -1200,7 +1208,7 @@ The compiler scaffolds in `src/v4/compiler/` were authored across several ratifi
 
 | Scaffold | Current tree state | This doc's ratified contract | Status / migration |
 |---|---|---|---|
-| `00_compile.dag` `validate_then_compile` | `validate_then_compile(source, input_lang, lenses, mode) -> Outcome<Validated<CompileOutput>>`; manual TestClaims assert empty-lens bypass and rejecting-lens blocks. | Session terminal: `ground -> observe -> project -> authorize`, with `authorize(...) -> Outcome<Validated<ArtifactSet>>`. Lens readings feed policy, not compile-core. | **Conflict in ownership/framing.** Keep `Validated<T>` as terminal-policy carrier, but move ownership out of compile-core and replace lens-as-compile-input with `LensPlan` / `LensReport`. |
+| `00_compile.dag` `validate_then_compile` | `validate_then_compile(source, input_lang, lenses, mode) -> Outcome<Validated<CompileOutput>>`; manual TestClaims assert empty-lens bypass and rejecting-lens blocks. | Session terminal: `ground(IngestionPlan) -> observe -> project(ProjectionPlan) -> authorize`, with `authorize(...) -> Outcome<Validated<ArtifactSet>>`. Lens readings feed policy, not compile-core. | **Conflict in ownership/framing.** Keep `Validated<T>` as terminal-policy carrier, but move ownership out of compile-core and replace scalar language/mode inputs with `IngestionPlan`, `LensPlan` / `LensReport`, and `ProjectionPlan`. |
 | `00_compile.dag` `CompileMode` | `CompileMode = TranslateTo { target } | Eval { host_interp }`, passed to `compile` and `validate_then_compile`. | Projection registry: `ProjectionRequest { producer: ProjectionProducerRef, subject, params, requirement }`. No closed compile/production enum. | **Conflict.** Split compile-core from projection planning; replace `CompileMode` with projection requests in the session layer. |
 | `00_compile.dag` legacy ingest | `Source = String` survives only for `compile_ingest_staging`. | Text is a peripheral `ingest_text` shim producing `Node`; compile-family operations consume `Node`. | **Staged.** Dissolve when `ingest_text` lands as a peripheral shim. |
 | `04_infer.dag` | No `v4.lens.*` import. `InferredFacts` carries `resolved_type`, `inhabits`, `descent`, and `canonical`. | No lens import in compiler core (P3 commitment 4). Cost and other dimensions are lens outputs over `InferredTree`, not infer facts. | **Lens-import violation resolved.** Keep this invariant: compiler core must not name a specific lens. |
@@ -1236,7 +1244,7 @@ If a worker encounters a deeper scaffold-vs-design contradiction not catalogued 
 ## Migration order — orthogonality reshape
 
 1. **Name the public graph carrier.** Treat current `InferredTree` as the grounded graph carrier; until an explicit rename lands, `InferredTree`, `InferredGraph`, and "grounded graph" references in this design name that same carrier. Decide whether the implementation rename to `InferredGraph` waits until P6 dependency facts are explicit.
-2. **Introduce session reports.** Add design/source follow-up for `LensPlan`, `LensReport`, `ProjectionPlan`, `ProjectionReport`, `TerminalPolicy`, `ArtifactSet`, and `CompileSessionResult`.
+2. **Introduce session reports.** Add design/source follow-up for `IngestionPlan`, `LensPlan`, `LensReport`, `ProjectionPlan`, `ProjectionReport`, `TerminalPolicy`, `ArtifactSet`, and `CompileSessionResult`.
 3. **Reframe validation.** Keep `Validated<T>`, but move it to `authorize(policy, lens_report, projection_report) -> Outcome<Validated<ArtifactSet>>`. Retire `validate_then_compile` as compile-owned lens gating.
 4. **Replace `CompileMode`.** Add projection requests with `ProjectionProducerRef` registry entries and typed params; do not add a larger closed enum.
 5. **Refine scopes by concern.** Add/shared low-level `RegionRef`, then refine into `LensScope` and `ProjectionSubject` according to each consumer's constraints.
