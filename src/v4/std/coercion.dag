@@ -174,7 +174,8 @@ fn coercion_fold(
       Accepted {
         value: CoercionResult {
           target: fw.candidate,
-          quality: if fw.candidate == source.node { Identity } else { Exact },
+          // 🟡 coproduct dissolution — scaffold:coercion-quality-identity-mvp · dissolve-on: zip-fold predicate distinguishes Exact vs Identity.
+          quality: Identity,
           witness: CoercionWitness {
             homomorphism: HomomorphismWitness {
               rule: homomorphism_rule_exact_structural_equality,

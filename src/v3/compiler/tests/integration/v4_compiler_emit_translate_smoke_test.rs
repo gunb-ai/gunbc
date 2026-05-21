@@ -29,6 +29,8 @@ const TRANSLATE_DAG: &str = include_str!("../../../../v4/compiler/06_translate.d
 const TRANSLATE_PATH: &str = "src/v4/compiler/06_translate.dag";
 const EMIT_DAG: &str = include_str!("../../../../v4/compiler/05_emit.dag");
 const EMIT_PATH: &str = "src/v4/compiler/05_emit.dag";
+const RUST_LANGUAGE_DAG: &str = include_str!("../../../../v4/extdeps/languages/rust.dag");
+const RUST_LANGUAGE_PATH: &str = "src/v4/extdeps/languages/rust.dag";
 const MVP1_CLAIM_DAG: &str =
     include_str!("../../../../v4/test/claim/manual/mvp1_rust_add_translate.dag");
 const MVP1_CLAIM_PATH: &str = "src/v4/test/claim/manual/mvp1_rust_add_translate.dag";
@@ -166,6 +168,27 @@ fn v4_emit_dag_does_not_import_find_witness() {
 }
 
 #[test]
+fn v4_rust_language_model_declares_t11_translation_rules() {
+    let module = parse_module(RUST_LANGUAGE_DAG, RUST_LANGUAGE_PATH);
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "std", "target_model"],
+            "target_model_edge_translation_rules"
+        ),
+        "{RUST_LANGUAGE_PATH}: Rust TargetModel must consume the shared translation-rules edge"
+    );
+    assert!(
+        surface_declares_type(&module, "RustGrammarRelationRow"),
+        "{RUST_LANGUAGE_PATH}: must declare the grammar relation row carrier"
+    );
+    assert!(
+        surface_declares_fn(&module, "rust_mvp1_translation_rules_node"),
+        "{RUST_LANGUAGE_PATH}: must project MVP-1 Rust translation rules into the target model"
+    );
+}
+
+#[test]
 fn v4_mvp1_rust_add_claim_tokenizes_and_parses() {
     let _module = parse_module(MVP1_CLAIM_DAG, MVP1_CLAIM_PATH);
 }
@@ -238,6 +261,24 @@ fn surface_declares_fn(module: &v3_compiler::parse_surface::SurfaceModule, name:
             name: item_name, ..
         }
         | SurfaceItem::FnExternalBody {
+            name: item_name, ..
+        } => item_name == name,
+        _ => false,
+    })
+}
+
+fn surface_declares_type(module: &v3_compiler::parse_surface::SurfaceModule, name: &str) -> bool {
+    module.items.iter().any(|item| match item {
+        SurfaceItem::TypeAlias {
+            name: item_name, ..
+        }
+        | SurfaceItem::TypeRecord {
+            name: item_name, ..
+        }
+        | SurfaceItem::TypeSum {
+            name: item_name, ..
+        }
+        | SurfaceItem::TypeAtom {
             name: item_name, ..
         } => item_name == name,
         _ => false,
