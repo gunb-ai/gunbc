@@ -14,7 +14,8 @@ import v4.compiler.parse {
   GrammarRoot,
   ModeledGrammar,
   Sequence,
-  Terminal
+  Terminal,
+  grammar_production_to_node
 }
 import v4.compiler.tokenize {
   CharClassPattern,
@@ -46,6 +47,7 @@ import v4.std.model_core {
 import v4.std.target_model {
   target_model_edge_declared_inhabitants,
   target_model_edge_selection_policy,
+  target_model_edge_translation_rules,
   target_model_edge_serialize_emitted,
   target_model_edge_serialize_source
 }
@@ -172,6 +174,18 @@ type RustLanguageModel {
   core: ModelCore
 }
 
+// T-11 rust-first grammar relation row: fixed terminals and bound terminals share
+// the Rust grammar production instead of an operator string template.
+type RustConcreteSyntaxToken
+  = RustFixedToken { token_class: Symbol }
+  | RustBoundToken { token_class: Symbol, binding: Symbol }
+
+type RustGrammarRelationRow {
+  production: GrammarProduction
+  emitted: Node
+  tokens: List<RustConcreteSyntaxToken>
+}
+
 data rust_language_model_surface_id: Symbol = rust_language_model_surface_id
 
 data rust_std_projection_int8: Symbol = rust_std_projection_int8
@@ -280,6 +294,19 @@ data rust_production_mvp1_fn_add: Symbol = rust_production_mvp1_fn_add
 data rust_surface_fn_item: Symbol = rust_surface_fn_item
 data rust_surface_type_i32: Symbol = rust_surface_type_i32
 data rust_surface_bin_add: Symbol = rust_surface_bin_add
+data rust_binding_fn_add: Symbol = rust_binding_fn_add
+data rust_binding_param_x: Symbol = rust_binding_param_x
+data rust_binding_param_y: Symbol = rust_binding_param_y
+
+data rust_relation_field_production: Symbol = rust_relation_field_production
+data rust_relation_field_emitted: Symbol = rust_relation_field_emitted
+data rust_relation_field_tokens: Symbol = rust_relation_field_tokens
+data rust_relation_field_token_class: Symbol = rust_relation_field_token_class
+data rust_relation_field_binding: Symbol = rust_relation_field_binding
+data rust_relation_field_token_kind: Symbol = rust_relation_field_token_kind
+data rust_relation_token_fixed: Symbol = rust_relation_token_fixed
+data rust_relation_token_bound: Symbol = rust_relation_token_bound
+data rust_relation_rule_mvp1_fn_add: Symbol = rust_relation_rule_mvp1_fn_add
 
 data rust_inhabitant_field_atom: Symbol = rust_inhabitant_field_atom
 data rust_inhabitant_field_facts: Symbol = rust_inhabitant_field_facts
@@ -318,27 +345,29 @@ data rust_tag_scalar_never: Symbol = rust_tag_scalar_never
 data rust_mvp1_source_literal: Symbol = rust_mvp1_source_literal
 data rust_mvp1_source_text_field: Symbol = rust_mvp1_source_text_field
 data rust_mvp1_source_grammar_field: Symbol = rust_mvp1_source_grammar_field
-// Sole MVP-1 token-sequence authority — grammar + serialize_source derive via free_monoid_fold.
-data rust_mvp1_source_token_classes: List<Symbol> = [
-  rust_token_kw_fn,
-  rust_token_ident,
-  rust_token_lparen,
-  rust_token_ident,
-  rust_token_colon,
-  rust_token_ty_i32,
-  rust_token_comma,
-  rust_token_ident,
-  rust_token_colon,
-  rust_token_ty_i32,
-  rust_token_rparen,
-  rust_token_arrow,
-  rust_token_ty_i32,
-  rust_token_lbrace,
-  rust_token_ident,
-  rust_token_plus,
-  rust_token_ident,
-  rust_token_rbrace
-]
+// Sole MVP-1 concrete-syntax authority — grammar and serialize_source project from this relation.
+fn rust_mvp1_concrete_tokens() -> List<RustConcreteSyntaxToken> {
+  [
+    RustFixedToken { token_class: rust_token_kw_fn },
+    RustBoundToken { token_class: rust_token_ident, binding: rust_binding_fn_add },
+    RustFixedToken { token_class: rust_token_lparen },
+    RustBoundToken { token_class: rust_token_ident, binding: rust_binding_param_x },
+    RustFixedToken { token_class: rust_token_colon },
+    RustFixedToken { token_class: rust_token_ty_i32 },
+    RustFixedToken { token_class: rust_token_comma },
+    RustBoundToken { token_class: rust_token_ident, binding: rust_binding_param_y },
+    RustFixedToken { token_class: rust_token_colon },
+    RustFixedToken { token_class: rust_token_ty_i32 },
+    RustFixedToken { token_class: rust_token_rparen },
+    RustFixedToken { token_class: rust_token_arrow },
+    RustFixedToken { token_class: rust_token_ty_i32 },
+    RustFixedToken { token_class: rust_token_lbrace },
+    RustBoundToken { token_class: rust_token_ident, binding: rust_binding_param_x },
+    RustFixedToken { token_class: rust_token_plus },
+    RustBoundToken { token_class: rust_token_ident, binding: rust_binding_param_y },
+    RustFixedToken { token_class: rust_token_rbrace }
+  ]
+}
 data rust_mvp1_source_text: String = "fn add(x: i32, y: i32) -> i32 { x + y }"
 
 data rust_facts_i8: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
@@ -857,16 +886,56 @@ fn rust_mvp1_source_text_authority() -> String {
   rust_mvp1_source_text
 }
 
-// MVP serialize_source — literal symbol + grammar production + token sequence (aligned with source text).
+// MVP serialize_source — literal symbol + grammar production + token relation (aligned with source text).
 // dissolve-on: T-10 literal Node + bidirectional grammar-as-bidir emit/ingest round-trip.
-fn rust_mvp1_source_token_node(token_class: Symbol) -> Node {
-  rust_inhabitant_atom(id: token_class)
+fn rust_concrete_token_class(token: RustConcreteSyntaxToken) -> Symbol {
+  match token {
+    RustFixedToken { token_class: c } => c
+    RustBoundToken { token_class: c, binding: _ } => c
+  }
 }
 
-fn rust_mvp1_positional_token_edge(token_class: Symbol) -> Edge {
+fn rust_concrete_token_node(token: RustConcreteSyntaxToken) -> Node {
+  match token {
+    RustFixedToken { token_class: c } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          rust_named_edge(
+            name: rust_relation_field_token_kind,
+            target: rust_inhabitant_atom(id: rust_relation_token_fixed)
+          ),
+          rust_named_edge(
+            name: rust_relation_field_token_class,
+            target: rust_inhabitant_atom(id: c)
+          )
+        ]
+      }
+    RustBoundToken { token_class: c, binding: b } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          rust_named_edge(
+            name: rust_relation_field_token_kind,
+            target: rust_inhabitant_atom(id: rust_relation_token_bound)
+          ),
+          rust_named_edge(
+            name: rust_relation_field_token_class,
+            target: rust_inhabitant_atom(id: c)
+          ),
+          rust_named_edge(
+            name: rust_relation_field_binding,
+            target: rust_inhabitant_atom(id: b)
+          )
+        ]
+      }
+  }
+}
+
+fn rust_mvp1_positional_token_edge(token: RustConcreteSyntaxToken) -> Edge {
   Edge {
     label: Positional,
-    target: rust_mvp1_source_token_node(token_class: token_class)
+    target: rust_concrete_token_node(token: token)
   }
 }
 
@@ -894,12 +963,12 @@ fn rust_list_append<T>(left: List<T>, right: List<T>) -> List<T> {
 
 fn rust_mvp1_positional_edges_from_token_classes() -> List<Edge> {
   free_monoid_fold(
-    xs: rust_mvp1_source_token_classes,
+    xs: rust_mvp1_concrete_tokens(),
     empty: Empty,
-    cons: fn(acc, token_class) {
+    cons: fn(acc, token) {
       rust_list_snoc_item(
         xs: acc,
-        item: rust_mvp1_positional_token_edge(token_class: token_class)
+        item: rust_mvp1_positional_token_edge(token: token)
       )
     }
   )
@@ -941,7 +1010,8 @@ fn rust_grammar_terminal(token_class: Symbol) -> GrammarExpr {
   Terminal { token_class: token_class }
 }
 
-fn rust_grammar_sequence_fold_step(acc: GrammarExpr, token_class: Symbol) -> GrammarExpr {
+fn rust_grammar_sequence_fold_step(acc: GrammarExpr, token: RustConcreteSyntaxToken) -> GrammarExpr {
+  let token_class = rust_concrete_token_class(token: token)
   if token_class == rust_token_kw_fn {
     acc
   } else {
@@ -954,12 +1024,65 @@ fn rust_grammar_sequence_fold_step(acc: GrammarExpr, token_class: Symbol) -> Gra
 
 fn rust_grammar_sequence_from_token_classes() -> GrammarExpr {
   free_monoid_fold(
-    xs: rust_mvp1_source_token_classes,
+    xs: rust_mvp1_concrete_tokens(),
     empty: rust_grammar_terminal(token_class: rust_token_kw_fn),
-    cons: fn(acc, token_class) {
-      rust_grammar_sequence_fold_step(acc: acc, token_class: token_class)
+    cons: fn(acc, token) {
+      rust_grammar_sequence_fold_step(acc: acc, token: token)
     }
   )
+}
+
+fn rust_mvp1_grammar_relation_row() -> RustGrammarRelationRow {
+  RustGrammarRelationRow {
+    production: rust_grammar_production_mvp1_fn_add(),
+    emitted: rust_mvp1_emitted_add_fn_node(),
+    tokens: rust_mvp1_concrete_tokens()
+  }
+}
+
+fn rust_relation_token_edges(tokens: List<RustConcreteSyntaxToken>) -> List<Edge> {
+  free_monoid_fold(
+    xs: tokens,
+    empty: Empty,
+    cons: fn(acc, token) {
+      rust_list_snoc_item(
+        xs: acc,
+        item: rust_mvp1_positional_token_edge(token: token)
+      )
+    }
+  )
+}
+
+fn rust_grammar_relation_row_node(row: RustGrammarRelationRow) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      rust_named_edge(
+        name: rust_relation_field_production,
+        target: grammar_production_to_node(production: row.production)
+      ),
+      rust_named_edge(name: rust_relation_field_emitted, target: row.emitted),
+      rust_named_edge(
+        name: rust_relation_field_tokens,
+        target: Node {
+          kind: TypeNode { connective: Conj },
+          children: rust_relation_token_edges(tokens: row.tokens)
+        }
+      )
+    ]
+  }
+}
+
+fn rust_mvp1_translation_rules_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      rust_named_edge(
+        name: rust_relation_rule_mvp1_fn_add,
+        target: rust_grammar_relation_row_node(row: rust_mvp1_grammar_relation_row())
+      )
+    ]
+  }
 }
 
 fn rust_mvp1_target_model() -> Node {
@@ -975,6 +1098,10 @@ fn rust_mvp1_target_model() -> Node {
       rust_named_edge(
         name: target_model_edge_declared_inhabitants,
         target: rust_declared_inhabitants_root()
+      ),
+      rust_named_edge(
+        name: target_model_edge_translation_rules,
+        target: rust_mvp1_translation_rules_node()
       ),
       rust_named_edge(
         name: target_model_edge_serialize_emitted,
