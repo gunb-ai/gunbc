@@ -234,13 +234,40 @@ pub fn select_affected_gates_for_binary_shim(
 }
 
 /// Structural mirror of `v4.lens.subsumption.DiffId` for Lens-CI rerun evidence.
-pub type DissolutionDiffId = String;
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct DissolutionDiffId {
+    pub id: String,
+}
 
 /// Structural mirror of `v4.lens.subsumption.TestClaimId` for Lens-CI rerun evidence.
-pub type DissolutionTestClaimId = String;
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct DissolutionTestClaimId {
+    pub id: String,
+}
 
 /// Structural mirror of `v4.lens.subsumption.ProducerStageId` for Lens-CI row evidence.
-pub type DissolutionProducerStageId = String;
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct DissolutionProducerStageId {
+    pub id: String,
+}
+
+impl From<&str> for DissolutionDiffId {
+    fn from(id: &str) -> Self {
+        Self { id: id.into() }
+    }
+}
+
+impl From<&str> for DissolutionTestClaimId {
+    fn from(id: &str) -> Self {
+        Self { id: id.into() }
+    }
+}
+
+impl From<&str> for DissolutionProducerStageId {
+    fn from(id: &str) -> Self {
+        Self { id: id.into() }
+    }
+}
 
 /// Structural mirror of `v4.lens.subsumption.SubsumptionVerification`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -259,45 +286,6 @@ pub struct DissolutionSubsumptionRuntimeRow {
     pub root_fix: DissolutionDiffId,
     pub subsumed_fixes: BTreeSet<DissolutionDiffId>,
     pub verification: SubsumptionVerificationRuntime,
-}
-
-/// Typed Lens-CI host rows for `v4.lens.subsumption.DissolutionSubsumption`.
-pub fn lens_ci_dissolution_subsumption_rows() -> Vec<DissolutionSubsumptionRuntimeRow> {
-    vec![
-        affected_set_subsumption_runtime_row(),
-        concept_home_rewrite_subsumption_runtime_row(),
-    ]
-}
-
-/// Runtime consumer row for `affected_set_irt1_subsumption`.
-pub fn affected_set_subsumption_runtime_row() -> DissolutionSubsumptionRuntimeRow {
-    DissolutionSubsumptionRuntimeRow {
-        root_fix: "affected_set_irt1_frontier_root_fix".into(),
-        subsumed_fixes: BTreeSet::from([
-            "affected_set_hash_receipt_leaf_fix".into(),
-            "affected_set_boundary_receipt_leaf_fix".into(),
-            "affected_set_dimension_receipt_leaf_fix".into(),
-            "affected_set_propagation_receipt_leaf_fix".into(),
-            "affected_set_frontier_receipt_leaf_fix".into(),
-        ]),
-        verification: SubsumptionVerificationRuntime::MechanicalReverification {
-            test_claim: "affected_set_irt1_mechanical_reverification_claim".into(),
-        },
-    }
-}
-
-/// Runtime consumer row for `concept_home_rewrite_subsumption`.
-pub fn concept_home_rewrite_subsumption_runtime_row() -> DissolutionSubsumptionRuntimeRow {
-    DissolutionSubsumptionRuntimeRow {
-        root_fix: "concept_home_rewrite_root_fix".into(),
-        subsumed_fixes: BTreeSet::from([
-            "wrong_home_alias_leaf_fix".into(),
-            "duplicate_home_leaf_fix".into(),
-        ]),
-        verification: SubsumptionVerificationRuntime::ProducerStageDerivation {
-            derivation_path: vec!["concept_home_producer_stage".into()],
-        },
-    }
 }
 
 /// Lens-CI evidence from applying `root_fix` and rerunning the lens suite for one TestClaim row.
@@ -454,6 +442,18 @@ fn topo_sort_subset(
 mod tests {
     use super::*;
 
+    fn diff_id(id: &str) -> DissolutionDiffId {
+        DissolutionDiffId::from(id)
+    }
+
+    fn test_claim_id(id: &str) -> DissolutionTestClaimId {
+        DissolutionTestClaimId::from(id)
+    }
+
+    fn producer_stage_id(id: &str) -> DissolutionProducerStageId {
+        DissolutionProducerStageId::from(id)
+    }
+
     fn demo_ci_dag() -> CiWorkflowDagInput {
         CiWorkflowDagInput {
             gates: vec![
@@ -483,11 +483,40 @@ mod tests {
         }
     }
 
+    fn affected_set_subsumption_row_fixture() -> DissolutionSubsumptionRuntimeRow {
+        DissolutionSubsumptionRuntimeRow {
+            root_fix: diff_id("affected_set_irt1_frontier_root_fix"),
+            subsumed_fixes: BTreeSet::from([
+                diff_id("affected_set_hash_receipt_leaf_fix"),
+                diff_id("affected_set_boundary_receipt_leaf_fix"),
+                diff_id("affected_set_dimension_receipt_leaf_fix"),
+                diff_id("affected_set_propagation_receipt_leaf_fix"),
+                diff_id("affected_set_frontier_receipt_leaf_fix"),
+            ]),
+            verification: SubsumptionVerificationRuntime::MechanicalReverification {
+                test_claim: test_claim_id("affected_set_irt1_mechanical_reverification_claim"),
+            },
+        }
+    }
+
+    fn producer_stage_subsumption_row_fixture() -> DissolutionSubsumptionRuntimeRow {
+        DissolutionSubsumptionRuntimeRow {
+            root_fix: diff_id("concept_home_rewrite_root_fix"),
+            subsumed_fixes: BTreeSet::from([
+                diff_id("wrong_home_alias_leaf_fix"),
+                diff_id("duplicate_home_leaf_fix"),
+            ]),
+            verification: SubsumptionVerificationRuntime::ProducerStageDerivation {
+                derivation_path: vec![producer_stage_id("concept_home_producer_stage")],
+            },
+        }
+    }
+
     fn successful_affected_set_reverification() -> MechanicalReverificationRun {
-        let row = affected_set_subsumption_runtime_row();
+        let row = affected_set_subsumption_row_fixture();
         MechanicalReverificationRun {
-            test_claim: "affected_set_irt1_mechanical_reverification_claim".into(),
-            applied_root_fix: "affected_set_irt1_frontier_root_fix".into(),
+            test_claim: test_claim_id("affected_set_irt1_mechanical_reverification_claim"),
+            applied_root_fix: diff_id("affected_set_irt1_frontier_root_fix"),
             findings_before: row.subsumed_fixes,
             findings_after: BTreeSet::new(),
         }
@@ -728,12 +757,8 @@ mod tests {
     }
 
     #[test]
-    fn lens_ci_subsumption_rows_include_mechanical_runtime_row() {
-        let rows = lens_ci_dissolution_subsumption_rows();
-        let row = rows
-            .iter()
-            .find(|row| row.root_fix == "affected_set_irt1_frontier_root_fix")
-            .expect("affected-set subsumption row");
+    fn mechanical_row_fixture_uses_nominal_runtime_ids() {
+        let row = affected_set_subsumption_row_fixture();
         let SubsumptionVerificationRuntime::MechanicalReverification { test_claim } =
             &row.verification
         else {
@@ -741,27 +766,27 @@ mod tests {
         };
         assert_eq!(
             test_claim,
-            "affected_set_irt1_mechanical_reverification_claim"
+            &test_claim_id("affected_set_irt1_mechanical_reverification_claim")
         );
         assert!(row
             .subsumed_fixes
-            .contains("affected_set_hash_receipt_leaf_fix"));
+            .contains(&diff_id("affected_set_hash_receipt_leaf_fix")));
     }
 
     #[test]
     fn producer_stage_rows_preserve_derivation_path() {
-        let row = concept_home_rewrite_subsumption_runtime_row();
+        let row = producer_stage_subsumption_row_fixture();
         assert_eq!(
             row.verification,
             SubsumptionVerificationRuntime::ProducerStageDerivation {
-                derivation_path: vec!["concept_home_producer_stage".into()]
+                derivation_path: vec![producer_stage_id("concept_home_producer_stage")]
             }
         );
     }
 
     #[test]
     fn mechanical_reverification_accepts_when_subsumed_fixes_clear() {
-        let row = affected_set_subsumption_runtime_row();
+        let row = affected_set_subsumption_row_fixture();
         let run = successful_affected_set_reverification();
         assert_eq!(verify_mechanical_reverification(&row, &run), Ok(()));
         assert_eq!(
@@ -772,15 +797,15 @@ mod tests {
 
     #[test]
     fn mechanical_reverification_rejects_surviving_subsumed_fix() {
-        let row = affected_set_subsumption_runtime_row();
+        let row = affected_set_subsumption_row_fixture();
         let mut run = successful_affected_set_reverification();
         run.findings_after
-            .insert("affected_set_hash_receipt_leaf_fix".into());
+            .insert(diff_id("affected_set_hash_receipt_leaf_fix"));
         assert_eq!(
             verify_mechanical_reverification(&row, &run),
             Err(
                 MechanicalReverificationError::SubsumedFixStillPresentAfter {
-                    fix: "affected_set_hash_receipt_leaf_fix".into()
+                    fix: diff_id("affected_set_hash_receipt_leaf_fix")
                 }
             )
         );
@@ -788,7 +813,7 @@ mod tests {
             mechanical_reverification_verdict(&row, &run),
             MechanicalReverificationVerdict::NotVerified {
                 diagnostic: MechanicalReverificationError::SubsumedFixStillPresentAfter {
-                    fix: "affected_set_hash_receipt_leaf_fix".into()
+                    fix: diff_id("affected_set_hash_receipt_leaf_fix")
                 }
             }
         );
@@ -796,21 +821,21 @@ mod tests {
 
     #[test]
     fn mechanical_reverification_rejects_unobserved_subsumed_fix() {
-        let row = affected_set_subsumption_runtime_row();
+        let row = affected_set_subsumption_row_fixture();
         let mut run = successful_affected_set_reverification();
         run.findings_before
-            .remove("affected_set_frontier_receipt_leaf_fix");
+            .remove(&diff_id("affected_set_frontier_receipt_leaf_fix"));
         assert_eq!(
             verify_mechanical_reverification(&row, &run),
             Err(MechanicalReverificationError::SubsumedFixMissingBefore {
-                fix: "affected_set_frontier_receipt_leaf_fix".into()
+                fix: diff_id("affected_set_frontier_receipt_leaf_fix")
             })
         );
         assert_eq!(
             mechanical_reverification_verdict(&row, &run),
             MechanicalReverificationVerdict::Unverifiable {
                 diagnostic: MechanicalReverificationError::SubsumedFixMissingBefore {
-                    fix: "affected_set_frontier_receipt_leaf_fix".into()
+                    fix: diff_id("affected_set_frontier_receipt_leaf_fix")
                 }
             }
         );
@@ -818,35 +843,35 @@ mod tests {
 
     #[test]
     fn mechanical_reverification_rejects_wrong_claim_or_root() {
-        let row = affected_set_subsumption_runtime_row();
+        let row = affected_set_subsumption_row_fixture();
         let mut wrong_claim = successful_affected_set_reverification();
-        wrong_claim.test_claim = "other_claim".into();
+        wrong_claim.test_claim = test_claim_id("other_claim");
         assert_eq!(
             verify_mechanical_reverification(&row, &wrong_claim),
             Err(MechanicalReverificationError::TestClaimMismatch {
-                expected: "affected_set_irt1_mechanical_reverification_claim".into(),
-                observed: "other_claim".into(),
+                expected: test_claim_id("affected_set_irt1_mechanical_reverification_claim"),
+                observed: test_claim_id("other_claim"),
             })
         );
 
         let mut wrong_root = successful_affected_set_reverification();
-        wrong_root.applied_root_fix = "other_root".into();
+        wrong_root.applied_root_fix = diff_id("other_root");
         assert_eq!(
             verify_mechanical_reverification(&row, &wrong_root),
             Err(MechanicalReverificationError::RootFixMismatch {
-                expected: "affected_set_irt1_frontier_root_fix".into(),
-                observed: "other_root".into(),
+                expected: diff_id("affected_set_irt1_frontier_root_fix"),
+                observed: diff_id("other_root"),
             })
         );
     }
 
     #[test]
     fn mechanical_reverification_rejects_producer_stage_rows() {
-        let row = concept_home_rewrite_subsumption_runtime_row();
+        let row = producer_stage_subsumption_row_fixture();
         let run = MechanicalReverificationRun {
-            test_claim: "concept_home_rewrite_claim".into(),
-            applied_root_fix: "concept_home_rewrite_root_fix".into(),
-            findings_before: BTreeSet::from(["wrong_home_alias_leaf_fix".into()]),
+            test_claim: test_claim_id("concept_home_rewrite_claim"),
+            applied_root_fix: diff_id("concept_home_rewrite_root_fix"),
+            findings_before: BTreeSet::from([diff_id("wrong_home_alias_leaf_fix")]),
             findings_after: BTreeSet::new(),
         };
         assert_eq!(
