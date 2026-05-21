@@ -176,7 +176,7 @@ Recommendation: **B' — Separate case: v2 DAG artifact backend.**
 
 Do not extend sunny-deer-191's parser/pattern lane for this finding. Their lane should keep closing generic type application and nested-pattern capability. This audit should route to a separate v2 DAG artifact backend design/implementation lane if the project still needs `--target dag` to be a hard viability gate before v4 owns a native graph artifact.
 
-If the intended CI semantics are only "parse/resolve posture" while DAG emission remains known-unbounded, the live gates should stop calling `--target dag` as the discriminating command and should use a typed resolve/validation receipt instead. Today, the CI v4 bootstrap step in `.github/workflows/ci.yml` invokes the full `--target dag` compile through its bootstrap command, and the interim preflight helper at `scripts/v2-run-preflight.sh` invokes the same `--target dag` compile directly; those gates are measuring serializer blowup, not zip-fold substrate soundness.
+If the intended CI semantics are only "parse/resolve posture" while DAG emission remains known-unbounded, the live gates should stop calling `--target dag` as the discriminating command and should use a typed resolve/validation receipt instead. Today, the load-bearing CI v4 bootstrap step in `.github/workflows/ci.yml` invokes the full `--target dag` compile through its bootstrap command, and the interim preflight helper at `scripts/v2-run-preflight.sh` invokes that same compile when it is run without `V2_PREFLIGHT_SKIP_COMPILE=1`; those paths measure serializer blowup, not zip-fold substrate soundness.
 
 ## PR #3494 Status Implication
 
