@@ -69,6 +69,7 @@ import v4.std.diagnostic {
   Unavailable
 }
 import v4.std.node { Node, Symbol }
+import v4.std.refinement { Refined, refined_base }
 import v4.std.witness { Holds, Violates, Witness }
 
 
@@ -76,7 +77,7 @@ data complexity_reason_unmodeled_cost_projection: Symbol = complexity_reason_unm
 data complexity_projection_virtual_file: Symbol = complexity_projection_virtual_file
 
 // 🟢 coproduct dissolution — T-12-COMPLEXITY-PROJECTION.
-type ComplexityVariables = List<SizeVariable>
+type ComplexityVariables = Refined<List<SizeVariable>>
 
 // 🟢 coproduct dissolution — T-12-COMPLEXITY-PROJECTION.
 type SizeIndexedAsymptoticClass
@@ -102,14 +103,14 @@ fn unknown_complexity() -> ComplexityBound {
 }
 
 fn single_complexity_variable(size_var: SizeVariable) -> ComplexityVariables {
-  [size_var]
+  Refined { base: [size_var] }
 }
 
 fn composite_complexity_variables(
   lhs: ComplexityVariables,
   rhs: ComplexityVariables
 ) -> ComplexityVariables {
-  concat(lhs, rhs)
+  Refined { base: concat(refined_base(r: lhs), refined_base(r: rhs)) }
 }
 
 fn sized_complexity(
@@ -276,8 +277,26 @@ fn asymptotic_class_from_sized_class(class: SizeIndexedAsymptoticClass) -> Asymp
 }
 
 fn complexity_bound_dominates(a: ComplexityBound, b: ComplexityBound) -> Bool {
-  asymptotic_class_dominates(
-    a: complexity_bound_class(b: a),
-    b: complexity_bound_class(b: b)
-  )
+  match a {
+    UnknownComplexity { diagnostic: _ } => true
+    ConstantComplexity =>
+      match b {
+        ConstantComplexity => true
+        _ => false
+      }
+    SizedComplexity { class: ac, variables: av } =>
+      match b {
+        UnknownComplexity { diagnostic: _ } => false
+        ConstantComplexity => true
+        SizedComplexity { class: bc, variables: bv } =>
+          if refined_base(r: av) == refined_base(r: bv) {
+            asymptotic_class_dominates(
+              a: asymptotic_class_from_sized_class(class: ac),
+              b: asymptotic_class_from_sized_class(class: bc)
+            )
+          } else {
+            false
+          }
+      }
+  }
 }

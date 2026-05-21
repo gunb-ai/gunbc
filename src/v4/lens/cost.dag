@@ -319,16 +319,15 @@ fn nat_dominates(a: Nat, b: Nat) -> Bool {
   }
 }
 
-fn add_nonzero_nat(a: NonZeroNat, b: NonZeroNat) -> NonZeroNat {
-  NonZeroNat { prev: Succ { prev: nat_add(a: a.prev, b: b.prev) } }
-}
-
 fn add_polynomial_degree(a: PolynomialDegree, b: PolynomialDegree) -> PolynomialDegree {
   PolynomialDegree {
-    predecessor_after_linear: add_nonzero_nat(
-      a: a.predecessor_after_linear,
-      b: b.predecessor_after_linear
-    )
+    predecessor_after_linear: NonZeroNat {
+      prev: Succ {
+        prev: Succ {
+          prev: nat_add(a: a.predecessor_after_linear.prev, b: b.predecessor_after_linear.prev)
+        }
+      }
+    }
   }
 }
 
@@ -346,10 +345,13 @@ fn increment_polylog_exponent(e: PolyLogExponent) -> PolyLogExponent {
 
 fn add_polylog_exponent(a: PolyLogExponent, b: PolyLogExponent) -> PolyLogExponent {
   PolyLogExponent {
-    predecessor_after_log: add_nonzero_nat(
-      a: a.predecessor_after_log,
-      b: b.predecessor_after_log
-    )
+    predecessor_after_log: NonZeroNat {
+      prev: Succ {
+        prev: Succ {
+          prev: nat_add(a: a.predecessor_after_log.prev, b: b.predecessor_after_log.prev)
+        }
+      }
+    }
   }
 }
 
