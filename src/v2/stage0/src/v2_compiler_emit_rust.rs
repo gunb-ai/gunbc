@@ -10096,29 +10096,38 @@ pub fn wrap_rust_record_field_value(
     struct_name: &String,
     field_name: &String,
 ) -> String {
-    let is_bounded_lattice_field = struct_name.contains("BoundedLattice");
-    if rust_record_field_needs_fn_rc(scope.clone(), struct_name.clone(), field_name.clone()) {
-        v2_rt::concat(v2_rt::concat("Rc::new(".to_string(), raw), ")".to_string())
-    } else if (is_bounded_lattice_field
-        && ((field_name.clone().as_str() == "meet".to_string().as_str())
-            || (field_name.clone().as_str() == "join".to_string().as_str())))
     {
-        v2_rt::concat(v2_rt::concat("Rc::new(".to_string(), raw), ")".to_string())
-    } else if rust_record_field_needs_box(
-        &scope,
-        emit_info,
-        shared_types,
-        struct_name.clone(),
-        field_name.clone(),
-    ) {
-        v2_rt::concat(v2_rt::concat("Box::new(".to_string(), raw), ")".to_string())
-    } else if (is_bounded_lattice_field
-        && ((field_name.clone().as_str() == "top".to_string().as_str())
-            || (field_name.clone().as_str() == "bottom".to_string().as_str())))
-    {
-        v2_rt::concat(v2_rt::concat("Box::new(".to_string(), raw), ")".to_string())
-    } else {
-        raw
+        let is_bounded_lattice_field =
+            v2_rt::contains(struct_name.clone(), "BoundedLattice".to_string());
+        if rust_record_field_needs_fn_rc(scope.clone(), struct_name.clone(), field_name.clone()) {
+            v2_rt::concat(v2_rt::concat("Rc::new(".to_string(), raw), ")".to_string())
+        } else {
+            if (is_bounded_lattice_field.clone()
+                && ((field_name.clone().as_str() == "meet".to_string().as_str())
+                    || (field_name.clone().as_str() == "join".to_string().as_str())))
+            {
+                v2_rt::concat(v2_rt::concat("Rc::new(".to_string(), raw), ")".to_string())
+            } else {
+                if rust_record_field_needs_box(
+                    &scope,
+                    emit_info,
+                    shared_types,
+                    struct_name.clone(),
+                    field_name.clone(),
+                ) {
+                    v2_rt::concat(v2_rt::concat("Box::new(".to_string(), raw), ")".to_string())
+                } else {
+                    if (is_bounded_lattice_field.clone()
+                        && ((field_name.clone().as_str() == "top".to_string().as_str())
+                            || (field_name.clone().as_str() == "bottom".to_string().as_str())))
+                    {
+                        v2_rt::concat(v2_rt::concat("Box::new(".to_string(), raw), ")".to_string())
+                    } else {
+                        raw
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -14632,18 +14641,23 @@ pub fn emit_data_def(
                     );
                     if (top_type_name.clone().as_str() == "".to_string().as_str()) {
                         raw_ty_str.clone()
-                    } else if (raw_ty_str.clone().as_str()
-                        == "Rc<BoundedLattice>".to_string().as_str())
-                    {
-                        v2_rt::concat(
-                            v2_rt::concat("Rc<BoundedLattice<".to_string(), top_type_name.clone()),
-                            ">>".to_string(),
-                        )
                     } else {
-                        v2_rt::concat(
-                            v2_rt::concat("BoundedLattice<".to_string(), top_type_name.clone()),
-                            ">".to_string(),
-                        )
+                        if (raw_ty_str.clone().as_str()
+                            == "Rc<BoundedLattice>".to_string().as_str())
+                        {
+                            v2_rt::concat(
+                                v2_rt::concat(
+                                    "Rc<BoundedLattice<".to_string(),
+                                    top_type_name.clone(),
+                                ),
+                                ">>".to_string(),
+                            )
+                        } else {
+                            v2_rt::concat(
+                                v2_rt::concat("BoundedLattice<".to_string(), top_type_name.clone()),
+                                ">".to_string(),
+                            )
+                        }
                     }
                 }
                 None => raw_ty_str.clone(),
