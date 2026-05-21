@@ -16,7 +16,7 @@
 //! hand-Rust receipt).
 
 use v3_compiler::parse_for_test;
-use v3_compiler::parse_surface::{SurfaceItem, SurfaceType};
+use v3_compiler::parse_surface::SurfaceItem;
 use v3_compiler::tokenize_for_test;
 
 const REGISTRY_DAG: &str = include_str!("../../../../v4/lens/registry.dag");
