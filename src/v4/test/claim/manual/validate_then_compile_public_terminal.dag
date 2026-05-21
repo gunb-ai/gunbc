@@ -19,8 +19,10 @@ import v4.compiler.compile {
   TranslateResult,
   Validated,
   compile_lens_gate_rejected,
+  compile_lens_gate_rejected_diagnostic,
   validate_then_compile
 }
+import v4.compiler.infer { InferredTree }
 import v4.test.claim.manual.infer_ground_add_mvp { fixture_add_resolved_tree }
 import v4.std.diagnostic {
   Accepted,
@@ -51,7 +53,7 @@ data rust_language_model_stub: Node = Node {
 data rejecting_lens_gate_at: Symbol = rejecting_lens_gate_at
 
 
-fn always_reject_lens_gate(_source: Node) -> Outcome<Witness<Node>> {
+fn always_reject_lens_gate(_tree: InferredTree) -> Outcome<Witness<Node>> {
   outcome_rejected(
     compile_lens_gate_rejected_diagnostic(
       at: PortLocus { port: rejecting_lens_gate_at }

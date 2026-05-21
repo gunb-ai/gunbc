@@ -6,7 +6,7 @@
 //       compile_lens_gate_rejected, compile_eval_not_realized, compile_ingest_staging,
 //       compile_pipeline_not_realized_diagnostic, compile_lens_gate_rejected_diagnostic,
 //       compile_eval_not_realized_diagnostic, apply_lens, run_required_lens_gates,
-//       grounding_sanity_lens, compile, validate_then_compile.
+//       grounding_sanity_lens, compile_inferred, compile, validate_then_compile.
 // Consumes: compiler/04_infer.dag, compiler/05_emit.dag, std/collection.dag, std/diagnostic.dag,
 //           std/node.dag, std/text.dag, std/witness.dag.
 // Status: Wave-5-A — validate_then_compile: infer once → lens gates on InferredTree → compile_inferred (TranslateTo: emit).
@@ -18,14 +18,12 @@ module v4.compiler.compile
 
 import v4.compiler.emit { emit }
 import v4.compiler.infer { infer, InferredTree }
-import v4.compiler.resolve { ResolvedTree }
 import v4.std.collection { List }
 import v4.std.diagnostic {
   Accepted,
   Diagnostic,
   ExternalContractUnknown,
   Locus,
-  NonEmptyDiagnostics,
   Outcome,
   PortLocus,
   Rejected,
@@ -34,13 +32,11 @@ import v4.std.diagnostic {
   bind_outcome_accepted,
   diagnostics_singleton,
   outcome_accepted,
-  outcome_rejected,
-  outcome_with_diagnostics,
-  rejected_with_pending
+  outcome_rejected
 }
 import v4.std.node { Node, Symbol }
 import v4.std.text { String }
-import v4.std.witness { Holds, Violates, Witness }
+import v4.std.witness { Holds, Witness }
 
 
 // 🟢 grounded — post-normalize substrate graph; Theme-A #9 forward until named ModelCore bundle lands.
@@ -79,9 +75,9 @@ type CompileOutput
   | EvalResult { value: Node }
 
 
-// 🟢 grounded — T-23 forward home for apply_lens; migrates to v4.lens.application when filled.
+// 🟢 grounded — T-23 forward home for apply_lens; gate consumes InferredTree (P3 lens side-channel).
 type Lens {
-  gate: fn(CoreNode) -> Outcome<Witness<Node>>
+  gate: fn(InferredTree) -> Outcome<Witness<Node>>
 }
 
 
@@ -140,12 +136,12 @@ fn compile_eval_not_realized_diagnostic(at: Locus) -> Diagnostic {
 // T-23 migration stub: identical contract to v4.lens.application apply_lens when that module fills.
 fn apply_lens(
   lens: Lens,
-  source: CoreNode,
+  inferred: InferredTree,
   mode: LensApplicationMode
 ) -> Outcome<Witness<Node>> {
   match mode {
-    LensEnforce => lens.gate(source: source)
-    LensIntrospect => lens.gate(source: source)
+    LensEnforce => lens.gate(tree: inferred)
+    LensIntrospect => lens.gate(tree: inferred)
   }
 }
 
@@ -165,7 +161,7 @@ fn append_lens_gate_witness(
 
 
 fn run_required_lens_gates(
-  source: CoreNode,
+  inferred: InferredTree,
   lenses: List<Lens>
 ) -> Outcome<List<LensGateWitness>> {
   fold(
@@ -178,7 +174,7 @@ fn run_required_lens_gates(
           bind_outcome_accepted(
             od: od,
             inner: bind_outcome(
-              o: apply_lens(lens: lens, source: source, mode: LensEnforce),
+              o: apply_lens(lens: lens, inferred: inferred, mode: LensEnforce),
               f: fn(w) {
                 outcome_accepted(
                   value: append_lens_gate_witness(
@@ -195,8 +191,8 @@ fn run_required_lens_gates(
 }
 
 
-fn grounding_sanity_gate(source: CoreNode) -> Outcome<Witness<Node>> {
-  outcome_accepted(Holds { value: source })
+fn grounding_sanity_gate(tree: InferredTree) -> Outcome<Witness<Node>> {
+  outcome_accepted(Holds { value: tree.root })
 }
 
 
@@ -205,29 +201,15 @@ data grounding_sanity_lens: Lens = Lens {
 }
 
 
-fn compile_translate(
-  source: CoreNode,
-  target_lang: LanguageModel
-) -> Outcome<TargetSource> {
-  bind_outcome(
-    o: infer(tree: source),
-    f: fn(tree: InferredTree) {
-      emit(tree: tree, target: target_lang)
-    }
-  )
-}
-
-
-// Internal/advanced compile-core (P3 commitment 6). Not the public terminal — use validate_then_compile.
-fn compile(
-  source: CoreNode,
+fn compile_inferred(
+  inferred: InferredTree,
   input_lang: LanguageModel,
   mode: CompileMode
 ) -> Outcome<CompileOutput> {
   match mode {
     TranslateTo { target_lang } =>
       bind_outcome(
-        o: compile_translate(source: source, target: target_lang),
+        o: emit(tree: inferred, target: target_lang),
         f: fn(target_source: TargetSource) {
           outcome_accepted(TranslateResult { source: target_source })
         }
@@ -242,6 +224,21 @@ fn compile(
 }
 
 
+// Internal/advanced compile-core (P3 commitment 6). Not the public terminal — use validate_then_compile.
+fn compile(
+  source: CoreNode,
+  input_lang: LanguageModel,
+  mode: CompileMode
+) -> Outcome<CompileOutput> {
+  bind_outcome(
+    o: infer(tree: source),
+    f: fn(inferred: InferredTree) {
+      compile_inferred(inferred: inferred, input_lang: input_lang, mode: mode)
+    }
+  )
+}
+
+
 fn validated_from_compile_output(
   output: CompileOutput,
   lens_witnesses: List<LensGateWitness>
@@ -253,7 +250,7 @@ fn validated_from_compile_output(
 }
 
 
-// Public terminal (P3 commitment 6): required-lens gating before compile-core.
+// Public terminal (P3 commitment 6): infer → required-lens gates on InferredTree → compile_inferred.
 fn validate_then_compile(
   source: CoreNode,
   input_lang: LanguageModel,
@@ -261,16 +258,25 @@ fn validate_then_compile(
   mode: CompileMode
 ) -> Outcome<Validated<CompileOutput>> {
   bind_outcome(
-    o: run_required_lens_gates(source: source, lenses: lenses),
-    f: fn(lens_witnesses: List<LensGateWitness>) {
+    o: infer(tree: source),
+    f: fn(inferred: InferredTree) {
       bind_outcome(
-        o: compile(source: source, input_lang: input_lang, mode: mode),
-        f: fn(output: CompileOutput) {
-          outcome_accepted(
-            value: validated_from_compile_output(
-              output: output,
-              lens_witnesses: lens_witnesses
-            )
+        o: run_required_lens_gates(inferred: inferred, lenses: lenses),
+        f: fn(lens_witnesses: List<LensGateWitness>) {
+          bind_outcome(
+            o: compile_inferred(
+              inferred: inferred,
+              input_lang: input_lang,
+              mode: mode
+            ),
+            f: fn(output: CompileOutput) {
+              outcome_accepted(
+                value: validated_from_compile_output(
+                  output: output,
+                  lens_witnesses: lens_witnesses
+                )
+              )
+            }
           )
         }
       )
