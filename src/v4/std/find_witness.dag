@@ -23,7 +23,7 @@ import v4.std.diagnostic {
   Unavailable,
   outcome_rejected
 }
-import v4.std.node { Edge, Node, NodeFold, Symbol, TypeNode, Atom, well_formed }
+import v4.std.node { Edge, Node, NodeFold, Symbol, TypeNode, Atom, fold_node, well_formed }
 import v4.std.witness { StructuralPropertyWitness }
 data find_witness_reason_no_candidate: Symbol = find_witness_reason_no_candidate
 data find_witness_reason_ambiguous_candidate: Symbol = find_witness_reason_ambiguous_candidate
@@ -82,23 +82,17 @@ data exact_structural_atom_leaf: Symbol = exact_structural_atom_leaf
 // 🟡 coproduct dissolution — scaffold:exact-structural-preservation-distinct-node-mvp · dissolve-on: W-T-10 canonical Node grounding algebra from source/target declarations.
 fn exact_structural_canonical_init(n: Node) -> Node {
   Node {
-    kind: n.kind,
-    children: []
-  }
-}
-fn exact_structural_canonical_child(child: Node) -> Node {
-  Node {
-    kind: match child.kind {
+    kind: match n.kind {
       TypeNode { connective: Atom { identity: _ } } => TypeNode { connective: Atom { identity: exact_structural_atom_leaf } }
-      _ => child.kind
+      _ => n.kind
     },
-    children: child.children
+    children: []
   }
 }
 fn exact_structural_canonical_step(acc: Node, edge: Edge, child: Node) -> Node {
   Node {
     kind: acc.kind,
-    children: list_push(acc.children, Edge { label: edge.label, target: exact_structural_canonical_child(child: child) })
+    children: list_push(acc.children, Edge { label: edge.label, target: child })
   }
 }
 fn exact_structural_canonical_algebra() -> NodeFold<Node> {
