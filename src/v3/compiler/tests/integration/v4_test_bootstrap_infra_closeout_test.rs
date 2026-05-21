@@ -372,17 +372,35 @@ fn claim_anchor_values<'a>(modules: &[&'a SurfaceModule]) -> BTreeSet<&'a str> {
         .filter_map(|item| match item {
             SurfaceItem::Data {
                 ty: SurfaceType::Named { name: ty_name, .. },
-                body: Some(SurfaceExpr::VariantRecord { fields, .. }),
+                body: Some(body),
                 ..
-            } if ty_name == "TestClaim" => match record_field_expr(fields, "t19_anchor") {
-                SurfaceExpr::Var { name, .. } => Some(name.as_str()),
-                other => {
-                    panic!("TestClaim.t19_anchor must be a discriminant var, got {other:?}")
-                }
-            },
+            } if ty_name == "TestClaim" => Some(claim_t19_anchor_name(body)),
             _ => None,
         })
         .collect()
+}
+
+fn claim_t19_anchor_name(body: &SurfaceExpr) -> &str {
+    let anchor_expr = match body {
+        SurfaceExpr::VariantRecord { fields, .. } => record_field_expr(fields, "t19_anchor"),
+        SurfaceExpr::Call { target, args, .. } if target == "arity_rejection_claim" => {
+            let SurfaceExpr::Record { fields, .. } = args
+                .first()
+                .unwrap_or_else(|| panic!("arity_rejection_claim must take one named-arg record"))
+            else {
+                panic!(
+                    "arity_rejection_claim args must desugar to Record, got {:?}",
+                    args.first()
+                );
+            };
+            record_field_expr(fields, "anchor")
+        }
+        other => panic!("TestClaim data body must be variant record or arity_rejection_claim, got {other:?}"),
+    };
+    match anchor_expr {
+        SurfaceExpr::Var { name, .. } => name.as_str(),
+        other => panic!("TestClaim.t19_anchor must be a discriminant var, got {other:?}"),
+    }
 }
 
 fn record_field_expr<'a>(fields: &'a [SurfaceRecordField], name: &str) -> &'a SurfaceExpr {
