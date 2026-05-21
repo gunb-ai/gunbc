@@ -63,6 +63,7 @@ type TargetBundleChildLookup
   = BundleChildMissing
   | BundleChildFound { value: Node }
   | BundleChildDuplicate
+  | BundleChildInvalidEdge
 data target_model_edge_selection_policy: Symbol = target_model_edge_selection_policy
 data target_model_edge_declared_inhabitants: Symbol = target_model_edge_declared_inhabitants
 data target_model_edge_serialize_emitted: Symbol = target_model_edge_serialize_emitted
@@ -94,19 +95,22 @@ fn target_bundle_child_lookup_step(
   e: Edge,
   edge_name: Symbol
 ) -> TargetBundleChildLookup {
-  match e.label {
-    Named { name: n } =>
-      if n == edge_name {
-        match acc {
-          BundleChildMissing =>
-            BundleChildFound { value: e.target }
-          BundleChildFound { value: _ } => BundleChildDuplicate
-          BundleChildDuplicate => BundleChildDuplicate
-        }
-      } else {
-        acc
+  match acc {
+    BundleChildInvalidEdge | BundleChildDuplicate => acc
+    BundleChildMissing | BundleChildFound { value: _ } =>
+      match e.label {
+        Named { name: n } =>
+          if n == edge_name {
+            match acc {
+              BundleChildMissing =>
+                BundleChildFound { value: e.target }
+              BundleChildFound { value: _ } => BundleChildDuplicate
+            }
+          } else {
+            acc
+          }
+        Positional => BundleChildInvalidEdge
       }
-    Positional => acc
   }
 }
 fn translate_target_source_not_realized_diagnostic() -> Diagnostic {
@@ -147,6 +151,8 @@ fn target_bundle_child(target: TargetModel, edge_name: Symbol) -> Outcome<Node> 
               edge_name: edge_name
             )
           )
+        BundleChildInvalidEdge =>
+          outcome_rejected(translate_target_bundle_malformed_diagnostic(target: target))
       }
     _ =>
       outcome_rejected(translate_target_bundle_malformed_diagnostic(target: target))
