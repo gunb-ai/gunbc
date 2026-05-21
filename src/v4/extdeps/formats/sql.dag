@@ -8,6 +8,7 @@
 module v4.extdeps.formats.sql
 
 
+import v4.std.algebra { free_monoid_fold }
 import v4.std.collection { List }
 import v4.std.nat { Nat }
 import v4.std.cardinality { NonZeroNat }
@@ -269,6 +270,7 @@ data sql_facts_bigint: SqlIntegerPrimitiveFacts = SqlIntegerPrimitiveFacts {
   width: Bits64,
 }
 
+// 🟡 needs-more-work — feature:sql-approximate-numeric-precision-implementation-defined — scaffold:T-4.6-sql-primitive-fact-bundles · dissolve-on: SqlFloatPrimitiveFacts carries an approximate-precision discriminator (ISO/IEC 9075 §6 defines REAL / DOUBLE PRECISION precision as implementation-defined, not exact IEEE 754); wave-1 binds width / encoding to the conventional IEEE 754 binary32 / binary64 realization.
 data sql_facts_real: SqlFloatPrimitiveFacts = SqlFloatPrimitiveFacts {
   surface_spelling: sql_surface_spelling_real,
   width: Bits32,
@@ -473,18 +475,65 @@ fn sql_primitive_bundle_from_nonnumeric_facts(
   }
 }
 
+// Order-preserving snoc/append over List as FreeMonoid — mirrors rust.dag's
+// catalog → bundle list fold so `sql_wave1_primitive_fact_bundles` derives from
+// the three fact catalogs (single authority — P2 / Practice 5).
+fn sql_list_snoc<T>(xs: List<T>, item: T) -> List<T> {
+  free_monoid_fold(
+    xs: xs,
+    empty: Cons { head: item, tail: Empty },
+    cons: fn(rest, existing) {
+      Cons { head: existing, tail: rest }
+    }
+  )
+}
+
+fn sql_list_append<T>(left: List<T>, right: List<T>) -> List<T> {
+  free_monoid_fold(
+    xs: right,
+    empty: left,
+    cons: fn(acc, item) {
+      sql_list_snoc(xs: acc, item: item)
+    }
+  )
+}
+
+fn sql_primitive_bundles_from_integer_catalog() -> List<PrimitiveFactBundle> {
+  free_monoid_fold(
+    xs: sql_integer_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      sql_list_snoc(xs: acc, item: sql_primitive_bundle_from_integer_facts(facts: facts))
+    }
+  )
+}
+
+fn sql_primitive_bundles_from_float_catalog() -> List<PrimitiveFactBundle> {
+  free_monoid_fold(
+    xs: sql_float_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      sql_list_snoc(xs: acc, item: sql_primitive_bundle_from_float_facts(facts: facts))
+    }
+  )
+}
+
+fn sql_primitive_bundles_from_nonnumeric_catalog() -> List<PrimitiveFactBundle> {
+  free_monoid_fold(
+    xs: sql_nonnumeric_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      sql_list_snoc(xs: acc, item: sql_primitive_bundle_from_nonnumeric_facts(facts: facts))
+    }
+  )
+}
+
 fn sql_wave1_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
-  [
-    sql_primitive_bundle_from_integer_facts(facts: sql_facts_smallint),
-    sql_primitive_bundle_from_integer_facts(facts: sql_facts_integer),
-    sql_primitive_bundle_from_integer_facts(facts: sql_facts_bigint),
-    sql_primitive_bundle_from_float_facts(facts: sql_facts_real),
-    sql_primitive_bundle_from_float_facts(facts: sql_facts_double_precision),
-    sql_primitive_bundle_from_nonnumeric_facts(facts: sql_facts_boolean),
-    sql_primitive_bundle_from_nonnumeric_facts(facts: sql_facts_character_large_object),
-    sql_primitive_bundle_from_nonnumeric_facts(facts: sql_facts_date),
-    sql_primitive_bundle_from_nonnumeric_facts(facts: sql_facts_time),
-    sql_primitive_bundle_from_nonnumeric_facts(facts: sql_facts_timestamp),
-    sql_primitive_bundle_from_nonnumeric_facts(facts: sql_facts_timestamp_with_time_zone),
-  ]
+  sql_list_append(
+    left: sql_list_append(
+      left: sql_primitive_bundles_from_integer_catalog(),
+      right: sql_primitive_bundles_from_float_catalog()
+    ),
+    right: sql_primitive_bundles_from_nonnumeric_catalog()
+  )
 }
