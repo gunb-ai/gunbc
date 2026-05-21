@@ -175,7 +175,7 @@ data unused_parameters_non_use_edges_claim: LensUnusedParametersNonUseClaim = Le
 fn unused_parameters_non_use_edges_claim_holds() -> Bool {
   match unused_parameters_non_use_edges_claim.actual {
     Holds { value: actual } =>
-      unused_parameters_fact_eq(a: actual, b: unused_parameters_non_use_edges_test_claim_expected_outcome(c: claim))
+      unused_parameters_fact_eq(a: actual, b: unused_parameters_non_use_edges_claim.expected)
     _ => false
   }
 }

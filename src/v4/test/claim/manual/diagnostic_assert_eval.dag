@@ -97,7 +97,7 @@ data witness_diagnostic_claim_match: TestClaim = DiagnosticClaim {
 }
 
 
-data witness_diagnostic_claim_mismatch: DiagnosticClaim = DiagnosticClaim {
+data witness_diagnostic_claim_mismatch: TestClaim = DiagnosticClaim {
   label: "witness: diagnostic claim mismatch",
   t19_anchor: T19ManualAnchorAbsent,
   input: diag_assert_node(),
@@ -106,7 +106,7 @@ data witness_diagnostic_claim_mismatch: DiagnosticClaim = DiagnosticClaim {
 }
 
 
-data witness_diagnostic_claim_accepted_fail: DiagnosticClaim = DiagnosticClaim {
+data witness_diagnostic_claim_accepted_fail: TestClaim = DiagnosticClaim {
   label: "witness: diagnostic claim accepted fail",
   t19_anchor: T19ManualAnchorAbsent,
   input: diag_assert_node(),

@@ -125,7 +125,7 @@ data unused_parameters_binds_to_edge_claim: LensUnusedParametersClaim = LensUnus
 fn unused_parameters_binds_to_edge_claim_holds() -> Bool {
   match unused_parameters_binds_to_edge_claim.actual {
     Holds { value: actual } =>
-      unused_parameters_fact_eq(a: actual, b: unused_parameters_binds_to_edge_test_claim_expected_outcome(c: claim))
+      unused_parameters_fact_eq(a: actual, b: unused_parameters_binds_to_edge_claim.expected)
     _ => false
   }
 }
