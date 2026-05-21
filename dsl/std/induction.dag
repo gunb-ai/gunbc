@@ -257,9 +257,17 @@ fn sub_value_to_evidence(relation: SubValueRelation) -> DescentEvidence {
       }
     PreservedValue                           => NonIncreasing
     NonIncreasingValue                       => NonIncreasing
-    // IncomparableValue: two structural witnesses joined but no common stronger form;
-    // each branch did witness non-increase, so honest mapping is NonIncreasing.
-    IncomparableValue                        => NonIncreasing
+    // IncomparableValue arises from the lattice join of two distinct structural-strict
+    // witnesses (e.g. join(StrictSubValue{f1}, StrictSubValue{f2}) with f1 ≠ f2) — both
+    // arms strictly decrease along *some* axis but the join cannot pin a single one.
+    // The denotation is "strict descent occurred, axis erased", so the honest evidence
+    // projection is `Strict` (axis-erased). Mapping to `NonIncreasing` would break
+    // monotonicity vs the lattice order — IncomparableValue is the lattice top and
+    // meet_sub_value(IncomparableValue, StrictSubValue{f}) returns StrictSubValue{f}
+    // (top is meet identity), which projects to Strict; an IncomparableValue projection
+    // weaker than Strict would let the meet strengthen its operand's evidence, violating
+    // fail-closed evidence projection.
+    IncomparableValue                        => Strict
     SubValueUnknown                          => DescentUnknown
   }
 }

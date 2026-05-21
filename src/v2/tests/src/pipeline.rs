@@ -10036,6 +10036,12 @@ fn diag_emitter_scc() {
                             ..
                         } => "Arith",
                         v2_compiler::std_induction::SubValueRelation::PreservedValue => "Preserved",
+                        v2_compiler::std_induction::SubValueRelation::NonIncreasingValue => {
+                            "NonIncreasing"
+                        }
+                        v2_compiler::std_induction::SubValueRelation::IncomparableValue => {
+                            "Incomparable"
+                        }
                         v2_compiler::std_induction::SubValueRelation::SubValueUnknown => "Unknown",
                     })
                     .collect();
@@ -10064,6 +10070,12 @@ fn diag_emitter_scc() {
                             ..
                         } => "Arith",
                         v2_compiler::std_induction::SubValueRelation::PreservedValue => "Preserved",
+                        v2_compiler::std_induction::SubValueRelation::NonIncreasingValue => {
+                            "NonIncreasing"
+                        }
+                        v2_compiler::std_induction::SubValueRelation::IncomparableValue => {
+                            "Incomparable"
+                        }
                         v2_compiler::std_induction::SubValueRelation::SubValueUnknown => "Unknown",
                     })
                     .collect();

@@ -129,7 +129,7 @@ pub fn sub_value_to_evidence(relation: Rc<SubValueRelation>) -> DescentEvidence 
         },
         SubValueRelation::PreservedValue => DescentEvidence::NonIncreasing,
         SubValueRelation::NonIncreasingValue => DescentEvidence::NonIncreasing,
-        SubValueRelation::IncomparableValue => DescentEvidence::NonIncreasing,
+        SubValueRelation::IncomparableValue => DescentEvidence::Strict,
         SubValueRelation::SubValueUnknown => DescentEvidence::DescentUnknown,
     }
 }

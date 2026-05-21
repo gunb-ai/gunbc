@@ -258,7 +258,10 @@ fn sub_value_to_evidence(relation: SubValueRelation) -> DescentEvidence {
       }
     PreservedValue                           => NonIncreasing
     NonIncreasingValue                       => NonIncreasing
-    IncomparableValue                        => NonIncreasing
+    // See `dsl/std/induction.dag` — IncomparableValue projects to `Strict` for evidence-
+    // projection monotonicity vs the lattice order (it is the lattice top reachable only
+    // from the join of distinct structural-strict witnesses, so "strict, axis erased").
+    IncomparableValue                        => Strict
     SubValueUnknown                          => DescentUnknown
   }
 }
