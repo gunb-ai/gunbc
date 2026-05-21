@@ -5998,11 +5998,20 @@ fn emit_data_def_body(type_node: Node, value: Node, registry: Map<String, ItemIn
           concat("            ", val_str)
       }
     } else {
-      let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
-      let is_already_wrapped = match value.expr_data { ExprRecordLit { parent_enum: _ } => true  ExprListLit => true  _ => false }
-      let wrap_start = if needs_rc && !is_already_wrapped { "Rc::new(" } else { "" }
-      let wrap_end = if needs_rc && !is_already_wrapped { ")" } else { "" }
-      concat("            ", wrap_start, val_str, wrap_end)
+      match value.expr_data {
+        ExprRecordLit { parent_enum: pe } =>
+          let data_type_name = authored_name_at(source_indices: scope.type_env.source_indices, node: type_node)
+          let raw_record = emit_typed_record_lit(type_name: Some { value: data_type_name }, fields: value.children, parent_enum: pe, resolved_type: type_node, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+          let wrap_start = if needs_rc { "Rc::new(" } else { "" }
+          let wrap_end = if needs_rc { ")" } else { "" }
+          concat("            ", wrap_start, raw_record, wrap_end)
+        _ =>
+          let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+          let is_already_wrapped = match value.expr_data { ExprListLit => true  _ => false }
+          let wrap_start = if needs_rc && !is_already_wrapped { "Rc::new(" } else { "" }
+          let wrap_end = if needs_rc && !is_already_wrapped { ")" } else { "" }
+          concat("            ", wrap_start, val_str, wrap_end)
+      }
     }
   }
 }
