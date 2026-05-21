@@ -2,7 +2,7 @@
 // Scope: Concrete v4 evaluator runtime fact-bundle.
 // Owns: V4EvaluatorRuntime, v4_evaluator_runtime_id.
 // Consumes: v4.std.model_core, v4.std.runtime, v4.std.node.
-// Status: Option-C concrete runtime extdep; std/runtime.dag owns abstract carriers.
+// Status: Option-C concrete runtime extdep; std/runtime.dag owns abstract carriers; RuntimeTarget wiring staged.
 
 module v4.extdeps.runtimes.v4_evaluator
 
