@@ -1,0 +1,21 @@
+// extdeps/cloud/gcp/errors.dag -- GCP API error envelope shape.
+
+module extdeps.cloud.gcp.errors
+
+type GcpErrorDetails {
+  code: Int
+  message: String
+  status: String?
+}
+
+type GcpErrorShape {
+  error: GcpErrorDetails
+}
+
+data gcp_error_example: GcpErrorShape = {
+  error: {
+    code: 403,
+    message: "Permission denied",
+    status: "PERMISSION_DENIED"
+  }
+}

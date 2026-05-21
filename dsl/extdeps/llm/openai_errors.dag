@@ -1,0 +1,14 @@
+// extdeps/llm/openai_errors.dag -- OpenAI API error envelope shape.
+
+module extdeps.llm.openai_errors
+
+type OpenAiErrorDetails {
+  message: String
+  type: String
+  param: String?
+  code: String?
+}
+
+type OpenAiErrorShape {
+  error: OpenAiErrorDetails
+}
