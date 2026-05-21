@@ -2,13 +2,27 @@
 // Scope: machine-code language model parameterized by Isa.
 // Owns: Isa, ByteOrder, InstructionLength, InstructionByteLimitRef, OperandFieldWidthRef, Symbol, MachineIntKind, MachineIntWidth, MachineScalar, MachineDisplacement32WidthClass, MachineDisplacement64WidthClass, MachineSignedDisplacement32, MachineSignedDisplacement64, InstructionWord, RegisterClass, RegisterDeclaration, RegisterRef, IndexScale, AddressingMode, Operand, ByteSequence, InstructionProductionRef, RegisterOperandSlotRef, ImmediateOperandSlotRef, MemoryOperandSlotRef, ImmediateOperandTarget, ImmediateOperandConstraint, MemoryOperandConstraint, InstructionOperandSlot, InstructionProduction, OperandBinding, DecodedInstruction, MachineFidelityFeature, MachineIntegerOverflowBehavior, MachineIntegerOperationSemantics, FlagWriteDisposition.
 // Consumes: List, Byte.
-// Status: D2-REV; 🟢 P4-3208 — (machine_code scalar + displacement + ledger).
+// Status: D2-REV; 🟢 P4-3208 — (machine_code scalar + displacement + ledger); wave-1 `MachineScalar` fact-bundles via `machine_code_model_core_wave1` (quiet-otter-381).
 
 module v4.extdeps.languages.machine_code
 
 
+import v4.std.algebra { free_monoid_fold }
 import v4.std.collection { List }
 import v4.std.machine { Byte }
+import v4.std.model_core {
+  EffectSemanticsDecl,
+  ModelCore,
+  PartialitySemanticsDecl,
+  PrimitiveFactAxisBinding,
+  PrimitiveFactBundle,
+  primitive_fact_axis_encoding,
+  primitive_fact_axis_overflow_disposition,
+  primitive_fact_axis_signedness,
+  primitive_fact_axis_surface_spelling,
+  primitive_fact_axis_width
+}
+import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
 
 
 // Twin of `v4.std.node.Symbol` — M1(2.7) compile_to_dag import lowering; see lean.dag.
