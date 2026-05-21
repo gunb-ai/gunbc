@@ -17,6 +17,8 @@ import v4.std.constraints {
   CanonicalGroundingWitness,
   ConstraintGraph,
   ConstraintSolvePolicy,
+  constraint_property_being_canonical,
+  constraint_property_candidate_set_closedness,
   solve_constraints
 }
 import v4.std.diagnostic {
@@ -34,6 +36,7 @@ import v4.std.diagnostic {
   outcome_rejected,
   rejected_with_pending
 }
+import v4.std.logic { Bool }
 import v4.std.node {
   Edge,
   Node,
@@ -71,6 +74,27 @@ type InferredTree {
 type InferredFactsEntry {
   node: Node
   facts: InferredFacts
+}
+
+
+fn inferred_facts_resolved_type_matches(
+  facts: InferredFacts,
+  candidate_type: Node
+) -> Bool {
+  candidate_type == facts.resolved_type
+}
+
+
+fn inferred_facts_inhabitance_well_grounded(facts: InferredFacts) -> Bool {
+  (facts.inhabits.witness == facts.resolved_type)
+    && (facts.inhabits.algebra == facts.canonical.structural.evidence)
+}
+
+
+fn inferred_facts_canonical_well_grounded(facts: InferredFacts) -> Bool {
+  (facts.canonical.structural.property == constraint_property_being_canonical)
+    && (facts.canonical.closedness.property == constraint_property_candidate_set_closedness)
+    && (facts.canonical.closedness.evidence == facts.resolved_type)
 }
 
 
