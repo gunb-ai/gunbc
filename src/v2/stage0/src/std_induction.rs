@@ -109,6 +109,8 @@ pub enum SubValueRelation {
         factor: Rc<ShrinkFactor>,
     },
     PreservedValue,
+    NonIncreasingValue,
+    IncomparableValue,
     SubValueUnknown,
 }
 
@@ -126,6 +128,8 @@ pub fn sub_value_to_evidence(relation: Rc<SubValueRelation>) -> DescentEvidence 
             ShrinkFactor::ProportionalShrink { .. } => DescentEvidence::Strict,
         },
         SubValueRelation::PreservedValue => DescentEvidence::NonIncreasing,
+        SubValueRelation::NonIncreasingValue => DescentEvidence::NonIncreasing,
+        SubValueRelation::IncomparableValue => DescentEvidence::NonIncreasing,
         SubValueRelation::SubValueUnknown => DescentEvidence::DescentUnknown,
     }
 }
@@ -151,155 +155,112 @@ pub fn shrink_factor_eq(a: Rc<ShrinkFactor>, b: Rc<ShrinkFactor>) -> bool {
     }
 }
 
-pub fn meet_sub_value(a: Rc<SubValueRelation>, b: Rc<SubValueRelation>) -> Rc<SubValueRelation> {
-    match (*a.clone()).clone() {
-        SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
-        SubValueRelation::PreservedValue => match (*b).clone() {
-            SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
-            _ => Rc::new(SubValueRelation::PreservedValue),
-        },
+pub fn sub_value_structural_eq(a: Rc<SubValueRelation>, b: Rc<SubValueRelation>) -> bool {
+    match (*a).clone() {
         SubValueRelation::StrictSubValue {
             field: fa,
             factor: fac_a,
             ..
         } => match (*b).clone() {
-            SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
-            SubValueRelation::PreservedValue => Rc::new(SubValueRelation::PreservedValue),
             SubValueRelation::StrictSubValue {
                 field: fb,
                 factor: fac_b,
                 ..
-            } => {
-                if inductive_field_eq(&fa, &fb) {
-                    if shrink_factor_eq(fac_a.clone(), fac_b.clone()) {
-                        Rc::new(SubValueRelation::StrictSubValue {
-                            field: fa.clone(),
-                            factor: fac_a.clone(),
-                        })
-                    } else {
-                        Rc::new(SubValueRelation::SubValueUnknown)
-                    }
-                } else {
-                    Rc::new(SubValueRelation::SubValueUnknown)
-                }
-            }
-            _ => Rc::new(SubValueRelation::SubValueUnknown),
+            } => (inductive_field_eq(&fa, &fb) && shrink_factor_eq(fac_a.clone(), fac_b.clone())),
+            _ => false,
         },
         SubValueRelation::IteratedSubValue { field: fa, .. } => match (*b).clone() {
-            SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
-            SubValueRelation::PreservedValue => Rc::new(SubValueRelation::PreservedValue),
-            SubValueRelation::IteratedSubValue { field: fb, .. } => {
-                if inductive_field_eq(&fa, &fb) {
-                    a.clone()
-                } else {
-                    Rc::new(SubValueRelation::SubValueUnknown)
-                }
-            }
-            _ => Rc::new(SubValueRelation::SubValueUnknown),
+            SubValueRelation::IteratedSubValue { field: fb, .. } => inductive_field_eq(&fa, &fb),
+            _ => false,
         },
         SubValueRelation::ArithmeticDescent {
             param: pa,
             factor: fac_a,
             ..
         } => match (*b).clone() {
-            SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
-            SubValueRelation::PreservedValue => Rc::new(SubValueRelation::PreservedValue),
             SubValueRelation::ArithmeticDescent {
                 param: pb,
                 factor: fac_b,
                 ..
             } => {
-                if (pa.clone().as_str() == pb.clone().as_str()) {
-                    if shrink_factor_eq(fac_a.clone(), fac_b.clone()) {
-                        Rc::new(SubValueRelation::ArithmeticDescent {
-                            param: pa.clone(),
-                            factor: fac_a.clone(),
-                        })
-                    } else {
-                        Rc::new(SubValueRelation::SubValueUnknown)
-                    }
+                ((pa.clone().as_str() == pb.clone().as_str())
+                    && shrink_factor_eq(fac_a.clone(), fac_b.clone()))
+            }
+            _ => false,
+        },
+        _ => false,
+    }
+}
+
+pub fn sub_value_level(r: Rc<SubValueRelation>) -> i64 {
+    match (*r).clone() {
+        SubValueRelation::IncomparableValue => 3,
+        SubValueRelation::StrictSubValue { .. } => 2,
+        SubValueRelation::IteratedSubValue { .. } => 2,
+        SubValueRelation::ArithmeticDescent { .. } => 2,
+        SubValueRelation::PreservedValue => 2,
+        SubValueRelation::NonIncreasingValue => 1,
+        SubValueRelation::SubValueUnknown => 0,
+    }
+}
+
+pub fn meet_sub_value(a: Rc<SubValueRelation>, b: Rc<SubValueRelation>) -> Rc<SubValueRelation> {
+    if sub_value_structural_eq(a.clone(), b.clone()) {
+        a.clone()
+    } else {
+        {
+            let la = sub_value_level(a.clone());
+            let lb = sub_value_level(b.clone());
+            if ((la.clone() == 0) || (lb.clone() == 0)) {
+                Rc::new(SubValueRelation::SubValueUnknown)
+            } else {
+                if (la.clone() == 3) {
+                    b.clone()
                 } else {
-                    Rc::new(SubValueRelation::SubValueUnknown)
+                    if (lb.clone() == 3) {
+                        a.clone()
+                    } else {
+                        if ((la.clone() == 1) || (lb.clone() == 1)) {
+                            Rc::new(SubValueRelation::NonIncreasingValue)
+                        } else {
+                            Rc::new(SubValueRelation::NonIncreasingValue)
+                        }
+                    }
                 }
             }
-            _ => Rc::new(SubValueRelation::SubValueUnknown),
-        },
+        }
     }
 }
 
 pub fn join_sub_value(a: Rc<SubValueRelation>, b: Rc<SubValueRelation>) -> Rc<SubValueRelation> {
-    match (*a.clone()).clone() {
-        SubValueRelation::SubValueUnknown => b.clone(),
-        SubValueRelation::PreservedValue => match (*b.clone()).clone() {
-            SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::PreservedValue),
-            _ => b.clone(),
-        },
-        SubValueRelation::StrictSubValue {
-            field: fa,
-            factor: fac_a,
-            ..
-        } => match (*b.clone()).clone() {
-            SubValueRelation::SubValueUnknown => a.clone(),
-            SubValueRelation::PreservedValue => a.clone(),
-            SubValueRelation::StrictSubValue {
-                field: fb,
-                factor: fac_b,
-                ..
-            } => {
-                if inductive_field_eq(&fa, &fb) {
-                    if shrink_factor_eq(fac_a.clone(), fac_b.clone()) {
-                        Rc::new(SubValueRelation::StrictSubValue {
-                            field: fa.clone(),
-                            factor: fac_a.clone(),
-                        })
-                    } else {
-                        Rc::new(SubValueRelation::SubValueUnknown)
-                    }
-                } else {
-                    Rc::new(SubValueRelation::SubValueUnknown)
-                }
-            }
-            _ => Rc::new(SubValueRelation::SubValueUnknown),
-        },
-        SubValueRelation::IteratedSubValue { field: fa, .. } => match (*b.clone()).clone() {
-            SubValueRelation::SubValueUnknown => a.clone(),
-            SubValueRelation::PreservedValue => a.clone(),
-            SubValueRelation::IteratedSubValue { field: fb, .. } => {
-                if inductive_field_eq(&fa, &fb) {
+    if sub_value_structural_eq(a.clone(), b.clone()) {
+        a.clone()
+    } else {
+        {
+            let la = sub_value_level(a.clone());
+            let lb = sub_value_level(b.clone());
+            if (la.clone() == 0) {
+                b.clone()
+            } else {
+                if (lb.clone() == 0) {
                     a.clone()
                 } else {
-                    Rc::new(SubValueRelation::SubValueUnknown)
-                }
-            }
-            _ => Rc::new(SubValueRelation::SubValueUnknown),
-        },
-        SubValueRelation::ArithmeticDescent {
-            param: pa,
-            factor: fac_a,
-            ..
-        } => match (*b.clone()).clone() {
-            SubValueRelation::SubValueUnknown => a.clone(),
-            SubValueRelation::PreservedValue => a.clone(),
-            SubValueRelation::ArithmeticDescent {
-                param: pb,
-                factor: fac_b,
-                ..
-            } => {
-                if (pa.clone().as_str() == pb.clone().as_str()) {
-                    if shrink_factor_eq(fac_a.clone(), fac_b.clone()) {
-                        Rc::new(SubValueRelation::ArithmeticDescent {
-                            param: pa.clone(),
-                            factor: fac_a.clone(),
-                        })
+                    if ((la.clone() == 3) || (lb.clone() == 3)) {
+                        Rc::new(SubValueRelation::IncomparableValue)
                     } else {
-                        Rc::new(SubValueRelation::SubValueUnknown)
+                        if (la.clone() == 1) {
+                            b.clone()
+                        } else {
+                            if (lb.clone() == 1) {
+                                a.clone()
+                            } else {
+                                Rc::new(SubValueRelation::IncomparableValue)
+                            }
+                        }
                     }
-                } else {
-                    Rc::new(SubValueRelation::SubValueUnknown)
                 }
             }
-            _ => Rc::new(SubValueRelation::SubValueUnknown),
-        },
+        }
     }
 }
 
@@ -323,6 +284,14 @@ pub fn compose_sub_value_relations(
     match (*callee_rel.clone()).clone() {
         SubValueRelation::PreservedValue => arg_rel,
         SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
+        SubValueRelation::NonIncreasingValue => match (*arg_rel).clone() {
+            SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
+            _ => Rc::new(SubValueRelation::NonIncreasingValue),
+        },
+        SubValueRelation::IncomparableValue => match (*arg_rel).clone() {
+            SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
+            _ => Rc::new(SubValueRelation::IncomparableValue),
+        },
         SubValueRelation::StrictSubValue { .. } => match (*arg_rel).clone() {
             SubValueRelation::PreservedValue => callee_rel.clone(),
             SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
@@ -341,6 +310,8 @@ pub fn compose_sub_value_relations(
             SubValueRelation::ArithmeticDescent { .. } => {
                 Rc::new(SubValueRelation::SubValueUnknown)
             }
+            SubValueRelation::NonIncreasingValue => Rc::new(SubValueRelation::NonIncreasingValue),
+            SubValueRelation::IncomparableValue => Rc::new(SubValueRelation::IncomparableValue),
         },
         SubValueRelation::IteratedSubValue { .. } => match (*arg_rel).clone() {
             SubValueRelation::PreservedValue => callee_rel.clone(),
@@ -360,6 +331,8 @@ pub fn compose_sub_value_relations(
             SubValueRelation::ArithmeticDescent { .. } => {
                 Rc::new(SubValueRelation::SubValueUnknown)
             }
+            SubValueRelation::NonIncreasingValue => Rc::new(SubValueRelation::NonIncreasingValue),
+            SubValueRelation::IncomparableValue => Rc::new(SubValueRelation::IncomparableValue),
         },
         SubValueRelation::ArithmeticDescent {
             param: p,
@@ -410,6 +383,8 @@ pub fn sub_value_to_call_pattern(relation: Rc<SubValueRelation>) -> Option<Rc<Ca
             })),
         },
         SubValueRelation::PreservedValue => Some(Rc::new(CallPattern::SameArgumentCall)),
+        SubValueRelation::NonIncreasingValue => None,
+        SubValueRelation::IncomparableValue => None,
         SubValueRelation::SubValueUnknown => None,
     }
 }
@@ -445,6 +420,18 @@ pub fn sub_value_to_lowering_target(relation: Rc<SubValueRelation>) -> Option<Rc
             factor: Some(fac.clone()),
         })),
         SubValueRelation::PreservedValue => Some(Rc::new(LoweringTarget {
+            primitive: IterationPrimitive::Repeat,
+            bound: Rc::new(SizeBound::Forever),
+            evidence: DescentEvidence::NonIncreasing,
+            factor: None,
+        })),
+        SubValueRelation::NonIncreasingValue => Some(Rc::new(LoweringTarget {
+            primitive: IterationPrimitive::Repeat,
+            bound: Rc::new(SizeBound::Forever),
+            evidence: DescentEvidence::NonIncreasing,
+            factor: None,
+        })),
+        SubValueRelation::IncomparableValue => Some(Rc::new(LoweringTarget {
             primitive: IterationPrimitive::Repeat,
             bound: Rc::new(SizeBound::Forever),
             evidence: DescentEvidence::NonIncreasing,

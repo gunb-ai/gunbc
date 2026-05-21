@@ -82,7 +82,6 @@ import std.computation {
   CollectionSize, ArithmeticParam, Forever,
   tree_size_bound
 }
-import std.algebra { BoundedLattice }
 
 
 
@@ -421,34 +420,38 @@ fn join_sub_value(a: SubValueRelation, b: SubValueRelation) -> SubValueRelation 
   }
 }
 
-// BoundedLattice<SubValueRelation> witness.
-//
-// Laws (verified by inspection over the level classification + reflexive equality):
+// BoundedLattice<SubValueRelation> — algebra-inhabitance laws (verified by case
+// analysis over `sub_value_level` + `sub_value_structural_eq`):
 //   - Idempotence: meet(a, a) = a; join(a, a) = a — `sub_value_structural_eq` short-circuit
-//     handles structural-with-parameters; non-parametric variants are caught by level match
-//     (level identity + no payload).
+//     handles parameterised structural witnesses; non-parametric variants are caught by
+//     the level-match arms.
 //   - Commutativity: `meet` / `join` use only `sub_value_level` and `sub_value_structural_eq`,
-//     both of which are symmetric in their arguments.
-//   - Associativity: meet over the level chain collapses left-to-right by the rule "take the
-//     lower level, falling to `NonIncreasingValue` when both arguments are at the structural
-//     level and not identical." This is symmetric and order-independent. Dually for join via
-//     `IncomparableValue`.
-//   - Absorption: `meet(a, join(a, b)) = a` — `join(a, b)` is either `a` (if b ≤ a or b = ⊥),
-//     `IncomparableValue` (≥ a, so meet with a returns a), or some element strictly above
-//     `NonIncreasingValue`; meet pulls back to a.
-//   - Top: meet(⊤, a) = a, join(⊤, a) = ⊤ — `IncomparableValue` at level 3 cases above.
-//   - Bottom: meet(⊥, a) = ⊥, join(⊥, a) = a — `SubValueUnknown` at level 0 cases above.
+//     both symmetric in their arguments.
+//   - Associativity: take the lower level (meet) or higher level (join), falling to
+//     `NonIncreasingValue` / `IncomparableValue` when both arguments are at the structural
+//     level and not identical. Symmetric and order-independent.
+//   - Absorption: `meet(a, join(a, b)) = a` — `join(a, b)` is either `a` (if b ≤ a),
+//     `IncomparableValue` (≥ a, so meet returns a), or some element ≥ a; meet pulls back.
+//   - Top: meet(⊤, a) = a, join(⊤, a) = ⊤ — `IncomparableValue` at level 3.
+//   - Bottom: meet(⊥, a) = ⊥, join(⊥, a) = a — `SubValueUnknown` at level 0.
 //
 // Operator-direct (PATH-2-FULL, ratified 2026-05-21): the lawful algebra is the architectural
 // improvement; `SubValueUnknown` participates as the lattice bottom (carries the prior
 // "fail-closed sink" role) and `NonIncreasingValue` / `IncomparableValue` close the lattice
 // so structural-vs-structural meets/joins do not silently erase termination strength.
-data sub_value_relation_bounded_lattice: BoundedLattice<SubValueRelation> = {
-  meet: meet_sub_value
-  join: join_sub_value
-  top: IncomparableValue
-  bottom: SubValueUnknown
-}
+//
+// 🟡 P5 STAGE0-GENERATOR-GAP. A `data sub_value_relation_bounded_lattice: BoundedLattice<SubValueRelation>`
+// declaration is held until the stage0 Rust emitter handles `BoundedLattice<T>` instances where
+// `T` is an `Rc`-wrapped carrier (SubValueRelation has structural variants carrying
+// `InductiveField` / `ShrinkFactor`, which the stage0 layer materialises behind `Rc`).
+// Current stage0 emission produces `meet: Rc::new(meet_sub_value)` against a struct field
+// typed `Rc<dyn Fn(T, T) -> T>` with `T = SubValueRelation` (not `Rc<SubValueRelation>`),
+// and `top: Box::new(Rc::new(SubValueRelation::IncomparableValue))` against a `Box<T>`
+// field — both type-mismatch. Encoding / FermiDepth / DescentEvidence sidestep this
+// because they are bare enums with no payload. Dissolution trigger: stage0 lattice-witness
+// emission grows `Rc<T>`-aware instantiation (separate substrate-feature lane). Until then,
+// the lawful algebra is consumed via the free functions `meet_sub_value` / `join_sub_value`
+// directly — same denotational content, no algebra-inhabitance discoverability.
 
 
 // =========================================================================

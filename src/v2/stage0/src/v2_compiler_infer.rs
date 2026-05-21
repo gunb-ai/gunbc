@@ -6017,6 +6017,12 @@ pub fn classify_argument(
                                     }
                                 }
                             }
+                            SubValueRelation::NonIncreasingValue => {
+                                Rc::new(SubValueRelation::NonIncreasingValue)
+                            }
+                            SubValueRelation::IncomparableValue => {
+                                Rc::new(SubValueRelation::IncomparableValue)
+                            }
                             SubValueRelation::SubValueUnknown => {
                                 Rc::new(SubValueRelation::SubValueUnknown)
                             }

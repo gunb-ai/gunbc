@@ -925,6 +925,10 @@ pub fn serialize_sub_value_relation(rel: Rc<SubValueRelation>) -> String {
             "}".to_string(),
         ),
         SubValueRelation::PreservedValue => "{\"_variant\": \"PreservedValue\"}".to_string(),
+        SubValueRelation::NonIncreasingValue => {
+            "{\"_variant\": \"NonIncreasingValue\"}".to_string()
+        }
+        SubValueRelation::IncomparableValue => "{\"_variant\": \"IncomparableValue\"}".to_string(),
         SubValueRelation::SubValueUnknown => "{\"_variant\": \"SubValueUnknown\"}".to_string(),
     }
 }
