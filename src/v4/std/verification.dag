@@ -10,17 +10,29 @@ module v4.std.verification
 import v4.std.node { Node }
 import v4.std.diagnostic {
   Accepted,
-  AmbiguousIntent,
   Diagnostic,
-  NodeLocus,
+  Extent,
   Outcome,
   Rejected,
+  Textual,
   Unavailable,
+  UserInputBoundary,
+  WholeFile,
   diagnostics_singleton
 }
 
 
-data test_claim_roundtrip_has_no_declared_outcome: Symbol = test_claim_roundtrip_has_no_declared_outcome
+data v4_std_verification_file: Symbol = v4_std_verification_file
+data test_claim_expected_outcome_undeclared: Symbol = test_claim_expected_outcome_undeclared
+
+
+fn test_claim_expected_outcome_undeclared_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: test_claim_expected_outcome_undeclared,
+    at: Textual { file: v4_std_verification_file, extent: WholeFile },
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
 
 
 // RULING-1: pretty-much-done — closed TestClaim tier set.
@@ -140,21 +152,22 @@ fn test_claim_classification(c: TestClaim) -> TestClassification {
   }
 }
 
-fn test_claim_expected_outcome(c: TestClaim) -> Outcome<Node> {
+// Projects declared expected outcomes only. RoundTripClaim has no expected-outcome field;
+// eval authority (05_eval.dag) routes it to Deferred — do not synthesize an Outcome<Node> here.
+fn test_claim_expected_outcome(c: TestClaim) -> Outcome<Outcome<Node>> {
   match c {
-    CompilesClaim { expected_value: e, label: _, t19_anchor: _, input: _, classification: _ } => e
-    DiagnosticClaim { expected_outcome: e, label: _, t19_anchor: _, input: _, classification: _ } => e
+    CompilesClaim { expected_value: e, label: _, t19_anchor: _, input: _, classification: _ } =>
+      Accepted { value: e, diagnostics: None }
+    DiagnosticClaim { expected_outcome: e, label: _, t19_anchor: _, input: _, classification: _ } =>
+      Accepted { value: e, diagnostics: None }
     EqualsClaim { rhs: r, label: _, t19_anchor: _, lhs: _, classification: _ } =>
-      Accepted { value: r, diagnostics: None }
-    RoundTripClaim { input: n, label: _, t19_anchor: _, classification: _ } =>
+      Accepted {
+        value: Accepted { value: r, diagnostics: None },
+        diagnostics: None
+      }
+    RoundTripClaim { label: _, t19_anchor: _, input: _, classification: _ } =>
       Rejected {
-        diagnostics: diagnostics_singleton(
-          d: Diagnostic {
-            reason: test_claim_roundtrip_has_no_declared_outcome,
-            at: NodeLocus { node: n },
-            correction: Unavailable { reason: AmbiguousIntent }
-          }
-        )
+        diagnostics: diagnostics_singleton(d: test_claim_expected_outcome_undeclared_diagnostic())
       }
   }
 }

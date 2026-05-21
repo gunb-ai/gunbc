@@ -167,18 +167,19 @@ fn infer_add_mvp_receipt_run(
       resources_hash: resources_hash_placeholder,
       extdeps_hash: extdeps_hash_placeholder
     ),
-    verdict: match actual {
-      Rejected { diagnostics: r } =>
-        if outcome_node_eq(
-          a: Rejected { diagnostics: r },
-          b: test_claim_expected_outcome(c: subject.claim)
-        ) {
-          Pass
-        } else {
-          Fail { actual: Rejected { diagnostics: r } }
+    verdict: match test_claim_expected_outcome(c: subject.claim) {
+      Accepted { value: expected, diagnostics: _ } =>
+        match actual {
+          Rejected { diagnostics: r } =>
+            if outcome_node_eq(a: Rejected { diagnostics: r }, b: expected) {
+              Pass
+            } else {
+              Fail { actual: Rejected { diagnostics: r } }
+            }
+          Accepted { value: _, diagnostics: ad } =>
+            Fail { actual: Accepted { value: test_claim_input(c: subject.claim), diagnostics: ad } }
         }
-      Accepted { value: _, diagnostics: ad } =>
-        Fail { actual: Accepted { value: test_claim_input(c: subject.claim), diagnostics: ad } }
+      Rejected { diagnostics: r } => Fail { actual: Rejected { diagnostics: r } }
     }
   }
 }
@@ -196,15 +197,16 @@ fn infer_descent_witness_receipt_run(
       resources_hash: resources_hash_placeholder,
       extdeps_hash: extdeps_hash_placeholder
     ),
-    verdict: match actual {
-      Accepted { value: v, diagnostics: d } =>
-        if outcome_node_eq(
-          a: Accepted { value: v, diagnostics: d },
-          b: test_claim_expected_outcome(c: subject.claim)
-        ) {
-          Pass
-        } else {
-          Fail { actual: actual }
+    verdict: match test_claim_expected_outcome(c: subject.claim) {
+      Accepted { value: expected, diagnostics: _ } =>
+        match actual {
+          Accepted { value: v, diagnostics: d } =>
+            if outcome_node_eq(a: Accepted { value: v, diagnostics: d }, b: expected) {
+              Pass
+            } else {
+              Fail { actual: actual }
+            }
+          Rejected { diagnostics: r } => Fail { actual: Rejected { diagnostics: r } }
         }
       Rejected { diagnostics: r } => Fail { actual: Rejected { diagnostics: r } }
     }

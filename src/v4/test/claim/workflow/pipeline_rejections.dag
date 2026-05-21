@@ -98,17 +98,24 @@ fn run_pipeline_assert(
   actual: Outcome<CiPipeline>,
   input: Node
 ) -> Verdict<CiPipeline> {
-  let expected = test_claim_expected_outcome(c: claim)
-  match claim {
-    DiagnosticClaim { label: _, t19_anchor: _, input: _, expected_outcome: _, classification: _ } =>
-      match actual {
-        Rejected { diagnostics: r } => {
-          let comparable = Rejected { diagnostics: r }
-          if outcome_node_eq(a: comparable, b: expected) { Pass } else { Fail { actual: actual } }
-        }
-        _ => Fail { actual: actual }
+  match test_claim_expected_outcome(c: claim) {
+    Accepted { value: expected, diagnostics: _ } =>
+      match claim {
+        DiagnosticClaim { label: _, t19_anchor: _, input: _, expected_outcome: _, classification: _ } =>
+          match actual {
+            Rejected { diagnostics: r } => {
+              let comparable = Rejected { diagnostics: r }
+              if outcome_node_eq(a: comparable, b: expected) { Pass } else { Fail { actual: actual } }
+            }
+            _ => Fail { actual: actual }
+          }
+        _ =>
+          Deferred {
+            actual: actual,
+            diagnostic: eval_diagnostic(reason: eval_rejected_pipeline_projection_deferred, node: input)
+          }
       }
-    _ =>
+    Rejected { diagnostics: _ } =>
       Deferred {
         actual: actual,
         diagnostic: eval_diagnostic(reason: eval_rejected_pipeline_projection_deferred, node: input)
