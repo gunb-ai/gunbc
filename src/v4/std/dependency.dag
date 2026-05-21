@@ -58,8 +58,10 @@ type DependencyFoldState {
 
 // 🟡 predicate dissolution — feature:dependency-usage-classifier-consumes-resolve-ground-facts
 // dissolve-on: T-9 resolve writes BindsTo / ModuleDependsOn facts on substrate edges inline.
-// Staged: only Bind-parent edges and explicitly marked binding/import/bootstrap labels classify
-// as semantic kinds; ordinary TypeNode Named record fields remain Contains (composition, not use).
+// Staged: only explicitly marked binding/import/bootstrap edge labels classify as semantic kinds.
+// Bind nodes are NOT all BindsTo — resolve treats edge 0 (binder target), edge 1 (outer scope),
+// and later edges (inner scope) differently (`03_resolve.dag` resolve_bind_edges).
+// Ordinary TypeNode Named record fields remain Contains (composition, not use).
 fn classify_named_edge_usage(sym: Symbol) -> DependencyKind {
   if sym == dependency_binds_to_edge {
     BindsTo
@@ -73,12 +75,12 @@ fn classify_named_edge_usage(sym: Symbol) -> DependencyKind {
 }
 
 fn classify_node_edge_usage(parent: Node, edge: Edge) -> DependencyKind {
-  match parent.kind {
-    ComputationNode { behavior: Bind } => BindsTo
-    _ =>
-      match edge.label {
-        Named { name: sym } => classify_named_edge_usage(sym: sym)
-        Positional => Contains
+  match edge.label {
+    Named { name: sym } => classify_named_edge_usage(sym: sym)
+    Positional =>
+      match parent.kind {
+        ComputationNode { behavior: Bind } => Contains
+        _ => Contains
       }
   }
 }
