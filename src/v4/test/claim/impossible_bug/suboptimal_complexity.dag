@@ -65,6 +65,7 @@ import v4.std.verification {
 data complexity_contract_symbol: Symbol = complexity_contract_symbol
 data complexity_body_linear_symbol: Symbol = complexity_body_linear_symbol
 data complexity_body_quadratic_symbol: Symbol = complexity_body_quadratic_symbol
+data complexity_body_contradictory_inhabitant_symbol: Symbol = complexity_body_contradictory_inhabitant_symbol
 data complexity_violation_reason: Symbol = complexity_violation_reason
 data complexity_inhabitance_reason: Symbol = complexity_inhabitance_reason
 data complexity_bound_field: Symbol = complexity_bound_field
@@ -130,7 +131,7 @@ data claim_overcost_against_structural_bound_violates: TestClaim = TestClaim {
 }
 
 
-data falsification_cost_contradicts_inhabitance: Node = complexity_contract(body: atom_node(s: complexity_body_quadratic_symbol))
+data falsification_cost_contradicts_inhabitance: Node = complexity_contract(body: atom_node(s: complexity_body_contradictory_inhabitant_symbol))
 
 
 data claim_cost_contradicts_inhabitance_caught: TestClaim = TestClaim {

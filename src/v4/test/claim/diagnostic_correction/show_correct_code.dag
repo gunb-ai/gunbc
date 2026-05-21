@@ -37,6 +37,8 @@ import v4.std.verification {
 
 data correction_bad_complexity_symbol: Symbol = correction_bad_complexity_symbol
 data correction_good_complexity_symbol: Symbol = correction_good_complexity_symbol
+data correction_textual_whole_file_subject: Symbol = correction_textual_whole_file_subject
+data correction_textual_byte_range_subject: Symbol = correction_textual_byte_range_subject
 data correction_drift_client_symbol: Symbol = correction_drift_client_symbol
 data correction_drift_server_symbol: Symbol = correction_drift_server_symbol
 data correction_shared_contract_symbol: Symbol = correction_shared_contract_symbol
@@ -91,7 +93,10 @@ data falsification_transport_diagnostic_without_correct_code: Node = transport_c
 data falsification_ambiguous_boundary_without_unavailable_reason: Node = atom_node(s: correction_english_boundary_symbol)
 
 
-data falsification_textual_diagnostic_without_locus: Node = atom_node(s: correction_bad_complexity_symbol)
+data falsification_textual_whole_file_without_locus: Node = atom_node(s: correction_textual_whole_file_subject)
+
+
+data falsification_textual_byte_range_without_locus: Node = atom_node(s: correction_textual_byte_range_subject)
 
 
 data falsification_port_diagnostic_without_locus: Node = atom_node(s: correction_drift_client_symbol)
@@ -161,7 +166,7 @@ data claim_textual_diagnostic_carries_whole_file_locus: TestClaim = TestClaim {
   kind: Equals,
   label: "textual diagnostic carries whole-file locus and suggested correction",
   t19_anchor: T19ManualAnchorAbsent,
-  input: falsification_textual_diagnostic_without_locus,
+  input: falsification_textual_whole_file_without_locus,
   expected: Rejected {
     diagnostics: diagnostics_singleton(
       d: Diagnostic {
@@ -179,7 +184,7 @@ data claim_textual_diagnostic_carries_byte_range_locus: TestClaim = TestClaim {
   kind: Equals,
   label: "textual diagnostic carries byte-range locus and suggested correction",
   t19_anchor: T19ManualAnchorAbsent,
-  input: falsification_textual_diagnostic_without_locus,
+  input: falsification_textual_byte_range_without_locus,
   expected: Rejected {
     diagnostics: diagnostics_singleton(
       d: Diagnostic {
