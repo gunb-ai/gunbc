@@ -1119,11 +1119,22 @@ import/alias of the resolver's authoritative shape.
     real bug.)
   - **Outlier** — `K = 2`, with one arm against `N-1` matching arms.
     The match is performing a binary discriminator dressed as N-way
-    dispatch. **Dissolution:** predicate-factor — extract the
-    one-vs-many predicate as a named `Bool` helper or sibling lens
-    finding (L1.1 territory); the function body becomes `if pred(x)
-    then special else default`. Recent precedent: PR #3359
-    `connective_spec_fact` (6 arms → 2 skeletons, 5:1).
+    dispatch. **Dissolution:** consume the discriminator *structurally*
+    via match patterns + guards on the existing coproduct, OR
+    substructure the coproduct so the one-vs-many distinction becomes a
+    top-level variant. The function body becomes a 2-arm match of the
+    form `match x { <Special_pattern> => special; _ => default }`,
+    with the discriminator expressed as a sub-pattern or guard on the
+    `Special_pattern`. **DO NOT extract a named `Bool` helper** — that
+    is L1.1's predicate-dissolution anti-pattern (a `Bool`-returning fn
+    over a coproduct whose body is a single match per-variant is exactly
+    what L1.1 catches). The lens's "extract a discriminator" reflex
+    must satisfy L1.1 as well as L1.13 — the discriminant is structural
+    (the substrate knows the variant from the parsed match), not a hand-rolled
+    helper. Recent precedent: PR #3359 `connective_spec_fact` (6 arms →
+    2 skeletons, 5:1) was resolved via inline match-pattern with guard
+    (`Atom { identity: id } if is_kernel_ambient(id) => ...; _ => default`),
+    NOT via a named `Bool` helper.
   - **Categorical** — `K` small relative to `N` (e.g., `K = 3, N = 12`),
     with `K` groups of `N/K`-ish arms each. The match is acting as an
     N-to-K projection that should live on the input coproduct's type.
