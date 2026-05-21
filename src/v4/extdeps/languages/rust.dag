@@ -1161,10 +1161,6 @@ fn rust_primitive_bundle_from_integer_facts(facts: RustIntegerPrimitiveFacts) ->
       rust_primitive_axis_binding(
         axis: primitive_fact_axis_encoding,
         fact: rust_inhabitant_atom(id: rust_repr_integer_twos_complement)
-      ),
-      rust_primitive_axis_binding(
-        axis: primitive_fact_axis_overflow_disposition,
-        fact: rust_overflow_node(overflow: facts.overflow_release)
       )
     ]
   }
