@@ -416,6 +416,7 @@ fn resolve_bind_binder_target(t: Node) -> Outcome<Node> {
 }
 
 
+// 🟡 staged producer — bind-edge-0 stamps dependency_binds_to_edge for dependency_lens BindsTo classification.
 fn resolve_bind_edges(
   edges: List<Edge>,
   scope_outer: Scope,
