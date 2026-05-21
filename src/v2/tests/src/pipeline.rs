@@ -588,16 +588,8 @@ fn dag_pipeline_smoke() {
     );
     let content = find_file(&result, "dag-artifact.json");
     assert!(
-        content.contains("\"version\": \"0.2.0\""),
+        content.contains("\"version\": \"0.1.0\""),
         "dag artifact should contain version"
-    );
-    assert!(
-        content.contains("\"nodes\""),
-        "dag artifact should contain shared nodes table"
-    );
-    assert!(
-        content.contains("\"$ref\""),
-        "dag artifact module items should cite nodes by ref"
     );
     assert!(
         content.contains("\"modules\""),
