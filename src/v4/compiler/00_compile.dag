@@ -141,6 +141,7 @@ fn apply_lens(
 }
 
 
+// list_push is kernel/prelude (see std/diagnostic.dag); not exported from std/collection.
 fn append_lens_gate_witness(
   witnesses: List<LensGateWitness>,
   witness: Witness<Node>
