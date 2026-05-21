@@ -1,0 +1,103 @@
+// src/v4/test/claim/lens_unused_parameters/rollup_unused_declaration.dag
+// Scope: T-13 worked claim (BEHAVIORAL contract — registry roll-up) — a declaration that appears as the source of non-USE edges but has NO BindsTo edge rolls up into `UnusedParametersFact.unused` (the v3-shaped `LensIdV0::UnusedParameters` query output).
+//   Composition: `unused_parameters_fact = rollup_unused ∘ use_classification_fact`.
+// Owns: unused_parameters_rollup_claim.
+// Consumes: lens unused_parameters, std dependency, lens_common fixture.
+// Status: T-13 family-ratchet split-contract closure — projection contract pinned by binds_to_edge.dag + non_use_edges.dag; this claim pins the registry-aligned roll-up.
+
+
+module v4.test.claim.lens_unused_parameters.rollup_unused_declaration
+
+import v4.compiler.infer { InferredFacts, InferredTree }
+import v4.lens.unused_parameters {
+  UnusedParameterFact,
+  UnusedParametersFact,
+  unused_parameters_fact_eq,
+  unused_parameters_witness
+}
+import v4.std.dependency {
+  DataDependsOn,
+  DependencyView
+}
+import v4.std.logic { Bool }
+import v4.std.node { Atom, Edge, Named, Node, Symbol, TypeNode }
+import v4.std.witness { Holds, Witness }
+import v4.test.claim.lens_common.infer_fixture {
+  claim_atom_node,
+  claim_inferred_facts,
+  claim_inferred_tree
+}
+
+data rollup_declaration_symbol: Symbol = rollup_declaration_symbol
+data rollup_consumer_symbol: Symbol = rollup_consumer_symbol
+data rollup_edge_symbol: Symbol = rollup_edge_symbol
+data rollup_type_symbol: Symbol = rollup_type_symbol
+data rollup_algebra_symbol: Symbol = rollup_algebra_symbol
+data rollup_algebra_witness_symbol: Symbol = rollup_algebra_witness_symbol
+data rollup_descent_symbol: Symbol = rollup_descent_symbol
+data rollup_canonical_structural_symbol: Symbol = rollup_canonical_structural_symbol
+data rollup_canonical_closedness_symbol: Symbol = rollup_canonical_closedness_symbol
+data rollup_canonical_evidence_symbol: Symbol = rollup_canonical_evidence_symbol
+
+data rollup_consumer: Node = claim_atom_node(s: rollup_consumer_symbol)
+
+data rollup_declaration: Node = Node {
+  kind: TypeNode { connective: Atom { identity: rollup_declaration_symbol } },
+  children: [
+    Edge { label: Named { name: rollup_edge_symbol }, target: rollup_consumer }
+  ]
+}
+
+// Only a non-USE edge sources `rollup_declaration`. No BindsTo edge with
+// `source == rollup_declaration` ⇒ roll-up marks the declaration unused.
+data rollup_data_dependency: DependencyView = DependencyView {
+  source: rollup_declaration,
+  dependent: rollup_consumer,
+  kind: DataDependsOn,
+  usage_site: rollup_consumer
+}
+
+fn rollup_facts() -> InferredFacts {
+  claim_inferred_facts(
+    type_symbol: rollup_type_symbol,
+    algebra_symbol: rollup_algebra_symbol,
+    algebra_witness_symbol: rollup_algebra_witness_symbol,
+    descent_symbol: rollup_descent_symbol,
+    canonical_structural_symbol: rollup_canonical_structural_symbol,
+    canonical_closedness_symbol: rollup_canonical_closedness_symbol,
+    canonical_evidence_symbol: rollup_canonical_evidence_symbol
+  )
+}
+
+fn rollup_tree() -> InferredTree {
+  claim_inferred_tree(root: rollup_declaration, facts: rollup_facts())
+}
+
+type LensRollupUnusedClaim {
+  input: InferredTree
+  expected: UnusedParametersFact
+  actual: Witness<UnusedParametersFact>
+}
+
+data unused_parameters_rollup_claim: LensRollupUnusedClaim = LensRollupUnusedClaim {
+  input: rollup_tree(),
+  expected: UnusedParametersFact {
+    unused: [
+      UnusedParameterFact {
+        declaration: rollup_declaration,
+        declaration_facts: Holds { value: rollup_facts() }
+      }
+    ]
+  },
+  actual: unused_parameters_witness(tree: rollup_tree(), dependencies: [rollup_data_dependency])
+}
+
+fn unused_parameters_rollup_claim_holds() -> Bool {
+  match unused_parameters_rollup_claim.actual {
+    Holds { value: actual } =>
+      unused_parameters_fact_eq(a: actual, b: unused_parameters_rollup_claim.expected)
+    _ => false
+  }
+}
+
+data unused_parameters_rollup_claim_passes: Bool = unused_parameters_rollup_claim_holds()
