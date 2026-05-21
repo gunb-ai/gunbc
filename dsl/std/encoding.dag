@@ -20,6 +20,8 @@
 
 module std.encoding
 
+import std.algebra { BoundedLattice }
+
 type Encoding
   = ASCII                          // 7-bit subset (bottom: most specific)
   | UTF8                           // valid Unicode
@@ -58,81 +60,80 @@ fn is_text_encoding(e: Encoding) -> Bool {
   }
 }
 
-// BoundedLattice.meet: greatest lower bound (conservative narrowing).
-// meet(x, x) = x. For incompatible branches (text vs binary), result is ASCII.
-fn encoding_meet(a: Encoding, b: Encoding) -> Encoding {
-  match a {
-    Unknown => b
-    ASCII => ASCII
-    Binary => match b {
-      Binary => Binary
-      Unknown => Binary
-      _ => ASCII
-    }
-    UTF8 => match b {
-      Unknown => UTF8
-      Text => UTF8
-      UTF8 => UTF8
-      _ => ASCII
-    }
-    Latin1 => match b {
-      Unknown => Latin1
-      Text => Latin1
-      Latin1 => Latin1
-      _ => ASCII
-    }
-    Text => match b {
-      Unknown => Text
-      Text => Text
-      UTF8 => UTF8
-      Latin1 => Latin1
-      ASCII => ASCII
-      Binary => ASCII
-    }
-  }
-}
-
-// BoundedLattice.join: least upper bound (combining from branches).
-// join(x, x) = x. For incompatible branches (text vs binary), result is Unknown.
-fn encoding_join(a: Encoding, b: Encoding) -> Encoding {
-  match a {
-    ASCII => b
-    Unknown => Unknown
-    Binary => match b {
-      Binary => Binary
-      ASCII => Binary
-      Unknown => Unknown
-      _ => Unknown
-    }
-    UTF8 => match b {
-      ASCII => UTF8
-      UTF8 => UTF8
-      Latin1 => Text
-      Text => Text
-      Unknown => Unknown
-      Binary => Unknown
-    }
-    Latin1 => match b {
-      ASCII => Latin1
-      Latin1 => Latin1
-      UTF8 => Text
-      Text => Text
-      Unknown => Unknown
-      Binary => Unknown
-    }
-    Text => match b {
-      ASCII => Text
-      UTF8 => Text
-      Latin1 => Text
-      Text => Text
-      Unknown => Unknown
-      Binary => Unknown
-    }
-  }
-}
-
 // BoundedLattice<Encoding>:
-//   meet = encoding_meet, join = encoding_join
 //   top = Unknown, bottom = ASCII
-// Data declaration deferred: compiler does not yet emit generic type
-// parameters for data constants (BoundedLattice<Encoding>).
+data encoding_bounded_lattice: BoundedLattice<Encoding> = BoundedLattice {
+  // Greatest lower bound (conservative narrowing).
+  // meet(x, x) = x. For incompatible branches (text vs binary), result is ASCII.
+  meet: fn(a, b) {
+    match a {
+      Unknown => b
+      ASCII => ASCII
+      Binary => match b {
+        Binary => Binary
+        Unknown => Binary
+        _ => ASCII
+      }
+      UTF8 => match b {
+        Unknown => UTF8
+        Text => UTF8
+        UTF8 => UTF8
+        _ => ASCII
+      }
+      Latin1 => match b {
+        Unknown => Latin1
+        Text => Latin1
+        Latin1 => Latin1
+        _ => ASCII
+      }
+      Text => match b {
+        Unknown => Text
+        Text => Text
+        UTF8 => UTF8
+        Latin1 => Latin1
+        ASCII => ASCII
+        Binary => ASCII
+      }
+    }
+  }
+  // Least upper bound (combining from branches).
+  // join(x, x) = x. For incompatible branches (text vs binary), result is Unknown.
+  join: fn(a, b) {
+    match a {
+      ASCII => b
+      Unknown => Unknown
+      Binary => match b {
+        Binary => Binary
+        ASCII => Binary
+        Unknown => Unknown
+        _ => Unknown
+      }
+      UTF8 => match b {
+        ASCII => UTF8
+        UTF8 => UTF8
+        Latin1 => Text
+        Text => Text
+        Unknown => Unknown
+        Binary => Unknown
+      }
+      Latin1 => match b {
+        ASCII => Latin1
+        Latin1 => Latin1
+        UTF8 => Text
+        Text => Text
+        Unknown => Unknown
+        Binary => Unknown
+      }
+      Text => match b {
+        ASCII => Text
+        UTF8 => Text
+        Latin1 => Text
+        Text => Text
+        Unknown => Unknown
+        Binary => Unknown
+      }
+    }
+  }
+  top: Unknown
+  bottom: ASCII
+}
