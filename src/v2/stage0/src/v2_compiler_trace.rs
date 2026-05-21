@@ -4,16 +4,10 @@
 use self::TraceEvent::*;
 use self::TraceFilter::*;
 use crate::v2_rt;
-<<<<<<< HEAD
-use crate::v2_rt::{
-    rc_empty_set as empty_set, rc_set_insert as set_insert, rc_set_union as set_union, set_contains,
-};
-=======
 use crate::v2_rt::rc_empty_set as empty_set;
 use crate::v2_rt::rc_set_insert as set_insert;
 use crate::v2_rt::rc_set_union as set_union;
 use crate::v2_rt::set_contains;
->>>>>>> origin/main
 pub use crate::v2_std_core::SourceSpan;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;

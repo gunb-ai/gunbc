@@ -4279,7 +4279,11 @@ fn type_node_is_generic_param(type_node: Node, summary: TypeSummary, source_indi
 
 fn rust_field_value_for_struct(raw_value: String, field_value: Node, struct_node: Node, struct_name: String, field_name: String, scope: InferScope, emit_info: EmitGraphInfo) -> String {
   let value_is_fn = expr_is_function_value(texpr: field_value) || expr_resolves_to_arrow(texpr: field_value)
-  match lookup_struct_field_type_node(struct_node: struct_node, field_name: field_name, source_indices: scope.type_env.source_indices) {
+  let storage_field_type = match rust_struct_field_type_node(scope: scope, struct_name: struct_name, field_name: field_name) {
+    Some { value: decl_field_type } => Some { value: decl_field_type }
+    None => lookup_struct_field_type_node(struct_node: struct_node, field_name: field_name, source_indices: scope.type_env.source_indices)
+  }
+  match storage_field_type {
     Some { value: field_type } =>
       if value_is_fn {
         rust_rc_new_value(raw_value)
@@ -5937,21 +5941,7 @@ fn data_value_has_cross_refs(value: Node) -> Bool {
 }
 
 fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
-<<<<<<< HEAD
   let ty_str = render_rust_data_type(type_node: type_node, shared_types: shared_types, source_indices: scope.type_env.source_indices, emit_info: emit_info)
-=======
-  let raw_ty_str = render_rust_type(n: type_node, shared_types: shared_types, source_indices: scope.type_env.source_indices)
-  let ty_str = if raw_ty_str == "BoundedLattice" || raw_ty_str == "Rc<BoundedLattice>" {
-    match field_value_by_name(record: value, field_name: "top", source_indices: scope.type_env.source_indices) {
-      Some { value: top_value } =>
-        let top_type_name = authored_name_at(source_indices: scope.type_env.source_indices, node: resolved_type(n: top_value))
-        if top_type_name == "" { raw_ty_str }
-        else if raw_ty_str == "Rc<BoundedLattice>" { concat("Rc<BoundedLattice<", top_type_name, ">>") }
-        else { concat("BoundedLattice<", top_type_name, ">") }
-      None => raw_ty_str
-    }
-  } else { raw_ty_str }
->>>>>>> origin/main
   let fn_name = to_snake(name: name)
   let needs_rc = set_contains(shared_types, authored_name_at(source_indices: scope.type_env.source_indices, node: type_node))
   if is_simple_type_node(n: type_node, source_indices: scope.type_env.source_indices) {

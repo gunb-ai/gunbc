@@ -83,16 +83,10 @@ pub use crate::v2_compiler_infer_types::{
 };
 pub use crate::v2_compiler_resolve::{ModuleGraph, ResolvedImport, ResolvedModule};
 use crate::v2_rt;
-<<<<<<< HEAD
-use crate::v2_rt::{
-    rc_empty_set as empty_set, rc_set_insert as set_insert, rc_set_union as set_union, set_contains,
-};
-=======
 use crate::v2_rt::rc_empty_set as empty_set;
 use crate::v2_rt::rc_set_insert as set_insert;
 use crate::v2_rt::rc_set_union as set_union;
 use crate::v2_rt::set_contains;
->>>>>>> origin/main
 use crate::v2_std_core::BinOp::{
     Add, And, Div, Eq, Ge, Gt, Le, Lt, Mod, Mul, Ne, NullCoalesce, Or, Sub,
 };
@@ -554,11 +548,7 @@ pub fn classify_field_recursion(
                     };
                     let is_recursive_element = ((value_type.clone().as_str()
                         == parent_name.clone().as_str())
-<<<<<<< HEAD
-                        || v2_rt::set_contains(&recursive_type_set, value_type.clone()));
-=======
                         || v2_rt::set_contains(recursive_type_set, value_type.clone()));
->>>>>>> origin/main
                     if is_recursive_element {
                         {
                             let elem =
@@ -588,11 +578,7 @@ pub fn classify_field_recursion(
                     }
                 }
             } else {
-<<<<<<< HEAD
-                if v2_rt::set_contains(&recursive_type_set, field_type_name.clone()) {
-=======
                 if v2_rt::set_contains(recursive_type_set, field_type_name.clone()) {
->>>>>>> origin/main
                     match field_node.return_cardinality.clone() {
                         Cardinality::CardOptional => Some(Rc::new(FieldRecursionResult {
                             shape: RecursionShape::OptionalRecursion,
@@ -10249,22 +10235,6 @@ pub fn build_type_env(
         let cross_type_all_names = v2_rt::concat(
             cycle_set_str.clone(),
             Rc::new(v2_rt::map_keys(&compiler_recursive_types())),
-<<<<<<< HEAD
-        );
-        let cross_type_set_str = cross_type_all_names
-            .clone()
-            .iter()
-            .cloned()
-            .fold(v2_rt::rc_empty_set(), |acc: _, name: String| {
-                v2_rt::rc_set_insert(acc, name.clone())
-            });
-        let cross_type_set = cross_type_all_names.clone().iter().cloned().fold(
-            v2_rt::rc_empty_map::<i64, bool>(),
-            |acc: Rc<HashMap<i64, bool>>, name: String| {
-                v2_rt::rc_map_insert(acc, intern(&intern_table, &name).id.clone(), true)
-            },
-        );
-=======
         );
         let cross_type_set_str = cross_type_all_names.clone().iter().cloned().fold(
             v2_rt::rc_empty_set::<_>(), /* BRIDGE: fold empty_set accumulator type unresolved */
@@ -10276,7 +10246,6 @@ pub fn build_type_env(
                 v2_rt::rc_map_insert(acc, intern(&intern_table, &name).id.clone(), true)
             },
         );
->>>>>>> origin/main
         let local_inductive_fields = build_item_inductive_fields(
             module_items(module.module.clone()),
             cross_type_set_str,
@@ -10725,22 +10694,6 @@ pub fn build_type_env_unresolved(
         let cross_type_all_names = v2_rt::concat(
             cycle_set_str.clone(),
             Rc::new(v2_rt::map_keys(&compiler_recursive_types())),
-<<<<<<< HEAD
-        );
-        let cross_type_set_str = cross_type_all_names
-            .clone()
-            .iter()
-            .cloned()
-            .fold(v2_rt::rc_empty_set(), |acc: _, name: String| {
-                v2_rt::rc_set_insert(acc, name.clone())
-            });
-        let cross_type_set = cross_type_all_names.clone().iter().cloned().fold(
-            v2_rt::rc_empty_map::<i64, bool>(),
-            |acc: Rc<HashMap<i64, bool>>, name: String| {
-                v2_rt::rc_map_insert(acc, intern(&intern_table, &name).id.clone(), true)
-            },
-        );
-=======
         );
         let cross_type_set_str = cross_type_all_names.clone().iter().cloned().fold(
             v2_rt::rc_empty_set::<_>(), /* BRIDGE: fold empty_set accumulator type unresolved */
@@ -10752,7 +10705,6 @@ pub fn build_type_env_unresolved(
                 v2_rt::rc_map_insert(acc, intern(&intern_table, &name).id.clone(), true)
             },
         );
->>>>>>> origin/main
         let local_inductive_fields = build_item_inductive_fields(
             module_items(module.module.clone()),
             cross_type_set_str,
@@ -11394,20 +11346,10 @@ pub fn topo_resolve_types(
                 diagnostics: diagnostics.clone(),
             });
         }
-<<<<<<< HEAD
-        let remaining_set = remaining
-            .clone()
-            .iter()
-            .cloned()
-            .fold(v2_rt::rc_empty_set(), |acc: _, name: String| {
-                v2_rt::rc_set_insert(acc, name.clone())
-            });
-=======
         let remaining_set = remaining.clone().iter().cloned().fold(
             v2_rt::rc_empty_set::<_>(), /* BRIDGE: fold empty_set accumulator type unresolved */
             |acc: _, name: String| v2_rt::rc_set_insert(acc, name.clone()),
         );
->>>>>>> origin/main
         let ready = Rc::new({
             let mut __result = Vec::new();
             for name in remaining.clone().iter().cloned() {
@@ -11419,12 +11361,8 @@ pub fn topo_resolve_types(
                                 || (dep.clone().as_str() == "None".to_string().as_str()))
                                 || (dep.clone().as_str() == "".to_string().as_str()))
                                 || is_recursive_type_by_name(&env, dep.clone()))
-<<<<<<< HEAD
-                                || (v2_rt::set_contains(&remaining_set, dep.clone()) == false))
-=======
                                 || (v2_rt::set_contains(remaining_set.clone(), dep.clone())
                                     == false))
->>>>>>> origin/main
                             {
                                 __all = false;
                                 break;
@@ -11627,42 +11565,6 @@ pub fn build_fielded_variants(
     type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
 ) -> Rc<std::collections::BTreeSet<String>> {
     {
-<<<<<<< HEAD
-        let result =
-            modules
-                .iter()
-                .cloned()
-                .fold(v2_rt::rc_empty_set(), |acc: _, m: Rc<TypedModule>| {
-                    let items = m.items.clone();
-                    let si = m.type_env.clone().source_indices.clone();
-                    items
-                        .clone()
-                        .iter()
-                        .cloned()
-                        .fold(acc, |inner: _, item: Rc<Node>| {
-                            let is_enum = match v2_rt::map_get(
-                                &type_summaries,
-                                authored_name_at(si.clone(), &item),
-                            ) {
-                                Some(summary) => match (*summary.repr.clone()).clone() {
-                                    TypeRepr::EnumRepr { .. } => true,
-                                    _ => false,
-                                },
-                                None => false,
-                            };
-                            if is_enum.clone() {
-                                {
-                                    let enum_name = authored_name_at(si.clone(), &item);
-                                    let variants = item.children.clone();
-                                    variants.clone().iter().cloned().fold(
-                                        inner.clone(),
-                                        |vacc: _, variant: Rc<Node>| {
-                                            let has_fields =
-                                                ((variant.children.clone().len() as i64) > 0);
-                                            if has_fields.clone() {
-                                                v2_rt::rc_set_insert(
-                                                    vacc.clone(),
-=======
         let result = modules.iter().cloned().fold(
             v2_rt::rc_empty_set::<_>(), /* BRIDGE: fold empty_set accumulator type unresolved */
             |acc: _, m: Rc<TypedModule>| {
@@ -11696,28 +11598,10 @@ pub fn build_fielded_variants(
                                             v2_rt::rc_set_insert(
                                                 vacc.clone(),
                                                 v2_rt::concat(
->>>>>>> origin/main
                                                     v2_rt::concat(
-                                                        v2_rt::concat(
-                                                            enum_name.clone(),
-                                                            "::".to_string(),
-                                                        ),
-                                                        authored_name_at(si.clone(), &variant),
+                                                        enum_name.clone(),
+                                                        "::".to_string(),
                                                     ),
-<<<<<<< HEAD
-                                                )
-                                            } else {
-                                                vacc.clone()
-                                            }
-                                        },
-                                    )
-                                }
-                            } else {
-                                inner.clone()
-                            }
-                        })
-                });
-=======
                                                     authored_name_at(si.clone(), &variant),
                                                 ),
                                             )
@@ -11733,7 +11617,6 @@ pub fn build_fielded_variants(
                     })
             },
         );
->>>>>>> origin/main
         result
     }
 }
@@ -11759,11 +11642,7 @@ pub fn build_emit_graph_info(modules: &Rc<Vec<Rc<TypedModule>>>) -> Rc<EmitGraph
             },
         );
         let all_recursive = modules.clone().iter().cloned().fold(
-<<<<<<< HEAD
-            v2_rt::rc_empty_set(),
-=======
             v2_rt::rc_empty_set::<_>(), /* BRIDGE: fold empty_set accumulator type unresolved */
->>>>>>> origin/main
             |acc: _, m: Rc<TypedModule>| {
                 Rc::new(v2_rt::map_keys(
                     &m.type_env.clone().recursive_type_set.clone(),
@@ -11784,30 +11663,17 @@ pub fn build_emit_graph_info(modules: &Rc<Vec<Rc<TypedModule>>>) -> Rc<EmitGraph
             type_summaries: built.type_summaries.clone(),
             recursive_type_set: all_recursive,
             fielded_variants: fielded,
-<<<<<<< HEAD
-            shared_types: v2_rt::rc_empty_set(),
-            ownership_index: v2_rt::rc_empty_map::<String, Rc<std::collections::BTreeSet<String>>>(
-            ),
-            movable: v2_rt::rc_empty_set(),
-            variant_to_enum: vtoe,
-            owned_bindings: v2_rt::rc_empty_set(),
-=======
             shared_types: v2_rt::rc_empty_set::<String>(),
             ownership_index: v2_rt::rc_empty_map::<String, Rc<std::collections::BTreeSet<String>>>(
             ),
             movable: v2_rt::rc_empty_set::<String>(),
             variant_to_enum: vtoe,
             owned_bindings: v2_rt::rc_empty_set::<String>(),
->>>>>>> origin/main
             read_only_params_index: v2_rt::rc_empty_map::<
                 String,
                 Rc<std::collections::BTreeSet<String>>,
             >(),
-<<<<<<< HEAD
-            read_only_params: v2_rt::rc_empty_set(),
-=======
             read_only_params: v2_rt::rc_empty_set::<String>(),
->>>>>>> origin/main
         })
     }
 }

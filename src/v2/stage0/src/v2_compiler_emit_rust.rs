@@ -67,16 +67,10 @@ pub use crate::v2_compiler_ownership::{
 };
 pub use crate::v2_compiler_runtime_rust::rust_runtime_source;
 use crate::v2_rt;
-<<<<<<< HEAD
-use crate::v2_rt::{
-    rc_empty_set as empty_set, rc_set_insert as set_insert, rc_set_union as set_union, set_contains,
-};
-=======
 use crate::v2_rt::rc_empty_set as empty_set;
 use crate::v2_rt::rc_set_insert as set_insert;
 use crate::v2_rt::rc_set_union as set_union;
 use crate::v2_rt::set_contains;
->>>>>>> origin/main
 use crate::v2_std_core::AlgebraFieldKind::*;
 use crate::v2_std_core::BinOp::*;
 use crate::v2_std_core::CallSemantics::{LookupCallSemantics, PlainCallSemantics};
@@ -108,23 +102,23 @@ pub use crate::v2_std_core::{
     binop_right, cast_expr, cast_target, expr_call_func_at, expr_has_non_tail_self_call,
     expr_has_self_call, expr_method_name_at, expr_var_name_at, field_access_base,
     field_access_field_at, field_binding_name_at, field_binding_pattern, field_init_node_name_at,
-    field_init_node_value, field_node_type_expr, find_child_named, foreach_body,
-    foreach_collection, foreach_variable_at, generic_param_name_at, if_condition, if_else_branch,
-    if_then_branch, import_is_all, import_specific_names_at, index_base, index_expr,
-    is_compiler_error, is_file_transport, is_rest_transport, is_shell_transport, lambda_body,
-    lambda_param_names_at, let_binding_name_at, let_body, let_value, make_arg_node,
-    make_error_node, make_expr_node, make_named_expr_node, make_span, match_arm_nodes,
-    match_scrutinee, method_arg_nodes, method_receiver, module_imports, module_items,
-    param_node_default_value, param_node_name_at, param_node_type_expr, record_lit_type_name_at,
-    resource_use_name_at, resource_use_resource, return_value, service_config_auth,
-    service_config_auth_input, service_config_auth_source, service_config_endpoint, slice_base,
-    slice_end, slice_start, transport_auth_header_name, transport_auth_token, transport_base_url,
-    transport_env, transport_has_auth, transport_headers, transport_method,
-    transport_path_template, transport_query, transport_request_body, transport_response_format,
-    transport_stdin, with_required_cardinality, AlgebraFieldKind, BinOp, CallSemantics,
-    Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData, FieldAccessStyle,
-    FieldSummary, FieldValueShape, InferredNode, LiteralValue, MatchPattern, MethodSemantics,
-    NewlineIndex, Node, SourceSpan, StringPart, TextFile, UnaryOpKind, VarBindingKind,
+    field_init_node_value, find_child_named, foreach_body, foreach_collection, foreach_variable_at,
+    generic_param_name_at, if_condition, if_else_branch, if_then_branch, import_is_all,
+    import_specific_names_at, index_base, index_expr, is_compiler_error, is_file_transport,
+    is_rest_transport, is_shell_transport, lambda_body, lambda_param_names_at, let_binding_name_at,
+    let_body, let_value, make_arg_node, make_error_node, make_expr_node, make_named_expr_node,
+    make_span, match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, module_imports,
+    module_items, param_node_default_value, param_node_name_at, param_node_type_expr,
+    record_lit_type_name_at, resource_use_name_at, resource_use_resource, return_value,
+    service_config_auth, service_config_auth_input, service_config_auth_source,
+    service_config_endpoint, slice_base, slice_end, slice_start, transport_auth_header_name,
+    transport_auth_token, transport_base_url, transport_env, transport_has_auth, transport_headers,
+    transport_method, transport_path_template, transport_query, transport_request_body,
+    transport_response_format, transport_stdin, with_required_cardinality, AlgebraFieldKind, BinOp,
+    CallSemantics, Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData,
+    FieldAccessStyle, FieldSummary, FieldValueShape, InferredNode, LiteralValue, MatchPattern,
+    MethodSemantics, NewlineIndex, Node, SourceSpan, StringPart, TextFile, UnaryOpKind,
+    VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -137,127 +131,6 @@ pub fn render_rust_type(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     render_node_type(&n, &RenderTarget::Rust, &shared_types, &source_indices)
-}
-
-pub fn render_rust_data_type(
-    type_node: &Rc<Node>,
-    shared_types: &Rc<std::collections::BTreeSet<String>>,
-    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
-    emit_info: Rc<EmitGraphInfo>,
-) -> String {
-    {
-        let tn = authored_name_at(source_indices.clone(), &type_node);
-        if ((type_node.params.clone().len() as i64) > 0) {
-            {
-                let param_strs = Rc::new({
-                    let mut __result = Vec::new();
-                    for p in type_node.params.clone().iter().cloned() {
-                        __result.push(render_rust_type(
-                            param_node_type_expr(&p),
-                            shared_types.clone(),
-                            source_indices.clone(),
-                        ));
-                    }
-                    __result
-                });
-                let applied = v2_rt::concat(
-                    v2_rt::concat(
-                        v2_rt::concat(
-                            coerce_primitive_type(RenderTarget::Rust, tn.clone()),
-                            "<".to_string(),
-                        ),
-                        param_strs.join(&", ".to_string()),
-                    ),
-                    ">".to_string(),
-                );
-                if v2_rt::set_contains(&shared_types, tn.clone()) {
-                    v2_rt::concat(v2_rt::concat("Rc<".to_string(), applied), ">".to_string())
-                } else {
-                    applied
-                }
-            }
-        } else {
-            if ((type_node.children.clone().len() as i64) > 0) {
-                {
-                    let generic_arity = match lookup_emit_type_summary(emit_info, tn.clone()) {
-                        Some(summary) => (summary.generic_param_names.clone().len() as i64),
-                        None => 0,
-                    };
-                    if (generic_arity == 1) {
-                        {
-                            let carrier = Rc::new({
-                                let mut __result = Vec::new();
-                                for rt in Rc::new({
-                                    let mut __result = Vec::new();
-                                    for ch in type_node.children.clone().iter().cloned() {
-                                        __result.push(resolved_type(ch.clone()));
-                                    }
-                                    __result
-                                })
-                                .iter()
-                                .cloned()
-                                {
-                                    if (rt.connective.clone() != Connective::Arrow) {
-                                        __result.push(rt);
-                                    }
-                                }
-                                __result
-                            })
-                            .first()
-                            .cloned();
-                            match carrier {
-                                Some(carrier_type) => {
-                                    let carrier_str = render_rust_type(
-                                        carrier_type.clone(),
-                                        shared_types.clone(),
-                                        source_indices.clone(),
-                                    );
-                                    let applied = v2_rt::concat(
-                                        v2_rt::concat(
-                                            v2_rt::concat(
-                                                coerce_primitive_type(
-                                                    RenderTarget::Rust,
-                                                    tn.clone(),
-                                                ),
-                                                "<".to_string(),
-                                            ),
-                                            carrier_str,
-                                        ),
-                                        ">".to_string(),
-                                    );
-                                    if v2_rt::set_contains(&shared_types, tn.clone()) {
-                                        v2_rt::concat(
-                                            v2_rt::concat("Rc<".to_string(), applied),
-                                            ">".to_string(),
-                                        )
-                                    } else {
-                                        applied
-                                    }
-                                }
-                                None => render_rust_type(
-                                    type_node.clone(),
-                                    shared_types.clone(),
-                                    source_indices.clone(),
-                                ),
-                            }
-                        }
-                    } else {
-                        render_rust_type(
-                            type_node.clone(),
-                            shared_types.clone(),
-                            source_indices.clone(),
-                        )
-                    }
-                }
-            } else {
-                render_rust_type(
-                    type_node.clone(),
-                    shared_types.clone(),
-                    source_indices.clone(),
-                )
-            }
-        }
-    }
 }
 
 pub fn type_variable_node(id: String) -> Rc<Node> {
@@ -1594,11 +1467,7 @@ pub fn is_type_constant(
     recursive_type_set: Rc<std::collections::BTreeSet<String>>,
 ) -> bool {
     {
-<<<<<<< HEAD
-        let is_recursive = v2_rt::set_contains(&recursive_type_set, summary.name.clone());
-=======
         let is_recursive = v2_rt::set_contains(recursive_type_set, summary.name.clone());
->>>>>>> origin/main
         let has_generics = ((summary.generic_param_names.clone().len() as i64) > 0);
         match (*summary.repr.clone()).clone() {
             TypeRepr::EnumRepr { unit_only, .. } => {
@@ -1671,11 +1540,7 @@ pub fn build_shared_types(
             .iter()
             .cloned()
             .fold(
-<<<<<<< HEAD
-                v2_rt::rc_empty_set(),
-=======
                 v2_rt::rc_empty_set::<String>(),
->>>>>>> origin/main
                 |acc: Rc<std::collections::BTreeSet<String>>, summary: Rc<TypeSummary>| {
                     maybe_mark_shared_type(
                         acc,
@@ -1726,11 +1591,7 @@ pub struct OwnershipBuildResult {
 pub fn build_ownership_results(modules: &Rc<Vec<Rc<TypedModule>>>) -> Rc<OwnershipBuildResult> {
     {
         let callable_set = modules.clone().iter().cloned().fold(
-<<<<<<< HEAD
-            v2_rt::rc_empty_set(),
-=======
             v2_rt::rc_empty_set::<_>(), /* BRIDGE: fold empty_set accumulator type unresolved */
->>>>>>> origin/main
             |acc: _, m: Rc<TypedModule>| {
                 Rc::new({
                     let mut __result = Vec::new();
@@ -1757,61 +1618,6 @@ pub fn build_ownership_results(modules: &Rc<Vec<Rc<TypedModule>>>) -> Rc<Ownersh
         let proofs = Rc::new({
             let mut __result = Vec::new();
             for m in modules.clone().iter().cloned() {
-<<<<<<< HEAD
-                __result.extend(
-                    (*Rc::new({
-                        let mut __result = Vec::new();
-                        for item in Rc::new({
-                            let mut __result = Vec::new();
-                            for item in m.items.clone().iter().cloned() {
-                                if (item.body.clone() != None) {
-                                    __result.push(item);
-                                }
-                            }
-                            __result
-                        })
-                        .iter()
-                        .cloned()
-                        {
-                            __result.push({
-                                let pnames = item.params.clone().iter().cloned().fold(
-                                    v2_rt::rc_empty_set(),
-                                    |acc: _, p: Rc<Node>| {
-                                        v2_rt::rc_set_insert(
-                                            acc,
-                                            param_node_name_at(
-                                                p.clone(),
-                                                m.type_env.clone().source_indices.clone(),
-                                            ),
-                                        )
-                                    },
-                                );
-                                let si = m.type_env.clone().source_indices.clone();
-                                let qualified = v2_rt::concat(
-                                    v2_rt::concat(
-                                        authored_name_at(si.clone(), &m.module.clone()),
-                                        ".".to_string(),
-                                    ),
-                                    authored_name_at(si.clone(), &item),
-                                );
-                                Rc::new(OwnershipProofEntry {
-                                    name: qualified.clone(),
-                                    proof: analyze_ownership(
-                                        authored_name_at(si.clone(), &item),
-                                        item.params.clone(),
-                                        item.body.clone().clone().unwrap(),
-                                        &si,
-                                    ),
-                                    param_names: pnames.clone(),
-                                })
-                            });
-                        }
-                        __result
-                    }))
-                    .iter()
-                    .cloned(),
-                );
-=======
                 __result.extend((*Rc::new({ let mut __result = Vec::new(); for item in Rc::new({ let mut __result = Vec::new(); for item in m.items.clone().iter().cloned() { if (item.body.clone() != None) { __result.push(item); } } __result }).iter().cloned() { __result.push({
             let pnames = item.params.clone().iter().cloned().fold(v2_rt::rc_empty_set::<_>() /* BRIDGE: fold empty_set accumulator type unresolved */, |acc: _, p: Rc<Node>| v2_rt::rc_set_insert(acc, param_node_name_at(p.clone(), m.type_env.clone().source_indices.clone())));
 let si = m.type_env.clone().source_indices.clone();
@@ -1822,7 +1628,6 @@ Rc::new(OwnershipProofEntry {
     param_names: pnames.clone(),
 })
 }); } __result })).iter().cloned());
->>>>>>> origin/main
             }
             __result
         });
@@ -1841,17 +1646,10 @@ Rc::new(OwnershipProofEntry {
                 let acc = Rc::try_unwrap(acc).unwrap_or_else(|rc| (*rc).clone());
                 {
                     let read_only = if v2_rt::set_contains(
-<<<<<<< HEAD
-                        &callable_set,
-                        entry.proof.clone().func_name.clone(),
-                    ) {
-                        v2_rt::rc_empty_set()
-=======
                         callable_set.clone(),
                         entry.proof.clone().func_name.clone(),
                     ) {
                         v2_rt::rc_empty_set::<String>()
->>>>>>> origin/main
                     } else {
                         build_read_only_params(entry.proof.clone(), entry.param_names.clone())
                     };
@@ -1889,19 +1687,11 @@ pub fn emit_rust(typed: &Rc<ResolvedGraph>) -> Rc<EmitResult> {
             fielded_variants: base_info.fielded_variants.clone(),
             shared_types: shared,
             ownership_index: ownership.ownership_index.clone(),
-<<<<<<< HEAD
-            movable: v2_rt::rc_empty_set(),
-            variant_to_enum: base_info.variant_to_enum.clone(),
-            owned_bindings: v2_rt::rc_empty_set(),
-            read_only_params_index: ownership.read_only_params_index.clone(),
-            read_only_params: v2_rt::rc_empty_set(),
-=======
             movable: v2_rt::rc_empty_set::<String>(),
             variant_to_enum: base_info.variant_to_enum.clone(),
             owned_bindings: v2_rt::rc_empty_set::<String>(),
             read_only_params_index: ownership.read_only_params_index.clone(),
             read_only_params: v2_rt::rc_empty_set::<String>(),
->>>>>>> origin/main
         });
         let shared_types = emit_info.shared_types.clone();
         let registry = typed.item_registry.clone();
@@ -2154,15 +1944,9 @@ pub fn emit_module(
             ownership_index: base_info.ownership_index.clone(),
             movable: base_info.movable.clone(),
             variant_to_enum: base_info.variant_to_enum.clone(),
-<<<<<<< HEAD
-            owned_bindings: v2_rt::rc_empty_set(),
-            read_only_params_index: base_info.read_only_params_index.clone(),
-            read_only_params: v2_rt::rc_empty_set(),
-=======
             owned_bindings: v2_rt::rc_empty_set::<String>(),
             read_only_params_index: base_info.read_only_params_index.clone(),
             read_only_params: v2_rt::rc_empty_set::<String>(),
->>>>>>> origin/main
         });
         let shared_types = emit_info.shared_types.clone();
         emit_module_full(
@@ -2780,11 +2564,7 @@ pub fn emit_imports(
 
 pub fn emit_prelude() -> String {
     {
-<<<<<<< HEAD
-        let use_line = "use std::collections::HashMap;\nuse std::rc::Rc;\nuse crate::v2_rt;\nuse crate::v2_rt::{rc_empty_set as empty_set, rc_set_insert as set_insert, rc_set_union as set_union, set_contains};".to_string();
-=======
         let use_line = "use std::collections::HashMap;\nuse std::rc::Rc;\nuse crate::v2_rt;\nuse crate::v2_rt::rc_empty_set as empty_set;\nuse crate::v2_rt::rc_set_insert as set_insert;\nuse crate::v2_rt::rc_set_union as set_union;\nuse crate::v2_rt::set_contains;".to_string();
->>>>>>> origin/main
         let wrapper_use = "use crate::NonEmptyVec;\nuse crate::NonEmptyBTreeSet;".to_string();
         v2_rt::concat(v2_rt::concat(use_line, "\n".to_string()), wrapper_use)
     }
@@ -2865,11 +2645,7 @@ pub fn emit_typed_item(
                                 qualified_name.clone(),
                             ) {
                                 Some(m) => m.clone(),
-<<<<<<< HEAD
-                                None => v2_rt::rc_empty_set(),
-=======
                                 None => v2_rt::rc_empty_set::<String>(),
->>>>>>> origin/main
                             };
                             let item_is_tco = is_tco_eligible(
                                 &authored_name(env.clone(), item.clone()),
@@ -2878,22 +2654,14 @@ pub fn emit_typed_item(
                                 &env.source_indices.clone(),
                             );
                             let fn_read_only = if item_is_tco {
-<<<<<<< HEAD
-                                v2_rt::rc_empty_set()
-=======
                                 v2_rt::rc_empty_set::<String>()
->>>>>>> origin/main
                             } else {
                                 match v2_rt::map_get(
                                     &emit_info.read_only_params_index.clone(),
                                     qualified_name.clone(),
                                 ) {
                                     Some(m) => m.clone(),
-<<<<<<< HEAD
-                                    None => v2_rt::rc_empty_set(),
-=======
                                     None => v2_rt::rc_empty_set::<String>(),
->>>>>>> origin/main
                                 }
                             };
                             let fn_emit_info = Rc::new(EmitGraphInfo {
@@ -2904,11 +2672,7 @@ pub fn emit_typed_item(
                                 ownership_index: emit_info.ownership_index.clone(),
                                 movable: fn_movable,
                                 variant_to_enum: emit_info.variant_to_enum.clone(),
-<<<<<<< HEAD
-                                owned_bindings: v2_rt::rc_empty_set(),
-=======
                                 owned_bindings: v2_rt::rc_empty_set::<String>(),
->>>>>>> origin/main
                                 read_only_params_index: emit_info.read_only_params_index.clone(),
                                 read_only_params: fn_read_only,
                             });
@@ -2957,7 +2721,7 @@ pub fn emit_typed_item(
                                 &scope,
                                 0,
                                 &shared_types,
-                                &emit_info,
+                                emit_info.clone(),
                             )
                         } else {
                             if is_service_def_item(&item) {
@@ -2992,17 +2756,10 @@ pub fn needs_box_wrapping(
     loop {
         if ((n.children.clone().len() as i64) == 0) {
             let name = authored_name_at(source_indices, &n);
-<<<<<<< HEAD
-            if v2_rt::set_contains(&shared_types, name.clone()) {
-                break false;
-            } else {
-                break v2_rt::set_contains(&recursive_types, name.clone());
-=======
             if v2_rt::set_contains(shared_types, name.clone()) {
                 break false;
             } else {
                 break v2_rt::set_contains(recursive_types, name.clone());
->>>>>>> origin/main
             }
         } else {
             let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
@@ -3212,11 +2969,7 @@ pub fn emit_struct_from_children(
         let derives = if has_fn_fields {
             "#[derive(Clone)]".to_string()
         } else {
-<<<<<<< HEAD
-            if v2_rt::set_contains(&shared_types, name.clone()) {
-=======
             if v2_rt::set_contains(shared_types.clone(), name.clone()) {
->>>>>>> origin/main
                 rust_struct_derives_text()
             } else {
                 rust_struct_derives_copy_text()
@@ -3325,12 +3078,8 @@ pub fn emit_struct_field_from_child(
                                     ),
                                     ">".to_string(),
                                 );
-<<<<<<< HEAD
-                                if v2_rt::set_contains(&shared_types, rt_child_name.clone()) {
-=======
                                 if v2_rt::set_contains(shared_types.clone(), rt_child_name.clone())
                                 {
->>>>>>> origin/main
                                     v2_rt::concat(
                                         v2_rt::concat("Rc<".to_string(), with_params),
                                         ">".to_string(),
@@ -4761,11 +4510,7 @@ pub fn emit_param(
         let ty = emit_rust_param_type(&n, &shared_types, &source_indices);
         let pname = param_node_name_at(param.clone(), source_indices.clone());
         let is_callable_param = ((n.params.clone().len() as i64) > 0);
-<<<<<<< HEAD
-        let is_borrowable = ((v2_rt::set_contains(&read_only_params, pname.clone())
-=======
         let is_borrowable = ((v2_rt::set_contains(read_only_params, pname.clone())
->>>>>>> origin/main
             && (is_callable_param == false))
             && needs_reference_node(&n, source_indices.clone()));
         let final_ty = if is_borrowable {
@@ -5091,15 +4836,9 @@ pub fn emit_variant_pattern(
                         None => name.clone(),
                     };
                     let is_fielded =
-<<<<<<< HEAD
-                        (v2_rt::set_contains(&emit_info.fielded_variants.clone(), fielded_key)
-                            || v2_rt::set_contains(
-                                &emit_info.fielded_variants.clone(),
-=======
                         (v2_rt::set_contains(emit_info.fielded_variants.clone(), fielded_key)
                             || v2_rt::set_contains(
                                 emit_info.fielded_variants.clone(),
->>>>>>> origin/main
                                 qualified.clone(),
                             ));
                     if is_fielded {
@@ -5132,17 +4871,10 @@ pub fn emit_variant_pattern(
                                 None => name.clone(),
                             };
                             let is_fielded2 = (v2_rt::set_contains(
-<<<<<<< HEAD
-                                &emit_info.fielded_variants.clone(),
-                                fielded_key2,
-                            ) || v2_rt::set_contains(
-                                &emit_info.fielded_variants.clone(),
-=======
                                 emit_info.fielded_variants.clone(),
                                 fielded_key2,
                             ) || v2_rt::set_contains(
                                 emit_info.fielded_variants.clone(),
->>>>>>> origin/main
                                 qualified.clone(),
                             ));
                             if is_fielded2 {
@@ -5306,13 +5038,9 @@ pub fn analyze_rc_pattern(
                         &scrut_type,
                         emit_info.type_summaries.clone(),
                     ) {
-<<<<<<< HEAD
-                        Some(enum_name) => v2_rt::set_contains(&shared_types, enum_name.clone()),
-=======
                         Some(enum_name) => {
                             v2_rt::set_contains(shared_types.clone(), enum_name.clone())
                         }
->>>>>>> origin/main
                         None => false,
                     };
                     let ref_bound_fields = Rc::new({
@@ -5387,11 +5115,7 @@ pub fn analyze_rc_match(
             Some(InferredNode::Resolved { node: rt, .. }) => {
                 if (((rt.children.clone().len() as i64) == 0) && (rt.ident_span.clone() != None)) {
                     v2_rt::set_contains(
-<<<<<<< HEAD
-                        &shared_types,
-=======
                         shared_types.clone(),
->>>>>>> origin/main
                         authored_name_at(source_indices.clone(), &rt),
                     )
                 } else {
@@ -5536,15 +5260,9 @@ pub fn emit_variant_pattern_rc_aware(
                         None => name.clone(),
                     };
                     let is_fielded =
-<<<<<<< HEAD
-                        (v2_rt::set_contains(&emit_info.fielded_variants.clone(), fielded_key)
-                            || v2_rt::set_contains(
-                                &emit_info.fielded_variants.clone(),
-=======
                         (v2_rt::set_contains(emit_info.fielded_variants.clone(), fielded_key)
                             || v2_rt::set_contains(
                                 emit_info.fielded_variants.clone(),
->>>>>>> origin/main
                                 qualified.clone(),
                             ));
                     if is_fielded {
@@ -5577,17 +5295,10 @@ pub fn emit_variant_pattern_rc_aware(
                                 None => name.clone(),
                             };
                             let is_fielded2 = (v2_rt::set_contains(
-<<<<<<< HEAD
-                                &emit_info.fielded_variants.clone(),
-                                fielded_key2,
-                            ) || v2_rt::set_contains(
-                                &emit_info.fielded_variants.clone(),
-=======
                                 emit_info.fielded_variants.clone(),
                                 fielded_key2,
                             ) || v2_rt::set_contains(
                                 emit_info.fielded_variants.clone(),
->>>>>>> origin/main
                                 qualified.clone(),
                             ));
                             if is_fielded2 {
@@ -5950,11 +5661,7 @@ pub fn emit_var_ref(
             emit_keyword(name.clone(), RenderTarget::Rust)
         } else {
             {
-<<<<<<< HEAD
-                let moves_by_value = v2_rt::set_contains(&emit_info.movable.clone(), name.clone());
-=======
                 let moves_by_value = v2_rt::set_contains(emit_info.movable.clone(), name.clone());
->>>>>>> origin/main
                 let sharing = language_spec(RenderTarget::Rust).sharing.clone();
                 let variant_parent = effective_variant_parent(
                     &name,
@@ -5969,11 +5676,7 @@ pub fn emit_var_ref(
                             v2_rt::concat(enum_name.clone(), "::".to_string()),
                             name.clone(),
                         );
-<<<<<<< HEAD
-                        if v2_rt::set_contains(&shared_types, enum_name.clone()) {
-=======
                         if v2_rt::set_contains(shared_types, enum_name.clone()) {
->>>>>>> origin/main
                             v2_rt::concat(
                                 v2_rt::concat("Rc::new(".to_string(), qualified),
                                 ")".to_string(),
@@ -6073,11 +5776,7 @@ pub fn emit_typed_expr_base(
                                         v2_rt::concat(enum_name.clone(), "::".to_string()),
                                         n.clone(),
                                     );
-<<<<<<< HEAD
-                                    if v2_rt::set_contains(&shared_types, enum_name.clone()) {
-=======
                                     if v2_rt::set_contains(shared_types, enum_name.clone()) {
->>>>>>> origin/main
                                         v2_rt::concat(
                                             v2_rt::concat("Rc::new(".to_string(), qualified),
                                             ")".to_string(),
@@ -6240,14 +5939,7 @@ pub fn emit_typed_field_access(
                                         base.clone(),
                                         scope.type_env.clone().source_indices.clone(),
                                     );
-<<<<<<< HEAD
-                                    v2_rt::set_contains(
-                                        &emit_info.owned_bindings.clone(),
-                                        base_name,
-                                    )
-=======
                                     v2_rt::set_contains(emit_info.owned_bindings.clone(), base_name)
->>>>>>> origin/main
                                 }
                                 _ => false,
                             };
@@ -6743,11 +6435,7 @@ pub fn emit_rust_expr_record_lit(
                 },
             };
             if ((rc_name.clone().as_str() != "".to_string().as_str())
-<<<<<<< HEAD
-                && v2_rt::set_contains(&shared_types, rc_name.clone()))
-=======
                 && v2_rt::set_contains(shared_types.clone(), rc_name.clone()))
->>>>>>> origin/main
             {
                 v2_rt::concat(v2_rt::concat("Rc::new(".to_string(), raw), ")".to_string())
             } else {
@@ -7436,11 +7124,7 @@ pub fn emit_typed_call(
                     )]),
                 };
                 let fields_str = field_strs.join(&", ".to_string());
-<<<<<<< HEAD
-                let needs_rc = v2_rt::set_contains(&shared_types, type_name.clone());
-=======
                 let needs_rc = v2_rt::set_contains(shared_types.clone(), type_name.clone());
->>>>>>> origin/main
                 let sharing = language_spec(RenderTarget::Rust).sharing.clone();
                 let spread = if needs_rc.clone() {
                     apply_type_template1(sharing.deref_clone.clone(), base_str)
@@ -7553,11 +7237,7 @@ pub fn emit_typed_call(
         let callee_read_only =
             match v2_rt::map_get(&emit_info.read_only_params_index.clone(), callee_qualified) {
                 Some(m) => m.clone(),
-<<<<<<< HEAD
-                None => v2_rt::rc_empty_set(),
-=======
                 None => v2_rt::rc_empty_set::<String>(),
->>>>>>> origin/main
             };
         let callee_is_tco = match callee.clone() {
             Some(info) => {
@@ -7590,11 +7270,7 @@ pub fn emit_typed_call(
                         let n = param_node_type_expr(&pair.1.clone());
                         let is_callable = ((n.params.clone().len() as i64) > 0);
                         let is_borrowable =
-<<<<<<< HEAD
-                            ((v2_rt::set_contains(&callee_read_only, pname.clone())
-=======
                             ((v2_rt::set_contains(callee_read_only.clone(), pname.clone())
->>>>>>> origin/main
                                 && (is_callable.clone() == false))
                                 && needs_reference_node(
                                     &n,
@@ -8332,11 +8008,7 @@ pub fn emit_typed_fold_lambda(
                 == "Rc<Vec<()>>".to_string().as_str())
                 || (acc_type_str.clone().as_str() == "Vec<()>".to_string().as_str()))
                 || (acc_type_str.clone().as_str() == "Option<()>".to_string().as_str()))
-<<<<<<< HEAD
-                || v2_rt::contains(acc_type_str.clone(), "compile_error!".to_string()))
-=======
                 || v2_rt::contains(acc_type_str.clone(), "UNRESOLVED_TypeVariable".to_string()))
->>>>>>> origin/main
             {
                 "_".to_string()
             } else {
@@ -8386,11 +8058,7 @@ pub fn emit_typed_fold_lambda(
                 None => "".to_string(),
             };
             let needs_unwrap = ((acc_name.clone().as_str() != "".to_string().as_str())
-<<<<<<< HEAD
-                && v2_rt::set_contains(&emit_info.owned_bindings.clone(), acc_name.clone()));
-=======
                 && v2_rt::set_contains(emit_info.owned_bindings.clone(), acc_name.clone()));
->>>>>>> origin/main
             if needs_unwrap {
                 {
                     let acc_ident = emit_ident(acc_name.clone(), RenderTarget::Rust);
@@ -8576,11 +8244,7 @@ pub fn emit_rust_fold_method_call(
         let structural_move =
             (fold_proof.eligible.clone() && fold_proof.whole_acc_single_use.clone());
         let acc_unwrap =
-<<<<<<< HEAD
-            (structural_unwrap && v2_rt::set_contains(&shared_types, acc_type_name.clone()));
-=======
             (structural_unwrap && v2_rt::set_contains(shared_types.clone(), acc_type_name.clone()));
->>>>>>> origin/main
         let fold_emit_info = if acc_unwrap {
             match (*fold_lambda_node.expr_data.clone()).clone() {
                 ExprData::ExprLambda => {
@@ -9315,11 +8979,7 @@ pub fn emit_rust_with_method_call(
             )]),
         };
         let fields_str = field_strs.join(&", ".to_string());
-<<<<<<< HEAD
-        let needs_rc = v2_rt::set_contains(&shared_types, type_name.clone());
-=======
         let needs_rc = v2_rt::set_contains(shared_types.clone(), type_name.clone());
->>>>>>> origin/main
         let sharing = language_spec(RenderTarget::Rust).sharing.clone();
         let spread = if needs_rc.clone() {
             apply_type_template1(sharing.deref_clone.clone(), base_str)
@@ -10652,89 +10312,6 @@ pub fn lookup_struct_field_type_name(
     }
 }
 
-pub fn lookup_struct_field_type_node(
-    struct_node: Rc<Node>,
-    field_name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<Rc<Node>> {
-    match find_child_named(struct_node, field_name, source_indices) {
-        Some(field_child) => Some(child_type_node(&field_node_type_expr(&field_child))),
-        None => None,
-    }
-}
-
-pub fn rust_rc_new_value(raw_value: String) -> String {
-    v2_rt::concat(
-        v2_rt::concat("Rc::new(".to_string(), raw_value),
-        ")".to_string(),
-    )
-}
-
-pub fn rust_box_new_value(raw_value: String) -> String {
-    v2_rt::concat(
-        v2_rt::concat("Box::new(".to_string(), raw_value),
-        ")".to_string(),
-    )
-}
-
-pub fn expr_is_function_value(texpr: Rc<Node>) -> bool {
-    match (*texpr.expr_data.clone()).clone() {
-        ExprData::ExprVar {
-            binding_kind: bk, ..
-        } => match bk.clone().as_deref().cloned() {
-            Some(VarBindingKind::FunctionValueBinding) => true,
-            _ => false,
-        },
-        _ => false,
-    }
-}
-
-pub fn rust_field_value_for_struct(
-    raw_value: String,
-    field_value: Rc<Node>,
-    struct_node: Rc<Node>,
-    struct_name: String,
-    field_name: String,
-    scope: Rc<InferScope>,
-    emit_info: Rc<EmitGraphInfo>,
-) -> String {
-    match lookup_struct_field_type_node(
-        struct_node,
-        field_name,
-        scope.type_env.clone().source_indices.clone(),
-    ) {
-        Some(field_type) => match field_type.connective.clone() {
-            Connective::Arrow => rust_rc_new_value(raw_value),
-            _ => match field_type.inferred.clone() {
-                Some(inf) => {
-                    if is_type_variable(inf.clone()) {
-                        rust_box_new_value(raw_value)
-                    } else {
-                        raw_value
-                    }
-                }
-                None => raw_value,
-            },
-        },
-        None => match lookup_emit_type_summary(emit_info, struct_name) {
-            Some(summary) => {
-                if expr_is_function_value(field_value) {
-                    rust_rc_new_value(raw_value)
-                } else {
-                    if (summary.has_fn_fields.clone()
-                        && ((summary.generic_param_names.clone().len() as i64) > 0))
-                    {
-                        rust_box_new_value(raw_value)
-                    } else {
-                        raw_value
-                    }
-                }
-            }
-            None => raw_value,
-        },
-    }
-}
-
 pub fn emit_field_value_with_context(
     field_value: &Rc<Node>,
     struct_node: &Rc<Node>,
@@ -10815,11 +10392,7 @@ pub fn emit_field_value_with_context(
                         None => variant_name.clone(),
                     };
                     if ((rc_name.clone().as_str() != "".to_string().as_str())
-<<<<<<< HEAD
-                        && v2_rt::set_contains(&shared_types, rc_name.clone()))
-=======
                         && v2_rt::set_contains(shared_types.clone(), rc_name.clone()))
->>>>>>> origin/main
                     {
                         v2_rt::concat(v2_rt::concat("Rc::new(".to_string(), raw), ")".to_string())
                     } else {
@@ -11011,14 +10584,10 @@ pub fn emit_typed_record_lit(
                                         ),
                                         "\n}".to_string(),
                                     );
-<<<<<<< HEAD
-                                    if v2_rt::set_contains(&shared_types, resolved_sn.clone()) {
-=======
                                     if v2_rt::set_contains(
                                         shared_types.clone(),
                                         resolved_sn.clone(),
                                     ) {
->>>>>>> origin/main
                                         v2_rt::concat(
                                             v2_rt::concat("Rc::new(".to_string(), struct_lit),
                                             ")".to_string(),
@@ -11163,25 +10732,13 @@ pub fn emit_typed_record_lit(
                                             emit_info.clone(),
                                             &scope,
                                         ) == false));
-                                        let shaped_val = rust_field_value_for_struct(
-                                            val_str.clone(),
-                                            f_value.clone(),
-                                            resolved_type.clone(),
-                                            tn.clone(),
-                                            f_name.clone(),
-                                            scope.clone(),
-                                            emit_info.clone(),
-                                        );
                                         let field_val = if needs_wrap.clone() {
                                             v2_rt::concat(
-                                                v2_rt::concat(
-                                                    "Some(".to_string(),
-                                                    shaped_val.clone(),
-                                                ),
+                                                v2_rt::concat("Some(".to_string(), val_str.clone()),
                                                 ")".to_string(),
                                             )
                                         } else {
-                                            shaped_val.clone()
+                                            val_str.clone()
                                         };
                                         let stored_val = wrap_rust_record_field_value(
                                             field_val.clone(),
@@ -15061,16 +14618,6 @@ pub fn emit_data_def(
     scope: &Rc<InferScope>,
     depth: i64,
     shared_types: &Rc<std::collections::BTreeSet<String>>,
-<<<<<<< HEAD
-    emit_info: &Rc<EmitGraphInfo>,
-) -> String {
-    {
-        let ty_str = render_rust_data_type(
-            &type_node,
-            &shared_types,
-            &scope.type_env.clone().source_indices.clone(),
-            emit_info.clone(),
-=======
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -15078,7 +14625,6 @@ pub fn emit_data_def(
             type_node.clone(),
             shared_types.clone(),
             scope.type_env.clone().source_indices.clone(),
->>>>>>> origin/main
         );
         let ty_str = if ((raw_ty_str.clone().as_str() == "BoundedLattice".to_string().as_str())
             || (raw_ty_str.clone().as_str() == "Rc<BoundedLattice>".to_string().as_str()))
@@ -15121,11 +14667,7 @@ pub fn emit_data_def(
         };
         let fn_name = to_snake(name);
         let needs_rc = v2_rt::set_contains(
-<<<<<<< HEAD
-            &shared_types,
-=======
             shared_types.clone(),
->>>>>>> origin/main
             authored_name_at(scope.type_env.clone().source_indices.clone(), &type_node),
         );
         if is_simple_type_node(
@@ -15139,7 +14681,7 @@ pub fn emit_data_def(
                     &scope,
                     depth,
                     shared_types.clone(),
-                    emit_info.clone(),
+                    emit_info,
                     1024,
                 );
                 let kw = rust_items().func_keyword.clone();
@@ -15174,13 +14716,8 @@ pub fn emit_data_def(
                     &registry,
                     &scope,
                     depth,
-<<<<<<< HEAD
-                    shared_types.clone(),
-                    emit_info.clone(),
-=======
                     &shared_types,
                     &emit_info,
->>>>>>> origin/main
                     &needs_rc,
                 );
                 let kw = rust_items().func_keyword.clone();
@@ -15196,13 +14733,8 @@ pub fn emit_data_def_body(
     registry: &Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: &Rc<InferScope>,
     depth: i64,
-<<<<<<< HEAD
-    shared_types: Rc<std::collections::BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
-=======
     shared_types: &Rc<std::collections::BTreeSet<String>>,
     emit_info: &Rc<EmitGraphInfo>,
->>>>>>> origin/main
     needs_rc: &bool,
 ) -> String {
     {
@@ -15492,11 +15024,7 @@ pub fn rust_test_signature_comment(projection: &Rc<TestProjection>) -> String {
                     ),
                     emit_rust_param_type(
                         &param_node_type_expr(&p),
-<<<<<<< HEAD
-                        &v2_rt::rc_empty_set(),
-=======
                         &v2_rt::rc_empty_set::<String>(),
->>>>>>> origin/main
                         &projection.source_indices.clone(),
                     ),
                 ));
@@ -15813,11 +15341,7 @@ pub fn to_workflow_func(
         );
         let ro_params = match v2_rt::map_get(&read_only_params_index, qualified) {
             Some(m) => m.clone(),
-<<<<<<< HEAD
-            None => v2_rt::rc_empty_set(),
-=======
             None => v2_rt::rc_empty_set::<String>(),
->>>>>>> origin/main
         };
         Rc::new(WorkflowFunc {
             name: item_name.clone(),
@@ -16680,11 +16204,7 @@ pub fn emit_main_call_args(wf: &Rc<WorkflowFunc>, has_services: bool) -> String 
                     let ident = emit_ident(pname.clone(), RenderTarget::Rust);
                     let n = param_node_type_expr(&p);
                     let is_borrowable =
-<<<<<<< HEAD
-                        ((v2_rt::set_contains(&wf.read_only_params.clone(), pname.clone())
-=======
                         ((v2_rt::set_contains(wf.read_only_params.clone(), pname.clone())
->>>>>>> origin/main
                             && ((n.params.clone().len() as i64) == 0))
                             && needs_reference_node(&n, wf.source_indices.clone()));
                     if is_borrowable.clone() {

@@ -24,16 +24,10 @@ pub use crate::v2_compiler_infer_types::{
     node_is_keyed_collection, node_is_set_collection, nominal_type_ref, normalize_access_type_node,
 };
 use crate::v2_rt;
-<<<<<<< HEAD
-use crate::v2_rt::{
-    rc_empty_set as empty_set, rc_set_insert as set_insert, rc_set_union as set_union, set_contains,
-};
-=======
 use crate::v2_rt::rc_empty_set as empty_set;
 use crate::v2_rt::rc_set_insert as set_insert;
 use crate::v2_rt::rc_set_union as set_union;
 use crate::v2_rt::set_contains;
->>>>>>> origin/main
 use crate::v2_std_core::Cardinality::{CardOptional, Required};
 use crate::v2_std_core::Connective::{Conj, Disj, NoConnective};
 use crate::v2_std_core::FieldAccessStyle::OptionalUnwrap;
