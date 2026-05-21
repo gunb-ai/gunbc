@@ -20,8 +20,6 @@
 
 module std.encoding
 
-import std.algebra { BoundedLattice }
-
 type Encoding
   = ASCII                          // 7-bit subset (bottom: most specific)
   | UTF8                           // valid Unicode
@@ -135,9 +133,9 @@ fn encoding_lattice_join(a: Encoding, b: Encoding) -> Encoding {
   }
 }
 
-data encoding_bounded_lattice: BoundedLattice<Encoding> = BoundedLattice {
-  meet: encoding_lattice_meet
-  join: encoding_lattice_join
-  top: Unknown
-  bottom: ASCII
-}
+// Intended data witness:
+//   encoding_bounded_lattice: BoundedLattice<Encoding>
+//   meet = encoding_lattice_meet, join = encoding_lattice_join
+//   top = Unknown, bottom = ASCII
+// Deferred until generic data constants with function-valued fields emit
+// consumable target code.

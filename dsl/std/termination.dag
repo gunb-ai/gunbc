@@ -32,7 +32,7 @@
 
 module std.termination
 
-import std.algebra { Ordering, BoundedLattice }
+import std.algebra { Ordering }
 // NOTE: is_valid_proof lives in std.graph (graph algorithm needs SCC
 // primitives). Cannot re-export here (circular: termination → graph →
 // termination). Consumers import from std.graph directly.
@@ -116,12 +116,12 @@ fn descent_evidence_lattice_join(a: DescentEvidence, b: DescentEvidence) -> Desc
   }
 }
 
-data descent_evidence_bounded_lattice: BoundedLattice<DescentEvidence> = BoundedLattice {
-  meet: descent_evidence_lattice_meet
-  join: descent_evidence_lattice_join
-  top: Strict
-  bottom: DescentUnknown
-}
+// Intended data witness:
+//   descent_evidence_bounded_lattice: BoundedLattice<DescentEvidence>
+//   meet = descent_evidence_lattice_meet, join = descent_evidence_lattice_join
+//   top = Strict, bottom = DescentUnknown
+// Deferred until generic data constants with function-valued fields emit
+// consumable target code.
 
 
 // Fail closed: strict descent cannot be fabricated from non-increase without
