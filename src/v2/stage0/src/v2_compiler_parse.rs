@@ -4131,10 +4131,7 @@ pub fn parse_positional_variant_type_fields(
     fields: Rc::new(vec![]),
     tokens: __ec.clone(),
     ctx: r.ctx.clone(),
-    err: Some(parse_error(
-        "positional variant payload accepts a single type only (comma-separated fields not supported yet)".to_string(),
-        token_span(Some(comma_tok.clone())),
-    )),
+    err: Some(parse_error("positional variant payload accepts a single type only (comma-separated fields not supported yet)".to_string(), token_span(Some(comma_tok.clone())))),
 }),
     EatResult::EatUnchanged { tokens: __eu, .. } => Rc::new(FieldsResult {
     fields: Rc::new(vec![field]),
