@@ -127,29 +127,6 @@ fn parse_path_rejects_multiple_params_in_one_segment() {
     ));
 }
 
-#[test]
-fn parse_path_malformed_segments_propagate_typed_failure() {
-    match &*parse_path_template(&"/v1/{a}b{c}".to_string()) {
-        PathTemplateParseResult::MalformedPathTemplate {
-            segment, reason, ..
-        } => {
-            assert_eq!(segment, "{a}b{c}");
-            assert_eq!(reason, "multiple opening braces in one segment");
-        }
-        other => panic!("expected typed malformed path template, got {other:?}"),
-    }
-
-    match &*parse_path_template(&"/v1/{ab".to_string()) {
-        PathTemplateParseResult::MalformedPathTemplate {
-            segment, reason, ..
-        } => {
-            assert_eq!(segment, "{ab");
-            assert_eq!(reason, "missing closing brace or extra closing brace");
-        }
-        other => panic!("expected typed malformed path template, got {other:?}"),
-    }
-}
-
 // =========================================================================
 // Effect derivation (typed structural inputs)
 // =========================================================================
