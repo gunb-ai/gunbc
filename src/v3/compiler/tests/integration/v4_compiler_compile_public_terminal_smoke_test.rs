@@ -119,10 +119,18 @@ fn surface_declares_fn(module: &v3_compiler::parse_surface::SurfaceModule, name:
 
 fn surface_declares_type(module: &v3_compiler::parse_surface::SurfaceModule, name: &str) -> bool {
     module.items.iter().any(|item| match item {
-        SurfaceItem::TypeSum { name: item_name, .. }
-        | SurfaceItem::TypeRecord { name: item_name, .. }
-        | SurfaceItem::TypeAlias { name: item_name, .. }
-        | SurfaceItem::TypeAtom { name: item_name, .. } => item_name == name,
+        SurfaceItem::TypeSum {
+            name: item_name, ..
+        }
+        | SurfaceItem::TypeRecord {
+            name: item_name, ..
+        }
+        | SurfaceItem::TypeAlias {
+            name: item_name, ..
+        }
+        | SurfaceItem::TypeAtom {
+            name: item_name, ..
+        } => item_name == name,
         _ => false,
     })
 }
