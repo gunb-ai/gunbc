@@ -9,7 +9,7 @@
 module v4.test.claim.manual.infer_emit_compile_anchor
 
 
-import v4.compiler.compile { Source, TargetModel, TargetSource, compile }
+import v4.compiler.compile { Source, TargetModel, TargetSource, compile_ingest_staging }
 import v4.compiler.emit { emit }
 import v4.compiler.infer {
   AlgebraRef,
@@ -114,5 +114,5 @@ fn anchor_emit_rejects() -> Outcome<TargetSource> {
 
 
 fn anchor_compile_rejects() -> Outcome<TargetSource> {
-  compile(source: anchor_stub_source, target: anchor_stub_target_model)
+  compile_ingest_staging(source: anchor_stub_source, target: anchor_stub_target_model)
 }
