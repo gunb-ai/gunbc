@@ -22,7 +22,6 @@ import v4.std.coercion {
   CoercionResult,
   coercion_fold
 }
-import v4.std.collection { List }
 import v4.std.constraints {
   CanonicalGrounding,
   CanonicalGroundingWitness,

@@ -1,7 +1,7 @@
 // src/v4/test/claim/manual/mvp1_rust_add_translate.dag
 // Scope: MVP-1 T-10 receipt — InferredTree(add) + modeled rust target bundle -> emit (coercion fold path).
-// Owns: mvp_add_* fixtures, mvp_rust_target_bundle, claim_mvp1_emit_add_compiles, claim_mvp1_emit_add_rejects_until_find_witness.
-// Consumes: compiler/05_emit.dag, compiler/06_translate.dag, compiler/04_infer.dag, std/verification.dag, std/diagnostic.dag, std/node.dag, std/cardinality.dag, std/collection.dag, std/find_witness.dag.
+// Owns: mvp_add_* fixtures, mvp_rust_target_bundle, claim_mvp1_translate_add_compiles, claim_mvp1_emit_add_rejects_until_find_witness.
+// Consumes: compiler/05_emit.dag, compiler/06_translate.dag, compiler/04_infer.dag, std/verification.dag, std/diagnostic.dag, std/node.dag, std/cardinality.dag, std/collection.dag, std/find_witness.dag, std/text.dag.
 // Status: structural receipt — Accepted path blocked on std/find_witness body + extdeps rust LanguageModel bundle.
 // Anchor: docs/design-v4-compiler-homomorphism.md MVP-1 worked example.
 
@@ -16,6 +16,7 @@ import v4.compiler.infer {
   InferredTree
 }
 import v4.compiler.translate {
+  mvp1_rust_add_source_key,
   target_model_edge_declared_inhabitants,
   target_model_edge_selection_policy,
   target_model_edge_serialize_emitted,
@@ -24,7 +25,18 @@ import v4.compiler.translate {
 }
 import v4.std.cardinality { RankingDimension, TerminationProof }
 import v4.std.collection { Map }
-import v4.std.diagnostic { Accepted, None, Outcome, Rejected }
+import v4.std.diagnostic {
+  Accepted,
+  Correction,
+  Diagnostic,
+  ExternalContractUnknown,
+  NodeLocus,
+  None,
+  NonEmptyDiagnostics,
+  Outcome,
+  Rejected,
+  Unavailable
+}
 import v4.std.find_witness { find_witness_reason_not_realized }
 import v4.std.node {
   Atom,
@@ -36,9 +48,11 @@ import v4.std.node {
   Symbol,
   TypeNode
 }
+import v4.std.text { String }
 import v4.std.verification {
   Compiles,
   Equals,
+  T19ManualAnchorAbsent,
   TestClaim,
   TestClassification,
   Tier1,
@@ -47,8 +61,6 @@ import v4.std.verification {
 import v4.std.witness { Holds }
 data mvp_add_int_atom: Symbol = mvp_add_int_atom
 data mvp_rust_i32_atom: Symbol = mvp_rust_i32_atom
-data mvp_add_fn_name: Symbol = mvp_add_fn_name
-data mvp_rust_add_source: String = "fn add(x: i32, y: i32) -> i32 { x + y }"
 fn mvp_int_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: mvp_add_int_atom } },
@@ -88,15 +100,6 @@ data mvp_stub_inferred_facts: InferredFacts = InferredFacts {
   inhabits: mvp_stub_algebra_ref,
   descent: mvp_stub_termination_proof
 }
-data mvp_add_facts_lookup: Symbol = mvp_add_facts_lookup
-data mvp_add_inferred_tree: InferredTree = InferredTree {
-  root: mvp_add_arrow_node(),
-  facts: Map {
-    lookup: fn(_) {
-      Holds { value: mvp_stub_inferred_facts }
-    }
-  }
-}
 fn mvp_rust_target_bundle() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -115,9 +118,20 @@ fn mvp_rust_target_bundle() -> Node {
       },
       Edge {
         label: Named { name: target_model_edge_serialize_source },
-        target: mvp_rust_i32_node()
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: mvp1_rust_add_source_key } },
+          children: []
+        }
       }
     ]
+  }
+}
+data mvp_add_inferred_tree: InferredTree = InferredTree {
+  root: mvp_add_arrow_node(),
+  facts: Map {
+    lookup: fn(_) {
+      Holds { value: mvp_stub_inferred_facts }
+    }
   }
 }
 fn mvp1_translate_add() -> Outcome<Node> {
