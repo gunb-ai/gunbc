@@ -21,8 +21,11 @@ import v4.std.diagnostic {
   Outcome
 }
 import v4.std.find_witness { preservation_rule_constraint_satisfaction }
-import v4.std.node { Node }
-import v4.test.claim.manual.infer_ground_add_mvp { fixture_add_resolved_tree }
+import v4.std.node { Atom, Node, Symbol, TypeNode }
+import v4.test.claim.manual.infer_ground_add_mvp {
+  fixture_add_resolved_node,
+  fixture_add_resolved_tree
+}
 import v4.std.verification {
   Compiles,
   Equals,
@@ -57,13 +60,24 @@ data witness_solve_constraints_add_accepts: Bool = match anchor_solve_constraint
 }
 
 
-fn solve_constraints_claim_input(_ok: Bool) -> Node {
-  fixture_add_resolved_tree()
+data solve_constraints_witness_fail_atom: Symbol = solve_constraints_witness_fail_atom
+fn solve_constraints_witness_fail_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: solve_constraints_witness_fail_atom } },
+    children: []
+  }
+}
+fn solve_constraints_claim_input(ok: Bool) -> Node {
+  if ok {
+    fixture_add_resolved_node()
+  } else {
+    solve_constraints_witness_fail_node()
+  }
 }
 
 
 fn solve_constraints_claim_expected() -> Outcome<Node> {
-  Accepted { value: fixture_add_resolved_tree(), diagnostics: None }
+  Accepted { value: fixture_add_resolved_node(), diagnostics: None }
 }
 
 

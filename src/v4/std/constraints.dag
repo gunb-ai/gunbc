@@ -80,12 +80,12 @@ fn constraints_ill_formed_root_diagnostic(graph: ConstraintGraph) -> Diagnostic 
 fn constraint_satisfaction_holds(
   source_facts: Node,
   candidate: Node,
-  predicate: PreservationPredicate,
+  predicate: ConstraintSatisfactionPredicate,
 ) -> Bool {
   constraint_satisfaction_preservation_holds(
     source_facts: source_facts,
     candidate: candidate,
-    algebra: predicate.algebra
+    algebra: predicate.predicate.algebra
   )
 }
 fn constraint_satisfaction_predicate(algebra: Node) -> ConstraintSatisfactionPredicate {
