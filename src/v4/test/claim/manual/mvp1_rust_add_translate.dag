@@ -2,7 +2,7 @@
 // Scope: MVP-1 T-10 receipt — structural TestClaim anchors for translate/emit substrate.
 // Owns: mvp_add_arrow_node, claim_mvp1_translate_module_compiles, claim_mvp1_emit_module_compiles.
 // Consumes: compiler/05_emit.dag, compiler/06_translate.dag, std/verification.dag, std/diagnostic.dag, std/node.dag.
-// Status: parse-surface receipt; full InferredTree(add)->Accepted emit blocked on std/find_witness body.
+// Status: parse-surface receipt; full InferredTree(add)->Accepted emit remains blocked on compiler-stage canonical grounding and target serialization scaffolds.
 // Anchor: docs/design-v4-compiler-homomorphism.md MVP-1 worked example.
 
 
