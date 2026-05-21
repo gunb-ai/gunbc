@@ -19,7 +19,7 @@ module v4.compiler.compile
 
 import v4.compiler.emit { emit }
 import v4.compiler.infer { infer, InferredTree }
-import v4.compiler.target_carriers { TargetModel, TargetSource }
+import v4.compiler.target_carriers { LanguageModel, TargetModel, TargetSource }
 import v4.std.collection { List }
 import v4.std.diagnostic {
   Accepted,
@@ -43,10 +43,6 @@ import v4.std.witness { Witness }
 
 // 🟢 grounded — post-normalize substrate graph; Theme-A #9 forward until named ModelCore bundle lands.
 type CoreNode = Node
-
-
-// 🟢 grounded — declarative language model bundle (Node projection per TASKS Theme-A #9).
-type LanguageModel = Node
 
 
 // 🟢 grounded — host interpretation model peer (Ratified Q1); Eval terminal only.
@@ -192,18 +188,12 @@ fn run_required_lens_gates(
 }
 
 
-// input_lang is threaded (not validated here); emit consumes target until resolve/ground wire input facts.
 fn compile_inferred_translate(
   inferred: InferredTree,
   input_lang: LanguageModel,
   target: TargetModel
 ) -> Outcome<TargetSource> {
-  bind_outcome(
-    o: outcome_accepted(value: input_lang),
-    f: fn(lang) {
-      emit(tree: inferred, target: target)
-    }
-  )
+  emit(tree: inferred, target: target, input_lang: input_lang)
 }
 
 
