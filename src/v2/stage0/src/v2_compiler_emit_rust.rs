@@ -4888,7 +4888,7 @@ pub fn emit_variant_pattern(
                         None => name.clone(),
                     };
                     let is_fielded =
-                        v2_rt::set_contains(&emit_info.fielded_variants, fielded_key) || v2_rt::set_contains(&emit_info.fielded_variants, qualified.clone());
+                        v2_rt::set_contains(emit_info.fielded_variants.clone(), fielded_key) || v2_rt::set_contains(emit_info.fielded_variants.clone(), qualified.clone());
                     if is_fielded {
                         v2_rt::concat(qualified.clone(), " { .. }".to_string())
                     } else {
@@ -4918,7 +4918,7 @@ pub fn emit_variant_pattern(
                                 ),
                                 None => name.clone(),
                             };
-                            let is_fielded2 = v2_rt::set_contains(&emit_info.fielded_variants, fielded_key2) || v2_rt::set_contains(&emit_info.fielded_variants, qualified.clone());
+                            let is_fielded2 = v2_rt::set_contains(emit_info.fielded_variants.clone(), fielded_key2) || v2_rt::set_contains(emit_info.fielded_variants.clone(), qualified.clone());
                             if is_fielded2 {
                                 v2_rt::concat(qualified.clone(), " { .. }".to_string())
                             } else {
@@ -5300,7 +5300,7 @@ pub fn emit_variant_pattern_rc_aware(
                         None => name.clone(),
                     };
                     let is_fielded =
-                        v2_rt::set_contains(&emit_info.fielded_variants, fielded_key) || v2_rt::set_contains(&emit_info.fielded_variants, qualified.clone());
+                        v2_rt::set_contains(emit_info.fielded_variants.clone(), fielded_key) || v2_rt::set_contains(emit_info.fielded_variants.clone(), qualified.clone());
                     if is_fielded {
                         v2_rt::concat(qualified.clone(), " { .. }".to_string())
                     } else {
@@ -5330,7 +5330,7 @@ pub fn emit_variant_pattern_rc_aware(
                                 ),
                                 None => name.clone(),
                             };
-                            let is_fielded2 = v2_rt::set_contains(&emit_info.fielded_variants, fielded_key2) || v2_rt::set_contains(&emit_info.fielded_variants, qualified.clone());
+                            let is_fielded2 = v2_rt::set_contains(emit_info.fielded_variants.clone(), fielded_key2) || v2_rt::set_contains(emit_info.fielded_variants.clone(), qualified.clone());
                             if is_fielded2 {
                                 v2_rt::concat(qualified.clone(), " { .. }".to_string())
                             } else {
