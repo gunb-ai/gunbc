@@ -58,7 +58,7 @@ import v4.std.node {
   TypeNode,
   fold_node
 }
-import v4.std.witness { Holds, StructuralPropertyWitness, Violates }
+import v4.std.witness { StructuralPropertyWitness }
 type TargetNodeTree = Node
 data target_model_edge_selection_policy: Symbol = target_model_edge_selection_policy
 data target_model_edge_declared_inhabitants: Symbol = target_model_edge_declared_inhabitants
@@ -66,6 +66,7 @@ data target_model_edge_serialize_emitted: Symbol = target_model_edge_serialize_e
 data target_model_edge_serialize_source: Symbol = target_model_edge_serialize_source
 data translate_target_bundle_malformed: Symbol = translate_target_bundle_malformed
 data translate_target_source_unknown: Symbol = translate_target_source_unknown
+data translate_facts_lookup_missing: Symbol = translate_facts_lookup_missing
 // 🟡 gated — feature: mvp1-rust-add-source-registry · dissolve-on: extdeps/languages/rust.dag LanguageModel serialize table.
 data mvp1_rust_add_source_key: Symbol = mvp1_rust_add_source_key
 data mvp1_rust_add_source_text: TargetSource = "fn add(x: i32, y: i32) -> i32 { x + y }"
@@ -83,6 +84,13 @@ fn translate_target_source_unknown_diagnostic(key: Symbol) -> Diagnostic {
         kind: TypeNode { connective: Atom { identity: key } },
         children: []
       } },
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+fn translate_facts_lookup_missing_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: translate_facts_lookup_missing,
+    at: NodeLocus { node: node },
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
@@ -165,7 +173,7 @@ fn coercion_candidates_from_target_model(
 }
 fn canonical_grounding_for_node(tree: InferredTree, node: Node) -> Outcome<CanonicalGrounding> {
   match tree.facts.lookup(node) {
-    Holds { value: _facts } =>
+    Some { value: _facts } =>
       Accepted {
         value: CanonicalGrounding {
           node: node,
@@ -178,7 +186,8 @@ fn canonical_grounding_for_node(tree: InferredTree, node: Node) -> Outcome<Canon
         },
         diagnostics: None
       }
-    Violates { diagnostic: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
+    None =>
+      outcome_rejected(translate_facts_lookup_missing_diagnostic(node: node))
   }
 }
 fn coerce_grounded_node(
