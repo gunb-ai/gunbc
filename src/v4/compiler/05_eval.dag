@@ -1,6 +1,6 @@
 // src/v4/compiler/05_eval.dag
 // Scope: primary evaluation path over inferred tree/input subgraphs and TestClaim runner substrate.
-// Owns: Inputs, EvalContext, TestClaimTypedInput, TestClaimEvalSubject, TestClaimCacheKey, TestClaimCacheReceipt, Verdict, TestClaimRun, eval_node, run_test_claim.
+// Owns: Inputs, EvalContext, TestClaimTypedInput, TestClaimEvalSubject, TestClaimCacheKey, TestClaimCacheReceipt, Verdict, TestClaimRun, eval_node, run_test_claim, aggregate_verdicts.
 // Consumes: v4.compiler.infer, v4.std.node, v4.std.diagnostic, v4.std.verification.
 // Status: Wave-0 substrate; evaluator bodies remain structural until T-9 inferred-tree semantics.
 
@@ -10,11 +10,12 @@ module v4.compiler.eval
 import v4.compiler.infer {
   InferredTree
 }
+import v4.std.collection { List, non_empty }
 import v4.std.node {
   Hash,
   Node,
   Symbol,
-  node_well_formed
+  well_formed
 }
 import v4.std.diagnostic {
   AmbiguousIntent,
@@ -23,9 +24,12 @@ import v4.std.diagnostic {
   NoCorrectionReason,
   NodeLocus,
   Outcome,
-  Produced,
-  Rejected,
-  Unavailable
+  Unavailable,
+  Accepted,
+  None,
+  diagnostics_singleton,
+  outcome_node_eq,
+  outcome_rejected
 }
 import v4.std.verification {
   AssertKind,
@@ -118,8 +122,8 @@ fn test_claim_cache_receipt<T>(
 
 
 data eval_rejected_invalid_node: Symbol = eval_rejected_invalid_node
-data eval_rejected_assert_kind_deferred: Symbol = eval_rejected_assert_kind_deferred
 data eval_rejected_roundtrip_deferred: Symbol = eval_rejected_roundtrip_deferred
+data eval_empty_verdict_list: Symbol = eval_empty_verdict_list
 fn eval_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
   Diagnostic {
     reason: reason,
@@ -130,29 +134,14 @@ fn eval_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
 
 
 fn eval_node(tree: InferredTree, inputs: Inputs) -> Outcome<Node> {
-  if node_well_formed(n: tree.root) {
-    if node_well_formed(n: inputs.root) {
-      Produced { value: inputs.root }
+  if well_formed(n: tree.root) {
+    if well_formed(n: inputs.root) {
+      Accepted { value: inputs.root, diagnostics: None }
     } else {
-      Rejected { diagnostic: eval_diagnostic(reason: eval_rejected_invalid_node, node: inputs.root) }
+      Rejected { diagnostics: diagnostics_singleton(d: eval_diagnostic(reason: eval_rejected_invalid_node, node: inputs.root)) }
     }
   } else {
-    Rejected { diagnostic: eval_diagnostic(reason: eval_rejected_invalid_node, node: tree.root) }
-  }
-}
-
-
-// 🟡 derived equality scaffold — T22-EVAL-OUTCOME-EQ
-fn outcome_node_eq(a: Outcome<Node>, b: Outcome<Node>) -> Bool {
-  match a {
-    Produced { value: av } => match b {
-      Produced { value: bv } => av == bv
-      Rejected { diagnostic: _ } => false
-    }
-    Rejected { diagnostic: ad } => match b {
-      Produced { value: _ } => false
-      Rejected { diagnostic: bd } => ad == bd
-    }
+    Rejected { diagnostics: diagnostics_singleton(d: eval_diagnostic(reason: eval_rejected_invalid_node, node: tree.root)) }
   }
 }
 
@@ -166,16 +155,45 @@ fn run_node_assert(
   match kind {
     Equals => if outcome_node_eq(a: actual, b: expected) { Pass } else { Fail { actual: actual } }
     Compiles => match actual {
-      Produced { value: _ } => Pass
-      Rejected { diagnostic: _ } => Fail { actual: actual }
+      Accepted { value: _, diagnostics: _ } => Pass
+      Rejected { diagnostics: _ } => Fail { actual: actual }
     }
     RoundTrips => Deferred {
       actual: actual,
       diagnostic: eval_diagnostic(reason: eval_rejected_roundtrip_deferred, node: input)
     }
-    DiagnosticAssert => Deferred {
-      actual: actual,
-      diagnostic: eval_diagnostic(reason: eval_rejected_assert_kind_deferred, node: input)
+    DiagnosticAssert => match actual {
+      Rejected { diagnostics: _ } => match expected {
+        Rejected { diagnostics: _ } =>
+          if outcome_node_eq(a: actual, b: expected) { Pass } else { Fail { actual: actual } }
+        _ => Fail { actual: actual }
+      }
+      _ => Fail { actual: actual }
+    }
+  }
+}
+
+
+// Fail-closed: any Deferred or Fail in the list blocks Pass; [] is Fail (no fabricated Pass).
+// When acc is already Deferred, the first Deferred's diagnostic wins (no accumulation).
+fn aggregate_verdicts<T>(rs: List<Verdict<T>>, at: Node) -> Verdict<T> {
+  if non_empty(xs: rs) {
+    fold(rs, init: Pass, f: fn(acc, v) {
+      match acc {
+        Fail { actual: a } => Fail { actual: a }
+        Deferred { actual: a, diagnostic: d } => match v {
+          Fail { actual: ra } => Fail { actual: ra }
+          Deferred { actual: _, diagnostic: _ } => Deferred { actual: a, diagnostic: d }
+          Pass => Deferred { actual: a, diagnostic: d }
+        }
+        Pass => v
+      }
+    })
+  } else {
+    Fail {
+      actual: outcome_rejected(
+        d: eval_diagnostic(reason: eval_empty_verdict_list, node: at)
+      )
     }
   }
 }
@@ -200,11 +218,16 @@ fn run_test_claim(
       resources_hash: resources_hash,
       extdeps_hash: extdeps_hash
     ),
-    verdict: run_node_assert(
-      kind: subject.claim.kind,
-      actual: actual,
-      expected: subject.claim.expected,
-      input: subject.claim.input
+    verdict: aggregate_verdicts(
+      rs: [
+        run_node_assert(
+          kind: subject.claim.kind,
+          actual: actual,
+          expected: subject.claim.expected,
+          input: subject.claim.input
+        )
+      ],
+      at: subject.claim.input
     )
   }
 }

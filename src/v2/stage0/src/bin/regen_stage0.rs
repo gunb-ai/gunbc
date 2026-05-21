@@ -1,0 +1,717 @@
+//! Regenerate v2 stage0 Rust from the v2 `.dag` authorities.
+//!
+//! This mirrors v3's `regen_bootstrap` operational shape: without flags it
+//! writes the generated stage0 files, and with `--verify` it fails if the
+//! committed stage0 seed differs from a fresh self-compile. The committed
+//! `src/v2/stage0/src/*.rs` files remain the fresh-checkout bootstrap seed.
+
+use std::collections::{BTreeSet, HashMap};
+use std::env;
+use std::fs;
+use std::io::{self, Write};
+use std::path::{Path, PathBuf};
+use std::process::{Command, ExitCode};
+use std::rc::Rc;
+
+use v2_compiler::v2_compiler_artifact::RenderTarget;
+use v2_compiler::v2_compiler_compile::{compile_sources, SourceFile};
+use v2_compiler::v2_std_core::{diagnostic_to_message, CompilerDiagnostic};
+
+const GENERATED_STAGE0_FILES: &[&str] = &[
+    "compiler_tests.rs",
+    "extdeps_languages_dag_emit.rs",
+    "extdeps_languages_dag_syntax.rs",
+    "extdeps_languages_dag_types.rs",
+    "extdeps_languages_go_emit.rs",
+    "extdeps_languages_go_syntax.rs",
+    "extdeps_languages_go_types.rs",
+    "extdeps_languages_python_emit.rs",
+    "extdeps_languages_python_syntax.rs",
+    "extdeps_languages_python_types.rs",
+    "extdeps_languages_rust_emit.rs",
+    "extdeps_languages_rust_syntax.rs",
+    "extdeps_languages_rust_types.rs",
+    "generated_method_template_projection.rs",
+    "lib.rs",
+    "main.rs",
+    "std_algebra.rs",
+    "std_coercion.rs",
+    "std_computation.rs",
+    "std_effects.rs",
+    "std_error_primitives.rs",
+    "std_graph.rs",
+    "std_http_path.rs",
+    "std_induction.rs",
+    "std_iteration.rs",
+    "std_node.rs",
+    "std_syntax.rs",
+    "std_termination.rs",
+    "std_types.rs",
+    "v2_compiler_artifact.rs",
+    "v2_compiler_coercion.rs",
+    "v2_compiler_compile.rs",
+    "v2_compiler_compiler_tests_rust.rs",
+    "v2_compiler_complexity.rs",
+    "v2_compiler_effect_derivation.rs",
+    "v2_compiler_emit.rs",
+    "v2_compiler_emit_go.rs",
+    "v2_compiler_emit_python.rs",
+    "v2_compiler_emit_rust.rs",
+    "v2_compiler_infer.rs",
+    "v2_compiler_infer_access.rs",
+    "v2_compiler_infer_cycle.rs",
+    "v2_compiler_infer_emit_info.rs",
+    "v2_compiler_infer_env.rs",
+    "v2_compiler_infer_items.rs",
+    "v2_compiler_infer_lookup.rs",
+    "v2_compiler_infer_method.rs",
+    "v2_compiler_infer_patterns.rs",
+    "v2_compiler_infer_resolve.rs",
+    "v2_compiler_infer_service.rs",
+    "v2_compiler_infer_sigs.rs",
+    "v2_compiler_infer_types.rs",
+    "v2_compiler_languages.rs",
+    "v2_compiler_normalize.rs",
+    "v2_compiler_ownership.rs",
+    "v2_compiler_parse.rs",
+    "v2_compiler_resolve.rs",
+    "v2_compiler_runtime_rust.rs",
+    "v2_compiler_tokenize.rs",
+    "v2_compiler_trace.rs",
+    "v2_rt.rs",
+    "v2_std_core.rs",
+];
+
+const HAND_MAINTAINED_STAGE0_FILES: &[&str] =
+    &["cli_run.rs", "rest_transport_facts.rs", "v2_interpreter.rs"];
+
+const GENERATED_METHOD_TEMPLATE_PROJECTION_DAG: &str = r#"module generated.method_template_projection
+
+data rust_method_template_emit: Map<String, String> = {
+  "chars": "\{recv\}.chars().map(|c| c as i64).collect::<Vec<_>>()",
+  "count": "(\{recv\}.len() as i64)",
+  "enumerate": "\{recv\}.iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()",
+  "first": "\{recv\}.first().cloned()",
+  "join": "\{recv\}.join(&\{arg\})",
+  "last": "\{recv\}.last().cloned()",
+  "skip": "\{recv\}.iter().cloned().skip(\{arg\} as usize).collect::<Vec<_>>()",
+  "split": "\{recv\}.split(&\{arg\}).map(|s| s.to_string()).collect::<Vec<_>>()",
+  "take": "\{recv\}.iter().cloned().take(\{arg\} as usize).collect::<Vec<_>>()",
+}
+
+data python_method_template_emit: Map<String, String> = {
+  "all": "all(\{arg\}(x) for x in \{recv\})",
+  "any": "any(\{arg\}(x) for x in \{recv\})",
+  "append": "\{recv\} + [\{arg\}]",
+  "chars": "[ord(c) for c in \{recv\}]",
+  "count": "len(\{recv\})",
+  "enumerate": "list(enumerate(\{recv\}))",
+  "filter": "[x for x in \{recv\} if \{arg\}(x)]",
+  "first": "\{recv\}[0] if \{recv\} else None",
+  "flat_map": "[y for x in \{recv\} for y in \{arg\}(x)]",
+  "join": "\{arg\}.join(\{recv\})",
+  "last": "\{recv\}[-1] if \{recv\} else None",
+  "skip": "\{recv\}[\{arg\}:]",
+  "sort_by": "sorted(\{recv\}, key=\{arg\})",
+  "split": "\{recv\}.split(\{arg\})",
+  "string_contains": "\{arg\} in \{recv\}",
+  "take": "\{recv\}[:\{arg\}]",
+}
+
+data go_method_template_emit: Map<String, String> = {
+  "all": "v2rt.All(\{recv\}, \{arg\})",
+  "any": "v2rt.Any(\{recv\}, \{arg\})",
+  "append": "append(\{recv\}, \{arg\})",
+  "count": "len(\{recv\})",
+  "filter": "v2rt.Filter(\{recv\}, \{arg\})",
+  "flat_map": "v2rt.FlatMap(\{recv\}, \{arg\})",
+  "join": "strings.Join(\{recv\}, \{arg\})",
+  "skip": "\{recv\}[\{arg\}:]",
+  "sort_by": "v2rt.SortBy(\{recv\}, \{arg\})",
+  "split": "strings.Split(\{recv\}, \{arg\})",
+  "string_contains": "strings.Contains(\{recv\}, \{arg\})",
+  "take": "\{recv\}[:\{arg\}]",
+}
+"#;
+
+fn main() -> ExitCode {
+    match run() {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(message) => {
+            let _ = writeln!(io::stderr(), "{message}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn run() -> Result<(), String> {
+    let args: Vec<String> = env::args().skip(1).collect();
+    let verify_only = match args.as_slice() {
+        [] => false,
+        [flag] if flag == "--verify" => true,
+        unexpected => {
+            return Err(format!(
+                "regen_stage0: unexpected arguments: {unexpected:?}\n\
+                 Usage: regen_stage0 [--verify]\n\
+                 Omit flags to write stage0; pass exactly `--verify` to check without writing."
+            ));
+        }
+    };
+
+    assert_registry_is_partitioned()?;
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let workspace = workspace_root(&manifest_dir)?;
+    let stage0_src = manifest_dir.join("src");
+    let fresh_dir = temp_dir("v2-regen-stage0-fresh");
+    let _ = fs::remove_dir_all(&fresh_dir);
+    fs::create_dir_all(fresh_dir.join("src"))
+        .map_err(|e| format!("create {}: {e}", fresh_dir.display()))?;
+
+    let emitted = compile_stage0(&workspace)?;
+    write_emitted_crate(&fresh_dir, &emitted)?;
+    copy_hand_maintained_support(&stage0_src, &fresh_dir.join("src"))?;
+    patch_cargo_toml_for_generated_crate(&fresh_dir)?;
+    rustfmt_generated_crate(&fresh_dir)?;
+    assert_output_set_matches_registry(&stage0_src, &fresh_dir.join("src"))?;
+
+    if verify_only {
+        verify_stage0_matches(&stage0_src, &fresh_dir.join("src"))?;
+        let _ = fs::remove_dir_all(&fresh_dir);
+        println!("regen_stage0 --verify: committed stage0 matches fresh self-compile.");
+        return Ok(());
+    }
+
+    write_registered_outputs(&fresh_dir.join("src"), &stage0_src)?;
+    rustfmt_workspace(&manifest_dir)?;
+    let _ = fs::remove_dir_all(&fresh_dir);
+    println!(
+        "regen_stage0: wrote {} generated stage0 files.",
+        GENERATED_STAGE0_FILES.len()
+    );
+    Ok(())
+}
+
+fn workspace_root(manifest_dir: &Path) -> Result<PathBuf, String> {
+    manifest_dir
+        .ancestors()
+        .nth(3)
+        .map(Path::to_path_buf)
+        .ok_or_else(|| {
+            format!(
+                "could not find workspace root from {}",
+                manifest_dir.display()
+            )
+        })
+}
+
+fn temp_dir(name: &str) -> PathBuf {
+    let unique = format!(
+        "{name}-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("clock before unix epoch")
+            .as_nanos()
+    );
+    env::temp_dir().join(unique)
+}
+
+fn assert_registry_is_partitioned() -> Result<(), String> {
+    for generated in GENERATED_STAGE0_FILES {
+        if HAND_MAINTAINED_STAGE0_FILES.contains(generated) {
+            return Err(format!(
+                "`{generated}` appears in both generated and hand-maintained stage0 registries"
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn compile_stage0(workspace: &Path) -> Result<HashMap<String, String>, String> {
+    let generated_root = temp_dir("v2-regen-stage0-generated-root");
+    let generated_dir = generated_root.join("generated");
+    fs::create_dir_all(&generated_dir)
+        .map_err(|e| format!("create {}: {e}", generated_dir.display()))?;
+    fs::write(
+        generated_dir.join("method_template_projection.dag"),
+        GENERATED_METHOD_TEMPLATE_PROJECTION_DAG,
+    )
+    .map_err(|e| format!("write generated method-template projection: {e}"))?;
+
+    let roots = vec![
+        workspace.join("src/v2"),
+        workspace.join("dsl"),
+        generated_root.clone(),
+    ];
+    let sources = source_files_for_roots(&roots, workspace)?;
+    let result = compile_sources(Rc::new(sources), RenderTarget::Rust);
+
+    let hard_errors: Vec<String> = result
+        .diagnostics
+        .iter()
+        .filter(|d| {
+            !matches!(
+                *d.diagnostic.clone(),
+                CompilerDiagnostic::ComplexityUnknown { .. }
+            )
+        })
+        .map(|d| diagnostic_to_message(d.diagnostic.clone()))
+        .collect();
+    if !hard_errors.is_empty() {
+        return Err(format!(
+            "v2 self-compile produced {} hard diagnostic(s):\n{}",
+            hard_errors.len(),
+            hard_errors.join("\n")
+        ));
+    }
+    if result.files.is_empty() {
+        return Err("v2 self-compile emitted no files".to_string());
+    }
+
+    let mut out = HashMap::new();
+    for file in result.files.iter() {
+        out.insert(file.path.clone(), file.content.clone());
+    }
+    let _ = fs::remove_dir_all(&generated_root);
+    Ok(out)
+}
+
+fn source_files_for_roots(
+    roots: &[PathBuf],
+    workspace: &Path,
+) -> Result<Vec<Rc<SourceFile>>, String> {
+    let index = build_module_index(roots)?;
+    let entry_root = roots
+        .first()
+        .ok_or_else(|| "source root list must not be empty".to_string())?;
+    let mut entry_files = Vec::new();
+    let mut dag_paths = Vec::new();
+    collect_dag_files(entry_root, &mut dag_paths)?;
+    for path in dag_paths {
+        let content =
+            fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
+        entry_files.push((display_source_path(&path, workspace), content));
+    }
+
+    let mut seen: HashMap<String, Rc<SourceFile>> = HashMap::new();
+    let mut queue = Vec::new();
+    for (path, content) in &entry_files {
+        if let Some(module_path) = extract_module_path(content) {
+            seen.insert(
+                module_path,
+                Rc::new(SourceFile {
+                    path: path.clone(),
+                    content: content.clone(),
+                }),
+            );
+        }
+        queue.push((path.clone(), content.clone()));
+    }
+
+    while let Some((_path, content)) = queue.pop() {
+        for module_path in extract_import_paths(&content) {
+            if seen.contains_key(&module_path) {
+                continue;
+            }
+            if let Some(file_path) = index.get(&module_path) {
+                let file_content = fs::read_to_string(file_path)
+                    .map_err(|e| format!("read imported module {}: {e}", file_path.display()))?;
+                let rel_path = display_source_path(file_path, workspace);
+                seen.insert(
+                    module_path,
+                    Rc::new(SourceFile {
+                        path: rel_path.clone(),
+                        content: file_content.clone(),
+                    }),
+                );
+                queue.push((rel_path, file_content));
+            }
+        }
+    }
+
+    let mut result: Vec<Rc<SourceFile>> = seen.into_values().collect();
+    result.sort_by(|a, b| a.path.cmp(&b.path));
+    Ok(result)
+}
+
+fn build_module_index(roots: &[PathBuf]) -> Result<HashMap<String, PathBuf>, String> {
+    let mut index: HashMap<String, PathBuf> = HashMap::new();
+    for root in roots {
+        if !root.exists() {
+            return Err(format!("source root does not exist: {}", root.display()));
+        }
+        let mut dag_paths = Vec::new();
+        collect_dag_files(root, &mut dag_paths)?;
+        for path in dag_paths {
+            let content =
+                fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
+            if let Some(module_path) = extract_module_path(&content) {
+                if let Some(existing) = index.get(&module_path) {
+                    return Err(format!(
+                        "duplicate module path `{module_path}`: {} and {}",
+                        existing.display(),
+                        path.display()
+                    ));
+                }
+                index.insert(module_path, path);
+            }
+        }
+    }
+    Ok(index)
+}
+
+fn collect_dag_files(dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), String> {
+    let mut entries: Vec<_> = fs::read_dir(dir)
+        .map_err(|e| format!("read dir {}: {e}", dir.display()))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("read dir entry in {}: {e}", dir.display()))?;
+    entries.sort_by_key(|entry| entry.file_name());
+    for entry in entries {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_dag_files(&path, files)?;
+        } else if path.extension().is_some_and(|ext| ext == "dag") {
+            files.push(path);
+        }
+    }
+    Ok(())
+}
+
+fn extract_module_path(content: &str) -> Option<String> {
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if let Some(rest) = trimmed.strip_prefix("module ") {
+            return Some(rest.trim().to_string());
+        }
+        if !trimmed.is_empty() && !trimmed.starts_with("//") {
+            break;
+        }
+    }
+    None
+}
+
+fn extract_import_paths(content: &str) -> Vec<String> {
+    let mut imports = Vec::new();
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if let Some(rest) = trimmed.strip_prefix("import ") {
+            let module_path = rest.split('{').next().unwrap_or(rest).trim();
+            if !module_path.is_empty() {
+                imports.push(module_path.to_string());
+            }
+        }
+    }
+    imports
+}
+
+fn display_source_path(path: &Path, workspace: &Path) -> String {
+    path.strip_prefix(workspace)
+        .unwrap_or(path)
+        .to_string_lossy()
+        .to_string()
+}
+
+fn write_emitted_crate(dir: &Path, files: &HashMap<String, String>) -> Result<(), String> {
+    for (path, content) in files {
+        let out_path = dir.join(path);
+        if let Some(parent) = out_path.parent() {
+            fs::create_dir_all(parent).map_err(|e| format!("create {}: {e}", parent.display()))?;
+        }
+        fs::write(&out_path, content).map_err(|e| format!("write {}: {e}", out_path.display()))?;
+    }
+    Ok(())
+}
+
+fn copy_hand_maintained_support(stage0_src: &Path, dest_src: &Path) -> Result<(), String> {
+    for file_name in HAND_MAINTAINED_STAGE0_FILES {
+        let source = stage0_src.join(file_name);
+        if source.exists() {
+            fs::copy(&source, dest_src.join(file_name))
+                .map_err(|e| format!("copy {}: {e}", source.display()))?;
+        }
+    }
+    Ok(())
+}
+
+fn patch_cargo_toml_for_generated_crate(dir: &Path) -> Result<(), String> {
+    let cargo_toml = dir.join("Cargo.toml");
+    if !cargo_toml.exists() {
+        return Ok(());
+    }
+    let contents = fs::read_to_string(&cargo_toml)
+        .map_err(|e| format!("read {}: {e}", cargo_toml.display()))?;
+    if contents.contains("ureq") {
+        return Ok(());
+    }
+    let patched = contents.replace(
+        "\n[dependencies]\n",
+        "\n[dependencies]\nureq = { version = \"2\", features = [\"json\"] }\n",
+    );
+    fs::write(&cargo_toml, patched).map_err(|e| format!("write {}: {e}", cargo_toml.display()))
+}
+
+fn rustfmt_generated_crate(dir: &Path) -> Result<(), String> {
+    let output = Command::new("cargo")
+        .arg("fmt")
+        .arg("--all")
+        .arg("--manifest-path")
+        .arg(dir.join("Cargo.toml"))
+        .output()
+        .map_err(|e| format!("spawn cargo fmt for {}: {e}", dir.display()))?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(format!(
+            "cargo fmt failed for {}:\n{}",
+            dir.display(),
+            String::from_utf8_lossy(&output.stderr)
+        ))
+    }
+}
+
+fn rustfmt_workspace(manifest_dir: &Path) -> Result<(), String> {
+    let output = Command::new("cargo")
+        .arg("fmt")
+        .arg("--all")
+        .arg("--manifest-path")
+        .arg(manifest_dir.join("Cargo.toml"))
+        .output()
+        .map_err(|e| format!("spawn cargo fmt: {e}"))?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(format!(
+            "cargo fmt failed after writing stage0:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        ))
+    }
+}
+
+fn assert_output_set_matches_registry(
+    committed_src: &Path,
+    fresh_src: &Path,
+) -> Result<(), String> {
+    let registered: BTreeSet<&str> = GENERATED_STAGE0_FILES.iter().copied().collect();
+    let hand_maintained: BTreeSet<&str> = HAND_MAINTAINED_STAGE0_FILES.iter().copied().collect();
+    let fresh_files = direct_rs_file_names(fresh_src)?;
+
+    let unregistered_fresh: Vec<_> = fresh_files
+        .iter()
+        .filter(|file| {
+            !registered.contains(file.as_str()) && !hand_maintained.contains(file.as_str())
+        })
+        .cloned()
+        .collect();
+    if !unregistered_fresh.is_empty() {
+        return Err(format!(
+            "fresh self-compile emitted unregistered stage0 file(s): {}\n\
+             Add generated files to GENERATED_STAGE0_FILES or mark hand-maintained files explicitly.",
+            unregistered_fresh.join(", ")
+        ));
+    }
+
+    let missing_fresh: Vec<_> = registered
+        .iter()
+        .filter(|file| !fresh_files.contains(**file))
+        .copied()
+        .collect();
+    if !missing_fresh.is_empty() {
+        return Err(format!(
+            "GENERATED_STAGE0_FILES contains file(s) missing from fresh self-compile: {}",
+            missing_fresh.join(", ")
+        ));
+    }
+
+    let committed_files = direct_rs_file_names(committed_src)?;
+    let mut unregistered_committed_generated = Vec::new();
+    for file_name in committed_files {
+        if registered.contains(file_name.as_str()) || hand_maintained.contains(file_name.as_str()) {
+            continue;
+        }
+        let path = committed_src.join(&file_name);
+        let text =
+            fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
+        if text.contains("Generated by v2 compiler -- do not edit")
+            || text.contains("Generated by the v2 compiler -- do not edit")
+        {
+            unregistered_committed_generated.push(file_name);
+        }
+    }
+    if !unregistered_committed_generated.is_empty() {
+        return Err(format!(
+            "committed generated stage0 file(s) are not registered: {}\n\
+             Add them to GENERATED_STAGE0_FILES or remove the stale committed outputs.",
+            unregistered_committed_generated.join(", ")
+        ));
+    }
+
+    Ok(())
+}
+
+fn direct_rs_file_names(dir: &Path) -> Result<BTreeSet<String>, String> {
+    let mut files = BTreeSet::new();
+    let entries = fs::read_dir(dir)
+        .map_err(|e| format!("read dir {}: {e}", dir.display()))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("read dir entry in {}: {e}", dir.display()))?;
+    for entry in entries {
+        let path = entry.path();
+        if path.is_file() && path.extension().is_some_and(|ext| ext == "rs") {
+            let file_name = path
+                .file_name()
+                .ok_or_else(|| format!("stage0 file has no name: {}", path.display()))?
+                .to_string_lossy()
+                .to_string();
+            files.insert(file_name);
+        }
+    }
+    Ok(files)
+}
+
+fn verify_stage0_matches(committed_src: &Path, fresh_src: &Path) -> Result<(), String> {
+    let mut mismatches = Vec::new();
+    for file_name in GENERATED_STAGE0_FILES {
+        let committed = committed_src.join(file_name);
+        let fresh = fresh_src.join(file_name);
+        let committed_text = fs::read_to_string(&committed)
+            .map_err(|e| format!("read committed {}: {e}", committed.display()))?;
+        let fresh_text = fs::read_to_string(&fresh)
+            .map_err(|e| format!("read fresh {}: {e}", fresh.display()))?;
+        if committed_text != fresh_text {
+            mismatches.push((*file_name).to_string());
+        }
+    }
+    if mismatches.is_empty() {
+        return Ok(());
+    }
+
+    let mut message = format!(
+        "Stage0 is stale: {} generated file(s) differ from fresh self-compile.\n\
+         Run `cargo run -p v2-compiler --bin regen_stage0` to regenerate.\n\
+         Changed generated file(s): {}\n",
+        mismatches.len(),
+        mismatches.join(", ")
+    );
+    if let Some(first) = mismatches.first() {
+        message.push_str(&diff_hint(
+            &committed_src.join(first),
+            &fresh_src.join(first),
+        ));
+    }
+    Err(message)
+}
+
+fn diff_hint(committed: &Path, fresh: &Path) -> String {
+    let output = Command::new("diff")
+        .arg("-u")
+        .arg(committed)
+        .arg(fresh)
+        .output();
+    match output {
+        Ok(out) => {
+            let stdout = String::from_utf8_lossy(&out.stdout);
+            let truncated = &stdout[..stdout.len().min(4000)];
+            format!(
+                "First mismatch diff ({})\n{}",
+                committed.display(),
+                truncated
+            )
+        }
+        Err(e) => format!(
+            "Could not produce diff hint for {}: {e}",
+            committed.display()
+        ),
+    }
+}
+
+fn write_registered_outputs(fresh_src: &Path, committed_src: &Path) -> Result<(), String> {
+    for file_name in GENERATED_STAGE0_FILES {
+        let fresh = fresh_src.join(file_name);
+        let committed = committed_src.join(file_name);
+        fs::copy(&fresh, &committed)
+            .map_err(|e| format!("copy {} to {}: {e}", fresh.display(), committed.display()))?;
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn generated_registry_excludes_hand_maintained_support_files() {
+        assert_registry_is_partitioned().expect("stage0 registry partition");
+        for file_name in HAND_MAINTAINED_STAGE0_FILES {
+            assert!(
+                !GENERATED_STAGE0_FILES.contains(file_name),
+                "{file_name} must not be touched by regen_stage0"
+            );
+        }
+    }
+
+    #[test]
+    fn projection_fixture_carries_required_v2_import_surface() {
+        assert!(GENERATED_METHOD_TEMPLATE_PROJECTION_DAG
+            .contains("module generated.method_template_projection"));
+        assert!(GENERATED_METHOD_TEMPLATE_PROJECTION_DAG.contains("data rust_method_template_emit"));
+        assert!(
+            GENERATED_METHOD_TEMPLATE_PROJECTION_DAG.contains("data python_method_template_emit")
+        );
+        assert!(GENERATED_METHOD_TEMPLATE_PROJECTION_DAG.contains("data go_method_template_emit"));
+    }
+
+    #[test]
+    fn output_set_rejects_unregistered_fresh_file() {
+        let committed = temp_test_dir("committed");
+        let fresh = temp_test_dir("fresh");
+        seed_registered_files(&committed, "// Generated by v2 compiler -- do not edit\n");
+        seed_registered_files(&fresh, "// Generated by v2 compiler -- do not edit\n");
+        fs::write(
+            fresh.join("new_generated_file.rs"),
+            "// Generated by v2 compiler -- do not edit\n",
+        )
+        .expect("write unregistered fresh file");
+
+        let err = assert_output_set_matches_registry(&committed, &fresh)
+            .expect_err("unregistered fresh file must fail");
+        assert!(err.contains("fresh self-compile emitted unregistered stage0 file"));
+
+        let _ = fs::remove_dir_all(committed);
+        let _ = fs::remove_dir_all(fresh);
+    }
+
+    #[test]
+    fn output_set_rejects_unregistered_committed_generated_file() {
+        let committed = temp_test_dir("committed");
+        let fresh = temp_test_dir("fresh");
+        seed_registered_files(&committed, "// Generated by v2 compiler -- do not edit\n");
+        seed_registered_files(&fresh, "// Generated by v2 compiler -- do not edit\n");
+        fs::write(
+            committed.join("old_generated_file.rs"),
+            "// Generated by v2 compiler -- do not edit\n",
+        )
+        .expect("write stale committed generated file");
+
+        let err = assert_output_set_matches_registry(&committed, &fresh)
+            .expect_err("unregistered committed generated file must fail");
+        assert!(err.contains("committed generated stage0 file"));
+
+        let _ = fs::remove_dir_all(committed);
+        let _ = fs::remove_dir_all(fresh);
+    }
+
+    fn seed_registered_files(dir: &Path, contents: &str) {
+        fs::create_dir_all(dir).expect("create temp stage0 dir");
+        for file_name in GENERATED_STAGE0_FILES {
+            fs::write(dir.join(file_name), contents).expect("write registered generated file");
+        }
+    }
+
+    fn temp_test_dir(label: &str) -> PathBuf {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock before unix epoch")
+            .as_nanos();
+        env::temp_dir().join(format!("regen-stage0-test-{label}-{unique}"))
+    }
+}

@@ -9,11 +9,14 @@
 module v4.std.collection
 
 
-import v4.std.algebra { FreeMonoid, PointwisePower, free_monoid_non_empty }
+import v4.std.algebra { FreeMonoid, PointwisePower, is_empty }
 import v4.std.witness { Witness }
 type List<T> = FreeMonoid<T>
 fn non_empty<T>(xs: List<T>) -> Bool {
-  free_monoid_non_empty(xs: xs)
+  match is_empty(xs: xs) {
+    true => false
+    false => true
+  }
 }
 type Set<T> = PointwisePower<T>
 type Map<K, V> {

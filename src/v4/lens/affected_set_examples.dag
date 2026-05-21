@@ -10,7 +10,8 @@ import v4.std.diagnostic {
   Diagnostic,
   NodeLocus,
   Unavailable,
-  ExternalContractUnknown
+  ExternalContractUnknown,
+  diagnostics_singleton
 }
 import v4.std.node { Conj, Edit, Hash, Node, Path, Symbol, TypeNode }
 import v4.lens.affected_set {
@@ -22,9 +23,9 @@ import v4.lens.affected_set {
   Rerun,
   Excluded,
   DimensionNotRead,
-  WholeDagFailClosed,
-  WholeDagReason,
-  WholeDagDiagnostic
+  FailClosed,
+  ReasonSymbol,
+  ReasonDiagnostics
 }
 
 
@@ -73,7 +74,7 @@ data expected_affected_set_dimension_seed: ReExecFrontier = ChangedSubgraphFront
   boundary_exclusions: [],
   decisions: map_insert(
     empty_map(),
-    ExclusionKey { at: affected_set_example_path, dimension: affected_set_example_dimension },
+    ExclusionKey { at: affected_set_example_node, dimension: affected_set_example_dimension },
     Rerun
   )
 }
@@ -83,15 +84,15 @@ data expected_affected_set_excluded_proofs: ReExecFrontier = ChangedSubgraphFron
   boundary_exclusions: [],
   decisions: map_insert(
     empty_map(),
-    ExclusionKey { at: affected_set_example_path, dimension: affected_set_example_dimension },
+    ExclusionKey { at: affected_set_example_node, dimension: affected_set_example_dimension },
     Excluded {
       first: DimensionNotRead {
-        producer: affected_set_example_path,
+        usage_site: affected_set_example_node,
         changed_dimension: affected_set_example_dimension
       },
       rest: [
         DimensionNotRead {
-          producer: affected_set_example_path,
+          usage_site: affected_set_example_node,
           changed_dimension: affected_set_example_dimension
         }
       ]
@@ -100,16 +101,20 @@ data expected_affected_set_excluded_proofs: ReExecFrontier = ChangedSubgraphFron
 }
 
 
-data expected_affected_set_unknown_fail_closed: ReExecFrontier = WholeDagFailClosed {
-  evidence: WholeDagReason { reason: affected_set_example_reason }
+data expected_affected_set_unknown_fail_closed: ReExecFrontier = FailClosed {
+  reason: ReasonSymbol { reason: affected_set_example_reason }
 }
 
 
-data expected_affected_set_rejected_edit_fail_closed: ReExecFrontier = WholeDagFailClosed {
-  evidence: WholeDagDiagnostic { diagnostic: affected_set_example_invalid_edit_diagnostic }
+data expected_affected_set_rejected_edit_fail_closed: ReExecFrontier = FailClosed {
+  reason: ReasonDiagnostics {
+    diagnostics: diagnostics_singleton(d: affected_set_example_invalid_edit_diagnostic)
+  }
 }
 
 
-data expected_affected_set_whole_dag_absorbs_later_unknown: ReExecFrontier = WholeDagFailClosed {
-  evidence: WholeDagDiagnostic { diagnostic: affected_set_example_invalid_edit_diagnostic }
+data expected_affected_set_whole_dag_absorbs_later_unknown: ReExecFrontier = FailClosed {
+  reason: ReasonDiagnostics {
+    diagnostics: diagnostics_singleton(d: affected_set_example_invalid_edit_diagnostic)
+  }
 }

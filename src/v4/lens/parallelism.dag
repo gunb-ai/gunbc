@@ -110,3 +110,156 @@
 
 module v4.lens.parallelism
 
+import v4.compiler.infer { InferredFacts, InferredTree }
+import v4.std.dependency {
+  BarrierBefore,
+  BindsTo,
+  BootstrapDependsOn,
+  Contains,
+  DataDependsOn,
+  DependencyView,
+  EffectDependsOn,
+  GeneratedFrom,
+  ModelDependsOn,
+  ModuleDependsOn,
+  PlacementDependsOn,
+  ProjectionDependsOn,
+  PromotedBy,
+  ResourceDependsOn,
+  TypeDependsOn,
+  VerifiedBy
+}
+import v4.std.node { Node }
+import v4.std.witness { Holds, Witness }
+
+// 🟢 projection carrier — no scheduling decision and no parallel node.
+// A dependency edge can only witness a blocker or an unknown coupling;
+// pairwise independence is a separate graph non-edge proof.
+type ParallelismRelation
+  = DataDependent
+  | EffectCoupled
+  | BarrierCoupled
+  | UnknownCoupling
+
+type ParallelismDependencyFact {
+  source: Node
+  dependent: Node
+  dependency: DependencyView
+  source_facts: Witness<InferredFacts>
+  dependent_facts: Witness<InferredFacts>
+  relation: ParallelismRelation
+}
+
+type ParallelismFact {
+  dependencies: List<ParallelismDependencyFact>
+}
+
+fn parallelism_relation_for_dependency(view: DependencyView) -> ParallelismRelation {
+  match view.kind {
+    Contains => DataDependent
+    BindsTo => DataDependent
+    DataDependsOn => DataDependent
+    EffectDependsOn => EffectCoupled
+    ResourceDependsOn => EffectCoupled
+    BarrierBefore => BarrierCoupled
+    TypeDependsOn => UnknownCoupling
+    ModuleDependsOn => UnknownCoupling
+    PlacementDependsOn => UnknownCoupling
+    ModelDependsOn => UnknownCoupling
+    ProjectionDependsOn => UnknownCoupling
+    GeneratedFrom => UnknownCoupling
+    VerifiedBy => UnknownCoupling
+    PromotedBy => UnknownCoupling
+    BootstrapDependsOn => UnknownCoupling
+  }
+}
+
+fn parallelism_inferred_facts_for_node(tree: InferredTree, node: Node) -> Witness<InferredFacts> {
+  tree.facts.lookup(node)
+}
+
+fn parallelism_dependency_fact(tree: InferredTree, view: DependencyView) -> ParallelismDependencyFact {
+  ParallelismDependencyFact {
+    source: view.source,
+    dependent: view.dependent,
+    dependency: view,
+    source_facts: parallelism_inferred_facts_for_node(tree: tree, node: view.source),
+    dependent_facts: parallelism_inferred_facts_for_node(tree: tree, node: view.dependent),
+    relation: parallelism_relation_for_dependency(view: view)
+  }
+}
+
+fn parallelism_fact_from_dependencies(tree: InferredTree, dependencies: List<DependencyView>) -> ParallelismFact {
+  ParallelismFact {
+    dependencies: fold(dependencies, init: [], f: fn(acc, view) {
+      list_push(acc, parallelism_dependency_fact(tree: tree, view: view))
+    })
+  }
+}
+
+fn parallelism_fact(tree: InferredTree, dependencies: List<DependencyView>) -> ParallelismFact {
+  parallelism_fact_from_dependencies(tree: tree, dependencies: dependencies)
+}
+
+fn parallelism_witness(tree: InferredTree, dependencies: List<DependencyView>) -> Witness<ParallelismFact> {
+  Holds {
+    value: parallelism_fact(tree: tree, dependencies: dependencies)
+  }
+}
+
+fn parallelism_relation_eq(a: ParallelismRelation, b: ParallelismRelation) -> Bool {
+  match a {
+    DataDependent => match b {
+      DataDependent => true
+      _ => false
+    }
+    EffectCoupled => match b {
+      EffectCoupled => true
+      _ => false
+    }
+    BarrierCoupled => match b {
+      BarrierCoupled => true
+      _ => false
+    }
+    UnknownCoupling => match b {
+      UnknownCoupling => true
+      _ => false
+    }
+  }
+}
+
+fn parallelism_dependency_fact_eq(a: ParallelismDependencyFact, b: ParallelismDependencyFact) -> Bool {
+  (a.source == b.source)
+    && (a.dependent == b.dependent)
+    && (a.dependency == b.dependency)
+    && (a.source_facts == b.source_facts)
+    && (a.dependent_facts == b.dependent_facts)
+    && parallelism_relation_eq(a: a.relation, b: b.relation)
+}
+
+fn parallelism_dependency_count(xs: List<ParallelismDependencyFact>, item: ParallelismDependencyFact) -> Int {
+  fold(xs, init: 0, f: fn(acc, candidate) {
+    if parallelism_dependency_fact_eq(a: candidate, b: item) {
+      acc + 1
+    } else {
+      acc
+    }
+  })
+}
+
+fn parallelism_dependency_facts_eq(
+  left: List<ParallelismDependencyFact>,
+  right: List<ParallelismDependencyFact>
+) -> Bool {
+  if count(left) != count(right) {
+    false
+  } else {
+    fold(left, init: true, f: fn(acc, item) {
+      acc && (parallelism_dependency_count(xs: left, item: item) == parallelism_dependency_count(xs: right, item: item))
+    })
+  }
+}
+
+fn parallelism_fact_eq(a: ParallelismFact, b: ParallelismFact) -> Bool {
+  parallelism_dependency_facts_eq(left: a.dependencies, right: b.dependencies)
+}

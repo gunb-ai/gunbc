@@ -17,20 +17,15 @@ import v4.compiler.eval {
   Deferred,
   Fail,
   Pass,
+  aggregate_verdicts,
   eval_diagnostic,
-  eval_rejected_assert_kind_deferred,
   eval_rejected_roundtrip_deferred,
-  outcome_node_eq,
   test_claim_cache_receipt
 }
 import v4.compiler.infer {
   AlgebraRef,
   InferredFacts,
   InferredTree
-}
-import v4.std.cardinality {
-  RankingDimension,
-  TerminationProof
 }
 import v4.std.collection { Map }
 import v4.std.node {
@@ -41,9 +36,16 @@ import v4.std.node {
   TypeNode
 }
 import v4.std.diagnostic {
+  Diagnostic,
+  ExternalContractUnknown,
+  NodeLocus,
   Outcome,
-  Produced,
-  Rejected
+  Accepted,
+  None,
+  Rejected,
+  Unavailable,
+  diagnostics_singleton,
+  outcome_node_eq
 }
 import v4.std.verification {
   AssertKind,
@@ -57,7 +59,12 @@ import v4.std.verification {
   Tier1,
   Unit
 }
-import v4.std.witness { Holds }
+import v4.std.constraints {
+  CanonicalGroundingWitness,
+  constraint_property_being_canonical,
+  constraint_property_candidate_set_closedness
+}
+import v4.std.witness { Holds, StructuralPropertyWitness, Violates }
 import v4.workflow.bootstrap { v4_stage0_binary }
 import v4.workflow.ci {
   BootstrapStageCompile,
@@ -96,40 +103,52 @@ fn run_pipeline_assert(
 ) -> Verdict<CiPipeline> {
   match kind {
     Equals => match actual {
-      Produced { value: _ } => match expected {
-        Produced { value: _ } => Deferred {
+      Accepted { value: _, diagnostics: ad } => match expected {
+        Accepted { value: _, diagnostics: ed } => Deferred {
           actual: actual,
           diagnostic: eval_diagnostic(reason: eval_rejected_pipeline_projection_deferred, node: input)
         }
-        Rejected { diagnostic: _ } => Fail { actual: actual }
+        Rejected { diagnostics: _ } => Fail { actual: actual }
       }
-      Rejected { diagnostic: d } => {
-        let comparable = Rejected { diagnostic: d }
+      Rejected { diagnostics: r } => {
+        let comparable = Rejected { diagnostics: r }
         if outcome_node_eq(a: comparable, b: expected) { Pass } else { Fail { actual: actual } }
       }
     }
     Compiles => match actual {
-      Produced { value: _ } => Pass
-      Rejected { diagnostic: _ } => Fail { actual: actual }
+      Accepted { value: _, diagnostics: _ } => Pass
+      Rejected { diagnostics: _ } => Fail { actual: actual }
     }
     RoundTrips => Deferred {
       actual: actual,
       diagnostic: eval_diagnostic(reason: eval_rejected_roundtrip_deferred, node: input)
     }
-    DiagnosticAssert => Deferred {
-      actual: actual,
-      diagnostic: eval_diagnostic(reason: eval_rejected_assert_kind_deferred, node: input)
+    DiagnosticAssert => match actual {
+      Rejected { diagnostics: d } => match expected {
+        Rejected { diagnostics: _ } => {
+          let comparable = Rejected { diagnostics: d }
+          if outcome_node_eq(a: comparable, b: expected) { Pass } else { Fail { actual: actual } }
+        }
+        _ => Fail { actual: actual }
+      }
+      _ => Fail { actual: actual }
     }
   }
 }
 
 
-fn workflow_pipeline_pass_gate(run: TestClaimRun<CiPipeline>) -> Verdict<TestClaimRun<CiPipeline>> {
-  match run.verdict {
-    Pass => Pass
-    Fail { actual: _ } => Fail { actual: Produced { value: run } }
-    Deferred { actual: _, diagnostic: d } => Deferred { actual: Produced { value: run }, diagnostic: d }
-  }
+fn workflow_pipeline_pass_gate(run: TestClaimRun<CiPipeline>, at: Node) -> Verdict<TestClaimRun<CiPipeline>> {
+  aggregate_verdicts(
+    rs: [
+      match run.verdict {
+        Pass => Pass
+        Fail { actual: _ } => Fail { actual: Accepted { value: run, diagnostics: None } }
+        Deferred { actual: _, diagnostic: d } =>
+          Deferred { actual: Accepted { value: run, diagnostics: None }, diagnostic: d }
+      }
+    ],
+    at: at
+  )
 }
 
 
@@ -148,7 +167,7 @@ data pipeline_extdeps: Symbol = pipeline_extdeps
 data inferred_type_symbol: Symbol = inferred_type_symbol
 data inferred_algebra_symbol: Symbol = inferred_algebra_symbol
 data inferred_algebra_witness_symbol: Symbol = inferred_algebra_witness_symbol
-data inferred_descent_symbol: Symbol = inferred_descent_symbol
+data inferred_descent_not_derived: Symbol = inferred_descent_not_derived
 // 🟡 typed-input bridge scaffold — T22-EVAL-TYPED-INPUT-BRIDGE
 // 🟡 cache-hash scaffold — T22-EVAL-CACHE-HASHES
 data claim_hash_placeholder: Hash = claim_hash_placeholder
@@ -174,12 +193,26 @@ fn workflow_inferred_algebra_ref() -> AlgebraRef {
 
 
 fn workflow_inferred_facts() -> InferredFacts {
+  let resolved = pipeline_symbol_node(s: inferred_type_symbol)
   InferredFacts {
-    resolved_type: pipeline_symbol_node(s: inferred_type_symbol),
+    resolved_type: resolved,
     inhabits: workflow_inferred_algebra_ref(),
-    descent: TerminationProof {
-      non_increasing: [],
-      strict: RankingDimension { measured: inferred_descent_symbol }
+    descent: Violates {
+      diagnostic: Diagnostic {
+        reason: inferred_descent_not_derived,
+        at: NodeLocus { node: resolved },
+        correction: Unavailable { reason: ExternalContractUnknown }
+      }
+    },
+    canonical: CanonicalGroundingWitness {
+      structural: StructuralPropertyWitness {
+        property: constraint_property_being_canonical,
+        evidence: resolved
+      },
+      closedness: StructuralPropertyWitness {
+        property: constraint_property_candidate_set_closedness,
+        evidence: resolved
+      }
     }
   }
 }
@@ -209,7 +242,7 @@ fn pipeline_rejection_claim(label: String, input: Node, expected_reason: Symbol)
     label: label,
     t19_anchor: T19ManualAnchorAbsent,
     input: input,
-    expected: Rejected { diagnostic: ci_diagnostic(reason: expected_reason) },
+    expected: Rejected { diagnostics: diagnostics_singleton(d: ci_diagnostic(reason: expected_reason)) },
     classification: TestClassification { tier: Tier1, layer: Unit }
   }
 }
@@ -283,7 +316,10 @@ data subject_dangling_bootstrap_output: TestClaimEvalSubject<CiPipeline> = pipel
 data run_dangling_bootstrap_output: TestClaimRun<CiPipeline> = workflow_pipeline_run(subject: subject_dangling_bootstrap_output)
 
 
-data gate_dangling_bootstrap_output: Verdict<TestClaimRun<CiPipeline>> = workflow_pipeline_pass_gate(run: run_dangling_bootstrap_output)
+data gate_dangling_bootstrap_output: Verdict<TestClaimRun<CiPipeline>> = workflow_pipeline_pass_gate(
+  run: run_dangling_bootstrap_output,
+  at: subject_dangling_bootstrap_output.claim.input
+)
 
 
 data case_duplicate_job_id: PipelineRejectionCase = PipelineRejectionCase {
@@ -308,7 +344,10 @@ data subject_duplicate_job_id: TestClaimEvalSubject<CiPipeline> = pipeline_rejec
 data run_duplicate_job_id: TestClaimRun<CiPipeline> = workflow_pipeline_run(subject: subject_duplicate_job_id)
 
 
-data gate_duplicate_job_id: Verdict<TestClaimRun<CiPipeline>> = workflow_pipeline_pass_gate(run: run_duplicate_job_id)
+data gate_duplicate_job_id: Verdict<TestClaimRun<CiPipeline>> = workflow_pipeline_pass_gate(
+  run: run_duplicate_job_id,
+  at: subject_duplicate_job_id.claim.input
+)
 
 
 data case_duplicate_gate_id: PipelineRejectionCase = PipelineRejectionCase {
@@ -333,7 +372,10 @@ data subject_duplicate_gate_id: TestClaimEvalSubject<CiPipeline> = pipeline_reje
 data run_duplicate_gate_id: TestClaimRun<CiPipeline> = workflow_pipeline_run(subject: subject_duplicate_gate_id)
 
 
-data gate_duplicate_gate_id: Verdict<TestClaimRun<CiPipeline>> = workflow_pipeline_pass_gate(run: run_duplicate_gate_id)
+data gate_duplicate_gate_id: Verdict<TestClaimRun<CiPipeline>> = workflow_pipeline_pass_gate(
+  run: run_duplicate_gate_id,
+  at: subject_duplicate_gate_id.claim.input
+)
 
 
 data case_dangling_need: PipelineRejectionCase = PipelineRejectionCase {
@@ -357,7 +399,10 @@ data subject_dangling_need: TestClaimEvalSubject<CiPipeline> = pipeline_rejectio
 data run_dangling_need: TestClaimRun<CiPipeline> = workflow_pipeline_run(subject: subject_dangling_need)
 
 
-data gate_dangling_need: Verdict<TestClaimRun<CiPipeline>> = workflow_pipeline_pass_gate(run: run_dangling_need)
+data gate_dangling_need: Verdict<TestClaimRun<CiPipeline>> = workflow_pipeline_pass_gate(
+  run: run_dangling_need,
+  at: subject_dangling_need.claim.input
+)
 
 
 data case_dangling_gate_job: PipelineRejectionCase = PipelineRejectionCase {
@@ -381,7 +426,10 @@ data subject_dangling_gate_job: TestClaimEvalSubject<CiPipeline> = pipeline_reje
 data run_dangling_gate_job: TestClaimRun<CiPipeline> = workflow_pipeline_run(subject: subject_dangling_gate_job)
 
 
-data gate_dangling_gate_job: Verdict<TestClaimRun<CiPipeline>> = workflow_pipeline_pass_gate(run: run_dangling_gate_job)
+data gate_dangling_gate_job: Verdict<TestClaimRun<CiPipeline>> = workflow_pipeline_pass_gate(
+  run: run_dangling_gate_job,
+  at: subject_dangling_gate_job.claim.input
+)
 
 
 data case_dependency_cycle: PipelineRejectionCase = PipelineRejectionCase {
@@ -407,4 +455,7 @@ data subject_dependency_cycle: TestClaimEvalSubject<CiPipeline> = pipeline_rejec
 data run_dependency_cycle: TestClaimRun<CiPipeline> = workflow_pipeline_run(subject: subject_dependency_cycle)
 
 
-data gate_dependency_cycle: Verdict<TestClaimRun<CiPipeline>> = workflow_pipeline_pass_gate(run: run_dependency_cycle)
+data gate_dependency_cycle: Verdict<TestClaimRun<CiPipeline>> = workflow_pipeline_pass_gate(
+  run: run_dependency_cycle,
+  at: subject_dependency_cycle.claim.input
+)

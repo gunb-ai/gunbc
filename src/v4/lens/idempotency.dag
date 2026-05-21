@@ -19,3 +19,135 @@
 
 module v4.lens.idempotency
 
+import v4.compiler.infer { InferredFacts, InferredTree }
+import v4.lens.effect {
+  EffectDependencyFact,
+  effect_dependency_fact_eq,
+  effect_fact_from_dependencies
+}
+import v4.std.dependency {
+  BarrierBefore,
+  BindsTo,
+  BootstrapDependsOn,
+  Contains,
+  DataDependsOn,
+  DependencyView,
+  EffectDependsOn,
+  GeneratedFrom,
+  ModelDependsOn,
+  ModuleDependsOn,
+  PlacementDependsOn,
+  ProjectionDependsOn,
+  PromotedBy,
+  ResourceDependsOn,
+  TypeDependsOn,
+  VerifiedBy
+}
+import v4.std.node { Node }
+import v4.std.witness { Holds, Witness }
+
+// 🟢 projection carrier — idempotency/cancellation/redundancy read the
+// effect projection and algebraic laws. A dependency edge alone never
+// proves the positive algebraic law; it only routes to the witness need.
+type IdempotencyVerdict
+  = AlgebraicIdempotenceProven { law: Witness<InferredFacts> }
+  | RequiresAlgebraWitness
+
+type IdempotencyEffectFact {
+  at: Node
+  effect: EffectDependencyFact
+  verdict: IdempotencyVerdict
+}
+
+type IdempotencyFact {
+  effects: List<IdempotencyEffectFact>
+}
+
+fn idempotency_verdict_for_effect(effect: EffectDependencyFact) -> IdempotencyVerdict {
+  match effect.dependency.kind {
+    Contains => RequiresAlgebraWitness
+    BindsTo => RequiresAlgebraWitness
+    TypeDependsOn => RequiresAlgebraWitness
+    DataDependsOn => RequiresAlgebraWitness
+    BarrierBefore => RequiresAlgebraWitness
+    EffectDependsOn => RequiresAlgebraWitness
+    ResourceDependsOn => RequiresAlgebraWitness
+    ModuleDependsOn => RequiresAlgebraWitness
+    PlacementDependsOn => RequiresAlgebraWitness
+    ModelDependsOn => RequiresAlgebraWitness
+    ProjectionDependsOn => RequiresAlgebraWitness
+    GeneratedFrom => RequiresAlgebraWitness
+    VerifiedBy => RequiresAlgebraWitness
+    PromotedBy => RequiresAlgebraWitness
+    BootstrapDependsOn => RequiresAlgebraWitness
+  }
+}
+
+fn idempotency_effect_fact(effect: EffectDependencyFact) -> IdempotencyEffectFact {
+  IdempotencyEffectFact {
+    at: effect.at,
+    effect: effect,
+    verdict: idempotency_verdict_for_effect(effect: effect)
+  }
+}
+
+fn idempotency_fact(tree: InferredTree, dependencies: List<DependencyView>) -> IdempotencyFact {
+  let effects = effect_fact_from_dependencies(tree: tree, dependencies: dependencies)
+  IdempotencyFact {
+    effects: fold(effects.dependencies, init: [], f: fn(acc, effect) {
+      list_push(acc, idempotency_effect_fact(effect: effect))
+    })
+  }
+}
+
+fn idempotency_witness(tree: InferredTree, dependencies: List<DependencyView>) -> Witness<IdempotencyFact> {
+  Holds {
+    value: idempotency_fact(tree: tree, dependencies: dependencies)
+  }
+}
+
+fn idempotency_verdict_eq(a: IdempotencyVerdict, b: IdempotencyVerdict) -> Bool {
+  match a {
+    AlgebraicIdempotenceProven { law: a_law } => match b {
+      AlgebraicIdempotenceProven { law: b_law } => a_law == b_law
+      _ => false
+    }
+    RequiresAlgebraWitness => match b {
+      RequiresAlgebraWitness => true
+      _ => false
+    }
+  }
+}
+
+fn idempotency_effect_fact_eq(a: IdempotencyEffectFact, b: IdempotencyEffectFact) -> Bool {
+  (a.at == b.at)
+    && effect_dependency_fact_eq(a: a.effect, b: b.effect)
+    && idempotency_verdict_eq(a: a.verdict, b: b.verdict)
+}
+
+fn idempotency_effect_count(xs: List<IdempotencyEffectFact>, item: IdempotencyEffectFact) -> Int {
+  fold(xs, init: 0, f: fn(acc, candidate) {
+    if idempotency_effect_fact_eq(a: candidate, b: item) {
+      acc + 1
+    } else {
+      acc
+    }
+  })
+}
+
+fn idempotency_effect_facts_eq(
+  left: List<IdempotencyEffectFact>,
+  right: List<IdempotencyEffectFact>
+) -> Bool {
+  if count(left) != count(right) {
+    false
+  } else {
+    fold(left, init: true, f: fn(acc, item) {
+      acc && (idempotency_effect_count(xs: left, item: item) == idempotency_effect_count(xs: right, item: item))
+    })
+  }
+}
+
+fn idempotency_fact_eq(a: IdempotencyFact, b: IdempotencyFact) -> Bool {
+  idempotency_effect_facts_eq(left: a.effects, right: b.effects)
+}
