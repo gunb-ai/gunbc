@@ -2056,10 +2056,38 @@ pub fn render_node_type(
                                 emit_container(&to_snake(tn.clone()), inner, &target)
                             }
                         } else {
-                            if (tn.clone().as_str() == tuple_type_name().as_str()) {
-                                render_tuple_parts(&Rc::new(vec![]), target.clone())
+                            if (param_count > 0) {
+                                {
+                                    let param_strs = Rc::new({
+                                        let mut __result = Vec::new();
+                                        for p in n.params.clone().iter().cloned() {
+                                            __result.push(render_node_type(
+                                                &param_node_type_expr(&p),
+                                                &target,
+                                                &shared_types,
+                                                &source_indices,
+                                            ));
+                                        }
+                                        __result
+                                    });
+                                    let spec = language_spec(target.clone());
+                                    v2_rt::concat(
+                                        v2_rt::concat(
+                                            v2_rt::concat(
+                                                coerce_primitive_type(target.clone(), tn.clone()),
+                                                spec.type_arg_open.clone(),
+                                            ),
+                                            param_strs.join(", "),
+                                        ),
+                                        spec.type_arg_close.clone(),
+                                    )
+                                }
                             } else {
-                                coerce_primitive_type(target.clone(), tn.clone())
+                                if (tn.clone().as_str() == tuple_type_name().as_str()) {
+                                    render_tuple_parts(&Rc::new(vec![]), target.clone())
+                                } else {
+                                    coerce_primitive_type(target.clone(), tn.clone())
+                                }
                             }
                         }
                     }
