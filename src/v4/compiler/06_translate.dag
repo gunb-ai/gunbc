@@ -171,6 +171,8 @@ fn coercion_candidates_from_target_model(
     }
   )
 }
+// RULING-1: needs-more-work — T-9 `infer` should author grounding via solve_constraints / enriched
+// InferredFacts; this slice uses Map presence + structural witness scaffold until that lands.
 fn canonical_grounding_for_node(tree: InferredTree, node: Node) -> Outcome<CanonicalGrounding> {
   match tree.facts.lookup(node) {
     Some { value: _facts } =>

@@ -36,18 +36,10 @@ import v4.std.node { Node, Symbol }
 import v4.std.text { String }
 data emit_stage_locus_port: Symbol = emit_stage_locus_port
 data emit_serialize_emitted_mismatch: Symbol = emit_serialize_emitted_mismatch
-data emit_serialize_source_missing: Symbol = emit_serialize_source_missing
 fn emit_serialize_emitted_mismatch_diagnostic(emitted: Node, target: TargetModel) -> Diagnostic {
   Diagnostic {
     reason: emit_serialize_emitted_mismatch,
     at: NodeLocus { node: emitted },
-    correction: Unavailable { reason: ExternalContractUnknown }
-  }
-}
-fn emit_serialize_source_missing_diagnostic(target: TargetModel) -> Diagnostic {
-  Diagnostic {
-    reason: emit_serialize_source_missing,
-    at: NodeLocus { node: target },
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
