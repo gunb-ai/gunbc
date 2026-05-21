@@ -132,7 +132,7 @@ fn run_pipeline_assert(
 }
 
 
-fn workflow_pipeline_pass_gate(run: TestClaimRun<CiPipeline>) -> Verdict<TestClaimRun<CiPipeline>> {
+fn workflow_pipeline_pass_gate(run: TestClaimRun<CiPipeline>, at: Node) -> Verdict<TestClaimRun<CiPipeline>> {
   aggregate_verdicts(
     rs: [
       match run.verdict {
@@ -142,7 +142,7 @@ fn workflow_pipeline_pass_gate(run: TestClaimRun<CiPipeline>) -> Verdict<TestCla
           Deferred { actual: Accepted { value: run, diagnostics: None }, diagnostic: d }
       }
     ],
-    at: run.cache.key.eval_subject.claim.input
+    at: at
   )
 }
 
@@ -297,7 +297,10 @@ data subject_dangling_bootstrap_output: TestClaimEvalSubject<CiPipeline> = pipel
 data run_dangling_bootstrap_output: TestClaimRun<CiPipeline> = workflow_pipeline_run(subject: subject_dangling_bootstrap_output)
 
 
-data gate_dangling_bootstrap_output: Verdict<TestClaimRun<CiPipeline>> = workflow_pipeline_pass_gate(run: run_dangling_bootstrap_output)
+data gate_dangling_bootstrap_output: Verdict<TestClaimRun<CiPipeline>> = workflow_pipeline_pass_gate(
+  run: run_dangling_bootstrap_output,
+  at: subject_dangling_bootstrap_output.claim.input
+)
 
 
 data case_duplicate_job_id: PipelineRejectionCase = PipelineRejectionCase {
@@ -322,7 +325,10 @@ data subject_duplicate_job_id: TestClaimEvalSubject<CiPipeline> = pipeline_rejec
 data run_duplicate_job_id: TestClaimRun<CiPipeline> = workflow_pipeline_run(subject: subject_duplicate_job_id)
 
 
-data gate_duplicate_job_id: Verdict<TestClaimRun<CiPipeline>> = workflow_pipeline_pass_gate(run: run_duplicate_job_id)
+data gate_duplicate_job_id: Verdict<TestClaimRun<CiPipeline>> = workflow_pipeline_pass_gate(
+  run: run_duplicate_job_id,
+  at: subject_duplicate_job_id.claim.input
+)
 
 
 data case_duplicate_gate_id: PipelineRejectionCase = PipelineRejectionCase {
@@ -347,7 +353,10 @@ data subject_duplicate_gate_id: TestClaimEvalSubject<CiPipeline> = pipeline_reje
 data run_duplicate_gate_id: TestClaimRun<CiPipeline> = workflow_pipeline_run(subject: subject_duplicate_gate_id)
 
 
-data gate_duplicate_gate_id: Verdict<TestClaimRun<CiPipeline>> = workflow_pipeline_pass_gate(run: run_duplicate_gate_id)
+data gate_duplicate_gate_id: Verdict<TestClaimRun<CiPipeline>> = workflow_pipeline_pass_gate(
+  run: run_duplicate_gate_id,
+  at: subject_duplicate_gate_id.claim.input
+)
 
 
 data case_dangling_need: PipelineRejectionCase = PipelineRejectionCase {
@@ -371,7 +380,10 @@ data subject_dangling_need: TestClaimEvalSubject<CiPipeline> = pipeline_rejectio
 data run_dangling_need: TestClaimRun<CiPipeline> = workflow_pipeline_run(subject: subject_dangling_need)
 
 
-data gate_dangling_need: Verdict<TestClaimRun<CiPipeline>> = workflow_pipeline_pass_gate(run: run_dangling_need)
+data gate_dangling_need: Verdict<TestClaimRun<CiPipeline>> = workflow_pipeline_pass_gate(
+  run: run_dangling_need,
+  at: subject_dangling_need.claim.input
+)
 
 
 data case_dangling_gate_job: PipelineRejectionCase = PipelineRejectionCase {
@@ -395,7 +407,10 @@ data subject_dangling_gate_job: TestClaimEvalSubject<CiPipeline> = pipeline_reje
 data run_dangling_gate_job: TestClaimRun<CiPipeline> = workflow_pipeline_run(subject: subject_dangling_gate_job)
 
 
-data gate_dangling_gate_job: Verdict<TestClaimRun<CiPipeline>> = workflow_pipeline_pass_gate(run: run_dangling_gate_job)
+data gate_dangling_gate_job: Verdict<TestClaimRun<CiPipeline>> = workflow_pipeline_pass_gate(
+  run: run_dangling_gate_job,
+  at: subject_dangling_gate_job.claim.input
+)
 
 
 data case_dependency_cycle: PipelineRejectionCase = PipelineRejectionCase {
@@ -421,4 +436,7 @@ data subject_dependency_cycle: TestClaimEvalSubject<CiPipeline> = pipeline_rejec
 data run_dependency_cycle: TestClaimRun<CiPipeline> = workflow_pipeline_run(subject: subject_dependency_cycle)
 
 
-data gate_dependency_cycle: Verdict<TestClaimRun<CiPipeline>> = workflow_pipeline_pass_gate(run: run_dependency_cycle)
+data gate_dependency_cycle: Verdict<TestClaimRun<CiPipeline>> = workflow_pipeline_pass_gate(
+  run: run_dependency_cycle,
+  at: subject_dependency_cycle.claim.input
+)
