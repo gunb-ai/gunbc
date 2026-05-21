@@ -1233,10 +1233,31 @@ review at #3452 comment.
 **Concrete match — F16 (`src/v4/lens/testgen.dag:253-270`):**
 13 arms, 2 distinct skeletons: `Rejected { diagnostic: ... }` (1), `Produced { value: claim_<name> }` (12). **Outlier, 1:12 — extreme case.**
 
+
 **Clean shape:** the 12 identical-skeleton arms are a typed registry
-mapping anchor → claim. Refactor to a data table consumed via lookup:
+mapping anchor → claim. Refactor to a **totality-checked** table consumed
+via direct lookup — `Option` + reader-convention "unreachable" comments
+would be a fail-open smell here (Practice 2 — illegal states
+unrepresentable). The closed enum already guarantees the lookup hits;
+the substrate's job is to make that guarantee structural, not
+commentary-based:
+
 ```dag
-data manual_anchor_claims: Map<T19ManualAnchorKey, ManualTestClaim> = {
+// Substructure the enum: split the outlier (Absent) from the lookup-
+// carrying variants. T19ManualNonAbsent's k field is the closed sum of
+// the 12 claim-bearing constructors.
+type T19ManualAnchorKey
+  = T19ManualAnchorAbsent
+  | T19ManualNonAbsent { k: T19ManualNonAbsentKind }
+
+type T19ManualNonAbsentKind
+  = T19ManualTcConjEmpty
+  | T19ManualTcDisjEmpty
+  | ... // 12 variants, exactly the claim-keys
+
+// TotalMap<K, V> for closed-coproduct K is a typed primitive whose
+// construction is well-formed iff every variant of K appears as a key.
+data manual_anchor_claims: TotalMap<T19ManualNonAbsentKind, ManualTestClaim> = {
   T19ManualTcConjEmpty            -> claim_conj_empty_compiles,
   T19ManualTcDisjEmpty            -> claim_disj_empty_compiles,
   ...
@@ -1244,18 +1265,24 @@ data manual_anchor_claims: Map<T19ManualAnchorKey, ManualTestClaim> = {
 
 fn manual_test_claim_for_manual_anchor(key: T19ManualAnchorKey) -> Outcome<TestClaim> {
   match key {
-    T19ManualAnchorAbsent => Rejected { diagnostic: ... }
-    _                     =>
-      match lookup(manual_anchor_claims, key) {
-        Some { value: c } => Produced { value: c }
-        None              => Rejected { diagnostic: ... }  // unreachable given enum closure
-      }
+    T19ManualAnchorAbsent           => Rejected { diagnostic: ... }
+    T19ManualNonAbsent { k: kind }  => Produced { value: total_lookup(manual_anchor_claims, kind) }
   }
 }
 ```
-The 12 arms reduce to one data table + a single Map lookup. The
-classification (which anchor → which claim) becomes data, the function
-becomes a small dispatch.
+
+The 13 arms reduce to a 2-arm match over the substructured enum + one
+totality-checked data table. `total_lookup` returns `ManualTestClaim`
+directly (not `Option<ManualTestClaim>`) because `TotalMap`'s
+well-formedness check makes the absence case unrepresentable. No
+"unreachable" arm guarded by comment.
+
+**Substrate dependency.** `TotalMap<K, V>` for closed-coproduct K is a
+typed primitive whose well-formedness check is "every K-variant appears
+as a key" — gated to land when L1.13 enforcement runs via `apply_lens`.
+Until then, the clean-shape sketch above describes the target; a transitional
+`Map + Option` form may persist in source, but `TotalMap` is the
+load-bearing receipt the lens looks for to clear the finding.
 
 ## 6. The discriminant / catamorphism distinction
 
