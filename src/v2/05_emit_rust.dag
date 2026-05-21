@@ -4128,6 +4128,7 @@ fn rust_record_field_needs_box(scope: InferScope, emit_info: EmitGraphInfo, shar
   }
 }
 
+// BoundedLattice meet/join are fn carriers (Rc); top/bottom are stored values (Box).
 fn wrap_rust_record_field_value(raw: String, scope: InferScope, emit_info: EmitGraphInfo, shared_types: Set<String>, struct_name: String, field_name: String) -> String {
   let is_bounded_lattice_field = contains(struct_name, "BoundedLattice")
   if rust_record_field_needs_fn_rc(scope: scope, struct_name: struct_name, field_name: field_name) {
