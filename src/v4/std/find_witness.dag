@@ -15,14 +15,13 @@ import v4.std.collection { List }
 import v4.std.diagnostic {
   Accepted,
   Diagnostic,
-  Diagnostics,
   ExternalContractUnknown,
   None,
   NodeLocus,
   Outcome,
+  Rejected,
   Unavailable,
-  outcome_rejected,
-  outcome_with_diagnostics
+  outcome_rejected
 }
 import v4.std.node {
   Node,
@@ -48,15 +47,11 @@ type FindWitnessResult {
   witness: StructuralPropertyWitness
   closedness: StructuralPropertyWitness
 }
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
-type PassingSelection
-  = NoPassing
-  | OnePassing { result: FindWitnessResult }
-  | MultiplePassing
-type PassingCandidates {
-  selection: PassingSelection
-  count: Int
-}
+// 🟢 coproduct dissolution — local fold state for fail-closed unique candidate selection.
+type PassingCandidateFold
+  = NoPassingCandidate
+  | OnePassingCandidate { candidate: Node }
+  | ManyPassingCandidates
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type TargetSelectionPolicy
   = TargetDeclaredPriority { priority: Node }
@@ -98,186 +93,105 @@ fn preservation_predicate_holds(
   (predicate.preservation_rule == preservation_rule_exact_structural_equality_zip_fold)
     && exact_structural_equality_zip_fold(source_facts: source_facts, candidate: candidate)
 }
-fn find_witness_result_for_candidate(
-  candidate: Node,
+fn passing_candidate_count(
+  source_facts: Node,
+  candidates: CandidateSet,
   predicate: PreservationPredicate,
-  closedness: StructuralPropertyWitness,
-) -> FindWitnessResult {
-  FindWitnessResult {
-    candidate: candidate,
-    witness: StructuralPropertyWitness {
-      property: predicate.preservation_rule,
-      evidence: candidate
+) -> Int {
+  fold(candidates.candidates, init: 0, f: fn(acc, candidate) {
+    if preservation_predicate_holds(
+      source_facts: source_facts,
+      candidate: candidate,
+      predicate: predicate
+    ) {
+      acc + 1
+    } else {
+      acc
+    }
+  })
+}
+fn only_passing_candidate(
+  source_facts: Node,
+  candidates: CandidateSet,
+  predicate: PreservationPredicate,
+) -> Outcome<Node> {
+  match fold(candidates.candidates, init: NoPassingCandidate, f: fn(acc, candidate) {
+    if preservation_predicate_holds(
+      source_facts: source_facts,
+      candidate: candidate,
+      predicate: predicate
+    ) {
+      match acc {
+        NoPassingCandidate => OnePassingCandidate { candidate: candidate }
+        OnePassingCandidate { candidate: _ } => ManyPassingCandidates
+        ManyPassingCandidates => ManyPassingCandidates
+      }
+    } else {
+      acc
+    }
+  }) {
+    NoPassingCandidate =>
+      outcome_rejected(find_witness_no_candidate_diagnostic(source_facts: source_facts))
+    OnePassingCandidate { candidate: only } =>
+      Accepted { value: only, diagnostics: None }
+    ManyPassingCandidates =>
+      outcome_rejected(find_witness_ambiguous_candidate_diagnostic(source_facts: source_facts))
+  }
+}
+fn selected_candidate_count(
+  source_facts: Node,
+  candidates: CandidateSet,
+  predicate: PreservationPredicate,
+  selection: Node,
+) -> Int {
+  fold(candidates.candidates, init: 0, f: fn(acc, candidate) {
+    if (candidate == selection) && preservation_predicate_holds(
+      source_facts: source_facts,
+      candidate: candidate,
+      predicate: predicate
+    ) {
+      acc + 1
+    } else {
+      acc
+    }
+  })
+}
+fn accepted_witness_result(
+  candidate: Node,
+  candidates: CandidateSet,
+  predicate: PreservationPredicate,
+) -> Outcome<FindWitnessResult> {
+  Accepted {
+    value: FindWitnessResult {
+      candidate: candidate,
+      witness: StructuralPropertyWitness {
+        property: predicate.preservation_rule,
+        evidence: candidate
+      },
+      closedness: candidates.closedness
     },
-    closedness: closedness
+    diagnostics: None
   }
 }
-fn passing_candidates_step(
-  acc: PassingCandidates,
-  source_facts: Node,
-  predicate: PreservationPredicate,
-  closedness: StructuralPropertyWitness,
-  candidate: Node,
-) -> PassingCandidates {
-  if preservation_predicate_holds(
-    source_facts: source_facts,
-    candidate: candidate,
-    predicate: predicate
-  ) {
-    PassingCandidates {
-      selection: match acc.selection {
-        NoPassing =>
-          OnePassing {
-            result: find_witness_result_for_candidate(
-              candidate: candidate,
-              predicate: predicate,
-              closedness: closedness
-            )
-          }
-        OnePassing { result: _ } => MultiplePassing
-        MultiplePassing => MultiplePassing
-      },
-      count: acc.count + 1
-    }
-  } else {
-    acc
-  }
-}
-fn selected_candidate_step(
-  acc: PassingCandidates,
-  source_facts: Node,
-  predicate: PreservationPredicate,
-  closedness: StructuralPropertyWitness,
-  selection: Node,
-  candidate: Node,
-) -> PassingCandidates {
-  if (candidate == selection) && preservation_predicate_holds(
-    source_facts: source_facts,
-    candidate: candidate,
-    predicate: predicate
-  ) {
-    PassingCandidates {
-      selection: match acc.selection {
-        NoPassing =>
-          OnePassing {
-            result: find_witness_result_for_candidate(
-              candidate: candidate,
-              predicate: predicate,
-              closedness: closedness
-            )
-          }
-        OnePassing { result: _ } => MultiplePassing
-        MultiplePassing => MultiplePassing
-      },
-      count: acc.count + 1
-    }
-  } else {
-    acc
-  }
-}
-fn selected_passing_candidates_for(
+fn resolve_selected_candidate(
   source_facts: Node,
   candidates: CandidateSet,
   predicate: PreservationPredicate,
   selection: Node,
-) -> PassingCandidates {
-  fold(
-    candidates.candidates,
-    init: PassingCandidates { selection: NoPassing, count: 0 },
-    f: fn(acc, candidate) {
-      selected_candidate_step(
-        acc: acc,
-        source_facts: source_facts,
-        predicate: predicate,
-        closedness: candidates.closedness,
-        selection: selection,
-        candidate: candidate
-      )
-    }
-  )
-}
-fn passing_candidates_for(
-  source_facts: Node,
-  candidates: CandidateSet,
-  predicate: PreservationPredicate,
-) -> PassingCandidates {
-  fold(
-    candidates.candidates,
-    init: PassingCandidates { selection: NoPassing, count: 0 },
-    f: fn(acc, candidate) {
-      passing_candidates_step(
-        acc: acc,
-        source_facts: source_facts,
-        predicate: predicate,
-        closedness: candidates.closedness,
-        candidate: candidate
-      )
-    }
-  )
-}
-fn accepted_find_witness_result(
-  result: FindWitnessResult,
-  diagnostics: Diagnostics,
 ) -> Outcome<FindWitnessResult> {
-  outcome_with_diagnostics(value: result, diagnostics: diagnostics)
-}
-fn only_passing_result(
-  source_facts: Node,
-  passing: PassingCandidates,
-  diagnostics: Diagnostics,
-) -> Outcome<FindWitnessResult> {
-  match passing.selection {
-    OnePassing { result } => accepted_find_witness_result(result: result, diagnostics: diagnostics)
-    NoPassing => outcome_rejected(find_witness_no_candidate_diagnostic(source_facts: source_facts))
-    MultiplePassing => outcome_rejected(find_witness_ambiguous_candidate_diagnostic(source_facts: source_facts))
-  }
-}
-fn resolve_target_selection(
-  source_facts: Node,
-  candidates: CandidateSet,
-  predicate: PreservationPredicate,
-  selection: Node,
-  diagnostics: Diagnostics,
-) -> Outcome<FindWitnessResult> {
-  let selected = selected_passing_candidates_for(
+  match selected_candidate_count(
     source_facts: source_facts,
     candidates: candidates,
     predicate: predicate,
     selection: selection
-  )
-  match selected.count {
-    1 => only_passing_result(source_facts: source_facts, passing: selected, diagnostics: diagnostics)
+  ) {
+    1 => accepted_witness_result(
+      candidate: selection,
+      candidates: candidates,
+      predicate: predicate
+    )
+    0 => outcome_rejected(find_witness_no_candidate_diagnostic(source_facts: source_facts))
     _ => outcome_rejected(find_witness_ambiguous_candidate_diagnostic(source_facts: source_facts))
-  }
-}
-fn resolve_multiple_passing(
-  source_facts: Node,
-  candidates: CandidateSet,
-  passing: PassingCandidates,
-  predicate: PreservationPredicate,
-  multiplicity_policy: MultiplicityPolicy,
-  diagnostics: Diagnostics,
-) -> Outcome<FindWitnessResult> {
-  match multiplicity_policy {
-    UniqueOnly => outcome_rejected(find_witness_ambiguous_candidate_diagnostic(source_facts: source_facts))
-    TargetSelection { policy } => match policy {
-      TargetDeclaredPriority { priority } =>
-        resolve_target_selection(
-          source_facts: source_facts,
-          candidates: candidates,
-          predicate: predicate,
-          selection: priority,
-          diagnostics: diagnostics
-        )
-      UserSelected { selection } =>
-        resolve_target_selection(
-          source_facts: source_facts,
-          candidates: candidates,
-          predicate: predicate,
-          selection: selection,
-          diagnostics: diagnostics
-        )
-    }
   }
 }
 fn find_witness(
@@ -286,23 +200,45 @@ fn find_witness(
   predicate: PreservationPredicate,
   multiplicity_policy: MultiplicityPolicy,
 ) -> Outcome<FindWitnessResult> {
-  let passing = passing_candidates_for(
+  let passing_count = passing_candidate_count(
     source_facts: source_facts,
     candidates: candidates,
     predicate: predicate
   )
-  match passing.count {
+  match passing_count {
     0 => outcome_rejected(find_witness_no_candidate_diagnostic(source_facts: source_facts))
-    1 => only_passing_result(source_facts: source_facts, passing: passing, diagnostics: None)
-    _ =>
-      resolve_multiple_passing(
-        source_facts: source_facts,
+    1 => match only_passing_candidate(
+      source_facts: source_facts,
+      candidates: candidates,
+      predicate: predicate
+    ) {
+      Accepted { value: only, diagnostics: _ } => accepted_witness_result(
+        candidate: only,
         candidates: candidates,
-        passing: passing,
-        predicate: predicate,
-        multiplicity_policy: multiplicity_policy,
-        diagnostics: None
+        predicate: predicate
       )
+      Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    }
+    _ => match multiplicity_policy {
+      UniqueOnly =>
+        outcome_rejected(find_witness_ambiguous_candidate_diagnostic(source_facts: source_facts))
+      TargetSelection { policy: p } => match p {
+        TargetDeclaredPriority { priority: priority } =>
+          resolve_selected_candidate(
+          source_facts: source_facts,
+          candidates: candidates,
+          predicate: predicate,
+            selection: priority
+        )
+        UserSelected { selection: selection } =>
+          resolve_selected_candidate(
+          source_facts: source_facts,
+          candidates: candidates,
+          predicate: predicate,
+            selection: selection
+        )
+      }
+    }
   }
 }
 fn verify_witness(
