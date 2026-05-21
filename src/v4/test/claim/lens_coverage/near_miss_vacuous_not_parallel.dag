@@ -1,0 +1,37 @@
+// src/v4/test/claim/lens_coverage/near_miss_vacuous_not_parallel.dag
+// Scope: T-18 negative claim — VacuousArm acceptance does not match ParallelAuthority (near-miss).
+// Owns: near_miss_vacuous_not_parallel_claim.
+// Consumes: lens coverage.
+// Status: scaffold — compile-only until T-22 generated claim execution.
+
+module v4.test.claim.lens_coverage.near_miss_vacuous_not_parallel
+
+import v4.lens.coverage {
+  CoverageDefectAcceptanceKey,
+  ParallelAuthority,
+  VacuousArm,
+  coverage_defect_parallel_authority,
+  coverage_defect_vacuous_arm
+}
+import v4.std.logic { Bool }
+
+type LensCoverageSiblingClaim {
+  lhs: CoverageDefectAcceptanceKey
+  rhs: CoverageDefectAcceptanceKey
+  expected_distinct: Bool
+}
+
+data near_miss_vacuous_not_parallel_claim: LensCoverageSiblingClaim = LensCoverageSiblingClaim {
+  lhs: coverage_defect_vacuous_arm.concern,
+  rhs: coverage_defect_parallel_authority.concern,
+  expected_distinct: true
+}
+
+fn near_miss_vacuous_not_parallel_claim_holds() -> Bool {
+  (near_miss_vacuous_not_parallel_claim.lhs.lens == VacuousArm) &&
+    (near_miss_vacuous_not_parallel_claim.rhs.lens == ParallelAuthority) &&
+    (near_miss_vacuous_not_parallel_claim.lhs.lens != near_miss_vacuous_not_parallel_claim.rhs.lens) ==
+      near_miss_vacuous_not_parallel_claim.expected_distinct
+}
+
+data near_miss_vacuous_not_parallel_claim_passes: Bool = near_miss_vacuous_not_parallel_claim_holds()

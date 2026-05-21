@@ -1,0 +1,37 @@
+// src/v4/test/claim/lens_coverage/sibling_degenerate_not_hollow.dag
+// Scope: T-18 negative claim — DegenerateType acceptance does not alias HollowType (sibling-not-caught).
+// Owns: sibling_degenerate_not_hollow_claim.
+// Consumes: lens coverage.
+// Status: scaffold — compile-only until T-22 generated claim execution.
+
+module v4.test.claim.lens_coverage.sibling_degenerate_not_hollow
+
+import v4.lens.coverage {
+  CoverageDefectAcceptanceKey,
+  DegenerateType,
+  HollowType,
+  coverage_defect_degenerate_type,
+  coverage_defect_hollow_type
+}
+import v4.std.logic { Bool }
+
+type LensCoverageSiblingClaim {
+  lhs: CoverageDefectAcceptanceKey
+  rhs: CoverageDefectAcceptanceKey
+  expected_distinct: Bool
+}
+
+data sibling_degenerate_not_hollow_claim: LensCoverageSiblingClaim = LensCoverageSiblingClaim {
+  lhs: coverage_defect_degenerate_type.concern,
+  rhs: coverage_defect_hollow_type.concern,
+  expected_distinct: true
+}
+
+fn sibling_degenerate_not_hollow_claim_holds() -> Bool {
+  (sibling_degenerate_not_hollow_claim.lhs.lens == DegenerateType) ==
+    sibling_degenerate_not_hollow_claim.expected_distinct &&
+    (sibling_degenerate_not_hollow_claim.rhs.lens == HollowType) &&
+    (sibling_degenerate_not_hollow_claim.lhs.lens != sibling_degenerate_not_hollow_claim.rhs.lens)
+}
+
+data sibling_degenerate_not_hollow_claim_passes: Bool = sibling_degenerate_not_hollow_claim_holds()

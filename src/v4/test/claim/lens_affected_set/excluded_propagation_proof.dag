@@ -1,0 +1,51 @@
+// src/v4/test/claim/lens_affected_set/excluded_propagation_proof.dag
+// Scope: T-21 worked claim — DimensionNotRead exclusion proof accumulates under Excluded.
+// Owns: excluded_propagation_proof_claim.
+// Consumes: lens affected_set, lens affected_set_examples, std node.
+// Status: scaffold — compile-only until T-22 generated claim execution.
+
+module v4.test.claim.lens_affected_set.excluded_propagation_proof
+
+import v4.lens.affected_set {
+  DimensionNotRead,
+  ExclusionKey,
+  ReExecFrontier,
+  empty_frontier,
+  mark_excluded
+}
+import v4.lens.affected_set_examples {
+  affected_set_example_dimension,
+  affected_set_example_node,
+  expected_affected_set_excluded_proofs
+}
+import v4.std.logic { Bool }
+
+type LensAffectedSetFrontierReceiptClaim {
+  actual: ReExecFrontier
+  expected: ReExecFrontier
+}
+
+fn excluded_propagation_proof_actual() -> ReExecFrontier {
+  mark_excluded(
+    frontier: empty_frontier(),
+    key: ExclusionKey {
+      at: affected_set_example_node,
+      dimension: affected_set_example_dimension
+    },
+    proof: DimensionNotRead {
+      usage_site: affected_set_example_node,
+      changed_dimension: affected_set_example_dimension
+    }
+  )
+}
+
+data excluded_propagation_proof_claim: LensAffectedSetFrontierReceiptClaim = LensAffectedSetFrontierReceiptClaim {
+  actual: excluded_propagation_proof_actual(),
+  expected: expected_affected_set_excluded_proofs
+}
+
+fn excluded_propagation_proof_claim_holds() -> Bool {
+  excluded_propagation_proof_claim.actual == excluded_propagation_proof_claim.expected
+}
+
+data excluded_propagation_proof_claim_passes: Bool = excluded_propagation_proof_claim_holds()
