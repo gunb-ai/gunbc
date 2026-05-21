@@ -923,22 +923,25 @@ fn rust_grammar_terminal(token_class: Symbol) -> GrammarExpr {
   Terminal { token_class: token_class }
 }
 
-fn rust_grammar_sequence_from_token_classes() -> GrammarExpr {
-  match rust_mvp1_source_token_classes {
-    Empty => rust_grammar_terminal(token_class: rust_token_rbrace)
-    Cons { head: only, tail: Empty } => rust_grammar_terminal(token_class: only)
-    Cons { head: first, tail: rest } =>
-      free_monoid_fold(
-        xs: rest,
-        empty: rust_grammar_terminal(token_class: first),
-        cons: fn(acc, token_class) {
-          Sequence {
-            left: rust_grammar_terminal(token_class: token_class),
-            right: acc
-          }
-        }
-      )
+fn rust_grammar_sequence_fold_step(acc: GrammarExpr, token_class: Symbol) -> GrammarExpr {
+  if token_class == rust_token_kw_fn {
+    acc
+  } else {
+    Sequence {
+      left: rust_grammar_terminal(token_class: token_class),
+      right: acc
+    }
   }
+}
+
+fn rust_grammar_sequence_from_token_classes() -> GrammarExpr {
+  free_monoid_fold(
+    xs: rust_mvp1_source_token_classes,
+    empty: rust_grammar_terminal(token_class: rust_token_kw_fn),
+    cons: fn(acc, token_class) {
+      rust_grammar_sequence_fold_step(acc: acc, token_class: token_class)
+    }
+  )
 }
 
 fn rust_mvp1_target_model() -> Node {
