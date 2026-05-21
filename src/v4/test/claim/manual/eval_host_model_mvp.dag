@@ -74,7 +74,6 @@ import v4.std.host {
   ModelCore,
   ResourceAccess
 }
-import v4.std.logic { True }
 import v4.std.machine { Byte }
 import v4.std.node {
   Atom,
@@ -108,7 +107,7 @@ data eval_mvp2_resource_access: ResourceAccess = eval_mvp2_resource_access
 
 
 fn eval_mvp2_byte() -> Byte {
-  Byte { bits: [True] }
+  Byte { bits: [true] }
 }
 
 
@@ -240,7 +239,7 @@ fn eval_mvp2_boundary_allowance() -> HostBoundaryAllowance {
   HostBoundaryAllowance {
     effect: eval_mvp2_effect_signature,
     resource: eval_mvp2_resource_access,
-    allowed: True
+    allowed: true
   }
 }
 
