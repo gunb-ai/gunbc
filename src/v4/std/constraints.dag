@@ -19,14 +19,10 @@ import v4.std.diagnostic {
   Rejected,
   Unavailable,
   bind_outcome,
-<<<<<<< HEAD
-  outcome_rejected
-=======
   diagnostics_singleton,
   outcome_rejected,
   outcome_with_diagnostics,
   rejected_with_pending
->>>>>>> origin/main
 }
 import v4.std.find_witness {
   CandidateSet,
@@ -88,17 +84,6 @@ fn solve_constraints(policy: ConstraintSolvePolicy) -> Outcome<CanonicalGroundin
         multiplicity_policy: UniqueOnly
       ) {
         Accepted { value: fw, diagnostics: fw_d } =>
-<<<<<<< HEAD
-          Accepted {
-            value: CanonicalGrounding {
-              node: fw.candidate,
-              witness: CanonicalGroundingWitness {
-                structural: fw.witness
-              }
-            },
-            diagnostics: fw_d
-          }
-=======
           outcome_with_diagnostics(
             value: CanonicalGrounding {
               node: fw.candidate,
@@ -109,7 +94,6 @@ fn solve_constraints(policy: ConstraintSolvePolicy) -> Outcome<CanonicalGroundin
             },
             diagnostics: fw_d
           )
->>>>>>> origin/main
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
       }
     }
