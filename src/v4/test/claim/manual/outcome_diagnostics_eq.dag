@@ -35,14 +35,14 @@ data diag_eq_reason_y: Symbol = diag_eq_reason_y
 fn diag_eq_x() -> Diagnostic {
   Diagnostic {
     reason: diag_eq_reason_x,
-    at: NodeLocus { anchor: Anchored { at: stub_empty_conj } },
+    at: NodeLocus { anchor: LocusAnchor { at: stub_empty_conj } },
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 fn diag_eq_y() -> Diagnostic {
   Diagnostic {
     reason: diag_eq_reason_y,
-    at: NodeLocus { anchor: Anchored { at: stub_empty_conj } },
+    at: NodeLocus { anchor: LocusAnchor { at: stub_empty_conj } },
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }

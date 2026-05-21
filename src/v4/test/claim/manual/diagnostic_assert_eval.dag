@@ -48,7 +48,7 @@ fn diag_assert_node() -> Node {
 fn diag_assert_d() -> Diagnostic {
   Diagnostic {
     reason: diag_assert_reason,
-    at: NodeLocus { anchor: Anchored { at: diag_assert_node() } },
+    at: NodeLocus { anchor: LocusAnchor { at: diag_assert_node() } },
     correction: Unavailable { reason: AmbiguousIntent }
   }
 }
@@ -57,7 +57,7 @@ fn diag_assert_d() -> Diagnostic {
 fn diag_assert_other_d() -> Diagnostic {
   Diagnostic {
     reason: diag_assert_other,
-    at: NodeLocus { anchor: Anchored { at: diag_assert_node() } },
+    at: NodeLocus { anchor: LocusAnchor { at: diag_assert_node() } },
     correction: Unavailable { reason: AmbiguousIntent }
   }
 }

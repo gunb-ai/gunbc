@@ -128,7 +128,7 @@ data eval_empty_verdict_list: Symbol = eval_empty_verdict_list
 fn eval_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
   Diagnostic {
     reason: reason,
-    at: NodeLocus { anchor: Anchored { at: node } },
+    at: NodeLocus { anchor: LocusAnchor { at: node } },
     correction: Unavailable { reason: AmbiguousIntent }
   }
 }

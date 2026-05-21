@@ -93,7 +93,7 @@ fn expected_complexity_rejection(input: Node, reason: Symbol, correction: Node) 
     diagnostics: diagnostics_singleton(
       d: Diagnostic {
         reason: reason,
-        at: NodeLocus { anchor: Anchored { at: input } },
+        at: NodeLocus { anchor: LocusAnchor { at: input } },
         correction: Suggested { node: correction }
       }
     )
