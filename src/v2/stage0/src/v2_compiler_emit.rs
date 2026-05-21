@@ -1781,18 +1781,13 @@ pub fn emit_node_type(
     target: RenderTarget,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    render_node_type(
-        &n,
-        &target,
-        &v2_rt::rc_empty_map::<String, bool>(),
-        &source_indices,
-    )
+    render_node_type(&n, &target, &empty_set(), &source_indices)
 }
 
 pub fn render_node_type(
     n: &Rc<Node>,
     target: &RenderTarget,
-    shared_types: &Rc<HashMap<String, bool>>,
+    shared_types: &Rc<std::collections::BTreeSet<String>>,
     source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
@@ -1896,7 +1891,7 @@ pub fn render_node_type(
         }
         let is_conj = (n.connective.clone() == Connective::Conj);
         let is_disj = (n.connective.clone() == Connective::Disj);
-        let shared = emit_map_has(shared_types.clone(), tn.clone());
+        let shared = set_contains(shared_types.clone(), tn.clone());
         if is_disj {
             {
                 let base = if (n.ident_span.clone() != None) {

@@ -692,7 +692,7 @@ pub fn is_owned_local(kind: Option<Rc<VarBindingKind>>) -> bool {
     }
 }
 
-pub fn build_movable_set(proof: Rc<OwnershipProof>) -> Rc<HashMap<String, bool>> {
+pub fn build_movable_set(proof: Rc<OwnershipProof>) -> Rc<std::collections::BTreeSet<String>> {
     Rc::new({
         let mut __result = Vec::new();
         for usage in Rc::new(v2_rt::map_values(&proof.bindings.clone()))
@@ -709,24 +709,23 @@ pub fn build_movable_set(proof: Rc<OwnershipProof>) -> Rc<HashMap<String, bool>>
     .iter()
     .cloned()
     .fold(
-        v2_rt::rc_empty_map::<String, bool>(),
-        |acc: Rc<HashMap<String, bool>>, usage: Rc<BindingUsage>| {
-            v2_rt::rc_map_insert(acc, usage.name.clone(), true)
-        },
+        empty_set(),
+        |acc: Rc<std::collections::BTreeSet<compile_error!("UNRESOLVED_TypeVariable")>>,
+         usage: Rc<BindingUsage>| set_insert(acc, usage.name.clone()),
     )
 }
 
 pub fn build_read_only_params(
     proof: Rc<OwnershipProof>,
-    param_names: Rc<HashMap<String, bool>>,
-) -> Rc<HashMap<String, bool>> {
+    param_names: Rc<std::collections::BTreeSet<String>>,
+) -> Rc<std::collections::BTreeSet<String>> {
     Rc::new({
         let mut __result = Vec::new();
         for usage in Rc::new(v2_rt::map_values(&proof.bindings.clone()))
             .iter()
             .cloned()
         {
-            if (((v2_rt::map_contains_key(&param_names, usage.name.clone())
+            if (((set_contains(param_names.clone(), usage.name.clone())
                 && is_owned_local(usage.binding_kind.clone()))
                 && (binding_fan_out(usage.clone()) > 1))
                 && {
@@ -753,17 +752,16 @@ pub fn build_read_only_params(
     .iter()
     .cloned()
     .fold(
-        v2_rt::rc_empty_map::<String, bool>(),
-        |acc: Rc<HashMap<String, bool>>, usage: Rc<BindingUsage>| {
-            v2_rt::rc_map_insert(acc, usage.name.clone(), true)
-        },
+        empty_set(),
+        |acc: Rc<std::collections::BTreeSet<compile_error!("UNRESOLVED_TypeVariable")>>,
+         usage: Rc<BindingUsage>| set_insert(acc, usage.name.clone()),
     )
 }
 
 pub fn collect_callable_refs(
     texpr: &Rc<Node>,
     si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<HashMap<String, bool>> {
+) -> Rc<std::collections::BTreeSet<String>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*texpr.expr_data.clone()).clone() {
             ExprData::ExprVar {
@@ -771,26 +769,27 @@ pub fn collect_callable_refs(
             } => match bk.clone().as_deref().cloned() {
                 Some(VarBindingKind::FunctionValueBinding) => {
                     let n = expr_var_name_at(texpr.clone(), si.clone());
-                    v2_rt::rc_map_insert(v2_rt::rc_empty_map::<String, bool>(), n, true)
+                    set_insert(empty_set(), n)
                 }
-                _ => v2_rt::rc_empty_map::<String, bool>(),
+                _ => empty_set(),
             },
-            ExprData::ExprLiteral { .. } => v2_rt::rc_empty_map::<String, bool>(),
+            ExprData::ExprLiteral { .. } => empty_set(),
             ExprData::ExprFieldAccess { .. } => {
                 collect_callable_refs(&field_access_base(texpr.clone()), &si)
             }
             ExprData::ExprCall { .. } => texpr.children.clone().iter().cloned().fold(
-                v2_rt::rc_empty_map::<String, bool>(),
-                |acc: Rc<HashMap<String, bool>>, a: Rc<Node>| {
-                    v2_rt::rc_map_merge(acc, collect_callable_refs(&arg_value(&a), &si))
+                empty_set(),
+                |acc: Rc<std::collections::BTreeSet<compile_error!("UNRESOLVED_TypeVariable")>>,
+                 a: Rc<Node>| {
+                    set_union(acc, collect_callable_refs(&arg_value(&a), &si))
                 },
             ),
             ExprData::ExprMethodCall { .. } => {
                 let recv = collect_callable_refs(&method_receiver(texpr.clone()), &si);
                 method_arg_nodes(texpr.clone()).iter().cloned().fold(
                     recv.clone(),
-                    |acc: Rc<HashMap<String, bool>>, a: Rc<Node>| {
-                        v2_rt::rc_map_merge(acc, collect_callable_refs(&arg_value(&a), &si))
+                    |acc: Rc<std::collections::BTreeSet<String>>, a: Rc<Node>| {
+                        set_union(acc, collect_callable_refs(&arg_value(&a), &si))
                     },
                 )
             }
@@ -799,51 +798,53 @@ pub fn collect_callable_refs(
                 let then_br = collect_callable_refs(&if_then_branch(texpr.clone()), &si);
                 let else_br = match if_else_branch(texpr.clone()) {
                     Some(eb) => collect_callable_refs(&eb, &si),
-                    None => v2_rt::rc_empty_map::<String, bool>(),
+                    None => empty_set(),
                 };
-                v2_rt::rc_map_merge(v2_rt::rc_map_merge(cond, then_br), else_br)
+                set_union(set_union(cond, then_br), else_br)
             }
             ExprData::ExprMatch => {
                 let scrut = collect_callable_refs(&match_scrutinee(texpr.clone()), &si);
                 match_arm_nodes(texpr.clone()).iter().cloned().fold(
                     scrut.clone(),
-                    |acc: Rc<HashMap<String, bool>>, arm: Rc<Node>| {
-                        v2_rt::rc_map_merge(acc, collect_callable_refs(&arm_body(&arm), &si))
+                    |acc: Rc<std::collections::BTreeSet<String>>, arm: Rc<Node>| {
+                        set_union(acc, collect_callable_refs(&arm_body(&arm), &si))
                     },
                 )
             }
             ExprData::ExprLet => {
                 let val = collect_callable_refs(&let_value(texpr.clone()), &si);
                 match let_body(texpr.clone()) {
-                    Some(lb) => v2_rt::rc_map_merge(val, collect_callable_refs(&lb, &si)),
+                    Some(lb) => set_union(val, collect_callable_refs(&lb, &si)),
                     None => val,
                 }
             }
             ExprData::ExprBlock => texpr.children.clone().iter().cloned().fold(
-                v2_rt::rc_empty_map::<String, bool>(),
-                |acc: Rc<HashMap<String, bool>>, child: Rc<Node>| {
-                    v2_rt::rc_map_merge(acc, collect_callable_refs(&child, &si))
+                empty_set(),
+                |acc: Rc<std::collections::BTreeSet<compile_error!("UNRESOLVED_TypeVariable")>>,
+                 child: Rc<Node>| {
+                    set_union(acc, collect_callable_refs(&child, &si))
                 },
             ),
             ExprData::ExprReturn => match texpr.children.clone().first().cloned() {
                 Some(child) => collect_callable_refs(&child, &si),
-                None => v2_rt::rc_empty_map::<String, bool>(),
+                None => empty_set(),
             },
             ExprData::ExprLambda => collect_callable_refs(&lambda_body(texpr.clone()), &si),
             ExprData::ExprForEach => {
                 let col = collect_callable_refs(&foreach_collection(texpr.clone()), &si);
-                v2_rt::rc_map_merge(
+                set_union(
                     col,
                     collect_callable_refs(&foreach_body(texpr.clone()), &si),
                 )
             }
             ExprData::ExprRecordLit { .. } => texpr.children.clone().iter().cloned().fold(
-                v2_rt::rc_empty_map::<String, bool>(),
-                |acc: Rc<HashMap<String, bool>>, field: Rc<Node>| {
-                    v2_rt::rc_map_merge(acc, collect_callable_refs(&arg_value(&field), &si))
+                empty_set(),
+                |acc: Rc<std::collections::BTreeSet<compile_error!("UNRESOLVED_TypeVariable")>>,
+                 field: Rc<Node>| {
+                    set_union(acc, collect_callable_refs(&arg_value(&field), &si))
                 },
             ),
-            _ => v2_rt::rc_empty_map::<String, bool>(),
+            _ => empty_set(),
         }
     })
 }

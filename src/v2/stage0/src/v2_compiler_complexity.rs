@@ -211,13 +211,13 @@ pub struct CallEdge {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SccInfo {
     pub members: Rc<Vec<String>>,
-    pub member_set: Rc<HashMap<String, bool>>,
+    pub member_set: Rc<std::collections::BTreeSet<String>>,
     pub pattern: Rc<LoweringTarget>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SccBuildAcc {
-    pub assigned: Rc<HashMap<String, bool>>,
+    pub assigned: Rc<std::collections::BTreeSet<String>>,
     pub index: Rc<HashMap<String, Rc<SccInfo>>>,
 }
 
@@ -6971,7 +6971,7 @@ pub fn build_scc_index(
         let reverse_graph = reverse_adjacency(names.clone(), graph.clone());
         let finish = names.clone().iter().cloned().fold(
             Rc::new(DfsFinishAcc {
-                visited: v2_rt::rc_empty_map::<String, bool>(),
+                visited: empty_set(),
                 order: Rc::new(vec![]),
             }),
             |acc: Rc<DfsFinishAcc>, name: String| dfs_finish_order(&name, &adjacency, &acc),
@@ -6979,11 +6979,11 @@ pub fn build_scc_index(
         let topo_order = v2_rt::reverse(finish.order.clone());
         let result = topo_order.clone().iter().cloned().fold(
             Rc::new(SccBuildAcc {
-                assigned: v2_rt::rc_empty_map::<String, bool>(),
+                assigned: empty_set(),
                 index: v2_rt::rc_empty_map::<String, Rc<SccInfo>>(),
             }),
             |acc: Rc<SccBuildAcc>, name: String| {
-                if set_has(acc.assigned.clone(), name.clone()) {
+                if set_contains(acc.assigned.clone(), name.clone()) {
                     acc.clone()
                 } else {
                     {
@@ -6996,15 +6996,20 @@ pub fn build_scc_index(
                             }),
                         );
                         let member_set = component.members.clone().iter().cloned().fold(
-                            v2_rt::rc_empty_map::<String, bool>(),
-                            |inner: Rc<HashMap<String, bool>>, member: String| {
-                                v2_rt::rc_map_insert(inner, member.clone(), true)
+                            empty_set(),
+                            |inner: Rc<
+                                std::collections::BTreeSet<
+                                    compile_error!("UNRESOLVED_TypeVariable"),
+                                >,
+                            >,
+                             member: String| {
+                                set_insert(inner, member.clone())
                             },
                         );
                         let members = Rc::new({
                             let mut __result = Vec::new();
                             for member in names.clone().iter().cloned() {
-                                if set_has(member_set.clone(), member.clone()) {
+                                if set_contains(member_set.clone(), member.clone()) {
                                     __result.push(member);
                                 }
                             }
@@ -9386,11 +9391,7 @@ pub fn build_complexity_report(
                             );
                             let info = Rc::new(SccInfo {
                                 members: Rc::new(vec![entry.name.clone()]),
-                                member_set: v2_rt::rc_map_insert(
-                                    v2_rt::rc_empty_map::<String, bool>(),
-                                    entry.name.clone(),
-                                    true,
-                                ),
+                                member_set: set_insert(empty_set(), entry.name.clone()),
                                 pattern: pattern.clone(),
                             });
                             v2_rt::rc_map_insert(acc.clone(), entry.name.clone(), info.clone())
