@@ -1,8 +1,8 @@
 //! **Layer:** integration
 //!
-//! Closeout ratchets for the v4 T-19/T-20 test/bootstrap-infra lane. These
-//! checks stay at the parse-surface boundary: they prove the structural
-//! authorities exist and remain joined without claiming T-22 execution.
+//! Closeout ratchets for the v4 T-19/T-20/T-22 test/bootstrap-infra lane. These
+//! checks stay at the parse-surface boundary: they prove structural authorities
+//! exist and remain joined; T-22 rows are parse/substrate ratchets only (not execution).
 
 use std::collections::{BTreeMap, BTreeSet};
 
