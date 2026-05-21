@@ -140,18 +140,39 @@ fn already_in_unused(unused: List<UnusedParameterFact>, declaration: Node) -> Bo
   })
 }
 
+fn classification_is_structural_composition(relation: UseRelation) -> Bool {
+  match relation {
+    IsStructuralComposition => true
+    _ => false
+  }
+}
+
+// P6 + P2 boundary discipline: a declaration candidate is a node that
+// the dependency model positions AS a declaration. Containment-children
+// (parameters/locals contained in their declaring scope) are the
+// canonical declaration position and match the v3 lens contract
+// ("function + parameter port"). Sources of `BindsTo` edges are
+// declarations too, but by definition have a use, so they can never be
+// unused. Other dependency kinds do not carry declaration-position
+// semantics on either endpoint and MUST NOT be treated as candidates —
+// doing so would let a non-declaration source with only non-USE
+// dependencies appear in `unused`, an illegal state (Practice 2).
 fn rollup_unused(use_fact: UseClassificationFact, tree: InferredTree) -> UnusedParametersFact {
   UnusedParametersFact {
     unused: fold(use_fact.uses, init: [], f: fn(acc, classified) {
-      let declaration = classified.dependency.source
-      if already_in_unused(unused: acc, declaration: declaration) {
-        acc
-      } else {
-        if declaration_has_use(uses: use_fact.uses, declaration: declaration) {
+      if classification_is_structural_composition(relation: classified.classification) {
+        let candidate = classified.dependency.dependent
+        if already_in_unused(unused: acc, declaration: candidate) {
           acc
         } else {
-          list_push(acc, unused_parameter_for_declaration(tree: tree, declaration: declaration))
+          if declaration_has_use(uses: use_fact.uses, declaration: candidate) {
+            acc
+          } else {
+            list_push(acc, unused_parameter_for_declaration(tree: tree, declaration: candidate))
+          }
         }
+      } else {
+        acc
       }
     })
   }
