@@ -676,7 +676,7 @@ fn set_element_type_is_concrete(elem: Node) -> Bool {
 fn set_element_types_mismatch(recv_elem: Node, operand_elem: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   set_element_type_is_concrete(elem: recv_elem)
     && set_element_type_is_concrete(elem: operand_elem)
-    && authored_name_at(source_indices: source_indices, node: recv_elem) != authored_name_at(source_indices: source_indices, node: operand_elem)
+    && !node_type_compatible(left: recv_elem, right: operand_elem, source_indices: source_indices)
 }
 
 type Tier2bBt {
@@ -798,7 +798,16 @@ fn infer_tier2b_builtin_with_kernel_diags(func_name: String, typed_args: List<No
           match arg_value(n: receiver_arg).inferred {
             Some { value: Resolved { node: receiver_type } } =>
               match recv_elem {
-                Some { value: _ } => receiver_type
+                Some { value: re } =>
+                  match operand_elem {
+                    Some { value: oe } =>
+                      if set_element_types_mismatch(recv_elem: re, operand_elem: oe, source_indices: scope.type_env.source_indices) {
+                        resolve_builtin_call_type(name: func_name)
+                      } else {
+                        receiver_type
+                      }
+                    None => receiver_type
+                  }
                 None =>
                   match operand_elem {
                     Some { value: element } => set_kernel_ty_from_element(element: element).ty
