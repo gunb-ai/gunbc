@@ -7,7 +7,7 @@
 
 module v4.lens.unused_parameters
 
-import v4.compiler.infer { InferredFacts, InferredTree }
+import v4.compiler.infer { InferredTree }
 import v4.std.collection { List }
 import v4.std.dependency {
   BarrierBefore,
@@ -162,7 +162,7 @@ fn classification_is_structural_composition(relation: UseRelation) -> Bool {
 // semantics on either endpoint and MUST NOT be treated as candidates —
 // doing so would let a non-declaration source with only non-USE
 // dependencies appear in `unused`, an illegal state (Practice 2).
-fn rollup_unused(use_fact: UseClassificationFact, tree: InferredTree) -> UnusedParametersFact {
+fn rollup_unused(use_fact: UseClassificationFact) -> UnusedParametersFact {
   UnusedParametersFact {
     unused: fold(use_fact.uses, init: [], f: fn(acc, classified) {
       if classification_is_structural_composition(relation: classified.classification) {
@@ -184,7 +184,7 @@ fn rollup_unused(use_fact: UseClassificationFact, tree: InferredTree) -> UnusedP
 }
 
 fn unused_parameters_fact(tree: InferredTree, dependencies: List<DependencyView>) -> UnusedParametersFact {
-  rollup_unused(use_fact: use_classification_fact(tree: tree, dependencies: dependencies), tree: tree)
+  rollup_unused(use_fact: use_classification_fact(tree: tree, dependencies: dependencies))
 }
 
 fn unused_parameters_witness(tree: InferredTree, dependencies: List<DependencyView>) -> Witness<UnusedParametersFact> {

@@ -85,8 +85,7 @@ data unused_parameters_rollup_claim: LensRollupUnusedClaim = LensRollupUnusedCla
   expected: UnusedParametersFact {
     unused: [
       UnusedParameterFact {
-        declaration: rollup_parameter,
-        declaration_facts: Holds { value: rollup_facts() }
+        declaration: rollup_parameter
       }
     ]
   },
