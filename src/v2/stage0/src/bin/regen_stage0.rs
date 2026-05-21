@@ -333,7 +333,7 @@ fn source_files_for_roots(
 }
 
 fn build_module_index(roots: &[PathBuf]) -> Result<HashMap<String, PathBuf>, String> {
-    let mut index = HashMap::new();
+    let mut index: HashMap<String, PathBuf> = HashMap::new();
     for root in roots {
         if !root.exists() {
             return Err(format!("source root does not exist: {}", root.display()));

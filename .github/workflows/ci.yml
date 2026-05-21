@@ -240,10 +240,10 @@ jobs:
         restore-keys: |
           cargo-v2-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-
           cargo-v2-${{ runner.os }}-
-    - name: v2 fixed-point (bootstrap_fixed_point, --ignored)
+    - name: v2 stage0 freshness gate (--verify)
       run: |
         set -euo pipefail
-        cargo test -p v2-compiler-tests --release bootstrap_fixed_point -- --ignored --exact
+        cargo run -p v2-compiler --bin regen_stage0 -- --verify
   # v4 — check name preserved for branch protection. Load-bearing compile runs in `ci`.
   v4:
     if: github.event.pull_request.draft != true && needs.affected.outputs.v4 == 'true'
