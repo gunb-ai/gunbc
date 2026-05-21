@@ -1,0 +1,46 @@
+// src/v4/test/claim/lens_synthesis/constant_not_dominated_by_linear.dag
+// Scope: T-17 negative claim — linear lower bound does not dominate constant realization (near-miss).
+// Owns: constant_not_dominated_by_linear_claim.
+// Consumes: lens cost (synthesis compare substrate until synthesis.dag fills).
+// Status: scaffold — compile-only until T-17 synthesis lens lands.
+
+module v4.test.claim.lens_synthesis.constant_not_dominated_by_linear
+
+import v4.lens.cost {
+  LinearCost,
+  SizeVariable,
+  SymbolicCost,
+  symbolic_cost_dominates,
+  unit_cost
+}
+import v4.std.logic { Bool }
+import v4.std.node { Atom, Node, Symbol, TypeNode }
+
+data synthesis_const_x_symbol: Symbol = synthesis_const_x_symbol
+
+type LensSynthesisDominanceClaim {
+  realization: SymbolicCost
+  lower_bound: SymbolicCost
+  expected_dominates: Bool
+}
+
+data synthesis_const_x: Node = Node {
+  kind: TypeNode { connective: Atom { identity: synthesis_const_x_symbol } },
+  children: []
+}
+
+data constant_not_dominated_by_linear_claim: LensSynthesisDominanceClaim =
+  LensSynthesisDominanceClaim {
+    realization: unit_cost(),
+    lower_bound: LinearCost { variable: SizeVariable { source: synthesis_const_x } },
+    expected_dominates: false
+  }
+
+fn constant_not_dominated_by_linear_claim_holds() -> Bool {
+  symbolic_cost_dominates(
+    a: constant_not_dominated_by_linear_claim.realization,
+    b: constant_not_dominated_by_linear_claim.lower_bound
+  ) == constant_not_dominated_by_linear_claim.expected_dominates
+}
+
+data constant_not_dominated_by_linear_claim_passes: Bool = constant_not_dominated_by_linear_claim_holds()

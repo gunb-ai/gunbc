@@ -11,7 +11,8 @@ import v4.compiler.compile {
   LensApplicationMode,
   LensEnforce,
   apply_lens,
-  compile_lens_gate_rejected
+  compile_lens_gate_rejected,
+  compile_lens_gate_rejected_diagnostic
 }
 import v4.compiler.infer { InferredFacts, InferredTree }
 import v4.std.diagnostic {
@@ -29,8 +30,6 @@ import v4.test.claim.lens_common.infer_fixture {
   claim_inferred_facts,
   claim_inferred_tree
 }
-import v4.compiler.compile { compile_lens_gate_rejected_diagnostic }
-
 data enforce_reject_root_symbol: Symbol = enforce_reject_root_symbol
 data enforce_reject_gate_at: Symbol = enforce_reject_gate_at
 data enforce_reject_type_symbol: Symbol = enforce_reject_type_symbol

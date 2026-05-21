@@ -1,0 +1,55 @@
+// src/v4/test/claim/lens_synthesis/exponential_dominates_polynomial.dag
+// Scope: T-17 worked claim — exponential symbolic cost dominates polynomial lower bound.
+// Owns: exponential_dominates_polynomial_claim.
+// Consumes: lens cost (synthesis compare substrate until synthesis.dag fills).
+// Status: scaffold — compile-only until T-17 synthesis lens lands.
+
+module v4.test.claim.lens_synthesis.exponential_dominates_polynomial
+
+import v4.lens.cost {
+  ExponentialBase,
+  ExponentialCost,
+  PolynomialCost,
+  PolynomialDegree,
+  SizeVariable,
+  SymbolicCost,
+  symbolic_cost_dominates
+}
+import v4.std.cardinality { NonZeroNat }
+import v4.std.logic { Bool }
+import v4.std.nat { Zero }
+import v4.std.node { Atom, Node, Symbol, TypeNode }
+
+data synthesis_exp_x_symbol: Symbol = synthesis_exp_x_symbol
+
+type LensSynthesisDominanceClaim {
+  realization: SymbolicCost
+  lower_bound: SymbolicCost
+  expected_dominates: Bool
+}
+
+data synthesis_exp_x: Node = Node {
+  kind: TypeNode { connective: Atom { identity: synthesis_exp_x_symbol } },
+  children: []
+}
+
+data exponential_dominates_polynomial_claim: LensSynthesisDominanceClaim = LensSynthesisDominanceClaim {
+  realization: ExponentialCost {
+    variable: SizeVariable { source: synthesis_exp_x },
+    base: ExponentialBase { predecessor_after_one: NonZeroNat { prev: Zero } }
+  },
+  lower_bound: PolynomialCost {
+    variable: SizeVariable { source: synthesis_exp_x },
+    degree: PolynomialDegree { predecessor_after_linear: NonZeroNat { prev: Zero } }
+  },
+  expected_dominates: true
+}
+
+fn exponential_dominates_polynomial_claim_holds() -> Bool {
+  symbolic_cost_dominates(
+    a: exponential_dominates_polynomial_claim.realization,
+    b: exponential_dominates_polynomial_claim.lower_bound
+  ) == exponential_dominates_polynomial_claim.expected_dominates
+}
+
+data exponential_dominates_polynomial_claim_passes: Bool = exponential_dominates_polynomial_claim_holds()

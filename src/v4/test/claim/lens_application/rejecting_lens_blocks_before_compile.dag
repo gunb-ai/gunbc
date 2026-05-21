@@ -24,7 +24,7 @@ import v4.std.diagnostic {
   outcome_rejected
 }
 import v4.std.logic { Bool }
-import v4.std.node { Conj, Node, TypeNode }
+import v4.std.node { Conj, Node, Symbol, TypeNode }
 import v4.std.witness { Witness }
 import v4.test.claim.manual.infer_ground_add_mvp { fixture_add_resolved_tree }
 

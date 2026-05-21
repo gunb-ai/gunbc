@@ -1,0 +1,47 @@
+// src/v4/test/claim/lens_synthesis/same_variable_linear_not_dominated.dag
+// Scope: T-17 negative claim — linear costs on different size variables do not dominate (escape valve).
+// Owns: same_variable_linear_not_dominated_claim.
+// Consumes: lens cost (synthesis compare substrate until synthesis.dag fills).
+// Status: scaffold — compile-only until T-17 synthesis lens lands.
+
+module v4.test.claim.lens_synthesis.same_variable_linear_not_dominated
+
+import v4.lens.cost { LinearCost, SizeVariable, SymbolicCost, symbolic_cost_dominates }
+import v4.std.logic { Bool }
+import v4.std.node { Atom, Node, Symbol, TypeNode }
+
+data synthesis_lin_x_symbol: Symbol = synthesis_lin_x_symbol
+data synthesis_lin_y_symbol: Symbol = synthesis_lin_y_symbol
+
+type LensSynthesisDominanceClaim {
+  realization: SymbolicCost
+  lower_bound: SymbolicCost
+  expected_dominates: Bool
+}
+
+data synthesis_lin_x: Node = Node {
+  kind: TypeNode { connective: Atom { identity: synthesis_lin_x_symbol } },
+  children: []
+}
+
+data synthesis_lin_y: Node = Node {
+  kind: TypeNode { connective: Atom { identity: synthesis_lin_y_symbol } },
+  children: []
+}
+
+data same_variable_linear_not_dominated_claim: LensSynthesisDominanceClaim =
+  LensSynthesisDominanceClaim {
+    realization: LinearCost { variable: SizeVariable { source: synthesis_lin_x } },
+    lower_bound: LinearCost { variable: SizeVariable { source: synthesis_lin_y } },
+    expected_dominates: false
+  }
+
+fn same_variable_linear_not_dominated_claim_holds() -> Bool {
+  symbolic_cost_dominates(
+    a: same_variable_linear_not_dominated_claim.realization,
+    b: same_variable_linear_not_dominated_claim.lower_bound
+  ) == same_variable_linear_not_dominated_claim.expected_dominates
+}
+
+data same_variable_linear_not_dominated_claim_passes: Bool =
+  same_variable_linear_not_dominated_claim_holds()
