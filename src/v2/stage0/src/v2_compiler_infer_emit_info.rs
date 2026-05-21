@@ -6,9 +6,16 @@ pub use crate::v2_compiler_infer_types::{
     child_type_node, emit_map_has, node_type_equals, normalize_access_type_node,
 };
 use crate::v2_rt;
+<<<<<<< HEAD
 use crate::v2_rt::{
     rc_empty_set as empty_set, rc_set_insert as set_insert, rc_set_union as set_union, set_contains,
 };
+=======
+use crate::v2_rt::rc_empty_set as empty_set;
+use crate::v2_rt::rc_set_insert as set_insert;
+use crate::v2_rt::rc_set_union as set_union;
+use crate::v2_rt::set_contains;
+>>>>>>> origin/main
 use crate::v2_std_core::Cardinality::CardOptional;
 use crate::v2_std_core::Connective::{Arrow, Conj, NoConnective};
 use crate::v2_std_core::FieldAccessStyle::{EnumAccessor, StoredField, TupleFirst, TupleSecond};
@@ -81,6 +88,7 @@ pub struct EmitInfoBuildState {
 pub fn empty_emit_graph_info() -> Rc<EmitGraphInfo> {
     Rc::new(EmitGraphInfo {
         type_summaries: v2_rt::rc_empty_map::<String, Rc<TypeSummary>>(),
+<<<<<<< HEAD
         recursive_type_set: v2_rt::rc_empty_set(),
         fielded_variants: v2_rt::rc_empty_set(),
         shared_types: v2_rt::rc_empty_set(),
@@ -91,6 +99,18 @@ pub fn empty_emit_graph_info() -> Rc<EmitGraphInfo> {
         read_only_params_index: v2_rt::rc_empty_map::<String, Rc<std::collections::BTreeSet<String>>>(
         ),
         read_only_params: v2_rt::rc_empty_set(),
+=======
+        recursive_type_set: v2_rt::rc_empty_set::<String>(),
+        fielded_variants: v2_rt::rc_empty_set::<String>(),
+        shared_types: v2_rt::rc_empty_set::<String>(),
+        ownership_index: v2_rt::rc_empty_map::<String, Rc<std::collections::BTreeSet<String>>>(),
+        movable: v2_rt::rc_empty_set::<String>(),
+        variant_to_enum: v2_rt::rc_empty_map::<String, String>(),
+        owned_bindings: v2_rt::rc_empty_set::<String>(),
+        read_only_params_index: v2_rt::rc_empty_map::<String, Rc<std::collections::BTreeSet<String>>>(
+        ),
+        read_only_params: v2_rt::rc_empty_set::<String>(),
+>>>>>>> origin/main
     })
 }
 
@@ -101,7 +121,11 @@ pub fn variant_has_fields(
 ) -> bool {
     {
         let key = v2_rt::concat(v2_rt::concat(enum_name, "::".to_string()), variant_name);
+<<<<<<< HEAD
         v2_rt::set_contains(&emit_info.fielded_variants.clone(), key)
+=======
+        v2_rt::set_contains(emit_info.fielded_variants.clone(), key)
+>>>>>>> origin/main
     }
 }
 

@@ -3,9 +3,16 @@
 
 pub use crate::v2_compiler_infer_env::TypeBinding;
 use crate::v2_rt;
+<<<<<<< HEAD
 use crate::v2_rt::{
     rc_empty_set as empty_set, rc_set_insert as set_insert, rc_set_union as set_union, set_contains,
 };
+=======
+use crate::v2_rt::rc_empty_set as empty_set;
+use crate::v2_rt::rc_set_insert as set_insert;
+use crate::v2_rt::rc_set_union as set_union;
+use crate::v2_rt::set_contains;
+>>>>>>> origin/main
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use std::collections::HashMap;
@@ -28,7 +35,11 @@ pub fn compute_in_graph_deps(
                         let mut __result = Vec::new();
                         for d in deps.clone().iter().cloned() {
                             if ((d.clone().as_str() != name.clone().as_str())
+<<<<<<< HEAD
                                 && v2_rt::set_contains(&name_set, d.clone()))
+=======
+                                && v2_rt::set_contains(name_set.clone(), d.clone()))
+>>>>>>> origin/main
                             {
                                 __result.push(d);
                             }
@@ -235,6 +246,7 @@ pub fn detect_type_cycles_kahn(
             }
             __result
         });
+<<<<<<< HEAD
         let name_set = all_names
             .clone()
             .iter()
@@ -242,6 +254,12 @@ pub fn detect_type_cycles_kahn(
             .fold(v2_rt::rc_empty_set(), |acc: _, n: String| {
                 v2_rt::rc_set_insert(acc, n.clone())
             });
+=======
+        let name_set = all_names.clone().iter().cloned().fold(
+            v2_rt::rc_empty_set::<_>(), /* BRIDGE: fold empty_set accumulator type unresolved */
+            |acc: _, n: String| v2_rt::rc_set_insert(acc, n.clone()),
+        );
+>>>>>>> origin/main
         let local_deps = compute_in_graph_deps(all_names.clone(), deps_map.clone(), name_set);
         let self_refs = Rc::new({
             let mut __result = Vec::new();
@@ -265,12 +283,19 @@ pub fn detect_type_cycles_kahn(
             __result
         });
         let cycle_members = kahn_remove_loop(&all_names, &local_deps);
+<<<<<<< HEAD
         let sr_set = self_refs
             .iter()
             .cloned()
             .fold(v2_rt::rc_empty_set(), |acc: _, n: String| {
                 v2_rt::rc_set_insert(acc, n.clone())
             });
+=======
+        let sr_set = self_refs.iter().cloned().fold(
+            v2_rt::rc_empty_set::<_>(), /* BRIDGE: fold empty_set accumulator type unresolved */
+            |acc: _, n: String| v2_rt::rc_set_insert(acc, n.clone()),
+        );
+>>>>>>> origin/main
         let cm_set = cycle_members
             .iter()
             .cloned()
@@ -280,7 +305,11 @@ pub fn detect_type_cycles_kahn(
         let result = Rc::new({
             let mut __result = Vec::new();
             for n in all_names.clone().iter().cloned() {
+<<<<<<< HEAD
                 if v2_rt::set_contains(&cm_set, n.clone()) {
+=======
+                if v2_rt::set_contains(cm_set.clone(), n.clone()) {
+>>>>>>> origin/main
                     __result.push(n);
                 }
             }

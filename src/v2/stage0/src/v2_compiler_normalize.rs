@@ -4,9 +4,16 @@
 pub use crate::std_types::container_expected_arity;
 pub use crate::v2_compiler_resolve::{ModuleGraph, ResolvedModule};
 use crate::v2_rt;
+<<<<<<< HEAD
 use crate::v2_rt::{
     rc_empty_set as empty_set, rc_set_insert as set_insert, rc_set_union as set_union, set_contains,
 };
+=======
+use crate::v2_rt::rc_empty_set as empty_set;
+use crate::v2_rt::rc_set_insert as set_insert;
+use crate::v2_rt::rc_set_union as set_union;
+use crate::v2_rt::set_contains;
+>>>>>>> origin/main
 use crate::v2_std_core::CompilerDiagnostic::ArityMismatch;
 use crate::v2_std_core::Connective::NoConnective;
 use crate::v2_std_core::ExprData::NoExprData;

@@ -199,8 +199,13 @@ pub fn rc_set_union<T: Ord + Clone>(a: Rc<BTreeSet<T>>, b: Rc<BTreeSet<T>>) -> R
     out
 }
 
+<<<<<<< HEAD
 pub fn set_contains<T: Ord>(s: &BTreeSet<T>, x: T) -> bool {
     s.contains(&x)
+=======
+pub fn set_contains<T: Ord, S: AsRef<BTreeSet<T>>>(s: S, x: T) -> bool {
+    s.as_ref().contains(&x)
+>>>>>>> origin/main
 }
 
 pub fn reverse<T: Clone>(list: Rc<Vec<T>>) -> Rc<Vec<T>> {

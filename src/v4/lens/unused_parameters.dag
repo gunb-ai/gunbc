@@ -1,0 +1,236 @@
+// src/v4/lens/unused_parameters.dag
+//
+// Scope: unused-parameters lens — emits a per-edge USE classification
+//        over `List<DependencyView>` (T-13 mirror of parallelism /
+//        effect / ownership / idempotency, which all emit per-edge
+//        fact lists, not declaration roll-ups). The "declaration
+//        without callers" view is a DERIVED consumer-side filter over
+//        this projection (filter to declarations N such that no entry
+//        has `declaration == N` with `relation == IsUseOfDeclaration`),
+//        NOT a primary lens output — substrate carries no per-node
+//        "is-unused" tag (Practice 11 / feedback_no_quirked_types) and
+//        a declaration-set roll-up would require Node-iteration over
+//        `Map<Node, InferredFacts>` that is not substrate-available
+//        pre-T-9 (the only accessor today is `.lookup`).
+// Anchor: https://en.wikipedia.org/wiki/Dead_code_elimination (use-edge
+//         absence is the structural signal a consumer filter reads; a
+//         CALLER edge is one such instance — the lens reads CALLERS,
+//         not "parameters" as a distinguished substrate class)
+//
+// EXPECTATIONS — what the lens is and is NOT (T-13 mirror):
+//
+//   PRIMARY OUTPUT: per-edge USE classification, target-AGNOSTIC. This
+//   is the lens's contract — same shape as the four T-13 siblings.
+//
+//   DERIVED VIEW (NOT lens output): the unused-declaration set falls
+//   out of the per-edge projection as a consumer-side filter; the lens
+//   does NOT emit it directly. Producing it as a lens-primary output
+//   would (a) break T-13 family shape consistency (a parallel
+//   mechanism — Practice 11 violation) and (b) require Node-iteration
+//   that has T-9 forward-decl tension. The filter belongs at the
+//   query layer (feedback_scope_from_query_not_type_tag) — Practice 3
+//   facts-flow-forward: lens emits structural facts; consumer projects
+//   what it needs.
+//
+//   WHETHER the absence of a USE edge for a declaration should become
+//   a Diagnostic or be enforced as fail-closed is a separate downstream
+//   decision (feedback_grounding_doctrine_simplified_lens_pure_advisory:
+//   the lens READS only; enforcement is a separate downstream call).
+//
+//   The lens NAME pins to operator §3 ("UnusedParameters") because the
+//   pinned registry id (T-23) is `UnusedParameters`. The lens itself is
+//   strictly more general — it classifies USES of any declaration. A
+//   consumer asking specifically about "parameter" declarations filters
+//   at the query layer (feedback_scope_from_query_not_type_tag): scope
+//   is a fact of the query, not a baked carrier tag.
+//
+//   Why BindsTo is the single USE kind here: symbol resolution attaches
+//   USES to declarations through `BindsTo` (P6 taxonomy). `DataDependsOn`
+//   couples values, `TypeDependsOn` couples types — those are NOT direct
+//   declaration uses (a value flow can ground a callsite, but the
+//   binding edge is the use authority; one authority = no second
+//   taxonomy, same B3-style discipline as effect.dag). `Contains` is
+//   pure structural composition (parent-of), never a use.
+//
+// Owns:
+//   - lens read: (InferredTree, List<DependencyView>) ->
+//       Witness<UnusedParametersFact>  (per-edge use classification;
+//       fail-closed — unknown edge kind ⇒ RequiresResolutionWitness,
+//       never an optimistic "assume used" or "assume unused")
+//
+// Consumes:
+//   - v4.std.node, v4.std.witness
+//   - v4.std.dependency — projects `DependencyView` (P6 taxonomy is the
+//     single classification authority; this lens picks the USE subset)
+//   - v4.compiler.infer — InferredTree / InferredFacts (per-node facts
+//     pin each side of every edge)
+//
+// Status: T-13 lens family fill — registry-entry bind for
+//         `LensIdV0::UnusedParameters` (was Unbound; canonical reference
+//         = T-12 / T-13 lens family expansion).
+
+
+module v4.lens.unused_parameters
+
+import v4.compiler.infer { InferredFacts, InferredTree }
+import v4.std.collection { List }
+import v4.std.integer { Int }
+import v4.std.logic { Bool }
+import v4.std.dependency {
+  BarrierBefore,
+  BindsTo,
+  BootstrapDependsOn,
+  Contains,
+  DataDependsOn,
+  DependencyView,
+  EffectDependsOn,
+  GeneratedFrom,
+  ModelDependsOn,
+  ModuleDependsOn,
+  PlacementDependsOn,
+  ProjectionDependsOn,
+  PromotedBy,
+  ResourceDependsOn,
+  TypeDependsOn,
+  VerifiedBy
+}
+import v4.std.node { Node }
+import v4.std.witness { Holds, Witness }
+
+// 🟢 projection carrier — Practice 11: use-vs-non-use is read off the
+// dependency projection; substrate carries no per-node "unused" tag.
+// `RequiresResolutionWitness` is the fail-closed slot for kinds that
+// neither prove a USE nor prove a NON-USE without further evidence
+// (same fail-closed shape as ParallelismRelation::UnknownCoupling and
+// IdempotencyVerdict::RequiresAlgebraWitness).
+type UseRelation
+  = IsUseOfDeclaration
+  | IsStructuralComposition
+  | IsNonUseDependency
+  | RequiresResolutionWitness
+
+type UnusedParametersDependencyFact {
+  use_site: Node
+  declaration: Node
+  dependency: DependencyView
+  use_site_facts: Witness<InferredFacts>
+  declaration_facts: Witness<InferredFacts>
+  relation: UseRelation
+}
+
+type UnusedParametersFact {
+  dependencies: List<UnusedParametersDependencyFact>
+}
+
+fn use_relation_for_dependency(view: DependencyView) -> UseRelation {
+  match view.kind {
+    BindsTo => IsUseOfDeclaration
+    Contains => IsStructuralComposition
+    DataDependsOn => IsNonUseDependency
+    TypeDependsOn => IsNonUseDependency
+    EffectDependsOn => IsNonUseDependency
+    ResourceDependsOn => IsNonUseDependency
+    BarrierBefore => IsNonUseDependency
+    ModuleDependsOn => IsNonUseDependency
+    PlacementDependsOn => IsNonUseDependency
+    ModelDependsOn => IsNonUseDependency
+    ProjectionDependsOn => IsNonUseDependency
+    GeneratedFrom => RequiresResolutionWitness
+    VerifiedBy => RequiresResolutionWitness
+    PromotedBy => RequiresResolutionWitness
+    BootstrapDependsOn => RequiresResolutionWitness
+  }
+}
+
+fn unused_parameters_inferred_facts_for_node(tree: InferredTree, node: Node) -> Witness<InferredFacts> {
+  tree.facts.lookup(node)
+}
+
+fn unused_parameters_dependency_fact(tree: InferredTree, view: DependencyView) -> UnusedParametersDependencyFact {
+  // P6 orientation: BindsTo carries Declaration → AtomUse, so `view.source`
+  // is the declaration that must be present before the use, and `view.dependent`
+  // is the use site.
+  UnusedParametersDependencyFact {
+    use_site: view.dependent,
+    declaration: view.source,
+    dependency: view,
+    use_site_facts: unused_parameters_inferred_facts_for_node(tree: tree, node: view.dependent),
+    declaration_facts: unused_parameters_inferred_facts_for_node(tree: tree, node: view.source),
+    relation: use_relation_for_dependency(view: view)
+  }
+}
+
+fn unused_parameters_fact_from_dependencies(tree: InferredTree, dependencies: List<DependencyView>) -> UnusedParametersFact {
+  UnusedParametersFact {
+    dependencies: fold(dependencies, init: [], f: fn(acc, view) {
+      list_push(acc, unused_parameters_dependency_fact(tree: tree, view: view))
+    })
+  }
+}
+
+fn unused_parameters_fact(tree: InferredTree, dependencies: List<DependencyView>) -> UnusedParametersFact {
+  unused_parameters_fact_from_dependencies(tree: tree, dependencies: dependencies)
+}
+
+fn unused_parameters_witness(tree: InferredTree, dependencies: List<DependencyView>) -> Witness<UnusedParametersFact> {
+  Holds {
+    value: unused_parameters_fact(tree: tree, dependencies: dependencies)
+  }
+}
+
+fn use_relation_eq(a: UseRelation, b: UseRelation) -> Bool {
+  match a {
+    IsUseOfDeclaration => match b {
+      IsUseOfDeclaration => true
+      _ => false
+    }
+    IsStructuralComposition => match b {
+      IsStructuralComposition => true
+      _ => false
+    }
+    IsNonUseDependency => match b {
+      IsNonUseDependency => true
+      _ => false
+    }
+    RequiresResolutionWitness => match b {
+      RequiresResolutionWitness => true
+      _ => false
+    }
+  }
+}
+
+fn unused_parameters_dependency_fact_eq(a: UnusedParametersDependencyFact, b: UnusedParametersDependencyFact) -> Bool {
+  (a.use_site == b.use_site)
+    && (a.declaration == b.declaration)
+    && (a.dependency == b.dependency)
+    && (a.use_site_facts == b.use_site_facts)
+    && (a.declaration_facts == b.declaration_facts)
+    && use_relation_eq(a: a.relation, b: b.relation)
+}
+
+fn unused_parameters_dependency_count(xs: List<UnusedParametersDependencyFact>, item: UnusedParametersDependencyFact) -> Int {
+  fold(xs, init: 0, f: fn(acc, candidate) {
+    if unused_parameters_dependency_fact_eq(a: candidate, b: item) {
+      acc + 1
+    } else {
+      acc
+    }
+  })
+}
+
+fn unused_parameters_dependency_facts_eq(
+  left: List<UnusedParametersDependencyFact>,
+  right: List<UnusedParametersDependencyFact>
+) -> Bool {
+  if count(left) != count(right) {
+    false
+  } else {
+    fold(left, init: true, f: fn(acc, item) {
+      acc && (unused_parameters_dependency_count(xs: left, item: item) == unused_parameters_dependency_count(xs: right, item: item))
+    })
+  }
+}
+
+fn unused_parameters_fact_eq(a: UnusedParametersFact, b: UnusedParametersFact) -> Bool {
+  unused_parameters_dependency_facts_eq(left: a.dependencies, right: b.dependencies)
+}
