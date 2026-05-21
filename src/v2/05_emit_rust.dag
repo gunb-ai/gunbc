@@ -4148,21 +4148,18 @@ fn lookup_struct_field_type_node(struct_node: Node, field_name: String, source_i
   }
 }
 
+fn rust_wrap_call(prefix: String, raw_value: String) -> String {
+  concat(prefix, concat("(", concat(raw_value, ")")))
+}
+
 fn rust_field_value_for_struct(raw_value: String, struct_node: Node, field_name: String, scope: InferScope) -> String {
   match lookup_struct_field_type_node(struct_node: struct_node, field_name: field_name, source_indices: scope.type_env.source_indices) {
-    Some { value: field_type } => {
+    Some { value: field_type } =>
       if field_type.connective == Arrow {
-        return (["Rc", "::", "new(", raw_value, ")"] |> join(separator: ""))
-      }
-      let field_is_type_var = match field_type.inferred {
-        Some { value: inf } => is_type_variable(inferred: inf)
-        None => false
-      }
-      if field_is_type_var {
-        return (["Box", "::", "new(", raw_value, ")"] |> join(separator: ""))
-      }
-      raw_value
-    }
+        rust_wrap_call(prefix: "Rc::new", raw_value: raw_value)
+      } else if match field_type.inferred { Some { value: inf } => is_type_variable(inferred: inf)  None => false } {
+        rust_wrap_call(prefix: "Box::new", raw_value: raw_value)
+      } else { raw_value }
     None => raw_value
   }
 }
