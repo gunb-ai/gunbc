@@ -55,8 +55,9 @@ type DependencyFoldState {
 }
 
 // 🟡 predicate dissolution — feature:dependency-usage-classifier-consumes-resolve-ground-facts
-// dissolve-on: T-9 resolve writes BindsTo / ModuleDependsOn facts on substrate edges inline.
-// Staged: only explicitly marked binding/import/bootstrap edge labels classify as semantic kinds.
+// dissolve-on: T-9 resolve writes ModuleDependsOn / BootstrapDependsOn labels inline (BindsTo partial).
+// Staged: `dependency_binds_to_edge` is stamped on resolve bind-edge-0 (`03_resolve.dag` resolve_bind_edges).
+// Module/bootstrap markers remain claim-only until import/bootstrap producers land.
 // Bind nodes are NOT all BindsTo — resolve treats edge 0 (binder target), edge 1 (outer scope),
 // and later edges (inner scope) differently (`03_resolve.dag` resolve_bind_edges).
 // Ordinary TypeNode Named record fields remain Contains (composition, not use).

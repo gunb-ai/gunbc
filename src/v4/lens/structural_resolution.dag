@@ -21,7 +21,7 @@
 //   - compiler/infer, compiler/resolve (reason symbols only)
 //   - std/dependency, std/node, std/witness
 //
-// Status: registry filled; dependency classifier staged until T-9 resolve-ground BindsTo facts land inline.
+// Status: registry filled; BindsTo labels forwarded from resolve bind-edge-0; module/bootstrap labels T-9.
 // Brief: r4-lane-a-lens-interface-freeze-pin §3 structural_resolution row
 
 
