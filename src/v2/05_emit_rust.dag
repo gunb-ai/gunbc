@@ -2269,6 +2269,29 @@ fn pattern_parent_enum(name: String, parent_enum: String?, scrut_type: String, t
   }
 }
 
+// Resolved subject type for synthetic field "0" — from per-variant field_type_map
+// (build_emit_graph_info authority), not the outer match scrutinee.
+fn positional_payload_scrut_type(variant_name: String, field_binding: Node, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String {
+  match lookup_emit_type_summary(emit_info: emit_info, type_name: variant_name) {
+    Some { value: summary } =>
+      match map_get(summary.field_type_map, "0") {
+        Some { value: payload_type } => payload_type
+        None =>
+          match field_binding.inferred {
+            Some { value: Resolved { node: rt } } =>
+              authored_name_at(source_indices: source_indices, node: normalize_access_type_node(n: rt))
+            _ => ""
+          }
+      }
+    None =>
+      match field_binding.inferred {
+        Some { value: Resolved { node: rt } } =>
+          authored_name_at(source_indices: source_indices, node: normalize_access_type_node(n: rt))
+        _ => ""
+      }
+  }
+}
+
 fn emit_variant_pattern(name: String, parent_enum: String?, field_bindings: List<Node>, shared_types: Set<String>, scrut_type: String, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
   // RC1: Qualify variant names with parent enum using scrutinee type.
   // Some/None are Rust builtins -- never qualify. For all others, use the
@@ -2296,7 +2319,8 @@ fn emit_variant_pattern(name: String, parent_enum: String?, field_bindings: List
     match field_bindings |> first {
       Some { value: fb } =>
         if field_binding_name_at(n: fb, source_indices: source_indices) == "0" {
-          let inner_pat = emit_pattern(pattern: field_binding_pattern(n: fb), shared_types: shared_types, scrut_type: scrut_type, source_indices: source_indices, emit_info: emit_info)
+          let payload_scrut = positional_payload_scrut_type(variant_name: name, field_binding: fb, emit_info: emit_info, source_indices: source_indices)
+          let inner_pat = emit_pattern(pattern: field_binding_pattern(n: fb), shared_types: shared_types, scrut_type: payload_scrut, source_indices: source_indices, emit_info: emit_info)
           concat(qualified, "(", inner_pat, ")")
         } else {
           let fb_name = field_binding_name_at(n: fb, source_indices: source_indices)
