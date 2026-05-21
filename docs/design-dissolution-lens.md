@@ -1304,7 +1304,7 @@ fn feature_disposition(f: FidelityFeature) -> FidelityDisposition {
 ```
 
 12 arms, 3 distinct skeletons: `Modeled` (1), `DeclaredNormalized { feature: <constructor> }` (5),
-`FailClosed { feature: <constructor> }` (6). **Categorical, 1:5:6.**
+`FailClosed { feature: <constructor> }` (6). **MultiOutlier, 1:5:6** (one singleton + two uniform groups; per the classifier definition above, Categorical requires non-singleton-only groups — the `Modeled` arm is a singleton, so this is MultiOutlier).
 
 **Clean shape:** push the categorization into `FidelityFeature`:
 ```dag
@@ -1328,7 +1328,7 @@ feature), not as a hand-rolled function.
 **Concrete match — F15 (PR #3452 `complexity_bound_from_class`):**
 9 arms over `AsymptoticClass`, 3 distinct skeletons: `Constant` (1),
 `unknown_complexity()` (1), `match size_var { Holds {v} => Bound { size_var: v, ...}; Violates _ => unknown_complexity() }` (7).
-**Categorical, 1:1:7.**
+**MultiOutlier, 1:1:7** (two singletons + one uniform group; per the classifier definition above, Categorical requires non-singleton-only groups — both `Constant` and `unknown_complexity()` arms are singletons, so this is MultiOutlier).
 
 **Clean shape:** collapse `ComplexityBound` from 9 parallel variants to
 3 structural variants, wrapping `AsymptoticClass` for the 7 size-dependent
@@ -1339,8 +1339,11 @@ type ComplexityBound
   | ConstantComplexity
   | SizedComplexity   { class: AsymptoticClass, size_var: SizeVariable }
 ```
-Function collapses from 9 arms to 4. Full worked example in the PR
-review at #3452 comment.
+Function collapses from 9 arms to 3 outer arms (`ClassConstant`,
+`ClassUnknown`, `_`) — the `_` arm contains an inner 2-arm match over
+`size_var`, so the total arm count is 4 if inner+outer arms are
+flattened. The structurally meaningful reduction is 9 → 3 at the outer
+dispatch. Full worked example in the PR review at #3452 comment.
 
 **Borderline case — F16 (`src/v4/lens/testgen.dag:253-270`):**
 13 arms over `T19ManualAnchorKey`. Strict skeleton extraction (per the
