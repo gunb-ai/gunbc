@@ -2,7 +2,7 @@
 // Scope: Java SE Language Specification (JLS) LanguageModel — scalar fact-bundles, inhabitants, bidirectional grammar data.
 // Owns: JavaScalar, JavaIntegerPrimitiveFacts, JavaFloatPrimitiveFacts, JavaNonIntegerPrimitiveFacts, JavaLanguageModel, java_*_facts, java_*_inhabitant_node, java_declared_inhabitants_root, java_mvp1_target_model, java_wave1_* grammar/lex.
 // Consumes: v4.compiler.parse, v4.compiler.tokenize, v4.std.collection, v4.std.model_core, v4.std.target_model, v4.std.node, v4.std.logic, v4.std.algebra, v4.std.text.
-// Status: T-4 java slice — JLS §4.2 primitive types (not java.lang.String); `core: ModelCore` (#3474) primitives + surface-symbol membership from `java_*_facts_catalog` via fold; canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/target_model.dag; MVP-1 grammar/token substrate for T-10 (literal Node round-trip still 🟡); bool canonical-B decl-ref — 🟡 E-6(b) staging.
+// Status: T-4 java slice — JLS §4.2 primitives (byte/short/int/long/float/double/boolean/char; not java.lang.String) plus `void` in declared-inhabitant catalogs only (`VoidScalar` is a return-type keyword per JLS §4.3, not a §4.2 primitive — rust.dag `UnitScalar` parity for target-model scaffolding); `core: ModelCore` (#3474) primitives + surface-symbol membership from `java_*_facts_catalog` via fold; canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/target_model.dag; MVP-1 grammar/token substrate for T-10 (literal Node round-trip still 🟡); bool canonical-B decl-ref — 🟡 E-6(b) staging.
 // Anchor: https://docs.oracle.com/javase/specs/jls/se21/html/jls-4.html#jls-4.2
 
 module v4.extdeps.languages.java
@@ -67,8 +67,10 @@ import v4.std.algebra { BooleanAlgebra, free_monoid_fold }
 import v4.std.text { String }
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// JLS has no unsigned integral primitives; `Unsigned` arm mirrors rust.dag carrier shape for v2 compile (never cataloged).
 type JavaIntKind
   = Signed
+  | Unsigned
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type JavaIntWidth
@@ -120,8 +122,10 @@ type JavaNonIntegerPrimitiveFacts {
 }
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// Java integral ops wrap (JLS); `PanicOnOverflow` arm mirrors rust.dag for v2 compile (never cataloged).
 type OverflowAction
-  = TwoComplementWrap
+  = PanicOnOverflow
+  | TwoComplementWrap
 
 type JavaLanguageModel {
   lex: LexRules
@@ -240,10 +244,12 @@ data java_scalar_field_kind: Symbol = java_scalar_field_kind
 data java_scalar_field_width: Symbol = java_scalar_field_width
 
 data java_tag_signed: Symbol = java_tag_signed
+data java_tag_unsigned: Symbol = java_tag_unsigned
 data java_tag_bits8: Symbol = java_tag_bits8
 data java_tag_bits16: Symbol = java_tag_bits16
 data java_tag_bits32: Symbol = java_tag_bits32
 data java_tag_bits64: Symbol = java_tag_bits64
+data java_tag_panic_on_overflow: Symbol = java_tag_panic_on_overflow
 data java_tag_two_complement_wrap: Symbol = java_tag_two_complement_wrap
 data java_tag_scalar_int: Symbol = java_tag_scalar_int
 data java_tag_scalar_float: Symbol = java_tag_scalar_float
@@ -338,6 +344,7 @@ data java_facts_char: JavaNonIntegerPrimitiveFacts = JavaNonIntegerPrimitiveFact
   representation: java_char_utf16_code_unit,
 }
 
+// `void` — return-type keyword (JLS §4.3), not a §4.2 primitive; cataloged for declared-inhabitants / target-model parity with rust `UnitScalar`.
 data java_facts_void: JavaNonIntegerPrimitiveFacts = JavaNonIntegerPrimitiveFacts {
   surface_spelling: java_surface_spelling_void,
   scalar: VoidScalar,
@@ -358,7 +365,7 @@ data java_float_facts_catalog: List<JavaFloatPrimitiveFacts> = [
   java_facts_double,
 ]
 
-// Reference primitives only — not java.lang.String (library type; program Node later).
+// §4.2 non-integer primitives (boolean, char) + `void` scaffolding (see `java_facts_void` comment).
 data java_noninteger_facts_catalog: List<JavaNonIntegerPrimitiveFacts> = [
   java_facts_boolean,
   java_facts_char,
@@ -378,6 +385,7 @@ fn java_inhabitant_atom(id: Symbol) -> Node {
 fn java_int_kind_node(kind: JavaIntKind) -> Node {
   match kind {
     Signed => java_inhabitant_atom(id: java_tag_signed)
+    Unsigned => java_inhabitant_atom(id: java_tag_unsigned)
   }
 }
 
@@ -398,7 +406,10 @@ fn java_float_width_node(width: JavaFloatWidth) -> Node {
 }
 
 fn java_overflow_node(overflow: OverflowAction) -> Node {
-  java_inhabitant_atom(id: java_tag_two_complement_wrap)
+  match overflow {
+    PanicOnOverflow => java_inhabitant_atom(id: java_tag_panic_on_overflow)
+    TwoComplementWrap => java_inhabitant_atom(id: java_tag_two_complement_wrap)
+  }
 }
 
 fn java_scalar_node(scalar: JavaScalar) -> Node {
