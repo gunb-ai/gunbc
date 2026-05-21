@@ -3287,6 +3287,10 @@ fn classify_argument(arg_expr: Node, param_name: String, ctx: DescentContext) ->
                     ArithmeticDescent { param: param_name, factor: ConstantShrink { steps: OneStep } }
                   } else { PreservedValue }
               }
+            // Lawful non-structural inhabitants flow through unchanged: an accessor
+            // application that does not strengthen evidence keeps the lattice level.
+            NonIncreasingValue => NonIncreasingValue
+            IncomparableValue => IncomparableValue
             SubValueUnknown => SubValueUnknown
           }
         None => SubValueUnknown
