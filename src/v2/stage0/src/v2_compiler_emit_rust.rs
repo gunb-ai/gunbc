@@ -102,23 +102,23 @@ pub use crate::v2_std_core::{
     binop_right, cast_expr, cast_target, expr_call_func_at, expr_has_non_tail_self_call,
     expr_has_self_call, expr_method_name_at, expr_var_name_at, field_access_base,
     field_access_field_at, field_binding_name_at, field_binding_pattern, field_init_node_name_at,
-    field_init_node_value, field_node_name_at, find_child_named, foreach_body, foreach_collection,
-    foreach_variable_at, generic_param_name_at, if_condition, if_else_branch, if_then_branch,
-    import_is_all, import_specific_names_at, index_base, index_expr, is_compiler_error,
-    is_file_transport, is_rest_transport, is_shell_transport, lambda_body, lambda_param_names_at,
-    let_binding_name_at, let_body, let_value, make_arg_node, make_error_node, make_expr_node,
-    make_named_expr_node, make_span, match_arm_nodes, match_scrutinee, method_arg_nodes,
-    method_receiver, module_imports, module_items, param_node_default_value, param_node_name_at,
-    param_node_type_expr, record_lit_type_name_at, resource_use_name_at, resource_use_resource,
-    return_value, service_config_auth, service_config_auth_input, service_config_auth_source,
-    service_config_endpoint, slice_base, slice_end, slice_start, transport_auth_header_name,
-    transport_auth_token, transport_base_url, transport_env, transport_has_auth, transport_headers,
-    transport_method, transport_path_template, transport_query, transport_request_body,
-    transport_response_format, transport_stdin, with_required_cardinality, AlgebraFieldKind, BinOp,
-    CallSemantics, Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData,
-    FieldAccessStyle, FieldSummary, FieldValueShape, InferredNode, LiteralValue, MatchPattern,
-    MethodSemantics, NewlineIndex, Node, SourceSpan, StringPart, TextFile, UnaryOpKind,
-    VarBindingKind,
+    field_init_node_value, field_node_name_at, field_node_type_expr, find_child_named,
+    foreach_body, foreach_collection, foreach_variable_at, generic_param_name_at, if_condition,
+    if_else_branch, if_then_branch, import_is_all, import_specific_names_at, index_base,
+    index_expr, is_compiler_error, is_file_transport, is_rest_transport, is_shell_transport,
+    lambda_body, lambda_param_names_at, let_binding_name_at, let_body, let_value, make_arg_node,
+    make_error_node, make_expr_node, make_named_expr_node, make_span, match_arm_nodes,
+    match_scrutinee, method_arg_nodes, method_receiver, module_imports, module_items,
+    param_node_default_value, param_node_name_at, param_node_type_expr, record_lit_type_name_at,
+    resource_use_name_at, resource_use_resource, return_value, service_config_auth,
+    service_config_auth_input, service_config_auth_source, service_config_endpoint, slice_base,
+    slice_end, slice_start, transport_auth_header_name, transport_auth_token, transport_base_url,
+    transport_env, transport_has_auth, transport_headers, transport_method,
+    transport_path_template, transport_query, transport_request_body, transport_response_format,
+    transport_stdin, with_required_cardinality, AlgebraFieldKind, BinOp, CallSemantics,
+    Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData, FieldAccessStyle,
+    FieldSummary, FieldValueShape, InferredNode, LiteralValue, MatchPattern, MethodSemantics,
+    NewlineIndex, Node, SourceSpan, StringPart, TextFile, UnaryOpKind, VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -3251,7 +3251,7 @@ pub fn emit_enum_from_children(
                 __result.push(emit_variant_from_child(
                     &child,
                     recursive_types.clone(),
-                    &shared_types,
+                    shared_types.clone(),
                     &env,
                     &serde_policy,
                 ));
@@ -3795,7 +3795,7 @@ pub fn variant_is_synthetic_positional_payload(
 pub fn emit_variant_from_child(
     child: &Rc<Node>,
     recursive_types: Rc<std::collections::BTreeSet<String>>,
-    shared_types: &Rc<std::collections::BTreeSet<String>>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     env: &Rc<TypeEnv>,
     serde_policy: &Rc<RustEnumWireSerde>,
 ) -> String {
@@ -3817,22 +3817,31 @@ pub fn emit_variant_from_child(
                         &child.children.clone(),
                         env.source_indices.clone(),
                     );
-                    let tuple_style = (positional_payload
+                    let tuple_style = (positional_payload.clone()
                         || (serde_policy.enum_attr.clone().as_str()
                             == "#[serde(untagged)]".to_string().as_str()));
                     if tuple_style {
                         match child.children.clone().first().cloned() {
                             Some(f) => {
-                                let rt_f = resolved_type(f.clone());
+                                let type_node = if positional_payload.clone() {
+                                    field_node_type_expr(&f)
+                                } else {
+                                    resolved_type(f.clone())
+                                };
+                                let ty_shared = if positional_payload.clone() {
+                                    v2_rt::rc_empty_set::<String>()
+                                } else {
+                                    shared_types.clone()
+                                };
                                 let ty = render_rust_type(
-                                    rt_f.clone(),
-                                    shared_types.clone(),
+                                    type_node.clone(),
+                                    ty_shared.clone(),
                                     env.source_indices.clone(),
                                 );
                                 let final_ty = if needs_box_wrapping(
-                                    rt_f.clone(),
+                                    type_node.clone(),
                                     recursive_types.clone(),
-                                    shared_types.clone(),
+                                    ty_shared.clone(),
                                     env.source_indices.clone(),
                                 ) {
                                     v2_rt::concat(
@@ -11284,6 +11293,10 @@ pub fn emit_typed_record_lit(
                         }
                     } else {
                         {
+                            let variant_summary_name = match effective_parent.clone() {
+                                Some(parent) => variant_summary_key(parent.clone(), tn.clone()),
+                                None => tn.clone(),
+                            };
                             let is_positional_ctor = (((fields.clone().len() as i64) == 1)
                                 && match fields.clone().first().cloned() {
                                     Some(f) => {
@@ -11293,66 +11306,49 @@ pub fn emit_typed_record_lit(
                                     None => false,
                                 });
                             if is_positional_ctor {
-                                {
-                                    let variant_summary_name = match effective_parent.clone() {
-                                        Some(parent) => {
-                                            variant_summary_key(parent.clone(), tn.clone())
-                                        }
-                                        None => tn.clone(),
-                                    };
-                                    match fields.clone().first().cloned() {
-                                        Some(f) => {
-                                            let f_value = field_init_node_value(&f);
-                                            let val_str = emit_field_value_with_context(
-                                                &f_value,
-                                                &resolved_type,
-                                                type_name.clone(),
-                                                &"0".to_string(),
-                                                registry.clone(),
-                                                &scope,
-                                                depth.clone(),
-                                                &shared_types,
-                                                &emit_info,
-                                            );
-                                            let needs_wrap = (is_optional_struct_field(
-                                                emit_info.clone(),
-                                                variant_summary_name.clone(),
-                                                "0".to_string(),
-                                            ) && (is_already_optional(
-                                                &f_value,
-                                                emit_info.clone(),
-                                                &scope,
-                                            ) == false));
-                                            let field_val = if needs_wrap.clone() {
-                                                v2_rt::concat(
-                                                    v2_rt::concat(
-                                                        "Some(".to_string(),
-                                                        val_str.clone(),
-                                                    ),
-                                                    ")".to_string(),
-                                                )
-                                            } else {
-                                                val_str.clone()
-                                            };
+                                match fields.clone().first().cloned() {
+                                    Some(f) => {
+                                        let f_value = field_init_node_value(&f);
+                                        let val_str = emit_field_value_with_context(
+                                            &f_value,
+                                            &resolved_type,
+                                            type_name.clone(),
+                                            &"0".to_string(),
+                                            registry.clone(),
+                                            &scope,
+                                            depth.clone(),
+                                            &shared_types,
+                                            &emit_info,
+                                        );
+                                        let needs_wrap = (is_optional_struct_field(
+                                            emit_info.clone(),
+                                            variant_summary_name.clone(),
+                                            "0".to_string(),
+                                        ) && (is_already_optional(
+                                            &f_value,
+                                            emit_info.clone(),
+                                            &scope,
+                                        ) == false));
+                                        let field_val = if needs_wrap.clone() {
                                             v2_rt::concat(
-                                                v2_rt::concat(
-                                                    v2_rt::concat(display_tn, "(".to_string()),
-                                                    field_val.clone(),
-                                                ),
+                                                v2_rt::concat("Some(".to_string(), val_str.clone()),
                                                 ")".to_string(),
                                             )
-                                        }
-                                        None => v2_rt::concat(display_tn, "()".to_string()),
+                                        } else {
+                                            val_str.clone()
+                                        };
+                                        v2_rt::concat(
+                                            v2_rt::concat(
+                                                v2_rt::concat(display_tn, "(".to_string()),
+                                                field_val.clone(),
+                                            ),
+                                            ")".to_string(),
+                                        )
                                     }
+                                    None => v2_rt::concat(display_tn, "()".to_string()),
                                 }
                             } else {
                                 {
-                                    let variant_summary_name = match effective_parent.clone() {
-                                        Some(parent) => {
-                                            variant_summary_key(parent.clone(), tn.clone())
-                                        }
-                                        None => tn.clone(),
-                                    };
                                     let field_strs = Rc::new({
                                         let mut __result = Vec::new();
                                         for f in fields.clone().iter().cloned() {
