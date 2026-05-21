@@ -48,6 +48,10 @@ type GitHubOidcToken200Body {
   count: Int
 }
 
+type MetadataRuntime {}
+
+data metadata_runtime: MetadataRuntime = {}
+
 // -- Constants -----------------------------------------------------
 
 data sts_endpoint: Url = "https://sts.googleapis.com/v1/token"
