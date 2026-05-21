@@ -8,14 +8,14 @@
 //
 module extdeps.llm.anthropic
 
-import extdeps.llm.llm { TokenUsage, llm_snake_wire_contract }
 import std.errors { AnthropicErrorShape }
 import std.credentials { CredentialSource, EnvVar }
-import std.serialization { CoproductWireContract, VariantEncoding }
+import std.serialization { CoproductWireContract, VariantEncoding, StringVariant, VariantNaming, SnakeCase }
 import std.types { HttpMethod }
 
 // Wire contract: Anthropic API returns enum values as snake_case strings.
-data wire_contract: VariantEncoding = llm_snake_wire_contract
+data anthropic_snake_wire_contract: VariantEncoding = StringVariant { naming: SnakeCase }
+data wire_contract: VariantEncoding = anthropic_snake_wire_contract
 
 data anthropic_chat_message_wire_contract: CoproductWireContract = {
   coproduct: "AnthropicChatMessage",
@@ -46,7 +46,7 @@ data anthropic_tool_result_content_wire_contract: CoproductWireContract = {
 
 // Nested blocks inside `ToolResultBlocks`: each row is a flat `{"type": ...}` object
 // (same tagging discipline as user message content blocks; distinct carrier so shared
-// shared `ContentBlock` in llm.dag stays text-only / provider-neutral).
+// provider-local nested blocks; not a cross-provider carrier).
 data anthropic_tool_result_block_wire_contract: CoproductWireContract = {
   coproduct: "AnthropicToolResultBlock",
   encoding: InternallyTaggedObject { tag_field: "type", naming: StripPrefixSuffixAndSnakeCase { prefix: "Anthropic", suffix: "Block" } }
@@ -90,8 +90,7 @@ type ImageSource
 // untagged emission maps directly (string vs block array) without an extra object
 // wrapper around the array arm.
 //
-// Nested block shapes use `AnthropicToolResultBlock` (below). Text arms mirror
-// shared `extdeps.llm.llm.ContentBlock::TextContent`; image arms use `ImageSource`.
+// Nested block shapes use `AnthropicToolResultBlock` (below).
 type AnthropicToolResultContent
   = ToolResultText(String)
   | ToolResultBlocks(List<AnthropicToolResultBlock>)

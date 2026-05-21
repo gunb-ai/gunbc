@@ -1,65 +1,10 @@
-// extdeps/llm/core.dag -- "What is an LLM API?"
+// extdeps/llm/llm.dag — reserved for genuine cross-provider LLM abstractions.
 //
-// Universal message protocol types shared across Anthropic, OpenAI,
-// and any future LLM provider. Covers the conversation primitive,
-// not provider-specific features.
+// Each provider has its own discrete modeling home today:
+//   extdeps/llm/anthropic.dag — Anthropic Messages API
+//   extdeps/llm/openai.dag    — OpenAI Chat Completions / Responses
 //
-// Complements extdeps/llm/pricing.dag (which covers model specs and pricing).
-//
-// Consumers:
-//   extdeps/llm/anthropic.dag -- Anthropic-specific content blocks, tools
-//   extdeps/llm/openai.dag    -- OpenAI-specific response formats, tool choice
-//   services/llm/*            -- transport wiring
+// Do not reintroduce provider-shaped types here; wait until a fact is
+// structurally shared across providers before landing it in this module.
 
 module extdeps.llm.llm
-
-import std.serialization { VariantEncoding, StringVariant, VariantNaming, SnakeCase }
-
-// Wire contract: LLM APIs return enum values as snake_case strings ("user", "end_turn").
-// Shared across LLM provider modules (anthropic, openai) — each must declare its own
-// module-scoped wire_contract, but the value is the single authority here.
-data llm_snake_wire_contract: VariantEncoding = StringVariant { naming: SnakeCase }
-data wire_contract: VariantEncoding = llm_snake_wire_contract
-
-// -- Message protocol ----------------------------------------------
-
-// Variant names match API wire strings under SnakeCase:
-// System → "system", User → "user", Assistant → "assistant", Tool → "tool"
-type Role = System | User | Assistant | Tool
-
-// -- Content blocks (shared across providers) ----------------------
-// Text-only intersection of provider message bodies. Image and other
-// multimodal carriers are provider-specific (`anthropic.dag`, `openai.dag).
-
-type ContentBlock
-  = TextContent { text: String }
-
-type LlmMessage {
-  role: Role
-  content: List<ContentBlock>
-}
-
-// -- Token accounting ----------------------------------------------
-
-type TokenUsage {
-  input_tokens: Int
-  output_tokens: Int
-  total_tokens: Int
-}
-
-// -- Stop reasons --------------------------------------------------
-
-type StopReason = EndTurn | MaxTokens | StopSequence | ToolUse
-
-// -- Streaming -----------------------------------------------------
-
-type StreamEvent
-  = StreamStart
-  | StreamDelta { text: String }
-  | StreamStop { reason: StopReason }
-
-// -- Defaults ------------------------------------------------------
-
-data default_temperature: Float = 1.0
-
-data default_max_tokens: Int = 4096

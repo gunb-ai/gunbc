@@ -57,12 +57,6 @@ type ImageSource
     }
   | UrlImage { url: String }
 
-// Text-only shared message-body coordinate mirrored from `dsl/extdeps/llm/llm.dag`.
-// The v3 bootstrap loads `anthropic_schema.dag` without importing `llm.dag`;
-// keep this twin so `shared_content_block_lockstep` pins the shared surface.
-type ContentBlock
-  = TextContent { text: String }
-
 // 🟢 TERMINAL — same row as `dsl/extdeps/llm/anthropic.dag` (`CacheControl`);
 // referenced from nested tool-result `AnthropicSearchResultBlock.cache_control`.
 type CacheControl {

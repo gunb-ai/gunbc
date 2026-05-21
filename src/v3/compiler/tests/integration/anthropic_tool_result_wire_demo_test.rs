@@ -95,7 +95,7 @@ enum ImageSourceWire {
     #[serde(rename = "base64")]
     Base64 {
         media_type: String,
-        /// JSON key `data` matches Anthropic wire for base64 sources (`llm.dag`).
+        /// JSON key `data` matches Anthropic wire for base64 sources (`anthropic.dag`).
         data: String,
     },
 }
