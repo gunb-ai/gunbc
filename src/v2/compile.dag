@@ -201,13 +201,13 @@ fn json_optional_string(value: String?) -> String {
 // -------------------------------------------------------------------------
 
 type DagCollectAcc {
-  seen: Map<String, Bool>
+  seen: Map<String, String>
   order: List<Node>
+  collision_errors: List<ErrorNode>
 }
 
-// Provisional identity until v4 content_hash: file+span+ident. Re-visits with the same
-// key share one nodes-table record (required for Resolved back-links). Distinct nodes
-// that accidentally share a key would alias — documented 🟡 risk on DagNodeId.
+// Provisional location key until v4 content_hash (see DagNodeId 🟡 gate). Collection
+// fail-closes when two distinct nodes share this key (dag_node_fingerprint mismatch).
 fn dag_node_key(node: Node) -> String {
   concat(
     node.span.file, ":", to_string(i: node.span.start), "..", to_string(i: node.span.end),
@@ -215,6 +215,64 @@ fn dag_node_key(node: Node) -> String {
       Some { value: id } => concat(":", to_string(i: id))
       None => ""
     })
+}
+
+fn inferred_fingerprint(value: InferredNode?) -> String {
+  match value {
+    None => "none"
+    Some { value: Resolved { node: _ } } => "Resolved"
+    Some { value: TypeVariable { id } } => concat("TypeVariable:", id)
+    Some { value: CompilerError { message: m } } => concat("CompilerError:", m)
+  }
+}
+
+fn expr_data_variant(data: ExprData) -> String {
+  match data {
+    NoExprData => "NoExprData"
+    ExprLiteral { value: _ } => "ExprLiteral"
+    ExprError { kind: _, message: _ } => "ExprError"
+    ExprVar { binding_kind: _ } => "ExprVar"
+    ExprFieldAccess { summary: _ } => "ExprFieldAccess"
+    ExprCall { call_semantics: _, descent_evidence: _ } => "ExprCall"
+    ExprMethodCall { method_semantics: _ } => "ExprMethodCall"
+    ExprMatch => "ExprMatch"
+    ExprIf => "ExprIf"
+    ExprLet => "ExprLet"
+    ExprRecordLit { parent_enum: _ } => "ExprRecordLit"
+    ExprListLit => "ExprListLit"
+    ExprBinOp { op: _, algebra_field: _ } => "ExprBinOp"
+    ExprUnaryOp { op: _ } => "ExprUnaryOp"
+    ExprLambda => "ExprLambda"
+    ExprStringInterp => "ExprStringInterp"
+    ExprBlock => "ExprBlock"
+    ExprCast => "ExprCast"
+    ExprForEach => "ExprForEach"
+    ExprIndex => "ExprIndex"
+    ExprSlice => "ExprSlice"
+    ExprReturn => "ExprReturn"
+  }
+}
+
+fn dag_node_fingerprint(node: Node) -> String {
+  let child_names = node.children |> map(c => c.name) |> join(separator: ",")
+  let param_names = node.params |> map(p => p.name) |> join(separator: ",")
+  concat(
+    node.name, "|",
+    connective_name(value: node.connective), "|",
+    inferred_fingerprint(value: node.inferred), "|",
+    expr_data_variant(data: node.expr_data), "|",
+    child_names, "|",
+    param_names)
+}
+
+fn dag_node_key_collision_error(key: String, span: SourceSpan) -> ErrorNode {
+  make_error_node(
+    diagnostic: InternalError {
+      message: concat("dag artifact: distinct nodes share identity key ", json_quote(s: key)),
+      span: span
+    },
+    module_name: ""
+  )
 }
 
 fn dag_node_missing_ref_error(node: Node) -> ErrorNode {
@@ -310,12 +368,23 @@ fn dag_collect_node_tree(node: Node, acc: DagCollectAcc) -> DagCollectAcc {
 
 fn dag_collect_insert(node: Node, acc: DagCollectAcc) -> DagCollectAcc {
   let key = dag_node_key(node: node)
+  let fp = dag_node_fingerprint(node: node)
   match map_get(acc.seen, key) {
-    Some { value: _ } => acc
+    Some { value: prior } =>
+      if prior == fp {
+        acc
+      } else {
+        DagCollectAcc {
+          seen: acc.seen,
+          order: acc.order,
+          collision_errors: list_push(acc.collision_errors, dag_node_key_collision_error(key: key, span: node.span))
+        }
+      }
     None => {
       let acc1 = DagCollectAcc {
-        seen: map_insert(acc.seen, key, true),
-        order: list_push(acc.order, node)
+        seen: map_insert(acc.seen, key, fp),
+        order: list_push(acc.order, node),
+        collision_errors: acc.collision_errors
       }
       dag_collect_node_tree(node: node, acc: acc1)
     }
@@ -328,10 +397,9 @@ fn dag_collect_from_module(module: TypedModule, acc: DagCollectAcc) -> DagCollec
   module.items |> fold(init: acc, f: (a, item) => dag_collect_insert(node: item, acc: a))
 }
 
-fn collect_dag_nodes(typed: ResolvedGraph) -> List<Node> {
-  let acc = typed.modules
-    |> fold(init: DagCollectAcc { seen: empty_map(), order: [] }, f: (acc, m) => dag_collect_from_module(module: m, acc: acc))
-  acc.order
+fn collect_dag_nodes(typed: ResolvedGraph) -> DagCollectAcc {
+  typed.modules
+    |> fold(init: DagCollectAcc { seen: empty_map(), order: [], collision_errors: [] }, f: (acc, m) => dag_collect_from_module(module: m, acc: acc))
 }
 
 fn build_dag_key_to_id(order: List<Node>) -> Map<String, String> {
@@ -934,7 +1002,11 @@ fn serialize_diagnostic(diagnostic: ErrorNode) -> String {
 // DAG backend: bounded DagArtifact JSON (v0.2.0 nodes table + $ref).
 // JSON shape matches v2.compiler.artifact.DagArtifact; string concat is the v0.2 emitter.
 fn emit_dag_artifact(typed: ResolvedGraph) -> EmitResult {
-  let order = collect_dag_nodes(typed: typed)
+  let collected = collect_dag_nodes(typed: typed)
+  if collected.collision_errors |> count > 0 {
+    return EmitResult { files: [], diagnostics: collected.collision_errors }
+  }
+  let order = collected.order
   let key_to_id = build_dag_key_to_id(order: order)
   let ref_errors = dag_emit_ref_errors(order: order, key_to_id: key_to_id)
   if ref_errors |> count > 0 {
