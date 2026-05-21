@@ -3,9 +3,8 @@
 // Anchor: docs/design-v4-compiler-homomorphism.md (Pass B unification row); docs/modeling-discipline.md Practice 11.
 // Owns: CandidateSet, PreservationPredicate, FindWitnessResult, TargetSelectionPolicy, MultiplicityPolicy,
 //       find_witness, verify_witness.
-// Consumes: std collection, std diagnostic, std node.
-// Status: Wave-2-BC3 modeled; enumeration body scaffold until stage consumers land.
-// 🟡 coproduct dissolution — scaffold:find_witness-enum · dissolve-on: W-T-10 wires find_witness/verify_witness bodies.
+// Consumes: std collection, std diagnostic, std node, std witness.
+// Status: W-T-10 — identity-MVP exact structural equality; candidate lists are substrate-closed (no Conj re-walk).
 
 
 module v4.std.find_witness
@@ -32,6 +31,7 @@ import v4.std.witness { StructuralPropertyWitness }
 data find_witness_reason_no_candidate: Symbol = find_witness_reason_no_candidate
 data find_witness_reason_ambiguous_candidate: Symbol = find_witness_reason_ambiguous_candidate
 data find_witness_reason_not_realized: Symbol = find_witness_reason_not_realized
+data find_witness_reason_invalid_witness: Symbol = find_witness_reason_invalid_witness
 data preservation_rule_constraint_satisfaction: Symbol = preservation_rule_constraint_satisfaction
 data preservation_rule_exact_structural_equality_zip_fold: Symbol = preservation_rule_exact_structural_equality_zip_fold
 type CandidateSet {
@@ -42,7 +42,6 @@ type PreservationPredicate {
   algebra: Node
   preservation_rule: Symbol
 }
-// 🟡 coproduct dissolution — scaffold:find-witness-result-witness · dissolve-on: W-T-10 typed witness carriers per caller.
 type FindWitnessResult {
   candidate: Node
   witness: StructuralPropertyWitness
@@ -82,11 +81,27 @@ fn find_witness_not_realized_diagnostic(source_facts: Node) -> Diagnostic {
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
+fn find_witness_invalid_witness_diagnostic(source_facts: Node) -> Diagnostic {
+  Diagnostic {
+    reason: find_witness_reason_invalid_witness,
+    at: NodeLocus { node: source_facts },
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+// P2: enumerate substrate-closed CandidateSet entries only — coercion/authored lists flatten
+// declared_inhabitants; find_witness must not Conj-expand entries (would drop aggregate carriers).
+// `predicate` is retained for call-site symmetry; realized rules only (see find_witness entry match).
+fn enumeration_candidate_list(
+  candidates: CandidateSet,
+  predicate: PreservationPredicate
+) -> List<Node> {
+  candidates.candidates
+}
 // Identity-MVP branches: identity_mvp_preservation_holds (scaffold:identity-mvp-preservation in constraint_satisfaction_predicate.dag).
 fn preservation_predicate_holds(
   source_facts: Node,
   candidate: Node,
-  predicate: PreservationPredicate,
+  predicate: PreservationPredicate
 ) -> Bool {
   if predicate.preservation_rule == preservation_rule_constraint_satisfaction {
     constraint_satisfaction_preservation_holds(
@@ -109,9 +124,9 @@ fn preservation_predicate_holds(
 fn passing_candidate_count(
   source_facts: Node,
   candidates: CandidateSet,
-  predicate: PreservationPredicate,
+  predicate: PreservationPredicate
 ) -> Int {
-  fold(candidates.candidates, init: 0, f: fn(acc, candidate) {
+  fold(enumeration_candidate_list(candidates: candidates, predicate: predicate), init: 0, f: fn(acc, candidate) {
     if preservation_predicate_holds(
       source_facts: source_facts,
       candidate: candidate,
@@ -126,9 +141,9 @@ fn passing_candidate_count(
 fn only_passing_candidate(
   source_facts: Node,
   candidates: CandidateSet,
-  predicate: PreservationPredicate,
+  predicate: PreservationPredicate
 ) -> Outcome<Node> {
-  match fold(candidates.candidates, init: NoPassingCandidate, f: fn(acc, candidate) {
+  match fold(enumeration_candidate_list(candidates: candidates, predicate: predicate), init: NoPassingCandidate, f: fn(acc, candidate) {
     if preservation_predicate_holds(
       source_facts: source_facts,
       candidate: candidate,
@@ -155,9 +170,9 @@ fn selected_candidate_count(
   source_facts: Node,
   candidates: CandidateSet,
   predicate: PreservationPredicate,
-  selection: Node,
+  selection: Node
 ) -> Int {
-  fold(candidates.candidates, init: 0, f: fn(acc, candidate) {
+  fold(enumeration_candidate_list(candidates: candidates, predicate: predicate), init: 0, f: fn(acc, candidate) {
     if (candidate == selection) && preservation_predicate_holds(
       source_facts: source_facts,
       candidate: candidate,
@@ -172,7 +187,7 @@ fn selected_candidate_count(
 fn accepted_witness_result(
   candidate: Node,
   candidates: CandidateSet,
-  predicate: PreservationPredicate,
+  predicate: PreservationPredicate
 ) -> Outcome<FindWitnessResult> {
   Accepted {
     value: FindWitnessResult {
@@ -190,7 +205,7 @@ fn resolve_selected_candidate(
   source_facts: Node,
   candidates: CandidateSet,
   predicate: PreservationPredicate,
-  selection: Node,
+  selection: Node
 ) -> Outcome<FindWitnessResult> {
   match selected_candidate_count(
     source_facts: source_facts,
@@ -211,7 +226,31 @@ fn find_witness(
   source_facts: Node,
   candidates: CandidateSet,
   predicate: PreservationPredicate,
-  multiplicity_policy: MultiplicityPolicy,
+  multiplicity_policy: MultiplicityPolicy
+) -> Outcome<FindWitnessResult> {
+  match predicate.preservation_rule {
+    preservation_rule_constraint_satisfaction =>
+      find_witness_realized(
+        source_facts: source_facts,
+        candidates: candidates,
+        predicate: predicate,
+        multiplicity_policy: multiplicity_policy
+      )
+    preservation_rule_exact_structural_equality_zip_fold =>
+      find_witness_realized(
+        source_facts: source_facts,
+        candidates: candidates,
+        predicate: predicate,
+        multiplicity_policy: multiplicity_policy
+      )
+    _ => outcome_rejected(find_witness_not_realized_diagnostic(source_facts: source_facts))
+  }
+}
+fn find_witness_realized(
+  source_facts: Node,
+  candidates: CandidateSet,
+  predicate: PreservationPredicate,
+  multiplicity_policy: MultiplicityPolicy
 ) -> Outcome<FindWitnessResult> {
   let passing_count = passing_candidate_count(
     source_facts: source_facts,
@@ -258,7 +297,31 @@ fn verify_witness(
   source_facts: Node,
   candidate: Node,
   predicate: PreservationPredicate,
-  witness: StructuralPropertyWitness,
+  witness: StructuralPropertyWitness
+) -> Outcome<StructuralPropertyWitness> {
+  match predicate.preservation_rule {
+    preservation_rule_constraint_satisfaction =>
+      verify_witness_realized(
+        source_facts: source_facts,
+        candidate: candidate,
+        predicate: predicate,
+        witness: witness
+      )
+    preservation_rule_exact_structural_equality_zip_fold =>
+      verify_witness_realized(
+        source_facts: source_facts,
+        candidate: candidate,
+        predicate: predicate,
+        witness: witness
+      )
+    _ => outcome_rejected(find_witness_not_realized_diagnostic(source_facts: source_facts))
+  }
+}
+fn verify_witness_realized(
+  source_facts: Node,
+  candidate: Node,
+  predicate: PreservationPredicate,
+  witness: StructuralPropertyWitness
 ) -> Outcome<StructuralPropertyWitness> {
   if preservation_predicate_holds(
     source_facts: source_facts,
@@ -267,6 +330,6 @@ fn verify_witness(
   ) && (witness.property == predicate.preservation_rule) && (witness.evidence == candidate) {
     Accepted { value: witness, diagnostics: None }
   } else {
-    outcome_rejected(find_witness_no_candidate_diagnostic(source_facts: source_facts))
+    outcome_rejected(find_witness_invalid_witness_diagnostic(source_facts: source_facts))
   }
 }
