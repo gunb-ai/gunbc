@@ -1,6 +1,6 @@
 // src/v4/std/model_core.dag
 // Scope: Ratified Q1 shared ModelCore substrate for LanguageModel and HostModel extension.
-// Owns: ModelCore, PrimitiveFactBundle, AlgebraInhabitanceDecl, AlgebraLawObligation, EffectSemanticsDecl, PartialitySemanticsDecl, PartialOperationDecl, PartialityDischarge, primitive_fact_axis_width, primitive_fact_axis_signedness, primitive_fact_axis_range, primitive_fact_axis_encoding, wave1_void
+// Owns: ModelCore, PrimitiveFactBundle, PrimitiveFactAxisBinding, AlgebraInhabitanceDecl, AlgebraLawObligation, EffectSemanticsDecl, PartialitySemanticsDecl, PartialOperationDecl, PartialityDischarge, primitive_fact_axis_width, primitive_fact_axis_signedness, primitive_fact_axis_range, primitive_fact_axis_encoding, wave1_void
 // Consumes: v4.std.collection, v4.std.node
 // Status: T-33 modeled.
 
@@ -18,9 +18,15 @@ data primitive_fact_axis_range: Symbol = primitive_fact_axis_range
 data primitive_fact_axis_encoding: Symbol = primitive_fact_axis_encoding
 
 
+type PrimitiveFactAxisBinding {
+  axis: Symbol
+  fact: Node
+}
+
+
 type PrimitiveFactBundle {
   substrate_carrier: Node
-  spec_facts: Node
+  spec_facts: List<PrimitiveFactAxisBinding>
 }
 
 
