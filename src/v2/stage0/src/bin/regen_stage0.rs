@@ -277,6 +277,7 @@ fn compile_stage0(workspace: &Path) -> Result<HashMap<String, String>, String> {
 
 fn normalize_stage0_outputs(mut files: HashMap<String, String>) -> HashMap<String, String> {
     if let Some(std_termination) = files.get_mut("src/std_termination.rs") {
+        // Remove this bridge once generic data constants emit function-valued fields directly.
         *std_termination = normalize_std_termination(std_termination);
     }
     files
