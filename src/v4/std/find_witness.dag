@@ -97,7 +97,9 @@ fn exact_structural_child_leaf_coincides(source_edge: Edge, candidates: List<Edg
   fold(candidates, init: false, f: fn(found, candidate_edge) {
     found || (
       (source_edge.label == candidate_edge.label)
-        && exact_structural_equality_zip_fold(
+        && (count(source_edge.target.children) == 0)
+        && (count(candidate_edge.target.children) == 0)
+        && exact_structural_leaf_coincides(
           source_facts: source_edge.target,
           candidate: candidate_edge.target
         )
