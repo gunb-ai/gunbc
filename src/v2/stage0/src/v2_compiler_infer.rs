@@ -914,6 +914,16 @@ pub fn list_kernel_ty_from_element(element: Rc<Node>) -> Rc<KernelListTyDiag> {
     }
 }
 
+pub fn set_kernel_ty_from_element(element: Rc<Node>) -> Rc<KernelListTyDiag> {
+    {
+        let b = make_container_type(&"Set".to_string(), element);
+        Rc::new(KernelListTyDiag {
+            ty: b.ty.clone(),
+            miss_diags: b.diagnostics.clone(),
+        })
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Tier2bBt {
     pub bt: Rc<Node>,
@@ -922,15 +932,15 @@ pub struct Tier2bBt {
 
 pub fn infer_tier2b_builtin_with_kernel_diags(
     func_name: &String,
-    typed_args: Rc<Vec<Rc<Node>>>,
-    scope: Rc<InferScope>,
+    typed_args: &Rc<Vec<Rc<Node>>>,
+    scope: &Rc<InferScope>,
     span: Rc<SourceSpan>,
 ) -> Rc<Tier2bBt> {
     if ((func_name.clone().as_str() == "lookup".to_string().as_str())
         || (func_name.clone().as_str() == "map_get".to_string().as_str()))
     {
         Rc::new(Tier2bBt {
-            bt: match typed_args.first().cloned() {
+            bt: match typed_args.clone().first().cloned() {
                 Some(receiver_arg) => match arg_value(&receiver_arg)
                     .inferred
                     .clone()
@@ -955,7 +965,7 @@ pub fn infer_tier2b_builtin_with_kernel_diags(
         })
     } else {
         if (func_name.clone().as_str() == "map_keys".to_string().as_str()) {
-            match typed_args.first().cloned() {
+            match typed_args.clone().first().cloned() {
                 Some(receiver_arg) => match arg_value(&receiver_arg)
                     .inferred
                     .clone()
@@ -991,7 +1001,7 @@ pub fn infer_tier2b_builtin_with_kernel_diags(
             }
         } else {
             if (func_name.clone().as_str() == "map_values".to_string().as_str()) {
-                match typed_args.first().cloned() {
+                match typed_args.clone().first().cloned() {
                     Some(receiver_arg) => match arg_value(&receiver_arg)
                         .inferred
                         .clone()
@@ -1031,8 +1041,45 @@ pub fn infer_tier2b_builtin_with_kernel_diags(
                 if ((func_name.clone().as_str() == "set_insert".to_string().as_str())
                     || (func_name.clone().as_str() == "set_union".to_string().as_str()))
                 {
-                    Rc::new(Tier2bBt {
-                        bt: match typed_args.first().cloned() {
+                    {
+                        let operand_elem = if (func_name.clone().as_str()
+                            == "set_insert".to_string().as_str())
+                        {
+                            match typed_args.clone().get(1 as usize).cloned() {
+                                Some(insert_arg) => match arg_value(&insert_arg)
+                                    .inferred
+                                    .clone()
+                                    .as_deref()
+                                    .cloned()
+                                {
+                                    Some(InferredNode::Resolved { node: elem, .. }) => {
+                                        Some(elem.clone())
+                                    }
+                                    _ => None,
+                                },
+                                None => None,
+                            }
+                        } else {
+                            match typed_args.clone().get(1 as usize).cloned() {
+                                Some(other_arg) => {
+                                    match arg_value(&other_arg).inferred.clone().as_deref().cloned()
+                                    {
+                                        Some(InferredNode::Resolved {
+                                            node: other_type, ..
+                                        }) => match set_element_type_in_env(
+                                            other_type.clone(),
+                                            &scope.type_env.clone(),
+                                        ) {
+                                            Some(elem_slot) => Some(child_type_node(&elem_slot)),
+                                            None => None,
+                                        },
+                                        _ => None,
+                                    }
+                                }
+                                None => None,
+                            }
+                        };
+                        let result_bt = match typed_args.clone().first().cloned() {
                             Some(receiver_arg) => match arg_value(&receiver_arg)
                                 .inferred
                                 .clone()
@@ -1042,13 +1089,38 @@ pub fn infer_tier2b_builtin_with_kernel_diags(
                                 Some(InferredNode::Resolved {
                                     node: receiver_type,
                                     ..
-                                }) => receiver_type.clone(),
-                                _ => resolve_builtin_call_type(func_name.clone()),
+                                }) => match set_element_type_in_env(
+                                    receiver_type.clone(),
+                                    &scope.type_env.clone(),
+                                ) {
+                                    Some(_) => receiver_type.clone(),
+                                    None => match operand_elem.clone() {
+                                        Some(element) => {
+                                            set_kernel_ty_from_element(element.clone()).ty.clone()
+                                        }
+                                        None => resolve_builtin_call_type(func_name.clone()),
+                                    },
+                                },
+                                _ => match operand_elem.clone() {
+                                    Some(element) => {
+                                        set_kernel_ty_from_element(element.clone()).ty.clone()
+                                    }
+                                    None => resolve_builtin_call_type(func_name.clone()),
+                                },
                             },
                             None => resolve_builtin_call_type(func_name.clone()),
-                        },
-                        kernel_diags: Rc::new(vec![]),
-                    })
+                        };
+                        let build_diags = match operand_elem.clone() {
+                            Some(element) => set_kernel_ty_from_element(element.clone())
+                                .miss_diags
+                                .clone(),
+                            None => Rc::new(vec![]),
+                        };
+                        Rc::new(Tier2bBt {
+                            bt: result_bt,
+                            kernel_diags: build_diags,
+                        })
+                    }
                 } else {
                     Rc::new(Tier2bBt {
                         bt: resolve_builtin_call_type(func_name.clone()),
@@ -2771,8 +2843,8 @@ match bare_s {
                                         {
                                             let tier2b = infer_tier2b_builtin_with_kernel_diags(
                                                 &func_name,
-                                                typed_args.clone(),
-                                                scope.clone(),
+                                                &typed_args,
+                                                &scope,
                                                 span.clone(),
                                             );
                                             let bt = tier2b.bt.clone();
