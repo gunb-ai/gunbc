@@ -108,17 +108,6 @@ pub fn variant_has_fields(
     }
 }
 
-pub fn variant_has_positional_payload(
-    emit_info: Rc<EmitGraphInfo>,
-    enum_name: String,
-    variant_name: String,
-) -> bool {
-    {
-        let key = variant_summary_key(enum_name, variant_name);
-        v2_rt::set_contains(emit_info.positional_payload_variants.clone(), key)
-    }
-}
-
 pub fn variant_summary_key(enum_name: String, variant_name: String) -> String {
     v2_rt::concat(v2_rt::concat(enum_name, "::".to_string()), variant_name)
 }
@@ -128,14 +117,6 @@ pub fn lookup_emit_type_summary(
     type_name: String,
 ) -> Option<Rc<TypeSummary>> {
     v2_rt::map_get(&emit_info.type_summaries.clone(), type_name)
-}
-
-pub fn lookup_variant_type_summary(
-    emit_info: Rc<EmitGraphInfo>,
-    enum_name: String,
-    variant_name: String,
-) -> Option<Rc<TypeSummary>> {
-    lookup_emit_type_summary(emit_info, variant_summary_key(enum_name, variant_name))
 }
 
 pub fn derive_variant_to_enum(

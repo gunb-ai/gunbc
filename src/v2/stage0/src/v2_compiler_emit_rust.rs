@@ -41,8 +41,7 @@ pub use crate::v2_compiler_infer::{
 use crate::v2_compiler_infer_emit_info::TypeRepr::{EnumRepr, StructRepr};
 pub use crate::v2_compiler_infer_emit_info::{
     find_variant_parent, is_enum_in_summaries, is_known_variant, lookup_emit_type_summary,
-    lookup_variant_type_summary, variant_belongs_to_enum, variant_summary_key, EmitGraphInfo,
-    TypeRepr, TypeSummary,
+    variant_belongs_to_enum, variant_summary_key, EmitGraphInfo, TypeRepr, TypeSummary,
 };
 pub use crate::v2_compiler_infer_env::{authored_name, lookup_type_by_name, TypeBinding, TypeEnv};
 use crate::v2_compiler_infer_items::ItemKind::DataItem;
