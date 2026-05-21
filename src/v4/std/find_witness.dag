@@ -25,18 +25,8 @@ import v4.std.diagnostic {
   outcome_with_diagnostics
 }
 import v4.std.node {
-  Atom,
-  Cardinality,
-  ComputationNode,
-  Conj,
-  Connective,
-  Disj,
-  Arrow,
-  Instantiation,
   Node,
-  NodeKind,
-  Symbol,
-  TypeNode
+  Symbol
 }
 import v4.std.witness { StructuralPropertyWitness }
 data find_witness_reason_no_candidate: Symbol = find_witness_reason_no_candidate
@@ -44,7 +34,6 @@ data find_witness_reason_ambiguous_candidate: Symbol = find_witness_reason_ambig
 data find_witness_reason_not_realized: Symbol = find_witness_reason_not_realized
 data preservation_rule_constraint_satisfaction: Symbol = preservation_rule_constraint_satisfaction
 data preservation_rule_exact_structural_equality_zip_fold: Symbol = preservation_rule_exact_structural_equality_zip_fold
-data exact_structural_zip_fold_atom: Symbol = exact_structural_zip_fold_atom
 type CandidateSet {
   candidates: List<Node>
   closedness: StructuralPropertyWitness
@@ -97,24 +86,8 @@ fn find_witness_not_realized_diagnostic(source_facts: Node) -> Diagnostic {
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
-fn zip_fold_connective_shape(c: Connective) -> Connective {
-  match c {
-    Atom { identity: _ } => Atom { identity: exact_structural_zip_fold_atom }
-    Conj => Conj
-    Disj => Disj
-    Arrow => Arrow
-    Cardinality => Cardinality
-    Instantiation => Instantiation
-  }
-}
-fn zip_fold_kind_shape(k: NodeKind) -> NodeKind {
-  match k {
-    TypeNode { connective: c } => TypeNode { connective: zip_fold_connective_shape(c: c) }
-    ComputationNode { behavior: b } => ComputationNode { behavior: b }
-  }
-}
 fn exact_structural_equality_zip_fold(source_facts: Node, candidate: Node) -> Bool {
-  (zip_fold_kind_shape(k: source_facts.kind) == zip_fold_kind_shape(k: candidate.kind))
+  (source_facts.kind == candidate.kind)
     && (count(source_facts.children) == count(candidate.children))
 }
 fn preservation_predicate_holds(
