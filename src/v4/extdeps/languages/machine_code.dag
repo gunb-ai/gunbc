@@ -280,9 +280,6 @@ type MachineFidelityFeature
   | AmbiguousDecode
 
 
-type MachineFidelityDisposition = FidelityDisposition<MachineFidelityFeature>
-
-
 // Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
 // 🟢 coproduct dissolution — P4-3208.
 type MachineIntegerOverflowBehavior

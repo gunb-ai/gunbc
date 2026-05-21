@@ -166,9 +166,6 @@ type LeanFidelityFeature
   | LeanUnsupportedTheoremClass
 
 
-type LeanFidelityDisposition = FidelityDisposition<LeanFidelityFeature>
-
-
 // Anchor: https://lean-lang.org/doc/reference/4.20.0/
 type LeanProofCheckSemantics<IRCarrier> {
   kernel_definitional_reduction: Bool
