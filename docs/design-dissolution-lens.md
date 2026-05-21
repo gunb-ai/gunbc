@@ -169,7 +169,7 @@ they are not interchangeable:
 | L1.9 Vacuous-arm | fail-closed / witness |
 | L1.10 Textual-bypass *(lens family — see §5.0 exception)*: L1.10.a `TemplateHole`, L1.10.b `CanonicalCarrier` | witness / canonical-home |
 | L1.11 Plausible-fallback | fail-closed |
-| L1.12 Parallel-authority | canonical-home |
+| L1.12 Parallel-authority *(lens family — see §5.0 exception)*: parent triggers (lexical / `CanonicalConcept`), L1.12.b `StructuralSimilarity` (different-lexical-name nickname case) | canonical-home |
 | L1.13 Skeleton-collapse | derive / canonical-home |
 
 The only mechanical merge in this layout is **L1.6 → L1.10** — the
@@ -199,6 +199,7 @@ enumeration.
 | **L1.10.b** `CanonicalCarrier` (sub-signature of Textual-bypass family) | `coverage_defect_canonical_carrier` |
 | L1.11 Plausible-fallback | `coverage_defect_plausible_fallback` |
 | L1.12 Parallel-authority | `coverage_defect_parallel_authority` |
+| **L1.12.b** `StructuralSimilarity` (sub-signature of Parallel-authority family) | `coverage_defect_parallel_authority` *(shared with parent — sub-signature contributes findings into the same acceptance key; no separate key needed since the resolution table and outcome shapes are the parent's)* |
 | L1.13 Skeleton-collapse | `coverage_defect_skeleton_collapse` *(reserved-proposed — enforcement not active until skeleton extraction + classifier + clearing receipts land)* |
 
 **Migration notes for existing downstream consumers:**
@@ -1084,6 +1085,327 @@ For D2-resolver: land the planned `extdeps/languages/resolver.dag`
 canonically and rewrite `rust.dag`'s `GroundingMap` declaration into an
 import/alias of the resolver's authoritative shape.
 
+#### L1.12.b Structural-similarity trigger — closes L1.12's decidability gap (the *nickname* case)
+
+> **Status: reserved-proposed.** Closes the gap L1.12's decidability
+> boundary already names: "two homes use *different* lexical names
+> AND no `CanonicalConcept` row registers them as the same concept" —
+> the *unregistered nickname*. The boundary text itself points at "an
+> extension primitive (e.g., a structural similarity fold)" — this
+> sub-signature IS that primitive, scoped narrowly so the lens stays
+> mechanically decidable. **Enforcement gate** (parallel to L1.13):
+> not active until ALL of (a) `v4.lens.structural_similarity` lands
+> with the schema below, (b) the L1.12 diagnostic payload carries a
+> `ParallelAuthorityTrigger` discriminator distinguishing parent
+> triggers from this sub-signature, (c) the R1–R5 clearing carriers
+> are mechanically consumable in substrate. Shares the parent's
+> `coverage_defect_parallel_authority` acceptance key, but findings
+> are distinguishable by trigger; downstream consumers must read the
+> trigger to know whether a finding came from the parent or this
+> sub-signature.
+
+- *Diagnostic payload (trigger discriminator):* the L1.12 family
+  diagnostic carries a `ParallelAuthorityTrigger` coproduct so a
+  parent-triggered finding and a sub-signature-triggered finding are
+  mechanically distinguishable:
+  ```dag
+  type ParallelAuthorityTrigger
+    = LexicalNameCollision
+    | CanonicalConceptCollision
+    | StructuralSimilarity { layer: StructuralSimilarityLayer }
+  type StructuralSimilarityLayer
+    = StructuralIdentity            // (C1) full variant/signature+body bijection
+    | CatamorphismEquivalence       // (C2) un-derived fold over registered fold_T
+  ```
+  Without this discriminator, downstream tooling cannot tell which
+  trigger fired under the shared `coverage_defect_parallel_authority`
+  key — silent enforcement expansion is the failure mode this guards
+  against.
+
+- *Trigger C (structural similarity):* fires when a declaration's
+  structural shape matches a **registered canonical-home declaration**
+  above a threshold defined by the layers below, AND no
+  `CanonicalConcept`, alias-identity edge, or `HistoricalDeclaration`
+  row connects them. The canonical-home set is **not** restricted to
+  `std/` or `core/`; it is whatever the concept-home index (see
+  `v4.lens.concept_home` in §10.2) declares as canonical. `std/` and
+  `core/` are the default canonical homes for substrate primitives,
+  but a non-`std/` declaration can be canonical when the
+  concept-home index says so (e.g., `src/v3/lenses/named_function_count.dag`
+  is the canonical home for the `count_named_bind` shape — outside
+  `std/` but registered as canonical). Two scopes — both fire the
+  same trigger:
+  - **Type-scope.** A `type Foo = …` declaration in a non-canonical-
+    home file whose **variant set + field shape** matches a registered
+    canonical-home `type Bar = …`, modulo variant renames. Catches
+    model nicknames where the variant sets are in full structural
+    bijection. **Domain-sum hard-fire is intentional:** common
+    shape-equivalent sums (`Result`-like, `Option`-like, three-way
+    status enums, small enumerated domains) WILL fire L1.12.b until a
+    `ConceptDisambiguation` row lands marking them as legitimately
+    distinct concepts (resolution shape (R3)). That ergonomic cost
+    is the design's chosen posture — making it explicit that two
+    independently-declared `Win | Lose | Tie` carriers are the same
+    concept until the substrate says otherwise. **Refinement/subset
+    cases** (e.g. `RegisterStateSpace` enumerating a refined subset
+    of `StateSpace`) are explicitly NOT in scope for this entry —
+    (C1) requires a full variant-set bijection, which subset+
+    extension shapes fail by construction. See the Kills section
+    for `RegisterStateSpace` as the honest known gap (future (C1')
+    refinement-subset sub-layer).
+  - **Fn-scope.** A `fn helper(…) -> …` matches an existing `std/`
+    fn under the layer rules below. The lens fires under EITHER
+    (C1) — signature-shape match **AND** α-renamed body equality
+    (parameter-bijection on the signature, plus body normalization
+    that compares for structural identity after parameter + bound-name
+    α-renaming) — OR (C2) — catamorphism-equivalence over a
+    `std/`-registered type with a known `fold_T`. (C1)-alone-by-
+    signature is a deliberate non-fire: two fns with the same
+    signature and different bodies are not nicknames.
+
+- *Decidable:* yes — three mechanically-distinct layers, ordered by
+  workhorse-first. The lens fires when **any** layer's structural
+  fact crosses its threshold; the 5-outcome resolution table from
+  L1.12 then resolves.
+  - **(C1) Structural-identity match (workhorse).** For type-scope:
+    the parsed model carries the carrier's **variant set + per-variant
+    field shape**; two carriers match when there's a bijection between
+    their variant sets preserving field arity + field-type coproduct
+    identity (modulo coproduct-of-leaves identity per Practice 11).
+    For fn-scope: the parsed model carries the fn's **signature shape
+    AND α-normalized body shape**; two fn-decls match when (i) there's
+    a parameter-bijection on the signature preserving type identity
+    AND (ii) the bodies, after α-renaming parameter slots and pattern-
+    bound names by canonical position, are structurally identical
+    expression trees. Both conjuncts are required for (C1) to fire on
+    a fn-pair — signature-only match is explicitly NOT a fire (two
+    unrelated fns with the same `fn (T) -> U` signature is the
+    expected steady-state, not a nickname). Substrate-readable, no
+    heuristic.
+  - **(C2) Catamorphism-equivalence (stricter sub-rule for
+    fold-shape fns).** A fn that performs structural recursion over
+    `T` (one arm per `T`-variant, recursive calls only at
+    `T`-variant positions) is, by the homomorphism heuristic,
+    equivalent to `fold_T` with its algebra. (C2) fires when **both**
+    (i) the fn's `CatamorphismForm` resolves to
+    `StructuralFoldOver { type_id: T, algebra: … }` (extracted by
+    the producer stage; see §10.2), AND (ii) a substrate
+    `FoldRegistryEntry` row exists for `T`:
+    ```dag
+    type FoldRegistryEntry {
+      carrier:             TypeId            // the type being folded
+      fold:                FnId              // the canonical fold_T fn
+      recursive_positions: Set<VariantField> // must match the producer's extraction
+      algebra_carrier:     TypeId            // the algebra record type the fn parameter takes
+    }
+    ```
+    "Known `fold_T`" is **not** a naming convention — it is a
+    `FoldRegistryEntry` row in the substrate. Without a registry
+    row, (C2) does not fire even if the fn structurally is a fold
+    over `T`; landing the row is what makes the substrate claim
+    `fold_T` is canonical. This is Practice 10's homomorphism
+    heuristic mechanized — same defect class, machine-readable
+    trigger gated on substrate authority.
+  - **(C3) Token-vocabulary overlap (triage, not a fire).** Names
+    of a non-`std/` decl and a `std/` decl share above a vocabulary-
+    overlap threshold (Jaccard ≥ 0.5 on the token-set extracted
+    from identifier + variant/field names), as a heuristic surface
+    for human cheap-glance. **Cheap-glance only — never fires the
+    lens by itself; presented as advisory list alongside firings.**
+    Same rule as L1.13's "advisory" tier being illegal: enforcement
+    requires (C1) or (C2) substantiation.
+
+  **Order is intentional.** (C1) fires on the structurally-identical
+  case (the workhorse); (C2) fires on the un-derived-fold case (a
+  separate defect class with its own clean resolution); (C3) is
+  triage-only. The lens never fires on (C3) alone — operator-direct
+  ruling on Practice 11 sub-rules + the no-fourth-tier rule.
+
+- *Verdict:* hard error. Same 5-outcome resolution table as the
+  parent L1.12 (alias-identity edge / retirement-record /
+  ConceptDisambiguation / CanonicalConcept-without-resolution /
+  silence-fails-closed). The substrate adds whichever resolution
+  shape is honest for the case.
+
+- *Escape (clean 🟢):*
+  - **Refinement-not-parallel.** A `type RegisterStateSpace = StateSpace
+    refined { variant ∈ {Reg, Const, Global, Local} } ∪ { ResParam { … } }`
+    declaration (or its substrate equivalent) makes the relationship
+    explicit; the parallel-coproduct nickname becomes a refinement
+    edge. Equivalent to outcome (1) "alias-identity edge" extended
+    to refinements.
+  - **Practice-11-parameterized.** If the (C1) hit is "the same fn
+    shape appears N times across files" (e.g., the `count_named_bind`
+    quadruplet — identical body across 4 files), the parameterized
+    move per Practice 11 is to define the fn once in a canonical home
+    and import it elsewhere; the redeclarations become alias-identity
+    edges (outcome (1)). Test-fixture redeclarations get the same
+    treatment — copies are not exempted from L1.12 by being in a
+    fixture file.
+  - **Distinct domains.** A `ConceptDisambiguation` row marking the
+    similarly-shaped types as legitimately distinct concepts in
+    different namespaces (e.g., `network.Result` vs
+    `compiler.normalize.Result`) — outcome (3) directly.
+  - **Template → generated artifact (structural resolution required).**
+    A generated `.dag` produced by `build.rs` (or any structural
+    emission step) from a template authority is a derivative, not an
+    independent reinvention — but **only when the generation edge is
+    recorded structurally**. The resolution shape is a
+    `GeneratedArtifactBinding` registry row in the substrate (named
+    explicitly to avoid collision with the existing
+    `DependencyKind::GeneratedFrom` variant in
+    `src/v4/std/dependency.dag:25`):
+    ```dag
+    data r1_gates_generated_binding: GeneratedArtifactBinding = {
+      generated:  src.v3.compiler.tests.fixtures.r1_gates,
+      authority:  src.v3.compiler.tests.fixtures.r1_gates_template,
+      emitter:    build_rs_emit_r1_gates_fixture,
+    }
+    ```
+    The lens reads `GeneratedArtifactBinding` rows as the resolution shape —
+    same discipline as outcome (1) alias-identity and outcome (2)
+    `HistoricalDeclaration` retirement: substrate data, not comment
+    prose. **Header comment markers and `build.rs` files alone do
+    NOT satisfy the escape** — that would re-introduce a prose-shaped
+    authority path and conflict with the parent L1.12's "No
+    comment/prose inspection" rule and the no-prose discipline. The
+    `GeneratedArtifactBinding` row must land. Worked example: until a
+    `r1_gates_generated_binding: GeneratedArtifactBinding` row is committed, the
+    `r1_gates.template.dag`/`r1_gates.dag` pair will fire L1.12.b
+    today (as it should — the substrate has not taken a structural
+    position on the relationship); landing the row resolves it. The
+    pair's existing prose header (`// **Authority:** Hand-edit ...
+    // Companion is generated ...`) is informational only and does
+    not satisfy the escape.
+(The carrier name `GeneratedArtifactBinding` is chosen here — not
+    a placeholder — to make the design directly implementable; the
+    short `GeneratedFrom` was earlier suggested but conflicts with
+    the existing `DependencyKind::GeneratedFrom` variant in
+    `src/v4/std/dependency.dag:25`.)
+
+- *Decidability boundary (explicit):* (C1) and (C2) are mechanical and
+  decidable over parsed substrate; (C3) is triage and never fires
+  alone. The lens does **not** catch:
+  - Two homes that share neither structural shape (C1 miss) nor
+    fold-shape equivalence (C2 miss) but ARE conceptually the same.
+    That residual case requires operator judgment and a
+    `CanonicalConcept` row landing post-hoc, at which point Trigger
+    B of the parent L1.12 takes over.
+  - Behavioral equivalence in the general sense (undecidable). The
+    lens does not attempt it; the homomorphism heuristic (C2) is the
+    only behavioral-shape claim made, and it is structural, not
+    semantic.
+
+  This is the honest fold-bound: (C1) catches structurally-identical
+  declarations regardless of name; (C2) catches un-derived
+  catamorphisms regardless of how the body is spelled; everything
+  else routes through operator judgment via the parent's resolution
+  table.
+
+- *Clearing receipt (single authoritative resolution table):* the
+  parent L1.12 dispositions are inherited unchanged. The L1.12
+  family **clearing table** is R1–R5, separately enumerated below.
+  Parent outcomes (4) `CanonicalConcept`-without-resolution and (5)
+  silence are **firing states**, not clearing shapes — when the
+  lens engages and lands on those outcomes it is producing a
+  diagnostic, not resolving one. The vocabulary distinction is
+  load-bearing: "outcome" describes what the lens-engagement
+  decision-table evaluates to (5 cases, 3 passing + 2 firing);
+  "resolution shape" describes the substrate carriers a substrate
+  author lands to clear a firing (5 shapes, all passing). The lens
+  re-fires on the same head until one of the five resolution shapes
+  lands or the declaration is deleted (deletion removes the trigger
+  condition entirely, so the lens never engages — not a sixth
+  resolution shape, just trigger absence).
+  | # | Resolution shape | Source | Substrate carrier |
+  |---|---|---|---|
+  | (R1) | Alias-identity edge | parent L1.12, outcome (1) | `import` + `type T = canonical.T` redeclaration rewrite |
+  | (R2) | Retirement record | parent L1.12, outcome (2) | `HistoricalDeclaration` row |
+  | (R3) | ConceptDisambiguation row | parent L1.12, outcome (3) | `ConceptDisambiguation` row naming declarations as distinct concepts |
+  | (R4) | Refinement edge | L1.12.b Escape (Refinement-not-parallel) | substrate `Refinement` carrier declaring the relationship (`type Sub = Super refined { … }` or equivalent) |
+  | (R5) | Generated-artifact binding | L1.12.b Escape (Template → generated) | `GeneratedArtifactBinding` registry row |
+
+  Parent outcomes (4) `CanonicalConcept`-without-resolution and (5)
+  silence are FIRES, not resolutions — they're the cases the lens
+  acts on, and resolution requires the substrate to add one of
+  (R1)–(R5). All five resolution shapes are substrate data — no
+  comment/prose path satisfies any of them (the no-prose discipline
+  applies uniformly across the table).
+
+- *Fix-confidence: templated auto-apply* for the firing-today cases
+  only — for (C1) type-scope hits (full variant-set bijection), the
+  (R1) alias-identity rewrite is mechanical (the lens emits a
+  `Diff` rewriting the redeclaration into an `import` + `type T =
+  canonical.T`); for (C1) fn-scope hits (signature + body match),
+  the rewrite is the alias `fn helper(…) -> … = canonical.helper(…)`;
+  for (C2) hits, the rewrite is the `fold_T` call with the algebra
+  extracted from the original arms (the L1.5 catamorphism-derivation
+  pattern, applied here as the fix shape). Reviewer overrides the
+  canonical-home or algebra-binding names before commit. The
+  refinement-subset case (RegisterStateSpace-shape) has **no
+  auto-fix today** — it's part of the (C1') future sub-layer;
+  resolution requires operator judgment landing one of (R3) (R4)
+  via human-designed substrate carrier shape.
+
+- *Kills (real corpus):*
+  - **`count_named_bind` corpus.** Identical
+    `fn count_named_bind(behavior: Behavior) -> Int = match behavior
+    { Value(v) => 0; Transform(t) => 0; Branch(b) => 0; ... }`
+    appears in four places, but only two are independent declarations:
+    - `src/v3/lenses/named_function_count.dag:15` — canonical lens
+      (the program-text authority).
+    - `src/v3/compiler/tests/t_demo/t_demo_fixtures.dag:28` —
+      hand-authored test fixture: **fires on (C1)** as an
+      independent declaration with identical shape and body.
+    - `src/v3/compiler/tests/fixtures/r1_gates.template.dag:139` and
+      `src/v3/compiler/tests/fixtures/r1_gates.dag:139` — a
+      template→generated pair (build.rs splices the lens source into
+      the template). The pair **fires (C1) today** (identical body)
+      AND will continue to fire until an (R5)
+      `GeneratedArtifactBinding` registry row lands — (R5) IS the
+      resolution path for this pair, not an alternative non-fire.
+      Cited here to show the (R5) resolution shape working in
+      practice (today: lens fires; after (R5) lands: lens resolves).
+    Practice-11-parameterized clean shape: one canonical home
+    (`lenses/named_function_count.dag`), one import-alias from
+    `t_demo_fixtures.dag`. The template→generated pair stays as-is.
+  - **`RegisterStateSpace` parallel to `StateSpace` — honest known
+    gap (not a current fire; future (C1') candidate).** In
+    `src/v4/extdeps/languages/ptx.dag:34` and `:102`. `StateSpace`
+    enumerates 8 variants (`Reg | SReg | Const | Global | Local |
+    ...`); `RegisterStateSpace` enumerates 6 with renamed
+    constructors (`ResReg | ResConst | ResGlobal | ResLocal |
+    ResParam{...}` + one more) — a refined subset with one
+    extension. **(C1) does NOT fire** — it requires a full variant-
+    set bijection (same cardinality, preserving field shape), which
+    this pair fails by construction. (C2) doesn't apply either
+    (these are type declarations, not fns). The lens as specified
+    therefore does NOT catch refinement-subset parallel coproducts;
+    that's an honest known gap. Cited here as the target shape for
+    a future **(C1') refinement-subset sub-layer** — out of scope
+    for this entry. Clean shape when (C1') lands or when operator
+    judgment intervenes today: refinement-not-parallel per the
+    Escape rule above (substrate carrier rewritten as a refinement
+    edge or as a `CanonicalConcept` row binding the two carriers).
+  - **`lookup_chain` (resolver) vs `fold_right` over scope chain.**
+    `src/v4/compiler/03_resolve.dag:205` defines
+    `fn lookup_chain(s: Scope, name: Symbol) -> Symbol?` as a
+    hand-rolled structural recursion over `Scope = ScopeFrame {
+    locals, outer } | ScopeRoot { module }`. Fires on (C2) — the fn
+    is exactly `fold_T` with `T = Scope`, base case at `ScopeRoot`,
+    inductive step at `ScopeFrame`, returning the first `map_get`
+    hit. Should call `fold_right` (or the `Scope` carrier's algebra)
+    instead. Note: this candidate is **(C2)-fires-only**, NOT (C1) —
+    the signature is not identical to `fold_right`'s; it's the
+    homomorphism shape that catches it.
+
+- *Producer stage (see §10):* a new derived stage
+  `v4.lens.structural_similarity` produces the shared index — the
+  per-decl structural-shape facts (C1's variant-set + field-shape
+  for types, C1's signature shape for fns, C2's catamorphism-form
+  classifier, C3's token-set) that the lens consumes facts-flow-
+  forward without re-walking declarations.
+
 ### L1.13 Skeleton-collapse lens — kills *parametric-arm duplication via constructor-name template* (proposed)
 
 > **Status: proposed.** Derived from finding F14 (`feature_disposition` at
@@ -1596,8 +1918,9 @@ uses.
 | Import graph + target existence | `v4.compiler.02_parse` | L0.8, L1.8 |
 | Return-type → fail-closed-carrier? | `v4.compiler.03_resolve` | L0.14, L1.11 |
 | Match-arm RHS skeleton + per-arm group membership + per-skeleton constructor-hole presence (normalized RHS after α-renaming + matched-arm constructor substitution; groups expose arm-ids so the auto-fix consumes them as facts, not by re-walking) | `v4.lens.match_arm_skeleton` (new derived stage — see §10.2) | L1.13 |
+| Per-decl structural-shape facts (type-decl: variant set + per-variant field shape; fn-decl: signature shape + body catamorphism-form classifier + identifier token-set) | `v4.lens.structural_similarity` (new derived stage — see §10.2) | L1.12.b |
 
-### 10.2 Four small derived stages cover what the pipeline doesn't already expose
+### 10.2 Five small derived stages cover what the pipeline doesn't already expose
 
 These are themselves `.dag` stages — small folds with declared
 `consumes:` edges — and they're reusable across multiple lenses:
@@ -1617,6 +1940,85 @@ module v4.lens.concept_home
 consumes: v4.compiler.03_resolve, v4.lens.canonical_observations_index
 produces: Map<FnId, File>               // each fn's primary-concept home file
 // reusable by: L1.8
+
+module v4.lens.structural_similarity
+consumes: v4.compiler.02_parse, v4.compiler.03_resolve
+produces: Map<DeclId, StructuralShape>
+// StructuralShape = TypeShape | FnShape
+// TypeShape = {
+//   variant_set: [VariantShape],            // sorted; bijection-comparable
+//   total_variants: Nat,
+// }
+// VariantShape = {
+//   field_arity: Nat,
+//   field_type_idents: [TypeId],            // by coproduct identity, not by name
+// }
+// FnShape = {
+//   signature: SignatureShape,              // input coproduct identity, output coproduct identity, parameter arity
+//   body_normalized: BodyShape,             // α-renamed body expression tree (parameter slots + bound
+//                                           //   names normalized by canonical position); compared structurally.
+//                                           //   REQUIRED for (C1) fn-scope; signature-only-match is NOT a fire.
+//   catamorphism_form: CatamorphismForm,    // None | StructuralFoldOver { type_id, algebra }
+//   token_set: Set<Token>,                  // identifier + variant/field names (C3 triage only)
+// }
+// CatamorphismForm = None | StructuralFoldOver { type_id: TypeId, algebra: AlgebraShape }
+// AlgebraShape = {
+//   per_variant:         Map<VariantId, NormalizedArmBody>,
+//                                           // one entry per variant of type_id; NormalizedArmBody is the arm's
+//                                           // RHS expression tree after α-renaming pattern-bound names by canonical
+//                                           // position. Consumed by the (C2) auto-fix to emit the fold_T call
+//                                           // with the extracted algebra structurally — no re-walking of the fn body.
+//   recursive_positions: Set<VariantField>, // which variant fields recurse (drives fold_T's recursive-position
+//                                           // contract); empty when the fold is fully consuming. MUST match the
+//                                           // FoldRegistryEntry's recursive_positions for (C2) to fire.
+//   free_params:         List<ParamSlot>,   // fn parameters NOT bound by the fold-walk (e.g., lookup_chain's `name`
+//                                           // parameter is a free param threaded into every arm). The (C2) auto-fix
+//                                           // must include these in the fold_T call's algebra-binding.
+//   fold_order:          FoldOrder,         // LeftFold | RightFold | UnorderedFold; extracted from the order in
+//                                           // which the body composes recursive results. Required for foldl-vs-foldr
+//                                           // distinction in the auto-fix.
+//   result_carrier:      TypeId,            // the output type identity. Drives the algebra-record type the fold_T
+//                                           // call instantiates.
+//   short_circuit:       Optional<ShortCircuitCarrier>,
+//                                           // None for total folds; Some(carrier) when the body has early-return
+//                                           // semantics (e.g., lookup_chain returns Some on first hit, never
+//                                           // recursing on Some). The short-circuit carrier names the discriminator
+//                                           // type (typically Option / Outcome / a 2-variant decision carrier);
+//                                           // the (C2) auto-fix wraps the fold accordingly.
+// }
+// Together these six fields are enough for the (C2) auto-fix to emit
+// a structurally-correct fold_T call with no consumer re-inference.
+// They are extracted in the same fold-walk that classifies
+// CatamorphismForm — single pass, single authority.
+// SignatureShape comparison: bijection on parameter slots preserving
+// type identity (NOT names); output type by coproduct identity.
+// BodyShape comparison: structural identity of the α-renamed
+// expression tree. Two fns match under (C1) iff signature AND body
+// shape BOTH match — signature-only is a deliberate non-fire (two
+// fns sharing a `(T) -> U` shape is expected steady-state).
+// CatamorphismForm extraction: scan fn body for one-arm-per-T-variant
+// match with recursive calls only at T-variant positions; classify
+// `StructuralFoldOver { type_id: T, algebra: extracted-algebra }`
+// (carrying the per-variant arm bodies + recursive-position set as
+// substrate facts) if so; `None` otherwise. The algebra extraction
+// is the SAME fold-walk that classifies the form — extracted in
+// the same pass, emitted in the same record. Facts Flow Forward
+// (Practice 3 / P2): the (C2) auto-fix consumes the algebra
+// directly from this record; no consumer re-walks the fn body or
+// re-extracts the algebra.
+// Facts Flow Forward (Practice 3): the lens emits everything L1.12.b
+// needs for (C1) signature-match, (C2) catamorphism-equivalence, and
+// (C3) token-vocabulary triage. No consumer re-walks declarations or
+// re-derives shape equivalence — single authority (P2), one
+// mechanism, multiple downstream projections.
+// reusable by: L1.12.b, future cross-substrate-version drift lens,
+// future module-graph homomorphism lens
+// Algorithm: walk each parsed declaration; for `type` decls emit
+//   TypeShape with the sorted normalized variant set; for `fn` decls
+//   emit FnShape with signature normalized (parameter-bijection
+//   canonical form), body classified for catamorphism form, and the
+//   token-set extracted from the AST identifiers. Substrate-only,
+//   no comment/prose inspection.
 
 module v4.lens.match_arm_skeleton
 consumes: v4.compiler.02_parse, v4.compiler.03_resolve
@@ -1670,6 +2072,7 @@ consumes:
   v4.compiler.04_infer
   v4.lens.match_arm_shape
   v4.lens.match_arm_skeleton
+  v4.lens.structural_similarity
   v4.lens.closed_vocab_scan
   v4.lens.concept_home
 produces:
