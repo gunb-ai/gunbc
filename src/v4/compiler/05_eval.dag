@@ -2,7 +2,7 @@
 // Scope: primary evaluation path over inferred tree/input subgraphs and TestClaim runner substrate.
 // Owns: Inputs, EvalContext, TestClaimTypedInput, TestClaimEvalSubject, TestClaimCacheKey, TestClaimCacheReceipt, Verdict, TestClaimRun, EvalFoldState, eval, eval_node, run_test_claim, aggregate_verdicts.
 // Consumes: v4.compiler.infer, v4.std.host, v4.std.node, v4.std.diagnostic, v4.std.verification.
-// Status: T-22 eval consumes HostModel interpretation algebra; TestClaim runner remains Node-shaped.
+// Status: T-22 eval consumes HostModel interpretation algebra; TestClaim runner remains Node-shaped. Local control terminalization, host-value conformance, behavior dispatch, Outcome accumulation, and fold progress sentinels are staged below with explicit dissolution targets.
 // CompilesClaim: run_test_claim_assert compares actual to expected_value via outcome_node_eq (tighter than legacy AssertKind Compiles, which Pass'd on any Accepted).
 
 module v4.compiler.eval
@@ -242,6 +242,7 @@ fn eval_structural_node_for_eval(tree: InferredTree, node: Node) -> Outcome<Node
 }
 
 
+// 🟡 gated — feature:T22-outcome-accumulation-policy — bind node://adhoc-6a2e599a-cc2 — dissolve-on: Outcome traverse/zip accumulation policy carries rejected-with-pending diagnostics merge; forbidden: local Rejected/Accepted ladders per eval accumulator.
 fn eval_absorb_structural_child(
   acc: Outcome<Node>,
   child: Outcome<Node>
@@ -264,6 +265,7 @@ fn eval_absorb_structural_child(
 }
 
 
+// 🟡 gated — feature:T22-host-control-terminalization — bind node://adhoc-6a2e599a-cc2 — dissolve-on: HostControlSemantics exposes terminalization/disposition for HostControlTransfer; forbidden: each eval consumer locally deciding whether Continue/Return/Raise/Suspend is terminal.
 fn host_control_transfer_value(control: HostControlTransfer, node: Node) -> Outcome<HostValue> {
   match control {
     HostContinue { value: v } =>
@@ -282,6 +284,7 @@ fn host_control_transfer_value(control: HostControlTransfer, node: Node) -> Outc
 }
 
 
+// 🟡 gated — feature:T22-eval-host-value-acceptance-witness — bind node://adhoc-6a2e599a-cc2 — dissolve-on: eval consumes a modeled acceptance witness/product tying HostValue resolved type, inhabitance, and canonical grounding to InferredFacts; forbidden: permanent Bool-ladder proof erasure.
 fn eval_accept_host_value_with_facts(
   node: Node,
   facts: InferredFacts,
@@ -309,6 +312,7 @@ fn eval_accept_host_value_with_facts(
 }
 
 
+// 🟡 gated — feature:T22-host-behavior-interpreter-dispatch — bind node://adhoc-6a2e599a-cc2 — dissolve-on: HostInterpretationAlgebra exposes a canonical Behavior-indexed interpreter/disposition so eval builds one input and consumes the host-owned behavior algebra; forbidden: downstream consumers owning divergent Behavior match tables.
 fn eval_computation_node(
   behavior: Behavior,
   node: Node,
@@ -395,6 +399,7 @@ fn eval_fold_state_value(state: EvalFoldState) -> Outcome<HostValue> {
 }
 
 
+// 🟡 gated — feature:T22-outcome-accumulation-policy — bind node://adhoc-6a2e599a-cc2 — dissolve-on: Outcome traverse/zip accumulation policy carries rejected-with-pending diagnostics merge; forbidden: local Rejected/Accepted ladders per eval accumulator.
 fn eval_absorb_child_diagnostics(
   acc: Outcome<List<HostValue>>,
   child: Outcome<Node>
@@ -417,6 +422,7 @@ fn eval_absorb_child_diagnostics(
 }
 
 
+// 🟡 gated — feature:T22-outcome-accumulation-policy — bind node://adhoc-6a2e599a-cc2 — dissolve-on: Outcome traverse/zip accumulation policy carries rejected-with-pending diagnostics merge and list append combine; forbidden: local Rejected/Accepted ladders per eval accumulator.
 fn eval_append_child_value(
   acc: Outcome<List<HostValue>>,
   child: Outcome<HostValue>
@@ -439,6 +445,7 @@ fn eval_append_child_value(
 }
 
 
+// 🟡 gated — feature:T22-eval-node-progress-carrier — bind node://adhoc-6a2e599a-cc2 — dissolve-on: EvalFoldState carries an explicit progress carrier such as AwaitingChildren/ReadyToInterpret/Interpreted; forbidden: treating an internal not-ready state as a permanent diagnostic authority.
 fn eval_pending_children(node: Node) -> Outcome<HostValue> {
   outcome_rejected(
     d: eval_diagnostic(reason: eval_rejected_pending_children, node: node)
