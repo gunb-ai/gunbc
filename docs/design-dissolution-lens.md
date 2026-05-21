@@ -1104,11 +1104,15 @@ import/alias of the resolver's authoritative shape.
   - **Type-scope.** A `type Foo = …` declaration in a non-`std/`
     file whose **variant set + field shape** matches an existing
     `std/` `type Bar = …`, modulo variant renames. Catches model
-    nicknames (`data DominanceResult = Win | Lose | Tie` when
-    `Witness<Carrier>` or an existing dominance carrier already
-    exists) and refinements declared as parallel coproducts
-    (`RegisterStateSpace` enumerating a refined subset of
-    `StateSpace` instead of binding via refinement).
+    nicknames where the variant sets are in full structural bijection
+    (e.g. `data DominanceResult = Win | Lose | Tie` when an existing
+    3-variant dominance carrier already exists). **Refinement/subset
+    cases** (e.g. `RegisterStateSpace` enumerating a refined subset
+    of `StateSpace`) are **explicitly NOT in scope** for this entry
+    — (C1) requires a full variant-set bijection, which subset+
+    extension shapes fail by construction. See the Kills section for
+    `RegisterStateSpace` as the honest known gap (future (C1')
+    refinement-subset sub-layer).
   - **Fn-scope.** A `fn helper(…) -> …` matches an existing `std/`
     fn under the layer rules below. The lens fires under EITHER
     (C1) — signature-shape match **AND** α-renamed body equality
@@ -1295,9 +1299,12 @@ import/alias of the resolver's authoritative shape.
     - `src/v3/compiler/tests/fixtures/r1_gates.template.dag:139` and
       `src/v3/compiler/tests/fixtures/r1_gates.dag:139` — a
       template→generated pair (build.rs splices the lens source into
-      the template). **Resolved by the template-generated Escape rule
-      above**, not a parallel-authority finding. Cited here to show
-      the boundary works in practice.
+      the template). The pair **fires (C1) today** (identical body)
+      AND will continue to fire until a (R5)
+      `GeneratedArtifactBinding` registry row lands — (R5) IS the
+      resolution path for this pair, not an alternative non-fire.
+      Cited here to show the (R5) resolution shape working in
+      practice (today: lens fires; after (R5) lands: lens resolves).
     Practice-11-parameterized clean shape: one canonical home
     (`lenses/named_function_count.dag`), one import-alias from
     `t_demo_fixtures.dag`. The template→generated pair stays as-is.
