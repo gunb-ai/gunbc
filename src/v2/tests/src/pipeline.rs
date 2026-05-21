@@ -480,7 +480,9 @@ fn make_bad(a: Int, b: Int) -> Box {
     let result = compile_dag(source);
     let diags = diagnostic_messages(&result);
     assert!(
-        diags.iter().any(|d| d.contains("expects exactly one argument") && d.contains("Box")),
+        diags
+            .iter()
+            .any(|d| d.contains("expects exactly one argument") && d.contains("Box")),
         "positional variant constructor must fail closed on wrong arity, got: {:?}",
         diags
     );

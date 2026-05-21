@@ -4807,14 +4807,34 @@ pub fn is_string_lit_pattern(p: Rc<MatchPattern>) -> bool {
     }
 }
 
-pub fn positional_payload_string_guard(fb_pat: Rc<MatchPattern>) -> String {
+pub fn positional_payload_binding_name(path: &Rc<Vec<String>>) -> String {
+    if ((path.clone().len() as i64) == 0) {
+        "__pos0_val".to_string()
+    } else {
+        {
+            let segments = Rc::new({
+                let mut __result = Vec::new();
+                for seg in path.clone().iter().cloned() {
+                    __result.push(emit_ident(seg.clone(), RenderTarget::Rust));
+                }
+                __result
+            });
+            v2_rt::concat(
+                v2_rt::concat("__pos_".to_string(), segments.join(&"_".to_string())),
+                "_val".to_string(),
+            )
+        }
+    }
+}
+
+pub fn positional_payload_string_guard(fb_pat: Rc<MatchPattern>, bind_name: String) -> String {
     match (*fb_pat).clone() {
         MatchPattern::LitPattern { ref value, .. } => {
             let LiteralValue::LitStr { value: s, .. } = value.as_ref() else {
                 unreachable!()
             };
             v2_rt::concat(
-                "__pos0_val == ".to_string(),
+                v2_rt::concat(bind_name, " == ".to_string()),
                 emit_string_literal(s.clone(), "".to_string()),
             )
         }
@@ -4824,6 +4844,7 @@ pub fn positional_payload_string_guard(fb_pat: Rc<MatchPattern>) -> String {
 
 pub fn collect_field_binding_string_guards(
     field_bindings: Rc<Vec<Rc<Node>>>,
+    path_prefix: Rc<Vec<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
@@ -4832,14 +4853,21 @@ pub fn collect_field_binding_string_guards(
             for fb in field_bindings.iter().cloned() {
                 __result.extend(
                     (*{
+                        let fb_name = field_binding_name_at(fb.clone(), source_indices.clone());
                         let fb_pat = field_binding_pattern(fb.clone());
                         if is_string_lit_pattern(fb_pat.clone()) {
-                            if (field_binding_name_at(fb.clone(), source_indices.clone()).as_str()
-                                == "0".to_string().as_str())
-                            {
-                                match positional_payload_string_guard(fb_pat.clone()) {
-                                    ref __s if __s == "" => Rc::new(vec![]),
-                                    guard => Rc::new(vec![guard.clone()]),
+                            if (fb_name.clone().as_str() == "0".to_string().as_str()) {
+                                {
+                                    let bind_name = positional_payload_binding_name(
+                                        &v2_rt::rc_list_push(path_prefix.clone(), "0".to_string()),
+                                    );
+                                    match positional_payload_string_guard(
+                                        fb_pat.clone(),
+                                        bind_name.clone(),
+                                    ) {
+                                        ref __s if __s == "" => Rc::new(vec![]),
+                                        guard => Rc::new(vec![guard.clone()]),
+                                    }
                                 }
                             } else {
                                 match (*fb_pat.clone()).clone() {
@@ -4850,13 +4878,7 @@ pub fn collect_field_binding_string_guards(
                                         };
                                         Rc::new(vec![v2_rt::concat(
                                             v2_rt::concat(
-                                                emit_ident(
-                                                    field_binding_name_at(
-                                                        fb.clone(),
-                                                        source_indices.clone(),
-                                                    ),
-                                                    RenderTarget::Rust,
-                                                ),
+                                                emit_ident(fb_name.clone(), RenderTarget::Rust),
                                                 " == ".to_string(),
                                             ),
                                             emit_string_literal(s.clone(), "".to_string()),
@@ -4867,8 +4889,11 @@ pub fn collect_field_binding_string_guards(
                             }
                         } else {
                             {
+                                let nested_path =
+                                    v2_rt::rc_list_push(path_prefix.clone(), fb_name.clone());
                                 let nested = collect_pattern_string_guards(
                                     fb_pat.clone(),
+                                    nested_path.clone(),
                                     source_indices.clone(),
                                 );
                                 if (nested.clone().as_str() == "".to_string().as_str()) {
@@ -4891,6 +4916,7 @@ pub fn collect_field_binding_string_guards(
 
 pub fn collect_pattern_string_guards(
     mut pattern: Rc<MatchPattern>,
+    mut path_prefix: Rc<Vec<String>>,
     mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     loop {
@@ -4925,7 +4951,9 @@ pub fn collect_pattern_string_guards(
                             } else {
                                 {
                                     let __tco_0 = fb_pat.clone();
+                                    let __tco_1 = v2_rt::rc_list_push(path_prefix, n.clone());
                                     pattern = __tco_0;
+                                    path_prefix = __tco_1;
                                     continue;
                                 }
                             }
@@ -4943,18 +4971,28 @@ pub fn collect_pattern_string_guards(
                                     == "0".to_string().as_str())
                                 {
                                     let fb_pat = field_binding_pattern(fb.clone());
+                                    let pos_path = v2_rt::rc_list_push(
+                                        v2_rt::rc_list_push(path_prefix, n.clone()),
+                                        "0".to_string(),
+                                    );
                                     if is_string_lit_pattern(fb_pat.clone()) {
-                                        break positional_payload_string_guard(fb_pat.clone());
+                                        break positional_payload_string_guard(
+                                            fb_pat.clone(),
+                                            positional_payload_binding_name(&pos_path),
+                                        );
                                     } else {
                                         {
                                             let __tco_0 = fb_pat.clone();
+                                            let __tco_1 = pos_path;
                                             pattern = __tco_0;
+                                            path_prefix = __tco_1;
                                             continue;
                                         }
                                     }
                                 } else {
                                     break collect_field_binding_string_guards(
                                         fbs.clone(),
+                                        v2_rt::rc_list_push(path_prefix, n.clone()),
                                         source_indices.clone(),
                                     );
                                 }
@@ -4966,6 +5004,7 @@ pub fn collect_pattern_string_guards(
                     } else {
                         break collect_field_binding_string_guards(
                             fbs.clone(),
+                            v2_rt::rc_list_push(path_prefix, n.clone()),
                             source_indices.clone(),
                         );
                     }
@@ -5035,6 +5074,7 @@ pub fn has_string_lit_with_bind(arms: &Rc<Vec<Rc<Node>>>) -> bool {
 
 pub fn emit_pattern(
     pattern: Rc<MatchPattern>,
+    path_prefix: Rc<Vec<String>>,
     shared_types: Rc<std::collections::BTreeSet<String>>,
     scrut_type: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -5052,6 +5092,7 @@ pub fn emit_pattern(
             &n,
             parent_enum.clone(),
             &fbs,
+            path_prefix,
             shared_types,
             &scrut_type,
             &source_indices,
@@ -5121,6 +5162,7 @@ pub fn emit_variant_pattern(
     name: &String,
     parent_enum: Option<String>,
     field_bindings: &Rc<Vec<Rc<Node>>>,
+    path_prefix: Rc<Vec<String>>,
     shared_types: Rc<std::collections::BTreeSet<String>>,
     scrut_type: &String,
     source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -5158,6 +5200,7 @@ pub fn emit_variant_pattern(
                         {
                             let inner_pat = emit_pattern(
                                 fb_pat.clone(),
+                                v2_rt::rc_list_push(path_prefix.clone(), name.clone()),
                                 shared_types.clone(),
                                 scrut_type.clone(),
                                 source_indices.clone(),
@@ -5181,8 +5224,19 @@ pub fn emit_variant_pattern(
                         {
                             {
                                 let fb_pat = field_binding_pattern(fb.clone());
+                                let pos_path = v2_rt::rc_list_push(
+                                    v2_rt::rc_list_push(path_prefix.clone(), name.clone()),
+                                    "0".to_string(),
+                                );
+                                let bind_name = positional_payload_binding_name(&pos_path);
                                 if is_string_lit_pattern(fb_pat.clone()) {
-                                    v2_rt::concat(qualified.clone(), "(ref __pos0_val)".to_string())
+                                    v2_rt::concat(
+                                        v2_rt::concat(
+                                            v2_rt::concat(qualified.clone(), "(ref ".to_string()),
+                                            bind_name.clone(),
+                                        ),
+                                        ")".to_string(),
+                                    )
                                 } else {
                                     {
                                         let payload_scrut = positional_payload_scrut_type(
@@ -5194,6 +5248,7 @@ pub fn emit_variant_pattern(
                                         );
                                         let inner_pat = emit_pattern(
                                             fb_pat.clone(),
+                                            pos_path.clone(),
                                             shared_types.clone(),
                                             payload_scrut,
                                             source_indices.clone(),
@@ -5226,6 +5281,13 @@ pub fn emit_variant_pattern(
                                     {
                                         let pat_str = emit_pattern(
                                             fb_pat.clone(),
+                                            v2_rt::rc_list_push(
+                                                v2_rt::rc_list_push(
+                                                    path_prefix.clone(),
+                                                    name.clone(),
+                                                ),
+                                                fb_name.clone(),
+                                            ),
                                             shared_types.clone(),
                                             "".to_string(),
                                             source_indices.clone(),
@@ -5347,10 +5409,34 @@ pub fn emit_variant_pattern(
                                             );
                                             let fb_pat = field_binding_pattern(fb.clone());
                                             if is_string_lit_pattern(fb_pat.clone()) {
-                                                v2_rt::concat(
-                                                    "ref ".to_string(),
-                                                    emit_ident(fb_name.clone(), RenderTarget::Rust),
-                                                )
+                                                if (fb_name.clone().as_str()
+                                                    == "0".to_string().as_str())
+                                                {
+                                                    {
+                                                        let bind_name =
+                                                            positional_payload_binding_name(
+                                                                &v2_rt::rc_list_push(
+                                                                    v2_rt::rc_list_push(
+                                                                        path_prefix.clone(),
+                                                                        name.clone(),
+                                                                    ),
+                                                                    "0".to_string(),
+                                                                ),
+                                                            );
+                                                        v2_rt::concat(
+                                                            "ref ".to_string(),
+                                                            bind_name.clone(),
+                                                        )
+                                                    }
+                                                } else {
+                                                    v2_rt::concat(
+                                                        "ref ".to_string(),
+                                                        emit_ident(
+                                                            fb_name.clone(),
+                                                            RenderTarget::Rust,
+                                                        ),
+                                                    )
+                                                }
                                             } else {
                                                 {
                                                     let is_shorthand = match (*fb_pat.clone())
@@ -5369,8 +5455,29 @@ pub fn emit_variant_pattern(
                                                         )
                                                     } else {
                                                         {
+                                                            let field_path =
+                                                                if (fb_name.clone().as_str()
+                                                                    == "0".to_string().as_str())
+                                                                {
+                                                                    v2_rt::rc_list_push(
+                                                                        v2_rt::rc_list_push(
+                                                                            path_prefix.clone(),
+                                                                            name.clone(),
+                                                                        ),
+                                                                        "0".to_string(),
+                                                                    )
+                                                                } else {
+                                                                    v2_rt::rc_list_push(
+                                                                        v2_rt::rc_list_push(
+                                                                            path_prefix.clone(),
+                                                                            name.clone(),
+                                                                        ),
+                                                                        fb_name.clone(),
+                                                                    )
+                                                                };
                                                             let pat_str = emit_pattern(
                                                                 fb_pat.clone(),
+                                                                field_path.clone(),
                                                                 shared_types.clone(),
                                                                 "".to_string(),
                                                                 source_indices.clone(),
@@ -5629,6 +5736,7 @@ pub fn analyze_rc_match(
 
 pub fn emit_pattern_rc_aware(
     pattern: Rc<MatchPattern>,
+    path_prefix: Rc<Vec<String>>,
     rc_analysis: Rc<RcPatternAnalysis>,
     shared_types: Rc<std::collections::BTreeSet<String>>,
     scrut_type: String,
@@ -5647,6 +5755,7 @@ pub fn emit_pattern_rc_aware(
             &n,
             parent_enum.clone(),
             &fbs,
+            path_prefix,
             rc_analysis,
             &shared_types,
             &scrut_type,
@@ -5661,6 +5770,7 @@ pub fn emit_variant_pattern_rc_aware(
     name: &String,
     parent_enum: Option<String>,
     field_bindings: &Rc<Vec<Rc<Node>>>,
+    path_prefix: Rc<Vec<String>>,
     rc_analysis: Rc<RcPatternAnalysis>,
     shared_types: &Rc<std::collections::BTreeSet<String>>,
     scrut_type: &String,
@@ -5706,6 +5816,7 @@ pub fn emit_variant_pattern_rc_aware(
                             );
                             let inner_pat = emit_pattern_rc_aware(
                                 fb_pat.clone(),
+                                v2_rt::rc_list_push(path_prefix.clone(), name.clone()),
                                 inner_analysis.clone(),
                                 shared_types.clone(),
                                 scrut_type.clone(),
@@ -5730,8 +5841,19 @@ pub fn emit_variant_pattern_rc_aware(
                         {
                             {
                                 let fb_pat = field_binding_pattern(fb.clone());
+                                let pos_path = v2_rt::rc_list_push(
+                                    v2_rt::rc_list_push(path_prefix.clone(), name.clone()),
+                                    "0".to_string(),
+                                );
+                                let bind_name = positional_payload_binding_name(&pos_path);
                                 if is_string_lit_pattern(fb_pat.clone()) {
-                                    v2_rt::concat(qualified.clone(), "(ref __pos0_val)".to_string())
+                                    v2_rt::concat(
+                                        v2_rt::concat(
+                                            v2_rt::concat(qualified.clone(), "(ref ".to_string()),
+                                            bind_name.clone(),
+                                        ),
+                                        ")".to_string(),
+                                    )
                                 } else {
                                     {
                                         let payload_scrut = positional_payload_scrut_type(
@@ -5750,6 +5872,7 @@ pub fn emit_variant_pattern_rc_aware(
                                         );
                                         let inner_pat = emit_pattern_rc_aware(
                                             fb_pat.clone(),
+                                            pos_path.clone(),
                                             inner_analysis.clone(),
                                             shared_types.clone(),
                                             payload_scrut.clone(),
@@ -5802,6 +5925,13 @@ pub fn emit_variant_pattern_rc_aware(
                                             );
                                             let pat_str = emit_pattern_rc_aware(
                                                 fb_pat.clone(),
+                                                v2_rt::rc_list_push(
+                                                    v2_rt::rc_list_push(
+                                                        path_prefix.clone(),
+                                                        name.clone(),
+                                                    ),
+                                                    fb_name.clone(),
+                                                ),
                                                 inner_analysis.clone(),
                                                 shared_types.clone(),
                                                 "".to_string(),
@@ -5928,10 +6058,34 @@ pub fn emit_variant_pattern_rc_aware(
                                             );
                                             let fb_pat = field_binding_pattern(fb.clone());
                                             if is_string_lit_pattern(fb_pat.clone()) {
-                                                v2_rt::concat(
-                                                    "ref ".to_string(),
-                                                    emit_ident(fb_name.clone(), RenderTarget::Rust),
-                                                )
+                                                if (fb_name.clone().as_str()
+                                                    == "0".to_string().as_str())
+                                                {
+                                                    {
+                                                        let bind_name =
+                                                            positional_payload_binding_name(
+                                                                &v2_rt::rc_list_push(
+                                                                    v2_rt::rc_list_push(
+                                                                        path_prefix.clone(),
+                                                                        name.clone(),
+                                                                    ),
+                                                                    "0".to_string(),
+                                                                ),
+                                                            );
+                                                        v2_rt::concat(
+                                                            "ref ".to_string(),
+                                                            bind_name.clone(),
+                                                        )
+                                                    }
+                                                } else {
+                                                    v2_rt::concat(
+                                                        "ref ".to_string(),
+                                                        emit_ident(
+                                                            fb_name.clone(),
+                                                            RenderTarget::Rust,
+                                                        ),
+                                                    )
+                                                }
                                             } else {
                                                 if field_needs_rc_ref(
                                                     fb_name.clone(),
@@ -5964,6 +6118,26 @@ pub fn emit_variant_pattern_rc_aware(
                                                             )
                                                         } else {
                                                             {
+                                                                let field_path =
+                                                                    if (fb_name.clone().as_str()
+                                                                        == "0".to_string().as_str())
+                                                                    {
+                                                                        v2_rt::rc_list_push(
+                                                                            v2_rt::rc_list_push(
+                                                                                path_prefix.clone(),
+                                                                                name.clone(),
+                                                                            ),
+                                                                            "0".to_string(),
+                                                                        )
+                                                                    } else {
+                                                                        v2_rt::rc_list_push(
+                                                                            v2_rt::rc_list_push(
+                                                                                path_prefix.clone(),
+                                                                                name.clone(),
+                                                                            ),
+                                                                            fb_name.clone(),
+                                                                        )
+                                                                    };
                                                                 let inner_analysis =
                                                                     analyze_rc_pattern(
                                                                         fb_pat.clone(),
@@ -5974,6 +6148,7 @@ pub fn emit_variant_pattern_rc_aware(
                                                                     );
                                                                 let pat_str = emit_pattern_rc_aware(
                                                                     fb_pat.clone(),
+                                                                    field_path.clone(),
                                                                     inner_analysis.clone(),
                                                                     shared_types.clone(),
                                                                     "".to_string(),
@@ -6113,6 +6288,13 @@ pub fn rc_pattern_preludes(
                                                             "let ".to_string(),
                                                             emit_pattern(
                                                                 field_binding_pattern(fb.clone()),
+                                                                v2_rt::rc_list_push(
+                                                                    v2_rt::rc_list_push(
+                                                                        Rc::new(vec![]),
+                                                                        n.clone(),
+                                                                    ),
+                                                                    fb_name.clone(),
+                                                                ),
                                                                 shared_types.clone(),
                                                                 "".to_string(),
                                                                 source_indices.clone(),
@@ -10469,6 +10651,7 @@ pub fn emit_typed_match_arm(
                 },
                 _ => emit_pattern(
                     arm_pat.clone(),
+                    Rc::new(vec![]),
                     shared_types.clone(),
                     scrut_type.clone(),
                     si.clone(),
@@ -10479,6 +10662,7 @@ pub fn emit_typed_match_arm(
             if rc_analysis.needs_rc_pattern.clone() {
                 emit_pattern_rc_aware(
                     arm_pat.clone(),
+                    Rc::new(vec![]),
                     rc_analysis.clone(),
                     shared_types.clone(),
                     scrut_type.clone(),
@@ -10488,6 +10672,7 @@ pub fn emit_typed_match_arm(
             } else {
                 emit_pattern(
                     arm_pat.clone(),
+                    Rc::new(vec![]),
                     shared_types.clone(),
                     scrut_type.clone(),
                     si.clone(),
@@ -10495,7 +10680,8 @@ pub fn emit_typed_match_arm(
                 )
             }
         };
-        let field_guards = collect_pattern_string_guards(arm_pat.clone(), si.clone());
+        let field_guards =
+            collect_pattern_string_guards(arm_pat.clone(), Rc::new(vec![]), si.clone());
         let arm_guard_str = match arm_g {
             Some(g) => emit_typed_expr(
                 g.clone(),
@@ -12647,6 +12833,7 @@ pub fn emit_typed_tco_match_arm(
         let pat_str = if rc_analysis.needs_rc_pattern.clone() {
             emit_pattern_rc_aware(
                 arm_pat.clone(),
+                Rc::new(vec![]),
                 rc_analysis.clone(),
                 shared_types.clone(),
                 scrut_type.clone(),
@@ -12656,13 +12843,15 @@ pub fn emit_typed_tco_match_arm(
         } else {
             emit_pattern(
                 arm_pat.clone(),
+                Rc::new(vec![]),
                 shared_types.clone(),
                 scrut_type.clone(),
                 si.clone(),
                 emit_info.clone(),
             )
         };
-        let field_guards = collect_pattern_string_guards(arm_pat.clone(), si.clone());
+        let field_guards =
+            collect_pattern_string_guards(arm_pat.clone(), Rc::new(vec![]), si.clone());
         let arm_guard_str = match arm_g {
             Some(g) => emit_typed_expr(
                 g.clone(),

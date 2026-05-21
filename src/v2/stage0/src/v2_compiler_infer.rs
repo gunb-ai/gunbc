@@ -2853,7 +2853,7 @@ match bare_s {
                                                 match infer_variant_constructor_call(
                                                     &func_name,
                                                     &call_args,
-                                                    span.clone(),
+                                                    &span,
                                                     node_name_span(&texpr),
                                                     &scope,
                                                 ) {
@@ -4286,7 +4286,7 @@ match bare_s {
 pub fn infer_variant_constructor_call(
     func_name: &String,
     call_args: &Rc<Vec<Rc<Node>>>,
-    span: Rc<SourceSpan>,
+    span: &Rc<SourceSpan>,
     name_span: Rc<SourceSpan>,
     scope: &Rc<InferScope>,
 ) -> Option<Rc<InferResult>> {
@@ -4298,12 +4298,10 @@ pub fn infer_variant_constructor_call(
                 Some(parent_node) => {
                     match find_child_named(parent_node.clone(), func_name.clone(), si.clone()) {
                         Some(variant_node) => {
-                            if (variant_has_positional_payload_shape(&variant_node, si.clone())
-                                && ((call_args.clone().len() as i64) == 1))
-                            {
-                                match call_args.clone().first().cloned() {
-                                    Some(arg) => {
-                                        match arg_name_at(arg.clone(), si.clone()) {
+                            if variant_has_positional_payload_shape(&variant_node, si.clone()) {
+                                if ((call_args.clone().len() as i64) == 1) {
+                                    match call_args.clone().first().cloned() {
+                                        Some(arg) => match arg_name_at(arg.clone(), si.clone()) {
                                             Some(arg_name) => {
                                                 let msg = v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("positional variant constructor '".to_string(), func_name.clone()), "' does not accept named arguments (got '".to_string()), arg_name.clone()), ": ...')".to_string());
                                                 Some(Rc::new(InferResult {
@@ -4334,9 +4332,30 @@ pub fn infer_variant_constructor_call(
                                                     &scope,
                                                 ))
                                             }
-                                        }
+                                        },
+                                        None => None,
                                     }
-                                    None => None,
+                                } else {
+                                    {
+                                        let arity_msg = v2_rt::concat(
+                                            v2_rt::concat(
+                                                "positional variant constructor '".to_string(),
+                                                func_name.clone(),
+                                            ),
+                                            "' expects exactly one argument".to_string(),
+                                        );
+                                        Some(Rc::new(InferResult {
+                                            typed: semantic_expr_error_node(
+                                                arity_msg.clone(),
+                                                span.clone(),
+                                            ),
+                                            diagnostics: Rc::new(vec![inference_error(
+                                                arity_msg.clone(),
+                                                span.clone(),
+                                                scope.module_name.clone(),
+                                            )]),
+                                        }))
+                                    }
                                 }
                             } else {
                                 None
