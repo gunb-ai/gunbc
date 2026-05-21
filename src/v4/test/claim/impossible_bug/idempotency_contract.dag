@@ -59,7 +59,9 @@ import v4.std.verification {
 data idempotent_position_symbol: Symbol = idempotent_position_symbol
 data idempotent_effect_symbol: Symbol = idempotent_effect_symbol
 data non_idempotent_effect_symbol: Symbol = non_idempotent_effect_symbol
+data repeated_append_effect_symbol: Symbol = repeated_append_effect_symbol
 data idempotency_violation_reason: Symbol = idempotency_violation_reason
+data idempotency_repetition_reason: Symbol = idempotency_repetition_reason
 data idempotency_position_field: Symbol = idempotency_position_field
 data idempotency_body_field: Symbol = idempotency_body_field
 
@@ -88,12 +90,34 @@ data falsification_nonidempotent_in_idempotent_position: Node =
   idempotency_contract(body: atom_node(s: non_idempotent_effect_symbol))
 
 
+data falsification_repeated_append_in_idempotent_position: Node =
+  idempotency_contract(body: atom_node(s: repeated_append_effect_symbol))
+
+
 data claim_idempotent_inhabitant_passes: TestClaim = TestClaim {
   kind: Compiles,
   label: "idempotent algebra inhabitant accepts idempotent structure",
   t19_anchor: T19ManualAnchorAbsent,
   input: idempotent_inhabitant_input,
   expected: Accepted { value: idempotent_inhabitant_input, diagnostics: None },
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+
+data claim_repeated_append_in_idempotent_position_caught: TestClaim = TestClaim {
+  kind: Equals,
+  label: "idempotent algebra inhabitance rejects repeated append composition",
+  t19_anchor: T19ManualAnchorAbsent,
+  input: falsification_repeated_append_in_idempotent_position,
+  expected: Rejected {
+    diagnostics: diagnostics_singleton(
+      d: Diagnostic {
+        reason: idempotency_repetition_reason,
+        at: NodeLocus { node: falsification_repeated_append_in_idempotent_position },
+        correction: Suggested { node: idempotent_inhabitant_input }
+      }
+    )
+  },
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 

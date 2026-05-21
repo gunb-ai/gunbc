@@ -44,7 +44,9 @@ import v4.std.verification {
 
 data optional_value_symbol: Symbol = optional_value_symbol
 data flattened_optional_symbol: Symbol = flattened_optional_symbol
+data double_unwrap_symbol: Symbol = double_unwrap_symbol
 data nested_optional_reason: Symbol = nested_optional_reason
+data double_unwrap_reason: Symbol = double_unwrap_reason
 data optional_inner: Symbol = optional_inner
 data optional_outer: Symbol = optional_outer
 
@@ -73,12 +75,38 @@ data falsification_nested_optional: Node = Node {
 }
 
 
+data falsification_optional_double_unwrap: Node = Node {
+  kind: TypeNode { connective: Cardinality },
+  children: [
+    Edge { label: Named { name: optional_outer }, target: atom_node(s: double_unwrap_symbol) },
+  ]
+}
+
+
 data claim_optional_chaining_no_double_unwrap: TestClaim = TestClaim {
   kind: Compiles,
   label: "optional cardinality refinement keeps accessor surface single-layer",
   t19_anchor: T19ManualAnchorAbsent,
   input: flattened_optional_input,
   expected: Accepted { value: flattened_optional_input, diagnostics: None },
+  classification: TestClassification { tier: Tier2, layer: Unit }
+}
+
+
+data claim_optional_double_unwrap_rejected: TestClaim = TestClaim {
+  kind: Equals,
+  label: "optional accessor surface rejects double unwrap shape",
+  t19_anchor: T19ManualAnchorAbsent,
+  input: falsification_optional_double_unwrap,
+  expected: Rejected {
+    diagnostics: diagnostics_singleton(
+      d: Diagnostic {
+        reason: double_unwrap_reason,
+        at: NodeLocus { node: falsification_optional_double_unwrap },
+        correction: Suggested { node: flattened_optional_input }
+      }
+    )
+  },
   classification: TestClassification { tier: Tier2, layer: Unit }
 }
 
