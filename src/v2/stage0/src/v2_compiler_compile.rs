@@ -460,6 +460,15 @@ pub fn dag_node_key_collision_error(key: String, span: Rc<SourceSpan>) -> Rc<Err
     )
 }
 
+pub fn is_resolved_alias_revisit(node: Rc<Node>, prior_fp: String) -> bool {
+    match node.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::Resolved { node: target, .. }) => {
+            (dag_node_fingerprint(&target).as_str() == prior_fp.as_str())
+        }
+        _ => false,
+    }
+}
+
 pub fn dag_node_missing_ref_error(node: &Rc<Node>) -> Rc<ErrorNode> {
     make_error_node(
         Rc::new(CompilerDiagnostic::InternalError {
@@ -660,17 +669,32 @@ pub fn dag_collect_insert(node: &Rc<Node>, acc: &Rc<DagCollectAcc>) -> Rc<DagCol
         let fp = dag_node_fingerprint(&node);
         match v2_rt::map_get(&acc.seen.clone(), key.clone()) {
             Some(prior) => {
-                if (prior.clone().as_str() == fp.as_str()) {
+                if ((prior.clone().as_str() == fp.as_str())
+                    || is_resolved_alias_revisit(node.clone(), prior.clone()))
+                {
                     acc.clone()
                 } else {
-                    Rc::new(DagCollectAcc {
-                        seen: acc.seen.clone(),
-                        order: acc.order.clone(),
-                        collision_errors: v2_rt::rc_list_push(
-                            acc.collision_errors.clone(),
-                            dag_node_key_collision_error(key.clone(), node.span.clone()),
-                        ),
-                    })
+                    if ((node.span.clone().start.clone() == 0)
+                        && (node.span.clone().end.clone() == 0))
+                    {
+                        Rc::new(DagCollectAcc {
+                            seen: acc.seen.clone(),
+                            order: acc.order.clone(),
+                            collision_errors: v2_rt::rc_list_push(
+                                acc.collision_errors.clone(),
+                                dag_node_key_collision_error(key.clone(), node.span.clone()),
+                            ),
+                        })
+                    } else {
+                        Rc::new(DagCollectAcc {
+                            seen: acc.seen.clone(),
+                            order: acc.order.clone(),
+                            collision_errors: v2_rt::rc_list_push(
+                                acc.collision_errors.clone(),
+                                dag_node_key_collision_error(key.clone(), node.span.clone()),
+                            ),
+                        })
+                    }
                 }
             }
             None => {
