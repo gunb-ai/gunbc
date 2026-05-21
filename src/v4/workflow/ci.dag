@@ -12,7 +12,7 @@ import v4.std.diagnostic {Correction, Diagnostic, Extent, Locus, NoCorrectionRea
 import v4.std.algebra {
   count_equal,
   count_where,
-  forall,
+  for_all,
   length,
   unique
 }
@@ -111,14 +111,14 @@ fn ci_all_gate_ids_unique(gates: List<CiGate>) -> Bool {
 
 fn ci_all_needs_resolve(jobs: List<CiJob>) -> Bool {
   fold(jobs, init: true, f: fn(acc, j) {
-    acc && forall(xs: j.needs, predicate: fn(n) {
+    acc && for_all(xs: j.needs, predicate: fn(n) {
       ci_symbol_resolves(s: n, jobs: jobs)
     })
   })
 }
 
 fn ci_all_gate_jobs_resolve(gates: List<CiGate>, jobs: List<CiJob>) -> Bool {
-  forall(xs: ci_gate_job_ids(gates: gates), predicate: fn(job_sym) {
+  for_all(xs: ci_gate_job_ids(gates: gates), predicate: fn(job_sym) {
     ci_symbol_resolves(s: job_sym, jobs: jobs)
   })
 }

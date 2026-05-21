@@ -9,7 +9,7 @@ module v4.workflow.bootstrap
 import v4.std.node { Hash, Symbol }
 import v4.std.algebra {
   count_equal,
-  forall,
+  for_all,
   length
 }
 import v4.std.diagnostic {Correction, Diagnostic, Extent, Locus, NoCorrectionReason, Outcome, Accepted, None, diagnostics_singleton}
@@ -74,10 +74,10 @@ fn bs_diagnostic(reason: Symbol) -> Diagnostic {
 
 fn bs_list_eq(a: List<Symbol>, b: List<Symbol>) -> Bool {
   (length(xs: a) == length(xs: b))
-    && forall(xs: a, predicate: fn(x) {
+    && for_all(xs: a, predicate: fn(x) {
          count_equal(xs: b, item: x, eq: fn(left, right) { left == right }) != 0
        })
-    && forall(xs: b, predicate: fn(y) {
+    && for_all(xs: b, predicate: fn(y) {
          count_equal(xs: a, item: y, eq: fn(left, right) { left == right }) != 0
        })
 }
