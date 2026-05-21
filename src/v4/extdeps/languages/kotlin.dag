@@ -44,12 +44,15 @@ type KotlinFloatWidth
 // not a language-defined fixed encoding.
 type KotlinRuntimeRepresentation
   = PlatformSpecificRuntimeRepresentation
-  | Ieee754Binary32
-  | Ieee754Binary64
   | Ucs2CodeUnit
   | Ucs2CodeUnitSequence
   | SingletonObject
   | UninhabitedControlFlow
+
+// 🟢 coproduct dissolution — IEEE precision/value semantics, not runtime representation.
+type KotlinFloatValueFormat
+  = Ieee754Binary32Precision
+  | Ieee754Binary64Precision
 
 // 🟢 coproduct dissolution — one scalar classifier at a time.
 type KotlinScalar
@@ -71,6 +74,7 @@ type KotlinIntegerPrimitiveFacts {
 type KotlinFloatPrimitiveFacts {
   surface_spelling: Symbol
   width: KotlinFloatWidth
+  value_format: KotlinFloatValueFormat
   representation: KotlinRuntimeRepresentation
 }
 
@@ -114,6 +118,7 @@ data kotlin_facts_field_surface_spelling: Symbol = kotlin_facts_field_surface_sp
 data kotlin_facts_field_width: Symbol = kotlin_facts_field_width
 data kotlin_facts_field_signedness: Symbol = kotlin_facts_field_signedness
 data kotlin_facts_field_overflow: Symbol = kotlin_facts_field_overflow
+data kotlin_facts_field_value_format: Symbol = kotlin_facts_field_value_format
 data kotlin_facts_field_representation: Symbol = kotlin_facts_field_representation
 data kotlin_facts_field_scalar_classifier: Symbol = kotlin_facts_field_scalar_classifier
 
@@ -124,8 +129,8 @@ data kotlin_tag_bits32: Symbol = kotlin_tag_bits32
 data kotlin_tag_bits64: Symbol = kotlin_tag_bits64
 data kotlin_tag_overflow_unspecified: Symbol = kotlin_tag_overflow_unspecified
 data kotlin_tag_platform_specific_runtime_representation: Symbol = kotlin_tag_platform_specific_runtime_representation
-data kotlin_tag_ieee754_binary32: Symbol = kotlin_tag_ieee754_binary32
-data kotlin_tag_ieee754_binary64: Symbol = kotlin_tag_ieee754_binary64
+data kotlin_tag_ieee754_binary32_precision: Symbol = kotlin_tag_ieee754_binary32_precision
+data kotlin_tag_ieee754_binary64_precision: Symbol = kotlin_tag_ieee754_binary64_precision
 data kotlin_tag_ucs2_code_unit: Symbol = kotlin_tag_ucs2_code_unit
 data kotlin_tag_ucs2_code_unit_sequence: Symbol = kotlin_tag_ucs2_code_unit_sequence
 data kotlin_tag_singleton_object: Symbol = kotlin_tag_singleton_object
@@ -169,13 +174,15 @@ data kotlin_facts_long: KotlinIntegerPrimitiveFacts = KotlinIntegerPrimitiveFact
 data kotlin_facts_float: KotlinFloatPrimitiveFacts = KotlinFloatPrimitiveFacts {
   surface_spelling: kotlin_surface_spelling_float,
   width: Bits32,
-  representation: Ieee754Binary32,
+  value_format: Ieee754Binary32Precision,
+  representation: PlatformSpecificRuntimeRepresentation,
 }
 
 data kotlin_facts_double: KotlinFloatPrimitiveFacts = KotlinFloatPrimitiveFacts {
   surface_spelling: kotlin_surface_spelling_double,
   width: Bits64,
-  representation: Ieee754Binary64,
+  value_format: Ieee754Binary64Precision,
+  representation: PlatformSpecificRuntimeRepresentation,
 }
 
 data kotlin_facts_boolean: KotlinNonNumericPrimitiveFacts = KotlinNonNumericPrimitiveFacts {
@@ -266,12 +273,17 @@ fn kotlin_runtime_representation_node(representation: KotlinRuntimeRepresentatio
   match representation {
     PlatformSpecificRuntimeRepresentation =>
       kotlin_atom(id: kotlin_tag_platform_specific_runtime_representation)
-    Ieee754Binary32 => kotlin_atom(id: kotlin_tag_ieee754_binary32)
-    Ieee754Binary64 => kotlin_atom(id: kotlin_tag_ieee754_binary64)
     Ucs2CodeUnit => kotlin_atom(id: kotlin_tag_ucs2_code_unit)
     Ucs2CodeUnitSequence => kotlin_atom(id: kotlin_tag_ucs2_code_unit_sequence)
     SingletonObject => kotlin_atom(id: kotlin_tag_singleton_object)
     UninhabitedControlFlow => kotlin_atom(id: kotlin_tag_uninhabited_control_flow)
+  }
+}
+
+fn kotlin_float_value_format_node(value_format: KotlinFloatValueFormat) -> Node {
+  match value_format {
+    Ieee754Binary32Precision => kotlin_atom(id: kotlin_tag_ieee754_binary32_precision)
+    Ieee754Binary64Precision => kotlin_atom(id: kotlin_tag_ieee754_binary64_precision)
   }
 }
 
@@ -350,6 +362,10 @@ fn kotlin_float_facts_node(facts: KotlinFloatPrimitiveFacts) -> Node {
         target: kotlin_atom(id: facts.surface_spelling)
       ),
       kotlin_named_edge(name: kotlin_facts_field_width, target: kotlin_float_width_node(width: facts.width)),
+      kotlin_named_edge(
+        name: kotlin_facts_field_value_format,
+        target: kotlin_float_value_format_node(value_format: facts.value_format)
+      ),
       kotlin_named_edge(
         name: kotlin_facts_field_representation,
         target: kotlin_runtime_representation_node(representation: facts.representation)
