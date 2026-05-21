@@ -11,6 +11,7 @@
 module v4.std.find_witness
 
 
+import v4.std.algebra { Cons, Empty }
 import v4.std.collection { List }
 import v4.std.diagnostic {
   Accepted,
@@ -49,6 +50,10 @@ type PassingCandidateFold
   = NoPassingCandidate
   | OnePassingCandidate { candidate: Node }
   | ManyPassingCandidates
+// 🟡 coproduct dissolution — local recursion subject for exact-structural-preservation-distinct-node-mvp; dissolves with W-T-10 recursive edge-wise zip-fold algebra.
+type ExactStructuralZipSubject
+  = NodeZip { source_facts: Node, candidate: Node }
+  | EdgeListZip { left: List<Edge>, right: List<Edge> }
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type TargetSelectionPolicy
   = TargetDeclaredPriority { priority: Node }
@@ -88,32 +93,44 @@ fn exact_structural_leaf_coincides(source_facts: Node, candidate: Node) -> Bool 
     _ => source_facts.kind == candidate.kind
   }
 }
-fn exact_structural_edge_zip_fold(left: List<Edge>, right: List<Edge>) -> Bool {
-  match left {
-    Empty => match right {
-      Empty => true
-      Cons { head: _, tail: _ } => false
-    }
-    Cons { head: left_edge, tail: left_tail } => match right {
-      Empty => false
-      Cons { head: right_edge, tail: right_tail } =>
-        (left_edge.label == right_edge.label)
-          && exact_structural_equality_zip_fold(
-            source_facts: left_edge.target,
-            candidate: right_edge.target
+fn exact_structural_zip_fold_subject(subject: ExactStructuralZipSubject) -> Bool {
+  match subject {
+    NodeZip { source_facts, candidate } =>
+      if (count(source_facts.children) == 0) && (count(candidate.children) == 0) {
+        exact_structural_leaf_coincides(source_facts: source_facts, candidate: candidate)
+      } else {
+        (source_facts.kind == candidate.kind)
+          && (count(source_facts.children) == count(candidate.children))
+          && exact_structural_zip_fold_subject(
+            subject: EdgeListZip { left: source_facts.children, right: candidate.children }
           )
-          && exact_structural_edge_zip_fold(left: left_tail, right: right_tail)
+      }
+    EdgeListZip { left, right } => match left {
+      Empty => match right {
+        Empty => true
+        Cons { head: _, tail: _ } => false
+      }
+      Cons { head: left_edge, tail: left_tail } => match right {
+        Empty => false
+        Cons { head: right_edge, tail: right_tail } =>
+          (left_edge.label == right_edge.label)
+            && exact_structural_zip_fold_subject(
+              subject: NodeZip {
+                source_facts: left_edge.target,
+                candidate: right_edge.target
+              }
+            )
+            && exact_structural_zip_fold_subject(
+              subject: EdgeListZip { left: left_tail, right: right_tail }
+            )
+      }
     }
   }
 }
 fn exact_structural_equality_zip_fold(source_facts: Node, candidate: Node) -> Bool {
-  if (count(source_facts.children) == 0) && (count(candidate.children) == 0) {
-    exact_structural_leaf_coincides(source_facts: source_facts, candidate: candidate)
-  } else {
-    (source_facts.kind == candidate.kind)
-      && (count(source_facts.children) == count(candidate.children))
-      && exact_structural_edge_zip_fold(left: source_facts.children, right: candidate.children)
-  }
+  exact_structural_zip_fold_subject(
+    subject: NodeZip { source_facts: source_facts, candidate: candidate }
+  )
 }
 fn preservation_predicate_holds(
   source_facts: Node,
