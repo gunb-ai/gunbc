@@ -37,10 +37,22 @@ import v4.compiler.resolve {
 }
 import v4.std.collection { List }
 import v4.std.dependency {
-  BootstrapDependsOn,
+  BarrierBefore,
   BindsTo,
+  BootstrapDependsOn,
+  Contains,
+  DataDependsOn,
   DependencyView,
+  EffectDependsOn,
+  GeneratedFrom,
+  ModelDependsOn,
   ModuleDependsOn,
+  PlacementDependsOn,
+  ProjectionDependsOn,
+  PromotedBy,
+  ResourceDependsOn,
+  TypeDependsOn,
+  VerifiedBy,
   dependency_lens
 }
 import v4.std.integer { Int }
@@ -56,6 +68,7 @@ type StructuralResolutionStatus
   | FactsLookupMiss
   | UnresolvedInferWitness
   | PreludeCarveOut
+  | OutOfScopeDependencyKind
 
 type StructuralResolutionDependencyFact {
   at: Node
@@ -87,6 +100,7 @@ fn status_for_binding_facts(dependent_facts: Witness<InferredFacts>) -> Structur
   } else {
     match dependent_facts {
       Holds { value: _ } => BindingResolved
+      // Fail-closed: infer Violates whose reason is not unbound/lookup-miss — never BindingResolved.
       Violates { diagnostic: _ } => UnresolvedInferWitness
     }
   }
@@ -97,10 +111,21 @@ fn status_for_dependency(
   dependent_facts: Witness<InferredFacts>
 ) -> StructuralResolutionStatus {
   match view.kind {
-    BootstrapDependsOn => PreludeCarveOut
-    ModuleDependsOn => PreludeCarveOut
     BindsTo => status_for_binding_facts(dependent_facts: dependent_facts)
-    _ => BindingResolved
+    ModuleDependsOn => PreludeCarveOut
+    BootstrapDependsOn => PreludeCarveOut
+    Contains => OutOfScopeDependencyKind
+    TypeDependsOn => OutOfScopeDependencyKind
+    DataDependsOn => OutOfScopeDependencyKind
+    EffectDependsOn => OutOfScopeDependencyKind
+    ResourceDependsOn => OutOfScopeDependencyKind
+    BarrierBefore => OutOfScopeDependencyKind
+    PlacementDependsOn => OutOfScopeDependencyKind
+    ModelDependsOn => OutOfScopeDependencyKind
+    ProjectionDependsOn => OutOfScopeDependencyKind
+    GeneratedFrom => OutOfScopeDependencyKind
+    VerifiedBy => OutOfScopeDependencyKind
+    PromotedBy => OutOfScopeDependencyKind
   }
 }
 
@@ -169,6 +194,10 @@ fn status_eq(a: StructuralResolutionStatus, b: StructuralResolutionStatus) -> Bo
     }
     PreludeCarveOut => match b {
       PreludeCarveOut => true
+      _ => false
+    }
+    OutOfScopeDependencyKind => match b {
+      OutOfScopeDependencyKind => true
       _ => false
     }
   }

@@ -77,11 +77,7 @@ fn classify_named_edge_usage(sym: Symbol) -> DependencyKind {
 fn classify_node_edge_usage(parent: Node, edge: Edge) -> DependencyKind {
   match edge.label {
     Named { name: sym } => classify_named_edge_usage(sym: sym)
-    Positional =>
-      match parent.kind {
-        ComputationNode { behavior: Bind } => Contains
-        _ => Contains
-      }
+    Positional => Contains
   }
 }
 
