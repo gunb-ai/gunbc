@@ -40,6 +40,20 @@ fn parse_module(source: &str, path: &str) -> v3_compiler::parse_surface::Surface
 }
 
 #[test]
+fn v4_find_witness_dag_tokenizes_and_parses() {
+    let _module = parse_module(FIND_WITNESS_DAG, FIND_WITNESS_PATH);
+}
+
+#[test]
+fn v4_find_witness_dag_declares_find_witness_entrypoint() {
+    let module = parse_module(FIND_WITNESS_DAG, FIND_WITNESS_PATH);
+    assert!(
+        surface_declares_fn(&module, "find_witness"),
+        "{FIND_WITNESS_PATH}: must declare find_witness primitive"
+    );
+}
+
+#[test]
 fn v4_translate_dag_tokenizes_and_parses() {
     let _module = parse_module(TRANSLATE_DAG, TRANSLATE_PATH);
 }
