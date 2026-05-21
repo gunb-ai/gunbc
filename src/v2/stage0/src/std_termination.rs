@@ -9,12 +9,9 @@ use self::RankingDimension::*;
 use crate::std_algebra::Ordering::*;
 pub use crate::std_algebra::{BoundedLattice, Ordering};
 use crate::v2_rt;
-use crate::v2_rt::rc_empty_set as empty_set;
-use crate::v2_rt::rc_set_insert as set_insert;
-use crate::v2_rt::rc_set_union as set_union;
-use crate::v2_rt::set_contains;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
+use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -61,17 +58,17 @@ pub fn descent_evidence_lattice_join(a: DescentEvidence, b: DescentEvidence) -> 
     }
 }
 
-pub fn descent_evidence_bounded_lattice() -> Rc<BoundedLattice<DescentEvidence>> {
+pub fn descent_evidence_bounded_lattice() -> Rc<BoundedLattice> {
     thread_local! {
-        static CACHED: Rc<BoundedLattice<DescentEvidence>> = {
-            Rc::new(BoundedLattice {
-                meet: Rc::new(descent_evidence_lattice_meet),
-                join: Rc::new(descent_evidence_lattice_join),
-                top: Box::new(DescentEvidence::Strict),
-                bottom: Box::new(DescentEvidence::DescentUnknown),
-            })
-        };
-    }
+            static CACHED: Rc<BoundedLattice> = {
+                Rc::new(BoundedLattice {
+        meet: descent_evidence_lattice_meet,
+        join: descent_evidence_lattice_join,
+        top: DescentEvidence::Strict,
+        bottom: DescentEvidence::DescentUnknown,
+    })
+            };
+        }
     CACHED.with(|c| c.clone())
 }
 
