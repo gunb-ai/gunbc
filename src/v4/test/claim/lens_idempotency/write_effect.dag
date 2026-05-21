@@ -7,7 +7,7 @@
 module v4.test.claim.lens_idempotency.write_effect
 
 import v4.compiler.infer { AlgebraRef, InferredFacts, InferredTree }
-import v4.lens.effect { EffectDependencyFact, WriteEffect }
+import v4.lens.effect { EffectDependencyFact }
 import v4.lens.idempotency {
   IdempotencyEffectFact,
   IdempotencyFact,
@@ -99,8 +99,7 @@ data idempotency_write_effect_claim: LensIdempotencyClaim = LensIdempotencyClaim
           at: idempotency_root,
           dependency: idempotency_dependency,
           source_facts: Holds { value: idempotency_claim_facts() },
-          dependent_facts: Holds { value: idempotency_claim_facts() },
-          effect: WriteEffect
+          dependent_facts: Holds { value: idempotency_claim_facts() }
         },
         verdict: RequiresAlgebraWitness
       }

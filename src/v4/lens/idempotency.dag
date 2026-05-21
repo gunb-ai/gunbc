@@ -21,15 +21,17 @@ module v4.lens.idempotency
 
 import v4.compiler.infer { InferredTree }
 import v4.lens.effect {
-  BarrierEffect,
   EffectDependencyFact,
-  NonEffectDependency,
-  ReadEffect,
-  WriteEffect,
   effect_dependency_fact_eq,
   effect_fact_from_dependencies
 }
-import v4.std.dependency { DependencyView }
+import v4.std.dependency {
+  BarrierBefore,
+  DataDependsOn,
+  DependencyView,
+  EffectDependsOn,
+  ResourceDependsOn
+}
 import v4.std.node { Node }
 import v4.std.witness { Holds, Witness }
 
@@ -52,11 +54,12 @@ type IdempotencyFact {
 }
 
 fn idempotency_verdict_for_effect(effect: EffectDependencyFact) -> IdempotencyVerdict {
-  match effect.effect {
-    NonEffectDependency { kind: _ } => Idempotent
-    ReadEffect => Idempotent
-    BarrierEffect => Idempotent
-    WriteEffect => RequiresAlgebraWitness
+  match effect.dependency.kind {
+    DataDependsOn => Idempotent
+    BarrierBefore => Idempotent
+    EffectDependsOn => RequiresAlgebraWitness
+    ResourceDependsOn => RequiresAlgebraWitness
+    _ => Idempotent
   }
 }
 

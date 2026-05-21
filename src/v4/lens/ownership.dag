@@ -20,12 +20,22 @@ module v4.lens.ownership
 
 import v4.compiler.infer { InferredFacts, InferredTree }
 import v4.std.dependency {
+  BarrierBefore,
   BindsTo,
+  BootstrapDependsOn,
   Contains,
   DataDependsOn,
   DependencyView,
   EffectDependsOn,
-  ResourceDependsOn
+  GeneratedFrom,
+  ModelDependsOn,
+  ModuleDependsOn,
+  PlacementDependsOn,
+  ProjectionDependsOn,
+  PromotedBy,
+  ResourceDependsOn,
+  TypeDependsOn,
+  VerifiedBy
 }
 import v4.std.node { Node }
 import v4.std.witness { Holds, Witness }
@@ -38,6 +48,7 @@ type OwnershipMode
   | SharedRead
   | ExclusiveMutation
   | BorrowedDependency
+  | UnknownOwnership
 
 type OwnershipDependencyFact {
   owner: Node
@@ -59,7 +70,16 @@ fn ownership_mode_for_dependency(view: DependencyView) -> OwnershipMode {
     DataDependsOn => SharedRead
     EffectDependsOn => ExclusiveMutation
     ResourceDependsOn => ExclusiveMutation
-    _ => BorrowedDependency
+    BarrierBefore => UnknownOwnership
+    TypeDependsOn => UnknownOwnership
+    ModuleDependsOn => UnknownOwnership
+    PlacementDependsOn => UnknownOwnership
+    ModelDependsOn => UnknownOwnership
+    ProjectionDependsOn => UnknownOwnership
+    GeneratedFrom => UnknownOwnership
+    VerifiedBy => UnknownOwnership
+    PromotedBy => UnknownOwnership
+    BootstrapDependsOn => UnknownOwnership
   }
 }
 
@@ -112,6 +132,10 @@ fn ownership_mode_eq(a: OwnershipMode, b: OwnershipMode) -> Bool {
     }
     BorrowedDependency => match b {
       BorrowedDependency => true
+      _ => false
+    }
+    UnknownOwnership => match b {
+      UnknownOwnership => true
       _ => false
     }
   }

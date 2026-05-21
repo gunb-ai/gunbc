@@ -10,7 +10,6 @@ import v4.compiler.infer { AlgebraRef, InferredFacts, InferredTree }
 import v4.lens.effect {
   EffectDependencyFact,
   EffectFact,
-  WriteEffect,
   effect_fact_eq,
   effect_witness
 }
@@ -96,8 +95,7 @@ data effect_depends_on_claim: LensEffectClaim = LensEffectClaim {
         at: effect_root,
         dependency: effect_dependency,
         source_facts: Holds { value: effect_claim_facts() },
-        dependent_facts: Holds { value: effect_claim_facts() },
-        effect: WriteEffect
+        dependent_facts: Holds { value: effect_claim_facts() }
       }
     ]
   },

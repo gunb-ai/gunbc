@@ -72,23 +72,7 @@ module v4.lens.effect
 
 import v4.compiler.infer { InferredFacts, InferredTree }
 import v4.std.dependency {
-  BarrierBefore,
-  BindsTo,
-  BootstrapDependsOn,
-  Contains,
-  DataDependsOn,
-  DependencyView,
-  EffectDependsOn,
-  GeneratedFrom,
-  ModelDependsOn,
-  ModuleDependsOn,
-  PlacementDependsOn,
-  ProjectionDependsOn,
-  PromotedBy,
-  ResourceDependsOn,
-  TypeDependsOn,
-  VerifiedBy,
-  DependencyKind
+  DependencyView
 }
 import v4.std.node { Node }
 import v4.std.witness { Holds, Witness }
@@ -96,42 +80,15 @@ import v4.std.witness { Holds, Witness }
 // 🟢 projection carrier — Practice 11: effect facts are read from the
 // dependency projection and the inferred root, not authored as a second
 // OperationEffect taxonomy.
-type EffectKind
-  = NonEffectDependency { kind: DependencyKind }
-  | ReadEffect
-  | WriteEffect
-  | BarrierEffect
-
 type EffectDependencyFact {
   at: Node
   dependency: DependencyView
   source_facts: Witness<InferredFacts>
   dependent_facts: Witness<InferredFacts>
-  effect: EffectKind
 }
 
 type EffectFact {
   dependencies: List<EffectDependencyFact>
-}
-
-fn effect_kind_for_dependency(view: DependencyView) -> EffectKind {
-  match view.kind {
-    Contains => NonEffectDependency { kind: Contains }
-    BindsTo => NonEffectDependency { kind: BindsTo }
-    TypeDependsOn => NonEffectDependency { kind: TypeDependsOn }
-    DataDependsOn => ReadEffect
-    EffectDependsOn => WriteEffect
-    ResourceDependsOn => WriteEffect
-    BarrierBefore => BarrierEffect
-    ModuleDependsOn => NonEffectDependency { kind: ModuleDependsOn }
-    PlacementDependsOn => NonEffectDependency { kind: PlacementDependsOn }
-    ModelDependsOn => NonEffectDependency { kind: ModelDependsOn }
-    ProjectionDependsOn => NonEffectDependency { kind: ProjectionDependsOn }
-    GeneratedFrom => NonEffectDependency { kind: GeneratedFrom }
-    VerifiedBy => NonEffectDependency { kind: VerifiedBy }
-    PromotedBy => NonEffectDependency { kind: PromotedBy }
-    BootstrapDependsOn => NonEffectDependency { kind: BootstrapDependsOn }
-  }
 }
 
 fn inferred_facts_for_node(tree: InferredTree, node: Node) -> Witness<InferredFacts> {
@@ -143,8 +100,7 @@ fn effect_dependency_fact(tree: InferredTree, view: DependencyView) -> EffectDep
     at: view.source,
     dependency: view,
     source_facts: inferred_facts_for_node(tree: tree, node: view.source),
-    dependent_facts: inferred_facts_for_node(tree: tree, node: view.dependent),
-    effect: effect_kind_for_dependency(view: view)
+    dependent_facts: inferred_facts_for_node(tree: tree, node: view.dependent)
   }
 }
 
@@ -171,7 +127,6 @@ fn effect_dependency_fact_eq(a: EffectDependencyFact, b: EffectDependencyFact) -
     && (a.dependency == b.dependency)
     && (a.source_facts == b.source_facts)
     && (a.dependent_facts == b.dependent_facts)
-    && (a.effect == b.effect)
 }
 
 fn effect_dependency_count(xs: List<EffectDependencyFact>, item: EffectDependencyFact) -> Int {
