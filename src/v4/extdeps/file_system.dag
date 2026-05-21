@@ -1,8 +1,8 @@
 // src/v4/extdeps/file_system.dag
-// Scope: file system substrate — paths, file kinds, read/write/list/kind operations.
-// Owns: PosixByteString, NamedPathComponent, PathComponent, AbsolutePath, RelativePathHead, RelativePath, Path, FileKind, FileKindResolutionPolicy, Filesystem, FileBody, file-system request/result/operation carriers.
-// Consumes: Diagnostic, Outcome, Byte, FreeMonoid, List.
-// Status: T-4.5 modeled 2026-05-16.
+// Scope: External file-system resource model + modeled file effects (read/write).
+// Owns: PosixByteString, NamedPathComponent, PathComponent, AbsolutePath, RelativePathHead, RelativePath, FilesystemPath, FileKind, FileKindResolutionPolicy, Filesystem, FileBody, FileResource, FilePath, FileContent, FileRead, FileWrite, FileReadReceipt, FileWriteReceipt, FileReadResult, FileWriteResult, ReadFileRequest, WriteFileRequest, ListDirRequest, FileKindRequest, FileSystemOperations, ModeledFileEffects.
+// Consumes: v4.std.algebra, v4.std.diagnostic, v4.std.machine.
+// Status: scaffold — Wave-2 fail-closed boundary (POSIX substrate retained for process/testgen consumers).
 
 module v4.extdeps.file_system
 
@@ -46,7 +46,7 @@ type RelativePath
   | RelativeDescendant { first: RelativePathHead, rest: List<PathComponent> }
 
 // 🟡 coproduct dissolution — OS-1.
-type Path
+type FilesystemPath
   = Absolute { path: AbsolutePath }
   | Relative { path: RelativePath }
 
@@ -71,6 +71,62 @@ type Filesystem
 // coincides: finite POSIX byte sequence.
 type FileBody = FreeMonoid<Byte>
 
+// Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/V1_chap03.html#tag_03_271
+// Modeled resource — effects are explicit parameters against this carrier.
+type FileResource {
+  filesystem: Filesystem
+}
+
+// Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/V1_chap03.html#tag_03_271
+// Peripheral effect path coordinate (POSIX absolute or relative via FilesystemPath).
+type FilePath {
+  path: FilesystemPath
+}
+
+// coincides: finite POSIX byte sequence.
+type FileContent = FileBody
+
+// 🟢 grounded.
+type FileRead {
+  resource: FileResource,
+  path: FilePath
+}
+
+// 🟢 grounded.
+type FileWrite {
+  resource: FileResource,
+  path: FilePath,
+  content: FileContent
+}
+
+// 🟢 grounded — effect receipt (not std/witness.dag Witness<C>; Practice 11 concept-home).
+type FileReadReceipt {
+  request: FileRead,
+  content: FileContent
+}
+
+// 🟢 grounded — effect receipt (not std/witness.dag Witness<C>; Practice 11 concept-home).
+type FileWriteReceipt {
+  request: FileWrite,
+  resource: FileResource
+}
+
+type FileReadResult = Outcome<FileContent>
+
+type FileWriteResult = Outcome<FileResource>
+
+// Canonical modeled-effect surface (request carriers above; wiring deferred — M1(2.8) extdeps fn bodies).
+type ModeledFileEffects {
+  file_read: fn(FileRead) -> FileReadResult
+  file_write: fn(FileWrite) -> FileWriteResult
+}
+
+// 🟡 P5 bridge — legacy POSIX operation payload table (consumer: v4.lens.testgen only —
+// CorpusEnumerationRequest.operations: FileSystemOperations).
+// Dissolution trigger: wave2-c2-testgen-modeled-file-effects — delete ReadFileRequest,
+// WriteFileRequest, ListDirRequest, FileKindRequest, and FileSystemOperations when
+// v4/lens/testgen.dag CorpusEnumerationRequest.operations is ModeledFileEffects-only.
+// v4.extdeps.process imports AbsolutePath/Filesystem/PosixByteString only (not this table).
 type ReadFileRequest {
   filesystem: Filesystem
   path: AbsolutePath
