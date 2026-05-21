@@ -637,6 +637,11 @@ fn list_kernel_ty_from_element(element: Node) -> KernelListTyDiag {
   KernelListTyDiag { ty: b.ty, miss_diags: b.diagnostics }
 }
 
+fn set_kernel_ty_from_element(element: Node) -> KernelListTyDiag {
+  let b = make_container_type(kind_name: "Set", element: element)
+  KernelListTyDiag { ty: b.ty, miss_diags: b.diagnostics }
+}
+
 type Tier2bBt {
   bt: Node
   kernel_diags: List<ErrorNode>
@@ -690,17 +695,71 @@ fn infer_tier2b_builtin_with_kernel_diags(func_name: String, typed_args: List<No
       None => Tier2bBt { bt: resolve_builtin_call_type(name: func_name), kernel_diags: [] }
     }
   } else if func_name == "set_insert" || func_name == "set_union" {
-    Tier2bBt {
-      bt: match typed_args |> first {
-        Some { value: receiver_arg } =>
-          match arg_value(n: receiver_arg).inferred {
-            Some { value: Resolved { node: receiver_type } } => receiver_type
-            _ => resolve_builtin_call_type(name: func_name)
-          }
-        None => resolve_builtin_call_type(name: func_name)
-      },
-      kernel_diags: []
+    let recv_elem = match typed_args |> first {
+      Some { value: receiver_arg } =>
+        match arg_value(n: receiver_arg).inferred {
+          Some { value: Resolved { node: receiver_type } } =>
+            set_element_type_in_env(type_node: receiver_type, env: scope.type_env)
+          _ => none
+        }
+      None => none
     }
+    let operand_elem = if func_name == "set_insert" {
+      match typed_args |> skip(1) |> first {
+        Some { value: insert_arg } =>
+          match arg_value(n: insert_arg).inferred {
+            Some { value: Resolved { node: elem } } => Some { value: elem }
+            _ => none
+          }
+        None => none
+      }
+    } else {
+      match typed_args |> skip(1) |> first {
+        Some { value: other_arg } =>
+          match arg_value(n: other_arg).inferred {
+            Some { value: Resolved { node: other_type } } =>
+              set_element_type_in_env(type_node: other_type, env: scope.type_env)
+            _ => none
+          }
+        None => none
+      }
+    }
+    let mismatch_diags = match recv_elem {
+      Some { value: re } =>
+        match operand_elem {
+          Some { value: oe } =>
+            if authored_name_at(source_indices: scope.type_env.source_indices, node: re) != authored_name_at(source_indices: scope.type_env.source_indices, node: oe) {
+              [inference_error(message: concat(func_name, ": incompatible set element types"), span: span, module_name: scope.module_name)]
+            } else { [] }
+          None => []
+        }
+      None => []
+    }
+    let result_bt = match typed_args |> first {
+      Some { value: receiver_arg } =>
+        match arg_value(n: receiver_arg).inferred {
+          Some { value: Resolved { node: receiver_type } } =>
+            match set_element_type_in_env(type_node: receiver_type, env: scope.type_env) {
+              Some { value: _ } => receiver_type
+              None =>
+                match operand_elem {
+                  Some { value: element } => set_kernel_ty_from_element(element: element).ty
+                  None => resolve_builtin_call_type(name: func_name)
+                }
+            }
+          _ =>
+            match operand_elem {
+              Some { value: element } => set_kernel_ty_from_element(element: element).ty
+              None => resolve_builtin_call_type(name: func_name)
+            }
+        }
+      None => resolve_builtin_call_type(name: func_name)
+    }
+    let build_diags = match operand_elem {
+      Some { value: element } => set_kernel_ty_from_element(element: element).miss_diags
+      None => []
+    }
+    Tier2bBt { bt: result_bt, kernel_diags: concat(mismatch_diags, build_diags) }
   } else {
     Tier2bBt { bt: resolve_builtin_call_type(name: func_name), kernel_diags: [] }
   }
