@@ -9,7 +9,8 @@ const HTTP_SERVER_DAG: &str = include_str!("../../../../../dsl/extdeps/http/serv
 const REST_TRANSPORT_DAG: &str = include_str!("../../../../../dsl/extdeps/transports/rest.dag");
 const SQL_MIGRATION_DAG: &str = include_str!("../../../../../dsl/extdeps/sql/migration.dag");
 const SQL_TRANSPORT_DAG: &str = include_str!("../../../../../dsl/extdeps/transports/sql.dag");
-const AUDIT_EVENT_DAG: &str = include_str!("../../../../../dsl/extdeps/audit/event.dag");
+const AUDIT_CLOUDEVENTS_DAG: &str =
+    include_str!("../../../../../dsl/extdeps/audit/cloudevents.dag");
 
 fn compile_extdep(source: &str, path: &str) -> Dag {
     compile_to_dag(source, path).unwrap_or_else(|e| panic!("{path} should compile: {e:?}"))
@@ -135,14 +136,14 @@ fn sql_transport_dag_compiles_cleanly() {
 }
 
 #[test]
-fn audit_event_extdep_dag_compiles_cleanly() {
-    compile_to_dag(AUDIT_EVENT_DAG, "dsl/extdeps/audit/event.dag")
-        .unwrap_or_else(|e| panic!("audit event extdep should compile: {e:?}"));
+fn audit_cloudevents_extdep_dag_compiles_cleanly() {
+    compile_to_dag(AUDIT_CLOUDEVENTS_DAG, "dsl/extdeps/audit/cloudevents.dag")
+        .unwrap_or_else(|e| panic!("audit cloudevents extdep should compile: {e:?}"));
 }
 
 #[test]
-fn audit_event_target_fields_preserve_cloudevents_core_names() {
-    let dag = compile_extdep(AUDIT_EVENT_DAG, "dsl/extdeps/audit/event.dag");
+fn audit_cloudevents_target_fields_preserve_core_names() {
+    let dag = compile_extdep(AUDIT_CLOUDEVENTS_DAG, "dsl/extdeps/audit/cloudevents.dag");
 
     for (field, ty) in [
         ("id", "CloudEventId"),

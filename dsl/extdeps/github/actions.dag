@@ -18,7 +18,17 @@
 module extdeps.github.actions
 
 import extdeps.cron.schedule_model { CronSchedule }
-import std.types { SecretName, Unit }
+import std.types { NonEmptyStr, SecretName, Unit }
+
+type GitHubActionsRuntime {
+  oidc_request_url_env: NonEmptyStr
+  oidc_request_token_env: NonEmptyStr
+}
+
+data github_actions_runtime: GitHubActionsRuntime = {
+  oidc_request_url_env: "ACTIONS_ID_TOKEN_REQUEST_URL"
+  oidc_request_token_env: "ACTIONS_ID_TOKEN_REQUEST_TOKEN"
+}
 
 // -- Workflows --------------------------------------------------------
 // A workflow is the top-level unit: trigger + jobs.

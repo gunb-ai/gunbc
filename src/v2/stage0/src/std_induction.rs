@@ -116,14 +116,14 @@ pub fn sub_value_to_evidence(relation: Rc<SubValueRelation>) -> DescentEvidence 
     match (*relation).clone() {
         SubValueRelation::StrictSubValue { factor: f, .. } => match (*f.clone()).clone() {
             ShrinkFactor::UnitShrink => DescentEvidence::Strict,
-            ShrinkFactor::ConstantShrink { .. } => DescentEvidence::Strict,
-            ShrinkFactor::ProportionalShrink { .. } => DescentEvidence::Strict,
+            ShrinkFactor::ConstantShrink { steps: _, .. } => DescentEvidence::Strict,
+            ShrinkFactor::ProportionalShrink { divisor: _, .. } => DescentEvidence::Strict,
         },
-        SubValueRelation::IteratedSubValue { .. } => DescentEvidence::Strict,
+        SubValueRelation::IteratedSubValue { field: _, .. } => DescentEvidence::Strict,
         SubValueRelation::ArithmeticDescent { factor: f, .. } => match (*f.clone()).clone() {
             ShrinkFactor::UnitShrink => DescentEvidence::Strict,
-            ShrinkFactor::ConstantShrink { .. } => DescentEvidence::Strict,
-            ShrinkFactor::ProportionalShrink { .. } => DescentEvidence::Strict,
+            ShrinkFactor::ConstantShrink { steps: _, .. } => DescentEvidence::Strict,
+            ShrinkFactor::ProportionalShrink { divisor: _, .. } => DescentEvidence::Strict,
         },
         SubValueRelation::PreservedValue => DescentEvidence::NonIncreasing,
         SubValueRelation::SubValueUnknown => DescentEvidence::DescentUnknown,
@@ -342,7 +342,7 @@ pub fn compose_sub_value_relations(
                 Rc::new(SubValueRelation::SubValueUnknown)
             }
         },
-        SubValueRelation::IteratedSubValue { .. } => match (*arg_rel).clone() {
+        SubValueRelation::IteratedSubValue { field: _, .. } => match (*arg_rel).clone() {
             SubValueRelation::PreservedValue => callee_rel.clone(),
             SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
             SubValueRelation::StrictSubValue { field: f, .. } => {
@@ -392,7 +392,7 @@ pub fn sub_value_to_call_pattern(relation: Rc<SubValueRelation>) -> Option<Rc<Ca
             factor: f,
             ..
         } => match (*f.clone()).clone() {
-            ShrinkFactor::ConstantShrink { steps, .. } => {
+            ShrinkFactor::ConstantShrink { steps: steps, .. } => {
                 Some(Rc::new(CallPattern::ArithmeticSubtractCall {
                     steps: steps.clone(),
                     ring_param: p.clone(),
@@ -528,11 +528,11 @@ pub fn sum_bound(terms: &Rc<Vec<Rc<CostBound>>>) -> Rc<CostBound> {
 
 pub fn cost_bound_is_sum_bound(b: Rc<CostBound>) -> bool {
     match (*b).clone() {
-        CostBound::SumBound { .. } => true,
+        CostBound::SumBound { terms: _, .. } => true,
         CostBound::ConstantBound => false,
-        CostBound::AtomicBound { .. } => false,
-        CostBound::ProductBound { .. } => false,
-        CostBound::SumOfProductsBound { .. } => false,
+        CostBound::AtomicBound { cost: _, .. } => false,
+        CostBound::ProductBound { factors: _, .. } => false,
+        CostBound::SumOfProductsBound { terms: _, .. } => false,
         CostBound::ForeverBound => false,
         CostBound::ErrorBound => false,
     }
@@ -907,7 +907,7 @@ pub fn derive_bound(
                         Rc::new(CostBound::ForeverBound)
                     }
                 }
-                ShrinkFactor::ConstantShrink { .. } => {
+                ShrinkFactor::ConstantShrink { steps: _, .. } => {
                     if (branches.clone() <= 1) {
                         cost_linear(param)
                     } else {
