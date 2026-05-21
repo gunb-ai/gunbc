@@ -141,6 +141,9 @@ data bootstrap_plan: Outcome<BootstrapPlan> = bootstrap_plan_well_formed(p: Boot
     produces_hash: BootstrapHashPin { digest: v4_stage2_hash, pin: v4_stage2_hash_pin },
     compiled_by: v4_stage1_binary
   },
+  // Scaffold only: v4_stage*_hash / pinned_v4_fixed_point_hash are opaque tag constants (lines 28-30).
+  // Reusing v4_stage1_hash on fixpt left/right/pinned digests makes bootstrap_plan_well_formed's
+  // digest-equality conjuncts a symbolic wiring check, not a content-addressed bit-identity receipt.
   fixpt: FixptStage1Stage2 {
     left: v4_stage1_binary,
     left_hash: BootstrapHashPin { digest: v4_stage1_hash, pin: v4_stage1_hash_pin },

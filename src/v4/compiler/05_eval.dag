@@ -3,6 +3,7 @@
 // Owns: Inputs, EvalContext, TestClaimTypedInput, TestClaimEvalSubject, TestClaimCacheKey, TestClaimCacheReceipt, Verdict, TestClaimRun, eval_node, run_test_claim, aggregate_verdicts.
 // Consumes: v4.compiler.infer, v4.std.node, v4.std.diagnostic, v4.std.verification.
 // Status: Wave-0 substrate; evaluator bodies remain structural until T-9 inferred-tree semantics.
+// CompilesClaim: run_test_claim_assert compares actual to expected_value via outcome_node_eq (tighter than legacy AssertKind Compiles, which Pass'd on any Accepted).
 
 module v4.compiler.eval
 
