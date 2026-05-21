@@ -320,6 +320,9 @@ fn sub_value_structural_eq(a: SubValueRelation, b: SubValueRelation) -> Bool {
   }
 }
 
+// 🟡 PRACTICE 10 DISSOLUTION DISPOSITION: see `dsl/std/induction.dag` — hand-rolled
+// boolean projection of `sub_value_to_evidence(r) == Strict`; retires when the
+// substrate gains derived-predicate-from-projection (ROADMAP.md:390 family).
 fn is_strict_style_structural(r: SubValueRelation) -> Bool {
   match r {
     StrictSubValue { field: _, factor: _ } => true
