@@ -336,7 +336,6 @@ pub fn json_optional_string(value: Option<String>) -> String {
 pub struct DagCollectAcc {
     pub seen: Rc<HashMap<String, bool>>,
     pub order: Rc<Vec<Rc<Node>>>,
-    pub collision_errors: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 pub fn dag_node_key(node: &Rc<Node>) -> String {
@@ -355,22 +354,6 @@ pub fn dag_node_key(node: &Rc<Node>) -> String {
             Some(id) => v2_rt::concat(":".to_string(), (id.clone()).to_string()),
             None => "".to_string(),
         },
-    )
-}
-
-pub fn dag_node_key_collision_error(node: &Rc<Node>) -> Rc<ErrorNode> {
-    make_error_node(
-        Rc::new(CompilerDiagnostic::InternalError {
-            message: v2_rt::concat(
-                v2_rt::concat(
-                    "dag artifact: distinct nodes share identity key (".to_string(),
-                    dag_node_key(&node),
-                ),
-                "); wait for v4 content_hash or disambiguate spans".to_string(),
-            ),
-            span: node.span.clone(),
-        }),
-        "".to_string(),
     )
 }
 
@@ -572,19 +555,11 @@ pub fn dag_collect_insert(node: &Rc<Node>, acc: &Rc<DagCollectAcc>) -> Rc<DagCol
     {
         let key = dag_node_key(&node);
         match v2_rt::map_get(&acc.seen.clone(), key.clone()) {
-            Some(_) => Rc::new(DagCollectAcc {
-                seen: acc.seen.clone(),
-                order: acc.order.clone(),
-                collision_errors: v2_rt::rc_list_push(
-                    acc.collision_errors.clone(),
-                    dag_node_key_collision_error(&node),
-                ),
-            }),
+            Some(_) => acc.clone(),
             None => {
                 let acc1 = Rc::new(DagCollectAcc {
                     seen: v2_rt::rc_map_insert(acc.seen.clone(), key.clone(), true),
                     order: v2_rt::rc_list_push(acc.order.clone(), node.clone()),
-                    collision_errors: acc.collision_errors.clone(),
                 });
                 dag_collect_node_tree(&node, &acc1)
             }
@@ -610,15 +585,17 @@ pub fn dag_collect_from_module(
     }
 }
 
-pub fn collect_dag_nodes(typed: Rc<ResolvedGraph>) -> Rc<DagCollectAcc> {
-    typed.modules.clone().iter().cloned().fold(
-        Rc::new(DagCollectAcc {
-            seen: v2_rt::rc_empty_map::<String, bool>(),
-            order: Rc::new(vec![]),
-            collision_errors: Rc::new(vec![]),
-        }),
-        |acc: Rc<DagCollectAcc>, m: Rc<TypedModule>| dag_collect_from_module(&m, &acc),
-    )
+pub fn collect_dag_nodes(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<Node>>> {
+    {
+        let acc = typed.modules.clone().iter().cloned().fold(
+            Rc::new(DagCollectAcc {
+                seen: v2_rt::rc_empty_map::<String, bool>(),
+                order: Rc::new(vec![]),
+            }),
+            |acc: Rc<DagCollectAcc>, m: Rc<TypedModule>| dag_collect_from_module(&m, &acc),
+        );
+        acc.order.clone()
+    }
 }
 
 pub fn build_dag_key_to_id(order: Rc<Vec<Rc<Node>>>) -> Rc<HashMap<String, String>> {
@@ -2055,14 +2032,7 @@ pub fn serialize_diagnostic(diagnostic: &Rc<ErrorNode>) -> String {
 
 pub fn emit_dag_artifact(typed: &Rc<ResolvedGraph>) -> Rc<EmitResult> {
     {
-        let collected = collect_dag_nodes(typed.clone());
-        if ((collected.collision_errors.clone().len() as i64) > 0) {
-            return Rc::new(EmitResult {
-                files: Rc::new(vec![]),
-                diagnostics: collected.collision_errors.clone(),
-            });
-        }
-        let order = collected.order.clone();
+        let order = collect_dag_nodes(typed.clone());
         let key_to_id = build_dag_key_to_id(order.clone());
         let ref_errors = dag_emit_ref_errors(order.clone(), key_to_id.clone());
         if ((ref_errors.clone().len() as i64) > 0) {
