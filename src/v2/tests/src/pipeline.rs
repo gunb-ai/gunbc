@@ -409,7 +409,7 @@ fn make_node_at(s: String) -> Locus {
         "expected no bogus VariantNotFound on generic sub-carrier, got: {:?}",
         diags
     );
-    let rs = find_file(&result, "src/generic_locus_anchor.rs");
+    let rs = find_file(&result, "src/test_generic_locus_anchor.rs");
     assert!(
         rs.contains("NodeAt(LocusAnchor"),
         "expected tuple-style NodeAt pattern in emitted Rust, got:\n{}",
