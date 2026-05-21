@@ -20,7 +20,7 @@ module v4.compiler.translate
 
 
 import v4.compiler.target_carriers { LanguageModel, TargetModel, TargetSource }
-import v4.compiler.infer { InferredTree }
+import v4.compiler.infer { InferredTree, canonical_grounding_for_node }
 import v4.std.coercion {
   CoercionCandidateSet,
   CoercionResult,
@@ -62,7 +62,7 @@ import v4.std.target_model {
   target_model_edge_serialize_emitted,
   target_model_edge_serialize_source
 }
-import v4.std.witness { Holds, StructuralPropertyWitness, Violates }
+import v4.std.witness { StructuralPropertyWitness }
 type TargetNodeTree = Node
 // Single-authority lookup state for TargetModel Conj bundles (P2/P3 fail-closed).
 type TargetBundleChildLookup
@@ -192,21 +192,6 @@ fn coercion_candidates_from_target_model(
       )
     }
   )
-}
-// RULING-1: infer-authored canonical witness only — no compiler-side fabrication (INVARIANTS P3).
-fn canonical_grounding_for_node(tree: InferredTree, node: Node) -> Outcome<CanonicalGrounding> {
-  match tree.facts.lookup(node) {
-    Holds { value: facts } =>
-      Accepted {
-        value: CanonicalGrounding {
-          node: facts.resolved_type,
-          witness: facts.canonical
-        },
-        diagnostics: None
-      }
-    Violates { diagnostic: d } =>
-      outcome_rejected(d)
-  }
 }
 fn coerce_grounded_node(
   source: Node,

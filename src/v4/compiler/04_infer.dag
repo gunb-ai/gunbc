@@ -1,6 +1,6 @@
 // src/v4/compiler/04_infer.dag
 // Scope: Stage 4 — ResolvedTree -> InferredTree; bounded Find phase (DECISIONS C1 / IR-1).
-// Owns: AlgebraRef, InferredFacts, InferredTree, infer.
+// Owns: AlgebraRef, InferredFacts, InferredTree, infer, canonical_grounding_for_node.
 // Consumes: v4.compiler.resolve, v4.std.cardinality, v4.std.collection, v4.std.constraints, v4.std.diagnostic, v4.std.node, v4.std.witness.
 // Status: Wave-3-A T-9 — staged fail-closed: descent Violates per node before solve_constraints; Holds path wires solve_constraints → find_witness(UniqueOnly) + AlgebraRef bridge (live once cardinality propagation lands).
 // Anchor: https://en.wikipedia.org/wiki/Type_inference
@@ -31,6 +31,7 @@ import v4.std.diagnostic {
   bind_outcome,
   diagnostics_merge,
   diagnostics_singleton,
+  outcome_rejected,
   rejected_with_pending
 }
 import v4.std.node {
@@ -194,6 +195,23 @@ fn facts_map_from_entries(entries: List<InferredFactsEntry>) -> Map<Node, Inferr
     lookup: fn(key) {
       lookup_inferred_facts_in_entries(entries: entries, key: key)
     }
+  }
+}
+
+
+// RULING-1: infer-authored canonical witness only — no compiler-side fabrication (INVARIANTS P3).
+fn canonical_grounding_for_node(tree: InferredTree, node: Node) -> Outcome<CanonicalGrounding> {
+  match tree.facts.lookup(node) {
+    Holds { value: facts } =>
+      Accepted {
+        value: CanonicalGrounding {
+          node: facts.resolved_type,
+          witness: facts.canonical
+        },
+        diagnostics: None
+      }
+    Violates { diagnostic: d } =>
+      outcome_rejected(d)
   }
 }
 
