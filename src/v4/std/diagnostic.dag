@@ -3,7 +3,7 @@
 // Anchor: THESIS.md "show the correct code" + INVARIANTS P3; design-v4-compiler-homomorphism.md Ratified Q11.
 // Owns: Diagnostic, Outcome, Diagnostics, NonEmptyDiagnostics, StageDiagnosticPolicy,
 //       bind_outcome, diagnostics_merge, rejected_with_pending,
-//       outcome_node_eq, diagnostic_eq,
+//       eq, locus_eq, correction_eq, diagnostic_eq, outcome_node_eq,
 //       diagnostics_eq, non_empty_diagnostics_append,
 //       Locus, Extent, Correction, NoCorrectionReason.
 // Consumes: std node (List/fold/count are prelude — no collection import; avoids diagnostic↔witness cycle).
