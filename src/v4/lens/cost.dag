@@ -356,6 +356,15 @@ fn increment_polylog_exponent(e: PolyLogExponent) -> PolyLogExponent {
   }
 }
 
+fn add_polylog_exponent(a: PolyLogExponent, b: PolyLogExponent) -> PolyLogExponent {
+  PolyLogExponent {
+    predecessor_after_log: add_nonzero_nat(
+      a: a.predecessor_after_log,
+      b: b.predecessor_after_log
+    )
+  }
+}
+
 fn polynomial_degree_to_polylog_exponent(d: PolynomialDegree) -> PolyLogExponent {
   PolyLogExponent { predecessor_after_log: d.predecessor_after_linear }
 }
