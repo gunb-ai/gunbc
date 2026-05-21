@@ -13,6 +13,7 @@ use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use v3_compiler::compile_to_dag;
+use v3_compiler::dag::HttpMethodScalar;
 use v3_compiler::emit_rust::emit_rust;
 use v3_compiler::omni_shape_b_openapi::{
     extract_rest_routes, project_markdown_documentation, project_openapi_yaml,
@@ -185,62 +186,62 @@ fn compile_todo_service_repository_fixture_counted(count: &mut usize) -> v3_comp
 fn expected_todo_service_routes() -> BTreeSet<RestRoute> {
     BTreeSet::from([
         RestRoute {
-            method: "DELETE".to_string(),
+            method: HttpMethodScalar::Delete,
             path: "/todos/{todoId}".to_string(),
             path_parameters: vec!["todoId".to_string()],
         },
         RestRoute {
-            method: "DELETE".to_string(),
+            method: HttpMethodScalar::Delete,
             path: "/users/{userId}".to_string(),
             path_parameters: vec!["userId".to_string()],
         },
         RestRoute {
-            method: "GET".to_string(),
+            method: HttpMethodScalar::Get,
             path: "/lists/{listId}".to_string(),
             path_parameters: vec!["listId".to_string()],
         },
         RestRoute {
-            method: "GET".to_string(),
+            method: HttpMethodScalar::Get,
             path: "/todos/{todoId}".to_string(),
             path_parameters: vec!["todoId".to_string()],
         },
         RestRoute {
-            method: "GET".to_string(),
+            method: HttpMethodScalar::Get,
             path: "/users".to_string(),
             path_parameters: vec![],
         },
         RestRoute {
-            method: "GET".to_string(),
+            method: HttpMethodScalar::Get,
             path: "/users/{userId}".to_string(),
             path_parameters: vec!["userId".to_string()],
         },
         RestRoute {
-            method: "GET".to_string(),
+            method: HttpMethodScalar::Get,
             path: "/users/{userId}/todos".to_string(),
             path_parameters: vec!["userId".to_string()],
         },
         RestRoute {
-            method: "PATCH".to_string(),
+            method: HttpMethodScalar::Patch,
             path: "/todos/{todoId}".to_string(),
             path_parameters: vec!["todoId".to_string()],
         },
         RestRoute {
-            method: "POST".to_string(),
+            method: HttpMethodScalar::Post,
             path: "/lists/{listId}/todos".to_string(),
             path_parameters: vec!["listId".to_string()],
         },
         RestRoute {
-            method: "POST".to_string(),
+            method: HttpMethodScalar::Post,
             path: "/users".to_string(),
             path_parameters: vec![],
         },
         RestRoute {
-            method: "POST".to_string(),
+            method: HttpMethodScalar::Post,
             path: "/users/{userId}/todos".to_string(),
             path_parameters: vec!["userId".to_string()],
         },
         RestRoute {
-            method: "PUT".to_string(),
+            method: HttpMethodScalar::Put,
             path: "/users/{userId}".to_string(),
             path_parameters: vec!["userId".to_string()],
         },
@@ -250,37 +251,37 @@ fn expected_todo_service_routes() -> BTreeSet<RestRoute> {
 fn expected_routes() -> BTreeSet<RestRoute> {
     BTreeSet::from([
         RestRoute {
-            method: "GET".to_string(),
+            method: HttpMethodScalar::Get,
             path: "/users".to_string(),
             path_parameters: vec![],
         },
         RestRoute {
-            method: "GET".to_string(),
+            method: HttpMethodScalar::Get,
             path: "/users/{id}".to_string(),
             path_parameters: vec!["id".to_string()],
         },
         RestRoute {
-            method: "GET".to_string(),
+            method: HttpMethodScalar::Get,
             path: "/orgs/{org}/repos/{repo}".to_string(),
             path_parameters: vec!["org".to_string(), "repo".to_string()],
         },
         RestRoute {
-            method: "POST".to_string(),
+            method: HttpMethodScalar::Post,
             path: "/secrets/{secret_name}:addVersion".to_string(),
             path_parameters: vec!["secret_name".to_string()],
         },
         RestRoute {
-            method: "GET".to_string(),
+            method: HttpMethodScalar::Get,
             path: "/a-b".to_string(),
             path_parameters: vec![],
         },
         RestRoute {
-            method: "GET".to_string(),
+            method: HttpMethodScalar::Get,
             path: "/a_b".to_string(),
             path_parameters: vec![],
         },
         RestRoute {
-            method: "POST".to_string(),
+            method: HttpMethodScalar::Post,
             path: "/users".to_string(),
             path_parameters: vec![],
         },
@@ -351,9 +352,9 @@ fn backend_probe(bin_path: &Path, method: &str, path: &str) -> String {
 }
 
 fn openapi_yaml_routes(yaml: &str) -> BTreeSet<RestRoute> {
-    let mut routes: BTreeMap<(String, String), BTreeSet<String>> = BTreeMap::new();
+    let mut routes: BTreeMap<(HttpMethodScalar, String), BTreeSet<String>> = BTreeMap::new();
     let mut current_path: Option<String> = None;
-    let mut current_route: Option<(String, String)> = None;
+    let mut current_route: Option<(HttpMethodScalar, String)> = None;
     for line in yaml.lines() {
         if let Some(path) = line.strip_prefix("  '").and_then(|s| s.strip_suffix("':")) {
             current_path = Some(path.replace("''", "'"));
@@ -363,7 +364,8 @@ fn openapi_yaml_routes(yaml: &str) -> BTreeSet<RestRoute> {
         for method in ["get", "post", "put", "patch", "delete", "head", "options"] {
             if line == format!("    {method}:") {
                 let route = (
-                    method.to_ascii_uppercase(),
+                    HttpMethodScalar::from_token(&method.to_ascii_uppercase())
+                        .expect("OpenAPI parser recognizes emitted HTTP method"),
                     current_path
                         .clone()
                         .expect("method appears under a path in emitted YAML"),
@@ -416,7 +418,10 @@ fn markdown_documentation_routes(markdown: &str) -> BTreeSet<RestRoute> {
                 cells[2].split(", ").map(markdown_code_cell_value).collect()
             };
             Some(RestRoute {
-                method: cells[0].replace("\\|", "|").replace("\\\\", "\\"),
+                method: HttpMethodScalar::from_token(
+                    &cells[0].replace("\\|", "|").replace("\\\\", "\\"),
+                )
+                .expect("Markdown parser recognizes emitted HTTP method"),
                 path,
                 path_parameters,
             })
@@ -432,7 +437,8 @@ fn sql_ddl_routes(sql: &str) -> BTreeSet<RestRoute> {
             let row = row.strip_suffix("),").or_else(|| row.strip_suffix(");"))?;
             let (method, path) = parse_sql_route_row(row);
             Some(RestRoute {
-                method,
+                method: HttpMethodScalar::from_token(&method)
+                    .expect("SQL parser recognizes emitted HTTP method"),
                 path,
                 path_parameters: vec![],
             })
@@ -548,12 +554,12 @@ fn markdown_documentation_parser_round_trips_escaped_table_cells() {
         markdown_documentation_routes(markdown),
         BTreeSet::from([
             RestRoute {
-                method: "GET".to_string(),
+                method: HttpMethodScalar::Get,
                 path: "/a|b\\c`d".to_string(),
                 path_parameters: vec!["p|q".to_string(), "r\\s`t".to_string()],
             },
             RestRoute {
-                method: "POST".to_string(),
+                method: HttpMethodScalar::Post,
                 path: "\\bare".to_string(),
                 path_parameters: vec!["`edge".to_string()],
             }
@@ -644,7 +650,7 @@ fn omni_openapi_backend_emission_demo_generates_runnable_matching_backend() {
             .replace("{repo}", "gunbc")
             .replace("{secret_name}", "api-key");
         assert_eq!(
-            backend_probe(&backend_bin, &route.method, &concrete_path),
+            backend_probe(&backend_bin, route.method.token(), &concrete_path),
             "200",
             "generated backend accepts route {} {}",
             route.method,
@@ -674,7 +680,7 @@ fn omni_sql_ddl_alternative_demo_generates_schema_matching_backend() {
     let canonical_without_parameters: BTreeSet<_> = canonical_routes
         .iter()
         .map(|route| RestRoute {
-            method: route.method.clone(),
+            method: route.method,
             path: route.path.clone(),
             path_parameters: vec![],
         })
@@ -699,7 +705,7 @@ fn omni_sql_ddl_alternative_demo_generates_schema_matching_backend() {
             .replace("{repo}", "gunbc")
             .replace("{secret_name}", "api-key");
         assert_eq!(
-            backend_probe(&backend_bin, &route.method, &concrete_path),
+            backend_probe(&backend_bin, route.method.token(), &concrete_path),
             "200",
             "generated backend implements SQL schema route {} {}",
             route.method,
@@ -814,7 +820,7 @@ fn todo_service_repository_demo_omni_layers_share_one_node_tree() {
     let canonical_without_parameters: BTreeSet<_> = canonical
         .iter()
         .map(|route| RestRoute {
-            method: route.method.clone(),
+            method: route.method,
             path: route.path.clone(),
             path_parameters: vec![],
         })
@@ -835,7 +841,7 @@ fn todo_service_repository_demo_omni_layers_share_one_node_tree() {
             .replace("{todoId}", "99")
             .replace("{listId}", "7");
         assert_eq!(
-            backend_probe(&backend_bin, &route.method, &concrete_path),
+            backend_probe(&backend_bin, route.method.token(), &concrete_path),
             "200",
             "generated backend accepts route {} {}",
             route.method,

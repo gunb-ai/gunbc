@@ -1,26 +1,39 @@
 // src/v4/std/verification.dag
-// Scope: Closed TestClaim schema — AssertKind, TestgenTier/Layer, TestClassification, ImpossibleBugClass, T19ManualAnchorKey, TestClaim fields.
-// Owns: AssertKind TestgenTier TestgenLayer TestClassification ImpossibleBugClass T19ManualAnchorKey TestClaim
+// Scope: Closed TestClaim schema — assertion-shape coproduct, TestgenTier/Layer, TestClassification, ImpossibleBugClass, T19ManualAnchorKey.
+// Owns: TestClassification ImpossibleBugClass T19ManualAnchorKey TestClaim
 // Consumes: v4.std.node v4.std.diagnostic
 // Status: T-3 modeled; substrate extension or file split = operator STOP.
 
 module v4.std.verification
 
 
-import v4.std.node { Node }
+import v4.std.node { Node, Symbol }
 import v4.std.diagnostic {
-  Outcome
+  Accepted,
+  Diagnostic,
+  Extent,
+  NonEmptyDiagnostics,
+  Outcome,
+  Rejected,
+  Textual,
+  Unavailable,
+  UserInputBoundary,
+  WholeFile,
+  diagnostics_singleton
 }
 
 
-// RULING-1: pretty-much-done — closed TestClaim assertion kind set.
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
-type AssertKind
-// 🟢 coproduct dissolution — LB-P4-3212
-  = Equals
-  | DiagnosticAssert
-  | Compiles
-  | RoundTrips
+data v4_std_verification_file: Symbol = v4_std_verification_file
+data test_claim_expected_outcome_undeclared: Symbol = test_claim_expected_outcome_undeclared
+
+
+fn test_claim_expected_outcome_undeclared_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: test_claim_expected_outcome_undeclared,
+    at: Textual { file: v4_std_verification_file, extent: WholeFile },
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
 
 
 // RULING-1: pretty-much-done — closed TestClaim tier set.
@@ -70,6 +83,11 @@ type T19ManualAnchorKey
   | T19ManualTcArrowTwoConj
   | T19ManualTcCardinalityEmpty
   | T19ManualTcInstantiationEmpty
+  | T19ManualTcArrowEmpty
+  | T19ManualTcTransformEmpty
+  | T19ManualTcBranchEmpty
+  | T19ManualTcLoopEmpty
+  | T19ManualTcBindZeroChildren
   | T19ManualTcConjEqualsRefl
   | T19ManualNatAddLeftIdentity
   | T19ManualNatAddRightIdentity
@@ -80,13 +98,88 @@ type T19ManualAnchorKey
   | T19ManualAnchorAbsent
 
 
-// RULING-1: pretty-much-done — core TestClaim carrier; receipts live beside claim rows.
-type TestClaim {
-  kind: AssertKind
-  label: String
-  t19_anchor: T19ManualAnchorKey
-  input: Node
-  expected: Outcome<Node>
-  classification: TestClassification
+// RULING-1: pretty-much-done — assertion shape is the variant tag (Practice 4).
+// 🟢 coproduct dissolution — LB-P4-3212.
+type TestClaim
+// 🟢 coproduct dissolution — LB-P4-3212
+  = CompilesClaim {
+      label: String
+      t19_anchor: T19ManualAnchorKey
+      input: Node
+      expected_value: Node
+      classification: TestClassification
+    }
+  | DiagnosticClaim {
+      label: String
+      t19_anchor: T19ManualAnchorKey
+      input: Node
+      expected_rejection: NonEmptyDiagnostics
+      classification: TestClassification
+    }
+  | EqualsClaim {
+      label: String
+      t19_anchor: T19ManualAnchorKey
+      lhs: Node
+      rhs: Node
+      classification: TestClassification
+    }
+  | RoundTripClaim {
+      label: String
+      t19_anchor: T19ManualAnchorKey
+      input: Node
+      classification: TestClassification
+    }
+
+
+fn test_claim_input(c: TestClaim) -> Node {
+  match c {
+    CompilesClaim { input: n, label: _, t19_anchor: _, expected_value: _, classification: _ } => n
+    DiagnosticClaim { input: n, label: _, t19_anchor: _, expected_rejection: _, classification: _ } => n
+    EqualsClaim { lhs: n, label: _, t19_anchor: _, rhs: _, classification: _ } => n
+    RoundTripClaim { input: n, label: _, t19_anchor: _, classification: _ } => n
+  }
 }
 
+fn test_claim_t19_anchor(c: TestClaim) -> T19ManualAnchorKey {
+  match c {
+    CompilesClaim { t19_anchor: k, label: _, input: _, expected_value: _, classification: _ } => k
+    DiagnosticClaim { t19_anchor: k, label: _, input: _, expected_rejection: _, classification: _ } => k
+    EqualsClaim { t19_anchor: k, label: _, lhs: _, rhs: _, classification: _ } => k
+    RoundTripClaim { t19_anchor: k, label: _, input: _, classification: _ } => k
+  }
+}
+
+fn test_claim_classification(c: TestClaim) -> TestClassification {
+  match c {
+    CompilesClaim { classification: c, label: _, t19_anchor: _, input: _, expected_value: _ } => c
+    DiagnosticClaim { classification: c, label: _, t19_anchor: _, input: _, expected_rejection: _ } => c
+    EqualsClaim { classification: c, label: _, t19_anchor: _, lhs: _, rhs: _ } => c
+    RoundTripClaim { classification: c, label: _, t19_anchor: _, input: _ } => c
+  }
+}
+
+// Projects declared expected outcomes only. RoundTripClaim has no expected-outcome field;
+// eval authority (05_eval.dag) routes it to Deferred — do not synthesize an Outcome<Node> here.
+fn test_claim_expected_outcome(c: TestClaim) -> Outcome<Outcome<Node>> {
+  match c {
+    CompilesClaim { expected_value: e, label: _, t19_anchor: _, input: _, classification: _ } =>
+      Accepted {
+        value: Accepted { value: e, diagnostics: None },
+        diagnostics: None
+      }
+    DiagnosticClaim { expected_rejection: e, label: _, t19_anchor: _, input: _, classification: _ } =>
+      Accepted {
+        value: Rejected { diagnostics: e },
+        diagnostics: None
+      }
+    EqualsClaim { rhs: r, label: _, t19_anchor: _, lhs: _, classification: _ } =>
+      Accepted {
+        value: Accepted { value: r, diagnostics: None },
+        diagnostics: None
+      }
+    RoundTripClaim { label: _, t19_anchor: _, input: _, classification: _ } =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: test_claim_expected_outcome_undeclared_diagnostic())
+      }
+  }
+}
