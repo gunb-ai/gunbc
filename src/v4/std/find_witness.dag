@@ -27,6 +27,7 @@ import v4.std.witness { StructuralPropertyWitness }
 data find_witness_reason_no_candidate: Symbol = find_witness_reason_no_candidate
 data find_witness_reason_ambiguous_candidate: Symbol = find_witness_reason_ambiguous_candidate
 data find_witness_reason_not_realized: Symbol = find_witness_reason_not_realized
+data find_witness_reason_invalid_witness: Symbol = find_witness_reason_invalid_witness
 data preservation_rule_constraint_satisfaction: Symbol = preservation_rule_constraint_satisfaction
 data preservation_rule_exact_structural_equality_zip_fold: Symbol = preservation_rule_exact_structural_equality_zip_fold
 type CandidateSet {
@@ -72,6 +73,13 @@ fn find_witness_ambiguous_candidate_diagnostic(source_facts: Node) -> Diagnostic
 fn find_witness_not_realized_diagnostic(source_facts: Node) -> Diagnostic {
   Diagnostic {
     reason: find_witness_reason_not_realized,
+    at: NodeLocus { node: source_facts },
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+fn find_witness_invalid_witness_diagnostic(source_facts: Node) -> Diagnostic {
+  Diagnostic {
+    reason: find_witness_reason_invalid_witness,
     at: NodeLocus { node: source_facts },
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -310,6 +318,6 @@ fn verify_witness_realized(
   ) && (witness.property == predicate.preservation_rule) && (witness.evidence == candidate) {
     Accepted { value: witness, diagnostics: None }
   } else {
-    outcome_rejected(find_witness_not_realized_diagnostic(source_facts: source_facts))
+    outcome_rejected(find_witness_invalid_witness_diagnostic(source_facts: source_facts))
   }
 }

@@ -40,6 +40,7 @@ import v4.std.diagnostic {
   Unavailable,
   bind_outcome,
   diagnostics_merge,
+  diagnostics_singleton,
   outcome_accepted,
   outcome_rejected,
   rejected_with_pending
@@ -231,9 +232,7 @@ fn translate_fold_init(
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
 }
-// P2 single-authority: coercion_fold's `CoercionResult.target` is the target-tree authority.
-// Exact-shape MVP: preserve coerced.target (no source-edge rebuild). Structure-changing lowerings
-// defer to P7 LawfulRewriteWitness lane — not this fold_step path.
+// P3: child translation is not reattached into parent yet — fail-closed (no silent structure drop).
 fn translate_fold_step(
   acc: Outcome<Node>,
   edge: Edge,
@@ -244,9 +243,13 @@ fn translate_fold_step(
     Accepted { value: parent, diagnostics: ad } =>
       match child {
         Accepted { value: _, diagnostics: cd } =>
-          Accepted {
-            value: parent,
-            diagnostics: diagnostics_merge(outer: ad, inner: cd)
+          Rejected {
+            diagnostics: rejected_with_pending(
+              pending: diagnostics_merge(outer: ad, inner: cd),
+              rejected: diagnostics_singleton(
+                d: translate_child_reattachment_not_realized_diagnostic(parent: parent)
+              )
+            )
           }
         Rejected { diagnostics: r } =>
           Rejected {
