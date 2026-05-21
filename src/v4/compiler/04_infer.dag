@@ -40,7 +40,7 @@ import v4.std.node {
   Symbol,
   fold_node
 }
-import v4.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
+import v4.std.witness { Holds, Violates, Witness }
 
 
 // RULING-1: needs-more-work — typed bridge until algebra inhabitance authority lands.

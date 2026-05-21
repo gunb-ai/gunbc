@@ -204,9 +204,15 @@ fn workflow_inferred_facts() -> InferredFacts {
         correction: Unavailable { reason: ExternalContractUnknown }
       }
     },
-    canonical: StructuralPropertyWitness {
-      property: constraint_property_being_canonical,
-      evidence: resolved
+    canonical: CanonicalGroundingWitness {
+      structural: StructuralPropertyWitness {
+        property: constraint_property_being_canonical,
+        evidence: resolved
+      },
+      closedness: StructuralPropertyWitness {
+        property: constraint_property_candidate_set_closedness,
+        evidence: resolved
+      }
     }
   }
 }
