@@ -650,6 +650,15 @@ fn set_builtin_receiver_is_set(receiver_arg: Node, scope: InferScope) -> Bool {
   }
 }
 
+// Resolved non-Set second operand for set_union (unresolved args defer to normal inference).
+fn set_union_other_operand_is_resolved_non_set(other_arg: Node, scope: InferScope) -> Bool {
+  match arg_value(n: other_arg).inferred {
+    Some { value: Resolved { node: other_type } } =>
+      !node_is_set_collection(n: other_type, source_indices: scope.type_env.source_indices)
+    _ => false
+  }
+}
+
 fn set_element_type_from_receiver(receiver_type: Node, scope: InferScope) -> Node? {
   match set_element_type_in_env(type_node: receiver_type, env: scope.type_env) {
     Some { value: elem_slot } => Some { value: child_type_node(ch: elem_slot) }
@@ -750,6 +759,12 @@ fn infer_tier2b_builtin_with_kernel_diags(func_name: String, typed_args: List<No
       Some { value: receiver_arg } => set_builtin_receiver_is_set(receiver_arg: receiver_arg, scope: scope)
       None => false
     }
+    let union_other_bad = if func_name == "set_union" {
+      match typed_args |> skip(1) |> first {
+        Some { value: other_arg } => set_union_other_operand_is_resolved_non_set(other_arg: other_arg, scope: scope)
+        None => false
+      }
+    } else { false }
     let recv_elem = match typed_args |> first {
       Some { value: receiver_arg } =>
         match arg_value(n: receiver_arg).inferred {
@@ -771,12 +786,15 @@ fn infer_tier2b_builtin_with_kernel_diags(func_name: String, typed_args: List<No
     let wrong_receiver_diags = if recv_is_set { [] } else {
       [inference_error(message: concat(func_name, ": receiver must be Set<...>"), span: span, module_name: scope.module_name)]
     }
+    let wrong_union_other_diags = if union_other_bad {
+      [inference_error(message: "set_union: second operand must be Set<...>", span: span, module_name: scope.module_name)]
+    } else { [] }
     let mismatch_diags = if elem_mismatch {
       [inference_error(message: concat(func_name, ": incompatible set element types"), span: span, module_name: scope.module_name)]
     } else { [] }
     let result_bt = match typed_args |> first {
       Some { value: receiver_arg } =>
-        if recv_is_set && !elem_mismatch {
+        if recv_is_set && !elem_mismatch && !union_other_bad {
           match arg_value(n: receiver_arg).inferred {
             Some { value: Resolved { node: receiver_type } } =>
               match recv_elem {
@@ -796,10 +814,10 @@ fn infer_tier2b_builtin_with_kernel_diags(func_name: String, typed_args: List<No
     }
     let build_diags = match operand_elem {
       Some { value: element } =>
-        if recv_is_set && !elem_mismatch { set_kernel_ty_from_element(element: element).miss_diags } else { [] }
+        if recv_is_set && !elem_mismatch && !union_other_bad { set_kernel_ty_from_element(element: element).miss_diags } else { [] }
       None => []
     }
-    Tier2bBt { bt: result_bt, kernel_diags: concat(wrong_receiver_diags, concat(mismatch_diags, build_diags)) }
+    Tier2bBt { bt: result_bt, kernel_diags: concat(wrong_receiver_diags, concat(wrong_union_other_diags, concat(mismatch_diags, build_diags))) }
   } else {
     Tier2bBt { bt: resolve_builtin_call_type(name: func_name), kernel_diags: [] }
   }
