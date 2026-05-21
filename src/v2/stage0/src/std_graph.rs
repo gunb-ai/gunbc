@@ -4,9 +4,12 @@
 use crate::std_termination::DescentEvidence::{DescentUnknown, NonIncreasing, Strict};
 pub use crate::std_termination::{DescentEvidence, ProofEdge, TerminationProof};
 use crate::v2_rt;
+use crate::v2_rt::rc_empty_set as empty_set;
+use crate::v2_rt::rc_set_insert as set_insert;
+use crate::v2_rt::rc_set_union as set_union;
+use crate::v2_rt::set_contains;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -143,7 +146,7 @@ pub fn dfs_finish_order(
     acc: &Rc<DfsFinishAcc>,
 ) -> Rc<DfsFinishAcc> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        if v2_rt::set_contains(&acc.visited.clone(), node.clone()) {
+        if v2_rt::set_contains(acc.visited.clone(), node.clone()) {
             acc.clone()
         } else {
             {
@@ -176,7 +179,7 @@ pub fn dfs_collect_component(
     acc: &Rc<SccComponentAcc>,
 ) -> Rc<SccComponentAcc> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        if v2_rt::set_contains(&acc.visited.clone(), node.clone()) {
+        if v2_rt::set_contains(acc.visited.clone(), node.clone()) {
             acc.clone()
         } else {
             {
@@ -218,8 +221,7 @@ pub fn graph_has_multi_node_scc(names: &Rc<Vec<String>>, graph: Rc<CallGraph>) -
                 has_cycle: false,
             }),
             |acc: Rc<SccCycleAcc>, name: String| {
-                if (acc.has_cycle.clone()
-                    || v2_rt::set_contains(&acc.visited.clone(), name.clone()))
+                if (acc.has_cycle.clone() || v2_rt::set_contains(acc.visited.clone(), name.clone()))
                 {
                     acc.clone()
                 } else {
