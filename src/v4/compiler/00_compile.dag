@@ -9,7 +9,7 @@
 //       grounding_sanity_lens, compile, validate_then_compile.
 // Consumes: compiler/04_infer.dag, compiler/05_emit.dag, std/collection.dag, std/diagnostic.dag,
 //           std/node.dag, std/text.dag, std/witness.dag.
-// Status: Wave-5-A — validate_then_compile public terminal; compile-core composes infer ∘ emit (TranslateTo).
+// Status: Wave-5-A — validate_then_compile: infer once → lens gates on InferredTree → compile_inferred (TranslateTo: emit).
 // Anchor: docs/design-v4-compiler-homomorphism.md P3 commitment 6 + Ratified Q11.
 
 
