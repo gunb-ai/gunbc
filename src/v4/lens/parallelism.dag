@@ -119,8 +119,7 @@ import v4.std.dependency {
   DataDependsOn,
   DependencyView,
   EffectDependsOn,
-  ResourceDependsOn,
-  dependency_lens
+  ResourceDependsOn
 }
 import v4.std.node { Node }
 import v4.std.witness { Holds, Witness }
@@ -178,12 +177,67 @@ fn parallelism_fact_from_dependencies(dependencies: List<DependencyView>) -> Par
   }
 }
 
-fn parallelism_fact(tree: InferredTree) -> ParallelismFact {
-  parallelism_fact_from_dependencies(dependencies: dependency_lens(root: tree.root))
+fn parallelism_fact(tree: InferredTree, dependencies: List<DependencyView>) -> ParallelismFact {
+  parallelism_fact_from_dependencies(dependencies: dependencies)
 }
 
-fn parallelism_witness(tree: InferredTree) -> Witness<ParallelismFact> {
+fn parallelism_witness(tree: InferredTree, dependencies: List<DependencyView>) -> Witness<ParallelismFact> {
   Holds {
-    value: parallelism_fact(tree: tree)
+    value: parallelism_fact(tree: tree, dependencies: dependencies)
   }
+}
+
+fn parallelism_relation_eq(a: ParallelismRelation, b: ParallelismRelation) -> Bool {
+  match a {
+    StructurallyIndependent => match b {
+      StructurallyIndependent => true
+      _ => false
+    }
+    DataDependent => match b {
+      DataDependent => true
+      _ => false
+    }
+    EffectCoupled => match b {
+      EffectCoupled => true
+      _ => false
+    }
+    BarrierCoupled => match b {
+      BarrierCoupled => true
+      _ => false
+    }
+  }
+}
+
+fn parallelism_dependency_fact_eq(a: ParallelismDependencyFact, b: ParallelismDependencyFact) -> Bool {
+  (a.source == b.source)
+    && (a.dependent == b.dependent)
+    && (a.dependency == b.dependency)
+    && parallelism_relation_eq(a: a.relation, b: b.relation)
+}
+
+fn parallelism_dependency_count(xs: List<ParallelismDependencyFact>, item: ParallelismDependencyFact) -> Int {
+  fold(xs, init: 0, f: fn(acc, candidate) {
+    if parallelism_dependency_fact_eq(a: candidate, b: item) {
+      acc + 1
+    } else {
+      acc
+    }
+  })
+}
+
+fn parallelism_dependency_facts_eq(
+  left: List<ParallelismDependencyFact>,
+  right: List<ParallelismDependencyFact>
+) -> Bool {
+  if count(left) != count(right) {
+    false
+  } else {
+    fold(left, init: true, f: fn(acc, item) {
+      acc && (parallelism_dependency_count(xs: left, item: item) == parallelism_dependency_count(xs: right, item: item))
+    })
+  }
+}
+
+fn parallelism_fact_eq(a: ParallelismFact, b: ParallelismFact) -> Bool {
+  parallelism_dependency_facts_eq(left: a.dependencies, right: b.dependencies)
 }

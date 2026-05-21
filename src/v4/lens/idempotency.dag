@@ -26,7 +26,7 @@ import v4.lens.effect {
   PureEffect,
   ReadEffect,
   WriteEffect,
-  effect_fact,
+  effect_dependency_fact_eq,
   effect_fact_from_dependencies
 }
 import v4.std.dependency { DependencyView }
@@ -67,8 +67,8 @@ fn idempotency_effect_fact(effect: EffectDependencyFact) -> IdempotencyEffectFac
   }
 }
 
-fn idempotency_fact(tree: InferredTree) -> IdempotencyFact {
-  let effects = effect_fact(tree: tree)
+fn idempotency_fact(tree: InferredTree, dependencies: List<DependencyView>) -> IdempotencyFact {
+  let effects = effect_fact_from_dependencies(dependencies: dependencies)
   IdempotencyFact {
     effects: fold(effects.dependencies, init: [], f: fn(acc, effect) {
       list_push(acc, idempotency_effect_fact(effect: effect))
@@ -85,8 +85,54 @@ fn idempotency_fact_from_effect_dependencies(dependencies: List<DependencyView>)
   }
 }
 
-fn idempotency_witness(tree: InferredTree) -> Witness<IdempotencyFact> {
+fn idempotency_witness(tree: InferredTree, dependencies: List<DependencyView>) -> Witness<IdempotencyFact> {
   Holds {
-    value: idempotency_fact(tree: tree)
+    value: idempotency_fact(tree: tree, dependencies: dependencies)
   }
+}
+
+fn idempotency_verdict_eq(a: IdempotencyVerdict, b: IdempotencyVerdict) -> Bool {
+  match a {
+    Idempotent => match b {
+      Idempotent => true
+      _ => false
+    }
+    NonIdempotent => match b {
+      NonIdempotent => true
+      _ => false
+    }
+  }
+}
+
+fn idempotency_effect_fact_eq(a: IdempotencyEffectFact, b: IdempotencyEffectFact) -> Bool {
+  (a.at == b.at)
+    && effect_dependency_fact_eq(a: a.effect, b: b.effect)
+    && idempotency_verdict_eq(a: a.verdict, b: b.verdict)
+}
+
+fn idempotency_effect_count(xs: List<IdempotencyEffectFact>, item: IdempotencyEffectFact) -> Int {
+  fold(xs, init: 0, f: fn(acc, candidate) {
+    if idempotency_effect_fact_eq(a: candidate, b: item) {
+      acc + 1
+    } else {
+      acc
+    }
+  })
+}
+
+fn idempotency_effect_facts_eq(
+  left: List<IdempotencyEffectFact>,
+  right: List<IdempotencyEffectFact>
+) -> Bool {
+  if count(left) != count(right) {
+    false
+  } else {
+    fold(left, init: true, f: fn(acc, item) {
+      acc && (idempotency_effect_count(xs: left, item: item) == idempotency_effect_count(xs: right, item: item))
+    })
+  }
+}
+
+fn idempotency_fact_eq(a: IdempotencyFact, b: IdempotencyFact) -> Bool {
+  idempotency_effect_facts_eq(left: a.effects, right: b.effects)
 }

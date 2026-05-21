@@ -25,8 +25,7 @@ import v4.std.dependency {
   DataDependsOn,
   DependencyView,
   EffectDependsOn,
-  ResourceDependsOn,
-  dependency_lens
+  ResourceDependsOn
 }
 import v4.std.node { Node }
 import v4.std.witness { Holds, Witness }
@@ -79,12 +78,67 @@ fn ownership_fact_from_dependencies(dependencies: List<DependencyView>) -> Owner
   }
 }
 
-fn ownership_fact(tree: InferredTree) -> OwnershipFact {
-  ownership_fact_from_dependencies(dependencies: dependency_lens(root: tree.root))
+fn ownership_fact(tree: InferredTree, dependencies: List<DependencyView>) -> OwnershipFact {
+  ownership_fact_from_dependencies(dependencies: dependencies)
 }
 
-fn ownership_witness(tree: InferredTree) -> Witness<OwnershipFact> {
+fn ownership_witness(tree: InferredTree, dependencies: List<DependencyView>) -> Witness<OwnershipFact> {
   Holds {
-    value: ownership_fact(tree: tree)
+    value: ownership_fact(tree: tree, dependencies: dependencies)
   }
+}
+
+fn ownership_mode_eq(a: OwnershipMode, b: OwnershipMode) -> Bool {
+  match a {
+    OwnedContainment => match b {
+      OwnedContainment => true
+      _ => false
+    }
+    SharedRead => match b {
+      SharedRead => true
+      _ => false
+    }
+    ExclusiveMutation => match b {
+      ExclusiveMutation => true
+      _ => false
+    }
+    BorrowedDependency => match b {
+      BorrowedDependency => true
+      _ => false
+    }
+  }
+}
+
+fn ownership_dependency_fact_eq(a: OwnershipDependencyFact, b: OwnershipDependencyFact) -> Bool {
+  (a.owner == b.owner)
+    && (a.subject == b.subject)
+    && (a.dependency == b.dependency)
+    && ownership_mode_eq(a: a.mode, b: b.mode)
+}
+
+fn ownership_dependency_count(xs: List<OwnershipDependencyFact>, item: OwnershipDependencyFact) -> Int {
+  fold(xs, init: 0, f: fn(acc, candidate) {
+    if ownership_dependency_fact_eq(a: candidate, b: item) {
+      acc + 1
+    } else {
+      acc
+    }
+  })
+}
+
+fn ownership_dependency_facts_eq(
+  left: List<OwnershipDependencyFact>,
+  right: List<OwnershipDependencyFact>
+) -> Bool {
+  if count(left) != count(right) {
+    false
+  } else {
+    fold(left, init: true, f: fn(acc, item) {
+      acc && (ownership_dependency_count(xs: left, item: item) == ownership_dependency_count(xs: right, item: item))
+    })
+  }
+}
+
+fn ownership_fact_eq(a: OwnershipFact, b: OwnershipFact) -> Bool {
+  ownership_dependency_facts_eq(left: a.dependencies, right: b.dependencies)
 }
