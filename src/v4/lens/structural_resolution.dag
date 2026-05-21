@@ -217,6 +217,7 @@ fn fact_single_dependency_projects_status(
   if count(fact.dependencies) != 1 {
     false
   } else {
+    // count == 1: fold acc is unused; single dep is the only status ratchet site.
     fold(fact.dependencies, init: false, f: fn(_acc, dep) {
       status_eq(a: status_of_dependency_fact(fact: dep), b: expected)
     })

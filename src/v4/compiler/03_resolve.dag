@@ -451,6 +451,7 @@ fn resolve_bind_edges(
                     BindEdgeAccMk {
                       idx: i + 1,
                       acc: Accepted {
+                        // Bind-edge-0: replace e.label — incoming label is positional scaffold only.
                         value: list_push(
                           done,
                           Edge {
