@@ -395,7 +395,9 @@ fn claim_t19_anchor_name(body: &SurfaceExpr) -> &str {
             };
             record_field_expr(fields, "anchor")
         }
-        other => panic!("TestClaim data body must be variant record or arity_rejection_claim, got {other:?}"),
+        other => panic!(
+            "TestClaim data body must be variant record or arity_rejection_claim, got {other:?}"
+        ),
     };
     match anchor_expr {
         SurfaceExpr::Var { name, .. } => name.as_str(),
