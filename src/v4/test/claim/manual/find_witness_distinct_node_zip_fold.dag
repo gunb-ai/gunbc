@@ -53,7 +53,6 @@ import v4.std.verification {
 }
 import v4.std.witness { StructuralPropertyWitness }
 data distinct_zip_source_atom: Symbol = distinct_zip_source_atom
-data distinct_zip_target_atom: Symbol = distinct_zip_target_atom
 data distinct_zip_wrong_atom: Symbol = distinct_zip_wrong_atom
 data distinct_zip_closed_candidates: Symbol = distinct_zip_closed_candidates
 fn distinct_source_leaf() -> Node {
@@ -64,7 +63,7 @@ fn distinct_source_leaf() -> Node {
 }
 fn distinct_target_leaf() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: distinct_zip_target_atom } },
+    kind: TypeNode { connective: Atom { identity: distinct_zip_source_atom } },
     children: []
   }
 }

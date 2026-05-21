@@ -153,15 +153,14 @@ data witness_find_witness_identity_accepts: Bool = match find_witness(
   Accepted { value: fw, diagnostics: _ } => fw.candidate == identity_source_node()
   Rejected { diagnostics: _ } => false
 }
-data witness_find_witness_distinct_atom_accepts: Bool = match find_witness(
-  source_facts: identity_source_node(),
-  candidates: candidate_set_non_identity_single(),
-  predicate: exact_identity_predicate(),
-  multiplicity_policy: UniqueOnly
-) {
-  Accepted { value: fw, diagnostics: _ } => fw.candidate == identity_other_node()
-  Rejected { diagnostics: _ } => false
-}
+data witness_find_witness_non_identity_rejects: Bool = rejected_for_no_candidate(
+  o: find_witness(
+    source_facts: identity_source_node(),
+    candidates: candidate_set_non_identity_single(),
+    predicate: exact_identity_predicate(),
+    multiplicity_policy: UniqueOnly
+  )
+)
 data witness_find_witness_other_rule_rejects: Bool = rejected_for_no_candidate(
   o: find_witness(
     source_facts: identity_source_node(),
@@ -272,11 +271,11 @@ data claim_find_witness_identity_accepts: TestClaim = TestClaim {
   expected: identity_witness_expected(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
-data claim_find_witness_distinct_atom_accepts: TestClaim = TestClaim {
+data claim_find_witness_non_identity_rejects: TestClaim = TestClaim {
   kind: Equals,
-  label: "manual/find_witness_identity_mvp: distinct atom candidate accepts structurally",
+  label: "manual/find_witness_identity_mvp: non-identity candidate rejects",
   t19_anchor: T19ManualAnchorAbsent,
-  input: identity_witness_claim_input(ok: witness_find_witness_distinct_atom_accepts),
+  input: identity_witness_claim_input(ok: witness_find_witness_non_identity_rejects),
   expected: identity_witness_expected(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }

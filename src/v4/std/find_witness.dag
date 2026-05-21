@@ -23,7 +23,7 @@ import v4.std.diagnostic {
   Unavailable,
   outcome_rejected
 }
-import v4.std.node { Edge, Node, NodeFold, Symbol, TypeNode, Atom, fold_node, well_formed }
+import v4.std.node { Edge, Node, NodeFold, Symbol, fold_node, well_formed }
 import v4.std.witness { StructuralPropertyWitness }
 data find_witness_reason_no_candidate: Symbol = find_witness_reason_no_candidate
 data find_witness_reason_ambiguous_candidate: Symbol = find_witness_reason_ambiguous_candidate
@@ -78,14 +78,10 @@ fn find_witness_not_realized_diagnostic(source_facts: Node) -> Diagnostic {
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
-data exact_structural_atom_leaf: Symbol = exact_structural_atom_leaf
-// 🟡 coproduct dissolution — scaffold:exact-structural-preservation-distinct-node-mvp · atoms are identity-erased only for this MVP structural comparison · dissolve-on: W-T-10 canonical Node grounding algebra from source/target declarations.
+// 🟡 coproduct dissolution — scaffold:exact-structural-preservation-distinct-node-mvp · leaf coincidence stays fail-closed on Atom identity until W-T-10 canonical Node grounding algebra supplies source/target declaration evidence.
 fn exact_structural_canonical_init(n: Node) -> Node {
   Node {
-    kind: match n.kind {
-      TypeNode { connective: Atom { identity: _ } } => TypeNode { connective: Atom { identity: exact_structural_atom_leaf } }
-      _ => n.kind
-    },
+    kind: n.kind,
     children: []
   }
 }
