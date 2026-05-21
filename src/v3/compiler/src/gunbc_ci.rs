@@ -283,6 +283,18 @@ pub enum MechanicalReverificationError {
     },
 }
 
+/// Verdict emitted by the Lens-CI `MechanicalReverification` runtime.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MechanicalReverificationVerdict {
+    Verified,
+    NotVerified {
+        diagnostic: MechanicalReverificationError,
+    },
+    Unverifiable {
+        diagnostic: MechanicalReverificationError,
+    },
+}
+
 /// Validate a `MechanicalReverification` row against one concrete rerun.
 ///
 /// This is the Lens-CI host runtime for `v4.lens.subsumption` while v4 TestClaim execution is
@@ -326,6 +338,20 @@ pub fn verify_mechanical_reverification(
     }
 
     Ok(())
+}
+
+/// Emit the Lens-CI verdict for one scaffolded `MechanicalReverification` rerun.
+pub fn mechanical_reverification_verdict(
+    row: &DissolutionSubsumptionRuntimeRow,
+    run: &MechanicalReverificationRun,
+) -> MechanicalReverificationVerdict {
+    match verify_mechanical_reverification(row, run) {
+        Ok(()) => MechanicalReverificationVerdict::Verified,
+        Err(err @ MechanicalReverificationError::SubsumedFixStillPresentAfter { .. }) => {
+            MechanicalReverificationVerdict::NotVerified { diagnostic: err }
+        }
+        Err(err) => MechanicalReverificationVerdict::Unverifiable { diagnostic: err },
+    }
 }
 
 fn topo_sort_subset(
@@ -708,6 +734,10 @@ mod tests {
         let row = affected_set_subsumption_row();
         let run = successful_affected_set_reverification();
         assert_eq!(verify_mechanical_reverification(&row, &run), Ok(()));
+        assert_eq!(
+            mechanical_reverification_verdict(&row, &run),
+            MechanicalReverificationVerdict::Verified
+        );
     }
 
     #[test]
@@ -724,6 +754,14 @@ mod tests {
                 }
             )
         );
+        assert_eq!(
+            mechanical_reverification_verdict(&row, &run),
+            MechanicalReverificationVerdict::NotVerified {
+                diagnostic: MechanicalReverificationError::SubsumedFixStillPresentAfter {
+                    fix: "affected_set_hash_receipt_leaf_fix".into()
+                }
+            }
+        );
     }
 
     #[test]
@@ -737,6 +775,14 @@ mod tests {
             Err(MechanicalReverificationError::SubsumedFixMissingBefore {
                 fix: "affected_set_frontier_receipt_leaf_fix".into()
             })
+        );
+        assert_eq!(
+            mechanical_reverification_verdict(&row, &run),
+            MechanicalReverificationVerdict::Unverifiable {
+                diagnostic: MechanicalReverificationError::SubsumedFixMissingBefore {
+                    fix: "affected_set_frontier_receipt_leaf_fix".into()
+                }
+            }
         );
     }
 
