@@ -449,14 +449,27 @@ passes — e.g. a three-variant `Cached | Produced | Rejected` where
   match-arm scope.
   **Tag-recoverability check (load-bearing, per operator-direct
   refinement 2026-05-21; granularity sharpened per openai-pro
-  REQUEST_CHANGES 2026-05-21):** after the variant-skeleton comparison
-  identifies a candidate pair, the lens additionally checks that the
-  **canonical payload signatures of the candidate variants are
-  pairwise-distinct** — that is, the variant-tag projection from the
-  payload-signature *product* (the full ordered tuple of field types,
-  by canonical-position normalization) into the coproduct's variant
-  set is injective. The check is at **payload-signature granularity**,
-  NOT at per-field-type granularity:
+  REQUEST_CHANGES 2026-05-21; equivalence-class scope sharpened per
+  codex BLOCKING #15978 2026-05-21):** after the variant-skeleton
+  comparison identifies all variants sharing a skeleton (the
+  **skeleton-equivalence class**), the lens checks that the
+  **canonical payload signatures across the ENTIRE equivalence class
+  are pairwise-distinct as a whole set** — NOT pairwise per candidate
+  pair. The variant-tag projection from the payload-signature *product*
+  (the full ordered tuple of field types, by canonical-position
+  normalization) into the equivalence class's variant subset must be
+  injective over the class. Why pairwise-over-the-set rather than
+  pairwise-per-pair: with three variants `V1 { x: A }`, `V2 { x: A }`,
+  `V3 { x: B }`, the pair (V1, V3) has distinct signatures and the
+  pair (V2, V3) has distinct signatures, but the class as a whole
+  contains the duplicate `(A,)` shared by V1+V2. Pairwise-per-pair
+  would falsely PASS on (V1, V3) and (V2, V3) and propose `Locus<T>`
+  that erases the V1-V2 distinction; equivalence-class injectivity
+  correctly FAILS the whole class. Mechanically: the check is
+  "let S = {payload-signature(v) | v in equivalence-class}; |S| ==
+  |equivalence-class|."
+  The check is at **payload-signature granularity**, NOT at per-field-
+  type granularity:
   - **Single-field variants** (the original Locus motivating case):
     payload signature reduces to the single field type. `V1 { x: A }`
     + `V2 { x: A }` share signature `(A,)` → FAIL (same payload
@@ -474,12 +487,20 @@ passes — e.g. a three-variant `Cached | Produced | Rejected` where
     `(A, B)` → FAIL (per-field-name renaming doesn't add discrimination
     if the type tuple is identical).
 
-  Without payload-signature-injective tag-recoverability, parameterizing
-  would erase information the original coproduct represented; the lens
-  cannot honestly recommend the dissolution. (Earlier wording specified
-  "field types pairwise-distinct" which over-constrained the check at
-  per-field granularity and would have under-fired on legitimate
-  multi-field dissolution candidates.)
+  Without equivalence-class-wide payload-signature-injective tag-
+  recoverability, parameterizing would erase information the original
+  coproduct represented; the lens cannot honestly recommend the
+  dissolution.
+
+  (Earlier wording history: original draft specified "field types
+  pairwise-distinct" which over-constrained at per-field granularity
+  (openai-pro caught — under-fired on multi-field cases). Subsequent
+  revision said "pairwise-distinct between candidate variants" which
+  under-constrained at the pairwise-per-pair scope (codex caught —
+  a 3-variant class with two duplicates would let the lens fire on
+  the non-duplicate pairs while leaving the duplicate-pair erasure
+  in place). Current spec is **equivalence-class-wide payload-
+  signature injectivity** — the honest endpoint.)
 
 - *Verdict:* hard error.
 
@@ -501,13 +522,16 @@ passes — e.g. a three-variant `Cached | Produced | Rejected` where
     structure is genuine variant-axis information; the lens does
     not fire. The trigger requires the type-substitution to be the
     SOLE structural difference.
-  - **Tag-not-recoverable from payload signature.** If two variants
-    share the **same canonical payload signature** (the full ordered
-    tuple of field types under canonical-position normalization),
-    parameterizing would ERASE the variant tag — the original
-    coproduct carried information the parametric form cannot
-    preserve. The lens does NOT fire on such pairs; the variants
-    stay as distinct cases. Examples:
+  - **Tag-not-recoverable from payload signature (equivalence-class-
+    wide check).** If **any two variants in the skeleton-equivalence
+    class** share the **same canonical payload signature** (the full
+    ordered tuple of field types under canonical-position normalization),
+    parameterizing would ERASE the variant tag for those two variants —
+    the original coproduct carried information the parametric form
+    cannot preserve. The lens does NOT fire on **the entire class**;
+    every variant in the class stays as a distinct case (no partial
+    dissolution — partial would leave the duplicate-pair erasure
+    in place). Examples:
     - `V1 { x: A }` + `V2 { x: A }` — both signatures `(A,)` →
       FAIL tag-recoverability → STAY.
     - `V1 { a: A, b: B }` + `V2 { c: A, d: B }` — both signatures
