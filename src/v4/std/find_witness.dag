@@ -72,6 +72,7 @@ fn find_witness_not_realized_diagnostic(source_facts: Node) -> Diagnostic {
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
+// 🟡 coproduct dissolution — scaffold:exact-structural-preservation-identity-mvp · dissolve-on: W-T-10 structural zip-fold predicate algebra; exact_structural_equality accepts only source-identical Node evidence and other preservation rules fail closed.
 fn preservation_predicate_holds(
   source_facts: Node,
   candidate: Node,
