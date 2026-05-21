@@ -83,6 +83,10 @@ pub use crate::v2_compiler_infer_types::{
 };
 pub use crate::v2_compiler_resolve::{ModuleGraph, ResolvedImport, ResolvedModule};
 use crate::v2_rt;
+use crate::v2_rt::rc_empty_set as empty_set;
+use crate::v2_rt::rc_set_insert as set_insert;
+use crate::v2_rt::rc_set_union as set_union;
+use crate::v2_rt::set_contains;
 use crate::v2_std_core::BinOp::{
     Add, And, Div, Eq, Ge, Gt, Le, Lt, Mod, Mul, Ne, NullCoalesce, Or, Sub,
 };
@@ -138,7 +142,6 @@ pub use crate::v2_std_core::{
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -545,7 +548,7 @@ pub fn classify_field_recursion(
                     };
                     let is_recursive_element = ((value_type.clone().as_str()
                         == parent_name.clone().as_str())
-                        || v2_rt::set_contains(&recursive_type_set, value_type.clone()));
+                        || v2_rt::set_contains(recursive_type_set, value_type.clone()));
                     if is_recursive_element {
                         {
                             let elem =
@@ -575,7 +578,7 @@ pub fn classify_field_recursion(
                     }
                 }
             } else {
-                if v2_rt::set_contains(&recursive_type_set, field_type_name.clone()) {
+                if v2_rt::set_contains(recursive_type_set, field_type_name.clone()) {
                     match field_node.return_cardinality.clone() {
                         Cardinality::CardOptional => Some(Rc::new(FieldRecursionResult {
                             shape: RecursionShape::OptionalRecursion,
@@ -911,16 +914,6 @@ pub fn list_kernel_ty_from_element(element: Rc<Node>) -> Rc<KernelListTyDiag> {
     }
 }
 
-pub fn set_kernel_ty_from_element(element: Rc<Node>) -> Rc<KernelListTyDiag> {
-    {
-        let b = make_container_type(&"Set".to_string(), element);
-        Rc::new(KernelListTyDiag {
-            ty: b.ty.clone(),
-            miss_diags: b.diagnostics.clone(),
-        })
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Tier2bBt {
     pub bt: Rc<Node>,
@@ -929,15 +922,15 @@ pub struct Tier2bBt {
 
 pub fn infer_tier2b_builtin_with_kernel_diags(
     func_name: &String,
-    typed_args: &Rc<Vec<Rc<Node>>>,
-    scope: &Rc<InferScope>,
+    typed_args: Rc<Vec<Rc<Node>>>,
+    scope: Rc<InferScope>,
     span: Rc<SourceSpan>,
 ) -> Rc<Tier2bBt> {
     if ((func_name.clone().as_str() == "lookup".to_string().as_str())
         || (func_name.clone().as_str() == "map_get".to_string().as_str()))
     {
         Rc::new(Tier2bBt {
-            bt: match typed_args.clone().first().cloned() {
+            bt: match typed_args.first().cloned() {
                 Some(receiver_arg) => match arg_value(&receiver_arg)
                     .inferred
                     .clone()
@@ -962,7 +955,7 @@ pub fn infer_tier2b_builtin_with_kernel_diags(
         })
     } else {
         if (func_name.clone().as_str() == "map_keys".to_string().as_str()) {
-            match typed_args.clone().first().cloned() {
+            match typed_args.first().cloned() {
                 Some(receiver_arg) => match arg_value(&receiver_arg)
                     .inferred
                     .clone()
@@ -998,7 +991,7 @@ pub fn infer_tier2b_builtin_with_kernel_diags(
             }
         } else {
             if (func_name.clone().as_str() == "map_values".to_string().as_str()) {
-                match typed_args.clone().first().cloned() {
+                match typed_args.first().cloned() {
                     Some(receiver_arg) => match arg_value(&receiver_arg)
                         .inferred
                         .clone()
@@ -1038,8 +1031,8 @@ pub fn infer_tier2b_builtin_with_kernel_diags(
                 if ((func_name.clone().as_str() == "set_insert".to_string().as_str())
                     || (func_name.clone().as_str() == "set_union".to_string().as_str()))
                 {
-                    {
-                        let recv_elem = match typed_args.clone().first().cloned() {
+                    Rc::new(Tier2bBt {
+                        bt: match typed_args.first().cloned() {
                             Some(receiver_arg) => match arg_value(&receiver_arg)
                                 .inferred
                                 .clone()
@@ -1049,96 +1042,13 @@ pub fn infer_tier2b_builtin_with_kernel_diags(
                                 Some(InferredNode::Resolved {
                                     node: receiver_type,
                                     ..
-                                }) => match set_element_type_in_env(
-                                    receiver_type.clone(),
-                                    &scope.type_env.clone(),
-                                ) {
-                                    Some(elem_slot) => Some(child_type_node(&elem_slot)),
-                                    None => None,
-                                },
-                                _ => None,
-                            },
-                            None => None,
-                        };
-                        let operand_elem = if (func_name.clone().as_str()
-                            == "set_insert".to_string().as_str())
-                        {
-                            match typed_args.clone().get(1 as usize).cloned() {
-                                Some(insert_arg) => match arg_value(&insert_arg)
-                                    .inferred
-                                    .clone()
-                                    .as_deref()
-                                    .cloned()
-                                {
-                                    Some(InferredNode::Resolved { node: elem, .. }) => {
-                                        Some(elem.clone())
-                                    }
-                                    _ => None,
-                                },
-                                None => None,
-                            }
-                        } else {
-                            match typed_args.clone().get(1 as usize).cloned() {
-                                Some(other_arg) => {
-                                    match arg_value(&other_arg).inferred.clone().as_deref().cloned()
-                                    {
-                                        Some(InferredNode::Resolved {
-                                            node: other_type, ..
-                                        }) => match set_element_type_in_env(
-                                            other_type.clone(),
-                                            &scope.type_env.clone(),
-                                        ) {
-                                            Some(elem_slot) => Some(child_type_node(&elem_slot)),
-                                            None => None,
-                                        },
-                                        _ => None,
-                                    }
-                                }
-                                None => None,
-                            }
-                        };
-                        let result_bt = match typed_args.clone().first().cloned() {
-                            Some(receiver_arg) => match arg_value(&receiver_arg)
-                                .inferred
-                                .clone()
-                                .as_deref()
-                                .cloned()
-                            {
-                                Some(InferredNode::Resolved {
-                                    node: receiver_type,
-                                    ..
-                                }) => match set_element_type_in_env(
-                                    receiver_type.clone(),
-                                    &scope.type_env.clone(),
-                                ) {
-                                    Some(_) => receiver_type.clone(),
-                                    None => match operand_elem.clone() {
-                                        Some(element) => {
-                                            set_kernel_ty_from_element(element.clone()).ty.clone()
-                                        }
-                                        None => resolve_builtin_call_type(func_name.clone()),
-                                    },
-                                },
-                                _ => match operand_elem.clone() {
-                                    Some(element) => {
-                                        set_kernel_ty_from_element(element.clone()).ty.clone()
-                                    }
-                                    None => resolve_builtin_call_type(func_name.clone()),
-                                },
+                                }) => receiver_type.clone(),
+                                _ => resolve_builtin_call_type(func_name.clone()),
                             },
                             None => resolve_builtin_call_type(func_name.clone()),
-                        };
-                        let build_diags = match operand_elem.clone() {
-                            Some(element) => set_kernel_ty_from_element(element.clone())
-                                .miss_diags
-                                .clone(),
-                            None => Rc::new(vec![]),
-                        };
-                        Rc::new(Tier2bBt {
-                            bt: result_bt,
-                            kernel_diags: build_diags,
-                        })
-                    }
+                        },
+                        kernel_diags: Rc::new(vec![]),
+                    })
                 } else {
                     Rc::new(Tier2bBt {
                         bt: resolve_builtin_call_type(func_name.clone()),
@@ -2861,8 +2771,8 @@ match bare_s {
                                         {
                                             let tier2b = infer_tier2b_builtin_with_kernel_diags(
                                                 &func_name,
-                                                &typed_args,
-                                                &scope,
+                                                typed_args.clone(),
+                                                scope.clone(),
                                                 span.clone(),
                                             );
                                             let bt = tier2b.bt.clone();
@@ -10327,7 +10237,7 @@ pub fn build_type_env(
             Rc::new(v2_rt::map_keys(&compiler_recursive_types())),
         );
         let cross_type_set_str = cross_type_all_names.clone().iter().cloned().fold(
-            compile_error!("empty_set: element type  does not satisfy Rust Ord for BTreeSet"),
+            v2_rt::rc_empty_set::<_>(), /* BRIDGE: fold empty_set accumulator type unresolved */
             |acc: _, name: String| v2_rt::rc_set_insert(acc, name.clone()),
         );
         let cross_type_set = cross_type_all_names.clone().iter().cloned().fold(
@@ -10786,7 +10696,7 @@ pub fn build_type_env_unresolved(
             Rc::new(v2_rt::map_keys(&compiler_recursive_types())),
         );
         let cross_type_set_str = cross_type_all_names.clone().iter().cloned().fold(
-            compile_error!("empty_set: element type  does not satisfy Rust Ord for BTreeSet"),
+            v2_rt::rc_empty_set::<_>(), /* BRIDGE: fold empty_set accumulator type unresolved */
             |acc: _, name: String| v2_rt::rc_set_insert(acc, name.clone()),
         );
         let cross_type_set = cross_type_all_names.clone().iter().cloned().fold(
@@ -11437,7 +11347,7 @@ pub fn topo_resolve_types(
             });
         }
         let remaining_set = remaining.clone().iter().cloned().fold(
-            compile_error!("empty_set: element type  does not satisfy Rust Ord for BTreeSet"),
+            v2_rt::rc_empty_set::<_>(), /* BRIDGE: fold empty_set accumulator type unresolved */
             |acc: _, name: String| v2_rt::rc_set_insert(acc, name.clone()),
         );
         let ready = Rc::new({
@@ -11451,7 +11361,8 @@ pub fn topo_resolve_types(
                                 || (dep.clone().as_str() == "None".to_string().as_str()))
                                 || (dep.clone().as_str() == "".to_string().as_str()))
                                 || is_recursive_type_by_name(&env, dep.clone()))
-                                || (v2_rt::set_contains(&remaining_set, dep.clone()) == false))
+                                || (v2_rt::set_contains(remaining_set.clone(), dep.clone())
+                                    == false))
                             {
                                 __all = false;
                                 break;
@@ -11655,7 +11566,7 @@ pub fn build_fielded_variants(
 ) -> Rc<std::collections::BTreeSet<String>> {
     {
         let result = modules.iter().cloned().fold(
-            compile_error!("empty_set: element type  does not satisfy Rust Ord for BTreeSet"),
+            v2_rt::rc_empty_set::<_>(), /* BRIDGE: fold empty_set accumulator type unresolved */
             |acc: _, m: Rc<TypedModule>| {
                 let items = m.items.clone();
                 let si = m.type_env.clone().source_indices.clone();
@@ -11731,7 +11642,7 @@ pub fn build_emit_graph_info(modules: &Rc<Vec<Rc<TypedModule>>>) -> Rc<EmitGraph
             },
         );
         let all_recursive = modules.clone().iter().cloned().fold(
-            compile_error!("empty_set: element type  does not satisfy Rust Ord for BTreeSet"),
+            v2_rt::rc_empty_set::<_>(), /* BRIDGE: fold empty_set accumulator type unresolved */
             |acc: _, m: Rc<TypedModule>| {
                 Rc::new(v2_rt::map_keys(
                     &m.type_env.clone().recursive_type_set.clone(),
