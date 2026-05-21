@@ -140,16 +140,27 @@ If a user wants to compile a `.dag` source file from disk to a Rust source file 
 // Each line is a modeled effect / pure transform — NOT a compile-core boundary action.
 
 source_text   = file_read(path)              // effect against extdeps/file_system.dag
-core_node     = ingest_text(source_text,     // shim — composes parse + normalize
-                            input_lang)
-grounded      = ground(IngestionPlan {
+core_result   = ingest_text(source_text,     // shim — composes parse + normalize
+                            input_lang) -> Outcome<CoreNode>
+if core_result is Rejected:
+  reject with diagnostics
+
+core_node     = unwrap(core_result)
+grounding     = ground(IngestionPlan {
                  subject: core_node,
                  producer: ingest_explicit_language,
                  params: dag_language_params
-               })
+               }) -> Outcome<InferredTree>
+if grounding is Rejected:
+  reject with diagnostics
+
+grounded      = unwrap(grounding)
 readings      = observe(grounded, lens_plan)
 artifacts     = project(grounded, rust_projection_plan)
 release       = authorize(policy, readings, artifacts)
+if release is Rejected:
+  reject with diagnostics
+
 validated     = unwrap(release)              // Validated<ArtifactSet>
 target_text   = unwrap(validated.artifacts[rust_source_artifact])
 file_write(out_path, target_text)            // effect against extdeps/file_system.dag
@@ -1069,10 +1080,14 @@ The hand-Rust-to-zero trajectory (per [`docs/design-pure-bootstrap-zero.md`](des
 
 ```
 // Explicit composition: ingest is separate from grounding/projection.
-self_corenode = ingest_text(
+self_corenode_result = ingest_text(
   input_text: read_file("compiler.dag"),    // boundary action: read text
   input_lang: dag_lang                       // grammar + sugar dissolutions
 ) -> Outcome<CoreNode>
+if self_corenode_result is Rejected:
+  reject with diagnostics
+
+self_corenode = unwrap(self_corenode_result)
 
 compiler_grounding = ground(
   plan: IngestionPlan {
