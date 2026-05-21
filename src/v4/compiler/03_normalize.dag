@@ -32,8 +32,9 @@ import v4.std.node {
   Edge,
   Node,
   Symbol,
-  edge_is_named,
   edge_is_positional,
+  all_edges_named,
+  all_edges_positional,
   node_well_formed
 }
 
@@ -159,30 +160,16 @@ fn type_node(connective: Connective, children: List<Edge>) -> Node {
 }
 
 
-fn all_children_named(children: List<Edge>) -> Bool {
-  fold(children, init: true, f: fn(acc, e) {
-    acc && edge_is_named(e: e)
-  })
-}
-
-
-fn all_children_positional(children: List<Edge>) -> Bool {
-  fold(children, init: true, f: fn(acc, e) {
-    acc && edge_is_positional(e: e)
-  })
-}
-
-
 fn normalize_sugar(kind: SurfaceSugarKind, n: Node, children: List<Edge>) -> Outcome<Node> {
   match kind {
     ServiceSugar =>
-      if all_children_named(children: children) {
+      if all_edges_named(children: children) {
         Accepted { value: type_node(connective: Conj, children: children), diagnostics: None }
       } else {
         Rejected { diagnostics: diagnostics_singleton(d: malformed_sugar_diagnostic(n: n)) }
       }
     FnSugar =>
-      if all_children_positional(children: children) {
+      if all_edges_positional(children: children) {
         Accepted { value: type_node(connective: Arrow, children: children), diagnostics: None }
       } else {
         Rejected { diagnostics: diagnostics_singleton(d: malformed_sugar_diagnostic(n: n)) }
@@ -203,7 +190,7 @@ fn normalize_sugar(kind: SurfaceSugarKind, n: Node, children: List<Edge>) -> Out
         Rejected { diagnostics: diagnostics_singleton(d: malformed_sugar_diagnostic(n: n)) }
       }
     OperationSugar =>
-      if all_children_positional(children: children) {
+      if all_edges_positional(children: children) {
         Accepted { value: type_node(connective: Arrow, children: children), diagnostics: None }
       } else {
         Rejected { diagnostics: diagnostics_singleton(d: malformed_sugar_diagnostic(n: n)) }
