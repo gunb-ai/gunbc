@@ -155,13 +155,18 @@ fn append_lens_gate_witness(
 }
 
 
+fn empty_lens_gate_witnesses() -> List<LensGateWitness> {
+  []
+}
+
+
 fn run_required_lens_gates(
   inferred: InferredTree,
   lenses: List<Lens>
 ) -> Outcome<List<LensGateWitness>> {
   fold(
     lenses,
-    init: outcome_accepted(value: []),
+    init: outcome_accepted(value: empty_lens_gate_witnesses()),
     f: fn(acc_outcome, lens) {
       match acc_outcome {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
