@@ -242,9 +242,7 @@ pub type DissolutionTestClaimId = String;
 /// Structural mirror of `v4.lens.subsumption.SubsumptionVerification`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SubsumptionVerificationRuntime {
-    MechanicalReverification {
-        test_claim: DissolutionTestClaimId,
-    },
+    MechanicalReverification { test_claim: DissolutionTestClaimId },
     ProducerStageDerivation,
 }
 
@@ -321,9 +319,9 @@ pub fn verify_mechanical_reverification(
             });
         }
         if run.findings_after.contains(fix) {
-            return Err(MechanicalReverificationError::SubsumedFixStillPresentAfter {
-                fix: fix.clone(),
-            });
+            return Err(
+                MechanicalReverificationError::SubsumedFixStillPresentAfter { fix: fix.clone() },
+            );
         }
     }
 
@@ -384,6 +382,8 @@ fn topo_sort_subset(
 mod tests {
     use super::*;
 
+    const SUBSUMPTION_DAG: &str = include_str!("../../../v4/lens/subsumption.dag");
+
     fn demo_ci_dag() -> CiWorkflowDagInput {
         CiWorkflowDagInput {
             gates: vec![
@@ -410,6 +410,32 @@ mod tests {
                 ("lint".into(), "l1-ratchet".into()),
                 ("tests".into(), "l1-ratchet".into()),
             ],
+        }
+    }
+
+    fn affected_set_subsumption_row() -> DissolutionSubsumptionRuntimeRow {
+        DissolutionSubsumptionRuntimeRow {
+            root_fix: "affected_set_irt1_frontier_root_fix".into(),
+            subsumed_fixes: BTreeSet::from([
+                "affected_set_hash_receipt_leaf_fix".into(),
+                "affected_set_boundary_receipt_leaf_fix".into(),
+                "affected_set_dimension_receipt_leaf_fix".into(),
+                "affected_set_propagation_receipt_leaf_fix".into(),
+                "affected_set_frontier_receipt_leaf_fix".into(),
+            ]),
+            verification: SubsumptionVerificationRuntime::MechanicalReverification {
+                test_claim: "affected_set_irt1_mechanical_reverification_claim".into(),
+            },
+        }
+    }
+
+    fn successful_affected_set_reverification() -> MechanicalReverificationRun {
+        let row = affected_set_subsumption_row();
+        MechanicalReverificationRun {
+            test_claim: "affected_set_irt1_mechanical_reverification_claim".into(),
+            applied_root_fix: "affected_set_irt1_frontier_root_fix".into(),
+            findings_before: row.subsumed_fixes,
+            findings_after: BTreeSet::new(),
         }
     }
 
@@ -644,6 +670,116 @@ mod tests {
         assert_eq!(
             select_affected_gates_for_binary_shim(&dag, &receipt),
             Ok(Vec::new())
+        );
+    }
+
+    #[test]
+    fn subsumption_dag_carries_mechanical_reverification_row_for_lens_ci() {
+        assert!(
+            SUBSUMPTION_DAG.contains("module v4.lens.subsumption"),
+            "subsumption carrier must remain in the v4 lens namespace"
+        );
+        assert!(
+            SUBSUMPTION_DAG.contains("type DissolutionSubsumption"),
+            "subsumption carrier type must stay authored in substrate"
+        );
+        assert!(
+            SUBSUMPTION_DAG.contains("type SubsumptionVerification")
+                && SUBSUMPTION_DAG
+                    .contains("= MechanicalReverification { test_claim: TestClaimId }")
+                && SUBSUMPTION_DAG.contains(
+                    "| ProducerStageDerivation { derivation_path: List<ProducerStageId> }"
+                ),
+            "SubsumptionVerification must expose both design-spec verification modes"
+        );
+        let row_start = SUBSUMPTION_DAG
+            .find("data affected_set_irt1_subsumption")
+            .expect("affected-set IRT-1 subsumption row");
+        let row = &SUBSUMPTION_DAG[row_start..];
+        assert!(
+            row.contains("verification: MechanicalReverification")
+                && row.contains("affected_set_irt1_mechanical_reverification_claim"),
+            "affected_set_irt1_subsumption must be a MechanicalReverification row consumed by Lens-CI"
+        );
+    }
+
+    #[test]
+    fn mechanical_reverification_accepts_when_subsumed_fixes_clear() {
+        let row = affected_set_subsumption_row();
+        let run = successful_affected_set_reverification();
+        assert_eq!(verify_mechanical_reverification(&row, &run), Ok(()));
+    }
+
+    #[test]
+    fn mechanical_reverification_rejects_surviving_subsumed_fix() {
+        let row = affected_set_subsumption_row();
+        let mut run = successful_affected_set_reverification();
+        run.findings_after
+            .insert("affected_set_hash_receipt_leaf_fix".into());
+        assert_eq!(
+            verify_mechanical_reverification(&row, &run),
+            Err(
+                MechanicalReverificationError::SubsumedFixStillPresentAfter {
+                    fix: "affected_set_hash_receipt_leaf_fix".into()
+                }
+            )
+        );
+    }
+
+    #[test]
+    fn mechanical_reverification_rejects_unobserved_subsumed_fix() {
+        let row = affected_set_subsumption_row();
+        let mut run = successful_affected_set_reverification();
+        run.findings_before
+            .remove("affected_set_frontier_receipt_leaf_fix");
+        assert_eq!(
+            verify_mechanical_reverification(&row, &run),
+            Err(MechanicalReverificationError::SubsumedFixMissingBefore {
+                fix: "affected_set_frontier_receipt_leaf_fix".into()
+            })
+        );
+    }
+
+    #[test]
+    fn mechanical_reverification_rejects_wrong_claim_or_root() {
+        let row = affected_set_subsumption_row();
+        let mut wrong_claim = successful_affected_set_reverification();
+        wrong_claim.test_claim = "other_claim".into();
+        assert_eq!(
+            verify_mechanical_reverification(&row, &wrong_claim),
+            Err(MechanicalReverificationError::TestClaimMismatch {
+                expected: "affected_set_irt1_mechanical_reverification_claim".into(),
+                observed: "other_claim".into(),
+            })
+        );
+
+        let mut wrong_root = successful_affected_set_reverification();
+        wrong_root.applied_root_fix = "other_root".into();
+        assert_eq!(
+            verify_mechanical_reverification(&row, &wrong_root),
+            Err(MechanicalReverificationError::RootFixMismatch {
+                expected: "affected_set_irt1_frontier_root_fix".into(),
+                observed: "other_root".into(),
+            })
+        );
+    }
+
+    #[test]
+    fn mechanical_reverification_rejects_producer_stage_rows() {
+        let row = DissolutionSubsumptionRuntimeRow {
+            root_fix: "concept_home_rewrite_root_fix".into(),
+            subsumed_fixes: BTreeSet::from(["wrong_home_alias_leaf_fix".into()]),
+            verification: SubsumptionVerificationRuntime::ProducerStageDerivation,
+        };
+        let run = MechanicalReverificationRun {
+            test_claim: "concept_home_rewrite_claim".into(),
+            applied_root_fix: "concept_home_rewrite_root_fix".into(),
+            findings_before: BTreeSet::from(["wrong_home_alias_leaf_fix".into()]),
+            findings_after: BTreeSet::new(),
+        };
+        assert_eq!(
+            verify_mechanical_reverification(&row, &run),
+            Err(MechanicalReverificationError::NonMechanicalRow)
         );
     }
 }
