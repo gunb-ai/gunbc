@@ -50,6 +50,7 @@ type StructuralResolutionStatus
   = BindingResolved
   | UnboundSymbolAtUse
   | FactsLookupMiss
+  | UnresolvedInferWitness
   | PreludeCarveOut
 
 type StructuralResolutionDependencyFact {
@@ -83,7 +84,7 @@ fn status_for_binding_facts(dependent_facts: Witness<InferredFacts>) -> Structur
   } else {
     match dependent_facts {
       Holds { value: _ } => BindingResolved
-      Violates { diagnostic: _ } => FactsLookupMiss
+      Violates { diagnostic: _ } => UnresolvedInferWitness
     }
   }
 }
@@ -141,6 +142,7 @@ fn at(tree: InferredTree) -> Witness<StructuralResolutionFact> {
   witness(tree: tree, dependencies: dependency_lens(root: tree.root))
 }
 
+// 🟢 terminal — TestClaim equality over closed status sum (T-13 mirror: parallelism_relation_eq).
 fn status_eq(a: StructuralResolutionStatus, b: StructuralResolutionStatus) -> Bool {
   match a {
     BindingResolved => match b {
@@ -153,6 +155,10 @@ fn status_eq(a: StructuralResolutionStatus, b: StructuralResolutionStatus) -> Bo
     }
     FactsLookupMiss => match b {
       FactsLookupMiss => true
+      _ => false
+    }
+    UnresolvedInferWitness => match b {
+      UnresolvedInferWitness => true
       _ => false
     }
     PreludeCarveOut => match b {
