@@ -230,6 +230,11 @@ fn t20_bootstrap_plan_keeps_self_hosting_chain_as_data() {
         "bootstrap_plan_well_formed must enforce digest convergence via stage outputs, not data aliases (A2+A3)"
     );
     assert!(
+        !BOOTSTRAP_DAG.contains("p.fixpt.left_hash.pin == p.fixpt.right_hash.pin")
+            && !BOOTSTRAP_DAG.contains("p.fixpt.left_hash.pin == p.fixpt.pinned_hash.pin"),
+        "fixpt pins identify independent carrier slots; digest equality proves convergence (A2+A3)"
+    );
+    assert!(
         BOOTSTRAP_DAG.contains("produces_hash: BootstrapHashPin { digest: v4_stage2_hash")
             || BOOTSTRAP_DAG.contains("digest: v4_stage2_hash"),
         "mismatch regression must exercise the independent stage-2 digest carrier"
