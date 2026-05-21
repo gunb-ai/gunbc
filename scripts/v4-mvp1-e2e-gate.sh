@@ -82,13 +82,24 @@ if [[ ! -f "$cargo_toml" ]]; then
   exit 1
 fi
 
-crate_name="$(grep -E '^name = ' "$cargo_toml" | head -1 | sed 's/^name = "\(.*\)"/\1/')"
+# [package] section only — avoid picking a [[bin]]/[[lib]] name= if emitter reorder tables.
+crate_name="$(
+  sed -n '/^\[package\]/,/^\[/p' "$cargo_toml" \
+    | grep -E '^name = ' \
+    | head -1 \
+    | sed 's/^name = "\(.*\)"/\1/'
+)"
 if [[ -z "$crate_name" ]]; then
-  echo "error: could not parse crate name from $cargo_toml" >&2
+  echo "error: could not parse [package].name from $cargo_toml" >&2
   exit 1
 fi
 
 # Orchestration harness (scripts-owned): invoke emitted add from a bin target.
+# Assumes v2 emit is lib-only today; fail-closed if compiler already emitted [[bin]].
+if grep -qE '^\[\[bin\]\]' "$cargo_toml"; then
+  echo "error: emitted Cargo.toml already has [[bin]]; MVP-1 gate expects lib-only emission" >&2
+  exit 1
+fi
 mkdir -p "${out}/src/bin"
 cat > "${out}/src/bin/mvp1_gate.rs" <<EOF
 // MVP-1 CI harness — not emitted; scripts/v4-mvp1-e2e-gate.sh authority.
