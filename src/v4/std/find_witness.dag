@@ -82,14 +82,13 @@ fn find_witness_not_realized_diagnostic(source_facts: Node) -> Diagnostic {
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
-// 🟡 coproduct dissolution — scaffold:exact-structural-preservation-identity-mvp · dissolve-on: W-T-10 structural zip-fold predicate algebra; exact_structural_equality accepts only source-identical Node evidence and other preservation rules fail closed.
+// Identity-MVP branches: identity_mvp_preservation_holds (scaffold:identity-mvp-preservation in constraint_satisfaction_predicate.dag).
 fn preservation_predicate_holds(
   source_facts: Node,
   candidate: Node,
   predicate: PreservationPredicate,
 ) -> Bool {
   if predicate.preservation_rule == preservation_rule_constraint_satisfaction {
-    // Body: constraint_satisfaction_predicate.dag — scaffold:constraint-satisfaction-identity-mvp.
     constraint_satisfaction_preservation_holds(
       source_facts: source_facts,
       candidate: candidate,
@@ -97,11 +96,11 @@ fn preservation_predicate_holds(
     )
   } else {
     if predicate.preservation_rule == preservation_rule_exact_structural_equality_zip_fold {
-      well_formed(n: source_facts)
-        && well_formed(n: predicate.algebra)
-        && well_formed(n: candidate)
-        && (predicate.algebra == source_facts)
-        && (candidate == source_facts)
+      identity_mvp_preservation_holds(
+        source_facts: source_facts,
+        candidate: candidate,
+        algebra: predicate.algebra
+      )
     } else {
       false
     }
