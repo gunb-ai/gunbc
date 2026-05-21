@@ -4,7 +4,7 @@
 // Owns: CandidateSet, PreservationPredicate, FindWitnessResult, TargetSelectionPolicy, MultiplicityPolicy,
 //       find_witness, verify_witness.
 // Consumes: std collection, std diagnostic, std node, std witness.
-// Status: W-T-10 — identity-MVP exact structural equality + Conj inhabitants-root expansion + constraint_satisfaction.
+// Status: W-T-10 — identity-MVP exact structural equality; candidate lists are substrate-closed (no Conj re-walk).
 
 
 module v4.std.find_witness
@@ -22,7 +22,7 @@ import v4.std.diagnostic {
   Unavailable,
   outcome_rejected
 }
-import v4.std.node { Conj, Node, Symbol, TypeNode, well_formed }
+import v4.std.node { Node, Symbol, well_formed }
 import v4.std.witness { StructuralPropertyWitness }
 data find_witness_reason_no_candidate: Symbol = find_witness_reason_no_candidate
 data find_witness_reason_ambiguous_candidate: Symbol = find_witness_reason_ambiguous_candidate
@@ -76,39 +76,13 @@ fn find_witness_not_realized_diagnostic(source_facts: Node) -> Diagnostic {
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
-fn append_candidate_nodes(left: List<Node>, right: List<Node>) -> List<Node> {
-  fold(right, init: left, f: fn(acc, item) {
-    list_push(acc, item)
-  })
-}
-fn conj_declared_inhabitant_children(root: Node) -> List<Node> {
-  match root.kind {
-    TypeNode { connective: Conj } =>
-      fold(root.children, init: [], f: fn(acc, e) {
-        append_candidate_nodes(left: acc, right: [e.target])
-      })
-    _ => [root]
-  }
-}
-fn expand_candidate_set_entries(candidates: List<Node>) -> List<Node> {
-  fold(candidates, init: [], f: fn(acc, entry) {
-    append_candidate_nodes(left: acc, right: conj_declared_inhabitant_children(root: entry))
-  })
-}
-fn expanded_candidate_list(candidates: CandidateSet) -> List<Node> {
-  expand_candidate_set_entries(candidates: candidates.candidates)
-}
-// Conj expansion is for target declared-inhabitants aggregates only — not constraint_satisfaction
-// (solve_constraints supplies the graph root as the sole canonical candidate).
+// P2: enumerate substrate-closed CandidateSet entries only — coercion/authored lists flatten
+// declared_inhabitants; find_witness must not Conj-expand entries (would drop aggregate carriers).
 fn enumeration_candidate_list(
   candidates: CandidateSet,
   predicate: PreservationPredicate
 ) -> List<Node> {
-  match predicate.preservation_rule {
-    preservation_rule_exact_structural_equality_zip_fold =>
-      expanded_candidate_list(candidates: candidates)
-    _ => candidates.candidates
-  }
+  candidates.candidates
 }
 fn preservation_predicate_holds(
   source_facts: Node,
