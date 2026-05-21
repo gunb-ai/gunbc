@@ -20,7 +20,7 @@ import v4.std.diagnostic {
   Unavailable,
   diagnostics_singleton
 }
-import v4.std.node { Node, Symbol }
+import v4.std.node { Conj, Edge, Named, Node, Symbol, TypeNode }
 import v4.std.witness {
   StructuralPropertyWitness,
   Witness
@@ -58,6 +58,8 @@ data t15_runner_not_realized: Symbol = t15_runner_not_realized
 data t15_runner_port: Symbol = t15_runner_port
 data candidate_bootstrap_roundtrip_sub_check: Symbol = candidate_bootstrap_roundtrip_sub_check
 data candidate_fixed_point_sub_check: Symbol = candidate_fixed_point_sub_check
+data t15_stage1_candidate_field: Symbol = t15_stage1_candidate_field
+data t15_reference_stage1_field: Symbol = t15_reference_stage1_field
 
 
 fn t15_runner_not_realized_diagnostic() -> Diagnostic {
@@ -69,13 +71,30 @@ fn t15_runner_not_realized_diagnostic() -> Diagnostic {
 }
 
 
+fn t15_stage_pair_evidence(
+  stage1_candidate: CoreNode,
+  reference_stage1: CoreNode
+) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Named { name: t15_stage1_candidate_field }, target: stage1_candidate },
+      Edge { label: Named { name: t15_reference_stage1_field }, target: reference_stage1 }
+    ]
+  }
+}
+
+
 fn candidate_bootstrap_roundtrip_witness(
   stage1_candidate: CoreNode,
   reference_stage1: CoreNode
 ) -> StructuralPropertyWitness {
   StructuralPropertyWitness {
     property: candidate_bootstrap_roundtrip_sub_check,
-    evidence: stage1_candidate
+    evidence: t15_stage_pair_evidence(
+      stage1_candidate: stage1_candidate,
+      reference_stage1: reference_stage1
+    )
   }
 }
 
@@ -86,7 +105,10 @@ fn candidate_fixed_point_witness(
 ) -> StructuralPropertyWitness {
   StructuralPropertyWitness {
     property: candidate_fixed_point_sub_check,
-    evidence: stage1_candidate
+    evidence: t15_stage_pair_evidence(
+      stage1_candidate: stage1_candidate,
+      reference_stage1: reference_stage1
+    )
   }
 }
 
