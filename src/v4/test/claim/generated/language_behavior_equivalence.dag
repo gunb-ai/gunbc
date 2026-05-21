@@ -31,6 +31,7 @@ import v4.std.collection { Map }
 import v4.std.diagnostic {
   Accepted,
   None,
+  NonEmptyDiagnostics,
   Outcome,
   Rejected
 }
@@ -54,9 +55,10 @@ import v4.lens.testgen {
   testgen_scheduled_language_behavior_generators
 }
 import v4.std.verification {
-  CompilesClaim,
+  DiagnosticClaim,
   TestClaim,
   T19ManualAnchorKey,
+  T19ManualAnchorAbsent,
   T19ManualLbeConjDagSurface,
   T19ManualLbeDisjDagSurface,
   T19ManualLbeTransformDagSurface,
@@ -135,95 +137,8 @@ fn lbe_claim_from_testgen_emit(
   anchor: T19ManualAnchorKey,
   label: String,
   mock: LanguageBehaviorIoMock
-) -> TestClaim {
-  match testgen_emit_language_behavior_equivalence_claim(anchor: anchor, label: label, mock: mock) {
-    Accepted { value: claim, diagnostics: None } => claim
-    Rejected { diagnostics: _ } =>
-      CompilesClaim {
-        label: label,
-        t19_anchor: anchor,
-        input: mock.snapshot.input_node,
-        expected_value: mock.snapshot.input_node,
-        classification: TestClassification { tier: Tier1, layer: Unit }
-      }
-  }
-}
-
-
-fn lbe_generated_conj_claim() -> TestClaim {
-  lbe_claim_from_testgen_emit(
-    anchor: T19ManualLbeConjDagSurface,
-    label: t19_lbe_label_conj_dag_surface,
-    mock: lbe_io_mock_conj_dag_surface()
-  )
-}
-
-
-fn lbe_generated_disj_claim() -> TestClaim {
-  lbe_claim_from_testgen_emit(
-    anchor: T19ManualLbeDisjDagSurface,
-    label: t19_lbe_label_disj_dag_surface,
-    mock: lbe_io_mock_disj_dag_surface()
-  )
-}
-
-
-fn lbe_generated_transform_claim() -> TestClaim {
-  lbe_claim_from_testgen_emit(
-    anchor: T19ManualLbeTransformDagSurface,
-    label: t19_lbe_label_transform_dag_surface,
-    mock: lbe_io_mock_transform_dag_surface()
-  )
-}
-
-
-fn lbe_mock_actual(mock: LanguageBehaviorIoMock) -> Outcome<Node> {
-  Accepted {
-    value: mock.snapshot.expected_value,
-    diagnostics: None
-  }
-}
-
-
-fn lbe_run_test_claim_assert_from_mock(
-  claim: TestClaim,
-  mock: LanguageBehaviorIoMock
-) -> Verdict<Node> {
-  run_test_claim_assert(
-    claim: claim,
-    actual: lbe_mock_actual(mock: mock),
-    at: mock.snapshot.input_node
-  )
-}
-
-
-data witness_lbe_conj_snapshot_pass: Bool = match lbe_run_test_claim_assert_from_mock(
-  claim: lbe_generated_conj_claim(),
-  mock: lbe_io_mock_conj_dag_surface()
-) {
-  Pass => true
-  Fail { actual: _ } => false
-  Deferred { actual: _, diagnostic: _ } => false
-}
-
-
-data witness_lbe_disj_snapshot_pass: Bool = match lbe_run_test_claim_assert_from_mock(
-  claim: lbe_generated_disj_claim(),
-  mock: lbe_io_mock_disj_dag_surface()
-) {
-  Pass => true
-  Fail { actual: _ } => false
-  Deferred { actual: _, diagnostic: _ } => false
-}
-
-
-data witness_lbe_transform_snapshot_pass: Bool = match lbe_run_test_claim_assert_from_mock(
-  claim: lbe_generated_transform_claim(),
-  mock: lbe_io_mock_transform_dag_surface()
-) {
-  Pass => true
-  Fail { actual: _ } => false
-  Deferred { actual: _, diagnostic: _ } => false
+) -> Outcome<TestClaim> {
+  testgen_emit_language_behavior_equivalence_claim(anchor: anchor, label: label, mock: mock)
 }
 
 
@@ -249,13 +164,140 @@ fn lbe_run_via_test_claim(claim: TestClaim) -> TestClaimRun<Node> {
 }
 
 
-data run_lbe_conj_via_run_test_claim: TestClaimRun<Node> = lbe_run_via_test_claim(claim: lbe_generated_conj_claim())
+fn lbe_emit_rejection_sentinel_claim(
+  label: String,
+  mock: LanguageBehaviorIoMock,
+  expected: NonEmptyDiagnostics
+) -> TestClaim {
+  DiagnosticClaim {
+    label: label,
+    t19_anchor: T19ManualAnchorAbsent,
+    input: mock.snapshot.input_node,
+    expected_rejection: expected,
+    classification: TestClassification { tier: Tier1, layer: Unit }
+  }
+}
 
 
-data run_lbe_disj_via_run_test_claim: TestClaimRun<Node> = lbe_run_via_test_claim(claim: lbe_generated_disj_claim())
+fn lbe_rejected_emit_cache_receipt(
+  label: String,
+  mock: LanguageBehaviorIoMock,
+  expected: NonEmptyDiagnostics
+) -> TestClaimCacheReceipt<Node> {
+  let claim = lbe_emit_rejection_sentinel_claim(label: label, mock: mock, expected: expected)
+  test_claim_cache_receipt(
+    subject: lbe_subject_from_claim(claim: claim),
+    claim_hash: claim_hash_placeholder,
+    evaluator_hash: evaluator_hash_placeholder,
+    resources_hash: resources_hash_placeholder,
+    extdeps_hash: extdeps_hash_placeholder
+  )
+}
 
 
-data run_lbe_transform_via_run_test_claim: TestClaimRun<Node> = lbe_run_via_test_claim(claim: lbe_generated_transform_claim())
+fn lbe_run_test_claim_assert_from_emit(
+  anchor: T19ManualAnchorKey,
+  label: String,
+  mock: LanguageBehaviorIoMock
+) -> Verdict<Node> {
+  match lbe_claim_from_testgen_emit(anchor: anchor, label: label, mock: mock) {
+    Accepted { value: claim, diagnostics: None } =>
+      lbe_run_test_claim_assert_from_mock(claim: claim, mock: mock)
+    Rejected { diagnostics: d } =>
+      Fail { actual: Rejected { diagnostics: d } }
+  }
+}
+
+
+fn lbe_test_claim_run_from_emit(
+  anchor: T19ManualAnchorKey,
+  label: String,
+  mock: LanguageBehaviorIoMock
+) -> TestClaimRun<Node> {
+  match lbe_claim_from_testgen_emit(anchor: anchor, label: label, mock: mock) {
+    Accepted { value: claim, diagnostics: None } =>
+      lbe_run_via_test_claim(claim: claim)
+    Rejected { diagnostics: d } =>
+      TestClaimRun {
+        cache: lbe_rejected_emit_cache_receipt(label: label, mock: mock, expected: d),
+        verdict: Fail { actual: Rejected { diagnostics: d } }
+      }
+  }
+}
+
+
+fn lbe_mock_actual(mock: LanguageBehaviorIoMock) -> Outcome<Node> {
+  Accepted {
+    value: mock.snapshot.expected_value,
+    diagnostics: None
+  }
+}
+
+
+fn lbe_run_test_claim_assert_from_mock(
+  claim: TestClaim,
+  mock: LanguageBehaviorIoMock
+) -> Verdict<Node> {
+  run_test_claim_assert(
+    claim: claim,
+    actual: lbe_mock_actual(mock: mock),
+    at: mock.snapshot.input_node
+  )
+}
+
+
+data witness_lbe_conj_snapshot_pass: Bool = match lbe_run_test_claim_assert_from_emit(
+  anchor: T19ManualLbeConjDagSurface,
+  label: t19_lbe_label_conj_dag_surface,
+  mock: lbe_io_mock_conj_dag_surface()
+) {
+  Pass => true
+  Fail { actual: _ } => false
+  Deferred { actual: _, diagnostic: _ } => false
+}
+
+
+data witness_lbe_disj_snapshot_pass: Bool = match lbe_run_test_claim_assert_from_emit(
+  anchor: T19ManualLbeDisjDagSurface,
+  label: t19_lbe_label_disj_dag_surface,
+  mock: lbe_io_mock_disj_dag_surface()
+) {
+  Pass => true
+  Fail { actual: _ } => false
+  Deferred { actual: _, diagnostic: _ } => false
+}
+
+
+data witness_lbe_transform_snapshot_pass: Bool = match lbe_run_test_claim_assert_from_emit(
+  anchor: T19ManualLbeTransformDagSurface,
+  label: t19_lbe_label_transform_dag_surface,
+  mock: lbe_io_mock_transform_dag_surface()
+) {
+  Pass => true
+  Fail { actual: _ } => false
+  Deferred { actual: _, diagnostic: _ } => false
+}
+
+
+data run_lbe_conj_via_run_test_claim: TestClaimRun<Node> = lbe_test_claim_run_from_emit(
+  anchor: T19ManualLbeConjDagSurface,
+  label: t19_lbe_label_conj_dag_surface,
+  mock: lbe_io_mock_conj_dag_surface()
+)
+
+
+data run_lbe_disj_via_run_test_claim: TestClaimRun<Node> = lbe_test_claim_run_from_emit(
+  anchor: T19ManualLbeDisjDagSurface,
+  label: t19_lbe_label_disj_dag_surface,
+  mock: lbe_io_mock_disj_dag_surface()
+)
+
+
+data run_lbe_transform_via_run_test_claim: TestClaimRun<Node> = lbe_test_claim_run_from_emit(
+  anchor: T19ManualLbeTransformDagSurface,
+  label: t19_lbe_label_transform_dag_surface,
+  mock: lbe_io_mock_transform_dag_surface()
+)
 
 
 data witness_testgen_schedules_three_lbe_generators: Bool = (length(xs: testgen_scheduled_language_behavior_generators()) == 3)

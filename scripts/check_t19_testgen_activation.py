@@ -77,9 +77,10 @@ def main() -> None:
         "language_behavior_equivalence.dag",
         lbe,
         (
-            "fn lbe_generated_conj_claim",
             "fn lbe_claim_from_testgen_emit",
+            "-> Outcome<TestClaim>",
             "testgen_emit_language_behavior_equivalence_claim",
+            "Fail { actual: Rejected { diagnostics:",
             "run_test_claim_assert",
             "run_test_claim(",
             "data run_lbe_conj_via_run_test_claim: TestClaimRun<Node>",
