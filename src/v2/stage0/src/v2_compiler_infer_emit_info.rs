@@ -65,6 +65,7 @@ pub struct EmitGraphInfo {
     pub type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
     pub recursive_type_set: Rc<std::collections::BTreeSet<String>>,
     pub fielded_variants: Rc<std::collections::BTreeSet<String>>,
+    pub positional_payload_variants: Rc<std::collections::BTreeSet<String>>,
     pub shared_types: Rc<std::collections::BTreeSet<String>>,
     pub ownership_index: Rc<HashMap<String, Rc<std::collections::BTreeSet<String>>>>,
     pub movable: Rc<std::collections::BTreeSet<String>>,
@@ -84,6 +85,7 @@ pub fn empty_emit_graph_info() -> Rc<EmitGraphInfo> {
         type_summaries: v2_rt::rc_empty_map::<String, Rc<TypeSummary>>(),
         recursive_type_set: v2_rt::rc_empty_set::<String>(),
         fielded_variants: v2_rt::rc_empty_set::<String>(),
+        positional_payload_variants: v2_rt::rc_empty_set::<String>(),
         shared_types: v2_rt::rc_empty_set::<String>(),
         ownership_index: v2_rt::rc_empty_map::<String, Rc<std::collections::BTreeSet<String>>>(),
         movable: v2_rt::rc_empty_set::<String>(),
@@ -103,6 +105,17 @@ pub fn variant_has_fields(
     {
         let key = v2_rt::concat(v2_rt::concat(enum_name, "::".to_string()), variant_name);
         v2_rt::set_contains(emit_info.fielded_variants.clone(), key)
+    }
+}
+
+pub fn variant_has_positional_payload(
+    emit_info: Rc<EmitGraphInfo>,
+    enum_name: String,
+    variant_name: String,
+) -> bool {
+    {
+        let key = v2_rt::concat(v2_rt::concat(enum_name, "::".to_string()), variant_name);
+        v2_rt::set_contains(emit_info.positional_payload_variants.clone(), key)
     }
 }
 
