@@ -16,12 +16,15 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 
-use crate::dag::{Declaration, DeclarationId, FieldValue, LiteralBits, TypeConnective, ValueBody};
+use crate::dag::{
+    Declaration, DeclarationId, FieldValue, HttpMethodScalar, LiteralBits, TypeConnective,
+    ValueBody,
+};
 use crate::Dag;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct RestRoute {
-    pub method: String,
+    pub method: HttpMethodScalar,
     pub path: String,
     pub path_parameters: Vec<String>,
 }
@@ -212,9 +215,9 @@ pub fn project_openapi_yaml(dag: &Dag) -> Result<String, ProjectOpenApiError> {
         out.push_str(":\n");
         for route in path_routes {
             out.push_str("    ");
-            out.push_str(&route.method.to_ascii_lowercase());
+            out.push_str(&route.method.token().to_ascii_lowercase());
             out.push_str(":\n      operationId: ");
-            out.push_str(&yaml_plain_operation_id(&route.method, &route.path));
+            out.push_str(&yaml_plain_operation_id(route.method, &route.path));
             if !route.path_parameters.is_empty() {
                 out.push_str("\n      parameters:\n");
                 for parameter in &route.path_parameters {
@@ -238,7 +241,7 @@ pub fn project_markdown_documentation(dag: &Dag) -> Result<String, ProjectOpenAp
     }
     for route in routes {
         out.push_str("| ");
-        out.push_str(&markdown_table_cell(&route.method));
+        out.push_str(&markdown_table_cell(route.method.token()));
         out.push_str(" | ");
         out.push_str(&markdown_code_span_table_cell(&route.path));
         out.push_str(" | ");
@@ -261,7 +264,7 @@ pub fn project_sql_ddl_schema(dag: &Dag) -> Result<String, ProjectOpenApiError> 
     let routes = extract_rest_routes(dag)?;
     let mut methods = BTreeSet::new();
     for route in &routes {
-        methods.insert(route.method.as_str());
+        methods.insert(route.method);
     }
 
     let mut out = String::from(
@@ -277,7 +280,7 @@ pub fn project_sql_ddl_schema(dag: &Dag) -> Result<String, ProjectOpenApiError> 
             if index > 0 {
                 out.push_str(", ");
             }
-            out.push_str(&sql_string_literal(method));
+            out.push_str(&sql_string_literal(method.token()));
         }
         out.push_str(")),\n");
     }
@@ -292,7 +295,7 @@ pub fn project_sql_ddl_schema(dag: &Dag) -> Result<String, ProjectOpenApiError> 
     out.push_str("\nINSERT INTO omni_service_routes (method, path_template) VALUES\n");
     for (index, route) in routes.iter().enumerate() {
         out.push_str("  (");
-        out.push_str(&sql_string_literal(&route.method));
+        out.push_str(&sql_string_literal(route.method.token()));
         out.push_str(", ");
         out.push_str(&sql_string_literal(&route.path));
         out.push(')');
@@ -328,7 +331,7 @@ const ROUTES: &[Route] = &[
     );
     for route in &routes {
         out.push_str("    Route { method: ");
-        out.push_str(&rust_string_literal(&route.method));
+        out.push_str(&rust_string_literal(route.method.token()));
         out.push_str(", path: ");
         out.push_str(&rust_string_literal(&route.path));
         out.push_str(" },\n");
@@ -502,7 +505,7 @@ fn parse_http_method(
     schema: RestRouteSchema,
     declaration: &str,
     value: &FieldValue,
-) -> Result<String, ProjectOpenApiError> {
+) -> Result<HttpMethodScalar, ProjectOpenApiError> {
     let FieldValue::Variant {
         constructor,
         payload,
@@ -519,11 +522,16 @@ fn parse_http_method(
             detail: "HttpMethod variants must not carry payload".to_string(),
         });
     }
-    variant_label_in_parent(dag, schema.http_method, *constructor).ok_or_else(|| {
-        ProjectOpenApiError::MalformedOperation {
-            declaration: declaration.to_string(),
-            detail: "HttpMethod constructor is not a variant of HttpMethod".to_string(),
-        }
+    let label =
+        variant_label_in_parent(dag, schema.http_method, *constructor).ok_or_else(|| {
+            ProjectOpenApiError::MalformedOperation {
+                declaration: declaration.to_string(),
+                detail: "HttpMethod constructor is not a variant of HttpMethod".to_string(),
+            }
+        })?;
+    HttpMethodScalar::from_token(&label).ok_or_else(|| ProjectOpenApiError::MalformedOperation {
+        declaration: declaration.to_string(),
+        detail: "HttpMethod constructor is outside the modeled HTTP method set".to_string(),
     })
 }
 
@@ -682,7 +690,7 @@ fn yaml_double_quoted(value: &str) -> String {
     quoted
 }
 
-fn yaml_plain_operation_id(method: &str, path: &str) -> String {
+fn yaml_plain_operation_id(method: HttpMethodScalar, path: &str) -> String {
     let mut suffix = String::new();
     for ch in path.trim_matches('/').chars() {
         if ch.is_ascii_alphanumeric() {
@@ -691,7 +699,7 @@ fn yaml_plain_operation_id(method: &str, path: &str) -> String {
             write!(&mut suffix, "_x{:X}_", ch as u32).expect("write to String");
         }
     }
-    format!("{}_{}", method.to_ascii_lowercase(), suffix)
+    format!("{}_{}", method.token().to_ascii_lowercase(), suffix)
 }
 
 fn markdown_table_cell(value: &str) -> String {

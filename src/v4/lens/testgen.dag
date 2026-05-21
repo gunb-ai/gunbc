@@ -34,6 +34,10 @@ import v4.std.node {
   Cardinality,
   Instantiation,
   Behavior,
+  Transform,
+  Branch,
+  Loop,
+  Bind,
   Symbol
 }
 import v4.extdeps.file_system {
@@ -44,7 +48,6 @@ import v4.extdeps.file_system {
   Filesystem
 }
 import v4.std.verification {
-  AssertKind,
   TestClaim,
   TestClassification,
   T19ManualAnchorAbsent,
@@ -60,15 +63,27 @@ import v4.std.verification {
   T19ManualTcConjEmpty,
   T19ManualTcConjEqualsRefl,
   T19ManualTcDisjEmpty,
-  T19ManualTcInstantiationEmpty
+  T19ManualTcInstantiationEmpty,
+  T19ManualTcArrowEmpty,
+  T19ManualTcTransformEmpty,
+  T19ManualTcBranchEmpty,
+  T19ManualTcLoopEmpty,
+  T19ManualTcBindZeroChildren,
+  test_claim_classification,
+  test_claim_t19_anchor
 }
 import v4.test.claim.manual.connective_anchors {
   claim_arrow_two_conj_compiles,
-  claim_cardinality_empty_compiles,
+  claim_cardinality_empty_rejected,
   claim_conj_empty_compiles,
   claim_conj_equals_refl,
   claim_disj_empty_compiles,
-  claim_instantiation_empty_compiles
+  claim_instantiation_empty_rejected,
+  claim_arrow_empty_rejected,
+  claim_transform_empty_rejected,
+  claim_branch_empty_rejected,
+  claim_loop_empty_rejected,
+  claim_bind_zero_children_rejected
 }
 import v4.test.claim.manual.nat_law_anchors {
   claim_nat_add_associativity,
@@ -115,7 +130,6 @@ type TestgenConcept
 
 type Generator<C> {
   classification: TestClassification
-  kind: AssertKind
   t19_anchor: T19ManualAnchorKey
   slot: C
 }
@@ -260,8 +274,13 @@ fn manual_test_claim_for_manual_anchor(key: T19ManualAnchorKey) -> Outcome<TestC
     T19ManualTcConjEmpty => Accepted { value: claim_conj_empty_compiles, diagnostics: None }
     T19ManualTcDisjEmpty => Accepted { value: claim_disj_empty_compiles, diagnostics: None }
     T19ManualTcArrowTwoConj => Accepted { value: claim_arrow_two_conj_compiles, diagnostics: None }
-    T19ManualTcCardinalityEmpty => Accepted { value: claim_cardinality_empty_compiles, diagnostics: None }
-    T19ManualTcInstantiationEmpty => Accepted { value: claim_instantiation_empty_compiles, diagnostics: None }
+    T19ManualTcCardinalityEmpty => Accepted { value: claim_cardinality_empty_rejected, diagnostics: None }
+    T19ManualTcInstantiationEmpty => Accepted { value: claim_instantiation_empty_rejected, diagnostics: None }
+    T19ManualTcArrowEmpty => Accepted { value: claim_arrow_empty_rejected, diagnostics: None }
+    T19ManualTcTransformEmpty => Accepted { value: claim_transform_empty_rejected, diagnostics: None }
+    T19ManualTcBranchEmpty => Accepted { value: claim_branch_empty_rejected, diagnostics: None }
+    T19ManualTcLoopEmpty => Accepted { value: claim_loop_empty_rejected, diagnostics: None }
+    T19ManualTcBindZeroChildren => Accepted { value: claim_bind_zero_children_rejected, diagnostics: None }
     T19ManualTcConjEqualsRefl => Accepted { value: claim_conj_equals_refl, diagnostics: None }
     T19ManualNatAddLeftIdentity => Accepted { value: claim_nat_add_left_identity, diagnostics: None }
     T19ManualNatAddRightIdentity => Accepted { value: claim_nat_add_right_identity, diagnostics: None }
@@ -274,7 +293,7 @@ fn manual_test_claim_for_manual_anchor(key: T19ManualAnchorKey) -> Outcome<TestC
 
 
 fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept> {
-  match claim.t19_anchor {
+  match test_claim_t19_anchor(c: claim) {
     T19ManualAnchorAbsent =>
       Rejected { diagnostics: diagnostics_singleton(d: t19_manual_anchor_absent_bootstrap_diagnostic()) }
     T19ManualTcConjEmpty =>
@@ -296,6 +315,26 @@ fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept>
     T19ManualTcInstantiationEmpty =>
       Accepted { value: TypeConstruction {
           subject: ConnectiveKernel { connective: Instantiation },
+        }, diagnostics: None }
+    T19ManualTcArrowEmpty =>
+      Accepted { value: TypeConstruction {
+          subject: ConnectiveKernel { connective: Arrow },
+        }, diagnostics: None }
+    T19ManualTcTransformEmpty =>
+      Accepted { value: TypeConstruction {
+          subject: BehaviorValueSubject { behavior: Transform },
+        }, diagnostics: None }
+    T19ManualTcBranchEmpty =>
+      Accepted { value: TypeConstruction {
+          subject: BehaviorValueSubject { behavior: Branch },
+        }, diagnostics: None }
+    T19ManualTcLoopEmpty =>
+      Accepted { value: TypeConstruction {
+          subject: BehaviorValueSubject { behavior: Loop },
+        }, diagnostics: None }
+    T19ManualTcBindZeroChildren =>
+      Accepted { value: TypeConstruction {
+          subject: BehaviorValueSubject { behavior: Bind },
         }, diagnostics: None }
     T19ManualTcConjEqualsRefl =>
       Accepted { value: TypeConstruction {
@@ -365,9 +404,8 @@ fn bootstrap_claim_generator_for_manual_anchor(
         Accepted { value: slot, diagnostics: d1 } =>
           Accepted {
             value: Generator {
-              classification: claim.classification,
-              kind: claim.kind,
-              t19_anchor: claim.t19_anchor,
+              classification: test_claim_classification(c: claim),
+              t19_anchor: test_claim_t19_anchor(c: claim),
               slot: slot
             },
             diagnostics: diagnostics_merge(outer: d0, inner: d1)
