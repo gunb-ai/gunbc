@@ -4,7 +4,7 @@
 //       target_model_edge_serialize_emitted, target_model_edge_serialize_source,
 //       target_bundle_child, target_selection_policy_from_model, coercion_candidates_from_target_model,
 //       target_serialize_source_from_model, target_source_text_for_symbol,
-//       canonical_grounding_for_node, coerce_grounded_node, translate_children, translate_edge,
+//       canonical_grounding_for_node, coerce_grounded_node, translate_fold_init, translate_fold_step,
 //       translate_node, translate.
 // Consumes: compiler/04_infer.dag, compiler/00_compile.dag, std/coercion.dag, std/constraints.dag,
 //           std/find_witness.dag, std/diagnostic.dag, std/node.dag, std/witness.dag, std/collection.dag.
