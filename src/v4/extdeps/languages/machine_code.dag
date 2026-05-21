@@ -7,7 +7,6 @@
 module v4.extdeps.languages.machine_code
 
 
-import v4.extdeps.languages.fidelity { FidelityDisposition }
 import v4.std.collection { List }
 import v4.std.machine { Byte }
 
