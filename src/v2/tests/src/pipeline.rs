@@ -495,11 +495,11 @@ fn generic_variant_positional_dual_string_literal_bindings() {
 
 type Tag<A> = Mk(A)
 
-type PairRow = { left: Tag<String>, right: Tag<String> }
+type Row = Pair { left: Tag<String>, right: Tag<String> }
 
-fn f(x: PairRow) -> String {
+fn f(x: Row) -> String {
   match x {
-    PairRow { left: Mk("a"), right: Mk("b") } => "ok"
+    Pair { left: Mk("a"), right: Mk("b") } => "ok"
   }
 }
 "#;
@@ -507,12 +507,12 @@ fn f(x: PairRow) -> String {
     assert_no_diagnostics(&result);
     let rs = find_file(&result, "src/test_positional_dual_str_pat.rs");
     assert!(
-        rs.contains("__pos_left_Mk_0_val") && rs.contains("__pos_right_Mk_0_val"),
+        rs.contains("__pos_Pair_left_Mk_0_val") && rs.contains("__pos_Pair_right_Mk_0_val"),
         "expected distinct positional string-literal bindings, got:\n{}",
         rs
     );
     assert!(
-        rs.contains("__pos_left_Mk_0_val = ") && rs.contains("__pos_right_Mk_0_val = "),
+        rs.contains("__pos_Pair_left_Mk_0_val = ") && rs.contains("__pos_Pair_right_Mk_0_val = "),
         "expected distinct positional string-literal guards, got:\n{}",
         rs
     );
