@@ -4254,6 +4254,15 @@ fn rust_box_new_value(raw_value: String) -> String {
   concat("Box::new(", raw_value, ")")
 }
 
+fn rust_struct_base_name(struct_name: String) -> String {
+  if contains(struct_name, "<") {
+    match split(struct_name, delimiter: "<") |> first {
+      Some { value: base } => base
+      None => struct_name
+    }
+  } else { struct_name }
+}
+
 fn expr_is_function_value(texpr: Node) -> Bool {
   match texpr.expr_data {
     ExprVar { binding_kind: bk } =>
@@ -4279,7 +4288,8 @@ fn type_node_is_generic_param(type_node: Node, summary: TypeSummary, source_indi
 
 fn rust_field_value_for_struct(raw_value: String, field_value: Node, struct_node: Node, struct_name: String, field_name: String, scope: InferScope, emit_info: EmitGraphInfo) -> String {
   let value_is_fn = expr_is_function_value(texpr: field_value) || expr_resolves_to_arrow(texpr: field_value)
-  let storage_field_type = match rust_struct_field_type_node(scope: scope, struct_name: struct_name, field_name: field_name) {
+  let base_struct_name = rust_struct_base_name(struct_name: struct_name)
+  let storage_field_type = match rust_struct_field_type_node(scope: scope, struct_name: base_struct_name, field_name: field_name) {
     Some { value: decl_field_type } => Some { value: decl_field_type }
     None => lookup_struct_field_type_node(struct_node: struct_node, field_name: field_name, source_indices: scope.type_env.source_indices)
   }
@@ -4291,7 +4301,7 @@ fn rust_field_value_for_struct(raw_value: String, field_value: Node, struct_node
         match field_type.connective {
           Arrow => rust_rc_new_value(raw_value)
           _ =>
-            match lookup_emit_type_summary(emit_info: emit_info, type_name: struct_name) {
+            match lookup_emit_type_summary(emit_info: emit_info, type_name: base_struct_name) {
               Some { value: summary } =>
                 if type_node_is_generic_param(type_node: field_type, summary: summary, source_indices: scope.type_env.source_indices) {
                   rust_box_new_value(raw_value)
@@ -4312,7 +4322,7 @@ fn rust_field_value_for_struct(raw_value: String, field_value: Node, struct_node
         }
       }
     None =>
-      match lookup_emit_type_summary(emit_info: emit_info, type_name: struct_name) {
+      match lookup_emit_type_summary(emit_info: emit_info, type_name: base_struct_name) {
         Some { value: summary } =>
           if value_is_fn {
             rust_rc_new_value(raw_value)
