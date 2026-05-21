@@ -1,0 +1,15 @@
+// src/v4/std/target_model.dag
+// Scope: TargetModel Conj-bundle edge keys (compiler protocol symbols).
+// Owns: target_model_edge_selection_policy, target_model_edge_declared_inhabitants,
+//       target_model_edge_serialize_emitted, target_model_edge_serialize_source.
+// Consumes: v4.std.node.
+// Status: single authority per INVARIANTS P2 — consumers import; do not redeclare.
+
+module v4.std.target_model
+
+import v4.std.node { Symbol }
+
+data target_model_edge_selection_policy: Symbol = target_model_edge_selection_policy
+data target_model_edge_declared_inhabitants: Symbol = target_model_edge_declared_inhabitants
+data target_model_edge_serialize_emitted: Symbol = target_model_edge_serialize_emitted
+data target_model_edge_serialize_source: Symbol = target_model_edge_serialize_source
