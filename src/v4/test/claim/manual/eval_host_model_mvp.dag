@@ -28,7 +28,6 @@ import v4.std.diagnostic {
   Accepted,
   Diagnostic,
   ExternalContractUnknown,
-  node_locus,
   None,
   Outcome,
   Rejected,
