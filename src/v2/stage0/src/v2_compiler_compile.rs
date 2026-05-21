@@ -695,14 +695,20 @@ pub fn dag_collect_insert(node: &Rc<Node>, acc: &Rc<DagCollectAcc>) -> Rc<DagCol
                 if (prior.clone().as_str() == fp.as_str()) {
                     acc.clone()
                 } else {
-                    Rc::new(DagCollectAcc {
-                        seen: acc.seen.clone(),
-                        order: acc.order.clone(),
-                        collision_errors: v2_rt::rc_list_push(
-                            acc.collision_errors.clone(),
-                            dag_node_key_collision_error(key.clone(), &node.span.clone()),
-                        ),
-                    })
+                    if ((node.span.clone().start.clone() == 0)
+                        && (node.span.clone().end.clone() == 0))
+                    {
+                        Rc::new(DagCollectAcc {
+                            seen: acc.seen.clone(),
+                            order: acc.order.clone(),
+                            collision_errors: v2_rt::rc_list_push(
+                                acc.collision_errors.clone(),
+                                dag_node_key_collision_error(key.clone(), &node.span.clone()),
+                            ),
+                        })
+                    } else {
+                        acc.clone()
+                    }
                 }
             }
             None => {
