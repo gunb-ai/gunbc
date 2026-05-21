@@ -5947,7 +5947,12 @@ fn build_fielded_variants(modules: List<TypedModule>, type_summaries: Map<String
         let variants = item.children
         variants |> fold(init: inner, f: (vacc, variant) =>
           let has_fields = variant.children |> count > 0
-          if has_fields { set_insert(vacc, concat(enum_name, "::", authored_name_at(source_indices: si, node: variant))) } else { vacc }
+          // Positional payload variants use synthetic field "0" — tuple syntax, not record.
+          let is_positional_payload = variant.children |> count == 1 && match variant.children |> first {
+            Some { value: f } => field_node_name_at(n: f, source_indices: si) == "0"
+            None => false
+          }
+          if has_fields && !is_positional_payload { set_insert(vacc, concat(enum_name, "::", authored_name_at(source_indices: si, node: variant))) } else { vacc }
         )
       } else { inner }
     )
