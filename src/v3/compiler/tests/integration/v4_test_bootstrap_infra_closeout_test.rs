@@ -32,6 +32,34 @@ const DIAGNOSTIC_ASSERT_EVAL_DAG: &str =
     include_str!("../../../../v4/test/claim/manual/diagnostic_assert_eval.dag");
 const DIAGNOSTIC_ASSERT_EVAL_PATH: &str = "src/v4/test/claim/manual/diagnostic_assert_eval.dag";
 const EVAL_DAG: &str = include_str!("../../../../v4/compiler/05_eval.dag");
+const LBE_GENERATED_DAG: &str =
+    include_str!("../../../../v4/test/claim/generated/language_behavior_equivalence.dag");
+const LBE_GENERATED_PATH: &str = "src/v4/test/claim/generated/language_behavior_equivalence.dag";
+
+#[test]
+fn t19_language_behavior_equivalence_generated_claims_parse() {
+    parse_module(LBE_GENERATED_DAG, LBE_GENERATED_PATH);
+}
+
+#[test]
+fn t19_language_behavior_equivalence_run_test_claim_receipts_present() {
+    assert!(
+        LBE_GENERATED_DAG.contains("fn run_test_claim(")
+            && LBE_GENERATED_DAG.contains("data run_lbe_conj_via_run_test_claim: TestClaimRun<Node>")
+            && LBE_GENERATED_DAG.contains("run_test_claim_assert(")
+            && LBE_GENERATED_DAG.contains("witness_lbe_conj_snapshot_pass")
+            && LBE_GENERATED_DAG.contains("witness_lbe_disj_snapshot_pass")
+            && LBE_GENERATED_DAG.contains("witness_lbe_transform_snapshot_pass")
+            && LBE_GENERATED_DAG.contains("testgen_scheduled_language_behavior_generators"),
+        "generated LBE corpus must wire frozen-snapshot mocks through run_test_claim_assert and run_test_claim"
+    );
+    assert!(
+        TESTGEN_DAG.contains("LanguageBehaviorEquivalence {")
+            && TESTGEN_DAG.contains("type FrozenLanguageBehaviorSnapshot")
+            && TESTGEN_DAG.contains("fn testgen_emit_language_behavior_equivalence_claim"),
+        "testgen lens must emit LBE claims with frozen snapshot + I/O mock carriers"
+    );
+}
 
 #[test]
 fn t22_diagnostic_assert_eval_witnesses_parse() {
@@ -78,8 +106,9 @@ fn t19_testgen_concept_surface_stays_closed_and_classified() {
             "DiagnosticExhaustiveness",
             "LensApplicability",
             "BidirectionalRoundtrip",
+            "LanguageBehaviorEquivalence",
         ]),
-        "T-19 scheduling arms must stay the closed five-way set from TASKS.md"
+        "T-19 scheduling arms must stay the closed six-way set (LBE activation)"
     );
     assert_eq!(
         record_field_type_map(type_record(&module, "Generator")),

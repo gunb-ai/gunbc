@@ -108,6 +108,11 @@ jobs:
       run: python3 scripts/test_strict_deprose_dag.py
     - name: v4 strict-deprose allowlist (--check; merge-base + Part 6 inventory)
       run: python3 scripts/strict_deprose_dag.py --check
+    - name: T-19 testgen activation self-test (Python)
+      run: python3 scripts/test_check_t19_testgen_activation.py
+    - name: T-19 testgen activation (LBE generated claims + run_test_claim receipts)
+      if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.v3 == 'true' || needs.affected.outputs.workflow_policy == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+      run: python3 scripts/check_t19_testgen_activation.py
     - name: Release-doc authority check (P2 single-authority discipline)
       run: bash scripts/check-release-doc-authority.sh
     - name: Release-doc authority self-test (consumer not ceremonial)

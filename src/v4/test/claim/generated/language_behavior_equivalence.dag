@@ -16,9 +16,7 @@ import v4.compiler.eval {
   Deferred,
   Fail,
   Pass,
-  aggregate_verdicts,
   eval_diagnostic,
-  eval_test_claim_subject,
   run_test_claim,
   run_test_claim_assert,
   test_claim_cache_receipt
@@ -28,6 +26,7 @@ import v4.compiler.infer {
   InferredFacts,
   InferredTree
 }
+import v4.std.algebra { length }
 import v4.std.collection { Map }
 import v4.std.diagnostic {
   Accepted,
@@ -44,15 +43,10 @@ import v4.std.constraints {
 import v4.std.witness { Holds, StructuralPropertyWitness, Violates }
 import v4.extdeps.languages.dag { dag_language_model_surface_id }
 import v4.lens.testgen {
-  FrozenLanguageBehaviorSnapshot,
   LanguageBehaviorIoMock,
-  lbe_frozen_snapshot_conj_dag_surface,
-  lbe_frozen_snapshot_disj_dag_surface,
-  lbe_frozen_snapshot_transform_dag_surface,
   lbe_io_mock_conj_dag_surface,
   lbe_io_mock_disj_dag_surface,
   lbe_io_mock_transform_dag_surface,
-  testgen_emit_language_behavior_equivalence_claim,
   testgen_scheduled_language_behavior_generators
 }
 import v4.std.verification {
@@ -154,25 +148,6 @@ fn lbe_run_test_claim_assert_from_mock(
 }
 
 
-fn lbe_emit_claim(anchor: T19ManualAnchorKey, mock: LanguageBehaviorIoMock) -> TestClaim {
-  match testgen_emit_language_behavior_equivalence_claim(
-    anchor: anchor,
-    label: "generated/lbe: placeholder",
-    mock: mock
-  ) {
-    Accepted { value: claim, diagnostics: None } => claim
-    Rejected { diagnostics: _ } =>
-      CompilesClaim {
-        label: "generated/lbe: emit fail-closed sentinel",
-        t19_anchor: anchor,
-        input: mock.snapshot.input_node,
-        expected_value: mock.snapshot.expected_value,
-        classification: TestClassification { tier: Tier1, layer: Unit }
-      }
-  }
-}
-
-
 data generated_lbe_conj_claim: TestClaim = CompilesClaim {
   label: "generated/lbe: Conj type-node matches dag LanguageModel surface (frozen snapshot)",
   t19_anchor: T19ManualLbeConjDagSurface,
@@ -261,7 +236,7 @@ data gate_lbe_conj_run_test_claim_pass: Verdict<TestClaimRun<Node>> = match run_
 
 
 data witness_testgen_schedules_three_lbe_generators: Bool =
-  (count(testgen_scheduled_language_behavior_generators()) == 3)
+  (length(xs: testgen_scheduled_language_behavior_generators()) == 3)
 
 
 data witness_dag_surface_language_identity: Bool =
