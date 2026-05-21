@@ -623,6 +623,13 @@ data llvm_repr_ieee754_float_kind: Symbol = llvm_repr_ieee754_float_kind
 
 data llvm_tag_width_bits32: Symbol = llvm_tag_width_bits32
 data llvm_tag_width_bits64: Symbol = llvm_tag_width_bits64
+data llvm_tag_float_kind_half: Symbol = llvm_tag_float_kind_half
+data llvm_tag_float_kind_bfloat: Symbol = llvm_tag_float_kind_bfloat
+data llvm_tag_float_kind_single: Symbol = llvm_tag_float_kind_single
+data llvm_tag_float_kind_double: Symbol = llvm_tag_float_kind_double
+data llvm_tag_float_kind_fp128: Symbol = llvm_tag_float_kind_fp128
+data llvm_tag_float_kind_x86_fp80: Symbol = llvm_tag_float_kind_x86_fp80
+data llvm_tag_float_kind_ppc_fp128: Symbol = llvm_tag_float_kind_ppc_fp128
 
 data llvm_facts_i32: LlvmIntegerPrimitiveFacts = LlvmIntegerPrimitiveFacts {
   surface_spelling: llvm_surface_spelling_i32,
@@ -681,13 +688,13 @@ fn llvm_integer_width_node(width: LlvmIntegerWidth) -> Node {
 
 fn llvm_float_kind_node(kind: FloatKind) -> Node {
   match kind {
-    HalfFloat => llvm_inhabitant_atom(id: llvm_surface_spelling_half)
-    BFloatFloat => llvm_inhabitant_atom(id: llvm_surface_spelling_half)
-    SingleFloat => llvm_inhabitant_atom(id: llvm_surface_spelling_float)
-    DoubleFloat => llvm_inhabitant_atom(id: llvm_surface_spelling_double)
-    Fp128Float => llvm_inhabitant_atom(id: llvm_surface_spelling_double)
-    X86Fp80Float => llvm_inhabitant_atom(id: llvm_surface_spelling_double)
-    PpcFp128Float => llvm_inhabitant_atom(id: llvm_surface_spelling_double)
+    HalfFloat => llvm_inhabitant_atom(id: llvm_tag_float_kind_half)
+    BFloatFloat => llvm_inhabitant_atom(id: llvm_tag_float_kind_bfloat)
+    SingleFloat => llvm_inhabitant_atom(id: llvm_tag_float_kind_single)
+    DoubleFloat => llvm_inhabitant_atom(id: llvm_tag_float_kind_double)
+    Fp128Float => llvm_inhabitant_atom(id: llvm_tag_float_kind_fp128)
+    X86Fp80Float => llvm_inhabitant_atom(id: llvm_tag_float_kind_x86_fp80)
+    PpcFp128Float => llvm_inhabitant_atom(id: llvm_tag_float_kind_ppc_fp128)
   }
 }
 

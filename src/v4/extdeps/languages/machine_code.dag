@@ -343,6 +343,8 @@ data mc_tag_bits32: Symbol = mc_tag_bits32
 data mc_tag_bits64: Symbol = mc_tag_bits64
 data mc_tag_bits128: Symbol = mc_tag_bits128
 data mc_tag_wrap_modulo: Symbol = mc_tag_wrap_modulo
+data mc_tag_trap_on_overflow: Symbol = mc_tag_trap_on_overflow
+data mc_tag_undefined_by_isa: Symbol = mc_tag_undefined_by_isa
 data mc_repr_twos_complement: Symbol = mc_repr_twos_complement
 
 data mc_facts_int8: MachineIntegerPrimitiveFacts = MachineIntegerPrimitiveFacts {
@@ -429,8 +431,8 @@ fn mc_int_width_node(width: MachineIntWidth) -> Node {
 fn mc_overflow_node(overflow: MachineIntegerOverflowBehavior) -> Node {
   match overflow {
     WrapModuloWidth => mc_inhabitant_atom(id: mc_tag_wrap_modulo)
-    TrapOnOverflow => mc_inhabitant_atom(id: mc_tag_wrap_modulo)
-    UndefinedByIsa => mc_inhabitant_atom(id: mc_tag_wrap_modulo)
+    TrapOnOverflow => mc_inhabitant_atom(id: mc_tag_trap_on_overflow)
+    UndefinedByIsa => mc_inhabitant_atom(id: mc_tag_undefined_by_isa)
   }
 }
 
