@@ -178,8 +178,8 @@ fn target_selection_priority_from_model(target: TargetModel) -> Outcome<Node> {
     }
   )
 }
-// `declared_inhabitants` edge names one Conj root on the target bundle; std/coercion builds the
-// closed candidate list; find_witness expands Conj roots to per-primitive children.
+// `declared_inhabitants` edge names one Conj root on the target bundle; std/coercion flattens it
+// via declared_inhabitant_candidates; find_witness enumerates that closed list as-is (no Conj walk).
 fn coercion_candidates_from_target_model(
   target: TargetModel
 ) -> Outcome<CoercionCandidateSet> {
