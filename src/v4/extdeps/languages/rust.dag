@@ -90,14 +90,15 @@ type RustScalar
 
 type RustIntegerPrimitiveFacts {
   surface_spelling: Symbol
-  scalar: IntScalar { kind: RustIntKind, width: RustIntWidth }
+  signedness: RustIntKind
+  width: RustIntWidth
   overflow_release: OverflowAction
   std_projection: Symbol
 }
 
 type RustFloatPrimitiveFacts {
   surface_spelling: Symbol
-  scalar: FloatScalar { width: RustFloatWidth }
+  width: RustFloatWidth
   ieee754_binary: Symbol
   std_projection: Symbol
 }
@@ -339,7 +340,6 @@ data rust_facts_i8: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
   width: Bits8,
   overflow_release: TwoComplementWrap,
   std_projection: rust_std_projection_int8,
-  scalar: IntScalar { kind: IntScalar { kind: Signed, width: Bits8 }, width: Signed }
 }
 
 data rust_facts_i16: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
@@ -348,7 +348,6 @@ data rust_facts_i16: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
   width: Bits16,
   overflow_release: TwoComplementWrap,
   std_projection: rust_std_projection_int16,
-  scalar: IntScalar { kind: IntScalar { kind: Signed, width: Bits16 }, width: Signed }
 }
 
 data rust_facts_i32: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
@@ -357,7 +356,6 @@ data rust_facts_i32: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
   width: Bits32,
   overflow_release: TwoComplementWrap,
   std_projection: rust_std_projection_int32,
-  scalar: IntScalar { kind: IntScalar { kind: Signed, width: Bits32 }, width: Signed }
 }
 
 data rust_facts_i64: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
@@ -366,7 +364,6 @@ data rust_facts_i64: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
   width: Bits64,
   overflow_release: TwoComplementWrap,
   std_projection: rust_std_projection_int64,
-  scalar: IntScalar { kind: IntScalar { kind: Signed, width: Bits64 }, width: Signed }
 }
 
 data rust_facts_i128: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
@@ -375,7 +372,6 @@ data rust_facts_i128: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
   width: Bits128,
   overflow_release: TwoComplementWrap,
   std_projection: rust_std_projection_int128,
-  scalar: IntScalar { kind: IntScalar { kind: Signed, width: Bits128 }, width: Signed }
 }
 
 data rust_facts_u8: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
@@ -384,7 +380,6 @@ data rust_facts_u8: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
   width: Bits8,
   overflow_release: TwoComplementWrap,
   std_projection: rust_std_projection_uint8,
-  scalar: IntScalar { kind: IntScalar { kind: Unsigned, width: Bits8 }, width: Unsigned }
 }
 
 data rust_facts_u16: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
@@ -393,7 +388,6 @@ data rust_facts_u16: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
   width: Bits16,
   overflow_release: TwoComplementWrap,
   std_projection: rust_std_projection_uint16,
-  scalar: IntScalar { kind: IntScalar { kind: Unsigned, width: Bits16 }, width: Unsigned }
 }
 
 data rust_facts_u32: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
@@ -402,7 +396,6 @@ data rust_facts_u32: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
   width: Bits32,
   overflow_release: TwoComplementWrap,
   std_projection: rust_std_projection_uint32,
-  scalar: IntScalar { kind: IntScalar { kind: Unsigned, width: Bits32 }, width: Unsigned }
 }
 
 data rust_facts_u64: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
@@ -411,7 +404,6 @@ data rust_facts_u64: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
   width: Bits64,
   overflow_release: TwoComplementWrap,
   std_projection: rust_std_projection_uint64,
-  scalar: IntScalar { kind: IntScalar { kind: Unsigned, width: Bits64 }, width: Unsigned }
 }
 
 data rust_facts_u128: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
@@ -420,7 +412,6 @@ data rust_facts_u128: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
   width: Bits128,
   overflow_release: TwoComplementWrap,
   std_projection: rust_std_projection_uint128,
-  scalar: IntScalar { kind: IntScalar { kind: Unsigned, width: Bits128 }, width: Unsigned }
 }
 
 data rust_facts_isize: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
@@ -429,7 +420,6 @@ data rust_facts_isize: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
   width: Pointer,
   overflow_release: TwoComplementWrap,
   std_projection: rust_std_projection_int_platform,
-  scalar: IntScalar { kind: IntScalar { kind: Signed, width: Pointer }, width: Signed }
 }
 
 data rust_facts_usize: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
@@ -438,7 +428,6 @@ data rust_facts_usize: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
   width: Pointer,
   overflow_release: TwoComplementWrap,
   std_projection: rust_std_projection_uint_platform,
-  scalar: IntScalar { kind: IntScalar { kind: Unsigned, width: Pointer }, width: Unsigned }
 }
 
 data rust_facts_f32: RustFloatPrimitiveFacts = RustFloatPrimitiveFacts {
@@ -446,7 +435,6 @@ data rust_facts_f32: RustFloatPrimitiveFacts = RustFloatPrimitiveFacts {
   width: Bits32,
   ieee754_binary: rust_ieee754_binary32,
   std_projection: rust_std_projection_float32,
-  scalar: FloatScalar { width: FloatScalar { width: Bits32 } }
 }
 
 data rust_facts_f64: RustFloatPrimitiveFacts = RustFloatPrimitiveFacts {
@@ -454,7 +442,6 @@ data rust_facts_f64: RustFloatPrimitiveFacts = RustFloatPrimitiveFacts {
   width: Bits64,
   ieee754_binary: rust_ieee754_binary64,
   std_projection: rust_std_projection_float64,
-  scalar: FloatScalar { width: FloatScalar { width: Bits64 } }
 }
 
 data rust_facts_bool: RustNonIntegerPrimitiveFacts = RustNonIntegerPrimitiveFacts {
@@ -618,11 +605,11 @@ fn rust_integer_facts_node(facts: RustIntegerPrimitiveFacts) -> Node {
       ),
       rust_named_edge(
         name: rust_facts_field_signedness,
-        target: rust_int_kind_node(kind: facts.scalar.kind)
+        target: rust_int_kind_node(kind: facts.signedness)
       ),
       rust_named_edge(
         name: rust_facts_field_width,
-        target: rust_int_width_node(width: facts.scalar.width)
+        target: rust_int_width_node(width: facts.width)
       ),
       rust_named_edge(
         name: rust_facts_field_overflow_release,
@@ -634,7 +621,9 @@ fn rust_integer_facts_node(facts: RustIntegerPrimitiveFacts) -> Node {
       ),
       rust_named_edge(
         name: rust_facts_field_scalar_classifier,
-        target: rust_scalar_node(scalar: facts.scalar)
+        target: rust_scalar_node(
+          scalar: IntScalar { kind: facts.signedness, width: facts.width }
+        )
       )
     ]
   }
@@ -648,10 +637,7 @@ fn rust_float_facts_node(facts: RustFloatPrimitiveFacts) -> Node {
         name: rust_facts_field_surface_spelling,
         target: rust_inhabitant_atom(id: facts.surface_spelling)
       ),
-      rust_named_edge(
-        name: rust_facts_field_width,
-        target: rust_float_width_node(width: facts.scalar.width)
-      ),
+      rust_named_edge(name: rust_facts_field_width, target: rust_float_width_node(width: facts.width)),
       rust_named_edge(
         name: rust_facts_field_ieee754_binary,
         target: rust_inhabitant_atom(id: facts.ieee754_binary)
@@ -662,7 +648,7 @@ fn rust_float_facts_node(facts: RustFloatPrimitiveFacts) -> Node {
       ),
       rust_named_edge(
         name: rust_facts_field_scalar_classifier,
-        target: rust_scalar_node(scalar: facts.scalar)
+        target: rust_scalar_node(scalar: FloatScalar { width: facts.width })
       )
     ]
   }
@@ -877,6 +863,7 @@ fn rust_mvp1_positional_token_edge(token_class: Symbol) -> Edge {
   }
 }
 
+// Order-preserving snoc: free_monoid_fold visits tail→head but cons(empty, h) builds forward order.
 // Compile-time list snoc for fixed MVP-1 length; dissolve-on: T-10 grammar-emitted edge list.
 fn rust_list_snoc_item<T>(xs: List<T>, item: T) -> List<T> {
   free_monoid_fold(
