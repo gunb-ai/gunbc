@@ -14737,6 +14737,109 @@ pub fn emit_data_def_body(
     emit_info: Rc<EmitGraphInfo>,
     needs_rc: &bool,
 ) -> String {
+    let raw_ty_str = render_rust_type(
+        type_node.clone(),
+        shared_types.clone(),
+        scope.type_env.clone().source_indices.clone(),
+    );
+    if ((raw_ty_str.clone().as_str() == "BoundedLattice".to_string().as_str())
+        || (raw_ty_str.clone().as_str() == "Rc<BoundedLattice>".to_string().as_str()))
+    {
+        return match (*value.expr_data.clone()).clone() {
+            ExprData::ExprRecordLit { .. } => {
+                let meet_str = match field_value_by_name(
+                    value.clone(),
+                    "meet".to_string(),
+                    scope.type_env.clone().source_indices.clone(),
+                ) {
+                    Some(n) => emit_typed_expr(
+                        n,
+                        registry.clone(),
+                        &scope,
+                        depth.clone(),
+                        shared_types.clone(),
+                        emit_info.clone(),
+                        1024,
+                    ),
+                    None => "compile_error!(\"BoundedLattice data missing meet\")".to_string(),
+                };
+                let join_str = match field_value_by_name(
+                    value.clone(),
+                    "join".to_string(),
+                    scope.type_env.clone().source_indices.clone(),
+                ) {
+                    Some(n) => emit_typed_expr(
+                        n,
+                        registry.clone(),
+                        &scope,
+                        depth.clone(),
+                        shared_types.clone(),
+                        emit_info.clone(),
+                        1024,
+                    ),
+                    None => "compile_error!(\"BoundedLattice data missing join\")".to_string(),
+                };
+                let top_str = match field_value_by_name(
+                    value.clone(),
+                    "top".to_string(),
+                    scope.type_env.clone().source_indices.clone(),
+                ) {
+                    Some(n) => emit_typed_expr(
+                        n,
+                        registry.clone(),
+                        &scope,
+                        depth.clone(),
+                        shared_types.clone(),
+                        emit_info.clone(),
+                        1024,
+                    ),
+                    None => "compile_error!(\"BoundedLattice data missing top\")".to_string(),
+                };
+                let bottom_str = match field_value_by_name(
+                    value.clone(),
+                    "bottom".to_string(),
+                    scope.type_env.clone().source_indices.clone(),
+                ) {
+                    Some(n) => emit_typed_expr(
+                        n,
+                        registry.clone(),
+                        &scope,
+                        depth.clone(),
+                        shared_types.clone(),
+                        emit_info.clone(),
+                        1024,
+                    ),
+                    None => "compile_error!(\"BoundedLattice data missing bottom\")".to_string(),
+                };
+                v2_rt::concat(
+                    v2_rt::concat(
+                        v2_rt::concat(
+                            v2_rt::concat(
+                                v2_rt::concat(
+                                    v2_rt::concat(
+                                        v2_rt::concat(
+                                            v2_rt::concat(
+                                                "            Rc::new(BoundedLattice {\n                meet: Rc::new(".to_string(),
+                                                meet_str,
+                                            ),
+                                            "),\n                join: Rc::new(".to_string(),
+                                        ),
+                                        join_str,
+                                    ),
+                                    "),\n                top: Box::new(".to_string(),
+                                ),
+                                top_str,
+                            ),
+                            "),\n                bottom: Box::new(".to_string(),
+                        ),
+                        bottom_str,
+                    ),
+                    "),\n            })".to_string(),
+                )
+            }
+            _ => "            compile_error!(\"BoundedLattice data must be a record\")".to_string(),
+        };
+    }
     if (has_nested_records_node(
         type_node.clone(),
         scope.type_env.clone().source_indices.clone(),
