@@ -1176,12 +1176,28 @@ import/alias of the resolver's authoritative shape.
     `connective_spec_fact` (6 arms → 2 skeletons, 5:1) — resolved via
     inline match-pattern with guard (`Atom { identity: id } if
     is_kernel_ambient(id) => ...; _ => default`), NOT via a named
-    `Bool` helper. **Fix-confidence: direct auto-apply.** Lens emits a
-    typed `Diff` rewriting the N-arm match to a 2-arm form: the
-    singleton arm's pattern + RHS preserved, the N-1 uniform arms
-    collapsed to `_ => <uniform_RHS_with_constructor_substituted_by_wildcard>`.
-    No naming decisions; the structural fix is unambiguous from the
-    histogram.
+    `Bool` helper. **Fix-confidence: split by RHS form** — skeleton
+    equivalence is a comparison-time notion, not executable syntax, so
+    the auto-fix has to materialize an actual replacement that compiles:
+    - **(a) Constructor identity does NOT appear in the uniform RHS**
+      (e.g. PR #3359 `connective_spec_fact`'s 5 uniform arms all
+      executing `classify_density(facts)` — the matched constructor
+      doesn't show up in the RHS at all). **Direct auto-apply:** the
+      catch-all is literally `_ => <uniform_RHS>`; no constructor
+      reconstruction needed.
+    - **(b) Constructor identity DOES appear in the uniform RHS** (e.g.
+      RHSes like `Disposition { feature: <matched_constructor> }` —
+      this is more naturally a MultiOutlier shape, but Outlier
+      examples exist). **Templated auto-apply:** bind the matched
+      value in the catch-all (e.g. `c => <RHS_with_c_substituted_for_the_constructor>`)
+      so the executable replacement is a real value-binding, NOT a
+      skeleton hole. The lens emits the Diff with the binding name
+      templated (default `c`/`x`/etc.; reviewer may override).
+    - The naive "substitute the constructor with a wildcard `_`" form
+      is a skeleton-equality device for COMPARING arms, not for
+      generating executable replacement code; cases that require it
+      should downgrade from direct-auto-apply to templated-auto-apply,
+      not emit syntactically invalid `_ => Foo { field: _ }` RHSes.
   - **MultiOutlier** — `K ≥ 2`, histogram contains both singleton(s)
     AND non-singleton group(s). `N ≥ 4`. Multiple base-cases + one or
     more uniform groups. Covers F14 (1:5:6 — one singleton +
@@ -1306,24 +1322,41 @@ fn feature_disposition(f: FidelityFeature) -> FidelityDisposition {
 12 arms, 3 distinct skeletons: `Modeled` (1), `DeclaredNormalized { feature: <constructor> }` (5),
 `FailClosed { feature: <constructor> }` (6). **MultiOutlier, 1:5:6** (one singleton + two uniform groups; per the classifier definition above, Categorical requires non-singleton-only groups — the `Modeled` arm is a singleton, so this is MultiOutlier).
 
-**Clean shape:** push the categorization into `FidelityFeature`:
+**Clean shape:** push the categorization into `FidelityFeature`.
+**Singleton groups become fieldless top-level variants** (no `{ kind: _ }`
+wrapping — a sub-coproduct of one element is empty overhead); **only
+non-singleton groups get `{ kind: ... }` wrappers** carrying their
+sub-coproduct:
 ```dag
 type FidelityFeature
-  = ModeledFeature       { kind: ModeledKind }       // StructuralCore
-  | NormalizedFeature    { kind: NormalizedKind }    // 5 normalized variants
-  | UnmodeledFeature     { kind: UnmodeledKind }     // 6 fail-closed variants
+  = ModeledFeature                                 // singleton (StructuralCore) — fieldless
+  | NormalizedFeature    { kind: NormalizedKind }  // 5 normalized variants
+  | UnmodeledFeature     { kind: UnmodeledKind }   // 6 fail-closed variants
+
+type NormalizedKind
+  = SsaValueSpelling | BlockTextualOrder | LexicalTrivia
+  | TargetConfigToken | AdvisoryMetadata
+
+type UnmodeledKind
+  = UnmodeledInlineAsm | UnmodeledSemanticAttribute | UnmodeledType
+  | UnmodeledInstruction | UnmodeledConstExpr | MalformedStructure
 
 fn feature_disposition(f: FidelityFeature) -> FidelityDisposition {
   match f {
-    ModeledFeature    { kind: _ }    => Modeled
-    NormalizedFeature { kind: _ }    => DeclaredNormalized { feature: f }
-    UnmodeledFeature  { kind: _ }    => FailClosed         { feature: f }
+    ModeledFeature                  => Modeled
+    NormalizedFeature { kind: _ }   => DeclaredNormalized { feature: f }
+    UnmodeledFeature  { kind: _ }   => FailClosed         { feature: f }
   }
 }
 ```
 3 arms instead of 12. The N-to-3 projection lives in `FidelityFeature`'s
 type definition (its correct home — the category IS a property of the
-feature), not as a hand-rolled function.
+feature), not as a hand-rolled function. **General rule for the
+MultiOutlier / Categorical dissolution** — applies to every shape with
+mixed singletons + non-singleton groups: singleton-group variants are
+fieldless; only non-singleton groups carry `{ kind: <SubKind> }`
+wrappers. Wrapping a singleton is pure structural overhead with no
+discrimination work to do.
 
 **Concrete match — F15 (PR #3452 `complexity_bound_from_class`):**
 9 arms over `AsymptoticClass`, 3 distinct skeletons: `Constant` (1),
