@@ -108,6 +108,22 @@ This is not a bounded graph serialization. It is a recursive tree expansion of a
 
 The zip-fold PR made this visible because the requested verification command used `--target dag`. The zip-fold body is not the root cause: the same checkout succeeds through Rust emission, and the #3473 merge baseline also fails under `--target dag`.
 
+## Scope Checks
+
+The DAG backend is not broken for every input. These smaller checks used the same local release binary:
+
+| Input | Command shape | Result |
+|---|---|---|
+| one-file `module simple` with `fn main() -> Int { 0 }` | `--source-root /tmp/v2dag-fixtures/simple --target dag` | succeeds immediately; `dag-artifact.json` is 1,801 bytes |
+| one-file copy of `src/v4/std/node.dag` | `--source-root /tmp/v2dag-fixtures/node --target dag` | succeeds immediately; `dag-artifact.json` is 1,439,625 bytes |
+| copied `src/v4/std` subtree | `--source-root /tmp/v2dag-std-root --target dag` | succeeds in 2s; one file emitted, 0 diagnostics |
+| full `src/v4` on PR #3494 | `--source-root src/v4 --target dag` | hangs post-resolve; killed at 362s; RSS >8.4GB |
+| full `src/v4` on current `main` / #3473 merge | `--source-root src/v4 --target dag` | hangs post-resolve; killed at 182s; RSS >12GB in the final valid sample |
+
+That scope argues for a graph-size / graph-sharing trigger rather than a parse error, a specific `fold_node` function body, or a universal inability to serialize any v4 `Node`.
+
+The full v4 closure is the first checked input large enough to combine compiler, lens, test-claim, extdeps, and typed inferred references. In that shape, recursive by-value serialization expands the graph along multiple authority edges rather than emitting each node once and referencing it thereafter.
+
 ## Comparison With sunny-deer-191 / cool-raven-123
 
 sunny-deer-191 reported that the cool-raven/Locus investigation hit parser and pattern substrate gaps:
@@ -156,8 +172,14 @@ This is the v2 mirror of the v4 direction: `Node` identity / canonical form / `c
 
 ## Routing Recommendation
 
-Recommendation: **B — Separate case.**
+Recommendation: **B' — Separate case: v2 DAG artifact backend.**
 
 Do not extend sunny-deer-191's parser/pattern lane for this finding. Their lane should keep closing generic type application and nested-pattern capability. This audit should route to a separate v2 DAG artifact backend design/implementation lane if the project still needs `--target dag` to be a hard viability gate before v4 owns a native graph artifact.
 
 If the intended CI semantics are only "parse/resolve posture" while DAG emission remains known-unbounded, the gate should stop calling `--target dag` as the discriminating command and should use a typed resolve/validation receipt instead. Today, `scripts/v4-bootstrap-viability.sh` invokes `--target dag`, so the gate is measuring serializer blowup, not zip-fold substrate soundness.
+
+## PR #3494 Status Implication
+
+vivid-deer-580's zip-fold predicate work should not be judged by the `--target dag` hang. The same PR compiles through the default Rust target with zero diagnostics, so the predicate body was expressible to v2 at the compile/emission level that actually completes.
+
+Recommended next action for PR #3494: resume the worker or reviewer with the default Rust-target receipt as the compile viability signal, then review the actual `.dag` design on its merits. If PR #3494 has a required test or CI path that insists on `--target dag`, that requirement should be blocked on the separate DAG artifact backend issue rather than treated as a predicate-body failure.
