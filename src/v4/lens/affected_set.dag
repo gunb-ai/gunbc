@@ -8,12 +8,11 @@ module v4.lens.affected_set
 
 
 import v4.std.collection { List, Map }
-<<<<<<< HEAD
 import v4.std.change {
   AffectedDependency,
   AffectedExclusion,
   AffectedSet,
-  AffectedSetDiagnostic,
+  AffectedSetDiagnostics,
   AffectedSetEvidence,
   AffectedSetFailClosed,
   AffectedSetProduced,
@@ -23,8 +22,6 @@ import v4.std.change {
   NodeChanged
 }
 import v4.std.dependency { DependencyKind, DependencyView, ProjectionDependsOn, VerifiedBy }
-import v4.std.diagnostic { Diagnostic, Outcome, Produced, Rejected }
-=======
 import v4.std.diagnostic {
   Diagnostic,
   Diagnostics,
@@ -35,7 +32,6 @@ import v4.std.diagnostic {
   diagnostics_merge,
   diagnostics_singleton
 }
->>>>>>> origin/main
 import v4.std.node { Diff, Edit, Hash, Node, Path, Symbol }
 import v4.std.witness { Holds, Witness }
 
@@ -89,15 +85,9 @@ type BoundaryExclusion {
 // 🟡 coproduct dissolution — #3153-subsumed
 // RULING-1: 🟡 needs-more-work — scaffold carrier.
 // 🟡 coproduct dissolution — #3153-subsumed.
-<<<<<<< HEAD
 type FailClosedReason
   = ReasonSymbol { reason: Symbol }
-  | ReasonDiagnostic { diagnostic: Diagnostic }
-=======
-type WholeDagFailClosedEvidence
-  = WholeDagReason { reason: Symbol }
-  | WholeDagDiagnostics { diagnostics: NonEmptyDiagnostics }
->>>>>>> origin/main
+  | ReasonDiagnostics { diagnostics: NonEmptyDiagnostics }
 
 
 // 🟡 coproduct dissolution — #3153-subsumed
@@ -229,7 +219,6 @@ fn empty_affected_fold_acc(dag: Dag) -> AffectedFoldAcc {
 }
 
 
-<<<<<<< HEAD
 fn empty_affected_set_fold_acc(dag: Dag) -> AffectedSetFoldAcc {
   AffectedSetActive {
     dag: dag,
@@ -240,19 +229,17 @@ fn empty_affected_set_fold_acc(dag: Dag) -> AffectedSetFoldAcc {
 }
 
 
-=======
 fn fold_pending(acc: AffectedFoldAcc, next: Diagnostics) -> Diagnostics {
   diagnostics_merge(outer: acc.pending, inner: next)
 }
 
 
 // Pending accepted diagnostics escalate to whole-DAG fail-closed (conservative Q11 policy).
-// When both a WholeDagReason and pending diagnostics exist, diagnostics evidence wins.
->>>>>>> origin/main
+// When both a reason and pending diagnostics exist, diagnostics evidence wins.
 fn frontier_from_fold_acc(acc: AffectedFoldAcc) -> ReExecFrontier {
   match acc.pending {
-    Some { diagnostics: nds } => WholeDagFailClosed {
-      evidence: WholeDagDiagnostics { diagnostics: nds }
+    Some { diagnostics: nds } => FailClosed {
+      reason: ReasonDiagnostics { diagnostics: nds }
     }
     None => acc.frontier
   }
@@ -412,12 +399,12 @@ fn fail_affected_set_with_reason(acc: AffectedSetFoldAcc, reason: Symbol) -> Aff
 }
 
 
-fn fail_affected_set_with_diagnostic(acc: AffectedSetFoldAcc, diagnostic: Diagnostic) -> AffectedSetFoldAcc {
+fn fail_affected_set_with_diagnostics(acc: AffectedSetFoldAcc, diagnostics: NonEmptyDiagnostics) -> AffectedSetFoldAcc {
   match acc {
     AffectedSetActive { dag: _, changes: changes, affected: _, exclusions: _ } =>
       AffectedSetFailed {
         changes: changes,
-        evidence: AffectedSetDiagnostic { diagnostic: diagnostic }
+        evidence: AffectedSetDiagnostics { diagnostics: diagnostics }
       }
     AffectedSetFailed { changes: changes, evidence: evidence } =>
       AffectedSetFailed {
@@ -499,16 +486,12 @@ fn mark_whole_dag(reason: Symbol) -> ReExecFrontier {
 
 
 fn mark_whole_dag_diagnostics(diagnostics: NonEmptyDiagnostics) -> ReExecFrontier {
-  WholeDagFailClosed { evidence: WholeDagDiagnostics { diagnostics: diagnostics } }
+  FailClosed { reason: ReasonDiagnostics { diagnostics: diagnostics } }
 }
 fn mark_whole_dag_diagnostic(diagnostic: Diagnostic) -> ReExecFrontier {
-<<<<<<< HEAD
-  FailClosed { reason: ReasonDiagnostic { diagnostic: diagnostic } }
-=======
   mark_whole_dag_diagnostics(
     diagnostics: diagnostics_singleton(d: diagnostic)
   )
->>>>>>> origin/main
 }
 
 
@@ -739,7 +722,10 @@ fn expand_affected_dimension(
     FrontierUnknown { reason: r } =>
       fail_affected_set_with_reason(acc: acc, reason: r)
     FrontierRejected { diagnostic: d } =>
-      fail_affected_set_with_diagnostic(acc: acc, diagnostic: d)
+      fail_affected_set_with_diagnostics(
+        acc: acc,
+        diagnostics: diagnostics_singleton(d: d)
+      )
   }
 }
 
@@ -802,10 +788,10 @@ fn seed_affected_set_fold_acc_live(
             changes: active_changes,
             affected: active_affected,
             exclusions: active_exclusions
-          }
+        }
         BoundaryExpands =>
           match post_edit_dag(active_dag, edit).outcome {
-            Produced { value: next_dag } =>
+            Accepted { value: next_dag, diagnostics: _ } =>
               expand_affected_dimensions(
                 read_model: read_model,
                 boundary_dag: active_dag,
@@ -818,15 +804,15 @@ fn seed_affected_set_fold_acc_live(
                 },
                 edit: edit
               )
-            Rejected { diagnostic: d } =>
-              fail_affected_set_with_diagnostic(
+            Rejected { diagnostics: nds } =>
+              fail_affected_set_with_diagnostics(
                 acc: AffectedSetActive {
                   dag: active_dag,
                   changes: active_changes,
                   affected: active_affected,
                   exclusions: active_exclusions
                 },
-                diagnostic: d
+                diagnostics: nds
               )
           }
         BoundaryUnknown { reason: r } =>

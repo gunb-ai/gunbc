@@ -21,7 +21,7 @@ import v4.std.dependency {
   VerifiedBy,
   topological_layers
 }
-import v4.std.diagnostic { Produced }
+import v4.std.diagnostic { Accepted, None }
 import v4.std.node { Atom, Conj, Edge, Named, Node, Path, Symbol, TypeNode }
 
 data refinement_subject_symbol: Symbol = refinement_subject_symbol
@@ -143,5 +143,5 @@ data refinement_affected_set: AffectedSet = AffectedSetProduced {
 data refinement_recompute_plan: RecomputePlan = RecomputePlan {
   affected: refinement_affected_set,
   layers: topological_layers(graph_node: dependency_projection_subgraph),
-  diagnostic: Produced { value: dependency_recompute_ok }
+  diagnostic: Accepted { value: dependency_recompute_ok, diagnostics: None }
 }

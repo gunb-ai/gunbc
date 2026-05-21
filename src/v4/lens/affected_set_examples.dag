@@ -23,15 +23,9 @@ import v4.lens.affected_set {
   Rerun,
   Excluded,
   DimensionNotRead,
-<<<<<<< HEAD
   FailClosed,
   ReasonSymbol,
-  ReasonDiagnostic
-=======
-  WholeDagFailClosed,
-  WholeDagReason,
-  WholeDagDiagnostics
->>>>>>> origin/main
+  ReasonDiagnostics
 }
 
 
@@ -112,25 +106,15 @@ data expected_affected_set_unknown_fail_closed: ReExecFrontier = FailClosed {
 }
 
 
-<<<<<<< HEAD
 data expected_affected_set_rejected_edit_fail_closed: ReExecFrontier = FailClosed {
-  reason: ReasonDiagnostic { diagnostic: affected_set_example_invalid_edit_diagnostic }
+  reason: ReasonDiagnostics {
+    diagnostics: diagnostics_singleton(d: affected_set_example_invalid_edit_diagnostic)
+  }
 }
 
 
 data expected_affected_set_whole_dag_absorbs_later_unknown: ReExecFrontier = FailClosed {
-  reason: ReasonDiagnostic { diagnostic: affected_set_example_invalid_edit_diagnostic }
-=======
-data expected_affected_set_rejected_edit_fail_closed: ReExecFrontier = WholeDagFailClosed {
-  evidence: WholeDagDiagnostics {
+  reason: ReasonDiagnostics {
     diagnostics: diagnostics_singleton(d: affected_set_example_invalid_edit_diagnostic)
   }
-}
-
-
-data expected_affected_set_whole_dag_absorbs_later_unknown: ReExecFrontier = WholeDagFailClosed {
-  evidence: WholeDagDiagnostics {
-    diagnostics: diagnostics_singleton(d: affected_set_example_invalid_edit_diagnostic)
-  }
->>>>>>> origin/main
 }

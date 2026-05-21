@@ -8,7 +8,7 @@ module v4.std.change
 
 import v4.std.collection { List }
 import v4.std.dependency { DependencyKind, DependencyView, ReadinessLayer }
-import v4.std.diagnostic { Diagnostic, Outcome }
+import v4.std.diagnostic { NonEmptyDiagnostics, Outcome }
 import v4.std.node { Node, Path, Symbol }
 
 // 🟢 closed set — change shapes consumed by consequence recomputation.
@@ -44,7 +44,7 @@ type AffectedExclusion {
 // 🟡 coproduct dissolution — feature:t21-affected-set-testclaims.
 type AffectedSetEvidence
   = AffectedSetReason { reason: Symbol }
-  | AffectedSetDiagnostic { diagnostic: Diagnostic }
+  | AffectedSetDiagnostics { diagnostics: NonEmptyDiagnostics }
 
 // 🟢 coproduct dissolution — Wave-2-A affected-set success/fail-closed boundary.
 type AffectedSet
