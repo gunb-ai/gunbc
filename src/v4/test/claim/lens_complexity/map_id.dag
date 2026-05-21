@@ -16,6 +16,7 @@ import v4.std.diagnostic {
   WholeFile
 }
 import v4.std.node {
+  Atom,
   Cardinality,
   ComputationNode,
   Edge,
@@ -37,9 +38,18 @@ type LensComplexityClaim {
   falsification: Diagnostic
 }
 
+data map_id_body_atom: Symbol = map_id_body_atom
+
+data map_id_body_leaf: Node = Node {
+  kind: TypeNode { connective: Atom { identity: map_id_body_atom } },
+  children: []
+}
+
 data map_id_body: Node = Node {
   kind: ComputationNode { behavior: Transform },
-  children: []
+  children: [
+    Edge { label: Positional, target: map_id_body_leaf }
+  ]
 }
 
 data map_id_input: Node = Node {
