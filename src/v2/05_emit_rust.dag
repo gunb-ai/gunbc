@@ -4102,6 +4102,47 @@ fn is_optional_struct_field(emit_info: EmitGraphInfo, struct_name: String, field
   }
 }
 
+fn rust_struct_field_type_node(scope: InferScope, struct_name: String, field_name: String) -> Node? {
+  match lookup_type_by_name(env: scope.type_env, name: struct_name) {
+    Some { value: struct_node } =>
+      match find_child_named(n: struct_node, name: field_name, source_indices: scope.type_env.source_indices) {
+        Some { value: field_node } => Some { value: resolved_type(n: field_node) }
+        None => none
+      }
+    None => none
+  }
+}
+
+fn rust_record_field_needs_fn_rc(scope: InferScope, struct_name: String, field_name: String) -> Bool {
+  match rust_struct_field_type_node(scope: scope, struct_name: struct_name, field_name: field_name) {
+    Some { value: field_type } => field_type.connective == Arrow
+    None => false
+  }
+}
+
+fn rust_record_field_needs_box(scope: InferScope, emit_info: EmitGraphInfo, shared_types: Set<String>, struct_name: String, field_name: String) -> Bool {
+  match rust_struct_field_type_node(scope: scope, struct_name: struct_name, field_name: field_name) {
+    Some { value: field_type } =>
+      needs_box_wrapping(n: field_type, recursive_types: emit_info.recursive_type_set, shared_types: shared_types, source_indices: scope.type_env.source_indices)
+    None => false
+  }
+}
+
+fn wrap_rust_record_field_value(raw: String, scope: InferScope, emit_info: EmitGraphInfo, shared_types: Set<String>, struct_name: String, field_name: String) -> String {
+  let is_bounded_lattice_field = contains(struct_name, "BoundedLattice")
+  if rust_record_field_needs_fn_rc(scope: scope, struct_name: struct_name, field_name: field_name) {
+    concat("Rc::new(", raw, ")")
+  } else if is_bounded_lattice_field && (field_name == "meet" || field_name == "join") {
+    concat("Rc::new(", raw, ")")
+  } else if rust_record_field_needs_box(scope: scope, emit_info: emit_info, shared_types: shared_types, struct_name: struct_name, field_name: field_name) {
+    concat("Box::new(", raw, ")")
+  } else if is_bounded_lattice_field && (field_name == "top" || field_name == "bottom") {
+    concat("Box::new(", raw, ")")
+  } else {
+    raw
+  }
+}
+
 fn is_already_optional(texpr: Node, emit_info: EmitGraphInfo, scope: InferScope) -> Bool {
   let si = scope.type_env.source_indices
   let n = expr_var_name_at(texpr: texpr, source_indices: si)
@@ -4384,7 +4425,8 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
           let field_val = if needs_wrap {
             concat("Some(", val_str, ")")
           } else { val_str }
-          concat("    ", emit_ident(name: f_name, target: Rust), ": ", field_val, ",")
+          let stored_val = wrap_rust_record_field_value(raw: field_val, scope: scope, emit_info: emit_info, shared_types: shared_types, struct_name: tn, field_name: f_name)
+          concat("    ", emit_ident(name: f_name, target: Rust), ": ", stored_val, ",")
         )
         // Fill default values for struct fields not explicitly set in .dag source.
         // Only emits defaults if ALL missing fields have known zero values — this avoids
@@ -5828,7 +5870,17 @@ fn data_value_has_cross_refs(value: Node) -> Bool {
 }
 
 fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
-  let ty_str = render_rust_type(n: type_node, shared_types: shared_types, source_indices: scope.type_env.source_indices)
+  let raw_ty_str = render_rust_type(n: type_node, shared_types: shared_types, source_indices: scope.type_env.source_indices)
+  let ty_str = if raw_ty_str == "BoundedLattice" || raw_ty_str == "Rc<BoundedLattice>" {
+    match field_value_by_name(record: value, field_name: "top", source_indices: scope.type_env.source_indices) {
+      Some { value: top_value } =>
+        let top_type_name = authored_name_at(source_indices: scope.type_env.source_indices, node: resolved_type(n: top_value))
+        if top_type_name == "" { raw_ty_str }
+        else if raw_ty_str == "Rc<BoundedLattice>" { concat("Rc<BoundedLattice<", top_type_name, ">>") }
+        else { concat("BoundedLattice<", top_type_name, ">") }
+      None => raw_ty_str
+    }
+  } else { raw_ty_str }
   let fn_name = to_snake(name: name)
   let needs_rc = set_contains(shared_types, authored_name_at(source_indices: scope.type_env.source_indices, node: type_node))
   if is_simple_type_node(n: type_node, source_indices: scope.type_env.source_indices) {
@@ -5853,7 +5905,35 @@ fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<Strin
 }
 
 fn emit_data_def_body(type_node: Node, value: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo, needs_rc: Bool) -> String {
-  if has_nested_records_node(n: type_node, source_indices: scope.type_env.source_indices) && !data_value_has_cross_refs(value: value) {
+  let raw_ty_str = render_rust_type(n: type_node, shared_types: shared_types, source_indices: scope.type_env.source_indices)
+  if raw_ty_str == "BoundedLattice" || raw_ty_str == "Rc<BoundedLattice>" {
+    match value.expr_data {
+      ExprRecordLit { parent_enum: _ } =>
+        let meet_str = match field_value_by_name(record: value, field_name: "meet", source_indices: scope.type_env.source_indices) {
+          Some { value: n } => emit_typed_expr(texpr: n, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+          None => "compile_error!(\"BoundedLattice data missing meet\")"
+        }
+        let join_str = match field_value_by_name(record: value, field_name: "join", source_indices: scope.type_env.source_indices) {
+          Some { value: n } => emit_typed_expr(texpr: n, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+          None => "compile_error!(\"BoundedLattice data missing join\")"
+        }
+        let top_str = match field_value_by_name(record: value, field_name: "top", source_indices: scope.type_env.source_indices) {
+          Some { value: n } => emit_typed_expr(texpr: n, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+          None => "compile_error!(\"BoundedLattice data missing top\")"
+        }
+        let bottom_str = match field_value_by_name(record: value, field_name: "bottom", source_indices: scope.type_env.source_indices) {
+          Some { value: n } => emit_typed_expr(texpr: n, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+          None => "compile_error!(\"BoundedLattice data missing bottom\")"
+        }
+        concat("            Rc::new(BoundedLattice {\n",
+          "                meet: Rc::new(", meet_str, "),\n",
+          "                join: Rc::new(", join_str, "),\n",
+          "                top: Box::new(", top_str, "),\n",
+          "                bottom: Box::new(", bottom_str, "),\n",
+          "            })")
+      _ => "            compile_error!(\"BoundedLattice data must be a record\")"
+    }
+  } else if has_nested_records_node(n: type_node, source_indices: scope.type_env.source_indices) && !data_value_has_cross_refs(value: value) {
     let json_str = emit_data_value_json(value: value, source_indices: scope.type_env.source_indices)
     concat("            serde_json::from_value(serde_json::json!(", json_str, "))\n",
       "                .expect(\"valid data definition\")")
