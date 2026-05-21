@@ -6999,7 +6999,7 @@ pub fn build_scc_index(
                             }),
                         );
                         let member_set = component.members.clone().iter().cloned().fold(
-                            compile_error!("empty_set element type unresolved"),
+                            v2_rt::rc_empty_set::<String>(),
                             |inner: _, member: String| v2_rt::rc_set_insert(inner, member.clone()),
                         );
                         let members = Rc::new({
@@ -9390,7 +9390,7 @@ pub fn build_complexity_report(
                             let info = Rc::new(SccInfo {
                                 members: Rc::new(vec![entry.name.clone()]),
                                 member_set: v2_rt::rc_set_insert(
-                                    compile_error!("empty_set element type unresolved"),
+                                    v2_rt::rc_empty_set::<String>(),
                                     entry.name.clone(),
                                 ),
                                 pattern: pattern.clone(),
