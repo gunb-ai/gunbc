@@ -1,10 +1,10 @@
-// src/v4/compiler/t15_self_host.dag
-// Scope: T-15 self-host fixed-point validation runner shape; body is scaffolded fail-closed until T-22/T-34 and Stage1Candidate generation land.
+// src/v4/compiler/self_host.dag
+// Scope: self-host fixed-point validation runner shape; body is scaffolded fail-closed until execution substrate and candidate generation land.
 // Owns: CoreNode, SourceModels, StructurallyEqual, StageEmissionEquality, self_host_fixed_point_validate.
 // Consumes: v4.std.diagnostic, v4.std.node, v4.std.witness.
-// Status: scaffold-against-contract; runner body returns T15RunnerNotRealized.
+// Status: scaffold-against-contract; runner body returns SelfHostRunnerNotRealized.
 
-module v4.compiler.t15_self_host
+module v4.compiler.self_host
 
 import v4.std.collection { List }
 import v4.std.diagnostic {
@@ -38,7 +38,7 @@ type StructurallyEqual {
 }
 
 
-// 🟡 witness-body scaffold — scaffold:t15-stage-emission-equality · dissolve-on: T-22 runner consumes find_witness/coercion exact structural-equality witness.
+// 🟡 witness-body scaffold — scaffold:stage-emission-equality · dissolve-on: future runner consumes find_witness/coercion exact structural-equality witness.
 type StageEmissionEquality = Witness<StructurallyEqual>
 
 
@@ -48,15 +48,15 @@ type PromotionWitness {
 }
 
 
-data t15_runner_not_realized: Symbol = t15_runner_not_realized
-data t15_runner_port: Symbol = t15_runner_port
-data t15_stage_emission_equality_not_realized: Symbol = t15_stage_emission_equality_not_realized
+data self_host_runner_not_realized: Symbol = self_host_runner_not_realized
+data self_host_runner_port: Symbol = self_host_runner_port
+data stage_emission_equality_not_realized: Symbol = stage_emission_equality_not_realized
 
 
-fn t15_runner_not_realized_diagnostic() -> Diagnostic {
+fn self_host_runner_not_realized_diagnostic() -> Diagnostic {
   Diagnostic {
-    reason: t15_runner_not_realized,
-    at: PortLocus { port: t15_runner_port },
+    reason: self_host_runner_not_realized,
+    at: PortLocus { port: self_host_runner_port },
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
@@ -85,7 +85,7 @@ fn stage_emission_equality_scaffold(
 ) -> StageEmissionEquality {
   Violates {
     diagnostic: Diagnostic {
-      reason: t15_stage_emission_equality_not_realized,
+      reason: stage_emission_equality_not_realized,
       at: NodeLocus { node: reference_stage1 },
       correction: Unavailable { reason: ExternalContractUnknown }
     }
@@ -99,6 +99,6 @@ fn self_host_fixed_point_validate(
   reference_stage1: CoreNode
 ) -> Outcome<PromotionWitness> {
   Rejected {
-    diagnostics: diagnostics_singleton(d: t15_runner_not_realized_diagnostic())
+    diagnostics: diagnostics_singleton(d: self_host_runner_not_realized_diagnostic())
   }
 }
