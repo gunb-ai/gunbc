@@ -162,6 +162,7 @@ data eval_empty_verdict_list: Symbol = eval_empty_verdict_list
 data eval_rejected_type_node: Symbol = eval_rejected_type_node
 data eval_rejected_branch_not_realized: Symbol = eval_rejected_branch_not_realized
 data eval_rejected_bind_not_realized: Symbol = eval_rejected_bind_not_realized
+data eval_rejected_pending_children: Symbol = eval_rejected_pending_children
 data eval_rejected_suspended_not_terminal: Symbol = eval_rejected_suspended_not_terminal
 data eval_rejected_host_binding_lookup_miss: Symbol = eval_rejected_host_binding_lookup_miss
 fn eval_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
@@ -322,6 +323,13 @@ fn eval_append_child_value(
 }
 
 
+fn eval_pending_children(node: Node) -> Outcome<HostValue> {
+  outcome_rejected(
+    d: eval_diagnostic(reason: eval_rejected_pending_children, node: node)
+  )
+}
+
+
 fn eval_fold_init(
   node: Node,
   tree: InferredTree,
@@ -331,13 +339,40 @@ fn eval_fold_init(
   EvalFoldState {
     node: node,
     child_values: Accepted { value: empty_host_values(), diagnostics: None },
-    value: eval_interpret_node(
+    value:
+      if count(node.children) == 0 {
+        eval_interpret_node(
+          node: node,
+          args: empty_host_values(),
+          tree: tree,
+          host: host,
+          environment: environment
+        )
+      } else {
+        eval_pending_children(node: node)
+      }
+  }
+}
+
+
+fn eval_maybe_complete_node(
+  node: Node,
+  args: List<HostValue>,
+  tree: InferredTree,
+  host: HostModel,
+  environment: HostEnvironment,
+  pending: Outcome<HostValue>
+) -> Outcome<HostValue> {
+  if count(args) == count(node.children) {
+    eval_interpret_node(
       node: node,
-      args: [],
+      args: args,
       tree: tree,
       host: host,
       environment: environment
     )
+  } else {
+    pending
   }
 }
 
@@ -357,12 +392,13 @@ fn eval_fold_step(
     value: bind_outcome(
       o: next_args,
       f: fn(args) {
-        eval_interpret_node(
+        eval_maybe_complete_node(
           node: acc.node,
           args: args,
           tree: tree,
           host: host,
-          environment: environment
+          environment: environment,
+          pending: acc.value
         )
       }
     )
