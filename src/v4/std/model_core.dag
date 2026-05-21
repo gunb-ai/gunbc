@@ -1,11 +1,8 @@
 // src/v4/std/model_core.dag
-// Scope: shared substrate factoring (Ratified Q1) — categorical floor for LanguageModel + HostModel.
-// Owns: ModelCore, PrimitiveFactBundle, AlgebraInhabitanceDecl, AlgebraLawObligation,
-//       EffectSemanticsDecl, PartialitySemanticsDecl, PartialOperationDecl, PartialityDischarge,
-//       primitive_fact_axis_*, wave1_void.
-// Consumes: std/node, std/collection (T-1, T-3); structural dep on std/algebra (T-2) for inhabitance/law shapes.
-// Status: T-33 modeled; LanguageModel/HostModel extension wiring is downstream (T-4 / T-34).
-// Anchor: docs/design-v4-compiler-homomorphism.md §"ModelCore (shared substrate, factored per ratified Q1)".
+// Scope: Ratified Q1 shared ModelCore substrate for LanguageModel and HostModel extension.
+// Owns: ModelCore, PrimitiveFactBundle, AlgebraInhabitanceDecl, AlgebraLawObligation, EffectSemanticsDecl, PartialitySemanticsDecl, PartialOperationDecl, PartialityDischarge, primitive_fact_axis_width, primitive_fact_axis_signedness, primitive_fact_axis_range, primitive_fact_axis_encoding, wave1_void
+// Consumes: v4.std.collection, v4.std.node
+// Status: T-33 modeled.
 
 
 module v4.std.model_core
@@ -15,21 +12,18 @@ import v4.std.collection { List }
 import v4.std.node { Node, Symbol }
 
 
-// Practice-8 fact-bundle axis labels — conj field names until T-3 lands Signedness / Representation carriers.
 data primitive_fact_axis_width: Symbol = primitive_fact_axis_width
 data primitive_fact_axis_signedness: Symbol = primitive_fact_axis_signedness
 data primitive_fact_axis_range: Symbol = primitive_fact_axis_range
 data primitive_fact_axis_encoding: Symbol = primitive_fact_axis_encoding
 
 
-// Each primitive is a substrate-carrier reference plus a spec-read fact conj (width, signedness, range, encoding, …).
 type PrimitiveFactBundle {
   substrate_carrier: Node
   spec_facts: Node
 }
 
 
-// Algebra inhabitance — consumed by T-9 coercion fold / infer's inhabitance coordinate.
 type AlgebraInhabitanceDecl {
   algebra: Node
   inhabitant: Node
@@ -37,7 +31,6 @@ type AlgebraInhabitanceDecl {
 }
 
 
-// Law / proof obligation — preservation-check scheduling over a modeled inhabitance row (algebra + inhabitant + witness), not name-keyed Symbols.
 type AlgebraLawObligation {
   inhabitance: AlgebraInhabitanceDecl
   law: Node
@@ -50,7 +43,7 @@ type PrimitiveOperationRef {
 }
 
 
-// 🟡 needs-more-work — Open Q10 deferred-with-trigger (design-v4-compiler-homomorphism.md) — feature:model-core-effect-semantics — dissolve-on: first std/ primitive declares non-trivial effect; ratify EffectSignature / ResourceAccess representation.
+// 🟡 needs-more-work — feature:model-core-effect-semantics — dissolve-on: first std/ primitive declares non-trivial effect
 type EffectSemanticsDecl {
   operations: List<PrimitiveOperationRef>
 }
@@ -69,13 +62,12 @@ type PartialityDischarge
   | RefinementHonoring { validation: Node }
 
 
-// 🟡 needs-more-work — Open Q10 deferred-with-trigger — feature:model-core-partiality-semantics — dissolve-on: per-operator partiality substrate ratified (integer divide is the trigger exemplar in std/integer.dag).
+// 🟡 needs-more-work — feature:model-core-partiality-semantics — dissolve-on: per-operator partiality substrate ratified
 type PartialitySemanticsDecl {
   operations: List<PartialOperationDecl>
 }
 
 
-// Shared base both LanguageModel and HostModel extend (Ratified Q1).
 type ModelCore {
   primitives: List<PrimitiveFactBundle>
   inhabitance: List<AlgebraInhabitanceDecl>
