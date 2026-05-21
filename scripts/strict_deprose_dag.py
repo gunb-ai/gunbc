@@ -251,6 +251,13 @@ def coproduct_tag_from_merge_base(rel: str) -> dict[str, tuple[str, str]]:
             "ConstantExpression",
         ):
             out[nm] = ("🟢", "CP-3229-VERILOG-CONSTEXPR-TERMINAL")
+    if rel.endswith("llvm_ir.dag"):
+        # Wave-1 fact-bundle coproducts (T-4 quiet-otter-381); absent at merge-base.
+        for nm, slug in (
+            ("LlvmIntegerWidth", "SL-3229-LLVM-WAVE1-INT-WIDTH"),
+            ("LlvmWave1FloatKind", "SL-3229-LLVM-WAVE1-FLOAT-KIND"),
+        ):
+            out.setdefault(nm, ("🟢", slug))
     return out
 
 

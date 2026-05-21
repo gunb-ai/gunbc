@@ -22,19 +22,9 @@ import v4.std.model_core {
   primitive_fact_axis_surface_spelling,
   primitive_fact_axis_width
 }
-import v4.std.node {
-  Arrow,
-  Atom,
-  Conj,
-  Edge,
-  Named,
-  Node,
-  Positional,
-  Symbol,
-  TypeNode
-}
-import v4.std.logic { Bool, bool_boolean_algebra }
-import v4.std.algebra { BooleanAlgebra, free_monoid_fold }
+import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
+import v4.std.logic { Bool }
+import v4.std.algebra { free_monoid_fold }
 
 // WebAssembly integer value types are sign-agnostic at the type layer (Core §2.3.1.1).
 type WasmSignAgnosticKind
@@ -170,10 +160,6 @@ fn wasm_inhabitant_atom(id: Symbol) -> Node {
   }
 }
 
-fn wasm_int_kind_node(kind: WasmSignAgnosticKind) -> Node {
-  wasm_inhabitant_atom(id: wasm_tag_sign_agnostic_modular)
-}
-
 fn wasm_int_width_node(width: WasmIntWidth) -> Node {
   match width {
     WasmIntBits32 => wasm_inhabitant_atom(id: wasm_tag_bits32)
@@ -186,10 +172,6 @@ fn wasm_float_width_node(width: WasmFloatWidth) -> Node {
     WasmFloatBits32 => wasm_inhabitant_atom(id: wasm_tag_bits32)
     WasmFloatBits64 => wasm_inhabitant_atom(id: wasm_tag_bits64)
   }
-}
-
-fn wasm_overflow_node(overflow: WasmModularWrap) -> Node {
-  wasm_inhabitant_atom(id: wasm_tag_modular_wrap)
 }
 
 fn wasm_scalar_node(scalar: WasmScalar) -> Node {
