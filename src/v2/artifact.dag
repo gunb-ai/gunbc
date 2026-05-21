@@ -116,25 +116,28 @@ fn default_artifact_plan(root_modules: List<String>, target: RenderTarget) -> Ar
 // DAG artifact substrate (post-infer typed graph JSON, --target dag)
 // =========================================================================
 //
-// 🟡 needs-more-work — DagNodeId is span+ident until v2 shares v4 content_hash.
 // Practice 11: v4 Node/content_hash is the long-term authority; this v2 carrier
 // cites nodes by DagNodeId in JSON ($ref) instead of embedding Node by value.
 //
 // testcase: dag_artifact_shares_one_node_record (pipeline.rs)
 
+// 🟡 needs-more-work — DagNodeId is file+span+ident string until v4 content_hash lands.
 type DagNodeId = String
 
+// 🟡 needs-more-work — JSON mirror of InferredNode; typed record emission is follow-up.
 type DagInferredRecord
   = ResolvedRef { node: DagNodeId }
   | TypeVariableRef { id: String }
   | CompilerErrorRecord { message: String, span: SourceSpan }
 
+// 🟡 needs-more-work — module/items cite nodes table; item_registry_keys stay string keys.
 type DagModuleRef {
   module: DagNodeId
   items: List<DagNodeId>
   item_registry_keys: List<String>
 }
 
+// 🟡 needs-more-work — diagnostic rows remain JSON strings until ErrorNode projection lands.
 type DagDiagnosticRecord {
   severity: String
   message: String
@@ -143,7 +146,7 @@ type DagDiagnosticRecord {
   category: String?
 }
 
-// Bounded artifact: nodes map is the single authority for Node payloads.
+// 🟡 needs-more-work — nodes map holds per-node JSON records; modules list holds module refs.
 type DagArtifact {
   version: String
   nodes: Map<DagNodeId, String>

@@ -791,7 +791,7 @@ fn dag_pipeline_smoke() {
     );
     let content = find_file(&result, "dag-artifact.json");
     assert!(
-        content.contains("\"version\": \"0.1.0\""),
+        content.contains("\"version\": \"0.2.0\""),
         "dag artifact should contain version"
     );
     assert!(
@@ -803,8 +803,16 @@ fn dag_pipeline_smoke() {
         "dag artifact should reference dag_smoke"
     );
     assert!(
+        content.contains("\"nodes\""),
+        "dag artifact should include nodes table"
+    );
+    assert!(
+        content.contains("\"$ref\""),
+        "dag artifact should cite nodes by ref"
+    );
+    assert!(
         content.contains("\"module\""),
-        "dag artifact should include serialized module objects"
+        "dag artifact should include module refs"
     );
     assert!(
         content.contains("\"items\""),

@@ -207,10 +207,28 @@ type DagCollectAcc {
 
 fn dag_node_key(node: Node) -> String {
   concat(
-    to_string(i: node.span.start), "..", to_string(i: node.span.end),
+    node.span.file, ":", to_string(i: node.span.start), "..", to_string(i: node.span.end),
     match node.ident {
       Some { value: id } => concat(":", to_string(i: id))
       None => ""
+    })
+}
+
+fn dag_node_missing_ref_error(node: Node) -> ErrorNode {
+  make_error_node(
+    diagnostic: InternalError {
+      message: concat("dag artifact: node missing from nodes table (key=", dag_node_key(node: node), ")"),
+      span: node.span
+    },
+    module_name: ""
+  )
+}
+
+fn dag_validate_nodes_table(order: List<Node>, key_to_id: Map<String, String>) -> List<ErrorNode> {
+  order |> flat_map(n =>
+    match map_get(key_to_id, dag_node_key(node: n)) {
+      Some { value: _ } => []
+      None => [dag_node_missing_ref_error(node: n)]
     })
 }
 
@@ -295,10 +313,11 @@ fn dag_graph_source_indices(typed: ResolvedGraph) -> Map<String, NewlineIndex> {
   )
 }
 
+// Precondition: emit_dag_artifact validates key_to_id before calling.
 fn serialize_node_ref(node: Node, key_to_id: Map<String, String>) -> String {
   match map_get(key_to_id, dag_node_key(node: node)) {
     Some { value: id } => concat("{\"$ref\": ", json_quote(s: id), "}")
-    None => concat("{\"$ref\": ", json_quote(s: "n0"), "}")
+    None => concat("{\"$ref\": ", json_quote(s: ""), "}")
   }
 }
 
@@ -787,9 +806,21 @@ fn serialize_param(param: Node, source_indices: Map<String, NewlineIndex>, key_t
     "}")
 }
 
+fn serialize_module_imports_json(node: Node, source_indices: Map<String, NewlineIndex>) -> String {
+  let imports = module_imports(n: node)
+  if imports |> count == 0 {
+    "[]"
+  } else if imports |> all(imp => imp.params |> count == 0) {
+    json_list(items: imports |> map(imp => serialize_import_node(imp: imp, source_indices: source_indices)))
+  } else {
+    "[]"
+  }
+}
+
 fn serialize_node_record(node: Node, source_indices: Map<String, NewlineIndex>, key_to_id: Map<String, String>) -> String {
   concat(
     "{\"name\": ", json_quote(s: authored_name_at(source_indices: source_indices, node: node)),
+    ", \"imports\": ", serialize_module_imports_json(node: node, source_indices: source_indices),
     ", \"span\": ", serialize_span(span: node.span),
     ", \"ident_span\": ", json_optional_span(value: node.ident_span),
     ", \"children\": ", json_list(items: node.children |> map(child => serialize_node_ref(node: child, key_to_id: key_to_id))),
@@ -814,18 +845,9 @@ fn serialize_node_record(node: Node, source_indices: Map<String, NewlineIndex>, 
     "}")
 }
 
-fn serialize_module(module: Node, source_indices: Map<String, NewlineIndex>, key_to_id: Map<String, String>) -> String {
-  concat(
-    "{\"name\": ", json_quote(s: authored_name_at(source_indices: source_indices, node: module)),
-    ", \"imports\": ", json_list(items: module_imports(n: module) |> map(imp => serialize_import_node(imp: imp, source_indices: source_indices))),
-    ", \"span\": ", serialize_span(span: module.span),
-    "}")
-}
-
 fn serialize_typed_module(module: TypedModule, key_to_id: Map<String, String>) -> String {
-  let si = module.type_env.source_indices
   concat(
-    "{\"module\": ", serialize_module(module: module.module, source_indices: si, key_to_id: key_to_id),
+    "{\"module\": ", serialize_node_ref(node: module.module, key_to_id: key_to_id),
     ", \"items\": ", json_list(items: module.items |> map(item => serialize_node_ref(node: item, key_to_id: key_to_id))),
     ", \"item_registry_keys\": ", json_list(items: map_keys(module.item_registry) |> map(k => json_quote(s: k))),
     "}")
@@ -855,6 +877,10 @@ fn serialize_diagnostic(diagnostic: ErrorNode) -> String {
 fn emit_dag_artifact(typed: ResolvedGraph) -> EmitResult {
   let order = collect_dag_nodes(typed: typed)
   let key_to_id = build_dag_key_to_id(order: order)
+  let table_errors = dag_validate_nodes_table(order: order, key_to_id: key_to_id)
+  if table_errors |> count > 0 {
+    return EmitResult { files: [], diagnostics: table_errors }
+  }
   let source_indices = dag_graph_source_indices(typed: typed)
   let nodes_json = serialize_dag_nodes_table(order: order, source_indices: source_indices, key_to_id: key_to_id)
   let modules_json = typed.modules |> map(m => serialize_typed_module(module: m, key_to_id: key_to_id)) |> join(separator: ", ")
