@@ -47,14 +47,15 @@ import v4.std.node {
   Symbol,
   TypeNode
 }
-import v4.std.verification {
-  Equals,
-  T19ManualAnchorAbsent,
+import v4.std.verification {T19ManualAnchorAbsent,
   TestClaim,
   TestClassification,
   Tier1,
-  Unit
-}
+  Unit,
+  CompilesClaim,
+  DiagnosticClaim,
+  EqualsClaim,
+  RoundTripClaim}
 import v4.std.witness { Holds, Violates }
 
 
@@ -98,13 +99,7 @@ fn infer_receipt_symbol_node(s: Symbol) -> Node {
 
 
 fn infer_receipt_claim(case: InferReceiptCase) -> TestClaim {
-  TestClaim {
-    kind: Equals,
-    label: case.label,
-    t19_anchor: T19ManualAnchorAbsent,
-    input: case.input,
-    expected: case.expected,
-    classification: TestClassification { tier: Tier1, layer: Unit }
+  EqualsClaim { label: case.label, t19_anchor: T19ManualAnchorAbsent, lhs: case.input, rhs: case.input, classification: TestClassification { tier: Tier1, layer: Unit  }
   }
 }
 
@@ -158,14 +153,14 @@ fn infer_add_mvp_receipt_run(
       Rejected { diagnostics: r } =>
         if outcome_node_eq(
           a: Rejected { diagnostics: r },
-          b: subject.claim.expected
+          b: test_claim_expected_outcome(c: subject.claim)
         ) {
           Pass
         } else {
           Fail { actual: Rejected { diagnostics: r } }
         }
       Accepted { value: _, diagnostics: ad } =>
-        Fail { actual: Accepted { value: subject.claim.input, diagnostics: ad } }
+        Fail { actual: Accepted { value: subject.test_claim_input(c: claim), diagnostics: ad } }
     }
   }
 }
@@ -187,7 +182,7 @@ fn infer_descent_witness_receipt_run(
       Accepted { value: v, diagnostics: d } =>
         if outcome_node_eq(
           a: Accepted { value: v, diagnostics: d },
-          b: subject.claim.expected
+          b: test_claim_expected_outcome(c: subject.claim)
         ) {
           Pass
         } else {

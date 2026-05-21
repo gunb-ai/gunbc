@@ -47,18 +47,17 @@ import v4.std.diagnostic {
   diagnostics_singleton,
   outcome_node_eq
 }
-import v4.std.verification {
-  AssertKind,
-  Compiles,
-  DiagnosticAssert,
-  Equals,
-  RoundTrips,
-  T19ManualAnchorAbsent,
+import v4.std.verification {Compiles,
+Equals,
+T19ManualAnchorAbsent,
   TestClaim,
   TestClassification,
   Tier1,
-  Unit
-}
+  Unit,
+  CompilesClaim,
+  DiagnosticClaim,
+  EqualsClaim,
+  RoundTripClaim}
 import v4.std.constraints {
   CanonicalGroundingWitness,
   constraint_property_being_canonical,
@@ -102,7 +101,7 @@ fn run_pipeline_assert(
   input: Node
 ) -> Verdict<CiPipeline> {
   match kind {
-    Equals => match actual {
+=> match actual {
       Accepted { value: _, diagnostics: ad } => match expected {
         Accepted { value: _, diagnostics: ed } => Deferred {
           actual: actual,
@@ -115,15 +114,15 @@ fn run_pipeline_assert(
         if outcome_node_eq(a: comparable, b: expected) { Pass } else { Fail { actual: actual } }
       }
     }
-    Compiles => match actual {
+=> match actual {
       Accepted { value: _, diagnostics: _ } => Pass
       Rejected { diagnostics: _ } => Fail { actual: actual }
     }
-    RoundTrips => Deferred {
+=> Deferred {
       actual: actual,
       diagnostic: eval_diagnostic(reason: eval_rejected_roundtrip_deferred, node: input)
     }
-    DiagnosticAssert => match actual {
+=> match actual {
       Rejected { diagnostics: d } => match expected {
         Rejected { diagnostics: _ } => {
           let comparable = Rejected { diagnostics: d }
@@ -237,13 +236,7 @@ fn workflow_inferred_tree(root: Node) -> InferredTree {
 
 
 fn pipeline_rejection_claim(label: String, input: Node, expected_reason: Symbol) -> TestClaim {
-  TestClaim {
-    kind: Equals,
-    label: label,
-    t19_anchor: T19ManualAnchorAbsent,
-    input: input,
-    expected: Rejected { diagnostics: diagnostics_singleton(d: ci_diagnostic(reason: expected_reason)) },
-    classification: TestClassification { tier: Tier1, layer: Unit }
+  EqualsClaim { label: label, t19_anchor: T19ManualAnchorAbsent, lhs: input, rhs: input, classification: TestClassification { tier: Tier1, layer: Unit  }
   }
 }
 
@@ -265,7 +258,7 @@ fn pipeline_rejection_subject(
   TestClaimEvalSubject {
     claim: claim,
     context: pipeline_claim_context(),
-    tree: workflow_inferred_tree(root: claim.input),
+    tree: workflow_inferred_tree(root: test_claim_input(c: claim)),
     input: TestClaimTypedInput { evaluator_input: case.pipeline }
   }
 }
@@ -282,10 +275,10 @@ fn workflow_pipeline_run(subject: TestClaimEvalSubject<CiPipeline>) -> TestClaim
       extdeps_hash: extdeps_hash_placeholder
     ),
     verdict: run_pipeline_assert(
-      kind: subject.claim.kind,
+      kind: /* removed kind */,
       actual: actual,
-      expected: subject.claim.expected,
-      input: subject.claim.input
+      expected: test_claim_expected_outcome(c: subject.claim),
+      input: subject.test_claim_input(c: claim)
     )
   }
 }
@@ -318,7 +311,7 @@ data run_dangling_bootstrap_output: TestClaimRun<CiPipeline> = workflow_pipeline
 
 data gate_dangling_bootstrap_output: Verdict<TestClaimRun<CiPipeline>> = workflow_pipeline_pass_gate(
   run: run_dangling_bootstrap_output,
-  at: subject_dangling_bootstrap_output.claim.input
+  at: subject_dangling_bootstrap_output.test_claim_input(c: claim)
 )
 
 
@@ -346,7 +339,7 @@ data run_duplicate_job_id: TestClaimRun<CiPipeline> = workflow_pipeline_run(subj
 
 data gate_duplicate_job_id: Verdict<TestClaimRun<CiPipeline>> = workflow_pipeline_pass_gate(
   run: run_duplicate_job_id,
-  at: subject_duplicate_job_id.claim.input
+  at: subject_duplicate_job_id.test_claim_input(c: claim)
 )
 
 
@@ -374,7 +367,7 @@ data run_duplicate_gate_id: TestClaimRun<CiPipeline> = workflow_pipeline_run(sub
 
 data gate_duplicate_gate_id: Verdict<TestClaimRun<CiPipeline>> = workflow_pipeline_pass_gate(
   run: run_duplicate_gate_id,
-  at: subject_duplicate_gate_id.claim.input
+  at: subject_duplicate_gate_id.test_claim_input(c: claim)
 )
 
 
@@ -401,7 +394,7 @@ data run_dangling_need: TestClaimRun<CiPipeline> = workflow_pipeline_run(subject
 
 data gate_dangling_need: Verdict<TestClaimRun<CiPipeline>> = workflow_pipeline_pass_gate(
   run: run_dangling_need,
-  at: subject_dangling_need.claim.input
+  at: subject_dangling_need.test_claim_input(c: claim)
 )
 
 
@@ -428,7 +421,7 @@ data run_dangling_gate_job: TestClaimRun<CiPipeline> = workflow_pipeline_run(sub
 
 data gate_dangling_gate_job: Verdict<TestClaimRun<CiPipeline>> = workflow_pipeline_pass_gate(
   run: run_dangling_gate_job,
-  at: subject_dangling_gate_job.claim.input
+  at: subject_dangling_gate_job.test_claim_input(c: claim)
 )
 
 
@@ -457,5 +450,5 @@ data run_dependency_cycle: TestClaimRun<CiPipeline> = workflow_pipeline_run(subj
 
 data gate_dependency_cycle: Verdict<TestClaimRun<CiPipeline>> = workflow_pipeline_pass_gate(
   run: run_dependency_cycle,
-  at: subject_dependency_cycle.claim.input
+  at: subject_dependency_cycle.test_claim_input(c: claim)
 )

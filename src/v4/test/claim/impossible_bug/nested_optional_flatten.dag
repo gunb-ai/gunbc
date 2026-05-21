@@ -32,15 +32,16 @@ import v4.std.diagnostic {
   diagnostics_singleton
 }
 import v4.std.node { Edge, Named, Node, Positional, Symbol, TypeNode, Atom, Cardinality }
-import v4.std.verification {
-  Compiles,
-  Equals,
+import v4.std.verification {Equals,
   T19ManualAnchorAbsent,
   TestClaim,
   TestClassification,
   Tier2,
-  Unit
-}
+  Unit,
+  CompilesClaim,
+  DiagnosticClaim,
+  EqualsClaim,
+  RoundTripClaim}
 
 
 data optional_value_symbol: Symbol = optional_value_symbol
@@ -84,12 +85,11 @@ data falsification_optional_double_unwrap: Node = Node {
 }
 
 
-data claim_optional_chaining_no_double_unwrap: TestClaim = TestClaim {
-  kind: Compiles,
+data claim_optional_chaining_no_double_unwrap: TestClaim = CompilesClaim {
   label: "optional cardinality refinement keeps accessor surface single-layer",
   t19_anchor: T19ManualAnchorAbsent,
   input: flattened_optional_input,
-  expected: Accepted { value: flattened_optional_input, diagnostics: None },
+  expected_value: Accepted { value: flattened_optional_input, diagnostics: None },
   classification: TestClassification { tier: Tier2, layer: Unit }
 }
 

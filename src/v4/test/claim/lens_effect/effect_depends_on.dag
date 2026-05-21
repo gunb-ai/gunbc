@@ -105,7 +105,7 @@ data effect_depends_on_claim: LensEffectClaim = LensEffectClaim {
 fn effect_depends_on_claim_holds() -> Bool {
   match effect_depends_on_claim.actual {
     Holds { value: actual } =>
-      effect_fact_eq(a: actual, b: effect_depends_on_claim.expected)
+      effect_fact_eq(a: actual, b: effect_depends_on_test_claim_expected_outcome(c: claim))
     _ => false
   }
 }

@@ -109,7 +109,7 @@ data variable_sensitive_dominance_claim: ComplexityDominanceClaim = ComplexityDo
 }
 
 fn polynomial_product_projected_complexity() -> ComplexityBound {
-  complexity_bound_from_cost(cost: polynomial_product_degree_claim.input_cost)
+  complexity_bound_from_cost(cost: polynomial_product_degree_test_claim_input(c: claim)_cost)
 }
 
 fn variable_sensitive_dominance_actual() -> Bool {

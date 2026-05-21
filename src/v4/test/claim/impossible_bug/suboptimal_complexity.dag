@@ -50,15 +50,16 @@ import v4.std.diagnostic {
   diagnostics_singleton
 }
 import v4.std.node { Edge, Named, Node, Symbol, TypeNode, Atom, Conj }
-import v4.std.verification {
-  Compiles,
-  Equals,
+import v4.std.verification {Equals,
   T19ManualAnchorAbsent,
   TestClaim,
   TestClassification,
   Tier1,
-  Unit
-}
+  Unit,
+  CompilesClaim,
+  DiagnosticClaim,
+  EqualsClaim,
+  RoundTripClaim}
 
 
 data complexity_contract_symbol: Symbol = complexity_contract_symbol
@@ -106,12 +107,11 @@ data within_bound_input: Node = complexity_contract(body: atom_node(s: complexit
 data falsification_overcost_against_structural_bound: Node = complexity_contract(body: atom_node(s: complexity_body_quadratic_symbol))
 
 
-data claim_within_structural_bound_passes: TestClaim = TestClaim {
-  kind: Compiles,
+data claim_within_structural_bound_passes: TestClaim = CompilesClaim {
   label: "complexity bound accepts lens-derived in-bound body",
   t19_anchor: T19ManualAnchorAbsent,
   input: within_bound_input,
-  expected: Accepted { value: within_bound_input, diagnostics: None },
+  expected_value: Accepted { value: within_bound_input, diagnostics: None },
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 

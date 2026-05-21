@@ -26,14 +26,15 @@ import v4.std.diagnostic {
   diagnostics_singleton
 }
 import v4.std.node { Edge, Named, Node, Symbol, TypeNode, Atom, Conj }
-import v4.std.verification {
-  Equals,
-  T19ManualAnchorAbsent,
+import v4.std.verification {T19ManualAnchorAbsent,
   TestClaim,
   TestClassification,
   Tier3,
-  Integration
-}
+  Integration,
+  CompilesClaim,
+  DiagnosticClaim,
+  EqualsClaim,
+  RoundTripClaim}
 
 
 data correction_bad_complexity_symbol: Symbol = correction_bad_complexity_symbol

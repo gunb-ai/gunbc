@@ -111,7 +111,7 @@ data idempotency_write_effect_claim: LensIdempotencyClaim = LensIdempotencyClaim
 fn idempotency_write_effect_claim_holds() -> Bool {
   match idempotency_write_effect_claim.actual {
     Holds { value: actual } =>
-      idempotency_fact_eq(a: actual, b: idempotency_write_effect_claim.expected)
+      idempotency_fact_eq(a: actual, b: idempotency_write_effect_test_claim_expected_outcome(c: claim))
     _ => false
   }
 }

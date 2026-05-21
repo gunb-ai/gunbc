@@ -130,3 +130,12 @@ fn test_claim_classification(c: TestClaim) -> TestClassification {
     RoundTripClaim { classification: c, .. } => c
   }
 }
+
+fn test_claim_expected_outcome(c: TestClaim) -> Outcome<Node> {
+  match c {
+    CompilesClaim { expected_value: e, .. } => e
+    DiagnosticClaim { expected_outcome: e, .. } => e
+    EqualsClaim { lhs: _, rhs: r, .. } => Accepted { value: r, diagnostics: None }
+    RoundTripClaim { input: n, .. } => Accepted { value: n, diagnostics: None }
+  }
+}

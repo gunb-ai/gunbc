@@ -108,7 +108,7 @@ data parallelism_data_dependency_claim: LensParallelismClaim = LensParallelismCl
 fn parallelism_data_dependency_claim_holds() -> Bool {
   match parallelism_data_dependency_claim.actual {
     Holds { value: actual } =>
-      parallelism_fact_eq(a: actual, b: parallelism_data_dependency_claim.expected)
+      parallelism_fact_eq(a: actual, b: parallelism_data_dependency_test_claim_expected_outcome(c: claim))
     _ => false
   }
 }
