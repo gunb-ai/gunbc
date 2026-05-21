@@ -615,7 +615,30 @@ fn eval_node(tree: InferredTree, inputs: Inputs) -> Outcome<Node> {
 }
 
 
+// Fail-closed gate: if eval_node surfaces eval_node_unrealized, no TestClaim
+// variant may be decided — return Verdict.Deferred so aggregate_verdicts
+// blocks Pass. Prevents (a) CompilesClaim/EqualsClaim false-Pass on the
+// previous fake-Accepted echo, and (b) DiagnosticClaim trivial-Pass on any
+// Rejected matching the unrealized signal.
 fn run_test_claim_assert(
+  claim: TestClaim,
+  actual: Outcome<Node>,
+  at: Node
+) -> Verdict<Node> {
+  match actual {
+    Rejected { diagnostics: nd } =>
+      if nd.head.reason == eval_node_unrealized {
+        Deferred { actual: actual, diagnostic: nd.head }
+      } else {
+        run_test_claim_assert_decided(claim: claim, actual: actual, at: at)
+      }
+    Accepted { value: _, diagnostics: _ } =>
+      run_test_claim_assert_decided(claim: claim, actual: actual, at: at)
+  }
+}
+
+
+fn run_test_claim_assert_decided(
   claim: TestClaim,
   actual: Outcome<Node>,
   at: Node
