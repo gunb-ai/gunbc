@@ -494,7 +494,7 @@ Each module is graded on how well it implements the upstream spec:
 | Module | Lines | Grade | Spec URL | Notes |
 |--------|-------|-------|----------|-------|
 | `git.dag` | 261 | A | **Missing** | Object model, merge strategies, diff format correct |
-| `shell.dag` | 54 | A | **Missing** | POSIX find/which/printenv correct |
+| `shell.dag` | 54 | A | **Missing** | POSIX find/printenv; which extension; Exec `sh -lc` (`-l` bash login) |
 | `cron_schedule_model.dag` | 81 | A | Module header | POSIX.1-2017 XCU `crontab` five-field grammar; spec URL + edition in header |
 | `cargo.dag` | 216 | A | **Missing** | Package, target, profile, feature model correct |
 | `build/make.dag` | 127 | A | Cited | GNU Make manual URL. Recipe prefixes §5.2/5.5/5.7.1 |
@@ -564,7 +564,7 @@ Targets (28 modules):
 - `secrets/*` — cite provider-specific docs
 - `git.dag` — cite https://git-scm.com/docs or Pro Git
 - `cargo.dag` — cite https://doc.rust-lang.org/cargo/reference/
-- `shell.dag` — cite POSIX or coreutils docs
+- `shell.dag` — cite POSIX.1 for find/printenv and `-c`; common-utility docs for `which`; bash/zsh (or host `sh` implementation) for login-shell `-l` on `sh -lc`
 - `yaml.dag` — cite https://yaml.org/spec/1.2.2/
 - `tools/rust_toolchain.dag` — cite https://rust-lang.github.io/rustup/
 - `transports/sql.dag` — cite ISO SQL plus concrete prepared-statement docs
