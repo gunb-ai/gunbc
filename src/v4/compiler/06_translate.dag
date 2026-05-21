@@ -226,16 +226,12 @@ fn translate_fold_init(
 ) -> Outcome<Node> {
   match coerce_grounded_node(source: node, tree: tree, target: target) {
     Accepted { value: coerced, diagnostics: d } =>
-      Accepted {
-        value: Node {
-          kind: coerced.target.kind,
-          children: []
-        },
-        diagnostics: d
-      }
+      Accepted { value: coerced.target, diagnostics: d }
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
 }
+// P2 single-authority: coercion_fold's `CoercionResult.target` is the target-tree authority;
+// do not rebuild children from source `Edge` labels/order (derived-homomorphism / THESIS).
 fn translate_fold_step(
   acc: Outcome<Node>,
   edge: Edge,
@@ -245,15 +241,9 @@ fn translate_fold_step(
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: parent, diagnostics: ad } =>
       match child {
-        Accepted { value: child_node, diagnostics: cd } =>
+        Accepted { value: _, diagnostics: cd } =>
           Accepted {
-            value: Node {
-              kind: parent.kind,
-              children: list_push(parent.children, Edge {
-                label: edge.label,
-                target: child_node
-              })
-            },
+            value: parent,
             diagnostics: diagnostics_merge(outer: ad, inner: cd)
           }
         Rejected { diagnostics: r } =>
