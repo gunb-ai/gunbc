@@ -1848,14 +1848,32 @@ fn emit_variant_from_child(child: Node, recursive_types: Set<String>, shared_typ
   if child.children |> count == 0 {
     // Unit variant -- no fields
     concat(rename_attr, "    ", child_text, ",")
-  } else if variant_is_synthetic_positional_payload(fields: child.children, source_indices: env.source_indices) || (serde_policy.enum_attr == "#[serde(untagged)]" && child.children |> count == 1) {
-    let f = (child.children |> first).value
-    let rt_f = resolved_type(n: f)
-    let ty = render_rust_type(n: rt_f, shared_types: shared_types, source_indices: env.source_indices)
-    let final_ty = if needs_box_wrapping(n: rt_f, recursive_types: recursive_types, shared_types: shared_types, source_indices: env.source_indices) {
-      concat("Box<", ty, ">")
-    } else { ty }
-    concat(rename_attr, "    ", child_text, "(", final_ty, "),")
+  } else if child.children |> count == 1 {
+    let tuple_style = variant_is_synthetic_positional_payload(fields: child.children, source_indices: env.source_indices)
+      || (serde_policy.enum_attr == "#[serde(untagged)]")
+    if tuple_style {
+      match child.children |> first {
+        Some { value: f } =>
+          let rt_f = resolved_type(n: f)
+          let ty = render_rust_type(n: rt_f, shared_types: shared_types, source_indices: env.source_indices)
+          let final_ty = if needs_box_wrapping(n: rt_f, recursive_types: recursive_types, shared_types: shared_types, source_indices: env.source_indices) {
+            concat("Box<", ty, ">")
+          } else { ty }
+          concat(rename_attr, "    ", child_text, "(", final_ty, "),")
+        None => concat(rename_attr, "    ", child_text, ",")
+      }
+    } else {
+      let field_lines = child.children |> map(f =>
+        let rt_f = resolved_type(n: f)
+        let ty = render_rust_type(n: rt_f, shared_types: shared_types, source_indices: env.source_indices)
+        let final_ty = if needs_box_wrapping(n: rt_f, recursive_types: recursive_types, shared_types: shared_types, source_indices: env.source_indices) {
+          concat("Box<", ty, ">")
+        } else { ty }
+        concat("        ", emit_ident(name: authored_name(env: env, node: f), target: Rust), ": ", final_ty, ",")
+      )
+      let fields_str = field_lines |> join(separator: "\n")
+      concat(rename_attr, "    ", child_text, " {\n", fields_str, "\n    },")
+    }
   } else {
     // Fielded variant -- child's children are the variant's fields
     let field_lines = child.children |> map(f =>
