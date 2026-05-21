@@ -1,14 +1,9 @@
 // src/v4/compiler/06_translate.dag
 // Scope: Stage 5a — T-10 surface + fail-closed staging (not live translate on InferredTree yet).
-<<<<<<< HEAD
 // Owns: TargetNodeTree, TargetBundleChildLookup, target_model_edge_selection_policy,
 //       target_model_edge_declared_inhabitants, target_model_edge_serialize_emitted,
 //       target_model_edge_serialize_source, target_bundle_child, target_bundle_child_lookup_step,
 //       target_selection_priority_from_model, coercion_candidates_from_target_model,
-=======
-// Owns: TargetNodeTree, TargetBundleChildLookup, target_bundle_child, target_bundle_child_lookup_step,
-//       target_selection_policy_from_model, coercion_candidates_from_target_model,
->>>>>>> origin/main
 //       target_serialize_source_from_model, translate_target_source_not_realized,
 //       translate_canonical_grounding_not_realized, canonical_grounding_for_node,
 //       coerce_grounded_node, translate_fold_init, translate_fold_step,
@@ -61,8 +56,6 @@ import v4.std.node {
   TypeNode,
   fold_node
 }
-<<<<<<< HEAD
-=======
 import v4.std.target_model {
   target_model_edge_declared_inhabitants,
   target_model_edge_selection_policy,
@@ -70,7 +63,6 @@ import v4.std.target_model {
   target_model_edge_serialize_source
 }
 import v4.std.witness { StructuralPropertyWitness }
->>>>>>> origin/main
 type TargetNodeTree = Node
 // Single-authority lookup state for TargetModel Conj bundles (P2/P3 fail-closed).
 type TargetBundleChildLookup
@@ -186,15 +178,8 @@ fn target_selection_priority_from_model(target: TargetModel) -> Outcome<Node> {
     }
   )
 }
-<<<<<<< HEAD
 // `declared_inhabitants` edge names one closed candidate-set root Node on the target bundle;
 // std/coercion constructs the closed candidate list consumed by find_witness.
-=======
-// `declared_inhabitants` edge supplies one Conj root; staging passes it as the sole
-// `CandidateSet.candidates` entry (aggregate root — see find_witness body, W-T-10).
-// Per-primitive inhabitants are named children of that Conj; enumeration inside the root
-// is not performed in this translate staging path yet.
->>>>>>> origin/main
 fn coercion_candidates_from_target_model(
   target: TargetModel
 ) -> Outcome<CoercionCandidateSet> {
