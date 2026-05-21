@@ -416,6 +416,11 @@ fn make_node_at(s: String) -> Locus {
         rs
     );
     assert!(
+        !rs.contains("Locus::LocusAnchor"),
+        "nested payload pattern must not over-qualify with outer enum scrutinee, got:\n{}",
+        rs
+    );
+    assert!(
         !rs.contains("NodeAt { 0:"),
         "positional payload must not emit record-style NodeAt {{ 0: ... }}, got:\n{}",
         rs

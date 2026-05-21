@@ -2520,8 +2520,9 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
     match field_bindings |> first {
       Some { value: fb } =>
         if field_binding_name_at(n: fb, source_indices: source_indices) == "0" {
-          let inner_analysis = analyze_rc_pattern(pattern: field_binding_pattern(n: fb), scrut_type: scrut_type, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
-          let inner_pat = emit_pattern_rc_aware(pattern: field_binding_pattern(n: fb), rc_analysis: inner_analysis, shared_types: shared_types, scrut_type: scrut_type, source_indices: source_indices, emit_info: emit_info)
+          let payload_scrut = positional_payload_scrut_type(variant_name: name, field_binding: fb, emit_info: emit_info, source_indices: source_indices)
+          let inner_analysis = analyze_rc_pattern(pattern: field_binding_pattern(n: fb), scrut_type: payload_scrut, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
+          let inner_pat = emit_pattern_rc_aware(pattern: field_binding_pattern(n: fb), rc_analysis: inner_analysis, shared_types: shared_types, scrut_type: payload_scrut, source_indices: source_indices, emit_info: emit_info)
           concat(qualified, "(", inner_pat, ")")
         } else {
           let fb_name = field_binding_name_at(n: fb, source_indices: source_indices)
