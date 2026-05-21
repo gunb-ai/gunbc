@@ -31,8 +31,10 @@ import v4.std.node {
   Edge,
   Hash,
   Loop,
+  Named,
   Node,
   NodeFold,
+  Positional,
   Symbol,
   Transform,
   TypeNode,
@@ -301,6 +303,25 @@ fn empty_host_values() -> List<HostValue> {
 }
 
 
+fn eval_edge_is_runtime_argument(edge: Edge) -> Bool {
+  match edge.label {
+    Positional => true
+    Named { name: _ } => false
+  }
+}
+
+
+fn eval_runtime_argument_count(children: List<Edge>) -> Int {
+  fold(children, init: 0, f: fn(acc, edge) {
+    if eval_edge_is_runtime_argument(edge: edge) {
+      acc + 1
+    } else {
+      acc
+    }
+  })
+}
+
+
 fn eval_fold_state_value(state: EvalFoldState) -> Outcome<HostValue> {
   state.value
 }
@@ -344,7 +365,7 @@ fn eval_fold_init(
   EvalFoldState {
     node: node,
     child_values: Accepted { value: empty_host_values(), diagnostics: None },
-    value: if count(node.children) == 0 {
+    value: if eval_runtime_argument_count(children: node.children) == 0 {
       eval_interpret_node(
         node: node,
         args: empty_host_values(),
@@ -367,7 +388,7 @@ fn eval_maybe_complete_node(
   environment: HostEnvironment,
   pending: Outcome<HostValue>
 ) -> Outcome<HostValue> {
-  if count(args) == count(node.children) {
+  if count(args) == eval_runtime_argument_count(children: node.children) {
     eval_interpret_node(
       node: node,
       args: args,
@@ -389,7 +410,11 @@ fn eval_fold_step(
   host: HostModel,
   environment: HostEnvironment
 ) -> EvalFoldState {
-  let next_args = eval_append_child_value(acc: acc.child_values, child: child.value)
+  let next_args = if eval_edge_is_runtime_argument(edge: edge) {
+    eval_append_child_value(acc: acc.child_values, child: child.value)
+  } else {
+    acc.child_values
+  }
   EvalFoldState {
     node: acc.node,
     child_values: next_args,
