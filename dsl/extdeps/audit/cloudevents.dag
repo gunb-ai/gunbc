@@ -1,4 +1,4 @@
-// extdeps/audit/event.dag -- audit event emission target surface.
+// extdeps/audit/cloudevents.dag -- CloudEvents audit emission target surface.
 //
 // Specs:
 //   CloudEvents 1.0.2 core event attributes
@@ -10,7 +10,7 @@
 // describes stable event records; it does not decide storage backend, queueing,
 // retention, or alerting policy.
 
-module extdeps.audit.event
+module extdeps.audit.cloudevents
 
 import std.types { NonEmptyStr, Timestamp }
 

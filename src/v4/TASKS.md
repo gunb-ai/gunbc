@@ -339,14 +339,14 @@ flat — dispatch in waves):
 
 ---
 
-### T-4.5: extdeps/process.dag + extdeps/file_system.dag
+### T-4.5: extdeps/posix.dag + extdeps/file_system.dag
 
 **File**: 2 files in `src/v4/extdeps/`
 **Why bundled**: both are OS-interaction substrate; both are required for v4 to function as a self-hosting compiler (read source files, write emitted files, ExecuteCommand for boundary tests per THESIS facet 3).
 **Why anchored**: each file carries a `# Anchor:` to its canonical reference (Wikipedia/POSIX). Reviewers validate the modeling against the reference — no invented vocabulary.
 
 **Modeling decisions**:
-- `process.dag`: how to model parent/child relationships? Signal handling depth (full POSIX signal set vs minimal {SIGTERM, SIGKILL, SIGINT})? Pipe model for capture (live-streaming vs buffered)?
+- `posix.dag`: how to model parent/child relationships? Signal handling depth (full POSIX signal set vs minimal {SIGTERM, SIGKILL, SIGINT})? Pipe model for capture (live-streaming vs buffered)?
 - `file_system.dag`: AbsolutePath vs RelativePath as Disj sum or refinement on Path? Symlink target as recursive Path or opaque? Read failure modes (NotFound vs PermissionDenied vs IOError) as distinct Diagnostic `reason` name-references (`Symbol`, per std/diagnostic.dag — `reason` is an opaque name-reference, not a closed enum).
 
 **Reference**:
@@ -1193,7 +1193,7 @@ kernel-ambient exemption is already pinned in tests and docs).
   `ExecuteCommand`-based `TestClaim`s; v4 models the boundary via a
   simulator `Node` + the closed 4 `AssertKind`s. Disposition:
   confirm-only — T-19/T-14 verify `ExecuteCommand`-shaped TestClaims are
-  expressible via `process.dag` + `eval` with no lost predicate surface
+  expressible via `posix.dag` + `eval` with no lost predicate surface
   vs v3; if a gap surfaces, escalate. No planning edit pending the
   confirm.
 
