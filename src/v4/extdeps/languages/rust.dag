@@ -43,7 +43,7 @@ import v4.std.node {
   TypeNode
 }
 import v4.std.logic { Bool, bool_boolean_algebra }
-import v4.std.algebra { BooleanAlgebra }
+import v4.std.algebra { BooleanAlgebra, free_monoid_fold }
 import v4.std.cardinality { Never }
 import v4.std.text { String }
 
@@ -304,8 +304,7 @@ data rust_tag_scalar_never: Symbol = rust_tag_scalar_never
 data rust_mvp1_source_literal: Symbol = rust_mvp1_source_literal
 data rust_mvp1_source_text_field: Symbol = rust_mvp1_source_text_field
 data rust_mvp1_source_grammar_field: Symbol = rust_mvp1_source_grammar_field
-// Sole token-sequence authority for MVP serialize_source; Positional child order in
-// `rust_mvp1_serialize_source_node` matches indices 0..17 (dissolve-on: T-10 grammar).
+// Sole MVP-1 token-sequence authority — grammar + serialize_source derive via free_monoid_fold.
 data rust_mvp1_source_token_classes: List<Symbol> = [
   rust_token_kw_fn,
   rust_token_ident,
@@ -670,14 +669,6 @@ fn rust_noninteger_facts_node(facts: RustNonIntegerPrimitiveFacts) -> Node {
   }
 }
 
-fn rust_inhabitant_i8_node() -> Node {
-  rust_integer_inhabitant_node(id: rust_inhabitant_i8, facts: rust_facts_i8)
-}
-
-fn rust_inhabitant_i16_node() -> Node {
-  rust_integer_inhabitant_node(id: rust_inhabitant_i16, facts: rust_facts_i16)
-}
-
 fn rust_integer_inhabitant_node(id: Symbol, facts: RustIntegerPrimitiveFacts) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -715,6 +706,14 @@ fn rust_noninteger_inhabitant_node(id: Symbol, facts: RustNonIntegerPrimitiveFac
       )
     ]
   }
+}
+
+fn rust_inhabitant_i8_node() -> Node {
+  rust_integer_inhabitant_node(id: rust_inhabitant_i8, facts: rust_facts_i8)
+}
+
+fn rust_inhabitant_i16_node() -> Node {
+  rust_integer_inhabitant_node(id: rust_inhabitant_i16, facts: rust_facts_i16)
 }
 
 fn rust_inhabitant_i32_node() -> Node {
@@ -850,42 +849,76 @@ fn rust_mvp1_positional_token_edge(token_class: Symbol) -> Edge {
   }
 }
 
-fn rust_mvp1_serialize_source_node() -> Node {
-  // liveness anchor — `rust_mvp1_source_literal` pairs with `rust_mvp1_source_text` until literal Node lands
-  let _authority = rust_mvp1_source_text_authority()
-  // structural authority — same token order as `rust_mvp1_source_token_classes` / grammar production
-  let _token_classes = rust_mvp1_source_token_classes
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      rust_named_edge(
-        name: rust_mvp1_source_text_field,
-        target: rust_inhabitant_atom(id: rust_mvp1_source_literal)
-      ),
-      rust_named_edge(
+fn rust_list_append_edge(edges: List<Edge>, token_class: Symbol) -> List<Edge> {
+  free_monoid_fold(
+    xs: edges,
+    empty: Cons {
+      head: rust_mvp1_positional_token_edge(token_class: token_class),
+      tail: Empty
+    },
+    cons: fn(rest, edge) {
+      Cons { head: edge, tail: rest }
+    }
+  )
+}
+
+fn rust_mvp1_positional_edges_from_token_classes() -> List<Edge> {
+  free_monoid_fold(
+    xs: rust_mvp1_source_token_classes,
+    empty: Empty,
+    cons: fn(acc, token_class) {
+      rust_list_append_edge(edges: acc, token_class: token_class)
+    }
+  )
+}
+
+fn rust_mvp1_serialize_source_children() -> List<Edge> {
+  let prefix = Cons {
+    head: rust_named_edge(
+      name: rust_mvp1_source_text_field,
+      target: rust_inhabitant_atom(id: rust_mvp1_source_literal)
+    ),
+    tail: Cons {
+      head: rust_named_edge(
         name: rust_mvp1_source_grammar_field,
         target: rust_inhabitant_atom(id: rust_production_mvp1_fn_add)
       ),
-      rust_mvp1_positional_token_edge(token_class: rust_token_kw_fn),
-      rust_mvp1_positional_token_edge(token_class: rust_token_ident),
-      rust_mvp1_positional_token_edge(token_class: rust_token_lparen),
-      rust_mvp1_positional_token_edge(token_class: rust_token_ident),
-      rust_mvp1_positional_token_edge(token_class: rust_token_colon),
-      rust_mvp1_positional_token_edge(token_class: rust_token_ty_i32),
-      rust_mvp1_positional_token_edge(token_class: rust_token_comma),
-      rust_mvp1_positional_token_edge(token_class: rust_token_ident),
-      rust_mvp1_positional_token_edge(token_class: rust_token_colon),
-      rust_mvp1_positional_token_edge(token_class: rust_token_ty_i32),
-      rust_mvp1_positional_token_edge(token_class: rust_token_rparen),
-      rust_mvp1_positional_token_edge(token_class: rust_token_arrow),
-      rust_mvp1_positional_token_edge(token_class: rust_token_ty_i32),
-      rust_mvp1_positional_token_edge(token_class: rust_token_lbrace),
-      rust_mvp1_positional_token_edge(token_class: rust_token_ident),
-      rust_mvp1_positional_token_edge(token_class: rust_token_plus),
-      rust_mvp1_positional_token_edge(token_class: rust_token_ident),
-      rust_mvp1_positional_token_edge(token_class: rust_token_rbrace)
-    ]
+      tail: Empty
+    }
   }
+  free_monoid_fold(
+    xs: rust_mvp1_source_token_classes,
+    empty: prefix,
+    cons: fn(acc, token_class) {
+      rust_list_append_edge(edges: acc, token_class: token_class)
+    }
+  )
+}
+
+fn rust_mvp1_serialize_source_node() -> Node {
+  // liveness anchor — `rust_mvp1_source_literal` pairs with `rust_mvp1_source_text` until literal Node lands
+  let _authority = rust_mvp1_source_text_authority()
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: rust_mvp1_serialize_source_children()
+  }
+}
+
+fn rust_grammar_terminal(token_class: Symbol) -> GrammarExpr {
+  Terminal { token_class: token_class }
+}
+
+fn rust_grammar_sequence_from_token_classes() -> GrammarExpr {
+  free_monoid_fold(
+    xs: rust_mvp1_source_token_classes,
+    empty: rust_grammar_terminal(token_class: rust_token_rbrace),
+    cons: fn(acc, token_class) {
+      Sequence {
+        left: rust_grammar_terminal(token_class: token_class),
+        right: acc
+      }
+    }
+  )
 }
 
 fn rust_mvp1_target_model() -> Node {
@@ -961,83 +994,10 @@ fn rust_grammar_atom(id: Symbol) -> Node {
   rust_inhabitant_atom(id: id)
 }
 
-// MVP-1 fn add production — terminal sequence matches `rust_mvp1_source_token_classes` / source text.
-fn rust_grammar_mvp1_add_expr() -> GrammarExpr {
-  let e17 = Terminal { token_class: rust_token_rbrace }
-  let e16 = Sequence {
-    left: Terminal { token_class: rust_token_ident },
-    right: e17
-  }
-  let e15 = Sequence {
-    left: Terminal { token_class: rust_token_plus },
-    right: e16
-  }
-  let e14 = Sequence {
-    left: Terminal { token_class: rust_token_ident },
-    right: e15
-  }
-  let e13 = Sequence {
-    left: Terminal { token_class: rust_token_lbrace },
-    right: e14
-  }
-  let e12 = Sequence {
-    left: Terminal { token_class: rust_token_ty_i32 },
-    right: e13
-  }
-  let e11 = Sequence {
-    left: Terminal { token_class: rust_token_arrow },
-    right: e12
-  }
-  let e10 = Sequence {
-    left: Terminal { token_class: rust_token_rparen },
-    right: e11
-  }
-  let e9 = Sequence {
-    left: Terminal { token_class: rust_token_ty_i32 },
-    right: e10
-  }
-  let e8 = Sequence {
-    left: Terminal { token_class: rust_token_colon },
-    right: e9
-  }
-  let e7 = Sequence {
-    left: Terminal { token_class: rust_token_ident },
-    right: e8
-  }
-  let e6 = Sequence {
-    left: Terminal { token_class: rust_token_comma },
-    right: e7
-  }
-  let e5 = Sequence {
-    left: Terminal { token_class: rust_token_ty_i32 },
-    right: e6
-  }
-  let e4 = Sequence {
-    left: Terminal { token_class: rust_token_colon },
-    right: e5
-  }
-  let e3 = Sequence {
-    left: Terminal { token_class: rust_token_ident },
-    right: e4
-  }
-  let e2 = Sequence {
-    left: Terminal { token_class: rust_token_lparen },
-    right: e3
-  }
-  let e1 = Sequence {
-    left: Terminal { token_class: rust_token_ident },
-    right: e2
-  }
-  Sequence {
-    left: Terminal { token_class: rust_token_kw_fn },
-    right: e1
-  }
-}
-
 fn rust_grammar_production_mvp1_fn_add() -> GrammarProduction {
   GrammarProduction {
     name: rust_production_mvp1_fn_add,
-    expression: rust_grammar_mvp1_add_expr(),
+    expression: rust_grammar_sequence_from_token_classes(),
     emitted: rust_grammar_atom(id: rust_surface_fn_item)
   }
 }
