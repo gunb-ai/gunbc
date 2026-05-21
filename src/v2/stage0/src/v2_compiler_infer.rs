@@ -121,24 +121,24 @@ pub use crate::v2_std_core::{
     default_ident_span, error_type, expr_call_func_at, expr_has_non_tail_self_call,
     expr_has_self_call, expr_method_name_at, expr_var_name_at, field_access_base,
     field_access_field_at, field_binding_name_at, field_binding_pattern, field_init_node_name_at,
-    field_init_node_value, field_node_type_expr, float_type, foreach_body, foreach_collection,
-    foreach_variable_at, has_child_named, has_inferred, if_condition, if_else_branch,
-    if_then_branch, import_is_all, index_base, index_expr, int_type, intern, intern_str,
-    is_child_accessor_in_model, is_compiler_error, is_container_type, is_error_diagnostic,
-    is_kernel_type, is_property_contraction, is_tree_size_reducing, kernel_type_set, lambda_body,
-    lambda_param_names_at, let_binding_name_at, let_body, let_value, local_transport_node,
-    make_arg_node, make_arm_node, make_error_node, make_expr_error_node, make_expr_node,
-    make_field_binding_node, make_field_init_node, make_interp_part_node, make_named_expr_node,
-    make_param_node, make_span, make_text_part_node, make_transport_node, map_children,
-    match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, module_imports,
-    module_items, module_node, no_span, node_name_span, none_type, param_node_name_at,
-    param_node_type_expr, record_lit_type_name_at, resource_use_name_at, resource_use_resource,
-    return_value, slice_base, slice_end, slice_start, string_type, unaryop_operand, unit_type,
-    with_optional_cardinality, with_required_cardinality, BinOp, CallSemantics, Cardinality,
-    CompilerDiagnostic, Connective, DeclaredFuncEnv, DeclaredFuncSig, ErrorNode, ExprData,
-    ExprErrorKind, FieldAccessStyle, FieldSummary, FieldValueShape, InferredNode, InternTable,
-    LiteralValue, MatchPattern, MethodSemantics, NewlineIndex, Node, StringPart, UnaryOpKind,
-    VarBindingKind,
+    field_init_node_value, field_node_name_at, field_node_type_expr, float_type, foreach_body,
+    foreach_collection, foreach_variable_at, has_child_named, has_inferred, if_condition,
+    if_else_branch, if_then_branch, import_is_all, index_base, index_expr, int_type, intern,
+    intern_str, is_child_accessor_in_model, is_compiler_error, is_container_type,
+    is_error_diagnostic, is_kernel_type, is_property_contraction, is_tree_size_reducing,
+    kernel_type_set, lambda_body, lambda_param_names_at, let_binding_name_at, let_body, let_value,
+    local_transport_node, make_arg_node, make_arm_node, make_error_node, make_expr_error_node,
+    make_expr_node, make_field_binding_node, make_field_init_node, make_interp_part_node,
+    make_named_expr_node, make_param_node, make_span, make_text_part_node, make_transport_node,
+    map_children, match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver,
+    module_imports, module_items, module_node, no_span, node_name_span, none_type,
+    param_node_name_at, param_node_type_expr, record_lit_type_name_at, resource_use_name_at,
+    resource_use_resource, return_value, slice_base, slice_end, slice_start, string_type,
+    unaryop_operand, unit_type, with_optional_cardinality, with_required_cardinality, BinOp,
+    CallSemantics, Cardinality, CompilerDiagnostic, Connective, DeclaredFuncEnv, DeclaredFuncSig,
+    ErrorNode, ExprData, ExprErrorKind, FieldAccessStyle, FieldSummary, FieldValueShape,
+    InferredNode, InternTable, LiteralValue, MatchPattern, MethodSemantics, NewlineIndex, Node,
+    StringPart, UnaryOpKind, VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -11594,7 +11594,17 @@ pub fn build_fielded_variants(
                                     |vacc: _, variant: Rc<Node>| {
                                         let has_fields =
                                             ((variant.children.clone().len() as i64) > 0);
-                                        if has_fields.clone() {
+                                        let is_positional_payload =
+                                            (((variant.children.clone().len() as i64) == 1)
+                                                && match variant.children.clone().first().cloned() {
+                                                    Some(f) => {
+                                                        (field_node_name_at(f.clone(), si.clone())
+                                                            .as_str()
+                                                            == "0".to_string().as_str())
+                                                    }
+                                                    None => false,
+                                                });
+                                        if (has_fields.clone() && !is_positional_payload.clone()) {
                                             v2_rt::rc_set_insert(
                                                 vacc.clone(),
                                                 v2_rt::concat(
