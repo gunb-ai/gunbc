@@ -28,8 +28,7 @@ import v4.test.claim.manual.infer_ground_add_mvp {
   fixture_add_resolved_tree
 }
 import v4.std.verification {
-  Compiles,
-  Equals,
+  CompilesClaim,
   T19ManualAnchorAbsent,
   TestClaim,
   TestClassification,
@@ -77,26 +76,19 @@ fn solve_constraints_claim_input(ok: Bool) -> Node {
 }
 
 
-fn solve_constraints_claim_expected() -> Outcome<Node> {
-  Accepted { value: fixture_add_resolved_node(), diagnostics: None }
-}
-
-
-data claim_solve_constraints_add_mvp_compiles: TestClaim = TestClaim {
-  kind: Compiles,
+data claim_solve_constraints_add_mvp_compiles: TestClaim = CompilesClaim {
   label: "manual/solve_constraints_add_mvp: constraint path module compiles",
   t19_anchor: T19ManualAnchorAbsent,
-  input: fixture_add_resolved_tree(),
-  expected: solve_constraints_claim_expected(),
+  input: fixture_add_resolved_node(),
+  expected_value: fixture_add_resolved_node(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
 
-data claim_solve_constraints_add_accepts: TestClaim = TestClaim {
-  kind: Equals,
+data claim_solve_constraints_add_accepts: TestClaim = CompilesClaim {
   label: "manual/solve_constraints_add_mvp: solve_constraints Accepted on add graph root",
   t19_anchor: T19ManualAnchorAbsent,
   input: solve_constraints_claim_input(ok: witness_solve_constraints_add_accepts),
-  expected: solve_constraints_claim_expected(),
+  expected_value: fixture_add_resolved_node(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }

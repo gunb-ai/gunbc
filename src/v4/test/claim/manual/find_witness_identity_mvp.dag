@@ -89,6 +89,12 @@ fn constraint_predicate() -> PreservationPredicate {
     preservation_rule: preservation_rule_constraint_satisfaction
   }
 }
+fn unknown_rule_predicate() -> PreservationPredicate {
+  PreservationPredicate {
+    algebra: identity_source_node(),
+    preservation_rule: identity_mvp_wrong_property
+  }
+}
 fn candidate_set_identity_single() -> CandidateSet {
   CandidateSet {
     candidates: [identity_source_node()],
@@ -169,6 +175,14 @@ data witness_find_witness_constraint_rule_accepts: Bool = match find_witness(
   Accepted { value: fw, diagnostics: _ } => fw.candidate == identity_source_node()
   Rejected { diagnostics: _ } => false
 }
+data witness_find_witness_other_rule_rejects: Bool = rejected_for_no_candidate(
+  o: find_witness(
+    source_facts: identity_source_node(),
+    candidates: candidate_set_identity_single(),
+    predicate: unknown_rule_predicate(),
+    multiplicity_policy: UniqueOnly
+  )
+)
 data witness_find_witness_unique_only_ambiguous_rejects: Bool = rejected_for_ambiguous_candidate(
   o: find_witness(
     source_facts: identity_source_node(),
@@ -278,21 +292,19 @@ data claim_find_witness_non_identity_rejects: TestClaim = CompilesClaim {
   expected_value: identity_witness_expected(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
-<<<<<<< HEAD
-data claim_find_witness_constraint_rule_accepts: TestClaim = TestClaim {
-  kind: Equals,
+data claim_find_witness_constraint_rule_accepts: TestClaim = CompilesClaim {
   label: "manual/find_witness_identity_mvp: constraint_satisfaction accepts identity candidate",
   t19_anchor: T19ManualAnchorAbsent,
   input: identity_witness_claim_input(ok: witness_find_witness_constraint_rule_accepts),
-  expected: identity_witness_expected(),
-=======
+  expected_value: identity_witness_expected(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
 
 data claim_find_witness_other_rule_rejects: TestClaim = CompilesClaim {
-  label: "manual/find_witness_identity_mvp: non-exact rule remains fail-closed",
+  label: "manual/find_witness_identity_mvp: unknown preservation rule remains fail-closed",
   t19_anchor: T19ManualAnchorAbsent,
   input: identity_witness_claim_input(ok: witness_find_witness_other_rule_rejects),
   expected_value: identity_witness_expected(),
->>>>>>> origin/main
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
