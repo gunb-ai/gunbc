@@ -6,7 +6,7 @@
 //       compile_lens_gate_rejected, compile_eval_not_realized, compile_ingest_staging,
 //       compile_pipeline_not_realized_diagnostic, compile_lens_gate_rejected_diagnostic,
 //       compile_eval_not_realized_diagnostic, apply_lens, run_required_lens_gates,
-//       grounding_sanity_lens, compile_inferred, compile, validate_then_compile.
+//       compile_inferred, compile, validate_then_compile.
 // Consumes: compiler/04_infer.dag, compiler/05_emit.dag, compiler/07_target_carriers.dag,
 //           std/collection.dag, std/diagnostic.dag,
 //           std/node.dag, std/text.dag, std/witness.dag.
@@ -38,7 +38,7 @@ import v4.std.diagnostic {
 }
 import v4.std.node { Node, Symbol }
 import v4.std.text { String }
-import v4.std.witness { Holds, Witness }
+import v4.std.witness { Witness }
 
 
 // 🟢 grounded — post-normalize substrate graph; Theme-A #9 forward until named ModelCore bundle lands.
@@ -59,7 +59,7 @@ type Source = String
 
 // 🟢 coproduct dissolution — ratified compile-core terminal modes (P1/P2).
 type CompileMode
-  = TranslateTo { target_lang: LanguageModel }
+  = TranslateTo { target: TargetModel }
   | Eval { host_interp: HostModel }
 
 
@@ -191,26 +191,16 @@ fn run_required_lens_gates(
 }
 
 
-fn grounding_sanity_gate(tree: InferredTree) -> Outcome<Witness<Node>> {
-  outcome_accepted(Holds { value: tree.root })
-}
-
-
-data grounding_sanity_lens: Lens = Lens {
-  gate: grounding_sanity_gate
-}
-
-
-// input_lang is threaded (not validated here); emit consumes target_lang until resolve/ground wire input facts.
+// input_lang is threaded (not validated here); emit consumes target until resolve/ground wire input facts.
 fn compile_inferred_translate(
   inferred: InferredTree,
   input_lang: LanguageModel,
-  target_lang: TargetModel
+  target: TargetModel
 ) -> Outcome<TargetSource> {
   bind_outcome(
     o: outcome_accepted(value: input_lang),
     f: fn(lang) {
-      emit(tree: inferred, target: target_lang)
+      emit(tree: inferred, target: target)
     }
   )
 }
@@ -222,12 +212,12 @@ fn compile_inferred(
   mode: CompileMode
 ) -> Outcome<CompileOutput> {
   match mode {
-    TranslateTo { target_lang } =>
+    TranslateTo { target } =>
       bind_outcome(
         o: compile_inferred_translate(
           inferred: inferred,
           input_lang: input_lang,
-          target_lang: target_lang
+          target: target
         ),
         f: fn(target_source) {
           outcome_accepted(TranslateResult { source: target_source })

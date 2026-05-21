@@ -2,7 +2,7 @@
 // Scope: Wave-5-A — P3 commitment 6 public terminal; empty required-lens list + reject-before-compile gate.
 // Owns: claim_validate_then_compile_module_compiles, claim_empty_lenses_skips_gate,
 //       claim_rejecting_lens_blocks_before_compile, anchor_validate_then_compile_empty_lenses,
-//       anchor_validate_then_compile_rejecting_lens.
+//       anchor_validate_then_compile_rejecting_lens, grounding_sanity_lens (test scaffold only).
 // Consumes: compiler/00_compile.dag, test/claim/manual/infer_ground_add_mvp.dag, std/diagnostic.dag,
 //           std/node.dag, std/verification.dag, std/witness.dag.
 // Status: scaffold — full Accepted TargetSource blocked on infer descent + rust LanguageModel (Wave-4).
@@ -24,6 +24,7 @@ import v4.compiler.compile {
   validate_then_compile
 }
 import v4.compiler.infer { InferredTree }
+import v4.compiler.target_carriers { TargetModel }
 import v4.test.claim.manual.infer_ground_add_mvp { fixture_add_resolved_tree }
 import v4.std.diagnostic {
   Accepted,
@@ -43,11 +44,15 @@ import v4.std.verification {
   Tier1,
   Unit
 }
-import v4.std.witness { Witness }
+import v4.std.witness { Holds, Witness }
 
 
 data claim_validate_then_compile_module: Symbol = claim_validate_then_compile_module
 data rust_language_model_stub: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: []
+}
+data rust_target_model_stub: TargetModel = Node {
   kind: TypeNode { connective: Conj },
   children: []
 }
@@ -76,12 +81,22 @@ data rejecting_lens: Lens = Lens {
 }
 
 
+fn grounding_sanity_gate(tree: InferredTree) -> Outcome<Witness<Node>> {
+  outcome_accepted(Holds { value: tree.root })
+}
+
+
+data grounding_sanity_lens: Lens = Lens {
+  gate: grounding_sanity_gate
+}
+
+
 fn anchor_validate_then_compile_empty_lenses() -> Outcome<Validated<CompileOutput>> {
   validate_then_compile(
     source: fixture_add_resolved_tree(),
     input_lang: rust_language_model_stub,
     lenses: [],
-    mode: TranslateTo { target_lang: rust_language_model_stub }
+    mode: TranslateTo { target: rust_target_model_stub }
   )
 }
 
@@ -91,7 +106,7 @@ fn anchor_validate_then_compile_rejecting_lens() -> Outcome<Validated<CompileOut
     source: fixture_add_resolved_tree(),
     input_lang: rust_language_model_stub,
     lenses: [rejecting_lens],
-    mode: TranslateTo { target_lang: rust_language_model_stub }
+    mode: TranslateTo { target: rust_target_model_stub }
   )
 }
 
