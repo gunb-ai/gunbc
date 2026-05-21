@@ -2716,7 +2716,7 @@ pub fn emit_typed_item(
                             emit_data_def(
                                 item_text,
                                 &item.type_annotation.clone().clone().unwrap(),
-                                item.body.clone().clone().unwrap(),
+                                &item.body.clone().clone().unwrap(),
                                 registry.clone(),
                                 &scope,
                                 0,
@@ -10096,28 +10096,29 @@ pub fn wrap_rust_record_field_value(
     struct_name: &String,
     field_name: &String,
 ) -> String {
+    let is_bounded_lattice_field = struct_name.contains("BoundedLattice");
     if rust_record_field_needs_fn_rc(scope.clone(), struct_name.clone(), field_name.clone()) {
         v2_rt::concat(v2_rt::concat("Rc::new(".to_string(), raw), ")".to_string())
-    } else if ((struct_name.as_str() == "BoundedLattice")
-        && ((field_name.as_str() == "meet") || (field_name.as_str() == "join")))
+    } else if (is_bounded_lattice_field
+        && ((field_name.clone().as_str() == "meet".to_string().as_str())
+            || (field_name.clone().as_str() == "join".to_string().as_str())))
     {
         v2_rt::concat(v2_rt::concat("Rc::new(".to_string(), raw), ")".to_string())
+    } else if rust_record_field_needs_box(
+        &scope,
+        emit_info,
+        shared_types,
+        struct_name.clone(),
+        field_name.clone(),
+    ) {
+        v2_rt::concat(v2_rt::concat("Box::new(".to_string(), raw), ")".to_string())
+    } else if (is_bounded_lattice_field
+        && ((field_name.clone().as_str() == "top".to_string().as_str())
+            || (field_name.clone().as_str() == "bottom".to_string().as_str())))
+    {
+        v2_rt::concat(v2_rt::concat("Box::new(".to_string(), raw), ")".to_string())
     } else {
-        if rust_record_field_needs_box(
-            &scope,
-            emit_info,
-            shared_types,
-            struct_name.clone(),
-            field_name.clone(),
-        ) {
-            v2_rt::concat(v2_rt::concat("Box::new(".to_string(), raw), ")".to_string())
-        } else if ((struct_name.as_str() == "BoundedLattice")
-            && ((field_name.as_str() == "top") || (field_name.as_str() == "bottom")))
-        {
-            v2_rt::concat(v2_rt::concat("Box::new(".to_string(), raw), ")".to_string())
-        } else {
-            raw
-        }
+        raw
     }
 }
 
@@ -14603,7 +14604,7 @@ pub fn data_value_has_cross_refs(value: &Rc<Node>) -> bool {
 pub fn emit_data_def(
     name: String,
     type_node: &Rc<Node>,
-    value: Rc<Node>,
+    value: &Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: &Rc<InferScope>,
     depth: i64,
@@ -14616,7 +14617,9 @@ pub fn emit_data_def(
             shared_types.clone(),
             scope.type_env.clone().source_indices.clone(),
         );
-        let ty_str = if raw_ty_str.as_str() == "BoundedLattice" {
+        let ty_str = if ((raw_ty_str.clone().as_str() == "BoundedLattice".to_string().as_str())
+            || (raw_ty_str.clone().as_str() == "Rc<BoundedLattice>".to_string().as_str()))
+        {
             match field_value_by_name(
                 value.clone(),
                 "top".to_string(),
@@ -14627,11 +14630,18 @@ pub fn emit_data_def(
                         scope.type_env.clone().source_indices.clone(),
                         &resolved_type(top_value.clone()),
                     );
-                    if top_type_name.as_str() == "" {
+                    if (top_type_name.clone().as_str() == "".to_string().as_str()) {
                         raw_ty_str.clone()
+                    } else if (raw_ty_str.clone().as_str()
+                        == "Rc<BoundedLattice>".to_string().as_str())
+                    {
+                        v2_rt::concat(
+                            v2_rt::concat("Rc<BoundedLattice<".to_string(), top_type_name.clone()),
+                            ">>".to_string(),
+                        )
                     } else {
                         v2_rt::concat(
-                            v2_rt::concat("BoundedLattice<".to_string(), top_type_name),
+                            v2_rt::concat("BoundedLattice<".to_string(), top_type_name.clone()),
                             ">".to_string(),
                         )
                     }
@@ -14652,7 +14662,7 @@ pub fn emit_data_def(
         ) {
             {
                 let val_str = emit_typed_expr(
-                    value,
+                    value.clone(),
                     registry,
                     &scope,
                     depth,
