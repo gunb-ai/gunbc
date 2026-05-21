@@ -1,0 +1,12 @@
+// std/posix.dag — POSIX host process facts.
+//
+// Spec: POSIX exit(3) — https://pubs.opengroup.org/onlinepubs/9699919799/functions/exit.html
+
+module std.posix
+
+// POSIX process exit status values. POSIX defines successful termination
+// as status 0 and leaves most non-zero values application-defined; the
+// non-zero rows here are common host-process conventions.
+data exit_code_success: Int = 0
+data exit_code_general_error: Int = 1
+data exit_code_misuse: Int = 2

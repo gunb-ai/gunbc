@@ -22,7 +22,8 @@ import gunbc.compiler {
   resolve_compiler_tools, ToolsReady, ToolsMissing,
   build_command, compile_command, diff_exclude_args
 }
-import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_code_general_error }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.posix { exit_code_general_error }
 import extdeps.shell
 
 // ── Result type ─────────────────────────────────────────────────────

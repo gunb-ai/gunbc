@@ -215,7 +215,7 @@ type ProcessExit
   | ExitFailure { code: Int, reason: String }
 ```
 
-The module also exposes standard exit-code constants (`exit_code_success: Int = 0`, `exit_code_general_error: Int = 1`, `exit_code_misuse: Int = 2`) and a convenience constructor `fn exit_failure(reason: String) -> ProcessExit` (line 50).
+`std.posix` exposes standard exit-code constants (`exit_code_success: Int = 0`, `exit_code_general_error: Int = 1`, `exit_code_misuse: Int = 2`), and `std.process` exposes a convenience constructor `fn exit_failure(reason: String) -> ProcessExit`.
 
 This is the structural contract for translating `.dag` program return values into host process exit codes — exactly the contract bin-shims need. Bin-shim entry functions return `std.process.ProcessExit` directly; the host (cli_run.rs / emitted bin-shim) checks `type_name=="ProcessExit"` AND `variant_name=="ExitFailure"` to set exit code per the convention documented in `dsl/std/process.dag` lines 11-30.
 
