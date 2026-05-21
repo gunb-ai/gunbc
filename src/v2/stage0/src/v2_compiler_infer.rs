@@ -10234,8 +10234,9 @@ pub fn build_type_env(
         );
         let cross_type_set_str = cross_type_all_names.clone().iter().cloned().fold(
             empty_set(),
-            |acc: Rc<std::collections::BTreeSet<compile_error!("UNRESOLVED_TypeVariable")>>,
-             name: String| set_insert(acc, name.clone()),
+            |acc: Rc<std::collections::BTreeSet<String>>, name: String| {
+                set_insert(acc, name.clone())
+            },
         );
         let cross_type_set = cross_type_all_names.clone().iter().cloned().fold(
             v2_rt::rc_empty_map::<i64, bool>(),
@@ -10694,8 +10695,9 @@ pub fn build_type_env_unresolved(
         );
         let cross_type_set_str = cross_type_all_names.clone().iter().cloned().fold(
             empty_set(),
-            |acc: Rc<std::collections::BTreeSet<compile_error!("UNRESOLVED_TypeVariable")>>,
-             name: String| set_insert(acc, name.clone()),
+            |acc: Rc<std::collections::BTreeSet<String>>, name: String| {
+                set_insert(acc, name.clone())
+            },
         );
         let cross_type_set = cross_type_all_names.clone().iter().cloned().fold(
             v2_rt::rc_empty_map::<i64, bool>(),
@@ -11346,8 +11348,9 @@ pub fn topo_resolve_types(
         }
         let remaining_set = remaining.clone().iter().cloned().fold(
             empty_set(),
-            |acc: Rc<std::collections::BTreeSet<compile_error!("UNRESOLVED_TypeVariable")>>,
-             name: String| set_insert(acc, name.clone()),
+            |acc: Rc<std::collections::BTreeSet<String>>, name: String| {
+                set_insert(acc, name.clone())
+            },
         );
         let ready = Rc::new({
             let mut __result = Vec::new();
@@ -11565,16 +11568,12 @@ pub fn build_fielded_variants(
     {
         let result = modules.iter().cloned().fold(
             empty_set(),
-            |acc: Rc<std::collections::BTreeSet<compile_error!("UNRESOLVED_TypeVariable")>>,
-             m: Rc<TypedModule>| {
+            |acc: Rc<std::collections::BTreeSet<String>>, m: Rc<TypedModule>| {
                 let items = m.items.clone();
                 let si = m.type_env.clone().source_indices.clone();
                 items.clone().iter().cloned().fold(
                     acc,
-                    |inner: Rc<
-                        std::collections::BTreeSet<compile_error!("UNRESOLVED_TypeVariable")>,
-                    >,
-                     item: Rc<Node>| {
+                    |inner: Rc<std::collections::BTreeSet<String>>, item: Rc<Node>| {
                         let is_enum = match v2_rt::map_get(
                             &type_summaries,
                             authored_name_at(si.clone(), &item),
@@ -11591,11 +11590,7 @@ pub fn build_fielded_variants(
                                 let variants = item.children.clone();
                                 variants.clone().iter().cloned().fold(
                                     inner.clone(),
-                                    |vacc: Rc<
-                                        std::collections::BTreeSet<
-                                            compile_error!("UNRESOLVED_TypeVariable"),
-                                        >,
-                                    >,
+                                    |vacc: Rc<std::collections::BTreeSet<String>>,
                                      variant: Rc<Node>| {
                                         let has_fields =
                                             ((variant.children.clone().len() as i64) > 0);
@@ -11649,8 +11644,7 @@ pub fn build_emit_graph_info(modules: &Rc<Vec<Rc<TypedModule>>>) -> Rc<EmitGraph
         );
         let all_recursive = modules.clone().iter().cloned().fold(
             empty_set(),
-            |acc: Rc<std::collections::BTreeSet<compile_error!("UNRESOLVED_TypeVariable")>>,
-             m: Rc<TypedModule>| {
+            |acc: Rc<std::collections::BTreeSet<String>>, m: Rc<TypedModule>| {
                 Rc::new(v2_rt::map_keys(
                     &m.type_env.clone().recursive_type_set.clone(),
                 ))
@@ -11658,10 +11652,7 @@ pub fn build_emit_graph_info(modules: &Rc<Vec<Rc<TypedModule>>>) -> Rc<EmitGraph
                 .cloned()
                 .fold(
                     acc,
-                    |inner: Rc<
-                        std::collections::BTreeSet<compile_error!("UNRESOLVED_TypeVariable")>,
-                    >,
-                     ident: i64| {
+                    |inner: Rc<std::collections::BTreeSet<String>>, ident: i64| {
                         set_insert(
                             inner,
                             intern_str(m.type_env.clone().intern_table.clone(), ident.clone()),

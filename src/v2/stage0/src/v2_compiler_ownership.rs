@@ -710,8 +710,9 @@ pub fn build_movable_set(proof: Rc<OwnershipProof>) -> Rc<std::collections::BTre
     .cloned()
     .fold(
         empty_set(),
-        |acc: Rc<std::collections::BTreeSet<compile_error!("UNRESOLVED_TypeVariable")>>,
-         usage: Rc<BindingUsage>| set_insert(acc, usage.name.clone()),
+        |acc: Rc<std::collections::BTreeSet<String>>, usage: Rc<BindingUsage>| {
+            set_insert(acc, usage.name.clone())
+        },
     )
 }
 
@@ -753,8 +754,9 @@ pub fn build_read_only_params(
     .cloned()
     .fold(
         empty_set(),
-        |acc: Rc<std::collections::BTreeSet<compile_error!("UNRESOLVED_TypeVariable")>>,
-         usage: Rc<BindingUsage>| set_insert(acc, usage.name.clone()),
+        |acc: Rc<std::collections::BTreeSet<String>>, usage: Rc<BindingUsage>| {
+            set_insert(acc, usage.name.clone())
+        },
     )
 }
 
@@ -779,8 +781,7 @@ pub fn collect_callable_refs(
             }
             ExprData::ExprCall { .. } => texpr.children.clone().iter().cloned().fold(
                 empty_set(),
-                |acc: Rc<std::collections::BTreeSet<compile_error!("UNRESOLVED_TypeVariable")>>,
-                 a: Rc<Node>| {
+                |acc: Rc<std::collections::BTreeSet<String>>, a: Rc<Node>| {
                     set_union(acc, collect_callable_refs(&arg_value(&a), &si))
                 },
             ),
@@ -820,8 +821,7 @@ pub fn collect_callable_refs(
             }
             ExprData::ExprBlock => texpr.children.clone().iter().cloned().fold(
                 empty_set(),
-                |acc: Rc<std::collections::BTreeSet<compile_error!("UNRESOLVED_TypeVariable")>>,
-                 child: Rc<Node>| {
+                |acc: Rc<std::collections::BTreeSet<String>>, child: Rc<Node>| {
                     set_union(acc, collect_callable_refs(&child, &si))
                 },
             ),
@@ -839,8 +839,7 @@ pub fn collect_callable_refs(
             }
             ExprData::ExprRecordLit { .. } => texpr.children.clone().iter().cloned().fold(
                 empty_set(),
-                |acc: Rc<std::collections::BTreeSet<compile_error!("UNRESOLVED_TypeVariable")>>,
-                 field: Rc<Node>| {
+                |acc: Rc<std::collections::BTreeSet<String>>, field: Rc<Node>| {
                     set_union(acc, collect_callable_refs(&arg_value(&field), &si))
                 },
             ),

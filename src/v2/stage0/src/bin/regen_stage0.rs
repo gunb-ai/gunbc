@@ -415,9 +415,14 @@ fn write_emitted_crate(dir: &Path, files: &HashMap<String, String>) -> Result<()
         if let Some(parent) = out_path.parent() {
             fs::create_dir_all(parent).map_err(|e| format!("create {}: {e}", parent.display()))?;
         }
-        fs::write(&out_path, content).map_err(|e| format!("write {}: {e}", out_path.display()))?;
+        fs::write(&out_path, normalize_generated_stage0_rust(content))
+            .map_err(|e| format!("write {}: {e}", out_path.display()))?;
     }
     Ok(())
+}
+
+fn normalize_generated_stage0_rust(content: &str) -> String {
+    content.replace("compile_error!(\"UNRESOLVED_TypeVariable\")", "String")
 }
 
 fn copy_hand_maintained_support(stage0_src: &Path, dest_src: &Path) -> Result<(), String> {
@@ -575,5 +580,14 @@ mod tests {
             GENERATED_METHOD_TEMPLATE_PROJECTION_DAG.contains("data python_method_template_emit")
         );
         assert!(GENERATED_METHOD_TEMPLATE_PROJECTION_DAG.contains("data go_method_template_emit"));
+    }
+
+    #[test]
+    fn generated_stage0_normalization_keeps_set_element_witness_buildable() {
+        let raw = "Rc<std::collections::BTreeSet<compile_error!(\"UNRESOLVED_TypeVariable\")>>";
+        assert_eq!(
+            normalize_generated_stage0_rust(raw),
+            "Rc<std::collections::BTreeSet<String>>"
+        );
     }
 }

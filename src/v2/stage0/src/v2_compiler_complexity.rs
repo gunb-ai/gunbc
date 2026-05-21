@@ -6997,12 +6997,7 @@ pub fn build_scc_index(
                         );
                         let member_set = component.members.clone().iter().cloned().fold(
                             empty_set(),
-                            |inner: Rc<
-                                std::collections::BTreeSet<
-                                    compile_error!("UNRESOLVED_TypeVariable"),
-                                >,
-                            >,
-                             member: String| {
+                            |inner: Rc<std::collections::BTreeSet<String>>, member: String| {
                                 set_insert(inner, member.clone())
                             },
                         );
