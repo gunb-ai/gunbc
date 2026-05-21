@@ -171,11 +171,64 @@ pub fn render_rust_data_type(
                 }
             }
         } else {
-            render_rust_type(
-                type_node.clone(),
-                shared_types.clone(),
-                source_indices.clone(),
-            )
+            if ((type_node.children.clone().len() as i64) > 0) {
+                render_rust_type(
+                    type_node.clone(),
+                    shared_types.clone(),
+                    source_indices.clone(),
+                )
+            } else {
+                render_rust_type(
+                    type_node.clone(),
+                    shared_types.clone(),
+                    source_indices.clone(),
+                )
+            }
+        }
+    }
+}
+
+pub fn render_rust_data_decl_type(
+    type_node: &Rc<Node>,
+    value: Rc<Node>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
+    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> String {
+    {
+        let rendered = render_rust_data_type(&type_node, &shared_types, &source_indices, emit_info);
+        let tn = authored_name_at(source_indices.clone(), &type_node);
+        if ((rendered.clone().as_str() == "BoundedLattice".to_string().as_str())
+            || (rendered.clone().as_str() == "Rc<BoundedLattice>".to_string().as_str()))
+        {
+            match field_value_by_name(value, "top".to_string(), source_indices.clone()) {
+                Some(top_value) => {
+                    let top_type_name =
+                        authored_name_at(source_indices.clone(), &resolved_type(top_value.clone()));
+                    if (top_type_name.clone().as_str() == "".to_string().as_str()) {
+                        rendered.clone()
+                    } else {
+                        if (rendered.clone().as_str() == "Rc<BoundedLattice>".to_string().as_str())
+                        {
+                            v2_rt::concat(
+                                v2_rt::concat(
+                                    "Rc<BoundedLattice<".to_string(),
+                                    top_type_name.clone(),
+                                ),
+                                ">>".to_string(),
+                            )
+                        } else {
+                            v2_rt::concat(
+                                v2_rt::concat("BoundedLattice<".to_string(), top_type_name.clone()),
+                                ">".to_string(),
+                            )
+                        }
+                    }
+                }
+                None => rendered.clone(),
+            }
+        } else {
+            rendered.clone()
         }
     }
 }
@@ -2763,7 +2816,7 @@ pub fn emit_typed_item(
                             emit_data_def(
                                 item_text,
                                 &item.type_annotation.clone().clone().unwrap(),
-                                item.body.clone().clone().unwrap(),
+                                &item.body.clone().clone().unwrap(),
                                 registry.clone(),
                                 &scope,
                                 0,
@@ -14838,7 +14891,7 @@ pub fn data_value_has_cross_refs(value: &Rc<Node>) -> bool {
 pub fn emit_data_def(
     name: String,
     type_node: &Rc<Node>,
-    value: Rc<Node>,
+    value: &Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: &Rc<InferScope>,
     depth: i64,
@@ -14846,9 +14899,10 @@ pub fn emit_data_def(
     emit_info: &Rc<EmitGraphInfo>,
 ) -> String {
     {
-        let ty_str = render_rust_data_type(
+        let ty_str = render_rust_data_decl_type(
             &type_node,
-            &shared_types,
+            value.clone(),
+            shared_types.clone(),
             &scope.type_env.clone().source_indices.clone(),
             emit_info.clone(),
         );
@@ -14863,7 +14917,7 @@ pub fn emit_data_def(
         ) {
             {
                 let val_str = emit_typed_expr(
-                    value,
+                    value.clone(),
                     registry,
                     &scope,
                     depth,
