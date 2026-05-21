@@ -358,6 +358,9 @@ pub fn compose_sub_value_relations(
                 param: p.clone(),
                 factor: f.clone(),
             }),
+            SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
+            SubValueRelation::NonIncreasingValue => Rc::new(SubValueRelation::NonIncreasingValue),
+            SubValueRelation::IncomparableValue => Rc::new(SubValueRelation::IncomparableValue),
             _ => Rc::new(SubValueRelation::SubValueUnknown),
         },
     }

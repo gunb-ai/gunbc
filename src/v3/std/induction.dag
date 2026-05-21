@@ -455,6 +455,12 @@ fn compose_sub_value_relations(arg_rel: SubValueRelation, callee_rel: SubValueRe
     ArithmeticDescent { param: p, factor: f } =>
       match arg_rel {
         PreservedValue => ArithmeticDescent { param: p, factor: f }
+        SubValueUnknown => SubValueUnknown
+        // Lawful non-structural inhabitants flow through at lattice level (same
+        // posture as the `StrictSubValue` / `IteratedSubValue` callee arms above);
+        // see `dsl/std/induction.dag` for the rationale.
+        NonIncreasingValue => NonIncreasingValue
+        IncomparableValue => IncomparableValue
         _ => SubValueUnknown
       }
   }
