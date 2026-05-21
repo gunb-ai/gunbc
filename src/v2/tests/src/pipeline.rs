@@ -791,7 +791,7 @@ fn dag_pipeline_smoke() {
     );
     let content = find_file(&result, "dag-artifact.json");
     assert!(
-        content.contains("\"version\": \"0.1.0\""),
+        content.contains("\"version\": \"0.2.0\""),
         "dag artifact should contain version"
     );
     assert!(
@@ -803,8 +803,16 @@ fn dag_pipeline_smoke() {
         "dag artifact should reference dag_smoke"
     );
     assert!(
+        content.contains("\"nodes\""),
+        "dag artifact should include nodes table"
+    );
+    assert!(
+        content.contains("\"$ref\""),
+        "dag artifact should cite nodes by ref"
+    );
+    assert!(
         content.contains("\"module\""),
-        "dag artifact should include serialized module objects"
+        "dag artifact should include module refs"
     );
     assert!(
         content.contains("\"items\""),
@@ -825,6 +833,150 @@ fn dag_pipeline_smoke() {
     assert!(
         content.contains("\"kind\": \"ExprRecordLit\""),
         "dag artifact should capture expression variants"
+    );
+}
+
+/// Regression for recursive by-value DAG serialization: shared subgraphs must
+/// appear once in `nodes` and be cited via multiple `$ref`s (see artifact.dag).
+#[test]
+fn dag_artifact_shares_one_node_record() {
+    let source = "module share_test\n\ntype Box { value: Int }\n\nfn twice(x: Box) -> Box { x }\n";
+    let result = compile_dag_named("share_test.dag", source, RenderTarget::Dag);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "dag-artifact.json");
+    assert!(
+        !content.contains("\"$ref\": null"),
+        "missing refs must fail emit, not serialize null refs"
+    );
+    assert!(
+        !content.contains("\"$ref\": \"\""),
+        "missing refs must not serialize empty ref ids"
+    );
+
+    let artifact: Value =
+        serde_json::from_str(&content).expect("dag artifact should be valid JSON");
+    let nodes = artifact
+        .get("nodes")
+        .and_then(Value::as_object)
+        .expect("dag artifact should have a nodes object");
+
+    for id in nodes.keys() {
+        let record_marker = format!("\"{id}\": {{");
+        assert_eq!(
+            content.matches(&record_marker).count(),
+            1,
+            "node id {id} should appear exactly once in the nodes table"
+        );
+    }
+
+    let mut shared = false;
+    for id in nodes.keys() {
+        let needle = format!("\"$ref\": \"{id}\"");
+        let ref_count = content.matches(&needle).count();
+        if ref_count >= 2 {
+            shared = true;
+        }
+    }
+    assert!(
+        shared,
+        "expected at least one nodes-table id cited at least twice via $ref (shared subgraph)"
+    );
+}
+
+#[test]
+fn dag_artifact_multi_module_names_resolve() {
+    let files = &[
+        ("lib.dag", "module lib\n\nfn helper() -> Int { 0 }\n"),
+        (
+            "main.dag",
+            "module main\nimport lib { helper }\n\nfn main() -> Int { helper() }\n",
+        ),
+    ];
+    let result = compile_multi_target(files, RenderTarget::Dag);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "dag-artifact.json");
+    assert!(
+        content.contains("lib") && content.contains("helper") && content.contains("main"),
+        "multi-module dag artifact should preserve authored names from merged source_indices"
+    );
+}
+
+#[test]
+fn dag_artifact_module_imports_not_serialized_as_params() {
+    let files = &[
+        ("dep.dag", "module dep\ntype Widget { label: String }\n"),
+        (
+            "imp_test.dag",
+            "module imp_test\nimport dep { Widget }\n\nfn f() -> Widget { Widget { label: \"x\" } }\n",
+        ),
+    ];
+    let result = compile_multi_target(files, RenderTarget::Dag);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "dag-artifact.json");
+    let artifact: Value =
+        serde_json::from_str(&content).expect("dag artifact should be valid JSON");
+    let nodes = artifact
+        .get("nodes")
+        .and_then(Value::as_object)
+        .expect("dag artifact should have a nodes object");
+    let module_record = nodes.values().find(|v| {
+        v.get("name")
+            .and_then(Value::as_str)
+            .is_some_and(|n| n == "imp_test")
+    });
+    let module_record = module_record.expect("module node record should exist in nodes table");
+    let imports = module_record
+        .get("imports")
+        .and_then(Value::as_array)
+        .expect("module record should have imports array");
+    assert!(
+        !imports.is_empty(),
+        "module record should serialize imports via imports field"
+    );
+    let params = module_record
+        .get("params")
+        .and_then(Value::as_array)
+        .expect("module record should have params array");
+    assert!(
+        params.is_empty(),
+        "module imports must not be duplicated as callable params (role-aware serialization)"
+    );
+}
+
+#[test]
+fn dag_artifact_callable_params_preserved() {
+    let source = "module params_test\n\nfn f(x: Int, label: String) -> Int { x }\n";
+    let result = compile_dag_named("params_test.dag", source, RenderTarget::Dag);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "dag-artifact.json");
+    let artifact: Value =
+        serde_json::from_str(&content).expect("dag artifact should be valid JSON");
+    let nodes = artifact
+        .get("nodes")
+        .and_then(Value::as_object)
+        .expect("dag artifact should have a nodes object");
+    let fn_record = nodes.values().find(|v| {
+        v.get("name")
+            .and_then(Value::as_str)
+            .is_some_and(|n| n == "f")
+    });
+    let fn_record = fn_record.expect("callable node record for f should exist in nodes table");
+    let params = fn_record
+        .get("params")
+        .and_then(Value::as_array)
+        .expect("callable record should have params array");
+    assert_eq!(
+        params.len(),
+        2,
+        "callable params must survive DAG serialization (not cleared by import heuristic)"
+    );
+    let names: Vec<&str> = params
+        .iter()
+        .filter_map(|p| p.get("name").and_then(Value::as_str))
+        .collect();
+    assert!(
+        names.contains(&"x") && names.contains(&"label"),
+        "serialized params should include callable argument names, got {names:?}"
     );
 }
 
