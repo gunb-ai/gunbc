@@ -1055,7 +1055,8 @@ pub fn infer_tier2b_builtin_with_kernel_diags(
                                 }) => set_element_type_in_env(
                                     receiver_type.clone(),
                                     &scope.type_env.clone(),
-                                ),
+                                )
+                                .map(|elem_slot| child_type_node(&elem_slot)),
                                 _ => None,
                             },
                             None => None,
@@ -1087,42 +1088,13 @@ pub fn infer_tier2b_builtin_with_kernel_diags(
                                         }) => set_element_type_in_env(
                                             other_type.clone(),
                                             &scope.type_env.clone(),
-                                        ),
+                                        )
+                                        .map(|elem_slot| child_type_node(&elem_slot)),
                                         _ => None,
                                     }
                                 }
                                 None => None,
                             }
-                        };
-                        let mismatch_diags = match recv_elem {
-                            Some(re) => match operand_elem.clone() {
-                                Some(oe) => {
-                                    if (authored_name_at(
-                                        scope.type_env.clone().source_indices.clone(),
-                                        &re,
-                                    )
-                                    .as_str()
-                                        != authored_name_at(
-                                            scope.type_env.clone().source_indices.clone(),
-                                            &oe,
-                                        )
-                                        .as_str())
-                                    {
-                                        Rc::new(vec![inference_error(
-                                            v2_rt::concat(
-                                                func_name.clone(),
-                                                ": incompatible set element types".to_string(),
-                                            ),
-                                            span,
-                                            scope.module_name.clone(),
-                                        )])
-                                    } else {
-                                        Rc::new(vec![])
-                                    }
-                                }
-                                None => Rc::new(vec![]),
-                            },
-                            None => Rc::new(vec![]),
                         };
                         let result_bt = match typed_args.clone().first().cloned() {
                             Some(receiver_arg) => match arg_value(&receiver_arg)
@@ -1163,7 +1135,7 @@ pub fn infer_tier2b_builtin_with_kernel_diags(
                         };
                         Rc::new(Tier2bBt {
                             bt: result_bt,
-                            kernel_diags: v2_rt::concat(mismatch_diags, build_diags),
+                            kernel_diags: build_diags,
                         })
                     }
                 } else {
