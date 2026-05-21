@@ -30,3 +30,254 @@
 
 module v4.lens.complexity
 
+
+import v4.lens.cost {
+  AsymptoticClass,
+  ClassConstant,
+  ClassExponential,
+  ClassFactorial,
+  ClassLinearithmic,
+  ClassLinear,
+  ClassLog,
+  ClassPolyLog,
+  ClassPolynomial,
+  ClassUnknown,
+  ConstantCost,
+  ExponentialCost,
+  FactorialCost,
+  LinearCost,
+  LogCost,
+  PolynomialCost,
+  PolyLogCost,
+  ProductCost,
+  SumCost,
+  UnknownCost,
+  PolyLogExponent,
+  PolynomialDegree,
+  SymbolicCost,
+  SizeVariable,
+  asymptotic_class_dominates,
+  asymptotic_class_of_cost,
+  cost_lens
+}
+import v4.std.collection { List }
+import v4.std.diagnostic {
+  AmbiguousIntent,
+  Diagnostic,
+  Textual,
+  WholeFile,
+  Unavailable
+}
+import v4.std.node { Node, Symbol }
+import v4.std.witness { Holds, Violates, Witness }
+
+
+data complexity_reason_unmodeled_cost_projection: Symbol = complexity_reason_unmodeled_cost_projection
+data complexity_projection_virtual_file: Symbol = complexity_projection_virtual_file
+
+// 🟢 coproduct dissolution — T-12-COMPLEXITY-PROJECTION.
+type ComplexityVariables = List<SizeVariable>
+
+// 🟢 coproduct dissolution — T-12-COMPLEXITY-PROJECTION.
+type SizeIndexedAsymptoticClass
+  = SizedLogClass
+  | SizedLinearClass
+  | SizedLinearithmicClass
+  | SizedPolynomialClass { degree: PolynomialDegree }
+  | SizedPolyLogClass { exponent: PolyLogExponent }
+  | SizedExponentialClass
+  | SizedFactorialClass
+
+// ComplexityBound is the asymptotic projection of `SymbolicCost`. The
+// `class` relation remains owned by `cost.dag`; this carrier packages the
+// projected user-facing bound without adding another cost mechanism.
+// 🟢 coproduct dissolution — T-12-COMPLEXITY-PROJECTION.
+type ComplexityBound
+  = ConstantComplexity
+  | SizedComplexity { class: SizeIndexedAsymptoticClass, variables: ComplexityVariables }
+  | UnknownComplexity { diagnostic: Diagnostic }
+
+fn unknown_complexity() -> ComplexityBound {
+  UnknownComplexity { diagnostic: complexity_projection_diagnostic() }
+}
+
+fn single_complexity_variable(size_var: SizeVariable) -> ComplexityVariables {
+  [size_var]
+}
+
+fn composite_complexity_variables(
+  lhs: ComplexityVariables,
+  rhs: ComplexityVariables
+) -> ComplexityVariables {
+  concat(lhs, rhs)
+}
+
+fn sized_complexity(
+  class: SizeIndexedAsymptoticClass,
+  variables: ComplexityVariables
+) -> ComplexityBound {
+  SizedComplexity { class: class, variables: variables }
+}
+
+fn linear_complexity(size_var: SizeVariable) -> ComplexityBound {
+  sized_complexity(
+    class: SizedLinearClass,
+    variables: single_complexity_variable(size_var: size_var)
+  )
+}
+
+fn polynomial_complexity(
+  size_var: SizeVariable,
+  degree: PolynomialDegree
+) -> ComplexityBound {
+  sized_complexity(
+    class: SizedPolynomialClass { degree: degree },
+    variables: single_complexity_variable(size_var: size_var)
+  )
+}
+
+fn multidimensional_polynomial_complexity(
+  variables: ComplexityVariables,
+  degree: PolynomialDegree
+) -> ComplexityBound {
+  sized_complexity(class: SizedPolynomialClass { degree: degree }, variables: variables)
+}
+
+fn unknown_complexity_with_diagnostic(diagnostic: Diagnostic) -> ComplexityBound {
+  UnknownComplexity { diagnostic: diagnostic }
+}
+
+fn combine_complexity_variables(
+  lhs: Witness<ComplexityVariables>,
+  rhs: Witness<ComplexityVariables>
+) -> Witness<ComplexityVariables> {
+  match lhs {
+    Holds { value: lv } =>
+      match rhs {
+        Holds { value: rv } =>
+          Holds { value: composite_complexity_variables(lhs: lv, rhs: rv) }
+        Violates { diagnostic: _ } => Holds { value: lv }
+      }
+    Violates { diagnostic: _ } => rhs
+  }
+}
+
+fn complexity_variables_from_cost(cost: SymbolicCost) -> Witness<ComplexityVariables> {
+  match cost {
+    ConstantCost { value: _ } =>
+      Violates { diagnostic: complexity_projection_diagnostic() }
+    LogCost { variable: v } =>
+      Holds { value: single_complexity_variable(size_var: v) }
+    LinearCost { variable: v } =>
+      Holds { value: single_complexity_variable(size_var: v) }
+    PolynomialCost { variable: v, degree: _ } =>
+      Holds { value: single_complexity_variable(size_var: v) }
+    PolyLogCost { variable: v, exponent: _ } =>
+      Holds { value: single_complexity_variable(size_var: v) }
+    ExponentialCost { variable: v, base: _ } =>
+      Holds { value: single_complexity_variable(size_var: v) }
+    FactorialCost { variable: v } =>
+      Holds { value: single_complexity_variable(size_var: v) }
+    SumCost { lhs: lhs, rhs: rhs } =>
+      combine_complexity_variables(
+        lhs: complexity_variables_from_cost(cost: lhs),
+        rhs: complexity_variables_from_cost(cost: rhs)
+      )
+    ProductCost { lhs: lhs, rhs: rhs } =>
+      combine_complexity_variables(
+        lhs: complexity_variables_from_cost(cost: lhs),
+        rhs: complexity_variables_from_cost(cost: rhs)
+      )
+    UnknownCost { reason: _ } =>
+      Violates { diagnostic: complexity_projection_diagnostic() }
+  }
+}
+
+fn complexity_bound_from_class(
+  class: AsymptoticClass,
+  variables: Witness<ComplexityVariables>
+) -> ComplexityBound {
+  match class {
+    ClassConstant => ConstantComplexity
+    ClassUnknown => unknown_complexity()
+    _ =>
+      match variables {
+        Holds { value: v } => complexity_bound_from_sized_class(class: class, variables: v)
+        Violates { diagnostic: _ } => unknown_complexity()
+      }
+  }
+}
+
+fn complexity_bound_from_sized_class(
+  class: AsymptoticClass,
+  variables: ComplexityVariables
+) -> ComplexityBound {
+  match class {
+    ClassConstant => ConstantComplexity
+    ClassLog => SizedComplexity { class: SizedLogClass, variables: variables }
+    ClassLinear => SizedComplexity { class: SizedLinearClass, variables: variables }
+    ClassLinearithmic => SizedComplexity { class: SizedLinearithmicClass, variables: variables }
+    ClassPolynomial { degree: d } =>
+      SizedComplexity { class: SizedPolynomialClass { degree: d }, variables: variables }
+    ClassPolyLog { exponent: e } =>
+      SizedComplexity { class: SizedPolyLogClass { exponent: e }, variables: variables }
+    ClassExponential => SizedComplexity { class: SizedExponentialClass, variables: variables }
+    ClassFactorial => SizedComplexity { class: SizedFactorialClass, variables: variables }
+    ClassUnknown => unknown_complexity()
+  }
+}
+
+fn complexity_bound_from_cost(cost: SymbolicCost) -> ComplexityBound {
+  complexity_bound_from_class(
+    class: asymptotic_class_of_cost(cost: cost),
+    variables: complexity_variables_from_cost(cost: cost)
+  )
+}
+
+fn complexity_projection_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: complexity_reason_unmodeled_cost_projection,
+    at: Textual { file: complexity_projection_virtual_file, extent: WholeFile },
+    correction: Unavailable { reason: AmbiguousIntent }
+  }
+}
+
+fn asymptotic_projection(cost_witness: Witness<SymbolicCost>) -> Witness<ComplexityBound> {
+  match cost_witness {
+    Holds { value: cost } =>
+      Holds { value: complexity_bound_from_cost(cost: cost) }
+    Violates { diagnostic: d } =>
+      Violates { diagnostic: d }
+  }
+}
+
+fn complexity_lens(n: Node) -> Witness<ComplexityBound> {
+  asymptotic_projection(cost_witness: cost_lens(n: n))
+}
+
+fn complexity_bound_class(b: ComplexityBound) -> AsymptoticClass {
+  match b {
+    ConstantComplexity => ClassConstant
+    SizedComplexity { class: c, variables: _ } => asymptotic_class_from_sized_class(class: c)
+    UnknownComplexity { diagnostic: _ } => ClassUnknown
+  }
+}
+
+fn asymptotic_class_from_sized_class(class: SizeIndexedAsymptoticClass) -> AsymptoticClass {
+  match class {
+    SizedLogClass => ClassLog
+    SizedLinearClass => ClassLinear
+    SizedLinearithmicClass => ClassLinearithmic
+    SizedPolynomialClass { degree: d } => ClassPolynomial { degree: d }
+    SizedPolyLogClass { exponent: e } => ClassPolyLog { exponent: e }
+    SizedExponentialClass => ClassExponential
+    SizedFactorialClass => ClassFactorial
+  }
+}
+
+fn complexity_bound_dominates(a: ComplexityBound, b: ComplexityBound) -> Bool {
+  asymptotic_class_dominates(
+    a: complexity_bound_class(b: a),
+    b: complexity_bound_class(b: b)
+  )
+}
