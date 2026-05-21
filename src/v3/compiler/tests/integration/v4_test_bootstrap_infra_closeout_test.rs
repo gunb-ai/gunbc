@@ -196,10 +196,13 @@ fn t20_bootstrap_plan_keeps_self_hosting_chain_as_data() {
     assert_fixpt(
         record_field_expr(bootstrap_plan_fields, "fixpt"),
         "v4_stage1_binary",
-        "v4_stage1_hash",
+        ("v4_stage1_hash", "v4_stage1_hash_pin"),
         "v4_stage2_binary",
-        "v4_stage2_hash",
-        "pinned_v4_fixed_point_hash",
+        ("v4_stage2_hash", "v4_stage2_hash_pin"),
+        (
+            "pinned_v4_fixed_point_hash",
+            "pinned_v4_fixed_point_hash_pin",
+        ),
         "bit_identical_check",
     );
 }
@@ -383,10 +386,10 @@ fn assert_compile_stage(
 fn assert_fixpt(
     expr: &SurfaceExpr,
     expected_left: &str,
-    expected_left_hash_digest: &str,
+    expected_left_hash: (&str, &str),
     expected_right: &str,
-    expected_right_hash_digest: &str,
-    expected_pinned_hash_digest: &str,
+    expected_right_hash: (&str, &str),
+    expected_pinned_hash: (&str, &str),
     expected_via: &str,
 ) {
     let fields = match expr {
@@ -398,40 +401,23 @@ fn assert_fixpt(
     };
 
     assert_eq!(var_name(record_field_expr(fields, "left")), expected_left);
-    assert_hash_pin_digest(
+    assert_hash_pin(
         record_field_expr(fields, "left_hash"),
-        expected_left_hash_digest,
+        expected_left_hash,
         "FixptStage1Stage2.left_hash",
     );
     assert_eq!(var_name(record_field_expr(fields, "right")), expected_right);
-    assert_hash_pin_digest(
+    assert_hash_pin(
         record_field_expr(fields, "right_hash"),
-        expected_right_hash_digest,
+        expected_right_hash,
         "FixptStage1Stage2.right_hash",
     );
-    assert_hash_pin_digest(
+    assert_hash_pin(
         record_field_expr(fields, "pinned_hash"),
-        expected_pinned_hash_digest,
+        expected_pinned_hash,
         "FixptStage1Stage2.pinned_hash",
     );
     assert_eq!(var_name(record_field_expr(fields, "via")), expected_via);
-}
-
-fn assert_hash_pin_digest(expr: &SurfaceExpr, expected_digest: &str, label: &str) {
-    let fields = match expr {
-        SurfaceExpr::VariantRecord { target, fields, .. } => {
-            assert_eq!(target, "BootstrapHashPin", "{label} target drifted");
-            fields
-        }
-        other => panic!("{label} must be a BootstrapHashPin record, got {other:?}"),
-    };
-
-    assert_eq!(
-        var_name(record_field_expr(fields, "digest")),
-        expected_digest,
-        "{label}.digest drifted"
-    );
-    var_name(record_field_expr(fields, "pin"));
 }
 
 fn assert_hash_pin(expr: &SurfaceExpr, expected: (&str, &str), label: &str) {
