@@ -2859,7 +2859,7 @@ fn emit_rust_empty_set_expr(set_type: Node, shared_types: Set<String>, source_in
         emit_rust_compile_error_expr(message: "empty_set element type unresolved")
       } else if !rust_btree_set_element_ord_eligible(elem_node: elem_node, source_indices: source_indices) {
         let carrier = render_node_type(n: elem_node, target: Rust, shared_types: shared_types, source_indices: source_indices)
-        emit_rust_compile_error_expr(message: concat("empty_set Rust carrier ", carrier, " is not Ord-eligible for BTreeSet"))
+        emit_rust_compile_error_expr(message: concat("empty_set Rust carrier ", carrier, " is not Ord-eligible as BTreeSet"))
       } else {
         let elem_str = rust_empty_set_element_type_str(set_type: set_type, shared_types: shared_types, source_indices: source_indices)
         if elem_str != "" {

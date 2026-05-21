@@ -1212,7 +1212,7 @@ fn rust_render_gated_set_type_node(n: Node, shared_types: Set<String>, source_in
         emit_error_expr(message: "Set element type unresolved", target: Rust)
       } else if !rust_btree_set_element_ord_eligible(elem_node: elem_node, source_indices: source_indices) {
         let carrier = render_node_type(n: elem_node, target: Rust, shared_types: shared_types, source_indices: source_indices)
-        emit_error_expr(message: concat("Set Rust carrier ", carrier, " is not Ord-eligible for BTreeSet"), target: Rust)
+        emit_error_expr(message: concat("Set Rust carrier ", carrier, " is not Ord-eligible as BTreeSet"), target: Rust)
       } else {
         let elem_str = render_node_type(n: elem_node, target: Rust, shared_types: shared_types, source_indices: source_indices)
         let base = emit_container(kind: "set", inner: elem_str, target: Rust)
