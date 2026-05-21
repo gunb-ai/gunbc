@@ -472,6 +472,10 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // ratchet until `compile_to_dag` covers `module … service …` authoring files the same
     // way as expression programs (see INVARIANTS SG-0 receipt row).
     "src/v3/compiler/tests/integration/ctrl_pr_digests_dag_smoke_test.rs",
+    // Dissolution-lens subsumption carrier: parse-level ratchet for
+    // `src/v4/lens/subsumption.dag`; retires when v4 TestClaim/generated
+    // coverage owns the same carrier and first-row projection.
+    "src/v3/compiler/tests/integration/dissolution_subsumption_carrier_test.rs",
     // E6-G1.a Option 3 — static `Lens<Int>` + `mini_report` mechanism demonstration
     // (Director #1853 brief; witness-flow + TESTING.md split + `include_str!` brief
     // receipts per #1857). SG-0 ratchet: new hand-authored integration test.
