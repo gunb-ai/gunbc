@@ -88,6 +88,7 @@ fn preservation_predicate_holds(
   predicate: PreservationPredicate,
 ) -> Bool {
   if predicate.preservation_rule == preservation_rule_constraint_satisfaction {
+    // Body: constraint_satisfaction_predicate.dag — scaffold:constraint-satisfaction-identity-mvp.
     constraint_satisfaction_preservation_holds(
       source_facts: source_facts,
       candidate: candidate,

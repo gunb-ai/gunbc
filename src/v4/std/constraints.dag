@@ -5,7 +5,7 @@
 //       CanonicalGroundingCandidateSet, CanonicalGroundingWitness, constraint_satisfaction_holds,
 //       canonical_grounding_candidates, solve_constraints.
 // Consumes: std find_witness, std diagnostic, std witness, std node.
-// Status: MVP-1 constraint_satisfaction predicate body + closed singleton candidate set for graph root.
+// Status: identity-MVP wiring — solve_constraints → find_witness + constraint predicate dispatch; candidate/predicate bodies are tracked 🟡 scaffolds until T-9 ground + T-25-tail land.
 
 
 module v4.std.constraints
@@ -102,6 +102,7 @@ fn canonical_grounding_candidate_set_closedness(root: Node) -> StructuralPropert
     evidence: root
   }
 }
+// 🟡 coproduct dissolution — scaffold:T-9-candidate-singleton-mvp · dissolve-on: richer ConstraintGraph carriers enumerate algebra inhabitants per node (ledger: scaffold:T-9-ground · TASKS.md T-9).
 fn canonical_grounding_candidates(
   policy: ConstraintSolvePolicy,
 ) -> Outcome<CanonicalGroundingCandidateSet> {

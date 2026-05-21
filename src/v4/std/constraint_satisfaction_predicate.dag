@@ -3,12 +3,14 @@
 // Anchor: design-v4-compiler-homomorphism.md M10; consumed by std/constraints + std/find_witness.
 // Owns: constraint_satisfaction_preservation_holds.
 // Consumes: std node.
+// Status: identity-MVP predicate body — well-formed + source/candidate/algebra equality only; not constraint-theoretic satisfaction yet.
 
 
 module v4.std.constraint_satisfaction_predicate
 
 
 import v4.std.node { Node, well_formed }
+// 🟡 coproduct dissolution — scaffold:constraint-satisfaction-identity-mvp · dissolve-on: T-9 ConstraintGraph algebra inhabitant enumeration + T-25-tail predicate prover replace identity equality (ledger: scaffold:T-9-ground · TASKS.md T-9 · T-25-tail).
 fn constraint_satisfaction_preservation_holds(
   source_facts: Node,
   candidate: Node,
