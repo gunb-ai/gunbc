@@ -2541,6 +2541,8 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
           let fb_pat = field_binding_pattern(n: fb)
           if is_string_lit_pattern(p: fb_pat) {
             concat(qualified, " { ref ", emit_ident(name: fb_name, target: Rust), ", .. }")
+          } else if field_needs_rc_ref(field_name: fb_name, rc_analysis: rc_analysis) {
+            concat(qualified, " { ref ", emit_ident(name: fb_name, target: Rust), ", .. }")
           } else {
             let inner_analysis = analyze_rc_pattern(pattern: fb_pat, scrut_type: scrut_type, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
             let pat_str = emit_pattern_rc_aware(pattern: fb_pat, rc_analysis: inner_analysis, shared_types: shared_types, scrut_type: "", source_indices: source_indices, emit_info: emit_info)
