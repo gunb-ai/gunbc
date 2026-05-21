@@ -1,6 +1,6 @@
 // src/v4/lens/subsumption.dag
 // Scope: dissolution-lens subsumption ordering carrier for root fixes that mechanically close leaf fixes.
-// Owns: DiffId, TestClaimId, ProducerStageId, SubsumptionVerification, DissolutionSubsumption, concept_home_rewrite_subsumption.
+// Owns: DiffId, TestClaimId, ProducerStageId, SubsumedFixes, ProducerStageDerivationPath, SubsumptionVerification, DissolutionSubsumption, concept_home_rewrite_subsumption.
 // Consumes: v4.std.collection, v4.std.node.
 // Status: scaffold; gated coproduct binding is on SubsumptionVerification.
 
@@ -32,28 +32,43 @@ type ProducerStageId {
 }
 
 
+type SubsumedFixes {
+  head: DiffId
+  tail: List<DiffId>
+}
+
+
+type ProducerStageDerivationPath {
+  head: ProducerStageId
+  tail: List<ProducerStageId>
+}
+
+
 // 🟡 coproduct dissolution — feature:lens-subsumption-mechanical-runtime; task:node://adhoc-0a13e0b0-dff; dissolve-on:node://adhoc-f3d84232-824 converts to 🟢 after MechanicalReverification rows land.
 type SubsumptionVerification
   = MechanicalReverification { test_claim: TestClaimId }
-  | ProducerStageDerivation { derivation_path: List<ProducerStageId> }
+  | ProducerStageDerivation { derivation_path: ProducerStageDerivationPath }
 
 
 type DissolutionSubsumption {
   root_fix: DiffId
-  subsumed_fixes: List<DiffId>
+  subsumed_fixes: SubsumedFixes
   verification: SubsumptionVerification
 }
 
 
 data concept_home_rewrite_subsumption: DissolutionSubsumption = {
   root_fix: DiffId { id: concept_home_rewrite_root_fix },
-  subsumed_fixes: [
-    DiffId { id: wrong_home_alias_leaf_fix },
-    DiffId { id: duplicate_home_leaf_fix }
-  ],
-  verification: ProducerStageDerivation {
-    derivation_path: [
-      ProducerStageId { id: concept_home_producer_stage }
+  subsumed_fixes: SubsumedFixes {
+    head: DiffId { id: wrong_home_alias_leaf_fix },
+    tail: [
+      DiffId { id: duplicate_home_leaf_fix }
     ]
+  },
+  verification: ProducerStageDerivation {
+    derivation_path: ProducerStageDerivationPath {
+      head: ProducerStageId { id: concept_home_producer_stage },
+      tail: []
+    }
   }
 }
