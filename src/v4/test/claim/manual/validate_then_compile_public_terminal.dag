@@ -116,7 +116,8 @@ fn claim_empty_lenses_matches_compile_core_outcome(
   actual: Outcome<Validated<CompileOutput>>
 ) -> Bool {
   match actual {
-    Rejected { diagnostics: _ } => true
+    Rejected { diagnostics: r } =>
+      r.head.reason != compile_lens_gate_rejected
     Accepted { value: v, diagnostics: _ } => match v.value {
       TranslateResult { source: _ } => true
       _ => false
@@ -148,7 +149,7 @@ data claim_validate_then_compile_module_compiles: TestClaim = TestClaim {
 
 data claim_empty_lenses_skips_gate: TestClaim = TestClaim {
   kind: Equals,
-  label: "manual/wave-5-a: empty required-lens list reaches compile-core (staging: infer may reject)",
+  label: "manual/wave-5-a: empty lens list does not compile_lens_gate_reject (infer/compile-core Rejected OK)",
   t19_anchor: T19ManualAnchorAbsent,
   input: claim_validate_then_compile_module,
   expected: Accepted {
