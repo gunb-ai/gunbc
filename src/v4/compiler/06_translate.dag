@@ -204,8 +204,8 @@ fn canonical_grounding_for_node(tree: InferredTree, node: Node) -> Outcome<Canon
         },
         diagnostics: None
       }
-    Violates { diagnostic: _ } =>
-      outcome_rejected(translate_canonical_grounding_not_realized_diagnostic(node: node))
+    Violates { diagnostic: d } =>
+      outcome_rejected(d)
   }
 }
 fn coerce_grounded_node(

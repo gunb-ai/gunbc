@@ -98,6 +98,18 @@ fn expand_candidate_set_entries(candidates: List<Node>) -> List<Node> {
 fn expanded_candidate_list(candidates: CandidateSet) -> List<Node> {
   expand_candidate_set_entries(candidates: candidates.candidates)
 }
+// Conj expansion is for target declared-inhabitants aggregates only — not constraint_satisfaction
+// (solve_constraints supplies the graph root as the sole canonical candidate).
+fn enumeration_candidate_list(
+  candidates: CandidateSet,
+  predicate: PreservationPredicate
+) -> List<Node> {
+  match predicate.preservation_rule {
+    preservation_rule_exact_structural_equality_zip_fold =>
+      expanded_candidate_list(candidates: candidates)
+    _ => candidates.candidates
+  }
+}
 fn preservation_predicate_holds(
   source_facts: Node,
   candidate: Node,
@@ -119,7 +131,7 @@ fn passing_candidate_count(
   candidates: CandidateSet,
   predicate: PreservationPredicate
 ) -> Int {
-  fold(expanded_candidate_list(candidates: candidates), init: 0, f: fn(acc, candidate) {
+  fold(enumeration_candidate_list(candidates: candidates, predicate: predicate), init: 0, f: fn(acc, candidate) {
     if preservation_predicate_holds(
       source_facts: source_facts,
       candidate: candidate,
@@ -136,7 +148,7 @@ fn only_passing_candidate(
   candidates: CandidateSet,
   predicate: PreservationPredicate
 ) -> Outcome<Node> {
-  match fold(expanded_candidate_list(candidates: candidates), init: NoPassingCandidate, f: fn(acc, candidate) {
+  match fold(enumeration_candidate_list(candidates: candidates, predicate: predicate), init: NoPassingCandidate, f: fn(acc, candidate) {
     if preservation_predicate_holds(
       source_facts: source_facts,
       candidate: candidate,
@@ -165,7 +177,7 @@ fn selected_candidate_count(
   predicate: PreservationPredicate,
   selection: Node
 ) -> Int {
-  fold(expanded_candidate_list(candidates: candidates), init: 0, f: fn(acc, candidate) {
+  fold(enumeration_candidate_list(candidates: candidates, predicate: predicate), init: 0, f: fn(acc, candidate) {
     if (candidate == selection) && preservation_predicate_holds(
       source_facts: source_facts,
       candidate: candidate,
@@ -275,6 +287,6 @@ fn verify_witness(
   ) && (witness.property == predicate.preservation_rule) && (witness.evidence == candidate) {
     Accepted { value: witness, diagnostics: None }
   } else {
-    outcome_rejected(find_witness_no_candidate_diagnostic(source_facts: source_facts))
+    outcome_rejected(find_witness_not_realized_diagnostic(source_facts: source_facts))
   }
 }
