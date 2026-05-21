@@ -1,21 +1,50 @@
 // src/v4/compiler/05_eval.dag
 // Scope: primary evaluation path over inferred tree/input subgraphs and TestClaim runner substrate.
-// Owns: Inputs, EvalContext, TestClaimTypedInput, TestClaimEvalSubject, TestClaimCacheKey, TestClaimCacheReceipt, Verdict, TestClaimRun, eval_node, run_test_claim, aggregate_verdicts.
-// Consumes: v4.compiler.infer, v4.std.node, v4.std.diagnostic, v4.std.verification.
-// Status: Wave-0 substrate; evaluator bodies remain structural until T-9 inferred-tree semantics.
+// Owns: Inputs, EvalContext, TestClaimTypedInput, TestClaimEvalSubject, TestClaimCacheKey, TestClaimCacheReceipt, Verdict, TestClaimRun, EvalFoldState, eval, eval_node, run_test_claim, aggregate_verdicts.
+// Consumes: v4.compiler.infer, v4.std.host, v4.std.node, v4.std.diagnostic, v4.std.verification.
+// Status: T-22 eval consumes HostModel interpretation algebra; TestClaim runner remains Node-shaped. Local control terminalization, host-value conformance, behavior dispatch, Outcome accumulation, and fold progress sentinels are staged below with explicit dissolution targets.
 // CompilesClaim: run_test_claim_assert compares actual to expected_value via outcome_node_eq (tighter than legacy AssertKind Compiles, which Pass'd on any Accepted).
 
 module v4.compiler.eval
 
 
 import v4.compiler.infer {
-  InferredTree
+  InferredFacts,
+  InferredTree,
+  inferred_facts_canonical_well_grounded,
+  inferred_facts_inhabitance_well_grounded,
+  inferred_facts_resolved_type_matches
 }
-import v4.std.collection { List, non_empty }
+import v4.std.collection { List, Map, non_empty }
+import v4.std.host {
+  HostBindingKey,
+  HostContinue,
+  HostEnvironment,
+  HostModel,
+  HostRaise,
+  HostReturn,
+  HostSuspend,
+  HostControlTransfer,
+  HostValue,
+  host_value_resolved_type
+}
 import v4.std.node {
+  Behavior,
+  Bind,
+  Branch,
+  ComputationNode,
+  Edge,
   Hash,
+  Loop,
+  Named,
   Node,
+  NodeFold,
+  Positional,
   Symbol,
+  Transform,
+  TypeNode,
+  Value,
+  fold_node,
   well_formed
 }
 import v4.std.diagnostic {
@@ -28,9 +57,13 @@ import v4.std.diagnostic {
   Unavailable,
   Accepted,
   None,
+  Rejected,
+  bind_outcome,
+  diagnostics_merge,
   diagnostics_singleton,
   outcome_node_eq,
-  outcome_rejected
+  outcome_rejected,
+  rejected_with_pending
 }
 import v4.std.verification {
   CompilesClaim,
@@ -40,9 +73,10 @@ import v4.std.verification {
   TestClaim,
   test_claim_input
 }
+import v4.std.witness { Holds, Violates, Witness }
 
 
-// RULING-1: needs-more-work — evaluator body remains structural until T-9.
+// RULING-1: pretty-much-done — eval input root remains arbitrary-node shaped for IRT-3; host interpretation lives in eval.
 type Inputs {
   root: Node
 }
@@ -103,6 +137,15 @@ type TestClaimRun<T> {
 }
 
 
+type EvalFoldState {
+  node: Node
+  processed_children: Int
+  structural: Outcome<Node>
+  child_values: Outcome<List<HostValue>>
+  value: Outcome<HostValue>
+}
+
+
 fn test_claim_cache_receipt<T>(
   subject: TestClaimEvalSubject<T>,
   claim_hash: Hash,
@@ -125,11 +168,430 @@ fn test_claim_cache_receipt<T>(
 data eval_rejected_invalid_node: Symbol = eval_rejected_invalid_node
 data eval_rejected_roundtrip_deferred: Symbol = eval_rejected_roundtrip_deferred
 data eval_empty_verdict_list: Symbol = eval_empty_verdict_list
+data eval_rejected_type_node: Symbol = eval_rejected_type_node
+// 🟡 gated — feature:T22-eval-branch-realization — bind node://adhoc-6a2e599a-cc2 — dissolve-on: HostBranchInterpreter chooses a realized successor Node and eval resumes through that chosen subgraph; forbidden: implicit success for branch nodes.
+data eval_rejected_branch_not_realized: Symbol = eval_rejected_branch_not_realized
+// 🟡 gated — feature:T22-eval-bind-realization — bind node://adhoc-6a2e599a-cc2 — dissolve-on: HostBindInterpreter extends HostEnvironment and eval resumes through the bound body; forbidden: implicit success for bind nodes.
+data eval_rejected_bind_not_realized: Symbol = eval_rejected_bind_not_realized
+data eval_rejected_pending_children: Symbol = eval_rejected_pending_children
+data eval_rejected_suspended_not_terminal: Symbol = eval_rejected_suspended_not_terminal
+data eval_rejected_host_binding_lookup_miss: Symbol = eval_rejected_host_binding_lookup_miss
+data eval_rejected_resolved_type_mismatch: Symbol = eval_rejected_resolved_type_mismatch
+data eval_rejected_inhabitance_mismatch: Symbol = eval_rejected_inhabitance_mismatch
+data eval_rejected_canonical_mismatch: Symbol = eval_rejected_canonical_mismatch
 fn eval_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
   Diagnostic {
     reason: reason,
     at: NodeLocus { node: node },
     correction: Unavailable { reason: AmbiguousIntent }
+  }
+}
+
+
+fn host_binding_lookup_miss(key: HostBindingKey) -> Witness<HostValue> {
+  Violates {
+    diagnostic: eval_diagnostic(
+      reason: eval_rejected_host_binding_lookup_miss,
+      node: key.declaration
+    )
+  }
+}
+
+
+fn empty_host_bindings() -> Map<HostBindingKey, HostValue> {
+  Map {
+    lookup: host_binding_lookup_miss
+  }
+}
+
+
+fn empty_host_environment() -> HostEnvironment {
+  HostEnvironment {
+    bindings: empty_host_bindings()
+  }
+}
+
+
+fn inferred_facts_witness_for_eval(tree: InferredTree, node: Node) -> Witness<InferredFacts> {
+  tree.facts.lookup(node)
+}
+
+
+fn inferred_facts_for_eval(tree: InferredTree, node: Node) -> Outcome<InferredFacts> {
+  match inferred_facts_witness_for_eval(tree: tree, node: node) {
+    Holds { value: facts } =>
+      match facts.descent {
+        Holds { value: _ } =>
+          Accepted { value: facts, diagnostics: None }
+        Violates { diagnostic: d } =>
+          Rejected { diagnostics: diagnostics_singleton(d: d) }
+      }
+    Violates { diagnostic: d } =>
+      Rejected { diagnostics: diagnostics_singleton(d: d) }
+  }
+}
+
+
+fn eval_structural_node_for_eval(tree: InferredTree, node: Node) -> Outcome<Node> {
+  bind_outcome(
+    o: inferred_facts_for_eval(tree: tree, node: node),
+    f: fn(_facts) {
+      Accepted { value: node, diagnostics: None }
+    }
+  )
+}
+
+
+// 🟡 gated — feature:T22-outcome-accumulation-policy — bind node://adhoc-6a2e599a-cc2 — dissolve-on: Outcome traverse/zip accumulation policy carries rejected-with-pending diagnostics merge; forbidden: local Rejected/Accepted ladders per eval accumulator.
+fn eval_absorb_structural_child(
+  acc: Outcome<Node>,
+  child: Outcome<Node>
+) -> Outcome<Node> {
+  match acc {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: n, diagnostics: ad } =>
+      match child {
+        Rejected { diagnostics: cr } =>
+          Rejected {
+            diagnostics: rejected_with_pending(pending: ad, rejected: cr)
+          }
+        Accepted { value: _, diagnostics: cd } =>
+          Accepted {
+            value: n,
+            diagnostics: diagnostics_merge(outer: ad, inner: cd)
+          }
+      }
+  }
+}
+
+
+// 🟡 gated — feature:T22-host-control-terminalization — bind node://adhoc-6a2e599a-cc2 — dissolve-on: HostControlSemantics exposes terminalization/disposition for HostControlTransfer; forbidden: each eval consumer locally deciding whether Continue/Return/Raise/Suspend is terminal.
+fn host_control_transfer_value(control: HostControlTransfer, node: Node) -> Outcome<HostValue> {
+  match control {
+    HostContinue { value: v } =>
+      Accepted { value: v, diagnostics: None }
+    HostReturn { value: v } =>
+      Accepted { value: v, diagnostics: None }
+    HostRaise { diagnostic: d } =>
+      Rejected { diagnostics: diagnostics_singleton(d: d) }
+    HostSuspend { continuation: frame } =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: eval_diagnostic(reason: eval_rejected_suspended_not_terminal, node: frame.current)
+        )
+      }
+  }
+}
+
+
+// 🟡 gated — feature:T22-eval-host-value-acceptance-witness — bind node://adhoc-6a2e599a-cc2 — dissolve-on: eval consumes a modeled acceptance witness/product tying HostValue resolved type, inhabitance, and canonical grounding to InferredFacts; forbidden: permanent Bool-ladder proof erasure.
+fn eval_accept_host_value_with_facts(
+  node: Node,
+  facts: InferredFacts,
+  value: HostValue
+) -> Outcome<HostValue> {
+  let candidate_type = host_value_resolved_type(value: value)
+  if !inferred_facts_resolved_type_matches(
+    facts: facts,
+    candidate_type: candidate_type
+  ) {
+    outcome_rejected(
+      d: eval_diagnostic(reason: eval_rejected_resolved_type_mismatch, node: node)
+    )
+  } else if !inferred_facts_inhabitance_well_grounded(facts: facts) {
+    outcome_rejected(
+      d: eval_diagnostic(reason: eval_rejected_inhabitance_mismatch, node: node)
+    )
+  } else if !inferred_facts_canonical_well_grounded(facts: facts) {
+    outcome_rejected(
+      d: eval_diagnostic(reason: eval_rejected_canonical_mismatch, node: node)
+    )
+  } else {
+    Accepted { value: value, diagnostics: None }
+  }
+}
+
+
+// 🟡 gated — feature:T22-host-behavior-interpreter-dispatch — bind node://adhoc-6a2e599a-cc2 — dissolve-on: HostInterpretationAlgebra exposes a canonical Behavior-indexed interpreter/disposition so eval builds one input and consumes the host-owned behavior algebra; forbidden: downstream consumers owning divergent Behavior match tables.
+fn eval_computation_node(
+  behavior: Behavior,
+  node: Node,
+  args: List<HostValue>,
+  facts: InferredFacts,
+  host: HostModel,
+  environment: HostEnvironment
+) -> Outcome<HostValue> {
+  bind_outcome(
+    o: match behavior {
+      Value =>
+        host.interpretation.value.allocate_literal(node, environment)
+      Transform =>
+        host.interpretation.transform.call_primitive(node, args, environment)
+      Branch =>
+        outcome_rejected(
+          d: eval_diagnostic(reason: eval_rejected_branch_not_realized, node: node)
+        )
+      Loop =>
+        bind_outcome(
+          o: host.interpretation.loop.step_loop(node, environment),
+          f: fn(control) {
+            host_control_transfer_value(control: control, node: node)
+          }
+        )
+      Bind =>
+        outcome_rejected(
+          d: eval_diagnostic(reason: eval_rejected_bind_not_realized, node: node)
+        )
+    },
+    f: fn(value) {
+      eval_accept_host_value_with_facts(node: node, facts: facts, value: value)
+    }
+  )
+}
+
+
+fn eval_interpret_node(
+  node: Node,
+  args: List<HostValue>,
+  tree: InferredTree,
+  host: HostModel,
+  environment: HostEnvironment
+) -> Outcome<HostValue> {
+  bind_outcome(
+    o: inferred_facts_for_eval(tree: tree, node: node),
+    f: fn(facts) {
+      match node.kind {
+        ComputationNode { behavior: b } =>
+          eval_computation_node(
+            behavior: b,
+            node: node,
+            args: args,
+            facts: facts,
+            host: host,
+            environment: environment
+          )
+        TypeNode { connective: _ } =>
+          outcome_rejected(
+            d: eval_diagnostic(reason: eval_rejected_type_node, node: node)
+          )
+      }
+    }
+  )
+}
+
+
+fn empty_host_values() -> List<HostValue> {
+  []
+}
+
+
+// 🟡 gated — feature:T22-eval-runtime-edge-role — bind node://adhoc-6a2e599a-cc2 — dissolve-on: std/node exposes canonical EdgeLabel runtime-argument role query/accessor; forbidden: making Named structural edges into host runtime arguments.
+fn eval_edge_is_runtime_argument(edge: Edge) -> Bool {
+  match edge.label {
+    Positional => true
+    Named { name: _ } => false
+  }
+}
+
+
+fn eval_fold_state_value(state: EvalFoldState) -> Outcome<HostValue> {
+  state.value
+}
+
+
+// 🟡 gated — feature:T22-outcome-accumulation-policy — bind node://adhoc-6a2e599a-cc2 — dissolve-on: Outcome traverse/zip accumulation policy carries rejected-with-pending diagnostics merge; forbidden: local Rejected/Accepted ladders per eval accumulator.
+fn eval_absorb_child_diagnostics(
+  acc: Outcome<List<HostValue>>,
+  child: Outcome<Node>
+) -> Outcome<List<HostValue>> {
+  match acc {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: values, diagnostics: ad } =>
+      match child {
+        Rejected { diagnostics: cr } =>
+          Rejected {
+            diagnostics: rejected_with_pending(pending: ad, rejected: cr)
+          }
+        Accepted { value: _, diagnostics: cd } =>
+          Accepted {
+            value: values,
+            diagnostics: diagnostics_merge(outer: ad, inner: cd)
+          }
+      }
+  }
+}
+
+
+// 🟡 gated — feature:T22-outcome-accumulation-policy — bind node://adhoc-6a2e599a-cc2 — dissolve-on: Outcome traverse/zip accumulation policy carries rejected-with-pending diagnostics merge and list append combine; forbidden: local Rejected/Accepted ladders per eval accumulator.
+fn eval_append_child_value(
+  acc: Outcome<List<HostValue>>,
+  child: Outcome<HostValue>
+) -> Outcome<List<HostValue>> {
+  match acc {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: values, diagnostics: ad } =>
+      match child {
+        Rejected { diagnostics: cr } =>
+          Rejected {
+            diagnostics: rejected_with_pending(pending: ad, rejected: cr)
+          }
+        Accepted { value: child_value, diagnostics: cd } =>
+          Accepted {
+            value: list_push(values, child_value),
+            diagnostics: diagnostics_merge(outer: ad, inner: cd)
+          }
+      }
+  }
+}
+
+
+// 🟡 gated — feature:T22-eval-node-progress-carrier — bind node://adhoc-6a2e599a-cc2 — dissolve-on: EvalFoldState carries an explicit progress carrier such as AwaitingChildren/ReadyToInterpret/Interpreted; forbidden: treating an internal not-ready state as a permanent diagnostic authority.
+fn eval_pending_children(node: Node) -> Outcome<HostValue> {
+  outcome_rejected(
+    d: eval_diagnostic(reason: eval_rejected_pending_children, node: node)
+  )
+}
+
+
+fn eval_fold_init(
+  node: Node,
+  tree: InferredTree,
+  host: HostModel,
+  environment: HostEnvironment
+) -> EvalFoldState {
+  EvalFoldState {
+    node: node,
+    processed_children: 0,
+    structural: eval_structural_node_for_eval(tree: tree, node: node),
+    child_values: Accepted { value: empty_host_values(), diagnostics: None },
+    value: if count(node.children) == 0 {
+      eval_interpret_node(
+        node: node,
+        args: empty_host_values(),
+        tree: tree,
+        host: host,
+        environment: environment
+      )
+    } else {
+      eval_pending_children(node: node)
+    }
+  }
+}
+
+
+fn eval_maybe_complete_node(
+  node: Node,
+  processed_children: Int,
+  args: List<HostValue>,
+  tree: InferredTree,
+  host: HostModel,
+  environment: HostEnvironment,
+  pending: Outcome<HostValue>
+) -> Outcome<HostValue> {
+  if processed_children == count(node.children) {
+    eval_interpret_node(
+      node: node,
+      args: args,
+      tree: tree,
+      host: host,
+      environment: environment
+    )
+  } else {
+    pending
+  }
+}
+
+
+fn eval_fold_step(
+  acc: EvalFoldState,
+  edge: Edge,
+  child: EvalFoldState,
+  tree: InferredTree,
+  host: HostModel,
+  environment: HostEnvironment
+) -> EvalFoldState {
+  let structural = eval_absorb_structural_child(acc: acc.structural, child: child.structural)
+  let next_args = if eval_edge_is_runtime_argument(edge: edge) {
+    eval_append_child_value(acc: acc.child_values, child: child.value)
+  } else {
+    eval_absorb_child_diagnostics(acc: acc.child_values, child: child.structural)
+  }
+  let processed_children = acc.processed_children + 1
+  EvalFoldState {
+    node: acc.node,
+    processed_children: processed_children,
+    structural: structural,
+    child_values: next_args,
+    value: bind_outcome(
+      o: structural,
+      f: fn(_) {
+        bind_outcome(
+          o: next_args,
+          f: fn(args) {
+            eval_maybe_complete_node(
+              node: acc.node,
+              processed_children: processed_children,
+              args: args,
+              tree: tree,
+              host: host,
+              environment: environment,
+              pending: acc.value
+            )
+          }
+        )
+      }
+    )
+  }
+}
+
+
+fn eval_host_node(
+  node: Node,
+  tree: InferredTree,
+  host: HostModel,
+  environment: HostEnvironment
+) -> Outcome<HostValue> {
+  let folded = fold_node(
+    n: node,
+    algebra: NodeFold {
+      init: fn(n0) {
+        eval_fold_init(
+          node: n0,
+          tree: tree,
+          host: host,
+          environment: environment
+        )
+      },
+      step: fn(acc, e, child) {
+        eval_fold_step(
+          acc: acc,
+          edge: e,
+          child: child,
+          tree: tree,
+          host: host,
+          environment: environment
+        )
+      }
+    }
+  )
+  eval_fold_state_value(state: folded)
+}
+
+
+fn eval(tree: InferredTree, host: HostModel, inputs: Inputs) -> Outcome<HostValue> {
+  if well_formed(n: tree.root) {
+    if well_formed(n: inputs.root) {
+      eval_host_node(
+        node: inputs.root,
+        tree: tree,
+        host: host,
+        environment: empty_host_environment()
+      )
+    } else {
+      Rejected { diagnostics: diagnostics_singleton(d: eval_diagnostic(reason: eval_rejected_invalid_node, node: inputs.root)) }
+    }
+  } else {
+    Rejected { diagnostics: diagnostics_singleton(d: eval_diagnostic(reason: eval_rejected_invalid_node, node: tree.root)) }
   }
 }
 
