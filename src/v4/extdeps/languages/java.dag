@@ -90,7 +90,6 @@ type JavaScalar
   = IntScalar { kind: JavaIntKind, width: JavaIntWidth }
   | FloatScalar { width: JavaFloatWidth }
   | BoolScalar
-  | CharScalar
   | VoidScalar
 
 type JavaIntegerPrimitiveFacts {
@@ -137,6 +136,7 @@ type JavaLanguageModel {
 
 // T-11 java grammar relation row: fixed terminals and bound terminals share
 // the Java grammar production instead of an operator string template.
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type JavaConcreteSyntaxToken
   = JavaFixedToken { token_class: Symbol }
   | JavaBoundToken { token_class: Symbol, binding: Symbol }
