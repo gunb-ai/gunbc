@@ -18,10 +18,6 @@ data affected_set_dimension_receipt_leaf_fix: Symbol = affected_set_dimension_re
 data affected_set_propagation_receipt_leaf_fix: Symbol = affected_set_propagation_receipt_leaf_fix
 data affected_set_frontier_receipt_leaf_fix: Symbol = affected_set_frontier_receipt_leaf_fix
 data affected_set_irt1_mechanical_reverification_claim: Symbol = affected_set_irt1_mechanical_reverification_claim
-data concept_home_rewrite_root_fix: Symbol = concept_home_rewrite_root_fix
-data wrong_home_alias_leaf_fix: Symbol = wrong_home_alias_leaf_fix
-data duplicate_home_leaf_fix: Symbol = duplicate_home_leaf_fix
-data concept_home_producer_stage: Symbol = concept_home_producer_stage
 
 
 type DiffId {
@@ -87,27 +83,5 @@ data affected_set_irt1_subsumption: DissolutionSubsumption = {
   subsumed_fixes: affected_set_irt1_subsumed_fixes(),
   verification: MechanicalReverification {
     test_claim: TestClaimId { id: affected_set_irt1_mechanical_reverification_claim }
-  }
-}
-
-
-data concept_home_subsumed_fix_list: List<DiffId> = [
-  DiffId { id: wrong_home_alias_leaf_fix },
-  DiffId { id: duplicate_home_leaf_fix }
-]
-
-
-fn concept_home_subsumed_fixes() -> Set<DiffId> {
-  diff_id_set_from_list(fixes: concept_home_subsumed_fix_list)
-}
-
-
-data concept_home_rewrite_subsumption: DissolutionSubsumption = {
-  root_fix: DiffId { id: concept_home_rewrite_root_fix },
-  subsumed_fixes: concept_home_subsumed_fixes(),
-  verification: ProducerStageDerivation {
-    derivation_path: [
-      ProducerStageId { id: concept_home_producer_stage }
-    ]
   }
 }
