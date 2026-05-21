@@ -1,10 +1,11 @@
 // src/v4/extdeps/languages/typescript.dag
 // Scope: TypeScript 5.9 + ECMA-262 ES2025 numeric primitive fact-bundles and ModelCore wave-1.
-// Owns: TsEcma262PrimitiveOperationSemantics, TsNumberPrimitiveFacts, TsBigIntPrimitiveFacts, TsEcma262NumericPrimitiveFactsUnion, TsLanguageModel, ts_*_facts, ts_*_inhabitant_node, ts_declared_inhabitants_root, ts_wave1_* ModelCore, ts_bool_grounding.
+// Owns: TsEcma262PrimitiveOperationSemantics, TsNumberPrimitiveFacts, TsBigIntPrimitiveFacts, TsEcma262NumericPrimitiveFactsUnion, TsLanguageModel, ts_language_model_surface_id, ts_std_projection_float64, ts_std_projection_bigint, ts_surface_spelling_number, ts_surface_spelling_bigint, ts_ieee754_binary64, ts_repr_bigint_exact_unbounded, ts_inhabitant_number, ts_inhabitant_bigint, ts_inhabitant_field_number, ts_inhabitant_field_bigint, ts_inhabitant_field_atom, ts_inhabitant_field_facts, ts_facts_field_surface_spelling, ts_facts_field_arithmetic_semantics, ts_facts_field_bitwise_semantics, ts_facts_field_operation_semantics, ts_facts_field_width, ts_facts_field_ieee754_binary, ts_facts_field_std_projection, ts_facts_field_encoding, ts_tag_bits64, ts_tag_number_ieee754_binary64, ts_tag_number_bitwise_int32_uint32, ts_tag_bigint_exact_unbounded, ts_facts_number, ts_facts_bigint, ts_numeric_facts_catalog, ts_bool_grounding, ts_inhabitant_atom, ts_named_edge, ts_operation_semantics_node, ts_number_facts_node, ts_bigint_facts_node, ts_number_inhabitant_node, ts_bigint_inhabitant_node, ts_inhabitant_number_node, ts_inhabitant_bigint_node, ts_declared_inhabitants_root, ts_wave1_target_model, ts_list_snoc_item, ts_catalog_surface_symbol_step, ts_catalog_surface_symbol, ts_language_model_canonical_symbols, ts_primitive_axis_binding, ts_primitive_bundle_from_number_facts, ts_primitive_bundle_from_bigint_facts, ts_primitive_bundles_from_catalog_step, ts_wave1_primitive_fact_bundles, ts_model_core_wave1, ts_language_model_wave1
 // Consumes: v4.std.collection, v4.std.node, v4.std.logic, v4.std.algebra, v4.std.model_core, v4.std.target_model.
 // Status: T-4 typescript slice — ECMA `number` (IEEE-754 binary64) + `bigint` (exact unbounded ℤ) fact-bundles; `core: ModelCore` primitives from `ts_numeric_facts_catalog` via fold; canonical_symbols = catalog surface spellings; bool canonical-B decl-ref — 🟡 E-6(b) staging; wave-1 lex/grammar deferred.
 // Anchor: https://www.typescriptlang.org/docs/handbook/2/everyday-types.html — ECMA-262 https://tc39.es/ecma262/2025/multipage/
 // Ledger: CP-3229-GREEN-TERMINAL.
+// 🟡
 
 module v4.extdeps.languages.typescript
 
@@ -38,6 +39,7 @@ type TsEcma262PrimitiveOperationSemantics
   | TsNumberBitwiseInt32Uint32Semantics
   | TsBigIntExactUnboundedSemantics
 
+// 🟢 grounded.
 type TsNumberPrimitiveFacts {
   surface_spelling: Symbol
   arithmetic_semantics: TsEcma262PrimitiveOperationSemantics
@@ -46,6 +48,7 @@ type TsNumberPrimitiveFacts {
   std_projection: Symbol
 }
 
+// 🟢 grounded.
 type TsBigIntPrimitiveFacts {
   surface_spelling: Symbol
   operation_semantics: TsEcma262PrimitiveOperationSemantics
@@ -53,11 +56,12 @@ type TsBigIntPrimitiveFacts {
   encoding: Symbol
 }
 
-// 🟢 coproduct dissolution — catalog row tags number vs bigint fact carriers.
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type TsEcma262NumericPrimitiveFactsUnion
   = TsNumericFactsNumber { facts: TsNumberPrimitiveFacts }
   | TsNumericFactsBigInt { facts: TsBigIntPrimitiveFacts }
 
+// 🟢 grounded.
 type TsLanguageModel {
   language_identity: Symbol
   canonical_symbols: Set<Symbol>
@@ -66,7 +70,6 @@ type TsLanguageModel {
 
 data ts_language_model_surface_id: Symbol = ts_language_model_surface_id
 
-// M9 coincidence keys (rust.dag wave-1 pattern): number → v4.std.float.Float64, bigint → v4.std.integer.Int.
 data ts_std_projection_float64: Symbol = ts_std_projection_float64
 data ts_std_projection_bigint: Symbol = ts_std_projection_bigint
 
@@ -114,13 +117,11 @@ data ts_facts_bigint: TsBigIntPrimitiveFacts = TsBigIntPrimitiveFacts {
   encoding: ts_repr_bigint_exact_unbounded,
 }
 
-// Sole numeric primitive-fact list authority — ModelCore.primitives derives via fold.
 data ts_numeric_facts_catalog: List<TsEcma262NumericPrimitiveFactsUnion> = [
   TsNumericFactsNumber { facts: ts_facts_number },
   TsNumericFactsBigInt { facts: ts_facts_bigint }
 ]
 
-// 🟡 canonical-B decl-ref · E-6(b) bounded-exception · scaffold feature:canonical-b-grounding-consumer · dissolve-on: B1-CANON+zip-fold consume (ledger: B1·T-9/C1 · grounding-worked-examples.md §0)
 data ts_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
 
 fn ts_inhabitant_atom(id: Symbol) -> Node {
@@ -245,8 +246,6 @@ fn ts_declared_inhabitants_root() -> Node {
   }
 }
 
-// Declared-inhabitant Conj for `target_model_edge_declared_inhabitants` (rust.dag ~838–1100).
-// Not ModelCore.inhabitance (algebra witness rows); wave-1 binds only this target_model edge.
 fn ts_wave1_target_model() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
