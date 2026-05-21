@@ -943,6 +943,43 @@ fn dag_artifact_module_imports_not_serialized_as_params() {
     );
 }
 
+#[test]
+fn dag_artifact_callable_params_preserved() {
+    let source = "module params_test\n\nfn f(x: Int, label: String) -> Int { x }\n";
+    let result = compile_dag_named("params_test.dag", source, RenderTarget::Dag);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "dag-artifact.json");
+    let artifact: Value =
+        serde_json::from_str(&content).expect("dag artifact should be valid JSON");
+    let nodes = artifact
+        .get("nodes")
+        .and_then(Value::as_object)
+        .expect("dag artifact should have a nodes object");
+    let fn_record = nodes.values().find(|v| {
+        v.get("name")
+            .and_then(Value::as_str)
+            .is_some_and(|n| n == "f")
+    });
+    let fn_record = fn_record.expect("callable node record for f should exist in nodes table");
+    let params = fn_record
+        .get("params")
+        .and_then(Value::as_array)
+        .expect("callable record should have params array");
+    assert_eq!(
+        params.len(),
+        2,
+        "callable params must survive DAG serialization (not cleared by import heuristic)"
+    );
+    let names: Vec<&str> = params
+        .iter()
+        .filter_map(|p| p.get("name").and_then(Value::as_str))
+        .collect();
+    assert!(
+        names.contains(&"x") && names.contains(&"label"),
+        "serialized params should include callable argument names, got {names:?}"
+    );
+}
+
 // ── Multi-module tests ──────────────────────────────────────────────────
 
 #[test]
