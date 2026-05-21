@@ -730,8 +730,8 @@ fn infer_tier2b_builtin_with_kernel_diags(func_name: String, typed_args: List<No
         }
       None => Tier2bBt { bt: resolve_builtin_call_type(name: func_name), kernel_diags: [] }
     }
-  } else if func_name == "set_insert" || func_name == "set_union" {
-    let operand_elem = if func_name == "set_insert" {
+  } else if func_name == "set_insert" || func_name == "set_union" || func_name == "set_contains" {
+    let operand_elem = if func_name == "set_insert" || func_name == "set_contains" {
       match typed_args |> skip(1) |> first {
         Some { value: insert_arg } =>
           match arg_value(n: insert_arg).inferred {
@@ -791,30 +791,38 @@ fn infer_tier2b_builtin_with_kernel_diags(func_name: String, typed_args: List<No
     let mismatch_diags = if elem_mismatch {
       [inference_error(message: concat(func_name, " incompatible set element types"), span: span, module_name: scope.module_name)]
     } else { [] }
-    let result_bt = match typed_args |> first {
-      Some { value: receiver_arg } =>
-        if recv_is_set && !elem_mismatch && !union_other_bad {
-          match arg_value(n: receiver_arg).inferred {
-            Some { value: Resolved { node: receiver_type } } =>
-              match recv_elem {
-                Some { value: _ } => receiver_type
-                None =>
-                  match operand_elem {
-                    Some { value: element } => set_kernel_ty_from_element(element: element).ty
-                    None => resolve_builtin_call_type(name: func_name)
-                  }
-              }
-            _ => resolve_builtin_call_type(name: func_name)
+    let result_bt = if func_name == "set_contains" {
+      if recv_is_set && !elem_mismatch { bool_type } else { resolve_builtin_call_type(name: func_name) }
+    } else {
+      match typed_args |> first {
+        Some { value: receiver_arg } =>
+          if recv_is_set && !elem_mismatch && !union_other_bad {
+            match arg_value(n: receiver_arg).inferred {
+              Some { value: Resolved { node: receiver_type } } =>
+                match recv_elem {
+                  Some { value: _ } => receiver_type
+                  None =>
+                    match operand_elem {
+                      Some { value: element } => set_kernel_ty_from_element(element: element).ty
+                      None => resolve_builtin_call_type(name: func_name)
+                    }
+                }
+              _ => resolve_builtin_call_type(name: func_name)
+            }
+          } else {
+            resolve_builtin_call_type(name: func_name)
           }
-        } else {
-          resolve_builtin_call_type(name: func_name)
-        }
-      None => resolve_builtin_call_type(name: func_name)
+        None => resolve_builtin_call_type(name: func_name)
+      }
     }
-    let build_diags = match operand_elem {
-      Some { value: element } =>
-        if recv_is_set && !elem_mismatch && !union_other_bad { set_kernel_ty_from_element(element: element).miss_diags } else { [] }
-      None => []
+    let build_diags = if func_name == "set_contains" {
+      []
+    } else {
+      match operand_elem {
+        Some { value: element } =>
+          if recv_is_set && !elem_mismatch && !union_other_bad { set_kernel_ty_from_element(element: element).miss_diags } else { [] }
+        None => []
+      }
     }
     Tier2bBt { bt: result_bt, kernel_diags: concat(wrong_receiver_diags, concat(wrong_union_other_diags, concat(mismatch_diags, build_diags))) }
   } else {
