@@ -146,7 +146,7 @@ core_node     = ingest_text(source_text,     // shim — composes parse + normal
                             input_lang)
 target_source = translate(core_node,         // pure data-in/data-out
                           rust_lang)
-target_text   = unwrap(result)               // TargetSource is just bytes
+target_text   = unwrap(target_source)        // TargetSource is just bytes
 file_write(out_path, target_text)            // effect against extdeps/file_system.dag
 ```
 
@@ -818,7 +818,7 @@ Note: `apply_diff` / `subterm_at` / `apply_lens` / `affected_set` are **derived 
 | **`Diff`** *(carrier type)* | An ordered sequential rewrite program: `Diff { edits: List<Edit> }`. Sequential composition, NOT parallel. | `src/v4/std/node.dag` |
 | **`apply_diff(root, Diff) → Outcome<Node>`** *(derived combinator)* | `sequence_outcome(diff.edits, fn(edit, candidate) -> fold_node(candidate, substitute_at(edit.at, edit.replacement)))` — sequential Outcome-bind-fold over the Diff's ordered Edits list. Each Edit's Path resolves against the **intermediate** candidate (post-prior-Edit state), NOT the original root; fail-closed all-or-nothing if any Path doesn't resolve in the current candidate. Sequential semantics required per read/edit pipeline doc. | `src/v4/lens/application.dag` (scaffold; T-23) |
 | **`subterm_at(root, Path) → Outcome<Node>`** *(derived combinator)* | `fold_node` instance — inverse of substitution; fetch the Node at a Path. | `src/v4/lens/application.dag` |
-| **`apply_lens(lens, scope, mode) → Witness<finding> \| Outcome<()>`** *(derived combinator)* | `fold_node` with the lens's algebra; combinator owns `StageDiagnosticPolicy`. Introspect or Enforce. `scope: SectionRef = DeclarationScope \| NodeScope`. | `src/v4/lens/application.dag` |
+| **`read_lens(lens, node) → Reading`** *(derived combinator target)* | `fold_node` with the lens's algebra over any `Node`. The reading is data. Caller policy may inspect it and decide whether to continue; that policy is not part of the lens read. | Target replacement for `src/v4/lens/application.dag`'s current `apply_lens` gate surface. |
 | **`affected_set(dag, Diff) → Witness<ReExecFrontier>`** *(derived combinator + specialization)* | `fold_node` over the dependency graph using the change-propagation algebra. Lens-frontier specialization of the general `AffectedSet` (per Ratified Q6 + Pass B unification — T-21 is a specialization, not a parallel primitive). | `src/v4/lens/affected_set.dag` (T-21) |
 
 ### The seven-step read→edit pipeline
@@ -826,13 +826,11 @@ Note: `apply_diff` / `subterm_at` / `apply_lens` / `affected_set` are **derived 
 Per [`docs/design-read-edit-pipeline.md`](design-read-edit-pipeline.md) § 4, the agent loop is:
 
 ```
-1. Read       →  apply_lens(lens, scope_in(dag, ref), Introspect)
+1. Read       →  read_lens(lens, node)
 2. Diagnose   →  reasoning over the facts (LLM or human)
 3. Propose    →  produce Diff
 4. Candidate  →  candidate_dag = apply_diff(dag, Diff)   # uncommitted candidate
-5. Gate       →  affected_set(dag, Diff).frontier.for_each(ref =>
-                   apply_lens(_, scope_in(candidate_dag, ref), Enforce)
-                 )                                       # gates against CANDIDATE
+5. Policy     →  caller/project policy evaluates readings over candidate nodes
 6. Commit     →  dag := candidate_dag                    # only if all gates pass
 7. Re-emit    →  emit per target language                # files are a downstream effect
 ```
@@ -1116,7 +1114,7 @@ Every failure carries source position. No silent drops. No partial outputs.
 - `src/v4/std/verification.dag` — `TestClaim` substrate (eval's downstream consumer).
 - `src/v4/extdeps/languages/dag.dag` + `rust.dag` + `python.dag` + `go.dag` + `cpp.dag` + `typescript.dag` — Wave-1 LanguageModels with Practice-8 fact-bundles.
 - `src/v4/compiler/01_tokenize.dag`, `02_parse.dag`, `03_normalize.dag`, `03_resolve.dag` — pipeline scaffolds; T-8 implementation in flight (consolidated as PR #3436).
-- `src/v4/compiler/04_infer.dag`, `05_emit.dag`, `05_eval.dag`, `00_compile.dag` — scaffolds with mixed reconciliation state — see "Scaffold-vs-design audit" below. `00_compile.dag` now carries the ratified core signature + public `validate_then_compile`; `04_infer.dag` no longer imports a specific lens; stage bodies remain scaffolded / partial.
+- `src/v4/compiler/04_infer.dag`, `05_emit.dag`, `05_eval.dag`, `00_compile.dag` — scaffolds with mixed reconciliation state — see "Scaffold-vs-design audit" below. `00_compile.dag` currently carries the now-superseded `validate_then_compile` / `Validated<T>` gate and `CompileMode`; `04_infer.dag` no longer imports a specific lens; stage bodies remain scaffolded / partial.
 - `src/v4/std/artifact.dag` — narrow artifact identity substrate (`ArtifactKind`, `Artifact`, `NodeArtifactProvenance`); not yet the full P8 regeneration substrate.
 - `src/v4/lens/application.dag` — `apply_lens` + `apply_diff` operations (scaffold; T-23).
 - `src/v4/lens/affected_set.dag` — incremental-rebuild + lens-frontier primitive (T-21).
@@ -1131,11 +1129,16 @@ The compiler scaffolds in `src/v4/compiler/` were authored across several ratifi
 
 | Scaffold | Current tree state | This doc's ratified contract | Status / migration |
 |---|---|---|---|
-| `00_compile.dag` | `compile(source: CoreNode, input_lang: LanguageModel, mode: CompileMode) -> Outcome<CompileOutput>` plus public `validate_then_compile(source, input_lang, lenses, mode) -> Outcome<Validated<CompileOutput>>`. Legacy `Source = String` survives only for `compile_ingest_staging`. | `compile(source: CoreNode, input_lang: LanguageModel, mode: CompileMode) -> Outcome<Output>` where `CompileMode = TranslateTo(target_lang) \| Eval(host_interp)`; public terminal is `Validated<Output>` via lens gate. | **Core reconciled.** Remaining legacy `Source` staging is outside compile-core; dissolve when `ingest_text` lands as a peripheral shim. |
+| `00_compile.dag` `validate_then_compile` | `validate_then_compile(source, input_lang, lenses, mode) -> Outcome<Validated<CompileOutput>>`; manual TestClaims assert empty-lens bypass and rejecting-lens blocks. | No type-enforced lens-gated public terminal. Lens readings are data; project policy gates outside compile. | **Conflict.** Retire `Validated<T>`, `LensGateWitness`, and built-in gate semantics in a follow-up source reshape. |
+| `00_compile.dag` `CompileMode` | `CompileMode = TranslateTo { target } | Eval { host_interp }`, passed to `compile` and `validate_then_compile`. | Separate `translate(node, target)`, `eval(node, host)`, and artifact/interface projection functions. No public global mode enum. | **Conflict.** Split public surfaces first; retain internal staging only until callers migrate. |
+| `00_compile.dag` legacy ingest | `Source = String` survives only for `compile_ingest_staging`. | Text is a peripheral `ingest_text` shim producing `Node`; compile-family operations consume `Node`. | **Staged.** Dissolve when `ingest_text` lands as a peripheral shim. |
 | `04_infer.dag` | No `v4.lens.*` import. `InferredFacts` carries `resolved_type`, `inhabits`, `descent`, and `canonical`. | No lens import in compiler core (P3 commitment 4). Cost and other dimensions are lens outputs over `InferredTree`, not infer facts. | **Lens-import violation resolved.** Keep this invariant: compiler core must not name a specific lens. |
 | `04_infer.dag` | `InferredFacts.canonical` carries a `CanonicalGroundingWitness`; the full P6 semantic dependency graph is not yet present on `InferredTree`. | Must produce *exactly one* canonical grounding per Node + the full P6 semantic dependency graph (`BindsTo`, `TypeDependsOn`, `DataDependsOn`, `EffectDependsOn`, `ResourceDependsOn`, `ModuleDependsOn`) | Canonical witness carrier is staged; finish producer semantics and add the P6 dependency graph facts. Surface ambiguity as a diagnostic in ground; translate never receives ambiguous source. |
 | `05_emit.dag` | `emit = serialize_target ∘ translate`; `serialize_source_for_emitted` is a fail-closed equality/stub pending inverse grammar walk. | Translate by exact coercion fold, then serialize via target grammar. P7 `LawfulRewriteWitness` is the future extension point for structure-changing lowerings. | **Staged, shape aligned.** Replace the emitted-tree equality stub with grammar-as-bidirectional-data serialization when C5 inverse grammar walk lands. |
 | `05_eval.dag` | Standalone "primary execution path" with TestClaim runner | `eval(host_model)` — structurally `translate-to-host` per P2; differs from translate only in the terminal action (execute, not serialize) | Share the homomorphism mechanic with translate. Eval-specific machinery is only the host-interpretation algebra + the terminal `execute` action. |
+| `lens/application.dag` | `apply_lens(lens, SectionRef, Introspect/Enforce)` is framed as the only advisory-to-fail-closed bridge; `SectionRef = DeclarationScope | NodeScope`. | Lens read should be `Node -> Reading`; caller chooses policy. No special subgraph/scope carrier for whole-vs-part. | **Conflict.** Collapse scope to the `Node` argument and move enforcement to caller policy composition. |
+| T-12/T-13 lens family | Cost/complexity headers already say `Node -> Witness<...>`; effect/parallelism/idempotency implementations currently take `InferredTree` plus dependency lists in helper functions. | Lens API takes a `Node` and returns a typed reading. Required inferred/dependency facts should be reachable through the node's carried facts or explicit reading context, not a separate gate shape. | **Mixed.** Preserve Node-read direction; rename/reshape `Witness`-as-gate framing into readings where it is only reporting. |
+| `affected_set.dag` / TASKS prose | Several carriers and comments name changed "subgraphs." | A changed region is represented by a `Node` frontier; no `Subgraph` substrate type. | **Terminology/audit follow-up.** Avoid introducing a `Subgraph` carrier; existing names are local frontier vocabulary until reshaped. |
 | `std/artifact.dag` | Declares `ArtifactKind`, `Artifact`, and `NodeArtifactProvenance`. | Artifact identity exists as a narrow substrate; P8 regeneration still needs unified `Projection` / general `AffectedSet` / `RecomputePlan`. | **Declared narrow, not complete.** Do not claim full regeneration substrate until the unified cluster lands. |
 
 **This is not a STOP on T-9 / T-10 / T-22 implementation** — workers implementing those tasks should land the design-ratified contract, not preserve any staged placeholder against this doc. Where a row is marked resolved, do not reintroduce the old stale shape.
@@ -1157,7 +1160,16 @@ If a worker encounters a deeper scaffold-vs-design contradiction not catalogued 
 - `W-T-9-impl` (ground stage body — invokes `find_witness` with constraint-satisfaction predicate).
 - `W-T-10-impl` (translate body — invokes `find_witness` with exact-structural-equality predicate; plus serialize via grammar-as-bidir-data).
 - Outcome-shape migration (43 bootstrap/lens/compiler callsites — Worker C corrected scope).
-- Scaffold reconciles per the migration plan: remaining work is canonical/dependency facts in `04_infer`, inverse grammar serialization in `05_emit`, eval-to-host integration, and legacy ingest staging. The `00_compile` core signature and `04_infer` lens-cost import are already reconciled at this audit point.
+- Scaffold reconciles per the migration plan: split `00_compile` public surfaces, retire `Validated<T>` lens gating, collapse `apply_lens` toward Node-in readings, finish canonical/dependency facts in `04_infer`, land inverse grammar serialization in `05_emit`, integrate eval-to-host, and dissolve legacy ingest staging.
+
+## Migration order — orthogonality reshape
+
+1. **Design-lock the read shape.** Define the lens surface as `Node -> Reading` and name which existing `Witness<T>` carriers are real structural proof witnesses versus readings currently shaped as witnesses.
+2. **Split public compile surfaces.** Replace public `compile(..., CompileMode)` / `validate_then_compile(...)` with separate translate/eval/artifact calls over `Node`. Keep internal staging only as long as needed for call-site migration.
+3. **Move gating to caller policy.** Retire `Validated<T>`, `LensGateWitness`, and rejecting-lens-as-compile-error semantics. A project wrapper may still block on readings, but the wrapper owns that policy.
+4. **Collapse lens scope vocabulary to Node.** Remove any need for a special whole-graph/subgraph distinction. If a caller wants a function-level reading, it passes that function's `Node`.
+5. **Prefer type-level invariants.** For checks like unused-parameter validity that can become refinements on `InferredTree` or earlier carriers, model the invariant directly. Keep measurement/report concerns as lens readings.
+6. **Then reshape artifacts.** Artifact generation remains a separate projection family over `Node` with `std/artifact.dag` as the identity/provenance home; do not bundle artifacts into compile results.
 
 **Out of scope for MVP** (deferred to follow-on waves; explicit defer with trigger):
 - **Eval / host interpretation** — `std/host.dag` + W-T-22-impl + W-EvalShim. Defer trigger: after MVP lands, when first end-to-end execution case (not codegen) is needed.
