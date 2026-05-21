@@ -9,10 +9,10 @@
 module v4.std.text
 
 
-import v4.std.algebra { FreeMonoid, free_monoid_is_empty }
+import v4.std.algebra { FreeMonoid, is_empty }
 import v4.std.nat { Nat }
 type Char = Nat
 type String = FreeMonoid<Char>
 fn string_is_empty(s: String) -> Bool {
-  free_monoid_is_empty(xs: s)
+  is_empty(xs: s)
 }
