@@ -1,0 +1,116 @@
+// src/v4/test/claim/lens_unused_parameters/binds_to_edge.dag
+// Scope: T-13 worked claim — a `BindsTo` edge classifies as `IsUseOfDeclaration`.
+// Owns: unused_parameters_binds_to_edge_claim.
+// Consumes: lens unused_parameters, compiler infer, std dependency, std node.
+// Status: scaffold — compile-only until generated claim execution.
+
+module v4.test.claim.lens_unused_parameters.binds_to_edge
+
+import v4.compiler.infer { AlgebraRef, InferredFacts, InferredTree }
+import v4.lens.unused_parameters {
+  IsUseOfDeclaration,
+  UnusedParametersDependencyFact,
+  UnusedParametersFact,
+  unused_parameters_fact_eq,
+  unused_parameters_witness
+}
+import v4.std.cardinality { RankingDimension, TerminationProof }
+import v4.std.collection { Map }
+import v4.std.dependency { BindsTo, DependencyView }
+import v4.std.node { Atom, Edge, Hash, Named, Node, Symbol, TypeNode }
+import v4.std.witness { Holds, Witness }
+
+data unused_parameters_root_symbol: Symbol = unused_parameters_root_symbol
+data unused_parameters_child_symbol: Symbol = unused_parameters_child_symbol
+data unused_parameters_edge_symbol: Symbol = unused_parameters_edge_symbol
+data unused_parameters_type_symbol: Symbol = unused_parameters_type_symbol
+data unused_parameters_algebra_symbol: Symbol = unused_parameters_algebra_symbol
+data unused_parameters_algebra_witness_symbol: Symbol = unused_parameters_algebra_witness_symbol
+data unused_parameters_descent_symbol: Symbol = unused_parameters_descent_symbol
+data unused_parameters_claim_hash: Hash = unused_parameters_claim_hash
+
+fn unused_parameters_claim_node(s: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: s } },
+    children: []
+  }
+}
+
+data unused_parameters_child: Node = unused_parameters_claim_node(s: unused_parameters_child_symbol)
+
+data unused_parameters_root: Node = Node {
+  kind: TypeNode { connective: Atom { identity: unused_parameters_root_symbol } },
+  children: [
+    Edge { label: Named { name: unused_parameters_edge_symbol }, target: unused_parameters_child }
+  ]
+}
+
+data unused_parameters_dependency: DependencyView = DependencyView {
+  source: unused_parameters_root,
+  dependent: unused_parameters_child,
+  kind: BindsTo,
+  usage_site: unused_parameters_child
+}
+
+fn unused_parameters_claim_facts() -> InferredFacts {
+  InferredFacts {
+    resolved_type: unused_parameters_claim_node(s: unused_parameters_type_symbol),
+    inhabits: AlgebraRef {
+      algebra: unused_parameters_claim_node(s: unused_parameters_algebra_symbol),
+      witness: unused_parameters_claim_node(s: unused_parameters_algebra_witness_symbol)
+    },
+    descent: TerminationProof {
+      non_increasing: [],
+      strict: RankingDimension { measured: unused_parameters_descent_symbol }
+    }
+  }
+}
+
+fn unused_parameters_claim_fact_map(facts: InferredFacts) -> Map<Node, InferredFacts> {
+  Map {
+    lookup: fn(_) {
+      Holds { value: facts }
+    }
+  }
+}
+
+fn unused_parameters_claim_tree() -> InferredTree {
+  let facts = unused_parameters_claim_facts()
+  InferredTree {
+    root: unused_parameters_root,
+    facts: unused_parameters_claim_fact_map(facts: facts)
+  }
+}
+
+type LensUnusedParametersClaim {
+  input: InferredTree
+  expected: UnusedParametersFact
+  actual: Witness<UnusedParametersFact>
+}
+
+data unused_parameters_binds_to_edge_claim: LensUnusedParametersClaim = LensUnusedParametersClaim {
+  input: unused_parameters_claim_tree(),
+  expected: UnusedParametersFact {
+    dependencies: [
+      UnusedParametersDependencyFact {
+        use_site: unused_parameters_root,
+        declaration: unused_parameters_child,
+        dependency: unused_parameters_dependency,
+        use_site_facts: Holds { value: unused_parameters_claim_facts() },
+        declaration_facts: Holds { value: unused_parameters_claim_facts() },
+        relation: IsUseOfDeclaration
+      }
+    ]
+  },
+  actual: unused_parameters_witness(tree: unused_parameters_claim_tree(), dependencies: [unused_parameters_dependency])
+}
+
+fn unused_parameters_binds_to_edge_claim_holds() -> Bool {
+  match unused_parameters_binds_to_edge_claim.actual {
+    Holds { value: actual } =>
+      unused_parameters_fact_eq(a: actual, b: unused_parameters_binds_to_edge_claim.expected)
+    _ => false
+  }
+}
+
+data unused_parameters_binds_to_edge_claim_passes: Bool = unused_parameters_binds_to_edge_claim_holds()

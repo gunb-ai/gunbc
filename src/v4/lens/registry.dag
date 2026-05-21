@@ -53,7 +53,7 @@ data lens_registry_v0_provenance: LensRegistryEntryV0 = {
 
 data lens_registry_v0_unused_parameters: LensRegistryEntryV0 = {
   lens_id: UnusedParameters
-  module_path: Unbound
+  module_path: Bound { path: "v4.lens.unused_parameters" }
 }
 
 data lens_registry_v0_structural_resolution: LensRegistryEntryV0 = {
