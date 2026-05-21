@@ -12,7 +12,12 @@ import v4.compiler.t15_self_host {
   self_host_fixed_point_validate,
   t15_runner_not_realized_diagnostic
 }
+import v4.compiler.eval {
+  Verdict,
+  run_node_assert
+}
 import v4.std.diagnostic {
+  Accepted,
   Outcome,
   Rejected,
   diagnostics_singleton
@@ -49,6 +54,15 @@ data t15_runner_scaffold_result: Outcome<PromotionWitness> = self_host_fixed_poi
 )
 
 
+fn t15_runner_scaffold_actual() -> Outcome<Node> {
+  match t15_runner_scaffold_result {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: _, diagnostics: d } =>
+      Accepted { value: t15_rejects_until_substrate_subject, diagnostics: d }
+  }
+}
+
+
 data claim_t15_rejects_until_substrate: TestClaim = TestClaim {
   kind: DiagnosticAssert,
   label: "t15 self-host fixed-point runner rejects until execution substrate lands",
@@ -59,3 +73,11 @@ data claim_t15_rejects_until_substrate: TestClaim = TestClaim {
   },
   classification: TestClassification { tier: Tier1, layer: Integration }
 }
+
+
+data verdict_t15_rejects_until_substrate: Verdict<Node> = run_node_assert(
+  kind: claim_t15_rejects_until_substrate.kind,
+  actual: t15_runner_scaffold_actual(),
+  expected: claim_t15_rejects_until_substrate.expected,
+  input: claim_t15_rejects_until_substrate.input
+)
