@@ -36,14 +36,15 @@ import v4.std.diagnostic {
 }
 import v4.std.node { Edge, Named, Node, Positional, Symbol, TypeNode, Atom, Arrow, Conj }
 import v4.std.verification {
-  Compiles,
-  Equals,
   T19ManualAnchorAbsent,
   TestClaim,
   TestClassification,
   Tier2,
-  Unit
-}
+  Unit,
+  CompilesClaim,
+  DiagnosticClaim,
+  EqualsClaim,
+  RoundTripClaim}
 
 
 data read_signature_symbol: Symbol = read_signature_symbol
@@ -99,39 +100,34 @@ data falsification_redundant_read: Node = Node {
 }
 
 
-data claim_effect_derived_from_signature: TestClaim = TestClaim {
-  kind: Compiles,
+data claim_effect_derived_from_signature: TestClaim = CompilesClaim {
   label: "effect lens derives read write shape from signature",
   t19_anchor: T19ManualAnchorAbsent,
   input: effect_derived_from_signature_input,
-  expected: Accepted { value: effect_derived_from_signature_input, diagnostics: None },
+  expected_value: effect_derived_from_signature_input,
   classification: TestClassification { tier: Tier2, layer: Unit }
 }
 
 
-data claim_explicit_reread_passes: TestClaim = TestClaim {
-  kind: Compiles,
+data claim_explicit_reread_passes: TestClaim = CompilesClaim {
   label: "explicit reread primitive records intent without effect side taxonomy",
   t19_anchor: T19ManualAnchorAbsent,
   input: explicit_reread_input,
-  expected: Accepted { value: explicit_reread_input, diagnostics: None },
+  expected_value: explicit_reread_input,
   classification: TestClassification { tier: Tier2, layer: Unit }
 }
 
 
-data claim_redundant_read_caught: TestClaim = TestClaim {
-  kind: Equals,
+data claim_redundant_read_caught: TestClaim = DiagnosticClaim {
   label: "redundant read without intervening write is rejected by effect lens",
   t19_anchor: T19ManualAnchorAbsent,
   input: falsification_redundant_read,
-  expected: Rejected {
-    diagnostics: diagnostics_singleton(
+  expected_rejection: diagnostics_singleton(
       d: Diagnostic {
         reason: redundant_read_reason,
         at: NodeLocus { node: falsification_redundant_read },
         correction: Suggested { node: explicit_reread_input }
       }
-    )
-  },
+    ),
   classification: TestClassification { tier: Tier2, layer: Unit }
 }

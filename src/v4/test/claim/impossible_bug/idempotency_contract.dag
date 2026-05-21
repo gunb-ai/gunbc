@@ -47,14 +47,15 @@ import v4.std.diagnostic {
 }
 import v4.std.node { Edge, Named, Node, Symbol, TypeNode, Atom, Conj }
 import v4.std.verification {
-  Compiles,
-  Equals,
   T19ManualAnchorAbsent,
   TestClaim,
   TestClassification,
   Tier1,
-  Unit
-}
+  Unit,
+  CompilesClaim,
+  DiagnosticClaim,
+  EqualsClaim,
+  RoundTripClaim}
 
 
 data idempotent_position_symbol: Symbol = idempotent_position_symbol
@@ -92,47 +93,40 @@ data falsification_nonidempotent_in_idempotent_position: Node = idempotency_cont
 data falsification_repeated_append_in_idempotent_position: Node = idempotency_contract(body: atom_node(s: repeated_append_effect_symbol))
 
 
-data claim_idempotent_inhabitant_passes: TestClaim = TestClaim {
-  kind: Compiles,
+data claim_idempotent_inhabitant_passes: TestClaim = CompilesClaim {
   label: "idempotent algebra inhabitant accepts idempotent structure",
   t19_anchor: T19ManualAnchorAbsent,
   input: idempotent_inhabitant_input,
-  expected: Accepted { value: idempotent_inhabitant_input, diagnostics: None },
+  expected_value: idempotent_inhabitant_input,
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
 
-data claim_repeated_append_in_idempotent_position_caught: TestClaim = TestClaim {
-  kind: Equals,
+data claim_repeated_append_in_idempotent_position_caught: TestClaim = DiagnosticClaim {
   label: "idempotent algebra inhabitance rejects repeated append composition",
   t19_anchor: T19ManualAnchorAbsent,
   input: falsification_repeated_append_in_idempotent_position,
-  expected: Rejected {
-    diagnostics: diagnostics_singleton(
+  expected_rejection: diagnostics_singleton(
       d: Diagnostic {
         reason: idempotency_repetition_reason,
         at: NodeLocus { node: falsification_repeated_append_in_idempotent_position },
         correction: Suggested { node: idempotent_inhabitant_input }
       }
-    )
-  },
+    ),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
 
-data claim_nonidempotent_in_idempotent_position_caught: TestClaim = TestClaim {
-  kind: Equals,
+data claim_nonidempotent_in_idempotent_position_caught: TestClaim = DiagnosticClaim {
   label: "idempotent algebra inhabitance rejects non-idempotent composition",
   t19_anchor: T19ManualAnchorAbsent,
   input: falsification_nonidempotent_in_idempotent_position,
-  expected: Rejected {
-    diagnostics: diagnostics_singleton(
+  expected_rejection: diagnostics_singleton(
       d: Diagnostic {
         reason: idempotency_violation_reason,
         at: NodeLocus { node: falsification_nonidempotent_in_idempotent_position },
         correction: Suggested { node: idempotent_inhabitant_input }
       }
-    )
-  },
+    ),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }

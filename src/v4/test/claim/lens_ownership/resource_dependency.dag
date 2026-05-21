@@ -1,19 +1,20 @@
 // src/v4/test/claim/lens_ownership/resource_dependency.dag
-// Scope: T-13 worked claim — ResourceDependsOn requires access evidence.
+// Scope: T-13 worked claim — ResourceDependsOn classifies as RequiresAccessWitness over `ClassifiedDependencyView<OwnershipMode>`.
 // Owns: ownership_resource_dependency_claim.
-// Consumes: lens ownership, compiler infer, std dependency, std node.
-// Status: scaffold — compile-only until generated claim execution.
+// Consumes: lens ownership, std dependency, lens_common fixture.
+// Status: T-13 family-ratchet claim shape (Phase-1 substrate migration).
+
 
 module v4.test.claim.lens_ownership.resource_dependency
 
-import v4.compiler.infer { AlgebraRef, InferredFacts, InferredTree }
+import v4.compiler.infer { InferredFacts, InferredTree }
 import v4.lens.ownership {
-  OwnershipDependencyFact,
   OwnershipFact,
   RequiresAccessWitness,
   ownership_fact_eq,
   ownership_witness
 }
+<<<<<<< HEAD
 import v4.std.cardinality { RankingDimension, TerminationProof }
 import v4.std.collection { Map }
 import v4.std.constraints {
@@ -24,6 +25,21 @@ import v4.std.constraints {
 import v4.std.dependency { DependencyView, ResourceDependsOn }
 import v4.std.node { Atom, Edge, Hash, Named, Node, Symbol, TypeNode }
 import v4.std.witness { Holds, StructuralPropertyWitness, Witness }
+=======
+import v4.std.dependency {
+  ClassifiedDependencyView,
+  DependencyView,
+  ResourceDependsOn
+}
+import v4.std.logic { Bool }
+import v4.std.node { Atom, Edge, Named, Node, Symbol, TypeNode }
+import v4.std.witness { Holds, Witness }
+import v4.test.claim.lens_common.infer_fixture {
+  claim_atom_node,
+  claim_inferred_facts,
+  claim_inferred_tree
+}
+>>>>>>> origin/main
 
 data ownership_root_symbol: Symbol = ownership_root_symbol
 data ownership_child_symbol: Symbol = ownership_child_symbol
@@ -32,16 +48,11 @@ data ownership_type_symbol: Symbol = ownership_type_symbol
 data ownership_algebra_symbol: Symbol = ownership_algebra_symbol
 data ownership_algebra_witness_symbol: Symbol = ownership_algebra_witness_symbol
 data ownership_descent_symbol: Symbol = ownership_descent_symbol
-data ownership_claim_hash: Hash = ownership_claim_hash
+data ownership_canonical_structural_symbol: Symbol = ownership_canonical_structural_symbol
+data ownership_canonical_closedness_symbol: Symbol = ownership_canonical_closedness_symbol
+data ownership_canonical_evidence_symbol: Symbol = ownership_canonical_evidence_symbol
 
-fn ownership_claim_node(s: Symbol) -> Node {
-  Node {
-    kind: TypeNode { connective: Atom { identity: s } },
-    children: []
-  }
-}
-
-data ownership_child: Node = ownership_claim_node(s: ownership_child_symbol)
+data ownership_child: Node = claim_atom_node(s: ownership_child_symbol)
 
 data ownership_root: Node = Node {
   kind: TypeNode { connective: Atom { identity: ownership_root_symbol } },
@@ -58,6 +69,7 @@ data ownership_dependency: DependencyView = DependencyView {
 }
 
 fn ownership_claim_facts() -> InferredFacts {
+<<<<<<< HEAD
   InferredFacts {
     resolved_type: ownership_claim_node(s: ownership_type_symbol),
     inhabits: AlgebraRef {
@@ -89,14 +101,21 @@ fn ownership_claim_fact_map(facts: InferredFacts) -> Map<Node, InferredFacts> {
       Holds { value: facts }
     }
   }
+=======
+  claim_inferred_facts(
+    type_symbol: ownership_type_symbol,
+    algebra_symbol: ownership_algebra_symbol,
+    algebra_witness_symbol: ownership_algebra_witness_symbol,
+    descent_symbol: ownership_descent_symbol,
+    canonical_structural_symbol: ownership_canonical_structural_symbol,
+    canonical_closedness_symbol: ownership_canonical_closedness_symbol,
+    canonical_evidence_symbol: ownership_canonical_evidence_symbol
+  )
+>>>>>>> origin/main
 }
 
 fn ownership_claim_tree() -> InferredTree {
-  let facts = ownership_claim_facts()
-  InferredTree {
-    root: ownership_root,
-    facts: ownership_claim_fact_map(facts: facts)
-  }
+  claim_inferred_tree(root: ownership_root, facts: ownership_claim_facts())
 }
 
 type LensOwnershipClaim {
@@ -109,13 +128,9 @@ data ownership_resource_dependency_claim: LensOwnershipClaim = LensOwnershipClai
   input: ownership_claim_tree(),
   expected: OwnershipFact {
     dependencies: [
-      OwnershipDependencyFact {
-        owner: ownership_root,
-        subject: ownership_child,
+      ClassifiedDependencyView {
         dependency: ownership_dependency,
-        owner_facts: Holds { value: ownership_claim_facts() },
-        subject_facts: Holds { value: ownership_claim_facts() },
-        mode: RequiresAccessWitness
+        classification: RequiresAccessWitness
       }
     ]
   },

@@ -1,19 +1,20 @@
 // src/v4/test/claim/lens_parallelism/data_dependency.dag
-// Scope: T-13 worked claim — DataDependsOn blocks structural independence.
+// Scope: T-13 worked claim — DataDependsOn classifies as DataDependent over `ClassifiedDependencyView<ParallelismRelation>`.
 // Owns: parallelism_data_dependency_claim.
-// Consumes: lens parallelism, compiler infer, std dependency, std node.
-// Status: scaffold — compile-only until generated claim execution.
+// Consumes: lens parallelism, std dependency, lens_common fixture.
+// Status: T-13 family-ratchet claim shape (Phase-1 substrate migration).
+
 
 module v4.test.claim.lens_parallelism.data_dependency
 
-import v4.compiler.infer { AlgebraRef, InferredFacts, InferredTree }
+import v4.compiler.infer { InferredFacts, InferredTree }
 import v4.lens.parallelism {
   DataDependent,
-  ParallelismDependencyFact,
   ParallelismFact,
   parallelism_fact_eq,
   parallelism_witness
 }
+<<<<<<< HEAD
 import v4.std.cardinality { RankingDimension, TerminationProof }
 import v4.std.collection { Map }
 import v4.std.constraints {
@@ -24,6 +25,21 @@ import v4.std.constraints {
 import v4.std.dependency { DataDependsOn, DependencyView }
 import v4.std.node { Atom, Edge, Hash, Named, Node, Symbol, TypeNode }
 import v4.std.witness { Holds, StructuralPropertyWitness, Witness }
+=======
+import v4.std.dependency {
+  ClassifiedDependencyView,
+  DataDependsOn,
+  DependencyView
+}
+import v4.std.logic { Bool }
+import v4.std.node { Atom, Edge, Named, Node, Symbol, TypeNode }
+import v4.std.witness { Holds, Witness }
+import v4.test.claim.lens_common.infer_fixture {
+  claim_atom_node,
+  claim_inferred_facts,
+  claim_inferred_tree
+}
+>>>>>>> origin/main
 
 data parallelism_root_symbol: Symbol = parallelism_root_symbol
 data parallelism_child_symbol: Symbol = parallelism_child_symbol
@@ -32,16 +48,11 @@ data parallelism_type_symbol: Symbol = parallelism_type_symbol
 data parallelism_algebra_symbol: Symbol = parallelism_algebra_symbol
 data parallelism_algebra_witness_symbol: Symbol = parallelism_algebra_witness_symbol
 data parallelism_descent_symbol: Symbol = parallelism_descent_symbol
-data parallelism_claim_hash: Hash = parallelism_claim_hash
+data parallelism_canonical_structural_symbol: Symbol = parallelism_canonical_structural_symbol
+data parallelism_canonical_closedness_symbol: Symbol = parallelism_canonical_closedness_symbol
+data parallelism_canonical_evidence_symbol: Symbol = parallelism_canonical_evidence_symbol
 
-fn parallelism_claim_node(s: Symbol) -> Node {
-  Node {
-    kind: TypeNode { connective: Atom { identity: s } },
-    children: []
-  }
-}
-
-data parallelism_child: Node = parallelism_claim_node(s: parallelism_child_symbol)
+data parallelism_child: Node = claim_atom_node(s: parallelism_child_symbol)
 
 data parallelism_root: Node = Node {
   kind: TypeNode { connective: Atom { identity: parallelism_root_symbol } },
@@ -58,6 +69,7 @@ data parallelism_dependency: DependencyView = DependencyView {
 }
 
 fn parallelism_claim_facts() -> InferredFacts {
+<<<<<<< HEAD
   InferredFacts {
     resolved_type: parallelism_claim_node(s: parallelism_type_symbol),
     inhabits: AlgebraRef {
@@ -89,14 +101,21 @@ fn parallelism_claim_fact_map(facts: InferredFacts) -> Map<Node, InferredFacts> 
       Holds { value: facts }
     }
   }
+=======
+  claim_inferred_facts(
+    type_symbol: parallelism_type_symbol,
+    algebra_symbol: parallelism_algebra_symbol,
+    algebra_witness_symbol: parallelism_algebra_witness_symbol,
+    descent_symbol: parallelism_descent_symbol,
+    canonical_structural_symbol: parallelism_canonical_structural_symbol,
+    canonical_closedness_symbol: parallelism_canonical_closedness_symbol,
+    canonical_evidence_symbol: parallelism_canonical_evidence_symbol
+  )
+>>>>>>> origin/main
 }
 
 fn parallelism_claim_tree() -> InferredTree {
-  let facts = parallelism_claim_facts()
-  InferredTree {
-    root: parallelism_root,
-    facts: parallelism_claim_fact_map(facts: facts)
-  }
+  claim_inferred_tree(root: parallelism_root, facts: parallelism_claim_facts())
 }
 
 type LensParallelismClaim {
@@ -109,13 +128,9 @@ data parallelism_data_dependency_claim: LensParallelismClaim = LensParallelismCl
   input: parallelism_claim_tree(),
   expected: ParallelismFact {
     dependencies: [
-      ParallelismDependencyFact {
-        source: parallelism_root,
-        dependent: parallelism_child,
+      ClassifiedDependencyView {
         dependency: parallelism_dependency,
-        source_facts: Holds { value: parallelism_claim_facts() },
-        dependent_facts: Holds { value: parallelism_claim_facts() },
-        relation: DataDependent
+        classification: DataDependent
       }
     ]
   },

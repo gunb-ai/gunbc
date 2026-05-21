@@ -1,6 +1,6 @@
 // src/v4/extdeps/languages/lean.dag
 // Scope: Lean 4 language model for PROOF-1 termination export.
-// Owns: LeanDeclarationKind, LeanName, LeanLevel, LeanLevelRef, LeanLevelNode, LeanBinderInfo, LeanBinder, LeanTermRef, LeanTermNode, LeanTermForm, LeanMatchAlternative, LeanTerminationMeasure, LeanTerminationBy, LeanDecreasingProof, LeanTerminationClause, LeanDefinitionTermination, LeanProofArtifact, LeanFidelityFeature, LeanFidelityDisposition, LeanProofCheckSemantics, Symbol, LeanIntKind, LeanIntWidth, LeanScalar, lean_bool_grounding.
+// Owns: LeanDeclarationKind, LeanName, LeanLevel, LeanLevelRef, LeanLevelNode, LeanBinderInfo, LeanBinder, LeanTermRef, LeanTermNode, LeanTermForm, LeanMatchAlternative, LeanTerminationMeasure, LeanTerminationBy, LeanDecreasingProof, LeanTerminationClause, LeanDefinitionTermination, LeanProofArtifact, LeanFidelityFeature, LeanProofCheckSemantics, Symbol, LeanIntKind, LeanIntWidth, LeanScalar, lean_bool_grounding.
 // Consumes: List, Bool, bool_boolean_algebra; v4.std.algebra.BooleanAlgebra.
 // Status: D2-REV; 🟢 P4-3208 — (lean scalar + ledger); bool canonical-B decl-ref grounding — 🟡 E-6(b) staging (scaffold at decl; ledger modeling-discipline.md classifier = LeanScalar.BoolScalar.
 
@@ -163,13 +163,6 @@ type LeanFidelityFeature
   | LeanElaboratorOnlySyntax
   | LeanUnresolvedUniverseLevel
   | LeanUnsupportedTheoremClass
-
-
-// 🟢 coproduct dissolution — P4-3208.
-type LeanFidelityDisposition
-  = LeanModeled
-  | LeanDeclaredNormalized { feature: LeanFidelityFeature }
-  | LeanFailClosed { feature: LeanFidelityFeature }
 
 
 // Anchor: https://lean-lang.org/doc/reference/4.20.0/

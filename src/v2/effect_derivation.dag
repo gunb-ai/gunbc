@@ -10,12 +10,11 @@ import std.types { HttpMethod, GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS }
 import std.effects {
   EffectShape, ReadEffect, UpsertEffect, DeleteEffect, CreateEffect, AppendEffect,
   KeySource, PathParam, InputField, CompositeKey,
-  DerivedOpEffect, DeriveOpEffectResult, DerivedEffect, UnknownHttpMethodInput, MalformedPathInput,
+  DerivedOpEffect, DeriveOpEffectResult, DerivedEffect, MalformedPathInput,
   ModifierAgreement, Agrees, Disagrees, DerivationUnknown,
   ModifierCheck,
   IdempotencyTestObligation,
   WorkflowEffectConcern,
-  parse_http_method,
   derive_effect_shape,
   derive_op_effect,
   check_modifier_vs_derivation,
