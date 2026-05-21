@@ -40,14 +40,12 @@ module v4.test.claim.impossible_bug.suboptimal_complexity
 
 import v4.std.diagnostic {
   Accepted,
-  AmbiguousIntent,
   Diagnostic,
   NodeLocus,
   None,
   Outcome,
   Rejected,
   Suggested,
-  Unavailable,
   diagnostics_singleton
 }
 import v4.std.node { Edge, Named, Node, Symbol, TypeNode, Atom, Conj }

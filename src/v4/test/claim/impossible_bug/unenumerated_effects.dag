@@ -25,14 +25,12 @@ module v4.test.claim.impossible_bug.unenumerated_effects
 
 import v4.std.diagnostic {
   Accepted,
-  AmbiguousIntent,
   Diagnostic,
   NodeLocus,
   None,
   Outcome,
   Rejected,
   Suggested,
-  Unavailable,
   diagnostics_singleton
 }
 import v4.std.node { Edge, Named, Node, Positional, Symbol, TypeNode, Atom, Arrow, Conj }
