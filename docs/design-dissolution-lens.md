@@ -1082,6 +1082,181 @@ For D2-resolver: land the planned `extdeps/languages/resolver.dag`
 canonically and rewrite `rust.dag`'s `GroundingMap` declaration into an
 import/alias of the resolver's authoritative shape.
 
+### L1.13 Skeleton-collapse lens — kills *parametric-arm duplication via constructor-name template* (proposed)
+
+> **Status: proposed.** Derived from finding F14 (`feature_disposition` at
+> `src/v4/extdeps/languages/llvm_ir.dag:570-585` — 12-arm match over
+> `FidelityFeature` with 3 distinct RHS skeletons in a 1:5:6 distribution)
+> and finding F15 (PR #3452 `complexity_bound_from_class` — 9 arms with
+> 3 skeletons in a 1:1:7 distribution). Sibling-of L1.1 — where L1.1
+> catches Bool-returning matches whose arms are literal `true`/`false`,
+> L1.13 catches non-Bool matches whose arms are *templated by
+> constructor name* (the RHSes share a skeleton, varying only by which
+> constructor they apply). Practice 11's runtime-symptom catcher:
+> Practice 11 stops parametric duplication at design time; L1.13 catches
+> the symptom when Practice 11 was missed at design time.
+
+- *Signature:* a `match` expression over a closed coproduct with `N` arms
+  whose RHSes collapse to `K` distinct skeletons under
+  α-renaming + constructor-name substitution, with `K << N` AND a
+  distribution shape indicating structural collapse. The diagnostic is
+  the **(K, distribution)** pair, not just the K/N ratio — distribution
+  shape determines which dissolution applies.
+- *Decidable:* yes — RHS skeletons are computed by tree-walking each arm,
+  α-renaming bound names, and replacing the leading constructor identity
+  with a hole. Equality of skeletons is structural. Distribution
+  histogram (arm count per skeleton) is then a simple count.
+- *Verdict:* hard error on substrate / lens / extdeps files; advisory on
+  test fixtures and compile-time data tables (those legitimately
+  enumerate per-variant constants).
+- *Distribution shapes (closed enumeration of dissolution-relevant cases):*
+  - **PureTemplate** — `K = 1`, `N > 1`. All arms identical-modulo-constructor.
+    The dispatch is doing zero work. **Dissolution:** delete the match;
+    the operation doesn't depend on the variant. (Rare — usually a
+    real bug.)
+  - **Outlier** — `K = 2`, with one arm against `N-1` matching arms.
+    The match is performing a binary discriminator dressed as N-way
+    dispatch. **Dissolution:** predicate-factor — extract the
+    one-vs-many predicate as a named `Bool` helper or sibling lens
+    finding (L1.1 territory); the function body becomes `if pred(x)
+    then special else default`. Recent precedent: PR #3359
+    `connective_spec_fact` (6 arms → 2 skeletons, 5:1).
+  - **Categorical** — `K` small relative to `N` (e.g., `K = 3, N = 12`),
+    with `K` groups of `N/K`-ish arms each. The match is acting as an
+    N-to-K projection that should live on the input coproduct's type.
+    **Dissolution:** push the categorization into the coproduct
+    definition — refactor the input enum to expose the `K` categories
+    as a top-level discriminator (sub-coproduct per category, or a
+    derived `category_of(x)` field). The function collapses to `K`
+    arms reading that derived structure. Recent precedent: PR #3452
+    `complexity_bound_from_class` (9 arms → 3 skeletons, 1:1:7).
+  - **Mixed** — `K` close to `N`. Each arm does distinguishable work.
+    **No finding** — legitimate per-variant dispatch.
+- *Escape:* `Mixed` distribution passes. Also passes: matches whose
+  arms differ by call-arguments rather than constructor identity (the
+  "skeleton" parameter-substitutes the constructor, not its fields, so
+  matches that genuinely use different constructor fields per arm are
+  not collapsed — see decidability boundary below).
+- *Kills:* `feature_disposition` (`llvm_ir.dag:570-585`),
+  `complexity_bound_from_class` (PR #3452),
+  `manual_test_claim_for_manual_anchor` (`testgen.dag:253-270`) as
+  the F-level findings table cites.
+
+**Decidability boundary (explicit):** RHS skeleton extraction collapses
+the leading constructor name to a hole AND α-renames bound field names,
+but does **NOT** collapse calls with distinct arguments. So:
+
+```dag
+A => f(x)
+B => f(y)
+```
+
+is `K=1` (same skeleton: `f(<bound>)`); but
+
+```dag
+A => f(x, "literal-1")
+B => f(x, "literal-2")
+```
+
+is `K=2` (literals are part of the skeleton). This matches the
+real-world distinction — arms doing different literal work are doing
+distinguishable work; arms doing the same call shape over different
+bound names are duplicating.
+
+**Connection to Practice 11.** L1.13 catches at implementation time
+exactly what Practice 11 catches at design time: parametric duplication.
+Practice 11 says "two declarations differing only by a typed parameter
+are one parameterized declaration with the difference as a parameter."
+L1.13 says "N match arms differing only by their constructor identity
+are one parameterized operation with the constructor identity (or its
+category) as a parameter." Same nerve, different layer.
+
+**Concrete match — F14 (`src/v4/extdeps/languages/llvm_ir.dag:570-585`):**
+```dag
+fn feature_disposition(f: FidelityFeature) -> FidelityDisposition {
+  match f {
+    StructuralCore                  => Modeled
+    SsaValueSpelling                => DeclaredNormalized { feature: SsaValueSpelling }
+    BlockTextualOrder               => DeclaredNormalized { feature: BlockTextualOrder }
+    LexicalTrivia                   => DeclaredNormalized { feature: LexicalTrivia }
+    TargetConfigToken               => DeclaredNormalized { feature: TargetConfigToken }
+    AdvisoryMetadata                => DeclaredNormalized { feature: AdvisoryMetadata }
+    UnmodeledInlineAsm              => FailClosed { feature: UnmodeledInlineAsm }
+    UnmodeledSemanticAttribute      => FailClosed { feature: UnmodeledSemanticAttribute }
+    UnmodeledType                   => FailClosed { feature: UnmodeledType }
+    UnmodeledInstruction            => FailClosed { feature: UnmodeledInstruction }
+    UnmodeledConstExpr              => FailClosed { feature: UnmodeledConstExpr }
+    MalformedStructure              => FailClosed { feature: MalformedStructure }
+  }
+}
+```
+
+12 arms, 3 distinct skeletons: `Modeled` (1), `DeclaredNormalized { feature: <constructor> }` (5),
+`FailClosed { feature: <constructor> }` (6). **Categorical, 1:5:6.**
+
+**Clean shape:** push the categorization into `FidelityFeature`:
+```dag
+type FidelityFeature
+  = ModeledFeature       { kind: ModeledKind }       // StructuralCore
+  | NormalizedFeature    { kind: NormalizedKind }    // 5 normalized variants
+  | UnmodeledFeature     { kind: UnmodeledKind }     // 6 fail-closed variants
+
+fn feature_disposition(f: FidelityFeature) -> FidelityDisposition {
+  match f {
+    ModeledFeature    { kind: _ }    => Modeled
+    NormalizedFeature { kind: _ }    => DeclaredNormalized { feature: f }
+    UnmodeledFeature  { kind: _ }    => FailClosed         { feature: f }
+  }
+}
+```
+3 arms instead of 12. The N-to-3 projection lives in `FidelityFeature`'s
+type definition (its correct home — the category IS a property of the
+feature), not as a hand-rolled function.
+
+**Concrete match — F15 (PR #3452 `complexity_bound_from_class`):**
+9 arms over `AsymptoticClass`, 3 distinct skeletons: `Constant` (1),
+`unknown_complexity()` (1), `match size_var { Holds {v} => Bound { size_var: v, ...}; Violates _ => unknown_complexity() }` (7).
+**Categorical, 1:1:7.**
+
+**Clean shape:** collapse `ComplexityBound` from 9 parallel variants to
+3 structural variants, wrapping `AsymptoticClass` for the 7 size-dependent
+classes:
+```dag
+type ComplexityBound
+  = UnknownComplexity { diagnostic: Diagnostic }
+  | ConstantComplexity
+  | SizedComplexity   { class: AsymptoticClass, size_var: SizeVariable }
+```
+Function collapses from 9 arms to 4. Full worked example in the PR
+review at #3452 comment.
+
+**Concrete match — F16 (`src/v4/lens/testgen.dag:253-270`):**
+13 arms, 2 distinct skeletons: `Rejected { diagnostic: ... }` (1), `Produced { value: claim_<name> }` (12). **Outlier, 1:12 — extreme case.**
+
+**Clean shape:** the 12 identical-skeleton arms are a typed registry
+mapping anchor → claim. Refactor to a data table consumed via lookup:
+```dag
+data manual_anchor_claims: Map<T19ManualAnchorKey, ManualTestClaim> = {
+  T19ManualTcConjEmpty            -> claim_conj_empty_compiles,
+  T19ManualTcDisjEmpty            -> claim_disj_empty_compiles,
+  ...
+}
+
+fn manual_test_claim_for_manual_anchor(key: T19ManualAnchorKey) -> Outcome<TestClaim> {
+  match key {
+    T19ManualAnchorAbsent => Rejected { diagnostic: ... }
+    _                     =>
+      match lookup(manual_anchor_claims, key) {
+        Some { value: c } => Produced { value: c }
+        None              => Rejected { diagnostic: ... }  // unreachable given enum closure
+      }
+  }
+}
+```
+The 12 arms reduce to one data table + a single Map lookup. The
+classification (which anchor → which claim) becomes data, the function
+becomes a small dispatch.
+
 ## 6. The discriminant / catamorphism distinction
 
 L1.1 and L1.5 enforce one algebraic fact worth stating directly: a
