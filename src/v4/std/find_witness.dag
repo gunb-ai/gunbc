@@ -19,6 +19,7 @@ import v4.std.diagnostic {
   None,
   NodeLocus,
   Outcome,
+  Rejected,
   Unavailable,
   outcome_rejected
 }
