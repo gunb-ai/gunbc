@@ -1,8 +1,7 @@
 // src/v4/compiler/05_emit.dag
 // Scope: Stage 5b — T-10 emit surface + fail-closed staging (not grammar-bidir serialize yet).
 // Owns: emit_stage_locus_port, serialize_source_for_emitted, serialize_target, emit.
-// Consumes: target_model_edge_serialize_emitted, target_model_edge_serialize_source
-//       (edge-name symbols defined in compiler/06_translate.dag).
+// Consumes: v4.std.target_model (target_model_edge_serialize_emitted, target_model_edge_serialize_source).
 // Consumes: compiler/04_infer.dag, compiler/06_translate.dag, compiler/07_target_carriers.dag,
 //           std/diagnostic.dag,
 //           std/node.dag, std/text.dag.
@@ -18,10 +17,13 @@ import v4.compiler.target_carriers { LanguageModel, TargetModel, TargetSource }
 import v4.compiler.infer { InferredTree }
 import v4.compiler.translate {
   TargetNodeTree,
-  target_model_edge_serialize_emitted,
   target_bundle_child,
   target_serialize_source_from_model,
   translate
+}
+import v4.std.target_model {
+  target_model_edge_serialize_emitted,
+  target_model_edge_serialize_source
 }
 import v4.std.diagnostic {
   Accepted,
