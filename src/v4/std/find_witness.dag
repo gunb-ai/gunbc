@@ -110,8 +110,7 @@ fn exact_structural_edges_leaf_zip_fold(left: List<Edge>, right: List<Edge>) -> 
       acc
         && (count(e.target.children) == 0)
         && (
-          exact_structural_label_occurrences(label: e.label, children: left)
-            == exact_structural_label_occurrences(label: e.label, children: right)
+          exact_structural_label_occurrences(label: e.label, children: left) == exact_structural_label_occurrences(label: e.label, children: right)
         )
         && exact_structural_child_leaf_coincides(source_edge: e, candidates: right)
     })
