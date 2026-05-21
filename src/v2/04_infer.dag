@@ -695,18 +695,6 @@ fn infer_tier2b_builtin_with_kernel_diags(func_name: String, typed_args: List<No
       None => Tier2bBt { bt: resolve_builtin_call_type(name: func_name), kernel_diags: [] }
     }
   } else if func_name == "set_insert" || func_name == "set_union" {
-    let recv_elem = match typed_args |> first {
-      Some { value: receiver_arg } =>
-        match arg_value(n: receiver_arg).inferred {
-          Some { value: Resolved { node: receiver_type } } =>
-            match set_element_type_in_env(type_node: receiver_type, env: scope.type_env) {
-              Some { value: elem_slot } => Some { value: child_type_node(ch: elem_slot) }
-              None => none
-            }
-          _ => none
-        }
-      None => none
-    }
     let operand_elem = if func_name == "set_insert" {
       match typed_args |> skip(1) |> first {
         Some { value: insert_arg } =>
