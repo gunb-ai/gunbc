@@ -49,7 +49,7 @@ fn v4_emit_dag_tokenizes_and_parses() {
 fn v4_mvp1_rust_add_claim_tokenizes_and_parses() {
     parse_v4_dag(MVP1_CLAIM_DAG, MVP1_CLAIM_PATH);
     assert!(
-        MVP1_CLAIM_DAG.contains("mvp1_rust_add_source_text"),
-        "{MVP1_CLAIM_PATH}: expected MVP-1 Rust source literal receipt"
+        MVP1_CLAIM_DAG.contains("coercion_fold"),
+        "{MVP1_CLAIM_PATH}: claim module must reference coercion-fold translate path"
     );
 }
