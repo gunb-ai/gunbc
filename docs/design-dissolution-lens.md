@@ -169,7 +169,7 @@ they are not interchangeable:
 | L1.9 Vacuous-arm | fail-closed / witness |
 | L1.10 Textual-bypass *(lens family — see §5.0 exception)*: L1.10.a `TemplateHole`, L1.10.b `CanonicalCarrier` | witness / canonical-home |
 | L1.11 Plausible-fallback | fail-closed |
-| L1.12 Parallel-authority | canonical-home |
+| L1.12 Parallel-authority *(lens family — see §5.0 exception)*: parent triggers (lexical / `CanonicalConcept`), L1.12.b `StructuralSimilarity` (different-lexical-name nickname case) | canonical-home |
 | L1.13 Skeleton-collapse | derive / canonical-home |
 
 The only mechanical merge in this layout is **L1.6 → L1.10** — the
@@ -199,6 +199,7 @@ enumeration.
 | **L1.10.b** `CanonicalCarrier` (sub-signature of Textual-bypass family) | `coverage_defect_canonical_carrier` |
 | L1.11 Plausible-fallback | `coverage_defect_plausible_fallback` |
 | L1.12 Parallel-authority | `coverage_defect_parallel_authority` |
+| **L1.12.b** `StructuralSimilarity` (sub-signature of Parallel-authority family) | `coverage_defect_parallel_authority` *(shared with parent — sub-signature contributes findings into the same acceptance key; no separate key needed since the resolution table and outcome shapes are the parent's)* |
 | L1.13 Skeleton-collapse | `coverage_defect_skeleton_collapse` *(reserved-proposed — enforcement not active until skeleton extraction + classifier + clearing receipts land)* |
 
 **Migration notes for existing downstream consumers:**
@@ -1237,15 +1238,22 @@ import/alias of the resolver's authoritative shape.
 - *Clearing receipt:* the substrate carries one of the parent's
   five resolution shapes (alias edge / retirement record /
   disambiguation row / canonical-concept row with one of the prior
-  three / deletion). The lens re-fires on the same head until the
-  resolution lands. **Fix-confidence: templated auto-apply** —
-  for (C1) hits, the alias-identity rewrite is mechanical (the lens
-  emits a `Diff` rewriting the redeclaration into an `import` +
-  `type T = canonical.T`); for (C2) hits, the rewrite is the
+  three / deletion) OR (for template→generated) a `GeneratedFrom`
+  registry row. The lens re-fires on the same head until the
+  resolution lands. **Fix-confidence: templated auto-apply** for
+  the firing-today cases only — for (C1) type-scope hits (full
+  variant-set bijection), the alias-identity rewrite is mechanical
+  (the lens emits a `Diff` rewriting the redeclaration into an
+  `import` + `type T = canonical.T`); for (C1) fn-scope hits
+  (signature + body match), the rewrite is the alias `fn helper(…) ->
+  … = canonical.helper(…)`; for (C2) hits, the rewrite is the
   `fold_T` call with the algebra extracted from the original arms
   (the L1.5 catamorphism-derivation pattern, applied here as the
   fix shape). Reviewer overrides the canonical-home or
-  algebra-binding names before commit.
+  algebra-binding names before commit. The refinement-subset case
+  (RegisterStateSpace-shape) has **no auto-fix today** — it's part
+  of the (C1') future sub-layer; resolution requires operator
+  judgment.
 
 - *Kills (real corpus):*
   - **`count_named_bind` corpus.** Identical
@@ -1266,16 +1274,24 @@ import/alias of the resolver's authoritative shape.
     Practice-11-parameterized clean shape: one canonical home
     (`lenses/named_function_count.dag`), one import-alias from
     `t_demo_fixtures.dag`. The template→generated pair stays as-is.
-  - **`RegisterStateSpace` parallel to `StateSpace`** in
+  - **`RegisterStateSpace` parallel to `StateSpace` — honest known
+    gap (not a current fire; future (C1') candidate).** In
     `src/v4/extdeps/languages/ptx.dag:34` and `:102`. `StateSpace`
-    enumerates `Reg | SReg | Const | Global | Local | ...`;
-    `RegisterStateSpace` enumerates `ResReg | ResConst | ResGlobal
-    | ResLocal | ResParam{...}` — a refined subset with one
-    extension (the `ResParam` carrying scope). Fires on (C1) —
-    variant bijection holds for the shared variants; the extension
-    + refinement should be made explicit via a refinement-edge or
-    a `CanonicalConcept` row binding the two carriers. Refinement-
-    not-parallel clean shape per the Escape rule above.
+    enumerates 8 variants (`Reg | SReg | Const | Global | Local |
+    ...`); `RegisterStateSpace` enumerates 6 with renamed
+    constructors (`ResReg | ResConst | ResGlobal | ResLocal |
+    ResParam{...}` + one more) — a refined subset with one
+    extension. **(C1) does NOT fire** — it requires a full variant-
+    set bijection (same cardinality, preserving field shape), which
+    this pair fails by construction. (C2) doesn't apply either
+    (these are type declarations, not fns). The lens as specified
+    therefore does NOT catch refinement-subset parallel coproducts;
+    that's an honest known gap. Cited here as the target shape for
+    a future **(C1') refinement-subset sub-layer** — out of scope
+    for this entry. Clean shape when (C1') lands or when operator
+    judgment intervenes today: refinement-not-parallel per the
+    Escape rule above (substrate carrier rewritten as a refinement
+    edge or as a `CanonicalConcept` row binding the two carriers).
   - **`lookup_chain` (resolver) vs `fold_right` over scope chain.**
     `src/v4/compiler/03_resolve.dag:205` defines
     `fn lookup_chain(s: Scope, name: Symbol) -> Symbol?` as a
@@ -1809,7 +1825,7 @@ uses.
 | Match-arm RHS skeleton + per-arm group membership + per-skeleton constructor-hole presence (normalized RHS after α-renaming + matched-arm constructor substitution; groups expose arm-ids so the auto-fix consumes them as facts, not by re-walking) | `v4.lens.match_arm_skeleton` (new derived stage — see §10.2) | L1.13 |
 | Per-decl structural-shape facts (type-decl: variant set + per-variant field shape; fn-decl: signature shape + body catamorphism-form classifier + identifier token-set) | `v4.lens.structural_similarity` (new derived stage — see §10.2) | L1.12.b |
 
-### 10.2 Four small derived stages cover what the pipeline doesn't already expose
+### 10.2 Five small derived stages cover what the pipeline doesn't already expose
 
 These are themselves `.dag` stages — small folds with declared
 `consumes:` edges — and they're reusable across multiple lenses:
