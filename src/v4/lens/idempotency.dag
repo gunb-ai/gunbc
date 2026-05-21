@@ -19,3 +19,63 @@
 
 module v4.lens.idempotency
 
+import v4.compiler.infer { InferredTree }
+import v4.lens.effect {
+  BarrierEffect,
+  EffectFact,
+  PureEffect,
+  ReadEffect,
+  WriteEffect,
+  effect_map
+}
+import v4.std.node { Node }
+import v4.std.witness { Holds, Witness }
+
+// 🟢 projection carrier — idempotency/cancellation/redundancy read the
+// effect projection and algebraic laws; this slice preserves one lens
+// mechanism and avoids a parallel cancellation taxonomy.
+type IdempotencyVerdict
+  = Idempotent
+  | NonIdempotent
+
+type IdempotencyFact {
+  at: Node
+  effect: EffectFact
+  verdict: IdempotencyVerdict
+}
+
+type IdempotencyClaim {
+  facts: List<IdempotencyFact>
+}
+
+fn idempotency_verdict_for_effect(effect: EffectFact) -> IdempotencyVerdict {
+  match effect.effect {
+    PureEffect => Idempotent
+    ReadEffect => Idempotent
+    BarrierEffect => Idempotent
+    WriteEffect => NonIdempotent
+  }
+}
+
+fn idempotency_fact_for_effect(effect: EffectFact) -> IdempotencyFact {
+  IdempotencyFact {
+    at: effect.at,
+    effect: effect,
+    verdict: idempotency_verdict_for_effect(effect: effect)
+  }
+}
+
+fn idempotency_claim(tree: InferredTree) -> IdempotencyClaim {
+  let effects = effect_map(tree: tree)
+  IdempotencyClaim {
+    facts: fold(effects.facts, init: [], f: fn(acc, effect) {
+      list_push(acc, idempotency_fact_for_effect(effect: effect))
+    })
+  }
+}
+
+fn idempotency_witness(tree: InferredTree) -> Witness<IdempotencyClaim> {
+  Holds {
+    value: idempotency_claim(tree: tree)
+  }
+}

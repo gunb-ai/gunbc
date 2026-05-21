@@ -18,3 +18,73 @@
 
 module v4.lens.ownership
 
+import v4.compiler.infer { InferredTree }
+import v4.std.dependency {
+  BindsTo,
+  Contains,
+  DataDependsOn,
+  DependencyView,
+  EffectDependsOn,
+  ResourceDependsOn,
+  dependency_lens
+}
+import v4.std.node { Node }
+import v4.std.witness { Holds, Witness }
+
+// 🟢 projection carrier — ownership is read from dependency/resource shape.
+// This lens does not model a target-specific borrow checker; emit/eval
+// consume this map when they realize the target memory model.
+type OwnershipMode
+  = OwnedContainment
+  | SharedRead
+  | ExclusiveMutation
+  | BorrowedDependency
+
+type OwnershipFact {
+  owner: Node
+  subject: Node
+  dependency: DependencyView
+  mode: OwnershipMode
+}
+
+type OwnershipMap {
+  facts: List<OwnershipFact>
+}
+
+fn ownership_mode_for_dependency(view: DependencyView) -> OwnershipMode {
+  match view.kind {
+    Contains => OwnedContainment
+    BindsTo => BorrowedDependency
+    DataDependsOn => SharedRead
+    EffectDependsOn => ExclusiveMutation
+    ResourceDependsOn => ExclusiveMutation
+    _ => BorrowedDependency
+  }
+}
+
+fn ownership_fact_for_dependency(view: DependencyView) -> OwnershipFact {
+  OwnershipFact {
+    owner: view.source,
+    subject: view.dependent,
+    dependency: view,
+    mode: ownership_mode_for_dependency(view: view)
+  }
+}
+
+fn ownership_map_from_dependencies(dependencies: List<DependencyView>) -> OwnershipMap {
+  OwnershipMap {
+    facts: fold(dependencies, init: [], f: fn(acc, view) {
+      list_push(acc, ownership_fact_for_dependency(view: view))
+    })
+  }
+}
+
+fn ownership_map(tree: InferredTree) -> OwnershipMap {
+  ownership_map_from_dependencies(dependencies: dependency_lens(root: tree.root))
+}
+
+fn ownership_witness(tree: InferredTree) -> Witness<OwnershipMap> {
+  Holds {
+    value: ownership_map(tree: tree)
+  }
+}
