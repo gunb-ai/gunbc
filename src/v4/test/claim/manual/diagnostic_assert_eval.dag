@@ -21,6 +21,7 @@ import v4.std.diagnostic {
   AmbiguousIntent,
   Diagnostic,
   NodeLocus,
+  NonEmptyDiagnostics,
   Outcome,
   Accepted,
   Rejected,
@@ -69,9 +70,10 @@ fn diag_assert_other_d() -> Diagnostic {
 }
 
 
-data rejected_expected: Outcome<Node> = Rejected {
-  diagnostics: diagnostics_singleton(d: diag_assert_d())
-}
+data rejected_expected_rejection: NonEmptyDiagnostics = diagnostics_singleton(d: diag_assert_d())
+
+
+data rejected_expected: Outcome<Node> = Rejected { diagnostics: rejected_expected_rejection }
 
 
 data rejected_same: Outcome<Node> = rejected_expected
@@ -92,7 +94,7 @@ data witness_diagnostic_claim_match: TestClaim = DiagnosticClaim {
   label: "witness: diagnostic claim match",
   t19_anchor: T19ManualAnchorAbsent,
   input: diag_assert_node(),
-  expected_outcome: rejected_expected,
+  expected_rejection: rejected_expected_rejection,
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
@@ -101,7 +103,7 @@ data witness_diagnostic_claim_mismatch: TestClaim = DiagnosticClaim {
   label: "witness: diagnostic claim mismatch",
   t19_anchor: T19ManualAnchorAbsent,
   input: diag_assert_node(),
-  expected_outcome: rejected_expected,
+  expected_rejection: rejected_expected_rejection,
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
@@ -110,7 +112,7 @@ data witness_diagnostic_claim_accepted_fail: TestClaim = DiagnosticClaim {
   label: "witness: diagnostic claim accepted fail",
   t19_anchor: T19ManualAnchorAbsent,
   input: diag_assert_node(),
-  expected_outcome: rejected_expected,
+  expected_rejection: rejected_expected_rejection,
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 

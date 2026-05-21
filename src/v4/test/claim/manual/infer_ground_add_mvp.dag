@@ -102,12 +102,12 @@ fn infer_receipt_symbol_node(s: Symbol) -> Node {
 
 fn infer_receipt_claim(case: InferReceiptCase) -> TestClaim {
   match case.expected {
-    Rejected { diagnostics: _ } =>
+    Rejected { diagnostics: r } =>
       DiagnosticClaim {
         label: case.label,
         t19_anchor: T19ManualAnchorAbsent,
         input: case.input,
-        expected_outcome: case.expected,
+        expected_rejection: r,
         classification: TestClassification { tier: Tier1, layer: Unit }
       }
     Accepted { value: v, diagnostics: d } =>

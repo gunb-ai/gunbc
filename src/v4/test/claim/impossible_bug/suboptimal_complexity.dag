@@ -43,6 +43,7 @@ import v4.std.diagnostic {
   Accepted,
   Diagnostic,
   NodeLocus,
+  NonEmptyDiagnostics,
   None,
   Outcome,
   Rejected,
@@ -88,16 +89,14 @@ fn complexity_contract(body: Node) -> Node {
 }
 
 
-fn expected_complexity_rejection(input: Node, reason: Symbol, correction: Node) -> Outcome<Node> {
-  Rejected {
-    diagnostics: diagnostics_singleton(
-      d: Diagnostic {
-        reason: reason,
-        at: NodeLocus { node: input },
-        correction: Suggested { node: correction }
-      }
-    )
-  }
+fn expected_complexity_rejection(input: Node, reason: Symbol, correction: Node) -> NonEmptyDiagnostics {
+  diagnostics_singleton(
+    d: Diagnostic {
+      reason: reason,
+      at: NodeLocus { node: input },
+      correction: Suggested { node: correction }
+    }
+  )
 }
 
 
@@ -120,7 +119,7 @@ data claim_overcost_against_structural_bound_violates: TestClaim = DiagnosticCla
   label: "complexity bound rejects lens-derived over-cost body",
   t19_anchor: T19ManualAnchorAbsent,
   input: falsification_overcost_against_structural_bound,
-  expected_outcome: expected_complexity_rejection(
+  expected_rejection: expected_complexity_rejection(
     input: falsification_overcost_against_structural_bound,
     reason: complexity_violation_reason,
     correction: within_bound_input
@@ -136,7 +135,7 @@ data claim_cost_contradicts_inhabitance_caught: TestClaim = DiagnosticClaim {
   label: "complexity inhabitance rejects contradictory body cost",
   t19_anchor: T19ManualAnchorAbsent,
   input: falsification_cost_contradicts_inhabitance,
-  expected_outcome: expected_complexity_rejection(
+  expected_rejection: expected_complexity_rejection(
     input: falsification_cost_contradicts_inhabitance,
     reason: complexity_inhabitance_reason,
     correction: within_bound_input
