@@ -468,53 +468,60 @@ fn sql_primitive_bundle_from_nonnumeric_facts(
   }
 }
 
-fn sql_list_snoc<T>(xs: List<T>, item: T) -> List<T> {
+// free_monoid_fold is a left fold, so cons-prepend folds reverse input order.
+// reverse + cons-prepend recovers the input order — this is the order-preserving
+// idiom for List<T> in v4 substrate today (no canonical list_map / list_append in
+// std/collection or std/algebra yet).
+fn sql_list_reverse<T>(xs: List<T>) -> List<T> {
   free_monoid_fold(
     xs: xs,
-    empty: Cons { head: item, tail: Empty },
-    cons: fn(rest, existing) {
-      Cons { head: existing, tail: rest }
+    empty: Empty,
+    cons: fn(acc, item) {
+      Cons { head: item, tail: acc }
     }
+  )
+}
+
+fn sql_list_map<T, U>(xs: List<T>, f: fn(T) -> U) -> List<U> {
+  sql_list_reverse(
+    xs: free_monoid_fold(
+      xs: xs,
+      empty: Empty,
+      cons: fn(acc, item) {
+        Cons { head: f(item), tail: acc }
+      }
+    )
   )
 }
 
 fn sql_list_append<T>(left: List<T>, right: List<T>) -> List<T> {
   free_monoid_fold(
-    xs: right,
-    empty: left,
+    xs: sql_list_reverse(xs: left),
+    empty: right,
     cons: fn(acc, item) {
-      sql_list_snoc(xs: acc, item: item)
+      Cons { head: item, tail: acc }
     }
   )
 }
 
 fn sql_primitive_bundles_from_integer_catalog() -> List<PrimitiveFactBundle> {
-  free_monoid_fold(
+  sql_list_map(
     xs: sql_integer_facts_catalog,
-    empty: Empty,
-    cons: fn(acc, facts) {
-      sql_list_snoc(xs: acc, item: sql_primitive_bundle_from_integer_facts(facts: facts))
-    }
+    f: sql_primitive_bundle_from_integer_facts
   )
 }
 
 fn sql_primitive_bundles_from_float_catalog() -> List<PrimitiveFactBundle> {
-  free_monoid_fold(
+  sql_list_map(
     xs: sql_float_facts_catalog,
-    empty: Empty,
-    cons: fn(acc, facts) {
-      sql_list_snoc(xs: acc, item: sql_primitive_bundle_from_float_facts(facts: facts))
-    }
+    f: sql_primitive_bundle_from_float_facts
   )
 }
 
 fn sql_primitive_bundles_from_nonnumeric_catalog() -> List<PrimitiveFactBundle> {
-  free_monoid_fold(
+  sql_list_map(
     xs: sql_nonnumeric_facts_catalog,
-    empty: Empty,
-    cons: fn(acc, facts) {
-      sql_list_snoc(xs: acc, item: sql_primitive_bundle_from_nonnumeric_facts(facts: facts))
-    }
+    f: sql_primitive_bundle_from_nonnumeric_facts
   )
 }
 
