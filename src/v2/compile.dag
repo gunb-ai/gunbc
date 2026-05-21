@@ -275,6 +275,15 @@ fn dag_node_key_collision_error(key: String, span: SourceSpan) -> ErrorNode {
   )
 }
 
+// Resolved wrappers can re-enter collection under the same location key as their target;
+// treat that as a back-link revisit, not a distinct-node collision.
+fn is_resolved_alias_revisit(node: Node, prior_fp: String) -> Bool {
+  match node.inferred {
+    Some { value: Resolved { node: target } } => dag_node_fingerprint(node: target) == prior_fp
+    _ => false
+  }
+}
+
 fn dag_node_missing_ref_error(node: Node) -> ErrorNode {
   make_error_node(
     diagnostic: InternalError {
@@ -371,8 +380,15 @@ fn dag_collect_insert(node: Node, acc: DagCollectAcc) -> DagCollectAcc {
   let fp = dag_node_fingerprint(node: node)
   match map_get(acc.seen, key) {
     Some { value: prior } =>
-      if prior == fp {
+      if prior == fp || is_resolved_alias_revisit(node: node, prior_fp: prior) {
         acc
+      } else if node.span.start == 0 && node.span.end == 0 {
+        // Synthetic placeholder spans (infer/type scaffolding): never alias silently.
+        DagCollectAcc {
+          seen: acc.seen,
+          order: acc.order,
+          collision_errors: list_push(acc.collision_errors, dag_node_key_collision_error(key: key, span: node.span))
+        }
       } else {
         DagCollectAcc {
           seen: acc.seen,
