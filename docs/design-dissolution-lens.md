@@ -1153,15 +1153,22 @@ import/alias of the resolver's authoritative shape.
     extension shapes fail by construction. See the Kills section
     for `RegisterStateSpace` as the honest known gap (future (C1')
     refinement-subset sub-layer).
-  - **Fn-scope.** A `fn helper(…) -> …` matches an existing `std/`
-    fn under the layer rules below. The lens fires under EITHER
-    (C1) — signature-shape match **AND** α-renamed body equality
-    (parameter-bijection on the signature, plus body normalization
-    that compares for structural identity after parameter + bound-name
-    α-renaming) — OR (C2) — catamorphism-equivalence over a
-    `std/`-registered type with a known `fold_T`. (C1)-alone-by-
-    signature is a deliberate non-fire: two fns with the same
-    signature and different bodies are not nicknames.
+  - **Fn-scope.** A `fn helper(…) -> …` matches an existing
+    **registered canonical-home** fn under the layer rules below
+    (same canonical-home set defined for type-scope above — `std/`
+    and `core/` are defaults, but the concept-home index can register
+    non-`std/` declarations as canonical, which is what makes the
+    `count_named_bind` kill in the corpus a (C1) fire against the
+    non-`std/` canonical home `src/v3/lenses/named_function_count.dag`).
+    The lens fires under EITHER (C1) — signature-shape match **AND**
+    α-renamed body equality (parameter-bijection on the signature,
+    plus body normalization that compares for structural identity
+    after parameter + bound-name α-renaming) — OR (C2) —
+    catamorphism-equivalence over a registered canonical-home type
+    with a known `fold_T` (substrate-registered via
+    `FoldRegistryEntry`, see (C2) below). (C1)-alone-by-signature is
+    a deliberate non-fire: two fns with the same signature and
+    different bodies are not nicknames.
 
 - *Decidable:* yes — three mechanically-distinct layers, ordered by
   workhorse-first. The lens fires when **any** layer's structural
@@ -1190,7 +1197,11 @@ import/alias of the resolver's authoritative shape.
     (i) the fn's `CatamorphismForm` resolves to
     `StructuralFoldOver { type_id: T, algebra: … }` (extracted by
     the producer stage; see §10.2), AND (ii) a substrate
-    `FoldRegistryEntry` row exists for `T`:
+    `FoldRegistryEntry` row exists for `T` whose `carrier: TypeId`
+    points at a **registered canonical-home** type (same
+    canonical-home discipline as type-scope and (C1) fn-scope —
+    `std/` is the default but non-`std/` canonical homes qualify
+    when the concept-home index says so):
     ```dag
     type FoldRegistryEntry {
       carrier:             TypeId            // the type being folded
@@ -1938,8 +1949,15 @@ produces: Map<DeclId, Set<ClaimToken>>  // fact-bearing tokens in comments/ident
 
 module v4.lens.concept_home
 consumes: v4.compiler.03_resolve, v4.lens.canonical_observations_index
-produces: Map<FnId, File>               // each fn's primary-concept home file
-// reusable by: L1.8
+produces: Map<DeclId, File>             // each declaration's primary-concept home file
+                                        // (DeclId = FnId | TypeId — covers both fn-scope and type-scope
+                                        // canonical-home authority for L1.12.b. The historical narrower
+                                        // shape Map<FnId, File> was insufficient: L1.12.b's type-scope
+                                        // (C1) requires resolving a non-std/ type back to its canonical
+                                        // home in the same way the fn-scope (C1) does. Broadening to
+                                        // DeclId keeps one producer-stage authority for both — Facts
+                                        // Flow Forward / P2.)
+// reusable by: L1.8 (fn-home class), L1.12.b (fn-scope + type-scope canonical-home authority)
 
 module v4.lens.structural_similarity
 consumes: v4.compiler.02_parse, v4.compiler.03_resolve
