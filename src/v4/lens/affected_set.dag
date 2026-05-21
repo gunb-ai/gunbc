@@ -399,7 +399,9 @@ fn affected_set_closure(dependencies: List<DependencyView>, edit_locus: Node) ->
       frontier: [edit_locus],
       dependencies: []
     },
-    f: affected_set_closure_step
+    f: fn(acc, dependency) {
+      affected_set_closure_step(acc: acc, dependency: dependency)
+    }
   )
 }
 
