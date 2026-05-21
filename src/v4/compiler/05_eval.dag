@@ -169,7 +169,9 @@ data eval_rejected_invalid_node: Symbol = eval_rejected_invalid_node
 data eval_rejected_roundtrip_deferred: Symbol = eval_rejected_roundtrip_deferred
 data eval_empty_verdict_list: Symbol = eval_empty_verdict_list
 data eval_rejected_type_node: Symbol = eval_rejected_type_node
+// 🟡 gated — feature:T22-eval-branch-realization — bind node://adhoc-6a2e599a-cc2 — dissolve-on: HostBranchInterpreter chooses a realized successor Node and eval resumes through that chosen subgraph; forbidden: implicit success for branch nodes.
 data eval_rejected_branch_not_realized: Symbol = eval_rejected_branch_not_realized
+// 🟡 gated — feature:T22-eval-bind-realization — bind node://adhoc-6a2e599a-cc2 — dissolve-on: HostBindInterpreter extends HostEnvironment and eval resumes through the bound body; forbidden: implicit success for bind nodes.
 data eval_rejected_bind_not_realized: Symbol = eval_rejected_bind_not_realized
 data eval_rejected_pending_children: Symbol = eval_rejected_pending_children
 data eval_rejected_suspended_not_terminal: Symbol = eval_rejected_suspended_not_terminal
@@ -306,7 +308,7 @@ fn eval_accept_host_value_with_facts(
     outcome_rejected(
       d: eval_diagnostic(reason: eval_rejected_resolved_type_mismatch, node: node)
     )
-  } else if facts.inhabits.algebra != facts.resolved_type {
+  } else if facts.inhabits.witness != facts.resolved_type {
     outcome_rejected(
       d: eval_diagnostic(reason: eval_rejected_inhabitance_mismatch, node: node)
     )
@@ -392,22 +394,12 @@ fn empty_host_values() -> List<HostValue> {
 }
 
 
+// 🟡 gated — feature:T22-eval-runtime-edge-role — bind node://adhoc-6a2e599a-cc2 — dissolve-on: std/node exposes canonical EdgeLabel runtime-argument role query/accessor; forbidden: making Named structural edges into host runtime arguments.
 fn eval_edge_is_runtime_argument(edge: Edge) -> Bool {
   match edge.label {
     Positional => true
     Named { name: _ } => false
   }
-}
-
-
-fn eval_runtime_argument_count(children: List<Edge>) -> Int {
-  fold(children, init: 0, f: fn(acc, edge) {
-    if eval_edge_is_runtime_argument(edge: edge) {
-      acc + 1
-    } else {
-      acc
-    }
-  })
 }
 
 
