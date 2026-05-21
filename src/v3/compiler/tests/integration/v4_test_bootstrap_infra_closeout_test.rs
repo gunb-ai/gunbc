@@ -30,7 +30,6 @@ const DIAGNOSTIC_ASSERT_EVAL_DAG: &str =
     include_str!("../../../../v4/test/claim/manual/diagnostic_assert_eval.dag");
 const DIAGNOSTIC_ASSERT_EVAL_PATH: &str = "src/v4/test/claim/manual/diagnostic_assert_eval.dag";
 const EVAL_DAG: &str = include_str!("../../../../v4/compiler/05_eval.dag");
-const EVAL_PATH: &str = "src/v4/compiler/05_eval.dag";
 
 #[test]
 fn t22_diagnostic_assert_eval_witnesses_parse() {
