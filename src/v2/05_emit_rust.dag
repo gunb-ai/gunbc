@@ -4159,11 +4159,15 @@ fn rust_box_new_value(raw_value: String) -> String {
 fn rust_field_value_for_struct(raw_value: String, struct_node: Node, field_name: String, scope: InferScope) -> String {
   match lookup_struct_field_type_node(struct_node: struct_node, field_name: field_name, source_indices: scope.type_env.source_indices) {
     Some { value: field_type } =>
-      if field_type.connective == Arrow {
-        rust_rc_new_value(raw_value)
-      } else if match field_type.inferred { Some { value: inf } => is_type_variable(inferred: inf)  None => false } {
-        rust_box_new_value(raw_value)
-      } else { raw_value }
+      match field_type.connective {
+        Arrow => rust_rc_new_value(raw_value)
+        _ =>
+          match field_type.inferred {
+            Some { value: inf } =>
+              if is_type_variable(inferred: inf) { rust_box_new_value(raw_value) } else { raw_value }
+            None => raw_value
+          }
+      }
     None => raw_value
   }
 }
