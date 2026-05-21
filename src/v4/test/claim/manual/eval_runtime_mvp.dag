@@ -1,10 +1,10 @@
-// src/v4/test/claim/manual/eval_host_model_mvp.dag
-// Scope: T-22 MVP-2 receipt — eval consumes HostModel over arbitrary input Node subgraph.
-// Owns: eval_mvp2_add_subgraph, eval_mvp2_host_model, witness_eval_mvp2_add_accepts_five.
-// Consumes: compiler/05_eval.dag, compiler/04_infer.dag, std/host.dag, std/node.dag.
-// Status: manual HostModel interpretation receipt.
+// src/v4/test/claim/manual/eval_runtime_mvp.dag
+// Scope: T-22 MVP-2 receipt — eval consumes runtime interpretation over arbitrary input Node subgraph.
+// Owns: eval_mvp2_add_subgraph, eval_mvp2_interpretation_algebra, witness_eval_mvp2_add_accepts_five.
+// Consumes: compiler/05_eval.dag, compiler/04_infer.dag, std/runtime.dag, std/node.dag.
+// Status: manual runtime interpretation receipt.
 
-module v4.test.claim.manual.eval_host_model_mvp
+module v4.test.claim.manual.eval_runtime_mvp
 
 
 import v4.compiler.eval {
@@ -35,44 +35,38 @@ import v4.std.diagnostic {
   Unavailable,
   diagnostics_singleton
 }
-import v4.std.host {
-  EffectSignature,
-  HostAggregate,
-  HostAggregateValue,
-  HostAllocationSemantics,
-  HostBindInterpreter,
-  HostBindingKey,
-  HostBoundaryAllowance,
-  HostBranchInterpreter,
-  HostCall,
-  HostCallSemantics,
-  HostClosure,
-  HostClosureValue,
-  HostContinue,
-  HostControlSemantics,
-  HostControlTransfer,
-  HostEnvironment,
-  HostExecutionSemantics,
-  HostFieldValue,
-  HostFrame,
-  HostIdentity,
-  HostInterpretationAlgebra,
-  HostLoopInterpreter,
-  HostModel,
-  HostPrimitive,
-  HostPrimitiveValue,
-  HostReference,
-  HostReferenceValue,
-  HostResourceEffectBoundary,
-  HostReturn,
-  HostTransformInterpreter,
-  HostUnit,
-  HostUnitValue,
-  HostValue,
-  HostValueInterpreter,
-  HostValueRepresentationModel,
-  ModelCore,
-  ResourceAccess
+import v4.std.runtime {
+  RuntimeAggregate,
+  RuntimeAggregateValue,
+  AllocationSemantics,
+  BindInterpreter,
+  EnvironmentBindingKey,
+  BranchInterpreter,
+  EvaluationCall,
+  CallSemantics,
+  RuntimeClosure,
+  RuntimeClosureValue,
+  Continue,
+  ControlSemantics,
+  ControlTransfer,
+  EvaluationEnvironment,
+  ExecutionSemantics,
+  RuntimeFieldValue,
+  EvaluationFrame,
+  RuntimeIdentity,
+  InterpretationAlgebra,
+  LoopInterpreter,
+  RuntimePrimitive,
+  RuntimePrimitiveValue,
+  RuntimeReference,
+  RuntimeReferenceValue,
+  Return,
+  TransformInterpreter,
+  RuntimeUnit,
+  RuntimeUnitValue,
+  RuntimeValue,
+  ValueInterpreter,
+  ValueRepresentationModel
 }
 import v4.std.machine { Byte }
 import v4.std.node {
@@ -104,9 +98,6 @@ data eval_mvp2_witness_symbol: Symbol = eval_mvp2_witness_symbol
 data eval_mvp2_descent_not_derived: Symbol = eval_mvp2_descent_not_derived
 data eval_mvp2_args_not_two_literals: Symbol = eval_mvp2_args_not_two_literals
 data eval_mvp2_descent_dimension: Symbol = eval_mvp2_descent_dimension
-data eval_mvp2_model_core: ModelCore = eval_mvp2_model_core
-data eval_mvp2_effect_signature: EffectSignature = eval_mvp2_effect_signature
-data eval_mvp2_resource_access: ResourceAccess = eval_mvp2_resource_access
 
 
 fn eval_mvp2_byte() -> Byte {
@@ -160,9 +151,9 @@ fn eval_mvp2_add_subgraph() -> Node {
 }
 
 
-fn eval_mvp2_host_value(bytes: List<Byte>) -> HostValue {
-  HostPrimitive {
-    value: HostPrimitiveValue {
+fn eval_mvp2_runtime_value(bytes: List<Byte>) -> RuntimeValue {
+  RuntimePrimitive {
+    value: RuntimePrimitiveValue {
       primitive_type: eval_mvp2_i64_node(),
       bytes: bytes
     }
@@ -170,13 +161,13 @@ fn eval_mvp2_host_value(bytes: List<Byte>) -> HostValue {
 }
 
 
-fn eval_mvp2_two_value() -> HostValue {
-  eval_mvp2_host_value(bytes: [eval_mvp2_byte(), eval_mvp2_byte()])
+fn eval_mvp2_two_value() -> RuntimeValue {
+  eval_mvp2_runtime_value(bytes: [eval_mvp2_byte(), eval_mvp2_byte()])
 }
 
 
-fn eval_mvp2_five_value() -> HostValue {
-  eval_mvp2_host_value(
+fn eval_mvp2_five_value() -> RuntimeValue {
+  eval_mvp2_runtime_value(
     bytes: [
       eval_mvp2_byte(),
       eval_mvp2_byte(),
@@ -188,21 +179,21 @@ fn eval_mvp2_five_value() -> HostValue {
 }
 
 
-fn eval_mvp2_allocate_literal(_node: Node, _env: HostEnvironment) -> Outcome<HostValue> {
+fn eval_mvp2_allocate_literal(_node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
   Accepted { value: eval_mvp2_two_value(), diagnostics: None }
 }
 
 
-fn eval_mvp2_arg_is_two_literal(value: HostValue) -> Bool {
+fn eval_mvp2_arg_is_two_literal(value: RuntimeValue) -> Bool {
   match value {
-    HostPrimitive { value: p } =>
+    RuntimePrimitive { value: p } =>
       (p.primitive_type == eval_mvp2_i64_node()) && (count(p.bytes) == 2)
     _ => false
   }
 }
 
 
-fn eval_mvp2_args_are_two_literals(args: List<HostValue>) -> Bool {
+fn eval_mvp2_args_are_two_literals(args: List<RuntimeValue>) -> Bool {
   if count(args) == 2 {
     match first(args) {
       Some { value: left } =>
@@ -222,9 +213,9 @@ fn eval_mvp2_args_are_two_literals(args: List<HostValue>) -> Bool {
 
 fn eval_mvp2_call_primitive(
   _node: Node,
-  args: List<HostValue>,
-  _env: HostEnvironment
-) -> Outcome<HostValue> {
+  args: List<RuntimeValue>,
+  _env: EvaluationEnvironment
+) -> Outcome<RuntimeValue> {
   if eval_mvp2_args_are_two_literals(args: args) {
     Accepted { value: eval_mvp2_five_value(), diagnostics: None }
   } else {
@@ -237,101 +228,66 @@ fn eval_mvp2_call_primitive(
 }
 
 
-fn eval_mvp2_choose_branch(_node: Node, _value: HostValue, _env: HostEnvironment) -> Outcome<Node> {
+fn eval_mvp2_choose_branch(_node: Node, _value: RuntimeValue, _env: EvaluationEnvironment) -> Outcome<Node> {
   Accepted { value: eval_mvp2_add_subgraph(), diagnostics: None }
 }
 
 
-fn eval_mvp2_step_loop(_node: Node, _env: HostEnvironment) -> Outcome<HostControlTransfer> {
-  Accepted { value: HostContinue { value: eval_mvp2_five_value() }, diagnostics: None }
+fn eval_mvp2_step_loop(_node: Node, _env: EvaluationEnvironment) -> Outcome<ControlTransfer> {
+  Accepted { value: Continue { value: eval_mvp2_five_value() }, diagnostics: None }
 }
 
 
 fn eval_mvp2_bind_value(
-  _key: HostBindingKey,
-  _value: HostValue,
-  env: HostEnvironment
-) -> Outcome<HostEnvironment> {
+  _key: EnvironmentBindingKey,
+  _value: RuntimeValue,
+  env: EvaluationEnvironment
+) -> Outcome<EvaluationEnvironment> {
   Accepted { value: env, diagnostics: None }
 }
 
 
-fn eval_mvp2_represent_result(value: HostValue) -> Outcome<HostValue> {
+fn eval_mvp2_represent_result(value: RuntimeValue) -> Outcome<RuntimeValue> {
   Accepted { value: value, diagnostics: None }
 }
 
 
-fn eval_mvp2_allocate(value: HostValue) -> Outcome<HostValue> {
+fn eval_mvp2_allocate(value: RuntimeValue) -> Outcome<RuntimeValue> {
   Accepted { value: value, diagnostics: None }
 }
 
 
-fn eval_mvp2_call(_call: HostCall, _frame: HostFrame) -> Outcome<HostControlTransfer> {
-  Accepted { value: HostReturn { value: eval_mvp2_five_value() }, diagnostics: None }
+fn eval_mvp2_call(_call: EvaluationCall, _frame: EvaluationFrame) -> Outcome<ControlTransfer> {
+  Accepted { value: Return { value: eval_mvp2_five_value() }, diagnostics: None }
 }
 
 
-fn eval_mvp2_return_value(value: HostValue, _frame: HostFrame) -> Outcome<HostControlTransfer> {
-  Accepted { value: HostReturn { value: value }, diagnostics: None }
+fn eval_mvp2_return_value(value: RuntimeValue, _frame: EvaluationFrame) -> Outcome<ControlTransfer> {
+  Accepted { value: Return { value: value }, diagnostics: None }
 }
 
 
-fn eval_mvp2_transfer(_control: HostControlTransfer, frame: HostFrame) -> Outcome<HostFrame> {
+fn eval_mvp2_transfer(_control: ControlTransfer, frame: EvaluationFrame) -> Outcome<EvaluationFrame> {
   Accepted { value: frame, diagnostics: None }
 }
 
 
-fn eval_mvp2_boundary_allowance() -> HostBoundaryAllowance {
-  HostBoundaryAllowance {
-    effect: eval_mvp2_effect_signature,
-    resource: eval_mvp2_resource_access,
-    allowed: true
-  }
-}
-
-
-fn eval_mvp2_host_model() -> HostModel {
-  HostModel {
-    core: eval_mvp2_model_core,
-    values: HostValueRepresentationModel {
-      represent_literal: eval_mvp2_allocate_literal,
-      represent_result: eval_mvp2_represent_result
+fn eval_mvp2_interpretation_algebra() -> InterpretationAlgebra {
+  InterpretationAlgebra {
+    value: ValueInterpreter {
+      allocate_literal: eval_mvp2_allocate_literal
     },
-    interpretation: HostInterpretationAlgebra {
-      value: HostValueInterpreter {
-        allocate_literal: eval_mvp2_allocate_literal
-      },
-      transform: HostTransformInterpreter {
-        call_primitive: eval_mvp2_call_primitive
-      },
-      branch: HostBranchInterpreter {
-        choose_branch: eval_mvp2_choose_branch
-      },
-      loop: HostLoopInterpreter {
-        step_loop: eval_mvp2_step_loop
-      },
-      bind: HostBindInterpreter {
-        bind_value: eval_mvp2_bind_value
-      }
+    transform: TransformInterpreter {
+      call_primitive: eval_mvp2_call_primitive
     },
-    execution: HostExecutionSemantics {
-      allocation: HostAllocationSemantics {
-        allocate: eval_mvp2_allocate
-      },
-      calls: HostCallSemantics {
-        call: eval_mvp2_call,
-        return_value: eval_mvp2_return_value
-      },
-      control: HostControlSemantics {
-        transfer: eval_mvp2_transfer
-      }
+    branch: BranchInterpreter {
+      choose_branch: eval_mvp2_choose_branch
     },
-    boundary: HostResourceEffectBoundary {
-      ffi: eval_mvp2_boundary_allowance(),
-      exceptions: eval_mvp2_boundary_allowance(),
-      async: eval_mvp2_boundary_allowance(),
-      concurrency: eval_mvp2_boundary_allowance(),
-      identity_reference: eval_mvp2_boundary_allowance()
+    loop: LoopInterpreter {
+      step_loop: eval_mvp2_step_loop
+    },
+    bind: BindInterpreter {
+      bind_value: eval_mvp2_bind_value
     }
   }
 }
@@ -392,17 +348,17 @@ fn eval_mvp2_inferred_tree() -> InferredTree {
 }
 
 
-fn eval_mvp2_actual() -> Outcome<HostValue> {
+fn eval_mvp2_actual() -> Outcome<RuntimeValue> {
   eval(
     tree: eval_mvp2_inferred_tree(),
-    host: eval_mvp2_host_model(),
+    interpretation: eval_mvp2_interpretation_algebra(),
     inputs: Inputs { root: eval_mvp2_add_subgraph() }
   )
 }
 
 
 data witness_eval_mvp2_add_accepts_five: Bool = match eval_mvp2_actual() {
-  Accepted { value: HostPrimitive { value: p }, diagnostics: None } =>
+  Accepted { value: RuntimePrimitive { value: p }, diagnostics: None } =>
     (p.primitive_type == eval_mvp2_i64_node()) && (count(p.bytes) == 5)
   _ => false
 }
