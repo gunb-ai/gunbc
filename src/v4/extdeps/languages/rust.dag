@@ -2,7 +2,7 @@
 // Scope: Rust Reference LanguageModel — scalar fact-bundles, inhabitants, bidirectional grammar data.
 // Owns: RustScalar, RustIntegerPrimitiveFacts, RustFloatPrimitiveFacts, RustNonIntegerPrimitiveFacts, RustLanguageModel, rust_*_facts, rust_*_inhabitant_node, rust_declared_inhabitants_root, rust_mvp1_target_model, rust_wave1_* grammar/lex.
 // Consumes: v4.compiler.parse, v4.compiler.tokenize, v4.std.collection, v4.std.node, v4.std.logic, v4.std.algebra, v4.std.cardinality, v4.std.text.
-// Status: T-4 rust slice — LanguageModel inhabitants + grammar productions (MVP-1 translate authority); bool/`!` canonical-B decl-ref — 🟡 E-6(b) staging.
+// Status: T-4 rust slice — LanguageModel inhabitants + fact catalogs on carrier; wave-1 lex/grammar + MVP serialize_source are 🟡 scaffolds (not full fn-item parse / grammar-as-bidir); `core: ModelCore` blocked on T-33 (#3474); bool/`!` canonical-B decl-ref — 🟡 E-6(b) staging.
 // Anchor: https://doc.rust-lang.org/reference/types.html
 
 module v4.extdeps.languages.rust
@@ -24,8 +24,9 @@ import v4.compiler.tokenize {
   ModeledLexRules,
   TokenRule
 }
-import v4.std.collection { Set }
+import v4.std.collection { List, Set }
 import v4.std.node {
+  Arrow,
   Atom,
   Conj,
   Edge,
@@ -66,6 +67,7 @@ type RustScalar
   | BoolScalar
   | CharScalar
   | StrScalar
+  | StringScalar
   | UnitScalar
   | NeverScalar
 
@@ -133,11 +135,15 @@ type OverflowDisposition<IRCarrier>
   = MustPanicOnOverflow
   | MayPanicOrTwoComplementWrap
 
+// T-33 gate: `core: ModelCore` replaces the three `*_facts_catalog` fields when std/model_core.dag lands.
 type RustLanguageModel {
   lex: LexRules
   grammar: Grammar
   language_identity: Symbol
   canonical_symbols: Set<Symbol>
+  integer_facts_catalog: List<RustIntegerPrimitiveFacts>
+  float_facts_catalog: List<RustFloatPrimitiveFacts>
+  noninteger_facts_catalog: List<RustNonIntegerPrimitiveFacts>
 }
 
 data rust_language_model_surface_id: Symbol = rust_language_model_surface_id
@@ -249,7 +255,7 @@ data rust_token_rparen: Symbol = rust_token_rparen
 data rust_token_comma: Symbol = rust_token_comma
 data rust_token_colon: Symbol = rust_token_colon
 
-data rust_production_fn_item: Symbol = rust_production_fn_item
+data rust_production_wave1_fn_stub: Symbol = rust_production_wave1_fn_stub
 
 data rust_surface_fn_item: Symbol = rust_surface_fn_item
 data rust_surface_type_i32: Symbol = rust_surface_type_i32
@@ -258,8 +264,58 @@ data rust_surface_bin_add: Symbol = rust_surface_bin_add
 data rust_inhabitant_field_atom: Symbol = rust_inhabitant_field_atom
 data rust_inhabitant_field_facts: Symbol = rust_inhabitant_field_facts
 
+data rust_facts_field_surface_spelling: Symbol = rust_facts_field_surface_spelling
+data rust_facts_field_signedness: Symbol = rust_facts_field_signedness
+data rust_facts_field_width: Symbol = rust_facts_field_width
+data rust_facts_field_overflow_release: Symbol = rust_facts_field_overflow_release
+data rust_facts_field_std_projection: Symbol = rust_facts_field_std_projection
+data rust_facts_field_scalar_classifier: Symbol = rust_facts_field_scalar_classifier
+data rust_facts_field_ieee754_binary: Symbol = rust_facts_field_ieee754_binary
+data rust_facts_field_representation: Symbol = rust_facts_field_representation
+
+data rust_scalar_field_classifier: Symbol = rust_scalar_field_classifier
+data rust_scalar_field_kind: Symbol = rust_scalar_field_kind
+data rust_scalar_field_width: Symbol = rust_scalar_field_width
+
+data rust_tag_signed: Symbol = rust_tag_signed
+data rust_tag_unsigned: Symbol = rust_tag_unsigned
+data rust_tag_bits8: Symbol = rust_tag_bits8
+data rust_tag_bits16: Symbol = rust_tag_bits16
+data rust_tag_bits32: Symbol = rust_tag_bits32
+data rust_tag_bits64: Symbol = rust_tag_bits64
+data rust_tag_bits128: Symbol = rust_tag_bits128
+data rust_tag_pointer: Symbol = rust_tag_pointer
+data rust_tag_panic_on_overflow: Symbol = rust_tag_panic_on_overflow
+data rust_tag_two_complement_wrap: Symbol = rust_tag_two_complement_wrap
+data rust_tag_scalar_int: Symbol = rust_tag_scalar_int
+data rust_tag_scalar_float: Symbol = rust_tag_scalar_float
+data rust_tag_scalar_bool: Symbol = rust_tag_scalar_bool
+data rust_tag_scalar_char: Symbol = rust_tag_scalar_char
+data rust_tag_scalar_str: Symbol = rust_tag_scalar_str
+data rust_tag_scalar_string: Symbol = rust_tag_scalar_string
+data rust_tag_scalar_unit: Symbol = rust_tag_scalar_unit
+data rust_tag_scalar_never: Symbol = rust_tag_scalar_never
+
 data rust_mvp1_serialize_source_anchor: Symbol = rust_mvp1_serialize_source_anchor
 data rust_mvp1_source_text_field: Symbol = rust_mvp1_source_text_field
+data rust_mvp1_source_tok_0: Symbol = rust_mvp1_source_tok_0
+data rust_mvp1_source_tok_1: Symbol = rust_mvp1_source_tok_1
+data rust_mvp1_source_tok_2: Symbol = rust_mvp1_source_tok_2
+data rust_mvp1_source_tok_3: Symbol = rust_mvp1_source_tok_3
+data rust_mvp1_source_tok_4: Symbol = rust_mvp1_source_tok_4
+data rust_mvp1_source_tok_5: Symbol = rust_mvp1_source_tok_5
+data rust_mvp1_source_tok_6: Symbol = rust_mvp1_source_tok_6
+data rust_mvp1_source_tok_7: Symbol = rust_mvp1_source_tok_7
+data rust_mvp1_source_tok_8: Symbol = rust_mvp1_source_tok_8
+data rust_mvp1_source_tok_9: Symbol = rust_mvp1_source_tok_9
+data rust_mvp1_source_tok_10: Symbol = rust_mvp1_source_tok_10
+data rust_mvp1_source_tok_11: Symbol = rust_mvp1_source_tok_11
+data rust_mvp1_source_tok_12: Symbol = rust_mvp1_source_tok_12
+data rust_mvp1_source_tok_13: Symbol = rust_mvp1_source_tok_13
+data rust_mvp1_source_tok_14: Symbol = rust_mvp1_source_tok_14
+data rust_mvp1_source_tok_15: Symbol = rust_mvp1_source_tok_15
+data rust_mvp1_source_tok_16: Symbol = rust_mvp1_source_tok_16
+data rust_mvp1_source_tok_17: Symbol = rust_mvp1_source_tok_17
 data rust_mvp1_source_text: String = "fn add(x: i32, y: i32) -> i32 { x + y }"
 
 data rust_facts_i8: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
@@ -409,7 +465,7 @@ data rust_facts_str: RustNonIntegerPrimitiveFacts = RustNonIntegerPrimitiveFacts
 
 data rust_facts_string: RustNonIntegerPrimitiveFacts = RustNonIntegerPrimitiveFacts {
   surface_spelling: rust_surface_spelling_string,
-  scalar_classifier: StrScalar,
+  scalar_classifier: StringScalar,
   std_projection: rust_std_projection_string,
   representation: rust_string_owned_utf8
 }
@@ -470,6 +526,148 @@ fn rust_inhabitant_atom(id: Symbol) -> Node {
   }
 }
 
+fn rust_int_kind_node(kind: RustIntKind) -> Node {
+  match kind {
+    Signed => rust_inhabitant_atom(id: rust_tag_signed)
+    Unsigned => rust_inhabitant_atom(id: rust_tag_unsigned)
+  }
+}
+
+fn rust_int_width_node(width: RustIntWidth) -> Node {
+  match width {
+    Bits8 => rust_inhabitant_atom(id: rust_tag_bits8)
+    Bits16 => rust_inhabitant_atom(id: rust_tag_bits16)
+    Bits32 => rust_inhabitant_atom(id: rust_tag_bits32)
+    Bits64 => rust_inhabitant_atom(id: rust_tag_bits64)
+    Bits128 => rust_inhabitant_atom(id: rust_tag_bits128)
+    Pointer => rust_inhabitant_atom(id: rust_tag_pointer)
+  }
+}
+
+fn rust_float_width_node(width: RustFloatWidth) -> Node {
+  match width {
+    Bits32 => rust_inhabitant_atom(id: rust_tag_bits32)
+    Bits64 => rust_inhabitant_atom(id: rust_tag_bits64)
+  }
+}
+
+fn rust_overflow_node(overflow: OverflowAction) -> Node {
+  match overflow {
+    PanicOnOverflow => rust_inhabitant_atom(id: rust_tag_panic_on_overflow)
+    TwoComplementWrap => rust_inhabitant_atom(id: rust_tag_two_complement_wrap)
+  }
+}
+
+fn rust_scalar_node(scalar: RustScalar) -> Node {
+  match scalar {
+    IntScalar { kind, width } => Node {
+      kind: TypeNode { connective: Conj },
+      children: [
+        rust_named_edge(
+          name: rust_scalar_field_classifier,
+          target: rust_inhabitant_atom(id: rust_tag_scalar_int)
+        ),
+        rust_named_edge(name: rust_scalar_field_kind, target: rust_int_kind_node(kind: kind)),
+        rust_named_edge(name: rust_scalar_field_width, target: rust_int_width_node(width: width))
+      ]
+    }
+    FloatScalar { width } => Node {
+      kind: TypeNode { connective: Conj },
+      children: [
+        rust_named_edge(
+          name: rust_scalar_field_classifier,
+          target: rust_inhabitant_atom(id: rust_tag_scalar_float)
+        ),
+        rust_named_edge(name: rust_scalar_field_width, target: rust_float_width_node(width: width))
+      ]
+    }
+    BoolScalar => rust_inhabitant_atom(id: rust_tag_scalar_bool)
+    CharScalar => rust_inhabitant_atom(id: rust_tag_scalar_char)
+    StrScalar => rust_inhabitant_atom(id: rust_tag_scalar_str)
+    StringScalar => rust_inhabitant_atom(id: rust_tag_scalar_string)
+    UnitScalar => rust_inhabitant_atom(id: rust_tag_scalar_unit)
+    NeverScalar => rust_inhabitant_atom(id: rust_tag_scalar_never)
+  }
+}
+
+fn rust_integer_facts_node(facts: RustIntegerPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      rust_named_edge(
+        name: rust_facts_field_surface_spelling,
+        target: rust_inhabitant_atom(id: facts.surface_spelling)
+      ),
+      rust_named_edge(
+        name: rust_facts_field_signedness,
+        target: rust_int_kind_node(kind: facts.signedness)
+      ),
+      rust_named_edge(name: rust_facts_field_width, target: rust_int_width_node(width: facts.width)),
+      rust_named_edge(
+        name: rust_facts_field_overflow_release,
+        target: rust_overflow_node(overflow: facts.overflow_release)
+      ),
+      rust_named_edge(
+        name: rust_facts_field_std_projection,
+        target: rust_inhabitant_atom(id: facts.std_projection)
+      ),
+      rust_named_edge(
+        name: rust_facts_field_scalar_classifier,
+        target: rust_scalar_node(scalar: facts.scalar_classifier)
+      )
+    ]
+  }
+}
+
+fn rust_float_facts_node(facts: RustFloatPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      rust_named_edge(
+        name: rust_facts_field_surface_spelling,
+        target: rust_inhabitant_atom(id: facts.surface_spelling)
+      ),
+      rust_named_edge(name: rust_facts_field_width, target: rust_float_width_node(width: facts.width)),
+      rust_named_edge(
+        name: rust_facts_field_ieee754_binary,
+        target: rust_inhabitant_atom(id: facts.ieee754_binary)
+      ),
+      rust_named_edge(
+        name: rust_facts_field_std_projection,
+        target: rust_inhabitant_atom(id: facts.std_projection)
+      ),
+      rust_named_edge(
+        name: rust_facts_field_scalar_classifier,
+        target: rust_scalar_node(scalar: facts.scalar_classifier)
+      )
+    ]
+  }
+}
+
+fn rust_noninteger_facts_node(facts: RustNonIntegerPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      rust_named_edge(
+        name: rust_facts_field_surface_spelling,
+        target: rust_inhabitant_atom(id: facts.surface_spelling)
+      ),
+      rust_named_edge(
+        name: rust_facts_field_scalar_classifier,
+        target: rust_scalar_node(scalar: facts.scalar_classifier)
+      ),
+      rust_named_edge(
+        name: rust_facts_field_std_projection,
+        target: rust_inhabitant_atom(id: facts.std_projection)
+      ),
+      rust_named_edge(
+        name: rust_facts_field_representation,
+        target: rust_inhabitant_atom(id: facts.representation)
+      )
+    ]
+  }
+}
+
 fn rust_inhabitant_i8_node() -> Node {
   rust_integer_inhabitant_node(id: rust_inhabitant_i8, facts: rust_facts_i8)
 }
@@ -485,7 +683,7 @@ fn rust_integer_inhabitant_node(id: Symbol, facts: RustIntegerPrimitiveFacts) ->
       rust_named_edge(name: rust_inhabitant_field_atom, target: rust_inhabitant_atom(id: id)),
       rust_named_edge(
         name: rust_inhabitant_field_facts,
-        target: rust_inhabitant_atom(id: facts.surface_spelling)
+        target: rust_integer_facts_node(facts: facts)
       )
     ]
   }
@@ -498,7 +696,7 @@ fn rust_float_inhabitant_node(id: Symbol, facts: RustFloatPrimitiveFacts) -> Nod
       rust_named_edge(name: rust_inhabitant_field_atom, target: rust_inhabitant_atom(id: id)),
       rust_named_edge(
         name: rust_inhabitant_field_facts,
-        target: rust_inhabitant_atom(id: facts.surface_spelling)
+        target: rust_float_facts_node(facts: facts)
       )
     ]
   }
@@ -511,7 +709,7 @@ fn rust_noninteger_inhabitant_node(id: Symbol, facts: RustNonIntegerPrimitiveFac
       rust_named_edge(name: rust_inhabitant_field_atom, target: rust_inhabitant_atom(id: id)),
       rust_named_edge(
         name: rust_inhabitant_field_facts,
-        target: rust_inhabitant_atom(id: facts.surface_spelling)
+        target: rust_noninteger_facts_node(facts: facts)
       )
     ]
   }
@@ -593,6 +791,8 @@ fn rust_named_edge(name: Symbol, target: Node) -> Edge {
   Edge { label: Named { name: name }, target: target }
 }
 
+// T-10 `coercion_candidates_from_target_model` (06_translate.dag) wraps this Conj as one
+// closed candidate-set root; find_witness enumerates inside the root — not per-child candidates here.
 fn rust_declared_inhabitants_root() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -640,21 +840,99 @@ fn rust_mvp1_source_text_authority() -> String {
   rust_mvp1_source_text
 }
 
+// 🟡 MVP serialize_source scaffold — token-class sequence only; not grammar-as-bidir text round-trip.
+// dissolve-on: T-10 ingest/emit carries source via bidirectional grammar + literal projection.
+fn rust_mvp1_source_token_node(token_class: Symbol) -> Node {
+  rust_inhabitant_atom(id: token_class)
+}
+
 fn rust_mvp1_serialize_source_node() -> Node {
-  let _expected_source = rust_mvp1_source_text_authority()
+  let _authority = rust_mvp1_source_text_authority()
   Node {
     kind: TypeNode { connective: Conj },
     children: [
       rust_named_edge(
         name: rust_mvp1_source_text_field,
         target: rust_inhabitant_atom(id: rust_mvp1_serialize_source_anchor)
+      ),
+      rust_named_edge(
+        name: rust_mvp1_source_tok_0,
+        target: rust_mvp1_source_token_node(token_class: rust_token_kw_fn)
+      ),
+      rust_named_edge(
+        name: rust_mvp1_source_tok_1,
+        target: rust_mvp1_source_token_node(token_class: rust_token_ident)
+      ),
+      rust_named_edge(
+        name: rust_mvp1_source_tok_2,
+        target: rust_mvp1_source_token_node(token_class: rust_token_lparen)
+      ),
+      rust_named_edge(
+        name: rust_mvp1_source_tok_3,
+        target: rust_mvp1_source_token_node(token_class: rust_token_ident)
+      ),
+      rust_named_edge(
+        name: rust_mvp1_source_tok_4,
+        target: rust_mvp1_source_token_node(token_class: rust_token_colon)
+      ),
+      rust_named_edge(
+        name: rust_mvp1_source_tok_5,
+        target: rust_mvp1_source_token_node(token_class: rust_token_ty_i32)
+      ),
+      rust_named_edge(
+        name: rust_mvp1_source_tok_6,
+        target: rust_mvp1_source_token_node(token_class: rust_token_comma)
+      ),
+      rust_named_edge(
+        name: rust_mvp1_source_tok_7,
+        target: rust_mvp1_source_token_node(token_class: rust_token_ident)
+      ),
+      rust_named_edge(
+        name: rust_mvp1_source_tok_8,
+        target: rust_mvp1_source_token_node(token_class: rust_token_colon)
+      ),
+      rust_named_edge(
+        name: rust_mvp1_source_tok_9,
+        target: rust_mvp1_source_token_node(token_class: rust_token_ty_i32)
+      ),
+      rust_named_edge(
+        name: rust_mvp1_source_tok_10,
+        target: rust_mvp1_source_token_node(token_class: rust_token_rparen)
+      ),
+      rust_named_edge(
+        name: rust_mvp1_source_tok_11,
+        target: rust_mvp1_source_token_node(token_class: rust_token_arrow)
+      ),
+      rust_named_edge(
+        name: rust_mvp1_source_tok_12,
+        target: rust_mvp1_source_token_node(token_class: rust_token_ty_i32)
+      ),
+      rust_named_edge(
+        name: rust_mvp1_source_tok_13,
+        target: rust_mvp1_source_token_node(token_class: rust_token_lbrace)
+      ),
+      rust_named_edge(
+        name: rust_mvp1_source_tok_14,
+        target: rust_mvp1_source_token_node(token_class: rust_token_ident)
+      ),
+      rust_named_edge(
+        name: rust_mvp1_source_tok_15,
+        target: rust_mvp1_source_token_node(token_class: rust_token_plus)
+      ),
+      rust_named_edge(
+        name: rust_mvp1_source_tok_16,
+        target: rust_mvp1_source_token_node(token_class: rust_token_ident)
+      ),
+      rust_named_edge(
+        name: rust_mvp1_source_tok_17,
+        target: rust_mvp1_source_token_node(token_class: rust_token_rbrace)
       )
     ]
   }
 }
 
 fn rust_mvp1_target_model() -> Node {
-  let _source_authority = rust_mvp1_source_text_authority()
+  let _authority = rust_mvp1_source_text_authority()
   Node {
     kind: TypeNode { connective: Conj },
     children: [
