@@ -162,16 +162,21 @@ jobs:
     # v4 bootstrap viability — standalone `v4` jobs hit a ~5m Ubicloud shutdown mid-emit;
     # folding into `ci` (40m job budget) keeps one runner lifecycle. The `v4` job is a
     # receipt-only stub so required check names stay stable (see main ci.yml commentary).
+    # MVP-1 + v4 bootstrap share the v2-compiler binary; workflow_policy PRs that
+    # touch gate wiring must still build/run the MVP-1 receipt (INVARIANTS P2/P3).
     - name: Cache v2-compiler binary (v4 bootstrap gate)
-      if: needs.affected.outputs.v4 == 'true'
+      if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'
       id: v4-v2-bin
       uses: actions/cache@v4
       with:
         path: target/release/v2-compiler
         key: v2-compiler-bin-${{ runner.os }}-${{ hashFiles('src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}
     - name: Build v2 compiler (v4 bootstrap gate)
-      if: needs.affected.outputs.v4 == 'true' && steps.v4-v2-bin.outputs.cache-hit != 'true'
+      if: (needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true') && steps.v4-v2-bin.outputs.cache-hit != 'true'
       run: cargo build -p v2-compiler --release
+    - name: MVP-1 v4 add end-to-end gate (add.dag → rust → cargo run)
+      if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'
+      run: bash scripts/v4-mvp1-e2e-gate.sh
     - name: v2 → v4 bootstrap compile (fail-closed full)
       if: needs.affected.outputs.v4 == 'true'
       id: v4_bootstrap_compile
