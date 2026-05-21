@@ -1,0 +1,78 @@
+// src/v4/test/claim/lens_cost/map_linear.dag
+// Scope: T-12 worked claim — structural cardinality projects to linear symbolic cost.
+// Owns: map_linear_claim.
+// Consumes: lens cost, std diagnostic, std node.
+// Status: scaffold — compile-only until T-19/T-22 generated claim execution.
+
+module v4.test.claim.lens_cost.map_linear
+
+import v4.lens.cost { LinearCost, SizeVariable, SymbolicCost, cost_lens }
+import v4.std.diagnostic {
+  AmbiguousIntent,
+  Diagnostic,
+  Textual,
+  Unavailable,
+  WholeFile
+}
+import v4.std.logic { Bool }
+import v4.std.node {
+  Atom,
+  Cardinality,
+  ComputationNode,
+  Edge,
+  Node,
+  Positional,
+  Symbol,
+  Transform,
+  TypeNode
+}
+import v4.std.witness { Holds, Witness }
+
+data map_linear_claim_file: Symbol = map_linear_claim_file
+data map_linear_claim_reason: Symbol = map_linear_claim_reason
+
+type LensCostClaim {
+  input: Node
+  expected: SymbolicCost
+  falsification: Diagnostic
+}
+
+data map_linear_body_atom: Symbol = map_linear_body_atom
+
+data map_linear_body_leaf: Node = Node {
+  kind: TypeNode { connective: Atom { identity: map_linear_body_atom } },
+  children: []
+}
+
+data map_linear_body: Node = Node {
+  kind: ComputationNode { behavior: Transform },
+  children: [
+    Edge { label: Positional, target: map_linear_body_leaf }
+  ]
+}
+
+data map_linear_input: Node = Node {
+  kind: TypeNode { connective: Cardinality },
+  children: [
+    Edge { label: Positional, target: map_linear_body }
+  ]
+}
+
+data map_linear_claim: LensCostClaim = LensCostClaim {
+  input: map_linear_input,
+  expected: LinearCost { variable: SizeVariable { source: map_linear_input } },
+  falsification: Diagnostic {
+    reason: map_linear_claim_reason,
+    at: Textual { file: map_linear_claim_file, extent: WholeFile },
+    correction: Unavailable { reason: AmbiguousIntent }
+  }
+}
+
+fn map_linear_claim_holds() -> Bool {
+  match cost_lens(n: map_linear_claim.input) {
+    Holds { value: actual } => actual == map_linear_claim.expected
+    _ => false
+  }
+}
+
+data map_linear_claim_passes: Bool = map_linear_claim_holds()

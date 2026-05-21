@@ -1,0 +1,84 @@
+// src/v4/test/claim/lens_cost/nested_product.dag
+// Scope: T-12 worked claim — nested cardinalities compose by iterative product.
+// Owns: nested_product_claim.
+// Consumes: lens cost, std diagnostic, std node.
+// Status: scaffold — compile-only until T-19/T-22 generated claim execution.
+
+module v4.test.claim.lens_cost.nested_product
+
+import v4.lens.cost {
+  LinearCost,
+  ProductCost,
+  SizeVariable,
+  SymbolicCost,
+  cost_lens
+}
+import v4.std.diagnostic {
+  AmbiguousIntent,
+  Diagnostic,
+  Textual,
+  Unavailable,
+  WholeFile
+}
+import v4.std.logic { Bool }
+import v4.std.node {
+  Cardinality,
+  ComputationNode,
+  Edge,
+  Node,
+  Positional,
+  Symbol,
+  Transform,
+  TypeNode
+}
+import v4.std.witness { Holds, Witness }
+
+data nested_product_claim_file: Symbol = nested_product_claim_file
+data nested_product_claim_reason: Symbol = nested_product_claim_reason
+
+type LensCostClaim {
+  input: Node
+  expected: SymbolicCost
+  falsification: Diagnostic
+}
+
+data nested_product_body: Node = Node {
+  kind: ComputationNode { behavior: Transform },
+  children: []
+}
+
+data nested_product_inner: Node = Node {
+  kind: TypeNode { connective: Cardinality },
+  children: [
+    Edge { label: Positional, target: nested_product_body }
+  ]
+}
+
+data nested_product_input: Node = Node {
+  kind: TypeNode { connective: Cardinality },
+  children: [
+    Edge { label: Positional, target: nested_product_inner }
+  ]
+}
+
+data nested_product_claim: LensCostClaim = LensCostClaim {
+  input: nested_product_input,
+  expected: ProductCost {
+    lhs: LinearCost { variable: SizeVariable { source: nested_product_input } },
+    rhs: LinearCost { variable: SizeVariable { source: nested_product_inner } }
+  },
+  falsification: Diagnostic {
+    reason: nested_product_claim_reason,
+    at: Textual { file: nested_product_claim_file, extent: WholeFile },
+    correction: Unavailable { reason: AmbiguousIntent }
+  }
+}
+
+fn nested_product_claim_holds() -> Bool {
+  match cost_lens(n: nested_product_claim.input) {
+    Holds { value: actual } => actual == nested_product_claim.expected
+    _ => false
+  }
+}
+
+data nested_product_claim_passes: Bool = nested_product_claim_holds()
