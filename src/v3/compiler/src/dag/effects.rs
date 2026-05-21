@@ -16,6 +16,7 @@
 //! the live transitional contract and dissolution receipt.
 
 use std::collections::BTreeMap;
+use std::fmt;
 
 use super::{BoolPortRef, Dag, DeclarationId, ElementRef, NonSingletonList};
 
@@ -30,6 +31,39 @@ pub enum HttpMethodScalar {
     Delete,
     Head,
     Options,
+}
+
+impl HttpMethodScalar {
+    pub fn token(self) -> &'static str {
+        match self {
+            Self::Get => "GET",
+            Self::Post => "POST",
+            Self::Put => "PUT",
+            Self::Patch => "PATCH",
+            Self::Delete => "DELETE",
+            Self::Head => "HEAD",
+            Self::Options => "OPTIONS",
+        }
+    }
+
+    pub fn from_token(token: &str) -> Option<Self> {
+        match token {
+            "GET" => Some(Self::Get),
+            "POST" => Some(Self::Post),
+            "PUT" => Some(Self::Put),
+            "PATCH" => Some(Self::Patch),
+            "DELETE" => Some(Self::Delete),
+            "HEAD" => Some(Self::Head),
+            "OPTIONS" => Some(Self::Options),
+            _ => None,
+        }
+    }
+}
+
+impl fmt::Display for HttpMethodScalar {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.token())
+    }
 }
 
 /// 🟢 **TERMINAL.** Where a stable idempotency key comes from — mirrors
