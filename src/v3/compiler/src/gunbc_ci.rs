@@ -233,6 +233,103 @@ pub fn select_affected_gates_for_binary_shim(
     select_affected_gates(dag, &diff)
 }
 
+/// Structural mirror of `v4.lens.subsumption.DiffId` for Lens-CI rerun evidence.
+pub type DissolutionDiffId = String;
+
+/// Structural mirror of `v4.lens.subsumption.TestClaimId` for Lens-CI rerun evidence.
+pub type DissolutionTestClaimId = String;
+
+/// Structural mirror of `v4.lens.subsumption.SubsumptionVerification`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SubsumptionVerificationRuntime {
+    MechanicalReverification {
+        test_claim: DissolutionTestClaimId,
+    },
+    ProducerStageDerivation,
+}
+
+/// Structural mirror of one `v4.lens.subsumption.DissolutionSubsumption` row.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DissolutionSubsumptionRuntimeRow {
+    pub root_fix: DissolutionDiffId,
+    pub subsumed_fixes: BTreeSet<DissolutionDiffId>,
+    pub verification: SubsumptionVerificationRuntime,
+}
+
+/// Lens-CI evidence from applying `root_fix` and rerunning the lens suite for one TestClaim row.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MechanicalReverificationRun {
+    pub test_claim: DissolutionTestClaimId,
+    pub applied_root_fix: DissolutionDiffId,
+    pub findings_before: BTreeSet<DissolutionDiffId>,
+    pub findings_after: BTreeSet<DissolutionDiffId>,
+}
+
+/// Typed fail-closed outcome for `MechanicalReverification` row validation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MechanicalReverificationError {
+    NonMechanicalRow,
+    TestClaimMismatch {
+        expected: DissolutionTestClaimId,
+        observed: DissolutionTestClaimId,
+    },
+    RootFixMismatch {
+        expected: DissolutionDiffId,
+        observed: DissolutionDiffId,
+    },
+    SubsumedFixMissingBefore {
+        fix: DissolutionDiffId,
+    },
+    SubsumedFixStillPresentAfter {
+        fix: DissolutionDiffId,
+    },
+}
+
+/// Validate a `MechanicalReverification` row against one concrete rerun.
+///
+/// This is the Lens-CI host runtime for `v4.lens.subsumption` while v4 TestClaim execution is
+/// still staged: CI supplies the observed pre/post fix sets, and this function validates the row
+/// without reading comments or diagnostic prose.
+pub fn verify_mechanical_reverification(
+    row: &DissolutionSubsumptionRuntimeRow,
+    run: &MechanicalReverificationRun,
+) -> Result<(), MechanicalReverificationError> {
+    let expected_claim = match &row.verification {
+        SubsumptionVerificationRuntime::MechanicalReverification { test_claim } => test_claim,
+        SubsumptionVerificationRuntime::ProducerStageDerivation => {
+            return Err(MechanicalReverificationError::NonMechanicalRow);
+        }
+    };
+
+    if expected_claim != &run.test_claim {
+        return Err(MechanicalReverificationError::TestClaimMismatch {
+            expected: expected_claim.clone(),
+            observed: run.test_claim.clone(),
+        });
+    }
+    if row.root_fix != run.applied_root_fix {
+        return Err(MechanicalReverificationError::RootFixMismatch {
+            expected: row.root_fix.clone(),
+            observed: run.applied_root_fix.clone(),
+        });
+    }
+
+    for fix in &row.subsumed_fixes {
+        if !run.findings_before.contains(fix) {
+            return Err(MechanicalReverificationError::SubsumedFixMissingBefore {
+                fix: fix.clone(),
+            });
+        }
+        if run.findings_after.contains(fix) {
+            return Err(MechanicalReverificationError::SubsumedFixStillPresentAfter {
+                fix: fix.clone(),
+            });
+        }
+    }
+
+    Ok(())
+}
+
 fn topo_sort_subset(
     dag: &CiWorkflowDagInput,
     subset: &HashSet<&str>,
