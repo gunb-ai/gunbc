@@ -102,23 +102,23 @@ pub use crate::v2_std_core::{
     binop_right, cast_expr, cast_target, expr_call_func_at, expr_has_non_tail_self_call,
     expr_has_self_call, expr_method_name_at, expr_var_name_at, field_access_base,
     field_access_field_at, field_binding_name_at, field_binding_pattern, field_init_node_name_at,
-    field_init_node_value, field_node_name_at, field_node_type_expr, find_child_named,
-    foreach_body, foreach_collection, foreach_variable_at, generic_param_name_at, if_condition,
-    if_else_branch, if_then_branch, import_is_all, import_specific_names_at, index_base,
-    index_expr, is_compiler_error, is_file_transport, is_rest_transport, is_shell_transport,
-    lambda_body, lambda_param_names_at, let_binding_name_at, let_body, let_value, make_arg_node,
-    make_error_node, make_expr_node, make_named_expr_node, make_span, match_arm_nodes,
-    match_scrutinee, method_arg_nodes, method_receiver, module_imports, module_items,
-    param_node_default_value, param_node_name_at, param_node_type_expr, record_lit_type_name_at,
-    resource_use_name_at, resource_use_resource, return_value, service_config_auth,
-    service_config_auth_input, service_config_auth_source, service_config_endpoint, slice_base,
-    slice_end, slice_start, transport_auth_header_name, transport_auth_token, transport_base_url,
-    transport_env, transport_has_auth, transport_headers, transport_method,
-    transport_path_template, transport_query, transport_request_body, transport_response_format,
-    transport_stdin, with_required_cardinality, AlgebraFieldKind, BinOp, CallSemantics,
-    Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData, FieldAccessStyle,
-    FieldSummary, FieldValueShape, InferredNode, LiteralValue, MatchPattern, MethodSemantics,
-    NewlineIndex, Node, SourceSpan, StringPart, TextFile, UnaryOpKind, VarBindingKind,
+    field_init_node_value, field_node_name_at, find_child_named, foreach_body, foreach_collection,
+    foreach_variable_at, generic_param_name_at, if_condition, if_else_branch, if_then_branch,
+    import_is_all, import_specific_names_at, index_base, index_expr, is_compiler_error,
+    is_file_transport, is_rest_transport, is_shell_transport, lambda_body, lambda_param_names_at,
+    let_binding_name_at, let_body, let_value, make_arg_node, make_error_node, make_expr_node,
+    make_named_expr_node, make_span, match_arm_nodes, match_scrutinee, method_arg_nodes,
+    method_receiver, module_imports, module_items, param_node_default_value, param_node_name_at,
+    param_node_type_expr, record_lit_type_name_at, resource_use_name_at, resource_use_resource,
+    return_value, service_config_auth, service_config_auth_input, service_config_auth_source,
+    service_config_endpoint, slice_base, slice_end, slice_start, transport_auth_header_name,
+    transport_auth_token, transport_base_url, transport_env, transport_has_auth, transport_headers,
+    transport_method, transport_path_template, transport_query, transport_request_body,
+    transport_response_format, transport_stdin, with_required_cardinality, AlgebraFieldKind, BinOp,
+    CallSemantics, Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData,
+    FieldAccessStyle, FieldSummary, FieldValueShape, InferredNode, LiteralValue, MatchPattern,
+    MethodSemantics, NewlineIndex, Node, SourceSpan, StringPart, TextFile, UnaryOpKind,
+    VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -3250,6 +3250,7 @@ pub fn emit_enum_from_children(
             for child in children.clone().iter().cloned() {
                 __result.push(emit_variant_from_child(
                     &child,
+                    name.clone(),
                     recursive_types.clone(),
                     shared_types.clone(),
                     &env,
@@ -3776,6 +3777,74 @@ pub fn variant_rename_validations_for_policy(
     .join(&"\n".to_string())
 }
 
+pub fn enum_variant_field_type_node(
+    env: Rc<TypeEnv>,
+    enum_name: String,
+    variant_name: String,
+    field_name: String,
+    fallback: Rc<Node>,
+    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Node> {
+    match lookup_type_by_name(&env, enum_name) {
+        Some(enum_node) => {
+            match find_child_named(enum_node.clone(), variant_name, source_indices.clone()) {
+                Some(variant) => {
+                    match find_child_named(variant.clone(), field_name, source_indices.clone()) {
+                        Some(field) => {
+                            if (field.inferred.clone() != None) {
+                                resolved_type(field.clone())
+                            } else {
+                                fallback
+                            }
+                        }
+                        None => fallback,
+                    }
+                }
+                None => fallback,
+            }
+        }
+        None => fallback,
+    }
+}
+
+pub fn render_variant_payload_type(
+    n: &Rc<Node>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
+    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    if ((n.connective.clone() == Connective::NoConnective)
+        && ((n.children.clone().len() as i64) > 0))
+    {
+        {
+            let tn = authored_name_at(source_indices.clone(), &n);
+            let args = Rc::new({
+                let mut __result = Vec::new();
+                for c in n.children.clone().iter().cloned() {
+                    __result.push(render_rust_type(
+                        child_type_node(&c),
+                        shared_types.clone(),
+                        source_indices.clone(),
+                    ));
+                }
+                __result
+            });
+            let spec = language_spec(RenderTarget::Rust);
+            v2_rt::concat(
+                v2_rt::concat(
+                    v2_rt::concat(
+                        coerce_primitive_type(RenderTarget::Rust, tn),
+                        spec.type_arg_open.clone(),
+                    ),
+                    args.join(&", ".to_string()),
+                ),
+                spec.type_arg_close.clone(),
+            )
+        }
+    } else {
+        render_rust_type(n.clone(), shared_types.clone(), source_indices.clone())
+    }
+}
+
 pub fn variant_is_synthetic_positional_payload(
     fields: &Rc<Vec<Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -3794,6 +3863,7 @@ pub fn variant_is_synthetic_positional_payload(
 
 pub fn emit_variant_from_child(
     child: &Rc<Node>,
+    enum_name: String,
     recursive_types: Rc<std::collections::BTreeSet<String>>,
     shared_types: Rc<std::collections::BTreeSet<String>>,
     env: &Rc<TypeEnv>,
@@ -3823,21 +3893,37 @@ pub fn emit_variant_from_child(
                     if tuple_style {
                         match child.children.clone().first().cloned() {
                             Some(f) => {
+                                let fallback = resolved_type(f.clone());
                                 let type_node = if positional_payload.clone() {
-                                    field_node_type_expr(&f)
+                                    enum_variant_field_type_node(
+                                        env.clone(),
+                                        enum_name,
+                                        child_text.clone(),
+                                        "0".to_string(),
+                                        fallback,
+                                        &env.source_indices.clone(),
+                                    )
                                 } else {
-                                    resolved_type(f.clone())
+                                    fallback
                                 };
                                 let ty_shared = if positional_payload.clone() {
                                     v2_rt::rc_empty_set::<String>()
                                 } else {
                                     shared_types.clone()
                                 };
-                                let ty = render_rust_type(
-                                    type_node.clone(),
-                                    ty_shared.clone(),
-                                    env.source_indices.clone(),
-                                );
+                                let ty = if positional_payload.clone() {
+                                    render_variant_payload_type(
+                                        &type_node,
+                                        ty_shared.clone(),
+                                        &env.source_indices.clone(),
+                                    )
+                                } else {
+                                    render_rust_type(
+                                        type_node.clone(),
+                                        ty_shared.clone(),
+                                        env.source_indices.clone(),
+                                    )
+                                };
                                 let final_ty = if needs_box_wrapping(
                                     type_node.clone(),
                                     recursive_types.clone(),

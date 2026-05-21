@@ -458,9 +458,9 @@ fn make_bad(s: String) -> Locus {
     let result = compile_dag(source);
     let diags = diagnostic_messages(&result);
     assert!(
-        diags.iter().any(|d| {
-            d.contains("does not accept named arguments") && d.contains("bad")
-        }),
+        diags
+            .iter()
+            .any(|d| { d.contains("does not accept named arguments") && d.contains("bad") }),
         "positional variant constructor must fail closed on named args, got: {:?}",
         diags
     );

@@ -4303,20 +4303,38 @@ pub fn infer_variant_constructor_call(
                             {
                                 match call_args.clone().first().cloned() {
                                     Some(arg) => {
-                                        let payload_expr = arg_value(&arg);
-                                        let payload_init = make_field_init_node(
-                                            &"0".to_string(),
-                                            payload_expr.clone(),
-                                            payload_expr.span.clone(),
-                                            kernel_span(&"0".to_string()),
-                                        );
-                                        Some(infer_record_lit(
-                                            &Some(func_name.clone()),
-                                            Rc::new(vec![payload_init]),
-                                            &span,
-                                            name_span,
-                                            &scope,
-                                        ))
+                                        match arg_name_at(arg.clone(), si.clone()) {
+                                            Some(arg_name) => {
+                                                let msg = v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("positional variant constructor '".to_string(), func_name.clone()), "' does not accept named arguments (got '".to_string()), arg_name.clone()), ": ...')".to_string());
+                                                Some(Rc::new(InferResult {
+                                                    typed: semantic_expr_error_node(
+                                                        msg.clone(),
+                                                        arg.span.clone(),
+                                                    ),
+                                                    diagnostics: Rc::new(vec![inference_error(
+                                                        msg.clone(),
+                                                        arg.span.clone(),
+                                                        scope.module_name.clone(),
+                                                    )]),
+                                                }))
+                                            }
+                                            None => {
+                                                let payload_expr = arg_value(&arg);
+                                                let payload_init = make_field_init_node(
+                                                    &"0".to_string(),
+                                                    payload_expr.clone(),
+                                                    payload_expr.span.clone(),
+                                                    kernel_span(&"0".to_string()),
+                                                );
+                                                Some(infer_record_lit(
+                                                    &Some(func_name.clone()),
+                                                    Rc::new(vec![payload_init]),
+                                                    &span,
+                                                    name_span,
+                                                    &scope,
+                                                ))
+                                            }
+                                        }
                                     }
                                     None => None,
                                 }
