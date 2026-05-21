@@ -34,6 +34,7 @@ import v4.std.find_witness {
 import v4.std.node { Node, Symbol }
 import v4.std.witness { HomomorphismWitness, StructuralPropertyWitness }
 data coercion_property_closed_candidate_set: Symbol = coercion_property_closed_candidate_set
+data coercion_property_candidate_set_closedness: Symbol = coercion_property_candidate_set_closedness
 data homomorphism_rule_exact_structural_equality: Symbol = homomorphism_rule_exact_structural_equality
 data coercion_not_realized: Symbol = coercion_not_realized
 data coercion_mismatch_no_target: Symbol = coercion_mismatch_no_target
@@ -93,7 +94,7 @@ fn declared_candidates_for_algebra(
             evidence: target_model
           },
           closedness: StructuralPropertyWitness {
-            property: coercion_property_closed_candidate_set,
+            property: coercion_property_candidate_set_closedness,
             evidence: target_model
           }
         }
