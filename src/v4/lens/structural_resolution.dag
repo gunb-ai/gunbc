@@ -175,6 +175,9 @@ fn fact_single_dependency_projects_status(
   }
 }
 
+// 🟡 gated — feature:T-13-lens-claim-equality-scaffold
+// dissolve-on-arrival: T-13 lens driver / generated TestClaim supplies canonical
+// equality or content_hash for lens facts; multiset compare is compile-only until B2.
 fn dependency_fact_eq(
   a: StructuralResolutionDependencyFact,
   b: StructuralResolutionDependencyFact

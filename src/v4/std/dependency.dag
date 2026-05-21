@@ -91,19 +91,11 @@ fn classify_node_edge_usage(parent: Node, edge: Edge) -> DependencyKind {
 // Substrate edge: parent = decl container (Conj/LabeledEdges), target = Atom reference.
 fn dependency_view_for_edge(parent: Node, edge: Edge) -> DependencyView {
   let kind = classify_node_edge_usage(parent: parent, edge: edge)
-  match kind {
-    BindsTo => DependencyView {
-      source: parent,
-      dependent: edge.target,
-      kind: BindsTo,
-      usage_site: edge.target
-    }
-    _ => DependencyView {
-      source: parent,
-      dependent: edge.target,
-      kind: kind,
-      usage_site: edge.target
-    }
+  DependencyView {
+    source: parent,
+    dependent: edge.target,
+    kind: kind,
+    usage_site: edge.target
   }
 }
 

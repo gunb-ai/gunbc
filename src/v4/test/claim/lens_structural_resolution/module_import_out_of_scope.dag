@@ -15,6 +15,7 @@ import v4.lens.structural_resolution {
   fact_eq,
   fact_single_dependency_projects_status
 }
+import v4.test.claim.lens_structural_resolution.claim_carrier { LensStructuralResolutionClaim }
 import v4.std.cardinality { RankingDimension, TerminationProof }
 import v4.std.collection { Map }
 import v4.std.constraints {
@@ -105,12 +106,6 @@ fn sr_mod_claim_tree() -> InferredTree {
     root: sr_mod_root,
     facts: sr_mod_claim_fact_map(facts: facts)
   }
-}
-
-type LensStructuralResolutionClaim {
-  input: InferredTree
-  expected: StructuralResolutionFact
-  actual: Witness<StructuralResolutionFact>
 }
 
 data module_import_out_of_scope_claim: LensStructuralResolutionClaim = LensStructuralResolutionClaim {

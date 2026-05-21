@@ -18,6 +18,7 @@ import v4.lens.structural_resolution {
   fact_eq,
   fact_single_dependency_projects_status
 }
+import v4.test.claim.lens_structural_resolution.claim_carrier { LensStructuralResolutionClaim }
 import v4.std.cardinality { RankingDimension, TerminationProof }
 import v4.std.collection { Map }
 import v4.std.constraints {
@@ -133,12 +134,6 @@ fn sr_unbound_claim_tree() -> InferredTree {
     root: sr_unbound_decl,
     facts: sr_unbound_claim_fact_map()
   }
-}
-
-type LensStructuralResolutionClaim {
-  input: InferredTree
-  expected: StructuralResolutionFact
-  actual: Witness<StructuralResolutionFact>
 }
 
 data unbound_symbol_at_use_claim: LensStructuralResolutionClaim = LensStructuralResolutionClaim {
