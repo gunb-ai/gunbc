@@ -1,8 +1,8 @@
 // src/v4/std/text.dag
 // Scope: Unicode text carriers.
 // Anchor: https://en.wikipedia.org/wiki/Unicode
-// Owns: Char, String, is_empty.
-// Consumes: std nat, std algebra.
+// Owns: Char, String.
+// Consumes: std nat, std algebra (String = FreeMonoid<Char>).
 // Status: T-3 modeled.
 
 

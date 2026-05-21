@@ -1,7 +1,7 @@
 // src/v4/std/algebra.dag
 // Scope: algebraic structures and canonical carrier constructions.
 // Anchor: https://en.wikipedia.org/wiki/Algebraic_structure
-// Owns: Magma, Semigroup, Monoid, CommutativeMonoid, Group, AbelianGroup, Semiring, CommutativeSemiring, Ring, CommutativeRing, OrderedRing, Field, ApproximateField, Lattice, BoundedLattice, BooleanAlgebra, FreeMonoid, FreeMonoidUniqueState, fold, is_empty, non_empty, length, forall, count_where, count_equal, unique, PointwisePower, Ordering, Homomorphism.
+// Owns: Magma, Semigroup, Monoid, CommutativeMonoid, Group, AbelianGroup, Semiring, CommutativeSemiring, Ring, CommutativeRing, OrderedRing, Field, ApproximateField, Lattice, BoundedLattice, BooleanAlgebra, FreeMonoid, FreeMonoidUniqueState, free_monoid_fold, is_empty, non_empty, length, forall, count_where, count_equal, unique, PointwisePower, Ordering, Homomorphism.
 // Consumes: none.
 // Status: T-2 modeled.
 // Ledger: Part 6 — SL-P6-FREEMONOID-IS-EMPTY-VPRED.
@@ -78,13 +78,13 @@ type FreeMonoidUniqueState<T> {
   seen: FreeMonoid<T>
   unique: Bool
 }
-fn fold<T, A>(xs: FreeMonoid<T>, empty: A, cons: fn(A, T) -> A) -> A {
+fn free_monoid_fold<T, A>(xs: FreeMonoid<T>, empty: A, cons: fn(A, T) -> A) -> A {
   match xs {
     Empty => empty
-    Cons { head: h, tail: t } => fold(xs: t, empty: cons(empty, h), cons: cons)
+    Cons { head: h, tail: t } => free_monoid_fold(xs: t, empty: cons(empty, h), cons: cons)
   }
 }
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: coproduct variant-discriminant predicate substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived Empty-variant discriminant projection; forbidden: fold laundering.
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: coproduct variant-discriminant predicate substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived Empty-variant discriminant projection; forbidden: free_monoid_fold laundering.
 fn is_empty<T>(xs: FreeMonoid<T>) -> Bool {
   match xs {
     Empty => true
@@ -93,6 +93,7 @@ fn is_empty<T>(xs: FreeMonoid<T>) -> Bool {
 }
 
 
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: coproduct variant-discriminant predicate substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived non-Empty-variant discriminant projection; forbidden: free_monoid_fold laundering.
 fn non_empty<T>(xs: FreeMonoid<T>) -> Bool {
   match is_empty(xs: xs) {
     true => false
@@ -102,12 +103,12 @@ fn non_empty<T>(xs: FreeMonoid<T>) -> Bool {
 
 
 fn length<T>(xs: FreeMonoid<T>) -> Int {
-  fold(xs: xs, empty: 0, cons: fn(count, _) { count + 1 })
+  free_monoid_fold(xs: xs, empty: 0, cons: fn(count, _) { count + 1 })
 }
 
 
 fn forall<T>(xs: FreeMonoid<T>, predicate: fn(T) -> Bool) -> Bool {
-  fold(xs: xs, empty: true, cons: fn(acc, item) {
+  free_monoid_fold(xs: xs, empty: true, cons: fn(acc, item) {
     match acc {
       true => predicate(item)
       false => false
@@ -117,7 +118,7 @@ fn forall<T>(xs: FreeMonoid<T>, predicate: fn(T) -> Bool) -> Bool {
 
 
 fn count_where<T>(xs: FreeMonoid<T>, predicate: fn(T) -> Bool) -> Int {
-  fold(xs: xs, empty: 0, cons: fn(count, item) {
+  free_monoid_fold(xs: xs, empty: 0, cons: fn(count, item) {
     match predicate(item) {
       true => count + 1
       false => count
@@ -132,7 +133,7 @@ fn count_equal<T>(xs: FreeMonoid<T>, item: T, eq: fn(T, T) -> Bool) -> Int {
 
 
 fn unique<T>(xs: FreeMonoid<T>, eq: fn(T, T) -> Bool) -> Bool {
-  let state = fold(xs: xs, empty: FreeMonoidUniqueState { seen: Empty, unique: true }, cons: fn(acc, item) {
+  let state = free_monoid_fold(xs: xs, empty: FreeMonoidUniqueState { seen: Empty, unique: true }, cons: fn(acc, item) {
     match acc.unique {
       true => match count_equal(xs: acc.seen, item: item, eq: eq) {
         0 => FreeMonoidUniqueState { seen: Cons { head: item, tail: acc.seen }, unique: true }
