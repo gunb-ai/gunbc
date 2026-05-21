@@ -40,7 +40,6 @@ import v4.std.model_core {
   primitive_fact_axis_encoding,
   primitive_fact_axis_overflow_disposition,
   primitive_fact_axis_signedness,
-  primitive_fact_axis_std_projection,
   primitive_fact_axis_surface_spelling,
   primitive_fact_axis_width
 }
@@ -222,6 +221,7 @@ data rust_char_unicode_scalar: Symbol = rust_char_unicode_scalar
 data rust_repr_bool: Symbol = rust_repr_bool
 data rust_repr_unit: Symbol = rust_repr_unit
 data rust_repr_never: Symbol = rust_repr_never
+data rust_repr_integer_twos_complement: Symbol = rust_repr_integer_twos_complement
 
 data rust_inhabitant_i8: Symbol = rust_inhabitant_i8
 data rust_inhabitant_i16: Symbol = rust_inhabitant_i16
@@ -1159,12 +1159,12 @@ fn rust_primitive_bundle_from_integer_facts(facts: RustIntegerPrimitiveFacts) ->
         fact: rust_int_kind_node(kind: facts.signedness)
       ),
       rust_primitive_axis_binding(
-        axis: primitive_fact_axis_overflow_disposition,
-        fact: rust_overflow_node(overflow: facts.overflow_release)
+        axis: primitive_fact_axis_encoding,
+        fact: rust_inhabitant_atom(id: rust_repr_integer_twos_complement)
       ),
       rust_primitive_axis_binding(
-        axis: primitive_fact_axis_std_projection,
-        fact: rust_inhabitant_atom(id: facts.std_projection)
+        axis: primitive_fact_axis_overflow_disposition,
+        fact: rust_overflow_node(overflow: facts.overflow_release)
       )
     ]
   }
@@ -1185,10 +1185,6 @@ fn rust_primitive_bundle_from_float_facts(facts: RustFloatPrimitiveFacts) -> Pri
       rust_primitive_axis_binding(
         axis: primitive_fact_axis_encoding,
         fact: rust_inhabitant_atom(id: facts.ieee754_binary)
-      ),
-      rust_primitive_axis_binding(
-        axis: primitive_fact_axis_std_projection,
-        fact: rust_inhabitant_atom(id: facts.std_projection)
       )
     ]
   }
@@ -1207,10 +1203,6 @@ fn rust_primitive_bundle_from_noninteger_facts(
       rust_primitive_axis_binding(
         axis: primitive_fact_axis_encoding,
         fact: rust_inhabitant_atom(id: facts.representation)
-      ),
-      rust_primitive_axis_binding(
-        axis: primitive_fact_axis_std_projection,
-        fact: rust_inhabitant_atom(id: facts.std_projection)
       )
     ]
   }

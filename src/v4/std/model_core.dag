@@ -1,6 +1,6 @@
 // src/v4/std/model_core.dag
 // Scope: Ratified Q1 shared ModelCore substrate for LanguageModel and HostModel extension.
-// Owns: ModelCore, PrimitiveFactBundle, PrimitiveFactAxisBinding, AlgebraInhabitanceDecl, AlgebraLawObligation, EffectSemanticsDecl, PartialitySemanticsDecl, PartialOperationDecl, PartialityDischarge, primitive_fact_axis_width, primitive_fact_axis_signedness, primitive_fact_axis_range, primitive_fact_axis_encoding, primitive_fact_axis_surface_spelling, primitive_fact_axis_overflow_disposition, primitive_fact_axis_std_projection, wave1_void
+// Owns: ModelCore, PrimitiveFactBundle, PrimitiveFactAxisBinding, AlgebraInhabitanceDecl, AlgebraLawObligation, EffectSemanticsDecl, PartialitySemanticsDecl, PartialOperationDecl, PartialityDischarge, primitive_fact_axis_width, primitive_fact_axis_signedness, primitive_fact_axis_range, primitive_fact_axis_encoding, primitive_fact_axis_surface_spelling, primitive_fact_axis_overflow_disposition, wave1_void
 // Consumes: v4.std.collection, v4.std.node
 // Status: T-33 modeled.
 
@@ -18,7 +18,6 @@ data primitive_fact_axis_range: Symbol = primitive_fact_axis_range
 data primitive_fact_axis_encoding: Symbol = primitive_fact_axis_encoding
 data primitive_fact_axis_surface_spelling: Symbol = primitive_fact_axis_surface_spelling
 data primitive_fact_axis_overflow_disposition: Symbol = primitive_fact_axis_overflow_disposition
-data primitive_fact_axis_std_projection: Symbol = primitive_fact_axis_std_projection
 
 
 type PrimitiveFactAxisBinding {
