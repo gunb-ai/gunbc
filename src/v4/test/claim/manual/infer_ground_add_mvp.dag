@@ -36,6 +36,7 @@ import v4.std.diagnostic {
   diagnostics_singleton,
   outcome_node_eq
 }
+import v4.std.host { HostModel }
 import v4.std.node {
   Arrow,
   Atom,
@@ -65,16 +66,12 @@ import v4.std.witness { Holds, Violates }
 data fixture_add_name: Symbol = fixture_add_name
 data fixture_add_int_atom: Symbol = fixture_add_int_atom
 data fixture_add_body_int_atom: Symbol = fixture_add_body_int_atom
-data infer_receipt_evaluator: Symbol = infer_receipt_evaluator
-data infer_receipt_resources: Symbol = infer_receipt_resources
-data infer_receipt_extdeps: Symbol = infer_receipt_extdeps
+data infer_receipt_host: HostModel = infer_receipt_host
 data infer_receipt_input_infer_add_mvp: Symbol = infer_receipt_input_infer_add_mvp
 data infer_receipt_input_descent_witness: Symbol = infer_receipt_input_descent_witness
 // 🟡 cache-hash scaffold — T22-EVAL-CACHE-HASHES
 data claim_hash_placeholder: Hash = claim_hash_placeholder
-data evaluator_hash_placeholder: Hash = evaluator_hash_placeholder
-data resources_hash_placeholder: Hash = resources_hash_placeholder
-data extdeps_hash_placeholder: Hash = extdeps_hash_placeholder
+data host_hash_placeholder: Hash = host_hash_placeholder
 
 
 // Receipt bridge: polarity-specific carriers (no broad Outcome<Node> after TestClaim split).
@@ -153,9 +150,7 @@ fn infer_receipt_claim(case: InferReceiptCase) -> TestClaim {
 
 fn infer_receipt_context() -> EvalContext {
   EvalContext {
-    evaluator: infer_receipt_symbol_node(s: infer_receipt_evaluator),
-    resources: infer_receipt_symbol_node(s: infer_receipt_resources),
-    extdeps: infer_receipt_symbol_node(s: infer_receipt_extdeps)
+    host: infer_receipt_host
   }
 }
 
@@ -202,9 +197,7 @@ fn infer_add_mvp_receipt_run(
     cache: test_claim_cache_receipt(
       subject: subject,
       claim_hash: claim_hash_placeholder,
-      evaluator_hash: evaluator_hash_placeholder,
-      resources_hash: resources_hash_placeholder,
-      extdeps_hash: extdeps_hash_placeholder
+      host_hash: host_hash_placeholder
     ),
     verdict: match test_claim_expected_outcome(c: subject.claim) {
       Accepted { value: expected, diagnostics: _ } =>
@@ -234,9 +227,7 @@ fn infer_descent_witness_receipt_run(
     cache: test_claim_cache_receipt(
       subject: subject,
       claim_hash: claim_hash_placeholder,
-      evaluator_hash: evaluator_hash_placeholder,
-      resources_hash: resources_hash_placeholder,
-      extdeps_hash: extdeps_hash_placeholder
+      host_hash: host_hash_placeholder
     ),
     verdict: match test_claim_expected_outcome(c: subject.claim) {
       Accepted { value: expected, diagnostics: _ } =>
@@ -338,4 +329,3 @@ data claim_infer_add_mvp_compiles: TestClaim = infer_receipt_claim(case: case_in
 
 
 data claim_infer_descent_witness_fail_closed: TestClaim = infer_receipt_claim(case: case_infer_descent_witness_fail_closed)
-

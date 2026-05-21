@@ -47,6 +47,7 @@ import v4.std.diagnostic {
   diagnostics_singleton,
   outcome_node_eq
 }
+import v4.std.host { HostModel }
 import v4.std.verification {
   DiagnosticClaim,
   T19ManualAnchorAbsent,
@@ -148,9 +149,7 @@ data dependency_cycle: Symbol = dependency_cycle
 data missing_stage_binary: Symbol = missing_stage_binary
 data alternate_job: Symbol = alternate_job
 data alternate_gate: Symbol = alternate_gate
-data pipeline_evaluator: Symbol = pipeline_evaluator
-data pipeline_resources: Symbol = pipeline_resources
-data pipeline_extdeps: Symbol = pipeline_extdeps
+data pipeline_host: HostModel = pipeline_host
 data inferred_type_symbol: Symbol = inferred_type_symbol
 data inferred_algebra_symbol: Symbol = inferred_algebra_symbol
 data inferred_algebra_witness_symbol: Symbol = inferred_algebra_witness_symbol
@@ -158,9 +157,7 @@ data inferred_descent_not_derived: Symbol = inferred_descent_not_derived
 // 🟡 typed-input bridge scaffold — T22-EVAL-TYPED-INPUT-BRIDGE
 // 🟡 cache-hash scaffold — T22-EVAL-CACHE-HASHES
 data claim_hash_placeholder: Hash = claim_hash_placeholder
-data evaluator_hash_placeholder: Hash = evaluator_hash_placeholder
-data resources_hash_placeholder: Hash = resources_hash_placeholder
-data extdeps_hash_placeholder: Hash = extdeps_hash_placeholder
+data host_hash_placeholder: Hash = host_hash_placeholder
 
 
 fn pipeline_symbol_node(s: Symbol) -> Node {
@@ -236,9 +233,7 @@ fn pipeline_rejection_claim(label: String, input: Node, expected_reason: Symbol)
 
 fn pipeline_claim_context() -> EvalContext {
   EvalContext {
-    evaluator: pipeline_symbol_node(s: pipeline_evaluator),
-    resources: pipeline_symbol_node(s: pipeline_resources),
-    extdeps: pipeline_symbol_node(s: pipeline_extdeps)
+    host: pipeline_host
   }
 }
 
@@ -263,9 +258,7 @@ fn workflow_pipeline_run(subject: TestClaimEvalSubject<CiPipeline>) -> TestClaim
     cache: test_claim_cache_receipt(
       subject: subject,
       claim_hash: claim_hash_placeholder,
-      evaluator_hash: evaluator_hash_placeholder,
-      resources_hash: resources_hash_placeholder,
-      extdeps_hash: extdeps_hash_placeholder
+      host_hash: host_hash_placeholder
     ),
     verdict: run_pipeline_assert(
       claim: subject.claim,
