@@ -10475,11 +10475,16 @@ pub fn rust_field_value_for_struct(
                         Connective::Arrow => rust_rc_new_value(raw_value),
                         _ => match lookup_emit_type_summary(emit_info, base_struct_name.clone()) {
                             Some(summary) => {
-                                if type_node_is_generic_param(
+                                if (type_node_is_generic_param(
                                     &field_type,
                                     summary.clone(),
                                     scope.type_env.clone().source_indices.clone(),
-                                ) {
+                                ) || (((summary.generic_param_names.clone().len() as i64) > 0)
+                                    && !v2_rt::map_contains_key(
+                                        &summary.field_type_map.clone(),
+                                        field_name.clone(),
+                                    )))
+                                {
                                     rust_box_new_value(raw_value)
                                 } else {
                                     match field_type.inferred.clone() {

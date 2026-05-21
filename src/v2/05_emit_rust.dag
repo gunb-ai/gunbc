@@ -156,9 +156,26 @@ fn render_rust_data_type(type_node: Node, shared_types: Set<String>, source_indi
     let param_strs = type_node.params |> map(p => render_rust_type(n: param_node_type_expr(n: p), shared_types: shared_types, source_indices: source_indices))
     let applied = concat(coerce_primitive_type(target: Rust, dag_name: tn), "<", param_strs |> join(separator: ", "), ">")
     if set_contains(shared_types, tn) { concat("Rc<", applied, ">") } else { applied }
+  } else if type_node.children |> count > 0 {
+    render_rust_type(n: type_node, shared_types: shared_types, source_indices: source_indices)
   } else {
     render_rust_type(n: type_node, shared_types: shared_types, source_indices: source_indices)
   }
+}
+
+fn render_rust_data_decl_type(type_node: Node, value: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
+  let rendered = render_rust_data_type(type_node: type_node, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
+  let tn = authored_name_at(source_indices: source_indices, node: type_node)
+  if rendered == "BoundedLattice" || rendered == "Rc<BoundedLattice>" {
+    match field_value_by_name(record: value, field_name: "top", source_indices: source_indices) {
+      Some { value: top_value } =>
+        let top_type_name = authored_name_at(source_indices: source_indices, node: resolved_type(n: top_value))
+        if top_type_name == "" { rendered }
+        else if rendered == "Rc<BoundedLattice>" { concat("Rc<BoundedLattice<", top_type_name, ">>") }
+        else { concat("BoundedLattice<", top_type_name, ">") }
+      None => rendered
+    }
+  } else { rendered }
 }
 
 fn type_variable_node(id: String) -> Node {
@@ -5943,7 +5960,7 @@ fn data_value_has_cross_refs(value: Node) -> Bool {
 }
 
 fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
-  let ty_str = render_rust_data_type(type_node: type_node, shared_types: shared_types, source_indices: scope.type_env.source_indices, emit_info: emit_info)
+  let ty_str = render_rust_data_decl_type(type_node: type_node, value: value, shared_types: shared_types, source_indices: scope.type_env.source_indices, emit_info: emit_info)
   let fn_name = to_snake(name: name)
   let needs_rc = set_contains(shared_types, authored_name_at(source_indices: scope.type_env.source_indices, node: type_node))
   if is_simple_type_node(n: type_node, source_indices: scope.type_env.source_indices) {
