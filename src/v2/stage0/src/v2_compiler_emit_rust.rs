@@ -10483,16 +10483,31 @@ pub fn expr_resolves_to_arrow(texpr: Rc<Node>) -> bool {
 }
 
 pub fn type_node_is_generic_param(
-    type_node: Rc<Node>,
+    type_node: &Rc<Node>,
     summary: Rc<TypeSummary>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
         let type_name = authored_name_at(source_indices, &type_node);
+        let type_var_id = match type_node.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::TypeVariable { id, .. }) => Some(id.clone()),
+            Some(InferredNode::Resolved { node: rt, .. }) => {
+                match rt.inferred.clone().as_deref().cloned() {
+                    Some(InferredNode::TypeVariable { id, .. }) => Some(id.clone()),
+                    _ => None,
+                }
+            }
+            _ => None,
+        };
         {
             let mut __found = false;
             for param_name in summary.generic_param_names.clone().iter().cloned() {
-                if (param_name.clone().as_str() == type_name.clone().as_str()) {
+                if ((param_name.clone().as_str() == type_name.clone().as_str())
+                    || match type_var_id.clone() {
+                        Some(id) => (param_name.clone().as_str() == id.clone().as_str()),
+                        None => false,
+                    })
+                {
                     __found = true;
                     break;
                 }
@@ -10535,7 +10550,7 @@ pub fn rust_field_value_for_struct(
                         _ => match lookup_emit_type_summary(emit_info, base_struct_name.clone()) {
                             Some(summary) => {
                                 if type_node_is_generic_param(
-                                    field_type.clone(),
+                                    &field_type,
                                     summary.clone(),
                                     scope.type_env.clone().source_indices.clone(),
                                 ) {
