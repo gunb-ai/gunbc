@@ -17,10 +17,9 @@ import v4.compiler.eval {
   Deferred,
   Fail,
   Pass,
+  aggregate_verdicts,
   eval_diagnostic,
-  eval_rejected_assert_kind_deferred,
   eval_rejected_roundtrip_deferred,
-  outcome_node_eq,
   test_claim_cache_receipt
 }
 import v4.compiler.infer {

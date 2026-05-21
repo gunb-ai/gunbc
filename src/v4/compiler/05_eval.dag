@@ -207,12 +207,14 @@ fn run_test_claim(
       resources_hash: resources_hash,
       extdeps_hash: extdeps_hash
     ),
-    verdict: run_node_assert(
-      kind: subject.claim.kind,
-      actual: actual,
-      expected: subject.claim.expected,
-      input: subject.claim.input
-    )
+    verdict: aggregate_verdicts(rs: [
+      run_node_assert(
+        kind: subject.claim.kind,
+        actual: actual,
+        expected: subject.claim.expected,
+        input: subject.claim.input
+      )
+    ])
   }
 }
 
