@@ -29,6 +29,7 @@ import v4.std.diagnostic {
   diagnostics_singleton,
   outcome_node_eq
 }
+import v4.std.collection { List }
 import v4.std.node { Node, Symbol }
 import v4.std.verification { DiagnosticAssert }
 import v4.test.claim.manual.connective_anchors { stub_empty_conj }
@@ -104,6 +105,11 @@ data witness_diagnostic_assert_mismatch_fail: Bool = match run_node_assert(
 }
 
 
+fn empty_node_verdicts() -> List<Verdict<Node>> {
+  []
+}
+
+
 data witness_diagnostic_assert_accepted_fail: Bool = match run_node_assert(
   kind: DiagnosticAssert,
   actual: accepted_actual,
@@ -116,7 +122,7 @@ data witness_diagnostic_assert_accepted_fail: Bool = match run_node_assert(
 }
 
 
-data witness_aggregate_empty_pass: Bool = match aggregate_verdicts(rs: []) {
+data witness_aggregate_empty_pass: Bool = match aggregate_verdicts(rs: empty_node_verdicts()) {
   Pass => true
   Fail { actual: _ } => false
   Deferred { actual: _, diagnostic: _ } => false
