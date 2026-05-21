@@ -1727,7 +1727,9 @@ pub fn parser_result_base_var(
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprFieldAccess { .. } => match expr.children.clone().first().cloned() {
             Some(base) => match (*base.expr_data.clone()).clone() {
-                ExprData::ExprVar { .. } => Some(expr_var_name_at(base.clone(), source_indices)),
+                ExprData::ExprVar {
+                    binding_kind: _, ..
+                } => Some(expr_var_name_at(base.clone(), source_indices)),
                 _ => None,
             },
             None => None,
@@ -1911,7 +1913,7 @@ pub fn node_inferred_to_outputs(
                 let mut __all = true;
                 for ch in rt.children.clone().iter().cloned() {
                     if !(match ch.inferred.clone().as_deref().cloned() {
-                        Some(InferredNode::Resolved { .. }) => true,
+                        Some(InferredNode::Resolved { node: _, .. }) => true,
                         _ => false,
                     }) {
                         __all = false;
@@ -2384,7 +2386,7 @@ pub fn parse_import_names_acc(
             let e = eat(&tokens, Rc::new(ExpectedToken::ExpectComma));
             tokens = skip_newlines(match (*e).clone() {
                 EatResult::EatConsumed { tokens: __ec, .. } => __ec.clone(),
-                EatResult::EatUnchanged { .. } => tokens.clone(),
+                EatResult::EatUnchanged { tokens: _, .. } => tokens.clone(),
             });
             {
                 let __tco_0 = v2_rt::rc_list_push(acc, name_node);
@@ -4865,7 +4867,7 @@ pub fn parse_field_list_acc(
                 let e = eat(&tokens, Rc::new(ExpectedToken::ExpectComma));
                 tokens = skip_newlines(match (*e).clone() {
                     EatResult::EatConsumed { tokens: __ec, .. } => __ec.clone(),
-                    EatResult::EatUnchanged { .. } => tokens.clone(),
+                    EatResult::EatUnchanged { tokens: _, .. } => tokens.clone(),
                 });
                 {
                     let __tco_0 = r.ctx.clone();
@@ -6421,7 +6423,7 @@ pub fn parse_config_fields(
             let e = eat(&tokens, Rc::new(ExpectedToken::ExpectComma));
             tokens = match (*e.clone()).clone() {
                 EatResult::EatConsumed { tokens: __ec, .. } => __ec.clone(),
-                EatResult::EatUnchanged { .. } => tokens.clone(),
+                EatResult::EatUnchanged { tokens: _, .. } => tokens.clone(),
             };
             match fname.as_str() {
                 "endpoint" => {
@@ -6753,7 +6755,7 @@ pub fn parse_rest_fields(
             let e = eat(&r3.tokens.clone(), Rc::new(ExpectedToken::ExpectComma));
             tokens = match (*e.clone()).clone() {
                 EatResult::EatConsumed { tokens: __ec, .. } => __ec.clone(),
-                EatResult::EatUnchanged { .. } => r3.tokens.clone(),
+                EatResult::EatUnchanged { tokens: _, .. } => r3.tokens.clone(),
             };
             ctx = r3.ctx.clone();
             if (fname.clone().as_str() == transport_url_key().as_str()) {
@@ -6915,7 +6917,7 @@ pub fn parse_shell_fields(
                 let e = eat(&r5.tokens.clone(), Rc::new(ExpectedToken::ExpectComma));
                 tokens = match (*e).clone() {
                     EatResult::EatConsumed { tokens: __ec, .. } => __ec.clone(),
-                    EatResult::EatUnchanged { .. } => r5.tokens.clone(),
+                    EatResult::EatUnchanged { tokens: _, .. } => r5.tokens.clone(),
                 };
                 {
                     let __tco_0 = r4.ctx.clone();
@@ -6938,7 +6940,7 @@ pub fn parse_shell_fields(
                     let e = eat(&r3.tokens.clone(), Rc::new(ExpectedToken::ExpectComma));
                     tokens = match (*e).clone() {
                         EatResult::EatConsumed { tokens: __ec, .. } => __ec.clone(),
-                        EatResult::EatUnchanged { .. } => r3.tokens.clone(),
+                        EatResult::EatUnchanged { tokens: _, .. } => r3.tokens.clone(),
                     };
                     {
                         let __tco_0 = r3.ctx.clone();
@@ -6960,7 +6962,7 @@ pub fn parse_shell_fields(
                     let e = eat(&r3.tokens.clone(), Rc::new(ExpectedToken::ExpectComma));
                     tokens = match (*e).clone() {
                         EatResult::EatConsumed { tokens: __ec, .. } => __ec.clone(),
-                        EatResult::EatUnchanged { .. } => r3.tokens.clone(),
+                        EatResult::EatUnchanged { tokens: _, .. } => r3.tokens.clone(),
                     };
                     {
                         let __tco_0 = r3.ctx.clone();
@@ -7043,7 +7045,7 @@ pub fn parse_file_fields(
             let e = eat(&r3.tokens.clone(), Rc::new(ExpectedToken::ExpectComma));
             tokens = match (*e.clone()).clone() {
                 EatResult::EatConsumed { tokens: __ec, .. } => __ec.clone(),
-                EatResult::EatUnchanged { .. } => r3.tokens.clone(),
+                EatResult::EatUnchanged { tokens: _, .. } => r3.tokens.clone(),
             };
             if ((fname.clone().as_str() == "path".to_string().as_str())
                 || (fname.clone().as_str() == transport_path_key().as_str()))
@@ -7853,7 +7855,9 @@ pub fn status_expr_to_str(
             LiteralValue::LitStr { value: s, .. } => s.clone(),
             _ => "_".to_string(),
         },
-        ExprData::ExprVar { .. } => expr_var_name_at(expr.clone(), source_indices),
+        ExprData::ExprVar {
+            binding_kind: _, ..
+        } => expr_var_name_at(expr.clone(), source_indices),
         _ => "_".to_string(),
     }
 }
@@ -8094,7 +8098,7 @@ pub fn parse_exit_entries_acc(
             let e = eat(&desc_tokens, Rc::new(ExpectedToken::ExpectComma));
             tokens = skip_newlines(match (*e).clone() {
                 EatResult::EatConsumed { tokens: __ec, .. } => __ec.clone(),
-                EatResult::EatUnchanged { .. } => desc_tokens.clone(),
+                EatResult::EatUnchanged { tokens: _, .. } => desc_tokens.clone(),
             });
             {
                 let __tco_0 = r3.ctx.clone();
@@ -8461,7 +8465,7 @@ pub fn parse_response_entries_acc(
             let e = eat(&r3.tokens.clone(), Rc::new(ExpectedToken::ExpectComma));
             tokens = skip_newlines(match (*e).clone() {
                 EatResult::EatConsumed { tokens: __ec, .. } => __ec.clone(),
-                EatResult::EatUnchanged { .. } => r3.tokens.clone(),
+                EatResult::EatUnchanged { tokens: _, .. } => r3.tokens.clone(),
             });
             {
                 let __tco_0 = r3.ctx.clone();
@@ -8622,7 +8626,7 @@ pub fn parse_mock_response_entries_acc(
             let e = eat(&desc_tokens, Rc::new(ExpectedToken::ExpectComma));
             tokens = skip_newlines(match (*e).clone() {
                 EatResult::EatConsumed { tokens: __ec, .. } => __ec.clone(),
-                EatResult::EatUnchanged { .. } => desc_tokens.clone(),
+                EatResult::EatUnchanged { tokens: _, .. } => desc_tokens.clone(),
             });
             {
                 let __tco_0 = r3.ctx.clone();
@@ -10054,7 +10058,7 @@ pub fn parse_node_decl(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> R
         let e_colon = eat(&cr.tokens.clone(), Rc::new(ExpectedToken::ExpectColon));
         let tokens = match (*e_colon.clone()).clone() {
             EatResult::EatConsumed { tokens: __ec, .. } => __ec.clone(),
-            EatResult::EatUnchanged { .. } => {
+            EatResult::EatUnchanged { tokens: _, .. } => {
                 let r2 = expect(&cr.tokens.clone(), &Rc::new(ExpectedToken::ExpectEq));
                 if has_err(r2.err.clone()) {
                     return Rc::new(ExprResult {
@@ -10082,7 +10086,7 @@ pub fn parse_node_decl(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> R
         }
         let type_ann = match (*e_colon.clone()).clone() {
             EatResult::EatConsumed { .. } => Some(r3.expr.clone()),
-            EatResult::EatUnchanged { .. } => None,
+            EatResult::EatUnchanged { tokens: _, .. } => None,
         };
         let node = Rc::new(Node {
             name: name,
@@ -11138,7 +11142,9 @@ pub fn try_postfix(
                 }
             }
             Some(TokenShape::ShLBrace) => match (*lhs.expr_data.clone()).clone() {
-                ExprData::ExprVar { .. } => {
+                ExprData::ExprVar {
+                    binding_kind: _, ..
+                } => {
                     let n = expr_var_name_at(lhs.clone(), ctx.source_indices.clone());
                     if (is_uppercase_start(n.clone()) && (14 <= min_bp)) {
                         Rc::new(PostfixResult {
@@ -11350,7 +11356,9 @@ pub fn make_call_expr(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
     match (*lhs.expr_data.clone()).clone() {
-        ExprData::ExprVar { .. } => make_named_expr_node(
+        ExprData::ExprVar {
+            binding_kind: _, ..
+        } => make_named_expr_node(
             &expr_var_name_at(lhs.clone(), source_indices),
             Rc::new(ExprData::ExprCall {
                 call_semantics: None,
@@ -11361,7 +11369,7 @@ pub fn make_call_expr(
             lhs.span.clone(),
             node_name_span(&lhs),
         ),
-        ExprData::ExprFieldAccess { .. } => make_named_expr_node(
+        ExprData::ExprFieldAccess { summary: _, .. } => make_named_expr_node(
             &field_access_field_at(lhs.clone(), source_indices),
             Rc::new(ExprData::ExprMethodCall {
                 method_semantics: None,
@@ -12049,7 +12057,7 @@ pub fn parse_match_arms_acc(
             let e = eat(&r.tokens.clone(), Rc::new(ExpectedToken::ExpectComma));
             tokens = skip_newlines(match (*e).clone() {
                 EatResult::EatConsumed { tokens: __ec, .. } => __ec.clone(),
-                EatResult::EatUnchanged { .. } => r.tokens.clone(),
+                EatResult::EatUnchanged { tokens: _, .. } => r.tokens.clone(),
             });
             {
                 let __tco_0 = r.ctx.clone();
@@ -12704,7 +12712,7 @@ pub fn parse_variant_bindings_brace_acc(
                     let e2 = eat(&r2.tokens.clone(), Rc::new(ExpectedToken::ExpectComma));
                     tokens = skip_newlines(match (*e2).clone() {
                         EatResult::EatConsumed { tokens: __ec, .. } => __ec.clone(),
-                        EatResult::EatUnchanged { .. } => r2.tokens.clone(),
+                        EatResult::EatUnchanged { tokens: _, .. } => r2.tokens.clone(),
                     });
                     let fb = make_field_binding_node(
                         &field_name,
@@ -12724,7 +12732,7 @@ pub fn parse_variant_bindings_brace_acc(
                     let e2 = eat(&tokens, Rc::new(ExpectedToken::ExpectComma));
                     tokens = skip_newlines(match (*e2).clone() {
                         EatResult::EatConsumed { tokens: __ec, .. } => __ec.clone(),
-                        EatResult::EatUnchanged { .. } => tokens.clone(),
+                        EatResult::EatUnchanged { tokens: _, .. } => tokens.clone(),
                     });
                     let fb = make_field_binding_node(
                         &field_name,
@@ -13121,7 +13129,7 @@ pub fn parse_field_init_list_acc(
             let e = eat(&r.tokens.clone(), Rc::new(ExpectedToken::ExpectComma));
             tokens = skip_newlines(match (*e).clone() {
                 EatResult::EatConsumed { tokens: __ec, .. } => __ec.clone(),
-                EatResult::EatUnchanged { .. } => r.tokens.clone(),
+                EatResult::EatUnchanged { tokens: _, .. } => r.tokens.clone(),
             });
             {
                 let __tco_0 = r.ctx.clone();
@@ -13370,7 +13378,7 @@ pub fn parse_expr_list_until_acc(
             let e = eat(&r.tokens.clone(), Rc::new(ExpectedToken::ExpectComma));
             tokens = skip_newlines(match (*e).clone() {
                 EatResult::EatConsumed { tokens: __ec, .. } => __ec.clone(),
-                EatResult::EatUnchanged { .. } => r.tokens.clone(),
+                EatResult::EatUnchanged { tokens: _, .. } => r.tokens.clone(),
             });
             {
                 let __tco_0 = r.ctx.clone();

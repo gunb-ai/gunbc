@@ -62,7 +62,7 @@ pub enum PatternSubject {
 
 pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
     match (*inferred).clone() {
-        InferredNode::TypeVariable { .. } => true,
+        InferredNode::TypeVariable { id: _, .. } => true,
         _ => false,
     }
 }
@@ -162,7 +162,7 @@ pub fn lookup_result_subject(result: Rc<NodeLookupResult>) -> Rc<PatternSubject>
 pub fn pattern_binding_type(subject: Rc<PatternSubject>) -> Rc<Node> {
     match (*subject).clone() {
         PatternSubject::PatternResolved { node: resolved, .. } => resolved.clone(),
-        PatternSubject::PatternDynamic { .. } => error_type(),
+        PatternSubject::PatternDynamic { span: _, .. } => error_type(),
         PatternSubject::PatternLookupBlocked => error_type(),
     }
 }
@@ -341,7 +341,7 @@ pub fn check_match_exhaustiveness(
                     for arm in arms.clone().iter().cloned() {
                         if match (*arm_pattern(arm.clone())).clone() {
                             MatchPattern::Wildcard => true,
-                            MatchPattern::Bind { .. } => true,
+                            MatchPattern::Bind { name: _, .. } => true,
                             _ => false,
                         } {
                             __found = true;

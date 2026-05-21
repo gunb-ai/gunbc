@@ -1198,7 +1198,7 @@ pub fn type_variable_node(id: String) -> Rc<Node> {
 
 pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
     match (*inferred).clone() {
-        InferredNode::TypeVariable { .. } => true,
+        InferredNode::TypeVariable { id: _, .. } => true,
         _ => false,
     }
 }
@@ -1277,7 +1277,7 @@ pub fn annotate_pattern_parent_enums(
                             }
                         }
                     }
-                    PatternSubject::PatternDynamic { .. } => None,
+                    PatternSubject::PatternDynamic { span: _, .. } => None,
                     PatternSubject::PatternLookupBlocked => None,
                 };
                 let variant_lookup = lookup_variant_in_type(
@@ -1552,7 +1552,7 @@ pub fn extend_scope_with_pattern_node(
             scope: scope.clone(),
             diagnostics: Rc::new(vec![]),
         }),
-        MatchPattern::LitPattern { .. } => Rc::new(PatternScopeResult {
+        MatchPattern::LitPattern { value: _, .. } => Rc::new(PatternScopeResult {
             scope: scope.clone(),
             diagnostics: Rc::new(vec![]),
         }),
@@ -1988,7 +1988,9 @@ pub fn infer_expr(
                     diagnostics: Rc::new(vec![]),
                 })
             }
-            ExprData::ExprVar { .. } => {
+            ExprData::ExprVar {
+                binding_kind: _, ..
+            } => {
                 let name =
                     expr_var_name_at(texpr.clone(), scope.type_env.clone().source_indices.clone());
                 let span = texpr.span.clone();
@@ -2071,7 +2073,7 @@ pub fn infer_expr(
                     },
                 }
             }
-            ExprData::ExprFieldAccess { .. } => {
+            ExprData::ExprFieldAccess { summary: _, .. } => {
                 let field_name = field_access_field_at(
                     texpr.clone(),
                     scope.type_env.clone().source_indices.clone(),
@@ -2888,7 +2890,10 @@ match bare_s {
                     }
                 }
             }
-            ExprData::ExprMethodCall { .. } => {
+            ExprData::ExprMethodCall {
+                method_semantics: _,
+                ..
+            } => {
                 let method_name = expr_method_name_at(
                     texpr.clone(),
                     scope.type_env.clone().source_indices.clone(),
@@ -3355,7 +3360,7 @@ match bare_s {
                         span.clone(),
                         scope.module_name.clone(),
                     ),
-                    PatternSubject::PatternDynamic { .. } => Rc::new(vec![]),
+                    PatternSubject::PatternDynamic { span: _, .. } => Rc::new(vec![]),
                     PatternSubject::PatternLookupBlocked => Rc::new(vec![]),
                 };
                 let match_texpr = make_expr_node(
@@ -3488,7 +3493,9 @@ match bare_s {
                 let body_expr = let_body(texpr.clone());
                 let is_tail_return = match body_expr.clone() {
                     Some(bd) => match (*bd.expr_data.clone()).clone() {
-                        ExprData::ExprVar { .. } => {
+                        ExprData::ExprVar {
+                            binding_kind: _, ..
+                        } => {
                             (authored_name_at(scope.type_env.clone().source_indices.clone(), &bd)
                                 .as_str()
                                 == let_name.clone().as_str())
@@ -3548,7 +3555,7 @@ match bare_s {
                     }
                 }
             }
-            ExprData::ExprRecordLit { .. } => {
+            ExprData::ExprRecordLit { parent_enum: _, .. } => {
                 let span = texpr.span.clone();
                 let field_inits = texpr.children.clone();
                 infer_record_lit(
@@ -3703,7 +3710,7 @@ match bare_s {
                     diagnostics: v2_rt::concat(left_diags, right_diags),
                 })
             }
-            ExprData::ExprUnaryOp { op, .. } => {
+            ExprData::ExprUnaryOp { op: op, .. } => {
                 let span = texpr.span.clone();
                 let operand_expr = unaryop_operand(texpr.clone());
                 let operand_result = infer_expr(&operand_expr, &scope, &None);
@@ -3937,7 +3944,7 @@ match bare_s {
                     let mut __result = Vec::new();
                     for part_node in texpr.children.clone().iter().cloned() {
                         __result.push(match (*part_node.expr_data.clone()).clone() {
-                            ExprData::ExprLiteral { .. } => part_node.clone(),
+                            ExprData::ExprLiteral { value: _, .. } => part_node.clone(),
                             _ => match part_node.children.clone().first().cloned() {
                                 Some(inner) => {
                                     let r = infer_expr(&inner, &scope, &None);
@@ -3954,7 +3961,7 @@ match bare_s {
                     for part_node in texpr.children.clone().iter().cloned() {
                         __result.extend(
                             (*match (*part_node.expr_data.clone()).clone() {
-                                ExprData::ExprLiteral { .. } => Rc::new(vec![]),
+                                ExprData::ExprLiteral { value: _, .. } => Rc::new(vec![]),
                                 _ => match part_node.children.clone().first().cloned() {
                                     Some(inner) => {
                                         let r = infer_expr(&inner, &scope, &None);
@@ -4121,7 +4128,7 @@ match bare_s {
                 };
                 let access_failure_inferred = match base_typed.inferred.clone().as_deref().cloned()
                 {
-                    Some(InferredNode::Resolved { .. }) => index_typed.inferred.clone(),
+                    Some(InferredNode::Resolved { node: _, .. }) => index_typed.inferred.clone(),
                     _ => base_typed.inferred.clone(),
                 };
                 let idx_inferred = match index_check.clone() {
@@ -4189,9 +4196,11 @@ match bare_s {
                 };
                 let access_failure_inferred = match base_typed.inferred.clone().as_deref().cloned()
                 {
-                    Some(InferredNode::Resolved { .. }) => {
+                    Some(InferredNode::Resolved { node: _, .. }) => {
                         match start_typed.inferred.clone().as_deref().cloned() {
-                            Some(InferredNode::Resolved { .. }) => end_typed.inferred.clone(),
+                            Some(InferredNode::Resolved { node: _, .. }) => {
+                                end_typed.inferred.clone()
+                            }
                             _ => start_typed.inferred.clone(),
                         }
                     }
@@ -4550,14 +4559,19 @@ pub struct DescentContext {
 
 pub fn classify_size_expr(val: &Rc<Node>, ctx: &Rc<DescentContext>) -> Option<Rc<SizeExpr>> {
     match (*val.expr_data.clone()).clone() {
-        ExprData::ExprMethodCall { .. } => {
+        ExprData::ExprMethodCall {
+            method_semantics: _,
+            ..
+        } => {
             let mname =
                 expr_method_name_at(val.clone(), ctx.type_env.clone().source_indices.clone());
             if (mname.as_str() == "count".to_string().as_str()) {
                 {
                     let receiver = method_receiver(val.clone());
                     match (*receiver.expr_data.clone()).clone() {
-                        ExprData::ExprVar { .. } => {
+                        ExprData::ExprVar {
+                            binding_kind: _, ..
+                        } => {
                             let rname = expr_var_name_at(
                                 receiver.clone(),
                                 ctx.type_env.clone().source_indices.clone(),
@@ -4583,7 +4597,9 @@ pub fn classify_size_expr(val: &Rc<Node>, ctx: &Rc<DescentContext>) -> Option<Rc
                 ExprData::ExprBinOp { op: BinOp::Div, .. } => match (*left.expr_data.clone())
                     .clone()
                 {
-                    ExprData::ExprVar { .. } => {
+                    ExprData::ExprVar {
+                        binding_kind: _, ..
+                    } => {
                         let lname = expr_var_name_at(
                             left.clone(),
                             ctx.type_env.clone().source_indices.clone(),
@@ -4630,7 +4646,9 @@ pub fn proportional_skip_alias_plus_literal(
     ctx: &Rc<DescentContext>,
 ) -> Option<Rc<SubValueRelation>> {
     match (*alias_expr.expr_data.clone()).clone() {
-        ExprData::ExprVar { .. } => {
+        ExprData::ExprVar {
+            binding_kind: _, ..
+        } => {
             let aname = expr_var_name_at(
                 alias_expr.clone(),
                 ctx.type_env.clone().source_indices.clone(),
@@ -4692,7 +4710,10 @@ pub fn classify_collection_shrink(
     ctx: &Rc<DescentContext>,
 ) -> Rc<SubValueRelation> {
     match (*arg_expr.expr_data.clone()).clone() {
-        ExprData::ExprMethodCall { .. } => {
+        ExprData::ExprMethodCall {
+            method_semantics: _,
+            ..
+        } => {
             let mname = expr_method_name_at(
                 arg_expr.clone(),
                 ctx.type_env.clone().source_indices.clone(),
@@ -4703,7 +4724,9 @@ pub fn classify_collection_shrink(
                 {
                     let receiver = method_receiver(arg_expr.clone());
                     match (*receiver.expr_data.clone()).clone() {
-                        ExprData::ExprVar { .. } => {
+                        ExprData::ExprVar {
+                            binding_kind: _, ..
+                        } => {
                             let rname = expr_var_name_at(
                                 receiver.clone(),
                                 ctx.type_env.clone().source_indices.clone(),
@@ -4747,7 +4770,9 @@ Rc::new(SubValueRelation::StrictSubValue {
                                                         Rc::new(SubValueRelation::SubValueUnknown)
                                                     }
                                                 }
-                                                ExprData::ExprVar { .. } => {
+                                                ExprData::ExprVar {
+                                                    binding_kind: _, ..
+                                                } => {
                                                     let aname = expr_var_name_at(
                                                         arg_val.clone(),
                                                         ctx.type_env.clone().source_indices.clone(),
@@ -5017,7 +5042,10 @@ pub fn build_per_field_for_let(
                 None => ctx.per_field_vars.clone(),
             }
         }
-        ExprData::ExprMethodCall { .. } => {
+        ExprData::ExprMethodCall {
+            method_semantics: _,
+            ..
+        } => {
             let callee =
                 expr_method_name_at(val.clone(), ctx.type_env.clone().source_indices.clone());
             match v2_rt::map_get(&ctx.func_sigs.clone(), callee) {
@@ -5084,14 +5112,16 @@ pub fn resolve_collection_field(
 ) -> Option<Rc<InductiveField>> {
     loop {
         match (*expr.expr_data.clone()).clone() {
-            ExprData::ExprFieldAccess { .. } => {
+            ExprData::ExprFieldAccess { summary: _, .. } => {
                 let base = field_access_base(expr.clone());
                 let fname = field_access_field_at(
                     expr.clone(),
                     ctx.type_env.clone().source_indices.clone(),
                 );
                 match (*base.expr_data.clone()).clone() {
-                    ExprData::ExprVar { .. } => {
+                    ExprData::ExprVar {
+                        binding_kind: _, ..
+                    } => {
                         let bname = expr_var_name_at(
                             base.clone(),
                             ctx.type_env.clone().source_indices.clone(),
@@ -5157,7 +5187,9 @@ pub fn resolve_collection_field(
                     }
                 }
             }
-            ExprData::ExprVar { .. } => {
+            ExprData::ExprVar {
+                binding_kind: _, ..
+            } => {
                 let rname =
                     expr_var_name_at(expr.clone(), ctx.type_env.clone().source_indices.clone());
                 match v2_rt::map_get(&ctx.sub_value_vars.clone(), rname) {
@@ -5191,7 +5223,10 @@ pub fn resolve_collection_field(
                     }
                 }
             }
-            ExprData::ExprMethodCall { .. } => {
+            ExprData::ExprMethodCall {
+                method_semantics: _,
+                ..
+            } => {
                 let inner_mname =
                     expr_method_name_at(expr.clone(), ctx.type_env.clone().source_indices.clone());
                 let is_collection_preserving = (((((inner_mname.clone().as_str()
@@ -5219,7 +5254,9 @@ pub fn resolve_collection_field(
 
 pub fn classify_binding_provenance(val: &Rc<Node>, scope: &Rc<InferScope>) -> Rc<SubValueRelation> {
     match (*val.expr_data.clone()).clone() {
-        ExprData::ExprVar { .. } => {
+        ExprData::ExprVar {
+            binding_kind: _, ..
+        } => {
             let vname =
                 expr_var_name_at(val.clone(), scope.type_env.clone().source_indices.clone());
             match v2_rt::map_get(&scope.locals.clone(), vname) {
@@ -5227,12 +5264,14 @@ pub fn classify_binding_provenance(val: &Rc<Node>, scope: &Rc<InferScope>) -> Rc
                 None => Rc::new(SubValueRelation::SubValueUnknown),
             }
         }
-        ExprData::ExprFieldAccess { .. } => {
+        ExprData::ExprFieldAccess { summary: _, .. } => {
             let base = field_access_base(val.clone());
             let field =
                 field_access_field_at(val.clone(), scope.type_env.clone().source_indices.clone());
             match (*base.expr_data.clone()).clone() {
-                ExprData::ExprVar { .. } => {
+                ExprData::ExprVar {
+                    binding_kind: _, ..
+                } => {
                     let bname = expr_var_name_at(
                         base.clone(),
                         scope.type_env.clone().source_indices.clone(),
@@ -5279,7 +5318,9 @@ pub fn classify_let_value(
     ctx: &Rc<DescentContext>,
 ) -> Option<Rc<SubValueRelation>> {
     match (*val.expr_data.clone()).clone() {
-        ExprData::ExprVar { .. } => {
+        ExprData::ExprVar {
+            binding_kind: _, ..
+        } => {
             let vname = expr_var_name_at(val.clone(), ctx.type_env.clone().source_indices.clone());
             match v2_rt::map_get(&ctx.scope_locals.clone(), vname) {
                 Some(binding) => match (*binding.provenance.clone()).clone() {
@@ -5289,12 +5330,14 @@ pub fn classify_let_value(
                 None => None,
             }
         }
-        ExprData::ExprFieldAccess { .. } => {
+        ExprData::ExprFieldAccess { summary: _, .. } => {
             let base = field_access_base(val.clone());
             let field =
                 field_access_field_at(val.clone(), ctx.type_env.clone().source_indices.clone());
             match (*base.expr_data.clone()).clone() {
-                ExprData::ExprVar { .. } => {
+                ExprData::ExprVar {
+                    binding_kind: _, ..
+                } => {
                     let bname =
                         expr_var_name_at(base.clone(), ctx.type_env.clone().source_indices.clone());
                     let from_per_field =
@@ -5381,7 +5424,9 @@ pub fn classify_let_value(
                                 Some(first_arg) => {
                                     let inner = arg_value(&first_arg);
                                     match (*inner.expr_data.clone()).clone() {
-                                        ExprData::ExprVar { .. } => {
+                                        ExprData::ExprVar {
+                                            binding_kind: _, ..
+                                        } => {
                                             let iname = expr_var_name_at(
                                                 inner.clone(),
                                                 ctx.type_env.clone().source_indices.clone(),
@@ -5516,12 +5561,14 @@ pub fn classify_let_value(
             match type_based.clone() {
                 Some(_) => type_based.clone(),
                 None => match (*val.expr_data.clone()).clone() {
-                    ExprData::ExprBinOp { op, .. } => {
+                    ExprData::ExprBinOp { op: op, .. } => {
                         let left = binop_left(val.clone());
                         let right = binop_right(val.clone());
                         match op.clone() {
                             BinOp::Sub => match (*left.expr_data.clone()).clone() {
-                                ExprData::ExprVar { .. } => {
+                                ExprData::ExprVar {
+                                    binding_kind: _, ..
+                                } => {
                                     let lname = expr_var_name_at(
                                         left.clone(),
                                         ctx.type_env.clone().source_indices.clone(),
@@ -5566,7 +5613,9 @@ pub fn classify_let_value(
                             },
                             BinOp::Div => {
                                 let left_name = match (*left.expr_data.clone()).clone() {
-                                    ExprData::ExprVar { .. } => {
+                                    ExprData::ExprVar {
+                                        binding_kind: _, ..
+                                    } => {
                                         let lname = expr_var_name_at(
                                             left.clone(),
                                             ctx.type_env.clone().source_indices.clone(),
@@ -5588,7 +5637,9 @@ pub fn classify_let_value(
                                     ExprData::ExprBinOp { op: BinOp::Sub, .. } => {
                                         let inner_left = binop_left(left.clone());
                                         match (*inner_left.expr_data.clone()).clone() {
-                                            ExprData::ExprVar { .. } => {
+                                            ExprData::ExprVar {
+                                                binding_kind: _, ..
+                                            } => {
                                                 let lname = expr_var_name_at(
                                                     inner_left.clone(),
                                                     ctx.type_env.clone().source_indices.clone(),
@@ -5646,7 +5697,10 @@ pub fn classify_let_value(
                             _ => None,
                         }
                     }
-                    ExprData::ExprMethodCall { .. } => {
+                    ExprData::ExprMethodCall {
+                        method_semantics: _,
+                        ..
+                    } => {
                         let mname = expr_method_name_at(
                             val.clone(),
                             ctx.type_env.clone().source_indices.clone(),
@@ -5701,7 +5755,10 @@ pub fn classify_let_value(
                                                 };
                                                 if (skip_amount.clone() > 0) {
                                                     match (*receiver.expr_data.clone()).clone() {
-                                                        ExprData::ExprVar { .. } => {
+                                                        ExprData::ExprVar {
+                                                            binding_kind: _,
+                                                            ..
+                                                        } => {
                                                             let rname = expr_var_name_at(
                                                                 receiver.clone(),
                                                                 ctx.type_env
@@ -5816,7 +5873,9 @@ pub fn classify_call_arg_provenance(
     ctx: &Rc<DescentContext>,
 ) -> Option<Rc<SubValueRelation>> {
     match (*arg_expr.expr_data.clone()).clone() {
-        ExprData::ExprVar { .. } => {
+        ExprData::ExprVar {
+            binding_kind: _, ..
+        } => {
             let name = expr_var_name_at(
                 arg_expr.clone(),
                 ctx.type_env.clone().source_indices.clone(),
@@ -5857,7 +5916,9 @@ pub fn classify_argument(
 ) -> Rc<SubValueRelation> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*arg_expr.expr_data.clone()).clone() {
-            ExprData::ExprVar { .. } => {
+            ExprData::ExprVar {
+                binding_kind: _, ..
+            } => {
                 let vname = expr_var_name_at(
                     arg_expr.clone(),
                     ctx.type_env.clone().source_indices.clone(),
@@ -5871,14 +5932,16 @@ pub fn classify_argument(
                     }
                 }
             }
-            ExprData::ExprFieldAccess { .. } => {
+            ExprData::ExprFieldAccess { summary: _, .. } => {
                 let base = field_access_base(arg_expr.clone());
                 let field = field_access_field_at(
                     arg_expr.clone(),
                     ctx.type_env.clone().source_indices.clone(),
                 );
                 match (*base.expr_data.clone()).clone() {
-                    ExprData::ExprVar { .. } => {
+                    ExprData::ExprVar {
+                        binding_kind: _, ..
+                    } => {
                         let bname = expr_var_name_at(
                             base.clone(),
                             ctx.type_env.clone().source_indices.clone(),
@@ -5933,7 +5996,9 @@ pub fn classify_argument(
                         let inner_rel = classify_argument(&inner, &param_name, &ctx);
                         match (*inner_rel.clone()).clone() {
                             SubValueRelation::StrictSubValue { .. } => inner_rel.clone(),
-                            SubValueRelation::IteratedSubValue { .. } => inner_rel.clone(),
+                            SubValueRelation::IteratedSubValue { field: _, .. } => {
+                                inner_rel.clone()
+                            }
                             SubValueRelation::ArithmeticDescent { .. } => inner_rel.clone(),
                             SubValueRelation::PreservedValue => {
                                 let callee = expr_call_func_at(
@@ -6025,16 +6090,19 @@ pub fn classify_argument(
                     None => Rc::new(SubValueRelation::SubValueUnknown),
                 }
             }
-            ExprData::ExprMethodCall { .. } => {
-                classify_collection_shrink(&arg_expr, &param_name, &ctx)
-            }
-            ExprData::ExprBinOp { op, .. } => {
+            ExprData::ExprMethodCall {
+                method_semantics: _,
+                ..
+            } => classify_collection_shrink(&arg_expr, &param_name, &ctx),
+            ExprData::ExprBinOp { op: op, .. } => {
                 let left = binop_left(arg_expr.clone());
                 let right = binop_right(arg_expr.clone());
                 match op.clone() {
                     BinOp::Sub => {
                         let left_is_param = match (*left.expr_data.clone()).clone() {
-                            ExprData::ExprVar { .. } => {
+                            ExprData::ExprVar {
+                                binding_kind: _, ..
+                            } => {
                                 ((expr_var_name_at(
                                     left.clone(),
                                     ctx.type_env.clone().source_indices.clone(),
@@ -6078,7 +6146,9 @@ pub fn classify_argument(
                     }
                     BinOp::Div => {
                         let left_is_param = match (*left.expr_data.clone()).clone() {
-                            ExprData::ExprVar { .. } => {
+                            ExprData::ExprVar {
+                                binding_kind: _, ..
+                            } => {
                                 ((expr_var_name_at(
                                     left.clone(),
                                     ctx.type_env.clone().source_indices.clone(),
@@ -6096,7 +6166,9 @@ pub fn classify_argument(
                             ExprData::ExprBinOp { op: BinOp::Sub, .. } => {
                                 let inner_left = binop_left(left.clone());
                                 match (*inner_left.expr_data.clone()).clone() {
-                                    ExprData::ExprVar { .. } => {
+                                    ExprData::ExprVar {
+                                        binding_kind: _, ..
+                                    } => {
                                         ((expr_var_name_at(
                                             inner_left.clone(),
                                             ctx.type_env.clone().source_indices.clone(),
@@ -6190,7 +6262,9 @@ pub fn read_arg_provenance(
     ctx: &Rc<DescentContext>,
 ) -> Rc<SubValueRelation> {
     match (*arg_expr.expr_data.clone()).clone() {
-        ExprData::ExprVar { .. } => {
+        ExprData::ExprVar {
+            binding_kind: _, ..
+        } => {
             let vname = expr_var_name_at(
                 arg_expr.clone(),
                 ctx.type_env.clone().source_indices.clone(),
@@ -6205,14 +6279,16 @@ pub fn read_arg_provenance(
                 None => classify_argument(&arg_expr, &param_name, &ctx),
             }
         }
-        ExprData::ExprFieldAccess { .. } => {
+        ExprData::ExprFieldAccess { summary: _, .. } => {
             let base = field_access_base(arg_expr.clone());
             let field = field_access_field_at(
                 arg_expr.clone(),
                 ctx.type_env.clone().source_indices.clone(),
             );
             match (*base.expr_data.clone()).clone() {
-                ExprData::ExprVar { .. } => {
+                ExprData::ExprVar {
+                    binding_kind: _, ..
+                } => {
                     let bname =
                         expr_var_name_at(base.clone(), ctx.type_env.clone().source_indices.clone());
                     match v2_rt::map_get(&ctx.scope_locals.clone(), bname) {
@@ -6256,8 +6332,11 @@ pub fn read_arg_provenance(
             }
         }
         ExprData::ExprCall { .. } => classify_argument(&arg_expr, &param_name, &ctx),
-        ExprData::ExprMethodCall { .. } => classify_argument(&arg_expr, &param_name, &ctx),
-        ExprData::ExprBinOp { .. } => classify_argument(&arg_expr, &param_name, &ctx),
+        ExprData::ExprMethodCall {
+            method_semantics: _,
+            ..
+        } => classify_argument(&arg_expr, &param_name, &ctx),
+        ExprData::ExprBinOp { op: _, .. } => classify_argument(&arg_expr, &param_name, &ctx),
         ExprData::ExprMatch => classify_argument(&arg_expr, &param_name, &ctx),
         ExprData::ExprIf => classify_argument(&arg_expr, &param_name, &ctx),
         ExprData::ExprBlock => classify_argument(&arg_expr, &param_name, &ctx),
@@ -6369,7 +6448,9 @@ pub fn descent_source_type(found: String, arg_node: &Rc<Node>, ctx: &Rc<DescentC
             _ => {
                 let arg_val = arg_value(&arg_node);
                 match (*arg_val.expr_data.clone()).clone() {
-                    ExprData::ExprVar { .. } => {
+                    ExprData::ExprVar {
+                        binding_kind: _, ..
+                    } => {
                         let vname = expr_var_name_at(
                             arg_val.clone(),
                             ctx.type_env.clone().source_indices.clone(),
@@ -6572,7 +6653,9 @@ pub fn annotate_descent(body: &Rc<Node>, ctx: &Rc<DescentContext>) -> Rc<Node> {
             ExprData::ExprMatch => {
                 let scrut = match_scrutinee(body.clone());
                 let scrut_type = match (*scrut.expr_data.clone()).clone() {
-                    ExprData::ExprVar { .. } => {
+                    ExprData::ExprVar {
+                        binding_kind: _, ..
+                    } => {
                         let sname = expr_var_name_at(
                             scrut.clone(),
                             ctx.type_env.clone().source_indices.clone(),
@@ -6598,14 +6681,16 @@ pub fn annotate_descent(body: &Rc<Node>, ctx: &Rc<DescentContext>) -> Rc<Node> {
                     _ => "".to_string(),
                 };
                 let scrut_inducing_field = match (*scrut.expr_data.clone()).clone() {
-                    ExprData::ExprFieldAccess { .. } => {
+                    ExprData::ExprFieldAccess { summary: _, .. } => {
                         let base = field_access_base(scrut.clone());
                         let fname = field_access_field_at(
                             scrut.clone(),
                             ctx.type_env.clone().source_indices.clone(),
                         );
                         match (*base.expr_data.clone()).clone() {
-                            ExprData::ExprVar { .. } => {
+                            ExprData::ExprVar {
+                                binding_kind: _, ..
+                            } => {
                                 let bname = expr_var_name_at(
                                     base.clone(),
                                     ctx.type_env.clone().source_indices.clone(),
@@ -6642,7 +6727,10 @@ pub fn annotate_descent(body: &Rc<Node>, ctx: &Rc<DescentContext>) -> Rc<Node> {
                             _ => None,
                         }
                     }
-                    ExprData::ExprMethodCall { .. } => {
+                    ExprData::ExprMethodCall {
+                        method_semantics: _,
+                        ..
+                    } => {
                         let mname = expr_method_name_at(
                             scrut.clone(),
                             ctx.type_env.clone().source_indices.clone(),
@@ -7095,7 +7183,10 @@ make_arm_node(arm_pattern(arm_node.clone()), arm_guard(&arm_node), annotated_bod
                     {
                         let raw_receiver = method_receiver(body.clone());
                         let receiver = match (*raw_receiver.expr_data.clone()).clone() {
-                            ExprData::ExprMethodCall { .. } => {
+                            ExprData::ExprMethodCall {
+                                method_semantics: _,
+                                ..
+                            } => {
                                 let inner_mname = expr_method_name_at(
                                     raw_receiver.clone(),
                                     ctx.type_env.clone().source_indices.clone(),
@@ -7109,14 +7200,16 @@ make_arm_node(arm_pattern(arm_node.clone()), arm_guard(&arm_node), annotated_bod
                             _ => raw_receiver.clone(),
                         };
                         let receiver_field = match (*receiver.expr_data.clone()).clone() {
-                            ExprData::ExprFieldAccess { .. } => {
+                            ExprData::ExprFieldAccess { summary: _, .. } => {
                                 let base = field_access_base(receiver.clone());
                                 let fname = field_access_field_at(
                                     receiver.clone(),
                                     ctx.type_env.clone().source_indices.clone(),
                                 );
                                 match (*base.expr_data.clone()).clone() {
-                                    ExprData::ExprVar { .. } => {
+                                    ExprData::ExprVar {
+                                        binding_kind: _, ..
+                                    } => {
                                         let bname = expr_var_name_at(
                                             base.clone(),
                                             ctx.type_env.clone().source_indices.clone(),
@@ -7171,7 +7264,9 @@ make_arm_node(arm_pattern(arm_node.clone()), arm_guard(&arm_node), annotated_bod
                                     _ => None,
                                 }
                             }
-                            ExprData::ExprVar { .. } => {
+                            ExprData::ExprVar {
+                                binding_kind: _, ..
+                            } => {
                                 let rname = expr_var_name_at(
                                     receiver.clone(),
                                     ctx.type_env.clone().source_indices.clone(),
@@ -7510,7 +7605,9 @@ pub fn classify_body_provenance(
 ) -> Rc<HashMap<String, Rc<SubValueRelation>>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*expr.expr_data.clone()).clone() {
-            ExprData::ExprVar { .. } => {
+            ExprData::ExprVar {
+                binding_kind: _, ..
+            } => {
                 let vname = expr_var_name_at(expr.clone(), type_env.source_indices.clone());
                 match v2_rt::map_get(&let_prov, vname.clone()) {
                     Some(prov) => prov.clone(),
@@ -7536,7 +7633,7 @@ pub fn classify_body_provenance(
                     }
                 }
             }
-            ExprData::ExprFieldAccess { .. } => {
+            ExprData::ExprFieldAccess { summary: _, .. } => {
                 let base = field_access_base(expr.clone());
                 let field = field_access_field_at(expr.clone(), type_env.source_indices.clone());
                 let base_prov = classify_body_provenance(
@@ -8058,7 +8155,7 @@ pub fn classify_terminal_per_field(
     let_prov: Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>,
 ) -> Rc<Vec<Rc<HashMap<String, Rc<SubValueRelation>>>>> {
     match (*expr.expr_data.clone()).clone() {
-        ExprData::ExprRecordLit { .. } => Rc::new({
+        ExprData::ExprRecordLit { parent_enum: _, .. } => Rc::new({
             let mut __result = Vec::new();
             for fi in expr.children.clone().iter().cloned() {
                 __result.push(classify_body_provenance(
@@ -8083,7 +8180,7 @@ pub fn classify_terminal_per_field(
                             type_env.clone(),
                         );
                         match (*arm_unwrapped.expr.clone().expr_data.clone()).clone() {
-                            ExprData::ExprRecordLit { .. } => Rc::new({
+                            ExprData::ExprRecordLit { parent_enum: _, .. } => Rc::new({
                                 let mut __result = Vec::new();
                                 for fi in
                                     arm_unwrapped.expr.clone().children.clone().iter().cloned()
@@ -8114,7 +8211,7 @@ pub fn classify_terminal_per_field(
                 type_env.clone(),
             );
             let then_result = match (*then_unwrapped.expr.clone().expr_data.clone()).clone() {
-                ExprData::ExprRecordLit { .. } => Rc::new({
+                ExprData::ExprRecordLit { parent_enum: _, .. } => Rc::new({
                     let mut __result = Vec::new();
                     for fi in then_unwrapped.expr.clone().children.clone().iter().cloned() {
                         __result.push(classify_body_provenance(
@@ -8136,7 +8233,7 @@ pub fn classify_terminal_per_field(
                         unwrap_body_terminal(&else_expr, let_prov.clone(), type_env.clone());
                     let else_result = match (*else_unwrapped.expr.clone().expr_data.clone()).clone()
                     {
-                        ExprData::ExprRecordLit { .. } => Rc::new({
+                        ExprData::ExprRecordLit { parent_enum: _, .. } => Rc::new({
                             let mut __result = Vec::new();
                             for fi in else_unwrapped.expr.clone().children.clone().iter().cloned() {
                                 __result.push(classify_body_provenance(
@@ -11593,7 +11690,7 @@ pub fn build_fielded_variants(
                             authored_name_at(si.clone(), &item),
                         ) {
                             Some(summary) => match (*summary.repr.clone()).clone() {
-                                TypeRepr::EnumRepr { .. } => true,
+                                TypeRepr::EnumRepr { unit_only: _, .. } => true,
                                 _ => false,
                             },
                             None => false,
@@ -11656,7 +11753,7 @@ pub fn build_positional_payload_variants(
                         authored_name_at(si.clone(), &item),
                     ) {
                         Some(summary) => match (*summary.repr.clone()).clone() {
-                            TypeRepr::EnumRepr { .. } => true,
+                            TypeRepr::EnumRepr { unit_only: _, .. } => true,
                             _ => false,
                         },
                         None => false,
