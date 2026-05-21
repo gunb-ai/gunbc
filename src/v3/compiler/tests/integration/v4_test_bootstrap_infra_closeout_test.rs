@@ -3,6 +3,8 @@
 //! Closeout ratchets for the v4 T-19/T-20 test/bootstrap-infra lane. These
 //! checks stay at the parse-surface boundary: they prove the structural
 //! authorities exist and remain joined without claiming T-22 execution.
+//! This hand-Rust ratchet retires when T-22 generated harness coverage
+//! expresses the same bootstrap closeout checks as `.dag` `TestClaim` rows.
 
 use std::collections::{BTreeMap, BTreeSet};
 
