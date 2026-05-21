@@ -56,7 +56,10 @@ fn import_includes_name(
             names,
             ..
         } => {
-            item_path.iter().map(String::as_str).eq(path.iter().copied())
+            item_path
+                .iter()
+                .map(String::as_str)
+                .eq(path.iter().copied())
                 && names.iter().any(|n| n == name)
         }
         _ => false,
