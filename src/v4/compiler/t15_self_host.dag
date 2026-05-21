@@ -1,17 +1,15 @@
 // src/v4/compiler/t15_self_host.dag
 // Scope: T-15 self-host fixed-point validation runner shape; body is scaffolded fail-closed until T-22/T-34 and Stage1Candidate generation land.
 // Owns: CoreNode, SourceModels, StructurallyEqual, StageEmissionEquality, self_host_fixed_point_validate.
-// Consumes: v4.std.coercion, v4.std.diagnostic, v4.std.node, v4.std.witness.
+// Consumes: v4.std.diagnostic, v4.std.node, v4.std.witness.
 // Status: scaffold-against-contract; runner body returns T15RunnerNotRealized.
 
 module v4.compiler.t15_self_host
 
-import v4.std.coercion { homomorphism_rule_exact_structural_equality }
 import v4.std.collection { List }
 import v4.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,
-  Locus,
   NodeLocus,
   Outcome,
   PortLocus,
@@ -22,6 +20,7 @@ import v4.std.diagnostic {
 import v4.std.node { Conj, Edge, Named, Node, Symbol, TypeNode }
 import v4.std.witness {
   StructuralPropertyWitness,
+  Violates,
   Witness
 }
 
@@ -40,11 +39,8 @@ type StructurallyEqual {
 }
 
 
-// 🟡 coproduct dissolution — scaffold:t15-stage-emission-equality · dissolve-on: T-22 runner consumes find_witness/coercion exact structural-equality witness.
-type StageEmissionEquality
-// 🟡 coproduct dissolution — scaffold:t15-stage-emission-equality
-  = StructuralEqual { witness: Witness<StructurallyEqual> }
-  | Diverged { divergence_locus: Locus, diagnostic: Diagnostic }
+// 🟡 witness-body scaffold — scaffold:t15-stage-emission-equality · dissolve-on: T-22 runner consumes find_witness/coercion exact structural-equality witness.
+type StageEmissionEquality = Witness<StructurallyEqual>
 
 
 type PromotionWitness {
@@ -59,6 +55,7 @@ data candidate_bootstrap_roundtrip_sub_check: Symbol = candidate_bootstrap_round
 data candidate_fixed_point_sub_check: Symbol = candidate_fixed_point_sub_check
 data t15_stage1_candidate_field: Symbol = t15_stage1_candidate_field
 data t15_reference_stage1_field: Symbol = t15_reference_stage1_field
+data t15_stage_emission_equality_not_realized: Symbol = t15_stage_emission_equality_not_realized
 
 
 fn t15_runner_not_realized_diagnostic() -> Diagnostic {
@@ -133,10 +130,9 @@ fn stage_emission_equality_scaffold(
   emitted_candidate: CoreNode,
   reference_stage1: CoreNode
 ) -> StageEmissionEquality {
-  Diverged {
-    divergence_locus: NodeLocus { node: emitted_candidate },
+  Violates {
     diagnostic: Diagnostic {
-      reason: homomorphism_rule_exact_structural_equality,
+      reason: t15_stage_emission_equality_not_realized,
       at: NodeLocus { node: reference_stage1 },
       correction: Unavailable { reason: ExternalContractUnknown }
     }
