@@ -2,7 +2,7 @@
 // Scope: Rust Reference LanguageModel — scalar fact-bundles, inhabitants, bidirectional grammar data.
 // Owns: RustScalar, RustIntegerPrimitiveFacts, RustFloatPrimitiveFacts, RustNonIntegerPrimitiveFacts, RustLanguageModel, rust_*_facts, rust_*_inhabitant_node, rust_declared_inhabitants_root, rust_mvp1_target_model, rust_wave1_* grammar/lex.
 // Consumes: v4.compiler.parse, v4.compiler.tokenize, v4.std.collection, v4.std.node, v4.std.logic, v4.std.algebra, v4.std.cardinality, v4.std.text.
-// Status: T-4 rust slice — Rust Reference primitives (not std::string::String); catalog-derived canonical_symbols; MVP-1 grammar/token substrate for T-10 (literal Node round-trip still 🟡); `core: ModelCore` blocked on T-33 (#3474); bool/`!` canonical-B decl-ref — 🟡 E-6(b) staging.
+// Status: T-4 rust slice — Rust Reference primitives (not std::string::String); `core: ModelCore` (#3474); catalog-derived canonical_symbols; target_model edge keys from std/target_model.dag; MVP-1 grammar/token substrate for T-10 (literal Node round-trip still 🟡); bool/`!` canonical-B decl-ref — 🟡 E-6(b) staging.
 // Anchor: https://doc.rust-lang.org/reference/types.html
 
 module v4.extdeps.languages.rust
