@@ -387,12 +387,15 @@ fn dag_collect_insert(node: Node, acc: DagCollectAcc) -> DagCollectAcc {
     Some { value: prior } =>
       if prior == fp {
         acc
-      } else {
+      } else if node.span.start == 0 && node.span.end == 0 {
         DagCollectAcc {
           seen: acc.seen,
           order: acc.order,
           collision_errors: list_push(acc.collision_errors, dag_node_key_collision_error(key: key, span: node.span))
         }
+      } else {
+        // Authored span: provisional key may alias; first canonical record wins until v4 content_hash.
+        acc
       }
     None => {
       let acc1 = DagCollectAcc {
