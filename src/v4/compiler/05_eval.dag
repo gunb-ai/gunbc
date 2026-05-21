@@ -10,7 +10,7 @@ module v4.compiler.eval
 import v4.compiler.infer {
   InferredTree
 }
-import v4.std.collection { List }
+import v4.std.collection { List, non_empty }
 import v4.std.node {
   Hash,
   Node,
@@ -28,7 +28,8 @@ import v4.std.diagnostic {
   Accepted,
   None,
   diagnostics_singleton,
-  outcome_node_eq
+  outcome_node_eq,
+  outcome_rejected
 }
 import v4.std.verification {
   AssertKind,
@@ -122,6 +123,7 @@ fn test_claim_cache_receipt<T>(
 
 data eval_rejected_invalid_node: Symbol = eval_rejected_invalid_node
 data eval_rejected_roundtrip_deferred: Symbol = eval_rejected_roundtrip_deferred
+data eval_empty_verdict_list: Symbol = eval_empty_verdict_list
 fn eval_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
   Diagnostic {
     reason: reason,
@@ -172,20 +174,28 @@ fn run_node_assert(
 }
 
 
-// Fail-closed: any Deferred or Fail in the list blocks Pass; [] is Pass (vacuous).
+// Fail-closed: any Deferred or Fail in the list blocks Pass; [] is Fail (no fabricated Pass).
 // When acc is already Deferred, the first Deferred's diagnostic wins (no accumulation).
-fn aggregate_verdicts<T>(rs: List<Verdict<T>>) -> Verdict<T> {
-  fold(rs, init: Pass, f: fn(acc, v) {
-    match acc {
-      Fail { actual: a } => Fail { actual: a }
-      Deferred { actual: a, diagnostic: d } => match v {
-        Fail { actual: ra } => Fail { actual: ra }
-        Deferred { actual: _, diagnostic: _ } => Deferred { actual: a, diagnostic: d }
-        Pass => Deferred { actual: a, diagnostic: d }
+fn aggregate_verdicts<T>(rs: List<Verdict<T>>, at: Node) -> Verdict<T> {
+  if non_empty(xs: rs) {
+    fold(rs, init: Pass, f: fn(acc, v) {
+      match acc {
+        Fail { actual: a } => Fail { actual: a }
+        Deferred { actual: a, diagnostic: d } => match v {
+          Fail { actual: ra } => Fail { actual: ra }
+          Deferred { actual: _, diagnostic: _ } => Deferred { actual: a, diagnostic: d }
+          Pass => Deferred { actual: a, diagnostic: d }
+        }
+        Pass => v
       }
-      Pass => v
+    })
+  } else {
+    Fail {
+      actual: outcome_rejected(
+        d: eval_diagnostic(reason: eval_empty_verdict_list, node: at)
+      )
     }
-  })
+  }
 }
 
 
@@ -208,14 +218,17 @@ fn run_test_claim(
       resources_hash: resources_hash,
       extdeps_hash: extdeps_hash
     ),
-    verdict: aggregate_verdicts(rs: [
-      run_node_assert(
-        kind: subject.claim.kind,
-        actual: actual,
-        expected: subject.claim.expected,
-        input: subject.claim.input
-      )
-    ])
+    verdict: aggregate_verdicts(
+      rs: [
+        run_node_assert(
+          kind: subject.claim.kind,
+          actual: actual,
+          expected: subject.claim.expected,
+          input: subject.claim.input
+        )
+      ],
+      at: subject.claim.input
+    )
   }
 }
 

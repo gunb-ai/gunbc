@@ -133,14 +133,17 @@ fn run_pipeline_assert(
 
 
 fn workflow_pipeline_pass_gate(run: TestClaimRun<CiPipeline>) -> Verdict<TestClaimRun<CiPipeline>> {
-  aggregate_verdicts(rs: [
-    match run.verdict {
-      Pass => Pass
-      Fail { actual: _ } => Fail { actual: Accepted { value: run, diagnostics: None } }
-      Deferred { actual: _, diagnostic: d } =>
-        Deferred { actual: Accepted { value: run, diagnostics: None }, diagnostic: d }
-    }
-  ])
+  aggregate_verdicts(
+    rs: [
+      match run.verdict {
+        Pass => Pass
+        Fail { actual: _ } => Fail { actual: Accepted { value: run, diagnostics: None } }
+        Deferred { actual: _, diagnostic: d } =>
+          Deferred { actual: Accepted { value: run, diagnostics: None }, diagnostic: d }
+      }
+    ],
+    at: run.cache.key.eval_subject.claim.input
+  )
 }
 
 

@@ -122,9 +122,9 @@ data witness_diagnostic_assert_accepted_fail: Bool = match run_node_assert(
 }
 
 
-data witness_aggregate_empty_pass: Bool = match aggregate_verdicts(rs: empty_node_verdicts()) {
-  Pass => true
-  Fail { actual: _ } => false
+data witness_aggregate_empty_fail: Bool = match aggregate_verdicts(rs: empty_node_verdicts(), at: diag_assert_node()) {
+  Pass => false
+  Fail { actual: _ } => true
   Deferred { actual: _, diagnostic: _ } => false
 }
 
@@ -137,7 +137,7 @@ fn deferred_verdict() -> Verdict<Node> {
 }
 
 
-data witness_aggregate_deferred_blocks_pass: Bool = match aggregate_verdicts(rs: [Pass, deferred_verdict()]) {
+data witness_aggregate_deferred_blocks_pass: Bool = match aggregate_verdicts(rs: [Pass, deferred_verdict()], at: diag_assert_node()) {
   Pass => false
   Fail { actual: _ } => false
   Deferred { actual: _, diagnostic: _ } => true
