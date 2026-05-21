@@ -1,0 +1,58 @@
+// src/v4/test/claim/manual/process_numeric_refinements.dag
+// Scope: POSIX process numeric refinement regression witnesses.
+// Owns: manual witness that out-of-range ExitCode construction rejects.
+// Consumes: v4.extdeps.process, v4.std.diagnostic, v4.std.verification, connective stubs.
+// Status: T-25-core process refinement consumer acceptance witness; eval T-22.
+
+
+module v4.test.claim.manual.process_numeric_refinements
+
+
+import v4.extdeps.process {
+  exit_code_out_of_range,
+  make_exit_code
+}
+import v4.std.diagnostic {
+  Accepted,
+  None,
+  Rejected,
+  NodeLocus
+}
+import v4.std.node { Node }
+import v4.std.verification {
+  TestClaim,
+  Equals,
+  TestClassification,
+  Tier1,
+  Unit,
+  T19ManualAnchorAbsent
+}
+import v4.test.claim.manual.connective_anchors {
+  stub_empty_conj,
+  stub_empty_disj
+}
+
+
+fn witness_exit_code_256_rejects() -> Bool {
+  match make_exit_code(value: 256, at: NodeLocus { node: stub_empty_conj }) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics } => diagnostics.head.reason == exit_code_out_of_range
+  }
+}
+
+fn exit_code_rejection_claim_input(ok: Bool) -> Node {
+  if ok {
+    stub_empty_conj
+  } else {
+    stub_empty_disj
+  }
+}
+
+data claim_exit_code_256_rejects: TestClaim = TestClaim {
+  kind: Equals,
+  label: "manual/process: make_exit_code rejects 256",
+  t19_anchor: T19ManualAnchorAbsent,
+  input: exit_code_rejection_claim_input(ok: witness_exit_code_256_rejects()),
+  expected: Accepted { value: stub_empty_conj, diagnostics: None },
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
