@@ -238,8 +238,7 @@ pub fn detect_type_cycles_kahn(
         });
         let name_set = all_names.clone().iter().cloned().fold(
             v2_rt::rc_empty_set::<String>(),
-            |acc: Rc<std::collections::BTreeSet<String>>,
-             n: String| v2_rt::rc_set_insert(acc, n.clone()),
+            |acc: _, n: String| v2_rt::rc_set_insert(acc, n.clone()),
         );
         let local_deps = compute_in_graph_deps(all_names.clone(), deps_map.clone(), name_set);
         let self_refs = Rc::new({
@@ -266,14 +265,14 @@ pub fn detect_type_cycles_kahn(
         let cycle_members = kahn_remove_loop(&all_names, &local_deps);
         let sr_set = self_refs.iter().cloned().fold(
             v2_rt::rc_empty_set::<String>(),
-            |acc: Rc<std::collections::BTreeSet<String>>,
-             n: String| v2_rt::rc_set_insert(acc, n.clone()),
+            |acc: _, n: String| v2_rt::rc_set_insert(acc, n.clone()),
         );
-        let cm_set = cycle_members.iter().cloned().fold(
-            sr_set,
-            |acc: Rc<std::collections::BTreeSet<String>>,
-             n: String| v2_rt::rc_set_insert(acc, n.clone()),
-        );
+        let cm_set = cycle_members
+            .iter()
+            .cloned()
+            .fold(sr_set, |acc: _, n: String| {
+                v2_rt::rc_set_insert(acc, n.clone())
+            });
         let result = Rc::new({
             let mut __result = Vec::new();
             for n in all_names.clone().iter().cloned() {

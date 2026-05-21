@@ -1592,8 +1592,7 @@ pub fn build_ownership_results(modules: &Rc<Vec<Rc<TypedModule>>>) -> Rc<Ownersh
     {
         let callable_set = modules.clone().iter().cloned().fold(
             v2_rt::rc_empty_set::<String>(),
-            |acc: Rc<std::collections::BTreeSet<String>>,
-             m: Rc<TypedModule>| {
+            |acc: _, m: Rc<TypedModule>| {
                 Rc::new({
                     let mut __result = Vec::new();
                     for item in m.items.clone().iter().cloned() {
@@ -1605,21 +1604,15 @@ pub fn build_ownership_results(modules: &Rc<Vec<Rc<TypedModule>>>) -> Rc<Ownersh
                 })
                 .iter()
                 .cloned()
-                .fold(
-                    acc,
-                    |inner: Rc<
-                        std::collections::BTreeSet<String>,
-                    >,
-                     item: Rc<Node>| {
-                        v2_rt::rc_set_union(
-                            inner,
-                            collect_callable_refs(
-                                &item.body.clone().clone().unwrap(),
-                                &m.type_env.clone().source_indices.clone(),
-                            ),
-                        )
-                    },
-                )
+                .fold(acc, |inner: _, item: Rc<Node>| {
+                    v2_rt::rc_set_union(
+                        inner,
+                        collect_callable_refs(
+                            &item.body.clone().clone().unwrap(),
+                            &m.type_env.clone().source_indices.clone(),
+                        ),
+                    )
+                })
             },
         );
         let proofs = Rc::new({
@@ -1644,12 +1637,7 @@ pub fn build_ownership_results(modules: &Rc<Vec<Rc<TypedModule>>>) -> Rc<Ownersh
                                 let pnames =
                                     item.params.clone().iter().cloned().fold(
                                         v2_rt::rc_empty_set::<String>(),
-                                        |acc: Rc<
-                                            std::collections::BTreeSet<
-                                                String,
-                                            >,
-                                        >,
-                                         p: Rc<Node>| {
+                                        |acc: _, p: Rc<Node>| {
                                             v2_rt::rc_set_insert(
                                                 acc,
                                                 param_node_name_at(
@@ -7005,15 +6993,47 @@ pub fn emit_typed_call_expr(
                     .to_string(),
             }
         } else {
-            emit_typed_call(
-                &func,
-                &args,
-                &registry,
-                &scope,
-                depth,
-                &shared_types,
-                &emit_info,
-            )
+            if (func.clone().as_str() == "empty_set".to_string().as_str()) {
+                match inferred.as_deref().cloned() {
+                    Some(InferredNode::Resolved { node: ret_type, .. }) => {
+                        let elem_type_str = rust_empty_set_element_type_str(
+                            ret_type.clone(),
+                            shared_types,
+                            scope.type_env.clone().source_indices.clone(),
+                        );
+                        if ((elem_type_str.clone().as_str() != "".to_string().as_str())
+                            && !v2_rt::contains(
+                                elem_type_str.clone(),
+                                "UNRESOLVED_TypeVariable".to_string(),
+                            ))
+                        {
+                            v2_rt::concat(
+                                v2_rt::concat(
+                                    "v2_rt::rc_empty_set::<".to_string(),
+                                    elem_type_str.clone(),
+                                ),
+                                ">()".to_string(),
+                            )
+                        } else {
+                            "v2_rt::rc_empty_set::<_>() /* BRIDGE: empty_set element type unresolved */".to_string()
+                        }
+                    }
+                    _ => {
+                        "v2_rt::rc_empty_set::<_>() /* BRIDGE: empty_set return type unresolved */"
+                            .to_string()
+                    }
+                }
+            } else {
+                emit_typed_call(
+                    &func,
+                    &args,
+                    &registry,
+                    &scope,
+                    depth,
+                    &shared_types,
+                    &emit_info,
+                )
+            }
         };
         if rust_runtime_bridge_wraps_collection_result_in_rc(&func) {
             v2_rt::concat(
@@ -8403,9 +8423,13 @@ pub fn emit_rust_fold_method_call(
                             }
                         }
                     } else {
-                        if ((((init_func.clone().as_str() == "empty_set".to_string().as_str())
+                        if (((((init_func.clone().as_str() == "empty_set".to_string().as_str())
                             && (acc_type_str.clone().as_str() != "_".to_string().as_str()))
                             && (acc_type_str.clone().as_str() != "".to_string().as_str()))
+                            && !v2_rt::contains(
+                                acc_type_str.clone(),
+                                "UNRESOLVED_TypeVariable".to_string(),
+                            ))
                             && !acc_has_unit_child.clone())
                         {
                             {
@@ -8414,7 +8438,12 @@ pub fn emit_rust_fold_method_call(
                                     shared_types.clone(),
                                     scope.type_env.clone().source_indices.clone(),
                                 );
-                                if (elem_type_str.clone().as_str() != "".to_string().as_str()) {
+                                if ((elem_type_str.clone().as_str() != "".to_string().as_str())
+                                    && !v2_rt::contains(
+                                        elem_type_str.clone(),
+                                        "UNRESOLVED_TypeVariable".to_string(),
+                                    ))
+                                {
                                     v2_rt::concat(
                                         v2_rt::concat(
                                             "v2_rt::rc_empty_set::<".to_string(),
@@ -8423,7 +8452,7 @@ pub fn emit_rust_fold_method_call(
                                         ">()".to_string(),
                                     )
                                 } else {
-                                    "v2_rt::rc_empty_set() /* BRIDGE: fold empty_set element type unresolved */".to_string()
+                                    "v2_rt::rc_empty_set::<_>() /* BRIDGE: fold empty_set element type unresolved */".to_string()
                                 }
                             }
                         } else {
@@ -8432,7 +8461,7 @@ pub fn emit_rust_fold_method_call(
                             } else {
                                 if (init_func.clone().as_str() == "empty_set".to_string().as_str())
                                 {
-                                    "v2_rt::rc_empty_set() /* BRIDGE: fold empty_set accumulator type unresolved */".to_string()
+                                    "v2_rt::rc_empty_set::<_>() /* BRIDGE: fold empty_set accumulator type unresolved */".to_string()
                                 } else {
                                     emit_typed_expr(
                                         arg_value(&init_arg),

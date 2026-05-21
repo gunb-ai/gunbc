@@ -7003,14 +7003,7 @@ pub fn build_scc_index(
                         );
                         let member_set = component.members.clone().iter().cloned().fold(
                             v2_rt::rc_empty_set::<String>(),
-                            |inner: Rc<
-                                std::collections::BTreeSet<
-                                    String,
-                                >,
-                            >,
-                             member: String| {
-                                v2_rt::rc_set_insert(inner, member.clone())
-                            },
+                            |inner: _, member: String| v2_rt::rc_set_insert(inner, member.clone()),
                         );
                         let members = Rc::new({
                             let mut __result = Vec::new();
