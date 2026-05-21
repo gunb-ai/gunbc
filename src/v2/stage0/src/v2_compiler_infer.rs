@@ -2850,30 +2850,40 @@ match bare_s {
 })
                                                 }
                                             } else {
-                                                {
-                                                    let type_match = lookup_type_by_name(
-                                                        &scope.type_env.clone(),
-                                                        func_name.clone(),
-                                                    );
-                                                    let resolved_type = match type_match.clone() {
-                                                        Some(tn) => tn.clone(),
-                                                        None => error_type(),
-                                                    };
-                                                    let call_diags = match type_match.clone() {
-                                                        Some(_) => Rc::new(vec![]),
-                                                        None => Rc::new(vec![inference_error(
-                                                            v2_rt::concat(
+                                                match infer_variant_constructor_call(
+                                                    &func_name,
+                                                    &call_args,
+                                                    span.clone(),
+                                                    node_name_span(&texpr),
+                                                    &scope,
+                                                ) {
+                                                    Some(ctor_result) => ctor_result.clone(),
+                                                    None => {
+                                                        let type_match = lookup_type_by_name(
+                                                            &scope.type_env.clone(),
+                                                            func_name.clone(),
+                                                        );
+                                                        let resolved_type = match type_match.clone()
+                                                        {
+                                                            Some(tn) => tn.clone(),
+                                                            None => error_type(),
+                                                        };
+                                                        let call_diags = match type_match.clone() {
+                                                            Some(_) => Rc::new(vec![]),
+                                                            None => Rc::new(vec![inference_error(
                                                                 v2_rt::concat(
-                                                                    "function '".to_string(),
-                                                                    func_name.clone(),
+                                                                    v2_rt::concat(
+                                                                        "function '".to_string(),
+                                                                        func_name.clone(),
+                                                                    ),
+                                                                    "' not found in scope"
+                                                                        .to_string(),
                                                                 ),
-                                                                "' not found in scope".to_string(),
-                                                            ),
-                                                            span.clone(),
-                                                            scope.module_name.clone(),
-                                                        )]),
-                                                    };
-                                                    Rc::new(InferResult {
+                                                                span.clone(),
+                                                                scope.module_name.clone(),
+                                                            )]),
+                                                        };
+                                                        Rc::new(InferResult {
     typed: make_named_expr_node(&func_name, Rc::new(ExprData::ExprCall {
     call_semantics: Some(CallSemantics::PlainCallSemantics),
     descent_evidence: None,
@@ -2882,6 +2892,7 @@ match bare_s {
 })), span.clone(), node_name_span(&texpr)),
     diagnostics: v2_rt::concat(arg_diags, call_diags),
 })
+                                                    }
                                                 }
                                             }
                                         }
@@ -4270,6 +4281,55 @@ match bare_s {
             }
         }
     })
+}
+
+pub fn infer_variant_constructor_call(
+    func_name: &String,
+    call_args: &Rc<Vec<Rc<Node>>>,
+    span: Rc<SourceSpan>,
+    name_span: Rc<SourceSpan>,
+    scope: &Rc<InferScope>,
+) -> Option<Rc<InferResult>> {
+    match lookup_variant_parent_enum(&scope, &func_name) {
+        None => None,
+        Some(parent_enum) => {
+            let si = scope.type_env.clone().source_indices.clone();
+            match lookup_type_by_name(&scope.type_env.clone(), parent_enum.clone()) {
+                Some(parent_node) => {
+                    match find_child_named(parent_node.clone(), func_name.clone(), si.clone()) {
+                        Some(variant_node) => {
+                            if (variant_has_positional_payload_shape(&variant_node, si.clone())
+                                && ((call_args.clone().len() as i64) == 1))
+                            {
+                                match call_args.clone().first().cloned() {
+                                    Some(arg) => {
+                                        let payload_init = make_field_init_node(
+                                            &"0".to_string(),
+                                            arg.clone(),
+                                            arg.span.clone(),
+                                            node_name_span(&arg),
+                                        );
+                                        Some(infer_record_lit(
+                                            &Some(func_name.clone()),
+                                            Rc::new(vec![payload_init]),
+                                            &span,
+                                            name_span,
+                                            &scope,
+                                        ))
+                                    }
+                                    None => None,
+                                }
+                            } else {
+                                None
+                            }
+                        }
+                        None => None,
+                    }
+                }
+                None => None,
+            }
+        }
+    }
 }
 
 pub fn infer_record_lit(
