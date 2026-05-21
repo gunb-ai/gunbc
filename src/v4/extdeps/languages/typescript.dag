@@ -1,8 +1,8 @@
 // src/v4/extdeps/languages/typescript.dag
-// Scope: TypeScript 5.9 + ECMA-262 ES2025 primitive D2 resolver slice (T-4 typescript).
-// Owns: TsEcma262NumericPrimitiveKind, TsEcma262PrimitiveOperationSemantics, ts_bool_grounding
-// Consumes: v4.std.logic (Bool, bool_boolean_algebra); v4.std.algebra (BooleanAlgebra).
-// Status: ts_bool_grounding decl-ref present + v2-parse-verified — 🟡 P2/E-6 STAGING (no same-PR consumer; canonical fold specified-not-realized); non-bool numeric primitives 🟡 gated D2→fact-bundle debt (T-4 Phase-3 rework, node://adhoc-71ec74f4-080).
+// Scope: TypeScript 5.9 + ECMA-262 ES2025 primitive fact-bundle slice (T-4 typescript).
+// Owns: TsEcma262PrimitiveKind, TsEcma262NumericPrimitiveKind, TsEcma262PrimitiveOperationSemantics, TsEcma262PrimitiveFacts, TypeScriptLanguageModel, typescript_model_core_wave1, ts_bool_grounding
+// Consumes: v4.std.logic (Bool, bool_boolean_algebra); v4.std.algebra (BooleanAlgebra); v4.std.model_core; v4.std.node.
+// Status: TypeScript/ECMA-262 primitive catalog feeds ModelCore.primitives; bool canonical-B decl-ref remains 🟡 P2/E-6 STAGING (no same-PR consumer; canonical fold specified-not-realized).
 // Anchor: https://www.typescriptlang.org/docs/handbook/2/everyday-types.html — ECMA-262 https://tc39.es/ecma262/2025/multipage/
 // Ledger: CP-3229-GREEN-TERMINAL.
 // 🟡
@@ -11,6 +11,35 @@ module v4.extdeps.languages.typescript
 
 import v4.std.logic { Bool, bool_boolean_algebra }
 import v4.std.algebra { BooleanAlgebra }
+import v4.std.model_core {
+  EffectSemanticsDecl,
+  ModelCore,
+  PartialitySemanticsDecl,
+  PrimitiveFactAxisBinding,
+  PrimitiveFactBundle,
+  primitive_fact_axis_encoding,
+  primitive_fact_axis_surface_spelling,
+  primitive_fact_axis_width
+}
+import v4.std.node {
+  Atom,
+  Conj,
+  Edge,
+  Named,
+  Node,
+  Symbol,
+  TypeNode
+}
+
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
+type TsEcma262PrimitiveKind
+  = TsStringPrimitive
+  | TsNumberPrimitive
+  | TsBigIntPrimitive
+  | TsBooleanPrimitive
+  | TsSymbolPrimitive
+  | TsNullPrimitive
+  | TsUndefinedPrimitive
 
 // 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type TsEcma262NumericPrimitiveKind
@@ -23,4 +52,211 @@ type TsEcma262PrimitiveOperationSemantics
   | TsNumberBitwiseInt32Uint32Semantics
   | TsBigIntExactUnboundedSemantics
 
+type TsEcma262PrimitiveFacts {
+  surface_spelling: Symbol
+  primitive_kind: TsEcma262PrimitiveKind
+  representation: Symbol
+}
+
+type TypeScriptLanguageModel {
+  language_identity: Symbol
+  core: ModelCore
+}
+
+data typescript_language_model_surface_id: Symbol = typescript_language_model_surface_id
+
+data ts_surface_spelling_string: Symbol = ts_surface_spelling_string
+data ts_surface_spelling_number: Symbol = ts_surface_spelling_number
+data ts_surface_spelling_bigint: Symbol = ts_surface_spelling_bigint
+data ts_surface_spelling_boolean: Symbol = ts_surface_spelling_boolean
+data ts_surface_spelling_symbol: Symbol = ts_surface_spelling_symbol
+data ts_surface_spelling_null: Symbol = ts_surface_spelling_null
+data ts_surface_spelling_undefined: Symbol = ts_surface_spelling_undefined
+
+data ts_repr_utf16_string: Symbol = ts_repr_utf16_string
+data ts_repr_ieee754_binary64_number: Symbol = ts_repr_ieee754_binary64_number
+data ts_repr_exact_unbounded_bigint: Symbol = ts_repr_exact_unbounded_bigint
+data ts_repr_boolean: Symbol = ts_repr_boolean
+data ts_repr_unique_symbol: Symbol = ts_repr_unique_symbol
+data ts_repr_null_singleton: Symbol = ts_repr_null_singleton
+data ts_repr_undefined_singleton: Symbol = ts_repr_undefined_singleton
+
+data ts_fact_field_surface_spelling: Symbol = ts_fact_field_surface_spelling
+data ts_fact_field_primitive_kind: Symbol = ts_fact_field_primitive_kind
+data ts_fact_field_representation: Symbol = ts_fact_field_representation
+
+data ts_tag_string: Symbol = ts_tag_string
+data ts_tag_number: Symbol = ts_tag_number
+data ts_tag_bigint: Symbol = ts_tag_bigint
+data ts_tag_boolean: Symbol = ts_tag_boolean
+data ts_tag_symbol: Symbol = ts_tag_symbol
+data ts_tag_null: Symbol = ts_tag_null
+data ts_tag_undefined: Symbol = ts_tag_undefined
+
+data ts_number_width_binary64: Symbol = ts_number_width_binary64
+
+data ts_facts_string: TsEcma262PrimitiveFacts = TsEcma262PrimitiveFacts {
+  surface_spelling: ts_surface_spelling_string,
+  primitive_kind: TsStringPrimitive,
+  representation: ts_repr_utf16_string
+}
+
+data ts_facts_number: TsEcma262PrimitiveFacts = TsEcma262PrimitiveFacts {
+  surface_spelling: ts_surface_spelling_number,
+  primitive_kind: TsNumberPrimitive,
+  representation: ts_repr_ieee754_binary64_number
+}
+
+data ts_facts_bigint: TsEcma262PrimitiveFacts = TsEcma262PrimitiveFacts {
+  surface_spelling: ts_surface_spelling_bigint,
+  primitive_kind: TsBigIntPrimitive,
+  representation: ts_repr_exact_unbounded_bigint
+}
+
+data ts_facts_boolean: TsEcma262PrimitiveFacts = TsEcma262PrimitiveFacts {
+  surface_spelling: ts_surface_spelling_boolean,
+  primitive_kind: TsBooleanPrimitive,
+  representation: ts_repr_boolean
+}
+
+data ts_facts_symbol: TsEcma262PrimitiveFacts = TsEcma262PrimitiveFacts {
+  surface_spelling: ts_surface_spelling_symbol,
+  primitive_kind: TsSymbolPrimitive,
+  representation: ts_repr_unique_symbol
+}
+
+data ts_facts_null: TsEcma262PrimitiveFacts = TsEcma262PrimitiveFacts {
+  surface_spelling: ts_surface_spelling_null,
+  primitive_kind: TsNullPrimitive,
+  representation: ts_repr_null_singleton
+}
+
+data ts_facts_undefined: TsEcma262PrimitiveFacts = TsEcma262PrimitiveFacts {
+  surface_spelling: ts_surface_spelling_undefined,
+  primitive_kind: TsUndefinedPrimitive,
+  representation: ts_repr_undefined_singleton
+}
+
+data typescript_primitive_facts_catalog: List<TsEcma262PrimitiveFacts> = [
+  ts_facts_string,
+  ts_facts_number,
+  ts_facts_bigint,
+  ts_facts_boolean,
+  ts_facts_symbol,
+  ts_facts_null,
+  ts_facts_undefined
+]
+
 data ts_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
+
+fn ts_atom(id: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: id } },
+    children: []
+  }
+}
+
+fn ts_named_edge(name: Symbol, target: Node) -> Edge {
+  Edge { label: Named { name: name }, target: target }
+}
+
+fn ts_primitive_kind_node(kind: TsEcma262PrimitiveKind) -> Node {
+  match kind {
+    TsStringPrimitive => ts_atom(id: ts_tag_string)
+    TsNumberPrimitive => ts_atom(id: ts_tag_number)
+    TsBigIntPrimitive => ts_atom(id: ts_tag_bigint)
+    TsBooleanPrimitive => ts_atom(id: ts_tag_boolean)
+    TsSymbolPrimitive => ts_atom(id: ts_tag_symbol)
+    TsNullPrimitive => ts_atom(id: ts_tag_null)
+    TsUndefinedPrimitive => ts_atom(id: ts_tag_undefined)
+  }
+}
+
+fn ts_primitive_facts_node(facts: TsEcma262PrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      ts_named_edge(
+        name: ts_fact_field_surface_spelling,
+        target: ts_atom(id: facts.surface_spelling)
+      ),
+      ts_named_edge(
+        name: ts_fact_field_primitive_kind,
+        target: ts_primitive_kind_node(kind: facts.primitive_kind)
+      ),
+      ts_named_edge(
+        name: ts_fact_field_representation,
+        target: ts_atom(id: facts.representation)
+      )
+    ]
+  }
+}
+
+fn ts_primitive_axis_binding(axis: Symbol, fact: Node) -> PrimitiveFactAxisBinding {
+  PrimitiveFactAxisBinding { axis: axis, fact: fact }
+}
+
+fn ts_primitive_bundle_from_facts(facts: TsEcma262PrimitiveFacts) -> PrimitiveFactBundle {
+  PrimitiveFactBundle {
+    substrate_carrier: ts_primitive_facts_node(facts: facts),
+    spec_facts: [
+      ts_primitive_axis_binding(
+        axis: primitive_fact_axis_surface_spelling,
+        fact: ts_atom(id: facts.surface_spelling)
+      ),
+      ts_primitive_axis_binding(
+        axis: primitive_fact_axis_encoding,
+        fact: ts_atom(id: facts.representation)
+      )
+    ]
+  }
+}
+
+fn ts_number_primitive_bundle() -> PrimitiveFactBundle {
+  PrimitiveFactBundle {
+    substrate_carrier: ts_primitive_facts_node(facts: ts_facts_number),
+    spec_facts: [
+      ts_primitive_axis_binding(
+        axis: primitive_fact_axis_surface_spelling,
+        fact: ts_atom(id: ts_facts_number.surface_spelling)
+      ),
+      ts_primitive_axis_binding(
+        axis: primitive_fact_axis_width,
+        fact: ts_atom(id: ts_number_width_binary64)
+      ),
+      ts_primitive_axis_binding(
+        axis: primitive_fact_axis_encoding,
+        fact: ts_atom(id: ts_facts_number.representation)
+      )
+    ]
+  }
+}
+
+fn typescript_wave1_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
+  [
+    ts_primitive_bundle_from_facts(facts: ts_facts_string),
+    ts_number_primitive_bundle(),
+    ts_primitive_bundle_from_facts(facts: ts_facts_bigint),
+    ts_primitive_bundle_from_facts(facts: ts_facts_boolean),
+    ts_primitive_bundle_from_facts(facts: ts_facts_symbol),
+    ts_primitive_bundle_from_facts(facts: ts_facts_null),
+    ts_primitive_bundle_from_facts(facts: ts_facts_undefined)
+  ]
+}
+
+fn typescript_model_core_wave1() -> ModelCore {
+  ModelCore {
+    primitives: typescript_wave1_primitive_fact_bundles(),
+    inhabitance: [],
+    laws: [],
+    effects: EffectSemanticsDecl { operations: [] },
+    partiality: PartialitySemanticsDecl { operations: [] }
+  }
+}
+
+fn typescript_language_model_wave1() -> TypeScriptLanguageModel {
+  TypeScriptLanguageModel {
+    language_identity: typescript_language_model_surface_id,
+    core: typescript_model_core_wave1()
+  }
+}
