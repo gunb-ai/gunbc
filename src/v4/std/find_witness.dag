@@ -23,7 +23,7 @@ import v4.std.diagnostic {
   Unavailable,
   outcome_rejected
 }
-import v4.std.node { Node, NodeFold, Symbol, TypeNode, Atom, well_formed }
+import v4.std.node { Edge, Node, NodeFold, Symbol, TypeNode, Atom, well_formed }
 import v4.std.witness { StructuralPropertyWitness }
 data find_witness_reason_no_candidate: Symbol = find_witness_reason_no_candidate
 data find_witness_reason_ambiguous_candidate: Symbol = find_witness_reason_ambiguous_candidate
@@ -104,54 +104,6 @@ fn exact_structural_canonical_node(n: Node) -> Node {
 }
 fn exact_structural_equality_zip_fold(source_facts: Node, candidate: Node) -> Bool {
   exact_structural_canonical_node(n: source_facts) == exact_structural_canonical_node(n: candidate)
-}
-    TypeNode { connective: Atom { identity: _ } } => match candidate.kind {
-      TypeNode { connective: Atom { identity: _ } } => true
-      _ => source_facts.kind == candidate.kind
-    }
-    _ => source_facts.kind == candidate.kind
-  }
-}
-fn exact_structural_label_occurrences(label: EdgeLabel, children: List<Edge>) -> Int {
-  fold(children, init: 0, f: fn(acc, e) {
-    if e.label == label { acc + 1 } else { acc }
-  })
-}
-fn exact_structural_child_leaf_coincides(source_edge: Edge, candidates: List<Edge>) -> Bool {
-  fold(candidates, init: false, f: fn(found, candidate_edge) {
-    found || (
-      (source_edge.label == candidate_edge.label)
-        && (count(source_edge.target.children) == 0)
-        && (count(candidate_edge.target.children) == 0)
-        && exact_structural_leaf_coincides(
-          source_facts: source_edge.target,
-          candidate: candidate_edge.target
-        )
-    )
-  })
-}
-fn exact_structural_edges_leaf_zip_fold(left: List<Edge>, right: List<Edge>) -> Bool {
-  (count(left) == count(right))
-    && fold(left, init: true, f: fn(acc, e) {
-      acc
-        && (count(e.target.children) == 0)
-        && (
-          exact_structural_label_occurrences(label: e.label, children: left) == exact_structural_label_occurrences(label: e.label, children: right)
-        )
-        && exact_structural_child_leaf_coincides(source_edge: e, candidates: right)
-    })
-    && fold(right, init: true, f: fn(acc, e) {
-      acc && (count(e.target.children) == 0)
-    })
-}
-fn exact_structural_equality_zip_fold(source_facts: Node, candidate: Node) -> Bool {
-  if (count(source_facts.children) == 0) && (count(candidate.children) == 0) {
-    exact_structural_leaf_coincides(source_facts: source_facts, candidate: candidate)
-  } else {
-    (source_facts.kind == candidate.kind)
-      && (count(source_facts.children) == count(candidate.children))
-      && exact_structural_edges_leaf_zip_fold(left: source_facts.children, right: candidate.children)
-  }
 }
 fn preservation_predicate_holds(
   source_facts: Node,
