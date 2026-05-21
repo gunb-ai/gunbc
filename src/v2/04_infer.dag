@@ -2402,36 +2402,47 @@ fn infer_variant_constructor_call(func_name: String, call_args: List<Node>, span
         Some { value: parent_node } =>
           match find_child_named(n: parent_node, name: func_name, source_indices: si) {
             Some { value: variant_node } =>
-              if variant_has_positional_payload_shape(variant: variant_node, source_indices: si) && call_args |> count == 1 {
-                match call_args |> first {
-                  Some { value: arg } =>
-                    match arg_name_at(n: arg, source_indices: si) {
-                      Some { value: arg_name } =>
-                        let msg = concat(
-                          "positional variant constructor '", func_name,
-                          "' does not accept named arguments (got '", arg_name, ": ...')"
-                        )
-                        Some { value: InferResult {
-                          typed: semantic_expr_error_node(message: msg, span: arg.span),
-                          diagnostics: [inference_error(message: msg, span: arg.span, module_name: scope.module_name)]
-                        } }
-                      None =>
-                        let payload_expr = arg_value(n: arg)
-                        let payload_init = make_field_init_node(
-                          name: "0",
-                          value: payload_expr,
-                          span: payload_expr.span,
-                          name_span: kernel_span(name: "0")
-                        )
-                        Some { value: infer_record_lit(
-                          type_name: Some { value: func_name },
-                          field_inits: [payload_init],
-                          span: span,
-                          name_span: name_span,
-                          scope: scope
-                        ) }
-                    }
-                  None => none
+              if variant_has_positional_payload_shape(variant: variant_node, source_indices: si) {
+                if call_args |> count == 1 {
+                  match call_args |> first {
+                    Some { value: arg } =>
+                      match arg_name_at(n: arg, source_indices: si) {
+                        Some { value: arg_name } =>
+                          let msg = concat(
+                            "positional variant constructor '", func_name,
+                            "' does not accept named arguments (got '", arg_name, ": ...')"
+                          )
+                          Some { value: InferResult {
+                            typed: semantic_expr_error_node(message: msg, span: arg.span),
+                            diagnostics: [inference_error(message: msg, span: arg.span, module_name: scope.module_name)]
+                          } }
+                        None =>
+                          let payload_expr = arg_value(n: arg)
+                          let payload_init = make_field_init_node(
+                            name: "0",
+                            value: payload_expr,
+                            span: payload_expr.span,
+                            name_span: kernel_span(name: "0")
+                          )
+                          Some { value: infer_record_lit(
+                            type_name: Some { value: func_name },
+                            field_inits: [payload_init],
+                            span: span,
+                            name_span: name_span,
+                            scope: scope
+                          ) }
+                      }
+                    None => none
+                  }
+                } else {
+                  let arity_msg = concat(
+                    "positional variant constructor '", func_name,
+                    "' expects exactly one argument"
+                  )
+                  Some { value: InferResult {
+                    typed: semantic_expr_error_node(message: arity_msg, span: span),
+                    diagnostics: [inference_error(message: arity_msg, span: span, module_name: scope.module_name)]
+                  } }
                 }
               } else { none }
             None => none
