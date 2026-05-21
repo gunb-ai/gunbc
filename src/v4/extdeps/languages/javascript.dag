@@ -1,0 +1,1031 @@
+// src/v4/extdeps/languages/javascript.dag
+// Scope: JavaScript ECMA-262 ES2025 LanguageModel — scalar fact-bundles, inhabitants, bidirectional grammar data.
+// Owns: JsScalar, JsNonIntegerScalar, JsIntegerPrimitiveFacts, JsFloatPrimitiveFacts, JsNonIntegerPrimitiveFacts, JsLanguageModel, js_*_facts, js_*_inhabitant_node, js_declared_inhabitants_root, js_mvp1_target_model, js_mvp1_* grammar/lex.
+// Consumes: v4.compiler.parse, v4.compiler.tokenize, v4.std.collection, v4.std.node, v4.std.logic, v4.std.algebra, v4.std.text, v4.std.model_core, v4.std.target_model.
+// Status: T-4 javascript slice — ECMA-262 primitives (Number/BigInt/String/Boolean/Undefined/Null/Symbol); `core: ModelCore` primitives + surface-symbol membership from `js_*_facts_catalog` via fold; canonical_symbols = catalog surface spellings + MVP lex/grammar; MVP-1 grammar/token substrate for T-10 (literal Node round-trip still 🟡); bool canonical-B decl-ref — 🟡 E-6(b) staging.
+// Anchor: https://tc39.es/ecma262/2025/multipage/
+
+module v4.extdeps.languages.javascript
+
+import v4.compiler.parse {
+  Grammar,
+  GrammarExpr,
+  GrammarProduction,
+  GrammarRoot,
+  ModeledGrammar,
+  Sequence,
+  Terminal,
+  grammar_production_to_node
+}
+import v4.compiler.tokenize {
+  CharClassPattern,
+  IdentContinueChar,
+  IdentStartChar,
+  LexPattern,
+  LexRule,
+  LexRuleSet,
+  LexRules,
+  LiteralPattern,
+  ModeledLexRules,
+  RepeatPattern,
+  SequencePattern,
+  TokenRule
+}
+import v4.std.collection { List, Set }
+import v4.std.model_core {
+  EffectSemanticsDecl,
+  ModelCore,
+  PartialitySemanticsDecl,
+  PrimitiveFactAxisBinding,
+  PrimitiveFactBundle,
+  primitive_fact_axis_encoding,
+  primitive_fact_axis_range,
+  primitive_fact_axis_surface_spelling
+}
+import v4.std.target_model {
+  target_model_edge_declared_inhabitants,
+  target_model_edge_selection_policy,
+  target_model_edge_translation_rules,
+  target_model_edge_serialize_emitted,
+  target_model_edge_serialize_source
+}
+import v4.std.node {
+  Arrow,
+  Atom,
+  Conj,
+  Edge,
+  Named,
+  Node,
+  Positional,
+  Symbol,
+  TypeNode
+}
+import v4.std.logic { Bool, bool_boolean_algebra }
+import v4.std.algebra { BooleanAlgebra, free_monoid_fold }
+import v4.std.text { String }
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// JsScalar enumerates the ECMA-262 ES2025 primitive Types
+// (https://tc39.es/ecma262/2025/multipage/ecmascript-data-types-and-values.html). Object is not a
+// primitive and is intentionally absent.
+type JsScalar
+  = BigIntScalar
+  | NumberScalar
+  | StringScalar
+  | BooleanScalar
+  | UndefinedScalar
+  | NullScalar
+  | SymbolScalar
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// Non-numeric primitive arms (excludes BigInt + Number); paired with JsNonIntegerPrimitiveFacts.
+type JsNonIntegerScalar
+  = StringScalar
+  | BooleanScalar
+  | UndefinedScalar
+  | NullScalar
+  | SymbolScalar
+
+// BigInt is the only ECMA-262 integer primitive — arbitrary precision, no width axis, no overflow.
+type JsIntegerPrimitiveFacts {
+  surface_spelling: Symbol
+  range: Symbol
+  representation: Symbol
+  std_projection: Symbol
+}
+
+// Number is the only ECMA-262 floating-point primitive — IEEE 754 binary64.
+type JsFloatPrimitiveFacts {
+  surface_spelling: Symbol
+  ieee754_binary: Symbol
+  std_projection: Symbol
+}
+
+type JsNonIntegerPrimitiveFacts {
+  surface_spelling: Symbol
+  scalar: JsNonIntegerScalar
+  std_projection: Symbol
+  representation: Symbol
+}
+
+type JsLanguageModel {
+  lex: LexRules
+  grammar: Grammar
+  language_identity: Symbol
+  canonical_symbols: Set<Symbol>
+  core: ModelCore
+}
+
+// Grammar relation row: fixed terminals and bound terminals share the JS grammar production
+// instead of an operator string template. Mirrors RustConcreteSyntaxToken / RustGrammarRelationRow.
+type JsConcreteSyntaxToken
+  = JsFixedToken { token_class: Symbol }
+  | JsBoundToken { token_class: Symbol, binding: Symbol }
+
+type JsGrammarRelationRow {
+  production: GrammarProduction
+  emitted: Node
+  tokens: List<JsConcreteSyntaxToken>
+}
+
+data js_language_model_surface_id: Symbol = js_language_model_surface_id
+
+data js_std_projection_bigint: Symbol = js_std_projection_bigint
+data js_std_projection_number: Symbol = js_std_projection_number
+data js_std_projection_string: Symbol = js_std_projection_string
+data js_std_projection_boolean: Symbol = js_std_projection_boolean
+data js_std_projection_undefined: Symbol = js_std_projection_undefined
+data js_std_projection_null: Symbol = js_std_projection_null
+data js_std_projection_symbol: Symbol = js_std_projection_symbol
+
+data js_surface_spelling_bigint: Symbol = js_surface_spelling_bigint
+data js_surface_spelling_number: Symbol = js_surface_spelling_number
+data js_surface_spelling_string: Symbol = js_surface_spelling_string
+data js_surface_spelling_boolean: Symbol = js_surface_spelling_boolean
+data js_surface_spelling_undefined: Symbol = js_surface_spelling_undefined
+data js_surface_spelling_null: Symbol = js_surface_spelling_null
+data js_surface_spelling_symbol: Symbol = js_surface_spelling_symbol
+
+data js_range_bigint_unbounded: Symbol = js_range_bigint_unbounded
+data js_ieee754_binary64: Symbol = js_ieee754_binary64
+data js_repr_bigint_arbitrary_precision: Symbol = js_repr_bigint_arbitrary_precision
+data js_repr_string_utf16_code_units: Symbol = js_repr_string_utf16_code_units
+data js_repr_boolean: Symbol = js_repr_boolean
+data js_repr_undefined_singleton: Symbol = js_repr_undefined_singleton
+data js_repr_null_singleton: Symbol = js_repr_null_singleton
+data js_repr_symbol_unique_identity: Symbol = js_repr_symbol_unique_identity
+
+data js_inhabitant_bigint: Symbol = js_inhabitant_bigint
+data js_inhabitant_number: Symbol = js_inhabitant_number
+data js_inhabitant_string: Symbol = js_inhabitant_string
+data js_inhabitant_boolean: Symbol = js_inhabitant_boolean
+data js_inhabitant_undefined: Symbol = js_inhabitant_undefined
+data js_inhabitant_null: Symbol = js_inhabitant_null
+data js_inhabitant_symbol: Symbol = js_inhabitant_symbol
+
+data js_inhabitant_field_bigint: Symbol = js_inhabitant_field_bigint
+data js_inhabitant_field_number: Symbol = js_inhabitant_field_number
+data js_inhabitant_field_string: Symbol = js_inhabitant_field_string
+data js_inhabitant_field_boolean: Symbol = js_inhabitant_field_boolean
+data js_inhabitant_field_undefined: Symbol = js_inhabitant_field_undefined
+data js_inhabitant_field_null: Symbol = js_inhabitant_field_null
+data js_inhabitant_field_symbol: Symbol = js_inhabitant_field_symbol
+
+data js_token_kw_function: Symbol = js_token_kw_function
+data js_token_kw_return: Symbol = js_token_kw_return
+data js_token_ident: Symbol = js_token_ident
+data js_token_plus: Symbol = js_token_plus
+data js_token_lbrace: Symbol = js_token_lbrace
+data js_token_rbrace: Symbol = js_token_rbrace
+data js_token_lparen: Symbol = js_token_lparen
+data js_token_rparen: Symbol = js_token_rparen
+data js_token_comma: Symbol = js_token_comma
+data js_token_semicolon: Symbol = js_token_semicolon
+
+data js_production_mvp1_fn_add: Symbol = js_production_mvp1_fn_add
+
+data js_surface_function_declaration: Symbol = js_surface_function_declaration
+data js_surface_bin_add: Symbol = js_surface_bin_add
+data js_binding_fn_add: Symbol = js_binding_fn_add
+data js_binding_param_x: Symbol = js_binding_param_x
+data js_binding_param_y: Symbol = js_binding_param_y
+
+data js_relation_field_production: Symbol = js_relation_field_production
+data js_relation_field_emitted: Symbol = js_relation_field_emitted
+data js_relation_field_tokens: Symbol = js_relation_field_tokens
+data js_relation_field_token_class: Symbol = js_relation_field_token_class
+data js_relation_field_binding: Symbol = js_relation_field_binding
+data js_relation_field_token_kind: Symbol = js_relation_field_token_kind
+data js_relation_token_fixed: Symbol = js_relation_token_fixed
+data js_relation_token_bound: Symbol = js_relation_token_bound
+data js_relation_rule_mvp1_fn_add: Symbol = js_relation_rule_mvp1_fn_add
+
+data js_inhabitant_field_atom: Symbol = js_inhabitant_field_atom
+data js_inhabitant_field_facts: Symbol = js_inhabitant_field_facts
+
+data js_facts_field_surface_spelling: Symbol = js_facts_field_surface_spelling
+data js_facts_field_range: Symbol = js_facts_field_range
+data js_facts_field_representation: Symbol = js_facts_field_representation
+data js_facts_field_std_projection: Symbol = js_facts_field_std_projection
+data js_facts_field_scalar_classifier: Symbol = js_facts_field_scalar_classifier
+data js_facts_field_ieee754_binary: Symbol = js_facts_field_ieee754_binary
+
+data js_tag_scalar_bigint: Symbol = js_tag_scalar_bigint
+data js_tag_scalar_number: Symbol = js_tag_scalar_number
+data js_tag_scalar_string: Symbol = js_tag_scalar_string
+data js_tag_scalar_boolean: Symbol = js_tag_scalar_boolean
+data js_tag_scalar_undefined: Symbol = js_tag_scalar_undefined
+data js_tag_scalar_null: Symbol = js_tag_scalar_null
+data js_tag_scalar_symbol: Symbol = js_tag_scalar_symbol
+
+data js_mvp1_source_literal: Symbol = js_mvp1_source_literal
+data js_mvp1_source_text_field: Symbol = js_mvp1_source_text_field
+data js_mvp1_source_grammar_field: Symbol = js_mvp1_source_grammar_field
+
+// Sole MVP-1 concrete-syntax authority — grammar and serialize_source project from this relation.
+fn js_mvp1_concrete_tokens() -> List<JsConcreteSyntaxToken> {
+  [
+    JsFixedToken { token_class: js_token_kw_function },
+    JsBoundToken { token_class: js_token_ident, binding: js_binding_fn_add },
+    JsFixedToken { token_class: js_token_lparen },
+    JsBoundToken { token_class: js_token_ident, binding: js_binding_param_x },
+    JsFixedToken { token_class: js_token_comma },
+    JsBoundToken { token_class: js_token_ident, binding: js_binding_param_y },
+    JsFixedToken { token_class: js_token_rparen },
+    JsFixedToken { token_class: js_token_lbrace },
+    JsFixedToken { token_class: js_token_kw_return },
+    JsBoundToken { token_class: js_token_ident, binding: js_binding_param_x },
+    JsFixedToken { token_class: js_token_plus },
+    JsBoundToken { token_class: js_token_ident, binding: js_binding_param_y },
+    JsFixedToken { token_class: js_token_semicolon },
+    JsFixedToken { token_class: js_token_rbrace }
+  ]
+}
+data js_mvp1_source_text: String = "function add(x, y) { return x + y; }"
+
+data js_facts_bigint: JsIntegerPrimitiveFacts = JsIntegerPrimitiveFacts {
+  surface_spelling: js_surface_spelling_bigint,
+  range: js_range_bigint_unbounded,
+  representation: js_repr_bigint_arbitrary_precision,
+  std_projection: js_std_projection_bigint
+}
+
+data js_facts_number: JsFloatPrimitiveFacts = JsFloatPrimitiveFacts {
+  surface_spelling: js_surface_spelling_number,
+  ieee754_binary: js_ieee754_binary64,
+  std_projection: js_std_projection_number
+}
+
+data js_facts_string: JsNonIntegerPrimitiveFacts = JsNonIntegerPrimitiveFacts {
+  surface_spelling: js_surface_spelling_string,
+  scalar: StringScalar,
+  std_projection: js_std_projection_string,
+  representation: js_repr_string_utf16_code_units
+}
+
+data js_facts_boolean: JsNonIntegerPrimitiveFacts = JsNonIntegerPrimitiveFacts {
+  surface_spelling: js_surface_spelling_boolean,
+  scalar: BooleanScalar,
+  std_projection: js_std_projection_boolean,
+  representation: js_repr_boolean
+}
+
+data js_facts_undefined: JsNonIntegerPrimitiveFacts = JsNonIntegerPrimitiveFacts {
+  surface_spelling: js_surface_spelling_undefined,
+  scalar: UndefinedScalar,
+  std_projection: js_std_projection_undefined,
+  representation: js_repr_undefined_singleton
+}
+
+data js_facts_null: JsNonIntegerPrimitiveFacts = JsNonIntegerPrimitiveFacts {
+  surface_spelling: js_surface_spelling_null,
+  scalar: NullScalar,
+  std_projection: js_std_projection_null,
+  representation: js_repr_null_singleton
+}
+
+data js_facts_symbol: JsNonIntegerPrimitiveFacts = JsNonIntegerPrimitiveFacts {
+  surface_spelling: js_surface_spelling_symbol,
+  scalar: SymbolScalar,
+  std_projection: js_std_projection_symbol,
+  representation: js_repr_symbol_unique_identity
+}
+
+// Sole primitive-fact list authorities — ModelCore.primitives and catalog surface_symbol membership derive via fold.
+data js_integer_facts_catalog: List<JsIntegerPrimitiveFacts> = [
+  js_facts_bigint
+]
+
+data js_float_facts_catalog: List<JsFloatPrimitiveFacts> = [
+  js_facts_number
+]
+
+data js_noninteger_facts_catalog: List<JsNonIntegerPrimitiveFacts> = [
+  js_facts_string,
+  js_facts_boolean,
+  js_facts_undefined,
+  js_facts_null,
+  js_facts_symbol
+]
+
+// 🟡 canonical-B decl-ref · E-6(b) bounded-exception · scaffold feature:canonical-b-grounding-consumer · dissolve-on: B1-CANON+zip-fold consume (ledger: B1·T-9/C1 · grounding-worked-examples.md §0)
+data js_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
+
+fn js_inhabitant_atom(id: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: id } },
+    children: []
+  }
+}
+
+fn js_scalar_node(scalar: JsScalar) -> Node {
+  match scalar {
+    BigIntScalar => js_inhabitant_atom(id: js_tag_scalar_bigint)
+    NumberScalar => js_inhabitant_atom(id: js_tag_scalar_number)
+    StringScalar => js_inhabitant_atom(id: js_tag_scalar_string)
+    BooleanScalar => js_inhabitant_atom(id: js_tag_scalar_boolean)
+    UndefinedScalar => js_inhabitant_atom(id: js_tag_scalar_undefined)
+    NullScalar => js_inhabitant_atom(id: js_tag_scalar_null)
+    SymbolScalar => js_inhabitant_atom(id: js_tag_scalar_symbol)
+  }
+}
+
+fn js_noninteger_scalar_as_js_scalar(scalar: JsNonIntegerScalar) -> JsScalar {
+  match scalar {
+    StringScalar => StringScalar
+    BooleanScalar => BooleanScalar
+    UndefinedScalar => UndefinedScalar
+    NullScalar => NullScalar
+    SymbolScalar => SymbolScalar
+  }
+}
+
+fn js_named_edge(name: Symbol, target: Node) -> Edge {
+  Edge { label: Named { name: name }, target: target }
+}
+
+fn js_integer_facts_node(facts: JsIntegerPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      js_named_edge(
+        name: js_facts_field_surface_spelling,
+        target: js_inhabitant_atom(id: facts.surface_spelling)
+      ),
+      js_named_edge(
+        name: js_facts_field_range,
+        target: js_inhabitant_atom(id: facts.range)
+      ),
+      js_named_edge(
+        name: js_facts_field_representation,
+        target: js_inhabitant_atom(id: facts.representation)
+      ),
+      js_named_edge(
+        name: js_facts_field_std_projection,
+        target: js_inhabitant_atom(id: facts.std_projection)
+      ),
+      js_named_edge(
+        name: js_facts_field_scalar_classifier,
+        target: js_scalar_node(scalar: BigIntScalar)
+      )
+    ]
+  }
+}
+
+fn js_float_facts_node(facts: JsFloatPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      js_named_edge(
+        name: js_facts_field_surface_spelling,
+        target: js_inhabitant_atom(id: facts.surface_spelling)
+      ),
+      js_named_edge(
+        name: js_facts_field_ieee754_binary,
+        target: js_inhabitant_atom(id: facts.ieee754_binary)
+      ),
+      js_named_edge(
+        name: js_facts_field_std_projection,
+        target: js_inhabitant_atom(id: facts.std_projection)
+      ),
+      js_named_edge(
+        name: js_facts_field_scalar_classifier,
+        target: js_scalar_node(scalar: NumberScalar)
+      )
+    ]
+  }
+}
+
+fn js_noninteger_facts_node(facts: JsNonIntegerPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      js_named_edge(
+        name: js_facts_field_surface_spelling,
+        target: js_inhabitant_atom(id: facts.surface_spelling)
+      ),
+      js_named_edge(
+        name: js_facts_field_scalar_classifier,
+        target: js_scalar_node(
+          scalar: js_noninteger_scalar_as_js_scalar(scalar: facts.scalar)
+        )
+      ),
+      js_named_edge(
+        name: js_facts_field_std_projection,
+        target: js_inhabitant_atom(id: facts.std_projection)
+      ),
+      js_named_edge(
+        name: js_facts_field_representation,
+        target: js_inhabitant_atom(id: facts.representation)
+      )
+    ]
+  }
+}
+
+fn js_integer_inhabitant_node(id: Symbol, facts: JsIntegerPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      js_named_edge(name: js_inhabitant_field_atom, target: js_inhabitant_atom(id: id)),
+      js_named_edge(
+        name: js_inhabitant_field_facts,
+        target: js_integer_facts_node(facts: facts)
+      )
+    ]
+  }
+}
+
+fn js_float_inhabitant_node(id: Symbol, facts: JsFloatPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      js_named_edge(name: js_inhabitant_field_atom, target: js_inhabitant_atom(id: id)),
+      js_named_edge(
+        name: js_inhabitant_field_facts,
+        target: js_float_facts_node(facts: facts)
+      )
+    ]
+  }
+}
+
+fn js_noninteger_inhabitant_node(id: Symbol, facts: JsNonIntegerPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      js_named_edge(name: js_inhabitant_field_atom, target: js_inhabitant_atom(id: id)),
+      js_named_edge(
+        name: js_inhabitant_field_facts,
+        target: js_noninteger_facts_node(facts: facts)
+      )
+    ]
+  }
+}
+
+fn js_inhabitant_bigint_node() -> Node {
+  js_integer_inhabitant_node(id: js_inhabitant_bigint, facts: js_facts_bigint)
+}
+
+fn js_inhabitant_number_node() -> Node {
+  js_float_inhabitant_node(id: js_inhabitant_number, facts: js_facts_number)
+}
+
+fn js_inhabitant_string_node() -> Node {
+  js_noninteger_inhabitant_node(id: js_inhabitant_string, facts: js_facts_string)
+}
+
+fn js_inhabitant_boolean_node() -> Node {
+  js_noninteger_inhabitant_node(id: js_inhabitant_boolean, facts: js_facts_boolean)
+}
+
+fn js_inhabitant_undefined_node() -> Node {
+  js_noninteger_inhabitant_node(id: js_inhabitant_undefined, facts: js_facts_undefined)
+}
+
+fn js_inhabitant_null_node() -> Node {
+  js_noninteger_inhabitant_node(id: js_inhabitant_null, facts: js_facts_null)
+}
+
+fn js_inhabitant_symbol_node() -> Node {
+  js_noninteger_inhabitant_node(id: js_inhabitant_symbol, facts: js_facts_symbol)
+}
+
+// Declared-inhabitant Conj root for `target_model_edge_declared_inhabitants`. T-10 staging passes
+// this whole Conj as one aggregate `CandidateSet.candidates` entry — not a flat List of
+// per-primitive nodes. find_witness enumeration inside the root is forward work (W-T-10).
+fn js_declared_inhabitants_root() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      js_named_edge(name: js_inhabitant_field_bigint, target: js_inhabitant_bigint_node()),
+      js_named_edge(name: js_inhabitant_field_number, target: js_inhabitant_number_node()),
+      js_named_edge(name: js_inhabitant_field_string, target: js_inhabitant_string_node()),
+      js_named_edge(name: js_inhabitant_field_boolean, target: js_inhabitant_boolean_node()),
+      js_named_edge(name: js_inhabitant_field_undefined, target: js_inhabitant_undefined_node()),
+      js_named_edge(name: js_inhabitant_field_null, target: js_inhabitant_null_node()),
+      js_named_edge(name: js_inhabitant_field_symbol, target: js_inhabitant_symbol_node())
+    ]
+  }
+}
+
+// MVP-1 selection policy: ECMA-262 `+` over Number → Number; matches the MVP source semantics.
+fn js_mvp1_selection_policy_node() -> Node {
+  js_inhabitant_number_node()
+}
+
+fn js_mvp1_emitted_add_fn_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: [
+      Edge { label: Positional, target: js_inhabitant_number_node() },
+      Edge { label: Positional, target: js_inhabitant_number_node() },
+      Edge { label: Positional, target: js_inhabitant_number_node() }
+    ]
+  }
+}
+
+fn js_mvp1_source_text_authority() -> String {
+  js_mvp1_source_text
+}
+
+// MVP serialize_source — literal symbol + grammar production + token relation (aligned with source text).
+// dissolve-on: T-10 literal Node + bidirectional grammar-as-bidir emit/ingest round-trip.
+fn js_concrete_token_class(token: JsConcreteSyntaxToken) -> Symbol {
+  match token {
+    JsFixedToken { token_class: c } => c
+    JsBoundToken { token_class: c, binding: _ } => c
+  }
+}
+
+fn js_concrete_token_node(token: JsConcreteSyntaxToken) -> Node {
+  match token {
+    JsFixedToken { token_class: c } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          js_named_edge(
+            name: js_relation_field_token_kind,
+            target: js_inhabitant_atom(id: js_relation_token_fixed)
+          ),
+          js_named_edge(
+            name: js_relation_field_token_class,
+            target: js_inhabitant_atom(id: c)
+          )
+        ]
+      }
+    JsBoundToken { token_class: c, binding: b } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          js_named_edge(
+            name: js_relation_field_token_kind,
+            target: js_inhabitant_atom(id: js_relation_token_bound)
+          ),
+          js_named_edge(
+            name: js_relation_field_token_class,
+            target: js_inhabitant_atom(id: c)
+          ),
+          js_named_edge(
+            name: js_relation_field_binding,
+            target: js_inhabitant_atom(id: b)
+          )
+        ]
+      }
+  }
+}
+
+fn js_mvp1_positional_token_edge(token: JsConcreteSyntaxToken) -> Edge {
+  Edge {
+    label: Positional,
+    target: js_concrete_token_node(token: token)
+  }
+}
+
+// Order-preserving snoc: free_monoid_fold visits tail→head but cons(empty, h) builds forward order.
+fn js_list_snoc_item<T>(xs: List<T>, item: T) -> List<T> {
+  free_monoid_fold(
+    xs: xs,
+    empty: Cons { head: item, tail: Empty },
+    cons: fn(rest, existing) {
+      Cons { head: existing, tail: rest }
+    }
+  )
+}
+
+fn js_list_append<T>(left: List<T>, right: List<T>) -> List<T> {
+  free_monoid_fold(
+    xs: right,
+    empty: left,
+    cons: fn(acc, item) {
+      js_list_snoc_item(xs: acc, item: item)
+    }
+  )
+}
+
+fn js_mvp1_positional_edges_from_token_classes() -> List<Edge> {
+  free_monoid_fold(
+    xs: js_mvp1_concrete_tokens(),
+    empty: Empty,
+    cons: fn(acc, token) {
+      js_list_snoc_item(
+        xs: acc,
+        item: js_mvp1_positional_token_edge(token: token)
+      )
+    }
+  )
+}
+
+fn js_mvp1_serialize_source_prefix_edges() -> List<Edge> {
+  Cons {
+    head: js_named_edge(
+      name: js_mvp1_source_text_field,
+      target: js_inhabitant_atom(id: js_mvp1_source_literal)
+    ),
+    tail: Cons {
+      head: js_named_edge(
+        name: js_mvp1_source_grammar_field,
+        target: js_inhabitant_atom(id: js_production_mvp1_fn_add)
+      ),
+      tail: Empty
+    }
+  }
+}
+
+fn js_mvp1_serialize_source_children() -> List<Edge> {
+  js_list_append(
+    left: js_mvp1_serialize_source_prefix_edges(),
+    right: js_mvp1_positional_edges_from_token_classes()
+  )
+}
+
+fn js_mvp1_serialize_source_node() -> Node {
+  // liveness anchor — `js_mvp1_source_literal` pairs with `js_mvp1_source_text` until literal Node lands
+  let _authority = js_mvp1_source_text_authority()
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: js_mvp1_serialize_source_children()
+  }
+}
+
+fn js_grammar_terminal(token_class: Symbol) -> GrammarExpr {
+  Terminal { token_class: token_class }
+}
+
+fn js_grammar_sequence_fold_step(acc: GrammarExpr, token: JsConcreteSyntaxToken) -> GrammarExpr {
+  let token_class = js_concrete_token_class(token: token)
+  if token_class == js_token_kw_function {
+    acc
+  } else {
+    Sequence {
+      left: js_grammar_terminal(token_class: token_class),
+      right: acc
+    }
+  }
+}
+
+fn js_grammar_sequence_from_token_classes() -> GrammarExpr {
+  free_monoid_fold(
+    xs: js_mvp1_concrete_tokens(),
+    empty: js_grammar_terminal(token_class: js_token_kw_function),
+    cons: fn(acc, token) {
+      js_grammar_sequence_fold_step(acc: acc, token: token)
+    }
+  )
+}
+
+fn js_mvp1_grammar_relation_row() -> JsGrammarRelationRow {
+  JsGrammarRelationRow {
+    production: js_grammar_production_mvp1_fn_add(),
+    emitted: js_mvp1_emitted_add_fn_node(),
+    tokens: js_mvp1_concrete_tokens()
+  }
+}
+
+fn js_relation_token_edges(tokens: List<JsConcreteSyntaxToken>) -> List<Edge> {
+  free_monoid_fold(
+    xs: tokens,
+    empty: Empty,
+    cons: fn(acc, token) {
+      js_list_snoc_item(
+        xs: acc,
+        item: js_mvp1_positional_token_edge(token: token)
+      )
+    }
+  )
+}
+
+fn js_grammar_relation_row_node(row: JsGrammarRelationRow) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      js_named_edge(
+        name: js_relation_field_production,
+        target: grammar_production_to_node(production: row.production)
+      ),
+      js_named_edge(name: js_relation_field_emitted, target: row.emitted),
+      js_named_edge(
+        name: js_relation_field_tokens,
+        target: Node {
+          kind: TypeNode { connective: Conj },
+          children: js_relation_token_edges(tokens: row.tokens)
+        }
+      )
+    ]
+  }
+}
+
+fn js_mvp1_translation_rules_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      js_named_edge(
+        name: js_relation_rule_mvp1_fn_add,
+        target: js_grammar_relation_row_node(row: js_mvp1_grammar_relation_row())
+      )
+    ]
+  }
+}
+
+fn js_mvp1_target_model() -> Node {
+  // liveness anchor — pairs target_model with `js_mvp1_source_text`; drops with T-10
+  let _authority = js_mvp1_source_text_authority()
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      js_named_edge(
+        name: target_model_edge_selection_policy,
+        target: js_mvp1_selection_policy_node()
+      ),
+      js_named_edge(
+        name: target_model_edge_declared_inhabitants,
+        target: js_declared_inhabitants_root()
+      ),
+      js_named_edge(
+        name: target_model_edge_translation_rules,
+        target: js_mvp1_translation_rules_node()
+      ),
+      js_named_edge(
+        name: target_model_edge_serialize_emitted,
+        target: js_mvp1_emitted_add_fn_node()
+      ),
+      js_named_edge(
+        name: target_model_edge_serialize_source,
+        target: js_mvp1_serialize_source_node()
+      )
+    ]
+  }
+}
+
+fn js_lex_rule(token_class: Symbol, text: String) -> LexRule {
+  TokenRule {
+    token_class: token_class,
+    pattern: LiteralPattern { text: text }
+  }
+}
+
+fn js_ident_lex_pattern() -> LexPattern {
+  SequencePattern {
+    left: CharClassPattern { class: IdentStartChar },
+    right: RepeatPattern { element: CharClassPattern { class: IdentContinueChar } }
+  }
+}
+
+fn js_ident_lex_rule() -> LexRule {
+  TokenRule {
+    token_class: js_token_ident,
+    pattern: js_ident_lex_pattern()
+  }
+}
+
+fn js_mvp1_lex_rules() -> LexRuleSet {
+  LexRuleSet {
+    rules: [
+      js_lex_rule(token_class: js_token_kw_function, text: "function"),
+      js_lex_rule(token_class: js_token_kw_return, text: "return"),
+      js_ident_lex_rule(),
+      js_lex_rule(token_class: js_token_plus, text: "+"),
+      js_lex_rule(token_class: js_token_lbrace, text: "{"),
+      js_lex_rule(token_class: js_token_rbrace, text: "}"),
+      js_lex_rule(token_class: js_token_lparen, text: "("),
+      js_lex_rule(token_class: js_token_rparen, text: ")"),
+      js_lex_rule(token_class: js_token_comma, text: ","),
+      js_lex_rule(token_class: js_token_semicolon, text: ";")
+    ]
+  }
+}
+
+fn js_mvp1_lex() -> LexRules {
+  ModeledLexRules { root: js_mvp1_lex_rules() }
+}
+
+fn js_grammar_atom(id: Symbol) -> Node {
+  js_inhabitant_atom(id: id)
+}
+
+fn js_grammar_production_mvp1_fn_add() -> GrammarProduction {
+  GrammarProduction {
+    name: js_production_mvp1_fn_add,
+    expression: js_grammar_sequence_from_token_classes(),
+    emitted: js_grammar_atom(id: js_surface_function_declaration)
+  }
+}
+
+fn js_mvp1_grammar_root() -> GrammarRoot {
+  GrammarRoot { start: js_grammar_production_mvp1_fn_add() }
+}
+
+fn js_mvp1_grammar() -> Grammar {
+  ModeledGrammar { root: js_mvp1_grammar_root() }
+}
+
+fn js_integer_catalog_surface_symbol_step(
+  sym: Symbol,
+  acc: Bool,
+  facts: JsIntegerPrimitiveFacts
+) -> Bool {
+  acc || sym == facts.surface_spelling
+}
+
+fn js_float_catalog_surface_symbol_step(
+  sym: Symbol,
+  acc: Bool,
+  facts: JsFloatPrimitiveFacts
+) -> Bool {
+  acc || sym == facts.surface_spelling
+}
+
+fn js_noninteger_catalog_surface_symbol_step(
+  sym: Symbol,
+  acc: Bool,
+  facts: JsNonIntegerPrimitiveFacts
+) -> Bool {
+  acc || sym == facts.surface_spelling
+}
+
+fn js_integer_catalog_surface_symbol(sym: Symbol) -> Bool {
+  free_monoid_fold(
+    xs: js_integer_facts_catalog,
+    empty: false,
+    cons: fn(acc, facts) {
+      js_integer_catalog_surface_symbol_step(sym: sym, acc: acc, facts: facts)
+    }
+  )
+}
+
+fn js_float_catalog_surface_symbol(sym: Symbol) -> Bool {
+  free_monoid_fold(
+    xs: js_float_facts_catalog,
+    empty: false,
+    cons: fn(acc, facts) {
+      js_float_catalog_surface_symbol_step(sym: sym, acc: acc, facts: facts)
+    }
+  )
+}
+
+fn js_noninteger_catalog_surface_symbol(sym: Symbol) -> Bool {
+  free_monoid_fold(
+    xs: js_noninteger_facts_catalog,
+    empty: false,
+    cons: fn(acc, facts) {
+      js_noninteger_catalog_surface_symbol_step(sym: sym, acc: acc, facts: facts)
+    }
+  )
+}
+
+fn js_catalog_surface_symbol(sym: Symbol) -> Bool {
+  js_integer_catalog_surface_symbol(sym: sym) ||
+    js_float_catalog_surface_symbol(sym: sym) ||
+    js_noninteger_catalog_surface_symbol(sym: sym)
+}
+
+fn js_mvp1_lex_token_symbol(sym: Symbol) -> Bool {
+  sym == js_token_kw_function ||
+    sym == js_token_kw_return ||
+    sym == js_token_ident ||
+    sym == js_token_plus ||
+    sym == js_token_lbrace ||
+    sym == js_token_rbrace ||
+    sym == js_token_lparen ||
+    sym == js_token_rparen ||
+    sym == js_token_comma ||
+    sym == js_token_semicolon
+}
+
+// Single symbol authority: fact-catalog surface spellings + MVP-1 lex/grammar/MVP symbols.
+fn js_language_model_canonical_symbols() -> Set<Symbol> {
+  Set {
+    member: fn(sym) {
+      js_catalog_surface_symbol(sym: sym) ||
+        js_mvp1_lex_token_symbol(sym: sym) ||
+        sym == js_surface_function_declaration ||
+        sym == js_production_mvp1_fn_add ||
+        sym == js_mvp1_source_literal
+    }
+  }
+}
+
+fn js_primitive_axis_binding(axis: Symbol, fact: Node) -> PrimitiveFactAxisBinding {
+  PrimitiveFactAxisBinding { axis: axis, fact: fact }
+}
+
+fn js_primitive_bundle_from_integer_facts(facts: JsIntegerPrimitiveFacts) -> PrimitiveFactBundle {
+  PrimitiveFactBundle {
+    substrate_carrier: js_integer_facts_node(facts: facts),
+    spec_facts: [
+      js_primitive_axis_binding(
+        axis: primitive_fact_axis_surface_spelling,
+        fact: js_inhabitant_atom(id: facts.surface_spelling)
+      ),
+      js_primitive_axis_binding(
+        axis: primitive_fact_axis_range,
+        fact: js_inhabitant_atom(id: facts.range)
+      ),
+      js_primitive_axis_binding(
+        axis: primitive_fact_axis_encoding,
+        fact: js_inhabitant_atom(id: facts.representation)
+      )
+    ]
+  }
+}
+
+fn js_primitive_bundle_from_float_facts(facts: JsFloatPrimitiveFacts) -> PrimitiveFactBundle {
+  PrimitiveFactBundle {
+    substrate_carrier: js_float_facts_node(facts: facts),
+    spec_facts: [
+      js_primitive_axis_binding(
+        axis: primitive_fact_axis_surface_spelling,
+        fact: js_inhabitant_atom(id: facts.surface_spelling)
+      ),
+      js_primitive_axis_binding(
+        axis: primitive_fact_axis_encoding,
+        fact: js_inhabitant_atom(id: facts.ieee754_binary)
+      )
+    ]
+  }
+}
+
+fn js_primitive_bundle_from_noninteger_facts(
+  facts: JsNonIntegerPrimitiveFacts
+) -> PrimitiveFactBundle {
+  PrimitiveFactBundle {
+    substrate_carrier: js_noninteger_facts_node(facts: facts),
+    spec_facts: [
+      js_primitive_axis_binding(
+        axis: primitive_fact_axis_surface_spelling,
+        fact: js_inhabitant_atom(id: facts.surface_spelling)
+      ),
+      js_primitive_axis_binding(
+        axis: primitive_fact_axis_encoding,
+        fact: js_inhabitant_atom(id: facts.representation)
+      )
+    ]
+  }
+}
+
+fn js_primitive_bundles_from_integer_catalog() -> List<PrimitiveFactBundle> {
+  free_monoid_fold(
+    xs: js_integer_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      js_list_snoc_item(
+        xs: acc,
+        item: js_primitive_bundle_from_integer_facts(facts: facts)
+      )
+    }
+  )
+}
+
+fn js_primitive_bundles_from_float_catalog() -> List<PrimitiveFactBundle> {
+  free_monoid_fold(
+    xs: js_float_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      js_list_snoc_item(
+        xs: acc,
+        item: js_primitive_bundle_from_float_facts(facts: facts)
+      )
+    }
+  )
+}
+
+fn js_primitive_bundles_from_noninteger_catalog() -> List<PrimitiveFactBundle> {
+  free_monoid_fold(
+    xs: js_noninteger_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      js_list_snoc_item(
+        xs: acc,
+        item: js_primitive_bundle_from_noninteger_facts(facts: facts)
+      )
+    }
+  )
+}
+
+fn js_mvp1_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
+  js_list_append(
+    left: js_list_append(
+      left: js_primitive_bundles_from_integer_catalog(),
+      right: js_primitive_bundles_from_float_catalog()
+    ),
+    right: js_primitive_bundles_from_noninteger_catalog()
+  )
+}
+
+fn js_model_core_mvp1() -> ModelCore {
+  ModelCore {
+    primitives: js_mvp1_primitive_fact_bundles(),
+    inhabitance: [],
+    laws: [],
+    effects: EffectSemanticsDecl { operations: [] },
+    partiality: PartialitySemanticsDecl { operations: [] }
+  }
+}
+
+fn js_language_model_mvp1() -> JsLanguageModel {
+  JsLanguageModel {
+    lex: js_mvp1_lex(),
+    grammar: js_mvp1_grammar(),
+    language_identity: js_language_model_surface_id,
+    canonical_symbols: js_language_model_canonical_symbols(),
+    core: js_model_core_mvp1()
+  }
+}
