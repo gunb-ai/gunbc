@@ -1,15 +1,9 @@
 // src/v4/compiler/05_emit.dag
 // Scope: Stage 5b — T-10 emit surface + fail-closed staging (not grammar-bidir serialize yet).
 // Owns: emit_stage_locus_port, serialize_source_for_emitted, serialize_target, emit.
-<<<<<<< HEAD
-// Consumes: target_model_edge_serialize_emitted, target_model_edge_serialize_source
-//       (edge-name symbols defined in compiler/06_translate.dag).
+// Consumes: v4.std.target_model (target_model_edge_serialize_emitted, target_model_edge_serialize_source).
 // Consumes: compiler/04_infer.dag, compiler/06_translate.dag, compiler/07_target_carriers.dag,
 //           std/diagnostic.dag,
-=======
-// Consumes: v4.std.target_model (edge-name symbols).
-// Consumes: compiler/00_compile.dag, compiler/04_infer.dag, compiler/06_translate.dag, std/diagnostic.dag,
->>>>>>> 779b370d1 (WIP: Wave-4-D T-4 rust.dag — LanguageModel inhabitants (i32/i64/i128 + others)
 //           std/node.dag, std/text.dag.
 // Status: W-T-10-impl staging — emit = serialize_target ∘ translate; serialize_source_for_emitted
 // is emitted-node equality check + fail-closed source stub (inverse grammar walk deferred).
