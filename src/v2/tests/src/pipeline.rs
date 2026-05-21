@@ -507,13 +507,11 @@ fn f(x: Row) -> String {
     assert_no_diagnostics(&result);
     let rs = find_file(&result, "src/test_positional_dual_str_pat.rs");
     assert!(
-        rs.contains("__pos_pair_left_mk_0_val") && rs.contains("__pos_pair_right_mk_0_val"),
-        "expected distinct positional string-literal bindings, got:\n{}",
-        rs
-    );
-    assert!(
-        rs.contains("__pos_pair_left_mk_0_val == ") && rs.contains("__pos_pair_right_mk_0_val == "),
-        "expected distinct positional string-literal guards, got:\n{}",
+        rs.contains("__pos_pair_left_mk_0_val")
+            && rs.contains("__pos_pair_right_mk_0_val")
+            && rs.contains("__pos_pair_left_mk_0_val == \"a\"")
+            && rs.contains("__pos_pair_right_mk_0_val == \"b\""),
+        "expected distinct positional string-literal bindings and guards, got:\n{}",
         rs
     );
     assert!(
