@@ -134,7 +134,7 @@ fn prelude_carve_out_claim_holds() -> Bool {
   match prelude_carve_out_claim.actual {
     Holds { value: actual } =>
       fact_eq(a: actual, b: prelude_carve_out_claim.expected)
-        && fact_projects_status(fact: actual, expected: PreludeCarveOut)
+        && fact_single_dependency_projects_status(fact: actual, expected: PreludeCarveOut)
     _ => false
   }
 }
