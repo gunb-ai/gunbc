@@ -315,6 +315,9 @@ type FlagWriteDisposition
 
 
 // ── Wave-1 `MachineScalar` fact-bundles (Isa-parameterized int kinds/widths).
+// Wave-1 catalog uses `WrapModuloWidth` only; `mc_overflow_node` still gives each
+// `MachineIntegerOverflowBehavior` variant a distinct tag (rust_overflow_node pattern).
+// 🟢 coproduct dissolution · P4-3208 · SL-3229-MC-WAVE1-INT-FACTS.
 type MachineIntegerPrimitiveFacts {
   surface_spelling: Symbol
   kind: MachineIntKind
