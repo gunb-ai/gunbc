@@ -8,7 +8,7 @@
 //       translate_canonical_grounding_not_realized, canonical_grounding_for_node,
 //       coerce_grounded_node, translate_fold_init, translate_fold_step,
 //       translate_node, translate.
-// Consumes: compiler/04_infer.dag, compiler/00_compile.dag, std/coercion.dag, std/constraints.dag,
+// Consumes: compiler/04_infer.dag, compiler/07_target_carriers.dag, std/coercion.dag, std/constraints.dag,
 //           std/find_witness.dag, std/diagnostic.dag, std/node.dag, std/witness.dag, std/collection.dag.
 // Status: W-T-10-impl staging — fold_node + coercion_fold call-shape; canonical_grounding and
 // coercion_fold bodies fail closed until T-9 (#3464) + find_witness + T-4 rust.dag land.
@@ -18,7 +18,7 @@
 module v4.compiler.translate
 
 
-import v4.compiler.compile { TargetModel, TargetSource }
+import v4.compiler.target_carriers { LanguageModel, TargetModel, TargetSource }
 import v4.compiler.infer { InferredTree }
 import v4.std.coercion {
   CoercionCandidateSet,
@@ -37,6 +37,7 @@ import v4.std.diagnostic {
   Unavailable,
   bind_outcome,
   diagnostics_merge,
+  outcome_accepted,
   outcome_rejected,
   rejected_with_pending
 }
@@ -286,6 +287,16 @@ fn translate_node(
     }
   )
 }
-fn translate(tree: InferredTree, target: TargetModel) -> Outcome<TargetNodeTree> {
-  translate_node(node: tree.root, tree: tree, target: target)
+// input_lang threaded at stage boundary; translate_node ignores until T-4 rust.dag bundle lands.
+fn translate(
+  tree: InferredTree,
+  target: TargetModel,
+  input_lang: LanguageModel
+) -> Outcome<TargetNodeTree> {
+  bind_outcome(
+    o: outcome_accepted(value: input_lang),
+    f: fn(lang) {
+      translate_node(node: tree.root, tree: tree, target: target)
+    }
+  )
 }
