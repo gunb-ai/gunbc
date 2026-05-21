@@ -1327,7 +1327,7 @@ fn emit_prelude() -> String {
   // Serde import removed — derives don't include Serialize/Deserialize (emit.dag:70-72).
   // serde_json stays as a runtime dep for JSON operations only.
   // NonEmptyVec/NonEmptyBTreeSet emitted once in lib.rs, imported here.
-  let use_line = "use std::collections::HashMap;\nuse std::rc::Rc;\nuse crate::v2_rt;"
+  let use_line = "use std::collections::HashMap;\nuse std::rc::Rc;\nuse crate::v2_rt;\nuse crate::v2_rt::rc_empty_set as empty_set;\nuse crate::v2_rt::rc_set_insert as set_insert;\nuse crate::v2_rt::rc_set_union as set_union;\nuse crate::v2_rt::set_contains;"
   let wrapper_use = "use crate::NonEmptyVec;\nuse crate::NonEmptyBTreeSet;"
   concat(use_line, "\n", wrapper_use)
 }
@@ -2266,15 +2266,8 @@ fn emit_variant_pattern(name: String, parent_enum: String?, field_bindings: List
       Some { value: parent } => concat(parent, "::", name)
       None => name
     }
-    let is_fielded = match map_get(emit_info.fielded_variants, fielded_key) {
-      Some { value: true } => true
-      _ =>
-        // Strict: also check display-qualified name. No suffix scanning.
-        match map_get(emit_info.fielded_variants, qualified) {
-          Some { value: true } => true
-          _ => false
-        }
-    }
+    let is_fielded = set_contains(emit_info.fielded_variants, fielded_key)
+      || set_contains(emit_info.fielded_variants, qualified)
     if is_fielded { concat(qualified, " { .. }") } else { qualified }
   } else {
     let effective_bindings = field_bindings |> filter(fb =>
@@ -2286,14 +2279,8 @@ fn emit_variant_pattern(name: String, parent_enum: String?, field_bindings: List
         Some { value: parent } => concat(parent, "::", name)
         None => name
       }
-      let is_fielded2 = match map_get(emit_info.fielded_variants, fielded_key2) {
-        Some { value: true } => true
-        _ =>
-          match map_get(emit_info.fielded_variants, qualified) {
-            Some { value: true } => true
-            _ => false
-          }
-      }
+      let is_fielded2 = set_contains(emit_info.fielded_variants, fielded_key2)
+        || set_contains(emit_info.fielded_variants, qualified)
       if is_fielded2 { concat(qualified, " { .. }") } else { qualified }
     } else {
       let binding_strs = effective_bindings |> map(fb =>
@@ -2455,15 +2442,8 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
       Some { value: parent } => concat(parent, "::", name)
       None => name
     }
-    let is_fielded = match map_get(emit_info.fielded_variants, fielded_key) {
-      Some { value: true } => true
-      _ =>
-        // Strict: also check display-qualified name. No suffix scanning.
-        match map_get(emit_info.fielded_variants, qualified) {
-          Some { value: true } => true
-          _ => false
-        }
-    }
+    let is_fielded = set_contains(emit_info.fielded_variants, fielded_key)
+      || set_contains(emit_info.fielded_variants, qualified)
     if is_fielded { concat(qualified, " { .. }") } else { qualified }
   } else {
     let effective_bindings = field_bindings |> filter(fb =>
@@ -2475,14 +2455,8 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
         Some { value: parent } => concat(parent, "::", name)
         None => name
       }
-      let is_fielded2 = match map_get(emit_info.fielded_variants, fielded_key2) {
-        Some { value: true } => true
-        _ =>
-          match map_get(emit_info.fielded_variants, qualified) {
-            Some { value: true } => true
-            _ => false
-          }
-      }
+      let is_fielded2 = set_contains(emit_info.fielded_variants, fielded_key2)
+        || set_contains(emit_info.fielded_variants, qualified)
       if is_fielded2 { concat(qualified, " { .. }") } else { qualified }
     } else {
       let binding_strs = effective_bindings |> map(fb =>
@@ -2847,6 +2821,15 @@ fn rust_empty_map_kv_type_str(map_type: Node, shared_types: Set<String>, source_
   } else { "" }
 }
 
+fn rust_empty_set_element_type_str(set_type: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
+  match set_type.children |> first {
+    Some { value: elem_child } =>
+      let rendered = render_rust_type(n: child_type_node(ch: elem_child), shared_types: shared_types, source_indices: source_indices)
+      if rendered == "" { "" } else { rendered }
+    None => ""
+  }
+}
+
 // rust_runtime_bridge_wraps_result_in_rc: DELETED.
 // With shared_types as single authority, map values are already Rc-wrapped
 // for non-Copy types. lookup/map_get return the correct type directly.
@@ -3115,6 +3098,17 @@ fn emit_typed_call_expr(func: String, args: List<Node>, inferred: InferredNode?,
           "Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */"
         }
       _ => "Rc::new(HashMap::new()) /* BRIDGE: empty_map return type unresolved */"
+    }
+  } else if func == "empty_set" {
+    match inferred {
+      Some { value: Resolved { node: ret_type } } =>
+        let elem_type_str = rust_empty_set_element_type_str(set_type: ret_type, shared_types: shared_types, source_indices: scope.type_env.source_indices)
+        if elem_type_str != "" && !contains(elem_type_str, "UNRESOLVED_TypeVariable") {
+          concat("v2_rt::rc_empty_set::<", elem_type_str, ">()")
+        } else {
+          "v2_rt::rc_empty_set::<_>() /* BRIDGE: empty_set element type unresolved */"
+        }
+      _ => "v2_rt::rc_empty_set::<_>() /* BRIDGE: empty_set return type unresolved */"
     }
   } else {
     emit_typed_call(func: func, args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
@@ -3489,7 +3483,7 @@ fn emit_typed_fold_lambda(lambda_expr: Node, acc_type_str: String, elem_type_str
       let bd = lambda_body(texpr: lambda_expr)
       let pn = lambda_expr.children |> skip(1)
       // BRIDGE: Known unresolved acc type patterns → emit "_" to let Rust infer
-      let safe_acc_type = if acc_type_str == "Rc<Vec<()>>" || acc_type_str == "Vec<()>" || acc_type_str == "Option<()>" { "_" } else { acc_type_str }
+      let safe_acc_type = if acc_type_str == "Rc<Vec<()>>" || acc_type_str == "Vec<()>" || acc_type_str == "Option<()>" || contains(acc_type_str, "UNRESOLVED_TypeVariable") { "_" } else { acc_type_str }
       let fallback_types = ps |> enumerate |> map(pair =>
         if pair.first == 0 { safe_acc_type } else { elem_type_str }
       )
@@ -3576,7 +3570,7 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
               ownership_index: emit_info.ownership_index,
               movable: emit_info.movable,
               variant_to_enum: emit_info.variant_to_enum,
-              owned_bindings: map_insert(emit_info.owned_bindings, acc_name, true),
+              owned_bindings: set_insert(emit_info.owned_bindings, acc_name),
               read_only_params_index: emit_info.read_only_params_index,
               read_only_params: emit_info.read_only_params
             }
@@ -3596,7 +3590,7 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
               fielded_variants: emit_info.fielded_variants,
               shared_types: emit_info.shared_types,
               ownership_index: emit_info.ownership_index,
-              movable: map_insert(emit_info.movable, acc_name, true),
+              movable: set_insert(emit_info.movable, acc_name),
               variant_to_enum: emit_info.variant_to_enum,
               owned_bindings: emit_info.owned_bindings,
               read_only_params_index: emit_info.read_only_params_index,
@@ -3611,7 +3605,7 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
   // Split: lambda annotation can use "_" for bare containers, but init value
   // resolution needs the real type for turbofish generation.
   let is_bare_container = acc_type_node.children |> count == 0 && is_container_type(name: acc_type_name)
-  let lambda_acc_type_str = if is_bare_container { "_" } else { acc_type_str }
+  let lambda_acc_type_str = if is_bare_container || contains(acc_type_str, "UNRESOLVED_TypeVariable") { "_" } else { acc_type_str }
   let acc_has_unit_child = acc_type_node.children |> any(c => is_unit_like(n: c) || c.ident_span == none) || acc_type_node.children |> any(c => c.children |> any(gc => is_unit_like(n: gc) || gc.ident_span == none))
   let init_str = match args |> first {
     Some { value: init_arg } =>
@@ -3625,8 +3619,17 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
             } else {
               "Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */"
             }
+          } else if init_func == "empty_set" && acc_type_str != "_" && acc_type_str != "" && !contains(acc_type_str, "UNRESOLVED_TypeVariable") && !acc_has_unit_child {
+            let elem_type_str = rust_empty_set_element_type_str(set_type: acc_type_node, shared_types: shared_types, source_indices: scope.type_env.source_indices)
+            if elem_type_str != "" && !contains(elem_type_str, "UNRESOLVED_TypeVariable") {
+              concat("v2_rt::rc_empty_set::<", elem_type_str, ">()")
+            } else {
+              "v2_rt::rc_empty_set::<_>() /* BRIDGE: fold empty_set element type unresolved */"
+            }
           } else if init_func == "empty_map" {
             "Rc::new(HashMap::new()) /* BRIDGE: fold empty_map accumulator type unresolved */"
+          } else if init_func == "empty_set" {
+            "v2_rt::rc_empty_set::<_>() /* BRIDGE: fold empty_set accumulator type unresolved */"
           } else {
             emit_typed_expr(texpr: arg_value(n: init_arg), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: fold_emit_info, fuel: 1024)
           }
@@ -4058,6 +4061,47 @@ fn is_optional_struct_field(emit_info: EmitGraphInfo, struct_name: String, field
   }
 }
 
+fn rust_struct_field_type_node(scope: InferScope, struct_name: String, field_name: String) -> Node? {
+  match lookup_type_by_name(env: scope.type_env, name: struct_name) {
+    Some { value: struct_node } =>
+      match find_child_named(n: struct_node, name: field_name, source_indices: scope.type_env.source_indices) {
+        Some { value: field_node } => Some { value: resolved_type(n: field_node) }
+        None => none
+      }
+    None => none
+  }
+}
+
+fn rust_record_field_needs_fn_rc(scope: InferScope, struct_name: String, field_name: String) -> Bool {
+  match rust_struct_field_type_node(scope: scope, struct_name: struct_name, field_name: field_name) {
+    Some { value: field_type } => field_type.connective == Arrow
+    None => false
+  }
+}
+
+fn rust_record_field_needs_box(scope: InferScope, emit_info: EmitGraphInfo, shared_types: Set<String>, struct_name: String, field_name: String) -> Bool {
+  match rust_struct_field_type_node(scope: scope, struct_name: struct_name, field_name: field_name) {
+    Some { value: field_type } =>
+      needs_box_wrapping(n: field_type, recursive_types: emit_info.recursive_type_set, shared_types: shared_types, source_indices: scope.type_env.source_indices)
+    None => false
+  }
+}
+
+fn wrap_rust_record_field_value(raw: String, scope: InferScope, emit_info: EmitGraphInfo, shared_types: Set<String>, struct_name: String, field_name: String) -> String {
+  let is_bounded_lattice_field = contains(struct_name, "BoundedLattice")
+  if rust_record_field_needs_fn_rc(scope: scope, struct_name: struct_name, field_name: field_name) {
+    concat("Rc::new(", raw, ")")
+  } else if is_bounded_lattice_field && (field_name == "meet" || field_name == "join") {
+    concat("Rc::new(", raw, ")")
+  } else if rust_record_field_needs_box(scope: scope, emit_info: emit_info, shared_types: shared_types, struct_name: struct_name, field_name: field_name) {
+    concat("Box::new(", raw, ")")
+  } else if is_bounded_lattice_field && (field_name == "top" || field_name == "bottom") {
+    concat("Box::new(", raw, ")")
+  } else {
+    raw
+  }
+}
+
 fn is_already_optional(texpr: Node, emit_info: EmitGraphInfo, scope: InferScope) -> Bool {
   let si = scope.type_env.source_indices
   let n = expr_var_name_at(texpr: texpr, source_indices: si)
@@ -4340,7 +4384,8 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
           let field_val = if needs_wrap {
             concat("Some(", val_str, ")")
           } else { val_str }
-          concat("    ", emit_ident(name: f_name, target: Rust), ": ", field_val, ",")
+          let stored_val = wrap_rust_record_field_value(raw: field_val, scope: scope, emit_info: emit_info, shared_types: shared_types, struct_name: tn, field_name: f_name)
+          concat("    ", emit_ident(name: f_name, target: Rust), ": ", stored_val, ",")
         )
         // Fill default values for struct fields not explicitly set in .dag source.
         // Only emits defaults if ALL missing fields have known zero values — this avoids
@@ -5784,7 +5829,17 @@ fn data_value_has_cross_refs(value: Node) -> Bool {
 }
 
 fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
-  let ty_str = render_rust_type(n: type_node, shared_types: shared_types, source_indices: scope.type_env.source_indices)
+  let raw_ty_str = render_rust_type(n: type_node, shared_types: shared_types, source_indices: scope.type_env.source_indices)
+  let ty_str = if raw_ty_str == "BoundedLattice" || raw_ty_str == "Rc<BoundedLattice>" {
+    match field_value_by_name(record: value, field_name: "top", source_indices: scope.type_env.source_indices) {
+      Some { value: top_value } =>
+        let top_type_name = authored_name_at(source_indices: scope.type_env.source_indices, node: resolved_type(n: top_value))
+        if top_type_name == "" { raw_ty_str }
+        else if raw_ty_str == "Rc<BoundedLattice>" { concat("Rc<BoundedLattice<", top_type_name, ">>") }
+        else { concat("BoundedLattice<", top_type_name, ">") }
+      None => raw_ty_str
+    }
+  } else { raw_ty_str }
   let fn_name = to_snake(name: name)
   let needs_rc = set_contains(shared_types, authored_name_at(source_indices: scope.type_env.source_indices, node: type_node))
   if is_simple_type_node(n: type_node, source_indices: scope.type_env.source_indices) {
@@ -5809,7 +5864,35 @@ fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<Strin
 }
 
 fn emit_data_def_body(type_node: Node, value: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo, needs_rc: Bool) -> String {
-  if has_nested_records_node(n: type_node, source_indices: scope.type_env.source_indices) && !data_value_has_cross_refs(value: value) {
+  let raw_ty_str = render_rust_type(n: type_node, shared_types: shared_types, source_indices: scope.type_env.source_indices)
+  if raw_ty_str == "BoundedLattice" || raw_ty_str == "Rc<BoundedLattice>" {
+    match value.expr_data {
+      ExprRecordLit { parent_enum: _ } =>
+        let meet_str = match field_value_by_name(record: value, field_name: "meet", source_indices: scope.type_env.source_indices) {
+          Some { value: n } => emit_typed_expr(texpr: n, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+          None => "compile_error!(\"BoundedLattice data missing meet\")"
+        }
+        let join_str = match field_value_by_name(record: value, field_name: "join", source_indices: scope.type_env.source_indices) {
+          Some { value: n } => emit_typed_expr(texpr: n, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+          None => "compile_error!(\"BoundedLattice data missing join\")"
+        }
+        let top_str = match field_value_by_name(record: value, field_name: "top", source_indices: scope.type_env.source_indices) {
+          Some { value: n } => emit_typed_expr(texpr: n, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+          None => "compile_error!(\"BoundedLattice data missing top\")"
+        }
+        let bottom_str = match field_value_by_name(record: value, field_name: "bottom", source_indices: scope.type_env.source_indices) {
+          Some { value: n } => emit_typed_expr(texpr: n, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+          None => "compile_error!(\"BoundedLattice data missing bottom\")"
+        }
+        concat("            Rc::new(BoundedLattice {\n",
+          "                meet: Rc::new(", meet_str, "),\n",
+          "                join: Rc::new(", join_str, "),\n",
+          "                top: Box::new(", top_str, "),\n",
+          "                bottom: Box::new(", bottom_str, "),\n",
+          "            })")
+      _ => "            compile_error!(\"BoundedLattice data must be a record\")"
+    }
+  } else if has_nested_records_node(n: type_node, source_indices: scope.type_env.source_indices) && !data_value_has_cross_refs(value: value) {
     let json_str = emit_data_value_json(value: value, source_indices: scope.type_env.source_indices)
     concat("            serde_json::from_value(serde_json::json!(", json_str, "))\n",
       "                .expect(\"valid data definition\")")

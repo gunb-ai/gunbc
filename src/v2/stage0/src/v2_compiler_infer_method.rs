@@ -4,6 +4,10 @@
 pub use crate::std_types::SourceSpan;
 pub use crate::v2_compiler_infer_types::{make_container_type, make_map_type};
 use crate::v2_rt;
+use crate::v2_rt::rc_empty_set as empty_set;
+use crate::v2_rt::rc_set_insert as set_insert;
+use crate::v2_rt::rc_set_union as set_union;
+use crate::v2_rt::set_contains;
 use crate::v2_std_core::Cardinality::Required;
 use crate::v2_std_core::Connective::NoConnective;
 use crate::v2_std_core::ExprData::NoExprData;
@@ -120,7 +124,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         .clone();
         let m = v2_rt::rc_map_insert(m.clone(), "empty_set".to_string(), set_ty.clone());
         let m = v2_rt::rc_map_insert(m.clone(), "set_insert".to_string(), set_ty.clone());
-        let m = v2_rt::rc_map_insert(m.clone(), "set_union".to_string(), set_ty);
+        let m = v2_rt::rc_map_insert(m.clone(), "set_union".to_string(), set_ty.clone());
         let m = v2_rt::rc_map_insert(m.clone(), "map_contains_key".to_string(), bool_type());
         let m = v2_rt::rc_map_insert(m.clone(), "map_has".to_string(), bool_type());
         let m = v2_rt::rc_map_insert(m.clone(), "emit_map_has".to_string(), bool_type());

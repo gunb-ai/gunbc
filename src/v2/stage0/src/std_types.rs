@@ -21,6 +21,10 @@ pub use crate::std_algebra::{
     algebra_type_param_names, kernel_algebra_profile, BooleanAlgebra, FreeMonoid, PartialFunction,
 };
 use crate::v2_rt;
+use crate::v2_rt::rc_empty_set as empty_set;
+use crate::v2_rt::rc_set_insert as set_insert;
+use crate::v2_rt::rc_set_union as set_union;
+use crate::v2_rt::set_contains;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use std::collections::HashMap;

@@ -7,6 +7,10 @@ pub use crate::v2_compiler_infer_types::{
     node_type_equals, normalize_access_type_node, resolved_type,
 };
 use crate::v2_rt;
+use crate::v2_rt::rc_empty_set as empty_set;
+use crate::v2_rt::rc_set_insert as set_insert;
+use crate::v2_rt::rc_set_union as set_union;
+use crate::v2_rt::set_contains;
 use crate::v2_std_core::CompilerDiagnostic::InternalError;
 use crate::v2_std_core::InferredNode::{CompilerError, Resolved};
 pub use crate::v2_std_core::{
