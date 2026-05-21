@@ -32,6 +32,7 @@ import v4.std.diagnostic {
   Outcome,
   PortLocus,
   Rejected,
+  outcome_accepted,
   outcome_rejected
 }
 import v4.std.node { Atom, Conj, Node, Symbol, TypeNode }
