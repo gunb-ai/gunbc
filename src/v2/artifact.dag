@@ -10,7 +10,7 @@
 
 module v2.compiler.artifact
 
-import v2.std.core { TextFile }
+import v2.std.core { TextFile, SourceSpan }
 
 // =========================================================================
 // Render target -- which language the emitter produces.
@@ -110,4 +110,45 @@ fn default_artifact_plan(root_modules: List<String>, target: RenderTarget) -> Ar
     entry_modules: root_modules,
     dependencies: []
   }] })
+}
+
+// =========================================================================
+// DAG artifact substrate (post-infer typed graph JSON, --target dag)
+// =========================================================================
+//
+// 🟡 needs-more-work — DagNodeId is span+ident until v2 shares v4 content_hash.
+// Practice 11: v4 Node/content_hash is the long-term authority; this v2 carrier
+// cites nodes by DagNodeId in JSON ($ref) instead of embedding Node by value.
+//
+// testcase: dag_artifact_shares_one_node_record (pipeline.rs)
+
+type DagNodeId = String
+
+type DagInferredRecord
+  = ResolvedRef { node: DagNodeId }
+  | TypeVariableRef { id: String }
+  | CompilerErrorRecord { message: String, span: SourceSpan }
+
+type DagModuleRef {
+  module: DagNodeId
+  items: List<DagNodeId>
+  item_registry_keys: List<String>
+}
+
+type DagDiagnosticRecord {
+  severity: String
+  message: String
+  span: SourceSpan
+  module_name: String?
+  category: String?
+}
+
+// Bounded artifact: nodes map is the single authority for Node payloads.
+type DagArtifact {
+  version: String
+  nodes: Map<DagNodeId, String>
+  modules: List<String>
+  item_registry_keys: List<String>
+  diagnostics: List<String>
+  files: List<String>
 }

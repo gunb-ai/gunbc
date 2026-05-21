@@ -195,16 +195,125 @@ fn json_optional_string(value: String?) -> String {
   }
 }
 
-fn json_optional_node(value: Node?, source_indices: Map<String, NewlineIndex>) -> String {
+// -------------------------------------------------------------------------
+// DAG artifact v0.2.0: collect each Node once, emit NodeId ($ref) elsewhere.
+// See v2.compiler.artifact { DagArtifact, DagNodeId } and audit doc.
+// -------------------------------------------------------------------------
+
+type DagCollectAcc {
+  seen: Map<String, Bool>
+  order: List<Node>
+}
+
+fn dag_node_key(node: Node) -> String {
+  concat(
+    to_string(i: node.span.start), "..", to_string(i: node.span.end),
+    match node.ident {
+      Some { value: id } => concat(":", to_string(i: id))
+      None => ""
+    })
+}
+
+fn dag_collect_nodes_list(nodes: List<Node>, acc: DagCollectAcc) -> DagCollectAcc {
+  nodes |> fold(init: acc, f: (a, n) => dag_collect_insert(node: n, acc: a))
+}
+
+fn dag_collect_optional_node(value: Node?, acc: DagCollectAcc) -> DagCollectAcc {
   match value {
-    Some { value: inner } => serialize_node(node: inner, source_indices: source_indices)
+    Some { value: inner } => dag_collect_insert(node: inner, acc: acc)
+    None => acc
+  }
+}
+
+fn dag_collect_inferred(value: InferredNode?, acc: DagCollectAcc) -> DagCollectAcc {
+  match value {
+    Some { value: Resolved { node: n } } => dag_collect_insert(node: n, acc: acc)
+    _ => acc
+  }
+}
+
+fn dag_collect_match_pattern(pattern: MatchPattern, acc: DagCollectAcc) -> DagCollectAcc {
+  match pattern {
+    Bind { name: _ } => acc
+    LitPattern { value: _ } => acc
+    VariantPattern { name: _, parent_enum: _, field_bindings: field_bindings } =>
+      field_bindings |> fold(init: acc, f: (a, fb) => dag_collect_insert(node: fb, acc: a))
+    Wildcard => acc
+  }
+}
+
+fn dag_collect_node_tree(node: Node, acc: DagCollectAcc) -> DagCollectAcc {
+  let acc = dag_collect_nodes_list(nodes: node.children, acc: acc)
+  let acc = dag_collect_nodes_list(nodes: node.params, acc: acc)
+  let acc = dag_collect_nodes_list(nodes: node.uses, acc: acc)
+  let acc = dag_collect_optional_node(value: node.body, acc: acc)
+  let acc = dag_collect_optional_node(value: node.transport, acc: acc)
+  let acc = dag_collect_nodes_list(nodes: node.properties, acc: acc)
+  let acc = dag_collect_optional_node(value: node.type_annotation, acc: acc)
+  let acc = dag_collect_inferred(value: node.inferred, acc: acc)
+  match node.match_pattern {
+    Some { value: p } => dag_collect_match_pattern(pattern: p, acc: acc)
+    None => acc
+  }
+}
+
+fn dag_collect_insert(node: Node, acc: DagCollectAcc) -> DagCollectAcc {
+  let key = dag_node_key(node: node)
+  match map_get(acc.seen, key) {
+    Some { value: _ } => acc
+    None =>
+      DagCollectAcc {
+        seen: map_insert(acc.seen, key, true),
+        order: list_push(acc.order, node)
+      } |> dag_collect_node_tree(node: node)
+  }
+}
+
+fn dag_collect_from_module(module: TypedModule, acc: DagCollectAcc) -> DagCollectAcc {
+  let acc = dag_collect_insert(node: module.module, acc: acc)
+  let acc = dag_collect_nodes_list(nodes: module_imports(n: module.module), acc: acc)
+  module.items |> fold(init: acc, f: (a, item) => dag_collect_insert(node: item, acc: a))
+}
+
+fn collect_dag_nodes(typed: ResolvedGraph) -> List<Node> {
+  typed.modules
+    |> fold(init: DagCollectAcc { seen: empty_map(), order: [] }, f: (acc, m) => dag_collect_from_module(module: m, acc: acc))
+    |> dag_collect_acc_order
+}
+
+fn dag_collect_acc_order(acc: DagCollectAcc) -> List<Node> {
+  acc.order
+}
+
+fn build_dag_key_to_id(order: List<Node>) -> Map<String, String> {
+  order |> enumerate |> fold(init: empty_map(), f: (acc, pair) =>
+    map_insert(acc, dag_node_key(node: pair.second), concat("n", to_string(i: pair.first)))
+  )
+}
+
+fn dag_graph_source_indices(typed: ResolvedGraph) -> Map<String, NewlineIndex> {
+  typed.modules |> fold(init: empty_map(), f: (acc, m) =>
+    if map_keys(acc) |> count == 0 { m.type_env.source_indices } else { acc }
+  )
+}
+
+fn serialize_node_ref(node: Node, key_to_id: Map<String, String>) -> String {
+  match map_get(key_to_id, dag_node_key(node: node)) {
+    Some { value: id } => concat("{\"$ref\": ", json_quote(s: id), "}")
+    None => concat("{\"$ref\": ", json_quote(s: "n0"), "}")
+  }
+}
+
+fn json_optional_node_ref(value: Node?, key_to_id: Map<String, String>) -> String {
+  match value {
+    Some { value: inner } => serialize_node_ref(node: inner, key_to_id: key_to_id)
     None => "null"
   }
 }
 
-fn json_optional_inferred_node(value: InferredNode?, source_indices: Map<String, NewlineIndex>) -> String {
+fn json_optional_inferred_node_ref(value: InferredNode?, key_to_id: Map<String, String>) -> String {
   match value {
-    Some { value: inner } => serialize_inferred_node(inferred: inner, source_indices: source_indices)
+    Some { value: inner } => serialize_inferred_node_ref(inferred: inner, key_to_id: key_to_id)
     None => "null"
   }
 }
@@ -370,34 +479,34 @@ fn serialize_match_pattern(pattern: MatchPattern, source_indices: Map<String, Ne
   }
 }
 
-fn serialize_named_arg(arg: Node, source_indices: Map<String, NewlineIndex>) -> String {
+fn serialize_named_arg(arg: Node, source_indices: Map<String, NewlineIndex>, key_to_id: Map<String, String>) -> String {
   concat(
     "{\"name\": ", json_optional_string(value: arg_name_at(n: arg, source_indices: source_indices)),
-    ", \"value\": ", serialize_node(node: arg_value(n: arg), source_indices: source_indices),
+    ", \"value\": ", serialize_node_ref(node: arg_value(n: arg), key_to_id: key_to_id),
     "}")
 }
 
-fn serialize_match_arm(arm: Node, source_indices: Map<String, NewlineIndex>) -> String {
+fn serialize_match_arm(arm: Node, source_indices: Map<String, NewlineIndex>, key_to_id: Map<String, String>) -> String {
   concat(
     "{\"pattern\": ", serialize_match_pattern(pattern: arm_pattern(n: arm), source_indices: source_indices),
-    ", \"guard\": ", json_optional_node(value: arm_guard(n: arm), source_indices: source_indices),
-    ", \"body\": ", serialize_node(node: arm_body(n: arm), source_indices: source_indices),
+    ", \"guard\": ", json_optional_node_ref(value: arm_guard(n: arm), key_to_id: key_to_id),
+    ", \"body\": ", serialize_node_ref(node: arm_body(n: arm), key_to_id: key_to_id),
     "}")
 }
 
-fn serialize_field_init(field_init: Node, source_indices: Map<String, NewlineIndex>) -> String {
+fn serialize_field_init(field_init: Node, source_indices: Map<String, NewlineIndex>, key_to_id: Map<String, String>) -> String {
   concat(
     "{\"name\": ", json_quote(s: field_init_node_name_at(n: field_init, source_indices: source_indices)),
-    ", \"value\": ", serialize_node(node: field_init_node_value(n: field_init), source_indices: source_indices),
+    ", \"value\": ", serialize_node_ref(node: field_init_node_value(n: field_init), key_to_id: key_to_id),
     "}")
 }
 
-fn serialize_string_part(part: StringPart, source_indices: Map<String, NewlineIndex>) -> String {
+fn serialize_string_part(part: StringPart, source_indices: Map<String, NewlineIndex>, key_to_id: Map<String, String>) -> String {
   match part {
     Text { value: inner } =>
       concat("{\"kind\": \"Text\", \"value\": ", json_quote(s: inner), "}")
     Interpolation { expr: inner } =>
-      concat("{\"kind\": \"Interpolation\", \"expr\": ", serialize_node(node: inner, source_indices: source_indices), "}")
+      concat("{\"kind\": \"Interpolation\", \"expr\": ", serialize_node_ref(node: inner, key_to_id: key_to_id), "}")
   }
 }
 
@@ -409,7 +518,7 @@ fn serialize_call_semantics(value: CallSemantics?) -> String {
   }
 }
 
-fn serialize_method_semantics(value: MethodSemantics?, source_indices: Map<String, NewlineIndex>) -> String {
+fn serialize_method_semantics(value: MethodSemantics?, source_indices: Map<String, NewlineIndex>, key_to_id: Map<String, String>) -> String {
   match value {
     Some { value: PlainMethodSemantics } =>
       "{\"kind\": \"PlainMethodSemantics\"}"
@@ -419,14 +528,14 @@ fn serialize_method_semantics(value: MethodSemantics?, source_indices: Map<Strin
         "{\"kind\": \"AlgebraMethodSemantics\", \"method_name\": ",
         json_quote(s: mn),
         ", \"fold_accumulator_type\": ",
-        json_optional_node(value: fold_accumulator_type, source_indices: source_indices),
+        json_optional_node_ref(value: fold_accumulator_type, key_to_id: key_to_id),
         "}")
     Some { value: ServiceMethodSemantics { service_name: service_name, op_params: op_params } } =>
       concat(
         "{\"kind\": \"ServiceMethodSemantics\", \"service_name\": ",
         json_quote(s: service_name),
         ", \"op_params\": ",
-        json_list(items: op_params |> map(p => serialize_param(param: p, source_indices: source_indices))),
+        json_list(items: op_params |> map(p => serialize_param(param: p, source_indices: source_indices, key_to_id: key_to_id))),
         "}")
     None => "null"
   }
@@ -500,8 +609,8 @@ fn serialize_descent_evidence(de: List<SubValueRelation>?) -> String {
 }
 
 // Serialize expression data. ExprData is now pure metadata; children are
-// serialized uniformly from node.children via serialize_node.
-fn serialize_expr_data(expr_node: Node, source_indices: Map<String, NewlineIndex>) -> String {
+// serialized uniformly from node.children via serialize_node_ref.
+fn serialize_expr_data(expr_node: Node, source_indices: Map<String, NewlineIndex>, key_to_id: Map<String, String>) -> String {
   let ch = expr_node.children
   let name = authored_name_at(source_indices: source_indices, node: expr_node)
   match expr_node.expr_data {
@@ -538,7 +647,7 @@ fn serialize_expr_data(expr_node: Node, source_indices: Map<String, NewlineIndex
           Some { value: inner } => serialize_field_summary(summary: inner)
           None => "null"
         },
-        ", \"children\": ", json_list(items: ch |> map(c => serialize_node(node: c, source_indices: source_indices))),
+        ", \"children\": ", json_list(items: ch |> map(c => serialize_node_ref(node: c, key_to_id: key_to_id))),
         "}")
     ExprCall { call_semantics: call_semantics, descent_evidence: de } =>
       let func = expr_call_func_at(texpr: expr_node, source_indices: source_indices)
@@ -546,94 +655,94 @@ fn serialize_expr_data(expr_node: Node, source_indices: Map<String, NewlineIndex
         "{\"kind\": \"ExprCall\", \"func\": ", json_quote(s: func),
         ", \"call_semantics\": ", serialize_call_semantics(value: call_semantics),
         ", \"descent_evidence\": ", serialize_descent_evidence(de: de),
-        ", \"children\": ", json_list(items: ch |> map(c => serialize_node(node: c, source_indices: source_indices))),
+        ", \"children\": ", json_list(items: ch |> map(c => serialize_node_ref(node: c, key_to_id: key_to_id))),
         "}")
     ExprMethodCall { method_semantics: method_semantics } =>
       let method = expr_method_name_at(texpr: expr_node, source_indices: source_indices)
       concat(
         "{\"kind\": \"ExprMethodCall\", \"method\": ", json_quote(s: method),
-        ", \"method_semantics\": ", serialize_method_semantics(value: method_semantics, source_indices: source_indices),
-        ", \"children\": ", json_list(items: ch |> map(c => serialize_node(node: c, source_indices: source_indices))),
+        ", \"method_semantics\": ", serialize_method_semantics(value: method_semantics, source_indices: source_indices, key_to_id: key_to_id),
+        ", \"children\": ", json_list(items: ch |> map(c => serialize_node_ref(node: c, key_to_id: key_to_id))),
         "}")
     ExprBinOp { op: op, algebra_field: af } =>
       concat(
         "{\"kind\": \"ExprBinOp\", \"op\": ", json_quote(s: bin_op_name(value: op)),
         ", \"algebra_field\": ", match af { Some { value: f } => json_quote(s: algebra_field_kind_name(kind: f))  None => "null" },
-        ", \"children\": ", json_list(items: ch |> map(c => serialize_node(node: c, source_indices: source_indices))),
+        ", \"children\": ", json_list(items: ch |> map(c => serialize_node_ref(node: c, key_to_id: key_to_id))),
         "}")
     ExprUnaryOp { op: op } =>
       concat(
         "{\"kind\": \"ExprUnaryOp\", \"op\": ", json_quote(s: unary_op_name(value: op)),
-        ", \"children\": ", json_list(items: ch |> map(c => serialize_node(node: c, source_indices: source_indices))),
+        ", \"children\": ", json_list(items: ch |> map(c => serialize_node_ref(node: c, key_to_id: key_to_id))),
         "}")
     ExprLambda =>
       let params = lambda_param_names_at(texpr: expr_node, source_indices: source_indices)
       concat(
         "{\"kind\": \"ExprLambda\", \"params\": ", json_list(items: params |> map(p => json_quote(s: p))),
-        ", \"children\": ", json_list(items: ch |> map(c => serialize_node(node: c, source_indices: source_indices))),
+        ", \"children\": ", json_list(items: ch |> map(c => serialize_node_ref(node: c, key_to_id: key_to_id))),
         "}")
     ExprLet =>
       concat(
         "{\"kind\": \"ExprLet\", \"name\": ", json_quote(s: name),
-        ", \"children\": ", json_list(items: ch |> map(c => serialize_node(node: c, source_indices: source_indices))),
+        ", \"children\": ", json_list(items: ch |> map(c => serialize_node_ref(node: c, key_to_id: key_to_id))),
         "}")
     ExprRecordLit { parent_enum: parent_enum } =>
       let type_name = record_lit_type_name_at(texpr: expr_node, source_indices: source_indices)
       concat(
         "{\"kind\": \"ExprRecordLit\", \"type_name\": ", json_optional_string(value: type_name),
         ", \"parent_enum\": ", json_optional_string(value: parent_enum),
-        ", \"children\": ", json_list(items: ch |> map(c => serialize_node(node: c, source_indices: source_indices))),
+        ", \"children\": ", json_list(items: ch |> map(c => serialize_node_ref(node: c, key_to_id: key_to_id))),
         "}")
     ExprForEach =>
       let variable = foreach_variable_at(texpr: expr_node, source_indices: source_indices)
       concat(
         "{\"kind\": \"ExprForEach\", \"variable\": ", json_quote(s: variable),
-        ", \"children\": ", json_list(items: ch |> map(c => serialize_node(node: c, source_indices: source_indices))),
+        ", \"children\": ", json_list(items: ch |> map(c => serialize_node_ref(node: c, key_to_id: key_to_id))),
         "}")
     ExprMatch =>
       concat(
         "{\"kind\": \"ExprMatch\"",
-        ", \"children\": ", json_list(items: ch |> map(c => serialize_node(node: c, source_indices: source_indices))),
+        ", \"children\": ", json_list(items: ch |> map(c => serialize_node_ref(node: c, key_to_id: key_to_id))),
         "}")
     ExprIf =>
       concat(
         "{\"kind\": \"ExprIf\"",
-        ", \"children\": ", json_list(items: ch |> map(c => serialize_node(node: c, source_indices: source_indices))),
+        ", \"children\": ", json_list(items: ch |> map(c => serialize_node_ref(node: c, key_to_id: key_to_id))),
         "}")
     ExprListLit =>
       concat(
         "{\"kind\": \"ExprListLit\"",
-        ", \"children\": ", json_list(items: ch |> map(c => serialize_node(node: c, source_indices: source_indices))),
+        ", \"children\": ", json_list(items: ch |> map(c => serialize_node_ref(node: c, key_to_id: key_to_id))),
         "}")
     ExprStringInterp =>
       concat(
         "{\"kind\": \"ExprStringInterp\"",
-        ", \"children\": ", json_list(items: ch |> map(c => serialize_node(node: c, source_indices: source_indices))),
+        ", \"children\": ", json_list(items: ch |> map(c => serialize_node_ref(node: c, key_to_id: key_to_id))),
         "}")
     ExprBlock =>
       concat(
         "{\"kind\": \"ExprBlock\"",
-        ", \"children\": ", json_list(items: ch |> map(c => serialize_node(node: c, source_indices: source_indices))),
+        ", \"children\": ", json_list(items: ch |> map(c => serialize_node_ref(node: c, key_to_id: key_to_id))),
         "}")
     ExprCast =>
       concat(
         "{\"kind\": \"ExprCast\"",
-        ", \"children\": ", json_list(items: ch |> map(c => serialize_node(node: c, source_indices: source_indices))),
+        ", \"children\": ", json_list(items: ch |> map(c => serialize_node_ref(node: c, key_to_id: key_to_id))),
         "}")
     ExprIndex =>
       concat(
         "{\"kind\": \"ExprIndex\"",
-        ", \"children\": ", json_list(items: ch |> map(c => serialize_node(node: c, source_indices: source_indices))),
+        ", \"children\": ", json_list(items: ch |> map(c => serialize_node_ref(node: c, key_to_id: key_to_id))),
         "}")
     ExprSlice =>
       concat(
         "{\"kind\": \"ExprSlice\"",
-        ", \"children\": ", json_list(items: ch |> map(c => serialize_node(node: c, source_indices: source_indices))),
+        ", \"children\": ", json_list(items: ch |> map(c => serialize_node_ref(node: c, key_to_id: key_to_id))),
         "}")
     ExprReturn =>
       concat(
         "{\"kind\": \"ExprReturn\"",
-        ", \"children\": ", json_list(items: ch |> map(c => serialize_node(node: c, source_indices: source_indices))),
+        ", \"children\": ", json_list(items: ch |> map(c => serialize_node_ref(node: c, key_to_id: key_to_id))),
         "}")
   }
 }
