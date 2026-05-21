@@ -41,11 +41,11 @@ Each layer is a fact model (declared `.dag` data), not code:
 | The seed's comprehension boundary | the **frozen sub-model** — a subset of the `LanguageModel` (§4) | T-32 |
 | The snapshot | the v4 compiler pinned at version N, expressed in the frozen subset | T-32 |
 | The target language | `src/v4/extdeps/languages/rust.dag`; lower, `src/v4/extdeps/languages/machine_code.dag` | `rust.dag` modeled (T-4 rust-slice); `machine_code.dag` is a T-4.13 scaffold |
-| The runtime | the execution substrate — syscall surface, memory model, ABI; `src/v4/extdeps/process.dag` + `src/v4/extdeps/file_system.dag` are its start | both T-4.5 scaffolds (module declaration only) |
+| The runtime | the execution substrate — syscall surface, memory model, ABI; `src/v4/extdeps/posix.dag` + `src/v4/extdeps/file_system.dag` are its start | both T-4.5 scaffolds (module declaration only) |
 | The bootstrap orchestration | `src/v4/workflow/bootstrap.dag` — the staged chain | T-20 scaffold on `main`; staged-chain expansion in flight (#3213) |
 
 Of the layer models the seed projects from, only `rust.dag` is modeled
-today (the T-4 rust-slice); `machine_code.dag`, `process.dag`, and
+today (the T-4 rust-slice); `machine_code.dag`, `posix.dag`, and
 `file_system.dag` are scaffolds (T-4.13 / T-4.5). T-32's deliverable is
 two-fold: the *layer model* — the composition itself, the projection
 edges, the gate — and a precondition that those three scaffold files
@@ -250,6 +250,6 @@ The `.dag` modeling extends from here: the frozen sub-model + the
 circularity's fixed-point equation + witness (§5) extend
 `src/v4/workflow/bootstrap.dag` beyond the staged chain (building on the
 T-20 expansion); the runtime model (§2) is the accumulation of
-`src/v4/extdeps/process.dag` / `src/v4/extdeps/file_system.dag` into a
+`src/v4/extdeps/posix.dag` / `src/v4/extdeps/file_system.dag` into a
 complete execution substrate. None of it dispatches before the operator
 ratifies this layer model as the Phase-1 definition.

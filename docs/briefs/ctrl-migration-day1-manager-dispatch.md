@@ -27,7 +27,7 @@ Once dashboard transport is restored, create these four work items:
    - Gate: each subsystem file names the current ctrl TS authority and the STAGED -> AUTHORITY trigger.
 
 3. **Ctrl-Migration Emission-Targets Mgr — Phase 3 HTTP SQL audit extdeps**
-   - Owns `dsl/extdeps/http/server.dag`, `dsl/extdeps/sql/migration.dag`, and `dsl/extdeps/audit/event.dag`.
+   - Owns `dsl/extdeps/http/server.dag`, `dsl/extdeps/sql/migration.dag`, and `dsl/extdeps/audit/cloudevents.dag`.
    - First output: HTTP server extdeps brief.
    - Gate: no runtime cut-over claims until a subsystem projection consumes the target and parity passes.
 

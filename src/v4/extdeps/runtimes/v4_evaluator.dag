@@ -1,0 +1,27 @@
+// src/v4/extdeps/runtimes/v4_evaluator.dag
+// Scope: Concrete v4 evaluator runtime fact-bundle.
+// Owns: V4EvaluatorRuntime, v4_evaluator_runtime_id.
+// Consumes: v4.std.model_core, v4.std.runtime, v4.std.node.
+// Status: Option-C concrete runtime extdep; std/runtime.dag owns abstract carriers; RuntimeTarget wiring staged.
+
+module v4.extdeps.runtimes.v4_evaluator
+
+import v4.std.model_core { ModelCore }
+import v4.std.node { Symbol }
+import v4.std.runtime {
+  ExecutionSemantics,
+  InterpretationAlgebra,
+  ResourceEffectBoundary,
+  ValueRepresentationModel
+}
+
+data v4_evaluator_runtime_id: Symbol = v4_evaluator_runtime_id
+
+type V4EvaluatorRuntime {
+  runtime_identity: Symbol
+  core: ModelCore
+  values: ValueRepresentationModel
+  interpretation: InterpretationAlgebra
+  execution: ExecutionSemantics
+  boundary: ResourceEffectBoundary
+}

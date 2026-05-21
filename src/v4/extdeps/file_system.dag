@@ -126,7 +126,7 @@ type ModeledFileEffects {
 // Dissolution trigger: wave2-c2-testgen-modeled-file-effects — delete ReadFileRequest,
 // WriteFileRequest, ListDirRequest, FileKindRequest, and FileSystemOperations when
 // v4/lens/testgen.dag CorpusEnumerationRequest.operations is ModeledFileEffects-only.
-// v4.extdeps.process imports AbsolutePath/Filesystem/PosixByteString only (not this table).
+// v4.extdeps.posix imports AbsolutePath/Filesystem/PosixByteString only (not this table).
 type ReadFileRequest {
   filesystem: Filesystem
   path: AbsolutePath

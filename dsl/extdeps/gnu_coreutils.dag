@@ -1,4 +1,4 @@
-// extdeps/coreutils.dag — GNU coreutils we actually depend on.
+// extdeps/gnu_coreutils.dag — GNU coreutils we actually depend on.
 //
 // Spec: https://www.gnu.org/software/coreutils/manual/coreutils.html
 // Version: GNU coreutils 8.x+
@@ -25,7 +25,7 @@
 //   gets full coverage like cargo.dag and git.dag. For now it's
 //   the dependency declaration.
 
-module extdeps.coreutils
+module extdeps.gnu_coreutils
 
 import std.types { NonEmptyStr, FilePath }
 
