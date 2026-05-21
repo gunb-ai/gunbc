@@ -340,10 +340,21 @@ pub fn compose_sub_value_relations(
         },
         SubValueRelation::StrictAxisErased => match (*arg_rel).clone() {
             SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
-            _ => Rc::new(SubValueRelation::StrictAxisErased),
+            SubValueRelation::PreservedValue => Rc::new(SubValueRelation::StrictAxisErased),
+            SubValueRelation::StrictSubValue { .. } => Rc::new(SubValueRelation::StrictAxisErased),
+            SubValueRelation::IteratedSubValue { .. } => {
+                Rc::new(SubValueRelation::StrictAxisErased)
+            }
+            SubValueRelation::ArithmeticDescent { .. } => {
+                Rc::new(SubValueRelation::StrictAxisErased)
+            }
+            SubValueRelation::StrictAxisErased => Rc::new(SubValueRelation::StrictAxisErased),
+            SubValueRelation::NonIncreasingValue => Rc::new(SubValueRelation::NonIncreasingValue),
+            SubValueRelation::MixedTop => Rc::new(SubValueRelation::MixedTop),
         },
         SubValueRelation::MixedTop => match (*arg_rel).clone() {
             SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
+            SubValueRelation::NonIncreasingValue => Rc::new(SubValueRelation::NonIncreasingValue),
             _ => Rc::new(SubValueRelation::MixedTop),
         },
         SubValueRelation::StrictSubValue { .. } => match (*arg_rel).clone() {
