@@ -7,7 +7,7 @@
 // Anchor: docs/design-dissolution-lens.md §5 L1.13.c (status "reserved-
 //         proposed" → promoted-to-substrate (this file) via
 //         node://adhoc-086ab97b-b41 substrate-evolution 5/5).
-// Owns: TableDecisionTreePattern, TableDecisionTreeFact, TableDecisionTreeVerdict.
+// Owns: TableDecisionTreeFact, TableDecisionTreeVerdict.
 // Consumes: v4.std.collection (FiniteSet, TotalMap, TotalPolicy carriers
 //           referenced by the clearing receipt — the lens's *output* names
 //           which substrate carrier should hold the dissolved table), v4.std.node,
@@ -31,26 +31,22 @@ module v4.lens.table_decision_tree
 import v4.std.node { Node, Symbol }
 
 
-// 🟢 closed pattern set — operator-direct refinement 2026-05-21
-// (docs/design-dissolution-lens.md §5 L1.13.c "Fix-confidence" two-pattern
-// carve-out). Pattern A vs Pattern B is inferred from the KeyVocabulary's
-// payload-bearing-ness, not authored separately.
-type TableDecisionTreePattern
-  = TotalMapPattern               // Pattern A: every K-constructor is 0-field; row value-template independent of payload.
-  | TotalPolicyPattern            // Pattern B: ≥1 K-constructor has payload fields the row's value-template projects.
-
-
 // 🟢 verdict — fail-closed default; the lens NEVER fires until the producer-
 // stage dependency (decision_tree_shape) lands. The `TableDissolves` variant
-// carries the migration target (which substrate carrier the function should
-// dissolve to) — reviewer overrides the pattern at the candidate-Diff stage,
-// the lens supplies the default inference.
+// carries the migration target by typed reference: `key_vocabulary` names
+// the closed coproduct K, and Pattern A (`TotalMap<K, V>`) vs Pattern B
+// (`TotalPolicy<K, Context, RowTemplate>`) is DERIVED at consumption from
+// K's `KeyVocabulary` payload-bearing-ness (docs/design-dissolution-lens.md
+// §5 L1.13.c "Fix-confidence"). Pattern is intentionally NOT stored on the
+// verdict — that would create a parallel authority for a fact already
+// derivable from `key_vocabulary` and admit an inconsistent-state surface
+// (Practice 11 / `feedback_parallel_payload_vs_typed_reference_recurring`:
+// reference + derive at consumption, never copy projected fields).
 type TableDecisionTreeVerdict
   = Unrealized                    // producer-stage `decision_tree_shape` not available for this locus.
   | NotATable                     // decision-tree present but escape clause fires (structural divergence / partial table / open vocabulary / non-table dispatch).
   | TableDissolves {              // hard error: fn IS a typed table; substrate should carry it as data.
-      pattern: TableDecisionTreePattern
-      key_vocabulary: Symbol      // identifier of the closed coproduct K resolved by decision_tree_shape.
+      key_vocabulary: Symbol      // identifier of the closed coproduct K resolved by decision_tree_shape; pattern is derived from K's payload-bearing-ness at consumption.
       row_template_type: Symbol   // identifier of the row record type (V for Pattern A; RowTemplate for Pattern B).
     }
 
