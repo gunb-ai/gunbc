@@ -32,8 +32,11 @@ import v4.std.diagnostic {
   Accepted,
   Rejected,
   None,
+  bind_outcome,
   diagnostics_merge,
   diagnostics_singleton,
+  node_locus,
+  outcome_rejected,
   rejected_with_pending
 }
 import v4.std.algebra { FreeMonoid, Empty, Cons }
