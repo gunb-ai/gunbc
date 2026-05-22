@@ -1,6 +1,6 @@
 // src/v4/std/verification.dag
 // Scope: Closed TestClaim schema — assertion-shape coproduct, TestgenTier/Layer, TestClassification, ImpossibleBugClass, T19ManualAnchorKey, T19GeneratedAnchorKey, T19ClaimAnchorKey.
-// Owns: TestClassification ImpossibleBugClass T19ManualAnchorKey T19GeneratedAnchorKey T19ClaimAnchorKey TestClaim
+// Owns: TestClassification ImpossibleBugClass TestClaimCoproductVariant T19ManualAnchorKey T19GeneratedAnchorKey T19ClaimAnchorKey TestClaim
 // Consumes: v4.std.node v4.std.diagnostic
 // Status: T-3 modeled; substrate extension or file split = operator STOP.
 
@@ -101,13 +101,24 @@ type T19ManualAnchorKey
   | T19ManualAnchorAbsent
 
 
+// RULING-1: pretty-much-done — closed TestClaim assertion-arm set for generated coproduct-exhaustiveness anchors.
+// 🟢 coproduct dissolution — LB-P4-3212.
+type TestClaimCoproductVariant
+// 🟢 coproduct dissolution — LB-P4-3212
+  = TestClaimCompilesClaimVariant
+  | TestClaimDiagnosticClaimVariant
+  | TestClaimEqualsClaimVariant
+  | TestClaimRoundTripClaimVariant
+
+
 type T19GeneratedAnchorKey
-  = T19GeneratedCoproductExhaustiveness { omitted_variant: Symbol }
+  = T19GeneratedCoproductExhaustiveness { omitted_variant: TestClaimCoproductVariant }
 
 
 // RULING-1: needs-more-work — claim anchors stay partitioned by manual vs generated authority.
-// 🟡 coproduct dissolution — dissolves when generated TestClaim corpora no longer share the manual TestClaim anchor field.
+// 🟡 coproduct dissolution — consumer:t19-generated-corpus-anchor-field; dissolves when generated TestClaim corpora no longer share TestClaim.t19_anchor with manual rows.
 type T19ClaimAnchorKey
+// 🟡 coproduct dissolution — consumer:t19-generated-corpus-anchor-field
   = T19ManualClaimAnchor { manual_anchor: T19ManualAnchorKey }
   | T19GeneratedClaimAnchor { generated_anchor: T19GeneratedAnchorKey }
 

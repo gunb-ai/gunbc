@@ -62,6 +62,11 @@ import v4.std.verification {
   T19ClaimAnchorKey,
   T19GeneratedClaimAnchor,
   T19GeneratedCoproductExhaustiveness,
+  TestClaimCompilesClaimVariant,
+  TestClaimCoproductVariant,
+  TestClaimDiagnosticClaimVariant,
+  TestClaimEqualsClaimVariant,
+  TestClaimRoundTripClaimVariant,
   T19ManualAnchorAbsent,
   T19ManualAnchorKey,
   T19ManualClaimAnchor,
@@ -130,13 +135,6 @@ type AlgebraLawSubject { algebra: Symbol, inhabitant: Symbol, law: Symbol }
 
 
 type TestgenCoproductSubject { symbol: Symbol }
-
-
-type TestClaimCoproductVariant
-  = TestClaimCompilesClaimVariant
-  | TestClaimDiagnosticClaimVariant
-  | TestClaimEqualsClaimVariant
-  | TestClaimRoundTripClaimVariant
 
 
 type DiagnosticExhaustivenessSubject {
@@ -532,15 +530,12 @@ fn coproduct_exhaustiveness_subject_testclaim_roundtrip() -> DiagnosticExhaustiv
 }
 
 
-fn coproduct_exhaustiveness_subject_from_anchor(omitted_variant: Symbol) -> DiagnosticExhaustivenessSubject {
-  if omitted_variant == t19_coproduct_exhaustiveness_compiles_claim_variant {
-    coproduct_exhaustiveness_subject_testclaim_compiles()
-  } else if omitted_variant == t19_coproduct_exhaustiveness_diagnostic_claim_variant {
-    coproduct_exhaustiveness_subject_testclaim_diagnostic()
-  } else if omitted_variant == t19_coproduct_exhaustiveness_equals_claim_variant {
-    coproduct_exhaustiveness_subject_testclaim_equals()
-  } else {
-    coproduct_exhaustiveness_subject_testclaim_roundtrip()
+fn coproduct_exhaustiveness_subject_from_anchor(omitted_variant: TestClaimCoproductVariant) -> DiagnosticExhaustivenessSubject {
+  match omitted_variant {
+    TestClaimCompilesClaimVariant => coproduct_exhaustiveness_subject_testclaim_compiles()
+    TestClaimDiagnosticClaimVariant => coproduct_exhaustiveness_subject_testclaim_diagnostic()
+    TestClaimEqualsClaimVariant => coproduct_exhaustiveness_subject_testclaim_equals()
+    TestClaimRoundTripClaimVariant => coproduct_exhaustiveness_subject_testclaim_roundtrip()
   }
 }
 
@@ -562,7 +557,7 @@ fn test_claim_coproduct_variant_symbol(variant: TestClaimCoproductVariant) -> Sy
 
 fn coproduct_exhaustiveness_anchor(subject: DiagnosticExhaustivenessSubject) -> T19GeneratedAnchorKey {
   T19GeneratedCoproductExhaustiveness {
-    omitted_variant: test_claim_coproduct_variant_symbol(variant: subject.omitted_variant)
+    omitted_variant: subject.omitted_variant
   }
 }
 
