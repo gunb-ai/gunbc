@@ -24,11 +24,15 @@ import v4.compiler.infer {
 import v4.lens.subsumption {
   DissolutionSubsumption,
   MechanicalReverification,
+  ProducerStageDerivation,
+  emit_rust_name_dispatch_leaf_fix,
+  emit_rust_template_leaf_fix,
   rust_language_model_emit_mechanical_reverification_claim,
+  rust_language_model_emit_root_fix,
   rust_language_model_emit_subsumption
 }
 import v4.std.cardinality { RankingDimension, TerminationProof }
-import v4.std.collection { Map }
+import v4.std.collection { List, Map }
 import v4.std.constraints {
   CanonicalGroundingWitness,
   constraint_property_being_canonical,
@@ -85,9 +89,8 @@ import v4.std.witness { Holds, StructuralPropertyWitness, Witness }
 data rust_language_model_emit_subsumption_receipt_node: Symbol = rust_language_model_emit_subsumption_receipt_node
 data subsumption_root_fix_edge: Symbol = subsumption_root_fix_edge
 data subsumption_first_leaf_edge: Symbol = subsumption_first_leaf_edge
-data subsumption_rest_leaf_count_edge: Symbol = subsumption_rest_leaf_count_edge
+data subsumption_second_leaf_edge: Symbol = subsumption_second_leaf_edge
 data subsumption_mechanical_claim_edge: Symbol = subsumption_mechanical_claim_edge
-data subsumption_expected_rest_leaf_count_one: Symbol = subsumption_expected_rest_leaf_count_one
 data subsumption_runtime_rejected: Symbol = subsumption_runtime_rejected
 data subsumption_descent_dimension: Symbol = subsumption_descent_dimension
 data subsumption_claim_hash: Hash = subsumption_claim_hash
@@ -98,6 +101,14 @@ fn subsumption_symbol_node(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },
     children: []
+  }
+}
+
+
+fn subsumption_second_leaf_node(row: DissolutionSubsumption) -> Node {
+  match first(row.subsumed_fixes.rest) {
+    Some { value: fix } => subsumption_symbol_node(s: fix.id)
+    None => subsumption_symbol_node(s: subsumption_runtime_rejected)
   }
 }
 
@@ -117,8 +128,8 @@ fn subsumption_receipt_node(row: DissolutionSubsumption) -> Node {
             target: subsumption_symbol_node(s: row.subsumed_fixes.first.id)
           },
           Edge {
-            label: Named { name: subsumption_rest_leaf_count_edge },
-            target: subsumption_symbol_node(s: subsumption_expected_rest_leaf_count_one)
+            label: Named { name: subsumption_second_leaf_edge },
+            target: subsumption_second_leaf_node(row: row)
           },
           Edge {
             label: Named { name: subsumption_mechanical_claim_edge },
@@ -145,8 +156,8 @@ fn expected_rust_language_model_emit_receipt_node() -> Node {
         target: subsumption_symbol_node(s: emit_rust_template_leaf_fix)
       },
       Edge {
-        label: Named { name: subsumption_rest_leaf_count_edge },
-        target: subsumption_symbol_node(s: subsumption_expected_rest_leaf_count_one)
+        label: Named { name: subsumption_second_leaf_edge },
+        target: subsumption_symbol_node(s: emit_rust_name_dispatch_leaf_fix)
       },
       Edge {
         label: Named { name: subsumption_mechanical_claim_edge },
