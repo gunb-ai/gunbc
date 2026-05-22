@@ -173,51 +173,14 @@ fn expr_string(expr: &SurfaceExpr) -> &str {
     }
 }
 
-fn yaml_mapping_get<'a>(
-    value: &'a serde_yaml::Value,
-    key: &str,
-    path: &str,
-) -> &'a serde_yaml::Value {
-    let mapping = value
-        .as_mapping()
-        .unwrap_or_else(|| panic!("{path}: expected YAML mapping"));
-    mapping
-        .iter()
-        .find_map(|(k, v)| (k.as_str() == Some(key)).then_some(v))
-        .unwrap_or_else(|| panic!("{path}: missing YAML key `{key}`"))
-}
-
-fn yaml_sequence<'a>(value: &'a serde_yaml::Value, path: &str) -> &'a [serde_yaml::Value] {
-    value
-        .as_sequence()
-        .unwrap_or_else(|| panic!("{path}: expected YAML sequence"))
-}
-
-fn workflow_step<'a>(
-    workflow: &'a serde_yaml::Value,
-    job: &str,
-    step_name: &str,
-) -> &'a serde_yaml::Value {
-    let jobs = yaml_mapping_get(workflow, "jobs", CI_YML_PATH);
-    let job_value = yaml_mapping_get(jobs, job, &format!("{CI_YML_PATH}:jobs"));
-    let steps = yaml_sequence(
-        yaml_mapping_get(job_value, "steps", &format!("{CI_YML_PATH}:jobs.{job}")),
-        &format!("{CI_YML_PATH}:jobs.{job}.steps"),
-    );
-    steps
-        .iter()
-        .find(|step| {
-            yaml_mapping_get(step, "name", &format!("{CI_YML_PATH}:jobs.{job}.steps"))
-                .as_str()
-                == Some(step_name)
-        })
-        .unwrap_or_else(|| panic!("{CI_YML_PATH}: missing `{job}` step `{step_name}`"))
-}
-
-fn workflow_step_string<'a>(step: &'a serde_yaml::Value, key: &str, step_name: &str) -> &'a str {
-    yaml_mapping_get(step, key, &format!("{CI_YML_PATH}:{step_name}"))
-        .as_str()
-        .unwrap_or_else(|| panic!("{CI_YML_PATH}:{step_name}.{key}: expected YAML string"))
+fn workflow_step_block<'a>(workflow_yml: &'a str, step_name: &str) -> &'a str {
+    let marker = format!("    - name: {step_name}");
+    let start = workflow_yml
+        .find(&marker)
+        .unwrap_or_else(|| panic!("{CI_YML_PATH}: missing workflow step `{step_name}`"));
+    let rest = &workflow_yml[start..];
+    let end = rest.find("\n    - name: ").unwrap_or(rest.len());
+    &rest[..end]
 }
 
 #[test]
@@ -292,30 +255,25 @@ fn v4_ci_workflow_consumes_lens_registry_for_lens_ci_signal() {
         "{CI_PATH}: live workflow binding must consume the modeled required-lens policy"
     );
 
-    let workflow =
-        gen_gunbc_ci_workflow_dag::parse_and_validate_github_actions_workflow_yaml(CI_YML)
-            .unwrap_or_else(|e| panic!("{CI_YML_PATH}: parse/validate workflow YAML: {e}"));
+    gen_gunbc_ci_workflow_dag::parse_and_validate_github_actions_workflow_yaml(CI_YML)
+        .unwrap_or_else(|e| panic!("{CI_YML_PATH}: parse/validate workflow YAML: {e}"));
     let smoke_step_name = expr_string(record_body_field(live_signal, "smoke_step_name"));
     let semantic_step_name = expr_string(record_body_field(live_signal, "semantic_step_name"));
     let semantic_target = expr_string(record_body_field(live_signal, "semantic_target"));
-    let smoke_step = workflow_step(&workflow, "ci", smoke_step_name);
-    let semantic_step = workflow_step(&workflow, "ci", semantic_step_name);
-    let smoke_run = workflow_step_string(smoke_step, "run", smoke_step_name);
-    let semantic_if = workflow_step_string(semantic_step, "if", semantic_step_name);
-    let semantic_run = workflow_step_string(semantic_step, "run", semantic_step_name);
+    let smoke_step = workflow_step_block(CI_YML, smoke_step_name);
+    let semantic_step = workflow_step_block(CI_YML, semantic_step_name);
 
     assert!(
-        smoke_run.contains("v4_lens_registry_dag_smoke_test"),
+        smoke_step.contains("run: cargo test -p v3-compiler --test integration v4_lens_registry_dag_smoke_test -- --quiet"),
         "{CI_YML_PATH}: `{smoke_step_name}` must execute this registry/CI binding harness"
     );
     assert!(
-        semantic_if.contains("needs.affected.outputs.v4 == 'true'")
-            && semantic_if.contains("needs.affected.outputs.workflow_policy == 'true'"),
+        semantic_step.contains("if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'"),
         "{CI_YML_PATH}: `{semantic_step_name}` must run for v4 and workflow-policy changes"
     );
     assert!(
-        semantic_run.contains("target/release/v2-compiler compile --source-root src/v4")
-            && semantic_run.contains(&format!("--target {semantic_target}")),
+        semantic_step.contains("run: target/release/v2-compiler compile --source-root src/v4")
+            && semantic_step.contains(&format!("--target {semantic_target}")),
         "{CI_YML_PATH}: `{semantic_step_name}` must execute the modeled Lens-CI semantic signal"
     );
 }
