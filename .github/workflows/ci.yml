@@ -17,20 +17,32 @@ permissions:
 concurrency:
   # One in-flight `ci` workflow per pull request (keyed by PR number). Omitting
   # `head.sha` from the group lets a newer `synchronize` supersede (cancel) an
-  # older run instead of stacking multiple v2→v4 bootstrap compiles on
-  # `ubicloud-standard-*` — correlated with runner shutdown mid-compile under
-  # burst merges / merge-main hops. Push-to-main still keys off `run_id`.
+  # older run instead of stacking multiple v2→v4 bootstrap compiles on the same
+  # runner pool. Push-to-main still keys off `run_id`.
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
 env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: -D warnings
+# Note: self-hosted runners on srv1/srv2 share `$HOME=/home/briansrls/` across
+# all ephemeral GHA worker instances per host. Concurrent jobs racing inside
+# `actions-rust-lang/setup-rust-toolchain` clobber `~/.cargo/bin/rustc`
+# (`Text file busy`) or the default-toolchain pointer (`rustup could not choose
+# a version of cargo to run`). The first step of each rust-using job below
+# (`Isolate toolchain dirs`) writes `CARGO_HOME` / `RUSTUP_HOME` =
+# `$RUNNER_TEMP/{cargo,rustup}` to `$GITHUB_ENV` so each job gets its own
+# toolchain dir. (The `runner` and `env` contexts aren't usable in workflow-
+# or job-level `env:` blocks, so a shell step is the canonical mechanism.)
 jobs:
   fmt:
     if: github.event.pull_request.draft != true
-    runs-on: ubicloud-standard-2
+    runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 15
     steps:
+    - name: Isolate toolchain dirs (srv1/srv2 shared-$HOME concurrent-rustup race)
+      run: |
+        echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
+        echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
     - name: Checkout
       uses: actions/checkout@v4
       with:
@@ -41,6 +53,8 @@ jobs:
         components: rustfmt
         cache: false
         rustflags: ''
+    - name: Pin global rustup default (isolated RUSTUP_HOME has no default toolchain)
+      run: rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
     - name: cargo fmt --all --check
       run: cargo fmt --all --check
   # Affected-set detection — drives gating of v2/v3 jobs (frozen components
@@ -48,7 +62,7 @@ jobs:
   # for trunk verification). Cheap (~30s); other jobs depend on its outputs.
   affected:
     if: github.event.pull_request.draft != true
-    runs-on: ubicloud-standard-2
+    runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 15
     outputs:
       v2: ${{ steps.detect.outputs.v2 }}
@@ -69,10 +83,13 @@ jobs:
   ci:
     if: github.event.pull_request.draft != true
     needs: [affected]
-    # v4-affected PRs use standard-8 for bootstrap compile headroom; script caps CI wait.
-    runs-on: ${{ needs.affected.outputs.v4 == 'true' && 'ubicloud-standard-8' || 'ubicloud-standard-2' }}
+    runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 40
     steps:
+    - name: Isolate toolchain dirs (srv1/srv2 shared-$HOME concurrent-rustup race)
+      run: |
+        echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
+        echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
     - name: Checkout
       uses: actions/checkout@v4
       with:
@@ -133,18 +150,20 @@ jobs:
         components: rustfmt
         cache: false
         rustflags: ''
+    - name: Pin global rustup default (isolated RUSTUP_HOME has no default toolchain)
+      run: rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
     - name: Cache Cargo (ci bootstrap gate)
       uses: actions/cache@v4
       with:
         path: |
-          ~/.cargo/registry/index/
-          ~/.cargo/registry/cache/
-          ~/.cargo/git/db/
+          ${{ runner.temp }}/cargo/registry/index/
+          ${{ runner.temp }}/cargo/registry/cache/
+          ${{ runner.temp }}/cargo/git/db/
           target/
-        key: cargo-ci-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('src/v3/compiler/src/**', 'src/v3/compiler/tests/**') }}
+        key: cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('src/v3/compiler/src/**', 'src/v3/compiler/tests/**') }}
         restore-keys: |
-          cargo-ci-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-
-          cargo-ci-${{ runner.os }}-
+          cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock') }}-
+          cargo-ci-${{ runner.os }}-${{ runner.arch }}-
     - name: v3 bootstrap snapshot freshness gate (--verify)
       if: needs.affected.outputs.v3 == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
       run: cargo run -p v3-compiler --features bootstrap-regen-fresh --bin regen_bootstrap -- --verify
@@ -178,7 +197,7 @@ jobs:
       uses: actions/cache@v4
       with:
         path: target/release/v2-compiler
-        key: v2-compiler-bin-${{ runner.os }}-${{ hashFiles('src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}
+        key: v2-compiler-bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}
     - name: Build v2 compiler (v4 bootstrap / host eval gate)
       if: (needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true') && steps.v4-v2-bin.outputs.cache-hit != 'true'
       run: cargo build -p v2-compiler --release
@@ -238,9 +257,13 @@ jobs:
   v2:
     if: github.event.pull_request.draft != true && needs.affected.outputs.v2 == 'true'
     needs: [affected]
-    runs-on: ubicloud-standard-2
+    runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 30
     steps:
+    - name: Isolate toolchain dirs (srv1/srv2 shared-$HOME concurrent-rustup race)
+      run: |
+        echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
+        echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
     - name: Checkout
       uses: actions/checkout@v4
       with:
@@ -250,18 +273,20 @@ jobs:
       with:
         cache: false
         rustflags: ''
+    - name: Pin global rustup default (isolated RUSTUP_HOME has no default toolchain)
+      run: rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
     - name: Cache Cargo (v2)
       uses: actions/cache@v4
       with:
         path: |
-          ~/.cargo/registry/index/
-          ~/.cargo/registry/cache/
-          ~/.cargo/git/db/
+          ${{ runner.temp }}/cargo/registry/index/
+          ${{ runner.temp }}/cargo/registry/cache/
+          ${{ runner.temp }}/cargo/git/db/
           target/
-        key: cargo-v2-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('src/v2/**') }}
+        key: cargo-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('src/v2/**') }}
         restore-keys: |
-          cargo-v2-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-
-          cargo-v2-${{ runner.os }}-
+          cargo-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock') }}-
+          cargo-v2-${{ runner.os }}-${{ runner.arch }}-
     - name: v2 stage0 freshness gate (--verify)
       run: |
         set -euo pipefail
@@ -270,7 +295,7 @@ jobs:
   v4:
     if: github.event.pull_request.draft != true && needs.affected.outputs.v4 == 'true'
     needs: [affected, ci]
-    runs-on: ubicloud-standard-2
+    runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 5
     steps:
     - name: v4 receipt (bootstrap gate runs in ci job)
@@ -282,9 +307,13 @@ jobs:
   v3:
     if: github.event.pull_request.draft != true && (needs.affected.outputs.v3 == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
     needs: [affected]
-    runs-on: ubicloud-standard-8
+    runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 120
     steps:
+    - name: Isolate toolchain dirs (srv1/srv2 shared-$HOME concurrent-rustup race)
+      run: |
+        echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
+        echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
     - name: Checkout
       uses: actions/checkout@v4
       with:
@@ -295,6 +324,8 @@ jobs:
         components: rustfmt, clippy
         cache: false
         rustflags: ''
+    - name: Pin global rustup default (isolated RUSTUP_HOME has no default toolchain)
+      run: rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
     - name: Setup Zig C toolchain
       uses: goto-bus-stop/setup-zig@v2
       with:
@@ -322,14 +353,14 @@ jobs:
       uses: actions/cache@v4
       with:
         path: |
-          ~/.cargo/registry/index/
-          ~/.cargo/registry/cache/
-          ~/.cargo/git/db/
+          ${{ runner.temp }}/cargo/registry/index/
+          ${{ runner.temp }}/cargo/registry/cache/
+          ${{ runner.temp }}/cargo/git/db/
           target/
-        key: cargo-v3-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('src/v3/compiler/src/**', 'src/v3/compiler/tests/**') }}
+        key: cargo-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('src/v3/compiler/src/**', 'src/v3/compiler/tests/**') }}
         restore-keys: |
-          cargo-v3-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-
-          cargo-v3-${{ runner.os }}-
+          cargo-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock') }}-
+          cargo-v3-${{ runner.os }}-${{ runner.arch }}-
     - name: Build ExecuteCommand unshare helper
       run: cargo build -p execute-command-bootstrap
     - name: Prebuild v3 integration test binary (lane2d wall-clock denominator)
@@ -472,13 +503,17 @@ jobs:
       run: scripts/check-banked-dissolutions.sh
   self_host_ratchet:
     if: ${{ always() && github.event.pull_request.draft != true && (needs.affected.outputs.v3 == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}
-    runs-on: ubicloud-standard-8
+    runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 60
     needs:
     - affected
     - v3
     continue-on-error: true
     steps:
+    - name: Isolate toolchain dirs (srv1/srv2 shared-$HOME concurrent-rustup race)
+      run: |
+        echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
+        echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
     - name: Validate gate evidence (fail-closed under v3 failure; tolerates v3 skipped)
       run: |
         echo "Gate evidence: v3.result=${{ needs.v3.result }}"
@@ -513,19 +548,22 @@ jobs:
       with:
         cache: false
         rustflags: ''
+    - name: Pin global rustup default (isolated RUSTUP_HOME has no default toolchain)
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      run: rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
     - name: Cache Cargo (self_host_ratchet)
       if: github.event_name == 'push' && github.ref == 'refs/heads/main'
       uses: actions/cache@v4
       with:
         path: |
-          ~/.cargo/registry/index/
-          ~/.cargo/registry/cache/
-          ~/.cargo/git/db/
+          ${{ runner.temp }}/cargo/registry/index/
+          ${{ runner.temp }}/cargo/registry/cache/
+          ${{ runner.temp }}/cargo/git/db/
           target/
-        key: cargo-self-host-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('src/v3/compiler/**') }}
+        key: cargo-self-host-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('src/v3/compiler/**') }}
         restore-keys: |
-          cargo-self-host-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-
-          cargo-self-host-${{ runner.os }}-
+          cargo-self-host-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock') }}-
+          cargo-self-host-${{ runner.os }}-${{ runner.arch }}-
     - name: DB-8 determinism_test (5× emit matrix)
       if: github.event_name == 'push' && github.ref == 'refs/heads/main'
       continue-on-error: true

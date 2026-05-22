@@ -1,0 +1,202 @@
+// src/v4/lens/edit_locus.dag
+// Scope: git diff name-only paths → substrate Node edit_locus for affected_set (T-21 wire).
+// Owns: RepoPath, GitDiffNameOnly, PathRegex, EditLocusBinding, EditLocusRead,
+//       resolve_edit_locus, affected_set_reading_from_git_diff.
+// Consumes: v4.compiler.infer, v4.lens.affected_set, v4.std.algebra,
+//           v4.std.collection, v4.std.diagnostic, v4.std.node, v4.std.text, v4.std.witness.
+// Status: Wave-0 — path-regex match authority injected via EditLocusRead until
+//   Q-Regex-Primitive; dissolves scripts/detect-affected-components.sh path buckets.
+//   NodeArtifactProvenance→locus is a separate future wire (P2 single authority).
+
+module v4.lens.edit_locus
+
+import v4.compiler.infer { InferredTree }
+import v4.lens.affected_set { AffectedSetReading, affected_set }
+import v4.std.algebra { Cons, Empty, FreeMonoid, count_equal, length }
+import v4.std.collection { List, list_append }
+import v4.std.diagnostic {
+  Diagnostic,
+  ExternalContractUnknown,
+  Unavailable,
+  node_locus
+}
+import v4.std.node { Conj, Node, Symbol, TypeNode }
+import v4.std.text { String }
+import v4.std.witness { Holds, Violates, Witness }
+
+
+// RULING-1: 🟢 pretty-much-done — single repo-path carrier (String = Artifact.file_path authority).
+// Git `name-only` paths and artifact provenance paths share `RepoPath`; no Symbol/String bridge.
+type RepoPath = String
+
+// RULING-1: 🟢 pretty-much-done — structural mirror of `git diff --name-only`.
+type GitDiffNameOnly {
+  changed_paths: List<RepoPath>
+}
+
+// RULING-1: 🟡 needs-more-work — path-regex pattern id until Q-Regex-Primitive.
+// Match semantics live in EditLocusRead until regex substrate lands.
+type PathRegex = Symbol
+
+// RULING-1: 🟢 pretty-much-done — canonical Wave-0 authority: path-regex pattern → edit_locus Node.
+type EditLocusBinding {
+  pattern: PathRegex
+  locus: Node
+}
+
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) —
+// feature: Q-Regex-Primitive — bind: gunbc#3560 T-21 — dissolve-on-arrival: replace
+// injected `path_regex_matches` with substrate regex primitive; forbidden: hand-maintained
+// path-regex in workflow YAML (Gate #103).
+type EditLocusRead {
+  path_regex_matches: fn(RepoPath, PathRegex) -> Bool
+}
+
+data edit_locus_reason_no_match: Symbol = edit_locus_reason_no_match
+data edit_locus_reason_ambiguous: Symbol = edit_locus_reason_ambiguous
+
+
+fn edit_locus_no_match_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: edit_locus_reason_no_match,
+    at: node_locus(node: Node {
+      kind: TypeNode { connective: Conj },
+      children: []
+    }),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+
+fn edit_locus_ambiguous_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: edit_locus_reason_ambiguous,
+    at: node_locus(node: Node {
+      kind: TypeNode { connective: Conj },
+      children: []
+    }),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+
+fn node_eq(left: Node, right: Node) -> Bool {
+  left == right
+}
+
+
+fn push_locus_if_absent(acc: FreeMonoid<Node>, locus: Node) -> FreeMonoid<Node> {
+  if count_equal(xs: acc, item: locus, eq: node_eq) == 0 {
+    list_append(left: acc, right: Cons { head: locus, tail: Empty })
+  } else {
+    acc
+  }
+}
+
+
+fn loci_from_bindings_for_path(
+  read: EditLocusRead,
+  changed: RepoPath,
+  bindings: FreeMonoid<EditLocusBinding>,
+  acc: FreeMonoid<Node>
+) -> FreeMonoid<Node> {
+  match bindings {
+    Empty => acc
+    Cons { head: binding, tail: rest } =>
+      let acc2 = if read.path_regex_matches(changed: changed, pattern: binding.pattern) {
+        push_locus_if_absent(acc: acc, locus: binding.locus)
+      } else {
+        acc
+      }
+      loci_from_bindings_for_path(
+        read: read,
+        changed: changed,
+        bindings: rest,
+        acc: acc2
+      )
+  }
+}
+
+
+fn collect_edit_loci(
+  read: EditLocusRead,
+  git_diff: GitDiffNameOnly,
+  bindings: FreeMonoid<EditLocusBinding>
+) -> FreeMonoid<Node> {
+  collect_edit_loci_on_paths(
+    read: read,
+    changed_paths: git_diff.changed_paths,
+    bindings: bindings,
+    acc: Empty
+  )
+}
+
+
+fn collect_edit_loci_on_paths(
+  read: EditLocusRead,
+  changed_paths: FreeMonoid<RepoPath>,
+  bindings: FreeMonoid<EditLocusBinding>,
+  acc: FreeMonoid<Node>
+) -> FreeMonoid<Node> {
+  match changed_paths {
+    Empty => acc
+    Cons { head: changed, tail: rest } =>
+      let with_bindings = loci_from_bindings_for_path(
+        read: read,
+        changed: changed,
+        bindings: bindings,
+        acc: acc
+      )
+      collect_edit_loci_on_paths(
+        read: read,
+        changed_paths: rest,
+        bindings: bindings,
+        acc: with_bindings
+      )
+  }
+}
+
+
+fn resolve_edit_locus(
+  read: EditLocusRead,
+  git_diff: GitDiffNameOnly,
+  bindings: FreeMonoid<EditLocusBinding>
+) -> Witness<Node> {
+  let loci = collect_edit_loci(
+    read: read,
+    git_diff: git_diff,
+    bindings: bindings
+  )
+  match length(xs: loci) {
+    0 =>
+      Violates { diagnostic: edit_locus_no_match_diagnostic() }
+    1 =>
+      match loci {
+        Cons { head: head, tail: _ } =>
+          Holds { value: head }
+        Empty =>
+          Violates { diagnostic: edit_locus_no_match_diagnostic() }
+      }
+    _ =>
+      Violates { diagnostic: edit_locus_ambiguous_diagnostic() }
+  }
+}
+
+
+fn affected_set_reading_from_git_diff(
+  edit_read: EditLocusRead,
+  graph: InferredTree,
+  git_diff: GitDiffNameOnly,
+  bindings: FreeMonoid<EditLocusBinding>
+) -> Witness<AffectedSetReading> {
+  match resolve_edit_locus(
+    read: edit_read,
+    git_diff: git_diff,
+    bindings: bindings
+  ) {
+    Holds { value: locus } =>
+      Holds { value: affected_set(graph: graph, edit_locus: locus) }
+    Violates { diagnostic: d } =>
+      Violates { diagnostic: d }
+  }
+}
