@@ -290,8 +290,8 @@ fn shrink_factor_eq(a: ShrinkFactor, b: ShrinkFactor) -> Bool {
   }
 }
 
-// BoundedMeetSemilattice meet/join — mirrored from `dsl/std/induction.dag`.
-// See that file for ordering, law list, and Inc-split rationale.
+// Projection-sound merge helpers — mirrored from `dsl/std/induction.dag`.
+// See that file for ordering, operational properties, and Inc-split rationale.
 
 fn sub_value_structural_eq(a: SubValueRelation, b: SubValueRelation) -> Bool {
   match a {
@@ -397,12 +397,8 @@ fn join_sub_value(a: SubValueRelation, b: SubValueRelation) -> SubValueRelation 
   }
 }
 
-// BoundedMeetSemilattice (comment/marker only — not a `std/algebra` substrate type).
-// Meet is NOT GLB for MixedTop: meet(MixedTop, X) saturates at NonIncreasingValue for
-// projection-soundness; MixedTop remains join-⊤. See `dsl/std/induction.dag`.
-//
-// 🟡 P5 STAGE0-GENERATOR-GAP. No typed lattice witness until stage0 handles `Rc`-wrapped
-// carriers; `meet_sub_value` / `join_sub_value` are the sole authority (ROADMAP.md:390).
+// Merge helpers only — not a `std/algebra` inhabitance. Meet is NOT GLB for MixedTop.
+// See `dsl/std/induction.dag` for operational properties and P5 generator-gap note.
 
 
 // =========================================================================

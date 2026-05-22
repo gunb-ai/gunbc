@@ -2,7 +2,7 @@
 //! cost-relevant `ShrinkFactor` when field or param keys align (PR #726 review).
 //!
 //! PATH-2-FULL → option (A) Inc-split (operator-ratified 2026-05-21): SubValueRelation
-//! inhabits a lawful 7-element `BoundedMeetSemilattice` (plus `SubValueUnknown` ⊥). The two top
+//! merge algebra over seven lawful inhabitants (plus `SubValueUnknown` ⊥). The two top
 //! inhabitants — `StrictAxisErased` (above strict-style witnesses, proj=Strict) and
 //! `MixedTop` (overall join-⊤, proj=NonIncreasing) — resolve the codex #15892 vs #15942
 //! contradiction that a single Inc top could not satisfy: split joins by whether the
@@ -142,7 +142,7 @@ fn meet_join_arithmetic_same_param_mismatched_factors_lands_in_lawful_lattice() 
 
 #[test]
 fn lattice_idempotence_on_non_parameterized_variants() {
-    // BoundedMeetSemilattice idempotence: meet(a, a) = a, join(a, a) = a for every inhabitant.
+    // Merge-helper idempotence: meet(a, a) = a, join(a, a) = a for every inhabitant.
     // The non-parameterised variants (PreservedValue, NonIncreasingValue, StrictAxisErased,
     // MixedTop, SubValueUnknown) have no payload but still need reflexive structural equality
     // so sub_value_structural_eq's short-circuit fires; without it, meet(Preserved, Preserved)
@@ -225,7 +225,7 @@ fn meet_strict_axis_erased_with_preserved_drops_to_non_increasing() {
 fn meet_mixed_top_drops_to_non_increasing() {
     // MixedTop is join-⊤ only. meet(MixedTop, X) must not return strict-style X — that
     // would strengthen proj(meet) from NonIncreasing (proj MixedTop) to Strict. The
-    // BoundedMeetSemilattice meet drops to NonIncreasingValue for every distinct pair
+    // Projection-sound meet drops to NonIncreasingValue for every distinct pair
     // involving MixedTop (idempotence on MixedTop itself is unchanged).
     let field = dummy_field();
     let mixed = Rc::new(SubValueRelation::MixedTop);

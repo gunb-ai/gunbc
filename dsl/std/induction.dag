@@ -196,8 +196,9 @@ fn inductive_field_to_dimension(field: InductiveField, param: String) -> Ranking
 // 🟡 MIXED. Structural descent via `InductiveField` and proof-grade `ShrinkFactor`
 // (`std.computation`); `ArithmeticDescent` names a parameter; `SubValueUnknown` is the fail-closed sink
 // and lattice bottom; `NonIncreasingValue` / `StrictAxisErased` / `MixedTop` close the lattice so
-// meet/join over the seven lawful inhabitants form a BoundedMeetSemilattice (operator-ratified
-// option-(A) split, 2026-05-21 — see "Inc-split rationale" below). The split satisfies:
+// meet/join over the seven lawful inhabitants are projection-sound merge helpers only — not a
+// `std/algebra` inhabitance (operator-ratified option-(A) split, 2026-05-21; see Inc-split below).
+// The split satisfies:
 //   - codex #15942 join-projection-safety FULLY: `join(PreservedValue, StrictSubValue{f}) = MixedTop`,
 //     `proj(MixedTop) = NonIncreasing`, never fabricates Strict from a non-strict join operand.
 //   - codex #15892 meet-monotonicity WITHIN the strict cone: `meet(StrictAxisErased, Strict_f) = Strict_f`,
@@ -419,11 +420,11 @@ fn sub_value_level(r: SubValueRelation) -> Int {
   }
 }
 
-// Projection-sound meet over the 7 lawful inhabitants plus the ⊥ sink (BoundedMeetSemilattice
-// framing — not a true GLB when MixedTop is involved). Encodes the Hasse diagram in the file
-// header. The strict-cone (StrictAxisErased over strict witnesses) lets meet(SAE, Strict_f)
-// return Strict_f without strengthening evidence; mixed pairs and any pair with MixedTop drop
-// to NonIncreasingValue.
+// Projection-sound meet over the 7 lawful inhabitants plus the ⊥ sink. Not a GLB when MixedTop
+// is involved — see merge-helper properties below. Encodes the Hasse diagram in the file header.
+// The strict-cone (StrictAxisErased over strict witnesses) lets meet(SAE, Strict_f) return
+// Strict_f without strengthening evidence; mixed pairs and any pair with MixedTop drop to
+// NonIncreasingValue.
 fn meet_sub_value(a: SubValueRelation, b: SubValueRelation) -> SubValueRelation {
   if sub_value_structural_eq(a: a, b: b) { a }
   else {
@@ -495,11 +496,12 @@ fn join_sub_value(a: SubValueRelation, b: SubValueRelation) -> SubValueRelation 
   }
 }
 
-// SubValueRelation merge algebra — documented as BoundedMeetSemilattice (comment/marker
-// only; no `std/algebra` substrate type). Meet is NOT the largest-lower-bound for MixedTop:
-// projection-soundness requires meet-monotonicity, so meet(MixedTop, X) saturates at
-// NonIncreasingValue while MixedTop remains join-⊤. Meet-side laws (verified by case
-// analysis over `sub_value_level` + `sub_value_structural_eq`):
+// SubValueRelation merge helpers — `meet_sub_value` / `join_sub_value` are the sole authority
+// (no `BoundedLattice` / algebra inhabitance in `std/algebra.dag` until ROADMAP.md:390).
+// Meet is NOT GLB for MixedTop: projection-soundness requires meet-monotonicity, so
+// meet(MixedTop, X) saturates at NonIncreasingValue while MixedTop remains join-⊤.
+// Operational properties verified by case analysis over `sub_value_level` +
+// `sub_value_structural_eq`:
 //   - Idempotence: meet(a, a) = a; join(a, a) = a — `sub_value_structural_eq` short-circuit
 //     handles parameterised structural witnesses; non-parametric variants are caught by
 //     the level-match arms.
@@ -520,9 +522,9 @@ fn join_sub_value(a: SubValueRelation, b: SubValueRelation) -> SubValueRelation 
 // `StrictAxisErased` and `MixedTop` resolve the codex #15892 vs #15942 contradiction that a
 // single `IncomparableValue` top could not satisfy. See file header for the Inc-split rationale.
 //
-// 🟡 P5 STAGE0-GENERATOR-GAP. No typed `BoundedLattice` / `BoundedMeetSemilattice` witness for
-// this carrier until the stage0 Rust emitter handles `Rc`-wrapped structural variants.
-// Until then, `meet_sub_value` / `join_sub_value` are the sole authority (ROADMAP.md:390).
+// 🟡 P5 STAGE0-GENERATOR-GAP. No typed `BoundedLattice` witness for this carrier until the
+// stage0 Rust emitter handles `Rc`-wrapped structural variants. Until then, the free
+// functions above are the sole authority (ROADMAP.md:390).
 
 
 // =========================================================================
