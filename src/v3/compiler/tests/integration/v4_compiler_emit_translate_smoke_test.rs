@@ -35,6 +35,11 @@ const RUST_LANGUAGE_DAG: &str = include_str!("../../../../v4/extdeps/languages/r
 const RUST_LANGUAGE_PATH: &str = "src/v4/extdeps/languages/rust.dag";
 const JAVA_LANGUAGE_DAG: &str = include_str!("../../../../v4/extdeps/languages/java.dag");
 const JAVA_LANGUAGE_PATH: &str = "src/v4/extdeps/languages/java.dag";
+const GO_LANGUAGE_DAG: &str = include_str!("../../../../v4/extdeps/languages/go.dag");
+const GO_LANGUAGE_PATH: &str = "src/v4/extdeps/languages/go.dag";
+const GO_ANCHOR_DAG: &str =
+    include_str!("../../../../v4/test/claim/manual/go_language_model_anchor.dag");
+const GO_ANCHOR_PATH: &str = "src/v4/test/claim/manual/go_language_model_anchor.dag";
 const MVP1_CLAIM_DAG: &str =
     include_str!("../../../../v4/test/claim/manual/mvp1_rust_add_translate.dag");
 const MVP1_CLAIM_PATH: &str = "src/v4/test/claim/manual/mvp1_rust_add_translate.dag";
@@ -211,6 +216,37 @@ fn v4_java_language_model_declares_t11_translation_rules() {
         surface_declares_fn(&module, "java_mvp1_translation_rules_node"),
         "{JAVA_LANGUAGE_PATH}: must project MVP-1 Java translation rules into the target model"
     );
+}
+
+#[test]
+fn v4_go_language_model_tokenizes_and_parses() {
+    let _module = parse_module(GO_LANGUAGE_DAG, GO_LANGUAGE_PATH);
+}
+
+#[test]
+fn v4_go_language_model_declares_wave1_carriers() {
+    let module = parse_module(GO_LANGUAGE_DAG, GO_LANGUAGE_PATH);
+    assert!(
+        surface_declares_type(&module, "GoLanguageModel"),
+        "{GO_LANGUAGE_PATH}: must declare GoLanguageModel carrier"
+    );
+    assert!(
+        surface_declares_fn(&module, "go_language_model_wave1"),
+        "{GO_LANGUAGE_PATH}: must declare go_language_model_wave1"
+    );
+    assert!(
+        surface_declares_fn(&module, "go_model_core_wave1"),
+        "{GO_LANGUAGE_PATH}: must declare go_model_core_wave1"
+    );
+    assert!(
+        import_includes_name(&module, &["v4", "std", "model_core"], "ModelCore"),
+        "{GO_LANGUAGE_PATH}: must import ModelCore from v4.std.model_core"
+    );
+}
+
+#[test]
+fn v4_go_language_model_anchor_tokenizes_and_parses() {
+    let _module = parse_module(GO_ANCHOR_DAG, GO_ANCHOR_PATH);
 }
 
 #[test]
