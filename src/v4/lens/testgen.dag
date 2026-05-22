@@ -513,7 +513,7 @@ fn testgen_emit_refinement_preservation_claim(
       Accepted {
         value: EqualsClaim {
           label: label,
-          t19_anchor: anchor,
+          t19_anchor: t19_manual_claim_anchor(anchor: anchor),
           lhs: refinement_preservation_list_node(
             xs: refined_base(r: subject.refined)
           ),

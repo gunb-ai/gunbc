@@ -319,6 +319,7 @@ fn t19_claim_corpus_has_no_direct_manual_anchor_assignments() {
     let root = workspace_root().join("src/v4/test/claim");
     let mut dag_files = Vec::new();
     collect_dag_files(&root, &mut dag_files);
+    dag_files.push(workspace_root().join("src/v4/lens/testgen.dag"));
 
     let mut offenders = Vec::new();
     for path in dag_files {
