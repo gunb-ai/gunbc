@@ -90,7 +90,7 @@ fn t19_coproduct_exhaustiveness_generated_claim_parse_and_witnesses_present() {
             && TESTGEN_DAG.contains("fn testgen_scheduled_coproduct_exhaustiveness_generators")
             && TESTGEN_DAG.contains("slot: DiagnosticExhaustiveness {")
             && TESTGEN_DAG.contains("value: DiagnosticClaim {")
-            && TESTGEN_DAG.contains("t19_anchor: t19_generated_claim_anchor(anchor: T19GeneratedCoproductExhaustiveness {})"),
+            && TESTGEN_DAG.contains("t19_anchor: t19_generated_claim_anchor(anchor: coproduct_exhaustiveness_anchor(subject: subject))"),
         "T-19 DiagnosticExhaustiveness must emit coproduct-exhaustiveness TestClaim data from lens/testgen"
     );
     assert!(
