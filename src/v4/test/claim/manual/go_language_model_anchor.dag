@@ -1,0 +1,19 @@
+// src/v4/test/claim/manual/go_language_model_anchor.dag
+// Scope: T-4 compile anchor — go.dag LanguageModel + ModelCore wave-1.
+// Owns: go_anchor_language_model, go_anchor_model_core.
+// Consumes: extdeps/languages/go.dag.
+// Status: compile-only anchor.
+
+module v4.test.claim.manual.go_language_model_anchor
+
+import v4.extdeps.languages.go {
+  GoLanguageModel,
+  go_language_model_wave1,
+  go_model_core_wave1
+}
+import v4.std.model_core { ModelCore }
+
+type go_anchor_language_model = GoLanguageModel
+
+data go_anchor_wave1: go_anchor_language_model = go_language_model_wave1()
+data go_anchor_core: ModelCore = go_model_core_wave1()
