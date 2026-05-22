@@ -139,10 +139,10 @@ jobs:
           ~/.cargo/registry/cache/
           ~/.cargo/git/db/
           target/
-        key: cargo-ci-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('src/v3/compiler/src/**', 'src/v3/compiler/tests/**') }}
+        key: cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('src/v3/compiler/src/**', 'src/v3/compiler/tests/**') }}
         restore-keys: |
-          cargo-ci-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-
-          cargo-ci-${{ runner.os }}-
+          cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock') }}-
+          cargo-ci-${{ runner.os }}-${{ runner.arch }}-
     - name: v3 bootstrap snapshot freshness gate (--verify)
       if: needs.affected.outputs.v3 == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
       run: cargo run -p v3-compiler --features bootstrap-regen-fresh --bin regen_bootstrap -- --verify
@@ -176,7 +176,7 @@ jobs:
       uses: actions/cache@v4
       with:
         path: target/release/v2-compiler
-        key: v2-compiler-bin-${{ runner.os }}-${{ hashFiles('src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}
+        key: v2-compiler-bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}
     - name: Build v2 compiler (v4 bootstrap / host eval gate)
       if: (needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true') && steps.v4-v2-bin.outputs.cache-hit != 'true'
       run: cargo build -p v2-compiler --release
@@ -256,10 +256,10 @@ jobs:
           ~/.cargo/registry/cache/
           ~/.cargo/git/db/
           target/
-        key: cargo-v2-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('src/v2/**') }}
+        key: cargo-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('src/v2/**') }}
         restore-keys: |
-          cargo-v2-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-
-          cargo-v2-${{ runner.os }}-
+          cargo-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock') }}-
+          cargo-v2-${{ runner.os }}-${{ runner.arch }}-
     - name: v2 stage0 freshness gate (--verify)
       run: |
         set -euo pipefail
@@ -324,10 +324,10 @@ jobs:
           ~/.cargo/registry/cache/
           ~/.cargo/git/db/
           target/
-        key: cargo-v3-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('src/v3/compiler/src/**', 'src/v3/compiler/tests/**') }}
+        key: cargo-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('src/v3/compiler/src/**', 'src/v3/compiler/tests/**') }}
         restore-keys: |
-          cargo-v3-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-
-          cargo-v3-${{ runner.os }}-
+          cargo-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock') }}-
+          cargo-v3-${{ runner.os }}-${{ runner.arch }}-
     - name: Build ExecuteCommand unshare helper
       run: cargo build -p execute-command-bootstrap
     - name: Prebuild v3 integration test binary (lane2d wall-clock denominator)
@@ -520,10 +520,10 @@ jobs:
           ~/.cargo/registry/cache/
           ~/.cargo/git/db/
           target/
-        key: cargo-self-host-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('src/v3/compiler/**') }}
+        key: cargo-self-host-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('src/v3/compiler/**') }}
         restore-keys: |
-          cargo-self-host-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-
-          cargo-self-host-${{ runner.os }}-
+          cargo-self-host-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock') }}-
+          cargo-self-host-${{ runner.os }}-${{ runner.arch }}-
     - name: DB-8 determinism_test (5× emit matrix)
       if: github.event_name == 'push' && github.ref == 'refs/heads/main'
       continue-on-error: true

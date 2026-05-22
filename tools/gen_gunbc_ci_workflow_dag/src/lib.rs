@@ -392,9 +392,14 @@ fn emit_runs_on(v: &Value) -> Result<String, Box<dyn std::error::Error>> {
             let s = it.as_str().ok_or("runs-on sequence entry must be string")?;
             labels.push(dag_string(s));
         }
-        return Ok(format!("SelfHosted {{ labels: {} }}", emit_list_literal(&labels)));
+        return Ok(format!(
+            "SelfHosted {{ labels: {} }}",
+            emit_list_literal(&labels)
+        ));
     }
-    let s = v.as_str().ok_or("runs-on must be string or sequence of strings")?;
+    let s = v
+        .as_str()
+        .ok_or("runs-on must be string or sequence of strings")?;
     if s.starts_with("${{") {
         return Ok(format!(
             "RunsOnExpression {{ expression: {} }}",
