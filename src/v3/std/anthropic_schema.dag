@@ -46,24 +46,14 @@ type AnthropicChatMessage
   = UserMessage      { content: List<AnthropicUserContentBlock> }
   | AssistantMessage { content: List<AnthropicAssistantContentBlock> }
 
-// 🟢 TERMINAL shared content-block coordinate mirror for tool-result nested
-// content. The v2 source imports these from `dsl/extdeps/llm/llm.dag`; this
-// v3 file mirrors the reachable type surface directly because it is a
-// self-contained Anthropic callable precursor. The v2 `Base64Image.data`
-// label is mirrored as `base64` because `data` is a v3 keyword.
+// 🟡 SCAFFOLD — same row/disposition as `dsl/extdeps/llm/anthropic.dag` (`ImageSource`);
+// v2 `Base64Image.data` mirrored as `base64` (v3 keyword).
 type ImageSource
   = Base64Image {
       media_type: String
       base64: String
     }
   | UrlImage { url: String }
-
-// Cross-provider message-body coordinate mirrored from `dsl/extdeps/llm/llm.dag`.
-// The v3 bootstrap loads `anthropic_schema.dag` without importing `llm.dag`;
-// keep this twin so `shared_content_block_lockstep` pins the shared surface.
-type ContentBlock
-  = TextContent { text: String }
-  | ImageContent { source: ImageSource }
 
 // 🟢 TERMINAL — same row as `dsl/extdeps/llm/anthropic.dag` (`CacheControl`);
 // referenced from nested tool-result `AnthropicSearchResultBlock.cache_control`.

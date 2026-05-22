@@ -7,7 +7,11 @@
 module v4.extdeps.languages.lean
 
 
+<<<<<<< HEAD
 import v4.std.collection { List, Map, Set }
+=======
+import v4.std.collection { List, Map, Set, list_snoc_item }
+>>>>>>> origin/main
 import v4.std.logic { Bool, bool_boolean_algebra }
 import v4.std.algebra { BooleanAlgebra, fold_list }
 import v4.std.model_core {
@@ -447,16 +451,32 @@ fn lean_inhabitant_int32_node() -> Node {
 }
 
 
-fn lean_list_snoc_item<T>(xs: List<T>, item: T) -> List<T> {
-  fold_list(
-    xs: xs,
-    empty: Cons { head: item, tail: Empty },
-    cons: fn(rest, existing) {
-      Cons { head: existing, tail: rest }
-    }
+fn lean_primitive_fact_map_4(
+  axis0: Symbol,
+  fact0: Node,
+  axis1: Symbol,
+  fact1: Node,
+  axis2: Symbol,
+  fact2: Node,
+  axis3: Symbol,
+  fact3: Node
+) -> Map<Symbol, Node> {
+  map_insert(
+    map_insert(
+      map_insert(
+        map_insert(empty_map(), axis0, fact0),
+        axis1,
+        fact1
+      ),
+      axis2,
+      fact2
+    ),
+    axis3,
+    fact3
   )
 }
 
+<<<<<<< HEAD
 
 fn lean_primitive_fact_map_4(
   axis0: Symbol,
@@ -483,6 +503,8 @@ fn lean_primitive_fact_map_4(
   )
 }
 
+=======
+>>>>>>> origin/main
 fn lean_primitive_fact_map_2(
   axis0: Symbol,
   fact0: Node,
@@ -530,7 +552,7 @@ fn lean_wave1_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
     xs: lean_primitive_facts_catalog,
     empty: Empty,
     cons: fn(acc, facts) {
-      lean_list_snoc_item(
+      list_snoc_item(
         xs: acc,
         item: lean_primitive_bundle_from_facts(facts: facts)
       )

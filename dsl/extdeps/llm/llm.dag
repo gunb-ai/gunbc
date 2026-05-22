@@ -1,73 +1,16 @@
-// extdeps/llm/core.dag -- "What is an LLM API?"
+// extdeps/llm/llm.dag — cross-provider LLM facts only.
 //
-// Universal message protocol types shared across Anthropic, OpenAI,
-// and any future LLM provider. Covers the conversation primitive,
-// not provider-specific features.
+// Provider-shaped types live in discrete homes:
+//   extdeps/llm/anthropic.dag — Anthropic Messages API
+//   extdeps/llm/openai.dag    — OpenAI Chat Completions / Responses
 //
-// Complements extdeps/llm/pricing.dag (which covers model specs and pricing).
-//
-// Consumers:
-//   extdeps/llm/anthropic.dag -- Anthropic-specific content blocks, tools
-//   extdeps/llm/openai.dag    -- OpenAI-specific response formats, tool choice
-//   services/llm/*            -- transport wiring
+// Land a row here only when the fact is structurally shared across providers.
 
 module extdeps.llm.llm
 
 import std.serialization { VariantEncoding, StringVariant, VariantNaming, SnakeCase }
 
-// Wire contract: LLM APIs return enum values as snake_case strings ("user", "end_turn").
-// Shared across LLM provider modules (anthropic, openai) — each must declare its own
-// module-scoped wire_contract, but the value is the single authority here.
+// Wire contract: Anthropic and OpenAI APIs return enum values as snake_case strings.
+// Single authority for the shared `VariantEncoding` value; each provider module binds
+// its own module-scoped `wire_contract` name for the emitter (`05_emit_rust.dag`).
 data llm_snake_wire_contract: VariantEncoding = StringVariant { naming: SnakeCase }
-data wire_contract: VariantEncoding = llm_snake_wire_contract
-
-// -- Message protocol ----------------------------------------------
-
-// Variant names match API wire strings under SnakeCase:
-// System → "system", User → "user", Assistant → "assistant", Tool → "tool"
-type Role = System | User | Assistant | Tool
-
-// -- Content blocks (shared across providers) ----------------------
-// Both Anthropic and OpenAI support rich multimodal content.
-// Provider-specific block types (tool use, etc.) live in
-// anthropic.dag / openai.dag.
-
-type ImageSource
-  // v3's Anthropic callable precursor mirrors this field as `base64`
-  // because `data` is a v3 keyword; lockstep maps that label explicitly.
-  = Base64Image { media_type: String, data: String }
-  | UrlImage { url: String }
-
-type ContentBlock
-  = TextContent { text: String }
-  | ImageContent { source: ImageSource }
-
-type LlmMessage {
-  role: Role
-  content: List<ContentBlock>
-}
-
-// -- Token accounting ----------------------------------------------
-
-type TokenUsage {
-  input_tokens: Int
-  output_tokens: Int
-  total_tokens: Int
-}
-
-// -- Stop reasons --------------------------------------------------
-
-type StopReason = EndTurn | MaxTokens | StopSequence | ToolUse
-
-// -- Streaming -----------------------------------------------------
-
-type StreamEvent
-  = StreamStart
-  | StreamDelta { text: String }
-  | StreamStop { reason: StopReason }
-
-// -- Defaults ------------------------------------------------------
-
-data default_temperature: Float = 1.0
-
-data default_max_tokens: Int = 4096

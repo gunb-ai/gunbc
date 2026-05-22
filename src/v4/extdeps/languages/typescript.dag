@@ -29,7 +29,11 @@ import v4.std.node {
   TypeNode
 }
 import v4.std.logic { Bool, bool_boolean_algebra }
+<<<<<<< HEAD
 import v4.std.algebra { BooleanAlgebra, fold_list }
+=======
+import v4.std.algebra { BooleanAlgebra, Empty, fold_list }
+>>>>>>> origin/main
 import v4.std.target_model { target_model_edge_declared_inhabitants }
 
 // 🟢 grounded.
