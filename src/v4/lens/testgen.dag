@@ -58,6 +58,7 @@ import v4.extdeps.file_system {
 import v4.extdeps.languages.dag { dag_language_model_surface_id }
 import v4.std.verification {
   CompilesClaim,
+  RoundTripClaim,
   TestClaim,
   TestClassification,
   T19ManualAnchorAbsent,
@@ -425,22 +426,27 @@ fn testgen_emit_language_behavior_equivalence_claim(
 }
 
 
-// T-19 witness-validity generator category — Node-encoded subject + oracle-derived
-// expected outcome (Facts Flow Forward; THESIS Tier-3 TestClaim-as-data).
+// T-19 witness-validity generator category — Node-encoded subject + emit-time oracle
+// outcome bundled into a single RoundTripClaim `input` Node (Facts Flow Forward;
+// THESIS Tier-3 TestClaim-as-data).
 //
-// The emitted CompilesClaim's `input` Node encodes the FULL witness-validity subject —
+// The input Node is a Conj over named edges carrying the FULL witness-validity subject —
 // source_facts, candidate, predicate.{algebra, preservation_rule}, witness.{property,
-// evidence} — under named edges; the `expected_value` Node encodes the verify_witness
-// outcome (Holds → witness payload sub-tree; Violates → diagnostic-reason atom). Both
-// are well-formed Conj structures. The independent oracle (v4.std.find_witness::
-// verify_witness, separate module from the v4.std.witness constructors) determines the
-// expected_value at emit time; downstream eval reads the input subject and re-derives
-// it. Polarity (positive vs negative) is a function of the expected_value subtree —
-// not pre-decided by the row author — preserving the tautology-skip discipline.
+// evidence} — plus a 5th `oracle_outcome` edge whose subtree encodes the emit-time
+// verify_witness verdict (Holds → witness payload sub-tree; Violates → diagnostic-
+// reason atom). The independent oracle (v4.std.find_witness::verify_witness, separate
+// module from the v4.std.witness constructors) determines that subtree at emit time.
+// RoundTripClaim is honestly Deferred under today's fail-closed eval_node — the claim
+// row IS the structural truth (subject + oracle outcome together); when a realized
+// eval interpretation-algebra for verify_witness lands (lane (b) routed to
+// cool-cat-24 per PM ruling 2026-05-22), each Deferred row mechanically discharges
+// to Pass / Fail by re-deriving verify_witness over the subject sub-tree and
+// comparing it to the oracle_outcome sub-tree — no row-author rework.
 data witness_validity_field_source_facts: Symbol = witness_validity_field_source_facts
 data witness_validity_field_candidate: Symbol = witness_validity_field_candidate
 data witness_validity_field_predicate: Symbol = witness_validity_field_predicate
 data witness_validity_field_witness: Symbol = witness_validity_field_witness
+data witness_validity_field_oracle_outcome: Symbol = witness_validity_field_oracle_outcome
 data witness_validity_field_algebra: Symbol = witness_validity_field_algebra
 data witness_validity_field_preservation_rule: Symbol = witness_validity_field_preservation_rule
 data witness_validity_field_property: Symbol = witness_validity_field_property
@@ -504,6 +510,17 @@ fn witness_validity_subject_node(
       Edge {
         label: Named { name: witness_validity_field_witness },
         target: witness_validity_witness_node(w: witness)
+      },
+      Edge {
+        label: Named { name: witness_validity_field_oracle_outcome },
+        target: witness_validity_outcome_node(
+          o: verify_witness(
+            source_facts: source_facts,
+            candidate: candidate,
+            predicate: predicate,
+            witness: witness
+          )
+        )
       }
     ]
   }
@@ -547,8 +564,10 @@ fn witness_validity_outcome_node(o: Outcome<StructuralPropertyWitness>) -> Node 
 // T-19 witness-validity generator category. Independent oracle = v4.std.find_witness::verify_witness
 // (separate module from the v4.std.witness constructors; checks `preservation_predicate_holds`,
 // `witness.property == predicate.preservation_rule`, and `witness.evidence == candidate`).
-// Emits a CompilesClaim whose `input` Node carries the FULL subject (source_facts, candidate,
-// predicate, witness) and whose `expected_value` Node encodes the oracle-derived outcome.
+// Emits a RoundTripClaim whose `input` Node carries the full subject (source_facts, candidate,
+// predicate, witness) plus an `oracle_outcome` sub-tree encoding the emit-time verify_witness
+// verdict. Verdict is honestly Deferred under today's fail-closed eval_node; row mechanically
+// discharges once the lane-(b) eval interpretation-algebra for verify_witness lands.
 fn testgen_emit_witness_validity_claim(
   label: String,
   source_facts: Node,
@@ -557,7 +576,7 @@ fn testgen_emit_witness_validity_claim(
   witness: StructuralPropertyWitness
 ) -> Outcome<TestClaim> {
   Accepted {
-    value: CompilesClaim {
+    value: RoundTripClaim {
       label: label,
       t19_anchor: T19ManualAnchorAbsent,
       input: witness_validity_subject_node(
@@ -565,14 +584,6 @@ fn testgen_emit_witness_validity_claim(
         candidate: candidate,
         predicate: predicate,
         witness: witness
-      ),
-      expected_value: witness_validity_outcome_node(
-        o: verify_witness(
-          source_facts: source_facts,
-          candidate: candidate,
-          predicate: predicate,
-          witness: witness
-        )
       ),
       classification: TestClassification { tier: Tier1, layer: Unit },
     },
