@@ -2,9 +2,9 @@
 //! cost-relevant `ShrinkFactor` when field or param keys align (PR #726 review).
 //!
 //! PATH-2-FULL → option (A) Inc-split (operator-ratified 2026-05-21): SubValueRelation
-//! inhabits a lawful 7-element `BoundedLattice` (plus `SubValueUnknown` ⊥). The two top
+//! merge algebra over seven lawful inhabitants (plus `SubValueUnknown` ⊥). The two top
 //! inhabitants — `StrictAxisErased` (above strict-style witnesses, proj=Strict) and
-//! `MixedTop` (overall ⊤, proj=NonIncreasing) — resolve the codex #15892 vs #15942
+//! `MixedTop` (overall join-⊤, proj=NonIncreasing) — resolve the codex #15892 vs #15942
 //! contradiction that a single Inc top could not satisfy: split joins by whether the
 //! operands cross the strict/non-strict boundary, and project each top independently.
 //!
@@ -22,9 +22,9 @@
 //!     — both project to Strict, so meet does not strengthen evidence. (codex #15892)
 //!   - strict-cone boundary: meet(StrictAxisErased, PreservedValue) drops to
 //!     NonIncreasingValue (the GLB across the strict/non-strict boundary).
-//!   - MixedTop as lattice ⊤: meet(MixedTop, X) = X — refinement of the top under a more
-//!     specific operand. (Documented operationally; the operator-ratified split accepts
-//!     this trade-off.)
+//!   - **meet vs MixedTop**: meet(MixedTop, X) → NonIncreasingValue — MixedTop is join-⊤
+//!     only; meet must not strengthen proj(meet) above NonIncreasing. (operator-ratified
+//!     follow-up to #3505)
 
 use std::rc::Rc;
 
@@ -142,7 +142,7 @@ fn meet_join_arithmetic_same_param_mismatched_factors_lands_in_lawful_lattice() 
 
 #[test]
 fn lattice_idempotence_on_non_parameterized_variants() {
-    // BoundedLattice idempotence: meet(a, a) = a, join(a, a) = a for every inhabitant.
+    // Merge-helper idempotence: meet(a, a) = a, join(a, a) = a for every inhabitant.
     // The non-parameterised variants (PreservedValue, NonIncreasingValue, StrictAxisErased,
     // MixedTop, SubValueUnknown) have no payload but still need reflexive structural equality
     // so sub_value_structural_eq's short-circuit fires; without it, meet(Preserved, Preserved)
@@ -222,13 +222,11 @@ fn meet_strict_axis_erased_with_preserved_drops_to_non_increasing() {
 }
 
 #[test]
-fn meet_mixed_top_acts_as_lattice_top_identity() {
-    // MixedTop is the lattice ⊤: meet(MixedTop, X) = X for every lawful inhabitant X.
-    // Watch-list note: this lets meet "strengthen" the projection (e.g. meet(MixedTop,
-    // StrictSubValue{f}) projects to Strict while MixedTop alone projects to NonIncreasing).
-    // The operator-ratified (A) split accepts this trade-off: MixedTop arises only from
-    // joins crossing the strict/non-strict boundary, and meet against it operationally
-    // refines under the second operand's specific witness.
+fn meet_mixed_top_drops_to_non_increasing() {
+    // MixedTop is join-⊤ only. meet(MixedTop, X) must not return strict-style X — that
+    // would strengthen proj(meet) from NonIncreasing (proj MixedTop) to Strict. The
+    // Projection-sound meet drops to NonIncreasingValue for every distinct pair
+    // involving MixedTop (idempotence on MixedTop itself is unchanged).
     let field = dummy_field();
     let mixed = Rc::new(SubValueRelation::MixedTop);
     let strict = Rc::new(SubValueRelation::StrictSubValue {
@@ -237,10 +235,10 @@ fn meet_mixed_top_acts_as_lattice_top_identity() {
     });
     assert!(matches!(
         *meet_sub_value(mixed.clone(), strict.clone()),
-        SubValueRelation::StrictSubValue { .. }
+        SubValueRelation::NonIncreasingValue
     ));
     assert!(matches!(
         *meet_sub_value(strict, mixed),
-        SubValueRelation::StrictSubValue { .. }
+        SubValueRelation::NonIncreasingValue
     ));
 }

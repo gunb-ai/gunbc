@@ -290,8 +290,8 @@ fn shrink_factor_eq(a: ShrinkFactor, b: ShrinkFactor) -> Bool {
   }
 }
 
-// Lawful Lattice<SubValueRelation> meet/join — mirrored from `dsl/std/induction.dag`.
-// See that file for the full lattice ordering description.
+// Projection-sound merge helpers — mirrored from `dsl/std/induction.dag`.
+// See that file for ordering, operational properties, and Inc-split rationale.
 
 fn sub_value_structural_eq(a: SubValueRelation, b: SubValueRelation) -> Bool {
   match a {
@@ -322,7 +322,7 @@ fn sub_value_structural_eq(a: SubValueRelation, b: SubValueRelation) -> Bool {
 
 // 🟡 PRACTICE 10 DISSOLUTION DISPOSITION: see `dsl/std/induction.dag` — hand-rolled
 // boolean projection of `sub_value_to_evidence(r) == Strict`; retires when the
-// substrate gains derived-predicate-from-projection (ROADMAP.md:390 family).
+// substrate gains derived-predicate-from-projection (ROADMAP.md:390 P5 — not BoundedLattice).
 fn is_strict_style_structural(r: SubValueRelation) -> Bool {
   match r {
     StrictSubValue { field: _, factor: _ } => true
@@ -353,21 +353,18 @@ fn meet_sub_value(a: SubValueRelation, b: SubValueRelation) -> SubValueRelation 
     let lb = sub_value_level(r: b)
     if la == 0 || lb == 0 { SubValueUnknown }
     else {
-      if la == 4 { b }
+      if la == 4 || lb == 4 { NonIncreasingValue }
       else {
-        if lb == 4 { a }
+        if la == 3 {
+          if is_strict_style_structural(r: b) { b }
+          else { NonIncreasingValue }
+        }
         else {
-          if la == 3 {
-            if is_strict_style_structural(r: b) { b }
+          if lb == 3 {
+            if is_strict_style_structural(r: a) { a }
             else { NonIncreasingValue }
           }
-          else {
-            if lb == 3 {
-              if is_strict_style_structural(r: a) { a }
-              else { NonIncreasingValue }
-            }
-            else { NonIncreasingValue }
-          }
+          else { NonIncreasingValue }
         }
       }
     }
@@ -400,14 +397,9 @@ fn join_sub_value(a: SubValueRelation, b: SubValueRelation) -> SubValueRelation 
   }
 }
 
-// BoundedLattice<SubValueRelation> witness — operator-ratified PATH-2-FULL (2026-05-21).
-// Laws (idempotence, commutativity, associativity, absorption, top/bottom) hold by
-// level-class case analysis; see `dsl/std/induction.dag` for the full rationale.
-//
-// 🟡 P5 STAGE0-GENERATOR-GAP. A `data sub_value_relation_bounded_lattice` declaration is
-// held until the stage0 Rust emitter handles `BoundedLattice<T>` over `Rc`-wrapped carriers.
-// Until then, the lawful algebra is consumed via `meet_sub_value` / `join_sub_value` directly
-// — same denotational content, no algebra-inhabitance discoverability.
+// Merge helpers only — not a `std/algebra` inhabitance. Meet is NOT GLB for MixedTop.
+// See `dsl/std/induction.dag` for operational properties. P5: no BoundedLattice witness;
+// ROADMAP.md:390 row retargeted — Rc-aware merge-helper surfacing, not lattice inhabitance.
 
 
 // =========================================================================

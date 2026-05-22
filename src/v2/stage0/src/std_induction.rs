@@ -246,28 +246,24 @@ pub fn meet_sub_value(a: Rc<SubValueRelation>, b: Rc<SubValueRelation>) -> Rc<Su
             if ((la.clone() == 0) || (lb.clone() == 0)) {
                 Rc::new(SubValueRelation::SubValueUnknown)
             } else {
-                if (la.clone() == 4) {
-                    b.clone()
+                if ((la.clone() == 4) || (lb.clone() == 4)) {
+                    Rc::new(SubValueRelation::NonIncreasingValue)
                 } else {
-                    if (lb.clone() == 4) {
-                        a.clone()
+                    if (la.clone() == 3) {
+                        if is_strict_style_structural(b.clone()) {
+                            b.clone()
+                        } else {
+                            Rc::new(SubValueRelation::NonIncreasingValue)
+                        }
                     } else {
-                        if (la.clone() == 3) {
-                            if is_strict_style_structural(b.clone()) {
-                                b.clone()
+                        if (lb.clone() == 3) {
+                            if is_strict_style_structural(a.clone()) {
+                                a.clone()
                             } else {
                                 Rc::new(SubValueRelation::NonIncreasingValue)
                             }
                         } else {
-                            if (lb.clone() == 3) {
-                                if is_strict_style_structural(a.clone()) {
-                                    a.clone()
-                                } else {
-                                    Rc::new(SubValueRelation::NonIncreasingValue)
-                                }
-                            } else {
-                                Rc::new(SubValueRelation::NonIncreasingValue)
-                            }
+                            Rc::new(SubValueRelation::NonIncreasingValue)
                         }
                     }
                 }
