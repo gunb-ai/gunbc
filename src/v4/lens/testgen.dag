@@ -330,14 +330,11 @@ data t19_lbe_label_disj_dag_surface: String = "generated/lbe: Disj type-node mat
 data t19_lbe_label_transform_dag_surface: String = "generated/lbe: Transform computation-node matches dag LanguageModel surface (frozen snapshot)"
 
 
-<<<<<<< HEAD
 data t19_refinement_label_nonempty_list_base: String = "generated/refinement: NonEmptyList preserves List base after refine"
-=======
 data t19_idempotent_operation_tautology_skip: Symbol = t19_idempotent_operation_tautology_skip
 data t19_idempotent_label_read: String = "generated/idempotent_operation: ReadEffect f(f(x)) == f(x)"
 data t19_idempotent_label_upsert: String = "generated/idempotent_operation: UpsertEffect f(f(x)) == f(x)"
 data t19_idempotent_label_delete: String = "generated/idempotent_operation: DeleteEffect f(f(x)) == f(x)"
->>>>>>> origin/main
 
 
 data t19_testgen_lens_file: Symbol = t19_testgen_lens_file
@@ -415,7 +412,6 @@ fn lbe_subject_transform_dag_surface() -> LanguageBehaviorEquivalenceSubject {
 }
 
 
-<<<<<<< HEAD
 fn refine_nonempty_node_list(xs: List<Node>, at: Locus) -> Outcome<Refined<List<Node>>> {
   refine(
     base: xs,
@@ -495,7 +491,10 @@ fn testgen_emit_refinement_preservation_claim(
       Rejected {
         diagnostics: diagnostics_singleton(d: t19_manual_anchor_absent_bootstrap_diagnostic()),
       }
-=======
+  }
+}
+
+
 fn testgen_emit_idempotent_operation_equals_claim(
   label: String,
   subject: ComposableIdempotentOperationSubject,
@@ -510,13 +509,10 @@ fn testgen_emit_idempotent_operation_equals_claim(
       classification: classification,
     },
     diagnostics: None,
->>>>>>> origin/main
   }
 }
 
 
-<<<<<<< HEAD
-=======
 fn testgen_emit_idempotent_operation_claim(
   label: String,
   subject: IdempotentOperationSubject,
@@ -552,7 +548,6 @@ fn testgen_scheduled_idempotent_operation_subjects() -> List<ComposableIdempoten
 }
 
 
->>>>>>> origin/main
 fn testgen_emit_language_behavior_equivalence_claim(
   anchor: T19ManualAnchorKey,
   label: String,
