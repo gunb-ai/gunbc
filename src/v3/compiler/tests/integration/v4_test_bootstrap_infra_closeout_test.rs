@@ -49,6 +49,7 @@ fn t19_language_behavior_equivalence_generated_claims_parse() {
 
 #[test]
 fn t19_idempotent_operation_generated_claims_parse_and_pin_emission() {
+    parse_module(EFFECTS_DAG, EFFECTS_PATH);
     parse_module(
         IDEMPOTENT_OPERATION_GENERATED_DAG,
         IDEMPOTENT_OPERATION_GENERATED_PATH,
@@ -73,12 +74,20 @@ fn t19_idempotent_operation_generated_claims_parse_and_pin_emission() {
         "idempotent-operation samples must keep double-application lhs and single-application rhs in testgen emission, with an explicit label-only skip path in the generated corpus"
     );
     assert!(
+        EFFECTS_DAG.contains("type IdempotentShape")
+            && EFFECTS_DAG.contains("type EffectShape")
+            && EFFECTS_DAG.contains("ReadIdempotentSample")
+            && EFFECTS_DAG.contains("fn idempotent_operation_witness_node")
+            && EFFECTS_DAG.contains("classified_idempotent_effect_node"),
+        "v4.std.effects must carry canonical IdempotentShape/EffectShape witnesses for generator subjects"
+    );
+    assert!(
         TESTGEN_DAG.contains("fn testgen_emit_idempotent_operation_claim")
-            && TESTGEN_DAG.contains("type IdempotentOperationSubject")
-            && TESTGEN_DAG.contains("ComposableIdempotentOperation")
-            && TESTGEN_DAG.contains("LabelOnlyIdempotentInhabitance")
+            && TESTGEN_DAG.contains("import v4.std.effects")
+            && TESTGEN_DAG.contains("idempotent_operation_witness_node")
+            && !TESTGEN_DAG.contains("ComposableIdempotentOperation")
             && TESTGEN_DAG.contains("fn testgen_scheduled_idempotent_operation_subjects"),
-        "testgen lens must emit idempotent-operation claims with composable-body vs label-only subjects"
+        "testgen lens must emit idempotent-operation claims from v4.std.effects witnesses, not parallel Symbol/Node subjects"
     );
 }
 
