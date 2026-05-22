@@ -12,11 +12,7 @@ import v4.std.algebra { fold_list, fold_list_right }
 import v4.std.diagnostic {
   Outcome,
   Diagnostic,
-<<<<<<< HEAD
-  node_locus,
-=======
   Locus,
->>>>>>> origin/main
   Unavailable,
   UserInputBoundary,
   Textual,
@@ -51,15 +47,8 @@ import v4.std.node {
   Branch,
   Loop,
   Bind,
-<<<<<<< HEAD
-  TypeNode,
-  Symbol
-=======
   Symbol,
-  TypeNode,
-  Edge,
-  Named
->>>>>>> origin/main
+  TypeNode
 }
 import v4.std.refinement { Refined, Validation, refine, refined_base }
 import v4.extdeps.file_system {
@@ -90,11 +79,8 @@ import v4.std.verification {
   T19ManualLbeConjDagSurface,
   T19ManualLbeDisjDagSurface,
   T19ManualLbeTransformDagSurface,
-<<<<<<< HEAD
   T19GeneratedAnchorKey,
-=======
   T19ManualRefinementNonEmptyListBase,
->>>>>>> origin/main
   T19ManualNatAddAssociativity,
   T19ManualNatAddLeftIdentity,
   T19ManualNatAddRightIdentity,
@@ -368,7 +354,6 @@ data t19_testgen_lens_file: Symbol = t19_testgen_lens_file
 data t19_manual_anchor_absent_bootstrap: Symbol = t19_manual_anchor_absent_bootstrap
 
 
-<<<<<<< HEAD
 data t19_coproduct_exhaustiveness_missing_variant: Symbol = t19_coproduct_exhaustiveness_missing_variant
 
 
@@ -391,9 +376,9 @@ data t19_coproduct_exhaustiveness_label: String = "generated/diagnostic-exhausti
 
 
 data t19_coproduct_exhaustiveness_omitted_variant_edge: Symbol = t19_coproduct_exhaustiveness_omitted_variant_edge
-=======
+
+
 data refinement_preservation_empty_list_reason: Symbol = refinement_preservation_empty_list_reason
->>>>>>> origin/main
 
 
 fn lbe_frozen_snapshot_conj_dag_surface() -> FrozenLanguageBehaviorSnapshot {
@@ -982,13 +967,12 @@ fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept>
         },
         diagnostics: None,
       }
-<<<<<<< HEAD
     T19GeneratedClaimAnchor { generated_anchor: T19GeneratedCoproductExhaustiveness { omitted_variant: _ } } =>
       Accepted {
         value: DiagnosticExhaustiveness,
         diagnostics: None,
-=======
-    T19ManualRefinementNonEmptyListBase =>
+      }
+    T19ManualClaimAnchor { manual_anchor: T19ManualRefinementNonEmptyListBase } =>
       match refinement_preservation_subject_nonempty_list_base() {
         Accepted { value: subject, diagnostics: None } =>
           Accepted {
@@ -998,7 +982,6 @@ fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept>
             diagnostics: None,
           }
         Rejected { diagnostics: d } => Rejected { diagnostics: d }
->>>>>>> origin/main
       }
   }
 }
