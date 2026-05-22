@@ -548,7 +548,11 @@ if any emission step cannot be expressed as inverse grammar-data.)
 
 ### T-13: lens/{parallelism,effect,ownership,idempotency,structural_resolution}.dag
 
-**I/O**: `Node -> Witness<...>` per lens
+**I/O**: `(InferredTree, List<DependencyView>) -> Witness<...>` per lens — each
+`*_witness(tree, dependencies)` projects over `dependency_lens` output; facts at
+usage sites come from `tree.facts.lookup`, not row payload (Practice 11).
+`structural_resolution` also exports `at(tree: InferredTree)` for registry/dry-run
+entry (wires `dependency_lens(root: tree.root)` internally).
 
 **Modeling decisions per lens** (see file headers).
 
