@@ -351,11 +351,22 @@ fn swift_nonnumeric_representation_node(facts: SwiftNonNumericPrimitiveFacts) ->
 
 fn swift_nonnumeric_scalar_classifier_node(facts: SwiftNonNumericPrimitiveFacts) -> Node {
   match facts {
+<<<<<<< HEAD
     SwiftBoolPrimitiveFacts { representation: _ } => swift_atom(id: swift_tag_scalar_bool)
     SwiftCharacterPrimitiveFacts { representation: _ } =>
       swift_atom(id: swift_tag_scalar_character)
     SwiftStringPrimitiveFacts { representation: _ } => swift_atom(id: swift_tag_scalar_string)
     SwiftVoidPrimitiveFacts { representation: _ } => swift_atom(id: swift_tag_scalar_void)
+=======
+    SwiftBoolPrimitiveFacts { surface_spelling: _, representation: _ } =>
+      swift_atom(id: swift_tag_scalar_bool)
+    SwiftCharacterPrimitiveFacts { surface_spelling: _, representation: _ } =>
+      swift_atom(id: swift_tag_scalar_character)
+    SwiftStringPrimitiveFacts { surface_spelling: _, representation: _ } =>
+      swift_atom(id: swift_tag_scalar_string)
+    SwiftVoidPrimitiveFacts { surface_spelling: _, representation: _ } =>
+      swift_atom(id: swift_tag_scalar_void)
+>>>>>>> 227a377e1 (WIP: Affected-set-driven CI runner — Bazel-replacement via lens/affected_set.)
   }
 }
 
@@ -405,10 +416,21 @@ fn swift_float_facts_node(facts: SwiftFloatPrimitiveFacts) -> Node {
 
 fn swift_nonnumeric_surface_spelling(facts: SwiftNonNumericPrimitiveFacts) -> Symbol {
   match facts {
+<<<<<<< HEAD
     SwiftBoolPrimitiveFacts { surface_spelling: s, representation: _ } => s
     SwiftCharacterPrimitiveFacts { surface_spelling: s, representation: _ } => s
     SwiftStringPrimitiveFacts { surface_spelling: s, representation: _ } => s
     SwiftVoidPrimitiveFacts { surface_spelling: s, representation: _ } => s
+=======
+    SwiftBoolPrimitiveFacts { surface_spelling: surface_spelling, representation: _ } =>
+      surface_spelling
+    SwiftCharacterPrimitiveFacts { surface_spelling: surface_spelling, representation: _ } =>
+      surface_spelling
+    SwiftStringPrimitiveFacts { surface_spelling: surface_spelling, representation: _ } =>
+      surface_spelling
+    SwiftVoidPrimitiveFacts { surface_spelling: surface_spelling, representation: _ } =>
+      surface_spelling
+>>>>>>> 227a377e1 (WIP: Affected-set-driven CI runner — Bazel-replacement via lens/affected_set.)
   }
 }
 
