@@ -38,8 +38,7 @@ import v4.std.verification {
   Unit
 }
 import v4.test.claim.manual.connective_anchors {
-  stub_empty_conj,
-  stub_empty_disj
+  stub_empty_conj
 }
 
 
