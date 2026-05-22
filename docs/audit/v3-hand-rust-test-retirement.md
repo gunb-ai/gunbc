@@ -44,14 +44,16 @@ The PM figure **204 does not match** the live census (145 path literals / **1232
 
 **Already exercised without v3 integration Rust:** `scripts/check_t19_testgen_activation.py` on generated LBE corpus; manual anchors in `src/v4/test/claim/manual/`.
 
-**REPLACE bucket T-19 mapping (aggregate):**
-- `TypeConstruction`: 308 tests
-- `LensApplicability`: 134 tests
-- `LanguageBehaviorEquivalence`: 51 tests
-- `DiagnosticExhaustiveness`: 20 tests
+**REPLACE bucket T-19 mapping (aggregate, path-level heuristic — sums to 532):**
+- `TypeConstruction`: 333 tests
+- `LensApplicability`: 128 tests
+- `LanguageBehaviorEquivalence`: 39 tests
+- `T-19-CATEGORY-MISSING: ModuleServiceParseSurface`: 8 tests (`services_carrier_shape_test.rs` + `ctrl_pr_digests_dag_smoke_test.rs`)
 - `AlgebraLaw`: 9 tests
 - `BidirectionalRoundtrip`: 8 tests
-- `T-19-CATEGORY-MISSING: ModuleServiceParseSurface`: 7 tests
+- `DiagnosticExhaustiveness`: 7 tests
+
+Bucket totals (DELETE / REPLACE / KEEP) are what `--check` validates; T-19 sub-lines are illustrative routing hints only and can drift if path heuristics change.
 
 **Categories flagged MISSING** (need design before port, not an excuse to KEEP Rust):
 - `WorkspaceManifestStructuralAudit` — v2_oracle G-1 manifest walks
