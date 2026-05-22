@@ -1,30 +1,47 @@
 // src/v4/lens/testgen.dag
 // Scope: Manual-anchor testgen plus filesystem-backed whole-corpus lens driver primitive.
-// Owns: Generator TestgenConcept manual_test_claim_for_manual_anchor testgen_concept_for_manual_claim testgen_emit_language_behavior_equivalence_claim testgen_emit_idempotent_operation_claim testgen_scheduled_language_behavior_generators testgen_scheduled_idempotent_operation_subjects testgen_emit_coproduct_exhaustiveness_claim testgen_scheduled_coproduct_exhaustiveness_generators TypeConstructionSubject AlgebraLawSubject LensApplicabilitySubject BidirectionalRoundtripSubject LanguageBehaviorEquivalenceSubject FrozenLanguageBehaviorSnapshot LanguageBehaviorIoMock CorpusEntry CorpusTraversalScope CorpusTraversalOrder CorpusDuplicatePolicy CorpusTraversalPolicy CorpusEnumerationRequest CorpusEnumerationResult CorpusEnumerator CorpusEntryIngestResult CorpusEntryIngestor CorpusLensReadResult<C> CorpusLensReader<C> CorpusLensObservation<C> CorpusLensDriveResult<C> CorpusLensDriver<C>
-// Consumes: v4.std.diagnostic v4.std.nat v4.std.node v4.std.verification v4.extdeps.file_system v4.test.claim.manual.connective_anchors v4.test.claim.manual.nat_law_anchors
-// Status: Manual-anchor + LBE + idempotent-operation testgen (subjects: v4.std.effects); new TestgenConcept arms = operator STOP.
+// Owns: Generator TestgenConcept manual_test_claim_for_manual_anchor testgen_concept_for_manual_claim testgen_emit_language_behavior_equivalence_claim testgen_emit_witness_validity_claim witness_validity_subject_node witness_validity_outcome_node witness_validity_predicate_node witness_validity_witness_node witness_validity_symbol_atom_node witness_validity_field_oracle_outcome testgen_emit_idempotent_operation_claim testgen_scheduled_language_behavior_generators testgen_scheduled_idempotent_operation_subjects testgen_emit_coproduct_exhaustiveness_claim testgen_scheduled_coproduct_exhaustiveness_generators TypeConstructionSubject AlgebraLawSubject DiagnosticExhaustivenessSubject LensApplicabilitySubject BidirectionalRoundtripSubject LanguageBehaviorEquivalenceSubject FrozenLanguageBehaviorSnapshot LanguageBehaviorIoMock CorpusEntry CorpusTraversalScope CorpusTraversalOrder CorpusDuplicatePolicy CorpusTraversalPolicy CorpusEnumerationRequest CorpusEnumerationResult CorpusEnumerator CorpusEntryIngestResult CorpusEntryIngestor CorpusLensReadResult<C> CorpusLensReader<C> CorpusLensObservation<C> CorpusLensDriveResult<C> CorpusLensDriver<C>
+// Consumes: v4.std.diagnostic v4.std.nat v4.std.node v4.std.witness v4.std.find_witness v4.std.verification v4.std.effects v4.extdeps.file_system v4.test.claim.manual.connective_anchors v4.test.claim.manual.nat_law_anchors
+// Status: Manual-anchor + LBE + witness-validity (T-19 silent-deer-669) + idempotent-operation + coproduct-exhaustiveness testgen (subjects: v4.std.effects / v4.std.verification); new TestgenConcept arms = operator STOP.
 
 module v4.lens.testgen
 
 
 import v4.std.collection { List, non_empty }
-import v4.std.algebra { fold_list, fold_list_right }
+import v4.std.algebra { FreeMonoid, Empty, Cons, fold_list, fold_list_right }
 import v4.std.diagnostic {
   Outcome,
   Diagnostic,
   Locus,
+  NodeLocus,
+  PortLocus,
+  LocusAnchor,
+  Extent,
+  Correction,
+  Suggested,
   Unavailable,
+  NoCorrectionReason,
   UserInputBoundary,
+  AmbiguousIntent,
+  ExternalContractUnknown,
   Textual,
   WholeFile,
+  ByteRange,
+  NonEmptyDiagnostics,
+  Diagnostics,
+  Some,
   Accepted,
   Rejected,
   None,
+  bind_outcome,
   diagnostics_merge,
   diagnostics_singleton,
   node_locus,
+  outcome_rejected,
   rejected_with_pending
 }
+import v4.std.witness { StructuralPropertyWitness }
+import v4.std.find_witness { PreservationPredicate, verify_witness }
 import v4.std.nat {
   nat_algebra_law_subject_symbol_additive_monoid,
   nat_algebra_law_subject_symbol_commutative_semiring,
@@ -63,6 +80,7 @@ import v4.std.verification {
   CompilesClaim,
   DiagnosticClaim,
   EqualsClaim,
+  RoundTripClaim,
   TestClaim,
   TestClassification,
   T19ClaimAnchorKey,
@@ -628,6 +646,425 @@ fn testgen_emit_language_behavior_equivalence_claim(
         diagnostics: diagnostics_singleton(d: t19_manual_anchor_absent_bootstrap_diagnostic()),
       }
   }
+}
+
+
+// 🟡 gated — feature:v4-std-int-to-node-encoding — bind node://adhoc-10fda09f-f25 — dissolve-on-arrival: v4.std primitive Int → Node encoder; forbidden: silent collapse of ByteRange Int positions to a variant-tag atom. Until arrival, witness_validity_extent_node fails closed on Textual{ByteRange} via witness_validity_byte_range_unencodable_diagnostic.
+data witness_validity_field_source_facts: Symbol = witness_validity_field_source_facts
+data witness_validity_field_candidate: Symbol = witness_validity_field_candidate
+data witness_validity_field_predicate: Symbol = witness_validity_field_predicate
+data witness_validity_field_witness: Symbol = witness_validity_field_witness
+data witness_validity_field_oracle_outcome: Symbol = witness_validity_field_oracle_outcome
+data witness_validity_field_algebra: Symbol = witness_validity_field_algebra
+data witness_validity_field_preservation_rule: Symbol = witness_validity_field_preservation_rule
+data witness_validity_field_property: Symbol = witness_validity_field_property
+data witness_validity_field_evidence: Symbol = witness_validity_field_evidence
+data witness_validity_outcome_holds: Symbol = witness_validity_outcome_holds
+data witness_validity_outcome_violates: Symbol = witness_validity_outcome_violates
+data witness_validity_diag_field_reason: Symbol = witness_validity_diag_field_reason
+data witness_validity_diag_field_at: Symbol = witness_validity_diag_field_at
+data witness_validity_diag_field_correction: Symbol = witness_validity_diag_field_correction
+data witness_validity_locus_tag_textual: Symbol = witness_validity_locus_tag_textual
+data witness_validity_locus_tag_node: Symbol = witness_validity_locus_tag_node
+data witness_validity_locus_tag_port: Symbol = witness_validity_locus_tag_port
+data witness_validity_locus_textual_file: Symbol = witness_validity_locus_textual_file
+data witness_validity_locus_textual_extent: Symbol = witness_validity_locus_textual_extent
+data witness_validity_extent_tag_whole_file: Symbol = witness_validity_extent_tag_whole_file
+data witness_validity_extent_tag_byte_range: Symbol = witness_validity_extent_tag_byte_range
+data witness_validity_correction_tag_suggested: Symbol = witness_validity_correction_tag_suggested
+data witness_validity_correction_tag_unavailable: Symbol = witness_validity_correction_tag_unavailable
+data witness_validity_no_correction_tag_user: Symbol = witness_validity_no_correction_tag_user
+data witness_validity_no_correction_tag_ambiguous: Symbol = witness_validity_no_correction_tag_ambiguous
+data witness_validity_no_correction_tag_external: Symbol = witness_validity_no_correction_tag_external
+data witness_validity_list_tag_empty: Symbol = witness_validity_list_tag_empty
+data witness_validity_list_cons_head: Symbol = witness_validity_list_cons_head
+data witness_validity_list_cons_tail: Symbol = witness_validity_list_cons_tail
+data witness_validity_diags_field_head: Symbol = witness_validity_diags_field_head
+data witness_validity_diags_field_tail: Symbol = witness_validity_diags_field_tail
+data witness_validity_diagnostics_tag_none: Symbol = witness_validity_diagnostics_tag_none
+data witness_validity_diagnostics_tag_some: Symbol = witness_validity_diagnostics_tag_some
+data witness_validity_outcome_accepted_value: Symbol = witness_validity_outcome_accepted_value
+data witness_validity_outcome_accepted_diagnostics: Symbol = witness_validity_outcome_accepted_diagnostics
+data witness_validity_byte_range_unencodable: Symbol = witness_validity_byte_range_unencodable
+
+
+fn witness_validity_symbol_atom_node(s: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: s } },
+    children: []
+  }
+}
+
+
+fn witness_validity_predicate_node(p: PreservationPredicate) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Named { name: witness_validity_field_algebra }, target: p.algebra },
+      Edge {
+        label: Named { name: witness_validity_field_preservation_rule },
+        target: witness_validity_symbol_atom_node(s: p.preservation_rule)
+      }
+    ]
+  }
+}
+
+
+fn witness_validity_witness_node(w: StructuralPropertyWitness) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: witness_validity_field_property },
+        target: witness_validity_symbol_atom_node(s: w.property)
+      },
+      Edge { label: Named { name: witness_validity_field_evidence }, target: w.evidence }
+    ]
+  }
+}
+
+
+fn witness_validity_byte_range_unencodable_diagnostic(at_node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: witness_validity_byte_range_unencodable,
+    at: node_locus(node: at_node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+
+fn witness_validity_subject_node(
+  source_facts: Node,
+  candidate: Node,
+  predicate: PreservationPredicate,
+  witness: StructuralPropertyWitness
+) -> Outcome<Node> {
+  bind_outcome(
+    o: witness_validity_outcome_node(
+      o: verify_witness(
+        source_facts: source_facts,
+        candidate: candidate,
+        predicate: predicate,
+        witness: witness
+      )
+    ),
+    f: fn(oracle_outcome) {
+      Accepted {
+        value: Node {
+          kind: TypeNode { connective: Conj },
+          children: [
+            Edge { label: Named { name: witness_validity_field_source_facts }, target: source_facts },
+            Edge { label: Named { name: witness_validity_field_candidate }, target: candidate },
+            Edge {
+              label: Named { name: witness_validity_field_predicate },
+              target: witness_validity_predicate_node(p: predicate)
+            },
+            Edge {
+              label: Named { name: witness_validity_field_witness },
+              target: witness_validity_witness_node(w: witness)
+            },
+            Edge {
+              label: Named { name: witness_validity_field_oracle_outcome },
+              target: oracle_outcome
+            }
+          ]
+        },
+        diagnostics: None
+      }
+    }
+  )
+}
+
+
+fn witness_validity_no_correction_reason_node(r: NoCorrectionReason) -> Node {
+  match r {
+    UserInputBoundary =>
+      witness_validity_symbol_atom_node(s: witness_validity_no_correction_tag_user)
+    AmbiguousIntent =>
+      witness_validity_symbol_atom_node(s: witness_validity_no_correction_tag_ambiguous)
+    ExternalContractUnknown =>
+      witness_validity_symbol_atom_node(s: witness_validity_no_correction_tag_external)
+  }
+}
+
+
+fn witness_validity_correction_node(c: Correction) -> Node {
+  match c {
+    Suggested { node: n } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          Edge { label: Named { name: witness_validity_correction_tag_suggested }, target: n }
+        ]
+      }
+    Unavailable { reason: r } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          Edge {
+            label: Named { name: witness_validity_correction_tag_unavailable },
+            target: witness_validity_no_correction_reason_node(r: r)
+          }
+        ]
+      }
+  }
+}
+
+
+fn witness_validity_extent_node(e: Extent) -> Outcome<Node> {
+  match e {
+    WholeFile =>
+      Accepted {
+        value: witness_validity_symbol_atom_node(s: witness_validity_extent_tag_whole_file),
+        diagnostics: None
+      }
+    ByteRange { start: _, end: _ } =>
+      outcome_rejected(
+        d: witness_validity_byte_range_unencodable_diagnostic(
+          at_node: witness_validity_symbol_atom_node(s: witness_validity_extent_tag_byte_range)
+        )
+      )
+  }
+}
+
+
+fn witness_validity_locus_node(l: Locus) -> Outcome<Node> {
+  match l {
+    Textual { file: f, extent: e } =>
+      bind_outcome(o: witness_validity_extent_node(e: e), f: fn(en) {
+        Accepted {
+          value: Node {
+            kind: TypeNode { connective: Conj },
+            children: [
+              Edge {
+                label: Named { name: witness_validity_locus_tag_textual },
+                target: Node {
+                  kind: TypeNode { connective: Conj },
+                  children: [
+                    Edge {
+                      label: Named { name: witness_validity_locus_textual_file },
+                      target: witness_validity_symbol_atom_node(s: f)
+                    },
+                    Edge {
+                      label: Named { name: witness_validity_locus_textual_extent },
+                      target: en
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          diagnostics: None
+        }
+      })
+    NodeLocus { anchor: a } =>
+      Accepted {
+        value: Node {
+          kind: TypeNode { connective: Conj },
+          children: [
+            Edge { label: Named { name: witness_validity_locus_tag_node }, target: a.at }
+          ]
+        },
+        diagnostics: None
+      }
+    PortLocus { anchor: a } =>
+      Accepted {
+        value: Node {
+          kind: TypeNode { connective: Conj },
+          children: [
+            Edge {
+              label: Named { name: witness_validity_locus_tag_port },
+              target: witness_validity_symbol_atom_node(s: a.at)
+            }
+          ]
+        },
+        diagnostics: None
+      }
+  }
+}
+
+
+fn witness_validity_diagnostic_node(d: Diagnostic) -> Outcome<Node> {
+  bind_outcome(o: witness_validity_locus_node(l: d.at), f: fn(at_node) {
+    Accepted {
+      value: Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          Edge {
+            label: Named { name: witness_validity_diag_field_reason },
+            target: witness_validity_symbol_atom_node(s: d.reason)
+          },
+          Edge {
+            label: Named { name: witness_validity_diag_field_at },
+            target: at_node
+          },
+          Edge {
+            label: Named { name: witness_validity_diag_field_correction },
+            target: witness_validity_correction_node(c: d.correction)
+          }
+        ]
+      },
+      diagnostics: None
+    }
+  })
+}
+
+
+// Consumes canonical fold_list_right (order-preserving structural output); no parallel walker.
+fn witness_validity_diagnostic_list_node(xs: FreeMonoid<Diagnostic>) -> Outcome<Node> {
+  fold_list_right(
+    xs: xs,
+    empty: Accepted {
+      value: witness_validity_symbol_atom_node(s: witness_validity_list_tag_empty),
+      diagnostics: None
+    },
+    snoc: fn(acc, h) {
+      bind_outcome(o: acc, f: fn(prev_node) {
+        bind_outcome(o: witness_validity_diagnostic_node(d: h), f: fn(hn) {
+          Accepted {
+            value: Node {
+              kind: TypeNode { connective: Conj },
+              children: [
+                Edge { label: Named { name: witness_validity_list_cons_head }, target: hn },
+                Edge { label: Named { name: witness_validity_list_cons_tail }, target: prev_node }
+              ]
+            },
+            diagnostics: None
+          }
+        })
+      })
+    }
+  )
+}
+
+
+fn witness_validity_non_empty_diagnostics_node(d: NonEmptyDiagnostics) -> Outcome<Node> {
+  bind_outcome(o: witness_validity_diagnostic_node(d: d.head), f: fn(hn) {
+    bind_outcome(o: witness_validity_diagnostic_list_node(xs: d.tail), f: fn(tn) {
+      Accepted {
+        value: Node {
+          kind: TypeNode { connective: Conj },
+          children: [
+            Edge {
+              label: Named { name: witness_validity_diags_field_head },
+              target: hn
+            },
+            Edge {
+              label: Named { name: witness_validity_diags_field_tail },
+              target: tn
+            }
+          ]
+        },
+        diagnostics: None
+      }
+    })
+  })
+}
+
+
+fn witness_validity_diagnostics_node(ds: Diagnostics) -> Outcome<Node> {
+  match ds {
+    None =>
+      Accepted {
+        value: witness_validity_symbol_atom_node(s: witness_validity_diagnostics_tag_none),
+        diagnostics: None
+      }
+    Some { diagnostics: nd } =>
+      bind_outcome(o: witness_validity_non_empty_diagnostics_node(d: nd), f: fn(ndn) {
+        Accepted {
+          value: Node {
+            kind: TypeNode { connective: Conj },
+            children: [
+              Edge {
+                label: Named { name: witness_validity_diagnostics_tag_some },
+                target: ndn
+              }
+            ]
+          },
+          diagnostics: None
+        }
+      })
+  }
+}
+
+
+fn witness_validity_outcome_node(o: Outcome<StructuralPropertyWitness>) -> Outcome<Node> {
+  match o {
+    Accepted { value: w, diagnostics: ds } =>
+      bind_outcome(o: witness_validity_diagnostics_node(ds: ds), f: fn(dsn) {
+        Accepted {
+          value: Node {
+            kind: TypeNode { connective: Conj },
+            children: [
+              Edge {
+                label: Named { name: witness_validity_outcome_holds },
+                target: Node {
+                  kind: TypeNode { connective: Conj },
+                  children: [
+                    Edge {
+                      label: Named { name: witness_validity_outcome_accepted_value },
+                      target: witness_validity_witness_node(w: w)
+                    },
+                    Edge {
+                      label: Named { name: witness_validity_outcome_accepted_diagnostics },
+                      target: dsn
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          diagnostics: None
+        }
+      })
+    Rejected { diagnostics: d } =>
+      bind_outcome(o: witness_validity_non_empty_diagnostics_node(d: d), f: fn(dn) {
+        Accepted {
+          value: Node {
+            kind: TypeNode { connective: Conj },
+            children: [
+              Edge {
+                label: Named { name: witness_validity_outcome_violates },
+                target: dn
+              }
+            ]
+          },
+          diagnostics: None
+        }
+      })
+  }
+}
+
+
+// T-19 witness-validity emit helper: oracle = v4.std.find_witness::verify_witness; emits
+// RoundTripClaim whose input bundles subject + oracle outcome. Rejected only when the
+// subject encoding fails closed (e.g. unencodable Textual{ByteRange} locus).
+fn testgen_emit_witness_validity_claim(
+  label: String,
+  source_facts: Node,
+  candidate: Node,
+  predicate: PreservationPredicate,
+  witness: StructuralPropertyWitness
+) -> Outcome<TestClaim> {
+  bind_outcome(
+    o: witness_validity_subject_node(
+      source_facts: source_facts,
+      candidate: candidate,
+      predicate: predicate,
+      witness: witness
+    ),
+    f: fn(input_node) {
+      Accepted {
+        value: RoundTripClaim {
+          label: label,
+          t19_anchor: T19ManualAnchorAbsent,
+          input: input_node,
+          classification: TestClassification { tier: Tier1, layer: Unit }
+        },
+        diagnostics: None
+      }
+    }
+  )
 }
 
 

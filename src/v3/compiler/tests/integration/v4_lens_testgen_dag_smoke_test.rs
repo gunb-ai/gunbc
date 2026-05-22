@@ -28,6 +28,9 @@ const P9_REGISTRY_OWNER_PATH: &str =
     "src/v4/test/claim/lens_cost/p9_llvm_instruction_cost_registry_owner.dag";
 const NAT_LAW_DAG: &str = include_str!("../../../../v4/test/claim/manual/nat_law_anchors.dag");
 const NAT_SUBSTRATE_DAG: &str = include_str!("../../../../v4/std/nat.dag");
+const WITNESS_VALIDITY_DAG: &str =
+    include_str!("../../../../v4/test/claim/generated/witness_validity.dag");
+const WITNESS_VALIDITY_PATH: &str = "src/v4/test/claim/generated/witness_validity.dag";
 
 const NAT_MANUAL_CLAIM_DATA: [&str; 6] = [
     "claim_nat_add_left_identity",
@@ -469,6 +472,76 @@ fn type_is_outcome_generator_testgen_concept(ty: &SurfaceType) -> bool {
         return false;
     };
     type_is_generator_testgen_concept(inner.as_ref())
+}
+
+// T-19 witness-validity generator category — structural guard for the new helper +
+// generated corpus. Folded into this file (no new `EXPECTED_HAND_AUTHORED_TEST` census
+// path) per INVARIANTS.md §P5 Dispatch-Discipline (b) same-path expansion.
+
+#[test]
+fn v4_lens_testgen_witness_validity_modules_tokenize_and_parse() {
+    parse_module(TESTGEN_DAG, "src/v4/lens/testgen.dag");
+    parse_module(WITNESS_VALIDITY_DAG, WITNESS_VALIDITY_PATH);
+}
+
+#[test]
+fn v4_lens_testgen_witness_validity_helper_returns_outcome_testclaim() {
+    let testgen = parse_module(TESTGEN_DAG, "src/v4/lens/testgen.dag");
+    let rt = fn_return_type(&testgen, "testgen_emit_witness_validity_claim")
+        .expect("testgen_emit_witness_validity_claim must be declared in v4.lens.testgen");
+    assert!(
+        type_is_outcome_named(rt, "TestClaim"),
+        "testgen_emit_witness_validity_claim must return `Outcome<TestClaim>`; got {rt:?}"
+    );
+}
+
+#[test]
+fn v4_lens_testgen_witness_validity_module_imports_helper_from_lens_testgen() {
+    let module = parse_module(WITNESS_VALIDITY_DAG, WITNESS_VALIDITY_PATH);
+    let names = import_names_for_path(&module, &["v4", "lens", "testgen"]).expect(
+        "witness_validity.dag must import from `v4.lens.testgen` (rows route through helper)",
+    );
+    assert!(
+        names
+            .iter()
+            .any(|n| n == "testgen_emit_witness_validity_claim"),
+        "witness_validity.dag must import `testgen_emit_witness_validity_claim`; got {names:?}"
+    );
+}
+
+#[test]
+fn v4_lens_testgen_witness_validity_module_pins_four_row_corpus_via_helper() {
+    // Behavior-pinning ratchet (codex 2026-05-22): pin the exact 4-row corpus this PR
+    // delivers — 1 positive + 3 negative arms — so dropping one row regresses the test.
+    let helper_calls = WITNESS_VALIDITY_DAG
+        .matches("testgen_emit_witness_validity_claim(")
+        .count();
+    assert_eq!(
+        helper_calls, 4,
+        "witness_validity.dag must contain exactly 4 helper-routed rows; got {helper_calls}"
+    );
+    let row_data_decls = WITNESS_VALIDITY_DAG
+        .matches("data row_witness_validity_")
+        .count();
+    assert_eq!(
+        row_data_decls, 4,
+        "witness_validity.dag must declare exactly 4 `data row_witness_validity_*` rows; got {row_data_decls}"
+    );
+}
+
+#[test]
+fn v4_lens_testgen_witness_validity_module_authors_no_testclaim_literals() {
+    for literal in [
+        "EqualsClaim {",
+        "DiagnosticClaim {",
+        "CompilesClaim {",
+        "RoundTripClaim {",
+    ] {
+        assert!(
+            !WITNESS_VALIDITY_DAG.contains(literal),
+            "witness_validity.dag must not author `{literal}` literals — claim polarity is decided by verify_witness inside the helper (tautology-skip discipline)"
+        );
+    }
 }
 
 fn function_count(module: &v3_compiler::parse_surface::SurfaceModule, name: &str) -> usize {
