@@ -9,6 +9,12 @@ consume:
   eval(tree, interpretation, inputs) evaluates two Value children to two-byte
   RuntimePrimitive values, dispatches the Transform node through the supplied
   InterpretationAlgebra, and the witness accepts exactly a five-byte result.
+
+Scaffold boundary - INVARIANTS P5 (Progress Is Dissolution): delete this
+script and the ci.yml step when the modeled T-22 runner executes
+src/v4/test/claim/manual/eval_runtime_mvp.dag on main CI and reports the same
+RuntimeValue witness through TestClaimRun or workflow-as-data, with no
+scripts-owned generated-Rust receipt standing between the claim and the gate.
 """
 
 from __future__ import annotations
