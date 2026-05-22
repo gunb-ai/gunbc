@@ -290,8 +290,8 @@ fn shrink_factor_eq(a: ShrinkFactor, b: ShrinkFactor) -> Bool {
   }
 }
 
-// Lawful Lattice<SubValueRelation> meet/join — mirrored from `dsl/std/induction.dag`.
-// See that file for the full lattice ordering description.
+// BoundedMeetSemilattice meet/join — mirrored from `dsl/std/induction.dag`.
+// See that file for ordering, law list, and Inc-split rationale.
 
 fn sub_value_structural_eq(a: SubValueRelation, b: SubValueRelation) -> Bool {
   match a {

@@ -419,10 +419,11 @@ fn sub_value_level(r: SubValueRelation) -> Int {
   }
 }
 
-// Meet (greatest lower bound) over the 7-lawful-inhabitant lattice plus the ⊥ sink.
-// Encodes the Hasse diagram in the file header. The strict-cone (StrictAxisErased over the
-// strict witnesses) lets meet(StrictAxisErased, Strict_f) return Strict_f without strengthening
-// evidence; mixed pairs drop to the GLB along the chain.
+// Projection-sound meet over the 7 lawful inhabitants plus the ⊥ sink (BoundedMeetSemilattice
+// framing — not a true GLB when MixedTop is involved). Encodes the Hasse diagram in the file
+// header. The strict-cone (StrictAxisErased over strict witnesses) lets meet(SAE, Strict_f)
+// return Strict_f without strengthening evidence; mixed pairs and any pair with MixedTop drop
+// to NonIncreasingValue.
 fn meet_sub_value(a: SubValueRelation, b: SubValueRelation) -> SubValueRelation {
   if sub_value_structural_eq(a: a, b: b) { a }
   else {
@@ -508,8 +509,10 @@ fn join_sub_value(a: SubValueRelation, b: SubValueRelation) -> SubValueRelation 
 //     `NonIncreasingValue` (meet of pairwise-incomparable structurals or any pair involving
 //     MixedTop) or to `StrictAxisErased` / `MixedTop` (join of strict-style-only / mixed
 //     structurals respectively) when arguments are at the structural level and not identical.
-//   - Absorption: `meet(a, join(a, b)) = a` — `join(a, b)` is either `a` (if b ≤ a) or some
-//     element ≥ a (StrictAxisErased or MixedTop), and meet pulls back to a.
+//   - Absorption (qualified): `meet(a, join(a, b)) = a` only when `join(a, b) ≠ MixedTop`
+//     (e.g. all-strict joins → StrictAxisErased, or `b ≤ a` so join returns `a`). When
+//     `join(a, b) = MixedTop` (strict/non-strict boundary), `meet(a, MixedTop) =
+//     NonIncreasingValue` — not `a` — by design for projection-soundness.
 //   - Meet bottom: meet(⊥, a) = ⊥ — `SubValueUnknown` at level 0.
 //   - Join top: join(⊤, a) = ⊤ — `MixedTop` at level 4 (meet does NOT use ⊤ as identity).
 //
