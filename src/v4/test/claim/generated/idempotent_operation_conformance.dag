@@ -17,7 +17,7 @@ import v4.lens.testgen {
 }
 import v4.std.algebra { length }
 import v4.std.collection { List }
-import v4.std.diagnostic { Outcome, Rejected }
+import v4.std.diagnostic { Accepted, Outcome, Rejected }
 import v4.std.logic { Bool }
 import v4.std.verification {
   TestClaim,
@@ -69,8 +69,7 @@ fn generated_label_only_skip_rejection_reason() -> Symbol {
 }
 
 
-data generated_label_only_skip_pins_tautology_reason: Bool =
-  generated_label_only_skip_rejection_reason() == t19_idempotent_operation_tautology_skip
+data generated_label_only_skip_pins_tautology_reason: Bool = generated_label_only_skip_rejection_reason() == t19_idempotent_operation_tautology_skip
 
 
 fn generated_idempotent_operation_claim_rows() -> List<Outcome<TestClaim>> {
