@@ -1,15 +1,13 @@
 // src/v4/test/claim/generated/idempotent_operation_conformance.dag
 // Scope: T-19 idempotent-operation generator — f(f(x)) == f(x) rows with double-application witness.
 // Owns: generated idempotent-operation TestClaim rows via testgen_emit_idempotent_operation_claim.
-// Consumes: v4.lens.testgen, v4.std.verification, v4.test.claim.effects.idempotent_operation_samples.
+// Consumes: v4.lens.testgen, v4.std.effects, v4.std.verification.
 // Status: generated corpus — execution deferred to T-22 runner bridge.
 
 module v4.test.claim.generated.idempotent_operation_conformance
 
 
 import v4.lens.testgen {
-  ComposableIdempotentOperation,
-  LabelOnlyIdempotentInhabitance,
   testgen_emit_idempotent_operation_claim,
   testgen_scheduled_idempotent_operation_subjects,
   t19_idempotent_label_delete,
@@ -26,59 +24,38 @@ import v4.std.verification {
   Tier1,
   Unit
 }
-import v4.std.node { Atom, Node, Symbol, TypeNode }
-import v4.test.claim.effects.idempotent_operation_samples {
-  idempotent_delete_operation_body,
-  idempotent_effect_delete_variant,
-  idempotent_effect_read_variant,
-  idempotent_effect_upsert_variant,
-  idempotent_label_only_operation,
-  idempotent_read_operation_body,
-  idempotent_upsert_operation_body
-}
-
-
-fn idempotent_sample_atom(s: Symbol) -> Node {
-  Node { kind: TypeNode { connective: Atom { identity: s } }, children: [] }
+import v4.std.effects {
+  t19_sample_delete_subject,
+  t19_sample_label_only_subject,
+  t19_sample_read_subject,
+  t19_sample_upsert_subject
 }
 
 
 data generated_read_idempotent_operation_claim: Outcome<TestClaim> = testgen_emit_idempotent_operation_claim(
   label: t19_idempotent_label_read,
-  subject: ComposableIdempotentOperation {
-    effect_variant: idempotent_effect_read_variant,
-    operation_body: idempotent_sample_atom(s: idempotent_read_operation_body)
-  },
+  subject: t19_sample_read_subject,
   classification: TestClassification { tier: Tier1, layer: Unit }
 )
 
 
 data generated_upsert_idempotent_operation_claim: Outcome<TestClaim> = testgen_emit_idempotent_operation_claim(
   label: t19_idempotent_label_upsert,
-  subject: ComposableIdempotentOperation {
-    effect_variant: idempotent_effect_upsert_variant,
-    operation_body: idempotent_sample_atom(s: idempotent_upsert_operation_body)
-  },
+  subject: t19_sample_upsert_subject,
   classification: TestClassification { tier: Tier1, layer: Unit }
 )
 
 
 data generated_delete_idempotent_operation_claim: Outcome<TestClaim> = testgen_emit_idempotent_operation_claim(
   label: t19_idempotent_label_delete,
-  subject: ComposableIdempotentOperation {
-    effect_variant: idempotent_effect_delete_variant,
-    operation_body: idempotent_sample_atom(s: idempotent_delete_operation_body)
-  },
+  subject: t19_sample_delete_subject,
   classification: TestClassification { tier: Tier1, layer: Unit }
 )
 
 
 data generated_label_only_idempotent_skip: Outcome<TestClaim> = testgen_emit_idempotent_operation_claim(
   label: "generated/idempotent_operation: skip label-only inhabitance without composable body",
-  subject: LabelOnlyIdempotentInhabitance {
-    effect_variant: idempotent_effect_read_variant,
-    label: idempotent_label_only_operation
-  },
+  subject: t19_sample_label_only_subject,
   classification: TestClassification { tier: Tier1, layer: Unit }
 )
 

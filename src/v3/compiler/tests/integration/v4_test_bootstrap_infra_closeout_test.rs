@@ -39,6 +39,8 @@ const IDEMPOTENT_OPERATION_GENERATED_DAG: &str =
     include_str!("../../../../v4/test/claim/generated/idempotent_operation_conformance.dag");
 const IDEMPOTENT_OPERATION_GENERATED_PATH: &str =
     "src/v4/test/claim/generated/idempotent_operation_conformance.dag";
+const EFFECTS_DAG: &str = include_str!("../../../../v4/std/effects.dag");
+const EFFECTS_PATH: &str = "src/v4/std/effects.dag";
 
 #[test]
 fn t19_language_behavior_equivalence_generated_claims_parse() {

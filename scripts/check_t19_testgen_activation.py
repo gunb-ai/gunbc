@@ -16,6 +16,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 TESTGEN = ROOT / "src/v4/lens/testgen.dag"
+EFFECTS = ROOT / "src/v4/std/effects.dag"
 LBE_GENERATED = ROOT / "src/v4/test/claim/generated/language_behavior_equivalence.dag"
 LBE_MANIFEST = ROOT / "src/v4/test/claim/generated/lbe_anchor_manifest.dag"
 IDEMPOTENT_OPERATION_GENERATED = (
@@ -42,6 +43,7 @@ def _require_substrings(label: str, text: str, needles: tuple[str, ...]) -> None
 def main() -> None:
     for path in (
         TESTGEN,
+        EFFECTS,
         LBE_GENERATED,
         LBE_MANIFEST,
         IDEMPOTENT_OPERATION_GENERATED,
@@ -50,6 +52,7 @@ def main() -> None:
         _require(path)
 
     testgen = _read(TESTGEN)
+    effects = _read(EFFECTS)
     lbe = _read(LBE_GENERATED)
     manifest = _read(LBE_MANIFEST)
     verification = _read(VERIFICATION)
@@ -66,9 +69,8 @@ def main() -> None:
             "fn testgen_emit_idempotent_operation_claim",
             "fn testgen_scheduled_language_behavior_generators",
             "fn testgen_scheduled_idempotent_operation_subjects",
-            "type IdempotentOperationSubject",
-            "ComposableIdempotentOperation",
-            "LabelOnlyIdempotentInhabitance",
+            "import v4.std.effects",
+            "idempotent_operation_witness_node",
             "idempotent_operation_apply_twice",
             "idempotent_operation_apply_once",
             "t19_lbe_label_conj_dag_surface",
@@ -132,7 +134,9 @@ def main() -> None:
             "generated_delete_idempotent_operation_claim",
             "generated_idempotent_operation_skip_is_rejected",
             "LabelOnlyIdempotentInhabitance",
-            "ComposableIdempotentOperation",
+            "ReadIdempotentSample",
+            "idempotent_operation_witness_node",
+            "t19_sample_read_subject",
             "generated_idempotent_operation_sample_count_is_three",
         ),
     )
@@ -144,6 +148,21 @@ def main() -> None:
         raise SystemExit(
             "IdempotentOperationSubject must stay outside the closed six-way TestgenConcept coproduct"
         )
+
+    _require_substrings(
+        "effects.dag",
+        effects,
+        (
+            "type IdempotentShape",
+            "type EffectShape",
+            "type IdempotentOperationSubject",
+            "ReadIdempotentSample",
+            "UpsertIdempotentSample",
+            "DeleteIdempotentSample",
+            "fn idempotent_operation_witness_node",
+            "IsIdempotent(IdempotentShape)",
+        ),
+    )
 
     print(
         "OK: T-19 testgen activation "
