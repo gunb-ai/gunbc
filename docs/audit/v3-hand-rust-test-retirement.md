@@ -188,7 +188,7 @@ Subsections below sum to **383** DELETE tests (matches summary and script output
 - `src/v3/compiler/tests/integration/r3_pb_runtime_evaluator_corpus_seed_test.rs` (2 tests)
 - `src/v3/compiler/tests/integration/r3_sg0_non_test_zero_test.rs` (1 tests)
 - `src/v3/compiler/tests/integration/r3_substrate_gap_reflection_closure_test.rs` (1 tests)
-- `src/v3/compiler/tests/integration/r3_verification_l4_l7_l5_skeleton_test.rs` (11 tests)
+- `src/v3/compiler/tests/integration/r3_verification_l4_l7_l5_skeleton_test.rs` (10 tests)
 
 ### v4 inverted-dependency smoke/closeout (78 tests)
 
