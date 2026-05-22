@@ -50,9 +50,7 @@ import v4.std.verification {
 import v4.test.claim.manual.connective_anchors { stub_empty_conj }
 
 
-// 🟡 coproduct dissolution — T19-GENERATOR-ORACLE-BASIS.
-// Dispatch-only scaffold: dissolves as pending wishlist rows become category-specific
-// generated corpora with their oracle basis carried by the concrete helper / claim shape.
+// 🟡 coproduct dissolution — feature:T19-GENERATOR-ORACLE-BASIS; bind node://adhoc-6c12ca47-7ee; dissolve-on:pending wishlist rows become category-specific generated corpora with oracle basis carried by the concrete helper / claim shape.
 type TestgenOracleBasis
   = StructuralConstructionWitness
   | AlgebraLawWitness

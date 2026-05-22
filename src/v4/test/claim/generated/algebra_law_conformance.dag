@@ -8,10 +8,7 @@ module v4.test.claim.generated.algebra_law_conformance
 
 
 import v4.lens.testgen {
-  testgen_emit_algebra_law_claim,
-  t19_law_nat_add_left_identity,
-  t19_law_nat_add_associativity,
-  t19_law_nat_mul_annihilator
+  testgen_emit_algebra_law_claim
 }
 import v4.std.algebra { length }
 import v4.std.collection { List }
@@ -26,19 +23,18 @@ import v4.std.verification {
   Tier1,
   Unit
 }
-import v4.test.claim.algebra_laws.nat_semiring {
-  nat_add_left_identity_input,
-  nat_add_associativity_input,
-  nat_mul_annihilator_input
-}
 import v4.std.diagnostic { Outcome }
 
 
-data algebra_law_generated_lhs_field: Symbol = algebra_law_generated_lhs_field
-data algebra_law_generated_rhs_field: Symbol = algebra_law_generated_rhs_field
-data algebra_law_generated_law_field: Symbol = algebra_law_generated_law_field
-data algebra_law_generated_source_symbol: Symbol = algebra_law_generated_source_symbol
-data algebra_law_generated_expected_symbol: Symbol = algebra_law_generated_expected_symbol
+data algebra_law_generated_operation_field: Symbol = algebra_law_generated_operation_field
+data algebra_law_generated_left_field: Symbol = algebra_law_generated_left_field
+data algebra_law_generated_right_field: Symbol = algebra_law_generated_right_field
+data t19_generated_nat_add_op: Symbol = t19_generated_nat_add_op
+data t19_generated_nat_mul_op: Symbol = t19_generated_nat_mul_op
+data t19_generated_nat_zero_value: Symbol = t19_generated_nat_zero_value
+data t19_generated_nat_one_value: Symbol = t19_generated_nat_one_value
+data t19_generated_nat_two_value: Symbol = t19_generated_nat_two_value
+data t19_generated_nat_three_value: Symbol = t19_generated_nat_three_value
 
 
 fn algebra_law_generated_atom(s: Symbol) -> Node {
@@ -46,33 +42,58 @@ fn algebra_law_generated_atom(s: Symbol) -> Node {
 }
 
 
-fn algebra_law_generated_side(law: Symbol, side: Symbol) -> Node {
+fn algebra_law_generated_value(value: Symbol) -> Node {
+  algebra_law_generated_atom(s: value)
+}
+
+
+fn algebra_law_generated_binary(operation: Symbol, left: Node, right: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: algebra_law_generated_law_field }, target: algebra_law_generated_atom(s: law) },
-      Edge { label: Named { name: algebra_law_generated_lhs_field }, target: algebra_law_generated_atom(s: side) },
+      Edge { label: Named { name: algebra_law_generated_operation_field }, target: algebra_law_generated_atom(s: operation) },
+      Edge { label: Named { name: algebra_law_generated_left_field }, target: left },
+      Edge { label: Named { name: algebra_law_generated_right_field }, target: right },
     ]
   }
 }
 
 
-fn algebra_law_generated_expected(law_subject: Node, law: Symbol) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      Edge { label: Named { name: algebra_law_generated_law_field }, target: algebra_law_generated_atom(s: law) },
-      Edge { label: Named { name: algebra_law_generated_rhs_field }, target: law_subject },
-    ]
-  }
+fn t19_generated_nat_zero() -> Node {
+  algebra_law_generated_value(value: t19_generated_nat_zero_value)
+}
+
+
+fn t19_generated_nat_one() -> Node {
+  algebra_law_generated_value(value: t19_generated_nat_one_value)
+}
+
+
+fn t19_generated_nat_two() -> Node {
+  algebra_law_generated_value(value: t19_generated_nat_two_value)
+}
+
+
+fn t19_generated_nat_three() -> Node {
+  algebra_law_generated_value(value: t19_generated_nat_three_value)
+}
+
+
+fn t19_generated_nat_add(left: Node, right: Node) -> Node {
+  algebra_law_generated_binary(operation: t19_generated_nat_add_op, left: left, right: right)
+}
+
+
+fn t19_generated_nat_mul(left: Node, right: Node) -> Node {
+  algebra_law_generated_binary(operation: t19_generated_nat_mul_op, left: left, right: right)
 }
 
 
 data generated_nat_add_left_identity_claim: Outcome<TestClaim> = testgen_emit_algebra_law_claim(
   anchor: T19ManualNatAddLeftIdentity,
   label: "generated/algebra_law: Nat addition left identity",
-  lhs: algebra_law_generated_side(law: t19_law_nat_add_left_identity, side: algebra_law_generated_source_symbol),
-  rhs: algebra_law_generated_expected(law_subject: nat_add_left_identity_input, law: t19_law_nat_add_left_identity),
+  lhs: t19_generated_nat_add(left: t19_generated_nat_zero(), right: t19_generated_nat_one()),
+  rhs: t19_generated_nat_one(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 )
 
@@ -80,8 +101,14 @@ data generated_nat_add_left_identity_claim: Outcome<TestClaim> = testgen_emit_al
 data generated_nat_add_associativity_claim: Outcome<TestClaim> = testgen_emit_algebra_law_claim(
   anchor: T19ManualNatAddAssociativity,
   label: "generated/algebra_law: Nat addition associativity",
-  lhs: algebra_law_generated_side(law: t19_law_nat_add_associativity, side: algebra_law_generated_source_symbol),
-  rhs: algebra_law_generated_expected(law_subject: nat_add_associativity_input, law: t19_law_nat_add_associativity),
+  lhs: t19_generated_nat_add(
+    left: t19_generated_nat_add(left: t19_generated_nat_one(), right: t19_generated_nat_two()),
+    right: t19_generated_nat_three()
+  ),
+  rhs: t19_generated_nat_add(
+    left: t19_generated_nat_one(),
+    right: t19_generated_nat_add(left: t19_generated_nat_two(), right: t19_generated_nat_three())
+  ),
   classification: TestClassification { tier: Tier1, layer: Unit }
 )
 
@@ -89,8 +116,8 @@ data generated_nat_add_associativity_claim: Outcome<TestClaim> = testgen_emit_al
 data generated_nat_mul_annihilator_claim: Outcome<TestClaim> = testgen_emit_algebra_law_claim(
   anchor: T19ManualNatMulAnnihilator,
   label: "generated/algebra_law: Nat multiplication annihilator",
-  lhs: algebra_law_generated_side(law: t19_law_nat_mul_annihilator, side: algebra_law_generated_source_symbol),
-  rhs: algebra_law_generated_expected(law_subject: nat_mul_annihilator_input, law: t19_law_nat_mul_annihilator),
+  lhs: t19_generated_nat_mul(left: t19_generated_nat_zero(), right: t19_generated_nat_three()),
+  rhs: t19_generated_nat_zero(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 )
 
