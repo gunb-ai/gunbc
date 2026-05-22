@@ -1,7 +1,7 @@
 // src/v4/extdeps/languages/lean.dag
 // Scope: Lean 4 language model for PROOF-1 termination export.
 // Owns: LeanDeclarationKind, LeanName, LeanLevel, LeanLevelRef, LeanLevelNode, LeanBinderInfo, LeanBinder, LeanTermRef, LeanTermNode, LeanTermForm, LeanMatchAlternative, LeanTerminationMeasure, LeanTerminationBy, LeanDecreasingProof, LeanTerminationClause, LeanDefinitionTermination, LeanProofArtifact, LeanFidelityFeature, LeanProofCheckSemantics, Symbol, LeanIntKind, LeanIntWidth, LeanScalar, LeanPrimitiveFacts, LeanLanguageModel, lean_*_facts, lean_*_inhabitant_node, lean_bool_grounding.
-// Consumes: List, Set, Bool, bool_boolean_algebra; v4.std.algebra.BooleanAlgebra/free_monoid_fold; v4.std.model_core; v4.std.node.
+// Consumes: List, Set, Bool, bool_boolean_algebra; v4.std.algebra.BooleanAlgebra/fold_list; v4.std.model_core; v4.std.node.
 // Status: D2-REV; PROOF-1 termination slice carries Lean scalar fact-bundles into ModelCore wave-1; bool canonical-B decl-ref grounding — 🟡 E-6(b) staging (scaffold at decl; ledger modeling-discipline.md classifier = LeanScalar.BoolScalar).
 
 module v4.extdeps.languages.lean
@@ -9,7 +9,7 @@ module v4.extdeps.languages.lean
 
 import v4.std.collection { List, Set }
 import v4.std.logic { Bool, bool_boolean_algebra }
-import v4.std.algebra { BooleanAlgebra, free_monoid_fold }
+import v4.std.algebra { BooleanAlgebra, fold_list }
 import v4.std.model_core {
   EffectSemanticsDecl,
   ModelCore,
@@ -449,7 +449,7 @@ fn lean_inhabitant_int32_node() -> Node {
 
 
 fn lean_list_snoc_item<T>(xs: List<T>, item: T) -> List<T> {
-  free_monoid_fold(
+  fold_list(
     xs: xs,
     empty: Cons { head: item, tail: Empty },
     cons: fn(rest, existing) {
@@ -505,7 +505,7 @@ fn lean_primitive_bundle_from_facts(facts: LeanPrimitiveFacts) -> PrimitiveFactB
 
 
 fn lean_wave1_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
-  free_monoid_fold(
+  fold_list(
     xs: lean_primitive_facts_catalog,
     empty: Empty,
     cons: fn(acc, facts) {
@@ -524,7 +524,7 @@ fn lean_catalog_surface_symbol_step(sym: Symbol, acc: Bool, facts: LeanPrimitive
 
 
 fn lean_catalog_surface_symbol(sym: Symbol) -> Bool {
-  free_monoid_fold(
+  fold_list(
     xs: lean_primitive_facts_catalog,
     empty: false,
     cons: fn(acc, facts) {
