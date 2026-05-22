@@ -279,7 +279,6 @@ fn v4_rust_integer_primitive_rows_populate_range_bounds() {
 }
 
 #[test]
-<<<<<<< HEAD
 fn v4_rust_integer_range_bounds_carry_reference_values() {
     let module = parse_module(RUST_LANGUAGE_DAG, RUST_LANGUAGE_PATH);
     assert!(
@@ -314,28 +313,6 @@ fn v4_rust_integer_range_bounds_carry_reference_values() {
             record_field_string(expr, "value"),
             Some(value),
             "{RUST_LANGUAGE_PATH}: range bound `{bound}` must carry the Rust Reference value, not only an opaque label"
-=======
-fn v4_rust_integer_range_symbols_are_self_identifying() {
-    let module = parse_module(RUST_LANGUAGE_DAG, RUST_LANGUAGE_PATH);
-    for symbol in [
-        "rust_range_min_i8",
-        "rust_range_max_i8",
-        "rust_range_min_i128",
-        "rust_range_max_i128",
-        "rust_range_min_u64",
-        "rust_range_max_u64",
-        "rust_range_min_u128",
-        "rust_range_max_u128",
-        "rust_range_min_isize",
-        "rust_range_max_isize",
-        "rust_range_min_usize",
-        "rust_range_max_usize",
-    ] {
-        assert_eq!(
-            data_body_var(&module, symbol),
-            Some(symbol),
-            "{RUST_LANGUAGE_PATH}: range Symbol carrier `{symbol}` must be self-identifying; do not point at an undeclared alias"
->>>>>>> 1c6d93c01 (test(v4): ratchet Rust range symbols as declared carriers)
         );
     }
 }
