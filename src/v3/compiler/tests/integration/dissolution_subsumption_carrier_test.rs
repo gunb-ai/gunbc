@@ -22,19 +22,8 @@ fn dissolution_subsumption_carrier_shape_locked() {
     assert_record_fields(&module.items, "DiffId", &[("id", "Symbol")]);
     assert_record_fields(&module.items, "TestClaimId", &[("id", "Symbol")]);
     assert_record_fields(&module.items, "ProducerStageId", &[("id", "Symbol")]);
-    assert_record_fields(
-        &module.items,
-        "SubsumedFixes",
-        &[("head", "DiffId"), ("tail", "List<DiffId>")],
-    );
-    assert_record_fields(
-        &module.items,
-        "ProducerStageDerivationPath",
-        &[
-            ("head", "ProducerStageId"),
-            ("tail", "List<ProducerStageId>"),
-        ],
-    );
+    assert_no_item(&module.items, "SubsumedFixes");
+    assert_no_item(&module.items, "ProducerStageDerivationPath");
     assert_sum_variants(
         &module.items,
         "SubsumptionVerification",
@@ -42,7 +31,7 @@ fn dissolution_subsumption_carrier_shape_locked() {
             ("MechanicalReverification", &[("test_claim", "TestClaimId")]),
             (
                 "ProducerStageDerivation",
-                &[("derivation_path", "ProducerStageDerivationPath")],
+                &[("derivation_path", "List<ProducerStageId>")],
             ),
         ],
     );
@@ -51,61 +40,85 @@ fn dissolution_subsumption_carrier_shape_locked() {
         "DissolutionSubsumption",
         &[
             ("root_fix", "DiffId"),
-            ("subsumed_fixes", "SubsumedFixes"),
+            ("subsumed_fixes", "Set<DiffId>"),
             ("verification", "SubsumptionVerification"),
         ],
     );
 }
 
 #[test]
-fn dissolution_subsumption_first_row_is_producer_stage_derived() {
+fn dissolution_subsumption_first_row_is_mechanical_reverification() {
     let module = parse_module(SUBSUMPTION_DAG, SUBSUMPTION_PATH);
-    let row = data_body(&module.items, "concept_home_rewrite_subsumption");
+    let row = data_body(&module.items, "affected_set_irt1_subsumption");
 
     let root_fix = field_value(row, "root_fix");
     assert_eq!(
         diff_id_symbol(root_fix),
-        "concept_home_rewrite_root_fix",
+        "affected_set_irt1_frontier_root_fix",
         "{SUBSUMPTION_PATH}: first subsumption row root fix drifted"
     );
 
     let subsumed = field_value(row, "subsumed_fixes");
-    let subsumed_fields = assert_variant_record(subsumed, "SubsumedFixes");
-    let head = field_value(subsumed_fields, "head");
-    let tail = field_value(subsumed_fields, "tail");
-    let SurfaceExpr::List { elements, .. } = tail else {
-        panic!("{SUBSUMPTION_PATH}: SubsumedFixes.tail must be a finite DiffId list");
+    let SurfaceExpr::Var { name, .. } = subsumed else {
+        panic!(
+            "{SUBSUMPTION_PATH}: subsumed_fixes must reference the data-row Set<DiffId> binding, got {subsumed:?}"
+        );
     };
-    let observed_leaf_ids = std::iter::once(diff_id_symbol(head))
-        .chain(elements.iter().map(diff_id_symbol))
-        .collect::<BTreeSet<_>>();
-    let expected_leaf_ids = ["duplicate_home_leaf_fix", "wrong_home_alias_leaf_fix"]
-        .into_iter()
-        .collect::<BTreeSet<_>>();
     assert_eq!(
-        observed_leaf_ids, expected_leaf_ids,
-        "{SUBSUMPTION_PATH}: first subsumption row leaf fixes drifted"
+        name, "affected_set_irt1_subsumed_fixes",
+        "{SUBSUMPTION_PATH}: first subsumption row subsumed_fixes drifted"
     );
 
     let verification = field_value(row, "verification");
-    let fields = assert_variant_record(verification, "ProducerStageDerivation");
-    let path = field_value(fields, "derivation_path");
-    let path_fields = assert_variant_record(path, "ProducerStageDerivationPath");
-    let head = field_value(path_fields, "head");
-    assert_eq!(
-        producer_stage_id_symbol(head),
-        "concept_home_producer_stage",
-        "{SUBSUMPTION_PATH}: first subsumption row producer stage drifted"
-    );
-    let tail = field_value(path_fields, "tail");
-    let SurfaceExpr::List { elements, .. } = tail else {
-        panic!("{SUBSUMPTION_PATH}: ProducerStageDerivationPath.tail must be a list");
+    let fields = assert_variant_record(verification, "MechanicalReverification");
+    let test_claim = field_value(fields, "test_claim");
+    let test_claim_fields = assert_variant_record(test_claim, "TestClaimId");
+    let id = field_value(test_claim_fields, "id");
+    let SurfaceExpr::Var { name, .. } = id else {
+        panic!("{SUBSUMPTION_PATH}: TestClaimId.id must name a symbolic claim handle, got {id:?}");
     };
     assert_eq!(
-        elements.len(),
-        0,
-        "{SUBSUMPTION_PATH}: first subsumption row should not name additional producer stages"
+        name, "affected_set_irt1_mechanical_reverification_claim",
+        "{SUBSUMPTION_PATH}: first subsumption row test claim drifted"
     );
+}
+
+#[test]
+fn affected_set_irt1_subsumed_fixes_membership_predicate_enumerates_five_leaves() {
+    let module = parse_module(SUBSUMPTION_DAG, SUBSUMPTION_PATH);
+    let (body_start, body_end) = module
+        .items
+        .iter()
+        .find_map(|item| match item {
+            SurfaceItem::Fn { name, span, .. }
+                if name == "affected_set_irt1_subsumed_fixes_value" =>
+            {
+                Some((span.byte_start, span.byte_end))
+            }
+            SurfaceItem::FnExternalBody {
+                name, body_span, ..
+            } if name == "affected_set_irt1_subsumed_fixes_value" => {
+                Some((body_span.byte_start, body_span.byte_end))
+            }
+            _ => None,
+        })
+        .unwrap_or_else(|| {
+            panic!("{SUBSUMPTION_PATH}: missing fn affected_set_irt1_subsumed_fixes_value")
+        });
+    let body_source = &SUBSUMPTION_DAG[body_start as usize..body_end as usize];
+    let expected = [
+        "affected_set_hash_receipt_leaf_fix",
+        "affected_set_boundary_receipt_leaf_fix",
+        "affected_set_dimension_receipt_leaf_fix",
+        "affected_set_propagation_receipt_leaf_fix",
+        "affected_set_frontier_receipt_leaf_fix",
+    ];
+    for leaf in expected {
+        assert!(
+            body_source.contains(leaf),
+            "{SUBSUMPTION_PATH}: subsumed-fixes membership predicate must reference {leaf}"
+        );
+    }
 }
 
 fn assert_record_fields(items: &[SurfaceItem], name: &str, expected: &[(&str, &str)]) {
@@ -128,6 +141,22 @@ fn assert_record_fields(items: &[SurfaceItem], name: &str, expected: &[(&str, &s
     assert_eq!(
         observed, expected,
         "{SUBSUMPTION_PATH}: {name} fields drifted"
+    );
+}
+
+fn assert_no_item(items: &[SurfaceItem], name: &str) {
+    let exists = items.iter().any(|item| match item {
+        SurfaceItem::TypeRecord {
+            name: item_name, ..
+        }
+        | SurfaceItem::TypeSum {
+            name: item_name, ..
+        } => item_name == name,
+        _ => false,
+    });
+    assert!(
+        !exists,
+        "{SUBSUMPTION_PATH}: {name} must not be declared after Set<DiffId> reshape"
     );
 }
 
@@ -178,10 +207,11 @@ fn data_body<'a>(items: &'a [SurfaceItem], name: &str) -> &'a [SurfaceRecordFiel
             _ => None,
         })
         .unwrap_or_else(|| panic!("{SUBSUMPTION_PATH}: missing data row {name}"));
-    let SurfaceExpr::Record { fields, .. } = body else {
-        panic!("{SUBSUMPTION_PATH}: {name} must use a record initializer");
-    };
-    fields
+    match body {
+        SurfaceExpr::Record { fields, .. } => fields,
+        SurfaceExpr::VariantRecord { fields, .. } => fields,
+        other => panic!("{SUBSUMPTION_PATH}: {name} must use a record initializer, got {other:?}"),
+    }
 }
 
 fn surface_fields(fields: &[SurfaceField]) -> BTreeSet<(&str, &'static str)> {
@@ -231,44 +261,35 @@ fn type_expr_text(expr: &SurfaceType) -> &'static str {
             "DiffId" => "DiffId",
             "TestClaimId" => "TestClaimId",
             "ProducerStageId" => "ProducerStageId",
-            "SubsumedFixes" => "SubsumedFixes",
-            "ProducerStageDerivationPath" => "ProducerStageDerivationPath",
             "SubsumptionVerification" => "SubsumptionVerification",
             other => panic!("{SUBSUMPTION_PATH}: unexpected named type {other}"),
         },
-        SurfaceType::Parameterized { name, args, .. } if name == "List" => {
+        SurfaceType::Parameterized { name, args, .. } => {
             assert_eq!(
                 args.len(),
                 1,
-                "{SUBSUMPTION_PATH}: List should have one type argument"
+                "{SUBSUMPTION_PATH}: {name} should have one type argument"
             );
-            match &args[0] {
-                v3_compiler::parse_surface::TypeAngleArg::TypeExpr { ty } => {
-                    let SurfaceType::Named { name, .. } = ty.as_ref() else {
-                        panic!("{SUBSUMPTION_PATH}: unexpected List argument {ty:?}");
-                    };
-                    match name.as_str() {
-                        "DiffId" => "List<DiffId>",
-                        "ProducerStageId" => "List<ProducerStageId>",
-                        other => panic!("{SUBSUMPTION_PATH}: unexpected List argument {other}"),
-                    }
+            let v3_compiler::parse_surface::TypeAngleArg::TypeExpr { ty } = &args[0] else {
+                panic!(
+                    "{SUBSUMPTION_PATH}: unexpected {name} argument {:?}",
+                    args[0]
+                );
+            };
+            let SurfaceType::Named { name: inner, .. } = ty.as_ref() else {
+                panic!("{SUBSUMPTION_PATH}: unexpected {name} argument {ty:?}");
+            };
+            match (name.as_str(), inner.as_str()) {
+                ("List", "DiffId") => "List<DiffId>",
+                ("List", "ProducerStageId") => "List<ProducerStageId>",
+                ("Set", "DiffId") => "Set<DiffId>",
+                (outer, arg) => {
+                    panic!("{SUBSUMPTION_PATH}: unexpected parameterized type {outer}<{arg}>")
                 }
-                other => panic!("{SUBSUMPTION_PATH}: unexpected List argument {other:?}"),
             }
         }
         other => panic!("{SUBSUMPTION_PATH}: unexpected type expression {other:?}"),
     }
-}
-
-fn producer_stage_id_symbol(expr: &SurfaceExpr) -> &str {
-    let fields = assert_variant_record(expr, "ProducerStageId");
-    let id = field_value(fields, "id");
-    let SurfaceExpr::Var { name, .. } = id else {
-        panic!(
-            "{SUBSUMPTION_PATH}: ProducerStageId.id must name a symbolic stage handle, got {id:?}"
-        );
-    };
-    name
 }
 
 fn parse_module(source: &str, file: &str) -> v3_compiler::parse_surface::SurfaceModule {
