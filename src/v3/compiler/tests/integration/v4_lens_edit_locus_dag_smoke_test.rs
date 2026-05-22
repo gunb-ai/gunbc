@@ -100,6 +100,10 @@ fn v4_lens_edit_locus_module_authority_and_entrypoints() {
         surface_declares_fn(&module, "affected_set_reading_from_git_diff"),
         "{EDIT_LOCUS_PATH}: affected_set_reading_from_git_diff"
     );
+    assert!(
+        EDIT_LOCUS_DAG.contains(") -> Witness<AffectedSetReading>"),
+        "{EDIT_LOCUS_PATH}: affected_set_reading_from_git_diff must return Witness (fail-closed boundary)"
+    );
 }
 
 #[test]

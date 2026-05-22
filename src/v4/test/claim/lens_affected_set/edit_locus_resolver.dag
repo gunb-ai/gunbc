@@ -88,18 +88,36 @@ fn edit_locus_fail_closed_holds() -> Bool {
 }
 
 fn edit_locus_affected_set_wire_holds() -> Bool {
-  let reading = affected_set_reading_from_git_diff(
+  match affected_set_reading_from_git_diff(
     edit_read: edit_locus_fixture_read,
     graph: affected_set_claim_tree(),
     git_diff: edit_locus_narrow_git_diff,
     bindings: [edit_locus_v4_binding],
     provenance: []
-  )
-  (reading.edit_locus == affected_set_mid)
-    && (length(xs: reading.affected) == 2)
-    && (reading.dependencies == [affected_set_mid_to_leaf_dependency])
+  ) {
+    Holds { value: reading } =>
+      (reading.edit_locus == affected_set_mid)
+        && (length(xs: reading.affected) == 2)
+        && (reading.dependencies == [affected_set_mid_to_leaf_dependency])
+    Violates { diagnostic: _ } => false
+  }
+}
+
+fn edit_locus_affected_set_wire_fail_closed_holds() -> Bool {
+  match affected_set_reading_from_git_diff(
+    edit_read: edit_locus_fixture_read,
+    graph: affected_set_claim_tree(),
+    git_diff: edit_locus_unknown_git_diff,
+    bindings: [edit_locus_v4_binding],
+    provenance: []
+  ) {
+    Holds { value: _ } => false
+    Violates { diagnostic: _ } => true
+  }
 }
 
 data edit_locus_narrow_resolution_claim_passes: Bool = edit_locus_narrow_resolution_holds()
 data edit_locus_fail_closed_claim_passes: Bool = edit_locus_fail_closed_holds()
 data edit_locus_affected_set_wire_claim_passes: Bool = edit_locus_affected_set_wire_holds()
+data edit_locus_affected_set_wire_fail_closed_claim_passes: Bool =
+  edit_locus_affected_set_wire_fail_closed_holds()

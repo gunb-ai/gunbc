@@ -186,7 +186,7 @@ fn affected_set_reading_from_git_diff(
   git_diff: GitDiffNameOnly,
   bindings: List<EditLocusBinding>,
   provenance: List<NodeArtifactProvenance>
-) -> AffectedSetReading {
+) -> Witness<AffectedSetReading> {
   match resolve_edit_locus(
     read: edit_read,
     git_diff: git_diff,
@@ -194,15 +194,8 @@ fn affected_set_reading_from_git_diff(
     provenance: provenance
   ) {
     Holds { value: locus } =>
-      affected_set(graph: graph, edit_locus: locus)
-    Violates { diagnostic: _ } =>
-      AffectedSetReading {
-        edit_locus: Node {
-          kind: TypeNode { connective: Conj },
-          children: []
-        },
-        affected: [],
-        dependencies: []
-      }
+      Holds { value: affected_set(graph: graph, edit_locus: locus) }
+    Violates { diagnostic: d } =>
+      Violates { diagnostic: d }
   }
 }
