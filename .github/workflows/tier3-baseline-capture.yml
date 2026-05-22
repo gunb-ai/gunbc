@@ -1,6 +1,8 @@
 # Manual C1 Phase-1 Tier-3 mirror baseline capture (``tier3_baseline.json``).
 #
-# Dispatched on `ubicloud-standard-2` (R-3 per ``docs/audit/c1-r3-canonical-bench-host-decision-matrix.md``).
+# Dispatched on self-hosted arm64 (srv1/srv2; R-3 per ``docs/audit/c1-r3-canonical-bench-host-decision-matrix.md`` —
+# host class changed from `ubicloud-standard-2` to gunbc self-hosted arm64 on 2026-05-22; baselines captured on the
+# prior host class are not directly comparable, so the next baseline refresh re-establishes ground truth on the new host).
 # Runs five independent bench jobs (separate VMs), aggregates per procedure §2 / R-7 via
 # ``scripts/aggregate_tier3_baseline.py``.
 #
@@ -31,7 +33,7 @@ jobs:
       fail-fast: false
       matrix:
         run_number: [1, 2, 3, 4, 5]
-    runs-on: ubicloud-standard-2
+    runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 60
     steps:
       - name: Checkout
@@ -60,7 +62,7 @@ jobs:
 
   aggregate:
     needs: capture-run
-    runs-on: ubicloud-standard-2
+    runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 15
     steps:
       - name: Checkout
@@ -87,7 +89,7 @@ jobs:
           fi
           mapfile -t sorted < <(printf '%s\n' "${bundles[@]}" | sort -V)
           python3 scripts/aggregate_tier3_baseline.py \
-            --host-id ubicloud-standard-2 \
+            --host-id gunbc-self-hosted-arm64 \
             --git-sha "${GITHUB_SHA}" \
             --output tier3_baseline.json \
             "${sorted[@]}"

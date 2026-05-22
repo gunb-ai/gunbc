@@ -17,9 +17,8 @@ permissions:
 concurrency:
   # One in-flight `ci` workflow per pull request (keyed by PR number). Omitting
   # `head.sha` from the group lets a newer `synchronize` supersede (cancel) an
-  # older run instead of stacking multiple v2→v4 bootstrap compiles on
-  # `ubicloud-standard-*` — correlated with runner shutdown mid-compile under
-  # burst merges / merge-main hops. Push-to-main still keys off `run_id`.
+  # older run instead of stacking multiple v2→v4 bootstrap compiles on the same
+  # runner pool. Push-to-main still keys off `run_id`.
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
 env:
