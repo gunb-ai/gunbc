@@ -85,7 +85,8 @@ fn t19_coproduct_exhaustiveness_generated_claim_parse_and_witnesses_present() {
             && TESTGEN_DAG.contains("fn testgen_emit_coproduct_exhaustiveness_claim")
             && TESTGEN_DAG.contains("fn testgen_scheduled_coproduct_exhaustiveness_generators")
             && TESTGEN_DAG.contains("slot: DiagnosticExhaustiveness {")
-            && TESTGEN_DAG.contains("value: DiagnosticClaim {"),
+            && TESTGEN_DAG.contains("value: DiagnosticClaim {")
+            && TESTGEN_DAG.contains("t19_anchor: T19GeneratedCoproductExhaustiveness"),
         "T-19 DiagnosticExhaustiveness must emit coproduct-exhaustiveness TestClaim data from lens/testgen"
     );
     assert!(
@@ -95,6 +96,8 @@ fn t19_coproduct_exhaustiveness_generated_claim_parse_and_witnesses_present() {
                 .contains("testgen_emit_coproduct_exhaustiveness_claim")
             && COPRODUCT_EXHAUSTIVENESS_GENERATED_DAG
                 .contains("witness_coproduct_exhaustiveness_diagnostic_claim")
+            && COPRODUCT_EXHAUSTIVENESS_GENERATED_DAG
+                .contains("witness_coproduct_exhaustiveness_uses_generated_anchor")
             && COPRODUCT_EXHAUSTIVENESS_GENERATED_DAG
                 .contains("witness_coproduct_exhaustiveness_generator_count"),
         "generated coproduct-exhaustiveness corpus must consume the testgen emit helper and expose witnesses"

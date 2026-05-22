@@ -74,6 +74,7 @@ def main() -> None:
             "fn testgen_emit_coproduct_exhaustiveness_claim",
             "fn testgen_scheduled_coproduct_exhaustiveness_generators",
             "t19_coproduct_exhaustiveness_missing_variant",
+            "T19GeneratedCoproductExhaustiveness",
         ),
     )
 
@@ -84,6 +85,7 @@ def main() -> None:
             "T19ManualLbeConjDagSurface",
             "T19ManualLbeDisjDagSurface",
             "T19ManualLbeTransformDagSurface",
+            "T19GeneratedCoproductExhaustiveness",
         ),
     )
 
@@ -125,8 +127,9 @@ def main() -> None:
         (
             "fn generated_coproduct_exhaustiveness_claim() -> Outcome<TestClaim>",
             "testgen_emit_coproduct_exhaustiveness_claim",
+            "T19GeneratedCoproductExhaustiveness",
             "witness_coproduct_exhaustiveness_diagnostic_claim",
-            "witness_coproduct_exhaustiveness_uses_absent_anchor",
+            "witness_coproduct_exhaustiveness_uses_generated_anchor",
             "witness_coproduct_exhaustiveness_generator_count",
         ),
     )

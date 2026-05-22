@@ -62,6 +62,7 @@ import v4.std.verification {
   T19ManualLbeConjDagSurface,
   T19ManualLbeDisjDagSurface,
   T19ManualLbeTransformDagSurface,
+  T19GeneratedCoproductExhaustiveness,
   T19ManualNatAddAssociativity,
   T19ManualNatAddLeftIdentity,
   T19ManualNatAddRightIdentity,
@@ -504,7 +505,7 @@ fn testgen_emit_coproduct_exhaustiveness_claim(
   Accepted {
     value: DiagnosticClaim {
       label: t19_coproduct_exhaustiveness_label,
-      t19_anchor: T19ManualAnchorAbsent,
+      t19_anchor: T19GeneratedCoproductExhaustiveness,
       input: input,
       expected_rejection: diagnostics_singleton(
         d: coproduct_exhaustiveness_diagnostic(subject: subject, input: input)
@@ -520,7 +521,7 @@ fn testgen_scheduled_coproduct_exhaustiveness_generators() -> List<Generator<Tes
   [
     Generator {
       classification: TestClassification { tier: Tier1, layer: Unit },
-      t19_anchor: T19ManualAnchorAbsent,
+      t19_anchor: T19GeneratedCoproductExhaustiveness,
       slot: DiagnosticExhaustiveness {
         subject: coproduct_exhaustiveness_subject_testclaim_diagnostic(),
       },
@@ -575,6 +576,10 @@ fn manual_test_claim_for_manual_anchor(key: T19ManualAnchorKey) -> Outcome<TestC
         anchor: T19ManualLbeTransformDagSurface,
         label: t19_lbe_label_transform_dag_surface,
         mock: lbe_io_mock_transform_dag_surface()
+      )
+    T19GeneratedCoproductExhaustiveness =>
+      testgen_emit_coproduct_exhaustiveness_claim(
+        subject: coproduct_exhaustiveness_subject_testclaim_diagnostic()
       )
   }
 }
@@ -697,6 +702,13 @@ fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept>
         value: LanguageBehaviorEquivalence {
           subject: lbe_subject_transform_dag_surface(),
           mock: lbe_io_mock_transform_dag_surface(),
+        },
+        diagnostics: None,
+      }
+    T19GeneratedCoproductExhaustiveness =>
+      Accepted {
+        value: DiagnosticExhaustiveness {
+          subject: coproduct_exhaustiveness_subject_testclaim_diagnostic(),
         },
         diagnostics: None,
       }
