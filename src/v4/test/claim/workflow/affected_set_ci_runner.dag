@@ -7,12 +7,13 @@
 module v4.test.claim.workflow.affected_set_ci_runner
 
 import v4.lens.affected_set {
-  RerunNodeSetFailClosed,
+  RerunNodeSet,
   RerunNodeSetProduced
 }
 import v4.std.change {
-  AffectedSetEvidence,
+  AffectedSet,
   AffectedSetFailClosed,
+  AffectedSetEvidence,
   AffectedSetReason,
   ChangeSet
 }
@@ -86,7 +87,7 @@ data ci_runner_fixture_roster: List<TestClaim> = [
   ci_runner_claim_other
 ]
 
-data ci_runner_narrow_rerun_nodes: RerunNodeSetProduced = RerunNodeSetProduced {
+data ci_runner_narrow_rerun_nodes: RerunNodeSet = RerunNodeSetProduced {
   nodes: [ci_runner_touched_node]
 }
 
@@ -94,7 +95,7 @@ data ci_runner_fail_closed_evidence: AffectedSetEvidence = AffectedSetReason {
   reason: ci_runner_fail_closed_reason
 }
 
-data ci_runner_fail_closed_affected: AffectedSetFailClosed = AffectedSetFailClosed {
+data ci_runner_fail_closed_affected: AffectedSet = AffectedSetFailClosed {
   changes: ChangeSet { changes: [] },
   evidence: ci_runner_fail_closed_evidence
 }
