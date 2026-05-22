@@ -7,13 +7,9 @@
 module v4.extdeps.languages.lean
 
 
-<<<<<<< HEAD
-import v4.std.collection { List, Map, Set }
-=======
 import v4.std.collection { List, Map, Set, list_snoc_item }
->>>>>>> origin/main
 import v4.std.logic { Bool, bool_boolean_algebra }
-import v4.std.algebra { BooleanAlgebra, fold_list }
+import v4.std.algebra { BooleanAlgebra, Empty, fold_list }
 import v4.std.model_core {
   EffectSemanticsDecl,
   ModelCore,
@@ -476,35 +472,6 @@ fn lean_primitive_fact_map_4(
   )
 }
 
-<<<<<<< HEAD
-
-fn lean_primitive_fact_map_4(
-  axis0: Symbol,
-  fact0: Node,
-  axis1: Symbol,
-  fact1: Node,
-  axis2: Symbol,
-  fact2: Node,
-  axis3: Symbol,
-  fact3: Node
-) -> Map<Symbol, Node> {
-  map_insert(
-    map_insert(
-      map_insert(
-        map_insert(empty_map(), axis0, fact0),
-        axis1,
-        fact1
-      ),
-      axis2,
-      fact2
-    ),
-    axis3,
-    fact3
-  )
-}
-
-=======
->>>>>>> origin/main
 fn lean_primitive_fact_map_2(
   axis0: Symbol,
   fact0: Node,
