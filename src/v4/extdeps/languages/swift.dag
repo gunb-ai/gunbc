@@ -23,8 +23,7 @@ import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
 import v4.std.logic { Bool, bool_boolean_algebra }
 import v4.std.algebra { BooleanAlgebra, fold_list }
 
-// Swift's fixed-width integer spellings are one-at-a-time scalar widths.
-// Int/UInt are word-sized aliases in the Swift Book, so they use PointerWord.
+// 🟢 coproduct dissolution — alternatives are one-at-a-time scalar widths.
 type SwiftIntWidth
   = Bits8
   | Bits16
@@ -32,10 +31,12 @@ type SwiftIntWidth
   | Bits64
   | PointerWord
 
+// 🟢 coproduct dissolution — alternatives are signedness facts.
 type SwiftIntSignedness
   = Signed
   | Unsigned
 
+// 🟢 coproduct dissolution — alternatives are one-at-a-time floating widths.
 type SwiftFloatWidth
   = Bits32
   | Bits64
@@ -50,6 +51,7 @@ type SwiftBoolRepresentation {}
 
 type SwiftIntegerOverflowSemantics {}
 
+// 🟢 coproduct dissolution — one scalar classifier at a time.
 type SwiftScalar
   = IntScalar { signedness: SwiftIntSignedness, width: SwiftIntWidth }
   | FloatScalar { width: SwiftFloatWidth }
@@ -71,6 +73,7 @@ type SwiftFloatPrimitiveFacts {
   ieee754_binary: Symbol
 }
 
+// 🟢 coproduct dissolution — nonnumeric value facts bind to their own representations.
 type SwiftNonNumericValueFact
   = BoolRepresentationFact { representation: SwiftBoolRepresentation }
   | CharacterRepresentationFact { representation: SwiftCharacterRepresentation }
