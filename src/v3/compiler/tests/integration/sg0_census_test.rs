@@ -472,6 +472,10 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // ratchet until `compile_to_dag` covers `module … service …` authoring files the same
     // way as expression programs (see INVARIANTS SG-0 receipt row).
     "src/v3/compiler/tests/integration/ctrl_pr_digests_dag_smoke_test.rs",
+    // Dissolution-lens subsumption carrier: parse-level ratchet for
+    // `src/v4/lens/subsumption.dag`; retires when v4 TestClaim/generated
+    // coverage owns the same carrier and first-row projection.
+    "src/v3/compiler/tests/integration/dissolution_subsumption_carrier_test.rs",
     // E6-G1.a Option 3 — static `Lens<Int>` + `mini_report` mechanism demonstration
     // (Director #1853 brief; witness-flow + TESTING.md split + `include_str!` brief
     // receipts per #1857). SG-0 ratchet: new hand-authored integration test.
@@ -834,14 +838,14 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/v2_oracle_no_remaining_test_consumers_test.rs",
     // T-15: tokenize/parse smoke on `src/v4/bin/main.dag` + trampoline source anchors (see harness module docs).
     "src/v3/compiler/tests/integration/v4_bin_main_dag_smoke_test.rs",
+    // Wave-5-A / P3 commitment 6: validate_then_compile public terminal on 00_compile.dag.
+    "src/v3/compiler/tests/integration/v4_compiler_compile_public_terminal_smoke_test.rs",
     // T-10 / Wave-3-B: tokenize/parse smoke on `06_translate.dag`, `05_emit.dag`, MVP-1 claim.
     // SG-0 + INVARIANTS §P5(b) receipt; dissolves when `.dag` TestClaim / generated harness replaces probe.
     // **This PR (+0 paths):** `v4_rust_language_model_declares_t11_translation_rules` +
     // `v4_java_language_model_declares_t11_translation_rules` (T-4 `java.dag` grammar-relation
     // parse surface, same harness file) — interim ratchet rows appended in INVARIANTS.md §SG-0.
     "src/v3/compiler/tests/integration/v4_compiler_emit_translate_smoke_test.rs",
-    // Wave-5-A / P3 commitment 6: validate_then_compile public terminal on 00_compile.dag.
-    "src/v3/compiler/tests/integration/v4_compiler_compile_public_terminal_smoke_test.rs",
     // Wave-2-C2 / T-4.5: extdeps/file_system.dag pure resource model (Practice 11 companion).
     "src/v3/compiler/tests/integration/v4_extdeps_file_system_dag_smoke_test.rs",
     // T-4.7 React framework substrate: `compile_to_dag` smoke on
