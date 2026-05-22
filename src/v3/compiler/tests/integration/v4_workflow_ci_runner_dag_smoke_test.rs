@@ -78,6 +78,21 @@ fn surface_declares_fn(module: &v3_compiler::parse_surface::SurfaceModule, name:
     })
 }
 
+fn surface_declares_test_claim_data(
+    module: &v3_compiler::parse_surface::SurfaceModule,
+    name: &str,
+) -> bool {
+    use v3_compiler::parse_surface::SurfaceType;
+    module.items.iter().any(|item| match item {
+        SurfaceItem::Data {
+            name: item_name,
+            ty: SurfaceType::Named { name: ty_name, .. },
+            ..
+        } => item_name == name && ty_name == "TestClaim",
+        _ => false,
+    })
+}
+
 #[test]
 fn v4_workflow_ci_dag_tokenizes_and_parses() {
     let _module = parse_module(CI_DAG, CI_DAG_PATH);
@@ -130,17 +145,40 @@ fn v4_workflow_affected_set_ci_runner_claim_dag_tokenizes_and_parses() {
 
 #[test]
 fn v4_workflow_affected_set_ci_runner_claim_wiring() {
-    assert!(
-        CLAIM_DAG.contains("ci_select_from_rerun_nodes")
-            && CLAIM_DAG.contains("ci_select_from_affected_set")
-            && CLAIM_DAG.contains("ci_runner_narrow_selection_claim")
-            && CLAIM_DAG.contains("ci_runner_fail_closed_superset_claim")
-            && CLAIM_DAG.contains("ci_runner_shape_collision_claim")
-            && CLAIM_DAG.contains("ci_runner_inner_frontier_claim"),
-        "{CLAIM_PATH}: receipt claims must call ci selection entrypoints"
+    let module = parse_module(CLAIM_DAG, CLAIM_PATH);
+    assert_eq!(
+        module_paths(&module),
+        vec![vec![
+            "v4",
+            "test",
+            "claim",
+            "workflow",
+            "affected_set_ci_runner"
+        ]],
+        "{CLAIM_PATH}: module authority path"
     );
+    for name in ["ci_select_from_rerun_nodes", "ci_select_from_affected_set"] {
+        assert!(
+            import_includes_name(&module, &["v4", "workflow", "ci"], name),
+            "{CLAIM_PATH}: must import {name} from canonical workflow/ci authority"
+        );
+    }
+    for claim in [
+        "ci_runner_narrow_selection_claim",
+        "ci_runner_fail_closed_superset_claim",
+        "ci_runner_shape_collision_claim",
+        "ci_runner_inner_frontier_claim",
+    ] {
+        assert!(
+            surface_declares_test_claim_data(&module, claim),
+            "{CLAIM_PATH}: must declare structural receipt `{claim}`"
+        );
+    }
     assert!(
-        CLAIM_DAG.contains("v4.workflow.ci"),
-        "{CLAIM_PATH}: must import selection entrypoints from canonical workflow/ci authority"
+        surface_declares_fn(&module, "ci_runner_narrow_selection_holds")
+            && surface_declares_fn(&module, "ci_runner_fail_closed_superset_holds")
+            && surface_declares_fn(&module, "ci_runner_shape_collision_holds")
+            && surface_declares_fn(&module, "ci_runner_inner_frontier_holds"),
+        "{CLAIM_PATH}: receipt predicates must exercise ci selection entrypoints"
     );
 }
