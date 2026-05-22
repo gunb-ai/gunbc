@@ -314,6 +314,15 @@ type BoundedLattice<T> {
   bottom: T
 }
 
+// BoundedMeetSemilattice: idempotent commutative associative meet with bottom.
+// Laws: meet(bottom, a) == bottom. A join/top may exist for auxiliary merge but
+// need not satisfy meet(top, a) == a — see `std/induction.dag` `meet_sub_value` /
+// `join_sub_value` (MixedTop is join-⊤ only).
+type BoundedMeetSemilattice<T> {
+  meet: fn(T, T) -> T
+  bottom: T
+}
+
 // BooleanAlgebra: bounded distributive lattice with complement.
 // Laws: meet(a, complement(a)) == bottom, join(a, complement(a)) == top
 // This is the algebra of Bool, Set<A>, and propositions.
