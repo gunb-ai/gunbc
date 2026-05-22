@@ -10,7 +10,8 @@ use crate::std_induction::RecursionShape::{
 };
 use crate::std_induction::ShrinkFactor::{ConstantShrink, ProportionalShrink, UnitShrink};
 use crate::std_induction::SubValueRelation::{
-    ArithmeticDescent, IteratedSubValue, PreservedValue, StrictSubValue, SubValueUnknown,
+    ArithmeticDescent, IteratedSubValue, MixedTop, NonIncreasingValue, PreservedValue,
+    StrictAxisErased, StrictSubValue, SubValueUnknown,
 };
 pub use crate::std_induction::{
     compose_sub_value, compose_sub_value_relations, join_sub_value, meet_sub_value,
@@ -6182,6 +6183,13 @@ pub fn classify_argument(
                                     }
                                 }
                             }
+                            SubValueRelation::NonIncreasingValue => {
+                                Rc::new(SubValueRelation::NonIncreasingValue)
+                            }
+                            SubValueRelation::StrictAxisErased => {
+                                Rc::new(SubValueRelation::StrictAxisErased)
+                            }
+                            SubValueRelation::MixedTop => Rc::new(SubValueRelation::MixedTop),
                             SubValueRelation::SubValueUnknown => {
                                 Rc::new(SubValueRelation::SubValueUnknown)
                             }

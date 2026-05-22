@@ -14,7 +14,7 @@ Operator-direct Option C decomposes the former `HostModel` umbrella:
 |---|---|---|---|
 | v4 evaluator / TestClaim runner | Concrete bundle authored; eval consumes the interpretation slice today | `src/v4/extdeps/runtimes/v4_evaluator.dag` | `src/v4/compiler/05_eval.dag` currently takes `InterpretationAlgebra` directly. This bundle names the concrete v4 evaluator runtime fact-bundle that will bind `ModelCore` to `ValueRepresentationModel`, `InterpretationAlgebra`, `ExecutionSemantics`, and `ResourceEffectBoundary` when the session-layer runtime target wiring lands. |
 | Rust emitted-code execution | Not modeled as a runtime extdep in this PR | None | `src/v4/extdeps/languages/rust.dag` is a language model for grammar/primitives/target serialization. No current v4 file declares a Rust runtime interpretation algebra. |
-| POSIX process substrate | Not a full eval runtime | `src/v4/extdeps/process.dag` | This models process invocation/lifecycle facts. It is a resource/process substrate that a future concrete runtime may consume, not itself a concrete evaluator runtime. |
+| POSIX process substrate | Not a full eval runtime | `src/v4/extdeps/posix.dag` | This models process invocation/lifecycle facts. It is a resource/process substrate that a future concrete runtime may consume, not itself a concrete evaluator runtime. |
 
 ## Non-Speculation Boundary
 

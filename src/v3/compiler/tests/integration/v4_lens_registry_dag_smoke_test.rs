@@ -2,11 +2,16 @@
 //!
 //! **P2 / Practice 5 (single authority):** This harness proves `src/v4/lens/registry.dag`
 //! parses and exposes the registry-backed query surface that `src/v4/workflow/ci.dag`
-//! consumes for Lens-CI activation. This local harness stays at parsed-shape level because
+//! consumes for Lens-CI activation, while also preserving the staged T-23/P9 registry
+//! parse-cleanliness checks. This local harness stays at parsed-shape level because
 //! M1(2.8) still rejects v4 block-bodied functions in isolated `compile_to_dag` smokes; the
 //! live CI step pairs it with `v2-compiler compile --source-root src/v4 --target rust` so
 //! lowering/inference of the actual interface is checked without using the known-hanging
 //! `--target dag` path.
+//!
+//! **Note:** After P9 `#3503`, `registry.dag` imports `Symbol` and `List` from `v4.std.*` and
+//! carries self-referential `Symbol` data rows. Isolated `compile_to_dag` does not resolve those
+//! imports under M1(2.7) (same posture as `v4_bin_main_dag_smoke_test` / `v4_lens_testgen_dag_smoke_test`).
 //!
 //! **INVARIANTS §P5 Dispatch-Discipline Mechanism (b):** this path’s SG-0 census line + matching
 //! `INVARIANTS.md` table row land in the same PR as the harness (home-of-record for the
@@ -193,8 +198,21 @@ fn workflow_step_block<'a>(workflow_yml: &'a str, step_name: &str) -> &'a str {
 }
 
 #[test]
-fn v4_lens_registry_dag_compiles() {
+fn v4_lens_registry_dag_tokenizes_and_parses() {
     let module = parse_module(REGISTRY_DAG, REGISTRY_PATH);
+    assert_eq!(
+        module_path(&module),
+        vec!["v4", "lens", "registry"],
+        "{REGISTRY_PATH}: module path"
+    );
+    assert!(
+        module_declares_type_sum_named(&module, "LensIdV0"),
+        "{REGISTRY_PATH}: must declare LensIdV0 closed sum"
+    );
+    assert!(
+        module_declares_type_sum_named(&module, "LensModulePathV0"),
+        "{REGISTRY_PATH}: must declare LensModulePathV0"
+    );
     assert!(
         surface_declares_data(&module, "lens_registry_v0"),
         "{REGISTRY_PATH}: registry list must be the LensIdV0 row authority"
@@ -214,6 +232,7 @@ fn v4_lens_registry_dag_compiles() {
 }
 
 #[test]
+<<<<<<< HEAD
 fn v4_ci_workflow_consumes_lens_registry_for_lens_ci_signal() {
     let module = parse_module(CI_DAG, CI_PATH);
     assert!(
@@ -275,4 +294,69 @@ fn v4_ci_workflow_consumes_lens_registry_for_lens_ci_signal() {
             && semantic_step.contains(&format!("--target {semantic_target}")),
         "{CI_YML_PATH}: `{semantic_step_name}` must execute the modeled Lens-CI semantic signal"
     );
+=======
+fn v4_lens_registry_t23_closed_lens_ids_present() {
+    for id in [
+        "Complexity",
+        "Cost",
+        "Parallelism",
+        "EffectEnumeration",
+        "Idempotency",
+        "Provenance",
+        "UnusedParameters",
+        "StructuralResolution",
+    ] {
+        assert!(
+            REGISTRY_DAG.contains(id),
+            "{REGISTRY_PATH}: LensIdV0 arm `{id}` must appear in closed registry source"
+        );
+    }
+>>>>>>> origin/main
+}
+
+#[test]
+fn v4_lens_registry_structural_resolution_bound_to_module() {
+    assert!(
+        REGISTRY_DAG.contains("lens_id: StructuralResolution")
+            && REGISTRY_DAG.contains(r#"module_path: Bound { path: "v4.lens.structural_resolution" }"#),
+        "{REGISTRY_PATH}: StructuralResolution must be Bound to v4.lens.structural_resolution (T-13 registry fill)"
+    );
+}
+
+#[test]
+fn v4_lens_registry_p9_owned_fn_surface_present() {
+    assert!(
+        REGISTRY_DAG.contains("type LensOwnedFnV0")
+            && REGISTRY_DAG.contains("data lens_owned_fn_registry_v0")
+            && REGISTRY_DAG.contains("data symbol_llvm_instruction_cost")
+            && REGISTRY_DAG.contains("owner_module_path: \"v4.lens.cost\""),
+        "{REGISTRY_PATH}: P9 single-owner registry rows must remain in substrate home-of-record"
+    );
+}
+
+fn module_path(module: &v3_compiler::parse_surface::SurfaceModule) -> Vec<&str> {
+    module
+        .items
+        .iter()
+        .find_map(|item| match item {
+            SurfaceItem::Module { path, .. } => {
+                Some(path.iter().map(String::as_str).collect::<Vec<_>>())
+            }
+            _ => None,
+        })
+        .unwrap_or_default()
+}
+
+fn module_declares_type_sum_named(
+    module: &v3_compiler::parse_surface::SurfaceModule,
+    name: &str,
+) -> bool {
+    module.items.iter().any(|item| {
+        matches!(
+            item,
+            SurfaceItem::TypeSum {
+                name: item_name, ..
+            } if item_name == name
+        )
+    })
 }

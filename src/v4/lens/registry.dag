@@ -8,6 +8,7 @@
 module v4.lens.registry
 
 import v4.std.algebra { count_where, for_all }
+import v4.std.collection { List }
 import v4.std.node { Symbol }
 import v4.std.text { String }
 
@@ -78,7 +79,7 @@ data lens_registry_v0_unused_parameters: LensRegistryEntryV0 = {
 
 data lens_registry_v0_structural_resolution: LensRegistryEntryV0 = {
   lens_id: StructuralResolution
-  module_path: Unbound
+  module_path: Bound { path: "v4.lens.structural_resolution" }
 }
 
 data lens_registry_v0: List<LensRegistryEntryV0> = [
