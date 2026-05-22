@@ -33,9 +33,9 @@ import v4.std.diagnostic {
   Accepted,
   Diagnostic,
   ExternalContractUnknown,
-  NodeLocus,
+  node_locus,
   Outcome,
-  PortLocus,
+  port_locus,
   Rejected,
   Unavailable,
   bind_outcome,
@@ -78,7 +78,7 @@ data translate_child_reattachment_not_realized: Symbol = translate_child_reattac
 fn translate_target_bundle_malformed_diagnostic(target: TargetModel) -> Diagnostic {
   Diagnostic {
     reason: translate_target_bundle_malformed,
-    at: NodeLocus { node: target },
+    at: node_locus(node: target),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
@@ -88,7 +88,7 @@ fn translate_target_bundle_duplicate_edge_diagnostic(
 ) -> Diagnostic {
   Diagnostic {
     reason: translate_target_bundle_duplicate_edge,
-    at: NodeLocus { node: target },
+    at: node_locus(node: target),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
@@ -125,14 +125,14 @@ fn target_bundle_child_lookup_step(
 fn translate_target_source_not_realized_diagnostic() -> Diagnostic {
   Diagnostic {
     reason: translate_target_source_not_realized,
-    at: PortLocus { port: translate_stage_locus_port },
+    at: port_locus(port: translate_stage_locus_port),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 fn translate_child_reattachment_not_realized_diagnostic(parent: Node) -> Diagnostic {
   Diagnostic {
     reason: translate_child_reattachment_not_realized,
-    at: NodeLocus { node: parent },
+    at: node_locus(node: parent),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
