@@ -8,7 +8,7 @@ module v4.lens.affected_set_examples
 
 import v4.std.diagnostic {
   Diagnostic,
-  NodeLocus,
+  node_locus,
   Unavailable,
   ExternalContractUnknown,
   diagnostics_singleton
@@ -52,7 +52,7 @@ data affected_set_example_edit: Edit = Edit {
 
 data affected_set_example_invalid_edit_diagnostic: Diagnostic = Diagnostic {
   reason: affected_set_example_reason,
-  at: NodeLocus { node: affected_set_example_node },
+  at: node_locus(node: affected_set_example_node),
   correction: Unavailable { reason: ExternalContractUnknown }
 }
 
