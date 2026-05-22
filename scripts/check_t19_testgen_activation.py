@@ -75,6 +75,8 @@ def main() -> None:
             "fn testgen_scheduled_coproduct_exhaustiveness_generators",
             "t19_coproduct_exhaustiveness_missing_variant",
             "T19GeneratedCoproductExhaustiveness",
+            "t19_coproduct_exhaustiveness_omitted_variant_edge",
+            "node_locus(node: input)",
         ),
     )
 

@@ -11,7 +11,7 @@ import v4.std.collection { List }
 import v4.std.diagnostic {
   Outcome,
   Diagnostic,
-  NodeLocus,
+  node_locus,
   Unavailable,
   UserInputBoundary,
   Textual,
@@ -29,7 +29,9 @@ import v4.std.nat {
 }
 import v4.std.node {
   Atom,
+  Edge,
   Node,
+  Named,
   Connective,
   Conj,
   Disj,
@@ -121,10 +123,21 @@ type TypeConstructionSubject
 type AlgebraLawSubject { algebra: Symbol, inhabitant: Symbol, law: Symbol }
 
 
+type TestgenCoproductSubject
+  = TestClaimCoproduct
+
+
+type TestClaimCoproductVariant
+  = TestClaimCompilesClaimVariant
+  | TestClaimDiagnosticClaimVariant
+  | TestClaimEqualsClaimVariant
+  | TestClaimRoundTripClaimVariant
+
+
 type DiagnosticExhaustivenessSubject {
   reason: Symbol
-  coproduct: Symbol
-  missing_variant: Symbol
+  coproduct: TestgenCoproductSubject
+  omitted_variant: TestClaimCoproductVariant
 }
 
 
@@ -322,7 +335,19 @@ data t19_coproduct_exhaustiveness_testclaim_variant: Symbol = t19_coproduct_exha
 data t19_coproduct_exhaustiveness_diagnostic_claim_variant: Symbol = t19_coproduct_exhaustiveness_diagnostic_claim_variant
 
 
+data t19_coproduct_exhaustiveness_compiles_claim_variant: Symbol = t19_coproduct_exhaustiveness_compiles_claim_variant
+
+
+data t19_coproduct_exhaustiveness_equals_claim_variant: Symbol = t19_coproduct_exhaustiveness_equals_claim_variant
+
+
+data t19_coproduct_exhaustiveness_roundtrip_claim_variant: Symbol = t19_coproduct_exhaustiveness_roundtrip_claim_variant
+
+
 data t19_coproduct_exhaustiveness_label: String = "generated/diagnostic-exhaustiveness: TestClaim coproduct missing DiagnosticClaim arm rejects"
+
+
+data t19_coproduct_exhaustiveness_omitted_variant_edge: Symbol = t19_coproduct_exhaustiveness_omitted_variant_edge
 
 
 fn lbe_frozen_snapshot_conj_dag_surface() -> FrozenLanguageBehaviorSnapshot {
@@ -472,16 +497,50 @@ fn testgen_scheduled_language_behavior_generators() -> List<Generator<TestgenCon
 fn coproduct_exhaustiveness_subject_testclaim_diagnostic() -> DiagnosticExhaustivenessSubject {
   DiagnosticExhaustivenessSubject {
     reason: t19_coproduct_exhaustiveness_missing_variant,
-    coproduct: t19_coproduct_exhaustiveness_testclaim_variant,
-    missing_variant: t19_coproduct_exhaustiveness_diagnostic_claim_variant,
+    coproduct: TestClaimCoproduct,
+    omitted_variant: TestClaimDiagnosticClaimVariant,
+  }
+}
+
+
+fn testgen_coproduct_subject_symbol(subject: TestgenCoproductSubject) -> Symbol {
+  match subject {
+    TestClaimCoproduct => t19_coproduct_exhaustiveness_testclaim_variant
+  }
+}
+
+
+fn test_claim_coproduct_variant_symbol(variant: TestClaimCoproductVariant) -> Symbol {
+  match variant {
+    TestClaimCompilesClaimVariant => t19_coproduct_exhaustiveness_compiles_claim_variant
+    TestClaimDiagnosticClaimVariant => t19_coproduct_exhaustiveness_diagnostic_claim_variant
+    TestClaimEqualsClaimVariant => t19_coproduct_exhaustiveness_equals_claim_variant
+    TestClaimRoundTripClaimVariant => t19_coproduct_exhaustiveness_roundtrip_claim_variant
+  }
+}
+
+
+fn coproduct_exhaustiveness_variant_node(variant: TestClaimCoproductVariant) -> Node {
+  Node {
+    kind: TypeNode {
+      connective: Atom { identity: test_claim_coproduct_variant_symbol(variant: variant) }
+    },
+    children: []
   }
 }
 
 
 fn coproduct_exhaustiveness_input(subject: DiagnosticExhaustivenessSubject) -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: subject.coproduct } },
-    children: []
+    kind: TypeNode {
+      connective: Atom { identity: testgen_coproduct_subject_symbol(subject: subject.coproduct) }
+    },
+    children: [
+      Edge {
+        label: Named { name: t19_coproduct_exhaustiveness_omitted_variant_edge },
+        target: coproduct_exhaustiveness_variant_node(variant: subject.omitted_variant)
+      }
+    ]
   }
 }
 
@@ -492,7 +551,7 @@ fn coproduct_exhaustiveness_diagnostic(
 ) -> Diagnostic {
   Diagnostic {
     reason: subject.reason,
-    at: NodeLocus { node: input },
+    at: node_locus(node: input),
     correction: Unavailable { reason: UserInputBoundary }
   }
 }

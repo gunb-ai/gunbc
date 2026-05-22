@@ -90,6 +90,13 @@ fn t19_coproduct_exhaustiveness_generated_claim_parse_and_witnesses_present() {
         "T-19 DiagnosticExhaustiveness must emit coproduct-exhaustiveness TestClaim data from lens/testgen"
     );
     assert!(
+        TESTGEN_DAG.contains("omitted_variant: TestClaimCoproductVariant")
+            && TESTGEN_DAG.contains("target: coproduct_exhaustiveness_variant_node(variant: subject.omitted_variant)")
+            && TESTGEN_DAG.contains("at: node_locus(node: input)")
+            && !TESTGEN_DAG.contains("NodeLocus { node: input }"),
+        "coproduct-exhaustiveness generation must carry omitted variant into the input node and use canonical node_locus"
+    );
+    assert!(
         COPRODUCT_EXHAUSTIVENESS_GENERATED_DAG
             .contains("fn generated_coproduct_exhaustiveness_claim() -> Outcome<TestClaim>")
             && COPRODUCT_EXHAUSTIVENESS_GENERATED_DAG
