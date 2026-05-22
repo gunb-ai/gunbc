@@ -13,7 +13,7 @@ Per [`docs/modeling-discipline.md`](../modeling-discipline.md) (standing rule: n
 | Retirement **execution** (what actually deletes) | Operator-approved dashboard work-items + execution PRs that shrink the census |
 | Per-path dissolution triggers (ratified) | Inline comments in `sg0_census_test.rs` + PR review — not this doc |
 
-This markdown file is **transient PR-review prose** (like [`sg0-census-classification-2026-05-09.md`](sg0-census-classification-2026-05-09.md)). Heuristic DELETE/REPLACE/KEEP proposals here are **not** binding dispatch authority until the operator ratifies batches. **Do not** maintain a checked-in `(file, fn) → bucket` registry: regenerate via [`scripts/generate_v3_hand_rust_test_retirement_inventory.py`](../scripts/generate_v3_hand_rust_test_retirement_inventory.py) when a machine-readable export is needed (`> /tmp/inventory.jsonl`).
+This markdown file is **transient PR-review prose** (like [`sg0-census-classification-2026-05-09.md`](sg0-census-classification-2026-05-09.md)). Heuristic DELETE/REPLACE/KEEP **proposals** here are not binding until the operator ratifies batches and execution PRs shrink the census. **No checked-in per-test or per-path classification table** — use [`scripts/generate_v3_hand_rust_test_retirement_inventory.py`](../scripts/generate_v3_hand_rust_test_retirement_inventory.py) locally (`--check`, `--summary`, optional `--by-file > /tmp/…`) to re-measure after census drift; that script emits **path-level** rows only (≤145), not a `(file, fn)` registry.
 
 ## Census reconciliation (HEAD 2026-05-22)
 
@@ -34,7 +34,7 @@ The PM figure **204 does not match** the live census (145 path literals / **1232
 - **Total classified:** 1232 `#[test]` functions across **145** census paths
 
 
-**Generation method:** `#[test]` extraction in the script strips `//` and `/* */` comments before matching attributes, so doc-comment mentions of `#[test]` (e.g. `t_pb_b_1_dag_runner_test.rs`) do not create duplicate `(file, fn)` rows. Path literals (**145**) match the census const; counts below were verified with `python3 scripts/generate_v3_hand_rust_test_retirement_inventory.py --check`.
+**Count verification:** `python3 scripts/generate_v3_hand_rust_test_retirement_inventory.py --check` (comment-stripped `#[test]` count per census path; path literals **145**).
 
 **Bias applied:** on-the-fence DELETE vs REPLACE → DELETE; on-the-fence vs KEEP → non-KEEP.
 
@@ -278,7 +278,7 @@ Port only where behavior is still load-bearing after DELETE waves. **Do not 1:1 
 - `src/v3/compiler/tests/integration.rs` (33 tests) — Crate wiring / determinism infrastructure
 - `src/v3/compiler/tests/boundary/m1_4_emit_python_test.rs` (26 tests) — Class-5 external-toolchain boundary; migrate via ExecuteCommand TestClaim per TESTING.md (not 1:1 port of every assertion)
 - `src/v3/compiler/tests/boundary/m1_3_emit_go_test.rs` (20 tests) — Class-5 external-toolchain boundary; migrate via ExecuteCommand TestClaim per TESTING.md (not 1:1 port of every assertion)
-- `src/v3/compiler/tests/integration/t_pb_b_1_dag_runner_test.rs` (20 tests) — Host TestRunner executes .dag TestClaims; shrinks as claims subsume runner-only checks
+- `src/v3/compiler/tests/integration/t_pb_b_1_dag_runner_test.rs` (18 tests) — Host TestRunner executes .dag TestClaims; shrinks as claims subsume runner-only checks
 - `src/v3/compiler/tests/integration/sg0_census_test.rs` (17 tests) — SG-0/SG-* census ratchet until EXPECTED_HAND_AUTHORED_TEST is empty (gate #84)
 - `src/v3/compiler/tests/integration/common/wiring_scanner_test.rs` (11 tests) — Shared helpers — retire when last importing test file retires (not independent coverage)
 - `src/v3/compiler/tests/integration/sg6_hand_authored_census_test.rs` (10 tests) — SG-0/SG-* census ratchet until EXPECTED_HAND_AUTHORED_TEST is empty (gate #84)
@@ -302,161 +302,18 @@ Port only where behavior is still load-bearing after DELETE waves. **Do not 1:1 
 
 ---
 
-## Per-file rollup (PR-review snapshot)
+## Local re-measurement (not checked in)
 
-Machine-readable export (optional, **not** checked in): `python3 scripts/generate_v3_hand_rust_test_retirement_inventory.py > /tmp/inventory.jsonl` — one row per unique `(file, fn)` (`fn=(path-only)` for six zero-test helper modules; 1238 lines total): `file`, `fn`, `bucket`, `reason`, `t19`).
+Reconcile census drift without maintaining a dispatch ledger:
 
-### Per-file classification table (145 paths)
+```bash
+python3 scripts/generate_v3_hand_rust_test_retirement_inventory.py --check
+python3 scripts/generate_v3_hand_rust_test_retirement_inventory.py --summary
+# optional path-level worksheet (≤145 rows; never commit):
+python3 scripts/generate_v3_hand_rust_test_retirement_inventory.py --by-file > /tmp/v3-hand-rust-by-file.jsonl
+```
 
-Six paths are census-listed **helper modules** with zero `#[test]` functions (`Tests=0`); the generator emits `(path-only)` rows for those paths.
-
-| Path | Tests | DELETE | REPLACE | KEEP |
-|---|---:|---:|---:|---:|
-| `src/v3/compiler/tests/boundary/l5_cross_target_consistency.rs` | 3 | 0 | 0 | 3 |
-| `src/v3/compiler/tests/boundary/m1_3_emit_go_test.rs` | 20 | 0 | 0 | 20 |
-| `src/v3/compiler/tests/boundary/m1_3_emit_rust_test.rs` | 65 | 0 | 0 | 65 |
-| `src/v3/compiler/tests/boundary/m1_4_emit_python_test.rs` | 26 | 0 | 0 | 26 |
-| `src/v3/compiler/tests/boundary/m1_5_emit_omni_demo_test.rs` | 2 | 0 | 0 | 2 |
-| `src/v3/compiler/tests/boundary/m2_emit_multi_field_struct_variant_test.rs` | 3 | 0 | 0 | 3 |
-| `src/v3/compiler/tests/determinism_test.rs` | 9 | 0 | 0 | 9 |
-| `src/v3/compiler/tests/integration.rs` | 33 | 0 | 0 | 33 |
-| `src/v3/compiler/tests/integration/anthropic_messages_callable_test.rs` | 6 | 0 | 6 | 0 |
-| `src/v3/compiler/tests/integration/anthropic_messages_wire_demo_test.rs` | 3 | 0 | 3 | 0 |
-| `src/v3/compiler/tests/integration/anthropic_operations_test.rs` | 4 | 0 | 4 | 0 |
-| `src/v3/compiler/tests/integration/anthropic_schema_lockstep_test.rs` | 22 | 0 | 22 | 0 |
-| `src/v3/compiler/tests/integration/anthropic_tool_result_wire_demo_test.rs` | 3 | 0 | 3 | 0 |
-| `src/v3/compiler/tests/integration/bridge_ledger_carrier_test.rs` | 9 | 0 | 9 | 0 |
-| `src/v3/compiler/tests/integration/bridge_lower_helpers_patch_zero_residual_test.rs` | 1 | 1 | 0 | 0 |
-| `src/v3/compiler/tests/integration/canonical_lens_bridge_ratchet_test.rs` | 6 | 6 | 0 | 0 |
-| `src/v3/compiler/tests/integration/cementing/cementing_provenance_origin_integration_test.rs` | 1 | 1 | 0 | 0 |
-| `src/v3/compiler/tests/integration/cementing/complexity_lens_behavioral_completion.rs` | 2 | 2 | 0 | 0 |
-| `src/v3/compiler/tests/integration/cementing/cost_lens_symbolic_consumer_test.rs` | 3 | 3 | 0 | 0 |
-| `src/v3/compiler/tests/integration/cementing/e_p_per_call_descent_lens_consumer_cementing.rs` | 5 | 5 | 0 | 0 |
-| `src/v3/compiler/tests/integration/cementing/effect_enumeration_lens_behavioral_completion.rs` | 6 | 6 | 0 | 0 |
-| `src/v3/compiler/tests/integration/cementing/memory_peak_cost_basis_demo.rs` | 1 | 1 | 0 | 0 |
-| `src/v3/compiler/tests/integration/common/budgeted.rs` | 0 | 0 | 0 | 0 |
-| `src/v3/compiler/tests/integration/common/cached_compile.rs` | 2 | 0 | 0 | 2 |
-| `src/v3/compiler/tests/integration/common/determinism_fixtures.rs` | 0 | 0 | 0 | 0 |
-| `src/v3/compiler/tests/integration/common/list_variant_tags.rs` | 0 | 0 | 0 | 0 |
-| `src/v3/compiler/tests/integration/common/mod.rs` | 4 | 0 | 0 | 4 |
-| `src/v3/compiler/tests/integration/common/r1_gates_bridge.rs` | 0 | 0 | 0 | 0 |
-| `src/v3/compiler/tests/integration/common/rust_comment_strip.rs` | 4 | 0 | 0 | 4 |
-| `src/v3/compiler/tests/integration/common/substrate_receipts.rs` | 0 | 0 | 0 | 0 |
-| `src/v3/compiler/tests/integration/common/symbolic_cost_countdown.rs` | 0 | 0 | 0 | 0 |
-| `src/v3/compiler/tests/integration/common/symbolic_cost_verification_fixture.rs` | 4 | 0 | 0 | 4 |
-| `src/v3/compiler/tests/integration/common/wiring_scanner_test.rs` | 11 | 0 | 0 | 11 |
-| `src/v3/compiler/tests/integration/coverage_defect_acceptance_dag_test.rs` | 1 | 0 | 1 | 0 |
-| `src/v3/compiler/tests/integration/cross_target_coverage_carrier_test.rs` | 8 | 0 | 8 | 0 |
-| `src/v3/compiler/tests/integration/ctrl_pr_digests_dag_smoke_test.rs` | 1 | 0 | 1 | 0 |
-| `src/v3/compiler/tests/integration/dissolution_subsumption_carrier_test.rs` | 3 | 0 | 3 | 0 |
-| `src/v3/compiler/tests/integration/e6_g1a_option3_static_lens_test.rs` | 3 | 0 | 3 | 0 |
-| `src/v3/compiler/tests/integration/e_i_lane_induction_preflight_test.rs` | 1 | 1 | 0 | 0 |
-| `src/v3/compiler/tests/integration/emission_provenance_lens_test.rs` | 3 | 0 | 3 | 0 |
-| `src/v3/compiler/tests/integration/extdeps_rust_primitives_loader_test.rs` | 3 | 0 | 3 | 0 |
-| `src/v3/compiler/tests/integration/extdeps_sql_transport_test.rs` | 8 | 0 | 8 | 0 |
-| `src/v3/compiler/tests/integration/file_attachment_substrate_carrier_test.rs` | 3 | 0 | 3 | 0 |
-| `src/v3/compiler/tests/integration/four_fixture_regression_test.rs` | 11 | 11 | 0 | 0 |
-| `src/v3/compiler/tests/integration/idempotency_lens_instance_blocker_test.rs` | 2 | 2 | 0 | 0 |
-| `src/v3/compiler/tests/integration/int_literal_cardinality_test.rs` | 28 | 0 | 28 | 0 |
-| `src/v3/compiler/tests/integration/l1_5_fixed_point_test.rs` | 11 | 0 | 11 | 0 |
-| `src/v3/compiler/tests/integration/lane2_stage_2a_effects_smoke.rs` | 4 | 0 | 4 | 0 |
-| `src/v3/compiler/tests/integration/lane2_stage_2b_db18_test.rs` | 12 | 0 | 12 | 0 |
-| `src/v3/compiler/tests/integration/lane2_stage_2c_db15_test.rs` | 3 | 0 | 3 | 0 |
-| `src/v3/compiler/tests/integration/lane2_stage_2d_symbolic_cost_test.rs` | 8 | 0 | 8 | 0 |
-| `src/v3/compiler/tests/integration/lane2_stage_2e_parallelism_test.rs` | 8 | 0 | 8 | 0 |
-| `src/v3/compiler/tests/integration/lane3_stage_3b_db1_test.rs` | 8 | 0 | 8 | 0 |
-| `src/v3/compiler/tests/integration/lens_application_substrate_carrier_test.rs` | 1 | 0 | 1 | 0 |
-| `src/v3/compiler/tests/integration/lens_behavioral_parity_demonstration_test.rs` | 12 | 12 | 0 | 0 |
-| `src/v3/compiler/tests/integration/lens_cost_target_realization_test.rs` | 13 | 0 | 13 | 0 |
-| `src/v3/compiler/tests/integration/lens_register_correspondence_test.rs` | 5 | 0 | 5 | 0 |
-| `src/v3/compiler/tests/integration/lens_substrate_carrier_test.rs` | 9 | 0 | 9 | 0 |
-| `src/v3/compiler/tests/integration/m0_acceptance.rs` | 12 | 12 | 0 | 0 |
-| `src/v3/compiler/tests/integration/m1_3_lens_cost_test.rs` | 4 | 0 | 4 | 0 |
-| `src/v3/compiler/tests/integration/m1_3_lens_unused_parameters_test.rs` | 4 | 0 | 4 | 0 |
-| `src/v3/compiler/tests/integration/m1_5_omni_shape_b_openapi_test.rs` | 12 | 0 | 12 | 0 |
-| `src/v3/compiler/tests/integration/m1_5_testgen_test.rs` | 6 | 0 | 6 | 0 |
-| `src/v3/compiler/tests/integration/m1_5_user_authored_lens_gate_test.rs` | 6 | 0 | 6 | 0 |
-| `src/v3/compiler/tests/integration/m1_5_verification_test.rs` | 14 | 0 | 14 | 0 |
-| `src/v3/compiler/tests/integration/m1_fn_external_body_reconciliation_test.rs` | 2 | 0 | 2 | 0 |
-| `src/v3/compiler/tests/integration/m1_lens_structural_resolution_test.rs` | 3 | 0 | 3 | 0 |
-| `src/v3/compiler/tests/integration/m1_substrate_test.rs` | 115 | 115 | 0 | 0 |
-| `src/v3/compiler/tests/integration/m2_feature_parity_test.rs` | 70 | 70 | 0 | 0 |
-| `src/v3/compiler/tests/integration/m2_field_access_binding_test.rs` | 2 | 0 | 2 | 0 |
-| `src/v3/compiler/tests/integration/m2_lens_cost_migration_test.rs` | 4 | 4 | 0 | 0 |
-| `src/v3/compiler/tests/integration/m2_lens_idempotency_emit_test.rs` | 2 | 0 | 2 | 0 |
-| `src/v3/compiler/tests/integration/m2_lens_idempotency_migration_test.rs` | 2 | 2 | 0 | 0 |
-| `src/v3/compiler/tests/integration/m2_lens_provenance_migration_test.rs` | 5 | 5 | 0 | 0 |
-| `src/v3/compiler/tests/integration/m2_lens_structural_resolution_migration_test.rs` | 3 | 3 | 0 | 0 |
-| `src/v3/compiler/tests/integration/m2_lens_unused_parameters_migration_test.rs` | 6 | 6 | 0 | 0 |
-| `src/v3/compiler/tests/integration/m2_lens_variant_payload_migration_test.rs` | 3 | 3 | 0 | 0 |
-| `src/v3/compiler/tests/integration/m2_substrate_inhabitance_test.rs` | 86 | 0 | 86 | 0 |
-| `src/v3/compiler/tests/integration/method_registry_test.rs` | 4 | 0 | 4 | 0 |
-| `src/v3/compiler/tests/integration/method_template_contract_test.rs` | 6 | 0 | 6 | 0 |
-| `src/v3/compiler/tests/integration/method_template_projection_emit_shim_coherence_test.rs` | 1 | 0 | 1 | 0 |
-| `src/v3/compiler/tests/integration/no_coercion_cost_dimension_ratchet_test.rs` | 3 | 0 | 3 | 0 |
-| `src/v3/compiler/tests/integration/pb1_bootstrap_full_snapshot_test.rs` | 9 | 0 | 0 | 9 |
-| `src/v3/compiler/tests/integration/pb_method_template_projection_test.rs` | 4 | 0 | 4 | 0 |
-| `src/v3/compiler/tests/integration/pipe_desugar.rs` | 6 | 0 | 6 | 0 |
-| `src/v3/compiler/tests/integration/prereq_x_call_on_field_access_ratchet_test.rs` | 7 | 7 | 0 | 0 |
-| `src/v3/compiler/tests/integration/r1_release_acceptance_test.rs` | 4 | 4 | 0 | 0 |
-| `src/v3/compiler/tests/integration/r2_b5_loop_construction_closure_test.rs` | 2 | 0 | 2 | 0 |
-| `src/v3/compiler/tests/integration/r3_class_2_function_valued_data_test.rs` | 6 | 0 | 6 | 0 |
-| `src/v3/compiler/tests/integration/r3_free_consequences_first_batch_test.rs` | 1 | 1 | 0 | 0 |
-| `src/v3/compiler/tests/integration/r3_free_consequences_second_batch_test.rs` | 4 | 4 | 0 | 0 |
-| `src/v3/compiler/tests/integration/r3_gate_60_phase2_width_nat_parser_test.rs` | 7 | 0 | 7 | 0 |
-| `src/v3/compiler/tests/integration/r3_gate_62_file_ingestion_negative_bridge_audit_test.rs` | 5 | 0 | 0 | 5 |
-| `src/v3/compiler/tests/integration/r3_gate_87_lens_cementing_regen_receipts_test.rs` | 17 | 0 | 17 | 0 |
-| `src/v3/compiler/tests/integration/r3_gate_90_lens_enforcement_carrier_landed_test.rs` | 3 | 0 | 3 | 0 |
-| `src/v3/compiler/tests/integration/r3_lens_producer_retirement_executable_witness_test.rs` | 1 | 1 | 0 | 0 |
-| `src/v3/compiler/tests/integration/r3_path_b_brief3_char_in_class_execution_test.rs` | 3 | 0 | 3 | 0 |
-| `src/v3/compiler/tests/integration/r3_pb_runtime_evaluator_corpus_seed_test.rs` | 2 | 2 | 0 | 0 |
-| `src/v3/compiler/tests/integration/r3_sg0_non_test_zero_test.rs` | 1 | 1 | 0 | 0 |
-| `src/v3/compiler/tests/integration/r3_substrate_gap_reflection_closure_test.rs` | 1 | 1 | 0 | 0 |
-| `src/v3/compiler/tests/integration/r3_v3_self_host_demonstration_dag_test.rs` | 2 | 0 | 0 | 2 |
-| `src/v3/compiler/tests/integration/r3_verification_l4_l7_l5_skeleton_test.rs` | 10 | 10 | 0 | 0 |
-| `src/v3/compiler/tests/integration/services_carrier_shape_test.rs` | 7 | 0 | 7 | 0 |
-| `src/v3/compiler/tests/integration/sg0_census_test.rs` | 17 | 0 | 0 | 17 |
-| `src/v3/compiler/tests/integration/sg1_tokenize_authority_test.rs` | 8 | 0 | 0 | 8 |
-| `src/v3/compiler/tests/integration/sg2_parse_authority_test.rs` | 2 | 0 | 0 | 2 |
-| `src/v3/compiler/tests/integration/sg2c1_parse_tables_authority_test.rs` | 19 | 0 | 19 | 0 |
-| `src/v3/compiler/tests/integration/sg2c5_soft_keyword_ident_test.rs` | 1 | 0 | 1 | 0 |
-| `src/v3/compiler/tests/integration/sg3_lower_parse_surface_stack_test.rs` | 1 | 0 | 0 | 1 |
-| `src/v3/compiler/tests/integration/sg3_surface_reflection_consumer_test.rs` | 2 | 0 | 0 | 2 |
-| `src/v3/compiler/tests/integration/sg6_hand_authored_census_test.rs` | 10 | 0 | 0 | 10 |
-| `src/v3/compiler/tests/integration/sg7_prep_variant_payload_freshness_test.rs` | 2 | 0 | 0 | 2 |
-| `src/v3/compiler/tests/integration/shape_a_target_source_filtering_authority_test.rs` | 2 | 0 | 2 | 0 |
-| `src/v3/compiler/tests/integration/symbolic_cost_expr_equals_executable_ratchet_test.rs` | 1 | 0 | 1 | 0 |
-| `src/v3/compiler/tests/integration/t_ci_workflow_as_data_demo_test.rs` | 17 | 0 | 17 | 0 |
-| `src/v3/compiler/tests/integration/t_gate_106_show_correct_code_diagnostic_coverage_test.rs` | 7 | 0 | 7 | 0 |
-| `src/v3/compiler/tests/integration/t_gate_58_apply_lens_self_application_test.rs` | 2 | 0 | 2 | 0 |
-| `src/v3/compiler/tests/integration/t_impossiblebugs_unenumerated_effects_test.rs` | 3 | 0 | 3 | 0 |
-| `src/v3/compiler/tests/integration/t_las_complexity_contract_compile_error_test.rs` | 1 | 0 | 1 | 0 |
-| `src/v3/compiler/tests/integration/t_las_crdt_cost_basis_demo_test.rs` | 7 | 0 | 7 | 0 |
-| `src/v3/compiler/tests/integration/t_las_parallelism_iteration_gate95_demo_test.rs` | 2 | 0 | 2 | 0 |
-| `src/v3/compiler/tests/integration/t_lens_application_carrier_test.rs` | 2 | 0 | 2 | 0 |
-| `src/v3/compiler/tests/integration/t_pb_b_1_dag_runner_test.rs` | 18 | 0 | 0 | 18 |
-| `src/v3/compiler/tests/integration/tc1_substrate_lens_eta_equivalence_deferred_test.rs` | 2 | 2 | 0 | 0 |
-| `src/v3/compiler/tests/integration/tc1_substrate_lens_eta_equivalence_strict_fire_test.rs` | 1 | 1 | 0 | 0 |
-| `src/v3/compiler/tests/integration/tc2_church_rosser_strict_fire_test.rs` | 1 | 0 | 1 | 0 |
-| `src/v3/compiler/tests/integration/tc3_strong_normalization_deferred_test.rs` | 1 | 0 | 1 | 0 |
-| `src/v3/compiler/tests/integration/tc3_strong_normalization_strict_fire_test.rs` | 1 | 0 | 1 | 0 |
-| `src/v3/compiler/tests/integration/test_runner_test.rs` | 45 | 0 | 0 | 45 |
-| `src/v3/compiler/tests/integration/thesis_parallelism_test.rs` | 9 | 0 | 9 | 0 |
-| `src/v3/compiler/tests/integration/thesis_validation_test.rs` | 24 | 0 | 24 | 0 |
-| `src/v3/compiler/tests/integration/timing_lens_substrate_carrier_test.rs` | 22 | 0 | 22 | 0 |
-| `src/v3/compiler/tests/integration/v2_oracle_no_remaining_test_consumers_test.rs` | 10 | 0 | 0 | 10 |
-| `src/v3/compiler/tests/integration/v4_bin_main_dag_smoke_test.rs` | 1 | 1 | 0 | 0 |
-| `src/v3/compiler/tests/integration/v4_compiler_compile_public_terminal_smoke_test.rs` | 10 | 10 | 0 | 0 |
-| `src/v3/compiler/tests/integration/v4_compiler_emit_translate_smoke_test.rs` | 18 | 18 | 0 | 0 |
-| `src/v3/compiler/tests/integration/v4_extdeps_file_system_dag_smoke_test.rs` | 5 | 5 | 0 | 0 |
-| `src/v3/compiler/tests/integration/v4_extdeps_react_dag_smoke_test.rs` | 13 | 13 | 0 | 0 |
-| `src/v3/compiler/tests/integration/v4_lens_registry_dag_smoke_test.rs` | 4 | 4 | 0 | 0 |
-| `src/v3/compiler/tests/integration/v4_lens_testgen_dag_smoke_test.rs` | 13 | 13 | 0 | 0 |
-| `src/v3/compiler/tests/integration/v4_std_model_core_dag_smoke_test.rs` | 7 | 7 | 0 | 0 |
-| `src/v3/compiler/tests/integration/v4_test_bootstrap_infra_closeout_test.rs` | 7 | 7 | 0 | 0 |
-| `src/v3/compiler/tests/integration/value_body_substrate_mirror_isomorphism_test.rs` | 3 | 0 | 3 | 0 |
-| `src/v3/compiler/tests/integration/workflow_root_port_test.rs` | 3 | 0 | 3 | 0 |
-| `src/v3/compiler/tests/integration/workflow_substrate_carriers_test.rs` | 4 | 0 | 4 | 0 |
+The script applies **one heuristic bucket per census path** (not per `#[test]`). Per-test retirement belongs in operator-ratified work-items after batch approval.
 
 ---
 

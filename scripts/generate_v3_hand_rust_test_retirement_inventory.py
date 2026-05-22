@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
-"""Generate a transient JSONL export of v3 hand-Rust test retirement classifications.
+"""Audit helper: count and heuristically classify v3 hand-Rust *paths* under the census.
 
-NOT a maintained authority (docs/modeling-discipline.md standing rule). Output is
-a review-time worksheet only — regenerate from HEAD when needed. Durable facts:
-  - path membership: EXPECTED_HAND_AUTHORED_TEST in sg0_census_test.rs
-  - retirement execution: dashboard work-items + sg0 census shrinkage in the PR that deletes tests
+This is NOT a maintained `(file, fn) -> bucket` registry (docs/modeling-discipline.md).
+It reads `EXPECTED_HAND_AUTHORED_TEST` from sg0_census_test.rs and prints ephemeral
+summaries for PR review. Durable authority: census paths + inline sg0 comments +
+operator work-items.
 
 Usage:
-  python3 scripts/generate_v3_hand_rust_test_retirement_inventory.py > /tmp/inventory.jsonl
-  python3 scripts/generate_v3_hand_rust_test_retirement_inventory.py --check  # assert unique (file, fn)
+  python3 scripts/generate_v3_hand_rust_test_retirement_inventory.py --check
+  python3 scripts/generate_v3_hand_rust_test_retirement_inventory.py --summary
+  python3 scripts/generate_v3_hand_rust_test_retirement_inventory.py --by-file > /tmp/by-file.jsonl
 
-Audit prose (human review): docs/audit/v3-hand-rust-test-retirement.md
+There is intentionally no --by-test mode in this checked-in script.
 """
 from __future__ import annotations
 
@@ -68,32 +69,32 @@ def extract_tests(rel: str) -> list[str]:
     return tests
 
 
-def classify_file(rel: str) -> tuple[str, str]:
+def classify_path(rel: str) -> tuple[str, str]:
     p = rel.lower()
     if "/boundary/" in p:
-        return "KEEP-AS-RUST", "Class-5 boundary roundtrip"
+        return "KEEP-AS-RUST", "Class-5 boundary"
     if "sg0_census" in p or "sg6_hand" in p or re.search(r"sg[1237]_", p):
-        return "KEEP-AS-RUST", "SG-0/SG-* census ratchet until census zero"
+        return "KEEP-AS-RUST", "SG-0/SG-* census ratchet"
     if "test_runner_test" in p or "t_pb_b_1_dag_runner" in p:
-        return "KEEP-AS-RUST", "Host TestRunner for .dag TestClaims"
+        return "KEEP-AS-RUST", "TestRunner harness"
     if Path(rel).name == "integration.rs" or "determinism_test" in p:
-        return "KEEP-AS-RUST", "Crate wiring / determinism infrastructure"
+        return "KEEP-AS-RUST", "Crate wiring"
     if "/common/" in p:
-        return "KEEP-AS-RUST", "Shared test helper (may have zero #[test])"
+        return "KEEP-AS-RUST", "Shared helper module"
     if "v2_oracle" in p:
-        return "KEEP-AS-RUST", "G-1 v2-consumer excision until src/v2/ removed"
+        return "KEEP-AS-RUST", "G-1 v2 excision ratchet"
     if re.search(r"v4_.*smoke", p) or "v4_test_bootstrap" in p:
-        return "DELETE", "Inverted-dependency v3 parse smoke of v4 .dag"
+        return "DELETE", "v4 inverted-dependency smoke"
     if "/cementing/" in p:
-        return "DELETE", "Band-C cement; .dag gate-87 harness is authority"
+        return "DELETE", "Band-C cementing (Rust leg)"
     if "m1_substrate_test" in p:
-        return "DELETE", "Imperative substrate walks"
+        return "DELETE", "Substrate walks bulk"
     if "m0_acceptance" in p or "four_fixture" in p or "m2_feature_parity" in p:
-        return "DELETE", "Obsolete milestone receipt"
+        return "DELETE", "Obsolete milestone"
     if "migration_test" in p or "canonical_lens" in p or "bridge_lower" in p:
-        return "DELETE", "Transitional ratchet superseded"
+        return "DELETE", "Transitional ratchet"
     if "lens_behavioral_parity" in p:
-        return "DELETE", "Temporary v2-oracle snapshot"
+        return "DELETE", "v2-oracle snapshot"
     if any(
         x in p
         for x in (
@@ -105,106 +106,81 @@ def classify_file(rel: str) -> tuple[str, str]:
             "r3_substrate_gap",
         )
     ):
-        return "DELETE", "Host driver for .dag TestClaims"
+        return "DELETE", "Host .dag claim driver"
     if "e_i_lane" in p or "r1_release_acceptance" in p:
-        return "DELETE", "One-shot preflight / release-wrapper"
+        return "DELETE", "One-shot / release wrapper"
     if any(x in p for x in ("idempotency_lens_instance", "prereq_x", "tc1_", "wiring_scanner")):
-        return "DELETE", "Blocker/meta ratchet only"
+        return "DELETE", "Blocker/meta ratchet"
     if "r3_gate_62" in p:
-        return "KEEP-AS-RUST", "Filesystem tree audit"
+        return "KEEP-AS-RUST", "Filesystem audit"
     if any(x in p for x in ("pb1_bootstrap_full_snapshot", "r3_v3_self_host", "l5_cross_target")):
-        return "KEEP-AS-RUST", "Host process / fixture bridge"
+        return "KEEP-AS-RUST", "Host / fixture bridge"
     if re.search(r"m1_[34]_emit_|m1_5_emit_omni|m2_emit_multi", p):
-        return "KEEP-AS-RUST", "Emitted-target boundary"
+        return "KEEP-AS-RUST", "Emit boundary"
     if "v4_" in p:
-        return "DELETE", "v4-adjacent inverted dependency"
+        return "DELETE", "v4-adjacent"
     if "anthropic" in p:
         return "REPLACE-VIA-TESTCLAIM", "Provider wire"
-    return "REPLACE-VIA-TESTCLAIM", "Structural claim portable to TestClaim"
+    return "REPLACE-VIA-TESTCLAIM", "Portable to TestClaim"
 
 
-def t19_for(rel: str, bucket: str) -> str | None:
-    if bucket != "REPLACE-VIA-TESTCLAIM":
-        return None
-    p = rel.lower()
-    if "algebra" in p or "symbolic_cost" in p:
-        return "AlgebraLaw"
-    if "diagnostic" in p or "gate_106" in p or "reject" in p:
-        return "DiagnosticExhaustiveness"
-    if "lens" in p or "cost" in p or "parallelism" in p:
-        return "LensApplicability"
-    if "anthropic" in p or "emit" in p:
-        return "LanguageBehaviorEquivalence"
-    if "l5_" in p or "cross_target" in p:
-        return "BidirectionalRoundtrip"
-    if "gate_62" in p:
-        return "T-19-CATEGORY-MISSING: RepoFileTreeNegativeBridgeAudit"
-    if "ctrl_pr" in p:
-        return "T-19-CATEGORY-MISSING: ModuleServiceParseSurface"
-    return "TypeConstruction"
-
-
-def generate_rows() -> list[dict]:
-    seen: set[tuple[str, str]] = set()
+def path_rows() -> list[dict]:
     rows: list[dict] = []
     for rel in sorted(census_test_paths()):
-        bucket, reason = classify_file(rel)
-        tests = extract_tests(rel)
-        if not tests:
-            key = (rel, "(path-only)")
-            if key in seen:
-                raise ValueError(f"duplicate {key}")
-            seen.add(key)
-            rows.append(
-                {
-                    "file": rel,
-                    "fn": "(path-only)",
-                    "bucket": bucket,
-                    "reason": reason + " [zero #[test] in file]",
-                    "t19": t19_for(rel, bucket),
-                }
-            )
-            continue
-        for fn in tests:
-            key = (rel, fn)
-            if key in seen:
-                raise ValueError(f"duplicate {key}")
-            seen.add(key)
-            rows.append(
-                {
-                    "file": rel,
-                    "fn": fn,
-                    "bucket": bucket,
-                    "reason": reason,
-                    "t19": t19_for(rel, bucket),
-                }
-            )
+        n = len(extract_tests(rel))
+        bucket, reason = classify_path(rel)
+        rows.append(
+            {
+                "path": rel,
+                "test_count": n,
+                "bucket": bucket,
+                "reason": reason,
+            }
+        )
     return rows
+
+
+def aggregate(rows: list[dict]) -> dict:
+    by_bucket: Counter[str] = Counter()
+    test_total = 0
+    for row in rows:
+        by_bucket[row["bucket"]] += row["test_count"]
+        test_total += row["test_count"]
+    return {
+        "census_paths": len(rows),
+        "test_functions": test_total,
+        "by_bucket": dict(by_bucket),
+    }
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--check",
-        action="store_true",
-        help="Validate uniqueness and print bucket counts to stderr; no stdout JSONL",
-    )
+    parser.add_argument("--check", action="store_true", help="Print summary to stderr and exit 0")
+    parser.add_argument("--summary", action="store_true", help="Print summary JSON to stdout")
+    parser.add_argument("--by-file", action="store_true", help="Print path-level rows to stdout (<=145 lines)")
     args = parser.parse_args()
-    rows = generate_rows()
-    test_rows = [r for r in rows if r["fn"] != "(path-only)"]
-    counts = Counter(r["bucket"] for r in test_rows)
+    rows = path_rows()
+    summary = aggregate(rows)
+    if args.by_file:
+        for row in rows:
+            print(json.dumps(row))
+        return 0
+    if args.summary:
+        print(json.dumps(summary, indent=2))
+        return 0
     if args.check:
-        paths = {r["file"] for r in rows}
         print(
-            f"OK paths={len(paths)} tests={len(test_rows)} "
-            f"DELETE={counts['DELETE']} REPLACE={counts['REPLACE-VIA-TESTCLAIM']} "
-            f"KEEP={counts['KEEP-AS-RUST']}",
+            f"OK paths={summary['census_paths']} tests={summary['test_functions']} "
+            f"DELETE={summary['by_bucket'].get('DELETE', 0)} "
+            f"REPLACE={summary['by_bucket'].get('REPLACE-VIA-TESTCLAIM', 0)} "
+            f"KEEP={summary['by_bucket'].get('KEEP-AS-RUST', 0)}",
             file=sys.stderr,
         )
+        if summary["census_paths"] != 145:
+            print(f"WARN expected 145 census paths, got {summary['census_paths']}", file=sys.stderr)
         return 0
-    for row in rows:
-        print(json.dumps(row))
-    return 0
+    parser.print_help()
+    return 2
 
 
 if __name__ == "__main__":
