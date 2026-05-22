@@ -1,6 +1,6 @@
 // src/v4/lens/subsumption.dag
 // Scope: dissolution-lens subsumption ordering rows for root fixes that mechanically close leaf fixes.
-// Owns: DiffId, TestClaimId, ProducerStageId, SubsumptionVerification, DissolutionSubsumption, affected_set_irt1_subsumption.
+// Owns: DiffId, TestClaimId, ProducerStageId, SubsumptionVerification, DissolutionSubsumption, affected_set_irt1_subsumption, rust_language_model_emit_subsumption.
 // Consumes: v4.std.collection, v4.std.node.
 // Status: scaffold; Lens-CI host runtime accepts structural row mirrors until TestClaim execution owns these rows.
 
@@ -18,6 +18,10 @@ data affected_set_dimension_receipt_leaf_fix: Symbol = affected_set_dimension_re
 data affected_set_propagation_receipt_leaf_fix: Symbol = affected_set_propagation_receipt_leaf_fix
 data affected_set_frontier_receipt_leaf_fix: Symbol = affected_set_frontier_receipt_leaf_fix
 data affected_set_irt1_mechanical_reverification_claim: Symbol = affected_set_irt1_mechanical_reverification_claim
+data rust_language_model_emit_root_fix: Symbol = rust_language_model_emit_root_fix
+data emit_rust_template_leaf_fix: Symbol = emit_rust_template_leaf_fix
+data emit_rust_name_dispatch_leaf_fix: Symbol = emit_rust_name_dispatch_leaf_fix
+data rust_language_model_emit_mechanical_reverification_claim: Symbol = rust_language_model_emit_mechanical_reverification_claim
 
 
 type DiffId {
@@ -69,5 +73,27 @@ data affected_set_irt1_subsumption: DissolutionSubsumption = {
   subsumed_fixes: affected_set_irt1_subsumed_fixes,
   verification: MechanicalReverification {
     test_claim: TestClaimId { id: affected_set_irt1_mechanical_reverification_claim }
+  }
+}
+
+
+fn rust_language_model_emit_subsumed_fixes_value() -> Set<DiffId> {
+  Set {
+    member: fn(d) {
+      d.id == emit_rust_template_leaf_fix ||
+        d.id == emit_rust_name_dispatch_leaf_fix
+    }
+  }
+}
+
+
+data rust_language_model_emit_subsumed_fixes: Set<DiffId> = rust_language_model_emit_subsumed_fixes_value()
+
+
+data rust_language_model_emit_subsumption: DissolutionSubsumption = {
+  root_fix: DiffId { id: rust_language_model_emit_root_fix },
+  subsumed_fixes: rust_language_model_emit_subsumed_fixes,
+  verification: MechanicalReverification {
+    test_claim: TestClaimId { id: rust_language_model_emit_mechanical_reverification_claim }
   }
 }
