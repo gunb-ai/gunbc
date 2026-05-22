@@ -63,7 +63,7 @@ fn t19_refinement_preservation_receipts_present() {
             && REFINEMENT_GENERATED_DAG
                 .contains("refined_base(r: subject.refined) == subject.original")
             && REFINEMENT_GENERATED_DAG.contains(
-                "data claim_refinement_nonempty_list_base_preserved: TestClaim"
+                "data claim_refinement_nonempty_list_base_preserved: Outcome<TestClaim>"
             )
             && REFINEMENT_GENERATED_DAG.contains(
                 "data witness_refinement_preserves_nonempty_list_base: Bool"

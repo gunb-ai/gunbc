@@ -16,62 +16,18 @@ import v4.lens.testgen {
 }
 import v4.std.diagnostic {
   Accepted,
-  AmbiguousIntent,
-  Diagnostic,
-  NodeLocus,
-  NonEmptyDiagnostics,
   None,
   Outcome,
-  Rejected,
-  Unavailable,
-  diagnostics_singleton
+  Rejected
 }
-import v4.std.node { Atom, Node, Symbol, TypeNode }
+import v4.std.node { Node }
 import v4.std.refinement { refined_base }
 import v4.std.verification {
-  DiagnosticClaim,
   TestClaim,
-  TestClassification,
-  T19ManualAnchorAbsent,
-  T19ManualRefinementNonEmptyListBase,
-  Tier1,
-  Unit
+  T19ManualRefinementNonEmptyListBase
 }
 import v4.test.claim.manual.connective_anchors {
   stub_empty_conj
-}
-
-
-data refinement_preservation_emit_rejected: Symbol = refinement_preservation_emit_rejected
-data refinement_preservation_rejection_input: Symbol = refinement_preservation_rejection_input
-fn refinement_preservation_rejection_input_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Atom { identity: refinement_preservation_rejection_input } },
-    children: []
-  }
-}
-
-
-fn refinement_preservation_emit_rejection_diagnostic(input: Node) -> Diagnostic {
-  Diagnostic {
-    reason: refinement_preservation_emit_rejected,
-    at: NodeLocus { node: input },
-    correction: Unavailable { reason: AmbiguousIntent }
-  }
-}
-
-
-fn refinement_preservation_emit_rejection_sentinel_claim(
-  expected: NonEmptyDiagnostics
-) -> TestClaim {
-  let input = refinement_preservation_rejection_input_node()
-  DiagnosticClaim {
-    label: t19_refinement_label_nonempty_list_base,
-    t19_anchor: T19ManualAnchorAbsent,
-    input: input,
-    expected_rejection: expected,
-    classification: TestClassification { tier: Tier1, layer: Unit }
-  }
 }
 
 
@@ -86,33 +42,19 @@ fn refinement_preservation_claim_from_testgen_emit(
 }
 
 
-fn refinement_preservation_generated_nonempty_list_claim() -> TestClaim {
+fn refinement_preservation_generated_nonempty_list_claim() -> Outcome<TestClaim> {
   match refinement_preservation_subject_nonempty_list_base() {
     Accepted { value: subject, diagnostics: None } =>
       match refinement_preservation_claim_from_testgen_emit(subject: subject) {
-        Accepted { value: claim, diagnostics: None } => claim
-        Rejected { diagnostics: _ } =>
-          refinement_preservation_emit_rejection_sentinel_claim(
-            expected: diagnostics_singleton(
-              d: refinement_preservation_emit_rejection_diagnostic(
-                input: refinement_preservation_rejection_input_node()
-              )
-            )
-          )
+        Accepted { value: claim, diagnostics: None } => Accepted { value: claim, diagnostics: None }
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
       }
-    Rejected { diagnostics: _ } =>
-      refinement_preservation_emit_rejection_sentinel_claim(
-        expected: diagnostics_singleton(
-          d: refinement_preservation_emit_rejection_diagnostic(
-            input: refinement_preservation_rejection_input_node()
-          )
-        )
-      )
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
   }
 }
 
 
-data claim_refinement_nonempty_list_base_preserved: TestClaim = refinement_preservation_generated_nonempty_list_claim()
+data claim_refinement_nonempty_list_base_preserved: Outcome<TestClaim> = refinement_preservation_generated_nonempty_list_claim()
 
 
 data witness_refinement_preserves_nonempty_list_base: Bool = match refinement_preservation_subject_nonempty_list_base() {

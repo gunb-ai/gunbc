@@ -131,7 +131,7 @@ def main() -> None:
             "RefinementPreservationSubject",
             "refined_base(r: subject.refined) == subject.original",
             "refinement_preservation_subject_nonempty_list_base()",
-            "data claim_refinement_nonempty_list_base_preserved: TestClaim",
+            "data claim_refinement_nonempty_list_base_preserved: Outcome<TestClaim>",
             "witness_refinement_preserves_nonempty_list_base",
             "T19ManualRefinementNonEmptyListBase",
         ),
