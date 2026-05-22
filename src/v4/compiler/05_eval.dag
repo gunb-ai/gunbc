@@ -52,7 +52,7 @@ import v4.std.diagnostic {
   Correction,
   Diagnostic,
   NoCorrectionReason,
-  NodeLocus,
+  node_locus,
   Outcome,
   Unavailable,
   Accepted,
@@ -176,7 +176,7 @@ data eval_rejected_canonical_mismatch: Symbol = eval_rejected_canonical_mismatch
 fn eval_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
   Diagnostic {
     reason: reason,
-    at: NodeLocus { node: node },
+    at: node_locus(node: node),
     correction: Unavailable { reason: AmbiguousIntent }
   }
 }
