@@ -119,12 +119,11 @@ data module_import_out_of_scope_claim: LensStructuralResolutionClaim = LensStruc
         classification: OutOfScopeDependencyKind
       }
     ]
-  },
-  actual: at(tree: sr_mod_claim_tree())
+  }
 }
 
 fn module_import_out_of_scope_claim_holds() -> Bool {
-  match module_import_out_of_scope_claim.actual {
+  match lens_structural_resolution_actual(claim: module_import_out_of_scope_claim) {
     Holds { value: actual } =>
       fact_eq(a: actual, b: module_import_out_of_scope_claim.expected)
         && fact_single_dependency_projects_status(
