@@ -1,0 +1,320 @@
+// src/v4/test/claim/manual/dissolution_subsumption_reverification.dag
+// Scope: runnable TestClaim receipt for DissolutionSubsumption MechanicalReverification rows.
+// Owns: claim_rust_language_model_emit_subsumption_reverifies, run_rust_language_model_emit_subsumption_reverifies, witness_rust_language_model_emit_subsumption_passes.
+// Consumes: v4.compiler.eval, v4.compiler.infer, v4.lens.subsumption, v4.std.cardinality, v4.std.collection, v4.std.constraints, v4.std.diagnostic, v4.std.node, v4.std.runtime, v4.std.verification, v4.std.witness.
+// Status: manual receipt; consumes current SubsumedFixes shape until #3496 Set<DiffId> reshape lands.
+
+module v4.test.claim.manual.dissolution_subsumption_reverification
+
+
+import v4.compiler.eval {
+  EvalContext,
+  TestClaimRun,
+  Verdict,
+  Pass,
+  eval_diagnostic,
+  eval_test_claim_subject,
+  run_test_claim
+}
+import v4.compiler.infer {
+  AlgebraRef,
+  InferredFacts,
+  InferredTree
+}
+import v4.lens.subsumption {
+  DissolutionSubsumption,
+  MechanicalReverification,
+  rust_language_model_emit_mechanical_reverification_claim,
+  rust_language_model_emit_subsumption
+}
+import v4.std.cardinality { RankingDimension, TerminationProof }
+import v4.std.collection { Map }
+import v4.std.constraints {
+  CanonicalGroundingWitness,
+  constraint_property_being_canonical,
+  constraint_property_candidate_set_closedness
+}
+import v4.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  None,
+  Outcome,
+  Rejected,
+  Unavailable,
+  diagnostics_singleton
+}
+import v4.std.node {
+  Atom,
+  ComputationNode,
+  Conj,
+  Edge,
+  Hash,
+  Named,
+  Node,
+  Symbol,
+  TypeNode,
+  Value
+}
+import v4.std.runtime {
+  BindInterpreter,
+  BranchInterpreter,
+  Continue,
+  ControlTransfer,
+  EnvironmentBindingKey,
+  EvaluationEnvironment,
+  InterpretationAlgebra,
+  LoopInterpreter,
+  RuntimeUnit,
+  RuntimeUnitValue,
+  RuntimeValue,
+  TransformInterpreter,
+  ValueInterpreter
+}
+import v4.std.verification {
+  EqualsClaim,
+  T19ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Integration
+}
+import v4.std.witness { Holds, StructuralPropertyWitness, Witness }
+
+
+data rust_language_model_emit_subsumption_receipt_node: Symbol = rust_language_model_emit_subsumption_receipt_node
+data subsumption_root_fix_edge: Symbol = subsumption_root_fix_edge
+data subsumption_first_leaf_edge: Symbol = subsumption_first_leaf_edge
+data subsumption_rest_leaf_count_edge: Symbol = subsumption_rest_leaf_count_edge
+data subsumption_mechanical_claim_edge: Symbol = subsumption_mechanical_claim_edge
+data subsumption_expected_rest_leaf_count_one: Symbol = subsumption_expected_rest_leaf_count_one
+data subsumption_runtime_rejected: Symbol = subsumption_runtime_rejected
+data subsumption_descent_dimension: Symbol = subsumption_descent_dimension
+data subsumption_claim_hash: Hash = subsumption_claim_hash
+data subsumption_interpretation_hash: Hash = subsumption_interpretation_hash
+
+
+fn subsumption_symbol_node(s: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: s } },
+    children: []
+  }
+}
+
+
+fn subsumption_receipt_node(row: DissolutionSubsumption) -> Node {
+  match row.verification {
+    MechanicalReverification { test_claim: claim } =>
+      Node {
+        kind: ComputationNode { behavior: Value },
+        children: [
+          Edge {
+            label: Named { name: subsumption_root_fix_edge },
+            target: subsumption_symbol_node(s: row.root_fix.id)
+          },
+          Edge {
+            label: Named { name: subsumption_first_leaf_edge },
+            target: subsumption_symbol_node(s: row.subsumed_fixes.first.id)
+          },
+          Edge {
+            label: Named { name: subsumption_rest_leaf_count_edge },
+            target: subsumption_symbol_node(s: subsumption_expected_rest_leaf_count_one)
+          },
+          Edge {
+            label: Named { name: subsumption_mechanical_claim_edge },
+            target: subsumption_symbol_node(s: claim.id)
+          }
+        ]
+      }
+    ProducerStageDerivation { derivation_path: _ } =>
+      subsumption_symbol_node(s: subsumption_runtime_rejected)
+  }
+}
+
+
+fn expected_rust_language_model_emit_receipt_node() -> Node {
+  Node {
+    kind: ComputationNode { behavior: Value },
+    children: [
+      Edge {
+        label: Named { name: subsumption_root_fix_edge },
+        target: subsumption_symbol_node(s: rust_language_model_emit_root_fix)
+      },
+      Edge {
+        label: Named { name: subsumption_first_leaf_edge },
+        target: subsumption_symbol_node(s: emit_rust_template_leaf_fix)
+      },
+      Edge {
+        label: Named { name: subsumption_rest_leaf_count_edge },
+        target: subsumption_symbol_node(s: subsumption_expected_rest_leaf_count_one)
+      },
+      Edge {
+        label: Named { name: subsumption_mechanical_claim_edge },
+        target: subsumption_symbol_node(s: rust_language_model_emit_mechanical_reverification_claim)
+      }
+    ]
+  }
+}
+
+
+fn subsumption_runtime_unit(node: Node) -> RuntimeValue {
+  RuntimeUnit {
+    value: RuntimeUnitValue { unit_type: node }
+  }
+}
+
+
+fn subsumption_allocate_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
+  Accepted { value: subsumption_runtime_unit(node: node), diagnostics: None }
+}
+
+
+fn subsumption_reject_runtime(node: Node) -> Outcome<RuntimeValue> {
+  Rejected {
+    diagnostics: diagnostics_singleton(
+      d: eval_diagnostic(reason: subsumption_runtime_rejected, node: node)
+    )
+  }
+}
+
+
+fn subsumption_call_primitive(
+  node: Node,
+  _args: List<RuntimeValue>,
+  _env: EvaluationEnvironment
+) -> Outcome<RuntimeValue> {
+  subsumption_reject_runtime(node: node)
+}
+
+
+fn subsumption_choose_branch(
+  node: Node,
+  _value: RuntimeValue,
+  _env: EvaluationEnvironment
+) -> Outcome<Node> {
+  Rejected {
+    diagnostics: diagnostics_singleton(
+      d: eval_diagnostic(reason: subsumption_runtime_rejected, node: node)
+    )
+  }
+}
+
+
+fn subsumption_step_loop(node: Node, _env: EvaluationEnvironment) -> Outcome<ControlTransfer> {
+  Accepted { value: Continue { value: subsumption_runtime_unit(node: node) }, diagnostics: None }
+}
+
+
+fn subsumption_bind_value(
+  _key: EnvironmentBindingKey,
+  _value: RuntimeValue,
+  env: EvaluationEnvironment
+) -> Outcome<EvaluationEnvironment> {
+  Accepted { value: env, diagnostics: None }
+}
+
+
+fn subsumption_interpretation() -> InterpretationAlgebra {
+  InterpretationAlgebra {
+    value: ValueInterpreter {
+      allocate_literal: subsumption_allocate_literal
+    },
+    transform: TransformInterpreter {
+      call_primitive: subsumption_call_primitive
+    },
+    branch: BranchInterpreter {
+      choose_branch: subsumption_choose_branch
+    },
+    loop: LoopInterpreter {
+      step_loop: subsumption_step_loop
+    },
+    bind: BindInterpreter {
+      bind_value: subsumption_bind_value
+    }
+  }
+}
+
+
+fn subsumption_algebra_ref(node: Node) -> AlgebraRef {
+  AlgebraRef {
+    algebra: node,
+    witness: node
+  }
+}
+
+
+fn subsumption_termination_proof() -> TerminationProof {
+  TerminationProof {
+    non_increasing: [],
+    strict: RankingDimension { measured: subsumption_descent_dimension }
+  }
+}
+
+
+fn subsumption_facts(node: Node) -> InferredFacts {
+  InferredFacts {
+    resolved_type: node,
+    inhabits: subsumption_algebra_ref(node: node),
+    descent: Holds { value: subsumption_termination_proof() },
+    canonical: CanonicalGroundingWitness {
+      structural: StructuralPropertyWitness {
+        property: constraint_property_being_canonical,
+        evidence: node
+      },
+      closedness: StructuralPropertyWitness {
+        property: constraint_property_candidate_set_closedness,
+        evidence: node
+      }
+    }
+  }
+}
+
+
+fn subsumption_fact_lookup(node: Node) -> Witness<InferredFacts> {
+  Holds { value: subsumption_facts(node: node) }
+}
+
+
+fn subsumption_inferred_tree(root: Node) -> InferredTree {
+  InferredTree {
+    root: root,
+    facts: Map {
+      lookup: subsumption_fact_lookup
+    }
+  }
+}
+
+
+fn subsumption_context() -> EvalContext {
+  EvalContext {
+    interpretation: subsumption_interpretation()
+  }
+}
+
+
+data claim_rust_language_model_emit_subsumption_reverifies: TestClaim = EqualsClaim {
+  label: "dissolution subsumption rust LanguageModel emit root mechanically reverifies",
+  t19_anchor: T19ManualAnchorAbsent,
+  lhs: subsumption_receipt_node(row: rust_language_model_emit_subsumption),
+  rhs: expected_rust_language_model_emit_receipt_node(),
+  classification: TestClassification { tier: Tier1, layer: Integration }
+}
+
+
+data run_rust_language_model_emit_subsumption_reverifies: TestClaimRun<Node, RuntimeValue> = run_test_claim(
+  subject: eval_test_claim_subject(
+    claim: claim_rust_language_model_emit_subsumption_reverifies,
+    context: subsumption_context(),
+    tree: subsumption_inferred_tree(
+      root: subsumption_receipt_node(row: rust_language_model_emit_subsumption)
+    )
+  ),
+  claim_hash: subsumption_claim_hash,
+  interpretation_hash: subsumption_interpretation_hash
+)
+
+
+data witness_rust_language_model_emit_subsumption_passes: Bool = match run_rust_language_model_emit_subsumption_reverifies.verdict {
+  Pass => true
+  _ => false
+}
