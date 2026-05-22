@@ -385,7 +385,23 @@ fn wasm_primitive_fact_map_5(
   axis4: Symbol,
   fact4: Node
 ) -> Map<Symbol, Node> {
-  map_insert(map_insert(map_insert(map_insert(map_insert(empty_map(), axis0, fact0), axis1, fact1), axis2, fact2), axis3, fact3), axis4, fact4)
+  map_insert(
+    map_insert(
+      map_insert(
+        map_insert(
+          map_insert(empty_map(), axis0, fact0),
+          axis1,
+          fact1
+        ),
+        axis2,
+        fact2
+      ),
+      axis3,
+      fact3
+    ),
+    axis4,
+    fact4
+  )
 }
 
 fn wasm_primitive_fact_map_3(
@@ -396,7 +412,15 @@ fn wasm_primitive_fact_map_3(
   axis2: Symbol,
   fact2: Node
 ) -> Map<Symbol, Node> {
-  map_insert(map_insert(map_insert(empty_map(), axis0, fact0), axis1, fact1), axis2, fact2)
+  map_insert(
+    map_insert(
+      map_insert(empty_map(), axis0, fact0),
+      axis1,
+      fact1
+    ),
+    axis2,
+    fact2
+  )
 }
 
 fn wasm_primitive_bundle_from_integer_facts(facts: WasmIntegerPrimitiveFacts) -> PrimitiveFactBundle {
