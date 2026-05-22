@@ -173,6 +173,121 @@ fn test_claim_input(c: TestClaim) -> Node {
   }
 }
 
+
+fn locus_evaluation_nodes(at: Locus) -> List<Node> {
+  match at {
+    NodeLocus { anchor: a } => list_snoc_item(xs: Empty, item: a.at)
+    Textual { file: _, extent: _ } => Empty
+    PortLocus { anchor: _ } => Empty
+  }
+}
+
+
+fn correction_evaluation_nodes(c: Correction) -> List<Node> {
+  match c {
+    Suggested { node: n } => list_snoc_item(xs: Empty, item: n)
+    Unavailable { reason: _ } => Empty
+  }
+}
+
+
+fn diagnostic_evaluation_nodes(d: Diagnostic) -> List<Node> {
+  list_append(
+    left: locus_evaluation_nodes(at: d.at),
+    right: correction_evaluation_nodes(c: d.correction)
+  )
+}
+
+
+fn diagnostic_list_evaluation_nodes(ds: List<Diagnostic>) -> List<Node> {
+  fold_list(
+    xs: ds,
+    empty: Empty,
+    cons: fn(acc, d) {
+      list_append(left: acc, right: diagnostic_evaluation_nodes(d: d))
+    }
+  )
+}
+
+
+fn non_empty_diagnostics_evaluation_nodes(d: NonEmptyDiagnostics) -> List<Node> {
+  list_append(
+    left: diagnostic_evaluation_nodes(d: d.head),
+    right: diagnostic_list_evaluation_nodes(ds: d.tail)
+  )
+}
+
+
+// All Nodes whose mutation invalidates claim evaluation (IRT-4 / CI rerun frontier).
+fn test_claim_evaluation_nodes(c: TestClaim) -> List<Node> {
+  match c {
+    EqualsClaim { lhs: l, rhs: r, label: _, t19_anchor: _, classification: _ } =>
+      list_snoc_item(xs: list_snoc_item(xs: Empty, item: l), item: r)
+    CompilesClaim { input: n, expected_value: e, label: _, t19_anchor: _, classification: _ } =>
+      list_snoc_item(xs: list_snoc_item(xs: Empty, item: n), item: e)
+    DiagnosticClaim { input: n, expected_rejection: e, label: _, t19_anchor: _, classification: _ } =>
+      list_append(
+        left: list_snoc_item(xs: Empty, item: n),
+        right: non_empty_diagnostics_evaluation_nodes(d: e)
+      )
+    RoundTripClaim { input: n, label: _, t19_anchor: _, classification: _ } =>
+      list_snoc_item(xs: Empty, item: n)
+  }
+}
+
+
+fn node_subtree_nodes(root: Node) -> List<Node> {
+  fold_node(
+    n: root,
+    algebra: NodeFold {
+      init: fn(self) { list_snoc_item(xs: Empty, item: self) },
+      step: fn(acc, edge, sub) {
+        list_snoc_item(xs: list_append(left: acc, right: sub), item: edge.target)
+      }
+    }
+  )
+}
+
+
+fn node_in_subtree_by_identity(root: Node, needle: Node) -> Bool {
+  any(
+    xs: node_subtree_nodes(root: root),
+    predicate: fn(member) { member == needle }
+  )
+}
+
+
+// Consume affected-set rerun nodes directly: frontier root equality or frontier node inside evaluation tree.
+fn test_claim_evaluation_node_touches_frontier(n: Node, frontier: List<Node>) -> Bool {
+  any(
+    xs: frontier,
+    predicate: fn(f) {
+      (n == f) || node_in_subtree_by_identity(root: n, needle: f)
+    }
+  )
+}
+
+
+fn test_claim_evaluation_touches_rerun_frontier(c: TestClaim, frontier: List<Node>) -> Bool {
+  any(
+    xs: test_claim_evaluation_nodes(c: c),
+    predicate: fn(n) { test_claim_evaluation_node_touches_frontier(n: n, frontier: frontier) }
+  )
+}
+
+
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: t21-t24-ci-selection-diagnostic-fail-closed — consumer: v4.workflow.ci ci_select_from_rerun_nodes — bind TASKS.md T-24 — dissolve-on-arrival: delete when workflow/ci.dag ci_select consumes TestClaimCacheKey from 05_eval (IRT-4 cache-key boundary); forbidden: permanent untagged Bool coproduct-arm CI policy in std/verification.
+fn test_claim_ci_selection_fail_closed(c: TestClaim) -> Bool {
+  match c {
+    DiagnosticClaim { label: _, t19_anchor: _, input: _, expected_rejection: _, classification: _ } =>
+      true
+    CompilesClaim { label: _, t19_anchor: _, input: _, expected_value: _, classification: _ } =>
+      false
+    EqualsClaim { label: _, t19_anchor: _, lhs: _, rhs: _, classification: _ } => false
+    RoundTripClaim { label: _, t19_anchor: _, input: _, classification: _ } => false
+  }
+}
+
 fn test_claim_t19_anchor(c: TestClaim) -> T19ClaimAnchorKey {
   match c {
     CompilesClaim { t19_anchor: k, label: _, input: _, expected_value: _, classification: _ } => k
