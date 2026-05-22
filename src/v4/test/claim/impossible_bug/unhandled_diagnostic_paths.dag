@@ -43,7 +43,9 @@ import v4.std.verification {
   CompilesClaim,
   DiagnosticClaim,
   EqualsClaim,
-  RoundTripClaim}
+  RoundTripClaim,
+  t19_manual_claim_anchor
+}
 
 
 data proven_nonzero_divisor_symbol: Symbol = proven_nonzero_divisor_symbol

@@ -101,10 +101,10 @@ type T19ManualAnchorKey
   | T19ManualAnchorAbsent
 
 
-// RULING-1: pretty-much-done — closed TestClaim assertion-arm set for generated coproduct-exhaustiveness anchors.
-// 🟢 coproduct dissolution — LB-P4-3212.
+// RULING-1: needs-more-work — generated coproduct-exhaustiveness mirrors TestClaim arms until .dag reflection can project from TestClaim directly.
+// 🟡 coproduct dissolution — feature:testclaim-coproduct-reflection; dissolves when generated TestClaim categories project arm keys from TestClaim.
 type TestClaimCoproductVariant
-// 🟢 coproduct dissolution — LB-P4-3212
+// 🟡 coproduct dissolution — feature:testclaim-coproduct-reflection
   = TestClaimCompilesClaimVariant
   | TestClaimDiagnosticClaimVariant
   | TestClaimEqualsClaimVariant

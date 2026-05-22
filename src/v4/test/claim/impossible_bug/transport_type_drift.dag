@@ -41,7 +41,9 @@ import v4.std.verification {
   CompilesClaim,
   DiagnosticClaim,
   EqualsClaim,
-  RoundTripClaim}
+  RoundTripClaim,
+  t19_manual_claim_anchor
+}
 
 
 data shared_wire_contract_symbol: Symbol = shared_wire_contract_symbol

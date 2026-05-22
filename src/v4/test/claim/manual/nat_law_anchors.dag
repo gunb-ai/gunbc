@@ -19,7 +19,9 @@ TestClassification,
   CompilesClaim,
   DiagnosticClaim,
   EqualsClaim,
-  RoundTripClaim}
+  RoundTripClaim,
+  t19_manual_claim_anchor
+}
 import v4.std.diagnostic { Accepted, None, Outcome }
 import v4.test.claim.manual.connective_anchors { stub_empty_conj }
 

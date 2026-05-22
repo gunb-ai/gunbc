@@ -29,7 +29,9 @@ import v4.std.verification {T19ManualAnchorAbsent,
   CompilesClaim,
   DiagnosticClaim,
   EqualsClaim,
-  RoundTripClaim}
+  RoundTripClaim,
+  t19_manual_claim_anchor
+}
 data mvp_add_int_atom: Symbol = mvp_add_int_atom
 fn mvp_int_node() -> Node {
   Node {
