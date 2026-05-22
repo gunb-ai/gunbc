@@ -3,6 +3,18 @@
 Audit of hand-Rust tests under `EXPECTED_HAND_AUTHORED_TEST` (`src/v3/compiler/tests/integration/sg0_census_test.rs:380`).
 **Operator-direct (2026-05-22):** categorize by value; **aggressive deletion** over 1:1 TestClaim replacement. **Read-only** — no files deleted in this dispatch.
 
+## Authority boundaries (not a parallel ledger)
+
+Per [`docs/modeling-discipline.md`](../modeling-discipline.md) (standing rule: no comment-duplicating maintained ledgers) and INVARIANTS P2/P5 single-authority discipline:
+
+| Fact | Authoritative carrier |
+|---|---|
+| Which paths are hand-Rust tests | `EXPECTED_HAND_AUTHORED_TEST` in [`sg0_census_test.rs`](../src/v3/compiler/tests/integration/sg0_census_test.rs) |
+| Retirement **execution** (what actually deletes) | Operator-approved dashboard work-items + execution PRs that shrink the census |
+| Per-path dissolution triggers (ratified) | Inline comments in `sg0_census_test.rs` + PR review — not this doc |
+
+This markdown file is **transient PR-review prose** (like [`sg0-census-classification-2026-05-09.md`](sg0-census-classification-2026-05-09.md)). Heuristic DELETE/REPLACE/KEEP proposals here are **not** binding dispatch authority until the operator ratifies batches. **Do not** maintain a checked-in `(file, fn) → bucket` registry: regenerate via [`scripts/generate_v3_hand_rust_test_retirement_inventory.py`](../scripts/generate_v3_hand_rust_test_retirement_inventory.py) when a machine-readable export is needed (`> /tmp/inventory.jsonl`).
+
 ## Census reconciliation (HEAD 2026-05-22)
 
 | Grain | Brief cited | Measured at HEAD |
@@ -10,7 +22,7 @@ Audit of hand-Rust tests under `EXPECTED_HAND_AUTHORED_TEST` (`src/v3/compiler/t
 | `EXPECTED_HAND_AUTHORED_TEST` path literals | 204 entries | **145** paths |
 | `#[test]` functions in those paths | (implied) | **1232** tests |
 
-The PM figure **204 does not match** the live census (145 path literals / **1232** `#[test]` functions on `origin/main` and this worktree). Likely explanations: (1) stale planning count from an older, longer `EXPECTED_HAND_AUTHORED_TEST` list; (2) conflation with **file-path** entries (~160–204) vs per-function tests; (3) intent to name a first **DELETE batch size** rather than the full ratchet. This audit classifies **every `#[test]`** in the const scope (1232 test rows + 6 path-only rows = 1238 JSONL lines). Downstream retirement batches should use [`v3-hand-rust-test-retirement-inventory.jsonl`](v3-hand-rust-test-retirement-inventory.jsonl) unless the operator re-baselines to exactly 204 units.
+The PM figure **204 does not match** the live census (145 path literals / **1232** `#[test]` functions on `origin/main` and this worktree). Likely explanations: (1) stale planning count from an older, longer `EXPECTED_HAND_AUTHORED_TEST` list; (2) conflation with **file-path** entries (~160–204) vs per-function tests; (3) intent to name a first **DELETE batch size** rather than the full ratchet. This audit proposes classifications for **every `#[test]`** in the census scope (1232 functions across 145 paths). Operator ratification precedes any retirement PR.
 
 **Operator DELETE-first wave (recommended):** **383** tests (31.1%) in the DELETE bucket — includes all pre-flagged v4 smoke/closeout (**78**), cementing Rust (**18**), and `m1_substrate_test.rs` (**115**) — without waiting for 1:1 TestClaim ports.
 
@@ -22,7 +34,7 @@ The PM figure **204 does not match** the live census (145 path literals / **1232
 - **Total classified:** 1232 `#[test]` functions across **145** census paths
 
 
-**Inventory integrity (regenerated):** `#[test]` extraction strips `//` and `/* */` comments before matching attributes, so doc-comment mentions of `#[test]` (e.g. `t_pb_b_1_dag_runner_test.rs`) do not create duplicate rows. Path literals (**145**) match census, per-file table, and distinct `file` values in the JSONL.
+**Generation method:** `#[test]` extraction in the script strips `//` and `/* */` comments before matching attributes, so doc-comment mentions of `#[test]` (e.g. `t_pb_b_1_dag_runner_test.rs`) do not create duplicate `(file, fn)` rows. Path literals (**145**) match the census const; counts below were verified with `python3 scripts/generate_v3_hand_rust_test_retirement_inventory.py --check`.
 
 **Bias applied:** on-the-fence DELETE vs REPLACE → DELETE; on-the-fence vs KEEP → non-KEEP.
 
@@ -156,7 +168,7 @@ Band-C cementing Rust modules are **transitional** same-PR receipts for `regen.d
 
 ## DELETE bucket (rollup by reason class)
 
-Subsections below sum to **383** DELETE tests (matches summary + JSONL). Downstream batch workers should use the JSONL as sole authority; this rollup is illustrative only.
+Subsections below sum to **383** DELETE tests (matches summary and script output). Illustrative rollup only — regenerate counts from the script after census drift.
 
 ### Imperative substrate walks (115 tests)
 
@@ -290,13 +302,13 @@ Port only where behavior is still load-bearing after DELETE waves. **Do not 1:1 
 
 ---
 
-## Full per-test inventory
+## Per-file rollup (PR-review snapshot)
 
-Machine-readable: [`v3-hand-rust-test-retirement-inventory.jsonl`](v3-hand-rust-test-retirement-inventory.jsonl) — **authoritative**; one row per unique `(file, fn)` (`fn=(path-only)` for six zero-test helper modules; 1238 lines total): `file`, `fn`, `bucket`, `reason`, `t19`).
+Machine-readable export (optional, **not** checked in): `python3 scripts/generate_v3_hand_rust_test_retirement_inventory.py > /tmp/inventory.jsonl` — one row per unique `(file, fn)` (`fn=(path-only)` for six zero-test helper modules; 1238 lines total): `file`, `fn`, `bucket`, `reason`, `t19`).
 
 ### Per-file classification table (145 paths)
 
-Six paths are census-listed **helper modules** with zero `#[test]` functions (`Tests=0`); the JSONL carries matching `(path-only)` rows.
+Six paths are census-listed **helper modules** with zero `#[test]` functions (`Tests=0`); the generator emits `(path-only)` rows for those paths.
 
 | Path | Tests | DELETE | REPLACE | KEEP |
 |---|---:|---:|---:|---:|
