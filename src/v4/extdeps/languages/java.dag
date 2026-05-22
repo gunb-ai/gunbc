@@ -31,7 +31,7 @@ import v4.compiler.tokenize {
   SequencePattern,
   TokenRule
 }
-import v4.std.collection { List, Set }
+import v4.std.collection { List, Set, list_append, list_snoc_item }
 import v4.std.model_core {
   EffectSemanticsDecl,
   ModelCore,
@@ -690,33 +690,12 @@ fn java_mvp1_positional_token_edge(token: JavaConcreteSyntaxToken) -> Edge {
   }
 }
 
-// Order-preserving append: free_monoid_fold visits head→tail (v4.std.algebra); cons builds forward snoc.
-fn java_list_snoc_item<T>(xs: List<T>, item: T) -> List<T> {
-  free_monoid_fold(
-    xs: xs,
-    empty: Cons { head: item, tail: Empty },
-    cons: fn(acc, existing) {
-      Cons { head: existing, tail: acc }
-    }
-  )
-}
-
-fn java_list_append<T>(left: List<T>, right: List<T>) -> List<T> {
-  free_monoid_fold(
-    xs: right,
-    empty: left,
-    cons: fn(acc, item) {
-      java_list_snoc_item(xs: acc, item: item)
-    }
-  )
-}
-
 fn java_mvp1_positional_edges_from_token_classes() -> List<Edge> {
   free_monoid_fold(
     xs: java_mvp1_concrete_tokens(),
     empty: Empty,
     cons: fn(acc, token) {
-      java_list_snoc_item(
+      list_snoc_item(
         xs: acc,
         item: java_mvp1_positional_token_edge(token: token)
       )
@@ -741,7 +720,7 @@ fn java_mvp1_serialize_source_prefix_edges() -> List<Edge> {
 }
 
 fn java_mvp1_serialize_source_children() -> List<Edge> {
-  java_list_append(
+  list_append(
     left: java_mvp1_serialize_source_prefix_edges(),
     right: java_mvp1_positional_edges_from_token_classes()
   )
@@ -766,8 +745,8 @@ fn java_grammar_sequence_fold_step(acc: GrammarExpr, token: JavaConcreteSyntaxTo
     acc
   } else {
     Sequence {
-      left: acc,
-      right: java_grammar_terminal(token_class: token_class)
+      left: java_grammar_terminal(token_class: token_class),
+      right: acc
     }
   }
 }
@@ -795,7 +774,7 @@ fn java_relation_token_edges(tokens: List<JavaConcreteSyntaxToken>) -> List<Edge
     xs: tokens,
     empty: Empty,
     cons: fn(acc, token) {
-      java_list_snoc_item(
+      list_snoc_item(
         xs: acc,
         item: java_mvp1_positional_token_edge(token: token)
       )
@@ -1087,7 +1066,7 @@ fn java_primitive_bundles_from_integer_catalog() -> List<PrimitiveFactBundle> {
     xs: java_integer_facts_catalog,
     empty: Empty,
     cons: fn(acc, facts) {
-      java_list_snoc_item(
+      list_snoc_item(
         xs: acc,
         item: java_primitive_bundle_from_integer_facts(facts: facts)
       )
@@ -1100,7 +1079,7 @@ fn java_primitive_bundles_from_float_catalog() -> List<PrimitiveFactBundle> {
     xs: java_float_facts_catalog,
     empty: Empty,
     cons: fn(acc, facts) {
-      java_list_snoc_item(
+      list_snoc_item(
         xs: acc,
         item: java_primitive_bundle_from_float_facts(facts: facts)
       )
@@ -1113,7 +1092,7 @@ fn java_primitive_bundles_from_noninteger_catalog() -> List<PrimitiveFactBundle>
     xs: java_noninteger_facts_catalog,
     empty: Empty,
     cons: fn(acc, facts) {
-      java_list_snoc_item(
+      list_snoc_item(
         xs: acc,
         item: java_primitive_bundle_from_noninteger_facts(facts: facts)
       )
@@ -1122,8 +1101,8 @@ fn java_primitive_bundles_from_noninteger_catalog() -> List<PrimitiveFactBundle>
 }
 
 fn java_wave1_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
-  java_list_append(
-    left: java_list_append(
+  list_append(
+    left: list_append(
       left: java_primitive_bundles_from_integer_catalog(),
       right: java_primitive_bundles_from_float_catalog()
     ),
