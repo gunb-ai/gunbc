@@ -1,0 +1,23 @@
+// src/v4/test/claim/generated/lbe_anchor_manifest.dag
+// Scope: Three-row manifest for LanguageBehaviorEquivalence generated anchors (P2 join extension).
+// Owns: manual_anchor_lbe_* rows
+// Consumes: v4.std.verification
+
+module v4.test.claim.generated.lbe_anchor_manifest
+
+
+import v4.std.verification {
+  T19ManualAnchorKey,
+  T19ManualLbeConjDagSurface,
+  T19ManualLbeDisjDagSurface,
+  T19ManualLbeTransformDagSurface
+}
+
+
+data manual_anchor_lbe_conj_dag_surface: T19ManualAnchorKey = T19ManualLbeConjDagSurface
+
+
+data manual_anchor_lbe_disj_dag_surface: T19ManualAnchorKey = T19ManualLbeDisjDagSurface
+
+
+data manual_anchor_lbe_transform_dag_surface: T19ManualAnchorKey = T19ManualLbeTransformDagSurface
