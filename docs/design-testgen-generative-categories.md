@@ -12,16 +12,20 @@ Mechanical exclusion test: if the claim result can be proven from the scheduling
 
 This excludes `f(x) = f(x)`, type-conformance for already typechecked inputs, and identity laws copied directly from an algebra declaration with no sample, witness, or falsification path. Uncertain rows fail closed by not generating a claim.
 
-## Categories
+## Canonical Arms
 
-| Category | Source rows | Generated claim | Non-tautology basis | Mechanical skip |
+`src/v4/lens/testgen.dag` owns the closed `TestgenConcept` coproduct. This doc does not add a second category authority; it records which universally generated claim families route through each existing arm.
+
+| TestgenConcept arm | Source rows | Generated claim | Non-tautology basis | Mechanical skip |
 |---|---|---|---|---|
-| Cross-target language behavior equivalence | Modeled callable or type-construction subject plus two target language identities | Same typed input produces equivalent observed output across target models | Frozen I/O snapshot now; target-pair runtime observation once multi-target eval is live | Skip if both sides are the same target and the expected value is just the input row |
-| Algebra-law conformance | `data carrier: Algebra<T>` rows and law symbols | Law expression normalizes to the independently declared expected witness | Law witness or falsifying negative fixture, not the algebra row itself | Skip if lhs and rhs are structurally identical before law application |
-| Coproduct exhaustiveness | Functions consuming a closed coproduct | Every variant has a handled branch or produces a typed diagnostic | Negative fixture for a missing variant or branch coverage witness | Skip open/user-extensible coproducts and functions whose body is unavailable |
-| Refinement preservation | Functions with refined input and refined output | Refined input produces output satisfying the output refinement | Output witness checked independently of the function type | Skip if the output refinement is the same node as the input refinement with no transform |
-| Witness validity | `Witness<T>` data rows | Witness payload satisfies the claimed property | Re-run the property checker over the payload, not the witness constructor | Skip witnesses whose payload is absent or whose property checker is unavailable |
-| Idempotent operation conformance | Operations declared idempotent by algebra/effect inhabitance | Applying the operation twice equals applying it once | Behavioral double-application sample or algebra witness | Skip operations where idempotence is only asserted by a label and no operation body exists |
+| `LanguageBehaviorEquivalence` | Type-construction or modeled callable subject plus target language identity | Same typed input produces equivalent observed output across target models | Frozen I/O snapshot now; target-pair runtime observation once multi-target eval is live | Skip if the expected value is just the input row without a language-model observation |
+| `AlgebraLaw` | `data carrier: Algebra<T>` rows and law symbols | Law expression normalizes to the independently declared expected witness | Law witness or falsifying negative fixture, not the algebra row itself | Reject `lhs == rhs` at the generator boundary |
+| `DiagnosticExhaustiveness` | Diagnostic reasons and negative fixtures | Ill-formed input produces the declared typed diagnostic | Negative fixture, not a success-path restatement | Skip when there is no negative fixture or the expected diagnostic is only copied from the producer |
+| `LensApplicability` | Lens plus program subject | Lens observation over a program produces or rejects with the expected witness | Observation fixture, property checker, or negative fixture | Skip if the row only reruns the lens and compares its own emitted fact |
+| `BidirectionalRoundtrip` | Language production plus target identity | Encode/decode or parse/emit roundtrip preserves the independently declared value | Differential roundtrip through two directions | Skip identity productions with no distinct decode/encode step |
+| `TypeConstruction` | Connective or behavior construction subjects | Constructed node matches the structural witness or rejects arity errors | Construction witness or negative arity fixture | Skip type-conformance rows already proven by parsing/lowering alone |
+
+Operator wishlist examples route through those arms rather than extending the arm set: coproduct exhaustiveness is a `DiagnosticExhaustiveness` or `LensApplicability` family depending on whether the first slice is a missing-branch diagnostic or a branch-coverage lens observation; refinement preservation, witness validity, and idempotent operation conformance route through `LensApplicability` until a later substrate change proves a more specific arm is needed.
 
 ## Landed Slices
 
@@ -29,7 +33,7 @@ This excludes `f(x) = f(x)`, type-conformance for already typechecked inputs, an
 
 `AlgebraLaw` now has a generator emission helper, `testgen_emit_algebra_law_claim`, and a first generated Nat corpus at `src/v4/test/claim/generated/algebra_law_conformance.dag`. The sample rows keep the generated source side and expected-law witness side as separate nodes so the row is not `lhs == lhs`.
 
-`src/v4/test/claim/generated/testgen_category_wishlist.dag` records the remaining pending generator rows with an oracle basis and dispatch key. That file is a dispatch artifact, not a second authority for `TestgenConcept`; the closed scheduling coproduct remains `src/v4/lens/testgen.dag`.
+`src/v4/test/claim/generated/testgen_category_wishlist.dag` records one pending or dispatched row per `TestgenConcept` arm with an oracle basis and dispatch key. That file is a dispatch artifact, not a second authority for `TestgenConcept`; the closed scheduling coproduct remains `src/v4/lens/testgen.dag`.
 
 ## Worked Samples
 
@@ -54,4 +58,4 @@ The next generator PRs should land one category at a time and include:
 - a structural test or script guard proving the rows are generated through the category emission helper;
 - an explicit tautology-skip path, preferably represented as a negative fixture or count witness.
 
-Recommended order: witness validity, coproduct exhaustiveness, idempotent operation conformance, refinement preservation. Algebra-law broadening from the Nat sample to all algebra carriers can proceed in parallel with those category workers.
+Recommended order by canonical arm: `LensApplicability` witness-validity instance, `DiagnosticExhaustiveness` coproduct-exhaustiveness instance, `LensApplicability` idempotent-operation instance, and `LensApplicability` refinement-preservation instance. Algebra-law broadening from the Nat sample to all algebra carriers can proceed in parallel under the existing `AlgebraLaw` arm.
