@@ -95,11 +95,10 @@ data ci_runner_fail_closed_affected: AffectedSet = AffectedSetFailClosed {
 }
 
 fn ci_runner_narrow_selection_holds() -> Bool {
-  let rerun =
-    ci_select_from_rerun_nodes(
-      roster: ci_runner_fixture_roster,
-      rerun: ci_runner_narrow_rerun_nodes
-    )
+  let rerun = ci_select_from_rerun_nodes(
+    roster: ci_runner_fixture_roster,
+    rerun: ci_runner_narrow_rerun_nodes
+  )
   (length(xs: rerun) == 1)
     && count_equal(
       xs: rerun,
@@ -109,11 +108,10 @@ fn ci_runner_narrow_selection_holds() -> Bool {
 }
 
 fn ci_runner_fail_closed_superset_holds() -> Bool {
-  let roster =
-    ci_select_from_affected_set(
-      roster: ci_runner_fixture_roster,
-      affected: ci_runner_fail_closed_affected
-    )
+  let roster = ci_select_from_affected_set(
+    roster: ci_runner_fixture_roster,
+    affected: ci_runner_fail_closed_affected
+  )
   (length(xs: roster) == 3)
     && count_equal(
       xs: roster,
