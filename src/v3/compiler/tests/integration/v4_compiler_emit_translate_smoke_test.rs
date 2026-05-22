@@ -20,7 +20,9 @@
 //! `compile_to_dag` over v4 compiler modules resolves imports without substrate collision).
 
 use v3_compiler::parse_for_test;
-use v3_compiler::parse_surface::SurfaceItem;
+use v3_compiler::parse_surface::{
+    SurfaceExpr, SurfaceField, SurfaceItem, SurfaceType, TypeAngleArg,
+};
 use v3_compiler::tokenize_for_test;
 
 const FIND_WITNESS_DAG: &str = include_str!("../../../../v4/std/find_witness.dag");
@@ -189,6 +191,38 @@ fn v4_rust_language_model_declares_t11_translation_rules() {
 }
 
 #[test]
+fn v4_rust_integer_overflow_disposition_is_mode_aware_and_axis_bound() {
+    let module = parse_module(RUST_LANGUAGE_DAG, RUST_LANGUAGE_PATH);
+    assert_eq!(
+        type_record_fields(&module, "OverflowDisposition")
+            .iter()
+            .map(|f| (f.name.as_str(), surface_type_name(&f.ty)))
+            .collect::<Vec<_>>(),
+        vec![
+            ("ir_carrier", "IRCarrier".to_string()),
+            ("debug_default", "OverflowAction".to_string()),
+            ("release_default", "OverflowAction".to_string()),
+            ("overflow_checks_enabled", "OverflowAction".to_string()),
+            ("overflow_checks_disabled", "OverflowAction".to_string()),
+        ],
+        "{RUST_LANGUAGE_PATH}: Rust overflow disposition must model debug/release defaults and explicit overflow-checks behavior"
+    );
+    assert_eq!(
+        type_record_field_type(&module, "RustIntegerPrimitiveFacts", "overflow_disposition"),
+        Some("OverflowDisposition<RustScalar>".to_string()),
+        "{RUST_LANGUAGE_PATH}: integer primitive facts must carry the mode-aware overflow disposition"
+    );
+    assert!(
+        function_body_contains_var(
+            &module,
+            "rust_primitive_bundle_from_integer_facts",
+            "primitive_fact_axis_overflow_disposition"
+        ),
+        "{RUST_LANGUAGE_PATH}: integer primitive bundles must bind the overflow-disposition primitive fact axis"
+    );
+}
+
+#[test]
 fn v4_mvp1_rust_add_claim_tokenizes_and_parses() {
     let _module = parse_module(MVP1_CLAIM_DAG, MVP1_CLAIM_PATH);
 }
@@ -283,4 +317,115 @@ fn surface_declares_type(module: &v3_compiler::parse_surface::SurfaceModule, nam
         } => item_name == name,
         _ => false,
     })
+}
+
+fn type_record_fields<'a>(
+    module: &'a v3_compiler::parse_surface::SurfaceModule,
+    name: &str,
+) -> &'a [SurfaceField] {
+    module
+        .items
+        .iter()
+        .find_map(|item| match item {
+            SurfaceItem::TypeRecord {
+                name: item_name,
+                fields,
+                ..
+            } if item_name == name => Some(fields.as_slice()),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("missing type record `{name}`"))
+}
+
+fn type_record_field_type(
+    module: &v3_compiler::parse_surface::SurfaceModule,
+    record_name: &str,
+    field_name: &str,
+) -> Option<String> {
+    type_record_fields(module, record_name)
+        .iter()
+        .find(|field| field.name == field_name)
+        .map(|field| surface_type_name(&field.ty))
+}
+
+fn surface_type_name(ty: &SurfaceType) -> String {
+    match ty {
+        SurfaceType::Named { name, .. } => name.clone(),
+        SurfaceType::Parameterized { name, args, .. } => {
+            let rendered_args = args
+                .iter()
+                .map(type_angle_arg_name)
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("{name}<{rendered_args}>")
+        }
+        SurfaceType::Optional { inner, .. } => format!("{}?", surface_type_name(inner)),
+        SurfaceType::Arrow { inputs, output, .. } => {
+            let rendered_inputs = inputs
+                .iter()
+                .map(surface_type_name)
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("fn({rendered_inputs}) -> {}", surface_type_name(output))
+        }
+    }
+}
+
+fn type_angle_arg_name(arg: &TypeAngleArg) -> String {
+    match arg {
+        TypeAngleArg::TypeExpr { ty } => surface_type_name(ty),
+        TypeAngleArg::WidthNatLiteral { decimal, .. } => decimal.clone(),
+    }
+}
+
+fn function_body_contains_var(
+    module: &v3_compiler::parse_surface::SurfaceModule,
+    function_name: &str,
+    var_name: &str,
+) -> bool {
+    module.items.iter().any(|item| match item {
+        SurfaceItem::Fn { name, body, .. } if name == function_name => {
+            expr_contains_var(body, var_name)
+        }
+        _ => false,
+    })
+}
+
+fn expr_contains_var(expr: &SurfaceExpr, var_name: &str) -> bool {
+    match expr {
+        SurfaceExpr::Var { name, .. } => name == var_name,
+        SurfaceExpr::Path { segments, .. } => segments.iter().any(|segment| segment == var_name),
+        SurfaceExpr::Call { args, .. }
+        | SurfaceExpr::PathCall { args, .. }
+        | SurfaceExpr::Operator { args, .. } => {
+            args.iter().any(|arg| expr_contains_var(arg, var_name))
+        }
+        SurfaceExpr::VariantRecord { fields, .. } | SurfaceExpr::Record { fields, .. } => fields
+            .iter()
+            .any(|field| expr_contains_var(&field.value, var_name)),
+        SurfaceExpr::Lambda { body, .. } => expr_contains_var(body, var_name),
+        SurfaceExpr::If {
+            cond,
+            then_branch,
+            else_branch,
+            ..
+        } => {
+            expr_contains_var(cond, var_name)
+                || expr_contains_var(then_branch, var_name)
+                || expr_contains_var(else_branch, var_name)
+        }
+        SurfaceExpr::Match {
+            scrutinee, arms, ..
+        } => {
+            expr_contains_var(scrutinee, var_name)
+                || arms.iter().any(|arm| expr_contains_var(&arm.body, var_name))
+        }
+        SurfaceExpr::List { elements, .. } => {
+            elements.iter().any(|element| expr_contains_var(element, var_name))
+        }
+        SurfaceExpr::Map { entries, .. } => entries
+            .iter()
+            .any(|entry| expr_contains_var(&entry.value, var_name)),
+        SurfaceExpr::Literal { .. } => false,
+    }
 }
