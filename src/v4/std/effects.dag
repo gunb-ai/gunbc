@@ -64,6 +64,7 @@ data idempotent_operation_callable_field: Symbol = idempotent_operation_callable
 data idempotent_operation_key_source_field: Symbol = idempotent_operation_key_source_field
 data key_source_path_param_field: Symbol = key_source_path_param_field
 data key_source_input_field_field: Symbol = key_source_input_field_field
+data key_source_input_value_field: Symbol = key_source_input_value_field
 
 
 data t19_sample_get_callable: Symbol = t19_sample_get_callable
@@ -157,7 +158,7 @@ fn key_source_node(key_source: KeySource) -> Node {
             target: atom_node(s: key_source_input_field_field)
           },
           Edge {
-            label: Named { name: key_source_input_field_field },
+            label: Named { name: key_source_input_value_field },
             target: key_source_param_slug_node(param: f)
           },
         ]
