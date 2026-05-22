@@ -278,6 +278,7 @@ data sql_facts_timestamp_with_time_zone: SqlNonNumericPrimitiveFacts = SqlNonNum
 }
 
 
+// 🟡 needs-more-work — feature:sql-primitive-bundle-catalog-derivation — scaffold:T-4.6-sql-primitive-fact-bundles · dissolve-on: substrate gains coproduct-variant enumeration so the constant-arm subset of SqlDataType derives a homomorphism into List<PrimitiveFactBundle> and the three hand-enumerated catalogs below collapse into that derivation (single-authority over the SqlDataType constant arms; same gap on src/v4/extdeps/languages/rust.dag's per-category facts catalogs).
 data sql_integer_facts_catalog: List<SqlIntegerPrimitiveFacts> = [
   sql_facts_smallint,
   sql_facts_integer,
