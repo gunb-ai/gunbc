@@ -7,12 +7,13 @@
 
 module v4.lens.registry
 
+import v4.std.collection { List }
 import v4.std.node { Symbol }
 import v4.std.text { String }
 
 // 🟢 closed set — MODELING.md M4 / PREFIX-T-23-registry (`LensIdV0`).
 // 🟢 coproduct dissolution — PREFIX-T-23-registry (`LensModulePathV0`).
-type LensIdV0 = Complexity | Cost | Parallelism | EffectEnumeration | Idempotency | Provenance | UnusedParameters | StructuralResolution
+type LensIdV0 = Complexity | Cost | Parallelism | EffectEnumeration | Idempotency | Provenance | UnusedParameters | StructuralResolution | TableDecisionTree
 
 // 🟢 coproduct dissolution — PREFIX-T-23-registry (`LensModulePathV0`).
 type LensModulePathV0 = Bound { path: String } | Unbound
@@ -77,5 +78,10 @@ data lens_registry_v0_unused_parameters: LensRegistryEntryV0 = {
 
 data lens_registry_v0_structural_resolution: LensRegistryEntryV0 = {
   lens_id: StructuralResolution
-  module_path: Unbound
+  module_path: Bound { path: "v4.lens.structural_resolution" }
+}
+
+data lens_registry_v0_table_decision_tree: LensRegistryEntryV0 = {
+  lens_id: TableDecisionTree
+  module_path: Bound { path: "v4.lens.table_decision_tree" }
 }

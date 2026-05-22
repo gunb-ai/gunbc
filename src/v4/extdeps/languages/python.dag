@@ -12,12 +12,11 @@
 
 module v4.extdeps.languages.python
 
-import v4.std.collection { List }
+import v4.std.collection { List, Map }
 import v4.std.model_core {
   EffectSemanticsDecl,
   ModelCore,
   PartialitySemanticsDecl,
-  PrimitiveFactAxisBinding,
   PrimitiveFactBundle,
   primitive_fact_axis_encoding,
   primitive_fact_axis_surface_spelling
@@ -32,7 +31,7 @@ import v4.std.node {
   TypeNode
 }
 import v4.std.logic { Bool, bool_boolean_algebra }
-import v4.std.algebra { BooleanAlgebra, free_monoid_fold }
+import v4.std.algebra { BooleanAlgebra, fold_list }
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type PythonSingletonKind
@@ -309,8 +308,17 @@ fn python_singleton_facts_node(facts: PythonSingletonPrimitiveFacts) -> Node {
   }
 }
 
-fn python_primitive_axis_binding(axis: Symbol, fact: Node) -> PrimitiveFactAxisBinding {
-  PrimitiveFactAxisBinding { axis: axis, fact: fact }
+fn python_primitive_fact_map_2(
+  axis0: Symbol,
+  fact0: Node,
+  axis1: Symbol,
+  fact1: Node
+) -> Map<Symbol, Node> {
+  map_insert(
+    map_insert(empty_map(), axis0, fact0),
+    axis1,
+    fact1
+  )
 }
 
 // C-PYINT: only surface_spelling + encoding axes bind — width/signedness/overflow are
@@ -320,16 +328,12 @@ fn python_primitive_bundle_from_integer_facts(
 ) -> PrimitiveFactBundle {
   PrimitiveFactBundle {
     substrate_carrier: python_integer_facts_node(facts: facts),
-    spec_facts: [
-      python_primitive_axis_binding(
-        axis: primitive_fact_axis_surface_spelling,
-        fact: python_inhabitant_atom(id: facts.surface_spelling)
-      ),
-      python_primitive_axis_binding(
-        axis: primitive_fact_axis_encoding,
-        fact: python_inhabitant_atom(id: facts.encoding)
-      )
-    ]
+    spec_facts: python_primitive_fact_map_2(
+      axis0: primitive_fact_axis_surface_spelling,
+      fact0: python_inhabitant_atom(id: facts.surface_spelling),
+      axis1: primitive_fact_axis_encoding,
+      fact1: python_inhabitant_atom(id: facts.encoding)
+    )
   }
 }
 
@@ -338,16 +342,12 @@ fn python_primitive_bundle_from_float_facts(
 ) -> PrimitiveFactBundle {
   PrimitiveFactBundle {
     substrate_carrier: python_float_facts_node(facts: facts),
-    spec_facts: [
-      python_primitive_axis_binding(
-        axis: primitive_fact_axis_surface_spelling,
-        fact: python_inhabitant_atom(id: facts.surface_spelling)
-      ),
-      python_primitive_axis_binding(
-        axis: primitive_fact_axis_encoding,
-        fact: python_inhabitant_atom(id: facts.machine_representation)
-      )
-    ]
+    spec_facts: python_primitive_fact_map_2(
+      axis0: primitive_fact_axis_surface_spelling,
+      fact0: python_inhabitant_atom(id: facts.surface_spelling),
+      axis1: primitive_fact_axis_encoding,
+      fact1: python_inhabitant_atom(id: facts.machine_representation)
+    )
   }
 }
 
@@ -356,16 +356,12 @@ fn python_primitive_bundle_from_complex_facts(
 ) -> PrimitiveFactBundle {
   PrimitiveFactBundle {
     substrate_carrier: python_complex_facts_node(facts: facts),
-    spec_facts: [
-      python_primitive_axis_binding(
-        axis: primitive_fact_axis_surface_spelling,
-        fact: python_inhabitant_atom(id: facts.surface_spelling)
-      ),
-      python_primitive_axis_binding(
-        axis: primitive_fact_axis_encoding,
-        fact: python_inhabitant_atom(id: facts.component_machine_representation)
-      )
-    ]
+    spec_facts: python_primitive_fact_map_2(
+      axis0: primitive_fact_axis_surface_spelling,
+      fact0: python_inhabitant_atom(id: facts.surface_spelling),
+      axis1: primitive_fact_axis_encoding,
+      fact1: python_inhabitant_atom(id: facts.component_machine_representation)
+    )
   }
 }
 
@@ -377,16 +373,12 @@ fn python_primitive_bundle_from_bool_facts(
 ) -> PrimitiveFactBundle {
   PrimitiveFactBundle {
     substrate_carrier: python_bool_facts_node(facts: facts),
-    spec_facts: [
-      python_primitive_axis_binding(
-        axis: primitive_fact_axis_surface_spelling,
-        fact: python_inhabitant_atom(id: facts.surface_spelling)
-      ),
-      python_primitive_axis_binding(
-        axis: primitive_fact_axis_encoding,
-        fact: python_inhabitant_atom(id: facts.encoding)
-      )
-    ]
+    spec_facts: python_primitive_fact_map_2(
+      axis0: primitive_fact_axis_surface_spelling,
+      fact0: python_inhabitant_atom(id: facts.surface_spelling),
+      axis1: primitive_fact_axis_encoding,
+      fact1: python_inhabitant_atom(id: facts.encoding)
+    )
   }
 }
 
@@ -395,23 +387,19 @@ fn python_primitive_bundle_from_singleton_facts(
 ) -> PrimitiveFactBundle {
   PrimitiveFactBundle {
     substrate_carrier: python_singleton_facts_node(facts: facts),
-    spec_facts: [
-      python_primitive_axis_binding(
-        axis: primitive_fact_axis_surface_spelling,
-        fact: python_inhabitant_atom(id: facts.surface_spelling)
-      ),
-      python_primitive_axis_binding(
-        axis: primitive_fact_axis_encoding,
-        fact: python_inhabitant_atom(id: python_repr_singleton_sole_inhabitant)
-      )
-    ]
+    spec_facts: python_primitive_fact_map_2(
+      axis0: primitive_fact_axis_surface_spelling,
+      fact0: python_inhabitant_atom(id: facts.surface_spelling),
+      axis1: primitive_fact_axis_encoding,
+      fact1: python_inhabitant_atom(id: python_repr_singleton_sole_inhabitant)
+    )
   }
 }
 
 // Order-preserving snoc + append, mirroring the rust slice — kept local to this file so the
 // fold authority isn't pulled in from a peer language extdep (substrate cohesion).
 fn python_list_snoc_item<T>(xs: List<T>, item: T) -> List<T> {
-  free_monoid_fold(
+  fold_list(
     xs: xs,
     empty: Cons { head: item, tail: Empty },
     cons: fn(rest, existing) {
@@ -421,7 +409,7 @@ fn python_list_snoc_item<T>(xs: List<T>, item: T) -> List<T> {
 }
 
 fn python_list_append<T>(left: List<T>, right: List<T>) -> List<T> {
-  free_monoid_fold(
+  fold_list(
     xs: right,
     empty: left,
     cons: fn(acc, item) {
@@ -431,7 +419,7 @@ fn python_list_append<T>(left: List<T>, right: List<T>) -> List<T> {
 }
 
 fn python_primitive_bundles_from_integer_catalog() -> List<PrimitiveFactBundle> {
-  free_monoid_fold(
+  fold_list(
     xs: python_integer_facts_catalog,
     empty: Empty,
     cons: fn(acc, facts) {
@@ -444,7 +432,7 @@ fn python_primitive_bundles_from_integer_catalog() -> List<PrimitiveFactBundle> 
 }
 
 fn python_primitive_bundles_from_float_catalog() -> List<PrimitiveFactBundle> {
-  free_monoid_fold(
+  fold_list(
     xs: python_float_facts_catalog,
     empty: Empty,
     cons: fn(acc, facts) {
@@ -457,7 +445,7 @@ fn python_primitive_bundles_from_float_catalog() -> List<PrimitiveFactBundle> {
 }
 
 fn python_primitive_bundles_from_complex_catalog() -> List<PrimitiveFactBundle> {
-  free_monoid_fold(
+  fold_list(
     xs: python_complex_facts_catalog,
     empty: Empty,
     cons: fn(acc, facts) {
@@ -470,7 +458,7 @@ fn python_primitive_bundles_from_complex_catalog() -> List<PrimitiveFactBundle> 
 }
 
 fn python_primitive_bundles_from_bool_catalog() -> List<PrimitiveFactBundle> {
-  free_monoid_fold(
+  fold_list(
     xs: python_bool_facts_catalog,
     empty: Empty,
     cons: fn(acc, facts) {
@@ -483,7 +471,7 @@ fn python_primitive_bundles_from_bool_catalog() -> List<PrimitiveFactBundle> {
 }
 
 fn python_primitive_bundles_from_singleton_catalog() -> List<PrimitiveFactBundle> {
-  free_monoid_fold(
+  fold_list(
     xs: python_singleton_facts_catalog,
     empty: Empty,
     cons: fn(acc, facts) {

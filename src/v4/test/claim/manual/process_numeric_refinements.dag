@@ -23,8 +23,8 @@ import v4.std.diagnostic {
 }
 import v4.std.node { Node }
 import v4.std.verification {
-  TestClaim,
   EqualsClaim,
+  TestClaim,
   TestClassification,
   Tier1,
   Unit,
