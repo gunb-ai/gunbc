@@ -373,29 +373,6 @@ fn wasm_language_model_canonical_symbols() -> Set<Symbol> {
   }
 }
 
-fn wasm_primitive_fact_map_3(
-  axis0: Symbol,
-  fact0: Node,
-  axis1: Symbol,
-  fact1: Node,
-  axis2: Symbol,
-  fact2: Node
-) -> Map<Symbol, Node> {
-  map_insert(
-    map_insert(
-      map_insert(
-        empty_map(),
-        axis0,
-        fact0
-      ),
-      axis1,
-      fact1
-    ),
-    axis2,
-    fact2
-  )
-}
-
 fn wasm_primitive_fact_map_5(
   axis0: Symbol,
   fact0: Node,
@@ -412,11 +389,7 @@ fn wasm_primitive_fact_map_5(
     map_insert(
       map_insert(
         map_insert(
-          map_insert(
-            empty_map(),
-            axis0,
-            fact0
-          ),
+          map_insert(empty_map(), axis0, fact0),
           axis1,
           fact1
         ),
@@ -428,6 +401,25 @@ fn wasm_primitive_fact_map_5(
     ),
     axis4,
     fact4
+  )
+}
+
+fn wasm_primitive_fact_map_3(
+  axis0: Symbol,
+  fact0: Node,
+  axis1: Symbol,
+  fact1: Node,
+  axis2: Symbol,
+  fact2: Node
+) -> Map<Symbol, Node> {
+  map_insert(
+    map_insert(
+      map_insert(empty_map(), axis0, fact0),
+      axis1,
+      fact1
+    ),
+    axis2,
+    fact2
   )
 }
 

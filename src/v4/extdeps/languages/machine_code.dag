@@ -497,11 +497,7 @@ fn mc_primitive_fact_map_5(
     map_insert(
       map_insert(
         map_insert(
-          map_insert(
-            empty_map(),
-            axis0,
-            fact0
-          ),
+          map_insert(empty_map(), axis0, fact0),
           axis1,
           fact1
         ),
