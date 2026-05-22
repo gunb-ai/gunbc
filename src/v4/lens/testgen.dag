@@ -1,7 +1,7 @@
 // src/v4/lens/testgen.dag
 // Scope: Manual-anchor testgen plus filesystem-backed whole-corpus lens driver primitive.
-// Owns: Generator TestgenConcept manual_test_claim_for_manual_anchor testgen_concept_for_manual_claim testgen_emit_language_behavior_equivalence_claim testgen_scheduled_language_behavior_generators TypeConstructionSubject AlgebraLawSubject DiagnosticExhaustivenessSubject LensApplicabilitySubject BidirectionalRoundtripSubject LanguageBehaviorEquivalenceSubject FrozenLanguageBehaviorSnapshot LanguageBehaviorIoMock CorpusEntry CorpusTraversalScope CorpusTraversalOrder CorpusDuplicatePolicy CorpusTraversalPolicy CorpusEnumerationRequest CorpusEnumerationResult CorpusEnumerator CorpusEntryIngestResult CorpusEntryIngestor CorpusLensReadResult<C> CorpusLensReader<C> CorpusLensObservation<C> CorpusLensDriveResult<C> CorpusLensDriver<C>
-// Consumes: v4.std.diagnostic v4.std.nat v4.std.node v4.std.verification v4.extdeps.file_system v4.test.claim.manual.connective_anchors v4.test.claim.manual.nat_law_anchors
+// Owns: Generator TestgenConcept manual_test_claim_for_manual_anchor testgen_concept_for_manual_claim testgen_emit_language_behavior_equivalence_claim testgen_emit_witness_validity_claim testgen_scheduled_language_behavior_generators TypeConstructionSubject AlgebraLawSubject DiagnosticExhaustivenessSubject LensApplicabilitySubject BidirectionalRoundtripSubject LanguageBehaviorEquivalenceSubject FrozenLanguageBehaviorSnapshot LanguageBehaviorIoMock CorpusEntry CorpusTraversalScope CorpusTraversalOrder CorpusDuplicatePolicy CorpusTraversalPolicy CorpusEnumerationRequest CorpusEnumerationResult CorpusEnumerator CorpusEntryIngestResult CorpusEntryIngestor CorpusLensReadResult<C> CorpusLensReader<C> CorpusLensObservation<C> CorpusLensDriveResult<C> CorpusLensDriver<C>
+// Consumes: v4.std.diagnostic v4.std.nat v4.std.node v4.std.witness v4.std.find_witness v4.std.verification v4.extdeps.file_system v4.test.claim.manual.connective_anchors v4.test.claim.manual.nat_law_anchors
 // Status: Manual-anchor + LanguageBehaviorEquivalence emission; substrate extension = operator STOP.
 
 module v4.lens.testgen
@@ -16,11 +16,14 @@ import v4.std.diagnostic {
   Textual,
   WholeFile,
   Accepted,
+  Rejected,
   None,
   diagnostics_merge,
   diagnostics_singleton,
   rejected_with_pending
 }
+import v4.std.witness { StructuralPropertyWitness }
+import v4.std.find_witness { PreservationPredicate, verify_witness }
 import v4.std.nat {
   nat_algebra_law_subject_symbol_additive_monoid,
   nat_algebra_law_subject_symbol_commutative_semiring,
@@ -51,6 +54,8 @@ import v4.extdeps.file_system {
 import v4.extdeps.languages.dag { dag_language_model_surface_id }
 import v4.std.verification {
   CompilesClaim,
+  DiagnosticClaim,
+  EqualsClaim,
   TestClaim,
   TestClassification,
   T19ManualAnchorAbsent,
@@ -413,6 +418,50 @@ fn testgen_emit_language_behavior_equivalence_claim(
     _ =>
       Rejected {
         diagnostics: diagnostics_singleton(d: t19_manual_anchor_absent_bootstrap_diagnostic()),
+      }
+  }
+}
+
+
+// T-19 witness-validity generator category. Independent oracle = v4.std.find_witness::verify_witness
+// (separate module from v4.std.witness constructors; checks `preservation_predicate_holds`,
+// `witness.property == predicate.preservation_rule`, and `witness.evidence == candidate`).
+// Accepted → EqualsClaim(witness.evidence, candidate); Rejected{d} → DiagnosticClaim(d).
+// Generated rows route through this helper; no TestClaim literal authoring downstream.
+fn testgen_emit_witness_validity_claim(
+  label: String,
+  source_facts: Node,
+  candidate: Node,
+  predicate: PreservationPredicate,
+  witness: StructuralPropertyWitness,
+) -> Outcome<TestClaim> {
+  match verify_witness(
+    source_facts: source_facts,
+    candidate: candidate,
+    predicate: predicate,
+    witness: witness
+  ) {
+    Accepted { value: _, diagnostics: _ } =>
+      Accepted {
+        value: EqualsClaim {
+          label: label,
+          t19_anchor: T19ManualAnchorAbsent,
+          lhs: witness.evidence,
+          rhs: candidate,
+          classification: TestClassification { tier: Tier1, layer: Unit },
+        },
+        diagnostics: None,
+      }
+    Rejected { diagnostics: d } =>
+      Accepted {
+        value: DiagnosticClaim {
+          label: label,
+          t19_anchor: T19ManualAnchorAbsent,
+          input: witness.evidence,
+          expected_rejection: d,
+          classification: TestClassification { tier: Tier1, layer: Unit },
+        },
+        diagnostics: None,
       }
   }
 }
