@@ -4,7 +4,7 @@
 // Owns: CandidateSet, PreservationPredicate, FindWitnessResult, TargetSelectionPolicy, MultiplicityPolicy,
 //       find_witness, verify_witness.
 // Consumes: std collection, std diagnostic, std node, std witness.
-// Status: W-T-10 — identity-MVP exact structural equality; candidate lists are substrate-closed (no Conj re-walk).
+// Status: W-T-10 — T-25-tail predicate prover for constraint_satisfaction + exact_structural_equality_zip_fold.
 
 
 module v4.std.find_witness
@@ -16,15 +16,17 @@ import v4.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,
   None,
-  NodeLocus,
+  node_locus,
   Outcome,
   Rejected,
   Unavailable,
   outcome_rejected
 }
 import v4.std.constraint_satisfaction_predicate {
-  constraint_satisfaction_preservation_holds,
-  identity_mvp_preservation_holds
+  constraint_satisfaction_preservation_holds
+}
+import v4.std.exact_structural_equality_zip_fold_predicate {
+  exact_structural_equality_zip_fold_preservation_holds
 }
 import v4.std.node { Node, Symbol, well_formed }
 import v4.std.witness { StructuralPropertyWitness }
@@ -63,28 +65,28 @@ type MultiplicityPolicy
 fn find_witness_no_candidate_diagnostic(source_facts: Node) -> Diagnostic {
   Diagnostic {
     reason: find_witness_reason_no_candidate,
-    at: NodeLocus { node: source_facts },
+    at: node_locus(node: source_facts),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 fn find_witness_ambiguous_candidate_diagnostic(source_facts: Node) -> Diagnostic {
   Diagnostic {
     reason: find_witness_reason_ambiguous_candidate,
-    at: NodeLocus { node: source_facts },
+    at: node_locus(node: source_facts),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 fn find_witness_not_realized_diagnostic(source_facts: Node) -> Diagnostic {
   Diagnostic {
     reason: find_witness_reason_not_realized,
-    at: NodeLocus { node: source_facts },
+    at: node_locus(node: source_facts),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 fn find_witness_invalid_witness_diagnostic(source_facts: Node) -> Diagnostic {
   Diagnostic {
     reason: find_witness_reason_invalid_witness,
-    at: NodeLocus { node: source_facts },
+    at: node_locus(node: source_facts),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
@@ -97,7 +99,6 @@ fn enumeration_candidate_list(
 ) -> List<Node> {
   candidates.candidates
 }
-// Identity-MVP branches: identity_mvp_preservation_holds (scaffold:identity-mvp-preservation in constraint_satisfaction_predicate.dag).
 fn preservation_predicate_holds(
   source_facts: Node,
   candidate: Node,
@@ -111,7 +112,7 @@ fn preservation_predicate_holds(
         algebra: predicate.algebra
       )
     preservation_rule_exact_structural_equality_zip_fold =>
-      identity_mvp_preservation_holds(
+      exact_structural_equality_zip_fold_preservation_holds(
         source_facts: source_facts,
         candidate: candidate,
         algebra: predicate.algebra
