@@ -1,11 +1,14 @@
 //! **Layer:** integration
 //!
-//! **P2 / Practice 5 (single authority):** This harness proves **parse cleanliness**
-//! for `src/v4/lens/registry.dag` — it does **not** claim a **generated** substrate consumer
-//! for `LensRegistryEntryV0` / `LensIdV0` / `LensModulePathV0` (INVARIANTS §P2: declaration
-//! without generated consumer = staging; see `INVARIANTS.md` §P2 and
-//! `docs/briefs/r4-lane-a-lens-interface-freeze-pin.md` §3). The operator pin’s §3 markdown
-//! table remains a human mirror until a mechanical reader lands.
+//! **P2 / Practice 5 (single authority):** This harness proves `src/v4/lens/registry.dag`
+//! parses and exposes the registry-backed query surface that `src/v4/workflow/ci.dag`
+//! consumes for Lens-CI activation, while also preserving the staged T-23/P9 registry
+//! parse-cleanliness checks. This local harness stays at parsed-shape level because
+//! M1(2.8) still rejects v4 block-bodied functions in isolated `compile_to_dag` smokes; the
+//! live CI step pairs it with
+//! `v2-compiler compile` over a temporary `ci.dag` entry root plus `src/v4` dependency
+//! root so lowering/inference of the workflow consumer interface is checked without using the known-hanging
+//! `--target dag` path.
 //!
 //! **Note:** After P9 `#3503`, `registry.dag` imports `Symbol` and `List` from `v4.std.*` and
 //! carries self-referential `Symbol` data rows. Isolated `compile_to_dag` does not resolve those
@@ -16,18 +19,233 @@
 //! hand-Rust receipt).
 
 use v3_compiler::parse_for_test;
-use v3_compiler::parse_surface::SurfaceItem;
+use v3_compiler::parse_surface::{
+    SurfaceExpr, SurfaceField, SurfaceItem, SurfaceLiteral, SurfaceRecordField, SurfaceType,
+    SurfaceVariant, VariantPayload,
+};
 use v3_compiler::tokenize_for_test;
 
 const REGISTRY_DAG: &str = include_str!("../../../../v4/lens/registry.dag");
 const REGISTRY_PATH: &str = "src/v4/lens/registry.dag";
+const CI_DAG: &str = include_str!("../../../../v4/workflow/ci.dag");
+const CI_PATH: &str = "src/v4/workflow/ci.dag";
+const CI_YML: &str = include_str!("../../../../../.github/workflows/ci.yml");
+const CI_YML_PATH: &str = ".github/workflows/ci.yml";
+
+fn parse_module(source: &str, path: &str) -> v3_compiler::parse_surface::SurfaceModule {
+    let tokens =
+        tokenize_for_test(source, path).unwrap_or_else(|e| panic!("{path}: tokenize: {e:?}"));
+    parse_for_test(&tokens, path).unwrap_or_else(|e| panic!("{path}: parse: {e:?}"))
+}
+
+fn surface_declares_fn(module: &v3_compiler::parse_surface::SurfaceModule, name: &str) -> bool {
+    module.items.iter().any(|item| match item {
+        SurfaceItem::Fn {
+            name: item_name, ..
+        }
+        | SurfaceItem::FnExternalBody {
+            name: item_name, ..
+        } => item_name == name,
+        _ => false,
+    })
+}
+
+fn surface_declares_data(module: &v3_compiler::parse_surface::SurfaceModule, name: &str) -> bool {
+    module.items.iter().any(|item| match item {
+        SurfaceItem::Data {
+            name: item_name, ..
+        } => item_name == name,
+        _ => false,
+    })
+}
+
+fn import_includes_name(
+    module: &v3_compiler::parse_surface::SurfaceModule,
+    path: &[&str],
+    name: &str,
+) -> bool {
+    module.items.iter().any(|item| match item {
+        SurfaceItem::Import {
+            path: item_path,
+            names,
+            ..
+        } => {
+            item_path
+                .iter()
+                .map(String::as_str)
+                .eq(path.iter().copied())
+                && names.iter().any(|n| n == name)
+        }
+        _ => false,
+    })
+}
+
+fn type_sum_variant<'a>(
+    module: &'a v3_compiler::parse_surface::SurfaceModule,
+    type_name: &str,
+    variant_name: &str,
+) -> &'a SurfaceVariant {
+    module
+        .items
+        .iter()
+        .find_map(|item| match item {
+            SurfaceItem::TypeSum { name, variants, .. } if name == type_name => {
+                variants.iter().find(|variant| variant.name == variant_name)
+            }
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("missing `{type_name}.{variant_name}` variant"))
+}
+
+fn record_payload_field<'a>(variant: &'a SurfaceVariant, field_name: &str) -> &'a SurfaceField {
+    let VariantPayload::Record(fields) = &variant.payload else {
+        panic!("variant `{}` must carry a record payload", variant.name);
+    };
+    fields
+        .iter()
+        .find(|field| field.name == field_name)
+        .unwrap_or_else(|| panic!("variant `{}` missing `{field_name}` field", variant.name))
+}
+
+fn type_record_field_names<'a>(
+    module: &'a v3_compiler::parse_surface::SurfaceModule,
+    type_name: &str,
+) -> Vec<&'a str> {
+    module
+        .items
+        .iter()
+        .find_map(|item| match item {
+            SurfaceItem::TypeRecord { name, fields, .. } if name == type_name => {
+                Some(fields.iter().map(|field| field.name.as_str()).collect())
+            }
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("missing type record `{type_name}`"))
+}
+
+fn data_body<'a>(
+    module: &'a v3_compiler::parse_surface::SurfaceModule,
+    name: &str,
+) -> &'a SurfaceExpr {
+    module
+        .items
+        .iter()
+        .find_map(|item| match item {
+            SurfaceItem::Data {
+                name: item_name,
+                body: Some(body),
+                ..
+            } if item_name == name => Some(body),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("missing data body `{name}`"))
+}
+
+fn type_is_list_of(ty: &SurfaceType, element_name: &str) -> bool {
+    match ty {
+        SurfaceType::Parameterized { name, args, .. } if name == "List" && args.len() == 1 => {
+            matches!(
+                &args[0],
+                v3_compiler::parse_surface::TypeAngleArg::TypeExpr { ty }
+                    if matches!(ty.as_ref(), SurfaceType::Named { name, .. } if name == element_name)
+            )
+        }
+        _ => false,
+    }
+}
+
+fn list_body_vars(body: &SurfaceExpr) -> Vec<&str> {
+    let SurfaceExpr::List { elements, .. } = body else {
+        panic!("expected list body, got {body:?}");
+    };
+    elements
+        .iter()
+        .map(|element| match element {
+            SurfaceExpr::Var { name, .. } => name.as_str(),
+            other => panic!("expected list element var, got {other:?}"),
+        })
+        .collect()
+}
+
+fn record_body_field<'a>(body: &'a SurfaceExpr, field_name: &str) -> &'a SurfaceExpr {
+    let SurfaceExpr::Record { fields, .. } = body else {
+        panic!("expected record body, got {body:?}");
+    };
+    fields
+        .iter()
+        .find(|field| field.name == field_name)
+        .map(|SurfaceRecordField { value, .. }| value)
+        .unwrap_or_else(|| panic!("record body missing `{field_name}` field"))
+}
+
+fn expr_string(expr: &SurfaceExpr) -> &str {
+    match expr {
+        SurfaceExpr::Literal {
+            value: SurfaceLiteral::String(value),
+            ..
+        } => value,
+        other => panic!("expected string literal expr, got {other:?}"),
+    }
+}
+
+fn workflow_step_block<'a>(workflow_yml: &'a str, step_name: &str) -> &'a str {
+    let marker = format!("    - name: {step_name}");
+    let start = workflow_yml
+        .find(&marker)
+        .unwrap_or_else(|| panic!("{CI_YML_PATH}: missing workflow step `{step_name}`"));
+    let rest = &workflow_yml[start..];
+    let end = rest.find("\n    - name: ").unwrap_or(rest.len());
+    &rest[..end]
+}
+
+fn variant_record_field<'a>(
+    expr: &'a SurfaceExpr,
+    target_name: &str,
+    field_name: &str,
+) -> &'a SurfaceExpr {
+    let SurfaceExpr::VariantRecord { target, fields, .. } = expr else {
+        panic!("expected `{target_name}` record, got {expr:?}");
+    };
+    assert_eq!(
+        target, target_name,
+        "expected `{target_name}` record target, got `{target}`"
+    );
+    fields
+        .iter()
+        .find(|field| field.name == field_name)
+        .map(|SurfaceRecordField { value, .. }| value)
+        .unwrap_or_else(|| panic!("`{target_name}` missing `{field_name}` field"))
+}
+
+fn ci_pipeline_jobs(body: &SurfaceExpr) -> &[SurfaceExpr] {
+    let call_record = match body {
+        SurfaceExpr::Call { target, args, .. } if target == "ci_pipeline_well_formed" => args
+            .first()
+            .unwrap_or_else(|| panic!("ci_pipeline_well_formed missing pipeline arg")),
+        other => panic!("expected ci_pipeline_well_formed call, got {other:?}"),
+    };
+    let pipeline_expr = record_body_field(call_record, "p");
+    let jobs_expr = variant_record_field(pipeline_expr, "CiPipeline", "jobs");
+    let SurfaceExpr::List { elements, .. } = jobs_expr else {
+        panic!("expected ci_pipeline.jobs list, got {jobs_expr:?}");
+    };
+    elements
+}
+
+fn ci_job_record_by_id<'a>(jobs: &'a [SurfaceExpr], job_id: &str) -> &'a SurfaceExpr {
+    jobs.iter()
+        .find(|job| {
+            matches!(
+                variant_record_field(job, "CiJob", "id"),
+                SurfaceExpr::Var { name, .. } if name == job_id
+            )
+        })
+        .unwrap_or_else(|| panic!("missing CiJob `{job_id}`"))
+}
 
 #[test]
 fn v4_lens_registry_dag_tokenizes_and_parses() {
-    let tokens = tokenize_for_test(REGISTRY_DAG, REGISTRY_PATH)
-        .unwrap_or_else(|e| panic!("{REGISTRY_PATH}: tokenize: {e:?}"));
-    let module = parse_for_test(&tokens, REGISTRY_PATH)
-        .unwrap_or_else(|e| panic!("{REGISTRY_PATH}: parse: {e:?}"));
+    let module = parse_module(REGISTRY_DAG, REGISTRY_PATH);
     assert_eq!(
         module_path(&module),
         vec!["v4", "lens", "registry"],
@@ -40,6 +258,96 @@ fn v4_lens_registry_dag_tokenizes_and_parses() {
     assert!(
         module_declares_type_sum_named(&module, "LensModulePathV0"),
         "{REGISTRY_PATH}: must declare LensModulePathV0"
+    );
+    assert!(
+        surface_declares_data(&module, "lens_registry_v0"),
+        "{REGISTRY_PATH}: registry list must be the LensIdV0 row authority"
+    );
+    assert!(
+        surface_declares_fn(&module, "lens_registry_ids_resolve"),
+        "{REGISTRY_PATH}: registry must expose the required-lens resolution query"
+    );
+    assert!(
+        surface_declares_fn(&module, "lens_registry_bound_row_count"),
+        "{REGISTRY_PATH}: registry must count bound rows for fail-closed singleton resolution"
+    );
+    assert!(
+        surface_declares_fn(&module, "lens_registry_row_count"),
+        "{REGISTRY_PATH}: registry must count all rows so duplicate bound/unbound ids reject"
+    );
+}
+
+#[test]
+fn v4_ci_workflow_consumes_lens_registry_for_lens_ci_signal() {
+    let module = parse_module(CI_DAG, CI_PATH);
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "lens", "registry"],
+            "lens_registry_ids_resolve"
+        ),
+        "{CI_PATH}: Lens-CI command must consume the registry query, not a parallel list"
+    );
+    let lens_ci = type_sum_variant(&module, "CiCommand", "LensCiCommand");
+    let required_lenses = record_payload_field(lens_ci, "required_lenses");
+    assert!(
+        type_is_list_of(&required_lenses.ty, "LensIdV0"),
+        "{CI_PATH}: LensCiCommand.required_lenses must be List<LensIdV0>"
+    );
+    let required = list_body_vars(data_body(&module, "lens_ci_required_lenses"));
+    assert_eq!(
+        required,
+        vec![
+            "Complexity",
+            "Cost",
+            "Parallelism",
+            "EffectEnumeration",
+            "Idempotency",
+            "UnusedParameters",
+        ],
+        "{CI_PATH}: Lens-CI required lenses must be registry ids"
+    );
+    assert!(
+        surface_declares_data(&module, "lens_ci_registry_signal"),
+        "{CI_PATH}: Lens-CI must expose a CI gate signal"
+    );
+    assert_eq!(
+        type_record_field_names(&module, "LensCiLiveWorkflowSignal"),
+        vec!["smoke_step_name", "semantic_step_name", "semantic_target"],
+        "{CI_PATH}: live workflow binding must not re-author ci_pipeline signal/job/policy facts"
+    );
+    let live_signal = data_body(&module, "lens_ci_live_workflow_signal");
+    let ci_pipeline = data_body(&module, "ci_pipeline");
+    let lens_ci_job =
+        ci_job_record_by_id(ci_pipeline_jobs(ci_pipeline), "lens_ci_registry_execution");
+    assert_eq!(
+        list_body_vars(variant_record_field(lens_ci_job, "CiJob", "needs")),
+        vec!["v2_compile_src_v4"],
+        "{CI_PATH}: Lens-CI execution must depend on the v2 compiler artifact job used by the live semantic step"
+    );
+
+    gen_gunbc_ci_workflow_dag::parse_and_validate_github_actions_workflow_yaml(CI_YML)
+        .unwrap_or_else(|e| panic!("{CI_YML_PATH}: parse/validate workflow YAML: {e}"));
+    let smoke_step_name = expr_string(record_body_field(live_signal, "smoke_step_name"));
+    let semantic_step_name = expr_string(record_body_field(live_signal, "semantic_step_name"));
+    let semantic_target = expr_string(record_body_field(live_signal, "semantic_target"));
+    let smoke_step = workflow_step_block(CI_YML, smoke_step_name);
+    let semantic_step = workflow_step_block(CI_YML, semantic_step_name);
+
+    assert!(
+        smoke_step.contains("run: cargo test -p v3-compiler --test integration v4_lens_registry_dag_smoke_test -- --quiet"),
+        "{CI_YML_PATH}: `{smoke_step_name}` must execute this registry/CI binding harness"
+    );
+    assert!(
+        semantic_step.contains("if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'"),
+        "{CI_YML_PATH}: `{semantic_step_name}` must run for v4 and workflow-policy changes"
+    );
+    assert!(
+        semantic_step.contains(r#"cp src/v4/workflow/ci.dag "${entry_root}/v4/workflow/ci.dag""#)
+            && semantic_step.contains(r#"rm "${deps_root}/workflow/ci.dag""#)
+            && semantic_step.contains(r#"target/release/v2-compiler compile --source-root "${entry_root}" --source-root "${deps_root}""#)
+            && semantic_step.contains(&format!("--target {semantic_target}")),
+        "{CI_YML_PATH}: `{semantic_step_name}` must execute the modeled Lens-CI semantic signal"
     );
 }
 
