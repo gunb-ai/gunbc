@@ -842,12 +842,9 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/v4_compiler_compile_public_terminal_smoke_test.rs",
     // T-10 / Wave-3-B: tokenize/parse smoke on `06_translate.dag`, `05_emit.dag`, MVP-1 claim.
     // SG-0 + INVARIANTS §P5(b) receipt; dissolves when `.dag` TestClaim / generated harness replaces probe.
-<<<<<<< HEAD
     // **This PR (+0 paths):** `v4_rust_language_model_declares_t11_translation_rules` +
     // `v4_java_language_model_declares_t11_translation_rules` (T-4 `java.dag` grammar-relation
     // parse surface, same harness file) — interim ratchet rows appended in INVARIANTS.md §SG-0.
-=======
->>>>>>> 445d73c97 (WIP: Edit-locus path-regex resolver (git diff → substrate Node for affected_s)
     "src/v3/compiler/tests/integration/v4_compiler_emit_translate_smoke_test.rs",
     // Wave-2-C2 / T-4.5: extdeps/file_system.dag pure resource model (Practice 11 companion).
     "src/v3/compiler/tests/integration/v4_extdeps_file_system_dag_smoke_test.rs",
@@ -855,19 +852,13 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // `src/v4/extdeps/frameworks/react.dag` (zero module diagnostics).
     // SG-0 ratchet per INVARIANTS §P5(b) + typescript extdeps precedent.
     "src/v3/compiler/tests/integration/v4_extdeps_react_dag_smoke_test.rs",
-<<<<<<< HEAD
+    // T-21: git diff → edit_locus resolver (`src/v4/lens/edit_locus.dag`); SG-0 + INVARIANTS §P5(b).
+    "src/v3/compiler/tests/integration/v4_lens_edit_locus_dag_smoke_test.rs",
     // PREFIX T-23 v0 + Lens-CI activation: parse-surface ratchet over
     // `src/v4/lens/registry.dag` registry query rows, `src/v4/workflow/ci.dag`
     // consumer wiring, and the live `.github/workflows/ci.yml` Lens-CI signal binding.
     // Paired with the CI semantic `ci.dag` entry-root compile using `--target rust`
     // (not known-hanging `--target dag`). SG-0 + INVARIANTS §P5(b) receipt.
-=======
-    // T-21: git diff → edit_locus resolver (`src/v4/lens/edit_locus.dag`); SG-0 + INVARIANTS §P5(b).
-    "src/v3/compiler/tests/integration/v4_lens_edit_locus_dag_smoke_test.rs",
-    // PREFIX T-23 v0: parse smoke on `src/v4/lens/registry.dag` (P2-staging `LensIdV0` +
-    // `LensModulePathV0`; post-#3503 P9 Symbol/List imports — isolated `compile_to_dag` deferred).
-    // SG-0 + INVARIANTS §P5(b) receipt.
->>>>>>> 9cec28149 (WIP: Edit-locus path-regex resolver (git diff → substrate Node for affected_s)
     "src/v3/compiler/tests/integration/v4_lens_registry_dag_smoke_test.rs",
     // T-19 testgen Wave-0: parse ratchet on `src/v4/lens/testgen.dag` — T19ManualAnchorKey-driven
     // `bootstrap_claim_generator_for_manual_anchor` + `testgen_concept_for_manual_claim` +
