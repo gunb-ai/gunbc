@@ -1,13 +1,17 @@
 // src/v4/std/algebra.dag
 // Scope: algebraic structures and canonical carrier constructions.
 // Anchor: https://en.wikipedia.org/wiki/Algebraic_structure
-// Owns: Magma, Semigroup, Monoid, CommutativeMonoid, Group, AbelianGroup, Semiring, CommutativeSemiring, Ring, CommutativeRing, OrderedRing, Field, ApproximateField, Lattice, BoundedLattice, BooleanAlgebra, FreeMonoid, FreeMonoidUniqueState, fold_list, fold_list_right, is_empty, non_empty, length, for_all, count_where, count_equal, unique, PointwisePower, Ordering, Homomorphism.
-// Consumes: none.
+// Owns: Magma, Semigroup, Monoid, CommutativeMonoid, Group, AbelianGroup, Semiring, CommutativeSemiring, Ring, CommutativeRing, OrderedRing, Field, ApproximateField, Lattice, BoundedLattice, BooleanAlgebra, FreeMonoid, FreeMonoidUniqueState, fold_list, fold_list_right, fold_list_node, is_empty, non_empty, length, for_all, count_where, count_equal, unique, PointwisePower, Ordering, Homomorphism.
+// Consumes: std diagnostic, std node.
 // Status: T-2 modeled.
 // Ledger: Part 6 — SL-P6-FREEMONOID-IS-EMPTY-VPRED.
 
 
 module v4.std.algebra
+
+
+import v4.std.diagnostic { Accepted, None, Outcome, bind_outcome }
+import v4.std.node { Conj, Edge, Named, Node, Symbol, TypeNode }
 type Magma<T> {
   op: fn(T, T) -> T
 }
@@ -96,6 +100,34 @@ fn fold_list_right<T, A>(xs: FreeMonoid<T>, empty: A, snoc: fn(A, T) -> A) -> A 
     Empty => empty
     Cons { head: h, tail: t } => snoc(fold_list_right(xs: t, empty: empty, snoc: snoc), h)
   }
+}
+fn fold_list_node<T>(
+  xs: FreeMonoid<T>,
+  empty: Node,
+  head_label: Symbol,
+  tail_label: Symbol,
+  item_node: fn(T) -> Outcome<Node>
+) -> Outcome<Node> {
+  fold_list_right(
+    xs: xs,
+    empty: Accepted { value: empty, diagnostics: None },
+    snoc: fn(tail_result, item) {
+      bind_outcome(o: item_node(item), f: fn(head_node) {
+        bind_outcome(o: tail_result, f: fn(tail_node) {
+          Accepted {
+            value: Node {
+              kind: TypeNode { connective: Conj },
+              children: [
+                Edge { label: Named { name: head_label }, target: head_node },
+                Edge { label: Named { name: tail_label }, target: tail_node },
+              ]
+            },
+            diagnostics: None
+          }
+        })
+      })
+    }
+  )
 }
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: coproduct variant-discriminant predicate substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived Empty-variant discriminant projection; forbidden: fold_list laundering.
 fn is_empty<T>(xs: FreeMonoid<T>) -> Bool {
