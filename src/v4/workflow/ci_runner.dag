@@ -23,7 +23,7 @@ import v4.std.node { Node }
 import v4.std.verification { TestClaim }
 
 
-// 🟢 coproduct dissolution — T-21/T-24 Wave-0 CI rerun selection; dissolve-on: TestClaimExerciseSurface + host wire.
+// 🟡 gated — T-21/T-24 Wave-0 CI rerun selection — dissolve-on: TestClaimExerciseSurface + host wire.
 type CiRerunSelection
   = CiRerunNarrow { rerun: List<TestClaim> }
   | CiRerunSuperset { roster: List<TestClaim>, evidence: AffectedSetEvidence }

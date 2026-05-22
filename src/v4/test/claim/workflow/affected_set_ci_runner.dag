@@ -29,7 +29,6 @@ import v4.std.verification {
   Tier1,
   Unit
 }
-import v4.workflow.ci_runner { test_claim_in_rerun_frontier }
 import v4.workflow.ci_runner {
   CiRerunNarrow,
   CiRerunSuperset,
@@ -121,7 +120,23 @@ fn ci_runner_fail_closed_superset_holds() -> Bool {
     roster: ci_runner_fixture_roster,
     affected: ci_runner_fail_closed_affected
   ) {
-    CiRerunSuperset { roster: roster, evidence: _ } => length(xs: roster) == 3
+    CiRerunSuperset { roster: roster, evidence: _ } =>
+      (length(xs: roster) == 3)
+        && count_equal(
+          xs: roster,
+          item: ci_runner_claim_untouched,
+          eq: fn(left, right) { left == right }
+        ) != 0
+        && count_equal(
+          xs: roster,
+          item: ci_runner_claim_touched,
+          eq: fn(left, right) { left == right }
+        ) != 0
+        && count_equal(
+          xs: roster,
+          item: ci_runner_claim_other,
+          eq: fn(left, right) { left == right }
+        ) != 0
     CiRerunNarrow { rerun: _ } => false
   }
 }
