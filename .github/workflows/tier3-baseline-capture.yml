@@ -4,8 +4,9 @@
 # host class changed from `ubicloud-standard-2` to gunbc self-hosted arm64 srv2 on 2026-05-22; baselines captured on the
 # prior host class are not directly comparable, so the next baseline refresh re-establishes ground truth on the new host).
 # Pinned to srv2 specifically (srv1 has degraded DIMMs); the 5-capture matrix runs with
-# `max-parallel: 1` so the captures don't share a physical host and contend with each other —
-# hosted-runner isolation is what gives the captures the "separate VMs" property R-7 expects.
+# `max-parallel: 1` so each capture has the physical host to itself — that serialization
+# is what gives the captures the no-contention property R-7 expects (the old Ubicloud
+# model relied on per-matrix-entry fresh VMs; the self-hosted model relies on serialization).
 # Runs five independent bench jobs (serial on srv2 — see strategy.max-parallel), aggregates
 # per procedure §2 / R-7 via ``scripts/aggregate_tier3_baseline.py``.
 #

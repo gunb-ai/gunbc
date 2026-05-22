@@ -380,11 +380,18 @@ fn emit_job(id: &str, v: &Value) -> Result<String, Box<dyn std::error::Error>> {
     ))
 }
 
-/// GitHub-reserved hosted-runner label prefixes. The substrate's `HostedRunner` /
-/// `RunnerLabel` enum is the authoritative carrier for these; admitting them into the
-/// `SelfHosted` sequence path would silently misrepresent extdeps semantics.
+/// Hosted-runner label prefixes that should never appear inside a `runs-on` sequence the
+/// generator emits as `SelfHosted`. `ubuntu-*`, `macos-*`, `windows-*` belong to GitHub's
+/// `HostedRunner` / `RunnerLabel` carrier; `ubicloud-*` belongs to a third-party hosted pool
+/// the gunbc CI used pre-migration. Admitting any of these into `SelfHosted` would silently
+/// misrepresent extdeps semantics — the project's runner pool is now exactly
+/// `[self-hosted, linux, arm64, srv1/srv2]`, so a sequence that mixes hosted-pool labels with
+/// self-hosted labels is by construction a modeling error to flag, not project.
 fn is_hosted_runner_label(s: &str) -> bool {
-    s.starts_with("ubuntu-") || s.starts_with("macos-") || s.starts_with("windows-")
+    s.starts_with("ubuntu-")
+        || s.starts_with("macos-")
+        || s.starts_with("windows-")
+        || s.starts_with("ubicloud-")
 }
 
 fn emit_runs_on(v: &Value) -> Result<String, Box<dyn std::error::Error>> {
