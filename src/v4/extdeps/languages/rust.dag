@@ -96,11 +96,14 @@ type RustScalar
   | UnitScalar
   | NeverScalar
 
+type RustIntegerCarrier {
+  kind: RustIntKind
+  width: RustIntWidth
+}
+
 type RustIntegerPrimitiveFacts {
   surface_spelling: Symbol
-  signedness: RustIntKind
-  width: RustIntWidth
-  overflow_disposition: OverflowDisposition<RustScalar>
+  overflow_disposition: OverflowDisposition<RustIntegerCarrier>
   std_projection: Symbol
 }
 
@@ -356,9 +359,9 @@ data rust_mvp1_source_literal: Symbol = rust_mvp1_source_literal
 data rust_mvp1_source_text_field: Symbol = rust_mvp1_source_text_field
 data rust_mvp1_source_grammar_field: Symbol = rust_mvp1_source_grammar_field
 
-fn rust_integer_overflow_disposition(kind: RustIntKind, width: RustIntWidth) -> OverflowDisposition<RustScalar> {
+fn rust_integer_overflow_disposition(kind: RustIntKind, width: RustIntWidth) -> OverflowDisposition<RustIntegerCarrier> {
   OverflowDisposition {
-    ir_carrier: IntScalar { kind: kind, width: width },
+    ir_carrier: RustIntegerCarrier { kind: kind, width: width },
     debug_default: PanicOnOverflow,
     release_default: TwoComplementWrap,
     overflow_checks_enabled: PanicOnOverflow,
@@ -393,96 +396,72 @@ data rust_mvp1_source_text: String = "fn add(x: i32, y: i32) -> i32 { x + y }"
 
 data rust_facts_i8: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
   surface_spelling: rust_surface_spelling_i8,
-  signedness: Signed,
-  width: Bits8,
   overflow_disposition: rust_integer_overflow_disposition(kind: Signed, width: Bits8),
   std_projection: rust_std_projection_int8,
 }
 
 data rust_facts_i16: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
   surface_spelling: rust_surface_spelling_i16,
-  signedness: Signed,
-  width: Bits16,
   overflow_disposition: rust_integer_overflow_disposition(kind: Signed, width: Bits16),
   std_projection: rust_std_projection_int16,
 }
 
 data rust_facts_i32: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
   surface_spelling: rust_surface_spelling_i32,
-  signedness: Signed,
-  width: Bits32,
   overflow_disposition: rust_integer_overflow_disposition(kind: Signed, width: Bits32),
   std_projection: rust_std_projection_int32,
 }
 
 data rust_facts_i64: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
   surface_spelling: rust_surface_spelling_i64,
-  signedness: Signed,
-  width: Bits64,
   overflow_disposition: rust_integer_overflow_disposition(kind: Signed, width: Bits64),
   std_projection: rust_std_projection_int64,
 }
 
 data rust_facts_i128: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
   surface_spelling: rust_surface_spelling_i128,
-  signedness: Signed,
-  width: Bits128,
   overflow_disposition: rust_integer_overflow_disposition(kind: Signed, width: Bits128),
   std_projection: rust_std_projection_int128,
 }
 
 data rust_facts_u8: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
   surface_spelling: rust_surface_spelling_u8,
-  signedness: Unsigned,
-  width: Bits8,
   overflow_disposition: rust_integer_overflow_disposition(kind: Unsigned, width: Bits8),
   std_projection: rust_std_projection_uint8,
 }
 
 data rust_facts_u16: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
   surface_spelling: rust_surface_spelling_u16,
-  signedness: Unsigned,
-  width: Bits16,
   overflow_disposition: rust_integer_overflow_disposition(kind: Unsigned, width: Bits16),
   std_projection: rust_std_projection_uint16,
 }
 
 data rust_facts_u32: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
   surface_spelling: rust_surface_spelling_u32,
-  signedness: Unsigned,
-  width: Bits32,
   overflow_disposition: rust_integer_overflow_disposition(kind: Unsigned, width: Bits32),
   std_projection: rust_std_projection_uint32,
 }
 
 data rust_facts_u64: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
   surface_spelling: rust_surface_spelling_u64,
-  signedness: Unsigned,
-  width: Bits64,
   overflow_disposition: rust_integer_overflow_disposition(kind: Unsigned, width: Bits64),
   std_projection: rust_std_projection_uint64,
 }
 
 data rust_facts_u128: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
   surface_spelling: rust_surface_spelling_u128,
-  signedness: Unsigned,
-  width: Bits128,
   overflow_disposition: rust_integer_overflow_disposition(kind: Unsigned, width: Bits128),
   std_projection: rust_std_projection_uint128,
 }
 
 data rust_facts_isize: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
   surface_spelling: rust_surface_spelling_isize,
-  signedness: Signed,
-  width: Pointer,
   overflow_disposition: rust_integer_overflow_disposition(kind: Signed, width: Pointer),
   std_projection: rust_std_projection_int_platform,
 }
 
 data rust_facts_usize: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
   surface_spelling: rust_surface_spelling_usize,
-  signedness: Unsigned,
-  width: Pointer,
   overflow_disposition: rust_integer_overflow_disposition(kind: Unsigned, width: Pointer),
   std_projection: rust_std_projection_uint_platform,
 }
