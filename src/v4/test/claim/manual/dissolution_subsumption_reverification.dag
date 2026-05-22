@@ -85,7 +85,8 @@ import v4.std.verification {
   TestClaim,
   TestClassification,
   Tier1,
-  Integration
+  Integration,
+  t19_manual_claim_anchor
 }
 import v4.std.witness { Holds, StructuralPropertyWitness, Witness }
 

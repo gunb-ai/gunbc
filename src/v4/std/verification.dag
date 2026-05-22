@@ -124,9 +124,9 @@ type T19GeneratedAnchorKey
 
 
 // RULING-1: needs-more-work — claim anchors stay partitioned by manual vs generated authority.
-// 🟡 coproduct dissolution — consumer:t19-generated-corpus-anchor-field; dissolves when generated TestClaim corpora no longer share TestClaim.t19_anchor with manual rows.
+// 🟡 coproduct dissolution — feature:t19-claim-anchor-split; bound task: src/v4/TASKS.md#t-19-lenstestgendag--producer-of-testclaim-corpus-from-substrate; follow-up: delete this union when generated TestClaim corpora use a type that does not share t19_anchor with manual rows.
 type T19ClaimAnchorKey
-// 🟡 coproduct dissolution — consumer:t19-generated-corpus-anchor-field
+// 🟡 coproduct dissolution — feature:t19-claim-anchor-split; bound task: src/v4/TASKS.md#t-19-lenstestgendag--producer-of-testclaim-corpus-from-substrate
   = T19ManualClaimAnchor { manual_anchor: T19ManualAnchorKey }
   | T19GeneratedClaimAnchor { generated_anchor: T19GeneratedAnchorKey }
 
