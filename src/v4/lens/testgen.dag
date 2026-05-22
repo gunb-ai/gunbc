@@ -2,7 +2,7 @@
 // Scope: Manual-anchor testgen plus filesystem-backed whole-corpus lens driver primitive.
 // Owns: Generator TestgenConcept manual_test_claim_for_manual_anchor testgen_concept_for_manual_claim testgen_emit_language_behavior_equivalence_claim testgen_emit_idempotent_operation_claim testgen_scheduled_language_behavior_generators testgen_scheduled_idempotent_operation_subjects TypeConstructionSubject AlgebraLawSubject DiagnosticExhaustivenessSubject LensApplicabilitySubject BidirectionalRoundtripSubject LanguageBehaviorEquivalenceSubject IdempotentOperationSubject FrozenLanguageBehaviorSnapshot LanguageBehaviorIoMock CorpusEntry CorpusTraversalScope CorpusTraversalOrder CorpusDuplicatePolicy CorpusTraversalPolicy CorpusEnumerationRequest CorpusEnumerationResult CorpusEnumerator CorpusEntryIngestResult CorpusEntryIngestor CorpusLensReadResult<C> CorpusLensReader<C> CorpusLensObservation<C> CorpusLensDriveResult<C> CorpusLensDriver<C>
 // Consumes: v4.std.diagnostic v4.std.nat v4.std.node v4.std.verification v4.extdeps.file_system v4.test.claim.manual.connective_anchors v4.test.claim.manual.nat_law_anchors
-// Status: Manual-anchor + LanguageBehaviorEquivalence + idempotent-operation generator emission; new TestgenConcept arms = operator STOP.
+// Status: Manual-anchor + LanguageBehaviorEquivalence + idempotent-operation generator (outside six-way TestgenConcept); new TestgenConcept arms = operator STOP.
 
 module v4.lens.testgen
 
@@ -405,14 +405,14 @@ fn atom_node(s: Symbol) -> Node {
 }
 
 
-fn idempotent_operation_apply_once(body: Node) -> Node {
+fn idempotent_operation_apply_once(body: Node, count: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge { label: Named { name: t19_idempotent_apply_once_field }, target: body },
       Edge {
         label: Named { name: t19_idempotent_apply_twice_field },
-        target: atom_node(s: t19_idempotent_apply_count_once)
+        target: atom_node(s: count)
       },
     ]
   }
@@ -420,7 +420,10 @@ fn idempotent_operation_apply_once(body: Node) -> Node {
 
 
 fn idempotent_operation_apply_twice(body: Node) -> Node {
-  idempotent_operation_apply_once(body: idempotent_operation_apply_once(body: body))
+  idempotent_operation_apply_once(
+    body: idempotent_operation_apply_once(body: body, count: t19_idempotent_apply_count_once),
+    count: t19_idempotent_apply_count_twice
+  )
 }
 
 
@@ -446,7 +449,7 @@ fn testgen_emit_idempotent_operation_claim(
           label: label,
           t19_anchor: T19ManualAnchorAbsent,
           lhs: idempotent_operation_apply_twice(body: body),
-          rhs: idempotent_operation_apply_once(body: body),
+          rhs: idempotent_operation_apply_once(body: body, count: t19_idempotent_apply_count_once),
           classification: classification,
         },
         diagnostics: None,
