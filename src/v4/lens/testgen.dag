@@ -33,6 +33,7 @@ import v4.std.nat {
 import v4.std.node {
   Node,
   Connective,
+  Atom,
   Conj,
   Disj,
   Arrow,
@@ -43,7 +44,10 @@ import v4.std.node {
   Branch,
   Loop,
   Bind,
-  Symbol
+  Symbol,
+  TypeNode,
+  Edge,
+  Named
 }
 import v4.std.refinement { Refined, Validation, refine, refined_base }
 import v4.extdeps.file_system {
@@ -403,8 +407,30 @@ fn refine_nonempty_node_list(xs: List<Node>, at: Locus) -> Outcome<Refined<List<
 }
 
 
-fn refinement_preservation_list_head_or_empty(xs: List<Node>) -> Node {
-  fold_list(xs: xs, empty: stub_empty_disj, cons: fn(_, item) { item })
+data refinement_preservation_list_empty_node: Symbol = refinement_preservation_list_empty_node
+data refinement_preservation_list_cons_node: Symbol = refinement_preservation_list_cons_node
+data refinement_preservation_list_head_edge: Symbol = refinement_preservation_list_head_edge
+data refinement_preservation_list_tail_edge: Symbol = refinement_preservation_list_tail_edge
+
+fn refinement_preservation_list_node(xs: List<Node>) -> Node {
+  match xs {
+    Empty =>
+      Node {
+        kind: TypeNode { connective: Atom { identity: refinement_preservation_list_empty_node } },
+        children: []
+      }
+    Cons { head: h, tail: t } =>
+      Node {
+        kind: TypeNode { connective: Atom { identity: refinement_preservation_list_cons_node } },
+        children: [
+          Edge { label: Named { name: refinement_preservation_list_head_edge }, target: h },
+          Edge {
+            label: Named { name: refinement_preservation_list_tail_edge },
+            target: refinement_preservation_list_node(xs: t)
+          }
+        ]
+      }
+  }
 }
 
 
@@ -435,10 +461,10 @@ fn testgen_emit_refinement_preservation_claim(
         value: EqualsClaim {
           label: label,
           t19_anchor: anchor,
-          lhs: refinement_preservation_list_head_or_empty(
+          lhs: refinement_preservation_list_node(
             xs: refined_base(r: subject.refined)
           ),
-          rhs: refinement_preservation_list_head_or_empty(xs: subject.original),
+          rhs: refinement_preservation_list_node(xs: subject.original),
           classification: TestClassification { tier: Tier1, layer: Unit },
         },
         diagnostics: None,

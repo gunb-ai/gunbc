@@ -9,7 +9,7 @@ module v4.test.claim.generated.refinement_preservation
 
 import v4.lens.testgen {
   RefinementPreservationSubject,
-  refinement_preservation_list_head_or_empty,
+  refinement_preservation_list_node,
   refinement_preservation_subject_nonempty_list_base,
   t19_refinement_label_nonempty_list_base,
   testgen_emit_refinement_preservation_claim
@@ -125,10 +125,11 @@ data witness_refinement_preserves_nonempty_list_base: Bool = match refinement_pr
 fn refinement_preservation_subject_base_value() -> Node {
   match refinement_preservation_subject_nonempty_list_base() {
     Accepted { value: subject, diagnostics: None } =>
-      refinement_preservation_list_head_or_empty(xs: subject.original)
-    Rejected { diagnostics: _ } => stub_empty_disj
+      refinement_preservation_list_node(xs: subject.original)
+    Rejected { diagnostics: _ } => refinement_preservation_list_node(xs: [])
   }
 }
 
 
-data witness_refinement_preservation_subject_anchor: Bool = refinement_preservation_subject_base_value() == stub_empty_conj
+data witness_refinement_preservation_subject_anchor: Bool =
+  refinement_preservation_subject_base_value() == refinement_preservation_list_node(xs: [stub_empty_conj])
