@@ -70,9 +70,11 @@ fn t19_idempotent_operation_generated_claims_parse_and_pin_emission() {
         IDEMPOTENT_OPERATION_GENERATED_DAG.contains("generated_idempotent_operation_skip_is_rejected")
             && IDEMPOTENT_OPERATION_GENERATED_DAG.contains("t19_sample_label_only_subject")
             && EFFECTS_DAG.contains("LabelOnlyIdempotentInhabitance")
-            && TESTGEN_DAG.contains("idempotent_operation_apply_twice")
-            && TESTGEN_DAG.contains("idempotent_operation_apply_once"),
-        "idempotent-operation samples must keep double-application lhs and single-application rhs in testgen emission, with an explicit label-only skip path in the generated corpus"
+            && EFFECTS_DAG.contains("fn idempotent_operation_apply_twice")
+            && EFFECTS_DAG.contains("fn idempotent_operation_apply_once")
+            && EFFECTS_DAG.contains("connective: Transform")
+            && TESTGEN_DAG.contains("idempotent_operation_apply_twice(state: t19_sample_state"),
+        "idempotent-operation claims must model f(f(x))==f(x) via nested Transform application in v4.std.effects, with an explicit label-only skip path in the generated corpus"
     );
     assert!(
         EFFECTS_DAG.contains("type IdempotentShape")

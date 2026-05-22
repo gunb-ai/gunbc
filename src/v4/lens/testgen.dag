@@ -115,10 +115,12 @@ import v4.std.effects {
   LabelOnlyIdempotentInhabitance,
   ReadIdempotentSample,
   UpsertIdempotentSample,
-  idempotent_operation_witness_node,
+  idempotent_operation_apply_once,
+  idempotent_operation_apply_twice,
   t19_sample_delete_subject,
   t19_sample_label_only_subject,
   t19_sample_read_subject,
+  t19_sample_state,
   t19_sample_upsert_subject
 }
 
@@ -315,10 +317,6 @@ data t19_lbe_label_disj_dag_surface: String = "generated/lbe: Disj type-node mat
 data t19_lbe_label_transform_dag_surface: String = "generated/lbe: Transform computation-node matches dag LanguageModel surface (frozen snapshot)"
 
 
-data t19_idempotent_apply_once_field: Symbol = t19_idempotent_apply_once_field
-data t19_idempotent_apply_twice_field: Symbol = t19_idempotent_apply_twice_field
-data t19_idempotent_apply_count_once: Symbol = t19_idempotent_apply_count_once
-data t19_idempotent_apply_count_twice: Symbol = t19_idempotent_apply_count_twice
 data t19_idempotent_operation_tautology_skip: Symbol = t19_idempotent_operation_tautology_skip
 data t19_idempotent_label_read: String = "generated/idempotent_operation: ReadEffect f(f(x)) == f(x)"
 data t19_idempotent_label_upsert: String = "generated/idempotent_operation: UpsertEffect f(f(x)) == f(x)"
@@ -402,39 +400,17 @@ fn atom_node(s: Symbol) -> Node {
 }
 
 
-fn idempotent_operation_apply_once(body: Node, count: Symbol) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      Edge { label: Named { name: t19_idempotent_apply_once_field }, target: body },
-      Edge {
-        label: Named { name: t19_idempotent_apply_twice_field },
-        target: atom_node(s: count)
-      },
-    ]
-  }
-}
-
-
-fn idempotent_operation_apply_twice(body: Node) -> Node {
-  idempotent_operation_apply_once(
-    body: idempotent_operation_apply_once(body: body, count: t19_idempotent_apply_count_once),
-    count: t19_idempotent_apply_count_twice
-  )
-}
-
-
 fn testgen_emit_idempotent_operation_equals_claim(
   label: String,
-  witness: Node,
+  subject: IdempotentOperationSubject,
   classification: TestClassification
 ) -> Outcome<TestClaim> {
   Accepted {
     value: EqualsClaim {
       label: label,
       t19_anchor: T19ManualAnchorAbsent,
-      lhs: idempotent_operation_apply_twice(body: witness),
-      rhs: idempotent_operation_apply_once(body: witness, count: t19_idempotent_apply_count_once),
+      lhs: idempotent_operation_apply_twice(state: t19_sample_state, subject: subject),
+      rhs: idempotent_operation_apply_once(state: t19_sample_state, subject: subject),
       classification: classification,
     },
     diagnostics: None,
@@ -461,19 +437,19 @@ fn testgen_emit_idempotent_operation_claim(
     ReadIdempotentSample { operation: _ } =>
       testgen_emit_idempotent_operation_equals_claim(
         label: label,
-        witness: idempotent_operation_witness_node(subject: subject),
+        subject: subject,
         classification: classification
       )
     UpsertIdempotentSample { operation: _, key_source: _ } =>
       testgen_emit_idempotent_operation_equals_claim(
         label: label,
-        witness: idempotent_operation_witness_node(subject: subject),
+        subject: subject,
         classification: classification
       )
     DeleteIdempotentSample { operation: _, key_source: _ } =>
       testgen_emit_idempotent_operation_equals_claim(
         label: label,
-        witness: idempotent_operation_witness_node(subject: subject),
+        subject: subject,
         classification: classification
       )
   }
