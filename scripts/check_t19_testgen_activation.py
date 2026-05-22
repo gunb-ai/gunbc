@@ -71,8 +71,12 @@ def main() -> None:
             "T19ManualLbeTransformDagSurface",
             "dag_language_model_surface_id",
             "type DiagnosticExhaustivenessSubject",
+            "fn coproduct_exhaustiveness_subject_testclaim_compiles",
             "fn testgen_emit_coproduct_exhaustiveness_claim",
             "fn testgen_scheduled_coproduct_exhaustiveness_generators",
+            "coproduct_exhaustiveness_subject_testclaim_diagnostic",
+            "coproduct_exhaustiveness_subject_testclaim_equals",
+            "coproduct_exhaustiveness_subject_testclaim_roundtrip",
             "t19_coproduct_exhaustiveness_missing_variant",
             "T19GeneratedCoproductExhaustiveness {}",
             "t19_coproduct_exhaustiveness_omitted_variant_edge",
@@ -132,7 +136,9 @@ def main() -> None:
             "T19GeneratedCoproductExhaustiveness {}",
             "witness_coproduct_exhaustiveness_diagnostic_claim",
             "witness_coproduct_exhaustiveness_uses_generated_anchor",
+            "witness_coproduct_exhaustiveness_all_variants_emit",
             "witness_coproduct_exhaustiveness_generator_count",
+            "length(xs: testgen_scheduled_coproduct_exhaustiveness_generators()) == 4",
         ),
     )
 

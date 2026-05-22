@@ -8,7 +8,10 @@ module v4.test.claim.generated.coproduct_exhaustiveness
 
 
 import v4.lens.testgen {
+  coproduct_exhaustiveness_subject_testclaim_compiles,
   coproduct_exhaustiveness_subject_testclaim_diagnostic,
+  coproduct_exhaustiveness_subject_testclaim_equals,
+  coproduct_exhaustiveness_subject_testclaim_roundtrip,
   testgen_emit_coproduct_exhaustiveness_claim,
   testgen_scheduled_coproduct_exhaustiveness_generators
 }
@@ -64,8 +67,33 @@ fn witness_coproduct_exhaustiveness_generated_anchor() -> Bool {
 }
 
 
-fn witness_testgen_schedules_one_coproduct_exhaustiveness_generator() -> Bool {
-  length(xs: testgen_scheduled_coproduct_exhaustiveness_generators()) == 1
+fn witness_coproduct_exhaustiveness_all_testclaim_variants_emit() -> Bool {
+  witness_coproduct_exhaustiveness_variant_emits(
+    subject: coproduct_exhaustiveness_subject_testclaim_compiles()
+  ) &&
+    witness_coproduct_exhaustiveness_variant_emits(
+      subject: coproduct_exhaustiveness_subject_testclaim_diagnostic()
+    ) &&
+    witness_coproduct_exhaustiveness_variant_emits(
+      subject: coproduct_exhaustiveness_subject_testclaim_equals()
+    ) &&
+    witness_coproduct_exhaustiveness_variant_emits(
+      subject: coproduct_exhaustiveness_subject_testclaim_roundtrip()
+    )
+}
+
+
+fn witness_coproduct_exhaustiveness_variant_emits(subject: DiagnosticExhaustivenessSubject) -> Bool {
+  match testgen_emit_coproduct_exhaustiveness_claim(subject: subject) {
+    Accepted { value: DiagnosticClaim { label: _, t19_anchor: T19GeneratedClaimAnchor { generated_anchor: T19GeneratedCoproductExhaustiveness {} }, input: _, expected_rejection: _, classification: _ }, diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+fn witness_testgen_schedules_all_coproduct_exhaustiveness_generators() -> Bool {
+  length(xs: testgen_scheduled_coproduct_exhaustiveness_generators()) == 4
 }
 
 
@@ -75,4 +103,7 @@ data witness_coproduct_exhaustiveness_diagnostic_claim: Bool = witness_coproduct
 data witness_coproduct_exhaustiveness_uses_generated_anchor: Bool = witness_coproduct_exhaustiveness_generated_anchor()
 
 
-data witness_coproduct_exhaustiveness_generator_count: Bool = witness_testgen_schedules_one_coproduct_exhaustiveness_generator()
+data witness_coproduct_exhaustiveness_all_variants_emit: Bool = witness_coproduct_exhaustiveness_all_testclaim_variants_emit()
+
+
+data witness_coproduct_exhaustiveness_generator_count: Bool = witness_testgen_schedules_all_coproduct_exhaustiveness_generators()

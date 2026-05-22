@@ -82,6 +82,10 @@ fn t19_coproduct_exhaustiveness_generated_claim_parse_and_witnesses_present() {
     );
     assert!(
         TESTGEN_DAG.contains("type DiagnosticExhaustivenessSubject")
+            && TESTGEN_DAG.contains("fn coproduct_exhaustiveness_subject_testclaim_compiles")
+            && TESTGEN_DAG.contains("fn coproduct_exhaustiveness_subject_testclaim_diagnostic")
+            && TESTGEN_DAG.contains("fn coproduct_exhaustiveness_subject_testclaim_equals")
+            && TESTGEN_DAG.contains("fn coproduct_exhaustiveness_subject_testclaim_roundtrip")
             && TESTGEN_DAG.contains("fn testgen_emit_coproduct_exhaustiveness_claim")
             && TESTGEN_DAG.contains("fn testgen_scheduled_coproduct_exhaustiveness_generators")
             && TESTGEN_DAG.contains("slot: DiagnosticExhaustiveness {")
@@ -106,8 +110,13 @@ fn t19_coproduct_exhaustiveness_generated_claim_parse_and_witnesses_present() {
             && COPRODUCT_EXHAUSTIVENESS_GENERATED_DAG
                 .contains("witness_coproduct_exhaustiveness_uses_generated_anchor")
             && COPRODUCT_EXHAUSTIVENESS_GENERATED_DAG
-                .contains("witness_coproduct_exhaustiveness_generator_count"),
-        "generated coproduct-exhaustiveness corpus must consume the testgen emit helper and expose witnesses"
+                .contains("witness_coproduct_exhaustiveness_all_variants_emit")
+            && COPRODUCT_EXHAUSTIVENESS_GENERATED_DAG
+                .contains("witness_coproduct_exhaustiveness_generator_count")
+            && COPRODUCT_EXHAUSTIVENESS_GENERATED_DAG.contains(
+                "length(xs: testgen_scheduled_coproduct_exhaustiveness_generators()) == 4"
+            ),
+        "generated coproduct-exhaustiveness corpus must consume the testgen emit helper and expose all four missing-arm witnesses"
     );
 }
 
