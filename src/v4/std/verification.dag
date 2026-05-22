@@ -105,6 +105,8 @@ type T19GeneratedAnchorKey
   = T19GeneratedCoproductExhaustiveness {}
 
 
+// RULING-1: needs-more-work — claim anchors stay partitioned by manual vs generated authority.
+// 🟡 coproduct dissolution — dissolves when generated TestClaim corpora no longer share the manual TestClaim anchor field.
 type T19ClaimAnchorKey
   = T19ManualClaimAnchor { manual_anchor: T19ManualAnchorKey }
   | T19GeneratedClaimAnchor { generated_anchor: T19GeneratedAnchorKey }

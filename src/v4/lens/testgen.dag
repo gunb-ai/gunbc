@@ -348,7 +348,7 @@ data t19_coproduct_exhaustiveness_equals_claim_variant: Symbol = t19_coproduct_e
 data t19_coproduct_exhaustiveness_roundtrip_claim_variant: Symbol = t19_coproduct_exhaustiveness_roundtrip_claim_variant
 
 
-data t19_coproduct_exhaustiveness_label: String = "generated/diagnostic-exhaustiveness: TestClaim coproduct missing DiagnosticClaim arm rejects"
+data t19_coproduct_exhaustiveness_label: String = "generated/diagnostic-exhaustiveness: TestClaim coproduct missing arm rejects"
 
 
 data t19_coproduct_exhaustiveness_omitted_variant_edge: Symbol = t19_coproduct_exhaustiveness_omitted_variant_edge
@@ -506,6 +506,30 @@ fn coproduct_exhaustiveness_subject_testclaim_diagnostic() -> DiagnosticExhausti
   }
 }
 
+fn coproduct_exhaustiveness_subject_testclaim_compiles() -> DiagnosticExhaustivenessSubject {
+  DiagnosticExhaustivenessSubject {
+    reason: t19_coproduct_exhaustiveness_missing_variant,
+    coproduct: TestgenCoproductSubject { symbol: t19_coproduct_exhaustiveness_testclaim_variant },
+    omitted_variant: TestClaimCompilesClaimVariant,
+  }
+}
+
+fn coproduct_exhaustiveness_subject_testclaim_equals() -> DiagnosticExhaustivenessSubject {
+  DiagnosticExhaustivenessSubject {
+    reason: t19_coproduct_exhaustiveness_missing_variant,
+    coproduct: TestgenCoproductSubject { symbol: t19_coproduct_exhaustiveness_testclaim_variant },
+    omitted_variant: TestClaimEqualsClaimVariant,
+  }
+}
+
+fn coproduct_exhaustiveness_subject_testclaim_roundtrip() -> DiagnosticExhaustivenessSubject {
+  DiagnosticExhaustivenessSubject {
+    reason: t19_coproduct_exhaustiveness_missing_variant,
+    coproduct: TestgenCoproductSubject { symbol: t19_coproduct_exhaustiveness_testclaim_variant },
+    omitted_variant: TestClaimRoundTripClaimVariant,
+  }
+}
+
 
 fn testgen_coproduct_subject_symbol(subject: TestgenCoproductSubject) -> Symbol {
   subject.symbol
@@ -584,7 +608,28 @@ fn testgen_scheduled_coproduct_exhaustiveness_generators() -> List<Generator<Tes
       classification: TestClassification { tier: Tier1, layer: Unit },
       t19_anchor: t19_generated_claim_anchor(anchor: T19GeneratedCoproductExhaustiveness {}),
       slot: DiagnosticExhaustiveness {
+        subject: coproduct_exhaustiveness_subject_testclaim_compiles(),
+      },
+    },
+    Generator {
+      classification: TestClassification { tier: Tier1, layer: Unit },
+      t19_anchor: t19_generated_claim_anchor(anchor: T19GeneratedCoproductExhaustiveness {}),
+      slot: DiagnosticExhaustiveness {
         subject: coproduct_exhaustiveness_subject_testclaim_diagnostic(),
+      },
+    },
+    Generator {
+      classification: TestClassification { tier: Tier1, layer: Unit },
+      t19_anchor: t19_generated_claim_anchor(anchor: T19GeneratedCoproductExhaustiveness {}),
+      slot: DiagnosticExhaustiveness {
+        subject: coproduct_exhaustiveness_subject_testclaim_equals(),
+      },
+    },
+    Generator {
+      classification: TestClassification { tier: Tier1, layer: Unit },
+      t19_anchor: t19_generated_claim_anchor(anchor: T19GeneratedCoproductExhaustiveness {}),
+      slot: DiagnosticExhaustiveness {
+        subject: coproduct_exhaustiveness_subject_testclaim_roundtrip(),
       },
     },
   ]
