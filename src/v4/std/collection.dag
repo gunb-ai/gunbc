@@ -41,11 +41,15 @@ type Map<K, V> {
   lookup: fn(K) -> Witness<V>
 }
 // 🟡 finite-uniqueness witness gated — feature:finite-set-uniqueness-witness;
-// dissolve-on: substrate emits a derived `unique: Witness<Holds>` projection
-// over the `head ++ tail` enumeration (mirrors `FreeMonoidUniqueState` in
-// std/algebra). Until then, FiniteSet's uniqueness obligation is enforced
-// by the consuming lens / row validator (e.g. v4.lens.subsumption
-// MechanicalReverification runtime).
+// bind: node://adhoc-086ab97b-b41 (this PR's substrate-evolution 5/5 work-item)
+// → dissolution successor: substrate-extension follow-up to land a derived
+// `unique: Witness<Holds>` projection over the `head ++ tail` enumeration
+// (mirrors `FreeMonoidUniqueState` in std/algebra; same shape, same `unique:
+// Bool` resolution pattern). Flips 🟢 when the derived-witness projection
+// lands in v4.std.algebra and FiniteSet binds it as a structural field.
+// Until then, FiniteSet's uniqueness obligation is enforced by the consuming
+// lens / row validator (e.g. v4.lens.subsumption MechanicalReverification
+// runtime, which the parallel swift-owl-884 PR #3496 already wires).
 //
 // Non-empty, finite enumerated set carrier. Use FiniteSet<T> when the row
 // requires the full elements (eager-materialized closed enumeration) — Set<T>

@@ -63,12 +63,18 @@ type TableDecisionTreeFact {
 
 
 // 🟡 producer-stage projection gated — feature:lens-decision-tree-shape;
-// dissolve-on: `v4.lens.decision_tree_shape` lands the per-branch resolved-
-// identity + body-shape record consumed by L1.13.b / L1.13.c / L1.10.c
-// (Facts Flow Forward / P2: one decision-tree-shape index, multiple
-// downstream lens projections). Until then this returns Unrealized for
-// every input — scaffold proves the carrier shape without fabricating a
-// verdict.
+// bind: node://adhoc-086ab97b-b41 (this PR's substrate-evolution 5/5
+// work-item; this scaffold lands the L1.13.c carrier so downstream
+// `decision_tree_shape` work has a typed consumer to bind into).
+// → dissolution successor: substrate-extension follow-up landing
+// `v4.lens.decision_tree_shape` (the per-branch resolved-identity +
+// body-shape record consumed by L1.13.b / L1.13.c / L1.10.c — Facts
+// Flow Forward / P2: one decision-tree-shape index, multiple
+// downstream lens projections). Flips 🟢 when that producer-stage
+// module lands and `table_decision_tree_fact_for_fn` body switches
+// from the `Unrealized` constant to a real `decision_tree_shape`
+// projection. Until then this returns Unrealized for every input —
+// scaffold proves the carrier shape without fabricating a verdict.
 fn table_decision_tree_fact_for_fn(fn_node: Node) -> TableDecisionTreeFact {
   TableDecisionTreeFact {
     fn_locus: fn_node,
