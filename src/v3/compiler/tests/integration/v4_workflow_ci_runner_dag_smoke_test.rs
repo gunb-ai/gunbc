@@ -113,16 +113,14 @@ fn v4_workflow_ci_runner_module_authority_and_entrypoints() {
         import_includes_name(
             &module,
             &["v4", "std", "verification"],
-            "test_claim_evaluation_nodes"
+            "test_claim_evaluation_touches_rerun_frontier"
         ),
-        "{CI_RUNNER_PATH}: must import test_claim_evaluation_nodes from verification"
+        "{CI_RUNNER_PATH}: must import subtree-aware frontier membership from verification"
     );
-    for name in ["filter", "any", "contains"] {
-        assert!(
-            import_includes_name(&module, &["v4", "std", "algebra"], name),
-            "{CI_RUNNER_PATH}: must import {name} from std.algebra"
-        );
-    }
+    assert!(
+        import_includes_name(&module, &["v4", "std", "algebra"], "filter"),
+        "{CI_RUNNER_PATH}: must import filter from std.algebra"
+    );
 }
 
 #[test]

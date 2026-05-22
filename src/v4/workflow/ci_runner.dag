@@ -12,21 +12,16 @@ import v4.lens.affected_set {
   RerunNodeSetProduced,
   affected_set_rerun_nodes
 }
-import v4.std.algebra { any, contains, filter }
+import v4.std.algebra { filter }
 import v4.std.change { AffectedSet }
 import v4.std.collection { List }
 import v4.std.logic { Bool }
 import v4.std.node { Node }
-import v4.std.verification { TestClaim, test_claim_evaluation_nodes }
+import v4.std.verification { TestClaim, test_claim_evaluation_touches_rerun_frontier }
 
 
 fn test_claim_in_rerun_frontier(claim: TestClaim, frontier: List<Node>) -> Bool {
-  any(
-    xs: test_claim_evaluation_nodes(c: claim),
-    predicate: fn(n) {
-      contains(xs: frontier, item: n, eq: fn(left, right) { left == right })
-    }
-  )
+  test_claim_evaluation_touches_rerun_frontier(c: claim, frontier: frontier)
 }
 
 

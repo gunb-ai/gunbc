@@ -7,9 +7,9 @@
 module v4.std.verification
 
 
-import v4.std.algebra { Empty }
+import v4.std.algebra { Empty, any }
 import v4.std.collection { List, list_snoc_item }
-import v4.std.node { Node, Symbol }
+import v4.std.node { Node, NodeFold, Symbol, fold_node }
 import v4.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -158,6 +158,43 @@ fn test_claim_evaluation_nodes(c: TestClaim) -> List<Node> {
     RoundTripClaim { input: n, label: _, t19_anchor: _, classification: _ } =>
       list_snoc_item(xs: Empty, item: n)
   }
+}
+
+
+fn node_contains_descendant(root: Node, needle: Node) -> Bool {
+  if root == needle {
+    true
+  } else {
+    fold_node(
+      n: root,
+      algebra: NodeFold {
+        init: fn(_) { false },
+        step: fn(found, edge, sub) {
+          found || sub || node_contains_descendant(root: edge.target, needle: needle)
+        }
+      }
+    )
+  }
+}
+
+
+// True when a rerun-frontier node equals or structurally overlaps an evaluation root (P2 fail-closed).
+fn test_claim_evaluation_node_touches_frontier(n: Node, frontier: List<Node>) -> Bool {
+  any(
+    xs: frontier,
+    predicate: fn(f) {
+      node_contains_descendant(root: n, needle: f)
+        || node_contains_descendant(root: f, needle: n)
+    }
+  )
+}
+
+
+fn test_claim_evaluation_touches_rerun_frontier(c: TestClaim, frontier: List<Node>) -> Bool {
+  any(
+    xs: test_claim_evaluation_nodes(c: c),
+    predicate: fn(n) { test_claim_evaluation_node_touches_frontier(n: n, frontier: frontier) }
+  )
 }
 
 fn test_claim_t19_anchor(c: TestClaim) -> T19ManualAnchorKey {
