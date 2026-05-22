@@ -544,7 +544,7 @@ fn cpp_primitive_fact_map_5(
   axis3: Symbol,
   fact3: Node,
   axis4: Symbol,
-  fact4: Node,
+  fact4: Node
 ) -> Map<Symbol, Node> {
   map_insert(
     map_insert(
@@ -573,7 +573,7 @@ fn cpp_primitive_fact_map_4(
   axis2: Symbol,
   fact2: Node,
   axis3: Symbol,
-  fact3: Node,
+  fact3: Node
 ) -> Map<Symbol, Node> {
   map_insert(
     map_insert(
@@ -594,7 +594,7 @@ fn cpp_primitive_fact_map_2(
   axis0: Symbol,
   fact0: Node,
   axis1: Symbol,
-  fact1: Node,
+  fact1: Node
 ) -> Map<Symbol, Node> {
   map_insert(
     map_insert(empty_map(), axis0, fact0),

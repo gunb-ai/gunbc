@@ -312,7 +312,7 @@ fn python_primitive_fact_map_2(
   axis0: Symbol,
   fact0: Node,
   axis1: Symbol,
-  fact1: Node,
+  fact1: Node
 ) -> Map<Symbol, Node> {
   map_insert(
     map_insert(empty_map(), axis0, fact0),
