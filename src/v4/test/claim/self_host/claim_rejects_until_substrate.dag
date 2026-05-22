@@ -14,7 +14,8 @@ import v4.std.diagnostic {
   diagnostics_singleton
 }
 import v4.std.node { Atom, Node, Symbol, TypeNode }
-import v4.std.verification {T19ManualAnchorAbsent,
+import v4.std.verification {
+  T19ManualAnchorAbsent,
   TestClaim,
   TestClassification,
   Tier1,
@@ -22,7 +23,9 @@ import v4.std.verification {T19ManualAnchorAbsent,
   CompilesClaim,
   DiagnosticClaim,
   EqualsClaim,
-  RoundTripClaim}
+  RoundTripClaim,
+  t19_manual_claim_anchor
+}
 
 
 data rejects_until_substrate_subject_symbol: Symbol = rejects_until_substrate_subject_symbol
