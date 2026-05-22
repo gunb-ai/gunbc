@@ -35,7 +35,7 @@ type PrimitiveFactBundle {
 }
 
 
-data primitive_fact_axis_unbound_reason: Symbol = primitive_fact_axis_unbound
+data primitive_fact_axis_unbound_reason: Symbol = primitive_fact_axis_unbound_reason
 
 
 fn primitive_fact_axis_unbound_diagnostic(axis: Symbol) -> Diagnostic {
