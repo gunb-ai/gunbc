@@ -31,12 +31,11 @@ import v4.compiler.tokenize {
   SequencePattern,
   TokenRule
 }
-import v4.std.collection { List, Set, list_append, list_snoc_item }
+import v4.std.collection { List, Set, list_append, list_snoc_item, Map }
 import v4.std.model_core {
   EffectSemanticsDecl,
   ModelCore,
   PartialitySemanticsDecl,
-  PrimitiveFactAxisBinding,
   PrimitiveFactBundle,
   primitive_fact_axis_encoding,
   primitive_fact_axis_overflow_disposition,
@@ -995,51 +994,73 @@ fn java_language_model_canonical_symbols() -> Set<Symbol> {
   }
 }
 
-fn java_primitive_axis_binding(axis: Symbol, fact: Node) -> PrimitiveFactAxisBinding {
-  PrimitiveFactAxisBinding { axis: axis, fact: fact }
+fn java_primitive_axis_binding(axis: Symbol, fact: Node) -> Map<Symbol, Node> {
+  map_insert(empty_map(), axis, fact)
 }
 
 fn java_primitive_bundle_from_integer_facts(facts: JavaIntegerPrimitiveFacts) -> PrimitiveFactBundle {
   PrimitiveFactBundle {
     substrate_carrier: java_integer_facts_node(facts: facts),
-    spec_facts: [
-      java_primitive_axis_binding(
+    spec_facts: map_insert(
+
+        map_insert(
+
+        map_insert(
+
+        java_primitive_axis_binding(
+
         axis: primitive_fact_axis_surface_spelling,
+
         fact: java_inhabitant_atom(id: facts.surface_spelling)
+
       ),
-      java_primitive_axis_binding(
-        axis: primitive_fact_axis_width,
-        fact: java_int_width_node(width: facts.width)
+
+        primitive_fact_axis_width,
+
+        java_int_width_node(width: facts.width)
+
       ),
-      java_primitive_axis_binding(
-        axis: primitive_fact_axis_signedness,
-        fact: java_int_kind_node(kind: facts.signedness)
+
+        primitive_fact_axis_signedness,
+
+        java_int_kind_node(kind: facts.signedness)
+
       ),
-      java_primitive_axis_binding(
-        axis: primitive_fact_axis_encoding,
-        fact: java_integer_encoding_fact(facts: facts)
+
+        primitive_fact_axis_encoding,
+
+        java_integer_encoding_fact(facts: facts)
+
       )
-    ]
   }
 }
 
 fn java_primitive_bundle_from_float_facts(facts: JavaFloatPrimitiveFacts) -> PrimitiveFactBundle {
   PrimitiveFactBundle {
     substrate_carrier: java_float_facts_node(facts: facts),
-    spec_facts: [
-      java_primitive_axis_binding(
+    spec_facts: map_insert(
+
+        map_insert(
+
+        java_primitive_axis_binding(
+
         axis: primitive_fact_axis_surface_spelling,
+
         fact: java_inhabitant_atom(id: facts.surface_spelling)
+
       ),
-      java_primitive_axis_binding(
-        axis: primitive_fact_axis_width,
-        fact: java_float_width_node(width: facts.width)
+
+        primitive_fact_axis_width,
+
+        java_float_width_node(width: facts.width)
+
       ),
-      java_primitive_axis_binding(
-        axis: primitive_fact_axis_encoding,
-        fact: java_inhabitant_atom(id: facts.ieee754_binary)
+
+        primitive_fact_axis_encoding,
+
+        java_inhabitant_atom(id: facts.ieee754_binary)
+
       )
-    ]
   }
 }
 
@@ -1048,16 +1069,21 @@ fn java_primitive_bundle_from_noninteger_facts(
 ) -> PrimitiveFactBundle {
   PrimitiveFactBundle {
     substrate_carrier: java_noninteger_facts_node(facts: facts),
-    spec_facts: [
-      java_primitive_axis_binding(
+    spec_facts: map_insert(
+
+        java_primitive_axis_binding(
+
         axis: primitive_fact_axis_surface_spelling,
+
         fact: java_inhabitant_atom(id: facts.surface_spelling)
+
       ),
-      java_primitive_axis_binding(
-        axis: primitive_fact_axis_encoding,
-        fact: java_inhabitant_atom(id: facts.representation)
+
+        primitive_fact_axis_encoding,
+
+        java_inhabitant_atom(id: facts.representation)
+
       )
-    ]
   }
 }
 

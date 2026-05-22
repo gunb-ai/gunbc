@@ -9,12 +9,11 @@ module v4.extdeps.languages.wasm
 
 import v4.compiler.parse { Grammar, ModeledGrammar, VoidGrammar }
 import v4.compiler.tokenize { LexRules, ModeledLexRules, VoidLexRules }
-import v4.std.collection { List, Set }
+import v4.std.collection { List, Set, Map }
 import v4.std.model_core {
   EffectSemanticsDecl,
   ModelCore,
   PartialitySemanticsDecl,
-  PrimitiveFactAxisBinding,
   PrimitiveFactBundle,
   primitive_fact_axis_encoding,
   primitive_fact_axis_overflow_disposition,
@@ -374,55 +373,81 @@ fn wasm_language_model_canonical_symbols() -> Set<Symbol> {
   }
 }
 
-fn wasm_primitive_axis_binding(axis: Symbol, fact: Node) -> PrimitiveFactAxisBinding {
-  PrimitiveFactAxisBinding { axis: axis, fact: fact }
+fn wasm_primitive_axis_binding(axis: Symbol, fact: Node) -> Map<Symbol, Node> {
+  map_insert(empty_map(), axis, fact)
 }
 
 fn wasm_primitive_bundle_from_integer_facts(facts: WasmIntegerPrimitiveFacts) -> PrimitiveFactBundle {
   PrimitiveFactBundle {
     substrate_carrier: wasm_integer_facts_node(facts: facts),
-    spec_facts: [
-      wasm_primitive_axis_binding(
+    spec_facts: map_insert(
+
+        map_insert(
+
+        map_insert(
+
+        map_insert(
+
+        wasm_primitive_axis_binding(
+
         axis: primitive_fact_axis_surface_spelling,
+
         fact: wasm_inhabitant_atom(id: facts.surface_spelling)
+
       ),
-      wasm_primitive_axis_binding(
-        axis: primitive_fact_axis_width,
-        fact: wasm_int_width_node(width: facts.width)
+
+        primitive_fact_axis_width,
+
+        wasm_int_width_node(width: facts.width)
+
       ),
-      wasm_primitive_axis_binding(
-        axis: primitive_fact_axis_signedness,
-        fact: wasm_inhabitant_atom(id: wasm_tag_sign_agnostic_modular)
+
+        primitive_fact_axis_signedness,
+
+        wasm_inhabitant_atom(id: wasm_tag_sign_agnostic_modular)
+
       ),
-      wasm_primitive_axis_binding(
-        axis: primitive_fact_axis_encoding,
-        fact: wasm_inhabitant_atom(id: wasm_repr_sign_agnostic_modular)
+
+        primitive_fact_axis_encoding,
+
+        wasm_inhabitant_atom(id: wasm_repr_sign_agnostic_modular)
+
       ),
-      wasm_primitive_axis_binding(
-        axis: primitive_fact_axis_overflow_disposition,
-        fact: wasm_inhabitant_atom(id: wasm_tag_modular_wrap)
+
+        primitive_fact_axis_overflow_disposition,
+
+        wasm_inhabitant_atom(id: wasm_tag_modular_wrap)
+
       )
-    ]
   }
 }
 
 fn wasm_primitive_bundle_from_float_facts(facts: WasmFloatPrimitiveFacts) -> PrimitiveFactBundle {
   PrimitiveFactBundle {
     substrate_carrier: wasm_float_facts_node(facts: facts),
-    spec_facts: [
-      wasm_primitive_axis_binding(
+    spec_facts: map_insert(
+
+        map_insert(
+
+        wasm_primitive_axis_binding(
+
         axis: primitive_fact_axis_surface_spelling,
+
         fact: wasm_inhabitant_atom(id: facts.surface_spelling)
+
       ),
-      wasm_primitive_axis_binding(
-        axis: primitive_fact_axis_width,
-        fact: wasm_float_width_node(width: facts.width)
+
+        primitive_fact_axis_width,
+
+        wasm_float_width_node(width: facts.width)
+
       ),
-      wasm_primitive_axis_binding(
-        axis: primitive_fact_axis_encoding,
-        fact: wasm_inhabitant_atom(id: facts.ieee754_binary)
+
+        primitive_fact_axis_encoding,
+
+        wasm_inhabitant_atom(id: facts.ieee754_binary)
+
       )
-    ]
   }
 }
 

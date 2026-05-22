@@ -8,13 +8,12 @@ module v4.extdeps.languages.machine_code
 
 
 import v4.std.algebra { fold_list }
-import v4.std.collection { List }
+import v4.std.collection { List, Map }
 import v4.std.machine { Byte }
 import v4.std.model_core {
   EffectSemanticsDecl,
   ModelCore,
   PartialitySemanticsDecl,
-  PrimitiveFactAxisBinding,
   PrimitiveFactBundle,
   primitive_fact_axis_encoding,
   primitive_fact_axis_overflow_disposition,
@@ -482,35 +481,52 @@ fn mc_list_snoc_item<T>(xs: List<T>, item: T) -> List<T> {
   )
 }
 
-fn mc_primitive_axis_binding(axis: Symbol, fact: Node) -> PrimitiveFactAxisBinding {
-  PrimitiveFactAxisBinding { axis: axis, fact: fact }
+fn mc_primitive_axis_binding(axis: Symbol, fact: Node) -> Map<Symbol, Node> {
+  map_insert(empty_map(), axis, fact)
 }
 
 fn mc_primitive_bundle_from_integer_facts(facts: MachineIntegerPrimitiveFacts) -> PrimitiveFactBundle {
   PrimitiveFactBundle {
     substrate_carrier: mc_integer_facts_node(facts: facts),
-    spec_facts: [
-      mc_primitive_axis_binding(
+    spec_facts: map_insert(
+
+        map_insert(
+
+        map_insert(
+
+        map_insert(
+
+        mc_primitive_axis_binding(
+
         axis: primitive_fact_axis_surface_spelling,
+
         fact: mc_inhabitant_atom(id: facts.surface_spelling)
+
       ),
-      mc_primitive_axis_binding(
-        axis: primitive_fact_axis_width,
-        fact: mc_int_width_node(width: facts.width)
+
+        primitive_fact_axis_width,
+
+        mc_int_width_node(width: facts.width)
+
       ),
-      mc_primitive_axis_binding(
-        axis: primitive_fact_axis_signedness,
-        fact: mc_int_kind_node(kind: facts.kind)
+
+        primitive_fact_axis_signedness,
+
+        mc_int_kind_node(kind: facts.kind)
+
       ),
-      mc_primitive_axis_binding(
-        axis: primitive_fact_axis_encoding,
-        fact: mc_inhabitant_atom(id: mc_repr_twos_complement)
+
+        primitive_fact_axis_encoding,
+
+        mc_inhabitant_atom(id: mc_repr_twos_complement)
+
       ),
-      mc_primitive_axis_binding(
-        axis: primitive_fact_axis_overflow_disposition,
-        fact: mc_overflow_node(overflow: facts.overflow_release)
+
+        primitive_fact_axis_overflow_disposition,
+
+        mc_overflow_node(overflow: facts.overflow_release)
+
       )
-    ]
   }
 }
 
