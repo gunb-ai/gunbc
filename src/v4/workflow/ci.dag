@@ -53,6 +53,15 @@ type CiPipeline {
   gates: List<CiGate>
 }
 
+type LensCiLiveWorkflowSignal {
+  signal: Symbol
+  execution_job: Symbol
+  required_lenses: List<LensIdV0>
+  smoke_step_name: String
+  semantic_step_name: String
+  semantic_target: String
+}
+
 
 data v2_compile_src_v4: Symbol = v2_compile_src_v4
 data lens_ci_registry_execution: Symbol = lens_ci_registry_execution
@@ -67,6 +76,15 @@ data lens_ci_required_lenses: List<LensIdV0> = [
   Idempotency,
   UnusedParameters
 ]
+
+data lens_ci_live_workflow_signal: LensCiLiveWorkflowSignal = {
+  signal: lens_ci_registry_signal
+  execution_job: lens_ci_registry_execution
+  required_lenses: lens_ci_required_lenses
+  smoke_step_name: "Lens-CI registry activation smoke"
+  semantic_step_name: "Lens-CI registry semantic v4 compile (rust target)"
+  semantic_target: "rust"
+}
 
 data ci_pipeline: Outcome<CiPipeline> = ci_pipeline_well_formed(p: CiPipeline {
   jobs: [
