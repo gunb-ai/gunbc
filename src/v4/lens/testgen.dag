@@ -11,10 +11,22 @@ import v4.std.collection { List }
 import v4.std.diagnostic {
   Outcome,
   Diagnostic,
+  Locus,
+  NodeLocus,
+  PortLocus,
+  LocusAnchor,
+  Extent,
+  Correction,
+  Suggested,
   Unavailable,
+  NoCorrectionReason,
   UserInputBoundary,
+  AmbiguousIntent,
+  ExternalContractUnknown,
   Textual,
   WholeFile,
+  ByteRange,
+  NonEmptyDiagnostics,
   Accepted,
   Rejected,
   None,
@@ -22,6 +34,7 @@ import v4.std.diagnostic {
   diagnostics_singleton,
   rejected_with_pending
 }
+import v4.std.algebra { FreeMonoid, Empty, Cons }
 import v4.std.witness { StructuralPropertyWitness }
 import v4.std.find_witness { PreservationPredicate, verify_witness }
 import v4.std.nat {
@@ -453,7 +466,26 @@ data witness_validity_field_property: Symbol = witness_validity_field_property
 data witness_validity_field_evidence: Symbol = witness_validity_field_evidence
 data witness_validity_outcome_holds: Symbol = witness_validity_outcome_holds
 data witness_validity_outcome_violates: Symbol = witness_validity_outcome_violates
-data witness_validity_outcome_reason: Symbol = witness_validity_outcome_reason
+data witness_validity_diag_field_reason: Symbol = witness_validity_diag_field_reason
+data witness_validity_diag_field_at: Symbol = witness_validity_diag_field_at
+data witness_validity_diag_field_correction: Symbol = witness_validity_diag_field_correction
+data witness_validity_locus_tag_textual: Symbol = witness_validity_locus_tag_textual
+data witness_validity_locus_tag_node: Symbol = witness_validity_locus_tag_node
+data witness_validity_locus_tag_port: Symbol = witness_validity_locus_tag_port
+data witness_validity_locus_textual_file: Symbol = witness_validity_locus_textual_file
+data witness_validity_locus_textual_extent: Symbol = witness_validity_locus_textual_extent
+data witness_validity_extent_tag_whole_file: Symbol = witness_validity_extent_tag_whole_file
+data witness_validity_extent_tag_byte_range: Symbol = witness_validity_extent_tag_byte_range
+data witness_validity_correction_tag_suggested: Symbol = witness_validity_correction_tag_suggested
+data witness_validity_correction_tag_unavailable: Symbol = witness_validity_correction_tag_unavailable
+data witness_validity_no_correction_tag_user: Symbol = witness_validity_no_correction_tag_user
+data witness_validity_no_correction_tag_ambiguous: Symbol = witness_validity_no_correction_tag_ambiguous
+data witness_validity_no_correction_tag_external: Symbol = witness_validity_no_correction_tag_external
+data witness_validity_list_tag_empty: Symbol = witness_validity_list_tag_empty
+data witness_validity_list_cons_head: Symbol = witness_validity_list_cons_head
+data witness_validity_list_cons_tail: Symbol = witness_validity_list_cons_tail
+data witness_validity_diags_field_head: Symbol = witness_validity_diags_field_head
+data witness_validity_diags_field_tail: Symbol = witness_validity_diags_field_tail
 
 
 fn witness_validity_symbol_atom_node(s: Symbol) -> Node {
