@@ -251,6 +251,16 @@ def coproduct_tag_from_merge_base(rel: str) -> dict[str, tuple[str, str]]:
             "ConstantExpression",
         ):
             out[nm] = ("🟢", "CP-3229-VERILOG-CONSTEXPR-TERMINAL")
+    if rel.endswith("llvm_ir.dag"):
+        # Wave-1 fact-bundle coproducts (T-4 quiet-otter-381); absent at merge-base.
+        for nm, slug in (
+            ("LlvmWave1IntegerBits", "SL-3229-LLVM-WAVE1-INT-WIDTH"),
+            ("LlvmWave1FloatKind", "SL-3229-LLVM-WAVE1-FLOAT-KIND"),
+        ):
+            if nm == "LlvmWave1IntegerBits":
+                out.setdefault(nm, ("🟡", slug))
+            else:
+                out.setdefault(nm, ("🟢", slug))
     if rel == "src/v4/extdeps/languages/typescript.dag":
         # T-4 wave-1 catalog row tag (replaces merge-base TsEcma262NumericPrimitiveKind).
         out["TsEcma262NumericPrimitiveFactsUnion"] = ("🟢", "CP-3229-GREEN-TERMINAL")
@@ -309,7 +319,14 @@ def format_grounded_r1_slice_marker(marker: str) -> str:
     return stripped + "\n\n"
 
 
-def format_coproduct_tag(emoji: str, ref: str) -> str:
+def format_coproduct_tag(emoji: str, ref: str, type_name: str | None = None) -> str:
+    if type_name == "LlvmWave1IntegerBits":
+        return (
+            "// 🟡 coproduct dissolution — SL-3229-LLVM-WAVE1-INT-WIDTH — "
+            "feature:llvm-wave1-int-bits-subset — "
+            "dissolve-on-arrival: llvm_integer_facts_catalog aligns with "
+            "LlvmType.IntegerType.bits NonZeroNat carrier (wave-2 · T-4 quiet-otter-381)."
+        )
     return f"// {emoji} coproduct dissolution · {ref}."
 
 
@@ -366,7 +383,7 @@ def inject_coproduct_tags(body: str, rel: str, tag_map: dict[str, tuple[str, str
                 )
                 sys.exit(1)
             em, ref = tag_map[nm]
-            expected = format_coproduct_tag(em, ref)
+            expected = format_coproduct_tag(em, ref, type_name=nm)
             prev = bl[j - 1] if j > 0 else ""
             if COPRODUCT_TAG_RE.match(prev):
                 if prev != expected:
