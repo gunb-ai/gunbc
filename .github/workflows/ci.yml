@@ -53,6 +53,8 @@ jobs:
         components: rustfmt
         cache: false
         rustflags: ''
+    - name: Pin global rustup default (isolated RUSTUP_HOME has no default toolchain)
+      run: rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
     - name: cargo fmt --all --check
       run: cargo fmt --all --check
   # Affected-set detection — drives gating of v2/v3 jobs (frozen components
@@ -148,6 +150,8 @@ jobs:
         components: rustfmt
         cache: false
         rustflags: ''
+    - name: Pin global rustup default (isolated RUSTUP_HOME has no default toolchain)
+      run: rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
     - name: Cache Cargo (ci bootstrap gate)
       uses: actions/cache@v4
       with:
@@ -269,6 +273,8 @@ jobs:
       with:
         cache: false
         rustflags: ''
+    - name: Pin global rustup default (isolated RUSTUP_HOME has no default toolchain)
+      run: rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
     - name: Cache Cargo (v2)
       uses: actions/cache@v4
       with:
@@ -318,6 +324,8 @@ jobs:
         components: rustfmt, clippy
         cache: false
         rustflags: ''
+    - name: Pin global rustup default (isolated RUSTUP_HOME has no default toolchain)
+      run: rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
     - name: Setup Zig C toolchain
       uses: goto-bus-stop/setup-zig@v2
       with:
@@ -540,6 +548,9 @@ jobs:
       with:
         cache: false
         rustflags: ''
+    - name: Pin global rustup default (isolated RUSTUP_HOME has no default toolchain)
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      run: rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
     - name: Cache Cargo (self_host_ratchet)
       if: github.event_name == 'push' && github.ref == 'refs/heads/main'
       uses: actions/cache@v4

@@ -58,6 +58,16 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           continue_on_error: false,
           timeout_minutes: none
         }, RunStep {
+          name: Some { value: "Pin global rustup default (isolated RUSTUP_HOME has no default toolchain)" },
+          id: none,
+          run: "rustup default \"$(rustup show active-toolchain | awk '{print $1; exit}')\"",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }, RunStep {
           name: Some { value: "cargo fmt --all --check" },
           id: none,
           run: "cargo fmt --all --check",
@@ -310,6 +320,16 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           if_condition: none,
           continue_on_error: false,
           timeout_minutes: none
+        }, RunStep {
+          name: Some { value: "Pin global rustup default (isolated RUSTUP_HOME has no default toolchain)" },
+          id: none,
+          run: "rustup default \"$(rustup show active-toolchain | awk '{print $1; exit}')\"",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
         }, UsesStep {
           name: Some { value: "Cache Cargo (ci bootstrap gate)" },
           id: none,
@@ -489,6 +509,16 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           if_condition: none,
           continue_on_error: false,
           timeout_minutes: none
+        }, RunStep {
+          name: Some { value: "Pin global rustup default (isolated RUSTUP_HOME has no default toolchain)" },
+          id: none,
+          run: "rustup default \"$(rustup show active-toolchain | awk '{print $1; exit}')\"",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
         }, UsesStep {
           name: Some { value: "Cache Cargo (v2)" },
           id: none,
@@ -569,6 +599,16 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           uses: { owner: "actions-rust-lang", repo: "setup-rust-toolchain", ref: "v1.16.0" },
           with: { "components": "rustfmt, clippy", "cache": "false", "rustflags": "" },
           env: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }, RunStep {
+          name: Some { value: "Pin global rustup default (isolated RUSTUP_HOME has no default toolchain)" },
+          id: none,
+          run: "rustup default \"$(rustup show active-toolchain | awk '{print $1; exit}')\"",
+          shell: Bash,
+          env: none,
+          working_directory: none,
           if_condition: none,
           continue_on_error: false,
           timeout_minutes: none
@@ -846,6 +886,16 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           uses: { owner: "actions-rust-lang", repo: "setup-rust-toolchain", ref: "v1.16.0" },
           with: { "cache": "false", "rustflags": "" },
           env: none,
+          if_condition: Some { value: "github.event_name == 'push' && github.ref == 'refs/heads/main'" },
+          continue_on_error: false,
+          timeout_minutes: none
+        }, RunStep {
+          name: Some { value: "Pin global rustup default (isolated RUSTUP_HOME has no default toolchain)" },
+          id: none,
+          run: "rustup default \"$(rustup show active-toolchain | awk '{print $1; exit}')\"",
+          shell: Bash,
+          env: none,
+          working_directory: none,
           if_condition: Some { value: "github.event_name == 'push' && github.ref == 'refs/heads/main'" },
           continue_on_error: false,
           timeout_minutes: none

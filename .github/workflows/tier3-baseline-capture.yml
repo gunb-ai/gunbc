@@ -55,6 +55,9 @@ jobs:
           cache: true
           rustflags: ""
 
+      - name: Pin global rustup default (isolated RUSTUP_HOME has no default toolchain)
+        run: rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
+
       - name: Run tier3 mirror benchmarks
         run: cargo bench --bench tier3_mirror_perf -p v3-compiler
 
