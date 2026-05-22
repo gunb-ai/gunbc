@@ -386,12 +386,8 @@ fn anchor_infer_add_mvp() -> Outcome<InferredTree> {
 fn infer_descent_witness_contract_node(n: Node) -> Outcome<Node> {
   match infer_descent_witness_for_node(n: n) {
     Holds { value: _ } => Accepted { value: n, diagnostics: None }
-    Violates { diagnostic: _ } =>
-      Rejected {
-        diagnostics: diagnostics_singleton(
-          d: infer_descent_not_derived_diagnostic(at: node_locus(node: n))
-        )
-      }
+    Violates { diagnostic: d } =>
+      Rejected { diagnostics: diagnostics_singleton(d: d) }
   }
 }
 
