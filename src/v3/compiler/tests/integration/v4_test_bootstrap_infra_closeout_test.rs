@@ -289,8 +289,8 @@ fn t19_claim_corpus_has_no_direct_manual_anchor_assignments() {
 
     let mut offenders = Vec::new();
     for path in dag_files {
-        let source = fs::read_to_string(&path)
-            .unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+        let source =
+            fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
         for (idx, line) in source.lines().enumerate() {
             let trimmed = line.trim();
             if trimmed.starts_with("t19_anchor: T19Manual") {
