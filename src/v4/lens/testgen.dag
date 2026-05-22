@@ -8,7 +8,7 @@ module v4.lens.testgen
 
 
 import v4.std.collection { List, non_empty }
-import v4.std.algebra { fold_list }
+import v4.std.algebra { fold_list, fold_list_right }
 import v4.std.diagnostic {
   Outcome,
   Diagnostic,
@@ -413,24 +413,25 @@ data refinement_preservation_list_head_edge: Symbol = refinement_preservation_li
 data refinement_preservation_list_tail_edge: Symbol = refinement_preservation_list_tail_edge
 
 fn refinement_preservation_list_node(xs: List<Node>) -> Node {
-  match xs {
-    Empty =>
-      Node {
-        kind: TypeNode { connective: Atom { identity: refinement_preservation_list_empty_node } },
-        children: []
-      }
-    Cons { head: h, tail: t } =>
+  fold_list_right(
+    xs: xs,
+    empty: Node {
+      kind: TypeNode { connective: Atom { identity: refinement_preservation_list_empty_node } },
+      children: []
+    },
+    snoc: fn(tail_node, h) {
       Node {
         kind: TypeNode { connective: Atom { identity: refinement_preservation_list_cons_node } },
         children: [
           Edge { label: Named { name: refinement_preservation_list_head_edge }, target: h },
           Edge {
             label: Named { name: refinement_preservation_list_tail_edge },
-            target: refinement_preservation_list_node(xs: t)
+            target: tail_node
           }
         ]
       }
-  }
+    }
+  )
 }
 
 
