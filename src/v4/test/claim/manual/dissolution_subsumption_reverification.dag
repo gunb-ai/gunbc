@@ -105,11 +105,13 @@ data mechanical_reverification_not_verified: Symbol = mechanical_reverification_
 data mechanical_reverification_unverifiable: Symbol = mechanical_reverification_unverifiable
 
 
+// 🟡 coproduct dissolution — manual Lens-CI report mirror; dissolve-on:.dag runner owns report authority rows for MechanicalReverification.
 type MechanicalReverificationReportAuthority
   = LensCiTestClaimRunner
   | ReportAuthorityUnavailable
 
 
+// 🟡 coproduct dissolution — manual Lens-CI report mirror; dissolve-on:.dag runner emits TestClaim execution status for MechanicalReverification rows.
 type MechanicalReverificationExecution
   = Completed { report_authority: MechanicalReverificationReportAuthority }
   | Failed
@@ -126,6 +128,7 @@ type MechanicalReverificationRun {
 }
 
 
+// 🟡 coproduct dissolution — manual Lens-CI report mirror; dissolve-on:.dag runner emits typed MechanicalReverification diagnostics.
 type MechanicalReverificationError
   = NonMechanicalRow
   | TestClaimMismatch { expected: TestClaimId, observed: TestClaimId }
@@ -135,12 +138,14 @@ type MechanicalReverificationError
   | SubsumedFixStillPresentAfter { fix: DiffId }
 
 
+// 🟡 coproduct dissolution — manual Lens-CI report mirror; dissolve-on:.dag runner emits Verified/NotVerified/Unverifiable substrate data.
 type MechanicalReverificationVerdict
   = Verified
   | NotVerified { diagnostic: MechanicalReverificationError }
   | Unverifiable { diagnostic: MechanicalReverificationError }
 
 
+// 🟡 coproduct dissolution — local current-SubsumedFixes matcher; dissolve-on:#3496 Set<DiffId> reshape removes positional optional matching.
 type OptionalDiffId
   = DiffIdAbsent
   | DiffIdPresent { value: DiffId }
@@ -318,19 +323,6 @@ fn mechanical_reverification_verdict_node(v: MechanicalReverificationVerdict) ->
 }
 
 
-fn rust_language_model_emit_reverification_run(
-  claim_run: TestClaimRun<Node, RuntimeValue>
-) -> MechanicalReverificationRun {
-  MechanicalReverificationRun {
-    test_claim: TestClaimId { id: rust_language_model_emit_mechanical_reverification_claim },
-    applied_root_fix: DiffId { id: rust_language_model_emit_root_fix },
-    execution: mechanical_reverification_execution_for_run(run: claim_run),
-    findings_before: rust_language_model_emit_subsumption.subsumed_fixes,
-    findings_after: []
-  }
-}
-
-
 fn subsumption_runtime_unit(node: Node) -> RuntimeValue {
   RuntimeUnit {
     value: RuntimeUnitValue { unit_type: node }
@@ -488,11 +480,31 @@ data run_rust_language_model_emit_mechanical_reverification_claim: TestClaimRun<
 )
 
 
+data rust_language_model_emit_observed_before: SubsumedFixes = SubsumedFixes {
+  first: DiffId { id: emit_rust_template_leaf_fix },
+  rest: [
+    DiffId { id: emit_rust_name_dispatch_leaf_fix }
+  ]
+}
+
+
+data rust_language_model_emit_observed_after: List<DiffId> = []
+
+
+data rust_language_model_emit_lens_ci_report: MechanicalReverificationRun = MechanicalReverificationRun {
+  test_claim: TestClaimId { id: rust_language_model_emit_mechanical_reverification_claim },
+  applied_root_fix: DiffId { id: rust_language_model_emit_root_fix },
+  execution: mechanical_reverification_execution_for_run(
+    run: run_rust_language_model_emit_mechanical_reverification_claim
+  ),
+  findings_before: rust_language_model_emit_observed_before,
+  findings_after: rust_language_model_emit_observed_after
+}
+
+
 data verdict_rust_language_model_emit_subsumption: MechanicalReverificationVerdict = mechanical_reverification_verdict(
   row: rust_language_model_emit_subsumption,
-  run: rust_language_model_emit_reverification_run(
-    claim_run: run_rust_language_model_emit_mechanical_reverification_claim
-  )
+  run: rust_language_model_emit_lens_ci_report
 )
 
 
