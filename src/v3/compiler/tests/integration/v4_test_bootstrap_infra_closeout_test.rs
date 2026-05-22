@@ -37,6 +37,12 @@ const EVAL_DAG: &str = include_str!("../../../../v4/compiler/05_eval.dag");
 const LBE_GENERATED_DAG: &str =
     include_str!("../../../../v4/test/claim/generated/language_behavior_equivalence.dag");
 const LBE_GENERATED_PATH: &str = "src/v4/test/claim/generated/language_behavior_equivalence.dag";
+const ALGEBRA_LAW_GENERATED_DAG: &str =
+    include_str!("../../../../v4/test/claim/generated/algebra_law_conformance.dag");
+const ALGEBRA_LAW_GENERATED_PATH: &str = "src/v4/test/claim/generated/algebra_law_conformance.dag";
+const TESTGEN_WISHLIST_DAG: &str =
+    include_str!("../../../../v4/test/claim/generated/testgen_category_wishlist.dag");
+const TESTGEN_WISHLIST_PATH: &str = "src/v4/test/claim/generated/testgen_category_wishlist.dag";
 const COPRODUCT_EXHAUSTIVENESS_GENERATED_DAG: &str =
     include_str!("../../../../v4/test/claim/generated/coproduct_exhaustiveness.dag");
 const COPRODUCT_EXHAUSTIVENESS_GENERATED_PATH: &str =
@@ -54,6 +60,102 @@ const EFFECTS_PATH: &str = "src/v4/std/effects.dag";
 #[test]
 fn language_behavior_equivalence_generated_claims_parse() {
     parse_module(LBE_GENERATED_DAG, LBE_GENERATED_PATH);
+}
+
+#[test]
+fn t19_algebra_law_generated_claims_parse_and_use_testgen_emit() {
+    parse_module(ALGEBRA_LAW_GENERATED_DAG, ALGEBRA_LAW_GENERATED_PATH);
+
+    assert!(
+        TESTGEN_DAG.contains("fn testgen_emit_algebra_law_claim")
+            && TESTGEN_DAG.contains("if lhs == rhs")
+            && TESTGEN_DAG.contains("t19_algebra_law_tautological_sides")
+            && TESTGEN_DAG.contains("Rejected {")
+            && TESTGEN_DAG.contains("value: EqualsClaim {"),
+        "testgen must reject tautological algebra-law sides before emitting an EqualsClaim"
+    );
+    assert!(
+        ALGEBRA_LAW_GENERATED_DAG.contains("testgen_emit_algebra_law_claim")
+            && ALGEBRA_LAW_GENERATED_DAG.contains("generated_nat_add_left_identity_claim")
+            && ALGEBRA_LAW_GENERATED_DAG.contains("generated_nat_add_associativity_claim")
+            && ALGEBRA_LAW_GENERATED_DAG.contains("generated_nat_mul_annihilator_claim")
+            && ALGEBRA_LAW_GENERATED_DAG
+                .contains("length(xs: generated_algebra_law_claim_rows()) == 3"),
+        "algebra-law generator slice must produce at least three sample TestClaim rows"
+    );
+    assert!(
+        ALGEBRA_LAW_GENERATED_DAG.contains("fn t19_generated_nat_add")
+            && ALGEBRA_LAW_GENERATED_DAG.contains("fn t19_generated_nat_mul")
+            && ALGEBRA_LAW_GENERATED_DAG
+                .contains("lhs: t19_generated_nat_add(left: t19_generated_nat_zero(), right: t19_generated_nat_one())")
+            && ALGEBRA_LAW_GENERATED_DAG.contains("rhs: t19_generated_nat_one()")
+            && ALGEBRA_LAW_GENERATED_DAG
+                .contains("lhs: t19_generated_nat_mul(left: t19_generated_nat_zero(), right: t19_generated_nat_three())")
+            && ALGEBRA_LAW_GENERATED_DAG.contains("rhs: t19_generated_nat_zero()"),
+        "algebra-law samples must assert concrete Nat expression equalities, not wrapper-vs-wrapper non-identity"
+    );
+}
+
+#[test]
+fn t19_non_tautological_generator_wishlist_parse_and_pins_dispatch_rows() {
+    parse_module(TESTGEN_WISHLIST_DAG, TESTGEN_WISHLIST_PATH);
+
+    assert!(
+        TESTGEN_WISHLIST_DAG.contains("type TestgenOracleBasis")
+            && TESTGEN_WISHLIST_DAG
+                .contains("feature:T19-GENERATOR-ORACLE-BASIS; bind node://adhoc-6c12ca47-7ee")
+            && TESTGEN_WISHLIST_DAG.contains("StructuralConstructionWitness")
+            && TESTGEN_WISHLIST_DAG.contains("AlgebraLawWitness")
+            && TESTGEN_WISHLIST_DAG.contains("DiagnosticNegativeFixture")
+            && TESTGEN_WISHLIST_DAG.contains("LensObservationFixture")
+            && TESTGEN_WISHLIST_DAG.contains("RoundTripDifferential")
+            && TESTGEN_WISHLIST_DAG.contains("FrozenIoSnapshot")
+            && TESTGEN_WISHLIST_DAG.contains("dispatch_key: Symbol"),
+        "T-19 wishlist rows must name an independent oracle basis plus a dispatch key"
+    );
+
+    let pending = between(
+        TESTGEN_WISHLIST_DAG,
+        "fn testgen_pending_non_tautological_generator_wishlist",
+        "fn testgen_dispatched_non_tautological_generators",
+    );
+    assert_eq!(
+        pending.matches("TestgenWishlistRow {").count(),
+        5,
+        "wishlist must dispatch the five pending non-LBE TestgenConcept categories"
+    );
+    for generator in [
+        "generator: wishlist_type_construction_generator()",
+        "generator: wishlist_algebra_law_generator()",
+        "generator: wishlist_diagnostic_exhaustiveness_generator()",
+        "generator: wishlist_lens_applicability_generator()",
+        "generator: wishlist_bidirectional_roundtrip_generator()",
+    ] {
+        assert!(
+            pending.contains(generator),
+            "pending wishlist must include {generator}"
+        );
+    }
+    assert!(
+        !pending.contains("slot: LanguageBehaviorEquivalence"),
+        "LBE has already shipped generated runner receipts and must stay out of pending wishlist rows"
+    );
+
+    let dispatched = between(
+        TESTGEN_WISHLIST_DAG,
+        "fn testgen_dispatched_non_tautological_generators",
+        "fn pending_non_tautological_generator_count_is_five",
+    );
+    assert_eq!(
+        dispatched.matches("TestgenWishlistRow {").count(),
+        1,
+        "wishlist must record the one already-dispatched LBE generator row"
+    );
+    assert!(
+        dispatched.contains("generator: dispatched_language_behavior_equivalence_generator()")
+            && dispatched.contains("oracle: FrozenIoSnapshot"),
+        "dispatched row must keep LBE tied to the frozen I/O snapshot oracle"
+    );
 }
 
 #[test]
