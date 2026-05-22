@@ -9,12 +9,11 @@ module v4.extdeps.languages.wasm
 
 import v4.compiler.parse { Grammar, ModeledGrammar, VoidGrammar }
 import v4.compiler.tokenize { LexRules, ModeledLexRules, VoidLexRules }
-import v4.std.collection { List, Set }
+import v4.std.collection { List, Map, Set, empty_map, map_insert }
 import v4.std.model_core {
   EffectSemanticsDecl,
   ModelCore,
   PartialitySemanticsDecl,
-  PrimitiveFactAxisBinding,
   PrimitiveFactBundle,
   primitive_fact_axis_encoding,
   primitive_fact_axis_overflow_disposition,
@@ -374,8 +373,30 @@ fn wasm_language_model_canonical_symbols() -> Set<Symbol> {
   }
 }
 
-fn wasm_primitive_axis_binding(axis: Symbol, fact: Node) -> PrimitiveFactAxisBinding {
-  PrimitiveFactAxisBinding { axis: axis, fact: fact }
+fn wasm_primitive_fact_map_5(
+  axis0: Symbol,
+  fact0: Node,
+  axis1: Symbol,
+  fact1: Node,
+  axis2: Symbol,
+  fact2: Node,
+  axis3: Symbol,
+  fact3: Node,
+  axis4: Symbol,
+  fact4: Node
+) -> Map<Symbol, Node> {
+  map_insert(map_insert(map_insert(map_insert(map_insert(empty_map(), axis0, fact0), axis1, fact1), axis2, fact2), axis3, fact3), axis4, fact4)
+}
+
+fn wasm_primitive_fact_map_3(
+  axis0: Symbol,
+  fact0: Node,
+  axis1: Symbol,
+  fact1: Node,
+  axis2: Symbol,
+  fact2: Node
+) -> Map<Symbol, Node> {
+  map_insert(map_insert(map_insert(empty_map(), axis0, fact0), axis1, fact1), axis2, fact2)
 }
 
 fn wasm_primitive_bundle_from_integer_facts(facts: WasmIntegerPrimitiveFacts) -> PrimitiveFactBundle {
