@@ -35,10 +35,47 @@ const EVAL_DAG: &str = include_str!("../../../../v4/compiler/05_eval.dag");
 const LBE_GENERATED_DAG: &str =
     include_str!("../../../../v4/test/claim/generated/language_behavior_equivalence.dag");
 const LBE_GENERATED_PATH: &str = "src/v4/test/claim/generated/language_behavior_equivalence.dag";
+const IDEMPOTENT_OPERATION_GENERATED_DAG: &str =
+    include_str!("../../../../v4/test/claim/generated/idempotent_operation_conformance.dag");
+const IDEMPOTENT_OPERATION_GENERATED_PATH: &str =
+    "src/v4/test/claim/generated/idempotent_operation_conformance.dag";
 
 #[test]
 fn t19_language_behavior_equivalence_generated_claims_parse() {
     parse_module(LBE_GENERATED_DAG, LBE_GENERATED_PATH);
+}
+
+#[test]
+fn t19_idempotent_operation_generated_claims_parse_and_pin_emission() {
+    parse_module(
+        IDEMPOTENT_OPERATION_GENERATED_DAG,
+        IDEMPOTENT_OPERATION_GENERATED_PATH,
+    );
+    assert!(
+        IDEMPOTENT_OPERATION_GENERATED_DAG.contains("testgen_emit_idempotent_operation_claim")
+            && IDEMPOTENT_OPERATION_GENERATED_DAG.contains("generated_read_idempotent_operation_claim")
+            && IDEMPOTENT_OPERATION_GENERATED_DAG.contains("generated_upsert_idempotent_operation_claim")
+            && IDEMPOTENT_OPERATION_GENERATED_DAG.contains("generated_delete_idempotent_operation_claim")
+            && IDEMPOTENT_OPERATION_GENERATED_DAG.contains(
+                "generated_idempotent_operation_sample_count_is_three"
+            ),
+        "idempotent-operation generator slice must produce at least three sample TestClaim rows"
+    );
+    assert!(
+        IDEMPOTENT_OPERATION_GENERATED_DAG.contains("generated_idempotent_operation_skip_is_rejected")
+            && IDEMPOTENT_OPERATION_GENERATED_DAG.contains("LabelOnlyIdempotentInhabitance")
+            && TESTGEN_DAG.contains("idempotent_operation_apply_twice")
+            && TESTGEN_DAG.contains("idempotent_operation_apply_once"),
+        "idempotent-operation samples must keep double-application lhs and single-application rhs in testgen emission, with an explicit label-only skip path in the generated corpus"
+    );
+    assert!(
+        TESTGEN_DAG.contains("fn testgen_emit_idempotent_operation_claim")
+            && TESTGEN_DAG.contains("type IdempotentOperationSubject")
+            && TESTGEN_DAG.contains("ComposableIdempotentOperation")
+            && TESTGEN_DAG.contains("LabelOnlyIdempotentInhabitance")
+            && TESTGEN_DAG.contains("fn testgen_scheduled_idempotent_operation_subjects"),
+        "testgen lens must emit idempotent-operation claims with composable-body vs label-only subjects"
+    );
 }
 
 #[test]

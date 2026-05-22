@@ -18,6 +18,9 @@ ROOT = Path(__file__).resolve().parents[1]
 TESTGEN = ROOT / "src/v4/lens/testgen.dag"
 LBE_GENERATED = ROOT / "src/v4/test/claim/generated/language_behavior_equivalence.dag"
 LBE_MANIFEST = ROOT / "src/v4/test/claim/generated/lbe_anchor_manifest.dag"
+IDEMPOTENT_OPERATION_GENERATED = (
+    ROOT / "src/v4/test/claim/generated/idempotent_operation_conformance.dag"
+)
 VERIFICATION = ROOT / "src/v4/std/verification.dag"
 
 
@@ -37,7 +40,13 @@ def _require_substrings(label: str, text: str, needles: tuple[str, ...]) -> None
 
 
 def main() -> None:
-    for path in (TESTGEN, LBE_GENERATED, LBE_MANIFEST, VERIFICATION):
+    for path in (
+        TESTGEN,
+        LBE_GENERATED,
+        LBE_MANIFEST,
+        IDEMPOTENT_OPERATION_GENERATED,
+        VERIFICATION,
+    ):
         _require(path)
 
     testgen = _read(TESTGEN)
@@ -54,7 +63,14 @@ def main() -> None:
             "type FrozenLanguageBehaviorSnapshot",
             "type LanguageBehaviorIoMock",
             "fn testgen_emit_language_behavior_equivalence_claim",
+            "fn testgen_emit_idempotent_operation_claim",
             "fn testgen_scheduled_language_behavior_generators",
+            "fn testgen_scheduled_idempotent_operation_subjects",
+            "type IdempotentOperationSubject",
+            "ComposableIdempotentOperation",
+            "LabelOnlyIdempotentInhabitance",
+            "idempotent_operation_apply_twice",
+            "idempotent_operation_apply_once",
             "t19_lbe_label_conj_dag_surface",
             "T19ManualLbeConjDagSurface",
             "T19ManualLbeDisjDagSurface",
@@ -105,10 +121,34 @@ def main() -> None:
         ),
     )
 
+    idempotent = _read(IDEMPOTENT_OPERATION_GENERATED)
+    _require_substrings(
+        "idempotent_operation_conformance.dag",
+        idempotent,
+        (
+            "testgen_emit_idempotent_operation_claim",
+            "generated_read_idempotent_operation_claim",
+            "generated_upsert_idempotent_operation_claim",
+            "generated_delete_idempotent_operation_claim",
+            "generated_idempotent_operation_skip_is_rejected",
+            "LabelOnlyIdempotentInhabitance",
+            "ComposableIdempotentOperation",
+            "generated_idempotent_operation_sample_count_is_three",
+        ),
+    )
+
     if "LanguageBehaviorEquivalence" not in testgen.split("type TestgenConcept")[1].split("type Generator")[0]:
         raise SystemExit("LanguageBehaviorEquivalence must be a TestgenConcept variant, not free text only")
 
-    print("OK: T-19 testgen activation (LBE sixth category + generated runner receipts).")
+    if "IdempotentOperationSubject" in testgen.split("type TestgenConcept")[1].split("type Generator")[0]:
+        raise SystemExit(
+            "IdempotentOperationSubject must stay outside the closed six-way TestgenConcept coproduct"
+        )
+
+    print(
+        "OK: T-19 testgen activation "
+        "(LBE sixth category + idempotent-operation generator slice + generated runner receipts)."
+    )
 
 
 if __name__ == "__main__":

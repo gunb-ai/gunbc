@@ -1,0 +1,66 @@
+// src/v4/test/claim/effects/idempotent_operation_samples.dag
+// Scope: structural idempotent operation bodies for T-19 idempotent-operation generator samples.
+// Owns: read/upsert/delete effect inhabitance nodes with composable operation bodies.
+// Consumes: v4.std.node.
+// Status: fixture — grounds generator rows in v3/std/effects.dag IdempotentShape inhabitants.
+
+module v4.test.claim.effects.idempotent_operation_samples
+
+
+import v4.std.node { Atom, Conj, Disj, Edge, Named, Node, Symbol, TypeNode }
+
+
+data idempotent_effect_is_idempotent_field: Symbol = idempotent_effect_is_idempotent_field
+data idempotent_effect_shape_field: Symbol = idempotent_effect_shape_field
+data idempotent_operation_body_field: Symbol = idempotent_operation_body_field
+data idempotent_effect_read_variant: Symbol = idempotent_effect_read_variant
+data idempotent_effect_upsert_variant: Symbol = idempotent_effect_upsert_variant
+data idempotent_effect_delete_variant: Symbol = idempotent_effect_delete_variant
+data idempotent_read_operation_body: Symbol = idempotent_read_operation_body
+data idempotent_upsert_operation_body: Symbol = idempotent_upsert_operation_body
+data idempotent_delete_operation_body: Symbol = idempotent_delete_operation_body
+data idempotent_label_only_operation: Symbol = idempotent_label_only_operation
+
+
+fn atom_node(s: Symbol) -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: s } }, children: [] }
+}
+
+
+fn idempotent_effect_inhabitance(shape: Symbol, body: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: idempotent_effect_is_idempotent_field },
+        target: atom_node(s: idempotent_effect_is_idempotent_field)
+      },
+      Edge { label: Named { name: idempotent_effect_shape_field }, target: atom_node(s: shape) },
+      Edge { label: Named { name: idempotent_operation_body_field }, target: body },
+    ]
+  }
+}
+
+
+data sample_read_idempotent_operation: Node = idempotent_effect_inhabitance(
+  shape: idempotent_effect_read_variant,
+  body: atom_node(s: idempotent_read_operation_body)
+)
+
+
+data sample_upsert_idempotent_operation: Node = idempotent_effect_inhabitance(
+  shape: idempotent_effect_upsert_variant,
+  body: atom_node(s: idempotent_upsert_operation_body)
+)
+
+
+data sample_delete_idempotent_operation: Node = idempotent_effect_inhabitance(
+  shape: idempotent_effect_delete_variant,
+  body: atom_node(s: idempotent_delete_operation_body)
+)
+
+
+data sample_label_only_idempotent_operation: Node = idempotent_effect_inhabitance(
+  shape: idempotent_effect_read_variant,
+  body: atom_node(s: idempotent_label_only_operation)
+)

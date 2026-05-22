@@ -1,6 +1,6 @@
 // src/v4/lens/testgen.dag
 // Scope: Manual-anchor testgen plus filesystem-backed whole-corpus lens driver primitive.
-// Owns: Generator TestgenConcept manual_test_claim_for_manual_anchor testgen_concept_for_manual_claim testgen_emit_language_behavior_equivalence_claim testgen_scheduled_language_behavior_generators TypeConstructionSubject AlgebraLawSubject DiagnosticExhaustivenessSubject LensApplicabilitySubject BidirectionalRoundtripSubject LanguageBehaviorEquivalenceSubject FrozenLanguageBehaviorSnapshot LanguageBehaviorIoMock CorpusEntry CorpusTraversalScope CorpusTraversalOrder CorpusDuplicatePolicy CorpusTraversalPolicy CorpusEnumerationRequest CorpusEnumerationResult CorpusEnumerator CorpusEntryIngestResult CorpusEntryIngestor CorpusLensReadResult<C> CorpusLensReader<C> CorpusLensObservation<C> CorpusLensDriveResult<C> CorpusLensDriver<C>
+// Owns: Generator TestgenConcept manual_test_claim_for_manual_anchor testgen_concept_for_manual_claim testgen_emit_language_behavior_equivalence_claim testgen_emit_idempotent_operation_claim testgen_scheduled_language_behavior_generators testgen_scheduled_idempotent_operation_subjects TypeConstructionSubject AlgebraLawSubject DiagnosticExhaustivenessSubject LensApplicabilitySubject BidirectionalRoundtripSubject LanguageBehaviorEquivalenceSubject IdempotentOperationSubject FrozenLanguageBehaviorSnapshot LanguageBehaviorIoMock CorpusEntry CorpusTraversalScope CorpusTraversalOrder CorpusDuplicatePolicy CorpusTraversalPolicy CorpusEnumerationRequest CorpusEnumerationResult CorpusEnumerator CorpusEntryIngestResult CorpusEntryIngestor CorpusLensReadResult<C> CorpusLensReader<C> CorpusLensObservation<C> CorpusLensDriveResult<C> CorpusLensDriver<C>
 // Consumes: v4.std.diagnostic v4.std.nat v4.std.node v4.std.verification v4.extdeps.file_system v4.test.claim.manual.connective_anchors v4.test.claim.manual.nat_law_anchors
 // Status: Manual-anchor + LanguageBehaviorEquivalence emission; substrate extension = operator STOP.
 
@@ -27,6 +27,9 @@ import v4.std.nat {
   nat_algebra_law_subject_symbol_inhabitant_nat
 }
 import v4.std.node {
+  Atom,
+  Edge,
+  Named,
   Node,
   Connective,
   Conj,
@@ -39,7 +42,8 @@ import v4.std.node {
   Branch,
   Loop,
   Bind,
-  Symbol
+  Symbol,
+  TypeNode
 }
 import v4.extdeps.file_system {
   AbsolutePath,
@@ -51,6 +55,7 @@ import v4.extdeps.file_system {
 import v4.extdeps.languages.dag { dag_language_model_surface_id }
 import v4.std.verification {
   CompilesClaim,
+  EqualsClaim,
   TestClaim,
   TestClassification,
   T19ManualAnchorAbsent,
@@ -104,6 +109,15 @@ import v4.test.claim.manual.nat_law_anchors {
   claim_nat_mul_associativity,
   claim_nat_mul_left_identity
 }
+import v4.test.claim.effects.idempotent_operation_samples {
+  idempotent_delete_operation_body,
+  idempotent_effect_delete_variant,
+  idempotent_effect_read_variant,
+  idempotent_effect_upsert_variant,
+  idempotent_label_only_operation,
+  idempotent_read_operation_body,
+  idempotent_upsert_operation_body
+}
 
 
 // 🟢 coproduct dissolution — LB-P4-3212.
@@ -147,6 +161,12 @@ type LanguageBehaviorEquivalenceSubject {
   subject: TypeConstructionSubject
   language: Symbol
 }
+
+
+// 🟡 coproduct dissolution — T19-IDEMPOTENT-OPERATION.
+type IdempotentOperationSubject
+  = ComposableIdempotentOperation { effect_variant: Symbol, operation_body: Node }
+  | LabelOnlyIdempotentInhabitance { effect_variant: Symbol, label: Symbol }
 
 
 // 🟡 coproduct dissolution — LB-P4-3212.
@@ -298,6 +318,16 @@ data t19_lbe_label_disj_dag_surface: String = "generated/lbe: Disj type-node mat
 data t19_lbe_label_transform_dag_surface: String = "generated/lbe: Transform computation-node matches dag LanguageModel surface (frozen snapshot)"
 
 
+data t19_idempotent_apply_once_field: Symbol = t19_idempotent_apply_once_field
+data t19_idempotent_apply_twice_field: Symbol = t19_idempotent_apply_twice_field
+data t19_idempotent_apply_count_once: Symbol = t19_idempotent_apply_count_once
+data t19_idempotent_apply_count_twice: Symbol = t19_idempotent_apply_count_twice
+data t19_idempotent_operation_tautology_skip: Symbol = t19_idempotent_operation_tautology_skip
+data t19_idempotent_label_read: String = "generated/idempotent_operation: ReadEffect f(f(x)) == f(x)"
+data t19_idempotent_label_upsert: String = "generated/idempotent_operation: UpsertEffect f(f(x)) == f(x)"
+data t19_idempotent_label_delete: String = "generated/idempotent_operation: DeleteEffect f(f(x)) == f(x)"
+
+
 data t19_testgen_lens_file: Symbol = t19_testgen_lens_file
 
 
@@ -367,6 +397,79 @@ fn lbe_subject_transform_dag_surface() -> LanguageBehaviorEquivalenceSubject {
     subject: BehaviorValueSubject { behavior: Transform },
     language: dag_language_model_surface_id,
   }
+}
+
+
+fn atom_node(s: Symbol) -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: s } }, children: [] }
+}
+
+
+fn idempotent_operation_apply_once(body: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Named { name: t19_idempotent_apply_once_field }, target: body },
+      Edge {
+        label: Named { name: t19_idempotent_apply_twice_field },
+        target: atom_node(s: t19_idempotent_apply_count_once)
+      },
+    ]
+  }
+}
+
+
+fn idempotent_operation_apply_twice(body: Node) -> Node {
+  idempotent_operation_apply_once(body: idempotent_operation_apply_once(body: body))
+}
+
+
+fn testgen_emit_idempotent_operation_claim(
+  label: String,
+  subject: IdempotentOperationSubject,
+  classification: TestClassification
+) -> Outcome<TestClaim> {
+  match subject {
+    LabelOnlyIdempotentInhabitance { effect_variant: _, label: _ } =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: Diagnostic {
+            reason: t19_idempotent_operation_tautology_skip,
+            at: Textual { file: t19_testgen_lens_file, extent: WholeFile },
+            correction: Unavailable { reason: UserInputBoundary }
+          }
+        )
+      }
+    ComposableIdempotentOperation { effect_variant: _, operation_body: body } =>
+      Accepted {
+        value: EqualsClaim {
+          label: label,
+          t19_anchor: T19ManualAnchorAbsent,
+          lhs: idempotent_operation_apply_twice(body: body),
+          rhs: idempotent_operation_apply_once(body: body),
+          classification: classification,
+        },
+        diagnostics: None,
+      }
+  }
+}
+
+
+fn testgen_scheduled_idempotent_operation_subjects() -> List<IdempotentOperationSubject> {
+  [
+    ComposableIdempotentOperation {
+      effect_variant: idempotent_effect_read_variant,
+      operation_body: atom_node(s: idempotent_read_operation_body)
+    },
+    ComposableIdempotentOperation {
+      effect_variant: idempotent_effect_upsert_variant,
+      operation_body: atom_node(s: idempotent_upsert_operation_body)
+    },
+    ComposableIdempotentOperation {
+      effect_variant: idempotent_effect_delete_variant,
+      operation_body: atom_node(s: idempotent_delete_operation_body)
+    },
+  ]
 }
 
 
