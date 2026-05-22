@@ -46,10 +46,8 @@ type AnthropicChatMessage
   = UserMessage      { content: List<AnthropicUserContentBlock> }
   | AssistantMessage { content: List<AnthropicAssistantContentBlock> }
 
-// 🟢 TERMINAL Anthropic image `source` carrier (`dsl/extdeps/llm/anthropic.dag`).
-// Mirrored here because nested `AnthropicImageBlock` is on Messages reach.
-// The v2 `Base64Image.data` label is mirrored as `base64` because `data` is a
-// v3 keyword.
+// 🟡 SCAFFOLD — same row/disposition as `dsl/extdeps/llm/anthropic.dag` (`ImageSource`);
+// v2 `Base64Image.data` mirrored as `base64` (v3 keyword).
 type ImageSource
   = Base64Image {
       media_type: String
