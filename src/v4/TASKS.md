@@ -173,7 +173,7 @@ Interpreter + lens dimensions (each needs T-9):
         runtime carriers plus a concrete runtime extdep; eval cannot be
         authored before the runtime carriers exist.
   T-12  lens/complexity.dag + lens/cost.dag      [needs T-9]
-  T-13  lens/{parallelism,effect,ownership,idempotency}.dag   [needs T-9]
+  T-13  lens/{parallelism,effect,ownership,idempotency,structural_resolution}.dag   [needs T-9]
   T-17  lens/synthesis.dag + std/report.dag  (cross-algorithm complexity, C7;
          XL scope, research-tier risk)              [needs T-12 for current-complexity input]
   T-18  lens/coverage.dag  (meta-lens: L6/L7/impossible-bug/testgen coverage
@@ -546,9 +546,13 @@ if any emission step cannot be expressed as inverse grammar-data.)
 
 ---
 
-### T-13: lens/{parallelism,effect,ownership,idempotency}.dag
+### T-13: lens/{parallelism,effect,ownership,idempotency,structural_resolution}.dag
 
-**I/O**: `Node -> Witness<...>` per lens
+**I/O**: `(InferredTree, List<DependencyView>) -> Witness<...>` per lens — each
+`*_witness(tree, dependencies)` projects over `dependency_lens` output; facts at
+usage sites come from `tree.facts.lookup`, not row payload (Practice 11).
+`structural_resolution` also exports `at(tree: InferredTree)` for registry/dry-run
+entry (wires `dependency_lens(root: tree.root)` internally).
 
 **Modeling decisions per lens** (see file headers).
 
