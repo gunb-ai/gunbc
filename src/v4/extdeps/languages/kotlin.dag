@@ -54,6 +54,8 @@ type KotlinFloatValueFormat
   = Ieee754Binary32Precision
   | Ieee754Binary64Precision
 
+type KotlinIntegerOverflowUnspecified {}
+
 // 🟢 coproduct dissolution — one scalar classifier at a time.
 type KotlinScalar
   = IntScalar { width: KotlinIntWidth }
@@ -67,7 +69,7 @@ type KotlinScalar
 type KotlinIntegerPrimitiveFacts {
   surface_spelling: Symbol
   width: KotlinIntWidth
-  overflow: Symbol
+  overflow: KotlinIntegerOverflowUnspecified
   representation: KotlinRuntimeRepresentation
 }
 
@@ -142,32 +144,34 @@ data kotlin_tag_scalar_char: Symbol = kotlin_tag_scalar_char
 data kotlin_tag_scalar_string: Symbol = kotlin_tag_scalar_string
 data kotlin_tag_scalar_unit: Symbol = kotlin_tag_scalar_unit
 data kotlin_tag_scalar_nothing: Symbol = kotlin_tag_scalar_nothing
+data kotlin_integer_overflow_unspecified: KotlinIntegerOverflowUnspecified =
+  KotlinIntegerOverflowUnspecified {}
 
 data kotlin_facts_byte: KotlinIntegerPrimitiveFacts = KotlinIntegerPrimitiveFacts {
   surface_spelling: kotlin_surface_spelling_byte,
   width: Bits8,
-  overflow: kotlin_tag_overflow_unspecified,
+  overflow: kotlin_integer_overflow_unspecified,
   representation: PlatformSpecificRuntimeRepresentation,
 }
 
 data kotlin_facts_short: KotlinIntegerPrimitiveFacts = KotlinIntegerPrimitiveFacts {
   surface_spelling: kotlin_surface_spelling_short,
   width: Bits16,
-  overflow: kotlin_tag_overflow_unspecified,
+  overflow: kotlin_integer_overflow_unspecified,
   representation: PlatformSpecificRuntimeRepresentation,
 }
 
 data kotlin_facts_int: KotlinIntegerPrimitiveFacts = KotlinIntegerPrimitiveFacts {
   surface_spelling: kotlin_surface_spelling_int,
   width: Bits32,
-  overflow: kotlin_tag_overflow_unspecified,
+  overflow: kotlin_integer_overflow_unspecified,
   representation: PlatformSpecificRuntimeRepresentation,
 }
 
 data kotlin_facts_long: KotlinIntegerPrimitiveFacts = KotlinIntegerPrimitiveFacts {
   surface_spelling: kotlin_surface_spelling_long,
   width: Bits64,
-  overflow: kotlin_tag_overflow_unspecified,
+  overflow: kotlin_integer_overflow_unspecified,
   representation: PlatformSpecificRuntimeRepresentation,
 }
 
@@ -265,8 +269,9 @@ fn kotlin_float_width_node(width: KotlinFloatWidth) -> Node {
   }
 }
 
-fn kotlin_overflow_node(overflow: Symbol) -> Node {
-  kotlin_atom(id: overflow)
+fn kotlin_overflow_node(overflow: KotlinIntegerOverflowUnspecified) -> Node {
+  let _witness = overflow
+  kotlin_atom(id: kotlin_tag_overflow_unspecified)
 }
 
 fn kotlin_runtime_representation_node(representation: KotlinRuntimeRepresentation) -> Node {
