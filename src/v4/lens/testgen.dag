@@ -392,7 +392,7 @@ fn lbe_subject_transform_dag_surface() -> LanguageBehaviorEquivalenceSubject {
 
 fn testgen_emit_idempotent_operation_equals_claim(
   label: String,
-  subject: IdempotentOperationSubject,
+  subject: ComposableIdempotentOperationSubject,
   classification: TestClassification
 ) -> Outcome<TestClaim> {
   Accepted {
@@ -424,19 +424,7 @@ fn testgen_emit_idempotent_operation_claim(
           }
         )
       }
-    ReadIdempotentSample { operation: _ } =>
-      testgen_emit_idempotent_operation_equals_claim(
-        label: label,
-        subject: subject,
-        classification: classification
-      )
-    UpsertIdempotentSample { operation: _, key_source: _ } =>
-      testgen_emit_idempotent_operation_equals_claim(
-        label: label,
-        subject: subject,
-        classification: classification
-      )
-    DeleteIdempotentSample { operation: _, key_source: _ } =>
+    Composable(subject: subject) =>
       testgen_emit_idempotent_operation_equals_claim(
         label: label,
         subject: subject,
@@ -446,11 +434,11 @@ fn testgen_emit_idempotent_operation_claim(
 }
 
 
-fn testgen_scheduled_idempotent_operation_subjects() -> List<IdempotentOperationSubject> {
+fn testgen_scheduled_idempotent_operation_subjects() -> List<ComposableIdempotentOperationSubject> {
   [
-    t19_sample_read_subject,
-    t19_sample_upsert_subject,
-    t19_sample_delete_subject,
+    t19_sample_read_composable,
+    t19_sample_upsert_composable,
+    t19_sample_delete_composable,
   ]
 }
 

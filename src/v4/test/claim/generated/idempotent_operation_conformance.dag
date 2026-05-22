@@ -19,6 +19,7 @@ import v4.std.algebra { length }
 import v4.std.collection { List }
 import v4.std.diagnostic { Accepted, Outcome, Rejected }
 import v4.std.logic { Bool }
+import v4.std.node { Symbol }
 import v4.std.verification {
   TestClaim,
   TestClassification,
@@ -61,15 +62,15 @@ data generated_label_only_idempotent_skip: Outcome<TestClaim> = testgen_emit_ide
 )
 
 
-fn generated_label_only_skip_rejection_reason() -> Symbol {
+fn generated_label_only_skip_is_rejected() -> Bool {
   match generated_label_only_idempotent_skip {
-    Rejected { diagnostics: d } => d.head.reason
-    Accepted { value: _, diagnostics: _ } => t19_idempotent_operation_tautology_skip
+    Rejected { diagnostics: d } => d.head.reason == t19_idempotent_operation_tautology_skip
+    Accepted { value: _, diagnostics: _ } => false
   }
 }
 
 
-data generated_label_only_skip_pins_tautology_reason: Bool = generated_label_only_skip_rejection_reason() == t19_idempotent_operation_tautology_skip
+data generated_label_only_skip_pins_rejection: Bool = generated_label_only_skip_is_rejected()
 
 
 fn generated_idempotent_operation_claim_rows() -> List<Outcome<TestClaim>> {
