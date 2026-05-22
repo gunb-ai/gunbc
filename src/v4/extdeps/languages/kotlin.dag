@@ -23,7 +23,7 @@ import v4.std.model_core {
 }
 import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
 import v4.std.logic { Bool, bool_boolean_algebra }
-import v4.std.algebra { BooleanAlgebra, Empty, free_monoid_fold }
+import v4.std.algebra { BooleanAlgebra, Empty, fold_list }
 
 // Kotlin's specification defines only signed built-in integer types; unsigned
 // integers are not built-in classifier types in this spec section.
@@ -556,7 +556,7 @@ fn kotlin_primitive_bundle_from_nonnumeric_facts(
 }
 
 fn kotlin_primitive_bundles_from_integer_catalog() -> List<PrimitiveFactBundle> {
-  free_monoid_fold(
+  fold_list(
     xs: kotlin_integer_facts_catalog,
     empty: Empty,
     cons: fn(acc, facts) {
@@ -569,7 +569,7 @@ fn kotlin_primitive_bundles_from_integer_catalog() -> List<PrimitiveFactBundle> 
 }
 
 fn kotlin_primitive_bundles_from_float_catalog() -> List<PrimitiveFactBundle> {
-  free_monoid_fold(
+  fold_list(
     xs: kotlin_float_facts_catalog,
     empty: Empty,
     cons: fn(acc, facts) {
@@ -582,7 +582,7 @@ fn kotlin_primitive_bundles_from_float_catalog() -> List<PrimitiveFactBundle> {
 }
 
 fn kotlin_primitive_bundles_from_nonnumeric_catalog() -> List<PrimitiveFactBundle> {
-  free_monoid_fold(
+  fold_list(
     xs: kotlin_nonnumeric_facts_catalog,
     empty: Empty,
     cons: fn(acc, facts) {
@@ -629,7 +629,7 @@ fn kotlin_nonnumeric_catalog_surface_symbol_step(
 }
 
 fn kotlin_integer_catalog_surface_symbol(sym: Symbol) -> Bool {
-  free_monoid_fold(
+  fold_list(
     xs: kotlin_integer_facts_catalog,
     empty: false,
     cons: fn(acc, facts) {
@@ -639,7 +639,7 @@ fn kotlin_integer_catalog_surface_symbol(sym: Symbol) -> Bool {
 }
 
 fn kotlin_float_catalog_surface_symbol(sym: Symbol) -> Bool {
-  free_monoid_fold(
+  fold_list(
     xs: kotlin_float_facts_catalog,
     empty: false,
     cons: fn(acc, facts) {
@@ -649,7 +649,7 @@ fn kotlin_float_catalog_surface_symbol(sym: Symbol) -> Bool {
 }
 
 fn kotlin_nonnumeric_catalog_surface_symbol(sym: Symbol) -> Bool {
-  free_monoid_fold(
+  fold_list(
     xs: kotlin_nonnumeric_facts_catalog,
     empty: false,
     cons: fn(acc, facts) {
