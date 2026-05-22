@@ -132,7 +132,6 @@ fn infer_descent_not_derived_diagnostic(n: Node) -> Diagnostic {
 }
 
 
-<<<<<<< HEAD
 // SPI-3: infer diagnostic authority on propagation failure (substrate: termination_proof_witness_for_node in cardinality.dag, PR #3559).
 fn infer_descent_witness_for_node(n: Node) -> Witness<TerminationProof> {
   match termination_proof_witness_for_node(n: n) {
@@ -142,10 +141,6 @@ fn infer_descent_witness_for_node(n: Node) -> Witness<TerminationProof> {
         diagnostic: infer_descent_not_derived_diagnostic(n: n)
       }
   }
-=======
-fn infer_descent_witness_for_node(n: Node) -> Witness<TerminationProof> {
-  termination_proof_witness_for_node(n: n)
->>>>>>> origin/session/keen-boar-656
 }
 
 
