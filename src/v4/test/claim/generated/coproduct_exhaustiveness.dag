@@ -8,7 +8,6 @@ module v4.test.claim.generated.coproduct_exhaustiveness
 
 
 import v4.lens.testgen {
-  DiagnosticExhaustivenessSubject,
   coproduct_exhaustiveness_subject_testclaim_compiles,
   coproduct_exhaustiveness_subject_testclaim_diagnostic,
   coproduct_exhaustiveness_subject_testclaim_equals,
@@ -38,7 +37,7 @@ import v4.std.verification {
 
 fn generated_coproduct_exhaustiveness_claim() -> Outcome<TestClaim> {
   testgen_emit_coproduct_exhaustiveness_claim(
-    subject: coproduct_exhaustiveness_subject_testclaim_diagnostic()
+    anchor: coproduct_exhaustiveness_subject_testclaim_diagnostic()
   )
 }
 
@@ -75,25 +74,25 @@ fn witness_coproduct_exhaustiveness_generated_anchor() -> Bool {
 
 fn witness_coproduct_exhaustiveness_all_testclaim_variants_emit() -> Bool {
   witness_coproduct_exhaustiveness_variant_emits(
-    subject: coproduct_exhaustiveness_subject_testclaim_compiles()
+    anchor: coproduct_exhaustiveness_subject_testclaim_compiles()
   ) &&
     witness_coproduct_exhaustiveness_variant_emits(
-      subject: coproduct_exhaustiveness_subject_testclaim_diagnostic()
+      anchor: coproduct_exhaustiveness_subject_testclaim_diagnostic()
     ) &&
     witness_coproduct_exhaustiveness_variant_emits(
-      subject: coproduct_exhaustiveness_subject_testclaim_equals()
+      anchor: coproduct_exhaustiveness_subject_testclaim_equals()
     ) &&
     witness_coproduct_exhaustiveness_variant_emits(
-      subject: coproduct_exhaustiveness_subject_testclaim_roundtrip()
+      anchor: coproduct_exhaustiveness_subject_testclaim_roundtrip()
     )
 }
 
 
-fn witness_coproduct_exhaustiveness_variant_emits(subject: DiagnosticExhaustivenessSubject) -> Bool {
-  match testgen_emit_coproduct_exhaustiveness_claim(subject: subject) {
+fn witness_coproduct_exhaustiveness_variant_emits(anchor: T19GeneratedAnchorKey) -> Bool {
+  match testgen_emit_coproduct_exhaustiveness_claim(anchor: anchor) {
     Accepted { value: DiagnosticClaim { label: _, t19_anchor: T19GeneratedClaimAnchor { generated_anchor: T19GeneratedCoproductExhaustiveness { omitted_variant } }, input: _, expected_rejection: _, classification: _ }, diagnostics: _ } =>
-      match subject {
-        DiagnosticExhaustivenessSubject { reason: _, coproduct: _, omitted_variant: requested_variant } =>
+      match anchor {
+        T19GeneratedCoproductExhaustiveness { omitted_variant: requested_variant } =>
           match requested_variant {
             TestClaimCompilesClaimVariant =>
               match omitted_variant {

@@ -1,6 +1,6 @@
 // src/v4/lens/testgen.dag
 // Scope: Manual-anchor testgen plus filesystem-backed whole-corpus lens driver primitive.
-// Owns: Generator TestgenConcept manual_test_claim_for_manual_anchor testgen_concept_for_manual_claim testgen_emit_language_behavior_equivalence_claim testgen_scheduled_language_behavior_generators testgen_emit_coproduct_exhaustiveness_claim testgen_scheduled_coproduct_exhaustiveness_generators TypeConstructionSubject AlgebraLawSubject DiagnosticExhaustivenessSubject LensApplicabilitySubject BidirectionalRoundtripSubject LanguageBehaviorEquivalenceSubject FrozenLanguageBehaviorSnapshot LanguageBehaviorIoMock CorpusEntry CorpusTraversalScope CorpusTraversalOrder CorpusDuplicatePolicy CorpusTraversalPolicy CorpusEnumerationRequest CorpusEnumerationResult CorpusEnumerator CorpusEntryIngestResult CorpusEntryIngestor CorpusLensReadResult<C> CorpusLensReader<C> CorpusLensObservation<C> CorpusLensDriveResult<C> CorpusLensDriver<C>
+// Owns: Generator TestgenConcept manual_test_claim_for_manual_anchor testgen_concept_for_manual_claim testgen_emit_language_behavior_equivalence_claim testgen_scheduled_language_behavior_generators testgen_emit_coproduct_exhaustiveness_claim testgen_scheduled_coproduct_exhaustiveness_generators TypeConstructionSubject AlgebraLawSubject LensApplicabilitySubject BidirectionalRoundtripSubject LanguageBehaviorEquivalenceSubject FrozenLanguageBehaviorSnapshot LanguageBehaviorIoMock CorpusEntry CorpusTraversalScope CorpusTraversalOrder CorpusDuplicatePolicy CorpusTraversalPolicy CorpusEnumerationRequest CorpusEnumerationResult CorpusEnumerator CorpusEntryIngestResult CorpusEntryIngestor CorpusLensReadResult<C> CorpusLensReader<C> CorpusLensObservation<C> CorpusLensDriveResult<C> CorpusLensDriver<C>
 // Consumes: v4.std.diagnostic v4.std.nat v4.std.node v4.std.verification v4.extdeps.file_system v4.test.claim.manual.connective_anchors v4.test.claim.manual.nat_law_anchors
 // Status: Manual-anchor + LanguageBehaviorEquivalence emission; substrate extension = operator STOP.
 
@@ -134,16 +134,6 @@ type TypeConstructionSubject
 type AlgebraLawSubject { algebra: Symbol, inhabitant: Symbol, law: Symbol }
 
 
-type TestgenCoproductSubject { symbol: Symbol }
-
-
-type DiagnosticExhaustivenessSubject {
-  reason: Symbol
-  coproduct: TestgenCoproductSubject
-  omitted_variant: TestClaimCoproductVariant
-}
-
-
 type LensApplicabilitySubject {
   lens: Symbol
   program: Node
@@ -180,7 +170,7 @@ type TestgenConcept
 // RULING-1: 🟡 needs-more-work — multi-arm scheduling coproduct (six arms; LBE = L6 form×language)
   = TypeConstruction { subject: TypeConstructionSubject }
   | AlgebraLaw { subject: AlgebraLawSubject }
-  | DiagnosticExhaustiveness { subject: DiagnosticExhaustivenessSubject }
+  | DiagnosticExhaustiveness
   | LensApplicability { subject: LensApplicabilitySubject }
   | BidirectionalRoundtrip { subject: BidirectionalRoundtripSubject }
   | LanguageBehaviorEquivalence {
@@ -497,51 +487,20 @@ fn testgen_scheduled_language_behavior_generators() -> List<Generator<TestgenCon
 }
 
 
-fn coproduct_exhaustiveness_subject_testclaim_diagnostic() -> DiagnosticExhaustivenessSubject {
-  DiagnosticExhaustivenessSubject {
-    reason: t19_coproduct_exhaustiveness_missing_variant,
-    coproduct: TestgenCoproductSubject { symbol: t19_coproduct_exhaustiveness_testclaim_variant },
-    omitted_variant: TestClaimDiagnosticClaimVariant,
-  }
+fn coproduct_exhaustiveness_subject_testclaim_diagnostic() -> T19GeneratedAnchorKey {
+  T19GeneratedCoproductExhaustiveness { omitted_variant: TestClaimDiagnosticClaimVariant }
 }
 
-fn coproduct_exhaustiveness_subject_testclaim_compiles() -> DiagnosticExhaustivenessSubject {
-  DiagnosticExhaustivenessSubject {
-    reason: t19_coproduct_exhaustiveness_missing_variant,
-    coproduct: TestgenCoproductSubject { symbol: t19_coproduct_exhaustiveness_testclaim_variant },
-    omitted_variant: TestClaimCompilesClaimVariant,
-  }
+fn coproduct_exhaustiveness_subject_testclaim_compiles() -> T19GeneratedAnchorKey {
+  T19GeneratedCoproductExhaustiveness { omitted_variant: TestClaimCompilesClaimVariant }
 }
 
-fn coproduct_exhaustiveness_subject_testclaim_equals() -> DiagnosticExhaustivenessSubject {
-  DiagnosticExhaustivenessSubject {
-    reason: t19_coproduct_exhaustiveness_missing_variant,
-    coproduct: TestgenCoproductSubject { symbol: t19_coproduct_exhaustiveness_testclaim_variant },
-    omitted_variant: TestClaimEqualsClaimVariant,
-  }
+fn coproduct_exhaustiveness_subject_testclaim_equals() -> T19GeneratedAnchorKey {
+  T19GeneratedCoproductExhaustiveness { omitted_variant: TestClaimEqualsClaimVariant }
 }
 
-fn coproduct_exhaustiveness_subject_testclaim_roundtrip() -> DiagnosticExhaustivenessSubject {
-  DiagnosticExhaustivenessSubject {
-    reason: t19_coproduct_exhaustiveness_missing_variant,
-    coproduct: TestgenCoproductSubject { symbol: t19_coproduct_exhaustiveness_testclaim_variant },
-    omitted_variant: TestClaimRoundTripClaimVariant,
-  }
-}
-
-
-fn coproduct_exhaustiveness_subject_from_anchor(omitted_variant: TestClaimCoproductVariant) -> DiagnosticExhaustivenessSubject {
-  match omitted_variant {
-    TestClaimCompilesClaimVariant => coproduct_exhaustiveness_subject_testclaim_compiles()
-    TestClaimDiagnosticClaimVariant => coproduct_exhaustiveness_subject_testclaim_diagnostic()
-    TestClaimEqualsClaimVariant => coproduct_exhaustiveness_subject_testclaim_equals()
-    TestClaimRoundTripClaimVariant => coproduct_exhaustiveness_subject_testclaim_roundtrip()
-  }
-}
-
-
-fn testgen_coproduct_subject_symbol(subject: TestgenCoproductSubject) -> Symbol {
-  subject.symbol
+fn coproduct_exhaustiveness_subject_testclaim_roundtrip() -> T19GeneratedAnchorKey {
+  T19GeneratedCoproductExhaustiveness { omitted_variant: TestClaimRoundTripClaimVariant }
 }
 
 
@@ -555,9 +514,9 @@ fn test_claim_coproduct_variant_symbol(variant: TestClaimCoproductVariant) -> Sy
 }
 
 
-fn coproduct_exhaustiveness_anchor(subject: DiagnosticExhaustivenessSubject) -> T19GeneratedAnchorKey {
-  T19GeneratedCoproductExhaustiveness {
-    omitted_variant: subject.omitted_variant
+fn coproduct_exhaustiveness_anchor_omitted_variant(anchor: T19GeneratedAnchorKey) -> TestClaimCoproductVariant {
+  match anchor {
+    T19GeneratedCoproductExhaustiveness { omitted_variant } => omitted_variant
   }
 }
 
@@ -572,15 +531,17 @@ fn coproduct_exhaustiveness_variant_node(variant: TestClaimCoproductVariant) -> 
 }
 
 
-fn coproduct_exhaustiveness_input(subject: DiagnosticExhaustivenessSubject) -> Node {
+fn coproduct_exhaustiveness_input(anchor: T19GeneratedAnchorKey) -> Node {
   Node {
     kind: TypeNode {
-      connective: Atom { identity: testgen_coproduct_subject_symbol(subject: subject.coproduct) }
+      connective: Atom { identity: t19_coproduct_exhaustiveness_testclaim_variant }
     },
     children: [
       Edge {
         label: Named { name: t19_coproduct_exhaustiveness_omitted_variant_edge },
-        target: coproduct_exhaustiveness_variant_node(variant: subject.omitted_variant)
+        target: coproduct_exhaustiveness_variant_node(
+          variant: coproduct_exhaustiveness_anchor_omitted_variant(anchor: anchor)
+        )
       }
     ]
   }
@@ -588,11 +549,10 @@ fn coproduct_exhaustiveness_input(subject: DiagnosticExhaustivenessSubject) -> N
 
 
 fn coproduct_exhaustiveness_diagnostic(
-  subject: DiagnosticExhaustivenessSubject,
   input: Node
 ) -> Diagnostic {
   Diagnostic {
-    reason: subject.reason,
+    reason: t19_coproduct_exhaustiveness_missing_variant,
     at: node_locus(node: input),
     correction: Unavailable { reason: UserInputBoundary }
   }
@@ -600,16 +560,16 @@ fn coproduct_exhaustiveness_diagnostic(
 
 
 fn testgen_emit_coproduct_exhaustiveness_claim(
-  subject: DiagnosticExhaustivenessSubject
+  anchor: T19GeneratedAnchorKey
 ) -> Outcome<TestClaim> {
-  let input = coproduct_exhaustiveness_input(subject: subject)
+  let input = coproduct_exhaustiveness_input(anchor: anchor)
   Accepted {
     value: DiagnosticClaim {
       label: t19_coproduct_exhaustiveness_label,
-      t19_anchor: t19_generated_claim_anchor(anchor: coproduct_exhaustiveness_anchor(subject: subject)),
+      t19_anchor: t19_generated_claim_anchor(anchor: anchor),
       input: input,
       expected_rejection: diagnostics_singleton(
-        d: coproduct_exhaustiveness_diagnostic(subject: subject, input: input)
+        d: coproduct_exhaustiveness_diagnostic(input: input)
       ),
       classification: TestClassification { tier: Tier1, layer: Unit },
     },
@@ -623,38 +583,30 @@ fn testgen_scheduled_coproduct_exhaustiveness_generators() -> List<Generator<Tes
     Generator {
       classification: TestClassification { tier: Tier1, layer: Unit },
       t19_anchor: t19_generated_claim_anchor(
-        anchor: coproduct_exhaustiveness_anchor(subject: coproduct_exhaustiveness_subject_testclaim_compiles())
+        anchor: coproduct_exhaustiveness_subject_testclaim_compiles()
       ),
-      slot: DiagnosticExhaustiveness {
-        subject: coproduct_exhaustiveness_subject_testclaim_compiles(),
-      },
+      slot: DiagnosticExhaustiveness,
     },
     Generator {
       classification: TestClassification { tier: Tier1, layer: Unit },
       t19_anchor: t19_generated_claim_anchor(
-        anchor: coproduct_exhaustiveness_anchor(subject: coproduct_exhaustiveness_subject_testclaim_diagnostic())
+        anchor: coproduct_exhaustiveness_subject_testclaim_diagnostic()
       ),
-      slot: DiagnosticExhaustiveness {
-        subject: coproduct_exhaustiveness_subject_testclaim_diagnostic(),
-      },
+      slot: DiagnosticExhaustiveness,
     },
     Generator {
       classification: TestClassification { tier: Tier1, layer: Unit },
       t19_anchor: t19_generated_claim_anchor(
-        anchor: coproduct_exhaustiveness_anchor(subject: coproduct_exhaustiveness_subject_testclaim_equals())
+        anchor: coproduct_exhaustiveness_subject_testclaim_equals()
       ),
-      slot: DiagnosticExhaustiveness {
-        subject: coproduct_exhaustiveness_subject_testclaim_equals(),
-      },
+      slot: DiagnosticExhaustiveness,
     },
     Generator {
       classification: TestClassification { tier: Tier1, layer: Unit },
       t19_anchor: t19_generated_claim_anchor(
-        anchor: coproduct_exhaustiveness_anchor(subject: coproduct_exhaustiveness_subject_testclaim_roundtrip())
+        anchor: coproduct_exhaustiveness_subject_testclaim_roundtrip()
       ),
-      slot: DiagnosticExhaustiveness {
-        subject: coproduct_exhaustiveness_subject_testclaim_roundtrip(),
-      },
+      slot: DiagnosticExhaustiveness,
     },
   ]
 }
@@ -831,11 +783,9 @@ fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept>
         },
         diagnostics: None,
       }
-    T19GeneratedClaimAnchor { generated_anchor: T19GeneratedCoproductExhaustiveness { omitted_variant } } =>
+    T19GeneratedClaimAnchor { generated_anchor: T19GeneratedCoproductExhaustiveness { omitted_variant: _ } } =>
       Accepted {
-        value: DiagnosticExhaustiveness {
-          subject: coproduct_exhaustiveness_subject_from_anchor(omitted_variant: omitted_variant),
-        },
+        value: DiagnosticExhaustiveness,
         diagnostics: None,
       }
   }
