@@ -1,9 +1,15 @@
 // src/v4/std/collection.dag
 // Scope: container carriers grounded in algebraic constructions.
 // Anchor: https://en.wikipedia.org/wiki/Free_monoid
-// Owns: List, non_empty, list_snoc_item, list_append, Set, Map.
+// Owns: List, non_empty, list_snoc_item, list_append, Set, FiniteSet, Map,
+//       TotalMapEntry, TotalMap, TotalPolicyEntry, TotalPolicy.
 // Consumes: std algebra, std witness.
 // Status: T-3 modeled; substrate-extension rule in src/v4/STRUCTURE.md.
+// Adds (substrate-evolution 5/5): FiniteSet, TotalMap, TotalPolicy primitives
+// needed by L1.13.c TableDecisionTree (docs/design-dissolution-lens.md §5
+// L1.13.c) and as the canonical carrier for finite-enumerated rows like
+// SubsumedFixes (v4.lens.subsumption). Distinct from `Set<T> = PointwisePower<T>`
+// which is the membership-predicate (potentially infinite) BooleanAlgebra carrier.
 
 
 module v4.std.collection
@@ -33,4 +39,61 @@ fn list_append<T>(left: FreeMonoid<T>, right: FreeMonoid<T>) -> FreeMonoid<T> {
 type Set<T> = PointwisePower<T>
 type Map<K, V> {
   lookup: fn(K) -> Witness<V>
+}
+// 🟡 finite-uniqueness witness gated — feature:finite-set-uniqueness-witness;
+// dissolve-on: substrate emits a derived `unique: Witness<Holds>` projection
+// over `members` (mirrors `FreeMonoidUniqueState` in std/algebra). Until then,
+// FiniteSet's uniqueness obligation is enforced by the consuming lens / row
+// validator (e.g. v4.lens.subsumption MechanicalReverification runtime).
+//
+// Non-empty, finite enumerated set carrier. Use FiniteSet<T> when the row
+// requires the full elements (eager-materialized closed enumeration) — Set<T>
+// (= PointwisePower<T>) is the membership-predicate carrier for unbounded
+// (possibly infinite) membership queries (Practice 11: scope-from-query, not
+// from a baked-in type tag — FiniteSet vs Set is a substrate distinction
+// (eager vs predicate), not a scope qualifier on the same shape).
+type FiniteSet<T> {
+  head: T
+  tail: List<T>
+}
+// 🟡 totality witness gated — feature:total-map-totality-witness; bind
+// node://adhoc-086ab97b-b41; dissolve-on: substrate emits a derived
+// `total: Witness<Holds>` projection over `entries` keyed by the closed
+// coproduct K's `KeyVocabulary` (per v4.lens.decision_tree_shape, not yet
+// landed). Until then the totality obligation ("every K-variant appears as
+// a key") is a structural obligation on row authors enforced by the
+// consuming lens runtime (L1.13.c TableDecisionTree clearing receipt).
+//
+// TotalMap<K, V> is the substrate carrier for a fully-materialized total
+// table over a finite payload-free closed coproduct K — i.e. K's constructors
+// are all 0-field tags and the row's value-template is independent of any
+// payload. See docs/design-dissolution-lens.md §5 L1.13.c (Pattern A) for the
+// pattern this carrier dissolves.
+type TotalMapEntry<K, V> {
+  key: K
+  value: V
+}
+type TotalMap<K, V> {
+  entries: List<TotalMapEntry<K, V>>
+}
+// 🟡 totality witness gated — feature:total-policy-totality-witness; bind
+// node://adhoc-086ab97b-b41; dissolve-on: substrate emits a derived
+// `total: Witness<Holds>` projection over `entries` keyed by the closed
+// coproduct K's `KeyVocabulary` plus payload-template materialization rules
+// (per v4.lens.decision_tree_shape).
+//
+// TotalPolicy<K, Context, RowTemplate> is the substrate carrier for a
+// total dispatch table over a closed coproduct K WITH payload-bearing
+// constructors and/or a runtime Context parameter. One entry per constructor
+// of K (not per concrete payload value); the RowTemplate carries holes that
+// the runtime materializes by substituting the constructor's payload + the
+// Context. See docs/design-dissolution-lens.md §5 L1.13.c (Pattern B) for
+// the pattern this carrier dissolves (e.g. `rust_serde_policy_table` over
+// `VariantNamingConstructor`).
+type TotalPolicyEntry<K, RowTemplate> {
+  constructor: K
+  row_template: RowTemplate
+}
+type TotalPolicy<K, Context, RowTemplate> {
+  entries: List<TotalPolicyEntry<K, RowTemplate>>
 }
