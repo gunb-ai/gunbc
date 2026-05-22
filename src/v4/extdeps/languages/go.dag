@@ -111,20 +111,22 @@ type GoIntKind
   = Signed
   | Unsigned
 
-// Width carrier for integer fact rows — one signed or unsigned arm per catalog entry.
+// Integer fact rows — signedness, width, and overflow disposition are one coproduct arm
+// (illegal states like Signed + GoUnsignedWidth are unrepresentable).
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
-type GoIntegerWidth
-  = GoSignedWidth { width: SignedIntWidth }
-  | GoUnsignedWidth { width: UnsignedIntWidth }
-
-type GoIntegerPrimitiveFacts {
-  surface_spelling: Symbol
-  signedness: GoIntKind
-  width: GoIntegerWidth
-  overflow: GoBuiltinIntegerArithmeticOverflow
-  encoding: Symbol
-  std_projection: Symbol
-}
+type GoIntegerPrimitiveFacts
+  = GoSignedIntegerPrimitiveFacts {
+      surface_spelling: Symbol
+      width: SignedIntWidth
+      encoding: Symbol
+      std_projection: Symbol
+    }
+  | GoUnsignedIntegerPrimitiveFacts {
+      surface_spelling: Symbol
+      width: UnsignedIntWidth
+      encoding: Symbol
+      std_projection: Symbol
+    }
 
 type GoFloatPrimitiveFacts {
   surface_spelling: Symbol
@@ -226,101 +228,79 @@ data go_tag_complex_bits128: Symbol = go_tag_complex_bits128
 data go_tag_overflow_signed_truncates: Symbol = go_tag_overflow_signed_truncates
 data go_tag_overflow_unsigned_truncates: Symbol = go_tag_overflow_unsigned_truncates
 
-data go_facts_int8: GoIntegerPrimitiveFacts = GoIntegerPrimitiveFacts {
+data go_facts_int8: GoIntegerPrimitiveFacts = GoSignedIntegerPrimitiveFacts {
   surface_spelling: go_surface_spelling_int8,
-  signedness: Signed,
-  width: GoSignedWidth { width: SignedBits8 },
-  overflow: SignedTypedIntegerTruncatesSilentlyOnOverflow,
+  width: SignedBits8,
   encoding: go_repr_twos_complement_integer,
   std_projection: go_std_projection_int8,
 }
 
-data go_facts_int16: GoIntegerPrimitiveFacts = GoIntegerPrimitiveFacts {
+data go_facts_int16: GoIntegerPrimitiveFacts = GoSignedIntegerPrimitiveFacts {
   surface_spelling: go_surface_spelling_int16,
-  signedness: Signed,
-  width: GoSignedWidth { width: SignedBits16 },
-  overflow: SignedTypedIntegerTruncatesSilentlyOnOverflow,
+  width: SignedBits16,
   encoding: go_repr_twos_complement_integer,
   std_projection: go_std_projection_int16,
 }
 
-data go_facts_int32: GoIntegerPrimitiveFacts = GoIntegerPrimitiveFacts {
+data go_facts_int32: GoIntegerPrimitiveFacts = GoSignedIntegerPrimitiveFacts {
   surface_spelling: go_surface_spelling_int32,
-  signedness: Signed,
-  width: GoSignedWidth { width: SignedBits32 },
-  overflow: SignedTypedIntegerTruncatesSilentlyOnOverflow,
+  width: SignedBits32,
   encoding: go_repr_twos_complement_integer,
   std_projection: go_std_projection_int32,
 }
 
-data go_facts_int64: GoIntegerPrimitiveFacts = GoIntegerPrimitiveFacts {
+data go_facts_int64: GoIntegerPrimitiveFacts = GoSignedIntegerPrimitiveFacts {
   surface_spelling: go_surface_spelling_int64,
-  signedness: Signed,
-  width: GoSignedWidth { width: SignedBits64 },
-  overflow: SignedTypedIntegerTruncatesSilentlyOnOverflow,
+  width: SignedBits64,
   encoding: go_repr_twos_complement_integer,
   std_projection: go_std_projection_int64,
 }
 
-data go_facts_int: GoIntegerPrimitiveFacts = GoIntegerPrimitiveFacts {
+data go_facts_int: GoIntegerPrimitiveFacts = GoSignedIntegerPrimitiveFacts {
   surface_spelling: go_surface_spelling_int,
-  signedness: Signed,
-  width: GoSignedWidth { width: SignedPlatformInt },
-  overflow: SignedTypedIntegerTruncatesSilentlyOnOverflow,
+  width: SignedPlatformInt,
   encoding: go_repr_twos_complement_integer,
   std_projection: go_std_projection_int,
 }
 
-data go_facts_uint8: GoIntegerPrimitiveFacts = GoIntegerPrimitiveFacts {
+data go_facts_uint8: GoIntegerPrimitiveFacts = GoUnsignedIntegerPrimitiveFacts {
   surface_spelling: go_surface_spelling_uint8,
-  signedness: Unsigned,
-  width: GoUnsignedWidth { width: UnsignedBits8 },
-  overflow: UnsignedTypedIntegerTruncatesSilentlyOnOverflow,
+  width: UnsignedBits8,
   encoding: go_repr_twos_complement_integer,
   std_projection: go_std_projection_uint8,
 }
 
-data go_facts_uint16: GoIntegerPrimitiveFacts = GoIntegerPrimitiveFacts {
+data go_facts_uint16: GoIntegerPrimitiveFacts = GoUnsignedIntegerPrimitiveFacts {
   surface_spelling: go_surface_spelling_uint16,
-  signedness: Unsigned,
-  width: GoUnsignedWidth { width: UnsignedBits16 },
-  overflow: UnsignedTypedIntegerTruncatesSilentlyOnOverflow,
+  width: UnsignedBits16,
   encoding: go_repr_twos_complement_integer,
   std_projection: go_std_projection_uint16,
 }
 
-data go_facts_uint32: GoIntegerPrimitiveFacts = GoIntegerPrimitiveFacts {
+data go_facts_uint32: GoIntegerPrimitiveFacts = GoUnsignedIntegerPrimitiveFacts {
   surface_spelling: go_surface_spelling_uint32,
-  signedness: Unsigned,
-  width: GoUnsignedWidth { width: UnsignedBits32 },
-  overflow: UnsignedTypedIntegerTruncatesSilentlyOnOverflow,
+  width: UnsignedBits32,
   encoding: go_repr_twos_complement_integer,
   std_projection: go_std_projection_uint32,
 }
 
-data go_facts_uint64: GoIntegerPrimitiveFacts = GoIntegerPrimitiveFacts {
+data go_facts_uint64: GoIntegerPrimitiveFacts = GoUnsignedIntegerPrimitiveFacts {
   surface_spelling: go_surface_spelling_uint64,
-  signedness: Unsigned,
-  width: GoUnsignedWidth { width: UnsignedBits64 },
-  overflow: UnsignedTypedIntegerTruncatesSilentlyOnOverflow,
+  width: UnsignedBits64,
   encoding: go_repr_twos_complement_integer,
   std_projection: go_std_projection_uint64,
 }
 
-data go_facts_uint: GoIntegerPrimitiveFacts = GoIntegerPrimitiveFacts {
+data go_facts_uint: GoIntegerPrimitiveFacts = GoUnsignedIntegerPrimitiveFacts {
   surface_spelling: go_surface_spelling_uint,
-  signedness: Unsigned,
-  width: GoUnsignedWidth { width: UnsignedPlatformInt },
-  overflow: UnsignedTypedIntegerTruncatesSilentlyOnOverflow,
+  width: UnsignedPlatformInt,
   encoding: go_repr_twos_complement_integer,
   std_projection: go_std_projection_uint,
 }
 
-data go_facts_uintptr: GoIntegerPrimitiveFacts = GoIntegerPrimitiveFacts {
+data go_facts_uintptr: GoIntegerPrimitiveFacts = GoUnsignedIntegerPrimitiveFacts {
   surface_spelling: go_surface_spelling_uintptr,
-  signedness: Unsigned,
-  width: GoUnsignedWidth { width: UnsignedPointerSized },
-  overflow: UnsignedTypedIntegerTruncatesSilentlyOnOverflow,
+  width: UnsignedPointerSized,
   encoding: go_repr_twos_complement_integer,
   std_projection: go_std_projection_uintptr,
 }
@@ -436,13 +416,6 @@ fn go_unsigned_int_width_node(width: UnsignedIntWidth) -> Node {
     UnsignedBits64 => go_inhabitant_atom(id: go_tag_unsigned_bits64)
     UnsignedPlatformInt => go_inhabitant_atom(id: go_tag_unsigned_platform_int)
     UnsignedPointerSized => go_inhabitant_atom(id: go_tag_unsigned_pointer_sized)
-  }
-}
-
-fn go_integer_width_node(width: GoIntegerWidth) -> Node {
-  match width {
-    GoSignedWidth { width } => go_signed_int_width_node(width: width)
-    GoUnsignedWidth { width } => go_unsigned_int_width_node(width: width)
   }
 }
 
