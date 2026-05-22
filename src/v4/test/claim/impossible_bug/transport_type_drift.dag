@@ -24,7 +24,7 @@ module v4.test.claim.impossible_bug.transport_type_drift
 import v4.std.diagnostic {
   Accepted,
   Diagnostic,
-  NodeLocus,
+  node_locus,
   None,
   Outcome,
   Rejected,
@@ -103,7 +103,7 @@ data claim_target_contract_drift_impossible: TestClaim = DiagnosticClaim {
   expected_rejection: diagnostics_singleton(
       d: Diagnostic {
         reason: target_transport_drift_reason,
-        at: NodeLocus { node: falsification_target_contract_drift },
+        at: node_locus(node: falsification_target_contract_drift),
         correction: Suggested { node: shared_wire_contract_input }
       }
     ),
@@ -118,7 +118,7 @@ data claim_wire_contract_drift_impossible: TestClaim = DiagnosticClaim {
   expected_rejection: diagnostics_singleton(
       d: Diagnostic {
         reason: transport_drift_reason,
-        at: NodeLocus { node: falsification_wire_contract_drift },
+        at: node_locus(node: falsification_wire_contract_drift),
         correction: Suggested { node: shared_wire_contract_input }
       }
     ),
