@@ -157,6 +157,10 @@ fn v4_lens_registry_dag_compiles() {
         surface_declares_fn(&module, "lens_registry_bound_row_count"),
         "{REGISTRY_PATH}: registry must count bound rows for fail-closed singleton resolution"
     );
+    assert!(
+        surface_declares_fn(&module, "lens_registry_row_count"),
+        "{REGISTRY_PATH}: registry must count all rows so duplicate bound/unbound ids reject"
+    );
 }
 
 #[test]
