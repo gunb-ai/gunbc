@@ -24,6 +24,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 CENSUS_FILE = ROOT / "src/v3/compiler/tests/integration/sg0_census_test.rs"
+# HEAD baseline for fail-closed --check. When execution PRs shrink the census,
+# bump this constant to match len(EXPECTED_HAND_AUTHORED_TEST) — do not weaken
+# --check by editing sg0_census_test.rs to satisfy a stale number.
 EXPECTED_CENSUS_PATHS = 145
 
 
