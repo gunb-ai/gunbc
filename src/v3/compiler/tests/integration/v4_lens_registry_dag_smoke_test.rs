@@ -172,13 +172,6 @@ fn record_body_field<'a>(body: &'a SurfaceExpr, field_name: &str) -> &'a Surface
         .unwrap_or_else(|| panic!("record body missing `{field_name}` field"))
 }
 
-fn expr_var_name(expr: &SurfaceExpr) -> &str {
-    match expr {
-        SurfaceExpr::Var { name, .. } => name,
-        other => panic!("expected var expr, got {other:?}"),
-    }
-}
-
 fn expr_string(expr: &SurfaceExpr) -> &str {
     match expr {
         SurfaceExpr::Literal {
