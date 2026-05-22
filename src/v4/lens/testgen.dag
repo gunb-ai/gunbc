@@ -879,15 +879,15 @@ fn witness_validity_diagnostic_node(d: Diagnostic) -> Outcome<Node> {
 }
 
 
-// Consumes canonical fold_list; no parallel walker authority.
+// Consumes canonical fold_list_right (order-preserving structural output); no parallel walker.
 fn witness_validity_diagnostic_list_node(xs: FreeMonoid<Diagnostic>) -> Outcome<Node> {
-  fold_list(
+  fold_list_right(
     xs: xs,
     empty: Accepted {
       value: witness_validity_symbol_atom_node(s: witness_validity_list_tag_empty),
       diagnostics: None
     },
-    cons: fn(acc, h) {
+    snoc: fn(acc, h) {
       bind_outcome(o: acc, f: fn(prev_node) {
         bind_outcome(o: witness_validity_diagnostic_node(d: h), f: fn(hn) {
           Accepted {
