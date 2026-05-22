@@ -380,16 +380,42 @@ fn emit_job(id: &str, v: &Value) -> Result<String, Box<dyn std::error::Error>> {
     ))
 }
 
+/// GitHub-reserved hosted-runner label prefixes. The substrate's `HostedRunner` /
+/// `RunnerLabel` enum is the authoritative carrier for these; admitting them into the
+/// `SelfHosted` sequence path would silently misrepresent extdeps semantics.
+fn is_hosted_runner_label(s: &str) -> bool {
+    s.starts_with("ubuntu-") || s.starts_with("macos-") || s.starts_with("windows-")
+}
+
 fn emit_runs_on(v: &Value) -> Result<String, Box<dyn std::error::Error>> {
     // GitHub Actions `runs-on` accepts either a scalar (single label or `${{ }}` expression)
-    // or a sequence of labels (multi-label match — every label must match for the runner
+    // or a sequence of labels (multi-label AND-match — every label must match for the runner
     // to be eligible). The `SelfHosted { labels: List<String> }` substrate carrier
-    // (`dsl/extdeps/github/actions.dag`) is already shaped for a list, so the sequence
-    // form maps directly onto it.
+    // (`dsl/extdeps/github/actions.dag`) is already shaped for a list, so the sequence form
+    // maps onto it ONLY for self-hosted label sets. Hosted-runner labels (`ubuntu-*`,
+    // `macos-*`, `windows-*`) and `${{ }}` expressions belong to `HostedRunner` and
+    // `RunsOnExpression` carriers respectively; admitting them inside `SelfHosted` would
+    // violate extdeps fidelity (P2 / Practice 5) and the fail-closed discipline (P1/P3).
     if let Some(seq) = v.as_sequence() {
         let mut labels: Vec<String> = Vec::new();
         for it in seq {
             let s = it.as_str().ok_or("runs-on sequence entry must be string")?;
+            if is_hosted_runner_label(s) {
+                return Err(format!(
+                    "runs-on sequence contains hosted-runner label `{s}` — \
+                     gen_gunbc_ci_workflow_dag does not model hosted+sequence combinations yet \
+                     (use the scalar form `runs-on: {s}` for hosted runners)"
+                )
+                .into());
+            }
+            if s.contains("${{") {
+                return Err(format!(
+                    "runs-on sequence contains expression `{s}` — gen_gunbc_ci_workflow_dag \
+                     does not model expression-form elements inside sequences yet \
+                     (use scalar `runs-on: ${{{{ ... }}}}` if you need a computed runner)"
+                )
+                .into());
+            }
             labels.push(dag_string(s));
         }
         return Ok(format!(
