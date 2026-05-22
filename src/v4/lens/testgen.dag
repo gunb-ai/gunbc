@@ -1057,7 +1057,7 @@ fn testgen_emit_witness_validity_claim(
       Accepted {
         value: RoundTripClaim {
           label: label,
-          t19_anchor: T19ManualAnchorAbsent,
+          t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
           input: input_node,
           classification: TestClassification { tier: Tier1, layer: Unit }
         },
