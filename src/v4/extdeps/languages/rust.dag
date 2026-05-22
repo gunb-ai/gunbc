@@ -590,13 +590,19 @@ fn rust_overflow_node(overflow: OverflowAction) -> Node {
   }
 }
 
-fn rust_overflow_disposition_node(disposition: OverflowDisposition<RustScalar>) -> Node {
+fn rust_integer_carrier_as_scalar(carrier: RustIntegerCarrier) -> RustScalar {
+  IntScalar { kind: carrier.kind, width: carrier.width }
+}
+
+fn rust_overflow_disposition_node(disposition: OverflowDisposition<RustIntegerCarrier>) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
       rust_named_edge(
         name: rust_overflow_field_ir_carrier,
-        target: rust_scalar_node(scalar: disposition.ir_carrier)
+        target: rust_scalar_node(
+          scalar: rust_integer_carrier_as_scalar(carrier: disposition.ir_carrier)
+        )
       ),
       rust_named_edge(
         name: rust_overflow_field_debug_default,
@@ -669,11 +675,11 @@ fn rust_integer_facts_node(facts: RustIntegerPrimitiveFacts) -> Node {
       ),
       rust_named_edge(
         name: rust_facts_field_signedness,
-        target: rust_int_kind_node(kind: facts.signedness)
+        target: rust_int_kind_node(kind: facts.overflow_disposition.ir_carrier.kind)
       ),
       rust_named_edge(
         name: rust_facts_field_width,
-        target: rust_int_width_node(width: facts.width)
+        target: rust_int_width_node(width: facts.overflow_disposition.ir_carrier.width)
       ),
       rust_named_edge(
         name: rust_facts_field_overflow_disposition,
@@ -685,7 +691,9 @@ fn rust_integer_facts_node(facts: RustIntegerPrimitiveFacts) -> Node {
       ),
       rust_named_edge(
         name: rust_facts_field_scalar_classifier,
-        target: rust_scalar_node(scalar: facts.overflow_disposition.ir_carrier)
+        target: rust_scalar_node(
+          scalar: rust_integer_carrier_as_scalar(carrier: facts.overflow_disposition.ir_carrier)
+        )
       )
     ]
   }
@@ -1305,11 +1313,11 @@ fn rust_primitive_bundle_from_integer_facts(facts: RustIntegerPrimitiveFacts) ->
       ),
       rust_primitive_axis_binding(
         axis: primitive_fact_axis_width,
-        fact: rust_int_width_node(width: facts.width)
+        fact: rust_int_width_node(width: facts.overflow_disposition.ir_carrier.width)
       ),
       rust_primitive_axis_binding(
         axis: primitive_fact_axis_signedness,
-        fact: rust_int_kind_node(kind: facts.signedness)
+        fact: rust_int_kind_node(kind: facts.overflow_disposition.ir_carrier.kind)
       ),
       rust_primitive_axis_binding(
         axis: primitive_fact_axis_encoding,

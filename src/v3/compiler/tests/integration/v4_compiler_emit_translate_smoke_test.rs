@@ -206,8 +206,23 @@ fn v4_rust_integer_overflow_disposition_is_mode_aware_and_axis_bound() {
         "{RUST_LANGUAGE_PATH}: Rust overflow disposition must model debug/release defaults and explicit overflow-checks behavior"
     );
     assert_eq!(
+        type_record_fields(&module, "RustIntegerPrimitiveFacts")
+            .iter()
+            .map(|f| (f.name.as_str(), surface_type_name(&f.ty)))
+            .collect::<Vec<_>>(),
+        vec![
+            ("surface_spelling", "Symbol".to_string()),
+            (
+                "overflow_disposition",
+                "OverflowDisposition<RustIntegerCarrier>".to_string(),
+            ),
+            ("std_projection", "Symbol".to_string()),
+        ],
+        "{RUST_LANGUAGE_PATH}: integer primitive facts must make the overflow disposition's carrier the single kind/width authority"
+    );
+    assert_eq!(
         type_record_field_type(&module, "RustIntegerPrimitiveFacts", "overflow_disposition"),
-        Some("OverflowDisposition<RustScalar>".to_string()),
+        Some("OverflowDisposition<RustIntegerCarrier>".to_string()),
         "{RUST_LANGUAGE_PATH}: integer primitive facts must carry the mode-aware overflow disposition"
     );
     assert!(
