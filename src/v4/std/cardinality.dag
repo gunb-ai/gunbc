@@ -123,7 +123,7 @@ type TerminationProof {
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type Multiplicity
   = Bounded
-  | Unbounded { step: TerminationProof }
+  | RequiresTerminationProof
 
 data cardinality_structural_node_size: Symbol = cardinality_structural_node_size
 data cardinality_descent_not_proven: Symbol = cardinality_descent_not_proven
@@ -139,10 +139,11 @@ fn structural_node_size_termination_proof() -> TerminationProof {
   }
 }
 
-fn multiplicity_termination_proof(m: Multiplicity) -> TerminationProof {
+fn multiplicity_termination_witness(n: Node, m: Multiplicity) -> Witness<TerminationProof> {
   match m {
-    Bounded => structural_node_size_termination_proof()
-    Unbounded { step } => step
+    Bounded => Holds { value: structural_node_size_termination_proof() }
+    RequiresTerminationProof =>
+      Violates { diagnostic: cardinality_descent_not_proven_diagnostic(n: n) }
   }
 }
 
@@ -152,7 +153,7 @@ fn connective_multiplicity(c: Connective) -> Multiplicity {
     Conj => Bounded
     Disj => Bounded
     Arrow => Bounded
-    Cardinality => Unbounded { step: structural_node_size_termination_proof() }
+    Cardinality => RequiresTerminationProof
     Instantiation => Bounded
   }
 }
@@ -162,7 +163,7 @@ fn behavior_multiplicity(b: Behavior) -> Multiplicity {
     Value => Bounded
     Transform => Bounded
     Branch => Bounded
-    Loop => Unbounded { step: structural_node_size_termination_proof() }
+    Loop => RequiresTerminationProof
     Bind => Bounded
   }
 }
@@ -183,7 +184,7 @@ fn cardinality_descent_not_proven_diagnostic(n: Node) -> Diagnostic {
 }
 
 fn local_termination_proof_witness(n: Node) -> Witness<TerminationProof> {
-  Holds { value: multiplicity_termination_proof(m: node_multiplicity(n: n)) }
+  multiplicity_termination_witness(n: n, m: node_multiplicity(n: n))
 }
 
 fn termination_proof_fold_step(
