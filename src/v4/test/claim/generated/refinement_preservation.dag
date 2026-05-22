@@ -106,5 +106,11 @@ data witness_refinement_preserves_nonempty_list_base: Bool =
   nonempty_list_base_preserved_node() == stub_empty_conj
 
 
+fn refinement_preservation_subject_base_value() -> Node {
+  let subject = refinement_preservation_subject_nonempty_list_base()
+  subject.base_value
+}
+
+
 data witness_refinement_preservation_subject_anchor: Bool =
-  refinement_preservation_subject_nonempty_list_base().base_value == stub_empty_conj
+  refinement_preservation_subject_base_value() == stub_empty_conj

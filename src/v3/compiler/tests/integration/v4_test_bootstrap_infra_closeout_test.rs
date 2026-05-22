@@ -74,9 +74,13 @@ fn t19_language_behavior_equivalence_run_test_claim_receipts_present() {
             && LBE_GENERATED_DAG.contains("fn lbe_claim_from_testgen_emit")
             && LBE_GENERATED_DAG.contains("-> Outcome<TestClaim>")
             && LBE_GENERATED_DAG.contains("Fail { actual: Rejected { diagnostics:")
-            && LBE_GENERATED_DAG.contains("data run_lbe_conj_via_run_test_claim: TestClaimRun<Node>")
-            && LBE_GENERATED_DAG.contains("data run_lbe_disj_via_run_test_claim: TestClaimRun<Node>")
-            && LBE_GENERATED_DAG.contains("data run_lbe_transform_via_run_test_claim: TestClaimRun<Node>")
+            && LBE_GENERATED_DAG
+                .contains("data run_lbe_conj_via_run_test_claim: TestClaimRun<Node, RuntimeValue>")
+            && LBE_GENERATED_DAG
+                .contains("data run_lbe_disj_via_run_test_claim: TestClaimRun<Node, RuntimeValue>")
+            && LBE_GENERATED_DAG.contains(
+                "data run_lbe_transform_via_run_test_claim: TestClaimRun<Node, RuntimeValue>"
+            )
             && LBE_GENERATED_DAG.contains("run_test_claim_assert(")
             && LBE_GENERATED_DAG.contains("witness_lbe_conj_snapshot_pass")
             && LBE_GENERATED_DAG.contains("witness_lbe_disj_snapshot_pass")
