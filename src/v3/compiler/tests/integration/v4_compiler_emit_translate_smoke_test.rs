@@ -494,16 +494,6 @@ fn data_expr<'a>(
         .unwrap_or_else(|| panic!("missing data declaration body {name}"))
 }
 
-fn data_body_var<'a>(
-    module: &'a v3_compiler::parse_surface::SurfaceModule,
-    name: &str,
-) -> Option<&'a str> {
-    match data_expr(module, name) {
-        SurfaceExpr::Var { name, .. } => Some(name.as_str()),
-        _ => None,
-    }
-}
-
 fn record_field_var<'a>(expr: &'a SurfaceExpr, field_name: &str) -> Option<&'a str> {
     let fields = match expr {
         SurfaceExpr::Record { fields, .. } | SurfaceExpr::VariantRecord { fields, .. } => fields,
