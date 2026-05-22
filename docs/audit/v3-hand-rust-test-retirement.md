@@ -153,6 +153,7 @@ Band-C cementing Rust modules are **transitional** same-PR receipts for `regen.d
 
 ## DELETE bucket (rollup by reason class)
 
+Subsections below sum to **384** DELETE tests (matches summary + JSONL). Downstream batch workers should use the JSONL as sole authority; this rollup is illustrative only.
 
 ### Imperative substrate walks (115 tests)
 
@@ -203,6 +204,11 @@ Band-C cementing Rust modules are **transitional** same-PR receipts for `regen.d
 - `src/v3/compiler/tests/integration/m2_lens_structural_resolution_migration_test.rs` (3 tests)
 - `src/v3/compiler/tests/integration/m2_lens_unused_parameters_migration_test.rs` (6 tests)
 - `src/v3/compiler/tests/integration/m2_lens_variant_payload_migration_test.rs` (3 tests)
+
+### One-shot preflight / release-wrapper receipts (5 tests)
+
+- `src/v3/compiler/tests/integration/e_i_lane_induction_preflight_test.rs` (1 test) — one-shot `SumBound` bootstrap preflight; dissolves when substrate covers the fact
+- `src/v3/compiler/tests/integration/r1_release_acceptance_test.rs` (4 tests) — R1-only acceptance wrapper with encoded deferrals; retires when R3 close ends that receipt class
 
 ### Bridge/meta/blocker ratchets (31 tests)
 
