@@ -352,7 +352,12 @@ fn swift_nonnumeric_representation_node(facts: SwiftNonNumericPrimitiveFacts) ->
 fn swift_nonnumeric_scalar_classifier_node(facts: SwiftNonNumericPrimitiveFacts) -> Node {
   match facts {
     SwiftBoolPrimitiveFacts { representation: _ } => swift_atom(id: swift_tag_scalar_bool)
+<<<<<<< HEAD
     SwiftCharacterPrimitiveFacts { representation: _ } => swift_atom(id: swift_tag_scalar_character)
+=======
+    SwiftCharacterPrimitiveFacts { representation: _ } =>
+      swift_atom(id: swift_tag_scalar_character)
+>>>>>>> origin/main
     SwiftStringPrimitiveFacts { representation: _ } => swift_atom(id: swift_tag_scalar_string)
     SwiftVoidPrimitiveFacts { representation: _ } => swift_atom(id: swift_tag_scalar_void)
   }
@@ -404,10 +409,17 @@ fn swift_float_facts_node(facts: SwiftFloatPrimitiveFacts) -> Node {
 
 fn swift_nonnumeric_surface_spelling(facts: SwiftNonNumericPrimitiveFacts) -> Symbol {
   match facts {
+<<<<<<< HEAD
     SwiftBoolPrimitiveFacts { surface_spelling, representation: _ } => surface_spelling
     SwiftCharacterPrimitiveFacts { surface_spelling, representation: _ } => surface_spelling
     SwiftStringPrimitiveFacts { surface_spelling, representation: _ } => surface_spelling
     SwiftVoidPrimitiveFacts { surface_spelling, representation: _ } => surface_spelling
+=======
+    SwiftBoolPrimitiveFacts { surface_spelling: s, representation: _ } => s
+    SwiftCharacterPrimitiveFacts { surface_spelling: s, representation: _ } => s
+    SwiftStringPrimitiveFacts { surface_spelling: s, representation: _ } => s
+    SwiftVoidPrimitiveFacts { surface_spelling: s, representation: _ } => s
+>>>>>>> origin/main
   }
 }
 

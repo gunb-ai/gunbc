@@ -1,8 +1,8 @@
 // src/v4/lens/testgen.dag
 // Scope: Manual-anchor testgen plus filesystem-backed whole-corpus lens driver primitive.
-// Owns: Generator TestgenConcept manual_test_claim_for_manual_anchor testgen_concept_for_manual_claim testgen_emit_language_behavior_equivalence_claim testgen_scheduled_language_behavior_generators TypeConstructionSubject AlgebraLawSubject DiagnosticExhaustivenessSubject LensApplicabilitySubject BidirectionalRoundtripSubject LanguageBehaviorEquivalenceSubject FrozenLanguageBehaviorSnapshot LanguageBehaviorIoMock CorpusEntry CorpusTraversalScope CorpusTraversalOrder CorpusDuplicatePolicy CorpusTraversalPolicy CorpusEnumerationRequest CorpusEnumerationResult CorpusEnumerator CorpusEntryIngestResult CorpusEntryIngestor CorpusLensReadResult<C> CorpusLensReader<C> CorpusLensObservation<C> CorpusLensDriveResult<C> CorpusLensDriver<C>
+// Owns: Generator TestgenConcept manual_test_claim_for_manual_anchor testgen_concept_for_manual_claim testgen_emit_language_behavior_equivalence_claim testgen_emit_idempotent_operation_claim testgen_scheduled_language_behavior_generators testgen_scheduled_idempotent_operation_subjects TypeConstructionSubject AlgebraLawSubject DiagnosticExhaustivenessSubject LensApplicabilitySubject BidirectionalRoundtripSubject LanguageBehaviorEquivalenceSubject FrozenLanguageBehaviorSnapshot LanguageBehaviorIoMock CorpusEntry CorpusTraversalScope CorpusTraversalOrder CorpusDuplicatePolicy CorpusTraversalPolicy CorpusEnumerationRequest CorpusEnumerationResult CorpusEnumerator CorpusEntryIngestResult CorpusEntryIngestor CorpusLensReadResult<C> CorpusLensReader<C> CorpusLensObservation<C> CorpusLensDriveResult<C> CorpusLensDriver<C>
 // Consumes: v4.std.diagnostic v4.std.nat v4.std.node v4.std.verification v4.extdeps.file_system v4.test.claim.manual.connective_anchors v4.test.claim.manual.nat_law_anchors
-// Status: Manual-anchor + LanguageBehaviorEquivalence emission; substrate extension = operator STOP.
+// Status: Manual-anchor + LBE + idempotent-operation testgen (subjects: v4.std.effects); new TestgenConcept arms = operator STOP.
 
 module v4.lens.testgen
 
@@ -114,6 +114,19 @@ import v4.test.claim.manual.nat_law_anchors {
   claim_nat_mul_annihilator,
   claim_nat_mul_associativity,
   claim_nat_mul_left_identity
+}
+import v4.std.effects {
+  Composable,
+  ComposableIdempotentOperationSubject,
+  IdempotentOperationSubject,
+  LabelOnlyIdempotentInhabitance,
+  idempotent_operation_apply_once,
+  idempotent_operation_apply_twice,
+  t19_sample_delete_composable,
+  t19_sample_label_only_subject,
+  t19_sample_read_composable,
+  t19_sample_state,
+  t19_sample_upsert_composable
 }
 
 
@@ -317,7 +330,14 @@ data t19_lbe_label_disj_dag_surface: String = "generated/lbe: Disj type-node mat
 data t19_lbe_label_transform_dag_surface: String = "generated/lbe: Transform computation-node matches dag LanguageModel surface (frozen snapshot)"
 
 
+<<<<<<< HEAD
 data t19_refinement_label_nonempty_list_base: String = "generated/refinement: NonEmptyList preserves List base after refine"
+=======
+data t19_idempotent_operation_tautology_skip: Symbol = t19_idempotent_operation_tautology_skip
+data t19_idempotent_label_read: String = "generated/idempotent_operation: ReadEffect f(f(x)) == f(x)"
+data t19_idempotent_label_upsert: String = "generated/idempotent_operation: UpsertEffect f(f(x)) == f(x)"
+data t19_idempotent_label_delete: String = "generated/idempotent_operation: DeleteEffect f(f(x)) == f(x)"
+>>>>>>> origin/main
 
 
 data t19_testgen_lens_file: Symbol = t19_testgen_lens_file
@@ -395,6 +415,7 @@ fn lbe_subject_transform_dag_surface() -> LanguageBehaviorEquivalenceSubject {
 }
 
 
+<<<<<<< HEAD
 fn refine_nonempty_node_list(xs: List<Node>, at: Locus) -> Outcome<Refined<List<Node>>> {
   refine(
     base: xs,
@@ -474,10 +495,64 @@ fn testgen_emit_refinement_preservation_claim(
       Rejected {
         diagnostics: diagnostics_singleton(d: t19_manual_anchor_absent_bootstrap_diagnostic()),
       }
+=======
+fn testgen_emit_idempotent_operation_equals_claim(
+  label: String,
+  subject: ComposableIdempotentOperationSubject,
+  classification: TestClassification
+) -> Outcome<TestClaim> {
+  Accepted {
+    value: EqualsClaim {
+      label: label,
+      t19_anchor: T19ManualAnchorAbsent,
+      lhs: idempotent_operation_apply_twice(state: t19_sample_state, subject: subject),
+      rhs: idempotent_operation_apply_once(state: t19_sample_state, subject: subject),
+      classification: classification,
+    },
+    diagnostics: None,
+>>>>>>> origin/main
   }
 }
 
 
+<<<<<<< HEAD
+=======
+fn testgen_emit_idempotent_operation_claim(
+  label: String,
+  subject: IdempotentOperationSubject,
+  classification: TestClassification
+) -> Outcome<TestClaim> {
+  match subject {
+    LabelOnlyIdempotentInhabitance { shape: _, label: _ } =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: Diagnostic {
+            reason: t19_idempotent_operation_tautology_skip,
+            at: Textual { file: t19_testgen_lens_file, extent: WholeFile },
+            correction: Unavailable { reason: UserInputBoundary }
+          }
+        )
+      }
+    Composable(inner) =>
+      testgen_emit_idempotent_operation_equals_claim(
+        label: label,
+        subject: inner,
+        classification: classification
+      )
+  }
+}
+
+
+fn testgen_scheduled_idempotent_operation_subjects() -> List<ComposableIdempotentOperationSubject> {
+  [
+    t19_sample_read_composable,
+    t19_sample_upsert_composable,
+    t19_sample_delete_composable,
+  ]
+}
+
+
+>>>>>>> origin/main
 fn testgen_emit_language_behavior_equivalence_claim(
   anchor: T19ManualAnchorKey,
   label: String,
