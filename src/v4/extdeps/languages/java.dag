@@ -63,7 +63,7 @@ import v4.std.node {
   TypeNode
 }
 import v4.std.logic { Bool, bool_boolean_algebra }
-import v4.std.algebra { BooleanAlgebra, free_monoid_fold }
+import v4.std.algebra { BooleanAlgebra, fold_list }
 import v4.std.text { String }
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
@@ -691,7 +691,7 @@ fn java_mvp1_positional_token_edge(token: JavaConcreteSyntaxToken) -> Edge {
 }
 
 fn java_mvp1_positional_edges_from_token_classes() -> List<Edge> {
-  free_monoid_fold(
+  fold_list(
     xs: java_mvp1_concrete_tokens(),
     empty: Empty,
     cons: fn(acc, token) {
@@ -752,7 +752,7 @@ fn java_grammar_sequence_fold_step(acc: GrammarExpr, token: JavaConcreteSyntaxTo
 }
 
 fn java_grammar_sequence_from_token_classes() -> GrammarExpr {
-  free_monoid_fold(
+  fold_list(
     xs: java_mvp1_concrete_tokens(),
     empty: java_grammar_terminal(token_class: java_token_kw_static),
     cons: fn(acc, token) {
@@ -770,7 +770,7 @@ fn java_mvp1_grammar_relation_row() -> JavaGrammarRelationRow {
 }
 
 fn java_relation_token_edges(tokens: List<JavaConcreteSyntaxToken>) -> List<Edge> {
-  free_monoid_fold(
+  fold_list(
     xs: tokens,
     empty: Empty,
     cons: fn(acc, token) {
@@ -932,7 +932,7 @@ fn java_noninteger_catalog_surface_symbol_step(
 }
 
 fn java_integer_catalog_surface_symbol(sym: Symbol) -> Bool {
-  free_monoid_fold(
+  fold_list(
     xs: java_integer_facts_catalog,
     empty: false,
     cons: fn(acc, facts) {
@@ -942,7 +942,7 @@ fn java_integer_catalog_surface_symbol(sym: Symbol) -> Bool {
 }
 
 fn java_float_catalog_surface_symbol(sym: Symbol) -> Bool {
-  free_monoid_fold(
+  fold_list(
     xs: java_float_facts_catalog,
     empty: false,
     cons: fn(acc, facts) {
@@ -952,7 +952,7 @@ fn java_float_catalog_surface_symbol(sym: Symbol) -> Bool {
 }
 
 fn java_noninteger_catalog_surface_symbol(sym: Symbol) -> Bool {
-  free_monoid_fold(
+  fold_list(
     xs: java_noninteger_facts_catalog,
     empty: false,
     cons: fn(acc, facts) {
@@ -1062,7 +1062,7 @@ fn java_primitive_bundle_from_noninteger_facts(
 }
 
 fn java_primitive_bundles_from_integer_catalog() -> List<PrimitiveFactBundle> {
-  free_monoid_fold(
+  fold_list(
     xs: java_integer_facts_catalog,
     empty: Empty,
     cons: fn(acc, facts) {
@@ -1075,7 +1075,7 @@ fn java_primitive_bundles_from_integer_catalog() -> List<PrimitiveFactBundle> {
 }
 
 fn java_primitive_bundles_from_float_catalog() -> List<PrimitiveFactBundle> {
-  free_monoid_fold(
+  fold_list(
     xs: java_float_facts_catalog,
     empty: Empty,
     cons: fn(acc, facts) {
@@ -1088,7 +1088,7 @@ fn java_primitive_bundles_from_float_catalog() -> List<PrimitiveFactBundle> {
 }
 
 fn java_primitive_bundles_from_noninteger_catalog() -> List<PrimitiveFactBundle> {
-  free_monoid_fold(
+  fold_list(
     xs: java_noninteger_facts_catalog,
     empty: Empty,
     cons: fn(acc, facts) {
