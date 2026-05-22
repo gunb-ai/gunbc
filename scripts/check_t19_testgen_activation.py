@@ -78,7 +78,7 @@ def main() -> None:
             "coproduct_exhaustiveness_subject_testclaim_equals",
             "coproduct_exhaustiveness_subject_testclaim_roundtrip",
             "t19_coproduct_exhaustiveness_missing_variant",
-            "T19GeneratedCoproductExhaustiveness { omitted_variant:",
+            "omitted_variant: test_claim_coproduct_variant_symbol(variant: subject.omitted_variant)",
             "t19_coproduct_exhaustiveness_omitted_variant_edge",
             "node_locus(node: input)",
         ),
@@ -91,7 +91,7 @@ def main() -> None:
             "T19ManualLbeConjDagSurface",
             "T19ManualLbeDisjDagSurface",
             "T19ManualLbeTransformDagSurface",
-            "T19GeneratedCoproductExhaustiveness { omitted_variant:",
+            "T19GeneratedCoproductExhaustiveness { omitted_variant: Symbol }",
         ),
     )
 
@@ -133,7 +133,7 @@ def main() -> None:
         (
             "fn generated_coproduct_exhaustiveness_claim() -> Outcome<TestClaim>",
             "testgen_emit_coproduct_exhaustiveness_claim",
-            "T19GeneratedCoproductExhaustiveness { omitted_variant:",
+            "T19GeneratedCoproductExhaustiveness { omitted_variant: _ }",
             "witness_coproduct_exhaustiveness_diagnostic_claim",
             "witness_coproduct_exhaustiveness_uses_generated_anchor",
             "witness_coproduct_exhaustiveness_all_variants_emit",
