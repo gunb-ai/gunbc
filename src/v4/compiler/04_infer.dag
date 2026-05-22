@@ -2,7 +2,7 @@
 // Scope: Stage 4 — ResolvedTree -> InferredTree; bounded Find phase (DECISIONS C1 / IR-1).
 // Owns: AlgebraRef, InferredFacts, InferredTree, infer, canonical_grounding_for_node.
 // Consumes: v4.compiler.resolve, v4.std.cardinality, v4.std.collection, v4.std.constraints, v4.std.diagnostic, v4.std.node, v4.std.witness.
-// Status: Wave-3-A T-9 — descent reads the std/cardinality fold_node propagation witness before solve_constraints; Holds path wires solve_constraints → find_witness(UniqueOnly) + AlgebraRef bridge.
+// Status: Wave-3-A T-9 — descent via std/cardinality termination_proof_witness_for_node (#3559); SPI-3 remaps propagation Violates reason to infer_descent_not_derived while preserving upstream diagnostic.at (P2 facts-flow-forward).
 // Anchor: https://en.wikipedia.org/wiki/Type_inference
 
 
@@ -24,6 +24,7 @@ import v4.std.constraints {
 import v4.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,
+  Locus,
   node_locus,
   Outcome,
   Unavailable,
@@ -119,17 +120,24 @@ fn infer_canonical_grounding_incoherent_diagnostic(node: Node) -> Diagnostic {
 }
 
 
-fn infer_descent_not_derived_diagnostic(n: Node) -> Diagnostic {
+fn infer_descent_not_derived_diagnostic(at: Locus) -> Diagnostic {
   Diagnostic {
     reason: infer_descent_not_derived,
-    at: node_locus(node: n),
+    at: at,
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
 
+// SPI-3: infer owns the reason symbol; substrate/cardinality owns the failing locus (fold preserves child Violates).
 fn infer_descent_witness_for_node(n: Node) -> Witness<TerminationProof> {
-  termination_proof_witness_for_node(n: n)
+  match termination_proof_witness_for_node(n: n) {
+    Holds { value: proof } => Holds { value: proof }
+    Violates { diagnostic: upstream } =>
+      Violates {
+        diagnostic: infer_descent_not_derived_diagnostic(at: upstream.at)
+      }
+  }
 }
 
 

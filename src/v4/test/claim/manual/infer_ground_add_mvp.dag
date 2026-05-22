@@ -2,7 +2,7 @@
 // Scope: T-9 worked fixture — ResolvedTree for MVP add-shaped Arrow; executable infer/descent receipts.
 // Owns: fixture_add_resolved_tree, anchor_infer_add_mvp, infer_descent_witness_contract_node, claim rows, TestClaimRun receipts.
 // Consumes: compiler/04_infer.dag, compiler/05_eval.dag, std/diagnostic.dag, std/node.dag, std/verification.dag.
-// Status: infer rejects infer_descent_not_derived before solve_constraints until TerminationProof is derived.
+// Status: SPI-3 receipts — infer derives descent via PR #3559 substrate; add MVP compiles when solve_constraints succeeds.
 // Anchor: design-v4-compiler-homomorphism.md MVP add(x,y)=x+y
 
 
@@ -38,6 +38,7 @@ import v4.std.diagnostic {
   Rejected,
   Unavailable,
   diagnostics_singleton,
+  node_locus,
   outcome_node_eq
 }
 import v4.std.node {
@@ -254,7 +255,7 @@ fn infer_receipt_empty_tree(root: Node) -> InferredTree {
     facts: Map {
       lookup: fn(_) {
         Violates {
-          diagnostic: infer_descent_not_derived_diagnostic(n: root)
+          diagnostic: infer_descent_not_derived_diagnostic(at: node_locus(node: root))
         }
       }
     }
@@ -295,6 +296,15 @@ fn infer_add_mvp_receipt_run(
     verdict: match test_claim_expected_outcome(c: subject.claim) {
       Accepted { value: expected, diagnostics: _ } =>
         match actual {
+          Accepted { value: tree, diagnostics: ad } =>
+            if outcome_node_eq(
+              a: Accepted { value: tree.root, diagnostics: ad },
+              b: expected
+            ) {
+              Pass
+            } else {
+              Fail { actual: actual }
+            }
           Rejected { diagnostics: _ } =>
             if outcome_node_eq(
               a: infer_outcome_node_projection(actual: actual),
@@ -304,7 +314,6 @@ fn infer_add_mvp_receipt_run(
             } else {
               Fail { actual: actual }
             }
-          Accepted { value: _, diagnostics: _ } => Fail { actual: actual }
         }
       Rejected { diagnostics: _ } => Fail { actual: actual }
     }
@@ -324,16 +333,12 @@ fn infer_descent_witness_receipt_run(
     ),
     verdict: match test_claim_expected_outcome(c: subject.claim) {
       Accepted { value: expected, diagnostics: _ } =>
-        match actual {
-          Accepted { value: v, diagnostics: d } =>
-            if outcome_node_eq(a: Accepted { value: v, diagnostics: d }, b: expected) {
-              Pass
-            } else {
-              Fail { actual: actual }
-            }
-          Rejected { diagnostics: r } => Fail { actual: Rejected { diagnostics: r } }
+        if outcome_node_eq(a: actual, b: expected) {
+          Pass
+        } else {
+          Fail { actual: actual }
         }
-      Rejected { diagnostics: r } => Fail { actual: Rejected { diagnostics: r } }
+      Rejected { diagnostics: _ } => Fail { actual: actual }
     }
   }
 }
@@ -377,51 +382,45 @@ fn anchor_infer_add_mvp() -> Outcome<InferredTree> {
 }
 
 
-// Behavior receipt: descent must Violates (not Holds with a fabricated proof) until cardinality propagation lands.
+// Behavior receipt: bounded TypeNode substrate derives Holds descent witness.
 fn infer_descent_witness_contract_node(n: Node) -> Outcome<Node> {
   match infer_descent_witness_for_node(n: n) {
-    Violates { diagnostic: _ } => Accepted { value: n, diagnostics: None }
-    Holds { value: _ } =>
-      Rejected {
-        diagnostics: diagnostics_singleton(
-          d: infer_descent_not_derived_diagnostic(n: n)
-        )
-      }
+    Holds { value: _ } => Accepted { value: n, diagnostics: None }
+    Violates { diagnostic: d } =>
+      Rejected { diagnostics: diagnostics_singleton(d: d) }
   }
 }
 
 
-data case_infer_add_mvp_fail_closed: InferReceiptCase = InferDiagnosticReceiptCase {
-  label: "manual/infer: infer(fixture_add_resolved_tree) rejects infer_descent_not_derived before solve_constraints",
+data case_infer_add_mvp_compiles: InferReceiptCase = InferCompilesReceiptCase {
+  label: "manual/infer: infer(fixture_add_resolved_tree) derives descent and accepts",
   input_symbol: infer_receipt_input_infer_add_mvp,
   input: fixture_add_resolved_tree(),
-  expected_rejection: diagnostics_singleton(
-    d: infer_descent_not_derived_diagnostic(n: fixture_add_resolved_tree())
-  )
+  expected_value: fixture_add_resolved_tree()
 }
 
 
-data subject_infer_add_mvp_fail_closed: TestClaimEvalSubject<Node> = infer_receipt_subject(case: case_infer_add_mvp_fail_closed)
+data subject_infer_add_mvp_compiles: TestClaimEvalSubject<Node> = infer_receipt_subject(case: case_infer_add_mvp_compiles)
 
 
-data run_infer_add_mvp_fail_closed: TestClaimRun<Node, InferredTree> = infer_add_mvp_receipt_run(subject: subject_infer_add_mvp_fail_closed)
+data run_infer_add_mvp_compiles: TestClaimRun<Node, InferredTree> = infer_add_mvp_receipt_run(subject: subject_infer_add_mvp_compiles)
 
 
-data case_infer_descent_witness_fail_closed: InferReceiptCase = InferCompilesReceiptCase {
-  label: "manual/infer: infer_descent_witness_contract_node accepts only Violates descent (no fabricated TerminationProof)",
+data case_infer_descent_witness_holds_atom: InferReceiptCase = InferCompilesReceiptCase {
+  label: "manual/infer: infer_descent_witness_contract_node Holds on bounded Atom TypeNode",
   input_symbol: infer_receipt_input_descent_witness,
   input: fixture_int_type_node(atom: fixture_add_int_atom),
   expected_value: fixture_int_type_node(atom: fixture_add_int_atom)
 }
 
 
-data subject_infer_descent_witness_fail_closed: TestClaimEvalSubject<Node> = infer_receipt_subject(case: case_infer_descent_witness_fail_closed)
+data subject_infer_descent_witness_holds_atom: TestClaimEvalSubject<Node> = infer_receipt_subject(case: case_infer_descent_witness_holds_atom)
 
 
-data run_infer_descent_witness_fail_closed: TestClaimRun<Node, Node> = infer_descent_witness_receipt_run(subject: subject_infer_descent_witness_fail_closed)
+data run_infer_descent_witness_holds_atom: TestClaimRun<Node, Node> = infer_descent_witness_receipt_run(subject: subject_infer_descent_witness_holds_atom)
 
 
-data claim_infer_add_mvp_compiles: TestClaim = infer_receipt_claim(case: case_infer_add_mvp_fail_closed)
+data claim_infer_add_mvp_compiles: TestClaim = infer_receipt_claim(case: case_infer_add_mvp_compiles)
 
 
-data claim_infer_descent_witness_fail_closed: TestClaim = infer_receipt_claim(case: case_infer_descent_witness_fail_closed)
+data claim_infer_descent_witness_holds_atom: TestClaim = infer_receipt_claim(case: case_infer_descent_witness_holds_atom)
