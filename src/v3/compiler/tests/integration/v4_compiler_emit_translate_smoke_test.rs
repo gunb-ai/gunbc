@@ -22,7 +22,7 @@
 //! `compile_to_dag` over v4 compiler modules resolves imports without substrate collision).
 
 use v3_compiler::parse_for_test;
-use v3_compiler::parse_surface::SurfaceItem;
+use v3_compiler::parse_surface::{SurfaceField, SurfaceItem, SurfaceType, TypeAngleArg};
 use v3_compiler::tokenize_for_test;
 
 const FIND_WITNESS_DAG: &str = include_str!("../../../../v4/std/find_witness.dag");
@@ -193,6 +193,73 @@ fn v4_rust_language_model_declares_t11_translation_rules() {
 }
 
 #[test]
+fn v4_rust_integer_overflow_disposition_is_mode_aware_and_axis_bound() {
+    let module = parse_module(RUST_LANGUAGE_DAG, RUST_LANGUAGE_PATH);
+    assert_eq!(
+        type_record_fields(&module, "OverflowDisposition")
+            .iter()
+            .map(|f| (f.name.as_str(), surface_type_name(&f.ty)))
+            .collect::<Vec<_>>(),
+        vec![
+            ("ir_carrier", "IRCarrier".to_string()),
+            (
+                "checked_arithmetic_debug_default",
+                "OverflowAction".to_string(),
+            ),
+            (
+                "checked_arithmetic_release_default",
+                "OverflowAction".to_string(),
+            ),
+            (
+                "checked_arithmetic_overflow_checks_enabled",
+                "OverflowAction".to_string(),
+            ),
+            (
+                "checked_arithmetic_overflow_checks_disabled",
+                "OverflowAction".to_string(),
+            ),
+        ],
+        "{RUST_LANGUAGE_PATH}: Rust overflow disposition must model checked-arithmetic debug/release defaults and explicit overflow-checks behavior"
+    );
+    assert_eq!(
+        type_record_fields(&module, "RustIntegerPrimitiveFacts")
+            .iter()
+            .map(|f| (f.name.as_str(), surface_type_name(&f.ty)))
+            .collect::<Vec<_>>(),
+        vec![
+            ("surface_spelling", "Symbol".to_string()),
+            (
+                "overflow_disposition",
+                "OverflowDisposition<RustIntegerCarrier>".to_string(),
+            ),
+            ("std_projection", "Symbol".to_string()),
+        ],
+        "{RUST_LANGUAGE_PATH}: integer primitive facts must make the overflow disposition's carrier the single kind/width authority"
+    );
+    assert_eq!(
+        type_record_field_type(&module, "RustIntegerPrimitiveFacts", "overflow_disposition"),
+        Some("OverflowDisposition<RustIntegerCarrier>".to_string()),
+        "{RUST_LANGUAGE_PATH}: integer primitive facts must carry the mode-aware overflow disposition"
+    );
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "std", "model_core"],
+            "primitive_fact_axis_overflow_disposition"
+        ),
+        "{RUST_LANGUAGE_PATH}: Rust must import the shared overflow-disposition primitive fact axis"
+    );
+    assert!(
+        surface_declares_fn(&module, "rust_integer_overflow_disposition"),
+        "{RUST_LANGUAGE_PATH}: must declare the Rust Reference debug/release overflow disposition constructor"
+    );
+    assert!(
+        surface_declares_fn(&module, "rust_overflow_disposition_node"),
+        "{RUST_LANGUAGE_PATH}: must materialize overflow disposition facts as a Node for primitive bundles"
+    );
+}
+
+#[test]
 fn v4_java_language_model_declares_t11_translation_rules() {
     let module = parse_module(JAVA_LANGUAGE_DAG, JAVA_LANGUAGE_PATH);
     assert!(
@@ -308,4 +375,63 @@ fn surface_declares_type(module: &v3_compiler::parse_surface::SurfaceModule, nam
         } => item_name == name,
         _ => false,
     })
+}
+
+fn type_record_fields<'a>(
+    module: &'a v3_compiler::parse_surface::SurfaceModule,
+    name: &str,
+) -> &'a [SurfaceField] {
+    module
+        .items
+        .iter()
+        .find_map(|item| match item {
+            SurfaceItem::TypeRecord {
+                name: item_name,
+                fields,
+                ..
+            } if item_name == name => Some(fields.as_slice()),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("missing type record `{name}`"))
+}
+
+fn type_record_field_type(
+    module: &v3_compiler::parse_surface::SurfaceModule,
+    record_name: &str,
+    field_name: &str,
+) -> Option<String> {
+    type_record_fields(module, record_name)
+        .iter()
+        .find(|field| field.name == field_name)
+        .map(|field| surface_type_name(&field.ty))
+}
+
+fn surface_type_name(ty: &SurfaceType) -> String {
+    match ty {
+        SurfaceType::Named { name, .. } => name.clone(),
+        SurfaceType::Parameterized { name, args, .. } => {
+            let rendered_args = args
+                .iter()
+                .map(type_angle_arg_name)
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("{name}<{rendered_args}>")
+        }
+        SurfaceType::Optional { inner, .. } => format!("{}?", surface_type_name(inner)),
+        SurfaceType::Arrow { inputs, output, .. } => {
+            let rendered_inputs = inputs
+                .iter()
+                .map(surface_type_name)
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("fn({rendered_inputs}) -> {}", surface_type_name(output))
+        }
+    }
+}
+
+fn type_angle_arg_name(arg: &TypeAngleArg) -> String {
+    match arg {
+        TypeAngleArg::TypeExpr { ty } => surface_type_name(ty),
+        TypeAngleArg::WidthNatLiteral { decimal, .. } => decimal.clone(),
+    }
 }
