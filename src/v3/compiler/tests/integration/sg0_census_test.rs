@@ -852,6 +852,8 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // `src/v4/extdeps/frameworks/react.dag` (zero module diagnostics).
     // SG-0 ratchet per INVARIANTS §P5(b) + typescript extdeps precedent.
     "src/v3/compiler/tests/integration/v4_extdeps_react_dag_smoke_test.rs",
+    // T-21: git diff → edit_locus resolver (`src/v4/lens/edit_locus.dag`); SG-0 + INVARIANTS §P5(b).
+    "src/v3/compiler/tests/integration/v4_lens_edit_locus_dag_smoke_test.rs",
     // PREFIX T-23 v0 + Lens-CI activation: parse-surface ratchet over
     // `src/v4/lens/registry.dag` registry query rows, `src/v4/workflow/ci.dag`
     // consumer wiring, and the live `.github/workflows/ci.yml` Lens-CI signal binding.

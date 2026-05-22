@@ -351,11 +351,14 @@ fn swift_nonnumeric_representation_node(facts: SwiftNonNumericPrimitiveFacts) ->
 
 fn swift_nonnumeric_scalar_classifier_node(facts: SwiftNonNumericPrimitiveFacts) -> Node {
   match facts {
-    SwiftBoolPrimitiveFacts { representation: _ } => swift_atom(id: swift_tag_scalar_bool)
-    SwiftCharacterPrimitiveFacts { representation: _ } =>
+    SwiftBoolPrimitiveFacts { surface_spelling: _, representation: _ } =>
+      swift_atom(id: swift_tag_scalar_bool)
+    SwiftCharacterPrimitiveFacts { surface_spelling: _, representation: _ } =>
       swift_atom(id: swift_tag_scalar_character)
-    SwiftStringPrimitiveFacts { representation: _ } => swift_atom(id: swift_tag_scalar_string)
-    SwiftVoidPrimitiveFacts { representation: _ } => swift_atom(id: swift_tag_scalar_void)
+    SwiftStringPrimitiveFacts { surface_spelling: _, representation: _ } =>
+      swift_atom(id: swift_tag_scalar_string)
+    SwiftVoidPrimitiveFacts { surface_spelling: _, representation: _ } =>
+      swift_atom(id: swift_tag_scalar_void)
   }
 }
 
