@@ -536,35 +536,71 @@ fn cpp_language_model_canonical_symbols(target_profile: Node) -> Set<Symbol> {
   }
 }
 
-fn cpp_primitive_axis_binding(axis: Symbol, fact: Node) -> PrimitiveFactAxisBinding {
-  PrimitiveFactAxisBinding { axis: axis, fact: fact }
+fn cpp_integer_spec_facts(facts: CppIntegerPrimitiveFacts) -> Map<Symbol, Node> {
+  Map {
+    lookup: fn(axis) {
+      match axis {
+        primitive_fact_axis_surface_spelling =>
+          Holds { value: cpp_atom(id: facts.surface_spelling) }
+        primitive_fact_axis_width =>
+          Holds { value: facts.width_fact }
+        primitive_fact_axis_signedness =>
+          Holds { value: facts.signedness_fact }
+        primitive_fact_axis_encoding =>
+          Holds { value: facts.encoding_fact }
+        primitive_fact_axis_overflow_disposition =>
+          Holds { value: facts.overflow_fact }
+        _ =>
+          Violates {
+            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
+          }
+      }
+    }
+  }
+}
+
+fn cpp_character_spec_facts(facts: CppCharacterPrimitiveFacts) -> Map<Symbol, Node> {
+  Map {
+    lookup: fn(axis) {
+      match axis {
+        primitive_fact_axis_surface_spelling =>
+          Holds { value: cpp_atom(id: facts.surface_spelling) }
+        primitive_fact_axis_width =>
+          Holds { value: facts.width_fact }
+        primitive_fact_axis_signedness =>
+          Holds { value: facts.signedness_fact }
+        primitive_fact_axis_encoding =>
+          Holds { value: facts.encoding_fact }
+        _ =>
+          Violates {
+            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
+          }
+      }
+    }
+  }
+}
+
+fn cpp_bool_spec_facts(facts: CppBoolPrimitiveFacts) -> Map<Symbol, Node> {
+  Map {
+    lookup: fn(axis) {
+      match axis {
+        primitive_fact_axis_surface_spelling =>
+          Holds { value: cpp_atom(id: facts.surface_spelling) }
+        primitive_fact_axis_encoding =>
+          Holds { value: facts.encoding_fact }
+        _ =>
+          Violates {
+            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
+          }
+      }
+    }
+  }
 }
 
 fn cpp_primitive_bundle_from_integer_facts(facts: CppIntegerPrimitiveFacts) -> PrimitiveFactBundle {
   PrimitiveFactBundle {
     substrate_carrier: cpp_integer_facts_node(facts: facts),
-    spec_facts: [
-      cpp_primitive_axis_binding(
-        axis: primitive_fact_axis_surface_spelling,
-        fact: cpp_atom(id: facts.surface_spelling)
-      ),
-      cpp_primitive_axis_binding(
-        axis: primitive_fact_axis_width,
-        fact: facts.width_fact
-      ),
-      cpp_primitive_axis_binding(
-        axis: primitive_fact_axis_signedness,
-        fact: facts.signedness_fact
-      ),
-      cpp_primitive_axis_binding(
-        axis: primitive_fact_axis_encoding,
-        fact: facts.encoding_fact
-      ),
-      cpp_primitive_axis_binding(
-        axis: primitive_fact_axis_overflow_disposition,
-        fact: facts.overflow_fact
-      )
-    ]
+    spec_facts: cpp_integer_spec_facts(facts: facts)
   }
 }
 
@@ -573,40 +609,14 @@ fn cpp_primitive_bundle_from_character_facts(
 ) -> PrimitiveFactBundle {
   PrimitiveFactBundle {
     substrate_carrier: cpp_character_facts_node(facts: facts),
-    spec_facts: [
-      cpp_primitive_axis_binding(
-        axis: primitive_fact_axis_surface_spelling,
-        fact: cpp_atom(id: facts.surface_spelling)
-      ),
-      cpp_primitive_axis_binding(
-        axis: primitive_fact_axis_width,
-        fact: facts.width_fact
-      ),
-      cpp_primitive_axis_binding(
-        axis: primitive_fact_axis_signedness,
-        fact: facts.signedness_fact
-      ),
-      cpp_primitive_axis_binding(
-        axis: primitive_fact_axis_encoding,
-        fact: facts.encoding_fact
-      )
-    ]
+    spec_facts: cpp_character_spec_facts(facts: facts)
   }
 }
 
 fn cpp_primitive_bundle_from_bool_facts(facts: CppBoolPrimitiveFacts) -> PrimitiveFactBundle {
   PrimitiveFactBundle {
     substrate_carrier: cpp_bool_facts_node(facts: facts),
-    spec_facts: [
-      cpp_primitive_axis_binding(
-        axis: primitive_fact_axis_surface_spelling,
-        fact: cpp_atom(id: facts.surface_spelling)
-      ),
-      cpp_primitive_axis_binding(
-        axis: primitive_fact_axis_encoding,
-        fact: facts.encoding_fact
-      )
-    ]
+    spec_facts: cpp_bool_spec_facts(facts: facts)
   }
 }
 

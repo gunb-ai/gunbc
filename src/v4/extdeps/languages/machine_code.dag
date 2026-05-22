@@ -19,8 +19,10 @@ import v4.std.model_core {
   primitive_fact_axis_overflow_disposition,
   primitive_fact_axis_signedness,
   primitive_fact_axis_surface_spelling,
+  primitive_fact_axis_unbound_diagnostic,
   primitive_fact_axis_width
 }
+import v4.std.witness { Holds, Violates }
 import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
 
 
@@ -481,52 +483,33 @@ fn mc_list_snoc_item<T>(xs: List<T>, item: T) -> List<T> {
   )
 }
 
-fn mc_primitive_fact_map_5(
-  axis0: Symbol,
-  fact0: Node,
-  axis1: Symbol,
-  fact1: Node,
-  axis2: Symbol,
-  fact2: Node,
-  axis3: Symbol,
-  fact3: Node,
-  axis4: Symbol,
-  fact4: Node
-) -> Map<Symbol, Node> {
-  map_insert(
-    map_insert(
-      map_insert(
-        map_insert(
-          map_insert(empty_map(), axis0, fact0),
-          axis1,
-          fact1
-        ),
-        axis2,
-        fact2
-      ),
-      axis3,
-      fact3
-    ),
-    axis4,
-    fact4
-  )
+fn mc_integer_spec_facts(facts: MachineIntegerPrimitiveFacts) -> Map<Symbol, Node> {
+  Map {
+    lookup: fn(axis) {
+      match axis {
+        primitive_fact_axis_surface_spelling =>
+          Holds { value: mc_inhabitant_atom(id: facts.surface_spelling) }
+        primitive_fact_axis_width =>
+          Holds { value: mc_int_width_node(width: facts.width) }
+        primitive_fact_axis_signedness =>
+          Holds { value: mc_int_kind_node(kind: facts.kind) }
+        primitive_fact_axis_encoding =>
+          Holds { value: mc_inhabitant_atom(id: mc_repr_twos_complement) }
+        primitive_fact_axis_overflow_disposition =>
+          Holds { value: mc_overflow_node(overflow: facts.overflow_release) }
+        _ =>
+          Violates {
+            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
+          }
+      }
+    }
+  }
 }
 
 fn mc_primitive_bundle_from_integer_facts(facts: MachineIntegerPrimitiveFacts) -> PrimitiveFactBundle {
   PrimitiveFactBundle {
     substrate_carrier: mc_integer_facts_node(facts: facts),
-    spec_facts: mc_primitive_fact_map_5(
-      axis0: primitive_fact_axis_surface_spelling,
-      fact0: mc_inhabitant_atom(id: facts.surface_spelling),
-      axis1: primitive_fact_axis_width,
-      fact1: mc_int_width_node(width: facts.width),
-      axis2: primitive_fact_axis_signedness,
-      fact2: mc_int_kind_node(kind: facts.kind),
-      axis3: primitive_fact_axis_encoding,
-      fact3: mc_inhabitant_atom(id: mc_repr_twos_complement),
-      axis4: primitive_fact_axis_overflow_disposition,
-      fact4: mc_overflow_node(overflow: facts.overflow_release)
-    )
+    spec_facts: mc_integer_spec_facts(facts: facts)
   }
 }
 
