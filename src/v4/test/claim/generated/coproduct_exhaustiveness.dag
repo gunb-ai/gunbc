@@ -26,6 +26,10 @@ import v4.std.verification {
   T19GeneratedClaimAnchor,
   T19GeneratedAnchorKey,
   T19GeneratedCoproductExhaustiveness,
+  TestClaimCompilesClaimVariant,
+  TestClaimDiagnosticClaimVariant,
+  TestClaimEqualsClaimVariant,
+  TestClaimRoundTripClaimVariant,
   t19_generated_claim_anchor,
   test_claim_input,
   test_claim_t19_anchor
@@ -87,7 +91,32 @@ fn witness_coproduct_exhaustiveness_all_testclaim_variants_emit() -> Bool {
 
 fn witness_coproduct_exhaustiveness_variant_emits(subject: DiagnosticExhaustivenessSubject) -> Bool {
   match testgen_emit_coproduct_exhaustiveness_claim(subject: subject) {
-    Accepted { value: DiagnosticClaim { label: _, t19_anchor: T19GeneratedClaimAnchor { generated_anchor: T19GeneratedCoproductExhaustiveness { omitted_variant: _ } }, input: _, expected_rejection: _, classification: _ }, diagnostics: _ } => true
+    Accepted { value: DiagnosticClaim { label: _, t19_anchor: T19GeneratedClaimAnchor { generated_anchor: T19GeneratedCoproductExhaustiveness { omitted_variant } }, input: _, expected_rejection: _, classification: _ }, diagnostics: _ } =>
+      match subject {
+        DiagnosticExhaustivenessSubject { reason: _, coproduct: _, omitted_variant: requested_variant } =>
+          match requested_variant {
+            TestClaimCompilesClaimVariant =>
+              match omitted_variant {
+                TestClaimCompilesClaimVariant => true
+                _ => false
+              }
+            TestClaimDiagnosticClaimVariant =>
+              match omitted_variant {
+                TestClaimDiagnosticClaimVariant => true
+                _ => false
+              }
+            TestClaimEqualsClaimVariant =>
+              match omitted_variant {
+                TestClaimEqualsClaimVariant => true
+                _ => false
+              }
+            TestClaimRoundTripClaimVariant =>
+              match omitted_variant {
+                TestClaimRoundTripClaimVariant => true
+                _ => false
+              }
+          }
+      }
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => false
   }
