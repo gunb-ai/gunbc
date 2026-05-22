@@ -37,8 +37,7 @@ const LBE_GENERATED_DAG: &str =
 const LBE_GENERATED_PATH: &str = "src/v4/test/claim/generated/language_behavior_equivalence.dag";
 const REFINEMENT_GENERATED_DAG: &str =
     include_str!("../../../../v4/test/claim/generated/refinement_preservation.dag");
-const REFINEMENT_GENERATED_PATH: &str =
-    "src/v4/test/claim/generated/refinement_preservation.dag";
+const REFINEMENT_GENERATED_PATH: &str = "src/v4/test/claim/generated/refinement_preservation.dag";
 
 #[test]
 fn t19_language_behavior_equivalence_generated_claims_parse() {
