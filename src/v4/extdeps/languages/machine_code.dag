@@ -7,7 +7,7 @@
 module v4.extdeps.languages.machine_code
 
 
-import v4.std.algebra { free_monoid_fold }
+import v4.std.algebra { fold_list }
 import v4.std.collection { List }
 import v4.std.machine { Byte }
 import v4.std.model_core {
@@ -473,7 +473,7 @@ fn mc_integer_facts_node(facts: MachineIntegerPrimitiveFacts) -> Node {
 }
 
 fn mc_list_snoc_item<T>(xs: List<T>, item: T) -> List<T> {
-  free_monoid_fold(
+  fold_list(
     xs: xs,
     empty: Cons { head: item, tail: Empty },
     cons: fn(rest, existing) {
@@ -515,7 +515,7 @@ fn mc_primitive_bundle_from_integer_facts(facts: MachineIntegerPrimitiveFacts) -
 }
 
 fn mc_primitive_bundles_from_integer_catalog() -> List<PrimitiveFactBundle> {
-  free_monoid_fold(
+  fold_list(
     xs: mc_integer_facts_catalog,
     empty: Empty,
     cons: fn(acc, facts) {

@@ -24,7 +24,7 @@ import v4.std.model_core {
 }
 import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
 import v4.std.logic { Bool }
-import v4.std.algebra { free_monoid_fold }
+import v4.std.algebra { fold_list }
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type WasmIntWidth
@@ -306,7 +306,7 @@ fn wasm_wave1_void_grammar() -> Grammar {
 }
 
 fn wasm_list_snoc_item<T>(xs: List<T>, item: T) -> List<T> {
-  free_monoid_fold(
+  fold_list(
     xs: xs,
     empty: Cons { head: item, tail: Empty },
     cons: fn(rest, existing) {
@@ -316,7 +316,7 @@ fn wasm_list_snoc_item<T>(xs: List<T>, item: T) -> List<T> {
 }
 
 fn wasm_list_append<T>(left: List<T>, right: List<T>) -> List<T> {
-  free_monoid_fold(
+  fold_list(
     xs: right,
     empty: left,
     cons: fn(acc, item) {
@@ -342,7 +342,7 @@ fn wasm_float_catalog_surface_symbol_step(
 }
 
 fn wasm_integer_catalog_surface_symbol(sym: Symbol) -> Bool {
-  free_monoid_fold(
+  fold_list(
     xs: wasm_integer_facts_catalog,
     empty: false,
     cons: fn(acc, facts) {
@@ -352,7 +352,7 @@ fn wasm_integer_catalog_surface_symbol(sym: Symbol) -> Bool {
 }
 
 fn wasm_float_catalog_surface_symbol(sym: Symbol) -> Bool {
-  free_monoid_fold(
+  fold_list(
     xs: wasm_float_facts_catalog,
     empty: false,
     cons: fn(acc, facts) {
@@ -427,7 +427,7 @@ fn wasm_primitive_bundle_from_float_facts(facts: WasmFloatPrimitiveFacts) -> Pri
 }
 
 fn wasm_primitive_bundles_from_integer_catalog() -> List<PrimitiveFactBundle> {
-  free_monoid_fold(
+  fold_list(
     xs: wasm_integer_facts_catalog,
     empty: Empty,
     cons: fn(acc, facts) {
@@ -440,7 +440,7 @@ fn wasm_primitive_bundles_from_integer_catalog() -> List<PrimitiveFactBundle> {
 }
 
 fn wasm_primitive_bundles_from_float_catalog() -> List<PrimitiveFactBundle> {
-  free_monoid_fold(
+  fold_list(
     xs: wasm_float_facts_catalog,
     empty: Empty,
     cons: fn(acc, facts) {
