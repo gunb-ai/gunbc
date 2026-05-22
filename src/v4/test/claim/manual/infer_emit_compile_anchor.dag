@@ -23,9 +23,9 @@ import v4.std.collection { Map }
 import v4.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,
-  NodeLocus,
+  node_locus,
   Outcome,
-  PortLocus,
+  port_locus,
   Unavailable
 }
 import v4.std.node { Conj, Node, Symbol, TypeNode }
@@ -78,7 +78,7 @@ data anchor_stub_inferred_facts: InferredFacts = InferredFacts {
   descent: Violates {
     diagnostic: Diagnostic {
       reason: anchor_stub_descent_not_derived,
-      at: NodeLocus { node: anchor_stub_empty_conj },
+      at: node_locus(node: anchor_stub_empty_conj),
       correction: Unavailable { reason: ExternalContractUnknown }
     }
   },
@@ -91,7 +91,7 @@ data anchor_stub_empty_facts_map: Map<Node, InferredFacts> = Map {
     Violates {
       diagnostic: Diagnostic {
         reason: anchor_facts_map_lookup_not_realized,
-        at: PortLocus { port: anchor_facts_map_lookup_not_realized },
+        at: port_locus(port: anchor_facts_map_lookup_not_realized),
         correction: Unavailable { reason: ExternalContractUnknown }
       }
     }
