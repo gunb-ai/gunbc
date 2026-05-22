@@ -13,7 +13,7 @@ Per [`docs/modeling-discipline.md`](../modeling-discipline.md) (standing rule: n
 | Retirement **execution** (what actually deletes) | Operator-approved dashboard work-items + execution PRs that shrink the census |
 | Per-path dissolution triggers (ratified) | Inline comments in `sg0_census_test.rs` + PR review — not this doc |
 
-This markdown file is **transient PR-review prose** (like [`sg0-census-classification-2026-05-09.md`](sg0-census-classification-2026-05-09.md)). Heuristic DELETE/REPLACE/KEEP **proposals** here are not binding until the operator ratifies batches and execution PRs shrink the census. **No checked-in per-test or per-path classification table** — use [`scripts/generate_v3_hand_rust_test_retirement_inventory.py`](../scripts/generate_v3_hand_rust_test_retirement_inventory.py) locally (`--check`, `--summary`, optional `--by-file > /tmp/…`) to re-measure after census drift; that script emits **path-level** rows only (≤145), not a `(file, fn)` registry.
+This markdown file is **transient PR-review prose** (dispatch `vivid-deer-815`; **dissolve this file** once operator ratifies batch-1 retirement and execution PRs own the census shrink). Heuristic DELETE/REPLACE/KEEP **proposals** are not binding until ratified. **No checked-in per-test or per-path dispatch rows** — only aggregate counts, cluster narratives, and reason-class rollups below. Path/test worksheets: [`scripts/generate_v3_hand_rust_test_retirement_inventory.py`](../scripts/generate_v3_hand_rust_test_retirement_inventory.py) (`--check` fails closed on missing census files; `--by-file > /tmp/…` for ≤145 path-level rows).
 
 ## Census reconciliation (HEAD 2026-05-22)
 
@@ -22,7 +22,7 @@ This markdown file is **transient PR-review prose** (like [`sg0-census-classific
 | `EXPECTED_HAND_AUTHORED_TEST` path literals | 204 entries | **145** paths |
 | `#[test]` functions in those paths | (implied) | **1232** tests |
 
-The PM figure **204 does not match** the live census (145 path literals / **1232** `#[test]` functions on `origin/main` and this worktree). Likely explanations: (1) stale planning count from an older, longer `EXPECTED_HAND_AUTHORED_TEST` list; (2) conflation with **file-path** entries (~160–204) vs per-function tests; (3) intent to name a first **DELETE batch size** rather than the full ratchet. This audit proposes classifications for **every `#[test]`** in the census scope (1232 functions across 145 paths). Operator ratification precedes any retirement PR.
+The PM figure **204 does not match** the live census (145 path literals / **1232** `#[test]` functions on `origin/main` and this worktree). Likely explanations: (1) stale planning count from an older, longer `EXPECTED_HAND_AUTHORED_TEST` list; (2) conflation with **file-path** entries (~160–204) vs per-function tests; (3) intent to name a first **DELETE batch size** rather than the full ratchet. The helper script assigns **one heuristic bucket per census path** and sums `#[test]` counts (1232 functions across 145 paths at HEAD). Operator ratification precedes any retirement PR.
 
 **Operator DELETE-first wave (recommended):** **383** tests (31.1%) in the DELETE bucket — includes all pre-flagged v4 smoke/closeout (**78**), cementing Rust (**18**), and `m1_substrate_test.rs` (**115**) — without waiting for 1:1 TestClaim ports.
 
@@ -74,82 +74,7 @@ PM assumed "v3 matches v2 output" oracle tests. **Actual:** `v2_oracle_no_remain
 
 ### (b) `v4_*_smoke_test.rs` family — **CONFIRM DELETE**
 
-Eight smoke modules parse/tokenize v4 `.dag` from the v3 compiler test crate — inverted dependency while v4 self-host matures.
-
-- **71 tests**, buckets: {'DELETE': 71}
-- `v4_bin_main_dag_smoke_test.rs::v4_bin_main_dag_tokenizes_and_parses_with_trampoline_source_anchor` — Inverted-dependency: v3 tokenize/parse smoke of v4 .dag; v4 workflow/T-19 activation owns authority
-- `v4_compiler_compile_public_terminal_smoke_test.rs::v4_compile_dag_tokenizes_and_parses` — Inverted-dependency: v3 tokenize/parse smoke of v4 .dag; v4 workflow/T-19 activation owns authority
-- `v4_compiler_compile_public_terminal_smoke_test.rs::v4_compile_dag_module_path_is_compiler_compile` — Inverted-dependency: v3 tokenize/parse smoke of v4 .dag; v4 workflow/T-19 activation owns authority
-- `v4_compiler_compile_public_terminal_smoke_test.rs::v4_compile_dag_declares_public_validate_then_compile` — Inverted-dependency: v3 tokenize/parse smoke of v4 .dag; v4 workflow/T-19 activation owns authority
-- `v4_compiler_compile_public_terminal_smoke_test.rs::v4_compile_dag_declares_ratified_compile_core` — Inverted-dependency: v3 tokenize/parse smoke of v4 .dag; v4 workflow/T-19 activation owns authority
-- `v4_compiler_compile_public_terminal_smoke_test.rs::v4_compile_dag_imports_target_carriers_not_emit_cycle` — Inverted-dependency: v3 tokenize/parse smoke of v4 .dag; v4 workflow/T-19 activation owns authority
-- `v4_compiler_compile_public_terminal_smoke_test.rs::v4_compile_dag_does_not_import_specific_lens_modules` — Inverted-dependency: v3 tokenize/parse smoke of v4 .dag; v4 workflow/T-19 activation owns authority
-- `v4_compiler_compile_public_terminal_smoke_test.rs::v4_emit_dag_does_not_import_compile_module` — Inverted-dependency: v3 tokenize/parse smoke of v4 .dag; v4 workflow/T-19 activation owns authority
-- `v4_compiler_compile_public_terminal_smoke_test.rs::v4_target_carriers_dag_tokenizes_and_parses` — Inverted-dependency: v3 tokenize/parse smoke of v4 .dag; v4 workflow/T-19 activation owns authority
-- `v4_compiler_compile_public_terminal_smoke_test.rs::v4_validate_then_compile_claim_tokenizes_and_parses` — Inverted-dependency: v3 tokenize/parse smoke of v4 .dag; v4 workflow/T-19 activation owns authority
-- `v4_compiler_compile_public_terminal_smoke_test.rs::v4_validate_then_compile_claim_imports_public_terminal_helpers` — Inverted-dependency: v3 tokenize/parse smoke of v4 .dag; v4 workflow/T-19 activation owns authority
-- `v4_compiler_emit_translate_smoke_test.rs::v4_find_witness_dag_tokenizes_and_parses` — Inverted-dependency: v3 tokenize/parse smoke of v4 .dag; v4 workflow/T-19 activation owns authority
-- `v4_compiler_emit_translate_smoke_test.rs::v4_find_witness_dag_declares_find_witness_entrypoint` — Inverted-dependency: v3 tokenize/parse smoke of v4 .dag; v4 workflow/T-19 activation owns authority
-- `v4_compiler_emit_translate_smoke_test.rs::v4_translate_dag_tokenizes_and_parses` — Inverted-dependency: v3 tokenize/parse smoke of v4 .dag; v4 workflow/T-19 activation owns authority
-- `v4_compiler_emit_translate_smoke_test.rs::v4_translate_dag_module_path_is_compiler_translate` — Inverted-dependency: v3 tokenize/parse smoke of v4 .dag; v4 workflow/T-19 activation owns authority
-- `v4_compiler_emit_translate_smoke_test.rs::v4_translate_dag_imports_coercion_fold_delegate` — Inverted-dependency: v3 tokenize/parse smoke of v4 .dag; v4 workflow/T-19 activation owns authority
-- `v4_compiler_emit_translate_smoke_test.rs::v4_translate_dag_imports_fold_node_traversal` — Inverted-dependency: v3 tokenize/parse smoke of v4 .dag; v4 workflow/T-19 activation owns authority
-- `v4_compiler_emit_translate_smoke_test.rs::v4_translate_dag_declares_coerce_grounded_node` — Inverted-dependency: v3 tokenize/parse smoke of v4 .dag; v4 workflow/T-19 activation owns authority
-- `v4_compiler_emit_translate_smoke_test.rs::v4_translate_dag_declares_translate_node_and_translate` — Inverted-dependency: v3 tokenize/parse smoke of v4 .dag; v4 workflow/T-19 activation owns authority
-- `v4_compiler_emit_translate_smoke_test.rs::v4_translate_dag_imports_find_witness_types_not_inline_fn` — Inverted-dependency: v3 tokenize/parse smoke of v4 .dag; v4 workflow/T-19 activation owns authority
-- `v4_compiler_emit_translate_smoke_test.rs::v4_emit_dag_tokenizes_and_parses` — Inverted-dependency: v3 tokenize/parse smoke of v4 .dag; v4 workflow/T-19 activation owns authority
-- `v4_compiler_emit_translate_smoke_test.rs::v4_emit_dag_module_path_is_compiler_emit` — Inverted-dependency: v3 tokenize/parse smoke of v4 .dag; v4 workflow/T-19 activation owns authority
-- `v4_compiler_emit_translate_smoke_test.rs::v4_emit_dag_imports_translate_stage` — Inverted-dependency: v3 tokenize/parse smoke of v4 .dag; v4 workflow/T-19 activation owns authority
-- `v4_compiler_emit_translate_smoke_test.rs::v4_emit_dag_declares_emit_entrypoint` — Inverted-dependency: v3 tokenize/parse smoke of v4 .dag; v4 workflow/T-19 activation owns authority
-- `v4_compiler_emit_translate_smoke_test.rs::v4_emit_dag_does_not_import_find_witness` — Inverted-dependency: v3 tokenize/parse smoke of v4 .dag; v4 workflow/T-19 activation owns authority
-- `v4_compiler_emit_translate_smoke_test.rs::v4_rust_language_model_declares_t11_translation_rules` — Inverted-dependency: v3 tokenize/parse smoke of v4 .dag; v4 workflow/T-19 activation owns authority
-- `v4_compiler_emit_translate_smoke_test.rs::v4_java_language_model_declares_t11_translation_rules` — Inverted-dependency: v3 tokenize/parse smoke of v4 .dag; v4 workflow/T-19 activation owns authority
-- `v4_compiler_emit_translate_smoke_test.rs::v4_mvp1_rust_add_claim_tokenizes_and_parses` — Inverted-dependency: v3 tokenize/parse smoke of v4 .dag; v4 workflow/T-19 activation owns authority
-- `v4_compiler_emit_translate_smoke_test.rs::v4_mvp1_rust_add_claim_imports_translate_and_emit` — Inverted-dependency: v3 tokenize/parse smoke of v4 .dag; v4 workflow/T-19 activation owns authority
-- `v4_extdeps_file_system_dag_smoke_test.rs::v4_extdeps_file_system_dag_tokenizes_and_parses` — Inverted-dependency: v3 tokenize/parse smoke of v4 .dag; v4 workflow/T-19 activation owns authority
-- `v4_extdeps_file_system_dag_smoke_test.rs::v4_extdeps_file_system_dag_practice11_companion_has_no_node_import_or_binding` — Inverted-dependency: v3 tokenize/parse smoke of v4 .dag; v4 workflow/T-19 activation owns authority
-- `v4_extdeps_file_system_dag_smoke_test.rs::v4_extdeps_file_system_dag_file_path_is_posix_grounded_record` — Inverted-dependency: v3 tokenize/parse smoke of v4 .dag; v4 workflow/T-19 activation owns authority
-- `v4_extdeps_file_system_dag_smoke_test.rs::v4_extdeps_file_system_dag_wave2_c2_modeled_effects_and_receipt_shape` — Inverted-dependency: v3 tokenize/parse smoke of v4 .dag; v4 workflow/T-19 activation owns authority
-- `v4_extdeps_file_system_dag_smoke_test.rs::v4_extdeps_file_system_dag_legacy_consumer_exports_remain` — Inverted-dependency: v3 tokenize/parse smoke of v4 .dag; v4 workflow/T-19 activation owns authority
-- `v4_extdeps_react_dag_smoke_test.rs::v4_extdeps_react_dag_compiles` — Inverted-dependency: v3 tokenize/parse smoke of v4 .dag; v4 workflow/T-19 activation owns authority
-- `v4_extdeps_react_dag_smoke_test.rs::v4_extdeps_react_dag_use_memo_use_callback_dependencies_are_required_lists` — Inverted-dependency: v3 tokenize/parse smoke of v4 .dag; v4 workflow/T-19 activation owns authority
-- `v4_extdeps_react_dag_smoke_test.rs::v4_extdeps_react_dag_effect_hooks_require_setup_ref` — Inverted-dependency: v3 tokenize/parse smoke of v4 .dag; v4 workflow/T-19 activation owns authority
-- `v4_extdeps_react_dag_smoke_test.rs::v4_extdeps_react_dag_react_hook_site_roster_matches_pin` — Inverted-dependency: v3 tokenize/parse smoke of v4 .dag; v4 workflow/T-19 activation owns authority
-- `v4_extdeps_react_dag_smoke_test.rs::v4_extdeps_react_dag_use_resource_is_react_use_call_site_not_hook_site` — Inverted-dependency: v3 tokenize/parse smoke of v4 .dag; v4 workflow/T-19 activation owns authority
-- `v4_extdeps_react_dag_smoke_test.rs::v4_extdeps_react_dag_host_element_declares_key_and_ref` — Inverted-dependency: v3 tokenize/parse smoke of v4 .dag; v4 workflow/T-19 activation owns authority
-- `v4_extdeps_react_dag_smoke_test.rs::v4_extdeps_react_dag_composite_element_declares_key_and_ref` — Inverted-dependency: v3 tokenize/parse smoke of v4 .dag; v4 workflow/T-19 activation owns authority
-- `v4_extdeps_react_dag_smoke_test.rs::v4_extdeps_react_dag_fragment_arm_declares_key` — Inverted-dependency: v3 tokenize/parse smoke of v4 .dag; v4 workflow/T-19 activation owns authority
-- `v4_extdeps_react_dag_smoke_test.rs::v4_extdeps_react_dag_element_children_are_list_create_element_child` — Inverted-dependency: v3 tokenize/parse smoke of v4 .dag; v4 workflow/T-19 activation owns authority
-- `v4_extdeps_react_dag_smoke_test.rs::v4_extdeps_react_dag_react_element_partition_excludes_primitive_text` — Inverted-dependency: v3 tokenize/parse smoke of v4 .dag; v4 workflow/T-19 activation owns authority
-- `v4_extdeps_react_dag_smoke_test.rs::v4_extdeps_react_dag_create_element_child_text_has_no_element_key` — Inverted-dependency: v3 tokenize/parse smoke of v4 .dag; v4 workflow/T-19 activation owns authority
-- `v4_extdeps_react_dag_smoke_test.rs::v4_extdeps_react_dag_create_element_child_element_arm_wraps_react_element` — Inverted-dependency: v3 tokenize/parse smoke of v4 .dag; v4 workflow/T-19 activation owns authority
-- `v4_extdeps_react_dag_smoke_test.rs::v4_extdeps_react_dag_context_binding_matches_create_context_surface` — Inverted-dependency: v3 tokenize/parse smoke of v4 .dag; v4 workflow/T-19 activation owns authority
-- `v4_lens_registry_dag_smoke_test.rs::v4_lens_registry_dag_tokenizes_and_parses` — Inverted-dependency: v3 tokenize/parse smoke of v4 .dag; v4 workflow/T-19 activation owns authority
-- `v4_lens_registry_dag_smoke_test.rs::v4_lens_registry_t23_closed_lens_ids_present` — Inverted-dependency: v3 tokenize/parse smoke of v4 .dag; v4 workflow/T-19 activation owns authority
-- `v4_lens_registry_dag_smoke_test.rs::v4_lens_registry_structural_resolution_bound_to_module` — Inverted-dependency: v3 tokenize/parse smoke of v4 .dag; v4 workflow/T-19 activation owns authority
-- `v4_lens_registry_dag_smoke_test.rs::v4_lens_registry_p9_owned_fn_surface_present` — Inverted-dependency: v3 tokenize/parse smoke of v4 .dag; v4 workflow/T-19 activation owns authority
-- `v4_lens_testgen_dag_smoke_test.rs::v4_lens_testgen_p9_registry_owner_claim_parses_and_checks_registry_exclusivity` — Inverted-dependency: v3 tokenize/parse smoke of v4 .dag; v4 workflow/T-19 activation owns authority
-- `v4_lens_testgen_dag_smoke_test.rs::v4_lens_testgen_wave0_modules_tokenize_and_parse` — Inverted-dependency: v3 tokenize/parse smoke of v4 .dag; v4 workflow/T-19 activation owns authority
-- `v4_lens_testgen_dag_smoke_test.rs::v4_lens_testgen_wave0_verification_manual_anchor_key_only` — Inverted-dependency: v3 tokenize/parse smoke of v4 .dag; v4 workflow/T-19 activation owns authority
-- `v4_lens_testgen_dag_smoke_test.rs::v4_lens_testgen_wave0_function_inventory_matches_wave0` — Inverted-dependency: v3 tokenize/parse smoke of v4 .dag; v4 workflow/T-19 activation owns authority
-- `v4_lens_testgen_dag_smoke_test.rs::v4_lens_testgen_wave0_nat_symbol_import_authority` — Inverted-dependency: v3 tokenize/parse smoke of v4 .dag; v4 workflow/T-19 activation owns authority
-- `v4_lens_testgen_dag_smoke_test.rs::v4_lens_testgen_wave0_outcome_return_surfaces` — Inverted-dependency: v3 tokenize/parse smoke of v4 .dag; v4 workflow/T-19 activation owns authority
-- `v4_lens_testgen_dag_smoke_test.rs::v4_lens_testgen_wave0_generator_t19_anchor_field_is_manual_key` — Inverted-dependency: v3 tokenize/parse smoke of v4 .dag; v4 workflow/T-19 activation owns authority
-- `v4_lens_testgen_dag_smoke_test.rs::v4_lens_testgen_wave0_concept_projection_matches_claim_t19_anchor` — Inverted-dependency: v3 tokenize/parse smoke of v4 .dag; v4 workflow/T-19 activation owns authority
-- `v4_lens_testgen_dag_smoke_test.rs::v4_lens_testgen_wave0_generator_carries_claim_classification_and_anchor` — Inverted-dependency: v3 tokenize/parse smoke of v4 .dag; v4 workflow/T-19 activation owns authority
-- `v4_lens_testgen_dag_smoke_test.rs::v4_lens_testgen_wave0_bootstrap_threads_claim_anchor_into_generator` — Inverted-dependency: v3 tokenize/parse smoke of v4 .dag; v4 workflow/T-19 activation owns authority
-- `v4_lens_testgen_dag_smoke_test.rs::v4_lens_testgen_nat_law_manual_claims_use_compiles_stub` — Inverted-dependency: v3 tokenize/parse smoke of v4 .dag; v4 workflow/T-19 activation owns authority
-- `v4_lens_testgen_dag_smoke_test.rs::v4_lens_testgen_nat_substrate_carries_algebra_law_subject_symbols` — Inverted-dependency: v3 tokenize/parse smoke of v4 .dag; v4 workflow/T-19 activation owns authority
-- `v4_lens_testgen_dag_smoke_test.rs::v4_lens_testgen_testgen_carries_six_nat_algebra_law_scheduling_arms` — Inverted-dependency: v3 tokenize/parse smoke of v4 .dag; v4 workflow/T-19 activation owns authority
-- `v4_std_model_core_dag_smoke_test.rs::v4_std_model_core_dag_tokenizes_and_parses` — Inverted-dependency: v3 tokenize/parse smoke of v4 .dag; v4 workflow/T-19 activation owns authority
-- `v4_std_model_core_dag_smoke_test.rs::v4_std_model_core_declares_ratified_q1_carriers` — Inverted-dependency: v3 tokenize/parse smoke of v4 .dag; v4 workflow/T-19 activation owns authority
-- `v4_std_model_core_dag_smoke_test.rs::v4_std_model_core_bundles_five_facets` — Inverted-dependency: v3 tokenize/parse smoke of v4 .dag; v4 workflow/T-19 activation owns authority
-- `v4_std_model_core_dag_smoke_test.rs::v4_std_model_core_algebra_law_obligation_structural` — Inverted-dependency: v3 tokenize/parse smoke of v4 .dag; v4 workflow/T-19 activation owns authority
-- `v4_std_model_core_dag_smoke_test.rs::v4_std_model_core_effect_partiality_ops_use_node_authority` — Inverted-dependency: v3 tokenize/parse smoke of v4 .dag; v4 workflow/T-19 activation owns authority
-- `v4_std_model_core_dag_smoke_test.rs::v4_std_model_core_primitive_fact_bundle_uses_axis_keyed_spec_facts` — Inverted-dependency: v3 tokenize/parse smoke of v4 .dag; v4 workflow/T-19 activation owns authority
-- `v4_std_model_core_dag_smoke_test.rs::v4_std_model_core_wave1_void_constructor_present` — Inverted-dependency: v3 tokenize/parse smoke of v4 .dag; v4 workflow/T-19 activation owns authority
-
-**Exception:** none warrant KEEP; parse receipts belong in v4 CI + `check_t19_testgen_activation.py`.
+Eight modules under `integration/v4_*_smoke_test.rs` (**71 tests**): v3 tokenize/parse smoke of v4 `.dag` while v4 self-host matures — inverted dependency. Per-test enumeration is **not** checked in; filter `--by-file` output locally. Parse receipts belong in v4 CI + `check_t19_testgen_activation.py`; none warrant KEEP.
 
 ### (c) `cementing/` (6 modules) — **CONFIRM DELETE** (Rust leg) with one carrier caveat
 
@@ -170,137 +95,41 @@ Band-C cementing Rust modules are **transitional** same-PR receipts for `regen.d
 
 ## DELETE bucket (rollup by reason class)
 
-Subsections below sum to **383** DELETE tests (matches summary and script output). Illustrative rollup only — regenerate counts from the script after census drift.
+Reason-class subtotals sum to **383** DELETE tests (matches summary and `--check`). Path-level membership: `--by-file` filtered to `bucket=DELETE`.
 
-### Imperative substrate walks (115 tests)
-
-- `src/v3/compiler/tests/integration/m1_substrate_test.rs` (115 tests)
-
-### Milestone / m0 / m2 parity obsolete (93 tests)
-
-- `src/v3/compiler/tests/integration/four_fixture_regression_test.rs` (11 tests)
-- `src/v3/compiler/tests/integration/m0_acceptance.rs` (12 tests)
-- `src/v3/compiler/tests/integration/m2_feature_parity_test.rs` (70 tests)
-
-### Host drivers for .dag TestClaims (20 tests)
-
-- `src/v3/compiler/tests/integration/r3_free_consequences_first_batch_test.rs` (1 tests)
-- `src/v3/compiler/tests/integration/r3_free_consequences_second_batch_test.rs` (4 tests)
-- `src/v3/compiler/tests/integration/r3_lens_producer_retirement_executable_witness_test.rs` (1 tests)
-- `src/v3/compiler/tests/integration/r3_pb_runtime_evaluator_corpus_seed_test.rs` (2 tests)
-- `src/v3/compiler/tests/integration/r3_sg0_non_test_zero_test.rs` (1 tests)
-- `src/v3/compiler/tests/integration/r3_substrate_gap_reflection_closure_test.rs` (1 tests)
-- `src/v3/compiler/tests/integration/r3_verification_l4_l7_l5_skeleton_test.rs` (10 tests)
-
-### v4 inverted-dependency smoke/closeout (78 tests)
-
-- `src/v3/compiler/tests/integration/v4_bin_main_dag_smoke_test.rs` (1 tests)
-- `src/v3/compiler/tests/integration/v4_compiler_compile_public_terminal_smoke_test.rs` (10 tests)
-- `src/v3/compiler/tests/integration/v4_compiler_emit_translate_smoke_test.rs` (18 tests)
-- `src/v3/compiler/tests/integration/v4_extdeps_file_system_dag_smoke_test.rs` (5 tests)
-- `src/v3/compiler/tests/integration/v4_extdeps_react_dag_smoke_test.rs` (13 tests)
-- `src/v3/compiler/tests/integration/v4_lens_registry_dag_smoke_test.rs` (4 tests)
-- `src/v3/compiler/tests/integration/v4_lens_testgen_dag_smoke_test.rs` (13 tests)
-- `src/v3/compiler/tests/integration/v4_std_model_core_dag_smoke_test.rs` (7 tests)
-- `src/v3/compiler/tests/integration/v4_test_bootstrap_infra_closeout_test.rs` (7 tests)
-
-### Cementing transitional Rust (18 tests)
-
-- `src/v3/compiler/tests/integration/cementing/cementing_provenance_origin_integration_test.rs` (1 tests)
-- `src/v3/compiler/tests/integration/cementing/complexity_lens_behavioral_completion.rs` (2 tests)
-- `src/v3/compiler/tests/integration/cementing/cost_lens_symbolic_consumer_test.rs` (3 tests)
-- `src/v3/compiler/tests/integration/cementing/e_p_per_call_descent_lens_consumer_cementing.rs` (5 tests)
-- `src/v3/compiler/tests/integration/cementing/effect_enumeration_lens_behavioral_completion.rs` (6 tests)
-- `src/v3/compiler/tests/integration/cementing/memory_peak_cost_basis_demo.rs` (1 tests)
-
-### Migration/freshness include_str! (23 tests)
-
-- `src/v3/compiler/tests/integration/m2_lens_cost_migration_test.rs` (4 tests)
-- `src/v3/compiler/tests/integration/m2_lens_idempotency_migration_test.rs` (2 tests)
-- `src/v3/compiler/tests/integration/m2_lens_provenance_migration_test.rs` (5 tests)
-- `src/v3/compiler/tests/integration/m2_lens_structural_resolution_migration_test.rs` (3 tests)
-- `src/v3/compiler/tests/integration/m2_lens_unused_parameters_migration_test.rs` (6 tests)
-- `src/v3/compiler/tests/integration/m2_lens_variant_payload_migration_test.rs` (3 tests)
-
-### One-shot preflight / release-wrapper receipts (5 tests)
-
-- `src/v3/compiler/tests/integration/e_i_lane_induction_preflight_test.rs` (1 test) — one-shot `SumBound` bootstrap preflight; dissolves when substrate covers the fact
-- `src/v3/compiler/tests/integration/r1_release_acceptance_test.rs` (4 tests) — R1-only acceptance wrapper with encoded deferrals; retires when R3 close ends that receipt class
-
-### Bridge/meta/blocker ratchets (31 tests)
-
-- `src/v3/compiler/tests/integration/bridge_lower_helpers_patch_zero_residual_test.rs` (1 tests)
-- `src/v3/compiler/tests/integration/canonical_lens_bridge_ratchet_test.rs` (6 tests)
-- `src/v3/compiler/tests/integration/idempotency_lens_instance_blocker_test.rs` (2 tests)
-- `src/v3/compiler/tests/integration/lens_behavioral_parity_demonstration_test.rs` (12 tests)
-- `src/v3/compiler/tests/integration/prereq_x_call_on_field_access_ratchet_test.rs` (7 tests)
-- `src/v3/compiler/tests/integration/tc1_substrate_lens_eta_equivalence_deferred_test.rs` (2 tests)
-- `src/v3/compiler/tests/integration/tc1_substrate_lens_eta_equivalence_strict_fire_test.rs` (1 tests)
+| Reason class | Tests | Notes |
+|---|---:|---|
+| Imperative substrate walks | 115 | `m1_substrate_test.rs` bulk |
+| Milestone / m0 / m2 parity obsolete | 93 | `m0_acceptance`, `four_fixture`, `m2_feature_parity` |
+| v4 inverted-dependency smoke/closeout | 78 | §(b) + §(d) clusters |
+| Bridge/meta/blocker ratchets | 31 | canonical_lens, prereq_x, tc1_*, lens_behavioral_parity, … |
+| Migration/freshness include_str! | 23 | `m2_lens_*_migration_test` family |
+| Host drivers for .dag TestClaims | 20 | `r3_free_consequences_*`, skeleton, corpus seeds, … |
+| Cementing transitional Rust | 18 | §(c); `.dag` gate-87 harness is authority |
+| One-shot preflight / release-wrapper | 5 | `e_i_lane_*`, `r1_release_acceptance` |
 
 ---
 
 ## REPLACE-VIA-TESTCLAIM bucket
 
-Port only where behavior is still load-bearing after DELETE waves. **Do not 1:1 port all 532** — operator intent is delete-first.
-
-### Mapped to existing T-19 generators (top file rollups)
-
-- `m2_substrate_inhabitance_test.rs` — 86 tests → **TypeConstruction**
-- `int_literal_cardinality_test.rs` — 28 tests → **TypeConstruction**
-- `thesis_validation_test.rs` — 24 tests → **TypeConstruction**
-- `anthropic_schema_lockstep_test.rs` — 22 tests → **LanguageBehaviorEquivalence**
-- `t_ci_workflow_as_data_demo_test.rs` — 22 tests → **TypeConstruction**
-- `timing_lens_substrate_carrier_test.rs` — 22 tests → **LensApplicability**
-- `sg2c1_parse_tables_authority_test.rs` — 19 tests → **TypeConstruction**
-- `r3_gate_87_lens_cementing_regen_receipts_test.rs` — 17 tests → **LensApplicability**
-- `m1_5_verification_test.rs` — 14 tests → **TypeConstruction**
-- `lens_cost_target_realization_test.rs` — 13 tests → **LensApplicability**
-- `lane2_stage_2b_db18_test.rs` — 12 tests → **TypeConstruction**
-- `m1_5_omni_shape_b_openapi_test.rs` — 12 tests → **LanguageBehaviorEquivalence**
-- `l1_5_fixed_point_test.rs` — 11 tests → **TypeConstruction**
-- `bridge_ledger_carrier_test.rs` — 9 tests → **TypeConstruction**
-- `lens_substrate_carrier_test.rs` — 9 tests → **LensApplicability**
-- `thesis_parallelism_test.rs` — 9 tests → **LensApplicability**
-- `cross_target_coverage_carrier_test.rs` — 8 tests → **BidirectionalRoundtrip**
-- `extdeps_sql_transport_test.rs` — 8 tests → **TypeConstruction**
-- `lane2_stage_2d_symbolic_cost_test.rs` — 8 tests → **AlgebraLaw**
-- `lane2_stage_2e_parallelism_test.rs` — 8 tests → **LensApplicability**
-- `lane3_stage_3b_db1_test.rs` — 8 tests → **TypeConstruction**
-- `r3_gate_60_phase2_width_nat_parser_test.rs` — 7 tests → **TypeConstruction**
-- `services_carrier_shape_test.rs` — 7 tests → **T-19-CATEGORY-MISSING: ModuleServiceParseSurface**
-- `t_gate_106_show_correct_code_diagnostic_coverage_test.rs` — 7 tests → **DiagnosticExhaustiveness**
-- `t_las_crdt_cost_basis_demo_test.rs` — 7 tests → **LensApplicability**
+Port only where behavior is still load-bearing after DELETE waves. **Do not 1:1 port all 532** — operator intent is delete-first. T-19 routing aggregate is in §T-19 coordination above; path-level membership: `--by-file` with `bucket=REPLACE-VIA-TESTCLAIM`.
 
 ---
 
-## KEEP-AS-RUST bucket
+## KEEP-AS-RUST bucket (~317 tests)
 
-- `src/v3/compiler/tests/boundary/m1_3_emit_rust_test.rs` (65 tests) — Class-5 external-toolchain boundary; migrate via ExecuteCommand TestClaim per TESTING.md (not 1:1 port of every assertion)
-- `src/v3/compiler/tests/integration/test_runner_test.rs` (45 tests) — Host TestRunner executes .dag TestClaims; shrinks as claims subsume runner-only checks
-- `src/v3/compiler/tests/integration.rs` (33 tests) — Crate wiring / determinism infrastructure
-- `src/v3/compiler/tests/boundary/m1_4_emit_python_test.rs` (26 tests) — Class-5 external-toolchain boundary; migrate via ExecuteCommand TestClaim per TESTING.md (not 1:1 port of every assertion)
-- `src/v3/compiler/tests/boundary/m1_3_emit_go_test.rs` (20 tests) — Class-5 external-toolchain boundary; migrate via ExecuteCommand TestClaim per TESTING.md (not 1:1 port of every assertion)
-- `src/v3/compiler/tests/integration/t_pb_b_1_dag_runner_test.rs` (18 tests) — Host TestRunner executes .dag TestClaims; shrinks as claims subsume runner-only checks
-- `src/v3/compiler/tests/integration/sg0_census_test.rs` (17 tests) — SG-0/SG-* census ratchet until EXPECTED_HAND_AUTHORED_TEST is empty (gate #84)
-- `src/v3/compiler/tests/integration/common/wiring_scanner_test.rs` (11 tests) — Shared helpers — retire when last importing test file retires (not independent coverage)
-- `src/v3/compiler/tests/integration/sg6_hand_authored_census_test.rs` (10 tests) — SG-0/SG-* census ratchet until EXPECTED_HAND_AUTHORED_TEST is empty (gate #84)
-- `src/v3/compiler/tests/integration/v2_oracle_no_remaining_test_consumers_test.rs` (10 tests) — G-1 v2-consumer excision ratchet (gate #41); DELETE entire file when src/v2/ tree removed — not v3-vs-v2 output comparison
-- `src/v3/compiler/tests/determinism_test.rs` (9 tests) — Crate wiring / determinism infrastructure
-- `src/v3/compiler/tests/integration/pb1_bootstrap_full_snapshot_test.rs` (9 tests) — Bootstrap snapshot digest ratchet until PB-1 emits check from .dag
-- `src/v3/compiler/tests/integration/sg1_tokenize_authority_test.rs` (8 tests) — SG-0/SG-* census ratchet until EXPECTED_HAND_AUTHORED_TEST is empty (gate #84)
-- `src/v3/compiler/tests/integration/r3_gate_62_file_ingestion_negative_bridge_audit_test.rs` (5 tests) — Filesystem walk over dsl/**/*.dag — no substrate TestClaim walker (gate #62 supporting audit only)
-- `src/v3/compiler/tests/integration/common/mod.rs` (4 tests) — Shared helpers — retire when last importing test file retires (not independent coverage)
-- `src/v3/compiler/tests/integration/common/rust_comment_strip.rs` (4 tests) — Shared helpers — retire when last importing test file retires (not independent coverage)
-- `src/v3/compiler/tests/integration/common/symbolic_cost_verification_fixture.rs` (4 tests) — Shared helpers — retire when last importing test file retires (not independent coverage)
-- `src/v3/compiler/tests/boundary/l5_cross_target_consistency.rs` (3 tests) — Class-5 external-toolchain boundary; migrate via ExecuteCommand TestClaim per TESTING.md (not 1:1 port of every assertion)
-- `src/v3/compiler/tests/boundary/m2_emit_multi_field_struct_variant_test.rs` (3 tests) — Class-5 external-toolchain boundary; migrate via ExecuteCommand TestClaim per TESTING.md (not 1:1 port of every assertion)
-- `src/v3/compiler/tests/boundary/m1_5_emit_omni_demo_test.rs` (2 tests) — Class-5 external-toolchain boundary; migrate via ExecuteCommand TestClaim per TESTING.md (not 1:1 port of every assertion)
-- `src/v3/compiler/tests/integration/common/cached_compile.rs` (2 tests) — Shared helpers — retire when last importing test file retires (not independent coverage)
-- `src/v3/compiler/tests/integration/r3_v3_self_host_demonstration_dag_test.rs` (2 tests) — ExecuteCommand/CARGO_BIN_EXE splice for self_host_fixed_point (gate #71)
-- `src/v3/compiler/tests/integration/sg2_parse_authority_test.rs` (2 tests) — SG-0/SG-* census ratchet until EXPECTED_HAND_AUTHORED_TEST is empty (gate #84)
-- `src/v3/compiler/tests/integration/sg3_surface_reflection_consumer_test.rs` (2 tests) — SG-0/SG-* census ratchet until EXPECTED_HAND_AUTHORED_TEST is empty (gate #84)
-- `src/v3/compiler/tests/integration/sg7_prep_variant_payload_freshness_test.rs` (2 tests) — SG-0/SG-* census ratchet until EXPECTED_HAND_AUTHORED_TEST is empty (gate #84)
-- `src/v3/compiler/tests/integration/sg3_lower_parse_surface_stack_test.rs` (1 tests) — SG-0/SG-* census ratchet until EXPECTED_HAND_AUTHORED_TEST is empty (gate #84)
+Temporary until substrate/TestClaim coverage or census zero. Path-level list: `--by-file` with `bucket=KEEP-AS-RUST`.
+
+| Heuristic class | ~Tests | Dissolution |
+|---|---:|---|
+| Class-5 emit boundaries (`tests/boundary/*`) | 116 | ExecuteCommand TestClaim per TESTING.md |
+| TestRunner / `.dag` harness | 63 | Shrinks as `.dag` TestClaims subsume runner checks |
+| SG-0 / SG-* census ratchet | 42 | Gate #84 — delete when `EXPECTED_HAND_AUTHORED_TEST` empty |
+| Crate wiring (`integration.rs`, `determinism_test`) | 42 | Infrastructure — last to shrink |
+| G-1 v2 excision (`v2_oracle_*`) | 10 | DELETE file when `src/v2/` removed (gate #41) |
+| Gate #62 filesystem tree audit | 5 | No substrate walker yet |
+| Host / PB-1 / self-host bridges | 11 | Gates #71 / PB-1 snapshot |
+| Shared `integration/common/*` helpers | 28 | Retire with last importer |
 
 ---
 

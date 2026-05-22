@@ -24,6 +24,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 CENSUS_FILE = ROOT / "src/v3/compiler/tests/integration/sg0_census_test.rs"
+EXPECTED_CENSUS_PATHS = 145
 
 
 def strip_rust_comments(src: str) -> str:
@@ -46,15 +47,19 @@ def strip_rust_comments(src: str) -> str:
 
 
 def census_test_paths() -> list[str]:
+    if not CENSUS_FILE.is_file():
+        raise FileNotFoundError(f"census const missing: {CENSUS_FILE}")
     text = CENSUS_FILE.read_text(encoding="utf-8")
     start = text.index("const EXPECTED_HAND_AUTHORED_TEST")
     end = text.index("const EXPECTED_HAND_AUTHORED_FRAGMENTS", start)
     return re.findall(r'"([^"]+\.rs)"', text[start:end])
 
 
-def extract_tests(rel: str) -> list[str]:
+def extract_tests(rel: str, *, strict: bool) -> list[str]:
     path = ROOT / rel
     if not path.is_file():
+        if strict:
+            raise FileNotFoundError(f"census path not on disk: {rel}")
         return []
     src = strip_rust_comments(path.read_text(encoding="utf-8"))
     lines = src.splitlines()
@@ -124,10 +129,10 @@ def classify_path(rel: str) -> tuple[str, str]:
     return "REPLACE-VIA-TESTCLAIM", "Portable to TestClaim"
 
 
-def path_rows() -> list[dict]:
+def path_rows(*, strict: bool) -> list[dict]:
     rows: list[dict] = []
     for rel in sorted(census_test_paths()):
-        n = len(extract_tests(rel))
+        n = len(extract_tests(rel, strict=strict))
         bucket, reason = classify_path(rel)
         rows.append(
             {
@@ -153,13 +158,54 @@ def aggregate(rows: list[dict]) -> dict:
     }
 
 
+def run_check() -> int:
+    try:
+        rows = path_rows(strict=True)
+    except FileNotFoundError as exc:
+        print(f"ERROR {exc}", file=sys.stderr)
+        return 1
+    summary = aggregate(rows)
+    errors: list[str] = []
+    if summary["census_paths"] != EXPECTED_CENSUS_PATHS:
+        errors.append(
+            f"census path count {summary['census_paths']} != expected {EXPECTED_CENSUS_PATHS}"
+        )
+    if errors:
+        for msg in errors:
+            print(f"ERROR {msg}", file=sys.stderr)
+        return 1
+    print(
+        f"OK paths={summary['census_paths']} tests={summary['test_functions']} "
+        f"DELETE={summary['by_bucket'].get('DELETE', 0)} "
+        f"REPLACE={summary['by_bucket'].get('REPLACE-VIA-TESTCLAIM', 0)} "
+        f"KEEP={summary['by_bucket'].get('KEEP-AS-RUST', 0)}",
+        file=sys.stderr,
+    )
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--check", action="store_true", help="Print summary to stderr and exit 0")
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Fail closed: every census path must exist; path count must match HEAD baseline",
+    )
     parser.add_argument("--summary", action="store_true", help="Print summary JSON to stdout")
-    parser.add_argument("--by-file", action="store_true", help="Print path-level rows to stdout (<=145 lines)")
+    parser.add_argument(
+        "--by-file",
+        action="store_true",
+        help="Print path-level rows to stdout (<=145 lines); missing paths are errors",
+    )
     args = parser.parse_args()
-    rows = path_rows()
+    if args.check:
+        return run_check()
+    strict = bool(args.by_file or args.summary)
+    try:
+        rows = path_rows(strict=strict)
+    except FileNotFoundError as exc:
+        print(f"ERROR {exc}", file=sys.stderr)
+        return 1
     summary = aggregate(rows)
     if args.by_file:
         for row in rows:
@@ -167,17 +213,6 @@ def main() -> int:
         return 0
     if args.summary:
         print(json.dumps(summary, indent=2))
-        return 0
-    if args.check:
-        print(
-            f"OK paths={summary['census_paths']} tests={summary['test_functions']} "
-            f"DELETE={summary['by_bucket'].get('DELETE', 0)} "
-            f"REPLACE={summary['by_bucket'].get('REPLACE-VIA-TESTCLAIM', 0)} "
-            f"KEEP={summary['by_bucket'].get('KEEP-AS-RUST', 0)}",
-            file=sys.stderr,
-        )
-        if summary["census_paths"] != 145:
-            print(f"WARN expected 145 census paths, got {summary['census_paths']}", file=sys.stderr)
         return 0
     parser.print_help()
     return 2
