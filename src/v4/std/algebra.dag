@@ -1,7 +1,7 @@
 // src/v4/std/algebra.dag
 // Scope: algebraic structures and canonical carrier constructions.
 // Anchor: https://en.wikipedia.org/wiki/Algebraic_structure
-// Owns: Magma, Semigroup, Monoid, CommutativeMonoid, Group, AbelianGroup, Semiring, CommutativeSemiring, Ring, CommutativeRing, OrderedRing, Field, ApproximateField, Lattice, BoundedLattice, BooleanAlgebra, FreeMonoid, FreeMonoidUniqueState, fold_list, is_empty, non_empty, length, for_all, count_where, count_equal, unique, PointwisePower, Ordering, Homomorphism.
+// Owns: Magma, Semigroup, Monoid, CommutativeMonoid, Group, AbelianGroup, Semiring, CommutativeSemiring, Ring, CommutativeRing, OrderedRing, Field, ApproximateField, Lattice, BoundedLattice, BooleanAlgebra, FreeMonoid, FreeMonoidUniqueState, fold_list, fold_list_right, is_empty, non_empty, length, for_all, count_where, count_equal, unique, PointwisePower, Ordering, Homomorphism.
 // Consumes: none.
 // Status: T-2 modeled.
 // Ledger: Part 6 — SL-P6-FREEMONOID-IS-EMPTY-VPRED.
@@ -78,10 +78,23 @@ type FreeMonoidUniqueState<T> {
   seen: FreeMonoid<T>
   unique: Bool
 }
+// Left fold: traverse head→tail, thread accumulator forward. Combinator order is `cons(acc, head)`.
+// The naive list-rebuild combinator `fn(acc, h) { Cons { head: h, tail: acc } }` REVERSES input
+// (head is prepended at each step but visited first). Use fold_list_right for order-preserving
+// list-shaped output, or this fold with an explicit reverse pass for the same effect.
 fn fold_list<T, A>(xs: FreeMonoid<T>, empty: A, cons: fn(A, T) -> A) -> A {
   match xs {
     Empty => empty
     Cons { head: h, tail: t } => fold_list(xs: t, empty: cons(empty, h), cons: cons)
+  }
+}
+// Right fold: recurse to tail first, then combine. Combinator order is `snoc(tail_result, head)`.
+// With `fn(acc, h) { Cons { head: h, tail: acc } }` the result PRESERVES input order — head is
+// prepended last, after the tail has been rebuilt. Not tail-recursive; depth is O(|xs|).
+fn fold_list_right<T, A>(xs: FreeMonoid<T>, empty: A, snoc: fn(A, T) -> A) -> A {
+  match xs {
+    Empty => empty
+    Cons { head: h, tail: t } => snoc(fold_list_right(xs: t, empty: empty, snoc: snoc), h)
   }
 }
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: coproduct variant-discriminant predicate substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived Empty-variant discriminant projection; forbidden: fold_list laundering.
