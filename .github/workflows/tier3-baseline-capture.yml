@@ -33,16 +33,22 @@ concurrency:
 # See `.github/workflows/ci.yml` for the per-job CARGO_HOME / RUSTUP_HOME
 # rationale — self-hosted runners on srv1/srv2 share `$HOME` across ephemeral
 # worker instances, so per-job toolchain state must live in `RUNNER_TEMP` to
-# avoid concurrent-rustup races. Matters especially here because the matrix
-# fans out 5 simultaneous setup-rust calls.
+# avoid concurrent-rustup races.
 
 jobs:
   capture-run:
     strategy:
       fail-fast: false
+      # Serialize the matrix so the 5 captures don't share a physical host (srv2 only
+      # has so many cores; concurrent benches contend on memory bandwidth + scheduler,
+      # which would encode runner contention into the baseline rather than code behavior).
+      max-parallel: 1
       matrix:
         run_number: [1, 2, 3, 4, 5]
-    runs-on: [self-hosted, linux, arm64]
+    # Pin to srv2 specifically: srv1 has 2 dead DIMMs (degraded memory subsystem); srv2 is
+    # healthy. Baseline reproducibility wants a single known-good host class — operator
+    # can rotate to a different host explicitly via this label if needed.
+    runs-on: [self-hosted, linux, arm64, srv2]
     timeout-minutes: 60
     steps:
       - name: Isolate toolchain dirs (srv1/srv2 shared-$HOME concurrent-rustup race)
@@ -105,7 +111,7 @@ jobs:
           fi
           mapfile -t sorted < <(printf '%s\n' "${bundles[@]}" | sort -V)
           python3 scripts/aggregate_tier3_baseline.py \
-            --host-id gunbc-self-hosted-arm64 \
+            --host-id gunbc-srv2-arm64 \
             --git-sha "${GITHUB_SHA}" \
             --output tier3_baseline.json \
             "${sorted[@]}"
