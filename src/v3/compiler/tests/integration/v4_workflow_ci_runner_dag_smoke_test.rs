@@ -19,7 +19,8 @@ use v3_compiler::tokenize_for_test;
 
 const CI_RUNNER_DAG: &str = include_str!("../../../../v4/workflow/ci_runner.dag");
 const CI_RUNNER_PATH: &str = "src/v4/workflow/ci_runner.dag";
-const CLAIM_DAG: &str = include_str!("../../../../v4/test/claim/workflow/affected_set_ci_runner.dag");
+const CLAIM_DAG: &str =
+    include_str!("../../../../v4/test/claim/workflow/affected_set_ci_runner.dag");
 const CLAIM_PATH: &str = "src/v4/test/claim/workflow/affected_set_ci_runner.dag";
 
 fn parse_module(source: &str, path: &str) -> v3_compiler::parse_surface::SurfaceModule {
