@@ -141,7 +141,7 @@ fn any<T>(xs: FreeMonoid<T>, predicate: fn(T) -> Bool) -> Bool {
 
 
 fn filter<T>(xs: FreeMonoid<T>, predicate: fn(T) -> Bool) -> FreeMonoid<T> {
-  fold_list(xs: xs, empty: Empty, cons: fn(acc, item) {
+  fold_list_right(xs: xs, empty: Empty, snoc: fn(acc, item) {
     match predicate(item) {
       true => Cons { head: item, tail: acc }
       false => acc
