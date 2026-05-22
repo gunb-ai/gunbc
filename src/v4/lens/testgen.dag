@@ -157,8 +157,8 @@ type LanguageBehaviorEquivalenceSubject {
 
 // 🟡 coproduct dissolution — T19-REFINEMENT-PRESERVATION.
 type RefinementPreservationSubject {
-  refined_value: Node
-  base_value: Node
+  refined: Refined<List<Node>>
+  original: List<Node>
 }
 
 
@@ -402,24 +402,26 @@ fn refine_nonempty_node_list(xs: List<Node>, at: Locus) -> Outcome<Refined<List<
 }
 
 
-fn nonempty_list_base_preserved_node() -> Node {
-  let original = [stub_empty_conj]
-  match refine_nonempty_node_list(xs: original, at: node_locus(node: stub_empty_conj)) {
-    Accepted { value: refined, diagnostics: None } =>
-      if refined_base(r: refined) == original {
-        stub_empty_conj
-      } else {
-        stub_empty_disj
-      }
-    Rejected { diagnostics: _ } => stub_empty_disj
+fn refinement_preservation_list_head_or_empty(xs: List<Node>) -> Node {
+  match xs {
+    Empty => stub_empty_disj
+    Cons { head: h, tail: _ } => h
   }
 }
 
 
-fn refinement_preservation_subject_nonempty_list_base() -> RefinementPreservationSubject {
-  RefinementPreservationSubject {
-    refined_value: nonempty_list_base_preserved_node(),
-    base_value: stub_empty_conj,
+fn refinement_preservation_subject_nonempty_list_base() -> Outcome<RefinementPreservationSubject> {
+  let original = [stub_empty_conj]
+  match refine_nonempty_node_list(xs: original, at: node_locus(node: stub_empty_conj)) {
+    Accepted { value: refined, diagnostics: None } =>
+      Accepted {
+        value: RefinementPreservationSubject {
+          refined: refined,
+          original: original,
+        },
+        diagnostics: None,
+      }
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
   }
 }
 
@@ -435,8 +437,10 @@ fn testgen_emit_refinement_preservation_claim(
         value: EqualsClaim {
           label: label,
           t19_anchor: anchor,
-          lhs: subject.refined_value,
-          rhs: subject.base_value,
+          lhs: refinement_preservation_list_head_or_empty(
+            xs: refined_base(r: subject.refined)
+          ),
+          rhs: refinement_preservation_list_head_or_empty(xs: subject.original),
           classification: TestClassification { tier: Tier1, layer: Unit },
         },
         diagnostics: None,
@@ -575,11 +579,15 @@ fn manual_test_claim_for_manual_anchor(key: T19ManualAnchorKey) -> Outcome<TestC
         mock: lbe_io_mock_transform_dag_surface()
       )
     T19ManualRefinementNonEmptyListBase =>
-      testgen_emit_refinement_preservation_claim(
-        anchor: T19ManualRefinementNonEmptyListBase,
-        label: t19_refinement_label_nonempty_list_base,
-        subject: refinement_preservation_subject_nonempty_list_base()
-      )
+      match refinement_preservation_subject_nonempty_list_base() {
+        Accepted { value: subject, diagnostics: None } =>
+          testgen_emit_refinement_preservation_claim(
+            anchor: T19ManualRefinementNonEmptyListBase,
+            label: t19_refinement_label_nonempty_list_base,
+            subject: subject
+          )
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+      }
   }
 }
 
@@ -705,11 +713,15 @@ fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept>
         diagnostics: None,
       }
     T19ManualRefinementNonEmptyListBase =>
-      Accepted {
-        value: RefinementPreservation {
-          subject: refinement_preservation_subject_nonempty_list_base(),
-        },
-        diagnostics: None,
+      match refinement_preservation_subject_nonempty_list_base() {
+        Accepted { value: subject, diagnostics: None } =>
+          Accepted {
+            value: RefinementPreservation {
+              subject: subject,
+            },
+            diagnostics: None,
+          }
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
       }
   }
 }
