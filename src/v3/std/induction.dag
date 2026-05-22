@@ -322,7 +322,7 @@ fn sub_value_structural_eq(a: SubValueRelation, b: SubValueRelation) -> Bool {
 
 // 🟡 PRACTICE 10 DISSOLUTION DISPOSITION: see `dsl/std/induction.dag` — hand-rolled
 // boolean projection of `sub_value_to_evidence(r) == Strict`; retires when the
-// substrate gains derived-predicate-from-projection (ROADMAP.md:390 family).
+// substrate gains derived-predicate-from-projection (ROADMAP.md:390 P5 — not BoundedLattice).
 fn is_strict_style_structural(r: SubValueRelation) -> Bool {
   match r {
     StrictSubValue { field: _, factor: _ } => true
@@ -398,8 +398,8 @@ fn join_sub_value(a: SubValueRelation, b: SubValueRelation) -> SubValueRelation 
 }
 
 // Merge helpers only — not a `std/algebra` inhabitance. Meet is NOT GLB for MixedTop.
-// See `dsl/std/induction.dag` for operational properties. P5: no BoundedLattice witness
-// intended; ROADMAP.md:390 tracks Rc-aware merge-helper surfacing, not lattice inhabitance.
+// See `dsl/std/induction.dag` for operational properties. P5: no BoundedLattice witness;
+// ROADMAP.md:390 row retargeted — Rc-aware merge-helper surfacing, not lattice inhabitance.
 
 
 // =========================================================================

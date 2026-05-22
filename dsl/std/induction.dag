@@ -385,9 +385,8 @@ fn sub_value_structural_eq(a: SubValueRelation, b: SubValueRelation) -> Bool {
 // then, the by-hand match keeps the carrier's strict-cone classification co-located with
 // the lattice operations that need it (per CODING.md "pure functions, data + free functions"
 // — derive the predicate from `sub_value_to_evidence` is the homomorphism, but the
-// substrate cannot yet express that derivation). Same family as the held
-// `data sub_value_relation_bounded_meet_semilattice` (ROADMAP.md:390 — function-valued algebra
-// fields / generic lattice lifting).
+// substrate cannot yet express that derivation). P5 (ROADMAP.md:390): same engineering slice
+// as stage0 Rc<T>-aware merge-helper surfacing — not a `BoundedLattice` data witness.
 fn is_strict_style_structural(r: SubValueRelation) -> Bool {
   match r {
     StrictSubValue { field: _, factor: _ } => true
@@ -496,8 +495,9 @@ fn join_sub_value(a: SubValueRelation, b: SubValueRelation) -> SubValueRelation 
   }
 }
 
-// SubValueRelation merge helpers — `meet_sub_value` / `join_sub_value` are the sole authority
-// (no `BoundedLattice` / algebra inhabitance in `std/algebra.dag` until ROADMAP.md:390).
+// SubValueRelation merge helpers — `meet_sub_value` / `join_sub_value` are the sole authority.
+// No `BoundedLattice` / `std/algebra` data witness is intended (A-tight #3551; ROADMAP.md:390
+// row retargeted — dissolution is merge-helper surfacing, not lattice inhabitance).
 // Meet is NOT GLB for MixedTop: projection-soundness requires meet-monotonicity, so
 // meet(MixedTop, X) saturates at NonIncreasingValue while MixedTop remains join-⊤.
 // Operational properties verified by case analysis over `sub_value_level` +
@@ -522,12 +522,10 @@ fn join_sub_value(a: SubValueRelation, b: SubValueRelation) -> SubValueRelation 
 // `StrictAxisErased` and `MixedTop` resolve the codex #15892 vs #15942 contradiction that a
 // single `IncomparableValue` top could not satisfy. See file header for the Inc-split rationale.
 //
-// 🟡 P5 STAGE0-GENERATOR-GAP. No typed `std/algebra` witness for this carrier — intentional
-// after A-tight: meet is not GLB for MixedTop, so a future `BoundedLattice` data declaration
-// would mis-state the algebra. Dissolution (ROADMAP.md:390): stage0 gains Rc<T>-aware emission
-// for merge-helper canonical surfaces (function-valued fields on a projection-sound meet/join
-// pair), or consumers keep calling `meet_sub_value` / `join_sub_value` directly. Until then,
-// the free functions above are the sole authority.
+// 🟡 P5 STAGE0-GENERATOR-GAP. No typed `std/algebra` witness — intentional after A-tight.
+// Dissolution (ROADMAP.md:390): stage0 Rc<T>-aware emission for merge-helper canonical
+// surfaces (`meet_sub_value` / `join_sub_value` on this projection-sound pair), or direct
+// free-function calls. Until then, the functions above are the sole authority.
 
 
 // =========================================================================
