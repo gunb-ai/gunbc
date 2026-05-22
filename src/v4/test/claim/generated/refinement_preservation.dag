@@ -33,6 +33,7 @@ import v4.std.verification {
   TestClaim,
   TestClassification,
   T19ManualAnchorAbsent,
+  T19ManualRefinementNonEmptyListBase,
   Tier1,
   Unit
 }

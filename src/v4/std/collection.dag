@@ -16,7 +16,7 @@ module v4.std.collection
 
 
 import v4.std.algebra { FreeMonoid, PointwisePower, is_empty }
-import v4.std.diagnostic { Diagnostic, ExternalContractUnknown, Textual, Unavailable, WholeFile }
+import v4.std.diagnostic { Diagnostic, ExternalContractUnknown, Unavailable, port_locus }
 import v4.std.node { Symbol }
 import v4.std.witness { Holds, Violates, Witness }
 type List<T> = FreeMonoid<T>
@@ -43,11 +43,11 @@ type Map<K, V> {
   lookup: fn(K) -> Witness<V>
 }
 data map_key_absent: Symbol = map_key_absent
-data map_lookup_locus: Symbol = map_lookup_locus
+data map_lookup_port: Symbol = map_lookup_port
 fn map_absent_diagnostic() -> Diagnostic {
   Diagnostic {
     reason: map_key_absent,
-    at: Textual { file: map_lookup_locus, extent: WholeFile },
+    at: port_locus(port: map_lookup_port),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
