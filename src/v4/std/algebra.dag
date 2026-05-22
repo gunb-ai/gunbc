@@ -153,6 +153,31 @@ fn for_all<T>(xs: FreeMonoid<T>, predicate: fn(T) -> Bool) -> Bool {
 }
 
 
+fn any<T>(xs: FreeMonoid<T>, predicate: fn(T) -> Bool) -> Bool {
+  fold_list(xs: xs, empty: false, cons: fn(acc, item) {
+    match acc {
+      true => true
+      false => predicate(item)
+    }
+  })
+}
+
+
+fn filter<T>(xs: FreeMonoid<T>, predicate: fn(T) -> Bool) -> FreeMonoid<T> {
+  fold_list_right(xs: xs, empty: Empty, snoc: fn(acc, item) {
+    match predicate(item) {
+      true => Cons { head: item, tail: acc }
+      false => acc
+    }
+  })
+}
+
+
+fn contains<T>(xs: FreeMonoid<T>, item: T, eq: fn(T, T) -> Bool) -> Bool {
+  any(xs: xs, predicate: fn(candidate) { eq(candidate, item) })
+}
+
+
 fn count_where<T>(xs: FreeMonoid<T>, predicate: fn(T) -> Bool) -> Int {
   fold_list(xs: xs, empty: 0, cons: fn(count, item) {
     match predicate(item) {
