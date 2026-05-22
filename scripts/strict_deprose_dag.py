@@ -261,6 +261,9 @@ def coproduct_tag_from_merge_base(rel: str) -> dict[str, tuple[str, str]]:
                 out.setdefault(nm, ("🟡", slug))
             else:
                 out.setdefault(nm, ("🟢", slug))
+    if rel == "src/v4/extdeps/languages/typescript.dag":
+        # T-4 wave-1 catalog row tag (replaces merge-base TsEcma262NumericPrimitiveKind).
+        out["TsEcma262NumericPrimitiveFactsUnion"] = ("🟢", "CP-3229-GREEN-TERMINAL")
     return out
 
 
@@ -539,10 +542,10 @@ def main() -> None:
         ),
         (
             "src/v4/extdeps/languages/typescript.dag",
-            "// Scope: TypeScript 5.9 + ECMA-262 ES2025 primitive D2 resolver slice (T-4 typescript).",
+            "// Scope: TypeScript 5.9 + ECMA-262 ES2025 numeric primitive fact-bundles and ModelCore wave-1.",
             "// Anchor: https://www.typescriptlang.org/docs/handbook/2/everyday-types.html — ECMA-262 https://tc39.es/ecma262/2025/multipage/",
-            "// Consumes: v4.std.logic (Bool, bool_boolean_algebra); v4.std.algebra (BooleanAlgebra).",
-            "// Status: ts_bool_grounding decl-ref present + v2-parse-verified — 🟡 P2/E-6 STAGING (no same-PR consumer; canonical fold specified-not-realized); non-bool numeric primitives 🟡 gated D2→fact-bundle debt (T-4 Phase-3 rework, node://adhoc-71ec74f4-080).",
+            "// Consumes: v4.std.collection, v4.std.node, v4.std.logic, v4.std.algebra, v4.std.model_core, v4.std.target_model.",
+            "// Status: T-4 typescript slice — ECMA `number` (IEEE-754 binary64) + `bigint` (exact unbounded ℤ) fact-bundles; `core: ModelCore` primitives from `ts_numeric_facts_catalog` via fold; canonical_symbols = catalog surface spellings; bool canonical-B decl-ref — 🟡 E-6(b) staging; wave-1 lex/grammar deferred.",
             "// 🟡",
         ),
         (
