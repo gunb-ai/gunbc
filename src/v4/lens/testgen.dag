@@ -488,6 +488,10 @@ data witness_validity_list_cons_head: Symbol = witness_validity_list_cons_head
 data witness_validity_list_cons_tail: Symbol = witness_validity_list_cons_tail
 data witness_validity_diags_field_head: Symbol = witness_validity_diags_field_head
 data witness_validity_diags_field_tail: Symbol = witness_validity_diags_field_tail
+data witness_validity_diagnostics_tag_none: Symbol = witness_validity_diagnostics_tag_none
+data witness_validity_diagnostics_tag_some: Symbol = witness_validity_diagnostics_tag_some
+data witness_validity_outcome_accepted_value: Symbol = witness_validity_outcome_accepted_value
+data witness_validity_outcome_accepted_diagnostics: Symbol = witness_validity_outcome_accepted_diagnostics
 
 
 fn witness_validity_symbol_atom_node(s: Symbol) -> Node {
@@ -680,6 +684,13 @@ fn witness_validity_diagnostic_node(d: Diagnostic) -> Node {
 }
 
 
+// 🟡 gated — feature:witness-validity-list-encoder-via-canonical-fold — dissolve-on:
+//   v4.std.algebra grows a canonical `fold_list`/`free_monoid_fold` projection that
+//   carries a Node algebra capable of producing a structurally-equivalent List<Diagnostic>
+//   Node encoding without this hand-rolled Empty/Cons walker. Tracked locally; not a
+//   parallel-authority duplicate of fold_list (codex 2026-05-22 RC — preserve every
+//   Outcome fact OR add a tracked feature gate; chose the latter while the canonical
+//   Node-valued list-fold combinator pattern is still settling in std.algebra).
 fn witness_validity_diagnostic_list_node(xs: List<Diagnostic>) -> Node {
   match xs {
     Empty =>
@@ -719,15 +730,49 @@ fn witness_validity_non_empty_diagnostics_node(d: NonEmptyDiagnostics) -> Node {
 }
 
 
+fn witness_validity_diagnostics_node(ds: Diagnostics) -> Node {
+  match ds {
+    None =>
+      witness_validity_symbol_atom_node(s: witness_validity_diagnostics_tag_none)
+    Some { diagnostics: nd } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          Edge {
+            label: Named { name: witness_validity_diagnostics_tag_some },
+            target: witness_validity_non_empty_diagnostics_node(d: nd)
+          }
+        ]
+      }
+  }
+}
+
+
+// Total Outcome<StructuralPropertyWitness> → Node encoding. Both Outcome facts are
+// preserved: Accepted carries (value, diagnostics); Rejected carries the
+// NonEmptyDiagnostics. Earlier projections that dropped Accepted.diagnostics
+// silently were lossy (codex 2026-05-22 RC).
 fn witness_validity_outcome_node(o: Outcome<StructuralPropertyWitness>) -> Node {
   match o {
-    Accepted { value: w, diagnostics: _ } =>
+    Accepted { value: w, diagnostics: ds } =>
       Node {
         kind: TypeNode { connective: Conj },
         children: [
           Edge {
             label: Named { name: witness_validity_outcome_holds },
-            target: witness_validity_witness_node(w: w)
+            target: Node {
+              kind: TypeNode { connective: Conj },
+              children: [
+                Edge {
+                  label: Named { name: witness_validity_outcome_accepted_value },
+                  target: witness_validity_witness_node(w: w)
+                },
+                Edge {
+                  label: Named { name: witness_validity_outcome_accepted_diagnostics },
+                  target: witness_validity_diagnostics_node(ds: ds)
+                }
+              ]
+            }
           }
         ]
       }
