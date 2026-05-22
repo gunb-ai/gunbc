@@ -1,10 +1,13 @@
 # Manual C1 Phase-1 Tier-3 mirror baseline capture (``tier3_baseline.json``).
 #
-# Dispatched on self-hosted arm64 (srv1/srv2; R-3 per ``docs/audit/c1-r3-canonical-bench-host-decision-matrix.md`` —
-# host class changed from `ubicloud-standard-2` to gunbc self-hosted arm64 on 2026-05-22; baselines captured on the
+# Dispatched on self-hosted arm64 srv2 (R-3 per ``docs/audit/c1-r3-canonical-bench-host-decision-matrix.md`` —
+# host class changed from `ubicloud-standard-2` to gunbc self-hosted arm64 srv2 on 2026-05-22; baselines captured on the
 # prior host class are not directly comparable, so the next baseline refresh re-establishes ground truth on the new host).
-# Runs five independent bench jobs (separate VMs), aggregates per procedure §2 / R-7 via
-# ``scripts/aggregate_tier3_baseline.py``.
+# Pinned to srv2 specifically (srv1 has degraded DIMMs); the 5-capture matrix runs with
+# `max-parallel: 1` so the captures don't share a physical host and contend with each other —
+# hosted-runner isolation is what gives the captures the "separate VMs" property R-7 expects.
+# Runs five independent bench jobs (serial on srv2 — see strategy.max-parallel), aggregates
+# per procedure §2 / R-7 via ``scripts/aggregate_tier3_baseline.py``.
 #
 # **Phase-1 gate (R-7):** the canonical baseline lives in the repo tree at
 # ``src/v3/compiler/benches/tier3_baseline.json`` (merged on ``main`` before mirror dissolution PRs).
