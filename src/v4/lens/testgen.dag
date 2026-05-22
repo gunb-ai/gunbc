@@ -424,10 +424,10 @@ fn testgen_emit_idempotent_operation_claim(
           }
         )
       }
-    Composable(subject: subject) =>
+    Composable(inner) =>
       testgen_emit_idempotent_operation_equals_claim(
         label: label,
-        subject: subject,
+        subject: inner,
         classification: classification
       )
   }

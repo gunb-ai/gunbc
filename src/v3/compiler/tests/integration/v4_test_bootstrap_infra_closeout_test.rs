@@ -95,7 +95,7 @@ fn t19_idempotent_operation_generated_claims_parse_and_pin_emission() {
         TESTGEN_DAG.contains("fn testgen_emit_idempotent_operation_claim")
             && TESTGEN_DAG.contains("import v4.std.effects")
             && TESTGEN_DAG.contains("ComposableIdempotentOperationSubject")
-            && TESTGEN_DAG.contains("Composable(subject: subject)")
+            && TESTGEN_DAG.contains("Composable(inner) =>")
             && TESTGEN_DAG.contains("idempotent_operation_apply_twice")
             && TESTGEN_DAG.contains("fn testgen_scheduled_idempotent_operation_subjects"),
         "testgen lens must emit idempotent-operation claims from v4.std.effects composable subjects, not parallel Symbol/Node subjects"
