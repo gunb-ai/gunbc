@@ -397,14 +397,12 @@ fn join_sub_value(a: SubValueRelation, b: SubValueRelation) -> SubValueRelation 
   }
 }
 
-// BoundedMeetSemilattice<SubValueRelation> witness — operator-ratified PATH-2-FULL (2026-05-21).
-// Meet-side laws hold by level-class case analysis; MixedTop is join-⊤ only (not meet identity).
-// See `dsl/std/induction.dag` for the full rationale.
+// BoundedMeetSemilattice (comment/marker only — not a `std/algebra` substrate type).
+// Meet is NOT GLB for MixedTop: meet(MixedTop, X) saturates at NonIncreasingValue for
+// projection-soundness; MixedTop remains join-⊤. See `dsl/std/induction.dag`.
 //
-// 🟡 P5 STAGE0-GENERATOR-GAP. A `data sub_value_relation_bounded_meet_semilattice` declaration is
-// held until the stage0 Rust emitter handles `BoundedMeetSemilattice<T>` over `Rc`-wrapped carriers.
-// Until then, the lawful algebra is consumed via `meet_sub_value` / `join_sub_value` directly
-// — same denotational content, no algebra-inhabitance discoverability.
+// 🟡 P5 STAGE0-GENERATOR-GAP. No typed lattice witness until stage0 handles `Rc`-wrapped
+// carriers; `meet_sub_value` / `join_sub_value` are the sole authority (ROADMAP.md:390).
 
 
 // =========================================================================

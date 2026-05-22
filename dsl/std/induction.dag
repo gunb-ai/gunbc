@@ -494,7 +494,10 @@ fn join_sub_value(a: SubValueRelation, b: SubValueRelation) -> SubValueRelation 
   }
 }
 
-// BoundedMeetSemilattice<SubValueRelation> — meet-side laws (verified by case
+// SubValueRelation merge algebra — documented as BoundedMeetSemilattice (comment/marker
+// only; no `std/algebra` substrate type). Meet is NOT the largest-lower-bound for MixedTop:
+// projection-soundness requires meet-monotonicity, so meet(MixedTop, X) saturates at
+// NonIncreasingValue while MixedTop remains join-⊤. Meet-side laws (verified by case
 // analysis over `sub_value_level` + `sub_value_structural_eq`):
 //   - Idempotence: meet(a, a) = a; join(a, a) = a — `sub_value_structural_eq` short-circuit
 //     handles parameterised structural witnesses; non-parametric variants are caught by
@@ -514,22 +517,9 @@ fn join_sub_value(a: SubValueRelation, b: SubValueRelation) -> SubValueRelation 
 // `StrictAxisErased` and `MixedTop` resolve the codex #15892 vs #15942 contradiction that a
 // single `IncomparableValue` top could not satisfy. See file header for the Inc-split rationale.
 //
-// 🟡 P5 STAGE0-GENERATOR-GAP. A `data sub_value_relation_bounded_meet_semilattice: BoundedMeetSemilattice<SubValueRelation>`
-// declaration is held until the stage0 Rust emitter handles `BoundedMeetSemilattice<T>` instances where
-// `T` is an `Rc`-wrapped carrier (SubValueRelation has structural variants carrying
-// `InductiveField` / `ShrinkFactor`, which the stage0 layer materialises behind `Rc`).
-// Current stage0 emission produces `meet: Rc::new(meet_sub_value)` against a struct field
-// typed `Rc<dyn Fn(T, T) -> T>` with `T = SubValueRelation` (not `Rc<SubValueRelation>`),
-// and `top: Box::new(Rc::new(SubValueRelation::MixedTop))` against a `Box<T>` field — both
-// type-mismatch. Encoding / FermiDepth / DescentEvidence sidestep this because they are bare
-// enums with no payload. Dissolution trigger anchored at **ROADMAP.md:390** — "Four hand-rolled
-// `BoundedLattice<T>` / `Lattice<T>` instances": that row tracks the migration from named
-// meet/join helpers to generic-algebra-surface consumption ("function-valued algebra fields /
-// generic lattice lifting consumable from generated code"); when that infrastructure lands,
-// the stage0 emitter gains the `Rc<T>`-aware `BoundedMeetSemilattice<T>` instantiation that lets the
-// `data sub_value_relation_bounded_meet_semilattice` declaration round-trip cleanly. Until then, the
-// lawful algebra is consumed via the free functions `meet_sub_value` / `join_sub_value`
-// directly — same denotational content, no algebra-inhabitance discoverability.
+// 🟡 P5 STAGE0-GENERATOR-GAP. No typed `BoundedLattice` / `BoundedMeetSemilattice` witness for
+// this carrier until the stage0 Rust emitter handles `Rc`-wrapped structural variants.
+// Until then, `meet_sub_value` / `join_sub_value` are the sole authority (ROADMAP.md:390).
 
 
 // =========================================================================
