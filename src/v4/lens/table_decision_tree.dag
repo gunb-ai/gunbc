@@ -27,9 +27,7 @@
 module v4.lens.table_decision_tree
 
 
-import v4.std.collection { List }
 import v4.std.node { Node, Symbol }
-import v4.std.witness { Witness }
 
 
 // 🟢 closed pattern set — operator-direct refinement 2026-05-21
