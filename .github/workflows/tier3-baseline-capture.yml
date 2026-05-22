@@ -27,6 +27,14 @@ concurrency:
   group: tier3-baseline-capture-${{ github.repository }}
   cancel-in-progress: false
 
+env:
+  # See `.github/workflows/ci.yml` for the rationale — self-hosted runners on
+  # srv1/srv2 share `$HOME` across ephemeral worker instances, so per-job toolchain
+  # state must live in `RUNNER_TEMP` to avoid concurrent-rustup races. Matters
+  # especially here because the matrix fans out 5 simultaneous setup-rust calls.
+  CARGO_HOME: ${{ runner.temp }}/cargo
+  RUSTUP_HOME: ${{ runner.temp }}/rustup
+
 jobs:
   capture-run:
     strategy:

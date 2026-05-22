@@ -24,6 +24,15 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: -D warnings
+  # Self-hosted runners on srv1/srv2 share `$HOME=/home/briansrls/` across all 50
+  # ephemeral GHA worker instances per host. Concurrent jobs racing inside
+  # `actions-rust-lang/setup-rust-toolchain` clobber `~/.cargo/bin/rustc`
+  # (`Text file busy`) or the default-toolchain pointer (`rustup could not
+  # choose a version of cargo to run`). Redirecting `CARGO_HOME` / `RUSTUP_HOME`
+  # into `$RUNNER_TEMP` gives each running job its own toolchain dir, since
+  # `RUNNER_TEMP` is per-job-invocation on ephemeral runners.
+  CARGO_HOME: ${{ runner.temp }}/cargo
+  RUSTUP_HOME: ${{ runner.temp }}/rustup
 jobs:
   fmt:
     if: github.event.pull_request.draft != true
@@ -135,9 +144,9 @@ jobs:
       uses: actions/cache@v4
       with:
         path: |
-          ~/.cargo/registry/index/
-          ~/.cargo/registry/cache/
-          ~/.cargo/git/db/
+          ${{ runner.temp }}/cargo/registry/index/
+          ${{ runner.temp }}/cargo/registry/cache/
+          ${{ runner.temp }}/cargo/git/db/
           target/
         key: cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('src/v3/compiler/src/**', 'src/v3/compiler/tests/**') }}
         restore-keys: |
@@ -252,9 +261,9 @@ jobs:
       uses: actions/cache@v4
       with:
         path: |
-          ~/.cargo/registry/index/
-          ~/.cargo/registry/cache/
-          ~/.cargo/git/db/
+          ${{ runner.temp }}/cargo/registry/index/
+          ${{ runner.temp }}/cargo/registry/cache/
+          ${{ runner.temp }}/cargo/git/db/
           target/
         key: cargo-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('src/v2/**') }}
         restore-keys: |
@@ -320,9 +329,9 @@ jobs:
       uses: actions/cache@v4
       with:
         path: |
-          ~/.cargo/registry/index/
-          ~/.cargo/registry/cache/
-          ~/.cargo/git/db/
+          ${{ runner.temp }}/cargo/registry/index/
+          ${{ runner.temp }}/cargo/registry/cache/
+          ${{ runner.temp }}/cargo/git/db/
           target/
         key: cargo-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('src/v3/compiler/src/**', 'src/v3/compiler/tests/**') }}
         restore-keys: |
@@ -516,9 +525,9 @@ jobs:
       uses: actions/cache@v4
       with:
         path: |
-          ~/.cargo/registry/index/
-          ~/.cargo/registry/cache/
-          ~/.cargo/git/db/
+          ${{ runner.temp }}/cargo/registry/index/
+          ${{ runner.temp }}/cargo/registry/cache/
+          ${{ runner.temp }}/cargo/git/db/
           target/
         key: cargo-self-host-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('src/v3/compiler/**') }}
         restore-keys: |
