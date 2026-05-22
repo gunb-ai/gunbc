@@ -234,8 +234,7 @@ jobs:
   # comparison artifact + v4 bootstrap source (frozen-buildable). Verifies
   # that any modification to v2 preserves the self-host fixed-point property.
   v2:
-    # ARM64-PROBE: temporary branch-force to validate v2 on srv1/srv2 before sweep merges; drop the head_ref clause before mark-ready.
-    if: github.event.pull_request.draft != true && (needs.affected.outputs.v2 == 'true' || github.head_ref == 'session/merry-ibex-662')
+    if: github.event.pull_request.draft != true && needs.affected.outputs.v2 == 'true'
     needs: [affected]
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 30
@@ -267,8 +266,7 @@ jobs:
         cargo run -p v2-compiler --bin regen_stage0 -- --verify
   # v4 — check name preserved for branch protection. Load-bearing compile runs in `ci`.
   v4:
-    # ARM64-PROBE: temporary branch-force to validate v4 on srv1/srv2 before sweep merges; drop the head_ref clause before mark-ready.
-    if: github.event.pull_request.draft != true && (needs.affected.outputs.v4 == 'true' || github.head_ref == 'session/merry-ibex-662')
+    if: github.event.pull_request.draft != true && needs.affected.outputs.v4 == 'true'
     needs: [affected, ci]
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 5
@@ -280,8 +278,7 @@ jobs:
   # is affected (or on push-to-main for trunk verification). v3 is no longer
   # the active compiler; v4 program supersedes it (see PR #3147).
   v3:
-    # ARM64-PROBE: temporary branch-force to validate v3 on srv1/srv2 before sweep merges; drop the head_ref clause before mark-ready.
-    if: github.event.pull_request.draft != true && (needs.affected.outputs.v3 == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.head_ref == 'session/merry-ibex-662')
+    if: github.event.pull_request.draft != true && (needs.affected.outputs.v3 == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
     needs: [affected]
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 120
@@ -472,8 +469,7 @@ jobs:
     - name: Banked-dissolutions ratchet
       run: scripts/check-banked-dissolutions.sh
   self_host_ratchet:
-    # ARM64-PROBE: temporary branch-force to validate self_host_ratchet on srv1/srv2 before sweep merges; drop the head_ref clause before mark-ready.
-    if: ${{ always() && github.event.pull_request.draft != true && (needs.affected.outputs.v3 == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.head_ref == 'session/merry-ibex-662') }}
+    if: ${{ always() && github.event.pull_request.draft != true && (needs.affected.outputs.v3 == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 60
     needs:

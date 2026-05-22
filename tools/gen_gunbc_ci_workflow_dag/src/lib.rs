@@ -381,7 +381,20 @@ fn emit_job(id: &str, v: &Value) -> Result<String, Box<dyn std::error::Error>> {
 }
 
 fn emit_runs_on(v: &Value) -> Result<String, Box<dyn std::error::Error>> {
-    let s = v.as_str().ok_or("runs-on string")?;
+    // GitHub Actions `runs-on` accepts either a scalar (single label or `${{ }}` expression)
+    // or a sequence of labels (multi-label match — every label must match for the runner
+    // to be eligible). The `SelfHosted { labels: List<String> }` substrate carrier
+    // (`dsl/extdeps/github/actions.dag`) is already shaped for a list, so the sequence
+    // form maps directly onto it.
+    if let Some(seq) = v.as_sequence() {
+        let mut labels: Vec<String> = Vec::new();
+        for it in seq {
+            let s = it.as_str().ok_or("runs-on sequence entry must be string")?;
+            labels.push(dag_string(s));
+        }
+        return Ok(format!("SelfHosted {{ labels: {} }}", emit_list_literal(&labels)));
+    }
+    let s = v.as_str().ok_or("runs-on must be string or sequence of strings")?;
     if s.starts_with("${{") {
         return Ok(format!(
             "RunsOnExpression {{ expression: {} }}",

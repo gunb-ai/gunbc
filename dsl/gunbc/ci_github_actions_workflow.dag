@@ -28,7 +28,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
   jobs: [{
       id: "fmt",
       name: none,
-      runner: SelfHosted { labels: ["ubicloud-standard-2"] },
+      runner: SelfHosted { labels: ["self-hosted", "linux", "arm64"] },
       steps: [UsesStep {
           name: Some { value: "Checkout" },
           id: none,
@@ -63,13 +63,13 @@ data gunbc_ci_github_actions_workflow: Workflow = {
       outputs: none,
       if_condition: Some { value: "github.event.pull_request.draft != true" },
       strategy: none,
-      timeout_minutes: Some { value: 5 },
+      timeout_minutes: Some { value: 15 },
       continue_on_error: false,
       concurrency: none
     }, {
       id: "affected",
       name: none,
-      runner: SelfHosted { labels: ["ubicloud-standard-2"] },
+      runner: SelfHosted { labels: ["self-hosted", "linux", "arm64"] },
       steps: [UsesStep {
           name: Some { value: "Checkout" },
           id: none,
@@ -111,7 +111,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
     }, {
       id: "ci",
       name: none,
-      runner: RunsOnExpression { expression: "${{ needs.affected.outputs.v4 == 'true' && 'ubicloud-standard-8' || 'ubicloud-standard-2' }}" },
+      runner: SelfHosted { labels: ["self-hosted", "linux", "arm64"] },
       steps: [UsesStep {
           name: Some { value: "Checkout" },
           id: none,
@@ -199,6 +199,26 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           env: none,
           working_directory: none,
           if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }, RunStep {
+          name: Some { value: "T-19 testgen activation self-test (Python)" },
+          id: none,
+          run: "python3 scripts/test_check_t19_testgen_activation.py",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }, RunStep {
+          name: Some { value: "T-19 testgen activation (LBE generated claims + run_test_claim receipts)" },
+          id: none,
+          run: "python3 scripts/check_t19_testgen_activation.py",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: Some { value: "needs.affected.outputs.v4 == 'true' || needs.affected.outputs.v3 == 'true' || needs.affected.outputs.workflow_policy == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')" },
           continue_on_error: false,
           timeout_minutes: none
         }, RunStep {
@@ -319,23 +339,53 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           if_condition: Some { value: "needs.affected.outputs.v4 == 'true' || needs.affected.outputs.v3 == 'true' || needs.affected.outputs.workflow_policy == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')" },
           continue_on_error: false,
           timeout_minutes: none
+        }, RunStep {
+          name: Some { value: "Lens-CI registry activation smoke" },
+          id: none,
+          run: "cargo test -p v3-compiler --test integration v4_lens_registry_dag_smoke_test -- --quiet",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: Some { value: "needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')" },
+          continue_on_error: false,
+          timeout_minutes: none
         }, UsesStep {
-          name: Some { value: "Cache v2-compiler binary (v4 bootstrap gate)" },
+          name: Some { value: "Cache v2-compiler binary (v4 bootstrap / host eval gate)" },
           id: Some { value: "v4-v2-bin" },
           uses: { owner: "actions", repo: "cache", ref: "v4" },
           with: { "path": "target/release/v2-compiler", "key": "v2-compiler-bin-${{ runner.os }}-${{ hashFiles('src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}" },
           env: none,
-          if_condition: Some { value: "needs.affected.outputs.v4 == 'true'" },
+          if_condition: Some { value: "needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'" },
           continue_on_error: false,
           timeout_minutes: none
         }, RunStep {
-          name: Some { value: "Build v2 compiler (v4 bootstrap gate)" },
+          name: Some { value: "Build v2 compiler (v4 bootstrap / host eval gate)" },
           id: none,
           run: "cargo build -p v2-compiler --release",
           shell: Bash,
           env: none,
           working_directory: none,
-          if_condition: Some { value: "needs.affected.outputs.v4 == 'true' && steps.v4-v2-bin.outputs.cache-hit != 'true'" },
+          if_condition: Some { value: "(needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true') && steps.v4-v2-bin.outputs.cache-hit != 'true'" },
+          continue_on_error: false,
+          timeout_minutes: none
+        }, RunStep {
+          name: Some { value: "MVP-1 v4 add end-to-end gate (add.dag → rust → cargo run)" },
+          id: none,
+          run: "bash scripts/v4-mvp1-e2e-gate.sh",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: Some { value: "needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'" },
+          continue_on_error: false,
+          timeout_minutes: none
+        }, RunStep {
+          name: Some { value: "Lens-CI registry semantic v4 compile (rust target)" },
+          id: none,
+          run: "set -euo pipefail\nentry_root=\"${RUNNER_TEMP}/v4-lens-ci-entry\"\ndeps_root=\"${RUNNER_TEMP}/v4-lens-ci-deps\"\nmkdir -p \"${entry_root}/v4/workflow\" \"${deps_root}\"\ncp src/v4/workflow/ci.dag \"${entry_root}/v4/workflow/ci.dag\"\ncp -R src/v4/. \"${deps_root}/\"\nrm \"${deps_root}/workflow/ci.dag\"\ntarget/release/v2-compiler compile --source-root \"${entry_root}\" --source-root \"${deps_root}\" --output-dir \"${RUNNER_TEMP}/v4-lens-ci-rust\" --target rust\n",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: Some { value: "needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'" },
           continue_on_error: false,
           timeout_minutes: none
         }, RunStep {
@@ -369,13 +419,13 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           continue_on_error: false,
           timeout_minutes: none
         }, RunStep {
-          name: Some { value: "INTERIM (T-24 bridge) — v4 v2-run-preflight notice (run gate deferred T-22)" },
+          name: Some { value: "T-22 host eval receipt — eval(tree, interpretation, inputs)" },
           id: none,
-          run: "bash scripts/v2-run-preflight.sh",
+          run: "python3 scripts/check-v4-host-eval-receipt.py",
           shell: Bash,
-          env: { "V2_PREFLIGHT_SKIP_COMPILE": "1" },
+          env: none,
           working_directory: none,
-          if_condition: Some { value: "needs.affected.outputs.v4 == 'true'" },
+          if_condition: Some { value: "needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'" },
           continue_on_error: false,
           timeout_minutes: none
         }],
@@ -390,7 +440,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
     }, {
       id: "v2",
       name: none,
-      runner: SelfHosted { labels: ["ubicloud-standard-2"] },
+      runner: SelfHosted { labels: ["self-hosted", "linux", "arm64"] },
       steps: [UsesStep {
           name: Some { value: "Checkout" },
           id: none,
@@ -419,9 +469,9 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           continue_on_error: false,
           timeout_minutes: none
         }, RunStep {
-          name: Some { value: "v2 fixed-point (bootstrap_fixed_point, --ignored)" },
+          name: Some { value: "v2 stage0 freshness gate (--verify)" },
           id: none,
-          run: "set -euo pipefail\ncargo test -p v2-compiler-tests --release bootstrap_fixed_point -- --ignored --exact\n",
+          run: "set -euo pipefail\ncargo run -p v2-compiler --bin regen_stage0 -- --verify\n",
           shell: Bash,
           env: none,
           working_directory: none,
@@ -440,11 +490,11 @@ data gunbc_ci_github_actions_workflow: Workflow = {
     }, {
       id: "v4",
       name: none,
-      runner: SelfHosted { labels: ["ubicloud-standard-2"] },
+      runner: SelfHosted { labels: ["self-hosted", "linux", "arm64"] },
       steps: [RunStep {
           name: Some { value: "v4 receipt (bootstrap gate runs in ci job)" },
           id: none,
-          run: "echo \"::notice::v4 bootstrap viability + v2-run-preflight ran inside the ci job when v4 is affected.\"\n",
+          run: "echo \"::notice::v4 bootstrap viability + T-22 host eval receipt ran inside the ci job when v4 is affected.\"\n",
           shell: Bash,
           env: none,
           working_directory: none,
@@ -463,7 +513,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
     }, {
       id: "v3",
       name: none,
-      runner: SelfHosted { labels: ["ubicloud-standard-8"] },
+      runner: SelfHosted { labels: ["self-hosted", "linux", "arm64"] },
       steps: [UsesStep {
           name: Some { value: "Checkout" },
           id: none,
@@ -710,7 +760,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
     }, {
       id: "self_host_ratchet",
       name: none,
-      runner: SelfHosted { labels: ["ubicloud-standard-8"] },
+      runner: SelfHosted { labels: ["self-hosted", "linux", "arm64"] },
       steps: [RunStep {
           name: Some { value: "Validate gate evidence (fail-closed under v3 failure; tolerates v3 skipped)" },
           id: none,
