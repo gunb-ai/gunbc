@@ -8,20 +8,17 @@ module v4.lens.testgen
 
 
 import v4.std.collection { List, non_empty }
-import v4.std.algebra { fold_list, fold_list_right }
+import v4.std.algebra { FreeMonoid, Empty, Cons, fold_list, fold_list_right }
 import v4.std.diagnostic {
   Outcome,
   Diagnostic,
   Locus,
-<<<<<<< HEAD
   NodeLocus,
   PortLocus,
   LocusAnchor,
   Extent,
   Correction,
   Suggested,
-=======
->>>>>>> origin/main
   Unavailable,
   NoCorrectionReason,
   UserInputBoundary,
@@ -40,13 +37,9 @@ import v4.std.diagnostic {
   diagnostics_merge,
   diagnostics_singleton,
   node_locus,
-<<<<<<< HEAD
   outcome_rejected,
-=======
->>>>>>> origin/main
   rejected_with_pending
 }
-import v4.std.algebra { FreeMonoid, Empty, Cons, fold_list }
 import v4.std.witness { StructuralPropertyWitness }
 import v4.std.find_witness { PreservationPredicate, verify_witness }
 import v4.std.nat {
@@ -68,17 +61,10 @@ import v4.std.node {
   Branch,
   Loop,
   Bind,
-<<<<<<< HEAD
-  Edge,
-  Named,
-  TypeNode,
-  Symbol
-=======
   Symbol,
   TypeNode,
   Edge,
   Named
->>>>>>> origin/main
 }
 import v4.std.refinement { Refined, Validation, refine, refined_base }
 import v4.extdeps.file_system {
