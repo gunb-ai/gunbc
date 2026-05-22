@@ -174,22 +174,20 @@ fn node_subtree_nodes(root: Node) -> List<Node> {
 }
 
 
-// True when rerun frontier intersects any evaluation-root subtree (not root equality only).
+fn node_in_subtree_by_identity(root: Node, needle: Node) -> Bool {
+  any(
+    xs: node_subtree_nodes(root: root),
+    predicate: fn(member) { member == needle }
+  )
+}
+
+
+// Consume affected-set rerun nodes directly: frontier root equality or frontier node inside evaluation tree.
 fn test_claim_evaluation_node_touches_frontier(n: Node, frontier: List<Node>) -> Bool {
-  let claim_nodes = node_subtree_nodes(root: n)
   any(
     xs: frontier,
     predicate: fn(f) {
-      let frontier_nodes = node_subtree_nodes(root: f)
-      any(
-        xs: claim_nodes,
-        predicate: fn(claim_node) {
-          any(
-            xs: frontier_nodes,
-            predicate: fn(frontier_node) { claim_node == frontier_node }
-          )
-        }
-      )
+      (n == f) || node_in_subtree_by_identity(root: n, needle: f)
     }
   )
 }

@@ -134,7 +134,9 @@ fn v4_workflow_affected_set_ci_runner_claim_wiring() {
         CLAIM_DAG.contains("ci_select_from_rerun_nodes")
             && CLAIM_DAG.contains("ci_select_from_affected_set")
             && CLAIM_DAG.contains("ci_runner_narrow_selection_claim")
-            && CLAIM_DAG.contains("ci_runner_fail_closed_superset_claim"),
+            && CLAIM_DAG.contains("ci_runner_fail_closed_superset_claim")
+            && CLAIM_DAG.contains("ci_runner_shape_collision_claim")
+            && CLAIM_DAG.contains("ci_runner_inner_frontier_claim"),
         "{CLAIM_PATH}: receipt claims must call ci_runner selection entrypoints"
     );
 }
