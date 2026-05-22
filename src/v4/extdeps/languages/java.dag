@@ -108,8 +108,10 @@ type JavaFloatPrimitiveFacts {
 }
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// Single-class non-integer primitive today; reserved arm mirrors rust.dag two-arm shape for v2 compile.
 type JavaNonIntegerScalar
   = BoolScalar
+  | JavaNonIntegerScalarReserved
 
 type JavaNonIntegerPrimitiveFacts {
   surface_spelling: Symbol
@@ -434,6 +436,7 @@ fn java_scalar_node(scalar: JavaScalar) -> Node {
 fn java_noninteger_scalar_as_java_scalar(scalar: JavaNonIntegerScalar) -> JavaScalar {
   match scalar {
     BoolScalar => BoolScalar
+    JavaNonIntegerScalarReserved => BoolScalar
   }
 }
 
