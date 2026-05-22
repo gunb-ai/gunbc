@@ -56,7 +56,6 @@ type ImageSource
       base64: String
     }
   | UrlImage { url: String }
-  | FileImage { file_id: String }
 
 // 🟢 TERMINAL — same row as `dsl/extdeps/llm/anthropic.dag` (`CacheControl`);
 // referenced from nested tool-result `AnthropicSearchResultBlock.cache_control`.
