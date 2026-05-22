@@ -7,12 +7,11 @@
 
 module v4.extdeps.languages.go
 
-import v4.std.collection { List, Set }
+import v4.std.collection { List, Map, Set }
 import v4.std.model_core {
   EffectSemanticsDecl,
   ModelCore,
   PartialitySemanticsDecl,
-  PrimitiveFactAxisBinding,
   PrimitiveFactBundle,
   primitive_fact_axis_encoding,
   primitive_fact_axis_overflow_disposition,
@@ -611,75 +610,112 @@ fn go_nonnumeric_facts_node(facts: GoNonNumericPrimitiveFacts) -> Node {
   }
 }
 
-fn go_primitive_axis_binding(axis: Symbol, fact: Node) -> PrimitiveFactAxisBinding {
-  PrimitiveFactAxisBinding { axis: axis, fact: fact }
+fn go_primitive_fact_map_5(
+  axis0: Symbol,
+  fact0: Node,
+  axis1: Symbol,
+  fact1: Node,
+  axis2: Symbol,
+  fact2: Node,
+  axis3: Symbol,
+  fact3: Node,
+  axis4: Symbol,
+  fact4: Node
+) -> Map<Symbol, Node> {
+  map_insert(
+    map_insert(
+      map_insert(
+        map_insert(
+          map_insert(empty_map(), axis0, fact0),
+          axis1,
+          fact1
+        ),
+        axis2,
+        fact2
+      ),
+      axis3,
+      fact3
+    ),
+    axis4,
+    fact4
+  )
+}
+
+fn go_primitive_fact_map_3(
+  axis0: Symbol,
+  fact0: Node,
+  axis1: Symbol,
+  fact1: Node,
+  axis2: Symbol,
+  fact2: Node
+) -> Map<Symbol, Node> {
+  map_insert(
+    map_insert(
+      map_insert(empty_map(), axis0, fact0),
+      axis1,
+      fact1
+    ),
+    axis2,
+    fact2
+  )
+}
+
+fn go_primitive_fact_map_2(
+  axis0: Symbol,
+  fact0: Node,
+  axis1: Symbol,
+  fact1: Node
+) -> Map<Symbol, Node> {
+  map_insert(
+    map_insert(empty_map(), axis0, fact0),
+    axis1,
+    fact1
+  )
 }
 
 fn go_primitive_bundle_from_integer_facts(facts: GoIntegerPrimitiveFacts) -> PrimitiveFactBundle {
   PrimitiveFactBundle {
     substrate_carrier: go_integer_facts_node(facts: facts),
-    spec_facts: [
-      go_primitive_axis_binding(
-        axis: primitive_fact_axis_surface_spelling,
-        fact: go_inhabitant_atom(id: facts.surface_spelling)
-      ),
-      go_primitive_axis_binding(
-        axis: primitive_fact_axis_width,
-        fact: go_scalar_node(scalar: facts.width)
-      ),
-      go_primitive_axis_binding(
-        axis: primitive_fact_axis_signedness,
-        fact: go_signedness_node(signedness: facts.signedness)
-      ),
-      go_primitive_axis_binding(
-        axis: primitive_fact_axis_overflow_disposition,
-        fact: go_overflow_node(overflow: facts.overflow)
-      ),
-      go_primitive_axis_binding(
-        axis: primitive_fact_axis_encoding,
-        fact: go_inhabitant_atom(id: facts.encoding)
-      )
-    ]
+    spec_facts: go_primitive_fact_map_5(
+      axis0: primitive_fact_axis_surface_spelling,
+      fact0: go_inhabitant_atom(id: facts.surface_spelling),
+      axis1: primitive_fact_axis_width,
+      fact1: go_scalar_node(scalar: facts.width),
+      axis2: primitive_fact_axis_signedness,
+      fact2: go_signedness_node(signedness: facts.signedness),
+      axis3: primitive_fact_axis_overflow_disposition,
+      fact3: go_overflow_node(overflow: facts.overflow),
+      axis4: primitive_fact_axis_encoding,
+      fact4: go_inhabitant_atom(id: facts.encoding)
+    )
   }
 }
 
 fn go_primitive_bundle_from_float_facts(facts: GoFloatPrimitiveFacts) -> PrimitiveFactBundle {
   PrimitiveFactBundle {
     substrate_carrier: go_float_facts_node(facts: facts),
-    spec_facts: [
-      go_primitive_axis_binding(
-        axis: primitive_fact_axis_surface_spelling,
-        fact: go_inhabitant_atom(id: facts.surface_spelling)
-      ),
-      go_primitive_axis_binding(
-        axis: primitive_fact_axis_width,
-        fact: go_float_width_node(width: facts.width)
-      ),
-      go_primitive_axis_binding(
-        axis: primitive_fact_axis_encoding,
-        fact: go_inhabitant_atom(id: facts.encoding)
-      )
-    ]
+    spec_facts: go_primitive_fact_map_3(
+      axis0: primitive_fact_axis_surface_spelling,
+      fact0: go_inhabitant_atom(id: facts.surface_spelling),
+      axis1: primitive_fact_axis_width,
+      fact1: go_float_width_node(width: facts.width),
+      axis2: primitive_fact_axis_encoding,
+      fact2: go_inhabitant_atom(id: facts.encoding)
+    )
   }
 }
 
 fn go_primitive_bundle_from_complex_facts(facts: GoComplexPrimitiveFacts) -> PrimitiveFactBundle {
   PrimitiveFactBundle {
     substrate_carrier: go_complex_facts_node(facts: facts),
-    spec_facts: [
-      go_primitive_axis_binding(
-        axis: primitive_fact_axis_surface_spelling,
-        fact: go_inhabitant_atom(id: facts.surface_spelling)
-      ),
-      go_primitive_axis_binding(
-        axis: primitive_fact_axis_width,
-        fact: go_complex_width_node(width: facts.width)
-      ),
-      go_primitive_axis_binding(
-        axis: primitive_fact_axis_encoding,
-        fact: go_inhabitant_atom(id: facts.component_encoding)
-      )
-    ]
+    spec_facts: go_primitive_fact_map_3(
+      axis0: primitive_fact_axis_surface_spelling,
+      fact0: go_inhabitant_atom(id: facts.surface_spelling),
+      axis1: primitive_fact_axis_width,
+      fact1: go_complex_width_node(width: facts.width),
+      axis2: primitive_fact_axis_encoding,
+      fact2: go_inhabitant_atom(id: facts.component_encoding)
+    )
   }
 }
 
@@ -688,16 +724,12 @@ fn go_primitive_bundle_from_nonnumeric_facts(
 ) -> PrimitiveFactBundle {
   PrimitiveFactBundle {
     substrate_carrier: go_nonnumeric_facts_node(facts: facts),
-    spec_facts: [
-      go_primitive_axis_binding(
-        axis: primitive_fact_axis_surface_spelling,
-        fact: go_inhabitant_atom(id: facts.surface_spelling)
-      ),
-      go_primitive_axis_binding(
-        axis: primitive_fact_axis_encoding,
-        fact: go_inhabitant_atom(id: facts.encoding)
-      )
-    ]
+    spec_facts: go_primitive_fact_map_2(
+      axis0: primitive_fact_axis_surface_spelling,
+      fact0: go_inhabitant_atom(id: facts.surface_spelling),
+      axis1: primitive_fact_axis_encoding,
+      fact1: go_inhabitant_atom(id: facts.encoding)
+    )
   }
 }
 
