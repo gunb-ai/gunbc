@@ -59,7 +59,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           timeout_minutes: none
         }],
       needs: [],
-      env: none,
+      env: { "CARGO_HOME": "${{ runner.temp }}/cargo", "RUSTUP_HOME": "${{ runner.temp }}/rustup" },
       outputs: none,
       if_condition: Some { value: "github.event.pull_request.draft != true" },
       strategy: none,
@@ -430,7 +430,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           timeout_minutes: none
         }],
       needs: ["affected"],
-      env: none,
+      env: { "CARGO_HOME": "${{ runner.temp }}/cargo", "RUSTUP_HOME": "${{ runner.temp }}/rustup" },
       outputs: none,
       if_condition: Some { value: "github.event.pull_request.draft != true" },
       strategy: none,
@@ -480,7 +480,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           timeout_minutes: none
         }],
       needs: ["affected"],
-      env: none,
+      env: { "CARGO_HOME": "${{ runner.temp }}/cargo", "RUSTUP_HOME": "${{ runner.temp }}/rustup" },
       outputs: none,
       if_condition: Some { value: "github.event.pull_request.draft != true && needs.affected.outputs.v2 == 'true'" },
       strategy: none,
@@ -750,7 +750,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           timeout_minutes: none
         }],
       needs: ["affected"],
-      env: none,
+      env: { "CARGO_HOME": "${{ runner.temp }}/cargo", "RUSTUP_HOME": "${{ runner.temp }}/rustup" },
       outputs: none,
       if_condition: Some { value: "github.event.pull_request.draft != true && (needs.affected.outputs.v3 == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))" },
       strategy: none,
@@ -840,7 +840,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           timeout_minutes: none
         }],
       needs: ["affected", "v3"],
-      env: none,
+      env: { "CARGO_HOME": "${{ runner.temp }}/cargo", "RUSTUP_HOME": "${{ runner.temp }}/rustup" },
       outputs: none,
       if_condition: Some { value: "${{ always() && github.event.pull_request.draft != true && (needs.affected.outputs.v3 == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}" },
       strategy: none,
@@ -848,7 +848,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
       continue_on_error: true,
       concurrency: none
     }],
-  env: { "CARGO_TERM_COLOR": "always", "RUSTFLAGS": "-D warnings", "CARGO_HOME": "${{ runner.temp }}/cargo", "RUSTUP_HOME": "${{ runner.temp }}/rustup" },
+  env: { "CARGO_TERM_COLOR": "always", "RUSTFLAGS": "-D warnings" },
   permissions: Some {
   value: {
       contents: PermRead,
