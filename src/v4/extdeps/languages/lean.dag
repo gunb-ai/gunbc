@@ -7,7 +7,7 @@
 module v4.extdeps.languages.lean
 
 
-import v4.std.collection { List, Map, Set }
+import v4.std.collection { List, Map, Set, list_snoc_item }
 import v4.std.logic { Bool, bool_boolean_algebra }
 import v4.std.algebra { BooleanAlgebra, fold_list }
 import v4.std.model_core {
@@ -517,7 +517,7 @@ fn lean_wave1_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
     xs: lean_primitive_facts_catalog,
     empty: Empty,
     cons: fn(acc, facts) {
-      lean_list_snoc_item(
+      list_snoc_item(
         xs: acc,
         item: lean_primitive_bundle_from_facts(facts: facts)
       )
