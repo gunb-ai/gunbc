@@ -13,7 +13,7 @@ import v4.compiler.infer { InferredTree }
 import v4.lens.affected_set { AffectedSetReading, affected_set }
 import v4.std.artifact { Artifact, NodeArtifactProvenance }
 import v4.std.algebra { Cons, Empty, FreeMonoid, count_equal, length }
-import v4.std.collection { List, list_snoc_item }
+import v4.std.collection { List }
 import v4.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,
@@ -88,7 +88,7 @@ fn node_eq(left: Node, right: Node) -> Bool {
 
 fn push_locus_if_absent(acc: FreeMonoid<Node>, locus: Node) -> FreeMonoid<Node> {
   if count_equal(xs: acc, item: locus, eq: node_eq) == 0 {
-    list_snoc_item(xs: acc, item: locus)
+    list_push(acc, locus)
   } else {
     acc
   }
