@@ -54,12 +54,22 @@ fn v4_lens_registry_t23_closed_lens_ids_present() {
         "Provenance",
         "UnusedParameters",
         "StructuralResolution",
+        "TableDecisionTree",
     ] {
         assert!(
             REGISTRY_DAG.contains(id),
             "{REGISTRY_PATH}: LensIdV0 arm `{id}` must appear in closed registry source"
         );
     }
+}
+
+#[test]
+fn v4_lens_registry_table_decision_tree_bound_to_module() {
+    assert!(
+        REGISTRY_DAG.contains("lens_id: TableDecisionTree")
+            && REGISTRY_DAG.contains(r#"module_path: Bound { path: "v4.lens.table_decision_tree" }"#),
+        "{REGISTRY_PATH}: TableDecisionTree must be Bound to v4.lens.table_decision_tree (L1.13.c substrate promotion)"
+    );
 }
 
 #[test]
