@@ -8,18 +8,21 @@ Audit of hand-Rust tests under `EXPECTED_HAND_AUTHORED_TEST` (`src/v3/compiler/t
 | Grain | Brief cited | Measured at HEAD |
 |---|---|---|
 | `EXPECTED_HAND_AUTHORED_TEST` path literals | 204 entries | **145** paths |
-| `#[test]` functions in those paths | (implied) | **1240** tests |
+| `#[test]` functions in those paths | (implied) | **1232** tests |
 
-The PM figure **204 does not match** the live census (145 path literals / **1240** `#[test]` functions on `origin/main` and this worktree). Likely explanations: (1) stale planning count from an older, longer `EXPECTED_HAND_AUTHORED_TEST` list; (2) conflation with **file-path** entries (~160–204) vs per-function tests; (3) intent to name a first **DELETE batch size** rather than the full ratchet. This audit classifies **every `#[test]`** in the const scope (1240 rows). Downstream retirement batches should use [`v3-hand-rust-test-retirement-inventory.jsonl`](v3-hand-rust-test-retirement-inventory.jsonl) unless the operator re-baselines to exactly 204 units.
+The PM figure **204 does not match** the live census (145 path literals / **1240** `#[test]` functions on `origin/main` and this worktree). Likely explanations: (1) stale planning count from an older, longer `EXPECTED_HAND_AUTHORED_TEST` list; (2) conflation with **file-path** entries (~160–204) vs per-function tests; (3) intent to name a first **DELETE batch size** rather than the full ratchet. This audit classifies **every `#[test]`** in the const scope (1232 test rows + 6 path-only rows = 1238 JSONL lines). Downstream retirement batches should use [`v3-hand-rust-test-retirement-inventory.jsonl`](v3-hand-rust-test-retirement-inventory.jsonl) unless the operator re-baselines to exactly 204 units.
 
-**Operator DELETE-first wave (recommended):** **384** tests (31%) in the DELETE bucket — includes all pre-flagged v4 smoke/closeout (**78**), cementing Rust (**18**), and `m1_substrate_test.rs` (**115**) — without waiting for 1:1 TestClaim ports.
+**Operator DELETE-first wave (recommended):** **383** tests (31.1%) in the DELETE bucket — includes all pre-flagged v4 smoke/closeout (**78**), cementing Rust (**18**), and `m1_substrate_test.rs` (**115**) — without waiting for 1:1 TestClaim ports.
 
 ## Summary
 
-- **DELETE:** 384 tests (31.0%)
-- **REPLACE-VIA-TESTCLAIM:** 537 tests (43.3%)
-- **KEEP-AS-RUST:** 319 tests (25.7%)
-- **Total classified:** 1240
+- **DELETE:** 383 tests (31.1%)
+- **REPLACE-VIA-TESTCLAIM:** 532 tests (43.2%)
+- **KEEP-AS-RUST:** 317 tests (25.7%)
+- **Total classified:** 1232 `#[test]` functions across **145** census paths
+
+
+**Inventory integrity (regenerated):** `#[test]` extraction strips `//` and `/* */` comments before matching attributes, so doc-comment mentions of `#[test]` (e.g. `t_pb_b_1_dag_runner_test.rs`) do not create duplicate rows. Path literals (**145**) match census, per-file table, and distinct `file` values in the JSONL.
 
 **Bias applied:** on-the-fence DELETE vs REPLACE → DELETE; on-the-fence vs KEEP → non-KEEP.
 
@@ -153,7 +156,7 @@ Band-C cementing Rust modules are **transitional** same-PR receipts for `regen.d
 
 ## DELETE bucket (rollup by reason class)
 
-Subsections below sum to **384** DELETE tests (matches summary + JSONL). Downstream batch workers should use the JSONL as sole authority; this rollup is illustrative only.
+Subsections below sum to **383** DELETE tests (matches summary + JSONL). Downstream batch workers should use the JSONL as sole authority; this rollup is illustrative only.
 
 ### Imperative substrate walks (115 tests)
 
@@ -165,7 +168,7 @@ Subsections below sum to **384** DELETE tests (matches summary + JSONL). Downstr
 - `src/v3/compiler/tests/integration/m0_acceptance.rs` (12 tests)
 - `src/v3/compiler/tests/integration/m2_feature_parity_test.rs` (70 tests)
 
-### Host drivers for .dag TestClaims (21 tests)
+### Host drivers for .dag TestClaims (20 tests)
 
 - `src/v3/compiler/tests/integration/r3_free_consequences_first_batch_test.rs` (1 tests)
 - `src/v3/compiler/tests/integration/r3_free_consequences_second_batch_test.rs` (4 tests)
@@ -224,7 +227,7 @@ Subsections below sum to **384** DELETE tests (matches summary + JSONL). Downstr
 
 ## REPLACE-VIA-TESTCLAIM bucket
 
-Port only where behavior is still load-bearing after DELETE waves. **Do not 1:1 port all 537** — operator intent is delete-first.
+Port only where behavior is still load-bearing after DELETE waves. **Do not 1:1 port all 532** — operator intent is delete-first.
 
 ### Mapped to existing T-19 generators (top file rollups)
 
@@ -289,9 +292,11 @@ Port only where behavior is still load-bearing after DELETE waves. **Do not 1:1 
 
 ## Full per-test inventory
 
-Machine-readable: [`v3-hand-rust-test-retirement-inventory.jsonl`](v3-hand-rust-test-retirement-inventory.jsonl) (1240 lines: `file`, `fn`, `bucket`, `reason`, `t19`).
+Machine-readable: [`v3-hand-rust-test-retirement-inventory.jsonl`](v3-hand-rust-test-retirement-inventory.jsonl) — **authoritative**; one row per unique `(file, fn)` (`fn=(path-only)` for six zero-test helper modules; 1238 lines total): `file`, `fn`, `bucket`, `reason`, `t19`).
 
 ### Per-file classification table (145 paths)
+
+Six paths are census-listed **helper modules** with zero `#[test]` functions (`Tests=0`); the JSONL carries matching `(path-only)` rows.
 
 | Path | Tests | DELETE | REPLACE | KEEP |
 |---|---:|---:|---:|---:|
@@ -317,9 +322,15 @@ Machine-readable: [`v3-hand-rust-test-retirement-inventory.jsonl`](v3-hand-rust-
 | `src/v3/compiler/tests/integration/cementing/e_p_per_call_descent_lens_consumer_cementing.rs` | 5 | 5 | 0 | 0 |
 | `src/v3/compiler/tests/integration/cementing/effect_enumeration_lens_behavioral_completion.rs` | 6 | 6 | 0 | 0 |
 | `src/v3/compiler/tests/integration/cementing/memory_peak_cost_basis_demo.rs` | 1 | 1 | 0 | 0 |
+| `src/v3/compiler/tests/integration/common/budgeted.rs` | 0 | 0 | 0 | 0 |
 | `src/v3/compiler/tests/integration/common/cached_compile.rs` | 2 | 0 | 0 | 2 |
+| `src/v3/compiler/tests/integration/common/determinism_fixtures.rs` | 0 | 0 | 0 | 0 |
+| `src/v3/compiler/tests/integration/common/list_variant_tags.rs` | 0 | 0 | 0 | 0 |
 | `src/v3/compiler/tests/integration/common/mod.rs` | 4 | 0 | 0 | 4 |
+| `src/v3/compiler/tests/integration/common/r1_gates_bridge.rs` | 0 | 0 | 0 | 0 |
 | `src/v3/compiler/tests/integration/common/rust_comment_strip.rs` | 4 | 0 | 0 | 4 |
+| `src/v3/compiler/tests/integration/common/substrate_receipts.rs` | 0 | 0 | 0 | 0 |
+| `src/v3/compiler/tests/integration/common/symbolic_cost_countdown.rs` | 0 | 0 | 0 | 0 |
 | `src/v3/compiler/tests/integration/common/symbolic_cost_verification_fixture.rs` | 4 | 0 | 0 | 4 |
 | `src/v3/compiler/tests/integration/common/wiring_scanner_test.rs` | 11 | 0 | 0 | 11 |
 | `src/v3/compiler/tests/integration/coverage_defect_acceptance_dag_test.rs` | 1 | 0 | 1 | 0 |
@@ -390,7 +401,7 @@ Machine-readable: [`v3-hand-rust-test-retirement-inventory.jsonl`](v3-hand-rust-
 | `src/v3/compiler/tests/integration/r3_sg0_non_test_zero_test.rs` | 1 | 1 | 0 | 0 |
 | `src/v3/compiler/tests/integration/r3_substrate_gap_reflection_closure_test.rs` | 1 | 1 | 0 | 0 |
 | `src/v3/compiler/tests/integration/r3_v3_self_host_demonstration_dag_test.rs` | 2 | 0 | 0 | 2 |
-| `src/v3/compiler/tests/integration/r3_verification_l4_l7_l5_skeleton_test.rs` | 11 | 11 | 0 | 0 |
+| `src/v3/compiler/tests/integration/r3_verification_l4_l7_l5_skeleton_test.rs` | 10 | 10 | 0 | 0 |
 | `src/v3/compiler/tests/integration/services_carrier_shape_test.rs` | 7 | 0 | 7 | 0 |
 | `src/v3/compiler/tests/integration/sg0_census_test.rs` | 17 | 0 | 0 | 17 |
 | `src/v3/compiler/tests/integration/sg1_tokenize_authority_test.rs` | 8 | 0 | 0 | 8 |
@@ -403,7 +414,7 @@ Machine-readable: [`v3-hand-rust-test-retirement-inventory.jsonl`](v3-hand-rust-
 | `src/v3/compiler/tests/integration/sg7_prep_variant_payload_freshness_test.rs` | 2 | 0 | 0 | 2 |
 | `src/v3/compiler/tests/integration/shape_a_target_source_filtering_authority_test.rs` | 2 | 0 | 2 | 0 |
 | `src/v3/compiler/tests/integration/symbolic_cost_expr_equals_executable_ratchet_test.rs` | 1 | 0 | 1 | 0 |
-| `src/v3/compiler/tests/integration/t_ci_workflow_as_data_demo_test.rs` | 22 | 0 | 22 | 0 |
+| `src/v3/compiler/tests/integration/t_ci_workflow_as_data_demo_test.rs` | 17 | 0 | 17 | 0 |
 | `src/v3/compiler/tests/integration/t_gate_106_show_correct_code_diagnostic_coverage_test.rs` | 7 | 0 | 7 | 0 |
 | `src/v3/compiler/tests/integration/t_gate_58_apply_lens_self_application_test.rs` | 2 | 0 | 2 | 0 |
 | `src/v3/compiler/tests/integration/t_impossiblebugs_unenumerated_effects_test.rs` | 3 | 0 | 3 | 0 |
@@ -411,7 +422,7 @@ Machine-readable: [`v3-hand-rust-test-retirement-inventory.jsonl`](v3-hand-rust-
 | `src/v3/compiler/tests/integration/t_las_crdt_cost_basis_demo_test.rs` | 7 | 0 | 7 | 0 |
 | `src/v3/compiler/tests/integration/t_las_parallelism_iteration_gate95_demo_test.rs` | 2 | 0 | 2 | 0 |
 | `src/v3/compiler/tests/integration/t_lens_application_carrier_test.rs` | 2 | 0 | 2 | 0 |
-| `src/v3/compiler/tests/integration/t_pb_b_1_dag_runner_test.rs` | 20 | 0 | 0 | 20 |
+| `src/v3/compiler/tests/integration/t_pb_b_1_dag_runner_test.rs` | 18 | 0 | 0 | 18 |
 | `src/v3/compiler/tests/integration/tc1_substrate_lens_eta_equivalence_deferred_test.rs` | 2 | 2 | 0 | 0 |
 | `src/v3/compiler/tests/integration/tc1_substrate_lens_eta_equivalence_strict_fire_test.rs` | 1 | 1 | 0 | 0 |
 | `src/v3/compiler/tests/integration/tc2_church_rosser_strict_fire_test.rs` | 1 | 0 | 1 | 0 |
