@@ -112,7 +112,8 @@ fn v4_lens_edit_locus_claim_wiring() {
         CLAIM_DAG.contains("edit_locus_narrow_resolution_claim_passes")
             && CLAIM_DAG.contains("edit_locus_fail_closed_claim_passes")
             && CLAIM_DAG.contains("edit_locus_affected_set_wire_claim_passes")
+            && CLAIM_DAG.contains("edit_locus_affected_set_wire_fail_closed_claim_passes")
             && CLAIM_DAG.contains("affected_set_reading_from_git_diff"),
-        "{CLAIM_PATH}: resolver + affected_set wire claims"
+        "{CLAIM_PATH}: resolver + affected_set wire claims (Witness propagation)"
     );
 }
