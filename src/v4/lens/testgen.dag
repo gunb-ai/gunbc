@@ -1,6 +1,6 @@
 // src/v4/lens/testgen.dag
 // Scope: Manual-anchor testgen plus filesystem-backed whole-corpus lens driver primitive.
-// Owns: Generator TestgenConcept manual_test_claim_for_manual_anchor testgen_concept_for_manual_claim testgen_emit_language_behavior_equivalence_claim testgen_emit_witness_validity_claim testgen_scheduled_language_behavior_generators TypeConstructionSubject AlgebraLawSubject DiagnosticExhaustivenessSubject LensApplicabilitySubject BidirectionalRoundtripSubject LanguageBehaviorEquivalenceSubject FrozenLanguageBehaviorSnapshot LanguageBehaviorIoMock CorpusEntry CorpusTraversalScope CorpusTraversalOrder CorpusDuplicatePolicy CorpusTraversalPolicy CorpusEnumerationRequest CorpusEnumerationResult CorpusEnumerator CorpusEntryIngestResult CorpusEntryIngestor CorpusLensReadResult<C> CorpusLensReader<C> CorpusLensObservation<C> CorpusLensDriveResult<C> CorpusLensDriver<C>
+// Owns: Generator TestgenConcept manual_test_claim_for_manual_anchor testgen_concept_for_manual_claim testgen_emit_language_behavior_equivalence_claim testgen_emit_witness_validity_claim witness_validity_subject_node witness_validity_outcome_node witness_validity_predicate_node witness_validity_witness_node witness_validity_symbol_atom_node testgen_scheduled_language_behavior_generators TypeConstructionSubject AlgebraLawSubject DiagnosticExhaustivenessSubject LensApplicabilitySubject BidirectionalRoundtripSubject LanguageBehaviorEquivalenceSubject FrozenLanguageBehaviorSnapshot LanguageBehaviorIoMock CorpusEntry CorpusTraversalScope CorpusTraversalOrder CorpusDuplicatePolicy CorpusTraversalPolicy CorpusEnumerationRequest CorpusEnumerationResult CorpusEnumerator CorpusEntryIngestResult CorpusEntryIngestor CorpusLensReadResult<C> CorpusLensReader<C> CorpusLensObservation<C> CorpusLensDriveResult<C> CorpusLensDriver<C>
 // Consumes: v4.std.diagnostic v4.std.nat v4.std.node v4.std.witness v4.std.find_witness v4.std.verification v4.extdeps.file_system v4.test.claim.manual.connective_anchors v4.test.claim.manual.nat_law_anchors
 // Status: Manual-anchor + LanguageBehaviorEquivalence emission; substrate extension = operator STOP.
 
@@ -32,6 +32,7 @@ import v4.std.nat {
 import v4.std.node {
   Node,
   Connective,
+  Atom,
   Conj,
   Disj,
   Arrow,
@@ -42,6 +43,9 @@ import v4.std.node {
   Branch,
   Loop,
   Bind,
+  Edge,
+  Named,
+  TypeNode,
   Symbol
 }
 import v4.extdeps.file_system {
@@ -423,11 +427,131 @@ fn testgen_emit_language_behavior_equivalence_claim(
 }
 
 
+// T-19 witness-validity generator category — Node-encoded subject + oracle-derived
+// expected outcome (Facts Flow Forward; THESIS Tier-3 TestClaim-as-data).
+//
+// The emitted CompilesClaim's `input` Node encodes the FULL witness-validity subject —
+// source_facts, candidate, predicate.{algebra, preservation_rule}, witness.{property,
+// evidence} — under named edges; the `expected_value` Node encodes the verify_witness
+// outcome (Holds → witness payload sub-tree; Violates → diagnostic-reason atom). Both
+// are well-formed Conj structures. The independent oracle (v4.std.find_witness::
+// verify_witness, separate module from the v4.std.witness constructors) determines the
+// expected_value at emit time; downstream eval reads the input subject and re-derives
+// it. Polarity (positive vs negative) is a function of the expected_value subtree —
+// not pre-decided by the row author — preserving the tautology-skip discipline.
+data witness_validity_subject_root: Symbol = witness_validity_subject_root
+data witness_validity_field_source_facts: Symbol = witness_validity_field_source_facts
+data witness_validity_field_candidate: Symbol = witness_validity_field_candidate
+data witness_validity_field_predicate: Symbol = witness_validity_field_predicate
+data witness_validity_field_witness: Symbol = witness_validity_field_witness
+data witness_validity_field_algebra: Symbol = witness_validity_field_algebra
+data witness_validity_field_preservation_rule: Symbol = witness_validity_field_preservation_rule
+data witness_validity_field_property: Symbol = witness_validity_field_property
+data witness_validity_field_evidence: Symbol = witness_validity_field_evidence
+data witness_validity_outcome_holds: Symbol = witness_validity_outcome_holds
+data witness_validity_outcome_violates: Symbol = witness_validity_outcome_violates
+data witness_validity_outcome_reason: Symbol = witness_validity_outcome_reason
+
+
+fn witness_validity_symbol_atom_node(s: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: s } },
+    children: []
+  }
+}
+
+
+fn witness_validity_predicate_node(p: PreservationPredicate) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Named { name: witness_validity_field_algebra }, target: p.algebra },
+      Edge {
+        label: Named { name: witness_validity_field_preservation_rule },
+        target: witness_validity_symbol_atom_node(s: p.preservation_rule)
+      }
+    ]
+  }
+}
+
+
+fn witness_validity_witness_node(w: StructuralPropertyWitness) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: witness_validity_field_property },
+        target: witness_validity_symbol_atom_node(s: w.property)
+      },
+      Edge { label: Named { name: witness_validity_field_evidence }, target: w.evidence }
+    ]
+  }
+}
+
+
+fn witness_validity_subject_node(
+  source_facts: Node,
+  candidate: Node,
+  predicate: PreservationPredicate,
+  witness: StructuralPropertyWitness
+) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Named { name: witness_validity_field_source_facts }, target: source_facts },
+      Edge { label: Named { name: witness_validity_field_candidate }, target: candidate },
+      Edge {
+        label: Named { name: witness_validity_field_predicate },
+        target: witness_validity_predicate_node(p: predicate)
+      },
+      Edge {
+        label: Named { name: witness_validity_field_witness },
+        target: witness_validity_witness_node(w: witness)
+      }
+    ]
+  }
+}
+
+
+fn witness_validity_outcome_node(o: Outcome<StructuralPropertyWitness>) -> Node {
+  match o {
+    Accepted { value: w, diagnostics: _ } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          Edge {
+            label: Named { name: witness_validity_outcome_holds },
+            target: witness_validity_witness_node(w: w)
+          }
+        ]
+      }
+    Rejected { diagnostics: d } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          Edge {
+            label: Named { name: witness_validity_outcome_violates },
+            target: Node {
+              kind: TypeNode { connective: Conj },
+              children: [
+                Edge {
+                  label: Named { name: witness_validity_outcome_reason },
+                  target: witness_validity_symbol_atom_node(s: d.head.reason)
+                }
+              ]
+            }
+          }
+        ]
+      }
+  }
+}
+
+
 // T-19 witness-validity generator category. Independent oracle = v4.std.find_witness::verify_witness
-// (separate module from v4.std.witness constructors; checks `preservation_predicate_holds`,
+// (separate module from the v4.std.witness constructors; checks `preservation_predicate_holds`,
 // `witness.property == predicate.preservation_rule`, and `witness.evidence == candidate`).
-// Accepted → EqualsClaim(witness.evidence, candidate); Rejected{d} → DiagnosticClaim(d).
-// Generated rows route through this helper; no TestClaim literal authoring downstream.
+// Emits a CompilesClaim whose `input` Node carries the FULL subject (source_facts, candidate,
+// predicate, witness) and whose `expected_value` Node encodes the oracle-derived outcome.
 fn testgen_emit_witness_validity_claim(
   label: String,
   source_facts: Node,
@@ -435,34 +559,27 @@ fn testgen_emit_witness_validity_claim(
   predicate: PreservationPredicate,
   witness: StructuralPropertyWitness
 ) -> Outcome<TestClaim> {
-  match verify_witness(
-    source_facts: source_facts,
-    candidate: candidate,
-    predicate: predicate,
-    witness: witness
-  ) {
-    Accepted { value: _, diagnostics: _ } =>
-      Accepted {
-        value: EqualsClaim {
-          label: label,
-          t19_anchor: T19ManualAnchorAbsent,
-          lhs: witness.evidence,
-          rhs: candidate,
-          classification: TestClassification { tier: Tier1, layer: Unit },
-        },
-        diagnostics: None,
-      }
-    Rejected { diagnostics: d } =>
-      Accepted {
-        value: DiagnosticClaim {
-          label: label,
-          t19_anchor: T19ManualAnchorAbsent,
-          input: witness.evidence,
-          expected_rejection: d,
-          classification: TestClassification { tier: Tier1, layer: Unit },
-        },
-        diagnostics: None,
-      }
+  Accepted {
+    value: CompilesClaim {
+      label: label,
+      t19_anchor: T19ManualAnchorAbsent,
+      input: witness_validity_subject_node(
+        source_facts: source_facts,
+        candidate: candidate,
+        predicate: predicate,
+        witness: witness
+      ),
+      expected_value: witness_validity_outcome_node(
+        o: verify_witness(
+          source_facts: source_facts,
+          candidate: candidate,
+          predicate: predicate,
+          witness: witness
+        )
+      ),
+      classification: TestClassification { tier: Tier1, layer: Unit },
+    },
+    diagnostics: None,
   }
 }
 
