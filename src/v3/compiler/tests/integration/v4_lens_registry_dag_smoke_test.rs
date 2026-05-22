@@ -5,8 +5,9 @@
 //! consumes for Lens-CI activation, while also preserving the staged T-23/P9 registry
 //! parse-cleanliness checks. This local harness stays at parsed-shape level because
 //! M1(2.8) still rejects v4 block-bodied functions in isolated `compile_to_dag` smokes; the
-//! live CI step pairs it with `v2-compiler compile --source-root src/v4 --target rust` so
-//! lowering/inference of the actual interface is checked without using the known-hanging
+//! live CI step pairs it with
+//! `v2-compiler compile --source-root src/v4/workflow --source-root src/v4 --target rust` so
+//! lowering/inference of the workflow consumer interface is checked without using the known-hanging
 //! `--target dag` path.
 //!
 //! **Note:** After P9 `#3503`, `registry.dag` imports `Symbol` and `List` from `v4.std.*` and
@@ -342,7 +343,7 @@ fn v4_ci_workflow_consumes_lens_registry_for_lens_ci_signal() {
         "{CI_YML_PATH}: `{semantic_step_name}` must run for v4 and workflow-policy changes"
     );
     assert!(
-        semantic_step.contains("run: target/release/v2-compiler compile --source-root src/v4")
+        semantic_step.contains("run: target/release/v2-compiler compile --source-root src/v4/workflow --source-root src/v4")
             && semantic_step.contains(&format!("--target {semantic_target}")),
         "{CI_YML_PATH}: `{semantic_step_name}` must execute the modeled Lens-CI semantic signal"
     );
