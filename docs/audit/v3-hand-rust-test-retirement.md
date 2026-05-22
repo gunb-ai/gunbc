@@ -218,7 +218,7 @@ Band-C cementing Rust modules are **transitional** same-PR receipts for `regen.d
 
 ## REPLACE-VIA-TESTCLAIM bucket
 
-Port only where behavior is still load-bearing after DELETE waves. **Do not 1:1 port all 657** — operator intent is delete-first.
+Port only where behavior is still load-bearing after DELETE waves. **Do not 1:1 port all 537** — operator intent is delete-first.
 
 ### Mapped to existing T-19 generators (top file rollups)
 
