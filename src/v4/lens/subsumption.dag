@@ -7,7 +7,7 @@
 module v4.lens.subsumption
 
 
-import v4.std.collection { List }
+import v4.std.collection { FiniteSet, List }
 import v4.std.node { Symbol }
 
 
@@ -35,10 +35,12 @@ type ProducerStageId {
 }
 
 
-type SubsumedFixes {
-  first: DiffId
-  rest: List<DiffId>
-}
+// Non-empty finite set of leaf DiffIds subsumed by a root fix. Substrate-
+// evolution 5/5 (node://adhoc-086ab97b-b41) replaced the prior hand-rolled
+// `{first, rest}` non-empty-list carrier with `FiniteSet<DiffId>` from
+// v4.std.collection — same head/tail shape, but now grounded in the shared
+// finite-enumeration substrate primitive.
+type SubsumedFixes = FiniteSet<DiffId>
 
 
 // 🟡 coproduct dissolution — feature:lens-subsumption-mechanical-runtime; task:node://adhoc-0a13e0b0-dff; dissolve-on:.dag TestClaim runner consumes MechanicalReverification rows.
@@ -54,9 +56,9 @@ type DissolutionSubsumption {
 }
 
 
-data affected_set_irt1_subsumed_fixes: SubsumedFixes = SubsumedFixes {
-  first: DiffId { id: affected_set_hash_receipt_leaf_fix },
-  rest: [
+data affected_set_irt1_subsumed_fixes: SubsumedFixes = FiniteSet {
+  head: DiffId { id: affected_set_hash_receipt_leaf_fix },
+  tail: [
     DiffId { id: affected_set_boundary_receipt_leaf_fix },
     DiffId { id: affected_set_dimension_receipt_leaf_fix },
     DiffId { id: affected_set_propagation_receipt_leaf_fix },

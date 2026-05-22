@@ -280,16 +280,17 @@ pub enum SubsumptionVerificationRuntime {
     },
 }
 
-/// Non-empty mirror of `v4.lens.subsumption.SubsumedFixes`.
+/// Non-empty mirror of `v4.lens.subsumption.SubsumedFixes`
+/// (= `v4.std.collection.FiniteSet<DiffId>` post substrate-evolution 5/5).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SubsumedFixesRuntime {
-    pub first: DissolutionDiffId,
-    pub rest: Vec<DissolutionDiffId>,
+    pub head: DissolutionDiffId,
+    pub tail: Vec<DissolutionDiffId>,
 }
 
 impl SubsumedFixesRuntime {
     fn iter(&self) -> impl Iterator<Item = &DissolutionDiffId> {
-        std::iter::once(&self.first).chain(self.rest.iter())
+        std::iter::once(&self.head).chain(self.tail.iter())
     }
 }
 
@@ -532,8 +533,8 @@ mod tests {
         DissolutionSubsumptionRuntimeRow {
             root_fix: diff_id("demo_mechanical_root_fix"),
             subsumed_fixes: SubsumedFixesRuntime {
-                first: diff_id("demo_mechanical_leaf_fix_a"),
-                rest: vec![
+                head: diff_id("demo_mechanical_leaf_fix_a"),
+                tail: vec![
                     diff_id("demo_mechanical_leaf_fix_b"),
                     diff_id("demo_mechanical_leaf_fix_c"),
                 ],
@@ -548,8 +549,8 @@ mod tests {
         DissolutionSubsumptionRuntimeRow {
             root_fix: diff_id("demo_producer_stage_root_fix"),
             subsumed_fixes: SubsumedFixesRuntime {
-                first: diff_id("demo_producer_stage_leaf_fix"),
-                rest: Vec::new(),
+                head: diff_id("demo_producer_stage_leaf_fix"),
+                tail: Vec::new(),
             },
             verification: SubsumptionVerificationRuntime::ProducerStageDerivation {
                 derivation_path: vec![producer_stage_id("demo_producer_stage")],
@@ -817,7 +818,7 @@ mod tests {
             &test_claim_id("demo_mechanical_reverification_claim")
         );
         assert_eq!(
-            row.subsumed_fixes.first,
+            row.subsumed_fixes.head,
             diff_id("demo_mechanical_leaf_fix_a")
         );
     }
