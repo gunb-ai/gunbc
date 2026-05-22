@@ -2,7 +2,7 @@
 // Scope: T-19 DiagnosticExhaustiveness — coproduct-exhaustiveness TestClaim emitted from testgen.
 // Owns: generated_coproduct_exhaustiveness_claim, scheduling witness.
 // Consumes: v4.lens.testgen, v4.std.verification.
-// Status: generated corpus scaffold — dissolves when T-19 codegen emits this module from `testgen_scheduled_coproduct_exhaustiveness_generators()` and the generated-output receipt replaces this checked-in witness file.
+// Status: generated corpus scaffold — dissolves when T-19 codegen emits this module from `testgen_scheduled_coproduct_exhaustiveness_generators()` and the generated-output receipt replaces this checked-in witness file. The generated form must replace all hand-rolled variant-discriminant predicates below with canonical coproduct reflection (not regenerate the same hand-matched patterns); this is the dissolve-on-arrival commitment for all 🟡 predicate-dissolution marks in this file.
 
 module v4.test.claim.generated.coproduct_exhaustiveness
 
@@ -51,6 +51,7 @@ fn generated_coproduct_exhaustiveness_input() -> Outcome<Node> {
 }
 
 
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: t19-coproduct-exhaustiveness-codegen — bound task: src/v4/TASKS.md#t-19-lenstestgendag--producer-of-testclaim-corpus-from-substrate — dissolve-on-arrival: generated corpus replaces this hand-rolled DiagnosticClaim arm check with canonical TestClaim variant reflection; forbidden: permanent hand-enumerated TestClaim arm discriminant in generated corpus.
 fn witness_coproduct_exhaustiveness_claim_is_diagnostic() -> Bool {
   match generated_coproduct_exhaustiveness_claim() {
     Accepted { value: DiagnosticClaim { label: _, t19_anchor: T19GeneratedClaimAnchor { generated_anchor: T19GeneratedCoproductExhaustiveness { omitted_variant: _ } }, input: _, expected_rejection: _, classification: _ }, diagnostics: _ } => true
@@ -88,6 +89,7 @@ fn witness_coproduct_exhaustiveness_all_testclaim_variants_emit() -> Bool {
 }
 
 
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: t19-coproduct-exhaustiveness-codegen — bound task: src/v4/TASKS.md#t-19-lenstestgendag--producer-of-testclaim-corpus-from-substrate — dissolve-on-arrival: generated corpus replaces this four-arm hand-enumerated TestClaimCoproductVariant equality check with canonical variant-key reflection; forbidden: permanent hand-rolled arm-identity match over TestClaimCoproductVariant in generated corpus.
 fn witness_coproduct_exhaustiveness_variant_emits(anchor: T19GeneratedAnchorKey) -> Bool {
   match testgen_emit_coproduct_exhaustiveness_claim(anchor: anchor) {
     Accepted { value: DiagnosticClaim { label: _, t19_anchor: T19GeneratedClaimAnchor { generated_anchor: T19GeneratedCoproductExhaustiveness { omitted_variant } }, input: _, expected_rejection: _, classification: _ }, diagnostics: _ } =>
