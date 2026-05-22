@@ -500,6 +500,10 @@ fn kotlin_primitive_bundle_from_integer_facts(
       kotlin_primitive_axis_binding(
         axis: kotlin_primitive_fact_axis_runtime_representation,
         fact: kotlin_runtime_representation_node(representation: facts.representation)
+      ),
+      kotlin_primitive_axis_binding(
+        axis: kotlin_primitive_fact_axis_scalar_classifier,
+        fact: kotlin_scalar_node(scalar: IntScalar { width: facts.width })
       )
     ]
   }
