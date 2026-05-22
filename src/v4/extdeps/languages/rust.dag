@@ -164,13 +164,13 @@ type OverflowAction
   | TwoComplementWrap
 
 // Anchor: Rust Reference §Operator expressions / Overflow.
-// 🟢 pretty-much-done — mode-aware overflow facts include debug defaults and explicit `-C overflow-checks`.
+// 🟢 pretty-much-done — checked arithmetic overflow facts include debug defaults and explicit `-C overflow-checks`.
 type OverflowDisposition<IRCarrier> {
   ir_carrier: IRCarrier
-  debug_default: OverflowAction
-  release_default: OverflowAction
-  overflow_checks_enabled: OverflowAction
-  overflow_checks_disabled: OverflowAction
+  checked_arithmetic_debug_default: OverflowAction
+  checked_arithmetic_release_default: OverflowAction
+  checked_arithmetic_overflow_checks_enabled: OverflowAction
+  checked_arithmetic_overflow_checks_disabled: OverflowAction
 }
 
 type RustLanguageModel {
@@ -331,10 +331,10 @@ data rust_scalar_field_classifier: Symbol = rust_scalar_field_classifier
 data rust_scalar_field_kind: Symbol = rust_scalar_field_kind
 data rust_scalar_field_width: Symbol = rust_scalar_field_width
 data rust_overflow_field_ir_carrier: Symbol = rust_overflow_field_ir_carrier
-data rust_overflow_field_debug_default: Symbol = rust_overflow_field_debug_default
-data rust_overflow_field_release_default: Symbol = rust_overflow_field_release_default
-data rust_overflow_field_checks_enabled: Symbol = rust_overflow_field_checks_enabled
-data rust_overflow_field_checks_disabled: Symbol = rust_overflow_field_checks_disabled
+data rust_overflow_field_checked_arithmetic_debug_default: Symbol = rust_overflow_field_checked_arithmetic_debug_default
+data rust_overflow_field_checked_arithmetic_release_default: Symbol = rust_overflow_field_checked_arithmetic_release_default
+data rust_overflow_field_checked_arithmetic_checks_enabled: Symbol = rust_overflow_field_checked_arithmetic_checks_enabled
+data rust_overflow_field_checked_arithmetic_checks_disabled: Symbol = rust_overflow_field_checked_arithmetic_checks_disabled
 
 data rust_tag_signed: Symbol = rust_tag_signed
 data rust_tag_unsigned: Symbol = rust_tag_unsigned
@@ -361,10 +361,10 @@ data rust_mvp1_source_grammar_field: Symbol = rust_mvp1_source_grammar_field
 fn rust_integer_overflow_disposition(kind: RustIntKind, width: RustIntWidth) -> OverflowDisposition<RustIntegerCarrier> {
   OverflowDisposition {
     ir_carrier: RustIntegerCarrier { kind: kind, width: width },
-    debug_default: PanicOnOverflow,
-    release_default: TwoComplementWrap,
-    overflow_checks_enabled: PanicOnOverflow,
-    overflow_checks_disabled: TwoComplementWrap
+    checked_arithmetic_debug_default: PanicOnOverflow,
+    checked_arithmetic_release_default: TwoComplementWrap,
+    checked_arithmetic_overflow_checks_enabled: PanicOnOverflow,
+    checked_arithmetic_overflow_checks_disabled: TwoComplementWrap
   }
 }
 
@@ -604,20 +604,20 @@ fn rust_overflow_disposition_node(disposition: OverflowDisposition<RustIntegerCa
         )
       ),
       rust_named_edge(
-        name: rust_overflow_field_debug_default,
-        target: rust_overflow_node(overflow: disposition.debug_default)
+        name: rust_overflow_field_checked_arithmetic_debug_default,
+        target: rust_overflow_node(overflow: disposition.checked_arithmetic_debug_default)
       ),
       rust_named_edge(
-        name: rust_overflow_field_release_default,
-        target: rust_overflow_node(overflow: disposition.release_default)
+        name: rust_overflow_field_checked_arithmetic_release_default,
+        target: rust_overflow_node(overflow: disposition.checked_arithmetic_release_default)
       ),
       rust_named_edge(
-        name: rust_overflow_field_checks_enabled,
-        target: rust_overflow_node(overflow: disposition.overflow_checks_enabled)
+        name: rust_overflow_field_checked_arithmetic_checks_enabled,
+        target: rust_overflow_node(overflow: disposition.checked_arithmetic_overflow_checks_enabled)
       ),
       rust_named_edge(
-        name: rust_overflow_field_checks_disabled,
-        target: rust_overflow_node(overflow: disposition.overflow_checks_disabled)
+        name: rust_overflow_field_checked_arithmetic_checks_disabled,
+        target: rust_overflow_node(overflow: disposition.checked_arithmetic_overflow_checks_disabled)
       )
     ]
   }

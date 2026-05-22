@@ -202,12 +202,24 @@ fn v4_rust_integer_overflow_disposition_is_mode_aware_and_axis_bound() {
             .collect::<Vec<_>>(),
         vec![
             ("ir_carrier", "IRCarrier".to_string()),
-            ("debug_default", "OverflowAction".to_string()),
-            ("release_default", "OverflowAction".to_string()),
-            ("overflow_checks_enabled", "OverflowAction".to_string()),
-            ("overflow_checks_disabled", "OverflowAction".to_string()),
+            (
+                "checked_arithmetic_debug_default",
+                "OverflowAction".to_string(),
+            ),
+            (
+                "checked_arithmetic_release_default",
+                "OverflowAction".to_string(),
+            ),
+            (
+                "checked_arithmetic_overflow_checks_enabled",
+                "OverflowAction".to_string(),
+            ),
+            (
+                "checked_arithmetic_overflow_checks_disabled",
+                "OverflowAction".to_string(),
+            ),
         ],
-        "{RUST_LANGUAGE_PATH}: Rust overflow disposition must model debug/release defaults and explicit overflow-checks behavior"
+        "{RUST_LANGUAGE_PATH}: Rust overflow disposition must model checked-arithmetic debug/release defaults and explicit overflow-checks behavior"
     );
     assert_eq!(
         type_record_fields(&module, "RustIntegerPrimitiveFacts")
