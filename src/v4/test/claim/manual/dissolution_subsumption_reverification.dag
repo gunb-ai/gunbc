@@ -468,7 +468,7 @@ fn subsumption_context() -> EvalContext {
 
 data claim_rust_language_model_emit_mechanical_reverification: TestClaim = EqualsClaim {
   label: "dissolution subsumption rust LanguageModel emit row receipt",
-  t19_anchor: T19ManualAnchorAbsent,
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
   lhs: subsumption_receipt_node(row: rust_language_model_emit_subsumption),
   rhs: expected_rust_language_model_emit_receipt_node(),
   classification: TestClassification { tier: Tier1, layer: Integration }
@@ -532,7 +532,7 @@ data verdict_rust_language_model_emit_subsumption: MechanicalReverificationVerdi
 
 data claim_rust_language_model_emit_subsumption_reverifies: TestClaim = EqualsClaim {
   label: "dissolution subsumption rust LanguageModel emit row verifies Lens-CI verdict",
-  t19_anchor: T19ManualAnchorAbsent,
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
   lhs: mechanical_reverification_verdict_node(v: verdict_rust_language_model_emit_subsumption),
   rhs: mechanical_reverification_verdict_node(v: Verified),
   classification: TestClassification { tier: Tier1, layer: Integration }

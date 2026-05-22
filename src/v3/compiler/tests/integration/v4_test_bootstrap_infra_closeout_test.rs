@@ -7,6 +7,8 @@
 //! expresses the same bootstrap closeout checks as `.dag` `TestClaim` rows.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::fs;
+use std::path::{Path, PathBuf};
 
 use v3_compiler::parse_for_test;
 use v3_compiler::parse_surface::{
@@ -280,6 +282,38 @@ fn t19_manual_manifest_matches_claim_anchor_discriminants() {
 }
 
 #[test]
+fn t19_claim_corpus_has_no_direct_manual_anchor_assignments() {
+    let root = workspace_root().join("src/v4/test/claim");
+    let mut dag_files = Vec::new();
+    collect_dag_files(&root, &mut dag_files);
+
+    let mut offenders = Vec::new();
+    for path in dag_files {
+        let source = fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+        for (idx, line) in source.lines().enumerate() {
+            let trimmed = line.trim();
+            if trimmed.starts_with("t19_anchor: T19Manual") {
+                offenders.push(format!(
+                    "{}:{}: {}",
+                    path.strip_prefix(workspace_root())
+                        .unwrap_or(path.as_path())
+                        .display(),
+                    idx + 1,
+                    trimmed
+                ));
+            }
+        }
+    }
+
+    assert!(
+        offenders.is_empty(),
+        "TestClaim.t19_anchor fields must use t19_manual_claim_anchor(...) after the T19ClaimAnchorKey split:\n{}",
+        offenders.join("\n")
+    );
+}
+
+#[test]
 fn t20_bootstrap_plan_keeps_self_hosting_chain_as_data() {
     let module = parse_module(BOOTSTRAP_DAG, BOOTSTRAP_PATH);
 
@@ -414,6 +448,23 @@ fn t20_bootstrap_plan_keeps_self_hosting_chain_as_data() {
             && BOOTSTRAP_DAG.contains("right_hash: BootstrapHashPin { digest: v4_stage2_hash, pin: v4_stage2_hash_pin"),
         "mismatch regression must wire stage-2 and fixpt.right through v4_stage2_hash (not an unrelated seed digest)"
     );
+}
+
+fn workspace_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..")
+}
+
+fn collect_dag_files(root: &Path, out: &mut Vec<PathBuf>) {
+    let entries = fs::read_dir(root).unwrap_or_else(|e| panic!("read_dir {}: {e}", root.display()));
+    for entry in entries {
+        let entry = entry.unwrap_or_else(|e| panic!("read_dir entry {}: {e}", root.display()));
+        let path = entry.path();
+        if path.is_dir() {
+            collect_dag_files(&path, out);
+        } else if path.extension().is_some_and(|ext| ext == "dag") {
+            out.push(path);
+        }
+    }
 }
 
 fn parse_module(source: &str, file: &str) -> SurfaceModule {
