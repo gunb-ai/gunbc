@@ -20,9 +20,7 @@
 //! `compile_to_dag` over v4 compiler modules resolves imports without substrate collision).
 
 use v3_compiler::parse_for_test;
-use v3_compiler::parse_surface::{
-    SurfaceExpr, SurfaceField, SurfaceItem, SurfaceType, TypeAngleArg,
-};
+use v3_compiler::parse_surface::{SurfaceField, SurfaceItem, SurfaceType, TypeAngleArg};
 use v3_compiler::tokenize_for_test;
 
 const FIND_WITNESS_DAG: &str = include_str!("../../../../v4/std/find_witness.dag");
@@ -213,12 +211,20 @@ fn v4_rust_integer_overflow_disposition_is_mode_aware_and_axis_bound() {
         "{RUST_LANGUAGE_PATH}: integer primitive facts must carry the mode-aware overflow disposition"
     );
     assert!(
-        function_body_contains_var(
+        import_includes_name(
             &module,
-            "rust_primitive_bundle_from_integer_facts",
+            &["v4", "std", "model_core"],
             "primitive_fact_axis_overflow_disposition"
         ),
-        "{RUST_LANGUAGE_PATH}: integer primitive bundles must bind the overflow-disposition primitive fact axis"
+        "{RUST_LANGUAGE_PATH}: Rust must import the shared overflow-disposition primitive fact axis"
+    );
+    assert!(
+        surface_declares_fn(&module, "rust_integer_overflow_disposition"),
+        "{RUST_LANGUAGE_PATH}: must declare the Rust Reference debug/release overflow disposition constructor"
+    );
+    assert!(
+        surface_declares_fn(&module, "rust_overflow_disposition_node"),
+        "{RUST_LANGUAGE_PATH}: must materialize overflow disposition facts as a Node for primitive bundles"
     );
 }
 
@@ -375,57 +381,5 @@ fn type_angle_arg_name(arg: &TypeAngleArg) -> String {
     match arg {
         TypeAngleArg::TypeExpr { ty } => surface_type_name(ty),
         TypeAngleArg::WidthNatLiteral { decimal, .. } => decimal.clone(),
-    }
-}
-
-fn function_body_contains_var(
-    module: &v3_compiler::parse_surface::SurfaceModule,
-    function_name: &str,
-    var_name: &str,
-) -> bool {
-    module.items.iter().any(|item| match item {
-        SurfaceItem::Fn { name, body, .. } if name == function_name => {
-            expr_contains_var(body, var_name)
-        }
-        _ => false,
-    })
-}
-
-fn expr_contains_var(expr: &SurfaceExpr, var_name: &str) -> bool {
-    match expr {
-        SurfaceExpr::Var { name, .. } => name == var_name,
-        SurfaceExpr::Path { segments, .. } => segments.iter().any(|segment| segment == var_name),
-        SurfaceExpr::Call { args, .. }
-        | SurfaceExpr::PathCall { args, .. }
-        | SurfaceExpr::Operator { args, .. } => {
-            args.iter().any(|arg| expr_contains_var(arg, var_name))
-        }
-        SurfaceExpr::VariantRecord { fields, .. } | SurfaceExpr::Record { fields, .. } => fields
-            .iter()
-            .any(|field| expr_contains_var(&field.value, var_name)),
-        SurfaceExpr::Lambda { body, .. } => expr_contains_var(body, var_name),
-        SurfaceExpr::If {
-            cond,
-            then_branch,
-            else_branch,
-            ..
-        } => {
-            expr_contains_var(cond, var_name)
-                || expr_contains_var(then_branch, var_name)
-                || expr_contains_var(else_branch, var_name)
-        }
-        SurfaceExpr::Match {
-            scrutinee, arms, ..
-        } => {
-            expr_contains_var(scrutinee, var_name)
-                || arms.iter().any(|arm| expr_contains_var(&arm.body, var_name))
-        }
-        SurfaceExpr::List { elements, .. } => {
-            elements.iter().any(|element| expr_contains_var(element, var_name))
-        }
-        SurfaceExpr::Map { entries, .. } => entries
-            .iter()
-            .any(|entry| expr_contains_var(&entry.value, var_name)),
-        SurfaceExpr::Literal { .. } => false,
     }
 }
