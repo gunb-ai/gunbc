@@ -1,14 +1,8 @@
 // src/v4/lens/testgen.dag
 // Scope: Manual-anchor testgen plus filesystem-backed whole-corpus lens driver primitive.
-<<<<<<< HEAD
-// Owns: Generator TestgenConcept manual_test_claim_for_manual_anchor testgen_concept_for_manual_claim testgen_emit_language_behavior_equivalence_claim testgen_emit_witness_validity_claim witness_validity_subject_node witness_validity_outcome_node witness_validity_predicate_node witness_validity_witness_node witness_validity_symbol_atom_node witness_validity_field_oracle_outcome testgen_scheduled_language_behavior_generators TypeConstructionSubject AlgebraLawSubject DiagnosticExhaustivenessSubject LensApplicabilitySubject BidirectionalRoundtripSubject LanguageBehaviorEquivalenceSubject FrozenLanguageBehaviorSnapshot LanguageBehaviorIoMock CorpusEntry CorpusTraversalScope CorpusTraversalOrder CorpusDuplicatePolicy CorpusTraversalPolicy CorpusEnumerationRequest CorpusEnumerationResult CorpusEnumerator CorpusEntryIngestResult CorpusEntryIngestor CorpusLensReadResult<C> CorpusLensReader<C> CorpusLensObservation<C> CorpusLensDriveResult<C> CorpusLensDriver<C>
-// Consumes: v4.std.diagnostic v4.std.nat v4.std.node v4.std.witness v4.std.find_witness v4.std.verification v4.extdeps.file_system v4.test.claim.manual.connective_anchors v4.test.claim.manual.nat_law_anchors
-// Status: Manual-anchor + LanguageBehaviorEquivalence emission; substrate extension = operator STOP.
-=======
-// Owns: Generator TestgenConcept manual_test_claim_for_manual_anchor testgen_concept_for_manual_claim testgen_emit_language_behavior_equivalence_claim testgen_emit_idempotent_operation_claim testgen_scheduled_language_behavior_generators testgen_scheduled_idempotent_operation_subjects TypeConstructionSubject AlgebraLawSubject DiagnosticExhaustivenessSubject LensApplicabilitySubject BidirectionalRoundtripSubject LanguageBehaviorEquivalenceSubject FrozenLanguageBehaviorSnapshot LanguageBehaviorIoMock CorpusEntry CorpusTraversalScope CorpusTraversalOrder CorpusDuplicatePolicy CorpusTraversalPolicy CorpusEnumerationRequest CorpusEnumerationResult CorpusEnumerator CorpusEntryIngestResult CorpusEntryIngestor CorpusLensReadResult<C> CorpusLensReader<C> CorpusLensObservation<C> CorpusLensDriveResult<C> CorpusLensDriver<C>
-// Consumes: v4.std.diagnostic v4.std.nat v4.std.node v4.std.verification v4.extdeps.file_system v4.test.claim.manual.connective_anchors v4.test.claim.manual.nat_law_anchors
-// Status: Manual-anchor + LBE + idempotent-operation testgen (subjects: v4.std.effects); new TestgenConcept arms = operator STOP.
->>>>>>> origin/main
+// Owns: Generator TestgenConcept manual_test_claim_for_manual_anchor testgen_concept_for_manual_claim testgen_emit_language_behavior_equivalence_claim testgen_emit_witness_validity_claim witness_validity_subject_node witness_validity_outcome_node witness_validity_predicate_node witness_validity_witness_node witness_validity_symbol_atom_node witness_validity_field_oracle_outcome testgen_emit_idempotent_operation_claim testgen_scheduled_language_behavior_generators testgen_scheduled_idempotent_operation_subjects TypeConstructionSubject AlgebraLawSubject DiagnosticExhaustivenessSubject LensApplicabilitySubject BidirectionalRoundtripSubject LanguageBehaviorEquivalenceSubject FrozenLanguageBehaviorSnapshot LanguageBehaviorIoMock CorpusEntry CorpusTraversalScope CorpusTraversalOrder CorpusDuplicatePolicy CorpusTraversalPolicy CorpusEnumerationRequest CorpusEnumerationResult CorpusEnumerator CorpusEntryIngestResult CorpusEntryIngestor CorpusLensReadResult<C> CorpusLensReader<C> CorpusLensObservation<C> CorpusLensDriveResult<C> CorpusLensDriver<C>
+// Consumes: v4.std.diagnostic v4.std.nat v4.std.node v4.std.witness v4.std.find_witness v4.std.verification v4.std.effects v4.extdeps.file_system v4.test.claim.manual.connective_anchors v4.test.claim.manual.nat_law_anchors
+// Status: Manual-anchor + LBE + witness-validity (T-19 silent-deer-669) + idempotent-operation testgen (subjects: v4.std.effects); new TestgenConcept arms = operator STOP.
 
 module v4.lens.testgen
 
@@ -79,11 +73,8 @@ import v4.extdeps.file_system {
 import v4.extdeps.languages.dag { dag_language_model_surface_id }
 import v4.std.verification {
   CompilesClaim,
-<<<<<<< HEAD
-  RoundTripClaim,
-=======
   EqualsClaim,
->>>>>>> origin/main
+  RoundTripClaim,
   TestClaim,
   TestClassification,
   T19ManualAnchorAbsent,
