@@ -31,7 +31,7 @@ import v4.std.node {
   TypeNode
 }
 import v4.std.logic { Bool, bool_boolean_algebra }
-import v4.std.algebra { BooleanAlgebra, free_monoid_fold }
+import v4.std.algebra { BooleanAlgebra, fold_list }
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type PythonSingletonKind
@@ -399,7 +399,7 @@ fn python_primitive_bundle_from_singleton_facts(
 // Order-preserving snoc + append, mirroring the rust slice — kept local to this file so the
 // fold authority isn't pulled in from a peer language extdep (substrate cohesion).
 fn python_list_snoc_item<T>(xs: List<T>, item: T) -> List<T> {
-  free_monoid_fold(
+  fold_list(
     xs: xs,
     empty: Cons { head: item, tail: Empty },
     cons: fn(rest, existing) {
@@ -409,7 +409,7 @@ fn python_list_snoc_item<T>(xs: List<T>, item: T) -> List<T> {
 }
 
 fn python_list_append<T>(left: List<T>, right: List<T>) -> List<T> {
-  free_monoid_fold(
+  fold_list(
     xs: right,
     empty: left,
     cons: fn(acc, item) {
@@ -419,7 +419,7 @@ fn python_list_append<T>(left: List<T>, right: List<T>) -> List<T> {
 }
 
 fn python_primitive_bundles_from_integer_catalog() -> List<PrimitiveFactBundle> {
-  free_monoid_fold(
+  fold_list(
     xs: python_integer_facts_catalog,
     empty: Empty,
     cons: fn(acc, facts) {
@@ -432,7 +432,7 @@ fn python_primitive_bundles_from_integer_catalog() -> List<PrimitiveFactBundle> 
 }
 
 fn python_primitive_bundles_from_float_catalog() -> List<PrimitiveFactBundle> {
-  free_monoid_fold(
+  fold_list(
     xs: python_float_facts_catalog,
     empty: Empty,
     cons: fn(acc, facts) {
@@ -445,7 +445,7 @@ fn python_primitive_bundles_from_float_catalog() -> List<PrimitiveFactBundle> {
 }
 
 fn python_primitive_bundles_from_complex_catalog() -> List<PrimitiveFactBundle> {
-  free_monoid_fold(
+  fold_list(
     xs: python_complex_facts_catalog,
     empty: Empty,
     cons: fn(acc, facts) {
@@ -458,7 +458,7 @@ fn python_primitive_bundles_from_complex_catalog() -> List<PrimitiveFactBundle> 
 }
 
 fn python_primitive_bundles_from_bool_catalog() -> List<PrimitiveFactBundle> {
-  free_monoid_fold(
+  fold_list(
     xs: python_bool_facts_catalog,
     empty: Empty,
     cons: fn(acc, facts) {
@@ -471,7 +471,7 @@ fn python_primitive_bundles_from_bool_catalog() -> List<PrimitiveFactBundle> {
 }
 
 fn python_primitive_bundles_from_singleton_catalog() -> List<PrimitiveFactBundle> {
-  free_monoid_fold(
+  fold_list(
     xs: python_singleton_facts_catalog,
     empty: Empty,
     cons: fn(acc, facts) {
