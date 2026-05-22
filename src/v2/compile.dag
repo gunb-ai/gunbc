@@ -44,7 +44,7 @@ import v2.compiler.emit_rust { emit_rust }
 import v2.compiler.emit_python { emit_python }
 import v2.compiler.emit_go { emit_go }
 import v2.compiler.complexity { ComplexityReport, ComplexityViolation, FuncEntry, RecursionContext, build_complexity_report, empty_complexity_report }
-import std.induction { SubValueRelation, StrictSubValue, IteratedSubValue, PreservedValue, SubValueUnknown, InductiveField, ShrinkFactor, UnitShrink, ConstantShrink, ProportionalShrink, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion, SetRecursion, MapValueRecursion }
+import std.induction { SubValueRelation, StrictSubValue, IteratedSubValue, ArithmeticDescent, PreservedValue, NonIncreasingValue, StrictAxisErased, MixedTop, SubValueUnknown, InductiveField, ShrinkFactor, UnitShrink, ConstantShrink, ProportionalShrink, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion, SetRecursion, MapValueRecursion }
 import std.termination {
   PositiveDescentAmount, OneStep, AdditionalStep,
   ProportionalDivisor, DivideByTwo, StrictlyLarger
@@ -730,6 +730,9 @@ fn serialize_sub_value_relation(rel: SubValueRelation) -> String {
     ArithmeticDescent { param: p, factor: fac } =>
       concat("{\"_variant\": \"ArithmeticDescent\", \"param\": ", json_quote(s: p), ", \"factor\": ", serialize_shrink_factor(factor: fac), "}")
     PreservedValue => "{\"_variant\": \"PreservedValue\"}"
+    NonIncreasingValue => "{\"_variant\": \"NonIncreasingValue\"}"
+    StrictAxisErased => "{\"_variant\": \"StrictAxisErased\"}"
+    MixedTop => "{\"_variant\": \"MixedTop\"}"
     SubValueUnknown => "{\"_variant\": \"SubValueUnknown\"}"
   }
 }

@@ -1,18 +1,16 @@
 #!/usr/bin/env bash
 # scripts/v2-run-preflight.sh
 #
-# INTERIM (T-24 bridge): Move 1 / Move 3 pre-flight helper. The structural
-# authority for CI remains `v2-compiler compile` (see .github/workflows/ci.yml
-# v4 bootstrap steps folded into the `ci` job when v4 is affected). v2 `run` over
-# src/v4 is **not** a green gate today — see
-# src/v4/test/v2_run_preflight/MOVE1_COVERAGE.txt (deferred until T-22).
+# Retired T-24 bridge helper. The structural v4 bootstrap authority remains
+# `v2-compiler compile`; the T-22 host eval receipt now runs in CI through
+# `scripts/check-v4-host-eval-receipt.py` and pins
+# `eval(tree, interpretation, inputs)`.
 #
 # Usage: from repo root, with v2-compiler already built:
 #   V2_COMPILER=target/release/v2-compiler bash scripts/v2-run-preflight.sh
 #
-# When the caller has already run `v2-compiler compile` on src/v4 (e.g. the
-# bootstrap viability step in ci.yml), set V2_PREFLIGHT_SKIP_COMPILE=1 to emit
-# only the GitHub notice — avoids a redundant full-graph compile.
+# When the caller has already run `v2-compiler compile` on src/v4, set
+# V2_PREFLIGHT_SKIP_COMPILE=1 to skip the redundant full-graph compile.
 
 set -euo pipefail
 
@@ -37,6 +35,6 @@ else
   echo "compile: OK"
 fi
 
-echo "::notice::v2 \`run\` TestClaim execution gate is DEFERRED until T-22 (v4 eval). Evidence: src/v4/test/v2_run_preflight/MOVE1_COVERAGE.txt"
+echo "::notice::v2 run preflight bridge is retired for CI; T-22 host eval receipt now pins eval(tree, interpretation, inputs). Evidence: src/v4/test/v2_run_preflight/MOVE1_COVERAGE.txt"
 
 exit 0

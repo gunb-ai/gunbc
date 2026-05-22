@@ -2,8 +2,8 @@
 // Scope: primary evaluation path over inferred tree/input subgraphs and TestClaim runner substrate.
 // Owns: Inputs, EvalContext, TestClaimTypedInput, TestClaimEvalSubject, TestClaimCacheKey, TestClaimCacheReceipt, Verdict, TestClaimRun, EvalFoldState, eval, eval_node, run_test_claim, aggregate_verdicts.
 // Consumes: v4.compiler.infer, v4.std.runtime, v4.std.node, v4.std.diagnostic, v4.std.verification.
-// Status: T-22 eval consumes decomposed runtime interpretation algebra; TestClaim runner remains Node-shaped. Local control terminalization, runtime-value conformance, behavior dispatch, Outcome accumulation, and fold progress sentinels are staged below with explicit dissolution targets.
-// CompilesClaim: run_test_claim_assert compares actual to expected_value via outcome_node_eq (tighter than legacy AssertKind Compiles, which Pass'd on any Accepted).
+// Status: T-22 eval and TestClaim runner consume decomposed runtime interpretation algebra. Local control terminalization, runtime-value conformance, behavior dispatch, Outcome accumulation, and fold progress sentinels are staged below with explicit dissolution targets.
+// CompilesClaim: run_test_claim_runtime_assert compares actual to expected_value through runtime evaluation (tighter than legacy AssertKind Compiles, which Pass'd on any Accepted).
 
 module v4.compiler.eval
 
@@ -59,8 +59,10 @@ import v4.std.diagnostic {
   None,
   Rejected,
   bind_outcome,
+  diagnostics_eq,
   diagnostics_merge,
   diagnostics_singleton,
+  non_empty_diagnostics_eq,
   outcome_node_eq,
   outcome_rejected,
   rejected_with_pending
@@ -82,11 +84,9 @@ type Inputs {
 }
 
 
-// RULING-1: pretty-much-done — explicit evaluator/resource/extdeps authority bundle.
+// RULING-1: pretty-much-done — explicit runtime interpretation authority.
 type EvalContext {
-  evaluator: Node
-  resources: Node
-  extdeps: Node
+  interpretation: InterpretationAlgebra
 }
 
 
@@ -109,9 +109,7 @@ type TestClaimEvalSubject<T> {
 type TestClaimCacheKey<T> {
   eval_subject: TestClaimEvalSubject<T>
   claim_hash: Hash
-  evaluator_hash: Hash
-  resources_hash: Hash
-  extdeps_hash: Hash
+  interpretation_hash: Hash
 }
 
 
@@ -131,9 +129,9 @@ type Verdict<T>
 
 
 // RULING-1: needs-more-work — executable corpus runner will replace Wave-0 run rows.
-type TestClaimRun<T> {
-  cache: TestClaimCacheReceipt<T>
-  verdict: Verdict<T>
+type TestClaimRun<S, A> {
+  cache: TestClaimCacheReceipt<S>
+  verdict: Verdict<A>
 }
 
 
@@ -149,23 +147,21 @@ type EvalFoldState {
 fn test_claim_cache_receipt<T>(
   subject: TestClaimEvalSubject<T>,
   claim_hash: Hash,
-  evaluator_hash: Hash,
-  resources_hash: Hash,
-  extdeps_hash: Hash
+  interpretation_hash: Hash
 ) -> TestClaimCacheReceipt<T> {
   TestClaimCacheReceipt {
     key: TestClaimCacheKey {
       eval_subject: subject,
       claim_hash: claim_hash,
-      evaluator_hash: evaluator_hash,
-      resources_hash: resources_hash,
-      extdeps_hash: extdeps_hash
+      interpretation_hash: interpretation_hash
     }
   }
 }
 
 
 data eval_rejected_invalid_node: Symbol = eval_rejected_invalid_node
+// 🟡 gated — feature:T22-eval-node-runtime-value-to-node-projection — bind node://adhoc-721e9758-07b — dissolve-on: eval_node projects eval's Outcome<RuntimeValue> through a runtime-value→Node projection so realized eval results flow into TestClaim assertions; forbidden: returning Accepted{value:inputs.root} as a stand-in for an unrealized eval, which fabricates Pass for CompilesClaim/EqualsClaim where expected==input.
+data eval_node_unrealized: Symbol = eval_node_unrealized
 data eval_rejected_roundtrip_deferred: Symbol = eval_rejected_roundtrip_deferred
 data eval_empty_verdict_list: Symbol = eval_empty_verdict_list
 data eval_rejected_type_node: Symbol = eval_rejected_type_node
@@ -596,10 +592,14 @@ fn eval(tree: InferredTree, interpretation: InterpretationAlgebra, inputs: Input
 }
 
 
+// Fail-closed: well-formedness preconditions still short-circuit to invalid_node,
+// but a passing precondition does NOT fabricate Accepted{value:inputs.root} — eval_node
+// is not yet wired to project eval's Outcome<RuntimeValue> to Outcome<Node>, so the
+// honest verdict for a realized precondition is Rejected{eval_node_unrealized}.
 fn eval_node(tree: InferredTree, inputs: Inputs) -> Outcome<Node> {
   if well_formed(n: tree.root) {
     if well_formed(n: inputs.root) {
-      Accepted { value: inputs.root, diagnostics: None }
+      Rejected { diagnostics: diagnostics_singleton(d: eval_diagnostic(reason: eval_node_unrealized, node: inputs.root)) }
     } else {
       Rejected { diagnostics: diagnostics_singleton(d: eval_diagnostic(reason: eval_rejected_invalid_node, node: inputs.root)) }
     }
@@ -609,7 +609,30 @@ fn eval_node(tree: InferredTree, inputs: Inputs) -> Outcome<Node> {
 }
 
 
+// Fail-closed gate: if eval_node surfaces eval_node_unrealized, no TestClaim
+// variant may be decided — return Verdict.Deferred so aggregate_verdicts
+// blocks Pass. Prevents (a) CompilesClaim/EqualsClaim false-Pass on the
+// previous fake-Accepted echo, and (b) DiagnosticClaim trivial-Pass on any
+// Rejected matching the unrealized signal.
 fn run_test_claim_assert(
+  claim: TestClaim,
+  actual: Outcome<Node>,
+  at: Node
+) -> Verdict<Node> {
+  match actual {
+    Rejected { diagnostics: nd } =>
+      if nd.head.reason == eval_node_unrealized {
+        Deferred { actual: actual, diagnostic: nd.head }
+      } else {
+        run_test_claim_assert_decided(claim: claim, actual: actual, at: at)
+      }
+    Accepted { value: _, diagnostics: _ } =>
+      run_test_claim_assert_decided(claim: claim, actual: actual, at: at)
+  }
+}
+
+
+fn run_test_claim_assert_decided(
   claim: TestClaim,
   actual: Outcome<Node>,
   at: Node
@@ -649,6 +672,77 @@ fn run_test_claim_assert(
 }
 
 
+fn runtime_value_eq(a: RuntimeValue, b: RuntimeValue) -> Bool {
+  a == b
+}
+
+
+// 🟡 gated — feature:T22-parameterized-outcome-eq — bind node://adhoc-c5a6fb4b-8cc — dissolve-on: v4.std.diagnostic owns a parameterized Outcome equality surface with payload comparator; forbidden: adding more payload-specific Outcome equality helpers.
+fn outcome_runtime_value_eq(a: Outcome<RuntimeValue>, b: Outcome<RuntimeValue>) -> Bool {
+  match a {
+    Accepted { value: av, diagnostics: ad } => match b {
+      Accepted { value: bv, diagnostics: bd } => runtime_value_eq(a: av, b: bv) && diagnostics_eq(a: ad, b: bd)
+      Rejected { diagnostics: _ } => false
+    }
+    Rejected { diagnostics: ar } => match b {
+      Accepted { value: _, diagnostics: _ } => false
+      Rejected { diagnostics: br } => non_empty_diagnostics_eq(a: ar, b: br)
+    }
+  }
+}
+
+
+fn accepted_runtime_value_outcome_eq(a: Outcome<RuntimeValue>, b: Outcome<RuntimeValue>) -> Bool {
+  match b {
+    Accepted { value: _, diagnostics: _ } => outcome_runtime_value_eq(a: a, b: b)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+fn run_test_claim_runtime_assert(
+  claim: TestClaim,
+  tree: InferredTree,
+  interpretation: InterpretationAlgebra,
+  actual: Outcome<RuntimeValue>,
+  at: Node
+) -> Verdict<RuntimeValue> {
+  match claim {
+    EqualsClaim { rhs: rhs, label: _, t19_anchor: _, lhs: _, classification: _ } => {
+      let expected = eval(tree: tree, interpretation: interpretation, inputs: Inputs { root: rhs })
+      if accepted_runtime_value_outcome_eq(a: actual, b: expected) {
+        Pass
+      } else {
+        Fail { actual: actual }
+      }
+    }
+    CompilesClaim { expected_value: expected, label: _, t19_anchor: _, input: _, classification: _ } => {
+      let expected_outcome = eval(tree: tree, interpretation: interpretation, inputs: Inputs { root: expected })
+      if accepted_runtime_value_outcome_eq(a: actual, b: expected_outcome) {
+        Pass
+      } else {
+        Fail { actual: actual }
+      }
+    }
+    RoundTripClaim { input: input, label: _, t19_anchor: _, classification: _ } =>
+      Deferred {
+        actual: actual,
+        diagnostic: eval_diagnostic(reason: eval_rejected_roundtrip_deferred, node: input)
+      }
+    DiagnosticClaim { expected_rejection: expected, input: _, label: _, t19_anchor: _, classification: _ } =>
+      match actual {
+        Rejected { diagnostics: _ } =>
+          if outcome_runtime_value_eq(a: actual, b: Rejected { diagnostics: expected }) {
+            Pass
+          } else {
+            Fail { actual: actual }
+          }
+        _ => Fail { actual: actual }
+      }
+  }
+}
+
+
 // Fail-closed: any Deferred or Fail in the list blocks Pass; [] is Fail (no fabricated Pass).
 // When acc is already Deferred, the first Deferred's diagnostic wins (no accumulation).
 fn aggregate_verdicts<T>(rs: List<Verdict<T>>, at: Node) -> Verdict<T> {
@@ -677,12 +771,11 @@ fn aggregate_verdicts<T>(rs: List<Verdict<T>>, at: Node) -> Verdict<T> {
 fn run_test_claim(
   subject: TestClaimEvalSubject<Node>,
   claim_hash: Hash,
-  evaluator_hash: Hash,
-  resources_hash: Hash,
-  extdeps_hash: Hash
-) -> TestClaimRun<Node> {
-  let actual = eval_node(
+  interpretation_hash: Hash
+) -> TestClaimRun<Node, RuntimeValue> {
+  let actual = eval(
     tree: subject.tree,
+    interpretation: subject.context.interpretation,
     inputs: Inputs { root: subject.input.evaluator_input }
   )
   let at = test_claim_input(c: subject.claim)
@@ -690,12 +783,18 @@ fn run_test_claim(
     cache: test_claim_cache_receipt(
       subject: subject,
       claim_hash: claim_hash,
-      evaluator_hash: evaluator_hash,
-      resources_hash: resources_hash,
-      extdeps_hash: extdeps_hash
+      interpretation_hash: interpretation_hash
     ),
     verdict: aggregate_verdicts(
-      rs: [run_test_claim_assert(claim: subject.claim, actual: actual, at: at)],
+      rs: [
+        run_test_claim_runtime_assert(
+          claim: subject.claim,
+          tree: subject.tree,
+          interpretation: subject.context.interpretation,
+          actual: actual,
+          at: at
+        )
+      ],
       at: at
     )
   }

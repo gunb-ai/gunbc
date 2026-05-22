@@ -26,13 +26,17 @@ import v4.compiler.infer {
   InferredTree
 }
 import v4.compiler.resolve { ResolvedTree }
-import v4.std.collection { Map }
+import v4.std.collection { List, Map }
 import v4.std.diagnostic {
   Accepted,
+  AmbiguousIntent,
+  Diagnostic,
   NonEmptyDiagnostics,
+  NodeLocus,
   None,
   Outcome,
   Rejected,
+  Unavailable,
   diagnostics_singleton,
   outcome_node_eq
 }
@@ -59,6 +63,20 @@ import v4.std.verification {
   test_claim_expected_outcome,
   test_claim_input
 }
+import v4.std.runtime {
+  BindInterpreter,
+  BranchInterpreter,
+  ControlTransfer,
+  EnvironmentBindingKey,
+  EvaluationEnvironment,
+  InterpretationAlgebra,
+  LoopInterpreter,
+  RuntimePrimitive,
+  RuntimePrimitiveValue,
+  RuntimeValue,
+  TransformInterpreter,
+  ValueInterpreter
+}
 import v4.std.witness { Holds, Violates }
 
 
@@ -68,13 +86,12 @@ data fixture_add_body_int_atom: Symbol = fixture_add_body_int_atom
 data infer_receipt_evaluator: Symbol = infer_receipt_evaluator
 data infer_receipt_resources: Symbol = infer_receipt_resources
 data infer_receipt_extdeps: Symbol = infer_receipt_extdeps
+data infer_receipt_runtime_value_symbol: Symbol = infer_receipt_runtime_value_symbol
 data infer_receipt_input_infer_add_mvp: Symbol = infer_receipt_input_infer_add_mvp
 data infer_receipt_input_descent_witness: Symbol = infer_receipt_input_descent_witness
 // 🟡 cache-hash scaffold — T22-EVAL-CACHE-HASHES
 data claim_hash_placeholder: Hash = claim_hash_placeholder
-data evaluator_hash_placeholder: Hash = evaluator_hash_placeholder
-data resources_hash_placeholder: Hash = resources_hash_placeholder
-data extdeps_hash_placeholder: Hash = extdeps_hash_placeholder
+data interpretation_hash_placeholder: Hash = interpretation_hash_placeholder
 
 
 // Receipt bridge: polarity-specific carriers (no broad Outcome<Node> after TestClaim split).
@@ -107,6 +124,79 @@ fn infer_receipt_symbol_node(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },
     children: []
+  }
+}
+
+
+fn infer_receipt_runtime_value() -> RuntimeValue {
+  RuntimePrimitive {
+    value: RuntimePrimitiveValue {
+      primitive_type: infer_receipt_symbol_node(s: infer_receipt_runtime_value_symbol),
+      bytes: []
+    }
+  }
+}
+
+
+fn infer_receipt_runtime_diagnostic(n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: infer_receipt_extdeps,
+    at: NodeLocus { node: n },
+    correction: Unavailable { reason: AmbiguousIntent }
+  }
+}
+
+
+fn infer_receipt_allocate_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
+  Rejected { diagnostics: diagnostics_singleton(d: infer_receipt_runtime_diagnostic(n: node)) }
+}
+
+
+fn infer_receipt_call_primitive(
+  node: Node,
+  _args: List<RuntimeValue>,
+  _env: EvaluationEnvironment
+) -> Outcome<RuntimeValue> {
+  Rejected { diagnostics: diagnostics_singleton(d: infer_receipt_runtime_diagnostic(n: node)) }
+}
+
+
+fn infer_receipt_choose_branch(node: Node, _value: RuntimeValue, _env: EvaluationEnvironment) -> Outcome<Node> {
+  Rejected { diagnostics: diagnostics_singleton(d: infer_receipt_runtime_diagnostic(n: node)) }
+}
+
+
+fn infer_receipt_step_loop(node: Node, _env: EvaluationEnvironment) -> Outcome<ControlTransfer> {
+  Rejected { diagnostics: diagnostics_singleton(d: infer_receipt_runtime_diagnostic(n: node)) }
+}
+
+
+fn infer_receipt_bind_value(
+  _key: EnvironmentBindingKey,
+  _value: RuntimeValue,
+  env: EvaluationEnvironment
+) -> Outcome<EvaluationEnvironment> {
+  Accepted { value: env, diagnostics: None }
+}
+
+
+fn infer_receipt_interpretation() -> InterpretationAlgebra {
+  InterpretationAlgebra {
+    value: ValueInterpreter {
+      allocate_literal: infer_receipt_allocate_literal
+    },
+    transform: TransformInterpreter {
+      call_primitive: infer_receipt_call_primitive
+    },
+    branch: BranchInterpreter {
+      choose_branch: infer_receipt_choose_branch
+    },
+    loop: LoopInterpreter {
+      step_loop: infer_receipt_step_loop
+    },
+    bind: BindInterpreter {
+      bind_value: infer_receipt_bind_value
+    }
   }
 }
 
@@ -153,9 +243,7 @@ fn infer_receipt_claim(case: InferReceiptCase) -> TestClaim {
 
 fn infer_receipt_context() -> EvalContext {
   EvalContext {
-    evaluator: infer_receipt_symbol_node(s: infer_receipt_evaluator),
-    resources: infer_receipt_symbol_node(s: infer_receipt_resources),
-    extdeps: infer_receipt_symbol_node(s: infer_receipt_extdeps)
+    interpretation: infer_receipt_interpretation()
   }
 }
 
@@ -196,15 +284,13 @@ fn infer_outcome_node_projection(actual: Outcome<InferredTree>) -> Outcome<Node>
 
 fn infer_add_mvp_receipt_run(
   subject: TestClaimEvalSubject<Node>,
-) -> TestClaimRun<InferredTree> {
+) -> TestClaimRun<Node, InferredTree> {
   let actual = anchor_infer_add_mvp()
   TestClaimRun {
     cache: test_claim_cache_receipt(
       subject: subject,
       claim_hash: claim_hash_placeholder,
-      evaluator_hash: evaluator_hash_placeholder,
-      resources_hash: resources_hash_placeholder,
-      extdeps_hash: extdeps_hash_placeholder
+      interpretation_hash: interpretation_hash_placeholder
     ),
     verdict: match test_claim_expected_outcome(c: subject.claim) {
       Accepted { value: expected, diagnostics: _ } =>
@@ -228,15 +314,13 @@ fn infer_add_mvp_receipt_run(
 
 fn infer_descent_witness_receipt_run(
   subject: TestClaimEvalSubject<Node>,
-) -> TestClaimRun<Node> {
+) -> TestClaimRun<Node, Node> {
   let actual = infer_descent_witness_contract_node(n: subject.input.evaluator_input)
   TestClaimRun {
     cache: test_claim_cache_receipt(
       subject: subject,
       claim_hash: claim_hash_placeholder,
-      evaluator_hash: evaluator_hash_placeholder,
-      resources_hash: resources_hash_placeholder,
-      extdeps_hash: extdeps_hash_placeholder
+      interpretation_hash: interpretation_hash_placeholder
     ),
     verdict: match test_claim_expected_outcome(c: subject.claim) {
       Accepted { value: expected, diagnostics: _ } =>
@@ -320,7 +404,7 @@ data case_infer_add_mvp_fail_closed: InferReceiptCase = InferDiagnosticReceiptCa
 data subject_infer_add_mvp_fail_closed: TestClaimEvalSubject<Node> = infer_receipt_subject(case: case_infer_add_mvp_fail_closed)
 
 
-data run_infer_add_mvp_fail_closed: TestClaimRun<InferredTree> = infer_add_mvp_receipt_run(subject: subject_infer_add_mvp_fail_closed)
+data run_infer_add_mvp_fail_closed: TestClaimRun<Node, InferredTree> = infer_add_mvp_receipt_run(subject: subject_infer_add_mvp_fail_closed)
 
 
 data case_infer_descent_witness_fail_closed: InferReceiptCase = InferCompilesReceiptCase {
@@ -334,11 +418,10 @@ data case_infer_descent_witness_fail_closed: InferReceiptCase = InferCompilesRec
 data subject_infer_descent_witness_fail_closed: TestClaimEvalSubject<Node> = infer_receipt_subject(case: case_infer_descent_witness_fail_closed)
 
 
-data run_infer_descent_witness_fail_closed: TestClaimRun<Node> = infer_descent_witness_receipt_run(subject: subject_infer_descent_witness_fail_closed)
+data run_infer_descent_witness_fail_closed: TestClaimRun<Node, Node> = infer_descent_witness_receipt_run(subject: subject_infer_descent_witness_fail_closed)
 
 
 data claim_infer_add_mvp_compiles: TestClaim = infer_receipt_claim(case: case_infer_add_mvp_fail_closed)
 
 
 data claim_infer_descent_witness_fail_closed: TestClaim = infer_receipt_claim(case: case_infer_descent_witness_fail_closed)
-

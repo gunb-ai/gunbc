@@ -10256,6 +10256,13 @@ fn diag_render_node_type_evidence() {
                     v2_compiler::std_induction::SubValueRelation::PreservedValue => {
                         "PreservedValue"
                     }
+                    v2_compiler::std_induction::SubValueRelation::NonIncreasingValue => {
+                        "NonIncreasingValue"
+                    }
+                    v2_compiler::std_induction::SubValueRelation::StrictAxisErased => {
+                        "StrictAxisErased"
+                    }
+                    v2_compiler::std_induction::SubValueRelation::MixedTop => "MixedTop",
                     v2_compiler::std_induction::SubValueRelation::SubValueUnknown => {
                         "SubValueUnknown"
                     }
@@ -10391,6 +10398,13 @@ fn diag_emitter_scc() {
                             ..
                         } => "Arith",
                         v2_compiler::std_induction::SubValueRelation::PreservedValue => "Preserved",
+                        v2_compiler::std_induction::SubValueRelation::NonIncreasingValue => {
+                            "NonIncreasing"
+                        }
+                        v2_compiler::std_induction::SubValueRelation::StrictAxisErased => {
+                            "StrictAxisErased"
+                        }
+                        v2_compiler::std_induction::SubValueRelation::MixedTop => "MixedTop",
                         v2_compiler::std_induction::SubValueRelation::SubValueUnknown => "Unknown",
                     })
                     .collect();
@@ -10419,6 +10433,13 @@ fn diag_emitter_scc() {
                             ..
                         } => "Arith",
                         v2_compiler::std_induction::SubValueRelation::PreservedValue => "Preserved",
+                        v2_compiler::std_induction::SubValueRelation::NonIncreasingValue => {
+                            "NonIncreasing"
+                        }
+                        v2_compiler::std_induction::SubValueRelation::StrictAxisErased => {
+                            "StrictAxisErased"
+                        }
+                        v2_compiler::std_induction::SubValueRelation::MixedTop => "MixedTop",
                         v2_compiler::std_induction::SubValueRelation::SubValueUnknown => "Unknown",
                     })
                     .collect();
