@@ -125,6 +125,12 @@ pub struct BoundedLattice<T> {
 }
 
 #[derive(Clone)]
+pub struct BoundedMeetSemilattice<T> {
+    pub meet: Rc<dyn Fn(T, T) -> T>,
+    pub bottom: Box<T>,
+}
+
+#[derive(Clone)]
 pub struct BooleanAlgebra<T> {
     pub meet: Rc<dyn Fn(T, T) -> T>,
     pub join: Rc<dyn Fn(T, T) -> T>,
