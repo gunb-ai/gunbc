@@ -397,6 +397,9 @@ fn emit_runs_on(v: &Value) -> Result<String, Box<dyn std::error::Error>> {
     // `RunsOnExpression` carriers respectively; admitting them inside `SelfHosted` would
     // violate extdeps fidelity (P2 / Practice 5) and the fail-closed discipline (P1/P3).
     if let Some(seq) = v.as_sequence() {
+        if seq.is_empty() {
+            return Err("runs-on sequence must be non-empty".into());
+        }
         let mut labels: Vec<String> = Vec::new();
         for it in seq {
             let s = it.as_str().ok_or("runs-on sequence entry must be string")?;
