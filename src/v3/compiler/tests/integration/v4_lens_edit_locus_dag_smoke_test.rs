@@ -16,7 +16,8 @@ use v3_compiler::tokenize_for_test;
 
 const EDIT_LOCUS_DAG: &str = include_str!("../../../../v4/lens/edit_locus.dag");
 const EDIT_LOCUS_PATH: &str = "src/v4/lens/edit_locus.dag";
-const CLAIM_DAG: &str = include_str!("../../../../v4/test/claim/lens_affected_set/edit_locus_resolver.dag");
+const CLAIM_DAG: &str =
+    include_str!("../../../../v4/test/claim/lens_affected_set/edit_locus_resolver.dag");
 const CLAIM_PATH: &str = "src/v4/test/claim/lens_affected_set/edit_locus_resolver.dag";
 
 fn parse_module(source: &str, path: &str) -> v3_compiler::parse_surface::SurfaceModule {
