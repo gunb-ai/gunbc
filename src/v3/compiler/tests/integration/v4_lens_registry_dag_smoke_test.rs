@@ -232,7 +232,6 @@ fn v4_lens_registry_dag_tokenizes_and_parses() {
 }
 
 #[test]
-<<<<<<< HEAD
 fn v4_ci_workflow_consumes_lens_registry_for_lens_ci_signal() {
     let module = parse_module(CI_DAG, CI_PATH);
     assert!(
@@ -294,7 +293,9 @@ fn v4_ci_workflow_consumes_lens_registry_for_lens_ci_signal() {
             && semantic_step.contains(&format!("--target {semantic_target}")),
         "{CI_YML_PATH}: `{semantic_step_name}` must execute the modeled Lens-CI semantic signal"
     );
-=======
+}
+
+#[test]
 fn v4_lens_registry_t23_closed_lens_ids_present() {
     for id in [
         "Complexity",
@@ -311,7 +312,6 @@ fn v4_lens_registry_t23_closed_lens_ids_present() {
             "{REGISTRY_PATH}: LensIdV0 arm `{id}` must appear in closed registry source"
         );
     }
->>>>>>> origin/main
 }
 
 #[test]
