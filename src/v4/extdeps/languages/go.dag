@@ -226,14 +226,11 @@ data go_tag_complex_bits128: Symbol = go_tag_complex_bits128
 data go_tag_overflow_signed_truncates: Symbol = go_tag_overflow_signed_truncates
 data go_tag_overflow_unsigned_truncates: Symbol = go_tag_overflow_unsigned_truncates
 
-data go_overflow_signed_truncates: GoBuiltinIntegerArithmeticOverflow = SignedTypedIntegerTruncatesSilentlyOnOverflow {}
-data go_overflow_unsigned_truncates: GoBuiltinIntegerArithmeticOverflow = UnsignedTypedIntegerTruncatesSilentlyOnOverflow {}
-
 data go_facts_int8: GoIntegerPrimitiveFacts = GoIntegerPrimitiveFacts {
   surface_spelling: go_surface_spelling_int8,
   signedness: Signed,
   width: GoSignedWidth { width: SignedBits8 },
-  overflow: go_overflow_signed_truncates,
+  overflow: SignedTypedIntegerTruncatesSilentlyOnOverflow,
   encoding: go_repr_twos_complement_integer,
   std_projection: go_std_projection_int8,
 }
@@ -242,7 +239,7 @@ data go_facts_int16: GoIntegerPrimitiveFacts = GoIntegerPrimitiveFacts {
   surface_spelling: go_surface_spelling_int16,
   signedness: Signed,
   width: GoSignedWidth { width: SignedBits16 },
-  overflow: go_overflow_signed_truncates,
+  overflow: SignedTypedIntegerTruncatesSilentlyOnOverflow,
   encoding: go_repr_twos_complement_integer,
   std_projection: go_std_projection_int16,
 }
@@ -251,7 +248,7 @@ data go_facts_int32: GoIntegerPrimitiveFacts = GoIntegerPrimitiveFacts {
   surface_spelling: go_surface_spelling_int32,
   signedness: Signed,
   width: GoSignedWidth { width: SignedBits32 },
-  overflow: go_overflow_signed_truncates,
+  overflow: SignedTypedIntegerTruncatesSilentlyOnOverflow,
   encoding: go_repr_twos_complement_integer,
   std_projection: go_std_projection_int32,
 }
@@ -260,7 +257,7 @@ data go_facts_int64: GoIntegerPrimitiveFacts = GoIntegerPrimitiveFacts {
   surface_spelling: go_surface_spelling_int64,
   signedness: Signed,
   width: GoSignedWidth { width: SignedBits64 },
-  overflow: go_overflow_signed_truncates,
+  overflow: SignedTypedIntegerTruncatesSilentlyOnOverflow,
   encoding: go_repr_twos_complement_integer,
   std_projection: go_std_projection_int64,
 }
@@ -269,7 +266,7 @@ data go_facts_int: GoIntegerPrimitiveFacts = GoIntegerPrimitiveFacts {
   surface_spelling: go_surface_spelling_int,
   signedness: Signed,
   width: GoSignedWidth { width: SignedPlatformInt },
-  overflow: go_overflow_signed_truncates,
+  overflow: SignedTypedIntegerTruncatesSilentlyOnOverflow,
   encoding: go_repr_twos_complement_integer,
   std_projection: go_std_projection_int,
 }
@@ -278,7 +275,7 @@ data go_facts_uint8: GoIntegerPrimitiveFacts = GoIntegerPrimitiveFacts {
   surface_spelling: go_surface_spelling_uint8,
   signedness: Unsigned,
   width: GoUnsignedWidth { width: UnsignedBits8 },
-  overflow: go_overflow_unsigned_truncates,
+  overflow: UnsignedTypedIntegerTruncatesSilentlyOnOverflow,
   encoding: go_repr_twos_complement_integer,
   std_projection: go_std_projection_uint8,
 }
@@ -287,7 +284,7 @@ data go_facts_uint16: GoIntegerPrimitiveFacts = GoIntegerPrimitiveFacts {
   surface_spelling: go_surface_spelling_uint16,
   signedness: Unsigned,
   width: GoUnsignedWidth { width: UnsignedBits16 },
-  overflow: go_overflow_unsigned_truncates,
+  overflow: UnsignedTypedIntegerTruncatesSilentlyOnOverflow,
   encoding: go_repr_twos_complement_integer,
   std_projection: go_std_projection_uint16,
 }
@@ -296,7 +293,7 @@ data go_facts_uint32: GoIntegerPrimitiveFacts = GoIntegerPrimitiveFacts {
   surface_spelling: go_surface_spelling_uint32,
   signedness: Unsigned,
   width: GoUnsignedWidth { width: UnsignedBits32 },
-  overflow: go_overflow_unsigned_truncates,
+  overflow: UnsignedTypedIntegerTruncatesSilentlyOnOverflow,
   encoding: go_repr_twos_complement_integer,
   std_projection: go_std_projection_uint32,
 }
@@ -305,7 +302,7 @@ data go_facts_uint64: GoIntegerPrimitiveFacts = GoIntegerPrimitiveFacts {
   surface_spelling: go_surface_spelling_uint64,
   signedness: Unsigned,
   width: GoUnsignedWidth { width: UnsignedBits64 },
-  overflow: go_overflow_unsigned_truncates,
+  overflow: UnsignedTypedIntegerTruncatesSilentlyOnOverflow,
   encoding: go_repr_twos_complement_integer,
   std_projection: go_std_projection_uint64,
 }
@@ -314,7 +311,7 @@ data go_facts_uint: GoIntegerPrimitiveFacts = GoIntegerPrimitiveFacts {
   surface_spelling: go_surface_spelling_uint,
   signedness: Unsigned,
   width: GoUnsignedWidth { width: UnsignedPlatformInt },
-  overflow: go_overflow_unsigned_truncates,
+  overflow: UnsignedTypedIntegerTruncatesSilentlyOnOverflow,
   encoding: go_repr_twos_complement_integer,
   std_projection: go_std_projection_uint,
 }
@@ -323,7 +320,7 @@ data go_facts_uintptr: GoIntegerPrimitiveFacts = GoIntegerPrimitiveFacts {
   surface_spelling: go_surface_spelling_uintptr,
   signedness: Unsigned,
   width: GoUnsignedWidth { width: UnsignedPointerSized },
-  overflow: go_overflow_unsigned_truncates,
+  overflow: UnsignedTypedIntegerTruncatesSilentlyOnOverflow,
   encoding: go_repr_twos_complement_integer,
   std_projection: go_std_projection_uintptr,
 }
