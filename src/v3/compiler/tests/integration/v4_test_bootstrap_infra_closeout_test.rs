@@ -54,11 +54,14 @@ fn t19_refinement_preservation_receipts_present() {
     assert!(
         TESTGEN_DAG.contains("RefinementPreservation { subject: RefinementPreservationSubject }")
             && TESTGEN_DAG.contains("fn testgen_emit_refinement_preservation_claim")
-            && TESTGEN_DAG.contains("fn nonempty_list_base_preserved_node")
-            && TESTGEN_DAG.contains("refined_base(r: refined) == original")
+            && TESTGEN_DAG.contains("-> Outcome<RefinementPreservationSubject>")
+            && TESTGEN_DAG.contains("refined: Refined<List<Node>>")
+            && TESTGEN_DAG.contains("refined_base(r: subject.refined)")
             && TESTGEN_DAG.contains("T19ManualRefinementNonEmptyListBase")
             && REFINEMENT_GENERATED_DAG
                 .contains("refinement_preservation_subject_nonempty_list_base()")
+            && REFINEMENT_GENERATED_DAG
+                .contains("refined_base(r: subject.refined) == subject.original")
             && REFINEMENT_GENERATED_DAG.contains(
                 "data claim_refinement_nonempty_list_base_preserved: TestClaim"
             )
