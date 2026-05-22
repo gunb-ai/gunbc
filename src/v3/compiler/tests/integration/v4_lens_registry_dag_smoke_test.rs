@@ -101,6 +101,22 @@ fn record_payload_field<'a>(variant: &'a SurfaceVariant, field_name: &str) -> &'
         .unwrap_or_else(|| panic!("variant `{}` missing `{field_name}` field", variant.name))
 }
 
+fn type_record_field_names<'a>(
+    module: &'a v3_compiler::parse_surface::SurfaceModule,
+    type_name: &str,
+) -> Vec<&'a str> {
+    module
+        .items
+        .iter()
+        .find_map(|item| match item {
+            SurfaceItem::TypeRecord { name, fields, .. } if name == type_name => {
+                Some(fields.iter().map(|field| field.name.as_str()).collect())
+            }
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("missing type record `{type_name}`"))
+}
+
 fn data_body<'a>(
     module: &'a v3_compiler::parse_surface::SurfaceModule,
     name: &str,
@@ -238,22 +254,12 @@ fn v4_ci_workflow_consumes_lens_registry_for_lens_ci_signal() {
         surface_declares_data(&module, "lens_ci_registry_signal"),
         "{CI_PATH}: Lens-CI must expose a CI gate signal"
     );
+    assert_eq!(
+        type_record_field_names(&module, "LensCiLiveWorkflowSignal"),
+        vec!["smoke_step_name", "semantic_step_name", "semantic_target"],
+        "{CI_PATH}: live workflow binding must not re-author ci_pipeline signal/job/policy facts"
+    );
     let live_signal = data_body(&module, "lens_ci_live_workflow_signal");
-    assert_eq!(
-        expr_var_name(record_body_field(live_signal, "signal")),
-        "lens_ci_registry_signal",
-        "{CI_PATH}: live workflow binding must name the modeled Lens-CI gate signal"
-    );
-    assert_eq!(
-        expr_var_name(record_body_field(live_signal, "execution_job")),
-        "lens_ci_registry_execution",
-        "{CI_PATH}: live workflow binding must name the Lens-CI registry execution job"
-    );
-    assert_eq!(
-        expr_var_name(record_body_field(live_signal, "required_lenses")),
-        "lens_ci_required_lenses",
-        "{CI_PATH}: live workflow binding must consume the modeled required-lens policy"
-    );
 
     gen_gunbc_ci_workflow_dag::parse_and_validate_github_actions_workflow_yaml(CI_YML)
         .unwrap_or_else(|e| panic!("{CI_YML_PATH}: parse/validate workflow YAML: {e}"));
