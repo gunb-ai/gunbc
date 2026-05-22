@@ -285,30 +285,67 @@ fn v4_rust_integer_range_bounds_carry_reference_values() {
         surface_declares_type(&module, "RustIntegerRangeBound"),
         "{RUST_LANGUAGE_PATH}: Rust integer ranges must be modeled as value-carrying facts, not bare Symbols"
     );
-    for (bound, value) in [
-        ("rust_range_min_i8", "-128"),
-        ("rust_range_max_i8", "127"),
+    let fields: Vec<(String, String)> = type_record_fields(&module, "RustIntegerRangeBound")
+        .iter()
+        .map(|field| (field.name.clone(), surface_type_name(&field.ty)))
+        .collect();
+    assert_eq!(
+        fields,
+        vec![
+            ("identity".to_string(), "Symbol".to_string()),
+            ("value_identity".to_string(), "Symbol".to_string()),
+            ("value".to_string(), "String".to_string()),
+        ],
+        "{RUST_LANGUAGE_PATH}: Rust integer range bounds must carry both node identities and Rust Reference values"
+    );
+    for (bound, value_identity, value) in [
+        ("rust_range_min_i8", "rust_range_value_min_i8", "-128"),
+        ("rust_range_max_i8", "rust_range_value_max_i8", "127"),
         (
             "rust_range_min_i128",
+            "rust_range_value_min_i128",
             "-170141183460469231731687303715884105728",
         ),
         (
             "rust_range_max_i128",
+            "rust_range_value_max_i128",
             "170141183460469231731687303715884105727",
         ),
-        ("rust_range_min_u64", "0"),
-        ("rust_range_max_u64", "18446744073709551615"),
-        ("rust_range_min_u128", "0"),
+        ("rust_range_min_u64", "rust_range_value_min_u64", "0"),
+        (
+            "rust_range_max_u64",
+            "rust_range_value_max_u64",
+            "18446744073709551615",
+        ),
+        ("rust_range_min_u128", "rust_range_value_min_u128", "0"),
         (
             "rust_range_max_u128",
+            "rust_range_value_max_u128",
             "340282366920938463463374607431768211455",
         ),
-        ("rust_range_min_isize", "pointer_width_signed_min"),
-        ("rust_range_max_isize", "pointer_width_signed_max"),
-        ("rust_range_min_usize", "0"),
-        ("rust_range_max_usize", "pointer_width_unsigned_max"),
+        (
+            "rust_range_min_isize",
+            "rust_range_value_min_isize",
+            "pointer_width_signed_min",
+        ),
+        (
+            "rust_range_max_isize",
+            "rust_range_value_max_isize",
+            "pointer_width_signed_max",
+        ),
+        ("rust_range_min_usize", "rust_range_value_min_usize", "0"),
+        (
+            "rust_range_max_usize",
+            "rust_range_value_max_usize",
+            "pointer_width_unsigned_max",
+        ),
     ] {
         let expr = data_expr(&module, bound);
+        assert_eq!(
+            record_field_var(expr, "value_identity"),
+            Some(value_identity),
+            "{RUST_LANGUAGE_PATH}: range bound `{bound}` must expose a value identity for canonical Node projection"
+        );
         assert_eq!(
             record_field_string(expr, "value"),
             Some(value),
@@ -331,6 +368,17 @@ fn v4_rust_integer_fact_bundle_binds_range_axis() {
     assert!(
         surface_declares_fn(&module, "rust_integer_range_node"),
         "{RUST_LANGUAGE_PATH}: range axis must bind a dedicated range fact node, not reuse width/signedness heuristics"
+    );
+    assert!(
+        surface_declares_fn(&module, "rust_integer_range_bound_node"),
+        "{RUST_LANGUAGE_PATH}: range axis must preserve each bound's value-carrying shape in the canonical Node projection"
+    );
+    assert!(
+        RUST_LANGUAGE_DAG.contains("target: rust_integer_range_bound_node(bound: facts.range_min)")
+            && RUST_LANGUAGE_DAG
+                .contains("target: rust_integer_range_bound_node(bound: facts.range_max)")
+            && RUST_LANGUAGE_DAG.contains("id: bound.value_identity"),
+        "{RUST_LANGUAGE_PATH}: range-axis binding must forward bound value identities, not only bound identity atoms"
     );
     assert!(
         surface_declares_fn(&module, "rust_primitive_bundle_from_integer_facts"),
