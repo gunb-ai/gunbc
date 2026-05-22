@@ -304,36 +304,26 @@ fn ts_primitive_fact_map_2(
 fn ts_primitive_bundle_from_number_facts(facts: TsNumberPrimitiveFacts) -> PrimitiveFactBundle {
   PrimitiveFactBundle {
     substrate_carrier: ts_number_facts_node(facts: facts),
-    spec_facts: [
-      ts_primitive_axis_binding(
-        axis: primitive_fact_axis_surface_spelling,
-        fact: ts_inhabitant_atom(id: facts.surface_spelling)
-      ),
-      ts_primitive_axis_binding(
-        axis: primitive_fact_axis_width,
-        fact: ts_inhabitant_atom(id: ts_tag_bits64)
-      ),
-      ts_primitive_axis_binding(
-        axis: primitive_fact_axis_encoding,
-        fact: ts_inhabitant_atom(id: facts.ieee754_binary)
-      )
-    ]
+    spec_facts: ts_primitive_fact_map_3(
+      axis0: primitive_fact_axis_surface_spelling,
+      fact0: ts_inhabitant_atom(id: facts.surface_spelling),
+      axis1: primitive_fact_axis_width,
+      fact1: ts_inhabitant_atom(id: ts_tag_bits64),
+      axis2: primitive_fact_axis_encoding,
+      fact2: ts_inhabitant_atom(id: facts.ieee754_binary)
+    )
   }
 }
 
 fn ts_primitive_bundle_from_bigint_facts(facts: TsBigIntPrimitiveFacts) -> PrimitiveFactBundle {
   PrimitiveFactBundle {
     substrate_carrier: ts_bigint_facts_node(facts: facts),
-    spec_facts: [
-      ts_primitive_axis_binding(
-        axis: primitive_fact_axis_surface_spelling,
-        fact: ts_inhabitant_atom(id: facts.surface_spelling)
-      ),
-      ts_primitive_axis_binding(
-        axis: primitive_fact_axis_encoding,
-        fact: ts_inhabitant_atom(id: facts.encoding)
-      )
-    ]
+    spec_facts: ts_primitive_fact_map_2(
+      axis0: primitive_fact_axis_surface_spelling,
+      fact0: ts_inhabitant_atom(id: facts.surface_spelling),
+      axis1: primitive_fact_axis_encoding,
+      fact1: ts_inhabitant_atom(id: facts.encoding)
+    )
   }
 }
 

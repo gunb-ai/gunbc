@@ -402,48 +402,32 @@ fn wasm_primitive_fact_map_3(
 fn wasm_primitive_bundle_from_integer_facts(facts: WasmIntegerPrimitiveFacts) -> PrimitiveFactBundle {
   PrimitiveFactBundle {
     substrate_carrier: wasm_integer_facts_node(facts: facts),
-    spec_facts: [
-      wasm_primitive_axis_binding(
-        axis: primitive_fact_axis_surface_spelling,
-        fact: wasm_inhabitant_atom(id: facts.surface_spelling)
-      ),
-      wasm_primitive_axis_binding(
-        axis: primitive_fact_axis_width,
-        fact: wasm_int_width_node(width: facts.width)
-      ),
-      wasm_primitive_axis_binding(
-        axis: primitive_fact_axis_signedness,
-        fact: wasm_inhabitant_atom(id: wasm_tag_sign_agnostic_modular)
-      ),
-      wasm_primitive_axis_binding(
-        axis: primitive_fact_axis_encoding,
-        fact: wasm_inhabitant_atom(id: wasm_repr_sign_agnostic_modular)
-      ),
-      wasm_primitive_axis_binding(
-        axis: primitive_fact_axis_overflow_disposition,
-        fact: wasm_inhabitant_atom(id: wasm_tag_modular_wrap)
-      )
-    ]
+    spec_facts: wasm_primitive_fact_map_5(
+      axis0: primitive_fact_axis_surface_spelling,
+      fact0: wasm_inhabitant_atom(id: facts.surface_spelling),
+      axis1: primitive_fact_axis_width,
+      fact1: wasm_int_width_node(width: facts.width),
+      axis2: primitive_fact_axis_signedness,
+      fact2: wasm_inhabitant_atom(id: wasm_tag_sign_agnostic_modular),
+      axis3: primitive_fact_axis_encoding,
+      fact3: wasm_inhabitant_atom(id: wasm_repr_sign_agnostic_modular),
+      axis4: primitive_fact_axis_overflow_disposition,
+      fact4: wasm_inhabitant_atom(id: wasm_tag_modular_wrap)
+    )
   }
 }
 
 fn wasm_primitive_bundle_from_float_facts(facts: WasmFloatPrimitiveFacts) -> PrimitiveFactBundle {
   PrimitiveFactBundle {
     substrate_carrier: wasm_float_facts_node(facts: facts),
-    spec_facts: [
-      wasm_primitive_axis_binding(
-        axis: primitive_fact_axis_surface_spelling,
-        fact: wasm_inhabitant_atom(id: facts.surface_spelling)
-      ),
-      wasm_primitive_axis_binding(
-        axis: primitive_fact_axis_width,
-        fact: wasm_float_width_node(width: facts.width)
-      ),
-      wasm_primitive_axis_binding(
-        axis: primitive_fact_axis_encoding,
-        fact: wasm_inhabitant_atom(id: facts.ieee754_binary)
-      )
-    ]
+    spec_facts: wasm_primitive_fact_map_3(
+      axis0: primitive_fact_axis_surface_spelling,
+      fact0: wasm_inhabitant_atom(id: facts.surface_spelling),
+      axis1: primitive_fact_axis_width,
+      fact1: wasm_float_width_node(width: facts.width),
+      axis2: primitive_fact_axis_encoding,
+      fact2: wasm_inhabitant_atom(id: facts.ieee754_binary)
+    )
   }
 }
 

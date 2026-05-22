@@ -499,28 +499,18 @@ fn mc_primitive_fact_map_5(
 fn mc_primitive_bundle_from_integer_facts(facts: MachineIntegerPrimitiveFacts) -> PrimitiveFactBundle {
   PrimitiveFactBundle {
     substrate_carrier: mc_integer_facts_node(facts: facts),
-    spec_facts: [
-      mc_primitive_axis_binding(
-        axis: primitive_fact_axis_surface_spelling,
-        fact: mc_inhabitant_atom(id: facts.surface_spelling)
-      ),
-      mc_primitive_axis_binding(
-        axis: primitive_fact_axis_width,
-        fact: mc_int_width_node(width: facts.width)
-      ),
-      mc_primitive_axis_binding(
-        axis: primitive_fact_axis_signedness,
-        fact: mc_int_kind_node(kind: facts.kind)
-      ),
-      mc_primitive_axis_binding(
-        axis: primitive_fact_axis_encoding,
-        fact: mc_inhabitant_atom(id: mc_repr_twos_complement)
-      ),
-      mc_primitive_axis_binding(
-        axis: primitive_fact_axis_overflow_disposition,
-        fact: mc_overflow_node(overflow: facts.overflow_release)
-      )
-    ]
+    spec_facts: mc_primitive_fact_map_5(
+      axis0: primitive_fact_axis_surface_spelling,
+      fact0: mc_inhabitant_atom(id: facts.surface_spelling),
+      axis1: primitive_fact_axis_width,
+      fact1: mc_int_width_node(width: facts.width),
+      axis2: primitive_fact_axis_signedness,
+      fact2: mc_int_kind_node(kind: facts.kind),
+      axis3: primitive_fact_axis_encoding,
+      fact3: mc_inhabitant_atom(id: mc_repr_twos_complement),
+      axis4: primitive_fact_axis_overflow_disposition,
+      fact4: mc_overflow_node(overflow: facts.overflow_release)
+    )
   }
 }
 
@@ -546,4 +536,3 @@ fn machine_code_model_core_wave1() -> ModelCore {
     partiality: PartialitySemanticsDecl { operations: [] }
   }
 }
-

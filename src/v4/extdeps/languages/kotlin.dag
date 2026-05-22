@@ -518,60 +518,38 @@ fn kotlin_primitive_bundle_from_integer_facts(
 ) -> PrimitiveFactBundle {
   PrimitiveFactBundle {
     substrate_carrier: kotlin_integer_facts_node(facts: facts),
-    spec_facts: [
-      kotlin_primitive_axis_binding(
-        axis: primitive_fact_axis_surface_spelling,
-        fact: kotlin_atom(id: facts.surface_spelling)
-      ),
-      kotlin_primitive_axis_binding(
-        axis: primitive_fact_axis_width,
-        fact: kotlin_int_width_node(width: facts.width)
-      ),
-      kotlin_primitive_axis_binding(
-        axis: primitive_fact_axis_signedness,
-        fact: kotlin_atom(id: kotlin_tag_signed)
-      ),
-      kotlin_primitive_axis_binding(
-        axis: primitive_fact_axis_overflow_disposition,
-        fact: kotlin_overflow_node(overflow: facts.overflow)
-      ),
-      kotlin_primitive_axis_binding(
-        axis: kotlin_primitive_fact_axis_runtime_representation,
-        fact: kotlin_runtime_representation_node(representation: facts.representation)
-      ),
-      kotlin_primitive_axis_binding(
-        axis: kotlin_primitive_fact_axis_scalar_classifier,
-        fact: kotlin_scalar_node(scalar: IntScalar { width: facts.width })
-      )
-    ]
+    spec_facts: kotlin_primitive_fact_map_6(
+      axis0: primitive_fact_axis_surface_spelling,
+      fact0: kotlin_atom(id: facts.surface_spelling),
+      axis1: primitive_fact_axis_width,
+      fact1: kotlin_int_width_node(width: facts.width),
+      axis2: primitive_fact_axis_signedness,
+      fact2: kotlin_atom(id: kotlin_tag_signed),
+      axis3: primitive_fact_axis_overflow_disposition,
+      fact3: kotlin_overflow_node(overflow: facts.overflow),
+      axis4: kotlin_primitive_fact_axis_runtime_representation,
+      fact4: kotlin_runtime_representation_node(representation: facts.representation),
+      axis5: kotlin_primitive_fact_axis_scalar_classifier,
+      fact5: kotlin_scalar_node(scalar: IntScalar { width: facts.width })
+    )
   }
 }
 
 fn kotlin_primitive_bundle_from_float_facts(facts: KotlinFloatPrimitiveFacts) -> PrimitiveFactBundle {
   PrimitiveFactBundle {
     substrate_carrier: kotlin_float_facts_node(facts: facts),
-    spec_facts: [
-      kotlin_primitive_axis_binding(
-        axis: primitive_fact_axis_surface_spelling,
-        fact: kotlin_atom(id: facts.surface_spelling)
-      ),
-      kotlin_primitive_axis_binding(
-        axis: primitive_fact_axis_width,
-        fact: kotlin_float_width_node(width: facts.width)
-      ),
-      kotlin_primitive_axis_binding(
-        axis: kotlin_primitive_fact_axis_value_format,
-        fact: kotlin_float_value_format_node(value_format: facts.value_format)
-      ),
-      kotlin_primitive_axis_binding(
-        axis: kotlin_primitive_fact_axis_runtime_representation,
-        fact: kotlin_runtime_representation_node(representation: facts.representation)
-      ),
-      kotlin_primitive_axis_binding(
-        axis: kotlin_primitive_fact_axis_scalar_classifier,
-        fact: kotlin_scalar_node(scalar: FloatScalar { width: facts.width })
-      )
-    ]
+    spec_facts: kotlin_primitive_fact_map_5(
+      axis0: primitive_fact_axis_surface_spelling,
+      fact0: kotlin_atom(id: facts.surface_spelling),
+      axis1: primitive_fact_axis_width,
+      fact1: kotlin_float_width_node(width: facts.width),
+      axis2: kotlin_primitive_fact_axis_value_format,
+      fact2: kotlin_float_value_format_node(value_format: facts.value_format),
+      axis3: kotlin_primitive_fact_axis_runtime_representation,
+      fact3: kotlin_runtime_representation_node(representation: facts.representation),
+      axis4: kotlin_primitive_fact_axis_scalar_classifier,
+      fact4: kotlin_scalar_node(scalar: FloatScalar { width: facts.width })
+    )
   }
 }
 
@@ -580,20 +558,14 @@ fn kotlin_primitive_bundle_from_nonnumeric_facts(
 ) -> PrimitiveFactBundle {
   PrimitiveFactBundle {
     substrate_carrier: kotlin_nonnumeric_facts_node(facts: facts),
-    spec_facts: [
-      kotlin_primitive_axis_binding(
-        axis: primitive_fact_axis_surface_spelling,
-        fact: kotlin_atom(id: facts.surface_spelling)
-      ),
-      kotlin_primitive_axis_binding(
-        axis: kotlin_nonnumeric_value_fact_axis(value_fact: facts.value_fact),
-        fact: kotlin_nonnumeric_value_fact_node(value_fact: facts.value_fact)
-      ),
-      kotlin_primitive_axis_binding(
-        axis: kotlin_primitive_fact_axis_scalar_classifier,
-        fact: kotlin_scalar_node(scalar: facts.scalar)
-      )
-    ]
+    spec_facts: kotlin_primitive_fact_map_3(
+      axis0: primitive_fact_axis_surface_spelling,
+      fact0: kotlin_atom(id: facts.surface_spelling),
+      axis1: kotlin_nonnumeric_value_fact_axis(value_fact: facts.value_fact),
+      fact1: kotlin_nonnumeric_value_fact_node(value_fact: facts.value_fact),
+      axis2: kotlin_primitive_fact_axis_scalar_classifier,
+      fact2: kotlin_scalar_node(scalar: facts.scalar)
+    )
   }
 }
 
