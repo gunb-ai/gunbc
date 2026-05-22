@@ -81,21 +81,20 @@ fn t19_coproduct_exhaustiveness_generated_claim_parse_and_witnesses_present() {
         COPRODUCT_EXHAUSTIVENESS_GENERATED_PATH,
     );
     assert!(
-        TESTGEN_DAG.contains("type DiagnosticExhaustivenessSubject")
-            && TESTGEN_DAG.contains("fn coproduct_exhaustiveness_subject_testclaim_compiles")
+        TESTGEN_DAG.contains("fn coproduct_exhaustiveness_subject_testclaim_compiles")
             && TESTGEN_DAG.contains("fn coproduct_exhaustiveness_subject_testclaim_diagnostic")
             && TESTGEN_DAG.contains("fn coproduct_exhaustiveness_subject_testclaim_equals")
             && TESTGEN_DAG.contains("fn coproduct_exhaustiveness_subject_testclaim_roundtrip")
             && TESTGEN_DAG.contains("fn testgen_emit_coproduct_exhaustiveness_claim")
             && TESTGEN_DAG.contains("fn testgen_scheduled_coproduct_exhaustiveness_generators")
-            && TESTGEN_DAG.contains("slot: DiagnosticExhaustiveness {")
+            && TESTGEN_DAG.contains("slot: DiagnosticExhaustiveness")
             && TESTGEN_DAG.contains("value: DiagnosticClaim {")
-            && TESTGEN_DAG.contains("t19_anchor: t19_generated_claim_anchor(anchor: coproduct_exhaustiveness_anchor(subject: subject))"),
+            && TESTGEN_DAG.contains("t19_anchor: t19_generated_claim_anchor(anchor: anchor)"),
         "T-19 DiagnosticExhaustiveness must emit coproduct-exhaustiveness TestClaim data from lens/testgen"
     );
     assert!(
         TESTGEN_DAG.contains("omitted_variant: TestClaimCoproductVariant")
-            && TESTGEN_DAG.contains("target: coproduct_exhaustiveness_variant_node(variant: subject.omitted_variant)")
+            && TESTGEN_DAG.contains("variant: coproduct_exhaustiveness_anchor_omitted_variant(anchor: anchor)")
             && TESTGEN_DAG.contains("at: node_locus(node: input)")
             && !TESTGEN_DAG.contains("NodeLocus { node: input }"),
         "coproduct-exhaustiveness generation must carry omitted variant into the input node and use canonical node_locus"
