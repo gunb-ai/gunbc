@@ -510,20 +510,22 @@ fn v4_lens_testgen_witness_validity_module_imports_helper_from_lens_testgen() {
 }
 
 #[test]
-fn v4_lens_testgen_witness_validity_module_has_at_least_three_rows_via_helper() {
+fn v4_lens_testgen_witness_validity_module_pins_four_row_corpus_via_helper() {
+    // Behavior-pinning ratchet (codex 2026-05-22): pin the exact 4-row corpus this PR
+    // delivers — 1 positive + 3 negative arms — so dropping one row regresses the test.
     let helper_calls = WITNESS_VALIDITY_DAG
         .matches("testgen_emit_witness_validity_claim(")
         .count();
-    assert!(
-        helper_calls >= 3,
-        "witness_validity.dag must contain ≥3 rows constructed via testgen_emit_witness_validity_claim; got {helper_calls}"
+    assert_eq!(
+        helper_calls, 4,
+        "witness_validity.dag must contain exactly 4 helper-routed rows; got {helper_calls}"
     );
     let row_data_decls = WITNESS_VALIDITY_DAG
         .matches("data row_witness_validity_")
         .count();
-    assert!(
-        row_data_decls >= 3,
-        "witness_validity.dag must declare ≥3 `data row_witness_validity_*` rows; got {row_data_decls}"
+    assert_eq!(
+        row_data_decls, 4,
+        "witness_validity.dag must declare exactly 4 `data row_witness_validity_*` rows; got {row_data_decls}"
     );
 }
 
